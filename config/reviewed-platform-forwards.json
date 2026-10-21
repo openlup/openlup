@@ -172,5 +172,18 @@
         "GRANT SELECT (email) ON public.admin_users TO service_role;"
       ]
     }
+  ],
+  "portableReplacementForwards": [
+    {
+      "path": "db/platform/migrations/20261021120000_dunning_lifecycle_active_repair.sql",
+      "sha256": "8918204df731aade89976953f8434afe08cfcbe84b6382a51728b9d14100e7ea",
+      "functions": [
+        {
+          "signature": "public.dunning_lifecycle_handle_failure(uuid,timestamptz,text,text,integer,timestamptz,text,text)",
+          "beforeSha256": "20bf0b786df6526b610c85120889eb6e9499c652c127a9b3e127bfe53460056f",
+          "afterSha256": "9682edba38b5b397736af12862fd9a8315ae4b2fadf4a9774f502fb337e3d5bb"
+        }
+      ]
+    }
   ]
 }

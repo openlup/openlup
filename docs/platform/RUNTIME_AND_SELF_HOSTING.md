@@ -181,9 +181,9 @@ Native flat-rate save requires a selected native rate port, a Core report in
 state `ready` and a same-database `nativeRateSchema` observation. Construct the
 reference binding to obtain its merged contribution requirements and call
 `observeNativeRateSchema()` at host readiness. This uses Core's schema probe to
-check the seed's exact ledger entry and settings objects, regardless of later
-forwards. Evaluate Core readiness with the caller's schema requirements, then
-reconstruct with that report and observation in `store`; close both bindings.
+check the position-72 `20261021200000_shipping_flat_rate_seed` ledger entry
+and settings objects, regardless of later forwards. Evaluate Core readiness
+with the caller's schema requirements, then reconstruct with that report and observation in `store`; close both bindings.
 Caller-declared schema objects/version are retained, with seed objects added
 once. A candidate label or unrelated report alone cannot enable saves.
 Selection, validation and flat-rate fixtures do not certify a managed host.

@@ -1,7 +1,7 @@
 export * from "./contracts/index.js";
 export { CommercePriceAuthorityError } from "./ports.js";
 export type { CommercePriceAuthorityPort } from "./ports.js";
-export { createCommercePriceAuthorityPort, selectUniqueEffectivePriceList } from "./commercePriceAuthority.js";
+export { createCommercePriceAuthorityPort, createConcurrentCommercePriceAuthorityPort, selectUniqueEffectivePriceList } from "./commercePriceAuthority.js";
 export type { CommercePriceAuthorityReadPort, TimedAuthorityValue } from "./commercePriceAuthority.js";
 export { subscriptionPricePolicySemanticsSchema, subscriptionPricePolicyCanonicalInputSchema, subscriptionPricePolicyRevisionSchema, SubscriptionPricePolicyDigestError, canonicalSubscriptionPricePolicyTuple, digestSubscriptionPricePolicy, assertSubscriptionPricePolicyDigest, deriveSubscriptionUnitPrice } from "./subscriptionPricePolicy.js";
 export { offerPolicyVersionSchema, promotionEngineVersionSchema, pricingPolicyRequestSchema, pricingPolicySnapshotSchema } from "./offerPolicySchemas.js";
@@ -50,3 +50,4 @@ export * from "./acquisitionOfferPricingSchemas.js";
 export * from "./acquisitionOfferPricing.js";
 export * from "./acquisitionOfferPricingHandler.js";
 export * from "./acquisitionReadiness.js";
+export type { QuoteShippingPromotionInput, QuoteShippingPromotionResult } from "./quoteShippingPromotions.js";

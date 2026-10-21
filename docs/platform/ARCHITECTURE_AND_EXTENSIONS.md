@@ -441,14 +441,20 @@ its own reviewed compatibility change before a second capability is admitted.
 
 ### Internal boundaries and adapter isolation
 
+Effective bundle selection reuses pricing's half-open authority through its
+public server entry, adding the catalog → pricing value edge. The dependency is
+acyclic; pricing owns no runtime catalog edge. The opt-in adapter keeps effective
+SQL internal and leaves browser contracts type-only and incumbent SQL unchanged.
+
 Inventory remains a non-adapter entry with no catalog import; its bundle-stock shapes are declared structurally. Admin handlers bind host response writers, and native reads require the provider value and validator. The new-purchase projection takes normalized reads, host defaults, fallback, observation and availability calculation; transports and cycle writers retain their owners.
 
 Reservation policy has an unchanged server counterpart; the reference keeps browser-safe local values and forwards DTO types only. The native renewal reservation factory takes a structural executor and preserves its fenced reserve/release/expiry SQL, defaults, errors and readback. Its inventory-only port does not own subscription cycle, anchor, due or attempt writing.
 
 Catalog now also owns fixed-bundle application/admin factories at its existing
-entry. Its cross-module edges are type-only data/http/bff inputs: the native read
+entry. Its data/http/bff inputs remain type-only: the native read
 store takes the data entry's executor without constructing a driver or pool.
-There is no pricing or promotions edge. Reference wrappers bind
+Effective bundle selection alone adds the pricing value edge described above;
+there is no promotions edge. Reference wrappers bind
 existing schemas, operation spec and shared admin kit, stock/lifecycle helpers,
 versions and the RPC error constructor. Browser-reached schemas retain their
 reference owner and never re-export the server entry; catalog contracts expose
@@ -458,8 +464,13 @@ peers. Contracts remains a non-adapter. The native writer, pooled transaction
 binding and transport remain reference-owned; sparse SQL projections add no
 installation chain or migration.
 
-The experimental promotions module has one value edge to pricing through
-`pricing/index.js`, for acquisition binding and the protocol constant. Type-only
+The experimental promotions module has value edges to pricing through
+`pricing/index.js`, for acquisition selection/binding and protocol constants, and
+to `shipping/index.js` for the opt-in pure threshold policy. Pricing has only a
+type edge to shipping for promise DTOs; it injects the orchestration callback
+and has no promotions runtime edge. The existing subpaths suffice: no package,
+peer, adapter classification or release-budget change is needed. See
+[parity seam contracts](CANONICAL_CONTRACTS.md#m05-parity-seams). Type-only
 edges to data, http and bff describe the injected executor and shared admin-kit
 interface. The native store does not construct a client, so it needs no data
 value edge. Its declarations reach optional pg types through data; cold consumer

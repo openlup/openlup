@@ -52,7 +52,7 @@ export function createShippingBindings(deps: ShippingBindingDependencies): Shipp
     && typeof deps.nativeRateReadiness.candidate?.database === "string"
     && deps.nativeRateReadiness.candidate.database.length > 0
     && deps.nativeRateSchema?.database === deps.nativeRateReadiness.candidate.database
-    && deps.nativeRateSchema.version === "20261021120000_shipping_flat_rate_seed"
+    && deps.nativeRateSchema.version === "20261021200000_shipping_flat_rate_seed"
     && ["public.commerce_settings", "public.commerce_settings.value_minor", "public.commerce_settings.updated_at"].every(name =>
       deps.nativeRateSchema?.objects?.some(entry => entry.present === true && entry.object?.name === name
         && entry.object.kind === (name === "public.commerce_settings" ? "table" : "column")));

@@ -14,8 +14,10 @@ const hash = (value: string) => createHash("sha256").update(value).digest("hex")
 const A="b3000000-0000-4000-8000-000000000001", C="b3000000-0000-4000-8000-000000000002", S="b3000000-0000-4000-8000-000000000003";
 const email="recipient@example.invalid", at="2026-10-19T10:00:00.000Z", now="2026-10-19T12:00:00.000Z";
 const containers: PostgresContainer[]=[], pools: Pool[]=[], stores: { close(): Promise<void> }[]=[];
-let fresh: Pool, upgrade: Pool, prefix: string, nativeIndex: number;
+let fresh: Pool, upgrade: Pool, prefix: string;
 const nativeFile="db/platform/migrations/20261019200000_communications_native_operations.sql";
+const manifest=JSON.parse(readFileSync("config/platform-migration-manifest.json","utf8"));
+const nativeIndex=manifest.forward.findIndex((entry:{file:string})=>entry.file===nativeFile);
 const env=(index=0)=>({connectionString:containers[index].connectionString});
 const runner=(pool: Pool,root=process.cwd())=>createPostgresMigrationRunner({connectionString:"injected"},{root,poolFactory:()=>pool});
 const keep=<T extends {close():Promise<void>}>(store:T):T=>{stores.push(store);return store;};
@@ -35,11 +37,9 @@ const snapshot=async(pool:Pool)=>{
 let before:Record<string,unknown>;
 beforeAll(async()=>{
  if(!await dockerAvailable())throw new Error("B3 requires real PostgreSQL");
- const current=JSON.parse(readFileSync("config/platform-migration-manifest.json","utf8"));
- nativeIndex=current.forward.findIndex((entry:{file:string})=>entry.file===nativeFile);
- expect(nativeIndex).toBeGreaterThanOrEqual(0);
+ expect(nativeIndex).toBe(69);
  prefix=mkdtempSync(join(tmpdir(),"b3-prefix-"));
- const previous={...current,forward:current.forward.slice(0,nativeIndex),objectInventorySha256:"f04ba91040e109ca7c79ddd73d6f31008dc735c93cedd1d536a2c006971bac65"};
+ const previous={...manifest,forward:manifest.forward.slice(0,nativeIndex),objectInventorySha256:"f04ba91040e109ca7c79ddd73d6f31008dc735c93cedd1d536a2c006971bac65"};
  for(const entry of [previous.baseline,...previous.forward]){const file=join(prefix,entry.file);mkdirSync(dirname(file),{recursive:true});writeFileSync(file,readFileSync(entry.file));}
  mkdirSync(join(prefix,"config"));writeFileSync(join(prefix,"config/platform-migration-manifest.json"),JSON.stringify(previous));
  for(const name of ["fresh","upgrade"]){const container=await runPostgresContainer({name:`communications-native-${name}-${process.pid}`,password:"synthetic-conformance"});containers.push(container);if(!await waitForPostgresTcpReady(container.connectionString))throw new Error("B3 PG unavailable");pools.push(new Pool({connectionString:container.connectionString}));}
@@ -63,7 +63,6 @@ beforeAll(async()=>{
 afterAll(async()=>{await Promise.all(stores.map(s=>s.close()));await Promise.all(pools.map(p=>p.end()));await Promise.all(containers.map(c=>c.remove()));if(prefix)rmSync(prefix,{recursive:true,force:true});});
 it("upgrades the real position-69 prefix, preserves representative state and replays without effects",async()=>{
  const queued=(await upgrade.query("SELECT * FROM public.outbox_events")).rows,permissions=(await upgrade.query("SELECT * FROM public.communication_recipient_consents")).rows;
- const manifest=JSON.parse(readFileSync("config/platform-migration-manifest.json","utf8"));
  expect((await runner(upgrade).apply()).applied).toEqual(manifest.forward.slice(nativeIndex).map((entry:{file:string})=>entry.file));
  expect(await snapshot(upgrade)).toEqual(before);
  expect((await upgrade.query("SELECT * FROM public.outbox_events")).rows).toEqual(queued);

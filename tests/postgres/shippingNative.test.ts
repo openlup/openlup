@@ -11,9 +11,11 @@ import { SHIPPING_MIGRATIONS } from "@openlup/platform/shipping";
 import { createM06ShippingReferenceBinding } from "../../server/runtime/public-reference/m06ShippingBinding.js";
 import { dockerAvailable, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
 
-const file = "db/platform/migrations/20261021120000_shipping_flat_rate_seed.sql";
-const version = "20261021120000_shipping_flat_rate_seed";
+const file = "db/platform/migrations/20261021200000_shipping_flat_rate_seed.sql";
+const version = "20261021200000_shipping_flat_rate_seed";
 const manifest = JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8"));
+const seedIndex = manifest.forward.findIndex((entry: { file: string }) => entry.file === file);
+const seed = SHIPPING_MIGRATIONS.find(entry => entry.id === version)!;
 const containers: PostgresContainer[] = [], pools: Pool[] = [];
 const bindings: ReturnType<typeof createM06ShippingReferenceBinding>[] = [];
 type NativeReadiness = { nativeRateReadiness: ReadinessReport; nativeRateSchema: SchemaObservation };
@@ -59,9 +61,10 @@ async function invoke(selected: ReturnType<typeof binding>, method: string, body
 }
 beforeAll(async () => {
   if (!await dockerAvailable()) throw new Error("Native shipping proof requires real PostgreSQL");
-  expect(manifest.forward).toHaveLength(71); expect(manifest.forward.at(-1).file).toBe(file);
+  expect(seedIndex).toBeGreaterThanOrEqual(0);
   prefix = mkdtempSync(join(tmpdir(), "shipping-prefix-"));
-  const previous = { ...manifest, forward: manifest.forward.slice(0, -1) };
+  const previous = { ...manifest, forward: manifest.forward.slice(0, seedIndex),
+    objectInventorySha256: "59f08ac97163fe310fab0928027996a5dbb885d5161ddc7a709e82c2947fdded" };
   for (const entry of [previous.baseline, ...previous.forward]) {
     const target = join(prefix, entry.file); mkdirSync(dirname(target), { recursive: true }); writeFileSync(target, readFileSync(entry.file));
   }
@@ -82,9 +85,8 @@ afterAll(async () => {
 });
 it("fresh full portable installation seeds and saves through the reference binding", async () => {
   expect((await pools[0].query("SELECT value_minor FROM public.commerce_settings WHERE key='shipping_flat_minor'")).rows).toEqual([{ value_minor: 0 }]);
-  const seed = SHIPPING_MIGRATIONS[1];
-  expect({ file: seed.catalogPath, sha256: seed.sha256 }).toEqual(manifest.forward[seed.position - 1]);
-  expect(seed.position).toBe(71); expect(seed.url.pathname.endsWith(`/sql/${seed.id}.sql`)).toBe(true);
+  expect({ file: seed.catalogPath, sha256: seed.sha256 }).toEqual(manifest.forward[seedIndex]);
+  expect(seed.position).toBe(seedIndex + 1); expect(seed.url.pathname.endsWith(`/sql/${seed.id}.sql`)).toBe(true);
   expect(createHash("sha256").update(readFileSync(seed.url)).digest("hex")).toBe(seed.sha256);
   await pools[0].query("INSERT INTO public.commerce_settings(key,value_minor,value_text) VALUES ('configurator_offer_layout',42,'cards')");
   const sibling = (await pools[0].query("SELECT to_jsonb(t) AS row FROM public.commerce_settings t WHERE key='configurator_offer_layout'")).rows;
@@ -94,8 +96,8 @@ it("fresh full portable installation seeds and saves through the reference bindi
   expect((await invoke(selected, "GET")).json).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ shippingFlatMinor: 725 }) }));
   expect((await pools[0].query("SELECT to_jsonb(t) AS row FROM public.commerce_settings t WHERE key='configurator_offer_layout'")).rows).toEqual(sibling);
 });
-it("upgrades the exact position-70 prefix without replacing an existing nonzero rate and replays the exact ledger", async () => {
-  expect((await runner(pools[1]).apply()).applied).toEqual([file]);
+it("upgrades the exact pre-seed prefix without replacing an existing nonzero rate and replays the exact ledger", async () => {
+  expect((await runner(pools[1]).apply()).applied).toEqual(manifest.forward.slice(seedIndex).map((entry: { file: string }) => entry.file));
   expect((await pools[1].query("SELECT value_minor FROM public.commerce_settings WHERE key='shipping_flat_minor'")).rows).toEqual([{ value_minor: 1234 }]);
   expect((await runner(pools[1]).apply()).applied).toEqual([]);
   expect((await pools[1].query("SELECT catalog_path,sha256,position FROM public.platform_schema_migrations ORDER BY position")).rows)
@@ -112,7 +114,8 @@ it("retains the named binding refusal on the old prefix and enables only the obs
   const old = binding(1, oldReadiness);
   expect(old.readiness.reason).toBe("shipping_native_flat_rate_save_unsupported"); expect(old.handlers.rate).toBeNull();
   // A later ledger tail and whole-candidate schema label do not revoke this capability.
-  await pools[1].query("INSERT INTO public.platform_schema_migrations(position,catalog_path,sha256) VALUES (72,'db/platform/migrations/20990101000000_later.sql',repeat('a',64))");
+  const laterFile = "db/platform/migrations/20990101000000_later.sql";
+  await pools[1].query("INSERT INTO public.platform_schema_migrations(position,catalog_path,sha256) SELECT max(position)+1,$1,repeat('a',64) FROM public.platform_schema_migrations", [laterFile]);
   try {
     const later = await readiness(1, "20990101000000_later");
     const selected = binding(1, later); expect(selected.readiness.ready).toBe(true);
@@ -120,11 +123,11 @@ it("retains the named binding refusal on the old prefix and enables only the obs
     const unrelated = { ...later, nativeRateSchema: { ...later.nativeRateSchema, version: null } };
     unrelated.nativeRateReadiness = { ...later.nativeRateReadiness, candidate: { ...later.nativeRateReadiness.candidate, schema: version } };
     expect(binding(1, unrelated).readiness.reason).toBe("shipping_native_flat_rate_save_unsupported");
-    await pools[1].query("UPDATE public.platform_schema_migrations SET sha256=repeat('b',64) WHERE position=71");
+    await pools[1].query("UPDATE public.platform_schema_migrations SET sha256=repeat('b',64) WHERE catalog_path=$1", [file]);
     expect(binding(1, await readiness(1)).readiness.reason).toBe("shipping_native_flat_rate_save_unsupported");
   } finally {
-    await pools[1].query("DELETE FROM public.platform_schema_migrations WHERE position=72");
-    await pools[1].query("UPDATE public.platform_schema_migrations SET sha256=$1 WHERE position=71", [SHIPPING_MIGRATIONS[1].sha256]);
+    await pools[1].query("DELETE FROM public.platform_schema_migrations WHERE catalog_path=$1", [laterFile]);
+    await pools[1].query("UPDATE public.platform_schema_migrations SET sha256=$1 WHERE catalog_path=$2", [seed.sha256, file]);
   }
 });
 it("denies commerce settings reads and updates to anon, authenticated and a PUBLIC-only principal", async () => {

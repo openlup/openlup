@@ -362,7 +362,7 @@ proved on real PostgreSQL in P7 Phase A; no stronger replay guarantee is claimed
 | --- | --- |
 | Bundle-1: Native database independent human-only actor-kind gate | Accepted native-backend capability gap (owner decision 2026-10-20: "zgadzam sie na rekomendacje"): Native human-only publication relies on the handler gate; independent database actor-kind enforcement is absent. First item of a future native-backend parity round. |
 | M06: Native new-purchase stock read | Deferred to the native-backend parity round (owner 2026-10-21), second after M05 bundle-1; no native reader is added by the flat-rate follow-up. |
-| M06: native shipping-rate save has no durable audit | Native-backend parity gap: bundle principal history only accepts bundle actions; shipping audit is explicitly unsupported and remains best effort. |
+| M06: native shipping-rate save has no durable audit | Native-backend parity gap: bundle principal history only accepts bundle actions; shipping audit is explicitly unsupported and remains best effort after the position-72 `20261021200000_shipping_flat_rate_seed` forward. |
 | Bundle-2: Native history actor identity | Accepted native-backend capability gap (owner decision 2026-10-20: "zgadzam sie na rekomendacje"): Native principal audit exists; managed-equivalent actor kind/email history is unavailable and not claimed. |
 | Bundle-3: Native mounted admin/feed readback (M05) | Closed for M05: mounted admin/feed readback proven through the merged M06 availability builder with an injected stock reader. The real native stock read is M06's PENDING row (NewPurchaseStockReadPort native implementation, → M06 P5a), dispositioned there. |
 | Bundle-4: Replay/concurrency beyond sequential replay | CLOSED as incumbent characterization by P7 Phase A `native-bundle-replay-contention-characterization` on real PostgreSQL: global-key blocking, commit/unique-conflict rollback, first-attempt rollback, and conflicting payload/entity/routine recognition. No payload-bound or exactly-once guarantee. |
@@ -970,3 +970,106 @@ browser-entry and baseline values and the growth tripwire are unchanged.
 Main alone, measured on `83a479e`: **684 files / 413,801 packed B /
 1,764,012 unpacked B / 349,386 code gzip B / 666 code files**.
 P1 measured: **753 files / 462,244 packed B / 1,974,943 unpacked B**.
+
+## M05 parity extension
+
+Owner-approved extension, 2026-10-21: row 24a contributes frozen P0 items 1–3
+as opt-in neutral equivalents of existing adopter behavior, without refactoring.
+Row 24b contributes frozen P1/P2 items 4–5 through separate opt-in seams.
+This extends the earlier extraction boundaries only
+for the seams described here; no default behavior, release, adoption, deployment,
+activation or native-backend parity claim follows.
+
+Shipping consent carries explicit terms through the money projection, acceptance
+issue/verify and the pricing handler. Its witness covers shipping-only issuance,
+same-money mutation/removal, public/strict equivalence, unsigned refusal before
+fallback, fallback rejection, legacy token bytes and callback propagation.
+
+Threshold shipping carries scheduled policy selection, post-product-discount spend
+and the bounded two-pass algorithm through an injected pricing callback. Its
+witness covers below/equal/above threshold, discount crossing, independent shipping
+benefits, shipping-only and combined-code outcomes, schedule boundaries, cloned
+single raw reads and concurrent-request isolation/retry.
+
+Acquisition orchestration uses the existing pricing selector/filter/capability
+with host policy. Its witness covers existing-paid-subscriber exclusion, half-open
+schedules, malformed/overlapping/gapped refusal, capability/engine refusal, selected
+terms, ordinary coupons and preserved legacy code/cap outcomes. Unfiltered legacy
+canonicalization/rejection evidence remains separate from evaluation candidates.
+
+The package tests and browser contracts keep their existing collectors; all added
+shipping/pricing browser DTOs erase at build time. Detailed wiring is owned by
+[canonical contracts](../CANONICAL_CONTRACTS.md#m05-parity-seams), with module edges
+owned by [architecture](../ARCHITECTURE_AND_EXTENSIONS.md#internal-boundaries-and-adapter-isolation).
+Local source checks do not replace the supervisor's committed candidate review,
+packed-consumer gates or the adopter's separately authorized characterization.
+
+Bundle preview selects an injected effective target without falling back after an
+authoritative null. The optional native effective path selects list/window/region/
+mode, refuses list/component ambiguity, requires gross minQty-one anchors and
+proves document/GTIN/sellability for the whole BOM. Incumbent SQL constants and
+omitted-option read transcripts remain unchanged. The alternate concurrent price
+authority schedules history using the selected list, retains base-refusal
+precedence and request isolation, and skips history for one-time requests. The
+incumbent factory keeps sequential observed-base behavior. Catalog adds a single
+value edge to pricing to reuse its effective-window rule; browser additions erase.
+
+Case ledger: +48 approved (owner 2026-10-21: allow what's needed); 24a uses 28
+and 24b uses 20, totaling **48 of +48** with none remaining. Per-item allocation:
+shipping consent 8; threshold shipping 10; acquisition orchestration 10;
+bundle preview/native read 16; concurrent authority 4.
+
+24a's final focused source run passed 2,110 cases across 297 files, including
+its 28 new cases without skips. Its rounded per-item durations sum to **34.31 ms**
+(14.51 + 11.23 + 8.57 ms), correcting the earlier 34.32 ms total.
+24b's isolated run passed exactly **20 new cases without skips**, including six
+real-PostgreSQL cases. Summed case duration: **87.33 ms** (bundle 81.91 ms;
+concurrent authority 5.42 ms), giving **121.64 ms** across both parity rows.
+The 24b run reached its last test **5.817 s** after runner start, including
+container/bootstrap/import overhead; both measures fit the aggregate +30 s
+allowance. Existing focused catalog/pricing evidence covers 2,302 cases across
+143 unchanged files: one npm-cache permission failure was recovered by rerunning
+the packed-consumer file with the task cache; all unique cases then passed.
+
+24b browser contracts measured catalog 3,260/4,096 B, pricing 386/416 B and
+shipping 20/32 B. Platform root docs measured **39,807/40,960 B** (24a: 39,624 B).
+These are local working-tree results. The stock policy command still requires
+new catalogue paths in the Git index; its candidate-path checks and documentation
+impact passed without Git writes. These results do not establish committed
+package-gate or native review admission.
+
+## 0.19.0 parity release
+
+Finite outcome (2026-10-21): prepare the minor `0.19.0` set at main `dca23364778cebbf92400cf7ef1d9e61bfe2253d` (#265), including all changes since `0.18.0`: M05 parity 24a/24b, Safari lookbehind removal, M06 P5a/P5b early composition and supporting registration/quote-clock changes. Core/outbox have no package delta since #259 and are unchanged republications; UI remains private `0.0.0`. M06's own set remains `0.20.0`.
+M06 in progress: inventory and shipping entries are early surfaces; module not complete
+
+Authority: coordinator's row-25 brief assigns Codex pre-bump file edits, read-only registry fetches and focused checks in `m05-s19`, branch `claude/m05-parity-s1-0.19.0`. The minor-set decision is the coordinator delegate ruling under package release policy. No Git writes (including fixture repositories), bump invocation, source-snapshot write, ai-resource-gate, broad suite, stack-base override, secrets, publication, dispatch, registry mutation or adopter changes are assigned. The supervisor owns the bump (which stages consumed deletions), post-bump consolidation, source preparation, commits, native review and any separately authorized delivery; this record grants no merge or release rights.
+
+Acceptance: three S1 fragments and dispatch body preserve every distinct claim and both Migration reorder notes from all five main fragments; README links the new limitations; each prior limitation is reverified against source and ledgers; only platform root-docs cap changes; all three baselines use integrity/shasum-verified published `0.18.0` artifacts; growth explanations follow the strictly-above-30% rule. Candidate figures are preliminary until the supervisor's post-bump clean-commit artifact proof. Complete final verification and required review remain supervisor gates.
+
+Risk/proof plan: use existing fragment, baseline and size tooling, with exact-body removal of the five duplicate notes only after bump and a claim-parity checklist; never replace older history. Reuse the smallest single-value cap edit instead of adding a package or relaxing another control. Focused no-Git-write size, manifest and tarball policy suites plus ast-grep/diff/policy checks run here. Source fixture suites that initialize/commit Git remain outside this phase. Published identities, limitation evidence and commands are in the external row-25 report and runbook.
+
+### Root-docs cap decision
+
+Only `packages/platform/release-gates.json` `pack.docs.maxPackedBytes` changes from 40,960 to 49,152 B via the reviewed cap-change route (#203); no other cap or budget changes. The same record is carried by the S1 size note for [0.19.0], and the supervisor must retain it verbatim in the PR body and commit message.
+
+Question (2026-10-21): "The platform package's root docs (README + CHANGELOG) will exceed their 40,960 B gzip cap at the next release. What should we do?"
+Owner's answer: "Raise to 49,152 B (Recommended)"
+Option description shown to the owner: "Same figure as core. Unblocks the next few releases; the CHANGELOG grows every release, so this cap would otherwise block each one."
+Recorded as an owner decision taken through the coordinator's question on 2026-10-21.
+
+### Phase-1 evidence and self-retro
+
+Phase-1 result: three focused suites / 48 cases PASS (3.49 s runner wall); ast-grep and diff checks PASS; registry baseline hashes PASS; source/SQL comparison against published artifacts has zero mismatches. Policy/navigation leaves two pre-bump core/outbox no-impact obligations for supervisor commits; source snapshot remains intentionally stale. No Git or bump writes occurred.
+
+Pre-bump projection (not clean-commit release evidence):
+
+| Package | Published 0.18.0 tarball B | Projected 0.19.0 tarball B | Growth | Code gzip B | Root docs gzip B / cap |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| core | 161,593 | 161,779 | +0.115104% | 132,250 | 23,716 / 49,152 |
+| outbox | 39,369 | 39,361 | -0.020321% | 20,930 | 13,419 / 26,624 |
+| platform | 779,849 | 804,942 | +3.217674% | 677,948 | 41,388 / 49,152 |
+
+No growth bullet is required: package-size-policy uses candidate packed bytes × 100 > baseline packed bytes × 130, strictly above 30%; all three projections are below it. Platform has 7,764 B root-docs headroom under the approved cap (428 B above the old cap). Recompute on actual post-bump artifacts. Figures were filled after checks; final clean-commit producer and installed-consumer evidence remain supervisor work.
+
+Self-retro: stale Bundle-3 wording conflated general native inventory reads with native new-purchase stock semantics → retain the P5a installed-read proof and name the specific unsupported operation; exact-body consolidation plus the five-fragment claim checklist avoids dropping distinct release claims without adding a release mechanism.

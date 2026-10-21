@@ -207,6 +207,18 @@ setup forward also binds its two new function signatures, which must be absent
 from the preceding chain. This control change installs approval data only; it
 does not ship or execute those forwards.
 
+The optional `portableReplacementForwards` list admits exactly one forward to
+keep active subscriptions active on dunning exhaustion (invariant repair).
+Its only function is
+`public.dunning_lifecycle_handle_failure(uuid,timestamptz,text,text,integer,timestamptz,text,text)`,
+fixed in checker code independently of the registry. Prior definitions come only
+from the portable baseline and earlier portable forwards in strict filename
+order, as required by the manifest. Exact path, file and before/after definition
+hashes must match; arguments, return, volatility, security and settings remain
+unchanged. Only comments and that single `CREATE OR REPLACE FUNCTION` are
+admitted, with approval preceding introduction; no privileges or other statements
+are allowed. This control approval adds no SQL file or runtime behavior.
+
 [The shared checker](../../scripts/reviewed-platform-forward.ts) verifies the
 immutable managed baseline hash, each old definition and each new definition.
 A definition hash covers the raw `CREATE` statement through its terminating
@@ -215,7 +227,7 @@ uses argument types. Whole-file hashes additionally bind comments, grants and
 all other SQL. Earlier forwards are considered when checking the old definition.
 Missing or duplicate signatures, another path, and any changed byte refuse.
 Both gates refuse control characters other than tab and line feed in reviewed SQL forwards (parser parity).
-Outside the pinned function bodies, only function definitions, transaction
+For managed forwards outside the pinned function bodies, only function definitions, transaction
 boundaries, privileges and comments on functions defined in that same file are
 accepted. Grants may target only `authenticated` or `service_role`; grants to
 `PUBLIC` or `anon`, other schemas, unrelated statements and unterminated dollar
@@ -339,9 +351,20 @@ late-delivery journey or a stable upgrade guarantee.
 
 ## Compatibility lifecycle
 
+The portable forward
+`20261021120000_dunning_lifecycle_active_repair.sql` appends position 71 to keep
+active subscriptions active on dunning exhaustion (invariant repair). Its exact
+bytes are bound by the manifest SHA-256; it replaces only
+`dunning_lifecycle_handle_failure`, with no stored-row rewrite or change to
+preceding migration bytes, positions or privileges. Exhaustion leaves the case
+open and repairable, with its final notice and event; it changes no subscription,
+pause window or cycle dates. The [real-PostgreSQL proof](../../tests/postgres/dunningLifecycleActiveRepair.test.ts)
+covers complete-catalogue fresh install, exact position-70 prefix upgrade with
+existing rows, ledger replay, exhaustion/recovery and browser EXECUTE refusal.
+
 Native shipping appends the seed-only forward
-[`20261021120000_shipping_flat_rate_seed.sql`](../../db/platform/migrations/20261021120000_shipping_flat_rate_seed.sql)
-at position 71. It inserts `shipping_flat_minor = 0` only when absent, preserving
+[`20261021200000_shipping_flat_rate_seed.sql`](../../db/platform/migrations/20261021200000_shipping_flat_rate_seed.sql)
+at position 72. It inserts `shipping_flat_minor = 0` only when absent, preserving
 an existing rate and every ACL and role membership. The named role-free shipping
 lane owns fixed-key read/update statements; no service role or grant is added.
 Supply the native rate port, a passing Core required-schema readiness report and
@@ -362,7 +385,7 @@ Old application code ignores the seeded row. Older migration runners refuse the
 extended ledger, as with every forward; an application rollback does not reverse
 the migration or establish older-runner startup compatibility.
 [Native shipping conformance](../../tests/postgres/shippingNative.test.ts) covers
-fresh install, exact position-70 upgrade/replay, readiness, denied browser/PUBLIC
+fresh install, exact pre-seed position-71 upgrade/replay, readiness, denied browser/PUBLIC
 access, whole-catalog ACL/membership equality and missing-row/audit failures.
 
 C-compose adds no SQL or manifest entry. Its direct schema requirement names the
@@ -559,6 +582,14 @@ boundary. See [Canonical contracts](CANONICAL_CONTRACTS.md) for the mapping and
 idempotency rules that prevent duplicate or stale writes.
 
 ## Paired chains diverge, and each side must say so
+
+The portable position-71 dunning invariant repair has no managed twin yet.
+The managed baseline's
+`subscription_handle_payment_failure_dunning_before_cancel_fence` still pauses
+an active subscription on exhaustion. This is a known managed gap: a separate
+managed forward is required to keep active subscriptions active on dunning
+exhaustion (invariant repair). Portable fresh/upgrade proof does not establish
+managed parity.
 
 Some forwards ship twice: once into the managed chain the hosted deployment
 applies, and once into the public platform catalogue an adopter applies. The two

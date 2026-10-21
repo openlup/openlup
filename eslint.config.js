@@ -148,10 +148,12 @@ const sourceFiles = (prefix = "") => [`${prefix}**/*.${SOURCE_EXTENSIONS}`];
 // <module>/contracts/index.ts; it has no module edges, including to its server entry.
 export const PLATFORM_MODULE_GRAPH = {
   shipping: { contracts: true, values: [], types: ["bff", "http"] },
-  promotions: { contracts: true, values: ["pricing"], types: ["data", "http", "bff"] },
-  pricing: { contracts: true, values: [], types: ["bff", "http"] },
+  promotions: { contracts: true, values: ["pricing", "shipping"], types: ["data", "http", "bff"] },
+  pricing: { contracts: true, values: [], types: ["bff", "http", "shipping"] },
   // Bundle factories bind host schemas/admin kit; the native read store uses only the data executor type.
-  catalog: { contracts: true, values: [], types: ["data", "bff", "http"] },
+  // The catalog-to-pricing value edge lets the effective bundle store reuse pricing's
+  // effective-window authority via selectEffectiveBundleTargetPrice.
+  catalog: { contracts: true, values: ["pricing"], types: ["data", "bff", "http"] },
   communications: { contracts: true, values: ["data", "identity"], types: ["http"] },
   identity: { contracts: true, values: ["bff", "data", "kernel"], types: ["http"] },
   kernel: { values: [], types: [] },

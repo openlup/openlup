@@ -3,7 +3,7 @@
 - Refuse missing-row saves; native audit remains explicitly unsupported and best effort.
 
 Migration:
-Apply the complete portable chain through 20261021120000_shipping_flat_rate_seed.
+Apply the complete portable chain through 20261021200000_shipping_flat_rate_seed.
 The seed preserves an existing rate and inserts zero only when absent; no ACL or
 role changes are made. New code on an unmigrated schema keeps refusing. Old code
 ignores the row, but older runners refuse the extended ledger. Application rollback

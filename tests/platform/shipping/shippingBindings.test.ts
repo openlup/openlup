@@ -80,7 +80,7 @@ it("refuses missing stores and native address writes in both binding and Core re
     .toContainEqual(expect.objectContaining({ code: "OPENLUP_E_PORT_MISSING", subject: "rate" }));
   expect((await checkReadiness(input)).issues).toContainEqual(expect.objectContaining({ code: "OPENLUP_E_PORT_MISSING", subject: "addressWrites" }));
   // Extend the existing refusal case: both the native port and Core schema report are required.
-  const candidate = { ...input.candidate, schema: "20261021120000_shipping_flat_rate_seed" };
+  const candidate = { ...input.candidate, schema: "20261021200000_shipping_flat_rate_seed" };
   const nativeStore = { shippingRateDataPort: { getShippingFlatMinor: async () => 0,
     setShippingFlatMinor: async () => undefined, recordPromotionAudit: async () => undefined } };
   const ready = await checkReadiness({ ...input, candidate, contributions: [{

@@ -1,3 +1,4 @@
+import type { ShippingTerms } from "../shipping/index.js";
 import { acquisitionQuoteBinding, type ResolvedAcquisitionTerms } from "../pricing/index.js";
 import type {
   CommerceMoney,
@@ -50,6 +51,7 @@ export interface PromotionQuoteMoneyDiscount {
 
 export interface PromotionQuoteMoneyProjection {
   acquisitionTerms?: ResolvedAcquisitionTerms;
+  shippingTerms?: ShippingTerms;
   currency: string;
   totalGross: CommerceMoney;
   netTotal: CommerceMoney;
@@ -85,7 +87,7 @@ export type PromotionQuoteMismatchField = (typeof PROMOTION_QUOTE_MISMATCH_FIELD
  * Discount order is preserved: the promotion engine emits its lanes
  * deterministically, so a reordering is a real evaluation difference.
  */
-export function projectPromotionQuoteMoney(quote: CommerceQuote, acquisitionTerms?: ResolvedAcquisitionTerms): PromotionQuoteMoneyProjection {
+export function projectPromotionQuoteMoney(quote: CommerceQuote, acquisitionTerms?: ResolvedAcquisitionTerms, shippingTerms?: ShippingTerms): PromotionQuoteMoneyProjection {
   return {
     ...acquisitionQuoteBinding(acquisitionTerms),
     currency: quote.currency,
@@ -96,6 +98,7 @@ export function projectPromotionQuoteMoney(quote: CommerceQuote, acquisitionTerm
     discountTotalGross: quote.discountTotalGross,
     shippingGross: quote.shippingGross ?? null,
     shippingDiscountGross: quote.shippingDiscountGross ?? null,
+    ...(shippingTerms ? { shippingTerms } : {}),
     lines: quote.lines.map((line) => ({
       sku: line.sku,
       quantity: line.quantity,
@@ -125,14 +128,16 @@ export function projectPromotionQuoteMoney(quote: CommerceQuote, acquisitionTerm
 export function promotionQuoteMoneySections(
   quote: CommerceQuote,
   acquisitionTerms?: ResolvedAcquisitionTerms,
+  shippingTerms?: ShippingTerms,
 ): Record<PromotionQuoteMoneySection, unknown> {
-  const money = projectPromotionQuoteMoney(quote, acquisitionTerms);
+  const money = projectPromotionQuoteMoney(quote, acquisitionTerms, shippingTerms);
   return {
     lines: money.lines,
     discounts: money.discounts,
     shipping: {
       shippingGross: money.shippingGross,
       shippingDiscountGross: money.shippingDiscountGross,
+      ...(money.shippingTerms ? { shippingTerms: money.shippingTerms } : {}),
     },
     totals: {
       ...acquisitionQuoteBinding(money.acquisitionTerms),

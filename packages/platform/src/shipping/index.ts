@@ -22,9 +22,11 @@ export type { AdminShippingRateResponse, AdminSetShippingRateRequest, AdminSetSh
 export { createAdminShippingRateHandler } from "./adminShippingRateHandler.js";
 export type { AdminShippingRateHandlerDeps, ShippingRateDataPort, ShippingRateHandlerSchemas } from "./shippingRatePorts.js";
 export { createShippingBindings, type ShippingBindingDependencies, type ShippingBindings } from "./bindings.js";
+export type { ShippingTerms, ShippingPolicyEntry, ShippingPolicy, ShippingSettings } from "./contracts/threshold.js";
+export { shippingTermsSchema, shippingPolicySchema, parseShippingTerms, hasShippingTerms, normalizeShippingPolicy, resolveShippingPolicy, resolveThresholdShipping } from "./thresholdPolicy.js";
 
 /** Sparse canonical projections, never an install chain. */
 export const SHIPPING_MIGRATIONS = [
   { id: "20260807140000_read_parity_catalog", catalogPath: "db/platform/migrations/20260807140000_read_parity_catalog.sql", position: 1, sha256: "fcf3827028c1651ae42a7c7d7472153825a3121c936d58a3d105befc7dece9ea", url: new URL("../../sql/20260807140000_read_parity_catalog.sql", import.meta.url) },
-  { id: "20261021120000_shipping_flat_rate_seed", catalogPath: "db/platform/migrations/20261021120000_shipping_flat_rate_seed.sql", position: 71, sha256: "34f8696f515a2cc072395db5a3de2d9b09643d13236ee3851d0d78123f907eae", url: new URL("../../sql/20261021120000_shipping_flat_rate_seed.sql", import.meta.url) },
+  { id: "20261021200000_shipping_flat_rate_seed", catalogPath: "db/platform/migrations/20261021200000_shipping_flat_rate_seed.sql", position: 72, sha256: "34f8696f515a2cc072395db5a3de2d9b09643d13236ee3851d0d78123f907eae", url: new URL("../../sql/20261021200000_shipping_flat_rate_seed.sql", import.meta.url) },
 ] as const;

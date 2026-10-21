@@ -2,9 +2,10 @@ import type { BundleAdminBindings, AuthorizeAdmin, AgentDomainQuerySpec, BundleQ
 import { allocateBundleTargetPrice, type BundleAllocationFailure } from "@openlup/core/pricing";
 import type { BundleHistoryRequest, BundlePricePreview, GetBundleRequest, ListBundlesRequest, PreviewBundlePriceRequest } from "./contracts/bundleRead.js";
 import type { BundleAvailabilityRow, BundleAvailabilityService } from "./bundleAvailabilityService.js";
-import type { BundleCatalogReadPort, BundleDetail, BundleHistoryResult, ListBundlesResult } from "./bundleCatalogReadPort.js";
+import type { BundleCatalogReadPort, BundleDetail, BundleHistoryResult, BundleTargetPriceRow, ListBundlesResult } from "./bundleCatalogReadPort.js";
 
 export interface AdminBundleReadHandlerDeps {
+  effectiveTarget?: (bundle: BundleDetail) => BundleTargetPriceRow | null;
   readPort: BundleCatalogReadPort;
   authorizeAdmin: AuthorizeAdmin;
   readsEnabled: boolean;
@@ -171,7 +172,7 @@ function createAdminBundlePreviewPriceHandler(deps: AdminBundleReadHandlerDeps) 
         mode: input.mode,
       });
       if (!bundle) throw new BundleRpcError("P0002", "bundle_not_found");
-      return previewBundlePrice(bundle, input);
+      return previewBundlePrice(bundle, input, deps.effectiveTarget);
     },
     (preview) => ({ contractVersion: COMMERCE_CONTRACT_VERSION, preview }),
     previewBundlePriceResponseSchema,
@@ -213,6 +214,7 @@ function toDetailView(bundle: BundleDetail, stock: BundleAvailabilityRow | null)
 function previewBundlePrice(
   bundle: BundleDetail,
   input: PreviewBundlePriceRequest,
+  effectiveTarget?: (bundle: BundleDetail) => BundleTargetPriceRow | null,
 ): BundlePricePreview {
   if (!bundle.resolvedPriceListId || !bundle.resolvedCurrency) {
     throw new BundleRpcError("P0002", "no_active_price_list");
@@ -224,7 +226,7 @@ function previewBundlePrice(
     throw new BundleRpcError("P0001", `component_unpriced:${unpriced[0].sku}`);
   }
 
-  const activePrice = bundle.prices.find(
+  const activePrice = effectiveTarget ? effectiveTarget(bundle) : bundle.prices.find(
     (price) => price.active && (!input.mode || price.mode === input.mode),
   );
   const targetPriceMinor = input.targetPriceMinor ?? activePrice?.targetPriceMinor;
@@ -245,7 +247,7 @@ function previewBundlePrice(
   return {
     bundleCode: bundle.code,
     priceListId: bundle.resolvedPriceListId,
-    mode: input.mode ?? activePrice?.mode ?? "any",
+    mode: input.mode ?? activePrice?.mode ?? (effectiveTarget ? "one_time" : "any"),
     currency: bundle.resolvedCurrency,
     referenceTotalMinor: allocation.referenceTotalMinor,
     targetPriceMinor: allocation.targetPriceMinor,

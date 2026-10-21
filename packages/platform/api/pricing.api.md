@@ -890,6 +890,8 @@ export interface CommercePriceAuthorityReadPort {
 }
 /** Provider-neutral strict money algorithm; adapters own only persistence reads and row mapping. */
 export declare function createCommercePriceAuthorityPort(reads: CommercePriceAuthorityReadPort): CommercePriceAuthorityPort;
+/** Opt-in scheduling using the selected list for concurrent history reads. */
+export declare function createConcurrentCommercePriceAuthorityPort(reads: CommercePriceAuthorityReadPort): CommercePriceAuthorityPort;
 /** The current money context requires one list; creation order cannot resolve overlap. */
 export declare function selectUniqueEffectivePriceList(priceLists: readonly TimedAuthorityValue<string>[], atTime: string): string;
 ```
@@ -1012,6 +1014,7 @@ export declare class CommerceQuoteCatalogReadError extends Error {
 ## dist/pricing/commerceQuoteHandler.d.ts
 
 ```ts
+import type { ShippingTerms } from "../shipping/index.js";
 import type { ResolvedAcquisitionTerms } from "./contracts/acquisitionTerms.js";
 import type { HttpRequest, HttpResponse } from "../http/index.js";
 import type { BffResponder } from "../bff/index.js";
@@ -1021,6 +1024,9 @@ import { type CommerceQuotePort } from "./quotePorts.js";
 import type { PricingPolicySnapshot } from "./contracts/offerPolicy.js";
 export interface CommerceQuoteHandlerDeps<Request extends CreateQuoteRequest = CreateQuoteRequest, Response extends CreateQuoteResponse = CreateQuoteResponse> {
     responder: BffResponder;
+    shipping?: {
+        terms(quote: Response["quote"]): ShippingTerms | undefined;
+    };
     acquisition?: {
         terms(quote: Response["quote"]): ResolvedAcquisitionTerms | undefined;
     };
@@ -1039,10 +1045,10 @@ export interface CommerceQuoteHandlerDeps<Request extends CreateQuoteRequest = C
         source: "anonymous" | "resolved_client";
     }>;
     resolvePricingPolicy?: (request: Request) => PricingPolicySnapshot | undefined | Promise<PricingPolicySnapshot | undefined>;
-    createPromotionAcceptance?: (request: Request, quote: Awaited<ReturnType<CommerceQuotePort<Request, Response>["createQuote"]>>["quote"], acquisitionTerms?: ResolvedAcquisitionTerms) => string | null;
-    honorPromotionAcceptance?: (token: string, request: Request, quote: Awaited<ReturnType<CommerceQuotePort<Request, Response>["createQuote"]>>["quote"], acquisitionTerms?: ResolvedAcquisitionTerms) => boolean;
+    createPromotionAcceptance?: (request: Request, quote: Awaited<ReturnType<CommerceQuotePort<Request, Response>["createQuote"]>>["quote"], acquisitionTerms?: ResolvedAcquisitionTerms, shippingTerms?: ShippingTerms) => string | null;
+    honorPromotionAcceptance?: (token: string, request: Request, quote: Awaited<ReturnType<CommerceQuotePort<Request, Response>["createQuote"]>>["quote"], acquisitionTerms?: ResolvedAcquisitionTerms, shippingTerms?: ShippingTerms) => boolean;
 }
-export declare function createCommerceQuoteHandler<Request extends CreateQuoteRequest, Response extends CreateQuoteResponse>({ responder, createQuoteRequestSchema, createQuoteResponseSchema, publicCreateQuoteRequestSchema, publicCreateQuoteResponseSchema, quotePort, acquisition, fallbackQuotePort, resolveCustomerEligibility, resolvePricingPolicy, createPromotionAcceptance, honorPromotionAcceptance, }: CommerceQuoteHandlerDeps<Request, Response>): (req: HttpRequest, res: HttpResponse) => Promise<void>;
+export declare function createCommerceQuoteHandler<Request extends CreateQuoteRequest, Response extends CreateQuoteResponse>({ responder, createQuoteRequestSchema, createQuoteResponseSchema, publicCreateQuoteRequestSchema, publicCreateQuoteResponseSchema, quotePort, acquisition, shipping, fallbackQuotePort, resolveCustomerEligibility, resolvePricingPolicy, createPromotionAcceptance, honorPromotionAcceptance, }: CommerceQuoteHandlerDeps<Request, Response>): (req: HttpRequest, res: HttpResponse) => Promise<void>;
 ```
 ## dist/pricing/commerceQuoteSnapshotExpect.d.ts
 
@@ -1526,6 +1532,9 @@ export declare function sum(values: number[]): number;
 ## dist/pricing/dbBackedCommerceQuotePort.d.ts
 
 ```ts
+import type { ShippingTerms } from "../shipping/index.js";
+import type { ResolvedAcquisitionTerms } from "./contracts/acquisitionTerms.js";
+import type { QuoteShippingPromotionInput, QuoteShippingPromotionResult } from "./quoteShippingPromotions.js";
 import type { PricingResolverPort } from "@openlup/core/pricing";
 import type { CreateQuoteResponse, PricingPolicySnapshot, CreateQuoteRequest, CommerceQuoteContext, CommerceQuoteLine, CommerceTaxProfile, CommerceQuoteDiscount, CommerceCodeRejection, CommerceCodeRejectionDetail, CartLineInput } from "./contracts/index.js";
 import { type CreateQuoteOptions } from "./quotePorts.js";
@@ -1549,6 +1558,7 @@ export interface DbBackedCommerceQuotePortDeps<Request extends CreateQuoteReques
     currency: string;
     now?: () => string;
     shippingFlatMinor?: () => Promise<number>;
+    resolveQuoteShippingPromotions?: (input: QuoteShippingPromotionInput<Request>) => Promise<QuoteShippingPromotionResult>;
     hasPromotionCodePort: boolean;
     lineContext(line: CartLineInput, item: Item): LineContext;
     quoteContext(request: Request, lines: Array<LineContext & {
@@ -1581,6 +1591,8 @@ export declare function createDbBackedCommerceQuotePort<Request extends CreateQu
         quote: Omit<CreateQuoteResponse["quote"], "context"> & {
             context: Context & {
                 pricingPolicy?: PricingPolicySnapshot;
+                shippingTerms?: ShippingTerms;
+                acquisitionTerms?: ResolvedAcquisitionTerms;
             };
         };
     }>;
@@ -1588,6 +1600,8 @@ export declare function createDbBackedCommerceQuotePort<Request extends CreateQu
         quote: Omit<CreateQuoteResponse["quote"], "context"> & {
             context: Context & {
                 pricingPolicy?: PricingPolicySnapshot;
+                shippingTerms?: ShippingTerms;
+                acquisitionTerms?: ResolvedAcquisitionTerms;
             };
         };
     }>;
@@ -1607,7 +1621,7 @@ export declare function createDbBackedCommerceQuoteSnapshotVerifier<Request, Res
 export * from "./contracts/index.js";
 export { CommercePriceAuthorityError } from "./ports.js";
 export type { CommercePriceAuthorityPort } from "./ports.js";
-export { createCommercePriceAuthorityPort, selectUniqueEffectivePriceList } from "./commercePriceAuthority.js";
+export { createCommercePriceAuthorityPort, createConcurrentCommercePriceAuthorityPort, selectUniqueEffectivePriceList } from "./commercePriceAuthority.js";
 export type { CommercePriceAuthorityReadPort, TimedAuthorityValue } from "./commercePriceAuthority.js";
 export { subscriptionPricePolicySemanticsSchema, subscriptionPricePolicyCanonicalInputSchema, subscriptionPricePolicyRevisionSchema, SubscriptionPricePolicyDigestError, canonicalSubscriptionPricePolicyTuple, digestSubscriptionPricePolicy, assertSubscriptionPricePolicyDigest, deriveSubscriptionUnitPrice } from "./subscriptionPricePolicy.js";
 export { offerPolicyVersionSchema, promotionEngineVersionSchema, pricingPolicyRequestSchema, pricingPolicySnapshotSchema } from "./offerPolicySchemas.js";
@@ -1655,6 +1669,7 @@ export * from "./acquisitionOfferPricingSchemas.js";
 export * from "./acquisitionOfferPricing.js";
 export * from "./acquisitionOfferPricingHandler.js";
 export * from "./acquisitionReadiness.js";
+export type { QuoteShippingPromotionInput, QuoteShippingPromotionResult } from "./quoteShippingPromotions.js";
 ```
 ## dist/pricing/offerPolicyReadiness.d.ts
 
@@ -1690,8 +1705,8 @@ export declare const offerPolicyVersionSchema: z.ZodEnum<{
     "commerce.offer-policy.v2": "commerce.offer-policy.v2";
 }>;
 export declare const promotionEngineVersionSchema: z.ZodEnum<{
-    "promotion-engine.v2": "promotion-engine.v2";
     "promotion-engine.v1": "promotion-engine.v1";
+    "promotion-engine.v2": "promotion-engine.v2";
 }>;
 /** Client capability plus an opaque server-signed assignment. Never a version selector. */
 export declare const pricingPolicyRequestSchema: z.ZodObject<{
@@ -1704,8 +1719,8 @@ export declare const pricingPolicySnapshotSchema: z.ZodObject<{
         "commerce.offer-policy.v2": "commerce.offer-policy.v2";
     }>;
     promotionEngineVersion: z.ZodEnum<{
-        "promotion-engine.v2": "promotion-engine.v2";
         "promotion-engine.v1": "promotion-engine.v1";
+        "promotion-engine.v2": "promotion-engine.v2";
     }>;
     pricingPolicyToken: z.ZodOptional<z.ZodString>;
 }, z.core.$strict>;
@@ -1814,8 +1829,8 @@ export declare function createCommerceOfferPricingSchemas<ScopeV1 extends string
                 "commerce.offer-policy.v2": "commerce.offer-policy.v2";
             }>;
             promotionEngineVersion: z.ZodEnum<{
-                "promotion-engine.v2": "promotion-engine.v2";
                 "promotion-engine.v1": "promotion-engine.v1";
+                "promotion-engine.v2": "promotion-engine.v2";
             }>;
             pricingPolicyToken: z.ZodOptional<z.ZodString>;
         }, z.core.$strict>;
@@ -1956,8 +1971,8 @@ export declare function createCommerceOfferPricingSchemas<ScopeV1 extends string
                 "commerce.offer-policy.v2": "commerce.offer-policy.v2";
             }>;
             promotionEngineVersion: z.ZodEnum<{
-                "promotion-engine.v2": "promotion-engine.v2";
                 "promotion-engine.v1": "promotion-engine.v1";
+                "promotion-engine.v2": "promotion-engine.v2";
             }>;
             pricingPolicyToken: z.ZodOptional<z.ZodString>;
         }, z.core.$strict>;
@@ -2080,11 +2095,11 @@ export declare function resolvePricingPolicy(input: {
     promotionEngineVersion: PromotionEngineVersion;
 } | {
     offerPolicyVersion: "commerce.offer-policy.v1" | "commerce.offer-policy.v2";
-    promotionEngineVersion: "promotion-engine.v2" | "promotion-engine.v1";
+    promotionEngineVersion: "promotion-engine.v1" | "promotion-engine.v2";
     pricingPolicyToken?: undefined;
 } | {
     offerPolicyVersion: "commerce.offer-policy.v1" | "commerce.offer-policy.v2";
-    promotionEngineVersion: "promotion-engine.v2" | "promotion-engine.v1";
+    promotionEngineVersion: "promotion-engine.v1" | "promotion-engine.v2";
     pricingPolicyToken: string;
 };
 export {};
@@ -2180,8 +2195,8 @@ export declare const quoteDiscountSchema: z.ZodObject<{
     code: z.ZodOptional<z.ZodNullable<z.ZodString>>;
     label: z.ZodOptional<z.ZodString>;
     appliesTo: z.ZodEnum<{
-        shipping: "shipping";
         line: "line";
+        shipping: "shipping";
         order_total: "order_total";
     }>;
     amountOffMinor: z.ZodNumber;
@@ -2251,17 +2266,17 @@ export declare function createCommerceQuoteSchemas<Context extends z.ZodType>(in
     }, z.core.$strip>;
     quotePricingComponentSchema: z.ZodObject<{
         scope: z.ZodEnum<{
-            order: "order";
             line: "line";
+            order: "order";
         }>;
         componentType: z.ZodEnum<{
             bundle: "bundle";
-            shipping: "shipping";
             base_unit: "base_unit";
             mode_discount: "mode_discount";
             qty_tier: "qty_tier";
             promo: "promo";
             loyalty: "loyalty";
+            shipping: "shipping";
         }>;
         amountMinor: z.ZodNumber;
         reasonCode: z.ZodString;
@@ -2329,17 +2344,17 @@ export declare function createCommerceQuoteSchemas<Context extends z.ZodType>(in
         }, z.core.$strip>;
         pricingComponents: z.ZodOptional<z.ZodArray<z.ZodObject<{
             scope: z.ZodEnum<{
-                order: "order";
                 line: "line";
+                order: "order";
             }>;
             componentType: z.ZodEnum<{
                 bundle: "bundle";
-                shipping: "shipping";
                 base_unit: "base_unit";
                 mode_discount: "mode_discount";
                 qty_tier: "qty_tier";
                 promo: "promo";
                 loyalty: "loyalty";
+                shipping: "shipping";
             }>;
             amountMinor: z.ZodNumber;
             reasonCode: z.ZodString;
@@ -2380,11 +2395,11 @@ export declare function createCommerceQuoteSchemas<Context extends z.ZodType>(in
     quoteCodeRejectionSchema: z.ZodObject<{
         code: z.ZodString;
         reason: z.ZodEnum<{
-            expired: "expired";
             scope_not_applicable: "scope_not_applicable";
             not_recognized: "not_recognized";
             already_used: "already_used";
             not_eligible: "not_eligible";
+            expired: "expired";
             better_price_exists: "better_price_exists";
         }>;
     }, z.core.$strict>;
@@ -2424,17 +2439,17 @@ export declare function createCommerceQuoteSchemas<Context extends z.ZodType>(in
             }, z.core.$strip>;
             pricingComponents: z.ZodOptional<z.ZodArray<z.ZodObject<{
                 scope: z.ZodEnum<{
-                    order: "order";
                     line: "line";
+                    order: "order";
                 }>;
                 componentType: z.ZodEnum<{
                     bundle: "bundle";
-                    shipping: "shipping";
                     base_unit: "base_unit";
                     mode_discount: "mode_discount";
                     qty_tier: "qty_tier";
                     promo: "promo";
                     loyalty: "loyalty";
+                    shipping: "shipping";
                 }>;
                 amountMinor: z.ZodNumber;
                 reasonCode: z.ZodString;
@@ -2477,8 +2492,8 @@ export declare function createCommerceQuoteSchemas<Context extends z.ZodType>(in
             code: z.ZodOptional<z.ZodNullable<z.ZodString>>;
             label: z.ZodOptional<z.ZodString>;
             appliesTo: z.ZodEnum<{
-                shipping: "shipping";
                 line: "line";
+                shipping: "shipping";
                 order_total: "order_total";
             }>;
             amountOffMinor: z.ZodNumber;
@@ -2511,11 +2526,11 @@ export declare function createCommerceQuoteSchemas<Context extends z.ZodType>(in
         codeRejections: z.ZodOptional<z.ZodArray<z.ZodObject<{
             code: z.ZodString;
             reason: z.ZodEnum<{
-                expired: "expired";
                 scope_not_applicable: "scope_not_applicable";
                 not_recognized: "not_recognized";
                 already_used: "already_used";
                 not_eligible: "not_eligible";
+                expired: "expired";
                 better_price_exists: "better_price_exists";
             }>;
         }, z.core.$strict>>>;
@@ -2540,17 +2555,17 @@ export declare function createCommerceQuoteSchemas<Context extends z.ZodType>(in
         }, z.core.$strict>], "reason">>>;
         pricingComponents: z.ZodOptional<z.ZodArray<z.ZodObject<{
             scope: z.ZodEnum<{
-                order: "order";
                 line: "line";
+                order: "order";
             }>;
             componentType: z.ZodEnum<{
                 bundle: "bundle";
-                shipping: "shipping";
                 base_unit: "base_unit";
                 mode_discount: "mode_discount";
                 qty_tier: "qty_tier";
                 promo: "promo";
                 loyalty: "loyalty";
+                shipping: "shipping";
             }>;
             amountMinor: z.ZodNumber;
             reasonCode: z.ZodString;
@@ -2624,17 +2639,17 @@ export declare function createCommerceQuoteSchemas<Context extends z.ZodType>(in
                 }, z.core.$strip>;
                 pricingComponents: z.ZodOptional<z.ZodArray<z.ZodObject<{
                     scope: z.ZodEnum<{
-                        order: "order";
                         line: "line";
+                        order: "order";
                     }>;
                     componentType: z.ZodEnum<{
                         bundle: "bundle";
-                        shipping: "shipping";
                         base_unit: "base_unit";
                         mode_discount: "mode_discount";
                         qty_tier: "qty_tier";
                         promo: "promo";
                         loyalty: "loyalty";
+                        shipping: "shipping";
                     }>;
                     amountMinor: z.ZodNumber;
                     reasonCode: z.ZodString;
@@ -2677,8 +2692,8 @@ export declare function createCommerceQuoteSchemas<Context extends z.ZodType>(in
                 code: z.ZodOptional<z.ZodNullable<z.ZodString>>;
                 label: z.ZodOptional<z.ZodString>;
                 appliesTo: z.ZodEnum<{
-                    shipping: "shipping";
                     line: "line";
+                    shipping: "shipping";
                     order_total: "order_total";
                 }>;
                 amountOffMinor: z.ZodNumber;
@@ -2711,11 +2726,11 @@ export declare function createCommerceQuoteSchemas<Context extends z.ZodType>(in
             codeRejections: z.ZodOptional<z.ZodArray<z.ZodObject<{
                 code: z.ZodString;
                 reason: z.ZodEnum<{
-                    expired: "expired";
                     scope_not_applicable: "scope_not_applicable";
                     not_recognized: "not_recognized";
                     already_used: "already_used";
                     not_eligible: "not_eligible";
+                    expired: "expired";
                     better_price_exists: "better_price_exists";
                 }>;
             }, z.core.$strict>>>;
@@ -2740,17 +2755,17 @@ export declare function createCommerceQuoteSchemas<Context extends z.ZodType>(in
             }, z.core.$strict>], "reason">>>;
             pricingComponents: z.ZodOptional<z.ZodArray<z.ZodObject<{
                 scope: z.ZodEnum<{
-                    order: "order";
                     line: "line";
+                    order: "order";
                 }>;
                 componentType: z.ZodEnum<{
                     bundle: "bundle";
-                    shipping: "shipping";
                     base_unit: "base_unit";
                     mode_discount: "mode_discount";
                     qty_tier: "qty_tier";
                     promo: "promo";
                     loyalty: "loyalty";
+                    shipping: "shipping";
                 }>;
                 amountMinor: z.ZodNumber;
                 reasonCode: z.ZodString;
@@ -2825,17 +2840,17 @@ export declare function createCommerceQuoteSchemas<Context extends z.ZodType>(in
                 }, z.core.$strip>;
                 pricingComponents: z.ZodOptional<z.ZodArray<z.ZodObject<{
                     scope: z.ZodEnum<{
-                        order: "order";
                         line: "line";
+                        order: "order";
                     }>;
                     componentType: z.ZodEnum<{
                         bundle: "bundle";
-                        shipping: "shipping";
                         base_unit: "base_unit";
                         mode_discount: "mode_discount";
                         qty_tier: "qty_tier";
                         promo: "promo";
                         loyalty: "loyalty";
+                        shipping: "shipping";
                     }>;
                     amountMinor: z.ZodNumber;
                     reasonCode: z.ZodString;
@@ -2878,8 +2893,8 @@ export declare function createCommerceQuoteSchemas<Context extends z.ZodType>(in
                 code: z.ZodOptional<z.ZodNullable<z.ZodString>>;
                 label: z.ZodOptional<z.ZodString>;
                 appliesTo: z.ZodEnum<{
-                    shipping: "shipping";
                     line: "line";
+                    shipping: "shipping";
                     order_total: "order_total";
                 }>;
                 amountOffMinor: z.ZodNumber;
@@ -2912,11 +2927,11 @@ export declare function createCommerceQuoteSchemas<Context extends z.ZodType>(in
             codeRejections: z.ZodOptional<z.ZodArray<z.ZodObject<{
                 code: z.ZodString;
                 reason: z.ZodEnum<{
-                    expired: "expired";
                     scope_not_applicable: "scope_not_applicable";
                     not_recognized: "not_recognized";
                     already_used: "already_used";
                     not_eligible: "not_eligible";
+                    expired: "expired";
                     better_price_exists: "better_price_exists";
                 }>;
             }, z.core.$strict>>>;
@@ -2941,17 +2956,17 @@ export declare function createCommerceQuoteSchemas<Context extends z.ZodType>(in
             }, z.core.$strict>], "reason">>>;
             pricingComponents: z.ZodOptional<z.ZodArray<z.ZodObject<{
                 scope: z.ZodEnum<{
-                    order: "order";
                     line: "line";
+                    order: "order";
                 }>;
                 componentType: z.ZodEnum<{
                     bundle: "bundle";
-                    shipping: "shipping";
                     base_unit: "base_unit";
                     mode_discount: "mode_discount";
                     qty_tier: "qty_tier";
                     promo: "promo";
                     loyalty: "loyalty";
+                    shipping: "shipping";
                 }>;
                 amountMinor: z.ZodNumber;
                 reasonCode: z.ZodString;
@@ -3027,17 +3042,17 @@ export declare function createCommerceQuoteSchemas<Context extends z.ZodType>(in
                 }, z.core.$strip>;
                 pricingComponents: z.ZodOptional<z.ZodArray<z.ZodObject<{
                     scope: z.ZodEnum<{
-                        order: "order";
                         line: "line";
+                        order: "order";
                     }>;
                     componentType: z.ZodEnum<{
                         bundle: "bundle";
-                        shipping: "shipping";
                         base_unit: "base_unit";
                         mode_discount: "mode_discount";
                         qty_tier: "qty_tier";
                         promo: "promo";
                         loyalty: "loyalty";
+                        shipping: "shipping";
                     }>;
                     amountMinor: z.ZodNumber;
                     reasonCode: z.ZodString;
@@ -3080,8 +3095,8 @@ export declare function createCommerceQuoteSchemas<Context extends z.ZodType>(in
                 code: z.ZodOptional<z.ZodNullable<z.ZodString>>;
                 label: z.ZodOptional<z.ZodString>;
                 appliesTo: z.ZodEnum<{
-                    shipping: "shipping";
                     line: "line";
+                    shipping: "shipping";
                     order_total: "order_total";
                 }>;
                 amountOffMinor: z.ZodNumber;
@@ -3114,11 +3129,11 @@ export declare function createCommerceQuoteSchemas<Context extends z.ZodType>(in
             codeRejections: z.ZodOptional<z.ZodArray<z.ZodObject<{
                 code: z.ZodString;
                 reason: z.ZodEnum<{
-                    expired: "expired";
                     scope_not_applicable: "scope_not_applicable";
                     not_recognized: "not_recognized";
                     already_used: "already_used";
                     not_eligible: "not_eligible";
+                    expired: "expired";
                     better_price_exists: "better_price_exists";
                 }>;
             }, z.core.$strict>>>;
@@ -3143,17 +3158,17 @@ export declare function createCommerceQuoteSchemas<Context extends z.ZodType>(in
             }, z.core.$strict>], "reason">>>;
             pricingComponents: z.ZodOptional<z.ZodArray<z.ZodObject<{
                 scope: z.ZodEnum<{
-                    order: "order";
                     line: "line";
+                    order: "order";
                 }>;
                 componentType: z.ZodEnum<{
                     bundle: "bundle";
-                    shipping: "shipping";
                     base_unit: "base_unit";
                     mode_discount: "mode_discount";
                     qty_tier: "qty_tier";
                     promo: "promo";
                     loyalty: "loyalty";
+                    shipping: "shipping";
                 }>;
                 amountMinor: z.ZodNumber;
                 reasonCode: z.ZodString;
@@ -3228,17 +3243,17 @@ export declare function createCommerceQuoteSchemas<Context extends z.ZodType>(in
                 }, z.core.$strip>;
                 pricingComponents: z.ZodOptional<z.ZodArray<z.ZodObject<{
                     scope: z.ZodEnum<{
-                        order: "order";
                         line: "line";
+                        order: "order";
                     }>;
                     componentType: z.ZodEnum<{
                         bundle: "bundle";
-                        shipping: "shipping";
                         base_unit: "base_unit";
                         mode_discount: "mode_discount";
                         qty_tier: "qty_tier";
                         promo: "promo";
                         loyalty: "loyalty";
+                        shipping: "shipping";
                     }>;
                     amountMinor: z.ZodNumber;
                     reasonCode: z.ZodString;
@@ -3281,8 +3296,8 @@ export declare function createCommerceQuoteSchemas<Context extends z.ZodType>(in
                 code: z.ZodOptional<z.ZodNullable<z.ZodString>>;
                 label: z.ZodOptional<z.ZodString>;
                 appliesTo: z.ZodEnum<{
-                    shipping: "shipping";
                     line: "line";
+                    shipping: "shipping";
                     order_total: "order_total";
                 }>;
                 amountOffMinor: z.ZodNumber;
@@ -3315,11 +3330,11 @@ export declare function createCommerceQuoteSchemas<Context extends z.ZodType>(in
             codeRejections: z.ZodOptional<z.ZodArray<z.ZodObject<{
                 code: z.ZodString;
                 reason: z.ZodEnum<{
-                    expired: "expired";
                     scope_not_applicable: "scope_not_applicable";
                     not_recognized: "not_recognized";
                     already_used: "already_used";
                     not_eligible: "not_eligible";
+                    expired: "expired";
                     better_price_exists: "better_price_exists";
                 }>;
             }, z.core.$strict>>>;
@@ -3344,17 +3359,17 @@ export declare function createCommerceQuoteSchemas<Context extends z.ZodType>(in
             }, z.core.$strict>], "reason">>>;
             pricingComponents: z.ZodOptional<z.ZodArray<z.ZodObject<{
                 scope: z.ZodEnum<{
-                    order: "order";
                     line: "line";
+                    order: "order";
                 }>;
                 componentType: z.ZodEnum<{
                     bundle: "bundle";
-                    shipping: "shipping";
                     base_unit: "base_unit";
                     mode_discount: "mode_discount";
                     qty_tier: "qty_tier";
                     promo: "promo";
                     loyalty: "loyalty";
+                    shipping: "shipping";
                 }>;
                 amountMinor: z.ZodNumber;
                 reasonCode: z.ZodString;
@@ -3392,6 +3407,30 @@ export declare function createCommerceQuoteSchemas<Context extends z.ZodType>(in
         }, z.core.$strip>>;
     }, z.core.$strip>;
 };
+```
+## dist/pricing/quoteShippingPromotions.d.ts
+
+```ts
+import type { ShippingTerms } from "../shipping/index.js";
+import type { ResolvedAcquisitionTerms } from "./contracts/acquisitionTerms.js";
+import type { CreateQuoteRequest } from "./contracts/quote.js";
+import type { CreateQuoteOptions } from "./quotePorts.js";
+import type { QuotePromotionResult } from "./dbBackedCommerceQuotePort.js";
+export interface QuoteShippingPromotionInput<Request extends CreateQuoteRequest> {
+    request: Request;
+    options?: CreateQuoteOptions;
+    regionCode: string;
+    currency: string;
+    referenceProductMinor: number;
+    subtotalGrossMinor: number;
+    atTime: string;
+}
+export interface QuoteShippingPromotionResult extends QuotePromotionResult {
+    shippingGrossMinor: number;
+    hasShipping: boolean;
+    shippingTerms?: ShippingTerms;
+    acquisitionTerms?: ResolvedAcquisitionTerms;
+}
 ```
 ## dist/pricing/subscriptionPricePolicy.d.ts
 
@@ -3460,4 +3499,734 @@ export declare function assertSupportedCommerceTaxProfile(taxProfile: CommerceTa
 ```ts
 import { z } from "zod";
 export { z };
+```
+## dist/shipping/addressCanonical.d.ts
+
+```ts
+import type { CanonicalAddressInput } from "./contracts/address.js";
+export declare function canonicalAddressKey(input: CanonicalAddressInput, defaultCountry: string): string;
+```
+## dist/shipping/addressCanonLookupHandler.d.ts
+
+```ts
+import type { HttpRequest, HttpResponse } from "../http/index.js";
+import type { BffResponder } from "../bff/index.js";
+import type { AddressCanonLookupDeps } from "./addressPorts.js";
+import type { AddressLookupSchemas } from "./addressSchemas.js";
+export declare function createAddressCanonPostalCodeHandler({ lookupPort }: AddressCanonLookupDeps, schemas: AddressLookupSchemas, responder: BffResponder): (req: HttpRequest, res: HttpResponse) => Promise<void>;
+export declare function createAddressCanonLocalitiesHandler({ lookupPort }: AddressCanonLookupDeps, schemas: AddressLookupSchemas, responder: BffResponder): (req: HttpRequest, res: HttpResponse) => Promise<void>;
+export declare function createAddressCanonStreetsHandler({ lookupPort }: AddressCanonLookupDeps, schemas: AddressLookupSchemas, responder: BffResponder): (req: HttpRequest, res: HttpResponse) => Promise<void>;
+```
+## dist/shipping/addressPorts.d.ts
+
+```ts
+import type { AddressCanonLocalitiesLookupRequest, AddressCanonLocalitiesLookupResponse, AddressCanonPostalCodeLookupRequest, AddressCanonPostalCodeLookupResponse, AddressCanonStreetsLookupRequest, AddressCanonStreetsLookupResponse } from "./contracts/address.js";
+export interface AddressCanonLookupPort {
+    lookupPostalCode(request: AddressCanonPostalCodeLookupRequest): Promise<AddressCanonPostalCodeLookupResponse>;
+    searchLocalities(request: AddressCanonLocalitiesLookupRequest): Promise<AddressCanonLocalitiesLookupResponse>;
+    listStreets(request: AddressCanonStreetsLookupRequest): Promise<AddressCanonStreetsLookupResponse>;
+}
+import type { HttpRequest } from "../http/index.js";
+import type { CustomerAddressesResponse, CustomerAddressUpsertRequest, CustomerAddressDeleteRequest } from "./contracts/address.js";
+export interface AddressCanonLookupDeps {
+    lookupPort: AddressCanonLookupPort;
+}
+export interface CustomerAddressBookPort {
+    getAddressBook(userId: string): Promise<CustomerAddressesResponse | null>;
+}
+export interface CustomerAddressMutationPort {
+    upsertAddress(userId: string, input: CustomerAddressUpsertRequest): Promise<CustomerAddressesResponse | null>;
+    deleteAddress(userId: string, input: CustomerAddressDeleteRequest): Promise<CustomerAddressesResponse | null>;
+}
+export interface CustomerAddressesDeps {
+    addressBookPort: CustomerAddressBookPort;
+    addressMutationPort?: CustomerAddressMutationPort;
+    authenticateUser: (req: HttpRequest) => Promise<{
+        ok: true;
+        userId: string;
+    } | {
+        ok: false;
+        code: "UNAUTHORIZED";
+        message: string;
+    }>;
+}
+type Row = Record<string, unknown>;
+export interface CustomerAddressReadStore {
+    readAddresses(clientId: string): Promise<Row[]>;
+    readOrdererProfiles(clientId: string): Promise<Row[]>;
+    addressUsedByActiveSubscription(clientId: string, addressId: string): Promise<boolean>;
+    findCanonicalAddressId(clientId: string, canonicalKey: string): Promise<string | null>;
+    clearDefaultAddress(clientId: string, kind: string, updatedAt: string): Promise<void>;
+}
+export {};
+```
+## dist/shipping/addressSchemas.d.ts
+
+```ts
+import type { AddressCanonPostalCodeLookupRequest, AddressCanonPostalCodeLookupResponse, AddressCanonLocalitiesLookupRequest, AddressCanonLocalitiesLookupResponse, AddressCanonStreetsLookupRequest, AddressCanonStreetsLookupResponse, CustomerAddressesRequest, CustomerAddressesResponse, CustomerAddressUpsertRequest, CustomerAddressDeleteRequest } from "./contracts/address.js";
+type Schema<T> = {
+    safeParse(input: unknown): {
+        success: true;
+        data: T;
+    } | {
+        success: false;
+        error: {
+            flatten(): unknown;
+        };
+    };
+};
+/** Host-owned format, source and geographic validation. */
+export interface AddressLookupSchemas {
+    addressCanonPostalCodeLookupRequestSchema: Schema<AddressCanonPostalCodeLookupRequest>;
+    addressCanonPostalCodeLookupResponseSchema: Schema<AddressCanonPostalCodeLookupResponse>;
+    addressCanonLocalitiesLookupRequestSchema: Schema<AddressCanonLocalitiesLookupRequest>;
+    addressCanonLocalitiesLookupResponseSchema: Schema<AddressCanonLocalitiesLookupResponse>;
+    addressCanonStreetsLookupRequestSchema: Schema<AddressCanonStreetsLookupRequest>;
+    addressCanonStreetsLookupResponseSchema: Schema<AddressCanonStreetsLookupResponse>;
+}
+/** Host-owned validation and mutation-conflict identity. */
+export interface CustomerAddressSchemas {
+    customerAddressesRequestSchema: Schema<CustomerAddressesRequest>;
+    customerAddressesResponseSchema: Schema<CustomerAddressesResponse>;
+    customerAddressUpsertRequestSchema: Schema<CustomerAddressUpsertRequest>;
+    customerAddressDeleteRequestSchema: Schema<CustomerAddressDeleteRequest>;
+    isMutationConflict(error: unknown): error is Error;
+}
+export {};
+```
+## dist/shipping/adminShippingRateHandler.d.ts
+
+```ts
+import type { HttpRequest, HttpResponse } from "../http/index.js";
+import type { BffResponder } from "../bff/index.js";
+import type { AdminShippingRateHandlerDeps, ShippingRateHandlerSchemas } from "./shippingRatePorts.js";
+export declare function createAdminShippingRateHandler({ dataPort, authorizeAdmin, resolveAdmin, }: AdminShippingRateHandlerDeps, schemas: ShippingRateHandlerSchemas, responder: BffResponder): (req: HttpRequest, res: HttpResponse) => Promise<void>;
+```
+## dist/shipping/bindings.d.ts
+
+```ts
+import type { ReadinessReport, SchemaObservation } from "@openlup/core/readiness";
+import type { BffResponder } from "../bff/index.js";
+import type { CustomerAddressBookPort, CustomerAddressMutationPort, CustomerAddressesDeps } from "./addressPorts.js";
+import type { CustomerAddressSchemas } from "./addressSchemas.js";
+import type { DeliverySelectionPort } from "./deliverySelectionPort.js";
+import type { DeliverySelectionSchemas } from "./handlerSchemas.js";
+import type { PickupPointSearchPort } from "./pickupPointSearchPort.js";
+import type { AdminShippingRateHandlerDeps, ShippingRateDataPort, ShippingRateHandlerSchemas } from "./shippingRatePorts.js";
+import { createCustomerAddressesHandler } from "./customerAddressesHandler.js";
+import { createAdminShippingRateHandler } from "./adminShippingRateHandler.js";
+import { createDeliveryOptionsHandler, createPickupPointSearchHandler, createPickupPointValidationHandler } from "./deliverySelectionHandler.js";
+type Store = {
+    addressBookPort?: CustomerAddressBookPort;
+    addressMutationPort?: CustomerAddressMutationPort;
+    shippingRateDataPort?: ShippingRateDataPort;
+};
+export interface ShippingBindingDependencies {
+    dataKind: string;
+    createManagedStore?: () => Store | null;
+    /** Core report for the selected shipping contribution, observed by the host. */
+    nativeRateReadiness?: ReadinessReport;
+    /** Same-database Core observation of the applied shipping seed and required objects. */
+    nativeRateSchema?: SchemaObservation;
+    nativeStore?: Omit<Store, "addressMutationPort"> | null;
+    responder: BffResponder;
+    selection?: {
+        port: DeliverySelectionPort;
+        searchPort: PickupPointSearchPort;
+        schemas: DeliverySelectionSchemas;
+    };
+    addresses?: {
+        schemas: CustomerAddressSchemas;
+        authenticateUser: CustomerAddressesDeps["authenticateUser"];
+        requireWrites: boolean;
+    };
+    rate?: {
+        schemas: ShippingRateHandlerSchemas;
+        authorizeAdmin: AdminShippingRateHandlerDeps["authorizeAdmin"];
+        resolveAdmin: AdminShippingRateHandlerDeps["resolveAdmin"];
+    };
+}
+export interface ShippingBindings {
+    store: Store;
+    handlers: {
+        options: ReturnType<typeof createDeliveryOptionsHandler> | null;
+        search: ReturnType<typeof createPickupPointSearchHandler> | null;
+        validate: ReturnType<typeof createPickupPointValidationHandler> | null;
+        addresses: ReturnType<typeof createCustomerAddressesHandler> | null;
+        rate: ReturnType<typeof createAdminShippingRateHandler> | null;
+    };
+    readiness: {
+        ready: boolean;
+        reason: string | null;
+    };
+    unsupported: {
+        addressWrites: string | null;
+        flatRateSave: string | null;
+    };
+}
+/** Explicit selected stores and host validation; importing this module activates nothing. */
+export declare function createShippingBindings(deps: ShippingBindingDependencies): ShippingBindings;
+export {};
+```
+## dist/shipping/contracts/address.d.ts
+
+```ts
+export interface CanonicalAddressInput {
+    clientId?: string | null;
+    kind?: string | null;
+    line1: string;
+    line2?: string | null;
+    city: string;
+    postalCode: string;
+    country?: string | null;
+}
+export interface AddressCanonSource {
+    sourceKind: string;
+    status: "active" | "inactive" | "disabled_pending_license";
+    displayName: string;
+    officialUrl: string;
+    sourceRevision: string | null;
+    sourceUpdatedAt: string | null;
+}
+export interface AddressCanonLocalityCandidate {
+    localityId: string;
+    countryCode: string;
+    name: string;
+    tercCode: string;
+    simcCode: string;
+    municipalityName: string | null;
+    municipalityTercCode: string | null;
+    countyName: string | null;
+    voivodeshipName: string | null;
+    sources: AddressCanonSource[];
+    postalCode: string | null;
+    confidence: "exact" | "ambiguous" | "partial";
+    resolutionLevel: "postal_code" | "locality" | "street" | "address_point";
+}
+export interface AddressCanonStreet {
+    streetId: string;
+    localityId: string;
+    name: string;
+    ulicCode: string | null;
+    sources: AddressCanonSource[];
+}
+export interface AddressCanonPostalCodeLookupRequest {
+    postalCode: string;
+    limit: number;
+}
+export interface AddressCanonLocalitiesLookupRequest {
+    q: string;
+    limit: number;
+}
+export interface AddressCanonStreetsLookupRequest {
+    localityId: string;
+    q?: string;
+    limit: number;
+}
+export interface AddressCanonPostalCodeLookupResponse {
+    contractVersion: "address.canon.v1";
+    query: {
+        postalCode: string;
+    };
+    resolutionLevel: "postal_code";
+    candidates: AddressCanonLocalityCandidate[];
+    sources: AddressCanonSource[];
+}
+export interface AddressCanonLocalitiesLookupResponse {
+    contractVersion: "address.canon.v1";
+    query: {
+        q: string;
+    };
+    resolutionLevel: "locality";
+    candidates: AddressCanonLocalityCandidate[];
+    sources: AddressCanonSource[];
+}
+export interface AddressCanonStreetsLookupResponse {
+    contractVersion: "address.canon.v1";
+    query: {
+        localityId: string;
+        q: string | null;
+    };
+    resolutionLevel: "street";
+    streets: AddressCanonStreet[];
+    sources: AddressCanonSource[];
+}
+export type CustomerAddressKind = "shipping" | "billing" | "both";
+export interface CustomerAddress {
+    addressId: string;
+    kind: CustomerAddressKind;
+    label: string | null;
+    recipientName: string | null;
+    contactPhone: string | null;
+    companyName: string | null;
+    taxId: string | null;
+    line1: string;
+    line2: string | null;
+    city: string;
+    postalCode: string;
+    country: string;
+    isDefault: boolean;
+    deliveryNotes: string | null;
+    courierInstructions: string | null;
+    lastUsedAt: string | null;
+    createdAt: string;
+    updatedAt: string;
+}
+export interface CustomerOrdererProfile {
+    profileId: string;
+    label: string | null;
+    fullName: string;
+    email: string;
+    phone: string | null;
+    companyName: string | null;
+    taxId: string | null;
+    companyVerificationLevel?: "registry_verified" | "provider_verified" | "manual_unverified" | "invalid" | null;
+    companyIdentitySource?: string | null;
+    companyIdentityEvidenceHash?: string | null;
+    isDefault: boolean;
+    createdAt: string;
+    updatedAt: string;
+}
+export type CustomerAddressesRequest = Record<string, never>;
+export interface CustomerAddressesResponse {
+    contractVersion: "customer.addresses.v1";
+    ordererProfiles: CustomerOrdererProfile[];
+    addresses: CustomerAddress[];
+}
+export interface CustomerAddressUpsertRequest {
+    idempotencyKey: string;
+    addressId?: string;
+    kind: CustomerAddressKind;
+    label?: string | null;
+    recipientName?: string | null;
+    contactPhone?: string | null;
+    companyName?: string | null;
+    taxId?: string | null;
+    line1: string;
+    line2?: string | null;
+    city: string;
+    postalCode: string;
+    country?: string;
+    isDefault?: boolean;
+    deliveryNotes?: string | null;
+    courierInstructions?: string | null;
+}
+export interface CustomerAddressDeleteRequest {
+    idempotencyKey: string;
+    addressId: string;
+}
+```
+## dist/shipping/contracts/delivery.d.ts
+
+```ts
+export type DeliveryKind = "parcel-locker" | "courier";
+export type DeliveryProviderKind = string;
+export type DeliveryCarrierKind = string;
+export type DeliveryService = string;
+export interface PickupPoint {
+    id: string;
+    provider: DeliveryCarrierKind;
+    name: string;
+    address: {
+        line1: string;
+        postalCode: string;
+        city: string;
+        country: string;
+    };
+}
+export interface DeliveryOption {
+    id: string;
+    kind: DeliveryKind;
+    deliveryKind: DeliveryKind;
+    providerKind: DeliveryProviderKind;
+    carrierKind: DeliveryCarrierKind;
+    carrierCode: string;
+    service: DeliveryService;
+    serviceCode: string;
+    label: string;
+    description: string;
+    pickupPointRequired: boolean;
+    addressRequired: boolean;
+}
+export interface DeliveryOptionsResponse {
+    contractVersion: "shipping.delivery_selection.v1";
+    options: DeliveryOption[];
+}
+export interface PickupPointValidationRequest {
+    pointId: string;
+    carrierKind: DeliveryCarrierKind;
+}
+export interface PickupPointValidationResponse {
+    contractVersion: "shipping.delivery_selection.v1";
+    valid: boolean;
+    pickupPoint: PickupPoint | null;
+}
+export interface PickupPointSearchRequest {
+    carrierKind: DeliveryCarrierKind;
+    latitude?: number;
+    longitude?: number;
+    postalCode?: string;
+    city?: string;
+    query?: string;
+    limit?: number;
+}
+export interface PickupPointSearchResult {
+    id: string;
+    carrierKind: DeliveryCarrierKind;
+    name: string;
+    address: PickupPoint["address"];
+    location: {
+        latitude: number;
+        longitude: number;
+    } | null;
+    locationDescription: string | null;
+    openingHours: string | null;
+    distanceMeters: number | null;
+    pointKind: "locker" | "service_point" | null;
+    appAssisted: boolean;
+}
+export interface PickupPointSearchResponse {
+    contractVersion: "shipping.pickup_point_search.v1";
+    carrierKind: DeliveryCarrierKind;
+    points: PickupPointSearchResult[];
+}
+export type DeliverySelectionSummaryKind = "courier" | "parcel-locker";
+export interface DeliverySelectionSummary {
+    deliveryKind: DeliverySelectionSummaryKind;
+    providerKind: string | null;
+    carrierKind: string | null;
+    carrierCode: string | null;
+    serviceCode: string | null;
+    pickupPoint: {
+        id: string;
+        name: string;
+        address: {
+            line1: string;
+            postalCode: string;
+            city: string;
+            country: string;
+        } | null;
+    } | null;
+    source?: string | null;
+}
+export type DeliverySelectionSourceKey = "shippingDeliveryContact" | "orderDeliveryContactOverride" | "orderDeliveryContact" | "fulfillmentMetadata" | "orderMetadata" | "orderRuntimeFinalize" | "shippingAddressSnapshot" | "addressMetadata";
+export interface DeliverySelectionSources {
+    /** commerce_fulfillment_orders.metadata.selectedDelivery */
+    fulfillmentMetadata?: unknown;
+    /** commerce_orders.metadata.selectedDelivery (and .runtimeFinalize.selectedDelivery) */
+    orderMetadata?: unknown;
+    /** shipping_address_snapshot.selectedDelivery */
+    shippingAddressSnapshot?: unknown;
+    /** addresses.metadata.selectedDelivery */
+    addressMetadata?: unknown;
+}
+export interface DeliverySelectionEvidence {
+    /** The canonical selectedDelivery object, or null when no source carries one. */
+    selection: Record<string, unknown> | null;
+    /** Normalized (trimmed, lowercased) providerKind, or null when absent/blank. */
+    providerKind: string | null;
+    /** Which authoritative source was resolved (priority order), or null. A
+     * canonical contact can be the source even when its selection is invalid. */
+    source: DeliverySelectionSourceKey | null;
+}
+```
+## dist/shipping/contracts/index.d.ts
+
+```ts
+export type { DeliveryKind, DeliveryProviderKind, DeliveryCarrierKind, DeliveryService, PickupPoint, DeliveryOption, DeliveryOptionsResponse, PickupPointValidationRequest, PickupPointValidationResponse, PickupPointSearchRequest, PickupPointSearchResult, PickupPointSearchResponse, } from "./delivery.js";
+export type { CanonicalAddressInput, AddressCanonSource, AddressCanonLocalityCandidate, AddressCanonStreet, AddressCanonPostalCodeLookupRequest, AddressCanonLocalitiesLookupRequest, AddressCanonStreetsLookupRequest, AddressCanonPostalCodeLookupResponse, AddressCanonLocalitiesLookupResponse, AddressCanonStreetsLookupResponse, CustomerAddressKind, CustomerAddress, CustomerOrdererProfile, CustomerAddressesRequest, CustomerAddressesResponse, CustomerAddressUpsertRequest, CustomerAddressDeleteRequest } from "./address.js";
+export type { AdminShippingRateResponse, AdminSetShippingRateRequest, AdminSetShippingRateResponse } from "./shippingRate.js";
+export type { ShippingTerms, ShippingPolicyEntry, ShippingPolicy, ShippingSettings } from "./threshold.js";
+```
+## dist/shipping/contracts/shippingRate.d.ts
+
+```ts
+/** Browser DTOs for the incumbent flat-rate administration API. */
+export interface AdminShippingRateResponse {
+    contractVersion: "commerce.v0";
+    shippingFlatMinor: number;
+}
+export interface AdminSetShippingRateRequest {
+    shippingFlatMinor: number;
+}
+export interface AdminSetShippingRateResponse extends AdminShippingRateResponse {
+    updated: true;
+}
+```
+## dist/shipping/contracts/threshold.d.ts
+
+```ts
+/** Shipping promises selected by an opt-in host policy. Runtime validation is server-only. */
+export interface ShippingTerms {
+    version: "shipping-threshold.v1";
+    currency: string;
+    flatMinor: number;
+    freeThresholdMinor: number;
+}
+export interface ShippingPolicyEntry {
+    enabled: boolean;
+    flatMinor: number;
+    freeThresholdMinor: number;
+    effectiveFrom: string;
+}
+export interface ShippingPolicy {
+    version: "shipping-policy.v1";
+    current: ShippingPolicyEntry | null;
+    scheduled?: ShippingPolicyEntry | null;
+}
+export interface ShippingSettings {
+    legacyFlatMinor: number;
+    policy: ShippingPolicy | null;
+}
+```
+## dist/shipping/customerAddressesHandler.d.ts
+
+```ts
+import type { HttpRequest, HttpResponse } from "../http/index.js";
+import type { BffResponder } from "../bff/index.js";
+import type { CustomerAddressesDeps } from "./addressPorts.js";
+import type { CustomerAddressSchemas } from "./addressSchemas.js";
+export declare function createCustomerAddressesHandler({ addressBookPort, addressMutationPort, authenticateUser, }: CustomerAddressesDeps, schemas: CustomerAddressSchemas, responder: BffResponder): (req: HttpRequest, res: HttpResponse) => Promise<void>;
+```
+## dist/shipping/customerSelfServiceAddressModels.d.ts
+
+```ts
+import type { CanonicalAddressInput, CustomerAddressUpsertRequest, CustomerAddress, CustomerOrdererProfile } from "./contracts/address.js";
+import type { CustomerAddressReadStore } from "./addressPorts.js";
+export declare function readAddresses(store: CustomerAddressReadStore, clientId: string): Promise<CustomerAddress[]>;
+export declare function readOrdererProfiles(store: CustomerAddressReadStore, clientId: string): Promise<CustomerOrdererProfile[]>;
+export declare function addressUsedByActiveSubscription(store: CustomerAddressReadStore, clientId: string, addressId: string): Promise<boolean>;
+export declare function addressRow(clientId: string, input: CustomerAddressUpsertRequest, canonicalAddressKey: (input: CanonicalAddressInput) => string): {
+    client_id: string;
+    kind: import("./contracts/address.js").CustomerAddressKind;
+    label: string | null;
+    recipient_name: string | null;
+    contact_phone: string | null;
+    company_name: string | null;
+    tax_id: string | null;
+    line1: string;
+    line2: string | null;
+    city: string;
+    postal_code: string;
+    country: string | undefined;
+    is_default: boolean;
+    delivery_notes: string | null;
+    courier_instructions: string | null;
+    canonical_key: string;
+    source: string;
+    updated_at: string;
+};
+export declare function findCanonicalAddressId(store: CustomerAddressReadStore, clientId: string, input: CustomerAddressUpsertRequest, canonicalAddressKey: (input: CanonicalAddressInput) => string): Promise<string | null>;
+export declare function clearDefaultAddress(store: CustomerAddressReadStore, clientId: string, kind: string): Promise<void>;
+```
+## dist/shipping/deliverySelectionHandler.d.ts
+
+```ts
+import type { HttpRequest, HttpResponse } from "../http/index.js";
+import type { BffResponder } from "../bff/index.js";
+import type { DeliverySelectionSchemas } from "./handlerSchemas.js";
+import type { DeliverySelectionPort } from "./deliverySelectionPort.js";
+import type { PickupPointSearchPort } from "./pickupPointSearchPort.js";
+export declare const DELIVERY_SELECTION_CONTRACT_VERSION = "shipping.delivery_selection.v1";
+export declare const PICKUP_POINT_SEARCH_CONTRACT_VERSION = "shipping.pickup_point_search.v1";
+export declare function createDeliveryOptionsHandler(port: DeliverySelectionPort, schemas: DeliverySelectionSchemas, responder: BffResponder): (req: HttpRequest, res: HttpResponse) => Promise<void>;
+export declare function createPickupPointSearchHandler(port: PickupPointSearchPort, schemas: DeliverySelectionSchemas, responder: BffResponder): (req: HttpRequest, res: HttpResponse) => Promise<void>;
+export declare function createPickupPointValidationHandler(port: DeliverySelectionPort, schemas: DeliverySelectionSchemas, responder: BffResponder): (req: HttpRequest, res: HttpResponse) => Promise<void>;
+```
+## dist/shipping/deliverySelectionPort.d.ts
+
+```ts
+import type { DeliveryCarrierKind, DeliveryOption, PickupPoint } from "./contracts/index.js";
+export interface DeliverySelectionPort {
+    listOptions(): Promise<DeliveryOption[]>;
+    validatePickupPoint(input: {
+        pointId: string;
+        carrierKind: DeliveryCarrierKind;
+    }): Promise<PickupPoint | null>;
+}
+```
+## dist/shipping/deliverySelectionSummary.d.ts
+
+```ts
+import type { DeliverySelectionSummary } from "./contracts/delivery.js";
+export declare function summarizeDeliverySelection(selection: Record<string, unknown> | null | undefined, source?: string | null): DeliverySelectionSummary | null;
+```
+## dist/shipping/handlerSchemas.d.ts
+
+```ts
+import type { DeliveryOptionsResponse, PickupPointSearchRequest, PickupPointSearchResponse, PickupPointValidationRequest, PickupPointValidationResponse } from "./contracts/index.js";
+type Schema<T> = {
+    safeParse(input: unknown): {
+        success: true;
+        data: T;
+    } | {
+        success: false;
+        error: {
+            flatten(): unknown;
+        };
+    };
+};
+/** The host supplies its existing validators, including provider policy and errors. */
+export interface DeliverySelectionSchemas {
+    deliveryOptionsResponseSchema: Schema<DeliveryOptionsResponse>;
+    pickupPointValidationRequestSchema: Schema<PickupPointValidationRequest>;
+    pickupPointValidationResponseSchema: Schema<PickupPointValidationResponse>;
+    pickupPointSearchRequestSchema: Schema<PickupPointSearchRequest>;
+    pickupPointSearchResponseSchema: Schema<PickupPointSearchResponse>;
+}
+export {};
+```
+## dist/shipping/index.d.ts
+
+```ts
+export type { DeliverySelectionSummaryKind, DeliverySelectionSummary, DeliverySelectionSourceKey, DeliverySelectionSources, DeliverySelectionEvidence, } from "./contracts/delivery.js";
+export type { DeliverySelectionPort } from "./deliverySelectionPort.js";
+export type { PickupPointSearchPort } from "./pickupPointSearchPort.js";
+export type { DeliverySelectionSchemas } from "./handlerSchemas.js";
+export { createDeliveryOptionsHandler, createPickupPointSearchHandler, createPickupPointValidationHandler, DELIVERY_SELECTION_CONTRACT_VERSION, PICKUP_POINT_SEARCH_CONTRACT_VERSION, } from "./deliverySelectionHandler.js";
+export { summarizeDeliverySelection } from "./deliverySelectionSummary.js";
+export { resolveDeliverySelectionEvidence } from "./readDeliverySelectionEvidence.js";
+export type { CanonicalAddressInput } from "./contracts/address.js";
+export type { AddressCanonLookupPort, AddressCanonLookupDeps, CustomerAddressesDeps, CustomerAddressBookPort, CustomerAddressMutationPort, CustomerAddressReadStore } from "./addressPorts.js";
+export type { AddressLookupSchemas, CustomerAddressSchemas } from "./addressSchemas.js";
+export { createAddressCanonPostalCodeHandler, createAddressCanonLocalitiesHandler, createAddressCanonStreetsHandler } from "./addressCanonLookupHandler.js";
+export { createCustomerAddressesHandler } from "./customerAddressesHandler.js";
+export { canonicalAddressKey } from "./addressCanonical.js";
+export { readAddresses, readOrdererProfiles, addressUsedByActiveSubscription, addressRow, findCanonicalAddressId, clearDefaultAddress } from "./customerSelfServiceAddressModels.js";
+export type { AdminShippingRateResponse, AdminSetShippingRateRequest, AdminSetShippingRateResponse } from "./contracts/shippingRate.js";
+export { createAdminShippingRateHandler } from "./adminShippingRateHandler.js";
+export type { AdminShippingRateHandlerDeps, ShippingRateDataPort, ShippingRateHandlerSchemas } from "./shippingRatePorts.js";
+export { createShippingBindings, type ShippingBindingDependencies, type ShippingBindings } from "./bindings.js";
+export type { ShippingTerms, ShippingPolicyEntry, ShippingPolicy, ShippingSettings } from "./contracts/threshold.js";
+export { shippingTermsSchema, shippingPolicySchema, parseShippingTerms, hasShippingTerms, normalizeShippingPolicy, resolveShippingPolicy, resolveThresholdShipping } from "./thresholdPolicy.js";
+/** Sparse canonical projections, never an install chain. */
+export declare const SHIPPING_MIGRATIONS: readonly [{
+    readonly id: "20260807140000_read_parity_catalog";
+    readonly catalogPath: "db/platform/migrations/20260807140000_read_parity_catalog.sql";
+    readonly position: 1;
+    readonly sha256: "fcf3827028c1651ae42a7c7d7472153825a3121c936d58a3d105befc7dece9ea";
+    readonly url: URL;
+}, {
+    readonly id: "20261021200000_shipping_flat_rate_seed";
+    readonly catalogPath: "db/platform/migrations/20261021200000_shipping_flat_rate_seed.sql";
+    readonly position: 72;
+    readonly sha256: "34f8696f515a2cc072395db5a3de2d9b09643d13236ee3851d0d78123f907eae";
+    readonly url: URL;
+}];
+```
+## dist/shipping/pickupPointSearchPort.d.ts
+
+```ts
+import type { PickupPointSearchRequest, PickupPointSearchResult } from "./contracts/index.js";
+export interface PickupPointSearchPort {
+    searchPickupPoints(request: PickupPointSearchRequest): Promise<PickupPointSearchResult[]>;
+}
+```
+## dist/shipping/readDeliverySelectionEvidence.d.ts
+
+```ts
+import type { DeliverySelectionEvidence, DeliverySelectionSources } from "./contracts/delivery.js";
+export declare function resolveDeliverySelectionEvidence(sources: DeliverySelectionSources): DeliverySelectionEvidence;
+```
+## dist/shipping/shippingRatePorts.d.ts
+
+```ts
+import type { HttpResponse } from "../http/index.js";
+import type { AdminShippingRateResponse, AdminSetShippingRateRequest, AdminSetShippingRateResponse } from "./contracts/shippingRate.js";
+/** Only the incumbent flat-rate reads, writes and best-effort audit. */
+export interface ShippingRateDataPort {
+    getShippingFlatMinor(): Promise<number>;
+    setShippingFlatMinor(minor: number): Promise<void>;
+    recordPromotionAudit(entry: {
+        actorId: string;
+        actorEmail: string | null;
+        action: "shipping_rate_change";
+        promotionId: string;
+        newValue: Record<string, unknown>;
+    }): Promise<void>;
+}
+type Authorization = {
+    ok: true;
+    userId: string;
+    role: "admin" | "distributor";
+    isMachineActor: boolean;
+} | {
+    ok: false;
+    code: "UNAUTHORIZED" | "FORBIDDEN";
+    message: string;
+    identityCode?: string;
+};
+export interface AdminShippingRateHandlerDeps {
+    dataPort: ShippingRateDataPort;
+    authorizeAdmin: () => Promise<Authorization>;
+    /** The host retains its authorization/error response context. */
+    resolveAdmin: (authorizeAdmin: () => Promise<Authorization>, res: HttpResponse) => Promise<{
+        userId: string;
+    } | null>;
+}
+type Schema<T> = {
+    safeParse(input: unknown): {
+        success: true;
+        data: T;
+    } | {
+        success: false;
+        error: {
+            flatten(): unknown;
+        };
+    };
+};
+/** Required host validation; there is no default amount policy. */
+export interface ShippingRateHandlerSchemas {
+    contractVersion: AdminShippingRateResponse["contractVersion"];
+    adminShippingRateResponseSchema: Schema<AdminShippingRateResponse>;
+    adminSetShippingRateRequestSchema: Schema<AdminSetShippingRateRequest>;
+    adminSetShippingRateResponseSchema: Schema<AdminSetShippingRateResponse>;
+}
+export {};
+```
+## dist/shipping/thresholdPolicy.d.ts
+
+```ts
+import { z } from "zod";
+import type { ShippingPolicy, ShippingSettings, ShippingTerms } from "./contracts/threshold.js";
+export declare const shippingTermsSchema: z.ZodObject<{
+    version: z.ZodLiteral<"shipping-threshold.v1">;
+    currency: z.ZodString;
+    flatMinor: z.ZodNumber;
+    freeThresholdMinor: z.ZodNumber;
+}, z.core.$strict>;
+export declare const shippingPolicySchema: z.ZodObject<{
+    version: z.ZodLiteral<"shipping-policy.v1">;
+    current: z.ZodNullable<z.ZodObject<{
+        enabled: z.ZodBoolean;
+        flatMinor: z.ZodNumber;
+        freeThresholdMinor: z.ZodNumber;
+        effectiveFrom: z.ZodString;
+    }, z.core.$strict>>;
+    scheduled: z.ZodOptional<z.ZodNullable<z.ZodObject<{
+        enabled: z.ZodBoolean;
+        flatMinor: z.ZodNumber;
+        freeThresholdMinor: z.ZodNumber;
+        effectiveFrom: z.ZodString;
+    }, z.core.$strict>>>;
+}, z.core.$strict>;
+/** Absence selects legacy behavior; malformed retained promises refuse. */
+export declare function parseShippingTerms(value: unknown): ShippingTerms | undefined;
+export declare function hasShippingTerms(quote: {
+    context?: {
+        shippingTerms?: unknown;
+    };
+}): boolean;
+/** Resolve effective entries on read, without a scheduled write. */
+export declare function normalizeShippingPolicy(policy: ShippingPolicy, asOf: Date | string): ShippingPolicy;
+export declare function resolveShippingPolicy(settings: ShippingSettings, asOf: Date | string, currency: string): {
+    configured: boolean;
+    flatMinor: number;
+    terms?: ShippingTerms;
+};
+/** Only product payable after discounts counts; equality receives free delivery. */
+export declare function resolveThresholdShipping(terms: ShippingTerms, productPayableMinor: number): {
+    grossMinor: number;
+    remainingMinor: number;
+};
 ```

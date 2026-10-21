@@ -187,25 +187,26 @@ reads the guard's live body all pin the matrix. A change to one side must
 update the others in the same contribution.
 
 A matrix edge is not a licence for every operation. Only the owner's pause
-request, and the non-payment rule below, may move an active subscription to
-`paused`. Among the engine's statuses, only the win-back leaves `cancelled`: it
-needs a stored payment method and restarts the schedule two days out.
+request may move an active subscription to `paused`. Among the engine's
+statuses, only the win-back leaves `cancelled`: it needs a stored payment method
+and restarts the schedule two days out.
 
-**The sanctioned non-payment rule.** Nothing suspends, freezes or interrupts an
-active subscription except a renewal whose refusals ran past the last rung of
-the retry ladder. That cycle has failed, has no retry scheduled and has an
-attempt number beyond the ladder's length. It pauses the subscription and
-records `subscription.paused` with reason `payment_failed_expired`. A ladder
-cut short by a terminating refusal class, or a failure that still has a retry
-after it, leaves the dunning case open and the subscription active. The
-customer's recovery resumes the paused subscription: it skips the uncollected
-cycle and restarts the schedule two days out. A plain resume must not be used
-for a subscription this rule paused, because it neither skips that cycle nor
-moves a stale `next_cycle_at`. The managed SQL side is
-`subscription_handle_payment_failure_dunning` and
-`subscription_resume_after_expired_dunning`. The engine side is
-`isDunningLadderExhausted`, `pauseSubscriptionForExpiredDunning` and
-`resumeSubscriptionFromExpiredDunning`.
+**The sanctioned non-payment rule.** A failed payment never suspends, freezes or
+pauses an active subscription. Neither a ladder cut short by a terminating
+refusal class nor exhaustion past the last rung changes its status: the dunning
+case stays open, the unpaid cycle is not moved, and no further automatic charge
+is scheduled. After exhaustion the same case remains repairable; on the portable
+chain `dunning_lifecycle_record_recovery` closes it when the money moves.
+Subscriptions already paused and cases already expired under the earlier rule
+keep their separate resume behaviour. A plain resume must not be used for such a
+subscription, because it neither skips the uncollected cycle nor moves a stale
+`next_cycle_at`; the managed `subscription_resume_after_expired_dunning` and the
+engine's `resumeSubscriptionFromExpiredDunning` handle it.
+
+Two known gaps still pause on exhaustion and must not gain new callers: the
+managed SQL `subscription_handle_payment_failure_dunning` (owned by a managed
+follow-up forward) and the engine's `pauseSubscriptionForExpiredDunning`, gated
+by `isDunningLadderExhausted` (owned by the M10 engine follow-up).
 
 The engine models the decision; the host keeps the durable duties the managed
 SQL restarts also perform. Both restarts require the customer's confirmation of
@@ -227,14 +228,16 @@ table admits only `active`, `paused` and `cancelled`, so it has no activation
 statuses and no `completed`. It has no status-transition trigger: each lifecycle
 function checks its own source status. It can send a win-back message to a
 cancelled subscriber, but no function reactivates a cancelled subscription.
-Its dunning rail, `dunning_lifecycle_handle_failure`, has no rung fence: it
-expires the case and pauses an active subscription whenever the next retry
-instant it is handed is NULL. A class-terminated refusal on rung one also has
-no next retry, so a caller that hands its schedule straight through would pause
-a live subscription on the first refusal, which the rule above forbids. No
-caller in this tree invokes it today. A future caller must not call it with
-NULL unless `isDunningLadderExhausted` holds for the refused cycle. A case cut
-short earlier must stay open without that call. An adopter on the portable chain therefore cannot store a
+Its dunning rail, `dunning_lifecycle_handle_failure`, keeps active subscriptions
+active on dunning exhaustion (invariant repair). A NULL next retry leaves the
+case open and repairable through `dunning_lifecycle_record_recovery`, queues the
+final notice and records the exhaustion event, and returns `paused=false`,
+`pauseWindowId=null`, `terminal=true` without creating a pause window or changing
+subscription or cycle dates. It still has no rung fence: a class-terminated
+refusal on rung one also has no next retry. No caller in this tree invokes it
+today. A future caller must not call it with NULL unless
+`isDunningLadderExhausted` holds for the refused cycle. A case cut short earlier
+must stay open without that call. An adopter on the portable chain therefore cannot store a
 completed or provisional subscription, and cannot reactivate a cancelled one,
 until a forward migration closes the gap under the compatibility lifecycle in
 [Data and migrations](DATA_AND_MIGRATIONS.md).
@@ -270,6 +273,22 @@ These are source and persistence contracts, not evidence that any hosted
 deployment, provider adapter, or public release has activated the rail.
 
 ## Compatibility posture
+
+The reviewed-forward registry additionally pins one portable function replacement
+to keep active subscriptions active on dunning exhaustion (invariant repair).
+The signature is fixed in code; its before hash binds the portable chain, while
+its after and whole-file hashes bind the proposed forward. This separate control
+approval supplies no migration or runtime activation. The
+[exact reviewed function rules](DATA_AND_MIGRATIONS.md#exact-reviewed-function-forwards)
+require unchanged headers, a single function statement and approval before SQL
+introduction; managed admission counts remain unchanged.
+
+The portable dunning invariant repair appends exactly one manifest row at
+position 71 and refreshes `objectInventorySha256` from the complete live
+PostgreSQL catalogue. Earlier file/hash rows remain an exact prefix. Install
+the full selected catalogue to keep active subscriptions active on dunning
+exhaustion (invariant repair); the forward does not rewrite existing paused
+subscriptions or expired cases. The managed chain still needs its own forward.
 
 Bundle application/admin now has package ownership in the existing catalog server
 entry with named reference compatibility bindings. Read-error identity is shared
@@ -634,3 +653,99 @@ publication/resume compare canonical snapshot bytes against exact target Git
 objects. The authored publication catalogue keeps exact rows except for regular,
 non-executable, content-validated package `changes/*.md` fragments. Git binds all
 remaining source contents and modes. This is preview evidence, not stability.
+
+## M05 parity seams
+
+Development-preview hosts may select five independent seams; omission preserves
+incumbent behavior. No route, policy, provider or new financial default is selected
+by importing them. These additive APIs need a minor package set.
+
+`createPromotionQuoteAcceptance` accepts explicit `shippingTerms` on each issue
+and verify input. `projectPromotionQuoteMoney(quote, acquisitionTerms?, shippingTerms?)`
+and `promotionQuoteMoneySections` include the promise only when supplied, in the
+shipping section. Shipping-only agreements can receive a token. A changed or
+removed promise refuses as `quote_mismatch` / `shipping`, even if money is equal.
+The public and strict quote projections bind the same money and promise.
+
+`createCommerceQuoteHandler` optionally receives `shipping: { terms(quote) }`.
+The host must preserve terms through its response schema and forward the fourth
+issue callback argument (fifth for honor) to the acceptance helper. An unsigned
+shipping promise refuses before promotion fallback; a fallback retaining shipping
+terms also refuses. Hosts use `parseShippingTerms` inside `shipping.terms(quote)`
+to refuse corrupt retained terms. With the binding omitted, callbacks retain their incumbent
+argument count and token bytes remain unchanged.
+
+`createDbBackedCommerceQuotePort` optionally receives
+`resolveQuoteShippingPromotions(input)`, returning final discounts, rejections,
+shipping gross, `hasShipping`, and optional shipping/acquisition terms. Without it,
+the flat-fee read still precedes automatic evaluation and code adjustment. With it,
+pricing uses its supplied money and terms and does not call the incumbent lane
+callbacks; the flat fee is ignored once a resolver is supplied. Hosts must select a context schema that retains these promises.
+
+The promotions `createQuoteShippingPromotions` factory receives settings and raw
+promotion/code ports plus the existing bound automatic and code applications.
+It resolves current/scheduled shipping settings, evaluates both lanes at the flat
+fee, then compares product payable after product discounts with the threshold.
+Shipping discounts do not count as product spend; equality is free. A changed fee
+reruns both lanes exactly once and returns that pass's winners and rejections.
+There is no fixed-point iteration. Raw promotion reads and code candidates are
+memoized only inside one resolution, with cloned mutable results for each reader;
+a second quote, concurrent batch member or later retry owns fresh reads.
+
+The shipping server entry validates policy/terms and exposes
+`normalizeShippingPolicy`, `resolveShippingPolicy` and `resolveThresholdShipping`.
+Its contracts entry adds only DTO types. A null policy uses the validated legacy
+fee; an ineffective or disabled selected policy yields zero without terms.
+Malformed retained policy refuses rather than becoming a legacy fallback.
+
+The promotions legacy, v2 and automatic factories accept an optional `acquisition`
+binding with host `financialPolicy`; the automatic factory also reads the host's
+`capability(request)`. V2 receives `acquisitionCapability` in its evaluation input.
+Existing paid subscribers exclude metadata-tagged and first-subscription rows
+before schedule selection. New subscription customers use the existing pricing
+selector, half-open schedule filter and capability/engine refusal precedence.
+Selected terms propagate only for a negotiated capability. The legacy evaluator
+keeps its unfiltered `allCandidates` for code canonicalization and rejection/cap
+precedence separately from the filtered evaluation candidates. Ordinary coupons
+retain their existing evaluator rules. Legacy, v2 and automatic acquisition
+bindings reach the quote context only through `resolveQuoteShippingPromotions`,
+which carries the selected acquisition terms. Omission keeps candidate sets and read
+order unchanged; hosts still own financial constants and metadata interpretation.
+
+Neutral witnesses live in the package promotions tests
+`shippingConsentParity.test.ts`, `thresholdShippingParity.test.ts` and
+`acquisitionOrchestrationParity.test.ts`; the [M05 extension ledger](plans/oss-m05-catalog-offers-pricing.md#m05-parity-extension)
+records the bounded contribution. Native candidate/claim and mounted acceptance
+gaps in that plan remain separate obligations.
+
+`createAdminBundleReadHandlers` accepts an optional `effectiveTarget(bundle)` on
+its handler dependencies. With it, previews use that authoritative target; null
+never falls back to active history. An explicit preview amount still wins, and
+an omitted mode without a target defaults to `one_time`. Without the hook the
+incumbent active-row search and `any` fallback remain unchanged. Optional
+`resolvedTargetPrice` survives the detail DTO and reference response schema;
+older details may omit it.
+
+`createPostgresBundleCatalogStore(executor, { priceAuthority: "effective" })`
+selects half-open target/list windows, currency, optional region and purchase
+mode (`one_time` by default), with `any` fallback and overlap/identity refusal.
+Detail accepts `regionCode`/`atTime`; the feed also accepts `mode`. The exported
+`selectEffectiveBundleTargetPrice(rows, context)` applies list/currency, active,
+gross, positive-target and window filters before exact-mode selection. Component
+anchors require effective gross minQty-one entries; duplicates refuse. The feed
+emits a whole BOM only when every component has current document and primary
+unit GTIN authority, active product/SKU, positive integral weight and anchor,
+and sellability for the requested mode. Detail retains unready components.
+With the option, list/detail `hasActiveTargetPrice` also follows the effective
+rule (gross, positive target, `one_time`/`any`, active list, current window)
+instead of the active flag alone.
+Omitting the store option preserves existing SQL bytes, reads and outputs.
+
+`createConcurrentCommercePriceAuthorityPort(reads)` is an alternate pricing
+factory: subscription history starts alongside the base read using the selected
+list ID, with captured history errors subordinate to base refusals. One-time
+requests schedule no history; legacy fallback still uses the validated base ID.
+The incumbent authority and PostgreSQL factory retain their sequential scheduling
+and observed-base identity. The native effective-bundle witness is
+`tests/postgres/bundleEffectiveParity.test.ts`; all parity additions use existing
+collectors and synthetic host data.

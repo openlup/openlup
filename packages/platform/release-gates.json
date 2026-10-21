@@ -45,7 +45,8 @@
         "test/catalog/bundleCatalogReadPort.test.ts",
         "test/catalog/sellableBundleHandler.test.ts",
         "test/catalog/catalogFoundationContracts.test.ts",
-        "test/catalog/catalogDraftContracts.test.ts"
+        "test/catalog/catalogDraftContracts.test.ts",
+        "test/catalog/bundlePriceSelectionParity.test.ts"
       ],
       "entrypoint": "dist/catalog/index.d.ts",
       "snapshot": "api/catalog.api.md"
@@ -259,7 +260,8 @@
         "test/pricing/commerceOfferPricingCache.test.ts",
         "test/pricing/offerPolicyReadiness.test.ts",
         "test/pricing/acquisition.test.ts",
-        "test/pricing/offerPricingContracts.test.ts"
+        "test/pricing/offerPricingContracts.test.ts",
+        "test/pricing/concurrentCommercePriceAuthorityParity.test.ts"
       ],
       "entrypoint": "dist/pricing/index.d.ts",
       "snapshot": "api/pricing.api.md"
@@ -361,15 +363,15 @@
       "maxFiles": 2000
     },
     "docs": {
-      "maxPackedBytes": 40960,
+      "maxPackedBytes": 49152,
       "maxFiles": 10
     },
     "maxPackedBytes": 1351680,
     "maxUnpackedBytes": 5734400,
     "maxFiles": 2100,
     "baseline": {
-      "version": "0.17.0",
-      "packedBytes": 414220
+      "version": "0.18.0",
+      "packedBytes": 779849
     },
     "browserEntries": {
       "./catalog/contracts": 4096,

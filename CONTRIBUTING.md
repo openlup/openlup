@@ -130,6 +130,34 @@ its users or operators can observe.
    package's neutral names in its adapter.
 
 ## Development-preview checks
+
+The portable dunning invariant repair adds
+`tests/postgres/dunningLifecycleActiveRepair.test.ts` to the existing Node
+collector. One static case checks unchanged SQL bytes and the manifest binding;
+nine real-PostgreSQL cases use the existing disposable-container harness for
+fresh install, exact-prefix upgrade, cycle preservation, exhaustion/replay,
+recovery and actual browser-role EXECUTE refusal. Missing Docker explicitly
+skips the database cases and is missing proof. Once a container starts,
+readiness or SQL failures fail the suite. Runtime calls use a limited synthetic
+application role; owner reads observe rows without granting browser access.
+No runner, profile, default composition or coverage budget changes.
+
+Row 24b's bundle/pricing parity uses existing collectors: package selector and
+concurrent-authority suites, the reference preview binding, and six native cases
+in `tests/postgres/bundleEffectiveParity.test.ts`. That witness uses the full
+canonical chain and existing disposable PostgreSQL harness, refusing unavailable
+Docker. Existing catalog/pricing suites remain unchanged. No profile, runner,
+coverage budget or default composition changes.
+
+M05 parity seams keep the existing Node package collector. The promotions suites
+`shippingConsentParity`, `thresholdShippingParity` and
+`acquisitionOrchestrationParity` exercise opt-in bindings and omitted-binding
+compatibility alongside unchanged pricing/promotions/shipping and reference
+suites. Pricing injects orchestration and imports only shipping types; promotions
+uses the shipping server policy through the declared module edge. Browser
+contracts remain type-only. These source checks do not replace committed package
+and installed-consumer gates.
+
 M05 P7 adds five explicit cases across
 `tests/postgres/m05CatalogComposition.test.ts`,
 `tests/platform/catalog/m05Composition.test.ts` and
@@ -1044,7 +1072,12 @@ Reviewed function forwards use the same checker in required self-check and relea
 prepare. Their whole-file bytes, signatures, old/new definitions and runtime
 privileges are pinned in `config/reviewed-platform-forwards.json`. The runtime
 list admits the five-function capability forward and an optional service-only
-identity capabilities forward. Required self-check keeps the whole registry
+identity capabilities forward. The optional portable replacement list admits
+exactly one code-fixed function to keep active subscriptions active on dunning
+exhaustion (invariant repair). The same focused test file covers exact bytes,
+portable-chain priors, registry cardinality, header preservation, extra-statement
+refusal and approval before introduction in both gates; managed counts remain
+unchanged. Required self-check keeps the whole registry
 unchanged from the feature comparison base; release compares each forward's own
 entry, list position and shared registry fields with its introduction parent, so later
 controls may append approvals. A feature cannot approve itself. These forwards

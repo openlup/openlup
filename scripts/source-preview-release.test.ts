@@ -12,7 +12,7 @@ import { CANONICAL_ACTIVATION_REPOSITORY, CANONICAL_ACTIVATION_SECURITY_ROUTE, a
 import { annotatedTag, assertDraft, assertNextPreview, checkDraft, preparePreview, previewInputs, previousPreview, verifyPublished, type GithubFetch } from "./source-preview-release.ts";
 import { MANAGED_ALIGNMENT_FORWARD, readManagedForward } from "./public-reference/subscription-alignment.mjs";
 import { assertAppendOnlyMigrationHistory } from "./oss-published-tree-check.ts";
-import { MANAGED_BASELINE, REVIEWED_FORWARD_PATH, reviewedFunctionDefinitions, reviewedPolicyDefinitions, sqlSha256, type ReviewedForwardRegistry } from "./reviewed-platform-forward.ts";
+import { MANAGED_BASELINE, REVIEWED_FORWARD_PATH, readReviewedForwardRegistry, reviewedFunctionDefinitions, reviewedPolicyDefinitions, sqlSha256, type ReviewedForwardRegistry } from "./reviewed-platform-forward.ts";
 
 const target = "a".repeat(40), previousCommit = "d".repeat(40), tag = "openlup-source-preview/2", oldTag = "openlup-source-preview/1", root = "https://api.github.com/repos/openlup/openlup";
 const previousTagObject = "6".repeat(40), targetTagObject = "c".repeat(40);
@@ -388,16 +388,16 @@ ${identityPrivileges[3]}
     bytes[4] = identitySql;
     registry.runtimeForwards!.push({ path: identityPath, sha256: sqlSha256(identitySql), functions: [], privileges: [...identityPrivileges] });
   };
-  function fixture(edit?: (registry: ReviewedForwardRegistry, bytes: string[]) => void, history: "baseline" | "forward" | null = null, runtime = false, retirePolicies = false) {
+  function fixture(edit?: (registry: ReviewedForwardRegistry, bytes: string[]) => void, history: "baseline" | "forward" | null = null, runtime = false, retirePolicies = false, extraFiles: Record<string, string> = {}) {
     const existing = definition("public.catalog_price_setup_preview(p_list uuid, p_variant uuid, p_amount integer)", 1);
     const runtimeFunctions = ["public.admin_clients_search_v3(p_query text, p_page integer, p_page_size integer, p_stage text)", "public.subscription_list_due_for_renewal(p_limit integer, p_as_of timestamp with time zone DEFAULT now())", "public.customer_support_absorb_lead_v1(p_operator uuid, p_customer uuid, p_lead uuid, p_expected text, p_key text, p_now timestamp with time zone)", "public.marketing_rehome_client_lead_v1(p_client uuid, p_now timestamp with time zone DEFAULT NULL::timestamp with time zone)", "public.customer_support_correct_subject_email_v1(p_operator uuid, p_subject uuid, p_expected text, p_new text, p_key text, p_now timestamp with time zone)"];
     const policyTables = ["address_canon_localities", "address_canon_postal_localities", "address_canon_streets", "addresses", "clients", "customer_account_events", "customer_orderer_profiles", "pets"];
     const policySql = retirePolicies ? policyTables.map((table) => `CREATE POLICY admin_all_${table} ON public.${table} TO authenticated USING (true) WITH CHECK (true);`).join("\n") : "";
     const runtimeBaseline = runtime ? runtimeFunctions.map((signature) => definition(signature, 1)).join("\n") + (retirePolicies ? `\n${policySql}` : "") : "";
     const selectedBaseline = (history === "baseline" ? `${baseline}\n${existing}` : baseline) + (runtime ? `\n${runtimeBaseline}` : "");
-    const options = { extraFiles: { [MANAGED_BASELINE]: selectedBaseline, ...(history === "forward" ? { "supabase/migrations/20261001000000_existing_function.sql": existing } : {}) } };
+    const options = { extraFiles: { [MANAGED_BASELINE]: selectedBaseline, ...(history === "forward" ? { "supabase/migrations/20261001000000_existing_function.sql": existing } : {}), ...extraFiles } };
     let sample: ReturnType<typeof syntheticRelease>;
-    if (history === null && !retirePolicies) {
+    if (history === null && !retirePolicies && Object.keys(extraFiles).length === 0) {
       const seed = runtime ? runtimeSeed ??= syntheticRelease(options) : ordinarySeed ??= syntheticRelease(options);
       sample = syntheticRelease({ seed });
     } else sample = syntheticRelease(options);
@@ -429,6 +429,215 @@ ${identityPrivileges[3]}
     () => assertAppendOnlyMigrationHistory(sample.repo, sample.approval, head),
     () => assertDescendantSourceRelease(sample.repo, sample.rootCommit, head),
   ];
+  describe("portable reviewed replacement", () => {
+    const path = "db/platform/migrations/20261021120000_dunning_lifecycle_active_repair.sql";
+    const priorPath = "db/platform/migrations/20260815090000_dunning_lifecycle_state.sql";
+    const portableBaseline = "db/platform/migrations/00000000000000_platform_baseline.sql";
+    const manifestPath = "config/platform-migration-manifest.json";
+    const signature = "public.dunning_lifecycle_handle_failure(uuid,timestamptz,text,text,integer,timestamptz,text,text)";
+    // Exact proposed bytes: keep active subscriptions active on dunning exhaustion (invariant repair).
+    const exactSql = String.raw`-- Keep the portable subscription active when the canonical retry cadence ends.
+-- The same open case and pending order remain repairable through the existing
+-- checkout token and captured settlement rail. Preserve the terminal automatic
+-- retry verdict and final notice; do not create a pause window or a second PSP.
+-- migration:allow-function: forward replacement of the existing invoker routine;
+-- its fixed search path and revoked browser/PUBLIC privileges remain unchanged.
+
+CREATE OR REPLACE FUNCTION public.dunning_lifecycle_handle_failure(
+  p_case_id uuid,
+  p_occurred_at timestamptz,
+  p_failure_class text,
+  p_failure_reason text,
+  p_retry_attempt integer,
+  p_next_retry_at timestamptz,
+  p_template_slug text,
+  p_recovery_url_path text
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SET search_path = public, pg_catalog
+AS $$
+DECLARE
+  v_case public.subscription_dunning_cases;
+  v_notification_id uuid;
+  v_event_id uuid;
+  v_at timestamptz := COALESCE(p_occurred_at, now());
+BEGIN
+  SELECT * INTO v_case FROM public.subscription_dunning_cases WHERE id = p_case_id FOR UPDATE;
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'subscription_dunning_case_not_found';
+  END IF;
+  IF v_case.status <> 'open' THEN
+    RETURN jsonb_build_object(
+      'caseId', v_case.id, 'caseStatus', v_case.status, 'paused', false, 'terminal', true
+    );
+  END IF;
+
+  IF p_next_retry_at IS NOT NULL THEN
+    UPDATE public.subscription_dunning_cases
+    SET retry_attempt = GREATEST(COALESCE(p_retry_attempt, v_case.retry_attempt + 1), 1),
+        next_retry_at = p_next_retry_at,
+        failure_class = COALESCE(p_failure_class, failure_class),
+        failure_reason = COALESCE(p_failure_reason, failure_reason),
+        updated_at = v_at
+    WHERE id = v_case.id
+    RETURNING * INTO v_case;
+
+    v_notification_id := public.dunning_lifecycle_queue_notice(
+      v_case.id, 'payment_failed', p_template_slug, v_case.retry_attempt, p_recovery_url_path
+    );
+    RETURN jsonb_build_object(
+      'caseId', v_case.id, 'caseStatus', v_case.status, 'notificationId', v_notification_id,
+      'retryAttempt', v_case.retry_attempt, 'paused', false, 'terminal', false
+    );
+  END IF;
+
+  UPDATE public.subscription_dunning_cases
+  SET retry_attempt = GREATEST(COALESCE(p_retry_attempt, v_case.retry_attempt), v_case.retry_attempt),
+      next_retry_at = NULL,
+      failure_class = COALESCE(p_failure_class, failure_class),
+      failure_reason = COALESCE(p_failure_reason, failure_reason),
+      updated_at = v_at
+  WHERE id = v_case.id
+  RETURNING * INTO v_case;
+
+  v_notification_id := public.dunning_lifecycle_queue_notice(
+    v_case.id, 'payment_expired', p_template_slug, 0, p_recovery_url_path
+  );
+
+  INSERT INTO public.subscription_events (
+    subscription_id, event_type, idempotency_key, payload, occurred_at
+  ) VALUES (
+    v_case.subscription_id, 'dunning_ladder_exhausted',
+    'dunning-exhausted:' || v_case.id::text,
+    jsonb_build_object('caseId', v_case.id, 'retryAttempt', v_case.retry_attempt),
+    v_at
+  )
+  ON CONFLICT ON CONSTRAINT subscription_events_subscription_id_idempotency_key_key DO NOTHING
+  RETURNING id INTO v_event_id;
+
+  RETURN jsonb_build_object(
+    'caseId', v_case.id, 'caseStatus', v_case.status, 'notificationId', v_notification_id,
+    'retryAttempt', v_case.retry_attempt, 'paused', false,
+    'pauseWindowId', NULL, 'terminal', true
+  );
+END;
+$$;
+`;
+    const approved = JSON.parse(readFileSync(new URL("../config/reviewed-platform-forwards.json", import.meta.url), "utf8")) as ReviewedForwardRegistry;
+    const migration = readFileSync(new URL(`../${priorPath}`, import.meta.url), "utf8");
+    const priorSql = migration.slice(migration.indexOf("CREATE FUNCTION public.dunning_lifecycle_handle_failure("), migration.indexOf("$$;", migration.indexOf("CREATE FUNCTION public.dunning_lifecycle_handle_failure(")) + 3);
+    function portableFixture(edit?: (registry: ReviewedForwardRegistry) => void, prior = priorSql, inBaseline = false) {
+      const manifest = JSON.parse(SYNTHETIC_TREE[manifestPath]!);
+      const history = inBaseline ? { [portableBaseline]: prior } : { [priorPath]: prior };
+      if (inBaseline) manifest.baseline.sha256 = sqlSha256(prior);
+      else manifest.forward.push({ file: priorPath, sha256: sqlSha256(prior) });
+      // Prior SQL belongs to the synthetic released root, before the separate control.
+      const sample = fixture(undefined, null, false, false, { ...history, [manifestPath]: json(manifest) });
+      sample.registry.portableReplacementForwards = structuredClone(approved.portableReplacementForwards!);
+      edit?.(sample.registry);
+      sample.apply({ [REVIEWED_FORWARD_PATH]: json(sample.registry) });
+      sample.approval = sample.commit("Separate portable approval and prior chain");
+      const append = (sql = exactSql, targetPath = path) => {
+        const next = structuredClone(manifest);
+        next.forward.push({ file: targetPath, sha256: sqlSha256(sql) });
+        sample.apply({ [targetPath]: sql, [manifestPath]: json(next) });
+      };
+      return { ...sample, append };
+    }
+    it.each([false, true])("admits the exact portable bytes in both gates (prior in baseline: %s)", (inBaseline) => {
+      const sample = portableFixture(undefined, priorSql, inBaseline);
+      try {
+        const binding = sample.registry.portableReplacementForwards![0]!;
+        expect(sqlSha256(exactSql)).toBe(binding.sha256);
+        expect(reviewedFunctionDefinitions(Buffer.from(priorSql)).get(signature)).toBe(binding.functions[0]!.beforeSha256);
+        expect(reviewedFunctionDefinitions(Buffer.from(exactSql)).get(signature)).toBe(binding.functions[0]!.afterSha256);
+        expect(isExpandOnlyPlatformForward(exactSql)).toBe(false);
+        sample.append(); const head = sample.commit("Exact portable feature");
+        for (const gate of gates(sample, head)) expect(gate).not.toThrow();
+      } finally { sample.cleanup(); }
+    });
+    it.each(["different function", "body byte", "body byte with file repinned", "body byte with definition repinned", "unlisted version", "unlisted path"])("refuses portable %s in both gates", (probe) => {
+      const changed = exactSql.replace("'terminal', true", "'terminal', truE");
+      const sample = portableFixture((registry) => {
+        if (probe === "body byte with file repinned") registry.portableReplacementForwards![0]!.sha256 = sqlSha256(changed);
+        if (probe === "body byte with definition repinned") registry.portableReplacementForwards![0]!.functions[0]!.afterSha256 = reviewedFunctionDefinitions(Buffer.from(changed)).get(signature)!;
+      });
+      try {
+        const sql = probe === "different function" ? exactSql.replace("public.dunning_lifecycle_handle_failure(", "public.unrelated(") : probe.startsWith("body byte") ? changed : exactSql;
+        const targetPath = probe === "unlisted version" ? path.replace("20261021120000", "20261021120001") : probe === "unlisted path" ? path.replace("active_repair", "unlisted") : path;
+        sample.append(sql, targetPath); const head = sample.commit("Refused portable feature");
+        for (const gate of gates(sample, head)) expect(gate).toThrow(/reviewed replacement|reviewed portable/u);
+      } finally { sample.cleanup(); }
+    });
+    it.each(["other signature", "second entry", "third managed replacement", "invalid path", "null before hash"])("refuses registry repin: %s", (probe) => {
+      const registry = structuredClone(approved);
+      const forward = registry.portableReplacementForwards![0]!;
+      if (probe === "other signature") forward.functions[0]!.signature = "public.unrelated(uuid,timestamptz,text,text,integer,timestamptz,text,text)";
+      else if (probe === "second entry") registry.portableReplacementForwards!.push(structuredClone(forward));
+      else if (probe === "third managed replacement") registry.replacementForwards.push(structuredClone(registry.replacementForwards[0]!));
+      else if (probe === "invalid path") forward.path = "supabase/migrations/20261021120000_unlisted.sql";
+      else forward.functions[0]!.beforeSha256 = null;
+      expect(() => readReviewedForwardRegistry(Buffer.from(json(registry)))).toThrow(probe === "third managed replacement" ? /two replacement forwards/u : /reviewed portable replacement/u);
+    });
+    it.each(["GRANT EXECUTE ON FUNCTION public.dunning_lifecycle_handle_failure(uuid,timestamptz,text,text,integer,timestamptz,text,text) TO service_role;", "REVOKE ALL ON FUNCTION public.dunning_lifecycle_handle_failure(uuid,timestamptz,text,text,integer,timestamptz,text,text) FROM PUBLIC;", "second CREATE OR REPLACE", "BEGIN;", "header drift", "trailing SECURITY DEFINER"])("refuses independently repinned portable SQL: %s", (probe) => {
+      const sql = probe === "second CREATE OR REPLACE" ? exactSql + exactSql : probe === "header drift" ? exactSql.replace("LANGUAGE plpgsql", "LANGUAGE plpgsql SECURITY DEFINER") : probe === "trailing SECURITY DEFINER" ? exactSql.replace("$$;", () => "$$ SECURITY DEFINER;") : `${exactSql}\n${probe}`;
+      const sample = portableFixture((registry) => {
+        const forward = registry.portableReplacementForwards![0]!;
+        forward.sha256 = sqlSha256(sql);
+        // Duplicate definitions refuse before their hashes can be collected.
+        if (probe !== "second CREATE OR REPLACE") forward.functions[0]!.afterSha256 = reviewedFunctionDefinitions(Buffer.from(sql)).get(signature)!;
+      });
+      try {
+        sample.append(sql); const head = sample.commit("Repinned unsupported portable SQL");
+        for (const gate of gates(sample, head)) expect(gate).toThrow(/reviewed replacement|reviewed portable/u);
+      } finally { sample.cleanup(); }
+    });
+    it.each([false, true])("refuses portable before-hash drift (prior in baseline: %s)", (inBaseline) => {
+      const sample = portableFixture(undefined, priorSql.replace("v_pause_window_id uuid;", "v_pause_window_id uuid; -- drift"), inBaseline);
+      try {
+        sample.append(); const head = sample.commit("Portable prior drift");
+        for (const gate of gates(sample, head)) expect(gate).toThrow(/definition drifted/u);
+      } finally { sample.cleanup(); }
+    });
+    it("refuses portable SQL and a registry change in the same feature diff", () => {
+      const sample = portableFixture();
+      try {
+        sample.append();
+        sample.registry.portableReplacementForwards![0]!.sha256 = sqlSha256(exactSql + "\n");
+        sample.apply({ [path]: exactSql + "\n", [REVIEWED_FORWARD_PATH]: json(sample.registry) });
+        const head = sample.commit("Self-approved portable feature");
+        for (const gate of gates(sample, head)) expect(gate).toThrow(/approved separately/u);
+      } finally { sample.cleanup(); }
+    });
+    it("refuses the first portable approval introduced with exact SQL", () => {
+      const sample = portableFixture((registry) => { delete registry.portableReplacementForwards; });
+      try {
+        sample.append();
+        sample.registry.portableReplacementForwards = structuredClone(approved.portableReplacementForwards!);
+        sample.apply({ [REVIEWED_FORWARD_PATH]: json(sample.registry) }); const head = sample.commit("Portable feature approves itself");
+        for (const gate of gates(sample, head)) expect(gate).toThrow(/approved separately/u);
+      } finally { sample.cleanup(); }
+    });
+    it("releases an earlier managed feature after a later portable control approval", () => {
+      const sample = fixture();
+      try {
+        sample.apply(sample.change); sample.commit("Managed feature before portable control");
+        sample.registry.portableReplacementForwards = structuredClone(approved.portableReplacementForwards!);
+        sample.apply({ [REVIEWED_FORWARD_PATH]: json(sample.registry) }); const head = sample.commit("Later portable control");
+        expect(() => assertDescendantSourceRelease(sample.repo, sample.rootCommit, head)).not.toThrow();
+      } finally { sample.cleanup(); }
+    });
+    it("binds the portable approval through later release controls", () => {
+      const sample = portableFixture();
+      try {
+        sample.append(); sample.commit("Portable feature before changed approval");
+        sample.registry.portableReplacementForwards![0]!.functions[0]!.afterSha256 = "f".repeat(64);
+        sample.apply({ [REVIEWED_FORWARD_PATH]: json(sample.registry) }); const head = sample.commit("Altered portable approval");
+        expect(() => assertDescendantSourceRelease(sample.repo, sample.rootCommit, head)).toThrow(/approved separately/u);
+      } finally { sample.cleanup(); }
+    });
+  });
   it("admits exact bytes after a separate control commit, including new signatures in the pinned file", () => {
     const sample = fixture();
     try {

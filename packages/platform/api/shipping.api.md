@@ -888,6 +888,7 @@ export interface DeliverySelectionEvidence {
 export type { DeliveryKind, DeliveryProviderKind, DeliveryCarrierKind, DeliveryService, PickupPoint, DeliveryOption, DeliveryOptionsResponse, PickupPointValidationRequest, PickupPointValidationResponse, PickupPointSearchRequest, PickupPointSearchResult, PickupPointSearchResponse, } from "./delivery.js";
 export type { CanonicalAddressInput, AddressCanonSource, AddressCanonLocalityCandidate, AddressCanonStreet, AddressCanonPostalCodeLookupRequest, AddressCanonLocalitiesLookupRequest, AddressCanonStreetsLookupRequest, AddressCanonPostalCodeLookupResponse, AddressCanonLocalitiesLookupResponse, AddressCanonStreetsLookupResponse, CustomerAddressKind, CustomerAddress, CustomerOrdererProfile, CustomerAddressesRequest, CustomerAddressesResponse, CustomerAddressUpsertRequest, CustomerAddressDeleteRequest } from "./address.js";
 export type { AdminShippingRateResponse, AdminSetShippingRateRequest, AdminSetShippingRateResponse } from "./shippingRate.js";
+export type { ShippingTerms, ShippingPolicyEntry, ShippingPolicy, ShippingSettings } from "./threshold.js";
 ```
 ## dist/shipping/contracts/shippingRate.d.ts
 
@@ -902,6 +903,32 @@ export interface AdminSetShippingRateRequest {
 }
 export interface AdminSetShippingRateResponse extends AdminShippingRateResponse {
     updated: true;
+}
+```
+## dist/shipping/contracts/threshold.d.ts
+
+```ts
+/** Shipping promises selected by an opt-in host policy. Runtime validation is server-only. */
+export interface ShippingTerms {
+    version: "shipping-threshold.v1";
+    currency: string;
+    flatMinor: number;
+    freeThresholdMinor: number;
+}
+export interface ShippingPolicyEntry {
+    enabled: boolean;
+    flatMinor: number;
+    freeThresholdMinor: number;
+    effectiveFrom: string;
+}
+export interface ShippingPolicy {
+    version: "shipping-policy.v1";
+    current: ShippingPolicyEntry | null;
+    scheduled?: ShippingPolicyEntry | null;
+}
+export interface ShippingSettings {
+    legacyFlatMinor: number;
+    policy: ShippingPolicy | null;
 }
 ```
 ## dist/shipping/customerAddressesHandler.d.ts
@@ -1022,6 +1049,8 @@ export type { AdminShippingRateResponse, AdminSetShippingRateRequest, AdminSetSh
 export { createAdminShippingRateHandler } from "./adminShippingRateHandler.js";
 export type { AdminShippingRateHandlerDeps, ShippingRateDataPort, ShippingRateHandlerSchemas } from "./shippingRatePorts.js";
 export { createShippingBindings, type ShippingBindingDependencies, type ShippingBindings } from "./bindings.js";
+export type { ShippingTerms, ShippingPolicyEntry, ShippingPolicy, ShippingSettings } from "./contracts/threshold.js";
+export { shippingTermsSchema, shippingPolicySchema, parseShippingTerms, hasShippingTerms, normalizeShippingPolicy, resolveShippingPolicy, resolveThresholdShipping } from "./thresholdPolicy.js";
 /** Sparse canonical projections, never an install chain. */
 export declare const SHIPPING_MIGRATIONS: readonly [{
     readonly id: "20260807140000_read_parity_catalog";
@@ -1030,9 +1059,9 @@ export declare const SHIPPING_MIGRATIONS: readonly [{
     readonly sha256: "fcf3827028c1651ae42a7c7d7472153825a3121c936d58a3d105befc7dece9ea";
     readonly url: URL;
 }, {
-    readonly id: "20261021120000_shipping_flat_rate_seed";
-    readonly catalogPath: "db/platform/migrations/20261021120000_shipping_flat_rate_seed.sql";
-    readonly position: 71;
+    readonly id: "20261021200000_shipping_flat_rate_seed";
+    readonly catalogPath: "db/platform/migrations/20261021200000_shipping_flat_rate_seed.sql";
+    readonly position: 72;
     readonly sha256: "34f8696f515a2cc072395db5a3de2d9b09643d13236ee3851d0d78123f907eae";
     readonly url: URL;
 }];
@@ -1106,4 +1135,50 @@ export interface ShippingRateHandlerSchemas {
     adminSetShippingRateResponseSchema: Schema<AdminSetShippingRateResponse>;
 }
 export {};
+```
+## dist/shipping/thresholdPolicy.d.ts
+
+```ts
+import { z } from "zod";
+import type { ShippingPolicy, ShippingSettings, ShippingTerms } from "./contracts/threshold.js";
+export declare const shippingTermsSchema: z.ZodObject<{
+    version: z.ZodLiteral<"shipping-threshold.v1">;
+    currency: z.ZodString;
+    flatMinor: z.ZodNumber;
+    freeThresholdMinor: z.ZodNumber;
+}, z.core.$strict>;
+export declare const shippingPolicySchema: z.ZodObject<{
+    version: z.ZodLiteral<"shipping-policy.v1">;
+    current: z.ZodNullable<z.ZodObject<{
+        enabled: z.ZodBoolean;
+        flatMinor: z.ZodNumber;
+        freeThresholdMinor: z.ZodNumber;
+        effectiveFrom: z.ZodString;
+    }, z.core.$strict>>;
+    scheduled: z.ZodOptional<z.ZodNullable<z.ZodObject<{
+        enabled: z.ZodBoolean;
+        flatMinor: z.ZodNumber;
+        freeThresholdMinor: z.ZodNumber;
+        effectiveFrom: z.ZodString;
+    }, z.core.$strict>>>;
+}, z.core.$strict>;
+/** Absence selects legacy behavior; malformed retained promises refuse. */
+export declare function parseShippingTerms(value: unknown): ShippingTerms | undefined;
+export declare function hasShippingTerms(quote: {
+    context?: {
+        shippingTerms?: unknown;
+    };
+}): boolean;
+/** Resolve effective entries on read, without a scheduled write. */
+export declare function normalizeShippingPolicy(policy: ShippingPolicy, asOf: Date | string): ShippingPolicy;
+export declare function resolveShippingPolicy(settings: ShippingSettings, asOf: Date | string, currency: string): {
+    configured: boolean;
+    flatMinor: number;
+    terms?: ShippingTerms;
+};
+/** Only product payable after discounts counts; equality receives free delivery. */
+export declare function resolveThresholdShipping(terms: ShippingTerms, productPayableMinor: number): {
+    grossMinor: number;
+    remainingMinor: number;
+};
 ```
