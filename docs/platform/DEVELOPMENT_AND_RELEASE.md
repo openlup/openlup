@@ -226,7 +226,9 @@ owns release permissions, setup, detailed refusals and recovery. The sequence is
    legacy body first, then validated package fragments in byte order of path,
    and deletes only consumed fragments after successful planning and writes,
    then stages exactly those deletions so preparation can read the Git inventory;
-   historical sections stay byte-identical. Add notable-change notes under
+   historical sections stay byte-identical. The packed CHANGELOG keeps the
+   current release and the two previous ones; older sections move verbatim to
+   `CHANGELOG-HISTORY.md`. Add notable-change notes under
    `packages/<package>/changes/`, with no per-file catalogue rows. A version bump
    by itself publishes nothing. Refresh the source contract's digests at release
    prep only with `node --experimental-strip-types scripts/source-release-preparation.ts --write`

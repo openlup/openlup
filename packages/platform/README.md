@@ -4,12 +4,12 @@ Development preview. This package is part of the publishable set with core and o
 
 It holds the runnable server substrate an OpenLup application composes: the Node HTTP runtime, BFF dispatch, scheduling and job leases, blob storage, data gateways, the node-postgres migration runner and bundle composition. Ports and their contracts stay in `@openlup/core/platform-runtime`.
 
-For the prepared `0.20.0` set, read the [adjacent-release migration and known
-limitations](CHANGELOG.md#0200) before selecting the opt-in M05 parity seams or
-M06 composition bindings. M06 remains incomplete: inventory and shipping entries
+For the prepared `0.21.0` set, read the [adjacent-release migration and known
+limitations](CHANGELOG.md#0210) before selecting the opt-in M05 parity seams or
+M06 composition bindings. M07 is C2 code-complete; selectors default-off. M06 remains incomplete: inventory and shipping entries
 are development-preview surfaces, with managed-host proof classes pending in the
 [M06 parity ledger](../../docs/platform/plans/oss-m06-stock-reservations-delivery.md#parity-pending-rows).
-The size gate compares the prepared `0.20.0` set with the published `0.19.0` tarball;
+The size gate compares the prepared `0.21.0` set with the published `0.20.0` tarball;
 preparation, offline adapter evidence and a passing size cap grant no publication
 or provider-account certification.
 

@@ -2194,6 +2194,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/CHANGELOG-HISTORY.md",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/CHANGELOG.md",
       "class": "public-output"
     },
