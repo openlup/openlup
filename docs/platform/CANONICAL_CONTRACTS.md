@@ -866,3 +866,14 @@ The incumbent authority and PostgreSQL factory retain their sequential schedulin
 and observed-base identity. The native effective-bundle witness is
 `tests/postgres/bundleEffectiveParity.test.ts`; all parity additions use existing
 collectors and synthetic host data.
+
+## Fulfillment observation and sync execution
+
+The [fulfillment contract owner](ARCHITECTURE_AND_EXTENSIONS.md#fulfillment-contracts)
+explains G15–G17: consecutive-success coverage confirmation, timed local stock
+lines and host-local observation persistence. The runtime workers retain donor
+effect/replay/terminal/stale behavior through those ports. Provider readback is
+never a substitute for local chronology. Cancelled local rows receive evidence
+only; older shipped observations cannot invoke handover or change delivery
+alignment. Late delivery remains a later-only, once-per-case native operation;
+P3 introduces no alignment or replacement-confirmation caller.

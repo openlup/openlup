@@ -717,6 +717,46 @@ movements, lots, expiry, replay and conflicts. Inventory reservations/availabili
 and catalog facts retain their existing owners. Host storage label reads remain
 independent of provider support; capability selection performs no I/O.
 
+P3 supplies the [verified ingress](../../packages/platform/src/fulfillment/verifiedIngress.ts)
+and [reconciliation worker](../../packages/platform/src/fulfillment/providerReconciliationWorker.ts).
+Approved G17 makes host persistence explicit as an inline input: recordObservation
+atomically deduplicates eventKey and retains firstReceivedAt; markProcessed is
+idempotent. Replays resume idempotent lifecycle writes after interruption and
+produce no second durable effect. The host readLocalFulfillmentState supplies
+status, latestStatusOccurredAt and handedOverAt. Cancelled/exception rows still
+write status evidence but skip acceptance, exception holds, stock, handover,
+tracking and invoices. Older known occurrences skip convergence effects; an
+already handed-over row can still retry its accounting invoice. Unknown times
+remain null. Provider keys must distinguish kind/outcome and known occurrence
+(or supplied snapshot revision); identical observations without time carry no
+invented ordering. Private authentication/parsing, mapper and key bytes stay with
+the adapter/host. F3 contention annotations and recovered-picked receipts remain
+typed diagnostics. Effects retain stock → handoff → tracking → invoice order.
+
+[Stock sync](../../packages/platform/src/fulfillment/providerStockSyncWorker.ts)
+uses approved G15 coverageGapSkus on SyncCursor: absent is empty, and only the
+preceding succeeded run can confirm a repeated sellable coverage gap. It writes
+the sorted current set on success and [] on failure. Approved G16 makes
+readLocalInventoryStock(requestedAt) return unaggregated lines with skuRef,
+quantity balances, fulfillable/location/lot status and expiry. M08 filters and
+sums at the same captured clock passed to active-reservation reads; expiry exactly
+at requestedAt is unusable. Neither amendment changes the A3 stockSync provider
+or M06 authority. Host compatibility inputs preserve original run IDs, sentinel,
+keys and movement-window time zone. Product sync retains additive pack push,
+missing-metadata skip and durable sync markers; pull never creates an unknown SKU
+or overwrites local ownership. Evidence reads stay read-only and retain safe
+product authorization/read refusal reasons (F8).
+
+The [conformance runner](../../packages/platform/src/fulfillment/adapterConformance.ts)
+accepts readonly FulfillmentAdapterConformanceSubject[] and returns sanitized
+FulfillmentAdapterConformanceEvidence. Adapter-owned offline per-operation
+fixtures exercise actual-command identity, before-I/O mismatch refusal, replay,
+unsupported operations, exact absence scope/proof, local-missing unknown, selection
+and redaction. A host store fixture covers G14 attempt replay/remap and atomic
+draft re-claim; the worker proof bounds contact remapping to one. Native database
+atomicity and arrival continuity still require P4. This source is unmounted and
+default-off; no live provider or installation claim follows from fixture proof.
+
 [Delivery alignment](../../packages/platform/src/fulfillment/contracts/alignment.ts)
 preserves the arrival-only rule: late delivery extends the next cycle, never stacks
 deliveries or moves it earlier. A replacement may settle alignment as `aligned`

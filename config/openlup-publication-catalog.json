@@ -3150,11 +3150,19 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/fulfillment/adapterConformance.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/fulfillment/contracts/alignment.ts",
       "class": "public-output"
     },
     {
       "path": "packages/platform/src/fulfillment/contracts/capabilities.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/contracts/conformance.ts",
       "class": "public-output"
     },
     {
@@ -3190,11 +3198,23 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/fulfillment/fulfillmentObservationEffects.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/fulfillment/index.ts",
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/fulfillment/lowStockEvidenceHandler.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/fulfillment/normalizedFulfillmentFacts.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/observationProjection.ts",
       "class": "public-output"
     },
     {
@@ -3207,6 +3227,10 @@
     },
     {
       "path": "packages/platform/src/fulfillment/paidHandoffPorts.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/productReconciliationEvidenceHandler.ts",
       "class": "public-output"
     },
     {
@@ -3230,7 +3254,43 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/fulfillment/providerProductSyncWorker.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/providerReconciliationError.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/providerReconciliationTerminalSkip.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/providerReconciliationTimestamp.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/providerReconciliationWorker.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/providerStockAvailability.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/providerStockSyncWorker.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/providerTrackingReferences.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/fulfillment/statusMap.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/verifiedIngress.ts",
       "class": "public-output"
     },
     {
@@ -4634,11 +4694,23 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/fulfillment/adapterConformance.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/fulfillment/contracts.test.ts",
       "class": "public-output"
     },
     {
       "path": "packages/platform/test/fulfillment/dispatchRecovery.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/fulfillment/fixtures.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/fulfillment/observationEffects.test.ts",
       "class": "public-output"
     },
     {
@@ -4650,11 +4722,31 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/fulfillment/productSync.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/fulfillment/providerCommandLedger.test.ts",
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/fulfillment/reconciliation.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/fulfillment/reconciliationEvidence.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/fulfillment/statusMap.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/fulfillment/stockSync.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/fulfillment/verifiedIngress.test.ts",
       "class": "public-output"
     },
     {

@@ -284,3 +284,98 @@ P2 self-retro: checking the source register distinguished the separately assigne
 ledger protocol from the frozen dispatch store; an initial fence-gap concern was
 withdrawn before edits. Lesson: compare the owned protocol boundary before
 requesting a port amendment; preserve G14 as the only P1 signature change.
+
+## P3 local implementation task
+
+Outcome: contribute observation verification/apply/replay, reconciliation, tracking,
+stock/product sync, evidence readers and the offline adapter/store conformance
+runner. Coordinator and owner's delegate approve G15, G16 and G17 in this diff.
+Authority: assigned m08-p3 worktree, base aa03ee4a; local edits, npm ci, focused
+checks and staging new files for catalogue inspection only. No commit, push, PR,
+release, provider call, SQL, review-script change or other-worktree mutation.
+P2 review changes remain the coordinator's integration responsibility. Native
+committed review is a later supervisor step, not an uncommitted PASS claim.
+
+Approved port amendments (also declared in the fragment and API reports):
+- G15 extends SyncCursor with coverageGapSkus: readonly string[] (legacy absence
+  reads as []). Only a succeeded predecessor confirms coverage; persist the
+  current sorted sellable/provider-stock gap intersection on success, [] on
+  failure. Confirmation is the intersection with the preceding successful set,
+  not a new alert on the first run. Failure breaks consecutiveness.
+- G16 replaces balances-only readLocalInventoryStock with timed unaggregated
+  lines: skuRef, quantity (onHand/reserved/unavailable/safetyStock), fulfillable,
+  locationStatus, lotStatus, expiresAt. The worker passes captured requestedAt
+  and performs the donor filter/sums unchanged. Expiry at requestedAt is unusable.
+  This unreleased M08 seam changes no M06 API or adapter stockSync provider shape.
+- G17 adds inline worker-input localPersistence, without a named export:
+  readLocalFulfillmentState(ref) returns status/latestStatusOccurredAt/handedOverAt;
+  recordObservation is keyed by eventKey, retains firstReceivedAt and returns
+  replayed; markProcessed is idempotent. Hosts own durable transactions, replay
+  and recovery. Persisted-state-fit.md records the completed state probe:
+  product state fits existing operations; cron pagination is outside the worker.
+
+Neutralization register (no algorithm refactor):
+1. Observation effects: donor stock → handoff → each tracking → invoice and
+   callback/throw order retained. Typed normalized observation replaces arbitrary
+   rawEvent/payload; status policy and opaque effect keys are injected.
+2. Verified ingress: host adapter authenticates untouched bytes before its private
+   parse/map; package projects only typed evidence. Host lifecycle operations,
+   stable event keys, superseding-conflict classification, contention annotation
+   and recovered-picked receipt are injected. HTTP/token/route/vendor codecs stay
+   private; a replay cannot create a second effect.
+3. Reconciliation: normalized readback replaces private list DTO/mapping; batch
+   enumeration, dispatch correlation, acceptance, exception and invoice operations
+   and original key bytes are injected. Preserve local off-track evidence-only,
+   nullable timestamps, stale skip (including invoice retry), per-row failures and
+   classified state-conflict quarantine. Inline unmapped correlation evidence
+   retains the pre-map ACK and off-track no-quarantine boundary without changing
+   the adapter readback union. Provider-specific error decoding stays
+   host-side; safe typed refusal details replace raw error strings.
+4. Timestamp calendar/zone validation and canonical off-track set stay unchanged.
+   Tracking keeps first trimmed number and provider-carrier selection precedence;
+   carrier normalization and public URL construction stay private callbacks.
+5. Stock: typed snapshot/quantity/cursor projections replace donor private DTOs;
+   original run/current/snapshot/evidence/sentinel bytes and movement time zone are
+   host inputs. Availability, freshness, reservations, two-run confirmation,
+   packaging exclusion, partial failures and recovery are unchanged. No inventory
+   write/availability authority is implemented. G15/G16 are explicit amendments.
+6. Product: existing typed product port replaces private interfaces; host supplies
+   collection identity and original evidence keys. Push metadata stays private;
+   ensure-null skip, additive EAN diff, sync markers, local ownership refusal,
+   conflict mapping/resolution and per-SKU failures stay unchanged.
+7. Evidence readers: inline HTTP shapes, injected BFF responder and request/response parsers
+   replace private web framework/schema imports. Method/auth/validation/read order
+   and F8 authorization/read refusal detail remain. No resolving mutation added.
+8. observationProjection and adapterConformance are new boundary proof code.
+   Only two conformance types are added to the type-only contracts entry; the
+   approved runner name is runFulfillmentAdapterConformance (superseding the
+   proposed assert name). All other P3 exports follow the frozen register.
+
+Acceptance/proof: donor-vs-inline F5 trace and throw boundaries; F3 contention,
+annotation and recovered-picked diagnostics; F8 refusal details; G15 consecutive
+success/failure-reset and G16 exact expiry; G17 cancelled evidence-only, stale
+skip without alignment change, receipt replay and idempotent processing; full and
+minimal fixture adapters plus G14/reclaim/remap store proof. Run only approved
+focused checks, serialize build/API/pack output, recount all paths against base
+(cap 35), keep package README unchanged, enforce root-doc gzip <=49,152 B.
+
+P3 local completion evidence: full scope fits 34 paths against aa03ee4a (cap 35),
+including generated API/catalogue companions; no split. Eleven new semantic cases
+pass (27 fulfillment plus 1,498 generated boundary cases; combined local elapsed
+3.576 s, new test bodies 0.0495 s). The focused type/API/structural/ESLint/neutrality,
+pack and policy checks pass. Candidate-byte pack: 1,072,518 B packed, 4,794,795 B
+unpacked, 1,503 files; code gzip 929,041 B; root-doc gzip unchanged 47,850 B with
+1,302 B headroom. All browser subcaps pass, fulfillment contracts 20/32 B.
+The package README and source-release snapshot are unchanged; live bindings pass,
+and snapshot refresh belongs to release preparation. No no-impact trailers are
+required: the affected fulfillment owner section is substantively updated.
+Risk/proof boundary: local chronology, replay and before-I/O identity are material
+behavior; these fixture checks do not prove durable host atomicity or native
+arrival alignment. P4 and the supervisor's committed native review remain owed.
+No native review/repair cycle was consumed, and no delivery authority was added.
+
+P3 self-retro: the first test run exposed two forbidden internal BFF imports and
+an undefined sync-return redaction bug; the later lint read ruled out cross-module
+HTTP/BFF edges entirely. Module boundary friction → inject the existing responder
+and inline request shape, preserving handler behavior without adding an edge or
+changing the rule. Initial npm ci hit sandbox DNS; the authorized retry succeeded.
