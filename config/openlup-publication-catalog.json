@@ -2350,6 +2350,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20260810180000_payment_settlement_rail.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/sql/20260810180001_self_host_actor_auth.sql",
       "class": "public-output"
     },
@@ -2382,11 +2386,19 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20260815150000_payment_truth_reconciliation.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/sql/20260817180000_promotion_claim_lifecycle.sql",
       "class": "public-output"
     },
     {
       "path": "packages/platform/sql/20260817180100_promotion_claim_lifecycle_validation.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20260826100000_late_payment_shifts_the_subscription_cycle.sql",
       "class": "public-output"
     },
     {
@@ -3626,11 +3638,23 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/payments/postgresPaymentTruth.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/payments/preparedAttempt.ts",
       "class": "public-output"
     },
     {
       "path": "packages/platform/src/payments/preparedAttemptFinalization.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/payments/schemaCapabilities.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/payments/sql.ts",
       "class": "public-output"
     },
     {
@@ -4595,6 +4619,10 @@
     },
     {
       "path": "packages/platform/test/payments/contracts.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/payments/postgresPaymentTruth.test.ts",
       "class": "public-output"
     },
     {
@@ -21827,6 +21855,10 @@
     },
     {
       "path": "tests/postgres/operatorInvitationManaged.conformance.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/paymentsNativeConformance.test.ts",
       "class": "public-output"
     },
     {

@@ -46,7 +46,10 @@ export interface PaymentExecutionEnvelope {
   diagnostics: Readonly<Record<string, string | number | boolean | null>>;
 }
 
-/** Host identity/key/fingerprint and configured integer-minor money pass verbatim. */
+/** Host identity/key/fingerprint and configured integer-minor money pass verbatim.
+ * Missing adapter-required input must refuse before dispatch with exact
+ * notDispatched evidence (phase before-dispatch), never unknown or dispatched.
+ */
 export interface PaymentAttemptPort {
   validateInput(input: {
     attemptRef: string;
@@ -56,6 +59,9 @@ export interface PaymentAttemptPort {
     money: { amountMinor: number; currency: string };
     mode: "live" | "test";
     purpose: "initial" | "renewal-unattended" | "recovery";
+    methodSelection?: { family: "card" | "wallet" | "bank-redirect" | "one-time-code"; channelRef?: string };
+    /** Transient dispatch input only; never persist, audit, log or diagnose. */
+    payer?: { email: string; name?: string };
     storedMethod?: { reference: string; mandate: StoredMandateSnapshot };
     /** Client-entered, server-submitted authorization; never persisted or echoed. */
     customerAuthorization?: TransientSecret;

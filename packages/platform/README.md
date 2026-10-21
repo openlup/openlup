@@ -1061,3 +1061,25 @@ release preparation assembles the shipped CHANGELOG. Follow the
 `./payments/contracts` is type-only: execution/dispatch, transient method handoff, capability overlay, verified money/method evidence, bounded readback/absence, neutral refusals, refund observations and multi-subject conformance fixtures. Verification uses receipt time for freshness; ingress starts processing at receipt time and reuses durable first receipt on redelivery. Event identity includes outcome class. Transient authorization and opaque handoffs never enter persisted diagnostics. Capability support is explicit; timeout/truncation is unknown, never exact absence. Refunds require explicit evidence by default; `legacy-assume-full` is an explicit host opt-in. See the [M07 ledger](../../docs/platform/plans/oss-m07-payments-money-truth.md).
 
 The payments entry also exports verified ingress, canonical truth fingerprints, method lifecycle/refusal handoff, reconciliation/verify-now and three runner-independent conformance functions. A new internal boundary projects verified envelopes into the contributed processing carrier: original bytes reach verification unchanged, receipt time starts processing, and durable first receipt overrides redelivery time. Full-reversal chargebacks use the existing dispute path. Snapshot and delta observations preserve original payment money; missing observation, required money or identity refuses before terminal application. Hosts own durable stores and response transport. Conformance checks exact identity/money, capability/port agreement and transient-secret exclusion; its evidence contains no handoff. Real-store durability still requires a selected-store proof.
+
+`createPostgresPaymentTruthPort` accepts the platform data executor structural
+shape and `PostgresPaymentTruthOptions` from the contracts entry. It preserves
+the native truth ingest, reconciliation, sweep and readback SQL. `PAYMENT_MIGRATIONS`
+projects canonical units 10/35/56 byte for byte, with path, position, SHA-256 and
+asset URL; install the complete catalogue, never those three files alone.
+`paymentSchemaDescriptor` admits direct truth, settlement and later-only cycle
+alignment, and explicitly refuses prepared durable storage, method setup,
+absence reopen and cumulative refund. Refunds are purely financial. Seven real
+PostgreSQL cases cover fresh/prefix installs, replay/conflict, unknown readback,
+lost acknowledgement, rollback, denied access, dunning/recovery, concurrency and
+later-only dates; this does not claim managed-store parity or host activation.
+
+Attempt input adds optional method selection with opaque, persistable channelRef
+and transient payer email/name. Payer contact is dispatch-only: never persist,
+audit, log or diagnose it. Missing adapter-required input must refuse before
+dispatch with exact `notDispatched` evidence. Conformance scans the execution
+and complete projected stored payload for transient values. Nested normalized
+evidence copies only declared typed fields, including nested facts; unknown
+extra properties are excluded. Incomplete chargeback evidence remains stored as
+a refund and unapplied, a declared operator recovery limit: reclassification
+would apply the donor dispute path without checking completeness.
