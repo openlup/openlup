@@ -280,6 +280,7 @@ Executed evidence is scoped to the named test and store. Remaining required outc
 | native flat-rate save needs a commerce_settings grant not shipped in the baseline; forward-migration decision | CLOSED by design B: position-72 `20261021200000_shipping_flat_rate_seed` seed-only forward and named role-free native rate capability; no database grant. |
 | Native new-purchase stock read | deferred to the native-backend parity round (owner 2026-10-21), second after M05 bundle-1 |
 | native shipping-rate save has no durable audit | Native-backend parity gap: best-effort unsupported audit is swallowed by the incumbent handler; no durable audit claimed. |
+| Native flat-rate value guard (coordinator advisory, 2026-10-21) | value_minor >= 0 is a known non-DB guard (host request schema); a CHECK is a candidate for the native-backend parity round. |
 
 ### Native flat-rate decision (2026-10-21)
 
@@ -351,3 +352,73 @@ P5b self-retro: incorrect fixture assumptions caused setup failures (a non-expor
 Combined P5a/P5b merge reconciliation (2026-10-21, main `b18460e7`): local content edits and requested focused serial checks only; the author stages and commits. No Git writes, secrets, other worktrees, full suite, `test:scoped`, resource gate, submission or release. Scope is the combined PR paths and generated companions. Preserve main’s sorted registrations, CHANGELOG and source-release contract; keep both P5 fragments unreleased. Remove only the unconsumed adjustment metadata (the existing native adjustment refusal remains), correct the two stale evidence statements and regenerate API snapshots; outside inventory/shipping/composition only pure API reorders are allowed. Exact checks, merged-tree impact trailers, pack/docs comparison and staging list are in the requested merge report. Delivery still requires the author’s index reconciliation, commit and required native review/verification.
 
 Merge self-retro: unchanged registrations need verification rather than edits; removing unused refusal metadata is smaller than adding a redundant consumer. No successor work opened.
+
+
+## S1: 0.20.0 package set
+
+Finite outcome (2026-10-21, merge-slot row 27, "M06 S1"): prepare the complete
+minor `0.20.0` set from main `4c0554890eb91bb0256dea26a8483b3160f69a36`,
+following the `0.19.0` preparation in #266. Core and outbox are unchanged
+republications from `0.19.0`; UI remains private `0.0.0`. The new platform entry
+consumes only `dunning-lifecycle-active-repair.md` and
+`m06-native-flat-rate-save.md`, records M06's end-to-end development-preview
+outcomes and retains the current limitations. P5a/P5b already shipped in
+`0.19.0`; their release entries are not repeated as new changes.
+
+Authority: the coordinator's row-27 brief assigns Codex file-content preparation
+and the named focused checks on branch `claude/m06-s1-0.20.0`. No Git writes of
+any kind (including fixture repositories), other worktrees, secrets, broad suite,
+`npm test`, `test:scoped`, `verify`, submission, merge, tag, account or registry
+mutation are delegated. The supervisor owns staging, commits and required native
+review/final verification. Release dispatch and protected approval are human-only.
+
+Acceptance/proof plan: generate versions, exact internal pins, lock carriers,
+changelog sections and source bindings with the existing release functions;
+preserve all pre-0.20.0 changelog history byte-for-byte and empty Unreleased
+sections. Keep caps unchanged, including platform root-docs gzip at 49,152 B.
+Use the smallest content-only adaptation of the existing bump planner because
+the CLI stages fragment deletions. No persistent tool or control is added.
+Validate Migration blocks against the existing migration rule, measure root-docs
+bytes and run only the requested focused static/package checks. Source-preparation
+fixture tests require Git writes and therefore remain a supervisor obligation.
+Policy and strict source-preparation refusals under the unstaged fragment deletions
+must be reported, not treated as passing committed evidence. Exact results and
+computed no-impact trailer proposals accompany the supervisor handoff.
+
+Dispatch sequencing: `0.20.0` waits until `0.19.0` is published and its C4
+readback is recorded, so the sets go out in order. Until that evidence exists,
+retain the previously released `0.18.0` artifact baselines; after C4, the
+supervisor must refresh all three baselines from the verified `0.19.0` artifacts
+and rerun the affected checks before delivery. The prepared version alone proves
+no publication. Managed host flat-rate save and the C5 dispositions retain their
+existing owners and gates.
+
+Risk: inaccurate release claims or fabricated baseline identity could mislead
+adopters or erase the growth comparison. Retain the actual prior artifact
+identity and name the pending predecessor readback instead. No runtime, SQL, API,
+export, cap or budget change belongs to S1.
+
+
+### S1 focused preparation evidence
+
+The three publishable manifests, exact pins and both lock carriers now name
+`0.20.0`. Only the two named fragments are consumed; all three changelogs keep
+one empty Unreleased section and byte-identical history from `0.19.0` onward.
+Core/outbox source trees match #266. Canonical materialized-candidate source
+binding derivation is generated; its strict CLI write/check and policy still
+refuse the unstaged fragment deletions. No refusal is waived.
+
+Focused results: ast-grep, lint (zero errors / 33 existing warnings), five-project
+typecheck (zero unresolved edges or consumer errors), all three API checks and
+set manifest-only validation PASS. Migration-marker/history validation PASS;
+this is not a committed-base/head `assertMigrationBlocks` run. Canonical navigation
+is byte-identical. Direct documentation-impact computation reports four
+obligations, one answered by the package README and three awaiting proposed
+supervisor commit trailers. Platform root docs measure 42,575/49,152 gzip B
+across five/ten files, leaving 6,577 B. Full artifact/installed-consumer evidence,
+Git-writing source-preparation tests, predecessor C4/rebaseline and committed
+review/final verification remain supervisor/human gates within their authority.
+
+Self-retro: automatic deletion staging conflicts with content-only preparation
+→ reuse the existing pure bump planner and source derivation, report native
+refusals explicitly, and leave Git reconciliation to the supervisor.

@@ -8,6 +8,58 @@ SemVer promise.
 
 ## [Unreleased]
 
+## [0.20.0]
+
+- Publishable on the npm `latest` dist-tag as `0.20.0`, from tag
+  `openlup-platform-v0.20.0`.
+
+- Keep active subscriptions active on dunning exhaustion (invariant repair).
+
+Migration: apply the complete portable catalogue through
+`20261021120000_dunning_lifecycle_active_repair.sql` at position 71. Previously,
+NULL next retry expired the case and paused an active subscription; it now leaves
+the case open and repairable, retains the final notice and exhaustion event, and
+changes no subscription or cycle dates. Existing rows are not rewritten. Pass
+NULL only when `isDunningLadderExhausted` holds; a class-terminated rung-one refusal
+still must not be passed as NULL. There is no managed twin yet; the managed
+baseline still needs a separate forward.
+
+- Enable native flat-rate read/save through a named role-free capability lane.
+- Require the native port and Core readiness for the shipping seed migration.
+- Refuse missing-row saves; native audit remains explicitly unsupported and best effort.
+
+Migration:
+Apply the complete portable chain through 20261021200000_shipping_flat_rate_seed.
+The seed preserves an existing rate and inserts zero only when absent; no ACL or
+role changes are made. New code on an unmigrated schema keeps refusing. Old code
+ignores the row, but older runners refuse the extended ledger. Application rollback
+does not reverse the migration. Managed host-save authority remains pending.
+
+### M06 completion
+
+- M06 provides development-preview inventory contracts, stock/ATP reads,
+  reservations and release/consume operations, subscription forecasts, delivery
+  selection, address handlers and flat-rate handling through explicit inventory
+  and shipping composition. Native flat-rate read/save now works through its
+  named capability lane and applied-seed readiness proof; host-owned policy and
+  unsupported operations retain their explicit boundaries.
+
+### Known limitations
+
+- Native new-purchase stock read is deferred to the native-backend parity round
+  (owner 2026-10-21), second after M05 bundle-1; required readiness still refuses
+  honestly.
+- Native address writes are unsupported and refuse required readiness.
+- Native shipping-rate save has no durable audit: audit is explicitly unsupported,
+  and the incumbent handler swallows the best-effort audit failure.
+- Native flat-rate value bounds (integer, 0 <= value <= the handler maximum) are
+  enforced by the host request schema, not a database CHECK; the reference maximum
+  is 100,000 minor units.
+- Busy/try-gate protocol, durable stock-wait continuity and staging flag/TTL rows
+  transferred to C5 adopter evidence are dispositions, not PASS.
+- Managed host flat-rate save remains pending host authority.
+- Reference shipping UI copy remains locale-specific until M16.
+
 ## [0.19.0]
 
 - Publishable on the npm `latest` dist-tag as `0.19.0`, from tag
