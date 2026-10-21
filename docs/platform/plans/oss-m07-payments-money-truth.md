@@ -347,7 +347,7 @@ packed CHANGELOG keeps the current release and the two previous ones, so
 `[0.18.0]` and older move byte-identical to the non-packed
 [CHANGELOG-HISTORY.md](../../../packages/platform/CHANGELOG-HISTORY.md), and the
 [release guide](../DEVELOPMENT_AND_RELEASE.md) states the rule. The packed docs
-class measures 45,553 of 49,152 B. The release notes describe the example
+class measures 45,646 of 49,152 B. The release notes describe the example
 payment adapter subpaths neutrally and the README names them; the neutrality
 script's exact-file A1 subpath allowance adds only the history file, so the
 verbatim move adds no count.

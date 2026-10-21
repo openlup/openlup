@@ -6,7 +6,7 @@ It holds the runnable server substrate an OpenLup application composes: the Node
 
 For the prepared `0.21.0` set, read the [adjacent-release migration and known
 limitations](CHANGELOG.md#0210) before selecting the opt-in M05 parity seams or
-M06 composition bindings. M07 is C2 code-complete; selectors default-off. M06 remains incomplete: inventory and shipping entries
+M06 composition bindings, or the M07 payment selectors. M07 payment truth is complete for this wave; its selectors are default-off. M06 remains incomplete: inventory and shipping entries
 are development-preview surfaces, with managed-host proof classes pending in the
 [M06 parity ledger](../../docs/platform/plans/oss-m06-stock-reservations-delivery.md#parity-pending-rows).
 The size gate compares the prepared `0.21.0` set with the published `0.20.0` tarball;
@@ -774,7 +774,7 @@ for both-bundle commands, the committed managed grants and installation limits.
 
 ## Communications import
 
-For adoption from `0.16.0`, follow the [0.17.0 Migration guidance](CHANGELOG.md#0170)
+For adoption from `0.16.0`, follow the [0.17.0 Migration guidance](CHANGELOG-HISTORY.md#0170) (source repository)
 for the complete package set, canonical SQL installation and host-owned bindings.
 
 M04 P1 relocates the existing public implementation without changing its reference
