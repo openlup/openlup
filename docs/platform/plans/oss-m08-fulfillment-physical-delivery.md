@@ -17,8 +17,8 @@ no incompatible runtime, peer, lifecycle or consumer requires another artifact.
 Platform maintains these experimental contracts; adapters and host policy remain
 adopter-owned.
 
-P1 is committed as `bc4f9110` and its review-cycle-1 repair as `9328b676`, both
-passed by two cold reviews; main (M07 S1, 0.21.0) was merged at the merge slot.
+P1 consists of `bc4f9110` and its review repair `9328b676`, with main (M07 S1,
+0.21.0) merged at the merge slot. Review history is kept in the pull request, not here.
 Submission and merge remain coordinator gates. No adopter/staging endpoint, network,
 secret or provider access is in P1 scope.
 
