@@ -19,6 +19,7 @@ import {
 } from "../../../domains/payment/paymentTruth.js";
 
 export interface PaymentWebhookSupabaseClient {
+  from?(table: string): { select(columns: string): { eq(column: string, value: string): { single(): PromiseLike<{ data: unknown; error: unknown }> } } };
   rpc(functionName: string, args: Record<string, unknown>): PromiseLike<{ data: unknown; error: unknown | null }>;
 }
 
@@ -105,7 +106,13 @@ export function createSupabasePaymentWebhookControlPort(
         observedAt: input.occurredAt,
         payloadFingerprint,
       };
-      const eventFingerprint = paymentSourceFingerprint({
+      const normalized = input.rawPayload.openlupEvidence;
+      const adapterFingerprint = normalized && typeof normalized === "object" && !Array.isArray(normalized)
+        ? (normalized as Record<string, unknown>).fingerprint : undefined;
+      if (adapterFingerprint !== undefined && (typeof adapterFingerprint !== "string" || !/^[0-9a-f]{64}$/.test(adapterFingerprint))) {
+        throw new Error("payment_event_fingerprint_invalid");
+      }
+      const eventFingerprint = adapterFingerprint as string | undefined ?? paymentSourceFingerprint({
         sourceEventId: `${input.provider}:${input.providerEventId}`,
         eventKind: input.eventType,
         settlementIntentId: input.paymentIntentId ?? null,
@@ -127,7 +134,18 @@ export function createSupabasePaymentWebhookControlPort(
         p_payload: paymentTruthPayload(input.rawPayload, eventFingerprint, sourceEvidence),
       });
       if (error) throw error;
-      return mapIngestedEvent(readObject(data, "paymentEvent"));
+      const ingested = mapIngestedEvent(readObject(data, "paymentEvent"));
+      if (!ingested.replayed) return { ...ingested, occurredAt: input.occurredAt };
+      // Read the winning insert, including after a concurrent first delivery.
+      // Replays must never invent a later clock when durable evidence is missing.
+      if (!client.from) throw new Error("payment_event_receipt_unavailable");
+      const stored = await client.from("inbound_provider_events").select("source_evidence")
+        .eq("id", ingested.paymentEventId).single();
+      if (stored.error) throw stored.error;
+      const evidence = readObject(stored.data, "source_evidence");
+      const occurredAt = readNullableString(evidence, "observedAt");
+      if (!occurredAt || !Number.isFinite(Date.parse(occurredAt))) throw new Error("payment_event_receipt_unavailable");
+      return { ...ingested, occurredAt };
     },
 
     async applyPaymentResult(input) {

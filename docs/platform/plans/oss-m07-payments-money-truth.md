@@ -234,3 +234,40 @@ adding the existing local bin directory let the focused runner proceed. Keep
 private type reuse small: no new abstraction is needed for unchanged runtime.
 
 P5 final ledger vs `4613d814`: 5 paths, 3 production paths, 38 lines of churn; zero test edits and zero API report changes.
+
+## P6 record
+
+Payment truth scope ownership moves to `createPaymentServices`, with
+`PaymentServicesOptions` and `PaymentServices` on the contracts entry. The host
+opens and closes its existing executor. The existing bundle composer accepts one
+optional payments binder; no second registry, cron or dormant handler is added.
+Reference selection is explicit, default-off and refuses unknown capabilities.
+
+D11 is the second declared behaviour change: the selected reference verified
+ingress applies and post-processes a redelivery at the first stored receipt
+instant, rather than a later provider timestamp. The first insert stores the
+adapter fingerprint, independent of receipt time and audit payload; concurrent
+replays read the winning row. Missing durable receipt evidence refuses. No schema
+or existing route is activated. Four direct missing-audit reader proofs extend
+incumbent cases; profile alias presentation retains its existing fallback while
+recurring execution separately requires consent.
+
+P6 adds exactly three authored cases (two package binding cases and one cold
+reference host case); replay, reader and installed-consumer assertions extend
+existing cases. Public export additions are exactly the factory and its two
+types. Composition adds a type-only payments dependency, requiring the
+coordinator’s boundary read. Local draft checks and remaining delivery gates
+are recorded in the task handoff; this record claims no release or activation.
+
+
+P6 case ledger (folded properties add no cases):
+
+- D11 folded assertion → `server/domains/payment/paymentWebhookHandlers.test.ts:acknowledges canonical event redelivery with the same deterministic payment-result key and keeps the first-receipt clock on later redelivery`.
+- First-insert fingerprint folded assertion → `server/adapters/supabase/payment/paymentWebhook.test.ts:writes normalized provider events through payment-control ingest RPC, preserves the first-insert fingerprint, omits missing-audit failure reasons and refuses missing-audit alias activation`.
+- Gateway failure reason folded assertion → `server/adapters/supabase/payment/paymentWebhook.test.ts:writes normalized provider events through payment-control ingest RPC, preserves the first-insert fingerprint, omits missing-audit failure reasons and refuses missing-audit alias activation`.
+- Alias activation folded assertion → `server/adapters/supabase/payment/paymentWebhook.test.ts:writes normalized provider events through payment-control ingest RPC, preserves the first-insert fingerprint, omits missing-audit failure reasons and refuses missing-audit alias activation`.
+- Saved-method consent folded assertion → `server/adapters/supabase/commerce/savedPaymentMethodResolver.test.ts:resolves subscription reuse only for an explicitly stored Model O PAYID and refuses missing-audit recurring consent`.
+- Profile fallback folded assertion → `server/adapters/supabase/customerProfilePorts.test.ts:exposes customer address and payment-method contracts and retains missing-audit profile availability`. This discriminates a change to the existing presentation fallback; it characterizes that fallback and grants no recurring execution authority.
+- New case → `packages/platform/test/payments/bindings.test.ts:is absent when truth readiness or the selected capability is unavailable`.
+- New case → `packages/platform/test/payments/bindings.test.ts:runs selected truth through one scoped port and closes on success and failure`.
+- New case → `server/runtime/public-reference/m07PaymentBinding.test.ts:keeps the cold host default-off and uses exactly one selected executor`.

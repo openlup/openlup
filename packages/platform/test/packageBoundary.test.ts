@@ -227,6 +227,9 @@ describe("package source boundary", () => {
       expect(specifiers(source)).not.toContain("pg");
     }
     expect(specifiers(files.find(file => file.path === "composition/catalogContribution.ts")!.source)).toEqual(["@openlup/core/readiness"]);
+    expect(specifiers(files.find(file => file.path === "payments/bindings.ts")!.source)).toEqual(["./contracts/repair.js"]);
+    expect(files.find(file => file.path === "composition/composeBundle.ts")!.source)
+      .toContain('import type { createPaymentServices } from "../payments/index.js"');
     // Shipping lane: audit every source, including contracts and type-only loads.
     for (const { path, source } of files.filter(({ path }) => path.startsWith("shipping/"))) {
       expect(specifiers(source).filter((specifier) => /(?:^|\/)inventory(?:\/|$)/u.test(specifier)), path).toEqual([]);

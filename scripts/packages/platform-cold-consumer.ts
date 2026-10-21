@@ -125,9 +125,23 @@ export function assertExportInventory(consumer: string): void {
 export function provePaymentsConsumer(consumer: string): void {
   consumerNode(consumer, `
 import assert from "node:assert/strict";
-import { executePreparedAttemptMechanism } from "@openlup/platform/payments";
+import { executePreparedAttemptMechanism, createPaymentServices } from "@openlup/platform/payments";
+import { createBundleComposer } from "@openlup/platform/composition";
 import * as contracts from "@openlup/platform/payments/contracts";
 assert.deepEqual(Object.keys(contracts), []);
+let opened = 0, closed = 0;
+assert.equal(createPaymentServices({schema:{truth:"unsupported"},openTruth:async()=>{opened++;throw Error("unexpected");}}),null);
+const services = createPaymentServices({schema:{truth:"supported"},openTruth:async()=>{
+ opened++; return {port:{readEvent:async()=>null},close:async()=>{closed++;}};
+}});
+assert.equal(opened,0);
+assert.equal(await services.run(port=>port.readEvent("event-a")),null);
+assert.equal(opened,1); assert.equal(closed,1);
+assert.equal(createBundleComposer({blob:()=>null})({}).ports.payments,undefined);
+assert.equal(createBundleComposer({blob:()=>null,payments:()=>services})({}).ports.payments,services);
+assert.equal(opened,1);
+
+
 const trace = [];
 const stored = {paymentAttemptId:"attempt-a",status:"created",replayed:false,providerAttemptId:null,providerSessionId:null,nextActionKind:null};
 const execution = {provider:"provider-a",providerAttemptId:"remote-a",providerSessionId:null,attemptStatus:"processing",nextActionKind:null,requestPayload:{},responsePayload:{}};

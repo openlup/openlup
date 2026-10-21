@@ -30,6 +30,14 @@ state writer is not an extension seam.
 
 ## Runtime boundaries
 
+Payments uses the existing bundle composer’s optional named binder. The host
+injects a scoped truth port and cleanup through `createPaymentServices`; schema
+or capability absence refuses selection. There is one executor per runtime unit,
+no package environment/driver discovery and no additional scheduler. The reference
+verified ingress remains explicit and default-off. Its adapter fingerprint is
+stored on first receipt; replay application and hooks reuse the first durable
+instant, including when the provider timestamp moves later (D11).
+
 The reference payment status and verify routes serve the checkout's original
 order/intent/client identity; a verify response requests readback and cannot
 mark payment paid. The reference repair view follows in a separate change. The status

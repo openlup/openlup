@@ -1107,6 +1107,26 @@ registration is not projected. Lifecycle carriers copy typed facts only.
 The existing refusal handoff accepts a failure-reason string, not a typed
 adapter refusal envelope; envelope forwarding remains unsupported.
 
+### Payment service composition
+
+`createPaymentServices` accepts `PaymentServicesOptions` and returns
+`PaymentServices` or null when truth schema/capability is unavailable. The host
+supplies `openTruth`, which opens one port and its asynchronous close operation.
+`run` closes that scope after success or failure. Construction performs no I/O.
+Use the existing `createBundleComposer` payments binder for named registration;
+omitting it leaves the host cold. Schema declarations do not prove installation:
+retain the existing readiness/schema checks before admitting work. Existing jobs
+and routes keep their owners; this binding adds no schedule or event handler.
+
+The reference direct truth binding injects its existing executor, templates and
+recovery path. The separate verified-ingress selector is explicit and default-off;
+unknown selections refuse. Its projected carrier includes the adapter fingerprint,
+so the reference store records stable identity on the first receipt independently
+of audit payload or clock. On replay the store reads the first stored instant;
+application and follow-up work reuse it. Missing durable clock evidence refuses
+rather than advancing a cycle. This D11 behaviour change does not mount a provider
+route or enable an adapter; hosts must explicitly wire the selected ingress.
+
 ### Opt-in payment example
 
 Import `createStripePaymentAdapter`, `type StripePaymentAdapterConfig` and

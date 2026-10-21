@@ -112,6 +112,7 @@ function auditPayload(evidence: VerifiedPaymentEvidence | VerifiedMethodEvidence
   // Explicit typed fields only: unknown envelope properties never enter storage.
   const normalized = {
     provider: evidence.provider, providerEventId: evidence.providerEventId,
+    fingerprint: evidence.fingerprint,
     providerOccurredAt: evidence.providerOccurredAt, kind: evidence.kind,
     intentRef: evidence.intentRef, outcome: evidence.outcome,
     ...(evidence.kind === "money" ? {

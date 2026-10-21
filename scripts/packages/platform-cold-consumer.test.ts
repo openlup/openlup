@@ -420,7 +420,7 @@ const inventoryForecastFixture = {
     expect(reference.inventorySubscriptionForecastResponseSchema.safeParse(inventoryForecastFixture).success).toBe(false);
   });
 
-it("P1 payments: installed packed consumer imports both entries and proves injected runtime/refusal", () => {
+it("payments: installed packed consumer proves injected execution, truth scope and refusal", () => {
   const consumer = pristinePackedA1Fixture();
   assertConsumerIsolation(consumer, root);
   provePaymentsConsumer(consumer);
