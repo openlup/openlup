@@ -883,6 +883,33 @@ manifest → owned, formatted fixture is the simpler path; retain production
 validation and all assertions. Exact covered-note removal also preserves later
 M06 P4 claims without duplicating the release text or raising documentation caps.
 
+### C4 — 0.18.0 publication readback
+
+S1 merged as `7a727122550178e063339791a2b79018d0b76472` (#259); its tree equals
+the reviewed and witnessed tree `32e18843`. One authorized dispatch of
+`publish-package.yml` (package `all`, version `0.18.0`, target that commit, the
+reviewed release body) ran as run 39536273194; the owner approved the protected
+`release` environment and all three releases completed on 2026-10-21.
+
+C4 readback on 2026-10-21, against the published packages: **PASS, 4/4**.
+
+- Registry integrity: each downloaded tarball matches its `dist.integrity` and
+  `dist.shasum` — core `9519489324acbd6f8be76f427f2d4d0168271761`, outbox
+  `23448a1311424ff8041da319132d2df0e0557cde`, platform
+  `f4a5952d8673f36a13c6525cff78c12b6e4006fc`.
+- Content equivalence: the extracted published trees are identical to the
+  tarballs witnessed from the reviewed head (core 209, outbox 41, platform
+  1,157 files); compressed bytes may differ after the workflow's repack.
+- Provenance: SLSA v1 statements bind each tarball to `publish-packages.yml`,
+  the tag `openlup-{core,outbox,platform}-v0.18.0` and `gitCommit`
+  `7a727122550178e063339791a2b79018d0b76472`; each remote tag dereferences to
+  that commit.
+- `npm audit signatures`: 4 verified registry signatures, 4 verified
+  attestations, 0 vulnerabilities.
+
+M05 delivery through the 0.18.0 set is complete; adoption (C5) starts from
+these published versions.
+
 ## Witness ledger
 
 C1 witnesses remain unchanged. A public package equivalent protects the selected
