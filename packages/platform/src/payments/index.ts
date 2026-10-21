@@ -17,3 +17,5 @@ export { paymentSchemaDescriptor } from "./schemaCapabilities.js";
 export { createCheckoutActivePaymentActionResolver } from "./checkoutActivePaymentActionResolver.js";
 export { createCheckoutRecoveryPaymentResolver } from "./checkoutRecoveryPaymentResolver.js";
 export { createCommercePaymentVerifyHandler } from "./paymentVerifyNowHandler.js";
+
+export { createPaymentServices } from "./bindings.js";

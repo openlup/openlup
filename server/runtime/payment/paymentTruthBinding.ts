@@ -1,4 +1,5 @@
-import { createPostgresPaymentTruthPort } from "../../adapters/postgres/paymentTruth.js";
+import { createPostgresPaymentTruthPort, paymentSchemaDescriptor } from "@openlup/platform/payments";
+import { bindM07Payments } from "../public-reference/m07PaymentBinding.js";
 import type { PgQueryExecutor } from "../../adapters/postgres/queryBuilder.js";
 import type { PaymentTruthPort } from "../../domains/payment/paymentTruth.js";
 import { resolveBundleId } from "../../domains/platform-runtime/platformKernel.js";
@@ -35,16 +36,18 @@ export function resolvePaymentTruthBinding(
   if (resolveBundleId(env) !== "node-postgres") return null;
   const connectionString = env.DATABASE_URL?.trim() ?? "";
   if (!connectionString) return null;
-  return {
-    async run(work) {
+  return bindM07Payments("truth", {
+    schema: paymentSchemaDescriptor,
+    async openTruth() {
       const pool = await (deps.createPool ?? defaultPool)({ connectionString });
       try {
-        return await work(createPostgresPaymentTruthPort(pool, DIRECT_PAYMENT_TRUTH_OPTIONS));
-      } finally {
+        return { port: createPostgresPaymentTruthPort(pool, DIRECT_PAYMENT_TRUTH_OPTIONS), close: () => pool.end() };
+      } catch (error) {
         await pool.end();
+        throw error;
       }
     },
-  };
+  });
 }
 
 async function defaultPool({ connectionString }: { connectionString: string }): Promise<PoolLike> {

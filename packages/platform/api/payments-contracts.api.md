@@ -455,6 +455,7 @@ export type { PaymentIngressPort } from "./evidence.js";
 export type { ProviderReconciliationStatusKind, ProviderReconciliationStatus, PaymentProviderReconciliationProvider, ClaimedPaymentAttempt, PaymentProviderReconciliationPort, InteractivePreparedAttemptManualReconciliationPort, ManualInteractivePreparedAttemptAbsenceEvidence, InteractivePreparedAttemptReopenResult, PaymentProviderReconciliationWorkerResult, PaymentProviderReconciliationWorkerInput, SilenceWindowLookup, PaymentVerifyReadPort, VerifiableAttemptSnapshot, PaymentVerifyNowResult, } from "./reconciliation.js";
 export type { PostgresPaymentTruthOptions } from "./truth.js";
 export type { ActivePaymentActionAuthority, CheckoutActivePaymentActionResolver, CheckoutRecoveryPaymentResolver, CheckoutRecoveryPaymentResolution, PaymentRecoveryAction, PaymentRepairMethodPort } from "./repair.js";
+export type { PaymentServicesOptions, PaymentServices } from "./repair.js";
 ```
 ## dist/payments/contracts/preparedAttempt.d.ts
 
@@ -917,6 +918,19 @@ export interface PaymentRepairMethodPort {
     } | {
         kind: "unsupported";
     }>;
+}
+/** Host-selected durable truth scope. Unsupported schema never opens a store. */
+export interface PaymentServicesOptions {
+    schema?: {
+        truth: "supported" | "unsupported";
+    };
+    openTruth?: () => Promise<{
+        port: import("./truth.js").PaymentTruthPort;
+        close(): Promise<void>;
+    }>;
+}
+export interface PaymentServices {
+    run<T>(work: (port: import("./truth.js").PaymentTruthPort) => Promise<T>): Promise<T>;
 }
 ```
 ## dist/payments/contracts/truth.d.ts
