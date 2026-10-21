@@ -715,8 +715,7 @@ cycle later. The note-only operator attestation remains unchanged; P1 adds no
 caller. Native alignment implementation and continuity proof remain P4 work.
 
 Inspect the [contract witnesses](../../packages/platform/test/fulfillment/contracts.test.ts),
-[status parity](../../packages/platform/test/fulfillment/statusMap.test.ts),
-[port fit](../../packages/platform/test/fulfillment/portFit.test.ts) and
-[programme record](plans/oss-m08-fulfillment-physical-delivery.md) for provenance,
-declared adaptations and later obligations. These contracts establish no adapter,
+[status parity](../../packages/platform/test/fulfillment/statusMap.test.ts)
+and [port fit](../../packages/platform/test/fulfillment/portFit.test.ts)
+for the declared shapes and adaptations. These contracts establish no adapter,
 executor, persistent store, route or activation; reference composition stays unchanged.

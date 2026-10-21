@@ -1258,10 +1258,6 @@
       "class": "public-output"
     },
     {
-      "path": "docs/platform/plans/oss-m08-fulfillment-physical-delivery.md",
-      "class": "public-output"
-    },
-    {
       "path": "docs/platform/plans/public-ci-completeness.md",
       "class": "platform-documentation"
     },
