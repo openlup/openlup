@@ -47,6 +47,8 @@ No vendor code, inventory import, activation or parity claim.
 
 ## Inventory
 
+`createInventoryBindings` selects one store with exact host provider validation. Native new-purchase reads refuse as `inventory_native_new_purchase_stock_read_unsupported`; `createInventoryContribution` declares selected callables without activation.
+
 `INVENTORY_MIGRATIONS` projects canonical units 27/33 byte-for-byte; install the full catalogue. Store support and pending proof: [M06 parity](../../docs/platform/plans/oss-m06-stock-reservations-delivery.md#parity-pending-rows).
 
 ## Promotions

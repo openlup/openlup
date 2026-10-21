@@ -554,6 +554,67 @@ import type { BffResponder } from "../bff/index.js";
 import type { AdminShippingRateHandlerDeps, ShippingRateHandlerSchemas } from "./shippingRatePorts.js";
 export declare function createAdminShippingRateHandler({ dataPort, authorizeAdmin, resolveAdmin, }: AdminShippingRateHandlerDeps, schemas: ShippingRateHandlerSchemas, responder: BffResponder): (req: HttpRequest, res: HttpResponse) => Promise<void>;
 ```
+## dist/shipping/bindings.d.ts
+
+```ts
+import type { BffResponder } from "../bff/index.js";
+import type { CustomerAddressBookPort, CustomerAddressMutationPort, CustomerAddressesDeps } from "./addressPorts.js";
+import type { CustomerAddressSchemas } from "./addressSchemas.js";
+import type { DeliverySelectionPort } from "./deliverySelectionPort.js";
+import type { DeliverySelectionSchemas } from "./handlerSchemas.js";
+import type { PickupPointSearchPort } from "./pickupPointSearchPort.js";
+import type { AdminShippingRateHandlerDeps, ShippingRateDataPort, ShippingRateHandlerSchemas } from "./shippingRatePorts.js";
+import { createCustomerAddressesHandler } from "./customerAddressesHandler.js";
+import { createAdminShippingRateHandler } from "./adminShippingRateHandler.js";
+import { createDeliveryOptionsHandler, createPickupPointSearchHandler, createPickupPointValidationHandler } from "./deliverySelectionHandler.js";
+type Store = {
+    addressBookPort?: CustomerAddressBookPort;
+    addressMutationPort?: CustomerAddressMutationPort;
+    shippingRateDataPort?: ShippingRateDataPort;
+};
+export interface ShippingBindingDependencies {
+    dataKind: string;
+    createManagedStore?: () => Store | null;
+    nativeStore?: Omit<Store, "addressMutationPort"> | null;
+    responder: BffResponder;
+    selection?: {
+        port: DeliverySelectionPort;
+        searchPort: PickupPointSearchPort;
+        schemas: DeliverySelectionSchemas;
+    };
+    addresses?: {
+        schemas: CustomerAddressSchemas;
+        authenticateUser: CustomerAddressesDeps["authenticateUser"];
+        requireWrites: boolean;
+    };
+    rate?: {
+        schemas: ShippingRateHandlerSchemas;
+        authorizeAdmin: AdminShippingRateHandlerDeps["authorizeAdmin"];
+        resolveAdmin: AdminShippingRateHandlerDeps["resolveAdmin"];
+    };
+}
+export interface ShippingBindings {
+    store: Store;
+    handlers: {
+        options: ReturnType<typeof createDeliveryOptionsHandler> | null;
+        search: ReturnType<typeof createPickupPointSearchHandler> | null;
+        validate: ReturnType<typeof createPickupPointValidationHandler> | null;
+        addresses: ReturnType<typeof createCustomerAddressesHandler> | null;
+        rate: ReturnType<typeof createAdminShippingRateHandler> | null;
+    };
+    readiness: {
+        ready: boolean;
+        reason: string | null;
+    };
+    unsupported: {
+        addressWrites: string | null;
+        flatRateSave: string | null;
+    };
+}
+/** Explicit selected stores and host validation; importing this module activates nothing. */
+export declare function createShippingBindings(deps: ShippingBindingDependencies): ShippingBindings;
+export {};
+```
 ## dist/shipping/contracts/address.d.ts
 
 ```ts
@@ -955,6 +1016,7 @@ export { readAddresses, readOrdererProfiles, addressUsedByActiveSubscription, ad
 export type { AdminShippingRateResponse, AdminSetShippingRateRequest, AdminSetShippingRateResponse } from "./contracts/shippingRate.js";
 export { createAdminShippingRateHandler } from "./adminShippingRateHandler.js";
 export type { AdminShippingRateHandlerDeps, ShippingRateDataPort, ShippingRateHandlerSchemas } from "./shippingRatePorts.js";
+export { createShippingBindings, type ShippingBindingDependencies, type ShippingBindings } from "./bindings.js";
 ```
 ## dist/shipping/pickupPointSearchPort.d.ts
 

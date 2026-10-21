@@ -6,7 +6,7 @@ import { dirname, join } from "node:path";
 import { Pool, type PoolClient } from "pg";
 import { z } from "zod";
 import { afterAll, beforeAll, expect, it } from "vitest";
-import { INVENTORY_MIGRATIONS, createPostgresAdminInventoryPort, createPostgresRenewalReservationPort } from "@openlup/platform/inventory";
+import { INVENTORY_MIGRATIONS, createInventoryBindings, createPostgresAdminInventoryPort, createPostgresRenewalReservationPort } from "@openlup/platform/inventory";
 import { createPostgresMigrationRunner } from "../../server/adapters/postgres/migrationRunner.js";
 import { readSelectedCatalogProjection, selectedCatalogProjectionPayload } from "../../server/adapters/postgres/selectedCatalogProjection.js";
 import { dockerAvailable, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
@@ -96,7 +96,12 @@ it("upgrades the exact complete prefix before unit 33 without rewriting installe
 }, 60_000);
 it("projects fresh/stale/missing stock, held/committed/expired rows and aggregate demand while refusing adjustment", async () => {
   const f = await fixture();
+  const selected = createInventoryBindings({ dataKind: "postgres", executor: executor(pool), provider: { stockMasterProvider: "fixture", providerSchema: z.literal("fixture") } });
+  expect(selected.readiness.ready).toBe(true);
+  expect(selected.newPurchaseStockReadPort).toBeNull();
+  expect(selected.unsupported.newPurchaseStockRead).toBe("inventory_native_new_purchase_stock_read_unsupported");
   const held = await reserve().reserve(f.input);
+  expect((await selected.readPort!.listReservations({ status: "reserved", page: 1, pageSize: 100 })).reservations).toContainEqual(expect.objectContaining({ id: held.reservationId, status: "reserved", kind: "subscription_retry_window" }));
   const stock = await read().listStock({ skuId: f.skuId, includeZero: true, page: 1, pageSize: 10 });
   expect(stock.stock).toMatchObject([{ onHand: 10, reserved: 2, unavailable: 0, safetyStock: 0, incoming: 0, lotId: null, expiresAt: null, availableNow: 8 }]);
   await pool.query("INSERT INTO public.subscription_renewal_terms(subscription_id,currency_code,stock_source_key,settlement_channel_key,unattended_charge_authorized_at,authorization_ref) VALUES ($1,'XXX',$2,'fixture',$3,'fixture')", [f.subscription, f.source, AT]);
@@ -180,5 +185,17 @@ it("requires explicit relation privileges under native invoker rights and refuse
     expect((await read(db).listStock({ skuId: f.skuId, includeZero: true, page: 1, pageSize: 10 })).stock).toHaveLength(1);
     await expect(reserve(db).releaseReservation({ ...f.input, reason: "denied" })).rejects.toMatchObject({ code: "42501" });
     await expect(db.query("UPDATE public.fulfillment_stock_current SET for_sale_quantity=0")).rejects.toMatchObject({ code: "42501" });
+    await db.query("RESET ROLE");
+    await pool.query(`CREATE ROLE inventory_runtime NOLOGIN;
+      GRANT SELECT, UPDATE ON public.subscription_renewal_operations, public.fulfillment_stock_current TO inventory_runtime;
+      GRANT SELECT, INSERT, UPDATE ON public.fulfillment_inventory_reservations TO inventory_runtime;
+      GRANT SELECT, INSERT ON public.fulfillment_inventory_reservation_lines, public.subscription_renewal_outcomes TO inventory_runtime;
+      GRANT SELECT ON public.subscription_cycles, public.commerce_orders, public.commerce_settlement_intents TO inventory_runtime`);
+    await db.query("SET ROLE inventory_runtime");
+    const held = await reserve(db).reserve(f.input);
+    expect(held).toMatchObject({ reserved: true, status: "held", replayed: false });
+    expect(await reserve(db).reserve(f.input)).toMatchObject({ reservationId: held.reservationId, replayed: true });
+    expect(await reserve(db).releaseReservation({ ...f.input, reason: "runtime_granted" })).toMatchObject({ reason: "released" });
+    expect(await reserve(db).releaseReservation({ ...f.input, reason: "runtime_granted" })).toMatchObject({ replayed: true });
   } finally { await db.query("RESET ROLE"); db.release(); }
 });

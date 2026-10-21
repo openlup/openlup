@@ -3,7 +3,11 @@ import { customerAddressesFlagEnabled, customerAuthUiEnabled } from "../../_lib/
 import { sendBffError } from "../../_lib/bff/response.js";
 import { withObservedRoute } from "../../_lib/observability/route.js";
 import { consoleOperationalEventRecorder } from "../../_lib/observability/operationalEvents.js";
-import { createCustomerAddressesHandler } from "../../domains/customers/customerAddressesHandler.js";
+import { createShippingBindings } from "@openlup/platform/shipping";
+import { bffResponder } from "../../_lib/bff/response.js";
+import { customerAddressesRequestSchema, customerAddressesResponseSchema } from "../../../src/domains/customers/contracts.js";
+import { customerAddressDeleteRequestSchema, customerAddressUpsertRequestSchema } from "../../../src/domains/customers/selfServiceContracts.js";
+import { CustomerSelfServiceMutationConflictError } from "../../domains/customers/customerSelfServiceErrors.js";
 import { createSupabaseCustomerSelfServicePort } from "../../adapters/supabase/customerSelfService.js";
 import { createSupabaseCustomerAddressBookPort } from "../../adapters/supabase/customerProfilePorts.js";
 import {
@@ -40,11 +44,17 @@ async function handler(req: VercelRequest, res: VercelResponse): Promise<void> {
       operationalEvents: consoleOperationalEventRecorder,
     })
     : undefined;
-  return createCustomerAddressesHandler({
-    addressBookPort: createSupabaseCustomerAddressBookPort(customerClient),
-    addressMutationPort: mutationPort,
-    authenticateUser: () => authenticateCustomerUser(customerClient, accessToken),
-  })(req, res);
+  const binding = createShippingBindings({ dataKind: "supabase", responder: bffResponder,
+    createManagedStore: () => ({ addressBookPort: createSupabaseCustomerAddressBookPort(customerClient), addressMutationPort: mutationPort }),
+    addresses: { authenticateUser: () => authenticateCustomerUser(customerClient, accessToken), requireWrites: req.method !== "GET",
+      schemas: { customerAddressesRequestSchema, customerAddressesResponseSchema, customerAddressDeleteRequestSchema,
+        customerAddressUpsertRequestSchema, isMutationConflict: (error): error is Error => error instanceof CustomerSelfServiceMutationConflictError } },
+  });
+  if (!binding.handlers.addresses) {
+    sendBffError(res, "UPSTREAM_UNAVAILABLE", "Customer addresses are disabled");
+    return;
+  }
+  return binding.handlers.addresses(req, res);
 }
 
 function customerAddressesEnabled(req: VercelRequest): boolean {

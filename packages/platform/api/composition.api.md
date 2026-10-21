@@ -252,6 +252,28 @@ export { createBundleComposer, type ComposeBundle, type PlatformBundle, type Pla
 export { bindNodeHttpPort, createScheduledEntrypointResolver } from "./httpBinding.js";
 export { createNodeHost, type NodeHost, type NodeHostAdmission, type NodeHostDependencies, type NodeSchedulerProfile, type ServeNodeOptions, type ServeNodeResult, } from "./nodeHost.js";
 export { createCatalogContribution, type CatalogContributionInput } from "./catalogContribution.js";
+export { createInventoryContribution } from "./inventoryContribution.js";
+export { createShippingContribution } from "./shippingContribution.js";
+```
+## dist/composition/inventoryContribution.d.ts
+
+```ts
+import type { Contribution, RequiredSchema } from "@openlup/core/readiness";
+/** Structural selected callables keep inventory and catalog declarations independent. */
+export declare function createInventoryContribution(input: {
+    version: string;
+    requiredSchema: RequiredSchema;
+    inventory: Readonly<Record<string, ((...args: never[]) => unknown) | null>>;
+    routes: Contribution["routes"];
+}): {
+    contributions: Contribution[];
+    ports: {
+        [k: string]: ((...args: never[]) => unknown) | null;
+    };
+    routes: {
+        [k: string]: (...args: never[]) => unknown;
+    };
+};
 ```
 ## dist/composition/nodeHost.d.ts
 
@@ -359,6 +381,26 @@ export interface NodeHost {
 }
 export declare function createNodeHost(deps: NodeHostDependencies): NodeHost;
 export {};
+```
+## dist/composition/shippingContribution.d.ts
+
+```ts
+import type { Contribution, RequiredSchema } from "@openlup/core/readiness";
+/** Structural selected callables keep shipping declarations independent. */
+export declare function createShippingContribution(input: {
+    version: string;
+    requiredSchema: RequiredSchema;
+    shipping: Readonly<Record<string, ((...args: never[]) => unknown) | null>>;
+    routes: Contribution["routes"];
+}): {
+    contributions: Contribution[];
+    ports: {
+        [k: string]: ((...args: never[]) => unknown) | null;
+    };
+    routes: {
+        [k: string]: (...args: never[]) => unknown;
+    };
+};
 ```
 ## dist/http/deadline.d.ts
 

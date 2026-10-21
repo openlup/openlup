@@ -17,6 +17,9 @@ describe("admin inventory runtime binding", () => {
 
     expect(resolveAdminInventoryRuntimeBinding(request, env, { createDirectBinding })).toBe(direct);
     expect(createDirectBinding).toHaveBeenCalledWith({ env, accessToken: "admin-token" });
+    const createManagedGateway = vi.fn();
+    expect(resolveAdminInventoryRuntimeBinding(request, env, { createDirectBinding, createManagedGateway })).toBe(direct);
+    expect(createManagedGateway).not.toHaveBeenCalled();
   });
 
   it("does not disguise a missing direct adapter as a Supabase read", () => {
@@ -29,8 +32,8 @@ describe("admin inventory runtime binding", () => {
     })).toBeNull();
   });
 
-  it("preserves the managed gateway composition for a Supabase bundle", () => {
-    const port = {} as never;
+  it("preserves the managed gateway composition for a Supabase bundle", async () => {
+    const port = { listStock: vi.fn(async () => ({ stock: [] })), listReservations: vi.fn(), checkAtp: vi.fn(), forecastSubscriptions: vi.fn(), adjustStock: vi.fn() } as never;
     const createManagedGateway = vi.fn(() => ({
       readPort: () => port,
       mutationPort: () => port,
@@ -43,7 +46,8 @@ describe("admin inventory runtime binding", () => {
       COMMERCE_INVENTORY_MUTATIONS_ENABLED: "true",
     }, { createManagedGateway });
 
-    expect(binding?.readPort).toBe(port);
+    await binding?.readPort.listStock({ page: 1, pageSize: 10, includeZero: true });
+    expect((port as { listStock: unknown }).listStock).toHaveBeenCalledWith({ page: 1, pageSize: 10, includeZero: true });
     expect(binding?.mutationPort).toBe(port);
     expect(binding?.mutationsEnabled()).toBe(true);
     expect(createManagedGateway).toHaveBeenCalledWith(expect.objectContaining({

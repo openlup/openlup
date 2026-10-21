@@ -3034,7 +3034,15 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/composition/inventoryContribution.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/composition/nodeHost.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/composition/shippingContribution.ts",
       "class": "public-output"
     },
     {
@@ -3403,6 +3411,10 @@
     },
     {
       "path": "packages/platform/src/inventory/adminInventory.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/inventory/bindings.ts",
       "class": "public-output"
     },
     {
@@ -3843,6 +3855,10 @@
     },
     {
       "path": "packages/platform/src/shipping/adminShippingRateHandler.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/shipping/bindings.ts",
       "class": "public-output"
     },
     {
@@ -13914,6 +13930,14 @@
       "class": "public-output"
     },
     {
+      "path": "server/runtime/public-reference/m06InventoryBinding.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/runtime/public-reference/m06ShippingBinding.ts",
+      "class": "public-output"
+    },
+    {
       "path": "server/runtime/public-reference/serve.test.ts",
       "class": "public-output"
     },
@@ -15303,6 +15327,10 @@
     },
     {
       "path": "src/components/shipping/deliverySelectionCheckoutCharacterization.test.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/components/shipping/shippingConsumer.test.tsx",
       "class": "public-output"
     },
     {
@@ -20794,6 +20822,18 @@
       "class": "public-output"
     },
     {
+      "path": "supabase/tests/m06_inventory_lifecycle_conformance_test.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "supabase/tests/m06_inventory_read_conformance_test.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "supabase/tests/m06_shipping_address_conformance_test.sql",
+      "class": "public-output"
+    },
+    {
       "path": "supabase/tests/magic_link_limiter_execute_boundary_test.sql",
       "class": "public-output"
     },
@@ -21418,6 +21458,14 @@
       "class": "public-output"
     },
     {
+      "path": "tests/platform/inventory/inventoryBindings.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/platform/inventory/inventoryConsumer.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/platform/inventory/inventoryForecastReadbackCharacterization.test.ts",
       "class": "public-output"
     },
@@ -21471,6 +21519,10 @@
     },
     {
       "path": "tests/platform/shipping/deliverySelectionBoundaryCharacterization.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/platform/shipping/shippingBindings.test.ts",
       "class": "public-output"
     },
     {

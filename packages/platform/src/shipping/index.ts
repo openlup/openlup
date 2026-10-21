@@ -21,3 +21,4 @@ export { readAddresses, readOrdererProfiles, addressUsedByActiveSubscription, ad
 export type { AdminShippingRateResponse, AdminSetShippingRateRequest, AdminSetShippingRateResponse } from "./contracts/shippingRate.js";
 export { createAdminShippingRateHandler } from "./adminShippingRateHandler.js";
 export type { AdminShippingRateHandlerDeps, ShippingRateDataPort, ShippingRateHandlerSchemas } from "./shippingRatePorts.js";
+export { createShippingBindings, type ShippingBindingDependencies, type ShippingBindings } from "./bindings.js";

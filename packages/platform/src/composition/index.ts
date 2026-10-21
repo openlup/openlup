@@ -16,3 +16,5 @@ export {
   type ServeNodeResult,
 } from "./nodeHost.js";
 export { createCatalogContribution, type CatalogContributionInput } from "./catalogContribution.js";
+export { createInventoryContribution } from "./inventoryContribution.js";
+export { createShippingContribution } from "./shippingContribution.js";
