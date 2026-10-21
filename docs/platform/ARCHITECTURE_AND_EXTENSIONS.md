@@ -32,7 +32,8 @@ state writer is not an extension seam.
 
 The reference payment status and verify routes serve the checkout's original
 order/intent/client identity; a verify response requests readback and cannot
-mark payment paid. The reference repair view follows in a separate change. The status
+mark payment paid. The opt-in reference store mounts the repair view; exact
+guardrail exemptions keep operator clients out of customer pages. The status
 BFF keeps its continuation credential and private response schema while the
 package checks stored owner/attempt and a second canonical read. Hosts supply
 rail handoff capabilities; the reference binding preserves its existing mapping.

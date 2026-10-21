@@ -120,6 +120,22 @@ function isPublicCommerceMarketingFile(file: string): boolean {
   ]).has(path);
 }
 
+function isReferenceRepairImport(file: string, specifier: string): boolean {
+  switch (relativePath(file)) {
+    // Opt-in repair view admits only the status-only client, verify-now client and poller type.
+    case "src/pages/ReferencePaymentRepairPage.tsx":
+      return ["@/domains/commerce/paymentStatusClient", "@/domains/commerce/paymentVerifyClient",
+        "@/domains/payment/components/PaymentStatusPoller"].includes(specifier);
+    // Opt-in store carries only the customer payment identity into the repair view.
+    case "src/pages/ReferenceStorePage.tsx":
+      return specifier === "@/domains/commerce/paymentVerifyClient";
+    // Status display reuses the customer poller with an injected status reader.
+    case "src/components/PaymentRepairStatus.tsx":
+      return specifier === "@/domains/payment/components/PaymentStatusPoller";
+    default: return false;
+  }
+}
+
 function importSpecifiers(source: string): string[] {
   const specs = new Set<string>();
   const patterns = [
@@ -137,6 +153,34 @@ function importSpecifiers(source: string): string[] {
 }
 
 describe("ecommerce hidden UI guardrails", () => {
+  it("refuses operator clients for every exact reference repair exemption", () => {
+    for (const path of ["src/pages/ReferencePaymentRepairPage.tsx", "src/pages/ReferenceStorePage.tsx",
+      "src/components/PaymentRepairStatus.tsx"]) {
+      for (const specifier of ["@/domains/commerce/commerceClient", "@/domains/commerce/omsClient",
+        "@/domains/commerce/adminCatalogClient", "@/domains/payment/paymentControlTypes"]) {
+        expect(isReferenceRepairImport(join(repoRoot, path), specifier)).toBe(false);
+      }
+    }
+    expect(isReferenceRepairImport(join(repoRoot, "src/pages/ReferencePaymentRepairPage.tsx"),
+      "@/domains/commerce/paymentStatusClient")).toBe(true);
+    expect(isReferenceRepairImport(join(repoRoot, "src/pages/OtherPage.tsx"),
+      "@/domains/commerce/paymentStatusClient")).toBe(false);
+  });
+
+  it("keeps the opt-in reference store unmounted in the shipped default profile", () => {
+    const importers = readFiles(join(repoRoot, "src"))
+      .filter((file) => /\.[cm]?[jt]sx?$/.test(file))
+      .filter((file) => relativePath(file) !== "src/pages/ReferenceStorePage.test.tsx")
+      .filter((file) => {
+        const source = readFileSync(file, "utf8");
+        const dynamic = [...source.matchAll(/(?:import|require)\s*\(\s*["']([^"']+)["']/g)]
+          .map((match) => match[1]);
+        return [...importSpecifiers(source), ...dynamic]
+          .some((specifier) => /(?:^|\/)ReferenceStorePage(?:\.[cm]?[jt]sx?)?$/.test(specifier));
+      }).map(relativePath);
+    expect(importers).toEqual([]);
+  });
+
   it("keeps hidden commerce surfaces out of customer-visible UI", () => {
     const uiRuntimeFiles = [
       ...readFiles(join(repoRoot, "src/pages")),
@@ -156,6 +200,7 @@ describe("ecommerce hidden UI guardrails", () => {
     const violations = uiRuntimeFiles.flatMap((file) => {
       const source = readFileSync(file, "utf8");
       const commerceImports = importSpecifiers(source).filter((specifier) => {
+        if (isReferenceRepairImport(file, specifier)) return false;
         // This hidden-terminal storage helper needs only the canonical response
         // shapes. Keep the exemption to that exact type module so any future
         // commerce/runtime import or endpoint string still fails this guard.
@@ -229,6 +274,7 @@ describe("ecommerce hidden UI guardrails", () => {
     const violations = staticRuntimeFiles.flatMap((file) => {
       const source = readFileSync(file, "utf8");
       return importSpecifiers(source)
+        .filter((specifier) => !isReferenceRepairImport(file, specifier))
         .filter((specifier) =>
           /domains\/(?:payment|accounting)/.test(specifier) ||
           /(?:stripe|tpay|fakturownia|omnipack)/i.test(specifier),

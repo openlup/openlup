@@ -61,10 +61,13 @@ export function createTpayPaymentAdapter(config: TpayPaymentAdapterConfig): Paym
   const execution = createTpayPaymentExecutionAdapter({ client, ...config.urls,
     modelOActivationEnabled: config.modelOActivationEnabled });
   const reconciliation = createTpayPaymentReconciliationProvider(client);
-  const donorInput = (input: Parameters<PaymentAttemptPort["execute"]>[0]): PaymentExecutionInput => {
+  const validateHostInput = (input: Parameters<PaymentAttemptPort["execute"]>[0]): void => {
     if (input.mode !== config.mode || !["initial", "recovery", "renewal-unattended"].includes(input.purpose)
-      || !input.attemptRef || !input.intentRef || !input.fingerprint || !input.providerIdempotencyKey
-      || !Number.isSafeInteger(input.money.amountMinor) || input.money.amountMinor <= 0 || !capabilities.supportedCurrencies.includes(input.money.currency)
+      || !capabilities.supportedCurrencies.includes(input.money.currency)) throw new Error("Unsupported payment input");
+  };
+  const donorInput = (input: Parameters<PaymentAttemptPort["execute"]>[0]): PaymentExecutionInput => {
+    if (!input.attemptRef || !input.intentRef || !input.fingerprint || !input.providerIdempotencyKey
+      || !Number.isSafeInteger(input.money.amountMinor) || input.money.amountMinor <= 0
       || !input.payer?.email || (input.payer.name !== undefined && typeof input.payer.name !== "string")) {
       throw new Error("Invalid payment input");
     }
@@ -89,12 +92,16 @@ export function createTpayPaymentAdapter(config: TpayPaymentAdapterConfig): Paym
       }),
     };
   };
-  const validateInput = (input: Parameters<PaymentAttemptPort["execute"]>[0]): void => { execution.validateInput?.(donorInput(input)); };
+  const validateInput = (input: Parameters<PaymentAttemptPort["execute"]>[0]): void => {
+    validateHostInput(input);
+    execution.validateInput?.(donorInput(input));
+  };
   return {
     capabilities,
     attemptPort: {
       validateInput,
       async execute(input: Parameters<PaymentAttemptPort["execute"]>[0]): Promise<PaymentExecutionEnvelope> {
+        validateHostInput(input);
         let prepared: PaymentExecutionInput;
         try { prepared = donorInput(input); execution.validateInput?.(prepared); }
         catch {
@@ -106,8 +113,9 @@ export function createTpayPaymentAdapter(config: TpayPaymentAdapterConfig): Paym
         try { result = await execution.execute(prepared); }
         catch (error) {
           if (!(error instanceof ProviderAttemptPreDispatchError)) throw error;
-          // The donor retries this closed no-charge lane; ambiguous failures still throw.
-          const hints: PaymentRefusalEnvelope["hints"] = ["transient"];
+          // A proven document refusal needs corrected data; other trusted no-charge failures can retry.
+          const hints: PaymentRefusalEnvelope["hints"] = error.phase === "response_decode"
+            && error.code === "tpay_request_refused" && error.dispatchState === "refused" ? ["dataInvalid"] : ["transient"];
           const reason: PaymentRefusalEnvelope = { code: classifyPaymentFailure({ neutralReasonHints: hints }).failureClass, hints };
           return { outcome: { kind: "decline", refusal: reason },
             dispatch: { kind: "notDispatched", evidence: { exact: true, phase: "before-dispatch", reason } }, diagnostics: {} };
@@ -170,8 +178,9 @@ export function createTpayPaymentAdapter(config: TpayPaymentAdapterConfig): Paym
           if (!reading.identityMatches || !reading.configuredMoneyMatches || reading.manualReviewRequired
             || !Number.isSafeInteger(input.expectedMoney.amountMinor) || input.expectedMoney.amountMinor <= 0
             || observed.status === "unknown") return unknown(base);
-          // Success must match paid money; pending/refused identify the configured obligation even when unpaid.
-          if (observed.status === "succeeded" && (observed.amountMinor !== input.expectedMoney.amountMinor
+          // Success and nonzero refused money must match; unpaid refusals retain the configured obligation.
+          if ((observed.status === "succeeded" || (observed.status === "failed" && observed.amountMinor !== null && observed.amountMinor !== 0))
+            && (observed.amountMinor !== input.expectedMoney.amountMinor
             || observed.currency !== input.expectedMoney.currency.toUpperCase())) return unknown(base);
           return { ...base, kind: observed.status, observedMoney: { amountMinor: input.expectedMoney.amountMinor,
             currency: input.expectedMoney.currency.toUpperCase() },
