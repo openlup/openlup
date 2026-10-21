@@ -16,6 +16,11 @@ function request(): FulfillmentDispatchRequest {
     lines: [{ skuRef: "SKU-A", quantity: 2, title: "Example", productRef: "product-a", packRef: "pack-a" }],
     selection: { providerRef: "omnipack", carrierRef: "CARRIER-A", serviceRef: "SERVICE-A", deliveryKind: "courier", pickupPoint: null } };
 }
+function frozenRequest(): FulfillmentDispatchRequest {
+  const req = request();
+  for (const value of [req, req.contactRevision, req.recipient, req.lines, ...req.lines, req.selection]) Object.freeze(value);
+  return req;
+}
 function fixture(reply: (url: string, init?: RequestInit) => Response | Promise<Response> = () => jsonResponse({ orderId: "external-a", ...plants }), overrides: Partial<OmnipackFulfillmentAdapterConfig> = {}) {
   const fetchImpl = vi.fn(async (url: URL | RequestInfo, init?: RequestInit) => reply(url.toString(), init));
   const credentials = vi.fn(() => ({ username: "example", password: secret }));
@@ -100,6 +105,17 @@ it("refuses missing and foreign preparation before credentials or HTTP", async (
   expect(f.credentials).not.toHaveBeenCalled(); expect(f.fetchImpl).not.toHaveBeenCalled();
 });
 it("refuses every request/evidence mismatch and requires fresh prepare for a contact remap", async () => {
+  let lotNumber = "LOT-A";
+  const remap = fixture(undefined, { resolveProduct: async () => ({ lotNumber }) });
+  const frozen = frozenRequest(); const before = await prepare(remap.adapter, frozen);
+  lotNumber = "LOT-B";
+  const after = await prepare(remap.adapter, frozen);
+  expect(after.commandFingerprint).not.toBe(before.commandFingerprint);
+  expect(await remap.adapter.dispatch.dispatch(frozen, before)).toMatchObject({ kind: "not_dispatched", refusal: { reason: "not_dispatchable" } });
+  expect(remap.credentials).not.toHaveBeenCalled(); expect(remap.fetchImpl).not.toHaveBeenCalled();
+  expect((await remap.adapter.dispatch.dispatch(frozen, after)).kind).toBe("accepted");
+  expect((await remap.adapter.dispatch.dispatch(frozen, after)).kind).toBe("accepted");
+  expect(remap.fetchImpl).toHaveBeenCalledTimes(1);
   for (const change of ["contact", "recipient", "line", "selection", "evidence"] as const) {
     const f = fixture(); const req = request(); const evidence = await prepare(f.adapter, req);
     const original = structuredClone(req); const validEvidence = structuredClone(evidence);
@@ -152,31 +168,45 @@ it("maps definitive rejection to non-submission and drops provider prose and err
     expect(f.fetchImpl).toHaveBeenCalledTimes(1);
   }
 });
-it("keeps lost/malformed acknowledgements and ambiguous POSTs unknown with one POST", async () => {
+it("keeps lost/malformed acknowledgements and ambiguous POSTs unknown across A → B → A preparation with one POST", async () => {
   for (const reply of [() => jsonResponse(plants), () => new Response("bad ACK"), () => unreadableResponse(), () => jsonResponse(plants, 503), () => { throw Error(secret); }]) {
-    const f = fixture(reply); const req = request(); const evidence = await prepare(f.adapter, req);
+    let lotNumber = "LOT-A";
+    const f = fixture(reply, { resolveProduct: async () => ({ lotNumber }) }); const req = frozenRequest(); const evidence = await prepare(f.adapter, req);
     const result = await f.adapter.dispatch.dispatch(req, evidence);
     expect(result).toMatchObject({ kind: "unknown", effectMayHaveSucceeded: true }); safe(result); expect(f.fetchImpl).toHaveBeenCalledTimes(1);
     expect(await f.adapter.dispatch.dispatch(req, evidence)).toEqual(result);
     expect(await prepare(f.adapter, req)).toEqual(evidence);
     expect(await f.adapter.dispatch.dispatch(req, evidence)).toEqual(result);
-    expect(f.fetchImpl).toHaveBeenCalledTimes(1);
+    lotNumber = "LOT-B";
+    expect((await prepare(f.adapter, req)).commandFingerprint).not.toBe(evidence.commandFingerprint);
+    expect(await f.adapter.dispatch.dispatch(req, evidence)).toMatchObject({ kind: "not_dispatched", refusal: { reason: "not_dispatchable" } });
+    lotNumber = "LOT-A";
+    expect(await prepare(f.adapter, req)).toEqual(evidence);
+    expect(await f.adapter.dispatch.dispatch(req, evidence)).toEqual(result);
+    expect(f.fetchImpl).toHaveBeenCalledTimes(1); expect(f.credentials).toHaveBeenCalledTimes(1);
   }
 });
-it("preserves an in-flight dispatch across unchanged re-preparation", async () => {
+it("preserves an in-flight dispatch across unchanged and A → B → A re-preparation", async () => {
   let release!: () => void;
   const entered = new Promise<void>(resolve => { release = resolve; });
   let finish!: (response: Response) => void;
-  const f = fixture(() => { release(); return new Promise<Response>(resolve => { finish = resolve; }); });
-  const req = request(); const evidence = await prepare(f.adapter, req);
+  let lotNumber = "LOT-A";
+  const f = fixture(() => { release(); return new Promise<Response>(resolve => { finish = resolve; }); }, { resolveProduct: async () => ({ lotNumber }) });
+  const req = frozenRequest(); const evidence = await prepare(f.adapter, req);
   const first = f.adapter.dispatch.dispatch(req, evidence);
   await entered;
   expect(await prepare(f.adapter, req)).toEqual(evidence);
   const replay = f.adapter.dispatch.dispatch(req, evidence);
+  lotNumber = "LOT-B";
+  expect((await prepare(f.adapter, req)).commandFingerprint).not.toBe(evidence.commandFingerprint);
+  expect(await f.adapter.dispatch.dispatch(req, evidence)).toMatchObject({ kind: "not_dispatched", refusal: { reason: "not_dispatchable" } });
+  lotNumber = "LOT-A";
+  expect(await prepare(f.adapter, req)).toEqual(evidence);
+  const restored = f.adapter.dispatch.dispatch(req, evidence);
   expect(f.fetchImpl).toHaveBeenCalledTimes(1);
   finish(jsonResponse({ orderId: "external-a" }));
   const result = await first;
-  expect(result.kind).toBe("accepted"); expect(await replay).toEqual(result);
+  expect(result.kind).toBe("accepted"); expect(await replay).toEqual(result); expect(await restored).toEqual(result);
   expect(await f.adapter.dispatch.dispatch(req, evidence)).toEqual(result);
   expect(f.fetchImpl).toHaveBeenCalledTimes(1); expect(f.credentials).toHaveBeenCalledTimes(1);
 });

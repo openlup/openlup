@@ -238,7 +238,7 @@ it without installation or changing the existing cache.
 
 | Destination | Cases | Status | O-P1 + O-P2 running total |
 | --- | ---: | --- | ---: |
-| `packages/platform/test/fulfillment/omnipack/factory.test.ts` | 24 | net-new glue/refusal/redaction; round 1 adds 4, round 2 adds 1 | 48 |
+| `packages/platform/test/fulfillment/omnipack/factory.test.ts` | 24 | net-new glue/refusal/redaction; round 1 adds 4, round 2 adds 1; round 3 extends replay/remap cases only | 48 |
 | `packages/platform/test/fulfillment/omnipack/transportAdaptation.test.ts` | 1 | round 2 unreadable rejection; 3 O-P1 cases retained | 49 |
 | `scripts/packages/platform-cold-consumer.test.ts` | 1 | net-new installed import/default-off/injected I/O | 50 |
 
@@ -443,3 +443,61 @@ refused-dispatch profile **10/10**, both individual unsupported-label profiles p
 Dispatch replay/mismatch/proof keys, observation, readback and read-only stock/product
 operations pass without adapter shims. This remains isolated pre-check evidence;
 O-P3 committed conformance integration and Claude's required review/delivery remain owed.
+
+### O-P2 repair round 3
+
+Authority: the lead's structural replay decision for review r6 item 1 on
+`01496c35`; local adapter/test/documentation repair and focused offline checks
+only. No Git writes, installs, network/secrets, frozen-contract edits or delivery.
+Claude retains committed native review and delivery ownership; no review/repair
+budget is started or reset by this local run.
+
+Finding: prepare A → dispatch A unknown → prepare B → prepare A discarded A's
+submission promise and permitted a second POST. Round 2's evidence comparison
+protected only adjacent unchanged preparations; that approach is superseded here.
+
+Decision: keep the latest successful preparation replaceable per request object,
+and retain submissions separately in an append-only per-adapter-instance Map keyed
+by command fingerprint. A promise is inserted before credential/HTTP callbacks,
+then settles to the accepted, unknown or refused result; prepare never touches it.
+Dispatch validates the request and evidence before looking up or inserting a
+submission. Replays clone the retained result, preserving proof keys and preventing
+caller mutation. Removed the preparation entry's result field, retained-evidence
+comparison and special request-digest refresh branch. The generation fence remains
+necessary to refuse an older overlapping preparation completing late.
+
+Memory grows with distinct submitted fingerprints during an example instance's
+lifetime; this bounded workload tradeoff is accepted by the lead. Records are not
+evicted, bodies remain transient, and durable replay across processes belongs to
+the host/M08 worker. This adapter provides no cross-process replay protection.
+
+Existing unknown and gated in-flight cases now deeply freeze the request and vary
+only resolved lot metadata through A → B → A. Both require one POST and identical
+replay results; stale A evidence while B is current refuses before new I/O. The
+existing mismatch/remap case also proves a new fingerprint before any submission
+can submit exactly once. Unchanged re-preparation, overlapping preparation,
+refused replay and host-only description cases remain green.
+
+Case accounting: **0 net-new**; factory **24**, transport adaptation **4**, retained
+characterization **18**, adapter directory **46**. O-P2 **26**, public O-P1 + O-P2
+**50**, conservative whole-round projection **70 / 100**, unchanged.
+
+Focused evidence: **1,566 tests / 10 files pass** (7.06 s): adapter **46**,
+package-boundary **1,474**, cold-consumer **46**. Platform no-emit typecheck,
+serialized build and API snapshots pass; declaration inspection confirms exactly
+the factory, descriptor and configuration type (three exports). Ast-grep, focused
+ESLint and whitespace checks pass. Neutrality reports **0 increases**; UI smoke
+passes. Source/test/docs gitleaks scans find no leaks. Pinned publication policy
+passes with **3 obligations / 0 unanswered**; final docs-update/policy follows this
+entry. Canonical and architecture owners now describe the separate replay record.
+
+P3 scratch pre-check: all **11** imported runner/contracts/worker/projection files
+match **a8708cf1** byte-for-byte; repaired adapter sources copied. Existing fixture
+passes **7/7 tests** (0.28 s), complete profile **12/12**, refused profile **10/10**,
+both unsupported label profiles pass. No adapter shim or committed integration
+claim; O-P3 and Claude's required review/delivery remain owed.
+
+Self-retro/rethink: replay protection tied to replaceable preparation state →
+append-only submission record keyed by fingerprint. Separating preparation from
+submission removes the evidence-comparison special case and protects replay
+history across all intervening preparations rather than patching each sequence.

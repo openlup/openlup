@@ -108,12 +108,14 @@ Credentials never establish readiness. The descriptor starts unselected and not 
 Prepare retains serialized command bytes transiently and returns only the actual
 body fingerprint, full contact revision and separate provider/carrier/service
 references. Dispatch refuses absent or mismatched preparation before credentials
-or HTTP without invalidating a valid preparation. Each preparation retains one
-submission result for identical replay without I/O; overlapping preparations
-cannot restore superseded state. Unchanged re-preparation preserves that result,
-including in-flight, accepted, unknown and refused outcomes; changed command
-evidence installs a new preparation. Changes to host descriptions omitted from
-the wire body preserve replay protection. Credential, validation and request-construction
+or HTTP without invalidating a valid preparation. Preparation remains replaceable;
+overlapping preparations cannot restore superseded state. A separate per-instance
+submission record retains one in-flight or completed result per command fingerprint,
+including accepted, unknown and refused outcomes. Re-preparing A after B cannot
+erase A's result or permit another POST. Evidence and request validation precede
+submission lookup; changed command evidence may submit once under its new fingerprint.
+Changes to host descriptions omitted from the wire body preserve replay protection.
+Durable replay across processes belongs to the host worker. Credential, validation and request-construction
 failures before submission and definitive rejection are `not_dispatched`;
 an unreadable rejection body preserves the status-derived rejection. An unreadable
 successful acknowledgement, lost/malformed acknowledgement and ambiguous submission

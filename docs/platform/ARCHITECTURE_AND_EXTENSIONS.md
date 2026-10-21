@@ -668,9 +668,11 @@ transport/codecs with the frozen ports. Its host supplies HTTP, per-call secrets
 product metadata and explicit selection/readiness. Preparation keeps canonical
 bytes transient and returns closed fingerprint/contact/selection evidence;
 mismatched dispatch refuses before credentials or HTTP without consuming valid
-state. One retained result serves concurrent and completed replays without I/O;
-unchanged re-preparation preserves it, and superseded preparations cannot restore
-state. Proven pre-submission failures and definitive HTTP rejections are
+state. A separate append-only per-instance submission record, keyed by command
+fingerprint, serves concurrent and completed replays without I/O even across
+A → B → A re-preparation. Preparation remains replaceable, and superseded
+preparations cannot restore state; durable replay belongs to the host worker.
+Proven pre-submission failures and definitive HTTP rejections are
 non-submissions even if the rejection body is unreadable; successful statuses
 without a readable acknowledgement and ambiguous POSTs stay unknown without retry. Accepted provider
 proof keys are opaque and deterministic; host keys remain worker-owned. Configured
