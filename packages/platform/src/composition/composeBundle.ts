@@ -32,7 +32,7 @@ import {
 
 // Structural, so the composer declares no edge to the payments module; createPaymentServices satisfies it.
 interface PaymentServices {
-  run<T>(work: (port: never) => Promise<T>): Promise<T>;
+  run<T>(work: (port: unknown) => Promise<T>): Promise<T>;
 }
 
 type Env = Record<string, string | undefined>;

@@ -276,9 +276,9 @@ recurring execution separately requires consent.
 P6 adds exactly three authored cases (two package binding cases and one cold
 reference host case); replay, reader and installed-consumer assertions extend
 existing cases. Public export additions are exactly the factory and its two
-types. Composition adds a type-only payments dependency, requiring the
-coordinator’s boundary read. Local draft checks and remaining delivery gates
-are recorded in the task handoff; this record claims no release or activation.
+types. The composer declares its payments slot structurally and imports
+nothing from payments, so the module graph is unchanged; the typed cold consumer
+proves the factory result fits that slot. No release or activation is claimed.
 
 
 P6 case ledger (folded properties add no cases):

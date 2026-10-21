@@ -164,7 +164,15 @@ assert.deepEqual(trace,[]);
 
 export function compileConsumer(consumer: string, entries: readonly string[], compiler: string): void {
   const file = join(consumer, "consumer.ts");
-  writeFileSync(file, entries.map((name, index) => `import type * as Entry${index} from "@openlup/platform/${name}";\nexport type Surface${index} = typeof Entry${index};`).join("\n"));
+  const surfaces = entries.map((name, index) => `import type * as Entry${index} from "@openlup/platform/${name}";\nexport type Surface${index} = typeof Entry${index};`);
+  // The composer's structural payments slot must accept the payments factory result for typed hosts.
+  if (entries.includes("composition") && entries.includes("payments")) surfaces.push([
+    'import { createBundleComposer } from "@openlup/platform/composition";',
+    'import type { createPaymentServices } from "@openlup/platform/payments";',
+    "declare const services: NonNullable<ReturnType<typeof createPaymentServices>>;",
+    "export const composedWithPayments = createBundleComposer({ blob: () => null, payments: () => services });",
+  ].join("\n"));
+  writeFileSync(file, surfaces.join("\n"));
   for (const mode of ["NodeNext", "Bundler"]) {
     const configuration = join(consumer, "tsconfig.json");
     writeFileSync(configuration, JSON.stringify({ compilerOptions: {
