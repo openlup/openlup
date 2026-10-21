@@ -4,7 +4,9 @@ Notable changes to this public-source workspace package are recorded here.
 “Unreleased” means no npm version carries the change yet; immutable OpenLup
 source previews may already ship some changes, and their release notes say
 which. Declaration snapshots track candidate drift, not a stable API or
-SemVer promise.
+SemVer promise. This file keeps the current release and the two previous ones;
+earlier releases are recorded verbatim in `packages/platform/CHANGELOG-HISTORY.md`
+in the source repository.
 
 ## [Unreleased]
 
@@ -14,7 +16,7 @@ SemVer promise.
   `openlup-platform-v0.21.0`.
 - Preview set: core/outbox unchanged, UI private `0.0.0`; published `0.20.0` size baselines, unchanged caps.
 
-### Cumulative M07 status: C2 code-complete
+### Cumulative M07 status: payment truth and repair surfaces complete for this wave
 
 - Experimental payments/contracts/runtime: unchanged prepared ordering; neutral execution/evidence/readback/conformance, verified truth, first-receipt ingress, method lifecycle/reconciliation; host-owned persistence, translation/failure policy.
 - Native PostgreSQL truth/settlement/later-only alignment; three unchanged sparse SQL projections, not an install chain. Refunds never cancel subscriptions.
@@ -27,7 +29,7 @@ SemVer promise.
 - Settling money missing/invalid/non-positive or blank currency refuses as amount mismatch; conformance requires positive money. Empty optional transients stop false leak refusals; JSON-escaped transients in diagnostics/readbacks/stored payloads and payer contact in execution results now refuse.
 - Private types reuse canonical money/attempts; unused imports removed, runtime/API unchanged.
 
-Migration: upgrade all `@openlup/*` `0.20.0` → `0.21.0` for exact pins. No schema migration; install the canonical catalogue, not sparse projections. Attempts add optional method selection/transient payer contact; contact is dispatch-only, never persisted/audited/logged/diagnosed. Missing adapter-required input requires exact before-dispatch `notDispatched`. Registration refs/kind/status require host `resolveMethodOwner` client/subscription ownership or are omitted. Lifecycle/normalized nested audit copies typed fields only; conformance scans all for secrets/contact. Adapter-filtered redacted audit never stores raw bodies; typed evidence overrides reader facts, audit bag fills untyped facts; identity/fingerprint exclude bag/receipt time. Other changes need no migration/automatic host rewiring.
+Migration: upgrade all `@openlup/*` `0.20.0` → `0.21.0` for exact pins. No schema migration; install the canonical catalogue, not sparse projections. Attempts add optional method selection/transient payer contact; contact is dispatch-only, never persisted/audited/logged/diagnosed. Missing adapter-required input requires exact before-dispatch `notDispatched`. Registration refs/kind/status require host `resolveMethodOwner` client/subscription ownership or are omitted. Lifecycle/normalized nested audit copies typed fields only; conformance scans all for secrets/contact. Adapter-filtered redacted audit never stores raw bodies; typed evidence overrides reader facts, audit bag fills untyped facts; identity/fingerprint exclude bag/receipt time. Other changes need no migration, and nothing rewires a host automatically.
 
 Migration: F2 replaces assumed full refund with `require-evidence`: missing/null kind/amount/operation identity is durably recorded/acknowledged, not applied. Supply original money, stable operation identity and cumulative snapshot, event delta or explicit full reversal (`refund`/`chargeback`); full evidence stays valid. Former default needs `refundEvidencePolicy: "legacy-assume-full"`, also in the reference handler; no native parity implied.
 
@@ -212,5 +214,3 @@ Question (2026-10-21): "The platform package's root docs (README + CHANGELOG) wi
 Owner's answer: "Raise to 49,152 B (Recommended)"
 Option description shown to the owner: "Same figure as core. Unblocks the next few releases; the CHANGELOG grows every release, so this cap would otherwise block each one."
 Recorded as an owner decision taken through the coordinator's question on 2026-10-21.
-
-Earlier releases (0.18.0 and older) are recorded verbatim in `packages/platform/CHANGELOG-HISTORY.md` in the source repository.

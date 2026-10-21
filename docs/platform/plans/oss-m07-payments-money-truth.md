@@ -340,19 +340,17 @@ Only `pack.baseline` changes; all caps remain unchanged. M06 C4 records `0.20.0`
 published and C4-checked at #271 merge `3e0f1784`; `0.21.0` follows this merge
 and required supervisor review/final verification. The standalone
 [0.21.0 limitations](../../../packages/platform/CHANGELOG.md#0210) retain M06
-pending proof and the five M07 follow-ups. Older release notes remain intact.
+pending proof and the five M07 follow-ups.
 
-Authority: file preparation and named focused checks only in `claude/m07-s1-release`;
-no Git writes, secrets, other worktrees, submission, dispatch, tag or publication.
-Supervisor owns staging, commits, native review and final installed artifact proof;
-protected release approval remains human-only. Acceptance is the coherent set,
-faithful standalone notes, verified baselines and focused evidence; size-cap or
-unstaged-inventory refusals remain blockers, not waived proof.
-
-Focused disposition: unstaged fragment deletions block official source/policy
-checks; dirty-package guards block packing. Docs gzip exceeds its unchanged cap
-with history retained; required adapter subpath tokens expose a changelog
-neutrality-carrier gap. Supervisor/coordinator recovery remains outstanding.
+Docs cap (coordinator ruling for the owner, 2026-10-21; no cap change): the
+packed CHANGELOG keeps the current release and the two previous ones, so
+`[0.18.0]` and older move byte-identical to the non-packed
+[CHANGELOG-HISTORY.md](../../../packages/platform/CHANGELOG-HISTORY.md), and the
+[release guide](../DEVELOPMENT_AND_RELEASE.md) states the rule. The packed docs
+class measures 45,553 of 49,152 B. The release notes describe the example
+payment adapter subpaths neutrally and the README names them; the neutrality
+script's exact-file A1 subpath allowance adds only the history file, so the
+verbatim move adds no count.
 
 Self-retro: the bump CLI stages deletions → hold fragments outside the checkout
 during the version bump, then assemble notes without Git writes; no tooling change.
