@@ -200,6 +200,7 @@ describe("package source boundary", () => {
 
   it("scans the whole package source", () => {
     expect(files.map(({ path }) => path)).toEqual(expect.arrayContaining([
+      "payments/index.ts", "payments/contracts/index.ts",
       "shipping/index.ts", "shipping/contracts/index.ts",
       "catalog/index.ts", "catalog/contracts/index.ts",
       "catalog/catalogSkuEnvelope.ts", "catalog/catalogSkuEnvelopeMapper.ts", "catalog/catalogDraftStore.ts", "composition/catalogContribution.ts",

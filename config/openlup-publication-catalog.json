@@ -1246,6 +1246,10 @@
       "class": "public-output"
     },
     {
+      "path": "docs/platform/plans/oss-m07-payments-money-truth.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/public-ci-completeness.md",
       "class": "platform-documentation"
     },
@@ -2263,6 +2267,14 @@
     },
     {
       "path": "packages/platform/api/migrations.api.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/api/payments-contracts.api.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/api/payments.api.md",
       "class": "public-output"
     },
     {
@@ -3538,6 +3550,38 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/payments/contracts/adapter.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/payments/contracts/conformance.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/payments/contracts/evidence.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/payments/contracts/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/payments/contracts/preparedAttempt.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/payments/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/payments/preparedAttempt.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/payments/preparedAttemptFinalization.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/pricing/acquisitionFinancialPolicy.ts",
       "class": "public-output"
     },
@@ -4483,6 +4527,14 @@
     },
     {
       "path": "packages/platform/test/packageBoundary.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/payments/contracts.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/payments/preparedAttempt.test.ts",
       "class": "public-output"
     },
     {
