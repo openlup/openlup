@@ -271,6 +271,15 @@ deployment, provider adapter, or public release has activated the rail.
 
 ## Compatibility posture
 
+The reviewed-forward registry additionally pins one portable function replacement
+to keep active subscriptions active on dunning exhaustion (invariant repair).
+The signature is fixed in code; its before hash binds the portable chain, while
+its after and whole-file hashes bind the proposed forward. This separate control
+approval supplies no migration or runtime activation. The
+[exact reviewed function rules](DATA_AND_MIGRATIONS.md#exact-reviewed-function-forwards)
+require unchanged headers, a single function statement and approval before SQL
+introduction; managed admission counts remain unchanged.
+
 Bundle application/admin now has package ownership in the existing catalog server
 entry with named reference compatibility bindings. Read-error identity is shared
 through its shim; the RPC subclass stays reference-owned and is injected into

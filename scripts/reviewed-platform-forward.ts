@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { PLATFORM_BASELINE_FILE } from "./platform-migration-manifest.ts";
 import { documentationGit } from "./documentation-git.ts";
 
 export const REVIEWED_FORWARD_PATH = "config/reviewed-platform-forwards.json";
@@ -12,11 +13,14 @@ const creations = new Set([
   "public.catalog_price_setup_preview(uuid,uuid,integer)",
   "public.catalog_price_setup_apply(text,text)",
 ]);
+const portableReplacements = new Set([
+  "public.dunning_lifecycle_handle_failure(uuid,timestamptz,text,text,integer,timestamptz,text,text)",
+]);
 type FunctionBinding = { signature: string; beforeSha256: string | null; afterSha256: string };
 type PolicyBinding = { table: string; name: string; beforeSha256: string };
 type RuntimeForwardBinding = ForwardBinding & { privileges: string[]; retiredPolicies?: PolicyBinding[] };
 type ForwardBinding = { path: string; sha256: string; functions: FunctionBinding[] };
-export type ReviewedForwardRegistry = { schemaVersion: 1; baselineSha256: string; replacementForwards: ForwardBinding[]; creationForwards: ForwardBinding[]; runtimeForwards?: RuntimeForwardBinding[] };
+export type ReviewedForwardRegistry = { schemaVersion: 1; baselineSha256: string; replacementForwards: ForwardBinding[]; creationForwards: ForwardBinding[]; runtimeForwards?: RuntimeForwardBinding[]; portableReplacementForwards?: ForwardBinding[] };
 export const sqlSha256 = (bytes: Buffer | string): string => createHash("sha256").update(bytes).digest("hex");
 const runtimeReplacements = new Set([
   "public.admin_clients_search_v3(text,integer,integer,text)",
@@ -153,6 +157,13 @@ export function readReviewedForwardRegistry(bytes: Buffer): ReviewedForwardRegis
       if (new Set(privilegeKeys).size !== privilegeKeys.length) throw new Error("reviewed replacement runtime registry has duplicate privilege capabilities");
     }
   }
+  if (raw.portableReplacementForwards !== undefined) {
+    if (!Array.isArray(raw.portableReplacementForwards) || raw.portableReplacementForwards.length !== 1) throw new Error("reviewed portable replacement registry requires exactly one forward");
+    const forward = raw.portableReplacementForwards[0]!;
+    if (!/^db\/platform\/migrations\/\d{14}_[A-Za-z0-9_-]+\.sql$/u.test(forward.path) || !hash(forward.sha256) || !Array.isArray(forward.functions) || forward.functions.length !== portableReplacements.size) throw new Error("reviewed portable replacement registry has an invalid forward");
+    const binding = forward.functions[0]!;
+    if (!portableReplacements.has(binding.signature) || !hash(binding.beforeSha256) || !hash(binding.afterSha256)) throw new Error("reviewed portable replacement registry must bind exactly the approved existing signature");
+  }
   return raw;
 }
 
@@ -204,12 +215,13 @@ function sqlStatements(sql: string, dump = false): string[] {
 /** Hash the raw CREATE statement, including its terminating semicolon; argument names/defaults are not identity. */
 function functionSignature(name: string, argumentsText: string): string {
   const types = argumentsText.trim() === "" ? [] : argumentsText.split(",").map((argument) => {
-    const match = /^(?:[a-z_][a-z0-9_]* )?(uuid|text|jsonb|integer|timestamp with time zone)(?: DEFAULT [\s\S]+)?$/iu.exec(argument.trim());
+    const match = /^(?:[a-z_][a-z0-9_]* )?(uuid|text|jsonb|integer|timestamp with time zone|timestamptz)(?: DEFAULT [\s\S]+)?$/iu.exec(argument.trim());
     if (!match) throw new Error("reviewed replacement has an unsupported argument identity");
     return match[1]!.toLowerCase();
   });
   const signature = `${name.toLowerCase()}(${types.join(",")})`;
   if (types.includes("timestamp with time zone") && !runtimeReplacements.has(signature)) throw new Error("reviewed replacement has an unsupported timestamp identity");
+  if (types.includes("timestamptz") && !portableReplacements.has(signature)) throw new Error("reviewed replacement has an unsupported portable timestamp identity");
   return signature;
 }
 
@@ -221,7 +233,7 @@ export function reviewedFunctionDefinitions(bytes: Buffer, names?: Set<string>):
   for (const statement of sqlStatements(bytes.toString("utf8"), names !== undefined)) {
     const prefix = /^CREATE(?: OR REPLACE)? FUNCTION (public\.[a-z_][a-z0-9_]*)\(/iu.exec(statement);
     if (!prefix || (names && !names.has(prefix[1]!.toLowerCase()))) continue;
-    const header = /^CREATE(?: OR REPLACE)? FUNCTION (public\.[a-z_][a-z0-9_]*)\(([^)]*)\) RETURNS /iu.exec(identityHeaderSql(statement));
+    const header = /^CREATE(?: OR REPLACE)? FUNCTION (public\.[a-z_][a-z0-9_]*)\(([^)]*)\)\s+RETURNS\s+/iu.exec(identityHeaderSql(statement));
     if (!header) throw new Error("reviewed replacement has an unsupported function header");
     const signature = functionSignature(header[1]!, header[2]!);
     if (result.has(signature)) throw new Error(`reviewed replacement has a duplicate signature: ${signature}`);
@@ -265,14 +277,14 @@ export function assertUnchangedForwardApproval(root: string, base: string, head:
       try {
         const prior = readReviewedForwardRegistry(before), current = readReviewedForwardRegistry(after);
         const binding = (registry: ReviewedForwardRegistry) => {
-          for (const list of ["replacementForwards", "creationForwards", "runtimeForwards"] as const) {
+          for (const list of ["replacementForwards", "creationForwards", "runtimeForwards", "portableReplacementForwards"] as const) {
             const index = registry[list]?.findIndex((entry) => entry.path === path) ?? -1;
             if (index >= 0) return { list, index, entry: registry[list]![index] };
           }
           return null;
         };
         const canonical = (value: unknown) => JSON.stringify(value, (_key, item: unknown) => item && typeof item === "object" && !Array.isArray(item) ? Object.fromEntries(Object.entries(item).sort(([left], [right]) => left.localeCompare(right))) : item);
-        const shared = (registry: ReviewedForwardRegistry) => Object.fromEntries(Object.entries(registry).filter(([key]) => !["replacementForwards", "creationForwards", "runtimeForwards"].includes(key)));
+        const shared = (registry: ReviewedForwardRegistry) => Object.fromEntries(Object.entries(registry).filter(([key]) => !["replacementForwards", "creationForwards", "runtimeForwards", "portableReplacementForwards"].includes(key)));
         const previous = binding(prior), next = binding(current);
         if (canonical(shared(prior)) === canonical(shared(current)) && previous && next && canonical(previous) === canonical(next)) return;
       } catch { /* Invalid historical approvals cannot authorize a release. */ }
@@ -296,6 +308,14 @@ function updatePolicyDefinitions(policies: Map<string, string>, bytes: Buffer): 
   }
 }
 
+function headerAttributes(statement: string): string {
+  const opening = /\bAS (\$(?:[A-Za-z_][A-Za-z0-9_]*)?\$)/u.exec(statement);
+  if (!opening) throw new Error("reviewed replacement runtime requires a dollar body");
+  const closing = statement.indexOf(opening[1]!, opening.index + opening[0].length);
+  if (closing < 0 || !/^\s*;\s*$/u.test(statement.slice(closing + opening[1]!.length))) throw new Error("reviewed replacement runtime refuses attributes after its dollar body");
+  return statement.slice(0, opening.index).replace(/^CREATE OR REPLACE /u, "CREATE ");
+}
+
 /** Both required CI and release preparation use this exact path/byte/signature check. */
 export function assertReviewedPlatformForward(root: string, base: string, head: string, path: string, bytes: Buffer, release = false): void {
   const controlByte = (byte: number) => (byte < 0x20 && byte !== 0x09 && byte !== 0x0a) || byte === 0x7f;
@@ -303,7 +323,9 @@ export function assertReviewedPlatformForward(root: string, base: string, head: 
   const targetRegistry = blob(root, head, REVIEWED_FORWARD_PATH);
   if (!targetRegistry) throw new Error(`non-expand-only forward has no reviewed replacement approval: ${path}`);
   const registry = readReviewedForwardRegistry(targetRegistry);
-  const forward = [...registry.replacementForwards, ...registry.creationForwards, ...(registry.runtimeForwards ?? [])].find((entry) => entry.path === path);
+  const portable = path.startsWith("db/platform/migrations/");
+  const candidates = portable ? registry.portableReplacementForwards ?? [] : [...registry.replacementForwards, ...registry.creationForwards, ...(registry.runtimeForwards ?? [])];
+  const forward = candidates.find((entry) => entry.path === path);
   if (!forward) throw new Error(`non-expand-only forward differs from reviewed replacement path or bytes: ${path}`);
   let approval = base;
   if (release) {
@@ -316,20 +338,24 @@ export function assertReviewedPlatformForward(root: string, base: string, head: 
   }
   assertUnchangedForwardApproval(root, approval, head, release ? path : undefined);
   if (sqlSha256(bytes) !== forward.sha256) throw new Error(`non-expand-only forward differs from reviewed replacement path or bytes: ${path}`);
-  const baseline = blob(root, approval, MANAGED_BASELINE);
-  if (!baseline || sqlSha256(baseline) !== registry.baselineSha256) throw new Error("reviewed replacement immutable baseline drifted");
+  const baselinePath = portable ? PLATFORM_BASELINE_FILE : MANAGED_BASELINE;
+  const baseline = blob(root, approval, baselinePath);
+  if (!baseline || (!portable && sqlSha256(baseline) !== registry.baselineSha256)) throw new Error("reviewed replacement immutable baseline drifted");
   const names = new Set(forward.functions.map(({ signature }) => signature.split("(")[0]!));
   const prior = reviewedFunctionDefinitions(baseline, names);
   const priorPolicies = reviewedPolicyDefinitions(baseline);
   const priorStatements = new Map<string, string>();
   const collectPriorStatements = (source: Buffer) => {
     for (const statement of sqlStatements(source.toString("utf8"), true)) {
-      const header = /^CREATE(?: OR REPLACE)? FUNCTION (public\.[a-z_][a-z0-9_]*)\(([^)]*)\) RETURNS /iu.exec(identityHeaderSql(statement));
+      const header = /^CREATE(?: OR REPLACE)? FUNCTION (public\.[a-z_][a-z0-9_]*)\(([^)]*)\)\s+RETURNS\s+/iu.exec(identityHeaderSql(statement));
       if (header && names.has(header[1]!.toLowerCase())) priorStatements.set(functionSignature(header[1]!, header[2]!), statement);
     }
   };
   collectPriorStatements(baseline);
-  const paths = git(root, ["ls-tree", "-r", "--name-only", head, "--", "supabase/migrations/"]).toString("utf8").trim().split("\n").filter((item) => item !== MANAGED_BASELINE && item < path).sort();
+  // The portable manifest validator requires strict filename order and exact catalogue coverage.
+  // Thus path order below is the same as portable installation order; never read the managed rail.
+  const directory = portable ? "db/platform/migrations/" : "supabase/migrations/";
+  const paths = git(root, ["ls-tree", "-r", "--name-only", head, "--", directory]).toString("utf8").trim().split("\n").filter((item) => item !== baselinePath && item < path).sort();
   for (const priorPath of paths) {
     const source = blob(root, head, priorPath)!;
     for (const [signature, sha256] of reviewedFunctionDefinitions(source, names)) prior.set(signature, sha256);
@@ -337,21 +363,20 @@ export function assertReviewedPlatformForward(root: string, base: string, head: 
     updatePolicyDefinitions(priorPolicies, source);
   }
   const definitions = reviewedFunctionDefinitions(bytes);
-  if (registry.runtimeForwards?.includes(forward as RuntimeForwardBinding)) {
+  if (portable) {
+    const statements = sqlStatements(bytes.toString("utf8"));
+    const statement = statements[0]!;
+    const preceding = priorStatements.get(forward.functions[0]!.signature);
+    if (statements.length !== 1 || !/^CREATE OR REPLACE FUNCTION public\.[a-z_][a-z0-9_]*\(/u.test(statement)) throw new Error("reviewed portable replacement requires only one CREATE OR REPLACE FUNCTION");
+    if (!preceding || headerAttributes(statement) !== headerAttributes(preceding)) throw new Error("reviewed portable replacement function attributes drifted");
+  } else if (registry.runtimeForwards?.includes(forward as RuntimeForwardBinding)) {
     const runtime = forward as RuntimeForwardBinding;
     const identity = registry.runtimeForwards[1] === runtime;
     const privileges: string[] = [];
     const retiredPolicies: string[] = [];
-    const headerAttributes = (statement: string) => {
-      const opening = /\bAS (\$(?:[A-Za-z_][A-Za-z0-9_]*)?\$)/u.exec(statement);
-      if (!opening) throw new Error("reviewed replacement runtime requires a dollar body");
-      const closing = statement.indexOf(opening[1]!, opening.index + opening[0].length);
-      if (closing < 0 || !/^\s*;\s*$/u.test(statement.slice(closing + opening[1]!.length))) throw new Error("reviewed replacement runtime refuses attributes after its dollar body");
-      return statement.slice(0, opening.index).replace(/^CREATE OR REPLACE /u, "CREATE ");
-    };
     for (const statement of sqlStatements(bytes.toString("utf8"))) {
       if (/^(?:BEGIN|COMMIT);$/iu.test(statement)) continue;
-      const header = /^CREATE OR REPLACE FUNCTION (public\.[a-z_][a-z0-9_]*)\(([^)]*)\) RETURNS /iu.exec(identityHeaderSql(statement));
+      const header = /^CREATE OR REPLACE FUNCTION (public\.[a-z_][a-z0-9_]*)\(([^)]*)\)\s+RETURNS\s+/iu.exec(identityHeaderSql(statement));
       if (header && !identity) {
         const signature = functionSignature(header[1]!, header[2]!);
         const preceding = priorStatements.get(signature);

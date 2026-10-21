@@ -481,8 +481,14 @@ and regression coverage. A separate
 pins three managed function forwards, exactly three existing-function replacements
 and two new price-setup functions, plus an optional runtime list with the
 five-function capability forward and a second service-only identity capabilities
-forward. Both required self-check and release prepare call
-the same checker; replacement remains outside the expand-only predicate.
+forward. An optional portable replacement list admits exactly one file and one
+code-fixed existing signature to keep active subscriptions active on dunning
+exhaustion (invariant repair). Its priors come only from the portable baseline and
+earlier portable forwards; only comments and that single function replacement
+are admitted. The managed counts remain two replacement files, one creation file
+and one or two runtime files when the runtime list is present.
+Both required self-check and release prepare call the same checker; replacement
+remains outside the expand-only predicate.
 Required self-check keeps the whole registry unchanged from the feature comparison
 base. Release compares each forward's own entry, list position and shared registry
 fields with its introduction parent; later controls may append approvals. A feature
