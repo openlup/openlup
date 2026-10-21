@@ -120,10 +120,8 @@ function allowedAdoptionCounts(path, contents, brand) {
   return { brand: names, "ui-0": names, "ui-2": [...approved.matchAll(new RegExp(`${brand}\\.com`, "gi"))].length };
 }
 
-// O-P1: category ui-13 only. Exact carrier tokens cannot excuse bare vendor prose.
-const paymentAdapterName = "str" + "ipe";
-const paymentAdapterWord = new RegExp(`\\b${paymentAdapterName}\\b`, "gi");
-const paymentAdapterPaths = new RegExp(`^packages/platform/(?:src|test)/payments/${paymentAdapterName}/`);
+// O-P1/O-P2: vendor categories plus the second adapter's scoped market token. Exact carrier tokens cannot excuse bare vendor prose.
+const paymentAdapterNames = ["str" + "ipe", "tp" + "ay"];
 const paymentAdapterLedger = "docs/platform/plans/oss-a2-payment-adapters.md";
 const paymentAdapterCarriers = new Set([
   "packages/platform/package.json", "packages/platform/release-gates.json",
@@ -132,17 +130,34 @@ const paymentAdapterCarriers = new Set([
   "docs/platform/CANONICAL_CONTRACTS.md", "scripts/packages/platform-cold-consumer.ts",
   "scripts/packages/platform-cold-consumer.test.ts",
 ]);
-const paymentAdapterSubpath = new RegExp(`(?<![\\w-])payments/${paymentAdapterName}(?![\\w-])`, "g");
-const paymentAdapterReport = new RegExp(`(?<![\\w.-])payments-${paymentAdapterName}\\.api\\.md(?![\\w./-])`, "g");
-export function allowedPaymentAdapterWords(path, contents) {
-  if (paymentAdapterPaths.test(path) || path === `packages/platform/api/payments-${paymentAdapterName}.api.md`
-    || path === paymentAdapterLedger) return [...contents.matchAll(paymentAdapterWord)].length;
+const paymentAdapterSubpath = new RegExp(`(?<![\\w-])payments/(?:${paymentAdapterNames.join("|")})(?![\\w-])`, "g");
+const paymentAdapterReport = new RegExp(`(?<![\\w.-])payments-(?:${paymentAdapterNames.join("|")})\\.api\\.md(?![\\w./-])`, "g");
+export function allowedPaymentAdapterWords(path, contents, category = "ui-13") {
+  if (category === "ui-8") {
+    const reportingPath = `packages/platform/src/payments/${paymentAdapterNames[1]}/tpayPaymentReconciliationProvider.ts`;
+    const declaration = `const REPORTING_TIME_ZONE = "${["Europe", "Warsaw"].join("/")}";`;
+    return path === reportingPath ? contents.split("\n").filter(line => line === declaration).length : 0;
+  }
+  if (category === "ui-5") {
+    const ownPath = new RegExp(`^packages/platform/(?:src|test)/payments/${paymentAdapterNames[1]}/`);
+    return ownPath.test(path) ? [...contents.matchAll(new RegExp(`\\b${String.fromCharCode(80, 76, 78)}\\b`, "g"))].length : 0;
+  }
+  const name = paymentAdapterNames[category === "ui-13" ? 0 : category === "ui-14" ? 1 : -1];
+  if (!name) return 0;
+  const paymentAdapterPaths = new RegExp(`^packages/platform/(?:src|test)/payments/${name}/`);
+  const word = new RegExp(`\\b${name}\\b`, "gi");
+  // Exact-file exception for the cross-adapter parity witness.
+  if (category === "ui-13" && path === `packages/platform/test/payments/${paymentAdapterNames[1]}/tpayFailureEvidence.test.ts`) {
+    return [...contents.matchAll(word)].length;
+  }
+  if (paymentAdapterPaths.test(path) || path === `packages/platform/api/payments-${name}.api.md`
+    || path === paymentAdapterLedger) return [...contents.matchAll(word)].length;
   if (!paymentAdapterCarriers.has(path) && !/^packages\/platform\/changes\/[^/]+\.md$/.test(path)) return 0;
   const tokens = [...contents.matchAll(paymentAdapterSubpath)];
   if (["packages/platform/release-gates.json", "config/openlup-publication-catalog.json"].includes(path)) {
     tokens.push(...contents.matchAll(paymentAdapterReport));
   }
-  return tokens.reduce((count, [token]) => count + [...token.matchAll(paymentAdapterWord)].length, 0);
+  return tokens.reduce((count, [token]) => count + [...token.matchAll(word)].length, 0);
 }
 
 export function neutralityIncreases(baseline, current) {
@@ -254,7 +269,7 @@ function verifyPins(parent, current, base) {
   }
   return pins;
 }
-function scanSnapshots(snapshots) {
+export function scanSnapshots(snapshots) {
   const sources = [], binary = [];
   for (const [path, bytes] of snapshots) {
     try {
@@ -290,9 +305,11 @@ function scanSnapshots(snapshots) {
   if (typeof adoptionBrand !== "string" || !/^[a-z]+$/.test(adoptionBrand)) throw new Error("invalid adoption brand policy");
   const sourceContents = new Map(sources.map(({ path, contents }) => [path, contents]));
   for (const row of ui.counts) {
-    if (row.counts?.["ui-13"]) {
-      row.counts["ui-13"] -= allowedPaymentAdapterWords(row.path, sourceContents.get(row.path) ?? "");
-      if (row.counts["ui-13"] === 0) delete row.counts["ui-13"];
+    for (const category of ["ui-13", "ui-14", "ui-5", "ui-8"]) {
+      if (row.counts?.[category]) {
+        row.counts[category] -= allowedPaymentAdapterWords(row.path, sourceContents.get(row.path) ?? "", category);
+        if (row.counts[category] === 0) delete row.counts[category];
+      }
     }
     if (row.counts?.["ui-12"]) {
       row.counts["ui-12"] -= allowedAdapterWords(row.path, sourceContents.get(row.path) ?? "");
@@ -312,7 +329,10 @@ function scanSnapshots(snapshots) {
         if (row.counts[category] === 0) delete row.counts[category];
       }
     }
-    for (const [category, count] of Object.entries(row.counts)) if (!categoryPattern.test(category) || !Number.isSafeInteger(count) || count < 0) throw new Error("invalid neutrality scanner count");
+    for (const [category, count] of Object.entries(row.counts)) {
+      if (count < 0) throw new Error(`neutrality allowance over-subtracted ${category} in ${label(row.path)}: ${count}`);
+      if (!categoryPattern.test(category) || !Number.isSafeInteger(count)) throw new Error("invalid neutrality scanner count");
+    }
     if (Object.keys(row.counts).length) rows[hash(row.path)] = { ...rows[hash(row.path)], ...row.counts };
   }
   return { rows: Object.fromEntries(Object.entries(rows).sort()), paths, textFiles: sources.length, binaryFiles: binary.length, binary };

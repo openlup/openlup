@@ -402,6 +402,19 @@
       ],
       "entrypoint": "dist/payments/stripe/index.d.ts",
       "snapshot": "api/payments-stripe.api.md"
+    },
+    "./payments/tpay": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/payments/tpay/factory.test.ts",
+        "test/payments/tpay/conformance.test.ts",
+        "test/payments/tpay/webhookNormalizer.test.ts",
+        "test/payments/tpay/tpayPaymentExecutionAdapter.test.ts"
+      ],
+      "entrypoint": "dist/payments/tpay/index.d.ts",
+      "snapshot": "api/payments-tpay.api.md"
     }
   },
   "pack": {

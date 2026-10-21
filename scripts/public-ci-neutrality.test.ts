@@ -3,8 +3,13 @@ import { createHash } from "node:crypto";
 import { mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { afterEach, describe, expect, it } from "vitest";
-import { neutralityIncreases, validateBaseline } from "./public-ci-neutrality.mjs";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { neutralityIncreases, scanSnapshots, validateBaseline } from "./public-ci-neutrality.mjs";
+
+vi.mock("node:child_process", async importOriginal => {
+  const original = await importOriginal<typeof import("node:child_process")>();
+  return { ...original, execFileSync: vi.fn(original.execFileSync) };
+});
 
 const sourceRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const baselinePath = "config/openlup-neutrality-baseline.json";
@@ -69,6 +74,35 @@ function validBaseline() {
   return { schemaVersion: 2, sourceCommit: "a".repeat(40), scannerPins: Object.fromEntries(scannerPaths.map((path) => [path, "c".repeat(40)])), counts: { ["b".repeat(64)]: { brand: 1 } } };
 }
 describe("tree-wide neutrality ratchet", () => {
+  it("fails closed when the communications allowance exceeds the ui-12 scanner count", () => {
+    const vendor = ["res", "end"].join("");
+    const path = `packages/platform/src/communications/${vendor}/index.ts`;
+    const invoke = vi.mocked(execFileSync);
+    invoke.mockReturnValueOnce(JSON.stringify({ counts: [{ path, counts: { "ui-12": 1 } }],
+      policy: { rules: [{ id: "tree-brand", terms: [debt] }] } }));
+    invoke.mockReturnValueOnce(JSON.stringify([]));
+    try {
+      expect(() => scanSnapshots(new Map([[path, Buffer.from(`${vendor} ${vendor}`)]])))
+        .toThrow(`neutrality allowance over-subtracted ui-12 in ${JSON.stringify(path)}: -1`);
+    } finally { invoke.mockClear(); }
+  });
+
+  it.each(["brand", "ui-0", "ui-2"])("fails closed when the adoption allowance exceeds the %s scanner count", category => {
+    const path = "README.md";
+    const display = debt[0].toUpperCase() + debt.slice(1);
+    const contents = `Shaped by real subscription-commerce work at [${display}](https://${debt}.com/)\n`
+      + `OpenLup's development is grounded in [${display}](https://${debt}.com/), a D2C\n`;
+    const counts = { [category]: 1 };
+    const invoke = vi.mocked(execFileSync);
+    invoke.mockReturnValueOnce(JSON.stringify({ counts: category === "brand" ? [] : [{ path, counts }],
+      policy: { rules: [{ id: "tree-brand", terms: [debt] }] } }));
+    invoke.mockReturnValueOnce(JSON.stringify(category === "brand" ? [{ path, counts }] : []));
+    try {
+      expect(() => scanSnapshots(new Map([[path, Buffer.from(contents)]])))
+        .toThrow(`neutrality allowance over-subtracted ${category} in ${JSON.stringify(path)}: ${category === "ui-2" ? -1 : -3}`);
+    } finally { invoke.mockClear(); }
+  });
+
   it("admits only the approved adoption prose and screenshot references without raising the baseline", () => {
     const { root, base } = installed();
     const before = readFileSync(join(root, baselinePath), "utf8");
