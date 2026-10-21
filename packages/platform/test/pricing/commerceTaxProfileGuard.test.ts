@@ -7,7 +7,7 @@ import { assertSupportedCommerceTaxProfile } from "../../src/pricing/index.js";
 const profile: CommerceTaxProfile = {
   included: true,
   country: "ZZ",
-  category: "pet_food",
+  category: "example_category",
   vatRateBps: 800,
   legalBasis: "Example VAT rule",
 };
@@ -28,12 +28,12 @@ describe("commerce tax profile guard", () => {
   );
 
   it("rejects a valid but undeclared profile with stable diagnostic details", () => {
-    const undeclared = { ...profile, country: "DE" };
+    const undeclared = { ...profile, country: "QZ" };
     expectQuoteError(
       () => assertSupportedCommerceTaxProfile(undeclared, [profile]),
       {
-        country: "DE",
-        category: "pet_food",
+        country: "QZ",
+        category: "example_category",
         vatRateBps: 800,
         reason: "taxProfile must be declared in supportedTaxProfiles",
       },

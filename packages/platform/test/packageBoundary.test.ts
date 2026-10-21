@@ -202,6 +202,7 @@ describe("package source boundary", () => {
     expect(files.map(({ path }) => path)).toEqual(expect.arrayContaining([
       "shipping/index.ts", "shipping/contracts/index.ts",
       "catalog/index.ts", "catalog/contracts/index.ts",
+      "catalog/catalogSkuEnvelope.ts", "catalog/catalogSkuEnvelopeMapper.ts", "catalog/catalogDraftStore.ts", "composition/catalogContribution.ts",
       "catalog/adminBindings.ts", "catalog/bundleBindings.ts", "catalog/bundleRules.ts", "catalog/bundleRuleCodes.ts",
       "catalog/bundleAvailability.ts", "catalog/bundleAvailabilityService.ts", "catalog/bundleCatalogReadPort.ts",
       "catalog/bundleCatalogStore.ts", "catalog/bundleCatalogQueries.ts", "catalog/sql.ts",
@@ -219,6 +220,12 @@ describe("package source boundary", () => {
     const nativeStore = files.find(({ path }) => path === "catalog/bundleCatalogStore.ts")!.source;
     expect(nativeStore).toContain('import type { PgQueryExecutor } from "../data/index.js"');
     expect(specifiers(nativeStore)).not.toContain("pg");
+    for (const path of ["catalog/catalogSkuEnvelope.ts", "catalog/catalogSkuEnvelopeMapper.ts", "catalog/catalogDraftStore.ts"]) {
+      const source = files.find(file => file.path === path)!.source;
+      expect(source).toContain('import type { PgQueryExecutor } from "../data/index.js"');
+      expect(specifiers(source)).not.toContain("pg");
+    }
+    expect(specifiers(files.find(file => file.path === "composition/catalogContribution.ts")!.source)).toEqual(["@openlup/core/readiness"]);
     // Shipping lane: audit every source, including contracts and type-only loads.
     for (const { path, source } of files.filter(({ path }) => path.startsWith("shipping/"))) {
       expect(specifiers(source).filter((specifier) => /(?:^|\/)inventory(?:\/|$)/u.test(specifier)), path).toEqual([]);
@@ -245,8 +252,7 @@ describe("package source boundary", () => {
     const manifest = JSON.parse(readFileSync(fileURLToPath(new URL("../package.json", import.meta.url)), "utf8")) as {
       exports: Record<string, unknown>;
     };
-    // P2 adds communications/klaviyo here together with its actual export.
-    assertModuleExports(modules, graph, manifest.exports, (path) => existsSync(join(SOURCE_ROOT, path)), ["communications/resend"]);
+    assertModuleExports(modules, graph, manifest.exports, (path) => existsSync(join(SOURCE_ROOT, path)), ["communications/resend", "communications/klaviyo"]);
   });
 
   it.each(files)("$path reaches another module only through that module's public entry", ({ path, source }) => {

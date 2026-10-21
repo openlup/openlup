@@ -10,10 +10,11 @@ or release.
 
 A1 extends the existing platform communications module. C-PR1 merged in #233
 with the neutral marketing-sync boundary; P1 merged in #235 with the opt-in
-Resend adapter. C-PR1b is this change: additive consent-push types and synthetic
+Resend adapter. C-PR1b in the predecessor supplies additive consent-push types and synthetic
 conformance through the existing communications entries. The neutral
 communications and communications/contracts entries export the marketing-sync
-types; the vendor factory is available only from `communications/resend`.
+types; vendor factories are available only from `communications/resend` and
+`communications/klaviyo`.
 The maintained reference adapters, newsletter port, private persistence witnesses
 and browser-entry limits retain their roles.
 
@@ -23,7 +24,7 @@ marketing lifecycle semantics and the
 host composition. P2 owns the Klaviyo factory and private construction; P3 owns
 consumer composition. C-PR1b supplies the neutral consent-push contract; P2 owns
 its real-adapter implementation and evidence.
-P2 inherits immediate withdrawal despite grant-caused fences/quarantine, preserving same-key withdrawal fences and account-level cooling (`retryable/cooling` with finite `afterSeconds`).
+P2 inherits ordinary withdrawal admission minus this subject's unresolved grant fence. Another subject's grant uncertainty does not hold it; non-grant quarantine, storage faults, the in-flight slot, pacing, same-key withdrawal fences and provider cooling still apply (`retryable/cooling` with finite `afterSeconds`).
 Versioning, private adoption, production activation and account certification are
 separate outcomes. No default sender, callback, route, schedule or recovery send
 is installed by these surfaces.
@@ -105,8 +106,8 @@ or a hosted time fit.
 | C-PR1 | 16 | S01–S12 shared conformance and K01–K04 compatibility; two test files |
 | P1 | 32 | 12 egress + 15 protocol + 2 additive cold-consumer + 3 generated package-boundary cases |
 | C-PR1b | 4 | Synthetic CP01–CP04; compile probes fold into K03/K04 |
-| P2 | at most 34 | Original 26 plus 8 real-adapter consent-push cases: CP01–CP04 and KP01–KP04 |
-| P3 | 8 | Consumer composition allocation |
+| P2 | 34 | S01–S12 + H01–H08 + six generated boundaries = 26; CP01–CP04 + KP01–KP04 = 8 |
+| P3 | 8 | Five adjacent binding cases, one isolation case and two cold-consumer cases |
 | V1 private witnesses | 6 | Separate private evidence allocation |
 | Cumulative ceiling | 100 | +30 s hosted duration ceiling unchanged; final median/p90 remain unmeasured here |
 
@@ -193,3 +194,141 @@ polled states, and the installed-consumer proof pins those names too.
 Targeting each plant variant inside its existing row preserves the case budget
 while making every safety condition independently falsifiable. A condition shared
 by race and ordinary paths needs controls on both paths.
+
+## P2: opt-in singleton marketing adapter
+
+The Node-only [Klaviyo entry](../../../packages/platform/src/communications/klaviyo/index.ts)
+exports exactly `createKlaviyoMarketingAdapter`. Its return intersects
+`MarketingSyncProvider`, `MarketingAutomationProviderPort`, `consentPush` and a
+refusal-only newsletter bridge. There are no exported construction types,
+constants, raw clients or public job controls. The internal revision is
+`2026-07-15`; donor endpoint/header observations were read locally, without
+importing donor behavior or contacting the provider.
+
+The host supplies a current opaque-subject mapper, local authorization/consent
+registries, an in-memory credential resolver and atomic compare-and-swap storage
+shared by all instances and namespaces for an account/environment. That storage
+is durable in an installation; tests use an isolated in-memory implementation.
+Its private `availability` record is shared by reference across every adapter for
+the account/environment. It is a plain mutable record, independent of failing
+CAS writes; `busy` holds admission for the entire operation, including result
+release, and uncertainty sets sticky `quarantined`. Host startup initializes it
+quarantined until explicit journal reconciliation; ordinary healthy storage
+recovery never reopens it. Host repair reconciles stored facts/fences before
+clearing the record and reconstructing adapters. This is private construction
+plumbing, with no new neutral callback, operation, executor or exported type.
+An uncertain storage reply retains a dispatch fence; lost cooldown/release
+persistence closes account availability and requires host repair. Verified mappings
+and non-grant outcomes commit together under durable quarantine until exact stored
+bytes are verified; grant outcomes rely on their durable per-subject dispatch
+fence and recorded grant cause instead of setting the account bit. A withdrawal
+under grant-only availability quarantine also releases its settlement bit after
+verification. For mutations, transfer's `finally` releases the account slot before
+result recording. A consent read holds its slot
+through observation recording. Uncertain recording or release preserves completed
+facts with an unknown journal and quarantines the account across reconstruction.
+Internal pacing waits
+are bounded by the request deadline and perform no mutation retry. Reconstructing an adapter over the same journal
+preserves replay, cooldown and tombstones; a new generation never creates a new
+replay identity. The host serializes current registry changes with its mapper;
+no request carries a remote identity or host callback.
+
+Without the owner's dated TEST readback, profile sync, consent read and consent
+push remain `verification_pending`; account-wide deletion requests also remain
+pending and audience-scoped deletion is unsupported. Deletion read is always
+unsupported. The readback must bind the revision, audience, key scopes, list and
+negative-source mappings, safe creation/removal, suppression behavior and
+operation-specific no-trigger evidence. Offline synthetic receipts exercise
+positive paths and cannot enable an installation by themselves.
+
+Klaviyo email declares `grantEffect:"account-wide"`. Local grants still name
+one audience and purpose. Missing account-wide flow/segment/backfill or DOI
+accounting, suppression present/unknown, or inability to prove suppression cannot
+be cleared at effect time refuses the grant. List withdrawal uses a proven-safe
+singleton relationship DELETE; it never falls back to a global unsubscribe.
+An explicit all-purpose withdrawal uses a singleton unsubscribe job without a
+list relationship. Jobs receive no historical-import flag, consent timestamp,
+SMS/push/tracking consent or local evidence reference. No flow, campaign,
+sender, import, suppression-management or account-sweep endpoint is called.
+
+A withdrawal follows ordinary admission minus exactly this subject's unresolved
+grant fence, including ambiguous acceptance, failed recording, unresolved dispatch
+and partial persistence. Another subject's grant-caused uncertainty cannot hold it.
+The shared availability cause record distinguishes grant-only quarantine from a
+sticky non-grant cause: only grant-only quarantine is exempt across subjects.
+Grant causes are recorded explicitly for the grant's own admission/journal CAS
+failure or lost write, never inferred from the active request. After a grant's own
+journal fault, the account-level hold for non-withdrawal operations lives on the
+shared in-memory availability record rather than the durable ledger bit, so a
+second process with its own availability record would not see it, and a host
+restart starts closed for explicit reconciliation. Storage reads before
+admission and faults outside those CAS steps are non-grant causes. Durable
+non-grant ledger quarantine, non-grant availability/in-process quarantine, the
+single in-flight slot, pacing and same-key withdrawal fences still apply and
+quarantine requires explicit host repair. Provider cooling also applies, returning
+`retryable/cooling` with finite `afterSeconds`, including observed cooldowns whose
+persistence failed; the shared availability identity retains that deadline across
+adapter reconstruction. The private grant cause keys retain missing admission
+writes for reconciliation. Host restart loses those keys and starts availability
+closed for explicit reconciliation. Grant uncertainty never reopens other operations.
+With this subject's earlier unsettled grant, withdrawal success carries
+`reconcileRequired:true`; failed withdrawal recording preserves acknowledgement
+with `journal:"unknown"`. Grants remain restricted during unconfirmed
+withdrawal. Pre-settlement or incomplete reads retain UNKNOWN. The host's
+existing reconciliation supplies authenticated, binding/subject/request-bound
+provider settlement facts; only a fresh complete read taken after every earlier
+grant settles can resolve the race. Subscribed readback tells the host to issue
+a new withdrawal requestId; the adapter installs no retry executor. Acknowledged
+never means subscribed, unsubscribed, delivered or erased. Scoped consent stays
+unknown; account-wide negative observations retain their actual scope, and
+remote SUBSCRIBED never grants local consent.
+
+The P2 executed inventory is 28 explicit adapter cases plus six generated source
+boundary cases: **34 total**. S01–S12 use C-PR1's provider-agnostic
+`conformanceCase` baseline/plant/restored runner against injected provider HTTP;
+H01–H08 fold all original protocol obligations into labeled sequential
+subassertions. CP01–CP04 and KP01–KP04 are the eight consent-push cases. CP02 shares the
+capability-reading grant-effect controls with the neutral helper, including the
+adapter's frozen account-wide declaration. KP04 pins immediate withdrawal for
+each grant uncertainty and kills a grant-ambiguity fence plant; KP03 pairs it
+with finite account-cooling refusal. KP01 checks exact payload attribute keys. The two
+existing cold-consumer cases also exercise the new installed-byte proof without
+new registrations. Fixtures resolve through `import.meta.url`. Default pacing is tested with fast HTTP and a real advancing clock. Source plants are
+transpiled into isolated temporary modules and removed afterwards; tracked
+production files are never planted. Local timings and check receipts live in
+the task evidence. Hosted median/p90, owner TEST evidence, committed native
+review, publication and activation remain separate gates.
+
+## P3: explicit reference binding
+
+Approved scope: the nine implementation/documentation files plus the file-scoped
+neutrality checker amendment; P2 base `d0b353a`. The binding composes P1 and the
+current P2 single factory (including `.newsletter` refusal), with lazy host-owned
+inputs, readiness admission and invocation-time identity guards. Native polling
+uses the explicit six-entry table in the binding, with unknown-kind refusal,
+unchanged replay/three-404 behavior and per-invocation store cleanup. Default and
+reference Resend wiring is unchanged. No executor, scheduler, claim loop or
+subscription writer is added. See [canonical composition](../CANONICAL_CONTRACTS.md#explicit-reference-adapter-composition)
+and [runtime installation](../RUNTIME_AND_SELF_HOSTING.md).
+
+| Case | Owner and proof | Plant |
+| --- | --- | --- |
+| 1 | Adjacent binding: absent/false opt-in does no loading or imports | Move lazy loading before the guard |
+| 2 | Adjacent binding: schema refusal and stale identity block every callable | Remove invocation-time assertion |
+| 3 | Adjacent binding: guarded send and authenticated/environment-selected callback | Raw sender; wrong callback tag |
+| 4 | Adjacent binding: pending verification, shared host state and newsletter refusal | Replace shared availability |
+| 5 | Adjacent binding: real poller → explicit wrapper → native writer, five emitted states, replay, unknown refusal and cleanup | Identity-map `email.delivery_delayed` |
+| 6 | `adapterOptIn.test.ts`: neutral/browser isolation and inert import | Re-export a vendor factory from the neutral entry |
+| 7 | Existing cold-consumer harness: actual host binding with packed subpaths and absent peers | Missing packed entry; checkout fallback |
+| 8 | Existing cold-consumer harness: exact admitted selection, empty default work and single sender | Install default work; second sender |
+
+The checker additionally permits exactly `communications/resend` and
+`communications/klaviyo` in `a1ReferenceBinding.ts` and its adjacent test, with no
+bare vendor-word exception. The paired plant in another communications runtime
+file must fail. Baseline counts and scanner pins stay unchanged.
+
+The two added cold cases pack current local build outputs and execute the actual
+host binding copied into an isolated consumer; the retained-artifact runner also
+executes it against its verified tarballs. These are offline composition proofs,
+not TEST-account certification, production activation or a measured hosted time
+fit. The cumulative 100-case and +30 s hosted ceilings remain unchanged.

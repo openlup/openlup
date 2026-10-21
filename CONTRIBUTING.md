@@ -130,6 +130,32 @@ its users or operators can observe.
    package's neutral names in its adapter.
 
 ## Development-preview checks
+M05 P7 adds five explicit cases across
+`tests/postgres/m05CatalogComposition.test.ts`,
+`tests/platform/catalog/m05Composition.test.ts` and
+`tests/platform/catalog/m05ReferenceComposition.test.ts`. The three PostgreSQL
+cases cover replay/contention with independent real transactions, native consumer
+readback and mounted admin/feed readback with an injected stock reader. The
+readiness case runs the existing SDK-absent packed-consumer scenario for the moved factories, descriptor and inert contribution; its local
+packs are working-tree feedback, not the supervisor's signed-artifact gate.
+The SSR case exercises the existing static pages and unmounted route inventory.
+Run these files explicitly under the existing collector; Phase A contributes
+four cases and Phase B adds the mounted readback case, with no skipped test.
+No collector, coverage budget, resource gate, dependency classification or
+default profile changes. The catalog server remains an adapter entry; composition declarations
+remain usable without optional database peers.
+
+
+Reference catalog UI conformance remains in the existing Node/DOM discovery.
+`referenceBuilderConformance.test.ts` uses the real persisted-state codec and a
+save/reset/reload transcript to protect selected quantity/mode, signed quote
+transfer, navigation refusal and fresh consent after edits. The catalog SSR case
+checks supplied media/details and legacy fallback; the page DOM cases protect
+locale deep-link hydration and authority-only lifecycle/refusal rendering.
+Promotion binding tests compare local/server schema semantics and bundle the
+actual browser clients/dialogs with positive schema-input controls. Collect
+changed files explicitly before running their focused paths; these witnesses
+add no runner, profile mount or package activation.
 
 Bundle native read extraction adds five cases under the existing
 `tests/postgres/**` collector, using an owned disposable PostgreSQL container and
@@ -149,8 +175,8 @@ reference schemas, shared admin kit/spec and RPC error subclass remain injected.
 The five package bundle suites retain 44 cases and two root binding suites retain
 18. Four neutral composition/stock/allocation/refusal/authority cases plus one
 DTO/schema and browser-closure binding case add five executed cases. No Vitest
-configuration or required selector changes. Catalog remains a non-adapter in this
-slice; its cold-consumer transcript adds composition refusal, honest unknown
+configuration or required selector changes. Catalog server now retains its adapter classification for the native data
+executor type; its cold-consumer transcript adds composition refusal, honest unknown
 stock and exact per-line allocation without optional peers. Native store/SQL proof
 is separate. Uncommitted relocated files still require the supervisor's committed
 inventory/package checks; local candidate ownership checks do not replace them.
@@ -391,6 +417,12 @@ its six required dependencies and merge-group metadata controls remain unchanged
 
 <!-- openlup-doc-impact {"unit":"public-checks","digest":"sha256-0f53d76126bb6c40cdd7bc03ed7114f24836b4ea75ee30c26a09c95d0e173568","reason":"Merge-commit landing support. The source-preview release preflights accept a target only on main's first-parent line, so a commit inside a pull request merged as a merge commit is refused; under squash history every main ancestor is first-parent, so behaviour there is unchanged. The required contexts and contributor commands described here are unchanged."} -->
 
+The bundle binding proof derives stock reason codes through the existing host
+helper before comparing wrapper and package output. The native read proof keeps
+its no-write snapshot assertions inside a `try` and removes only the inserted
+tier-price rows in `finally`, so its fixture cannot affect later write cases.
+These changes retain the existing cases and assertion operators.
+
 Required root `test` accepts only success from all four `test-full-shard` jobs;
 failed, cancelled or skipped shard jobs refuse it. Main-push reuse requires a
 complete successful exact-commit merge-group run, including raw pgTAP.
@@ -598,6 +630,11 @@ A source review carries over to a merge group when either:
   identity fence, package manifests and lockfiles, `db/platform/migrations/`,
   `supabase/migrations/` and the platform migration manifest). Other check
   configuration is not on this list; the group's mechanical checks run with it.
+  A moved `packages/<name>/package.json` does not block carry-over when main's
+  and the change's edits to it only add new, disjoint subpath `exports` keys,
+  preserve existing values with order-sensitive comparison, and leave every
+  other key unchanged. The merged manifest must preserve those values and contain
+  exactly both additions; root manifests and lockfiles still block.
 
 Then the source receipt admits the group without another receipt or live session.
 The six mechanical checks on the group tree cover behavioural interaction.
@@ -1502,8 +1539,13 @@ other or touch the same shared files:
   the source branch. Each upper PR still needs its own source receipt.
 - Before relying on carry-over, check `git merge-tree --write-tree` of the queue
   base and the head. The canonical carry-over rule applies: unchanged tree or
-  exact disjoint application relative to the reviewed predecessor. Other base
-  changes are rejected: merge `main` and re-review.
+  exact disjoint application relative to the reviewed predecessor.
+  A moved `packages/<name>/package.json` does not block carry-over when main's
+  and the change's edits to it only add new, disjoint subpath `exports` keys,
+  preserve existing values with order-sensitive comparison, and leave every
+  other key unchanged. The merged manifest must preserve those values and contain
+  exactly both additions; root manifests and lockfiles still block.
+  Other base changes are rejected: merge `main` and re-review.
 - If another change on `main` conflicts with it, merge `main` into it once (do
   not rebase), regenerate its shared records and get a fresh full review, as
   for a textual conflict.

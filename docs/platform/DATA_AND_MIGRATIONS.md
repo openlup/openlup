@@ -56,6 +56,23 @@ forward, rather than relying on a reference fixture or process startup. A missin
 twin in the other chain is a documented compatibility gap, not implicit parity.
 
 ## Module catalogues and installed histories
+`CATALOG_MIGRATIONS` additionally projects existing canonical catalog positions
+1, 8, 58, 59 and 61: read foundation, storefront attributes, document/identifier
+and subscription price-policy foundation, its validation, and isolated drafts.
+Each descriptor keeps the canonical path, position, digest and byte-identical
+package SQL. There is no new migration, reordered history or manifest edit.
+Install and observe the complete selected catalogue; these five projections do
+not supply an independent installation sequence. The package envelope and draft
+stores keep their incumbent SQL and refusal semantics after the source move.
+
+
+Inventory publishes sparse byte-identical projections of canonical units 27
+(stock evidence) and 33 (automatic renewal) through `INVENTORY_MIGRATIONS`.
+Canonical paths, positions and SHA-256 remain unchanged; this adds no migration
+or manifest row. Install the complete catalogue. The [M06 store matrix](plans/oss-m06-stock-reservations-delivery.md#parity-pending-rows)
+separates native observed-stock operations from managed lot-based inventory,
+refusals and outstanding real-host proof. Subscription/payment/delivery writers
+remain at their incumbent boundaries; these projections install no schedule.
 
 Catalog's `BUNDLE_MIGRATIONS` projects canonical bundle units 16 and 19 with exact
 catalogPath, position, SHA-256 and artifact URL. The package SQL bytes are identical

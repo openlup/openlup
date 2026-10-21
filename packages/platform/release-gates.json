@@ -171,7 +171,9 @@
         "test/catalog/bundleAvailability.test.ts",
         "test/catalog/bundleAvailabilityService.test.ts",
         "test/catalog/bundleCatalogReadPort.test.ts",
-        "test/catalog/sellableBundleHandler.test.ts"
+        "test/catalog/sellableBundleHandler.test.ts",
+        "test/catalog/catalogFoundationContracts.test.ts",
+        "test/catalog/catalogDraftContracts.test.ts"
       ],
       "entrypoint": "dist/catalog/index.d.ts",
       "snapshot": "api/catalog.api.md"
@@ -284,6 +286,18 @@
       "entrypoint": "dist/communications/resend/index.d.ts",
       "snapshot": "api/communications-resend.api.md"
     },
+    "./communications/klaviyo": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/communications/klaviyo/portConformance.test.ts",
+        "test/communications/klaviyo/protocol.test.ts",
+        "test/communications/klaviyo/permissions.test.ts"
+      ],
+      "entrypoint": "dist/communications/klaviyo/index.d.ts",
+      "snapshot": "api/communications-klaviyo.api.md"
+    },
     "./inventory": {
       "role": "capability",
       "maturity": "experimental",
@@ -293,7 +307,9 @@
         "test/inventory/contracts.test.ts",
         "test/inventory/adminInventoryConformance.test.ts",
         "test/inventory/inventoryAvailabilityCharacterization.test.ts",
-        "test/inventory/newPurchaseStockBoundary.test.ts"
+        "test/inventory/newPurchaseStockBoundary.test.ts",
+        "test/inventory/reservationPolicyConformance.test.ts",
+        "test/inventory/subscriptionForecastCalculation.test.ts"
       ],
       "entrypoint": "dist/inventory/index.d.ts",
       "snapshot": "api/inventory.api.md"
@@ -305,7 +321,9 @@
       "packageSmokeEvidence": [
         "test/packageBoundary.test.ts",
         "test/inventory/contracts.test.ts",
-        "test/inventory/newPurchaseStockBoundary.test.ts"
+        "test/inventory/newPurchaseStockBoundary.test.ts",
+        "test/inventory/reservationPolicyConformance.test.ts",
+        "test/inventory/subscriptionForecastCalculation.test.ts"
       ],
       "entrypoint": "dist/inventory/contracts/index.d.ts",
       "snapshot": "api/inventory-contracts.api.md"

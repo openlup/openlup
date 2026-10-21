@@ -28,7 +28,7 @@ P2 is split into three parts; checkout, claims and finalize stay with the checko
 | P4b | Native read store and SQL 16/19 descriptor with real PostgreSQL proof; no new migration; ≤35 production/tooling paths. |
 | P5 | Neutral browse/product/cart/builder/admin UI consuming explicit data/locale/media ports and lifecycle-ready DTOs; preserve existing fences. |
 | P6 | Bounded refactoring after unchanged imports and preserved witnesses; no new functional scope. |
-| P7 | Reference/default composition, selected native stores/schema/readiness and consumer/readback proof; no new capability or activation. |
+| P7 | Explicit inert reference composition, selected native stores/schema/readiness and consumer/readback proof; default remains unmounted, no new capability or activation. |
 | S1 | Separate existing-set version preparation and final packed-artifact/cold-consumer proof; no inferred version. |
 
 Execution change: P4 split into P4a (application/admin, ≤35 paths) and P4b (native read store and SQL 16/19 descriptor, ≤35 paths), replacing the master P4 ≤25 row; reason: full cut is 36 paths; two reviewable PRs.
@@ -214,30 +214,37 @@ released baseline or growth-tripwire policy changes.
 
 ### D8 pending outcome ledger
 
-Each row is **PENDING, not N/A, not claimed; must be dispositioned before M05 S1**.
-Disposition requires later implementation/proof or one bounded scope packet to
-the delegate; any reduction of admitted acceptance requires the owner's decision.
+The owner accepted D8-1 through D8-4 as native-backend capability gaps on
+2026-10-20: "zgadzam sie na rekomendacje". These dispositions claim no parity.
 
 | Outcome | Status and remaining proof |
 | --- | --- |
-| Native advisory v2 promo-code candidates and rejection details | PENDING capability/parity; the managed resolver is not a native implementation. |
-| Native mounted quote issue/honor/fallback | PENDING composition proof on the native mount. |
-| Acquisition-only mounted acceptance | PENDING composition proof; low-level token tests do not close it. |
-| Full native/managed eligibility matrix | PENDING explicit outcome matrix, including paid-order classification and native device evidence differences. |
+| D8-1: Native advisory v2 promo-code candidates and rejection details | Accepted native-backend capability gap (owner decision 2026-10-20: "zgadzam sie na rekomendacje"): Native v2 advisory code resolution remains unimplemented; no native/managed parity claim. |
+| D8-2: Native mounted quote issue/honor/fallback | Accepted native-backend capability gap (owner decision 2026-10-20: "zgadzam sie na rekomendacje"): Native mounted v2 code issue/honor/fallback remains pending on native advisory code resolution; incumbent native quote behaviour preserved. |
+| D8-3: Acquisition-only mounted acceptance | Accepted native-backend capability gap (owner decision 2026-10-20: "zgadzam sie na rekomendacje"): Low-level terms binding proven; acquisition-only mounted issuance/honor remains unimplemented and reference activation remains off. |
+| D8-4: Full native/managed eligibility matrix | Accepted native-backend capability gap (owner decision 2026-10-20: "zgadzam sie na rekomendacje"): Incumbent eligibility differences recorded; full equivalence not claimed. |
 
 Existing native lifecycle/read is proven in P3b on real PostgreSQL using the
 complete canonical installation chain. This proves the incumbent read/sweep and
 selected lifecycle subset, with no managed-schema import or new claim writer;
-it does not close any of the four PENDING rows above.
+it does not supply the missing capabilities recorded in the four accepted gaps above.
 
 ### P6 acceptance obligation
 
-P6 must replace every non-neutral fixture value still present in the moved
-package tests (including a legacy policy constant and industry-specific fact
-fields and contact values carried over unchanged from the existing public
-tests) with neutral synthetic values, without weakening any
-assertion. M05 S1 requires this row closed, so no adopter policy constant
-remains anywhere in OpenLup.
+No adopter policy constant remains in OpenLup application code; the reference
+composition supplies the adopter's values. The immutable managed baseline schema
+(legacy-offer v2 mirror backfill and mirror-closing trigger predicates) and its
+pgTAP tests retain the incumbent value; removing it requires a forward migration
+that changes managed schema behaviour, recorded as an M05 follow-up needing an
+owner decision.
+
+The moved package tests are neutralized without weakening assertions, including
+legacy policy fixtures, fact fields and contact values. **SATISFIED in P6 for the
+moved package tests.** Q1 is behavior-preserving: both reference classifiers
+require the host's threshold without a default. The quote-discount composition
+owns the single named reference constant; v2 quote and admin compositions reuse
+it. Comparison tolerance and existing assertions remain unchanged, with zero
+new executed cases. Owner decision 2026-10-20: "zgadzam sie na rekomendacje".
 
 ## P3b — promotion admin and native read/sweep
 
@@ -325,12 +332,16 @@ Five new executed real-PostgreSQL cases leave the programme balance at **17**.
 Fresh full-chain/repeat installation, SQL identity, native reads without data
 writes, canonical write refusal/rollback/dry-run/price history, sequential key
 recognition and explicit invoker grants characterize the incumbent native subset.
-All bundle parity rows remain PENDING; row 1 is now characterized, not closed.
+At P4b all bundle parity rows remained PENDING; row 1 was characterized, not
+closed. The dated owner dispositions below supersede that pending status for
+Bundle-1 and Bundle-2.
 The existing binding case remains one case. Confirmed changed-test collection:
 PostgreSQL 5, binding 1, package boundary 1,030 and cold-consumer tooling 37 (pre-merge counts). Generated
 source-boundary iterations do not consume programme cases.
 
-Changed production/tooling paths versus e581e1aae980efcea06cb580a15357a45db360bf:
+Historical P4a predecessor: `e581e1aae980efcea06cb580a15357a45db360bf`.
+Changed production/tooling paths from the P4b fork point after main carry-over,
+`020e6479cfc8e37810796cf3f67b52e5fa99bf12`, to the landed P4b tree:
 **18/35**, including JSON companions; tests, API snapshots and prose excluded.
 Pack measured before the main merge (A1 P1): **1,024 files / 1,002 code files / 667,279 packed B / 2,986,256 unpacked B /
 571,700 code gzip B**; root docs **37,278 gzip B / 5 files**. Browser entries:
@@ -341,15 +352,387 @@ not replace, the supervisor's committed-candidate package gates.
 
 ### Bundle parity pending ledger
 
-Each row remains PENDING, not N/A, and must be dispositioned before M05 S1,
-together with D8 and P6. Package application proof closes none of these rows.
+The owner accepted Bundle-1 and Bundle-2 as capability gaps on 2026-10-20:
+"zgadzam sie na rekomendacje". Bundle-3 is closed for the M05 mounted readback
+boundary with an injected stock reader; its native stock read remains M06 P5a
+work. Bundle-4 is closed only to the incumbent contention characterization
+proved on real PostgreSQL in P7 Phase A; no stronger replay guarantee is claimed.
 
 | Outcome | Status and remaining proof |
 | --- | --- |
-| Native database independent human-only actor-kind gate | PENDING: characterized in P4b; native database has no independent gate, handler gate only. |
-| Native history actor identity | PENDING: native actor fields are null versus managed audit identity. |
-| Native mounted admin/feed with actual stock | PENDING: P7 composition proof. |
-| Replay/concurrency beyond sequential replay | PENDING: characterize incumbent outcomes before claiming stronger guarantees. |
+| Bundle-1: Native database independent human-only actor-kind gate | Accepted native-backend capability gap (owner decision 2026-10-20: "zgadzam sie na rekomendacje"): Native human-only publication relies on the handler gate; independent database actor-kind enforcement is absent. First item of a future native-backend parity round. |
+| Bundle-2: Native history actor identity | Accepted native-backend capability gap (owner decision 2026-10-20: "zgadzam sie na rekomendacje"): Native principal audit exists; managed-equivalent actor kind/email history is unavailable and not claimed. |
+| Bundle-3: Native mounted admin/feed readback (M05) | Closed for M05: mounted admin/feed readback proven through the merged M06 availability builder with an injected stock reader. The real native stock read is M06's PENDING row (NewPurchaseStockReadPort native implementation, → M06 P5a), dispositioned there. |
+| Bundle-4: Replay/concurrency beyond sequential replay | CLOSED as incumbent characterization by P7 Phase A `native-bundle-replay-contention-characterization` on real PostgreSQL: global-key blocking, commit/unique-conflict rollback, first-attempt rollback, and conflicting payload/entity/routine recognition. No payload-bound or exactly-once guarantee. |
+
+## P6 — bounded refactor and fixture neutralization
+
+The coordinator approved the original seven-source-path cut and the Q1
+five-path reference composition extension. The outcome is corrected
+comments, delegation of duplicate VAT arithmetic to the existing helper, and
+neutral moved-test fixtures with all assertions retained. Both VAT exports,
+signatures and distinct function identities remain; API snapshot changes are
+comments only. No package API, dependency, SQL, migration, functional or cap change is
+included. Required reference classifier parameters preserve composed behavior. A behaviour change is never a refactor. C1 witnesses remain unchanged.
+
+Authority is local implementation and the requested focused checks; the
+supervisor owns commits, native candidate review and delivery. This task grants
+no merge, release, activation or adopter continuation. P5 functional paths and the concurrent inventory, shipping and communications
+work remain excluded. The owner decision 2026-10-20, "zgadzam sie na rekomendacje",
+authorizes Q1 and Q2. STEP 0 selects the existing quote-discount composition for
+the constant, avoiding an additional production path. The starter-offer comment
+describes arithmetic parity rather than the threshold location and stays unchanged.
+
+Final-diff ledger, **FORK POINT `2347e83d`**
+(`2347e83defeb3a1ff86f5aff37751c373ee74b3a`):
+**12 production source paths / 12**, **12 production/tooling paths / 35**;
+**37 existing test/helper paths** (28 suites and 9 helpers), **0 new executed
+cases**. The post-P5 programme balance stays **5**, reserved for P7. The authored
+publication catalogue covers P6's real files; the platform's pending
+`m05-p6.md` change note needs no per-file catalogue row and passes
+the fragment validator and release-tooling checks. The source-release contract
+and platform CHANGELOG retain main's bytes; the contract is computed by checks
+and was not regenerated. Documentation navigation regeneration is byte-unchanged;
+three API snapshots change comments only. Prose, pending changelog fragments and API
+snapshots are excluded from the production/tooling count.
+
+The original seven source paths are pricing `commerceQuoteCatalogReadPort.ts`,
+`commerceOfferPricing.ts` and `dbBackedCommerceQuoteHelpers.ts`; promotions
+`adminPromotionsDataPort.ts`; catalog `bundleRules.ts` and `bundleRuleCodes.ts`
+(all under `packages/platform/src/`); and `src/domains/bundle/bundleSpec.ts`.
+Q1 adds exactly five reference production paths:
+`server/domains/commerce/promotionCustomerSemantic.ts`,
+`server/domains/commerce/adminPromotionSemantic.ts`,
+`server/domains/commerce/quotePromoDiscounts.ts`,
+`server/domains/commerce/quotePromotionV2.ts` and
+`server/adapters/supabase/adminPromotions.ts`. No tooling source path changes.
+Tests comprise 4 catalog, 19 pricing and 10 promotions package paths, plus
+`tests/platform/catalog/bundleBindings.test.ts`,
+`tests/postgres/bundleNative.test.ts` and the two reference semantic suites
+`server/domains/commerce/promotionCustomerSemantic.test.ts` and
+`server/domains/commerce/adminPromotionSemantic.test.ts`. The feed fixture derives its reason code
+through the existing helper. The native read case deletes only its returned
+temporary tier-row IDs in `finally`, after its unchanged no-write assertions.
+
+Neutralization preserves lookup identities, cohort distinctions, validators,
+null/optional fields, refusal precedence and exact projections. The synthetic
+legacy percentage is 37.537: `floor(16,000 × 37.537 / 100) = 6,005`, and
+`16,000 − 6,005 = 19,990 / 2 = 9,995`. Coverage arithmetic stays 492 and 21.
+Synthetic GTINs retain their valid/invalid checksum distinction. Frozen token
+witnesses remain unchanged. D8-1..4 and Bundle-1/2 are accepted native-backend
+capability gaps under the owner decision above, with no parity claim; Bundle-1
+is the first item of a future native-backend parity round. These gaps must be
+named in the S1 CHANGELOG/docs as "not supported on the native backend". The
+managed path is unaffected. Bundle-3 is closed for M05 by P7's mounted readback
+with an injected stock reader; the native reader remains M06 P5a work. Bundle-4
+is closed by P7's real-PostgreSQL replay/contention characterization only.
+
+The original seven-path proof compares production tokens with comments removed,
+allows only the named VAT delegation, compares API declaration tokens, and checks each test's
+substitution map, assertion arguments, matcher sequence and collection count.
+All original **425 expect call sites** across the original 35 changed test/helper
+paths remain. The two reference semantic suites retain their 15 assertions,
+bringing the final changed-test total to **440 expect call sites** across 37 paths.
+Their changes are the explicit threshold argument and its import, plus neutral
+SKU and region fixtures. The original bounded focused selection recomputes to
+**193 cases** across 27 files.
+Against **FORK POINT `2347e83d`**, every changed suite collects: **180 cases across
+28 files**; the other nine changed test paths are imported helpers. Repair cycle 1
+runs this exact selection, with each file selected once:
+
+| File group (paths relative to the repository root) | Files | Cases |
+| --- | ---: | ---: |
+| P6-changed `packages/platform/test/catalog/*.test.ts` | 4 | 30 |
+| P6-changed `packages/platform/test/pricing/*.test.ts` (including the three quote handler/batch/snapshot suites: 3 files, 25 cases) | 13 | 90 |
+| P6-changed `packages/platform/test/promotions/*.test.ts` | 7 | 47 |
+| `server/domains/commerce/{adminPromotionSemantic,promotionCustomerSemantic}.test.ts` | 2 | 7 |
+| `tests/platform/catalog/bundleBindings.test.ts` | 1 | 1 |
+| `tests/postgres/bundleNative.test.ts` | 1 | 5 |
+| **Changed-suite subtotal** | **28** | **180** |
+| Additional `packages/platform/test/catalog/bundleRules.test.ts` | 1 | 20 |
+| Additional `server/adapters/supabase/adminPromotions.test.ts` | 1 | 8 |
+| Additional `server/domains/commerce/promotionBindings.test.ts` | 1 | 1 |
+| Additional `packages/platform/test/promotions/quotePromotionV2.legacyCodeOutcomes.test.ts` | 1 | 6 |
+| **Focused total** | **32** | **215** |
+
+The seven semantic cases are already in the changed-suite subtotal; the four
+additional suites contribute **35 cases**, so **180 + 20 + 8 + 1 + 6 = 215**.
+These explicit-path counts correct the previously recorded 1,248/1,270 figures.
+Repair collection matches HEAD `450b9c9d`: 180 cases across the same 28 changed
+suites, with unchanged case registrations and matcher sequences and zero new cases.
+All **210 non-database cases and 5 native PostgreSQL cases pass**. No mandatory
+full-suite execution is claimed; the host-load rule permits explicit focused paths
+only. Supervisor candidate gates remain outside this local delivery boundary.
+Repair cycle 1 replaces all seven sibling duck-SKU occurrences with
+`ITEM-BETA-400`; scanning all 37 P6 test/helper paths and the package tests also
+found and neutralized one beef SKU and two region fixtures in the reference
+semantic suites. The existing test-local substitution dictionary records these
+pairs. Assertions remain **425 original / 440 total**. The moved-package-test
+acceptance obligation remains satisfied.
+
+Repair cycle 1's focused run, collection comparison, all-project published-tree
+typecheck, ast-grep scan, ESLint on all 49 changed TypeScript paths, publication
+policy and `git diff --check` exit 0. ESLint reports zero warnings and zero errors;
+public CI neutrality reports zero increases. Policy with regenerated navigation
+has five obligations and zero unanswered. Exact commands, per-file counts and
+every residue-scan hit with its disposition are retained in the repair handoff.
+Package exports are unchanged, so this continuation adds no Unreleased changelog note.
+The threshold search has 11 matches: one reference constant, three reference
+fixtures, two immutable baseline SQL predicates and five managed pgTAP matches.
+
+### Deferred P6 advisories
+
+- Discriminated-union authority ports: public API; coordinator/owner.
+- `customerSemantic` vocabulary: public contract; coordinator/owner.
+- Zod/jitless import order: pricing module owner; needs module-evaluation proof.
+- Acquisition delegation `Vary`: observable HTTP/cache behaviour; coordinator.
+- Direct Rolldown dependency: dependency owner.
+- Docker-free SQL tests, SELECT-only cold-consumer evidence and explicit
+  anon/authenticated assertions: native proof owner, P7/C5.
+
+Retro: an initial install omitted the cache setting and was rerun correctly.
+Diff inspection caught a residual fixture label and comment grammar before final
+checks. The simpler path was the existing named VAT wrapper and test-local
+substitutions; public-contract and new-proof advisories stay deferred. In the Q1/Q2
+continuation, initial collection failed because package build outputs were absent;
+building the existing workspaces restored collection without source changes.
+Lesson: absent build outputs → build existing prerequisites before collection.
+The chosen constant location avoided a thirteenth production source path.
+Slot-check retro: cold packaging removes earlier package declarations, so the
+first subsequent API check refused the missing output; rebuilding the existing
+workspaces restored all API checks without source changes. Explicit collection
+also exposed inflated ledger counts. Lesson: cold pack → restore declarations
+before API checks; count collected JSON cases rather than inferred totals.
+Repair-cycle retro: the sibling SKU was absent from the substitution dictionary,
+and the collection explanation omitted the 20-case bundle-rule suite while
+counting semantic cases twice. Lesson: incomplete fixture dictionary → scan the
+whole changed fixture set; ambiguous totals → sum disjoint collected file groups.
+The repair uses direct substitutions and adds no cases, helper or production path.
+
+## P5
+
+The approved reference-only cut repairs browser promotion schemas and applies
+Decision B's exponent-aware subscribe display, including fallback and refusal to
+guess. Local schemas preserve current package semantics; package server exports,
+DTOs, shipping and band behavior remain unchanged.
+
+Explicit locale/data/media/lifecycle inputs feed additive catalog, product and
+selected-basket pages through testable reference routes. The shipped public root
+is not mounted here; that composition remains P7. The builder maps neutral
+acquisition terms into a separate persisted consent expectation, with fresh
+selected-quote navigation and consent invalidation on basket edits. Existing
+admin pages accept optional read/lifecycle bindings without changing default
+transports, gates or mutations. Optional SSG details/media preserve legacy detail
+lookup and gallery behavior. The W6 source witness remains unchanged outside
+this tree; the neutral reference transcript exercises production save/reload and
+navigation paths without activating incumbent endpoints or caches.
+
+Task authority: implementation and focused local verification only, in the
+assigned task worktree. The supervisor owns commits, native candidate review and
+delivery. No Git writes, release, external mutation or adopter change is included.
+The separate in-flight extraction is not a dependency. The agreed stock-card,
+reservation and shipping-handler exclusions remain intact; no communications
+integration is introduced. Existing D8, bundle parity and P6 obligations stay open
+as recorded below and above.
+
+Diff against fork point `090f37f8`
+(`090f37f82e2941fd883ab5ab6e8a586bb76922a8`):
+**20/35 production/tooling paths**, comprising 19 reference source paths and one
+publication catalogue JSON companion. The 30 changed paths also include five
+test files and five prose files, excluded from this path count. The committed
+source-release contract matches main and is not part of the P5 delta.
+Review repair `40020ff8` makes the builder consent line state the exact
+second-delivery promise.
+**12 new executed cases** consume the coordinator's supplied post-extraction
+planning balance **17 → 5**. P5 leaves **5** for P7; the planned P7 allocation
+consumes **5 → 0**. The allocation is currency 2 (both normal/fallback
+tables in one case, exponent refusal in one), promotion parity/browser closure 3,
+W6 4 and SSR/locale/lifecycle 3. The existing D8, bundle parity and P6 rows are
+unchanged.
+
+Collection on the final source: subscribe entry model **8**, promotion binding
+**4**, reference builder conformance **4**, reference SSR **1**, reference page
+DOM **2**. All are in existing include globs: Node `src/**/*.{test,spec}.ts` and
+`tests/platform/**/*.{test,spec}.ts`, DOM `src/**/*.{test,spec}.tsx`; the builder
+Node path explicitly selects the DOM environment for actual persistence. The
+second-main-merge focused selection passed **21 files / 153 cases** (19 files / 134
+cases, plus two direct promotion handler suites / 19 cases), with two workers.
+All five changed test files were explicitly listed: **5 files / 19 cases**,
+including the three new files / seven cases. Existing
+client, document panel, bundle helper, quote/cache, draft, subscribe journey,
+product FAQ/support, reference-store and public-entry SSR guards remain intact.
+The overlapping catalogue/documentation consumers also pass **11 files / 646
+cases**; these existing cases do not consume the new-case allocation.
+
+At fork point `090f37f8` plus P5, the existing browser measurement helper reports
+**22,007 B** for the promotion
+client, **20,610 B** for the code client and **43,473 B** for the opt-in reference
+routes (minified+gzip, including their runtime closures). Replacing only the two
+schema inputs with their baseline versions makes browser bundling refuse Node
+built-ins; a comparable baseline browser-byte total is therefore unavailable.
+These are application measurements, not package-entry limits. No package or
+browser budget change is requested.
+
+Cold platform pack at fork point `090f37f8` plus P5: **1,140 files / 1,116 code files /
+761,916 packed B / 3,436,956 unpacked B / 647,945 code gzip B**; root docs
+**38,848 gzip B / 5 files**. All three package artifacts pass existing caps and
+content checks; no package file, cap or baseline changes in P5.
+
+Second-main-merge structural scan, lint, all five typecheck projects (including tests),
+static and subscription builds, focused tests, collection and P5-scoped diff
+whitespace checks pass. Lint reports zero errors and 33 warnings. Cold packing,
+all three API snapshot checks and all three installed consumers pass, including
+disposable PostgreSQL proofs. Core smoke types, documentation and release checks
+also pass. Broad tests and coverage remain excluded by the focused-check grant; the
+aggregate package runner was not invoked because it includes coverage. These
+focused results do not claim that aggregate gate. This run used the task-owned
+cache from the start, with two Vitest workers; no check required a retry.
+
+The publication catalogue covers all 30 P5 paths with no missing or stale rows;
+policy and inventory pass across 5,404 public paths (5,402 authored rows and two
+pattern-admitted fragments). Catalogue serialization produces identical bytes,
+with every main row preserved and no duplicate, missing or stale row. Both P5's
+reference-UI paragraphs and main's A1 additions remain coherent. Navigation
+regeneration produces no delta, and all four documentation impact obligations are answered.
+The source-release snapshot remains unchanged under the current release flow;
+checks validate computed bindings and report its stale aggregate snapshot as
+expected. P5 changes no package changelog or fragment. Root neutrality reports
+zero increases against fork point `090f37f8`; UI neutrality also passes. All eight
+commits in `090f37f8..HEAD`, including both merges, carry DCO sign-off. Task-created untracked build
+directories were removed. The only repository edit from this second-main-merge pass is
+this ledger; commits, native candidate review and delivery remain supervisor
+obligations.
+
+Self-retro: checking actual legacy renderer fields caught incorrect new fixture
+assumptions before handoff. Use rendered composition cards and FAQ/supplement
+facts to test the supplied-details seam; keep the finite case allocation rather
+than adding a second harness or new runner. Slot-time lesson: a default cache
+write restriction caused two failed attempts; a task-owned cache preserved the
+existing checks without a repository or host configuration change. Second-merge
+lesson: reusing that cache and the existing catalogue serializer avoided retries
+and an unnecessary generator or merge repair. No successor work is opened.
+
+## P7 — inert native composition and M05 mounted readback
+
+Status: Phase A plus Phase B M05 readback implemented on the assigned task
+branch, with P5 and P6 present at **FORK POINT `0d80e9b3`**. No release or
+activation is part of P7. Scope is the unchanged native store
+cut, sparse projections, explicit inert roots, companions and five bounded cases.
+The coordinator permits an injected `NewPurchaseStockReadPort` feeding the merged
+M06 builder, without a native stock claim. M06 implementation and native stock
+proof, default BFF/browser/profile/prerender changes and release preparation are
+excluded.
+
+### Source and API ledger
+
+The package implementations of `catalogSkuEnvelope.ts`, `catalogSkuEnvelopeMapper.ts`
+and `catalogDraftStore.ts` preserve the donor bodies apart from import paths.
+The two old store paths are named reference shims. The importer-less reference
+mapper removal is a **true move** to the package, not a retained compatibility
+copy; the managed envelope keeps its own mapper. Mapper helpers remain private.
+
+Against **FORK POINT `0d80e9b3`**, the API adds exactly five exports:
+`./catalog`: `createPostgresCatalogSkuEnvelopeReadPort`,
+`createPostgresCatalogDraftStore`, `CATALOG_MIGRATIONS`;
+`./composition`: `createCatalogContribution` and type `CatalogContributionInput`.
+Existing factory parameter/return types require no new type exports. The descriptor
+projects canonical units **1, 8, 58, 59, 61**, with byte-identical SQL and unchanged
+canonical manifest/history. Catalog's existing **type-only data** edge is unchanged;
+**no composition-to-catalog edge** is needed. All 25 platform API snapshots pass.
+Main's changelog and source-release contract remain byte-identical to the fork
+point. The P7 changelog bullet and Migration paragraph moved verbatim into the
+validated `m05-p7.md` changelog fragment, without a catalogue row.
+
+`server/runtime/public-reference/m05CatalogBinding.ts` selects native envelope,
+draft, price-authority and bundle stores, existing identity verification,
+quote/offer/promotion callbacks, selected bundle handlers, stock injection and
+owned-resource closure. `m05CatalogSchema.ts` supplies finite selected relations,
+columns and exact routine overloads. Existing readiness checks actual callable
+identity and host-observed inventory/schema facts. Publication read/publish,
+lifecycle writes, native acquisition acceptance, native promotion-admin writes
+and native code-candidate resolution remain unsupported. All operation flags
+default off. P5's supplied UI inputs and P6's required classifier threshold compile
+with this composition; default routes, shipped pages/profile and prerender stay
+unchanged. Both static and subscription builds still prerender two pages.
+
+### Proof and case ledger
+
+Phase A contributes four cases; Phase B contributes the single
+`native-mounted-bundle-admin-stock-readback` case. There is no skipped case or
+new parameterized expansion. Generated source-boundary iterations remain separate
+from the programme's authored-case budget.
+
+| Case | File | Observed result |
+| --- | --- | --- |
+| #1 `native-mounted-bundle-admin-stock-readback` | `tests/postgres/m05CatalogComposition.test.ts` | PASS: native catalog/bundle rows on the canonical PostgreSQL chain, selected admin/feed handlers registered by the inert reference composition, and component-derived bundle availability through the merged M06 builder with an injected stock reader. Changing one component from four units to zero changes both readbacks; reader calls assert both component SKUs, horizon and exclusion options. No native stock implementation is proved. |
+| #2 `native-bundle-replay-contention-characterization` | `tests/postgres/m05CatalogComposition.test.ts` | PASS on real PostgreSQL: independent blocked transactions on disjoint entities; first commit yields exact `23505`/`uq_catalog_bundle_write_events_key` and aborted/rolled-back second effects; first rollback lets the second commit; conflicting payload/entity/routine reuse is recognized without extra effects. Bundle-4 CLOSED to this characterization only. |
+| #3 native consumer readback | Same PostgreSQL file | PASS: native document/identifier envelope, strict price authority and quote/offer projection, existing native authorizer, exact transported draft bytes/fingerprint, durable revision/receipt and admin open-state readback, denied access and unchanged catalog authority. Existing issuance returns no acquisition acceptance token. The merged P5 UI remains opt-in; its supplied SSR inputs are covered separately by the existing reference UI case. |
+| #4 selected readiness / cold-consumer refusal | `tests/platform/catalog/m05Composition.test.ts` | PASS: actual callable/store identities, unsupported declarations, absent store/stock refusal, missing ports, incomplete/unknown schema and mismatched candidate refusal; packed SDK-absent consumer runs the reused real-operation/named-refusal scenario. |
+| #5 `SSR/default-exposure-unchanged` | `tests/platform/catalog/m05ReferenceComposition.test.ts` | PASS: both original pages render identically through the app and SSR entry, undeclared catalog/builder/admin/feed paths remain unexposed, empty BFF caller table and activation default preserved. |
+
+
+Slot verification collects **3 / 1 / 1** cases in the PostgreSQL, composition and
+reference files respectively, and all **5 pass**, including real PostgreSQL.
+The focused related run passes **1,559 cases in 36 files**: catalog, composition,
+inventory, package boundary, moved stores and reference shims, supplied reference
+UI inputs, bundle bindings, cold-consumer tooling and fragment checks. No broad
+test command, coverage or resource gate runs.
+
+Ast-grep, lint (**33 warnings / 0 errors**), all five public typecheck projects
+including tests (**0 unresolved edges / 0 diagnostics**), static and subscription
+builds, cold package gates and the full platform installed-consumer proof pass.
+That consumer runs both catalog composition and A1 host-binding proofs with the
+union export inventory and both declaration resolution modes. Migration-block
+and append-only history checks pass. Catalogue generator roundtrip is
+byte-identical: **5,415 sorted unique rows**, every real P7 file has exactly one
+row except the pattern-admitted fragment, the old mapper has none, and all retained
+main rows are unchanged. Inventory reports **5,419 public paths**. Policy reports
+**5 obligations / 0 unanswered**; neutrality reports **0 increases**. Every P7
+commit, including both merges, carries DCO sign-off. Whitespace checks pass.
+
+### Size, pending work and self-retro
+
+Final-diff ledger, **FORK POINT `0d80e9b3`**
+(`0d80e9b326d08ebb173b506ee36d4098a7ba34ec`):
+`git diff --name-only --no-renames 0d80e9b3 HEAD` has **37 distinct changed paths**.
+Local repairs remain within those paths. Classification is **20 production/tooling/
+schema paths / 35**, comprising **12 runtime source paths / 20** and **8 tooling/
+schema paths**; **4 test/helper paths**; **13 documentation/API-report/fragment
+paths**. These figures count both locations of the mapper move. Counting that
+true move once gives **36 entries**, **19 production/tooling/schema entries** and
+**11 runtime source entries**. The raw-path counts remain the conservative cap
+comparison. P5/P6 paths already present at the fork point are excluded.
+
+Runtime paths: seven package source paths (the three store/mapper files, catalog
+barrel and SQL descriptor, contribution and composition barrel), two reference
+store shims, the removed reference mapper, and two explicit reference binding/
+schema paths. Tooling/schema paths: publication catalogue, release gates, five
+SQL projections and the cold-consumer script. Tests: package boundary and three
+P7 files. Prose, two API snapshots and the changelog fragment form the remaining
+13 paths. Five new authored cases consume the programme balance **5 → 0**.
+
+Cold platform pack from this run: **1,157 files / 1,128 code files / 779,182 packed B /
+3,515,914 unpacked B / 656,492 code gzip B**; root docs **39,395 gzip B / 5 files**.
+All three package artifacts pass existing caps and content checks. No cap or
+version changes are prepared by this slot check. These working-tree results do
+not replace the supervisor's committed-candidate review and delivery gates or S1.
+
+Bundle-3 disposition remains:
+"Closed for M05: mounted admin/feed readback proven through the merged M06 availability builder with an injected stock reader. The real native stock read is M06's PENDING row (NewPurchaseStockReadPort native implementation, → M06 P5a), dispositioned there."
+Bundle-4 is closed only by the P7 real-PostgreSQL incumbent replay/contention
+characterization: global-key blocking, unique-conflict rollback, first-attempt
+rollback and conflicting reuse recognition. No payload-bound or exactly-once
+guarantee is added. The stock reader is an injected port-boundary test double;
+real catalog/bundle rows do not prove native stock. Merged P5 UI input coverage
+establishes opt-in SSR behavior without a default mount or native acceptance.
+
+Self-retro: cold packaging removed Outbox declarations, causing an initial
+19.29-second typecheck failure (12 missing edges and 12 cascading diagnostics).
+Restoring package outputs with the existing pretest build yielded zero errors;
+no source repair or fallback was needed. Lesson: cold pack → restore all package
+declarations before root typechecking. The stale pre-merge ledger is replaced by
+one fork-point classification; an importer-less mapper needs no compatibility
+copy. Only stale P7 prose/comments required repair in this slot check.
 
 ## Witness ledger
 

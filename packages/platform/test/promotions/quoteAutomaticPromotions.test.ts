@@ -19,10 +19,10 @@ const { resolveAutomaticQuotePromotions } = createQuoteAutomaticPromotions<Creat
 const promoDataPort = {} as CommercePromoDataPort;
 const request = {
   mode: "subscription",
-  lines: [{ sku: "lamb", quantity: 14 }],
+  lines: [{ sku: "item-alpha", quantity: 14 }],
   promoCodes: ["SAVE"],
   visitorId: "visitor-1",
-  customerEligibilityContext: { email: "dog@example.com" },
+  customerEligibilityContext: { email: "subject-a@example.com" },
 } as CreateQuoteRequest;
 const baseInput = {
   request,

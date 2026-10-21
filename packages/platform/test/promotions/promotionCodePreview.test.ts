@@ -102,6 +102,6 @@ describe("promotion code preview", () => {
     const codes = new Set(Array.from({ length: 256 }, generatePromotionCode));
     expect(codes.size).toBe(256);
     for (const code of codes) expect(code).toMatch(/^[0-9A-HJKMNP-TV-Z]{16}$/);
-    expect(normalizePromotionCode(" summer_80 ")).toBe("SUMMER_80");
+    expect(normalizePromotionCode(" example_80 ")).toBe("EXAMPLE_80");
   });
 });

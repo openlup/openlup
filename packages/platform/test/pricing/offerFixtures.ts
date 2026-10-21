@@ -18,14 +18,14 @@ export function projectCommerceOfferPricing(deps: CommerceOfferPricingDeps): Pro
   return projectPricing({ ...deps, isOfferProduct, requestFor,
     unitCount: COMMERCE_MIN_AUTO_ORDER_UNITS,
     minimumProductPayableMinor: MINIMUM_PRODUCT_PAYABLE_MINOR,
-    scopeV1: "dog_products_only_excludes_shipping",
-    scopeV2: "dog_products_and_shipping",
+    scopeV1: "example_products_only_excludes_shipping",
+    scopeV2: "example_products_and_shipping",
   });
 }
 
 function isOfferProduct(product: CommerceQuoteCatalogItem): boolean {
   return (
-    product.species === "dog" &&
+    product.segment === "segment_a" &&
     product.isPrimarySku === true &&
     product.isAddon !== true &&
     product.sellability.oneTime &&
