@@ -774,7 +774,23 @@ outstanding, but an in-flight or undelivered replacement still is. Never call
 `subscription_delivery_alignment_confirm_replacement` for a replacement that did
 not arrive: it records the customer-facing fact "Parcel delivered" and shifts the
 cycle later. The note-only operator attestation remains unchanged; P1 adds no
-caller. Native alignment implementation and continuity proof remain P4 work.
+caller. The P4 candidate supplies invoker native stores and forward-only
+alignment; its migration identities and executor boundary are documented under
+[module catalogues](DATA_AND_MIGRATIONS.md#module-catalogues-and-installed-histories).
+The native dispatch store delegates contact preparation and candidate data to
+the selected host. That host synchronizes `fulfillment_dispatch_contexts` on
+preparation and every authoritative contact/selection edit, under the shipment lock;
+claim/begin compare the stored revision with the prepared evidence. A draft can
+refresh once, while submission and accepted proof cannot authorize a blind POST.
+Before submission, the store rechecks paid order, active holds, shipment status,
+port readiness and the stored selected provider. The direct and command lanes
+share a native dispatch lock. Direct submission can supersede only the donor's
+pristine, never-claimed queued command; any effect-bearing history refuses it.
+Command claim cannot run after direct submission or accepted proof.
+The stock store requires the host's timed G16 inventory-line reader and reads
+native active reservations without changing M06. The shipment store exposes
+G17 received/processed receipts and explicit status-evidence recording; ingestion
+alone supplies no applied chronology. No executor or provider is mounted here.
 
 Inspect the [contract witnesses](../../packages/platform/test/fulfillment/contracts.test.ts),
 [status parity](../../packages/platform/test/fulfillment/statusMap.test.ts),

@@ -7,6 +7,55 @@ registers and coordinator freeze. Donor V: C1 `d902ac7f4`, read from its local
 `origin/main` source objects. These packets are implementation inputs, not authority
 to execute their example commands or broaden scope.
 
+## P4 candidate and D13 native translation note
+
+The P4 candidate adds native stores, the command fence and delivery alignment,
+stacked on P3 `a8708cf1`. The coordinator (owner's delegate) approved this D13
+native translation note: overdue-delivery admission guards only NEW cycle
+admission/insert, matching the donor's guard_cycle_insert. Existing-cycle payment
+retries in renewal operations and dunning bypass admission structurally and mint
+or consume no one-use receipt. No retry_scheduled state or M07 lifecycle change
+is introduced. A native retry path reaching admission is a stop condition.
+
+P4 allocates fourteen cases: one store contract and thirteen real-PostgreSQL
+cases, adding existing-cycle retry/no-receipt and new-cycle overdue-insert guard
+proofs to the original twelve. Docker setup time is reported separately. The
+candidate appends forwards 73/74 after the inspected position-72 tip; prior
+history and the managed graph remain immutable. Required maintainer SQL/API/ACL
+read and complete native proof remain delivery gates. Authority covers local
+implementation and verification only; submission and release belong to the
+coordinator. The path cap is 35 against the supplied P3 pin.
+
+Candidate verification on 2026-10-22: all fourteen allocated cases pass (one
+package store contract and thirteen real-PostgreSQL cases). PostgreSQL case
+bodies total 9.296 s including the prefix case's 3.459 s container setup;
+the two suite containers add 4.611/4.626 s setup outside case bodies. These are
+local observations, not hosted gate certification. The full focused package run
+passes 31 fulfillment cases plus 1,528 generated boundary rows. The candidate
+fits 33 paths against P3, including generated companions and owner documentation.
+Artifact preview: 1,120,247 B packed, 5,025,670 B unpacked, 1,537 files;
+code gzip 947,600 B and root-document gzip 47,867 B (cap 49,152 B).
+All browser subcaps pass; fulfillment contracts remain 20/32 B.
+
+Native dispatch acknowledgement maps to the existing dispatch-evidence receipt,
+which fences cancellation without claiming an owned label or physical packing.
+Submission repeats donor paid/hold/selection checks and coordinates direct and
+command lanes. Only a pristine never-claimed queued command may be superseded;
+effect-bearing history refuses direct submission. G17 status chronology is
+recorded separately from observation receipt. The maintainer read still covers
+the two complete SQL forwards, every new routine/helper/trigger/table/view and
+their invoker ACLs, native mapping, API, locks, upgrade and case/time budgets.
+Managed body equality remains distinct from trigger/ACL/runtime parity, which
+this candidate does not establish. Submission, native review and release remain
+supervisor responsibilities.
+
+P4 self-retro: native acceptance is dispatch evidence, not an owned label.
+Using that existing receipt preserves the commitment and cancellation fence
+without fabricating physical progress. A verification run overlapped lint's
+dist rebuild and collected zero tests; the serialized rerun supplies the passing
+evidence. Shared build outputs require serialized verification. A host-clock proof fixture
+was refused as future evidence; database-clock fixtures preserve that strict guard.
+
 ## P1 outcome, authority and acceptance
 
 Outcome: two additive platform subpaths with neutral fulfillment contracts,

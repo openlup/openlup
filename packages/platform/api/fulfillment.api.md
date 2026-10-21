@@ -698,6 +698,14 @@ export interface FulfillmentProductSyncPort {
 }
 export {};
 ```
+## dist/fulfillment/deliveryAlignmentReadModel.d.ts
+
+```ts
+import type { DeliveryAlignmentPort } from './contracts/index.js';
+import type { PgExecutor } from './postgresDispatchStore.js';
+/** Server-authorized projection; database browser roles have no direct access. */
+export declare function readDeliveryAlignment(db: PgExecutor, fulfillmentRef: string): ReturnType<DeliveryAlignmentPort['read']>;
+```
 ## dist/fulfillment/fulfillmentObservationEffects.d.ts
 
 ```ts
@@ -786,6 +794,16 @@ export { runFulfillmentProductSyncWorker } from "./providerProductSyncWorker.js"
 export { createFulfillmentLowStockEvidenceHandler } from "./lowStockEvidenceHandler.js";
 export { createProductReconciliationEvidenceHandler } from "./productReconciliationEvidenceHandler.js";
 export { runFulfillmentAdapterConformance } from "./adapterConformance.js";
+export { createPostgresFulfillmentShipmentSpinePort } from './postgresShipmentSpine.js';
+export { createPostgresFulfillmentLowStockEvidencePort } from './postgresEvidenceReadPort.js';
+export { createPostgresFulfillmentStockSyncPort } from './postgresStockSyncPort.js';
+export { createPostgresPaidFulfillmentRecoveryOpsPort } from './postgresPaidFulfillmentRecovery.js';
+export { createPostgresFulfillmentDispatchStore } from './postgresDispatchStore.js';
+export { createPostgresPaidFulfillmentHandoffStore } from './postgresPaidHandoffStore.js';
+export { createPostgresDeliveryAlignmentPort } from './postgresDeliveryAlignment.js';
+export { readDeliveryAlignment } from './deliveryAlignmentReadModel.js';
+export { FULFILLMENT_NATIVE_CAPABILITIES } from './schemaCapabilities.js';
+export { FULFILLMENT_MIGRATIONS } from './migrations.js';
 ```
 ## dist/fulfillment/lowStockEvidenceHandler.d.ts
 
@@ -826,6 +844,37 @@ export declare function createFulfillmentLowStockEvidenceHandler<Request extends
         sendMethodNotAllowed(res: Response, methods: readonly string[]): void;
     };
 }): (req: Request, res: Response) => Promise<void>;
+```
+## dist/fulfillment/migrations.d.ts
+
+```ts
+/** Byte-identical sparse projections; install the complete canonical catalogue. */
+export declare const FULFILLMENT_MIGRATIONS: readonly [{
+    readonly position: 5;
+    readonly catalogPath: "db/platform/migrations/20260808210000_fulfillment_shipment_rail.sql";
+    readonly sha256: "eb5824551903717f3868690909fcc2cb6a7f845abe5cb19bd4cff13103b1383d";
+    readonly url: URL;
+}, {
+    readonly position: 27;
+    readonly catalogPath: "db/platform/migrations/20260814000000_fulfillment_stock_evidence.sql";
+    readonly sha256: "df20c2491cb0196b4e28d19e7578c95bfa5c87b8f89fb0b6284c0e0695a3cc1d";
+    readonly url: URL;
+}, {
+    readonly position: 51;
+    readonly catalogPath: "db/platform/migrations/20260819150000_fulfillment_shipment_sequence.sql";
+    readonly sha256: "906706cf66a6a555aa1219b12eb674d937eaa099abde6da18766310af43aaa9f";
+    readonly url: URL;
+}, {
+    readonly position: 73;
+    readonly catalogPath: "db/platform/migrations/20261022080000_fulfillment_command_ledger.sql";
+    readonly sha256: "c6806906cdb0b6931b29f7a5c7c800016e98d04e6ea956f3c1e219a6cdb7e9d1";
+    readonly url: URL;
+}, {
+    readonly position: 74;
+    readonly catalogPath: "db/platform/migrations/20261022090000_fulfillment_delivery_alignment.sql";
+    readonly sha256: "a51dafb465202b9d9db2f23f8ae10ff961114c6e705c9ae92069c9016dbac221";
+    readonly url: URL;
+}];
 ```
 ## dist/fulfillment/normalizedFulfillmentFacts.d.ts
 
@@ -974,6 +1023,179 @@ export interface OrderPaidFulfillmentPort {
         signal: AbortSignal;
     }): Promise<OrderPaidFulfillmentResult>;
 }
+```
+## dist/fulfillment/postgresDeliveryAlignment.d.ts
+
+```ts
+import type { DeliveryAlignmentPort } from './contracts/index.js';
+import { type PgExecutor } from './postgresDispatchStore.js';
+/** Trusted arrival ingestion only. Operator replacement attestation has no caller here. */
+export declare function createPostgresDeliveryAlignmentPort(db: PgExecutor): DeliveryAlignmentPort;
+```
+## dist/fulfillment/postgresDispatchStore.d.ts
+
+```ts
+import type { FulfillmentDispatchRequest, FulfillmentStorePort } from './contracts/index.js';
+import type { createFulfillmentCommandLedger } from './providerCommandLedger.js';
+/** Caller supplies a driver and its selected host preparation/data boundary. */
+export interface PgExecutor {
+    query(text: string, values?: unknown[]): Promise<{
+        rows: Record<string, unknown>[];
+    }>;
+}
+export declare function nativeCall<T>(db: PgExecutor, name: string, values: unknown[]): Promise<T>;
+export declare function createPostgresFulfillmentDispatchStore(db: PgExecutor, host: {
+    /** Synchronize authoritative withholding/contact revision on prepare and every source edit. */
+    prepare(fulfillmentRef: string): ReturnType<FulfillmentStorePort['prepare']>;
+    readCandidate(fulfillmentRef: string): Promise<FulfillmentDispatchRequest | null>;
+}): FulfillmentStorePort & {
+    commandLedger: ReturnType<typeof createFulfillmentCommandLedger>;
+};
+```
+## dist/fulfillment/postgresEvidenceReadPort.d.ts
+
+```ts
+import type { PgExecutor as PgQueryExecutor } from './postgresDispatchStore.js';
+interface AdminLowStockEvidenceItem {
+    id: string;
+    sku: string;
+    thresholdKind: string;
+    severity: string;
+    status: string;
+    providerForSaleQuantity: number | null;
+    localAvailableQuantity: number | null;
+    forecastDays: null;
+    firstSeenAt: string | null;
+    lastSeenAt: string | null;
+    resolvedAt: string | null;
+}
+interface FulfillmentLowStockEvidencePort {
+    getLowStockEvidence(input: {
+        statusFilter: 'all' | 'open' | 'resolved';
+    }): Promise<{
+        statusFilter: string;
+        openCount: number;
+        items: AdminLowStockEvidenceItem[];
+    }>;
+}
+export declare function createPostgresFulfillmentLowStockEvidencePort(executor: PgQueryExecutor, sourceKey: string): FulfillmentLowStockEvidencePort;
+export {};
+```
+## dist/fulfillment/postgresPaidFulfillmentRecovery.d.ts
+
+```ts
+import type { collectPaidFulfillmentRecoveryCandidates } from './paidFulfillmentRecovery.js';
+import type { PgExecutor } from './postgresDispatchStore.js';
+type RecoveryInput = Parameters<typeof collectPaidFulfillmentRecoveryCandidates>[0];
+/** Read the selected native port's local obligations; never infer external absence. */
+export declare function createPostgresPaidFulfillmentRecoveryOpsPort(db: PgExecutor, selection: {
+    portKey: string;
+    providerRef: string;
+}): {
+    readRecoveryInputs(input: {
+        minimumAgeSeconds: number;
+        limit: number;
+        now: Date;
+        orderIds?: string[];
+    }): Promise<Pick<RecoveryInput, "orders" | "fulfillmentOrders" | "dispatchRefs" | "orderPaidOutboxEvents">>;
+    requeueDiscardedOrderPaidOutboxEvents(input: {
+        eventIds: string[];
+        limit?: number;
+        requeuedBy: string;
+        reason: string;
+    }): Promise<{
+        requeuedCount: number;
+        eventIds: string[];
+    }>;
+};
+export {};
+```
+## dist/fulfillment/postgresPaidHandoffStore.d.ts
+
+```ts
+import type { FulfillmentPaidHandoffPort } from './contracts/index.js';
+import { type PgExecutor } from './postgresDispatchStore.js';
+/** Select an existing native port explicitly; never route by a private provider default. */
+export declare function createPostgresPaidFulfillmentHandoffStore(db: PgExecutor, portKey: string): FulfillmentPaidHandoffPort;
+```
+## dist/fulfillment/postgresShipmentSpine.d.ts
+
+```ts
+import type { PgExecutor as PgQueryExecutor } from './postgresDispatchStore.js';
+interface ShipmentSpineResult {
+    shipmentId: string;
+    orderId: string;
+    status: string;
+    replayed: boolean;
+}
+interface ShipmentRequest {
+    idempotencyKey: string;
+    shipmentId: string;
+    metadata?: Record<string, unknown>;
+    requestedAt?: string;
+    externalRef?: string;
+}
+interface ShipmentSpineMutationPort {
+    createShipment(input: {
+        idempotencyKey: string;
+        orderId: string;
+        metadata?: Record<string, unknown>;
+        requestedAt?: string;
+    }): Promise<ShipmentSpineResult>;
+    recordLabel(input: ShipmentRequest): Promise<ShipmentSpineResult>;
+    handOff(input: ShipmentRequest): Promise<ShipmentSpineResult>;
+    recordTracking(input: ShipmentRequest & {
+        status: 'in_transit' | 'delivered';
+    }): Promise<ShipmentSpineResult>;
+    cancel(input: ShipmentRequest & {
+        reason: string;
+    }): Promise<ShipmentSpineResult>;
+    raiseException(input: ShipmentRequest & {
+        reason: string;
+    }): Promise<ShipmentSpineResult>;
+}
+export interface PostgresFulfillmentShipmentSpineOptions {
+    portKey: string;
+    evidenceChannel?: "poll" | "push";
+    requiredProviderType?: "simulator";
+}
+/** Direct node-postgres adapter for the provider-neutral public shipment rail. */
+export declare function createPostgresFulfillmentShipmentSpinePort(executor: PgQueryExecutor, options: PostgresFulfillmentShipmentSpineOptions): ShipmentSpineMutationPort & {
+    localPersistence: ReturnType<typeof localPersistence>;
+};
+/** G17 native local persistence, composed on the same injected executor. */
+declare function localPersistence(executor: PgQueryExecutor): {
+    readLocalFulfillmentState(ref: string): Promise<{
+        status: string | null;
+        latestStatusOccurredAt: string | null;
+        handedOverAt: string | null;
+    }>;
+    recordObservation(observation: import("./contracts/index.js").FulfillmentObservation): Promise<{
+        replayed: boolean;
+    }>;
+    recordStatusEvidence(ref: {
+        fulfillmentRef: string;
+    }, observation: import("./contracts/index.js").FulfillmentObservation): Promise<{
+        replayed: boolean;
+    }>;
+    markProcessed(eventKey: string, outcome: {
+        status: "processed" | "ignored";
+        refusal?: import("./contracts/index.js").FulfillmentRefusal;
+    }): Promise<void>;
+};
+export {};
+```
+## dist/fulfillment/postgresStockSyncPort.d.ts
+
+```ts
+import type { FulfillmentStockSyncPort } from './contracts/index.js';
+import { type PgExecutor } from './postgresDispatchStore.js';
+/** The native catalogue has observed stock, not adopter inventory balances. */
+export declare function createPostgresFulfillmentStockSyncPort(db: PgExecutor, options: {
+    sourceKey: string;
+    inventoryClasses?: ReadonlyMap<string, 'sellable' | 'packaging' | null>;
+    readLocalInventoryStock: FulfillmentStockSyncPort['readLocalInventoryStock'];
+}): FulfillmentStockSyncPort;
 ```
 ## dist/fulfillment/productReconciliationEvidenceHandler.d.ts
 
@@ -1387,6 +1609,23 @@ export declare function enrichTrackingReference(ref: FulfillmentTrackingReferenc
 }): FulfillmentTrackingReference;
 /** First occurrence wins, including its selection, after trimming the number. */
 export declare function uniqueTrackingReferences(refs: readonly FulfillmentTrackingReference[]): FulfillmentTrackingReference[];
+```
+## dist/fulfillment/schemaCapabilities.d.ts
+
+```ts
+/** Sparse projections require the full canonical graph and a trusted native binding. */
+export declare const FULFILLMENT_NATIVE_CAPABILITIES: {
+    readonly shipment: "supported";
+    readonly commandFence: "supported";
+    readonly deliveryAlignment: "supported";
+    readonly stockEvidence: "supported";
+    readonly observationPersistence: "supported";
+    readonly localInventoryBalances: "host_required";
+    readonly dispatchContactPreparation: "host_required";
+    readonly productPacks: "unsupported";
+    readonly providerAccess: "unsupported";
+    readonly automaticReplacementConfirmation: "unsupported";
+};
 ```
 ## dist/fulfillment/statusMap.d.ts
 

@@ -56,6 +56,45 @@ forward, rather than relying on a reference fixture or process startup. A missin
 twin in the other chain is a documented compatibility gap, not implicit parity.
 
 ## Module catalogues and installed histories
+
+Fulfillment's P4 candidate appends native units 73/74,
+`20261022080000_fulfillment_command_ledger.sql` and
+`20261022090000_fulfillment_delivery_alignment.sql`, after the inspected
+position-72 shipping seed. `FULFILLMENT_MIGRATIONS` projects units 5, 27, 51, 73
+and 74 with canonical identities and byte-identical package assets. Install the
+complete catalogue, preserve the full installed prefix and verify its live
+object inventory; the sparse projections are not an install chain. Existing
+native and managed migration bytes remain unchanged.
+
+The command forward adds durable dispatch/attempt/paid-handoff and observation
+receipts. Atomic ACK records the native `dispatch` external reference: the `3pl`
+archetype does not create an owned label, and acceptance cannot imply physical
+packing. That receipt also retains the native local-cancellation refusal.
+G17 distinguishes received observations from recorded status evidence; only the
+latter supplies local occurrence chronology. Stock movements retain opaque
+keys and replay fingerprints, while G15 cursor state retains coverage gaps.
+Adopter inventory lines and authoritative contact preparation remain injected.
+
+The alignment forward translates managed fulfillment rows to native shipments,
+replacement links to `replaces_shipment_id`, and subscription identity through
+order → cycle → subscription. Cycle number belongs to the renewal operation;
+missing correlation enters manual review. Existing-cycle renewal and dunning
+retries bypass new-cycle admission and receipts. The new-cycle INSERT guard
+retains exact schedule-bound, one-use receipt consumption. Default-off control
+does not erase captured protected cases. Only durable arrival can settle the
+automatic route, using the latest arrival plus cadence with the outer maximum.
+
+All new routines are invokers with PUBLIC/anon/authenticated access revoked,
+including helpers and trigger routines. The initial native executor is the
+existing deployment owner; no role, SECURITY DEFINER, default grant or browser
+capability is added. A separate service principal requires the maintainer's
+explicit grant read; these owner-executed proofs do not certify an unconfigured
+non-owner grant set. Receipt pruning needs DELETE on that receipt table if such
+an invoker is configured. Replacement confirmation remains a note-only operator
+attestation with no automatic caller or new arrival predicate. Its discipline
+and the required maintainer object read are recorded in the
+[P4 candidate](plans/oss-m08-fulfillment-physical-delivery.md#p4-candidate-and-d13-native-translation-note).
+
 Payments publishes `PAYMENT_MIGRATIONS` as byte-identical projections of canonical
 positions 10 (settlement), 35 (truth/reconciliation) and 56 (later-only cycle).
 Each retains its canonical path, SHA-256 and package asset URL. These three assets
@@ -361,6 +400,16 @@ forward establishes neither installation-path parity nor the complete
 late-delivery journey or a stable upgrade guarantee.
 
 ## Compatibility lifecycle
+
+The fulfillment P4 candidate expands the native graph with new command and
+alignment objects at positions 73/74. It preserves all position-0–72 identities,
+existing rows and the managed graph. Upgrade the complete prefix before enabling
+the new stores; sparse package assets are projections only. Default-off alignment
+creates no cases during upgrade. Code rollback retains accepted dispatch proof
+and already extended dates; repair those facts forward. Invoker-only owner
+execution adds no browser privilege or service account. The
+[module catalogue notes](#module-catalogues-and-installed-histories) distinguish
+native dispatch commitment, missing correlation and future service grants.
 
 The portable forward
 `20261021120000_dunning_lifecycle_active_repair.sql` appends position 71 to keep

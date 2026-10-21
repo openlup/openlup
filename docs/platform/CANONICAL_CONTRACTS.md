@@ -381,7 +381,25 @@ the protected case and schedule unchanged.
 These are source and persistence contracts, not evidence that any hosted
 deployment, provider adapter, or public release has activated the rail.
 
+The P4 native translation uses `fulfillment_shipments.replaces_shipment_id` and
+order → cycle → subscription correlation, with cycle number on the renewal
+operation. Its admission guard applies only to NEW cycle admission/insert;
+existing-cycle retries in renewal operations and dunning bypass admission and
+neither mint nor consume receipts. The native graph gains no `retry_scheduled`
+state and M07's lifecycle is unchanged. Automatic alignment still requires an
+actual arrival; missing correlation remains manual review. Native invoker
+privileges and complete catalogue installation are described in
+[Data and migrations](DATA_AND_MIGRATIONS.md#module-catalogues-and-installed-histories).
+
 ## Compatibility posture
+
+Fulfillment's native candidate appends command/alignment units 73/74 and binds
+their byte-identical package projections through `FULFILLMENT_MIGRATIONS`.
+The canonical manifest retains its baseline and full prior prefix; its refreshed
+object-inventory digest describes the complete selected graph. No managed
+forward, old hash, role or M07 lifecycle is changed. Native continuity requires
+the full-catalogue fresh/prefix/replay proofs and the maintainer SQL/ACL read,
+rather than inferring readiness from a package descriptor.
 
 The reviewed-forward registry additionally pins one portable function replacement
 to keep active subscriptions active on dunning exhaustion (invariant repair).

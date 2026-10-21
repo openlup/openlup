@@ -424,7 +424,8 @@
         "test/packageBoundary.test.ts",
         "test/fulfillment/contracts.test.ts",
         "test/fulfillment/statusMap.test.ts",
-        "test/fulfillment/portFit.test.ts"
+        "test/fulfillment/portFit.test.ts",
+        "test/fulfillment/postgresStore.test.ts"
       ],
       "entrypoint": "dist/fulfillment/index.d.ts",
       "snapshot": "api/fulfillment.api.md"
