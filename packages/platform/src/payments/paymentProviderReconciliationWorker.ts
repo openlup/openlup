@@ -43,8 +43,7 @@ export async function runPaymentProviderReconciliationWorker(
   const now = input.now ?? new Date().toISOString();
   const staleAfterSeconds = clamp(input.staleAfterSeconds ?? DEFAULT_STALE_AFTER_SECONDS, 60, 86_400);
   // Provider reads and optional prepared-absence probes are sequential and may
-
-  // ceiling even when a caller supplies an oversized batch.
+  // be slow. Preserve the per-run ceiling even for an oversized requested batch.
   const batchSize = clamp(input.batchSize ?? DEFAULT_BATCH_SIZE, 1, MAX_ATTEMPTS_PER_RUN);
   const claimKey = input.claimKey ?? `payment-provider-reconciliation:${bucket(now)}`;
   const result: PaymentProviderReconciliationWorkerResult = {

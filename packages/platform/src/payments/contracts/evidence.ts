@@ -19,6 +19,10 @@ type VerifiedIdentity = {
   providerOccurredAt: string | null;
   /** Stable normalized evidence fingerprint; excludes receipt time and secrets. */
   fingerprint: string;
+  /** Adapter-filtered provider facts for host audit/repair readers. Never raw bodies,
+   * transient secrets, handoffs or customer authorization; excluded from identity/fingerprint.
+   * Typed evidence takes precedence over overlapping audit facts. */
+  providerAuditPayload?: Readonly<Record<string, unknown>>;
 };
 
 /** Original payment money and stable operation identity accompany every reversal. */

@@ -23,7 +23,7 @@ export async function runPaymentAdapterConformance(
     const result = await adapter.attemptPort.execute(executionInput);
     const { handoff, ...execution } = result;
     const sensitiveValues = [executionInput.customerAuthorization,
-      handoff?.kind === "client-confirmed" ? handoff.payload : undefined].filter((v): v is NonNullable<typeof v> => v !== undefined);
+      handoff?.kind === "client-confirmed" ? handoff.payload : handoff?.url].filter((v): v is NonNullable<typeof v> => v !== undefined);
     const input = {
       idempotencyKey: executionInput.attemptRef, providerIdempotencyKey: executionInput.providerIdempotencyKey,
       providerRequestFingerprint: executionInput.fingerprint, paymentIntentId: executionInput.intentRef,
@@ -67,6 +67,8 @@ export async function runPaymentAdapterConformance(
       const verified = await adapter.verifyPort.verifyAndNormalize(fixture.input);
       requireFact(JSON.stringify(verified) === JSON.stringify(fixture.expected), "verified fixture");
       if (verified.kind !== "refusal") {
+        requireFact(!sensitiveValues.some(value => JSON.stringify(verified.providerAuditPayload ?? {}).includes(value)),
+          "audit payload secret redaction");
         const outcome = verified.kind + ":" + verified.outcome;
         const previous = fingerprints.get(verified.providerEventId);
         if (previous) requireFact(previous.outcome === outcome && previous.fingerprint === verified.fingerprint, "replay identity fingerprint");

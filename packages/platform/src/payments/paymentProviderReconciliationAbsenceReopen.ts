@@ -14,7 +14,11 @@ import type {
 // instead of a guaranteed `prepared_attempt_absence_reopen_too_fresh` reject.
 const MIN_PREPARED_ABSENCE_REOPEN_AGE_SECONDS = 30 * 60;
 
-
+/** Reopen only after genuine provider-side absence proof. A missing local
+ * acknowledgement cannot exclude a charge before reference persistence failed;
+ * minting a fresh idempotency key in that crash window could double-charge.
+ * Providers without an exact absence probe require operator review.
+ */
 export async function tryReopenPreparedAbsence(
   input: PaymentProviderReconciliationWorkerInput,
   attempt: ClaimedPaymentAttempt,
@@ -28,7 +32,8 @@ export async function tryReopenPreparedAbsence(
 
   const provider: PaymentProviderReconciliationProvider | undefined = input.providers[attempt.provider];
 
-  // provider's stranded attempts stay operator-manual; stay silent.
+  // Without an exact absence probe, stranded attempts stay operator-manual.
+  // Guessing absence could schedule a second charge.
   if (!provider?.findPaymentByLocalIntent) return false;
 
   const ageMs = Date.parse(now) - Date.parse(attempt.localUpdatedAt);

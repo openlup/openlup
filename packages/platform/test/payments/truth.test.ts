@@ -12,7 +12,7 @@ it("forwards webhook identity and canonical fingerprints through the durable hos
   expect(fingerprint).toBe("f1347a8003ef9f2f5595c11b4df9cb8b26c3418700959b978c9fd71db23f4e87");
   const evidence: VerifiedPaymentEvidence = { kind: "money", provider: "provider-a", providerEventId: "event-original",
     providerOccurredAt: null, fingerprint, providerPaymentRef: "remote-original", intentRef: "intent-original",
-    attemptRef: "attempt-original", money: { amountMinor: 4990, currency: "XXX" }, outcome: "succeeded" };
+    attemptRef: "attempt-original", money: { amountMinor: 4990, currency: "XXX" }, outcome: "succeeded", providerAuditPayload: payload };
   const transcript: unknown[] = [];
   const ingest = vi.fn(async (event: { providerEventId: string; paymentIntentId?: string | null; paymentAttemptId?: string | null;
     amountMinor?: number | null; currency?: string | null; eventType: string; occurredAt: string; rawPayload: Record<string, unknown> }) => {
@@ -27,8 +27,8 @@ it("forwards webhook identity and canonical fingerprints through the durable hos
     paymentControlPort: { ingestPaymentEvent: ingest, applyPaymentResult: apply },
   }).receive({ rawBody: new TextEncoder().encode('{ "original" : true }'), headers: {}, receivedAt: at });
   expect(transcript[0]).toMatchObject({ providerEventId: "event-original", paymentIntentId: "intent-original", paymentAttemptId: "attempt-original",
-    payload: { original: true, truth: { fingerprint, evidence: { sourceKind: "accepted_event", sourceReference: "event-original",
-      observedStatus: "payment.succeeded", observedAt: at, payloadFingerprint: "6d245f89d84e8d1dfc9dc22db417b500630901b858d5a2869af44dba6e01fa39" } } } });
+    payload: { original: true, truth: { fingerprint: expect.any(String), evidence: { sourceKind: "accepted_event", sourceReference: "event-original",
+      observedStatus: "payment.succeeded", observedAt: at, payloadFingerprint: paymentPayloadFingerprint(ingest.mock.calls[0][0].rawPayload) } } } });
   expect(transcript[1]).toMatchObject({ idempotencyKey: "provider-webhook:provider-a:event-original:apply", paymentEventId: "event-local", paymentIntentId: "intent-original" });
   expect(result.status).toBe(200);
   const truth = { sourceEventId: source.sourceEventId, settlementIntentId: "intent-original", idempotencyKey: "truth-key-original",

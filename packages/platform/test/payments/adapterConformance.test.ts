@@ -86,8 +86,29 @@ describe("adapter conformance suites", () => {
     const secret = "ephemeral-test-value";
     const authorization: NonNullable<typeof f.executionInput.customerAuthorization> = secret as NonNullable<typeof f.executionInput.customerAuthorization>;
     f.executionInput.customerAuthorization = authorization;
-    result.diagnostics = { unexpected: authorization };
-    await expect(runPaymentAdapterConformance([f])).rejects.toThrow("execution diagnostics and taxonomy");
+    const confirmation = "confirmation-test-value" as typeof authorization;
+    result.handoff = { kind: "client-confirmed", payload: confirmation };
+    const verified = f.verification[0].expected;
+    if (verified.kind !== "money") throw new Error("fixture money required");
+    for (const leaked of [authorization, confirmation]) {
+      result.diagnostics = { unexpected: leaked };
+      await expect(runPaymentAdapterConformance([f])).rejects.toThrow("execution diagnostics and taxonomy");
+      result.diagnostics = {};
+      verified.providerAuditPayload = { nested: { authorization: leaked } };
+      await expect(runPaymentAdapterConformance([f])).rejects.toThrow("audit payload secret redaction");
+      delete verified.providerAuditPayload;
+    }
+    const body = new TextEncoder().encode(`confirmation=${confirmation}&authorization=${secret}`);
+    const safeInput = { ...f.verification[0].input, rawBody: body };
+    const safeVerify = vi.fn(async () => verified);
+    const stored = vi.fn(async () => ({ paymentEventId: "event-safe", paymentIntentId: null, paymentAttemptId: null, replayed: false }));
+    const safe = await createVerifiedPaymentIngress({ provider: "provider-a", verifyPort: { verifyAndNormalize: safeVerify },
+      paymentControlPort: { ingestPaymentEvent: stored } }).receive(safeInput);
+    expect(safe.status).toBe(200); expect(stored).toHaveBeenCalledTimes(1);
+    expect(safeVerify.mock.calls[0]).toEqual([safeInput]);
+    expect(JSON.stringify(stored.mock.calls)).not.toContain(secret);
+    expect(JSON.stringify(stored.mock.calls)).not.toContain(confirmation);
+    expect(JSON.stringify(safe)).not.toContain(secret);
     const ingress = createVerifiedPaymentIngress({ provider: "provider-a", verifyPort: f.adapter.verifyPort,
       paymentControlPort: { ingestPaymentEvent: prepare } });
     const refused = await ingress.receive(f.verification[3].input);

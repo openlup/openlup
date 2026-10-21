@@ -27,10 +27,16 @@ async function deliver(refund: PaymentRefundObservation | undefined, policy?: Re
 describe("refund truth witnesses and evidence policy", () => {
   it.each([[9000, "refunded"], [2100, "partially_refunded"]] as const)(
     "forwards snapshot %i preserving original payment money", async (refunded, status) => {
-      const f = await deliver(snapshot(refunded));
+      const f = await deliver(snapshot(refunded), undefined, { providerAuditPayload: {
+        providerPaymentId: "untrusted", amountMinor: 1, currency: "invalid",
+        refundSnapshot: { chargeId: "charge-original", amountRefundedMinor: 1 },
+        openlupEvidence: { outcome: "untrusted" },
+      } });
       expect(f.result.status).toBe(200);
       expect(f.ingest.mock.calls[0][0]).toMatchObject({ amountMinor: 9000, currency: "XXX",
-        rawPayload: { refund: { operation: "operation-original", amount: refunded } } });
+        rawPayload: { providerPaymentId: "remote-original", amountMinor: 9000, currency: "XXX",
+          refundSnapshot: { chargeId: "charge-original", amountRefundedMinor: refunded },
+          openlupEvidence: { outcome: "refunded", refund: snapshot(refunded) } } });
       expect(f.apply.mock.calls[0][0]).toMatchObject({ resultStatus: status, paymentIntentId: "intent-original", paymentEventId: "event-local" });
     });
   it("refuses missing observation by default and preserves explicit full-reversal evidence", async () => {
@@ -45,24 +51,26 @@ describe("refund truth witnesses and evidence policy", () => {
     expect(second.ingest.mock.calls[0]).toEqual(first.ingest.mock.calls[0]);
     expect(second.apply.mock.calls[0]).toEqual(first.apply.mock.calls[0]);
     expect(second.ingest.mock.calls[0][0]).toMatchObject({ amountMinor: 9000,
-      rawPayload: { refund: { operation: "operation-original", amount: 2100 } } });
+      rawPayload: { openlupEvidence: { refund: snapshot(2100) } } });
   });
   it("requires amount and identity for snapshot and delta before terminal apply", async () => {
     for (const kind of ["cumulative-snapshot", "event-delta"] as const) {
       for (const refund of [
         { ...snapshot(2100), kind, operationId: "" },
+        { ...snapshot(2100), kind, originalPaymentMoney: { amountMinor: 0, currency: "XXX" } },
+        { ...snapshot(2100), kind, originalPaymentMoney: { amountMinor: 9000, currency: "" } },
         { ...snapshot(2100), kind, refundedMoney: { amountMinor: Number.NaN, currency: "XXX" } },
         { ...snapshot(2100), kind, refundedMoney: { amountMinor: 2100, currency: "invalid" } },
       ]) {
         const f = await deliver(refund);
-        expect(f.result.status).toBe(400); expect(f.ingest).not.toHaveBeenCalled(); expect(f.apply).not.toHaveBeenCalled();
+        expect(f.result.status).toBe(200); expect(f.ingest).toHaveBeenCalledTimes(1); expect(f.apply).not.toHaveBeenCalled();
       }
       const delta = await deliver({ ...snapshot(2100), kind });
       expect(delta.apply.mock.calls[0][0]).toMatchObject({ resultStatus: "partially_refunded" });
     }
-    for (const patch of [{ money: null }, { providerPaymentRef: "" }]) {
+    for (const patch of [{ money: null }, { money: { amountMinor: 8999, currency: "XXX" } }, { providerPaymentRef: "" }]) {
       const f = await deliver(snapshot(2100), undefined, patch);
-      expect(f.result.status).toBe(400); expect(f.apply).not.toHaveBeenCalled();
+      expect(f.result.status).toBe(200); expect(f.ingest).toHaveBeenCalledTimes(1); expect(f.apply).not.toHaveBeenCalled();
     }
   });
   it("reproduces the default-to-full only with explicit legacy opt-in", async () => {

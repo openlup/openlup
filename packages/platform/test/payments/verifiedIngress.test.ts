@@ -11,7 +11,7 @@ const evidence: VerifiedPaymentEvidence = { kind: "money", provider: "provider-a
 function fixture(event: Awaited<ReturnType<PaymentVerifyNormalizePort["verifyAndNormalize"]>> = evidence) {
   const trace: string[] = [];
   const verify = vi.fn(async (_input: typeof input) => { trace.push("verify"); return event; });
-  const ingest = vi.fn(async (_event: unknown) => { trace.push("ingest"); return { paymentEventId: "event-local",
+  const ingest = vi.fn(async (_event: Parameters<Parameters<typeof createVerifiedPaymentIngress>[0]["paymentControlPort"]["ingestPaymentEvent"]>[0]) => { trace.push("ingest"); return { paymentEventId: "event-local",
     paymentIntentId: "intent-original", paymentAttemptId: "attempt-original" as string | null, replayed: false, occurredAt: AT }; });
   const apply = vi.fn(async (_value: unknown) => { trace.push("apply"); return { replayed: false }; });
   const hook = vi.fn(async (_value: unknown) => { trace.push("hook"); });
@@ -83,10 +83,11 @@ describe("verified ingress public witnesses", () => {
       } as const } : {}) });
       expect((await f.receive(input)).status).toBe(200);
       expect(f.hook.mock.calls[0][0]).toMatchObject({ resultStatus: expected });
-      transcripts.push([id, expected]);
+      const ingested = f.ingest.mock.calls[0][0];
+      transcripts.push([ingested.providerEventId, ingested.eventType]);
     }
-    expect(transcripts).toEqual([["remote-original", "failed"], ["remote-original", "succeeded"],
-      ["remote-original:chargeback", "disputed"], ["remote-original:dispute", "disputed"], ["remote-original:pending", null]]);
+    expect(transcripts).toEqual([["remote-original", "payment.failed"], ["remote-original", "payment.succeeded"],
+      ["remote-original:chargeback", "payment.disputed"], ["remote-original:dispute", "payment.disputed"], ["remote-original:pending", "payment.requires_action"]]);
   });
   it("reuses first receipt clocks and fingerprints with no second effect on redelivery", async () => {
     const f = fixture({ ...evidence, providerOccurredAt: "2026-10-20T10:00:00.000Z" }); let first: unknown; let effects = 0; const applied = new Set<string>();
@@ -94,12 +95,21 @@ describe("verified ingress public witnesses", () => {
       return { paymentEventId: "event-local", paymentIntentId: "intent-original", paymentAttemptId: "attempt-original", replayed, occurredAt: AT }; });
     f.apply.mockImplementation(async value => { const key = paymentPayloadFingerprint(value); const replayed = applied.has(key);
       if (!replayed) { applied.add(key); effects++; } return { replayed }; });
-    await f.receive(input); await f.receive({ ...input, receivedAt: "2026-10-21T10:01:00.000Z" });
+    await f.receive(input);
+    const firstIdentity = f.ingest.mock.calls[0][0].providerEventId;
+    const firstPayloadHash = paymentPayloadFingerprint(f.ingest.mock.calls[0][0].rawPayload);
+    await f.receive(input);
+    expect(paymentPayloadFingerprint(f.ingest.mock.calls[1][0].rawPayload)).toBe(firstPayloadHash);
+    f.ingest.mockClear(); f.apply.mockClear(); f.hook.mockClear();
+    f.verify.mockResolvedValue({ ...evidence, providerOccurredAt: "2026-10-20T10:00:00.000Z", providerAuditPayload: { audit: "changed" } });
+    await f.receive(input);
+    expect(f.ingest.mock.calls[0][0].providerEventId).toBe(firstIdentity);
+    await f.receive({ ...input, receivedAt: "2026-10-21T10:01:00.000Z" });
     expect(f.apply.mock.calls.map(([value]) => value)).toEqual([expect.objectContaining({ occurredAt: AT }), expect.objectContaining({ occurredAt: AT })]);
-    expect(await Promise.all(f.verify.mock.results.map(async result => { const value = await result.value; return value.kind === "money" ? value.fingerprint : null; }))).toEqual([evidence.fingerprint, evidence.fingerprint]);
+    expect(await Promise.all(f.verify.mock.results.map(async result => { const value = await result.value; return value.kind === "money" ? value.fingerprint : null; }))).toEqual([evidence.fingerprint, evidence.fingerprint, evidence.fingerprint, evidence.fingerprint]);
     expect(f.ingest.mock.calls.map(([value]) => value)).toEqual([
-      expect.objectContaining({ providerEventId: "event-original", rawPayload: { receipt: "original" }, occurredAt: AT }),
-      expect.objectContaining({ providerEventId: "event-original", rawPayload: { receipt: "original" }, occurredAt: "2026-10-21T10:01:00.000Z" }),
+      expect.objectContaining({ providerEventId: "event-original", rawPayload: expect.objectContaining({ openlupEvidence: expect.objectContaining({ providerEventId: "event-original" }) }), occurredAt: AT }),
+      expect.objectContaining({ providerEventId: "event-original", rawPayload: expect.objectContaining({ openlupEvidence: expect.objectContaining({ providerEventId: "event-original" }) }), occurredAt: "2026-10-21T10:01:00.000Z" }),
     ]);
     expect(f.hook.mock.calls.map(([value]) => value)).toEqual([expect.objectContaining({ event: expect.objectContaining({ occurredAt: AT }) }),
       expect.objectContaining({ event: expect.objectContaining({ occurredAt: AT }) })]);

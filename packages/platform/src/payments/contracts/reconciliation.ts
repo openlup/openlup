@@ -36,6 +36,8 @@ export interface PaymentProviderReconciliationProvider {
   /** Atomically close an incomplete provider object before minting a replacement. */
   closePayment?(input: { providerPaymentId: string }): Promise<ProviderReconciliationStatus>;
 
+  /** Exact provider-side absence only; missing local acknowledgement is not
+   * absence proof and must never authorize another charge. */
   findPaymentByLocalIntent?(input: {
     attempt: ClaimedPaymentAttempt;
   }): Promise<"found" | "absent">;
