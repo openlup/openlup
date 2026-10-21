@@ -65,7 +65,9 @@ only when the signed header carries a provider issue time; without it, replay
 protection relies on host event identity plus fingerprint deduplication.
 Transaction identities combine payment reference
 and outcome; method identities combine event/alias and lifecycle outcome. The
-host deduplicates identity plus stable fingerprint. Chargeback becomes an
+host deduplicates identity plus stable fingerprint.
+Currencyless money notifications preserve the paid amount and bind to the adapter's single declared currency; multiple declared currencies refuse as malformed.
+Chargeback becomes an
 explicit full reversal with original money and operation ID. Missing reversal
 evidence refuses. Alias method evidence carries the donor lifecycle through M07
 projection only when signed provider time is present; without it the lifecycle

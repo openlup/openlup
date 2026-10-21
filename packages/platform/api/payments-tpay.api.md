@@ -923,10 +923,18 @@ export type PostgresPaymentTruthOptions = {
     recoveryTemplateSlug: string;
 };
 ```
+## dist/payments/tpay/capabilities.d.ts
+
+```ts
+import type { PaymentAdapterCapabilities } from "../contracts/index.js";
+/** Bank-redirect, one-time-code and unattended Model O attempts are supported with host payer/method input; account availability remains verification_pending. */
+export declare const tpayPaymentCapabilities: Readonly<PaymentAdapterCapabilities>;
+```
 ## dist/payments/tpay/index.d.ts
 
 ```ts
-import type { PaymentAdapter, PaymentAdapterCapabilities } from "../contracts/index.js";
+import type { PaymentAdapter } from "../contracts/index.js";
+export { tpayPaymentCapabilities } from "./capabilities.js";
 import { type TpayJwsCertificateResolver } from "./webhookJwsVerifier.js";
 /** Explicit host configuration. clock returns UTC seconds; imports perform no I/O. */
 export interface TpayPaymentAdapterConfig {
@@ -966,8 +974,6 @@ export interface TpayPaymentAdapterConfig {
     mode: "live" | "test";
     clock?: () => number;
 }
-/** Bank-redirect, one-time-code and unattended Model O attempts are supported with host payer/method input; account availability remains verification_pending. */
-export declare const tpayPaymentCapabilities: Readonly<PaymentAdapterCapabilities>;
 /** Construction explicitly selects this adapter; the host owns account activation and I/O policy. */
 export declare function createTpayPaymentAdapter(config: TpayPaymentAdapterConfig): PaymentAdapter;
 ```

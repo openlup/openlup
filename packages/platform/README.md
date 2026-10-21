@@ -1153,6 +1153,7 @@ return an exact `notDispatched` envelope with core's transient retryable refusal
 Every other execution error propagates unchanged as ambiguous.
 
 The exported capability descriptor and its nested records and arrays are frozen.
+Currencyless money notifications preserve the paid amount and bind to the adapter's single declared currency; multiple declared currencies refuse as malformed.
 Alias method evidence preserves the donor lifecycle through M07 projection with
 signed provider time; absent provider time leaves the lifecycle field omitted.
 The adapter offers its declared market currency; alias registration and recurring

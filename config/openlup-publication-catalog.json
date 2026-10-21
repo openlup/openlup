@@ -3734,6 +3734,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/payments/tpay/capabilities.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/payments/tpay/classifyDecline.ts",
       "class": "public-output"
     },

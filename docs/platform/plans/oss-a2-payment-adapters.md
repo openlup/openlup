@@ -158,10 +158,17 @@ Named deltas from the contributed donor:
 5. Neutrality admits the reporting zone only on the exact readback declaration
    line at its exact source path, with paired outside-line/path refusal plants
    and no baseline increase.
+6. Currencyless transaction notifications keep the donor's paid amount and bind
+   currency to the adapter instance's single declared supported currency. The
+   donor's removed settlement default does not apply here: this binding follows
+   the capability descriptor, attempts in other currencies refuse before
+   dispatch, and multiple declared currencies refuse currencyless notifications
+   as malformed. The donor normalizer still records missing provider currency
+   as null; only adapter glue supplies the descriptor-bound fact.
 
 CHARGEBACK is a `refunded` money observation with explicit `full-reversal`,
 `reason: "chargeback"`, original money and a stable operation ID. Missing original
-money or currency refuses. No M07 P2 disputed outcome is required.
+money or an unresolvable currency refuses. No M07 P2 disputed outcome is required.
 Donor source and tests retain behavior except import relocation and private
 identity removal: neutral aliases/labels/hosts/return paths and subject keys,
 and removal of the mapper's host environment reader. The private execution
@@ -218,7 +225,7 @@ The programme budget of +100 cases / +30 s counts net-new cases. A test carried 
 |---|---|---:|---|
 | — | `conformance.test.ts` | 1 | net-new |
 | server/adapters/tpay/declineFailureHints.test.ts | `declineFailureHints.test.ts` | 12 | moved-pending: root `server/adapters/tpay/declineFailureHints.test.ts` retires at O-P3; adopter copy at C5 |
-| — | `factory.test.ts` | 61 | net-new |
+| — | `factory.test.ts` | 64 | net-new |
 | — | `readbackParity.test.ts` | 5 | net-new: all 40 status/purpose/amount combinations, plus both success aliases (48 observations) |
 | server/adapters/tpay/tpayCreateTransactionInput.test.ts | `tpayCreateTransactionInput.test.ts` | 12 | moved-pending: adopter copy retires at C5 |
 | server/adapters/tpay/tpayDeclineEvidence.test.ts | `tpayDeclineEvidence.test.ts` | 71 | moved-pending: root `server/adapters/tpay/tpayDeclineEvidence.test.ts` retires at O-P3; adopter copy at C5 |
@@ -236,11 +243,11 @@ The programme budget of +100 cases / +30 s counts net-new cases. A test carried 
 | — | `scripts/packages/platform-cold-consumer.test.ts` (second adapter entry) | 0 | existing case extended |
 
 Recounted with `npx --no -- vitest list --json` for every new or changed test
-file: the Tpay suite has 360 cases (293 moved-pending donor, 61 factory, 5 parity and 1
+file: the Tpay suite has 363 cases (293 moved-pending donor, 64 factory, 5 parity and 1
 conformance); payment allowance has 8 and neutrality has 32. The changed
 package-boundary file has 1,375 cases; its generated per-source additions are
 excluded from net-new under ruling A. The cold-consumer file has 45 existing
 cases and no O-P2 case addition.
-O-P2 adds 78 net-new cases (67 adapter, 7 payment allowance and 4 neutrality),
-bringing O-P1 plus O-P2 to 97 net-new cases. Moved-pending donor and generated
+O-P2 adds 81 net-new cases (70 adapter, 7 payment allowance and 4 neutrality),
+bringing O-P1 plus O-P2 to 100 net-new cases. Moved-pending donor and generated
 boundary cases do not count toward that total; no donor retirement is claimed.

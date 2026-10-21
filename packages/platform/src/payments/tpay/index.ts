@@ -1,9 +1,11 @@
 import { createHash, X509Certificate } from "node:crypto";
 import { classifyPaymentFailure, isPaymentRetryAdviceCode } from "@openlup/core/payment";
-import type { PaymentAdapter, PaymentAdapterCapabilities, PaymentAttemptPort, PaymentExecutionEnvelope,
+import type { PaymentAdapter, PaymentAttemptPort, PaymentExecutionEnvelope,
   PaymentReadbackEnvelope, PaymentRefusalEnvelope, PaymentVerifyNormalizePort,
   VerifiedMethodEvidence, VerifiedPaymentEvidence } from "../contracts/index.js";
 import type { PaymentExecutionInput, PaymentExecutionResult } from "./donorContracts.js";
+import { tpayPaymentCapabilities } from "./capabilities.js";
+export { tpayPaymentCapabilities } from "./capabilities.js";
 import { createTpayHttpClient } from "./tpayHttpClient.js";
 import { createTpayPaymentExecutionAdapter } from "./tpayPaymentExecutionAdapter.js";
 import { ProviderAttemptPreDispatchError } from "./preparedProviderAttempt.js";
@@ -32,30 +34,13 @@ export interface TpayPaymentAdapterConfig {
   clock?: () => number;
 }
 
-/** Bank-redirect, one-time-code and unattended Model O attempts are supported with host payer/method input; account availability remains verification_pending. */
-export const tpayPaymentCapabilities: Readonly<PaymentAdapterCapabilities> = Object.freeze<PaymentAdapterCapabilities>({
-  providerKind: "tpay",
-  captureFlows: Object.freeze([
-    Object.freeze({ kind: "bank_redirect", handoff: "redirect", methodFamilies: Object.freeze(["bank-redirect"] as const) }),
-    Object.freeze({ kind: "one_time_code", handoff: "customer-authorization", methodFamilies: Object.freeze(["one-time-code"] as const) }),
-  ]),
-  requiresStoredMandateEvidence: true,
-  assessMandate: snapshot => snapshot.recurringModel === "O" ? { chargeable: true }
-    : { chargeable: false, blockReason: "mandate_model_unsupported_for_unattended_charge" },
-  unattendedChargeFlow: "recurring_charge",
-  payerContext: Object.freeze({ requiresPayerBlock: true, customerRefFallsBackToContactEmail: false }),
-  methodHealth: Object.freeze({ requiresCustomerRef: false, requiredMethodKind: "blik_payid", requiresPayerContact: true }),
-  terminalOutcomeReporting: Object.freeze({ kind: "attempt_records", silenceBecomesSuspectAfterMinutes: 360 }),
-  mandateUpsertIsSubscriptionScoped: true,
-  supportedCurrencies: Object.freeze(["PLN"]), unattended: "supported", readback: "supported", close: "unsupported",
-  exactAbsence: "unsupported", refundObservation: "supported", refundCreate: "unsupported", authorizationCaptureSplit: "unsupported",
-});
 
 type Verification = Awaited<ReturnType<PaymentVerifyNormalizePort["verifyAndNormalize"]>>;
 const refusal = (reason: Extract<Verification, { kind: "refusal" }>["reason"]): Verification => ({ kind: "refusal", reason });
 
 /** Construction explicitly selects this adapter; the host owns account activation and I/O policy. */
 export function createTpayPaymentAdapter(config: TpayPaymentAdapterConfig): PaymentAdapter {
+  const capabilities = tpayPaymentCapabilities;
   const notification = config.notification;
   if (!notification?.rootCertificatePem || typeof notification.resolveCertificate !== "function") throw new Error("Required certificate configuration missing");
   const prefix = new URL(notification.allowedCertificateUrlPrefix);
@@ -79,7 +64,7 @@ export function createTpayPaymentAdapter(config: TpayPaymentAdapterConfig): Paym
   const donorInput = (input: Parameters<PaymentAttemptPort["execute"]>[0]): PaymentExecutionInput => {
     if (input.mode !== config.mode || !["initial", "recovery", "renewal-unattended"].includes(input.purpose)
       || !input.attemptRef || !input.intentRef || !input.fingerprint || !input.providerIdempotencyKey
-      || !Number.isSafeInteger(input.money.amountMinor) || input.money.amountMinor <= 0 || input.money.currency !== "PLN"
+      || !Number.isSafeInteger(input.money.amountMinor) || input.money.amountMinor <= 0 || !capabilities.supportedCurrencies.includes(input.money.currency)
       || !input.payer?.email || (input.payer.name !== undefined && typeof input.payer.name !== "string")) {
       throw new Error("Invalid payment input");
     }
@@ -106,7 +91,7 @@ export function createTpayPaymentAdapter(config: TpayPaymentAdapterConfig): Paym
   };
   const validateInput = (input: Parameters<PaymentAttemptPort["execute"]>[0]): void => { execution.validateInput?.(donorInput(input)); };
   return {
-    capabilities: tpayPaymentCapabilities,
+    capabilities,
     attemptPort: {
       validateInput,
       async execute(input: Parameters<PaymentAttemptPort["execute"]>[0]): Promise<PaymentExecutionEnvelope> {
@@ -169,7 +154,7 @@ export function createTpayPaymentAdapter(config: TpayPaymentAdapterConfig): Paym
             if (!Number.isFinite(received)) return refusal("malformed");
             if (received - (asserted as number) > maxAge || (asserted as number) - received > maxClockSkew) return refusal("stale");
           }
-          return mapVerifiedTpayEvent(rawBody, occurred, config.mode);
+          return mapVerifiedTpayEvent(rawBody, occurred, config.mode, capabilities.supportedCurrencies);
         } catch { return refusal("malformed"); }
       },
     },
@@ -220,7 +205,7 @@ function mapTpayOutcome(event: string): VerifiedPaymentEvidence["outcome"] | nul
     default: return null;
   }
 }
-function mapVerifiedTpayEvent(rawBody: string, occurred: string | null, mode: "live" | "test"): Verification {
+function mapVerifiedTpayEvent(rawBody: string, occurred: string | null, mode: "live" | "test", supportedCurrencies: readonly string[]): Verification {
   const webhook = normalizeTpayWebhook(rawBody);
   const event = webhook.event;
   const payload = event.raw_payload;
@@ -242,7 +227,11 @@ function mapVerifiedTpayEvent(rawBody: string, occurred: string | null, mode: "l
     const outcome = mapTpayOutcome(event.event_type);
     if (!outcome) return refusal("unsupported-event");
     const amount = event.amount_minor;
-    const currency = payload.currency;
+    const reportedCurrency = payload.currency;
+    if (reportedCurrency == null && supportedCurrencies.length !== 1) return refusal("malformed");
+    // Currency binds to the adapter's declared single supported currency because
+    // attempts in any other currency are refused before dispatch; this is not a silent default.
+    const currency = reportedCurrency ?? supportedCurrencies[0];
     const money = Number.isSafeInteger(amount) && amount! > 0 && typeof currency === "string" && /^[A-Za-z]{3}$/u.test(currency)
       ? { amountMinor: amount!, currency: currency.toUpperCase() } : null;
     const originalAmount = typeof payload.transactionAmount === "string"

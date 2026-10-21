@@ -6,8 +6,15 @@ import { ProviderAttemptPreDispatchError, type TrustedProviderAttemptNoChargeFai
 import { TpayTransactionDispatchError } from "../../../src/payments/tpay/tpayDispatchFailure.js";
 import { createTpayJwsFixture } from "./webhookJws.testFixtures.js";
 import { projectVerifiedEvidence } from "../../../src/payments/verifiedEvidenceProjection.js";
-import { readMethodLifecycleEvent } from "../../../src/payments/index.js";
-import type { PaymentAttemptPort, TransientSecret } from "../../../src/payments/contracts/index.js";
+import { createVerifiedPaymentIngress, readMethodLifecycleEvent } from "../../../src/payments/index.js";
+import type { PaymentAdapterCapabilities, PaymentAttemptPort, TransientSecret } from "../../../src/payments/contracts/index.js";
+
+// The factory and its verifier consume this same private descriptor seam.
+const descriptorOverride = vi.hoisted(() => ({ value: undefined as Readonly<PaymentAdapterCapabilities> | undefined }));
+vi.mock("../../../src/payments/tpay/capabilities.js", async importOriginal => {
+  const actual = await importOriginal<typeof import("../../../src/payments/tpay/capabilities.js")>();
+  return { get tpayPaymentCapabilities() { return descriptorOverride.value ?? actual.tpayPaymentCapabilities; } };
+});
 
 type AttemptInput = Parameters<PaymentAttemptPort["execute"]>[0];
 const payer = { email: "planted-71c3@example.test", name: "Planted Person 71c3" };
@@ -345,7 +352,15 @@ it("observes chargeback as full reversal with stable operation identity and orig
     refund: { kind: "full-reversal", reason: "chargeback", operationId: "TR-1:chargeback",
       originalPaymentMoney: { amountMinor: 2599, currency: "PLN" } } });
   expect(await verify(adapter, raw)).toEqual(observed);
-  expect(await verify(adapter, raw.replace("&tr_currency=PLN", ""))).toEqual({ kind: "refusal", reason: "malformed" });
+  const currencyless = await verify(adapter, raw.replace("&tr_currency=PLN", ""));
+  expect(currencyless).toMatchObject({ kind: "money", outcome: "refunded",
+    money: { amountMinor: 2599, currency: adapter.capabilities.supportedCurrencies[0] },
+    refund: { kind: "full-reversal", reason: "chargeback",
+      originalPaymentMoney: { amountMinor: 2599, currency: adapter.capabilities.supportedCurrencies[0] } } });
+  if (currencyless.kind !== "money") throw new Error("expected chargeback evidence");
+  expect(projectVerifiedEvidence(currencyless, { rawBody: Buffer.from(raw), headers: {},
+    receivedAt: new Date(instant * 1000).toISOString() }, "require-evidence")).toMatchObject({
+    eventType: "payment.disputed", amountMinor: 2599, currency: adapter.capabilities.supportedCurrencies[0], refundKind: "full" });
   expect(await verify(adapter, raw.replace("tr_amount=25.99", "tr_amount=invalid"))).toEqual({ kind: "refusal", reason: "malformed" });
 });
 it.each([["ALIAS_REGISTER", "registered"], ["ALIAS_UPDATE", "updated"], ["ALIAS_UNREGISTER", "revoked"], ["ALIAS_EXPIRED", "expired"]])(
@@ -388,7 +403,50 @@ it("refuses unsupported alias outcomes and malformed bodies without inventing mo
   const adapter = createTpayPaymentAdapter(config());
   expect(await verify(adapter, "event=UNRECOGNIZED&msg_value[value]=alias-1")).toEqual({ kind: "refusal", reason: "unsupported-event" });
   expect(await verify(adapter, "tr_status=TRUE")).toEqual({ kind: "refusal", reason: "malformed" });
-  expect(await verify(adapter, body().replace("&tr_currency=PLN", ""))).toMatchObject({ kind: "money", money: null });
+});
+it("preserves currencyless paid money through M07 ingress so the host refuses underpayment and overpayment (L-1)", async () => {
+  const adapter = createTpayPaymentAdapter(config());
+  for (const paid of ["10.00", "30.00"]) {
+    const rawBody = `tr_id=TR-1&tr_status=TRUE&tr_amount=25.99&tr_paid=${paid}`;
+    let event: Parameters<Parameters<typeof createVerifiedPaymentIngress>[0]["paymentControlPort"]["ingestPaymentEvent"]>[0] | undefined;
+    let settled = false;
+    const apply = vi.fn(async () => {
+      // Mirrors the host apply_result positive-amount guard in the baseline schema.
+      if (event?.amountMinor != null && event.amountMinor > 0 && event.amountMinor !== 2599) {
+        throw new Error("payment_control_result_amount_mismatch");
+      }
+      settled = true;
+      return { replayed: false };
+    });
+    const ingress = createVerifiedPaymentIngress({ provider: "tpay", verifyPort: adapter.verifyPort,
+      paymentControlPort: { ingestPaymentEvent: async observed => {
+        event = observed;
+        return { paymentEventId: "event-1", paymentIntentId: "intent-1", paymentAttemptId: "attempt-1", replayed: false };
+      }, applyPaymentResult: apply } });
+    const result = await ingress.receive({ rawBody: Buffer.from(rawBody),
+      headers: { "x-jws-signature": fixture.signature(rawBody) }, receivedAt: new Date(instant * 1000).toISOString() });
+    expect(settled).toBe(false);
+    expect(result).toMatchObject({ status: 503 });
+    expect(apply).toHaveBeenCalledWith(expect.objectContaining({ resultStatus: "succeeded" }));
+    expect(event).toMatchObject({ eventType: "payment.succeeded", amountMinor: Math.round(Number(paid) * 100),
+      currency: adapter.capabilities.supportedCurrencies[0] });
+  }
+});
+it("binds exact paid currencyless success to the adapter's declared currency (L-1)", async () => {
+  const adapter = createTpayPaymentAdapter(config());
+  expect(await verify(adapter, body().replace("&tr_currency=PLN", ""))).toMatchObject({ kind: "money", outcome: "succeeded",
+    money: { amountMinor: 2599, currency: adapter.capabilities.supportedCurrencies[0] } });
+});
+it("refuses currencyless money when the factory descriptor declares multiple currencies (L-1)", async () => {
+  descriptorOverride.value = Object.freeze({ ...tpayPaymentCapabilities, supportedCurrencies: Object.freeze(["PLN", "EUR"]) });
+  try {
+    const adapter = createTpayPaymentAdapter(config());
+    const result = await verify(adapter, body().replace("&tr_currency=PLN", ""));
+    // Assert the behavior first so swapping the old index demonstrates its unsafe success.
+    expect(result).toEqual({ kind: "refusal", reason: "malformed" });
+    expect(adapter.capabilities).toBe(descriptorOverride.value);
+    expect(adapter.capabilities.supportedCurrencies).toEqual(["PLN", "EUR"]);
+  } finally { descriptorOverride.value = undefined; }
 });
 it("refuses mode mismatch, missing signature and forbidden certificate resolution", async () => {
   const good = config(); const adapter = createTpayPaymentAdapter(good);
