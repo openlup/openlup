@@ -227,14 +227,16 @@ table admits only `active`, `paused` and `cancelled`, so it has no activation
 statuses and no `completed`. It has no status-transition trigger: each lifecycle
 function checks its own source status. It can send a win-back message to a
 cancelled subscriber, but no function reactivates a cancelled subscription.
-Its dunning rail, `dunning_lifecycle_handle_failure`, has no rung fence: it
-expires the case and pauses an active subscription whenever the next retry
-instant it is handed is NULL. A class-terminated refusal on rung one also has
-no next retry, so a caller that hands its schedule straight through would pause
-a live subscription on the first refusal, which the rule above forbids. No
-caller in this tree invokes it today. A future caller must not call it with
-NULL unless `isDunningLadderExhausted` holds for the refused cycle. A case cut
-short earlier must stay open without that call. An adopter on the portable chain therefore cannot store a
+Its dunning rail, `dunning_lifecycle_handle_failure`, keeps active subscriptions
+active on dunning exhaustion (invariant repair). A NULL next retry leaves the
+case open and repairable through `dunning_lifecycle_record_recovery`, queues the
+final notice and exhaustion event, and returns `paused=false`,
+`pauseWindowId=null`, `terminal=true` without creating a pause window or changing
+subscription or cycle dates. It still has no rung fence: a class-terminated
+refusal on rung one also has no next retry. No caller in this tree invokes it
+today. A future caller must not call it with NULL unless
+`isDunningLadderExhausted` holds for the refused cycle. A case cut short earlier
+must stay open without that call. An adopter on the portable chain therefore cannot store a
 completed or provisional subscription, and cannot reactivate a cancelled one,
 until a forward migration closes the gap under the compatibility lifecycle in
 [Data and migrations](DATA_AND_MIGRATIONS.md).
@@ -279,6 +281,13 @@ approval supplies no migration or runtime activation. The
 [exact reviewed function rules](DATA_AND_MIGRATIONS.md#exact-reviewed-function-forwards)
 require unchanged headers, a single function statement and approval before SQL
 introduction; managed admission counts remain unchanged.
+
+The portable dunning invariant repair appends exactly one manifest row at
+position 71 and refreshes `objectInventorySha256` from the complete live
+PostgreSQL catalogue. Earlier file/hash rows remain an exact prefix. Install
+the full selected catalogue to keep active subscriptions active on dunning
+exhaustion (invariant repair); the forward does not rewrite existing paused
+subscriptions or expired cases. The managed chain still needs its own forward.
 
 Bundle application/admin now has package ownership in the existing catalog server
 entry with named reference compatibility bindings. Read-error identity is shared
