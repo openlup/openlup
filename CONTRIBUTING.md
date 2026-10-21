@@ -134,7 +134,7 @@ M05 P7 adds five explicit cases across
 `tests/postgres/m05CatalogComposition.test.ts`,
 `tests/platform/catalog/m05Composition.test.ts` and
 `tests/platform/catalog/m05ReferenceComposition.test.ts`. The three PostgreSQL
-cases use independent real transactions for replay/contention, native consumer
+cases cover replay/contention with independent real transactions, native consumer
 readback and mounted admin/feed readback with an injected stock reader. The
 readiness case runs the existing SDK-absent packed-consumer scenario for the moved factories, descriptor and inert contribution; its local
 packs are working-tree feedback, not the supervisor's signed-artifact gate.

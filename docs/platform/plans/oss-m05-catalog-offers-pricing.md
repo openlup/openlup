@@ -615,10 +615,8 @@ and an unnecessary generator or merge repair. No successor work is opened.
 ## P7 — inert native composition and M05 mounted readback
 
 Status: Phase A plus Phase B M05 readback implemented on the assigned task
-branch, with P5 and P6 present at **FORK POINT `0d80e9b3`**. This slot check
-permits local merge-fallout repairs and focused verification only; no Git writes,
-submission, merge, release or activation. The supervisor owns commits, applicable
-API read, fresh native review and delivery. Scope is the unchanged native store
+branch, with P5 and P6 present at **FORK POINT `0d80e9b3`**. No release or
+activation is part of P7. Scope is the unchanged native store
 cut, sparse projections, explicit inert roots, companions and five bounded cases.
 The coordinator permits an injected `NewPurchaseStockReadPort` feeding the merged
 M06 builder, without a native stock claim. M06 implementation and native stock
@@ -689,8 +687,8 @@ and append-only history checks pass. Catalogue generator roundtrip is
 byte-identical: **5,415 sorted unique rows**, every real P7 file has exactly one
 row except the pattern-admitted fragment, the old mapper has none, and all retained
 main rows are unchanged. Inventory reports **5,419 public paths**. Policy reports
-**5 obligations / 0 unanswered**; neutrality reports **0 increases**. DCO passes
-for **4/4 commits**, including both merges. Whitespace checks pass.
+**5 obligations / 0 unanswered**; neutrality reports **0 increases**. Every P7
+commit, including both merges, carries DCO sign-off. Whitespace checks pass.
 
 ### Size, pending work and self-retro
 

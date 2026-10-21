@@ -184,9 +184,12 @@ All read, mutation and activation flags default to disabled. Returning a handler
 table does not register it: the shipped BFF caller table, browser pages, site
 manifest, prerender and subscription profile remain unchanged. Publication reads,
 publish, lifecycle writes and native acquisition acceptance remain unsupported.
-Phase A consumer proof uses the existing quote/offer and authorized draft readback
-surfaces; builder display and stock-backed mounted proof await their merged inputs.
-No acceptance token, publication receipt or stock count is manufactured.
+The consumer proof uses the existing quote/offer and authorized draft readback
+surfaces. The mounted admin/feed readback proof feeds the merged availability
+builder (`createNewPurchaseStockAvailabilityPort`) from an injected port-boundary
+stock reader double, so it proves the mounted readback, not native stock; the
+native stock read remains M06 P5a work. No acceptance token, publication receipt
+or real stock claim is made.
 
 
 The communications browser profile is separately opt-in with
