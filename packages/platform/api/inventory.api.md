@@ -56,7 +56,6 @@ export interface InventoryBindings {
         reason: string | null;
     };
     unsupported: {
-        adjustment: string | null;
         newPurchaseStockRead: string | null;
     };
 }

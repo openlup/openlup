@@ -219,8 +219,12 @@ clearing the record and reconstructing adapters. This is private construction
 plumbing, with no new neutral callback, operation, executor or exported type.
 An uncertain storage reply retains a dispatch fence; lost cooldown/release
 persistence closes account availability and requires host repair. Verified mappings
-and outcomes commit together under durable quarantine until exact stored bytes
-are verified, then the account slot is released. A consent read holds its slot
+and non-grant outcomes commit together under durable quarantine until exact stored
+bytes are verified; grant outcomes rely on their durable per-subject dispatch
+fence and recorded grant cause instead of setting the account bit. A withdrawal
+under grant-only availability quarantine also releases its settlement bit after
+verification. For mutations, transfer's `finally` releases the account slot before
+result recording. A consent read holds its slot
 through observation recording. Uncertain recording or release preserves completed
 facts with an unknown journal and quarantines the account across reconstruction.
 Internal pacing waits
@@ -253,7 +257,11 @@ and partial persistence. Another subject's grant-caused uncertainty cannot hold 
 The shared availability cause record distinguishes grant-only quarantine from a
 sticky non-grant cause: only grant-only quarantine is exempt across subjects.
 Grant causes are recorded explicitly for the grant's own admission/journal CAS
-failure or lost write, never inferred from the active request. Storage reads before
+failure or lost write, never inferred from the active request. After a grant's own
+journal fault, the account-level hold for non-withdrawal operations lives on the
+shared in-memory availability record rather than the durable ledger bit, so a
+second process with its own availability record would not see it, and a host
+restart starts closed for explicit reconciliation. Storage reads before
 admission and faults outside those CAS steps are non-grant causes. Durable
 non-grant ledger quarantine, non-grant availability/in-process quarantine, the
 single in-flight slot, pacing and same-key withdrawal fences still apply and

@@ -2,6 +2,17 @@
 
 ## [Unreleased]
 
+## [0.18.0]
+
+- Publishable on the npm `latest` dist-tag as `0.18.0`, from tag
+  `openlup-outbox-v0.18.0`.
+
+- Republish unchanged APIs, runtime behavior and shipped SQL from `0.17.0`
+  with the exact `@openlup/core` `0.18.0` peer pin in the complete set.
+
+Migration: upgrade core and outbox together to `0.18.0`; no outbox API or schema
+migration is introduced.
+
 ## [0.17.0]
 
 - Publishable on the npm `latest` dist-tag as `0.17.0`, from tag

@@ -16,8 +16,8 @@
  * below a fresh empty Unreleased heading. Every other byte stays, and each
  * rewritten JSON file must parse to its original with only those fields
  * changed. Nothing is written unless every file passes; consumed fragments are deleted
- * only after all planned writes succeed. The package release
- * workflow refuses a version that differs from the package's manifest.
+ * only after all planned writes succeed, then only those deletions are staged.
+ * The package release workflow refuses a version that differs from the package's manifest.
  */
 import { existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
@@ -26,6 +26,7 @@ import { isDeepStrictEqual } from "node:util";
 import { PACKAGES_CONFIG_PATH, RELEASE_VERSION, SET_VERSION, parsePackagesConfig, releaseVersionAbove, type PackageEntry, type PackagesConfig } from "./package-manifest-policy.ts";
 
 import { readChangelogFragments, type ChangelogFragment } from "./changelog-fragments.ts";
+import { documentationGit } from "../documentation-routing.ts";
 
 type Json = Record<string, unknown>;
 type Edit = { path: readonly string[]; from: string; to: string };
@@ -112,6 +113,7 @@ const manifestVersion = (root: string, entry: PackageEntry): unknown => (JSON.pa
 const writeAll = (root: string, { writes, consumed }: { writes: Array<[string, string]>; consumed: string[] }): string[] => {
   for (const [file, text] of writes) writeFileSync(join(root, file), text);
   for (const file of consumed) unlinkSync(join(root, file));
+  if (consumed.length > 0) documentationGit(root, ["rm", "--cached", "--quiet", "--ignore-unmatch", "--", ...consumed.map((file) => `:(literal)${file}`)]);
   return [...writes.map(([file]) => file), ...consumed];
 };
 
@@ -151,7 +153,7 @@ if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
     process.exitCode = 2;
   } else {
     try {
-      for (const file of set ? bumpSet(process.cwd(), args[1]!) : bumpRelease(process.cwd(), args[0]!, args[1]!)) console.log(`release:bump: rewrote ${file}`);
+      for (const file of set ? bumpSet(process.cwd(), args[1]!) : bumpRelease(process.cwd(), args[0]!, args[1]!)) console.log(`release:bump: ${existsSync(file) ? "rewrote" : "removed"} ${file}`);
     } catch (error) {
       console.error(`release:bump: refused: ${error instanceof Error ? error.message : String(error)}`);
       process.exitCode = 1;

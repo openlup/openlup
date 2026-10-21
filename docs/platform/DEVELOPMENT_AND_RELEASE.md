@@ -41,7 +41,9 @@ fresh native review, checks and protected release approval retain their roles.
 
 Dependabot PRs are a special case: Published Tree CI selects them only for a
 human `ready_for_review` event. They are update signals, not a direct merge
-route; apply accepted changes on a signed branch with regenerated contract bytes.
+route; apply accepted changes on a signed branch, keeping the committed contract
+snapshot unchanged for dependency and lockfile PRs. Release preparation refreshes
+it with `node --experimental-strip-types scripts/source-release-preparation.ts --write`.
 See the comments in [Dependabot configuration](../../.github/dependabot.yml).
 
 ## What each diagnostic proves
@@ -222,7 +224,8 @@ owns release permissions, setup, detailed refusals and recovery. The sequence is
    every publishable package and every exact internal pin on one, and opens each
    changelog's version section below a fresh Unreleased heading. It assembles the
    legacy body first, then validated package fragments in byte order of path,
-   and deletes only consumed fragments after successful planning and writes;
+   and deletes only consumed fragments after successful planning and writes,
+   then stages exactly those deletions so preparation can read the Git inventory;
    historical sections stay byte-identical. Add notable-change notes under
    `packages/<package>/changes/`, with no per-file catalogue rows. A version bump
    by itself publishes nothing. Refresh the source contract's digests at release

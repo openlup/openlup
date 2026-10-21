@@ -20,14 +20,14 @@ export interface InventoryBindings {
   mutationPort: InventoryMutationPort | null;
   newPurchaseStockReadPort: NewPurchaseStockReadPort | null;
   readiness: { ready: boolean; reason: string | null };
-  unsupported: { adjustment: string | null; newPurchaseStockRead: string | null };
+  unsupported: { newPurchaseStockRead: string | null };
 }
 
 /** Select one store only. Factories declare bindings, never discover or activate a host. */
 export function createInventoryBindings(deps: InventoryBindingDependencies): InventoryBindings {
   const refused = (reason: string): InventoryBindings => ({
     readPort: null, mutationPort: null, newPurchaseStockReadPort: null,
-    readiness: { ready: false, reason }, unsupported: { adjustment: reason, newPurchaseStockRead: reason },
+    readiness: { ready: false, reason }, unsupported: { newPurchaseStockRead: reason },
   });
   if (!deps.provider?.providerSchema?.safeParse(deps.provider.stockMasterProvider).success) return refused("inventory_provider_mismatch");
   let readPort: InventoryReadPort, mutationPort: InventoryMutationPort;
@@ -54,7 +54,6 @@ export function createInventoryBindings(deps: InventoryBindingDependencies): Inv
     mutationPort, newPurchaseStockReadPort,
     readiness: { ready: true, reason: null },
     unsupported: {
-      adjustment: native ? "inventory_native_adjustment_unsupported" : null,
       newPurchaseStockRead: native ? "inventory_native_new_purchase_stock_read_unsupported"
         : newPurchaseStockReadPort ? null : "inventory_new_purchase_stock_reader_required",
     },

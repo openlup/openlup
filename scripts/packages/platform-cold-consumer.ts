@@ -10,13 +10,36 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { assertInstalledPackages, isolatedConsumerEnv, readCurrentPackManifest } from "./pack-manifest-input.ts";
 import { POSTGRES_PROOF_IMAGE } from "./outbox-disposable-postgres.ts";
 
-export const NON_ADAPTER_ENTRIES = ["http", "bff", "scheduler", "kernel", "composition", "catalog/contracts", "pricing", "pricing/contracts", "promotions/contracts", "identity/contracts", "communications/contracts", "inventory", "inventory/contracts", "shipping", "shipping/contracts"] as const;
+export const NON_ADAPTER_ENTRIES = [
+  "bff",
+  "catalog/contracts",
+  "communications/contracts",
+  "composition",
+  "http",
+  "identity/contracts",
+  "inventory",
+  "inventory/contracts",
+  "kernel",
+  "pricing",
+  "pricing/contracts",
+  "promotions/contracts",
+  "scheduler",
+  "shipping",
+  "shipping/contracts",
+] as const;
 // identity, communications, promotions and catalog are adapter entries: their declarations reach data/pg types.
 // Its cold runtime import/refusal is below; declarations compile after selecting peers.
 export const ADAPTER_ENTRIES = [
-  "blob", "data", "migrations", "job-ledger", "identity", "communications", "promotions", "catalog",
-  "communications/resend",
+  "blob",
+  "catalog",
+  "communications",
   "communications/klaviyo",
+  "communications/resend",
+  "data",
+  "identity",
+  "job-ledger",
+  "migrations",
+  "promotions",
 ] as const;
 export const OPTIONAL_PEERS = ["pg", "@types/pg", "@aws-sdk/client-s3"] as const;
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");

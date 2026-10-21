@@ -72,6 +72,15 @@ describe("fragment publication admission", () => {
 });
 
 describe("Migration gate with Git-tree fragments", () => {
+  it("refuses invalid UTF-8 in a committed fragment even when its Migration marker is valid", () => {
+    const f = fixture(), base = f.commit();
+    f.write("packages/core/api/core.api.md", "## dist/core.d.ts\nexport declare const b: string;\n");
+    f.write(fragment, "Migration: before a, after b.\n");
+    writeFileSync(join(f.root, fragment), Buffer.concat([Buffer.from(f.read(fragment)), Buffer.from([0xc3, 0x28])]));
+    const invalid = f.commit();
+    f.write(fragment, "Migration: valid worktree bytes cannot repair the committed blob.\n");
+    expect(() => assertMigrationBlocks(f.root, base, invalid)).toThrow(/encoded data was not valid/u);
+  });
   it("requires a marker for removal; head fragment passes; pure addition passes; worktree edits cannot satisfy it", () => {
     const f = fixture(), base = f.commit();
     f.write("packages/core/api/core.api.md", "## dist/core.d.ts\nexport declare const b: string;\n"); const removed = f.commit();
