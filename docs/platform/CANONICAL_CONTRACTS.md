@@ -87,7 +87,7 @@ when the host supplies transient payer and method selection through the
 canonical M07 P3 attempt input.
 Every flow requires explicit payer context. Missing payer/channel/code refuses
 with exact before-dispatch evidence and neutral data-correction classification.
-Host mode/purpose/currency mismatches throw before I/O; trusted provider document refusals require data correction, while trusted OAuth/deadline/encoding failures remain transient.
+Host mode/purpose/currency mismatches throw before I/O; trusted provider document refusals require data correction, while trusted OAuth/deadline/encoding failures remain transient. A renewal the provider refuses for data validation is not retried automatically: the host prompts the customer to update payment details, and the subscription stays active (nothing is paused or suspended). The contributed adopter applies this classification only when reopening a checkout; the example applies it to every purpose.
 Payer, authorization, donor payloads and provider prose are excluded from the
 returned diagnostics. Alias registration is not exposed by this factory.
 Verified audit facts preserve the donor-filtered transaction and alias fields;
