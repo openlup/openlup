@@ -37,7 +37,7 @@ describe("payment return truth characterization", () => {
     expect(f.applyTerminalResult).not.toHaveBeenCalled();
   });
 
-  it("uses stored client ownership before provider reads and exact signed attempt before active action", async () => {
+  it("denies a different stored owner before any provider read", async () => {
     const f = fixture(), denied = response();
     await f.verify({ method: "POST", body: { ...ids, clientId: ORDER }, headers: {} } as never, denied as never);
     expect(denied.status).toHaveBeenCalledWith(404); expect(f.readPayment).not.toHaveBeenCalled();

@@ -121,9 +121,9 @@ behavior. The verify binding supplies its existing observed responder; setup
 keeps its native callback behind the port-only method seam. No reference clock,
 subscription cycle, token writer or provider activation changes.
 
-The opt-in store embeds the original identity's repair/status view and reuses
-the poller and typed BFF clients. Verify cannot mark payment paid. Native method
-setup is visibly unsupported without a host collector/confirmation binding.
+The reference repair/status view follows in a separate change. Verify cannot
+mark payment paid. Native method setup is an explicit unsupported port result
+without a host collector/confirmation binding.
 Method evidence adds optional neutral reusable registration facts. Only the
 host resolves client/subscription ownership; missing resolution omits registration,
 and a failed resolver is retryable before ingest. Money-event enrichment stays
@@ -133,10 +133,12 @@ field for a typed refusal envelope, so that forwarding remains unsupported.
 The incomplete-chargeback classification and native schema limits remain; the
 reference first-receipt clock switch and required host reader proof stay in P6.
 
-P4 keeps 8 authored cases (W6, the public W7/W8 package cases, owner/attempt
-binding and the reusable-method owner regression). The reference repair UI and
-its 6 DOM cases (W7 renewal and W8 collection/denied-actor assertions) move to
-a separate change, because the hidden-UI guardrails need a boundary decision.
+P4 keeps 7 authored cases: two W6 verify cases (browser claims ignored;
+mismatched money to manual review), the W7 confirmation-forwarding case, three
+owner/attempt-binding cases and the reusable-method owner regression. The
+reference repair UI and its 6 DOM cases (the remaining W6 status, W7 renewal
+and W8 assertions) move to a separate change, because the hidden-UI guardrails
+need a boundary decision.
 Focused runs after the split cover the package payment suites and the retained
 reference resolver, status, verify and setup suites.
 All retained resolver/status/verify/setup/BFF/poller suites remain unchanged.
@@ -161,7 +163,7 @@ code gzip bytes. Package root docs: 44,652 → 45,190 gzip bytes; contracts rema
 20/32 browser bytes. All existing caps remain unchanged.
 
 Self-retro: package-local import refusals exposed host assertions in the wrong
-layer. Move the host assertions into the already planned root DOM invocations,
-keeping public tests local and preserving the assertions, rather than weakening
-the import controls. Serialize package builds and tests: one early BFF run raced
+layer. Host assertions belong in reference tests, keeping public tests local and
+preserving the assertions, rather than weakening the import controls. Run the
+hidden-UI and payment-control guardrails whenever reference pages change. Serialize package builds and tests: one early BFF run raced
 lint's dependency build; the isolated rerun passed. No new process is needed.
