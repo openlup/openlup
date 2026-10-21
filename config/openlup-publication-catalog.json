@@ -15162,6 +15162,14 @@
       "class": "public-output"
     },
     {
+      "path": "src/components/PaymentRepairStatus.test.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/components/PaymentRepairStatus.tsx",
+      "class": "public-output"
+    },
+    {
       "path": "src/components/PrivateLabelForm.tsx",
       "class": "public-output"
     },
@@ -19955,6 +19963,14 @@
     },
     {
       "path": "src/pages/ReferenceCatalogUi.test.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/pages/ReferencePaymentRepairPage.test.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/pages/ReferencePaymentRepairPage.tsx",
       "class": "public-output"
     },
     {

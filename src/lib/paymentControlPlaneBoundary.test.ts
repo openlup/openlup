@@ -75,6 +75,15 @@ function isHiddenAccountOrderTerminalFile(file: string): boolean {
   ]).has(relativePath(file));
 }
 
+function isReferenceRepairPaymentImport(file: string, specifier: string): boolean {
+  return (
+    // Opt-in repair view imports only the customer poller's snapshot type.
+    relativePath(file) === "src/pages/ReferencePaymentRepairPage.tsx"
+    // Opt-in status display reuses the injected customer status poller.
+    || relativePath(file) === "src/components/PaymentRepairStatus.tsx"
+  ) && specifier === "@/domains/payment/components/PaymentStatusPoller";
+}
+
 // The table pins below match the pg_dump form of the frozen managed schema
 // baseline. A tree whose hosted chain carries the platform schema under its own
 // migrations, without that baseline file, declares the same tables in another
@@ -83,6 +92,16 @@ function isHiddenAccountOrderTerminalFile(file: string): boolean {
 const managedBaselinePresent = existsSync(join(repoRoot, "supabase/migrations/00000000000000_platform_schema_baseline.sql"));
 
 describe("payment-control plane boundary", () => {
+  it("refuses operator imports for both exact reference poller exemptions", () => {
+    for (const path of ["src/pages/ReferencePaymentRepairPage.tsx", "src/components/PaymentRepairStatus.tsx"]) {
+      const file = join(repoRoot, path);
+      expect(isReferenceRepairPaymentImport(file, "@/domains/payment/components/PaymentStatusPoller")).toBe(true);
+      expect(isReferenceRepairPaymentImport(file, "@/domains/payment/paymentControlClient")).toBe(false);
+      expect(isReferenceRepairPaymentImport(file, "@/domains/payment/operatorRepairClient")).toBe(false);
+    }
+    expect(isReferenceRepairPaymentImport(join(repoRoot, "src/pages/OtherPage.tsx"),
+      "@/domains/payment/components/PaymentStatusPoller")).toBe(false);
+  });
   it.skipIf(!managedBaselinePresent)("declares the payment-control tables and links the inbound inbox to them", () => {
     // Read from the whole migration corpus, which in this tree starts from the
     // schema baseline, so the pin holds whichever migration now owns the DDL.
@@ -184,6 +203,10 @@ describe("payment-control plane boundary", () => {
 
     const violations = uiFiles.flatMap((file) => {
       const source = readFileSync(file, "utf8");
+      // Remove only an exact admitted import string; all other source remains scanned.
+      const paymentImportSource = source.replace(/(\bimport\s+(?:type\s+)?[^;"']*?\s+from\s+)(["'])([^"']+)\2/g,
+        (statement, prefix, _quote, specifier) =>
+          isReferenceRepairPaymentImport(file, specifier) ? `${prefix}""` : statement);
       const blockedPatterns = [
         /commerce_payment_control_/,
         /payment-control/,
@@ -220,7 +243,7 @@ describe("payment-control plane boundary", () => {
       return [
         ...hiddenAccountPaymentImports,
         ...blockedPatterns
-        .filter((pattern) => pattern.test(source))
+        .filter((pattern) => pattern.test(pattern.source === /domains\/payment/.source ? paymentImportSource : source))
         .map((pattern) => `${relativePath(file)} -> ${pattern}`),
       ];
     });

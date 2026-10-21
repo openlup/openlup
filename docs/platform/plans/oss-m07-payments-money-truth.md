@@ -167,3 +167,24 @@ layer. Host assertions belong in reference tests, keeping public tests local and
 preserving the assertions, rather than weakening the import controls. Run the
 hidden-UI and payment-control guardrails whenever reference pages change. Serialize package builds and tests: one early BFF run raced
 lint's dependency build; the isolated rerun passed. No new process is needed.
+
+
+## P4c record
+
+The opt-in reference store mounts the payment repair view after checkout with
+the original order/intent/client identity. Verification never proves payment;
+stored status remains the terminal authority, and unsupported method setup is
+visible. The hidden-UI and payment-control guardrails admit exactly three files,
+each for only its customer status, verify-now or poller specifiers, with a
+one-line reason; operator and control-plane clients stay refused, as negative
+cases in both guardrails show. A source-import scan proves the reference store
+has no importer outside its own test, so it stays unmounted in the shipped
+default profile.
+
+P4c adds 10 authored cases: seven reference DOM cases (W6 stored status, W7
+renewal, W8 mandate refusal, collection and denied actor) and three guardrail
+cases. The four existing store cases remain. No export, payment control,
+migration or dependency changes.
+
+P4c final ledger: 15 paths, 3 production UI paths, about 550 lines of churn,
+computed against P4's head before merge.
