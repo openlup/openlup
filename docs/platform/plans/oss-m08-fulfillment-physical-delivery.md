@@ -1,7 +1,6 @@
 # M08 fulfillment and physical delivery
 
-Development-preview programme record, 2026-10-21. P1 authoring base: `41a9477d`
-on assigned branch `claude/oss-m08-p1-fulfillment`. Frozen inputs: coordinator C0
+Development-preview programme record, 2026-10-21. Frozen inputs: coordinator C0
 D0–D13, C2 decomposition/Author check, carrier fit G1–G13, path/export/source
 registers and coordinator freeze. Donor V: C1 `d902ac7f4`, read from its local
 `origin/main` source objects. These packets are implementation inputs, not authority
@@ -17,21 +16,19 @@ no incompatible runtime, peer, lifecycle or consumer requires another artifact.
 Platform maintains these experimental contracts; adapters and host policy remain
 adopter-owned.
 
-P1 consists of `bc4f9110` and its review repair `9328b676`, with main (M07 S1,
-0.21.0) merged at the merge slot. Review history is kept in the pull request, not here.
-Submission and merge remain coordinator gates. No adopter/staging endpoint, network,
+This record states P1's design and contents; delivery and review history lives in
+the pull request. Submission and merge remain coordinator gates. No adopter/staging endpoint, network,
 secret or provider access is in P1 scope.
 
 Acceptance: exact two entries and symbols in the frozen export register plus the
-repair-1 prepare-result/envelope type amendment; type-only
+dispatch prepare-result and exported envelope types; type-only
 browser contracts; concrete G1–G13 fit; unchanged status projection digest and
 decisions; arrival discipline in port/platform docs; eight semantic cases (3 contracts, 2 portFit, 3 statusMap); generated
 boundary rows reported separately; focused lint/structural/API/consumer/policy
 checks and actual tarball budgets. The inventory API generator retains its two
-existing enum-order-only adjustments without changing value sets. Repair 1 removes
-the module README and unreachable status helper, reuses architecture documentation
-as the fulfillment owner; after the main merge the candidate is 32 paths against
-main versus the 35-path cap. Actual diff including generated files must stay
+existing enum-order-only adjustments without changing value sets. Fulfillment guidance
+lives on the architecture page (no module README). P1 is 32 paths against main
+versus the 35-path cap. Actual diff including generated files must stay
 at or below 35 paths. Exclusions: P2+ runtime orchestration, SQL/migrations,
 composition, reference facade rewiring, UI, adapter implementation and release
 set/version preparation. No native continuity, provider operation or stable
@@ -117,7 +114,7 @@ none for existing public behavior; additive new surface only. F3/F5/F8 runtime
 adaptations belong to P3, F4 legacy facade remains retained, F6 UI belongs to P5b,
 F7 private defaults remain injected; F9 money SQL stays M07-owned.
 
-## Proof, pack and handoff
+## Proof and pack
 
 Smallest adequate solution: concrete type envelopes and direct injected descriptor
 lookup, with the contributed decision table unchanged. No generic plugin framework,
@@ -134,26 +131,13 @@ Scratch logs/configs are under .context/scratch; existing cold-consumer fixtures
 use system temporary directories and clean up their own output. Delta-bound documentation answers are
 committed as OpenLup-Doc-Impact trailers on the P1 commits.
 
-First candidate (`bc4f9110`) baseline: seven authored semantic cases; 1,432 generated
-packageBoundary cases; platform pack 1,026,756 B packed / 4,582,014 B unpacked /
-1,438 files; code gzip 882,636 B / 1,404 files; root-doc gzip 48,065 B / 5 files.
-Root-doc headroom was 1,087 B against 49,152 B. Repair 1 measures 47,850 B
-(1,302 B headroom, 215 B recovered); its pre-merge pack is 1,024,956 B packed /
-4,577,081 B unpacked / 1,434 files, code gzip 882,715 B / 1,401 files. All caps
-and browser subcaps pass. The pack is re-measured by the required package gates on
-the merged tree. This record claims no provider implementation conformance.
+Measured on the authoring base: eight authored semantic cases; 1,432 generated
+packageBoundary cases; platform pack about 1.02 MB packed / 4.58 MB unpacked;
+root-doc gzip 47,850 B against the 49,152 B cap. All caps and browser subcaps pass;
+the required package gates re-measure the pack on the merged tree. This record
+claims no provider implementation conformance.
 
 Known limits retained from the donor: capability lookup lowercases the selected
 providerRef but compares it against the injected descriptor as supplied; case
 normalization policy is unchanged. recordArrival still accepts parcelRef without
 fulfillmentRef; native fence/alignment implementation and proof remain P4 work.
-
-Self-retro: the pre-claim fingerprint gap required an adapter prepare operation;
-a neutral-envelope hash could not preserve donor command identity. Removing the
-unreachable helper and placing contract prose on the existing platform page
-reduces shipped bytes and keeps one documentation owner. The focused order witness
-also exercises contact_stale rebuilding, while later adapter conformance remains owed.
-A verification retry overlapped the lint pre-hook build with declaration readers,
-causing two transient failures; after the build completed, the full focused package
-and cold-consumer suites passed. Lesson: serialize lint (including prelint) before
-checks that read dist, rather than treating lint as a read-only phase.
