@@ -16,6 +16,8 @@ export interface OmnipackFulfillmentAdapterConfig {
     fetchImpl: typeof fetch; timeoutMs: number; safeReadRetries: number; productPath: string;
   };
   selected?: boolean;
+  /** Per-instance entry cap for submissions and each preparation map; default 10,000. No eviction. */
+  maxRetainedSubmissions?: number;
   /** Host account evidence, independent of credentials. Omission remains not ready. */
   readiness?: FulfillmentCapabilityDescriptor["readiness"];
   resolveProduct: (line: FulfillmentDispatchRequest["lines"][number]) => Promise<{ lotNumber?: string; expirationDate?: string } | null>;
@@ -38,8 +40,10 @@ export function createOmnipackFulfillmentAdapter(config: OmnipackFulfillmentAdap
   stockSync: FulfillmentStockSyncProvider;
   productSync: FulfillmentProductSyncProvider;
 } {
+  const maxRetainedSubmissions = config.maxRetainedSubmissions === undefined ? 10_000 : config.maxRetainedSubmissions;
   const base = new URL(config.http.baseUrl);
   if (base.protocol !== "https:" || base.username || base.password || base.search || base.hash
+    || !Number.isSafeInteger(maxRetainedSubmissions) || maxRetainedSubmissions <= 0
     || typeof config.http.fetchImpl !== "function" || typeof config.http.credentials !== "function"
     || !Number.isSafeInteger(config.http.timeoutMs) || config.http.timeoutMs <= 0
     || !Number.isSafeInteger(config.http.safeReadRetries) || config.http.safeReadRetries < 0
@@ -77,6 +81,8 @@ export function createOmnipackFulfillmentAdapter(config: OmnipackFulfillmentAdap
       async prepare(request) {
         try {
           const requestDigest = stableDispatchHash(request);
+          if (!preparations.has(requestDigest) && preparations.size >= maxRetainedSubmissions)
+            return { kind: "refused", refusal: refusal("not_dispatchable", "prepare") };
           const generation = (preparations.get(requestDigest) ?? 0) + 1;
           preparations.set(requestDigest, generation);
           const failed = selectionFailure(request);
@@ -104,6 +110,8 @@ export function createOmnipackFulfillmentAdapter(config: OmnipackFulfillmentAdap
             providerRef: capabilities.providerRef, carrierRef: request.selection.carrierRef, serviceRef: request.selection.serviceRef };
           if (preparations.get(requestDigest) !== generation) return { kind: "refused", refusal: refusal("not_dispatchable", "prepare") };
           const evidenceKey = serializeOmnipackDispatchPayload(evidence).body;
+          if (!prepared.has(evidenceKey) && prepared.size >= maxRetainedSubmissions)
+            return { kind: "refused", refusal: refusal("not_dispatchable", "prepare") };
           prepared.set(evidenceKey, { body: command.body, evidence: structuredClone(evidence), requestDigest, generation });
           return { kind: "prepared", evidence };
         } catch { return { kind: "refused", refusal: refusal("not_dispatchable", "prepare") }; }
@@ -125,6 +133,7 @@ export function createOmnipackFulfillmentAdapter(config: OmnipackFulfillmentAdap
             return structuredClone(await submitted.result);
           }
           if (!command || command.requestDigest !== requestDigest || preparations.get(requestDigest) !== command.generation) throw Error();
+          if (submissions.size >= maxRetainedSubmissions) throw Error();
         } catch { return { kind: "not_dispatched", effectMayHaveSucceeded: false, refusal: refusal("not_dispatchable", "dispatch") }; }
         const fingerprint = command.evidence.commandFingerprint;
         // Defer submission until its promise is recorded, before any credential or HTTP callback.
@@ -144,6 +153,8 @@ export function createOmnipackFulfillmentAdapter(config: OmnipackFulfillmentAdap
           } finally { command.body = ""; }
         });
         submissions.set(fingerprint, { evidenceKey, requestDigest, result });
+        // Submission owns replay from here, so releasing these transient bytes cannot reopen a POST.
+        prepared.delete(evidenceKey);
         return structuredClone(await result);
       },
     },

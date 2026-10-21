@@ -676,7 +676,15 @@ without I/O; different evidence for that fingerprint refuses `not_dispatchable`
 with phase `dispatch` and `retryable:false`, preserving the one-POST fence.
 Original replay remains available after later preparations even when its current
 preparation entry was replaced. Numeric generations fence older overlapping
-preparations for the same request value; durable replay belongs to the host worker.
+preparations for the same request value. The configuration's positive integer
+`maxRetainedSubmissions` (default 10,000) caps submissions and each preparation
+map without eviction; submission releases its transient preparation entry but
+keeps the replay result. At capacity, new submissions refuse before I/O and
+matching recorded replays remain available. The host rotates the instance while
+preserving M08's durable claim/begin/attempt/finalize ledger: the adapter's memory
+is not the durable double-dispatch guard. Provider idempotency is not established
+by the donor evidence. See the [example contract](CANONICAL_CONTRACTS.md#opt-in-fulfillment-example)
+for preparation bounds and refusal phases.
 Proven pre-submission failures and definitive HTTP rejections are
 non-submissions even if the rejection body is unreadable; successful statuses
 without a readable acknowledgement and ambiguous POSTs stay unknown without retry. Accepted provider

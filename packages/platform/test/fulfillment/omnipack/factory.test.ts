@@ -323,12 +323,38 @@ it("never leaks transport failures through sync or readback", async () => {
   const result = await f.adapter.readback.read(reading); expect(result.kind).toBe("unknown"); safe(result);
 });
 
-it("refuses unsafe host paths at construction before credentials or HTTP", () => {
+it("refuses unsafe host paths and invalid retention caps at construction before credentials or HTTP", () => {
   const f = fixture();
+  for (const maxRetainedSubmissions of [0, -1, 1.5, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1, null, "1"]) {
+    expect(() => entry.createOmnipackFulfillmentAdapter({ ...f.config, maxRetainedSubmissions: maxRetainedSubmissions as number })).toThrow("Invalid fulfillment configuration");
+  }
   for (const productPath of ["//other.example.test/products", "https://other.example.test/products", "//user:pass@other.example.test/products", "/\\other.example.test", "/../products", "/%2fother/products", "/products?token=a", "/products#fragment", "/products//packs"]) {
     expect(() => entry.createOmnipackFulfillmentAdapter({ ...f.config, http: { ...f.config.http, productPath } })).toThrow("Invalid fulfillment configuration");
   }
   expect(f.credentials).not.toHaveBeenCalled(); expect(f.fetchImpl).not.toHaveBeenCalled();
+});
+it("bounds submission and preparation retention without evicting recorded replay at capacity", async () => {
+  for (const reply of [() => jsonResponse({ orderId: "external-a" }), () => jsonResponse({}), () => jsonResponse({}, 400)]) {
+    let lotNumber = "LOT-A";
+    const f = fixture(reply, { maxRetainedSubmissions: 1, resolveProduct: async () => ({ lotNumber }) });
+    const req = frozenRequest(); const original = await prepare(f.adapter, req);
+    // A second unsubmitted evidence key cannot grow the preparation map past its cap.
+    lotNumber = "LOT-B";
+    expect(await f.adapter.dispatch.prepare(req)).toEqual({ kind: "refused", refusal: { reason: "not_dispatchable", phase: "prepare", retryable: false } });
+    lotNumber = "LOT-A";
+    await prepare(f.adapter, req);
+    const result = await f.adapter.dispatch.dispatch(req, original);
+    f.fetchImpl.mockClear(); f.credentials.mockClear();
+    // The submitted preparation is released, but the submission result is never evicted.
+    lotNumber = "LOT-B";
+    const different = await prepare(f.adapter, req);
+    expect(different.commandFingerprint).not.toBe(original.commandFingerprint);
+    expect(await f.adapter.dispatch.dispatch(req, different)).toEqual({ kind: "not_dispatched", effectMayHaveSucceeded: false, refusal: { reason: "not_dispatchable", phase: "dispatch", retryable: false } });
+    // A new request digest cannot grow the generation map past its cap either.
+    expect(await f.adapter.dispatch.prepare({ ...req, requestKey: "other" })).toEqual({ kind: "refused", refusal: { reason: "not_dispatchable", phase: "prepare", retryable: false } });
+    expect(await f.adapter.dispatch.dispatch(structuredClone(req), structuredClone(original))).toEqual(result);
+    expect(f.credentials).not.toHaveBeenCalled(); expect(f.fetchImpl).not.toHaveBeenCalled();
+  }
 });
 it("classifies credential and request construction failures before POST as definitive non-submission", async () => {
   for (const credentials of [() => { throw Error(secret); }, async () => { throw Error(secret); }, () => ({ get username(): string { throw Error(secret); }, password: secret })]) {

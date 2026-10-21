@@ -606,6 +606,8 @@ export interface OmnipackFulfillmentAdapterConfig {
         productPath: string;
     };
     selected?: boolean;
+    /** Per-instance entry cap for submissions and each preparation map; default 10,000. No eviction. */
+    maxRetainedSubmissions?: number;
     /** Host account evidence, independent of credentials. Omission remains not ready. */
     readiness?: FulfillmentCapabilityDescriptor["readiness"];
     resolveProduct: (line: FulfillmentDispatchRequest["lines"][number]) => Promise<{

@@ -123,7 +123,23 @@ the current preparation entry. Request validation still binds replay to the
 submitted request value or an equivalent-evidence preparation. Changes to host
 descriptions omitted from the wire body preserve replay after preparation.
 Changed command evidence may submit once under its new fingerprint.
-Durable replay across processes belongs to the host worker. Credential, validation and request-construction
+The replay record is in-memory and per adapter instance, not the durable
+double-dispatch guard. Durable protection comes from M08's host ledger through
+`claim`, `begin`, `recordProviderAttempt` and `finalize`, plus any idempotency
+the provider honours. The donor evidence does not establish provider-side
+idempotency, so this example claims none.
+`OmnipackFulfillmentAdapterConfig.maxRetainedSubmissions` defaults to 10,000 and
+must be a positive safe integer at construction. It caps the submission map and
+each of the two preparation maps (evidence entries and request generations).
+Submissions are never evicted. At capacity, an unrecorded fingerprint refuses
+`not_dispatchable / dispatch / retryable:false` before credentials or HTTP;
+recorded matching replays retain their identical results. A new preparation key
+at its map's cap refuses `not_dispatchable / prepare / retryable:false`.
+Submission releases its transient preparation entry; the retained submission
+still prevents another POST for that fingerprint. Other preparation entries and
+generation keys are not evicted. The host rotates the adapter instance when
+capacity is exhausted, retaining its durable ledger across rotation.
+Credential, validation and request-construction
 failures before submission and definitive rejection are `not_dispatched`;
 an unreadable rejection body preserves the status-derived rejection. An unreadable
 successful acknowledgement, lost/malformed acknowledgement and ambiguous submission

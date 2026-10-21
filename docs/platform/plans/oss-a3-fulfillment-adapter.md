@@ -556,3 +556,88 @@ unsupported-label profiles and the actual worker witness. Worker result:
 This remains an isolated pre-check, with no adapter shim or committed integration
 claim. Claude's committed review and remaining delivery gates stay owed. Git is
 read-only and HEAD remains **8e363ad9** for handoff.
+
+### O-P2 repair round 5
+
+Authority: coordinator/owner-delegate conditions on repair 4 (`c8a924c6`): bound
+the adapter's replay/preparation memory and demonstrate restart protection with
+the actual M08 worker at `a8708cf1`. Local source/docs/API repair and focused
+offline checks only; no Git writes, installs, network/secrets, frozen M08 edits
+in this branch, review-budget reset or delivery. Claude retains review/delivery.
+This lead decision supersedes round 3's unbounded-memory tradeoff.
+
+The replay record is in-memory and per instance; it is **not** the durable
+double-dispatch guard. Durable protection comes from M08's host ledger
+(`claim` / `begin` / `recordProviderAttempt` / `finalize`), plus any idempotency
+the provider honours. Donor evidence does not establish provider-side idempotency;
+no such claim is made. Host-ledger persistence survives adapter rotation/restart.
+
+`OmnipackFulfillmentAdapterConfig.maxRetainedSubmissions` defaults to **10,000**;
+construction rejects nonpositive, fractional or unsafe integers. It caps each of
+the submission, prepared-evidence and request-generation maps independently.
+Submissions are never evicted. A new fingerprint at capacity refuses
+`not_dispatchable / dispatch / retryable:false` before credentials/HTTP, while
+matching recorded replays return identical accepted, unknown or refused results.
+A new preparation key at its map's cap refuses the same reason in phase
+`prepare`. Submission releases its transient preparation entry after reserving
+the replay result; this cannot reopen a recorded fingerprint. Other preparations
+and generation keys are not evicted. The host rotates the instance on exhaustion
+and retains its durable host ledger. No cache dependency or new export is added.
+
+Branch witness: `factory.test.ts` adds one combined retention case covering both
+preparation-map bounds, dispatch capacity refusal with zero new credential/HTTP
+calls, and accepted/unknown/refused replay at capacity. The existing construction
+case now covers invalid capacities. No branch-local imitation of the absent M08
+worker is added: the existing foreign-instance test proves missing preparation
+refusal, not durable restart protection.
+
+Scratch witness: `worker-restart.scratch.test.ts` uses the actual worker with a
+fresh adapter and an in-memory host store already `submitting`, with the mapped
+attempt recorded. Claim/readback preserve that state; the worker refuses with
+`dispatch_not_safe_to_submit:submitting`, zero adapter dispatches and zero HTTP.
+The fixture is also saved as `N/a3omni-c0/p3check-worker-restart.test.ts` for O-P3.
+This proves worker use of persisted host state, not persistence of the fixture.
+
+| Destination | Cases | Round-5 delta |
+| --- | ---: | ---: |
+| `factory.test.ts` | 27 | +1 |
+| `transportAdaptation.test.ts` | 4 | 0 |
+| Six retained characterization files | 18 | 0 |
+| Adapter directory total | 49 | +1 |
+| Cold-consumer authored addition | 1 | 0 |
+| Scratch diagnostics (not hosted) | 9 | +1 |
+
+O-P2 **29**, public O-P1 + O-P2 **53**, conservative whole-round projection
+**73 / 100** (previous **72**); the additional scratch-only restart case makes
+**74 / 100** if counted conservatively as future O-P3 acceptance too.
+
+Self-retro/rethink: unbounded instance history → explicit no-eviction capacity
+and host-ledger rotation. Releasing only preparations already reserved in the
+submission map bounds memory without weakening replay or adding a cache policy.
+The actual worker witness locates durable safety at the host-state boundary.
+The first restart fixture omitted the donor codec's required phone and refused
+preparation; supplying its synthetic phone corrected the fixture before proof.
+
+Focused round-5 evidence: **1,604 tests / 11 files pass** (46.57 s): adapter
+**49**, package-boundary **1,474**, cold-consumer **46**, neutrality tooling **35**.
+Platform no-emit typecheck, serialized build and regenerated API snapshots pass;
+TypeScript module inspection confirms exactly the existing three exports.
+Ast-grep, focused ESLint and whitespace checks pass. Neutrality reports
+**0 increases**; UI neutrality smoke and source/test/docs gitleaks scans pass.
+Offline dry-run packing with the existing artifact-budget checker passes all
+caps: docs **47,932 / 49,152 bytes**, **1,220 bytes headroom**, unchanged; code
+**916,095 bytes**, tarball **1,062,087 bytes**, unpacked **4,732,370 bytes**,
+**1,479 files**. No manifest, release-gate, README or frozen-port delta.
+Pinned policy pre-check: **3 obligations / 0 unanswered**; final docs-update and
+policy check follow this entry.
+
+P3 scratch: checked **11/11** runner/worker/contracts/projection inputs against
+`a8708cf1` byte-for-byte, with repaired adapter sources copied from this branch.
+**9/9 tests pass** across the existing conformance fixture and new restart file:
+complete profile **12/12**, refused profile **10/10**, both unsupported-label
+profiles, existing worker acceptance (one POST, one mapped attempt, one host-key
+acknowledgement), and restart refusal (**0 provider calls / 0 HTTP**, original
+host record/attempt unchanged). The new scratch fixture also passes a focused
+strict TypeScript check and gitleaks. No worker shim or branch-local worker
+imitation; no committed integration claim. HEAD remains **c8a924c6**, Git
+read-only; Claude's committed review/delivery obligations remain owed.
