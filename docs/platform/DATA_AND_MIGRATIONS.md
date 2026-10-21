@@ -207,6 +207,18 @@ setup forward also binds its two new function signatures, which must be absent
 from the preceding chain. This control change installs approval data only; it
 does not ship or execute those forwards.
 
+The optional `portableReplacementForwards` list admits exactly one forward to
+keep active subscriptions active on dunning exhaustion (invariant repair).
+Its only function is
+`public.dunning_lifecycle_handle_failure(uuid,timestamptz,text,text,integer,timestamptz,text,text)`,
+fixed in checker code independently of the registry. Prior definitions come only
+from the portable baseline and earlier portable forwards in strict filename
+order, as required by the manifest. Exact path, file and before/after definition
+hashes must match; arguments, return, volatility, security and settings remain
+unchanged. Only comments and that single `CREATE OR REPLACE FUNCTION` are
+admitted, with approval preceding introduction; no privileges or other statements
+are allowed. This control approval adds no SQL file or runtime behavior.
+
 [The shared checker](../../scripts/reviewed-platform-forward.ts) verifies the
 immutable managed baseline hash, each old definition and each new definition.
 A definition hash covers the raw `CREATE` statement through its terminating
@@ -215,7 +227,7 @@ uses argument types. Whole-file hashes additionally bind comments, grants and
 all other SQL. Earlier forwards are considered when checking the old definition.
 Missing or duplicate signatures, another path, and any changed byte refuse.
 Both gates refuse control characters other than tab and line feed in reviewed SQL forwards (parser parity).
-Outside the pinned function bodies, only function definitions, transaction
+For managed forwards outside the pinned function bodies, only function definitions, transaction
 boundaries, privileges and comments on functions defined in that same file are
 accepted. Grants may target only `authenticated` or `service_role`; grants to
 `PUBLIC` or `anon`, other schemas, unrelated statements and unterminated dollar
