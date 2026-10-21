@@ -15,7 +15,7 @@ SemVer promise.
 
 - Refresh release size-gate baselines from the published `0.19.0` tarballs; all caps remain unchanged.
 
-- Keep active subscriptions active on dunning exhaustion (invariant repair).
+- Keep active subscriptions active on portable dunning exhaustion (invariant repair).
 
 Migration: apply the complete portable catalogue through
 `20261021120000_dunning_lifecycle_active_repair.sql` at position 71. Previously,
@@ -46,16 +46,21 @@ Core readiness and a same-database schema observation of the applied seed.
 Install the complete canonical migration catalogue, never sparse package
 projections as an installation chain.
 
-### M06 in this release
+### Cumulative M06 status
 
-- M06 provides development-preview inventory contracts, stock/ATP reads,
-  reserve/release/expire operations, subscription forecasts, delivery
-  selection, address handlers and flat-rate handling through explicit inventory
-  and shipping composition. Native flat-rate read/save now works through its
-  named capability lane and applied-seed readiness proof; host-owned policy and
-  unsupported operations retain their explicit boundaries.
+- M06 includes development-preview inventory and shipping composition first
+  shipped in `0.19.0`: inventory contracts, stock/ATP reads, reserve/release/expire
+  operations, subscription forecasts, delivery selection, address handlers and
+  flat-rate handling. In `0.20.0`, native flat-rate read/save gains its named
+  capability lane, applied-seed readiness proof and `SHIPPING_MIGRATIONS` export;
+  the portable dunning invariant repair also ships in this set. Host-owned policy
+  and unsupported operations retain their explicit boundaries.
 
 ### Known limitations
+
+- The portable dunning invariant repair has no managed twin in this set. The
+  managed baseline pauses active subscriptions on exhaustion; keeping them active
+  requires a separate managed forward. Portable proof does not establish managed parity.
 
 - D8-1: native advisory v2 promo-code candidates and rejection details are not supported on the native backend.
 - D8-2: native mounted v2 code issue/honor/fallback is not supported on the native backend.
@@ -93,6 +98,9 @@ projections as an installation chain.
   control observations retain their separate C5/C6 evidence gates. Busy/try-gate
   protocol, durable stock-wait continuity and staging flag/TTL rows transferred
   to C5 adopter evidence are dispositions, not PASS.
+- Shipping contracts retain national-registry address fields and
+  `canonicalAddressKey` retains a locale-specific character fold. M16 owns their
+  move behind a host-supplied market pack with a canonical-key migration plan.
 - Reference shipping UI copy remains locale-specific until M16.
 
 ## [0.19.0]

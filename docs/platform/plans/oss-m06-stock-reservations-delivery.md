@@ -371,10 +371,12 @@ any kind (including fixture repositories), other worktrees, secrets, broad suite
 `npm test`, `test:scoped`, `verify`, submission, merge, tag, account or registry
 mutation are delegated. The supervisor owns staging, commits and required native
 review/final verification. Release dispatch and protected approval are human-only. The
-2026-10-21 continuation permits public npm registry reads and published-version
-downloads, with scratch only under `/private/tmp/claude-501/m06-s1/baseline/`;
-it requires the three prior repair edits to be preserved and the focused
-package, source-preparation, Migration, ast-grep, lint and docs-size checks.
+2026-10-21 baseline continuation permitted public npm registry reads and
+published-version downloads within the coordinator-assigned scratch scope; it
+required preservation of the three prior repair edits and focused package,
+source-preparation, Migration, ast-grep, lint and docs-size checks. Repair cycle 2
+authorizes documentation corrections and the named focused checks only; versions,
+locks, release gates and fragments are excluded.
 
 Acceptance/proof plan: generate versions, exact internal pins, lock carriers,
 changelog sections and source bindings with the existing release functions;
@@ -393,7 +395,7 @@ supervisor handoff.
 Release-order gate (coordinator, 2026-10-21): `0.19.0` is published and its
 C4 artifact readback passed on dispatch target #266 merge `fd1513ba`. This
 satisfies the predecessor publication/readback gate for `0.20.0`. Later main
-commits still carried version `0.19.0` with post-release shipping code, API and
+commits carried version `0.19.0` with post-release shipping code, API and
 SQL; they are not the baseline source. This S1 preparation refreshes
 `pack.baseline` in `packages/core/release-gates.json`,
 `packages/outbox/release-gates.json` and `packages/platform/release-gates.json`
@@ -426,86 +428,56 @@ export, cap or budget change belongs to S1.
 
 ### S1 focused preparation evidence
 
-The three publishable manifests, exact pins and both lock carriers now name
-`0.20.0`. Only the two named fragments are consumed; all three changelogs keep
-one empty Unreleased section and byte-identical history from `0.19.0` onward.
-Core/outbox runtime source trees match #266. Canonical materialized-candidate source
-binding derivation is generated. The 2026-10-21 pre-commit strict CLI write/check
-and policy refused the then-unstaged fragment deletions; that observation is
-historical. On committed candidate `1bc62d30`,
+Historical preparation record (2026-10-21): the three publishable manifests,
+exact pins and both lock carriers name `0.20.0`. Only the two named fragments
+are consumed; all three changelogs keep one empty Unreleased section and
+byte-identical history from `0.19.0` onward. Core/outbox runtime source trees
+match #266. The committed source-binding snapshot passes
 `node --experimental-strip-types scripts/source-release-preparation.ts --check`
-passes with the committed snapshot fresh. No refusal is waived.
+on candidate `1bc62d30`; the earlier pre-commit refusal for unstaged fragment
+deletions was not waived.
 
-Initial pre-commit results (2026-10-21): ast-grep, lint (zero errors / 33 existing warnings), five-project
-typecheck (zero unresolved edges or consumer errors), all three API checks and
-set manifest-only validation PASS. Migration-marker/history validation PASS;
-this is not a committed-base/head `assertMigrationBlocks` run. Canonical navigation
-is byte-identical. Direct documentation-impact computation reports four
-obligations, one answered by the package README and three awaiting proposed
-supervisor commit trailers. Platform root docs measure 42,575/49,152 gzip B
-across five/ten files, leaving 6,577 B. Full artifact/installed-consumer evidence,
-Git-writing source-preparation tests, predecessor C4/rebaseline and committed
-review/final verification were then outstanding supervisor/human gates. The
-predecessor gate and baseline refresh are now satisfied as recorded above; the
-remaining gates retain their existing authority.
+Initial focused preparation checks on 2026-10-21 passed ast-grep, lint (zero
+errors / 33 existing warnings), five-project typecheck, three API checks and
+set manifest-only validation. Repair cycle 1 restored the surviving `0.19.0`
+limitations in the standalone `0.20.0` body, updated native flat-rate support,
+retained all managed-host pending classes and named the additive shipping API
+and exact-set upgrade. Its README restoration left the adjacent-release pointer
+at `0.19.0`; repair cycle 2 corrects it to `0.20.0` and retains the incomplete
+M06 status and managed-host proof boundaries.
 
-Self-retro: automatic deletion staging conflicts with content-only preparation
-→ reuse the existing pure bump planner and source derivation, report native
-refusals explicitly, and leave Git reconciliation to the supervisor.
+Baseline refresh evidence (2026-10-21, before supervisor commit `0cb07289`):
+all three release-gate baselines were refreshed from the published `0.19.0`
+artifacts without cap changes. Source-preparation `--check` passed for 5,450
+tracked public paths, with no `--write` needed. The committed Migration-block
+rule from `4c055489` to `1bc62d30` passed; release markers/history independently
+passed (core/outbox one Migration block each, platform three). Ast-grep and lint
+passed (zero errors / 33 existing warnings; eight structural rule tests).
+Root-docs gzip measured core 23,746/49,152 B (10/20 files), outbox
+13,447/26,624 B (6/12 files) and platform 42,918/49,152 B (5/10 files), using
+the repository's sorted-content `measurePack` function. These are historical
+documentation measurements, not candidate tarball or managed-host proof.
 
-Repair cycle 1 (2026-10-21): restore every still-true `0.19.0` limitation in the
-standalone `0.20.0` release body, update native flat-rate support, retain all
-managed-host pending classes above, name the additive shipping API and exact-set
-upgrade, and restore the package README to main. This repair changes release
-claims and evidence only; no runtime, generated version/lock, cap or budget edit.
-Repair checks: source-preparation `--check`, ast-grep and lint (zero errors /
-33 existing warnings) pass. The committed Migration-block rule passes; no API
-snapshot changes occur in S1, and the new release text independently retains
-three Migration blocks, unique empty Unreleased and byte-identical prior history.
-Platform root docs measure 42,882/49,152 gzip B across five/ten files, leaving
-6,270 B. Navigation remains byte-identical. Against base `4c055489`, the policy
-counts the three existing commit trailers and refuses the newly unanswered
-`platform-substrate` obligation after the README restore; its computed no-impact
-trailer awaits the supervisor's commit. No refusal or delivery gate is waived.
-Self-retro: a release body must stand alone → carry forward each limitation from
-the preceding release, then update it against code and the parity ledger.
+At that pre-commit checkpoint, `npm run packages:check` exited 1 on three
+mandatory dirty-package guards; manifest-only checking passed. Policy with
+`--docs-update` validated source bindings, structural policy and byte-identical
+navigation but exited 1 for unanswered core/outbox impact obligations after
+the baseline changes. Those refusals were not waived and do not describe the
+later committed candidate. A raw index-file hash change was also observed in
+that run; its cause was not established by the retained evidence. Staged entries
+and HEAD were unchanged; no index restoration was attempted.
 
+Repair cycle 2 (2026-10-21, starting candidate `0cb07289`): the README links to
+this set's migration and limitations; the release summary distinguishes cumulative
+M06 status from the `0.20.0` additions. Known limitations explicitly retain the
+managed dunning gap and M16 national-registry/canonical-key debt. This repair
+changes documentation only. Full artifact/installed-consumer proof, Git-writing
+fixture tests, required native review and final verification belong to the
+supervisor's authorized delivery route. A prepared version or a passing focused
+check grants no publication, dispatch or protected-approval authority.
 
-Baseline refresh continuation (2026-10-21): the published `0.19.0` artifacts now
-supply all three release-gate baselines, completing the refresh in this S1
-preparation. The README baseline sentence now names the prepared `0.20.0` set
-and published `0.19.0` tarball; its earlier exact-main equality is historical.
-The new `0.20.0` changelog records the refresh, while all released history and
-the earlier repair's standalone limitations remain intact. No cap changed.
-
-Focused results on this continuation: source-preparation `--check` passes with
-computed bindings valid and the committed snapshot fresh (5,450 tracked public
-paths), so no `--write` or snapshot change is needed. The native committed
-Migration-block rule from `4c055489` to `1bc62d30` passes; candidate
-`packageSurface` objects equal HEAD, and release markers/history independently
-pass (core/outbox one Migration block each, platform three). Ast-grep and lint
-pass (zero errors / 33 existing warnings; eight structural rule tests pass).
-Root-docs gzip measures core 23,746/49,152 B (10/20 files), outbox
-13,447/26,624 B (6/12 files) and platform 42,918/49,152 B (5/10 files), leaving
-6,234 B platform headroom. These use the repository's sorted-content
-`measurePack` function, not a local tarball baseline.
-
-`npm run packages:check` exits 1 on its three mandatory dirty-package guards;
-no artifact proof is claimed or guard bypassed. Supplemental manifest-only
-checking passes for all three packages. Policy with `--docs-update` validates
-source bindings, structural policy and byte-identical navigation, but exits 1
-with two unanswered core/outbox impact obligations after their baseline changes.
-The README update answers platform structurally; the existing repository trailer
-still matches. All four exact replacement trailer proposals for the complete
-delta from `4c055489` are recorded with registry identities, measurements and
-check logs in the requested side-session notes and baseline scratch evidence.
-Only the authorized supervisor can commit the refreshed trailers and obtain
-clean-package artifact proof, native review and final verification. No refusal
-is waived; no staging, commit, ref or release/account action was performed.
-HEAD and staged entries remain unchanged. A raw index-file hash change was
-observed during read-only checking; its cause is unestablished and no index
-restoration was attempted. The side-session evidence records this discrepancy.
-
-Self-retro: a published artifact's own identity and byte count remove the need
-for a source rebuild or inferred baseline; preserve native dirty-tree refusals
-and hand off the exact remaining evidence rather than widening this preparation.
+Self-retro: release summaries need both prior limitations and an explicit
+adjacent-set pointer → check every shipped README release reference alongside
+the standalone changelog. Public evidence uses dated revisions and repository
+contracts rather than private handoff locations. No new runtime or process
+mechanism is needed.
