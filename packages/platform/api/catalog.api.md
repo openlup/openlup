@@ -277,8 +277,9 @@ export declare function createAdminBundleHandlers({ bundleSpec, BundleRpcError, 
 ```ts
 import type { BundleAdminBindings, AuthorizeAdmin } from "./adminBindings.js";
 import type { BundleAvailabilityService } from "./bundleAvailabilityService.js";
-import type { BundleCatalogReadPort } from "./bundleCatalogReadPort.js";
+import type { BundleCatalogReadPort, BundleDetail, BundleTargetPriceRow } from "./bundleCatalogReadPort.js";
 export interface AdminBundleReadHandlerDeps {
+    effectiveTarget?: (bundle: BundleDetail) => BundleTargetPriceRow | null;
     readPort: BundleCatalogReadPort;
     authorizeAdmin: AuthorizeAdmin;
     readsEnabled: boolean;
@@ -686,6 +687,8 @@ export interface BundleDetail extends BundleSummary {
     metadata: Record<string, unknown>;
     components: BundleComponentRow[];
     prices: BundleTargetPriceRow[];
+    /** Present only when the host selects effective price authority. */
+    resolvedTargetPrice?: BundleTargetPriceRow | null;
     /** The currency whose list resolved `referenceUnitPriceMinor`; `null` if none did. */
     resolvedCurrency: string | null;
     /**
@@ -705,6 +708,8 @@ export interface GetBundleInput {
     currency?: string;
     /** Narrow the target price whose list is selected; omitted means any mode. */
     mode?: string;
+    regionCode?: string;
+    atTime?: string;
 }
 /**
  * One live, sellable bundle: active status, an active target price, and its
@@ -751,6 +756,9 @@ export interface BundleCatalogReadPort {
      */
     listActiveBundleCompositions(input?: {
         currency?: string;
+        regionCode?: string;
+        mode?: "one_time" | "subscription";
+        atTime?: string;
     }): Promise<ActiveBundleComposition[]>;
     /**
      * The operator trail for one bundle. The two chains answer from different
@@ -765,7 +773,26 @@ export interface BundleCatalogReadPort {
 ```ts
 import type { BundleCatalogReadPort } from "./bundleCatalogReadPort.js";
 import type { PgQueryExecutor } from "../data/index.js";
-export declare function createPostgresBundleCatalogStore(executor: PgQueryExecutor): BundleCatalogReadPort;
+export declare function createPostgresBundleCatalogStore(executor: PgQueryExecutor, options?: {
+    priceAuthority?: "effective";
+}): BundleCatalogReadPort;
+```
+## dist/catalog/bundlePriceSelection.d.ts
+
+```ts
+import { type BundleTargetPriceRow } from "./bundleCatalogReadPort.js";
+export declare function uniqueBundlePrice<T extends {
+    mode: string;
+}>(rows: readonly T[], mode: string): T | null;
+export declare function selectEffectiveBundleTargetPrice(rows: readonly {
+    price: BundleTargetPriceRow;
+    priceListId: string;
+}[], context: {
+    priceListId: string | null;
+    currency: string | null;
+    mode: string;
+    atTime: string;
+}): BundleTargetPriceRow | null;
 ```
 ## dist/catalog/bundleRuleCodes.d.ts
 
@@ -1186,6 +1213,15 @@ export type GetBundleResponse = {
             validFrom: string;
             validTo: string | null;
         }[];
+        resolvedTargetPrice?: {
+            mode: string;
+            targetPriceMinor: number;
+            currency: string;
+            amountKind: string;
+            active: boolean;
+            validFrom: string;
+            validTo: string | null;
+        } | null;
         resolvedCurrency: string | null;
         availability: {
             sellableNow: number | null;
@@ -1234,6 +1270,15 @@ export type BundleDetailView = {
         validFrom: string;
         validTo: string | null;
     }[];
+    resolvedTargetPrice?: {
+        mode: string;
+        targetPriceMinor: number;
+        currency: string;
+        amountKind: string;
+        active: boolean;
+        validFrom: string;
+        validTo: string | null;
+    } | null;
     resolvedCurrency: string | null;
     availability: {
         sellableNow: number | null;
@@ -2431,6 +2476,7 @@ export { BUNDLE_MIGRATIONS, CATALOG_MIGRATIONS } from "./sql.js";
 export { SUMMARY_COLUMNS, LIST_FILTER, LIST_SQL, COUNT_SQL, DETAIL_SQL, REFERENCE_PRICE, COMPONENT_SQL, FEED_COMPONENT_SQL, PRICE_SQL, OWN_LIST_SQL, CURRENCY_LIST_SQL, FEED_SQL, HISTORY_SQL, HISTORY_COUNT_SQL } from "./bundleCatalogQueries.js";
 export { createPostgresCatalogSkuEnvelopeReadPort } from "./catalogSkuEnvelope.js";
 export { createPostgresCatalogDraftStore } from "./catalogDraftStore.js";
+export { selectEffectiveBundleTargetPrice } from "./bundlePriceSelection.js";
 ```
 ## dist/catalog/mediaSourcePack.d.ts
 

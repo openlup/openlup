@@ -131,6 +131,13 @@ its users or operators can observe.
 
 ## Development-preview checks
 
+Row 24b's bundle/pricing parity uses existing collectors: package selector and
+concurrent-authority suites, the reference preview binding, and six native cases
+in `tests/postgres/bundleEffectiveParity.test.ts`. That witness uses the full
+canonical chain and existing disposable PostgreSQL harness, refusing unavailable
+Docker. Existing catalog/pricing suites remain unchanged. No profile, runner,
+coverage budget or default composition changes.
+
 M05 parity seams keep the existing Node package collector. The promotions suites
 `shippingConsentParity`, `thresholdShippingParity` and
 `acquisitionOrchestrationParity` exercise opt-in bindings and omitted-binding

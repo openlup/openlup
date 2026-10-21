@@ -117,6 +117,7 @@ export const bundleDetailSchema = bundleSummarySchema.extend({
   metadata: z.record(z.string(), z.unknown()),
   components: z.array(bundleComponentDetailSchema),
   prices: z.array(bundleTargetPriceSchema),
+  resolvedTargetPrice: bundleTargetPriceSchema.nullable().optional(),
   resolvedCurrency: z.string().nullable(),
   availability: bundleAvailabilityViewSchema.nullable(),
 });

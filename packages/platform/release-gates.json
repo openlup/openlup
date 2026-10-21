@@ -45,7 +45,8 @@
         "test/catalog/bundleCatalogReadPort.test.ts",
         "test/catalog/sellableBundleHandler.test.ts",
         "test/catalog/catalogFoundationContracts.test.ts",
-        "test/catalog/catalogDraftContracts.test.ts"
+        "test/catalog/catalogDraftContracts.test.ts",
+        "test/catalog/bundlePriceSelectionParity.test.ts"
       ],
       "entrypoint": "dist/catalog/index.d.ts",
       "snapshot": "api/catalog.api.md"
@@ -60,7 +61,8 @@
         "test/catalog/catalogProductTypeContracts.test.ts",
         "test/catalog/catalogDraftContracts.test.ts",
         "test/catalog/catalogMediaResolution.test.ts",
-        "test/catalog/catalogLifecycleContracts.test.ts"
+        "test/catalog/catalogLifecycleContracts.test.ts",
+        "test/catalog/bundlePriceSelectionParity.test.ts"
       ],
       "entrypoint": "dist/catalog/contracts/index.d.ts",
       "snapshot": "api/catalog-contracts.api.md"
@@ -259,7 +261,8 @@
         "test/pricing/commerceOfferPricingCache.test.ts",
         "test/pricing/offerPolicyReadiness.test.ts",
         "test/pricing/acquisition.test.ts",
-        "test/pricing/offerPricingContracts.test.ts"
+        "test/pricing/offerPricingContracts.test.ts",
+        "test/pricing/concurrentCommercePriceAuthorityParity.test.ts"
       ],
       "entrypoint": "dist/pricing/index.d.ts",
       "snapshot": "api/pricing.api.md"

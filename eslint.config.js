@@ -151,7 +151,7 @@ export const PLATFORM_MODULE_GRAPH = {
   promotions: { contracts: true, values: ["pricing", "shipping"], types: ["data", "http", "bff"] },
   pricing: { contracts: true, values: [], types: ["bff", "http", "shipping"] },
   // Bundle factories bind host schemas/admin kit; the native read store uses only the data executor type.
-  catalog: { contracts: true, values: [], types: ["data", "bff", "http"] },
+  catalog: { contracts: true, values: ["pricing"], types: ["data", "bff", "http"] },
   communications: { contracts: true, values: ["data", "identity"], types: ["http"] },
   identity: { contracts: true, values: ["bff", "data", "kernel"], types: ["http"] },
   kernel: { values: [], types: [] },
