@@ -174,8 +174,9 @@ readback and sync ports from
 [fulfillment owner](ARCHITECTURE_AND_EXTENSIONS.md#fulfillment-contracts) for
 command preparation, host keys, replay, paid handoff and proof/storage boundaries.
 The offline runFulfillmentAdapterConformance checks adapter-owned fixtures and
-returns sanitized evidence; concrete example adapters and native store proof remain
-later work. This surface activates no provider or reference route.
+returns sanitized evidence. Native stores and real PostgreSQL conformance cover
+durable storage and arrival alignment; concrete example adapters remain later
+work. This surface activates no provider or reference route.
 
 | Class | Shipped example subpaths |
 | --- | --- |

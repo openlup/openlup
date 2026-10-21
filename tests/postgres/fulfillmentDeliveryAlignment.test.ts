@@ -64,7 +64,7 @@ it('A6 exact due admission issues one consumable receipt and preserves missing/i
  await expect(h.pool.query("INSERT INTO public.subscription_cycles(subscription_id,scheduled_at,status) VALUES($1,$2,'payment_pending')",[f.subscription,at])).rejects.toThrow('admission_required');
  const receipts=(await h.pool.query('SELECT * FROM public.subscription_delivery_alignment_admission_receipts WHERE subscription_id=$1',[f.subscription])).rows;
  expect(receipts).toHaveLength(1);expect(receipts[0].consumed_at).not.toBeNull();
- const missing=await fixture(h.pool,null);expect(await admit(missing.subscription)).toMatchObject({allowed:false,state:'manual_review'});
+ const missing=await fixture(h.pool,null);await openCase(h.pool,missing);expect(await admit(missing.subscription)).toMatchObject({allowed:false,state:'manual_review'});
  const inactive=await fixture(h.pool);await openCase(h.pool,inactive);await h.pool.query("UPDATE public.subscriptions SET status='paused' WHERE id=$1",[inactive.subscription]);await arrival(inactive.shipment);expect((await cases(inactive.order))[0].state).toBe('released');expect(await admit(inactive.subscription)).toMatchObject({allowed:false,state:'not_active'});
  const dunning=await fixture(h.pool);await openCase(h.pool,dunning);await h.pool.query('INSERT INTO public.subscription_dunning_cases(subscription_id,cycle_id,client_id,idempotency_key) VALUES($1,$2,$3,$4)',[dunning.subscription,dunning.cycle,dunning.client,`dunning-${dunning.cycle}`]);await arrival(dunning.shipment);expect((await cases(dunning.order))[0]).toMatchObject({state:'manual_review',manual_review_reason:'open_dunning'});
  const artifact=await fixture(h.pool);await openCase(h.pool,artifact);await h.pool.query("INSERT INTO public.subscription_cycles(subscription_id,scheduled_at,status) VALUES($1,'2026-09-15','planned')",[artifact.subscription]);await arrival(artifact.shipment);expect((await cases(artifact.order))[0]).toMatchObject({state:'manual_review',manual_review_reason:'renewal_cycle_already_created'});
@@ -124,4 +124,28 @@ it('A10 new overdue cycle inserts require admission exactly as the donor guard, 
  expect(await cases(f.order)).toEqual([]);expect(await admit(f.subscription)).toMatchObject({allowed:false,state:'protected'});
  await expect(h.pool.query("INSERT INTO public.subscription_cycles(subscription_id,scheduled_at,status) VALUES($1,'2026-08-29T12:00:00Z','payment_pending')",[f.subscription])).rejects.toThrow('alignment_protected');
  expect((await h.pool.query('SELECT * FROM public.subscription_delivery_alignment_admission_receipts WHERE subscription_id=$1',[f.subscription])).rows).toEqual([]);expect((await schedule(h.pool,f.subscription)).status).toBe('active');
+});
+
+it('paid activation history cannot hide an undelivered paid renewal from overdue admission',async()=>{
+ const f=await fixture(h.pool,1,true);
+ const history=(await h.pool.query('SELECT cycle_number,status,scheduled_at,order_id FROM public.subscription_delivery_alignment_cycles WHERE subscription_id=$1 ORDER BY scheduled_at',[f.subscription])).rows;
+ expect(history).toMatchObject([{cycle_number:null,status:'paid',scheduled_at:new Date('2026-07-04T12:00:00Z')},{cycle_number:1,status:'paid',scheduled_at:new Date('2026-08-01T12:00:00Z'),order_id:f.order}]);
+ expect(history[0].order_id).not.toBeNull();
+ await h.pool.query("SELECT public.subscription_delivery_alignment_set_mode('auto_align')");
+ expect(await admit(f.subscription)).toMatchObject({allowed:false,state:'protected',reason:'delivery_alignment_protected'});
+ expect(await cases(f.order)).toMatchObject([{predecessor_cycle_id:f.cycle,predecessor_cycle_number:1,state:'protected',evidence_kind:'overdue_renewal'}]);
+ await expect(h.pool.query("INSERT INTO public.subscription_cycles(subscription_id,scheduled_at,status) VALUES($1,'2026-08-29T12:00:00Z','payment_pending')",[f.subscription])).rejects.toThrow('alignment_protected');
+ expect((await h.pool.query('SELECT * FROM public.subscription_delivery_alignment_admission_receipts WHERE subscription_id=$1',[f.subscription])).rows).toEqual([]);
+});
+it.each(['2026-08-29T12:00:00.000Z','2026-10-10T12:00:00.000Z'])('paid activation is not a successor artifact: split renewal arrivals preserve GREATEST(%s,max(arrivals)+cadence)',async(nextCycleAt)=>{
+ const f=await fixture(h.pool,1,true);const one=await replacement(h.pool,f);const two=await replacement(h.pool,f,f.shipment,2);
+ await h.pool.query("SELECT public.subscription_delivery_alignment_set_mode('auto_align')");
+ expect(await admit(f.subscription)).toMatchObject({allowed:false,state:'protected'});
+ await h.pool.query('UPDATE public.subscriptions SET next_cycle_at=$2 WHERE id=$1',[f.subscription,nextCycleAt]);
+ expect(await arrival(one,'2026-09-08T12:00:00Z')).toMatchObject({disposition:'outstanding'});
+ const expected=nextCycleAt>'2026-10-06T12:00:00.000Z'?nextCycleAt:'2026-10-06T12:00:00.000Z';
+ expect(await arrival(two,'2026-09-01T12:00:00Z')).toMatchObject({disposition:'aligned',nextCycleAt:expected});
+ expect((await cases(f.order)).every(row=>row.state==='aligned'&&row.manual_review_reason===null)).toBe(true);
+ expect((await schedule(h.pool,f.subscription)).next_cycle_at.toISOString()).toBe(expected);
+ const before=await cases(f.order);await arrival(two,'2026-09-01T12:00:00Z');expect(await cases(f.order)).toEqual(before);
 });

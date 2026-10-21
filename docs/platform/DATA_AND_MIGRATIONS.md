@@ -402,10 +402,14 @@ mode other than `auto_align` before either a new journey or restart proof. This
 mode is the prerequisite for the monotonic late-delivery rule in
 [Canonical contracts](CANONICAL_CONTRACTS.md#subscription-delivery-alignment).
 
-There is no portable twin: the delivery-alignment rail is managed-only. The
-portable installation's lack of this capability remains a known gap; this
-forward establishes neither installation-path parity nor the complete
-late-delivery journey or a stable upgrade guarantee.
+The managed singleton seed has no portable twin. The native chain carries
+delivery alignment in its own
+[`fulfillment_delivery_alignment` forward](../../db/platform/migrations/20261022090000_fulfillment_delivery_alignment.sql),
+which creates the control row with mode `off`; `auto_align` enables the
+late-delivery invariant. Native store and real PostgreSQL conformance tests
+cover admission and arrival alignment. These checks do not establish
+installation-path parity, a complete installed late-delivery journey or a
+stable upgrade guarantee.
 
 ## Compatibility lifecycle
 

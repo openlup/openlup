@@ -8,7 +8,7 @@
 -- for a replacement that did not arrive. No automatic caller is installed.
 -- Roll back compatible code or turn new cases off; repair accepted effects forward.
 
-CREATE TABLE IF NOT EXISTS public.subscription_delivery_alignment_control (
+CREATE TABLE public.subscription_delivery_alignment_control (
   singleton boolean PRIMARY KEY DEFAULT true CHECK (singleton),
   mode text NOT NULL DEFAULT 'off'
     CHECK (mode IN ('off', 'shadow', 'protect', 'auto_align')),
@@ -22,7 +22,7 @@ ON CONFLICT (singleton) DO NOTHING;
 COMMENT ON TABLE public.subscription_delivery_alignment_control IS
   'Singleton DB-side rollout control for new delivery-alignment cases. Default off. Existing protected cases retain their captured authority after this row changes.';
 
-CREATE TABLE IF NOT EXISTS public.subscription_delivery_alignment_cases (
+CREATE TABLE public.subscription_delivery_alignment_cases (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   shipment_id uuid REFERENCES public.fulfillment_shipments(id) ON DELETE CASCADE,
   predecessor_order_id uuid NOT NULL REFERENCES public.commerce_orders(id) ON DELETE CASCADE,
@@ -54,7 +54,7 @@ CREATE TABLE IF NOT EXISTS public.subscription_delivery_alignment_cases (
 -- passed admission in an enforcing mode. A rejected INSERT cannot retain a new
 -- protected case (the transaction rolls it back), so this receipt is the safe
 -- DB boundary for callers that otherwise bypass the service preflight.
-CREATE TABLE IF NOT EXISTS public.subscription_delivery_alignment_admission_receipts (
+CREATE TABLE public.subscription_delivery_alignment_admission_receipts (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   subscription_id uuid NOT NULL REFERENCES public.subscriptions(id) ON DELETE CASCADE,
   scheduled_at timestamptz NOT NULL,
@@ -74,16 +74,16 @@ CREATE TABLE IF NOT EXISTS public.subscription_delivery_alignment_admission_rece
 -- fallback is intentionally only for the fail-closed "paid but no fulfillment
 -- row exists" corruption/manual-review case; it is unique per predecessor order
 -- and can never stand in for two physical fulfillment records.
-CREATE UNIQUE INDEX IF NOT EXISTS subscription_delivery_alignment_case_fulfillment_key
+CREATE UNIQUE INDEX subscription_delivery_alignment_case_fulfillment_key
   ON public.subscription_delivery_alignment_cases (shipment_id)
   WHERE shipment_id IS NOT NULL;
-CREATE UNIQUE INDEX IF NOT EXISTS subscription_delivery_alignment_case_missing_fulfillment_key
+CREATE UNIQUE INDEX subscription_delivery_alignment_case_missing_fulfillment_key
   ON public.subscription_delivery_alignment_cases (predecessor_order_id)
   WHERE shipment_id IS NULL;
-CREATE INDEX IF NOT EXISTS idx_subscription_delivery_alignment_cases_blocking
+CREATE INDEX idx_subscription_delivery_alignment_cases_blocking
   ON public.subscription_delivery_alignment_cases (subscription_id, state, predecessor_cycle_number)
   WHERE state IN ('protected', 'manual_review');
-CREATE INDEX IF NOT EXISTS idx_subscription_delivery_alignment_cases_order
+CREATE INDEX idx_subscription_delivery_alignment_cases_order
   ON public.subscription_delivery_alignment_cases (predecessor_order_id, shipment_id);
 
 COMMENT ON TABLE public.subscription_delivery_alignment_cases IS
@@ -102,7 +102,7 @@ CREATE FUNCTION public.subscription_delivery_alignment_get_mode()
 RETURNS text
 LANGUAGE sql
 SECURITY INVOKER
-SET search_path = pg_catalog, public
+SET search_path = pg_catalog
 AS $$
   SELECT mode
     FROM public.subscription_delivery_alignment_control
@@ -453,14 +453,16 @@ BEGIN
       SELECT 1 FROM public.subscription_delivery_alignment_cycles successor
       JOIN public.subscription_renewal_operations operation ON operation.id = successor.renewal_operation_id
       WHERE successor.subscription_id = v_subscription.id
-        AND (successor.cycle_number > v_case.predecessor_cycle_number OR successor.cycle_number IS NULL)
+        AND (successor.cycle_number > v_case.predecessor_cycle_number OR (successor.cycle_number IS NULL AND successor.scheduled_at >
+             (SELECT scheduled_at FROM public.subscription_cycles WHERE id = v_case.predecessor_cycle_id)))
         AND operation.attempt_prepared_at IS NOT NULL
     ) THEN 'existing_provider_attempt'
     WHEN EXISTS (
       SELECT 1 FROM public.subscription_delivery_alignment_cycles successor
       WHERE successor.subscription_id = v_subscription.id
         AND (successor.cycle_number > v_case.predecessor_cycle_number
-             OR (successor.id <> v_case.predecessor_cycle_id AND successor.cycle_number IS NULL))
+             OR (successor.cycle_number IS NULL AND successor.scheduled_at >
+                 (SELECT scheduled_at FROM public.subscription_cycles WHERE id = v_case.predecessor_cycle_id)))
     ) THEN 'renewal_cycle_already_created'
     ELSE NULL
   END INTO v_artifact_reason;
@@ -558,6 +560,7 @@ BEGIN
     FROM public.subscription_delivery_alignment_cycles
    WHERE subscription_id = p_subscription_id
      AND status = 'paid'
+     AND cycle_number >= 1
    ORDER BY cycle_number DESC, scheduled_at DESC
    LIMIT 1;
   v_has_paid_predecessor := FOUND;
@@ -1050,6 +1053,10 @@ RETURNS jsonb LANGUAGE plpgsql SECURITY INVOKER SET search_path=pg_catalog AS $$
 DECLARE v_arrival public.subscription_delivery_alignment_arrivals%ROWTYPE; v_replayed boolean; v_subscription uuid;
 BEGIN
  IF btrim(COALESCE(p_key,''))='' OR p_arrived IS NULL OR p_evidence NOT LIKE 'evidence:%' OR p_evidence IS NULL THEN RAISE EXCEPTION 'fulfillment_arrival_invalid' USING ERRCODE='22023'; END IF;
+ -- Arrival commands lock subscription before shipment, then the delivery trigger
+ -- locks the case. Direct shipment writes already hold the shipment lock when
+ -- their AFTER trigger acquires the subscription; callers must use this command
+ -- or acquire the subscription first to preserve the same lock order.
  SELECT cycle.subscription_id INTO v_subscription FROM public.fulfillment_shipments shipment
  JOIN public.commerce_orders order_row ON order_row.id=shipment.order_id
  JOIN public.subscription_cycles cycle ON cycle.id=order_row.subscription_cycle_id WHERE shipment.id=p_shipment;
