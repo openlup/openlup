@@ -4,6 +4,8 @@ import { runFulfillmentDispatchWorker } from "../../src/fulfillment/index.js";
 
 function fixture(mode: DispatchRecord["mode"] = "live") {
   const trace: string[] = [], writes: unknown[] = [], attempts = new Map<string, unknown>(), attemptReplays: boolean[] = [];
+  const acceptanceAttempts = new Map<string, { labelKey: string; externalRef: string }>();
+  const ackKeys: { providerAttemptKey: string; labelKey: string }[] = [];
   const key = "legacy-dispatch: f/α";
   let candidate: FulfillmentDispatchRequest = {
     requestKey: key, fulfillmentRef: "fulfillment-a", orderRef: "order-a", orderNumber: null, parcelRef: null,
@@ -12,7 +14,7 @@ function fixture(mode: DispatchRecord["mode"] = "live") {
     lines: [{ skuRef: "sku-a", title: null, quantity: 1, productRef: null, packRef: null }],
     selection: { providerRef: "warehouse-a", carrierRef: "carrier-a", serviceRef: "service-a", deliveryKind: "courier", pickupPoint: null },
   };
-  let record: DispatchRecord | null = null, beginStale = 0, claimStale = 0, failAck = 0, ackCommitted = false, calls = 0;
+  let record: DispatchRecord | null = null, beginStale = 0, claimStale = 0, failAck = 0, ackCommitted = false, calls = 0, concurrentAcceptance = false;
   const keys = { request: () => key, mappedAttempt: (requestKey: string, index: number) => `${requestKey}:attempt${index === 0 ? "" : ":contact-remap"}`,
     acceptance: () => ({ providerAttemptKey: `${key}:provider-accepted`, labelKey: `${key}:label-ack` }) };
   const store: FulfillmentStorePort = {
@@ -37,6 +39,7 @@ function fixture(mode: DispatchRecord["mode"] = "live") {
       trace.push(`begin:${record!.evidence.contactRevision.revision}`);
       expect(input.commandFingerprint).toBe(record!.evidence.commandFingerprint);
       if (beginStale-- > 0) { refresh(); return { kind: "refused", refusal: { reason: "contact_stale", phase: "begin", retryable: true } }; }
+      if (concurrentAcceptance) { record!.status = "uncertain"; record!.externalRef = "external-a"; }
       const begun = record!.status === "draft";
       if (begun) record!.status = "submitting";
       return { kind: "begun", begun, replayed: !begun, record: structuredClone(record!) };
@@ -49,12 +52,18 @@ function fixture(mode: DispatchRecord["mode"] = "live") {
     },
     async acknowledge(input) {
       trace.push("ack"); writes.push(input);
-      if (failAck-- > 0) {
-        if (ackCommitted) { record!.status = "created"; record!.externalRef = input.acceptance.externalRef; }
-        throw new Error("synthetic-private-ack");
+      const { providerAttemptKey, labelKey, externalRef } = input.acceptance;
+      ackKeys.push({ providerAttemptKey, labelKey });
+      const failing = failAck-- > 0;
+      if (failing && !ackCommitted) throw new Error("synthetic-private-ack");
+      const replayed = acceptanceAttempts.has(providerAttemptKey);
+      if (replayed) {
+        expect(acceptanceAttempts.get(providerAttemptKey)).toEqual({ labelKey, externalRef });
+      } else {
+        acceptanceAttempts.set(providerAttemptKey, { labelKey, externalRef });
       }
-      const replayed = record!.status === "created";
-      record!.status = "created"; record!.externalRef = input.acceptance.externalRef;
+      record!.status = "created"; record!.externalRef = externalRef;
+      if (failing) throw new Error("synthetic-private-ack");
       return { acknowledged: true, replayed, record: structuredClone(record!) };
     },
     async markStaleSubmissionsUncertain() { trace.push("sweep"); return 0; },
@@ -74,14 +83,16 @@ function fixture(mode: DispatchRecord["mode"] = "live") {
       expect(evidence.commandFingerprint).toBe(`actual-command-${request.contactRevision.revision}`);
       expect(evidence).toEqual(record!.evidence);
       if (response instanceof Error) throw response;
-      return response ?? { kind: "accepted", externalRef: "external-a", evidence, ...keys.acceptance() };
+      return response ?? { kind: "accepted", externalRef: "external-a", evidence,
+        providerAttemptKey: "adapter-attempt-key", labelKey: "adapter-label-key" };
     },
   };
   function refresh() { candidate = { ...candidate, contactRevision: { ...candidate.contactRevision, revision: candidate.contactRevision.revision + 1 } }; }
-  return { trace, writes, attempts, attemptReplays, store, provider, keys,
+  return { trace, writes, attempts, attemptReplays, acceptanceAttempts, ackKeys, store, provider, keys,
     run: () => runFulfillmentDispatchWorker({ store, provider, keys, config: { mode, batchLimit: 10 }, listCandidates: async () => { trace.push("list"); return [candidate]; }, now: () => new Date("2026-10-21T10:00:00Z") }),
     stale: (where: "begin" | "claim", count = 1) => { if (where === "begin") beginStale = count; else claimStale = count; },
     failAck: (committed = false) => { failAck = 1; ackCommitted = committed; },
+    acceptConcurrently: () => { concurrentAcceptance = true; },
     response: (value: FulfillmentDispatchResult | Error) => { response = value; },
     record: () => record!, calls: () => calls,
   };
@@ -124,10 +135,25 @@ it("repairs accepted proof after a lost ACK locally and never posts twice, inclu
     expect(await f.run()).toMatchObject(committed ? { ok: true, updated: 1 } : { ok: false, reason: "dispatch_proof_write_failed_after_provider_acceptance" });
     expect(f.record().status).toBe(committed ? "created" : "uncertain");
     expect(f.record().externalRef).toBe("external-a");
-    expect(await f.run()).toMatchObject({ ok: true, providerCalls: 0 });
+    expect(await f.run()).toMatchObject({ ok: true, providerCalls: 0, replayed: committed ? 1 : 0, updated: committed ? 0 : 1 });
     expect(f.calls()).toBe(1); expect(f.record().status).toBe("created");
     expect(f.trace.slice(-3)).toEqual(["list", "read", "ack"]);
+    expect(f.ackKeys).toEqual([f.keys.acceptance(), f.keys.acceptance()]);
+    expect([...f.acceptanceAttempts]).toEqual([[f.keys.acceptance().providerAttemptKey,
+      { labelKey: f.keys.acceptance().labelKey, externalRef: "external-a" }]]);
   }
+});
+
+it("uses the same host acceptance keys after POST, at loop-start repair and after a concurrent begin", async () => {
+  const main = fixture();
+  expect(await main.run()).toMatchObject({ ok: true, providerCalls: 1, updated: 1 });
+  expect(await main.run()).toMatchObject({ ok: true, providerCalls: 0, replayed: 1, updated: 0 });
+  const concurrent = fixture(); concurrent.acceptConcurrently();
+  expect(await concurrent.run()).toMatchObject({ ok: true, providerCalls: 0, updated: 1 });
+  expect(concurrent.trace.slice(-3)).toEqual(["begin:1", "read", "ack"]);
+  expect([...main.ackKeys, ...concurrent.ackKeys]).toEqual(Array.from({ length: 3 }, () => main.keys.acceptance()));
+  expect(main.acceptanceAttempts.size).toBe(1);
+  expect(concurrent.acceptanceAttempts.size).toBe(1);
 });
 
 it("retains definitive versus ambiguous outcomes and fails closed on unclassified post-boundary exceptions", async () => {

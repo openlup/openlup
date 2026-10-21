@@ -138,7 +138,7 @@ clean-tree admission.
 Scratch logs/configs are under .context/scratch; existing cold-consumer fixtures
 use system temporary directories and clean up their own output. The P1 report records actual case
 counts/time, every pack cap/subcap, paths, checks and any delta-bound documentation
-delta-bound documentation impact evidence for coordinator submission.
+impact evidence for coordinator submission.
 
 Original P1 measurement before repair: seven authored semantic cases; 1,432 generated
 packageBoundary cases; platform pack 1,026,756 B packed / 4,582,014 B unpacked /
@@ -172,8 +172,9 @@ P2 is stacked on frozen P1 `9328b676f28dfd08ccba159c25feb502e4c45ddd`,
 in the assigned `claude/oss-m08-p2-fulfillment` worktree. The owner's delegated
 coordinator authorizes local paid-handler/recovery, durable-ledger protocol,
 dispatch/fence/acceptance/projection implementation and focused checks, plus G14.
-The author leaves changes uncommitted: commit, native review, submission, merge
-and release remain coordinator/human gates. No network except dependency install,
+P2's candidate is committed as `aa03ee4a8961a585140fe3ce0cd1efd043bd691f`.
+Repair cycle 1 changes only its working tree; commit, native review, submission,
+merge and release remain coordinator/human gates. For this repair, no network,
 provider/account/secret access, SQL, other-worktree mutation, reference wiring,
 money implementation, inventory authority, replacement-confirmation caller,
 new subpath, package, dependency or version preparation is in scope.
@@ -213,6 +214,8 @@ replace durable enforcement with an in-memory mock.
    Inline the unchanged 300-character-plus-ellipsis truncation and subset parser
    rather than importing private server helpers. M07 paid truth and M06 inventory
    stay inside the injected fulfillment port; P4 owns the concrete durable bridge.
+   The donor OrderPaidFulfillmentPort in paidHandoffPorts.ts retains the handler's
+   outcome ladder; P4/P7 host composition bridges it to P1's FulfillmentPaidHandoffPort.
    A successful obligation precedes the handler result and the outbox ACK.
 2. V commerce/paidFulfillmentRecovery.ts becomes paidFulfillmentRecovery.ts.
    Replace the fixed provider token with an injected providerRef, the private
@@ -234,7 +237,9 @@ replace durable enforcement with an in-memory mock.
 4. V dispatch acceptance/error helpers become providerDispatchAcceptance.ts and
    providerDispatchError.ts. Typed store records/results replace private RPC bags;
    opaque acceptance keys are supplied, never re-prefixed. Accepted-proof repair
-   calls only local ACK; failed ACK reads back then finalizes accepted proof as
+   and the main post-dispatch ACK use the same host acceptance keys, ignoring
+   adapter-provided key fields so a committed ACK replays after a lost response.
+   Repair calls only local ACK; failed ACK reads back then finalizes accepted proof as
    uncertain with externalRef retained. The next worker can close the ACK without
    another POST. Adapter structured failure translation retains may-have-succeeded
    classification in not_dispatched(false) versus unknown(true); an unclassified
@@ -263,9 +268,9 @@ reason not_dispatchable, phase dispatch, retryable false, before I/O.
 (c) FulfillmentStorePort.prepare is contact readiness/withholding;
 FulfillmentDispatchPort.prepare builds transient command bytes and returns proof.
 (d) P1's committed candidates/two cold PASS reports and eight cases are recorded
-above; this section records P2's distinct uncommitted implementation boundary.
+above; this section records P2's committed candidate and working-tree repair boundary.
 
-Eight additional authored cases in the existing fulfillment test directory cover
+P2's original eight additional authored cases in the existing fulfillment test directory cover
 the paid handler/recovery ladder, claim/begin remap bound, order and redaction,
 shadow/key replay/unsafe statuses, lost ACK before/after commit, ambiguous/definite
 provider failures, and ledger fence/proof transport. Existing P1 cases remain.
@@ -284,3 +289,12 @@ P2 self-retro: checking the source register distinguished the separately assigne
 ledger protocol from the frozen dispatch store; an initial fence-gap concern was
 withdrawn before edits. Lesson: compare the owned protocol boundary before
 requesting a port amendment; preserve G14 as the only P1 signature change.
+
+Repair 1 closes P2A-main-path-ack-keys-adapter-sourced: host acceptance keys
+override adapter fields before ACK and failed-write recovery. The fixture returns
+different adapter keys, models acceptance replay by provider-attempt key, and
+checks identical host bytes at main ACK, loop-start repair and concurrent begin.
+A lost response after commit repairs with replayed counted, updated zero and no
+second acceptance attempt. Frozen P1 and G14 signatures remain unchanged.
+Repair self-retro: a status-only ACK mock hid key drift → key-indexed acceptance
+proof catches the replay failure without another production abstraction.
