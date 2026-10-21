@@ -16,6 +16,13 @@ it("requests fresh credentials for every HTTP attempt and retains no returned cr
   expect(credentials).toHaveBeenCalledTimes(3); expect(reads).toBe(3);
   expect(authorization).toEqual([1, 2, 3].map(n => `Basic ${Buffer.from(`example:placeholder-${n}`).toString("base64")}`));
 });
+it("preserves definitive HTTP rejection status and fallback code when its body is unreadable", async () => {
+  const rejectedFetch = vi.fn(async () => new Response(new ReadableStream({ start(controller) { controller.error(Error("unreadable")); } }), { status: 400 }));
+  await expect(createOmnipackClient(config, rejectedFetch).createOrder("{}")).rejects.toMatchObject({
+    status: 400, code: "http_400", mayHaveSucceeded: false, retryable: false,
+  });
+  expect(rejectedFetch).toHaveBeenCalledTimes(1);
+});
 it("sends the exact once-materialized bytes whose hash was prepared", async () => {
   const prepared = buildOmnipackDispatchCommand(candidate());
   prepared.providerPayload.shippingDetails.address.name = "Changed after preparation";

@@ -153,10 +153,11 @@ async function requestJson(
       const url = new URL(path, base);
       if (url.origin !== base.origin || url.username || url.password || url.protocol !== "https:") throw new Error("Invalid fulfillment path");
       const response = await fetchWithTimeout(fetchImpl, url, config, init, () => { submitted = true; });
-      const body = await readJsonBody(response);
-      if (response.ok) return body;
+      if (response.ok) return await readJsonBody(response);
 
       const retryable = method === "GET" && isRetryableStatus(response.status);
+      // A failed body read cannot erase the rejection status already received.
+      const body = await readJsonBody(response).catch(() => null);
       lastError = new OmnipackProviderError({
         operation,
         status: response.status,

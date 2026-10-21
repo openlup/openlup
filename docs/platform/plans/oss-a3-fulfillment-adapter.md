@@ -87,7 +87,7 @@ for comparison; identical rows below were checked by bytes. Destination prefix:
 
 | V source; O root reference at the same path | Destination | Boundary adaptation |
 | --- | --- | --- |
-| `server/infra/omnipack/client.ts` (identical) | `client.ts` | Remove environment/readiness reader and ambient-fetch default; require injected HTTP and a per-attempt credential supplier. Omit unused cancellation/inbound methods, related imports and config. Order creation takes serialized bytes; retry, timeout and auth semantics unchanged. Host explicitly supplies timing/path settings. Lead-approved repair: surface provider-supplied codes only when matching `^[A-Z][A-Z0-9_]{0,63}$`, otherwise reuse the donor's missing-code fallback `http_<status>`; payload values must not escape through error codes; donor passed codes unchanged. |
+| `server/infra/omnipack/client.ts` (identical) | `client.ts` | Remove environment/readiness reader and ambient-fetch default; require injected HTTP and a per-attempt credential supplier. Omit unused cancellation/inbound methods, related imports and config. Order creation takes serialized bytes; retry counts, timeout and wire auth semantics unchanged. Host explicitly supplies timing/path settings. Lead-approved repair: surface provider-supplied codes only when matching `^[A-Z][A-Z0-9_]{0,63}$`, otherwise reuse the donor's missing-code fallback `http_<status>`; payload values must not escape through error codes; donor passed codes unchanged. Round 2 adaptation: classify non-2xx status before consuming its body; on unreadable rejection bodies keep `http_<status>` and the status-derived submission classification rather than the donor network-error fallback, because a known definitive rejection must remain non-submission. Successful unreadable ACKs remain unknown. |
 | `server/infra/omnipack/providerError.ts` (identical) | `providerError.ts` | None; native Error base already neutral. This internal projection is not the O-P2 public refusal contract. |
 | `server/infra/omnipack/mappers.ts` (identical) | `mappers.ts` | Omit unused inbound/cancellation interfaces/functions; remaining logic unchanged. |
 | `server/infra/omnipack/productSyncMappers.ts` (root differs in host comment) | `productSyncMappers.ts` | Neutral host terminology in a comment only. |
@@ -238,11 +238,12 @@ it without installation or changing the existing cache.
 
 | Destination | Cases | Status | O-P1 + O-P2 running total |
 | --- | ---: | --- | ---: |
-| `packages/platform/test/fulfillment/omnipack/factory.test.ts` | 23 | net-new glue/refusal/redaction; repair adds 4 | 47 |
-| `scripts/packages/platform-cold-consumer.test.ts` | 1 | net-new installed import/default-off/injected I/O | 48 |
+| `packages/platform/test/fulfillment/omnipack/factory.test.ts` | 24 | net-new glue/refusal/redaction; round 1 adds 4, round 2 adds 1 | 48 |
+| `packages/platform/test/fulfillment/omnipack/transportAdaptation.test.ts` | 1 | round 2 unreadable rejection; 3 O-P1 cases retained | 49 |
+| `scripts/packages/platform-cold-consumer.test.ts` | 1 | net-new installed import/default-off/injected I/O | 50 |
 
-O-P2 is **24 net-new**, under its target of 30. O-P1 + O-P2 is **48**;
-private V-C1 18 + 48 + O-P3 projected 2 = **68 / 100**, leaving 32 cases
+O-P2 is **26 net-new**, under its target of 30. O-P1 + O-P2 is **50**;
+private V-C1 18 + 50 + O-P3 projected 2 = **70 / 100**, leaving 30 cases
 (10 remain a planning reserve). Package-boundary generated rows are counted
 separately under ruling A; actual runtime is reported with final checks.
 
@@ -401,3 +402,44 @@ docs **47,932 / 49,152 bytes** (5 files; **1,220 bytes headroom**), code **915,1
 files **1,479 / 2,100**. This is shared measurePack/checkPackBudget evidence, not
 a clean committed artifact receipt. Seven tracked files are modified; Git remains
 read-only and HEAD remains `cfb0e54c` for coordinator handoff.
+
+
+### O-P2 repair round 2
+
+Authority: close the two major findings in the full `64bee3d7` review with local
+repairs and focused offline proof; rerun the isolated P3 pre-check. Existing
+exclusions and Claude's Git/review/delivery ownership above remain in force.
+
+| Finding | Fix and counterfactual witness |
+| --- | --- |
+| Unchanged prepare resets replay protection | Preserve the retained entry when closed evidence matches for the same request object, including its in-flight/completed promise; refresh only the input digest for host-only description changes. Existing exact-byte, mismatch/remap, rejection and unknown factory cases now re-prepare and require identical results with one POST. A changed address/revision yields a different fingerprint and permits one new POST; old evidence refuses. One new case gates the HTTP response, re-prepares during dispatch and requires both callers to share one POST/result. |
+| Unreadable body loses definitive rejection | Check HTTP success before body parsing; failed rejection-body reads retain status and fallback code. Existing factory rejection and unknown cases add errored-stream HTTP 400 and 2xx respectively. One transport adaptation case requires status 400, `http_400`, non-retryable and mayHaveSucceeded:false with one POST. Donor characterization files remain unchanged; the transport deviation is listed in the provenance row above. |
+
+Case accounting: **+2** this repair; factory **24**, transport adaptation **4**,
+six retained characterization files **18**, adapter directory **46**. O-P2 **26**,
+public O-P1 + O-P2 **50**, conservative round projection **70 / 100**. Expanded
+scenarios reuse existing cases; scratch diagnostics remain outside the hosted ledger.
+
+Simplicity rethink/self-retro: unconditional cache replacement erased replay
+history → compare at the existing preparation seam and preserve the same entry.
+A status already received survives a body failure → consume optional rejection
+prose only after choosing the status path. Neither fix needs another cache or
+transport. The required concurrency witness uses a gated response rather than timing.
+
+Focused round-2 evidence on the local repair of `64bee3d7`: **1,566 tests pass /
+10 files** (7.79 s, final rerun): adapter **46**, package-boundary **1,474**, cold-consumer **46**.
+Platform no-emit typecheck, serialized build and API snapshot check pass; TypeScript
+module inspection confirms exactly the factory, descriptor and configuration type.
+Ast-grep, focused ESLint, whitespace and source/test/docs gitleaks checks pass.
+Neutrality reports **0 increases**; UI neutrality smoke passes. The pinned policy
+and docs-update pass with **3 obligations / 0 unanswered**, with no generated delta.
+A final replay inspection also pins host-only title changes: unchanged wire evidence preserves the result while refreshing the request digest. Repeated focused tests, typecheck/build/API, ast-grep, ESLint, neutrality and gitleaks all pass on that final source. The final pinned policy check follows this evidence update. Frozen contracts, package
+registration and API reports are unchanged; no Git writes, installs or network used.
+
+P3 pre-check: verified all 11 imported runner/contracts/worker/projection files in
+`a3-p3check` byte-for-byte against **a8708cf1**, copied repaired adapter sources and
+reran the existing fixture. **7/7 tests pass** (0.38 s, final rerun); complete profile **12/12**,
+refused-dispatch profile **10/10**, both individual unsupported-label profiles pass.
+Dispatch replay/mismatch/proof keys, observation, readback and read-only stock/product
+operations pass without adapter shims. This remains isolated pre-check evidence;
+O-P3 committed conformance integration and Claude's required review/delivery remain owed.

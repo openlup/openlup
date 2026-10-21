@@ -669,8 +669,10 @@ product metadata and explicit selection/readiness. Preparation keeps canonical
 bytes transient and returns closed fingerprint/contact/selection evidence;
 mismatched dispatch refuses before credentials or HTTP without consuming valid
 state. One retained result serves concurrent and completed replays without I/O;
-superseded preparations cannot restore state. Proven pre-submission failures are
-non-submissions, and ambiguous POSTs stay unknown without retry. Accepted provider
+unchanged re-preparation preserves it, and superseded preparations cannot restore
+state. Proven pre-submission failures and definitive HTTP rejections are
+non-submissions even if the rejection body is unreadable; successful statuses
+without a readable acknowledgement and ambiguous POSTs stay unknown without retry. Accepted provider
 proof keys are opaque and deterministic; host keys remain worker-owned. Configured
 product paths cannot change the HTTPS origin or carry credentials. Observations
 authenticate before parsing and reject malformed explicit event kinds. Nullable

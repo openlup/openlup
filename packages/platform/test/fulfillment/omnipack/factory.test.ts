@@ -37,6 +37,7 @@ function safe(output: unknown) {
 }
 const reading = { providerRef: "omnipack", requestKey: "request-a", fulfillmentRef: "fulfillment-a", externalRef: "external-a", mode: "command" as const };
 const webhook = (body: unknown) => ({ rawBody: Buffer.from(JSON.stringify(body)), headers: { authorization: `Bearer ${secret}` }, receivedAt: now });
+const unreadableResponse = (status = 200) => new Response(new ReadableStream({ start(controller) { controller.error(Error(secret)); } }), { status });
 
 it("exposes exactly two runtime symbols and an inert, unselected, unready token profile", async () => {
   expect(Object.keys(entry).sort()).toEqual(["createOmnipackFulfillmentAdapter", "omnipackFulfillmentCapabilities"]);
@@ -87,6 +88,7 @@ it("binds full contact revision and the exact posted bytes while excluding comma
   expect(evidence.commandFingerprint).toBe(createHash("sha256").update(body).digest("hex"));
   expect(JSON.parse(body).shippingDetails).toMatchObject({ carrier: "SERVICE-A", service: "SERVICE-A" });
   safe(evidence); safe(result);
+  expect(await prepare(f.adapter, req)).toEqual(evidence);
   expect(await f.adapter.dispatch.dispatch(req, evidence)).toEqual(result);
   expect(f.fetchImpl).toHaveBeenCalledTimes(1);
 });
@@ -111,8 +113,20 @@ it("refuses every request/evidence mismatch and requires fresh prepare for a con
     Object.assign(req, original);
     expect((await f.adapter.dispatch.dispatch(req, validEvidence)).kind).toBe("accepted");
     expect(f.fetchImpl).toHaveBeenCalledTimes(1);
+    expect(await prepare(f.adapter, req)).toEqual(validEvidence);
+    expect((await f.adapter.dispatch.dispatch(req, validEvidence)).kind).toBe("accepted");
+    expect(f.fetchImpl).toHaveBeenCalledTimes(1);
+    req.lines[0]!.title = "Changed host description";
+    expect(await prepare(f.adapter, req)).toEqual(validEvidence);
+    expect((await f.adapter.dispatch.dispatch(req, validEvidence)).kind).toBe("accepted");
+    expect(f.fetchImpl).toHaveBeenCalledTimes(1);
+    req.recipient.line1 = "456 Remapped Street";
+    req.contactRevision.revision++;
     const remapped = await prepare(f.adapter, req);
+    expect(remapped.commandFingerprint).not.toBe(validEvidence.commandFingerprint);
+    expect(await f.adapter.dispatch.dispatch(req, validEvidence)).toMatchObject({ kind: "not_dispatched" });
     expect((await f.adapter.dispatch.dispatch(req, remapped)).kind).toBe("accepted");
+    expect(f.fetchImpl).toHaveBeenCalledTimes(2);
   }
 });
 it("retains exact selection refusals and rejects missing host product metadata", async () => {
@@ -129,15 +143,42 @@ it("retains exact selection refusals and rejects missing host product metadata",
   expect(f.fetchImpl).not.toHaveBeenCalled();
 });
 it("maps definitive rejection to non-submission and drops provider prose and error plants", async () => {
-  const f = fixture(() => jsonResponse({ ...plants, code: "PRIVATE_PROVIDER_CODE", message: "recipient@example.test" }, 400));
-  const req = request(); const result = await f.adapter.dispatch.dispatch(req, await prepare(f.adapter, req));
-  expect(result).toEqual({ kind: "not_dispatched", effectMayHaveSucceeded: false, refusal: { reason: "io_failure", phase: "dispatch", retryable: false } }); safe(result);
+  for (const reply of [() => jsonResponse({ ...plants, code: "PRIVATE_PROVIDER_CODE", message: "recipient@example.test" }, 400), () => unreadableResponse(400)]) {
+    const f = fixture(reply); const req = request(); const evidence = await prepare(f.adapter, req);
+    const result = await f.adapter.dispatch.dispatch(req, evidence);
+    expect(result).toEqual({ kind: "not_dispatched", effectMayHaveSucceeded: false, refusal: { reason: "io_failure", phase: "dispatch", retryable: false } }); safe(result);
+    expect(await prepare(f.adapter, req)).toEqual(evidence);
+    expect(await f.adapter.dispatch.dispatch(req, evidence)).toEqual(result);
+    expect(f.fetchImpl).toHaveBeenCalledTimes(1);
+  }
 });
 it("keeps lost/malformed acknowledgements and ambiguous POSTs unknown with one POST", async () => {
-  for (const reply of [() => jsonResponse(plants), () => new Response("bad ACK"), () => jsonResponse(plants, 503), () => { throw Error(secret); }]) {
-    const f = fixture(reply); const req = request(); const result = await f.adapter.dispatch.dispatch(req, await prepare(f.adapter, req));
+  for (const reply of [() => jsonResponse(plants), () => new Response("bad ACK"), () => unreadableResponse(), () => jsonResponse(plants, 503), () => { throw Error(secret); }]) {
+    const f = fixture(reply); const req = request(); const evidence = await prepare(f.adapter, req);
+    const result = await f.adapter.dispatch.dispatch(req, evidence);
     expect(result).toMatchObject({ kind: "unknown", effectMayHaveSucceeded: true }); safe(result); expect(f.fetchImpl).toHaveBeenCalledTimes(1);
+    expect(await f.adapter.dispatch.dispatch(req, evidence)).toEqual(result);
+    expect(await prepare(f.adapter, req)).toEqual(evidence);
+    expect(await f.adapter.dispatch.dispatch(req, evidence)).toEqual(result);
+    expect(f.fetchImpl).toHaveBeenCalledTimes(1);
   }
+});
+it("preserves an in-flight dispatch across unchanged re-preparation", async () => {
+  let release!: () => void;
+  const entered = new Promise<void>(resolve => { release = resolve; });
+  let finish!: (response: Response) => void;
+  const f = fixture(() => { release(); return new Promise<Response>(resolve => { finish = resolve; }); });
+  const req = request(); const evidence = await prepare(f.adapter, req);
+  const first = f.adapter.dispatch.dispatch(req, evidence);
+  await entered;
+  expect(await prepare(f.adapter, req)).toEqual(evidence);
+  const replay = f.adapter.dispatch.dispatch(req, evidence);
+  expect(f.fetchImpl).toHaveBeenCalledTimes(1);
+  finish(jsonResponse({ orderId: "external-a" }));
+  const result = await first;
+  expect(result.kind).toBe("accepted"); expect(await replay).toEqual(result);
+  expect(await f.adapter.dispatch.dispatch(req, evidence)).toEqual(result);
+  expect(f.fetchImpl).toHaveBeenCalledTimes(1); expect(f.credentials).toHaveBeenCalledTimes(1);
 });
 it("checks token before touching or parsing the body and returns only a closed refusal", async () => {
   const f = fixture(); const input = { headers: { authorization: "Bearer invalid" }, receivedAt: now, get rawBody(): Uint8Array { throw Error("body accessed before authentication"); } };

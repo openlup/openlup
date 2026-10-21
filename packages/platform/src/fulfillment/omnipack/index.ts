@@ -76,7 +76,6 @@ export function createOmnipackFulfillmentAdapter(config: OmnipackFulfillmentAdap
       async prepare(request) {
         const generation = {};
         preparations.set(request, generation);
-        prepared.delete(request);
         try {
           const failed = selectionFailure(request);
           if (failed) return { kind: "refused", refusal: failed };
@@ -103,7 +102,11 @@ export function createOmnipackFulfillmentAdapter(config: OmnipackFulfillmentAdap
             contactRevision: { schemaVersion: request.contactRevision.schemaVersion, source: request.contactRevision.source, revision: request.contactRevision.revision },
             providerRef: capabilities.providerRef, carrierRef: request.selection.carrierRef, serviceRef: request.selection.serviceRef };
           if (preparations.get(request) !== generation) return { kind: "refused", refusal: refusal("not_dispatchable", "prepare") };
-          prepared.set(request, { body: command.body, evidence: structuredClone(evidence), requestDigest });
+          const retained = prepared.get(request);
+          // Unchanged preparation must retain even an in-flight or refused result.
+          if (!retained || stableDispatchHash(retained.evidence) !== stableDispatchHash(evidence)) {
+            prepared.set(request, { body: command.body, evidence: structuredClone(evidence), requestDigest });
+          } else retained.requestDigest = requestDigest;
           return { kind: "prepared", evidence };
         } catch { return { kind: "refused", refusal: refusal("not_dispatchable", "prepare") }; }
       },

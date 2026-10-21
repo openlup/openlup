@@ -110,9 +110,14 @@ body fingerprint, full contact revision and separate provider/carrier/service
 references. Dispatch refuses absent or mismatched preparation before credentials
 or HTTP without invalidating a valid preparation. Each preparation retains one
 submission result for identical replay without I/O; overlapping preparations
-cannot restore superseded state. Credential, validation and request-construction
+cannot restore superseded state. Unchanged re-preparation preserves that result,
+including in-flight, accepted, unknown and refused outcomes; changed command
+evidence installs a new preparation. Changes to host descriptions omitted from
+the wire body preserve replay protection. Credential, validation and request-construction
 failures before submission and definitive rejection are `not_dispatched`;
-lost/malformed acknowledgement and ambiguous submission are `unknown`. Accepted
+an unreadable rejection body preserves the status-derived rejection. An unreadable
+successful acknowledgement, lost/malformed acknowledgement and ambiguous submission
+are `unknown`. Accepted
 results carry nonempty opaque proof keys derived from provider reference and
 command fingerprint; the host worker assigns its own authoritative keys. No adapter key
 is an acceptance authority. The donor wire uses service in both carrier/service
