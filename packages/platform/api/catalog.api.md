@@ -774,8 +774,10 @@ import type { BundleAllocationFailureCode } from "@openlup/core/pricing";
 /**
  * Bundle write rules — the named, enforced invariants of the agent-operable
  * bundle write path. These codes are the single vocabulary shared by the request
- * contracts, the pure rule predicates (`bundleRules.ts`), the service-role write
- * routines (which RAISE them) and the over-the-wire error taxonomy.
+ * contracts, the pure rule predicates (`bundleRules.ts`), managed write routines
+ * and the over-the-wire error taxonomy. Managed routines re-derive state rules;
+ * native actor-kind enforcement relies on the handler, not an independent
+ * database gate.
  *
  * The catalog rules use this same shape; the lifecycle subset is expressed
  * through the host lifecycle kit, and the codes stay here as
@@ -823,11 +825,10 @@ import { type BundleActorKind, type BundleRuleResult } from "./bundleRuleCodes.j
  * Only what is decidable from the request alone lives here. The state-dependent
  * rules (code uniqueness, component existence/sellability/currency, the target
  * price against real component prices, the activation preconditions, append-only
- * pricing, archive-not-delete) are authoritatively enforced by the service-role
- * write routines; this layer never duplicates their decision, it only fast-fails
- * the cases a confused or compromised caller can be refused on cheaply. The
- * routine re-derives everything and RAISEs regardless — defense in depth, not the
- * boundary.
+ * pricing, archive-not-delete) are re-derived by the managed write routines.
+ * This layer fast-fails request-checkable violations without replacing those
+ * state checks. Actor-kind enforcement is separate: managed publication routines
+ * independently check it, while native publication relies on the handler gate.
  */
 /** The composition shape the request-layer rules can reason about. */
 export interface BundleCompositionEntry {
@@ -883,6 +884,25 @@ export declare function evaluateBundleCompositionConstraint(port: CompositionRul
     readonly components: readonly BundleCompositionEntry[];
     readonly constraint: CompositionConstraint | null | undefined;
 }): Promise<BundleRuleResult>;
+```
+## dist/catalog/catalogDraftStore.d.ts
+
+```ts
+import { type CatalogDraftStorePort } from "./draftPorts.js";
+import type { PgQueryExecutor } from "../data/index.js";
+/** Dark owner-only storage. Composition must verify the operator before use. */
+export declare function createPostgresCatalogDraftStore(client: PgQueryExecutor): CatalogDraftStorePort;
+```
+## dist/catalog/catalogSkuEnvelope.d.ts
+
+```ts
+import type { PublicCatalogSkuEnvelopeReadPort } from "./readPorts.js";
+import type { PgQueryExecutor } from "../data/index.js";
+/**
+ * Portable W2a envelope reader. It reads only product/SKU/revision references
+ * and neutral identifiers; application document content never crosses this seam.
+ */
+export declare function createPostgresCatalogSkuEnvelopeReadPort(executor: PgQueryExecutor): PublicCatalogSkuEnvelopeReadPort;
 ```
 ## dist/catalog/contracts/bundleAdmin.d.ts
 
@@ -2407,8 +2427,10 @@ export type { SellableBundleHandlerDeps } from "./sellableBundleHandler.js";
 export type { BundleStockStatus, BundleStockRequestItem, BundleStockAvailability, BundleStockPort, BundleRuleBindings } from "./bundleBindings.js";
 export type { AuthorizeAdmin, AgentDomainQuerySpec, AgentDomainMutationSpec, BundleMutationKey, BundleQueryKey, BundleResponseSchema, BundleAdminBindings } from "./adminBindings.js";
 export { createPostgresBundleCatalogStore } from "./bundleCatalogStore.js";
-export { BUNDLE_MIGRATIONS } from "./sql.js";
+export { BUNDLE_MIGRATIONS, CATALOG_MIGRATIONS } from "./sql.js";
 export { SUMMARY_COLUMNS, LIST_FILTER, LIST_SQL, COUNT_SQL, DETAIL_SQL, REFERENCE_PRICE, COMPONENT_SQL, FEED_COMPONENT_SQL, PRICE_SQL, OWN_LIST_SQL, CURRENCY_LIST_SQL, FEED_SQL, HISTORY_SQL, HISTORY_COUNT_SQL } from "./bundleCatalogQueries.js";
+export { createPostgresCatalogSkuEnvelopeReadPort } from "./catalogSkuEnvelope.js";
+export { createPostgresCatalogDraftStore } from "./catalogDraftStore.js";
 ```
 ## dist/catalog/mediaSourcePack.d.ts
 
@@ -2834,6 +2856,38 @@ export declare const BUNDLE_MIGRATIONS: readonly [{
     readonly catalogPath: "db/platform/migrations/20260812210000_bundle_operator_write_boundary.sql";
     readonly position: 19;
     readonly sha256: "d0ec6674d7eedf4cd3ce0d8ccd7345ebe2f93da635316a68a6bd178ec55b2679";
+    readonly url: URL;
+}];
+/** Catalog foundation projections; install the complete canonical catalogue. */
+export declare const CATALOG_MIGRATIONS: readonly [{
+    readonly id: "20260807140000_read_parity_catalog";
+    readonly catalogPath: "db/platform/migrations/20260807140000_read_parity_catalog.sql";
+    readonly position: 1;
+    readonly sha256: "fcf3827028c1651ae42a7c7d7472153825a3121c936d58a3d105befc7dece9ea";
+    readonly url: URL;
+}, {
+    readonly id: "20260810120000_storefront_catalog_attributes";
+    readonly catalogPath: "db/platform/migrations/20260810120000_storefront_catalog_attributes.sql";
+    readonly position: 8;
+    readonly sha256: "2bf938f5d0076193557bea834f86dbd9bcb7f3e2de00f99fb91cc1229b93a14b";
+    readonly url: URL;
+}, {
+    readonly id: "20260827220000_catalog_document_revision_foundation";
+    readonly catalogPath: "db/platform/migrations/20260827220000_catalog_document_revision_foundation.sql";
+    readonly position: 58;
+    readonly sha256: "715e74d655b76d35b8a49e0d2a5625594a6c4856863f369cd1eadcd1fb1ae90e";
+    readonly url: URL;
+}, {
+    readonly id: "20260827220001_catalog_document_revision_foundation_validate";
+    readonly catalogPath: "db/platform/migrations/20260827220001_catalog_document_revision_foundation_validate.sql";
+    readonly position: 59;
+    readonly sha256: "f3cd7fb61dcebac1cf0468cf2d7c1f9dd036817ab0094c72864266e307b269de";
+    readonly url: URL;
+}, {
+    readonly id: "20260908100000_catalog_draft_foundation";
+    readonly catalogPath: "db/platform/migrations/20260908100000_catalog_draft_foundation.sql";
+    readonly position: 61;
+    readonly sha256: "ac0d614cdb2874df8fbdbbbda4f9455986ef95241fe1334b0b54a1fa6478ab2e";
     readonly url: URL;
 }];
 ```

@@ -18,7 +18,7 @@ function quoteRequestFromSnapshot(snapshot: CreateQuoteResponse): CreateQuoteReq
     sizeConstraint: context?.sizeConstraint,
     cadenceDays: context?.cadenceDays,
     promoCodes: context?.promoCodes ?? [],
-    petId: context?.petId,
-    petProfileContext: context?.petProfileContext,
+    subjectId: context?.subjectId,
+    subjectContext: context?.subjectContext,
   };
 }

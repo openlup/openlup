@@ -14,7 +14,7 @@ const resources = ["panel", "translated", "edge"].map((assetRef, index) => {
 });
 const assetResources = [...resources, { ...resources[2]!, assetRef: "mirror" }];
 const expectedUrls = Object.fromEntries(assetResources.map(({ assetRef, sha256 }) => [assetRef, `https://media.example.com/assets/${sha256}.png`]));
-const selected = { productId: "display-unit", variantId: "standard", locale: "en" };
+const selected = { productId: "display-unit", variantId: "standard", locale: "qab" };
 function manifest(): ProductMediaManifest {
   return {
     schemaVersion: 1,
@@ -22,7 +22,7 @@ function manifest(): ProductMediaManifest {
     assets: assetResources.map(({ assetRef, bytes, sha256 }) => ({ assetRef, source: `${assetRef}.png`, contentType: "image/png", byteLength: bytes.length, sha256, artworkLocale: null })),
     associations: [
       { itemId: "cover", assetRef: "panel", productId: selected.productId, scope: "variant", variantId: "standard", locale: null, role: "primary", order: 0, label: "Cover" },
-      { itemId: "cover", assetRef: "translated", productId: selected.productId, scope: "variant", variantId: "standard", locale: "en", role: "primary", order: 0, label: "English cover" },
+      { itemId: "cover", assetRef: "translated", productId: selected.productId, scope: "variant", variantId: "standard", locale: "qab", role: "primary", order: 0, label: "Localized cover" },
       { itemId: "edge", assetRef: "edge", productId: selected.productId, scope: "product", locale: null, role: "view", order: 2, label: "Edge" },
       { itemId: "mirror", assetRef: "mirror", productId: selected.productId, scope: "product", locale: null, role: "illustration", order: 3, label: "Detail" },
     ],
@@ -68,7 +68,7 @@ describe("catalog media source-pack conformance (W8)", () => {
     ]);
     expect(resolved.primaryItemId).toBe("cover");
     expect(resolveProductMedia({ ...source, assets: [...source.assets].reverse(), products: source.products.map(p => ({ ...p, variantIds: [...p.variantIds].reverse() })), associations: [...source.associations].reverse() }, selected, expectedUrls)).toEqual(resolved);
-    expect(resolveProductMedia(source, { ...selected, locale: "fr" }, expectedUrls).items.map(({ assetRef }) => assetRef)).toEqual(["panel", "edge", "mirror"]);
+    expect(resolveProductMedia(source, { ...selected, locale: "qac" }, expectedUrls).items.map(({ assetRef }) => assetRef)).toEqual(["panel", "edge", "mirror"]);
     expect(resolveProductMedia(source, { ...selected, variantId: "compact" }, expectedUrls)).toMatchObject({ primaryItemId: null, items: [expect.objectContaining({ assetRef: "edge" }), expect.objectContaining({ assetRef: "mirror" })] });
   });
 

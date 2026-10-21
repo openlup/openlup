@@ -1,10 +1,11 @@
 import { execFileSync } from "node:child_process";
-import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { copyFileSync, cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
-import { afterEach, expect, it } from "vitest";
-import { ADAPTER_ENTRIES, assertConsumerIsolation, assertExportInventory, compileConsumer, consumerNode, NON_ADAPTER_ENTRIES, OPTIONAL_PEERS, proveAdapterRefusals, proveOidcRefusals, provePostgresOperations, proveNativeCommunicationsOperations, proveResendConsumer, runPlatformColdConsumer } from "./platform-cold-consumer.ts";
+import { fileURLToPath, pathToFileURL } from "node:url";
+import { isolatedConsumerEnv } from "./pack-manifest-input.ts";
+import { afterAll, afterEach, beforeAll, expect, it } from "vitest";
+import { installA1HostBinding, proveA1ReferenceBindingConsumer, ADAPTER_ENTRIES, assertConsumerIsolation, assertExportInventory, compileConsumer, consumerNode, NON_ADAPTER_ENTRIES, OPTIONAL_PEERS, proveAdapterRefusals, proveOidcRefusals, provePostgresOperations, proveNativeCommunicationsOperations, proveResendConsumer, proveMarketingSyncConsumer, runPlatformColdConsumer } from "./platform-cold-consumer.ts";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const temporary: string[] = [];
@@ -271,16 +272,91 @@ function resendFixture(mode: "correct" | "extra-export" | "raw-bypass") {
   }
   return consumer;
 }
+function marketingFixture(mode: "correct" | "extra-export" | "unverified") {
+  const consumer = fixture(), packageRoot = join(consumer, "node_modules/@openlup/platform");
+  const metadata = JSON.parse(readFileSync(join(packageRoot, "package.json"), "utf8"));
+  metadata.exports["./communications/klaviyo"] = "./communications/klaviyo/index.js";
+  writeFileSync(join(packageRoot, "package.json"), JSON.stringify(metadata));
+  const entry = Object.entries(metadata.exports).find(([, value]) => typeof value === "string")![0].slice(2);
+  cpSync(join(root, "packages/platform/dist", entry), join(packageRoot, entry), { recursive: true });
+  const path = join(packageRoot, entry, "index.js");
+  if (mode === "extra-export") writeFileSync(path, readFileSync(path, "utf8") + "\nexport const unexpected = true;\n");
+  if (mode === "unverified") writeFileSync(path, readFileSync(path, "utf8").replace('state: "verification_pending"', 'state: "supported"'));
+  return consumer;
+}
 it("proves the installed Resend surface with no SDK/optional peers and only injected IO", () => {
   const consumer = resendFixture("correct"); assertConsumerIsolation(consumer, root); proveResendConsumer(consumer);
+  const marketing = marketingFixture("correct"); assertConsumerIsolation(marketing, root); proveMarketingSyncConsumer(marketing);
 });
 it("refuses extra exports and raw bypass in the installed Resend adapter", () => {
+  for (const mode of ["extra-export", "unverified"] as const) {
+    expect(() => proveMarketingSyncConsumer(marketingFixture(mode)), `P2 installed ${mode}`)
+      .toThrow(mode === "extra-export" ? /P2 installed exact one-export surface/ : /P2 installed pending account evidence/);
+  }
   for (const mode of ["extra-export", "raw-bypass"] as const) {
     expect(() => proveResendConsumer(resendFixture(mode)), `I02 ${mode}: named invariant assertion`)
       .toThrow(mode === "raw-bypass" ? /AssertionError.*I02 blocked\/drop zero POST/s : /AssertionError.*I02 exact three-export surface/s);
   }
 });
 
+let packedA1Consumer: string;
+const packedA1Originals: [string, Buffer][] = [];
+function packedA1Fixture(consumer: string) {
+  writeFileSync(join(consumer, "package.json"), '{"type":"module"}');
+  for (const name of ["core", "platform"]) {
+    const output = JSON.parse(execFileSync("npm", ["pack", "--ignore-scripts", "--json", "--pack-destination", consumer], { cwd: join(root, "packages", name), encoding: "utf8", env: { ...isolatedConsumerEnv(), npm_config_cache: join(consumer, "cache") } }));
+    const target = join(consumer, "node_modules/@openlup", name); mkdirSync(target, { recursive: true });
+    execFileSync("tar", ["-xzf", join(consumer, output[0].filename), "-C", target, "--strip-components=1"]);
+  }
+  cpSync(join(root, "node_modules/zod"), join(consumer, "node_modules/zod"), { recursive: true });
+  installA1HostBinding(consumer);
+  return consumer;
+}
+beforeAll(() => {
+  packedA1Consumer = mkdtempSync(join(tmpdir(), "platform-consumer-falsifier-"));
+  packedA1Fixture(packedA1Consumer);
+  for (const path of ["node_modules/@openlup/platform/package.json", "server/runtime/communications/a1ReferenceBinding.js"]) {
+    const fullPath = join(packedA1Consumer, path); packedA1Originals.push([fullPath, readFileSync(fullPath)]);
+  }
+}, 60_000);
+afterAll(() => { if (packedA1Consumer) rmSync(packedA1Consumer, { recursive: true, force: true }); });
+function pristinePackedA1Fixture() {
+  for (const [path, source] of packedA1Originals) writeFileSync(path, source);
+  return packedA1Consumer;
+}
+it("P3 case 7: actual host binding resolves packed subpaths with no SDK, peers or checkout fallback", () => {
+  const consumer = pristinePackedA1Fixture(); assertConsumerIsolation(consumer, root);
+  proveA1ReferenceBindingConsumer(consumer, "imports");
+  const metadataPath = join(consumer, "node_modules/@openlup/platform/package.json");
+  const metadataSource = readFileSync(metadataPath, "utf8");
+  for (const entry of ADAPTER_ENTRIES.filter(entry => entry.startsWith("communications/"))) {
+    const metadata = JSON.parse(metadataSource); delete metadata.exports["./" + entry];
+    try {
+      writeFileSync(metadataPath, JSON.stringify(metadata));
+      expect(() => proveA1ReferenceBindingConsumer(consumer, "imports"), `P3 missing packed ${entry}`).toThrow(/ERR_PACKAGE_PATH_NOT_EXPORTED/);
+    } finally { writeFileSync(metadataPath, metadataSource); }
+  }
+  const bindingPath = join(consumer, "server/runtime/communications/a1ReferenceBinding.js"), source = readFileSync(bindingPath, "utf8");
+  try {
+    writeFileSync(bindingPath, source.replace('"@openlup/platform/communications"', JSON.stringify(pathToFileURL(join(root, "packages/platform/dist/communications/index.js")).href)));
+    expect(() => proveA1ReferenceBindingConsumer(consumer, "imports")).toThrow(/P3 checkout fallback/);
+  } finally { writeFileSync(bindingPath, source); }
+  proveA1ReferenceBindingConsumer(consumer, "imports");
+});
+it("P3 case 8: exact callable selection leaves no default work and uses one existing executor", () => {
+  const consumer = pristinePackedA1Fixture(); assertConsumerIsolation(consumer, root);
+  proveA1ReferenceBindingConsumer(consumer, "selection");
+  const path = join(consumer, "server/runtime/communications/a1ReferenceBinding.js"), source = readFileSync(path, "utf8");
+  for (const [before, after, diagnostic] of [
+    ['selected?.routes ?? []', 'selected?.routes ?? [{ id: "/unselected", handle: ports.webhook }]', /P3 empty default routes/],
+    ['sender.send = guard(sender.send);', 'const originalSend = sender.send; sender.send = guard(async message => { await originalSend(message); return originalSend(message); });', /P3 single sender/],
+  ] as const) {
+    const changed = source.replace(before, after); expect(changed).not.toBe(source);
+    try { writeFileSync(path, changed); expect(() => proveA1ReferenceBindingConsumer(consumer, "selection")).toThrow(diagnostic); }
+    finally { writeFileSync(path, source); }
+  }
+  proveA1ReferenceBindingConsumer(consumer, "selection");
+});
 // Inventory reference compatibility remains in the repository consumer proof.
 import { expectTypeOf } from "vitest";
 import { z } from "zod";

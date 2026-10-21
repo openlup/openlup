@@ -16,12 +16,12 @@ import {
 } from "./catalogFixtures.js";
 import { createDbBackedCommerceQuotePort } from "./quoteEngineFixtures.js";
 
-const COVERAGE_CONSTRAINT = { kind: "feeding_days" as const, value: 21, dailyKcalOverride: 328 };
+const COVERAGE_CONSTRAINT = { kind: "usage_days" as const, value: 21, dailyUsageOverride: 328 };
 const settlementProfile = readSettlementProfile();
 
 const exampleTaxProfile = {
   included: true,
-  country: "DE",
+  country: "QZ",
   category: "standard",
   vatRateBps: 2300,
   legalBasis: "Example VAT rule",
@@ -30,13 +30,13 @@ const exampleTaxProfile = {
 describe("db backed commerce quote port", () => {
   it("quotes opaque DB SKUs through catalog variants and pricing resolver tiers", async () => {
     const pricingResolverPort = createPricingResolver({
-      "variant-lamb-400:subscription": price({
+      "variant-item-alpha-400:subscription": price({
         mode: "subscription",
         unitPriceMinor: 1340,
         matchedMinQty: 14,
         priceEntryId: "price-sub-14",
       }),
-      "variant-lamb-400:one_time": price({
+      "variant-item-alpha-400:one_time": price({
         mode: "one_time",
         unitPriceMinor: 1490,
         matchedMinQty: 14,
@@ -53,8 +53,8 @@ describe("db backed commerce quote port", () => {
       mode: "subscription",
       lines: [
         {
-          sku: "opaque:lamb-launch.v1",
-          variantId: "variant-lamb-400",
+          sku: "opaque:item-alpha.v1",
+          variantId: "variant-item-alpha-400",
           quantity: 14,
           modeAtLine: "subscription",
         },
@@ -62,13 +62,13 @@ describe("db backed commerce quote port", () => {
       sizeConstraint: COVERAGE_CONSTRAINT,
       cadenceDays: 21,
       promoCodes: [],
-      petId: "pet-rex",
+      subjectId: "subject-a",
     });
 
     expect(createQuoteResponseSchema.parse(response)).toEqual(response);
     expect(response.quote.lines[0]).toMatchObject({
-      sku: "opaque:lamb-launch.v1",
-      productSlug: "lamb",
+      sku: "opaque:item-alpha.v1",
+      productSlug: "item-alpha",
       unitPriceGross: { amountMinor: 1340, currency: "XXX" },
       lineSubtotalGross: { amountMinor: 18760, currency: "XXX" },
     });
@@ -79,19 +79,19 @@ describe("db backed commerce quote port", () => {
     expect(response.quote.context).toMatchObject({
       mode: "subscription",
       cadenceDays: 21,
-      feedingCoverageDays: 21,
+      usageCoverageDays: 21,
       sizeConstraint: COVERAGE_CONSTRAINT,
-      petId: "pet-rex",
+      subjectId: "subject-a",
     });
     expect(response.quote.context).not.toHaveProperty("pricingPolicy");
     expect(vi.mocked(pricingResolverPort.resolvePrice).mock.calls.map(([query]) => query)).toEqual([
       expect.objectContaining({
-        variantId: "variant-lamb-400",
+        variantId: "variant-item-alpha-400",
         mode: "subscription",
         eligibleCartQty: 14,
       }),
       expect.objectContaining({
-        variantId: "variant-lamb-400",
+        variantId: "variant-item-alpha-400",
         mode: "one_time",
         eligibleCartQty: 14,
       }),
@@ -102,12 +102,12 @@ describe("db backed commerce quote port", () => {
     const port = createDbBackedCommerceQuotePort({
       catalogReadPort: createCatalogReadPort(),
       pricingResolverPort: createPricingResolver({
-        "variant-lamb-400:subscription": price({
+        "variant-item-alpha-400:subscription": price({
           mode: "subscription",
           unitPriceMinor: 1590,
           priceEntryId: "price-sub-bad",
         }),
-        "variant-lamb-400:one_time": price({
+        "variant-item-alpha-400:one_time": price({
           mode: "one_time",
           unitPriceMinor: 1490,
           priceEntryId: "price-one",
@@ -118,7 +118,7 @@ describe("db backed commerce quote port", () => {
     await expect(
       port.createQuote({
         mode: "subscription",
-        lines: [{ sku: "opaque:lamb-launch.v1", quantity: 1 }],
+        lines: [{ sku: "opaque:item-alpha.v1", quantity: 1 }],
         cadenceDays: 21,
         promoCodes: [],
       }),
@@ -132,7 +132,7 @@ describe("db backed commerce quote port", () => {
     const port = createDbBackedCommerceQuotePort({
       catalogReadPort: createCatalogReadPort(),
       pricingResolverPort: createPricingResolver({
-        "variant-lamb-400:one_time": price({
+        "variant-item-alpha-400:one_time": price({
           mode: "one_time",
           unitPriceMinor: 12300,
           priceEntryId: "price-one-example-tax",
@@ -145,13 +145,13 @@ describe("db backed commerce quote port", () => {
 
     const response = await port.createQuote({
       mode: "one_time",
-      lines: [{ sku: "opaque:lamb-launch.v1", quantity: 1 }],
+      lines: [{ sku: "opaque:item-alpha.v1", quantity: 1 }],
       promoCodes: [],
     });
 
     expect(createQuoteResponseSchema.parse(response)).toEqual(response);
     expect(response.quote.lines[0].tax).toMatchObject({
-      country: "DE",
+      country: "QZ",
       category: "standard",
       vatRateBps: 2300,
       legalBasis: "Example VAT rule",
@@ -175,7 +175,7 @@ describe("db backed commerce quote port", () => {
         taxProfile: {
           included: true,
           country: "ZZ",
-          category: "pet_food",
+          category: "example_category",
           vatRateBps: 1,
           legalBasis: "Misconfigured test rate",
         },
@@ -200,7 +200,7 @@ describe("db backed commerce quote port", () => {
     await expect(
       port.createQuote({
         mode: "one_time",
-        lines: [{ sku: "opaque:lamb-launch.v1", quantity: 1 }],
+        lines: [{ sku: "opaque:item-alpha.v1", quantity: 1 }],
         promoCodes: [],
       }),
     ).rejects.toMatchObject({ code: "PRICE_NOT_CONFIGURED" });
@@ -208,12 +208,12 @@ describe("db backed commerce quote port", () => {
 
   it("keeps the complete public quote byte-equivalent when strict D1 policy facts match the legacy catalog", async () => {
     const prices = {
-      "variant-lamb-400:subscription": price({ mode: "subscription", unitPriceMinor: 1340 }),
-      "variant-lamb-400:one_time": price({ mode: "one_time", unitPriceMinor: 1490 }),
+      "variant-item-alpha-400:subscription": price({ mode: "subscription", unitPriceMinor: 1340 }),
+      "variant-item-alpha-400:one_time": price({ mode: "one_time", unitPriceMinor: 1490 }),
     };
     const request = {
       mode: "subscription" as const,
-      lines: [{ sku: "opaque:lamb-launch.v1", quantity: 2 }],
+      lines: [{ sku: "opaque:item-alpha.v1", quantity: 2 }],
       cadenceDays: 21,
       promoCodes: [],
       sizeConstraint: COVERAGE_CONSTRAINT,
@@ -226,10 +226,10 @@ describe("db backed commerce quote port", () => {
     const d1 = createDbBackedCommerceQuotePort({
       quoteCatalogReadPort: quoteCatalogReadPort(),
       commercePriceAuthorityPort: createCommercePriceAuthority({
-        oneTime: prices["variant-lamb-400:one_time"]!,
+        oneTime: prices["variant-item-alpha-400:one_time"]!,
         subscription: {
           kind: "subscription_policy",
-          base: prices["variant-lamb-400:one_time"]!,
+          base: prices["variant-item-alpha-400:one_time"]!,
           unitPriceMinor: 1340,
           policy: subscriptionPolicy(),
         },
@@ -269,7 +269,7 @@ describe("db backed commerce quote port", () => {
 
     await expect(port.createServerAuthoritativeQuote!({
       mode: "subscription",
-      lines: [{ sku: "opaque:lamb-launch.v1", quantity: 2 }],
+      lines: [{ sku: "opaque:item-alpha.v1", quantity: 2 }],
       cadenceDays: 21,
       promoCodes: [],
     })).resolves.toMatchObject({
@@ -310,7 +310,7 @@ describe("db backed commerce quote port", () => {
 
     await expect(port.createServerAuthoritativeQuote!({
       mode: "subscription",
-      lines: [{ sku: "opaque:lamb-launch.v1", quantity: 1 }],
+      lines: [{ sku: "opaque:item-alpha.v1", quantity: 1 }],
       cadenceDays: 21,
       promoCodes: [],
     })).resolves.toMatchObject({
@@ -337,7 +337,7 @@ describe("db backed commerce quote port", () => {
 
     await expect(port.createServerAuthoritativeQuote!({
       mode: "subscription",
-      lines: [{ sku: "opaque:lamb-launch.v1", quantity: 1 }],
+      lines: [{ sku: "opaque:item-alpha.v1", quantity: 1 }],
       cadenceDays: 21,
       promoCodes: [],
     })).rejects.toMatchObject({
@@ -364,7 +364,7 @@ describe("db backed commerce quote port", () => {
 
     await expect(port.createQuote({
       mode: "subscription",
-      lines: [{ sku: "opaque:lamb-launch.v1", quantity: 1 }],
+      lines: [{ sku: "opaque:item-alpha.v1", quantity: 1 }],
       cadenceDays: 21,
       promoCodes: [],
     })).rejects.toMatchObject({ code: "UNKNOWN_SKU", details: { mode: "subscription" } });
@@ -381,7 +381,7 @@ function createCatalogReadPort(): CatalogReadPort {
     async getProductBySlug(slug) {
       return products.find((product) => product.slug === slug) ?? null;
     },
-    async listAllergens() {
+    async listAttributes() {
       return [];
     },
   };
@@ -445,12 +445,12 @@ function quoteCatalogReadPort(
 
 function price(overrides: Partial<ResolvedPrice>): ResolvedPrice {
   return {
-    variantId: "variant-lamb-400",
+    variantId: "variant-item-alpha-400",
     mode: "one_time",
     matchedMinQty: 1,
     unitPriceMinor: 1490,
     amountKind: "gross",
-    priceListId: "list-pl",
+    priceListId: "list-example",
     priceEntryId: "price-one",
     resolvedAt: "2026-06-05T10:00:00.000Z",
     ...overrides,
@@ -459,24 +459,24 @@ function price(overrides: Partial<ResolvedPrice>): ResolvedPrice {
 
 function catalogProduct(): CatalogProduct {
   return {
-    id: "product-lamb",
-    slug: "lamb",
-    displayName: "Lamb",
-    lineName: "openlup",
-    species: "dog",
+    id: "product-item-alpha",
+    slug: "item-alpha",
+    displayName: "Item Alpha",
+    lineName: "Example line",
+    segment: "segment_a",
     publicationStatus: "published",
-    route: { pl: "/psy/jagniecina", en: "/dogs/lamb" },
+    route: { qaa: "/items/alpha", qab: "/items/alpha-alternate" },
     primarySku: {
-      sku: "opaque:lamb-launch.v1",
-      productSlug: "lamb",
-      variantId: "variant-lamb-400",
+      sku: "opaque:item-alpha.v1",
+      productSlug: "item-alpha",
+      variantId: "variant-item-alpha-400",
       publicationStatus: "published",
-      unit: "can",
+      unit: "unit_a",
       netWeightGrams: 400,
       pricing: {
         status: "configured",
         listPrice: { amountMinor: 1490, currency: "XXX" },
-        taxCategory: "pet_food",
+        taxCategory: "example_category",
         externalRefs: {
           paymentProviderPriceId: null,
           inventoryProviderSku: null,
@@ -485,16 +485,16 @@ function catalogProduct(): CatalogProduct {
     },
     variants: [
       {
-        sku: "opaque:lamb-launch.v1",
-        productSlug: "lamb",
-        variantId: "variant-lamb-400",
+        sku: "opaque:item-alpha.v1",
+        productSlug: "item-alpha",
+        variantId: "variant-item-alpha-400",
         publicationStatus: "published",
-        unit: "can",
+        unit: "unit_a",
         netWeightGrams: 400,
         pricing: {
           status: "configured",
           listPrice: { amountMinor: 1490, currency: "XXX" },
-          taxCategory: "pet_food",
+          taxCategory: "example_category",
           externalRefs: {
             paymentProviderPriceId: null,
             inventoryProviderSku: null,
@@ -503,15 +503,15 @@ function catalogProduct(): CatalogProduct {
       },
     ],
     composition: {
-      rawIngredients: "",
-      rawIngredientsEn: null,
+      rawComponents: "",
+      rawComponentsQab: null,
       items: [],
-      allergenSlugs: ["lamb"],
-      kcalPer100g: 123,
+      attributeSlugs: ["item-alpha"],
+      usagePer100Units: 123,
     },
     metadata: {
-      format: "can",
-      kcalPer100g: 123,
+      format: "unit_a",
+      usagePer100Units: 123,
       legacyStatus: null,
     },
   };

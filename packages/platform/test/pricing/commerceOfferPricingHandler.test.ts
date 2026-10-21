@@ -14,7 +14,7 @@ import {
 } from "./handlerFixtures.js";
 
 const price = {
-  productSlug: "lamb",
+  productSlug: "item-alpha",
   unitCount: 14,
   oneTime: {
     packageGross: { amountMinor: 20_860, currency: "XXX" },
@@ -35,7 +35,7 @@ const price = {
 
 const payload = {
   contractVersion: COMMERCE_OFFER_PRICING_CONTRACT_VERSION,
-  scope: "dog_products_only_excludes_shipping",
+  scope: "example_products_only_excludes_shipping",
   products: [price],
   minimum: { oneTime: price, subscription: price },
 } as CommerceOfferPricingResponse;
@@ -54,7 +54,7 @@ describe("commerce offer pricing handler", () => {
     );
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
       ok: true,
-      data: expect.objectContaining({ scope: "dog_products_only_excludes_shipping" }),
+      data: expect.objectContaining({ scope: "example_products_only_excludes_shipping" }),
     }));
   });
 
@@ -105,7 +105,7 @@ describe("commerce offer pricing handler", () => {
     };
     const v2Payload = {
       contractVersion: COMMERCE_OFFER_PRICING_V2_CONTRACT_VERSION,
-      scope: "dog_products_and_shipping" as const,
+      scope: "example_products_and_shipping" as const,
       pricingPolicy: policy,
       products: [price], minimum: { oneTime: price, subscription: price },
       shipping: {

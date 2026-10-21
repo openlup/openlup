@@ -15,11 +15,10 @@ import {
  * Only what is decidable from the request alone lives here. The state-dependent
  * rules (code uniqueness, component existence/sellability/currency, the target
  * price against real component prices, the activation preconditions, append-only
- * pricing, archive-not-delete) are authoritatively enforced by the service-role
- * write routines; this layer never duplicates their decision, it only fast-fails
- * the cases a confused or compromised caller can be refused on cheaply. The
- * routine re-derives everything and RAISEs regardless — defense in depth, not the
- * boundary.
+ * pricing, archive-not-delete) are re-derived by the managed write routines.
+ * This layer fast-fails request-checkable violations without replacing those
+ * state checks. Actor-kind enforcement is separate: managed publication routines
+ * independently check it, while native publication relies on the handler gate.
  */
 
 /** The composition shape the request-layer rules can reason about. */

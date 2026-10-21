@@ -160,6 +160,28 @@ export declare function createRequestContextStore(options: RequestContextOptions
 import type { HttpRequest } from "../http/index.js";
 export declare function rewriteBffRouterRequestUrl(req: HttpRequest): void;
 ```
+## dist/composition/catalogContribution.d.ts
+
+```ts
+import type { Contribution, RequiredSchema } from "@openlup/core/readiness";
+/** Actual selected callables, supplied by the host; declarations never activate them. */
+export interface CatalogContributionInput {
+    version: string;
+    requiredSchema: RequiredSchema;
+    catalog: Readonly<Record<string, (...args: never[]) => unknown>>;
+    pricing: Readonly<Record<string, (...args: never[]) => unknown>>;
+    promotions: Readonly<Record<string, (...args: never[]) => unknown>>;
+    routes: Contribution["routes"];
+}
+/** Thin structural declarations under the existing logical module identities. */
+export declare function createCatalogContribution(input: CatalogContributionInput): {
+    contributions: Contribution[];
+    ports: Record<string, unknown>;
+    routes: {
+        [k: string]: (...args: never[]) => unknown;
+    };
+};
+```
 ## dist/composition/composeBundle.d.ts
 
 ```ts
@@ -229,6 +251,7 @@ export declare function bindNodeHttpPort(capability: string, options: () => Node
 export { createBundleComposer, type ComposeBundle, type PlatformBundle, type PlatformBundleBinders, type PlatformBundlePorts, } from "./composeBundle.js";
 export { bindNodeHttpPort, createScheduledEntrypointResolver } from "./httpBinding.js";
 export { createNodeHost, type NodeHost, type NodeHostAdmission, type NodeHostDependencies, type NodeSchedulerProfile, type ServeNodeOptions, type ServeNodeResult, } from "./nodeHost.js";
+export { createCatalogContribution, type CatalogContributionInput } from "./catalogContribution.js";
 ```
 ## dist/composition/nodeHost.d.ts
 

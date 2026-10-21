@@ -103,7 +103,7 @@ it("binds the existing kit, spec, errors, versions and schemas while browser clo
     code: "fixed-set", title: "Fixed set", fulfillmentMode: "virtual", currency: "XXX", targetPriceMinor: 2001, mode: "one_time",
     components: [{ sku: "UNIT-A", title: "Unit A", productSlug: "unit-a", variantId: "variant-a", quantity: 2, isAddon: false, sortOrder: 0, referenceUnitPriceMinor: 1500 }],
   };
-  const described = { composition: feedBundle, components: feedBundle.components.map(component => ({ ...component, sellableNow: null })), availability: { status: "unknown" as const, sellableNow: null, limitingSku: "UNIT-A", reasonCode: "BUNDLE_COMPONENT_STOCK_UNKNOWN" } };
+  const described = { composition: feedBundle, components: feedBundle.components.map(component => ({ ...component, sellableNow: null })), availability: { status: "unknown" as const, sellableNow: null, limitingSku: "UNIT-A", reasonCode: offerAvailabilityReasonCode("unknown") } };
   const service = { describeActiveBundles: async () => [described], describeCompositions: async () => [described] };
   const schema = vi.spyOn(feedSchemas.sellableBundleListResponseSchema, "safeParse");
   const boundFeed = catalog.createSellableBundleHandlers({ responder: { sendBffError, sendBffSuccess, sendMethodNotAllowed }, sellableBundleListResponseSchema: feedSchemas.sellableBundleListResponseSchema, SELLABLE_BUNDLE_CONTRACT_VERSION: feedSchemas.SELLABLE_BUNDLE_CONTRACT_VERSION });

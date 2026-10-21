@@ -15,12 +15,12 @@ describe("DB-backed commerce quote snapshot verifier", () => {
 
     expect(port.createQuote).toHaveBeenCalledWith({
       mode: "subscription",
-      lines: [{ sku: "opaque:lamb-launch.v1", quantity: 14, modeAtLine: "subscription" }],
-      sizeConstraint: { kind: "feeding_days", value: 21, dailyKcalOverride: 328 },
+      lines: [{ sku: "opaque:item-alpha.v1", quantity: 14, modeAtLine: "subscription" }],
+      sizeConstraint: { kind: "usage_days", value: 21, dailyUsageOverride: 328 },
       cadenceDays: 21,
       promoCodes: ["launch"],
-      petId: "pet-rex",
-      petProfileContext: { petId: "pet-rex", ageBand: "adult", weightKg: 12 },
+      subjectId: "subject-a",
+      subjectContext: { subjectId: "subject-a", stage: "stage_c", load: 12 },
     });
   });
 
@@ -77,21 +77,21 @@ function quoteResponse(): CreateQuoteResponse {
       context: {
         mode: "subscription" as const,
         cadenceDays: 21,
-        sizeConstraint: { kind: "feeding_days" as const, value: 21, dailyKcalOverride: 328 },
+        sizeConstraint: { kind: "usage_days" as const, value: 21, dailyUsageOverride: 328 },
         promoCodes: ["launch"],
-        petId: "pet-rex",
-        petProfileContext: { petId: "pet-rex", ageBand: "adult" as const, weightKg: 12 },
+        subjectId: "subject-a",
+        subjectContext: { subjectId: "subject-a", stage: "stage_c" as const, load: 12 },
       },
       lines: [{
-        sku: "opaque:lamb-launch.v1",
-        productSlug: "lamb" as const,
+        sku: "opaque:item-alpha.v1",
+        productSlug: "item-alpha" as const,
         quantity: 14,
         unitPriceGross: { amountMinor: 1340, currency: "XXX" as const },
         lineSubtotalGross: { amountMinor: 18760, currency: "XXX" as const },
         tax: {
           included: true as const,
           country: "ZZ" as const,
-          category: "pet_food" as const,
+          category: "example_category" as const,
           vatRateBps: 800 as const,
           legalBasis: "Example VAT rule" as const,
           netAmount: { amountMinor: 17370, currency: "XXX" as const },

@@ -8,7 +8,7 @@ import {
 } from "./quoteSchemaFixtures.js";
 
 const price = {
-  productSlug: "lamb", unitCount: 14,
+  productSlug: "item-alpha", unitCount: 14,
   oneTime: { packageGross: { amountMinor: 1400, currency: "XXX" }, unitGross: { amountMinor: 100, currency: "XXX" } },
   subscriptionInitial: { packageGross: { amountMinor: 700, currency: "XXX" }, unitGross: { amountMinor: 50, currency: "XXX" } },
   subscriptionRecurring: { packageGross: { amountMinor: 1260, currency: "XXX" }, unitGross: { amountMinor: 90, currency: "XXX" } },
@@ -18,7 +18,7 @@ const price = {
 
 const validV2Response = {
   contractVersion: COMMERCE_OFFER_PRICING_V2_CONTRACT_VERSION,
-  scope: "dog_products_and_shipping",
+  scope: "example_products_and_shipping",
   pricingPolicy: { offerPolicyVersion: "commerce.offer-policy.v2", promotionEngineVersion: "promotion-engine.v2" },
   products: [price], minimum: { oneTime: price, subscription: price },
   shipping: {
@@ -33,7 +33,7 @@ describe("offer pricing contracts", () => {
   it("preserves the exact v1 product-only shape", () => {
     expect(commerceOfferPricingResponseSchema.parse({
       contractVersion: COMMERCE_OFFER_PRICING_CONTRACT_VERSION,
-      scope: "dog_products_only_excludes_shipping", products: [price],
+      scope: "example_products_only_excludes_shipping", products: [price],
       minimum: { oneTime: price, subscription: price },
     }).contractVersion).toBe(COMMERCE_OFFER_PRICING_CONTRACT_VERSION);
   });

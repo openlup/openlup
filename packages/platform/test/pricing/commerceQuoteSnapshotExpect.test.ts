@@ -19,7 +19,7 @@ const MESSAGES = {
 
 const REQUEST: CreateQuoteRequest = {
   mode: "one_time",
-  lines: [{ sku: "OPENLUP-DOG-LAMB-CAN-400G", quantity: 1 }],
+  lines: [{ sku: "ITEM-ALPHA-400", quantity: 1 }],
   promoCodes: [],
 };
 
@@ -43,15 +43,15 @@ function validResponse(): CreateQuoteResponse {
       taxIncluded: true,
       lines: [
         {
-          sku: "OPENLUP-DOG-LAMB-CAN-400G",
-          productSlug: "lamb",
+          sku: "ITEM-ALPHA-400",
+          productSlug: "item-alpha",
           quantity: 1,
           unitPriceGross: { amountMinor: 1490, currency: "XXX" },
           lineSubtotalGross: { amountMinor: 1490, currency: "XXX" },
           tax: {
             included: true,
             country: "ZZ",
-            category: "pet_food",
+            category: "example_category",
             vatRateBps: 800,
             legalBasis: "Example VAT rule",
             netAmount: { amountMinor: 1380, currency: "XXX" },
@@ -73,7 +73,7 @@ function validResponse(): CreateQuoteResponse {
 describe("createExpectedQuote", () => {
   it("returns the parsed quote on a valid response", async () => {
     const expected = await createExpectedQuote(portReturning(validResponse()), REQUEST, MESSAGES);
-    expect(expected.quote.lines[0].sku).toBe("OPENLUP-DOG-LAMB-CAN-400G");
+    expect(expected.quote.lines[0].sku).toBe("ITEM-ALPHA-400");
   });
 
   it("wraps a schema-invalid response with the supplied invalidResponseMessage", async () => {
@@ -92,12 +92,12 @@ describe("createExpectedQuote", () => {
 
   it("wraps a CommerceQuoteError with the supplied catalogMismatchMessage, preserving code + details", async () => {
     const port = portThrowing(
-      new CommerceQuoteError("UNKNOWN_SKU", "nope", { sku: "OPENLUP-DOG-DUCK-CAN-400G" }),
+      new CommerceQuoteError("UNKNOWN_SKU", "nope", { sku: "ITEM-BETA-400" }),
     );
     await expect(createExpectedQuote(port, REQUEST, MESSAGES)).rejects.toMatchObject({
       name: "CommerceQuoteSnapshotError",
       message: "MISMATCH_MSG",
-      details: { reason: "UNKNOWN_SKU", sku: "OPENLUP-DOG-DUCK-CAN-400G" },
+      details: { reason: "UNKNOWN_SKU", sku: "ITEM-BETA-400" },
     });
   });
 

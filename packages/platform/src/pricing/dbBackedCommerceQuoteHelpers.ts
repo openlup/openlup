@@ -6,6 +6,7 @@ import type {
 } from "./contracts/index.js";
 import type { PricingComponent } from "@openlup/core/pricing";
 import { CommerceQuoteError } from "./quotePorts.js";
+import { splitIncludedVat } from "./quoteSchemas.js";
 import {
   CommercePriceAuthorityError,
   type CommercePriceAuthorityPort,
@@ -67,9 +68,9 @@ export interface StrictQuotePriceResolution {
 }
 
 /**
- * Strict D1 quotes have one exact base anchor. Subscription money is either
- * derived by a validated policy, or is the authority's explicit pre-cutover
- * legacy observation; this layer never reaches back to the generic resolver.
+ * Strict authority quotes require one exact one-time base anchor. Subscription money is either
+ * derived by a validated policy or taken from the authority's explicit legacy
+ * subscription observation; this layer never calls the generic resolver.
  */
 export async function resolveStrictQuotePrice(input: {
   commercePriceAuthorityPort: CommercePriceAuthorityPort;
@@ -186,11 +187,7 @@ export function calculateIncludedVat(
   grossMinor: number,
   vatRateBps: number,
 ): { netMinor: number; vatMinor: number } {
-  const netMinor = Math.round((grossMinor * 10_000) / (10_000 + vatRateBps));
-  return {
-    netMinor,
-    vatMinor: grossMinor - netMinor,
-  };
+  return splitIncludedVat(grossMinor, vatRateBps);
 }
 
 /** Exhaustive transport vocabulary; widening requires the matching durable contract. */

@@ -1,3 +1,5 @@
+import { CatalogLifecycleObservation } from "@/components/admin/CatalogLifecycleObservation";
+import type { CatalogPublicationReadResult } from "@openlup/platform/catalog/contracts";
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -21,7 +23,10 @@ import {
   type LegacyCompatibility,
 } from '@/components/admin/promotion-codes/PromotionCodeCenter';
 
-export default function PromotionsPage() {
+export default function PromotionsPage({ reference }: { reference?: {
+  lifecycle?: CatalogPublicationReadResult;
+  promotions?: typeof getAdminPromotions;
+} } = {}) {
   const { session } = useAuth();
   const accessToken = session?.access_token;
   const queryClient = useQueryClient();
@@ -38,7 +43,7 @@ export default function PromotionsPage() {
     queryKey: ['admin-promotions'],
     enabled: Boolean(accessToken),
     retry: false,
-    queryFn: () => getAdminPromotions(accessToken as string),
+    queryFn: () => (reference?.promotions ?? getAdminPromotions)(accessToken as string),
   });
 
   const changeStatus = useMutation({
@@ -53,6 +58,7 @@ export default function PromotionsPage() {
 
   return (
     <div className="mx-auto max-w-6xl space-y-6 p-6">
+      {reference?.lifecycle && <CatalogLifecycleObservation result={reference.lifecycle} />}
       <div className="mx-auto max-w-4xl space-y-6">
         <header>
           <h1 className="font-display text-[24px] font-bold text-teal-dark">Rabaty</h1>

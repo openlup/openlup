@@ -121,7 +121,7 @@ export async function projectCommerceOfferPricing<Item extends CommerceQuoteCata
 
   // The representative quote must come from a product that actually PRICED. Using
   // the catalogue's first product would re-raise the very refusal just excluded
-  // and refuse the whole response - the batch failure this wave exists to remove.
+  // and refuse the whole response despite another product having priced.
   const representative = await quoteWithPromotions.createQuote(
     requestFor(priced[0]!.product, "one_time"),
     pricingPolicy ? { pricingPolicy } : undefined,

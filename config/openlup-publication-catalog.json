@@ -2206,6 +2206,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/api/communications-klaviyo.api.md",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/api/communications-resend.api.md",
       "class": "public-output"
     },
@@ -2298,6 +2302,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20260807140000_read_parity_catalog.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/sql/20260807190000_comms_outbox_rail.sql",
       "class": "public-output"
     },
@@ -2307,6 +2315,10 @@
     },
     {
       "path": "packages/platform/sql/20260809150001_job_run_ledger_v3.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20260810120000_storefront_catalog_attributes.sql",
       "class": "public-output"
     },
     {
@@ -2354,7 +2366,19 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20260827220000_catalog_document_revision_foundation.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20260827220001_catalog_document_revision_foundation_validate.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/sql/20260901143000_admin_membership_authority_foundation.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20260908100000_catalog_draft_foundation.sql",
       "class": "public-output"
     },
     {
@@ -2479,6 +2503,18 @@
     },
     {
       "path": "packages/platform/src/catalog/bundleRules.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/catalogDraftStore.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/catalogSkuEnvelope.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/catalog/catalogSkuEnvelopeMapper.ts",
       "class": "public-output"
     },
     {
@@ -2882,6 +2918,14 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/communications/klaviyo/consentPush.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/communications/klaviyo/index.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/communications/managedTransactionalDeliveryStore.ts",
       "class": "public-output"
     },
@@ -2971,6 +3015,10 @@
     },
     {
       "path": "packages/platform/src/communications/validation.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/composition/catalogContribution.ts",
       "class": "public-output"
     },
     {
@@ -3974,6 +4022,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/communications/adapterOptIn.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/communications/authEgress.test.ts",
       "class": "public-output"
     },
@@ -4015,6 +4067,26 @@
     },
     {
       "path": "packages/platform/test/communications/hookRawReader.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/communications/klaviyo/harness.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/communications/klaviyo/permissions.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/communications/klaviyo/portConformance.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/communications/klaviyo/profile.json",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/communications/klaviyo/protocol.test.ts",
       "class": "public-output"
     },
     {
@@ -6315,10 +6387,6 @@
     },
     {
       "path": "server/adapters/postgres/catalogSkuEnvelope.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/adapters/postgres/catalogSkuEnvelopeMapper.ts",
       "class": "public-output"
     },
     {
@@ -13554,6 +13622,14 @@
       "class": "public-output"
     },
     {
+      "path": "server/runtime/communications/a1ReferenceBinding.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/runtime/communications/a1ReferenceBinding.ts",
+      "class": "public-output"
+    },
+    {
       "path": "server/runtime/communications/communicationsLifecycleBinding.test.ts",
       "class": "public-output"
     },
@@ -13827,6 +13903,14 @@
     },
     {
       "path": "server/runtime/public-reference/communications.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/runtime/public-reference/m05CatalogBinding.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/runtime/public-reference/m05CatalogSchema.ts",
       "class": "public-output"
     },
     {
@@ -14294,6 +14378,22 @@
       "class": "public-output"
     },
     {
+      "path": "src/checkout/composer/referenceBuilderConformance.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "src/checkout/composer/referenceBuilderDraft.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "src/checkout/composer/referenceBuilderModel.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "src/checkout/composer/referenceQuoteConsent.ts",
+      "class": "public-output"
+    },
+    {
       "path": "src/checkout/composer/useEffectiveConfiguratorPackage.ts",
       "class": "public-output"
     },
@@ -14751,6 +14851,10 @@
     },
     {
       "path": "src/components/admin/CatalogDocumentPanel.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/components/admin/CatalogLifecycleObservation.tsx",
       "class": "public-output"
     },
     {
@@ -15695,6 +15799,10 @@
     },
     {
       "path": "src/domains/catalog/ports.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "src/domains/catalog/referenceCatalogUi.ts",
       "class": "public-output"
     },
     {
@@ -19402,6 +19510,22 @@
       "class": "public-output"
     },
     {
+      "path": "src/pages/ReferenceBuilderPage.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/pages/ReferenceCatalogPage.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/pages/ReferenceCatalogUi.test.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/pages/ReferenceProductPage.tsx",
+      "class": "public-output"
+    },
+    {
       "path": "src/pages/ReferenceStorePage.test.tsx",
       "class": "public-output"
     },
@@ -20291,6 +20415,10 @@
     },
     {
       "path": "src/routes/AppRuntimeEffects.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/routes/ReferenceCatalogRoutes.tsx",
       "class": "public-output"
     },
     {
@@ -21250,6 +21378,18 @@
       "class": "public-output"
     },
     {
+      "path": "tests/platform/catalog/m05Composition.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/platform/catalog/m05ReferenceComposition.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/platform/catalog/referenceUi.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/platform/checkoutInlineRecoveryClientFlow.test.ts",
       "class": "public-output"
     },
@@ -21383,6 +21523,10 @@
     },
     {
       "path": "tests/postgres/inventoryNative.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/m05CatalogComposition.test.ts",
       "class": "public-output"
     },
     {

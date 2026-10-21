@@ -3,21 +3,21 @@ import { describe, expect, it } from "vitest";
 import { resolvePromotionBenefitDefinition } from "../../src/promotions/promotionBenefitDefinition.js";
 
 describe("promotion benefit dual read", () => {
-  it("reads legacy 44.404 only from discount_value even when v2-shaped backfill exists", () => {
+  it("reads legacy 37.537 only from discount_value even when v2-shaped backfill exists", () => {
     expect(resolvePromotionBenefitDefinition({
       promotion_engine_version: "promotion-engine.v1",
       discount_type: "percentage",
-      discount_value: 44.404,
+      discount_value: 37.537,
       benefit_kind: "target_percentage",
-      benefit_value_bps: 4_440,
-    })).toEqual({ kind: "legacy_percentage", percentage: 44.404 });
+      benefit_value_bps: 3_753,
+    })).toEqual({ kind: "legacy_percentage", percentage: 37.537 });
   });
 
   it("reads target 50% only from an explicitly v2 row", () => {
     expect(resolvePromotionBenefitDefinition({
       promotion_engine_version: "promotion-engine.v2",
       discount_type: "percentage",
-      discount_value: 44.404,
+      discount_value: 37.537,
       benefit_lane: "product",
       benefit_kind: "target_percentage",
       benefit_value_bps: 5_000,

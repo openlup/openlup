@@ -9,15 +9,15 @@ export function quoteSnapshot(
       taxIncluded: true,
       lines: [
         {
-          sku: "opaque:lamb-launch.v1",
-          productSlug: "lamb",
+          sku: "opaque:item-alpha.v1",
+          productSlug: "item-alpha",
           quantity: 1,
           unitPriceGross: totalGross,
           lineSubtotalGross: totalGross,
           tax: {
             included: true,
             country: "ZZ",
-            category: "pet_food",
+            category: "example_category",
             vatRateBps: 800,
             legalBasis: "Example VAT rule",
             netAmount: { amountMinor: Math.round((totalGross.amountMinor * 100) / 108), currency: "XXX" },
@@ -45,7 +45,7 @@ export function quoteSnapshot(
 
 
 export function acceptanceRequest(): CreateQuoteRequest {
-  return { mode: "one_time", lines: [{ sku: "opaque:lamb-launch.v1", quantity: 14, variantId: "variant-lamb-400", modeAtLine: "one_time" }],
-    sizeConstraint: { kind: "feeding_days", value: 21, dailyKcalOverride: 328 }, cadenceDays: null,
-    promoCodes: ["SAVE80"], visitorId: "visitor-1", customerEligibilityContext: { email: "anna@example.com" } };
+  return { mode: "one_time", lines: [{ sku: "opaque:item-alpha.v1", quantity: 14, variantId: "variant-item-alpha-400", modeAtLine: "one_time" }],
+    sizeConstraint: { kind: "usage_days", value: 21, dailyUsageOverride: 328 }, cadenceDays: null,
+    promoCodes: ["SAVE80"], visitorId: "visitor-1", customerEligibilityContext: { email: "subject-a@example.com" } };
 }

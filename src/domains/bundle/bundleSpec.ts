@@ -120,12 +120,11 @@ const mutations: Record<BundleMutationKey, AgentDomainMutationSpec> = {
     key: "activate",
     requestSchema: activateBundleRequestSchema,
     gate: "activation",
-    // HUMAN-ONLY at TWO independent machine-checked layers: the handler factory
-    // refuses a non-human actor (403, `actor_kind_not_allowed`) from this
-    // `allowedActorKinds`, AND the activate routine RAISEs 42501
-    // (`publish_requires_human`). Both re-derive the actor kind from the admin
-    // registry rather than trusting the caller. The lifecycle marker additionally
-    // makes the MCP generator drop the tool, so no agent surface can reach it.
+    // The handler refuses a non-human actor (403, `actor_kind_not_allowed`)
+    // through `allowedActorKinds`. Managed activation independently derives the
+    // actor kind from the admin registry and raises 42501
+    // (`publish_requires_human`); native activation relies on the handler gate.
+    // The lifecycle marker also makes the MCP generator omit the tool.
     allowedActorKinds: ["human"],
     lifecycleMarkers: ["LIFECYCLE_ACTIVATE"],
   },
@@ -134,7 +133,8 @@ const mutations: Record<BundleMutationKey, AgentDomainMutationSpec> = {
     requestSchema: deactivateBundleRequestSchema,
     gate: "activation",
     // Unpublish is the same class of transition as publish and is gated the same
-    // way, at the same two layers, with the same structural absence from MCP.
+    // way: a handler gate, an independent managed database gate, and structural
+    // absence from MCP. Native deactivation relies on the handler gate.
     allowedActorKinds: ["human"],
     lifecycleMarkers: ["LIFECYCLE_DEACTIVATE"],
   },
