@@ -23,6 +23,8 @@ rules and integrations. OpenLup owns the reusable engines and platform contracts
 [For agents](#designed-for-development-with-ai-agents) ·
 [Follow progress](#follow-openlup)
 
+## Status: development preview
+
 > **Development preview.** OpenLup has published npm packages and bounded local
 > evaluation profiles. It does not yet offer a stable framework API, a supported
 > full-platform installation or an upgrade guarantee. Source availability and a
@@ -316,6 +318,17 @@ Useful preview feedback includes the use case you tried, the exact version and
 profile, what worked and where you got blocked. For bugs, use
 [GitHub Issues](https://github.com/openlup/openlup/issues); for vulnerabilities,
 follow [SECURITY.md](SECURITY.md).
+
+## Source preview integrity
+
+The public tree exposes its [policy registry](config/openlup-policy-registry.json),
+[publication catalogue](config/openlup-publication-catalog.json) and
+[source-release contract](config/openlup-source-release-contract.json).
+These machine-readable inputs let a checkout validate its declared source and
+policy boundaries. They are not a release receipt or a support promise.
+The [publication completeness policy](.github/PUBLICATION_COMPLETENESS.md)
+explains their evidence boundary; the source checks above validate the selected
+revision without copying moving gap counts into this page.
 
 ## Documentation and contribution
 
