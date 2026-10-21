@@ -100,7 +100,7 @@ publication policy refuses untracked additions under the local no-Git-write
 boundary; navigation is regenerated through the same repository renderer and the
 remaining tests-owner no-impact trailer is proposed in the handoff.
 
-P3 final ledger: 24 paths, 9 production paths, 1973 lines of churn, four frozen export additions. Computed against a24b10c9 (P2), representing the post-P2 comparison; local origin/main still predates P2. No dependency, canonical migration, public subpath or budget change.
+P3 final ledger: 24 paths, 9 production paths, 1973 lines of churn, four frozen export additions. Computed against main after P2 merged (#273). No dependency, canonical migration, public subpath or budget change.
 
 Self-retro: the first SQL run exposed six fixture failures (one manifest-key typo
 and five deferred order-line constraint failures). Preserve canonical manifest

@@ -1,6 +1,7 @@
 /** Real portable-store subset. No managed-store parity claim. */
 import { createHash, randomUUID } from "node:crypto";
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { Pool, type PoolClient } from "pg";
 import { afterAll, beforeAll, expect, it } from "vitest";
@@ -44,7 +45,7 @@ it("installs the full catalogue, binds projections 10/35/56 and replays the cano
 });
 it("upgrades the exact complete prefix before unit 56 without rewriting installed history", async () => {
   let resource: PostgresContainer | undefined, upgrade: Pool | undefined;
-  const root = mkdtempSync("/private/tmp/claude-501/m07-p3/payments-prefix-");
+  const root = mkdtempSync(join(tmpdir(), "payments-prefix-"));
   try {
     // The full-install cluster owns global roles. This clean prefix cluster is
     // separate, but its raw inventory probe can roll back roles and schema before
