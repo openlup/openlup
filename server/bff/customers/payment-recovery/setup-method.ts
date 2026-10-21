@@ -1,3 +1,4 @@
+import type { PaymentRepairMethodPort, TransientSecret } from "@openlup/platform/payments/contracts";
 import { withObservedRoute } from "../../../_lib/observability/route.js";
 import { customerAuthUiEnabled, pspRecoveryEnabled, subscriptionMutationsEnabled } from "../../../_lib/config/featureFlags.js";
 import type { VercelRequest, VercelResponse } from "../../../_lib/types/vercel.js";
@@ -49,7 +50,8 @@ async function handler(req: VercelRequest, res: VercelResponse): Promise<void> {
   const accessToken = readBearerToken(req);
   const clients = createCustomerClients(env, accessToken);
 
-  const createSetupIntent: StripeSetupIntentCallback = async ({ customer, metadata, idempotencyKey }) => {
+  const methodPort: PaymentRepairMethodPort = {
+    async setupMethod({ customer, metadata, idempotencyKey }) {
     const intent = await stripeClient.createSetupIntent(
       { customer, usage: "off_session", metadata },
       { idempotencyKey },
@@ -57,11 +59,17 @@ async function handler(req: VercelRequest, res: VercelResponse): Promise<void> {
     if (!intent.client_secret) {
       throw new Error("Stripe SetupIntent missing client_secret");
     }
-    return {
-      setupIntentId: intent.id,
-      clientSecret: intent.client_secret,
-      replayed: false,
-    };
+      return { kind: "ready", setupRef: intent.id,
+        handoff: { kind: "client-confirmed", payload: intent.client_secret as TransientSecret },
+        replayed: false };
+    },
+  };
+  const createSetupIntent: StripeSetupIntentCallback = async (input) => {
+    const result = await methodPort.setupMethod(input);
+    if (result.kind === "unsupported" || result.handoff.kind !== "client-confirmed") {
+      throw new Error("payment_repair_method_setup_unsupported");
+    }
+    return { setupIntentId: result.setupRef, clientSecret: result.handoff.payload, replayed: result.replayed };
   };
 
   return createPaymentRecoverySetupHandler({

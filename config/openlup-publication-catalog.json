@@ -3566,6 +3566,14 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/payments/checkoutActivePaymentActionResolver.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/payments/checkoutRecoveryPaymentResolver.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/payments/contracts/adapter.ts",
       "class": "public-output"
     },
@@ -3587,6 +3595,10 @@
     },
     {
       "path": "packages/platform/src/payments/contracts/reconciliation.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/payments/contracts/repair.ts",
       "class": "public-output"
     },
     {
@@ -3623,6 +3635,10 @@
     },
     {
       "path": "packages/platform/src/payments/paymentTruth.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/payments/paymentVerifyNowHandler.ts",
       "class": "public-output"
     },
     {
@@ -4634,11 +4650,23 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/payments/repairAuthority.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/payments/repairContinuity.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/payments/truth.test.ts",
       "class": "public-output"
     },
     {
       "path": "packages/platform/test/payments/verifiedIngress.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/payments/verifyHandler.test.ts",
       "class": "public-output"
     },
     {
@@ -14982,6 +15010,14 @@
       "class": "public-output"
     },
     {
+      "path": "src/components/PaymentRepairStatus.test.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/components/PaymentRepairStatus.tsx",
+      "class": "public-output"
+    },
+    {
       "path": "src/components/PrivateLabelForm.tsx",
       "class": "public-output"
     },
@@ -19775,6 +19811,14 @@
     },
     {
       "path": "src/pages/ReferenceCatalogUi.test.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/pages/ReferencePaymentRepairPage.test.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/pages/ReferencePaymentRepairPage.tsx",
       "class": "public-output"
     },
     {

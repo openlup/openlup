@@ -79,3 +79,22 @@ which belongs to the private overlay and is not part of the published tree.
 The experimental [payments entry](../../../packages/platform/README.md#payments-prepared-attempts) contributes injected ordering and type-only adapter contracts. The reference facade remains unchanged; this source contribution does not activate a provider or establish durable-store parity.
 
 The reference webhook handler now defaults to `require-evidence` for refunds: missing/null kind or required payment money/identity leaves the terminal result unapplied. Explicit full/partial evidence remains valid; a host may explicitly choose `legacy-assume-full`. The package ingress accepts snapshot, delta and full-reversal observations and preserves durable first-receipt time. Reference composition and its existing clock behavior stay unchanged until the later binding step.
+
+## Repair and readback package seam
+
+The reference verify BFF consumes `createCommercePaymentVerifyHandler` from the
+payments package, retaining its responder and stored-owner validation before a
+provider read. The status BFF maps the existing transient action carrier into
+`PaymentRecoveryAction`, injects exactly its existing rail/handoff inventory,
+and maps back to the unchanged response schema. The package checks the same
+canonical attempt twice; it never accepts a browser outcome as payment truth.
+The setup BFF wraps its existing host-owned callback in `PaymentRepairMethodPort`;
+a ready result carries transient setup data only. Authentication, token/case
+resolution, metadata, idempotency and redemption remain reference-owned.
+
+The opt-in store embeds the reference payment repair view after checkout. It
+reuses the status poller and typed status/verify clients for the original
+identity triple. Verify does not render success; only stored paid status does.
+Native method setup is visibly unsupported unless the host supplies a collector
+and confirmation implementation. This source composition establishes no new
+profile route, provider activation or durable native method-setup capability.

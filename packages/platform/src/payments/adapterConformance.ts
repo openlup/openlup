@@ -24,7 +24,11 @@ export async function runPaymentAdapterConformance(
     const result = await adapter.attemptPort.execute(executionInput);
     const { handoff, ...execution } = result;
     const sensitiveValues = [executionInput.payer?.email, executionInput.payer?.name, executionInput.customerAuthorization,
-      handoff?.kind === "client-confirmed" ? handoff.payload : handoff?.url].filter((v): v is NonNullable<typeof v> => v !== undefined);
+      handoff?.kind === "client-confirmed" ? handoff.payload : handoff?.url].filter((v): v is NonNullable<typeof v> => v !== undefined && v.length > 0);
+    const sensitiveForms = sensitiveValues.flatMap(value => [value, JSON.stringify(value).slice(1, -1)]);
+    const payerForms = [executionInput.payer?.email, executionInput.payer?.name]
+      .filter((value): value is string => Boolean(value?.length))
+      .flatMap(value => [value, JSON.stringify(value).slice(1, -1)]);
     const input = {
       idempotencyKey: executionInput.attemptRef, providerIdempotencyKey: executionInput.providerIdempotencyKey,
       providerRequestFingerprint: executionInput.fingerprint, paymentIntentId: executionInput.intentRef,
@@ -37,15 +41,14 @@ export async function runPaymentAdapterConformance(
           providerRequestFingerprint: input.providerRequestFingerprint }, responsePayload: result.diagnostics },
     });
     requireFact(validation.ok, "execution diagnostics and taxonomy");
-    requireFact(!sensitiveValues.some(value => JSON.stringify(result).includes(value)
-      && (value === executionInput.payer?.email || value === executionInput.payer?.name)), "execution payer redaction");
+    requireFact(!payerForms.some(value => JSON.stringify(result).includes(value)), "execution payer redaction");
     if (adapter.capabilities.payerContext.requiresPayerBlock && !executionInput.payer) {
       requireFact(result.dispatch.kind === "notDispatched" && result.dispatch.evidence.exact
         && result.dispatch.evidence.phase === "before-dispatch", "missing required input exact notDispatched");
     }
     const returned = await adapter.readbackPort.readPayment(readbackInput);
     const { handoff: readbackHandoff, ...readback } = "handoff" in returned ? returned : { ...returned, handoff: undefined };
-    requireFact(!sensitiveValues.some(value => JSON.stringify(readback).includes(value)), "readback secret redaction");
+    requireFact(!sensitiveForms.some(value => JSON.stringify(readback).includes(value)), "readback secret redaction");
     requireFact(sameIdentity(readback.identity, readbackInput.identity) && sameMoney(readback.expectedMoney, readbackInput.expectedMoney), "readback exact identity and money");
     requireFact(adapter.capabilities.readback === "supported" ? returned.kind !== "unsupported" : returned.kind === "unsupported", "readback capability");
     if ("observedMoney" in returned) requireFact(sameMoney(returned.observedMoney, readbackInput.expectedMoney), "observed money");
@@ -74,7 +77,7 @@ export async function runPaymentAdapterConformance(
       const verified = await adapter.verifyPort.verifyAndNormalize(fixture.input);
       requireFact(JSON.stringify(verified) === JSON.stringify(fixture.expected), "verified fixture");
       if (verified.kind !== "refusal") {
-        requireFact(!sensitiveValues.some(value => JSON.stringify({ payload: projectVerifiedEvidence(verified, fixture.input, "require-evidence").rawPayload, diagnostics: result.diagnostics }).includes(value)),
+        requireFact(!sensitiveForms.some(value => JSON.stringify({ payload: projectVerifiedEvidence(verified, fixture.input, "require-evidence").rawPayload, diagnostics: result.diagnostics }).includes(value)),
           "audit payload secret redaction");
         const outcome = verified.kind + ":" + verified.outcome;
         const previous = fingerprints.get(verified.providerEventId);

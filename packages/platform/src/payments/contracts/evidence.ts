@@ -58,6 +58,14 @@ export type VerifiedMethodEvidence = VerifiedIdentity & {
   kind: "method";
   outcome: "registered" | "updated" | "revoked" | "expired" | "suspended" | "failed" | "requires-action";
   methodLifecycle?: PaymentMethodLifecycleEvent;
+  /** Registration facts only. The host resolves client/subscription ownership. */
+  reusableMethod?: {
+    providerCustomerRef?: string | null;
+    providerMethodRef: string;
+    providerMandateRef?: string | null;
+    methodKind: string;
+    status: "pending_verification" | "active" | "inactive" | "expired" | "revoked";
+  };
   methodRef: string;
   setupRef: string | null;
   intentRef: string | null;
