@@ -23,7 +23,7 @@ export interface FulfillmentStatusStage {
   orderStatus: string[];
   /** Extra provider/synonym tokens that also resolve here (for token→step). */
   aliasTokens: string[];
-  /** Side-effect boundary: `handover` drives both paths; `stock` is coarser (statusMap.test.ts). */
+  /** Contributed effect metadata, pinned by the package test's projection digest. */
   effects: { stock: string; handover: boolean; customerEmail: string | false };
 }
 
@@ -34,6 +34,9 @@ export interface FulfillmentStatusMap {
 
 export const FULFILLMENT_STATUS_MAP = {
   version: 1,
+  // Contributed metadata below is retained verbatim. The package-local test pins
+  // the projection digest, token round-trips and helpers; it does not check host
+  // provider dictionaries or i18n resources.
   comment:
     "SINGLE SOURCE OF TRUTH for fulfillment status across all layers. Layer C (customerStep) is the spine. Providers (Layer A) map ONLY to local_status (Layer B) in their own dictionary; the UI consumes only Layer C. statusMap.test.ts keeps every layer consistent.",
   stages: [
@@ -164,8 +167,8 @@ const STAGE_BY_STEP: Record<CustomerFulfillmentStep, FulfillmentStatusStage> = O
 ) as unknown as Record<CustomerFulfillmentStep, FulfillmentStatusStage>;
 
 // token → customerStep, derived from the map (localStatus + FSM + orderStatus +
-// aliasTokens). Built once; conflicts across stages would be a map bug caught by
-// the package-local fulfillment/statusMap.test.ts token witness.
+// aliasTokens). The package-local fulfillment/statusMap.test.ts witness checks
+// that each contributed token round-trips to its declared customer step.
 const STEP_LOOKUP: Record<string, CustomerFulfillmentStep> = (() => {
   const table: Record<string, CustomerFulfillmentStep> = {};
   for (const stage of FULFILLMENT_STATUS_MAP.stages) {

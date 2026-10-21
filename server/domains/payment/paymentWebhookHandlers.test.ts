@@ -42,14 +42,15 @@ describe("provider payment webhook handlers", () => {
     expect(ingestPaymentEvent).not.toHaveBeenCalled();
   });
 
-  it("acknowledges canonical event redelivery with the same deterministic payment-result key", async () => {
+  it("acknowledges canonical event redelivery with the same deterministic payment-result key and keeps the first-receipt clock on later redelivery", async () => {
     const applyPaymentResult = vi.fn().mockResolvedValueOnce({ replayed: false }).mockResolvedValueOnce({ replayed: true });
     const afterProcessed = vi.fn();
     const event = stripeSucceededEvent();
     const handler = createProviderPaymentWebhookHandler({
       provider: "stripe",
       webhooksEnabled: () => true,
-      verifyAndNormalize: vi.fn().mockResolvedValue(event),
+      verifyAndNormalize: vi.fn().mockResolvedValueOnce(event)
+        .mockResolvedValueOnce({ ...event, occurredAt: "2026-06-07T12:00:00.000Z" }),
       paymentControlPort: {
         ingestPaymentEvent: vi.fn()
           .mockResolvedValueOnce({
@@ -57,12 +58,14 @@ describe("provider payment webhook handlers", () => {
             paymentIntentId: "22222222-2222-4222-8222-222222222222",
             paymentAttemptId: "33333333-3333-4333-8333-333333333333",
             replayed: false,
+            occurredAt: event.occurredAt,
           })
           .mockResolvedValueOnce({
             paymentEventId: "11111111-1111-4111-8111-111111111111",
             paymentIntentId: "22222222-2222-4222-8222-222222222222",
             paymentAttemptId: "33333333-3333-4333-8333-333333333333",
             replayed: true,
+            occurredAt: event.occurredAt,
           }),
         applyPaymentResult,
       },
@@ -87,6 +90,8 @@ describe("provider payment webhook handlers", () => {
       idempotencyKey: "provider-webhook:stripe:evt_123:apply",
       paymentEventId: "11111111-1111-4111-8111-111111111111",
     }));
+    expect(applyPaymentResult.mock.calls.map(([input]) => input.occurredAt), "D11 application retains the first-receipt clock").toEqual([event.occurredAt, event.occurredAt]);
+    expect(afterProcessed.mock.calls.map(([input]) => input.event.occurredAt), "D11 follow-up retains the first-receipt clock").toEqual([event.occurredAt, event.occurredAt]);
     // Follow-up work intentionally runs on replay so a prior partial failure can
     // self-heal; it receives the same ledger row and explicit replay evidence.
     expect(afterProcessed).toHaveBeenNthCalledWith(2, expect.objectContaining({

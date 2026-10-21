@@ -2198,6 +2198,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/CHANGELOG-HISTORY.md",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/CHANGELOG.md",
       "class": "public-output"
     },
@@ -3738,6 +3742,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/payments/bindings.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/payments/checkoutActivePaymentActionResolver.ts",
       "class": "public-output"
     },
@@ -4999,6 +5007,10 @@
     },
     {
       "path": "packages/platform/test/payments/adapterConformance.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/payments/bindings.test.ts",
       "class": "public-output"
     },
     {
@@ -14723,6 +14735,14 @@
     },
     {
       "path": "server/runtime/public-reference/m06ShippingBinding.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/runtime/public-reference/m07PaymentBinding.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/runtime/public-reference/m07PaymentBinding.ts",
       "class": "public-output"
     },
     {

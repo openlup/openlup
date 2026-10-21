@@ -168,12 +168,13 @@ A payments (M07) adapter implements `PaymentAdapter` and declares
 `PaymentAdapterConformanceSubject` from `./payments/contracts` and verification
 fixtures. See the [opt-in payment example](#opt-in-payment-example).
 
-Fulfillment adapters implement the experimental FulfillmentDispatchPort from
+Fulfillment adapters implement the experimental dispatch, label, observation,
+readback and sync ports from
 `@openlup/platform/fulfillment/contracts`. See the
 [fulfillment owner](ARCHITECTURE_AND_EXTENSIONS.md#fulfillment-contracts) for
 command preparation, host keys, replay, paid handoff and proof/storage boundaries.
-An example adapter remains planned for A3; this surface activates no provider or
-reference route.
+Adapter conformance belongs to future example-adapter work; this surface
+activates no provider or reference route.
 
 | Class | Shipped example subpaths |
 | --- | --- |
@@ -581,7 +582,8 @@ inside their two declared source/test directories, their exact API reports and
 exact cold-consumer proof lines. The exact path-segment tokens
 `communications/resend` and `communications/klaviyo` are additionally allowed in
 the platform manifest, release gates, package boundary test, publication
-catalogue, platform CHANGELOG and validated platform `changes/*.md` fragments,
+catalogue, platform CHANGELOG, its non-packed `CHANGELOG-HISTORY.md` and validated
+platform `changes/*.md` fragments,
 this page, the architecture page and the A1 ledger.
 Those same two subpath tokens are allowed in only the A1 reference binding and
 its adjacent test under `server/runtime/communications`; bare adapter words

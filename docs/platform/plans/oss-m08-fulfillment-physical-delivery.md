@@ -1,414 +1,225 @@
 # M08 fulfillment and physical delivery
 
-Development-preview programme record, 2026-10-21. P1 authoring base: `41a9477d`
-on assigned branch `claude/oss-m08-p1-fulfillment`. Frozen inputs: coordinator C0
-D0–D13, C2 decomposition/Author check, carrier fit G1–G13, path/export/source
-registers and coordinator freeze. Donor V: C1 `d902ac7f4`, read from its local
-`origin/main` source objects. These packets are implementation inputs, not authority
-to execute their example commands or broaden scope.
+Development-preview programme design and contents. The boundary is recorded in
+decisions D0–D13, carrier-fit amendments G1–G14 and the export/source
+registers below. Donor source provenance is `d902ac7f4`. Donor material supplies
+provenance, not authority to execute example commands or broaden scope.
 
-## P1 outcome, authority and acceptance
+## Combined contents and boundary
 
-Outcome: two additive platform subpaths with neutral fulfillment contracts,
-unchanged contributed status logic, core parser binding and injected capability
-selection. No new package, dependency, star export or testing subpath. The topology
-check follows [package placement](../ARCHITECTURE_AND_EXTENSIONS.md#package-placement-decision-canonical):
+The combined contracts and orchestration change contains neutral fulfillment
+contracts, unchanged contributed status logic, core parser binding, injected capability selection,
+a paid-order outbox handler, recovery classification, dispatch orchestration,
+sanitized evidence projection and a durable command-ledger protocol.
+
+Only `@openlup/platform/fulfillment` and
+`@openlup/platform/fulfillment/contracts` are added. The contracts entry is
+type-only and browser-shareable. There is no new package, dependency, star export
+or testing subpath. Under the canonical
+[package placement decision](../ARCHITECTURE_AND_EXTENSIONS.md#package-placement-decision-canonical),
 no incompatible runtime, peer, lifecycle or consumer requires another artifact.
-Platform maintains these experimental contracts; adapters and host policy remain
-adopter-owned.
+Platform maintains the experimental contracts; adapters and host policy remain
+host-owned. The [fulfillment architecture section](../ARCHITECTURE_AND_EXTENSIONS.md#fulfillment-contracts)
+is the documentation owner.
 
-P1 candidates `bc4f9110` and repair `9328b676` are committed and were reviewed
-by two independent cold PASS reports, as supplied by the coordinator. P1's final
-candidate has eight authored cases and 33 paths. Commit/submission/native admission
-and delivery remain coordinator responsibilities; this record does not grant them.
-No adopter or staging endpoint is in P1 scope.
-
-Acceptance: exact two entries and symbols in the frozen export register plus the
-repair-1 prepare-result/envelope type amendment; type-only
-browser contracts; concrete G1–G13 fit; unchanged status projection digest and
-decisions; arrival discipline in port/platform docs; eight semantic cases; generated
-boundary rows reported separately; focused lint/structural/API/consumer/policy
-checks and actual tarball budgets. The inventory API generator retains its two
-existing enum-order-only adjustments without changing value sets. Repair 1 removes
-the module README and unreachable status helper, reuses architecture documentation
-as the fulfillment owner, and keeps the whole candidate at 33 paths versus the
-35-path cap. Actual diff including generated files must stay
-at or below 35 paths. Exclusions: P2+ runtime orchestration, SQL/migrations,
-composition, reference facade rewiring, UI, adapter implementation and release
-set/version preparation. No native continuity, provider operation or stable
-framework claim is made by P1.
+Excluded: SQL/migrations, concrete adapters and persistent stores, mounted
+executors/routes, reference facade rewiring, UI, money implementation, inventory
+authority, replacement-confirmation callers, version preparation and release.
+Provider/account/secret access, activation, deployment endpoints and external
+operations are outside this scope. This record grants no delivery authority and
+makes no native-continuity, provider-operation or stable-framework claim.
 
 ## Frozen decisions
 
 | Decision | Binding disposition |
 | --- | --- |
-| D0 | C0 admitted; C1 donor witnesses retained. No M08 merge before M07 S1; P1 local implementation only. |
+| D0 | Retain contributed characterization witnesses. Integration requires the payments and money-truth boundary; this change adds contracts and callable orchestration without activation. |
 | D1 | Existing platform package, only fulfillment and fulfillment/contracts. |
-| D2 | Port freeze follows donor fit; G1–G13 below are approved amendments. |
+| D2 | Freeze ports against donor fit; G1–G13 are approved amendments, with G14 approved separately below. Arrival-only replacement confirmation applies. |
 | D3 | Private adapters/defaults/codecs stay private; direct carrier dormant, simulator separate; pickup lookup remains shipping-owned. |
-| D4 | Managed/native graphs stay distinct; ten managed bodies equal at normalized-body scope, no native/runtime equivalence implied. |
-| D5 | C1 additive witnesses unchanged (later pruned allocation is 31 cases). |
-| D6 | Reconcile actual shared M07/A2 package companions; no unrelated source changes. |
-| D7 | Note-only replacement confirmation unchanged, no caller; arrival discipline in alignment contract/platform page. |
-| D8 | Serial P1→P2→P3→P4→P5a→P5b→P6→P7→S1, each at most 35 paths. Import unchanged before P6 refactor. |
-| D9 | C2 forecast 89 authored cases/27s within 94/27 and outer 100/30; generated packageBoundary rows separate, all runtime charged. |
-| D10 | Measure actual P1/final pack and all subcaps; no cap increase or guessed version. |
-| D11 | Status map one package authoring source after explicit host adoption; existing host remains untouched in P1. OMS ladder/live queue remain together at host, no parallel mapper. |
-| D12 | No activation, provider or host calls; later lifecycle/installed proofs remain owed. |
-| D13 | P4 appends native fence/alignment and real-PG proofs; late arrival uses outer max once, undelivered successors remain outstanding. |
+| D4 | Managed and native execution graphs stay distinct; no runtime equivalence is implied. |
+| D5 | Preserve contributed characterization witnesses unchanged within their 31-case allocation. |
+| D6 | Reconcile shared payment-contract and payment-adapter package companions; no unrelated source changes. |
+| D7 | Note-only replacement confirmation unchanged, no caller; arrival discipline belongs in the alignment contract and platform page. |
+| D8 | The ordinary cap is 35 paths per pull request, including generated files. Preserve contributed logic before refactoring. Runtime conformance, native storage/alignment, host composition, UI, installed-consumer and lifecycle proofs remain outside this combined contracts and orchestration change. |
+| D8 amendment | The approved combined contracts and orchestration change has a ≤55-path regroup cap, including generated files; this amends the ordinary 35-path cap. |
+| D9 | Target 89 authored cases within the 94-case/27-second module budget and outer 100-case/30-second cap. Count generated packageBoundary rows separately; charge all execution time. |
+| D10 | Validate package artifacts and every subcap; no cap increase or guessed version. |
+| D11 | One package status-map authoring source after explicit host adoption; reference composition is unchanged here. The order-management status ladder and live queue remain together at the host, with no parallel mapper. |
+| D12 | No activation or live provider/host calls; lifecycle and installed-consumer proofs belong to their later lanes. |
+| D13 | Native storage work must prove fencing and delivery alignment against PostgreSQL; late arrival uses the monotonic maximum once, and undelivered replacements remain outstanding. |
+
+## Export register
+
+The runtime entry exports only these values; internal helper types are not entry
+exports. Orchestration values share the entry with status, parser and capability
+selection values.
+
+| Source | Exported values |
+| --- | --- |
+| statusMap.ts | FULFILLMENT_STATUS_MAP, CANONICAL_LOCAL_FULFILLMENT_STATUSES, CUSTOMER_STEP_SEQUENCE, canonicalStatusToken, stepForToken, customerStepFromSignals, phaseIndexForStep, stepLabelKey, timelineLabelForStep, trackingPhaseKeyForStep, stepUsesTruckIcon |
+| normalizedFulfillmentFacts.ts | parseFulfillmentFact, parseFulfillmentTransitionConflict |
+| providerCapabilities.ts | readFulfillmentCapabilities |
+| paidHandoff.ts | createOutboxOrderPaidFulfillmentHandler |
+| paidFulfillmentRecovery.ts | collectPaidFulfillmentRecoveryCandidates |
+| providerDispatchWorker.ts | runFulfillmentDispatchWorker |
+| providerCommandLedger.ts | createFulfillmentCommandLedger |
+
+The contracts entry exports only these types, including the prepare-result and
+evidence envelopes. G14 adds a method, not an exported type name.
+
+| Source | Exported types |
+| --- | --- |
+| dispatch.ts | DispatchEvidence, FulfillmentDispatchPrepareResult, FulfillmentSelection, FulfillmentDispatchRequest, FulfillmentDispatchResult, FulfillmentDispatchPort, FulfillmentRefusal |
+| label.ts | LabelDocument, FulfillmentLabelPort |
+| observation.ts | FulfillmentObservation, FulfillmentObservationPort, FulfillmentTrackingReference |
+| readback.ts | FulfillmentReadbackResult, FulfillmentReadbackPort |
+| sync.ts | SyncCursor, StockSnapshot, StockMovement, LocalStock, FulfillmentStockSyncProvider, FulfillmentStockSyncPort, FulfillmentProductSyncProvider, FulfillmentProductSyncPort |
+| capabilities.ts | FulfillmentCapabilityDescriptor |
+| store.ts | DispatchRecord, FulfillmentStorePort, FulfillmentPaidHandoffPort |
+| alignment.ts | DeliveryAlignmentPort |
+| contracts/index.ts | CanonicalLocalFulfillmentStatus, CustomerFulfillmentStep |
 
 ## Carrier fit and type/test ownership
+
+Contract sources are under `packages/platform/src/fulfillment/contracts/`;
+runtime sources are under `packages/platform/src/fulfillment/`, and witnesses
+are under `packages/platform/test/fulfillment/`.
 
 | Amendment | Concrete owner and focused witness |
 | --- | --- |
 | G1 | dispatch.ts: mandatory fulfillmentRef, nullable parcelRef, contactRevision; contracts.test.ts |
-| G2 | dispatch.ts adapter prepare returns actual-command fingerprint and sanitized DispatchEvidence before claim/begin; raw command stays transient; contracts.test.ts order/remap witness |
-| G3 | store.ts read/prepare/claim/begin/finalize/acknowledge; claim and begin bind adapter-prepared evidence before dispatch; contact_stale requires fresh adapter prepare after remap; contracts.test.ts and portFit.test.ts |
+| G2 | dispatch.ts: adapter prepare returns actual-command fingerprint and sanitized DispatchEvidence before claim/begin; raw command stays transient; contracts.test.ts order/remap witness |
+| G3 | store.ts: read/prepare/claim/begin/finalize/acknowledge; claim and begin bind adapter-prepared evidence before dispatch; contact_stale requires fresh adapter prepare after remap; contracts.test.ts and portFit.test.ts |
 | G4 | label.ts: durable LabelDocument versus transient read response; contracts.test.ts |
-| G5 | label.ts: deletion confirmation distinct from canProceed; contracts.test.ts; capability per-op refusals in portFit.test.ts |
+| G5 | label.ts: deletion confirmation distinct from canProceed; contracts.test.ts; capability per-operation refusals in portFit.test.ts |
 | G6 | observation.ts: core fact plus eventKind/eventKey/correlation (including external order/fulfillment refs)/tracking/diagnostics; portFit.test.ts |
 | G7 | observation.ts: eventKey/firstReceivedAt independent of fact fingerprint/nullable occurrence; portFit.test.ts |
-| G8 | capabilities.ts: token versus authenticated timestamp/freshness; observation authenticate-before-parse contract; portFit.test.ts |
-| G9 | observation.ts diagnostics: 55P03 contention, annotation, recovered receipt and safe phase/retryable refusal; portFit.test.ts |
+| G8 | capabilities.ts: token versus authenticated timestamp/freshness; observation authentication before parsing; portFit.test.ts |
+| G9 | observation.ts: 55P03 contention, annotation, recovered receipt and safe phase/retryable refusal; portFit.test.ts |
 | G10 | readback.ts: found/absent(scope,proof)/unknown/unsupported; negative absence type check in portFit.test.ts |
-| G11 | sync.ts: nullable sourceRevision/revisionSource, collection clock/run and sanitized continuation; portFit.test.ts |
+| G11 | sync.ts: nullable `sourceRevision`; non-null `revisionSource` is `"provider" \| "collection" \| "unknown"`; collection clock/run and sanitized continuation; portFit.test.ts |
 | G12 | sync.ts: movements/lot/expiry, two-way pack operations, conflicts, replay/readBack/resolution; portFit.test.ts |
-| G13 | capabilities.ts/providerCapabilities.ts: operation reasons, defaultOff, selected/readiness, auth/freshness and ownership; portFit.test.ts |
+| G13 | capabilities.ts/providerCapabilities.ts: operation reasons, defaultOff, selected/readiness, authentication/freshness and ownership; portFit.test.ts |
+| G14 | Approved amendment to FulfillmentStorePort: recordProviderAttempt(attemptKey, fulfillmentRef, preparedEvidence, mode, status: recorded), returning replayed; idempotent sanitized mapped-attempt persistence. |
+
+G14 preserves host attempt-key bytes through
+`mappedAttempt(requestKey, mappedAttemptIndex)`: initial mapping is index zero;
+a recorded mapping followed by contact remap is index one. A claim refusal before
+recording does not consume the initial index. Write after authoritative claim
+readback and before shadow exit, unsafe-status refusal or begin. Persist only
+sanitized DispatchEvidence, mode, recorded status and opaque fulfillment/key
+references. The same key returns replayed true without a second write; remapped
+recorded evidence has its own key. Durable store conformance remains future work.
 
 Private bytes, headers, commands and signed URLs are transient. Durable contracts
-have no generic audit bag, raw pass-through or copied recipient proof. Safe strings
-and opaque references still require host redaction/minting; P3 runtime projection
-and A3 adapter conformance remain owed. Token authentication does not invent signed
-freshness, collection identity does not invent provider ordering, and empty pages
-never certify absence. M06 reservations/availability and M05 facts remain owners.
+have no generic audit bag, raw pass-through or copied recipient proof. Safe
+strings and opaque references require host redaction/minting. Token authentication
+provides no signed freshness; collection identity provides no provider ordering;
+empty pages never certify absence. Inventory owns reservations/availability and
+catalog owns product facts. Durable runtime conformance remains future work;
+adapter conformance belongs to future example-adapter work.
 
-## Import provenance and enumerated neutralization
+## Donor provenance and neutralization register
 
-1. V `src/domains/fulfillment/statusMap.ts`: remove private provider trace type,
-   per-stage provider vocabulary columns and private generation header. Retain all
-   ranks, phases, canonical/local/FSM/order/alias tokens, effect metadata, labels,
-   label keys and function branch order. W1 canonical projection SHA-256 stays
-   `93ec11a68d386d2a742a2925154482766cd30380382b5836903b8039fe602023`.
-   Type-only status/step declarations live in contracts; parity pins the duplicated
-   literal status union to the map. No new provider dictionary is introduced.
-2. V `src/domains/fulfillment/normalizedFulfillmentFacts.ts`: keep core parser
-   calls and canonical-set predicate; rename application parser exports to
-   parseFulfillmentFact/parseFulfillmentTransitionConflict. Omit unfrozen core
-   re-exports; no schema or fingerprint implementation is copied. Use .js imports.
-3. V `src/domains/fulfillment/status.ts` is omitted: its display/date/sort helpers
-   have no reachable P1 export or witness. Tracking classifiers, URL constructors
-   and private dictionaries remain host-owned; no unused helper is published.
-4. V capability profile fields retain role, action policy, stock authority and
-   delivered-notice ownership. Neutralize the private role to warehouse and closed
-   provider union to host-injected opaque refs. The private static registry, aliases,
-   environment/credential reads and default values stay host-owned. Runtime selector
-   preserves provider-before-carrier/service validation and readiness separation;
-   concrete per-operation reasons/auth/freshness fields implement G13. It performs no I/O.
-5. Dispatch/label/observation/readback/sync/store/alignment declarations are the
-   approved concrete packaging boundary from the fit probe, not claimed as byte-copy
-   or whole-file donor parity. Recipient and line snapshots remain inputs; private
-   product payload metadata is represented by existing opaque product/pack refs.
-   Private codecs/builders keep actual command translation/fingerprints and keys.
+Donor paths below refer to the provenance revision above. Public destinations are relative to
+`packages/platform/src/fulfillment/` unless specified otherwise.
 
-Declared adaptation: empty/absent selection refuses with selection_required in
-this new package. The donor host's empty-selection-to-simulator alias is deliberately
-not imported, and the reference app is untouched. The donor alias remains an open
-owner follow-up, not a donor logic edit or a P1 acceptance expansion. Migration:
-none for existing public behavior; additive new surface only. F3/F5/F8 runtime
-adaptations belong to P3, F4 legacy facade remains retained, F6 UI belongs to P5b,
-F7 private defaults remain injected; F9 money SQL stays M07-owned.
+| Donor → public file | Preserved behavior and neutralization |
+| --- | --- |
+| src/domains/fulfillment/statusMap.ts → statusMap.ts | Remove private provider trace type, provider vocabulary columns and generation header. Preserve ranks, phases, canonical/local/FSM/order/alias tokens, effect metadata, labels, label keys, branch order and canonical projection. Type-only status/step declarations live in contracts; parity binds the duplicated literal status union to the map. No provider dictionary is added. |
+| src/domains/fulfillment/normalizedFulfillmentFacts.ts → normalizedFulfillmentFacts.ts | Keep core parser calls and canonical-set predicate; rename application exports to parseFulfillmentFact/parseFulfillmentTransitionConflict. Omit unfrozen core re-exports; copy no schema or fingerprint implementation; use .js imports. |
+| src/domains/fulfillment/status.ts → omitted | Display/date/sort helpers have no reachable export or witness. Tracking classifiers, URL constructors and private dictionaries remain host-owned. |
+| Capability profile fields → contracts/capabilities.ts and providerCapabilities.ts | Retain role, action policy, stock authority and delivered-notice ownership. Neutralize private role to warehouse and closed provider union to host-injected opaque refs. Keep static registry, aliases, environment/credential reads and defaults host-owned. Preserve provider-before-carrier/service validation and readiness separation; G13 adds concrete operation reasons/authentication/freshness. Selection performs no I/O. |
+| Carrier-fit declarations → contracts/{dispatch,label,observation,readback,sync,store,alignment}.ts | Concrete approved packaging, without whole-file donor parity claims. Recipient/line snapshots remain inputs; private product payload metadata uses opaque product/pack refs. Private codecs/builders retain command translation, fingerprints and keys. |
+| commerce/outboxOrderPaidFulfillmentHandler.ts and its Ports.ts → paidHandoff.ts/paidHandoffPorts.ts | Preserve parse, optional risk gate, ensureFulfilledFromPaidOrder and outcome ladder. Reuse core outbox types; retain orderUuid payload subset, event vocabulary, 15-second timeout and 300-character-plus-ellipsis truncation. Inline the subset parser/truncation instead of private server helpers. Paid truth and inventory stay behind the injected port. |
+| commerce/paidFulfillmentRecovery.ts → paidFulfillmentRecovery.ts | Replace fixed provider token with injected providerRef, private collection name with dispatchRefs and private reason prefixes with provider_. Preserve status ladders, latest-row ties, age defaults, null/missing fields, sorting and recovery posture. Structural host read projections invent no provider default or money truth. |
+| The donor's provider dispatch worker → providerDispatchWorker.ts | Rename symbols/reasons neutrally; replace private command building/calls with adapter prepare/dispatch and preserve supplied actual-command fingerprints. Candidate selection stays host-injected; request/mappedAttempt/acceptance keys retain host-supplied bytes, and the optional clock supplies sweep time. Typed store operations replace donor ports and typed refusals replace private contact-stale exceptions. |
+| Dispatch acceptance/error helpers → providerDispatchAcceptance.ts/providerDispatchError.ts | Replace private RPC bags with typed records/results and supplied opaque acceptance keys. Retain may-have-succeeded distinctions; replace private error messages/response bodies with neutral fixed diagnostic reasons. |
+| 20260714160000_fulfillment_provider_command_ledger.sql → providerCommandLedger.ts | Preserve identity/fingerprint fields and enqueue/claim/fenced submit/outcome/confirm/reconcile/resolve/release/expiry operations with their proof distinctions. Neutralize names to refs; private roles/SQL remain outside this change. |
+| Approved evidence boundary → dispatchProjection.ts | Exhaustively project the five prepared-evidence fields, only the three contactRevision fields, and the accepted/not_dispatched/unknown result union. Strip runtime extra properties without changing opaque keys or fingerprints. Raw commands, recipients, headers, bodies, credentials and signed URLs are not durable attempt evidence. |
 
-## Proof, pack and handoff
+## Declared adaptations and runtime design
 
-Smallest adequate solution: concrete type envelopes and direct injected descriptor
-lookup, with the contributed decision table unchanged. No generic plugin framework,
-new persistence abstraction, dependency, fallback or runtime redaction process is
-needed for P1. Main risks are lost carrier fields, invented external absence,
-accidental activation, false arrival evidence and package/browser growth. Focused
-type/runtime witnesses and actual artifact measurement address these; P1 does not
-claim implementation conformance for the later workers/stores.
+Empty or absent selection refuses with `selection_required`. The donor host's
+empty-selection-to-simulator alias is excluded; the reference app is unchanged.
+The donor alias remains host-owned. The surface is additive and requires no
+migration of existing public behavior. Durable store implementations and adapter
+integration remain future work. The reference facade is retained; UI integration
+remains future work, defaults stay injected, and money SQL remains payment-owned.
 
-Run the three new suites and existing packageBoundary/cold-consumer tests, focused
-TypeScript checks, structural/lint checks, publication policy/navigation, neutrality
-and API report checks. Serialize generation/build/pack. The ordinary package gate
-requires a clean committed tree. P1 repair verification used the existing
-measurePack/checkPackBudget/browserEntryBytes helpers on npm-packed materialized
-bytes before coordinator commit; those measurements are artifact previews, not
-clean-tree admission.
-Scratch logs/configs are under .context/scratch; existing cold-consumer fixtures
-use system temporary directories and clean up their own output. The P1 report records actual case
-counts/time, every pack cap/subcap, paths, checks and any delta-bound documentation
-impact evidence for coordinator submission.
+Every ACK path uses host acceptance keys, ignoring adapter-provided key fields:
+main post-dispatch ACK, loop-start accepted-proof recovery and concurrent begin.
+Keys are never re-prefixed. A lost response after a committed ACK must replay
+with the same host bytes, without another provider POST.
+Accepted-proof recovery calls only local ACK. After dispatch returns accepted,
+an ACK failure triggers readback: a matching committed acceptance settles locally;
+otherwise the worker attempts to finalize accepted proof as uncertain with
+externalRef retained so another worker can close the ACK without another POST.
+Loop-start and concurrent-begin recovery ACK failures reach the outer catch as
+`dispatch_local_operation_failed`, without this readback/finalize rescue.
+Structured adapter failures distinguish
+`not_dispatched`/effectMayHaveSucceeded false from `unknown`/true; an unclassified
+throw after dispatch remains unknown.
 
-Original P1 measurement before repair: seven authored semantic cases; 1,432 generated
-packageBoundary cases; platform pack 1,026,756 B packed / 4,582,014 B unpacked /
-1,438 files; code gzip 882,636 B / 1,404 files; root-doc gzip 48,065 B / 5 files.
-Root-doc headroom was 1,087 B against 49,152 B. Repair 1 measures 47,850 B
-(1,302 B headroom, 215 B recovered); its final pre-commit artifact preview is 1,024,956 B packed /
-4,577,081 B unpacked / 1,434 files, code gzip 882,715 B / 1,401 files. All caps
-and browser subcaps pass. Repair-cycle checks and trailers are recorded in the
-coordinator handoff report; P1 has two cold PASS reports. Provider implementation
-conformance and final integrated admission remain separate obligations.
+Keep the contributed worker loop and injected ports. One contact remap covers
+claim and begin; remapCount is bounded at one and mappedAttemptCount is independent.
+A correctable draft re-claim atomically replaces fingerprint and evidence, followed
+by authoritative readback before the attempt write. Non-draft states never
+automatically POST. Shadow mode requires a configured provider adapter because
+command preparation moved into the adapter (G2); it prepares a command but posts
+nothing.
+`FulfillmentStorePort.prepare` checks contact readiness/withholding;
+`FulfillmentDispatchPort.prepare` builds transient command bytes and returns proof.
+Absent/mismatched preparation refuses with reason `not_dispatchable`, phase
+`dispatch`, retryable false, before I/O.
 
-Known limits retained from the donor: capability lookup lowercases the selected
-providerRef but compares it against the injected descriptor as supplied; case
-normalization policy is unchanged. recordArrival still accepts parcelRef without
-fulfillmentRef; native fence/alignment implementation and proof remain P4 work.
+After payload validation, unless an enabled risk gate returns early, the paid handler awaits
+`ensureFulfilledFromPaidOrder` before returning its outcome. Risk `review`/`block` returns
+`processed` without calling fulfillment. Fulfillment `completed`, `skipped` and
+`manual_review` also return `processed` and settle the event; this does not always
+mean fulfillment completed. Outbox ACK follows the handler outcome in the outbox
+worker. OrderPaidFulfillmentPort in paidHandoffPorts.ts retains this outcome
+ladder; bridging it to FulfillmentPaidHandoffPort remains future host composition
+and native store work.
 
-Self-retro: the pre-claim fingerprint gap required an adapter prepare operation;
-a neutral-envelope hash could not preserve donor command identity. Removing the
-unreachable helper and placing contract prose on the existing platform page
-reduces shipped bytes and keeps one documentation owner. The focused order witness
-also exercises contact_stale rebuilding, while later adapter conformance remains owed.
-A verification retry overlapped the lint pre-hook build with declaration readers,
-causing two transient failures; after the build completed, the full focused package
-and cold-consumer suites passed. Lesson: serialize lint (including prelint) before
-checks that read dist, rather than treating lint as a read-only phase.
+The command ledger is a structural protocol separate from dispatch-reference
+draft/claim/begin state. Each operation delegates an atomic durable transaction
+and transition receipt to its store. Token, generation, expected version and
+lease jointly fence writes. Store expiry queues only pre-submission claims and
+makes submitting/accepted work uncertain. Confirmation and uncertain retry require
+identity-bound proofs; retry needs authoritative scoped absence, never a missing
+local row. There is no second local persistence/retry engine, generated fingerprint,
+lease takeover or retry scheduler. Native store work must prove SQL atomicity,
+access controls, contention and lease/time/proof validation.
 
+## Arrival discipline, limits and risks
 
-## P2 outcome, authority and approved G14 amendment
+D2/D7 preserve the subscription invariant: a late delivery extends the next cycle;
+the monotonic clamp must never stack deliveries or move a cycle earlier. A
+replacement may settle delivery alignment as `aligned` only after it reached the
+customer. Its superseded predecessor is no longer an outstanding obligation, but
+an in-flight or undelivered replacement still is. Never call
+`subscription_delivery_alignment_confirm_replacement` for a replacement that did
+not arrive: the operation records the customer-facing fact "Parcel delivered"
+and shifts the cycle later. The note-only operator attestation is unchanged and
+has no caller here; native alignment and continuity proof remain future work.
 
-P2 is stacked on frozen P1 `9328b676f28dfd08ccba159c25feb502e4c45ddd`,
-in the assigned `claude/oss-m08-p2-fulfillment` worktree. The owner's delegated
-coordinator authorizes local paid-handler/recovery, durable-ledger protocol,
-dispatch/fence/acceptance/projection implementation and focused checks, plus G14.
-P2 is committed as `aa03ee4a` and its review-cycle-1 repair as `a81ab7e8` (main-path
-ACK uses host acceptance keys). Submission, merge and release remain coordinator/
-human gates. P2 includes no network,
-provider/account/secret access, SQL, other-worktree mutation, reference wiring,
-money implementation, inventory authority, replacement-confirmation caller,
-new subpath, package, dependency or version preparation is in scope.
+Known limits: capability lookup lowercases selected providerRef but compares
+it with injected descriptors as supplied. This case asymmetry arises from injected
+descriptors. recordArrival accepts parcelRef without fulfillmentRef; native
+fencing and alignment remain future work.
+Fixture stores establish worker behavior and protocol transport, not durable
+atomicity, expiry, lease enforcement or database proof validity.
 
-G14 explicitly amends FulfillmentStorePort with recordProviderAttempt(attemptKey,
-fulfillmentRef, preparedEvidence, mode, status: recorded), returning replayed.
-It adds no exported type name. The host preserves the two existing attempt-key
-byte strings through mappedAttempt(requestKey, mappedAttemptIndex): initial
-mapping is index zero, a recorded mapping followed by contact remap is index one.
-A claim refusal before recording does not consume the initial attempt index.
-The separate write stays after authoritative claim readback and before shadow
-exit, unsafe-status refusal or begin. It persists only sanitized DispatchEvidence,
-mode and recorded status, with opaque fulfillment/key references. Same key means
-replayed true and no second write; remapped recorded evidence has its own key.
-P2's fixture proves ordering/key/redaction behavior; P3 owns store conformance.
-All other P1 contract changes in P2 are explanatory comments only.
-
-Smallest adequate solution: keep the contributed worker loop and injected ports;
-represent the separately assigned durable command ledger as a structural protocol,
-without a second local persistence/retry engine. Each ledger operation delegates
-one atomic durable transaction and transition receipt to its store. Its token,
-generation, expected version and lease jointly fence writes; store-side expiry
-queues only pre-submission claims and makes submitting/accepted work uncertain.
-Confirmation and uncertain retry require the donor's identity-bound proofs;
-retry requires authoritative scoped absence, never a local missing row. P4 owns
-SQL, atomicity, ACLs, contention, lease/time/proof validation and native proofs.
-The ledger is separate from dispatch-reference draft/claim/begin state: the
-factory's typed methods neither add methods to the frozen dispatch port nor
-replace durable enforcement with an in-memory mock.
-
-### P2 donor map and complete neutralization list
-
-1. V commerce/outboxOrderPaidFulfillmentHandler.ts and its Ports.ts become
-   paidHandoff.ts/paidHandoffPorts.ts. Preserve parse, optional risk gate,
-   ensureFulfilledFromPaidOrder and outcome ladder. Reuse core outbox types;
-   retain the frozen orderUuid payload subset, event vocabulary and 15s timeout.
-   Inline the unchanged 300-character-plus-ellipsis truncation and subset parser
-   rather than importing private server helpers. M07 paid truth and M06 inventory
-   stay inside the injected fulfillment port; P4 owns the concrete durable bridge.
-   The donor OrderPaidFulfillmentPort in paidHandoffPorts.ts retains the handler's
-   outcome ladder; P4/P7 host composition bridges it to P1's FulfillmentPaidHandoffPort.
-   A successful obligation precedes the handler result and the outbox ACK.
-2. V commerce/paidFulfillmentRecovery.ts becomes paidFulfillmentRecovery.ts.
-   Replace the fixed provider token with an injected providerRef, the private
-   dispatch collection name with dispatchRefs, and private reason prefixes with
-   provider_. Preserve status ladders, latest-row tie behavior, age defaults,
-   recovery posture, null/missing fields and sorting. Row shapes remain structural
-   host read projections; no provider selection/default or money truth is invented.
-3. V fulfillment/omnipackDispatchWorker.ts becomes providerDispatchWorker.ts.
-   Rename symbols/reasons neutrally. Private command building and external calls
-   become adapter prepare/dispatch, actual-command fingerprints remain supplied
-   unchanged. Host listCandidates/request/mappedAttempt/acceptance keys preserve
-   original byte identities; the optional clock only supplies the donor sweep time.
-   Store read/prepare/readCandidate/claim/readback/attempt/begin/ACK/finalize replace
-   the corresponding donor port names, with typed refusal results replacing the
-   private contact-stale exception classifier. Preserve one remap across claim
-   AND begin, and the separate mapped-attempt index. A correctable draft re-claim
-   atomically replaces fingerprint and evidence together. Non-draft states never
-   automatically POST. Shadow requires command preparation but performs no POST.
-4. V dispatch acceptance/error helpers become providerDispatchAcceptance.ts and
-   providerDispatchError.ts. Typed store records/results replace private RPC bags;
-   opaque acceptance keys are supplied, never re-prefixed. Accepted-proof repair
-   and the main post-dispatch ACK use the same host acceptance keys, ignoring
-   adapter-provided key fields so a committed ACK replays after a lost response.
-   Repair calls only local ACK; failed ACK reads back then finalizes accepted proof as
-   uncertain with externalRef retained. The next worker can close the ACK without
-   another POST. Adapter structured failure translation retains may-have-succeeded
-   classification in not_dispatched(false) versus unknown(true); an unclassified
-   throw after dispatch remains unknown. Never copy private error messages or
-   response bodies into diagnostics: neutral fixed reasons replace those strings.
-5. V 20260714160000_fulfillment_provider_command_ledger.sql supplies the separate
-   providerCommandLedger.ts protocol: preserve identity/fingerprint fields,
-   enqueue/claim/fenced submit/outcome/confirm/reconcile/resolve/release/expiry
-   operations and their proof distinctions. Neutralize field names to refs;
-   private role/SQL implementation remains outside P2. No local state store,
-   generated fingerprints, lease takeover, retry scheduler or SQL is added.
-6. dispatchProjection.ts is the new exhaustive typed projection: copy the five
-   prepared-evidence fields, including only the three contactRevision fields,
-   and the exact accepted/not_dispatched/unknown result union. It strips runtime
-   extra properties without changing opaque keys or fingerprints; no raw command,
-   recipient, headers, body, credential or signed URL is durable attempt evidence.
-   Internal helpers/types are not new entry exports. Four frozen P2 values are
-   exported only from the existing fulfillment entry.
-
-### P2 advisory closure and proof boundary
-
-(a) remapCount remains bounded at one; mappedAttemptCount is independent.
-Draft refresh is atomic for fingerprint plus evidence, then read back before the
-attempt write. (b) absent/mismatched adapter preparation refuses exactly
-reason not_dispatchable, phase dispatch, retryable false, before I/O.
-(c) FulfillmentStorePort.prepare is contact readiness/withholding;
-FulfillmentDispatchPort.prepare builds transient command bytes and returns proof.
-(d) P1's committed candidates/two cold PASS reports and eight cases are recorded
-above; this section records P2's committed candidate and its committed review repair.
-
-P2's original eight additional authored cases in the existing fulfillment test directory cover
-the paid handler/recovery ladder, claim/begin remap bound, order and redaction,
-shadow/key replay/unsafe statuses, lost ACK before/after commit, ambiguous/definite
-provider failures, and ledger fence/proof transport. Existing P1 cases remain.
-Generated packageBoundary rows are separate and their execution time is charged.
-Fixture stores establish worker behavior/protocol transport only; P3 conformance
-and P4 real-database fences/expiry/transactions/proofs remain owed. Adapter absence
-or mismatched preparation refusal is documented here; P3 owns its conformance.
-
-Run only the coordinator's focused build/test/type/API/structural/eslint/neutrality,
-pack/root-doc and policy/navigation checks, serializing phases that mutate dist.
-Keep platform README unchanged and compare actual diff paths against the 35 cap.
-The external P2 report records exact measurements, trailers, failures and stops.
-No clean committed admission, provider activation or stable-framework claim is made.
-
-P2 self-retro: checking the source register distinguished the separately assigned
-ledger protocol from the frozen dispatch store; an initial fence-gap concern was
-withdrawn before edits. Lesson: compare the owned protocol boundary before
-requesting a port amendment; preserve G14 as the only P1 signature change.
-
-Repair 1 closes P2A-main-path-ack-keys-adapter-sourced: host acceptance keys
-override adapter fields before ACK and failed-write recovery. The fixture returns
-different adapter keys, models acceptance replay by provider-attempt key, and
-checks identical host bytes at main ACK, loop-start repair and concurrent begin.
-A lost response after commit repairs with replayed counted, updated zero and no
-second acceptance attempt. Frozen P1 and G14 signatures remain unchanged.
-Repair self-retro: a status-only ACK mock hid key drift → key-indexed acceptance
-proof catches the replay failure without another production abstraction.
-
-## P3 local implementation task
-
-Outcome: contribute observation verification/apply/replay, reconciliation, tracking,
-stock/product sync, evidence readers and the offline adapter/store conformance
-runner. Coordinator and owner's delegate approve G15, G16 and G17 in this diff.
-P3 is committed as 53881962 on top of P2 aa03ee4a, and the reviewed P2 repairs
-(a81ab7e8, c64399da) are merged into it. It adds no provider call, SQL, release
-or activation; submission, merge and release remain coordinator/human gates.
-
-Approved port amendments (also declared in the fragment and API reports):
-- G15 extends SyncCursor with coverageGapSkus: readonly string[] (legacy absence
-  reads as []). Only a succeeded predecessor confirms coverage; persist the
-  current sorted sellable/provider-stock gap intersection on success, [] on
-  failure. Confirmation is the intersection with the preceding successful set,
-  not a new alert on the first run. Failure breaks consecutiveness.
-- G16 replaces balances-only readLocalInventoryStock with timed unaggregated
-  lines: skuRef, quantity (onHand/reserved/unavailable/safetyStock), fulfillable,
-  locationStatus, lotStatus, expiresAt. The worker passes captured requestedAt
-  and performs the donor filter/sums unchanged. Expiry at requestedAt is unusable.
-  This unreleased M08 seam changes no M06 API or adapter stockSync provider shape.
-- G17 adds inline worker-input localPersistence, without a named export:
-  readLocalFulfillmentState(ref) returns status/latestStatusOccurredAt/handedOverAt;
-  recordObservation is keyed by eventKey, retains firstReceivedAt and returns
-  replayed; markProcessed is idempotent. Hosts own durable transactions, replay
-  and recovery. The state probe found product state fits existing operations;
-  cron pagination is outside the worker.
-
-Neutralization register (no algorithm refactor):
-1. Observation effects: donor stock → handoff → each tracking → invoice and
-   callback/throw order retained. Typed normalized observation replaces arbitrary
-   rawEvent/payload; status policy and opaque effect keys are injected.
-2. Verified ingress: host adapter authenticates untouched bytes before its private
-   parse/map; package projects only typed evidence. Host lifecycle operations,
-   stable event keys, superseding-conflict classification, contention annotation
-   and recovered-picked receipt are injected. HTTP/token/route/vendor codecs stay
-   private; a replay cannot create a second effect.
-3. Reconciliation: normalized readback replaces private list DTO/mapping; batch
-   enumeration, dispatch correlation, acceptance, exception and invoice operations
-   and original key bytes are injected. Preserve local off-track evidence-only,
-   nullable timestamps, stale skip (including invoice retry), per-row failures and
-   classified state-conflict quarantine. Inline unmapped correlation evidence
-   retains the pre-map ACK and off-track no-quarantine boundary without changing
-   the adapter readback union. Provider-specific error decoding stays
-   host-side; safe typed refusal details replace raw error strings.
-4. Timestamp calendar/zone validation and canonical off-track set stay unchanged.
-   Tracking keeps first trimmed number and provider-carrier selection precedence;
-   carrier normalization and public URL construction stay private callbacks.
-5. Stock: typed snapshot/quantity/cursor projections replace donor private DTOs;
-   original run/current/snapshot/evidence/sentinel bytes and movement time zone are
-   host inputs. Availability, freshness, reservations, two-run confirmation,
-   packaging exclusion, partial failures and recovery are unchanged. No inventory
-   write/availability authority is implemented. G15/G16 are explicit amendments.
-6. Product: existing typed product port replaces private interfaces; host supplies
-   collection identity and original evidence keys. Push metadata stays private;
-   ensure-null skip, additive EAN diff, sync markers, local ownership refusal,
-   conflict mapping/resolution and per-SKU failures stay unchanged.
-7. Evidence readers: inline HTTP shapes, injected BFF responder and request/response parsers
-   replace private web framework/schema imports. Method/auth/validation/read order
-   and F8 authorization/read refusal detail remain. No resolving mutation added.
-8. observationProjection and adapterConformance are new boundary proof code.
-   Only two conformance types are added to the type-only contracts entry; the
-   approved runner name is runFulfillmentAdapterConformance (superseding the
-   proposed assert name). All other P3 exports follow the frozen register.
-
-Acceptance/proof: donor-vs-inline F5 trace and throw boundaries; F3 contention,
-annotation and recovered-picked diagnostics; F8 refusal details; G15 consecutive
-success/failure-reset and G16 exact expiry; G17 cancelled evidence-only, stale
-skip without alignment change, receipt replay and idempotent processing; full and
-minimal fixture adapters plus G14/reclaim/remap store proof. Run only approved
-focused checks, serialize build/API/pack output, recount all paths against base
-(cap 35), keep package README unchanged, enforce root-doc gzip <=49,152 B.
-
-Committed P3 evidence (66e785c4, before repair cycle 1): full scope fits 34 paths
-against review base c64399da (cap 35),
-including generated API/catalogue companions; no split. Eleven new semantic cases
-pass (27 fulfillment plus 1,498 generated boundary cases; combined local elapsed
-3.576 s, new test bodies 0.0495 s). The focused type/API/structural/ESLint/neutrality,
-pack and policy checks pass. Candidate-byte pack: 1,072,518 B packed, 4,794,795 B
-unpacked, 1,503 files; code gzip 929,041 B; root-doc gzip unchanged 47,850 B with
-1,302 B headroom. All browser subcaps pass, fulfillment contracts 20/32 B.
-The package README and source-release snapshot are unchanged; live bindings pass,
-and snapshot refresh belongs to release preparation. No no-impact trailers are
-required: the affected fulfillment owner section is substantively updated.
-Risk/proof boundary: local chronology, replay and before-I/O identity are material
-behavior; these fixture checks do not prove durable host atomicity or native
-arrival alignment. P4 and the supervisor's committed native review remain owed.
-That evidence predates the two native reviews and repair cycle 1; no delivery
-authority was added.
-
-P3 self-retro: the first test run exposed two forbidden internal BFF imports and
-an undefined sync-return redaction bug; the later lint read ruled out cross-module
-HTTP/BFF edges entirely. Module boundary friction → inject the existing responder
-and inline request shape, preserving handler behavior without adding an edge or
-changing the rule. Initial npm ci hit sandbox DNS; the authorized retry succeeded.
-
-
-P3 review repair (committed on top of 66e785c4) closes P3A/P3B-ingress-external-ref-guard-dropped
-with the donor's trimmed observation-or-dispatch external-reference guard before
-ACK/status/effects/processed mark. Keep the received event unprocessed on failure.
-Remove dead diagnostics mutation; retain best-effort host annotation and original
-stock-error rethrow. Project unmapped correlation evidence before host calls;
-provider read uncertainty fails the run, matching the donor's uncaught page-read
-failure. G17's frozen markProcessed outcome has only status and optional refusal;
-it cannot record the donor's superseded reason without a signature change. This
-is a known limit; no G14–G17 or frozen port change is authorized.
-Acceptance: missing/blank refs throw with no lifecycle writes or processed mark;
-either reference proceeds; focused test/type/API/structural/lint/neutrality/root-doc
-and policy/navigation checks pass, at most 35 paths against c64399da.
-
-P3 repair self-retro: donor boundaries → restore the direct pre-ACK guard and
-share the existing correlation projection, without a new port or outcome. The
-first scratch typecheck lacked Node type discovery because its config lived in
-/tmp; explicit repository typeRoots fixed the harness without source changes.
+Main risks are lost carrier fields, invented external absence, accidental
+activation, false arrival evidence, replay-key drift and package/browser growth.
+Use concrete type envelopes, direct injected descriptor lookup and the unchanged
+decision table; no generic plugin framework, dependency or persistence abstraction
+is needed. Contract/status-parity/port-fit witnesses, paid/recovery ladders,
+claim/begin remap bounds, ordering/redaction, shadow/replay/unsafe statuses, lost
+ACK before/after persistence, ambiguous/definite provider outcomes and ledger
+fence/proof transport define the affected verification surface. Package-boundary
+and cold-consumer checks cover entry isolation. Validate structural/lint, types,
+API, neutrality, publication policy/navigation and artifact/browser budgets;
+serialize generation/build/pack and phases that mutate dist.

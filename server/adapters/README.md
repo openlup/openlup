@@ -43,6 +43,16 @@ default. Reusing the same named reference value preserves the adapter's
 system-managed read-only refusal, mirror ownership checks and currency mapping;
 no database predicate, query or audit behavior changes.
 
+The reference payment-control store takes verified ingress identity from the
+normalized `openlupEvidence.fingerprint` on the first insert. Receipt time and
+adapter audit payload do not redefine that identity. On replay it reads the
+winning row's `source_evidence.observedAt`; missing durable clock evidence
+refuses processing. The selected package ingress applies and post-processes at
+that first receipt instant (D11). Existing routes are not automatically moved
+to the opt-in ingress. Direct missing-audit tests cover failure diagnosis, alias
+activation, saved-method consent and profile alias presentation; the profile's
+existing presentation fallback grants no recurring execution authority.
+
 ## Does Not Own
 
 - Provider HTTP clients, env parsing, signatures, and low-level payload

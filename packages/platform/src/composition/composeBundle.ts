@@ -30,9 +30,15 @@ import {
   type PlatformBundleId,
 } from "../kernel/index.js";
 
+// Structural, so the composer declares no edge to the payments module; createPaymentServices satisfies it.
+interface PaymentServices {
+  run<T>(work: (port: unknown) => Promise<T>): Promise<T>;
+}
+
 type Env = Record<string, string | undefined>;
 
 export interface PlatformBundlePorts {
+  payments?: PaymentServices | null;
   http: HttpRuntimePort | null;
   scheduler: SchedulerPort | null;
   blob: BlobStoragePort | null;
@@ -54,6 +60,8 @@ export interface PlatformBundle {
  * transactional binder also receives the bundle's data capability.
  */
 export interface PlatformBundleBinders {
+  /** Explicit host selection only; no default payment executor. */
+  payments?: (env: Env) => PaymentServices | null;
   /**
    * The supabase-js `createClient` used by the default Supabase Storage blob binder. Declared
    * structurally here so the composition entry's declarations reference no data-module type.
@@ -103,6 +111,7 @@ export function createBundleComposer(binders: PlatformBundleBinders = {}): Compo
       analytics: binders.analytics?.(capabilities.analytics, env) ?? null,
       transactional: binders.transactional?.(capabilities.transactional, capabilities.data, env) ?? null,
     };
+    if (binders.payments) ports.payments = binders.payments(env);
     ports.scheduler = binders.scheduler?.(capabilities.scheduler, env) ?? null;
     return { id, descriptor, ports };
   };
