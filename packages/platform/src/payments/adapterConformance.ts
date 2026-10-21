@@ -1,3 +1,4 @@
+import { projectVerifiedEvidence } from "./verifiedEvidenceProjection.js";
 import { validatePaymentExecutionContractResult } from "@openlup/core/testing";
 import type {
   PaymentAdapterConformanceEvidence, PaymentAdapterConformanceSubject,
@@ -22,7 +23,7 @@ export async function runPaymentAdapterConformance(
     adapter.attemptPort.validateInput(executionInput);
     const result = await adapter.attemptPort.execute(executionInput);
     const { handoff, ...execution } = result;
-    const sensitiveValues = [executionInput.customerAuthorization,
+    const sensitiveValues = [executionInput.payer?.email, executionInput.payer?.name, executionInput.customerAuthorization,
       handoff?.kind === "client-confirmed" ? handoff.payload : handoff?.url].filter((v): v is NonNullable<typeof v> => v !== undefined);
     const input = {
       idempotencyKey: executionInput.attemptRef, providerIdempotencyKey: executionInput.providerIdempotencyKey,
@@ -36,6 +37,12 @@ export async function runPaymentAdapterConformance(
           providerRequestFingerprint: input.providerRequestFingerprint }, responsePayload: result.diagnostics },
     });
     requireFact(validation.ok, "execution diagnostics and taxonomy");
+    requireFact(!sensitiveValues.some(value => JSON.stringify(result).includes(value)
+      && (value === executionInput.payer?.email || value === executionInput.payer?.name)), "execution payer redaction");
+    if (adapter.capabilities.payerContext.requiresPayerBlock && !executionInput.payer) {
+      requireFact(result.dispatch.kind === "notDispatched" && result.dispatch.evidence.exact
+        && result.dispatch.evidence.phase === "before-dispatch", "missing required input exact notDispatched");
+    }
     const returned = await adapter.readbackPort.readPayment(readbackInput);
     const { handoff: readbackHandoff, ...readback } = "handoff" in returned ? returned : { ...returned, handoff: undefined };
     requireFact(!sensitiveValues.some(value => JSON.stringify(readback).includes(value)), "readback secret redaction");
@@ -67,7 +74,7 @@ export async function runPaymentAdapterConformance(
       const verified = await adapter.verifyPort.verifyAndNormalize(fixture.input);
       requireFact(JSON.stringify(verified) === JSON.stringify(fixture.expected), "verified fixture");
       if (verified.kind !== "refusal") {
-        requireFact(!sensitiveValues.some(value => JSON.stringify(verified.providerAuditPayload ?? {}).includes(value)),
+        requireFact(!sensitiveValues.some(value => JSON.stringify({ payload: projectVerifiedEvidence(verified, fixture.input, "require-evidence").rawPayload, diagnostics: result.diagnostics }).includes(value)),
           "audit payload secret redaction");
         const outcome = verified.kind + ":" + verified.outcome;
         const previous = fingerprints.get(verified.providerEventId);

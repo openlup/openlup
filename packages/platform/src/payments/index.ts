@@ -9,3 +9,7 @@ export { runPaymentProviderReconciliationWorker } from "./paymentProviderReconci
 export { verifyPaymentAttemptNow } from "./paymentVerifyNowService.js";
 export { runExecutionConformance, runDurableEventConformance } from "./eventConformanceRunner.js";
 export { runPaymentAdapterConformance } from "./adapterConformance.js";
+
+export { createPostgresPaymentTruthPort } from "./postgresPaymentTruth.js";
+export { PAYMENT_MIGRATIONS } from "./sql.js";
+export { paymentSchemaDescriptor } from "./schemaCapabilities.js";
