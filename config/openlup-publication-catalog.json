@@ -7474,14 +7474,6 @@
       "class": "public-output"
     },
     {
-      "path": "server/adapters/stripe/stripeWebhookNormalizer.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/adapters/stripe/stripeWebhookNormalizer.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/adapters/subscriptionDeliveryAlignmentGateway.test.ts",
       "class": "public-output"
     },
@@ -13878,10 +13870,6 @@
       "class": "public-output"
     },
     {
-      "path": "server/infra/providerWebhookVerifier.test.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/infra/resend/emailOriginMetadata.ts",
       "class": "public-output"
     },
@@ -13930,23 +13918,11 @@
       "class": "public-output"
     },
     {
-      "path": "server/infra/stripe/paymentIntentMapper.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/infra/stripe/stripeApiClient.test.ts",
       "class": "public-output"
     },
     {
       "path": "server/infra/stripe/stripeApiClient.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/infra/stripe/webhookVerifier.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/infra/tpay/blikRecurringMapper.ts",
       "class": "public-output"
     },
     {
@@ -13983,22 +13959,6 @@
     },
     {
       "path": "server/infra/tpay/tpayTransactionPayload.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/infra/tpay/webhookJwsVerifier.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/infra/tpay/webhookJwsVerifier.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/infra/tpay/webhookNormalizer.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/infra/tpay/webhookVerifier.ts",
       "class": "public-output"
     },
     {

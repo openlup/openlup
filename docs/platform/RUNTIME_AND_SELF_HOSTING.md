@@ -502,6 +502,14 @@ execution. Second-runtime and deployed conformance remain separate adoption proo
 
 ## Provider and host boundaries
 
+Unused root payment webhook verifiers, notification normalization and test-only
+draft mappers have retired after production-importer checks. The shared HTTP
+helpers and unrelated mapper/readiness tests remain. Opt-in package payment
+adapters retain their implementations and witnesses; no host composition or
+provider activation changes. The [retirement ledger](plans/oss-a2-payment-adapters.md#o-p3b-1-unused-root-retirement-2026-10-22)
+records the exact root cases and remaining adopter leg.
+
+
 
 Communications server algorithms now delegate through the platform package. The
 reference bindings still own the maintained HTTP mail provider egress/environment selection, origin defaults,

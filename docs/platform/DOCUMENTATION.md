@@ -69,6 +69,14 @@ immutable release; see the [install support policy](../../.github/INSTALL_SUPPOR
 
 ## Ownership
 
+The bounded unused-root payment retirement removes only the ten deleted paths
+from the authored publication catalogue. Generic HTTP helpers, package adapter
+sources and their witnesses keep their existing inventory and owners. Generated
+source bindings and navigation describe that smaller tree; they establish no
+new export, activation or release. The [case ledger](plans/oss-a2-payment-adapters.md#o-p3b-1-unused-root-retirement-2026-10-22)
+distinguishes root retirement from the remaining adopter obligation.
+
+
 The opt-in payment example's private capability descriptor is catalogued with
 its adapter sources; the existing public re-export is unchanged. The
 [payment contract](CANONICAL_CONTRACTS.md#opt-in-payment-example) owns the

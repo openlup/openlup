@@ -30,6 +30,13 @@ state writer is not an extension seam.
 
 ## Runtime boundaries
 
+The shared root [webhook HTTP helper](../../server/_lib/payment/webhookSignature.ts)
+retains raw-body reading, HMAC verification, timing-safe equality and body-size
+limits for existing callers. Its unused provider-specific signature verifier
+has retired; provider verification remains inside the opt-in package adapters.
+The six generic helper cases remain in the root witness.
+
+
 Payments uses the existing bundle composer’s optional named binder. The host
 injects a scoped truth port and cleanup through `createPaymentServices`; schema
 or capability absence refuses selection. There is one executor per runtime unit,
