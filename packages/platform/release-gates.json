@@ -415,6 +415,32 @@
       ],
       "entrypoint": "dist/payments/tpay/index.d.ts",
       "snapshot": "api/payments-tpay.api.md"
+    },
+    "./fulfillment": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/packageBoundary.test.ts",
+        "test/fulfillment/contracts.test.ts",
+        "test/fulfillment/statusMap.test.ts",
+        "test/fulfillment/portFit.test.ts"
+      ],
+      "entrypoint": "dist/fulfillment/index.d.ts",
+      "snapshot": "api/fulfillment.api.md"
+    },
+    "./fulfillment/contracts": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/packageBoundary.test.ts",
+        "test/fulfillment/contracts.test.ts",
+        "test/fulfillment/statusMap.test.ts",
+        "test/fulfillment/portFit.test.ts"
+      ],
+      "entrypoint": "dist/fulfillment/contracts/index.d.ts",
+      "snapshot": "api/fulfillment-contracts.api.md"
     }
   },
   "pack": {
@@ -441,7 +467,8 @@
       "./pricing/contracts": 416,
       "./promotions/contracts": 32,
       "./shipping/contracts": 32,
-      "./payments/contracts": 32
+      "./payments/contracts": 32,
+      "./fulfillment/contracts": 32
     }
   }
 }

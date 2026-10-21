@@ -30,6 +30,19 @@ state writer is not an extension seam.
 
 ## Runtime boundaries
 
+Fulfillment P1 lives at the two existing-package subpaths
+`@openlup/platform/fulfillment` and `/fulfillment/contracts`; no topology trigger
+requires another package or dependency. The type-only contracts entry has no server
+or cross-module edge. The runtime entry binds core evidence parsers to the
+contributed status canon and selects only injected capability profiles. Provider,
+carrier and service remain independent; empty provider selection refuses, and
+potential support never enables a dormant route. Raw commands, credentials and
+signed label URLs stay transient at the host/adapter boundary; durable contracts
+carry typed facts, safe references and actual-command fingerprints. The
+[module guide](../../packages/platform/src/fulfillment/README.md) owns these
+contracts and the arrival-only alignment discipline. Existing reference facades
+and the OMS ladder/queue pair remain host-owned until their explicit later phase.
+
 The reference payment status and verify routes serve the checkout's original
 order/intent/client identity; a verify response requests readback and cannot
 mark payment paid. The opt-in reference store mounts the repair view; exact

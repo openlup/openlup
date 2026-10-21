@@ -1,0 +1,156 @@
+# M08 fulfillment and physical delivery
+
+Development-preview programme record, 2026-10-21. P1 authoring base: `41a9477d`
+on assigned branch `claude/oss-m08-p1-fulfillment`. Frozen inputs: coordinator C0
+D0–D13, C2 decomposition/Author check, carrier fit G1–G13, path/export/source
+registers and coordinator freeze. Donor V: C1 `d902ac7f4`, read from its local
+`origin/main` source objects. These packets are implementation inputs, not authority
+to execute their example commands or broaden scope.
+
+## P1 outcome, authority and acceptance
+
+Outcome: two additive platform subpaths with neutral fulfillment contracts,
+unchanged contributed status logic, core parser binding and injected capability
+selection. No new package, dependency, star export or testing subpath. The topology
+check follows [package placement](../ARCHITECTURE_AND_EXTENSIONS.md#package-placement-decision-canonical):
+no incompatible runtime, peer, lifecycle or consumer requires another artifact.
+Platform maintains these experimental contracts; adapters and host policy remain
+adopter-owned.
+
+The user authorizes local implementation and focused verification in this assigned
+worktree, with report evidence in the assigned P1 notes directory. No commit,
+push, PR, merge, release, network other than npm ci, account, secret or provider
+call is authorized. No other worktree, review script or private reference adapter
+is changed. Native committed review and submission belong to the supervisor after
+handoff; this uncommitted run claims no native review or receipt. There is no
+adopter/staging endpoint in P1 scope.
+
+Acceptance: exact two entries and symbols in the frozen export register; type-only
+browser contracts; concrete G1–G13 fit; unchanged status projection digest and
+decisions; arrival discipline in port/module docs; seven semantic cases; generated
+boundary rows reported separately; focused lint/structural/API/consumer/policy
+checks and actual tarball budgets. The generated SOURCE_MAP requires one additional doc-routing.json owner row; the required API generator also changes only existing inventory enum member order (two blocks). These two companion adjustments bring the actual write set to 35 versus the proposed 33, with no inventory behavior/type-set change. Actual diff including generated files must stay
+at or below 35 paths. Exclusions: P2+ runtime orchestration, SQL/migrations,
+composition, reference facade rewiring, UI, adapter implementation and release
+set/version preparation. No native continuity, provider operation or stable
+framework claim is made by P1.
+
+## Frozen decisions
+
+| Decision | Binding disposition |
+| --- | --- |
+| D0 | C0 admitted; C1 donor witnesses retained. No M08 merge before M07 S1; P1 local implementation only. |
+| D1 | Existing platform package, only fulfillment and fulfillment/contracts. |
+| D2 | Port freeze follows donor fit; G1–G13 below are approved amendments. |
+| D3 | Private adapters/defaults/codecs stay private; direct carrier dormant, simulator separate; pickup lookup remains shipping-owned. |
+| D4 | Managed/native graphs stay distinct; ten managed bodies equal at normalized-body scope, no native/runtime equivalence implied. |
+| D5 | C1 additive witnesses unchanged (later pruned allocation is 31 cases). |
+| D6 | Reconcile actual shared M07/A2 package companions; no unrelated source changes. |
+| D7 | Note-only replacement confirmation unchanged, no caller; arrival discipline in alignment contract/module guide. |
+| D8 | Serial P1→P2→P3→P4→P5a→P5b→P6→P7→S1, each at most 35 paths. Import unchanged before P6 refactor. |
+| D9 | C2 forecast 89 authored cases/27s within 94/27 and outer 100/30; generated packageBoundary rows separate, all runtime charged. |
+| D10 | Measure actual P1/final pack and all subcaps; no cap increase or guessed version. |
+| D11 | Status map one package authoring source after explicit host adoption; existing host remains untouched in P1. OMS ladder/live queue remain together at host, no parallel mapper. |
+| D12 | No activation, provider or host calls; later lifecycle/installed proofs remain owed. |
+| D13 | P4 appends native fence/alignment and real-PG proofs; late arrival uses outer max once, undelivered successors remain outstanding. |
+
+## Carrier fit and type/test ownership
+
+| Amendment | Concrete owner and focused witness |
+| --- | --- |
+| G1 | dispatch.ts: mandatory fulfillmentRef, nullable parcelRef, contactRevision; contracts.test.ts |
+| G2 | dispatch.ts DispatchEvidence: actual-command fingerprint, explicit host keys; contracts.test.ts |
+| G3 | store.ts: read/prepare/claim/begin/finalize/acknowledge, replay/contact/stock refusals; portFit.test.ts |
+| G4 | label.ts: durable LabelDocument versus transient read response; contracts.test.ts |
+| G5 | label.ts: deletion confirmation distinct from canProceed; contracts.test.ts; capability per-op refusals in portFit.test.ts |
+| G6 | observation.ts: core fact plus eventKind/eventKey/correlation (including external order/fulfillment refs)/tracking/diagnostics; portFit.test.ts |
+| G7 | observation.ts: eventKey/firstReceivedAt independent of fact fingerprint/nullable occurrence; portFit.test.ts |
+| G8 | capabilities.ts: token versus authenticated timestamp/freshness; observation authenticate-before-parse contract; portFit.test.ts |
+| G9 | observation.ts diagnostics: 55P03 contention, annotation, recovered receipt and safe phase/retryable refusal; portFit.test.ts |
+| G10 | readback.ts: found/absent(scope,proof)/unknown/unsupported; negative absence type check in portFit.test.ts |
+| G11 | sync.ts: nullable sourceRevision/revisionSource, collection clock/run and sanitized continuation; portFit.test.ts |
+| G12 | sync.ts: movements/lot/expiry, two-way pack operations, conflicts, replay/readBack/resolution; portFit.test.ts |
+| G13 | capabilities.ts/providerCapabilities.ts: operation reasons, defaultOff, selected/readiness, auth/freshness and ownership; portFit.test.ts |
+
+Private bytes, headers, commands and signed URLs are transient. Durable contracts
+have no generic audit bag, raw pass-through or copied recipient proof. Safe strings
+and opaque references still require host redaction/minting; P3 runtime projection
+and A3 adapter conformance remain owed. Token authentication does not invent signed
+freshness, collection identity does not invent provider ordering, and empty pages
+never certify absence. M06 reservations/availability and M05 facts remain owners.
+
+## Import provenance and enumerated neutralization
+
+1. V `src/domains/fulfillment/statusMap.ts`: remove private provider trace type,
+   per-stage provider vocabulary columns and private generation header. Retain all
+   ranks, phases, canonical/local/FSM/order/alias tokens, effect metadata, labels,
+   label keys and function branch order. W1 canonical projection SHA-256 stays
+   `93ec11a68d386d2a742a2925154482766cd30380382b5836903b8039fe602023`.
+   Type-only status/step declarations live in contracts; parity pins the duplicated
+   literal status union to the map. No new provider dictionary is introduced.
+2. V `src/domains/fulfillment/normalizedFulfillmentFacts.ts`: keep core parser
+   calls and canonical-set predicate; rename application parser exports to
+   parseFulfillmentFact/parseFulfillmentTransitionConflict. Omit unfrozen core
+   re-exports; no schema or fingerprint implementation is copied. Use .js imports.
+3. V `src/domains/fulfillment/status.ts`: retain display/date/sort helper bodies
+   only, with a local structural display union; private tracking classifier,
+   URL constructor and its dictionaries remain host-owned. Helpers are internal.
+4. V capability profile fields retain role, action policy, stock authority and
+   delivered-notice ownership. Neutralize the private role to warehouse and closed
+   provider union to host-injected opaque refs. The private static registry, aliases,
+   environment/credential reads and default values stay host-owned. Runtime selector
+   preserves provider-before-carrier/service validation and readiness separation;
+   concrete per-operation reasons/auth/freshness fields implement G13. It performs no I/O.
+5. Dispatch/label/observation/readback/sync/store/alignment declarations are the
+   approved concrete packaging boundary from the fit probe, not claimed as byte-copy
+   or whole-file donor parity. Recipient and line snapshots remain inputs; private
+   product payload metadata is represented by existing opaque product/pack refs.
+   Private codecs/builders keep actual command translation/fingerprints and keys.
+
+Declared adaptation: empty/absent selection refuses with selection_required in
+this new package. The donor host's empty-selection-to-simulator alias is deliberately
+not imported, and the reference app is untouched. The donor alias remains an open
+owner follow-up, not a donor logic edit or a P1 acceptance expansion. Migration:
+none for existing public behavior; additive new surface only. F3/F5/F8 runtime
+adaptations belong to P3, F4 legacy facade remains retained, F6 UI belongs to P5b,
+F7 private defaults remain injected; F9 money SQL stays M07-owned.
+
+## Proof, pack and handoff
+
+Smallest adequate solution: concrete type envelopes and direct injected descriptor
+lookup, with the contributed decision table unchanged. No generic plugin framework,
+new persistence abstraction, dependency, fallback or runtime redaction process is
+needed for P1. Main risks are lost carrier fields, invented external absence,
+accidental activation, false arrival evidence and package/browser growth. Focused
+type/runtime witnesses and actual artifact measurement address these; P1 does not
+claim implementation conformance for the later workers/stores.
+
+Run the three new suites and existing packageBoundary/cold-consumer tests, focused
+TypeScript checks, structural/lint checks, publication policy/navigation, neutrality
+and API report checks. Serialize generation/build/pack. The ordinary package gate
+requires a clean committed tree; for this explicitly uncommitted task use its
+existing measurePack/checkPackBudget/browserEntryBytes helpers on npm-packed
+materialized bytes, report the limitation, and leave clean-tree admission owed.
+All temporary output is under .context/scratch. The P1 report records actual case
+counts/time, every pack cap/subcap, paths, checks and any delta-bound documentation
+trailers still needed because commits are prohibited.
+
+Local P1 evidence: 35 changed paths, including the routing companion and generated
+inventory enum-order-only API report. Seven authored semantic cases passed (0.0078s
+test bodies in the final combined run); packageBoundary passed 1,432 cases (42 new
+generated rows), 3.10s test time / 3.43s elapsed in its final standalone run. The
+full lint command passed with 33 existing warnings; focused type checking,
+structural scan, API reports and neutrality passed. The exact packed materialized
+platform measured 1,026,756 packed bytes / 4,582,014 unpacked bytes / 1,438 files;
+code gzip 882,636 bytes / 1,404 files; root-doc gzip 48,065 bytes / 5 files. All
+caps/subcaps passed, none within 1%; fulfillment/contracts bundled to 20B versus
+32B. Local installed runtime/refusal and NodeNext/Bundler declarations passed.
+Strict cold tests refused the repo-local scratch directory (2 focused failures);
+external isolation remains owed because this task forbids external artifact writes.
+The committed pack gate refused the intentionally dirty tree. Publication policy
+and docs-update commands refuse new untracked inventory; candidate-aware catalog,
+source-contract derivation and navigation passed, with three no-impact trailers
+proposed for ownership/repository/tooling. No complete gate/admission PASS is claimed.
+
+Self-retro: ESM module namespaces include a toStringTag; the first empty-contract
+assertion was corrected to compare enumerable exports. The API generator also changed existing inventory enum member order. Initial isolation of that delta left the required API check red; retaining only the generated ordering makes the check match the materialized declarations without changing the enum value set. No runtime fix or broader inventory work is included.

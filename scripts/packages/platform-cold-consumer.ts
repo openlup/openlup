@@ -11,6 +11,8 @@ import { assertInstalledPackages, isolatedConsumerEnv, readCurrentPackManifest }
 import { POSTGRES_PROOF_IMAGE } from "./outbox-disposable-postgres.ts";
 
 export const NON_ADAPTER_ENTRIES = [
+  "fulfillment",
+  "fulfillment/contracts",
   "payments",
   "payments/contracts",
   "bff",
@@ -120,6 +122,18 @@ export function assertExportInventory(consumer: string): void {
   if (JSON.stringify(Object.keys(metadata.exports).sort()) !== JSON.stringify(expected)) throw new Error("Platform export inventory needs classification");
 }
 
+
+/** Offline fulfillment contract and explicit-selection proof from installed bytes. */
+export function proveFulfillmentConsumer(consumer: string): void {
+  consumerNode(consumer, `
+import assert from "node:assert/strict";
+import { customerStepFromSignals, readFulfillmentCapabilities } from "@openlup/platform/fulfillment";
+import * as contracts from "@openlup/platform/fulfillment/contracts";
+assert.deepEqual(Object.keys(contracts), []);
+assert.equal(customerStepFromSignals(["label_created", "picking"]), "packing");
+assert.deepEqual(readFulfillmentCapabilities([], null), {kind:"refused",refusal:{reason:"selection_required",phase:"selection",retryable:false}});
+`);
+}
 
 /** Offline installed payments trial with host-owned persistence and refusal policy. */
 export function provePaymentsConsumer(consumer: string): void {
@@ -936,6 +950,7 @@ assert.throws(() => promotions.resolvePromotionBenefitDefinition({ discount_type
     provePaymentAdapterConsumer(consumer);
     proveMarketingSyncConsumer(consumer);
     provePaymentsConsumer(consumer);
+    proveFulfillmentConsumer(consumer);
     installA1HostBinding(consumer, checkout);
     proveA1ReferenceBindingConsumer(consumer, "imports");
     proveA1ReferenceBindingConsumer(consumer, "selection");

@@ -611,6 +611,18 @@
       ],
       "doc": "docs/platform/IDENTITY_BROWSER_REFERENCE.md",
       "anchor": ""
+    },
+    {
+      "id": "fulfillment-package",
+      "when": "Neutral fulfillment contracts, status canon, explicit capability selection and arrival discipline",
+      "paths": [
+        "packages/platform/src/fulfillment/**",
+        "packages/platform/test/fulfillment/**",
+        "packages/platform/api/fulfillment.api.md",
+        "packages/platform/api/fulfillment-contracts.api.md"
+      ],
+      "doc": "packages/platform/src/fulfillment/README.md",
+      "anchor": ""
     }
   ]
 }
