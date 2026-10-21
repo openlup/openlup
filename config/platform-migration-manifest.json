@@ -284,7 +284,11 @@
     {
       "file": "db/platform/migrations/20261019200000_communications_native_operations.sql",
       "sha256": "1d28380f12324c3bcccaa5a6d38c22e72332c7992bbb1f90651774dfc5e24982"
+    },
+    {
+      "file": "db/platform/migrations/20261021120000_dunning_lifecycle_active_repair.sql",
+      "sha256": "8918204df731aade89976953f8434afe08cfcbe84b6382a51728b9d14100e7ea"
     }
   ],
-  "objectInventorySha256": "3c7cf9a9193257d64497ea9790f6a90b5b3a15713e0df5ef4638f451a7cff107"
+  "objectInventorySha256": "59f08ac97163fe310fab0928027996a5dbb885d5161ddc7a709e82c2947fdded"
 }

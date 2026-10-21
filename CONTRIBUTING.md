@@ -131,6 +131,17 @@ its users or operators can observe.
 
 ## Development-preview checks
 
+The portable dunning invariant repair adds
+`tests/postgres/dunningLifecycleActiveRepair.test.ts` to the existing Node
+collector. One static case checks unchanged SQL bytes and the manifest binding;
+nine real-PostgreSQL cases use the existing disposable-container harness for
+fresh install, exact-prefix upgrade, cycle preservation, exhaustion/replay,
+recovery and actual browser-role EXECUTE refusal. Missing Docker explicitly
+skips the database cases and is missing proof. Once a container starts,
+readiness or SQL failures fail the suite. Runtime calls use a limited synthetic
+application role; owner reads observe rows without granting browser access.
+No runner, profile, default composition or coverage budget changes.
+
 Row 24b's bundle/pricing parity uses existing collectors: package selector and
 concurrent-authority suites, the reference preview binding, and six native cases
 in `tests/postgres/bundleEffectiveParity.test.ts`. That witness uses the full

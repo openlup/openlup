@@ -27,6 +27,8 @@ let container: PostgresContainer | undefined, pool: Pool;
 const actor = "c7000000-0000-4000-8000-000000000001";
 const token = "synthetic-operator-credential-000000000000";
 const manifest = JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8"));
+// The complete position-70 prerequisite includes the native operator authority.
+const catalogueMigration = "db/platform/migrations/20261019200000_communications_native_operations.sql";
 const executor = (db: Pool | PoolClient) => ({ query: (sql: string, values?: readonly unknown[]) => db.query(sql, values ? [...values] : undefined) });
 const component = { sku: "P7-UNIT", quantity: 1, is_addon: false, sort_order: 0 };
 const compose = async (db: Pool | PoolClient, code: string, quantity: number, key: string) =>
@@ -35,6 +37,7 @@ const readComposition = async (code: string) => (await pool.query("SELECT c.quan
 const events = async (key: string) => (await pool.query("SELECT bundle_code,action FROM public.catalog_bundle_write_events WHERE idempotency_key=$1", [key])).rows;
 
 beforeAll(async () => {
+  expect(manifest.forward[69].file).toBe(catalogueMigration);
   if (!await dockerAvailable()) throw new Error("M05 composition proof requires real PostgreSQL");
   container = await runPostgresContainer({ name: `m05-p7-${process.pid}`, password: "synthetic-conformance" });
   if (!await waitForPostgresTcpReady(container.connectionString)) throw new Error("M05 PostgreSQL unavailable");
@@ -94,7 +97,7 @@ it("native-mounted-bundle-admin-stock-readback", async () => {
   const binding = createM05CatalogBinding({
     executor: executor(readPool), data: { connectionString: container!.connectionString }, auth: auth.binding, stock,
     registry: createCatalogProductTypeRegistry([]), version: JSON.parse(readFileSync("packages/platform/package.json", "utf8")).version,
-    catalogue: { version: "complete-catalogue", migration: manifest.forward.at(-1).file },
+    catalogue: { version: "complete-catalogue", migration: catalogueMigration },
     quote: unused, offer: unused, applyPromotions: unused, flags: { read: true },
   });
   const readMounted = async (path: string, query: HttpRequest["query"]) => {
@@ -223,7 +226,7 @@ it("native consumer readback preserves quote authority, draft receipts and unsup
   // Phase A consumer does not select stock serving. The required injected port refuses every read.
   const stock = { getAvailability: async () => { throw new Error("native_stock_binding_pending"); } };
   const version = JSON.parse(readFileSync("packages/platform/package.json", "utf8")).version;
-  const catalogue = { version: "complete-catalogue", migration: manifest.forward.at(-1).file };
+  const catalogue = { version: "complete-catalogue", migration: catalogueMigration };
   const binding = createM05CatalogBinding({ executor: db, data: { connectionString: container!.connectionString }, auth: auth.binding, stock,
     registry: createCatalogProductTypeRegistry([{ key: "synthetic:unit", version: 1, units: [{ code: "unit:piece", dimension: "count", integral: true }], netContentUnits: ["unit:piece"], dimensions: [], validateContent: () => [] }]),
     version, catalogue, quote: quote.createQuote, offer, applyPromotions,

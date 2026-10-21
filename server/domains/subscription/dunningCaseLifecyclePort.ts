@@ -8,8 +8,8 @@
 //
 // The ladder is NOT here. `nextRetryAt` arrives already computed from the one
 // canonical cadence, and `null` IS the terminating answer: an implementation
-// that receives it must expire the case and pause the subscription rather than
-// invent one more slot. Keeping the decision on the caller's side is what stops
+// that receives it keeps the case repairable and the subscription active without
+// inventing one more automatic slot. Keeping the decision on the caller's side is what stops
 // a second copy of the schedule from growing inside a store.
 
 /** Why a case write could not be applied, in vocabulary that names no vendor. */
@@ -32,10 +32,10 @@ export interface DunningCaseAdvanced {
   caseStatus: string;
   notificationId: string | null;
   retryAttempt: number | null;
-  /** True when the ladder ended here and the subscription was paused. */
+  /** Compatibility field: automatic dunning never pauses a subscription. */
   paused: boolean;
   pauseWindowId: string | null;
-  /** True when the case can accept no further attempt. */
+  /** True when no further automatic attempt is scheduled. */
   terminal: boolean;
 }
 
@@ -53,7 +53,7 @@ export interface DunningCaseOpenInput {
   cycleId: string | null;
   clientId: string;
   retryAttempt: number;
-  /** Already computed by the canonical ladder; `null` opens an exhausted case. */
+  /** Already computed by the canonical ladder; `null` opens a repairable case with no automatic charge. */
   nextRetryAt: string | null;
   failureClass: string | null;
   failureReason: string | null;
@@ -70,7 +70,7 @@ export interface DunningCaseFailureInput {
   failureClass: string | null;
   failureReason: string | null;
   retryAttempt: number;
-  /** `null` terminates the ladder: expire the case and pause the subscription. */
+  /** `null` terminates automatic attempts and keeps the same case repairable. */
   nextRetryAt: string | null;
   templateSlug: string;
   recoveryUrlPath: string | null;

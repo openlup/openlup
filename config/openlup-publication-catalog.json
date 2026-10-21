@@ -1110,6 +1110,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261021120000_dunning_lifecycle_active_repair.sql",
+      "class": "public-output"
+    },
+    {
       "path": "deploy/oci/public-reference-compose.yml",
       "class": "public-output"
     },
@@ -21615,6 +21619,10 @@
     },
     {
       "path": "tests/postgres/customer_browser_identity.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/dunningLifecycleActiveRepair.test.ts",
       "class": "public-output"
     },
     {

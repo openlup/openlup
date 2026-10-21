@@ -351,6 +351,17 @@ late-delivery journey or a stable upgrade guarantee.
 
 ## Compatibility lifecycle
 
+The portable forward
+`20261021120000_dunning_lifecycle_active_repair.sql` appends position 71 to keep
+active subscriptions active on dunning exhaustion (invariant repair). Its exact
+bytes are bound by the manifest SHA-256; it replaces only
+`dunning_lifecycle_handle_failure`, with no stored-row rewrite or change to
+preceding migration bytes, positions or privileges. Exhaustion leaves the case
+open and repairable, with its final notice and event; it changes no subscription,
+pause window or cycle dates. The [real-PostgreSQL proof](../../tests/postgres/dunningLifecycleActiveRepair.test.ts)
+covers complete-catalogue fresh install, exact position-70 prefix upgrade with
+existing rows, ledger replay, exhaustion/recovery and browser EXECUTE refusal.
+
 C-compose adds no SQL or manifest entry. Its direct schema requirement names the
 full position-70 prerequisite, consent authority, existing outbox/receipt/control
 objects and all five native tables/used columns. The host independently observes
@@ -545,6 +556,14 @@ boundary. See [Canonical contracts](CANONICAL_CONTRACTS.md) for the mapping and
 idempotency rules that prevent duplicate or stale writes.
 
 ## Paired chains diverge, and each side must say so
+
+The portable position-71 dunning invariant repair has no managed twin yet.
+The managed baseline's
+`subscription_handle_payment_failure_dunning_before_cancel_fence` still pauses
+an active subscription on exhaustion. This is a known managed gap: a separate
+managed forward is required to keep active subscriptions active on dunning
+exhaustion (invariant repair). Portable fresh/upgrade proof does not establish
+managed parity.
 
 Some forwards ship twice: once into the managed chain the hosted deployment
 applies, and once into the public platform catalogue an adopter applies. The two
