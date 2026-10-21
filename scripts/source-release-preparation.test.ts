@@ -11,6 +11,7 @@ import { SOURCE_RELEASE_CONTRACT_PATH, assertSourceReleaseSnapshot, createSource
 import { policyVerdict, publicInventoryVerdict } from "./oss-published-tree-check.ts";
 import { prepareSourceRelease } from "./source-release-preparation.ts";
 import { packageReleaseInputs, preflightPackageRelease, preflightSetRelease, preparePackageRelease, setReleaseInputs } from "./packages/package-release.ts";
+import { bumpSet } from "./packages/release-bump.ts";
 
 const ROOT = resolve(import.meta.dirname, "..");
 const roots: string[] = [];
@@ -45,6 +46,38 @@ function fixture() {
 }
 
 describe("release-only source snapshots", () => {
+  it("bump stages only consumed fragment deletions, then preparation write and check succeed", () => {
+    const f = fixture(), fragments = ["packages/core/changes/a-one.md", "packages/core/changes/z-two.md"];
+    f.write("package-lock.json", JSON.stringify({ packages: { "packages/core": { version: "0.17.0" } } }, null, 2));
+    f.write("packages/core/package-lock.json", JSON.stringify({ version: "0.17.0", packages: { "": { version: "0.17.0" } } }, null, 2));
+    for (const path of fragments) f.write(path, "- A change.\n");
+    f.commit();
+    f.write("README.md", "# Unrelated edit\n");
+    f.write("packages/platform/changes/not-consumed.md", "- Another package.\n");
+    f.git("add", "packages/platform/changes/not-consumed.md");
+    const staged = f.git("diff", "--cached", "--binary");
+    f.write(fragments[0]!, "## Invalid fragment\n");
+    expect(() => bumpSet(f.root, "0.18.0")).toThrow(/fragment/);
+    expect(f.git("diff", "--cached", "--binary")).toBe(staged);
+    f.write(fragments[0]!, "- A change.\n");
+    bumpSet(f.root, "0.18.0");
+    expect(f.git("diff", "--cached", "--name-status").split("\n")).toEqual([...fragments.map((path) => `D\t${path}`), "A\tpackages/platform/changes/not-consumed.md"]);
+    for (const path of fragments) expect(f.git("ls-files", "--", path)).toBe("");
+    expect(f.git("diff", "--cached", "--binary", "--", "packages/platform")).toBe(staged);
+    expect(prepareSourceRelease(f.root, "--write", () => {})).toBe(true);
+    expect(prepareSourceRelease(f.root, "--check", () => {})).toBe(false);
+  });
+  it("bump stages consumed fragment names literally, never as glob pathspecs", () => {
+    const f = fixture(), consumed = "packages/core/changes/a[1].md", sibling = "packages/core/changes/a1.md";
+    f.write("package-lock.json", JSON.stringify({ packages: { "packages/core": { version: "0.17.0" } } }, null, 2));
+    f.write("packages/core/package-lock.json", JSON.stringify({ version: "0.17.0", packages: { "": { version: "0.17.0" } } }, null, 2));
+    f.write(consumed, "- A change.\n"); f.write(sibling, "- Another change.\n");
+    f.commit();
+    rmSync(join(f.root, sibling));
+    bumpSet(f.root, "0.18.0");
+    expect(f.git("diff", "--cached", "--name-status").split("\n")).toEqual([`D\t${consumed}`]);
+    expect(f.git("ls-files", "--", sibling)).toContain(sibling);
+  });
   it("PR policy/inventory recompute stale bindings; write is idempotent; check is strict and read-only", () => {
     const f = fixture(), stale = f.read(SOURCE_RELEASE_CONTRACT_PATH), lines: string[] = [];
     expect(policyVerdict(f.root, (line) => lines.push(line))).toBe(true);

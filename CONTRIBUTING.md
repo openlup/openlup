@@ -1084,7 +1084,9 @@ which updates every publishable package's version carriers and every exact
 internal pin on one, and assembles each changelog's version section below a fresh
 Unreleased heading: legacy Unreleased body first, then fragments in byte order
 of path. All packages are validated and planned before writes, and only
-consumed fragments are deleted after successful writes. Historical sections
+consumed fragments are deleted after successful writes, then exactly those
+deletions are staged so source preparation sees the updated Git inventory;
+no other changes are staged. Historical sections
 remain byte-identical. Merging it authorizes no release.
 A release is then dispatched with `publish-package.yml` and package `all` for the
 reviewed commit, and one maintainer approval of the protected `release`

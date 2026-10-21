@@ -496,8 +496,11 @@ never write to that schema. See [Data and migrations](../docs/platform/DATA_AND_
 
 Earlier previews keep the rules they were produced under. Previews up to
 `openlup-source-preview/7` also carry the receipt asset their workflow produced
-then; later previews carry none. Do not work around a refusal; correct the tree,
-or regenerate the contract as `CONTRIBUTING.md` describes.
+then; later previews carry none. Do not work around a refusal; correct the tree.
+Dependency and lockfile PRs keep the committed contract snapshot unchanged.
+Release preparation refreshes it with
+`node --experimental-strip-types scripts/source-release-preparation.ts --write`
+as `CONTRIBUTING.md` describes.
 
 Review the exact note and tag before obtaining publication authorization. Local
 preparation does not publish or update an adopter. Publish the tag as an immutable
@@ -691,8 +694,9 @@ example `wc -c < package.tgz`) or an offline build and
 `npm pack --dry-run --json --ignore-scripts --workspaces=false` of that exact
 released source. Record the artifact/source identity in the preparation evidence.
 Never baseline the unreleased candidate itself: that would erase the comparison.
-`release:bump` continues to change only versions, internal pins and changelog
-sections; it does not infer publication or fetch registry measurements.
+`release:bump` changes only versions, internal pins and changelog sections,
+and removes consumed fragments, staging exactly those deletions; it does not
+infer publication or fetch registry measurements.
 
 **Packed content allowlist.** Legitimate current artifacts include root Markdown,
 `LICENSE`, `package.json`, `release-gates.json`, Markdown under `docs/` and `api/`,
@@ -729,7 +733,9 @@ A release takes three steps:
    path under a new `## [<version>]` heading and its "Publishable" line. It leaves
    an empty Unreleased, preserves history byte-for-byte, validates and plans all
    packages before writes, and deletes only consumed fragments after successful
-   writes. Nonempty ordinary Markdown, optional `###` headings, `Migration:` and
+   writes, then stages exactly those fragment deletions before source preparation
+   reads the Git inventory. It stages no other changes. Nonempty ordinary
+   Markdown, optional `###` headings, `Migration:` and
    size-growth lines are accepted; `#`/`##` headings, conflict markers, nested
    directories, links and executable modes refuse. Fragments are excluded from
    npm; the assembled changelog ships. Contributors add fragments for notable

@@ -23,6 +23,7 @@
  * preflight and publisher use it so no package depends on another pack's residue.
  */
 import { isChangelogFragmentArea, validateChangelogFragment } from "./changelog-fragments.ts";
+import { documentationGit } from "../documentation-routing.ts";
 import { env as processEnvironment } from "node:process";
 import { execFileSync } from "node:child_process";
 import { copyFileSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -228,7 +229,7 @@ export function assertMigrationBlocks(root: string, base: string, head: string):
     const match = /^(\d{6}) \w+ ([a-f0-9]{40})\t(.+)$/u.exec(row);
     if (!match || !isChangelogFragmentArea(match[3]!)) continue;
     const path = match[3]!, directory = path.split("/").slice(0, 2).join("/");
-    const contents = validateChangelogFragment(path, capture(root, "git", ["cat-file", "blob", match[2]!]), match[1]!);
+    const contents = validateChangelogFragment(path, documentationGit(root, ["cat-file", "blob", match[2]!]), match[1]!);
     fragmentNotes.set(directory, [...(fragmentNotes.get(directory) ?? []), contents]);
   }
   const refusals: string[] = [];
