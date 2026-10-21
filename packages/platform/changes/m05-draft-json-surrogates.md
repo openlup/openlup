@@ -1,1 +1,0 @@
-- Catalog/contracts draft canonical JSON now detects lone surrogates without a regex lookbehind so it loads in Safari before 16.4; behavior is unchanged.

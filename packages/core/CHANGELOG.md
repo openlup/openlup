@@ -8,6 +8,15 @@ SemVer promise.
 
 ## [Unreleased]
 
+## [0.19.0]
+
+- Publishable on the npm `latest` dist-tag as `0.19.0`, from tag
+  `openlup-core-v0.19.0`.
+
+- Republish unchanged APIs, runtime behavior and shipped SQL from `0.18.0` as part of the complete `0.19.0` package set.
+
+Migration: upgrade the complete set together; core introduces no API or schema migration in this release.
+
 ## [0.18.0]
 
 - Publishable on the npm `latest` dist-tag as `0.18.0`, from tag
