@@ -200,11 +200,10 @@ disputed adapter evidence at projection through the donor amount-mismatch
 processing-failure path, and refuse those verification fixtures in adapter
 conformance. Failed and pending evidence retain nullable money. Two added cases
 cover ingress refusal and conformance across all three settling outcomes.
-No contract type, export, migration, reference binding or HTTP semantic changes.
-Both added cases fail against the restored predecessor sources
-and pass after rebuilding the fix. Focused payment runs pass 274 package cases
-and 424 root cases; structural, lint, typecheck, both neutrality and policy
-checks pass. The existing null-refund assertion now expects mismatch refusal.
+No contract type, export, migration or reference binding changes and no new response
+wording: settling evidence without money now gets the existing 503 instead of being
+acknowledged. Both added cases fail against the restored predecessor sources and pass
+after rebuilding the fix. The existing null-refund assertion now expects mismatch refusal.
 
 Self-retro: package tests require built package entries. Build the original
 sources before the reverted-source witness, and serialize rebuilds with tests.
@@ -293,3 +292,28 @@ P6 case ledger (folded properties add no cases):
 - New case → `packages/platform/test/payments/bindings.test.ts:is absent when truth readiness or the selected capability is unavailable`.
 - New case → `packages/platform/test/payments/bindings.test.ts:runs selected truth through one scoped port and closes on success and failure`.
 - New case → `server/runtime/public-reference/m07PaymentBinding.test.ts:keeps the cold host default-off and uses exactly one selected executor`.
+
+## Combined delivery and test budget
+
+P4d, P4e, P5 and P6 ship as one pull request with their commits kept in order
+(coordinator speed-up); P5's commit is refactor-only with byte-identical built
+JavaScript and API reports.
+
+Module test budget (M06 counting rule: semantic `it`/`test` definitions count
+against the +100 cap; generated rows are reported separately): 59 public
+definitions plus 33 C1 witnesses = 92 of 100. Executed invocations, counting each
+parameterized row, are about 106. The +30 s runtime budget remains the binding cost.
+
+## M07 follow-ups (next wave)
+
+None is a correctness or security defect in the shipped package after P4d and P4e.
+
+- Reference repair view: the status poll can clear a host-supplied redirect action;
+  verify after the poller times out does not poll again; the poller copy is not
+  localized; one verify fixture builds a handler it never calls.
+- A route-level wrong-rail witness for the reference status route.
+- Mapping an unsupported method-setup result to an explicit refusal in the reference route.
+- A deployment-neutral reason in the verify handler's disabled response.
+- The reference card evidence normalizer's missing-amount path (the package already
+  refuses settling evidence without positive money).
+
