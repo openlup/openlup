@@ -25,6 +25,8 @@ function fixture() {
   git("init", "-qb", "main");
   for (const path of PUBLIC_EXECUTION_ENTRYPOINTS) write(path, "public fixture\n");
   for (const { path } of PUBLIC_PACKAGE_EXECUTION_SURFACES) write(path, path === "package.json" ? JSON.stringify({ workspaces: JSON.parse(readFileSync(join(ROOT, path), "utf8")).workspaces, scripts: Object.fromEntries(PUBLIC_PACKAGE_COMMANDS.map(({ name, command }) => [name, command])) }) : readFileSync(join(ROOT, path)));
+  // This fixture owns its 0.17.0 release regardless of the current package set.
+  write("packages/core/package.json", JSON.stringify({ ...JSON.parse(read("packages/core/package.json")), version: "0.17.0" }, null, 2) + "\n");
   write("README.md", "# Fixture\n");
   write("docs/platform/adopter-kit/dependabot.template.yml", 'groups:\n  openlup:\n    patterns:\n      - "@openlup/*"\n');
   write("packages/platform/src/middle/index.ts", "export const middle = 1;\n");

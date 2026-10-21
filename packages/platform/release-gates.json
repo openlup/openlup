@@ -5,18 +5,6 @@
     "internal-candidate": "Development-preview API; no stable compatibility claim."
   },
   "packageSurface": {
-    "./http": {
-      "role": "rail",
-      "maturity": "experimental",
-      "compatibilityPolicy": "internal-candidate",
-      "packageSmokeEvidence": [
-        "test/packageBoundary.test.ts",
-        "test/http/runtime.test.ts",
-        "test/http/webhookSignature.test.ts"
-      ],
-      "entrypoint": "dist/http/index.d.ts",
-      "snapshot": "api/http.api.md"
-    },
     "./bff": {
       "role": "rail",
       "maturity": "experimental",
@@ -28,17 +16,6 @@
       "entrypoint": "dist/bff/index.d.ts",
       "snapshot": "api/bff.api.md"
     },
-    "./scheduler": {
-      "role": "rail",
-      "maturity": "experimental",
-      "compatibilityPolicy": "internal-candidate",
-      "packageSmokeEvidence": [
-        "test/packageBoundary.test.ts",
-        "test/scheduler/jobs.test.ts"
-      ],
-      "entrypoint": "dist/scheduler/index.d.ts",
-      "snapshot": "api/scheduler.api.md"
-    },
     "./blob": {
       "role": "rail",
       "maturity": "experimental",
@@ -49,111 +26,6 @@
       ],
       "entrypoint": "dist/blob/index.d.ts",
       "snapshot": "api/blob.api.md"
-    },
-    "./data": {
-      "role": "rail",
-      "maturity": "experimental",
-      "compatibilityPolicy": "internal-candidate",
-      "packageSmokeEvidence": [
-        "test/packageBoundary.test.ts",
-        "test/data/binding.test.ts"
-      ],
-      "entrypoint": "dist/data/index.d.ts",
-      "snapshot": "api/data.api.md"
-    },
-    "./migrations": {
-      "role": "rail",
-      "maturity": "experimental",
-      "compatibilityPolicy": "internal-candidate",
-      "packageSmokeEvidence": [
-        "test/packageBoundary.test.ts",
-        "test/migrations/postgresRunner.test.ts"
-      ],
-      "entrypoint": "dist/migrations/index.d.ts",
-      "snapshot": "api/migrations.api.md"
-    },
-    "./job-ledger": {
-      "role": "rail",
-      "maturity": "experimental",
-      "compatibilityPolicy": "internal-candidate",
-      "packageSmokeEvidence": [
-        "test/packageBoundary.test.ts",
-        "test/job-ledger/postgres.test.ts"
-      ],
-      "entrypoint": "dist/job-ledger/index.d.ts",
-      "snapshot": "api/job-ledger.api.md"
-    },
-    "./kernel": {
-      "role": "rail",
-      "maturity": "experimental",
-      "compatibilityPolicy": "internal-candidate",
-      "packageSmokeEvidence": [
-        "test/packageBoundary.test.ts",
-        "test/kernel/platformKernel.test.ts"
-      ],
-      "entrypoint": "dist/kernel/index.d.ts",
-      "snapshot": "api/kernel.api.md"
-    },
-    "./composition": {
-      "role": "rail",
-      "maturity": "experimental",
-      "compatibilityPolicy": "internal-candidate",
-      "packageSmokeEvidence": [
-        "test/packageBoundary.test.ts",
-        "test/composition/composeBundle.test.ts"
-      ],
-      "entrypoint": "dist/composition/index.d.ts",
-      "snapshot": "api/composition.api.md"
-    },
-    "./identity": {
-      "role": "capability",
-      "maturity": "experimental",
-      "compatibilityPolicy": "internal-candidate",
-      "packageSmokeEvidence": [
-        "test/packageBoundary.test.ts",
-        "test/identity/adminConformance.test.ts"
-      ],
-      "entrypoint": "dist/identity/index.d.ts",
-      "snapshot": "api/identity.api.md"
-    },
-    "./identity/contracts": {
-      "role": "capability",
-      "maturity": "experimental",
-      "compatibilityPolicy": "internal-candidate",
-      "packageSmokeEvidence": [
-        "test/packageBoundary.test.ts",
-        "test/identity/contracts.test.ts"
-      ],
-      "entrypoint": "dist/identity/contracts/index.d.ts",
-      "snapshot": "api/identity-contracts.api.md"
-    },
-    "./communications": {
-      "role": "capability",
-      "maturity": "experimental",
-      "compatibilityPolicy": "internal-candidate",
-      "packageSmokeEvidence": [
-        "test/packageBoundary.test.ts",
-        "test/communications/sql.test.ts",
-        "test/communications/contribution.test.ts",
-        "test/communications/transportConformance.test.ts",
-        "test/communications/marketingSyncConformance.test.ts",
-        "test/communications/marketingSyncCompatibility.test.ts"
-      ],
-      "entrypoint": "dist/communications/index.d.ts",
-      "snapshot": "api/communications.api.md"
-    },
-    "./communications/contracts": {
-      "role": "capability",
-      "maturity": "experimental",
-      "compatibilityPolicy": "internal-candidate",
-      "packageSmokeEvidence": [
-        "test/packageBoundary.test.ts",
-        "test/communications/contracts.test.ts",
-        "test/communications/marketingSyncConformance.test.ts",
-        "test/communications/marketingSyncCompatibility.test.ts"
-      ],
-      "entrypoint": "dist/communications/contracts/index.d.ts",
-      "snapshot": "api/communications-contracts.api.md"
     },
     "./catalog": {
       "role": "capability",
@@ -192,6 +64,176 @@
       ],
       "entrypoint": "dist/catalog/contracts/index.d.ts",
       "snapshot": "api/catalog-contracts.api.md"
+    },
+    "./communications": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/packageBoundary.test.ts",
+        "test/communications/sql.test.ts",
+        "test/communications/contribution.test.ts",
+        "test/communications/transportConformance.test.ts",
+        "test/communications/marketingSyncConformance.test.ts",
+        "test/communications/marketingSyncCompatibility.test.ts"
+      ],
+      "entrypoint": "dist/communications/index.d.ts",
+      "snapshot": "api/communications.api.md"
+    },
+    "./communications/contracts": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/packageBoundary.test.ts",
+        "test/communications/contracts.test.ts",
+        "test/communications/marketingSyncConformance.test.ts",
+        "test/communications/marketingSyncCompatibility.test.ts"
+      ],
+      "entrypoint": "dist/communications/contracts/index.d.ts",
+      "snapshot": "api/communications-contracts.api.md"
+    },
+    "./communications/klaviyo": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/communications/klaviyo/portConformance.test.ts",
+        "test/communications/klaviyo/protocol.test.ts",
+        "test/communications/klaviyo/permissions.test.ts"
+      ],
+      "entrypoint": "dist/communications/klaviyo/index.d.ts",
+      "snapshot": "api/communications-klaviyo.api.md"
+    },
+    "./communications/resend": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/communications/resend/egress.test.ts",
+        "test/communications/resend/protocol.test.ts"
+      ],
+      "entrypoint": "dist/communications/resend/index.d.ts",
+      "snapshot": "api/communications-resend.api.md"
+    },
+    "./composition": {
+      "role": "rail",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/packageBoundary.test.ts",
+        "test/composition/composeBundle.test.ts"
+      ],
+      "entrypoint": "dist/composition/index.d.ts",
+      "snapshot": "api/composition.api.md"
+    },
+    "./data": {
+      "role": "rail",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/packageBoundary.test.ts",
+        "test/data/binding.test.ts"
+      ],
+      "entrypoint": "dist/data/index.d.ts",
+      "snapshot": "api/data.api.md"
+    },
+    "./http": {
+      "role": "rail",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/packageBoundary.test.ts",
+        "test/http/runtime.test.ts",
+        "test/http/webhookSignature.test.ts"
+      ],
+      "entrypoint": "dist/http/index.d.ts",
+      "snapshot": "api/http.api.md"
+    },
+    "./identity": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/packageBoundary.test.ts",
+        "test/identity/adminConformance.test.ts"
+      ],
+      "entrypoint": "dist/identity/index.d.ts",
+      "snapshot": "api/identity.api.md"
+    },
+    "./identity/contracts": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/packageBoundary.test.ts",
+        "test/identity/contracts.test.ts"
+      ],
+      "entrypoint": "dist/identity/contracts/index.d.ts",
+      "snapshot": "api/identity-contracts.api.md"
+    },
+    "./inventory": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/packageBoundary.test.ts",
+        "test/inventory/contracts.test.ts",
+        "test/inventory/adminInventoryConformance.test.ts",
+        "test/inventory/inventoryAvailabilityCharacterization.test.ts",
+        "test/inventory/newPurchaseStockBoundary.test.ts",
+        "test/inventory/reservationPolicyConformance.test.ts",
+        "test/inventory/subscriptionForecastCalculation.test.ts"
+      ],
+      "entrypoint": "dist/inventory/index.d.ts",
+      "snapshot": "api/inventory.api.md"
+    },
+    "./inventory/contracts": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/packageBoundary.test.ts",
+        "test/inventory/contracts.test.ts",
+        "test/inventory/newPurchaseStockBoundary.test.ts",
+        "test/inventory/reservationPolicyConformance.test.ts",
+        "test/inventory/subscriptionForecastCalculation.test.ts"
+      ],
+      "entrypoint": "dist/inventory/contracts/index.d.ts",
+      "snapshot": "api/inventory-contracts.api.md"
+    },
+    "./job-ledger": {
+      "role": "rail",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/packageBoundary.test.ts",
+        "test/job-ledger/postgres.test.ts"
+      ],
+      "entrypoint": "dist/job-ledger/index.d.ts",
+      "snapshot": "api/job-ledger.api.md"
+    },
+    "./kernel": {
+      "role": "rail",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/packageBoundary.test.ts",
+        "test/kernel/platformKernel.test.ts"
+      ],
+      "entrypoint": "dist/kernel/index.d.ts",
+      "snapshot": "api/kernel.api.md"
+    },
+    "./migrations": {
+      "role": "rail",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/packageBoundary.test.ts",
+        "test/migrations/postgresRunner.test.ts"
+      ],
+      "entrypoint": "dist/migrations/index.d.ts",
+      "snapshot": "api/migrations.api.md"
     },
     "./pricing": {
       "role": "capability",
@@ -275,58 +317,16 @@
       "entrypoint": "dist/promotions/contracts/index.d.ts",
       "snapshot": "api/promotions-contracts.api.md"
     },
-    "./communications/resend": {
-      "role": "capability",
-      "maturity": "experimental",
-      "compatibilityPolicy": "internal-candidate",
-      "packageSmokeEvidence": [
-        "test/communications/resend/egress.test.ts",
-        "test/communications/resend/protocol.test.ts"
-      ],
-      "entrypoint": "dist/communications/resend/index.d.ts",
-      "snapshot": "api/communications-resend.api.md"
-    },
-    "./communications/klaviyo": {
-      "role": "capability",
-      "maturity": "experimental",
-      "compatibilityPolicy": "internal-candidate",
-      "packageSmokeEvidence": [
-        "test/communications/klaviyo/portConformance.test.ts",
-        "test/communications/klaviyo/protocol.test.ts",
-        "test/communications/klaviyo/permissions.test.ts"
-      ],
-      "entrypoint": "dist/communications/klaviyo/index.d.ts",
-      "snapshot": "api/communications-klaviyo.api.md"
-    },
-    "./inventory": {
-      "role": "capability",
+    "./scheduler": {
+      "role": "rail",
       "maturity": "experimental",
       "compatibilityPolicy": "internal-candidate",
       "packageSmokeEvidence": [
         "test/packageBoundary.test.ts",
-        "test/inventory/contracts.test.ts",
-        "test/inventory/adminInventoryConformance.test.ts",
-        "test/inventory/inventoryAvailabilityCharacterization.test.ts",
-        "test/inventory/newPurchaseStockBoundary.test.ts",
-        "test/inventory/reservationPolicyConformance.test.ts",
-        "test/inventory/subscriptionForecastCalculation.test.ts"
+        "test/scheduler/jobs.test.ts"
       ],
-      "entrypoint": "dist/inventory/index.d.ts",
-      "snapshot": "api/inventory.api.md"
-    },
-    "./inventory/contracts": {
-      "role": "capability",
-      "maturity": "experimental",
-      "compatibilityPolicy": "internal-candidate",
-      "packageSmokeEvidence": [
-        "test/packageBoundary.test.ts",
-        "test/inventory/contracts.test.ts",
-        "test/inventory/newPurchaseStockBoundary.test.ts",
-        "test/inventory/reservationPolicyConformance.test.ts",
-        "test/inventory/subscriptionForecastCalculation.test.ts"
-      ],
-      "entrypoint": "dist/inventory/contracts/index.d.ts",
-      "snapshot": "api/inventory-contracts.api.md"
+      "entrypoint": "dist/scheduler/index.d.ts",
+      "snapshot": "api/scheduler.api.md"
     },
     "./shipping": {
       "role": "capability",
@@ -368,16 +368,16 @@
     "maxUnpackedBytes": 5734400,
     "maxFiles": 2100,
     "baseline": {
-      "version": "0.16.0",
-      "packedBytes": 256973
+      "version": "0.17.0",
+      "packedBytes": 414220
     },
     "browserEntries": {
+      "./catalog/contracts": 4096,
       "./communications/contracts": 11776,
       "./identity/contracts": 4800,
-      "./catalog/contracts": 4096,
+      "./inventory/contracts": 32,
       "./pricing/contracts": 416,
       "./promotions/contracts": 32,
-      "./inventory/contracts": 32,
       "./shipping/contracts": 32
     }
   }
