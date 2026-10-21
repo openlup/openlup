@@ -166,7 +166,7 @@ export const PLATFORM_MODULE_GRAPH = {
   "job-ledger": { values: [], types: ["data"] },
   migrations: { values: [], types: [] },
   // The generic composer over the other modules' public ports and factories.
-  composition: { values: ["blob", "bff", "data", "http", "job-ledger", "kernel", "migrations", "scheduler"], types: ["payments"] },
+  composition: { values: ["blob", "bff", "data", "http", "job-ledger", "kernel", "migrations", "scheduler"], types: [] },
   inventory: { contracts: true, values: [], types: [] },
 };
 const PLATFORM_SOURCE = "packages/platform/src";

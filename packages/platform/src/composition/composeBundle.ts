@@ -30,8 +30,10 @@ import {
   type PlatformBundleId,
 } from "../kernel/index.js";
 
-import type { createPaymentServices } from "../payments/index.js";
-type PaymentServices = NonNullable<ReturnType<typeof createPaymentServices>>;
+// Structural, so the composer declares no edge to the payments module; createPaymentServices satisfies it.
+interface PaymentServices {
+  run<T>(work: (port: never) => Promise<T>): Promise<T>;
+}
 
 type Env = Record<string, string | undefined>;
 
