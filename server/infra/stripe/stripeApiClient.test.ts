@@ -21,7 +21,9 @@ const { paymentIntentCreate, paymentIntentRetrieve, paymentIntentSearch, setupIn
 vi.mock("stripe", () => ({ default: stripeCtor }));
 
 import { createStripeApiClient } from "./stripeApiClient.js";
-import { normalizeStripeIntent } from "../../adapters/stripe/stripePaymentReconciliationProvider.js";
+import { createStripePaymentReconciliationProvider, mapStripeIntent } from "@openlup/platform/payments/stripe";
+const normalizeStripeIntent = (intent: ReturnType<typeof mapStripeIntent>) =>
+  createStripePaymentReconciliationProvider({ retrievePaymentIntent: async () => intent }).readPayment({ providerPaymentId: intent.id });
 
 describe("createStripeApiClient", () => {
   it("forwards createPaymentIntent input + idempotencyKey and confirms the off-session branch", async () => {
@@ -347,7 +349,7 @@ describe("real SDK to reconciliation diagnostic continuity", () => {
     const intent = await createStripeApiClient({ secretKey: "sk_test_dummy" }).retrievePaymentIntent("pi_real_shape");
     expect(paymentIntentRetrieve).toHaveBeenCalledWith("pi_real_shape");
     expect(intent.last_payment_error).toEqual({ type: "card_error", code: "card_declined", message: "private payer@example.test" });
-    const reconciled = normalizeStripeIntent(intent);
+    const reconciled = await normalizeStripeIntent(intent);
     expect(reconciled).toMatchObject({ status: "failed", failureReason: "stripe_card_declined",
       rawPayload: { declineCode: null, adviceCode: null, failureClass: "indeterminate", failureClassDecidedBy: "default",
         failureEvidence: { declineCode: "insufficient_funds", adviceCode: "do_not_try_again", source: "readback",
@@ -372,7 +374,7 @@ describe("SDK diagnostic method correlation", () => {
     });
     const intent = await createStripeApiClient({ secretKey: "sk_test_dummy" }).retrievePaymentIntent("pi_conflict");
     expect(intent.last_payment_error).toEqual({ type: "card_error", code: "card_declined", message: null });
-    expect(normalizeStripeIntent(intent)).toMatchObject({ status: "failed", failureReason: "stripe_card_declined",
+    expect(await normalizeStripeIntent(intent)).toMatchObject({ status: "failed", failureReason: "stripe_card_declined",
       rawPayload: { declineCode: null, adviceCode: null, failureClass: "indeterminate",
         failureEvidence: { disposition: "unreadable", refusalVerified: false,
           declineCode: null, adviceCode: null, code: null, method: null, operation: null } } });

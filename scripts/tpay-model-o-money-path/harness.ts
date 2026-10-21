@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import pg from "pg";
 import { createPostgresDataGateway } from "../../server/adapters/postgres/dataGateway.js";
-import type { TpayHttpClient } from "../../server/infra/tpay/tpayHttpClient.js";
-import type { TpayTransactionCreateInput } from "../../server/infra/tpay/tpayTransactionPayload.js";
+import { createTpayHttpClient } from "@openlup/platform/payments/tpay";
+type TpayHttpClient = ReturnType<typeof createTpayHttpClient>;
+type TpayTransactionCreateInput = Parameters<TpayHttpClient["createTransaction"]>[0];
 import type { NormalizedProviderPaymentWebhook } from "../../server/domains/payment/paymentWebhookHandlers.js";
 import {
   createPaymentWebhookControlPortViaGateway,

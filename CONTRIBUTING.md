@@ -131,6 +131,15 @@ its users or operators can observe.
 
 ## Development-preview checks
 
+The payment reference-support rebinding reuses existing host and producer cases:
+localized callback/query and simulator-return parity, nominal no-charge retry,
+customer/setup metadata and inert default-off construction are assertions inside
+existing cases. Duplicate root suites retire while their package witnesses stay.
+The packed consumer checks the eleven additional experimental vendor exports,
+no leakage into neutral payment entries and no SDK or import-time I/O. Its local
+pack/extract fixture needs no package installation; provider-account verification
+and hosted time-budget evidence remain separate obligations.
+
 The opt-in payment example retains donor execution, decline, refund, lifecycle
 and purpose-sensitive readback witnesses in the existing Platform/root Node
 collectors. Its focused factory tests add neutral-envelope and refusal coverage.

@@ -414,6 +414,15 @@ Cancellation is offered only when injected. Account readiness stays pending
 owner TEST evidence. See [the payment adapter contract](CANONICAL_CONTRACTS.md#opt-in-payment-example)
 and [A2 ledger](plans/oss-a2-payment-adapters.md).
 
+The vendor subpaths also expose the eleven bounded experimental
+[reference-support helpers](../../packages/platform/README.md#reference-support-surface).
+The root execution/readback bindings consume those contributed implementations
+instead of retaining duplicate algorithms. Reference flags, SDK construction,
+payer fallback, repair handoffs and localized return presentation stay with the
+host. Capability projections reuse package facts without adding a neutral seam;
+the shared no-charge error retains genuine class identity across the boundary.
+This adds no package, dependency, migration or neutral payment export.
+
 The opt-in Node `payments/tpay` example shares that package lifecycle and M07
 boundary. The host supplies HTTP and certificate I/O, credentials, callback URLs,
 mode and Model O policy. Bank/code attempts and Model O alias charges are
