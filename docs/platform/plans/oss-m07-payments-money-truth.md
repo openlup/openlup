@@ -186,3 +186,26 @@ checks pass. The existing null-refund assertion now expects mismatch refusal.
 
 Self-retro: package tests require built package entries. Build the original
 sources before the reverted-source witness, and serialize rebuilds with tests.
+
+
+## P4e record
+
+Finite outcome: extend P4d's settling-money refusal to amounts that are not safe
+positive integers and blank currencies, through the existing amount-mismatch
+path before ingest. Conformance requires the same positive money. Failed and
+pending evidence retain their existing behavior. Donor and main creation,
+renewal, setup and refund paths were checked first: zero orders cannot create
+settling attempts; method setup is separate; zero refund snapshots are unproven.
+No export, migration, reference binding, provider activation or dependency change.
+Local edits and focused offline checks only; no Git writes, submission, native
+review, DCO, release or activation authority. Extend the two P4d cases with table
+rows, adding no test cases. Completion evidence belongs in the task handoff. The two extended cases fail
+against rebuilt P4d sources and pass after restoring the fix. Structural, lint
+(33 existing warnings), typecheck, both neutrality and policy/navigation checks
+pass. The wider focused payment run passes 786 tests, but one existing HTTP-wire
+suite cannot open its loopback listener in the sandbox; its two wire tests remain
+unverified. This run does not claim a fully passing payment gate.
+
+Self-retro: the positive intent constraint alone does not prove blank-currency
+refusal; the canonical order currency invariant supplies that evidence. Reuse
+the existing guard and table cases rather than introducing another validator.

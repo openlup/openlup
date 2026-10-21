@@ -27,8 +27,9 @@ export function projectVerifiedEvidence(
     case "money": {
       // The donor treats absent money as unasserted and skips parity checks.
       // Settling adapter evidence must instead use its existing mismatch refusal.
-      if (evidence.money === null && (evidence.outcome === "succeeded"
-        || evidence.outcome === "refunded" || evidence.outcome === "disputed")) {
+      if ((evidence.outcome === "succeeded" || evidence.outcome === "refunded" || evidence.outcome === "disputed")
+        && (evidence.money === null || !Number.isSafeInteger(evidence.money.amountMinor)
+          || evidence.money.amountMinor <= 0 || !evidence.money.currency.trim())) {
         throw new Error("payment_control_result_amount_mismatch");
       }
       const reversal = evidence.refund;
