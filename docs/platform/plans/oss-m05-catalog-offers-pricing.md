@@ -765,8 +765,9 @@ mechanism or test cases are needed. Baseline growth and limited root-docs headro
 remain the risks; all caps stay unchanged.
 
 Slot result (2026-10-21): the supervisor bumped all version carriers and exact
-internal pins to `0.18.0`, consuming eight fragments and staging only five tracked
-deletions. Exact covered-body consolidation passed once; the full M06 P4 named-
+internal pins to `0.18.0`, consuming eight fragments: five tracked on main plus
+the three S1 inputs; only the five tracked deletions were staged. Exact covered-body
+consolidation passed once; the full M06 P4 named-
 shim, package-owned smoke evidence, neutral-fixture and documentation note remains
 in both the new platform section and dispatch body. History from `0.17.0` onward
 is byte-identical to main for all three changelogs. Release text retains the exact
@@ -804,7 +805,7 @@ policy/trailer and dispatch-hash evidence in the external cycle report. The
 supervisor retains commit, snapshot and native-review/delivery actions.
 Cycle result: the three focused release-tooling suites pass all 43 cases; the
 source snapshot is fresh, policy has no unanswered obligations and all four
-committed trailer digests remain unchanged. Platform root-docs gzip is 39,332 B
+committed trailer digests remain unchanged. Platform root-docs gzip was 39,332 B
 against 40,960 B (1,628 B headroom); pack/browser policy and neutrality pass.
 Both dispatch copies match; the external cycle report records their hash and
 complete check evidence. Self-retro: restoring the distinct consumed claims costs
@@ -819,7 +820,7 @@ integrity and SHA1 shasum:
 - `@openlup/outbox@0.17.0`: integrity `sha512-4O5IikEcoQieprCmj94f9/CkpptoFdxj5WK8oilVK9xrdXX0s5J/K4WAbAxxNEVhOoV8bUSKbfCaweMQhxTLww==`; shasum `c6426d52cae18d9dda2d309ac6c49bab48108e49`.
 - `@openlup/platform@0.17.0`: integrity `sha512-wgpm3yTzFaxkcUoa56JqLEm9lpdSKXkfJYqJ9m2gfJjXOHDnr2+jkMBc3J25mP5nWaYlRBkP4K+bM9aLQWGQDw==`; shasum `c88f6b5339328fbe8830223be5794d06c367c2ad`.
 
-Fresh R2 preliminary packs measure the bumped, consolidated working tree:
+Pre-repair R2 preliminary packs measured the bumped, consolidated working tree:
 
 | Package | Published 0.17.0 B | Candidate 0.18.0 B / cap B | Growth | Code gzip B / cap | Root docs gzip B / cap |
 | --- | ---: | --- | --- | --- | --- |
@@ -827,7 +828,7 @@ Fresh R2 preliminary packs measure the bumped, consolidated working tree:
 | outbox | 39,202 | 39,310 / 81,920 | 0.28% | 20,930 / 43,008 | 13,366 / 26,624 |
 | platform | 414,220 | 778,693 / 1,351,680 | 87.99% | 656,484 / 1,126,400 | 38,887 / 40,960 |
 
-Platform: **1,157 / 2,100 files**, **3,513,725 / 5,734,400 unpacked B**,
+Pre-repair R2 platform: **1,157 / 2,100 files**, **3,513,725 / 5,734,400 unpacked B**,
 **1,128 / 2,000 code files**, **5 / 10 root-docs files**. Headroom is **572,987
 packed B**, **2,220,675 unpacked B**, **943 files**, **469,916 code gzip B**,
 **872 code files**, **2,073 root-docs gzip B** and **5 root-docs files**.
@@ -837,6 +838,11 @@ pricing/contracts **386 / 416**; promotions/contracts, inventory/contracts and
 shipping/contracts each **20 / 32**. All retain positive headroom. Only platform
 exceeds the 30% growth tripwire; its unchanged explanation appears byte-for-byte
 in the new changelog section and actual dispatch notes.
+
+FINAL repair-cycle-2 preliminary platform figures (2026-10-21): **39,432 root-docs
+gzip B / 40,960 B**, **1,528 B headroom**, **779,209 packed B / 1,351,680 B** and
+**88.11% growth** from published `0.17.0`, including the supervisor's M05 P6 and
+A1 wording repairs; the pre-repair figures above remain historical.
 
 ### S1 final preparation paths
 

@@ -27,6 +27,9 @@ SemVer promise.
   acquisition terms and promise consent; promotions includes advisory, preview, acceptance,
   admin/native reads and sweep with explicit host bindings; lifecycle/publication
   contracts alone do not provide a publisher or native lifecycle writes.
+- M05 P6: pricing and bundle comments are corrected, VAT arithmetic delegates to the
+  existing helper and moved test fixtures are neutral with assertions unchanged;
+  no API change.
 - Reference-application source: opt-in catalog, product, basket, builder and admin UI consumes explicit
   data/locale/media/lifecycle inputs; basket edits invalidate promise consent and
   minor-money display uses the currency exponent.
@@ -36,7 +39,8 @@ SemVer promise.
 - A1 adds 17 neutral marketing/consent declarations, the three-function `communications/resend`
   entry, the `communications/klaviyo` marketing adapter and lazy opt-in reference bindings with
   invocation-time admission; default routes, schedules and handlers stay empty.
-  Existing providers remain assignable; neutral entries, the maintained reference
+  Existing providers remain assignable; existing neutral entries keep their runtime
+  behaviour (the declarations above are additive), and the maintained reference
   adapter and default wiring are unchanged.
   Authenticated raw webhooks and GET-only delivery reconciliation retain host
   ownership of persistence and admission; no SDK or default sender is added.
