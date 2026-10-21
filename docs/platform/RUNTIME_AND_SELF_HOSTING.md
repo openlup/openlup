@@ -191,7 +191,7 @@ Selection, validation and flat-rate fixtures do not certify a managed host.
 The inert [M06 inventory binding](../../server/runtime/public-reference/m06InventoryBinding.ts)
 selects one store and the reference provider validator. A host-injected normalized
 stock reader feeds catalog bundle availability; native new-purchase reads remain
-unsupported pending an owner decision in the native-backend parity round. Importing
+unsupported and are deferred to the native-backend parity round (owner 2026-10-21). Importing
 the binding mounts no route, schedule or provider. Admin composition retains its
 authorization and mutation flag; native adjustment remains refused.
 
