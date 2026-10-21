@@ -71,9 +71,9 @@ Readback retains purpose, checks exact transaction identity/configured money,
 and leaves refunded/chargeback unknown for manual review. Only Model O mandates
 can charge unattended. Exact absence, close, refund creation and separate
 capture are unsupported; account-dependent offers remain verification_pending.
-Bank redirects, one-time codes and unattended Model O attempts require the
-transient payer and method fields arriving in M07 P3; the factory currently
-bridges them with a private optional input type without changing M07 contracts.
+Bank redirects, one-time codes and unattended Model O attempts are supported
+when the host supplies transient payer and method selection through the
+canonical M07 P3 attempt input.
 Every flow requires explicit payer context. Missing payer/channel/code refuses
 with exact before-dispatch evidence and neutral data-correction classification.
 Payer, authorization, donor payloads and provider prose are excluded from the

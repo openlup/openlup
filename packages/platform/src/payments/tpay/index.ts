@@ -29,7 +29,7 @@ export interface TpayPaymentAdapterConfig {
   clock?: () => number;
 }
 
-/** Attempt flows require the forthcoming M07 payer/method fields; account availability remains verification_pending. */
+/** Bank-redirect, one-time-code and unattended Model O attempts are supported with host payer/method input; account availability remains verification_pending. */
 export const tpayPaymentCapabilities: Readonly<PaymentAdapterCapabilities> = Object.freeze<PaymentAdapterCapabilities>({
   providerKind: "tpay",
   captureFlows: Object.freeze([
@@ -51,12 +51,6 @@ export const tpayPaymentCapabilities: Readonly<PaymentAdapterCapabilities> = Obj
 type Verification = Awaited<ReturnType<PaymentVerifyNormalizePort["verifyAndNormalize"]>>;
 const refusal = (reason: Extract<Verification, { kind: "refusal" }>["reason"]): Verification => ({ kind: "refusal", reason });
 
-// fields arrive in the M07 contracts; this local type is removed when they do
-type TpayAttemptInput = Parameters<PaymentAttemptPort["execute"]>[0] & {
-  payer?: { email: string; name?: string };
-  methodSelection?: { family: "card" | "wallet" | "bank-redirect" | "one-time-code"; channelRef?: string };
-};
-
 /** Construction explicitly selects this adapter; the host owns account activation and I/O policy. */
 export function createTpayPaymentAdapter(config: TpayPaymentAdapterConfig): PaymentAdapter {
   const notification = config.notification;
@@ -77,7 +71,7 @@ export function createTpayPaymentAdapter(config: TpayPaymentAdapterConfig): Paym
   const client = createTpayHttpClient({ ...config.http, now: () => now() * 1000 });
   const execution = createTpayPaymentExecutionAdapter({ client, ...config.urls,
     modelOActivationEnabled: config.modelOActivationEnabled });
-  const donorInput = (input: TpayAttemptInput): PaymentExecutionInput => {
+  const donorInput = (input: Parameters<PaymentAttemptPort["execute"]>[0]): PaymentExecutionInput => {
     if (input.mode !== config.mode || !["initial", "recovery", "renewal-unattended"].includes(input.purpose)
       || !input.attemptRef || !input.intentRef || !input.fingerprint || !input.providerIdempotencyKey
       || !Number.isSafeInteger(input.money.amountMinor) || input.money.amountMinor <= 0 || input.money.currency !== "PLN"
@@ -105,12 +99,12 @@ export function createTpayPaymentAdapter(config: TpayPaymentAdapterConfig): Paym
       }),
     };
   };
-  const validateInput = (input: TpayAttemptInput): void => { execution.validateInput?.(donorInput(input)); };
+  const validateInput = (input: Parameters<PaymentAttemptPort["execute"]>[0]): void => { execution.validateInput?.(donorInput(input)); };
   return {
     capabilities: tpayPaymentCapabilities,
     attemptPort: {
       validateInput,
-      async execute(input: TpayAttemptInput): Promise<PaymentExecutionEnvelope> {
+      async execute(input: Parameters<PaymentAttemptPort["execute"]>[0]): Promise<PaymentExecutionEnvelope> {
         let prepared: PaymentExecutionInput;
         try { prepared = donorInput(input); execution.validateInput?.(prepared); }
         catch {

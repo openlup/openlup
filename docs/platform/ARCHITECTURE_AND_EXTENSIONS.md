@@ -387,14 +387,14 @@ and [A2 ledger](plans/oss-a2-payment-adapters.md).
 
 The opt-in Node `payments/tpay` example shares that package lifecycle and M07
 boundary. The host supplies HTTP and certificate I/O, credentials, callback URLs,
-mode and Model O policy. Bank/code attempts and Model O alias charges require
-the transient payer/method fields arriving in M07 P3, currently accepted through
-a private optional input extension. Missing required context refuses before
+mode and Model O policy. Bank/code attempts and Model O alias charges are
+supported when the host supplies transient payer and method selection through
+the canonical M07 P3 attempt input. Missing required context refuses before
 dispatch; only neutral facts cross the return boundary. It also provides verified
 observations and transaction-ID readback. There is no SDK, environment reader,
 default activation, complete absence search or recurring-card offer. Certificate
 validity and signed notification freshness are verified; account readiness
-remains pending TEST evidence. See the [A2 ledger](plans/oss-a2-payment-adapters.md#o-p2-boundary-and-named-deltas).
+remains `verification_pending` until owner TEST readback. See the [A2 ledger](plans/oss-a2-payment-adapters.md#o-p2-boundary-and-named-deltas).
 
 The A1 email adapter follows this placement decision at the opt-in Node subpath
 `communications/resend`, within the existing platform release

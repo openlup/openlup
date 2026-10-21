@@ -6,11 +6,7 @@ import type { PaymentAttemptPort, TransientSecret, VerifiedPaymentEvidence } fro
 import { createTpayJwsFixture } from "./webhookJws.testFixtures.js";
 
 type Subject = Parameters<typeof runPaymentAdapterConformance>[0][number];
-// Temporary local input bridge until M07 P3 supplies payer/method fields.
-type AttemptInput = Parameters<PaymentAttemptPort["execute"]>[0] & {
-  payer?: { email: string; name?: string };
-  methodSelection?: { family: "bank-redirect" | "one-time-code"; channelRef?: string };
-};
+type AttemptInput = Parameters<PaymentAttemptPort["execute"]>[0];
 
 it("conforms across two distinct attempts with replay, chargeback and verification refusals", async () => {
   const certificate = createTpayJwsFixture(7);
@@ -71,7 +67,7 @@ it("conforms across two distinct attempts with replay, chargeback and verificati
     const missingMoney = JSON.stringify({ tr_id: fixture.title, tr_status: "CHARGEBACK", tr_amount: "invalid", tr_paid: "25.99", tr_currency: "PLN" });
     const executionInput: AttemptInput = { intentRef: fixture.intentRef, attemptRef: fixture.attemptRef,
       fingerprint: `fingerprint-${fixture.attemptRef}`, providerIdempotencyKey: `key-${fixture.attemptRef}`,
-      money, mode: "test", purpose: "initial", payer: { email: `transient-${fixture.remote}@example.test` },
+      money, mode: "test", purpose: "initial", payer: { email: `transient-${fixture.remote}@example.test`, name: `Transient Person ${fixture.remote}` },
       methodSelection: index === 0 ? { family: "bank-redirect", channelRef: "42" } : { family: "one-time-code" },
       ...(index === 1 ? { customerAuthorization: "572913" as TransientSecret } : {}),
     };

@@ -110,9 +110,9 @@ reads no environment and installs no route or default binding. The resolver
 owns redirect and egress policy. Clock values are UTC seconds.
 
 The adapter declares only its supported market currency. Bank-redirect,
-one-time-code and unattended Model O alias attempts require the payer/method
-fields arriving in M07 P3. A private optional intersection bridges that input
-until the contracts supply it; no contract or donor module is changed.
+one-time-code and unattended Model O alias attempts are supported when the host
+supplies payer and method selection through the canonical M07 P3 attempt input.
+The temporary local intersection has been removed; donor behavior is unchanged.
 Explicit transient payer context is required for all three flows. Bank redirects
 use the selected channel; code attempts use transient customer authorization;
 unattended charges use the stored reference and recorded Model O mandate.
@@ -141,7 +141,7 @@ Named deltas from the contributed donor:
    normalizer retains its original identity mapping; only factory glue adds the
    neutral envelope identity. Fingerprints exclude receipt time and secrets.
 3. Receipt time participates only in signed notification freshness.
-4. Attempt glue accepts the forthcoming optional payer/method fields locally,
+4. Attempt glue consumes the canonical optional payer/method contract fields,
    refuses missing context before dispatch and excludes transient payer and
    authorization from its return envelope.
 5. Neutrality admits the reporting zone only on the exact readback declaration
@@ -164,6 +164,8 @@ the private donor suite in C5. New glue cases are counted separately in task
 evidence; no donor case is trimmed to satisfy the estimate. The offline M07 P2
 conformance witness now exercises two distinct intents and attempts, separate
 amounts and provider references, replay, chargeback and verification refusals.
+Both subjects supply transient payer email and non-empty name, exercising the
+runner's payer exclusion checks without changing case counts.
 The audit carrier preserves the donor's filtered transaction and alias dialect
 (`eventKind`, `event`, `aliasType`); absent failure provenance and prose remain
 absent. Payer, authorization, certificates and raw bodies are excluded, and audit

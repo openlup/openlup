@@ -6,10 +6,7 @@ import { projectVerifiedEvidence } from "../../../src/payments/verifiedEvidenceP
 import { readMethodLifecycleEvent } from "../../../src/payments/index.js";
 import type { PaymentAttemptPort, TransientSecret } from "../../../src/payments/contracts/index.js";
 
-type AttemptInput = Parameters<PaymentAttemptPort["execute"]>[0] & {
-  payer?: { email: string; name?: string };
-  methodSelection?: { family: "card" | "wallet" | "bank-redirect" | "one-time-code"; channelRef?: string };
-};
+type AttemptInput = Parameters<PaymentAttemptPort["execute"]>[0];
 const payer = { email: "planted-71c3@example.test", name: "Planted Person 71c3" };
 const authorization = "572913" as TransientSecret;
 function attemptInput(): AttemptInput {
