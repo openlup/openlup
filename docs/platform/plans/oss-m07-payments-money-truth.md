@@ -43,3 +43,21 @@ Actual main to candidate pack: 1,197 to 1,221 files; 1,167 to 1,191 code files; 
 Lint, compilation, builds, API checks, focused tests, publication policy and both neutrality checks pass. No native-store or runtime parity claim is made.
 
 Self-retro: mixed-boundary witness allocation exposed a missing runtime dependency before review. Lesson: allocate each witness case to its actual exported runtime before freezing the case budget; use the repository validators directly for fragment format and package-local imports.
+
+## P2 record
+
+Local candidate: unchanged pinned donor truth, method/refusal, reconciliation, silence-window, verify-now and event-conformance algorithms, with type extraction and neutral carrier strings. A new boundary module projects the existing adapter envelopes into the donor carrier with exhaustive outcome mapping, original verification bytes, method object identity and durable first-receipt reuse. The P1 widenings are disputed money, optional core method lifecycle facts and an optional adapter-redacted audit payload shared by money and method evidence. F2 changes the refund default to require explicit evidence; full-reversal chargebacks use the existing dispute path. The reference runtime changes only refund policy and its existing test.
+
+The 21 authored cases comprise W1 webhook identity (one), W3 ingress (six), W4 ambiguity (four), W5 refund forwarding (four), F2 (three) and adapter suites (three). Projection table and replay assertions are folded into those cases. Unknown never proves absence; refund snapshots are never converted into deltas. Conformance excludes handoffs and checks diagnostics for transient secrets. The selected real-store proof, external adapters and reference rewiring belong to later phases.
+
+Final local delta against origin/main: 35 paths, 19 production paths, 36 frozen export additions and 4,437 lines of churn. There are 21 authored cases and 42 added generated source-boundary iterations (14 new production files across three existing matrices). No dependency, migration, public subpath or budget change.
+
+Pinned P1 to candidate pack: 1,221 → 1,263 files, 816,142 → 859,785 packed bytes, 3,682,679 → 3,880,890 unpacked bytes and 687,246 → 730,691 code gzip bytes. Root docs: 43,708 → 44,056 gzip bytes, five files; contracts browser output remains 20/32 bytes. Every cap is respected.
+
+Repair verification: focused root has 55 passes and one existing database-only skip under the offline brief; package-local has 29 passes. Lint (33 incumbent warnings), compilation, API and both neutrality checks pass. A refund event with missing or incomplete evidence is recorded and acknowledged but not applied. No release, activation or selected-store parity is claimed.
+
+Self-retro: the existing invalid-reversal witness caught a dispute-route bypass after replacing throws with null. Gate chargeback projection on valid refund evidence so the existing require-evidence check remains the single refusal point. Serialize builds before tests because builds replace package output.
+
+Package ingress stores adapter-filtered, redacted audit facts with nested normalized evidence, never the raw body. Typed evidence overrides overlapping reader facts; the optional audit bag supplies facts without typed homes. Adapter event identity and fingerprint exclude this bag and receipt time. Missing or incomplete refund evidence is ingested and acknowledged, but not applied under require-evidence.
+
+Known limitations until P4 (method seams): method evidence does not yet carry reusable-method registration data, so package ingress does not support reusable-method persistence. Forwarding the adapter refusal envelope to hosts is also not yet supported.

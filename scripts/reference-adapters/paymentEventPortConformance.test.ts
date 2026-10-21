@@ -1,3 +1,4 @@
+import { runDurableEventConformance } from "@openlup/platform/payments";
 import { describe, expect, it } from "vitest";
 
 import { readCommerceServiceDataGateway } from "../../server/bff/commerce/serviceDataGateway.js";
@@ -8,7 +9,6 @@ import {
   createPaymentWebhookControlPortViaGateway as createEventPort,
 } from "../../server/adapters/supabase/payment/paymentWebhookGateway.js";
 import {
-  runDurableEventConformance,
   type DurableEventAggregate,
   type DurableEventCapability,
   type DurableEventCardinalityExpectations,

@@ -32,3 +32,17 @@ export type {
   PaymentAbsencePort,
 } from "./evidence.js";
 export type { PaymentAdapterConformanceSubject, PaymentAdapterConformanceEvidence } from "./conformance.js";
+
+export type {
+  PaymentTruthOutcome, PaymentTruthRefusalClass, PaymentSourceEvidence, PaymentTruthEvent,
+  PaymentReconciliationResult, PaymentTruthReadback, PaymentTruthPort, CanonicalPaymentSource,
+} from "./truth.js";
+export type { PaymentIngressPort } from "./evidence.js";
+export type {
+  ProviderReconciliationStatusKind, ProviderReconciliationStatus,
+  PaymentProviderReconciliationProvider, ClaimedPaymentAttempt, PaymentProviderReconciliationPort,
+  InteractivePreparedAttemptManualReconciliationPort, ManualInteractivePreparedAttemptAbsenceEvidence,
+  InteractivePreparedAttemptReopenResult, PaymentProviderReconciliationWorkerResult,
+  PaymentProviderReconciliationWorkerInput, SilenceWindowLookup,
+  PaymentVerifyReadPort, VerifiableAttemptSnapshot, PaymentVerifyNowResult,
+} from "./reconciliation.js";

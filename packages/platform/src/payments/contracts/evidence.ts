@@ -1,3 +1,4 @@
+import type { PaymentMethodLifecycleEvent } from "@openlup/core/payment";
 import type { PaymentMethodHandoff, PaymentRefusalEnvelope } from "./adapter.js";
 
 /** Configured integer-minor money; currency bytes pass through unchanged. */
@@ -18,6 +19,10 @@ type VerifiedIdentity = {
   providerOccurredAt: string | null;
   /** Stable normalized evidence fingerprint; excludes receipt time and secrets. */
   fingerprint: string;
+  /** Adapter-filtered provider facts for host audit/repair readers. Never raw bodies,
+   * transient secrets, handoffs or customer authorization; excluded from identity/fingerprint.
+   * Typed evidence takes precedence over overlapping audit facts. */
+  providerAuditPayload?: Readonly<Record<string, unknown>>;
 };
 
 /** Original payment money and stable operation identity accompany every reversal. */
@@ -39,7 +44,7 @@ export type VerifiedPaymentEvidence = VerifiedIdentity & {
   providerPaymentRef: string;
   intentRef: string | null;
   attemptRef: string | null;
-  outcome: "succeeded" | "failed" | "pending" | "refunded";
+  outcome: "succeeded" | "failed" | "pending" | "refunded" | "disputed";
   money: PaymentMoney | null;
   refusal?: PaymentRefusalEnvelope;
   refund?: PaymentRefundObservation;
@@ -52,6 +57,7 @@ export type VerifiedPaymentEvidence = VerifiedIdentity & {
 export type VerifiedMethodEvidence = VerifiedIdentity & {
   kind: "method";
   outcome: "registered" | "updated" | "revoked" | "expired" | "suspended" | "failed" | "requires-action";
+  methodLifecycle?: PaymentMethodLifecycleEvent;
   methodRef: string;
   setupRef: string | null;
   intentRef: string | null;
@@ -117,4 +123,12 @@ export interface PaymentAbsencePort {
     identity: PaymentAttemptIdentity;
     expectedMoney: PaymentMoney;
   }): Promise<PaymentAbsenceEnvelope>;
+}
+
+/** Transport-neutral acknowledgement; hosts write their own HTTP response. */
+export interface PaymentIngressPort {
+  receive(input: Parameters<PaymentVerifyNormalizePort["verifyAndNormalize"]>[0]): Promise<{
+    status: 200 | 400 | 409 | 503;
+    data: Record<string, unknown>;
+  }>;
 }
