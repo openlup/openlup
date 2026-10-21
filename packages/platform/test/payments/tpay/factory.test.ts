@@ -172,10 +172,20 @@ it("refuses missing channel or authorization and unsupported families before dis
   for (const methodSelection of [{ family: "bank-redirect" }, { family: "one-time-code" }, { family: "card" }, { family: "wallet" }, undefined] as const) {
     const input = { ...attemptInput(), methodSelection };
     expect(() => adapter.attemptPort.validateInput(input)).toThrow();
-    expect(await adapter.attemptPort.execute(input)).toMatchObject({ outcome: { kind: "decline" },
-      dispatch: { kind: "notDispatched", evidence: { exact: true, phase: "before-dispatch" } } });
+    const reason = { code: "fix_and_retry_customer_action", hints: ["dataInvalid"] };
+    expect(await adapter.attemptPort.execute(input)).toEqual({ outcome: { kind: "decline", refusal: reason },
+      dispatch: { kind: "notDispatched", evidence: { exact: true, phase: "before-dispatch", reason } }, diagnostics: {} });
+  }
+  for (const patch of [{ mode: "live" }, { purpose: "unsupported" }, { money: { amountMinor: 2599, currency: "EUR" } }]) {
+    // Host misconfiguration still throws when customer context is also absent.
+    for (const payer of [attemptInput().payer, undefined]) {
+      const input = { ...attemptInput(), ...patch, payer } as AttemptInput;
+      expect(() => adapter.attemptPort.validateInput(input)).toThrow("Unsupported payment input");
+      await expect(adapter.attemptPort.execute(input)).rejects.toThrow("Unsupported payment input");
+    }
   }
   expect(good.http.fetchImpl).not.toHaveBeenCalled();
+  expect(good.notification.resolveCertificate).not.toHaveBeenCalled();
 });
 it.each(["M", undefined, "unknown"])("refuses mandate model %s before dispatch", async recurringModel => {
   const good = config(); const adapter = createTpayPaymentAdapter(good);
@@ -212,7 +222,9 @@ it.each(trustedFailures)("maps trusted $code to exact no-dispatch without leakin
   try { adapter = createTpayPaymentAdapter(config()); } finally { spy.mockRestore(); }
   const result = await adapter.attemptPort.execute({ ...attemptInput(),
     methodSelection: { family: "one-time-code" }, customerAuthorization: authorization });
-  const reason = { code: "soft_retryable", hints: ["transient"] };
+  const reason = failure.dispatchState === "refused"
+    ? { code: "fix_and_retry_customer_action", hints: ["dataInvalid"] }
+    : { code: "soft_retryable", hints: ["transient"] };
   expect(result).toEqual({ outcome: { kind: "decline", refusal: reason },
     dispatch: { kind: "notDispatched", evidence: { exact: true, phase: "before-dispatch", reason } }, diagnostics: {} });
   expectRedacted(result);
@@ -231,8 +243,10 @@ it("maps real OAuth failures and provider document refusals without returning pr
     good.http.fetchImpl = fetch;
     const result = await createTpayPaymentAdapter(good).attemptPort.execute({ ...attemptInput(),
       methodSelection: { family: "one-time-code" }, customerAuthorization: authorization });
-    expect(result).toMatchObject({ outcome: { kind: "decline", refusal: { code: "soft_retryable", hints: ["transient"] } },
-      dispatch: { kind: "notDispatched", evidence: { exact: true, phase: "before-dispatch" } } });
+    const reason = failOAuth ? { code: "soft_retryable", hints: ["transient"] }
+      : { code: "fix_and_retry_customer_action", hints: ["dataInvalid"] };
+    expect(result).toEqual({ outcome: { kind: "decline", refusal: reason },
+      dispatch: { kind: "notDispatched", evidence: { exact: true, phase: "before-dispatch", reason } }, diagnostics: {} });
     expect(fetch).toHaveBeenCalledTimes(failOAuth ? 1 : 2);
     expectRedacted(result);
   }
@@ -514,6 +528,17 @@ it.each((["active_checkout", "recovery"] as const).flatMap(purpose => [
   expect(result.expectedMoney).toBe(expectedMoney);
   expect(result).toMatchObject({ kind, purpose, ...(kind === "unknown" ? { reason: "indeterminate" }
     : { observedMoney: expectedMoney, providerOccurredAt: occurredAt }) });
+  if (occurredAt !== null) {
+    for (const paidAmount of ["20.00", "30.00", "25.99", "0.00", undefined]) {
+      good.http.fetchImpl = vi.fn(async url => ({ ok: true, status: 200, text: async () => "",
+        json: async () => url.endsWith("/oauth/auth") ? { access_token: "fixture", expires_in: 7200 }
+          : { transactionId: "api-1", status, paidAmount, amount, currency: "PLN", payments } }));
+      const reading = await createTpayPaymentAdapter(good).readbackPort.readPayment({ identity, expectedMoney, purpose });
+      expect(reading).toEqual(paidAmount === "20.00" || paidAmount === "30.00"
+        ? { identity, expectedMoney, purpose, kind: "unknown", reason: "indeterminate" }
+        : { identity, expectedMoney, purpose, kind: "failed", observedMoney: expectedMoney, providerOccurredAt: occurredAt });
+    }
+  }
 });
 it.each(["refunded", "chargeback"].flatMap(status =>
   (["active_checkout", "recovery"] as const).flatMap(purpose => [
