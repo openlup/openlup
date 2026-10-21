@@ -39,7 +39,7 @@ export function canonicalCatalogDraftJson(input: unknown): string {
   function visit(value: unknown, depth: number): unknown {
     if (depth > 48) throw new Error("draft_json_depth");
     if (typeof value === "string") {
-      if (value.includes("\u0000") || /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/u.test(value)) throw new Error("draft_json_invalid");
+      if (value.includes("\u0000") || /[\uD800-\uDFFF]/u.test(value)) throw new Error("draft_json_invalid");
       return value;
     }
     if (value === null || typeof value === "boolean") return value;
