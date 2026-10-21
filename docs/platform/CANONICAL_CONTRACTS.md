@@ -634,3 +634,64 @@ publication/resume compare canonical snapshot bytes against exact target Git
 objects. The authored publication catalogue keeps exact rows except for regular,
 non-executable, content-validated package `changes/*.md` fragments. Git binds all
 remaining source contents and modes. This is preview evidence, not stability.
+
+## M05 parity seams
+
+Development-preview hosts may select three independent seams; omission preserves
+incumbent behavior. No route, policy, provider or new financial default is selected
+by importing them. These additive APIs need a minor package set.
+
+`createPromotionQuoteAcceptance` accepts explicit `shippingTerms` on each issue
+and verify input. `projectPromotionQuoteMoney(quote, acquisitionTerms?, shippingTerms?)`
+and `promotionQuoteMoneySections` include the promise only when supplied, in the
+shipping section. Shipping-only agreements can receive a token. A changed or
+removed promise refuses as `quote_mismatch` / `shipping`, even if money is equal.
+The public and strict quote projections bind the same money and promise.
+
+`createCommerceQuoteHandler` optionally receives `shipping: { terms(quote) }`.
+The host must preserve terms through its response schema and forward the fourth
+issue callback argument (fifth for honor) to the acceptance helper. An unsigned
+shipping promise refuses before promotion fallback; a fallback retaining shipping
+terms also refuses. With the binding omitted, callbacks retain their incumbent
+argument count and token bytes remain unchanged.
+
+`createDbBackedCommerceQuotePort` optionally receives
+`resolveQuoteShippingPromotions(input)`, returning final discounts, rejections,
+shipping gross, `hasShipping`, and optional shipping/acquisition terms. Without it,
+the flat-fee read still precedes automatic evaluation and code adjustment. With it,
+pricing uses its supplied money and terms and does not call the incumbent lane
+callbacks. Hosts must select a context schema that retains these promises.
+
+The promotions `createQuoteShippingPromotions` factory receives settings and raw
+promotion/code ports plus the existing bound automatic and code applications.
+It resolves current/scheduled shipping settings, evaluates both lanes at the flat
+fee, then compares product payable after product discounts with the threshold.
+Shipping discounts do not count as product spend; equality is free. A changed fee
+reruns both lanes exactly once and returns that pass's winners and rejections.
+There is no fixed-point iteration. Raw promotion reads and code candidates are
+memoized only inside one resolution, with cloned mutable results for each reader;
+a second quote, concurrent batch member or later retry owns fresh reads.
+
+The shipping server entry validates policy/terms and exposes
+`normalizeShippingPolicy`, `resolveShippingPolicy` and `resolveThresholdShipping`.
+Its contracts entry adds only DTO types. A null policy uses the validated legacy
+fee; an ineffective or disabled selected policy yields zero without terms.
+Malformed retained policy refuses rather than becoming a legacy fallback.
+
+The promotions legacy, v2 and automatic factories accept an optional `acquisition`
+binding with host `financialPolicy`; the automatic factory also reads the host's
+`capability(request)`. V2 receives `acquisitionCapability` in its evaluation input.
+Existing paid subscribers exclude metadata-tagged and first-subscription rows
+before schedule selection. New subscription customers use the existing pricing
+selector, half-open schedule filter and capability/engine refusal precedence.
+Selected terms propagate only for a negotiated capability. The legacy evaluator
+keeps its unfiltered `allCandidates` for code canonicalization and rejection/cap
+precedence separately from the filtered evaluation candidates. Ordinary coupons
+retain their existing evaluator rules. Omission keeps candidate sets and read
+order unchanged; hosts still own financial constants and metadata interpretation.
+
+Neutral witnesses live in the package promotions tests
+`shippingConsentParity.test.ts`, `thresholdShippingParity.test.ts` and
+`acquisitionOrchestrationParity.test.ts`; the [M05 extension ledger](plans/oss-m05-catalog-offers-pricing.md#m05-parity-extension)
+records the bounded contribution. Native candidate/claim and mounted acceptance
+gaps in that plan remain separate obligations.

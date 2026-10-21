@@ -1,3 +1,6 @@
+import type { ShippingTerms } from "../shipping/index.js";
+import type { ResolvedAcquisitionTerms } from "./contracts/acquisitionTerms.js";
+import type { QuoteShippingPromotionInput, QuoteShippingPromotionResult } from "./quoteShippingPromotions.js";
 import type { PricingResolverPort } from "@openlup/core/pricing";
 import { buildLineBreakdown } from "@openlup/core/pricing";
 import type { CreateQuoteResponse, PricingPolicySnapshot, CreateQuoteRequest, CommerceQuoteContext, CommerceQuoteLine, CommerceQuotePricingComponent, CommerceTaxProfile, CommerceQuoteDiscount, CommerceCodeRejection, CommerceCodeRejectionDetail, CartLineInput } from "./contracts/index.js";
@@ -27,6 +30,7 @@ export interface DbBackedCommerceQuotePortDeps<Request extends CreateQuoteReques
   currency: string;
   now?: () => string;
   shippingFlatMinor?: () => Promise<number>;
+  resolveQuoteShippingPromotions?: (input: QuoteShippingPromotionInput<Request>) => Promise<QuoteShippingPromotionResult>;
   hasPromotionCodePort: boolean;
   lineContext(line: CartLineInput, item: Item): LineContext;
   quoteContext(request: Request, lines: Array<LineContext & { line: CommerceQuoteLine }>): () => Context;
@@ -52,14 +56,14 @@ export function createDbBackedCommerceQuotePort<
     now = () => new Date().toISOString(),
     quoteCatalogReadPort, isStrictD1Quote, pricingResolverPort,
     commercePriceAuthorityPort, shippingFlatMinor, resolveAutomaticQuotePromotions,
-    applyPromotionCodesV2, hasPromotionCodePort, lineContext, quoteContext,
+    applyPromotionCodesV2, hasPromotionCodePort, lineContext, quoteContext, resolveQuoteShippingPromotions,
   } = deps;
   assertSupportedCommerceTaxProfile(taxProfile, supportedTaxProfiles);
   const money = moneyIn(currency);
   async function createServerAuthoritativeQuote(
       request: Request,
       options?: CreateQuoteOptions,
-    ): Promise<Omit<CreateQuoteResponse, "quote"> & { quote: Omit<CreateQuoteResponse["quote"], "context"> & { context: Context & { pricingPolicy?: PricingPolicySnapshot } } }> {
+    ): Promise<Omit<CreateQuoteResponse, "quote"> & { quote: Omit<CreateQuoteResponse["quote"], "context"> & { context: Context & { pricingPolicy?: PricingPolicySnapshot; shippingTerms?: ShippingTerms; acquisitionTerms?: ResolvedAcquisitionTerms } } }> {
       const atTime = now();
       const skuIndex = await buildSkuIndex(quoteCatalogReadPort);
       const pricedLines = await Promise.all(request.lines.map(async (requestLine) => {
@@ -178,33 +182,48 @@ export function createDbBackedCommerceQuotePort<
       const referenceProductMinor = sum(pricedLines.map((entry) => entry.referenceGrossMinor));
       const netTotalMinor = sum(lines.map((line) => line.tax.netAmount.amountMinor));
       const taxTotalMinor = sum(lines.map((line) => line.tax.vatAmount.amountMinor));
-      // Shipping is a flat per-order gross from settings; absent settings port ⇒ no
-      // shipping (byte-identical to pre-shipping quotes). Resolved before promo eval so
-      // the free-shipping lane has a real amount to zero.
-      const shippingGrossMinor = shippingFlatMinor
-        ? await shippingFlatMinor()
-        : 0;
-      const automaticPromotionResult = await resolveAutomaticQuotePromotions({
-        request,
-        options,
-        regionCode,
-        referenceProductMinor,
-        subtotalGrossMinor,
-        shippingGrossMinor,
-        atTime,
-      });
-      const promotionResult = await applyPromotionCodesV2({
-        preserveLegacyDiscountsWhenNoCandidates: options?.pricingPolicy?.promotionEngineVersion !== PROMOTION_ENGINE_V2,
-        clientId: options?.clientId ?? null,
-        mode: request.mode,
-        promoCodes: request.promoCodes,
-        referenceProductMinor: sum(pricedLines.map((entry) => entry.referenceGrossMinor)),
-        subtotalGrossMinor,
-        shippingGrossMinor,
-        discounts: automaticPromotionResult.discounts,
-        codeRejections: automaticPromotionResult.codeRejections,
-        atTime,
-      });
+      let shippingGrossMinor: number;
+      let promotionResult: QuotePromotionResult;
+      let hasShipping: boolean;
+      let shippingTerms: ShippingTerms | undefined;
+      let acquisitionTerms: ResolvedAcquisitionTerms | undefined;
+      if (resolveQuoteShippingPromotions) {
+        const resolved = await resolveQuoteShippingPromotions({ request, options, regionCode, currency, referenceProductMinor, subtotalGrossMinor, atTime });
+        shippingGrossMinor = resolved.shippingGrossMinor;
+        promotionResult = resolved;
+        hasShipping = resolved.hasShipping;
+        shippingTerms = resolved.shippingTerms;
+        acquisitionTerms = resolved.acquisitionTerms;
+      } else {
+        // Shipping is a flat per-order gross from settings; absent settings port ⇒ no
+        // shipping (byte-identical to pre-shipping quotes). Resolved before promo eval so
+        // the free-shipping lane has a real amount to zero.
+        shippingGrossMinor = shippingFlatMinor
+          ? await shippingFlatMinor()
+          : 0;
+        const automaticPromotionResult = await resolveAutomaticQuotePromotions({
+          request,
+          options,
+          regionCode,
+          referenceProductMinor,
+          subtotalGrossMinor,
+          shippingGrossMinor,
+          atTime,
+        });
+        promotionResult = await applyPromotionCodesV2({
+          preserveLegacyDiscountsWhenNoCandidates: options?.pricingPolicy?.promotionEngineVersion !== PROMOTION_ENGINE_V2,
+          clientId: options?.clientId ?? null,
+          mode: request.mode,
+          promoCodes: request.promoCodes,
+          referenceProductMinor: sum(pricedLines.map((entry) => entry.referenceGrossMinor)),
+          subtotalGrossMinor,
+          shippingGrossMinor,
+          discounts: automaticPromotionResult.discounts,
+          codeRejections: automaticPromotionResult.codeRejections,
+          atTime,
+        });
+        hasShipping = shippingFlatMinor != null;
+      }
       const { discounts, codeRejections, codeRejectionDetails } = promotionResult;
       // Two lanes: order_total/line discounts reduce the subtotal; a shipping discount
       // (free-shipping promo) reduces the shipping gross. They are summed and validated
@@ -222,7 +241,6 @@ export function createDbBackedCommerceQuotePort<
       );
       const ship = splitIncludedVat(shippingGrossMinor, taxProfile.vatRateBps);
       const shipDiscount = splitIncludedVat(shippingDiscountMinor, taxProfile.vatRateBps);
-      const hasShipping = shippingFlatMinor != null;
       const shippingFields = hasShipping
         ? {
             shippingGross: money(shippingGrossMinor),
@@ -241,6 +259,8 @@ export function createDbBackedCommerceQuotePort<
           pricingComponents: quoteComponents,
           context: {
             ...context(),
+            ...(resolveQuoteShippingPromotions && acquisitionTerms ? { acquisitionTerms } : {}),
+            ...(resolveQuoteShippingPromotions && shippingTerms ? { shippingTerms } : {}),
             ...(options?.pricingPolicy ? { pricingPolicy: options.pricingPolicy } : {}),
           },
           subtotalGross: money(subtotalGrossMinor),

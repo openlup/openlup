@@ -20,3 +20,6 @@ export * from "./promotionClaimSweepPort.js";
 export * from "./promotionClaims.js";
 export * from "./sql.js";
 export type { PromotionStatus, AdminPromotion, AdminPromotionV2Mirror, AdminPromotionSemanticBenefit, AdminPromotionsListResponse, AdminPromotionUpdatePayload, AdminPromotionUpdateRequest, AdminPromotionUpdateResponse } from "./contracts/index.js";
+export type { QuoteAcquisitionBinding } from "./quoteAcquisitionBinding.js";
+export { createQuoteShippingPromotions } from "./quoteShippingPolicy.js";
+export type { QuoteShippingPromotionsDeps } from "./quoteShippingPolicy.js";

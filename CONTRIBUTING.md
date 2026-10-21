@@ -130,6 +130,16 @@ its users or operators can observe.
    package's neutral names in its adapter.
 
 ## Development-preview checks
+
+M05 parity seams keep the existing Node package collector. The promotions suites
+`shippingConsentParity`, `thresholdShippingParity` and
+`acquisitionOrchestrationParity` exercise opt-in bindings and omitted-binding
+compatibility alongside unchanged pricing/promotions/shipping and reference
+suites. Pricing injects orchestration and imports only shipping types; promotions
+uses the shipping server policy through the declared module edge. Browser
+contracts remain type-only. These source checks do not replace committed package
+and installed-consumer gates.
+
 M05 P7 adds five explicit cases across
 `tests/postgres/m05CatalogComposition.test.ts`,
 `tests/platform/catalog/m05Composition.test.ts` and

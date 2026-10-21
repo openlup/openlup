@@ -1,16 +1,20 @@
+import { filterAcquisitionPromotions } from "../pricing/index.js";
+import type { ResolvedAcquisitionTerms } from "../pricing/index.js";
+import type { QuoteAcquisitionBinding } from "./quoteAcquisitionBinding.js";
 import type { CreateQuoteRequest } from "../pricing/index.js";
 import type { CommerceCodeRejection, CommerceQuoteDiscount } from "../pricing/index.js";
 import { evaluatePromos, promoEligibilityFailure } from "@openlup/core/promo";
 import type { PromoEvaluationCart, PromotionRow } from "@openlup/core/promo";
 import type { CommercePromoDataPort, PromotionRedemptionCount } from "./promoDataPort.js";
 export interface QuoteDiscountResult {
+  acquisitionTerms?: ResolvedAcquisitionTerms;
   /** Applied discounts: order_total (clamped to subtotal) + at most one shipping discount. */
   discounts: CommerceQuoteDiscount[];
   /** Submitted coupon codes that produced no discount, with the reason. */
   codeRejections: CommerceCodeRejection[];
 }
 
-export function createQuotePromoDiscounts({ promotionCustomerSemantic }: { promotionCustomerSemantic: (row: PromotionRow) => CommerceQuoteDiscount["customerSemantic"] }) {
+export function createQuotePromoDiscounts({ promotionCustomerSemantic, acquisition }: { acquisition?: Pick<QuoteAcquisitionBinding, "financialPolicy">; promotionCustomerSemantic: (row: PromotionRow) => CommerceQuoteDiscount["customerSemantic"] }) {
   /**
    * Evaluate active promotions for this cart and map them to quote discounts. Two lanes:
    * `order_total` promos are clamped to the subtotal (so `discountTotal <= subtotal`), and
@@ -52,7 +56,12 @@ export function createQuotePromoDiscounts({ promotionCustomerSemantic }: { promo
       input.promoDataPort.redemptionCounts(input.clientId),
       input.promoDataPort.deviceFirstOrderRedeemed(input.visitorId ?? null),
     ]);
-    const candidates = allCandidates.filter(
+    const customerCandidates = acquisition && input.mode === "subscription" && byMode.subscription > 0
+      ? allCandidates.filter((row) => !acquisition.financialPolicy.facts(row).metadataPresent && row.eligibility.first_subscription_purchase !== true)
+      : allCandidates;
+    const effectiveCandidates = acquisition && input.mode === "subscription"
+      ? filterAcquisitionPromotions(customerCandidates, input.atTime, input.regionCode, acquisition.financialPolicy) : customerCandidates;
+    const candidates = effectiveCandidates.filter(
       (promo) => !capReached(promo, redemptionCounts.get(promo.id), input.clientId),
     );
 

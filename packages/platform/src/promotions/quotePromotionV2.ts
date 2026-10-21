@@ -1,3 +1,6 @@
+import { filterAcquisitionPromotions, selectAcquisitionTerms, assertAcquisitionTermsCapability, ACQUISITION_TERMS_CAPABILITY } from "../pricing/index.js";
+import type { QuoteAcquisitionBinding } from "./quoteAcquisitionBinding.js";
+import type { QuoteDiscountResult } from "./quotePromoDiscounts.js";
 import { evaluatePromotionAdjustmentsV2, promoEligibilityFailure } from "@openlup/core/promo";
 import type {
   PromoEvaluationCart,
@@ -18,7 +21,8 @@ type V2Row = PromotionRow & {
   v2_mirror_of?: unknown;
 };
 
-export function createQuotePromotionV2({ promotionCustomerSemantic, minimumProductPayableMinor: MINIMUM_PRODUCT_PAYABLE_MINOR, evaluateOrderTotalDiscounts }: {
+export function createQuotePromotionV2({ promotionCustomerSemantic, minimumProductPayableMinor: MINIMUM_PRODUCT_PAYABLE_MINOR, evaluateOrderTotalDiscounts, acquisition }: {
+  acquisition?: QuoteAcquisitionBinding<CreateQuoteRequest>;
   promotionCustomerSemantic: (row: PromotionRow) => CommerceQuoteDiscount["customerSemantic"];
   minimumProductPayableMinor: number;
   evaluateOrderTotalDiscounts: ReturnType<typeof createQuotePromoDiscounts>["evaluateOrderTotalDiscounts"];
@@ -37,7 +41,8 @@ export function createQuotePromotionV2({ promotionCustomerSemantic, minimumProdu
     shippingMinor: number;
     atTime: string;
     emailEligibilityConfirmed?: boolean;
-  }): Promise<{ discounts: CommerceQuoteDiscount[]; codeRejections: CommerceCodeRejection[] }> {
+    acquisitionCapability?: unknown;
+  }): Promise<QuoteDiscountResult> {
     const byMode = input.clientId
       ? await input.promoDataPort.countPaidOrdersByMode(input.clientId)
       : { oneTime: 0, subscription: 0 };
@@ -46,6 +51,14 @@ export function createQuotePromotionV2({ promotionCustomerSemantic, minimumProdu
       input.promoDataPort.redemptionCounts(input.clientId),
       input.promoDataPort.deviceFirstOrderRedeemed(input.visitorId ?? null),
     ]);
+    const existingSubscriber = input.mode === "subscription" && byMode.subscription > 0;
+    const candidatesForCustomer = acquisition && existingSubscriber ? rows.filter((row) =>
+      !acquisition.financialPolicy.facts(row).metadataPresent && row.eligibility.first_subscription_purchase !== true) : rows;
+    const selection = acquisition && input.mode === "subscription" && !existingSubscriber
+      ? selectAcquisitionTerms(candidatesForCustomer, input.atTime, input.regionCode, acquisition.financialPolicy) : null;
+    if (acquisition) assertAcquisitionTermsCapability(selection, input.acquisitionCapability, "promotion-engine.v2");
+    const effectiveRows = acquisition && input.mode === "subscription"
+      ? filterAcquisitionPromotions(candidatesForCustomer, input.atTime, input.regionCode, acquisition.financialPolicy) : candidatesForCustomer;
     const cart: PromoEvaluationCart = {
       region_code: input.regionCode,
       cart_mode: input.mode === "subscription" ? "subscription" : "one_time",
@@ -59,7 +72,7 @@ export function createQuotePromotionV2({ promotionCustomerSemantic, minimumProdu
       applied_codes: [],
     };
 
-    const eligibleRows = (rows as V2Row[])
+    const eligibleRows = (effectiveRows as V2Row[])
       .filter((row) => row.promotion_engine_version === "promotion-engine.v2")
       .filter((row) => row.trigger_type === "automatic")
       .filter((row) => promoEligibilityFailure(row, cart, input.atTime) === null)
@@ -91,7 +104,8 @@ export function createQuotePromotionV2({ promotionCustomerSemantic, minimumProdu
       };
     });
     const legacyFloor = await evaluateOrderTotalDiscounts({
-      promoDataPort: legacyPromotionDataPort(input.promoDataPort),
+      promoDataPort: legacyPromotionDataPort(acquisition
+        ? { ...input.promoDataPort, listActivePromotions: async () => effectiveRows } : input.promoDataPort),
       clientId: input.clientId,
       visitorId: input.visitorId,
       mode: input.mode,
@@ -109,6 +123,8 @@ export function createQuotePromotionV2({ promotionCustomerSemantic, minimumProdu
     return {
       discounts,
       codeRejections: reconcileLegacyCodeOutcomes(input.promoCodes ?? [], discounts, legacyFloor),
+      ...(selection && input.acquisitionCapability === ACQUISITION_TERMS_CAPABILITY
+        ? { acquisitionTerms: selection.terms } : {}),
     };
   }
 
