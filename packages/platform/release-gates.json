@@ -362,7 +362,12 @@
       "compatibilityPolicy": "internal-candidate",
       "packageSmokeEvidence": [
         "test/packageBoundary.test.ts",
-        "test/payments/preparedAttempt.test.ts"
+        "test/payments/preparedAttempt.test.ts",
+        "test/payments/verifiedIngress.test.ts",
+        "test/payments/refundEvidence.test.ts",
+        "test/payments/truth.test.ts",
+        "test/payments/reconciliation.test.ts",
+        "test/payments/adapterConformance.test.ts"
       ],
       "entrypoint": "dist/payments/index.d.ts",
       "snapshot": "api/payments.api.md"
@@ -373,7 +378,12 @@
       "compatibilityPolicy": "internal-candidate",
       "packageSmokeEvidence": [
         "test/packageBoundary.test.ts",
-        "test/payments/contracts.test.ts"
+        "test/payments/contracts.test.ts",
+        "test/payments/verifiedIngress.test.ts",
+        "test/payments/refundEvidence.test.ts",
+        "test/payments/truth.test.ts",
+        "test/payments/reconciliation.test.ts",
+        "test/payments/adapterConformance.test.ts"
       ],
       "entrypoint": "dist/payments/contracts/index.d.ts",
       "snapshot": "api/payments-contracts.api.md"

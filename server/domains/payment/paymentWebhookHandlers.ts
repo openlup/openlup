@@ -1,3 +1,4 @@
+import type { RefundEvidencePolicy } from "@openlup/platform/payments/contracts";
 import type { VercelRequest, VercelResponse } from "../../_lib/types/vercel.js";
 import { sendBffError, sendBffSuccess, sendMethodNotAllowed } from "../../_lib/bff/response.js";
 import { WebhookBodyTooLargeError } from "../../_lib/payment/webhookSignature.js";
@@ -24,7 +25,7 @@ export interface NormalizedProviderPaymentWebhook {
    * reported a partial refund (`amount_refunded < amount`) vs. a full one.
    * A partial refund applies as `partially_refunded` (records the partial
    * status without flipping the order to fully `refunded`). Absent/null for
-   * non-refund events or when amounts are unavailable (treated as full).
+   * non-refund events. Missing evidence requires explicit legacy policy.
    */
   refundKind?: "full" | "partial" | null;
   rawPayload: Record<string, unknown>;
@@ -106,6 +107,7 @@ export interface PaymentWebhookProcessingPorts {
 
 export interface PaymentWebhookHandlerDeps {
   provider: "stripe" | "tpay";
+  refundEvidencePolicy?: RefundEvidencePolicy;
   webhooksEnabled: () => boolean;
   verifyAndNormalize: (req: VercelRequest) => Promise<NormalizedProviderPaymentWebhook>;
   paymentControlPort?: PaymentWebhookControlPort;
@@ -124,6 +126,7 @@ export interface PaymentWebhookHandlerDeps {
 export function createProviderPaymentWebhookHandler({
   provider,
   webhooksEnabled,
+  refundEvidencePolicy = "require-evidence",
   verifyAndNormalize,
   paymentControlPort,
   methodRefPort,
@@ -170,7 +173,7 @@ export function createProviderPaymentWebhookHandler({
         : { paymentControlPort: paymentControlPort as PaymentWebhookControlPort, methodRefPort, afterProcessed };
       if (!ports.paymentControlPort) throw new Error("Provider webhook port unavailable");
       const ingested = await ports.paymentControlPort.ingestPaymentEvent(event);
-      const resultStatus = mapResultStatus(event);
+      const resultStatus = mapResultStatus(event, refundEvidencePolicy);
       if (resultStatus && ingested.paymentIntentId && ports.paymentControlPort.applyPaymentResult) {
         await ports.paymentControlPort.applyPaymentResult({
           idempotencyKey: `provider-webhook:${provider}:${event.providerEventId}:apply`,
@@ -287,7 +290,7 @@ export function createProviderPaymentWebhookHandler({
             provider,
             providerPaymentId: event.providerPaymentId,
             eventType: event.eventType,
-            resultStatus: mapResultStatus(event),
+            resultStatus: mapResultStatus(event, refundEvidencePolicy),
             occurredAt: event.occurredAt,
             reason,
           },
@@ -307,10 +310,12 @@ export function createProviderPaymentWebhookHandler({
 
 function mapResultStatus(
   event: NormalizedProviderPaymentWebhook,
+  refundEvidencePolicy: RefundEvidencePolicy,
 ): "succeeded" | "failed" | "refunded" | "partially_refunded" | "disputed" | null {
   if (event.eventType === "payment.succeeded") return "succeeded";
   if (event.eventType === "payment.failed") return "failed";
   if (event.eventType === "payment.refunded") {
+    if (refundEvidencePolicy === "require-evidence" && (event.refundKind == null || !event.providerPaymentId.trim() || !Number.isSafeInteger(event.amountMinor) || (event.amountMinor ?? 0) <= 0 || !event.currency?.trim())) return null;
     return event.refundKind === "partial" ? "partially_refunded" : "refunded";
   }
   if (event.eventType === "payment.disputed") return "disputed";

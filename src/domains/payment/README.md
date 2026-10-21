@@ -77,3 +77,5 @@ which belongs to the private overlay and is not part of the published tree.
 ## Prepared-attempt package seam
 
 The experimental [payments entry](../../../packages/platform/README.md#payments-prepared-attempts) contributes injected ordering and type-only adapter contracts. The reference facade remains unchanged; this source contribution does not activate a provider or establish durable-store parity.
+
+The reference webhook handler now defaults to `require-evidence` for refunds: missing/null kind or required payment money/identity leaves the terminal result unapplied. Explicit full/partial evidence remains valid; a host may explicitly choose `legacy-assume-full`. The package ingress accepts snapshot, delta and full-reversal observations and preserves durable first-receipt time. Reference composition and its existing clock behavior stay unchanged until the later binding step.
