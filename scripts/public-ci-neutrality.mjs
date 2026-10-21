@@ -87,6 +87,39 @@ function allowedAdapterWords(path, contents) {
   return contents.split("\n").filter((line) => lines.has(line)).reduce((count, line) => count + [...line.matchAll(adapterWord)].length, 0);
 }
 
+// Owner-approved first-party adoption prose and screenshot references only.
+// Complete lines are admitted once at these exact documentation carriers. Code,
+// new wording, duplicate lines, other brands and every other category stay checked.
+const adoptionLines = new Map(Object.entries({
+  "README.md": [
+    "Shaped by real subscription-commerce work at [$Adopter](https://$adopter.com/)",
+    "OpenLup's development is grounded in [$Adopter](https://$adopter.com/), a D2C",
+    "$Adopter also exercises the full first-party adoption loop: changes go through",
+    "$Adopter is first-party operating experience. It is not independent-adopter",
+    "reference profile reproduces the complete $Adopter application. $Adopter retains",
+    "[![$Adopter's English storefront, a first-party D2C application shaped by OpenLup commerce work](docs/platform/assets/$adopter-storefront-en.png)](https://$adopter.com/en)",
+    "*$Adopter's English storefront. Application-specific branding and content;"
+  ],
+  "docs/platform/DOCUMENTATION.md": [
+    "The root README uses an actual English-language $Adopter storefront capture at",
+    "`docs/platform/assets/$adopter-storefront-en.png`, with a caption distinguishing",
+    "The root README's [$Adopter storefront screenshot](assets/$adopter-storefront-en.png)"
+  ],
+  "config/openlup-publication-catalog.json": [
+    "      \"path\": \"docs/platform/assets/$adopter-storefront-en.png\","
+  ]
+}));
+function allowedAdoptionCounts(path, contents, brand) {
+  const lines = adoptionLines.get(path);
+  if (!lines) return {};
+  const display = brand[0].toUpperCase() + brand.slice(1);
+  const present = new Set(contents.split("\n"));
+  const approved = lines.map((line) => line.replaceAll("$Adopter", display).replaceAll("$adopter", brand))
+    .filter((line) => present.has(line)).join("\n");
+  const names = [...approved.matchAll(new RegExp(`\\b${brand}\\b`, "gi"))].length;
+  return { brand: names, "ui-0": names, "ui-2": [...approved.matchAll(new RegExp(`${brand}\\.com`, "gi"))].length };
+}
+
 // O-P1/O-P2: vendor categories plus the second adapter's scoped market token. Exact carrier tokens cannot excuse bare vendor prose.
 const paymentAdapterNames = ["str" + "ipe", "tp" + "ay"];
 const paymentAdapterLedger = "docs/platform/plans/oss-a2-payment-adapters.md";
@@ -267,6 +300,9 @@ export function scanSnapshots(snapshots) {
   };
   const ui = invoke("packages/ui/smoke/neutrality.ts", sources, ["--counts-json"]);
   if (!record(ui) || !Array.isArray(ui.counts) || !record(ui.policy)) throw new Error("invalid neutrality scanner output");
+  // Reuse the first name in the pinned tree-brand policy; no second brand registry.
+  const adoptionBrand = ui.policy.rules?.find((rule) => rule.id === "tree-brand")?.terms?.[0];
+  if (typeof adoptionBrand !== "string" || !/^[a-z]+$/.test(adoptionBrand)) throw new Error("invalid adoption brand policy");
   const sourceContents = new Map(sources.map(({ path, contents }) => [path, contents]));
   for (const row of ui.counts) {
     for (const category of ["ui-13", "ui-14", "ui-5", "ui-8"]) {
@@ -286,6 +322,13 @@ export function scanSnapshots(snapshots) {
   const rows = {};
   for (const row of [...ui.counts, ...core]) {
     if (!record(row) || !snapshots.has(row.path) || !record(row.counts)) throw new Error("invalid neutrality scanner row");
+    const adoption = allowedAdoptionCounts(row.path, sourceContents.get(row.path) ?? "", adoptionBrand);
+    for (const [category, count] of Object.entries(adoption)) {
+      if (row.counts[category] && count) {
+        row.counts[category] -= count;
+        if (row.counts[category] === 0) delete row.counts[category];
+      }
+    }
     for (const [category, count] of Object.entries(row.counts)) if (!categoryPattern.test(category) || !Number.isSafeInteger(count) || count < 0) throw new Error("invalid neutrality scanner count");
     if (Object.keys(row.counts).length) rows[hash(row.path)] = { ...rows[hash(row.path)], ...row.counts };
   }

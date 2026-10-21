@@ -18,7 +18,8 @@ it("clamps excess market and zone allowances without masking remaining counts", 
   // Plant counts below and above the allowance, as a scanner vocabulary change could do.
   for (const measured of [1, 5]) {
     const invoke = vi.mocked(execFileSync);
-    invoke.mockReturnValueOnce(JSON.stringify({ counts: [{ path, counts: { "ui-5": measured, "ui-8": measured, "ui-6": 1 } }], policy: {} }));
+    invoke.mockReturnValueOnce(JSON.stringify({ counts: [{ path, counts: { "ui-5": measured, "ui-8": measured, "ui-6": 1 } }],
+      policy: { rules: [{ id: "tree-brand", terms: [String.fromCharCode(118, 101, 108, 105, 112, 101, 116)] }] } }));
     invoke.mockReturnValueOnce("[]");
     try {
       const result = scanSnapshots(new Map([[path, Buffer.from(contents)]]));
