@@ -209,7 +209,9 @@ it("native consumer readback preserves quote authority, draft receipts and unsup
   const promos = createPostgresCommercePromoDataPort(db);
   const applyPromotions: typeof resolveAutomaticQuotePromotions = input => resolveAutomaticQuotePromotions({ ...input, promoDataPort: promos });
   const tax = { included: true as const, country: "ZZ", category: "standard", vatRateBps: 0, legalBasis: "Synthetic" };
-  const quote = createDbBackedCommerceQuotePort({ quoteCatalogReadPort: facts, isStrictD1Quote: true, commercePriceAuthorityPort: createPostgresCommercePriceAuthorityPort(db),
+  // Observe DB-defaulted price windows with the fixture's clock for quotes and offers.
+  const quoteAt = (await pool.query("SELECT clock_timestamp() AS at")).rows[0].at.toISOString();
+  const quote = createDbBackedCommerceQuotePort({ now: () => quoteAt, quoteCatalogReadPort: facts, isStrictD1Quote: true, commercePriceAuthorityPort: createPostgresCommercePriceAuthorityPort(db),
     taxProfile: tax, supportedTaxProfiles: [tax], regionCode: "ZZ", currency: "XXX", hasPromotionCodePort: false,
     resolveAutomaticQuotePromotions: applyPromotions, applyPromotionCodesV2, lineContext: () => ({}), quoteContext: request => () => ({ mode: request.mode, promoCodes: request.promoCodes }),
   });
