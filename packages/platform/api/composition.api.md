@@ -252,6 +252,27 @@ export { createBundleComposer, type ComposeBundle, type PlatformBundle, type Pla
 export { bindNodeHttpPort, createScheduledEntrypointResolver } from "./httpBinding.js";
 export { createNodeHost, type NodeHost, type NodeHostAdmission, type NodeHostDependencies, type NodeSchedulerProfile, type ServeNodeOptions, type ServeNodeResult, } from "./nodeHost.js";
 export { createCatalogContribution, type CatalogContributionInput } from "./catalogContribution.js";
+export { createInventoryContribution } from "./inventoryContribution.js";
+```
+## dist/composition/inventoryContribution.d.ts
+
+```ts
+import type { Contribution, RequiredSchema } from "@openlup/core/readiness";
+/** Structural selected callables keep inventory and catalog declarations independent. */
+export declare function createInventoryContribution(input: {
+    version: string;
+    requiredSchema: RequiredSchema;
+    inventory: Readonly<Record<string, ((...args: never[]) => unknown) | null>>;
+    routes: Contribution["routes"];
+}): {
+    contributions: Contribution[];
+    ports: {
+        [k: string]: ((...args: never[]) => unknown) | null;
+    };
+    routes: {
+        [k: string]: (...args: never[]) => unknown;
+    };
+};
 ```
 ## dist/composition/nodeHost.d.ts
 

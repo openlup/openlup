@@ -8,7 +8,8 @@ import {
   createManagedAdminInventoryGateway,
   type ManagedAdminInventoryGateway,
 } from "../../adapters/managed/inventory/adminInventoryGateway.js";
-import { createPostgresAdminInventoryPort } from "../../adapters/postgres/inventory/adminInventory.js";
+import { createInventoryBindings } from "@openlup/platform/inventory";
+import { inventorySubscriptionForecastResponseSchema } from "../../../src/domains/inventory/contracts.js";
 import {
   createPostgresAdminInventoryTransactionLane,
   type PostgresAdminInventoryTransactionLane,
@@ -70,11 +71,18 @@ export function resolveAdminInventoryRuntimeBinding(
 
   const serviceEnv = readSupabaseInventoryEnv(env);
   if (!serviceEnv) return null;
-  const gateway = (options.createManagedGateway ?? createManagedAdminInventoryGateway)(serviceEnv);
+  const binding = createInventoryBindings({ dataKind: "supabase", provider: {
+    stockMasterProvider: inventorySubscriptionForecastResponseSchema.shape.stockMasterProvider.value,
+    providerSchema: inventorySubscriptionForecastResponseSchema.shape.stockMasterProvider,
+  }, createManagedStore: () => {
+    const gateway = (options.createManagedGateway ?? createManagedAdminInventoryGateway)(serviceEnv);
+    return { readPort: gateway.readPort(), mutationPort: gateway.mutationPort() };
+  } });
+  if (!binding.readPort || !binding.mutationPort) return null;
   const authClient = createAdminAuthClient(serviceEnv, accessToken);
   return {
-    readPort: gateway.readPort(),
-    mutationPort: gateway.mutationPort(),
+    readPort: binding.readPort,
+    mutationPort: binding.mutationPort,
     authorizeAdmin: async () => {
       const result = await authorizeAdminWithUser(authClient, accessToken, { allowedRoles: ["admin"] });
       if (result.ok) return { ok: true, userId: result.userId };
@@ -106,10 +114,14 @@ function createDirectAdminInventoryBinding(
     lane = createPostgresAdminInventoryTransactionLane({ connectionString });
     directLanes.set(connectionString, lane);
   }
-  const port = createPostgresAdminInventoryPort(executorForLane(lane));
+  const binding = createInventoryBindings({ dataKind: "postgres", executor: executorForLane(lane), provider: {
+    stockMasterProvider: inventorySubscriptionForecastResponseSchema.shape.stockMasterProvider.value,
+    providerSchema: inventorySubscriptionForecastResponseSchema.shape.stockMasterProvider,
+  } });
+  if (!binding.readPort || !binding.mutationPort) return null;
   return {
-    readPort: port,
-    mutationPort: port,
+    readPort: binding.readPort,
+    mutationPort: binding.mutationPort,
     authorizeAdmin: async () => auth.binding!.run(
       input.accessToken,
       async (authorizer) => {

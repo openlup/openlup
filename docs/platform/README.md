@@ -20,7 +20,7 @@ This is the public documentation set for the OpenLup platform. It describes the 
 
 ## Implementation plans
 
-- [Inventory and delivery extraction](plans/oss-m06-stock-reservations-delivery.md) — M06 frozen lanes, inventory imports, SQL projections, store evidence and pending parity and budgets.
+- [Inventory and delivery extraction](plans/oss-m06-stock-reservations-delivery.md) — M06 frozen lanes, inventory imports, SQL projections, store/schema composition, evidence and pending parity and budgets.
 - [Published CI completeness](plans/public-ci-completeness.md) — complete CI observation, preserved required coverage and separate repair work.
 - [Autonomous reviewed delivery](plans/autonomous-reviewed-delivery.md) — native review, its evidence and queue admission.
 - [Base-move tolerance and pull-request receipts](plans/ci-base-move-and-receipts.md) — the executed CI-parity programme, merge-queue review carry-over, the fork-point review base and the deferred items.

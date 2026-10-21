@@ -23,6 +23,46 @@ export declare function createPostgresAdminInventoryPort(executor: PgQueryExecut
 }, now?: () => string): InventoryReadPort & InventoryMutationPort;
 export {};
 ```
+## dist/inventory/bindings.d.ts
+
+```ts
+import type { z } from "zod";
+import type { InventoryMutationPort, InventoryReadPort } from "./ports.js";
+import type { NewPurchaseStockReadPort } from "./newPurchaseStockAvailability.js";
+export interface InventoryBindingDependencies {
+    dataKind: string;
+    provider: {
+        stockMasterProvider: string;
+        providerSchema: z.ZodType<string>;
+    };
+    executor?: {
+        query(text: string, values?: unknown[]): Promise<{
+            rows: Record<string, unknown>[];
+        }>;
+    } | null;
+    createManagedStore?: (provider: InventoryBindingDependencies["provider"]) => {
+        readPort: InventoryReadPort;
+        mutationPort: InventoryMutationPort;
+    } | null;
+    newPurchaseStockReadPort?: NewPurchaseStockReadPort | null;
+    now?: () => string;
+}
+export interface InventoryBindings {
+    readPort: InventoryReadPort | null;
+    mutationPort: InventoryMutationPort | null;
+    newPurchaseStockReadPort: NewPurchaseStockReadPort | null;
+    readiness: {
+        ready: boolean;
+        reason: string | null;
+    };
+    unsupported: {
+        adjustment: string | null;
+        newPurchaseStockRead: string | null;
+    };
+}
+/** Select one store only. Factories declare bindings, never discover or activate a host. */
+export declare function createInventoryBindings(deps: InventoryBindingDependencies): InventoryBindings;
+```
 ## dist/inventory/contracts/forecast.d.ts
 
 ```ts
@@ -372,6 +412,7 @@ export { createPostgresRenewalReservationPort, type AutomaticRenewalInventoryPor
 export { forecastSubscriptionInventoryShortages, buildSubscriptionInventoryForecast } from "./forecast.js";
 export { calculateSubscriptionForecastSkus, calculateSubscriptionForecastTotals } from "./subscriptionForecastCalculation.js";
 export { INVENTORY_MIGRATIONS } from "./sql.js";
+export { createInventoryBindings, type InventoryBindingDependencies, type InventoryBindings } from "./bindings.js";
 ```
 ## dist/inventory/inventoryHandlers.d.ts
 

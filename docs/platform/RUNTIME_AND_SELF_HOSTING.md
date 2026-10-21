@@ -167,6 +167,14 @@ It must fail safely when a required dependency is absent rather than silently
 substituting a different business behaviour.
 
 ## Opt-in disposable subscription reference
+
+The inert [M06 inventory binding](../../server/runtime/public-reference/m06InventoryBinding.ts)
+selects one store and the reference provider validator. A host-injected normalized
+stock reader feeds catalog bundle availability; native new-purchase reads remain
+unsupported pending an owner decision in the native-backend parity round. Importing
+the binding mounts no route, schedule or provider. Admin composition retains its
+authorization and mutation flag; native adjustment remains refused.
+
 The separate M05 reference factories
 [`m05CatalogBinding.ts`](../../server/runtime/public-reference/m05CatalogBinding.ts)
 and [`m05CatalogSchema.ts`](../../server/runtime/public-reference/m05CatalogSchema.ts)

@@ -19,3 +19,4 @@ export { createPostgresRenewalReservationPort, type AutomaticRenewalInventoryPor
 export { forecastSubscriptionInventoryShortages, buildSubscriptionInventoryForecast } from "./forecast.js";
 export { calculateSubscriptionForecastSkus, calculateSubscriptionForecastTotals } from "./subscriptionForecastCalculation.js";
 export { INVENTORY_MIGRATIONS } from "./sql.js";
+export { createInventoryBindings, type InventoryBindingDependencies, type InventoryBindings } from "./bindings.js";
