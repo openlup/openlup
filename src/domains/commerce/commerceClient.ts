@@ -1,5 +1,4 @@
 import { requestBff, type BffRequestOptions } from "@/lib/bff/client";
-import { PAYMENT_FAILURE_DISPLAY_HEADER } from "./paymentFailureDisplayContracts";
 import { z } from "../../lib/validation/zod.js";
 import {
   createOrderDraftResponseSchema,
@@ -46,11 +45,8 @@ import {
 } from "./productCompatibilityContracts";
 import {
   checkoutResponseSchema,
-  paymentStatusResponseSchema,
   type CheckoutRequest,
   type CheckoutResponse,
-  type PaymentStatusRequest,
-  type PaymentStatusResponse,
 } from "./checkoutContracts";
 import {
   ORDER_RECAP_V2_CONTRACT_VERSION,
@@ -81,22 +77,7 @@ export function submitCheckout(
   });
 }
 
-export function getCommercePaymentStatus(
-  request: PaymentStatusRequest,
-  options: BffRequestOptions = {},
-): Promise<PaymentStatusResponse> {
-  const headers = new Headers(options.headers);
-  headers.set(PAYMENT_FAILURE_DISPLAY_HEADER, "1");
-  return requestBff(
-    `/api/bff/commerce/payment-status?${new URLSearchParams(request).toString()}`,
-    paymentStatusResponseSchema,
-    {
-      ...options,
-      method: "GET",
-      headers,
-    },
-  );
-}
+export { getCommercePaymentStatus } from "./paymentStatusClient";
 
 export function getCommerceOrderRecap(
   request: OrderRecapRequest & { contractVersion: typeof ORDER_RECAP_V3_CONTRACT_VERSION },
