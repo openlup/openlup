@@ -1,6 +1,33 @@
 import { execFileSync } from "node:child_process";
-import { expect, it } from "vitest";
-import { allowedPaymentAdapterWords, neutralityIncreases } from "./public-ci-neutrality.mjs";
+import { createHash } from "node:crypto";
+import { expect, it, vi } from "vitest";
+import { allowedPaymentAdapterWords, neutralityIncreases, scanSnapshots } from "./public-ci-neutrality.mjs";
+
+vi.mock("node:child_process", async importOriginal => {
+  const original = await importOriginal<typeof import("node:child_process")>();
+  return { ...original, execFileSync: vi.fn(original.execFileSync) };
+});
+
+it("clamps excess market and zone allowances without masking remaining counts", () => {
+  const vendor = ["tp", "ay"].join("");
+  const path = `packages/platform/src/payments/${vendor}/${vendor}PaymentReconciliationProvider.ts`;
+  const zone = ["Europe", "Warsaw"].join("/");
+  const declaration = `const REPORTING_TIME_ZONE = "${zone}";`;
+  const contents = `${declaration}\n`.repeat(2) + `${String.fromCharCode(80, 76, 78)} `.repeat(2);
+  const key = createHash("sha256").update(path).digest("hex");
+  // Plant counts below and above the allowance, as a scanner vocabulary change could do.
+  for (const measured of [1, 5]) {
+    const invoke = vi.mocked(execFileSync);
+    invoke.mockReturnValueOnce(JSON.stringify({ counts: [{ path, counts: { "ui-5": measured, "ui-8": measured, "ui-6": 1 } }], policy: {} }));
+    invoke.mockReturnValueOnce("[]");
+    try {
+      const result = scanSnapshots(new Map([[path, Buffer.from(contents)]]));
+      const remaining = measured === 1 ? { "ui-6": 1 } : { "ui-5": 3, "ui-8": 3, "ui-6": 1 };
+      expect(result.rows).toEqual({ [key]: remaining });
+      expect(neutralityIncreases({}, result.rows)).toHaveLength(Object.keys(remaining).length);
+    } finally { invoke.mockClear(); }
+  }
+});
 
 it("allows the reporting zone only on its exact declaration and path", () => {
   const vendor = ["tp", "ay"].join("");

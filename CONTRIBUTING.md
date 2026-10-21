@@ -469,7 +469,9 @@ Paired real-scanner plants keep vendor and currency vocabulary outside those
 paths counted, including each vendor word inside the other adapter's source
 and test directories. Its offline witnesses retain all donor cases as moved-pending;
 the reporting zone is allowed only on the exact readback declaration at its
-exact source path, with outside-line/path plants and no baseline increase.
+exact source path, with outside-line/path plants and no baseline increase. Payment vocabulary subtraction clamps at zero, so an
+excess allowance cannot offset other counted findings; scanner-count plants
+exercise both market and reporting-zone subtraction.
 New attempt/redaction/envelope/validity/freshness cases are counted separately. The packed payment
 consumer imports both optional subpaths with ambient I/O disabled and no SDK.
 Focused loopback transport tests fence every socket except their disposable

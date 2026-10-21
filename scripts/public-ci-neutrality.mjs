@@ -236,7 +236,7 @@ function verifyPins(parent, current, base) {
   }
   return pins;
 }
-function scanSnapshots(snapshots) {
+export function scanSnapshots(snapshots) {
   const sources = [], binary = [];
   for (const [path, bytes] of snapshots) {
     try {
@@ -271,7 +271,7 @@ function scanSnapshots(snapshots) {
   for (const row of ui.counts) {
     for (const category of ["ui-13", "ui-14", "ui-5", "ui-8"]) {
       if (row.counts?.[category]) {
-        row.counts[category] -= allowedPaymentAdapterWords(row.path, sourceContents.get(row.path) ?? "", category);
+        row.counts[category] = Math.max(0, row.counts[category] - allowedPaymentAdapterWords(row.path, sourceContents.get(row.path) ?? "", category));
         if (row.counts[category] === 0) delete row.counts[category];
       }
     }

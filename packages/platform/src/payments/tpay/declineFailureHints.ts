@@ -63,7 +63,7 @@ export const DECLINE_CODE_READING_TABLE: Readonly<Record<string, DeclineCodeRead
  * from the table above rather than mapped to a guess: a row there must state
  * vocabulary the kernel declares, and `indeterminate` is the honest answer to a
  * code whose meaning is unconfirmed. Listing them here separates "we have met
- * this code and refuse to invent its semantics" from "./we have never seen it",
+ * this code and refuse to invent its semantics" from "we have never seen it",
  * which read identically at the lookup.
  *
  *   - `"100"` — observed in production on 2026-08-26, as the first attempt of a

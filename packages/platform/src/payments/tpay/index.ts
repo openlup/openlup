@@ -6,6 +6,7 @@ import type { PaymentAdapter, PaymentAdapterCapabilities, PaymentAttemptPort, Pa
 import type { PaymentExecutionInput, PaymentExecutionResult } from "./donorContracts.js";
 import { createTpayHttpClient } from "./tpayHttpClient.js";
 import { createTpayPaymentExecutionAdapter } from "./tpayPaymentExecutionAdapter.js";
+import { ProviderAttemptPreDispatchError } from "./preparedProviderAttempt.js";
 import { createTpayPaymentReconciliationProvider } from "./tpayPaymentReconciliationProvider.js";
 import { verifyTpayJwsSignature, type TpayJwsCertificateResolver } from "./webhookJwsVerifier.js";
 import { normalizeTpayWebhook, toNormalizedProviderTpayWebhook } from "./webhookNormalizer.js";
@@ -22,6 +23,8 @@ export interface TpayPaymentAdapterConfig {
     resolveCertificate: TpayJwsCertificateResolver;
     /** Seven days by default: generous retry allowance assumed until provider schedule is established. */
     maxNotificationAgeSeconds?: number;
+    /** Maximum future signed issue time relative to receipt; defaults to 300 seconds. */
+    maxClockSkewSeconds?: number;
   };
   urls: { notificationUrl: string; successUrl: string; errorUrl: string };
   modelOActivationEnabled: boolean;
@@ -60,7 +63,8 @@ export function createTpayPaymentAdapter(config: TpayPaymentAdapterConfig): Paym
     || !notification.allowedCertificateUrlPrefix.endsWith("/")) throw new Error("Invalid certificate URL prefix");
   const root = new X509Certificate(notification.rootCertificatePem);
   const maxAge = notification.maxNotificationAgeSeconds ?? 7 * 24 * 60 * 60;
-  if (!Number.isFinite(maxAge) || maxAge < 0 || !["test", "live"].includes(config.mode)
+  const maxClockSkew = notification.maxClockSkewSeconds ?? 300;
+  if (!Number.isFinite(maxAge) || maxAge < 0 || !Number.isFinite(maxClockSkew) || maxClockSkew < 0 || !["test", "live"].includes(config.mode)
     || typeof config.http.fetchImpl !== "function" || !config.http.clientId || !config.http.clientSecret
     || typeof config.modelOActivationEnabled !== "boolean") throw new Error("Invalid payment configuration");
   for (const url of [config.http.baseUrl, ...Object.values(config.urls)]) {
@@ -90,7 +94,7 @@ export function createTpayPaymentAdapter(config: TpayPaymentAdapterConfig): Paym
       providerRequestFingerprint: input.fingerprint, paymentIntentId: input.intentRef, orderRef: input.intentRef,
       amountMinor: input.money.amountMinor, currency: input.money.currency,
       mode: renewal ? "subscription_cycle" : "one_time",
-      payer: { email: input.payer.email, name: input.payer.name ?? "" },
+      payer: { email: input.payer.email, name: input.payer.name?.trim() ? input.payer.name : "Customer" },
       ...(renewal ? { providerFlow: "recurring_charge", paymentMethodRef: input.storedMethod!.reference,
         paymentMethodAliasType: "PAYID", paymentMethodRecurringModel: "O" } : {
         transientProviderInput: family === "bank-redirect"
@@ -112,7 +116,16 @@ export function createTpayPaymentAdapter(config: TpayPaymentAdapterConfig): Paym
           return { outcome: { kind: "decline", refusal: reason },
             dispatch: { kind: "notDispatched", evidence: { exact: true, phase: "before-dispatch", reason } }, diagnostics: {} };
         }
-        const result = await execution.execute(prepared);
+        let result: PaymentExecutionResult;
+        try { result = await execution.execute(prepared); }
+        catch (error) {
+          if (!(error instanceof ProviderAttemptPreDispatchError)) throw error;
+          // The donor retries this closed no-charge lane; ambiguous failures still throw.
+          const hints: PaymentRefusalEnvelope["hints"] = ["transient"];
+          const reason: PaymentRefusalEnvelope = { code: classifyPaymentFailure({ neutralReasonHints: hints }).failureClass, hints };
+          return { outcome: { kind: "decline", refusal: reason },
+            dispatch: { kind: "notDispatched", evidence: { exact: true, phase: "before-dispatch", reason } }, diagnostics: {} };
+        }
         // Only these neutral facts cross the boundary; donor payloads and transient payer/authorization stay local.
         return {
           outcome: result.providerDecline ? { kind: "decline", refusal: neutralDecline(result.providerDecline) }
@@ -153,7 +166,7 @@ export function createTpayPaymentAdapter(config: TpayPaymentAdapterConfig): Paym
           if (occurred !== null) {
             const received = Date.parse(input.receivedAt) / 1000;
             if (!Number.isFinite(received)) return refusal("malformed");
-            if (received - (asserted as number) > maxAge) return refusal("stale");
+            if (received - (asserted as number) > maxAge || (asserted as number) - received > maxClockSkew) return refusal("stale");
           }
           return mapVerifiedTpayEvent(rawBody, occurred, config.mode);
         } catch { return refusal("malformed"); }

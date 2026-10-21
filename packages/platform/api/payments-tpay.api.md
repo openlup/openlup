@@ -954,6 +954,8 @@ export interface TpayPaymentAdapterConfig {
         resolveCertificate: TpayJwsCertificateResolver;
         /** Seven days by default: generous retry allowance assumed until provider schedule is established. */
         maxNotificationAgeSeconds?: number;
+        /** Maximum future signed issue time relative to receipt; defaults to 300 seconds. */
+        maxClockSkewSeconds?: number;
     };
     urls: {
         notificationUrl: string;

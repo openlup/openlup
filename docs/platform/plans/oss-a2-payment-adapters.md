@@ -133,7 +133,8 @@ Named deltas from the contributed donor:
    required construction inputs; signing and root certificate validity windows
    use the injected clock. A verified protected-header `iat` is interpreted as
    UTC seconds. Maximum notification age defaults to seven days, a generous
-   assumption while the provider retry schedule is unconfirmed. A missing
+   assumption while the provider retry schedule is unconfirmed. Future signed issue
+   time beyond `maxClockSkewSeconds` (default 300) after receipt refuses as stale. A missing
    assertion leaves provider time null; the host deduplicates by exact event
    identity and fingerprint. No receipt timestamp becomes provider time.
 2. Transaction event identity combines the payment reference and verified outcome
@@ -143,7 +144,10 @@ Named deltas from the contributed donor:
 3. Receipt time participates only in signed notification freshness.
 4. Attempt glue consumes the canonical optional payer/method contract fields,
    refuses missing context before dispatch and excludes transient payer and
-   authorization from its return envelope.
+   authorization from its return envelope. Missing or blank payer name uses
+   the donor neutral display label `Customer`. Only typed donor no-charge errors
+   return exact before-dispatch evidence with core's transient retryable refusal;
+   other execution errors propagate unchanged as ambiguous.
 5. Neutrality admits the reporting zone only on the exact readback declaration
    line at its exact source path, with paired outside-line/path refusal plants
    and no baseline increase.
@@ -207,7 +211,7 @@ The programme budget of +100 cases / +30 s counts net-new cases. A test carried 
 |---|---|---:|---|
 | — | `conformance.test.ts` | 1 | net-new |
 | server/adapters/tpay/declineFailureHints.test.ts | `declineFailureHints.test.ts` | 12 | moved-pending: root `server/adapters/tpay/declineFailureHints.test.ts` retires at O-P3; adopter copy at C5 |
-| — | `factory.test.ts` | 39 | net-new |
+| — | `factory.test.ts` | 51 | net-new |
 | server/adapters/tpay/tpayCreateTransactionInput.test.ts | `tpayCreateTransactionInput.test.ts` | 12 | moved-pending: adopter copy retires at C5 |
 | server/adapters/tpay/tpayDeclineEvidence.test.ts | `tpayDeclineEvidence.test.ts` | 71 | moved-pending: root `server/adapters/tpay/tpayDeclineEvidence.test.ts` retires at O-P3; adopter copy at C5 |
 | server/infra/tpay/tpayDispatchFailure.test.ts | `tpayDispatchFailure.test.ts` | 7 | moved-pending: root `server/infra/tpay/tpayDispatchFailure.test.ts` retires at O-P3; adopter copy at C5 |
@@ -219,5 +223,5 @@ The programme budget of +100 cases / +30 s counts net-new cases. A test carried 
 | server/infra/tpay/tpayTransactionPayload.test.ts | `tpayTransactionPayload.test.ts` | 14 | moved-pending: adopter copy retires at C5 |
 | server/infra/tpay/webhookJwsVerifier.test.ts | `webhookJwsVerifier.test.ts` | 8 | moved-pending: root `server/infra/tpay/webhookJwsVerifier.test.ts` retires at O-P3; adopter copy at C5 |
 | server/infra/tpay/webhookNormalizer.test.ts | `webhookNormalizer.test.ts` | 28 | moved-pending: adopter copy retires at C5 |
-| — | `scripts/public-ci-payment-allowance.test.ts` (market token and reporting-zone plants) | 2 | net-new |
+| — | `scripts/public-ci-payment-allowance.test.ts` (market token, reporting-zone and subtraction plants) | 3 | net-new |
 | — | `scripts/packages/platform-cold-consumer.test.ts` (second adapter entry) | 0 | existing case extended |

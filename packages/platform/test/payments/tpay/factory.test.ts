@@ -1,6 +1,9 @@
 import { X509Certificate } from "node:crypto";
 import { beforeAll, expect, it, vi } from "vitest";
 import { createTpayPaymentAdapter, tpayPaymentCapabilities, type TpayPaymentAdapterConfig } from "../../../src/payments/tpay/index.js";
+import * as donorExecution from "../../../src/payments/tpay/tpayPaymentExecutionAdapter.js";
+import { ProviderAttemptPreDispatchError, type TrustedProviderAttemptNoChargeFailure } from "../../../src/payments/tpay/preparedProviderAttempt.js";
+import { TpayTransactionDispatchError } from "../../../src/payments/tpay/tpayDispatchFailure.js";
 import { createTpayJwsFixture } from "./webhookJws.testFixtures.js";
 import { projectVerifiedEvidence } from "../../../src/payments/verifiedEvidenceProjection.js";
 import { readMethodLifecycleEvent } from "../../../src/payments/index.js";
@@ -92,13 +95,13 @@ it("dispatches a bank redirect with the selected channel and transient payer", a
     currency: "PLN", pay: { channelId: "42" } });
   expectRedacted(result); expectRedacted(result.diagnostics);
 });
-it("dispatches a one-time code without echoing authorization or optional payer name", async () => {
+it.each([undefined, "", "  \t "])("dispatches a one-time code with a neutral label for payer name %s", async name => {
   const { good, request } = dispatchConfig();
-  const result = await createTpayPaymentAdapter(good).attemptPort.execute({ ...attemptInput(), payer: { email: payer.email },
+  const result = await createTpayPaymentAdapter(good).attemptPort.execute({ ...attemptInput(), payer: { email: payer.email, name },
     methodSelection: { family: "one-time-code" }, customerAuthorization: authorization });
   expect(result).toMatchObject({ dispatch: { kind: "dispatched", providerPaymentRef: "api-1" } });
   expect(result.handoff).toBeUndefined();
-  expect(request()).toMatchObject({ payer: { email: payer.email, name: "" }, pay: { groupId: 150, blikPaymentData: { blikToken: authorization } } });
+  expect(request()).toMatchObject({ payer: { email: payer.email, name: "Customer" }, pay: { groupId: 150, blikPaymentData: { blikToken: authorization } } });
   expectRedacted(result); expectRedacted(result.diagnostics);
 });
 it("dispatches an unattended Model O alias with explicit transient payer", async () => {
@@ -151,6 +154,70 @@ it("keeps provider refusal prose and payer out of the complete returned decline 
   expect(result.handoff).toBeUndefined();
   expectRedacted(result); expectRedacted(result.diagnostics);
 });
+const trustedFailures: TrustedProviderAttemptNoChargeFailure[] = [
+  { phase: "oauth", code: "tpay_oauth_failed", dispatchState: "not_dispatched" },
+  { phase: "oauth", code: "tpay_oauth_timeout", dispatchState: "not_dispatched" },
+  { phase: "oauth", code: "tpay_oauth_invalid_response", dispatchState: "not_dispatched" },
+  { phase: "transaction_dispatch", code: "tpay_request_encode_failed", dispatchState: "not_dispatched" },
+  { phase: "transaction_dispatch", code: "tpay_request_deadline_exhausted", dispatchState: "not_dispatched" },
+  { phase: "response_decode", code: "tpay_request_refused", dispatchState: "refused" },
+];
+it.each(trustedFailures)("maps trusted $code to exact no-dispatch without leaking transient input", async failure => {
+  const error = new ProviderAttemptPreDispatchError(failure);
+  const spy = vi.spyOn(donorExecution, "createTpayPaymentExecutionAdapter").mockReturnValueOnce({
+    validateInput: () => {}, execute: async () => { throw error; },
+  });
+  let adapter;
+  try { adapter = createTpayPaymentAdapter(config()); } finally { spy.mockRestore(); }
+  const result = await adapter.attemptPort.execute({ ...attemptInput(),
+    methodSelection: { family: "one-time-code" }, customerAuthorization: authorization });
+  const reason = { code: "soft_retryable", hints: ["transient"] };
+  expect(result).toEqual({ outcome: { kind: "decline", refusal: reason },
+    dispatch: { kind: "notDispatched", evidence: { exact: true, phase: "before-dispatch", reason } }, diagnostics: {} });
+  expectRedacted(result);
+});
+it("maps real OAuth failures and provider document refusals without returning provider prose", async () => {
+  for (const failOAuth of [true, false]) {
+    const good = config();
+    const fetch = vi.fn(async (url: string) => {
+      const oauth = url.endsWith("/oauth/auth");
+      const payload = oauth && !failOAuth ? { access_token: "fixture", expires_in: 7200 }
+        : { result: "failed", errors: [{ errorCode: "not_valid", fieldName: "payer.email",
+          errorMessage: `${payer.email} ${payer.name} ${authorization}` }] };
+      return { ok: oauth && !failOAuth, status: oauth && !failOAuth ? 200 : 400,
+        text: async () => JSON.stringify(payload), json: async () => payload };
+    });
+    good.http.fetchImpl = fetch;
+    const result = await createTpayPaymentAdapter(good).attemptPort.execute({ ...attemptInput(),
+      methodSelection: { family: "one-time-code" }, customerAuthorization: authorization });
+    expect(result).toMatchObject({ outcome: { kind: "decline", refusal: { code: "soft_retryable", hints: ["transient"] } },
+      dispatch: { kind: "notDispatched", evidence: { exact: true, phase: "before-dispatch" } } });
+    expect(fetch).toHaveBeenCalledTimes(failOAuth ? 1 : 2);
+    expectRedacted(result);
+  }
+});
+it("propagates ambiguous and lookalike errors unchanged", async () => {
+  for (const error of [new TpayTransactionDispatchError({ phase: "transaction_dispatch",
+    code: "tpay_transport_failed", dispatchState: "unknown" }),
+    Object.assign(new Error("untrusted"), trustedFailures[0])]) {
+    const spy = vi.spyOn(donorExecution, "createTpayPaymentExecutionAdapter").mockReturnValueOnce({
+      validateInput: () => {}, execute: async () => { throw error; },
+    });
+    let adapter;
+    try { adapter = createTpayPaymentAdapter(config()); } finally { spy.mockRestore(); }
+    await expect(adapter.attemptPort.execute(attemptInput())).rejects.toBe(error);
+  }
+});
+it("keeps an actual transaction transport loss ambiguous", async () => {
+  const good = config();
+  good.http.fetchImpl = vi.fn(async url => {
+    if (!url.endsWith("/oauth/auth")) throw new Error("transport lost");
+    return { ok: true, status: 200, text: async () => "", json: async () => ({ access_token: "fixture", expires_in: 7200 }) };
+  });
+  await expect(createTpayPaymentAdapter(good).attemptPort.execute(attemptInput())).rejects.toMatchObject({
+    name: "TpayTransactionDispatchError", dispatchState: "unknown", code: "tpay_transport_failed",
+  });
+});
 it("verifies exact signed bytes and retains null provider time without a signed assertion", async () => {
   const adapter = createTpayPaymentAdapter(config());
   expect(await verify(adapter)).toMatchObject({ kind: "money", outcome: "succeeded", providerEventId: "TR-1:succeeded",
@@ -175,6 +242,22 @@ it("checks signed notification age and preserves the asserted time", async () =>
   expect(await verify(adapter, body(), instant - 60)).toMatchObject({ kind: "money", providerOccurredAt: new Date((instant - 60) * 1000).toISOString() });
   expect(await verify(adapter, body(), instant - 61)).toEqual({ kind: "refusal", reason: "stale" });
   expect(await verify(adapter, body(), instant - 61, "invalid")).toEqual({ kind: "refusal", reason: "malformed" });
+});
+it("bounds future signed issue time at the default and configured clock skew", async () => {
+  for (const skew of [undefined, 0, 60]) {
+    const good = config();
+    good.notification.maxClockSkewSeconds = skew;
+    const adapter = createTpayPaymentAdapter(good);
+    const limit = skew ?? 300;
+    expect(await verify(adapter, body(), instant + limit)).toMatchObject({ kind: "money",
+      providerOccurredAt: new Date((instant + limit) * 1000).toISOString() });
+    expect(await verify(adapter, body(), instant + limit + 1)).toEqual({ kind: "refusal", reason: "stale" });
+  }
+  for (const maxClockSkewSeconds of [-1, NaN, Infinity]) {
+    const good = config(); good.notification.maxClockSkewSeconds = maxClockSkewSeconds;
+    expect(() => createTpayPaymentAdapter(good)).toThrow("Invalid payment configuration");
+    expect(good.http.fetchImpl).not.toHaveBeenCalled();
+  }
 });
 it("deduplicates receipt-independent fingerprints while separating transaction outcomes", async () => {
   const adapter = createTpayPaymentAdapter(config());

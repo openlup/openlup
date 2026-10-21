@@ -1128,7 +1128,9 @@ redirect/egress policy. Both certificates must be valid at verification time.
 Verify certificate validity and notification freshness using original raw bytes.
 A signed protected-header `iat` supplies UTC-seconds provider time; absent time
 stays null. `maxNotificationAgeSeconds` defaults to seven days, a generous
-assumption pending confirmation of the provider retry schedule. Host dedupe
+assumption pending confirmation of the provider retry schedule. Signed issue time
+more than `maxClockSkewSeconds` (default 300) after receipt refuses as stale;
+both freshness limits must be finite and nonnegative. Host dedupe
 uses exact event identity plus stable fingerprint when time is absent. Receipt
 time is used only for freshness. Transaction identity includes outcome class;
 method identity includes event/alias plus outcome.
@@ -1136,15 +1138,18 @@ method identity includes event/alias plus outcome.
 Bank redirects, one-time codes and unattended Model O alias charges are supported
 when the host supplies the M07 P3 contract payer and method selection inputs.
 Supply transient `payer: { email, name? }` on every
-attempt, including renewals. An omitted name becomes an empty wire field, never
-a manufactured identity. Select `methodSelection: { family: "bank-redirect",
+attempt, including renewals. An omitted or blank name uses the donor
+neutral display label `Customer`. Select `methodSelection: { family: "bank-redirect",
 channelRef }` for the bank channel, or `{ family: "one-time-code" }` with
 `customerAuthorization` as a `TransientSecret`. A `renewal-unattended` attempt
 uses `storedMethod.reference` and its Model O mandate. Missing payer/channel/code
 and Model M or unknown mandates refuse before any dispatch with neutral
 data-correction evidence. Payer and authorization never cross the return boundary
 in diagnostics or request/response payloads. Readback uses the returned API
-transaction ID; notification titles remain distinct.
+transaction ID; notification titles remain distinct. The donor's typed no-charge
+errors (OAuth, encoding, exhausted pre-send deadline or proven request refusal)
+return an exact `notDispatched` envelope with core's transient retryable refusal.
+Every other execution error propagates unchanged as ambiguous.
 
 The exported capability descriptor and its nested records and arrays are frozen.
 Alias method evidence preserves the donor lifecycle through M07 projection with
