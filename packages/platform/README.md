@@ -1172,7 +1172,7 @@ transaction ID; notification titles remain distinct. The donor's typed no-charge
 errors return an exact `notDispatched` envelope: proven request-document refusals
 require customer data correction; OAuth, encoding and exhausted pre-send deadlines
 remain transient retryable refusals. Host mode/purpose/currency mismatches throw before I/O.
-A renewal the provider refuses for data validation is not retried automatically: the host prompts the customer to update payment details, and the subscription stays active (nothing is paused or suspended). The contributed adopter applies this classification only when reopening a checkout; the example applies it to every purpose.
+A renewal the provider refuses for data validation is classified as needing customer data correction: the host should prompt the customer to update payment details, and the bundled retry schedule keeps its normal retries unless the host treats that class as terminating. The subscription stays active; nothing is paused or suspended by this classification. The contributed adopter applies this classification only when reopening a checkout; the example applies it to every purpose.
 Every other execution error propagates unchanged as ambiguous.
 
 The exported capability descriptor and its nested records and arrays are frozen.
