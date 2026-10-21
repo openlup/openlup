@@ -30,6 +30,19 @@ state writer is not an extension seam.
 
 ## Runtime boundaries
 
+The reference payment status and verify routes serve the checkout's original
+order/intent/client identity; a verify response requests readback and cannot
+mark payment paid. The reference repair view follows in a separate change. The status
+BFF keeps its continuation credential and private response schema while the
+package checks stored owner/attempt and a second canonical read. Hosts supply
+rail handoff capabilities; the reference binding preserves its existing mapping.
+Method collection is a port-only seam: native setup is visibly unsupported
+without a host implementation, and collection alone never charges or redeems an
+obligation. Provider callbacks, token handling and customer/subscription ownership
+stay in the host. Payments imports the shared HTTP and BFF entries as types only;
+its host-supplied responder preserves the existing envelope and request context.
+No default profile or route is activated.
+
 The opt-in reference catalog routes consume explicit per-locale snapshots with
 resolved media, detail facts and links. Their browser graph uses contracts
 entries and local validators; promotion clients and dialogs no longer enter the

@@ -116,3 +116,35 @@ describe("verified ingress public witnesses", () => {
     expect(effects).toBe(1);
   });
 });
+
+it("projects reusable registration with host ownership and copies lifecycle fields only", async () => {
+  const method: VerifiedMethodEvidence = { kind: "method", provider: "provider-a", providerEventId: "method-event",
+    providerOccurredAt: AT, fingerprint: "method-fingerprint", outcome: "registered", methodRef: "method-original",
+    setupRef: "setup-original", intentRef: null, reusableMethod: { providerCustomerRef: "customer-original",
+      providerMethodRef: "method-original", providerMandateRef: "mandate-original", methodKind: "stored-method", status: "active" },
+    methodLifecycle: { kind: "method_registered", providerKind: "provider-a", providerMethodRef: "method-original",
+      providerEventId: "method-event", occurredAt: AT } };
+  const extended = { ...method, reusableMethod: { ...method.reusableMethod!, clientId: "adapter-owner", subscriptionId: "adapter-subscription" },
+    methodLifecycle: { ...method.methodLifecycle!, unexpected: "transient-untyped", replacement: {
+      schemeLabel: "Card", lastDigits: "1234", expiresAt: null, unexpected: "nested-untyped" } } };
+  const ingested: unknown[] = [], methods: unknown[] = [];
+  const ingress = (owner: boolean) => createVerifiedPaymentIngress({ provider: "provider-a", verifyPort: { verifyAndNormalize: async () => extended },
+    resolveMethodOwner: owner ? async () => ({ clientId: "host-owner", subscriptionId: "host-subscription" }) : undefined,
+    paymentControlPort: { ingestPaymentEvent: async event => { ingested.push(event); return {
+      paymentEventId: "method-local", paymentIntentId: null, paymentAttemptId: null, replayed: false }; } },
+    methodRefPort: { upsertFromWebhook: async event => { methods.push(event); return { replayed: false }; } } });
+  expect((await ingress(true).receive(input)).status).toBe(200);
+  expect(methods[0]).toMatchObject({ reusableMethod: { ...method.reusableMethod, clientId: "host-owner", subscriptionId: "host-subscription" } });
+  expect(JSON.stringify(ingested)).not.toContain("adapter-owner");
+  expect(JSON.stringify(ingested)).not.toContain("adapter-subscription");
+  expect(JSON.stringify(ingested)).not.toContain("transient-untyped");
+  expect(JSON.stringify(ingested)).not.toContain("nested-untyped");
+  expect((await ingress(false).receive(input)).status).toBe(200);
+  expect(methods[1]).not.toHaveProperty("reusableMethod");
+  const failingOwner = createVerifiedPaymentIngress({ provider: "provider-a", verifyPort: { verifyAndNormalize: async () => extended },
+    resolveMethodOwner: async () => { throw new Error("host_owner_unavailable"); },
+    paymentControlPort: { ingestPaymentEvent: async event => { ingested.push(event); return {
+      paymentEventId: "method-local", paymentIntentId: null, paymentAttemptId: null, replayed: false }; } } });
+  expect((await failingOwner.receive(input)).status).toBe(503);
+  expect(ingested).toHaveLength(2);
+});

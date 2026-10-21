@@ -1,4 +1,4 @@
-import type { PaymentIngressPort, PaymentVerifyNormalizePort, RefundEvidencePolicy } from "./contracts/evidence.js";
+import type { PaymentIngressPort, PaymentVerifyNormalizePort, RefundEvidencePolicy, VerifiedMethodEvidence } from "./contracts/evidence.js";
 import { projectVerifiedEvidence } from "./verifiedEvidenceProjection.js";
 const PAYMENT_WEBHOOK_EVENT_TYPES = [
   "payment.succeeded",
@@ -102,7 +102,7 @@ type OperationalEventRecorder = (event: { name: string; domain: string; surface:
 
 /** Verified ingress boundary; persistence and transport response writing belong to the host. */
 export function createVerifiedPaymentIngress({
-  provider, verifyPort, paymentControlPort, methodRefPort, afterProcessed, createPorts,
+  provider, verifyPort, paymentControlPort, methodRefPort, afterProcessed, createPorts, resolveMethodOwner,
   refundEvidencePolicy = "require-evidence", operationalEvents = () => {},
 }: {
   provider: string;
@@ -111,6 +111,8 @@ export function createVerifiedPaymentIngress({
   methodRefPort?: PaymentWebhookMethodRefPort;
   afterProcessed?: PaymentWebhookAfterProcessed;
   createPorts?: (event: NormalizedProviderPaymentWebhook) => PaymentWebhookProcessingPorts | Promise<PaymentWebhookProcessingPorts>;
+  /** Host-owned identity; adapter metadata cannot supply client/subscription authority. */
+  resolveMethodOwner?: (evidence: VerifiedMethodEvidence) => Promise<{ clientId: string; subscriptionId?: string | null } | null>;
   refundEvidencePolicy?: RefundEvidencePolicy;
   operationalEvents?: OperationalEventRecorder;
 }): PaymentIngressPort {
@@ -123,6 +125,7 @@ export function createVerifiedPaymentIngress({
         ? { status: 200, data: { provider, acknowledged: true, skipped: "unsupported_event" } }
         : { status: 400, data: { error: "Invalid provider webhook signature" } };
     }
+    const verifiedEvidence = evidence;
     let event: NormalizedProviderPaymentWebhook;
     try { event = projectVerifiedEvidence(evidence, input, refundEvidencePolicy); }
     catch { return { status: 400, data: { error: "Invalid provider webhook evidence" } }; }
@@ -141,6 +144,10 @@ export function createVerifiedPaymentIngress({
     }
 
     try {
+      if (verifiedEvidence.kind === "method" && verifiedEvidence.reusableMethod && resolveMethodOwner) {
+        const owner = await resolveMethodOwner(verifiedEvidence);
+        event = projectVerifiedEvidence(verifiedEvidence, input, refundEvidencePolicy, owner ?? undefined);
+      }
       const ports = createPorts
         ? await createPorts(event)
         : { paymentControlPort: paymentControlPort as PaymentWebhookControlPort, methodRefPort, afterProcessed };

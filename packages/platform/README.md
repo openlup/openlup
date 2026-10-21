@@ -1086,6 +1086,27 @@ extra properties are excluded. Incomplete chargeback evidence remains stored as
 a refund and unapplied, a declared operator recovery limit: reclassification
 would apply the donor dispute path without checking completeness.
 
+`createCheckoutActivePaymentActionResolver` authorizes the exact owner, order,
+intent, attempt and execution rail, reads the provider once, then rechecks the
+complete canonical attempt. Hosts inject synchronous `railHandoffKinds` from
+adapter capture capabilities; an unknown rail supplies an empty list. Actions
+carry the provider address and the existing transient `PaymentMethodHandoff`.
+Pending evidence alone may expose a handoff; terminal, mismatched, unknown or
+raced evidence refuses it. `createCheckoutRecoveryPaymentResolver` preserves
+paid/retry/resume/wait/manual-review ordering without creating a new obligation.
+`createCommercePaymentVerifyHandler` validates the existing identity triple,
+checks stored ownership before readback, and uses the shared HTTP/responder
+contracts. A host may inject its responder to preserve request references.
+
+`PaymentRepairMethodPort` collects a method only; it grants no token redemption,
+subscription change or payment success. Unsupported setup is explicit. Method
+evidence may carry neutral registration refs/kind/status. Ingress projects them
+only with `resolveMethodOwner` supplied by the host; adapter-supplied client or
+subscription fields never confer ownership. Without host ownership resolution,
+registration is not projected. Lifecycle carriers copy typed facts only.
+The existing refusal handoff accepts a failure-reason string, not a typed
+adapter refusal envelope; envelope forwarding remains unsupported.
+
 ### Opt-in payment example
 
 Import `createStripePaymentAdapter`, `type StripePaymentAdapterConfig` and

@@ -107,3 +107,63 @@ and five deferred order-line constraint failures). Preserve canonical manifest
 keys and create orders with their lines in one transaction; the corrected real
 suite passes. The native executor uses the existing structural shape, following
 the inventory precedent, avoiding an unnecessary transitive declaration graph.
+
+
+## P4 record
+
+The package contributes the donor active-action/recovery algorithms and buyer
+verify handler with DTO extraction, neutral transient handoffs and the shared
+HTTP/responder types. Amendment 1 replaces the closed rail predicate with an
+injected synchronous capability lookup; unknown rails return no handoffs. The
+reference status binding supplies exactly the donor mapping and preserves its
+private response shape, double canonical read, pending guard and failure
+behavior. The verify binding supplies its existing observed responder; setup
+keeps its native callback behind the port-only method seam. No reference clock,
+subscription cycle, token writer or provider activation changes.
+
+The reference repair/status view follows in a separate change. Verify cannot
+mark payment paid. Native method setup is an explicit unsupported port result
+without a host collector/confirmation binding.
+Method evidence adds optional neutral reusable registration facts. Only the
+host resolves client/subscription ownership; missing resolution omits registration,
+and a failed resolver is retryable before ingest. Money-event enrichment stays
+host-owned. Lifecycle carriers copy typed facts. The payer redaction fix (empty
+values, JSON-escaped forms) moved to a follow-up PR to stay within 35 paths. The donor refusal handoff has no
+field for a typed refusal envelope, so that forwarding remains unsupported.
+The incomplete-chargeback classification and native schema limits remain; the
+reference first-receipt clock switch and required host reader proof stay in P6.
+
+P4 keeps 7 authored cases: two W6 verify cases (browser claims ignored;
+mismatched money to manual review), the W7 confirmation-forwarding case, three
+owner/attempt-binding cases and the reusable-method owner regression. The
+reference repair UI and its 6 DOM cases (the remaining W6 status, W7 renewal
+and W8 assertions) move to a separate change, because the hidden-UI guardrails
+need a boundary decision.
+Focused runs after the split cover the package payment suites and the retained
+reference resolver, status, verify and setup suites.
+All retained resolver/status/verify/setup/BFF/poller suites remain unchanged.
+An offline probe exercises actual reference route/status/package statements with
+host-selected in-memory ports, and 156 donor/reference binding scenarios agree.
+These establish forwarding and refusal, not a new native-store installation.
+
+Lint (33 incumbent warnings), typecheck, API, structural and neutrality checks
+pass. Actual migration-block validation against the pinned predecessor passes.
+Publication policy refuses untracked additions under the no-Git-write boundary;
+the same navigation renderer ran directly, and the unchanged contributor-check
+owner needs the scoped trailer proposed in the handoff. No full verification,
+Git/remote write, DCO, native review, release or activation was performed.
+
+P4 final ledger: 29 paths, 12 production paths, about 1,750 lines of churn (including the two regenerated example-adapter API reports), nine frozen
+export additions. Computed against main after the first opt-in example adapter (#278), representing main
+after P3 for this stacked task; this is not an aggregate P1–P4 comparison or a
+claim about the later moving main. No dependency, public subpath, migration or
+budget change. Predecessor to candidate pack: 1,275 → 1,287 files, 880,494 →
+888,659 packed bytes, 3,965,957 → 4,003,734 unpacked bytes and 735,961 → 743,739
+code gzip bytes. Package root docs: 44,652 → 45,190 gzip bytes; contracts remain
+20/32 browser bytes. All existing caps remain unchanged.
+
+Self-retro: package-local import refusals exposed host assertions in the wrong
+layer. Host assertions belong in reference tests, keeping public tests local and
+preserving the assertions, rather than weakening the import controls. Run the
+hidden-UI and payment-control guardrails whenever reference pages change. Serialize package builds and tests: one early BFF run raced
+lint's dependency build; the isolated rerun passed. No new process is needed.

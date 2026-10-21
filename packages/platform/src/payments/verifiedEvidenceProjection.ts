@@ -15,6 +15,7 @@ export function projectVerifiedEvidence(
   evidence: VerifiedPaymentEvidence | VerifiedMethodEvidence,
   input: Parameters<PaymentVerifyNormalizePort["verifyAndNormalize"]>[0],
   policy: RefundEvidencePolicy,
+  methodOwner?: { clientId: string; subscriptionId?: string | null },
 ): ProviderWebhookWithMethodLifecycle {
   const payload = auditPayload(evidence);
   const base = {
@@ -41,7 +42,14 @@ export function projectVerifiedEvidence(
         // Pinned donor normalizer :59 calls resolveLinkagePaymentId :146–154:
         // setup/method objects use their own object id as the carrier reference.
         providerPaymentId: evidence.setupRef ?? evidence.methodRef,
-        methodLifecycle: evidence.methodLifecycle,
+        methodLifecycle: lifecycle(evidence.methodLifecycle),
+        ...(evidence.reusableMethod && methodOwner ? { reusableMethod: {
+          clientId: methodOwner.clientId, subscriptionId: methodOwner.subscriptionId,
+          providerCustomerRef: evidence.reusableMethod.providerCustomerRef,
+          providerMethodRef: evidence.reusableMethod.providerMethodRef,
+          providerMandateRef: evidence.reusableMethod.providerMandateRef,
+          methodKind: evidence.reusableMethod.methodKind, status: evidence.reusableMethod.status,
+        } } : {}),
       };
   }
   return assertNever(evidence);
@@ -107,15 +115,12 @@ function auditPayload(evidence: VerifiedPaymentEvidence | VerifiedMethodEvidence
       refund: evidence.refund && refund(evidence.refund),
     } : {
       methodRef: evidence.methodRef, setupRef: evidence.setupRef,
-      methodLifecycle: evidence.methodLifecycle && {
-        kind: evidence.methodLifecycle.kind, providerKind: evidence.methodLifecycle.providerKind,
-        providerMethodRef: evidence.methodLifecycle.providerMethodRef,
-        providerEventId: evidence.methodLifecycle.providerEventId, occurredAt: evidence.methodLifecycle.occurredAt,
-        replacement: evidence.methodLifecycle.replacement && {
-          schemeLabel: evidence.methodLifecycle.replacement.schemeLabel,
-          lastDigits: evidence.methodLifecycle.replacement.lastDigits,
-          expiresAt: evidence.methodLifecycle.replacement.expiresAt,
-        },
+      methodLifecycle: lifecycle(evidence.methodLifecycle),
+      reusableMethod: evidence.reusableMethod && {
+        providerCustomerRef: evidence.reusableMethod.providerCustomerRef,
+        providerMethodRef: evidence.reusableMethod.providerMethodRef,
+        providerMandateRef: evidence.reusableMethod.providerMandateRef,
+        methodKind: evidence.reusableMethod.methodKind, status: evidence.reusableMethod.status,
       },
     }),
   };
@@ -154,4 +159,13 @@ function refund(value: PaymentRefundObservation) {
       return { ...base, kind: value.kind, refundedMoney: value.refundedMoney && money(value.refundedMoney) };
   }
   return assertNever(value);
+}
+
+function lifecycle(value: VerifiedMethodEvidence["methodLifecycle"]): VerifiedMethodEvidence["methodLifecycle"] {
+  return value && { kind: value.kind, providerKind: value.providerKind,
+    providerMethodRef: value.providerMethodRef, providerEventId: value.providerEventId,
+    occurredAt: value.occurredAt, replacement: value.replacement && {
+      schemeLabel: value.replacement.schemeLabel, lastDigits: value.replacement.lastDigits,
+      expiresAt: value.replacement.expiresAt,
+    } };
 }
