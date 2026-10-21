@@ -1185,6 +1185,8 @@ export interface CommercePriceAuthorityReadPort {
 }
 /** Provider-neutral strict money algorithm; adapters own only persistence reads and row mapping. */
 export declare function createCommercePriceAuthorityPort(reads: CommercePriceAuthorityReadPort): CommercePriceAuthorityPort;
+/** Opt-in scheduling using the selected list for concurrent history reads. */
+export declare function createConcurrentCommercePriceAuthorityPort(reads: CommercePriceAuthorityReadPort): CommercePriceAuthorityPort;
 /** The current money context requires one list; creation order cannot resolve overlap. */
 export declare function selectUniqueEffectivePriceList(priceLists: readonly TimedAuthorityValue<string>[], atTime: string): string;
 ```
@@ -1914,7 +1916,7 @@ export declare function createDbBackedCommerceQuoteSnapshotVerifier<Request, Res
 export * from "./contracts/index.js";
 export { CommercePriceAuthorityError } from "./ports.js";
 export type { CommercePriceAuthorityPort } from "./ports.js";
-export { createCommercePriceAuthorityPort, selectUniqueEffectivePriceList } from "./commercePriceAuthority.js";
+export { createCommercePriceAuthorityPort, createConcurrentCommercePriceAuthorityPort, selectUniqueEffectivePriceList } from "./commercePriceAuthority.js";
 export type { CommercePriceAuthorityReadPort, TimedAuthorityValue } from "./commercePriceAuthority.js";
 export { subscriptionPricePolicySemanticsSchema, subscriptionPricePolicyCanonicalInputSchema, subscriptionPricePolicyRevisionSchema, SubscriptionPricePolicyDigestError, canonicalSubscriptionPricePolicyTuple, digestSubscriptionPricePolicy, assertSubscriptionPricePolicyDigest, deriveSubscriptionUnitPrice } from "./subscriptionPricePolicy.js";
 export { offerPolicyVersionSchema, promotionEngineVersionSchema, pricingPolicyRequestSchema, pricingPolicySnapshotSchema } from "./offerPolicySchemas.js";
@@ -1998,8 +2000,8 @@ export declare const offerPolicyVersionSchema: z.ZodEnum<{
     "commerce.offer-policy.v2": "commerce.offer-policy.v2";
 }>;
 export declare const promotionEngineVersionSchema: z.ZodEnum<{
-    "promotion-engine.v2": "promotion-engine.v2";
     "promotion-engine.v1": "promotion-engine.v1";
+    "promotion-engine.v2": "promotion-engine.v2";
 }>;
 /** Client capability plus an opaque server-signed assignment. Never a version selector. */
 export declare const pricingPolicyRequestSchema: z.ZodObject<{
@@ -2012,8 +2014,8 @@ export declare const pricingPolicySnapshotSchema: z.ZodObject<{
         "commerce.offer-policy.v2": "commerce.offer-policy.v2";
     }>;
     promotionEngineVersion: z.ZodEnum<{
-        "promotion-engine.v2": "promotion-engine.v2";
         "promotion-engine.v1": "promotion-engine.v1";
+        "promotion-engine.v2": "promotion-engine.v2";
     }>;
     pricingPolicyToken: z.ZodOptional<z.ZodString>;
 }, z.core.$strict>;
@@ -2122,8 +2124,8 @@ export declare function createCommerceOfferPricingSchemas<ScopeV1 extends string
                 "commerce.offer-policy.v2": "commerce.offer-policy.v2";
             }>;
             promotionEngineVersion: z.ZodEnum<{
-                "promotion-engine.v2": "promotion-engine.v2";
                 "promotion-engine.v1": "promotion-engine.v1";
+                "promotion-engine.v2": "promotion-engine.v2";
             }>;
             pricingPolicyToken: z.ZodOptional<z.ZodString>;
         }, z.core.$strict>;
@@ -2264,8 +2266,8 @@ export declare function createCommerceOfferPricingSchemas<ScopeV1 extends string
                 "commerce.offer-policy.v2": "commerce.offer-policy.v2";
             }>;
             promotionEngineVersion: z.ZodEnum<{
-                "promotion-engine.v2": "promotion-engine.v2";
                 "promotion-engine.v1": "promotion-engine.v1";
+                "promotion-engine.v2": "promotion-engine.v2";
             }>;
             pricingPolicyToken: z.ZodOptional<z.ZodString>;
         }, z.core.$strict>;
@@ -2388,11 +2390,11 @@ export declare function resolvePricingPolicy(input: {
     promotionEngineVersion: PromotionEngineVersion;
 } | {
     offerPolicyVersion: "commerce.offer-policy.v1" | "commerce.offer-policy.v2";
-    promotionEngineVersion: "promotion-engine.v2" | "promotion-engine.v1";
+    promotionEngineVersion: "promotion-engine.v1" | "promotion-engine.v2";
     pricingPolicyToken?: undefined;
 } | {
     offerPolicyVersion: "commerce.offer-policy.v1" | "commerce.offer-policy.v2";
-    promotionEngineVersion: "promotion-engine.v2" | "promotion-engine.v1";
+    promotionEngineVersion: "promotion-engine.v1" | "promotion-engine.v2";
     pricingPolicyToken: string;
 };
 export {};
@@ -2488,8 +2490,8 @@ export declare const quoteDiscountSchema: z.ZodObject<{
     code: z.ZodOptional<z.ZodNullable<z.ZodString>>;
     label: z.ZodOptional<z.ZodString>;
     appliesTo: z.ZodEnum<{
-        shipping: "shipping";
         line: "line";
+        shipping: "shipping";
         order_total: "order_total";
     }>;
     amountOffMinor: z.ZodNumber;
@@ -2559,17 +2561,17 @@ export declare function createCommerceQuoteSchemas<Context extends z.ZodType>(in
     }, z.core.$strip>;
     quotePricingComponentSchema: z.ZodObject<{
         scope: z.ZodEnum<{
-            order: "order";
             line: "line";
+            order: "order";
         }>;
         componentType: z.ZodEnum<{
             bundle: "bundle";
-            shipping: "shipping";
             base_unit: "base_unit";
             mode_discount: "mode_discount";
             qty_tier: "qty_tier";
             promo: "promo";
             loyalty: "loyalty";
+            shipping: "shipping";
         }>;
         amountMinor: z.ZodNumber;
         reasonCode: z.ZodString;
@@ -2637,17 +2639,17 @@ export declare function createCommerceQuoteSchemas<Context extends z.ZodType>(in
         }, z.core.$strip>;
         pricingComponents: z.ZodOptional<z.ZodArray<z.ZodObject<{
             scope: z.ZodEnum<{
-                order: "order";
                 line: "line";
+                order: "order";
             }>;
             componentType: z.ZodEnum<{
                 bundle: "bundle";
-                shipping: "shipping";
                 base_unit: "base_unit";
                 mode_discount: "mode_discount";
                 qty_tier: "qty_tier";
                 promo: "promo";
                 loyalty: "loyalty";
+                shipping: "shipping";
             }>;
             amountMinor: z.ZodNumber;
             reasonCode: z.ZodString;
@@ -2688,11 +2690,11 @@ export declare function createCommerceQuoteSchemas<Context extends z.ZodType>(in
     quoteCodeRejectionSchema: z.ZodObject<{
         code: z.ZodString;
         reason: z.ZodEnum<{
-            expired: "expired";
             scope_not_applicable: "scope_not_applicable";
             not_recognized: "not_recognized";
             already_used: "already_used";
             not_eligible: "not_eligible";
+            expired: "expired";
             better_price_exists: "better_price_exists";
         }>;
     }, z.core.$strict>;
@@ -2732,17 +2734,17 @@ export declare function createCommerceQuoteSchemas<Context extends z.ZodType>(in
             }, z.core.$strip>;
             pricingComponents: z.ZodOptional<z.ZodArray<z.ZodObject<{
                 scope: z.ZodEnum<{
-                    order: "order";
                     line: "line";
+                    order: "order";
                 }>;
                 componentType: z.ZodEnum<{
                     bundle: "bundle";
-                    shipping: "shipping";
                     base_unit: "base_unit";
                     mode_discount: "mode_discount";
                     qty_tier: "qty_tier";
                     promo: "promo";
                     loyalty: "loyalty";
+                    shipping: "shipping";
                 }>;
                 amountMinor: z.ZodNumber;
                 reasonCode: z.ZodString;
@@ -2785,8 +2787,8 @@ export declare function createCommerceQuoteSchemas<Context extends z.ZodType>(in
             code: z.ZodOptional<z.ZodNullable<z.ZodString>>;
             label: z.ZodOptional<z.ZodString>;
             appliesTo: z.ZodEnum<{
-                shipping: "shipping";
                 line: "line";
+                shipping: "shipping";
                 order_total: "order_total";
             }>;
             amountOffMinor: z.ZodNumber;
@@ -2819,11 +2821,11 @@ export declare function createCommerceQuoteSchemas<Context extends z.ZodType>(in
         codeRejections: z.ZodOptional<z.ZodArray<z.ZodObject<{
             code: z.ZodString;
             reason: z.ZodEnum<{
-                expired: "expired";
                 scope_not_applicable: "scope_not_applicable";
                 not_recognized: "not_recognized";
                 already_used: "already_used";
                 not_eligible: "not_eligible";
+                expired: "expired";
                 better_price_exists: "better_price_exists";
             }>;
         }, z.core.$strict>>>;
@@ -2848,17 +2850,17 @@ export declare function createCommerceQuoteSchemas<Context extends z.ZodType>(in
         }, z.core.$strict>], "reason">>>;
         pricingComponents: z.ZodOptional<z.ZodArray<z.ZodObject<{
             scope: z.ZodEnum<{
-                order: "order";
                 line: "line";
+                order: "order";
             }>;
             componentType: z.ZodEnum<{
                 bundle: "bundle";
-                shipping: "shipping";
                 base_unit: "base_unit";
                 mode_discount: "mode_discount";
                 qty_tier: "qty_tier";
                 promo: "promo";
                 loyalty: "loyalty";
+                shipping: "shipping";
             }>;
             amountMinor: z.ZodNumber;
             reasonCode: z.ZodString;
@@ -2932,17 +2934,17 @@ export declare function createCommerceQuoteSchemas<Context extends z.ZodType>(in
                 }, z.core.$strip>;
                 pricingComponents: z.ZodOptional<z.ZodArray<z.ZodObject<{
                     scope: z.ZodEnum<{
-                        order: "order";
                         line: "line";
+                        order: "order";
                     }>;
                     componentType: z.ZodEnum<{
                         bundle: "bundle";
-                        shipping: "shipping";
                         base_unit: "base_unit";
                         mode_discount: "mode_discount";
                         qty_tier: "qty_tier";
                         promo: "promo";
                         loyalty: "loyalty";
+                        shipping: "shipping";
                     }>;
                     amountMinor: z.ZodNumber;
                     reasonCode: z.ZodString;
@@ -2985,8 +2987,8 @@ export declare function createCommerceQuoteSchemas<Context extends z.ZodType>(in
                 code: z.ZodOptional<z.ZodNullable<z.ZodString>>;
                 label: z.ZodOptional<z.ZodString>;
                 appliesTo: z.ZodEnum<{
-                    shipping: "shipping";
                     line: "line";
+                    shipping: "shipping";
                     order_total: "order_total";
                 }>;
                 amountOffMinor: z.ZodNumber;
@@ -3019,11 +3021,11 @@ export declare function createCommerceQuoteSchemas<Context extends z.ZodType>(in
             codeRejections: z.ZodOptional<z.ZodArray<z.ZodObject<{
                 code: z.ZodString;
                 reason: z.ZodEnum<{
-                    expired: "expired";
                     scope_not_applicable: "scope_not_applicable";
                     not_recognized: "not_recognized";
                     already_used: "already_used";
                     not_eligible: "not_eligible";
+                    expired: "expired";
                     better_price_exists: "better_price_exists";
                 }>;
             }, z.core.$strict>>>;
@@ -3048,17 +3050,17 @@ export declare function createCommerceQuoteSchemas<Context extends z.ZodType>(in
             }, z.core.$strict>], "reason">>>;
             pricingComponents: z.ZodOptional<z.ZodArray<z.ZodObject<{
                 scope: z.ZodEnum<{
-                    order: "order";
                     line: "line";
+                    order: "order";
                 }>;
                 componentType: z.ZodEnum<{
                     bundle: "bundle";
-                    shipping: "shipping";
                     base_unit: "base_unit";
                     mode_discount: "mode_discount";
                     qty_tier: "qty_tier";
                     promo: "promo";
                     loyalty: "loyalty";
+                    shipping: "shipping";
                 }>;
                 amountMinor: z.ZodNumber;
                 reasonCode: z.ZodString;
@@ -3133,17 +3135,17 @@ export declare function createCommerceQuoteSchemas<Context extends z.ZodType>(in
                 }, z.core.$strip>;
                 pricingComponents: z.ZodOptional<z.ZodArray<z.ZodObject<{
                     scope: z.ZodEnum<{
-                        order: "order";
                         line: "line";
+                        order: "order";
                     }>;
                     componentType: z.ZodEnum<{
                         bundle: "bundle";
-                        shipping: "shipping";
                         base_unit: "base_unit";
                         mode_discount: "mode_discount";
                         qty_tier: "qty_tier";
                         promo: "promo";
                         loyalty: "loyalty";
+                        shipping: "shipping";
                     }>;
                     amountMinor: z.ZodNumber;
                     reasonCode: z.ZodString;
@@ -3186,8 +3188,8 @@ export declare function createCommerceQuoteSchemas<Context extends z.ZodType>(in
                 code: z.ZodOptional<z.ZodNullable<z.ZodString>>;
                 label: z.ZodOptional<z.ZodString>;
                 appliesTo: z.ZodEnum<{
-                    shipping: "shipping";
                     line: "line";
+                    shipping: "shipping";
                     order_total: "order_total";
                 }>;
                 amountOffMinor: z.ZodNumber;
@@ -3220,11 +3222,11 @@ export declare function createCommerceQuoteSchemas<Context extends z.ZodType>(in
             codeRejections: z.ZodOptional<z.ZodArray<z.ZodObject<{
                 code: z.ZodString;
                 reason: z.ZodEnum<{
-                    expired: "expired";
                     scope_not_applicable: "scope_not_applicable";
                     not_recognized: "not_recognized";
                     already_used: "already_used";
                     not_eligible: "not_eligible";
+                    expired: "expired";
                     better_price_exists: "better_price_exists";
                 }>;
             }, z.core.$strict>>>;
@@ -3249,17 +3251,17 @@ export declare function createCommerceQuoteSchemas<Context extends z.ZodType>(in
             }, z.core.$strict>], "reason">>>;
             pricingComponents: z.ZodOptional<z.ZodArray<z.ZodObject<{
                 scope: z.ZodEnum<{
-                    order: "order";
                     line: "line";
+                    order: "order";
                 }>;
                 componentType: z.ZodEnum<{
                     bundle: "bundle";
-                    shipping: "shipping";
                     base_unit: "base_unit";
                     mode_discount: "mode_discount";
                     qty_tier: "qty_tier";
                     promo: "promo";
                     loyalty: "loyalty";
+                    shipping: "shipping";
                 }>;
                 amountMinor: z.ZodNumber;
                 reasonCode: z.ZodString;
@@ -3335,17 +3337,17 @@ export declare function createCommerceQuoteSchemas<Context extends z.ZodType>(in
                 }, z.core.$strip>;
                 pricingComponents: z.ZodOptional<z.ZodArray<z.ZodObject<{
                     scope: z.ZodEnum<{
-                        order: "order";
                         line: "line";
+                        order: "order";
                     }>;
                     componentType: z.ZodEnum<{
                         bundle: "bundle";
-                        shipping: "shipping";
                         base_unit: "base_unit";
                         mode_discount: "mode_discount";
                         qty_tier: "qty_tier";
                         promo: "promo";
                         loyalty: "loyalty";
+                        shipping: "shipping";
                     }>;
                     amountMinor: z.ZodNumber;
                     reasonCode: z.ZodString;
@@ -3388,8 +3390,8 @@ export declare function createCommerceQuoteSchemas<Context extends z.ZodType>(in
                 code: z.ZodOptional<z.ZodNullable<z.ZodString>>;
                 label: z.ZodOptional<z.ZodString>;
                 appliesTo: z.ZodEnum<{
-                    shipping: "shipping";
                     line: "line";
+                    shipping: "shipping";
                     order_total: "order_total";
                 }>;
                 amountOffMinor: z.ZodNumber;
@@ -3422,11 +3424,11 @@ export declare function createCommerceQuoteSchemas<Context extends z.ZodType>(in
             codeRejections: z.ZodOptional<z.ZodArray<z.ZodObject<{
                 code: z.ZodString;
                 reason: z.ZodEnum<{
-                    expired: "expired";
                     scope_not_applicable: "scope_not_applicable";
                     not_recognized: "not_recognized";
                     already_used: "already_used";
                     not_eligible: "not_eligible";
+                    expired: "expired";
                     better_price_exists: "better_price_exists";
                 }>;
             }, z.core.$strict>>>;
@@ -3451,17 +3453,17 @@ export declare function createCommerceQuoteSchemas<Context extends z.ZodType>(in
             }, z.core.$strict>], "reason">>>;
             pricingComponents: z.ZodOptional<z.ZodArray<z.ZodObject<{
                 scope: z.ZodEnum<{
-                    order: "order";
                     line: "line";
+                    order: "order";
                 }>;
                 componentType: z.ZodEnum<{
                     bundle: "bundle";
-                    shipping: "shipping";
                     base_unit: "base_unit";
                     mode_discount: "mode_discount";
                     qty_tier: "qty_tier";
                     promo: "promo";
                     loyalty: "loyalty";
+                    shipping: "shipping";
                 }>;
                 amountMinor: z.ZodNumber;
                 reasonCode: z.ZodString;
@@ -3536,17 +3538,17 @@ export declare function createCommerceQuoteSchemas<Context extends z.ZodType>(in
                 }, z.core.$strip>;
                 pricingComponents: z.ZodOptional<z.ZodArray<z.ZodObject<{
                     scope: z.ZodEnum<{
-                        order: "order";
                         line: "line";
+                        order: "order";
                     }>;
                     componentType: z.ZodEnum<{
                         bundle: "bundle";
-                        shipping: "shipping";
                         base_unit: "base_unit";
                         mode_discount: "mode_discount";
                         qty_tier: "qty_tier";
                         promo: "promo";
                         loyalty: "loyalty";
+                        shipping: "shipping";
                     }>;
                     amountMinor: z.ZodNumber;
                     reasonCode: z.ZodString;
@@ -3589,8 +3591,8 @@ export declare function createCommerceQuoteSchemas<Context extends z.ZodType>(in
                 code: z.ZodOptional<z.ZodNullable<z.ZodString>>;
                 label: z.ZodOptional<z.ZodString>;
                 appliesTo: z.ZodEnum<{
-                    shipping: "shipping";
                     line: "line";
+                    shipping: "shipping";
                     order_total: "order_total";
                 }>;
                 amountOffMinor: z.ZodNumber;
@@ -3623,11 +3625,11 @@ export declare function createCommerceQuoteSchemas<Context extends z.ZodType>(in
             codeRejections: z.ZodOptional<z.ZodArray<z.ZodObject<{
                 code: z.ZodString;
                 reason: z.ZodEnum<{
-                    expired: "expired";
                     scope_not_applicable: "scope_not_applicable";
                     not_recognized: "not_recognized";
                     already_used: "already_used";
                     not_eligible: "not_eligible";
+                    expired: "expired";
                     better_price_exists: "better_price_exists";
                 }>;
             }, z.core.$strict>>>;
@@ -3652,17 +3654,17 @@ export declare function createCommerceQuoteSchemas<Context extends z.ZodType>(in
             }, z.core.$strict>], "reason">>>;
             pricingComponents: z.ZodOptional<z.ZodArray<z.ZodObject<{
                 scope: z.ZodEnum<{
-                    order: "order";
                     line: "line";
+                    order: "order";
                 }>;
                 componentType: z.ZodEnum<{
                     bundle: "bundle";
-                    shipping: "shipping";
                     base_unit: "base_unit";
                     mode_discount: "mode_discount";
                     qty_tier: "qty_tier";
                     promo: "promo";
                     loyalty: "loyalty";
+                    shipping: "shipping";
                 }>;
                 amountMinor: z.ZodNumber;
                 reasonCode: z.ZodString;
@@ -3981,8 +3983,8 @@ export declare const promotionCodePreviewRequestSchema: z.ZodObject<{
         subscription_initial: "subscription_initial";
     }>>;
     promotionEngineVersion: z.ZodDefault<z.ZodEnum<{
-        "promotion-engine.v2": "promotion-engine.v2";
         "promotion-engine.v1": "promotion-engine.v1";
+        "promotion-engine.v2": "promotion-engine.v2";
     }>>;
     minimumReferenceMinor: z.ZodDefault<z.ZodNumber>;
     context: z.ZodObject<{
@@ -4024,8 +4026,8 @@ export declare const promotionCodePreviewResultSchema: z.ZodObject<{
 export declare const promotionCodePreviewResponseSchema: z.ZodObject<{
     contractVersion: z.ZodLiteral<"commerce.v0">;
     promotionEngineVersion: z.ZodEnum<{
-        "promotion-engine.v2": "promotion-engine.v2";
         "promotion-engine.v1": "promotion-engine.v1";
+        "promotion-engine.v2": "promotion-engine.v2";
     }>;
     previewProof: z.ZodString;
     results: z.ZodArray<z.ZodObject<{
@@ -4166,15 +4168,15 @@ export declare const promotionCodesListRequestSchema: z.ZodObject<{
         archived: "archived";
         all: "all";
         expired: "expired";
-        paused: "paused";
         scheduled: "scheduled";
+        paused: "paused";
         expired_or_archived: "expired_or_archived";
     }>>;
     scope: z.ZodDefault<z.ZodEnum<{
         one_time: "one_time";
         all: "all";
-        shipping: "shipping";
         subscription_initial: "subscription_initial";
+        shipping: "shipping";
         both: "both";
     }>>;
     cursor: z.ZodOptional<z.ZodString>;
@@ -4232,8 +4234,8 @@ export declare const promotionCodeSummarySchema: z.ZodObject<{
         validationState: z.ZodLiteral<"unsupported_legacy_value">;
     }, z.core.$strict>]>>;
     promotionEngineVersion: z.ZodEnum<{
-        "promotion-engine.v2": "promotion-engine.v2";
         "promotion-engine.v1": "promotion-engine.v1";
+        "promotion-engine.v2": "promotion-engine.v2";
     }>;
     scopes: z.ZodArray<z.ZodEnum<{
         one_time: "one_time";
@@ -4250,8 +4252,8 @@ export declare const promotionCodeSummarySchema: z.ZodObject<{
         active: "active";
         archived: "archived";
         expired: "expired";
-        paused: "paused";
         scheduled: "scheduled";
+        paused: "paused";
     }>;
     validFrom: z.ZodString;
     validTo: z.ZodNullable<z.ZodString>;
@@ -4318,8 +4320,8 @@ export declare const promotionCodesListResponseSchema: z.ZodObject<{
             validationState: z.ZodLiteral<"unsupported_legacy_value">;
         }, z.core.$strict>]>>;
         promotionEngineVersion: z.ZodEnum<{
-            "promotion-engine.v2": "promotion-engine.v2";
             "promotion-engine.v1": "promotion-engine.v1";
+            "promotion-engine.v2": "promotion-engine.v2";
         }>;
         scopes: z.ZodArray<z.ZodEnum<{
             one_time: "one_time";
@@ -4336,8 +4338,8 @@ export declare const promotionCodesListResponseSchema: z.ZodObject<{
             active: "active";
             archived: "archived";
             expired: "expired";
-            paused: "paused";
             scheduled: "scheduled";
+            paused: "paused";
         }>;
         validFrom: z.ZodString;
         validTo: z.ZodNullable<z.ZodString>;

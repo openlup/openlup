@@ -84,6 +84,71 @@ export function createCommercePriceAuthorityPort(
   };
 }
 
+/** Opt-in scheduling using the selected list for concurrent history reads. */
+export function createConcurrentCommercePriceAuthorityPort(
+  reads: CommercePriceAuthorityReadPort,
+): CommercePriceAuthorityPort {
+  return {
+    async resolvePrice(query): Promise<CommercePriceAuthorityResult> {
+      const atTime = query.atTime ?? new Date().toISOString();
+      const priceListId = selectUniqueEffectivePriceList(await reads.listPriceLists(query), atTime);
+
+      // Schedule history alongside base reads, retaining base-refusal precedence.
+      const policyHistoryRead = query.mode === "subscription" ? Promise.resolve().then(() =>
+        reads.listSubscriptionPolicyHistory({ priceListId, regionCode: query.regionCode,
+          currency: query.currency, channel: query.channel })).then(
+        (value) => ({ value }), (error: unknown) => ({ error }),
+      ) : null;
+
+      const baseCandidates = effective(await reads.listExactBaseEntries({
+        variantId: query.variantId,
+        priceListId,
+      }), atTime);
+      if (baseCandidates.length === 0) throw new CommercePriceAuthorityError("base_price_not_found");
+      if (baseCandidates.length !== 1) throw new CommercePriceAuthorityError("base_price_ambiguous");
+      if (baseCandidates[0]!.value.amountKind !== "gross") {
+        throw new CommercePriceAuthorityError("base_price_amount_kind_invalid");
+      }
+
+      const base = { ...baseCandidates[0]!.value, resolvedAt: atTime };
+      if (query.mode === "one_time") return { kind: "one_time", base, unitPriceMinor: base.unitPriceMinor };
+
+      const policyRead = await policyHistoryRead!;
+      if ("error" in policyRead) throw policyRead.error;
+      const policyHistory = policyRead.value;
+      if (policyHistory.length === 0) {
+        const legacyCandidates = effective(await reads.listExactLegacySubscriptionEntries({
+          variantId: query.variantId,
+          priceListId: base.priceListId,
+        }), atTime);
+        if (legacyCandidates.length === 0) throw new CommercePriceAuthorityError("legacy_subscription_price_not_found");
+        if (legacyCandidates.length !== 1) throw new CommercePriceAuthorityError("legacy_subscription_price_ambiguous");
+        const legacyResolved = { ...legacyCandidates[0]!.value, resolvedAt: atTime };
+        return { kind: "subscription_legacy", base, unitPriceMinor: legacyResolved.unitPriceMinor, legacyResolved };
+      }
+
+      const effectivePolicies = effective(policyHistory, atTime);
+      if (effectivePolicies.length === 0) throw new CommercePriceAuthorityError("subscription_price_policy_not_effective");
+      if (effectivePolicies.length !== 1) throw new CommercePriceAuthorityError("subscription_price_policy_ambiguous");
+      try {
+        const policy = await assertSubscriptionPricePolicyDigest(effectivePolicies[0]!.value);
+        return {
+          kind: "subscription_policy",
+          base,
+          unitPriceMinor: deriveSubscriptionUnitPrice(base.unitPriceMinor, policy),
+          policy,
+        };
+      } catch (error) {
+        throw new CommercePriceAuthorityError(
+          error instanceof SubscriptionPricePolicyDigestError
+            ? "subscription_price_policy_digest_mismatch"
+            : "subscription_price_policy_invalid",
+        );
+      }
+    },
+  };
+}
+
 /** The current money context requires one list; creation order cannot resolve overlap. */
 export function selectUniqueEffectivePriceList(
   priceLists: readonly TimedAuthorityValue<string>[], atTime: string,

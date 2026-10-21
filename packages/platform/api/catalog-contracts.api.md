@@ -288,6 +288,15 @@ export type GetBundleResponse = {
             validFrom: string;
             validTo: string | null;
         }[];
+        resolvedTargetPrice?: {
+            mode: string;
+            targetPriceMinor: number;
+            currency: string;
+            amountKind: string;
+            active: boolean;
+            validFrom: string;
+            validTo: string | null;
+        } | null;
         resolvedCurrency: string | null;
         availability: {
             sellableNow: number | null;
@@ -336,6 +345,15 @@ export type BundleDetailView = {
         validFrom: string;
         validTo: string | null;
     }[];
+    resolvedTargetPrice?: {
+        mode: string;
+        targetPriceMinor: number;
+        currency: string;
+        amountKind: string;
+        active: boolean;
+        validFrom: string;
+        validTo: string | null;
+    } | null;
     resolvedCurrency: string | null;
     availability: {
         sellableNow: number | null;

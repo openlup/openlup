@@ -973,7 +973,8 @@ P1 measured: **753 files / 462,244 packed B / 1,974,943 unpacked B**.
 
 Owner-approved extension, 2026-10-21: row 24a contributes frozen P0 items 1–3
 as opt-in neutral equivalents of existing adopter behavior, without refactoring.
-Items 4–5 remain row 24b. This extends the earlier extraction boundaries only
+Row 24b contributes frozen P1/P2 items 4–5 through separate opt-in seams.
+This extends the earlier extraction boundaries only
 for the seams described here; no default behavior, release, adoption, deployment,
 activation or native-backend parity claim follows.
 
@@ -1001,13 +1002,36 @@ owned by [architecture](../ARCHITECTURE_AND_EXTENSIONS.md#internal-boundaries-an
 Local source checks do not replace the supervisor's committed candidate review,
 packed-consumer gates or the adopter's separately authorized characterization.
 
-Case ledger: +48 approved (owner 2026-10-21: allow what's needed); 24a uses 28.
-Per-item witness allocation: shipping consent 8; threshold shipping 10;
-acquisition orchestration 10. The final focused source run passed all 2,110 cases across 297 files, including
-exactly these 28 new cases with no skips; their summed case durations were
-34.32 ms (8 shipping-consent cases: 14.51 ms; 10 threshold cases: 11.23 ms;
-10 acquisition cases: 8.57 ms), within the aggregate +30 s allowance.
-Browser contracts measured 386/416 B for pricing and 20/32 B for shipping;
-platform root docs measured 39,624/40,960 B. Row 24b retains the remaining
-20 approved cases. These local results do not establish committed package-gate
-or native review admission.
+Bundle preview selects an injected effective target without falling back after an
+authoritative null. The optional native effective path selects list/window/region/
+mode, refuses list/component ambiguity, requires gross minQty-one anchors and
+proves document/GTIN/sellability for the whole BOM. Incumbent SQL constants and
+omitted-option read transcripts remain unchanged. The alternate concurrent price
+authority schedules history using the selected list, retains base-refusal
+precedence and request isolation, and skips history for one-time requests. The
+incumbent factory keeps sequential observed-base behavior. Catalog adds a single
+value edge to pricing to reuse its effective-window rule; browser additions erase.
+
+Case ledger: +48 approved (owner 2026-10-21: allow what's needed); 24a uses 28
+and 24b uses 20, totaling **48 of +48** with none remaining. Per-item allocation:
+shipping consent 8; threshold shipping 10; acquisition orchestration 10;
+bundle preview/native read 16; concurrent authority 4.
+
+24a's final focused source run passed 2,110 cases across 297 files, including
+its 28 new cases without skips. Its rounded per-item durations sum to **34.31 ms**
+(14.51 + 11.23 + 8.57 ms), correcting the earlier 34.32 ms total.
+24b's isolated run passed exactly **20 new cases without skips**, including six
+real-PostgreSQL cases. Summed case duration: **87.33 ms** (bundle 81.91 ms;
+concurrent authority 5.42 ms), giving **121.64 ms** across both parity rows.
+The 24b run reached its last test **5.817 s** after runner start, including
+container/bootstrap/import overhead; both measures fit the aggregate +30 s
+allowance. Existing focused catalog/pricing evidence covers 2,302 cases across
+143 unchanged files: one npm-cache permission failure was recovered by rerunning
+the packed-consumer file with the task cache; all unique cases then passed.
+
+24b browser contracts measured catalog 3,260/4,096 B, pricing 386/416 B and
+shipping 20/32 B. Platform root docs measured **39,807/40,960 B** (24a: 39,624 B).
+These are local working-tree results. The stock policy command still requires
+new catalogue paths in the Git index; its candidate-path checks and documentation
+impact passed without Git writes. These results do not establish committed
+package-gate or native review admission.

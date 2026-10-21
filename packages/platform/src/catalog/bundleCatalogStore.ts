@@ -1,3 +1,4 @@
+import { createEffectiveBundleCatalogStore } from "./effectiveBundleCatalogStore.js";
 import {
   BundleCatalogReadError,
 } from "./bundleCatalogReadPort.js";
@@ -101,7 +102,11 @@ interface WriteEventRow {
 
 export function createPostgresBundleCatalogStore(
   executor: PgQueryExecutor,
+  options?: { priceAuthority?: "effective" },
 ): BundleCatalogReadPort {
+  if (options?.priceAuthority === "effective") {
+    return createEffectiveBundleCatalogStore(executor, createPostgresBundleCatalogStore(executor));
+  }
   async function rows<T>(sql: string, values: unknown[]): Promise<T[]> {
     // A driver failure becomes the port's own read error, so a caller sees the
     // same distinction between "found nothing" and "could not ask" on both chains.

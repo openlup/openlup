@@ -637,7 +637,7 @@ remaining source contents and modes. This is preview evidence, not stability.
 
 ## M05 parity seams
 
-Development-preview hosts may select three independent seams; omission preserves
+Development-preview hosts may select five independent seams; omission preserves
 incumbent behavior. No route, policy, provider or new financial default is selected
 by importing them. These additive APIs need a minor package set.
 
@@ -652,7 +652,8 @@ The public and strict quote projections bind the same money and promise.
 The host must preserve terms through its response schema and forward the fourth
 issue callback argument (fifth for honor) to the acceptance helper. An unsigned
 shipping promise refuses before promotion fallback; a fallback retaining shipping
-terms also refuses. With the binding omitted, callbacks retain their incumbent
+terms also refuses. Hosts use `parseShippingTerms` inside `shipping.terms(quote)`
+to refuse corrupt retained terms. With the binding omitted, callbacks retain their incumbent
 argument count and token bytes remain unchanged.
 
 `createDbBackedCommerceQuotePort` optionally receives
@@ -660,7 +661,7 @@ argument count and token bytes remain unchanged.
 shipping gross, `hasShipping`, and optional shipping/acquisition terms. Without it,
 the flat-fee read still precedes automatic evaluation and code adjustment. With it,
 pricing uses its supplied money and terms and does not call the incumbent lane
-callbacks. Hosts must select a context schema that retains these promises.
+callbacks; the flat fee is ignored once a resolver is supplied. Hosts must select a context schema that retains these promises.
 
 The promotions `createQuoteShippingPromotions` factory receives settings and raw
 promotion/code ports plus the existing bound automatic and code applications.
@@ -687,7 +688,9 @@ selector, half-open schedule filter and capability/engine refusal precedence.
 Selected terms propagate only for a negotiated capability. The legacy evaluator
 keeps its unfiltered `allCandidates` for code canonicalization and rejection/cap
 precedence separately from the filtered evaluation candidates. Ordinary coupons
-retain their existing evaluator rules. Omission keeps candidate sets and read
+retain their existing evaluator rules. Legacy, v2 and automatic acquisition
+bindings reach the quote context only through `resolveQuoteShippingPromotions`,
+which carries the selected acquisition terms. Omission keeps candidate sets and read
 order unchanged; hosts still own financial constants and metadata interpretation.
 
 Neutral witnesses live in the package promotions tests
@@ -695,3 +698,35 @@ Neutral witnesses live in the package promotions tests
 `acquisitionOrchestrationParity.test.ts`; the [M05 extension ledger](plans/oss-m05-catalog-offers-pricing.md#m05-parity-extension)
 records the bounded contribution. Native candidate/claim and mounted acceptance
 gaps in that plan remain separate obligations.
+
+`createAdminBundleReadHandlers` accepts an optional `effectiveTarget(bundle)` on
+its handler dependencies. With it, previews use that authoritative target; null
+never falls back to active history. An explicit preview amount still wins, and
+an omitted mode without a target defaults to `one_time`. Without the hook the
+incumbent active-row search and `any` fallback remain unchanged. Optional
+`resolvedTargetPrice` survives the detail DTO and reference response schema;
+older details may omit it.
+
+`createPostgresBundleCatalogStore(executor, { priceAuthority: "effective" })`
+selects half-open target/list windows, currency, optional region and purchase
+mode (`one_time` by default), with `any` fallback and overlap/identity refusal.
+Detail accepts `regionCode`/`atTime`; the feed also accepts `mode`. The exported
+`selectEffectiveBundleTargetPrice(rows, context)` applies list/currency, active,
+gross, positive-target and window filters before exact-mode selection. Component
+anchors require effective gross minQty-one entries; duplicates refuse. The feed
+emits a whole BOM only when every component has current document and primary
+unit GTIN authority, active product/SKU, positive integral weight and anchor,
+and sellability for the requested mode. Detail retains unready components.
+With the option, list/detail `hasActiveTargetPrice` also follows the effective
+rule (gross, positive target, `one_time`/`any`, active list, current window)
+instead of the active flag alone.
+Omitting the store option preserves existing SQL bytes, reads and outputs.
+
+`createConcurrentCommercePriceAuthorityPort(reads)` is an alternate pricing
+factory: subscription history starts alongside the base read using the selected
+list ID, with captured history errors subordinate to base refusals. One-time
+requests schedule no history; legacy fallback still uses the validated base ID.
+The incumbent authority and PostgreSQL factory retain their sequential scheduling
+and observed-base identity. The native effective-bundle witness is
+`tests/postgres/bundleEffectiveParity.test.ts`; all parity additions use existing
+collectors and synthetic host data.

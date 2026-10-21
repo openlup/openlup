@@ -16,9 +16,15 @@ contracts/ports are unchanged. The package publishes DTO types without moving
 Zod into its browser contracts or making browser code reach the server entry.
 The native read store and unchanged SQL queries now also live in catalog; its
 reference paths are named compatibility exports. The injected executor introduces
-only a data type edge. SQL 16/19 are sparse canonical projections, not a standalone
+a data type edge; effective bundle selection additionally uses the pricing
+authority through its public server entry. SQL 16/19 are sparse canonical projections, not a standalone
 installation chain. Write/transaction/transport composition stays reference-owned,
 and native human-only activation still depends on the handler gate.
+The optional `resolvedTargetPrice` detail field retains an explicitly resolved
+bundle target through the reference response schema; older details may omit it.
+Preview authority and the opt-in native readiness rules are owned by
+[parity seams](../../../docs/platform/CANONICAL_CONTRACTS.md#m05-parity-seams).
+The reference binding supplies neither opt-in by default.
 
 - **Owns:** `Bundle`, `BundleLineRef`, `CompositionConstraint` and
   `CompositionRulesPort` contract types; the admin write and lifecycle request

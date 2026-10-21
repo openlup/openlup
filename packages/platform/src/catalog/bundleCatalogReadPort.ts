@@ -98,6 +98,8 @@ export interface BundleDetail extends BundleSummary {
   metadata: Record<string, unknown>;
   components: BundleComponentRow[];
   prices: BundleTargetPriceRow[];
+  /** Present only when the host selects effective price authority. */
+  resolvedTargetPrice?: BundleTargetPriceRow | null;
   /** The currency whose list resolved `referenceUnitPriceMinor`; `null` if none did. */
   resolvedCurrency: string | null;
   /**
@@ -116,8 +118,10 @@ export interface GetBundleInput {
    * only currency an operator has actually chosen for it.
    */
   currency?: string;
-  /** Narrow the target price whose list is selected; omitted means any mode. */
+  /** Narrow the target price whose list is selected; omitted means any mode (the opt-in effective store defaults to one_time). */
   mode?: string;
+  regionCode?: string;
+  atTime?: string;
 }
 
 /**
@@ -167,7 +171,7 @@ export interface BundleCatalogReadPort {
    * Every bundle a storefront may sell right now. Never returns a draft or an
    * archived bundle, and never a bundle without an active target price.
    */
-  listActiveBundleCompositions(input?: { currency?: string }): Promise<ActiveBundleComposition[]>;
+  listActiveBundleCompositions(input?: { currency?: string; regionCode?: string; mode?: "one_time" | "subscription"; atTime?: string }): Promise<ActiveBundleComposition[]>;
   /**
    * The operator trail for one bundle. The two chains answer from different
    * ledgers — a managed audit table and the platform's neutral write-event

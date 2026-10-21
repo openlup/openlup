@@ -441,14 +441,20 @@ its own reviewed compatibility change before a second capability is admitted.
 
 ### Internal boundaries and adapter isolation
 
+Effective bundle selection reuses pricing's half-open authority through its
+public server entry, adding the catalog → pricing value edge. The dependency is
+acyclic; pricing owns no runtime catalog edge. The opt-in adapter keeps effective
+SQL internal and leaves browser contracts type-only and incumbent SQL unchanged.
+
 Inventory remains a non-adapter entry with no catalog import; its bundle-stock shapes are declared structurally. Admin handlers bind host response writers, and native reads require the provider value and validator. The new-purchase projection takes normalized reads, host defaults, fallback, observation and availability calculation; transports and cycle writers retain their owners.
 
 Reservation policy has an unchanged server counterpart; the reference keeps browser-safe local values and forwards DTO types only. The native renewal reservation factory takes a structural executor and preserves its fenced reserve/release/expiry SQL, defaults, errors and readback. Its inventory-only port does not own subscription cycle, anchor, due or attempt writing.
 
 Catalog now also owns fixed-bundle application/admin factories at its existing
-entry. Its cross-module edges are type-only data/http/bff inputs: the native read
+entry. Its data/http/bff inputs remain type-only: the native read
 store takes the data entry's executor without constructing a driver or pool.
-There is no pricing or promotions edge. Reference wrappers bind
+Effective bundle selection alone adds the pricing value edge described above;
+there is no promotions edge. Reference wrappers bind
 existing schemas, operation spec and shared admin kit, stock/lifecycle helpers,
 versions and the RPC error constructor. Browser-reached schemas retain their
 reference owner and never re-export the server entry; catalog contracts expose

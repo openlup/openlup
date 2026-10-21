@@ -128,7 +128,9 @@ price-list, base-entry, legacy-entry and policy-history reads. The authority
 validates the base before reading history and uses the observed base's
 `priceListId` for that lookup. History excludes legacy fallback even when no
 revision is currently effective. Digest, interval, ambiguity and amount-kind
-refusals retain their existing identities and precedence.
+refusals retain their existing identities and precedence. The opt-in
+`createConcurrentCommercePriceAuthorityPort` instead schedules history alongside
+base reads using the selected list ID, with base-refusal precedence.
 
 `./pricing/contracts` contains dependency-free authority observations, policy
 DTOs and version constants; its only external type comes from the exact
@@ -192,7 +194,9 @@ terms can join the existing acceptance money projection and totals section;
 absence contributes no property. Quote/batch refusal mapping and unsigned-terms
 fallback checks require explicit acquisition configuration. Reference composition
 supplies none: existing schemas, headers, reads, error details and token bytes
-are preserved. Checkout admission, claims, finalization, threshold shipping,
+are preserved. Threshold shipping is supplied by the separate
+[parity seam](../../docs/platform/CANONICAL_CONTRACTS.md#m05-parity-seams).
+Checkout admission, claims, finalization,
 promotion implementation, stores, SQL, routes and activation remain outside
 this API.
 
@@ -204,6 +208,10 @@ in the application. The existing cold consumer exercises both entries and
 compiles installed declarations without optional provider peers.
 
 ## Catalog
+Opt-in `priceAuthority: "effective"` on the native bundle store and the admin
+`effectiveTarget` hook provide [effective bundle parity](../../docs/platform/CANONICAL_CONTRACTS.md#m05-parity-seams);
+`selectEffectiveBundleTargetPrice` is exported. Omitted seams preserve defaults.
+
 The native envelope and dark draft adapters now live in this entry as
 `createPostgresCatalogSkuEnvelopeReadPort` and `createPostgresCatalogDraftStore`.
 They accept an injected executor and retain the existing mapping, errors and SQL
@@ -216,7 +224,8 @@ The composition entry adds `createCatalogContribution` and its structural input
 interface. It describes actual catalog, pricing and promotions callables under
 those existing module identities, with no environment discovery, client creation
 or registration. It imports only readiness types: composition gains no catalog
-edge, and catalog retains its existing type-only data edge. Package boundary
+edge, and catalog keeps its type-only data edge plus one pricing value edge for
+the effective-window selector. Package boundary
 checks pin those imports and peer-free composition declarations. The packed
 consumer exercises both new stores and the descriptor without optional peers;
 its synthetic executor proves named refusal, not durable storage behavior.
