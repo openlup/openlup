@@ -15,7 +15,7 @@ export interface FulfillmentStatusStage {
   timelineLabel: string;
   /** Key under `account:dashboard.panels.orders.trackingPhase.*` (start tile). */
   trackingPhaseKey: string;
-  /** Short label mirror (kept === the i18n values by statusMap.test.ts). */
+  /** Short display label contributed with the status map. */
   label: { pl: string; en: string };
   /** Layer B `local_status` / durable FSM / order-level statuses resolving here. */
   localStatus: readonly string[];
@@ -165,8 +165,7 @@ const STAGE_BY_STEP: Record<CustomerFulfillmentStep, FulfillmentStatusStage> = O
 
 // token → customerStep, derived from the map (localStatus + FSM + orderStatus +
 // aliasTokens). Built once; conflicts across stages would be a map bug caught by
-// statusMap.test.ts. (Named "lookup", not "*_TOKEN" — all-caps *_TOKEN
-// identifiers trip the client secret-boundary guard.)
+// the package-local fulfillment/statusMap.test.ts token witness.
 const STEP_LOOKUP: Record<string, CustomerFulfillmentStep> = (() => {
   const table: Record<string, CustomerFulfillmentStep> = {};
   for (const stage of FULFILLMENT_STATUS_MAP.stages) {

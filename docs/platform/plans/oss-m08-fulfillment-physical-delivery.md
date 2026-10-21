@@ -17,19 +17,23 @@ no incompatible runtime, peer, lifecycle or consumer requires another artifact.
 Platform maintains these experimental contracts; adapters and host policy remain
 adopter-owned.
 
-The user authorizes local implementation and focused verification in this assigned
-worktree, with report evidence in the assigned P1 notes directory. No commit,
-push, PR, merge, release, network other than npm ci, account, secret or provider
-call is authorized. No other worktree, review script or private reference adapter
-is changed. Native committed review and submission belong to the supervisor after
-handoff; this uncommitted run claims no native review or receipt. There is no
-adopter/staging endpoint in P1 scope.
+Candidate `bc4f9110` is committed on the assigned branch. Repair cycle 1 is a
+working-tree-only handoff to the coordinator: local edits and focused verification,
+with the report in the assigned P1 notes directory. Commit, submission, native
+review and delivery remain coordinator responsibilities. This repair performs no
+commit/push, network, secret/provider access, other-worktree operation or
+scripts/agent-review-* execution. No adopter/staging endpoint is in P1 scope.
 
-Acceptance: exact two entries and symbols in the frozen export register; type-only
+Acceptance: exact two entries and symbols in the frozen export register plus the
+repair-1 prepare-result/envelope type amendment; type-only
 browser contracts; concrete G1–G13 fit; unchanged status projection digest and
-decisions; arrival discipline in port/module docs; seven semantic cases; generated
+decisions; arrival discipline in port/platform docs; eight semantic cases; generated
 boundary rows reported separately; focused lint/structural/API/consumer/policy
-checks and actual tarball budgets. The generated SOURCE_MAP requires one additional doc-routing.json owner row; the required API generator also changes only existing inventory enum member order (two blocks). These two companion adjustments bring the actual write set to 35 versus the proposed 33, with no inventory behavior/type-set change. Actual diff including generated files must stay
+checks and actual tarball budgets. The inventory API generator retains its two
+existing enum-order-only adjustments without changing value sets. Repair 1 removes
+the module README and unreachable status helper, reuses architecture documentation
+as the fulfillment owner, and keeps the whole candidate at 33 paths versus the
+35-path cap. Actual diff including generated files must stay
 at or below 35 paths. Exclusions: P2+ runtime orchestration, SQL/migrations,
 composition, reference facade rewiring, UI, adapter implementation and release
 set/version preparation. No native continuity, provider operation or stable
@@ -46,7 +50,7 @@ framework claim is made by P1.
 | D4 | Managed/native graphs stay distinct; ten managed bodies equal at normalized-body scope, no native/runtime equivalence implied. |
 | D5 | C1 additive witnesses unchanged (later pruned allocation is 31 cases). |
 | D6 | Reconcile actual shared M07/A2 package companions; no unrelated source changes. |
-| D7 | Note-only replacement confirmation unchanged, no caller; arrival discipline in alignment contract/module guide. |
+| D7 | Note-only replacement confirmation unchanged, no caller; arrival discipline in alignment contract/platform page. |
 | D8 | Serial P1→P2→P3→P4→P5a→P5b→P6→P7→S1, each at most 35 paths. Import unchanged before P6 refactor. |
 | D9 | C2 forecast 89 authored cases/27s within 94/27 and outer 100/30; generated packageBoundary rows separate, all runtime charged. |
 | D10 | Measure actual P1/final pack and all subcaps; no cap increase or guessed version. |
@@ -59,8 +63,8 @@ framework claim is made by P1.
 | Amendment | Concrete owner and focused witness |
 | --- | --- |
 | G1 | dispatch.ts: mandatory fulfillmentRef, nullable parcelRef, contactRevision; contracts.test.ts |
-| G2 | dispatch.ts DispatchEvidence: actual-command fingerprint, explicit host keys; contracts.test.ts |
-| G3 | store.ts: read/prepare/claim/begin/finalize/acknowledge, replay/contact/stock refusals; portFit.test.ts |
+| G2 | dispatch.ts adapter prepare returns actual-command fingerprint and sanitized DispatchEvidence before claim/begin; raw command stays transient; contracts.test.ts order/remap witness |
+| G3 | store.ts read/prepare/claim/begin/finalize/acknowledge; claim and begin bind adapter-prepared evidence before dispatch; contact_stale requires fresh adapter prepare after remap; contracts.test.ts and portFit.test.ts |
 | G4 | label.ts: durable LabelDocument versus transient read response; contracts.test.ts |
 | G5 | label.ts: deletion confirmation distinct from canProceed; contracts.test.ts; capability per-op refusals in portFit.test.ts |
 | G6 | observation.ts: core fact plus eventKind/eventKey/correlation (including external order/fulfillment refs)/tracking/diagnostics; portFit.test.ts |
@@ -92,9 +96,9 @@ never certify absence. M06 reservations/availability and M05 facts remain owners
    calls and canonical-set predicate; rename application parser exports to
    parseFulfillmentFact/parseFulfillmentTransitionConflict. Omit unfrozen core
    re-exports; no schema or fingerprint implementation is copied. Use .js imports.
-3. V `src/domains/fulfillment/status.ts`: retain display/date/sort helper bodies
-   only, with a local structural display union; private tracking classifier,
-   URL constructor and its dictionaries remain host-owned. Helpers are internal.
+3. V `src/domains/fulfillment/status.ts` is omitted: its display/date/sort helpers
+   have no reachable P1 export or witness. Tracking classifiers, URL constructors
+   and private dictionaries remain host-owned; no unused helper is published.
 4. V capability profile fields retain role, action policy, stock authority and
    delivered-notice ownership. Neutralize the private role to warehouse and closed
    provider union to host-injected opaque refs. The private static registry, aliases,
@@ -128,29 +132,35 @@ claim implementation conformance for the later workers/stores.
 Run the three new suites and existing packageBoundary/cold-consumer tests, focused
 TypeScript checks, structural/lint checks, publication policy/navigation, neutrality
 and API report checks. Serialize generation/build/pack. The ordinary package gate
-requires a clean committed tree; for this explicitly uncommitted task use its
+requires a clean committed tree; the working-tree repair uses its
 existing measurePack/checkPackBudget/browserEntryBytes helpers on npm-packed
 materialized bytes, report the limitation, and leave clean-tree admission owed.
-All temporary output is under .context/scratch. The P1 report records actual case
+Scratch logs/configs are under .context/scratch; existing cold-consumer fixtures
+use system temporary directories and clean up their own output. The P1 report records actual case
 counts/time, every pack cap/subcap, paths, checks and any delta-bound documentation
 trailers still needed because commits are prohibited.
 
-Local P1 evidence: 35 changed paths, including the routing companion and generated
-inventory enum-order-only API report. Seven authored semantic cases passed (0.0078s
-test bodies in the final combined run); packageBoundary passed 1,432 cases (42 new
-generated rows), 3.10s test time / 3.43s elapsed in its final standalone run. The
-full lint command passed with 33 existing warnings; focused type checking,
-structural scan, API reports and neutrality passed. The exact packed materialized
-platform measured 1,026,756 packed bytes / 4,582,014 unpacked bytes / 1,438 files;
-code gzip 882,636 bytes / 1,404 files; root-doc gzip 48,065 bytes / 5 files. All
-caps/subcaps passed, none within 1%; fulfillment/contracts bundled to 20B versus
-32B. Local installed runtime/refusal and NodeNext/Bundler declarations passed.
-Strict cold tests refused the repo-local scratch directory (2 focused failures);
-external isolation remains owed because this task forbids external artifact writes.
-The committed pack gate refused the intentionally dirty tree. Publication policy
-and docs-update commands refuse new untracked inventory; candidate-aware catalog,
-source-contract derivation and navigation passed, with three no-impact trailers
-proposed for ownership/repository/tooling. No complete gate/admission PASS is claimed.
+Committed-candidate baseline: seven authored semantic cases; 1,432 generated
+packageBoundary cases; platform pack 1,026,756 B packed / 4,582,014 B unpacked /
+1,438 files; code gzip 882,636 B / 1,404 files; root-doc gzip 48,065 B / 5 files.
+Root-doc headroom was 1,087 B against 49,152 B. Repair 1 measures 47,850 B
+(1,302 B headroom, 215 B recovered); its working-tree pack is 1,024,956 B packed /
+4,577,081 B unpacked / 1,434 files, code gzip 882,715 B / 1,401 files. All caps
+and browser subcaps pass. Repair-cycle checks and trailers are recorded in the
+coordinator handoff report; this record claims no
+native review, clean committed admission or provider implementation conformance.
 
-Self-retro: ESM module namespaces include a toStringTag; the first empty-contract
-assertion was corrected to compare enumerable exports. The API generator also changed existing inventory enum member order. Initial isolation of that delta left the required API check red; retaining only the generated ordering makes the check match the materialized declarations without changing the enum value set. No runtime fix or broader inventory work is included.
+Known limits retained from the donor: capability lookup lowercases the selected
+providerRef but compares it against the injected descriptor as supplied; case
+normalization policy is unchanged. recordArrival still accepts parcelRef without
+fulfillmentRef; native fence/alignment implementation and proof remain P4 work.
+
+Self-retro: the pre-claim fingerprint gap required an adapter prepare operation;
+a neutral-envelope hash could not preserve donor command identity. Removing the
+unreachable helper and placing contract prose on the existing platform page
+reduces shipped bytes and keeps one documentation owner. The focused order witness
+also exercises contact_stale rebuilding, while later adapter conformance remains owed.
+A verification retry overlapped the lint pre-hook build with declaration readers,
+causing two transient failures; after the build completed, the full focused package
+and cold-consumer suites passed. Lesson: serialize lint (including prelint) before
+checks that read dist, rather than treating lint as a read-only phase.

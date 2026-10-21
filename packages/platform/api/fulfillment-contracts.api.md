@@ -91,7 +91,7 @@ export interface FulfillmentSelection {
     pickupPoint: PickupPoint | null;
 }
 export interface FulfillmentRefusal {
-    reason: "selection_required" | "provider_mismatch" | "carrier_service_required" | "disabled" | "not_ready" | "unsupported" | "withheld" | "claim_conflict" | "contact_stale" | "stock_contention" | "local_missing" | "io_failure" | "malformed" | "untrusted" | "unsupported_event" | "stale" | "missing_correlation";
+    reason: "not_dispatchable" | "selection_required" | "provider_mismatch" | "carrier_service_required" | "disabled" | "not_ready" | "unsupported" | "withheld" | "claim_conflict" | "contact_stale" | "stock_contention" | "local_missing" | "io_failure" | "malformed" | "untrusted" | "unsupported_event" | "stale" | "missing_correlation";
     phase: "selection" | "prepare" | "claim" | "begin" | "dispatch" | "acknowledge" | "verify" | "normalize" | "apply" | "readback" | "sync";
     retryable: boolean;
 }
@@ -151,7 +151,27 @@ export type FulfillmentDispatchResult = {
     effectMayHaveSucceeded: true;
     refusal: FulfillmentRefusal;
 };
+export type FulfillmentDispatchPrepareResult = {
+    kind: "prepared";
+    evidence: DispatchEvidence;
+} | {
+    kind: "refused";
+    refusal: FulfillmentRefusal;
+};
 export interface FulfillmentDispatchPort {
+    /**
+     * Without external submission, build the actual command and fingerprint its bytes
+     * before store claim/begin. Return only sanitized evidence; keep the raw command
+     * transient inside the adapter. Refuse not_dispatchable or the exact selection
+     * refusal when preparation cannot proceed. A contact_stale remap requires a new
+     * prepare of the rebuilt request/command before another claim/begin.
+     */
+    prepare(request: FulfillmentDispatchRequest): Promise<FulfillmentDispatchPrepareResult>;
+    /**
+     * Send exactly the prepared command identified by this evidence. Never silently
+     * rebuild a different command; absent/mismatched preparation refuses before I/O.
+     * Unknown submission outcomes require readback, never blind re-submission.
+     */
     dispatch(request: FulfillmentDispatchRequest, evidence: DispatchEvidence): Promise<FulfillmentDispatchResult>;
 }
 export {};
@@ -159,13 +179,13 @@ export {};
 ## dist/fulfillment/contracts/index.d.ts
 
 ```ts
-export type { FulfillmentSelection, FulfillmentDispatchRequest, FulfillmentDispatchResult, FulfillmentDispatchPort, FulfillmentRefusal } from "./dispatch.js";
-export type { FulfillmentLabelPort } from "./label.js";
+export type { DispatchEvidence, FulfillmentDispatchPrepareResult, FulfillmentSelection, FulfillmentDispatchRequest, FulfillmentDispatchResult, FulfillmentDispatchPort, FulfillmentRefusal } from "./dispatch.js";
+export type { LabelDocument, FulfillmentLabelPort } from "./label.js";
 export type { FulfillmentObservation, FulfillmentObservationPort, FulfillmentTrackingReference } from "./observation.js";
 export type { FulfillmentReadbackResult, FulfillmentReadbackPort } from "./readback.js";
-export type { FulfillmentStockSyncProvider, FulfillmentStockSyncPort, FulfillmentProductSyncProvider, FulfillmentProductSyncPort } from "./sync.js";
+export type { SyncCursor, StockSnapshot, StockMovement, LocalStock, FulfillmentStockSyncProvider, FulfillmentStockSyncPort, FulfillmentProductSyncProvider, FulfillmentProductSyncPort } from "./sync.js";
 export type { FulfillmentCapabilityDescriptor } from "./capabilities.js";
-export type { FulfillmentStorePort, FulfillmentPaidHandoffPort } from "./store.js";
+export type { DispatchRecord, FulfillmentStorePort, FulfillmentPaidHandoffPort } from "./store.js";
 export type { DeliveryAlignmentPort } from "./alignment.js";
 export type CanonicalLocalFulfillmentStatus = "provider_received" | "picking" | "packed" | "in_transit" | "delivered" | "exception" | "cancelled";
 export type CustomerFulfillmentStep = "paid" | "accepted" | "packing" | "transit" | "delivered" | "exception" | "cancelled";
@@ -330,6 +350,7 @@ export interface FulfillmentStorePort {
         disposition: "ready" | "withheld";
         contactRevision: number | null;
     }>;
+    /** Evidence comes from adapter prepare, before any external submission. */
     claim(input: {
         requestKey: string;
         fulfillmentRef: string;
@@ -344,6 +365,7 @@ export interface FulfillmentStorePort {
         kind: "refused";
         refusal: FulfillmentRefusal;
     }>;
+    /** Bind submission to the same prepared command fingerprint recorded by claim. */
     begin(input: {
         dispatchRef: string;
         commandFingerprint: string;
@@ -402,14 +424,14 @@ interface SyncIdentity {
     sourceRevision: string | null;
     revisionSource: "provider" | "collection" | "unknown";
 }
-interface StockSnapshot extends SyncIdentity {
+export interface StockSnapshot extends SyncIdentity {
     skuRef: string;
     quantityKind: "snapshot";
     totalQuantity: number;
     forSaleQuantity: number;
     reservedOrUnavailableQuantity: number;
 }
-interface StockMovement extends SyncIdentity {
+export interface StockMovement extends SyncIdentity {
     skuRef: string;
     quantityKind: "movement";
     quantity: number;
@@ -419,7 +441,7 @@ interface StockMovement extends SyncIdentity {
     lotRef: string | null;
     expirationDate: string | null;
 }
-interface SyncCursor {
+export interface SyncCursor {
     status: "idle" | "running" | "succeeded" | "failed";
     lastStockSyncedAt: string | null;
     lastMovementOccurredAt: string | null;
@@ -431,7 +453,7 @@ interface SyncCursor {
     };
     refusal: FulfillmentRefusal | null;
 }
-interface LocalStock {
+export interface LocalStock {
     skuRef: string;
     onHand: number;
     reserved: number;

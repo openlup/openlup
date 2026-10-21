@@ -4,21 +4,21 @@ interface SyncIdentity {
   providerRef: string; syncRunId: string; collectedAt: string;
   sourceRevision: string | null; revisionSource: "provider" | "collection" | "unknown";
 }
-interface StockSnapshot extends SyncIdentity {
+export interface StockSnapshot extends SyncIdentity {
   skuRef: string; quantityKind: "snapshot"; totalQuantity: number; forSaleQuantity: number; reservedOrUnavailableQuantity: number;
 }
-interface StockMovement extends SyncIdentity {
+export interface StockMovement extends SyncIdentity {
   skuRef: string; quantityKind: "movement"; quantity: number; occurredAt: string | null;
   operationType: string | null; documentRef: string | null; lotRef: string | null; expirationDate: string | null;
 }
-interface SyncCursor {
+export interface SyncCursor {
   status: "idle" | "running" | "succeeded" | "failed";
   lastStockSyncedAt: string | null; lastMovementOccurredAt: string | null;
   /** Sanitized continuation only; no credentials, URLs or arbitrary provider payload. */
   continuation: { nextRef: string | null; startLocalDate: string | null; endLocalDate: string | null };
   refusal: FulfillmentRefusal | null;
 }
-interface LocalStock { skuRef: string; onHand: number; reserved: number; unavailable: number; safetyStock: number }
+export interface LocalStock { skuRef: string; onHand: number; reserved: number; unavailable: number; safetyStock: number }
 type Threshold = "safety_stock" | "reservation_coverage" | "forecast" | "stale_sync";
 type Conflict = "unknown_sku" | "ean_conflict" | "kind_quantity_conflict";
 export interface FulfillmentStockSyncProvider {

@@ -3150,10 +3150,6 @@
       "class": "public-output"
     },
     {
-      "path": "packages/platform/src/fulfillment/README.md",
-      "class": "public-output"
-    },
-    {
       "path": "packages/platform/src/fulfillment/contracts/alignment.ts",
       "class": "public-output"
     },
@@ -3199,10 +3195,6 @@
     },
     {
       "path": "packages/platform/src/fulfillment/providerCapabilities.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "packages/platform/src/fulfillment/status.ts",
       "class": "public-output"
     },
     {

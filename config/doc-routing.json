@@ -621,8 +621,8 @@
         "packages/platform/api/fulfillment.api.md",
         "packages/platform/api/fulfillment-contracts.api.md"
       ],
-      "doc": "packages/platform/src/fulfillment/README.md",
-      "anchor": ""
+      "doc": "docs/platform/ARCHITECTURE_AND_EXTENSIONS.md",
+      "anchor": "#fulfillment-contracts"
     }
   ]
 }

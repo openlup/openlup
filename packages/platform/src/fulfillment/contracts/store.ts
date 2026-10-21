@@ -9,7 +9,9 @@ export interface FulfillmentStorePort {
   read(requestKey: string): Promise<DispatchRecord | null>;
   readCandidate(fulfillmentRef: string): Promise<FulfillmentDispatchRequest | null>;
   prepare(fulfillmentRef: string): Promise<{ disposition: "ready" | "withheld"; contactRevision: number | null }>;
+  /** Evidence comes from adapter prepare, before any external submission. */
   claim(input: { requestKey: string; fulfillmentRef: string; orderRef: string; parcelRef: string | null; mode: DispatchRecord["mode"]; evidence: DispatchEvidence }): Promise<{ kind: "claimed"; record: DispatchRecord } | { kind: "refused"; refusal: FulfillmentRefusal }>;
+  /** Bind submission to the same prepared command fingerprint recorded by claim. */
   begin(input: { dispatchRef: string; commandFingerprint: string }): Promise<{ kind: "begun"; record: DispatchRecord; begun: boolean; replayed: boolean } | { kind: "refused"; refusal: FulfillmentRefusal }>;
   finalize(input: { dispatchRef: string; result: FulfillmentDispatchResult }): Promise<DispatchRecord>;
   acknowledge(input: { dispatchRef: string; acceptance: Extract<FulfillmentDispatchResult, { kind: "accepted" }> }): Promise<{ acknowledged: boolean; replayed: boolean; record: DispatchRecord }>;

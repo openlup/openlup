@@ -34,7 +34,7 @@ or provider-account certification.
 | `./communications/contracts` | Pure renderer, block builders, copy-injected commerce/subscription factories and email/newsletter/Auth/intake/receipt types; no Zod, Node or provider runtime imports |
 | `./payments/stripe` | Opt-in Node payment example with an injected structural client, verified observations and purpose-sensitive readback; no SDK dependency or default activation. |
 | `./payments/tpay` | Opt-in Node payment example with injected HTTP/certificate I/O, Model O aliases and verified observations; no default activation. |
-| `./fulfillment` | Experimental status canon, core fact parsers and injected capability selection; concrete browser-safe types at `./fulfillment/contracts`. |
+| `./fulfillment`, `./fulfillment/contracts` | [Experimental fulfillment contracts and status canon](../../docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#fulfillment-contracts). |
 | `./payments` | Experimental prepared-attempt ordering with injected persistence, execution and failure policy; contracts at `./payments/contracts`. |
 | `./inventory` | Experimental schemas/ports, handlers, native stores, projection, injected forecast and SQL descriptor; `./inventory/contracts` DTOs. |
 | `./catalog` | Experimental neutral catalog schemas, drafts, reads, media source packs and publication ports |
@@ -1056,18 +1056,6 @@ opt-in browser profile adds no npm entry or UI package export.
 Source contributors record notable changes in package changelog fragments;
 release preparation assembles the shipped CHANGELOG. Follow the
 [public contribution guide](https://github.com/openlup/openlup/blob/main/CONTRIBUTING.md#development-preview-checks).
-
-## Fulfillment contracts and status canon
-
-`@openlup/platform/fulfillment` owns the contributed status/step map, strict core
-fact/conflict parser bindings and `readFulfillmentCapabilities` over injected
-profiles. Its [module guide](src/fulfillment/README.md) explains dispatch, label,
-observation, exact readback, sync, store and delivery-alignment contracts. Import
-the type-only `@openlup/platform/fulfillment/contracts` entry in browser consumers.
-No provider is inferred from the carrier, and empty provider selection refuses;
-support, readiness and explicit selection remain separate. No adapter, route,
-executor or native alignment implementation is activated by this P1 surface.
-Existing host status facades remain unchanged pending later composition.
 
 ## Payments prepared attempts
 
