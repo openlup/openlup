@@ -173,8 +173,9 @@ readback and sync ports from
 `@openlup/platform/fulfillment/contracts`. See the
 [fulfillment owner](ARCHITECTURE_AND_EXTENSIONS.md#fulfillment-contracts) for
 command preparation, host keys, replay, paid handoff and proof/storage boundaries.
-Adapter conformance belongs to future example-adapter work; this surface
-activates no provider or reference route.
+The offline runFulfillmentAdapterConformance checks adapter-owned fixtures and
+returns sanitized evidence; concrete example adapters and native store proof remain
+later work. This surface activates no provider or reference route.
 
 | Class | Shipped example subpaths |
 | --- | --- |
@@ -865,9 +866,17 @@ collectors and synthetic host data.
 
 The [fulfillment contract owner](ARCHITECTURE_AND_EXTENSIONS.md#fulfillment-contracts)
 explains G15–G17: consecutive-success coverage confirmation, timed local stock
-lines and host-local observation persistence. The runtime workers retain donor
-effect/replay/terminal/stale behavior through those ports. Provider readback is
-never a substitute for local chronology. Cancelled local rows receive evidence
-only; older shipped observations cannot invoke handover or change delivery
-alignment. Late delivery remains a later-only, once-per-case native operation;
-P3 introduces no alignment or replacement-confirmation caller.
+lines and inline host persistence. Ingress persists eventKey receipts before
+lifecycle writes. For correlated ingress, a trimmed observation or dispatch
+external reference is required before acceptance/status/effects/processed mark;
+a missing/blank pair leaves the receipt unprocessed. Hosts own idempotent replay; a superseding conflict returns
+superseded but marks only processed status, without a dedicated persisted reason.
+
+Reconciliation reads local chronology independently of provider readback.
+Non-stale found observations for locally cancelled/exception rows write status
+evidence only. Older known occurrences skip status/effects; only on-track rows
+with handedOverAt may retry an invoice on that path. Unknown readback fails the
+run before row processing. Unmapped evidence is projected before host calls;
+correlated off-track rows skip acceptance/quarantine. These workers call no
+alignment or replacement-confirmation operation; native late-arrival alignment
+must preserve the later-only monotonic rule.
