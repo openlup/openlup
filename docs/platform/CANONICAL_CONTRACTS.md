@@ -119,9 +119,14 @@ replays that result without I/O; different evidence for an already submitted
 fingerprint refuses as `not_dispatchable`, phase `dispatch`, `retryable:false`.
 It never inherits another preparation's accepted evidence or permits a second POST.
 Original replay survives later preparations, including A → B → A, without requiring
-the current preparation entry. Request validation still binds replay to the
-submitted request value or an equivalent-evidence preparation. Changes to host
-descriptions omitted from the wire body preserve replay after preparation.
+the current preparation entry. Dispatch first validates the closed evidence and
+compares its contact revision and provider/carrier/service references with the
+request by value. Recorded replay then depends only on the fingerprint's submission
+record and complete evidence key, joining the in-flight result when necessary.
+It never hashes the replay request or consults replaceable preparation state;
+changes to host descriptions omitted from the wire and evidence are irrelevant.
+Only an unrecorded fingerprint needs the prepared body and its request/generation
+checks before reserving a submission and performing I/O.
 Changed command evidence may submit once under its new fingerprint.
 The replay record is in-memory and per adapter instance, not the durable
 double-dispatch guard. Durable protection comes from M08's host ledger through

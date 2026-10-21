@@ -238,13 +238,14 @@ it without installation or changing the existing cache.
 
 | Destination | Cases | Status | O-P1 + O-P2 running total |
 | --- | ---: | --- | ---: |
-| `packages/platform/test/fulfillment/omnipack/factory.test.ts` | 26 | net-new glue/refusal/redaction; round 1 adds 4, round 2 adds 1, round 4 adds 2; round 3 extends replay/remap cases only | 50 |
-| `packages/platform/test/fulfillment/omnipack/transportAdaptation.test.ts` | 1 | round 2 unreadable rejection; 3 O-P1 cases retained | 51 |
-| `scripts/packages/platform-cold-consumer.test.ts` | 1 | net-new installed import/default-off/injected I/O | 52 |
+| `packages/platform/test/fulfillment/omnipack/factory.test.ts` | 28 | net-new glue/refusal/redaction; rounds 1/2/4/5/6 add 4/1/2/1/1; rounds 3 and 6 also extend existing replay cases | 52 |
+| `packages/platform/test/fulfillment/omnipack/transportAdaptation.test.ts` | 1 | round 2 unreadable rejection; 3 O-P1 cases retained | 53 |
+| `scripts/packages/platform-cold-consumer.test.ts` | 1 | net-new installed import/default-off/injected I/O | 54 |
 
-O-P2 is **28 net-new**, under its target of 30. O-P1 + O-P2 is **52**;
-private V-C1 18 + 52 + O-P3 projected 2 = **72 / 100**, leaving 28 cases
-(10 remain a planning reserve). Package-boundary generated rows are counted
+Current through repair round 6: O-P2 is **30 net-new**, at its target of 30.
+O-P1 + O-P2 is **54**; private V-C1 18 + 54 + O-P3 projected 2 = **74 / 100**,
+leaving 26 cases (10 remain a planning reserve). Including the scratch restart
+case conservatively makes **75 / 100**. Package-boundary generated rows are counted
 separately under ruling A; actual runtime is reported with final checks.
 
 Simplicity pre-check for Claude's committed reviews: reuse the contributed
@@ -641,3 +642,90 @@ host record/attempt unchanged). The new scratch fixture also passes a focused
 strict TypeScript check and gitleaks. No worker shim or branch-local worker
 imitation; no committed integration claim. HEAD remains **c8a924c6**, Git
 read-only; Claude's committed review/delivery obligations remain owed.
+
+
+### O-P2 repair round 6
+
+Authority and outcome: the lead's round-6 decision repairs r9 item 1 at
+`c753b6ed`, the fifth replay-state interleaving, and r10's stale primary case
+summary. Local source/tests/docs repair and focused offline proof only; no Git
+writes, installs, network/secrets, frozen M08 edits, new delivery authority or
+review-budget reset. Claude retains committed review and delivery. The existing
+capacity, no-eviction, bounded-preparation and host-ledger obligations remain.
+
+Finding: prepare(A)/dispatch(A,E), prepare(B)/dispatch(B,E), prepare(C), then
+replay(B,E) changed accepted or unknown into definitive non-submission when
+A/B/C differed only in host descriptions. The submission's request digest used
+the replaceable preparation entry to decide whether B could replay.
+
+Decision: remove request digests from submission records and all replay logic.
+Validate well-formed closed evidence and its request-bound contact/selection
+values first; then look up the append-only fingerprint record. Equal evidence
+returns its identical recorded result (joining in flight); different evidence
+refuses without I/O. Only an absent submission consults prepared command state,
+its request/generation checks and capacity before recording and posting. No
+extra replay-binding cache, fallback, dependency or fourth public export.
+
+Proof plan and acceptance: one seeded model case generates **36 sequences**,
+each with **96 generated operations** after an equivalent-wire triple. Its pool
+has three fingerprints, two evidence values per fingerprint and three irrelevant
+host descriptions per evidence value. Prepare, dispatch and concurrent dispatch
+exercise accepted, ambiguous and definitive-rejection HTTP. An independent
+submission model asserts exact results, conflicting-evidence refusals, no I/O on
+refusal/replay and one POST per fingerprint. The same test must fail against a
+copy of old `index.ts` and pass against the fix. The existing in-flight case
+also carries r9's accepted/unknown reproduction, both completed and in flight,
+and checks stateless mismatch refusals before replay. Focused branch checks and
+the actual pinned M08 runner/worker/restart scratch checks remain required.
+
+| Destination | Cases | Round-6 delta |
+| --- | ---: | ---: |
+| `factory.test.ts` | 28 | +1 model case; existing regression case extended |
+| `transportAdaptation.test.ts` | 4 | 0 |
+| Six retained characterization files | 18 | 0 |
+| Adapter directory total | 50 | +1 |
+| Cold-consumer authored addition | 1 | 0 |
+| Scratch diagnostics (not hosted) | 9 | 0 |
+
+O-P2 **30**, public O-P1 + O-P2 **54**, whole-round projection **74 / 100**,
+or **75 / 100** conservatively including the scratch restart case. The primary
+case table now shows these current totals, closing r10's summary nit.
+
+Self-retro/rethink: replay decided from replaceable state → replay is a pure
+function of the append-only submission record plus stateless validation; prove
+with a model-based interleaving test. Removing the extra replay authority is
+smaller than retaining another history of request digests. The old-code model
+fails at sequence 0 after the third preparation; the repaired factory's 28
+cases pass. Final focused and scratch evidence follows below.
+
+
+Final round-6 evidence: the identical seeded model test fails with the copied
+`c753b6ed` index at sequence 0's B replay after prepare(C): expected accepted,
+received `not_dispatched / effectMayHaveSucceeded:false`. Replacing only that
+copy's index with the repair passes (**1 model case**, 36 sequences, 3,456
+randomly generated operations plus setup). Logs remain in the disposable
+`/private/tmp/openlup-op2-r6-old-np6lelz4/model-{old,new}.log`; no old source was
+restored into the task tree. The branch's focused run passes **1,605 tests /
+11 files** (60.80 s): adapter **50**, package-boundary **1,474**, cold-consumer
+**46**, neutrality tooling **35**.
+
+Platform no-emit typecheck, serialized build and API check pass. TypeScript module
+inspection confirms exactly `createOmnipackFulfillmentAdapter`,
+`omnipackFulfillmentCapabilities` and `OmnipackFulfillmentAdapterConfig`; no API
+snapshot change is needed. Ast-grep, focused ESLint and whitespace checks pass;
+neutrality reports **0 increases**, UI neutrality smoke passes, and gitleaks
+finds no leaks in adapter source/tests or platform docs. Pinned publication-policy
+pre-check and docs-update pass with **3 obligations / 0 unanswered**; the final
+policy check follows this evidence update. No manifest, README, release-gate,
+API report or frozen-port changes were required.
+
+Scratch proof: **11/11** M08 runner/worker/contracts inputs match `a8708cf1`
+byte-for-byte; the repaired adapter is copied from this branch. **9/9** scratch
+tests pass (0.267 s), complete profile **12/12**, refused profile **10/10**, both
+unsupported-label profiles and actual worker acceptance: **1 POST, 1 mapped
+attempt, 1 host-key acknowledgement, 0 non-acceptance finalizations**. The actual
+worker-restart witness preserves the already-submitting host record and attempt,
+refusing `dispatch_not_safe_to_submit:submitting` with **0 provider calls / 0
+HTTP**. These remain isolated pre-checks, not a committed O-P3 integration claim.
+HEAD remains **c753b6ed**, with no Git writes; Claude's committed review and
+remaining delivery gates stay owed. No retry or review budget is reset.

@@ -254,6 +254,37 @@ it("preserves an in-flight dispatch across unchanged and A → B → A re-prepar
   expect(result.kind).toBe("accepted"); expect(await replay).toEqual(result); expect(await restored).toEqual(result); expect(await retained).toEqual(result);
   expect(await f.adapter.dispatch.dispatch(req, evidence)).toEqual(result);
   expect(f.fetchImpl).toHaveBeenCalledTimes(1); expect(f.credentials).toHaveBeenCalledTimes(1);
+  // r9: equivalent-wire B must retain A's result after C replaces the preparation, completed or in flight.
+  for (const unknown of [false, true]) for (const inFlight of [false, true]) {
+    let finish!: (response: Response) => void;
+    const f = fixture(() => new Promise<Response>(resolve => { finish = resolve; }));
+    const a = request(), b = request(), c = request();
+    b.lines[0]!.title = "Description B"; c.lines[0]!.title = "Description C";
+    const evidence = await prepare(f.adapter, a);
+    const first = f.adapter.dispatch.dispatch(a, evidence);
+    // Let the POST enter, without finishing its acknowledgement.
+    await vi.waitFor(() => expect(f.fetchImpl).toHaveBeenCalledTimes(1));
+    if (!inFlight) finish(unknown ? jsonResponse({}, 503) : jsonResponse({ orderId: "external-a" }));
+    if (!inFlight) await first;
+    expect(await prepare(f.adapter, b)).toEqual(evidence);
+    const admitted = f.adapter.dispatch.dispatch(b, evidence);
+    if (!inFlight) expect(await admitted).toEqual(await first);
+    expect(await prepare(f.adapter, c)).toEqual(evidence);
+    const replay = f.adapter.dispatch.dispatch(structuredClone(b), structuredClone(evidence));
+    if (inFlight) finish(unknown ? jsonResponse({}, 503) : jsonResponse({ orderId: "external-a" }));
+    const result = await first;
+    expect(result.kind).toBe(unknown ? "unknown" : "accepted");
+    expect(await admitted).toEqual(result); expect(await replay).toEqual(result);
+    expect(await f.adapter.dispatch.dispatch(b, evidence)).toEqual(result);
+    // Stateless validation still precedes replay, even when a submission exists.
+    for (const invalid of [{ ...evidence, commandFingerprint: "invalid" },
+      { ...evidence, contactRevision: { ...evidence.contactRevision, revision: -1 } },
+      { ...evidence, carrierRef: "CARRIER-B" }, { ...evidence, serviceRef: "SERVICE-B" },
+      { ...evidence, providerRef: "other" }, { ...evidence, contactRevision: { ...evidence.contactRevision, source: "other" } }]) {
+      expect(await f.adapter.dispatch.dispatch(b, invalid)).toMatchObject({ kind: "not_dispatched", refusal: { reason: "not_dispatchable" } });
+    }
+    expect(f.fetchImpl).toHaveBeenCalledTimes(1); expect(f.credentials).toHaveBeenCalledTimes(1);
+  }
 });
 it("checks token before touching or parsing the body and returns only a closed refusal", async () => {
   const f = fixture(); const input = { headers: { authorization: "Bearer invalid" }, receivedAt: now, get rawBody(): Uint8Array { throw Error("body accessed before authentication"); } };
@@ -397,4 +428,85 @@ it("fences overlapping preparations and shares in-flight and completed dispatch 
   expect(f.fetchImpl).toHaveBeenCalledTimes(1); expect(f.credentials).toHaveBeenCalledTimes(1);
   if (first.kind === "accepted") first.evidence.commandFingerprint = "mutated";
   expect(await f.adapter.dispatch.dispatch(req, current.evidence)).toEqual(overlapping);
+});
+
+it("models seeded preparation, replay and concurrent interleavings from the submission record", async () => {
+  let seed = 0x6a09e667;
+  const random = (limit: number) => {
+    seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
+    return seed % limit;
+  };
+  const refused = { kind: "not_dispatched", effectMayHaveSucceeded: false,
+    refusal: { reason: "not_dispatchable", phase: "dispatch", retryable: false } };
+  for (let sequence = 0; sequence < 36; sequence++) {
+    // Three fingerprints, each with three irrelevant descriptions and two complete evidence values.
+    const pool = Array.from({ length: 18 }, (_, index) => {
+      const req = request();
+      req.orderNumber = `ORDER-${Math.floor(index / 6)}`;
+      req.lines[0]!.title = `Description-${index % 3}`;
+      req.contactRevision.source = index % 6 < 3 ? "checkout" : "remap";
+      return req;
+    });
+    const oracle = fixture();
+    const evidence = await Promise.all(pool.map(req => prepare(oracle.adapter, req)));
+    const key = (index: number) => JSON.stringify(evidence[index]);
+    const fingerprint = (index: number) => evidence[index]!.commandFingerprint;
+    const posts = new Map<string, number>();
+    const f = fixture((_url, init) => {
+      const body = init!.body as string;
+      const fp = createHash("sha256").update(body).digest("hex");
+      posts.set(fp, (posts.get(fp) ?? 0) + 1);
+      const outcome = (Number(JSON.parse(body).orderNumber.slice(-1)) + sequence) % 3;
+      return outcome === 0 ? jsonResponse({ orderId: "external-a" }) : jsonResponse({}, outcome === 1 ? 503 : 400);
+    });
+    type Result = Awaited<ReturnType<typeof f.adapter.dispatch.dispatch>>;
+    const recorded = new Map<string, { evidenceKey: string; result: Result }>();
+    const dispatch = async (indices: number[]) => {
+      const first = indices[0]!;
+      // New submissions are explicitly prepared; replays deliberately do not depend on preparation.
+      if (!recorded.has(fingerprint(first))) await prepare(f.adapter, pool[first]!);
+      const before = f.fetchImpl.mock.calls.length;
+      const expected = indices.map(index => {
+        const fp = fingerprint(index), previous = recorded.get(fp);
+        if (previous) return previous.evidenceKey === key(index) ? previous.result : refused;
+        const outcome = (Math.floor(index / 6) + sequence) % 3;
+        const proof = createHash("sha256").update(JSON.stringify(["external-a", fp])).digest("hex");
+        const result: Result = outcome === 0
+          ? { kind: "accepted", externalRef: "external-a", evidence: evidence[index]!, providerAttemptKey: `attempt:${proof}`, labelKey: `label:${proof}` }
+          : outcome === 1 ? { kind: "unknown", effectMayHaveSucceeded: true, refusal: { reason: "io_failure", phase: "dispatch", retryable: false } }
+            : { kind: "not_dispatched", effectMayHaveSucceeded: false, refusal: { reason: "io_failure", phase: "dispatch", retryable: false } };
+        recorded.set(fp, { evidenceKey: key(index), result });
+        return result;
+      });
+      const results = await Promise.all(indices.map(index => f.adapter.dispatch.dispatch(structuredClone(pool[index]!), structuredClone(evidence[index]!))));
+      expect(results, `sequence ${sequence}, indices ${indices}`).toEqual(expected);
+      expect(f.fetchImpl.mock.calls.length - before).toBe(recorded.size - before);
+      expect(f.fetchImpl).toHaveBeenCalledTimes(recorded.size);
+      expect(f.credentials).toHaveBeenCalledTimes(recorded.size);
+      for (const count of posts.values()) expect(count).toBe(1);
+    };
+    // Missing preparation is a refusal, with no submission or I/O.
+    expect(await f.adapter.dispatch.dispatch(pool[0]!, evidence[0]!)).toEqual(refused);
+    expect(f.fetchImpl).not.toHaveBeenCalled(); expect(f.credentials).not.toHaveBeenCalled();
+    // Seeded equivalent-wire triple: the old implementation loses B after prepare(C).
+    const a = random(3), b = (a + 1) % 3, c = (a + 2) % 3;
+    await dispatch([a]); await prepare(f.adapter, pool[b]!); await dispatch([b]);
+    await prepare(f.adapter, pool[c]!); await dispatch([b]);
+    for (let step = 0; step < 96; step++) {
+      const index = random(pool.length), operation = random(3);
+      if (operation === 0) {
+        const before = f.fetchImpl.mock.calls.length;
+        expect(await prepare(f.adapter, pool[index]!)).toEqual(evidence[index]);
+        expect(f.fetchImpl).toHaveBeenCalledTimes(before);
+      } else if (operation === 1) await dispatch([index]);
+      else {
+        const group = Math.floor(index / 6) * 6;
+        // Join an in-flight equivalent description and refuse the other evidence value.
+        const equivalent = group + Math.floor((index % 6) / 3) * 3 + (index + 1) % 3;
+        const different = group + ((index % 6) + 3) % 6;
+        await dispatch([index, equivalent, different, index]);
+      }
+    }
+    expect(recorded.size).toBe(3);
+  }
 });

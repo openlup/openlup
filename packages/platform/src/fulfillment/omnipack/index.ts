@@ -57,7 +57,7 @@ export function createOmnipackFulfillmentAdapter(config: OmnipackFulfillmentAdap
     : { ready: false, refusal: refusal("not_ready", "selection") };
   const prepared = new Map<string, { body: string; evidence: DispatchEvidence; requestDigest: string; generation: number }>();
   const preparations = new Map<string, number>();
-  const submissions = new Map<string, { evidenceKey: string; requestDigest: string; result: ReturnType<FulfillmentDispatchPort["dispatch"]> }>();
+  const submissions = new Map<string, { evidenceKey: string; result: ReturnType<FulfillmentDispatchPort["dispatch"]> }>();
   const selectionFailure = (request: FulfillmentDispatchRequest) => {
     if (!request.selection?.providerRef?.trim()) return refusal("selection_required", "selection");
     if (request.selection.providerRef !== capabilities.providerRef) return refusal("provider_mismatch", "selection");
@@ -119,20 +119,30 @@ export function createOmnipackFulfillmentAdapter(config: OmnipackFulfillmentAdap
       async dispatch(request, evidence) {
         let command;
         let evidenceKey: string;
-        let requestDigest: string;
         try {
-          if (Object.keys(evidence).length !== 5 || Object.keys(evidence.contactRevision).length !== 3) throw Error();
+          // Validate the closed evidence and its request-bound values without consulting preparation state.
+          if (Object.keys(evidence).length !== 5 || Object.keys(evidence.contactRevision).length !== 3
+            || typeof evidence.commandFingerprint !== "string" || !/^[a-f0-9]{64}$/u.test(evidence.commandFingerprint)
+            || !reference(evidence.providerRef)
+            || !reference(evidence.carrierRef) || !reference(evidence.serviceRef)
+            || !Number.isSafeInteger(evidence.contactRevision.schemaVersion) || evidence.contactRevision.schemaVersion < 1
+            || !reference(evidence.contactRevision.source) || !Number.isSafeInteger(evidence.contactRevision.revision)
+            || evidence.contactRevision.revision < 0
+            || evidence.contactRevision.schemaVersion !== request.contactRevision.schemaVersion
+            || evidence.contactRevision.source !== request.contactRevision.source
+            || evidence.contactRevision.revision !== request.contactRevision.revision
+            || evidence.providerRef !== request.selection.providerRef
+            || evidence.carrierRef !== request.selection.carrierRef || evidence.serviceRef !== request.selection.serviceRef) throw Error();
           evidenceKey = serializeOmnipackDispatchPayload(evidence).body;
-          requestDigest = stableDispatchHash(request);
           const submitted = submissions.get(evidence.commandFingerprint);
-          command = prepared.get(evidenceKey);
-          if (selectionFailure(request)) throw Error();
           if (submitted) {
             // One POST per fingerprint; incompatible evidence never inherits another binding's result.
-            if (submitted.evidenceKey !== evidenceKey || (submitted.requestDigest !== requestDigest && command?.requestDigest !== requestDigest)) throw Error();
+            if (submitted.evidenceKey !== evidenceKey) throw Error();
             return structuredClone(await submitted.result);
           }
-          if (!command || command.requestDigest !== requestDigest || preparations.get(requestDigest) !== command.generation) throw Error();
+          command = prepared.get(evidenceKey);
+          const requestDigest = stableDispatchHash(request);
+          if (selectionFailure(request) || !command || command.requestDigest !== requestDigest || preparations.get(requestDigest) !== command.generation) throw Error();
           if (submissions.size >= maxRetainedSubmissions) throw Error();
         } catch { return { kind: "not_dispatched", effectMayHaveSucceeded: false, refusal: refusal("not_dispatchable", "dispatch") }; }
         const fingerprint = command.evidence.commandFingerprint;
@@ -152,7 +162,7 @@ export function createOmnipackFulfillmentAdapter(config: OmnipackFulfillmentAdap
               : { kind: "unknown" as const, effectMayHaveSucceeded: true as const, refusal: refusal("io_failure", "dispatch") };
           } finally { command.body = ""; }
         });
-        submissions.set(fingerprint, { evidenceKey, requestDigest, result });
+        submissions.set(fingerprint, { evidenceKey, result });
         // Submission owns replay from here, so releasing these transient bytes cannot reopen a POST.
         prepared.delete(evidenceKey);
         return structuredClone(await result);
