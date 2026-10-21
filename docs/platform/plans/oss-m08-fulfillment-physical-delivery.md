@@ -17,12 +17,11 @@ no incompatible runtime, peer, lifecycle or consumer requires another artifact.
 Platform maintains these experimental contracts; adapters and host policy remain
 adopter-owned.
 
-Candidate `bc4f9110` is committed on the assigned branch. Repair cycle 1 is a
-working-tree-only handoff to the coordinator: local edits and focused verification,
-with the report in the assigned P1 notes directory. Commit, submission, native
-review and delivery remain coordinator responsibilities. This repair performs no
-commit/push, network, secret/provider access, other-worktree operation or
-scripts/agent-review-* execution. No adopter/staging endpoint is in P1 scope.
+P1 candidates `bc4f9110` and repair `9328b676` are committed and were reviewed
+by two independent cold PASS reports, as supplied by the coordinator. P1's final
+candidate has eight authored cases and 33 paths. Commit/submission/native admission
+and delivery remain coordinator responsibilities; this record does not grant them.
+No adopter or staging endpoint is in P1 scope.
 
 Acceptance: exact two entries and symbols in the frozen export register plus the
 repair-1 prepare-result/envelope type amendment; type-only
@@ -132,23 +131,24 @@ claim implementation conformance for the later workers/stores.
 Run the three new suites and existing packageBoundary/cold-consumer tests, focused
 TypeScript checks, structural/lint checks, publication policy/navigation, neutrality
 and API report checks. Serialize generation/build/pack. The ordinary package gate
-requires a clean committed tree; the working-tree repair uses its
-existing measurePack/checkPackBudget/browserEntryBytes helpers on npm-packed
-materialized bytes, report the limitation, and leave clean-tree admission owed.
+requires a clean committed tree. P1 repair verification used the existing
+measurePack/checkPackBudget/browserEntryBytes helpers on npm-packed materialized
+bytes before coordinator commit; those measurements are artifact previews, not
+clean-tree admission.
 Scratch logs/configs are under .context/scratch; existing cold-consumer fixtures
 use system temporary directories and clean up their own output. The P1 report records actual case
 counts/time, every pack cap/subcap, paths, checks and any delta-bound documentation
-trailers still needed because commits are prohibited.
+delta-bound documentation impact evidence for coordinator submission.
 
-Committed-candidate baseline: seven authored semantic cases; 1,432 generated
+Original P1 measurement before repair: seven authored semantic cases; 1,432 generated
 packageBoundary cases; platform pack 1,026,756 B packed / 4,582,014 B unpacked /
 1,438 files; code gzip 882,636 B / 1,404 files; root-doc gzip 48,065 B / 5 files.
 Root-doc headroom was 1,087 B against 49,152 B. Repair 1 measures 47,850 B
-(1,302 B headroom, 215 B recovered); its working-tree pack is 1,024,956 B packed /
+(1,302 B headroom, 215 B recovered); its final pre-commit artifact preview is 1,024,956 B packed /
 4,577,081 B unpacked / 1,434 files, code gzip 882,715 B / 1,401 files. All caps
 and browser subcaps pass. Repair-cycle checks and trailers are recorded in the
-coordinator handoff report; this record claims no
-native review, clean committed admission or provider implementation conformance.
+coordinator handoff report; P1 has two cold PASS reports. Provider implementation
+conformance and final integrated admission remain separate obligations.
 
 Known limits retained from the donor: capability lookup lowercases the selected
 providerRef but compares it against the injected descriptor as supplied; case
@@ -164,3 +164,123 @@ A verification retry overlapped the lint pre-hook build with declaration readers
 causing two transient failures; after the build completed, the full focused package
 and cold-consumer suites passed. Lesson: serialize lint (including prelint) before
 checks that read dist, rather than treating lint as a read-only phase.
+
+
+## P2 outcome, authority and approved G14 amendment
+
+P2 is stacked on frozen P1 `9328b676f28dfd08ccba159c25feb502e4c45ddd`,
+in the assigned `claude/oss-m08-p2-fulfillment` worktree. The owner's delegated
+coordinator authorizes local paid-handler/recovery, durable-ledger protocol,
+dispatch/fence/acceptance/projection implementation and focused checks, plus G14.
+The author leaves changes uncommitted: commit, native review, submission, merge
+and release remain coordinator/human gates. No network except dependency install,
+provider/account/secret access, SQL, other-worktree mutation, reference wiring,
+money implementation, inventory authority, replacement-confirmation caller,
+new subpath, package, dependency or version preparation is in scope.
+
+G14 explicitly amends FulfillmentStorePort with recordProviderAttempt(attemptKey,
+fulfillmentRef, preparedEvidence, mode, status: recorded), returning replayed.
+It adds no exported type name. The host preserves the two existing attempt-key
+byte strings through mappedAttempt(requestKey, mappedAttemptIndex): initial
+mapping is index zero, a recorded mapping followed by contact remap is index one.
+A claim refusal before recording does not consume the initial attempt index.
+The separate write stays after authoritative claim readback and before shadow
+exit, unsafe-status refusal or begin. It persists only sanitized DispatchEvidence,
+mode and recorded status, with opaque fulfillment/key references. Same key means
+replayed true and no second write; remapped recorded evidence has its own key.
+P2's fixture proves ordering/key/redaction behavior; P3 owns store conformance.
+All other P1 contract changes in P2 are explanatory comments only.
+
+Smallest adequate solution: keep the contributed worker loop and injected ports;
+represent the separately assigned durable command ledger as a structural protocol,
+without a second local persistence/retry engine. Each ledger operation delegates
+one atomic durable transaction and transition receipt to its store. Its token,
+generation, expected version and lease jointly fence writes; store-side expiry
+queues only pre-submission claims and makes submitting/accepted work uncertain.
+Confirmation and uncertain retry require the donor's identity-bound proofs;
+retry requires authoritative scoped absence, never a local missing row. P4 owns
+SQL, atomicity, ACLs, contention, lease/time/proof validation and native proofs.
+The ledger is separate from dispatch-reference draft/claim/begin state: the
+factory's typed methods neither add methods to the frozen dispatch port nor
+replace durable enforcement with an in-memory mock.
+
+### P2 donor map and complete neutralization list
+
+1. V commerce/outboxOrderPaidFulfillmentHandler.ts and its Ports.ts become
+   paidHandoff.ts/paidHandoffPorts.ts. Preserve parse, optional risk gate,
+   ensureFulfilledFromPaidOrder and outcome ladder. Reuse core outbox types;
+   retain the frozen orderUuid payload subset, event vocabulary and 15s timeout.
+   Inline the unchanged 300-character-plus-ellipsis truncation and subset parser
+   rather than importing private server helpers. M07 paid truth and M06 inventory
+   stay inside the injected fulfillment port; P4 owns the concrete durable bridge.
+   A successful obligation precedes the handler result and the outbox ACK.
+2. V commerce/paidFulfillmentRecovery.ts becomes paidFulfillmentRecovery.ts.
+   Replace the fixed provider token with an injected providerRef, the private
+   dispatch collection name with dispatchRefs, and private reason prefixes with
+   provider_. Preserve status ladders, latest-row tie behavior, age defaults,
+   recovery posture, null/missing fields and sorting. Row shapes remain structural
+   host read projections; no provider selection/default or money truth is invented.
+3. V fulfillment/omnipackDispatchWorker.ts becomes providerDispatchWorker.ts.
+   Rename symbols/reasons neutrally. Private command building and external calls
+   become adapter prepare/dispatch, actual-command fingerprints remain supplied
+   unchanged. Host listCandidates/request/mappedAttempt/acceptance keys preserve
+   original byte identities; the optional clock only supplies the donor sweep time.
+   Store read/prepare/readCandidate/claim/readback/attempt/begin/ACK/finalize replace
+   the corresponding donor port names, with typed refusal results replacing the
+   private contact-stale exception classifier. Preserve one remap across claim
+   AND begin, and the separate mapped-attempt index. A correctable draft re-claim
+   atomically replaces fingerprint and evidence together. Non-draft states never
+   automatically POST. Shadow requires command preparation but performs no POST.
+4. V dispatch acceptance/error helpers become providerDispatchAcceptance.ts and
+   providerDispatchError.ts. Typed store records/results replace private RPC bags;
+   opaque acceptance keys are supplied, never re-prefixed. Accepted-proof repair
+   calls only local ACK; failed ACK reads back then finalizes accepted proof as
+   uncertain with externalRef retained. The next worker can close the ACK without
+   another POST. Adapter structured failure translation retains may-have-succeeded
+   classification in not_dispatched(false) versus unknown(true); an unclassified
+   throw after dispatch remains unknown. Never copy private error messages or
+   response bodies into diagnostics: neutral fixed reasons replace those strings.
+5. V 20260714160000_fulfillment_provider_command_ledger.sql supplies the separate
+   providerCommandLedger.ts protocol: preserve identity/fingerprint fields,
+   enqueue/claim/fenced submit/outcome/confirm/reconcile/resolve/release/expiry
+   operations and their proof distinctions. Neutralize field names to refs;
+   private role/SQL implementation remains outside P2. No local state store,
+   generated fingerprints, lease takeover, retry scheduler or SQL is added.
+6. dispatchProjection.ts is the new exhaustive typed projection: copy the five
+   prepared-evidence fields, including only the three contactRevision fields,
+   and the exact accepted/not_dispatched/unknown result union. It strips runtime
+   extra properties without changing opaque keys or fingerprints; no raw command,
+   recipient, headers, body, credential or signed URL is durable attempt evidence.
+   Internal helpers/types are not new entry exports. Four frozen P2 values are
+   exported only from the existing fulfillment entry.
+
+### P2 advisory closure and proof boundary
+
+(a) remapCount remains bounded at one; mappedAttemptCount is independent.
+Draft refresh is atomic for fingerprint plus evidence, then read back before the
+attempt write. (b) absent/mismatched adapter preparation refuses exactly
+reason not_dispatchable, phase dispatch, retryable false, before I/O.
+(c) FulfillmentStorePort.prepare is contact readiness/withholding;
+FulfillmentDispatchPort.prepare builds transient command bytes and returns proof.
+(d) P1's committed candidates/two cold PASS reports and eight cases are recorded
+above; this section records P2's distinct uncommitted implementation boundary.
+
+Eight additional authored cases in the existing fulfillment test directory cover
+the paid handler/recovery ladder, claim/begin remap bound, order and redaction,
+shadow/key replay/unsafe statuses, lost ACK before/after commit, ambiguous/definite
+provider failures, and ledger fence/proof transport. Existing P1 cases remain.
+Generated packageBoundary rows are separate and their execution time is charged.
+Fixture stores establish worker behavior/protocol transport only; P3 conformance
+and P4 real-database fences/expiry/transactions/proofs remain owed. Adapter absence
+or mismatched preparation refusal is documented here; P3 owns its conformance.
+
+Run only the coordinator's focused build/test/type/API/structural/eslint/neutrality,
+pack/root-doc and policy/navigation checks, serializing phases that mutate dist.
+Keep platform README unchanged and compare actual diff paths against the 35 cap.
+The external P2 report records exact measurements, trailers, failures and stops.
+No clean committed admission, provider activation or stable-framework claim is made.
+
+P2 self-retro: checking the source register distinguished the separately assigned
+ledger protocol from the frozen dispatch store; an initial fence-gap concern was
+withdrawn before edits. Lesson: compare the owned protocol boundary before
+requesting a port amendment; preserve G14 as the only P1 signature change.

@@ -170,6 +170,7 @@ export interface FulfillmentDispatchPort {
     /**
      * Send exactly the prepared command identified by this evidence. Never silently
      * rebuild a different command; absent/mismatched preparation refuses before I/O.
+     * Absent/mismatched preparation: not_dispatchable, phase dispatch, retryable false.
      * Unknown submission outcomes require readback, never blind re-submission.
      */
     dispatch(request: FulfillmentDispatchRequest, evidence: DispatchEvidence): Promise<FulfillmentDispatchResult>;
@@ -365,6 +366,10 @@ export interface FulfillmentStorePort {
         kind: "refused";
         refusal: FulfillmentRefusal;
     }>;
+    /** G14: idempotent mapped attempt; persist only prepared, sanitized evidence. */
+    recordProviderAttempt(attemptKey: string, fulfillmentRef: string, preparedEvidence: DispatchEvidence, mode: DispatchRecord["mode"], status: "recorded"): Promise<{
+        replayed: boolean;
+    }>;
     /** Bind submission to the same prepared command fingerprint recorded by claim. */
     begin(input: {
         dispatchRef: string;
@@ -378,6 +383,7 @@ export interface FulfillmentStorePort {
         kind: "refused";
         refusal: FulfillmentRefusal;
     }>;
+    /** Accepted rescue retains externalRef as uncertain; only acknowledge closes the local acceptance atomically. */
     finalize(input: {
         dispatchRef: string;
         result: FulfillmentDispatchResult;

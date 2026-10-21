@@ -3186,6 +3186,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/fulfillment/dispatchProjection.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/fulfillment/index.ts",
       "class": "public-output"
     },
@@ -3194,7 +3198,35 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/fulfillment/paidFulfillmentRecovery.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/paidHandoff.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/paidHandoffPorts.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/fulfillment/providerCapabilities.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/providerCommandLedger.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/providerDispatchAcceptance.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/providerDispatchError.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/providerDispatchWorker.ts",
       "class": "public-output"
     },
     {
@@ -4606,7 +4638,19 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/fulfillment/dispatchRecovery.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/fulfillment/paidHandoff.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/fulfillment/portFit.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/fulfillment/providerCommandLedger.test.ts",
       "class": "public-output"
     },
     {

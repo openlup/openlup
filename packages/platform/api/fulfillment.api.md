@@ -170,6 +170,7 @@ export interface FulfillmentDispatchPort {
     /**
      * Send exactly the prepared command identified by this evidence. Never silently
      * rebuild a different command; absent/mismatched preparation refuses before I/O.
+     * Absent/mismatched preparation: not_dispatchable, phase dispatch, retryable false.
      * Unknown submission outcomes require readback, never blind re-submission.
      */
     dispatch(request: FulfillmentDispatchRequest, evidence: DispatchEvidence): Promise<FulfillmentDispatchResult>;
@@ -365,6 +366,10 @@ export interface FulfillmentStorePort {
         kind: "refused";
         refusal: FulfillmentRefusal;
     }>;
+    /** G14: idempotent mapped attempt; persist only prepared, sanitized evidence. */
+    recordProviderAttempt(attemptKey: string, fulfillmentRef: string, preparedEvidence: DispatchEvidence, mode: DispatchRecord["mode"], status: "recorded"): Promise<{
+        replayed: boolean;
+    }>;
     /** Bind submission to the same prepared command fingerprint recorded by claim. */
     begin(input: {
         dispatchRef: string;
@@ -378,6 +383,7 @@ export interface FulfillmentStorePort {
         kind: "refused";
         refusal: FulfillmentRefusal;
     }>;
+    /** Accepted rescue retains externalRef as uncertain; only acknowledge closes the local acceptance atomically. */
     finalize(input: {
         dispatchRef: string;
         result: FulfillmentDispatchResult;
@@ -582,6 +588,10 @@ export {};
 export { FULFILLMENT_STATUS_MAP, CANONICAL_LOCAL_FULFILLMENT_STATUSES, CUSTOMER_STEP_SEQUENCE, canonicalStatusToken, stepForToken, customerStepFromSignals, phaseIndexForStep, stepLabelKey, timelineLabelForStep, trackingPhaseKeyForStep, stepUsesTruckIcon } from "./statusMap.js";
 export { parseFulfillmentFact, parseFulfillmentTransitionConflict } from "./normalizedFulfillmentFacts.js";
 export { readFulfillmentCapabilities } from "./providerCapabilities.js";
+export { createOutboxOrderPaidFulfillmentHandler } from "./paidHandoff.js";
+export { collectPaidFulfillmentRecoveryCandidates } from "./paidFulfillmentRecovery.js";
+export { runFulfillmentDispatchWorker } from "./providerDispatchWorker.js";
+export { createFulfillmentCommandLedger } from "./providerCommandLedger.js";
 ```
 ## dist/fulfillment/normalizedFulfillmentFacts.d.ts
 
@@ -601,6 +611,136 @@ export declare function parseFulfillmentFact(value: unknown): NormalizedFulfillm
 /** Strict conflict parser bound to the same status canon. */
 export declare function parseFulfillmentTransitionConflict(value: unknown): TransitionConflict;
 ```
+## dist/fulfillment/paidFulfillmentRecovery.d.ts
+
+```ts
+type PaidFulfillmentRecoveryAction = "wait_for_outbox" | "requeue_discarded_order_paid_outbox" | "inspect_processed_without_effect" | "inspect_missing_order_paid_outbox" | "monitor_dispatch" | "inspect_missing_dispatch_ref" | "inspect_stale_dispatch_submission" | "inspect_uncertain_dispatch" | "inspect_failed_dispatch" | "inspect_created_dispatch_without_provider_order_id" | "inspect_terminal_dispatch" | "inspect_unknown_dispatch_status";
+type PaidFulfillmentRecoveryReason = "paid_order_without_fulfillment_order" | "order_paid_outbox_missing" | "order_paid_outbox_discarded" | "order_paid_outbox_processed_without_fulfillment" | "provider_dispatch_in_progress" | "provider_fulfillment_without_dispatch_ref" | "provider_dispatch_submission_stale" | "provider_dispatch_outcome_uncertain" | "provider_dispatch_failed" | "provider_dispatch_created_without_provider_order_id" | "provider_dispatch_terminal_without_progress" | "provider_dispatch_status_unknown";
+type PaidFulfillmentRecoveryPosture = "automatic_local_requeue_safe" | "wait_for_existing_automation" | "operator_review_required";
+type PaidFulfillmentOrderRow = Record<string, unknown> & {
+    id: string;
+    status?: string | null;
+    mode?: string | null;
+    created_at?: string | null;
+    updated_at?: string | null;
+};
+type PaidFulfillmentOrderEvidenceRow = Record<string, unknown> & {
+    id: string;
+    order_id: string;
+    provider_kind?: string | null;
+    status?: string | null;
+    created_at?: string | null;
+    updated_at?: string | null;
+};
+type PaidFulfillmentDispatchRefRow = Record<string, unknown> & {
+    id?: string | null;
+    fulfillment_order_id: string;
+    provider_order_id?: string | null;
+    status?: string | null;
+    created_at?: string | null;
+    updated_at?: string | null;
+};
+type PaidFulfillmentOutboxEventRow = Record<string, unknown> & {
+    id: string;
+    event_type: string;
+    status: string;
+    aggregate_id?: string | null;
+    created_at?: string | null;
+    updated_at?: string | null;
+    available_at?: string | null;
+    attempts?: number | null;
+};
+type PaidFulfillmentRecoveryCandidate = {
+    orderId: string;
+    orderStatus: string;
+    orderMode: string | null;
+    fulfillmentOrderId: string | null;
+    providerKind: string | null;
+    dispatchRefId: string | null;
+    dispatchStatus: string | null;
+    outboxEventId: string | null;
+    outboxStatus: string | null;
+    outboxAttempts: number | null;
+    reason: PaidFulfillmentRecoveryReason;
+    recommendedAction: PaidFulfillmentRecoveryAction;
+    recoveryPosture: PaidFulfillmentRecoveryPosture;
+    ageSeconds: number;
+};
+type PaidFulfillmentRecoveryPlan = {
+    checkedOrders: number;
+    candidates: PaidFulfillmentRecoveryCandidate[];
+};
+export declare function collectPaidFulfillmentRecoveryCandidates(input: {
+    providerRef: string;
+    orders: PaidFulfillmentOrderRow[];
+    fulfillmentOrders: PaidFulfillmentOrderEvidenceRow[];
+    dispatchRefs?: PaidFulfillmentDispatchRefRow[];
+    orderPaidOutboxEvents: PaidFulfillmentOutboxEventRow[];
+    now: Date;
+    minimumAgeSeconds?: number;
+    dispatchSubmissionStaleSeconds?: number;
+}): PaidFulfillmentRecoveryPlan;
+export {};
+```
+## dist/fulfillment/paidHandoff.d.ts
+
+```ts
+import type { OutboxHandler } from "@openlup/core/outbox";
+import type { OrderPaidFulfillmentPort } from "./paidHandoffPorts.js";
+interface OrderPaidRiskAssessmentPort {
+    assessPaidOrder(input: {
+        orderUuid: string;
+        outboxEventId: string;
+        signal: AbortSignal;
+    }): Promise<{
+        kind: "allow";
+        detail?: Record<string, unknown>;
+    } | {
+        kind: "review" | "block";
+        detail?: Record<string, unknown>;
+    } | {
+        kind: "retryable";
+        reason: string;
+    } | {
+        kind: "fatal";
+        reason: string;
+    }>;
+}
+export declare function createOutboxOrderPaidFulfillmentHandler(deps: {
+    fulfillmentPort: OrderPaidFulfillmentPort;
+    riskPort?: OrderPaidRiskAssessmentPort;
+    isRiskEnabled?: () => boolean;
+}): OutboxHandler<AbortSignal>;
+export {};
+```
+## dist/fulfillment/paidHandoffPorts.d.ts
+
+```ts
+export type OrderPaidFulfillmentResult = {
+    kind: "completed" | "skipped";
+    detail?: Record<string, unknown>;
+} | {
+    kind: "retryable";
+    reason: string;
+} | {
+    kind: "snooze";
+    reason: string;
+} | {
+    kind: "fatal";
+    reason: string;
+} | {
+    kind: "manual_review";
+    reason: string;
+    detail?: Record<string, unknown>;
+};
+export interface OrderPaidFulfillmentPort {
+    ensureFulfilledFromPaidOrder(input: {
+        orderUuid: string;
+        outboxEventId: string;
+        signal: AbortSignal;
+    }): Promise<OrderPaidFulfillmentResult>;
+}
+```
 ## dist/fulfillment/providerCapabilities.d.ts
 
 ```ts
@@ -613,6 +753,188 @@ export declare function readFulfillmentCapabilities(profiles: readonly Fulfillme
     kind: "refused";
     refusal: FulfillmentRefusal;
 };
+```
+## dist/fulfillment/providerCommandLedger.d.ts
+
+```ts
+/** Structural protocol for the contributed durable ledger. Each operation must
+ * be one atomic store transaction, including its transition evidence. P4 owns SQL.
+ * This factory holds no leases, retry counters, commands or persistence in memory.
+ */
+type CommandStatus = "queued" | "claimed" | "submitting" | "accepted" | "confirmed" | "retry_wait" | "uncertain" | "manual_review" | "terminal_rejected" | "cancelled";
+type CommandResult = {
+    commandId: string;
+    status: CommandStatus;
+    version: number;
+    applied: boolean;
+};
+type Fence = {
+    commandId: string;
+    claimToken: string;
+    claimGeneration: number;
+    expectedVersion: number;
+};
+type Proof = {
+    kind: "provider_reference" | "correlation_key" | "provider_idempotency_key";
+    fingerprint: string;
+    observedAt: string;
+    source: "provider_lookup" | "provider_webhook" | "operator_verified";
+};
+type ClaimedCommand = {
+    commandId: string;
+    fulfillmentRef: string;
+    orderRef: string;
+    providerRef: string;
+    commandKind: "dispatch_create";
+    contractVersion: "1";
+    status: "claimed";
+    version: number;
+    commandKeyFingerprint: string;
+    commandPayloadFingerprint: string;
+    providerIdempotencyKeyFingerprint: string | null;
+    routingFingerprint: string;
+    configurationFingerprint: string;
+    correlationKeyFingerprint: string;
+    retryBudget: number;
+    retryCount: number;
+    claimToken: string;
+    claimGeneration: number;
+    leaseExpiresAt: string;
+};
+type LedgerStore = {
+    enqueue(input: {
+        fulfillmentRef: string;
+        providerRef: string;
+        commandKind: "dispatch_create";
+        contractVersion: "1";
+        idempotencyKey: string;
+        commandKeyFingerprint: string;
+        commandPayloadFingerprint: string;
+        providerIdempotencyKeyFingerprint: string | null;
+        routingFingerprint: string;
+        configurationFingerprint: string;
+        correlationKeyFingerprint: string;
+        retryBudget: number;
+    }): Promise<CommandResult>;
+    claim(input: {
+        providerRef: string;
+        commandKind: "dispatch_create";
+        limit: number;
+        claimOwnerFingerprint: string;
+        leaseSeconds: number;
+    }): Promise<readonly ClaimedCommand[]>;
+    markSubmitting(input: Fence & {
+        providerAttemptRef: string | null;
+    }): Promise<CommandResult>;
+    applyWriteOutcome(input: Fence & {
+        identityFingerprint: string;
+        providerAttemptRef: string | null;
+    } & ({
+        kind: "accepted";
+        reason: "provider_accepted";
+        providerReferenceFingerprint: string;
+    } | {
+        kind: "uncertain";
+        reason: "write_uncertain";
+    } | {
+        kind: "rejected";
+        reason: "safe_rejection" | "terminal_rejection";
+        retryNotBefore: string | null;
+        proof: {
+            kind: "definitive_provider_rejection";
+            fingerprint: string;
+            observedAt: string;
+            source: "provider_response";
+        };
+    })): Promise<CommandResult>;
+    confirm(input: Fence & {
+        identityFingerprint: string;
+        providerAttemptRef: string | null;
+        proof: Proof;
+    }): Promise<CommandResult>;
+    reconcile(input: {
+        commandId: string;
+        expectedVersion: number;
+        identityFingerprint: string;
+        proof: Proof;
+    }): Promise<CommandResult & {
+        proofRecorded: boolean;
+    }>;
+    resolve(input: {
+        commandId: string;
+        expectedVersion: number;
+        identityFingerprint: string;
+    } & ({
+        decision: "manual_review";
+        reason: "effect_unknown" | "identity_mismatch" | "invalid_contract" | "unsafe_retry";
+        proof: Proof;
+    } | {
+        decision: "retry_wait";
+        reason: "authoritative_absence";
+        retryNotBefore: string;
+        proof: {
+            kind: "authoritative_absence";
+            fingerprint: string;
+            observedAt: string;
+            source: "provider_lookup";
+        };
+    })): Promise<CommandResult & {
+        proofRecorded: boolean;
+    }>;
+    release(input: Fence & ({
+        action: "release";
+        reason: "command_enqueued";
+    } | {
+        action: "cancel";
+        reason: "operator_cancelled";
+    })): Promise<CommandResult>;
+    recoverExpired(input: {
+        limit: number;
+    }): Promise<readonly CommandResult[]>;
+};
+/** Bind the durable protocol without substituting a local state machine.
+ * Store fences compare token, generation, version and unexpired lease together.
+ * Expired claimed work becomes queued; expired submitting/accepted work becomes
+ * uncertain. Only authoritative scoped absence may admit uncertain work to retry.
+ * Claim respects availability/retry budget; finalization cannot invent absence.
+ */
+export declare function createFulfillmentCommandLedger(store: LedgerStore): LedgerStore;
+export {};
+```
+## dist/fulfillment/providerDispatchWorker.d.ts
+
+```ts
+import type { DispatchRecord, FulfillmentDispatchPort, FulfillmentDispatchRequest, FulfillmentStorePort } from "./contracts/index.js";
+export declare function runFulfillmentDispatchWorker(input: {
+    store: FulfillmentStorePort;
+    provider: FulfillmentDispatchPort | null;
+    listCandidates(limit: number): Promise<readonly FulfillmentDispatchRequest[]>;
+    /** Return the original host key bytes, without a new package prefix. */
+    keys: {
+        request(candidate: FulfillmentDispatchRequest): string;
+        mappedAttempt(requestKey: string, mappedAttemptIndex: number): string;
+        acceptance(fulfillmentRef: string): {
+            providerAttemptKey: string;
+            labelKey: string;
+        };
+    };
+    config: {
+        mode: DispatchRecord["mode"];
+        batchLimit: number;
+    };
+    now?: () => Date;
+}): Promise<{
+    ok: boolean;
+    skipped: boolean;
+    checked: number;
+    updated: number;
+    failures: number;
+    mode: "shadow" | "stage" | "live";
+    replayed: number;
+    providerCalls: number;
+    readBacks: number;
+    reason: string | undefined;
+}>;
 ```
 ## dist/fulfillment/statusMap.d.ts
 

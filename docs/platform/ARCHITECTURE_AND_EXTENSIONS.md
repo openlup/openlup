@@ -663,7 +663,7 @@ executor. Browser preview values remain reference-owned. See the
 
 ## Fulfillment contracts
 
-Fulfillment P1 lives at the two existing-package subpaths
+Fulfillment lives at the two existing-package subpaths
 `@openlup/platform/fulfillment` and `/fulfillment/contracts`; no topology trigger
 requires another package or dependency. The type-only contracts entry has no server
 or cross-module edge. The runtime entry binds core evidence parsers to the
@@ -681,8 +681,29 @@ Feed that evidence to store claim and its fingerprint to begin before dispatch;
 dispatch sends exactly the prepared command identified by the same evidence.
 A contact_stale remap rebuilds the request and requires a new prepare, claim and
 begin. Selection failures retain their exact reasons; a non-dispatchable request
-refuses as not_dispatchable. Unknown external outcomes require readback rather
+refuses as not_dispatchable. Absent/mismatched command preparation refuses with
+reason not_dispatchable, phase dispatch, retryable false, before I/O.
+FulfillmentStorePort.prepare checks contact readiness/withholding;
+FulfillmentDispatchPort.prepare builds the transient command and its evidence.
+Unknown external outcomes require readback rather
 than blind submission; accepted evidence can repair a lost local acknowledgement.
+
+P2's runFulfillmentDispatchWorker keeps one contact remap across claim and begin.
+A correctable draft re-claim atomically refreshes fingerprint and evidence, then
+reads the authoritative row. Approved amendment G14 records the mapped provider
+attempt at that point, before shadow exit, unsafe-state refusal or begin. Its
+host-supplied opaque key preserves initial/remap identities; only allowlisted
+prepared evidence, mode/status and references persist. Same-key replay writes no
+second attempt. Unknown/submitting/failed states never automatically POST;
+accepted proof repairs a lost local ACK without a provider call. An ACK rescue
+finalizes accepted proof as uncertain with its external reference retained.
+The separate createFulfillmentCommandLedger protocol delegates atomic fenced
+operations to a durable store; it does not keep lease/retry state locally. The
+host supplies keys, actual-command fingerprints, candidate selection, paid truth
+and inventory authority. The paid outbox handler settles only after its injected
+fulfillment obligation completes. Recovery classifies missing/stale/uncertain
+work for local requeue, waiting or operator review, without dispatching it.
+P3 owns store/adapter conformance and P4 owns native SQL/atomicity proofs.
 
 [Labels](../../packages/platform/src/fulfillment/contracts/label.ts) separate durable
 object pointers from transient signed downloads. Missing PDF is not missing parcel;
@@ -710,5 +731,6 @@ Inspect the [contract witnesses](../../packages/platform/test/fulfillment/contra
 [status parity](../../packages/platform/test/fulfillment/statusMap.test.ts),
 [port fit](../../packages/platform/test/fulfillment/portFit.test.ts) and
 [programme record](plans/oss-m08-fulfillment-physical-delivery.md) for provenance,
-declared adaptations and later obligations. These contracts establish no adapter,
-executor, persistent store, route or activation; reference composition stays unchanged.
+declared adaptations and later obligations. P2 adds callable orchestration and a durable-store protocol, without a concrete
+adapter, persistent store, mounted executor, route or activation; reference
+composition stays unchanged.
