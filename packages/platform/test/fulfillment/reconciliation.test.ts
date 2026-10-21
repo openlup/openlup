@@ -67,3 +67,22 @@ it("preserves timestamp validation, nullable chronology, lazy tracking selection
   const missing = fixture(); missing.input.lifecycle.findDispatchRef = async () => null;
   expect(await run(missing.input)).toMatchObject({ quarantined: 1, updated: 0 });
 });
+
+
+it("fails provider read uncertainty without local writes and projects unmapped evidence before every host call", async () => {
+  const failed = fixture();
+  failed.input.readPage = async () => [{ kind: "unknown", refusal: { reason: "io_failure", phase: "readback", retryable: true } }];
+  await expect(run(failed.input)).rejects.toThrow("fulfillment_reconciliation_provider_read_failed");
+  expect(failed.trace).toEqual([]); expect(failed.durableEffects).toEqual([]);
+  const unmapped = fixture();
+  const correlation = { ...observation().correlation, privateField: "synthetic-private-detail" };
+  const evidence = { correlation, eventKey: "legacy:unmapped", privateField: "synthetic-private-detail" };
+  unmapped.input.readPage = async () => [{ kind: "unmapped", evidence, externalRef: "external-a" }];
+  const seen: unknown[] = [];
+  const find = unmapped.input.lifecycle.findDispatchRef;
+  unmapped.input.lifecycle.findDispatchRef = async value => { seen.push(value); return find(value); };
+  unmapped.input.lifecycle.acknowledgeDispatchAcceptance = async (_ref, value) => { seen.push(value); };
+  unmapped.input.lifecycle.recordQuarantine = async value => { seen.push(value); return { replayed: false }; };
+  expect(await run(unmapped.input)).toMatchObject({ ok: true, quarantined: 1 });
+  expect(seen).toEqual(Array(3).fill({ correlation: observation().correlation, eventKey: "legacy:unmapped" }));
+});

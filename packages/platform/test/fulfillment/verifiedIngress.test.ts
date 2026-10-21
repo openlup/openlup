@@ -29,6 +29,10 @@ it("retains contention, failed annotation, recovery receipt and superseding hand
   await expect(run(f.input)).rejects.toBe(f.stockBusy);
   expect(f.trace).toContain("annotate"); expect(f.processed.size).toBe(0);
   expect(f.durableEffects).not.toContain("handoff");
+  f.failAnnotation(false);
+  await expect(run(f.input)).rejects.toBe(f.stockBusy);
+  expect(f.inbound.get(observation("packed").eventKey)?.diagnostics?.annotation).toBe("recorded");
+  expect(f.processed.size).toBe(0);
   f.failStock(false);
   const recovered = observation("packed"); recovered.diagnostics = { recoveredPickedReceipt: { receiptRef: "receipt-a", closed: true } };
   f.setObservation(recovered);
@@ -40,4 +44,28 @@ it("retains contention, failed annotation, recovery receipt and superseding hand
   terminal.input.lifecycle.classifyFailure = () => "state_conflict";
   expect(await run(terminal.input)).toMatchObject({ kind: "superseded" });
   expect(terminal.trace).not.toContain("tracking"); expect(terminal.processed.size).toBe(1);
+});
+
+
+it("retries missing external references before acceptance and effects; either reference permits processing", async () => {
+  for (const [observedRef, dispatchRef] of [[null, null], ["  ", "\t"], [" observed-a ", null], [null, " dispatch-a "]] as const) {
+    const value = observation(); value.correlation.externalRef = observedRef;
+    const f = ingressFixture(value);
+    f.input.lifecycle.findDispatchRef = async () => {
+      f.trace.push("find");
+      return { orderRef: "order-a", fulfillmentRef: "fulfillment-a", dispatchRef: "dispatch-created", externalRef: dispatchRef };
+    };
+    if (!(observedRef?.trim() || dispatchRef?.trim())) {
+      await expect(run(f.input)).rejects.toThrow(TypeError);
+      await expect(run(f.input)).rejects.toThrow("fulfillment_dispatch_acceptance_external_ref_missing");
+      expect(f.trace).toEqual(["auth", "parse", "ingest", "find", "auth", "parse", "ingest", "find"]);
+      expect(f.durableEffects).toEqual([]);
+      expect(f.processed.size).toBe(0);
+      expect(f.inbound.size).toBe(1); // Receipt remains available for provider retry.
+    } else {
+      expect(await run(f.input)).toMatchObject({ kind: "processed" });
+      expect(f.trace).toContain("ack"); expect(f.trace).toContain("status");
+      expect(f.processed.size).toBe(1);
+    }
+  }
 });

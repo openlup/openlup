@@ -37,6 +37,8 @@ export async function verifyAndNormalizeFulfillmentObservation(input: {
     await input.localPersistence.markProcessed(observation.eventKey, { status: "ignored", refusal: { reason: "local_missing", phase: "apply", retryable: false } });
     return { kind: "ignored", observation, replayed: inbound.replayed, trackingRefs: 0, trackingReadBacks: 0 };
   }
+  const externalRef = observation.correlation.externalRef?.trim() || ref.externalRef?.trim();
+  if (!externalRef) throw new TypeError("fulfillment_dispatch_acceptance_external_ref_missing");
   await input.lifecycle.acknowledgeDispatchAcceptance(ref, observation);
   const statusEvidence = await input.lifecycle.recordStatusEvidence(ref, observation);
   let trackingRefs = 0;
@@ -47,11 +49,9 @@ export async function verifyAndNormalizeFulfillmentObservation(input: {
       try { return await input.lifecycle.effects.markProviderStockConsumed(request); }
       catch (error) {
         if (input.lifecycle.classifyFailure(error) === "stock_contention") {
-          observation.diagnostics = { ...observation.diagnostics, stockContention: { sqlState: "55P03", phase: "provider_stock_consumed", retryable: true } };
           try {
             await input.lifecycle.annotateStockContention?.(observation.eventKey, ref.fulfillmentRef);
-            observation.diagnostics.annotation = "recorded";
-          } catch { observation.diagnostics.annotation = "failed"; }
+          } catch { /* Annotation is best-effort; preserve the original stock failure. */ }
         }
         throw error;
       }

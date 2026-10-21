@@ -323,8 +323,8 @@ Approved port amendments (also declared in the fragment and API reports):
   readLocalFulfillmentState(ref) returns status/latestStatusOccurredAt/handedOverAt;
   recordObservation is keyed by eventKey, retains firstReceivedAt and returns
   replayed; markProcessed is idempotent. Hosts own durable transactions, replay
-  and recovery. Persisted-state-fit.md records the completed state probe:
-  product state fits existing operations; cron pagination is outside the worker.
+  and recovery. The state probe found product state fits existing operations;
+  cron pagination is outside the worker.
 
 Neutralization register (no algorithm refactor):
 1. Observation effects: donor stock → handoff → each tracking → invoice and
@@ -371,7 +371,8 @@ minimal fixture adapters plus G14/reclaim/remap store proof. Run only approved
 focused checks, serialize build/API/pack output, recount all paths against base
 (cap 35), keep package README unchanged, enforce root-doc gzip <=49,152 B.
 
-P3 local completion evidence: full scope fits 34 paths against aa03ee4a (cap 35),
+Committed P3 evidence (66e785c4, before repair cycle 1): full scope fits 34 paths
+against review base c64399da (cap 35),
 including generated API/catalogue companions; no split. Eleven new semantic cases
 pass (27 fulfillment plus 1,498 generated boundary cases; combined local elapsed
 3.576 s, new test bodies 0.0495 s). The focused type/API/structural/ESLint/neutrality,
@@ -384,10 +385,30 @@ required: the affected fulfillment owner section is substantively updated.
 Risk/proof boundary: local chronology, replay and before-I/O identity are material
 behavior; these fixture checks do not prove durable host atomicity or native
 arrival alignment. P4 and the supervisor's committed native review remain owed.
-No native review/repair cycle was consumed, and no delivery authority was added.
+That evidence predates the two native reviews and repair cycle 1; no delivery
+authority was added.
 
 P3 self-retro: the first test run exposed two forbidden internal BFF imports and
 an undefined sync-return redaction bug; the later lint read ruled out cross-module
 HTTP/BFF edges entirely. Module boundary friction → inject the existing responder
 and inline request shape, preserving handler behavior without adding an edge or
 changing the rule. Initial npm ci hit sandbox DNS; the authorized retry succeeded.
+
+
+P3 review repair (committed on top of 66e785c4) closes P3A/P3B-ingress-external-ref-guard-dropped
+with the donor's trimmed observation-or-dispatch external-reference guard before
+ACK/status/effects/processed mark. Keep the received event unprocessed on failure.
+Remove dead diagnostics mutation; retain best-effort host annotation and original
+stock-error rethrow. Project unmapped correlation evidence before host calls;
+provider read uncertainty fails the run, matching the donor's uncaught page-read
+failure. G17's frozen markProcessed outcome has only status and optional refusal;
+it cannot record the donor's superseded reason without a signature change. This
+is a known limit; no G14–G17 or frozen port change is authorized.
+Acceptance: missing/blank refs throw with no lifecycle writes or processed mark;
+either reference proceeds; focused test/type/API/structural/lint/neutrality/root-doc
+and policy/navigation checks pass, at most 35 paths against c64399da.
+
+P3 repair self-retro: donor boundaries → restore the direct pre-ACK guard and
+share the existing correlation projection, without a new port or outcome. The
+first scratch typecheck lacked Node type discovery because its config lived in
+/tmp; explicit repository typeRoots fixed the harness without source changes.

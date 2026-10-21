@@ -1,6 +1,6 @@
 import type { FulfillmentObservation, FulfillmentReadbackResult } from "./contracts/index.js";
 import { applyFulfillmentObservationEffects } from "./fulfillmentObservationEffects.js";
-import { observationStatusPolicy, projectObservation } from "./observationProjection.js";
+import { observationStatusPolicy, projectCorrelation, projectObservation } from "./observationProjection.js";
 import { quarantineReconciliationStateConflict } from "./providerReconciliationError.js";
 import { isOffTrackFulfillmentStatus } from "./providerReconciliationTerminalSkip.js";
 import { normalizeReconciliationTimestamp } from "./providerReconciliationTimestamp.js";
@@ -45,6 +45,8 @@ export async function reconcileFulfillmentObservations(input: {
   };
   const page = await input.readPage({ page: input.page ?? 0, size: input.batchSize });
   result.providerCalls += 1;
+  // A failed provider read cannot become a successful unknown-status quarantine.
+  if (page.some(readback => readback.kind === "unknown")) throw new Error("fulfillment_reconciliation_provider_read_failed");
   result.checked = page.length;
   const quarantine = async (observation: PollEvidence | null, reason: Parameters<typeof input.lifecycle.recordQuarantine>[1]) => {
     const evidence = await input.lifecycle.recordQuarantine(observation, reason);
@@ -72,18 +74,18 @@ export async function reconcileFulfillmentObservations(input: {
       if (readback.kind === "unmapped") {
         // An unknown primary status still correlates/ACKs, but an off-track row
         // must never trade a benign skip for a quarantine alarm.
-        const ref = await input.lifecycle.findDispatchRef(readback.evidence);
-        if (!ref) { await quarantine(readback.evidence, "missing_correlation"); continue; }
+        const evidence = { eventKey: readback.evidence.eventKey, correlation: projectCorrelation(readback.evidence.correlation) };
+        const ref = await input.lifecycle.findDispatchRef(evidence);
+        if (!ref) { await quarantine(evidence, "missing_correlation"); continue; }
         const state = await input.localPersistence.readLocalFulfillmentState(ref.fulfillmentRef);
         if (isOffTrackFulfillmentStatus(state.status)) { result.offTrackSkips += 1; continue; }
-        if (!(readback.externalRef?.trim() || ref.externalRef?.trim())) { await quarantine(readback.evidence, "missing_external_ref"); continue; }
-        await input.lifecycle.acknowledgeDispatchAcceptance(ref, readback.evidence);
-        await quarantine(readback.evidence, "unknown_status");
+        if (!(readback.externalRef?.trim() || ref.externalRef?.trim())) { await quarantine(evidence, "missing_external_ref"); continue; }
+        await input.lifecycle.acknowledgeDispatchAcceptance(ref, evidence);
+        await quarantine(evidence, "unknown_status");
         continue;
       }
       if (readback.kind !== "found") {
-        // Neither unknown/unsupported nor a provider absence is a local transition.
-        if (readback.kind === "unknown") await quarantine(null, "unknown_status");
+        // Neither unsupported nor a provider absence is a local transition.
         continue;
       }
       observation = projectObservation(readback.observation);

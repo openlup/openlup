@@ -2,9 +2,13 @@ import type { CanonicalLocalFulfillmentStatus, FulfillmentObservation } from "./
 import { parseFulfillmentFact } from "./normalizedFulfillmentFacts.js";
 import { FULFILLMENT_STATUS_MAP } from "./statusMap.js";
 
+export function projectCorrelation(value: FulfillmentObservation["correlation"]): FulfillmentObservation["correlation"] {
+  const { orderRef, fulfillmentRef, externalRef, orderNumber, providerFulfillmentRef, parcelRef } = value;
+  return { orderRef, fulfillmentRef, externalRef, orderNumber, providerFulfillmentRef, parcelRef };
+}
+
 /** New boundary projection: arbitrary adapter properties are never durable. */
 export function projectObservation(value: FulfillmentObservation): FulfillmentObservation {
-  const { orderRef, fulfillmentRef, externalRef, orderNumber, providerFulfillmentRef, parcelRef } = value.correlation;
   const diagnostics: NonNullable<FulfillmentObservation["diagnostics"]> = {};
   if (value.diagnostics?.refusal) {
     const { reason, phase, retryable } = value.diagnostics.refusal;
@@ -19,7 +23,7 @@ export function projectObservation(value: FulfillmentObservation): FulfillmentOb
   return {
     fact: parseFulfillmentFact(value.fact), eventKind: value.eventKind, eventKey: value.eventKey,
     firstReceivedAt: value.firstReceivedAt,
-    correlation: { orderRef, fulfillmentRef, externalRef, orderNumber, providerFulfillmentRef, parcelRef },
+    correlation: projectCorrelation(value.correlation),
     trackingRefs: value.trackingRefs.map(({ trackingNumber, carrierRef, serviceRef, publicUrl }) => ({ trackingNumber, carrierRef, serviceRef, publicUrl })),
     ...(Object.keys(diagnostics).length ? { diagnostics } : {}),
   };

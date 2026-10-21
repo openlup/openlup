@@ -734,8 +734,13 @@ already handed-over row can still retry its accounting invoice. Unknown times
 remain null. Provider keys must distinguish kind/outcome and known occurrence
 (or supplied snapshot revision); identical observations without time carry no
 invented ordering. Private authentication/parsing, mapper and key bytes stay with
-the adapter/host. F3 contention annotations and recovered-picked receipts remain
-typed diagnostics. Effects retain stock → handoff → tracking → invoice order.
+the adapter/host. Verified ingress requires a nonblank observation or dispatch
+external reference before acceptance, status evidence or effects; failure leaves
+the received event unprocessed for retry. F3 contention annotation is a best-effort
+host write before rethrowing the original stock failure; recovered-picked receipts
+remain typed diagnostics. Provider read failures fail reconciliation, while unmapped
+status evidence projects only declared correlation fields before host calls.
+Effects retain stock → handoff → tracking → invoice order.
 
 [Stock sync](../../packages/platform/src/fulfillment/providerStockSyncWorker.ts)
 uses approved G15 coverageGapSkus on SyncCursor: absent is empty, and only the
