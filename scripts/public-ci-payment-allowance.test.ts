@@ -2,6 +2,25 @@ import { execFileSync } from "node:child_process";
 import { expect, it } from "vitest";
 import { allowedPaymentAdapterWords, neutralityIncreases } from "./public-ci-neutrality.mjs";
 
+it("allows the reporting zone only on its exact declaration and path", () => {
+  const vendor = ["tp", "ay"].join("");
+  const zone = ["Europe", "Warsaw"].join("/");
+  const path = `packages/platform/src/payments/${vendor}/${vendor}PaymentReconciliationProvider.ts`;
+  const declaration = `const REPORTING_TIME_ZONE = "${zone}";`;
+  for (const [candidatePath, contents, allowed] of [[path, declaration, 1],
+    [path, ` ${declaration}`, 0], [path, declaration.replace("REPORTING_TIME_ZONE", "OTHER_ZONE"), 0],
+    [path, `${declaration} // other`, 0], [path, `${declaration}\nconst OTHER_ZONE = "${zone}";`, 1],
+    [`packages/platform/src/payments/${vendor}/other.ts`, declaration, 0],
+    [`packages/platform/test/payments/${vendor}/${vendor}PaymentReconciliationProvider.ts`, declaration, 0]] as const) {
+    const measured = JSON.parse(execFileSync(process.execPath, ["--experimental-strip-types", "packages/ui/smoke/neutrality.ts", "--counts-json"], {
+      input: JSON.stringify([{ path: candidatePath, contents }]), encoding: "utf8",
+    })).counts[0].counts["ui-8"];
+    expect(allowedPaymentAdapterWords(candidatePath, contents, "ui-8")).toBe(allowed);
+    const increases = neutralityIncreases({}, { [candidatePath]: { "ui-8": measured - allowed } });
+    expect(increases).toHaveLength(contents === declaration && candidatePath === path ? 0 : 1);
+  }
+});
+
 it("keeps the payment vocabulary allowance within exact source/report/ledger paths and carrier tokens", () => {
   const vendor = ["str", "ipe"].join("");
   const words = (path: string, body: string) => allowedPaymentAdapterWords(path, body);

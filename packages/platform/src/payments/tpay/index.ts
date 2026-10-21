@@ -1,7 +1,11 @@
 import { createHash, X509Certificate } from "node:crypto";
-import type { PaymentAdapter, PaymentAdapterCapabilities, PaymentReadbackEnvelope, PaymentVerifyNormalizePort,
+import { classifyPaymentFailure, isPaymentRetryAdviceCode } from "@openlup/core/payment";
+import type { PaymentAdapter, PaymentAdapterCapabilities, PaymentAttemptPort, PaymentExecutionEnvelope,
+  PaymentReadbackEnvelope, PaymentRefusalEnvelope, PaymentVerifyNormalizePort,
   VerifiedMethodEvidence, VerifiedPaymentEvidence } from "../contracts/index.js";
+import type { PaymentExecutionInput, PaymentExecutionResult } from "./donorContracts.js";
 import { createTpayHttpClient } from "./tpayHttpClient.js";
+import { createTpayPaymentExecutionAdapter } from "./tpayPaymentExecutionAdapter.js";
 import { createTpayPaymentReconciliationProvider } from "./tpayPaymentReconciliationProvider.js";
 import { verifyTpayJwsSignature, type TpayJwsCertificateResolver } from "./webhookJwsVerifier.js";
 import { normalizeTpayWebhook } from "./webhookNormalizer.js";
@@ -25,13 +29,12 @@ export interface TpayPaymentAdapterConfig {
   clock?: () => number;
 }
 
-/** Observed protocol offers; account-dependent availability remains verification_pending. */
+/** Attempt flows require the forthcoming M07 payer/method fields; account availability remains verification_pending. */
 export const tpayPaymentCapabilities: PaymentAdapterCapabilities = {
   providerKind: "tpay",
   captureFlows: [
     { kind: "bank_redirect", handoff: "redirect", methodFamilies: ["bank-redirect"] },
     { kind: "one_time_code", handoff: "customer-authorization", methodFamilies: ["one-time-code"] },
-    { kind: "scheme_alias_registration", handoff: "customer-authorization", methodFamilies: ["one-time-code"] },
   ],
   requiresStoredMandateEvidence: true,
   assessMandate: snapshot => snapshot.recurringModel === "O" ? { chargeable: true }
@@ -47,6 +50,12 @@ export const tpayPaymentCapabilities: PaymentAdapterCapabilities = {
 
 type Verification = Awaited<ReturnType<PaymentVerifyNormalizePort["verifyAndNormalize"]>>;
 const refusal = (reason: Extract<Verification, { kind: "refusal" }>["reason"]): Verification => ({ kind: "refusal", reason });
+
+// fields arrive in the M07 contracts; this local type is removed when they do
+type TpayAttemptInput = Parameters<PaymentAttemptPort["execute"]>[0] & {
+  payer?: { email: string; name?: string };
+  methodSelection?: { family: "card" | "wallet" | "bank-redirect" | "one-time-code"; channelRef?: string };
+};
 
 /** Construction explicitly selects this adapter; the host owns account activation and I/O policy. */
 export function createTpayPaymentAdapter(config: TpayPaymentAdapterConfig): PaymentAdapter {
@@ -66,13 +75,61 @@ export function createTpayPaymentAdapter(config: TpayPaymentAdapterConfig): Paym
   }
   const now = config.clock ?? (() => Date.now() / 1000);
   const client = createTpayHttpClient({ ...config.http, now: () => now() * 1000 });
+  const execution = createTpayPaymentExecutionAdapter({ client, ...config.urls,
+    modelOActivationEnabled: config.modelOActivationEnabled });
+  const donorInput = (input: TpayAttemptInput): PaymentExecutionInput => {
+    if (input.mode !== config.mode || !["initial", "recovery", "renewal-unattended"].includes(input.purpose)
+      || !input.attemptRef || !input.intentRef || !input.fingerprint || !input.providerIdempotencyKey
+      || !Number.isSafeInteger(input.money.amountMinor) || input.money.amountMinor <= 0 || input.money.currency !== "PLN"
+      || !input.payer?.email || (input.payer.name !== undefined && typeof input.payer.name !== "string")) {
+      throw new Error("Invalid payment input");
+    }
+    const renewal = input.purpose === "renewal-unattended";
+    const family = input.methodSelection?.family;
+    if (renewal ? !input.storedMethod?.reference || input.storedMethod.mandate.recurringModel !== "O"
+      || input.customerAuthorization !== undefined
+      : family !== "bank-redirect" && family !== "one-time-code") throw new Error("Unsupported payment flow");
+    if (!renewal && (family === "bank-redirect" ? !input.methodSelection?.channelRef || input.customerAuthorization !== undefined
+      : !input.customerAuthorization)) throw new Error("Required payment context missing");
+    return {
+      idempotencyKey: input.attemptRef, providerIdempotencyKey: input.providerIdempotencyKey,
+      providerRequestFingerprint: input.fingerprint, paymentIntentId: input.intentRef, orderRef: input.intentRef,
+      amountMinor: input.money.amountMinor, currency: input.money.currency,
+      mode: renewal ? "subscription_cycle" : "one_time",
+      payer: { email: input.payer.email, name: input.payer.name ?? "" },
+      ...(renewal ? { providerFlow: "recurring_charge", paymentMethodRef: input.storedMethod!.reference,
+        paymentMethodAliasType: "PAYID", paymentMethodRecurringModel: "O" } : {
+        transientProviderInput: family === "bank-redirect"
+          ? { provider: "tpay", flow: "pbl_one_time", channelId: input.methodSelection!.channelRef }
+          : { provider: "tpay", flow: "blik_one_time", blikToken: input.customerAuthorization },
+      }),
+    };
+  };
+  const validateInput = (input: TpayAttemptInput): void => { execution.validateInput?.(donorInput(input)); };
   return {
     capabilities: tpayPaymentCapabilities,
-    // Coordinator decision pending: the fixed M07 input has no payer/channel fields.
-    // Never manufacture payer context to dispatch an attempt.
     attemptPort: {
-      validateInput() { throw new Error("Explicit payer and flow context required"); },
-      async execute() { throw new Error("Explicit payer and flow context required"); },
+      validateInput,
+      async execute(input: TpayAttemptInput): Promise<PaymentExecutionEnvelope> {
+        let prepared: PaymentExecutionInput;
+        try { prepared = donorInput(input); execution.validateInput?.(prepared); }
+        catch {
+          const reason: PaymentRefusalEnvelope = { code: "fix_and_retry_customer_action", hints: ["dataInvalid"] };
+          return { outcome: { kind: "decline", refusal: reason },
+            dispatch: { kind: "notDispatched", evidence: { exact: true, phase: "before-dispatch", reason } }, diagnostics: {} };
+        }
+        const result = await execution.execute(prepared);
+        // Only these neutral facts cross the boundary; donor payloads and transient payer/authorization stay local.
+        return {
+          outcome: result.providerDecline ? { kind: "decline", refusal: neutralDecline(result.providerDecline) }
+            : { kind: "attempt", status: result.attemptStatus },
+          // API transaction ID is required for readback; notification titles remain distinct.
+          dispatch: result.providerSessionId ? { kind: "dispatched", providerPaymentRef: result.providerSessionId } : { kind: "unknown" },
+          ...(result.nextActionKind === "redirect" && result.redirectUrl
+            ? { handoff: { kind: "redirect" as const, url: result.redirectUrl } } : {}),
+          diagnostics: { webhookExpected: result.webhookExpected === true, recoveryRequired: result.recoveryRequired === true },
+        };
+      },
     },
     verifyPort: {
       async verifyAndNormalize(input) {
@@ -129,6 +186,12 @@ export function createTpayPaymentAdapter(config: TpayPaymentAdapterConfig): Paym
       },
     },
   };
+}
+
+function neutralDecline(decline: NonNullable<PaymentExecutionResult["providerDecline"]>): PaymentRefusalEnvelope {
+  const hints = decline.neutralReasonHints ?? [];
+  return { code: classifyPaymentFailure({ adviceCode: decline.adviceCode, neutralReasonHints: hints }).failureClass, hints,
+    ...(decline.adviceCode && isPaymentRetryAdviceCode(decline.adviceCode) ? { adviceCode: decline.adviceCode } : {}) };
 }
 
 function validAt(certificate: X509Certificate, instant: number): boolean {

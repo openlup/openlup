@@ -404,7 +404,7 @@ export interface TpayPaymentAdapterConfig {
     mode: "live" | "test";
     clock?: () => number;
 }
-/** Observed protocol offers; account-dependent availability remains verification_pending. */
+/** Attempt flows require the forthcoming M07 payer/method fields; account availability remains verification_pending. */
 export declare const tpayPaymentCapabilities: PaymentAdapterCapabilities;
 /** Construction explicitly selects this adapter; the host owns account activation and I/O policy. */
 export declare function createTpayPaymentAdapter(config: TpayPaymentAdapterConfig): PaymentAdapter;

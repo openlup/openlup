@@ -101,6 +101,11 @@ const paymentAdapterCarriers = new Set([
 const paymentAdapterSubpath = new RegExp(`(?<![\\w-])payments/(?:${paymentAdapterNames.join("|")})(?![\\w-])`, "g");
 const paymentAdapterReport = new RegExp(`(?<![\\w.-])payments-(?:${paymentAdapterNames.join("|")})\\.api\\.md(?![\\w./-])`, "g");
 export function allowedPaymentAdapterWords(path, contents, category = "ui-13") {
+  if (category === "ui-8") {
+    const reportingPath = `packages/platform/src/payments/${paymentAdapterNames[1]}/tpayPaymentReconciliationProvider.ts`;
+    const declaration = `const REPORTING_TIME_ZONE = "${["Europe", "Warsaw"].join("/")}";`;
+    return path === reportingPath ? contents.split("\n").filter(line => line === declaration).length : 0;
+  }
   if (category === "ui-5") {
     const ownPath = new RegExp(`^packages/platform/(?:src|test)/payments/${paymentAdapterNames[1]}/`);
     return ownPath.test(path) ? [...contents.matchAll(new RegExp(`\\b${String.fromCharCode(80, 76, 78)}\\b`, "g"))].length : 0;
@@ -260,7 +265,7 @@ function scanSnapshots(snapshots) {
   if (!record(ui) || !Array.isArray(ui.counts) || !record(ui.policy)) throw new Error("invalid neutrality scanner output");
   const sourceContents = new Map(sources.map(({ path, contents }) => [path, contents]));
   for (const row of ui.counts) {
-    for (const category of ["ui-13", "ui-14", "ui-5"]) {
+    for (const category of ["ui-13", "ui-14", "ui-5", "ui-8"]) {
       if (row.counts?.[category]) {
         row.counts[category] -= allowedPaymentAdapterWords(row.path, sourceContents.get(row.path) ?? "", category);
         if (row.counts[category] === 0) delete row.counts[category];

@@ -1098,9 +1098,22 @@ uses exact event identity plus stable fingerprint when time is absent. Receipt
 time is used only for freshness. Transaction identity includes outcome class;
 method identity includes event/alias plus outcome.
 
-The adapter offers its declared market currency, bank redirects, one-time codes,
-Model O alias activation and unattended alias charging. Model M and unknown
-mandates refuse before dispatch; no recurring cards are offered. Account offers
+Attempt support for bank redirects, one-time codes and unattended Model O alias
+charges requires the payer and method fields arriving in M07 P3. Until those
+fields land, the factory uses a private optional input extension; the public
+contracts remain unchanged. Supply transient `payer: { email, name? }` on every
+attempt, including renewals. An omitted name becomes an empty wire field, never
+a manufactured identity. Select `methodSelection: { family: "bank-redirect",
+channelRef }` for the bank channel, or `{ family: "one-time-code" }` with
+`customerAuthorization` as a `TransientSecret`. A `renewal-unattended` attempt
+uses `storedMethod.reference` and its Model O mandate. Missing payer/channel/code
+and Model M or unknown mandates refuse before any dispatch with neutral
+data-correction evidence. Payer and authorization never cross the return boundary
+in diagnostics or request/response payloads. Readback uses the returned API
+transaction ID; notification titles remain distinct.
+
+The adapter offers its declared market currency; alias registration and recurring
+cards are not offered by this factory. Account offers
 remain pending TEST verification. Chargeback observations carry full reversal,
 original money and stable operation identity; refunded/chargeback readback stays
 unknown for manual review. There is no close or exact-absence port. Refund

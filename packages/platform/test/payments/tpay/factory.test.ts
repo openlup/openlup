@@ -2,6 +2,37 @@ import { X509Certificate } from "node:crypto";
 import { beforeAll, expect, it, vi } from "vitest";
 import { createTpayPaymentAdapter, tpayPaymentCapabilities, type TpayPaymentAdapterConfig } from "../../../src/payments/tpay/index.js";
 import { createTpayJwsFixture } from "./webhookJws.testFixtures.js";
+import type { PaymentAttemptPort, TransientSecret } from "../../../src/payments/contracts/index.js";
+
+type AttemptInput = Parameters<PaymentAttemptPort["execute"]>[0] & {
+  payer?: { email: string; name?: string };
+  methodSelection?: { family: "card" | "wallet" | "bank-redirect" | "one-time-code"; channelRef?: string };
+};
+const payer = { email: "planted-71c3@example.test", name: "Planted Person 71c3" };
+const authorization = "572913" as TransientSecret;
+function attemptInput(): AttemptInput {
+  return { attemptRef: "attempt-1", intentRef: "intent-1", fingerprint: "fingerprint-1", providerIdempotencyKey: "key-1",
+    money: { amountMinor: 2599, currency: "PLN" }, mode: "test", purpose: "initial", payer,
+    methodSelection: { family: "bank-redirect", channelRef: "42" } };
+}
+function dispatchConfig(declined = false) {
+  const good = config();
+  const fetch = vi.fn(async (url: string, _init?: Parameters<TpayPaymentAdapterConfig["http"]["fetchImpl"]>[1]) => ({
+    ok: true, status: 200, text: async () => "", json: async () => url.endsWith("/oauth/auth")
+      ? { access_token: "fixture", expires_in: 7200 }
+      : url.endsWith("/transactions") ? { transactionId: "api-1", title: "TR-1", status: "pending",
+        transactionPaymentUrl: "https://example.test/pay", payments: { errors: declined
+          ? [{ errorCode: "unknown", errorMessage: `${payer.email} ${payer.name} ${authorization}` }] : [] } }
+      : { payments: { attempts: [] } },
+  }));
+  good.http.fetchImpl = fetch;
+  return { good, fetch, request: () => JSON.parse(fetch.mock.calls.find(([url]) => url.endsWith("/transactions"))![1]!.body!) };
+}
+function expectRedacted(result: unknown) {
+  for (const value of [payer.email, payer.name, authorization]) expect(JSON.stringify(result)).not.toContain(value);
+  expect(result).not.toHaveProperty("requestPayload");
+  expect(result).not.toHaveProperty("responsePayload");
+}
 
 let fixture: ReturnType<typeof createTpayJwsFixture>;
 let instant: number;
@@ -44,6 +75,78 @@ it("declares only the witnessed market, Model O, observations and no exact absen
   expect(adapter.absencePort).toBeUndefined(); expect(adapter.readbackPort.close).toBeUndefined();
   expect(adapter.capabilities.refundCreate).toBe("unsupported");
   expect(adapter.capabilities.authorizationCaptureSplit).toBe("unsupported");
+  expect(adapter.capabilities.captureFlows.map(flow => flow.kind)).toEqual(["bank_redirect", "one_time_code"]);
+});
+it("dispatches a bank redirect with the selected channel and transient payer", async () => {
+  const { good, fetch, request } = dispatchConfig();
+  const adapter = createTpayPaymentAdapter(good);
+  adapter.attemptPort.validateInput(attemptInput());
+  expect(fetch).not.toHaveBeenCalled();
+  const result = await adapter.attemptPort.execute(attemptInput());
+  expect(result).toMatchObject({ outcome: { kind: "attempt", status: "processing" },
+    dispatch: { kind: "dispatched", providerPaymentRef: "api-1" }, handoff: { kind: "redirect", url: "https://example.test/pay" } });
+  expect(request()).toMatchObject({ payer, hiddenDescription: "intent-1", description: "intent-1", amount: 25.99,
+    currency: "PLN", pay: { channelId: "42" } });
+  expectRedacted(result); expectRedacted(result.diagnostics);
+});
+it("dispatches a one-time code without echoing authorization or optional payer name", async () => {
+  const { good, request } = dispatchConfig();
+  const result = await createTpayPaymentAdapter(good).attemptPort.execute({ ...attemptInput(), payer: { email: payer.email },
+    methodSelection: { family: "one-time-code" }, customerAuthorization: authorization });
+  expect(result).toMatchObject({ dispatch: { kind: "dispatched", providerPaymentRef: "api-1" } });
+  expect(result.handoff).toBeUndefined();
+  expect(request()).toMatchObject({ payer: { email: payer.email, name: "" }, pay: { groupId: 150, blikPaymentData: { blikToken: authorization } } });
+  expectRedacted(result); expectRedacted(result.diagnostics);
+});
+it("dispatches an unattended Model O alias with explicit transient payer", async () => {
+  const { good, request } = dispatchConfig();
+  const result = await createTpayPaymentAdapter(good).attemptPort.execute({ ...attemptInput(), purpose: "renewal-unattended",
+    methodSelection: undefined, storedMethod: { reference: "alias-1", mandate: { recurringModel: "O" } } });
+  expect(result).toMatchObject({ outcome: { kind: "attempt" }, dispatch: { kind: "dispatched", providerPaymentRef: "api-1" } });
+  expect(result.handoff).toBeUndefined();
+  expect(request()).toMatchObject({ payer, pay: { blikPaymentData: { type: 2,
+    aliases: { value: "alias-1", type: "PAYID", noDelay: true, recommendedAuthLevel: "NOCONFREQ" } } } });
+  expectRedacted(result); expectRedacted(result.diagnostics);
+});
+it("refuses missing payer before any dispatch, including unattended attempts", async () => {
+  const good = config(); const adapter = createTpayPaymentAdapter(good);
+  for (const purpose of ["initial", "renewal-unattended"] as const) {
+    const input = { ...attemptInput(), purpose, payer: undefined, storedMethod: { reference: "alias-1", mandate: { recurringModel: "O" } } };
+    expect(() => adapter.attemptPort.validateInput(input)).toThrow("Invalid payment input");
+    const result = await adapter.attemptPort.execute(input);
+    expect(result).toMatchObject({ outcome: { kind: "decline", refusal: { code: "fix_and_retry_customer_action", hints: ["dataInvalid"] } },
+      dispatch: { kind: "notDispatched", evidence: { exact: true, phase: "before-dispatch", reason: { code: "fix_and_retry_customer_action" } } } });
+    expectRedacted(result);
+  }
+  expect(good.http.fetchImpl).not.toHaveBeenCalled();
+});
+it("refuses missing channel or authorization and unsupported families before dispatch", async () => {
+  const good = config(); const adapter = createTpayPaymentAdapter(good);
+  for (const methodSelection of [{ family: "bank-redirect" }, { family: "one-time-code" }, { family: "card" }, { family: "wallet" }, undefined] as const) {
+    const input = { ...attemptInput(), methodSelection };
+    expect(() => adapter.attemptPort.validateInput(input)).toThrow();
+    expect(await adapter.attemptPort.execute(input)).toMatchObject({ outcome: { kind: "decline" },
+      dispatch: { kind: "notDispatched", evidence: { exact: true, phase: "before-dispatch" } } });
+  }
+  expect(good.http.fetchImpl).not.toHaveBeenCalled();
+});
+it.each(["M", undefined, "unknown"])("refuses mandate model %s before dispatch", async recurringModel => {
+  const good = config(); const adapter = createTpayPaymentAdapter(good);
+  const input = { ...attemptInput(), purpose: "renewal-unattended" as const,
+    storedMethod: { reference: "alias-1", mandate: { recurringModel } } };
+  expect(() => adapter.attemptPort.validateInput(input)).toThrow();
+  expect(await adapter.attemptPort.execute(input)).toMatchObject({ outcome: { kind: "decline" },
+    dispatch: { kind: "notDispatched", evidence: { exact: true, phase: "before-dispatch" } } });
+  expect(good.http.fetchImpl).not.toHaveBeenCalled();
+});
+it("keeps provider refusal prose and payer out of the complete returned decline envelope", async () => {
+  const { good } = dispatchConfig(true);
+  const result = await createTpayPaymentAdapter(good).attemptPort.execute({ ...attemptInput(),
+    methodSelection: { family: "one-time-code" }, customerAuthorization: authorization });
+  expect(result).toMatchObject({ outcome: { kind: "decline", refusal: { code: "indeterminate" } },
+    dispatch: { kind: "dispatched", providerPaymentRef: "api-1" } });
+  expect(result.handoff).toBeUndefined();
+  expectRedacted(result); expectRedacted(result.diagnostics);
 });
 it("verifies exact signed bytes and retains null provider time without a signed assertion", async () => {
   const adapter = createTpayPaymentAdapter(config());

@@ -102,10 +102,19 @@ in `/`, and an asynchronous certificate resolver. Importing performs no I/O,
 reads no environment and installs no route or default binding. The resolver
 owns redirect and egress policy. Clock values are UTC seconds.
 
-The adapter declares only its supported market currency. It offers bank-redirect
-and one-time-code flows, Model O alias activation and unattended alias charging;
-Model M and unknown mandate models refuse before dispatch. No recurring card
-capability is claimed. Account-dependent offers remain `verification_pending`
+The adapter declares only its supported market currency. Bank-redirect,
+one-time-code and unattended Model O alias attempts require the payer/method
+fields arriving in M07 P3. A private optional intersection bridges that input
+until the contracts supply it; no contract or donor module is changed.
+Explicit transient payer context is required for all three flows. Bank redirects
+use the selected channel; code attempts use transient customer authorization;
+unattended charges use the stored reference and recorded Model O mandate.
+Missing payer/channel/code, Model M and unknown mandate models refuse before
+dispatch with neutral data-correction evidence. The return envelope admits only
+neutral diagnostics, excluding payer, authorization and donor request/response
+payloads. API transaction ID drives readback; notification title remains distinct.
+The public factory does not offer alias registration or recurring cards.
+Account-dependent offers remain `verification_pending`
 until O-P3 owner TEST readback; protocol witnesses do not establish activation.
 Refund creation, split authorization/capture, close and exact absence are
 unsupported. Transaction-ID readback is neither a complete bounded search nor
@@ -125,6 +134,12 @@ Named deltas from the contributed donor:
    normalizer retains its original identity mapping; only factory glue adds the
    neutral envelope identity. Fingerprints exclude receipt time and secrets.
 3. Receipt time participates only in signed notification freshness.
+4. Attempt glue accepts the forthcoming optional payer/method fields locally,
+   refuses missing context before dispatch and excludes transient payer and
+   authorization from its return envelope.
+5. Neutrality admits the reporting zone only on the exact readback declaration
+   line at its exact source path, with paired outside-line/path refusal plants
+   and no baseline increase.
 
 CHARGEBACK is a `refunded` money observation with explicit `full-reversal`,
 `reason: "chargeback"`, original money and a stable operation ID. Missing original
