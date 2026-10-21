@@ -43,6 +43,9 @@ or upstream release. For example, outbox's public `withPayloadSchema`,
 `./postgres` and `./testing` subpaths describe the default store and fence proof.
 Read the installed outbox guide for their actual contract before using them.
 These are existing seams, not a new complete extension or absorption example.
+To write an adapter for another vendor, start from the shipped example in its
+class; [adapter classes and example templates](../CANONICAL_CONTRACTS.md#adapter-classes-and-example-templates)
+lists the ports, the examples and the rules.
 
 Keep the adopted engine in its authentic npm package. Do not autonomously patch,
 fork, vendor, monkey-patch, alias/shadow or restore a copied engine. The
