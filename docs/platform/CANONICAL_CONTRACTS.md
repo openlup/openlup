@@ -173,8 +173,8 @@ readback and sync ports from
 `@openlup/platform/fulfillment/contracts`. See the
 [fulfillment owner](ARCHITECTURE_AND_EXTENSIONS.md#fulfillment-contracts) for
 command preparation, host keys, replay, paid handoff and proof/storage boundaries.
-An example adapter remains planned for A3; this surface activates no provider or
-reference route.
+Adapter conformance belongs to future example-adapter work; this surface
+activates no provider or reference route.
 
 | Class | Shipped example subpaths |
 | --- | --- |

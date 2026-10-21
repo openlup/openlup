@@ -680,7 +680,7 @@ carrier and service remain independent; empty provider selection refuses, and
 potential support never enables a dormant route. Raw commands, credentials and
 signed label URLs stay transient at the host/adapter boundary; durable contracts
 carry typed facts, safe references and actual-command fingerprints. Existing reference facades
-and the OMS ladder/queue pair remain host-owned until explicit later adoption.
+and the order-management status ladder/queue pair remain host-owned until explicit later adoption.
 
 The [dispatch port](../../packages/platform/src/fulfillment/contracts/dispatch.ts)
 prepares the actual provider command without submitting it, returns its fingerprint
@@ -703,15 +703,22 @@ attempt at that point, before shadow exit, unsafe-state refusal or begin. Its
 host-supplied opaque key preserves initial/remap identities; only allowlisted
 prepared evidence, mode/status and references persist. Same-key replay writes no
 second attempt. Unknown/submitting/failed states never automatically POST;
-accepted proof repairs a lost local ACK without a provider call. An ACK rescue
-finalizes accepted proof as uncertain with its external reference retained.
+accepted proof repairs a lost local ACK without a provider call. Only a
+post-dispatch ACK failure triggers readback and an attempt to finalize accepted
+proof as uncertain with its external reference retained when acceptance is not
+already committed. Loop-start and concurrent-begin recovery ACK failures reach
+the outer catch without that rescue.
 Main and repair ACKs use identical host acceptance keys, ignoring adapter-provided
 key fields so a committed ACK replays after a lost response.
 The separate createFulfillmentCommandLedger protocol delegates atomic fenced
 operations to a durable store; it does not keep lease/retry state locally. The
 host supplies keys, actual-command fingerprints, candidate selection, paid truth
-and inventory authority. The paid outbox handler settles only after its injected
-fulfillment obligation completes. Recovery classifies missing/stale/uncertain
+and inventory authority. After payload validation, unless an enabled risk gate
+returns early, the paid outbox handler awaits its injected fulfillment call before returning an
+outcome. Risk `review`/`block` returns `processed` without calling fulfillment;
+fulfillment `completed`, `skipped` and `manual_review` also return `processed`
+and settle the event. Settlement therefore does not always mean fulfillment
+completed. Recovery classifies missing/stale/uncertain
 work for local requeue, waiting or operator review, without dispatching it.
 The donor OrderPaidFulfillmentPort in paidHandoffPorts.ts retains the handler's
 outcome ladder; later host composition bridges it to FulfillmentPaidHandoffPort,
