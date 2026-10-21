@@ -8,7 +8,7 @@ vi.mock("node:child_process", async importOriginal => {
   return { ...original, execFileSync: vi.fn(original.execFileSync) };
 });
 
-it("clamps excess market and zone allowances without masking remaining counts", () => {
+it("refuses excess market and zone allowances without masking remaining counts", () => {
   const vendor = ["tp", "ay"].join("");
   const path = `packages/platform/src/payments/${vendor}/${vendor}PaymentReconciliationProvider.ts`;
   const zone = ["Europe", "Warsaw"].join("/");
@@ -22,12 +22,34 @@ it("clamps excess market and zone allowances without masking remaining counts", 
       policy: { rules: [{ id: "tree-brand", terms: [String.fromCharCode(118, 101, 108, 105, 112, 101, 116)] }] } }));
     invoke.mockReturnValueOnce("[]");
     try {
+      if (measured === 1) {
+        expect(() => scanSnapshots(new Map([[path, Buffer.from(contents)]])))
+          .toThrow(`neutrality allowance over-subtracted ui-5 in ${JSON.stringify(path)}: -1`);
+        continue;
+      }
       const result = scanSnapshots(new Map([[path, Buffer.from(contents)]]));
-      const remaining = measured === 1 ? { "ui-6": 1 } : { "ui-5": 3, "ui-8": 3, "ui-6": 1 };
+      const remaining = { "ui-5": 3, "ui-8": 3, "ui-6": 1 };
       expect(result.rows).toEqual({ [key]: remaining });
       expect(neutralityIncreases({}, result.rows)).toHaveLength(Object.keys(remaining).length);
     } finally { invoke.mockClear(); }
   }
+});
+
+it.each(["ui-13", "ui-14", "ui-5", "ui-8"])("fails closed when the %s allowance exceeds the scanner count", category => {
+  const vendor = category === "ui-13" ? ["str", "ipe"].join("") : ["tp", "ay"].join("");
+  const path = `packages/platform/src/payments/${vendor}/${vendor}PaymentReconciliationProvider.ts`;
+  const token = category === "ui-8" ? `const REPORTING_TIME_ZONE = "${["Europe", "Warsaw"].join("/")}";`
+    : category === "ui-5" ? String.fromCharCode(80, 76, 78) : vendor;
+  const contents = `${token}\n`.repeat(2);
+  expect(allowedPaymentAdapterWords(path, contents, category)).toBe(2);
+  const invoke = vi.mocked(execFileSync);
+  invoke.mockReturnValueOnce(JSON.stringify({ counts: [{ path, counts: { [category]: 1 } }],
+    policy: { rules: [{ id: "tree-brand", terms: [String.fromCharCode(118, 101, 108, 105, 112, 101, 116)] }] } }));
+  invoke.mockReturnValueOnce("[]");
+  try {
+    expect(() => scanSnapshots(new Map([[path, Buffer.from(contents)]])))
+      .toThrow(`neutrality allowance over-subtracted ${category} in ${JSON.stringify(path)}: -1`);
+  } finally { invoke.mockClear(); }
 });
 
 it("allows the reporting zone only on its exact declaration and path", () => {

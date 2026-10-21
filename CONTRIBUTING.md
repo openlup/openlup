@@ -1017,6 +1017,8 @@ The job also rejects baseline increases relative to the PR base/main push's
 previous commit. For a first baseline, or to regenerate from main without
 increasing debt, use `node scripts/public-ci-neutrality.mjs --write-baseline`.
 After removing debt, lower the affected counts; never raise them.
+After all allowances are subtracted, a negative count fails the ratchet with
+the category, quoted path and remainder; allowances never clamp counts to zero.
 
 The named first-party adoption example has a narrow prose allowance: only the
 approved complete lines in the root README, the documentation owner's page and

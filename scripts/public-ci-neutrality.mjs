@@ -307,7 +307,7 @@ export function scanSnapshots(snapshots) {
   for (const row of ui.counts) {
     for (const category of ["ui-13", "ui-14", "ui-5", "ui-8"]) {
       if (row.counts?.[category]) {
-        row.counts[category] = Math.max(0, row.counts[category] - allowedPaymentAdapterWords(row.path, sourceContents.get(row.path) ?? "", category));
+        row.counts[category] -= allowedPaymentAdapterWords(row.path, sourceContents.get(row.path) ?? "", category);
         if (row.counts[category] === 0) delete row.counts[category];
       }
     }
@@ -329,7 +329,10 @@ export function scanSnapshots(snapshots) {
         if (row.counts[category] === 0) delete row.counts[category];
       }
     }
-    for (const [category, count] of Object.entries(row.counts)) if (!categoryPattern.test(category) || !Number.isSafeInteger(count) || count < 0) throw new Error("invalid neutrality scanner count");
+    for (const [category, count] of Object.entries(row.counts)) {
+      if (count < 0) throw new Error(`neutrality allowance over-subtracted ${category} in ${label(row.path)}: ${count}`);
+      if (!categoryPattern.test(category) || !Number.isSafeInteger(count)) throw new Error("invalid neutrality scanner count");
+    }
     if (Object.keys(row.counts).length) rows[hash(row.path)] = { ...rows[hash(row.path)], ...row.counts };
   }
   return { rows: Object.fromEntries(Object.entries(rows).sort()), paths, textFiles: sources.length, binaryFiles: binary.length, binary };
