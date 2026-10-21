@@ -32,6 +32,7 @@ or provider-account certification.
 | `./identity/contracts` | Experimental capability: browser-safe customer auth port, value types and provider parser |
 | `./communications` | Experimental existing public consent/status, newsletter sync, Auth email hook, transport contracts/capture, observation/polling orchestration, standard webhook verification and delivery receipts; host-selected rendering, egress, protocol mapping and control policy |
 | `./communications/contracts` | Pure renderer, block builders, copy-injected commerce/subscription factories and email/newsletter/Auth/intake/receipt types; no Zod, Node or provider runtime imports |
+| `./payments/stripe` | Opt-in Node payment example with an injected structural client, verified observations and purpose-sensitive readback; no SDK dependency or default activation. |
 | `./payments` | Experimental prepared-attempt ordering with injected persistence, execution and failure policy; contracts at `./payments/contracts`. |
 | `./inventory` | Experimental schemas/ports, handlers, native stores, projection, injected forecast and SQL descriptor; `./inventory/contracts` DTOs. |
 | `./catalog` | Experimental neutral catalog schemas, drafts, reads, media source packs and publication ports |
@@ -1059,3 +1060,20 @@ release preparation assembles the shipped CHANGELOG. Follow the
 `@openlup/platform/payments` exports `executePreparedAttemptMechanism`: validate before durable preparation, refuse prepared replay, dispatch once unless the host proves no charge, and retry one immutable local finalization. The host owns keys, fingerprints, nominal error trust and persistence. An unknown execution never authorizes redispatch. The reference facade retains its existing binding.
 
 `./payments/contracts` is type-only: execution/dispatch, transient method handoff, capability overlay, verified money/method evidence, bounded readback/absence, neutral refusals, refund observations and multi-subject conformance fixtures. Receipt time is freshness-only; event identity includes outcome class. Transient authorization and opaque handoffs never enter persisted diagnostics. Capability support is explicit; timeout/truncation is unknown, never exact absence. Refund policy is a type declaration here; runtime policy follows separately. See the [M07 ledger](../../docs/platform/plans/oss-m07-payments-money-truth.md).
+
+### Opt-in payment example
+
+Import `createStripePaymentAdapter`, `type StripePaymentAdapterConfig` and
+`stripePaymentCapabilities` from `@openlup/platform/payments/stripe`. Supply a
+structural client, `webhookSigningSecrets`, explicit `mode`, required
+`supportedCurrencies` (a non-empty list of upper-case three-letter codes) and optionally
+`toleranceSeconds` (default 300) and `clock` (UTC seconds). The host constructs
+and configures the SDK, associates saved methods with customers and confirms
+off-session requests. Interactive methods follow the declared card/wallet offer.
+Importing creates no I/O or default binding. The adapter advertises the host
+currency list; the exported descriptor keeps an empty list.
+Account-specific readiness remains pending TEST verification. Exact absence,
+refund creation and split authorization/capture are unsupported. Cancellation
+is enabled only when the injected client supplies it. See the
+[A2 ledger](../../docs/platform/plans/oss-a2-payment-adapters.md) for the current
+preview boundary and the host's responsibilities.

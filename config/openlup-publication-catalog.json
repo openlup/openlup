@@ -1234,6 +1234,10 @@
       "class": "public-output"
     },
     {
+      "path": "docs/platform/plans/oss-a2-payment-adapters.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/oss-m04-communications-triggers.md",
       "class": "platform-documentation"
     },
@@ -2271,6 +2275,10 @@
     },
     {
       "path": "packages/platform/api/payments-contracts.api.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/api/payments-stripe.api.md",
       "class": "public-output"
     },
     {
@@ -3582,6 +3590,66 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/payments/stripe/classifyDecline.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/payments/stripe/declineFailureHints.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/payments/stripe/donorContracts.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/payments/stripe/executionDecline.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/payments/stripe/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/payments/stripe/intentMapper.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/payments/stripe/methodFacts.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/payments/stripe/paymentFailureEvidence.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/payments/stripe/stripeFailureEvidence.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/payments/stripe/stripeIntentConfirmationEvidence.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/payments/stripe/stripePaymentReconciliationProvider.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/payments/stripe/stripeRefundEvidence.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/payments/stripe/stripeSandboxPaymentExecutionAdapter.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/payments/stripe/stripeWebhookNormalizer.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/payments/stripe/webhookSignature.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/pricing/acquisitionFinancialPolicy.ts",
       "class": "public-output"
     },
@@ -4538,6 +4606,82 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/payments/stripe/a2StripeKeysAndDeclinesCharacterization.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/payments/stripe/a2StripeRefundCharacterization.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/payments/stripe/a2StripeSignatureCharacterization.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/payments/stripe/a2StripeStatusCharacterization.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/payments/stripe/checkoutAbandonmentEvidence.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/payments/stripe/declineFailureHints.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/payments/stripe/dunningConformanceKit.testFixtures.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/payments/stripe/executionDecline.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/payments/stripe/factory.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/payments/stripe/paymentExecutionPortContract.testFixtures.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/payments/stripe/stripeFailureEvidence.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/payments/stripe/stripeIntentConfirmationEvidence.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/payments/stripe/stripePaymentReconciliationProvider.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/payments/stripe/stripeRefundEvidence.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/payments/stripe/stripeSandboxPaymentExecutionAdapter.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/payments/stripe/stripeWebhookNormalizer.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/payments/stripe/testConstants.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/payments/stripe/unattendedCapability.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/payments/stripe/webhookSignature.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/pricing/acquisition.test.ts",
       "class": "public-output"
     },
@@ -5471,6 +5615,10 @@
     },
     {
       "path": "scripts/public-ci-neutrality.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/public-ci-payment-allowance.test.ts",
       "class": "public-output"
     },
     {

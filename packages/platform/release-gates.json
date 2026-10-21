@@ -236,6 +236,40 @@
       "entrypoint": "dist/migrations/index.d.ts",
       "snapshot": "api/migrations.api.md"
     },
+    "./payments": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/packageBoundary.test.ts",
+        "test/payments/preparedAttempt.test.ts"
+      ],
+      "entrypoint": "dist/payments/index.d.ts",
+      "snapshot": "api/payments.api.md"
+    },
+    "./payments/contracts": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/packageBoundary.test.ts",
+        "test/payments/contracts.test.ts"
+      ],
+      "entrypoint": "dist/payments/contracts/index.d.ts",
+      "snapshot": "api/payments-contracts.api.md"
+    },
+    "./payments/stripe": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/payments/stripe/factory.test.ts",
+        "test/payments/stripe/stripeWebhookNormalizer.test.ts",
+        "test/payments/stripe/stripeSandboxPaymentExecutionAdapter.test.ts"
+      ],
+      "entrypoint": "dist/payments/stripe/index.d.ts",
+      "snapshot": "api/payments-stripe.api.md"
+    },
     "./pricing": {
       "role": "capability",
       "maturity": "experimental",
@@ -355,28 +389,6 @@
       ],
       "entrypoint": "dist/shipping/contracts/index.d.ts",
       "snapshot": "api/shipping-contracts.api.md"
-    },
-    "./payments": {
-      "role": "capability",
-      "maturity": "experimental",
-      "compatibilityPolicy": "internal-candidate",
-      "packageSmokeEvidence": [
-        "test/packageBoundary.test.ts",
-        "test/payments/preparedAttempt.test.ts"
-      ],
-      "entrypoint": "dist/payments/index.d.ts",
-      "snapshot": "api/payments.api.md"
-    },
-    "./payments/contracts": {
-      "role": "capability",
-      "maturity": "experimental",
-      "compatibilityPolicy": "internal-candidate",
-      "packageSmokeEvidence": [
-        "test/packageBoundary.test.ts",
-        "test/payments/contracts.test.ts"
-      ],
-      "entrypoint": "dist/payments/contracts/index.d.ts",
-      "snapshot": "api/payments-contracts.api.md"
     }
   },
   "pack": {
@@ -400,10 +412,10 @@
       "./communications/contracts": 11776,
       "./identity/contracts": 4800,
       "./inventory/contracts": 32,
+      "./payments/contracts": 32,
       "./pricing/contracts": 416,
       "./promotions/contracts": 32,
-      "./shipping/contracts": 32,
-      "./payments/contracts": 32
+      "./shipping/contracts": 32
     }
   }
 }
