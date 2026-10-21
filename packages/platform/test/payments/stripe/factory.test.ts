@@ -2,8 +2,15 @@ import { createHmac } from "node:crypto";
 import { describe, expect, it, vi } from "vitest";
 import { createStripePaymentAdapter, stripePaymentCapabilities, type StripePaymentAdapterConfig } from "../../../src/payments/stripe/index.js";
 import { mapStripeIntent, mapSetupIntent } from "../../../src/payments/stripe/intentMapper.js";
+import { projectVerifiedEvidence } from "../../../src/payments/verifiedEvidenceProjection.js";
+import { readMethodLifecycleEvent } from "../../../src/payments/index.js";
 
 const timestamp = 1_800_000_000;
+const methodCases = [
+  ["payment_method.attached", "registered", "method_registered"],
+  ["payment_method.automatically_updated", "updated", "method_updated"],
+  ["payment_method.detached", "revoked", "method_revoked"],
+] as const;
 const request = { attemptRef: "attempt-a", intentRef: "intent-a", fingerprint: "host-fingerprint",
   providerIdempotencyKey: "host-key", money: { amountMinor: 2599, currency: "EUR" }, mode: "test" as const, purpose: "initial" as const };
 function subject(intent = { id: "pi_fixture", status: "requires_action", amount: 2599, currency: "eur", client_secret: "transient_fixture" }) {
@@ -33,14 +40,22 @@ describe("opt-in payment factory", () => {
   });
   it("validates host-declared currencies and refuses unsupported input before provider dispatch", async () => {
     const { adapter, client, config } = subject();
-    const supportedCurrencies = ["EUR", "USD"] as const;
+    const supportedCurrencies = ["EUR", "USD"];
     const configured = createStripePaymentAdapter({ ...config, supportedCurrencies });
-    expect(configured.capabilities.supportedCurrencies).toBe(supportedCurrencies);
+    expect(configured.capabilities.supportedCurrencies).toEqual(supportedCurrencies);
+    expect(configured.capabilities.supportedCurrencies).not.toBe(supportedCurrencies);
+    expect(Object.isFrozen(configured.capabilities.supportedCurrencies)).toBe(true);
     expect(stripePaymentCapabilities.supportedCurrencies).toEqual([]);
     for (const currency of supportedCurrencies) {
       expect(() => configured.attemptPort.validateInput({ ...request, money: { ...request.money, currency } })).not.toThrow();
     }
+    supportedCurrencies.push("GBP");
+    expect(configured.capabilities.supportedCurrencies).toEqual(["EUR", "USD"]);
     expect(() => configured.attemptPort.validateInput({ ...request, money: { ...request.money, currency: "GBP" } })).toThrow("Unsupported payment input");
+    expect(Reflect.set(stripePaymentCapabilities, "supportedCurrencies", ["GBP"])).toBe(false);
+    for (const value of [stripePaymentCapabilities, stripePaymentCapabilities.captureFlows,
+      stripePaymentCapabilities.captureFlows[0], stripePaymentCapabilities.captureFlows[0].methodFamilies,
+      stripePaymentCapabilities.supportedCurrencies]) expect(Object.isFrozen(value)).toBe(true);
     for (const currencies of [undefined, null, "EUR", [], [null], [123], Array<string>(1), ["eur"], ["EU"], ["EURO"], ["EUR\n"], ["123"], ["EUR", "usd"]]) {
       expect(() => createStripePaymentAdapter({ ...config, supportedCurrencies: currencies } as StripePaymentAdapterConfig)).toThrow("Invalid supported currencies");
     }
@@ -134,11 +149,50 @@ describe("opt-in payment factory", () => {
   });
   it("maps method and setup lifecycle separately from money", async () => {
     const { adapter } = subject();
-    for (const [type, outcome] of [["payment_method.attached", "registered"], ["payment_method.automatically_updated", "updated"], ["payment_method.detached", "revoked"],
-      ["setup_intent.succeeded", "registered"], ["setup_intent.setup_failed", "failed"], ["setup_intent.requires_action", "requires-action"]]) {
+    for (const [type, outcome, kind] of methodCases) {
+      for (const created of [timestamp, "2027-01-15T08:00:00.000Z"]) {
+        const occurredAt = typeof created === "number" ? new Date(created * 1000).toISOString() : created;
+        const result = await adapter.verifyPort.verifyAndNormalize(signed(event(type, {
+          id: "pm_fixture", card: { brand: "visa", last4: "4242", exp_month: 6, exp_year: 2027 },
+        }, { created })));
+        expect(result).toMatchObject({ kind: "method", outcome, methodRef: "pm_fixture", providerOccurredAt: occurredAt });
+        if (result.kind !== "method") throw new Error("expected method evidence");
+        expect(result.methodLifecycle).toEqual({ kind, providerKind: "stripe", providerMethodRef: "pm_fixture",
+          providerEventId: "evt_fixture", occurredAt,
+          replacement: { schemeLabel: "visa", lastDigits: "4242", expiresAt: "2027-06-30T23:59:59.999Z" } });
+      }
+    }
+    for (const [type, outcome] of [["setup_intent.succeeded", "registered"], ["setup_intent.setup_failed", "failed"], ["setup_intent.requires_action", "requires-action"]]) {
       expect(await adapter.verifyPort.verifyAndNormalize(signed(event(type, { id: type.startsWith("setup") ? "seti_fixture" : "pm_fixture", payment_method: "pm_fixture" })))).toMatchObject({ kind: "method", outcome, methodRef: "pm_fixture" });
     }
     expect(await adapter.verifyPort.verifyAndNormalize(signed(event("setup_intent.setup_failed")))).toEqual({ kind: "refusal", reason: "unsupported-event" });
+  });
+  it("omits lifecycle without provider time while retaining the method outcome", async () => {
+    const { adapter } = subject();
+    for (const [type, outcome] of methodCases) {
+      for (const created of [undefined, null, "invalid-time"]) {
+        const input = signed(event(type, { id: "pm_fixture" }, { created }));
+        const result = await adapter.verifyPort.verifyAndNormalize(input);
+        expect(result).toMatchObject({ kind: "method", outcome, methodRef: "pm_fixture", providerOccurredAt: null });
+        expect(result).not.toHaveProperty("methodLifecycle");
+        if (result.kind !== "method") throw new Error("expected method evidence");
+        expect(readMethodLifecycleEvent(projectVerifiedEvidence(result, input, "require-evidence"))).toBeNull();
+        expect(await adapter.verifyPort.verifyAndNormalize({ ...input, receivedAt: "2026-10-22T00:00:00Z" })).toEqual(result);
+      }
+    }
+  });
+  it("preserves method lifecycle through the M07 projection and lifecycle reader", async () => {
+    const { adapter } = subject();
+    for (const [type, , kind] of methodCases) {
+      const input = signed(event(type, { id: "pm_fixture", card: { brand: "visa", last4: "4242", exp_month: 6, exp_year: 2027 } }));
+      const result = await adapter.verifyPort.verifyAndNormalize(input);
+      if (result.kind !== "method") throw new Error("expected method evidence");
+      const projected = projectVerifiedEvidence(result, input, "require-evidence");
+      expect(projected.occurredAt).toBe(input.receivedAt);
+      expect(readMethodLifecycleEvent(projected)).toEqual({ kind, providerKind: "stripe", providerMethodRef: "pm_fixture",
+        providerEventId: "evt_fixture", occurredAt: new Date(timestamp * 1000).toISOString(),
+        replacement: { schemeLabel: "visa", lastDigits: "4242", expiresAt: "2027-06-30T23:59:59.999Z" } });
+    }
   });
   it("makes replay fingerprints independent of receipt time and never invents provider occurrence time", async () => {
     const { adapter } = subject(); const input = signed(event("payment_intent.succeeded", {}, { created: undefined }));

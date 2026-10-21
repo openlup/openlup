@@ -44,9 +44,11 @@ refusals and never claim pre-dispatch absence.
 
 Verified events retain their event ID and provider time (or null), with a stable
 fingerprint independent of receipt time. Method lifecycle facts stay distinct
-from money. Missing refund evidence is refused; valid `amount_refunded` is a
+from money and retain provider time and replacement facts. When provider time
+is absent, the method outcome remains but the lifecycle field is omitted.
+Missing refund evidence is refused; valid `amount_refunded` is a
 cumulative snapshot with original money and a stable operation ID. Disputes
-retain their distinct money outcome and original payment identity. Readback preserves
+are emitted as the `disputed` money outcome with original payment identity and money. Readback preserves
 `active_checkout` and `recovery` semantics, rejects mismatched identity/money,
 and keeps uncertainty unknown. Close requires injected cancellation; incomplete
 metadata search never enables exact absence. Refund creation and a split
@@ -61,7 +63,9 @@ participates only in freshness. Transaction identities combine payment reference
 and outcome; method identities combine event/alias and lifecycle outcome. The
 host deduplicates identity plus stable fingerprint. Chargeback becomes an
 explicit full reversal with original money and operation ID. Missing reversal
-evidence refuses. Unknown alias lifecycle events refuse `unsupported-event`.
+evidence refuses. Alias method evidence carries the donor lifecycle through M07
+projection only when signed provider time is present; without it the lifecycle
+field is omitted. Unknown alias lifecycle events refuse `unsupported-event`.
 Readback retains purpose, checks exact transaction identity/configured money,
 and leaves refunded/chargeback unknown for manual review. Only Model O mandates
 can charge unattended. Exact absence, close, refund creation and separate

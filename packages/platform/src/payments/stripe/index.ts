@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { classifyPaymentFailure, isPaymentRetryAdviceCode } from "@openlup/core/payment";
+import { classifyPaymentFailure, isPaymentRetryAdviceCode, type PaymentMethodLifecycleEvent } from "@openlup/core/payment";
 import type {
   PaymentAdapter, PaymentAdapterCapabilities, PaymentAttemptPort, PaymentReadbackEnvelope,
   PaymentReadbackPort, PaymentRefusalEnvelope, PaymentVerifyNormalizePort, TransientSecret,
@@ -23,21 +23,21 @@ export interface StripePaymentAdapterConfig {
 }
 
 /** Observed protocol capabilities; account activation remains host-owned. */
-export const stripePaymentCapabilities: PaymentAdapterCapabilities = {
+export const stripePaymentCapabilities: Readonly<PaymentAdapterCapabilities> = Object.freeze<PaymentAdapterCapabilities>({
   providerKind: "stripe",
-  captureFlows: [{ kind: "card_payment", handoff: "client-confirmed", methodFamilies: ["card", "wallet"] }],
+  captureFlows: Object.freeze([Object.freeze({ kind: "card_payment", handoff: "client-confirmed", methodFamilies: Object.freeze(["card", "wallet"] as const) })]),
   requiresStoredMandateEvidence: false,
   assessMandate: () => ({ chargeable: true }),
   unattendedChargeFlow: "off_session_payment",
-  payerContext: { requiresPayerBlock: false, customerRefFallsBackToContactEmail: false },
-  methodHealth: { requiresCustomerRef: true, requiredMethodKind: null, requiresPayerContact: false },
-  terminalOutcomeReporting: { kind: "status_field", silenceBecomesSuspectAfterMinutes: 360 },
+  payerContext: Object.freeze({ requiresPayerBlock: false, customerRefFallsBackToContactEmail: false }),
+  methodHealth: Object.freeze({ requiresCustomerRef: true, requiredMethodKind: null, requiresPayerContact: false }),
+  terminalOutcomeReporting: Object.freeze({ kind: "status_field", silenceBecomesSuspectAfterMinutes: 360 }),
   mandateUpsertIsSubscriptionScoped: false,
   /** declared by the host through the adapter config */
-  supportedCurrencies: [],
+  supportedCurrencies: Object.freeze([]),
   unattended: "supported", readback: "supported", close: "unsupported", exactAbsence: "unsupported",
   refundObservation: "supported", refundCreate: "unsupported", authorizationCaptureSplit: "unsupported",
-};
+});
 
 type VerificationResult = Awaited<ReturnType<PaymentVerifyNormalizePort["verifyAndNormalize"]>>;
 const refusal = (reason: Extract<VerificationResult, { kind: "refusal" }>["reason"]): VerificationResult => ({ kind: "refusal", reason });
@@ -45,11 +45,12 @@ const refusal = (reason: Extract<VerificationResult, { kind: "refusal" }>["reaso
 /** Explicit construction is the only activation point; importing performs no I/O. */
 export function createStripePaymentAdapter(config: StripePaymentAdapterConfig): PaymentAdapter {
   if (config.mode !== "live" && config.mode !== "test") throw new Error("Invalid payment mode");
-  const supportedCurrencies = config.supportedCurrencies;
-  if (!Array.isArray(supportedCurrencies) || supportedCurrencies.length === 0
-    || ![...supportedCurrencies].every(currency => typeof currency === "string" && currency.length === 3 && /^[A-Z]{3}$/u.test(currency))) {
+  const declaredCurrencies = config.supportedCurrencies;
+  if (!Array.isArray(declaredCurrencies) || declaredCurrencies.length === 0
+    || ![...declaredCurrencies].every(currency => typeof currency === "string" && currency.length === 3 && /^[A-Z]{3}$/u.test(currency))) {
     throw new Error("Invalid supported currencies");
   }
+  const supportedCurrencies = Object.freeze([...declaredCurrencies]);
   const tolerance = config.toleranceSeconds ?? 300;
   if (!Number.isFinite(tolerance) || tolerance < 0) throw new Error("Invalid signature tolerance");
   const secrets = [...config.webhookSigningSecrets];
@@ -196,7 +197,7 @@ function mapVerifiedStripeEvent(raw: Record<string, unknown>): VerificationResul
     providerOccurredAt: occurred };
   let result: Omit<VerifiedMethodEvidence, "fingerprint"> | Omit<VerifiedPaymentEvidence, "fingerprint">;
   if (normalized.methodLifecycle || normalized.eventType.startsWith("setup.")) {
-    const lifecycle = normalized.methodLifecycle;
+    const lifecycle: PaymentMethodLifecycleEvent | null | undefined = normalized.methodLifecycle;
     const method = lifecycle?.providerMethodRef ?? (typeof object.payment_method === "string" ? object.payment_method
       : object.payment_method && typeof object.payment_method === "object" ? (object.payment_method as { id?: unknown }).id : null);
     if (typeof method !== "string" || !method) return refusal("unsupported-event");
@@ -207,7 +208,9 @@ function mapVerifiedStripeEvent(raw: Record<string, unknown>): VerificationResul
     const outcome = outcomes[lifecycle?.kind ?? normalized.eventType];
     if (!outcome) return refusal("unsupported-event");
     result = { ...identity, kind: "method", outcome, methodRef: method,
-      setupRef: typeof raw.type === "string" && raw.type.startsWith("setup_intent.") ? normalized.providerPaymentId : null, intentRef };
+      setupRef: typeof raw.type === "string" && raw.type.startsWith("setup_intent.") ? normalized.providerPaymentId : null, intentRef,
+      // Missing provider time must not turn the donor's epoch fallback into a lifecycle fact.
+      ...(lifecycle && occurred !== null ? { methodLifecycle: lifecycle } : {}) };
   } else {
     const outcome = mapStripeOutcome(normalized.eventType);
     if (!outcome) return refusal("unsupported-event");

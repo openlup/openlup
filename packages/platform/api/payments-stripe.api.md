@@ -1045,7 +1045,7 @@ export interface StripePaymentAdapterConfig {
     clock?: () => number;
 }
 /** Observed protocol capabilities; account activation remains host-owned. */
-export declare const stripePaymentCapabilities: PaymentAdapterCapabilities;
+export declare const stripePaymentCapabilities: Readonly<PaymentAdapterCapabilities>;
 /** Explicit construction is the only activation point; importing performs no I/O. */
 export declare function createStripePaymentAdapter(config: StripePaymentAdapterConfig): PaymentAdapter;
 ```
