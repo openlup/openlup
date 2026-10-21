@@ -198,3 +198,25 @@ describe("adapter conformance suites", () => {
     expect(proof.cleanupResidualRows).toBe(0); expect(proof.final.aggregates.lateSuccess.paymentStatus).toBe("succeeded");
   });
 });
+
+it("accepts an empty optional payer name and refuses JSON-escaped payer leaks", async () => {
+  const f = subject("provider-a");
+  f.executionInput.payer = { email: "payer@example.invalid", name: "" };
+  await expect(runPaymentAdapterConformance([f])).resolves.toBeDefined();
+  f.executionInput.payer = { email: 'payer"quoted@example.invalid', name: "Line\nName" };
+  await expect(runPaymentAdapterConformance([f])).resolves.toBeDefined();
+  for (const value of Object.values(f.executionInput.payer)) {
+    f.adapter.attemptPort.execute = async () => ({ outcome: { kind: "attempt", status: "processing" },
+      dispatch: { kind: "unknown" }, diagnostics: {}, handoff: { kind: "redirect", url: value } });
+    await expect(runPaymentAdapterConformance([f])).rejects.toThrow("execution payer redaction");
+    f.adapter.attemptPort.execute = async () => ({ outcome: { kind: "attempt", status: "processing" }, dispatch: { kind: "unknown" }, diagnostics: {} });
+    const evidence = f.verification[0].expected;
+    if (evidence.kind !== "money") throw new Error("fixture money required");
+    evidence.providerAuditPayload = { nested: { payer: value } };
+    await expect(runPaymentAdapterConformance([f])).rejects.toThrow("audit payload secret redaction");
+    delete evidence.providerAuditPayload;
+    f.adapter.readbackPort.readPayment = async () => ({ ...f.readbackInput, kind: "unknown", reason: "timeout", unexpected: value });
+    await expect(runPaymentAdapterConformance([f])).rejects.toThrow("readback secret redaction");
+    f.adapter.readbackPort.readPayment = async () => ({ ...f.readbackInput, kind: "unknown", reason: "timeout" });
+  }
+});
