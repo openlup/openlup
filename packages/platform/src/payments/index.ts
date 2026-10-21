@@ -13,3 +13,7 @@ export { runPaymentAdapterConformance } from "./adapterConformance.js";
 export { createPostgresPaymentTruthPort } from "./postgresPaymentTruth.js";
 export { PAYMENT_MIGRATIONS } from "./sql.js";
 export { paymentSchemaDescriptor } from "./schemaCapabilities.js";
+
+export { createCheckoutActivePaymentActionResolver } from "./checkoutActivePaymentActionResolver.js";
+export { createCheckoutRecoveryPaymentResolver } from "./checkoutRecoveryPaymentResolver.js";
+export { createCommercePaymentVerifyHandler } from "./paymentVerifyNowHandler.js";

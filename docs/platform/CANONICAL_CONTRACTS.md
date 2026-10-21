@@ -147,6 +147,47 @@ evidence, duplicate delivery, out-of-order delivery, and retry/replay. Reference
 fixtures demonstrate these behaviours without live provider access; they do not
 prove a provider integration, release, or support tier.
 
+### Adapter classes and example templates
+
+An adapter belongs to one class and implements that class's neutral ports. Each
+shipped example below is the template for an adapter for another vendor in the
+same class; the rules above apply to every class.
+
+A communications (M04) mail adapter returns an `EmailTransport` from
+`@openlup/platform/communications`, built with `createGuardedEmailTransport`.
+Marketing types come from `./communications/contracts`: `MarketingSyncProvider`
+covers profile sync, consent readback and erasure, and `ConsentPushPort` covers
+consent push. The marketing example also implements
+`MarketingAutomationProviderPort` and a refusal-only `NewsletterSyncProviderPort`.
+See the [communications import](../../packages/platform/README.md#communications-import)
+and the [marketing adapter](#opt-in-singleton-marketing-adapter).
+
+A payments (M07) adapter implements `PaymentAdapter` and declares
+`PaymentAdapterCapabilities` from `./payments/contracts`. Prove it with
+`runPaymentAdapterConformance` from `@openlup/platform/payments`, using
+`PaymentAdapterConformanceSubject` from `./payments/contracts` and verification
+fixtures. See the [opt-in payment example](#opt-in-payment-example).
+
+Fulfillment neutral ports are planned (M08); there is no API to implement yet. A
+fulfillment example adapter is planned for round A3. An adapter for another 3PL,
+marketplace fulfillment service or parcel network would then follow that example.
+
+| Class | Shipped example subpaths |
+| --- | --- |
+| Communications | `@openlup/platform/communications/resend`, `@openlup/platform/communications/klaviyo` |
+| Payments | `@openlup/platform/payments/stripe`, `@openlup/platform/payments/tpay` |
+
+The examples are default-off and opt-in: the host selects an adapter for each
+port it needs, and default wiring includes none. To write another vendor's
+adapter, implement the class port and declare capabilities honestly: an
+unsupported capability is an explicit refusal, never a silent no-op. Pass the
+payments conformance runner or, for communications, extend the class's
+[tests](../../packages/platform/test/communications/), including refusal
+behaviour, without live provider access. Keep secrets transient and
+host-supplied at call time, never in source, fixtures or logs. Keep the adapter
+in your own source or propose it upstream through
+[contribute existing adopter code, then refactor](../../CONTRIBUTING.md#contribute-existing-adopter-code-then-refactor).
+
 ### Opt-in Node protocol adapter
 
 `communications/resend` is an experimental Node-only subpath.

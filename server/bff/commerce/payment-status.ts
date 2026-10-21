@@ -1,3 +1,6 @@
+import { PSP_PROVIDER_KINDS } from "../../../src/domains/payment/pspIntegrationPlan.js";
+import type { PaymentRecoveryAction } from "@openlup/platform/payments/contracts";
+import type { ProviderRecoveryAction } from "../../domains/payment/checkoutRecoveryPaymentResolver.js";
 import { createSupabasePaymentRecoveryGuidancePort, type PaymentRecoveryGuidanceClient } from "../../adapters/supabase/commerce/paymentRecoveryGuidance.js";
 import { createSupabaseCheckoutRecoveryTokenPort, type CheckoutRecoveryTokenSupabaseClient } from "../../adapters/supabase/commerce/checkoutRecoveryToken.js";
 import { createPaymentRecoveryEvidenceNormalizer } from "../../adapters/paymentRecoveryGuidance.js";
@@ -17,8 +20,7 @@ import {
 } from "../../domains/commerce/checkoutPaymentContinuationCredential.js";
 import {
   createCheckoutActivePaymentActionResolver,
-  projectCheckoutActionReadProviders,
-} from "../../domains/payment/checkoutActivePaymentActionResolver.js";
+} from "@openlup/platform/payments";
 import {
   createSupabasePaymentVerifyNowPort as createPaymentReadPort,
   type PaymentVerifySupabaseClient as PaymentReadClient,
@@ -56,14 +58,37 @@ function handler(req: VercelRequest, res: VercelResponse): Promise<void> {
     const codec = createCheckoutPaymentContinuationCodec(
       process.env.COMMERCE_CHECKOUT_RESUME_TOKEN_SECRET,
     );
-    const activeActionResolver = codec
+    const registry = codec ? createPaymentProviderReadbackRegistry(process.env) : {};
+    const neutralResolver = codec
       ? createCheckoutActivePaymentActionResolver({
           readPort: createPaymentReadPort(client as unknown as PaymentReadClient),
-          providers: projectCheckoutActionReadProviders(
-            createPaymentProviderReadbackRegistry(process.env),
-          ),
+          // Reference compatibility: preserve the donor inventory exactly.
+          railHandoffKinds: (rail) => !PSP_PROVIDER_KINDS.some((known) => known === rail)
+            ? [] : rail === PSP_PROVIDER_KINDS[0] ? ["client-confirmed"] : ["redirect"],
+          providers: Object.fromEntries(PSP_PROVIDER_KINDS.flatMap((rail) => {
+            const adapter = registry[rail];
+            return adapter ? [[rail, {
+              resolvePaymentReference: adapter.resolvePaymentReference.bind(adapter),
+              async readRecoveryPayment(input: Parameters<typeof adapter.readRecoveryPayment>[0]) {
+                const reading = await adapter.readRecoveryPayment(input);
+                const action = reading.clientAction;
+                const clientAction: PaymentRecoveryAction | null = !action ? null
+                  : action.kind === "redirect" ? { ...action, provider: rail }
+                  : { kind: "client-confirmed", provider: action.provider,
+                    payload: action.clientSecret as Extract<PaymentRecoveryAction, { kind: "client-confirmed" }>["payload"] };
+                return { ...reading, clientAction };
+              },
+            }]] : [];
+          })),
         })
       : undefined;
+    const activeActionResolver = neutralResolver && {
+      async readActiveAction(authority: Parameters<typeof neutralResolver.readActiveAction>[0]): Promise<ProviderRecoveryAction | null> {
+        const action = await neutralResolver.readActiveAction(authority);
+        return !action ? null : action.kind === "redirect" ? { kind: "redirect", url: action.url }
+          : { kind: "provider_embedded", provider: PSP_PROVIDER_KINDS[0], clientSecret: action.payload };
+      },
+    };
     return createCommercePaymentStatusHandler({
       statusPort: createSupabasePaymentStatusPort(client as unknown as PaymentStatusSupabaseClient),
       resolveFailureDisplay: displayReasonFor,

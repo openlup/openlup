@@ -160,6 +160,25 @@ sender/recipient envelope and legacy identifier projection. Signature verificati
 content rendering, administrative control, send and persistence keep their
 existing order. The endpoint adds no policy fallback or direct-delivery mode.
 
+
+### Payment repair host bindings
+
+| Surface | Host binding and authority |
+| --- | --- |
+| Buyer verify | The existing verify BFF supplies stored read/apply ports, provider registry, feature gate and observed responder to the package handler. Stored ownership precedes provider reads; browser outcome/attempt claims are ignored. |
+| Buyer status/action | The status BFF retains the stored response schema and continuation credential. It projects the existing action carrier and supplies the existing rail capability mapping. Unknown rails refuse; the package rechecks the canonical attempt after provider readback. |
+| Method collection | The setup BFF keeps authentication, token ownership, case lookup, callback and metadata. Its neutral method port exposes only ready transient handoff or unsupported; collection alone never repairs or charges a cycle. |
+| Reference repair view | Follows in a separate change that settles its customer-visible UI boundary. The reference BFF status, verify and method-setup routes consume the package now; verify responses do not prove payment, and native method setup is explicitly unsupported without host collection/confirmation. No default profile or route is mounted. |
+
+Method evidence registration data contains neutral provider references, method
+kind and status. The host's `resolveMethodOwner` supplies the client and optional
+subscription identity before projection; untrusted adapter ownership fields are
+ignored. Without that resolver no reusable registration carrier is produced.
+The native schema descriptor still refuses method setup. The reference ingress
+clock switch, remaining host reader tests and runtime admission belong to the
+later binding phase; this repair composition changes none of those boundaries.
+
+
 ## Self-host boundary
 
 The platform target is portable PostgreSQL with a reproducible baseline and

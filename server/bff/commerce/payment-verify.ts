@@ -1,8 +1,8 @@
 import { withObservedRoute } from "../../_lib/observability/route.js";
 import { providerPaymentsEnabled } from "../../_lib/config/featureFlags.js";
 import type { VercelRequest, VercelResponse } from "../../_lib/types/vercel.js";
-import { sendBffError } from "../../_lib/bff/response.js";
-import { createCommercePaymentVerifyHandler } from "../../domains/payment/paymentVerifyNowHandler.js";
+import { bffResponder, sendBffError } from "../../_lib/bff/response.js";
+import { createCommercePaymentVerifyHandler } from "@openlup/platform/payments";
 import {
   createSupabasePaymentVerifyNowPort,
   type PaymentVerifySupabaseClient,
@@ -23,6 +23,7 @@ function handler(req: VercelRequest, res: VercelResponse): Promise<void> {
       readPort: { async readVerifiableAttempt() { return null; } },
       applyPort: { applyTerminalResult() { throw new Error("payments_disabled"); } },
       providers: {},
+      responder: bffResponder,
       mutationsEnabled: providerPaymentsEnabled,
     })(req, res);
   }
@@ -46,6 +47,7 @@ function handler(req: VercelRequest, res: VercelResponse): Promise<void> {
         client as unknown as Parameters<typeof createSupabasePaymentProviderReconciliationPort>[0],
       ),
       providers,
+      responder: bffResponder,
       mutationsEnabled: providerPaymentsEnabled,
     })(req, res),
   );
