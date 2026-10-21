@@ -23,6 +23,12 @@ function fixture() {
   writeFileSync(join(consumer, "package.json"), '{"type":"module"}');
   packageFixture(consumer, "@openlup/core", { ".": "./index.js" });
   packageFixture(consumer, "@openlup/platform", Object.fromEntries([...NON_ADAPTER_ENTRIES, ...ADAPTER_ENTRIES].map(name => [`./${name}`, { types: "./index.d.ts", default: "./index.js" }])));
+  // The typed consumer registers the payments factory with the composer.
+  writeFileSync(join(consumer, "node_modules/@openlup/platform/index.d.ts"), [
+    "export interface Synthetic { value: string }",
+    "export declare function createPaymentServices(): { run<T>(work: (port: { kind: \"truth\" }) => Promise<T>): Promise<T> } | null;",
+    "export declare function createBundleComposer(binders: { blob: () => null; payments?: () => { run<T>(work: (port: unknown) => Promise<T>): Promise<T> } | null }): unknown;",
+  ].join("\n") + "\n");
   packageFixture(consumer, "zod", { ".": "./index.js" });
   return consumer;
 }
