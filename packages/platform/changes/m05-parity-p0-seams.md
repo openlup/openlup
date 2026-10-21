@@ -1,3 +1,0 @@
-Add opt-in shipping-promise consent, post-discount threshold shipping and acquisition orchestration to the experimental pricing, promotions and shipping entries. Omitted bindings preserve incumbent quotes, read order, refusals and acceptance-token bytes. Browser additions are type-only.
-
-Migration: Hosts selecting shipping promises must forward `shippingTerms` through both acceptance callbacks and use a context schema that preserves the selected terms. Bind `resolveQuoteShippingPromotions` to the promotions factory to select the bounded two-pass threshold path; financial policy and acquisition capability remain host supplied. Existing bindings need no change. These additive APIs require a minor set; this fragment prepares no version or activation.
