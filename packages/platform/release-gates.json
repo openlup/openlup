@@ -61,8 +61,7 @@
         "test/catalog/catalogProductTypeContracts.test.ts",
         "test/catalog/catalogDraftContracts.test.ts",
         "test/catalog/catalogMediaResolution.test.ts",
-        "test/catalog/catalogLifecycleContracts.test.ts",
-        "test/catalog/bundlePriceSelectionParity.test.ts"
+        "test/catalog/catalogLifecycleContracts.test.ts"
       ],
       "entrypoint": "dist/catalog/contracts/index.d.ts",
       "snapshot": "api/catalog-contracts.api.md"

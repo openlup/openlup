@@ -118,7 +118,7 @@ export interface GetBundleInput {
    * only currency an operator has actually chosen for it.
    */
   currency?: string;
-  /** Narrow the target price whose list is selected; omitted means any mode. */
+  /** Narrow the target price whose list is selected; omitted means any mode (the opt-in effective store defaults to one_time). */
   mode?: string;
   regionCode?: string;
   atTime?: string;

@@ -224,7 +224,8 @@ The composition entry adds `createCatalogContribution` and its structural input
 interface. It describes actual catalog, pricing and promotions callables under
 those existing module identities, with no environment discovery, client creation
 or registration. It imports only readiness types: composition gains no catalog
-edge, and catalog retains its existing type-only data edge. Package boundary
+edge, and catalog keeps its type-only data edge plus one pricing value edge for
+the effective-window selector. Package boundary
 checks pin those imports and peer-free composition declarations. The packed
 consumer exercises both new stores and the descriptor without optional peers;
 its synthetic executor proves named refusal, not durable storage behavior.
