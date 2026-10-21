@@ -71,7 +71,7 @@ immutable release; see the [install support policy](../../.github/INSTALL_SUPPOR
 
 The opt-in payment readback parity witness is catalogued as a public test output.
 It runs the contributed provider interpretation with the package-local donor host
-money check; the [A2 ledger](plans/oss-a2-payment-adapters.md#o-p2-tpay) owns its
+money check; the [A2 ledger](plans/oss-a2-payment-adapters.md#case-ledger-coordinator-budget-ruling-a) owns its
 parameterized case accounting, and the [payment contract](CANONICAL_CONTRACTS.md#opt-in-payment-example)
 owns readback behavior. The catalogue row makes that witness available in the
 public tree without adding a package export or claiming provider activation.
