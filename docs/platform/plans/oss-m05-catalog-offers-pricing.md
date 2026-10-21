@@ -1073,3 +1073,30 @@ Pre-bump projection (not clean-commit release evidence):
 No growth bullet is required: package-size-policy uses candidate packed bytes × 100 > baseline packed bytes × 130, strictly above 30%; all three projections are below it. Platform has 7,764 B root-docs headroom under the approved cap (428 B above the old cap). Recompute on actual post-bump artifacts. Figures were filled after checks; final clean-commit producer and installed-consumer evidence remain supervisor work.
 
 Self-retro: stale Bundle-3 wording conflated general native inventory reads with native new-purchase stock semantics → retain the P5a installed-read proof and name the specific unsupported operation; exact-body consolidation plus the five-fragment claim checklist avoids dropping distinct release claims without adding a release mechanism.
+
+### C4 — 0.19.0 publication readback
+
+S1 merged as `fd1513ba07dd99abdad940d7b8773b40c923fc77` (#266); its tree equals
+the reviewed and witnessed tree `f31e37a7`. One authorized dispatch of
+`publish-package.yml` (package `all`, version `0.19.0`, target that commit, the
+reviewed release body) ran as run 39573863084; the owner approved the protected
+`release` environment and all three releases completed on 2026-10-21.
+
+C4 readback on 2026-10-21, against the published packages: **PASS, 4/4**.
+
+- Registry integrity: each downloaded tarball matches its `dist.integrity` and
+  `dist.shasum` — core `9a50bfe6d4853f55ffd576c191a01c127e55e7f8`, outbox
+  `3545c73a5be1548229999bcb8d2608a4a72413e6`, platform
+  `57e35b623d38e36aa32585895492613bfa1e3a16`.
+- Content equivalence: the extracted published trees are identical to the
+  tarballs witnessed from the reviewed head (core 209, outbox 41, platform
+  1,196 files); compressed bytes differ after the workflow's repack.
+- Provenance: SLSA v1 statements bind each tarball to `publish-packages.yml`,
+  the tag `openlup-{core,outbox,platform}-v0.19.0` and `gitCommit`
+  `fd1513ba07dd99abdad940d7b8773b40c923fc77`; each remote tag dereferences to
+  that commit.
+- `npm audit signatures`: 4 verified registry signatures and 4 verified
+  attestations; `npm audit` reports 0 vulnerabilities.
+
+The M05 parity release is complete; the adopter's C5b starts from these
+published versions.
