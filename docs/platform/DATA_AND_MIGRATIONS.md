@@ -339,6 +339,29 @@ late-delivery journey or a stable upgrade guarantee.
 
 ## Compatibility lifecycle
 
+Native shipping appends the seed-only forward
+[`20261021120000_shipping_flat_rate_seed.sql`](../../db/platform/migrations/20261021120000_shipping_flat_rate_seed.sql)
+at position 71. It inserts `shipping_flat_minor = 0` only when absent, preserving
+an existing rate and every ACL and role membership. The named role-free shipping
+lane owns fixed-key read/update statements; no service role or grant is added.
+Supply the native rate port and a passing Core required-schema readiness report
+for this migration before enabling the binding; an unmigrated schema keeps
+`shipping_native_flat_rate_save_unsupported`. A missing setting row refuses with
+`shipping_native_flat_rate_row_required`, never a successful zero-row update.
+
+Native audit is unsupported and remains best effort: the incumbent handler
+swallows `shipping_native_flat_rate_audit_unsupported` after a successful save.
+The bundle principal ledger only accepts bundle actions; no generic portable
+audit routine can record `shipping_rate_change`. No durable shipping-rate audit
+is claimed. Managed rate authority remains pending and unchanged.
+
+Old application code ignores the seeded row. Older migration runners refuse the
+extended ledger, as with every forward; an application rollback does not reverse
+the migration or establish older-runner startup compatibility.
+[Native shipping conformance](../../tests/postgres/shippingNative.test.ts) covers
+fresh install, exact position-70 upgrade/replay, readiness, denied browser/PUBLIC
+access, whole-catalog ACL/membership equality and missing-row/audit failures.
+
 C-compose adds no SQL or manifest entry. Its direct schema requirement names the
 full position-70 prerequisite, consent authority, existing outbox/receipt/control
 objects and all five native tables/used columns. The host independently observes

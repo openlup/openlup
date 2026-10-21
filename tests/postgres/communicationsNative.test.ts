@@ -14,7 +14,7 @@ const hash = (value: string) => createHash("sha256").update(value).digest("hex")
 const A="b3000000-0000-4000-8000-000000000001", C="b3000000-0000-4000-8000-000000000002", S="b3000000-0000-4000-8000-000000000003";
 const email="recipient@example.invalid", at="2026-10-19T10:00:00.000Z", now="2026-10-19T12:00:00.000Z";
 const containers: PostgresContainer[]=[], pools: Pool[]=[], stores: { close(): Promise<void> }[]=[];
-let fresh: Pool, upgrade: Pool, prefix: string;
+let fresh: Pool, upgrade: Pool, prefix: string, nativeIndex: number;
 const nativeFile="db/platform/migrations/20261019200000_communications_native_operations.sql";
 const env=(index=0)=>({connectionString:containers[index].connectionString});
 const runner=(pool: Pool,root=process.cwd())=>createPostgresMigrationRunner({connectionString:"injected"},{root,poolFactory:()=>pool});
@@ -36,9 +36,10 @@ let before:Record<string,unknown>;
 beforeAll(async()=>{
  if(!await dockerAvailable())throw new Error("B3 requires real PostgreSQL");
  const current=JSON.parse(readFileSync("config/platform-migration-manifest.json","utf8"));
- expect(current.forward.at(-1).file).toBe(nativeFile);expect(current.forward).toHaveLength(70);
+ nativeIndex=current.forward.findIndex((entry:{file:string})=>entry.file===nativeFile);
+ expect(nativeIndex).toBeGreaterThanOrEqual(0);
  prefix=mkdtempSync(join(tmpdir(),"b3-prefix-"));
- const previous={...current,forward:current.forward.slice(0,-1),objectInventorySha256:"f04ba91040e109ca7c79ddd73d6f31008dc735c93cedd1d536a2c006971bac65"};
+ const previous={...current,forward:current.forward.slice(0,nativeIndex),objectInventorySha256:"f04ba91040e109ca7c79ddd73d6f31008dc735c93cedd1d536a2c006971bac65"};
  for(const entry of [previous.baseline,...previous.forward]){const file=join(prefix,entry.file);mkdirSync(dirname(file),{recursive:true});writeFileSync(file,readFileSync(entry.file));}
  mkdirSync(join(prefix,"config"));writeFileSync(join(prefix,"config/platform-migration-manifest.json"),JSON.stringify(previous));
  for(const name of ["fresh","upgrade"]){const container=await runPostgresContainer({name:`communications-native-${name}-${process.pid}`,password:"synthetic-conformance"});containers.push(container);if(!await waitForPostgresTcpReady(container.connectionString))throw new Error("B3 PG unavailable");pools.push(new Pool({connectionString:container.connectionString}));}
@@ -62,7 +63,8 @@ beforeAll(async()=>{
 afterAll(async()=>{await Promise.all(stores.map(s=>s.close()));await Promise.all(pools.map(p=>p.end()));await Promise.all(containers.map(c=>c.remove()));if(prefix)rmSync(prefix,{recursive:true,force:true});});
 it("upgrades the real position-69 prefix, preserves representative state and replays without effects",async()=>{
  const queued=(await upgrade.query("SELECT * FROM public.outbox_events")).rows,permissions=(await upgrade.query("SELECT * FROM public.communication_recipient_consents")).rows;
- expect((await runner(upgrade).apply()).applied).toEqual([nativeFile]);
+ const manifest=JSON.parse(readFileSync("config/platform-migration-manifest.json","utf8"));
+ expect((await runner(upgrade).apply()).applied).toEqual(manifest.forward.slice(nativeIndex).map((entry:{file:string})=>entry.file));
  expect(await snapshot(upgrade)).toEqual(before);
  expect((await upgrade.query("SELECT * FROM public.outbox_events")).rows).toEqual(queued);
  expect((await upgrade.query("SELECT * FROM public.communication_recipient_consents")).rows).toEqual(permissions);
@@ -70,7 +72,6 @@ it("upgrades the real position-69 prefix, preserves representative state and rep
  expect(await delivery("synthetic",1).findFrozenSends({now,graceMinutes:0,limit:100})).toEqual([]);
  for(const pool of pools)expect((await runner(pool).apply()).applied).toEqual([]);
  const ledger=(await fresh.query("SELECT catalog_path,sha256,position FROM public.platform_schema_migrations ORDER BY position")).rows;
- const manifest=JSON.parse(readFileSync("config/platform-migration-manifest.json","utf8"));
  expect(ledger).toEqual([manifest.baseline,...manifest.forward].map((entry:{file:string;sha256:string},position:number)=>({catalog_path:entry.file,sha256:entry.sha256,position})));
 });
 it("refuses ledger tamper and restores the original identity",async()=>{

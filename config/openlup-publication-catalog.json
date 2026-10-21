@@ -1110,6 +1110,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261021120000_shipping_flat_rate_seed.sql",
+      "class": "public-output"
+    },
+    {
       "path": "deploy/oci/public-reference-compose.yml",
       "class": "public-output"
     },
@@ -2395,6 +2399,10 @@
     },
     {
       "path": "packages/platform/sql/20261019200000_communications_native_operations.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261021120000_shipping_flat_rate_seed.sql",
       "class": "public-output"
     },
     {
@@ -21627,6 +21635,10 @@
     },
     {
       "path": "tests/postgres/runOidcIdentityConformance.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/shippingNative.test.ts",
       "class": "public-output"
     },
     {

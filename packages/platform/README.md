@@ -37,7 +37,7 @@ or provider-account certification.
 | `./pricing/contracts` | Dependency-free authority, money, quote and offer DTOs and version constants |
 | `./promotions` | Experimental promotion application, admin handlers, native read/sweep, SQL projections and acceptance |
 | `./promotions/contracts` | Dependency-free preview and admin DTOs |
-| `./shipping` | Experimental delivery ports, injected-schema handlers, summary and evidence |
+| `./shipping` | Experimental delivery ports, injected-schema handlers, summary/evidence; native flat-rate port + Core schema readiness |
 | `./shipping/contracts` | Type-only delivery, pickup-point, summary and evidence DTOs |
 
 ## Shipping

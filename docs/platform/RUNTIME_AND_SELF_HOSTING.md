@@ -6,8 +6,10 @@ Status: development-preview contract. No recipe in this document is a supported 
 
 The [M06 shipping binding](../../server/runtime/public-reference/m06ShippingBinding.ts)
 composes selected selection, address and flat-rate ports with host schemas and
-authority. Native address writes and native flat-rate save refuse required readiness; the managed BFFs
-retain their flags and authorization. Construction mounts nothing.
+authority. Native address writes remain refused. Native flat-rate save requires a
+selected native rate port and a Core readiness report in state `ready` for
+`20261021120000_shipping_flat_rate_seed`; the managed BFFs retain their flags and
+authorization. Construction mounts nothing.
 
 M04 B2 exposes neutral Polish/EN invoice, role, inquiry and opt-out content through
 `@openlup/platform/communications/contracts`. Reference invoice locale is an
@@ -174,8 +176,9 @@ substituting a different business behaviour.
 ## Opt-in disposable subscription reference
 
 The inert [shipping binding](../../server/runtime/public-reference/m06ShippingBinding.ts)
-requires selected ports and host authority. Native address writes and flat-rate
-save remain unsupported; the latter requires a separately decided schema grant.
+requires selected ports and host authority. Native address writes remain refused.
+Native flat-rate save requires a selected native rate port and a Core readiness
+report in state `ready` for `20261021120000_shipping_flat_rate_seed`.
 Selection, validation and flat-rate fixtures do not certify a managed host.
 
 The inert [M06 inventory binding](../../server/runtime/public-reference/m06InventoryBinding.ts)

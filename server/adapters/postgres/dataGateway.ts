@@ -57,3 +57,7 @@ export const createPostgresDunningLifecycleTransactionLane = createPostgresRoleF
 export const createPostgresPromotionClaimTransactionLane = createPostgresRoleFreeTransactionLane;
 export const createPostgresCheckoutRecoveryOperationsTransactionLane = createPostgresRoleFreeTransactionLane;
 export const createPostgresCustomerDiagnosticHistoryTransactionLane = createPostgresRoleFreeTransactionLane;
+
+/** Role-free transaction lane for only the native shipping-rate adapter. */
+export type PostgresShippingRateTransactionLane = PostgresRoleFreeTransactionLane;
+export const createPostgresShippingRateTransactionLane = createPostgresRoleFreeTransactionLane;

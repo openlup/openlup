@@ -1,3 +1,4 @@
+import type { ReadinessReport } from "@openlup/core/readiness";
 import type { BffResponder } from "../bff/index.js";
 import type { CustomerAddressBookPort, CustomerAddressMutationPort, CustomerAddressesDeps } from "./addressPorts.js";
 import type { CustomerAddressSchemas } from "./addressSchemas.js";
@@ -17,6 +18,8 @@ type Store = {
 export interface ShippingBindingDependencies {
   dataKind: string;
   createManagedStore?: () => Store | null;
+  /** Core report for the selected shipping contribution, observed by the host. */
+  nativeRateReadiness?: ReadinessReport;
   nativeStore?: Omit<Store, "addressMutationPort"> | null;
   responder: BffResponder;
   selection?: { port: DeliverySelectionPort; searchPort: PickupPointSearchPort; schemas: DeliverySelectionSchemas };
@@ -40,14 +43,19 @@ export interface ShippingBindings {
 export function createShippingBindings(deps: ShippingBindingDependencies): ShippingBindings {
   const native = deps.dataKind === "postgres";
   const addressWrites = native ? "shipping_native_address_writes_unsupported" : null;
-  const flatRateSave = native ? "shipping_native_flat_rate_save_unsupported" : null;
+  const nativeRateReady = typeof deps.nativeStore?.shippingRateDataPort?.getShippingFlatMinor === "function"
+    && typeof deps.nativeStore?.shippingRateDataPort?.setShippingFlatMinor === "function"
+    && typeof deps.nativeStore?.shippingRateDataPort?.recordPromotionAudit === "function"
+    && deps.nativeRateReadiness?.state === "ready"
+    && deps.nativeRateReadiness.candidate.schema === "20261021120000_shipping_flat_rate_seed";
+  const flatRateSave = native && !nativeRateReady ? "shipping_native_flat_rate_save_unsupported" : null;
   const refused = (reason: string): ShippingBindings => ({
     store: {}, handlers: { options: null, search: null, validate: null, addresses: null, rate: null },
     readiness: { ready: false, reason }, unsupported: { addressWrites, flatRateSave },
   });
   if (!native && deps.dataKind !== "supabase") return refused("shipping_store_incompatible");
   if (native && deps.addresses?.requireWrites) return refused(addressWrites!);
-  if (native && deps.rate) return refused(flatRateSave!);
+  if (native && deps.rate && flatRateSave) return refused(flatRateSave);
   const selected: Store | null | undefined = native ? deps.nativeStore : deps.createManagedStore?.();
   if ((deps.addresses || deps.rate) && !selected) return refused("shipping_store_required");
   // Native address mutations remain unavailable even if an untyped host plants a writer.
