@@ -16,7 +16,7 @@ export interface OmnipackFulfillmentAdapterConfig {
     fetchImpl: typeof fetch; timeoutMs: number; safeReadRetries: number; productPath: string;
   };
   selected?: boolean;
-  /** Per-instance entry cap for submissions and each preparation map; default 10,000. No eviction. */
+  /** Per-instance retention target; default 10,000. Evicts oldest completed submissions, never in-flight; preparation maps stay capped. */
   maxRetainedSubmissions?: number;
   /** Host account evidence, independent of credentials. Omission remains not ready. */
   readiness?: FulfillmentCapabilityDescriptor["readiness"];
@@ -57,7 +57,13 @@ export function createOmnipackFulfillmentAdapter(config: OmnipackFulfillmentAdap
     : { ready: false, refusal: refusal("not_ready", "selection") };
   const prepared = new Map<string, { body: string; evidence: DispatchEvidence; requestDigest: string; generation: number }>();
   const preparations = new Map<string, number>();
-  const submissions = new Map<string, { evidenceKey: string; commandDigest: string; result: ReturnType<FulfillmentDispatchPort["dispatch"]> }>();
+  const submissions = new Map<string, { evidenceKey: string; commandDigest: string; completed: boolean; result: ReturnType<FulfillmentDispatchPort["dispatch"]> }>();
+  const evictCompleted = () => {
+    for (const [fingerprint, submission] of submissions) {
+      if (submissions.size <= maxRetainedSubmissions) break;
+      if (submission.completed) submissions.delete(fingerprint);
+    }
+  };
   const selectionFailure = (request: FulfillmentDispatchRequest) => {
     if (!request.selection?.providerRef?.trim()) return refusal("selection_required", "selection");
     if (request.selection.providerRef !== capabilities.providerRef) return refusal("provider_mismatch", "selection");
@@ -145,7 +151,6 @@ export function createOmnipackFulfillmentAdapter(config: OmnipackFulfillmentAdap
           command = prepared.get(evidenceKey);
           const requestDigest = stableDispatchHash(request);
           if (selectionFailure(request) || !command || command.requestDigest !== requestDigest || preparations.get(requestDigest) !== command.generation) throw Error();
-          if (submissions.size >= maxRetainedSubmissions) throw Error();
         } catch { return { kind: "not_dispatched", effectMayHaveSucceeded: false, refusal: refusal("not_dispatchable", "dispatch") }; }
         const fingerprint = command.evidence.commandFingerprint;
         // Defer submission until its promise is recorded, before any credential or HTTP callback.
@@ -162,10 +167,15 @@ export function createOmnipackFulfillmentAdapter(config: OmnipackFulfillmentAdap
             return error instanceof OmnipackProviderError && !error.mayHaveSucceeded
               ? { kind: "not_dispatched" as const, effectMayHaveSucceeded: false as const, refusal: refusal("io_failure", "dispatch") }
               : { kind: "unknown" as const, effectMayHaveSucceeded: true as const, refusal: refusal("io_failure", "dispatch") };
-          } finally { command.body = ""; }
+          } finally {
+            command.body = "";
+            submissions.get(fingerprint)!.completed = true;
+            evictCompleted();
+          }
         });
-        submissions.set(fingerprint, { evidenceKey, commandDigest: requestCommandDigest, result });
-        // Submission owns replay from here, so releasing these transient bytes cannot reopen a POST.
+        submissions.set(fingerprint, { evidenceKey, commandDigest: requestCommandDigest, completed: false, result });
+        evictCompleted();
+        // While retained, submission owns replay; after eviction the host ledger supplies the durable fence.
         prepared.delete(evidenceKey);
         return structuredClone(await result);
       },

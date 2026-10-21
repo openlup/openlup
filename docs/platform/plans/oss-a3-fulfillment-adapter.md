@@ -238,15 +238,16 @@ it without installation or changing the existing cache.
 
 | Destination | Cases | Status | O-P1 + O-P2 running total |
 | --- | ---: | --- | ---: |
-| `packages/platform/test/fulfillment/omnipack/factory.test.ts` | 28 | net-new glue/refusal/redaction; rounds 1/2/4/5/6 add 4/1/2/1/1; rounds 3 and 6 also extend existing replay cases | 52 |
-| `packages/platform/test/fulfillment/omnipack/transportAdaptation.test.ts` | 1 | round 2 unreadable rejection; 3 O-P1 cases retained | 53 |
-| `scripts/packages/platform-cold-consumer.test.ts` | 1 | net-new installed import/default-off/injected I/O | 54 |
+| `packages/platform/test/fulfillment/omnipack/factory.test.ts` | 29 | net-new glue/refusal/redaction; rounds 1/2/4/5/6/8 add 4/1/2/1/1/1; existing replay/model cases extended | 53 |
+| `packages/platform/test/fulfillment/omnipack/transportAdaptation.test.ts` | 1 | round 2 unreadable rejection; 3 O-P1 cases retained | 54 |
+| `scripts/packages/platform-cold-consumer.test.ts` | 1 | net-new installed import/default-off/injected I/O | 55 |
 
-Current through repair round 6: O-P2 is **30 net-new**, at its target of 30.
-O-P1 + O-P2 is **54**; private V-C1 18 + 54 + O-P3 projected 2 = **74 / 100**,
-leaving 26 cases (10 remain a planning reserve). Including the scratch restart
-case conservatively makes **75 / 100**. Package-boundary generated rows are counted
-separately under ruling A; actual runtime is reported with final checks.
+Current through repair round 8: O-P2 is **31 net-new** (one above the original
+target, within the binding round cap). O-P1 + O-P2 is **55**; private V-C1 18 +
+55 + O-P3 projected 2 = **75 / 100**, leaving 25 cases (10 remain a planning
+reserve). Including both scratch restart and eviction witnesses conservatively
+makes **77 / 100**. Package-boundary generated rows are counted separately under
+ruling A; actual runtime is reported with final checks.
 
 Simplicity pre-check for Claude's committed reviews: reuse the contributed
 transport/codecs, keep preparation transient and project allowlisted fields;
@@ -812,3 +813,92 @@ calls / 0 HTTP**, preserving the begun host record and attempt. These remain
 scratch pre-checks, not a committed O-P3 claim. HEAD stays `07aa2b28`; no Git
 writes, installs or network were used. Claude's committed review/delivery gates
 and all existing consumed review/repair budgets remain owed and unchanged.
+
+
+### O-P2 repair round 8
+
+Authority and finite outcome: the coordinator's binding owner-delegate correction
+supersedes round 5's no-eviction/capacity-refusal requirement. Admit new prepared
+fingerprints at submission capacity, evict oldest completed entries, retain every
+in-flight fence and keep preparation bounds. Scope is local source/tests/docs/API
+and the prescribed scratch worker witness; no Git writes, installs, network,
+secrets, frozen M08 edits, submission or delivery. Claude retains committed review
+and delivery; existing consumed review/repair budgets are not reset.
+
+The availability defect was the permanent dispatch refusal once a busy instance
+had recorded 10,000 fingerprints. `maxRetainedSubmissions` and its positive-safe-
+integer validation/default 10,000 remain. Admission order in the existing Map
+provides oldest-first eviction; replay never refreshes age. A completion bit and
+one trim function replace capacity refusal. Trimming runs on admission and every
+completion, deleting only completed entries while above target. All-in-flight
+maps may exceed the target; the first completion is trimmed immediately without
+refusing another fingerprint. Preparation caps/generation fencing are unchanged.
+
+Eviction ≡ restart for that fingerprint: no recorded adapter result remains,
+and dispatch requires fresh preparation before another POST. The in-memory
+per-instance record is not the durable guard; M08's host claim/begin/
+recordProviderAttempt/finalize ledger is. Canonical and architecture owners now
+state that distinction and the temporary in-flight overflow rule. Retained
+submission evidence/command digest checks, result cloning and no automatic POST
+retry remain intact.
+
+Acceptance/proof: replace capacity-refusal coverage with admission at capacity,
+oldest-completed eviction across accepted/unknown/refused outcomes, replay age,
+evicted replay versus a fresh instance and re-prepared resubmission. One added
+held-I/O case proves in-flight joining and out-of-order completion/overflow trim.
+The existing model keeps 36 sequences × 96 generated interleavings plus its
+25 changed-command crossings, and adds 36 × 32 explicit retention transitions:
+a separate reference Map models eviction, retained no-I/O replay and new POST
+lifetimes after eviction. All three HTTP outcomes have independently computed
+expected results. Old/new copies run outside the task tree.
+
+Scratch adds one actual-worker eviction test (saved as
+`N/a3omni-c0/p3check-worker-evicted.test.ts` for O-P3). It submits A then B with
+capacity 1, proves A has no adapter record, preserves A's begun host dispatch and
+recorded mapped attempt, then replays A through the actual worker. The worker
+must make zero provider/credential/HTTP calls and preserve that host state.
+No worker shim or frozen-port change is introduced.
+
+Case delta: factory **29** (+1), transport **4**, characterization **18**:
+adapter **51**, O-P2 **31**, public O-P1 + O-P2 **55**; round **75/100**,
+conservatively **77/100** including both scratch witnesses. Scratch diagnostics
+are **10** cases; they remain pre-checks, not committed O-P3 conformance claims.
+
+Self-retro/rethink: permanent capacity refusal converts a transient replay cache
+into an availability limit → evict completed results and preserve only the
+in-flight concurrency fence, relying on the already-owned durable host ledger.
+The existing ordered Map is sufficient; no TTL, timer, second cache or new
+configuration option is needed.
+
+
+Final round-8 evidence: the identical updated model **FAILS** against disposable
+index copies from **07aa2b28** (changed-command stale evidence returns recorded
+unknown rather than refusal) and **c753b6ed** (equivalent-wire triple replay loses
+the accepted result). It **PASSES** with the repaired index: **36 sequences**,
+**3,456** original generated operations plus **1,152** explicit eviction
+transitions, retaining the deterministic 25-command-variant crossings. Logs:
+`/private/tmp/openlup-op2-r8-proof/model-{07aa2b28,c753b6ed,new}.log`. No old source
+was written into the task worktree.
+
+Focused branch tests pass **1,606 / 11 files**: adapter **51**, package-boundary
+**1,474**, cold-consumer **46**, neutrality tooling **35** (48.15 s). Platform
+no-emit typecheck, serialized build, regenerated API snapshot/check and TypeScript
+symbol inventory pass: exactly the factory, descriptor and config type. The API
+snapshot delta is only the retention option's documentation. Ast-grep, focused
+ESLint and whitespace checks pass. Neutrality reports **0 increases**, UI smoke
+passes, and source/test/docs gitleaks scans find no leaks. Package-root docs class
+is unchanged at **47,932 / 49,152 bytes**, **1,220 bytes** headroom (5/10 files);
+README, package manifests, release gates and frozen ports are untouched.
+Publication policy pre-check passes with **3 obligations / 0 unanswered**;
+regenerated navigation and final policy check follow this final evidence entry.
+
+Scratch: **11/11** runner/worker/contracts/projection inputs match **a8708cf1**
+byte-for-byte and the adapter index matches this repair. **10/10** scratch tests
+pass (0.349 s), complete conformance **12/12**, refused profile **10/10**, and
+normal worker acceptance **1 POST / 1 mapped attempt / 1 host acknowledgement**.
+Both restart and eviction replay return
+`dispatch_not_safe_to_submit:submitting` with **0 provider calls / 0 credentials /
+0 HTTP**, preserving the begun dispatch and recorded attempt. The evicted witness
+is saved byte-identically in N for O-P3. These remain scratch diagnostics;
+Claude's required committed review and delivery gates remain owed. HEAD stays
+**7d66e584**; no Git writes, installs or network were used.

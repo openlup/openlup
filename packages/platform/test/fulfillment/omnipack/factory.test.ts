@@ -393,28 +393,59 @@ it("refuses unsafe host paths and invalid retention caps at construction before 
   }
   expect(f.credentials).not.toHaveBeenCalled(); expect(f.fetchImpl).not.toHaveBeenCalled();
 });
-it("bounds submission and preparation retention without evicting recorded replay at capacity", async () => {
+it("evicts oldest completed submissions, admits new fingerprints and preserves preparation bounds", async () => {
   for (const reply of [() => jsonResponse({ orderId: "external-a" }), () => jsonResponse({}), () => jsonResponse({}, 400)]) {
     let lotNumber = "LOT-A";
-    const f = fixture(reply, { maxRetainedSubmissions: 1, resolveProduct: async () => ({ lotNumber }) });
-    const req = frozenRequest(); const original = await prepare(f.adapter, req);
-    // A second unsubmitted evidence key cannot grow the preparation map past its cap.
-    lotNumber = "LOT-B";
-    expect(await f.adapter.dispatch.prepare(req)).toEqual({ kind: "refused", refusal: { reason: "not_dispatchable", phase: "prepare", retryable: false } });
-    lotNumber = "LOT-A";
-    await prepare(f.adapter, req);
-    const result = await f.adapter.dispatch.dispatch(req, original);
-    f.fetchImpl.mockClear(); f.credentials.mockClear();
-    // The submitted preparation is released, but the submission result is never evicted.
-    lotNumber = "LOT-B";
-    const different = await prepare(f.adapter, req);
-    expect(different.commandFingerprint).not.toBe(original.commandFingerprint);
-    expect(await f.adapter.dispatch.dispatch(req, different)).toEqual({ kind: "not_dispatched", effectMayHaveSucceeded: false, refusal: { reason: "not_dispatchable", phase: "dispatch", retryable: false } });
-    // A new request digest cannot grow the generation map past its cap either.
-    expect(await f.adapter.dispatch.prepare({ ...req, requestKey: "other" })).toEqual({ kind: "refused", refusal: { reason: "not_dispatchable", phase: "prepare", retryable: false } });
-    expect(await f.adapter.dispatch.dispatch(structuredClone(req), structuredClone(original))).toEqual(result);
-    expect(f.credentials).not.toHaveBeenCalled(); expect(f.fetchImpl).not.toHaveBeenCalled();
+    const f = fixture(reply, { maxRetainedSubmissions: 2, resolveProduct: async () => ({ lotNumber }) });
+    const req = frozenRequest();
+    const submit = async (lot: string) => {
+      lotNumber = lot;
+      const evidence = await prepare(f.adapter, req);
+      const result = await f.adapter.dispatch.dispatch(req, evidence);
+      return { evidence, result };
+    };
+    const a = await submit("LOT-A"), b = await submit("LOT-B");
+    // Replaying A does not refresh insertion age: C must evict A, not B.
+    expect(await f.adapter.dispatch.dispatch(req, a.evidence)).toEqual(a.result);
+    const c = await submit("LOT-C");
+    expect(f.fetchImpl).toHaveBeenCalledTimes(3);
+    expect(await f.adapter.dispatch.dispatch(req, b.evidence)).toEqual(b.result);
+    expect(await f.adapter.dispatch.dispatch(req, c.evidence)).toEqual(c.result);
+    const fresh = entry.createOmnipackFulfillmentAdapter(f.config);
+    expect(await f.adapter.dispatch.dispatch(req, a.evidence)).toEqual(await fresh.dispatch.dispatch(req, a.evidence));
+    expect(f.fetchImpl).toHaveBeenCalledTimes(3);
+    // Evicted replay needs preparation, just like a fresh adapter, and may POST again.
+    expect(await submit("LOT-A")).toEqual(a);
+    expect(f.fetchImpl).toHaveBeenCalledTimes(4);
   }
+  let lotNumber = "LOT-A";
+  const f = fixture(undefined, { maxRetainedSubmissions: 1, resolveProduct: async () => ({ lotNumber }) });
+  const req = frozenRequest(); await prepare(f.adapter, req);
+  lotNumber = "LOT-B";
+  expect(await f.adapter.dispatch.prepare(req)).toMatchObject({ kind: "refused", refusal: { phase: "prepare", retryable: false } });
+  expect(await f.adapter.dispatch.prepare({ ...req, requestKey: "other" })).toMatchObject({ kind: "refused", refusal: { phase: "prepare", retryable: false } });
+});
+it("never evicts in-flight entries and trims overflow as soon as a submission completes", async () => {
+  let lotNumber = "LOT-A";
+  const releases: (() => void)[] = [];
+  const f = fixture(() => new Promise(resolve => releases.push(() => resolve(jsonResponse({ orderId: "external-a" })))),
+    { maxRetainedSubmissions: 1, resolveProduct: async () => ({ lotNumber }) });
+  const req = frozenRequest(), a = await prepare(f.adapter, req);
+  const first = f.adapter.dispatch.dispatch(req, a);
+  lotNumber = "LOT-B";
+  const b = await prepare(f.adapter, req), second = f.adapter.dispatch.dispatch(req, b);
+  await vi.waitFor(() => expect(releases).toHaveLength(2));
+  const joinedA = f.adapter.dispatch.dispatch(req, structuredClone(a));
+  const joinedB = f.adapter.dispatch.dispatch(req, structuredClone(b));
+  releases[1]!(); const resultB = await second;
+  expect(await joinedB).toEqual(resultB);
+  // B completes first, so it is evicted immediately even though A was admitted earlier.
+  expect(await f.adapter.dispatch.dispatch(req, b)).toMatchObject({ kind: "not_dispatched", refusal: { reason: "not_dispatchable" } });
+  const stillJoinedA = f.adapter.dispatch.dispatch(req, a);
+  releases[0]!(); const resultA = await first;
+  expect(await joinedA).toEqual(resultA); expect(await stillJoinedA).toEqual(resultA);
+  expect(await f.adapter.dispatch.dispatch(req, a)).toEqual(resultA);
+  expect(f.fetchImpl).toHaveBeenCalledTimes(2); expect(f.credentials).toHaveBeenCalledTimes(2);
 });
 it("classifies credential and request construction failures before POST as definitive non-submission", async () => {
   for (const credentials of [() => { throw Error(secret); }, async () => { throw Error(secret); }, () => ({ get username(): string { throw Error(secret); }, password: secret })]) {
@@ -559,5 +590,47 @@ it("models seeded preparation, replay and concurrent interleavings from the subm
       }
     }
     expect(recorded.size).toBe(3);
+    // Explicit bounded-retention model: same host request, independently prepared
+    // lot fingerprints. Eviction starts a new per-fingerprint submission lifetime.
+    let lotNumber = "LOT-0";
+    const bounded = fixture((_url, init) => {
+      const outcome = (Number(JSON.parse(init!.body as string).items[0].lotNumber.slice(-1)) + sequence) % 3;
+      return outcome === 0 ? jsonResponse({ orderId: "external-a" }) : jsonResponse({}, outcome === 1 ? 503 : 400);
+    }, { maxRetainedSubmissions: 2, resolveProduct: async () => ({ lotNumber }) });
+    const req = request();
+    const retained = new Map<string, Result>();
+    const seen = new Map<string, DispatchEvidence>();
+    let expectedPosts = 0, evictions = 0;
+    for (let step = 0; step < 32; step++) {
+      lotNumber = `LOT-${step < 3 ? step : random(3)}`;
+      const e = await prepare(fixture(undefined, { resolveProduct: async () => ({ lotNumber }) }).adapter, req);
+      const fp = e.commandFingerprint;
+      if (!retained.has(fp)) expect(await prepare(bounded.adapter, req)).toEqual(e);
+      seen.set(fp, e);
+      const prior = retained.get(fp);
+      const results = await Promise.all([bounded.adapter.dispatch.dispatch(req, e), bounded.adapter.dispatch.dispatch(req, structuredClone(e))]);
+      expect(results[1]).toEqual(results[0]);
+      if (prior) expect(results[0]).toEqual(prior);
+      else {
+        const outcome = (Number(lotNumber.slice(-1)) + sequence) % 3;
+        const proof = createHash("sha256").update(JSON.stringify(["external-a", fp])).digest("hex");
+        const expectedResult: Result = outcome === 0
+          ? { kind: "accepted", externalRef: "external-a", evidence: e, providerAttemptKey: `attempt:${proof}`, labelKey: `label:${proof}` }
+          : outcome === 1 ? { kind: "unknown", effectMayHaveSucceeded: true, refusal: { reason: "io_failure", phase: "dispatch", retryable: false } }
+            : { kind: "not_dispatched", effectMayHaveSucceeded: false, refusal: { reason: "io_failure", phase: "dispatch", retryable: false } };
+        expect(results[0]).toEqual(expectedResult);
+        expectedPosts++;
+        retained.set(fp, expectedResult);
+        if (retained.size > 2) { retained.delete(retained.keys().next().value!); evictions++; }
+      }
+      expect(bounded.fetchImpl).toHaveBeenCalledTimes(expectedPosts);
+      expect(bounded.credentials).toHaveBeenCalledTimes(expectedPosts);
+      for (const [known, oldEvidence] of seen) {
+        expect(await bounded.adapter.dispatch.dispatch(req, structuredClone(oldEvidence)))
+          .toEqual(retained.get(known) ?? refused);
+      }
+      expect(bounded.fetchImpl).toHaveBeenCalledTimes(expectedPosts);
+    }
+    expect(evictions).toBeGreaterThan(0);
   }
 });

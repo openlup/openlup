@@ -670,23 +670,25 @@ bytes transient and returns closed fingerprint/contact/selection evidence.
 Preparations use canonical evidence values and bind request fields by value;
 equal-valued request/evidence copies work without JavaScript object identity.
 Unknown or mismatched evidence refuses before credentials or HTTP. A separate
-append-only per-instance submission record is keyed by command fingerprint and
+per-instance submission record is keyed by command fingerprint and
 bound to the submitted evidence key and canonical SHA-256 command digest. Matching
 evidence and command values join or replay its result without I/O; a changed
 command or different evidence for that fingerprint refuses `not_dispatchable`
-with phase `dispatch` and `retryable:false`, preserving the one-POST fence.
-Original replay remains available after later preparations even when its current
+with phase `dispatch` and `retryable:false`, preserving the one-POST fence while retained.
+Retained replay remains available after later preparations even when its current
 preparation entry was replaced. Replay checks the immutable submission digest,
 never replaceable preparation state; codec-omitted descriptions remain irrelevant.
 The in-memory record retains only the hash of command-bearing request values.
 Numeric generations fence older overlapping
 preparations for the same request value. The configuration's positive integer
-`maxRetainedSubmissions` (default 10,000) caps submissions and each preparation
-map without eviction; submission releases its transient preparation entry but
-keeps the replay result. At capacity, new submissions refuse before I/O and
-matching recorded replays remain available. The host rotates the instance while
-preserving M08's durable claim/begin/attempt/finalize ledger: the adapter's memory
-is not the durable double-dispatch guard. Provider idempotency is not established
+`maxRetainedSubmissions` (default 10,000) bounds completed submission retention
+with oldest-first eviction by admission order, without evicting in-flight entries
+or refusing new fingerprints for capacity. In-flight overflow is trimmed on each
+completion. Each preparation map remains capped without eviction; submission
+releases its transient preparation entry. Eviction is equivalent to restart for
+that fingerprint: M08's durable claim/begin/attempt/finalize ledger remains the
+double-dispatch guard. Retained replay does not refresh age, and an evicted
+fingerprint requires fresh preparation. Provider idempotency is not established
 by the donor evidence. See the [example contract](CANONICAL_CONTRACTS.md#opt-in-fulfillment-example)
 for preparation bounds and refusal phases.
 Proven pre-submission failures and definitive HTTP rejections are

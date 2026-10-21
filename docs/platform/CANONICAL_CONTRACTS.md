@@ -112,15 +112,15 @@ and bind the frozen request fields by value, so equal-valued copies work through
 host workers. Dispatch refuses unknown, malformed or mismatched evidence before
 credentials or HTTP. A numeric generation fence prevents an older overlapping
 preparation for the same request value from restoring superseded state.
-A separate append-only per-instance submission record retains one in-flight or
+A separate per-instance submission record retains one in-flight or
 completed result per command fingerprint, including accepted, unknown and refused
 outcomes, bound to the evidence key and canonical command digest used for submission.
 The same evidence key and command digest replay that result without I/O; a changed
 command or different evidence for an already submitted
 fingerprint refuses as `not_dispatchable`, phase `dispatch`, `retryable:false`.
-It never inherits another preparation's accepted evidence or permits a second POST.
-Original replay survives later preparations, including A → B → A, without requiring
-the current preparation entry. Dispatch first validates the closed evidence and
+While retained, it never inherits another preparation's accepted evidence or
+permits a second POST. Retained replay survives later preparations, including
+A → B → A, without requiring the current preparation entry. Dispatch first validates the closed evidence and
 compares its contact revision and provider/carrier/service references with the
 request by value. Recorded replay then depends only on the fingerprint's submission
 record, complete evidence key and SHA-256 command digest, joining the in-flight
@@ -140,16 +140,20 @@ double-dispatch guard. Durable protection comes from M08's host ledger through
 the provider honours. The donor evidence does not establish provider-side
 idempotency, so this example claims none.
 `OmnipackFulfillmentAdapterConfig.maxRetainedSubmissions` defaults to 10,000 and
-must be a positive safe integer at construction. It caps the submission map and
-each of the two preparation maps (evidence entries and request generations).
-Submissions are never evicted. At capacity, an unrecorded fingerprint refuses
-`not_dispatchable / dispatch / retryable:false` before credentials or HTTP;
-recorded matching replays retain their identical results. A new preparation key
-at its map's cap refuses `not_dispatchable / prepare / retryable:false`.
-Submission releases its transient preparation entry; the retained submission
-still prevents another POST for that fingerprint. Other preparation entries and
-generation keys are not evicted. The host rotates the adapter instance when
-capacity is exhausted, retaining its durable ledger across rotation.
+must be a positive safe integer at construction. It bounds completed submission
+retention with oldest-first eviction by admission order, and caps each of the two
+preparation maps (evidence entries and request generations). A new fingerprint is
+always admitted for submission capacity: in-flight entries are never evicted,
+so the submission map may temporarily exceed the target when all entries are in
+flight. Admission and each completion evict the oldest completed entries until
+the target is met or only in-flight entries remain. Matching retained replays
+keep their identical results; replay does not refresh an entry's age.
+Eviction ≡ restart for that fingerprint: there is no recorded result, and fresh
+preparation is required before another adapter POST. The host ledger is the durable
+guard, preserving its claim/begin/attempt/finalize state across eviction or restart.
+A new preparation key at its map's cap still refuses
+`not_dispatchable / prepare / retryable:false`. Submission releases its transient
+preparation entry; other preparation entries and generation keys are not evicted.
 Credential, validation and request-construction
 failures before submission and definitive rejection are `not_dispatched`;
 an unreadable rejection body preserves the status-derived rejection. An unreadable
