@@ -80,3 +80,16 @@ export interface PaymentRepairMethodPort {
     | { kind: "unsupported" }
   >;
 }
+
+/** Host-selected durable truth scope. Unsupported schema never opens a store. */
+export interface PaymentServicesOptions {
+  schema?: { truth: "supported" | "unsupported" };
+  openTruth?: () => Promise<{
+    port: import("./truth.js").PaymentTruthPort;
+    close(): Promise<void>;
+  }>;
+}
+
+export interface PaymentServices {
+  run<T>(work: (port: import("./truth.js").PaymentTruthPort) => Promise<T>): Promise<T>;
+}

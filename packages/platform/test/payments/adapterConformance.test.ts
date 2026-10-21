@@ -226,3 +226,21 @@ it("accepts an empty optional payer name and refuses JSON-escaped payer leaks", 
     dispatch: { kind: "unknown" }, diagnostics: { echoed: authorization } });
   await expect(runPaymentAdapterConformance([f])).rejects.toThrow();
 });
+
+it("refuses verification fixtures with invalid settling money", async () => {
+  for (const money of [{ amountMinor: 0, currency: "XXX" },
+      { amountMinor: -1, currency: "XXX" }, { amountMinor: NaN, currency: "XXX" },
+      { amountMinor: 1.5, currency: "XXX" }, { amountMinor: Infinity, currency: "XXX" },
+      { amountMinor: Number.MAX_SAFE_INTEGER + 1, currency: "XXX" },
+      { amountMinor: 9000, currency: "" }, { amountMinor: 9000, currency: " \t\n" }, null]) {
+    for (const outcome of ["succeeded", "refunded", "disputed"] as const) {
+      const s = subject("provider-a");
+      const original = s.verification[0].expected;
+      if (original.kind !== "money") throw new Error("money fixture required");
+      s.verification = [{ input: s.verification[0].input, expected: { ...original, outcome, money } }];
+      s.adapter.verifyPort = { verifyAndNormalize: async () => s.verification[0].expected };
+      await expect(runPaymentAdapterConformance([s])).rejects.toThrow(
+        "payment_adapter_conformance:settling outcome requires positive money");
+    }
+  }
+});

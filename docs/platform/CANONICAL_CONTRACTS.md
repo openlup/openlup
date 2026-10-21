@@ -168,12 +168,14 @@ A payments (M07) adapter implements `PaymentAdapter` and declares
 `PaymentAdapterConformanceSubject` from `./payments/contracts` and verification
 fixtures. See the [opt-in payment example](#opt-in-payment-example).
 
-Fulfillment adapters implement the experimental FulfillmentDispatchPort from
+Fulfillment adapters implement the experimental dispatch, label, observation,
+readback and sync ports from
 `@openlup/platform/fulfillment/contracts`. See the
 [fulfillment owner](ARCHITECTURE_AND_EXTENSIONS.md#fulfillment-contracts) for
 command preparation, host keys, replay, paid handoff and proof/storage boundaries.
-An example adapter remains planned for A3; this surface activates no provider or
-reference route.
+The offline runFulfillmentAdapterConformance checks adapter-owned fixtures and
+returns sanitized evidence; concrete example adapters and native store proof remain
+later work. This surface activates no provider or reference route.
 
 | Class | Shipped example subpaths |
 | --- | --- |
@@ -381,25 +383,25 @@ the protected case and schedule unchanged.
 These are source and persistence contracts, not evidence that any hosted
 deployment, provider adapter, or public release has activated the rail.
 
-The P4 native translation uses `fulfillment_shipments.replaces_shipment_id` and
+The native fulfillment translation uses `fulfillment_shipments.replaces_shipment_id` and
 order → cycle → subscription correlation, with cycle number on the renewal
 operation. Its admission guard applies only to NEW cycle admission/insert;
 existing-cycle retries in renewal operations and dunning bypass admission and
 neither mint nor consume receipts. The native graph gains no `retry_scheduled`
-state and M07's lifecycle is unchanged. Automatic alignment still requires an
+state and the payments lifecycle is unchanged. Automatic alignment still requires an
 actual arrival; missing correlation remains manual review. Native invoker
 privileges and complete catalogue installation are described in
 [Data and migrations](DATA_AND_MIGRATIONS.md#module-catalogues-and-installed-histories).
 
 ## Compatibility posture
 
-Fulfillment's native candidate appends command/alignment units 73/74 and binds
+Fulfillment appends command/alignment units 73/74 and binds
 their byte-identical package projections through `FULFILLMENT_MIGRATIONS`.
 The canonical manifest retains its baseline and full prior prefix; its refreshed
 object-inventory digest describes the complete selected graph. No managed
-forward, old hash, role or M07 lifecycle is changed. Native continuity requires
-the full-catalogue fresh/prefix/replay proofs and the maintainer SQL/ACL read,
-rather than inferring readiness from a package descriptor.
+forward, old hash, role or payments lifecycle is changed. Native continuity is checked by
+full-catalogue fresh/prefix/replay tests; a package descriptor alone establishes
+no installation readiness.
 
 The reviewed-forward registry additionally pins one portable function replacement
 to keep active subscriptions active on dunning exhaustion (invariant repair).
@@ -599,7 +601,8 @@ inside their two declared source/test directories, their exact API reports and
 exact cold-consumer proof lines. The exact path-segment tokens
 `communications/resend` and `communications/klaviyo` are additionally allowed in
 the platform manifest, release gates, package boundary test, publication
-catalogue, platform CHANGELOG and validated platform `changes/*.md` fragments,
+catalogue, platform CHANGELOG, its non-packed `CHANGELOG-HISTORY.md` and validated
+platform `changes/*.md` fragments,
 this page, the architecture page and the A1 ledger.
 Those same two subpath tokens are allowed in only the A1 reference binding and
 its adjacent test under `server/runtime/communications`; bare adapter words
@@ -881,9 +884,17 @@ collectors and synthetic host data.
 
 The [fulfillment contract owner](ARCHITECTURE_AND_EXTENSIONS.md#fulfillment-contracts)
 explains G15–G17: consecutive-success coverage confirmation, timed local stock
-lines and host-local observation persistence. The runtime workers retain donor
-effect/replay/terminal/stale behavior through those ports. Provider readback is
-never a substitute for local chronology. Cancelled local rows receive evidence
-only; older shipped observations cannot invoke handover or change delivery
-alignment. Late delivery remains a later-only, once-per-case native operation;
-P3 introduces no alignment or replacement-confirmation caller.
+lines and inline host persistence. Ingress persists eventKey receipts before
+lifecycle writes. For correlated ingress, a trimmed observation or dispatch
+external reference is required before acceptance/status/effects/processed mark;
+a missing/blank pair leaves the receipt unprocessed. Hosts own idempotent replay; a superseding conflict returns
+superseded but marks only processed status, without a dedicated persisted reason.
+
+Reconciliation reads local chronology independently of provider readback.
+Non-stale found observations for locally cancelled/exception rows write status
+evidence only. Older known occurrences skip status/effects; only on-track rows
+with handedOverAt may retry an invoice on that path. Unknown readback fails the
+run before row processing. Unmapped evidence is projected before host calls;
+correlated off-track rows skip acceptance/quarantine. These workers call no
+alignment or replacement-confirmation operation; native late-arrival alignment
+must preserve the later-only monotonic rule.

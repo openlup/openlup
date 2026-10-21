@@ -1,7 +1,4 @@
 import { z } from "zod";
-
-
-const COMMERCE_ORDER_PAID_EVENT_TYPE = "commerce.order.paid";
 import type {
   OutboxEventRow,
   OutboxHandler,
@@ -9,6 +6,7 @@ import type {
 } from "@openlup/core/outbox";
 import type { OrderPaidFulfillmentPort } from "./paidHandoffPorts.js";
 
+const COMMERCE_ORDER_PAID_EVENT_TYPE = "commerce.order.paid";
 const HANDLER_TIMEOUT_MS = 15_000;
 
 const outboxOrderPaidFulfillmentDescriptor = Object.freeze({
@@ -16,8 +14,8 @@ const outboxOrderPaidFulfillmentDescriptor = Object.freeze({
 });
 
 // Risk seam (optional): assess a paid order BEFORE fulfillment. Declared here so
-// this handler never imports the server risk port; the impl
-// (server/domains/risk/orderPaidRiskPort) is structurally assignable.
+// this handler stays independent of the host's risk implementation, which can
+// supply a structurally compatible port.
 interface OrderPaidRiskAssessmentPort {
   assessPaidOrder(input: {
     orderUuid: string;
@@ -31,9 +29,9 @@ interface OrderPaidRiskAssessmentPort {
   >;
 }
 
-// Frozen minimal parse (mirror outboxOrderDraftEmailHandler): validate ONLY the
-// orderUuid this handler forwards to the fulfillment RPCs, with a schema owned
-// HERE so a producer-side payload change never retro-DLQs in-flight events.
+// Frozen minimal parse: validate only the orderUuid forwarded to the fulfillment
+// port. This handler owns the subset schema so a producer-side payload change
+// does not send otherwise valid in-flight events to the dead-letter queue.
 const payloadSubsetSchema = z
   .object({
     orderUuid: z.guid(),

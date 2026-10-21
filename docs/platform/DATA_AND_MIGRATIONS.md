@@ -57,23 +57,31 @@ twin in the other chain is a documented compatibility gap, not implicit parity.
 
 ## Module catalogues and installed histories
 
-Fulfillment's P4 candidate appends native units 73/74,
+Fulfillment appends native command and alignment units,
 `20261022080000_fulfillment_command_ledger.sql` and
-`20261022090000_fulfillment_delivery_alignment.sql`, after the inspected
-position-72 shipping seed. `FULFILLMENT_MIGRATIONS` projects units 5, 27, 51, 73
-and 74 with canonical identities and byte-identical package assets. Install the
+`20261022090000_fulfillment_delivery_alignment.sql`, after the shipping seed.
+`FULFILLMENT_MIGRATIONS` projects units 5, 27, 51, 73 and 74 with canonical identities and byte-identical package assets. Install the
 complete catalogue, preserve the full installed prefix and verify its live
 object inventory; the sparse projections are not an install chain. Existing
 native and managed migration bytes remain unchanged.
+
+For a fresh native install, the invariant "a late delivery extends the next cycle"
+is enforced automatically only when delivery-alignment control mode is
+`auto_align`. `public.subscription_delivery_alignment_control.mode` defaults to
+`off` for rollout safety, so installation alone does not enforce the invariant.
+An operator enables it through
+`public.subscription_delivery_alignment_set_mode('auto_align')`; the complete
+mode set is `off`, `shadow`, `protect` and `auto_align`. Existing cases retain
+their captured mode and protection after a control change.
 
 The command forward adds durable dispatch/attempt/paid-handoff and observation
 receipts. Atomic ACK records the native `dispatch` external reference: the `3pl`
 archetype does not create an owned label, and acceptance cannot imply physical
 packing. That receipt also retains the native local-cancellation refusal.
-G17 distinguishes received observations from recorded status evidence; only the
-latter supplies local occurrence chronology. Stock movements retain opaque
-keys and replay fingerprints, while G15 cursor state retains coverage gaps.
-Adopter inventory lines and authoritative contact preparation remain injected.
+Observation persistence distinguishes received observations from recorded status
+evidence; only the latter supplies local occurrence chronology. Stock movements retain opaque
+keys and replay fingerprints, while sync cursor state retains coverage gaps.
+Host inventory lines and authoritative contact preparation remain injected.
 
 The alignment forward translates managed fulfillment rows to native shipments,
 replacement links to `replaces_shipment_id`, and subscription identity through
@@ -88,12 +96,12 @@ All new routines are invokers with PUBLIC/anon/authenticated access revoked,
 including helpers and trigger routines. The initial native executor is the
 existing deployment owner; no role, SECURITY DEFINER, default grant or browser
 capability is added. A separate service principal requires the maintainer's
-explicit grant read; these owner-executed proofs do not certify an unconfigured
-non-owner grant set. Receipt pruning needs DELETE on that receipt table if such
-an invoker is configured. Replacement confirmation remains a note-only operator
-attestation with no automatic caller or new arrival predicate. Its discipline
-and the required maintainer object read are recorded in the
-[P4 candidate](plans/oss-m08-fulfillment-physical-delivery.md#p4-candidate-and-d13-native-translation-note).
+explicit least-privilege grants on routines and underlying objects; owner
+execution does not establish a non-owner grant set. Receipt pruning needs DELETE
+on that receipt table if such an invoker is configured. Replacement confirmation remains a note-only operator
+attestation with no automatic caller or new arrival predicate. The
+[arrival-only discipline](plans/oss-m08-fulfillment-physical-delivery.md#native-admission-and-delivery-alignment)
+remains binding.
 
 Payments publishes `PAYMENT_MIGRATIONS` as byte-identical projections of canonical
 positions 10 (settlement), 35 (truth/reconciliation) and 56 (later-only cycle).
@@ -401,7 +409,7 @@ late-delivery journey or a stable upgrade guarantee.
 
 ## Compatibility lifecycle
 
-The fulfillment P4 candidate expands the native graph with new command and
+Fulfillment expands the native graph with new command and
 alignment objects at positions 73/74. It preserves all position-0–72 identities,
 existing rows and the managed graph. Upgrade the complete prefix before enabling
 the new stores; sparse package assets are projections only. Default-off alignment

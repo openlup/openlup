@@ -187,8 +187,12 @@ export declare function createCatalogContribution(input: CatalogContributionInpu
 ```ts
 import type { AnalyticsPort, BlobStoragePort, DataGatewayPort, HttpRuntimePort, MigrationRunnerPort, SchedulerPort, TransactionalRuntimePort } from "@openlup/core/platform-runtime";
 import { type PlatformBundleDescriptor, type PlatformBundleId } from "../kernel/index.js";
+interface PaymentServices {
+    run<T>(work: (port: unknown) => Promise<T>): Promise<T>;
+}
 type Env = Record<string, string | undefined>;
 export interface PlatformBundlePorts {
+    payments?: PaymentServices | null;
     http: HttpRuntimePort | null;
     scheduler: SchedulerPort | null;
     blob: BlobStoragePort | null;
@@ -208,6 +212,8 @@ export interface PlatformBundle {
  * transactional binder also receives the bundle's data capability.
  */
 export interface PlatformBundleBinders {
+    /** Explicit host selection only; no default payment executor. */
+    payments?: (env: Env) => PaymentServices | null;
     /**
      * The supabase-js `createClient` used by the default Supabase Storage blob binder. Declared
      * structurally here so the composition entry's declarations reference no data-module type.

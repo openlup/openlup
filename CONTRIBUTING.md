@@ -131,12 +131,11 @@ its users or operators can observe.
 
 ## Development-preview checks
 
-The M08 P4 native candidate uses the existing Node collector and disposable
+Native fulfillment conformance uses the existing Node collector and disposable
 PostgreSQL harness in `tests/postgres/fulfillmentNativeConformance.test.ts` and
-`tests/postgres/fulfillmentDeliveryAlignment.test.ts`. Its allocation is thirteen
-real-database cases plus one package store contract: complete install and
-prefix-72 upgrade/replay, fences/ACK recovery, arrival/replacement invariants,
-locks/rollback and actual denied browser privileges. The two retry/admission
+`tests/postgres/fulfillmentDeliveryAlignment.test.ts`. It covers complete install and
+prefix upgrade/replay, fences/ACK recovery, arrival/replacement invariants,
+locks/rollback and actual denied browser privileges. Retry/admission
 cases distinguish existing-cycle recovery without receipt changes from guarded
 new-cycle inserts. Docker unavailability fails these required proofs; report
 container setup separately from case runtime. This adds no collector, profile,

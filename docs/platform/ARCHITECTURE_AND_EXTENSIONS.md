@@ -30,6 +30,14 @@ state writer is not an extension seam.
 
 ## Runtime boundaries
 
+Payments uses the existing bundle composer’s optional named binder. The host
+injects a scoped truth port and cleanup through `createPaymentServices`; schema
+or capability absence refuses selection. There is one executor per runtime unit,
+no package environment/driver discovery and no additional scheduler. The reference
+verified ingress remains explicit and default-off. Its adapter fingerprint is
+stored on first receipt; replay application and hooks reuse the first durable
+instant, including when the provider timestamp moves later (D11).
+
 The reference payment status and verify routes serve the checkout's original
 order/intent/client identity; a verify response requests readback and cannot
 mark payment paid. The opt-in reference store mounts the repair view; exact
@@ -665,14 +673,15 @@ executor. Browser preview values remain reference-owned. See the
 
 Fulfillment lives at the two existing-package subpaths
 `@openlup/platform/fulfillment` and `/fulfillment/contracts`; no topology trigger
-requires another package or dependency. The type-only contracts entry has no server
-or cross-module edge. The runtime entry binds core evidence parsers to the
+requires another package or dependency. The type-only contracts entry has no runtime,
+server or cross-module edge; its only dependency is a type import of the core
+normalized fulfillment fact. The runtime entry binds core evidence parsers to the
 contributed status canon and selects only injected capability profiles. Provider,
 carrier and service remain independent; empty provider selection refuses, and
 potential support never enables a dormant route. Raw commands, credentials and
 signed label URLs stay transient at the host/adapter boundary; durable contracts
 carry typed facts, safe references and actual-command fingerprints. Existing reference facades
-and the OMS ladder/queue pair remain host-owned until their explicit later phase.
+and the order-management status ladder/queue pair remain host-owned until explicit later adoption.
 
 The [dispatch port](../../packages/platform/src/fulfillment/contracts/dispatch.ts)
 prepares the actual provider command without submitting it, returns its fingerprint
@@ -688,26 +697,35 @@ FulfillmentDispatchPort.prepare builds the transient command and its evidence.
 Unknown external outcomes require readback rather
 than blind submission; accepted evidence can repair a lost local acknowledgement.
 
-P2's runFulfillmentDispatchWorker keeps one contact remap across claim and begin.
+runFulfillmentDispatchWorker keeps one contact remap across claim and begin.
 A correctable draft re-claim atomically refreshes fingerprint and evidence, then
 reads the authoritative row. Approved amendment G14 records the mapped provider
 attempt at that point, before shadow exit, unsafe-state refusal or begin. Its
 host-supplied opaque key preserves initial/remap identities; only allowlisted
 prepared evidence, mode/status and references persist. Same-key replay writes no
 second attempt. Unknown/submitting/failed states never automatically POST;
-accepted proof repairs a lost local ACK without a provider call. An ACK rescue
-finalizes accepted proof as uncertain with its external reference retained.
+accepted proof repairs a lost local ACK without a provider call. Only a
+post-dispatch ACK failure triggers readback and an attempt to finalize accepted
+proof as uncertain with its external reference retained when acceptance is not
+already committed. Loop-start and concurrent-begin recovery ACK failures reach
+the outer catch without that rescue.
 Main and repair ACKs use identical host acceptance keys, ignoring adapter-provided
 key fields so a committed ACK replays after a lost response.
 The separate createFulfillmentCommandLedger protocol delegates atomic fenced
 operations to a durable store; it does not keep lease/retry state locally. The
 host supplies keys, actual-command fingerprints, candidate selection, paid truth
-and inventory authority. The paid outbox handler settles only after its injected
-fulfillment obligation completes. Recovery classifies missing/stale/uncertain
+and inventory authority. After payload validation, unless an enabled risk gate
+returns early, the paid outbox handler awaits its injected fulfillment call before returning an
+outcome. Risk `review`/`block` returns `processed` without calling fulfillment;
+fulfillment `completed`, `skipped` and `manual_review` also return `processed`
+and settle the event. Settlement therefore does not always mean fulfillment
+completed. Recovery classifies missing/stale/uncertain
 work for local requeue, waiting or operator review, without dispatching it.
 The donor OrderPaidFulfillmentPort in paidHandoffPorts.ts retains the handler's
-outcome ladder; P4/P7 host composition bridges it to P1's FulfillmentPaidHandoffPort.
-P3 owns store/adapter conformance and P4 owns native SQL/atomicity proofs.
+outcome ladder; later host composition bridges it to FulfillmentPaidHandoffPort,
+with native obligation/acknowledgement persistence supplied by
+`createPostgresPaidFulfillmentHandoffStore`. Native stores bind the callable
+ports to PostgreSQL; host composition still owns handler integration.
 
 [Labels](../../packages/platform/src/fulfillment/contracts/label.ts) separate durable
 object pointers from transient signed downloads. Missing PDF is not missing parcel;
@@ -721,50 +739,63 @@ movements, lots, expiry, replay and conflicts. Inventory reservations/availabili
 and catalog facts retain their existing owners. Host storage label reads remain
 independent of provider support; capability selection performs no I/O.
 
-P3 supplies the [verified ingress](../../packages/platform/src/fulfillment/verifiedIngress.ts)
-and [reconciliation worker](../../packages/platform/src/fulfillment/providerReconciliationWorker.ts).
-Approved G17 makes host persistence explicit as an inline input: recordObservation
-atomically deduplicates eventKey and retains firstReceivedAt; markProcessed is
-idempotent. Replays resume idempotent lifecycle writes after interruption and
-produce no second durable effect. The host readLocalFulfillmentState supplies
-status, latestStatusOccurredAt and handedOverAt. Cancelled/exception rows still
-write status evidence but skip acceptance, exception holds, stock, handover,
-tracking and invoices. Older known occurrences skip convergence effects; an
-already handed-over row can still retry its accounting invoice. Unknown times
-remain null. Provider keys must distinguish kind/outcome and known occurrence
-(or supplied snapshot revision); identical observations without time carry no
-invented ordering. Private authentication/parsing, mapper and key bytes stay with
-the adapter/host. Verified ingress requires a nonblank observation or dispatch
-external reference before acceptance, status evidence or effects; failure leaves
-the received event unprocessed for retry. F3 contention annotation is a best-effort
-host write before rethrowing the original stock failure; recovered-picked receipts
-remain typed diagnostics. Provider read failures fail reconciliation, while unmapped
-status evidence projects only declared correlation fields before host calls.
-Effects retain stock → handoff → tracking → invoice order.
+The [verified ingress](../../packages/platform/src/fulfillment/verifiedIngress.ts)
+and [reconciliation worker](../../packages/platform/src/fulfillment/providerReconciliationWorker.ts)
+use approved G17 inline host persistence. Ingress requires recordObservation to
+atomically deduplicate eventKey and retain firstReceivedAt, and markProcessed to
+be idempotent. Host lifecycle writes must also be idempotent so retries after
+interruption create no second durable effect. Reconciliation reads local status,
+latestStatusOccurredAt and handedOverAt through readLocalFulfillmentState.
+Non-stale found observations for locally cancelled/exception rows write status
+evidence only. Older known occurrences skip status/effects; an on-track row with
+handedOverAt can still retry its accounting invoice. Invalid or absent timestamps
+remain null; valid timestamps require an explicit zone and calendar/time checks.
+Host event keys must distinguish kind/outcome and known occurrence; identical
+observations without time carry no invented ordering. Private authentication/parsing, mapping
+and key bytes stay with the adapter/host. For correlated ingress, a trimmed
+observation or dispatch external reference is required before acceptance, status
+evidence, effects or the processed mark; failure leaves the persisted receipt
+unprocessed. Stock-contention annotation is a best-effort host write before the
+original stock failure is rethrown; recovered-picked receipts remain typed
+diagnostics. A classified superseding conflict returns superseded but marks only
+processed status; G17 has no dedicated persisted superseded-reason field.
+Unknown readback fails reconciliation before row processing. Unmapped evidence
+projects eventKey and declared correlation fields before host calls; correlated
+off-track rows skip acceptance/quarantine, while other rows require an external
+reference before acceptance and unknown-status quarantine. Effects retain
+stock → handover → tracking → invoice order. Tracking keeps the first trimmed
+nonblank number and provider-carrier precedence; normalization/URL codecs stay
+injected.
 
 [Stock sync](../../packages/platform/src/fulfillment/providerStockSyncWorker.ts)
 uses approved G15 coverageGapSkus on SyncCursor: absent is empty, and only the
-preceding succeeded run can confirm a repeated sellable coverage gap. It writes
-the sorted current set on success and [] on failure. Approved G16 makes
-readLocalInventoryStock(requestedAt) return unaggregated lines with skuRef,
-quantity balances, fulfillable/location/lot status and expiry. M08 filters and
-sums at the same captured clock passed to active-reservation reads; expiry exactly
-at requestedAt is unusable. Neither amendment changes the A3 stockSync provider
-or M06 authority. Host compatibility inputs preserve original run IDs, sentinel,
-keys and movement-window time zone. Product sync retains additive pack push,
-missing-metadata skip and durable sync markers; pull never creates an unknown SKU
-or overwrites local ownership. Evidence reads stay read-only and retain safe
-product authorization/read refusal reasons (F8).
+preceding succeeded run can confirm a repeated sellable coverage gap. A completed
+run writes the sorted current set on success or [] on failure; running cursors
+also clear it. Approved G16 makes readLocalInventoryStock(requestedAt) return
+unaggregated lines with skuRef, quantity balances, fulfillable/location/lot status
+and expiry. The worker filters and sums at the same captured clock passed to
+active-reservation reads; expiry exactly at requestedAt is unusable. The provider
+stock-sync shape and inventory authority are unchanged. Host compatibility inputs
+preserve original run IDs, sentinel, keys and movement-window time zone. Product
+sync retains additive pack push, missing-metadata skip and sync markers; pull
+delegates local ownership and unknown-SKU decisions to host upsert and records
+conflicts. Evidence handlers retain GET/authorization/validation/read order with
+injected parsers/responders and safe product authorization/read refusal details;
+they expose no resolving mutation.
 
 The [conformance runner](../../packages/platform/src/fulfillment/adapterConformance.ts)
 accepts readonly FulfillmentAdapterConformanceSubject[] and returns sanitized
-FulfillmentAdapterConformanceEvidence. Adapter-owned offline per-operation
-fixtures exercise actual-command identity, before-I/O mismatch refusal, replay,
+FulfillmentAdapterConformanceEvidence containing subject/provider references and
+passed operation records; a violated check throws. Adapter-owned offline fixtures
+exercise prepared-evidence and fingerprint consistency against the fixture's
+expectations (command bytes are not inspected), before-I/O mismatch refusal, requested replay,
 unsupported operations, exact absence scope/proof, local-missing unknown, selection
-and redaction. A host store fixture covers G14 attempt replay/remap and atomic
-draft re-claim; the worker proof bounds contact remapping to one. Native database
-atomicity and arrival continuity still require P4. This source is unmounted and
-default-off; no live provider or installation claim follows from fixture proof.
+and redaction. An optional host store fixture checks mapped-attempt replay/remap
+and draft re-claim evidence; a worker exercise caps contact remapping at one.
+Native database atomicity and arrival alignment have separate PostgreSQL
+conformance sources. The runner
+requires default-off adapter capabilities, and the workers/handlers are unmounted;
+no live provider or installation claim follows from fixture proof.
 
 [Delivery alignment](../../packages/platform/src/fulfillment/contracts/alignment.ts)
 preserves the arrival-only rule: late delivery extends the next cycle, never stacks
@@ -773,29 +804,63 @@ only after reaching the customer. Its superseded predecessor is no longer
 outstanding, but an in-flight or undelivered replacement still is. Never call
 `subscription_delivery_alignment_confirm_replacement` for a replacement that did
 not arrive: it records the customer-facing fact "Parcel delivered" and shifts the
-cycle later. The note-only operator attestation remains unchanged; P1 adds no
-caller. The P4 candidate supplies invoker native stores and forward-only
-alignment; its migration identities and executor boundary are documented under
-[module catalogues](DATA_AND_MIGRATIONS.md#module-catalogues-and-installed-histories).
-The native dispatch store delegates contact preparation and candidate data to
-the selected host. That host synchronizes `fulfillment_dispatch_contexts` on
-preparation and every authoritative contact/selection edit, under the shipment lock;
-claim/begin compare the stored revision with the prepared evidence. A draft can
-refresh once, while submission and accepted proof cannot authorize a blind POST.
-Before submission, the store rechecks paid order, active holds, shipment status,
-port readiness and the stored selected provider. The direct and command lanes
-share a native dispatch lock. Direct submission can supersede only the donor's
-pristine, never-claimed queued command; any effect-bearing history refuses it.
-Command claim cannot run after direct submission or accepted proof.
-The stock store requires the host's timed G16 inventory-line reader and reads
-native active reservations without changing M06. The shipment store exposes
-G17 received/processed receipts and explicit status-evidence recording; ingestion
-alone supplies no applied chronology. No executor or provider is mounted here.
+cycle later. The note-only operator attestation has no machine arrival predicate
+and no production caller in this surface; the
+[agent arrival-only rule](AGENT_GUIDE.md#architecture-rules) remains binding.
+
+The invariant "a late delivery extends the next cycle" is enforced automatically
+only when native delivery-alignment control mode is set to `auto_align`.
+`public.subscription_delivery_alignment_control.mode` defaults to `off` for
+rollout safety. A fresh native install therefore does not enforce the invariant
+until an operator calls `public.subscription_delivery_alignment_set_mode('auto_align')`.
+The accepted modes are `off`, `shadow`, `protect` and `auto_align`. Cases retain
+their captured mode and existing protection after later control changes.
+Automatic arrival alignment uses the latest arrival plus cadence with an outer
+`GREATEST` against the existing next-cycle date, once per settled case.
+Subscription locks precede case locks; rollback preserves both protection and
+the previous schedule.
+
+The native forwards
+[`20261022080000_fulfillment_command_ledger.sql`](../../db/platform/migrations/20261022080000_fulfillment_command_ledger.sql)
+and [`20261022090000_fulfillment_delivery_alignment.sql`](../../db/platform/migrations/20261022090000_fulfillment_delivery_alignment.sql)
+add command fencing and alignment. Donor fulfillment orders map to
+`public.fulfillment_shipments`, and `replaces_fulfillment_order_id` maps to
+`replaces_shipment_id`. Subscription identity follows order → cycle →
+subscription; cycle number belongs to the renewal operation. Missing correlation
+enters manual review. The overdue-delivery guard applies only to NEW cycle
+admission/insert. Existing-cycle renewal and dunning retries never pass through
+admission and neither mint nor consume its one-use receipts. There is no
+`retry_scheduled` state or change to the payments lifecycle.
+
+Native dispatch uses host-supplied contact preparation and candidate data. The
+host synchronizes `fulfillment_dispatch_contexts` during preparation and every
+authoritative contact/selection edit under the shipment lock. Claim/begin compare
+stored revision with prepared evidence. Submission rechecks paid state, holds,
+shipment status, port readiness and selected provider. Direct and command lanes
+share a dispatch lock; direct submission supersedes only pristine, never-claimed
+queued commands, while effect-bearing history refuses it. ACK records native
+`dispatch` evidence, fencing cancellation without asserting an owned label or
+physical packing.
+
+The native stores implement G14 mapped-attempt persistence, G15 coverage-gap
+cursors, G16 injected timed inventory-line reads with native reservation reads,
+and G17 atomic received/processed receipts plus separate status chronology.
+Inventory authority is unchanged. All new routines, including helpers and
+trigger routines, are invokers with `PUBLIC`, `anon` and `authenticated` access
+revoked. There is no `SECURITY DEFINER` routine or new execution role. The initial
+executor is the deployment owner; a separate service principal requires explicit
+least-privilege grants on routines and underlying objects. Install the complete
+canonical catalogue; `FULFILLMENT_MIGRATIONS` contains byte-identical sparse
+projections. See [native installation boundaries](DATA_AND_MIGRATIONS.md#module-catalogues-and-installed-histories).
 
 Inspect the [contract witnesses](../../packages/platform/test/fulfillment/contracts.test.ts),
 [status parity](../../packages/platform/test/fulfillment/statusMap.test.ts),
 [port fit](../../packages/platform/test/fulfillment/portFit.test.ts) and
 [programme record](plans/oss-m08-fulfillment-physical-delivery.md) for provenance,
-declared adaptations and later obligations. P2 adds callable orchestration and a durable-store protocol, without a concrete
-adapter, persistent store, mounted executor, route or activation; reference
-composition stays unchanged.
+declared adaptations and boundaries. The
+[native store contract](../../packages/platform/test/fulfillment/postgresStore.test.ts),
+[native conformance](../../tests/postgres/fulfillmentNativeConformance.test.ts) and
+[alignment tests](../../tests/postgres/fulfillmentDeliveryAlignment.test.ts)
+cover persistence and refusal behavior. Callable orchestration, native stores
+and the durable command protocol mount no provider adapter, executor or route;
+reference composition and activation remain host choices.

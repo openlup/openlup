@@ -53,8 +53,6 @@ type PaidFulfillmentRecoveryCandidate = {
 
 type PaidFulfillmentRecoveryPlan = { checkedOrders: number; candidates: PaidFulfillmentRecoveryCandidate[] };
 
-type RequeueDiscardedOrderPaidOutboxResult = { requeuedCount: number; eventIds: string[] };
-
 export function collectPaidFulfillmentRecoveryCandidates(input: {
   providerRef: string;
   orders: PaidFulfillmentOrderRow[];

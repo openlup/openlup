@@ -70,7 +70,9 @@ describe("refund truth witnesses and evidence policy", () => {
     }
     for (const patch of [{ money: null }, { money: { amountMinor: 8999, currency: "XXX" } }, { providerPaymentRef: "" }]) {
       const f = await deliver(snapshot(2100), undefined, patch);
-      expect(f.result.status).toBe(200); expect(f.ingest).toHaveBeenCalledTimes(1); expect(f.apply).not.toHaveBeenCalled();
+      expect(f.result.status).toBe(patch.money === null ? 503 : 200);
+      expect(f.ingest).toHaveBeenCalledTimes(patch.money === null ? 0 : 1);
+      expect(f.apply).not.toHaveBeenCalled();
     }
   });
   it("reproduces the default-to-full only with explicit legacy opt-in", async () => {
