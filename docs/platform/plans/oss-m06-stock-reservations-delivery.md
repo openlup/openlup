@@ -356,128 +356,39 @@ Merge self-retro: unchanged registrations need verification rather than edits; r
 
 ## S1: 0.20.0 package set
 
-Finite outcome (2026-10-21, merge-slot row 27, "M06 S1"): prepare the complete
-minor `0.20.0` set from main `4c0554890eb91bb0256dea26a8483b3160f69a36`,
-following the `0.19.0` preparation in #266. Core and outbox are unchanged
-republications from `0.19.0`; UI remains private `0.0.0`. The new platform entry
-consumes only `dunning-lifecycle-active-repair.md` and
-`m06-native-flat-rate-save.md`, records M06's shipped development-preview
-outcomes and retains the current limitations. P5a/P5b already shipped in
-`0.19.0`; their release entries are not repeated as new changes.
+Outcome (2026-10-21): prepare the complete minor `0.20.0` set from main
+`4c055489`; core/outbox are unchanged republications and UI remains private
+`0.0.0`. Platform consumes only `dunning-lifecycle-active-repair.md` and
+`m06-native-flat-rate-save.md`; M06 P5a/P5b already shipped in `0.19.0`.
 
-Authority: the coordinator's row-27 brief assigns Codex file-content preparation
-and the named focused checks on branch `claude/m06-s1-0.20.0`. No Git writes of
-any kind (including fixture repositories), other worktrees, secrets, broad suite,
-`npm test`, `test:scoped`, `verify`, submission, merge, tag, account or registry
-mutation are delegated. The supervisor owns staging, commits and required native
-review/final verification. Release dispatch and protected approval are human-only. The
-2026-10-21 baseline continuation permitted public npm registry reads and
-published-version downloads within the coordinator-assigned scratch scope; it
-required preservation of the three prior repair edits and focused package,
-source-preparation, Migration, ast-grep, lint and docs-size checks. Repair cycle 2
-authorizes documentation corrections and the named focused checks only; versions,
-locks, release gates and fragments are excluded.
+Published `0.19.0` registry baselines (downloaded bytes match shasum and integrity):
 
-Acceptance/proof plan: generate versions, exact internal pins, lock carriers,
-changelog sections and source bindings with the existing release functions;
-preserve all pre-0.20.0 changelog history byte-for-byte and empty Unreleased
-sections. Keep caps unchanged, including platform root-docs gzip at 49,152 B.
-Use the smallest content-only adaptation of the existing bump planner because
-the CLI stages fragment deletions. No persistent tool or control is added.
-Validate Migration blocks against the existing migration rule, measure root-docs
-bytes and run only the requested focused static/package checks. Source-preparation
-fixture tests require Git writes and therefore remain a supervisor obligation.
-The initial pre-commit policy and strict source-preparation refusals under the
-unstaged fragment deletions were reported, not treated as passing committed
-evidence. Exact results and computed no-impact trailer proposals accompany the
-supervisor handoff.
+| Package | Packed B | Registry shasum | Registry integrity |
+| --- | ---: | --- | --- |
+| @openlup/core | 161,650 | `9a50bfe6d4853f55ffd576c191a01c127e55e7f8` | `sha512-M/jBZCzRzB7HQc6Wb8DPxewqMZbK6kS9u6GO2eQDrxXPIJqis/RD+fOSKcTWSoj+UMmPdOsHzmau0NybzKZQTw==` |
+| @openlup/outbox | 39,421 | `3545c73a5be1548229999bcb8d2608a4a72413e6` | `sha512-aUlXLbY54Tsn3tJ1B42gWgiES1gOPuKt1cn8IvK/bvWBYA5jZur/Rhb8QjhOfwHmbGmyUTE7lYAH/j2+RiGIog==` |
+| @openlup/platform | 805,872 | `57e35b623d38e36aa32585895492613bfa1e3a16` | `sha512-Z1vvXD0PFTfnbfzs7lvAqXjBDKdSg66h9hC4b3m+uZV+zeAPDGF5dZJ/QBwqBJ2ZNf8WnuWS93FZnjt+dYWQfA==` |
 
-Release-order gate (coordinator, 2026-10-21): `0.19.0` is published and its
-C4 artifact readback passed on dispatch target #266 merge `fd1513ba`. This
-satisfies the predecessor publication/readback gate for `0.20.0`. Later main
-commits carried version `0.19.0` with post-release shipping code, API and
-SQL; they are not the baseline source. This S1 preparation refreshes
-`pack.baseline` in `packages/core/release-gates.json`,
-`packages/outbox/release-gates.json` and `packages/platform/release-gates.json`
-from the downloaded published `0.19.0` tarballs: 161,650 B, 39,421 B and
-805,872 B respectively. Full registry shasum and integrity match each downloaded
-artifact, and shasums match the coordinator's prefixes. All caps are unchanged.
-The baseline refresh belongs to this reviewed preparation, whose remaining
-commit/review/final-verification gates precede dispatch. Publication evidence
-and a prepared version grant no dispatch or protected-approval authority.
+These artifacts supply the three `pack.baseline` records; all caps are unchanged.
+Coordinator-confirmed release order: `0.19.0` dispatch target `fd1513ba` (#266)
+is published and C4-checked; `0.20.0` follows merge and required review/final
+verification. Dispatch and protected approval remain human-only.
 
-S1 disposition of the Parity PENDING rows: managed host ATP/forecast/dated-supply/
-pagination readback remains PENDING with the M06 lead; managed two-session lock
-order/concurrency and uncovered compensation remain PENDING with the M06 lead's
-bounded managed-host proof/scope decision; managed exact-prefix upgrade/ledger
-remains PENDING under the managed installation proof gate; full managed address
-adapter idempotency/conflict/readback remains PENDING with the M06 lead; and
-successful managed flat-rate read/save remains PENDING the M06 lead's host/grant
-decision. None is proved on a managed host or claimed by S1; the native flat-rate
-save follow-up does not close them. Only the existing adopter admission/busy,
-stock-wait/durable timing and staging-control rows are transferred to C5 adopter
-evidence, owned by the M06 lead at the adopter's canonical staging at C5/C6.
-Those transfers are dispositions, not PASS; no other pending row is transferred
-or promoted to PASS here.
+M06 remains incomplete. The [Parity PENDING rows](#parity-pending-rows) retain:
 
-Risk: inaccurate release claims or fabricated baseline identity could mislead
-adopters or erase the growth comparison. Retain the actual prior artifact
-identity and the coordinator-confirmed predecessor readback. No runtime, SQL, API,
-export, cap or budget change belongs to S1.
+- managed-host ATP/forecast/dated-supply/pagination readback (M06 lead);
+- managed two-session lock order/concurrency and uncovered compensation
+  (M06 lead's bounded managed-host proof/scope decision);
+- managed exact-prefix upgrade/ledger (managed installation proof gate);
+- managed address adapter idempotency/conflict/readback (M06 lead);
+- successful managed flat-rate read/save (M06 lead's host/grant decision).
 
+None is proved on a managed host or closed by native flat-rate save. Only the
+ledger's adopter admission/busy, stock-wait/durable timing and staging-control
+rows transfer to C5 adopter evidence, owned by the M06 lead at the adopter's
+canonical staging at C5/C6; these are dispositions, not PASS.
 
-### S1 focused preparation evidence
-
-Historical preparation record (2026-10-21): the three publishable manifests,
-exact pins and both lock carriers name `0.20.0`. Only the two named fragments
-are consumed; all three changelogs keep one empty Unreleased section and
-byte-identical history from `0.19.0` onward. Core/outbox runtime source trees
-match #266. The committed source-binding snapshot passes
-`node --experimental-strip-types scripts/source-release-preparation.ts --check`
-on candidate `1bc62d30`; the earlier pre-commit refusal for unstaged fragment
-deletions was not waived.
-
-Initial focused preparation checks on 2026-10-21 passed ast-grep, lint (zero
-errors / 33 existing warnings), five-project typecheck, three API checks and
-set manifest-only validation. Repair cycle 1 restored the surviving `0.19.0`
-limitations in the standalone `0.20.0` body, updated native flat-rate support,
-retained all managed-host pending classes and named the additive shipping API
-and exact-set upgrade. Its README restoration left the adjacent-release pointer
-at `0.19.0`; repair cycle 2 corrects it to `0.20.0` and retains the incomplete
-M06 status and managed-host proof boundaries.
-
-Baseline refresh evidence (2026-10-21, before supervisor commit `0cb07289`):
-all three release-gate baselines were refreshed from the published `0.19.0`
-artifacts without cap changes. Source-preparation `--check` passed for 5,450
-tracked public paths, with no `--write` needed. The committed Migration-block
-rule from `4c055489` to `1bc62d30` passed; release markers/history independently
-passed (core/outbox one Migration block each, platform three). Ast-grep and lint
-passed (zero errors / 33 existing warnings; eight structural rule tests).
-Root-docs gzip measured core 23,746/49,152 B (10/20 files), outbox
-13,447/26,624 B (6/12 files) and platform 42,918/49,152 B (5/10 files), using
-the repository's sorted-content `measurePack` function. These are historical
-documentation measurements, not candidate tarball or managed-host proof.
-
-At that pre-commit checkpoint, `npm run packages:check` exited 1 on three
-mandatory dirty-package guards; manifest-only checking passed. Policy with
-`--docs-update` validated source bindings, structural policy and byte-identical
-navigation but exited 1 for unanswered core/outbox impact obligations after
-the baseline changes. Those refusals were not waived and do not describe the
-later committed candidate. A raw index-file hash change was also observed in
-that run; its cause was not established by the retained evidence. Staged entries
-and HEAD were unchanged; no index restoration was attempted.
-
-Repair cycle 2 (2026-10-21, starting candidate `0cb07289`): the README links to
-this set's migration and limitations; the release summary distinguishes cumulative
-M06 status from the `0.20.0` additions. Known limitations explicitly retain the
-managed dunning gap and M16 national-registry/canonical-key debt. This repair
-changes documentation only. Full artifact/installed-consumer proof, Git-writing
-fixture tests, required native review and final verification belong to the
-supervisor's authorized delivery route. A prepared version or a passing focused
-check grants no publication, dispatch or protected-approval authority.
-
-Self-retro: release summaries need both prior limitations and an explicit
-adjacent-set pointer → check every shipped README release reference alongside
-the standalone changelog. Public evidence uses dated revisions and repository
-contracts rather than private handoff locations. No new runtime or process
-mechanism is needed.
+The ledger retains `value_minor >= 0` as a non-DB host-request-schema guard;
+a database CHECK is a candidate for the native-backend parity round.
+Native new-purchase stock read is deferred to that round (owner 2026-10-21),
+second after M05 bundle-1; C5 retains the adopter-owned reader.

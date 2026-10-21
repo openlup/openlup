@@ -26,18 +26,20 @@ NULL only when `isDunningLadderExhausted` holds; a class-terminated rung-one ref
 still must not be passed as NULL. There is no managed twin yet; the managed
 baseline still needs a separate forward.
 
-- Enable native flat-rate read/save through a named role-free capability lane.
+- Add the readiness-gated native flat-rate binding; the host supplies the named
+  role-free lane and fixed-key rate port, as in the reference composition.
 - Require the native port and Core readiness for the shipping seed migration.
 - Refuse missing-row saves; native audit remains explicitly unsupported and best effort.
 
 Migration:
 Apply the complete portable chain through 20261021200000_shipping_flat_rate_seed.
 The seed preserves an existing rate and inserts zero only when absent; no ACL or
-role changes are made. New code on an unmigrated schema keeps refusing. Old code
-ignores the row, but older runners refuse the extended ledger. Application rollback
-does not reverse the migration. Managed host-save authority remains pending.
+role changes are made. New code on an unmigrated schema keeps refusing. Older code
+reads the seeded zero as it read an absent row. An application rollback does not reverse either forward
+(positions 71 and 72), and older runners refuse the extended ledger.
+Managed host-save authority remains pending.
 
-- Add the shipping `SHIPPING_MIGRATIONS` export and the
+- Add the shipping `SHIPPING_MIGRATIONS` export and the optional
   `nativeRateReadiness` / `nativeRateSchema` binding dependencies.
 
 Migration: upgrade the complete `@openlup/*` set from `0.19.0` to `0.20.0`
@@ -48,13 +50,15 @@ projections as an installation chain.
 
 ### Cumulative M06 status
 
-- M06 includes development-preview inventory and shipping composition first
-  shipped in `0.19.0`: inventory contracts, stock/ATP reads, reserve/release/expire
-  operations, subscription forecasts, delivery selection, address handlers and
-  flat-rate handling. In `0.20.0`, native flat-rate read/save gains its named
-  capability lane, applied-seed readiness proof and `SHIPPING_MIGRATIONS` export;
-  the portable dunning invariant repair also ships in this set. Host-owned policy
-  and unsupported operations retain their explicit boundaries.
+- M06 remains incomplete: inventory and shipping are development-preview
+  surfaces, with managed-host proof classes pending.
+- Inventory and shipping contracts, stock/ATP reads, reserve/release/expire
+  operations, subscription forecasts, delivery selection, address and flat-rate
+  handlers first shipped in `0.18.0`. Opt-in inventory/shipping/composition
+  bindings (P5a/P5b) first shipped in `0.19.0`. M06's only new behaviour in
+  `0.20.0` is native flat-rate save behind readiness; the portable dunning
+  invariant repair is separate from M06. Host-owned policy and unsupported
+  operations retain their explicit boundaries.
 
 ### Known limitations
 
