@@ -14,6 +14,7 @@ import {
   isTechnicalFirstSubscriptionLegacy,
   mapAdminPromotion,
 } from "../../domains/commerce/adminPromotionSemantic.js";
+import { REFERENCE_LEGACY_FIRST_SUBSCRIPTION_PERCENT } from "../../domains/commerce/quotePromoDiscounts.js";
 import { listSubscriptionBandEntries } from "./adminPromotionSubscriptionBand.js";
 
 /**
@@ -76,7 +77,7 @@ export function createSupabaseAdminPromotionsDataPort(
       // rollout; the legacy admin editor must keep showing exactly one row.
       return rows
         .filter((row) => row.promotion_engine_version !== "promotion-engine.v2")
-        .map((row) => mapAdminPromotion(row, mirrors.get(String(row.id)), bandEntries, currency));
+        .map((row) => mapAdminPromotion(row, mirrors.get(String(row.id)), bandEntries, currency, REFERENCE_LEGACY_FIRST_SUBSCRIPTION_PERCENT));
     },
 
     async updatePromotion(id: string, updates: AdminPromotionUpdatePayload): Promise<void> {
@@ -98,7 +99,7 @@ export function createSupabaseAdminPromotionsDataPort(
         .limit(1);
       if (legacyError) throw asDomainRpcError(legacyError, "promotion_management_check_failed");
       const legacyRow = Array.isArray(legacyRows) ? legacyRows[0] as Row | undefined : undefined;
-      if (legacyRow && isTechnicalFirstSubscriptionLegacy(legacyRow)) {
+      if (legacyRow && isTechnicalFirstSubscriptionLegacy(legacyRow, REFERENCE_LEGACY_FIRST_SUBSCRIPTION_PERCENT)) {
         throw new DomainRpcError("P0001", "system_managed_promotion_read_only");
       }
       // The v2 mirror row is directly addressable only for the deliberate

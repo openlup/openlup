@@ -5,7 +5,7 @@ export interface CommerceQuoteCatalogItem {
   variantId: string;
   productSlug: string;
   netWeightG: number;
-  /** Strict D1 identifies the product primary SKU; offer pricing never chooses a secondary SKU. */
+  /** Identifies the product primary SKU for offer selection; secondary SKUs are excluded. */
   isPrimarySku?: boolean;
   isAddon: boolean;
   sellability: {

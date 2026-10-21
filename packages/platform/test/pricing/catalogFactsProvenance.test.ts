@@ -81,7 +81,7 @@ describe("catalog facts provenance", () => {
     } catch (caught) {
       error = caught;
     }
-    expect(error).toMatchObject({ code: "PRICE_NOT_CONFIGURED", details: { sku: "opaque:lamb-launch.v1" } });
+    expect(error).toMatchObject({ code: "PRICE_NOT_CONFIGURED", details: { sku: "opaque:item-alpha.v1" } });
     expect(catalogFactsForQuoteLine(
       false,
       { ...strictItem(), documentRevision: { id: null, digest: null } },
@@ -109,14 +109,14 @@ describe("catalog facts provenance", () => {
   });
 });
 
-function strictItem(): CommerceQuoteCatalogItem & { energyPer100g: number } {
+function strictItem(): CommerceQuoteCatalogItem & { usagePer100Units: number } {
   return {
     skuId: "11111111-1111-4111-8111-111111111111",
-    skuCode: "opaque:lamb-launch.v1",
-    variantId: "variant-lamb-400",
-    productSlug: "lamb",
+    skuCode: "opaque:item-alpha.v1",
+    variantId: "variant-item-alpha-400",
+    productSlug: "item-alpha",
     netWeightG: 400,
-    energyPer100g: 123,
+    usagePer100Units: 123,
     isAddon: false,
     sellability: { oneTime: true, subscription: true },
     documentRevision: {
@@ -132,7 +132,7 @@ function quoteResponse(): CreateQuoteResponse {
     quote: {
       currency: TEST_CURRENCY, taxIncluded: true,
       lines: [{
-        sku: "opaque:lamb-launch.v1", productSlug: "lamb", quantity: 1,
+        sku: "opaque:item-alpha.v1", productSlug: "item-alpha", quantity: 1,
         unitPriceGross: { amountMinor: 1490, currency: TEST_CURRENCY },
         lineSubtotalGross: { amountMinor: 1490, currency: TEST_CURRENCY },
         tax: {

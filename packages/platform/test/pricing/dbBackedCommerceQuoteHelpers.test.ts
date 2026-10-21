@@ -45,7 +45,7 @@ describe("db backed commerce quote helpers", () => {
       variantId: "variant-alpha",
       mode: "one_time" as const,
       regionCode: "EXAMPLE",
-      currency: "USD",
+      currency: "XXX",
       channel: "test",
       atTime: "2026-06-05T10:00:00.000Z",
     };

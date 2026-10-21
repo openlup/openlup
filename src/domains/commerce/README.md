@@ -75,6 +75,17 @@ as a final optional argument. No reference acquisition configuration is added, a
 the fixed historical token witness still protects absent-terms bytes. Native and
 acquisition-only mounted acceptance remain pending composition evidence.
 
+The reference customer and admin promotion classifiers require the host's legacy
+first-subscription percentage as an explicit argument, with no default. The
+reference quote-discount composition owns the named incumbent value; the v2 quote
+composition and admin adapter pass that same value. This keeps classification,
+comparison tolerance, system-managed read-only rows and quote money unchanged
+while keeping adopter policy out of the classifiers. No package export changes.
+The managed baseline's legacy-mirror predicate remains immutable; changing its
+incumbent value requires a forward migration, recorded as an M05 follow-up
+needing an owner decision in the
+[M05 ledger](../../../docs/platform/plans/oss-m05-catalog-offers-pricing.md#p6-acceptance-obligation).
+
 ## Public surface (import cross-domain ONLY these)
 - UI/BFF clients: `commerceClient.ts`, `omsClient.ts`,
   `adminPromotionsClient.ts` (admin "Rabaty" editor),

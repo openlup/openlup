@@ -16,6 +16,7 @@ type PromotionWithV2Benefit = PromotionRow & {
  */
 export function promotionCustomerSemantic(
   promotion: PromotionWithV2Benefit,
+  legacyFirstSubscriptionPercent: number,
 ): CommercePromotionCustomerSemantic | undefined {
   if (promotion.trigger_type !== "automatic" || promotion.applies_to_kind !== "order_total") {
     return undefined;
@@ -23,7 +24,7 @@ export function promotionCustomerSemantic(
 
   const eligibility = promotion.eligibility ?? {};
   const payload = promotion.applies_to_payload ?? {};
-  if (payload.cart_mode === "subscription" && isFirstSubscription50(promotion, eligibility)) {
+  if (payload.cart_mode === "subscription" && isFirstSubscription50(promotion, eligibility, legacyFirstSubscriptionPercent)) {
     return "first_subscription_50";
   }
   if (
@@ -50,6 +51,7 @@ export function promotionCustomerSemantic(
 function isFirstSubscription50(
   promotion: PromotionWithV2Benefit,
   eligibility: Record<string, unknown>,
+  legacyFirstSubscriptionPercent: number,
 ): boolean {
   if (
     promotion.stacking_rule !== "exclusive" ||
@@ -63,7 +65,7 @@ function isFirstSubscription50(
       promotion.benefit_value_bps === 5_000;
   }
   return promotion.discount_type === "percentage" &&
-    Math.abs(promotion.discount_value - 44.404) < 0.000_001;
+    Math.abs(promotion.discount_value - legacyFirstSubscriptionPercent) < 0.000_001;
 }
 
 function hasOnlyEligibility(

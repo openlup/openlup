@@ -19,14 +19,14 @@ describe("commerce quote BFF handler", () => {
     const port = createPort();
 
     await createCommerceQuoteHandler({ quotePort: port })(
-      request("POST", { lines: [{ sku: "OPENLUP-DOG-LAMB-CAN-400G", quantity: 1 }] }),
+      request("POST", { lines: [{ sku: "ITEM-ALPHA-400", quantity: 1 }] }),
       res,
     );
 
     expect(port.createQuote).toHaveBeenCalledWith(
       {
         mode: "one_time",
-        lines: [{ sku: "OPENLUP-DOG-LAMB-CAN-400G", quantity: 1 }],
+        lines: [{ sku: "ITEM-ALPHA-400", quantity: 1 }],
         promoCodes: [],
       },
       { clientId: null },
@@ -51,7 +51,7 @@ describe("commerce quote BFF handler", () => {
 
     const invalid = createResponse();
     await createCommerceQuoteHandler({ quotePort: createPort() })(
-      request("POST", { lines: [{ sku: "lamb", quantity: 0 }] }),
+      request("POST", { lines: [{ sku: "item-alpha", quantity: 0 }] }),
       invalid,
     );
 
@@ -71,11 +71,11 @@ describe("commerce quote BFF handler", () => {
     await createCommerceQuoteHandler({
       quotePort: createPort(
         new CommerceQuoteError("UNKNOWN_SKU", "Unknown commerce SKU", {
-          sku: "OPENLUP-DOG-DUCK-CAN-400G",
+          sku: "ITEM-BETA-400",
         }),
       ),
     })(
-      request("POST", { lines: [{ sku: "OPENLUP-DOG-DUCK-CAN-400G", quantity: 1 }] }),
+      request("POST", { lines: [{ sku: "ITEM-BETA-400", quantity: 1 }] }),
       unknown,
     );
 
@@ -83,7 +83,7 @@ describe("commerce quote BFF handler", () => {
     await createCommerceQuoteHandler({
       quotePort: createPort({ contractVersion: COMMERCE_CONTRACT_VERSION, quote: {} }),
     })(
-      request("POST", { lines: [{ sku: "OPENLUP-DOG-LAMB-CAN-400G", quantity: 1 }] }),
+      request("POST", { lines: [{ sku: "ITEM-ALPHA-400", quantity: 1 }] }),
       invalid,
     );
 
@@ -92,7 +92,7 @@ describe("commerce quote BFF handler", () => {
       expect.objectContaining({
         error: expect.objectContaining({
           code: "BAD_REQUEST",
-          details: { sku: "OPENLUP-DOG-DUCK-CAN-400G" },
+          details: { sku: "ITEM-BETA-400" },
         }),
       }),
     );
@@ -136,7 +136,7 @@ describe("commerce quote BFF handler", () => {
     await createCommerceQuoteHandler({
       quotePort: createPort(providerError),
     })(
-      request("POST", { lines: [{ sku: "OPENLUP-DOG-LAMB-CAN-400G", quantity: 1 }] }),
+      request("POST", { lines: [{ sku: "ITEM-ALPHA-400", quantity: 1 }] }),
       res,
     );
 
@@ -184,7 +184,7 @@ describe("commerce quote BFF handler", () => {
         new CommercePricingPolicyUnavailableError("v2_readiness_not_ready"),
       ),
     })(
-      request("POST", { lines: [{ sku: "OPENLUP-DOG-LAMB-CAN-400G", quantity: 1 }] }),
+      request("POST", { lines: [{ sku: "ITEM-ALPHA-400", quantity: 1 }] }),
       res,
     );
 
@@ -242,7 +242,7 @@ describe("commerce quote BFF handler", () => {
         new CommercePricingPolicyUnavailableError("signing_secret_unavailable"),
       ),
     })(
-      request("POST", { lines: [{ sku: "OPENLUP-DOG-LAMB-CAN-400G", quantity: 1 }] }),
+      request("POST", { lines: [{ sku: "ITEM-ALPHA-400", quantity: 1 }] }),
       res,
     );
 
@@ -266,7 +266,7 @@ describe("commerce quote BFF handler", () => {
         new CommercePricingPolicyUnavailableError("secret-policy-reason"),
       ),
     })(
-      request("POST", { lines: [{ sku: "OPENLUP-DOG-LAMB-CAN-400G", quantity: 1 }] }),
+      request("POST", { lines: [{ sku: "ITEM-ALPHA-400", quantity: 1 }] }),
       res,
     );
 
@@ -284,10 +284,10 @@ describe("commerce quote BFF handler", () => {
 
     await createCommerceQuoteHandler({
       quotePort: createPort(new CommerceQuoteError("PRICE_NOT_CONFIGURED", "Commerce price is not configured", {
-        sku: "OPENLUP-DOG-LAMB-CAN-400G",
+        sku: "ITEM-ALPHA-400",
       })),
     })(
-      request("POST", { lines: [{ sku: "OPENLUP-DOG-LAMB-CAN-400G", quantity: 1 }] }),
+      request("POST", { lines: [{ sku: "ITEM-ALPHA-400", quantity: 1 }] }),
       res,
     );
 
@@ -295,7 +295,7 @@ describe("commerce quote BFF handler", () => {
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({
       error: expect.objectContaining({
         code: "CONFLICT",
-        details: { sku: "OPENLUP-DOG-LAMB-CAN-400G" },
+        details: { sku: "ITEM-ALPHA-400" },
       }),
     }));
   });
@@ -307,7 +307,7 @@ describe("commerce quote BFF handler", () => {
       quotePort: createPort(v2Quote()),
       honorPromotionAcceptance: honored,
     })(request("POST", {
-      lines: [{ sku: "OPENLUP-DOG-LAMB-CAN-400G", quantity: 1 }],
+      lines: [{ sku: "ITEM-ALPHA-400", quantity: 1 }],
       promoCodes: ["SAVE80"],
       promotionAcceptanceToken: "opaque.signed-token",
     }), res);
@@ -333,7 +333,7 @@ describe("commerce quote BFF handler", () => {
       honorPromotionAcceptance: vi.fn().mockReturnValue(false),
       resolvePricingPolicy: vi.fn().mockResolvedValue(pricingPolicy),
     })(request("POST", {
-      lines: [{ sku: "OPENLUP-DOG-LAMB-CAN-400G", quantity: 1 }],
+      lines: [{ sku: "ITEM-ALPHA-400", quantity: 1 }],
       promoCodes: ["SAVE80"],
       promotionAcceptanceToken: "opaque.signed-token",
     }), res);
@@ -375,15 +375,15 @@ function quote() {
     taxIncluded: true,
     lines: [
       {
-        sku: "OPENLUP-DOG-LAMB-CAN-400G",
-        productSlug: "lamb",
+        sku: "ITEM-ALPHA-400",
+        productSlug: "item-alpha",
         quantity: 1,
         unitPriceGross: { amountMinor: 1490, currency: "XXX" },
         lineSubtotalGross: { amountMinor: 1490, currency: "XXX" },
         tax: {
           included: true,
           country: "ZZ",
-          category: "pet_food",
+          category: "example_category",
           vatRateBps: 800,
           legalBasis: "Example VAT rule",
           netAmount: { amountMinor: 1380, currency: "XXX" },

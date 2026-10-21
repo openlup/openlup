@@ -6,7 +6,7 @@ import { evaluateAutomaticPromotionV2, legacyPromotionDataPort } from "./binding
 import { evaluateOrderTotalDiscounts } from "./bindingsFixtures.js";
 
 const legacy = row("legacy", {
-  discount_value: 44.404,
+  discount_value: 37.537,
   applies_to_payload: { cart_mode: "subscription" },
   eligibility: { first_subscription_purchase: true },
 });
@@ -38,10 +38,10 @@ describe("quote promotion v2 adapter", () => {
       .resolves.toEqual([legacy]);
   });
 
-  it("preserves the current first-subscription policy at exactly 50% in v1 and v2", async () => {
+  it("matches a synthetic fractional legacy percentage to a 50% reference target", async () => {
     const currentLegacy = row("current-v1", {
       name: "Legacy internal label",
-      discount_value: 44.404,
+      discount_value: 37.537,
       applies_to_payload: { cart_mode: "subscription" },
       eligibility: { first_subscription_purchase: true },
       redemption_limit_per_customer: 1,
@@ -62,22 +62,22 @@ describe("quote promotion v2 adapter", () => {
     const v1 = await evaluateOrderTotalDiscounts({
       promoDataPort: legacyPromotionDataPort(currentPolicy), clientId: null,
       mode: "subscription", promoCodes: [], regionCode: "ZZ",
-      subtotalGrossMinor: 18_760, shippingGrossMinor: 1_500,
+      subtotalGrossMinor: 16_000, shippingGrossMinor: 1_500,
       atTime: "2026-07-14T12:00:00.000Z",
     });
     const v2 = await evaluateAutomaticPromotionV2({
       promoDataPort: currentPolicy, clientId: null,
-      mode: "subscription", regionCode: "ZZ", referenceProductMinor: 20_860,
-      currentProductMinor: 18_760, shippingMinor: 1_500,
+      mode: "subscription", regionCode: "ZZ", referenceProductMinor: 19_990,
+      currentProductMinor: 16_000, shippingMinor: 1_500,
       atTime: "2026-07-14T12:00:00.000Z",
     });
 
-    expect(v1.discounts).toEqual([expect.objectContaining({ amountOffMinor: 8_330 })]);
+    expect(v1.discounts).toEqual([expect.objectContaining({ amountOffMinor: 6_005 })]);
     expect(v2.discounts).toEqual([expect.objectContaining({
-      amountOffMinor: 8_330,
+      amountOffMinor: 6_005,
       customerSemantic: "first_subscription_50",
     })]);
-    expect(18_760 - v2.discounts[0]!.amountOffMinor).toBe(20_860 / 2);
+    expect(16_000 - v2.discounts[0]!.amountOffMinor).toBe(19_990 / 2);
   });
 
   it("preserves first-purchase semantics through the legacy parity floor", async () => {
@@ -136,13 +136,13 @@ describe("quote promotion v2 adapter", () => {
     const changedPolicy = port([changedLegacy]);
     const v1 = await evaluateOrderTotalDiscounts({
       promoDataPort: changedPolicy, clientId: null, mode: "subscription",
-      promoCodes: [], regionCode: "ZZ", subtotalGrossMinor: 18_760,
+      promoCodes: [], regionCode: "ZZ", subtotalGrossMinor: 16_000,
       shippingGrossMinor: 1_500, atTime: "2026-07-14T12:00:00.000Z",
     });
     const inFlightV2 = await evaluateAutomaticPromotionV2({
       promoDataPort: changedPolicy, clientId: null, mode: "subscription",
-      regionCode: "ZZ", referenceProductMinor: 20_860,
-      currentProductMinor: 18_760, shippingMinor: 1_500,
+      regionCode: "ZZ", referenceProductMinor: 19_990,
+      currentProductMinor: 16_000, shippingMinor: 1_500,
       atTime: "2026-07-14T12:00:00.000Z",
     });
 

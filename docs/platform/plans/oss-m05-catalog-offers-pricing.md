@@ -214,30 +214,37 @@ released baseline or growth-tripwire policy changes.
 
 ### D8 pending outcome ledger
 
-Each row is **PENDING, not N/A, not claimed; must be dispositioned before M05 S1**.
-Disposition requires later implementation/proof or one bounded scope packet to
-the delegate; any reduction of admitted acceptance requires the owner's decision.
+The owner accepted D8-1 through D8-4 as native-backend capability gaps on
+2026-10-20: "zgadzam sie na rekomendacje". These dispositions claim no parity.
 
 | Outcome | Status and remaining proof |
 | --- | --- |
-| Native advisory v2 promo-code candidates and rejection details | PENDING capability/parity; the managed resolver is not a native implementation. |
-| Native mounted quote issue/honor/fallback | PENDING composition proof on the native mount. |
-| Acquisition-only mounted acceptance | PENDING composition proof; low-level token tests do not close it. |
-| Full native/managed eligibility matrix | PENDING explicit outcome matrix, including paid-order classification and native device evidence differences. |
+| D8-1: Native advisory v2 promo-code candidates and rejection details | Accepted native-backend capability gap (owner decision 2026-10-20: "zgadzam sie na rekomendacje"): Native v2 advisory code resolution remains unimplemented; no native/managed parity claim. |
+| D8-2: Native mounted quote issue/honor/fallback | Accepted native-backend capability gap (owner decision 2026-10-20: "zgadzam sie na rekomendacje"): Native mounted v2 code issue/honor/fallback remains pending on native advisory code resolution; incumbent native quote behaviour preserved. |
+| D8-3: Acquisition-only mounted acceptance | Accepted native-backend capability gap (owner decision 2026-10-20: "zgadzam sie na rekomendacje"): Low-level terms binding proven; acquisition-only mounted issuance/honor remains unimplemented and reference activation remains off. |
+| D8-4: Full native/managed eligibility matrix | Accepted native-backend capability gap (owner decision 2026-10-20: "zgadzam sie na rekomendacje"): Incumbent eligibility differences recorded; full equivalence not claimed. |
 
 Existing native lifecycle/read is proven in P3b on real PostgreSQL using the
 complete canonical installation chain. This proves the incumbent read/sweep and
 selected lifecycle subset, with no managed-schema import or new claim writer;
-it does not close any of the four PENDING rows above.
+it does not supply the missing capabilities recorded in the four accepted gaps above.
 
 ### P6 acceptance obligation
 
-P6 must replace every non-neutral fixture value still present in the moved
-package tests (including a legacy policy constant and industry-specific fact
-fields and contact values carried over unchanged from the existing public
-tests) with neutral synthetic values, without weakening any
-assertion. M05 S1 requires this row closed, so no adopter policy constant
-remains anywhere in OpenLup.
+No adopter policy constant remains in OpenLup application code; the reference
+composition supplies the adopter's values. The immutable managed baseline schema
+(legacy-offer v2 mirror backfill and mirror-closing trigger predicates) and its
+pgTAP tests retain the incumbent value; removing it requires a forward migration
+that changes managed schema behaviour, recorded as an M05 follow-up needing an
+owner decision.
+
+The moved package tests are neutralized without weakening assertions, including
+legacy policy fixtures, fact fields and contact values. **SATISFIED in P6 for the
+moved package tests.** Q1 is behavior-preserving: both reference classifiers
+require the host's threshold without a default. The quote-discount composition
+owns the single named reference constant; v2 quote and admin compositions reuse
+it. Comparison tolerance and existing assertions remain unchanged, with zero
+new executed cases. Owner decision 2026-10-20: "zgadzam sie na rekomendacje".
 
 ## P3b — promotion admin and native read/sweep
 
@@ -325,12 +332,16 @@ Five new executed real-PostgreSQL cases leave the programme balance at **17**.
 Fresh full-chain/repeat installation, SQL identity, native reads without data
 writes, canonical write refusal/rollback/dry-run/price history, sequential key
 recognition and explicit invoker grants characterize the incumbent native subset.
-All bundle parity rows remain PENDING; row 1 is now characterized, not closed.
+At P4b all bundle parity rows remained PENDING; row 1 was characterized, not
+closed. The dated owner dispositions below supersede that pending status for
+Bundle-1 and Bundle-2.
 The existing binding case remains one case. Confirmed changed-test collection:
 PostgreSQL 5, binding 1, package boundary 1,030 and cold-consumer tooling 37 (pre-merge counts). Generated
 source-boundary iterations do not consume programme cases.
 
-Changed production/tooling paths versus e581e1aae980efcea06cb580a15357a45db360bf:
+Historical P4a predecessor: `e581e1aae980efcea06cb580a15357a45db360bf`.
+Changed production/tooling paths from the P4b fork point after main carry-over,
+`020e6479cfc8e37810796cf3f67b52e5fa99bf12`, to the landed P4b tree:
 **18/35**, including JSON companions; tests, API snapshots and prose excluded.
 Pack measured before the main merge (A1 P1): **1,024 files / 1,002 code files / 667,279 packed B / 2,986,256 unpacked B /
 571,700 code gzip B**; root docs **37,278 gzip B / 5 files**. Browser entries:
@@ -341,15 +352,158 @@ not replace, the supervisor's committed-candidate package gates.
 
 ### Bundle parity pending ledger
 
-Each row remains PENDING, not N/A, and must be dispositioned before M05 S1,
-together with D8 and P6. Package application proof closes none of these rows.
+The owner accepted Bundle-1 and Bundle-2 as capability gaps on 2026-10-20:
+"zgadzam sie na rekomendacje". Bundle-3 and Bundle-4 remain PENDING until the
+P7 proofs; package application proof closes neither pending row.
 
 | Outcome | Status and remaining proof |
 | --- | --- |
-| Native database independent human-only actor-kind gate | PENDING: characterized in P4b; native database has no independent gate, handler gate only. |
-| Native history actor identity | PENDING: native actor fields are null versus managed audit identity. |
-| Native mounted admin/feed with actual stock | PENDING: P7 composition proof. |
-| Replay/concurrency beyond sequential replay | PENDING: characterize incumbent outcomes before claiming stronger guarantees. |
+| Bundle-1: Native database independent human-only actor-kind gate | Accepted native-backend capability gap (owner decision 2026-10-20: "zgadzam sie na rekomendacje"): Native human-only publication relies on the handler gate; independent database actor-kind enforcement is absent. First item of a future native-backend parity round. |
+| Bundle-2: Native history actor identity | Accepted native-backend capability gap (owner decision 2026-10-20: "zgadzam sie na rekomendacje"): Native principal audit exists; managed-equivalent actor kind/email history is unavailable and not claimed. |
+| Bundle-3: Native mounted admin/feed with actual stock | PENDING; closed by the P7 proofs native-mounted-bundle-admin-stock-readback and native-bundle-replay-contention-characterization. |
+| Bundle-4: Replay/concurrency beyond sequential replay | PENDING; closed by the P7 proofs native-mounted-bundle-admin-stock-readback and native-bundle-replay-contention-characterization. |
+
+## P6 — bounded refactor and fixture neutralization
+
+The coordinator approved the original seven-source-path cut and the Q1
+five-path reference composition extension. The outcome is corrected
+comments, delegation of duplicate VAT arithmetic to the existing helper, and
+neutral moved-test fixtures with all assertions retained. Both VAT exports,
+signatures and distinct function identities remain; API snapshot changes are
+comments only. No package API, dependency, SQL, migration, functional or cap change is
+included. Required reference classifier parameters preserve composed behavior. A behaviour change is never a refactor. C1 witnesses remain unchanged.
+
+Authority is local implementation and the requested focused checks; the
+supervisor owns commits, native candidate review and delivery. This task grants
+no merge, release, activation or adopter continuation. P5 functional paths and the concurrent inventory, shipping and communications
+work remain excluded. The owner decision 2026-10-20, "zgadzam sie na rekomendacje",
+authorizes Q1 and Q2. STEP 0 selects the existing quote-discount composition for
+the constant, avoiding an additional production path. The starter-offer comment
+describes arithmetic parity rather than the threshold location and stays unchanged.
+
+Final-diff ledger, **FORK POINT `2347e83d`**
+(`2347e83defeb3a1ff86f5aff37751c373ee74b3a`):
+**12 production source paths / 12**, **12 production/tooling paths / 35**;
+**37 existing test/helper paths** (28 suites and 9 helpers), **0 new executed
+cases**. The post-P5 programme balance stays **5**, reserved for P7. The authored
+publication catalogue covers P6's real files; the platform's pending
+`m05-p6.md` change note needs no per-file catalogue row and passes
+the fragment validator and release-tooling checks. The source-release contract
+and platform CHANGELOG retain main's bytes; the contract is computed by checks
+and was not regenerated. Documentation navigation regeneration is byte-unchanged;
+three API snapshots change comments only. Prose, pending changelog fragments and API
+snapshots are excluded from the production/tooling count.
+
+The original seven source paths are pricing `commerceQuoteCatalogReadPort.ts`,
+`commerceOfferPricing.ts` and `dbBackedCommerceQuoteHelpers.ts`; promotions
+`adminPromotionsDataPort.ts`; catalog `bundleRules.ts` and `bundleRuleCodes.ts`
+(all under `packages/platform/src/`); and `src/domains/bundle/bundleSpec.ts`.
+Q1 adds exactly five reference production paths:
+`server/domains/commerce/promotionCustomerSemantic.ts`,
+`server/domains/commerce/adminPromotionSemantic.ts`,
+`server/domains/commerce/quotePromoDiscounts.ts`,
+`server/domains/commerce/quotePromotionV2.ts` and
+`server/adapters/supabase/adminPromotions.ts`. No tooling source path changes.
+Tests comprise 4 catalog, 19 pricing and 10 promotions package paths, plus
+`tests/platform/catalog/bundleBindings.test.ts`,
+`tests/postgres/bundleNative.test.ts` and the two reference semantic suites
+`server/domains/commerce/promotionCustomerSemantic.test.ts` and
+`server/domains/commerce/adminPromotionSemantic.test.ts`. The feed fixture derives its reason code
+through the existing helper. The native read case deletes only its returned
+temporary tier-row IDs in `finally`, after its unchanged no-write assertions.
+
+Neutralization preserves lookup identities, cohort distinctions, validators,
+null/optional fields, refusal precedence and exact projections. The synthetic
+legacy percentage is 37.537: `floor(16,000 × 37.537 / 100) = 6,005`, and
+`16,000 − 6,005 = 19,990 / 2 = 9,995`. Coverage arithmetic stays 492 and 21.
+Synthetic GTINs retain their valid/invalid checksum distinction. Frozen token
+witnesses remain unchanged. D8-1..4 and Bundle-1/2 are accepted native-backend
+capability gaps under the owner decision above, with no parity claim; Bundle-1
+is the first item of a future native-backend parity round. These gaps must be
+named in the S1 CHANGELOG/docs as "not supported on the native backend". The
+managed path is unaffected. Bundle-3/4 stay PENDING until the named P7 proofs.
+
+The original seven-path proof compares production tokens with comments removed,
+allows only the named VAT delegation, compares API declaration tokens, and checks each test's
+substitution map, assertion arguments, matcher sequence and collection count.
+All original **425 expect call sites** across the original 35 changed test/helper
+paths remain. The two reference semantic suites retain their 15 assertions,
+bringing the final changed-test total to **440 expect call sites** across 37 paths.
+Their changes are the explicit threshold argument and its import, plus neutral
+SKU and region fixtures. The original bounded focused selection recomputes to
+**193 cases** across 27 files.
+Against **FORK POINT `2347e83d`**, every changed suite collects: **180 cases across
+28 files**; the other nine changed test paths are imported helpers. Repair cycle 1
+runs this exact selection, with each file selected once:
+
+| File group (paths relative to the repository root) | Files | Cases |
+| --- | ---: | ---: |
+| P6-changed `packages/platform/test/catalog/*.test.ts` | 4 | 30 |
+| P6-changed `packages/platform/test/pricing/*.test.ts` (including the three quote handler/batch/snapshot suites: 3 files, 25 cases) | 13 | 90 |
+| P6-changed `packages/platform/test/promotions/*.test.ts` | 7 | 47 |
+| `server/domains/commerce/{adminPromotionSemantic,promotionCustomerSemantic}.test.ts` | 2 | 7 |
+| `tests/platform/catalog/bundleBindings.test.ts` | 1 | 1 |
+| `tests/postgres/bundleNative.test.ts` | 1 | 5 |
+| **Changed-suite subtotal** | **28** | **180** |
+| Additional `packages/platform/test/catalog/bundleRules.test.ts` | 1 | 20 |
+| Additional `server/adapters/supabase/adminPromotions.test.ts` | 1 | 8 |
+| Additional `server/domains/commerce/promotionBindings.test.ts` | 1 | 1 |
+| Additional `packages/platform/test/promotions/quotePromotionV2.legacyCodeOutcomes.test.ts` | 1 | 6 |
+| **Focused total** | **32** | **215** |
+
+The seven semantic cases are already in the changed-suite subtotal; the four
+additional suites contribute **35 cases**, so **180 + 20 + 8 + 1 + 6 = 215**.
+These explicit-path counts correct the previously recorded 1,248/1,270 figures.
+Repair collection matches HEAD `450b9c9d`: 180 cases across the same 28 changed
+suites, with unchanged case registrations and matcher sequences and zero new cases.
+All **210 non-database cases and 5 native PostgreSQL cases pass**. No mandatory
+full-suite execution is claimed; the host-load rule permits explicit focused paths
+only. Supervisor candidate gates remain outside this local delivery boundary.
+Repair cycle 1 replaces all seven sibling duck-SKU occurrences with
+`ITEM-BETA-400`; scanning all 37 P6 test/helper paths and the package tests also
+found and neutralized one beef SKU and two region fixtures in the reference
+semantic suites. The existing test-local substitution dictionary records these
+pairs. Assertions remain **425 original / 440 total**. The moved-package-test
+acceptance obligation remains satisfied.
+
+Repair cycle 1's focused run, collection comparison, all-project published-tree
+typecheck, ast-grep scan, ESLint on all 49 changed TypeScript paths, publication
+policy and `git diff --check` exit 0. ESLint reports zero warnings and zero errors;
+public CI neutrality reports zero increases. Policy with regenerated navigation
+has five obligations and zero unanswered. Exact commands, per-file counts and
+every residue-scan hit with its disposition are retained in the repair handoff.
+Package exports are unchanged, so this continuation adds no Unreleased changelog note.
+The threshold search has 11 matches: one reference constant, three reference
+fixtures, two immutable baseline SQL predicates and five managed pgTAP matches.
+
+### Deferred P6 advisories
+
+- Discriminated-union authority ports: public API; coordinator/owner.
+- `customerSemantic` vocabulary: public contract; coordinator/owner.
+- Zod/jitless import order: pricing module owner; needs module-evaluation proof.
+- Acquisition delegation `Vary`: observable HTTP/cache behaviour; coordinator.
+- Direct Rolldown dependency: dependency owner.
+- Docker-free SQL tests, SELECT-only cold-consumer evidence and explicit
+  anon/authenticated assertions: native proof owner, P7/C5.
+
+Retro: an initial install omitted the cache setting and was rerun correctly.
+Diff inspection caught a residual fixture label and comment grammar before final
+checks. The simpler path was the existing named VAT wrapper and test-local
+substitutions; public-contract and new-proof advisories stay deferred. In the Q1/Q2
+continuation, initial collection failed because package build outputs were absent;
+building the existing workspaces restored collection without source changes.
+Lesson: absent build outputs → build existing prerequisites before collection.
+The chosen constant location avoided a thirteenth production source path.
+Slot-check retro: cold packaging removes earlier package declarations, so the
+first subsequent API check refused the missing output; rebuilding the existing
+workspaces restored all API checks without source changes. Explicit collection
+also exposed inflated ledger counts. Lesson: cold pack → restore declarations
+before API checks; count collected JSON cases rather than inferred totals.
+Repair-cycle retro: the sibling SKU was absent from the substitution dictionary,
+and the collection explanation omitted the 20-case bundle-rule suite while
+counting semantic cases twice. Lesson: incomplete fixture dictionary → scan the
+whole changed fixture set; ambiguous totals → sum disjoint collected file groups.
+The repair uses direct substitutions and adds no cases, helper or production path.
 
 ## P5
 

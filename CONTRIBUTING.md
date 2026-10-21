@@ -402,6 +402,12 @@ its six required dependencies and merge-group metadata controls remain unchanged
 
 <!-- openlup-doc-impact {"unit":"public-checks","digest":"sha256-0f53d76126bb6c40cdd7bc03ed7114f24836b4ea75ee30c26a09c95d0e173568","reason":"Merge-commit landing support. The source-preview release preflights accept a target only on main's first-parent line, so a commit inside a pull request merged as a merge commit is refused; under squash history every main ancestor is first-parent, so behaviour there is unchanged. The required contexts and contributor commands described here are unchanged."} -->
 
+The bundle binding proof derives stock reason codes through the existing host
+helper before comparing wrapper and package output. The native read proof keeps
+its no-write snapshot assertions inside a `try` and removes only the inserted
+tier-price rows in `finally`, so its fixture cannot affect later write cases.
+These changes retain the existing cases and assertion operators.
+
 Required root `test` accepts only success from all four `test-full-shard` jobs;
 failed, cancelled or skipped shard jobs refuse it. Main-push reuse requires a
 complete successful exact-commit merge-group run, including raw pgTAP.

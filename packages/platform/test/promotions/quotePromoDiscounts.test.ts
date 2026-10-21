@@ -123,44 +123,44 @@ describe("evaluateOrderTotalDiscounts — device guard vs confirmed email", () =
     expect(result.codeRejections).toEqual([]);
   });
 
-  it("keeps legacy 60VIP applied for its one-time scope with canonical code identity", async () => {
-    const legacy60Vip = couponPromo({
-      id: "legacy-60vip",
-      code: "60VIP",
-      name: "Legacy 60 VIP",
+  it("keeps legacy EXAMPLE60 applied for its one-time scope with canonical code identity", async () => {
+    const legacyExample60 = couponPromo({
+      id: "legacy-example60",
+      code: "EXAMPLE60",
+      name: "Example legacy percentage",
       discount_value: 60,
     });
     const result = await evaluateOrderTotalDiscounts({
-      promoDataPort: makePort({ listActivePromotions: async () => [legacy60Vip] }),
+      promoDataPort: makePort({ listActivePromotions: async () => [legacyExample60] }),
       ...baseInput,
       emailEligibilityConfirmed: true,
-      promoCodes: ["60vip"],
+      promoCodes: ["example60"],
     });
 
     expect(result.discounts).toEqual([expect.objectContaining({
-      promotionId: "legacy-60vip",
-      code: "60VIP",
+      promotionId: "legacy-example60",
+      code: "EXAMPLE60",
       amountOffMinor: 6_000,
     })]);
     expect(result.codeRejections).toEqual([]);
   });
 
-  it("rejects legacy 60VIP in the subscription cart mode without changing v1 money", async () => {
-    const legacy60Vip = couponPromo({
-      id: "legacy-60vip",
-      code: "60VIP",
-      name: "Legacy 60 VIP",
+  it("rejects legacy EXAMPLE60 in the subscription cart mode without changing v1 money", async () => {
+    const legacyExample60 = couponPromo({
+      id: "legacy-example60",
+      code: "EXAMPLE60",
+      name: "Example legacy percentage",
       discount_value: 60,
     });
     const result = await evaluateOrderTotalDiscounts({
-      promoDataPort: makePort({ listActivePromotions: async () => [legacy60Vip] }),
+      promoDataPort: makePort({ listActivePromotions: async () => [legacyExample60] }),
       ...baseInput,
       mode: "subscription",
-      promoCodes: ["60VIP"],
+      promoCodes: ["EXAMPLE60"],
     });
 
     expect(result.discounts).toEqual([]);
-    expect(result.codeRejections).toEqual([{ code: "60VIP", reason: "not_eligible" }]);
+    expect(result.codeRejections).toEqual([{ code: "EXAMPLE60", reason: "not_eligible" }]);
   });
 
   it("preserves exact legacy code selection when normalized collisions exist", async () => {

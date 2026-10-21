@@ -19,7 +19,7 @@ export const { issuePromotionQuoteAcceptance, issuePromotionQuoteAcceptanceWithO
     sizeConstraint: request.sizeConstraint ? {
       kind: request.sizeConstraint.kind,
       value: request.sizeConstraint.value,
-      dailyKcalOverride: request.sizeConstraint.dailyKcalOverride ?? null,
+      dailyUsageOverride: request.sizeConstraint.dailyUsageOverride ?? null,
     } : null,
     visitorId: request.visitorId ?? null,
     customerEmail: request.customerEligibilityContext?.email?.trim().toLowerCase() ?? null,

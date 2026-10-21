@@ -1,11 +1,11 @@
 import type { CommerceQuoteCatalogItem as NeutralItem } from "../../src/pricing/index.js";
 type CatalogCurrency = string;
 type CatalogProductSlug = string;
-type CatalogSpecies = "dog" | "cat";
+type CatalogSegment = "segment_a" | "segment_b";
 type CatalogPublicationStatus = "published" | "coming_soon";
-type CatalogPackagingUnit = "can" | "jar";
+type CatalogPackagingUnit = "unit_a" | "unit_b";
 type CatalogPriceStatus = "not_configured" | "configured";
-type CatalogAllergenSlug = string;
+type CatalogAttributeSlug = string;
 export interface CatalogMoney {
   amountMinor: number;
   currency: CatalogCurrency;
@@ -14,7 +14,7 @@ export interface CatalogMoney {
 export interface CatalogPricingMetadata {
   status: CatalogPriceStatus;
   listPrice: CatalogMoney | null;
-  taxCategory: "pet_food" | null;
+  taxCategory: "example_category" | null;
   externalRefs: {
     paymentProviderPriceId: string | null;
     inventoryProviderSku: string | null;
@@ -28,7 +28,7 @@ export interface CatalogSku {
   publicationStatus: CatalogPublicationStatus;
   unit: CatalogPackagingUnit;
   netWeightGrams: number;
-  /** Mirror of catalog_skus.is_addon: addon SKUs cannot be used as recipe lines.
+  /** Mirror of catalog_skus.is_addon: addon SKUs cannot be used as primary lines.
    *  Optional so existing fixtures default to a line (undefined = not an addon);
    *  the live read port always sets it. */
   isAddon?: boolean;
@@ -39,13 +39,13 @@ export interface CatalogSku {
   pricing: CatalogPricingMetadata;
 }
 
-export interface CatalogIngredientItem {
+export interface CatalogComponentItem {
   name: string;
   pctText: string;
   percentage: number;
   role: string;
   body: string;
-  allergenSlugs: CatalogAllergenSlug[];
+  attributeSlugs: CatalogAttributeSlug[];
   nameKey?: string;
   roleKey?: string;
   bodyKey?: string;
@@ -54,11 +54,11 @@ export interface CatalogIngredientItem {
 }
 
 export interface CatalogComposition {
-  rawIngredients: string;
-  rawIngredientsEn: string | null;
-  items: CatalogIngredientItem[];
-  allergenSlugs: CatalogAllergenSlug[];
-  kcalPer100g: number | null;
+  rawComponents: string;
+  rawComponentsQab: string | null;
+  items: CatalogComponentItem[];
+  attributeSlugs: CatalogAttributeSlug[];
+  usagePer100Units: number | null;
 }
 
 export interface CatalogProduct {
@@ -66,18 +66,18 @@ export interface CatalogProduct {
   slug: CatalogProductSlug;
   displayName: string;
   lineName: string;
-  species: CatalogSpecies;
+  segment: CatalogSegment;
   publicationStatus: CatalogPublicationStatus;
   route: {
-    pl: string;
-    en: string;
+    qaa: string;
+    qab: string;
   };
   primarySku: CatalogSku;
   variants: CatalogSku[];
   composition: CatalogComposition;
   metadata: {
     format: string;
-    kcalPer100g: number | null;
+    usagePer100Units: number | null;
     legacyStatus: string | null;
   };
 }
@@ -86,12 +86,12 @@ export interface CatalogProduct {
 export interface CatalogReadPort {
   listProducts(): Promise<CatalogProduct[]>;
   getProductBySlug(slug: string): Promise<CatalogProduct | null>;
-  listAllergens(): Promise<unknown[]>;
+  listAttributes(): Promise<unknown[]>;
 }
 export interface CommerceQuoteCatalogItem extends NeutralItem {
-  energyPer100g: number | null;
-  allergenSlugs?: readonly string[];
-  species?: CatalogSpecies;
+  usagePer100Units: number | null;
+  attributeSlugs?: readonly string[];
+  segment?: CatalogSegment;
 }
 export interface CommerceQuoteCatalogReadPort {
   listQuoteCatalogItems(): Promise<CommerceQuoteCatalogItem[]>;
@@ -109,9 +109,9 @@ export function createLegacyCommerceQuoteCatalogReadPort(
         variantId: sku.variantId,
         productSlug: product.slug,
         netWeightG: sku.netWeightGrams,
-        energyPer100g: product.composition?.kcalPer100g ?? null,
-        allergenSlugs: product.composition?.allergenSlugs ?? [],
-        species: product.species,
+        usagePer100Units: product.composition?.usagePer100Units ?? null,
+        attributeSlugs: product.composition?.attributeSlugs ?? [],
+        segment: product.segment,
         isPrimarySku: sku.variantId === product.primarySku.variantId,
         isAddon: sku.isAddon ?? false,
         sellability: {

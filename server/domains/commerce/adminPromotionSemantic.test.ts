@@ -5,6 +5,7 @@ import {
   isTechnicalFirstSubscriptionLegacy,
   mapAdminPromotion,
 } from "./adminPromotionSemantic.js";
+import { REFERENCE_LEGACY_FIRST_SUBSCRIPTION_PERCENT } from "./quotePromoDiscounts.js";
 import { readSettlementProfile } from "../../../src/lib/currency/platformCurrency.js";
 
 // The currency the mapper is handed comes from the settlement profile in production, so
@@ -15,11 +16,11 @@ describe("admin promotion semantic mapping", () => {
   it("derives a system-managed target and exact unit price from mirror semantics", () => {
     const result = mapAdminPromotion(legacyTechnical(), mirror(), [{
       variantId: "variant-1",
-      sku: "OPENLUP-DOG-BEEF-CAN-400G",
+      sku: "ITEM-GAMMA-400",
       oneTimeMinor: 1_490,
       subscriptionMinor: 1_340,
       percent: 10,
-    }], SETTLEMENT_CURRENCY);
+    }], SETTLEMENT_CURRENCY, REFERENCE_LEGACY_FIRST_SUBSCRIPTION_PERCENT);
 
     expect(result).toMatchObject({
       systemManaged: true,
@@ -34,8 +35,8 @@ describe("admin promotion semantic mapping", () => {
   });
 
   it("exposes no mirror handle when the mirror row lacks a clean id or status", () => {
-    const withoutId = mapAdminPromotion(legacyTechnical(), { ...mirror(), id: undefined }, [], SETTLEMENT_CURRENCY);
-    const badStatus = mapAdminPromotion(legacyTechnical(), { ...mirror(), status: "enabled" }, [], SETTLEMENT_CURRENCY);
+    const withoutId = mapAdminPromotion(legacyTechnical(), { ...mirror(), id: undefined }, [], SETTLEMENT_CURRENCY, REFERENCE_LEGACY_FIRST_SUBSCRIPTION_PERCENT);
+    const badStatus = mapAdminPromotion(legacyTechnical(), { ...mirror(), status: "enabled" }, [], SETTLEMENT_CURRENCY, REFERENCE_LEGACY_FIRST_SUBSCRIPTION_PERCENT);
 
     expect(withoutId.v2Mirror).toBeNull();
     expect(badStatus.v2Mirror).toBeNull();
@@ -50,8 +51,8 @@ describe("admin promotion semantic mapping", () => {
   it("fails closed on the technical legacy shape when the mirror is unavailable", () => {
     const technical = { ...legacyTechnical(), name: "dowolna nazwa" };
 
-    expect(isTechnicalFirstSubscriptionLegacy(technical)).toBe(true);
-    expect(mapAdminPromotion(technical, undefined, [], SETTLEMENT_CURRENCY)).toMatchObject({
+    expect(isTechnicalFirstSubscriptionLegacy(technical, REFERENCE_LEGACY_FIRST_SUBSCRIPTION_PERCENT)).toBe(true);
+    expect(mapAdminPromotion(technical, undefined, [], SETTLEMENT_CURRENCY, REFERENCE_LEGACY_FIRST_SUBSCRIPTION_PERCENT)).toMatchObject({
       systemManaged: true,
       readOnly: true,
       v2Mirror: null,
@@ -77,7 +78,7 @@ function legacyTechnical() {
     valid_from: "2026-01-01T00:00:00.000Z",
     valid_to: null,
     status: "active",
-    region_availability: ["PL"],
+    region_availability: ["ZZ"],
     redemption_limit_global: null,
     redemption_limit_per_customer: 1,
     promotion_engine_version: "promotion-engine.v1",

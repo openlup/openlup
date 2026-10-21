@@ -23,15 +23,16 @@ export function mapAdminPromotion(
   mirror: Row | undefined,
   bandEntries: AdminSubscriptionBandEntry[],
   currency: string,
+  legacyFirstSubscriptionPercent: number,
 ): AdminPromotion {
-  const systemManaged = Boolean(mirror) || isTechnicalFirstSubscriptionLegacy(row);
+  const systemManaged = Boolean(mirror) || isTechnicalFirstSubscriptionLegacy(row, legacyFirstSubscriptionPercent);
   return {
     id: String(row.id),
     code: (row.code as string | null) ?? null,
     name: String(row.name ?? ""),
     triggerType: row.trigger_type as AdminPromotion["triggerType"],
     discountType: row.discount_type as AdminPromotion["discountType"],
-    semanticBenefit: semanticBenefit(row, mirror, bandEntries, currency),
+    semanticBenefit: semanticBenefit(row, mirror, bandEntries, currency, legacyFirstSubscriptionPercent),
     systemManaged,
     readOnly: systemManaged,
     v2Mirror: mirrorHandle(mirror),
@@ -72,14 +73,17 @@ export function isTargetPercentageMirror(row: Row): boolean {
     Number.isInteger(valueBps) && valueBps > 0 && valueBps < 10_000;
 }
 
-export function isTechnicalFirstSubscriptionLegacy(row: Row): boolean {
+export function isTechnicalFirstSubscriptionLegacy(
+  row: Row,
+  legacyFirstSubscriptionPercent: number,
+): boolean {
   const eligibility = row.eligibility as Record<string, unknown> | null | undefined;
   const technicalValue = Number(row.discount_value);
   return row.promotion_engine_version === "promotion-engine.v1" &&
     row.trigger_type === "automatic" &&
     row.discount_type === "percentage" &&
     eligibility?.first_subscription_purchase === true &&
-    Number.isFinite(technicalValue) && Math.abs(technicalValue - 44.404) < 0.000_001;
+    Number.isFinite(technicalValue) && Math.abs(technicalValue - legacyFirstSubscriptionPercent) < 0.000_001;
 }
 
 function semanticBenefit(
@@ -87,6 +91,7 @@ function semanticBenefit(
   mirror: Row | undefined,
   bandEntries: AdminSubscriptionBandEntry[],
   currency: string,
+  legacyFirstSubscriptionPercent: number,
 ): AdminPromotionSemanticBenefit {
   if (mirror) {
     if (!isTargetPercentageMirror(mirror)) {
@@ -109,7 +114,7 @@ function semanticBenefit(
       })),
     };
   }
-  if (isTechnicalFirstSubscriptionLegacy(row)) {
+  if (isTechnicalFirstSubscriptionLegacy(row, legacyFirstSubscriptionPercent)) {
     return { kind: "unavailable", reason: "system_managed_metadata_incomplete" };
   }
   const value = Number(row.discount_value ?? 0);
