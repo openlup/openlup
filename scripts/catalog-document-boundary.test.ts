@@ -7,11 +7,12 @@ const PERIMETERS = [
   "node_modules/@openlup/core",
   "db/platform",
   "src/domains/catalog",
+  "packages/platform/src/catalog",
   "server/domains/catalog",
   "server/adapters/postgres",
 ] as const;
 const PORTABLE_MIGRATION = "db/platform/migrations/20260827220000_catalog_document_revision_foundation.sql";
-const PORTABLE_ADAPTER = "server/adapters/postgres/catalogSkuEnvelope.ts";
+const PORTABLE_ADAPTER = "packages/platform/src/catalog/catalogSkuEnvelope.ts";
 
 interface SourceFile {
   path: string;
