@@ -3690,6 +3690,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/pricing/quoteShippingPromotions.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/pricing/subscriptionPricePolicy.ts",
       "class": "public-output"
     },
@@ -3727,6 +3731,10 @@
     },
     {
       "path": "packages/platform/src/promotions/adminPromotionsHandler.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/promotions/commerceQuoteReadPreparation.ts",
       "class": "public-output"
     },
     {
@@ -3774,6 +3782,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/promotions/quoteAcquisitionBinding.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/promotions/quoteAutomaticPromotions.ts",
       "class": "public-output"
     },
@@ -3787,6 +3799,10 @@
     },
     {
       "path": "packages/platform/src/promotions/quotePromotionV2.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/promotions/quoteShippingPolicy.ts",
       "class": "public-output"
     },
     {
@@ -3878,6 +3894,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/shipping/contracts/threshold.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/shipping/customerAddressesHandler.ts",
       "class": "public-output"
     },
@@ -3915,6 +3935,10 @@
     },
     {
       "path": "packages/platform/src/shipping/shippingRatePorts.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/shipping/thresholdPolicy.ts",
       "class": "public-output"
     },
     {
@@ -4550,6 +4574,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/promotions/acquisitionOrchestrationParity.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/promotions/adminPromotionCodesContracts.test.ts",
       "class": "public-output"
     },
@@ -4563,6 +4591,10 @@
     },
     {
       "path": "packages/platform/test/promotions/bindingsFixtures.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/promotions/parityFixtures.ts",
       "class": "public-output"
     },
     {
@@ -4619,6 +4651,14 @@
     },
     {
       "path": "packages/platform/test/promotions/semanticFixtures.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/promotions/shippingConsentParity.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/promotions/thresholdShippingParity.test.ts",
       "class": "public-output"
     },
     {

@@ -458,8 +458,13 @@ peers. Contracts remains a non-adapter. The native writer, pooled transaction
 binding and transport remain reference-owned; sparse SQL projections add no
 installation chain or migration.
 
-The experimental promotions module has one value edge to pricing through
-`pricing/index.js`, for acquisition binding and the protocol constant. Type-only
+The experimental promotions module has value edges to pricing through
+`pricing/index.js`, for acquisition selection/binding and protocol constants, and
+to `shipping/index.js` for the opt-in pure threshold policy. Pricing has only a
+type edge to shipping for promise DTOs; it injects the orchestration callback
+and has no promotions runtime edge. The existing subpaths suffice: no package,
+peer, adapter classification or release-budget change is needed. See
+[parity seam contracts](CANONICAL_CONTRACTS.md#m05-parity-seams). Type-only
 edges to data, http and bff describe the injected executor and shared admin-kit
 interface. The native store does not construct a client, so it needs no data
 value edge. Its declarations reach optional pg types through data; cold consumer

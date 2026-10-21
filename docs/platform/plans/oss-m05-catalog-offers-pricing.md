@@ -968,3 +968,46 @@ browser-entry and baseline values and the growth tripwire are unchanged.
 Main alone, measured on `83a479e`: **684 files / 413,801 packed B /
 1,764,012 unpacked B / 349,386 code gzip B / 666 code files**.
 P1 measured: **753 files / 462,244 packed B / 1,974,943 unpacked B**.
+
+## M05 parity extension
+
+Owner-approved extension, 2026-10-21: row 24a contributes frozen P0 items 1–3
+as opt-in neutral equivalents of existing adopter behavior, without refactoring.
+Items 4–5 remain row 24b. This extends the earlier extraction boundaries only
+for the seams described here; no default behavior, release, adoption, deployment,
+activation or native-backend parity claim follows.
+
+Shipping consent carries explicit terms through the money projection, acceptance
+issue/verify and the pricing handler. Its witness covers shipping-only issuance,
+same-money mutation/removal, public/strict equivalence, unsigned refusal before
+fallback, fallback rejection, legacy token bytes and callback propagation.
+
+Threshold shipping carries scheduled policy selection, post-product-discount spend
+and the bounded two-pass algorithm through an injected pricing callback. Its
+witness covers below/equal/above threshold, discount crossing, independent shipping
+benefits, shipping-only and combined-code outcomes, schedule boundaries, cloned
+single raw reads and concurrent-request isolation/retry.
+
+Acquisition orchestration uses the existing pricing selector/filter/capability
+with host policy. Its witness covers existing-paid-subscriber exclusion, half-open
+schedules, malformed/overlapping/gapped refusal, capability/engine refusal, selected
+terms, ordinary coupons and preserved legacy code/cap outcomes. Unfiltered legacy
+canonicalization/rejection evidence remains separate from evaluation candidates.
+
+The package tests and browser contracts keep their existing collectors; all added
+shipping/pricing browser DTOs erase at build time. Detailed wiring is owned by
+[canonical contracts](../CANONICAL_CONTRACTS.md#m05-parity-seams), with module edges
+owned by [architecture](../ARCHITECTURE_AND_EXTENSIONS.md#internal-boundaries-and-adapter-isolation).
+Local source checks do not replace the supervisor's committed candidate review,
+packed-consumer gates or the adopter's separately authorized characterization.
+
+Case ledger: +48 approved (owner 2026-10-21: allow what's needed); 24a uses 28.
+Per-item witness allocation: shipping consent 8; threshold shipping 10;
+acquisition orchestration 10. The final focused source run passed all 2,110 cases across 297 files, including
+exactly these 28 new cases with no skips; their summed case durations were
+34.32 ms (8 shipping-consent cases: 14.51 ms; 10 threshold cases: 11.23 ms;
+10 acquisition cases: 8.57 ms), within the aggregate +30 s allowance.
+Browser contracts measured 386/416 B for pricing and 20/32 B for shipping;
+platform root docs measured 39,624/40,960 B. Row 24b retains the remaining
+20 approved cases. These local results do not establish committed package-gate
+or native review admission.

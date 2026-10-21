@@ -67,8 +67,8 @@ require the floor. No factory supplies a default financial policy.
 the host's exact request-binding projection; `promoCodes` also binds separately.
 Its four issue/verify functions retain public-money projection, section diagnostics,
 TTL and rotation. Explicit `acquisitionTerms` binds the full server-selected promise.
-The pricing quote handler passes its resolved terms as the last argument to both
-acceptance callbacks. A host must forward them to the acceptance helper. With no
+The pricing quote handler passes resolved acquisition terms to both
+acceptance callbacks. An opt-in shipping binding appends shipping terms. A host must forward them to the acceptance helper. With no
 acquisition configuration, terms are absent and historical token bytes stay equal.
 This opt-in signature addition does not activate acquisition-only mounted issuance.
 
@@ -114,6 +114,10 @@ candidates, mounted issue/honor, acquisition-only mounted acceptance and the
 full native/managed eligibility matrix are accepted native-backend capability
 gaps, without a parity claim, in the
 [module ledger](../../docs/platform/plans/oss-m05-catalog-offers-pricing.md#d8-pending-outcome-ledger).
+
+Opt-in `shippingTerms` also binds shipping-only promises. `createQuoteShippingPromotions`
+resolves post-discount thresholds; optional `acquisition` bindings select host policy.
+Omission preserves incumbent behavior. See [parity seams](../../docs/platform/CANONICAL_CONTRACTS.md#m05-parity-seams).
 
 ## Pricing
 

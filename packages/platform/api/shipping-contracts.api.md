@@ -274,6 +274,7 @@ export interface DeliverySelectionEvidence {
 export type { DeliveryKind, DeliveryProviderKind, DeliveryCarrierKind, DeliveryService, PickupPoint, DeliveryOption, DeliveryOptionsResponse, PickupPointValidationRequest, PickupPointValidationResponse, PickupPointSearchRequest, PickupPointSearchResult, PickupPointSearchResponse, } from "./delivery.js";
 export type { CanonicalAddressInput, AddressCanonSource, AddressCanonLocalityCandidate, AddressCanonStreet, AddressCanonPostalCodeLookupRequest, AddressCanonLocalitiesLookupRequest, AddressCanonStreetsLookupRequest, AddressCanonPostalCodeLookupResponse, AddressCanonLocalitiesLookupResponse, AddressCanonStreetsLookupResponse, CustomerAddressKind, CustomerAddress, CustomerOrdererProfile, CustomerAddressesRequest, CustomerAddressesResponse, CustomerAddressUpsertRequest, CustomerAddressDeleteRequest } from "./address.js";
 export type { AdminShippingRateResponse, AdminSetShippingRateRequest, AdminSetShippingRateResponse } from "./shippingRate.js";
+export type { ShippingTerms, ShippingPolicyEntry, ShippingPolicy, ShippingSettings } from "./threshold.js";
 ```
 ## dist/shipping/contracts/shippingRate.d.ts
 
@@ -288,5 +289,31 @@ export interface AdminSetShippingRateRequest {
 }
 export interface AdminSetShippingRateResponse extends AdminShippingRateResponse {
     updated: true;
+}
+```
+## dist/shipping/contracts/threshold.d.ts
+
+```ts
+/** Shipping promises selected by an opt-in host policy. Runtime validation is server-only. */
+export interface ShippingTerms {
+    version: "shipping-threshold.v1";
+    currency: string;
+    flatMinor: number;
+    freeThresholdMinor: number;
+}
+export interface ShippingPolicyEntry {
+    enabled: boolean;
+    flatMinor: number;
+    freeThresholdMinor: number;
+    effectiveFrom: string;
+}
+export interface ShippingPolicy {
+    version: "shipping-policy.v1";
+    current: ShippingPolicyEntry | null;
+    scheduled?: ShippingPolicyEntry | null;
+}
+export interface ShippingSettings {
+    legacyFlatMinor: number;
+    policy: ShippingPolicy | null;
 }
 ```
