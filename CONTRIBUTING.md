@@ -462,6 +462,22 @@ its no-write snapshot assertions inside a `try` and removes only the inserted
 tier-price rows in `finally`, so its fixture cannot affect later write cases.
 These changes retain the existing cases and assertion operators.
 
+The second opt-in payment example extends the existing narrow vendor allowance
+and permits its market currency token only in its own source/test directories.
+Each vendor's full-content allowance matches only its own source/test paths.
+Paired real-scanner plants keep vendor and currency vocabulary outside those
+paths counted, including each vendor word inside the other adapter's source
+and test directories. Its offline witnesses retain all donor cases as moved-pending;
+the reporting zone is allowed only on the exact readback declaration at its
+exact source path, with outside-line/path plants and no baseline increase. An
+excess allowance fails closed with an actionable error naming the category,
+quoted path and negative remainder. Scanner-count plants exercise payment,
+communications and adoption subtraction lanes.
+New attempt/redaction/envelope/validity/freshness cases are counted separately. The packed payment
+consumer imports both optional subpaths with ambient I/O disabled and no SDK.
+Focused loopback transport tests fence every socket except their disposable
+local listener; they never establish provider-account readiness.
+
 Required root `test` accepts only success from all four `test-full-shard` jobs;
 failed, cancelled or skipped shard jobs refuse it. Main-push reuse requires a
 complete successful exact-commit merge-group run, including raw pgTAP.
@@ -1002,6 +1018,17 @@ The job also rejects baseline increases relative to the PR base/main push's
 previous commit. For a first baseline, or to regenerate from main without
 increasing debt, use `node scripts/public-ci-neutrality.mjs --write-baseline`.
 After removing debt, lower the affected counts; never raise them.
+After all allowances are subtracted, a negative count fails the ratchet with
+the category, quoted path and remainder; allowances never clamp counts to zero.
+
+The named first-party adoption example has a narrow prose allowance: only the
+approved complete lines in the root README, the documentation owner's page and
+the exact screenshot catalogue reference are counted once. It subtracts only
+that adopter's name/domain categories. Changed or repeated lines, another path,
+other brands and every other category still fail normally. Production code has
+no exemption, and the baseline and pinned scanner chain remain unchanged.
+The existing neutrality CLI tests cover both the admitted illustration and
+refusals; changes to the approved wording need the same policy review.
 
 Within one ratchet invocation, the pinned counts-mode scanners reuse the measured
 base result only when the complete base and working inventories have identical
