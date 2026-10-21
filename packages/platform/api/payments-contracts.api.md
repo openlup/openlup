@@ -141,10 +141,139 @@ export interface PaymentAdapterConformanceEvidence {
         passed: boolean;
     }[];
 }
+import type { PaymentExecutionBaseInput, PaymentExecutionContractResult } from "@openlup/core/testing";
+export type ExecutionCapability = {
+    readonly name: string;
+    readonly durabilityClaim: false;
+};
+export type SimulatorResult = PaymentExecutionContractResult & {
+    providerDecline?: {
+        code?: string;
+        mandateUnsupported?: boolean;
+    } | null;
+};
+export type ExecutionSubject<TInput extends PaymentExecutionBaseInput, TResult extends SimulatorResult> = {
+    readonly execute: (request: TInput) => Promise<TResult>;
+};
+/**
+ * The expected provider identity is a property of the adapter under proof, not of
+ * this contract. The collector that constructs the subject owns that literal, so a
+ * second runtime bundle proves the same behaviour under its own provider identity
+ * and this contract names no provider at all.
+ */
+export type ExecutionProviderIdentity = {
+    readonly expectedProvider: string;
+};
+export type ExecutionEvidence = {
+    readonly capability: ExecutionCapability;
+    readonly executions: number;
+    readonly providerCalls: number;
+    readonly capturedEffects: number;
+    readonly permanentRefusals: number;
+};
+export type AggregateKey = "outOfOrder" | "lateSuccess";
+export type ResultStatus = "succeeded" | "failed";
+export type DurableEventCounts = {
+    clients: number;
+    orders: number;
+    payments: number;
+    intents: number;
+    attempts: number;
+    events: number;
+    transitions: number;
+    idempotencyKeys: number;
+    outboxEvents: number;
+};
+export type DurableEventAggregate = {
+    orderId: string;
+    paymentId: string;
+    paymentIntentId: string;
+    paymentAttemptId: string;
+    orderStatus: string;
+    paymentStatus: string;
+    intentStatus: string;
+    attemptStatus: string;
+};
+/** Fixture cardinality that stays constant for the whole run. */
+export type DurableEventFixtureCardinality = Pick<DurableEventCounts, "clients" | "orders" | "payments" | "intents" | "attempts">;
+/** Durable writes the adapter emits per step. */
+export type DurableEventWriteCardinality = Pick<DurableEventCounts, "events" | "transitions" | "idempotencyKeys" | "outboxEvents">;
+/**
+ * Exact write cardinality is adapter-owned, not part of the portable contract:
+ * how many transitions, idempotency keys, and outbox rows one payment event
+ * produces is a property of the writer and outbox fan-out under proof, and a
+ * second runtime bundle emits its own. The behavioural assertions below (no
+ * second canonical event, no regression after a stale failure, convergence on
+ * late success) are the portable part; the collector that owns the adapter
+ * injects its own numbers so they are still asserted at the exact same step.
+ */
+export type DurableEventCardinalityExpectations = {
+    readonly fixture: DurableEventFixtureCardinality;
+    readonly baseline: DurableEventWriteCardinality;
+    readonly afterOutOfOrderSuccess: DurableEventWriteCardinality;
+    readonly afterOutOfOrderFailure: DurableEventWriteCardinality;
+    readonly afterDuplicate: DurableEventWriteCardinality;
+    readonly afterLateFailure: DurableEventWriteCardinality;
+    readonly final: DurableEventWriteCardinality;
+};
+export type DurableEventSnapshot = {
+    counts: DurableEventCounts;
+    aggregates: Record<AggregateKey, DurableEventAggregate>;
+    events: Array<{
+        id: string;
+        eventKey: string;
+        paymentIntentId: string;
+        paymentAttemptId: string;
+        processingStatus: string;
+    }>;
+};
+export type EventReceipt = {
+    paymentEventId: string;
+    replayed: boolean;
+};
+export type DurableEventCapability = {
+    readonly name: string;
+    readonly durabilityClaim: true;
+    assertSafe(): void;
+    reset(): Promise<{
+        residualRows: number;
+    }>;
+    seed(): Promise<void>;
+    snapshot(): Promise<DurableEventSnapshot>;
+    ingest(input: {
+        aggregate: AggregateKey;
+        eventKey: string;
+        resultStatus: ResultStatus;
+        occurredAt: string;
+    }): Promise<EventReceipt>;
+    apply(input: {
+        aggregate: AggregateKey;
+        paymentEventId: string;
+        eventKey: string;
+        resultStatus: ResultStatus;
+        occurredAt: string;
+    }): Promise<{
+        replayed: boolean;
+    }>;
+};
+export type DurableEventEvidence = {
+    capability: {
+        name: string;
+        durabilityClaim: true;
+    };
+    baseline: DurableEventSnapshot;
+    afterOutOfOrderSuccess: DurableEventSnapshot;
+    afterOutOfOrderFailure: DurableEventSnapshot;
+    afterDuplicate: DurableEventSnapshot;
+    afterLateFailure: DurableEventSnapshot;
+    final: DurableEventSnapshot;
+    cleanupResidualRows: 0;
+};
 ```
 ## dist/payments/contracts/evidence.d.ts
 
 ```ts
+import type { PaymentMethodLifecycleEvent } from "@openlup/core/payment";
 import type { PaymentMethodHandoff, PaymentRefusalEnvelope } from "./adapter.js";
 /** Configured integer-minor money; currency bytes pass through unchanged. */
 export type PaymentMoney = {
@@ -190,7 +319,7 @@ export type VerifiedPaymentEvidence = VerifiedIdentity & {
     providerPaymentRef: string;
     intentRef: string | null;
     attemptRef: string | null;
-    outcome: "succeeded" | "failed" | "pending" | "refunded";
+    outcome: "succeeded" | "failed" | "pending" | "refunded" | "disputed";
     money: PaymentMoney | null;
     refusal?: PaymentRefusalEnvelope;
     refund?: PaymentRefundObservation;
@@ -202,6 +331,7 @@ export type VerifiedPaymentEvidence = VerifiedIdentity & {
 export type VerifiedMethodEvidence = VerifiedIdentity & {
     kind: "method";
     outcome: "registered" | "updated" | "revoked" | "expired" | "suspended" | "failed" | "requires-action";
+    methodLifecycle?: PaymentMethodLifecycleEvent;
     methodRef: string;
     setupRef: string | null;
     intentRef: string | null;
@@ -280,6 +410,13 @@ export interface PaymentAbsencePort {
         expectedMoney: PaymentMoney;
     }): Promise<PaymentAbsenceEnvelope>;
 }
+/** Transport-neutral acknowledgement; hosts write their own HTTP response. */
+export interface PaymentIngressPort {
+    receive(input: Parameters<PaymentVerifyNormalizePort["verifyAndNormalize"]>[0]): Promise<{
+        status: 200 | 400 | 409 | 503;
+        data: Record<string, unknown>;
+    }>;
+}
 export {};
 ```
 ## dist/payments/contracts/index.d.ts
@@ -289,6 +426,9 @@ export type { PreparedAttemptPrepareInput, PreparedAttemptPersistenceResult, Pre
 export type { TransientSecret, PaymentMethodHandoff, PaymentRefusalEnvelope, PaymentExecutionEnvelope, PaymentAttemptPort, PaymentAdapterCapabilities, PaymentAdapter, } from "./adapter.js";
 export type { PaymentRefundObservation, RefundEvidencePolicy, VerifiedPaymentEvidence, VerifiedMethodEvidence, PaymentVerifyNormalizePort, ProviderReadPurpose, PaymentAbsenceEnvelope, PaymentReadbackEnvelope, PaymentMoney, PaymentAttemptIdentity, PaymentReadbackPort, PaymentAbsencePort, } from "./evidence.js";
 export type { PaymentAdapterConformanceSubject, PaymentAdapterConformanceEvidence } from "./conformance.js";
+export type { PaymentTruthOutcome, PaymentTruthRefusalClass, PaymentSourceEvidence, PaymentTruthEvent, PaymentReconciliationResult, PaymentTruthReadback, PaymentTruthPort, CanonicalPaymentSource, } from "./truth.js";
+export type { PaymentIngressPort } from "./evidence.js";
+export type { ProviderReconciliationStatusKind, ProviderReconciliationStatus, PaymentProviderReconciliationProvider, ClaimedPaymentAttempt, PaymentProviderReconciliationPort, InteractivePreparedAttemptManualReconciliationPort, ManualInteractivePreparedAttemptAbsenceEvidence, InteractivePreparedAttemptReopenResult, PaymentProviderReconciliationWorkerResult, PaymentProviderReconciliationWorkerInput, SilenceWindowLookup, PaymentVerifyReadPort, VerifiableAttemptSnapshot, PaymentVerifyNowResult, } from "./reconciliation.js";
 ```
 ## dist/payments/contracts/preparedAttempt.d.ts
 
@@ -362,4 +502,400 @@ export interface PreparedAttemptExecutionResult<R extends PaymentExecutionBaseRe
         status: PaymentAttemptStatus;
     };
 }
+```
+## dist/payments/contracts/reconciliation.d.ts
+
+```ts
+import type { ProviderReadPurpose } from "./evidence.js";
+export type ReconciliationProviderKind = string;
+export type ProviderReconciliationStatusKind = "succeeded" | "failed" | "pending" | "unknown";
+export interface ProviderReconciliationStatus {
+    status: ProviderReconciliationStatusKind;
+    providerStatus: string;
+    occurredAt: string | null;
+    failureReason: string | null;
+    amountMinor: number | null;
+    currency: string | null;
+    rawPayload: Record<string, unknown>;
+}
+/**
+ * Who is asking, and therefore what an unresolved provider state MEANS.
+ *
+ * The same read answers two different questions. Reconciliation — the caller
+ * that names no purpose — asks "is this attempt over", long after the buyer
+ * left, and an intent still waiting for its first payment method is over. A
+ * buyer standing in a live checkout asks "is this attempt settled yet", and the
+ * same state means the opposite: nobody has been asked anything.
+ *
+ * ⛔ Omitting the purpose keeps the reconciliation reading. Terminalizing real
+ * abandonment is the more expensive of the two errors to lose, so it is the
+ * behaviour a caller gets by default rather than one it must opt into.
+ */
+export interface PaymentProviderReconciliationProvider {
+    readPayment(input: {
+        providerPaymentId: string;
+        attempt?: ClaimedPaymentAttempt;
+        purpose?: ProviderReadPurpose;
+    }): Promise<ProviderReconciliationStatus>;
+    /** Atomically close an incomplete provider object before minting a replacement. */
+    closePayment?(input: {
+        providerPaymentId: string;
+    }): Promise<ProviderReconciliationStatus>;
+    findPaymentByLocalIntent?(input: {
+        attempt: ClaimedPaymentAttempt;
+    }): Promise<"found" | "absent">;
+}
+export interface ClaimedPaymentAttempt {
+    paymentAttemptId: string;
+    paymentIntentId: string;
+    paymentId: string;
+    orderId: string;
+    subscriptionId: string | null;
+    subscriptionCycleId: string | null;
+    provider: ReconciliationProviderKind;
+    providerPaymentId: string | null;
+    providerAttemptId: string | null;
+    providerSessionId: string | null;
+    attemptStatus: string;
+    intentStatus: string;
+    amountMinor: number;
+    currency: string;
+    orderMode: "one_time" | "subscription_cycle";
+    cycleRetryAttempt: number;
+    cycleNextRetryAt: string | null;
+    localUpdatedAt: string;
+}
+export type ManualInteractivePreparedAttemptAbsenceEvidence = {
+    providerAbsenceConfirmed: true;
+    watchdogEvidence: true;
+    evidenceCode: "operator_verified_absence" | "operator_documented_absence";
+};
+export interface InteractivePreparedAttemptReopenResult {
+    paymentAttemptId: string;
+    paymentIntentId: string;
+    paymentAttemptStatus: "failed";
+    paymentIntentStatus: "failed";
+    replayed: boolean;
+}
+export interface PaymentProviderReconciliationPort {
+    claimPreparedAttempts(input: {
+        now: string;
+        staleAfterSeconds: number;
+        limit: number;
+        claimKey: string;
+    }): Promise<ClaimedPaymentAttempt[]>;
+    claimStaleAttempts(input: {
+        now: string;
+        staleAfterSeconds: number;
+        limit: number;
+        claimKey: string;
+    }): Promise<ClaimedPaymentAttempt[]>;
+    recordEvidence(input: {
+        idempotencyKey: string;
+        provider: ReconciliationProviderKind;
+        providerPaymentId: string | null;
+        paymentIntentId: string;
+        paymentAttemptId: string;
+        localStatus: string;
+        providerStatus: string;
+        correctionStatus: "observed" | "corrected" | "ignored" | "failed";
+        checkedAt: string;
+        payload: Record<string, unknown>;
+    }): Promise<{
+        replayed: boolean;
+    }>;
+    applyTerminalResult(input: {
+        idempotencyKey: string;
+        expectedOrderId: string;
+        expectedPaymentIntentId: string;
+        expectedPaymentAttemptId: string;
+        expectedPaymentId: string;
+        provider: ReconciliationProviderKind;
+        providerPaymentId: string;
+        localStatus: string;
+        providerStatus: string;
+        resultStatus: "succeeded" | "failed";
+        occurredAt: string;
+        failureReason: string | null;
+        /**
+         * The class the reading adapter already decided for this refusal, persisted
+         * beside the refusal itself on both the attempt and the dunning case the
+         * terminal write opens.
+         *
+         * OPTIONAL, and absence is a real state rather than a default: a caller that
+         * omits it writes exactly what it wrote before this field existed, because
+         * the RPC coalesces it to NULL and the SQL treats a NULL class as "stamp
+         * nothing" rather than "stamp NULL". Two of this port's three consumers
+         * (`paymentVerifyNowService`, `checkoutRecoveryPaymentResolver`) resolve a
+         * payment without classifying it and are pinned to stay classification-absent.
+         *
+         * Shape mirrors `applyPaymentResultRpc` deliberately, so the synchronous
+         * decline rail and this polling rail hand the control plane the same object.
+         */
+        failureClassification?: {
+            failureClass: string;
+            decidedBy: string;
+        } | null;
+        checkedAt: string;
+        payload: Record<string, unknown>;
+    }): Promise<{
+        replayed: boolean;
+        paymentResult: {
+            paymentIntentId: string;
+            paymentAttemptId: string;
+            paymentId: string;
+            orderId: string;
+            status: string;
+            kind: string;
+            replayed: boolean;
+        };
+        correctionStatus: "corrected" | "ignored";
+        subscriptionWebhookDunning: {
+            opened: boolean;
+            replayed: boolean;
+            caseId: string | null;
+        } | null;
+    }>;
+    reopenPreparedAttemptAfterAbsence(input: {
+        idempotencyKey: string;
+        paymentAttemptId: string;
+        expectedPaymentIntentId: string;
+        expectedSubscriptionCycleId: string;
+        operatorRef: string;
+        absenceCheckedAt: string;
+        nextRetryAt: string;
+        absenceEvidence: Record<string, unknown>;
+    }): Promise<{
+        replayed: boolean;
+    }>;
+    /**
+     * Optional because the automatic reconciliation worker and its provider
+     * neutral fixtures must not acquire an operator-only interactive capability.
+     * A caller that selects this rail must require the narrow interface below.
+     */
+    reopenInteractivePreparedAttemptAfterAbsence?(input: {
+        idempotencyKey: string;
+        paymentAttemptId: string;
+        expectedPaymentIntentId: string;
+        expectedOrderId: string;
+        expectedSubscriptionId: string | null;
+        expectedSubscriptionCycleId: string | null;
+        operatorRef: string;
+        absenceCheckedAt: string;
+        absenceEvidence: ManualInteractivePreparedAttemptAbsenceEvidence;
+    }): Promise<InteractivePreparedAttemptReopenResult>;
+}
+/**
+ * Service-role operator boundary for an interactive checkout, distinct from
+ * the renewal retry RPC. It terminalizes the local prepared attempt after a
+ * human/provider absence confirmation; it never schedules dunning or cron.
+ */
+export interface InteractivePreparedAttemptManualReconciliationPort extends PaymentProviderReconciliationPort {
+    reopenInteractivePreparedAttemptAfterAbsence(input: {
+        idempotencyKey: string;
+        paymentAttemptId: string;
+        expectedPaymentIntentId: string;
+        expectedOrderId: string;
+        expectedSubscriptionId: string | null;
+        expectedSubscriptionCycleId: string | null;
+        operatorRef: string;
+        absenceCheckedAt: string;
+        absenceEvidence: ManualInteractivePreparedAttemptAbsenceEvidence;
+    }): Promise<InteractivePreparedAttemptReopenResult>;
+}
+export interface PaymentProviderReconciliationWorkerResult {
+    ok: boolean;
+    checked: number;
+    corrected: number;
+    succeeded: number;
+    failed: number;
+    pending: number;
+    unknown: number;
+    ignored: number;
+    dunningOpened: number;
+    replayed: number;
+    providerCalls: number;
+    preparedWithoutProviderAck: number;
+    preparedAttemptsReopened: number;
+    manualReview: number;
+    /**
+     * Attempts whose rail has answered non-terminally for longer than that rail
+     * declares normal. Counted, never acted on: elapsed time is not evidence
+     * about money, so this surfaces a case for a human rather than resolving it.
+     */
+    silenceOverdue: number;
+    amountCurrencyMismatches: number;
+    failures: number;
+    skipped: boolean;
+    reason?: string;
+}
+export interface PaymentProviderReconciliationWorkerInput {
+    port: PaymentProviderReconciliationPort;
+    providers: Partial<Record<ReconciliationProviderKind, PaymentProviderReconciliationProvider>>;
+    now?: string;
+    staleAfterSeconds?: number;
+    batchSize?: number;
+    claimKey?: string;
+    /**
+     * When true, prepared attempts whose provider proves absence (see
+     * PaymentProviderReconciliationProvider.findPaymentByLocalIntent) and that
+     * are at least MIN_PREPARED_ABSENCE_REOPEN_AGE_SECONDS old are automatically
+     * reopened for cron retry via the operator RPC. Default false — the
+     * stranded-attempt loop stays operator-manual unless the flag is on.
+     */
+    autoReopenPreparedAbsence?: boolean;
+    /**
+     * Published rail capabilities, read to learn how long a non-terminal answer
+     * from each rail is still normal. Optional: without it no attempt is ever
+     * counted overdue, so omitting it preserves today's behaviour exactly.
+     */
+    capabilities?: SilenceWindowLookup;
+}
+/**
+ * The narrow slice of the capability registry this worker reads.
+ *
+ * Declared here rather than importing the whole registry type so the worker
+ * depends on the one question it asks - "when does this rail's silence stop
+ * being normal" - and not on the shape of every unattended-charge capability.
+ */
+export interface SilenceWindowLookup {
+    get(providerKind: string): {
+        terminalOutcomeReporting?: {
+            silenceBecomesSuspectAfterMinutes: number;
+        };
+    } | null;
+}
+export interface VerifiableAttemptSnapshot {
+    orderId: string;
+    orderClientId: string;
+    orderMode: string;
+    paymentIntentId: string;
+    intentStatus: string;
+    intentProviderPaymentId: string | null;
+    paymentAttemptId: string;
+    paymentId: string;
+    attemptStatus: string;
+    provider: string;
+    providerAttemptId: string | null;
+    providerSessionId: string | null;
+    amountMinor: number;
+    currency: string;
+    localUpdatedAt: string;
+}
+export interface PaymentVerifyReadPort {
+    readVerifiableAttempt(input: {
+        orderId: string;
+        paymentIntentId: string;
+    }): Promise<VerifiableAttemptSnapshot | null>;
+}
+export type PaymentVerifyNowResult = {
+    status: string;
+    verified: false;
+    applied: false;
+    providerPaymentId: string | null;
+    attempt: ClaimedPaymentAttempt | null;
+} | {
+    status: "unavailable" | "pending" | "manual_review";
+    verified: boolean;
+    applied: false;
+    providerPaymentId: string | null;
+    attempt: ClaimedPaymentAttempt | null;
+} | {
+    status: "succeeded" | "failed";
+    verified: true;
+    applied: boolean;
+    providerPaymentId: string;
+    attempt: ClaimedPaymentAttempt;
+};
+```
+## dist/payments/contracts/truth.d.ts
+
+```ts
+export type PaymentTruthOutcome = "captured" | "refused" | "indeterminate";
+/**
+ * How a refusal looked to the settlement source that reported it.
+ *
+ * NOT the retry taxonomy. `PaymentFailureClass` in `@openlup/core/payment` is a
+ * different vocabulary with no value in common: that one answers "may this be
+ * retried, and how", and is what `commerce_payment_attempts.failure_class`
+ * persists. This one answers "what did the source say happened" and never leaves
+ * this module's reconciliation ledger. They shared a name until this wave, which
+ * meant an import could quietly resolve to the wrong five strings.
+ */
+export type PaymentTruthRefusalClass = "authorization_refused" | "insufficient_funds" | "method_unavailable" | "risk_refused" | "unknown_refusal";
+export type PaymentSourceEvidence = {
+    sourceKind: "accepted_event" | "reconciliation_read";
+    sourceReference: string;
+    observedStatus: string;
+    observedAt: string;
+    payloadFingerprint: string;
+};
+export type PaymentTruthEvent = {
+    sourceEventId: string;
+    idempotencyKey: string;
+    settlementIntentId: string;
+    outcome: PaymentTruthOutcome;
+    amountMinor: number;
+    currency: string;
+    occurredAt: string;
+    failure: {
+        classification: PaymentTruthRefusalClass;
+        reason: string | null;
+    } | null;
+    evidence: PaymentSourceEvidence;
+};
+export type PaymentReconciliationResult = {
+    eventId: string;
+    idempotencyKey: string;
+    evidenceStatus: "observed" | "failed";
+    outcome: PaymentTruthOutcome;
+    occurredAt: string;
+    failure: PaymentTruthEvent["failure"];
+    evidence: PaymentSourceEvidence;
+};
+export type PaymentTruthReadback = {
+    event: {
+        id: string;
+        sourceEventId: string;
+        fingerprint: string;
+        state: "open" | "settled";
+        outcome: PaymentTruthOutcome;
+        replayed: boolean;
+    };
+    effects: {
+        paymentResultRecorded: boolean;
+        dunningOpened: boolean;
+        accountingRequested: boolean;
+    };
+    financial: {
+        settlementStatus: string | null;
+        orderStatus: string | null;
+        subscriptionStatus: string | null;
+        accountingStatus: string | null;
+        amountMinor: number;
+        currency: string;
+    };
+};
+export interface PaymentTruthPort {
+    ingestEvent(input: PaymentTruthEvent): Promise<PaymentTruthReadback>;
+    recordReconciliation(input: PaymentReconciliationResult): Promise<PaymentTruthReadback>;
+    sweepOpenEvents(input: {
+        now: string;
+        limit: number;
+    }): Promise<{
+        claimed: number;
+        settledIgnored: number;
+        eventIds: string[];
+    }>;
+    readEvent(eventId: string): Promise<PaymentTruthReadback | null>;
+}
+export type CanonicalPaymentSource = {
+    sourceEventId: string;
+    eventKind: string;
+    settlementIntentId: string | null;
+    amountMinor: number | null;
+    currency: string | null;
+    occurredAt: string | null;
+    payloadFingerprint: string;
+};
 ```

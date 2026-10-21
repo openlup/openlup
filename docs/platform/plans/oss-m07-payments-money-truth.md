@@ -43,3 +43,17 @@ Actual main to candidate pack: 1,197 to 1,221 files; 1,167 to 1,191 code files; 
 Lint, compilation, builds, API checks, focused tests, publication policy and both neutrality checks pass. No native-store or runtime parity claim is made.
 
 Self-retro: mixed-boundary witness allocation exposed a missing runtime dependency before review. Lesson: allocate each witness case to its actual exported runtime before freezing the case budget; use the repository validators directly for fragment format and package-local imports.
+
+## P2 record
+
+Local candidate: unchanged pinned donor truth, method/refusal, reconciliation, silence-window, verify-now and event-conformance algorithms, with type extraction and neutral carrier strings. A new boundary module projects the existing adapter envelopes into the donor carrier with exhaustive outcome mapping, original verification bytes, method object identity and durable first-receipt reuse. The only P1 widenings are disputed money and optional core method lifecycle facts. F2 changes the refund default to require explicit evidence; full-reversal chargebacks use the existing dispute path. The reference runtime changes only refund policy and its existing test.
+
+The 21 authored cases comprise W1 webhook identity (one), W3 ingress (six), W4 ambiguity (four), W5 refund forwarding (four), F2 (three) and adapter suites (three). Projection table and replay assertions are folded into those cases. Unknown never proves absence; refund snapshots are never converted into deltas. Conformance excludes handoffs and checks diagnostics for transient secrets. The selected real-store proof, external adapters and reference rewiring belong to later phases.
+
+Final local delta against repaired P1: 35 paths, 19 production paths, 36 frozen export additions and 4,339 lines of churn. There are 21 authored cases and 42 added generated source-boundary iterations (14 new production files across three existing matrices). No dependency, migration, public subpath or budget change.
+
+Pinned P1 to candidate pack: 1,221 → 1,263 files, 816,142 → 858,431 packed bytes, 3,682,679 → 3,875,473 unpacked bytes and 687,246 → 729,396 code gzip bytes. Root docs: 43,708 → 44,056 gzip bytes, five files; contracts browser output remains 20/32 bytes. Every cap is respected.
+
+Focused root: 1,414 pass, one existing database-only case skipped under the offline brief; package-local: 1,290 pass. Lint (33 incumbent warnings), compilation, builds, API/migration-block checks, both neutrality checks, equality and closure audits pass. Publication policy passes on the committed candidate. A refund event without evidence is recorded and acknowledged but not applied, matching the donor. No release, activation or selected-store parity is claimed.
+
+Self-retro: use the approved single projection to settle representation explicitly, then compare donor syntax with an AST printer. Check overridden mock traces against the original witness before the final test batch; no new behavior or process was needed to repair the assertion.

@@ -7,6 +7,7 @@ import {
 import {
   createProviderPaymentWebhookHandler,
   type ProviderPaymentWebhookKind,
+  type NormalizedProviderPaymentWebhook,
 } from "./paymentWebhookHandlers.js";
 
 describe("provider payment webhook handlers", () => {
@@ -101,10 +102,12 @@ describe("provider payment webhook handlers", () => {
   });
 
   it("applies a full charge.refunded as resultStatus 'refunded'", async () => {
+    let observed!: NormalizedProviderPaymentWebhook;
     const applyPaymentResult = vi.fn().mockResolvedValue({ replayed: false });
     const handler = createProviderPaymentWebhookHandler({
       provider: "stripe",
       webhooksEnabled: () => true,
+      afterProcessed: async ({ event }) => { observed = event; },
       verifyAndNormalize: vi.fn().mockResolvedValue(stripeRefundEvent("full")),
       paymentControlPort: {
         ingestPaymentEvent: vi.fn().mockResolvedValue({
@@ -122,6 +125,23 @@ describe("provider payment webhook handlers", () => {
     expect(applyPaymentResult).toHaveBeenCalledWith(
       expect.objectContaining({ resultStatus: "refunded" }),
     );
+    applyPaymentResult.mockClear();
+    for (const refundKind of [undefined, null]) {
+      const event = { ...observed, refundKind };
+      const paymentControlPort = { ingestPaymentEvent: vi.fn().mockResolvedValue({
+        paymentEventId: "event-local", paymentIntentId: "intent-original", paymentAttemptId: "attempt-original", replayed: false,
+      }), applyPaymentResult };
+      const missing = createProviderPaymentWebhookHandler({ provider: event.provider, webhooksEnabled: () => true,
+        verifyAndNormalize: async () => event, paymentControlPort });
+      await missing({ method: "POST" } as never, createResponse() as never);
+      expect(applyPaymentResult).not.toHaveBeenCalled();
+      const legacy = createProviderPaymentWebhookHandler({ provider: event.provider, webhooksEnabled: () => true,
+        refundEvidencePolicy: "legacy-assume-full", verifyAndNormalize: async () => event, paymentControlPort });
+      await legacy({ method: "POST" } as never, createResponse() as never);
+      expect(applyPaymentResult).toHaveBeenCalledWith(expect.objectContaining({ resultStatus: "refunded" }));
+      applyPaymentResult.mockClear();
+    }
+
   });
 
   it("applies a partial charge.refunded as resultStatus 'partially_refunded'", async () => {
