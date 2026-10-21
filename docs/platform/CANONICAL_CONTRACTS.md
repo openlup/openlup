@@ -169,19 +169,11 @@ A payments (M07) adapter implements `PaymentAdapter` and declares
 fixtures. See the [opt-in payment example](#opt-in-payment-example).
 
 Fulfillment adapters implement the experimental FulfillmentDispatchPort from
-`@openlup/platform/fulfillment/contracts`: prepare actual-command evidence before
-store claim/begin, then dispatch exactly that command. The existing fulfillment
-entry exposes the paid handler, recovery classifier, dispatch worker and separate
-durable command-ledger protocol. G14 records a sanitized mapped attempt after
-claim readback with host-supplied initial/remap keys; replay does not write twice.
-A contact remap is bounded at one and refreshes draft fingerprint/evidence
-atomically. Unknown outcomes require readback; accepted proof repairs a local ACK
-without another provider POST. Store prepare is readiness, adapter prepare is
-command evidence. Missing/mismatched adapter preparation refuses not_dispatchable
-in phase dispatch, retryable false, before I/O. See the
+`@openlup/platform/fulfillment/contracts`. See the
 [fulfillment owner](ARCHITECTURE_AND_EXTENSIONS.md#fulfillment-contracts) for
-proof and storage boundaries. An example adapter remains planned for A3; this
-surface activates no provider or reference route.
+command preparation, host keys, replay, paid handoff and proof/storage boundaries.
+An example adapter remains planned for A3; this surface activates no provider or
+reference route.
 
 | Class | Shipped example subpaths |
 | --- | --- |

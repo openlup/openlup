@@ -697,12 +697,16 @@ prepared evidence, mode/status and references persist. Same-key replay writes no
 second attempt. Unknown/submitting/failed states never automatically POST;
 accepted proof repairs a lost local ACK without a provider call. An ACK rescue
 finalizes accepted proof as uncertain with its external reference retained.
+Main and repair ACKs use identical host acceptance keys, ignoring adapter-provided
+key fields so a committed ACK replays after a lost response.
 The separate createFulfillmentCommandLedger protocol delegates atomic fenced
 operations to a durable store; it does not keep lease/retry state locally. The
 host supplies keys, actual-command fingerprints, candidate selection, paid truth
 and inventory authority. The paid outbox handler settles only after its injected
 fulfillment obligation completes. Recovery classifies missing/stale/uncertain
 work for local requeue, waiting or operator review, without dispatching it.
+The donor OrderPaidFulfillmentPort in paidHandoffPorts.ts retains the handler's
+outcome ladder; P4/P7 host composition bridges it to P1's FulfillmentPaidHandoffPort.
 P3 owns store/adapter conformance and P4 owns native SQL/atomicity proofs.
 
 [Labels](../../packages/platform/src/fulfillment/contracts/label.ts) separate durable

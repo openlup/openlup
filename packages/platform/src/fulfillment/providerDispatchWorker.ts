@@ -110,11 +110,13 @@ export async function runFulfillmentDispatchWorker(input: {
         await input.store.finalize({ dispatchRef: dispatchRef.dispatchRef, result: response });
         result.ok = false; result.failures += 1; result.reason ??= response.refusal.reason; continue;
       }
+      // All ACK paths use the original host keys, ignoring adapter key fields.
+      const acceptance = { ...response, ...input.keys.acceptance(mappedCandidate.fulfillmentRef) };
       try {
-        const ack = await input.store.acknowledge({ dispatchRef: dispatchRef.dispatchRef, acceptance: response });
+        const ack = await input.store.acknowledge({ dispatchRef: dispatchRef.dispatchRef, acceptance });
         if (ack.replayed) result.replayed += 1;
       } catch {
-        const recovery = await recoverDispatchAcceptanceWrite({ store: input.store, requestKey, dispatchRef: dispatchRef.dispatchRef, acceptance: response });
+        const recovery = await recoverDispatchAcceptanceWrite({ store: input.store, requestKey, dispatchRef: dispatchRef.dispatchRef, acceptance });
         result.readBacks += recovery.readBacks;
         if (recovery.committed) { result.updated += 1; continue; }
         result.ok = false; result.failures += 1; result.reason ??= "dispatch_proof_write_failed_after_provider_acceptance"; break;
