@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, expect } from "vitest";
+import { afterAll, beforeAll, expect, vi } from "vitest";
 import { conformanceCase, neutralExports, publicSurface } from "../helpers/marketingSyncConformance.js";
 import { audience, binding, cleanupPlants, fixture, planted, preparePlants, request } from "./harness.js";
 import type { SyncRequest } from "../../../src/communications/contracts/marketingSync.js";
@@ -37,12 +37,25 @@ row("S03", ["generation", "tombstone", "read-generation"], async (h, plant) => {
 });
 row("S04", ["mapping", "pacing"], async (h, plant) => {
   if (plant === "pacing") {
-    const f = fixture(h.factory); f.state.subject.id = undefined;
-    delete f.config.rateIntervalMs; delete f.config.timeoutMs; f.config.now = Date.now;
-    f.authorizations.get("authorization:profile.sync")!.expiresAtMs = Date.now() + 3000;
-    const value = await f.rebuild().profiles.sync(request("profile.sync", { deadlineMs: Date.now() + 3000 }));
-    expect(value, "S04/pacing").toMatchObject({ kind: "acknowledged", journal: "confirmed" });
-    expect(f.effects()).toHaveLength(1); return;
+    vi.useFakeTimers({ toFake: ["Date", "setTimeout", "clearTimeout"] });
+    try {
+      vi.setSystemTime(10);
+      const f = fixture(h.factory); f.state.subject.id = undefined;
+      delete f.config.rateIntervalMs; delete f.config.timeoutMs; f.config.now = Date.now;
+      f.authorizations.get("authorization:profile.sync")!.expiresAtMs = Date.now() + 3000;
+      const pending = f.rebuild().profiles.sync(request("profile.sync", { deadlineMs: Date.now() + 3000 }));
+      let settled = false;
+      void pending.then(() => { settled = true; }, () => { settled = true; });
+      // Keep Date and pacing timers in lockstep, below the deadline/abort timers.
+      // Small steps leave the no-wait mutant inside the rate interval too.
+      for (let elapsed = 0; !settled && elapsed < 1000; elapsed++) await vi.advanceTimersByTimeAsync(1);
+      expect(settled, "S04/pacing settles before deadline").toBe(true);
+      expect(await pending, "S04/pacing").toMatchObject({ kind: "acknowledged", journal: "confirmed" });
+      expect(f.effects()).toHaveLength(1);
+    } finally {
+      vi.useRealTimers();
+    }
+    return;
   }
   h.state.subject.id = undefined;
   expect(await h.provider.profiles.sync(request("profile.sync")), "S04/mapping create positive").toMatchObject({ kind: "acknowledged", journal: "confirmed" });
