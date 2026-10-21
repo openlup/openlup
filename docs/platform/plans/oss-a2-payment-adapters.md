@@ -251,3 +251,7 @@ cases and no O-P2 case addition.
 O-P2 adds 81 net-new cases (70 adapter, 7 payment allowance and 4 neutrality),
 bringing O-P1 plus O-P2 to 100 net-new cases. Moved-pending donor and generated
 boundary cases do not count toward that total; no donor retirement is claimed.
+
+### O-P3a advisory glue fixes
+
+K-3 keeps nonzero paid-money mismatches on dated Tpay refusals unknown; N-2 classifies trusted document refusals as data correction; N-3 throws host mode/purpose/currency errors before I/O (Stripe already does). Existing case bodies extended: Tpay factory 64 → 64, readback parity 5 → 5, Stripe factory 16 → 16; 0 net-new cases, programme remains 100/100, donor witnesses unchanged.

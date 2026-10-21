@@ -60,10 +60,13 @@ describe("opt-in payment factory", () => {
       expect(() => createStripePaymentAdapter({ ...config, supportedCurrencies: currencies } as StripePaymentAdapterConfig)).toThrow("Invalid supported currencies");
     }
     for (const patch of [{ money: { amountMinor: 1.5, currency: "EUR" } }, { money: { amountMinor: 2599, currency: "USD" } },
-      { mode: "live" }, { purpose: "renewal-unattended" }, { customerAuthorization: "transient" }, { providerIdempotencyKey: "" }]) {
-      await expect(adapter.attemptPort.execute({ ...request, ...patch } as typeof request)).rejects.toThrow("Unsupported payment input");
+      { mode: "live" }, { purpose: "unsupported" }, { purpose: "renewal-unattended" }, { customerAuthorization: "transient" }, { providerIdempotencyKey: "" }]) {
+      const input = { ...request, ...patch } as typeof request;
+      expect(() => adapter.attemptPort.validateInput(input)).toThrow("Unsupported payment input");
+      await expect(adapter.attemptPort.execute(input)).rejects.toThrow("Unsupported payment input");
     }
     expect(client.createPaymentIntent).not.toHaveBeenCalled();
+    expect(client.retrievePaymentIntent).not.toHaveBeenCalled();
   });
   it("maps issuer decline to neutral refusal without claiming not-dispatched, and preserves ambiguous errors", async () => {
     const { adapter, client } = subject();

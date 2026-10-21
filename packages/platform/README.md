@@ -1148,8 +1148,9 @@ and Model M or unknown mandates refuse before any dispatch with neutral
 data-correction evidence. Payer and authorization never cross the return boundary
 in diagnostics or request/response payloads. Readback uses the returned API
 transaction ID; notification titles remain distinct. The donor's typed no-charge
-errors (OAuth, encoding, exhausted pre-send deadline or proven request refusal)
-return an exact `notDispatched` envelope with core's transient retryable refusal.
+errors return an exact `notDispatched` envelope: proven request-document refusals
+require customer data correction; OAuth, encoding and exhausted pre-send deadlines
+remain transient retryable refusals. Host mode/purpose/currency mismatches throw before I/O.
 Every other execution error propagates unchanged as ambiguous.
 
 The exported capability descriptor and its nested records and arrays are frozen.
@@ -1162,7 +1163,8 @@ remain `verification_pending` until owner TEST readback. Chargeback observations
 original money and stable operation identity; refunded/chargeback readback stays
 unknown for manual review, including historical attempt/error refusals in either
 readback purpose. Pending and refused readback report validated configured money,
-including when the paid amount is zero. Succeeded readback requires the donor's
+including when the paid amount is zero or absent; a refused result with mismatched
+nonzero paid money stays unknown for manual review. Succeeded readback requires the donor's
 observed paid amount to equal expected money; underpayment and overpayment remain
 unknown for manual review. There is no close or exact-absence port. Refund
 creation and authorization/capture separation are unsupported. See the

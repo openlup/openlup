@@ -74,8 +74,8 @@ projection only when signed provider time is present; without it the lifecycle
 field is omitted. Unknown alias lifecycle events refuse `unsupported-event`.
 Readback retains purpose, checks exact transaction identity/configured money,
 and reports configured money for pending and refused results even when the paid
-amount is zero. Unpaid pending transactions remain pending; a dated donor refusal
-reports failed. Succeeded results require the donor's observed paid amount to
+amount is zero or absent. Unpaid pending transactions remain pending; a dated donor refusal
+reports failed unless nonzero paid money mismatches expected money, which stays unknown for manual review. Succeeded results require the donor's observed paid amount to
 equal expected money; a mismatch stays unknown for manual review. The donor's
 status fallback fields also govern the reversal
 guard, which leaves refunded/chargeback unknown for manual review, even with historical
@@ -87,6 +87,7 @@ when the host supplies transient payer and method selection through the
 canonical M07 P3 attempt input.
 Every flow requires explicit payer context. Missing payer/channel/code refuses
 with exact before-dispatch evidence and neutral data-correction classification.
+Host mode/purpose/currency mismatches throw before I/O; trusted provider document refusals require data correction, while trusted OAuth/deadline/encoding failures remain transient.
 Payer, authorization, donor payloads and provider prose are excluded from the
 returned diagnostics. Alias registration is not exposed by this factory.
 Verified audit facts preserve the donor-filtered transaction and alias fields;
