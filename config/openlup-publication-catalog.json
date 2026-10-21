@@ -1206,6 +1206,10 @@
       "class": "public-output"
     },
     {
+      "path": "docs/platform/assets/velipet-storefront-en.png",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/autonomous-reviewed-delivery-intent.md",
       "class": "platform-documentation"
     },
@@ -2279,6 +2283,10 @@
     },
     {
       "path": "packages/platform/api/payments-stripe.api.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/api/payments-tpay.api.md",
       "class": "public-output"
     },
     {
@@ -3738,6 +3746,90 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/payments/tpay/blikRecurringMapper.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/payments/tpay/capabilities.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/payments/tpay/classifyDecline.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/payments/tpay/declineFailureHints.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/payments/tpay/donorContracts.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/payments/tpay/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/payments/tpay/paymentFailureEvidence.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/payments/tpay/preparedProviderAttempt.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/payments/tpay/providerAttemptFailureDiagnostic.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/payments/tpay/tpayCreateTransactionInput.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/payments/tpay/tpayDeclineEvidence.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/payments/tpay/tpayDispatchFailure.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/payments/tpay/tpayFailureEvidence.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/payments/tpay/tpayHttpClient.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/payments/tpay/tpayHttpFailure.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/payments/tpay/tpayPaymentExecutionAdapter.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/payments/tpay/tpayPaymentReconciliationProvider.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/payments/tpay/tpayTransactionPayload.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/payments/tpay/wallClockTime.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/payments/tpay/webhookJwsVerifier.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/payments/tpay/webhookNormalizer.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/payments/verifiedEvidenceProjection.ts",
       "class": "public-output"
     },
@@ -4803,6 +4895,82 @@
     },
     {
       "path": "packages/platform/test/payments/stripe/webhookSignature.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/payments/tpay/conformance.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/payments/tpay/declineFailureHints.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/payments/tpay/dunningConformanceKit.testFixtures.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/payments/tpay/factory.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/payments/tpay/paymentExecutionPortContract.testFixtures.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/payments/tpay/readbackParity.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/payments/tpay/tpayCreateTransactionInput.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/payments/tpay/tpayDeclineEvidence.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/payments/tpay/tpayDispatchFailure.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/payments/tpay/tpayFailureEvidence.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/payments/tpay/tpayHttpClient.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/payments/tpay/tpayHttpFailure.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/payments/tpay/tpayPaymentExecutionAdapter.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/payments/tpay/tpayPaymentReconciliationProvider.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/payments/tpay/tpayTransactionPayload.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/payments/tpay/unattendedCapability.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/payments/tpay/webhookJws.testFixtures.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/payments/tpay/webhookJwsVerifier.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/payments/tpay/webhookNormalizer.test.ts",
       "class": "public-output"
     },
     {

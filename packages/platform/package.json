@@ -190,6 +190,11 @@
       "types": "./dist/payments/stripe/index.d.ts",
       "import": "./dist/payments/stripe/index.js",
       "default": "./dist/payments/stripe/index.js"
+    },
+    "./payments/tpay": {
+      "types": "./dist/payments/tpay/index.d.ts",
+      "import": "./dist/payments/tpay/index.js",
+      "default": "./dist/payments/tpay/index.js"
     }
   },
   "repository": {

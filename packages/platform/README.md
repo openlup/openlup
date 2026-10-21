@@ -33,6 +33,7 @@ or provider-account certification.
 | `./communications` | Experimental existing public consent/status, newsletter sync, Auth email hook, transport contracts/capture, observation/polling orchestration, standard webhook verification and delivery receipts; host-selected rendering, egress, protocol mapping and control policy |
 | `./communications/contracts` | Pure renderer, block builders, copy-injected commerce/subscription factories and email/newsletter/Auth/intake/receipt types; no Zod, Node or provider runtime imports |
 | `./payments/stripe` | Opt-in Node payment example with an injected structural client, verified observations and purpose-sensitive readback; no SDK dependency or default activation. |
+| `./payments/tpay` | Opt-in Node payment example with injected HTTP/certificate I/O, Model O aliases and verified observations; no default activation. |
 | `./payments` | Experimental prepared-attempt ordering with injected persistence, execution and failure policy; contracts at `./payments/contracts`. |
 | `./inventory` | Experimental schemas/ports, handlers, native stores, projection, injected forecast and SQL descriptor; `./inventory/contracts` DTOs. |
 | `./catalog` | Experimental neutral catalog schemas, drafts, reads, media source packs and publication ports |
@@ -1129,6 +1130,68 @@ refund charge snapshot and failure-evidence provenance when present. They exclud
 raw bodies, client handoffs and customer authorization and do not affect event
 IDs or fingerprints. The offline adapter conformance witness uses two distinct
 intents and attempts with separate money and provider references.
+
 Method evidence carries the donor lifecycle and replacement facts through M07
 projection when provider time is present. Without provider time it retains the
 method outcome and omits the lifecycle instead of inventing a transition time.
+
+### Opt-in bank and code payment example
+
+Import `createTpayPaymentAdapter`, `type TpayPaymentAdapterConfig` and
+`tpayPaymentCapabilities` from `@openlup/platform/payments/tpay`. Supply `http`
+with explicit `baseUrl`, `clientId`, `clientSecret`, `fetchImpl` and optional
+`timeoutMs`; `urls` with `notificationUrl`, `successUrl`, `errorUrl`;
+`modelOActivationEnabled`, `mode`, and optional UTC-seconds `clock`.
+`notification` requires `rootCertificatePem`, `allowedCertificateUrlPrefix`
+(HTTPS directory ending in `/`) and `resolveCertificate`. The resolver owns
+redirect/egress policy. Both certificates must be valid at verification time.
+
+Verify certificate validity and notification freshness using original raw bytes.
+A signed protected-header `iat` supplies UTC-seconds provider time; absent time
+stays null. `maxNotificationAgeSeconds` defaults to seven days, a generous
+assumption pending confirmation of the provider retry schedule. Signed issue time
+more than `maxClockSkewSeconds` (default 300) after receipt refuses as stale;
+both freshness limits must be finite and nonnegative. Host dedupe
+uses exact event identity plus stable fingerprint when time is absent. The age
+and future-skew limits apply only when the signed header carries a provider issue time. Receipt
+time is used only for freshness. Transaction identity includes outcome class;
+method identity includes event/alias plus outcome.
+
+Bank redirects, one-time codes and unattended Model O alias charges are supported
+when the host supplies the M07 P3 contract payer and method selection inputs.
+Supply transient `payer: { email, name? }` on every
+attempt, including renewals. An omitted or blank name uses the donor
+neutral display label `Customer`. Select `methodSelection: { family: "bank-redirect",
+channelRef }` for the bank channel, or `{ family: "one-time-code" }` with
+`customerAuthorization` as a `TransientSecret`. A `renewal-unattended` attempt
+uses `storedMethod.reference` and its Model O mandate. Missing payer/channel/code
+and Model M or unknown mandates refuse before any dispatch with neutral
+data-correction evidence. Payer and authorization never cross the return boundary
+in diagnostics or request/response payloads. Readback uses the returned API
+transaction ID; notification titles remain distinct. The donor's typed no-charge
+errors (OAuth, encoding, exhausted pre-send deadline or proven request refusal)
+return an exact `notDispatched` envelope with core's transient retryable refusal.
+Every other execution error propagates unchanged as ambiguous.
+
+The exported capability descriptor and its nested records and arrays are frozen.
+Currencyless money notifications preserve the paid amount and bind to the adapter's single declared currency; multiple declared currencies refuse as malformed.
+Alias method evidence preserves the donor lifecycle through M07 projection with
+signed provider time; absent provider time leaves the lifecycle field omitted.
+The adapter offers its declared market currency; alias registration and recurring
+cards are not offered by this factory. Account offers
+remain `verification_pending` until owner TEST readback. Chargeback observations carry full reversal,
+original money and stable operation identity; refunded/chargeback readback stays
+unknown for manual review, including historical attempt/error refusals in either
+readback purpose. Pending and refused readback report validated configured money,
+including when the paid amount is zero. Succeeded readback requires the donor's
+observed paid amount to equal expected money; underpayment and overpayment remain
+unknown for manual review. There is no close or exact-absence port. Refund
+creation and authorization/capture separation are unsupported. See the
+[A2 ledger](../../docs/platform/plans/oss-a2-payment-adapters.md#o-p2-boundary-and-named-deltas).
+
+Verified audit payloads retain only donor-filtered transaction and alias facts,
+including `eventKind`, alias `event` and `aliasType` when supplied. Missing failure
+provenance and failure prose stay absent. Payer, authorization, certificates and
+raw bodies never enter the evidence; audit facts do not affect event identity or
+fingerprints. The offline M07 P2 conformance witness uses two distinct intents,
+attempts, amounts and provider references, with replay and refusal boundaries.
