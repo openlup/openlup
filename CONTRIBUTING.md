@@ -130,19 +130,19 @@ its users or operators can observe.
    package's neutral names in its adapter.
 
 ## Development-preview checks
-M05 P7 Phase A adds four explicit cases across
+M05 P7 adds five explicit cases across
 `tests/postgres/m05CatalogComposition.test.ts`,
 `tests/platform/catalog/m05Composition.test.ts` and
-`tests/platform/catalog/m05ReferenceComposition.test.ts`. The PostgreSQL pair
-uses independent real transactions for replay/contention and native consumer
-readback. The readiness case runs the existing SDK-absent packed-consumer
-scenario for the moved factories, descriptor and inert contribution; its local
+`tests/platform/catalog/m05ReferenceComposition.test.ts`. The three PostgreSQL
+cases use independent real transactions for replay/contention, native consumer
+readback and mounted admin/feed readback with an injected stock reader. The
+readiness case runs the existing SDK-absent packed-consumer scenario for the moved factories, descriptor and inert contribution; its local
 packs are working-tree feedback, not the supervisor's signed-artifact gate.
 The SSR case exercises the existing static pages and unmounted route inventory.
-Run these files explicitly under the existing collector; Phase B reserves one
-additional stock-backed case as a comment, without a skipped test. No collector,
-coverage budget, resource gate, dependency classification or default profile
-changes. The catalog server remains an adapter entry; composition declarations
+Run these files explicitly under the existing collector; Phase A contributes
+four cases and Phase B adds the mounted readback case, with no skipped test.
+No collector, coverage budget, resource gate, dependency classification or
+default profile changes. The catalog server remains an adapter entry; composition declarations
 remain usable without optional database peers.
 
 

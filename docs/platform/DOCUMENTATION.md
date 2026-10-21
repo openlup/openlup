@@ -65,7 +65,7 @@ The P7 native catalog move keeps the package README as owner of the two
 factory exports, sparse descriptor and structural contribution. The adapter
 owner explains reference compatibility paths; the runtime owner explains the
 explicit inert selection and unchanged default exposure. Contributor guidance
-owns the four Phase A proof files and reused packed-consumer scenario. The
+owns the three P7 proof files, five cases and reused packed-consumer scenario. The
 publication catalogue and derived source contract inventory these additions;
 neither generated navigation nor schema-object presence establishes activation
 or a successful installed consumer.

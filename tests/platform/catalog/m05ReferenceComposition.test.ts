@@ -24,5 +24,5 @@ it("SSR/default-exposure-unchanged", () => {
   expect(BUNDLE_ACTIVATION_FLAG).toBe("COMMERCE_BUNDLE_ACTIVATION_ENABLED");
   vi.stubEnv(BUNDLE_ACTIVATION_FLAG, undefined);
   try { expect(commerceBundleActivationEnabled()).toBe(false); } finally { vi.unstubAllEnvs(); }
-  // P5 pages/composer are absent on this stack; their consumer-derived SSR inputs are wired after the slot merge.
+  // P5 supplied catalog UI inputs remain opt-in; referenceUi.test.ts covers their SSR rendering.
 });

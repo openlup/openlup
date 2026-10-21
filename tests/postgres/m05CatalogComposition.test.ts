@@ -233,7 +233,7 @@ it("native consumer readback preserves quote authority, draft receipts and unsup
     expect(priced.quote.totalGross).toEqual({ amountMinor: 2000, currency: "XXX" });
     const projection = await offer();
     expect(projection.products).toMatchObject([{ productSlug: "p7-unit", oneTime: { unitGross: { amountMinor: 1000, currency: "XXX" } }, subscriptionInitial: { unitGross: { amountMinor: 900 } } }]);
-    // Stable main-side issuance refuses native ordinary acquisition acceptance. P5 builder is absent.
+    // Existing issuance still refuses native ordinary acquisition acceptance with the P5 UI present.
     expect(createRoutePromotionAcceptanceIssuer(null)(request, priced.quote)).toBeNull();
     expect(binding.unsupported).toContain("nativeAcquisitionAcceptance");
     const draftId = "c7000000-0000-4000-8000-000000000002";
