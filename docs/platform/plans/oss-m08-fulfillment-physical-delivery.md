@@ -33,7 +33,7 @@ makes no native-continuity, provider-operation or stable-framework claim.
 
 | Decision | Binding disposition |
 | --- | --- |
-| D0 | C0 is the design boundary; retain C1 donor witnesses. M07 S1 is an M08 integration prerequisite; P1 is local implementation only. |
+| D0 | C0 is the design boundary; retain C1 donor witnesses. M07 S1 is an M08 integration prerequisite; the combined P1+P2 change adds contracts and callable orchestration without activation. |
 | D1 | Existing platform package, only fulfillment and fulfillment/contracts. |
 | D2 | Freeze ports against donor fit; G1–G13 are approved amendments, with G14 approved separately below. Arrival-only replacement confirmation applies. |
 | D3 | Private adapters/defaults/codecs stay private; direct carrier dormant, simulator separate; pickup lookup remains shipping-owned. |
@@ -42,6 +42,7 @@ makes no native-continuity, provider-operation or stable-framework claim.
 | D6 | Reconcile shared M07/A2 package companions; no unrelated source changes. |
 | D7 | Note-only replacement confirmation unchanged, no caller; arrival discipline belongs in the alignment contract and platform page. |
 | D8 | Programme order is P1→P2→P3→P4→P5a→P5b→P6→P7→S1, with a 35-path cap per PR including generated files. Import unchanged before P6 refactoring. |
+| D8 amendment | The coordinator approved a combined P1+P2 change under a ≤55-path regroup cap, including generated files. |
 | D9 | Target 89 authored cases within the 94-case/27-second module budget and outer 100-case/30-second cap. Count generated packageBoundary rows separately; charge all execution time. |
 | D10 | Validate package artifacts and every subcap; no cap increase or guessed version. |
 | D11 | One package status-map authoring source after explicit host adoption; reference composition is unchanged here. OMS ladder/live queue remain together at the host, with no parallel mapper. |
@@ -160,7 +161,9 @@ Keep the contributed worker loop and injected ports. One contact remap covers
 claim and begin; remapCount is bounded at one and mappedAttemptCount is independent.
 A correctable draft re-claim atomically replaces fingerprint and evidence, followed
 by authoritative readback before the attempt write. Non-draft states never
-automatically POST. Shadow prepares a command but performs no POST.
+automatically POST. Shadow mode requires a configured provider adapter because
+command preparation moved into the adapter (G2); it prepares a command but posts
+nothing.
 `FulfillmentStorePort.prepare` checks contact readiness/withholding;
 `FulfillmentDispatchPort.prepare` builds transient command bytes and returns proof.
 Absent/mismatched preparation refuses with reason `not_dispatchable`, phase
@@ -193,8 +196,9 @@ not arrive: the operation records the customer-facing fact "Parcel delivered"
 and shifts the cycle later. The note-only operator attestation is unchanged and
 has no caller here; P4 owns native alignment and continuity proof.
 
-Known donor limits: capability lookup lowercases selected providerRef but compares
-it with injected descriptors as supplied, retaining case asymmetry. recordArrival
+Known limits: capability lookup lowercases selected providerRef but compares
+it with injected descriptors as supplied. This case asymmetry arises from injected
+descriptors; the donor compared against static lowercase registry keys. recordArrival
 accepts parcelRef without fulfillmentRef; native fence/alignment belongs to P4.
 Fixture stores establish worker behavior and protocol transport, not durable
 atomicity, expiry, lease enforcement or database proof validity.
@@ -209,5 +213,5 @@ ACK before/after persistence, ambiguous/definite provider outcomes and ledger
 fence/proof transport define the affected verification surface. Package-boundary
 and cold-consumer checks cover entry isolation. Validate structural/lint, types,
 API, neutrality, publication policy/navigation and artifact/browser budgets;
-serialize generation/build/pack and phases that mutate dist. Inventory API
-enum-order adjustments must preserve their value sets.
+serialize generation/build/pack and phases that mutate dist. The generated
+inventory API report reorders two enum members with unchanged value sets.

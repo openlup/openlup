@@ -966,7 +966,7 @@ export interface FulfillmentStatusStage {
     orderStatus: string[];
     /** Extra provider/synonym tokens that also resolve here (for token→step). */
     aliasTokens: string[];
-    /** Side-effect boundary: `handover` drives both paths; `stock` is coarser (statusMap.test.ts). */
+    /** Contributed effect metadata, pinned by the package test's projection digest. */
     effects: {
         stock: string;
         handover: boolean;

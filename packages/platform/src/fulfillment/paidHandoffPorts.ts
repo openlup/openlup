@@ -1,5 +1,5 @@
 // Neutral port owned by the commerce.order.paid dispatch handler. Concrete
-// persistence and provider adapters live under server/adapters.
+// persistence and provider adapters belong to the host composition.
 
 export type OrderPaidFulfillmentResult =
   | { kind: "completed" | "skipped"; detail?: Record<string, unknown> }
