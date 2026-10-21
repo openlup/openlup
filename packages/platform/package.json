@@ -185,6 +185,11 @@
       "types": "./dist/payments/contracts/index.d.ts",
       "import": "./dist/payments/contracts/index.js",
       "default": "./dist/payments/contracts/index.js"
+    },
+    "./payments/stripe": {
+      "types": "./dist/payments/stripe/index.d.ts",
+      "import": "./dist/payments/stripe/index.js",
+      "default": "./dist/payments/stripe/index.js"
     }
   },
   "repository": {

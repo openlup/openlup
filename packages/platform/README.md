@@ -32,6 +32,7 @@ or provider-account certification.
 | `./identity/contracts` | Experimental capability: browser-safe customer auth port, value types and provider parser |
 | `./communications` | Experimental existing public consent/status, newsletter sync, Auth email hook, transport contracts/capture, observation/polling orchestration, standard webhook verification and delivery receipts; host-selected rendering, egress, protocol mapping and control policy |
 | `./communications/contracts` | Pure renderer, block builders, copy-injected commerce/subscription factories and email/newsletter/Auth/intake/receipt types; no Zod, Node or provider runtime imports |
+| `./payments/stripe` | Opt-in Node payment example with an injected structural client, verified observations and purpose-sensitive readback; no SDK dependency or default activation. |
 | `./payments` | Experimental prepared-attempt ordering with injected persistence, execution and failure policy; contracts at `./payments/contracts`. |
 | `./inventory` | Experimental schemas/ports, handlers, native stores, projection, injected forecast and SQL descriptor; `./inventory/contracts` DTOs. |
 | `./catalog` | Experimental neutral catalog schemas, drafts, reads, media source packs and publication ports |
@@ -1083,3 +1084,30 @@ evidence copies only declared typed fields, including nested facts; unknown
 extra properties are excluded. Incomplete chargeback evidence remains stored as
 a refund and unapplied, a declared operator recovery limit: reclassification
 would apply the donor dispute path without checking completeness.
+
+### Opt-in payment example
+
+Import `createStripePaymentAdapter`, `type StripePaymentAdapterConfig` and
+`stripePaymentCapabilities` from `@openlup/platform/payments/stripe`. Supply a
+structural client, `webhookSigningSecrets`, explicit `mode`, required
+`supportedCurrencies` (a non-empty list of upper-case three-letter codes) and optionally
+`toleranceSeconds` (default 300) and `clock` (UTC seconds). The host constructs
+and configures the SDK, associates saved methods with customers and confirms
+off-session requests. Interactive methods follow the declared card/wallet offer.
+Importing creates no I/O or default binding. The adapter advertises the host
+currency list as a frozen copy; the frozen exported descriptor keeps an empty list.
+Account-specific readiness remains pending TEST verification. Exact absence,
+refund creation and split authorization/capture are unsupported. Cancellation
+is enabled only when the injected client supplies it. See the
+[A2 ledger](../../docs/platform/plans/oss-a2-payment-adapters.md) for the current
+preview boundary and the host's responsibilities.
+
+Verified dispute events retain their distinct money outcome and original payment
+identity. Audit payloads carry only donor-filtered facts: the source event type,
+refund charge snapshot and failure-evidence provenance when present. They exclude
+raw bodies, client handoffs and customer authorization and do not affect event
+IDs or fingerprints. The offline adapter conformance witness uses two distinct
+intents and attempts with separate money and provider references.
+Method evidence carries the donor lifecycle and replacement facts through M07
+projection when provider time is present. Without provider time it retains the
+method outcome and omits the lifecycle instead of inventing a transition time.

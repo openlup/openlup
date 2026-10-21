@@ -131,6 +131,17 @@ its users or operators can observe.
 
 ## Development-preview checks
 
+The opt-in payment example retains donor execution, decline, refund, lifecycle
+and purpose-sensitive readback witnesses in the existing Platform/root Node
+collectors. Its focused factory tests add neutral-envelope and refusal coverage.
+The cold installed consumer imports the explicit subpath without a provider SDK,
+blocks ambient network and file writes, and exercises injected execution with
+transient-secret isolation. Import-time module loading still reads installed
+JavaScript. The narrow provider-vocabulary allowance is path/token-scoped to its
+approved category; paired outside plants and other categories retain the ratchet.
+These focused proofs do not replace required coverage, native review or the
+shared installed-artifact gate.
+
 The portable dunning invariant repair adds
 `tests/postgres/dunningLifecycleActiveRepair.test.ts` to the existing Node
 collector. One static case checks unchanged SQL bytes and the manifest binding;

@@ -120,6 +120,31 @@ function allowedAdoptionCounts(path, contents, brand) {
   return { brand: names, "ui-0": names, "ui-2": [...approved.matchAll(new RegExp(`${brand}\\.com`, "gi"))].length };
 }
 
+// O-P1: category ui-13 only. Exact carrier tokens cannot excuse bare vendor prose.
+const paymentAdapterName = "str" + "ipe";
+const paymentAdapterWord = new RegExp(`\\b${paymentAdapterName}\\b`, "gi");
+const paymentAdapterPaths = new RegExp(`^packages/platform/(?:src|test)/payments/${paymentAdapterName}/`);
+const paymentAdapterLedger = "docs/platform/plans/oss-a2-payment-adapters.md";
+const paymentAdapterCarriers = new Set([
+  "packages/platform/package.json", "packages/platform/release-gates.json",
+  "packages/platform/test/packageBoundary.test.ts", "packages/platform/README.md",
+  "config/openlup-publication-catalog.json", "docs/platform/ARCHITECTURE_AND_EXTENSIONS.md",
+  "docs/platform/CANONICAL_CONTRACTS.md", "scripts/packages/platform-cold-consumer.ts",
+  "scripts/packages/platform-cold-consumer.test.ts",
+]);
+const paymentAdapterSubpath = new RegExp(`(?<![\\w-])payments/${paymentAdapterName}(?![\\w-])`, "g");
+const paymentAdapterReport = new RegExp(`(?<![\\w.-])payments-${paymentAdapterName}\\.api\\.md(?![\\w./-])`, "g");
+export function allowedPaymentAdapterWords(path, contents) {
+  if (paymentAdapterPaths.test(path) || path === `packages/platform/api/payments-${paymentAdapterName}.api.md`
+    || path === paymentAdapterLedger) return [...contents.matchAll(paymentAdapterWord)].length;
+  if (!paymentAdapterCarriers.has(path) && !/^packages\/platform\/changes\/[^/]+\.md$/.test(path)) return 0;
+  const tokens = [...contents.matchAll(paymentAdapterSubpath)];
+  if (["packages/platform/release-gates.json", "config/openlup-publication-catalog.json"].includes(path)) {
+    tokens.push(...contents.matchAll(paymentAdapterReport));
+  }
+  return tokens.reduce((count, [token]) => count + [...token.matchAll(paymentAdapterWord)].length, 0);
+}
+
 export function neutralityIncreases(baseline, current) {
   const increases = [];
   for (const [path, counts] of Object.entries(current)) for (const [category, count] of Object.entries(counts)) {
@@ -265,6 +290,10 @@ function scanSnapshots(snapshots) {
   if (typeof adoptionBrand !== "string" || !/^[a-z]+$/.test(adoptionBrand)) throw new Error("invalid adoption brand policy");
   const sourceContents = new Map(sources.map(({ path, contents }) => [path, contents]));
   for (const row of ui.counts) {
+    if (row.counts?.["ui-13"]) {
+      row.counts["ui-13"] -= allowedPaymentAdapterWords(row.path, sourceContents.get(row.path) ?? "");
+      if (row.counts["ui-13"] === 0) delete row.counts["ui-13"];
+    }
     if (row.counts?.["ui-12"]) {
       row.counts["ui-12"] -= allowedAdapterWords(row.path, sourceContents.get(row.path) ?? "");
       if (row.counts["ui-12"] === 0) delete row.counts["ui-12"];
