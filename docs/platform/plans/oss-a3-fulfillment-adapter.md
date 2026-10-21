@@ -215,11 +215,12 @@ permitted here. O-P3 still owns committed conformance integration; the repair pr
 the actual M08 runner only in the disposable scratch tree. The existing pending provider/account,
 release and adoption boundaries remain unchanged.
 
-Implementation/proof: retain the existing client and codecs, add one request-bound
-transient preparation cache and closed neutral projections. Each preparation
-retains one dispatch result for replay; mismatches refuse before credentials/HTTP
-without consuming valid state, and generations fence overlapping preparations. Host selection and
-readiness are independent of secrets. Provider bags/errors are discarded, unsafe
+Implementation/proof (current through round 9): retain the client/codecs and
+closed neutral projections, with stateless preparation and one bounded submission
+record. Dispatch validates evidence/request values, joins or replays retained
+results by evidence and command digest, otherwise reserves and rebuilds before
+credentials/HTTP. Callback drift refuses and releases the reservation. Host
+selection and readiness are independent of secrets. Provider bags/errors are discarded, unsafe
 tracking URLs dropped, occurrence remains nullable and empty reads stay unknown.
 Accepted results carry nonempty opaque hashes of provider reference and command
 fingerprint as provider proof keys; the worker supplies authoritative host keys. Product writes require
@@ -242,7 +243,7 @@ it without installation or changing the existing cache.
 | `packages/platform/test/fulfillment/omnipack/transportAdaptation.test.ts` | 1 | round 2 unreadable rejection; 3 O-P1 cases retained | 54 |
 | `scripts/packages/platform-cold-consumer.test.ts` | 1 | net-new installed import/default-off/injected I/O | 55 |
 
-Current through repair round 8: O-P2 is **31 net-new** (one above the original
+Current through repair round 9: O-P2 is **31 net-new** (one above the original
 target, within the binding round cap). O-P1 + O-P2 is **55**; private V-C1 18 +
 55 + O-P3 projected 2 = **75 / 100**, leaving 25 cases (10 remain a planning
 reserve). Including both scratch restart and eviction witnesses conservatively
@@ -902,3 +903,94 @@ Both restart and eviction replay return
 is saved byte-identically in N for O-P3. These remain scratch diagnostics;
 Claude's required committed review and delivery gates remain owed. HEAD stays
 **7d66e584**; no Git writes, installs or network were used.
+
+
+### O-P2 repair round 9
+
+Authority and finite outcome: the lead's rethink #3 supersedes preparation
+caching, generation fencing and preparation bounds from prior rounds. Repair r13
+item 1 and r14 items 1–2 by removing all preparation state. Scope remains local
+source/tests/docs/API, disposable old/new model copies and the prescribed pinned
+M08 scratch pre-checks. No Git writes, installs, network/secrets, frozen M08
+edits, review-budget reset or delivery grant. Claude retains committed review and
+delivery; earlier consumed budgets and remaining gates are unchanged.
+
+The remaining defects share one cause: preparation history permanently consumes
+capacity and can outlive its submission's eviction. Prepare now uses a shared
+computation to resolve host metadata, build canonical bytes once, return closed
+evidence and discard the body. No prepared-body or request-generation map,
+generation fence or preparation capacity remains. The sole submission map keeps
+round-7 command/evidence binding and round-8 completed-entry eviction.
+
+Dispatch order is stateless evidence/request validation plus command digest;
+retained record replay/join or explicit no-callback refusal; then, only for a new
+fingerprint, reserve before host callbacks, rebuild, compare the fingerprint and
+resolve credentials/POST exactly those bytes. Failed resolution or fingerprint
+drift releases the reservation and refuses before credentials or provider I/O.
+Host resolution callbacks run in prepare and again in new dispatches and must
+return the same values for the same request, otherwise the host must re-prepare.
+Evidence from another instance is valid if rebuilt bytes match. Eviction and
+restart both remove only the replay record: they may POST again when evidence
+still matches. M08's durable claim/begin/attempt/finalize ledger remains the guard.
+
+STOP-rule finding: the unmodified `a8708cf1` runner samples `subject.readIoCount()`
+around preparation, mismatched evidence and retained replay. The actual scratch
+subject implements it as `calls.length`, incremented only in injected fetch;
+it does not count host resolution callbacks. Rebuilding on mismatch is permitted
+before provider I/O; no runner or frozen contract change is required.
+
+Proof plan: replace preparation-cache tests with independent overlapping
+preparation, dispatch without local prepare, callback drift/recovery, more distinct
+completed requests than capacity, retained prepare → eviction → old dispatch
+versus a fresh instance (both matching and changed callbacks), and reservation
+joining before resolution. The existing seeded model has no preparation state;
+it retains command-binding, replay, concurrent joining and an independent
+submission/eviction oracle varying distinct request identities. Run unchanged
+model tests against disposable copies of 07aa2b28, c753b6ed and 3db7e7ab, then the
+repair. Refresh only adapter sources in the pinned M08 scratch tree, including
+actual restart and evicted worker witnesses. Focused checks follow below.
+
+Case counts unchanged: factory 29, transport 4, characterization 18; adapter 51,
+O-P2 31, public O-P1 + O-P2 55; whole-round 75/100, conservatively 77/100 with
+both scratch witnesses. Scratch diagnostics remain 10 cases, not a committed
+O-P3 integration or conformance claim.
+
+Self-retro/rethink: replaceable caches beside a replay fence keep producing
+interleaving defects → make preparation pure and keep one bounded record.
+Removing the second lifecycle is smaller than reclaiming generations or adding
+cross-map eviction rules. The first focused test invocation combined a root and
+config path incorrectly; using the package-local config path resolved it without
+changing test configuration. No separate successor or process change is needed.
+
+
+Final round-9 evidence: the unchanged model **FAILS** on disposable index copies
+from **07aa2b28** (changed-command replay incorrectly returns unknown),
+**c753b6ed** (equivalent-description replay loses acceptance), and **3db7e7ab**
+(third distinct request preparation refuses at capacity 2). It **PASSES** now:
+**36 sequences**, **3,456** generated operations, **2,592** bounded dispatch/join
+transitions and the retained **25** command-variant crossings. Preparation calls
+are generated operations, never modeled state. Logs are in
+`/private/tmp/openlup-op2-r9-proof/model-{07aa2b28,c753b6ed,3db7e7ab,new}.log`.
+Old source was never written into the task tree. Production index delta versus
+3db7e7ab is **47 added / 47 removed, net 0 lines**: shared rebuilding and input
+snapshotting replace both maps, their caps and generation lifecycle.
+
+Focused checks pass **1,606 tests / 11 files** (55.96 s): adapter **51**,
+package-boundary **1,474**, cold-consumer **46**, neutrality tooling **35**.
+Platform no-emit typecheck, serialized build, regenerated API snapshots and API
+check pass. Module-symbol inspection confirms exactly the factory, descriptor
+and config type; the API delta documents stateless retention and repeated host
+resolution only. Ast-grep, focused ESLint and whitespace checks pass. Neutrality
+reports **0 increases**; UI neutrality smoke and source/test/docs gitleaks pass.
+Pinned policy pre-check passes **3 obligations / 0 unanswered**. Navigation
+regeneration and final pinned policy check follow this evidence update.
+
+Scratch: **15/15** runner/worker/projection/contracts inputs match **a8708cf1**
+byte-for-byte; only adapter sources were refreshed. **10/10 tests pass** (0.240 s),
+complete profile **12/12**, refused profile **10/10**, normal worker acceptance
+**1 POST / 1 mapped attempt / 1 host acknowledgement**. Actual restart and
+evicted worker cases both refuse `dispatch_not_safe_to_submit:submitting` with
+**0 provider calls / 0 credentials / 0 HTTP**, preserving begun host state and
+its mapped attempt. These remain scratch pre-checks, not committed O-P3 claims.
+HEAD remains **3db7e7ab**; no Git writes, installs or network/secrets were used.
+Claude's committed review and delivery gates remain owed.

@@ -665,32 +665,30 @@ executor. Browser preview values remain reference-owned. See the
 
 The opt-in `@openlup/platform/fulfillment/omnipack` example composes the contributed
 transport/codecs with the frozen ports. Its host supplies HTTP, per-call secrets,
-product metadata and explicit selection/readiness. Preparation keeps canonical
-bytes transient and returns closed fingerprint/contact/selection evidence.
-Preparations use canonical evidence values and bind request fields by value;
-equal-valued request/evidence copies work without JavaScript object identity.
-Unknown or mismatched evidence refuses before credentials or HTTP. A separate
-per-instance submission record is keyed by command fingerprint and
-bound to the submitted evidence key and canonical SHA-256 command digest. Matching
-evidence and command values join or replay its result without I/O; a changed
-command or different evidence for that fingerprint refuses `not_dispatchable`
-with phase `dispatch` and `retryable:false`, preserving the one-POST fence while retained.
-Retained replay remains available after later preparations even when its current
-preparation entry was replaced. Replay checks the immutable submission digest,
-never replaceable preparation state; codec-omitted descriptions remain irrelevant.
-The in-memory record retains only the hash of command-bearing request values.
-Numeric generations fence older overlapping
-preparations for the same request value. The configuration's positive integer
-`maxRetainedSubmissions` (default 10,000) bounds completed submission retention
-with oldest-first eviction by admission order, without evicting in-flight entries
-or refusing new fingerprints for capacity. In-flight overflow is trimmed on each
-completion. Each preparation map remains capped without eviction; submission
-releases its transient preparation entry. Eviction is equivalent to restart for
-that fingerprint: M08's durable claim/begin/attempt/finalize ledger remains the
-double-dispatch guard. Retained replay does not refresh age, and an evicted
-fingerprint requires fresh preparation. Provider idempotency is not established
-by the donor evidence. See the [example contract](CANONICAL_CONTRACTS.md#opt-in-fulfillment-example)
-for preparation bounds and refusal phases.
+product metadata and explicit selection/readiness. Preparation computes canonical
+bytes and closed fingerprint/contact/selection evidence without retaining state.
+Equal-valued request/evidence copies work without JavaScript object identity.
+Dispatch validates evidence and request values before host callbacks; malformed
+or inconsistent evidence refuses before credentials or HTTP. The single
+per-instance submission record is keyed by command fingerprint and bound to the
+submitted evidence key and canonical SHA-256 command digest. Matching evidence
+and command values join or replay its result without callbacks or I/O; either
+mismatch refuses `not_dispatchable / dispatch / retryable:false`. Only the hash
+of command-bearing request values is retained; codec-omitted descriptions remain
+irrelevant. For a new fingerprint, dispatch reserves the entry, resolves host
+metadata again and rebuilds through the same path as prepare. Drift releases the
+reservation and refuses before credentials or provider I/O; matching evidence
+permits POST without prior local preparation. Host callbacks must return the same
+values for the same request across preparation and dispatch.
+The positive integer `maxRetainedSubmissions` (default 10,000) bounds completed
+submission retention with oldest-first eviction by admission order, without
+evicting in-flight entries or refusing new fingerprints for capacity. In-flight
+overflow is trimmed on each completion; retained replay does not refresh age.
+Eviction is equivalent to restart for that fingerprint: dispatch rebuilds and
+may POST again when evidence still matches. M08's durable claim/begin/attempt/
+finalize ledger remains the double-dispatch guard. Provider idempotency is not
+established by the donor evidence. See the [example contract](CANONICAL_CONTRACTS.md#opt-in-fulfillment-example)
+for resolution consistency and refusal phases.
 Proven pre-submission failures and definitive HTTP rejections are
 non-submissions even if the rejection body is unreadable; successful statuses
 without a readable acknowledgement and ambiguous POSTs stay unknown without retry. Accepted provider

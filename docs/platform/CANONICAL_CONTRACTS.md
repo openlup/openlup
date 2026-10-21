@@ -105,34 +105,35 @@ attests account readiness and supplies HTTP, credentials and notification tokens
 per call, product metadata, clock, evidence references and tracking URL approval.
 Credentials never establish readiness. The descriptor starts unselected and not ready.
 
-Prepare retains serialized command bytes transiently and returns only the actual
-body fingerprint, full contact revision and separate provider/carrier/service
-references. Preparations are keyed by the canonical value of that complete evidence,
-and bind the frozen request fields by value, so equal-valued copies work through
-host workers. Dispatch refuses unknown, malformed or mismatched evidence before
-credentials or HTTP. A numeric generation fence prevents an older overlapping
-preparation for the same request value from restoring superseded state.
-A separate per-instance submission record retains one in-flight or
+Preparation is stateless: it resolves host metadata, serializes the command once,
+returns only the fingerprint over those exact bytes, full contact revision and
+separate provider/carrier/service references, then discards the body. Dispatch
+first validates closed evidence and request contact/selection values and computes
+the command digest, without host callbacks, credentials or HTTP on failure.
+The single per-instance submission record retains one in-flight or
 completed result per command fingerprint, including accepted, unknown and refused
 outcomes, bound to the evidence key and canonical command digest used for submission.
 The same evidence key and command digest replay that result without I/O; a changed
 command or different evidence for an already submitted
 fingerprint refuses as `not_dispatchable`, phase `dispatch`, `retryable:false`.
-While retained, it never inherits another preparation's accepted evidence or
-permits a second POST. Retained replay survives later preparations, including
-A → B → A, without requiring the current preparation entry. Dispatch first validates the closed evidence and
-compares its contact revision and provider/carrier/service references with the
-request by value. Recorded replay then depends only on the fingerprint's submission
-record, complete evidence key and SHA-256 command digest, joining the in-flight
-result when necessary. The digest covers request/order/fulfillment/parcel identity,
+While retained, it permits no second POST. Recorded replay depends only on the
+fingerprint's submission record, complete evidence key and SHA-256 command digest,
+joining the in-flight result when necessary; later preparations cannot affect it.
+The digest covers request/order/fulfillment/parcel identity,
 contact revision, wire recipient fields, ordered line SKU/product/pack references
 and quantities, and provider/carrier/service/delivery-kind/point-ID selection.
 It excludes line titles, recipient line 2 and instructions, and pickup-point
 provider/name/address: the outbound codec forwards none of them to wire or evidence.
-Only the hash is retained in the in-memory submission record. Replay never consults
-replaceable preparation state; equivalent description changes remain irrelevant.
-Only an unrecorded fingerprint needs the prepared body and its request/generation
-checks before reserving a submission and performing I/O.
+Only the hash is retained in the in-memory submission record. Equivalent
+description changes remain irrelevant.
+For an unrecorded fingerprint, dispatch reserves the in-flight entry before any
+host callback, then rebuilds the body through the same computation as prepare.
+Host resolution callbacks run in prepare and again in a new dispatch and must
+return the same values for the same request. A changed fingerprint or failed
+resolution releases the reservation and refuses `not_dispatchable / dispatch /
+retryable:false` before credentials or provider I/O; the host must re-prepare.
+Otherwise dispatch resolves credentials and POSTs exactly the rebuilt bytes.
+Valid evidence can therefore dispatch without a prior prepare on this instance.
 Changed command evidence may submit once under its new fingerprint.
 The replay record is in-memory and per adapter instance, not the durable
 double-dispatch guard. Durable protection comes from M08's host ledger through
@@ -141,19 +142,16 @@ the provider honours. The donor evidence does not establish provider-side
 idempotency, so this example claims none.
 `OmnipackFulfillmentAdapterConfig.maxRetainedSubmissions` defaults to 10,000 and
 must be a positive safe integer at construction. It bounds completed submission
-retention with oldest-first eviction by admission order, and caps each of the two
-preparation maps (evidence entries and request generations). A new fingerprint is
+retention with oldest-first eviction by admission order. Preparation retains no
+state and consumes no capacity. A new fingerprint is
 always admitted for submission capacity: in-flight entries are never evicted,
 so the submission map may temporarily exceed the target when all entries are in
 flight. Admission and each completion evict the oldest completed entries until
 the target is met or only in-flight entries remain. Matching retained replays
 keep their identical results; replay does not refresh an entry's age.
-Eviction ≡ restart for that fingerprint: there is no recorded result, and fresh
-preparation is required before another adapter POST. The host ledger is the durable
-guard, preserving its claim/begin/attempt/finalize state across eviction or restart.
-A new preparation key at its map's cap still refuses
-`not_dispatchable / prepare / retryable:false`. Submission releases its transient
-preparation entry; other preparation entries and generation keys are not evicted.
+Eviction ≡ restart for that fingerprint: there is no recorded result, so dispatch
+rebuilds and POSTs if the supplied evidence still matches current resolution.
+The host ledger is the durable guard, preserving its claim/begin/attempt/finalize state across eviction or restart.
 Credential, validation and request-construction
 failures before submission and definitive rejection are `not_dispatched`;
 an unreadable rejection body preserves the status-derived rejection. An unreadable

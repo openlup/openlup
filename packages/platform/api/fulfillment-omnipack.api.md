@@ -606,10 +606,11 @@ export interface OmnipackFulfillmentAdapterConfig {
         productPath: string;
     };
     selected?: boolean;
-    /** Per-instance retention target; default 10,000. Evicts oldest completed submissions, never in-flight; preparation maps stay capped. */
+    /** Per-instance retention target; default 10,000. Evicts oldest completed submissions, never in-flight. */
     maxRetainedSubmissions?: number;
     /** Host account evidence, independent of credentials. Omission remains not ready. */
     readiness?: FulfillmentCapabilityDescriptor["readiness"];
+    /** Called in prepare and again for new dispatches; return identical metadata for the same request or dispatch refuses. */
     resolveProduct: (line: FulfillmentDispatchRequest["lines"][number]) => Promise<{
         lotNumber?: string;
         expirationDate?: string;

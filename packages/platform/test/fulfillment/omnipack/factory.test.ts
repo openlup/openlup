@@ -116,14 +116,19 @@ it("binds full contact revision and the exact posted bytes while excluding comma
   expect(await f.adapter.dispatch.dispatch(structuredClone(req), structuredClone(evidence))).toEqual(result);
   expect(f.fetchImpl).toHaveBeenCalledTimes(1);
 });
-it("refuses missing and foreign preparation before credentials or HTTP", async () => {
-  const f = fixture(); const req = request();
+it("rejects malformed evidence without callbacks and dispatches valid evidence without a local prepare", async () => {
+  const resolveProduct = vi.fn(async () => ({ lotNumber: "LOT-A", expirationDate: "2027-01-01" }));
+  const f = fixture(undefined, { resolveProduct }); const req = request();
   expect(await f.adapter.dispatch.dispatch(req, {} as DispatchEvidence)).toEqual({ kind: "not_dispatched", effectMayHaveSucceeded: false, refusal: { reason: "not_dispatchable", phase: "dispatch", retryable: false } });
   const evidence = await prepare(f.adapter, req);
-  expect(await fixture().adapter.dispatch.dispatch(req, evidence)).toMatchObject({ kind: "not_dispatched" });
+  resolveProduct.mockClear();
+  const fresh = fixture();
+  expect(await fresh.adapter.dispatch.dispatch(req, evidence)).toEqual(await fixture().adapter.dispatch.dispatch(req, evidence));
+  expect(fresh.fetchImpl).toHaveBeenCalledTimes(1);
   for (const malformed of [null, {}, { ...evidence, extra: undefined }, { ...evidence, contactRevision: { ...evidence.contactRevision, extra: undefined } }]) {
     expect(await f.adapter.dispatch.dispatch(req, malformed as DispatchEvidence)).toMatchObject({ kind: "not_dispatched", refusal: { reason: "not_dispatchable", phase: "dispatch", retryable: false } });
   }
+  expect(resolveProduct).not.toHaveBeenCalled();
   expect(f.credentials).not.toHaveBeenCalled(); expect(f.fetchImpl).not.toHaveBeenCalled();
 });
 it("refuses every request/evidence mismatch and requires fresh prepare for a contact remap", async () => {
@@ -131,17 +136,17 @@ it("refuses every request/evidence mismatch and requires fresh prepare for a con
   const remap = fixture(undefined, { resolveProduct: async () => ({ lotNumber }) });
   const frozen = frozenRequest(); const before = await prepare(remap.adapter, frozen);
   lotNumber = "LOT-B";
-  const after = await prepare(remap.adapter, frozen);
-  expect(after.commandFingerprint).not.toBe(before.commandFingerprint);
   expect(await remap.adapter.dispatch.dispatch(frozen, before)).toMatchObject({ kind: "not_dispatched", refusal: { reason: "not_dispatchable" } });
   expect(remap.credentials).not.toHaveBeenCalled(); expect(remap.fetchImpl).not.toHaveBeenCalled();
-  expect((await remap.adapter.dispatch.dispatch(frozen, after)).kind).toBe("accepted");
-  expect((await remap.adapter.dispatch.dispatch(frozen, after)).kind).toBe("accepted");
+  // A mismatch releases its reservation: unchanged evidence works after metadata recovers.
+  lotNumber = "LOT-A";
+  expect((await remap.adapter.dispatch.dispatch(frozen, before)).kind).toBe("accepted");
+  expect((await remap.adapter.dispatch.dispatch(frozen, before)).kind).toBe("accepted");
   expect(remap.fetchImpl).toHaveBeenCalledTimes(1);
-  for (const change of ["contact", "recipient", "line", "selection", "evidence", "requestKey", "fulfillmentRef", "orderRef", "orderNumber", "parcelRef"] as const) {
+  for (const change of ["contact", "recipient", "line", "selection", "evidence", "orderNumber"] as const) {
     const f = fixture(); const req = request(); const evidence = await prepare(f.adapter, req);
     const original = structuredClone(req); const validEvidence = structuredClone(evidence);
-    if (change === "requestKey" || change === "fulfillmentRef" || change === "orderRef" || change === "orderNumber" || change === "parcelRef") req[change] = "other";
+    if (change === "orderNumber") req.orderNumber = "other";
     if (change === "contact") req.contactRevision.source = "remap";
     if (change === "recipient") req.recipient.line1 = "456 Other Street";
     if (change === "line") req.lines = [{ ...req.lines[0]!, quantity: 3 }];
@@ -393,7 +398,7 @@ it("refuses unsafe host paths and invalid retention caps at construction before 
   }
   expect(f.credentials).not.toHaveBeenCalled(); expect(f.fetchImpl).not.toHaveBeenCalled();
 });
-it("evicts oldest completed submissions, admits new fingerprints and preserves preparation bounds", async () => {
+it("evicts oldest completed submissions and matches a fresh instance after retained re-preparation", async () => {
   for (const reply of [() => jsonResponse({ orderId: "external-a" }), () => jsonResponse({}), () => jsonResponse({}, 400)]) {
     let lotNumber = "LOT-A";
     const f = fixture(reply, { maxRetainedSubmissions: 2, resolveProduct: async () => ({ lotNumber }) });
@@ -404,7 +409,10 @@ it("evicts oldest completed submissions, admits new fingerprints and preserves p
       const result = await f.adapter.dispatch.dispatch(req, evidence);
       return { evidence, result };
     };
-    const a = await submit("LOT-A"), b = await submit("LOT-B");
+    const a = await submit("LOT-A");
+    // Preparing a retained fingerprint leaves no hidden state to survive eviction.
+    expect(await prepare(f.adapter, req)).toEqual(a.evidence);
+    const b = await submit("LOT-B");
     // Replaying A does not refresh insertion age: C must evict A, not B.
     expect(await f.adapter.dispatch.dispatch(req, a.evidence)).toEqual(a.result);
     const c = await submit("LOT-C");
@@ -414,16 +422,21 @@ it("evicts oldest completed submissions, admits new fingerprints and preserves p
     const fresh = entry.createOmnipackFulfillmentAdapter(f.config);
     expect(await f.adapter.dispatch.dispatch(req, a.evidence)).toEqual(await fresh.dispatch.dispatch(req, a.evidence));
     expect(f.fetchImpl).toHaveBeenCalledTimes(3);
-    // Evicted replay needs preparation, just like a fresh adapter, and may POST again.
-    expect(await submit("LOT-A")).toEqual(a);
-    expect(f.fetchImpl).toHaveBeenCalledTimes(4);
+    // Both instances rebuild and POST the old evidence when callbacks match again.
+    lotNumber = "LOT-A";
+    const evicted = await f.adapter.dispatch.dispatch(req, a.evidence);
+    const restarted = await fresh.dispatch.dispatch(req, a.evidence);
+    expect(evicted).toEqual(a.result); expect(evicted).toEqual(restarted);
+    expect(f.fetchImpl).toHaveBeenCalledTimes(5);
   }
-  let lotNumber = "LOT-A";
-  const f = fixture(undefined, { maxRetainedSubmissions: 1, resolveProduct: async () => ({ lotNumber }) });
-  const req = frozenRequest(); await prepare(f.adapter, req);
-  lotNumber = "LOT-B";
-  expect(await f.adapter.dispatch.prepare(req)).toMatchObject({ kind: "refused", refusal: { phase: "prepare", retryable: false } });
-  expect(await f.adapter.dispatch.prepare({ ...req, requestKey: "other" })).toMatchObject({ kind: "refused", refusal: { phase: "prepare", retryable: false } });
+  const f = fixture(undefined, { maxRetainedSubmissions: 1 });
+  const invalid = request(); invalid.selection.providerRef = null;
+  expect(await f.adapter.dispatch.prepare(invalid)).toMatchObject({ kind: "refused" });
+  for (let i = 0; i < 8; i++) {
+    const req = { ...request(), requestKey: `request-${i}`, orderRef: `order-${i}`, orderNumber: `ORDER-${i}` };
+    expect((await f.adapter.dispatch.dispatch(req, await prepare(f.adapter, req))).kind).toBe("accepted");
+  }
+  expect(f.fetchImpl).toHaveBeenCalledTimes(8);
 });
 it("never evicts in-flight entries and trims overflow as soon as a submission completes", async () => {
   let lotNumber = "LOT-A";
@@ -432,6 +445,7 @@ it("never evicts in-flight entries and trims overflow as soon as a submission co
     { maxRetainedSubmissions: 1, resolveProduct: async () => ({ lotNumber }) });
   const req = frozenRequest(), a = await prepare(f.adapter, req);
   const first = f.adapter.dispatch.dispatch(req, a);
+  await vi.waitFor(() => expect(releases).toHaveLength(1));
   lotNumber = "LOT-B";
   const b = await prepare(f.adapter, req), second = f.adapter.dispatch.dispatch(req, b);
   await vi.waitFor(() => expect(releases).toHaveLength(2));
@@ -439,7 +453,8 @@ it("never evicts in-flight entries and trims overflow as soon as a submission co
   const joinedB = f.adapter.dispatch.dispatch(req, structuredClone(b));
   releases[1]!(); const resultB = await second;
   expect(await joinedB).toEqual(resultB);
-  // B completes first, so it is evicted immediately even though A was admitted earlier.
+  // B completes first, so it is evicted; rebuilding with changed metadata refuses.
+  lotNumber = "LOT-C";
   expect(await f.adapter.dispatch.dispatch(req, b)).toMatchObject({ kind: "not_dispatched", refusal: { reason: "not_dispatchable" } });
   const stillJoinedA = f.adapter.dispatch.dispatch(req, a);
   releases[0]!(); const resultA = await first;
@@ -475,22 +490,30 @@ it("keeps paginated, truncated and unproven readback collections unknown", async
     }
   }
 });
-it("fences overlapping preparations and shares in-flight and completed dispatch results", async () => {
+it("prepares independently and joins dispatch before host resolution, credentials and POST", async () => {
   const releases: (() => void)[] = [];
-  const f = fixture(undefined, { resolveProduct: () => new Promise(resolve => releases.push(() => resolve({ lotNumber: "LOT-A", expirationDate: "2027-01-01" }))) });
+  const resolveProduct = vi.fn(() => new Promise<{ lotNumber: string; expirationDate: string }>(resolve =>
+    releases.push(() => resolve({ lotNumber: "LOT-A", expirationDate: "2027-01-01" }))));
+  const f = fixture(undefined, { resolveProduct });
   const req = request(); const older = f.adapter.dispatch.prepare(req); const newer = f.adapter.dispatch.prepare(structuredClone(req));
   releases[1]!(); const current = await newer;
+  releases[0]!(); expect(await older).toEqual(current);
   if (current.kind !== "prepared") throw Error("Expected preparation");
-  const [first, overlapping] = await Promise.all([f.adapter.dispatch.dispatch(req, current.evidence), f.adapter.dispatch.dispatch(req, current.evidence)]);
+  const firstCall = f.adapter.dispatch.dispatch(req, current.evidence);
+  const joined = f.adapter.dispatch.dispatch(structuredClone(req), structuredClone(current.evidence));
+  await vi.waitFor(() => expect(resolveProduct).toHaveBeenCalledTimes(3));
+  expect(f.credentials).not.toHaveBeenCalled(); expect(f.fetchImpl).not.toHaveBeenCalled();
+  releases[2]!();
+  const first = await firstCall, overlapping = await joined;
   expect(first.kind).toBe("accepted"); expect(overlapping).toEqual(first);
-  releases[0]!(); expect(await older).toMatchObject({ kind: "refused" });
   expect(await f.adapter.dispatch.dispatch(req, current.evidence)).toEqual(first);
+  expect(resolveProduct).toHaveBeenCalledTimes(3);
   expect(f.fetchImpl).toHaveBeenCalledTimes(1); expect(f.credentials).toHaveBeenCalledTimes(1);
   if (first.kind === "accepted") first.evidence.commandFingerprint = "mutated";
   expect(await f.adapter.dispatch.dispatch(req, current.evidence)).toEqual(overlapping);
 });
 
-it("models seeded preparation, replay and concurrent interleavings from the submission record", async () => {
+it("models stateless dispatch, command binding, replay and eviction interleavings", async () => {
   let seed = 0x6a09e667;
   const random = (limit: number) => {
     seed = (Math.imul(seed, 1664525) + 1013904223) >>> 0;
@@ -527,9 +550,6 @@ it("models seeded preparation, replay and concurrent interleavings from the subm
     type Result = Awaited<ReturnType<typeof f.adapter.dispatch.dispatch>>;
     const recorded = new Map<string, { evidenceKey: string; commandGroup: number; result: Result }>();
     const dispatch = async (indices: number[], changes: (number | undefined)[] = [], evidenceIndices = indices) => {
-      const first = indices[0]!;
-      // New submissions are explicitly prepared; replays deliberately do not depend on preparation.
-      if (!recorded.has(fingerprint(first))) await prepare(f.adapter, pool[first]!);
       const before = f.fetchImpl.mock.calls.length;
       const expected = indices.map((index, slot) => {
         const evidenceIndex = evidenceIndices[slot]!;
@@ -556,17 +576,16 @@ it("models seeded preparation, replay and concurrent interleavings from the subm
       expect(f.credentials).toHaveBeenCalledTimes(recorded.size);
       for (const count of posts.values()) expect(count).toBe(1);
     };
-    // Missing preparation is a refusal, with no submission or I/O.
-    expect(await f.adapter.dispatch.dispatch(pool[0]!, evidence[0]!)).toEqual(refused);
-    expect(f.fetchImpl).not.toHaveBeenCalled(); expect(f.credentials).not.toHaveBeenCalled();
     // Seeded equivalent-wire triple: the old implementation loses B after prepare(C).
     const a = random(3), b = (a + 1) % 3, c = (a + 2) % 3;
-    await dispatch([a]); await prepare(f.adapter, pool[b]!); await dispatch([b]);
+    await prepare(f.adapter, pool[a]!); await dispatch([a]);
+    await prepare(f.adapter, pool[b]!); await dispatch([b]);
     await prepare(f.adapter, pool[c]!); await dispatch([b]);
     // All HTTP outcomes are recorded before crossed replay; exercise every changed
     // field both while a new submission joins in flight and after it completes.
     const variantCount = changedCommands(pool[a]!).length;
     for (const index of [6, 12]) {
+      await prepare(f.adapter, pool[index]!);
       await dispatch([index, ...Array<number>(variantCount).fill(index)], [undefined, ...Array.from({ length: variantCount }, (_, i) => i)]);
     }
     for (const index of [a, 6, 12]) {
@@ -590,46 +609,46 @@ it("models seeded preparation, replay and concurrent interleavings from the subm
       }
     }
     expect(recorded.size).toBe(3);
-    // Explicit bounded-retention model: same host request, independently prepared
-    // lot fingerprints. Eviction starts a new per-fingerprint submission lifetime.
-    let lotNumber = "LOT-0";
+    // Independent retention oracle varies distinct request identities. There is
+    // no preparation model: every absent fingerprint rebuilds and may POST.
     const bounded = fixture((_url, init) => {
-      const outcome = (Number(JSON.parse(init!.body as string).items[0].lotNumber.slice(-1)) + sequence) % 3;
+      const outcome = (Number(JSON.parse(init!.body as string).orderNumber.slice(-1)) + sequence) % 3;
       return outcome === 0 ? jsonResponse({ orderId: "external-a" }) : jsonResponse({}, outcome === 1 ? 503 : 400);
-    }, { maxRetainedSubmissions: 2, resolveProduct: async () => ({ lotNumber }) });
-    const req = request();
+    }, { maxRetainedSubmissions: 2 });
+    const requests = Array.from({ length: 5 }, (_, i) => ({ ...request(),
+      requestKey: `request-${i}`, fulfillmentRef: `fulfillment-${i}`, orderRef: `order-${i}`, orderNumber: `ORDER-${i}` }));
+    const proofs = await Promise.all(requests.map(req => prepare(oracle.adapter, req)));
     const retained = new Map<string, Result>();
-    const seen = new Map<string, DispatchEvidence>();
     let expectedPosts = 0, evictions = 0;
-    for (let step = 0; step < 32; step++) {
-      lotNumber = `LOT-${step < 3 ? step : random(3)}`;
-      const e = await prepare(fixture(undefined, { resolveProduct: async () => ({ lotNumber }) }).adapter, req);
-      const fp = e.commandFingerprint;
-      if (!retained.has(fp)) expect(await prepare(bounded.adapter, req)).toEqual(e);
-      seen.set(fp, e);
-      const prior = retained.get(fp);
-      const results = await Promise.all([bounded.adapter.dispatch.dispatch(req, e), bounded.adapter.dispatch.dispatch(req, structuredClone(e))]);
-      expect(results[1]).toEqual(results[0]);
-      if (prior) expect(results[0]).toEqual(prior);
-      else {
-        const outcome = (Number(lotNumber.slice(-1)) + sequence) % 3;
+    const boundedDispatch = async (index: number) => {
+      const req = requests[index]!, e = proofs[index]!, fp = e.commandFingerprint;
+      let expected = retained.get(fp);
+      if (!expected) {
+        const outcome = (index + sequence) % 3;
         const proof = createHash("sha256").update(JSON.stringify(["external-a", fp])).digest("hex");
-        const expectedResult: Result = outcome === 0
+        expected = outcome === 0
           ? { kind: "accepted", externalRef: "external-a", evidence: e, providerAttemptKey: `attempt:${proof}`, labelKey: `label:${proof}` }
           : outcome === 1 ? { kind: "unknown", effectMayHaveSucceeded: true, refusal: { reason: "io_failure", phase: "dispatch", retryable: false } }
             : { kind: "not_dispatched", effectMayHaveSucceeded: false, refusal: { reason: "io_failure", phase: "dispatch", retryable: false } };
-        expect(results[0]).toEqual(expectedResult);
         expectedPosts++;
-        retained.set(fp, expectedResult);
+        retained.set(fp, expected);
         if (retained.size > 2) { retained.delete(retained.keys().next().value!); evictions++; }
       }
+      expect(await Promise.all([bounded.adapter.dispatch.dispatch(req, e),
+        bounded.adapter.dispatch.dispatch(structuredClone(req), structuredClone(e))])).toEqual([expected, expected]);
       expect(bounded.fetchImpl).toHaveBeenCalledTimes(expectedPosts);
       expect(bounded.credentials).toHaveBeenCalledTimes(expectedPosts);
-      for (const [known, oldEvidence] of seen) {
-        expect(await bounded.adapter.dispatch.dispatch(req, structuredClone(oldEvidence)))
-          .toEqual(retained.get(known) ?? refused);
-      }
+      // Cross a changed command with retained evidence: explicit no-I/O refusal.
+      expect(await bounded.adapter.dispatch.dispatch({ ...req, requestKey: "crossed" }, e)).toEqual(refused);
       expect(bounded.fetchImpl).toHaveBeenCalledTimes(expectedPosts);
+    };
+    for (let step = 0; step < 32; step++) {
+      const index = step < 5 ? step : random(requests.length);
+      expect(await prepare(bounded.adapter, requests[index]!)).toEqual(proofs[index]);
+      await boundedDispatch(index);
+      // Retained prepare must not influence subsequent eviction or replay.
+      expect(await prepare(bounded.adapter, requests[index]!)).toEqual(proofs[index]);
+      if (step % 4 === 3) for (let old = 0; old < requests.length; old++) await boundedDispatch(old);
     }
     expect(evictions).toBeGreaterThan(0);
   }

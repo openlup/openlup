@@ -16,10 +16,11 @@ export interface OmnipackFulfillmentAdapterConfig {
     fetchImpl: typeof fetch; timeoutMs: number; safeReadRetries: number; productPath: string;
   };
   selected?: boolean;
-  /** Per-instance retention target; default 10,000. Evicts oldest completed submissions, never in-flight; preparation maps stay capped. */
+  /** Per-instance retention target; default 10,000. Evicts oldest completed submissions, never in-flight. */
   maxRetainedSubmissions?: number;
   /** Host account evidence, independent of credentials. Omission remains not ready. */
   readiness?: FulfillmentCapabilityDescriptor["readiness"];
+  /** Called in prepare and again for new dispatches; return identical metadata for the same request or dispatch refuses. */
   resolveProduct: (line: FulfillmentDispatchRequest["lines"][number]) => Promise<{ lotNumber?: string; expirationDate?: string } | null>;
   notification: { token: () => string | undefined | Promise<string | undefined>; expectedEvent: OmnipackWebhookRouteEvent };
   clock: () => string;
@@ -55,8 +56,6 @@ export function createOmnipackFulfillmentAdapter(config: OmnipackFulfillmentAdap
   capabilities.selected = config.selected === true;
   capabilities.readiness = config.readiness?.ready === true ? { ready: true }
     : { ready: false, refusal: refusal("not_ready", "selection") };
-  const prepared = new Map<string, { body: string; evidence: DispatchEvidence; requestDigest: string; generation: number }>();
-  const preparations = new Map<string, number>();
   const submissions = new Map<string, { evidenceKey: string; commandDigest: string; completed: boolean; result: ReturnType<FulfillmentDispatchPort["dispatch"]> }>();
   const evictCompleted = () => {
     for (const [fingerprint, submission] of submissions) {
@@ -81,49 +80,44 @@ export function createOmnipackFulfillmentAdapter(config: OmnipackFulfillmentAdap
     if (!syncRunId || !collectedAt) throw refusal("malformed", "sync");
     return { providerRef: capabilities.providerRef, syncRunId, collectedAt, sourceRevision: null, revisionSource: "collection" as const };
   };
+  // Shared computation: host metadata and serialized bytes live only for this call.
+  const buildCommand = async (request: FulfillmentDispatchRequest) => {
+    const requestDigest = stableDispatchHash(request);
+    if (!Number.isSafeInteger(request.contactRevision.schemaVersion) || request.contactRevision.schemaVersion < 1
+      || !reference(request.contactRevision.source) || !Number.isSafeInteger(request.contactRevision.revision)
+      || request.contactRevision.revision < 0) throw Error();
+    const lines = [];
+    for (const line of request.lines) {
+      const metadata = await config.resolveProduct(line);
+      if (!metadata) throw Error();
+      lines.push({ sku: line.skuRef, quantity: line.quantity, productSnapshot: { lotNumber: metadata.lotNumber, expirationDate: metadata.expirationDate } });
+    }
+    if (stableDispatchHash(request) !== requestDigest) throw Error();
+    const command = buildOmnipackDispatchCommand({
+      orderId: request.orderRef, orderNumber: request.orderNumber,
+      deliveryContact: { revision: request.contactRevision.revision, recipientName: request.recipient.name,
+        contactEmail: request.recipient.email, contactPhone: request.recipient.phone, line1: request.recipient.line1,
+        city: request.recipient.city, postalCode: request.recipient.postalCode, country: request.recipient.country,
+        selectedDelivery: { providerKind: capabilities.providerRef, carrierKind: request.selection.carrierRef,
+          serviceCode: request.selection.serviceRef, deliveryKind: request.selection.deliveryKind, pickupPoint: request.selection.pickupPoint } }, lines,
+    });
+    const evidence: DispatchEvidence = { commandFingerprint: command.requestFingerprint,
+      contactRevision: { schemaVersion: request.contactRevision.schemaVersion, source: request.contactRevision.source, revision: request.contactRevision.revision },
+      providerRef: capabilities.providerRef, carrierRef: request.selection.carrierRef, serviceRef: request.selection.serviceRef };
+    return { body: command.body, evidence };
+  };
   return {
     capabilities,
     dispatch: {
       async prepare(request) {
-        try {
-          const requestDigest = stableDispatchHash(request);
-          if (!preparations.has(requestDigest) && preparations.size >= maxRetainedSubmissions)
-            return { kind: "refused", refusal: refusal("not_dispatchable", "prepare") };
-          const generation = (preparations.get(requestDigest) ?? 0) + 1;
-          preparations.set(requestDigest, generation);
-          const failed = selectionFailure(request);
-          if (failed) return { kind: "refused", refusal: failed };
-          if (!Number.isSafeInteger(request.contactRevision.schemaVersion) || request.contactRevision.schemaVersion < 1
-            || !reference(request.contactRevision.source) || !Number.isSafeInteger(request.contactRevision.revision)
-            || request.contactRevision.revision < 0) return { kind: "refused", refusal: refusal("not_dispatchable", "prepare") };
-          const lines = [];
-          for (const line of request.lines) {
-            const metadata = await config.resolveProduct(line);
-            if (!metadata) return { kind: "refused", refusal: refusal("not_dispatchable", "prepare") };
-            lines.push({ sku: line.skuRef, quantity: line.quantity, productSnapshot: { lotNumber: metadata.lotNumber, expirationDate: metadata.expirationDate } });
-          }
-          if (stableDispatchHash(request) !== requestDigest) return { kind: "refused", refusal: refusal("not_dispatchable", "prepare") };
-          const command = buildOmnipackDispatchCommand({
-            orderId: request.orderRef, orderNumber: request.orderNumber,
-            deliveryContact: { revision: request.contactRevision.revision, recipientName: request.recipient.name,
-              contactEmail: request.recipient.email, contactPhone: request.recipient.phone, line1: request.recipient.line1,
-              city: request.recipient.city, postalCode: request.recipient.postalCode, country: request.recipient.country,
-              selectedDelivery: { providerKind: capabilities.providerRef, carrierKind: request.selection.carrierRef,
-                serviceCode: request.selection.serviceRef, deliveryKind: request.selection.deliveryKind, pickupPoint: request.selection.pickupPoint } }, lines,
-          });
-          const evidence: DispatchEvidence = { commandFingerprint: command.requestFingerprint,
-            contactRevision: { schemaVersion: request.contactRevision.schemaVersion, source: request.contactRevision.source, revision: request.contactRevision.revision },
-            providerRef: capabilities.providerRef, carrierRef: request.selection.carrierRef, serviceRef: request.selection.serviceRef };
-          if (preparations.get(requestDigest) !== generation) return { kind: "refused", refusal: refusal("not_dispatchable", "prepare") };
-          const evidenceKey = serializeOmnipackDispatchPayload(evidence).body;
-          if (!prepared.has(evidenceKey) && prepared.size >= maxRetainedSubmissions)
-            return { kind: "refused", refusal: refusal("not_dispatchable", "prepare") };
-          prepared.set(evidenceKey, { body: command.body, evidence: structuredClone(evidence), requestDigest, generation });
-          return { kind: "prepared", evidence };
-        } catch { return { kind: "refused", refusal: refusal("not_dispatchable", "prepare") }; }
+        const failed = selectionFailure(request);
+        if (failed) return { kind: "refused", refusal: failed };
+        try { return { kind: "prepared", evidence: (await buildCommand(request)).evidence }; }
+        catch { return { kind: "refused", refusal: refusal("not_dispatchable", "prepare") }; }
       },
       async dispatch(request, evidence) {
-        let command;
+        let commandRequest: FulfillmentDispatchRequest;
+        let fingerprint: string;
         let evidenceKey: string;
         let requestCommandDigest: string;
         try {
@@ -148,13 +142,21 @@ export function createOmnipackFulfillmentAdapter(config: OmnipackFulfillmentAdap
             if (submitted.evidenceKey !== evidenceKey || submitted.commandDigest !== requestCommandDigest) throw Error();
             return structuredClone(await submitted.result);
           }
-          command = prepared.get(evidenceKey);
-          const requestDigest = stableDispatchHash(request);
-          if (selectionFailure(request) || !command || command.requestDigest !== requestDigest || preparations.get(requestDigest) !== command.generation) throw Error();
+          if (selectionFailure(request)) throw Error();
+          commandRequest = structuredClone(request);
+          fingerprint = evidence.commandFingerprint;
         } catch { return { kind: "not_dispatched", effectMayHaveSucceeded: false, refusal: refusal("not_dispatchable", "dispatch") }; }
-        const fingerprint = command.evidence.commandFingerprint;
-        // Defer submission until its promise is recorded, before any credential or HTTP callback.
+        // Reserve before host resolution too, so concurrent dispatches join the rebuild.
         const result = Promise.resolve().then(async () => {
+          let command;
+          try {
+            command = await buildCommand(commandRequest);
+            if (command.evidence.commandFingerprint !== fingerprint) throw Error();
+          } catch {
+            // A stale or unresolved command has never reached credentials or HTTP.
+            submissions.delete(fingerprint);
+            return { kind: "not_dispatched" as const, effectMayHaveSucceeded: false as const, refusal: refusal("not_dispatchable", "dispatch") };
+          }
           try {
             const result = await client.createOrder(command.body);
             const externalRef = reference(result.providerOrderId);
@@ -175,8 +177,6 @@ export function createOmnipackFulfillmentAdapter(config: OmnipackFulfillmentAdap
         });
         submissions.set(fingerprint, { evidenceKey, commandDigest: requestCommandDigest, completed: false, result });
         evictCompleted();
-        // While retained, submission owns replay; after eviction the host ledger supplies the durable fence.
-        prepared.delete(evidenceKey);
         return structuredClone(await result);
       },
     },
