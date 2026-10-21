@@ -673,8 +673,9 @@ executor. Browser preview values remain reference-owned. See the
 
 Fulfillment lives at the two existing-package subpaths
 `@openlup/platform/fulfillment` and `/fulfillment/contracts`; no topology trigger
-requires another package or dependency. The type-only contracts entry has no server
-or cross-module edge. The runtime entry binds core evidence parsers to the
+requires another package or dependency. The type-only contracts entry has no runtime,
+server or cross-module edge; its only dependency is a type import of the core
+normalized fulfillment fact. The runtime entry binds core evidence parsers to the
 contributed status canon and selects only injected capability profiles. Provider,
 carrier and service remain independent; empty provider selection refuses, and
 potential support never enables a dormant route. Raw commands, credentials and
