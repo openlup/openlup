@@ -77,7 +77,7 @@ function row(overrides: Partial<PromotionRow> & Record<string, unknown>): Promot
     valid_from: "2026-01-01T00:00:00.000Z",
     valid_to: null,
     status: "active",
-    region_availability: ["PL"],
+    region_availability: ["ZZ"],
     ...overrides,
   } as PromotionRow;
 }

@@ -265,8 +265,9 @@ budget; other entry and aggregate caps are unchanged.
 
 Moved catalog, pricing and promotion fixtures use synthetic identities, regions,
 currencies and host-defined context fields. Their assertions retain the original
-operators and case counts; reference production promotion classification keeps
-its existing policy pending an owner decision. Pricing VAT calculation retains
+operators and case counts. Reference classifiers receive the legacy threshold
+from their host composition; only the immutable managed baseline predicates
+await an owner decision. Pricing VAT calculation retains
 both exported helpers and their signatures: `calculateIncludedVat` delegates to
 `splitIncludedVat` through a distinct named wrapper using the same arithmetic.
 

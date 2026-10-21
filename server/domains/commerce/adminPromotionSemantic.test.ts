@@ -16,7 +16,7 @@ describe("admin promotion semantic mapping", () => {
   it("derives a system-managed target and exact unit price from mirror semantics", () => {
     const result = mapAdminPromotion(legacyTechnical(), mirror(), [{
       variantId: "variant-1",
-      sku: "OPENLUP-DOG-BEEF-CAN-400G",
+      sku: "ITEM-GAMMA-400",
       oneTimeMinor: 1_490,
       subscriptionMinor: 1_340,
       percent: 10,
@@ -78,7 +78,7 @@ function legacyTechnical() {
     valid_from: "2026-01-01T00:00:00.000Z",
     valid_to: null,
     status: "active",
-    region_availability: ["PL"],
+    region_availability: ["ZZ"],
     redemption_limit_global: null,
     redemption_limit_per_customer: 1,
     promotion_engine_version: "promotion-engine.v1",

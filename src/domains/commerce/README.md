@@ -82,7 +82,8 @@ composition and admin adapter pass that same value. This keeps classification,
 comparison tolerance, system-managed read-only rows and quote money unchanged
 while keeping adopter policy out of the classifiers. No package export changes.
 The managed baseline's legacy-mirror predicate remains immutable; changing its
-incumbent value requires a forward migration, tracked for C5 in the
+incumbent value requires a forward migration, recorded as an M05 follow-up
+needing an owner decision in the
 [M05 ledger](../../../docs/platform/plans/oss-m05-catalog-offers-pricing.md#p6-acceptance-obligation).
 
 ## Public surface (import cross-domain ONLY these)

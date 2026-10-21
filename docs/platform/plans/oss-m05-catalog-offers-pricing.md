@@ -429,23 +429,50 @@ substitution map, assertion arguments, matcher sequence and collection count.
 All original **425 expect call sites** across the original 35 changed test/helper
 paths remain. The two reference semantic suites retain their 15 assertions,
 bringing the final changed-test total to **440 expect call sites** across 37 paths.
-Their only changes are the explicit threshold argument and its import. The
-original bounded focused selection recomputes to **193 cases** across 27 files.
+Their changes are the explicit threshold argument and its import, plus neutral
+SKU and region fixtures. The original bounded focused selection recomputes to
+**193 cases** across 27 files.
 Against **FORK POINT `2347e83d`**, every changed suite collects: **180 cases across
-28 files**; the other nine changed test paths are imported helpers. Including the
-two reference semantic suites (7 cases), adapter suite (8), reference binding
-suite (1) and legacy-code outcome suite (6), final focused collection is
-**215 cases across 32 files**. These explicit-path counts correct the previously
-recorded 1,248/1,270 figures; unchanged case registrations and matcher sequences
-confirm zero new cases. All 210 non-database cases and 5 native
-PostgreSQL cases pass. No new case or mandatory full-suite execution is claimed;
-the host-load rule permits explicit focused paths only. Required local checks
-and their actual exits are retained in the implementation handoff; supervisor
-candidate gates remain outside this local delivery boundary. The continuation's
-ast-grep, lint, published-tree typecheck, public-reference build, focused Vitest
-run and collection checks exit 0. Lint reports 33 warnings and zero errors. Policy
-with regenerated navigation has five obligations and zero unanswered. Package
-exports are unchanged, so this continuation adds no Unreleased changelog note.
+28 files**; the other nine changed test paths are imported helpers. Repair cycle 1
+runs this exact selection, with each file selected once:
+
+| File group (paths relative to the repository root) | Files | Cases |
+| --- | ---: | ---: |
+| P6-changed `packages/platform/test/catalog/*.test.ts` | 4 | 30 |
+| P6-changed `packages/platform/test/pricing/*.test.ts` (including the three quote handler/batch/snapshot suites: 3 files, 25 cases) | 13 | 90 |
+| P6-changed `packages/platform/test/promotions/*.test.ts` | 7 | 47 |
+| `server/domains/commerce/{adminPromotionSemantic,promotionCustomerSemantic}.test.ts` | 2 | 7 |
+| `tests/platform/catalog/bundleBindings.test.ts` | 1 | 1 |
+| `tests/postgres/bundleNative.test.ts` | 1 | 5 |
+| **Changed-suite subtotal** | **28** | **180** |
+| Additional `packages/platform/test/catalog/bundleRules.test.ts` | 1 | 20 |
+| Additional `server/adapters/supabase/adminPromotions.test.ts` | 1 | 8 |
+| Additional `server/domains/commerce/promotionBindings.test.ts` | 1 | 1 |
+| Additional `packages/platform/test/promotions/quotePromotionV2.legacyCodeOutcomes.test.ts` | 1 | 6 |
+| **Focused total** | **32** | **215** |
+
+The seven semantic cases are already in the changed-suite subtotal; the four
+additional suites contribute **35 cases**, so **180 + 20 + 8 + 1 + 6 = 215**.
+These explicit-path counts correct the previously recorded 1,248/1,270 figures.
+Repair collection matches HEAD `450b9c9d`: 180 cases across the same 28 changed
+suites, with unchanged case registrations and matcher sequences and zero new cases.
+All **210 non-database cases and 5 native PostgreSQL cases pass**. No mandatory
+full-suite execution is claimed; the host-load rule permits explicit focused paths
+only. Supervisor candidate gates remain outside this local delivery boundary.
+Repair cycle 1 replaces all seven sibling duck-SKU occurrences with
+`ITEM-BETA-400`; scanning all 37 P6 test/helper paths and the package tests also
+found and neutralized one beef SKU and two region fixtures in the reference
+semantic suites. The existing test-local substitution dictionary records these
+pairs. Assertions remain **425 original / 440 total**. The moved-package-test
+acceptance obligation remains satisfied.
+
+Repair cycle 1's focused run, collection comparison, all-project published-tree
+typecheck, ast-grep scan, ESLint on all 49 changed TypeScript paths, publication
+policy and `git diff --check` exit 0. ESLint reports zero warnings and zero errors;
+public CI neutrality reports zero increases. Policy with regenerated navigation
+has five obligations and zero unanswered. Exact commands, per-file counts and
+every residue-scan hit with its disposition are retained in the repair handoff.
+Package exports are unchanged, so this continuation adds no Unreleased changelog note.
 The threshold search has 11 matches: one reference constant, three reference
 fixtures, two immutable baseline SQL predicates and five managed pgTAP matches.
 
@@ -472,6 +499,11 @@ first subsequent API check refused the missing output; rebuilding the existing
 workspaces restored all API checks without source changes. Explicit collection
 also exposed inflated ledger counts. Lesson: cold pack → restore declarations
 before API checks; count collected JSON cases rather than inferred totals.
+Repair-cycle retro: the sibling SKU was absent from the substitution dictionary,
+and the collection explanation omitted the 20-case bundle-rule suite while
+counting semantic cases twice. Lesson: incomplete fixture dictionary → scan the
+whole changed fixture set; ambiguous totals → sum disjoint collected file groups.
+The repair uses direct substitutions and adds no cases, helper or production path.
 
 ## P5
 
