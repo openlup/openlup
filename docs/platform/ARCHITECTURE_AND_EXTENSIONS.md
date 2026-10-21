@@ -786,7 +786,8 @@ The [conformance runner](../../packages/platform/src/fulfillment/adapterConforma
 accepts readonly FulfillmentAdapterConformanceSubject[] and returns sanitized
 FulfillmentAdapterConformanceEvidence containing subject/provider references and
 passed operation records; a violated check throws. Adapter-owned offline fixtures
-exercise actual-command identity, before-I/O mismatch refusal, requested replay,
+exercise prepared-evidence and fingerprint consistency against the fixture's
+expectations (command bytes are not inspected), before-I/O mismatch refusal, requested replay,
 unsupported operations, exact absence scope/proof, local-missing unknown, selection
 and redaction. An optional host store fixture checks mapped-attempt replay/remap
 and draft re-claim evidence; a worker exercise caps contact remapping at one.
