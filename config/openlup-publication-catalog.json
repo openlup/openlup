@@ -3562,6 +3562,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/payments/adapterConformance.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/payments/contracts/adapter.ts",
       "class": "public-output"
     },
@@ -3582,7 +3586,51 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/payments/contracts/reconciliation.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/payments/contracts/truth.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/payments/eventConformanceRunner.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/payments/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/payments/paymentAttemptSilenceWindow.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/payments/paymentMethodLifecycle.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/payments/paymentProviderReconciliationAbsenceReopen.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/payments/paymentProviderReconciliationEvidence.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/payments/paymentProviderReconciliationWorker.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/payments/paymentTruth.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/payments/paymentVerifyNowService.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/payments/paymentWebhookPostProcessing.ts",
       "class": "public-output"
     },
     {
@@ -3731,6 +3779,14 @@
     },
     {
       "path": "packages/platform/src/payments/tpay/webhookNormalizer.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/payments/verifiedEvidenceProjection.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/payments/verifiedIngress.ts",
       "class": "public-output"
     },
     {
@@ -4682,11 +4738,23 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/payments/adapterConformance.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/payments/contracts.test.ts",
       "class": "public-output"
     },
     {
       "path": "packages/platform/test/payments/preparedAttempt.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/payments/reconciliation.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/payments/refundEvidence.test.ts",
       "class": "public-output"
     },
     {
@@ -4707,6 +4775,10 @@
     },
     {
       "path": "packages/platform/test/payments/stripe/checkoutAbandonmentEvidence.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/payments/stripe/conformance.test.ts",
       "class": "public-output"
     },
     {
@@ -4763,6 +4835,10 @@
     },
     {
       "path": "packages/platform/test/payments/stripe/webhookSignature.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/payments/tpay/conformance.test.ts",
       "class": "public-output"
     },
     {
@@ -4831,6 +4907,14 @@
     },
     {
       "path": "packages/platform/test/payments/tpay/webhookNormalizer.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/payments/truth.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/payments/verifiedIngress.test.ts",
       "class": "public-output"
     },
     {

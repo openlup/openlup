@@ -169,14 +169,14 @@ function readback(base: Pick<PaymentReadbackEnvelope, "identity" | "expectedMone
   return { ...base, kind: status.status, observedMoney: { amountMinor: status.amountMinor, currency: status.currency }, providerOccurredAt: status.occurredAt };
 }
 
-/** Keep outcomes outside the current M07 union in this single refusal mapping. */
+/** Preserve donor money classifications in the neutral evidence union. */
 function mapStripeOutcome(eventType: string): VerifiedPaymentEvidence["outcome"] | null {
   switch (eventType) {
     case "payment.succeeded": return "succeeded";
     case "payment.failed": return "failed";
     case "payment.refunded": return "refunded";
     case "payment.requires_action": return "pending";
-    case "payment.disputed": return null;
+    case "payment.disputed": return "disputed";
     default: return null;
   }
 }
@@ -225,5 +225,8 @@ function mapVerifiedStripeEvent(raw: Record<string, unknown>): VerificationResul
             ? (object.last_payment_error as { advice_code: string }).advice_code : undefined }) } : {}),
     };
   }
-  return { ...result, fingerprint: createHash("sha256").update(JSON.stringify(result)).digest("hex") };
+  // The donor normalizer constructs this filtered carrier, never the raw body.
+  // Keep its reader dialect and provenance outside normalized event identity.
+  return { ...result, fingerprint: createHash("sha256").update(JSON.stringify(result)).digest("hex"),
+    providerAuditPayload: normalized.rawPayload };
 }

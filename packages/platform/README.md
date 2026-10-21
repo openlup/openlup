@@ -1060,7 +1060,9 @@ release preparation assembles the shipped CHANGELOG. Follow the
 
 `@openlup/platform/payments` exports `executePreparedAttemptMechanism`: validate before durable preparation, refuse prepared replay, dispatch once unless the host proves no charge, and retry one immutable local finalization. The host owns keys, fingerprints, nominal error trust and persistence. An unknown execution never authorizes redispatch. The reference facade retains its existing binding.
 
-`./payments/contracts` is type-only: execution/dispatch, transient method handoff, capability overlay, verified money/method evidence, bounded readback/absence, neutral refusals, refund observations and multi-subject conformance fixtures. Receipt time is freshness-only; event identity includes outcome class. Transient authorization and opaque handoffs never enter persisted diagnostics. Capability support is explicit; timeout/truncation is unknown, never exact absence. Refund policy is a type declaration here; runtime policy follows separately. See the [M07 ledger](../../docs/platform/plans/oss-m07-payments-money-truth.md).
+`./payments/contracts` is type-only: execution/dispatch, transient method handoff, capability overlay, verified money/method evidence, bounded readback/absence, neutral refusals, refund observations and multi-subject conformance fixtures. Verification uses receipt time for freshness; ingress starts processing at receipt time and reuses durable first receipt on redelivery. Event identity includes outcome class. Transient authorization and opaque handoffs never enter persisted diagnostics. Capability support is explicit; timeout/truncation is unknown, never exact absence. Refunds require explicit evidence by default; `legacy-assume-full` is an explicit host opt-in. See the [M07 ledger](../../docs/platform/plans/oss-m07-payments-money-truth.md).
+
+The payments entry also exports verified ingress, canonical truth fingerprints, method lifecycle/refusal handoff, reconciliation/verify-now and three runner-independent conformance functions. A new internal boundary projects verified envelopes into the contributed processing carrier: original bytes reach verification unchanged, receipt time starts processing, and durable first receipt overrides redelivery time. Full-reversal chargebacks use the existing dispute path. Snapshot and delta observations preserve original payment money; missing observation, required money or identity refuses before terminal application. Hosts own durable stores and response transport. Conformance checks exact identity/money, capability/port agreement and transient-secret exclusion; its evidence contains no handoff. Real-store durability still requires a selected-store proof.
 
 ### Opt-in payment example
 
@@ -1078,6 +1080,13 @@ refund creation and split authorization/capture are unsupported. Cancellation
 is enabled only when the injected client supplies it. See the
 [A2 ledger](../../docs/platform/plans/oss-a2-payment-adapters.md) for the current
 preview boundary and the host's responsibilities.
+
+Verified dispute events retain their distinct money outcome and original payment
+identity. Audit payloads carry only donor-filtered facts: the source event type,
+refund charge snapshot and failure-evidence provenance when present. They exclude
+raw bodies, client handoffs and customer authorization and do not affect event
+IDs or fingerprints. The offline adapter conformance witness uses two distinct
+intents and attempts with separate money and provider references.
 
 ### Opt-in bank and code payment example
 
@@ -1119,3 +1128,10 @@ original money and stable operation identity; refunded/chargeback readback stays
 unknown for manual review. There is no close or exact-absence port. Refund
 creation and authorization/capture separation are unsupported. See the
 [A2 ledger](../../docs/platform/plans/oss-a2-payment-adapters.md#o-p2-boundary-and-named-deltas).
+
+Verified audit payloads retain only donor-filtered transaction and alias facts,
+including `eventKind`, alias `event` and `aliasType` when supplied. Missing failure
+provenance and failure prose stay absent. Payer, authorization, certificates and
+raw bodies never enter the evidence; audit facts do not affect event identity or
+fingerprints. The offline M07 P2 conformance witness uses two distinct intents,
+attempts, amounts and provider references, with replay and refusal boundaries.
