@@ -1,7 +1,11 @@
 import { withObservedRoute } from "../../../_lib/observability/route.js";
 import type { VercelRequest, VercelResponse } from "../../../_lib/types/vercel.js";
 import { sendBffError } from "../../../_lib/bff/response.js";
-import { createAdminShippingRateHandler } from "../../../domains/commerce/adminShippingRateHandler.js";
+import { createShippingBindings } from "@openlup/platform/shipping";
+import { bffResponder } from "../../../_lib/bff/response.js";
+import { resolveAdmin } from "../../../domains/commerce/adminPromotionsHandler.js";
+import { COMMERCE_CONTRACT_VERSION } from "../../../../src/domains/commerce/types.js";
+import { adminSetShippingRateRequestSchema, adminSetShippingRateResponseSchema, adminShippingRateResponseSchema } from "../../../../src/domains/commerce/adminPromotionsContracts.js";
 import {
   createSupabaseAdminPromotionsDataPort,
   type AdminPromotionsSupabaseClient,
@@ -25,12 +29,16 @@ function handler(req: VercelRequest, res: VercelResponse): Promise<void> {
   const authClient = createAdminAuthClient(env, accessToken);
   const serviceClient = createServiceRoleClient(env);
 
-  return createAdminShippingRateHandler({
-    dataPort: createSupabaseAdminPromotionsDataPort(
-      serviceClient as unknown as AdminPromotionsSupabaseClient,
-    ),
-    authorizeAdmin: () => authorizeCommerceAdminWithUser(authClient, accessToken),
-  })(req, res);
+  const binding = createShippingBindings({ dataKind: "supabase", responder: bffResponder,
+    createManagedStore: () => ({ shippingRateDataPort: createSupabaseAdminPromotionsDataPort(serviceClient as unknown as AdminPromotionsSupabaseClient) }),
+    rate: { authorizeAdmin: () => authorizeCommerceAdminWithUser(authClient, accessToken), resolveAdmin,
+      schemas: { contractVersion: COMMERCE_CONTRACT_VERSION, adminSetShippingRateRequestSchema, adminSetShippingRateResponseSchema, adminShippingRateResponseSchema } },
+  });
+  if (!binding.handlers.rate) {
+    sendBffError(res, "UPSTREAM_UNAVAILABLE", "Admin shipping rate is not configured");
+    return Promise.resolve();
+  }
+  return binding.handlers.rate(req, res);
 }
 
 export default withObservedRoute(
