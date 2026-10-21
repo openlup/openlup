@@ -1035,3 +1035,39 @@ These are local working-tree results. The stock policy command still requires
 new catalogue paths in the Git index; its candidate-path checks and documentation
 impact passed without Git writes. These results do not establish committed
 package-gate or native review admission.
+
+## 0.19.0 parity release
+
+Finite outcome (2026-10-21): prepare the minor `0.19.0` set at main `dca23364778cebbf92400cf7ef1d9e61bfe2253d` (#265), including all changes since `0.18.0`: M05 parity 24a/24b, Safari lookbehind removal, M06 P5a/P5b early composition and supporting registration/quote-clock changes. Core/outbox have no package delta since #259 and are unchanged republications; UI remains private `0.0.0`. M06's own set remains `0.20.0`.
+M06 in progress: inventory and shipping entries are early surfaces; module not complete
+
+Authority: coordinator's row-25 brief assigns Codex pre-bump file edits, read-only registry fetches and focused checks in `m05-s19`, branch `claude/m05-parity-s1-0.19.0`. The minor-set decision is the coordinator delegate ruling under package release policy. No Git writes (including fixture repositories), bump invocation, source-snapshot write, ai-resource-gate, broad suite, stack-base override, secrets, publication, dispatch, registry mutation or adopter changes are assigned. The supervisor owns the bump (which stages consumed deletions), post-bump consolidation, source preparation, commits, native review and any separately authorized delivery; this record grants no merge or release rights.
+
+Acceptance: three S1 fragments and dispatch body preserve every distinct claim and both Migration reorder notes from all five main fragments; README links the new limitations; each prior limitation is reverified against source and ledgers; only platform root-docs cap changes; all three baselines use integrity/shasum-verified published `0.18.0` artifacts; growth explanations follow the strictly-above-30% rule. Candidate figures are preliminary until the supervisor's post-bump clean-commit artifact proof. Complete final verification and required review remain supervisor gates.
+
+Risk/proof plan: use existing fragment, baseline and size tooling, with exact-body removal of the five duplicate notes only after bump and a claim-parity checklist; never replace older history. Reuse the smallest single-value cap edit instead of adding a package or relaxing another control. Focused no-Git-write size, manifest and tarball policy suites plus ast-grep/diff/policy checks run here. Source fixture suites that initialize/commit Git remain outside this phase. Published identities, limitation evidence and commands are in the external row-25 report and runbook.
+
+### Root-docs cap decision
+
+Only `packages/platform/release-gates.json` `pack.docs.maxPackedBytes` changes from 40,960 to 49,152 B via the reviewed cap-change route (#203); no other cap or budget changes. The same record is carried by the S1 size note for [0.19.0], and the supervisor must retain it verbatim in the PR body and commit message.
+
+Question (2026-10-21): "The platform package's root docs (README + CHANGELOG) will exceed their 40,960 B gzip cap at the next release. What should we do?"
+Owner's answer: "Raise to 49,152 B (Recommended)"
+Option description shown to the owner: "Same figure as core. Unblocks the next few releases; the CHANGELOG grows every release, so this cap would otherwise block each one."
+Recorded as an owner decision taken through the coordinator's question on 2026-10-21.
+
+### Phase-1 evidence and self-retro
+
+Phase-1 result: three focused suites / 48 cases PASS (3.49 s runner wall); ast-grep and diff checks PASS; registry baseline hashes PASS; source/SQL comparison against published artifacts has zero mismatches. Policy/navigation leaves two pre-bump core/outbox no-impact obligations for supervisor commits; source snapshot remains intentionally stale. No Git or bump writes occurred.
+
+Pre-bump projection (not clean-commit release evidence):
+
+| Package | Published 0.18.0 tarball B | Projected 0.19.0 tarball B | Growth | Code gzip B | Root docs gzip B / cap |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| core | 161,593 | 161,779 | +0.115104% | 132,250 | 23,716 / 49,152 |
+| outbox | 39,369 | 39,361 | -0.020321% | 20,930 | 13,419 / 26,624 |
+| platform | 779,849 | 804,942 | +3.217674% | 677,948 | 41,388 / 49,152 |
+
+No growth bullet is required: package-size-policy uses candidate packed bytes × 100 > baseline packed bytes × 130, strictly above 30%; all three projections are below it. Platform has 7,764 B root-docs headroom under the approved cap (428 B above the old cap). Recompute on actual post-bump artifacts. Figures were filled after checks; final clean-commit producer and installed-consumer evidence remain supervisor work.
+
+Self-retro: stale Bundle-3 wording conflated general native inventory reads with native new-purchase stock semantics → retain the P5a installed-read proof and name the specific unsupported operation; exact-body consolidation plus the five-fragment claim checklist avoids dropping distinct release claims without adding a release mechanism.
