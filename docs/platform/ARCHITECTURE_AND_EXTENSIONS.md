@@ -30,6 +30,14 @@ state writer is not an extension seam.
 
 ## Runtime boundaries
 
+The reference application's renewal execution, readback registry, recovery
+guidance, setup routes, channel list and activation bind through the experimental
+[reference-support exports](../../packages/platform/README.md#reference-support-surface).
+SDK and HTTP client construction, environment and mode flags, and the simulator
+remain host-owned. The prepared-attempt binding imports and re-exports the
+package's `ProviderAttemptPreDispatchError`, preserving one class identity for
+nominal no-charge retry and release checks.
+
 The shared root [webhook HTTP helper](../../server/_lib/payment/webhookSignature.ts)
 retains raw-body reading, HMAC verification, timing-safe equality and body-size
 limits for existing callers. Its unused provider-specific signature verifier
