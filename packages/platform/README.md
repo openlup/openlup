@@ -1153,7 +1153,8 @@ The adapter offers its declared market currency; alias registration and recurrin
 cards are not offered by this factory. Account offers
 remain `verification_pending` until owner TEST readback. Chargeback observations carry full reversal,
 original money and stable operation identity; refunded/chargeback readback stays
-unknown for manual review. There is no close or exact-absence port. Refund
+unknown for manual review, including historical attempt/error refusals in either
+readback purpose. There is no close or exact-absence port. Refund
 creation and authorization/capture separation are unsupported. See the
 [A2 ledger](../../docs/platform/plans/oss-a2-payment-adapters.md#o-p2-boundary-and-named-deltas).
 

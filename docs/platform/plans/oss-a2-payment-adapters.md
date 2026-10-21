@@ -153,8 +153,11 @@ CHARGEBACK is a `refunded` money observation with explicit `full-reversal`,
 money or currency refuses. No M07 P2 disputed outcome is required.
 Donor source and tests retain behavior except import relocation and private
 identity removal: neutral aliases/labels/hosts/return paths and subject keys,
-explicit synthetic payer fixtures instead of a manufactured payer, and removal
-of the mapper's host environment reader. The synthetic certificate fixture adds
+and removal of the mapper's host environment reader. The private execution
+slice keeps the donor customerRef payer fallback with a neutral display label;
+the public factory requires explicit transient payer context before that slice.
+The donor witness retains its customerRef-only base fixture.
+The synthetic certificate fixture adds
 root lifetime and signed issued-at controls for the named validity/freshness
 cases. Other donor outcomes outside M07 remain in one named refusal mapping;
 unrecognized alias lifecycle events refuse `unsupported-event`.
@@ -204,7 +207,7 @@ The programme budget of +100 cases / +30 s counts net-new cases. A test carried 
 |---|---|---:|---|
 | — | `conformance.test.ts` | 1 | net-new |
 | server/adapters/tpay/declineFailureHints.test.ts | `declineFailureHints.test.ts` | 12 | moved-pending: root `server/adapters/tpay/declineFailureHints.test.ts` retires at O-P3; adopter copy at C5 |
-| — | `factory.test.ts` | 29 | net-new |
+| — | `factory.test.ts` | 39 | net-new |
 | server/adapters/tpay/tpayCreateTransactionInput.test.ts | `tpayCreateTransactionInput.test.ts` | 12 | moved-pending: adopter copy retires at C5 |
 | server/adapters/tpay/tpayDeclineEvidence.test.ts | `tpayDeclineEvidence.test.ts` | 71 | moved-pending: root `server/adapters/tpay/tpayDeclineEvidence.test.ts` retires at O-P3; adopter copy at C5 |
 | server/infra/tpay/tpayDispatchFailure.test.ts | `tpayDispatchFailure.test.ts` | 7 | moved-pending: root `server/infra/tpay/tpayDispatchFailure.test.ts` retires at O-P3; adopter copy at C5 |

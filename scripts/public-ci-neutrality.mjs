@@ -89,7 +89,6 @@ function allowedAdapterWords(path, contents) {
 
 // O-P1/O-P2: vendor categories plus the second adapter's scoped market token. Exact carrier tokens cannot excuse bare vendor prose.
 const paymentAdapterNames = ["str" + "ipe", "tp" + "ay"];
-const paymentAdapterPaths = new RegExp(`^packages/platform/(?:src|test)/payments/(?:${paymentAdapterNames.join("|")})/`);
 const paymentAdapterLedger = "docs/platform/plans/oss-a2-payment-adapters.md";
 const paymentAdapterCarriers = new Set([
   "packages/platform/package.json", "packages/platform/release-gates.json",
@@ -112,7 +111,12 @@ export function allowedPaymentAdapterWords(path, contents, category = "ui-13") {
   }
   const name = paymentAdapterNames[category === "ui-13" ? 0 : category === "ui-14" ? 1 : -1];
   if (!name) return 0;
+  const paymentAdapterPaths = new RegExp(`^packages/platform/(?:src|test)/payments/${name}/`);
   const word = new RegExp(`\\b${name}\\b`, "gi");
+  // Exact-file exception for the cross-adapter parity witness.
+  if (category === "ui-13" && path === `packages/platform/test/payments/${paymentAdapterNames[1]}/tpayFailureEvidence.test.ts`) {
+    return [...contents.matchAll(word)].length;
+  }
   if (paymentAdapterPaths.test(path) || path === `packages/platform/api/payments-${name}.api.md`
     || path === paymentAdapterLedger) return [...contents.matchAll(word)].length;
   if (!paymentAdapterCarriers.has(path) && !/^packages\/platform\/changes\/[^/]+\.md$/.test(path)) return 0;

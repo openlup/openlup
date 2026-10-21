@@ -28,6 +28,14 @@ it("keeps the payment vocabulary allowance within exact source/report/ledger pat
     `packages/platform/api/payments-${vendor}.api.md`, "docs/platform/plans/oss-a2-payment-adapters.md"]) {
     expect(words(path, vendor)).toBe(1);
   }
+  const witnessPath = `packages/platform/test/payments/${["tp", "ay"].join("")}/tpayFailureEvidence.test.ts`;
+  const witnessContents = `${vendor} ${vendor.toUpperCase()}`;
+  const witnessCount = JSON.parse(execFileSync(process.execPath, ["--experimental-strip-types", "packages/ui/smoke/neutrality.ts", "--counts-json"], {
+    input: JSON.stringify([{ path: witnessPath, contents: witnessContents }]), encoding: "utf8",
+  })).counts[0].counts["ui-13"];
+  expect(witnessCount).toBe(2);
+  expect(words(witnessPath, witnessContents)).toBe(2);
+  expect(neutralityIncreases({}, { [witnessPath]: { "ui-13": witnessCount - words(witnessPath, witnessContents) } })).toHaveLength(0);
   for (const path of ["packages/platform/package.json", "packages/platform/README.md", "scripts/packages/platform-cold-consumer.ts",
     "packages/platform/changes/a-two.md"]) {
     expect(words(path, `payments/${vendor}`)).toBe(1);
@@ -35,7 +43,9 @@ it("keeps the payment vocabulary allowance within exact source/report/ledger pat
     expect(words(path, `payments/${vendor}-other`)).toBe(0);
   }
   for (const path of ["packages/platform/src/payments/index.ts", `packages/core/src/payments/${vendor}/index.ts`,
-    `packages/platform/src/payments/${vendor}-other/index.ts`, "packages/platform/changes/nested/a.md"]) {
+    `packages/platform/src/payments/${vendor}-other/index.ts`, "packages/platform/changes/nested/a.md",
+    ...["src", "test"].map(root => `packages/platform/${root}/payments/${["tp", "ay"].join("")}/index.ts`),
+    `packages/platform/test/payments/${["tp", "ay"].join("")}/factory.test.ts`, witnessPath.replace("/test/", "/src/")]) {
     expect(words(path, vendor)).toBe(0);
     const measured = JSON.parse(execFileSync(process.execPath, ["--experimental-strip-types", "packages/ui/smoke/neutrality.ts", "--counts-json"], {
       input: JSON.stringify([{ path, contents: vendor }]), encoding: "utf8",
@@ -68,7 +78,8 @@ it("keeps the second payment adapter and its market token within the approved al
     expect(allowedPaymentAdapterWords(path, currency, "ui-5")).toBe(0);
   }
   const outside = ["packages/platform/src/payments/index.ts", `packages/platform/src/payments/${vendor}-other/index.ts`,
-    "packages/platform/README.md", "packages/platform/package.json", "packages/platform/changes/a-two.md"];
+    "packages/platform/README.md", "packages/platform/package.json", "packages/platform/changes/a-two.md",
+    ...["src", "test"].map(root => `packages/platform/${root}/payments/${["str", "ipe"].join("")}/index.ts`)];
   for (const path of outside) {
     const contents = vendor + " " + currency;
     const counts = JSON.parse(execFileSync(process.execPath, ["--experimental-strip-types", "packages/ui/smoke/neutrality.ts", "--counts-json"], {

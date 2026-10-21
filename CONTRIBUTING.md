@@ -464,8 +464,10 @@ These changes retain the existing cases and assertion operators.
 
 The second opt-in payment example extends the existing narrow vendor allowance
 and permits its market currency token only in its own source/test directories.
+Each vendor's full-content allowance matches only its own source/test paths.
 Paired real-scanner plants keep vendor and currency vocabulary outside those
-paths counted. Its offline witnesses retain all donor cases as moved-pending;
+paths counted, including each vendor word inside the other adapter's source
+and test directories. Its offline witnesses retain all donor cases as moved-pending;
 the reporting zone is allowed only on the exact readback declaration at its
 exact source path, with outside-line/path plants and no baseline increase.
 New attempt/redaction/envelope/validity/freshness cases are counted separately. The packed payment

@@ -304,12 +304,17 @@ it("preserves purpose and exact identity/money checks on readback", async () => 
   expect(await adapter.readbackPort.readPayment({ identity, expectedMoney: { ...expectedMoney, amountMinor: 0 }, purpose: "recovery" }))
     .toMatchObject({ kind: "unknown" });
 });
-it.each(["refunded", "chargeback"])("keeps %s readback unknown for host manual review", async status => {
+it.each(["refunded", "chargeback"].flatMap(status =>
+  (["active_checkout", "recovery"] as const).flatMap(purpose => [
+    { status, purpose, history: "none", payments: {} },
+    { status, purpose, history: "attempt refusal", payments: { attempts: [{ paymentErrorCode: "51" }] } },
+    { status, purpose, history: "error refusal", payments: { errors: [{ errorCode: "51" }] } },
+  ])))("keeps $status $purpose readback with $history unknown for host manual review", async ({ status, purpose, payments }) => {
   const good = config();
   good.http.fetchImpl = vi.fn(async url => ({ ok: true, status: 200, text: async () => "",
     json: async () => url.endsWith("/oauth/auth") ? { access_token: "fixture", expires_in: 7200 }
-      : { transactionId: "api-1", title: "TR-1", status, amount: 25.99, currency: "PLN" } }));
+      : { transactionId: "api-1", title: "TR-1", status, payments, amount: 25.99, currency: "PLN" } }));
   expect(await createTpayPaymentAdapter(good).readbackPort.readPayment({ identity: {
     provider: "tpay", providerPaymentRef: "api-1", intentRef: "intent", attemptRef: "attempt" },
-  expectedMoney: { amountMinor: 2599, currency: "PLN" }, purpose: "recovery" })).toMatchObject({ kind: "unknown", reason: "indeterminate" });
+  expectedMoney: { amountMinor: 2599, currency: "PLN" }, purpose })).toMatchObject({ kind: "unknown", reason: "indeterminate" });
 });

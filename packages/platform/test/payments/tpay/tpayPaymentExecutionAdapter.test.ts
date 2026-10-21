@@ -22,7 +22,6 @@ const baseInput = {
   mode: "one_time" as const,
   orderRef: "order_123",
   customerRef: "anna@example.com",
-  payer: { email: "anna@example.com", name: "Customer" },
 };
 
 describePaymentExecutionPortContract({

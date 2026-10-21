@@ -284,7 +284,9 @@ function requireTpayTransientInput(
 }
 
 function defaultPayer(input: PaymentExecutionInput): TpayPayerInput | null {
-  return input.payer ?? null;
+  if (input.payer) return input.payer;
+  if (!input.customerRef) return null;
+  return { email: input.customerRef, name: "Customer" };
 }
 
 export class TpayExecutionInputError extends Error {

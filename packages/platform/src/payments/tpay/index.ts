@@ -165,6 +165,8 @@ export function createTpayPaymentAdapter(config: TpayPaymentAdapterConfig): Paym
         if (input.identity.provider !== "tpay" || !input.identity.providerPaymentRef) return { ...base, kind: "unsupported" };
         try {
           const transaction = await client.getTransaction(input.identity.providerPaymentRef);
+          const status = transaction.status.trim().toLowerCase();
+          if (status === "refunded" || status === "chargeback") return unknown(base);
           const observed = await createTpayPaymentReconciliationProvider({ getTransaction: async () => transaction }).readPayment({
             providerPaymentId: input.identity.providerPaymentRef, purpose: input.purpose,
           });

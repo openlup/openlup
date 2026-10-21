@@ -68,7 +68,8 @@ evidence refuses. Alias method evidence carries the donor lifecycle through M07
 projection only when signed provider time is present; without it the lifecycle
 field is omitted. Unknown alias lifecycle events refuse `unsupported-event`.
 Readback retains purpose, checks exact transaction identity/configured money,
-and leaves refunded/chargeback unknown for manual review. Only Model O mandates
+and leaves refunded/chargeback unknown for manual review, even with historical
+attempt or error refusals, for both readback purposes. Only Model O mandates
 can charge unattended. Exact absence, close, refund creation and separate
 capture are unsupported; account-dependent offers remain verification_pending.
 Bank redirects, one-time codes and unattended Model O attempts are supported
