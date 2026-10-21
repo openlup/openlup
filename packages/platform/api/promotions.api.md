@@ -5815,6 +5815,7 @@ export declare function createAdminShippingRateHandler({ dataPort, authorizeAdmi
 ## dist/shipping/bindings.d.ts
 
 ```ts
+import type { ReadinessReport, SchemaObservation } from "@openlup/core/readiness";
 import type { BffResponder } from "../bff/index.js";
 import type { CustomerAddressBookPort, CustomerAddressMutationPort, CustomerAddressesDeps } from "./addressPorts.js";
 import type { CustomerAddressSchemas } from "./addressSchemas.js";
@@ -5833,6 +5834,10 @@ type Store = {
 export interface ShippingBindingDependencies {
     dataKind: string;
     createManagedStore?: () => Store | null;
+    /** Core report for the selected shipping contribution, observed by the host. */
+    nativeRateReadiness?: ReadinessReport;
+    /** Same-database Core observation of the applied shipping seed and required objects. */
+    nativeRateSchema?: SchemaObservation;
     nativeStore?: Omit<Store, "addressMutationPort"> | null;
     responder: BffResponder;
     selection?: {
@@ -6304,6 +6309,20 @@ export type { AdminShippingRateHandlerDeps, ShippingRateDataPort, ShippingRateHa
 export { createShippingBindings, type ShippingBindingDependencies, type ShippingBindings } from "./bindings.js";
 export type { ShippingTerms, ShippingPolicyEntry, ShippingPolicy, ShippingSettings } from "./contracts/threshold.js";
 export { shippingTermsSchema, shippingPolicySchema, parseShippingTerms, hasShippingTerms, normalizeShippingPolicy, resolveShippingPolicy, resolveThresholdShipping } from "./thresholdPolicy.js";
+/** Sparse canonical projections, never an install chain. */
+export declare const SHIPPING_MIGRATIONS: readonly [{
+    readonly id: "20260807140000_read_parity_catalog";
+    readonly catalogPath: "db/platform/migrations/20260807140000_read_parity_catalog.sql";
+    readonly position: 1;
+    readonly sha256: "fcf3827028c1651ae42a7c7d7472153825a3121c936d58a3d105befc7dece9ea";
+    readonly url: URL;
+}, {
+    readonly id: "20261021200000_shipping_flat_rate_seed";
+    readonly catalogPath: "db/platform/migrations/20261021200000_shipping_flat_rate_seed.sql";
+    readonly position: 72;
+    readonly sha256: "34f8696f515a2cc072395db5a3de2d9b09643d13236ee3851d0d78123f907eae";
+    readonly url: URL;
+}];
 ```
 ## dist/shipping/pickupPointSearchPort.d.ts
 

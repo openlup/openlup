@@ -37,13 +37,19 @@ or provider-account certification.
 | `./pricing/contracts` | Dependency-free authority, money, quote and offer DTOs and version constants |
 | `./promotions` | Experimental promotion application, admin handlers, native read/sweep, SQL projections and acceptance |
 | `./promotions/contracts` | Dependency-free preview and admin DTOs |
-| `./shipping` | Experimental delivery ports, injected-schema handlers, summary and evidence |
+| `./shipping` | Experimental delivery ports, injected-schema handlers, summary/evidence; native flat-rate port + Core schema readiness |
 | `./shipping/contracts` | Type-only delivery, pickup-point, summary and evidence DTOs |
 
 ## Shipping
 
 Shipping handlers require injected host schemas; contracts are type-only with opaque provider/carrier strings.
 No vendor code, inventory import, activation or parity claim.
+Native flat-rate save requires the rate port, a ready Core report and
+`nativeRateSchema`, a same-database Core `SchemaObservation` proving the applied
+seed identity and settings objects. A candidate schema label is not proof;
+later forwards do not invalidate an applied seed. The reference host exposes
+`observeNativeRateSchema()` for this ledger/object observation and retains
+caller-declared schema requirements. Missing proof keeps the named refusal.
 
 ## Inventory
 

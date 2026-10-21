@@ -6,8 +6,10 @@ Status: development-preview contract. No recipe in this document is a supported 
 
 The [M06 shipping binding](../../server/runtime/public-reference/m06ShippingBinding.ts)
 composes selected selection, address and flat-rate ports with host schemas and
-authority. Native address writes and native flat-rate save refuse required readiness; the managed BFFs
-retain their flags and authorization. Construction mounts nothing.
+authority. Native address writes remain refused. Native flat-rate save requires a
+selected native rate port, a Core report in state `ready` and a same-database
+`nativeRateSchema` observation of the shipping seed; the managed BFFs retain their flags and
+authorization. Construction mounts nothing.
 
 M04 B2 exposes neutral Polish/EN invoice, role, inquiry and opt-out content through
 `@openlup/platform/communications/contracts`. Reference invoice locale is an
@@ -174,8 +176,16 @@ substituting a different business behaviour.
 ## Opt-in disposable subscription reference
 
 The inert [shipping binding](../../server/runtime/public-reference/m06ShippingBinding.ts)
-requires selected ports and host authority. Native address writes and flat-rate
-save remain unsupported; the latter requires a separately decided schema grant.
+requires selected ports and host authority. Native address writes remain refused.
+Native flat-rate save requires a selected native rate port, a Core report in
+state `ready` and a same-database `nativeRateSchema` observation. Construct the
+reference binding to obtain its merged contribution requirements and call
+`observeNativeRateSchema()` at host readiness. This uses Core's schema probe to
+check the position-72 `20261021200000_shipping_flat_rate_seed` ledger entry
+and settings objects, regardless of later forwards. Evaluate Core readiness
+with the caller's schema requirements, then reconstruct with that report and observation in `store`; close both bindings.
+Caller-declared schema objects/version are retained, with seed objects added
+once. A candidate label or unrelated report alone cannot enable saves.
 Selection, validation and flat-rate fixtures do not certify a managed host.
 
 The inert [M06 inventory binding](../../server/runtime/public-reference/m06InventoryBinding.ts)

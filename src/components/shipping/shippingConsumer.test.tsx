@@ -1,7 +1,10 @@
+import { checkReadiness, createSchemaProbe } from "@openlup/core/readiness";
+import { createPostgresShippingRateTransactionLane } from "../../../server/adapters/postgres/dataGateway.js";
+import { createPostgresShippingRateDataPort } from "../../../server/adapters/postgres/commerceSettings.js";
 import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
-import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
+import { createRequire } from "node:module";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { Pool } from "pg";
@@ -27,12 +30,13 @@ const clients = vi.hoisted(() => ({ getAdminShippingRate: vi.fn(), setAdminShipp
 vi.mock("@/domains/commerce/adminPromotionsClient", () => clients);
 vi.mock("@/domains/shipping/deliverySelectionClient", () => clients);
 let shipping: typeof import("@openlup/platform/shipping"), inventory: typeof import("@openlup/platform/inventory"), composition: typeof import("@openlup/platform/composition"), bff: typeof import("@openlup/platform/bff");
+let rateLane: ReturnType<typeof createPostgresShippingRateTransactionLane>;
 let scratch: string, container: PostgresContainer | undefined, pool: Pool;
 const country = pickupPointAddressSchema.shape.country.value;
 const clientId = "f6000000-0000-4000-8000-000000000001", addressId = "f6000000-0000-4000-8000-000000000002";
 const npm = (args: string[], cwd: string) => execFileSync("npm", args, { cwd, stdio: "pipe", timeout: 120_000 }).toString();
 beforeAll(async () => {
-  scratch = mkdtempSync(join(tmpdir(), "m06-final-consumer-"));
+  scratch = mkdtempSync(join(tmpdir(), "shipping-consumer-"));
   const tarballs = ["packages/core", "packages/platform", "node_modules/zod"].map(directory => {
     const packed = JSON.parse(npm(["pack", "--json", "--ignore-scripts", "--pack-destination", scratch], resolve(directory)));
     return join(scratch, packed[0].filename);
@@ -51,6 +55,7 @@ beforeAll(async () => {
   container = await runPostgresContainer({ name: `shipping-consumer-${process.pid}`, password: "synthetic-conformance" });
   if (!await waitForPostgresTcpReady(container.connectionString)) throw new Error("Final installed PostgreSQL unavailable");
   pool = new Pool({ connectionString: container.connectionString });
+  rateLane = createPostgresShippingRateTransactionLane({ connectionString: container.connectionString });
   await createPostgresMigrationRunner({ connectionString: container.connectionString }, { poolFactory: () => pool }).apply();
   await pool.query(`INSERT INTO public.clients(id,email) VALUES ($1,'installed@example.invalid');
     INSERT INTO public.catalog_products(id,slug,name) VALUES ('f6000000-0000-4000-8000-000000000003','installed-final','Fixture');
@@ -59,7 +64,7 @@ beforeAll(async () => {
     VALUES ('fixture','FINAL',9,9,0,'sellable',now(),now()+interval '1 hour','fixture','final-stock',repeat('a',64))`.replace("$1", `'${clientId}'`));
 }, 180_000);
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
-afterAll(async () => { await pool?.end(); await container?.remove(); if (scratch) rmSync(scratch, { recursive: true, force: true }); });
+afterAll(async () => { await rateLane?.close(); await pool?.end(); await container?.remove(); if (scratch) rmSync(scratch, { recursive: true, force: true }); });
 async function invoke(handler: NonNullable<ReturnType<typeof shipping.createShippingBindings>["handlers"]["rate"]>, method: string, body?: unknown) {
   let status = 0, payload: { ok: boolean; data?: unknown } | undefined;
   const response = { status(value: number) { status = value; return this; }, json(value: typeof payload) { payload = value; return this; }, setHeader() {} };
@@ -74,13 +79,28 @@ it("reads both installed modules from selected stores and roundtrips picker and 
   expect(await stock.readPort!.listStock({ page: 1, pageSize: 10, includeZero: true })).toMatchObject({ stock: [{ sku: "FINAL", availableNow: 9 }] });
   const source = createStaticDeliverySelectionPort(), options = await source.listOptions(), locker = options.find(option => option.pickupPointRequired)!;
   const point = (await source.validatePickupPoint({ pointId: "WAW01A", carrierKind: locker.carrierKind }))!;
-  const audit = vi.fn(async () => { throw new Error("offline"); });
-  // Managed handler/UI fixture only; no owner SQL write stands in for runtime authority.
-  let fixtureRate = 500;
-  const binding = shipping.createShippingBindings({ dataKind: "supabase", responder: bff.createBffResponder(), createManagedStore: () => ({ shippingRateDataPort: {
-    getShippingFlatMinor: async () => fixtureRate,
-    setShippingFlatMinor: async minor => { fixtureRate = minor; }, recordPromotionAudit: audit,
-  } }), selection: { port: source, searchPort: { searchPickupPoints: async () => [{ id: point.id, name: point.name, address: point.address, carrierKind: locker.carrierKind, location: null, locationDescription: null, openingHours: null, distanceMeters: null, pointKind: "locker", appAssisted: false }] }, schemas: selectionSchemas as unknown as import("@openlup/platform/shipping").DeliverySelectionSchemas },
+  const nativePort = createPostgresShippingRateDataPort(rateLane);
+  const audit = vi.fn(nativePort.recordPromotionAudit);
+  await nativePort.setShippingFlatMinor(500);
+  const migration = shipping.SHIPPING_MIGRATIONS[1];
+  const requiredSchema = { version: migration.id, migration: migration.catalogPath,
+    objects: [{ kind: "table" as const, name: "public.commerce_settings" },
+      { kind: "column" as const, name: "public.commerce_settings.value_minor" },
+      { kind: "column" as const, name: "public.commerce_settings.updated_at" }] };
+  const schemaProbe = createSchemaProbe(pool, async () => ({ database: "synthetic", version:
+    (await pool.query("SELECT 1 FROM public.platform_schema_migrations WHERE position=$1 AND catalog_path=$2 AND sha256=$3",
+      [migration.position, migration.catalogPath, migration.sha256])).rowCount === 1 ? migration.id : null }));
+  const nativeRateSchema = await schemaProbe.observe(requiredSchema);
+  const report = await checkReadiness({
+    candidate: { artifact: "installed", configuration: "shipping", environment: "disposable", database: "synthetic", schema: migration.id }, inventoryComplete: true,
+    loadedPackages: [{ name: "@openlup/core", version: "0.18.0", kind: "kernel" }, { name: "@openlup/platform", version: "0.18.0", kind: "rail" }],
+    contributions: [{ manifest: { name: "@openlup/platform", version: "0.18.0", kind: "rail", emits: [], handles: [], schedules: [], routes: [], env: [], requiredPorts: [], requiredSchema }, handlers: [], schedules: [], routes: [] }],
+    vocabulary: [], exemptions: [], bindings: { ports: {}, routes: {}, triggers: {}, env: {} },
+    schemaProbe,
+  });
+  expect(report.state).toBe("ready");
+  const binding = shipping.createShippingBindings({ dataKind: "postgres", responder: bff.createBffResponder(),
+    nativeRateReadiness: report, nativeRateSchema, nativeStore: { shippingRateDataPort: { ...nativePort, recordPromotionAudit: audit } }, selection: { port: source, searchPort: { searchPickupPoints: async () => [{ id: point.id, name: point.name, address: point.address, carrierKind: locker.carrierKind, location: null, locationDescription: null, openingHours: null, distanceMeters: null, pointKind: "locker", appAssisted: false }] }, schemas: selectionSchemas as unknown as import("@openlup/platform/shipping").DeliverySelectionSchemas },
     rate: { schemas: { contractVersion: "commerce.v0", adminSetShippingRateRequestSchema, adminSetShippingRateResponseSchema, adminShippingRateResponseSchema },
       authorizeAdmin: async () => ({ ok: true, userId: "operator", role: "admin", isMachineActor: false }), resolveAdmin: async authorize => { const actor = await authorize(); return actor.ok ? actor : null; } },
   });
@@ -99,16 +119,8 @@ it("reads both installed modules from selected stores and roundtrips picker and 
   fireEvent.change(input, { target: { value: "7.25" } });
   fireEvent.click(input.closest("section")!.querySelector("button")!);
   await waitFor(() => expect(audit).toHaveBeenCalled());
-  expect(fixtureRate).toBe(725);
-  // The generic shipped native service lane changes role, rather than using the owner fixture connection.
-  await pool.query("CREATE ROLE service_role NOLOGIN NOINHERIT NOSUPERUSER NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS");
-  const data = await import(pathToFileURL(createRequire(join(scratch, "consumer/package.json")).resolve("@openlup/platform/data")).href) as typeof import("@openlup/platform/data");
-  const gateway = data.createPostgresDataGateway({ connectionString: container!.connectionString }, { poolFactory: () => pool });
-  await gateway.asService(async client => {
-    const result = await (client as { from(name: string): { update(value: unknown): { eq(key: string, value: string): Promise<{ error: { code: string } | null }> } } })
-      .from("commerce_settings").update({ value_minor: 900 }).eq("key", "shipping_flat_minor");
-    expect(result.error?.code).toBe("42501");
-  });
+  expect(await nativePort.getShippingFlatMinor()).toBe(725);
+  expect((await pool.query("SELECT value_minor FROM public.commerce_settings WHERE key=$1", ["shipping_flat_minor"])).rows).toEqual([{ value_minor: 725 }]);
   const native = shipping.createShippingBindings({ dataKind: "postgres", responder: bff.createBffResponder(), rate: { schemas: { contractVersion: "commerce.v0", adminSetShippingRateRequestSchema, adminSetShippingRateResponseSchema, adminShippingRateResponseSchema },
     authorizeAdmin: async () => ({ ok: true, userId: "operator", role: "admin", isMachineActor: false }), resolveAdmin: async () => null } });
   expect(native.readiness.reason).toBe("shipping_native_flat_rate_save_unsupported");

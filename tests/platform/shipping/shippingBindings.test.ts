@@ -79,4 +79,31 @@ it("refuses missing stores and native address writes in both binding and Core re
   expect((await checkReadiness({ ...input, contributions: nativeRate.contributions, bindings: { ...input.bindings, ports: nativeRate.ports } })).issues)
     .toContainEqual(expect.objectContaining({ code: "OPENLUP_E_PORT_MISSING", subject: "rate" }));
   expect((await checkReadiness(input)).issues).toContainEqual(expect.objectContaining({ code: "OPENLUP_E_PORT_MISSING", subject: "addressWrites" }));
+  // Extend the existing refusal case: both the native port and Core schema report are required.
+  const candidate = { ...input.candidate, schema: "20261021200000_shipping_flat_rate_seed" };
+  const nativeStore = { shippingRateDataPort: { getShippingFlatMinor: async () => 0,
+    setShippingFlatMinor: async () => undefined, recordPromotionAudit: async () => undefined } };
+  const ready = await checkReadiness({ ...input, candidate, contributions: [{
+    manifest: { name: "@openlup/platform", version: "0.17.0", kind: "rail", emits: [], handles: [], schedules: [], routes: [], requiredPorts: [], env: [],
+      requiredSchema: { version: candidate.schema, migration: candidate.schema, objects: [] } }, handlers: [], schedules: [], routes: [],
+  }], loadedPackages: input.loadedPackages.map(({ modules: _modules, ...pkg }) => pkg),
+    schemaProbe: { observe: async () => ({ database: "fixture", version: candidate.schema, objects: [] }) } });
+  expect(ready.state).toBe("ready");
+  const nativeRateSchema = { database: "fixture", version: candidate.schema, objects: [
+    { object: { kind: "table" as const, name: "public.commerce_settings" }, present: true },
+    { object: { kind: "column" as const, name: "public.commerce_settings.value_minor" }, present: true },
+    { object: { kind: "column" as const, name: "public.commerce_settings.updated_at" }, present: true },
+  ] };
+  const base = { nativeRateSchema, dataKind: "postgres", responder: bffResponder, nativeStore };
+  expect(createShippingBindings(base).unsupported.flatRateSave).toBe("shipping_native_flat_rate_save_unsupported");
+  expect(createShippingBindings({ ...base, nativeRateReadiness: ready }).unsupported.flatRateSave).toBeNull();
+  expect(createShippingBindings({ ...base, nativeStore: {}, nativeRateReadiness: ready }).unsupported.flatRateSave).toBe("shipping_native_flat_rate_save_unsupported");
+  expect(createShippingBindings({ ...base, nativeRateReadiness: { ...ready, state: "unsatisfied" } }).unsupported.flatRateSave).toBe("shipping_native_flat_rate_save_unsupported");
+  expect(createShippingBindings({ ...base, nativeRateReadiness: { ...ready, candidate: { ...candidate, schema: "later-forward" } } }).unsupported.flatRateSave).toBeNull();
+  for (const unproven of [undefined, { ...nativeRateSchema, version: null }, { ...nativeRateSchema, objects: [] },
+    { ...nativeRateSchema, database: "other" }, { ...nativeRateSchema, objects: nativeRateSchema.objects.map(entry => ({ ...entry, present: false })) }]) {
+    expect(createShippingBindings({ ...base, nativeRateReadiness: ready, nativeRateSchema: unproven }).unsupported.flatRateSave).toBe("shipping_native_flat_rate_save_unsupported");
+  }
+  expect(createShippingBindings({ ...base, nativeRateReadiness: { state: "ready" } as never, rate: { schemas: {} as never, authorizeAdmin: vi.fn(), resolveAdmin: vi.fn() } }).readiness.reason).toBe("shipping_native_flat_rate_save_unsupported");
+
 });

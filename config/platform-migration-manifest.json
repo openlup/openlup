@@ -288,6 +288,10 @@
     {
       "file": "db/platform/migrations/20261021120000_dunning_lifecycle_active_repair.sql",
       "sha256": "8918204df731aade89976953f8434afe08cfcbe84b6382a51728b9d14100e7ea"
+    },
+    {
+      "file": "db/platform/migrations/20261021200000_shipping_flat_rate_seed.sql",
+      "sha256": "34f8696f515a2cc072395db5a3de2d9b09643d13236ee3851d0d78123f907eae"
     }
   ],
   "objectInventorySha256": "59f08ac97163fe310fab0928027996a5dbb885d5161ddc7a709e82c2947fdded"

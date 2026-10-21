@@ -251,7 +251,7 @@ Coordinator continuation: two generated API companions (pricing/promotions) exte
 
 Finite outcome: select shipping sources, injected address validation/store and the incumbent flat-rate handler; expose four consumed exports and an inert reference factory. P5b stacks on P5a `ccf2fbd8`. Authority is the frozen 19 paths plus one proof-only SQL path and two mechanical API companions (22/35; fragment replaces CHANGELOG); content edits and focused serial checks only. No Git writes, other worktrees, secrets, activation, writer/admission work, new stock SQL, submission or release. Supervisor owns commit, native review and delivery. Smallest adequate alternative: existing handlers plus one structural contribution, preserving all graph controls; no new module edge or ESLint edit.
 
-The final isolated tarball consumer uses public inventory/shipping entries, real nonempty native stock reads and selected reference-source shipping reads, an injected managed rate fixture and picker/settings/manual UI. Injected managed address mutation proves forwarding and UI continuity, not durable host support. The new rollback-only shipping pgTAP file fills own-session address mutation/default and frozen-destination gaps; existing row-isolation, address-change, settings and audit files are reused. Native address writes remain UNSUPPORTED with binding/Core readiness refusal; their parity row stays PENDING for a separate bounded writer decision. native flat-rate save needs a commerce_settings grant not shipped in the baseline; forward-migration decision. Complete managed host support retains its gate below. Incumbent empty dictionary 502 and withdrawn-selection legacy fallback remain unchanged; no new locale copy.
+The final isolated tarball consumer uses public inventory/shipping entries, real nonempty native stock reads and selected reference-source shipping reads, an injected managed rate fixture and picker/settings/manual UI. Injected managed address mutation proves forwarding and UI continuity, not durable host support. The new rollback-only shipping pgTAP file fills own-session address mutation/default and frozen-destination gaps; existing row-isolation, address-change, settings and audit files are reused. Native address writes remain UNSUPPORTED with binding/Core readiness refusal; their parity row stays PENDING for a separate bounded writer decision. The native flat-rate follow-up below closes the forward-migration decision through a seed and named lane, without a grant. Complete managed host support retains its gate below. Incumbent empty dictionary 502 and withdrawn-selection legacy fallback remain unchanged; no new locale copy.
 
 ## Parity (PENDING rows)
 
@@ -277,11 +277,42 @@ Executed evidence is scoped to the named test and store. Remaining required outc
 | Empty dictionary 502, withdrawn-selection legacy fallback, static/dictionary/canonical point and fresh-selection equivalence | P5b: selected static/dictionary binding and isolated installed selection PASS; W6/W8 source/canonical-point/fresh-option/fallback characterizations re-executed PASS. Empty dictionary remains 502; no live-provider certification inferred. |
 | Address ownership/default/mutation, frozen destination and ACL; absent native writer; offline versus no-match/manual save | P5b: binding identity/conflict/denied mutation, installed captured-row/manual/offline versus no-match, actual managed own-row/default/mutation/ACL and frozen snapshot subset PASS. Native address writes remain UNSUPPORTED/PENDING: separately bounded writer/schema decision. Full managed adapter idempotency/conflict and host readback remain PENDING, M06 lead before S1; no fixture-to-host equivalence. |
 | Flat-rate read/save/audit/refusal and useful stock/settings/picker/manual/address UI through selected real stores | P5a isolated installed stock→catalog bundle composition PASS with an injected normalized reader; this does not prove production native new-purchase SQL or managed reader semantics. P5b installed stock/reference selection and picker/settings/manual conformance PASS with injected managed rate/address fixtures; audit/denial SQL primitives PASS. Managed runtime rate read/save authority remains PENDING (current shipped service_role table refusal; M06 lead host/grant decision before S1). No new locale copy. |
-| native flat-rate save needs a commerce_settings grant not shipped in the baseline; forward-migration decision | PENDING |
+| native flat-rate save needs a commerce_settings grant not shipped in the baseline; forward-migration decision | CLOSED by design B: position-72 `20261021200000_shipping_flat_rate_seed` seed-only forward and named role-free native rate capability; no database grant. |
+| Native new-purchase stock read | deferred to the native-backend parity round (owner 2026-10-21), second after M05 bundle-1 |
+| native shipping-rate save has no durable audit | Native-backend parity gap: best-effort unsupported audit is swallowed by the incumbent handler; no durable audit claimed. |
 
-Native new-purchase stock read: **PENDING**. No implementation exists. P5a's explicit unsupported capability/refusal is composition evidence only. Gate: owner decision on the observed-stock subset versus full admission/exposure semantics, recommended for the native-backend parity round; any reader/forward/writer needs its own bounded scope. C5 retains the adopter-owned reader.
+### Native flat-rate decision (2026-10-21)
+
+Owner: "M06: do the native flat-rate save grant now (forward migration, least privilege); defer the native stock read to the native-backend parity round."
+
+The coordinator ruled B as the delegate on 2026-10-21. A literal grant would
+contradict the portable kernel's deliberate absence of `service_role`
+(`packages/platform/src/data/postgresGateway.ts:40`). A native capability instead
+gets a named role-free lane because the lane name is the access rule. The sole
+forward statement seeds the fixed setting without overwriting it or changing
+privileges. Native save requires its port and Core readiness for the new forward;
+managed host-save remains PENDING.
+
+Audit ruling 2: the native bundle routines append principal-attributed history to
+`catalog_bundle_write_events`, whose action constraint accepts only seven bundle
+actions. It cannot record `shipping_rate_change` without an out-of-scope schema
+change; the portable chain has no generic `record_admin_audit_event`. The native
+port explicitly reports unsupported audit, and the existing best-effort handler
+swallows it. Durable native shipping-rate audit is a parity gap.
+
+Native new-purchase stock read is deferred to the native-backend parity round
+(owner 2026-10-21), second after M05 bundle-1. No implementation is added; C5
+retains the adopter-owned reader. The next row records the native audit gap.
+
+The proof adds six semantic cases and extends incumbent binding and
+installed-consumer cases.
 
 ## Budgets
+
+Native flat-rate follow-up allocation: six new semantic cases; M06 reaches 96/100
+under the coordinator's current count. Earlier allocation estimates below are
+historical; generated invocations count separately. No new package source file
+or generated file-boundary invocation is introduced.
 
 Static allocation: inventory 36 new cases / 14.7 s; shipping 14 / 5.3 s; P4–S1 nine / 5.7 s. Total: 59 new + 36 C1 = 95/100, leaving five cases; 25.7 s public + 3.0 s C1 allowance = 28.7/30 s. Equivalent witness transplants still count as actual public invocations/runtime. Estimates do not establish hosted median/p90.
 
