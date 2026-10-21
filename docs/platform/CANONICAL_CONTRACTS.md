@@ -44,9 +44,11 @@ refusals and never claim pre-dispatch absence.
 
 Verified events retain their event ID and provider time (or null), with a stable
 fingerprint independent of receipt time. Method lifecycle facts stay distinct
-from money. Missing refund evidence is refused; valid `amount_refunded` is a
+from money and retain provider time and replacement facts. When provider time
+is absent, the method outcome remains but the lifecycle field is omitted.
+Missing refund evidence is refused; valid `amount_refunded` is a
 cumulative snapshot with original money and a stable operation ID. Disputes
-remain refused until the additive M07 outcome is available. Readback preserves
+are emitted as the `disputed` money outcome with original payment identity and money. Readback preserves
 `active_checkout` and `recovery` semantics, rejects mismatched identity/money,
 and keeps uncertainty unknown. Close requires injected cancellation; incomplete
 metadata search never enables exact absence. Refund creation and a split

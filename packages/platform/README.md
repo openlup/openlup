@@ -1073,7 +1073,7 @@ structural client, `webhookSigningSecrets`, explicit `mode`, required
 and configures the SDK, associates saved methods with customers and confirms
 off-session requests. Interactive methods follow the declared card/wallet offer.
 Importing creates no I/O or default binding. The adapter advertises the host
-currency list; the exported descriptor keeps an empty list.
+currency list as a frozen copy; the frozen exported descriptor keeps an empty list.
 Account-specific readiness remains pending TEST verification. Exact absence,
 refund creation and split authorization/capture are unsupported. Cancellation
 is enabled only when the injected client supplies it. See the
@@ -1086,3 +1086,6 @@ refund charge snapshot and failure-evidence provenance when present. They exclud
 raw bodies, client handoffs and customer authorization and do not affect event
 IDs or fingerprints. The offline adapter conformance witness uses two distinct
 intents and attempts with separate money and provider references.
+Method evidence carries the donor lifecycle and replacement facts through M07
+projection when provider time is present. Without provider time it retains the
+method outcome and omits the lifecycle instead of inventing a transition time.
