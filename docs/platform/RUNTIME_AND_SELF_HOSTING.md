@@ -174,9 +174,25 @@ Method evidence registration data contains neutral provider references, method
 kind and status. The host's `resolveMethodOwner` supplies the client and optional
 subscription identity before projection; untrusted adapter ownership fields are
 ignored. Without that resolver no reusable registration carrier is produced.
-The native schema descriptor still refuses method setup. The reference ingress
-clock switch, remaining host reader tests and runtime admission belong to the
-later binding phase; this repair composition changes none of those boundaries.
+The native schema descriptor still refuses method setup. The direct truth
+binding now supplies its host executor to `createPaymentServices`; each runtime
+unit closes its scope after either result. `bindM07Payments` refuses unknown or
+unavailable selections. The existing bundle composer has one optional payments
+binder; it installs no cron or dormant-event handler.
+
+`bindM07PaymentIngress` selects the package verified ingress only when explicitly
+requested. No existing provider route is remounted. The reference store accepts
+the adapter fingerprint on the first receipt and reads the winning stored receipt
+instant on replay. D11 deliberately changes redelivery application and hooks to
+reuse that first instant, preventing a later provider timestamp from shifting a
+cycle. Missing durable receipt evidence fails closed. Historical rows retain
+their evidence; this change adds no backfill or schema migration.
+
+Missing audit bags supply no gateway failure diagnosis or alias activation fact;
+recurring saved-method resolution still requires explicit consent. The profile
+reader retains its existing default alias presentation, which is not recurring
+execution authority. These four reader paths are tested directly even though the
+opt-in selector mounts no live route feeding them.
 
 
 ## Self-host boundary
@@ -193,6 +209,14 @@ It must fail safely when a required dependency is absent rather than silently
 substituting a different business behaviour.
 
 ## Opt-in disposable subscription reference
+
+The inert [payments binding](../../server/runtime/public-reference/m07PaymentBinding.ts)
+selects injected truth services or verified ingress only by explicit host choice.
+Unknown selections refuse and omission stays cold. No existing provider route or
+schedule is installed. Selected ingress retains its adapter fingerprint and first
+stored receipt clock on replay (D11); missing durable clock evidence refuses.
+The direct truth host separately opens one database scope per runtime unit and
+closes it after success or failure through the package binding.
 
 The inert [shipping binding](../../server/runtime/public-reference/m06ShippingBinding.ts)
 requires selected ports and host authority. Native address writes remain refused.

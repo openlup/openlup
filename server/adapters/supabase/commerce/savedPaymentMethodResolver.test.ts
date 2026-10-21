@@ -54,7 +54,7 @@ describe("Supabase saved payment method resolver", () => {
     })).resolves.toBeNull();
   });
 
-  it("resolves subscription reuse only for an explicitly stored Model O PAYID", async () => {
+  it("resolves subscription reuse only for an explicitly stored Model O PAYID and refuses missing-audit recurring consent", async () => {
     const modelO = createSupabaseSavedPaymentMethodResolver(fakeClient({
       clientRow: { id: CLIENT_ID },
       methodRow: {
@@ -87,6 +87,12 @@ describe("Supabase saved payment method resolver", () => {
       recurringModel: "O",
     });
     await expect(modelM.resolveSavedPaymentMethod(input)).resolves.toBeNull();
+    const missingAudit = createSupabaseSavedPaymentMethodResolver(fakeClient({
+      clientRow: { id: CLIENT_ID },
+      methodRow: { id: METHOD_ID, provider_method_ref: "method-without-audit", expires_at: null,
+        raw_provider_payload: { openlupEvidence: {} } },
+    }));
+    await expect(missingAudit.resolveSavedPaymentMethod(input), "Missing audit and consent refuse recurring saved-method execution").resolves.toBeNull();
   });
 
   it("fails closed when the auth user does not own the checkout client", async () => {

@@ -78,7 +78,11 @@ which belongs to the private overlay and is not part of the published tree.
 
 The experimental [payments entry](../../../packages/platform/README.md#payments-prepared-attempts) contributes injected ordering and type-only adapter contracts. The reference facade remains unchanged; this source contribution does not activate a provider or establish durable-store parity.
 
-The reference webhook handler now defaults to `require-evidence` for refunds: missing/null kind or required payment money/identity leaves the terminal result unapplied. Explicit full/partial evidence remains valid; a host may explicitly choose `legacy-assume-full`. The package ingress accepts snapshot, delta and full-reversal observations and preserves durable first-receipt time. Reference composition and its existing clock behavior stay unchanged until the later binding step.
+The reference webhook handler now defaults to `require-evidence` for refunds: missing/null kind or required payment money/identity leaves the terminal result unapplied. Explicit full/partial evidence remains valid; a host may explicitly choose `legacy-assume-full`. The package ingress accepts snapshot, delta and full-reversal observations and preserves durable first-receipt time. The reference selected ingress now carries the adapter fingerprint to first-receipt
+storage. Its replay application and hooks reuse the durable first instant (D11),
+even when a provider timestamp moves later. The reference handler also honors the
+store-returned instant. Missing replay clock evidence fails closed; no existing
+provider route is automatically moved to the opt-in ingress.
 
 ## Repair and readback package seam
 

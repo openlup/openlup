@@ -192,3 +192,165 @@ migration or dependency changes.
 
 P4c repair ledger: 17 paths against the current main base, including 3 production
 UI paths and the status-only client. No new route or activation.
+
+## P4d record
+
+Bounded new-boundary hardening: refuse null money for succeeded, refunded and
+disputed adapter evidence at projection through the donor amount-mismatch
+processing-failure path, and refuse those verification fixtures in adapter
+conformance. Failed and pending evidence retain nullable money. Two added cases
+cover ingress refusal and conformance across all three settling outcomes.
+No contract type, export, migration or reference binding changes and no new response
+wording: settling evidence without money now gets the existing 503 instead of being
+acknowledged. Both added cases fail against the restored predecessor sources and pass
+after rebuilding the fix. The existing null-refund assertion now expects mismatch refusal.
+
+Self-retro: package tests require built package entries. Build the original
+sources before the reverted-source witness, and serialize rebuilds with tests.
+
+
+## P4e record
+
+Finite outcome: extend P4d's settling-money refusal to amounts that are not safe
+positive integers and blank currencies, through the existing amount-mismatch
+path before ingest. Conformance requires the same positive money. Failed and
+pending evidence retain their existing behavior. Donor and main creation,
+renewal, setup and refund paths were checked first: zero orders cannot create
+settling attempts; method setup is separate; zero refund snapshots are unproven.
+No export, migration, reference binding, provider activation or dependency change.
+Local edits and focused offline checks only; no Git writes, submission, native
+review, DCO, release or activation authority. Extend the two P4d cases with table
+rows, adding no test cases. Completion evidence belongs in the task handoff. The two extended cases fail
+against rebuilt P4d sources and pass after restoring the fix. Structural, lint
+(33 existing warnings), typecheck, both neutrality and policy/navigation checks
+pass. The wider focused payment run passes 786 tests, but one existing HTTP-wire
+suite cannot open its loopback listener in the sandbox; its two wire tests remain
+unverified. This run does not claim a fully passing payment gate.
+
+Self-retro: the positive intent constraint alone does not prove blank-currency
+refusal; the canonical order currency invariant supplies that evidence. Reuse
+the existing guard and table cases rather than introducing another validator.
+
+
+## P5 record
+
+Compatibility refactor only against P4e `4613d814`: private conformance money
+and identity annotations and the private evidence money copier now reuse the
+existing contracts. Truth fingerprinting loses three unused type imports.
+The three edited modules emit byte-identical JavaScript; public signatures,
+types, API reports, assertions and native reference facades remain unchanged.
+No export, dependency, migration, runtime helper or behavior change is included.
+Authority covers local edits and focused offline checks only; no Git writes,
+submission, DCO, native review, merge, release or activation was performed.
+
+Structural scan, lint (33 existing warnings), typecheck, API and both neutrality
+checks pass. The focused payment/reference run passes 824 tests in 69 suites;
+one HTTP-wire suite cannot open its loopback listener (EPERM), leaving two wire
+tests unexecuted. One opt-in local database case remains skipped. Full payment
+acceptance is therefore incomplete. Publication impact requires the proposed
+scoped no-impact trailer; the untracked fragment is retained for handoff.
+
+Self-retro: direct invocation initially lacked the local test binary on PATH;
+adding the existing local bin directory let the focused runner proceed. Keep
+private type reuse small: no new abstraction is needed for unchanged runtime.
+
+P5 final ledger vs `4613d814`: 5 paths, 3 production paths, 38 lines of churn; zero test edits and zero API report changes.
+
+## P6 record
+
+Payment truth scope ownership moves to `createPaymentServices`, with
+`PaymentServicesOptions` and `PaymentServices` on the contracts entry. The host
+opens and closes its existing executor. The existing bundle composer accepts one
+optional payments binder; no second registry, cron or dormant handler is added.
+Reference selection is explicit, default-off and refuses unknown capabilities.
+
+D11 is the second declared behaviour change: every caller of the reference
+payment control port (the selected verified ingress, the existing provider
+webhook handler and the captured reference checkout) applies and post-processes
+a redelivery at the first stored receipt instant, rather than a later provider
+timestamp. The first insert stores the
+adapter fingerprint, independent of receipt time and audit payload; concurrent
+replays read the winning row. Missing durable receipt evidence refuses. No schema
+or existing route is activated. Four direct missing-audit reader proofs extend
+incumbent cases; profile alias presentation retains its existing fallback while
+recurring execution separately requires consent.
+
+P6 adds exactly three authored cases (two package binding cases and one cold
+reference host case); replay, reader and installed-consumer assertions extend
+existing cases. Public export additions are exactly the factory and its two
+types. The composer declares its payments slot structurally and imports
+nothing from payments, so the module graph is unchanged; the typed cold consumer
+proves the factory result fits that slot. No release or activation is claimed.
+
+
+P6 case ledger (folded properties add no cases):
+
+- D11 folded assertion → `server/domains/payment/paymentWebhookHandlers.test.ts:acknowledges canonical event redelivery with the same deterministic payment-result key and keeps the first-receipt clock on later redelivery`.
+- First-insert fingerprint folded assertion → `server/adapters/supabase/payment/paymentWebhook.test.ts:writes normalized provider events through payment-control ingest RPC, preserves the first-insert fingerprint, omits missing-audit failure reasons and refuses missing-audit alias activation`.
+- Gateway failure reason folded assertion → `server/adapters/supabase/payment/paymentWebhook.test.ts:writes normalized provider events through payment-control ingest RPC, preserves the first-insert fingerprint, omits missing-audit failure reasons and refuses missing-audit alias activation`.
+- Alias activation folded assertion → `server/adapters/supabase/payment/paymentWebhook.test.ts:writes normalized provider events through payment-control ingest RPC, preserves the first-insert fingerprint, omits missing-audit failure reasons and refuses missing-audit alias activation`.
+- Saved-method consent folded assertion → `server/adapters/supabase/commerce/savedPaymentMethodResolver.test.ts:resolves subscription reuse only for an explicitly stored Model O PAYID and refuses missing-audit recurring consent`.
+- Profile fallback folded assertion → `server/adapters/supabase/customerProfilePorts.test.ts:exposes customer address and payment-method contracts and retains missing-audit profile availability`. This discriminates a change to the existing presentation fallback; it characterizes that fallback and grants no recurring execution authority.
+- New case → `packages/platform/test/payments/bindings.test.ts:is absent when truth readiness or the selected capability is unavailable`.
+- New case → `packages/platform/test/payments/bindings.test.ts:runs selected truth through one scoped port and closes on success and failure`.
+- New case → `server/runtime/public-reference/m07PaymentBinding.test.ts:keeps the cold host default-off and uses exactly one selected executor`.
+
+## Combined delivery and test budget
+
+P4d, P4e, P5 and P6 ship as one pull request with their commits kept in order
+(coordinator speed-up); P5's commit is refactor-only with byte-identical built
+JavaScript and API reports.
+
+Module test budget (M06 counting rule: semantic `it`/`test` definitions count
+against the +100 cap; generated rows are reported separately): 59 public
+definitions plus 33 C1 witnesses = 92 of 100. Executed invocations, counting each
+parameterized row, are about 106. The +30 s runtime budget remains the binding cost.
+
+## M07 follow-ups (next wave)
+
+None is a correctness or security defect in the shipped package after P4d and P4e.
+
+- Reference repair view: the status poll can clear a host-supplied redirect action;
+  verify after the poller times out does not poll again; the poller copy is not
+  localized; one verify fixture builds a handler it never calls.
+- A route-level wrong-rail witness for the reference status route.
+- Mapping an unsupported method-setup result to an explicit refusal in the reference route.
+- A deployment-neutral reason in the verify handler's disabled response.
+- The reference card evidence normalizer's missing-amount path (the package already
+  refuses settling evidence without positive money).
+
+
+## S1 record: 0.21.0 package set
+
+Outcome (2026-10-21, main `b394df2d`): prepare core/outbox/platform `0.21.0`
+with exact pins and locks; core/outbox are unchanged republications, UI stays
+private `0.0.0`. Consume all 13 fragments: `m07-p1`, `m07-p2`, `m07-p3`,
+`m07-p4`, `m07-p4b`, `m07-p4c`, `m07-p4d`, `m07-p4e`, `m07-p5`, `m07-p6`,
+`a2-op1`, `a2-op2`, `a2-op3a`. C2 code-complete; selectors remain default-off.
+
+Published `0.20.0` baselines (downloaded bytes match registry shasum/integrity):
+
+| Package | Packed B | Registry shasum |
+| --- | ---: | --- |
+| @openlup/core | 161,695 | `045eafe05a686616fef921adedb3a7156ca0b086` |
+| @openlup/outbox | 39,459 | `aee786aded37acb7cee9f55e1d9d957b4a1d96ab` |
+| @openlup/platform | 809,376 | `604e96ed6413e161b69d8a452cd1a529e1a55fd8` |
+
+Only `pack.baseline` changes; all caps remain unchanged. M06 C4 records `0.20.0`
+published and C4-checked at #271 merge `3e0f1784`; `0.21.0` follows this merge
+and required supervisor review/final verification. The standalone
+[0.21.0 limitations](../../../packages/platform/CHANGELOG.md#0210) retain M06
+pending proof and the five M07 follow-ups.
+
+Docs cap (coordinator ruling for the owner, 2026-10-21; no cap change): the
+packed CHANGELOG keeps the current release and the two previous ones, so
+`[0.18.0]` and older move byte-identical to the non-packed
+[CHANGELOG-HISTORY.md](../../../packages/platform/CHANGELOG-HISTORY.md), and the
+[release guide](../DEVELOPMENT_AND_RELEASE.md) states the rule. The packed docs
+class measures 45,646 of 49,152 B. The release notes describe the example
+payment adapter subpaths neutrally and the README names them; the neutrality
+script's exact-file A1 subpath allowance adds only the history file, so the
+verbatim move adds no count.
+
+Self-retro: the bump CLI stages deletions → hold fragments outside the checkout
+during the version bump, then assemble notes without Git writes; no tooling change.

@@ -41,6 +41,7 @@ const adapterSubpathFiles = new Set([
   "packages/platform/test/packageBoundary.test.ts",
   "config/openlup-publication-catalog.json",
   "packages/platform/CHANGELOG.md",
+  "packages/platform/CHANGELOG-HISTORY.md",
   "docs/platform/CANONICAL_CONTRACTS.md",
   "docs/platform/ARCHITECTURE_AND_EXTENSIONS.md",
   adapterLedger,
