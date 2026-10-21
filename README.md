@@ -217,7 +217,7 @@ coverage are still progressing; follow each owner for its exact boundary.
 | Catalog and bundles | Product/SKU contracts, catalog reads and drafts, media, bundle selection and composition | [Catalog](src/domains/catalog/README.md) · [Bundles](src/domains/bundle/README.md) |
 | Pricing and promotions | Price authority, quotes, offer projection, promotion eligibility and acceptance | [Pricing](src/domains/pricing/README.md) · [Promotions](src/domains/promo/README.md) |
 | Checkout and orders | Checkout orchestration, order contracts and initial subscription activation | [Commerce](src/domains/commerce/README.md) |
-| Payments | Neutral payment contracts, prepared attempts and reference execution/reconciliation adapters; durable money-truth extraction remains in progress | [Payment](src/domains/payment/README.md) · [Current extraction](docs/platform/plans/oss-m07-payments-money-truth.md) |
+| Payments | Neutral contracts, prepared attempts, verified evidence, payment truth and reconciliation services; native-store and reference-composition work remains in progress | [Payment](src/domains/payment/README.md) · [Current extraction](docs/platform/plans/oss-m07-payments-money-truth.md) |
 | Inventory and delivery | Stock ledger, available-to-promise, reservations, demand forecasting, shipping and fulfillment contracts; package parity remains incomplete | [Inventory](src/domains/inventory/README.md) · [Shipping](src/domains/shipping/README.md) · [Fulfillment](src/domains/fulfillment/README.md) |
 | Identity and accounts | Customer sign-in, sessions, account linking, operator authorization and privacy export/erasure contracts | [Identity](docs/platform/IDENTITY.md) · [Browser account](docs/platform/IDENTITY_BROWSER_REFERENCE.md) |
 | Communications | Email rendering, consent/preferences, newsletter sync, delivery receipts and transactional dispatch | [Communications](src/domains/communications/README.md) · [Outbox](packages/outbox/README.md) |
@@ -267,8 +267,9 @@ an integration or installation boundary.
 The current work is turning existing platform capabilities into independently
 consumable packages with explicit contracts, installed-artifact checks and
 adapter conformance. Catalog/pricing/promotions and inventory/shipping have
-experimental package surfaces; payments currently exposes prepared attempts and
-port contracts while its durable truth/store/repair extraction continues.
+experimental package surfaces; payments includes prepared attempts, verified
+evidence, payment truth and reconciliation services. Native money-truth storage,
+repair and reference-composition work remain in progress.
 
 Stable-framework readiness is a separate gate (`P1-SF`): a versioned release and
 bill of materials, a thin adopter application, public extension/conformance
