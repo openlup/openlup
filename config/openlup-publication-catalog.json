@@ -4890,6 +4890,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/payments/tpay/readbackParity.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/payments/tpay/tpayCreateTransactionInput.test.ts",
       "class": "public-output"
     },

@@ -60,7 +60,10 @@ The `payments/tpay` example uses asynchronous injected certificate resolution
 and original notification bytes. Verify certificate validity and notification
 freshness: both certificate windows use an injected clock; a signed issued-at
 assertion provides provider time, otherwise time remains null. Receipt time
-participates only in freshness. Transaction identities combine payment reference
+participates only in freshness. Notification age and future-skew limits apply
+only when the signed header carries a provider issue time; without it, replay
+protection relies on host event identity plus fingerprint deduplication.
+Transaction identities combine payment reference
 and outcome; method identities combine event/alias and lifecycle outcome. The
 host deduplicates identity plus stable fingerprint. Chargeback becomes an
 explicit full reversal with original money and operation ID. Missing reversal
@@ -68,9 +71,11 @@ evidence refuses. Alias method evidence carries the donor lifecycle through M07
 projection only when signed provider time is present; without it the lifecycle
 field is omitted. Unknown alias lifecycle events refuse `unsupported-event`.
 Readback retains purpose, checks exact transaction identity/configured money,
-and reports that configured money as observed money even when the paid amount
-is zero. Unpaid pending transactions remain pending; a dated donor refusal
-reports failed. The donor's status fallback fields also govern the reversal
+and reports configured money for pending and refused results even when the paid
+amount is zero. Unpaid pending transactions remain pending; a dated donor refusal
+reports failed. Succeeded results require the donor's observed paid amount to
+equal expected money; a mismatch stays unknown for manual review. The donor's
+status fallback fields also govern the reversal
 guard, which leaves refunded/chargeback unknown for manual review, even with historical
 attempt or error refusals, for both readback purposes. Only Model O mandates
 can charge unattended. Exact absence, close, refund creation and separate

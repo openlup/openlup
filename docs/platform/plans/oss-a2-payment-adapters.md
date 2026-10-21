@@ -126,9 +126,12 @@ until O-P3 owner TEST readback; protocol witnesses do not establish activation.
 Refund creation, split authorization/capture, close and exact absence are
 unsupported. Transaction-ID readback is neither a complete bounded search nor
 absence proof. Refunded/chargeback readback stays unknown for host manual review.
-Readback reports the validated configured transaction money, including when the
-paid amount is zero; pending transactions and dated refusals retain the donor's
-pending/failed classification for both purposes. The reversal guard uses the
+Pending and refused readback report validated configured transaction money,
+including when the paid amount is zero, retaining the donor's pending/failed
+classification for both purposes. Succeeded readback requires the donor's paid
+amount to equal expected money; underpayment and overpayment stay unknown for
+manual review. Identity, configured-money and reversal checks reuse the donor
+recovery function. The reversal guard uses the
 donor's status fallback fields as well as its primary status field.
 
 Named deltas from the contributed donor:
@@ -215,7 +218,8 @@ The programme budget of +100 cases / +30 s counts net-new cases. A test carried 
 |---|---|---:|---|
 | — | `conformance.test.ts` | 1 | net-new |
 | server/adapters/tpay/declineFailureHints.test.ts | `declineFailureHints.test.ts` | 12 | moved-pending: root `server/adapters/tpay/declineFailureHints.test.ts` retires at O-P3; adopter copy at C5 |
-| — | `factory.test.ts` | 60 | net-new |
+| — | `factory.test.ts` | 61 | net-new |
+| — | `readbackParity.test.ts` | 5 | net-new: all 40 status/purpose/amount combinations, plus both success aliases (48 observations) |
 | server/adapters/tpay/tpayCreateTransactionInput.test.ts | `tpayCreateTransactionInput.test.ts` | 12 | moved-pending: adopter copy retires at C5 |
 | server/adapters/tpay/tpayDeclineEvidence.test.ts | `tpayDeclineEvidence.test.ts` | 71 | moved-pending: root `server/adapters/tpay/tpayDeclineEvidence.test.ts` retires at O-P3; adopter copy at C5 |
 | server/infra/tpay/tpayDispatchFailure.test.ts | `tpayDispatchFailure.test.ts` | 7 | moved-pending: root `server/infra/tpay/tpayDispatchFailure.test.ts` retires at O-P3; adopter copy at C5 |
@@ -232,11 +236,11 @@ The programme budget of +100 cases / +30 s counts net-new cases. A test carried 
 | — | `scripts/packages/platform-cold-consumer.test.ts` (second adapter entry) | 0 | existing case extended |
 
 Recounted with `npx --no -- vitest list --json` for every new or changed test
-file: the Tpay suite has 354 cases (293 moved-pending donor, 60 factory and 1
+file: the Tpay suite has 360 cases (293 moved-pending donor, 61 factory, 5 parity and 1
 conformance); payment allowance has 8 and neutrality has 32. The changed
 package-boundary file has 1,375 cases; its generated per-source additions are
 excluded from net-new under ruling A. The cold-consumer file has 45 existing
 cases and no O-P2 case addition.
-O-P2 adds 72 net-new cases (61 adapter, 7 payment allowance and 4 neutrality),
-bringing O-P1 plus O-P2 to 91 net-new cases. Moved-pending donor and generated
+O-P2 adds 78 net-new cases (67 adapter, 7 payment allowance and 4 neutrality),
+bringing O-P1 plus O-P2 to 97 net-new cases. Moved-pending donor and generated
 boundary cases do not count toward that total; no donor retirement is claimed.

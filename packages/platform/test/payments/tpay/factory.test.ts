@@ -421,6 +421,23 @@ it("preserves purpose and exact identity/money checks on readback", async () => 
   expect(await adapter.readbackPort.readPayment({ identity, expectedMoney: { ...expectedMoney, amountMinor: 0 }, purpose: "recovery" }))
     .toMatchObject({ kind: "unknown" });
 });
+it("never reports underpaid or overpaid succeeded readback with expected money (I-1/J-1)", async () => {
+  for (const status of ["paid", "correct"]) {
+    for (const paidAmount of ["10.00", "20.00", "30.00"]) {
+      for (const purpose of ["active_checkout", "recovery"] as const) {
+        const good = config();
+        good.http.fetchImpl = vi.fn(async url => ({ ok: true, status: 200, text: async () => "",
+          json: async () => url.endsWith("/oauth/auth") ? { access_token: "fixture", expires_in: 7200 }
+            : { transactionId: "api-1", status, amount: "25.99", paidAmount, currency: "PLN" } }));
+        const identity = { provider: "tpay", providerPaymentRef: "api-1", intentRef: "intent", attemptRef: "attempt" };
+        const expectedMoney = { amountMinor: 2599, currency: "PLN" };
+        const result = await createTpayPaymentAdapter(good).readbackPort.readPayment({ identity, expectedMoney, purpose });
+        expect(result).toEqual({ identity, expectedMoney, purpose, kind: "unknown", reason: "indeterminate" });
+        expect(result).not.toMatchObject({ kind: "succeeded", observedMoney: expectedMoney });
+      }
+    }
+  }
+});
 it.each((["active_checkout", "recovery"] as const).flatMap(purpose => [
   { purpose, label: "unpaid pending", status: "pending", paidAmount: "0.00", amount: "25.99", payments: {}, kind: "pending", occurredAt: null },
   { purpose, label: "dated refusal", status: "pending", paidAmount: "0.00", amount: "25.99",

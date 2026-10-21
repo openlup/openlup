@@ -75,6 +75,7 @@ export function createTpayPaymentAdapter(config: TpayPaymentAdapterConfig): Paym
   const client = createTpayHttpClient({ ...config.http, now: () => now() * 1000 });
   const execution = createTpayPaymentExecutionAdapter({ client, ...config.urls,
     modelOActivationEnabled: config.modelOActivationEnabled });
+  const reconciliation = createTpayPaymentReconciliationProvider(client);
   const donorInput = (input: Parameters<PaymentAttemptPort["execute"]>[0]): PaymentExecutionInput => {
     if (input.mode !== config.mode || !["initial", "recovery", "renewal-unattended"].includes(input.purpose)
       || !input.attemptRef || !input.intentRef || !input.fingerprint || !input.providerIdempotencyKey
@@ -177,19 +178,18 @@ export function createTpayPaymentAdapter(config: TpayPaymentAdapterConfig): Paym
         const base = { identity: input.identity, expectedMoney: input.expectedMoney, purpose: input.purpose };
         if (input.identity.provider !== "tpay" || !input.identity.providerPaymentRef) return { ...base, kind: "unsupported" };
         try {
-          const transaction = await client.getTransaction(input.identity.providerPaymentRef);
-          const observed = await createTpayPaymentReconciliationProvider({ getTransaction: async () => transaction }).readPayment({
-            providerPaymentId: input.identity.providerPaymentRef, purpose: input.purpose,
+          const reading = await reconciliation.readRecoveryPayment({
+            providerPaymentId: input.identity.providerPaymentRef, purpose: input.purpose, attempt: input.expectedMoney,
           });
-          const status = observed.providerStatus?.trim().toLowerCase();
-          if (status === "refunded" || status === "chargeback") return unknown(base);
-          const configured = Math.round(Number(transaction.amount) * 100);
-          if (transaction.transactionId !== input.identity.providerPaymentRef || !Number.isSafeInteger(configured)
-            || configured <= 0 || configured !== input.expectedMoney.amountMinor
-            || transaction.currency?.toUpperCase() !== input.expectedMoney.currency.toUpperCase()
+          const observed = reading.status;
+          if (!reading.identityMatches || !reading.configuredMoneyMatches || reading.manualReviewRequired
+            || !Number.isSafeInteger(input.expectedMoney.amountMinor) || input.expectedMoney.amountMinor <= 0
             || observed.status === "unknown") return unknown(base);
-          // Readback identifies the configured obligation; unpaid transactions legitimately have paidAmount zero.
-          return { ...base, kind: observed.status, observedMoney: { amountMinor: configured, currency: transaction.currency!.toUpperCase() },
+          // Success must match paid money; pending/refused identify the configured obligation even when unpaid.
+          if (observed.status === "succeeded" && (observed.amountMinor !== input.expectedMoney.amountMinor
+            || observed.currency !== input.expectedMoney.currency.toUpperCase())) return unknown(base);
+          return { ...base, kind: observed.status, observedMoney: { amountMinor: input.expectedMoney.amountMinor,
+            currency: input.expectedMoney.currency.toUpperCase() },
             providerOccurredAt: observed.occurredAt };
         } catch { return unknown(base); }
       },

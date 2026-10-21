@@ -88,7 +88,7 @@ export interface PaymentProviderRecoveryProvider {
     providerSessionId: string | null }): string | null;
   readPayment(input: { providerPaymentId: string; attempt?: ClaimedPaymentAttempt;
     purpose?: ProviderReadPurpose }): Promise<ProviderReconciliationStatus>;
-  readRecoveryPayment(input: { providerPaymentId: string; attempt: ClaimedPaymentAttempt;
+  readRecoveryPayment(input: { providerPaymentId: string; attempt: Pick<ClaimedPaymentAttempt, "amountMinor" | "currency">;
     purpose?: ProviderReadPurpose }): Promise<{ status: ProviderReconciliationStatus; identityMatches: boolean;
       configuredMoneyMatches: boolean; manualReviewRequired: boolean; clientAction: ProviderRecoveryAction | null }>;
   closePayment?(input: { providerPaymentId: string }): Promise<ProviderReconciliationStatus>;

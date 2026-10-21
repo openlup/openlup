@@ -1131,7 +1131,8 @@ stays null. `maxNotificationAgeSeconds` defaults to seven days, a generous
 assumption pending confirmation of the provider retry schedule. Signed issue time
 more than `maxClockSkewSeconds` (default 300) after receipt refuses as stale;
 both freshness limits must be finite and nonnegative. Host dedupe
-uses exact event identity plus stable fingerprint when time is absent. Receipt
+uses exact event identity plus stable fingerprint when time is absent. The age
+and future-skew limits apply only when the signed header carries a provider issue time. Receipt
 time is used only for freshness. Transaction identity includes outcome class;
 method identity includes event/alias plus outcome.
 
@@ -1159,7 +1160,10 @@ cards are not offered by this factory. Account offers
 remain `verification_pending` until owner TEST readback. Chargeback observations carry full reversal,
 original money and stable operation identity; refunded/chargeback readback stays
 unknown for manual review, including historical attempt/error refusals in either
-readback purpose. There is no close or exact-absence port. Refund
+readback purpose. Pending and refused readback report validated configured money,
+including when the paid amount is zero. Succeeded readback requires the donor's
+observed paid amount to equal expected money; underpayment and overpayment remain
+unknown for manual review. There is no close or exact-absence port. Refund
 creation and authorization/capture separation are unsupported. See the
 [A2 ledger](../../docs/platform/plans/oss-a2-payment-adapters.md#o-p2-boundary-and-named-deltas).
 
