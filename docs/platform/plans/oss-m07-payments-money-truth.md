@@ -354,3 +354,33 @@ verbatim move adds no count.
 
 Self-retro: the bump CLI stages deletions → hold fragments outside the checkout
 during the version bump, then assemble notes without Git writes; no tooling change.
+
+## C4 record: 0.21.0 publication readback
+
+S1 merged as `a1bdf8eeadf5706cc24b4a14747588f57c7ab138` (#288); its tree equals
+the reviewed and witnessed head `b722d9f8`. One authorized dispatch of
+`publish-package.yml` (package `all`, version `0.21.0`, target that commit, the
+reviewed `[0.21.0]` body, sha256 `cb918d08…545aed`) ran as run 39686596477; the
+owner approved the protected `release` environment, and the three
+`publish-packages.yml` runs completed on 2026-10-21. npm `latest` is `0.21.0`
+for all three packages.
+
+C4 readback on 2026-10-21, against the published packages: **PASS, 4/4**.
+
+- Registry integrity: each downloaded tarball matches its `dist.integrity` and
+  `dist.shasum` — core `ac58095053ee349a85e151f565dbec6d99ba2b4c`, outbox
+  `3c84fe085237831c2bebdd88634b282b6bd1c89e`, platform
+  `ba508c97229e4fac836de54ac69a8b15bddb18b0`.
+- Content equivalence: the extracted published trees are identical to the
+  tarballs witnessed from the reviewed tree (core 209, outbox 41, platform
+  1,398 files); compressed bytes differ after the workflow's repack.
+- Provenance: SLSA v1 statements bind each tarball to `publish-packages.yml`,
+  the tag `openlup-{core,outbox,platform}-v0.21.0` and `gitCommit`
+  `a1bdf8eeadf5706cc24b4a14747588f57c7ab138`; each remote tag dereferences to
+  that commit.
+- `npm audit signatures`: 4 verified registry signatures and 4 verified
+  attestations; `npm audit` reports 0 vulnerabilities.
+
+The M07 and A2 release set is published; adopter adoption starts from these
+versions. The known limitations and the five M07 follow-ups in the `[0.21.0]`
+notes are unchanged.
