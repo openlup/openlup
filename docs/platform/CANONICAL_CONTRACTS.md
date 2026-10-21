@@ -48,12 +48,52 @@ from money and retain provider time and replacement facts. When provider time
 is absent, the method outcome remains but the lifecycle field is omitted.
 Missing refund evidence is refused; valid `amount_refunded` is a
 cumulative snapshot with original money and a stable operation ID. Disputes
-are emitted as the `disputed` money outcome with original payment identity and money. Readback preserves
+are emitted as the `disputed` money outcome with the original payment identity
+and the dispute amount the provider reports, which can differ from the payment amount. Readback preserves
 `active_checkout` and `recovery` semantics, rejects mismatched identity/money,
 and keeps uncertainty unknown. Close requires injected cancellation; incomplete
 metadata search never enables exact absence. Refund creation and a split
 between authorization and capture remain unsupported. Account-dependent offers
 remain pending TEST evidence; see [A2](plans/oss-a2-payment-adapters.md).
+
+The `payments/tpay` example uses asynchronous injected certificate resolution
+and original notification bytes. Verify certificate validity and notification
+freshness: both certificate windows use an injected clock; a signed issued-at
+assertion provides provider time, otherwise time remains null. Receipt time
+participates only in freshness. Notification age and future-skew limits apply
+only when the signed header carries a provider issue time; without it, replay
+protection relies on host event identity plus fingerprint deduplication.
+Transaction identities combine payment reference
+and outcome; method identities combine event/alias and lifecycle outcome. The
+host deduplicates identity plus stable fingerprint.
+Currencyless money notifications preserve the paid amount and bind to the adapter's single declared currency; multiple declared currencies refuse as malformed.
+Chargeback becomes an
+explicit full reversal with original money and operation ID. Missing reversal
+evidence refuses. Alias method evidence carries the donor lifecycle through M07
+projection only when signed provider time is present; without it the lifecycle
+field is omitted. Unknown alias lifecycle events refuse `unsupported-event`.
+Readback retains purpose, checks exact transaction identity/configured money,
+and reports configured money for pending and refused results even when the paid
+amount is zero. Unpaid pending transactions remain pending; a dated donor refusal
+reports failed. Succeeded results require the donor's observed paid amount to
+equal expected money; a mismatch stays unknown for manual review. The donor's
+status fallback fields also govern the reversal
+guard, which leaves refunded/chargeback unknown for manual review, even with historical
+attempt or error refusals, for both readback purposes. Only Model O mandates
+can charge unattended. Exact absence, close, refund creation and separate
+capture are unsupported; account-dependent offers remain verification_pending.
+Bank redirects, one-time codes and unattended Model O attempts are supported
+when the host supplies transient payer and method selection through the
+canonical M07 P3 attempt input.
+Every flow requires explicit payer context. Missing payer/channel/code refuses
+with exact before-dispatch evidence and neutral data-correction classification.
+Payer, authorization, donor payloads and provider prose are excluded from the
+returned diagnostics. Alias registration is not exposed by this factory.
+Verified audit facts preserve the donor-filtered transaction and alias fields;
+missing failure provenance stays absent. Payer, authorization, certificates and
+raw bodies are excluded. Audit fields do not participate in event identity or
+fingerprints. Offline multi-subject M07 P2 conformance covers replay, chargeback,
+exact readback and verification refusals without establishing account activation.
 
 ## Canonical status
 

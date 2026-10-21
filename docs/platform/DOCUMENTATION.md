@@ -69,6 +69,18 @@ immutable release; see the [install support policy](../../.github/INSTALL_SUPPOR
 
 ## Ownership
 
+The opt-in payment example's private capability descriptor is catalogued with
+its adapter sources; the existing public re-export is unchanged. The
+[payment contract](CANONICAL_CONTRACTS.md#opt-in-payment-example) owns the
+single-currency notification binding and ambiguous-currency refusal.
+
+The opt-in payment readback parity witness is catalogued as a public test output.
+It runs the contributed provider interpretation with the package-local donor host
+money check; the [A2 ledger](plans/oss-a2-payment-adapters.md#case-ledger-coordinator-budget-ruling-a) owns its
+parameterized case accounting, and the [payment contract](CANONICAL_CONTRACTS.md#opt-in-payment-example)
+owns readback behavior. The catalogue row makes that witness available in the
+public tree without adding a package export or claiming provider activation.
+
 The root README's [Velipet storefront screenshot](assets/velipet-storefront-en.png)
 is a public, English-language first-party application illustration. Its branding
 and content belong to that application; it is not a generic reference UI,

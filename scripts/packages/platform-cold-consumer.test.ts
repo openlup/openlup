@@ -426,7 +426,7 @@ it("P1 payments: installed packed consumer imports both entries and proves injec
   provePaymentsConsumer(consumer);
 });
 
-it("proves the opt-in installed payment adapter without SDK or import-time I/O", () => {
+it("proves both opt-in installed payment adapters without SDK or import-time I/O", () => {
   const consumer = pristinePackedA1Fixture();
   assertConsumerIsolation(consumer, root);
   provePaymentAdapterConsumer(consumer);
