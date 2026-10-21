@@ -31,6 +31,30 @@ abandonment retain their existing semantics. The
 [eight-case ledger](plans/oss-a1-communications-adapters.md#p3-explicit-reference-binding)
 names the offline falsifiers and their limits.
 
+## Opt-in payment example
+
+The experimental Node `payments/stripe` subpath exposes only its factory,
+configuration type and observed capability descriptor. The host owns SDK and
+transport construction, customer association, mode policy and explicit activation.
+No import installs a route, binding or schedule. Attempt identity, fingerprint
+and provider idempotency key pass through to the donor execution seam. A
+client-confirmed handoff carries a transient secret; diagnostics carry neither
+that payload nor provider prose. Synchronous issuer declines carry neutral
+refusals and never claim pre-dispatch absence.
+
+Verified events retain their event ID and provider time (or null), with a stable
+fingerprint independent of receipt time. Method lifecycle facts stay distinct
+from money and retain provider time and replacement facts. When provider time
+is absent, the method outcome remains but the lifecycle field is omitted.
+Missing refund evidence is refused; valid `amount_refunded` is a
+cumulative snapshot with original money and a stable operation ID. Disputes
+are emitted as the `disputed` money outcome with original payment identity and money. Readback preserves
+`active_checkout` and `recovery` semantics, rejects mismatched identity/money,
+and keeps uncertainty unknown. Close requires injected cancellation; incomplete
+metadata search never enables exact absence. Refund creation and a split
+between authorization and capture remain unsupported. Account-dependent offers
+remain pending TEST evidence; see [A2](plans/oss-a2-payment-adapters.md).
+
 ## Canonical status
 
 Each domain owns its canonical status vocabulary, allowed transitions, and

@@ -200,7 +200,7 @@ describe("package source boundary", () => {
 
   it("scans the whole package source", () => {
     expect(files.map(({ path }) => path)).toEqual(expect.arrayContaining([
-      "payments/index.ts", "payments/contracts/index.ts",
+      "payments/index.ts", "payments/contracts/index.ts", "payments/stripe/index.ts",
       "shipping/index.ts", "shipping/contracts/index.ts",
       "catalog/index.ts", "catalog/contracts/index.ts",
       "catalog/catalogSkuEnvelope.ts", "catalog/catalogSkuEnvelopeMapper.ts", "catalog/catalogDraftStore.ts", "composition/catalogContribution.ts",
@@ -253,7 +253,7 @@ describe("package source boundary", () => {
     const manifest = JSON.parse(readFileSync(fileURLToPath(new URL("../package.json", import.meta.url)), "utf8")) as {
       exports: Record<string, unknown>;
     };
-    assertModuleExports(modules, graph, manifest.exports, (path) => existsSync(join(SOURCE_ROOT, path)), ["communications/resend", "communications/klaviyo"]);
+    assertModuleExports(modules, graph, manifest.exports, (path) => existsSync(join(SOURCE_ROOT, path)), ["communications/resend", "communications/klaviyo", "payments/stripe"]);
   });
 
   it.each(files)("$path reaches another module only through that module's public entry", ({ path, source }) => {

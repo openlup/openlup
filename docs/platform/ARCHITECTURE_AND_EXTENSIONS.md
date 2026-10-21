@@ -375,6 +375,16 @@ Size growth is not a topology trigger. When measured growth exceeds a cap,
 raise that cap in a reviewed change with the applicable maintainer read of the
 proposed budget; follow [Package artifact limits](../../.github/VERSIONING_AND_EOL.md#package-artifact-limits).
 
+The opt-in Node `payments/stripe` example follows the same placement decision:
+it shares the platform package's release and maintenance owner and composes M07
+payment ports. The host injects a structural client, secrets and mode; no SDK
+import, dependency, environment policy, default binding or new npm lifecycle is
+added. Refund creation and authorization/capture separation are unsupported;
+exact absence is omitted because the donor search cannot prove completeness.
+Cancellation is offered only when injected. Account readiness stays pending
+owner TEST evidence. See [the payment adapter contract](CANONICAL_CONTRACTS.md#opt-in-payment-example)
+and [A2 ledger](plans/oss-a2-payment-adapters.md).
+
 The A1 email adapter follows this placement decision at the opt-in Node subpath
 `communications/resend`, within the existing platform release
 and maintenance lifecycle. It adapts the existing guarded email transport,

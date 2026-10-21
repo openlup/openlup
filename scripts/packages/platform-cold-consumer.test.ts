@@ -5,7 +5,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { isolatedConsumerEnv } from "./pack-manifest-input.ts";
 import { afterAll, afterEach, beforeAll, expect, it } from "vitest";
-import { provePaymentsConsumer, installA1HostBinding, proveA1ReferenceBindingConsumer, ADAPTER_ENTRIES, assertConsumerIsolation, assertExportInventory, compileConsumer, consumerNode, NON_ADAPTER_ENTRIES, OPTIONAL_PEERS, proveAdapterRefusals, proveOidcRefusals, provePostgresOperations, proveNativeCommunicationsOperations, proveResendConsumer, proveMarketingSyncConsumer, runPlatformColdConsumer } from "./platform-cold-consumer.ts";
+import { provePaymentAdapterConsumer, provePaymentsConsumer, installA1HostBinding, proveA1ReferenceBindingConsumer, ADAPTER_ENTRIES, assertConsumerIsolation, assertExportInventory, compileConsumer, consumerNode, NON_ADAPTER_ENTRIES, OPTIONAL_PEERS, proveAdapterRefusals, proveOidcRefusals, provePostgresOperations, proveNativeCommunicationsOperations, proveResendConsumer, proveMarketingSyncConsumer, runPlatformColdConsumer } from "./platform-cold-consumer.ts";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const temporary: string[] = [];
@@ -424,4 +424,10 @@ it("P1 payments: installed packed consumer imports both entries and proves injec
   const consumer = pristinePackedA1Fixture();
   assertConsumerIsolation(consumer, root);
   provePaymentsConsumer(consumer);
+});
+
+it("proves the opt-in installed payment adapter without SDK or import-time I/O", () => {
+  const consumer = pristinePackedA1Fixture();
+  assertConsumerIsolation(consumer, root);
+  provePaymentAdapterConsumer(consumer);
 });

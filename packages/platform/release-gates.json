@@ -389,6 +389,19 @@
       ],
       "entrypoint": "dist/payments/contracts/index.d.ts",
       "snapshot": "api/payments-contracts.api.md"
+    },
+    "./payments/stripe": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/payments/stripe/conformance.test.ts",
+        "test/payments/stripe/factory.test.ts",
+        "test/payments/stripe/stripeWebhookNormalizer.test.ts",
+        "test/payments/stripe/stripeSandboxPaymentExecutionAdapter.test.ts"
+      ],
+      "entrypoint": "dist/payments/stripe/index.d.ts",
+      "snapshot": "api/payments-stripe.api.md"
     }
   },
   "pack": {

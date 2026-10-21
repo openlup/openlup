@@ -37,6 +37,7 @@ export const ADAPTER_ENTRIES = [
   "communications",
   "communications/klaviyo",
   "communications/resend",
+  "payments/stripe",
   "data",
   "identity",
   "job-ledger",
@@ -312,6 +313,46 @@ process.exit(0);
 }
 
 /** Runs from the installed artifact with optional peers physically absent. */
+/** Offline opt-in payment proof from installed bytes with no SDK or ambient I/O. */
+export function provePaymentAdapterConsumer(consumer: string): void {
+  consumerNode(consumer, `
+import assert from "node:assert/strict";
+import { createRequire, syncBuiltinESMExports } from "node:module";
+import http from "node:http";
+import https from "node:https";
+import net from "node:net";
+import fs from "node:fs";
+const require = createRequire(import.meta.url);
+const sdk = ["str", "ipe"].join("");
+for (const name of [sdk, "@" + sdk + "/" + sdk + "-js"]) {
+ assert.throws(() => require.resolve(name), error => ["MODULE_NOT_FOUND", "ERR_MODULE_NOT_FOUND"].includes(error.code));
+}
+const forbidden = () => { throw Error("ambient I/O forbidden"); };
+globalThis.fetch = forbidden; http.request = forbidden; https.request = forbidden; net.connect = forbidden;
+for (const operation of ["writeFile", "writeFileSync"]) fs[operation] = forbidden;
+syncBuiltinESMExports();
+const adapter = await import("@openlup/platform/payments/stripe");
+assert.deepEqual(Object.keys(adapter).sort(), ["createStripePaymentAdapter", "stripePaymentCapabilities"]);
+let calls = 0;
+const configured = adapter.createStripePaymentAdapter({ mode: "test", supportedCurrencies: ["EUR"], webhookSigningSecrets: ["fixture"], client: {
+ createPaymentIntent: async (input, options) => { calls++; assert.equal(options.idempotencyKey,"host-key");
+  assert.equal(input.metadata.providerRequestFingerprint,"host-fingerprint");
+  return {id:"pi_fixture",status:"requires_confirmation",client_secret:"transient_fixture"}; },
+ retrievePaymentIntent: async () => ({id:"pi_fixture",status:"processing",amount:2599,currency:"eur"})
+} });
+assert.equal(calls,0);
+const input = {attemptRef:"attempt-a",intentRef:"intent-a",fingerprint:"host-fingerprint",providerIdempotencyKey:"host-key",
+ money:{amountMinor:2599,currency:"EUR"},mode:"test",purpose:"initial"};
+const result = await configured.attemptPort.execute(input);
+assert.equal(calls,1); assert.equal(result.handoff.payload,"transient_fixture");
+assert(!JSON.stringify(result.diagnostics).includes("transient_fixture"));
+await assert.rejects(() => configured.attemptPort.execute({...input,mode:"live"}));
+assert.equal(calls,1); assert.equal(configured.absencePort,undefined);
+assert.equal(configured.capabilities.refundCreate,"unsupported");
+assert.deepEqual(await configured.verifyPort.verifyAndNormalize({rawBody:Buffer.from("{}"),headers:{},receivedAt:"2026-10-21T00:00:00Z"}),{kind:"refusal",reason:"signature"});
+`);
+}
+
 /** Same installed-artifact harness; no vendor SDK, ambient fetch or provider access. */
 export function proveResendConsumer(consumer: string): void {
   consumerNode(consumer, `
@@ -882,6 +923,7 @@ assert.throws(() => promotions.resolvePromotionBenefitDefinition({ discount_type
     proveOidcRefusals(consumer);
     proveCommunicationsConsumer(consumer);
     proveResendConsumer(consumer);
+    provePaymentAdapterConsumer(consumer);
     proveMarketingSyncConsumer(consumer);
     provePaymentsConsumer(consumer);
     installA1HostBinding(consumer, checkout);
