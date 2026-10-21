@@ -127,14 +127,14 @@ setup is visibly unsupported without a host collector/confirmation binding.
 Method evidence adds optional neutral reusable registration facts. Only the
 host resolves client/subscription ownership; missing resolution omits registration,
 and a failed resolver is retryable before ingest. Money-event enrichment stays
-host-owned. Lifecycle carriers copy typed facts; conformance ignores empty
-transient values and scans JSON-escaped forms. The donor refusal handoff has no
+host-owned. Lifecycle carriers copy typed facts. The payer redaction fix (empty
+values, JSON-escaped forms) moved to a follow-up PR to stay within 35 paths. The donor refusal handoff has no
 field for a typed refusal envelope, so that forwarding remains unsupported.
 The incomplete-chargeback classification and native schema limits remain; the
 reference first-receipt clock switch and required host reader proof stay in P6.
 
 There are 13 P4 authored cases (W6 four, W7 four, W8 three and two owner/attempt
-cases), plus two carry-over regressions: 15 total. Public tests stay package-local;
+cases), plus one carry-over regression: 14 total. Public tests stay package-local;
 reference renewal/status/setup assertions use the two existing planned DOM files.
 The existing store invocation is extended. Focused root: 124 passes in 19 files;
 package-local: 44 in 11; DOM: 17 in four including the retained store/poller suites.
@@ -150,8 +150,8 @@ the same navigation renderer ran directly, and the unchanged contributor-check
 owner needs the scoped trailer proposed in the handoff. No full verification,
 Git/remote write, DCO, native review, release or activation was performed.
 
-P4 final ledger: 35 paths, 16 production paths, 2000 lines of churn, nine frozen
-export additions. Computed against pinned P3 head `7ff7f0ec`, representing main
+P4 final ledger: 34 paths, 15 production paths, about 2,050 lines of churn (including the regenerated example-adapter API report), nine frozen
+export additions. Computed against main after the example Stripe adapter (#278), representing main
 after P3 for this stacked task; this is not an aggregate P1–P4 comparison or a
 claim about the later moving main. No dependency, public subpath, migration or
 budget change. Predecessor to candidate pack: 1,275 → 1,287 files, 880,494 →
