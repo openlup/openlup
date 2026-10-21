@@ -181,6 +181,42 @@ it("deduplicates receipt-independent fingerprints while separating transaction o
   expect(failed).toMatchObject({ kind: "money", outcome: "failed", providerEventId: "TR-1:failed" });
   expect(failed).not.toEqual(first);
 });
+it("carries only donor-filtered audit facts outside identity and fingerprints", async () => {
+  const adapter = createTpayPaymentAdapter(config());
+  const planted = { payer: "audit-payer-71c3@example.test", customerAuthorization: "audit-authorization-71c3",
+    client_secret: "audit-secret-71c3", handoff: "audit-handoff-71c3", certificate: fixture.signingCertificatePem,
+    failureReason: "audit-unfiltered-prose-71c3", decline_code: "audit-unfiltered-decline-71c3",
+    status_description: "audit-unfiltered-status-71c3", failureEvidence: { source: "unproven-input-71c3" } };
+  const transaction = { tr_id: "TR-1", tr_status: "FALSE", tr_amount: "25.99", tr_paid: "25.99", tr_currency: "PLN" };
+  const clean = await verify(adapter, JSON.stringify(transaction));
+  const observed = await verify(adapter, JSON.stringify({ ...transaction, ...planted }));
+  expect(observed).toEqual(clean);
+  expect(observed).toMatchObject({ kind: "money", providerAuditPayload: {
+    provider: "tpay", eventKind: "transaction", transactionTitle: "TR-1", status: "FALSE",
+    transactionAmount: "25.99", paidAmount: "25.99", currency: "PLN", testMode: null, hiddenDescription: null,
+  } });
+  const alias = await verify(adapter, JSON.stringify({ event: "ALIAS_UPDATE", msg_value: { value: "alias-1", type: "PAYID" }, ...planted }));
+  expect(alias).toMatchObject({ kind: "method", providerAuditPayload: {
+    provider: "tpay", eventKind: "blik_alias", event: "ALIAS_UPDATE", aliasType: "PAYID",
+    paymentIntentId: null, aliasValuePresent: true, aliasExpirationDatePresent: false,
+  } });
+  const changed = await verify(adapter, body("false"));
+  expect(changed).toMatchObject({ kind: "money", providerAuditPayload: { status: "false" } });
+  if (clean.kind === "refusal" || changed.kind === "refusal") throw new Error("expected verified money");
+  expect(changed.providerEventId).toBe(clean.providerEventId);
+  expect(changed.fingerprint).toBe(clean.fingerprint);
+  for (const evidence of [observed, alias]) {
+    for (const value of Object.values(planted)) {
+      const sensitive = typeof value === "string" ? value : value.source;
+      expect(JSON.stringify(evidence)).not.toContain(JSON.stringify(sensitive).slice(1, -1));
+    }
+    expect(evidence).not.toHaveProperty("providerAuditPayload.failureEvidence");
+    expect(evidence).not.toHaveProperty("providerAuditPayload.failureReason");
+    expect(evidence).not.toHaveProperty("providerAuditPayload.decline_code");
+    expect(evidence).not.toHaveProperty("providerAuditPayload.status_description");
+    expect(evidence).not.toHaveProperty("providerAuditPayload.msg_value[type]");
+  }
+});
 it("observes chargeback as full reversal with stable operation identity and original money", async () => {
   const adapter = createTpayPaymentAdapter(config());
   const raw = body("CHARGEBACK");

@@ -243,5 +243,6 @@ function mapVerifiedTpayEvent(rawBody: string, occurred: string | null, mode: "l
         operationId: `${event.payment_provider_id}:chargeback`, originalPaymentMoney: { amountMinor: originalAmount, currency: money.currency } } } : {}),
     };
   }
-  return { ...evidence, fingerprint: createHash("sha256").update(JSON.stringify(evidence)).digest("hex") };
+  return { ...evidence, fingerprint: createHash("sha256").update(JSON.stringify(evidence)).digest("hex"),
+    providerAuditPayload: payload };
 }

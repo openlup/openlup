@@ -46,7 +46,7 @@ Verified events retain their event ID and provider time (or null), with a stable
 fingerprint independent of receipt time. Method lifecycle facts stay distinct
 from money. Missing refund evidence is refused; valid `amount_refunded` is a
 cumulative snapshot with original money and a stable operation ID. Disputes
-remain refused until the additive M07 outcome is available. Readback preserves
+retain their distinct money outcome and original payment identity. Readback preserves
 `active_checkout` and `recovery` semantics, rejects mismatched identity/money,
 and keeps uncertainty unknown. Close requires injected cancellation; incomplete
 metadata search never enables exact absence. Refund creation and a split
@@ -73,6 +73,11 @@ Every flow requires explicit payer context. Missing payer/channel/code refuses
 with exact before-dispatch evidence and neutral data-correction classification.
 Payer, authorization, donor payloads and provider prose are excluded from the
 returned diagnostics. Alias registration is not exposed by this factory.
+Verified audit facts preserve the donor-filtered transaction and alias fields;
+missing failure provenance stays absent. Payer, authorization, certificates and
+raw bodies are excluded. Audit fields do not participate in event identity or
+fingerprints. Offline multi-subject M07 P2 conformance covers replay, chargeback,
+exact readback and verification refusals without establishing account activation.
 
 ## Canonical status
 
