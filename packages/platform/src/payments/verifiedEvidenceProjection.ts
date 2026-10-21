@@ -1,5 +1,5 @@
 import type {
-  PaymentRefundObservation, PaymentVerifyNormalizePort, RefundEvidencePolicy,
+  PaymentMoney, PaymentRefundObservation, PaymentVerifyNormalizePort, RefundEvidencePolicy,
   VerifiedMethodEvidence, VerifiedPaymentEvidence,
 } from "./contracts/evidence.js";
 import type { ProviderWebhookWithMethodLifecycle } from "./paymentMethodLifecycle.js";
@@ -155,7 +155,7 @@ function auditPayload(evidence: VerifiedPaymentEvidence | VerifiedMethodEvidence
   return payload;
 }
 
-function money(value: { amountMinor: number; currency: string }) {
+function money(value: PaymentMoney) {
   return { amountMinor: value.amountMinor, currency: value.currency };
 }
 function refund(value: PaymentRefundObservation) {

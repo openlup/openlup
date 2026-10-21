@@ -209,3 +209,28 @@ unverified. This run does not claim a fully passing payment gate.
 Self-retro: the positive intent constraint alone does not prove blank-currency
 refusal; the canonical order currency invariant supplies that evidence. Reuse
 the existing guard and table cases rather than introducing another validator.
+
+
+## P5 record
+
+Compatibility refactor only against P4e `4613d814`: private conformance money
+and identity annotations and the private evidence money copier now reuse the
+existing contracts. Truth fingerprinting loses three unused type imports.
+The three edited modules emit byte-identical JavaScript; public signatures,
+types, API reports, assertions and native reference facades remain unchanged.
+No export, dependency, migration, runtime helper or behavior change is included.
+Authority covers local edits and focused offline checks only; no Git writes,
+submission, DCO, native review, merge, release or activation was performed.
+
+Structural scan, lint (33 existing warnings), typecheck, API and both neutrality
+checks pass. The focused payment/reference run passes 824 tests in 69 suites;
+one HTTP-wire suite cannot open its loopback listener (EPERM), leaving two wire
+tests unexecuted. One opt-in local database case remains skipped. Full payment
+acceptance is therefore incomplete. Publication impact requires the proposed
+scoped no-impact trailer; the untracked fragment is retained for handoff.
+
+Self-retro: direct invocation initially lacked the local test binary on PATH;
+adding the existing local bin directory let the focused runner proceed. Keep
+private type reuse small: no new abstraction is needed for unchanged runtime.
+
+P5 final ledger vs `4613d814`: 5 paths, 3 production paths, 38 lines of churn; zero test edits and zero API report changes.
