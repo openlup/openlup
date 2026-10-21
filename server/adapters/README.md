@@ -12,6 +12,12 @@ current adapter only as an implementation detail. The neutral surface map lives
 in [Architecture and extension boundaries](../../docs/platform/ARCHITECTURE_AND_EXTENSIONS.md).
 
 ## Owns
+The unused root payment webhook normalizer and its 26-case witness have
+retired after production-importer checks. The opt-in package implementation and
+witness remain; other root payment execution adapters retain their callers and
+ownership. The [payment retirement ledger](../../docs/platform/plans/oss-a2-payment-adapters.md#o-p3b-1-unused-root-retirement-2026-10-22)
+records the separate root and adopter legs.
+
 The native SKU envelope reader, its mapper and the isolated draft store now
 have their package implementation under `packages/platform/src/catalog/`.
 The old store paths preserve factory identity through named package exports;
