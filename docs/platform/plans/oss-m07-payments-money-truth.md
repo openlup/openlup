@@ -319,3 +319,38 @@ None is a correctness or security defect in the shipped package after P4d and P4
 - The reference card evidence normalizer's missing-amount path (the package already
   refuses settling evidence without positive money).
 
+
+## S1 record: 0.21.0 package set
+
+Outcome (2026-10-21, main `b394df2d`): prepare core/outbox/platform `0.21.0`
+with exact pins and locks; core/outbox are unchanged republications, UI stays
+private `0.0.0`. Consume all 13 fragments: `m07-p1`, `m07-p2`, `m07-p3`,
+`m07-p4`, `m07-p4b`, `m07-p4c`, `m07-p4d`, `m07-p4e`, `m07-p5`, `m07-p6`,
+`a2-op1`, `a2-op2`, `a2-op3a`. C2 code-complete; selectors remain default-off.
+
+Published `0.20.0` baselines (downloaded bytes match registry shasum/integrity):
+
+| Package | Packed B | Registry shasum |
+| --- | ---: | --- |
+| @openlup/core | 161,695 | `045eafe05a686616fef921adedb3a7156ca0b086` |
+| @openlup/outbox | 39,459 | `aee786aded37acb7cee9f55e1d9d957b4a1d96ab` |
+| @openlup/platform | 809,376 | `604e96ed6413e161b69d8a452cd1a529e1a55fd8` |
+
+Only `pack.baseline` changes; all caps remain unchanged. M06 C4 records `0.20.0`
+published and C4-checked at #271 merge `3e0f1784`; `0.21.0` follows this merge
+and required supervisor review/final verification. The standalone
+[0.21.0 limitations](../../../packages/platform/CHANGELOG.md#0210) retain M06
+pending proof and the five M07 follow-ups.
+
+Docs cap (coordinator ruling for the owner, 2026-10-21; no cap change): the
+packed CHANGELOG keeps the current release and the two previous ones, so
+`[0.18.0]` and older move byte-identical to the non-packed
+[CHANGELOG-HISTORY.md](../../../packages/platform/CHANGELOG-HISTORY.md), and the
+[release guide](../DEVELOPMENT_AND_RELEASE.md) states the rule. The packed docs
+class measures 45,646 of 49,152 B. The release notes describe the example
+payment adapter subpaths neutrally and the README names them; the neutrality
+script's exact-file A1 subpath allowance adds only the history file, so the
+verbatim move adds no count.
+
+Self-retro: the bump CLI stages deletions → hold fragments outside the checkout
+during the version bump, then assemble notes without Git writes; no tooling change.
