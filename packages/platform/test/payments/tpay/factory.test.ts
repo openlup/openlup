@@ -114,6 +114,40 @@ it("dispatches an unattended Model O alias with explicit transient payer", async
     aliases: { value: "alias-1", type: "PAYID", noDelay: true, recommendedAuthLevel: "NOCONFREQ" } } } });
   expectRedacted(result); expectRedacted(result.diagnostics);
 });
+it("renewal refused after creation resolves through readback", async () => {
+  const good = config();
+  const fetch = vi.fn(async (url: string, _init?: Parameters<TpayPaymentAdapterConfig["http"]["fetchImpl"]>[1]) => {
+    const response = url.endsWith("/oauth/auth") ? { access_token: "fixture", expires_in: 7200 }
+      : url.endsWith("/transactions") ? { transactionId: "api-1", title: "TR-1", status: "pending", payments: {} }
+      : url.endsWith("/transactions/api-1") ? { transactionId: "api-1", title: "TR-1", status: "pending",
+        amount: "25.99", paidAmount: "0.00", currency: "PLN", payer,
+        payments: { attempts: [{ date: "12.08.2026 12:00", paymentErrorCode: "51",
+          paymentErrorMessage: `${payer.email} ${payer.name} ${authorization}` }] } }
+      : null;
+    if (!response) throw new Error("unexpected dispatch");
+    return { ok: true, status: 200, text: async () => JSON.stringify(response), json: async () => response };
+  });
+  good.http.fetchImpl = fetch;
+  const adapter = createTpayPaymentAdapter(good);
+  const input = { ...attemptInput(), purpose: "renewal-unattended" as const,
+    methodSelection: undefined, storedMethod: { reference: "alias-1", mandate: { recurringModel: "O" } } };
+  const created = await adapter.attemptPort.execute(input);
+  expect(created).toMatchObject({ outcome: { kind: "attempt", status: "processing" },
+    dispatch: { kind: "dispatched", providerPaymentRef: "api-1" } });
+  expect(created.handoff).toBeUndefined();
+  expectRedacted(created); expectRedacted(created.diagnostics);
+  if (created.dispatch.kind !== "dispatched") throw new Error("expected dispatched renewal");
+  const identity = { provider: "tpay", providerPaymentRef: created.dispatch.providerPaymentRef,
+    intentRef: input.intentRef, attemptRef: input.attemptRef };
+  const result = await adapter.readbackPort.readPayment({ identity, expectedMoney: input.money, purpose: "recovery" });
+  expect(result).toMatchObject({ kind: "failed", purpose: "recovery", observedMoney: input.money,
+    providerOccurredAt: "2026-08-12T10:00:00.000Z" });
+  expect(result.identity).toBe(identity); expect(result.expectedMoney).toBe(input.money);
+  expectRedacted(result);
+  expect(fetch.mock.calls.map(([url]) => url)).toEqual(["https://api.example.test/oauth/auth",
+    "https://api.example.test/transactions", "https://api.example.test/transactions/api-1"]);
+  expect(good.notification.resolveCertificate).not.toHaveBeenCalled();
+});
 it("refuses missing payer before any dispatch, including unattended attempts", async () => {
   const good = config(); const adapter = createTpayPaymentAdapter(good);
   for (const purpose of ["initial", "renewal-unattended"] as const) {
@@ -387,17 +421,38 @@ it("preserves purpose and exact identity/money checks on readback", async () => 
   expect(await adapter.readbackPort.readPayment({ identity, expectedMoney: { ...expectedMoney, amountMinor: 0 }, purpose: "recovery" }))
     .toMatchObject({ kind: "unknown" });
 });
+it.each((["active_checkout", "recovery"] as const).flatMap(purpose => [
+  { purpose, label: "unpaid pending", status: "pending", paidAmount: "0.00", amount: "25.99", payments: {}, kind: "pending", occurredAt: null },
+  { purpose, label: "dated refusal", status: "pending", paidAmount: "0.00", amount: "25.99",
+    payments: { attempts: [{ date: "12.08.2026 12:00", paymentErrorCode: "51" }] }, kind: "failed", occurredAt: "2026-08-12T10:00:00.000Z" },
+  { purpose, label: "paid", status: "correct", paidAmount: "25.99", amount: "25.99", payments: {}, kind: "succeeded", occurredAt: null },
+  { purpose, label: "configured money mismatch", status: "pending", paidAmount: "0.00", amount: "25.98", payments: {}, kind: "unknown", occurredAt: null },
+]))("reads $label using configured money for $purpose", async ({ purpose, status, paidAmount, amount, payments, kind, occurredAt }) => {
+  const good = config();
+  good.http.fetchImpl = vi.fn(async url => ({ ok: true, status: 200, text: async () => "",
+    json: async () => url.endsWith("/oauth/auth") ? { access_token: "fixture", expires_in: 7200 }
+      : { transactionId: "api-1", status, paidAmount, amount, currency: "PLN", payments } }));
+  const identity = { provider: "tpay", providerPaymentRef: "api-1", intentRef: "intent", attemptRef: "attempt" };
+  const expectedMoney = { amountMinor: 2599, currency: "PLN" };
+  const result = await createTpayPaymentAdapter(good).readbackPort.readPayment({ identity, expectedMoney, purpose });
+  expect(result.identity).toBe(identity);
+  expect(result.expectedMoney).toBe(expectedMoney);
+  expect(result).toMatchObject({ kind, purpose, ...(kind === "unknown" ? { reason: "indeterminate" }
+    : { observedMoney: expectedMoney, providerOccurredAt: occurredAt }) });
+});
 it.each(["refunded", "chargeback"].flatMap(status =>
   (["active_checkout", "recovery"] as const).flatMap(purpose => [
     { status, purpose, history: "none", payments: {} },
     { status, purpose, history: "attempt refusal", payments: { attempts: [{ paymentErrorCode: "51" }] } },
     { status, purpose, history: "error refusal", payments: { errors: [{ errorCode: "51" }] } },
   ])))("keeps $status $purpose readback with $history unknown for host manual review", async ({ status, purpose, payments }) => {
-  const good = config();
-  good.http.fetchImpl = vi.fn(async url => ({ ok: true, status: 200, text: async () => "",
-    json: async () => url.endsWith("/oauth/auth") ? { access_token: "fixture", expires_in: 7200 }
-      : { transactionId: "api-1", title: "TR-1", status, payments, amount: 25.99, currency: "PLN" } }));
-  expect(await createTpayPaymentAdapter(good).readbackPort.readPayment({ identity: {
-    provider: "tpay", providerPaymentRef: "api-1", intentRef: "intent", attemptRef: "attempt" },
-  expectedMoney: { amountMinor: 2599, currency: "PLN" }, purpose })).toMatchObject({ kind: "unknown", reason: "indeterminate" });
+  for (const carrier of [{ status }, { status: "  ", tr_status: status.toUpperCase() }]) {
+    const good = config();
+    good.http.fetchImpl = vi.fn(async url => ({ ok: true, status: 200, text: async () => "",
+      json: async () => url.endsWith("/oauth/auth") ? { access_token: "fixture", expires_in: 7200 }
+        : { transactionId: "api-1", title: "TR-1", ...carrier, payments, amount: 25.99, currency: "PLN" } }));
+    expect(await createTpayPaymentAdapter(good).readbackPort.readPayment({ identity: {
+      provider: "tpay", providerPaymentRef: "api-1", intentRef: "intent", attemptRef: "attempt" },
+    expectedMoney: { amountMinor: 2599, currency: "PLN" }, purpose })).toMatchObject({ kind: "unknown", reason: "indeterminate" });
+  }
 });

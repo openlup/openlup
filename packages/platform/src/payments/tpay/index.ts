@@ -178,18 +178,18 @@ export function createTpayPaymentAdapter(config: TpayPaymentAdapterConfig): Paym
         if (input.identity.provider !== "tpay" || !input.identity.providerPaymentRef) return { ...base, kind: "unsupported" };
         try {
           const transaction = await client.getTransaction(input.identity.providerPaymentRef);
-          const status = transaction.status.trim().toLowerCase();
-          if (status === "refunded" || status === "chargeback") return unknown(base);
           const observed = await createTpayPaymentReconciliationProvider({ getTransaction: async () => transaction }).readPayment({
             providerPaymentId: input.identity.providerPaymentRef, purpose: input.purpose,
           });
+          const status = observed.providerStatus?.trim().toLowerCase();
+          if (status === "refunded" || status === "chargeback") return unknown(base);
           const configured = Math.round(Number(transaction.amount) * 100);
           if (transaction.transactionId !== input.identity.providerPaymentRef || !Number.isSafeInteger(configured)
             || configured <= 0 || configured !== input.expectedMoney.amountMinor
             || transaction.currency?.toUpperCase() !== input.expectedMoney.currency.toUpperCase()
-            || !observed.amountMinor || !Number.isSafeInteger(observed.amountMinor) || !observed.currency
             || observed.status === "unknown") return unknown(base);
-          return { ...base, kind: observed.status, observedMoney: { amountMinor: observed.amountMinor, currency: observed.currency },
+          // Readback identifies the configured obligation; unpaid transactions legitimately have paidAmount zero.
+          return { ...base, kind: observed.status, observedMoney: { amountMinor: configured, currency: transaction.currency!.toUpperCase() },
             providerOccurredAt: observed.occurredAt };
         } catch { return unknown(base); }
       },

@@ -74,6 +74,19 @@ function validBaseline() {
   return { schemaVersion: 2, sourceCommit: "a".repeat(40), scannerPins: Object.fromEntries(scannerPaths.map((path) => [path, "c".repeat(40)])), counts: { ["b".repeat(64)]: { brand: 1 } } };
 }
 describe("tree-wide neutrality ratchet", () => {
+  it("fails closed when the communications allowance exceeds the ui-12 scanner count", () => {
+    const vendor = ["res", "end"].join("");
+    const path = `packages/platform/src/communications/${vendor}/index.ts`;
+    const invoke = vi.mocked(execFileSync);
+    invoke.mockReturnValueOnce(JSON.stringify({ counts: [{ path, counts: { "ui-12": 1 } }],
+      policy: { rules: [{ id: "tree-brand", terms: [debt] }] } }));
+    invoke.mockReturnValueOnce(JSON.stringify([]));
+    try {
+      expect(() => scanSnapshots(new Map([[path, Buffer.from(`${vendor} ${vendor}`)]])))
+        .toThrow(`neutrality allowance over-subtracted ui-12 in ${JSON.stringify(path)}: -1`);
+    } finally { invoke.mockClear(); }
+  });
+
   it.each(["brand", "ui-0", "ui-2"])("fails closed when the adoption allowance exceeds the %s scanner count", category => {
     const path = "README.md";
     const display = debt[0].toUpperCase() + debt.slice(1);

@@ -409,6 +409,7 @@
       "compatibilityPolicy": "internal-candidate",
       "packageSmokeEvidence": [
         "test/payments/tpay/factory.test.ts",
+        "test/payments/tpay/conformance.test.ts",
         "test/payments/tpay/webhookNormalizer.test.ts",
         "test/payments/tpay/tpayPaymentExecutionAdapter.test.ts"
       ],
