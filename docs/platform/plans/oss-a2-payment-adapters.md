@@ -31,7 +31,7 @@ framework, account activation or release claim.
   cumulative snapshot with the original payment money and stable charge ID.
 - Coordinator Decision 1 permitted a temporary dispute refusal against M07 P1.
   With M07 P2 integrated, `mapStripeOutcome` preserves the donor dispute outcome
-  as `disputed`, with the original payment identity and money. The donor
+  as `disputed`, with the original payment identity and the dispute amount. The donor
   normalizer stays unchanged.
 - Coordinator Decision 2 makes currencies host-declared through the required
   `supportedCurrencies` config: a non-empty list of upper-case three-letter
@@ -169,3 +169,50 @@ The audit carrier preserves the donor's filtered transaction and alias dialect
 absent. Payer, authorization, certificates and raw bodies are excluded, and audit
 facts do not change fingerprints. Git, staged inventory, full gates and native
 candidate review remain with Claude.
+
+## Case ledger (coordinator budget ruling A)
+
+The programme budget of +100 cases / +30 s counts net-new cases. A test carried unchanged from the adopter is a move, and stays `moved-pending` until its source copy retires: the OpenLup root reference copy at O-P3, the adopter copy at its C5 swap-in. A2 is not done while any row is still `moved-pending`; a source copy that cannot retire turns its cases into new ones. Generated package-boundary rows are excluded, consistent with M07. The +30 s time budget is measured on hosted CI.
+
+### O-P1 Stripe
+
+| Source (adopter) | Destination (`packages/platform/test/payments/stripe/`) | Cases | Status |
+|---|---|---:|---|
+| server/adapters/stripe/a2StripeKeysAndDeclinesCharacterization.test.ts | `a2StripeKeysAndDeclinesCharacterization.test.ts` | 3 | moved-pending: adopter copy retires at C5 |
+| server/adapters/stripe/a2StripeRefundCharacterization.test.ts | `a2StripeRefundCharacterization.test.ts` | 2 | moved-pending: adopter copy retires at C5 |
+| server/adapters/stripe/a2StripeSignatureCharacterization.test.ts | `a2StripeSignatureCharacterization.test.ts` | 3 | moved-pending: adopter copy retires at C5 |
+| server/adapters/stripe/a2StripeStatusCharacterization.test.ts | `a2StripeStatusCharacterization.test.ts` | 3 | moved-pending: adopter copy retires at C5 |
+| — | `conformance.test.ts` | 1 | net-new |
+| server/adapters/stripe/declineFailureHints.test.ts | `declineFailureHints.test.ts` | 41 | moved-pending: root `server/adapters/stripe/declineFailureHints.test.ts` retires at O-P3; adopter copy at C5 |
+| server/adapters/stripe/executionDecline.test.ts | `executionDecline.test.ts` | 10 | moved-pending: root `server/adapters/stripe/executionDecline.test.ts` retires at O-P3; adopter copy at C5 |
+| — | `factory.test.ts` | 16 | net-new |
+| server/adapters/stripe/stripeFailureEvidence.test.ts | `stripeFailureEvidence.test.ts` | 16 | moved-pending: root `server/adapters/stripe/stripeFailureEvidence.test.ts` retires at O-P3; adopter copy at C5 |
+| server/adapters/stripe/stripeIntentConfirmationEvidence.test.ts | `stripeIntentConfirmationEvidence.test.ts` | 12 | moved-pending: root `server/adapters/stripe/stripeIntentConfirmationEvidence.test.ts` retires at O-P3; adopter copy at C5 |
+| server/adapters/stripe/stripePaymentReconciliationProvider.test.ts | `stripePaymentReconciliationProvider.test.ts` | 33 | moved-pending: root `server/adapters/stripe/stripePaymentReconciliationProvider.test.ts` retires at O-P3; adopter copy at C5 |
+| server/adapters/stripe/stripeRefundEvidence.test.ts | `stripeRefundEvidence.test.ts` | 20 | moved-pending: adopter copy retires at C5 |
+| server/adapters/stripe/stripeSandboxPaymentExecutionAdapter.test.ts | `stripeSandboxPaymentExecutionAdapter.test.ts` | 39 | moved-pending: adopter copy retires at C5 |
+| server/adapters/stripe/stripeWebhookNormalizer.test.ts | `stripeWebhookNormalizer.test.ts` | 26 | moved-pending: root `server/adapters/stripe/stripeWebhookNormalizer.test.ts` retires at O-P3; adopter copy at C5 |
+| server/_lib/payment/webhookSignature.test.ts | `webhookSignature.test.ts` | 4 | moved-pending: root `server/_lib/payment/webhookSignature.test.ts` retires at O-P3; adopter copy at C5 |
+| — | `scripts/packages/platform-cold-consumer.test.ts` (Stripe entry) | 1 | net-new |
+| — | `scripts/public-ci-payment-allowance.test.ts` | 1 | net-new |
+
+### O-P2 Tpay
+
+| Source (adopter) | Destination (`packages/platform/test/payments/tpay/`) | Cases | Status |
+|---|---|---:|---|
+| — | `conformance.test.ts` | 1 | net-new |
+| server/adapters/tpay/declineFailureHints.test.ts | `declineFailureHints.test.ts` | 12 | moved-pending: root `server/adapters/tpay/declineFailureHints.test.ts` retires at O-P3; adopter copy at C5 |
+| — | `factory.test.ts` | 29 | net-new |
+| server/adapters/tpay/tpayCreateTransactionInput.test.ts | `tpayCreateTransactionInput.test.ts` | 12 | moved-pending: adopter copy retires at C5 |
+| server/adapters/tpay/tpayDeclineEvidence.test.ts | `tpayDeclineEvidence.test.ts` | 71 | moved-pending: root `server/adapters/tpay/tpayDeclineEvidence.test.ts` retires at O-P3; adopter copy at C5 |
+| server/infra/tpay/tpayDispatchFailure.test.ts | `tpayDispatchFailure.test.ts` | 7 | moved-pending: root `server/infra/tpay/tpayDispatchFailure.test.ts` retires at O-P3; adopter copy at C5 |
+| server/adapters/tpay/tpayFailureEvidence.test.ts | `tpayFailureEvidence.test.ts` | 15 | moved-pending: root `server/adapters/tpay/tpayFailureEvidence.test.ts` retires at O-P3; adopter copy at C5 |
+| server/infra/tpay/tpayHttpClient.test.ts | `tpayHttpClient.test.ts` | 18 | moved-pending: adopter copy retires at C5 |
+| server/infra/tpay/tpayHttpFailure.test.ts | `tpayHttpFailure.test.ts` | 6 | moved-pending: root `server/infra/tpay/tpayHttpFailure.test.ts` retires at O-P3; adopter copy at C5 |
+| server/adapters/tpay/tpayPaymentExecutionAdapter.test.ts | `tpayPaymentExecutionAdapter.test.ts` | 56 | moved-pending: adopter copy retires at C5 |
+| server/adapters/tpay/tpayPaymentReconciliationProvider.test.ts | `tpayPaymentReconciliationProvider.test.ts` | 46 | moved-pending: root `server/adapters/tpay/tpayPaymentReconciliationProvider.test.ts` retires at O-P3; adopter copy at C5 |
+| server/infra/tpay/tpayTransactionPayload.test.ts | `tpayTransactionPayload.test.ts` | 14 | moved-pending: adopter copy retires at C5 |
+| server/infra/tpay/webhookJwsVerifier.test.ts | `webhookJwsVerifier.test.ts` | 8 | moved-pending: root `server/infra/tpay/webhookJwsVerifier.test.ts` retires at O-P3; adopter copy at C5 |
+| server/infra/tpay/webhookNormalizer.test.ts | `webhookNormalizer.test.ts` | 28 | moved-pending: adopter copy retires at C5 |
+| — | `scripts/public-ci-payment-allowance.test.ts` (market token and reporting-zone plants) | 2 | net-new |
+| — | `scripts/packages/platform-cold-consumer.test.ts` (second adapter entry) | 0 | existing case extended |

@@ -8,7 +8,7 @@ import { createTpayHttpClient } from "./tpayHttpClient.js";
 import { createTpayPaymentExecutionAdapter } from "./tpayPaymentExecutionAdapter.js";
 import { createTpayPaymentReconciliationProvider } from "./tpayPaymentReconciliationProvider.js";
 import { verifyTpayJwsSignature, type TpayJwsCertificateResolver } from "./webhookJwsVerifier.js";
-import { normalizeTpayWebhook } from "./webhookNormalizer.js";
+import { normalizeTpayWebhook, toNormalizedProviderTpayWebhook } from "./webhookNormalizer.js";
 
 /** Explicit host configuration. clock returns UTC seconds; imports perform no I/O. */
 export interface TpayPaymentAdapterConfig {
@@ -30,23 +30,23 @@ export interface TpayPaymentAdapterConfig {
 }
 
 /** Attempt flows require the forthcoming M07 payer/method fields; account availability remains verification_pending. */
-export const tpayPaymentCapabilities: PaymentAdapterCapabilities = {
+export const tpayPaymentCapabilities: Readonly<PaymentAdapterCapabilities> = Object.freeze<PaymentAdapterCapabilities>({
   providerKind: "tpay",
-  captureFlows: [
-    { kind: "bank_redirect", handoff: "redirect", methodFamilies: ["bank-redirect"] },
-    { kind: "one_time_code", handoff: "customer-authorization", methodFamilies: ["one-time-code"] },
-  ],
+  captureFlows: Object.freeze([
+    Object.freeze({ kind: "bank_redirect", handoff: "redirect", methodFamilies: Object.freeze(["bank-redirect"] as const) }),
+    Object.freeze({ kind: "one_time_code", handoff: "customer-authorization", methodFamilies: Object.freeze(["one-time-code"] as const) }),
+  ]),
   requiresStoredMandateEvidence: true,
   assessMandate: snapshot => snapshot.recurringModel === "O" ? { chargeable: true }
     : { chargeable: false, blockReason: "mandate_model_unsupported_for_unattended_charge" },
   unattendedChargeFlow: "recurring_charge",
-  payerContext: { requiresPayerBlock: true, customerRefFallsBackToContactEmail: false },
-  methodHealth: { requiresCustomerRef: false, requiredMethodKind: "blik_payid", requiresPayerContact: true },
-  terminalOutcomeReporting: { kind: "attempt_records", silenceBecomesSuspectAfterMinutes: 360 },
+  payerContext: Object.freeze({ requiresPayerBlock: true, customerRefFallsBackToContactEmail: false }),
+  methodHealth: Object.freeze({ requiresCustomerRef: false, requiredMethodKind: "blik_payid", requiresPayerContact: true }),
+  terminalOutcomeReporting: Object.freeze({ kind: "attempt_records", silenceBecomesSuspectAfterMinutes: 360 }),
   mandateUpsertIsSubscriptionScoped: true,
-  supportedCurrencies: ["PLN"], unattended: "supported", readback: "supported", close: "unsupported",
+  supportedCurrencies: Object.freeze(["PLN"]), unattended: "supported", readback: "supported", close: "unsupported",
   exactAbsence: "unsupported", refundObservation: "supported", refundCreate: "unsupported", authorizationCaptureSplit: "unsupported",
-};
+});
 
 type Verification = Awaited<ReturnType<PaymentVerifyNormalizePort["verifyAndNormalize"]>>;
 const refusal = (reason: Extract<Verification, { kind: "refusal" }>["reason"]): Verification => ({ kind: "refusal", reason });
@@ -225,8 +225,10 @@ function mapVerifiedTpayEvent(rawBody: string, occurred: string | null, mode: "l
     };
     const outcome = kinds[webhook.methodLifecycleKind ?? ""];
     if (!outcome) return refusal("unsupported-event");
+    const lifecycle = occurred !== null ? toNormalizedProviderTpayWebhook(webhook, occurred).methodLifecycle : null;
     evidence = { ...identity, kind: "method", outcome, providerEventId: `${event.provider_event_id}:${outcome}`,
-      methodRef: event.payment_provider_id, setupRef: null, intentRef: event.payment_intent_id ?? null };
+      methodRef: event.payment_provider_id, setupRef: null, intentRef: event.payment_intent_id ?? null,
+      ...(lifecycle ? { methodLifecycle: lifecycle } : {}) };
   } else {
     const outcome = mapTpayOutcome(event.event_type);
     if (!outcome) return refusal("unsupported-event");

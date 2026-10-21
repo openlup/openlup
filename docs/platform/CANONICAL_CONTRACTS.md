@@ -48,7 +48,8 @@ from money and retain provider time and replacement facts. When provider time
 is absent, the method outcome remains but the lifecycle field is omitted.
 Missing refund evidence is refused; valid `amount_refunded` is a
 cumulative snapshot with original money and a stable operation ID. Disputes
-are emitted as the `disputed` money outcome with original payment identity and money. Readback preserves
+are emitted as the `disputed` money outcome with the original payment identity
+and the dispute amount the provider reports, which can differ from the payment amount. Readback preserves
 `active_checkout` and `recovery` semantics, rejects mismatched identity/money,
 and keeps uncertainty unknown. Close requires injected cancellation; incomplete
 metadata search never enables exact absence. Refund creation and a split

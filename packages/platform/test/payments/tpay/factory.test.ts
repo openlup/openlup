@@ -2,6 +2,8 @@ import { X509Certificate } from "node:crypto";
 import { beforeAll, expect, it, vi } from "vitest";
 import { createTpayPaymentAdapter, tpayPaymentCapabilities, type TpayPaymentAdapterConfig } from "../../../src/payments/tpay/index.js";
 import { createTpayJwsFixture } from "./webhookJws.testFixtures.js";
+import { projectVerifiedEvidence } from "../../../src/payments/verifiedEvidenceProjection.js";
+import { readMethodLifecycleEvent } from "../../../src/payments/index.js";
 import type { PaymentAttemptPort, TransientSecret } from "../../../src/payments/contracts/index.js";
 
 type AttemptInput = Parameters<PaymentAttemptPort["execute"]>[0] & {
@@ -69,6 +71,10 @@ it("requires root/prefix/resolver configuration and refuses invalid prefixes bef
 it("declares only the witnessed market, Model O, observations and no exact absence or close", () => {
   const adapter = createTpayPaymentAdapter(config());
   expect(adapter.capabilities).toEqual(tpayPaymentCapabilities);
+  for (const value of [tpayPaymentCapabilities, tpayPaymentCapabilities.captureFlows,
+    ...tpayPaymentCapabilities.captureFlows, ...tpayPaymentCapabilities.captureFlows.map(flow => flow.methodFamilies),
+    tpayPaymentCapabilities.supportedCurrencies, tpayPaymentCapabilities.payerContext,
+    tpayPaymentCapabilities.methodHealth, tpayPaymentCapabilities.terminalOutcomeReporting]) expect(Object.isFrozen(value)).toBe(true);
   expect(adapter.capabilities.supportedCurrencies).toEqual(["PLN"]);
   expect(adapter.capabilities.assessMandate({ recurringModel: "O" })).toEqual({ chargeable: true });
   for (const recurringModel of ["M", undefined, "unknown"]) expect(adapter.capabilities.assessMandate({ recurringModel }).chargeable).toBe(false);
@@ -230,9 +236,40 @@ it("observes chargeback as full reversal with stable operation identity and orig
 });
 it.each([["ALIAS_REGISTER", "registered"], ["ALIAS_UPDATE", "updated"], ["ALIAS_UNREGISTER", "revoked"], ["ALIAS_EXPIRED", "expired"]])(
   "keeps %s as method evidence with outcome-specific identity", async (event, outcome) => {
-    expect(await verify(createTpayPaymentAdapter(config()), `event=${event}&msg_value[value]=alias-1`)).toMatchObject({
-      kind: "method", outcome, providerEventId: `${event}:alias-1:${outcome}`, methodRef: "alias-1", providerOccurredAt: null });
+    const adapter = createTpayPaymentAdapter(config());
+    const rawBody = `event=${event}&msg_value[value]=alias-1`;
+    const result = await verify(adapter, rawBody, instant - 10);
+    expect(result).toMatchObject({ kind: "method", outcome, providerEventId: `${event}:alias-1:${outcome}`,
+      methodRef: "alias-1", providerOccurredAt: new Date((instant - 10) * 1000).toISOString(),
+      methodLifecycle: { kind: `method_${outcome}`, providerKind: "tpay", providerMethodRef: "alias-1",
+        providerEventId: `${event}:alias-1`, occurredAt: new Date((instant - 10) * 1000).toISOString(), replacement: null } });
+    const withoutTime = await verify(adapter, rawBody);
+    expect(withoutTime).toMatchObject({ kind: "method", outcome, providerOccurredAt: null });
+    expect(withoutTime).not.toHaveProperty("methodLifecycle");
+    expect(await verify(adapter, rawBody, undefined, "2030-01-01T00:00:00Z")).toEqual(withoutTime);
   });
+it("preserves signed alias lifecycle through M07 projection and omits it without provider time", async () => {
+  const adapter = createTpayPaymentAdapter(config());
+  for (const [event, kind] of [["ALIAS_REGISTER", "method_registered"], ["ALIAS_UPDATE", "method_updated"],
+    ["ALIAS_UNREGISTER", "method_revoked"], ["ALIAS_EXPIRED", "method_expired"]]) {
+    const rawBody = `event=${event}&msg_value[value]=alias-1`;
+    for (const asserted of [instant - 10, undefined]) {
+      const input = { rawBody: Buffer.from(rawBody),
+        headers: { "x-jws-signature": fixture.signature(rawBody, undefined, asserted) },
+        receivedAt: new Date(instant * 1000).toISOString() };
+      const result = await adapter.verifyPort.verifyAndNormalize(input);
+      if (result.kind !== "method") throw new Error("expected method evidence");
+      const projected = projectVerifiedEvidence(result, input, "require-evidence");
+      expect(projected.occurredAt).toBe(input.receivedAt);
+      expect(readMethodLifecycleEvent(projected)).toEqual(asserted === undefined ? null : {
+        kind, providerKind: "tpay", providerMethodRef: "alias-1", providerEventId: `${event}:alias-1`,
+        occurredAt: new Date(asserted * 1000).toISOString(), replacement: null,
+      });
+      expect(await adapter.verifyPort.verifyAndNormalize({ ...input,
+        receivedAt: new Date((instant + 30) * 1000).toISOString() })).toEqual(result);
+    }
+  }
+});
 it("refuses unsupported alias outcomes and malformed bodies without inventing money/time", async () => {
   const adapter = createTpayPaymentAdapter(config());
   expect(await verify(adapter, "event=UNRECOGNIZED&msg_value[value]=alias-1")).toEqual({ kind: "refusal", reason: "unsupported-event" });

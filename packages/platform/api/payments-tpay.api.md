@@ -947,7 +947,7 @@ export interface TpayPaymentAdapterConfig {
     clock?: () => number;
 }
 /** Attempt flows require the forthcoming M07 payer/method fields; account availability remains verification_pending. */
-export declare const tpayPaymentCapabilities: PaymentAdapterCapabilities;
+export declare const tpayPaymentCapabilities: Readonly<PaymentAdapterCapabilities>;
 /** Construction explicitly selects this adapter; the host owns account activation and I/O policy. */
 export declare function createTpayPaymentAdapter(config: TpayPaymentAdapterConfig): PaymentAdapter;
 ```
