@@ -146,7 +146,7 @@ describe("real PostgreSQL portable dunning forward", () => {
   });
 
   it("upgrades the exact prefix without row rewrites, keeps the last-rung case open and emits one final notice/event", async () => {
-    expect(upgradeApplied).toEqual([forward]);
+    expect(upgradeApplied).toEqual(units.slice(index).map(unit => unit.file));
     expect(await snapshot(db!)).toEqual(prefixRows);
     const result = await fail();
     expect(result).toEqual({ caseId, caseStatus: "open", notificationId: expect.any(String), retryAttempt: 4, paused: false, pauseWindowId: null, terminal: true });

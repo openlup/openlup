@@ -187,25 +187,26 @@ reads the guard's live body all pin the matrix. A change to one side must
 update the others in the same contribution.
 
 A matrix edge is not a licence for every operation. Only the owner's pause
-request, and the non-payment rule below, may move an active subscription to
-`paused`. Among the engine's statuses, only the win-back leaves `cancelled`: it
-needs a stored payment method and restarts the schedule two days out.
+request may move an active subscription to `paused`. Among the engine's
+statuses, only the win-back leaves `cancelled`: it needs a stored payment method
+and restarts the schedule two days out.
 
-**The sanctioned non-payment rule.** Nothing suspends, freezes or interrupts an
-active subscription except a renewal whose refusals ran past the last rung of
-the retry ladder. That cycle has failed, has no retry scheduled and has an
-attempt number beyond the ladder's length. It pauses the subscription and
-records `subscription.paused` with reason `payment_failed_expired`. A ladder
-cut short by a terminating refusal class, or a failure that still has a retry
-after it, leaves the dunning case open and the subscription active. The
-customer's recovery resumes the paused subscription: it skips the uncollected
-cycle and restarts the schedule two days out. A plain resume must not be used
-for a subscription this rule paused, because it neither skips that cycle nor
-moves a stale `next_cycle_at`. The managed SQL side is
-`subscription_handle_payment_failure_dunning` and
-`subscription_resume_after_expired_dunning`. The engine side is
-`isDunningLadderExhausted`, `pauseSubscriptionForExpiredDunning` and
-`resumeSubscriptionFromExpiredDunning`.
+**The sanctioned non-payment rule.** A failed payment never suspends, freezes or
+pauses an active subscription. Neither a ladder cut short by a terminating
+refusal class nor exhaustion past the last rung changes its status: the dunning
+case stays open, the unpaid cycle is not moved, and no further automatic charge
+is scheduled. After exhaustion the same case remains repairable; on the portable
+chain `dunning_lifecycle_record_recovery` closes it when the money moves.
+Subscriptions already paused and cases already expired under the earlier rule
+keep their separate resume behaviour. A plain resume must not be used for such a
+subscription, because it neither skips the uncollected cycle nor moves a stale
+`next_cycle_at`; the managed `subscription_resume_after_expired_dunning` and the
+engine's `resumeSubscriptionFromExpiredDunning` handle it.
+
+Two known gaps still pause on exhaustion and must not gain new callers: the
+managed SQL `subscription_handle_payment_failure_dunning` (owned by a managed
+follow-up forward) and the engine's `pauseSubscriptionForExpiredDunning`, gated
+by `isDunningLadderExhausted` (owned by the M10 engine follow-up).
 
 The engine models the decision; the host keeps the durable duties the managed
 SQL restarts also perform. Both restarts require the customer's confirmation of
@@ -230,7 +231,7 @@ cancelled subscriber, but no function reactivates a cancelled subscription.
 Its dunning rail, `dunning_lifecycle_handle_failure`, keeps active subscriptions
 active on dunning exhaustion (invariant repair). A NULL next retry leaves the
 case open and repairable through `dunning_lifecycle_record_recovery`, queues the
-final notice and exhaustion event, and returns `paused=false`,
+final notice and records the exhaustion event, and returns `paused=false`,
 `pauseWindowId=null`, `terminal=true` without creating a pause window or changing
 subscription or cycle dates. It still has no rung fence: a class-terminated
 refusal on rung one also has no next retry. No caller in this tree invokes it

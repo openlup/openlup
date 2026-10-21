@@ -362,7 +362,6 @@ pause window or cycle dates. The [real-PostgreSQL proof](../../tests/postgres/du
 covers complete-catalogue fresh install, exact position-70 prefix upgrade with
 existing rows, ledger replay, exhaustion/recovery and browser EXECUTE refusal.
 
-
 C-compose adds no SQL or manifest entry. Its direct schema requirement names the
 full position-70 prerequisite, consent authority, existing outbox/receipt/control
 objects and all five native tables/used columns. The host independently observes
@@ -565,7 +564,6 @@ an active subscription on exhaustion. This is a known managed gap: a separate
 managed forward is required to keep active subscriptions active on dunning
 exhaustion (invariant repair). Portable fresh/upgrade proof does not establish
 managed parity.
-
 
 Some forwards ship twice: once into the managed chain the hosted deployment
 applies, and once into the public platform catalogue an adopter applies. The two
