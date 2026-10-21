@@ -20,6 +20,8 @@ This is the public documentation set for the OpenLup platform. It describes the 
 
 ## Implementation plans
 
+- [Payments and money truth](plans/oss-m07-payments-money-truth.md) — prepared attempts and neutral adapter contracts; later truth/store/repair work remains pending.
+
 - [Inventory and delivery extraction](plans/oss-m06-stock-reservations-delivery.md) — M06 frozen lanes, inventory imports, SQL projections, inventory/shipping store composition, evidence and pending parity and budgets.
 - [Published CI completeness](plans/public-ci-completeness.md) — complete CI observation, preserved required coverage and separate repair work.
 - [Autonomous reviewed delivery](plans/autonomous-reviewed-delivery.md) — native review, its evidence and queue admission.

@@ -5,7 +5,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { isolatedConsumerEnv } from "./pack-manifest-input.ts";
 import { afterAll, afterEach, beforeAll, expect, it } from "vitest";
-import { installA1HostBinding, proveA1ReferenceBindingConsumer, ADAPTER_ENTRIES, assertConsumerIsolation, assertExportInventory, compileConsumer, consumerNode, NON_ADAPTER_ENTRIES, OPTIONAL_PEERS, proveAdapterRefusals, proveOidcRefusals, provePostgresOperations, proveNativeCommunicationsOperations, proveResendConsumer, proveMarketingSyncConsumer, runPlatformColdConsumer } from "./platform-cold-consumer.ts";
+import { provePaymentsConsumer, installA1HostBinding, proveA1ReferenceBindingConsumer, ADAPTER_ENTRIES, assertConsumerIsolation, assertExportInventory, compileConsumer, consumerNode, NON_ADAPTER_ENTRIES, OPTIONAL_PEERS, proveAdapterRefusals, proveOidcRefusals, provePostgresOperations, proveNativeCommunicationsOperations, proveResendConsumer, proveMarketingSyncConsumer, runPlatformColdConsumer } from "./platform-cold-consumer.ts";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const temporary: string[] = [];
@@ -30,6 +30,8 @@ function fixture() {
 it("accepts ordinary confined packages and independently verifies absent peers", () => {
   const consumer = fixture(); assertConsumerIsolation(consumer, root); assertExportInventory(consumer);
   expect(NON_ADAPTER_ENTRIES).toEqual(expect.arrayContaining([
+    "payments",
+    "payments/contracts",
     "shipping",
     "shipping/contracts",
   ]));
@@ -417,3 +419,9 @@ const inventoryForecastFixture = {
     expect(JSON.stringify(createInventorySubscriptionForecastResponseSchema(z.literal(provider)).parse(response))).toBe(bytes);
     expect(reference.inventorySubscriptionForecastResponseSchema.safeParse(inventoryForecastFixture).success).toBe(false);
   });
+
+it("P1 payments: installed packed consumer imports both entries and proves injected runtime/refusal", () => {
+  const consumer = pristinePackedA1Fixture();
+  assertConsumerIsolation(consumer, root);
+  provePaymentsConsumer(consumer);
+});

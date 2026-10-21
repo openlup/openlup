@@ -11,6 +11,8 @@ import { assertInstalledPackages, isolatedConsumerEnv, readCurrentPackManifest }
 import { POSTGRES_PROOF_IMAGE } from "./outbox-disposable-postgres.ts";
 
 export const NON_ADAPTER_ENTRIES = [
+  "payments",
+  "payments/contracts",
   "bff",
   "catalog/contracts",
   "communications/contracts",
@@ -114,6 +116,34 @@ export function assertExportInventory(consumer: string): void {
   const metadata = JSON.parse(readFileSync(join(consumer, "node_modules/@openlup/platform/package.json"), "utf8"));
   const expected = [...NON_ADAPTER_ENTRIES, ...ADAPTER_ENTRIES].map(name => `./${name}`).sort();
   if (JSON.stringify(Object.keys(metadata.exports).sort()) !== JSON.stringify(expected)) throw new Error("Platform export inventory needs classification");
+}
+
+
+/** Offline installed payments trial with host-owned persistence and refusal policy. */
+export function provePaymentsConsumer(consumer: string): void {
+  consumerNode(consumer, `
+import assert from "node:assert/strict";
+import { executePreparedAttemptMechanism } from "@openlup/platform/payments";
+import * as contracts from "@openlup/platform/payments/contracts";
+assert.deepEqual(Object.keys(contracts), []);
+const trace = [];
+const stored = {paymentAttemptId:"attempt-a",status:"created",replayed:false,providerAttemptId:null,providerSessionId:null,nextActionKind:null};
+const execution = {provider:"provider-a",providerAttemptId:"remote-a",providerSessionId:null,attemptStatus:"processing",nextActionKind:null,requestPayload:{},responsePayload:{}};
+const input = {provider:"provider-a",paymentIntentId:"intent-a",providerIdempotencyKey:"host-key",providerRequestFingerprint:"host-fingerprint",providerFlow:"one_time",
+ prepareIdempotencyKey:"prepare-a",finalizeIdempotencyKey:"finalize-a",prepareRequestPayload:{},
+ executionInput:{idempotencyKey:"execute-a",providerIdempotencyKey:"host-key",providerRequestFingerprint:"host-fingerprint",paymentIntentId:"intent-a",amountMinor:100,currency:"XXX",mode:"one_time"},
+ paymentPort:{prepareProviderAttempt:async()=>{trace.push("prepare");return stored;},finalizeProviderAttempt:async(value)=>{trace.push("finalize");assert.equal(value.providerIdempotencyKey,"host-key");return {...stored,status:"processing"};}},
+ executionPort:{validateInput:()=>trace.push("validate"),execute:async(value)=>{trace.push("execute");assert.equal(value,input.executionInput);return execution;}}};
+const policy = {replayError:()=>Error("in-flight"),isTrustedNoCharge:()=>false,logRetry:()=>{},exhaustedError:e=>e,executionError:e=>e,finalizationError:e=>e};
+assert.deepEqual(await executePreparedAttemptMechanism(input,policy),{execution,attempt:{paymentAttemptId:"attempt-a",status:"processing"}});
+assert.deepEqual(trace,["validate","prepare","execute","finalize"]);
+trace.length=0; stored.replayed=true;
+await assert.rejects(()=>executePreparedAttemptMechanism(input,policy),/in-flight/);
+assert.deepEqual(trace,["validate","prepare"]);
+trace.length=0; input.executionPort.validateInput=()=>{throw Error("invalid-input");};
+await assert.rejects(()=>executePreparedAttemptMechanism(input,policy),/invalid-input/);
+assert.deepEqual(trace,[]);
+`);
 }
 
 export function compileConsumer(consumer: string, entries: readonly string[], compiler: string): void {
@@ -853,6 +883,7 @@ assert.throws(() => promotions.resolvePromotionBenefitDefinition({ discount_type
     proveCommunicationsConsumer(consumer);
     proveResendConsumer(consumer);
     proveMarketingSyncConsumer(consumer);
+    provePaymentsConsumer(consumer);
     installA1HostBinding(consumer, checkout);
     proveA1ReferenceBindingConsumer(consumer, "imports");
     proveA1ReferenceBindingConsumer(consumer, "selection");

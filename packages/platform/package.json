@@ -175,6 +175,16 @@
       "types": "./dist/shipping/contracts/index.d.ts",
       "import": "./dist/shipping/contracts/index.js",
       "default": "./dist/shipping/contracts/index.js"
+    },
+    "./payments": {
+      "types": "./dist/payments/index.d.ts",
+      "import": "./dist/payments/index.js",
+      "default": "./dist/payments/index.js"
+    },
+    "./payments/contracts": {
+      "types": "./dist/payments/contracts/index.d.ts",
+      "import": "./dist/payments/contracts/index.js",
+      "default": "./dist/payments/contracts/index.js"
     }
   },
   "repository": {
