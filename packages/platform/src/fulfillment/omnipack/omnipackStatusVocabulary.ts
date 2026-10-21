@@ -101,4 +101,3 @@ const LOCAL_STATUS_BY_PROVIDER_STATUS: Record<NormalizedProviderStatus, string> 
 export function localStatusFor(status: NormalizedProviderStatus): string {
   return LOCAL_STATUS_BY_PROVIDER_STATUS[status];
 }
-

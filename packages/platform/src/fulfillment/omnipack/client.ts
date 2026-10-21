@@ -224,6 +224,7 @@ function withQuery(path: string, params: OmnipackQueryParams | undefined): strin
 
 function readProviderErrorCode(body: unknown): string | null {
   return typeof body === "object" && body !== null && "code" in body && typeof body.code === "string"
+    && /^[A-Z][A-Z0-9_]{0,63}$/.test(body.code)
     ? body.code
     : null;
 }
@@ -231,4 +232,3 @@ function readProviderErrorCode(body: unknown): string | null {
 function isRetryableStatus(status: number): boolean {
   return status === 408 || status === 429 || status >= 500;
 }
-

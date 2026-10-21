@@ -28,6 +28,20 @@ it("preserves the canonical hash witness and excludes recipient changes from per
   const original = buildOmnipackDispatchCommand(candidate());
   const input = candidate(); input.deliveryContact!.contactEmail = "other@example.test"; input.deliveryContact!.line1 = "456 Example Street";
   const changed = buildOmnipackDispatchCommand(input);
+  const itemInput = candidate(); itemInput.lines[0].quantity = 3;
+  const serviceInput = candidate(); serviceInput.deliveryContact!.selectedDelivery!.serviceCode = "EXAMPLE_EXPRESS";
+  const itemChanged = buildOmnipackDispatchCommand(itemInput);
+  const serviceChanged = buildOmnipackDispatchCommand(serviceInput);
+  // Frozen donor digests for these complete commands; serialize-once preserves all four.
+  expect(original.requestFingerprint).toBe("cb7d16e1659b445e32ac98c866d0cda2a523c536f30c0d15eec546e1c9d5731c");
+  expect(changed.requestFingerprint).toBe("aa9f1f3a0edd58d1fdea8ba54f473e81db6815d2c4002db360edeb15bb29bfef");
+  expect(itemChanged.requestFingerprint).toBe("548b6a0eb508e0f40e072687d1857fd8cbe532735e7ea7d193848e76a351c3c3");
+  expect(serviceChanged.requestFingerprint).toBe("9007962c5a4f583d80792d6b1b55cf707b4c73b7187f776bdde7be60fe12d4db");
+  for (const commandInput of [candidate(), input, itemInput, serviceInput]) {
+    expect(buildOmnipackDispatchCommand(commandInput)).toEqual(buildOmnipackDispatchCommand(commandInput));
+  }
+  expect(itemChanged.requestFingerprint).not.toBe(original.requestFingerprint);
+  expect(serviceChanged.requestFingerprint).not.toBe(original.requestFingerprint);
   expect(original.sanitizedRequest).toEqual({ ...buildSanitizedEvidence(original.providerPayload), deliveryContactRevision: 1 });
   expect(JSON.stringify(original.sanitizedRequest)).not.toContain("recipient@example.test");
   expect(JSON.stringify(original.sanitizedRequest)).not.toContain("123 Example Street");

@@ -22,6 +22,21 @@ it("never repeats ambiguous POSTs including response loss and missing acceptance
   const lost = vi.fn(async () => { throw new TypeError("response lost"); });
   await expect(createOmnipackClient(config, lost).createOrder("{}")).rejects.toMatchObject({ status: null, code: "network_error", mayHaveSucceeded: true });
   expect(lost).toHaveBeenCalledOnce();
+  vi.useFakeTimers();
+  try {
+    const deadline = 5;
+    const timedOut = vi.fn((_url: URL | RequestInfo, init?: RequestInit) => new Promise<Response>((_resolve, reject) => {
+      init!.signal!.addEventListener("abort", () => reject(new Error("deadline elapsed")), { once: true });
+    }));
+    const rejection = expect(createOmnipackClient({ ...config, timeoutMs: deadline }, timedOut).createOrder("{}"))
+      .rejects.toMatchObject({ status: null, code: "network_error", mayHaveSucceeded: true });
+    await vi.advanceTimersByTimeAsync(deadline);
+    await rejection;
+    expect(timedOut).toHaveBeenCalledOnce();
+    expect(timedOut.mock.calls[0][1]).toMatchObject({ method: "POST", body: "{}" });
+  } finally {
+    vi.useRealTimers();
+  }
   const missing = vi.fn(async () => jsonResponse({ orderId: "" }));
   await expect(createOmnipackClient(config, missing).createOrder("{}")).rejects.toThrow("omnipack_order_response_invalid");
   expect(missing).toHaveBeenCalledOnce();

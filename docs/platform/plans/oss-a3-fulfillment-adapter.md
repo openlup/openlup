@@ -16,13 +16,15 @@ Codex implements local files and focused checks in the assigned worktree; Claude
 owns git writes, committed native review, the gated full run and delivery. This
 brief grants no submission, merge, release, account or adoption action. No network,
 provider, database, credential-file read or dependency installation is authorized.
-Acceptance here is the selected unchanged-behavior donor slice, injected I/O,
+Acceptance here is the selected donor slice with the bounded error-code adaptation below, injected I/O,
 exact serialized-body fingerprint binding, 18 equivalent witnesses plus minimal
 adaptation tests, scoped neutrality with no baseline increase and answered docs
 impact. Full gates and the two fresh committed control reviews remain with Claude.
 
 O-P1 excludes public factory/configuration/descriptor, exports, API report,
-package manifest, release gates and publication catalogue edits. Existing root
+package manifest and release gates. Publication catalogue registration is part
+of O-P1: the ledger and 20 package source/test files have `public-output` rows,
+as required by publication policy. Existing root
 reference copies, the obligation RPC adapter, M08 contracts/index/orchestration,
 schedules, persistence, receiving, notifications and default wiring stay unchanged.
 The later opt-in entry shares `@openlup/platform`; no topology trigger requires a
@@ -85,7 +87,7 @@ for comparison; identical rows below were checked by bytes. Destination prefix:
 
 | V source; O root reference at the same path | Destination | Boundary adaptation |
 | --- | --- | --- |
-| `server/infra/omnipack/client.ts` (identical) | `client.ts` | Remove environment/readiness reader and ambient-fetch default; require injected HTTP and a per-attempt credential supplier. Omit unused cancellation/inbound methods, related imports and config. Order creation takes serialized bytes; retry, timeout, auth and response semantics unchanged. Host explicitly supplies timing/path settings. |
+| `server/infra/omnipack/client.ts` (identical) | `client.ts` | Remove environment/readiness reader and ambient-fetch default; require injected HTTP and a per-attempt credential supplier. Omit unused cancellation/inbound methods, related imports and config. Order creation takes serialized bytes; retry, timeout and auth semantics unchanged. Host explicitly supplies timing/path settings. Lead-approved repair: surface provider-supplied codes only when matching `^[A-Z][A-Z0-9_]{0,63}$`, otherwise reuse the donor's missing-code fallback `http_<status>`; payload values must not escape through error codes; donor passed codes unchanged. |
 | `server/infra/omnipack/providerError.ts` (identical) | `providerError.ts` | None; native Error base already neutral. This internal projection is not the O-P2 public refusal contract. |
 | `server/infra/omnipack/mappers.ts` (identical) | `mappers.ts` | Omit unused inbound/cancellation interfaces/functions; remaining logic unchanged. |
 | `server/infra/omnipack/productSyncMappers.ts` (root differs in host comment) | `productSyncMappers.ts` | Neutral host terminology in a comment only. |
@@ -104,6 +106,18 @@ hosts/email, example telephone and neutral service codes. These changes preserve
 pass-through, authentication, correlation, quantities and refusal assertions.
 The Basic credential/token values are low-entropy placeholders.
 
+Repair round 1 extends existing cases only: the stock error projection exercises
+HTTP codes containing a reserved email, lowercase prose, digits-only identifiers,
+overlong tokens and accepted constant-like tokens. Observation pins all five
+event-to-status mappings. Dispatch D3 pins four literal complete-command digests,
+repeatability, item-only and service-only changes, retaining recipient/evidence
+assertions. The original digest is
+`cb7d16e1659b445e32ac98c866d0cda2a523c536f30c0d15eec546e1c9d5731c`;
+all four package digests match execution of the frozen donor codec/hash on the
+same synthetic commands. Serialize-once changes no digest. Wire W2 attaches its
+rejection assertion before advancing fake time by exactly the deadline, checks
+one POST and restores real time in `finally`. Case counts remain unchanged.
+
 ## Neutrality and documentation impact
 
 One ui-15 predicate subtracts only the vendor word in this ledger, the exact future
@@ -119,11 +133,12 @@ No baseline or pinned matcher change is made.
 The fulfillment architecture owner describes the internal transport boundary and
 links this ledger; contribution checks describe the scoped predicate and refusals.
 Generated navigation is refreshed after impact review. No public contract or
-registration is introduced by the internal modules.
+package export is introduced by the internal modules. The catalogue inventories
+their public source/test outputs and ledger without exposing a public entry.
 
 ## Execution evidence and handoff
 
-Focused local results (2026-10-21):
+Initial implementation results (2026-10-21; historical, before repair round 1):
 
 - `npx --no -- ast-grep scan --error=no-suppress-all --error=unused-suppression`:
   passed after source and control edits.
@@ -140,16 +155,33 @@ Focused local results (2026-10-21):
 - `node scripts/public-ci-neutrality.mjs`: passed, zero increases.
 - `node --experimental-strip-types packages/ui/smoke/neutrality.ts`: passed.
 - Both requested `gitleaks detect --no-git --source` directory scans: no findings.
-- `git diff --check`: passed. Root reference files, package manifests, export maps,
-  release gates, catalogue and neutrality baseline are unchanged.
+- Root reference files, package manifests, export maps, release gates and
+  neutrality baseline are unchanged. The catalogue adds 21 `public-output` rows.
 - Documentation impact evaluated with the existing checker API against frozen P1:
   two obligations, **zero unanswered**, answered by the architecture and contributor
   sections. `--policy --docs-update` regenerated navigation without a byte delta.
-  The combined policy command and its final rerun are **blocked**: its materialized
-  Markdown-link check requires the new ledger in the publication catalogue, while
-  O-P1 explicitly forbids catalogue edits. The new source/test inventory also needs
-  registration before staging. Coordinator decision requested; no restriction was
-  silently widened and no mandatory policy PASS is claimed.
+  Initial policy execution was blocked before catalogue registration; that scope
+  conflict is resolved by the O-P1 registration decision above. Review of candidate
+  `93e3d482` observed policy **PASS** with `OPENLUP_STACK_BASE=9328b676f28dfd08ccba159c25feb502e4c45ddd`,
+  two obligations and zero unanswered. Reviewers' sandbox-blocked Vitest and
+  neutrality attempts establish no test pass.
+
+Repair round 1 focused results (2026-10-21):
+
+- Package witnesses, neutrality, package-boundary and cold-consumer tests:
+  **1,566 passed across 10 files**, 77.85 s; expanded counts remain 21, 35,
+  1,465 and 45 respectively. No authored cases were added: O-P1 remains 24
+  net-new and the round projection remains 62.
+- Platform typecheck (`tsc -p packages/platform/tsconfig.build.json --noEmit`)
+  and the requested ast-grep scan passed. Full lint/gates remain Claude-owned.
+- Tree-wide neutrality passed with zero increases; both package source/test
+  directory gitleaks scans found no leaks.
+- Pinned publication policy passed with two obligations and zero unanswered.
+  Generated navigation is refreshed with `--policy --docs-update` before the
+  final policy check.
+- Removed the three extra EOF blank lines identified in review; stacked
+  `git diff --check 9328b676f28dfd08ccba159c25feb502e4c45ddd` now passes.
+- No git writes, installs, network access or credential reads were performed.
 
 Native signed-commit reviews, broad checks and delivery are Claude-owned; no
 local check claims their completion. O-P2 must bind prepared requests/evidence,
@@ -162,3 +194,6 @@ abstraction would duplicate existing semantics without improving this boundary.
 Self-retro: a type-only import caused one false boundary failure; use a named type
 import to keep the selected runtime dependency boundary explicit. Selected donor
 witnesses avoid wholesale duplication while retaining the relevant behaviors.
+Repair rethink/self-retro: weakened witnesses and unrestricted response codes →
+extend the existing cases and constrain the response extraction seam, preserving
+the donor fallback and avoiding a new error vocabulary or extra cases.

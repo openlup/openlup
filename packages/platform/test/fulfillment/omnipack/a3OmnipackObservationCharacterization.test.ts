@@ -25,6 +25,12 @@ it("binds event identity to subject, outcome and occurrence with explicit unknow
 it("quarantines unknown taxonomy and maps routes through the primary status vocabulary", () => {
   for (const value of ["UNKNOWN", "Some brand new state", null, "Processing", "In transit"]) expect(normalizeStatus(value)).toBeNull();
   for (const [status, local] of [["NEW", "provider_received"], ["IN_FULFILLMENT", "picking"], ["READY_FOR_PACKING", "packed"], ["AWAITING_COURIER", "packed"], ["SHIPPING", "in_transit"], ["DELIVERED", "delivered"], ["SHIPPING_FAILED", "exception"], ["RETURNED_TO_SENDER", "exception"], ["SUSPENDED", "exception"], ["CANCELLED", "exception"]]) expect(localStatusFor(normalizeStatus(status)!)).toBe(local);
-  expect(Object.keys(EVENT_TO_STATUS)).toHaveLength(5);
+  expect(EVENT_TO_STATUS).toEqual({
+    "shipment.accepted": "new",
+    "order.processing_started": "in_fulfillment",
+    "order.picked": "ready_for_packing",
+    "order.shipped": "shipping",
+    "order.delivered": "delivered",
+  });
   expect(Object.entries(EVENT_TO_STATUS).filter(([, status]) => localStatusFor(status) === "delivered").map(([event]) => event)).toEqual(["order.delivered"]);
 });

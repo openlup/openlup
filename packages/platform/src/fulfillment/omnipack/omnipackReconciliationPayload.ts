@@ -5,4 +5,3 @@ export function providerOccurrenceKey(
 ): string {
   return `${fulfillmentOrderId}:${providerStatus}:${occurredAt ?? "unknown-time"}`;
 }
-
