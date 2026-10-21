@@ -280,6 +280,7 @@ Executed evidence is scoped to the named test and store. Remaining required outc
 | native flat-rate save needs a commerce_settings grant not shipped in the baseline; forward-migration decision | CLOSED by design B: position-72 `20261021200000_shipping_flat_rate_seed` seed-only forward and named role-free native rate capability; no database grant. |
 | Native new-purchase stock read | deferred to the native-backend parity round (owner 2026-10-21), second after M05 bundle-1 |
 | native shipping-rate save has no durable audit | Native-backend parity gap: best-effort unsupported audit is swallowed by the incumbent handler; no durable audit claimed. |
+| Native flat-rate value guard (coordinator advisory, 2026-10-21) | value_minor >= 0 is a known non-DB guard (host request schema); a CHECK is a candidate for the native-backend parity round. |
 
 ### Native flat-rate decision (2026-10-21)
 
@@ -351,3 +352,43 @@ P5b self-retro: incorrect fixture assumptions caused setup failures (a non-expor
 Combined P5a/P5b merge reconciliation (2026-10-21, main `b18460e7`): local content edits and requested focused serial checks only; the author stages and commits. No Git writes, secrets, other worktrees, full suite, `test:scoped`, resource gate, submission or release. Scope is the combined PR paths and generated companions. Preserve main’s sorted registrations, CHANGELOG and source-release contract; keep both P5 fragments unreleased. Remove only the unconsumed adjustment metadata (the existing native adjustment refusal remains), correct the two stale evidence statements and regenerate API snapshots; outside inventory/shipping/composition only pure API reorders are allowed. Exact checks, merged-tree impact trailers, pack/docs comparison and staging list are in the requested merge report. Delivery still requires the author’s index reconciliation, commit and required native review/verification.
 
 Merge self-retro: unchanged registrations need verification rather than edits; removing unused refusal metadata is smaller than adding a redundant consumer. No successor work opened.
+
+
+## S1: 0.20.0 package set
+
+Outcome (2026-10-21): prepare the complete minor `0.20.0` set from main
+`4c055489`; core/outbox are unchanged republications and UI remains private
+`0.0.0`. Platform consumes only `dunning-lifecycle-active-repair.md` and
+`m06-native-flat-rate-save.md`; M06 P5a/P5b already shipped in `0.19.0`.
+
+Published `0.19.0` registry baselines (downloaded bytes match shasum and integrity):
+
+| Package | Packed B | Registry shasum | Registry integrity |
+| --- | ---: | --- | --- |
+| @openlup/core | 161,650 | `9a50bfe6d4853f55ffd576c191a01c127e55e7f8` | `sha512-M/jBZCzRzB7HQc6Wb8DPxewqMZbK6kS9u6GO2eQDrxXPIJqis/RD+fOSKcTWSoj+UMmPdOsHzmau0NybzKZQTw==` |
+| @openlup/outbox | 39,421 | `3545c73a5be1548229999bcb8d2608a4a72413e6` | `sha512-aUlXLbY54Tsn3tJ1B42gWgiES1gOPuKt1cn8IvK/bvWBYA5jZur/Rhb8QjhOfwHmbGmyUTE7lYAH/j2+RiGIog==` |
+| @openlup/platform | 805,872 | `57e35b623d38e36aa32585895492613bfa1e3a16` | `sha512-Z1vvXD0PFTfnbfzs7lvAqXjBDKdSg66h9hC4b3m+uZV+zeAPDGF5dZJ/QBwqBJ2ZNf8WnuWS93FZnjt+dYWQfA==` |
+
+These artifacts supply the three `pack.baseline` records; all caps are unchanged.
+Coordinator-confirmed release order: `0.19.0` dispatch target `fd1513ba` (#266)
+is published and C4-checked; `0.20.0` follows merge and required review/final
+verification. Dispatch and protected approval remain human-only.
+
+M06 remains incomplete. The [Parity PENDING rows](#parity-pending-rows) retain:
+
+- managed-host ATP/forecast/dated-supply/pagination readback (M06 lead);
+- managed two-session lock order/concurrency and uncovered compensation
+  (M06 lead's bounded managed-host proof/scope decision);
+- managed exact-prefix upgrade/ledger (managed installation proof gate);
+- managed address adapter idempotency/conflict/readback (M06 lead);
+- successful managed flat-rate read/save (M06 lead's host/grant decision).
+
+None is proved on a managed host or closed by native flat-rate save. Only the
+ledger's adopter admission/busy, stock-wait/durable timing and staging-control
+rows transfer to C5 adopter evidence, owned by the M06 lead at the adopter's
+canonical staging at C5/C6; these are dispositions, not PASS.
+
+The ledger retains `value_minor >= 0` as a non-DB host-request-schema guard;
+a database CHECK is a candidate for the native-backend parity round.
+Native new-purchase stock read is deferred to that round (owner 2026-10-21),
+second after M05 bundle-1; C5 retains the adopter-owned reader.

@@ -216,7 +216,8 @@ The consumer proof uses the existing quote/offer and authorized draft readback
 surfaces. The mounted admin/feed readback proof feeds the merged availability
 builder (`createNewPurchaseStockAvailabilityPort`) from an injected port-boundary
 stock reader double, so it proves the mounted readback, not native stock; the
-native stock read remains M06 P5a work. No acceptance token, publication receipt
+native stock read is deferred to the native-backend parity round
+(owner 2026-10-21), second after M05 bundle-1. No acceptance token, publication receipt
 or real stock claim is made.
 
 

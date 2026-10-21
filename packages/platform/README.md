@@ -1,13 +1,15 @@
 # @openlup/platform
 
-Development preview. This package joins core and outbox in the publishable set from the next set version; this configuration does not establish a registry release or a stable API. Its repository-directory publish command refuses publication; the authorized package-release workflow owns publication.
+Development preview. This package is part of the publishable set with core and outbox; preparation does not establish a registry release or a stable API. Its repository-directory publish command refuses publication; the authorized package-release workflow owns publication.
 
 It holds the runnable server substrate an OpenLup application composes: the Node HTTP runtime, BFF dispatch, scheduling and job leases, blob storage, data gateways, the node-postgres migration runner and bundle composition. Ports and their contracts stay in `@openlup/core/platform-runtime`.
 
-For the prepared `0.19.0` set, read the [adjacent-release migration and known
-limitations](CHANGELOG.md#0190) before selecting the opt-in M05 parity seams or
-M06 composition bindings. M06 in progress: inventory and shipping entries are early surfaces; module not complete
-The size gate compares this candidate with the published `0.18.0` tarball;
+For the prepared `0.20.0` set, read the [adjacent-release migration and known
+limitations](CHANGELOG.md#0200) before selecting the opt-in M05 parity seams or
+M06 composition bindings. M06 remains incomplete: inventory and shipping entries
+are development-preview surfaces, with managed-host proof classes pending in the
+[M06 parity ledger](../../docs/platform/plans/oss-m06-stock-reservations-delivery.md#parity-pending-rows).
+The size gate compares the prepared `0.20.0` set with the published `0.19.0` tarball;
 preparation, offline adapter evidence and a passing size cap grant no publication
 or provider-account certification.
 
