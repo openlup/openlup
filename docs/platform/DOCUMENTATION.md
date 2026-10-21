@@ -76,6 +76,12 @@ installed-package acceptance result or independent-adopter certification. The
 publication catalogue includes the image so README links resolve in the public
 tree. This illustration changes no runtime, package or release contract.
 
+Its approved name/domain references have an exact-line, exact-carrier allowance
+in the tree-wide neutrality wrapper, as described in
+[contribution checks](../../CONTRIBUTING.md#package-policy-and-release-checks).
+The allowance admits only this case-study prose and screenshot references; code
+and unapproved references remain subject to the existing scanner and baseline.
+
 The P7 native catalog move keeps the package README as owner of the two
 factory exports, sparse descriptor and structural contribution. The adapter
 owner explains reference compatibility paths; the runtime owner explains the
