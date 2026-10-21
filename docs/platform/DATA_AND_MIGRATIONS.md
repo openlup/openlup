@@ -344,8 +344,11 @@ Native shipping appends the seed-only forward
 at position 71. It inserts `shipping_flat_minor = 0` only when absent, preserving
 an existing rate and every ACL and role membership. The named role-free shipping
 lane owns fixed-key read/update statements; no service role or grant is added.
-Supply the native rate port and a passing Core required-schema readiness report
-for this migration before enabling the binding; an unmigrated schema keeps
+Supply the native rate port, a passing Core required-schema readiness report and
+its same-database `nativeRateSchema` observation before enabling the binding.
+The reference probe checks the seed's position, path and SHA-256 in the ledger,
+plus the settings table and columns; later ledger entries are permitted.
+Candidate labels alone prove nothing. An unmigrated schema keeps
 `shipping_native_flat_rate_save_unsupported`. A missing setting row refuses with
 `shipping_native_flat_rate_row_required`, never a successful zero-row update.
 

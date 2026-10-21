@@ -1,4 +1,4 @@
-import type { ReadinessReport } from "@openlup/core/readiness";
+import type { ReadinessReport, SchemaObservation } from "@openlup/core/readiness";
 import type { BffResponder } from "../bff/index.js";
 import type { CustomerAddressBookPort, CustomerAddressMutationPort, CustomerAddressesDeps } from "./addressPorts.js";
 import type { CustomerAddressSchemas } from "./addressSchemas.js";
@@ -20,6 +20,8 @@ export interface ShippingBindingDependencies {
   createManagedStore?: () => Store | null;
   /** Core report for the selected shipping contribution, observed by the host. */
   nativeRateReadiness?: ReadinessReport;
+  /** Same-database Core observation of the applied shipping seed and required objects. */
+  nativeRateSchema?: SchemaObservation;
   nativeStore?: Omit<Store, "addressMutationPort"> | null;
   responder: BffResponder;
   selection?: { port: DeliverySelectionPort; searchPort: PickupPointSearchPort; schemas: DeliverySelectionSchemas };
@@ -47,7 +49,13 @@ export function createShippingBindings(deps: ShippingBindingDependencies): Shipp
     && typeof deps.nativeStore?.shippingRateDataPort?.setShippingFlatMinor === "function"
     && typeof deps.nativeStore?.shippingRateDataPort?.recordPromotionAudit === "function"
     && deps.nativeRateReadiness?.state === "ready"
-    && deps.nativeRateReadiness.candidate.schema === "20261021120000_shipping_flat_rate_seed";
+    && typeof deps.nativeRateReadiness.candidate?.database === "string"
+    && deps.nativeRateReadiness.candidate.database.length > 0
+    && deps.nativeRateSchema?.database === deps.nativeRateReadiness.candidate.database
+    && deps.nativeRateSchema.version === "20261021120000_shipping_flat_rate_seed"
+    && ["public.commerce_settings", "public.commerce_settings.value_minor", "public.commerce_settings.updated_at"].every(name =>
+      deps.nativeRateSchema?.objects?.some(entry => entry.present === true && entry.object?.name === name
+        && entry.object.kind === (name === "public.commerce_settings" ? "table" : "column")));
   const flatRateSave = native && !nativeRateReady ? "shipping_native_flat_rate_save_unsupported" : null;
   const refused = (reason: string): ShippingBindings => ({
     store: {}, handlers: { options: null, search: null, validate: null, addresses: null, rate: null },

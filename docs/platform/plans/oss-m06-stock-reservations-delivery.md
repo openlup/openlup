@@ -287,7 +287,7 @@ Owner: "M06: do the native flat-rate save grant now (forward migration, least pr
 
 The coordinator ruled B as the delegate on 2026-10-21. A literal grant would
 contradict the portable kernel's deliberate absence of `service_role`
-(`packages/platform/src/data/postgresGateway.ts:39`). A native capability instead
+(`packages/platform/src/data/postgresGateway.ts:40`). A native capability instead
 gets a named role-free lane because the lane name is the access rule. The sole
 forward statement seeds the fixed setting without overwriting it or changing
 privileges. Native save requires its port and Core readiness for the new forward;
@@ -304,13 +304,8 @@ Native new-purchase stock read is deferred to the native-backend parity round
 (owner 2026-10-21), second after M05 bundle-1. No implementation is added; C5
 retains the adopter-owned reader. The next row records the native audit gap.
 
-This bounded implementation permits local content edits, dependency installation
-and focused checks only. No Git writes, submission, merge, release, production,
-credentials, managed SQL or adopter continuation are authorized. Six new semantic
-cases maximum; incumbent binding and installed-consumer cases are extended.
-Implementation/proof evidence and the self-retro are in the coordinator's
-`m06-grant-impl.md` task note. Native committed review and delivery remain with
-the authorized supervisor after the author commits.
+The proof adds six semantic cases and extends incumbent binding and
+installed-consumer cases.
 
 ## Budgets
 

@@ -44,6 +44,12 @@ or provider-account certification.
 
 Shipping handlers require injected host schemas; contracts are type-only with opaque provider/carrier strings.
 No vendor code, inventory import, activation or parity claim.
+Native flat-rate save requires the rate port, a ready Core report and
+`nativeRateSchema`, a same-database Core `SchemaObservation` proving the applied
+seed identity and settings objects. A candidate schema label is not proof;
+later forwards do not invalidate an applied seed. The reference host exposes
+`observeNativeRateSchema()` for this ledger/object observation and retains
+caller-declared schema requirements. Missing proof keeps the named refusal.
 
 ## Inventory
 

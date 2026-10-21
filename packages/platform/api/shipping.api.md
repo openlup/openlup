@@ -557,7 +557,7 @@ export declare function createAdminShippingRateHandler({ dataPort, authorizeAdmi
 ## dist/shipping/bindings.d.ts
 
 ```ts
-import type { ReadinessReport } from "@openlup/core/readiness";
+import type { ReadinessReport, SchemaObservation } from "@openlup/core/readiness";
 import type { BffResponder } from "../bff/index.js";
 import type { CustomerAddressBookPort, CustomerAddressMutationPort, CustomerAddressesDeps } from "./addressPorts.js";
 import type { CustomerAddressSchemas } from "./addressSchemas.js";
@@ -578,6 +578,8 @@ export interface ShippingBindingDependencies {
     createManagedStore?: () => Store | null;
     /** Core report for the selected shipping contribution, observed by the host. */
     nativeRateReadiness?: ReadinessReport;
+    /** Same-database Core observation of the applied shipping seed and required objects. */
+    nativeRateSchema?: SchemaObservation;
     nativeStore?: Omit<Store, "addressMutationPort"> | null;
     responder: BffResponder;
     selection?: {
