@@ -392,3 +392,34 @@ The ledger retains `value_minor >= 0` as a non-DB host-request-schema guard;
 a database CHECK is a candidate for the native-backend parity round.
 Native new-purchase stock read is deferred to that round (owner 2026-10-21),
 second after M05 bundle-1; C5 retains the adopter-owned reader.
+
+### C4 — 0.20.0 publication readback
+
+S1 merged as `3e0f1784984b4b283c9ac2c8b96c6c3f98d28ad9` (#271); its `packages/`
+tree equals the reviewed and witnessed head `8491eed1`, and the only other
+difference is the docs-only #270. One authorized dispatch of
+`publish-package.yml` (package `all`, version `0.20.0`, target that commit, the
+reviewed release body) ran as run 39597004473; the owner approved the protected
+`release` environment and all three releases completed on 2026-10-21.
+
+C4 readback on 2026-10-21, against the published packages: **PASS, 4/4**.
+
+- Registry integrity: each downloaded tarball matches its `dist.integrity` and
+  `dist.shasum` — core `045eafe05a686616fef921adedb3a7156ca0b086`, outbox
+  `aee786aded37acb7cee9f55e1d9d957b4a1d96ab`, platform
+  `604e96ed6413e161b69d8a452cd1a529e1a55fd8`.
+- Content equivalence: the extracted published trees are identical to the
+  tarballs witnessed from the reviewed head (core 209, outbox 41, platform
+  1,197 files); compressed bytes differ after the workflow's repack.
+- Provenance: SLSA v1 statements bind each tarball to `publish-packages.yml`,
+  the tag `openlup-{core,outbox,platform}-v0.20.0` and `gitCommit`
+  `3e0f1784984b4b283c9ac2c8b96c6c3f98d28ad9`; each remote tag dereferences to
+  that commit.
+- `npm audit signatures`: 4 verified registry signatures and 4 verified
+  attestations; `npm audit` reports 0 vulnerabilities.
+
+The M06 release set is published; the adopter's C5 starts from these published
+versions. The pending managed-host rows and C5 dispositions above are unchanged.
+The published `0.20.0` body says the native flat-rate save is "supported" behind
+readiness; later release bodies say "enabled", so the development-preview posture
+never claims support.
