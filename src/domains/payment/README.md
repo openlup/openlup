@@ -95,7 +95,11 @@ resolution, metadata, idempotency and redemption remain reference-owned.
 The opt-in `ReferenceStorePage` now mounts `ReferencePaymentRepairPage` after
 checkout. It requests customer verification and reads stored status through
 `PaymentRepairStatus`, which reuses the existing injected status poller.
-Exact path/specifier guardrail exemptions retain operator-client refusal.
+Exact path/specifier guardrail exemptions admit only the status-only
+`commerce/paymentStatusClient`, customer `commerce/paymentVerifyClient` and
+`payment/components/PaymentStatusPoller` modules for their named reference files.
+The broader `commerceClient` and operator clients stay refused. Redirect handoff
+links render only for HTTPS URLs.
 The source-import proof keeps the store unmounted in the shipped default profile.
 Verify never proves success; only stored paid status does.
 Native method setup is visibly unsupported unless the host supplies a collector

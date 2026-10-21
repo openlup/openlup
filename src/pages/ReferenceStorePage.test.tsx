@@ -15,7 +15,7 @@ vi.mock("@/domains/catalog/catalogClient", () => ({
 }));
 vi.mock("@/domains/commerce/referenceCommerceClient", () => ({ submitReferenceCheckout: mocks.submitReferenceCheckout }));
 
-vi.mock("@/domains/commerce/commerceClient", () => ({ getCommercePaymentStatus: mocks.getCommercePaymentStatus }));
+vi.mock("@/domains/commerce/paymentStatusClient", () => ({ getCommercePaymentStatus: mocks.getCommercePaymentStatus }));
 
 import ReferenceStorePage from "./ReferenceStorePage";
 

@@ -17238,6 +17238,10 @@
       "class": "public-output"
     },
     {
+      "path": "src/domains/commerce/paymentStatusClient.ts",
+      "class": "public-output"
+    },
+    {
       "path": "src/domains/commerce/paymentVerifyClient.test.ts",
       "class": "public-output"
     },

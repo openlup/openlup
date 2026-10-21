@@ -17,10 +17,10 @@ import { describe, expect, it, vi } from "vitest";
 import { createPaymentRecoverySetupHandler } from "../../server/domains/payment/paymentRecoverySetupHandler.js";
 import { createPaymentRecoveryRedeemHandler } from "../../server/domains/subscription/paymentRecoveryHandler.js";
 import ReferencePaymentRepairPage from "./ReferencePaymentRepairPage";
-vi.mock("@/domains/commerce/commerceClient", () => ({ getCommercePaymentStatus: vi.fn(async () => ({
+vi.mock("@/domains/commerce/paymentStatusClient", () => ({ getCommercePaymentStatus: vi.fn(async () => ({
   status: "processing", payment: { intentStatus: "processing" }, nextAction: null,
 })) }));
-vi.mock("@/domains/commerce/paymentVerifyClient", () => ({ verifyCommercePaymentNow: vi.fn(async () => ({ status: "pending", verified: true, applied: false })) }));
+vi.mock("@/domains/commerce/paymentVerifyClient", () => ({ verifyCommercePaymentNow: vi.fn(async () => ({ status: "paid", verified: true, applied: true })) }));
 const CASE = "11111111-1111-4111-8111-111111111111", SUB = "22222222-2222-4222-8222-222222222222";
 const CYCLE = "33333333-3333-4333-8333-333333333333", ORDER = "44444444-4444-4444-8444-444444444444";
 const AT = "2026-10-21T10:00:00.000Z", TOKEN = "a".repeat(64);
@@ -75,6 +75,25 @@ describe("reference method repair", () => {
     expect(await screen.findByText(/Verification requested/)).toBeInTheDocument();
     expect(screen.queryByText("Payment confirmed.")).not.toBeInTheDocument();
   });
+  it.each([
+    ["https://payments.example/continue", true],
+    ["http://payments.example/continue", false],
+    ["javascript:alert(1)", false],
+    ["invalid-url", false],
+  ])("renders the redirect handoff %s only for https", async (url, allowed) => {
+    const setupMethod = vi.fn(async () => ({ kind: "ready" as const, setupRef: "setup-original", replayed: false,
+      handoff: { kind: "redirect" as const, url } }));
+    render(<ReferencePaymentRepairPage identity={{ orderId: ORDER, clientId: "client-original", paymentIntentId: "intent-original" }}
+      setupMethod={setupMethod} />);
+    await screen.findByText("Waiting for stored payment confirmation.");
+    fireEvent.click(screen.getByRole("button", { name: "Set up payment method" }));
+    await waitFor(() => expect(setupMethod).toHaveBeenCalledOnce());
+    await waitFor(() => expect(screen.getByRole("button", { name: "Set up payment method" })).toBeEnabled());
+    const link = screen.queryByRole("link", { name: "Continue existing payment" });
+    if (allowed) expect(link).toHaveAttribute("href", url);
+    else expect(link).not.toBeInTheDocument();
+  });
+
 });
 
 const unattendedChargeCapability = {

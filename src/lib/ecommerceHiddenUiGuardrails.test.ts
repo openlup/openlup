@@ -122,9 +122,9 @@ function isPublicCommerceMarketingFile(file: string): boolean {
 
 function isReferenceRepairImport(file: string, specifier: string): boolean {
   switch (relativePath(file)) {
-    // Opt-in repair view reads customer status, requests verification and types its poller.
+    // Opt-in repair view admits only the status-only client, verify-now client and poller type.
     case "src/pages/ReferencePaymentRepairPage.tsx":
-      return ["@/domains/commerce/commerceClient", "@/domains/commerce/paymentVerifyClient",
+      return ["@/domains/commerce/paymentStatusClient", "@/domains/commerce/paymentVerifyClient",
         "@/domains/payment/components/PaymentStatusPoller"].includes(specifier);
     // Opt-in store carries only the customer payment identity into the repair view.
     case "src/pages/ReferenceStorePage.tsx":
@@ -156,13 +156,15 @@ describe("ecommerce hidden UI guardrails", () => {
   it("refuses operator clients for every exact reference repair exemption", () => {
     for (const path of ["src/pages/ReferencePaymentRepairPage.tsx", "src/pages/ReferenceStorePage.tsx",
       "src/components/PaymentRepairStatus.tsx"]) {
-      for (const specifier of ["@/domains/commerce/operatorRepairClient", "@/domains/payment/paymentControlClient",
-        "@/domains/commerce/adminOmsClient"]) {
+      for (const specifier of ["@/domains/commerce/commerceClient", "@/domains/commerce/omsClient",
+        "@/domains/commerce/adminCatalogClient", "@/domains/payment/paymentControlTypes"]) {
         expect(isReferenceRepairImport(join(repoRoot, path), specifier)).toBe(false);
       }
     }
     expect(isReferenceRepairImport(join(repoRoot, "src/pages/ReferencePaymentRepairPage.tsx"),
-      "@/domains/commerce/commerceClient")).toBe(true);
+      "@/domains/commerce/paymentStatusClient")).toBe(true);
+    expect(isReferenceRepairImport(join(repoRoot, "src/pages/OtherPage.tsx"),
+      "@/domains/commerce/paymentStatusClient")).toBe(false);
   });
 
   it("keeps the opt-in reference store unmounted in the shipped default profile", () => {

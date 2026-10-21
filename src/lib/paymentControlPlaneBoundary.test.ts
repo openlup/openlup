@@ -96,8 +96,10 @@ describe("payment-control plane boundary", () => {
     for (const path of ["src/pages/ReferencePaymentRepairPage.tsx", "src/components/PaymentRepairStatus.tsx"]) {
       const file = join(repoRoot, path);
       expect(isReferenceRepairPaymentImport(file, "@/domains/payment/components/PaymentStatusPoller")).toBe(true);
-      expect(isReferenceRepairPaymentImport(file, "@/domains/payment/paymentControlClient")).toBe(false);
-      expect(isReferenceRepairPaymentImport(file, "@/domains/payment/operatorRepairClient")).toBe(false);
+      for (const specifier of ["@/domains/commerce/commerceClient", "@/domains/commerce/omsClient",
+        "@/domains/commerce/adminCatalogClient", "@/domains/payment/paymentControlTypes"]) {
+        expect(isReferenceRepairPaymentImport(file, specifier)).toBe(false);
+      }
     }
     expect(isReferenceRepairPaymentImport(join(repoRoot, "src/pages/OtherPage.tsx"),
       "@/domains/payment/components/PaymentStatusPoller")).toBe(false);

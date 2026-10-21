@@ -1,7 +1,7 @@
 import { useCallback, useState } from "react";
 import type { PaymentRecoveryAction, PaymentRepairMethodPort } from "@openlup/platform/payments/contracts";
 import { PaymentRepairStatus } from "@/components/PaymentRepairStatus";
-import { getCommercePaymentStatus } from "@/domains/commerce/commerceClient";
+import { getCommercePaymentStatus } from "@/domains/commerce/paymentStatusClient";
 import { verifyCommercePaymentNow, type PaymentVerifyRequest } from "@/domains/commerce/paymentVerifyClient";
 import type { PollerStatusSnapshot } from "@/domains/payment/components/PaymentStatusPoller";
 
@@ -52,7 +52,7 @@ export default function ReferencePaymentRepairPage({ identity, journeyId, setupM
     <button type="button" disabled={busy} onClick={() => { void verify(); }}>Verify payment now</button>
     <button type="button" disabled={busy} onClick={() => { void collect(); }}>Set up payment method</button>
     {!setupMethod && <p>Method setup is unsupported by this installation.</p>}
-    {action?.kind === "redirect" && <a href={action.url}>Continue existing payment</a>}
+    {action?.kind === "redirect" && URL.canParse(action.url) && new URL(action.url).protocol === "https:" && <a href={action.url}>Continue existing payment</a>}
     {message && <p role="status">{message}</p>}
   </section>;
 }
