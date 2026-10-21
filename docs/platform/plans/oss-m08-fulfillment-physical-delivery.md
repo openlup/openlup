@@ -17,23 +17,21 @@ no incompatible runtime, peer, lifecycle or consumer requires another artifact.
 Platform maintains these experimental contracts; adapters and host policy remain
 adopter-owned.
 
-Candidate `bc4f9110` is committed on the assigned branch. Repair cycle 1 is a
-working-tree-only handoff to the coordinator: local edits and focused verification,
-with the report in the assigned P1 notes directory. Commit, submission, native
-review and delivery remain coordinator responsibilities. This repair performs no
-commit/push, network, secret/provider access, other-worktree operation or
-scripts/agent-review-* execution. No adopter/staging endpoint is in P1 scope.
+P1 is committed as `bc4f9110` and its review-cycle-1 repair as `9328b676`, both
+passed by two cold reviews; main (M07 S1, 0.21.0) was merged at the merge slot.
+Submission and merge remain coordinator gates. No adopter/staging endpoint, network,
+secret or provider access is in P1 scope.
 
 Acceptance: exact two entries and symbols in the frozen export register plus the
 repair-1 prepare-result/envelope type amendment; type-only
 browser contracts; concrete G1–G13 fit; unchanged status projection digest and
-decisions; arrival discipline in port/platform docs; eight semantic cases; generated
+decisions; arrival discipline in port/platform docs; eight semantic cases (3 contracts, 2 portFit, 3 statusMap); generated
 boundary rows reported separately; focused lint/structural/API/consumer/policy
 checks and actual tarball budgets. The inventory API generator retains its two
 existing enum-order-only adjustments without changing value sets. Repair 1 removes
 the module README and unreachable status helper, reuses architecture documentation
-as the fulfillment owner, and keeps the whole candidate at 33 paths versus the
-35-path cap. Actual diff including generated files must stay
+as the fulfillment owner; after the main merge the candidate is 32 paths against
+main versus the 35-path cap. Actual diff including generated files must stay
 at or below 35 paths. Exclusions: P2+ runtime orchestration, SQL/migrations,
 composition, reference facade rewiring, UI, adapter implementation and release
 set/version preparation. No native continuity, provider operation or stable
@@ -131,24 +129,19 @@ claim implementation conformance for the later workers/stores.
 
 Run the three new suites and existing packageBoundary/cold-consumer tests, focused
 TypeScript checks, structural/lint checks, publication policy/navigation, neutrality
-and API report checks. Serialize generation/build/pack. The ordinary package gate
-requires a clean committed tree; the working-tree repair uses its
-existing measurePack/checkPackBudget/browserEntryBytes helpers on npm-packed
-materialized bytes, report the limitation, and leave clean-tree admission owed.
+and API report checks. Serialize generation/build/pack. The required package gates run on the clean committed tree through verify-command.
 Scratch logs/configs are under .context/scratch; existing cold-consumer fixtures
-use system temporary directories and clean up their own output. The P1 report records actual case
-counts/time, every pack cap/subcap, paths, checks and any delta-bound documentation
-trailers still needed because commits are prohibited.
+use system temporary directories and clean up their own output. Delta-bound documentation answers are
+committed as OpenLup-Doc-Impact trailers on the P1 commits.
 
-Committed-candidate baseline: seven authored semantic cases; 1,432 generated
+First candidate (`bc4f9110`) baseline: seven authored semantic cases; 1,432 generated
 packageBoundary cases; platform pack 1,026,756 B packed / 4,582,014 B unpacked /
 1,438 files; code gzip 882,636 B / 1,404 files; root-doc gzip 48,065 B / 5 files.
 Root-doc headroom was 1,087 B against 49,152 B. Repair 1 measures 47,850 B
-(1,302 B headroom, 215 B recovered); its working-tree pack is 1,024,956 B packed /
+(1,302 B headroom, 215 B recovered); its pre-merge pack is 1,024,956 B packed /
 4,577,081 B unpacked / 1,434 files, code gzip 882,715 B / 1,401 files. All caps
-and browser subcaps pass. Repair-cycle checks and trailers are recorded in the
-coordinator handoff report; this record claims no
-native review, clean committed admission or provider implementation conformance.
+and browser subcaps pass. The pack is re-measured by the required package gates on
+the merged tree. This record claims no provider implementation conformance.
 
 Known limits retained from the donor: capability lookup lowercases the selected
 providerRef but compares it against the injected descriptor as supplied; case
