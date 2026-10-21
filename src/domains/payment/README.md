@@ -92,9 +92,9 @@ The setup BFF wraps its existing host-owned callback in `PaymentRepairMethodPort
 a ready result carries transient setup data only. Authentication, token/case
 resolution, metadata, idempotency and redemption remain reference-owned.
 
-The opt-in store embeds the reference payment repair view after checkout. It
-reuses the status poller and typed status/verify clients for the original
-identity triple. Verify does not render success; only stored paid status does.
+A reference payment repair view follows in a separate change that settles its
+customer-visible UI boundary. Verify never proves success; only stored paid
+status does.
 Native method setup is visibly unsupported unless the host supplies a collector
 and confirmation implementation. This source composition establishes no new
 profile route, provider activation or durable native method-setup capability.

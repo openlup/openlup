@@ -133,11 +133,12 @@ field for a typed refusal envelope, so that forwarding remains unsupported.
 The incomplete-chargeback classification and native schema limits remain; the
 reference first-receipt clock switch and required host reader proof stay in P6.
 
-There are 13 P4 authored cases (W6 four, W7 four, W8 three and two owner/attempt
-cases), plus one carry-over regression: 14 total. Public tests stay package-local;
-reference renewal/status/setup assertions use the two existing planned DOM files.
-The existing store invocation is extended. Focused root: 124 passes in 19 files;
-package-local: 44 in 11; DOM: 17 in four including the retained store/poller suites.
+P4 keeps 8 authored cases (W6, the public W7/W8 package cases, owner/attempt
+binding and the reusable-method owner regression). The reference repair UI and
+its 6 DOM cases (W7 renewal and W8 collection/denied-actor assertions) move to
+a separate change, because the hidden-UI guardrails need a boundary decision.
+Focused runs after the split cover the package payment suites and the retained
+reference resolver, status, verify and setup suites.
 All retained resolver/status/verify/setup/BFF/poller suites remain unchanged.
 An offline probe exercises actual reference route/status/package statements with
 host-selected in-memory ports, and 156 donor/reference binding scenarios agree.
@@ -150,7 +151,7 @@ the same navigation renderer ran directly, and the unchanged contributor-check
 owner needs the scoped trailer proposed in the handoff. No full verification,
 Git/remote write, DCO, native review, release or activation was performed.
 
-P4 final ledger: 34 paths, 15 production paths, about 2,050 lines of churn (including the regenerated example-adapter API report), nine frozen
+P4 final ledger: 28 paths, 12 production paths, about 1,700 lines of churn (including the regenerated example-adapter API report), nine frozen
 export additions. Computed against main after the first opt-in example adapter (#278), representing main
 after P3 for this stacked task; this is not an aggregate P1–P4 comparison or a
 claim about the later moving main. No dependency, public subpath, migration or

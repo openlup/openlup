@@ -1,5 +1,3 @@
-import ReferencePaymentRepairPage from "./ReferencePaymentRepairPage";
-import type { PaymentVerifyRequest } from "@/domains/commerce/paymentVerifyClient";
 import { useEffect, useRef, useState } from "react";
 import { BffClientError } from "@/lib/bff/client";
 import {
@@ -38,7 +36,6 @@ export default function ReferenceStorePage() {
   const [quantity, setQuantity] = useState(1);
   const [customer, setCustomer] = useState(initialCustomer);
   const [submitting, setSubmitting] = useState(false);
-  const [paymentIdentity, setPaymentIdentity] = useState<PaymentVerifyRequest | null>(null);
   const [result, setResult] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const idempotencyKey = useRef(`reference-store-${Date.now()}-${Math.random().toString(36).slice(2)}`);
@@ -95,7 +92,6 @@ export default function ReferenceStorePage() {
     setSubmitting(true);
     setError(null);
     setResult(null);
-    setPaymentIdentity(null);
     try {
       const checkout = await submitReferenceCheckout({
         command: {
@@ -118,7 +114,6 @@ export default function ReferenceStorePage() {
           currency: item.unitPrice.currency,
         },
       });
-      setPaymentIdentity({ orderId: checkout.orderId, paymentIntentId: checkout.paymentIntentId, clientId: checkout.clientId });
       const refused = checkout.paymentStatus === "failed" || checkout.paymentAttemptStatus === "failed";
       setResult(refused
         ? `Checkout refused: ${checkout.orderId}`
@@ -235,7 +230,6 @@ export default function ReferenceStorePage() {
           {submitting ? "Creating checkout…" : "Create local checkout"}
         </button>
         {result && <p aria-live="polite" className="mt-4 font-body text-sm text-teal">{result}</p>}
-        {paymentIdentity && <ReferencePaymentRepairPage identity={paymentIdentity} />}
         {error && <p aria-live="polite" className="mt-4 font-body text-sm text-red-700">{error}</p>}
       </section>
     </main>

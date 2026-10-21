@@ -168,7 +168,7 @@ existing order. The endpoint adds no policy fallback or direct-delivery mode.
 | Buyer verify | The existing verify BFF supplies stored read/apply ports, provider registry, feature gate and observed responder to the package handler. Stored ownership precedes provider reads; browser outcome/attempt claims are ignored. |
 | Buyer status/action | The status BFF retains the stored response schema and continuation credential. It projects the existing action carrier and supplies the existing rail capability mapping. Unknown rails refuse; the package rechecks the canonical attempt after provider readback. |
 | Method collection | The setup BFF keeps authentication, token ownership, case lookup, callback and metadata. Its neutral method port exposes only ready transient handoff or unsupported; collection alone never repairs or charges a cycle. |
-| Opt-in reference store | The existing local store embeds `ReferencePaymentRepairPage` with the returned original order/intent/client identity. `PaymentRepairStatus` reuses the existing poller; verify responses do not prove payment. Native method setup is explicitly unsupported without host collection/confirmation. No default profile or route is mounted. |
+| Reference repair view | Follows in a separate change that settles its customer-visible UI boundary. The reference BFF status, verify and method-setup routes consume the package now; verify responses do not prove payment, and native method setup is explicitly unsupported without host collection/confirmation. No default profile or route is mounted. |
 
 Method evidence registration data contains neutral provider references, method
 kind and status. The host's `resolveMethodOwner` supplies the client and optional

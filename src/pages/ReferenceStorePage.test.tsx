@@ -6,7 +6,6 @@ const mocks = vi.hoisted(() => ({
   listCatalogProducts: vi.fn(),
   getCatalogProduct: vi.fn(),
   submitReferenceCheckout: vi.fn(),
-  getCommercePaymentStatus: vi.fn(async () => ({ status: "processing", payment: { intentStatus: "processing" }, nextAction: null })),
 }));
 vi.mock("@/domains/catalog/catalogClient", () => ({
   listReferenceStoreItems: mocks.listReferenceStoreItems,
@@ -14,8 +13,6 @@ vi.mock("@/domains/catalog/catalogClient", () => ({
   getCatalogProduct: mocks.getCatalogProduct,
 }));
 vi.mock("@/domains/commerce/referenceCommerceClient", () => ({ submitReferenceCheckout: mocks.submitReferenceCheckout }));
-
-vi.mock("@/domains/commerce/commerceClient", () => ({ getCommercePaymentStatus: mocks.getCommercePaymentStatus }));
 
 import ReferenceStorePage from "./ReferenceStorePage";
 
@@ -65,12 +62,6 @@ describe("ReferenceStorePage", () => {
       }),
     }));
     expect(await screen.findByText(/Checkout created/)).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "Payment repair" })).toBeInTheDocument();
-    await waitFor(() => expect(mocks.getCommercePaymentStatus).toHaveBeenCalledWith({
-      orderId: "11111111-1111-4111-8111-111111111111", clientId: "22222222-2222-4222-8222-222222222222",
-      paymentIntentId: "33333333-3333-4333-8333-333333333333",
-    }));
-    expect(screen.getByText("Method setup is unsupported by this installation.")).toBeInTheDocument();
   });
 
   it("does not present a refused payment as a created checkout", async () => {
