@@ -172,9 +172,9 @@ P2 is stacked on frozen P1 `9328b676f28dfd08ccba159c25feb502e4c45ddd`,
 in the assigned `claude/oss-m08-p2-fulfillment` worktree. The owner's delegated
 coordinator authorizes local paid-handler/recovery, durable-ledger protocol,
 dispatch/fence/acceptance/projection implementation and focused checks, plus G14.
-P2's candidate is committed as `aa03ee4a8961a585140fe3ce0cd1efd043bd691f`.
-Repair cycle 1 changes only its working tree; commit, native review, submission,
-merge and release remain coordinator/human gates. For this repair, no network,
+P2 is committed as `aa03ee4a` and its review-cycle-1 repair as `a81ab7e8` (main-path
+ACK uses host acceptance keys). Submission, merge and release remain coordinator/
+human gates. P2 includes no network,
 provider/account/secret access, SQL, other-worktree mutation, reference wiring,
 money implementation, inventory authority, replacement-confirmation caller,
 new subpath, package, dependency or version preparation is in scope.
@@ -268,7 +268,7 @@ reason not_dispatchable, phase dispatch, retryable false, before I/O.
 (c) FulfillmentStorePort.prepare is contact readiness/withholding;
 FulfillmentDispatchPort.prepare builds transient command bytes and returns proof.
 (d) P1's committed candidates/two cold PASS reports and eight cases are recorded
-above; this section records P2's committed candidate and working-tree repair boundary.
+above; this section records P2's committed candidate and its committed review repair.
 
 P2's original eight additional authored cases in the existing fulfillment test directory cover
 the paid handler/recovery ladder, claim/begin remap bound, order and redaction,
