@@ -114,17 +114,23 @@ credentials or HTTP. A numeric generation fence prevents an older overlapping
 preparation for the same request value from restoring superseded state.
 A separate append-only per-instance submission record retains one in-flight or
 completed result per command fingerprint, including accepted, unknown and refused
-outcomes, bound to the evidence key used for submission. The same evidence key
-replays that result without I/O; different evidence for an already submitted
+outcomes, bound to the evidence key and canonical command digest used for submission.
+The same evidence key and command digest replay that result without I/O; a changed
+command or different evidence for an already submitted
 fingerprint refuses as `not_dispatchable`, phase `dispatch`, `retryable:false`.
 It never inherits another preparation's accepted evidence or permits a second POST.
 Original replay survives later preparations, including A → B → A, without requiring
 the current preparation entry. Dispatch first validates the closed evidence and
 compares its contact revision and provider/carrier/service references with the
 request by value. Recorded replay then depends only on the fingerprint's submission
-record and complete evidence key, joining the in-flight result when necessary.
-It never hashes the replay request or consults replaceable preparation state;
-changes to host descriptions omitted from the wire and evidence are irrelevant.
+record, complete evidence key and SHA-256 command digest, joining the in-flight
+result when necessary. The digest covers request/order/fulfillment/parcel identity,
+contact revision, wire recipient fields, ordered line SKU/product/pack references
+and quantities, and provider/carrier/service/delivery-kind/point-ID selection.
+It excludes line titles, recipient line 2 and instructions, and pickup-point
+provider/name/address: the outbound codec forwards none of them to wire or evidence.
+Only the hash is retained in the in-memory submission record. Replay never consults
+replaceable preparation state; equivalent description changes remain irrelevant.
 Only an unrecorded fingerprint needs the prepared body and its request/generation
 checks before reserving a submission and performing I/O.
 Changed command evidence may submit once under its new fingerprint.

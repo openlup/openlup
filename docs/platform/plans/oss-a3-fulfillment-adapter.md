@@ -729,3 +729,86 @@ refusing `dispatch_not_safe_to_submit:submitting` with **0 provider calls / 0
 HTTP**. These remain isolated pre-checks, not a committed O-P3 integration claim.
 HEAD remains **c753b6ed**, with no Git writes; Claude's committed review and
 remaining delivery gates stay owed. No retry or review budget is reset.
+
+
+### O-P2 repair round 7
+
+Authority and outcome: the lead's round-7 decision closes the shared r11/r12
+major finding at `07aa2b28`. This refines round 6: its no-request-digest rule
+applied to replaceable preparation state, not the append-only submission record.
+Local source/tests/docs and focused offline proof only; no Git writes, installs,
+network/secrets, frozen M08 edits, delivery grant or review-budget reset. Claude
+retains committed review and delivery; all existing capacity and host-ledger
+obligations remain binding.
+
+Finding: after A submits, dispatch(B, evidence-of-A) returned A's accepted or
+in-flight result even when B changed order number, recipient address, quantity,
+SKU or host request/fulfillment identity. Stateless evidence checks did not bind
+those values. The one-POST invariant held, but the replay could falsely accept
+a command that had never been submitted.
+
+Decision: one pure `commandDigest(request)` uses the existing canonical serializer
+and SHA-256. It includes requestKey, fulfillmentRef, orderRef, orderNumber,
+parcelRef; all three contactRevision values; recipient name/email/phone/line1/
+city/postalCode/country; ordered lines' skuRef/productRef/packRef/quantity; and
+providerRef/carrierRef/serviceRef/deliveryKind/pickup-point ID. The dispatch and
+outbound codecs forward none of line titles, recipient line2/deliveryInstructions/
+courierInstructions or pickup-point provider/name/address to bytes or evidence;
+a source comment cites those codec reads and excludes those descriptions.
+The submission retains only the hash in memory. After stateless validation,
+lookup by fingerprint requires both equal evidence and equal command digest
+before replay/join. Either mismatch is `not_dispatchable / dispatch /
+retryable:false` with no credential or HTTP I/O. New submissions record the digest
+before callbacks. Recorded replay never reads replaceable preparation state.
+The full-request preparation digest and generation fence remain unchanged.
+
+Proof plan: extend the existing completed and explicitly held in-flight cases
+with crossed stale evidence for every command field; extend the existing seeded
+model with changed-command/evidence crossings across accepted, unknown and
+rejected outcomes and concurrent submission joining. Description-only variants
+remain allowed with independently codec-produced equal evidence. Run the same
+model against a disposable copy of the old index and the repaired index, then
+the focused branch checks and actual a8708cf1 scratch runner/worker/restart.
+No authored cases added: factory 28, transport 4, characterization 18, adapter 50;
+O-P2 30; public O-P1 + O-P2 54; whole-round 74/100, conservatively 75/100 with
+the scratch restart witness. Scratch diagnostics remain 9 cases, not hosted.
+
+Self-retro/rethink: evidence-only replay accepts changed commands → bind the
+existing immutable submission record to command semantics, excluding only
+codec-proven irrelevant descriptions. The prior simplification removed a needed
+immutable binding along with replaceable-state dependence; independent request
+and evidence generation exposes that distinction without another cache.
+
+
+Final round-7 evidence: the identical expanded model fails against a disposable
+copy of `07aa2b28` at sequence 0's concurrent crossed-command batch: stale evidence
+returns recorded `unknown / effectMayHaveSucceeded:true` instead of the required
+`not_dispatchable / effectMayHaveSucceeded:false`. Replacing only the copied
+index with the repair passes the model: **36 sequences**, **3,456 generated
+operations**, plus deterministic completed/in-flight crossings of **25 command
+variants** across all three outcomes and the retained equivalent-description
+triple. Old/new logs: `/private/tmp/openlup-op2-r7-proof/model-{old,new}.log`.
+The task tree was never replaced with old source.
+
+Focused branch checks pass **1,605 tests / 11 files**: adapter **50**,
+cold-consumer **46**, neutrality tooling **35** (10 files, 52.40 s), plus
+package-boundary **1,474** (one file, 3.61 s). Platform no-emit typecheck,
+serialized build and API snapshots pass; TypeScript symbol inspection confirms
+exactly the factory, descriptor and config type, with no API snapshot delta.
+Ast-grep, focused ESLint and whitespace checks pass. Neutrality reports **0
+increases**; UI neutrality smoke passes; gitleaks finds no leaks in adapter
+source/tests or platform docs. Publication policy pre-check and docs-update pass
+with **3 obligations / 0 unanswered**; final policy follows this evidence entry.
+The canonical and architecture sections now describe the immutable command hash.
+No manifest, README, release-gate or frozen-port changes were needed.
+
+Scratch: **11/11** runner/worker/contracts/projection inputs match `a8708cf1`
+byte-for-byte; only the repaired adapter index needed refreshing. **9/9** tests
+pass (0.240 s): complete profile **12/12**, refused profile **10/10**, both
+unsupported-label profiles, actual worker acceptance with **1 POST / 1 mapped
+attempt / 1 host-key acknowledgement / 0 non-acceptance finalizations**, and
+worker restart refusing `dispatch_not_safe_to_submit:submitting` with **0 provider
+calls / 0 HTTP**, preserving the begun host record and attempt. These remain
+scratch pre-checks, not a committed O-P3 claim. HEAD stays `07aa2b28`; no Git
+writes, installs or network were used. Claude's committed review/delivery gates
+and all existing consumed review/repair budgets remain owed and unchanged.

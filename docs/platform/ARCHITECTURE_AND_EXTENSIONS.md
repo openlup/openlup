@@ -671,11 +671,15 @@ Preparations use canonical evidence values and bind request fields by value;
 equal-valued request/evidence copies work without JavaScript object identity.
 Unknown or mismatched evidence refuses before credentials or HTTP. A separate
 append-only per-instance submission record is keyed by command fingerprint and
-bound to the submitted evidence key. Matching evidence joins or replays its result
-without I/O; different evidence for that fingerprint refuses `not_dispatchable`
+bound to the submitted evidence key and canonical SHA-256 command digest. Matching
+evidence and command values join or replay its result without I/O; a changed
+command or different evidence for that fingerprint refuses `not_dispatchable`
 with phase `dispatch` and `retryable:false`, preserving the one-POST fence.
 Original replay remains available after later preparations even when its current
-preparation entry was replaced. Numeric generations fence older overlapping
+preparation entry was replaced. Replay checks the immutable submission digest,
+never replaceable preparation state; codec-omitted descriptions remain irrelevant.
+The in-memory record retains only the hash of command-bearing request values.
+Numeric generations fence older overlapping
 preparations for the same request value. The configuration's positive integer
 `maxRetainedSubmissions` (default 10,000) caps submissions and each preparation
 map without eviction; submission releases its transient preparation entry but

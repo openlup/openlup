@@ -16,6 +16,25 @@ function request(): FulfillmentDispatchRequest {
     lines: [{ skuRef: "SKU-A", quantity: 2, title: "Example", productRef: "product-a", packRef: "pack-a" }],
     selection: { providerRef: "omnipack", carrierRef: "CARRIER-A", serviceRef: "SERVICE-A", deliveryKind: "courier", pickupPoint: null } };
 }
+// Cross each command-bearing value with another request's already recorded evidence.
+function changedCommands(req: FulfillmentDispatchRequest): FulfillmentDispatchRequest[] {
+  return [
+    ...(["requestKey", "fulfillmentRef", "orderRef", "orderNumber", "parcelRef"] as const)
+      .map(field => ({ ...structuredClone(req), [field]: "other" })),
+    ...(["schemaVersion", "source", "revision"] as const).map(field => ({ ...structuredClone(req),
+      contactRevision: { ...req.contactRevision, [field]: field === "source" ? "other" : req.contactRevision[field] + 1 } })),
+    ...(["name", "email", "phone", "line1", "city", "postalCode", "country"] as const)
+      .map(field => ({ ...structuredClone(req), recipient: { ...req.recipient, [field]: "other" } })),
+    ...(["skuRef", "productRef", "packRef", "quantity"] as const).map(field => ({ ...structuredClone(req),
+      lines: [{ ...req.lines[0]!, [field]: field === "quantity" ? req.lines[0]!.quantity + 1 : "other" }] })),
+    { ...structuredClone(req), lines: [...req.lines, ...req.lines] },
+    ...(["providerRef", "carrierRef", "serviceRef"] as const)
+      .map(field => ({ ...structuredClone(req), selection: { ...req.selection, [field]: "other" } })),
+    { ...structuredClone(req), selection: { ...req.selection, deliveryKind: "parcel-locker" } },
+    { ...structuredClone(req), selection: { ...req.selection, pickupPoint: { id: "other", provider: "point-provider", name: "Point",
+      address: { line1: "Point Street", city: "Point City", postalCode: "10001", country: "US" } } } },
+  ];
+}
 function frozenRequest(): FulfillmentDispatchRequest {
   const req = request();
   for (const value of [req, req.contactRevision, req.recipient, req.lines, ...req.lines, req.selection]) Object.freeze(value);
@@ -154,6 +173,11 @@ it("refuses same-wire different evidence after submission while preserving origi
     const f = fixture(); const req = frozenRequest(); const original = await prepare(f.adapter, req);
     const result = await f.adapter.dispatch.dispatch(structuredClone(req), structuredClone(original));
     expect(result).toMatchObject({ kind: "accepted", evidence: original });
+    for (const stale of changedCommands(req)) {
+      expect(await f.adapter.dispatch.dispatch(stale, structuredClone(original))).toEqual({ kind: "not_dispatched", effectMayHaveSucceeded: false,
+        refusal: { reason: "not_dispatchable", phase: "dispatch", retryable: false } });
+      expect(f.fetchImpl).toHaveBeenCalledTimes(1); expect(f.credentials).toHaveBeenCalledTimes(1);
+    }
     const changed = structuredClone(req);
     if (change === "carrierRef") changed.selection.carrierRef = "CARRIER-B";
     else if (change === "source") changed.contactRevision.source = "remapped";
@@ -173,6 +197,11 @@ it("refuses same-wire different evidence in flight while joining the original cl
     const req = frozenRequest(); const original = await prepare(f.adapter, req);
     const first = f.adapter.dispatch.dispatch(structuredClone(req), structuredClone(original));
     await entered;
+    for (const stale of changedCommands(req)) {
+      expect(await f.adapter.dispatch.dispatch(stale, structuredClone(original))).toEqual({ kind: "not_dispatched", effectMayHaveSucceeded: false,
+        refusal: { reason: "not_dispatchable", phase: "dispatch", retryable: false } });
+      expect(f.fetchImpl).toHaveBeenCalledTimes(1); expect(f.credentials).toHaveBeenCalledTimes(1);
+    }
     const changed = structuredClone(req);
     if (change === "carrierRef") changed.selection.carrierRef = "CARRIER-B";
     else if (change === "source") changed.contactRevision.source = "remapped";
@@ -444,6 +473,11 @@ it("models seeded preparation, replay and concurrent interleavings from the subm
       const req = request();
       req.orderNumber = `ORDER-${Math.floor(index / 6)}`;
       req.lines[0]!.title = `Description-${index % 3}`;
+      req.recipient.line2 = `Unit ${index % 3}`;
+      req.recipient.deliveryInstructions = `Delivery note ${index % 3}`;
+      req.recipient.courierInstructions = `Courier note ${index % 3}`;
+      req.selection.pickupPoint = { id: "point-a", provider: `provider-${index % 3}`, name: `Point ${index % 3}`,
+        address: { line1: `Point Street ${index % 3}`, city: `City ${index % 3}`, postalCode: `1000${index % 3}`, country: `C${index % 3}` } };
       req.contactRevision.source = index % 6 < 3 ? "checkout" : "remap";
       return req;
     });
@@ -460,25 +494,31 @@ it("models seeded preparation, replay and concurrent interleavings from the subm
       return outcome === 0 ? jsonResponse({ orderId: "external-a" }) : jsonResponse({}, outcome === 1 ? 503 : 400);
     });
     type Result = Awaited<ReturnType<typeof f.adapter.dispatch.dispatch>>;
-    const recorded = new Map<string, { evidenceKey: string; result: Result }>();
-    const dispatch = async (indices: number[]) => {
+    const recorded = new Map<string, { evidenceKey: string; commandGroup: number; result: Result }>();
+    const dispatch = async (indices: number[], changes: (number | undefined)[] = [], evidenceIndices = indices) => {
       const first = indices[0]!;
       // New submissions are explicitly prepared; replays deliberately do not depend on preparation.
       if (!recorded.has(fingerprint(first))) await prepare(f.adapter, pool[first]!);
       const before = f.fetchImpl.mock.calls.length;
-      const expected = indices.map(index => {
-        const fp = fingerprint(index), previous = recorded.get(fp);
-        if (previous) return previous.evidenceKey === key(index) ? previous.result : refused;
+      const expected = indices.map((index, slot) => {
+        const evidenceIndex = evidenceIndices[slot]!;
+        const fp = fingerprint(evidenceIndex), previous = recorded.get(fp);
+        // Independent oracle: each triple differs only in codec-irrelevant descriptions.
+        if (previous) return previous.evidenceKey === key(evidenceIndex)
+          && previous.commandGroup === Math.floor(index / 3) && changes[slot] === undefined ? previous.result : refused;
         const outcome = (Math.floor(index / 6) + sequence) % 3;
         const proof = createHash("sha256").update(JSON.stringify(["external-a", fp])).digest("hex");
         const result: Result = outcome === 0
           ? { kind: "accepted", externalRef: "external-a", evidence: evidence[index]!, providerAttemptKey: `attempt:${proof}`, labelKey: `label:${proof}` }
           : outcome === 1 ? { kind: "unknown", effectMayHaveSucceeded: true, refusal: { reason: "io_failure", phase: "dispatch", retryable: false } }
             : { kind: "not_dispatched", effectMayHaveSucceeded: false, refusal: { reason: "io_failure", phase: "dispatch", retryable: false } };
-        recorded.set(fp, { evidenceKey: key(index), result });
+        recorded.set(fp, { evidenceKey: key(index), commandGroup: Math.floor(index / 3), result });
         return result;
       });
-      const results = await Promise.all(indices.map(index => f.adapter.dispatch.dispatch(structuredClone(pool[index]!), structuredClone(evidence[index]!))));
+      const results = await Promise.all(indices.map((index, slot) => {
+        const req = changes[slot] === undefined ? structuredClone(pool[index]!) : changedCommands(pool[index]!)[changes[slot]!]!;
+        return f.adapter.dispatch.dispatch(req, structuredClone(evidence[evidenceIndices[slot]!]!));
+      }));
       expect(results, `sequence ${sequence}, indices ${indices}`).toEqual(expected);
       expect(f.fetchImpl.mock.calls.length - before).toBe(recorded.size - before);
       expect(f.fetchImpl).toHaveBeenCalledTimes(recorded.size);
@@ -492,13 +532,24 @@ it("models seeded preparation, replay and concurrent interleavings from the subm
     const a = random(3), b = (a + 1) % 3, c = (a + 2) % 3;
     await dispatch([a]); await prepare(f.adapter, pool[b]!); await dispatch([b]);
     await prepare(f.adapter, pool[c]!); await dispatch([b]);
+    // All HTTP outcomes are recorded before crossed replay; exercise every changed
+    // field both while a new submission joins in flight and after it completes.
+    const variantCount = changedCommands(pool[a]!).length;
+    for (const index of [6, 12]) {
+      await dispatch([index, ...Array<number>(variantCount).fill(index)], [undefined, ...Array.from({ length: variantCount }, (_, i) => i)]);
+    }
+    for (const index of [a, 6, 12]) {
+      await dispatch(Array<number>(variantCount).fill(index), Array.from({ length: variantCount }, (_, i) => i));
+    }
     for (let step = 0; step < 96; step++) {
-      const index = random(pool.length), operation = random(3);
+      const index = random(pool.length), operation = random(5);
       if (operation === 0) {
         const before = f.fetchImpl.mock.calls.length;
         expect(await prepare(f.adapter, pool[index]!)).toEqual(evidence[index]);
         expect(f.fetchImpl).toHaveBeenCalledTimes(before);
       } else if (operation === 1) await dispatch([index]);
+      else if (operation === 3) await dispatch([index], [random(variantCount)]);
+      else if (operation === 4) await dispatch([index], [], [random(pool.length)]);
       else {
         const group = Math.floor(index / 6) * 6;
         // Join an in-flight equivalent description and refuse the other evidence value.

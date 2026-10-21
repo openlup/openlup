@@ -57,7 +57,7 @@ export function createOmnipackFulfillmentAdapter(config: OmnipackFulfillmentAdap
     : { ready: false, refusal: refusal("not_ready", "selection") };
   const prepared = new Map<string, { body: string; evidence: DispatchEvidence; requestDigest: string; generation: number }>();
   const preparations = new Map<string, number>();
-  const submissions = new Map<string, { evidenceKey: string; result: ReturnType<FulfillmentDispatchPort["dispatch"]> }>();
+  const submissions = new Map<string, { evidenceKey: string; commandDigest: string; result: ReturnType<FulfillmentDispatchPort["dispatch"]> }>();
   const selectionFailure = (request: FulfillmentDispatchRequest) => {
     if (!request.selection?.providerRef?.trim()) return refusal("selection_required", "selection");
     if (request.selection.providerRef !== capabilities.providerRef) return refusal("provider_mismatch", "selection");
@@ -119,6 +119,7 @@ export function createOmnipackFulfillmentAdapter(config: OmnipackFulfillmentAdap
       async dispatch(request, evidence) {
         let command;
         let evidenceKey: string;
+        let requestCommandDigest: string;
         try {
           // Validate the closed evidence and its request-bound values without consulting preparation state.
           if (Object.keys(evidence).length !== 5 || Object.keys(evidence.contactRevision).length !== 3
@@ -134,10 +135,11 @@ export function createOmnipackFulfillmentAdapter(config: OmnipackFulfillmentAdap
             || evidence.providerRef !== request.selection.providerRef
             || evidence.carrierRef !== request.selection.carrierRef || evidence.serviceRef !== request.selection.serviceRef) throw Error();
           evidenceKey = serializeOmnipackDispatchPayload(evidence).body;
+          requestCommandDigest = commandDigest(request);
           const submitted = submissions.get(evidence.commandFingerprint);
           if (submitted) {
-            // One POST per fingerprint; incompatible evidence never inherits another binding's result.
-            if (submitted.evidenceKey !== evidenceKey) throw Error();
+            // Replay is bound to this submission's evidence and command, never replaceable preparation.
+            if (submitted.evidenceKey !== evidenceKey || submitted.commandDigest !== requestCommandDigest) throw Error();
             return structuredClone(await submitted.result);
           }
           command = prepared.get(evidenceKey);
@@ -162,7 +164,7 @@ export function createOmnipackFulfillmentAdapter(config: OmnipackFulfillmentAdap
               : { kind: "unknown" as const, effectMayHaveSucceeded: true as const, refusal: refusal("io_failure", "dispatch") };
           } finally { command.body = ""; }
         });
-        submissions.set(fingerprint, { evidenceKey, result });
+        submissions.set(fingerprint, { evidenceKey, commandDigest: requestCommandDigest, result });
         // Submission owns replay from here, so releasing these transient bytes cannot reopen a POST.
         prepared.delete(evidenceKey);
         return structuredClone(await result);
@@ -275,4 +277,26 @@ export function createOmnipackFulfillmentAdapter(config: OmnipackFulfillmentAdap
       },
     },
   };
+}
+
+// buildOmnipackDispatchPayloadFromCandidate forwards only name/email/phone and
+// line1/city/postalCode/country to buildOmnipackOutboundOrderPayload; neither
+// codec reads line titles, recipient line2/deliveryInstructions/courierInstructions,
+// or pickup-point provider/name/address (readPickUpPoint reads only its id).
+// Exclude those descriptions; retain host request/order/fulfillment/parcel and
+// product/pack identities as well as all wire/evidence-bearing request values.
+// The submission retains only this SHA-256 hash in memory, never the raw values.
+function commandDigest(request: FulfillmentDispatchRequest): string {
+  return stableDispatchHash({
+    requestKey: request.requestKey, fulfillmentRef: request.fulfillmentRef,
+    orderRef: request.orderRef, orderNumber: request.orderNumber, parcelRef: request.parcelRef,
+    contactRevision: { schemaVersion: request.contactRevision.schemaVersion,
+      source: request.contactRevision.source, revision: request.contactRevision.revision },
+    recipient: { name: request.recipient.name, email: request.recipient.email, phone: request.recipient.phone,
+      line1: request.recipient.line1, city: request.recipient.city, postalCode: request.recipient.postalCode, country: request.recipient.country },
+    lines: request.lines.map(line => ({ skuRef: line.skuRef, productRef: line.productRef, packRef: line.packRef, quantity: line.quantity })),
+    selection: { providerRef: request.selection.providerRef, carrierRef: request.selection.carrierRef,
+      serviceRef: request.selection.serviceRef, deliveryKind: request.selection.deliveryKind,
+      pickupPointId: request.selection.pickupPoint?.id ?? null },
+  });
 }
