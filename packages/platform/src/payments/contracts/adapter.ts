@@ -6,6 +6,7 @@ import type {
   PaymentRetryAdviceCode,
   StoredMandateSnapshot,
 } from "@openlup/core/payment";
+import type { PaymentAbsencePort, PaymentReadbackPort, PaymentVerifyNormalizePort } from "./evidence.js";
 
 declare const transientSecret: unique symbol;
 
@@ -77,4 +78,13 @@ export interface PaymentAdapterCapabilities extends Omit<PaymentProviderCapabili
   refundObservation: "supported" | "unsupported";
   refundCreate: "unsupported";
   authorizationCaptureSplit: "unsupported";
+}
+
+/** The neutral bundle an adapter factory returns; optional ports match declared capabilities. */
+export interface PaymentAdapter {
+  capabilities: PaymentAdapterCapabilities;
+  attemptPort: PaymentAttemptPort;
+  verifyPort: PaymentVerifyNormalizePort;
+  readbackPort: PaymentReadbackPort;
+  absencePort?: PaymentAbsencePort;
 }

@@ -45,7 +45,7 @@ describe("published prepared attempt key forwarding", () => {
     ["subscription:sub-original:cycle:2026-10-21T00:00:00Z:payment-execution:attempt:0:provider-seq:2", 7200, "subscription_cycle", "order_renewal"],
   ] as const)("preserves host key %s through prepare, execution and finalize", async (key, amountMinor, mode, orderRef) => {
     const f = fixture();
-    const providerKey = `veli:provider-a:${intent}:${key.toLowerCase()}`;
+    const providerKey = `host:provider-a:${intent}:${key.toLowerCase()}`;
     const fingerprint = `provider-a|${intent}|${amountMinor}|XXX|${mode}|${orderRef}`;
     Object.assign(f.input, { paymentIntentId: intent, prepareIdempotencyKey: `${key}:prepare-attempt`,
       finalizeIdempotencyKey: `${key}:finalize-attempt`, providerIdempotencyKey: providerKey,

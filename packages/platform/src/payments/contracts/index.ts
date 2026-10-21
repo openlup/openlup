@@ -15,6 +15,7 @@ export type {
   PaymentExecutionEnvelope,
   PaymentAttemptPort,
   PaymentAdapterCapabilities,
+  PaymentAdapter,
 } from "./adapter.js";
 export type {
   PaymentRefundObservation,
@@ -25,5 +26,9 @@ export type {
   ProviderReadPurpose,
   PaymentAbsenceEnvelope,
   PaymentReadbackEnvelope,
+  PaymentMoney,
+  PaymentAttemptIdentity,
+  PaymentReadbackPort,
+  PaymentAbsencePort,
 } from "./evidence.js";
 export type { PaymentAdapterConformanceSubject, PaymentAdapterConformanceEvidence } from "./conformance.js";
