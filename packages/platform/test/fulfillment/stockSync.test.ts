@@ -109,3 +109,86 @@ it("uses distinct alert keys for different SKUs or thresholds and fences reused 
     await expect(port.recordLowStockEvidence({ ...alert, ...change })).rejects.toMatchObject({ code: "23505" });
   }
 });
+
+
+it("skips blank stock SKU refs before classification and persistence as in the base worker", async () => {
+  const f = fixture(), [stock] = await f.input.provider.getStock();
+  if ("kind" in stock) throw Error("expected_stock_fixture");
+  f.input.provider.getStock = async () => [{ ...stock, skuRef: "" }, stock, { ...stock, skuRef: "  " }];
+  f.input.port.readSkuInventoryClasses = async skus => {
+    expect(skus).toEqual(["sku-a"]);
+    return new Map([["sku-a", "sellable"]]);
+  };
+  const written: string[] = [];
+  f.input.port.recordProviderStockCurrent = async ({ snapshot }) => {
+    written.push(snapshot.skuRef); return { replayed: false, readBack: true };
+  };
+  expect(await run(f.input)).toMatchObject({ ok: true, checked: 1, rejected: 0, failures: 0 });
+  expect(written).toEqual(["sku-a"]);
+  expect(f.snapshots.map(value => value.snapshot.skuRef)).toEqual(["sku-a"]);
+});
+
+it("keeps mixed-batch alerts, coverage confirmation, resolution and stale recovery successful", async () => {
+  const f = fixture(), [stock] = await f.input.provider.getStock();
+  if ("kind" in stock) throw Error("expected_stock_fixture");
+  f.lines[0].quantity.safetyStock = 1;
+  f.input.provider.getStock = async () => [stock, { kind: "rejected", itemIndex: 1, reason: "invalid_sku_ref" }];
+  f.input.provider.getStockMovements = async () => [{ kind: "rejected", itemIndex: 0, reason: "invalid_sku_ref" }];
+  expect(await run(f.input)).toMatchObject({ ok: true, checked: 1, rejected: 2, lowStock: 1 });
+  expect(f.cursor()).toMatchObject({ status: "succeeded", lastStockSyncedAt: at, coverageGapSkus: ["sku-a"],
+    counts: { rejected: 2 }, error: null, refusal: null });
+  expect(await run(f.input)).toMatchObject({ ok: true, reservationCoverage: 1 });
+  expect(f.evidence).toContainEqual(expect.objectContaining({ skuRef: "sku-a", thresholdKind: "reservation_coverage" }));
+  expect(f.resolutions).toContainEqual({ skuRef: "sku-a", activeThresholdKinds: ["safety_stock", "reservation_coverage"], syncRunId: "legacy-stock-run" });
+  expect(f.resolutions).toContainEqual({ skuRef: "legacy-sentinel", activeThresholdKinds: [], syncRunId: "legacy-stock-run" });
+  f.input.port.readActiveReservations = async () => new Map();
+  f.evidence.length = 0; f.resolutions.length = 0;
+  expect(await run(f.input)).toMatchObject({ ok: true, lowStock: 0, reservationCoverage: 0, rejected: 2 });
+  expect(f.evidence).toEqual([]);
+  expect(f.resolutions).toContainEqual({ skuRef: "sku-a", activeThresholdKinds: [], syncRunId: "legacy-stock-run" });
+  expect(f.cursor()).toMatchObject({ status: "succeeded", coverageGapSkus: [] });
+});
+
+it("contains pre-terminal port failures as safe failed results, preserving terminal cursor rejection", async () => {
+  for (const [method, reason] of [
+    ["readCursor", "cursor_read_failed"], ["readLocalInventoryStock", "stock_read_failed"],
+    ["readSkuInventoryClasses", "stock_inventory_read_failed"], ["readActiveReservations", "stock_inventory_read_failed"],
+    ["recordProviderStockCurrent", "stock_current_write_failed"], ["recordStockSnapshot", "snapshot_write_failed"],
+    ["recordLowStockEvidence", "stock_evidence_write_failed"], ["resolveLowStockEvidence", "stock_evidence_resolve_failed"],
+  ] as const) {
+    const f = fixture(); f.lines[0].quantity.safetyStock = 1;
+    f.input.port[method] = async () => { throw Error("private-transport-error"); };
+    expect(await run(f.input), method).toMatchObject({ ok: false, failures: 1, reason });
+    expect(f.cursor(), method).toMatchObject({ status: "failed", lastStockSyncedAt: null, error: { reason }, refusal: { reason: "io_failure", retryable: true } });
+  }
+  const f = fixture(), recordCursor = f.input.port.recordCursor;
+  f.input.port.recordCursor = async value => {
+    if (value.status === "running") throw Error("private-transport-error");
+    await recordCursor(value);
+  };
+  expect(await run(f.input)).toMatchObject({ ok: false, reason: "cursor_write_failed" });
+  expect(f.cursor()).toMatchObject({ status: "failed", error: { reason: "cursor_write_failed" } });
+  f.input.port.recordCursor = async value => {
+    if (value.status !== "running") throw Error("terminal-cursor-unavailable");
+  };
+  await expect(run(f.input)).rejects.toThrow("terminal-cursor-unavailable");
+});
+
+it("resolves stale recovery only after the terminal cursor and preserves completion if cleanup fails", async () => {
+  const f = fixture(), resolve = f.input.port.resolveLowStockEvidence;
+  let recoveries = 0;
+  f.input.port.resolveLowStockEvidence = async value => {
+    if (value.skuRef !== "legacy-sentinel") return resolve(value);
+    recoveries += 1;
+    expect(f.cursor()).toMatchObject({ status: "succeeded", lastStockSyncedAt: at });
+    throw Error("private-stale-recovery-error");
+  };
+  expect(await run(f.input)).toMatchObject({ ok: true, failures: 0 });
+  expect(f.cursor()).toMatchObject({ status: "succeeded", error: null, refusal: null });
+  expect(recoveries).toBe(1);
+  f.input.port.recordCursor = async value => {
+    if (value.status !== "running") throw Error("terminal-cursor-unavailable");
+  };
+  await expect(run(f.input)).rejects.toThrow("terminal-cursor-unavailable");
+  expect(recoveries).toBe(1);
+});

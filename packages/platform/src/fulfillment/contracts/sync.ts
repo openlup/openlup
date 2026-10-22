@@ -19,10 +19,10 @@ export interface SyncCursor {
   /** G15: successful sellable coverage gaps; legacy absent values read as []. */
   coverageGapSkus?: readonly string[];
   refusal: FulfillmentRefusal | null;
-  /** Bounded diagnostics and run evidence in the existing cursor JSON, never raw errors. */
+  /** Per-entry bounded diagnostics and run evidence in the existing cursor JSON, never raw errors. */
   syncRunId?: string;
   counts?: { checked: number; updated: number; movements: number; rejected: number; failures: number; providerCalls: number; readBacks: number };
-  items?: readonly { itemIndex: number; skuRef: string | null; status: "recorded" | "failed" | "rejected"; reason?: string;
+  items?: readonly { kind?: "stock" | "movement"; itemIndex: number; skuRef: string | null; status: "recorded" | "failed" | "rejected"; reason?: string;
     activeReserved?: number; sellableNow?: number | null; coverageGapQuantity?: number }[];
   alerts?: readonly { skuRef: string; thresholdKind: Exclude<Threshold, "forecast">; severity: "info" | "warning" | "critical";
     providerForSaleQuantity: number; localAvailableQuantity: number; detectedAt: string;

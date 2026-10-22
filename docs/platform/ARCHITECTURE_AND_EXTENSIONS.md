@@ -947,24 +947,37 @@ run IDs, sentinel, keys and movement-window time zone.
 
 Stock and movement reads can return a rejected row with its input index and the closed
 `invalid_sku_ref` reason. The worker counts every rejection, persists it with a
-null SKU, and continues current/snapshot writes for valid rows. A rejected batch
-finishes failed and clears coverage confirmation; unsafe references never reach
-the store. Valid movements still contribute to counts and the latest occurrence.
+null SKU and a `kind` of `stock` or `movement`, and continues current/snapshot
+writes for valid rows. A mixed valid/rejected batch succeeds: alert evaluation,
+SKU evidence resolution and stale recovery proceed for valid SKUs, coverage
+confirmation is retained, and `lastStockSyncedAt` advances. Only an entirely
+rejected batch with no valid stock or movement row finishes malformed and
+non-retryable and clears coverage confirmation; operational failures retain their
+failure and retry semantics. Rejections remain included in both the `rejected`
+and `failures` counters even on a successful mixed run. Unsafe references never
+reach the store; the worker skips blank stock SKU references before classification
+and persistence, preserving base behavior. Valid movements still contribute to
+counts and the latest occurrence.
 Hosts consuming `getStock()` or `getStockMovements()` directly must discriminate
 `"kind" in row && row.kind === "rejected"` before accessing observation fields.
 Item write failures retain an operation-specific reason and, when available, a
 SQLSTATE in both the per-item result and failed `SyncCursor.error`; arbitrary
 exception prose is discarded. Operational reasons take precedence over rejections
 in the failed cursor; retryability follows operational failures independently of
-rejection counts. A run with only rejections is non-retryable.
+rejection counts.
 
 Provider failures return `ok: false` with neutral `providerError` operation
 (`get_stock` or `get_stock_movements`), status, sanitized code and retryability,
 and persist that diagnostic in a terminal failed cursor. Read retries retain
 retryable classification after exhaustion. Redirects remain refused and report
-`redirect_refused`. A host may map a failed result to its job's HTTP 502; the
+`redirect_refused` without retrying the GET. A host may map a failed result to its job's HTTP 502; the
 package installs no HTTP wrapper. Terminal cursor-write failure still rejects,
 so callers must handle persistence failure rather than assume evidence exists.
+Compatibility: cursor reads, running-cursor writes, local stock/class/reservation
+reads and stock/evidence writes or SKU evidence resolution now also resolve
+`ok: false` instead of rejecting when a terminal failed cursor can be persisted.
+Stale-sync recovery resolution runs after the succeeded terminal cursor; its
+best-effort cleanup failure leaves that cursor and the successful result intact.
 
 The native stock port retains run identity, counts, item ATP observations
 (`activeReserved`, `sellableNow`, `coverageGapQuantity`), alert quantities and

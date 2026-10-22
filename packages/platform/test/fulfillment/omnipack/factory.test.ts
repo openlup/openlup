@@ -406,6 +406,15 @@ it("never leaks transport failures through sync or readback", async () => {
   for (const invoke of [() => f.adapter.productSync.getProductPacks("SKU-A"), () => f.adapter.productSync.listStockedSkus()]) {
     await expect(invoke()).rejects.toEqual({ reason: "io_failure", phase: "sync", retryable: false });
   }
+  for (const [operation, invoke] of [
+    ["get_stock", () => f.adapter.stockSync.getStock()],
+    ["get_stock_movements", () => f.adapter.stockSync.getStockMovements()],
+  ] as const) {
+    const error = await invoke().catch(error => error);
+    expect(error).toEqual({ reason: "io_failure", phase: "sync", retryable: true,
+      providerError: { operation, status: null, code: "network_error", retryable: true } });
+    safe(error);
+  }
   const result = await f.adapter.readback.read(reading); expect(result.kind).toBe("unknown"); safe(result);
 });
 
@@ -739,7 +748,7 @@ it("keeps a transient snapshot failure retryable alongside a rejected SKU (S1/S5
     ? { _embedded: { stockItems: [{ ...probeStock, sku: "SKU/1" }, probeStock] } } : { _embedded: [] }));
   f.input.port.recordStockSnapshot = async () => { throw Object.assign(Error("private payload"), { code: "40001" }); };
   expect(await run(f.input)).toMatchObject({ ok: false, failures: 2, rejected: 1, reason: "snapshot_write_failed:40001",
-    items: [{ itemIndex: 0, skuRef: null, status: "rejected", reason: "invalid_sku_ref" },
+    items: [{ kind: "stock", itemIndex: 0, skuRef: null, status: "rejected", reason: "invalid_sku_ref" },
       { itemIndex: 1, skuRef: "sku-a", status: "failed", reason: "snapshot_write_failed:40001" }] });
   expect(f.cursor()).toMatchObject({ status: "failed", counts: { failures: 2, rejected: 1 },
     error: { reason: "snapshot_write_failed:40001" }, refusal: { reason: "io_failure", retryable: true } });
@@ -773,14 +782,17 @@ it("retains timeout retryability after the final attempt (S2 stock-timeout)", as
   expect(f.cursor()).toMatchObject({ status: "failed", refusal: { retryable: true } });
 });
 
-it("names redirect refusal while preserving the credential destination policy (S2 stock-redirect)", async () => {
-  const f = probe((_url, init) => {
-    expect(init?.redirect).toBe("error");
-    throw new TypeError("fetch failed", { cause: Error("unexpected redirect") });
-  });
-  expect(await run(f.input)).toMatchObject({ providerError: { code: "redirect_refused", retryable: false } });
-  expect(f.cursor()).toMatchObject({ status: "failed", error: { providerError: { code: "redirect_refused" } } });
-  expect(f.calls).toHaveLength(2);
+it("names redirect refusal and makes one GET attempt while preserving the credential destination policy (S2)", async () => {
+  for (const httpRedirect of [false, true]) {
+    const f = probe((_url, init) => {
+      expect(init?.redirect).toBe("error");
+      if (httpRedirect) return jsonResponse({}, 302);
+      throw new TypeError("fetch failed", { cause: Error("unexpected redirect") });
+    });
+    expect(await run(f.input)).toMatchObject({ providerError: { code: "redirect_refused", retryable: false } });
+    expect(f.cursor()).toMatchObject({ status: "failed", error: { providerError: { code: "redirect_refused" } } });
+    expect(f.calls).toHaveLength(1);
+  }
 });
 
 it("distinguishes movement-read failures and sanitizes unsafe provider error codes (S2)", async () => {
@@ -835,19 +847,24 @@ it("admits valid rows while counting and reporting every unsafe SKU by index (S5
   const f = probe(url => jsonResponse(url.pathname === "/stock" ? { _embedded: { stockItems: [
     { ...probeStock, sku: "SKU/1" }, probeStock, { ...probeStock, sku: "https://private.invalid/?token=secret" },
   ] } } : { _embedded: [] }));
-  expect(await run(f.input)).toMatchObject({ ok: false, checked: 1, updated: 2, failures: 2, rejected: 2, reason: "invalid_sku_ref",
-    items: expect.arrayContaining([{ itemIndex: 0, skuRef: null, status: "rejected", reason: "invalid_sku_ref" },
-      { itemIndex: 2, skuRef: null, status: "rejected", reason: "invalid_sku_ref" }, expect.objectContaining({ itemIndex: 1, skuRef: "sku-a", status: "recorded" })]) });
+  expect(await run(f.input)).toMatchObject({ ok: true, checked: 1, updated: 2, failures: 2, rejected: 2,
+    items: expect.arrayContaining([{ kind: "stock", itemIndex: 0, skuRef: null, status: "rejected", reason: "invalid_sku_ref" },
+      { kind: "stock", itemIndex: 2, skuRef: null, status: "rejected", reason: "invalid_sku_ref" }, expect.objectContaining({ itemIndex: 1, skuRef: "sku-a", status: "recorded" })]) });
   expect(f.snapshots.map(value => value.snapshot.skuRef)).toEqual(["sku-a"]);
-  expect(f.cursor()).toMatchObject({ status: "failed", counts: { rejected: 2 }, refusal: { reason: "malformed", retryable: false } });
+  expect(f.cursor()).toMatchObject({ status: "succeeded", lastStockSyncedAt: probeAt, counts: { rejected: 2 }, refusal: null, error: null });
   expect(JSON.stringify(f.cursor())).not.toMatch(/SKU\/1|secret|private.invalid/);
 });
 
-it("reports an entirely rejected batch explicitly rather than as an I/O outage (S5)", async () => {
-  const f = probe(url => jsonResponse(url.pathname === "/stock" ? { _embedded: { stockItems: [{ ...probeStock, sku: "SKU/1" }] } } : { _embedded: [] }));
-  expect(await run(f.input)).toMatchObject({ ok: false, checked: 0, updated: 0, rejected: 1, failures: 1, reason: "invalid_sku_ref" });
-  expect(f.snapshots).toEqual([]);
-  expect(f.cursor()).toMatchObject({ error: { reason: "invalid_sku_ref" }, coverageGapSkus: [] });
+it("reports entirely rejected stock, movement or combined batches as malformed and non-retryable (S5)", async () => {
+  for (const source of ["stock", "movement", "both"]) {
+    const f = probe(url => jsonResponse(url.pathname === "/stock"
+      ? { _embedded: { stockItems: source === "movement" ? [] : [{ ...probeStock, sku: "SKU/1" }] } }
+      : { _embedded: source === "stock" ? [] : [{ sku: "SKU/1", quantity: 2, occurredAt: probeAt }] }));
+    const rejected = source === "both" ? 2 : 1;
+    expect(await run(f.input)).toMatchObject({ ok: false, checked: 0, updated: 0, rejected, failures: rejected, reason: "invalid_sku_ref" });
+    expect(f.snapshots).toEqual([]);
+    expect(f.cursor()).toMatchObject({ status: "failed", lastStockSyncedAt: null, error: { reason: "invalid_sku_ref" }, coverageGapSkus: [], refusal: { reason: "malformed", retryable: false } });
+  }
 });
 
 it("reports unsafe stock and movement rows while preserving valid observations (S5)", async () => {
@@ -861,17 +878,21 @@ it("reports unsafe stock and movement rows while preserving valid observations (
   f.input.port.recordMovement = recordMovement;
   const result = await run(f.input);
   const rejection = { itemIndex: 1, skuRef: null, status: "rejected", reason: "invalid_sku_ref" };
-  expect(result).toMatchObject({ ok: false, checked: 1, updated: 2, movements: 1, lastMovementOccurredAt: probeAt,
-    rejected: 2, failures: 2, reason: "invalid_sku_ref" });
-  expect(result.items.filter(item => item.status === "rejected")).toEqual([rejection, rejection]);
+  expect(result).toMatchObject({ ok: true, checked: 1, updated: 2, movements: 1, lastMovementOccurredAt: probeAt,
+    rejected: 2, failures: 2 });
+  expect(result.items.filter(item => item.status === "rejected")).toEqual([{ ...rejection, kind: "stock" }, { ...rejection, kind: "movement" }]);
   expect(result.items).toContainEqual(expect.objectContaining({ skuRef: "sku-a", status: "recorded" }));
   expect(result.providerError).toBeUndefined();
   expect(f.snapshots.map(value => value.snapshot.skuRef)).toEqual(["sku-a"]);
   expect(current.mock.calls.map(([value]) => value.snapshot.skuRef)).toEqual(["sku-a"]);
   expect(recordMovement).not.toHaveBeenCalled();
   expect(f.cursor()).toMatchObject({ counts: { checked: 1, updated: 2, movements: 1, rejected: 2, failures: 2 },
-    error: { reason: "invalid_sku_ref" }, refusal: { reason: "malformed", retryable: false } });
+    status: "succeeded", lastStockSyncedAt: probeAt, error: null, refusal: null });
   expect(JSON.stringify(f.cursor())).not.toMatch(/SKU\/1|provider_read_failed/);
+  // A valid movement also keeps a batch successful when every stock row is rejected.
+  f.input.provider.getStock = async () => [{ kind: "rejected", itemIndex: 0, reason: "invalid_sku_ref" }];
+  expect(await run(f.input)).toMatchObject({ ok: true, checked: 0, movements: 1, rejected: 2 });
+  expect(f.cursor()).toMatchObject({ status: "succeeded", lastStockSyncedAt: probeAt, error: null, refusal: null });
 });
 
 it("preserves duplicate rows and movement counts/window evidence (S3 stock-duplicate/stock-movements)", async () => {

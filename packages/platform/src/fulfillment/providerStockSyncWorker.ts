@@ -50,6 +50,7 @@ export async function runFulfillmentStockSyncWorker(input: {
   let stage = "cursor_read_failed";
   let operationalReason: string | undefined;
   let staleSync: SyncCursor["staleSync"];
+  let recoverStaleSync = false;
   const currentCoverageGapSkus = new Set<string>();
   try {
     const previousCursor = await input.port.readCursor();
@@ -61,6 +62,7 @@ export async function runFulfillmentStockSyncWorker(input: {
     const staleGapHours =
       lastSyncedMs !== null && !Number.isNaN(lastSyncedMs) ? (now.getTime() - lastSyncedMs) / 3_600_000 : null;
     const syncIsStale = staleGapHours !== null && staleGapHours >= staleThresholdHours;
+    recoverStaleSync = !syncIsStale;
     if (syncIsStale) {
       staleSync = { gapHours: Math.round(staleGapHours! * 10) / 10, thresholdHours: staleThresholdHours, detectedAt: now.toISOString() };
       stage = "stock_evidence_write_failed";
@@ -98,10 +100,8 @@ export async function runFulfillmentStockSyncWorker(input: {
       if ("kind" in item && item.kind === "rejected") {
         result.rejected += 1;
         result.failures += 1;
-        result.ok = false;
-        result.reason ??= item.reason;
-        result.items.push({ itemIndex: item.itemIndex, skuRef: null, status: "rejected", reason: item.reason });
-      } else if ("skuRef" in item) {
+        result.items.push({ kind: "stock", itemIndex: item.itemIndex, skuRef: null, status: "rejected", reason: item.reason });
+      } else if ("skuRef" in item && item.skuRef.trim()) {
         stockItems.push({ stock: item, itemIndex });
       }
     }
@@ -120,12 +120,14 @@ export async function runFulfillmentStockSyncWorker(input: {
       if ("kind" in item && item.kind === "rejected") {
         result.rejected += 1;
         result.failures += 1;
-        result.ok = false;
-        result.reason ??= item.reason;
-        result.items.push({ itemIndex: item.itemIndex, skuRef: null, status: "rejected", reason: item.reason });
+        result.items.push({ kind: "movement", itemIndex: item.itemIndex, skuRef: null, status: "rejected", reason: item.reason });
       } else if ("skuRef" in item) {
         movements.push(item);
       }
+    }
+    if (result.rejected > 0 && stockItems.length + movements.length === 0) {
+      result.ok = false;
+      result.reason = "invalid_sku_ref";
     }
     result.movements = movements.length;
     result.lastMovementOccurredAt = latestOccurredAt(movements);
@@ -221,17 +223,6 @@ export async function runFulfillmentStockSyncWorker(input: {
         });
       }
     }
-
-    // Recovery: a healthy run (succeeded, not itself stale) closes any open stale_sync row.
-    if (result.ok && !syncIsStale) {
-      stage = "stock_evidence_resolve_failed";
-      await input.port.resolveLowStockEvidence({
-        skuRef: input.compatibility.staleEvidenceSku,
-        activeThresholdKinds: [],
-        syncRunId,
-      });
-    }
-
   } catch (error) {
     result.ok = false;
     result.failures += 1;
@@ -252,6 +243,14 @@ export async function runFulfillmentStockSyncWorker(input: {
       failures: result.failures, providerCalls: result.providerCalls, readBacks: result.readBacks },
     items: result.items, alerts, staleSync,
   });
+  // Recovery follows the durable succeeded cursor; a failed cleanup leaves the completed run intact.
+  if (result.ok && recoverStaleSync) {
+    await input.port.resolveLowStockEvidence({
+      skuRef: input.compatibility.staleEvidenceSku,
+      activeThresholdKinds: [],
+      syncRunId,
+    }).catch(() => undefined);
+  }
   return result;
 }
 

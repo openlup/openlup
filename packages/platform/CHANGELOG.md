@@ -16,6 +16,17 @@ in the source repository.
   Provider read failures now return failed worker results (`ok: false`) with
   persisted `providerError` diagnostics instead of throwing. Hosts can map those
   failures to HTTP 502; terminal cursor-write failures still reject.
+  Cursor reads, running-cursor writes, local stock/class/reservation reads and
+  stock/evidence writes or SKU evidence resolution now also resolve `ok: false`
+  instead of rejecting when a terminal failed cursor can be persisted.
+- Mixed valid/rejected stock or movement batches succeed, retain rejection
+  counts and diagnostics, evaluate/resolve alerts for valid SKUs and advance
+  `lastStockSyncedAt`; only entirely rejected batches are malformed and
+  non-retryable, while operational failure semantics are unchanged.
+  Blank stock SKU references are skipped before persistence; stale-sync recovery
+  resolves after the terminal cursor, with cleanup failure preserving success.
+  Stock and movement rejection diagnostics carry a `kind` discriminator.
+  Refused redirects are non-retryable and make only one GET attempt.
 - Stock-sync alert fingerprints now contain only `requestKey`, `skuRef` and
   `thresholdKind`: changing quantities, severity or run evidence under the same
   key returns `replayed: true`. Different SKUs or thresholds use different keys;

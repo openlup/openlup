@@ -144,7 +144,7 @@ async function requestJson(
 ): Promise<unknown> {
   const method = (init.method ?? "GET").toUpperCase();
   const attempts = method === "GET" ? config.safeReadRetries + 1 : 1;
-  let lastError: unknown = null;
+  let lastError: OmnipackProviderError | null = null;
 
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
     let submitted = false;
@@ -177,7 +177,7 @@ async function requestJson(
           retryable: method === "GET" && !isRedirectRefusal(error),
           mayHaveSucceeded: submitted && mayPostHaveSucceeded(method, null),
         });
-      if (!retryable) throw lastError;
+      if (!retryable || lastError.code === "redirect_refused") throw lastError;
     }
   }
 

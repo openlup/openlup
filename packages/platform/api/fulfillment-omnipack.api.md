@@ -860,7 +860,7 @@ export interface SyncCursor {
     /** G15: successful sellable coverage gaps; legacy absent values read as []. */
     coverageGapSkus?: readonly string[];
     refusal: FulfillmentRefusal | null;
-    /** Bounded diagnostics and run evidence in the existing cursor JSON, never raw errors. */
+    /** Per-entry bounded diagnostics and run evidence in the existing cursor JSON, never raw errors. */
     syncRunId?: string;
     counts?: {
         checked: number;
@@ -872,6 +872,7 @@ export interface SyncCursor {
         readBacks: number;
     };
     items?: readonly {
+        kind?: "stock" | "movement";
         itemIndex: number;
         skuRef: string | null;
         status: "recorded" | "failed" | "rejected";
