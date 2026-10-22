@@ -743,7 +743,7 @@ The operator lifecycle handlers preserve the host's mutation schemas and respons
 receipts. Every mutation callback requires the authorized actor and idempotency
 key; the host must bind both into its replay fingerprint and commit all effects
 and the response receipt atomically. Provider payloads and signed label URLs in
-legacy mutation inputs stay transient at this host boundary; they are not safe
+operator mutation inputs stay transient at this host boundary; they are not safe
 durable evidence for the native stores. Replacement creation remains a host-owned
 transaction: it checks paid state, current parcel, contact, blocking holds and
 stock reservations, releases only fulfillment-exception holds and creates the
@@ -763,8 +763,8 @@ sequence, then identifier descending, and retain unattributed companion rows.
 | Capability | Native installation boundary | Required host binding |
 | --- | --- | --- |
 | Replacement creation | Unsupported; no shipment, reservation, hold, receipt or outbox write | Atomic replacement port |
-| Operator lifecycle mutations | Unsupported; the smaller shipment rail cannot substitute for the operator transaction | Actor-bound mutation callbacks and replay receipts |
-| Commerce read/detail and shipments overview | No equivalent commerce projection | Host read callbacks; payment status passes through the payments projection |
+| Operator lifecycle mutations | Unsupported; the native shipment spine port does not carry the operator transaction | Actor-bound mutation callbacks and replay receipts |
+| Commerce orders list/detail and shipments overview | No equivalent native commerce read | Host read callbacks for the orders list and detail (and for the shipments overview when its handler ships); payment status uses the core payment-intent statuses |
 | Dispatch preparation writer | No authoritative contact/selection writer | Host synchronization under the shipment lock |
 | Enforcing delivery alignment | Installation without renewal admission wiring cannot enforce the complete lifecycle | Admission wrapper before new-cycle insertion; keep native mode off until wired |
 
