@@ -179,9 +179,13 @@ A payments (M07) adapter implements `PaymentAdapter` and declares
 `PaymentAdapterConformanceSubject` from `./payments/contracts` and verification
 fixtures. See the [opt-in payment example](#opt-in-payment-example).
 
-Fulfillment neutral ports are planned (M08); there is no API to implement yet. A
-fulfillment example adapter is planned for round A3. An adapter for another 3PL,
-marketplace fulfillment service or parcel network would then follow that example.
+Fulfillment adapters implement the experimental dispatch, label, observation,
+readback and sync ports from
+`@openlup/platform/fulfillment/contracts`. See the
+[fulfillment owner](ARCHITECTURE_AND_EXTENSIONS.md#fulfillment-contracts) for
+command preparation, host keys, replay, paid handoff and proof/storage boundaries.
+Adapter conformance belongs to future example-adapter work; this surface
+activates no provider or reference route.
 
 | Class | Shipped example subpaths |
 | --- | --- |

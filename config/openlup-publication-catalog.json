@@ -1258,6 +1258,10 @@
       "class": "public-output"
     },
     {
+      "path": "docs/platform/plans/oss-m08-fulfillment-physical-delivery.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/public-ci-completeness.md",
       "class": "platform-documentation"
     },
@@ -2250,6 +2254,14 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/api/fulfillment-contracts.api.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/api/fulfillment.api.md",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/api/http.api.md",
       "class": "public-output"
     },
@@ -3139,6 +3151,90 @@
     },
     {
       "path": "packages/platform/src/data/supabaseGateway.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/contracts/alignment.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/contracts/capabilities.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/contracts/dispatch.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/contracts/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/contracts/label.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/contracts/observation.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/contracts/readback.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/contracts/store.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/contracts/sync.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/dispatchProjection.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/normalizedFulfillmentFacts.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/paidFulfillmentRecovery.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/paidHandoff.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/paidHandoffPorts.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/providerCapabilities.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/providerCommandLedger.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/providerDispatchAcceptance.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/providerDispatchError.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/providerDispatchWorker.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/statusMap.ts",
       "class": "public-output"
     },
     {
@@ -4543,6 +4639,30 @@
     },
     {
       "path": "packages/platform/test/data/supabaseGateway.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/fulfillment/contracts.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/fulfillment/dispatchRecovery.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/fulfillment/paidHandoff.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/fulfillment/portFit.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/fulfillment/providerCommandLedger.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/fulfillment/statusMap.test.ts",
       "class": "public-output"
     },
     {

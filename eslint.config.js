@@ -147,6 +147,7 @@ const sourceFiles = (prefix = "") => [`${prefix}**/*.${SOURCE_EXTENSIONS}`];
 // Optional `contracts: true` declares exactly one browser-safe sub-entry at
 // <module>/contracts/index.ts; it has no module edges, including to its server entry.
 export const PLATFORM_MODULE_GRAPH = {
+  fulfillment: { contracts: true, values: [], types: [] },
   payments: { contracts: true, values: [], types: ["http", "bff"] },
   shipping: { contracts: true, values: [], types: ["bff", "http"] },
   promotions: { contracts: true, values: ["pricing", "shipping"], types: ["data", "http", "bff"] },
