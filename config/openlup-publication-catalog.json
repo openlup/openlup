@@ -5606,6 +5606,14 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/fixtures/20261022080000_fulfillment_command_ledger.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/fixtures/20261022090000_fulfillment_delivery_alignment.sql",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/fulfillment-stock-evidence-proof.ts",
       "class": "public-output"
     },
@@ -22103,6 +22111,10 @@
     },
     {
       "path": "tests/postgres/promotionsNative.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/reviewedPortableCreation.test.ts",
       "class": "public-output"
     },
     {

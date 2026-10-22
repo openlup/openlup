@@ -429,6 +429,184 @@ ${identityPrivileges[3]}
     () => assertAppendOnlyMigrationHistory(sample.repo, sample.approval, head),
     () => assertDescendantSourceRelease(sample.repo, sample.rootCommit, head),
   ];
+  describe("portable reviewed creation", () => {
+    const manifestPath = "config/platform-migration-manifest.json";
+    const portableBaseline = "db/platform/migrations/00000000000000_platform_baseline.sql";
+    const approved = readReviewedForwardRegistry(readFileSync(new URL(`../${REVIEWED_FORWARD_PATH}`, import.meta.url)));
+    const bindings = approved.portableCreationForwards!;
+    // Immutable snapshots let the control PR test the exact future SQL without
+    // introducing it into either installation chain or depending on Git history.
+    const exact = bindings.map(({ path }) => readFileSync(new URL(`./fixtures/${path.split("/").at(-1)}`, import.meta.url), "utf8"));
+    const prior = "CREATE TABLE public.fulfillment_shipments (id uuid);\nCREATE TABLE public.commerce_order_holds (id uuid);\nCREATE TABLE public.subscription_cycles (id uuid);";
+    function creationFixture(contents = exact, repin = false, history = "", historyInForward = false) {
+      const manifest = JSON.parse(SYNTHETIC_TREE[manifestPath]!);
+      const baseline = prior + (historyInForward ? "" : history);
+      manifest.baseline.sha256 = sqlSha256(baseline);
+      const priorPath = "db/platform/migrations/20261022070000_existing.sql";
+      if (historyInForward) manifest.forward.push({ file: priorPath, sha256: sqlSha256(history) });
+      const sample = fixture(undefined, null, false, false, { [portableBaseline]: baseline, [manifestPath]: json(manifest), ...(historyInForward ? { [priorPath]: history } : {}) });
+      sample.registry.portableCreationForwards = structuredClone(bindings);
+      if (repin) sample.registry.portableCreationForwards.forEach((entry, index) => { entry.sha256 = sqlSha256(contents[index]!); });
+      sample.apply({ [REVIEWED_FORWARD_PATH]: json(sample.registry) });
+      sample.approval = sample.commit("Separate portable creation approval");
+      const append = (paths = bindings.map(({ path }) => path)) => {
+        const next = structuredClone(manifest);
+        paths.forEach((path, index) => { next.forward.push({ file: path, sha256: sqlSha256(contents[index]!) }); });
+        sample.apply({ ...Object.fromEntries(paths.map((path, index) => [path, contents[index]!])), [manifestPath]: json(next) });
+      };
+      return { ...sample, append };
+    }
+    it("admits both exact P4 files through CI and release admission, with their actual hashes", () => {
+      const sample = creationFixture();
+      try {
+        exact.forEach((sql, index) => { expect(sqlSha256(sql)).toBe(bindings[index]!.sha256); expect(isExpandOnlyPlatformForward(sql)).toBe(false); });
+        sample.append(); const head = sample.commit("Exact portable creations");
+        for (const gate of gates(sample, head)) expect(gate).not.toThrow();
+      } finally { sample.cleanup(); }
+    });
+    it("admits transaction boundaries and comments only on newly created objects", () => {
+      const contents = [exact[0]! + `
+BEGIN;
+COMMENT ON FUNCTION public.commerce_fulfillment_provider_command_guard() IS 'Guard';
+COMMENT ON INDEX public.idx_fulfillment_provider_commands_claim IS 'Claim index';
+COMMENT ON TRIGGER commerce_fulfillment_provider_command_guard ON public.commerce_fulfillment_provider_commands IS 'Guard trigger';
+COMMIT;
+`, exact[1]!];
+      const sample = creationFixture(contents, true);
+      try {
+        sample.append([bindings[0]!.path]); const head = sample.commit("Creation comments and transaction");
+        for (const gate of gates(sample, head)) expect(gate).not.toThrow();
+      } finally { sample.cleanup(); }
+    });
+    it.each(["byte", "path", "version"])("refuses an unpinned portable creation %s in both gates", (probe) => {
+      const contents = [...exact];
+      if (probe === "byte") contents[0] += " ";
+      const sample = creationFixture(contents);
+      try {
+        const paths = bindings.map(({ path }) => path);
+        if (probe !== "byte") paths[0] = paths[0]!.replace(probe === "path" ? "fulfillment_command_ledger" : "20261022080000", probe === "path" ? "unlisted" : "20261022080001");
+        sample.append(paths); const head = sample.commit("Unpinned portable creation");
+        for (const gate of gates(sample, head)) expect(gate).toThrow(/reviewed replacement path or bytes/u);
+      } finally { sample.cleanup(); }
+    });
+    it("admits doubled standard quotes and backslashes or escape strings inside a dollar body", () => {
+      const contents = [exact[0]! + `
+CREATE TABLE public.zz_quotes (c text DEFAULT 'it''s', "double""quote" text);
+CREATE VIEW public.zz_quotes_view AS SELECT 'it''s';
+CREATE FUNCTION public.zz_body() RETURNS text LANGUAGE sql SET search_path=pg_catalog AS $$ SELECT E'a\\b'; $$;
+`, exact[1]!];
+      const sample = creationFixture(contents, true);
+      try {
+        sample.append(); const head = sample.commit("Standard creation quotes and dollar body");
+        for (const gate of gates(sample, head)) expect(gate).not.toThrow();
+      } finally { sample.cleanup(); }
+    });
+    it.each([
+      ...["PUBLIC", "anon", "authenticated", "service_role"].map((role) => `GRANT SELECT ON public.fulfillment_provider_attempts TO ${role};`),
+      "CREATE OR REPLACE FUNCTION public.existing() RETURNS text LANGUAGE sql AS $$ SELECT 'changed'; $$;",
+      "CREATE OR REPLACE VIEW public.existing AS SELECT 1;",
+      "CREATE OR REPLACE TRIGGER existing BEFORE INSERT ON public.subscription_cycles FOR EACH ROW EXECUTE FUNCTION public.commerce_fulfillment_provider_command_guard();",
+      "ALTER TABLE public.subscription_cycles ADD COLUMN extra text;",
+      "DROP TABLE public.subscription_cycles;",
+      "CREATE TABLE public.zz_t (c text DEFAULT 'a\\'); DROP TABLE public.subscriptions; -- '\nCREATE TABLE public.zz_following (id text);",
+      "CREATE VIEW public.zz_v AS SELECT 'a\\'; GRANT SELECT ON public.subscriptions TO anon; -- '\nCREATE TABLE public.zz_following (id text);",
+      'CREATE VIEW public.zz_v AS SELECT 1 AS "a\\"; GRANT SELECT ON public.subscriptions TO anon; -- "\nCREATE TABLE public.zz_following (id text);',
+      "CREATE VIEW public.zz_v AS SELECT E'one';",
+      "/* outer /* inner */ CREATE VIEW public.zz_v AS SELECT 1; */ GRANT SELECT ON public.subscriptions TO anon;",
+      "CREATE VIEW public.zz_v AS SELECT U&'plain';",
+      'CREATE VIEW public.zz_v AS SELECT 1 AS U&"plain";',
+      'CREATE VIEW public.zz_v AS SELECT 1 AS "a;b";',
+      'CREATE VIEW public.zz_v AS SELECT 1 AS "a$b";',
+      "CREATE VIEW public.zz_v AS SELECT 1 AS x$$; GRANT SELECT ON public.subscriptions TO anon; SELECT 1 AS y$$;",
+      "CREATE VIEW public.zz_v AS SELECT 1 AS x$$; DROP TABLE public.subscriptions; CREATE VIEW public.zz_w AS SELECT 1 AS y$$;",
+      ...["x$1", "x$$", "_$$", "x0$$", "é$$", "é", '"é"', "1\u00a0", "1\ufeff"].map((alias) => `CREATE VIEW public.zz_v AS SELECT 1 AS ${alias};`),
+      "CREATE VIEW public.zz_v AS SELECT $$one$$;",
+      "CREATE VIEW public.zz_v AS SELECT $1;",
+      "CREATE VIEW public.zz_v AS SELECT 'unterminated;",
+      'CREATE VIEW public.zz_v AS SELECT 1 AS "unterminated;',
+      "CREATE VIEW public.zz_v AS SELECT 1",
+      "CREATE VIEW public.zz_v AS SELECT 1; GRANT SELECT ON public.subscriptions TO anon;",
+      "CREATE FUNCTION public.zz_named() RETURNS text LANGUAGE sql SET search_path=pg_catalog AS $fn$ SELECT 'one'; $fn$;",
+      "CREATE FUNCTION public.zz_different() RETURNS text LANGUAGE sql SET search_path=pg_catalog AS $fn$ SELECT $$one$$; $fn$; GRANT SELECT ON public.subscriptions TO anon;",
+      "CREATE VIEW public.zz_v AS SELECT -- 'misleading opening\n'line one\nline two'; GRANT SELECT ON public.subscriptions TO anon;",
+      'CREATE VIEW public.zz_v AS SELECT 1 AS -- "misleading opening\n"line one\nline two"; GRANT SELECT ON public.subscriptions TO anon;',
+      "CREATE TABLE public.zz_t (id text) INHERITS (public.commerce_settings);",
+      "CREATE TABLE public.zz_t (id integer DEFAULT (SELECT 1));",
+      "CREATE TABLE public.zz_t (id integer); DELETE FROM public.subscriptions;",
+      "CREATE INDEX zz_idx ON public.fulfillment_provider_attempts (id) INCLUDE (id) TABLESPACE app;",
+      "CREATE FUNCTION public.bad() RETURNS text LANGUAGE sql SECURITY DEFINER SET search_path=pg_catalog AS $$ SELECT 'bad'; $$;",
+      "CREATE FUNCTION public.bad() RETURNS text LANGUAGE sql SET search_path=pg_catalog AS $$ SELECT 'bad'; $$ SECURITY DEFINER;",
+      "CREATE FUNCTION public.bad() RETURNS text LANGUAGE sql SET search_path=pg_catalog AS $$ select 1 $$ SECURITY DEFINER SET statement_timeout = $$0$$;",
+      "CREATE FUNCTION public.bad() RETURNS text LANGUAGE sql SET search_path=pg_catalog AS $body$ select 1 $body$ SECURITY DEFINER SET statement_timeout = $body$0$body$;",
+      "CREATE TRIGGER bad BEFORE INSERT ON public.subscription_cycles FOR EACH ROW EXECUTE FUNCTION public.existing();",
+      "CREATE TRIGGER bad BEFORE INSERT ON app.existing FOR EACH ROW EXECUTE FUNCTION public.commerce_fulfillment_provider_command_guard();",
+      "CREATE INDEX bad ON public.subscription_cycles (id);",
+      "CREATE TABLE app.bad (id uuid);",
+      "CREATE TABLE public.subscription_cycles (id uuid);",
+      "REVOKE ALL ON public.subscription_cycles FROM PUBLIC, anon, authenticated;",
+      "REVOKE ALL ON FUNCTION public.existing() FROM PUBLIC;",
+      "REVOKE ALL ON public.fulfillment_provider_attempts FROM service_role;",
+      "COMMENT ON TABLE public.subscription_cycles IS 'unrelated';",
+      "COMMENT ON FUNCTION public.existing() IS 'unrelated';",
+      "INSERT INTO public.subscription_cycles (id) VALUES ('existing') ON CONFLICT DO NOTHING;",
+      "INSERT INTO public.fulfillment_provider_attempts (id) SELECT id FROM public.subscription_cycles ON CONFLICT DO NOTHING;",
+      "INSERT INTO public.fulfillment_provider_attempts (id) VALUES ('new') ON CONFLICT (id) DO UPDATE SET id = 'changed';",
+      "DELETE FROM public.fulfillment_provider_attempts;",
+      "DO $$ BEGIN NULL; END $$;",
+      "CREATE SCHEMA extra;",
+      "BEGIN;\r\nCOMMIT;",
+      "-- control\u0001\n",
+      "/* unterminated",
+      "CREATE FUNCTION public.bad() RETURNS text LANGUAGE sql AS $$ unterminated",
+    ])("refuses independently repinned creation statements in both gates: %s", (addition) => {
+      const contents = [exact[0]! + "\n" + addition, exact[1]!];
+      const sample = creationFixture(contents, true);
+      try {
+        sample.append(); const head = sample.commit("Repinned unsupported creation");
+        for (const gate of gates(sample, head)) expect(gate).toThrow(/reviewed portable creation|reviewed replacement|control characters/u);
+      } finally { sample.cleanup(); }
+    });
+    it.each([false, true].flatMap((inForward) => [
+      "CREATE FUNCTION public.commerce_fulfillment_provider_command_guard() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NEW; END $$;",
+      "CREATE TABLE public.fulfillment_provider_attempts (id uuid);",
+      "CREATE TRIGGER commerce_fulfillment_provider_command_guard BEFORE UPDATE ON public.fulfillment_shipments FOR EACH ROW EXECUTE FUNCTION public.existing();",
+    ].map((history) => [inForward, "\n" + history] as const)))("refuses existing objects from the preceding chain (forward: %s): %s", (inForward, history) => {
+      const sample = creationFixture(exact, false, history, inForward);
+      try {
+        sample.append(); const head = sample.commit("Existing portable function name");
+        for (const gate of gates(sample, head)) expect(gate).toThrow(/pre-existing or duplicate object/u);
+      } finally { sample.cleanup(); }
+    });
+    it.each(["simultaneous", "late", "changed"])("refuses %s portable creation approval", (timing) => {
+      const sample = creationFixture();
+      try {
+        if (timing !== "changed") {
+          sample.apply({ [REVIEWED_FORWARD_PATH]: json({ ...sample.registry, portableCreationForwards: undefined }) });
+          sample.approval = sample.commit("Before creation approval");
+        }
+        sample.append();
+        if (timing === "simultaneous") sample.apply({ [REVIEWED_FORWARD_PATH]: json(sample.registry) });
+        let head = sample.commit("Creation introduction");
+        if (timing !== "simultaneous") {
+          if (timing === "changed") sample.registry.portableCreationForwards![0]!.sha256 = "1".repeat(64);
+          sample.apply({ [REVIEWED_FORWARD_PATH]: json(sample.registry) });
+          head = sample.commit("Creation approval after introduction");
+        }
+        for (const gate of gates(sample, head)) expect(gate).toThrow(/approved separately/u);
+      } finally { sample.cleanup(); }
+    });
+    it.each(["missing", "extra", "duplicate", "path", "hash", "fields", "replacement overlap"])("refuses malformed portable creation registry: %s", (probe) => {
+      const registry = structuredClone(approved), entries = registry.portableCreationForwards!;
+      if (probe === "missing") entries.pop();
+      else if (probe === "extra") entries.push(structuredClone(entries[0]!));
+      else if (probe === "duplicate") entries[1] = structuredClone(entries[0]!);
+      else if (probe === "path") entries[0]!.path = "db/platform/migrations/20261022080000_unlisted.sql";
+      else if (probe === "hash") entries[0]!.sha256 = "invalid";
+      else if (probe === "fields") Object.assign(entries[0]!, { functions: [] });
+      else registry.portableReplacementForwards![0]!.path = entries[0]!.path;
+      expect(() => readReviewedForwardRegistry(Buffer.from(json(registry)))).toThrow(/reviewed portable creation/u);
+    });
+  });
   describe("portable reviewed replacement", () => {
     const path = "db/platform/migrations/20261021120000_dunning_lifecycle_active_repair.sql";
     const priorPath = "db/platform/migrations/20260815090000_dunning_lifecycle_state.sql";
@@ -1365,6 +1543,9 @@ describe("expand-only platform SQL admission", () => {
     "ALTER TABLE public.example RENAME TO other;", "ALTER TABLE public.example SET SCHEMA other;",
     "ALTER TABLE public.example OWNER TO other;", "dRoP/**/TABLE public.example;",
     "CREATE TABLE app.example (id int);", 'CREATE TABLE "app".example (id int);',
+    "CREATE TABLE public.example (id int) INHERITS (public.commerce_settings);",
+    "CREATE TABLE public.example (id int CHECK (id > 0));",
+    "CREATE TABLE public.example (id uuid REFERENCES public.commerce_settings(id) ON DELETE SET NULL);",
     "DO $$ BEGIN EXECUTE 'DROP TABLE public.example'; END $$;",
     "CREATE OR REPLACE FUNCTION public.example() RETURNS void AS $$ DROP TABLE public.example; $$ LANGUAGE sql;",
     "INSERT INTO public.example (id) SELECT destructive_function() ON CONFLICT DO NOTHING;",
