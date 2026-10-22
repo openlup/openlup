@@ -1064,7 +1064,11 @@ export interface FulfillmentStockSyncProvider {
         startLocalDate?: string;
         endLocalDate?: string;
         size?: number;
-    }): Promise<StockMovement[]>;
+    }): Promise<(StockMovement | {
+        kind: "rejected";
+        itemIndex: number;
+        reason: "invalid_sku_ref";
+    })[]>;
 }
 export interface FulfillmentStockSyncPort {
     readCursor(): Promise<SyncCursor | null>;

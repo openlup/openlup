@@ -250,9 +250,9 @@ export function createOmnipackFulfillmentAdapter(config: OmnipackFulfillmentAdap
         requireSync();
         try {
           const identity = syncIdentity();
-          return (await client.getStockMovements(input)).map(row => {
+          return (await client.getStockMovements(input)).map((row, itemIndex) => {
             const skuRef = reference(row.sku);
-            if (!skuRef) throw refusal("malformed", "sync");
+            if (!skuRef) return { kind: "rejected" as const, itemIndex, reason: "invalid_sku_ref" as const };
             return { ...identity, skuRef, quantityKind: "movement" as const, quantity: row.quantity, occurredAt: timestamp(row.occurredAt),
               operationType: reference(row.operationType), documentRef: reference(row.warehouseDocumentNumber), lotRef: reference(row.lotNumber), expirationDate: /^\d{4}-\d\d-\d\d$/u.test(row.expirationDate ?? "") ? row.expirationDate : null };
           });

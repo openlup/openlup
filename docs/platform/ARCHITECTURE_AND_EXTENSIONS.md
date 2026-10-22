@@ -945,14 +945,18 @@ active-reservation reads; expiry exactly at requestedAt is unusable. The provide
 inventory authority remains unchanged. Host compatibility inputs preserve original
 run IDs, sentinel, keys and movement-window time zone.
 
-Stock reads can return a rejected row with its input index and the closed
+Stock and movement reads can return a rejected row with its input index and the closed
 `invalid_sku_ref` reason. The worker counts every rejection, persists it with a
 null SKU, and continues current/snapshot writes for valid rows. A rejected batch
 finishes failed and clears coverage confirmation; unsafe references never reach
-the store. Hosts consuming `getStock()` directly must discriminate rejected rows.
+the store. Valid movements still contribute to counts and the latest occurrence.
+Hosts consuming `getStock()` or `getStockMovements()` directly must discriminate
+`"kind" in row && row.kind === "rejected"` before accessing observation fields.
 Item write failures retain an operation-specific reason and, when available, a
 SQLSTATE in both the per-item result and failed `SyncCursor.error`; arbitrary
-exception prose is discarded.
+exception prose is discarded. Operational reasons take precedence over rejections
+in the failed cursor; retryability follows operational failures independently of
+rejection counts. A run with only rejections is non-retryable.
 
 Provider failures return `ok: false` with neutral `providerError` operation
 (`get_stock` or `get_stock_movements`), status, sanitized code and retryability,
@@ -974,11 +978,12 @@ evidence may change under the same key and return `replayed: true`; a different
 SKU or threshold uses a different host key. Reusing a key for a different SKU or
 threshold retains the SQL conflict.
 
-KEEP-GAP: in-place alert refresh needs a forward SQL version. The native
+KEEP-GAP: alert refresh and reopen-on-replay are a scheduled forward SQL fix,
+required before stock adoption. The current native
 `fulfillment_record_stock_evidence` replay updates only `last_seen_at`; stored
 severity, quantities and status remain unchanged, including a resolved status.
 
-Migration: alert rows written by 0.22.0's native port carry the earlier whole-input fingerprint; subsequent writes under those keys conflict with SQLSTATE `23505`, and resolve only marks the row resolved while retaining its key and fingerprint, so it does not clear the conflict.
+Migration: alert rows written by 0.22.0's native port carry the earlier whole-input fingerprint; subsequent writes under those keys conflict with SQLSTATE `23505`, and resolve only marks the row resolved while retaining its key and fingerprint, so it does not clear the conflict. Legacy fingerprints are documented only; this change does not rewrite them.
 
 See the [stock parity tests](../../packages/platform/test/fulfillment/stockSync.test.ts)
 for native replay, and the [adapter factory tests](../../packages/platform/test/fulfillment/omnipack/factory.test.ts)

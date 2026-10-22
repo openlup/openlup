@@ -48,6 +48,7 @@ export async function runFulfillmentStockSyncWorker(input: {
 
   const alerts: NonNullable<SyncCursor["alerts"]>[number][] = [];
   let stage = "cursor_read_failed";
+  let operationalReason: string | undefined;
   let staleSync: SyncCursor["staleSync"];
   const currentCoverageGapSkus = new Set<string>();
   try {
@@ -113,7 +114,19 @@ export async function runFulfillmentStockSyncWorker(input: {
 
     stage = "stock_movements_read_failed";
     result.providerCalls += 1;
-    const movements = await input.provider.getStockMovements({ ...stockMovementWindow(previousCursor, now, input.compatibility.timeZone), size: input.movementBatchSize });
+    const movementRows = await input.provider.getStockMovements({ ...stockMovementWindow(previousCursor, now, input.compatibility.timeZone), size: input.movementBatchSize });
+    const movements: StockMovement[] = [];
+    for (const item of movementRows) {
+      if ("kind" in item && item.kind === "rejected") {
+        result.rejected += 1;
+        result.failures += 1;
+        result.ok = false;
+        result.reason ??= item.reason;
+        result.items.push({ itemIndex: item.itemIndex, skuRef: null, status: "rejected", reason: item.reason });
+      } else if ("skuRef" in item) {
+        movements.push(item);
+      }
+    }
     result.movements = movements.length;
     result.lastMovementOccurredAt = latestOccurredAt(movements);
 
@@ -164,7 +177,7 @@ export async function runFulfillmentStockSyncWorker(input: {
         result.ok = false;
         result.failures += 1;
         const reason = safeReason(error, stage);
-        result.reason ??= reason;
+        operationalReason ??= reason;
         result.items.push({ itemIndex, skuRef: stock.skuRef, status: "failed", reason });
       }
     }
@@ -223,16 +236,17 @@ export async function runFulfillmentStockSyncWorker(input: {
     result.ok = false;
     result.failures += 1;
     result.providerError = providerDiagnostic(error);
-    result.reason ??= result.providerError ? `provider_${result.providerError.operation}_failed:${result.providerError.code}` : safeReason(error, stage);
+    operationalReason ??= result.providerError ? `provider_${result.providerError.operation}_failed:${result.providerError.code}` : safeReason(error, stage);
   }
 
+  result.reason = operationalReason ?? result.reason;
   await input.port.recordCursor({
     status: result.ok ? "succeeded" : "failed", syncRunId,
     lastStockSyncedAt: result.ok ? now.toISOString() : null,
     lastMovementOccurredAt: result.lastMovementOccurredAt,
     continuation: { nextRef: null, startLocalDate: null, endLocalDate: null },
     coverageGapSkus: result.ok ? [...currentCoverageGapSkus].sort() : [],
-    refusal: result.ok ? null : { reason: result.rejected && result.failures === result.rejected ? "malformed" : "io_failure", phase: "sync", retryable: result.providerError?.retryable ?? result.rejected === 0 },
+    refusal: result.ok ? null : { reason: result.failures === result.rejected ? "malformed" : "io_failure", phase: "sync", retryable: result.providerError?.retryable ?? result.failures > result.rejected },
     error: result.ok ? null : { reason: result.reason!, ...(result.providerError ? { providerError: result.providerError } : {}) },
     counts: { checked: result.checked, updated: result.updated, movements: result.movements, rejected: result.rejected,
       failures: result.failures, providerCalls: result.providerCalls, readBacks: result.readBacks },

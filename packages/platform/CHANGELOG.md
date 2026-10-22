@@ -10,14 +10,21 @@ in the source repository.
 
 ## [Unreleased]
 
+- Compatibility: `getStock()` and `getStockMovements()` now return a row union;
+  consumers must discriminate rejections with
+  `"kind" in row && row.kind === "rejected"` before reading observation fields.
+  Provider read failures now return failed worker results (`ok: false`) with
+  persisted `providerError` diagnostics instead of throwing. Hosts can map those
+  failures to HTTP 502; terminal cursor-write failures still reject.
 - Stock-sync alert fingerprints now contain only `requestKey`, `skuRef` and
   `thresholdKind`: changing quantities, severity or run evidence under the same
   key returns `replayed: true`. Different SKUs or thresholds use different keys;
   a changed identity under a reused key still conflicts.
-- KEEP-GAP: in-place alert refresh needs a forward SQL version. Native replay
-  updates only `last_seen_at`, retaining stored severity, quantities and status.
+- KEEP-GAP: alert refresh and reopen-on-replay are a scheduled forward SQL fix,
+  required before stock adoption. Current native replay updates only
+  `last_seen_at`, retaining stored severity, quantities and status.
 
-Migration: alert rows written by 0.22.0's native port carry the earlier whole-input fingerprint; subsequent writes under those keys conflict with SQLSTATE `23505`, and resolve only marks the row resolved while retaining its key and fingerprint, so it does not clear the conflict.
+Migration: alert rows written by 0.22.0's native port carry the earlier whole-input fingerprint; subsequent writes under those keys conflict with SQLSTATE `23505`, and resolve only marks the row resolved while retaining its key and fingerprint, so it does not clear the conflict. Legacy fingerprints are documented only; this change does not rewrite them.
 
 ## [0.22.0]
 

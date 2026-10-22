@@ -734,6 +734,18 @@ it("keeps the safe per-item failure in the result and failed cursor (S1 stock-lo
   expect(f.cursor()).toMatchObject({ status: "failed", error: { reason: result.reason }, counts: { failures: 1 } });
 });
 
+it("keeps a transient snapshot failure retryable alongside a rejected SKU (S1/S5)", async () => {
+  const f = probe(url => jsonResponse(url.pathname === "/stock"
+    ? { _embedded: { stockItems: [{ ...probeStock, sku: "SKU/1" }, probeStock] } } : { _embedded: [] }));
+  f.input.port.recordStockSnapshot = async () => { throw Object.assign(Error("private payload"), { code: "40001" }); };
+  expect(await run(f.input)).toMatchObject({ ok: false, failures: 2, rejected: 1, reason: "snapshot_write_failed:40001",
+    items: [{ itemIndex: 0, skuRef: null, status: "rejected", reason: "invalid_sku_ref" },
+      { itemIndex: 1, skuRef: "sku-a", status: "failed", reason: "snapshot_write_failed:40001" }] });
+  expect(f.cursor()).toMatchObject({ status: "failed", counts: { failures: 2, rejected: 1 },
+    error: { reason: "snapshot_write_failed:40001" }, refusal: { reason: "io_failure", retryable: true } });
+  expect(JSON.stringify(f.cursor())).not.toMatch(/SKU\/1|private payload/);
+});
+
 it("keeps a SQLSTATE but excludes arbitrary exception prose and payloads (S1)", async () => {
   const f = probe();
   f.input.port.recordStockSnapshot = async () => { throw Object.assign(Error("https://private.invalid/?token=secret recipient@example.test"), { code: "42P01" }); };
@@ -772,10 +784,12 @@ it("names redirect refusal while preserving the credential destination policy (S
 });
 
 it("distinguishes movement-read failures and sanitizes unsafe provider error codes (S2)", async () => {
-  const f = probe(url => url.pathname === "/stock" ? jsonResponse({ _embedded: { stockItems: [probeStock] } })
+  const f = probe(url => url.pathname === "/stock" ? jsonResponse({ _embedded: { stockItems: [{ ...probeStock, sku: "SKU/1" }, probeStock] } })
     : jsonResponse({ code: "https://private.invalid/?token=secret" }, 400));
-  expect(await run(f.input)).toMatchObject({ ok: false, providerError: { operation: "get_stock_movements", status: 400, code: "http_400", retryable: false } });
-  expect(f.cursor()).toMatchObject({ status: "failed", refusal: { retryable: false }, counts: { providerCalls: 2 } });
+  expect(await run(f.input)).toMatchObject({ ok: false, rejected: 1, failures: 2, reason: "provider_get_stock_movements_failed:http_400",
+    providerError: { operation: "get_stock_movements", status: 400, code: "http_400", retryable: false } });
+  expect(f.cursor()).toMatchObject({ status: "failed", error: { reason: "provider_get_stock_movements_failed:http_400" },
+    refusal: { reason: "io_failure", retryable: false }, counts: { providerCalls: 2 } });
   expect(JSON.stringify(f.cursor())).not.toContain("secret");
 });
 
@@ -834,6 +848,30 @@ it("reports an entirely rejected batch explicitly rather than as an I/O outage (
   expect(await run(f.input)).toMatchObject({ ok: false, checked: 0, updated: 0, rejected: 1, failures: 1, reason: "invalid_sku_ref" });
   expect(f.snapshots).toEqual([]);
   expect(f.cursor()).toMatchObject({ error: { reason: "invalid_sku_ref" }, coverageGapSkus: [] });
+});
+
+it("reports unsafe stock and movement rows while preserving valid observations (S5)", async () => {
+  const movement = { sku: "sku-a", quantity: 2, occurredAt: probeAt, operationType: "receipt", warehouseDocumentNumber: "DOC-A" };
+  const f = probe(url => jsonResponse(url.pathname === "/stock"
+    ? { _embedded: { stockItems: [probeStock, { ...probeStock, sku: "SKU/1" }] } }
+    : { _embedded: [movement, { ...movement, sku: "SKU/1", occurredAt: "2026-10-22T23:00:00.000Z" }] }));
+  const current = vi.fn(f.input.port.recordProviderStockCurrent);
+  const recordMovement = vi.fn(f.input.port.recordMovement);
+  f.input.port.recordProviderStockCurrent = current;
+  f.input.port.recordMovement = recordMovement;
+  const result = await run(f.input);
+  const rejection = { itemIndex: 1, skuRef: null, status: "rejected", reason: "invalid_sku_ref" };
+  expect(result).toMatchObject({ ok: false, checked: 1, updated: 2, movements: 1, lastMovementOccurredAt: probeAt,
+    rejected: 2, failures: 2, reason: "invalid_sku_ref" });
+  expect(result.items.filter(item => item.status === "rejected")).toEqual([rejection, rejection]);
+  expect(result.items).toContainEqual(expect.objectContaining({ skuRef: "sku-a", status: "recorded" }));
+  expect(result.providerError).toBeUndefined();
+  expect(f.snapshots.map(value => value.snapshot.skuRef)).toEqual(["sku-a"]);
+  expect(current.mock.calls.map(([value]) => value.snapshot.skuRef)).toEqual(["sku-a"]);
+  expect(recordMovement).not.toHaveBeenCalled();
+  expect(f.cursor()).toMatchObject({ counts: { checked: 1, updated: 2, movements: 1, rejected: 2, failures: 2 },
+    error: { reason: "invalid_sku_ref" }, refusal: { reason: "malformed", retryable: false } });
+  expect(JSON.stringify(f.cursor())).not.toMatch(/SKU\/1|provider_read_failed/);
 });
 
 it("preserves duplicate rows and movement counts/window evidence (S3 stock-duplicate/stock-movements)", async () => {

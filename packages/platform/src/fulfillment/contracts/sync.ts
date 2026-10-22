@@ -36,7 +36,7 @@ type Conflict = "unknown_sku" | "ean_conflict" | "kind_quantity_conflict";
 export interface FulfillmentStockSyncProvider {
   /** Rejected rows carry only their input index and a closed reason, never an unsafe reference. */
   getStock(): Promise<(StockSnapshot | { kind: "rejected"; itemIndex: number; reason: "invalid_sku_ref" })[]>;
-  getStockMovements(input?: { startLocalDate?: string; endLocalDate?: string; size?: number }): Promise<StockMovement[]>;
+  getStockMovements(input?: { startLocalDate?: string; endLocalDate?: string; size?: number }): Promise<(StockMovement | { kind: "rejected"; itemIndex: number; reason: "invalid_sku_ref" })[]>;
 }
 export interface FulfillmentStockSyncPort {
   readCursor(): Promise<SyncCursor | null>;
