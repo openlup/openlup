@@ -604,8 +604,8 @@ export declare const adminInventoryReservationsRequestSchema: z.ZodObject<{
     status: z.ZodOptional<z.ZodEnum<{
         expired: "expired";
         reserved: "reserved";
-        consumed: "consumed";
         released: "released";
+        consumed: "consumed";
     }>>;
     orderId: z.ZodOptional<z.ZodGUID>;
 }, z.core.$strict>;
@@ -670,8 +670,8 @@ export declare const inventoryReservationsListResponseSchema: z.ZodObject<{
         status: z.ZodEnum<{
             expired: "expired";
             reserved: "reserved";
-            consumed: "consumed";
             released: "released";
+            consumed: "consumed";
         }>;
         kind: z.ZodEnum<{
             checkout_payment_window: "checkout_payment_window";

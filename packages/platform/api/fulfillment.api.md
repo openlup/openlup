@@ -17,12 +17,8 @@ export declare function runFulfillmentAdapterConformance(subjects: readonly Fulf
 
 ```ts
 import type { FulfillmentOperatorMutationPort as CommerceFulfillmentMutationPort } from './contracts/operator.js';
-import type { AdminCommerceFulfillmentOrdersListRequest, AdminCommerceFulfillmentOrdersListResponse, AdminCommerceFulfillmentOrderDetailRequest, AdminCommerceFulfillmentOrderDetailResponse } from './handlerSchemas.js';
+import type { FulfillmentCommerceReadPort as CommerceFulfillmentReadPort } from './contracts/read.js';
 import { type BaseDeps, type FulfillmentHandlerRequest } from './handlerSupport.js';
-type CommerceFulfillmentReadPort = {
-    listCommerceFulfillmentOrders(request: AdminCommerceFulfillmentOrdersListRequest): Promise<AdminCommerceFulfillmentOrdersListResponse>;
-    getCommerceFulfillmentOrderDetail(request: AdminCommerceFulfillmentOrderDetailRequest): Promise<AdminCommerceFulfillmentOrderDetailResponse | null>;
-};
 type PortRef<T> = T | (() => T);
 export declare function createAdminCommerceFulfillmentOrdersListHandler<Response>({ authorizeAdmin, respond, fulfillmentPort, }: BaseDeps<Response> & {
     fulfillmentPort: PortRef<Pick<CommerceFulfillmentReadPort, "listCommerceFulfillmentOrders">>;
@@ -49,6 +45,96 @@ export declare function createAdminCommerceFulfillmentCancelOrderHandler<Respons
     fulfillmentPort: PortRef<Pick<CommerceFulfillmentMutationPort, "cancelCommerceFulfillmentOrder">>;
 }): (req: FulfillmentHandlerRequest, res: Response) => Promise<void>;
 export {};
+```
+## dist/fulfillment/commerceFulfillmentReadModel.d.ts
+
+```ts
+import type { FulfillmentCommerceReadPolicy, FulfillmentPaymentStatus, FulfillmentOrderStatus as OrderStatus } from './contracts/read.js';
+import type { SubscriptionCycleStatus } from '@openlup/core/subscription';
+import { type AdminCommerceFulfillmentOrderDetailResponse, type AdminCommerceFulfillmentOrdersListResponse, type CommerceFulfillmentOrder, type CommerceFulfillmentOperationType, type CommerceFulfillmentStatus } from "./handlerSchemas.js";
+export interface CommerceFulfillmentOrderRow {
+    id: string;
+    order_id: string;
+    client_id: string | null;
+    status: CommerceFulfillmentStatus;
+    provider_kind: string | null;
+    shipping_address_snapshot: CommerceFulfillmentOrder["shippingAddress"];
+    created_at: string;
+    updated_at: string;
+}
+export interface CommerceFulfillmentLineRow {
+    id: string;
+    fulfillment_order_id: string;
+    order_item_id: string;
+    sku_id: string;
+    sku: string;
+    title: string | null;
+    quantity: number;
+    inventory_reservation_ids: string[];
+    product_snapshot: Record<string, unknown>;
+}
+export interface CommerceFulfillmentOperationRow {
+    id: string;
+    fulfillment_order_id: string;
+    operation_type: CommerceFulfillmentOperationType;
+    actor_user_id: string | null;
+    occurred_at: string;
+    payload: Record<string, unknown>;
+}
+export interface CommerceFulfillmentOrderContextRow {
+    id: string;
+    status: OrderStatus;
+    mode: "one_time" | "subscription_cycle";
+    shipping_address_id: string | null;
+    subscription_cycle_id: string | null;
+}
+export interface CommerceFulfillmentPaymentIntentRow {
+    id: string;
+    order_id: string;
+    status: FulfillmentPaymentStatus;
+    provider_payment_id: string | null;
+}
+export interface CommerceFulfillmentInventoryReservationRow {
+    id: string;
+    order_id: string;
+    status: "reserved" | "released" | "consumed" | "expired";
+    expires_at: string | null;
+    location_id: string | null;
+    inventory_locations?: {
+        code?: string | null;
+    } | null;
+}
+export interface CommerceFulfillmentShipmentRefRow {
+    order_id: string;
+    provider_tracking_id: string;
+    active: boolean;
+    created_at?: string | null;
+}
+export declare function buildCommerceFulfillmentOrdersListResponse(input: {
+    fulfillmentOrders: CommerceFulfillmentOrderRow[];
+    lines: CommerceFulfillmentLineRow[];
+    latestOperations: CommerceFulfillmentOperationRow[];
+    orderContexts: CommerceFulfillmentOrderContextRow[];
+    paymentIntents: CommerceFulfillmentPaymentIntentRow[];
+    inventoryReservations: CommerceFulfillmentInventoryReservationRow[];
+    shipmentRefs: CommerceFulfillmentShipmentRefRow[];
+    activeHoldCounts: Record<string, number>;
+    subscriptionCycleStatuses: Record<string, SubscriptionCycleStatus | null>;
+    totalCount: number;
+    page: number;
+    pageSize: number;
+}, policy: FulfillmentCommerceReadPolicy): AdminCommerceFulfillmentOrdersListResponse;
+export declare function buildCommerceFulfillmentOrderDetailResponse(input: {
+    fulfillmentOrder: CommerceFulfillmentOrderRow;
+    lines: CommerceFulfillmentLineRow[];
+    latestOperation: CommerceFulfillmentOperationRow | null;
+    orderContext: CommerceFulfillmentOrderContextRow;
+    paymentIntent: CommerceFulfillmentPaymentIntentRow;
+    inventoryReservations: CommerceFulfillmentInventoryReservationRow[];
+    shipmentRef: CommerceFulfillmentShipmentRefRow | null;
+    activeHoldCount: number;
+    subscriptionCycleStatus: SubscriptionCycleStatus | null;
+}, policy: FulfillmentCommerceReadPolicy): AdminCommerceFulfillmentOrderDetailResponse;
 ```
 ## dist/fulfillment/contracts/alignment.d.ts
 
@@ -347,6 +433,8 @@ export type { FulfillmentNativeUnsupported } from './nativeUnsupported.js';
 export type { FulfillmentReplacementPort, FulfillmentReplacementRequest, FulfillmentReplacementResult } from './replacement.js';
 export type { FulfillmentOperatorMutationPort, FulfillmentOperatorMutationResult } from './operator.js';
 export type { CustomerDeliveryAlignment, FulfillmentCustomerAlignmentRowsReader } from './customerAlignment.js';
+export type { FulfillmentCommerceReadPort, FulfillmentCommerceReadPolicy, FulfillmentPaymentStatus, FulfillmentCommerceOrder, FulfillmentOrdersListRequest, FulfillmentOrdersListResponse, FulfillmentOrderDetailRequest, FulfillmentOrderDetailResponse, FulfillmentShipmentsOverviewPort, FulfillmentShipmentsOverviewRequest, FulfillmentShipmentsOverviewResponse } from './read.js';
+export type { FulfillmentProgressInput, FulfillmentProgressPresentation } from './read.js';
 ```
 ## dist/fulfillment/contracts/label.d.ts
 
@@ -520,6 +608,134 @@ export interface FulfillmentOperatorMutationPort {
     }): Promise<FulfillmentOperatorMutationResult | FulfillmentNativeUnsupported>;
 }
 export {};
+```
+## dist/fulfillment/contracts/read.d.ts
+
+```ts
+import type { CustomerFulfillmentStep } from './index.js';
+import type { SubscriptionCycleStatus } from '@openlup/core/subscription';
+import type { PaymentIntentStatus } from '@openlup/core/payment';
+import type { FulfillmentNativeUnsupported } from './nativeUnsupported.js';
+export type FulfillmentOrderStatus = 'draft' | 'pending_payment' | 'paid' | 'failed' | 'expired' | 'fulfillment_pending' | 'cancelled' | 'fulfilled' | 'refunded';
+export type FulfillmentPaymentStatus = 'not_started' | PaymentIntentStatus;
+export interface FulfillmentCommerceOrder {
+    id: string;
+    orderId: string;
+    clientId: string | null;
+    status: 'created' | 'packed' | 'label_pending' | 'label_created' | 'handed_over' | 'in_transit' | 'delivered' | 'exception' | 'cancelled';
+    providerKind: string | null;
+    providerTrackingId: string | null;
+    shippingAddress: {
+        addressId: string;
+        clientId: string;
+        label: string | null;
+        line1: string;
+        line2: string | null;
+        city: string;
+        postalCode: string;
+        country: string;
+    };
+    lines: {
+        id: string | null;
+        orderItemId: string;
+        skuId: string;
+        sku: string;
+        title: string | null;
+        quantity: number;
+        inventoryReservationIds: string[];
+        productSnapshot: Record<string, unknown>;
+    }[];
+    payment: {
+        paymentIntentId: string;
+        paymentStatus: FulfillmentPaymentStatus;
+        providerPaymentId: string | null;
+    };
+    inventory: {
+        status: 'not_checked' | 'reserved' | 'missing' | 'released' | 'expired' | 'consumed' | 'review_required';
+        reservationId: string | null;
+        reservationStatus: 'reserved' | 'consumed' | 'released' | 'expired' | null;
+        expiresAt: string | null;
+        locationId: string | null;
+        locationCode: string | null;
+    };
+    omsEligibility: {
+        allowed: boolean;
+        reason: 'order_not_paid' | 'payment_not_succeeded' | 'subscription_cycle_not_paid' | 'active_hold' | 'missing_shipping_address' | 'inventory_review' | 'risk_review' | null;
+    };
+    latestOperation: {
+        id: string;
+        type: 'created' | 'packed' | 'provider_attempt_recorded' | 'label_created' | 'handed_over' | 'tracking_event_recorded' | 'cancelled';
+        occurredAt: string;
+        actorUserId: string | null;
+        payload: Record<string, unknown>;
+    } | null;
+    createdAt: string;
+    updatedAt: string;
+}
+export interface FulfillmentOrdersListRequest {
+    page: number;
+    pageSize: number;
+    status?: FulfillmentCommerceOrder['status'];
+}
+export interface FulfillmentOrderDetailRequest {
+    fulfillmentOrderId?: string;
+    orderId?: string;
+}
+export interface FulfillmentOrdersListResponse {
+    contractVersion: 'commerce.fulfillment.v0';
+    orders: FulfillmentCommerceOrder[];
+    totalCount: number;
+    page: number;
+    pageSize: number;
+}
+export interface FulfillmentOrderDetailResponse {
+    contractVersion: 'commerce.fulfillment.v0';
+    order: FulfillmentCommerceOrder;
+}
+/** Host-owned persisted projections. Payment statuses already come from the payments projection. */
+export interface FulfillmentCommerceReadPort {
+    listCommerceFulfillmentOrders(request: FulfillmentOrdersListRequest): Promise<FulfillmentOrdersListResponse | FulfillmentNativeUnsupported>;
+    getCommerceFulfillmentOrderDetail(request: FulfillmentOrderDetailRequest): Promise<FulfillmentOrderDetailResponse | null | FulfillmentNativeUnsupported>;
+}
+export interface FulfillmentShipmentsOverviewRequest {
+    shippedFilter: 'today' | '7d' | '30d' | 'all';
+}
+/** Bucket rows are opaque host data; native shipment counts cannot replace these buckets. */
+export interface FulfillmentShipmentsOverviewResponse {
+    approved: Record<string, unknown>[];
+    packing: Record<string, unknown>[];
+    shippedToday: number;
+    shipped: Record<string, unknown>[];
+}
+export interface FulfillmentShipmentsOverviewPort {
+    getShipmentsOverview(request: FulfillmentShipmentsOverviewRequest): Promise<FulfillmentShipmentsOverviewResponse | FulfillmentNativeUnsupported>;
+}
+/** Existing commerce eligibility remains host-owned; the read model only supplies its facts. */
+export interface FulfillmentCommerceReadPolicy {
+    evaluateCommerceFulfillmentEligibility(input: {
+        orderMode: 'one_time' | 'subscription_cycle';
+        orderStatus: FulfillmentOrderStatus;
+        paymentStatus: FulfillmentPaymentStatus;
+        subscriptionCycleStatus: SubscriptionCycleStatus | null;
+        activeHoldCount: number;
+        hasShippingAddress: boolean;
+        inventoryStatus: FulfillmentCommerceOrder['inventory']['status'];
+    }): FulfillmentCommerceOrder['omsEligibility'];
+}
+export interface FulfillmentProgressInput {
+    status: string;
+    paymentStatus: string | null;
+    fulfillmentStatus: string | null;
+    customerFulfillmentStep?: CustomerFulfillmentStep | null;
+    trackingTimeline: {
+        eventType: string;
+        occurredAt?: string | null;
+    }[];
+}
+export interface FulfillmentProgressPresentation {
+    completedSteps: CustomerFulfillmentStep[];
+    currentStep: CustomerFulfillmentStep | null;
+}
 ```
 ## dist/fulfillment/contracts/readback.d.ts
 
@@ -1017,20 +1233,20 @@ export declare const commerceFulfillmentPaymentStatusSchema: z.ZodEnum<{
     failed: "failed";
     cancelled: "cancelled";
     succeeded: "succeeded";
-    processing: "processing";
     refunded: "refunded";
-    not_started: "not_started";
     requires_action: "requires_action";
+    processing: "processing";
     partially_refunded: "partially_refunded";
     disputed: "disputed";
+    not_started: "not_started";
 }>;
 export declare const commerceFulfillmentInventoryStatusSchema: z.ZodEnum<{
     expired: "expired";
     missing: "missing";
     reserved: "reserved";
-    consumed: "consumed";
-    released: "released";
     not_checked: "not_checked";
+    released: "released";
+    consumed: "consumed";
     review_required: "review_required";
 }>;
 export declare const commerceFulfillmentBlockReasonSchema: z.ZodEnum<{
@@ -1070,12 +1286,12 @@ export declare const commerceFulfillmentPaymentSummarySchema: z.ZodObject<{
         failed: "failed";
         cancelled: "cancelled";
         succeeded: "succeeded";
-        processing: "processing";
         refunded: "refunded";
-        not_started: "not_started";
         requires_action: "requires_action";
+        processing: "processing";
         partially_refunded: "partially_refunded";
         disputed: "disputed";
+        not_started: "not_started";
     }>;
     providerPaymentId: z.ZodNullable<z.ZodString>;
 }, z.core.$strict>;
@@ -1084,17 +1300,17 @@ export declare const commerceFulfillmentInventorySummarySchema: z.ZodObject<{
         expired: "expired";
         missing: "missing";
         reserved: "reserved";
-        consumed: "consumed";
-        released: "released";
         not_checked: "not_checked";
+        released: "released";
+        consumed: "consumed";
         review_required: "review_required";
     }>;
     reservationId: z.ZodNullable<z.ZodGUID>;
     reservationStatus: z.ZodNullable<z.ZodEnum<{
         expired: "expired";
         reserved: "reserved";
-        consumed: "consumed";
         released: "released";
+        consumed: "consumed";
     }>>;
     expiresAt: z.ZodNullable<z.ZodString>;
     locationId: z.ZodNullable<z.ZodGUID>;
@@ -1172,12 +1388,12 @@ export declare const commerceFulfillmentOrderSchema: z.ZodObject<{
             failed: "failed";
             cancelled: "cancelled";
             succeeded: "succeeded";
-            processing: "processing";
             refunded: "refunded";
-            not_started: "not_started";
             requires_action: "requires_action";
+            processing: "processing";
             partially_refunded: "partially_refunded";
             disputed: "disputed";
+            not_started: "not_started";
         }>;
         providerPaymentId: z.ZodNullable<z.ZodString>;
     }, z.core.$strict>;
@@ -1186,17 +1402,17 @@ export declare const commerceFulfillmentOrderSchema: z.ZodObject<{
             expired: "expired";
             missing: "missing";
             reserved: "reserved";
-            consumed: "consumed";
-            released: "released";
             not_checked: "not_checked";
+            released: "released";
+            consumed: "consumed";
             review_required: "review_required";
         }>;
         reservationId: z.ZodNullable<z.ZodGUID>;
         reservationStatus: z.ZodNullable<z.ZodEnum<{
             expired: "expired";
             reserved: "reserved";
-            consumed: "consumed";
             released: "released";
+            consumed: "consumed";
         }>>;
         expiresAt: z.ZodNullable<z.ZodString>;
         locationId: z.ZodNullable<z.ZodGUID>;
@@ -1350,12 +1566,12 @@ export declare const adminCommerceFulfillmentOrdersListResponseSchema: z.ZodObje
                 failed: "failed";
                 cancelled: "cancelled";
                 succeeded: "succeeded";
-                processing: "processing";
                 refunded: "refunded";
-                not_started: "not_started";
                 requires_action: "requires_action";
+                processing: "processing";
                 partially_refunded: "partially_refunded";
                 disputed: "disputed";
+                not_started: "not_started";
             }>;
             providerPaymentId: z.ZodNullable<z.ZodString>;
         }, z.core.$strict>;
@@ -1364,17 +1580,17 @@ export declare const adminCommerceFulfillmentOrdersListResponseSchema: z.ZodObje
                 expired: "expired";
                 missing: "missing";
                 reserved: "reserved";
-                consumed: "consumed";
-                released: "released";
                 not_checked: "not_checked";
+                released: "released";
+                consumed: "consumed";
                 review_required: "review_required";
             }>;
             reservationId: z.ZodNullable<z.ZodGUID>;
             reservationStatus: z.ZodNullable<z.ZodEnum<{
                 expired: "expired";
                 reserved: "reserved";
-                consumed: "consumed";
                 released: "released";
+                consumed: "consumed";
             }>>;
             expiresAt: z.ZodNullable<z.ZodString>;
             locationId: z.ZodNullable<z.ZodGUID>;
@@ -1461,12 +1677,12 @@ export declare const adminCommerceFulfillmentOrderDetailResponseSchema: z.ZodObj
                 failed: "failed";
                 cancelled: "cancelled";
                 succeeded: "succeeded";
-                processing: "processing";
                 refunded: "refunded";
-                not_started: "not_started";
                 requires_action: "requires_action";
+                processing: "processing";
                 partially_refunded: "partially_refunded";
                 disputed: "disputed";
+                not_started: "not_started";
             }>;
             providerPaymentId: z.ZodNullable<z.ZodString>;
         }, z.core.$strict>;
@@ -1475,17 +1691,17 @@ export declare const adminCommerceFulfillmentOrderDetailResponseSchema: z.ZodObj
                 expired: "expired";
                 missing: "missing";
                 reserved: "reserved";
-                consumed: "consumed";
-                released: "released";
                 not_checked: "not_checked";
+                released: "released";
+                consumed: "consumed";
                 review_required: "review_required";
             }>;
             reservationId: z.ZodNullable<z.ZodGUID>;
             reservationStatus: z.ZodNullable<z.ZodEnum<{
                 expired: "expired";
                 reserved: "reserved";
-                consumed: "consumed";
                 released: "released";
+                consumed: "consumed";
             }>>;
             expiresAt: z.ZodNullable<z.ZodString>;
             locationId: z.ZodNullable<z.ZodGUID>;
@@ -1702,6 +1918,9 @@ export { readFulfillmentLabel, cleanupFulfillmentLabel } from './labelLifecycle.
 export { currentParcel, currentParcelFor, currentParcelPerOrder, currentParcelFirst, belongsToParcel, rowsForParcel, parcelSequenceNo, compareParcelPrecedence } from './currentFulfillmentParcel.js';
 export { FULFILLMENT_NATIVE_UNSUPPORTED, createNativeUnsupportedFulfillmentPorts } from './nativeUnsupported.js';
 export { FULFILLMENT_REPLACEMENT_REFUSALS } from './replacementRefusals.js';
+export { buildCommerceFulfillmentOrdersListResponse, buildCommerceFulfillmentOrderDetailResponse } from './commerceFulfillmentReadModel.js';
+export { createFulfillmentShipmentsOverviewHandler } from './shipmentsOverviewHandler.js';
+export { fulfillmentProgressPresentation } from './trackingProgress.js';
 ```
 ## dist/fulfillment/labelLifecycle.d.ts
 
@@ -1805,13 +2024,14 @@ export declare const FULFILLMENT_MIGRATIONS: readonly [{
 ## dist/fulfillment/nativeUnsupported.d.ts
 
 ```ts
+import type { FulfillmentCommerceReadPort, FulfillmentShipmentsOverviewPort } from './contracts/read.js';
 import type { FulfillmentNativeUnsupported } from './contracts/nativeUnsupported.js';
 import type { FulfillmentReplacementPort } from './contracts/replacement.js';
 import type { FulfillmentOperatorMutationPort } from './contracts/operator.js';
 import type { FulfillmentCustomerAlignmentRowsReader } from './contracts/customerAlignment.js';
 export declare const FULFILLMENT_NATIVE_UNSUPPORTED: FulfillmentNativeUnsupported;
 /** Deliberately has no executor: unsupported native parity can never make a partial write. */
-export declare function createNativeUnsupportedFulfillmentPorts(): FulfillmentReplacementPort & FulfillmentOperatorMutationPort & {
+export declare function createNativeUnsupportedFulfillmentPorts(): FulfillmentReplacementPort & FulfillmentOperatorMutationPort & FulfillmentCommerceReadPort & FulfillmentShipmentsOverviewPort & {
     readCustomerAlignmentRows: FulfillmentCustomerAlignmentRowsReader;
 };
 ```
@@ -1962,6 +2182,11 @@ export interface OrderPaidFulfillmentPort {
         signal: AbortSignal;
     }): Promise<OrderPaidFulfillmentResult>;
 }
+```
+## dist/fulfillment/ports.d.ts
+
+```ts
+export type { FulfillmentShipmentsOverviewPort } from './contracts/read.js';
 ```
 ## dist/fulfillment/postgresDeliveryAlignment.d.ts
 
@@ -2584,6 +2809,27 @@ export declare const FULFILLMENT_NATIVE_CAPABILITIES: {
     readonly automaticReplacementConfirmation: "unsupported";
 };
 ```
+## dist/fulfillment/shipmentsOverviewHandler.d.ts
+
+```ts
+import { type FulfillmentHandlerRequest, type FulfillmentHandlerResponder } from './handlerSupport.js';
+import type { FulfillmentShipmentsOverviewResponse } from './contracts/read.js';
+import type { FulfillmentShipmentsOverviewPort } from "./ports.js";
+export interface FulfillmentShipmentsOverviewHandlerDeps<Response> {
+    respond: FulfillmentHandlerResponder<Response>;
+    overviewPort: FulfillmentShipmentsOverviewPort;
+    responseSchema: {
+        safeParse(input: unknown): {
+            success: true;
+            data: FulfillmentShipmentsOverviewResponse;
+        } | {
+            success: false;
+        };
+    };
+    authorizeAdmin: (req: FulfillmentHandlerRequest) => Promise<boolean>;
+}
+export declare function createFulfillmentShipmentsOverviewHandler<Response>({ respond, overviewPort, responseSchema: adminShipmentsOverviewResponseSchema, authorizeAdmin, }: FulfillmentShipmentsOverviewHandlerDeps<Response>): (req: FulfillmentHandlerRequest, res: Response) => Promise<void>;
+```
 ## dist/fulfillment/statusMap.d.ts
 
 ```ts
@@ -2807,6 +3053,14 @@ export declare function timelineLabelForStep(step: CustomerFulfillmentStep): str
 export declare function trackingPhaseKeyForStep(step: CustomerFulfillmentStep): string;
 export declare function stepUsesTruckIcon(step: CustomerFulfillmentStep): boolean;
 export {};
+```
+## dist/fulfillment/trackingProgress.d.ts
+
+```ts
+import type { FulfillmentProgressInput, FulfillmentProgressPresentation } from './contracts/read.js';
+import type { CustomerFulfillmentStep } from './contracts/index.js';
+/** The host resolves its existing step; only actual recorded milestones complete. */
+export declare function fulfillmentProgressPresentation(order: FulfillmentProgressInput, step: CustomerFulfillmentStep): FulfillmentProgressPresentation | null;
 ```
 ## dist/fulfillment/verifiedIngress.d.ts
 

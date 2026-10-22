@@ -62,3 +62,23 @@ is not part of the published tree.
 
 Domain-boundary rules live in the maintainer canon `DOMAIN_ARCHITECTURE.md`,
 which belongs to the private overlay and is not part of the published tree.
+
+## Opt-in read presentation
+
+The package [commerce read models](../../../packages/platform/src/fulfillment/commerceFulfillmentReadModel.ts)
+assemble host-owned projections; payment status passes through from the existing
+payments projection and eligibility uses host commerce policy. The list/detail
+and overview ports return the shared typed unsupported refusal when native
+projections are unavailable; see the [native parity boundaries](../../../docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#native-parity-boundaries).
+The legacy shipment-status DTOs in `contracts.ts` and `FulfillmentReadPort` in
+`ports.ts` remain public and unchanged. Removing them requires a consumer census,
+deprecation and an explicit ownership decision.
+
+[referenceFulfillmentClient](referenceFulfillmentClient.ts) wraps the existing
+operator detail client and exposes only order identity, parcel status and a
+tracking reference as text. It drops addresses and raw operation payloads from
+presentation. [ReferenceFulfillmentPage](../../pages/ReferenceFulfillmentPage.tsx)
+is an unmounted opt-in example: the host supplies the session and order, owns
+access and mounting, and an explicit button triggers the read. It neither
+polls nor performs a mutation. [FulfillmentDeliveryStatus](../../components/FulfillmentDeliveryStatus.tsx)
+renders status and tracking reference as inert text.

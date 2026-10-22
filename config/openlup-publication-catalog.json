@@ -3186,6 +3186,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/fulfillment/commerceFulfillmentReadModel.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/fulfillment/contracts/alignment.ts",
       "class": "public-output"
     },
@@ -3223,6 +3227,10 @@
     },
     {
       "path": "packages/platform/src/fulfillment/contracts/operator.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/contracts/read.ts",
       "class": "public-output"
     },
     {
@@ -3298,6 +3306,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/fulfillment/overviewSchemas.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/fulfillment/paidFulfillmentRecovery.ts",
       "class": "public-output"
     },
@@ -3307,6 +3319,10 @@
     },
     {
       "path": "packages/platform/src/fulfillment/paidHandoffPorts.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/ports.ts",
       "class": "public-output"
     },
     {
@@ -3406,7 +3422,15 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/fulfillment/shipmentsOverviewHandler.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/fulfillment/statusMap.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/trackingProgress.ts",
       "class": "public-output"
     },
     {
@@ -4870,6 +4894,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/fulfillment/readModel.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/fulfillment/reconciliation.test.ts",
       "class": "public-output"
     },
@@ -4887,6 +4915,10 @@
     },
     {
       "path": "packages/platform/test/fulfillment/stockSync.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/fulfillment/trackingProgress.test.ts",
       "class": "public-output"
     },
     {
@@ -15642,6 +15674,14 @@
       "class": "public-output"
     },
     {
+      "path": "src/components/FulfillmentDeliveryStatus.test.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/components/FulfillmentDeliveryStatus.tsx",
+      "class": "public-output"
+    },
+    {
       "path": "src/components/HomepageAppTransparencySection.tsx",
       "class": "public-output"
     },
@@ -18334,6 +18374,10 @@
       "class": "public-output"
     },
     {
+      "path": "src/domains/fulfillment/referenceFulfillmentClient.ts",
+      "class": "public-output"
+    },
+    {
       "path": "src/domains/fulfillment/status.test.ts",
       "class": "public-output"
     },
@@ -20506,6 +20550,14 @@
       "class": "public-output"
     },
     {
+      "path": "src/pages/ReferenceFulfillmentPage.test.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/pages/ReferenceFulfillmentPage.tsx",
+      "class": "public-output"
+    },
+    {
       "path": "src/pages/ReferencePaymentRepairPage.test.tsx",
       "class": "public-output"
     },
@@ -20747,6 +20799,10 @@
     },
     {
       "path": "src/pages/account/v2/orders/OrderTrackingStepper.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/pages/account/v2/orders/OrdersScreen.test.tsx",
       "class": "public-output"
     },
     {

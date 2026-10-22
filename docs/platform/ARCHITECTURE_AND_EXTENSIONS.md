@@ -674,8 +674,8 @@ executor. Browser preview values remain reference-owned. See the
 Fulfillment lives at the two existing-package subpaths
 `@openlup/platform/fulfillment` and `/fulfillment/contracts`; no topology trigger
 requires another package or dependency. The type-only contracts entry has no runtime,
-server or cross-module edge; its only dependency is a type import of the core
-normalized fulfillment fact. The runtime entry binds core evidence parsers to the
+server or cross-module edge; its dependencies are core fact, payment-status and
+subscription-status types. The runtime entry binds core evidence parsers to the
 contributed status canon and selects only injected capability profiles. Provider,
 carrier and service remain independent; empty provider selection refuses, and
 potential support never enables a dormant route. Raw commands, credentials and
@@ -758,26 +758,49 @@ hidden. Manual review never implies protection. The projection changes no contro
 mode, schedule or delivery fact. The current-parcel helpers select the highest
 sequence, then identifier descending, and retain unattributed companion rows.
 
+The [commerce read models](../../packages/platform/src/fulfillment/commerceFulfillmentReadModel.ts)
+assemble host-provided lines, address snapshots, operations, reservations, active
+tracking references, holds and cycle statuses. Payment status is already projected
+by the payments owner and passes through unchanged; eligibility is delegated to
+the existing host commerce policy. Missing required list context fails rather
+than inventing an order or payment. Snapshot projection retains only the declared
+address fields. The [overview handler](../../packages/platform/src/fulfillment/shipmentsOverviewHandler.ts)
+checks method, authorization and filter before its host read, then validates the
+response with a required host-supplied schema. Bucket rows remain opaque to the
+package; the host schema retains private-row validation. The host owns privacy
+and date-filter semantics; native shipment counts cannot replace its buckets.
+
+[fulfillmentProgressPresentation](../../packages/platform/src/fulfillment/trackingProgress.ts)
+accepts the host's resolved customer step and existing account facts. Only recorded
+physical milestones complete, capped at that step; later progress does not imply
+earlier milestones or payment. Paid completion requires the existing succeeded
+or historical paid account payment spelling. Terminal, draft, expired and off-track
+orders have no progress spine. OrdersScreen uses this projection with its existing
+labels, step resolution and payment recovery controls.
+
 ### Native parity boundaries
 
 | Capability | Native installation boundary | Required host binding |
 | --- | --- | --- |
 | Replacement creation | Unsupported; no shipment, reservation, hold, receipt or outbox write | Atomic replacement port |
 | Operator lifecycle mutations | Unsupported; the native shipment spine port does not carry the operator transaction | Actor-bound mutation callbacks and replay receipts |
-| Commerce orders list/detail and shipments overview | No equivalent native commerce read | Host read callbacks for the orders list and detail (and for the shipments overview when its handler ships); payment status uses the core payment-intent statuses |
+| Commerce orders list/detail and shipments overview | No equivalent native commerce read | Host read callbacks for orders list, detail and shipments overview; payment status passes through the existing payments projection using core payment-intent statuses |
 | Dispatch preparation writer | No authoritative contact/selection writer | Host synchronization under the shipment lock |
 | Enforcing delivery alignment | Installation without renewal admission wiring cannot enforce the complete lifecycle | Admission wrapper before new-cycle insertion; keep native mode off until wired |
 
 `createNativeUnsupportedFulfillmentPorts` returns the single typed
 `FULFILLMENT_NATIVE_UNSUPPORTED` refusal for replacement, operator mutations and
-customer alignment rows. It has no database executor and performs no partial
+customer alignment rows, commerce list/detail and shipments overview. It has no
+database executor and performs no partial
 write or substitute operation. The refusal is accepted by
 [`FulfillmentReplacementPort`](../../packages/platform/src/fulfillment/contracts/replacement.ts),
-[`FulfillmentOperatorMutationPort`](../../packages/platform/src/fulfillment/contracts/operator.ts)
-and [`FulfillmentCustomerAlignmentRowsReader`](../../packages/platform/src/fulfillment/contracts/customerAlignment.ts);
+[`FulfillmentOperatorMutationPort`](../../packages/platform/src/fulfillment/contracts/operator.ts),
+[`FulfillmentCustomerAlignmentRowsReader`](../../packages/platform/src/fulfillment/contracts/customerAlignment.ts),
+and the [commerce and overview read ports](../../packages/platform/src/fulfillment/contracts/read.ts);
 [`readFulfillmentDelay`](../../packages/platform/src/fulfillment/delayReadModel.ts)
-propagates it. Commerce list/detail reads and dispatch preparation retain their
-own declared return types. Supplying a host fixture proves that seam's
+propagates it. The commerce and overview handlers return this refusal as
+UPSTREAM_UNAVAILABLE with its typed details. Dispatch preparation retains its
+own declared return type. Supplying a host fixture proves that seam's
 handler behavior; it does not establish native parity or activate any route.
 
 The [verified ingress](../../packages/platform/src/fulfillment/verifiedIngress.ts)

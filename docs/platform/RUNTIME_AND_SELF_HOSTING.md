@@ -502,6 +502,16 @@ execution. Second-runtime and deployed conformance remain separate adoption proo
 
 ## Provider and host boundaries
 
+[ReferenceFulfillmentPage](../../src/pages/ReferenceFulfillmentPage.tsx) is an
+opt-in operator read example with no default runtime importer or route. Mounting
+requires a host-owned operator session and order identity; the existing detail
+endpoint remains responsible for authorization. The page reads only on explicit
+interaction and reports unavailable reads without claiming delivery. Its neutral
+client projects status and tracking text only; it exposes no address, raw operation
+payload, signed-label link or mutation. Commerce list/detail and overview require
+host read callbacks; [native parity boundaries](ARCHITECTURE_AND_EXTENSIONS.md#native-parity-boundaries)
+describe their shared typed refusal.
+
 
 Communications server algorithms now delegate through the platform package. The
 reference bindings still own the maintained HTTP mail provider egress/environment selection, origin defaults,

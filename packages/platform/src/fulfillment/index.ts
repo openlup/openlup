@@ -32,3 +32,6 @@ export { readFulfillmentLabel, cleanupFulfillmentLabel } from './labelLifecycle.
 export { currentParcel, currentParcelFor, currentParcelPerOrder, currentParcelFirst, belongsToParcel, rowsForParcel, parcelSequenceNo, compareParcelPrecedence } from './currentFulfillmentParcel.js';
 export { FULFILLMENT_NATIVE_UNSUPPORTED, createNativeUnsupportedFulfillmentPorts } from './nativeUnsupported.js';
 export { FULFILLMENT_REPLACEMENT_REFUSALS } from './replacementRefusals.js';
+export { buildCommerceFulfillmentOrdersListResponse, buildCommerceFulfillmentOrderDetailResponse } from './commerceFulfillmentReadModel.js';
+export { createFulfillmentShipmentsOverviewHandler } from './shipmentsOverviewHandler.js';
+export { fulfillmentProgressPresentation } from './trackingProgress.js';

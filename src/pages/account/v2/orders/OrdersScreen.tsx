@@ -1,3 +1,4 @@
+import { fulfillmentProgressPresentation } from "@openlup/platform/fulfillment";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ChevronDown, CreditCard, FileText, MapPin, Package, Truck } from "lucide-react";
@@ -11,7 +12,7 @@ import {
   triggerBlobDownload,
 } from "../../DashboardPanelUtils";
 import type { AccountLang } from "../lib/format";
-import { customerFulfillmentStep, orderPhaseIndex } from "../lib/orderFulfillment";
+import { customerFulfillmentStep } from "../lib/orderFulfillment";
 import { stepLabelKey, stepUsesTruckIcon } from "@/domains/fulfillment/statusMap";
 import { AccountCard, CoralButton, SectionTitle } from "../ui/atoms";
 import { OrderTrackingStepper } from "./OrderTrackingStepper";
@@ -96,8 +97,8 @@ export function OrdersScreen({
       ) : (
         <ul className="space-y-3">
           {account.recentOrders.map((order) => {
-            const phase = orderPhaseIndex(order);
             const step = customerFulfillmentStep(order);
+            const progress = fulfillmentProgressPresentation(order, step);
             const open = expanded === order.orderId;
             const Icon = stepUsesTruckIcon(step) ? Truck : Package;
             const trackingReferences = order.trackingReferences.length > 0
@@ -175,7 +176,7 @@ export function OrdersScreen({
                     <div className="border-t border-teal-dark/8 px-5 py-5">
                       <DeliverySelectionCard deliverySelection={order.deliverySelection} />
                       <TrackingReferenceList references={trackingReferences} lang={lang} />
-                      <OrderTrackingStepper phaseIndex={phase} />
+                      {progress && <OrderTrackingStepper progress={progress} />}
                       <div className="mt-5 flex flex-wrap gap-3">
                         {order.invoice?.downloadAvailable ? (
                           <button
