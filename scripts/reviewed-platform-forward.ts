@@ -846,9 +846,9 @@ export function assertBatchedForward(forward: BatchedForwardBinding, bytes: Buff
     if (definitions.get(fn.signature) !== fn.afterSha256 || (prior.get(fn.signature) ?? null) !== fn.beforeSha256) throw new Error(`reviewed batch definition drifted: ${fn.signature}`);
   }
   const statements = sqlStatements(bytes.toString("utf8"));
-  // The 183000 seam forward (only CREATE FUNCTION plus REVOKE) and the 184000 body-only
-  // replacement skip the creation-statement check; their exact bytes and statements are pinned.
-  if (forward.path.startsWith("db/") && forward.path < "db/platform/migrations/20261022183000") assertPortableCreationStatements(bytes, preceding);
+  // Only the 184000 body-only replacement skips the native creation classifier;
+  // its header, exact bytes and statements are checked separately.
+  if (forward.path.startsWith("db/") && forward.path < "db/platform/migrations/20261022184000") assertPortableCreationStatements(bytes, preceding);
   if (statements.length !== forward.statements.length) throw new Error("reviewed batch missing or extra statements");
   for (const [index, statement] of statements.entries()) {
     const pin = forward.statements[index]!;

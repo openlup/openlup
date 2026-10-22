@@ -1066,6 +1066,29 @@ The job also rejects baseline increases relative to the PR base/main push's
 previous commit. For a first baseline, or to regenerate from main without
 increasing debt, use `node scripts/public-ci-neutrality.mjs --write-baseline`.
 After removing debt, lower the affected counts; never raise them.
+
+The named **bounded debt C94 — M10 reviewed packet vocabulary** is the coordinator-approved
+bounded recalibration for immutable managed SQL and its pinned registry COMMENT,
+following the diagnostic-fixture debt treatment in #130. Its exact path/category
+counts are documented in [Data and migrations](docs/platform/DATA_AND_MIGRATIONS.md#exact-reviewed-function-forwards).
+This control change adds baseline keys only for the six existing managed fixtures
+and that registry carrier; existing counts stay unchanged. Each landing PR
+(P3b, P5, F17) adds only its own rail keys with the files and exact pinned counts.
+Every present baseline key for an allowance path must match all its pinned
+category counts exactly, including during regeneration; absent files cannot
+justify new keys. `reviewedPinnedIntroductions` in the wrapper is a closed
+list of exactly 13 paths: six inert managed SQL fixtures, their six future
+`supabase/migrations/` copies, and `config/reviewed-platform-forwards.json`.
+Each SQL entry pins the whole-file SHA-256 and exact category/before/after counts;
+the registry entry pins its exact SQL COMMENT text, so unrelated registry edits
+do not invalidate the pin. The filter applies on any base to measured-base
+increases and parent-baseline raises, including `--write-baseline`. Candidate
+counts must still fit the baseline. No wildcard, prefix or ceiling is admitted;
+changed bytes, paths, categories or counts refuse, as do native, TypeScript,
+package and docs entries. An unrelated increase remains a failure in the same run.
+Adding any further entry is a control change needing two fresh Opus reviews plus
+the coordinator's control read. Neutral replacements reduce the debt; rail-path
+entries can be retired after the F17 PR lands and the base carries their counts.
 After all allowances are subtracted, a negative count fails the ratchet with
 the category, quoted path and remainder; allowances never clamp counts to zero.
 

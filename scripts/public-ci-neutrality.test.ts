@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, 
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { allowedFulfillmentAdapterWords, neutralityIncreases, scanSnapshots, validateBaseline } from "./public-ci-neutrality.mjs";
+import { allowedFulfillmentAdapterWords, neutralityIncreases, scanSnapshots, unreviewedPinnedIntroductionIncreases, validateBaseline, validateReviewedPinnedIntroductions } from "./public-ci-neutrality.mjs";
 
 vi.mock("node:child_process", async importOriginal => {
   const original = await importOriginal<typeof import("node:child_process")>();
@@ -73,7 +73,169 @@ afterEach(() => { for (const root of fixtures.splice(0)) rmSync(root, { recursiv
 function validBaseline() {
   return { schemaVersion: 2, sourceCommit: "a".repeat(40), scannerPins: Object.fromEntries(scannerPaths.map((path) => [path, "c".repeat(40)])), counts: { ["b".repeat(64)]: { brand: 1 } } };
 }
+const registryPath = "config/reviewed-platform-forwards.json";
+const refundRail = "supabase/migrations/20261022185000_provider_refund_evidence.sql";
+const refundFixture = `scripts/fixtures/reviewed-m10/${refundRail}`;
+function managedPinnedSources() {
+  const registryBytes = readFileSync(join(sourceRoot, registryPath));
+  const pins = JSON.parse(registryBytes.toString()).batchedForwards as { path: string }[];
+  const sources = new Map<string, Buffer>([[registryPath, registryBytes]]);
+  for (const pin of pins.filter(pin => pin.path.startsWith("supabase/"))) {
+    const path = `scripts/fixtures/reviewed-m10/${pin.path}`;
+    const bytes = readFileSync(join(sourceRoot, path));
+    sources.set(path, bytes); sources.set(pin.path, bytes);
+  }
+  return sources;
+}
 describe("tree-wide neutrality ratchet", () => {
+  it("binds the M10 managed debt to exact measured fixture/rail counts and refuses noun-count drift", () => {
+    const approved = JSON.parse(readFileSync(join(sourceRoot, baselinePath), "utf8")).counts;
+    const sources = managedPinnedSources();
+    const measured = scanSnapshots(sources);
+    expect(Object.keys(measured.rows)).toHaveLength(13);
+    for (const [path] of sources) {
+      if (path.startsWith("supabase/")) expect(approved[hash(path)]).toBeUndefined();
+      else expect(approved[hash(path)]).toEqual(measured.rows[hash(path)]);
+    }
+    const introductions = neutralityIncreases({}, measured.rows);
+    expect(introductions).toHaveLength(15); // 13 paths; two dunning copies each have two categories.
+    expect(unreviewedPinnedIntroductionIncreases(introductions, sources)).toEqual([]);
+    const path = refundFixture;
+    const original = sources.get(path)!;
+    const noun = String.fromCharCode(115, 116, 114, 105, 112, 101);
+    sources.set(path, Buffer.concat([original, Buffer.from(`\n-- ${noun}\n`)]));
+    const drift = scanSnapshots(sources);
+    expect(neutralityIncreases(measured.rows, drift.rows)).toEqual([
+      { path: hash(path), category: "ui-13", before: 7, after: 8 },
+    ]);
+    expect(unreviewedPinnedIntroductionIncreases(neutralityIncreases({}, drift.rows), sources)).toEqual([
+      { path: hash(path), category: "ui-13", before: 0, after: 8 },
+    ]);
+  });
+
+  it("requires every present C94 baseline key to contain exactly its pinned category counts", () => {
+    const measured = scanSnapshots(managedPinnedSources());
+    for (const [path, counts] of Object.entries(measured.rows)) {
+      const candidate = { ...validBaseline(), counts: { [path]: counts } };
+      expect(() => validateBaseline(candidate)).not.toThrow();
+      for (const [category, count] of Object.entries(counts)) {
+        for (const wrong of [count - 1, count + 1]) {
+          expect(() => validateBaseline({ ...candidate, counts: { [path]: { ...counts, [category]: wrong } } })).toThrow(/pinned introduction baseline count mismatch/);
+        }
+        const missing = { ...counts };
+        delete missing[category];
+        expect(() => validateBaseline({ ...candidate, counts: { [path]: missing } })).toThrow(/pinned introduction baseline count mismatch/);
+      }
+      expect(() => validateBaseline({ ...candidate, counts: { [path]: { ...counts, brand: 1 } } })).toThrow(/pinned introduction baseline count mismatch/);
+    }
+  });
+
+  it.each(["changed byte", "missing file", "different before", "different count", "above pin", "other category", "other path", "same digest at other path"])("refuses a C94 introduction with %s", plant => {
+    const bytes = readFileSync(join(sourceRoot, refundFixture));
+    const sources = new Map([[refundFixture, bytes]]);
+    const row = { path: hash(refundFixture), category: "ui-13", before: 0, after: 7 };
+    expect(unreviewedPinnedIntroductionIncreases([row], sources)).toEqual([]);
+    if (plant === "changed byte") sources.set(refundFixture, Buffer.concat([bytes, Buffer.from("\n")]));
+    if (plant === "missing file") sources.delete(refundFixture);
+    if (plant === "different before") row.before = 1;
+    if (plant === "different count") row.after = 6;
+    if (plant === "above pin") row.after = 8;
+    if (plant === "other category") row.category = "ui-14";
+    if (plant === "other path" || plant === "same digest at other path") {
+      const otherPath = refundFixture.replace("185000", "185001");
+      row.path = hash(otherPath);
+      if (plant === "same digest at other path") sources.set(otherPath, bytes);
+    }
+    expect(unreviewedPinnedIntroductionIncreases([row], sources)).toEqual([row]);
+  });
+
+  it.each([
+    "db/platform/migrations/20261022185000_provider_refund_evidence.sql",
+    "packages/platform/sql/20261022185000_provider_refund_evidence.sql",
+    "scripts/fixtures/reviewed-m10/db/platform/migrations/example.sql",
+    "supabase/migrations/example.ts", "scripts/example.ts", "package.json", "docs/example.md",
+    "config/another-registry.json", "supabase/migrations/../example.sql",
+  ])("refuses adding a C94 entry outside the managed SQL/registry path classes: %s", path => {
+    expect(() => validateReviewedPinnedIntroductions([[path, "a".repeat(64), [["ui-13", 0, 7]]]])).toThrow(/unsupported .*path/);
+  });
+
+  it("pins the exact registry COMMENT independently of unrelated registry edits", () => {
+    const bytes = readFileSync(join(sourceRoot, registryPath));
+    const registry = JSON.parse(bytes.toString());
+    const pin = registry.batchedForwards.find(pin => pin.path.endsWith("20261022185100_m07_refund_parity.sql"));
+    const statement = pin.statements.find(statement => statement.sql?.startsWith("COMMENT ON FUNCTION"));
+    const row = { path: hash(registryPath), category: "ui-13", before: 0, after: 1 };
+    const check = () => unreviewedPinnedIntroductionIncreases([row], new Map([[registryPath, Buffer.from(JSON.stringify(registry))]]));
+    registry.unrelated = "neutral later control entry";
+    expect(check()).toEqual([]);
+    const comment = statement.sql;
+    statement.sql += " ";
+    expect(check()).toEqual([row]);
+    statement.sql = comment;
+    pin.statements.push({ ...statement });
+    expect(check()).toEqual([row]);
+    expect(unreviewedPinnedIntroductionIncreases([row], new Map([[registryPath, Buffer.from("invalid JSON")]]))).toEqual([row]);
+  });
+
+  it("admits C94 counts and regeneration on the introduction base and a later base with landed rails, retaining unrelated failures", () => {
+    const { root, base } = installed();
+    const sources = managedPinnedSources();
+    const approved = baseline(root);
+    const measured = scanSnapshots(sources);
+    expect(Object.keys(measured.rows)).toHaveLength(13);
+    const existing = new Map([...sources].filter(([path]) => !path.startsWith("supabase/")));
+    approved.counts = { ...approved.counts, ...scanSnapshots(existing).rows };
+    put(root, baselinePath, JSON.stringify(approved));
+    for (const [path, bytes] of sources) if (!path.startsWith("supabase/")) put(root, path, bytes);
+    let result = cli(root, base);
+    expect(result.status, result.output).toBe(0);
+    result = cli(root, base, "--write-baseline");
+    expect(result.status, result.output).toBe(0);
+    // Regeneration measures existing paths only; the original base now carries
+    // fixture counts, while its next candidate introduces the exact rail copies.
+    const laterBase = commit(root);
+    // A landing key without its candidate file cannot consume the allowance.
+    const landingBaseline = { ...baseline(root), counts: { ...baseline(root).counts, ...measured.rows } };
+    put(root, baselinePath, JSON.stringify(landingBaseline));
+    result = cli(root, laterBase);
+    expect(result.status, result.output).toBe(1);
+    expect(result.output).toContain(`"${hash(refundRail)}": ui-13 increased 0 -> 7`);
+    for (const [path, bytes] of sources) if (path.startsWith("supabase/")) put(root, path, bytes);
+    // Both higher and lower counts refuse despite the exact pinned file.
+    for (const count of [6, 8]) {
+      put(root, baselinePath, JSON.stringify({ ...landingBaseline, counts: { ...landingBaseline.counts, [hash(refundRail)]: { "ui-13": count } } }));
+      result = cli(root, laterBase);
+      expect(result.status, result.output).toBe(1);
+      expect(result.output).toContain(`pinned introduction baseline count mismatch: "${refundRail}"`);
+    }
+    put(root, baselinePath, JSON.stringify(landingBaseline));
+    result = cli(root, laterBase);
+    expect(result.status, result.output).toBe(0);
+    result = cli(root, laterBase, "--write-baseline");
+    expect(result.status, result.output).toBe(0);
+    for (const [path, counts] of Object.entries(measured.rows)) expect(baseline(root).counts[path]).toEqual(counts);
+    put(root, refundRail, Buffer.concat([sources.get(refundRail)!, Buffer.from("\n")]));
+    result = cli(root, laterBase);
+    expect(result.status, result.output).toBe(1);
+    expect(result.output).toContain(`"${refundRail}": ui-13 increased 0 -> 7`);
+    put(root, refundRail, sources.get(refundRail)!);
+    const otherRail = refundRail.replace("185000", "185001");
+    put(root, otherRail, sources.get(refundRail)!);
+    put(root, baselinePath, JSON.stringify({ ...landingBaseline, counts: { ...landingBaseline.counts, [hash(otherRail)]: { "ui-13": 7 } } }));
+    result = cli(root, laterBase);
+    expect(result.status, result.output).toBe(1);
+    expect(result.output).toContain(`"${otherRail}": ui-13 increased 0 -> 7`);
+    rmSync(join(root, otherRail));
+    put(root, baselinePath, JSON.stringify(landingBaseline));
+    put(root, "src/unrelated.ts", `export const label = "${debt}";\n`);
+    result = cli(root, base);
+    expect(result.status, result.output).toBe(1);
+    expect(result.output).toContain('"src/unrelated.ts": brand increased 0 -> 1');
+    result = cli(root, base, "--write-baseline");
+    expect(result.status, result.output).toBe(1);
+    expect(result.output).toContain("baseline regeneration would increase accepted debt");
+  }, 60_000);
+
   it("subtracts only the fulfillment vendor category at its exact paths and complete carrier tokens", () => {
     const { root, base } = installed();
     const vendor = ["omni", "pack"].join("");

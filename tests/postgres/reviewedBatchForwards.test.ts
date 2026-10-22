@@ -1,4 +1,5 @@
-import { readFileSync, readdirSync } from "node:fs";
+import { readFileSync } from "node:fs";
+import { reviewedBatchBytes, reviewedBatchPrefix } from "../../scripts/reviewed-batch-rail.js";
 import { Pool } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { assertBatchedForward, readReviewedForwardRegistry, sqlSha256, type BatchedForwardBinding } from "../../scripts/reviewed-platform-forward.js";
@@ -7,7 +8,7 @@ import { readManagedMigrationChain } from "../../scripts/public-ci-pgtap.mjs";
 import { assertBatchCatalog, assertSameSnapshot, batchSnapshot } from "./reviewedBatchCatalog.js";
 
 const registry = readReviewedForwardRegistry(readFileSync("config/reviewed-platform-forwards.json"));
-const fixture = (pin: BatchedForwardBinding) => readFileSync(`scripts/fixtures/reviewed-m10/${pin.path}`);
+const fixture = (pin: BatchedForwardBinding) => reviewedBatchBytes(process.cwd(), process.cwd(), pin);
 const image = "public.ecr.aws/supabase/postgres:17.11.0.004";
 
 // Always part of the required test aggregate. Neither absent Docker nor absent
@@ -44,18 +45,18 @@ describe.each(["native", "managed"] as const)("exact batch catalog gate: %s", gr
       readManagedMigrationChain(process.cwd()); // Verifies the committed complete managed prefix.
       expect(sqlSha256(readFileSync(`${directory}/00000000000000_platform_schema_baseline.sql`))).toBe(registry.baselineSha256);
     }
-    for (const path of readdirSync(directory).filter(path => path.endsWith(".sql")).sort()) {
-      const bytes = readFileSync(`${directory}/${path}`);
+    for (const path of reviewedBatchPrefix(process.cwd(), directory, pins)) {
+      const bytes = readFileSync(path);
       if (portable) {
         const manifest = JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8"));
-        expect([manifest.baseline, ...manifest.forward].find(unit => unit.file === `${directory}/${path}`).sha256).toBe(sqlSha256(bytes));
+        expect([manifest.baseline, ...manifest.forward].find(unit => unit.file === path).sha256).toBe(sqlSha256(bytes));
       }
       preceding.push(bytes);
       await db.query(bytes.toString().replace(/^\\(?:un)?restrict [A-Za-z0-9]+\r?$/gmu, ""));
     }
     // Reset dump session settings. Validate bodies of every new forward in PG.
     await db.query("SET check_function_bodies=on; SET search_path=public,extensions");
-  }, 120_000);
+  }, 600_000); // Includes a first managed PG17 image pull and the complete prefix.
   afterAll(async () => { await db?.end(); await container?.remove(); });
 
   it.each(pins)("proves exact objects, ACLs and rows after the integrated prefix: $path", async pin => {
@@ -66,6 +67,10 @@ describe.each(["native", "managed"] as const)("exact batch catalog gate: %s", gr
     try {
       await db.query(bytes.toString());
       await assertBatchCatalog(db, pin, bytes, before, await batchSnapshot(db));
+      if (!portable && pin.path.endsWith("20261022185000_provider_refund_evidence.sql")) {
+        await db.query(`GRANT EXECUTE ON FUNCTION ${pin.functions[0]!.signature} TO authenticated`);
+        await expect(assertBatchCatalog(db, pin, bytes, before, await batchSnapshot(db))).rejects.toThrow();
+      }
     } finally { await db.query("ROLLBACK"); }
     assertSameSnapshot(before, await batchSnapshot(db));
     await db.query(bytes.toString());

@@ -6670,6 +6670,10 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/reviewed-batch-rail.ts",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/reviewed-platform-forward.ts",
       "class": "public-output"
     },

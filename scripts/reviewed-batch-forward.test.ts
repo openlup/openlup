@@ -1,7 +1,8 @@
 import { execFileSync } from "node:child_process";
-import { cpSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { reviewedBatchBytes, reviewedBatchPrefix } from "./reviewed-batch-rail.ts";
 import { describe, expect, it } from "vitest";
 import { assertBatchedForward, assertReviewedPlatformForward, batchedFunctionDefinitions, readReviewedForwardRegistry, sqlSha256, sqlStatements, type BatchedForwardBinding } from "./reviewed-platform-forward.ts";
 
@@ -12,8 +13,9 @@ const bytes = (pin: BatchedForwardBinding) => readFileSync(`scripts/fixtures/rev
 const rail = (pin: BatchedForwardBinding) => pin.path.startsWith("db/") ? "db/platform/migrations" : "supabase/migrations";
 function prefix(pin: BatchedForwardBinding): Buffer[] {
   const folder = rail(pin);
-  return [...readdirSync(folder).filter(path => path.endsWith(".sql")).map(path => `${folder}/${path}`).filter(path => path < pin.path).sort().map(path => readFileSync(path)),
-    ...pins.filter(prior => rail(prior) === folder && prior.path < pin.path).map(bytes)];
+  const railPins = pins.filter(prior => rail(prior) === folder);
+  return [...reviewedBatchPrefix(process.cwd(), folder, railPins).map(path => readFileSync(path)),
+    ...railPins.filter(prior => prior.path < pin.path).map(prior => reviewedBatchBytes(process.cwd(), process.cwd(), prior))];
 }
 const repin = (pin: BatchedForwardBinding, sql: string): BatchedForwardBinding => ({ ...structuredClone(pin), sha256: sqlSha256(sql), statements: sqlStatements(sql).map(statement => ({ sha256: sqlSha256(statement), ...(!/^CREATE(?: OR REPLACE)? FUNCTION /u.test(statement) ? { sql: statement } : {}) })) });
 
@@ -42,6 +44,7 @@ describe.each(pins)("refusal plants: $path", pin => {
     if (attack === "before drift") changed.functions[0]!.beforeSha256 = "0".repeat(64);
     if (attack === "extra grant") sql += "\nGRANT SELECT ON public.subscriptions TO service_role;";
     if (attack === "wider grantee") sql += "\nGRANT EXECUTE ON FUNCTION public.unpinned() TO PUBLIC;";
+    // The unpinned private-object plant is refused structurally by statement/signature counts.
     if (attack === "private object") sql += "\nCREATE FUNCTION private.unpinned() RETURNS text LANGUAGE sql AS $$ SELECT 'attack'; $$;";
     if (attack === "unexpected statement") sql += "\nCREATE SCHEMA unpinned;";
     // Statement plants repin the file, but leave the independent ordered pins.
@@ -90,7 +93,12 @@ it("uses separate prior approval in CI and release, and refuses self-approval", 
   const commit = (message: string) => { git("add", "."); git("-c", "user.name=Control Test", "-c", "user.email=control@example.invalid", "-c", "commit.gpgsign=false", "commit", "-qm", message); return git("rev-parse", "HEAD"); };
   try {
     git("init", "--quiet");
-    for (const folderName of ["db/platform/migrations", "supabase/migrations"]) cpSync(folderName, join(folder, folderName), { recursive: true });
+    for (const folderName of ["db/platform/migrations", "supabase/migrations"]) {
+      for (const file of readdirSync(folderName)) {
+        const path = `${folderName}/${file}`;
+        if (!pins.some(pin => pin.path === path)) put(path, readFileSync(path));
+      }
+    }
     put("config/reviewed-platform-forwards.json", registryBytes);
     const approval = commit("Exact control approval");
     for (const pin of pins) put(pin.path, bytes(pin));
@@ -102,3 +110,40 @@ it("uses separate prior approval in CI and release, and refuses self-approval", 
     expect(() => assertReviewedPlatformForward(folder, approval, self, pins[0]!.path, bytes(pins[0]!))).toThrow(/approved separately/u);
   } finally { rmSync(folder, { recursive: true, force: true }); }
 }, 120_000);
+
+// Repin the changed statement so refusal reaches the grantee predicate.
+it.each(["authenticated", "service_role, authenticated"])("refuses a repinned managed creation grantee: %s", grantee => {
+  const pin = pins.find(item => item.path.endsWith("20261022185000_provider_refund_evidence.sql"))!;
+  const sql = bytes(pin).toString().replace(/ TO service_role;/gu, ` TO ${grantee};`);
+  expect(sql).not.toBe(bytes(pin).toString());
+  expect(() => assertBatchedForward(repin(pin, sql), Buffer.from(sql), prefix(pin)))
+    .toThrow("reviewed batch function privilege target or grantee drifted");
+});
+
+it.each([0, 1, "all"] as const)("replays each rail once with %s landed pins and refuses landed drift", landed => {
+  const root = mkdtempSync(join(tmpdir(), "openlup-batch-landing-"));
+  const put = (path: string, value: Buffer | string) => { mkdirSync(dirname(join(root, path)), { recursive: true }); writeFileSync(join(root, path), value); };
+  try {
+    for (const directory of ["db/platform/migrations", "supabase/migrations"]) {
+      const railPins = pins.filter(pin => rail(pin) === directory);
+      const originalPrefix = reviewedBatchPrefix(process.cwd(), directory, railPins);
+      for (const path of originalPrefix) put(path, readFileSync(path));
+      for (const pin of railPins.slice(0, landed === "all" ? undefined : landed)) put(pin.path, bytes(pin));
+      // A later unpinned file must not enter the pre-pin replay either.
+      put(`${directory}/99999999999999_unrelated.sql`, "SELECT 1;");
+      const paths = reviewedBatchPrefix(root, directory, railPins);
+      expect(paths).toEqual(originalPrefix);
+      const preceding = paths.map(path => readFileSync(join(root, path)));
+      for (const pin of railPins) {
+        const source = reviewedBatchBytes(root, process.cwd(), pin);
+        expect(source).toEqual(bytes(pin));
+        assertBatchedForward(pin, source, preceding);
+        preceding.push(source);
+      }
+      expect(preceding).toHaveLength(originalPrefix.length + railPins.length);
+      const pin = railPins[0]!;
+      put(pin.path, Buffer.concat([bytes(pin), Buffer.from(" ")]));
+      expect(() => reviewedBatchBytes(root, process.cwd(), pin)).toThrow("landed bytes drifted");
+    }
+  } finally { rmSync(root, { recursive: true, force: true }); }
+});
