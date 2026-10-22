@@ -30,12 +30,8 @@ state writer is not an extension seam.
 
 ## Runtime boundaries
 
-The host's current-parcel facade delegates precedence and attribution to
-`@openlup/platform/fulfillment`: highest sequence then descending identifier,
-with unattributed companion rows retaining their existing inclusion. The
-status-map facade appends only private trace metadata to the canonical package
-map, and normalized-fact parsers retain their existing host names as aliases.
-These facades preserve public values and introduce no runtime activation.
+The host status-map, normalized-fact and current-parcel facades are unchanged.
+Their adoption of package helpers is outside this change.
 
 Payments uses the existing bundle composer’s optional named binder. The host
 injects a scoped truth port and cleanup through `createPaymentServices`; schema
@@ -687,7 +683,7 @@ contributed status canon and selects only injected capability profiles. Provider
 carrier and service remain independent; empty provider selection refuses, and
 potential support never enables a dormant route. Raw commands, credentials and
 signed label URLs stay transient at the host/adapter boundary; durable contracts
-carry typed facts, safe references and actual-command fingerprints. Reference facades delegate to the package status canon, fact parsers and current-parcel helpers while preserving their existing public names and private trace metadata.
+carry typed facts, safe references and actual-command fingerprints. Reference status-map, normalized-fact and current-parcel facades are unchanged; package adoption is outside this change.
 The order-management status ladder/queue pair remains host-owned.
 
 The [dispatch port](../../packages/platform/src/fulfillment/contracts/dispatch.ts)

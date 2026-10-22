@@ -226,7 +226,10 @@ host closures. Construction adds no route, schedule or automatic dispatch, and
 the public reference server does not select this binding by default. Renewal
 admission remains a separate integration; native alignment mode stays off until
 that boundary is wired.
-
+Host status-map, normalized-fact and current-parcel facades are unchanged;
+package adoption is outside this change. The default and subscription client
+and SSR graphs, identity clients for both auth providers, and installed core
+browser consumer exclude platform fulfillment modules and the preparation binding.
 
 The inert [payments binding](../../server/runtime/public-reference/m07PaymentBinding.ts)
 selects injected truth services or verified ingress only by explicit host choice.

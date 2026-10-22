@@ -1,4 +1,6 @@
 import {
+  parseNormalizedFulfillmentFact,
+  parseTransitionConflict,
   type CompatibleNormalizedFulfillmentFact as CoreCompatibleNormalizedFulfillmentFact,
   type FulfillmentTransitionSnapshot as CoreFulfillmentTransitionSnapshot,
   type NormalizedFulfillmentFact as CoreNormalizedFulfillmentFact,
@@ -56,4 +58,18 @@ export function isCanonicalLocalFulfillmentStatus(
   return CANONICAL_STATUSES.has(value);
 }
 
-export { parseFulfillmentFact as parseAppNormalizedFulfillmentFact, parseFulfillmentTransitionConflict as parseAppTransitionConflict } from '@openlup/platform/fulfillment';
+/** Strict unknown-input parser bound to the existing status canon. */
+export function parseAppNormalizedFulfillmentFact(
+  value: unknown,
+): NormalizedFulfillmentFact {
+  return parseNormalizedFulfillmentFact(value, {
+    isCanonicalStatus: isCanonicalLocalFulfillmentStatus,
+  });
+}
+
+/** Strict conflict parser bound to the same status canon. */
+export function parseAppTransitionConflict(value: unknown): TransitionConflict {
+  return parseTransitionConflict(value, {
+    isCanonicalStatus: isCanonicalLocalFulfillmentStatus,
+  });
+}

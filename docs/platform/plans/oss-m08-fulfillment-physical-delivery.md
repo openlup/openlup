@@ -34,7 +34,8 @@ The account order tracking stepper uses actual-evidence progress from
 `fulfillmentProgressPresentation`. A reference operator page and status component
 ship unmounted and opt-in; the host owns access and mounting.
 
-Excluded: concrete provider adapters, mounted executors/routes, mounted operator UI integration, money implementation, inventory
+Excluded: concrete provider adapters, mounted executors/routes, reference facade
+rewiring, mounted operator UI integration, money implementation, inventory
 authority, replacement-confirmation callers, version preparation and release.
 Provider/account/secret access, activation, deployment endpoints and external
 operations are outside this scope. Native continuity, provider operation and
@@ -52,11 +53,11 @@ stable-framework support are not established by this design.
 | D5 | Preserve contributed characterization witnesses unchanged within their 31-case allocation. |
 | D6 | Reconcile shared payment-contract and payment-adapter package companions; no unrelated source changes. |
 | D7 | Note-only replacement confirmation unchanged, no caller; arrival discipline belongs in the alignment contract and platform page. |
-| D8 | The ordinary cap is 35 paths per pull request, including generated files. Preserve contributed logic before refactoring. Explicit host composition, host facade adoption, callable lifecycle integration and offline installed-consumer proof are included. Mounted operator UI, the renewal admission wrapper and activation remain excluded. |
+| D8 | The ordinary cap is 35 paths per pull request, including generated files. Preserve contributed logic before refactoring. Explicit host composition, callable lifecycle integration and offline installed-consumer proof are included. Mounted operator UI, the renewal admission wrapper and activation remain excluded. |
 | D8 amendment | The approved combined contracts and orchestration change has a ≤55-path regroup cap, including generated files; this amends the ordinary 35-path cap. |
 | D9 | Target 89 authored cases within the 94-case/27-second module budget and outer 100-case/30-second cap. Count generated packageBoundary rows separately; charge all execution time. |
 | D10 | Validate package artifacts and every subcap; no cap increase or guessed version. |
-| D11 | The host status-map facade adopts the package's status canon and helpers while retaining its private trace vocabulary; the host fact-parser facade delegates to the package parsers. Explicit fulfillment composition has no default binder. The order-management status ladder and live queue remain together at the host, with no parallel mapper. |
+| D11 | Host status-map, normalized-fact and current-parcel facades are unchanged; package adoption is outside this change. Explicit fulfillment composition has no default binder. The order-management status ladder and live queue remain together at the host, with no parallel mapper. |
 | D12 | Callable lifecycle handlers, offline host fixtures and installed-consumer proof are included. Activation, live provider/host calls, mounted operator UI and the renewal admission wrapper remain excluded. |
 | D13 | Native command fencing and delivery alignment use PostgreSQL transactions. Only new-cycle admission/insert is guarded; existing-cycle renewal and dunning retries bypass admission. Late arrival uses the monotonic maximum once, and undelivered replacements remain outstanding. |
 

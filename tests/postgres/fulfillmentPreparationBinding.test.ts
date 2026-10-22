@@ -13,7 +13,7 @@ it.each(['bound', 'unbound'] as const)('G22 production preparation writer: %s', 
   await h.pool.query('UPDATE public.fulfillment_shipments SET metadata=$2 WHERE id=$1', [f.shipment, { revision: 1, provider: 'warehouse-a', withheld: false }]);
   const lane = createPostgresFulfillmentTransactionLane({ connectionString: 'fixture-unused' }, { poolFactory: () => h.pool });
   let nativeKey: string;
-  let preparationPid: number;
+  let preparationPid: number | undefined;
   let authoritativeTransaction: unknown;
   let beforeCommit: ((db: ReturnType<typeof executor>) => Promise<void>) | undefined;
   const transactions: typeof lane = { ...lane, run: work => lane.run(async db => {
