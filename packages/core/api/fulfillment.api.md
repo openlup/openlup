@@ -219,7 +219,7 @@ export interface FulfillmentStatusMap {
 }
 export declare const FULFILLMENT_STATUS_MAP: {
     readonly version: 1;
-    readonly comment: "SINGLE SOURCE OF TRUTH for fulfillment status across all layers. Layer C (customerStep) is the spine. Providers (Layer A) map ONLY to local_status (Layer B) in their own dictionary; the UI consumes only Layer C. test/fulfillmentStatusMap.test.ts keeps every layer consistent.";
+    readonly comment: "SINGLE SOURCE OF TRUTH for fulfillment status across all layers. Layer C (customerStep) is the spine. Providers (Layer A) map ONLY to local_status (Layer B) in their own dictionary; the UI consumes only Layer C. statusMap.test.ts keeps every layer consistent.";
     readonly stages: readonly [{
         readonly customerStep: "paid";
         readonly rank: 1;
