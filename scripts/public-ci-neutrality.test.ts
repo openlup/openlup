@@ -1,6 +1,6 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -94,7 +94,7 @@ describe("tree-wide neutrality ratchet", () => {
     const measured = scanSnapshots(sources);
     expect(Object.keys(measured.rows)).toHaveLength(13);
     for (const [path] of sources) {
-      if (path.startsWith("supabase/")) expect(approved[hash(path)]).toBeUndefined();
+      if (path.startsWith("supabase/") && !existsSync(join(sourceRoot, path))) expect(approved[hash(path)]).toBeUndefined();
       else expect(approved[hash(path)]).toEqual(measured.rows[hash(path)]);
     }
     const introductions = neutralityIncreases({}, measured.rows);
@@ -201,6 +201,13 @@ describe("tree-wide neutrality ratchet", () => {
     expect(result.status, result.output).toBe(1);
     expect(result.output).toContain(`"${hash(refundRail)}": ui-13 increased 0 -> 7`);
     for (const [path, bytes] of sources) if (path.startsWith("supabase/")) put(root, path, bytes);
+    // A present rail must carry its exact baseline key.
+    const missingLandingKey = { ...landingBaseline.counts };
+    delete missingLandingKey[hash(refundRail)];
+    put(root, baselinePath, JSON.stringify({ ...landingBaseline, counts: missingLandingKey }));
+    result = cli(root, laterBase);
+    expect(result.status, result.output).toBe(1);
+    expect(result.output).toContain(`"${refundRail}": ui-13 increased 0 -> 7`);
     // Both higher and lower counts refuse despite the exact pinned file.
     for (const count of [6, 8]) {
       put(root, baselinePath, JSON.stringify({ ...landingBaseline, counts: { ...landingBaseline.counts, [hash(refundRail)]: { "ui-13": count } } }));
