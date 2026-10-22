@@ -9,8 +9,10 @@ export async function batchSnapshot(db: Pool) {
     p.prosrc, (to_jsonb(p)-'prosrc'-'proargdefaults')||jsonb_build_object(
       'proargdefaults',regexp_replace(p.proargdefaults::text,':location -?[0-9]+',':location -1','g')) AS attributes
     FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace ORDER BY p.oid`)).rows;
+  // Exclude planner statistics and vacuum freeze bookkeeping; no forward can
+  // set relfrozenxid or relminmxid.
   const relations = (await db.query(`SELECT c.oid, n.nspname||'.'||c.relname AS name, c.relkind,
-    to_jsonb(c)-'relpages'-'reltuples'-'relallvisible'-'relallfrozen' AS attributes,
+    to_jsonb(c)-'relpages'-'reltuples'-'relallvisible'-'relallfrozen'-'relfrozenxid'-'relminmxid' AS attributes,
     (SELECT jsonb_agg(to_jsonb(a) ORDER BY a.attnum) FROM pg_attribute a WHERE a.attrelid=c.oid) AS columns
     FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
     WHERE n.nspname NOT LIKE 'pg_temp_%' AND n.nspname NOT LIKE 'pg_toast_temp_%' ORDER BY c.oid`)).rows;

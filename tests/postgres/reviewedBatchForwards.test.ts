@@ -320,6 +320,14 @@ describe.each(["native", "managed"] as const)("exact batch catalog gate: %s", gr
       expect(rows.map(row => row.result)).toEqual([`1..${pins.length}`]);
     }
   }, 120_000);
+  it("ignores vacuum freeze bookkeeping in catalog snapshots", async () => {
+    await db.query("RESET ROLE");
+    try {
+      const before = await batchSnapshot(db);
+      await db.query("VACUUM (FREEZE) pg_catalog.pg_class, pg_catalog.pg_proc");
+      assertSameSnapshot(before, await batchSnapshot(db));
+    } finally { if (!portable) await db.query("SET ROLE postgres"); }
+  }, 120_000);
 });
 
 it.each([
