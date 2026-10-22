@@ -292,7 +292,15 @@
     {
       "file": "db/platform/migrations/20261021200000_shipping_flat_rate_seed.sql",
       "sha256": "34f8696f515a2cc072395db5a3de2d9b09643d13236ee3851d0d78123f907eae"
+    },
+    {
+      "file": "db/platform/migrations/20261022080000_fulfillment_command_ledger.sql",
+      "sha256": "c6806906cdb0b6931b29f7a5c7c800016e98d04e6ea956f3c1e219a6cdb7e9d1"
+    },
+    {
+      "file": "db/platform/migrations/20261022090000_fulfillment_delivery_alignment.sql",
+      "sha256": "d9966ae79fe77a0feae8317dc5b46ef2d8196dd0790b1cd0ee1b06ab58061499"
     }
   ],
-  "objectInventorySha256": "59f08ac97163fe310fab0928027996a5dbb885d5161ddc7a709e82c2947fdded"
+  "objectInventorySha256": "82f0b845168b0dab3977dff8944956ed276966109babf26bfa9b1654aaf0926e"
 }

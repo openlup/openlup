@@ -1118,6 +1118,14 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261022080000_fulfillment_command_ledger.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/20261022090000_fulfillment_delivery_alignment.sql",
+      "class": "public-output"
+    },
+    {
       "path": "deploy/oci/public-reference-compose.yml",
       "class": "public-output"
     },
@@ -2366,6 +2374,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20260808210000_fulfillment_shipment_rail.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/sql/20260809150000_job_run_ledger.sql",
       "class": "public-output"
     },
@@ -2430,6 +2442,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20260819150000_fulfillment_shipment_sequence.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/sql/20260826100000_late_payment_shifts_the_subscription_cycle.sql",
       "class": "public-output"
     },
@@ -2467,6 +2483,14 @@
     },
     {
       "path": "packages/platform/sql/20261021200000_shipping_flat_rate_seed.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261022080000_fulfillment_command_ledger.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261022090000_fulfillment_delivery_alignment.sql",
       "class": "public-output"
     },
     {
@@ -3162,6 +3186,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/fulfillment/commerceFulfillmentHandlers.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/fulfillment/contracts/alignment.ts",
       "class": "public-output"
     },
@@ -3171,6 +3199,10 @@
     },
     {
       "path": "packages/platform/src/fulfillment/contracts/conformance.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/contracts/customerAlignment.ts",
       "class": "public-output"
     },
     {
@@ -3186,11 +3218,23 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/fulfillment/contracts/nativeUnsupported.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/fulfillment/contracts/observation.ts",
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/fulfillment/contracts/operator.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/fulfillment/contracts/readback.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/contracts/replacement.ts",
       "class": "public-output"
     },
     {
@@ -3202,6 +3246,18 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/fulfillment/currentFulfillmentParcel.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/delayReadModel.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/deliveryAlignmentReadModel.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/fulfillment/dispatchProjection.ts",
       "class": "public-output"
     },
@@ -3210,11 +3266,31 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/fulfillment/handlerSchemas.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/handlerSupport.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/fulfillment/index.ts",
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/fulfillment/labelLifecycle.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/fulfillment/lowStockEvidenceHandler.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/migrations.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/nativeUnsupported.ts",
       "class": "public-output"
     },
     {
@@ -3286,6 +3362,34 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/fulfillment/postgresDeliveryAlignment.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/postgresDispatchStore.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/postgresEvidenceReadPort.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/postgresPaidFulfillmentRecovery.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/postgresPaidHandoffStore.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/postgresShipmentSpine.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/postgresStockSyncPort.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/fulfillment/productReconciliationEvidenceHandler.ts",
       "class": "public-output"
     },
@@ -3339,6 +3443,18 @@
     },
     {
       "path": "packages/platform/src/fulfillment/providerTrackingReferences.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/replacementRefusals.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/replacementShipmentHandler.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/schemaCapabilities.ts",
       "class": "public-output"
     },
     {
@@ -4770,6 +4886,18 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/fulfillment/labelTracking.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/fulfillment/lifecycleHandlers.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/fulfillment/lifecycleHostFixture.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/fulfillment/observationEffects.test.ts",
       "class": "public-output"
     },
@@ -4814,6 +4942,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/fulfillment/postgresStore.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/fulfillment/productSync.test.ts",
       "class": "public-output"
     },
@@ -4827,6 +4959,10 @@
     },
     {
       "path": "packages/platform/test/fulfillment/reconciliationEvidence.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/fulfillment/replacementDelay.test.ts",
       "class": "public-output"
     },
     {
@@ -22146,6 +22282,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/helpers/fulfillmentNative.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/helpers/postgresContainer.ts",
       "class": "public-output"
     },
@@ -22339,6 +22479,18 @@
     },
     {
       "path": "tests/postgres/feedbackMediaAuthority.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/fulfillmentDeliveryAlignment.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/fulfillmentHostSeamRefusals.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/fulfillmentNativeConformance.test.ts",
       "class": "public-output"
     },
     {

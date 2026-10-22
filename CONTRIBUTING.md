@@ -131,6 +131,16 @@ its users or operators can observe.
 
 ## Development-preview checks
 
+Native fulfillment conformance uses the existing Node collector and disposable
+PostgreSQL harness in `tests/postgres/fulfillmentNativeConformance.test.ts` and
+`tests/postgres/fulfillmentDeliveryAlignment.test.ts`. It covers complete install and
+prefix upgrade/replay, fences/ACK recovery, arrival/replacement invariants,
+locks/rollback and actual denied browser privileges. Retry/admission
+cases distinguish existing-cycle recovery without receipt changes from guarded
+new-cycle inserts. Docker unavailability fails these required proofs; report
+container setup separately from case runtime. This adds no collector, profile,
+coverage budget or live provider dependency.
+
 The payment reference-support rebinding reuses existing host and producer cases:
 localized callback/query and simulator-return parity, nominal no-charge retry,
 customer/setup metadata and inert default-off construction are assertions inside

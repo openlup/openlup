@@ -10,3 +10,7 @@ export type { DeliveryAlignmentPort } from "./alignment.js";
 export type CanonicalLocalFulfillmentStatus = "provider_received" | "picking" | "packed" | "in_transit" | "delivered" | "exception" | "cancelled";
 export type CustomerFulfillmentStep = "paid" | "accepted" | "packing" | "transit" | "delivered" | "exception" | "cancelled";
 export type { FulfillmentAdapterConformanceSubject, FulfillmentAdapterConformanceEvidence } from "./conformance.js";
+export type { FulfillmentNativeUnsupported } from './nativeUnsupported.js';
+export type { FulfillmentReplacementPort, FulfillmentReplacementRequest, FulfillmentReplacementResult } from './replacement.js';
+export type { FulfillmentOperatorMutationPort, FulfillmentOperatorMutationResult } from './operator.js';
+export type { CustomerDeliveryAlignment, FulfillmentCustomerAlignmentRowsReader } from './customerAlignment.js';
