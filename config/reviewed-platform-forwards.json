@@ -184,6 +184,17 @@
           "afterSha256": "9682edba38b5b397736af12862fd9a8315ae4b2fadf4a9774f502fb337e3d5bb"
         }
       ]
+    },
+    {
+      "path": "db/platform/migrations/20261022192000_invoicing_payment_decoupling.sql",
+      "sha256": "f4af30ee4c9365ea51bd0e95e5cc7ae869cf15dce5867fdd640f679438b36058",
+      "functions": [
+        {
+          "signature": "public.payment_truth_apply_terminal(uuid,text,text,timestamptz,text,text,jsonb,text,text,text)",
+          "beforeSha256": "b694b0ab9b1e8400357f4bb3c4b422513fa569db9ee8159cec81106fe5743a85",
+          "afterSha256": "ce65946e04dade071ee455a9a18101f6fe0c34fed098f06e997dc1299ceb391b"
+        }
+      ]
     }
   ],
   "portableCreationForwards": [
@@ -194,6 +205,83 @@
     {
       "path": "db/platform/migrations/20261022090000_fulfillment_delivery_alignment.sql",
       "sha256": "d9966ae79fe77a0feae8317dc5b46ef2d8196dd0790b1cd0ee1b06ab58061499"
+    },
+    {
+      "path": "db/platform/migrations/20261022190000_invoicing_durable_duties.sql",
+      "sha256": "ad523f06c1fb576c1d6ded37dad6c9303e7ea525694f792e1861bf03c660351b"
+    },
+    {
+      "path": "db/platform/migrations/20261022191000_invoicing_document_effects.sql",
+      "sha256": "7864098eacc441c0f2b1aa472308253fcd01ad14f2b9d9422c42872e8516a77e"
+    },
+    {
+      "path": "db/platform/migrations/20261022195000_invoicing_seller_revision.sql",
+      "sha256": "e7c749779be007e83be0115efcc04661bb8dc6a4589f54bc96caf5d1700f8b3c"
+    }
+  ],
+  "managedInvoicingForwards": [
+    {
+      "path": "supabase/migrations/20261022193000_invoicing_correction_claims.sql",
+      "sha256": "1e2e0e243c0dc3f28de6ba34d76cfe585a021f490e9e3591fbe40236802bf51b",
+      "functions": [
+        {
+          "signature": "public.accounting_invoice_correction_outbox_claim(integer,integer,text)",
+          "beforeSha256": null,
+          "afterSha256": "93f28ca7a62ec87a36defd73622da4ac0615ae60e1a5e7d20e05d4c1852b9bd8"
+        },
+        {
+          "signature": "public.accounting_invoice_correction_outbox_succeed(uuid,text,text,jsonb,integer)",
+          "beforeSha256": null,
+          "afterSha256": "22eb0f964efad217fdb2bcd14d6637a09fc9164e6a050c08003d4fb801c2fc5a"
+        },
+        {
+          "signature": "public.accounting_invoice_correction_outbox_fail(uuid,jsonb,integer,integer)",
+          "beforeSha256": null,
+          "afterSha256": "7049fd611e085d0a30f3afc1edbd79c010f84ccdfea9c64fb8cc5b83ac4cb9a9"
+        }
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261022193100_invoicing_correction_compatibility.sql",
+      "sha256": "c60c067ed4e40b4087021a2895503736e48de22727d90be9b7cfbbfa6aaed688",
+      "functions": [
+        {
+          "signature": "public.accounting_invoice_correction_outbox_claim(integer,integer)",
+          "beforeSha256": "85206650dc8607695895bbef9c3741bf2ad96fe9ef60ac062c4ecb4fea43be9a",
+          "afterSha256": "c749fc12010d4c2fcea869c9eac2bd3e5c645745935dfe2f6e109573dafd5291"
+        },
+        {
+          "signature": "public.accounting_invoice_correction_outbox_succeed(uuid,text,text,jsonb)",
+          "beforeSha256": "7662b77d2d16bb3f6c1be518ffac2185aec8f70a095f97bc3cbd38056baccbf5",
+          "afterSha256": "c9b76ee367d86d8990bb88b3f4d4769c41558a44dc45f26f55f250fd40ba38b0"
+        },
+        {
+          "signature": "public.accounting_invoice_correction_outbox_fail(uuid,jsonb,integer)",
+          "beforeSha256": "ecef65fafa003492fcc8e15df1d7aba7cad67bbebae63c00fa2dbf209a74afcf",
+          "afterSha256": "e1105f35525ec67b8e3ec0843077cf9a4d4503f6f72112a162e9a995f25d2548"
+        }
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261022195100_invoicing_seller_revision.sql",
+      "sha256": "77c2d19ef938a09a04865b3f89d47050c536a4c4b26ddea9ec954e690c53ee0c",
+      "functions": [
+        {
+          "signature": "public.invoicing_managed_request_with_seller_policy(text,text,uuid,text,jsonb)",
+          "beforeSha256": null,
+          "afterSha256": "8535da6575f630d33c834e14a784ee6f855ed265ea72ac58852d8dafe447b1ef"
+        },
+        {
+          "signature": "public.invoicing_managed_claim_with_seller(integer,uuid,jsonb,text)",
+          "beforeSha256": null,
+          "afterSha256": "8c2134d6f1124d1a006ff40d1e009c391829b375d25e96b925b219ed96dcc0aa"
+        },
+        {
+          "signature": "public.invoicing_managed_claim_corrections_with_seller(integer,jsonb,text)",
+          "beforeSha256": null,
+          "afterSha256": "b57790c9e67460abc138cea49facba438e1c6ee5a748af1b4fe933d828059cf9"
+        }
+      ]
     }
   ],
   "batchedForwards": [

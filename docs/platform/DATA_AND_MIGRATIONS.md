@@ -393,7 +393,7 @@ setup forward also binds its two new function signatures, which must be absent
 from the preceding chain. This control change installs approval data only; it
 does not ship or execute those forwards.
 
-The optional `portableReplacementForwards` list admits exactly one forward to
+The optional `portableReplacementForwards` list includes the exact forward to
 keep active subscriptions active on dunning exhaustion (invariant repair).
 Its only function is
 `public.dunning_lifecycle_handle_failure(uuid,timestamptz,text,text,integer,timestamptz,text,text)`,
@@ -412,6 +412,9 @@ whole-file SHA-256 digests in the same allowlist:
 | --- | --- |
 | [db/platform/migrations/20261022080000_fulfillment_command_ledger.sql](../../scripts/fixtures/20261022080000_fulfillment_command_ledger.sql) | `c6806906cdb0b6931b29f7a5c7c800016e98d04e6ea956f3c1e219a6cdb7e9d1` |
 | [db/platform/migrations/20261022090000_fulfillment_delivery_alignment.sql](../../scripts/fixtures/20261022090000_fulfillment_delivery_alignment.sql) | `d9966ae79fe77a0feae8317dc5b46ef2d8196dd0790b1cd0ee1b06ab58061499` |
+
+The three additional M09 creation pins are listed in the
+[M09 control preparation section](#m09-invoicing-forward-design-and-control-approval) and the registry.
 
 It admits new public tables, indexes on tables created in the file, invoker
 functions, views, and row triggers. Relation, function and trigger names must
@@ -914,3 +917,184 @@ operation and their accepted/failed replay boundaries.
 The narrowed import moves receipt stores and their ledger contracts. Reference
 mail-provider timeline/send-ledger implementations remain at their existing
 owners; no provider mapping or new schema enters the package.
+
+## M09 invoicing forward design and control approval
+
+Status: design and fixture-only control preparation. These seven fixtures do not
+install SQL, append manifest rows, publish package assets or activate invoicing.
+The feature changes must introduce exactly the approved bytes later. A changed
+byte requires a separate reviewed control before introduction; the self-approval
+refusal remains binding in both CI and release preparation.
+
+Three additional native creation pins cover durable duties, document effects and
+seller revisions. New functions are invokers with `search_path = pg_catalog`;
+new tables, views and functions revoke PUBLIC, anon and authenticated access.
+There are no new native triggers, definers or grants. The host must explicitly
+bootstrap its executor's least privileges; these fixtures grant no browser or
+service principal access. Install the complete native catalogue, never sparse
+package projections independently. Native versions are `20261022190000`,
+`20261022191000`, `20261022192000` and `20261022195000`; managed versions are
+`20261022193000`, `20261022193100` and `20261022195100`. All sort above M10's
+last planned forward, `20261022185100`, preserving M09's internal order.
+The staged native manifest currently appends positions 75–78 after fulfillment
+alignment at 74; integration must place them after M10's native units and
+recompute function preimages against that complete preceding rail.
+
+The fourth native pin is the single exact replacement of
+`payment_truth_apply_terminal(uuid,text,text,timestamptz,text,text,jsonb,text,text,text)`.
+Its declaration/settings and every statement outside the former accounting block
+remain unchanged. That block captures an `invoicing_duties` obligation and exact
+source/key receipts in the money transaction without consulting accounting
+objects. Captured settlement and dunning recovery therefore survive accounting
+failure. Capture uses a nonblocking advisory lock and a 100 ms lock timeout;
+its subtransaction catches conflicts, permission failures and cancellation without
+rolling back settlement or dunning. An append-only capture-fault marker is visible
+in readback. If the payment principal lacks marker privileges, the retained paid
+transition itself remains durable rediscovery evidence. Bootstrap capture and
+fault-table privileges explicitly.
+
+`public.invoicing_sweep_duties(integer)` collects retained settlement and handoff
+sources and returns fact-installation leases. The host commits that short claim
+transaction before calling `invoicing_prepare_facts(uuid,uuid)` for each lease,
+commits its accounting transaction, then records the result with
+`invoicing_finish_facts(uuid,uuid,jsonb)` in a separate short transaction. Do not
+wrap these calls in a shared transaction. `invoicing_install_facts(uuid,jsonb,text)`
+stages immutable facts only. This reuses the outbox claim/token/visibility pattern:
+SKIP LOCKED claims, five-minute leases, eight attempts, exponential backoff from
+60 seconds capped at one hour, and a visible `faulted` terminal state. Expired
+claims recover without retaining order/duty locks across accounting work. Prepare
+holds no explicit order/duty row lock, bounds unavoidable database waits to 100 ms,
+and preserves the incumbent deterministic document reference. Host keys remain
+exact in duty/receipt/metadata; the internal document operation uses the stable
+duty identity so two intents may legitimately reuse a host key.
+Accounting errors keep the fact revision and owed duty durable; missing host facts block
+document work. The host supplies buyer, lines, money, tax, dates, references and
+policy version rather than interpreting legacy zero-tax positions as fiscal
+facts. Payment readback keeps `accountingRequested=false` for new unlinked
+settlements; historic linked IDs and settled-event replay remain unchanged.
+M09 does not write invoice evidence back into payment truth.
+
+`public.invoicing_duty_readback(uuid)` reads an order's base and correction duties
+without reading accounting tables or changing payment truth. It returns duty,
+parent and document IDs, state, attempts, creation/availability/lease timestamps
+and a nullable diagnostic code. Ready work reads as `owed`; processing reads as
+`claimed`. Other persisted states (`owed`, `blocked`, `unknown`, `issued`,
+`voided`, `unsupported`, `faulted`) remain visible. The closed diagnostic allowlist is
+`missing_facts`, `legacy_facts_unproved`, `retryable`, `blocked`, `unsupported`,
+`unknown`, `absent`, `faulted`; other kinds return null. Raw SQLSTATE, provider evidence and
+claim tokens never enter this readback. Fact-install attempts are separate from
+provider generations. `captureFaults` exposes source ID, retry/fault state, attempt
+count and next availability; a retained source receipt changes its readback state to
+`resolved`. Raw errors remain excluded. Source capture failures
+have their own eight-attempt/backoff ceiling, so one poisoned source cannot starve
+later sources or fact retries. Empty orders return an empty duty list.
+Execution remains restricted to the explicitly bootstrapped trusted host.
+
+Duty and delivery claims accept a trailing optional order UUID, as does the
+seller claim wrapper. The predicate runs before row locks and LIMIT; targeted
+recovery never leases unrelated orders. Omitting it retains batch behavior.
+Clearance observations already record `not_submitted`, `pending`, `accepted`,
+`rejected`, `not_required` and explicit unsupported observations; polling targets,
+per-target orchestration and national mappings remain host/package work.
+
+Policy suppression and operator skip outcomes can be retained in the existing
+native effect-receipt ledger by the trusted host transaction. Source receipts
+stop rediscovery; withheld fact installation keeps suppressed work unclaimable.
+The host owns policy decisions, terminal outcome vocabulary and replay checks;
+this SQL does not infer permission to issue from a source alone. No additional
+native object or payment-truth mutation is needed for these receipts. Account
+invoice history likewise uses a host query over existing order ownership,
+documents, correction parent links and immutable facts; the host must authorize
+the account before projection and refuse missing fiscal facts. No browser grant
+or SQL history endpoint is added.
+
+The existing `accounting_document_request_from_paid_order` and its reference
+PostgreSQL adapter retain their local scope, response, document reference and
+replay. Generic descriptions and zero-tax positions remain usable locally;
+fiscal execution still requires proven facts and must refuse to adopt an
+unproved local document rather than create a competing invoice. Fact completion
+checks neutral facts and totals before adopting an unowned document. An
+unsupported result requires existing document evidence and remains visible with
+its diagnostic reason. Reversal refuses to void an unlinked live base document
+or discard an attempted request; blocked duties return terminal `unsupported`.
+Only ready, pending, unattempted correction requests are hidden from the incumbent.
+
+Before installing, retire the incumbent issue/correction executor. Drain the
+legacy managed correction worker first; reconcile any attempted or processing
+legacy correction against provider evidence, recording its actual outcome before
+cutover. P3 must migrate `accountingInvoicePort` and `accounting_paid_reversal_test`
+to v2 (`p_contract_version`, `p_claim_attempt_count`), throw on `ok:false`, add an
+adapter test and give attempted legacy corrections a visible reconciliation state.
+This adapter migration is a prerequisite for introducing `20261022193100`; it is not part
+of fixture-only control preparation. The managed `ksefRequired` key is retained
+for donor parity as a country-specific key, not a neutral native requirement.
+
+M09 request rows use `available_at='infinity'` at prepare, claim and fail,
+including corrections, so the incumbent queue cannot lease them. M09 also checks
+request attempts/token against duty generation/token and marks drift unsupported.
+Seller requests run in their own short transaction: a nonblocking per-order
+advisory lock precedes the order row lock. The 100 ms lock timeout remains in
+effect through duty capture and seller insertion, then the wrapper restores the
+caller's timeout before returning.
+The payment capture block absorbs `query_canceled` (including a client or statement
+timeout arriving inside capture) so settlement/recovery can commit. Its fallback
+marker insertion has its own 100 ms lock bound; host cancellation outside this
+block retains PostgreSQL's ordinary behavior. Successful sweep restores the
+caller's lock timeout.
+
+The install cutover records existing settlement/handoff identities once because
+these rails have no insertion timestamp and host occurrence times may arrive late.
+The keyed `(source_kind,source_id)` primary-key table is filled once by the
+single exactly admitted `INSERT ... SELECT ... UNION ALL ... ON CONFLICT DO NOTHING`.
+No data-reading column default is admitted. Installation takes table locks for
+the new foreign keys before scanning the source rails for this seed; order,
+settlement and dispatch writes pause until the install transaction commits.
+Schedule that write pause for the size of the existing source history. Sweeps use indexed `NOT EXISTS` against that set, with source/order
+fault lookup and duty status/availability indexes. The automatic sweep excludes
+those historical identities, whether previously
+invoiced or uninvoiced, and orders with any non-void accounting document. It never
+automatically backfills history. A post-install source remains collectable even
+when its host occurrence timestamp predates install. Alias keys include source
+kind and settlement intent (or handoff source), avoiding cross-intent key clashes.
+
+A pre-existing limit remains: payment ingest's event readback joins
+`accounting_documents`; an ACCESS EXCLUSIVE relation lock can therefore block
+money readback. The new capture path removes accounting row-lock/construction
+failures, not that older relation-level read dependency.
+
+Source identities and original host keys alias one physical issue duty per order;
+a correction aliases one child per parent. Facts and receipts refuse conflicting
+replay. Claim locks both native request and duty in its candidate scan, persists provider identity and a
+shared token/generation, and joins immutable facts. Expired or unknown creates
+become readback work; only authoritative absence permits a new create. Success
+settles request/document/receipt together. Late issue first persists external
+identity then compensates a pending reversal atomically. Correction BEFORE facts
+remain positive history while native positions carry the negative delta. No
+fiscal numbering, provider transport, market policy or money writer is added.
+Clearance and uncertain delivery affect document work only; unknown delivery
+acceptance cannot re-enter send after lease expiry. Source retention is a host
+lifecycle obligation until capture or an explicit terminal policy receipt.
+
+Capture marks newly created duties on the default paid terminal path; seller wrappers also mark genuinely new corrections. First claim captures the
+selected host seller and revision in the same transaction. Retry preserves that
+seller; new corrections have independent eligibility. A new sidecar around an
+old document/request is legacy and returns the execution-supplied fallback.
+Issued documents and historical seller/buyer/line facts are never rewritten.
+
+`managedInvoicingForwards` is a separate bounded admission, with three fixed
+paths and ordered signature sets in the checker: new correction v2 overloads,
+legacy fail-closed compatibility replacements, and new seller wrappers plus one
+seller table with RLS enabled. Whole-file and function before/after hashes bind their definitions.
+It preserves the donor's `SECURITY DEFINER`, `search_path = public, pg_catalog`
+and EXECUTE only to service_role, with PUBLIC/anon/authenticated revokes. The
+native creation class additionally admits the exact cutover seed and the
+`WITH (security_invoker=true)` view form; existing managed classes are unchanged. Unexpected
+signatures, attributes, triggers, tables, grants or lexical forms refuse.
+
+The [registry](../../config/reviewed-platform-forwards.json) binds all seven final
+fixture paths and hashes. The [catalog proof](../../tests/postgres/reviewedPortableCreation.test.ts)
+applies every fixture to real PostgreSQL, preserving existing object/ACL
+boundaries except the exact pinned replacements and checking native invoker
+versus managed service-only attributes. Positive and refusal plants exercise
+both CI and release admission. Control approval alone provides no runtime,
+provider, deployment or fiscal-readiness evidence.
