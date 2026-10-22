@@ -707,6 +707,15 @@ signed label URLs stay transient at the host/adapter boundary; durable contracts
 carry typed facts, safe references and actual-command fingerprints. Existing reference facades
 and the order-management status ladder/queue pair remain host-owned until explicit later adoption.
 
+The internal `fulfillment/omnipack` transport contributes injected HTTP, per-request
+credential resolution, provider codecs and selected donor witnesses without adding
+a public subpath. Order preparation materializes canonical JSON once; its SHA-256
+fingerprint and transport use exactly those bytes. Every fetch refuses redirects
+so a 307/308 cannot repeat a POST body. The transport installs no route,
+schedule or default binding. Root reference implementations remain unchanged;
+neutral-port glue, closed evidence projection and public registration are later
+phases in the [A3 ledger](plans/oss-a3-fulfillment-adapter.md).
+
 The [dispatch port](../../packages/platform/src/fulfillment/contracts/dispatch.ts)
 prepares the actual provider command without submitting it, returns its fingerprint
 and sanitized evidence, and keeps command bytes transient inside the adapter.

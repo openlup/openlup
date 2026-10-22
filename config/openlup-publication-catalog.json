@@ -1250,6 +1250,10 @@
       "class": "public-output"
     },
     {
+      "path": "docs/platform/plans/oss-a3-fulfillment-adapter.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/oss-m04-communications-triggers.md",
       "class": "platform-documentation"
     },
@@ -3298,6 +3302,54 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/fulfillment/omnipack/client.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/omnipack/mappers.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/omnipack/omnipackDispatchPayload.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/omnipack/omnipackOutboundOrderPayload.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/omnipack/omnipackProductPackPayload.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/omnipack/omnipackProductPayload.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/omnipack/omnipackReconciliationPayload.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/omnipack/omnipackStatusVocabulary.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/omnipack/omnipackWebhookPayload.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/omnipack/productSyncMappers.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/omnipack/providerError.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/omnipack/trackingReferences.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/fulfillment/paidFulfillmentRecovery.ts",
       "class": "public-output"
     },
@@ -4847,6 +4899,38 @@
     },
     {
       "path": "packages/platform/test/fulfillment/observationEffects.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/fulfillment/omnipack/a3OmnipackDispatchCharacterization.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/fulfillment/omnipack/a3OmnipackObservationCharacterization.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/fulfillment/omnipack/a3OmnipackProductCharacterization.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/fulfillment/omnipack/a3OmnipackReadbackCharacterization.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/fulfillment/omnipack/a3OmnipackStockCharacterization.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/fulfillment/omnipack/a3OmnipackWireCharacterization.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/fulfillment/omnipack/fixtures.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/fulfillment/omnipack/transportAdaptation.test.ts",
       "class": "public-output"
     },
     {
