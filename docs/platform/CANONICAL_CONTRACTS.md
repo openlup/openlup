@@ -524,7 +524,16 @@ its after and whole-file hashes bind the proposed forward. This separate control
 approval supplies no migration or runtime activation. The
 [exact reviewed function rules](DATA_AND_MIGRATIONS.md#exact-reviewed-function-forwards)
 require unchanged headers, a single function statement and approval before SQL
-introduction; managed admission counts remain unchanged.
+introduction. Existing managed classes retain their fixed counts; the separate
+[M09 fixture-only admission](DATA_AND_MIGRATIONS.md#m09-invoicing-forward-design-and-control-approval)
+binds three managed forwards and the additional exact native payment-terminal
+replacement. New native routines stay invokers; managed wrappers retain donor
+service-only definer attributes. These approvals install no SQL or activation.
+When introduced, new F13 captures intentionally read `accountingRequested=false`
+on payment readback: they record an owed obligation without linking a document
+into payment truth. This is a declared readback change. The trusted-host
+`invoicing_duty_readback(uuid)` is the owed-invoice view (KEPT #5), including
+subsequent issue state; historical linked payment events keep their readback.
 
 The portable dunning invariant repair appends exactly one manifest row at
 position 71 and refreshes `objectInventorySha256` from the complete live
@@ -656,9 +665,12 @@ binds exact managed SQL files and old/new function definitions. Its replacement
 list contains exactly three existing signatures in two files; a distinct creation
 list requires the two price-setup signatures to be absent before their forward.
 The optional runtime list pins the capability and identity forwards described above.
-The separate `portableCreationForwards` list pins the two fulfillment creation
-forwards by path and whole-file hash, requiring new objects and invoker functions;
-the portable replacement list retains its single dunning function boundary.
+The separate `portableCreationForwards` list pins two fulfillment and three
+invoicing creation forwards by path and whole-file hash, requiring new objects
+and invoker functions. The portable replacement list pins the dunning function
+and the invoicing payment-terminal accounting block.
+M09's seven versioned paths sort above `20261022185100` so M10 can precede
+them; renumbering preserves every SQL byte and whole-file/function hash.
 Required self-check keeps the whole registry unchanged from the feature comparison
 base. Release compares each forward's own entry, list position and shared registry
 fields with its introduction parent, allowing later controls to append approvals.

@@ -355,6 +355,25 @@ or additional policy operations. Both PR and release-history tests check these
 refusals and require approval before the forward's introducing commit. These
 checks admit one reviewed contraction; they do not grant general policy edits.
 
+M09 control preparation adds seven final SQL fixtures without installing them.
+Their versions begin at `20261022190000`, above M10's last planned forward;
+integration must recheck all function preimages against the combined ordered
+rails before introduction, including the payment-terminal replacement.
+Its only data-reading install seed is the exact keyed cutover `INSERT ... SELECT`
+from settlement transitions and shipment operations, admitted once into the newly
+created cutover table. The class also admits the invoker-rights view form;
+arbitrary seed SELECTs and data-reading defaults gain no new admission.
+The checker plants exercise their exact bytes through PR and release admission,
+then refuse byte drift, browser grants, donor attribute drift and unpinned
+replacements. The existing real-PostgreSQL catalog suite applies all fixtures in
+one owned container: native additions preserve prior objects and close browser
+ACLs, the payment-terminal replacement preserves incumbent attributes, and managed
+additions retain the donor's fixed-path, service-only definer authority. The
+[M09 design and retry contract](docs/platform/DATA_AND_MIGRATIONS.md#m09-invoicing-forward-design-and-control-approval)
+owns the duty sweep and feature introduction boundary. These checks do not
+introduce canonical migrations, relax approval-before-introduction or replace
+feature-level settlement, dispatch, correction, seller and delivery invariants.
+
 The reviewed runtime-forward checker admits an exact pinned five-function SQL
 file and an optional identity capabilities file with fixed service-only client
 writes, operator activation inserts and invitation email reads. Tests exercise both PR history and release
