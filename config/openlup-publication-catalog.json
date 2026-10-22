@@ -6234,6 +6234,34 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/fixtures/20261022190000_invoicing_durable_duties.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/fixtures/20261022191000_invoicing_document_effects.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/fixtures/20261022192000_invoicing_payment_decoupling.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/fixtures/20261022193000_invoicing_correction_claims.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/fixtures/20261022193100_invoicing_correction_compatibility.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/fixtures/20261022195000_invoicing_seller_revision.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/fixtures/20261022195100_invoicing_seller_revision.sql",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/fulfillment-stock-evidence-proof.ts",
       "class": "public-output"
     },

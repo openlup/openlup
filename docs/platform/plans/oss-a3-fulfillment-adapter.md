@@ -101,6 +101,67 @@ for comparison; identical rows below were checked by bytes. Destination prefix:
 | `server/domains/fulfillment/omnipackWebhookPayload.ts` (identical) | `omnipackWebhookPayload.ts` | Select auth/event identity/route mapping only. Structural headers replace framework request type; local mapper type and closed route union replace handler imports. Omit arbitrary stored-payload projection and host tracking enrichment. |
 | `server/domains/fulfillment/omnipackReconciliationPayload.ts` (identical) | `omnipackReconciliationPayload.ts` | Select occurrence-key function only; omit persistence projection, arbitrary error prose and unrelated host types. |
 
+### Product-sync donor parity repair (2026-10-22)
+
+Coordinator grant: restore the donor product-sync error, SKU and pack behavior,
+retaining deduplicated reads and redirect refusal. Codex may edit, run the brief's
+focused checks and make one local signed-off commit; no network, installs, secrets,
+push, PR, adoption or release. Claude retains native committed review and delivery;
+existing review histories, budgets and expiry are unchanged. Acceptance is the
+three fake-HTTP cases below, unchanged donor witnesses and the requested focused
+gates. Frozen ports, worker orchestration, default wiring and host persistence
+remain outside this repair. Public exports remain exactly three.
+
+Current donor comparison uses the adopter's locally available `origin/main`:
+`client.ts` and `providerError.ts` own safe operation messages and encoded product
+paths; `productSyncMappers.ts` owns pack filtering; the product-sync cron composes
+`getStock`/`getProduct`, and `managedProductBinding.ts` observes Error messages and
+pack counts before passing them to M08. The pack request builder validates writes;
+that validation is separate from permissive response evidence.
+
+| Decision | Implementation and impact | Reversibility |
+| --- | --- | --- |
+| 1 — Parity restoration: safe Error surface | All product and stock sync refusals/failures throw an internal Error subclass with typed `reason`, `phase` and `retryable`. Provider failures retain the donor operation message, bounded code and status plus `providerFailure:true` for host HTTP 502 mapping, without retaining a cause, payload or secret. Local `malformed`/selection refusals remain distinguishable. | Internal projection only; reverting would restore the defective `[object Object]` diagnostic. |
+| 2 — Parity restoration: SKU admission | List every string SKU whose trim is nonempty, without trimming its identity, and use the client's existing `encodeURIComponent` per segment. The shared reference regex originally guarded opaque references against arbitrary prose/URLs (the `reference()` comment, O-P2 closed projections and prior-local-repair row 3), not a donor SKU grammar; it is not needed for URL safety. Slash, punctuation, Unicode and long identities now reach product reads. Literal dot segments and lone surrogates remain listed but throw a safe `malformed / sync` Error before HTTP: URL resolution would collapse the former, and encoding cannot represent the latter. M08 counts these as per-SKU `failures` with `ok:false` and `reason:product_sync_operation_failed`; no new silent omission. | Reverting narrows coverage again. Other reference-bearing ports retain their existing validation. |
+| 3 — Parity restoration: pack evidence | Remove only the factory's extra read filter. Exactly the donor mapper keeps string EANs with `length > 0`, preserves finite numeric quantities (including zero, negative and fractional values), and uses zero otherwise. Closed `{ean, quantity}` projection remains; host validation/conflicts stay observable. No donor defect is asserted: provider evidence and write admission are different boundaries. Explicit-write validation is unchanged. | A local factory revert would again hide packs and alter reconciliation evidence; no migration is involved. |
+| 4 — Adapted (donor-divergent) behaviours: SKU dedup | Keep `Set` dedup. Two equal stock rows cause one product read/upsert/resolve sequence: successful `pulledSkus=1`, `providerCalls=2` (one stock listing plus one product read), versus donor 2/3. Counters describe completed provider-method reads, not stock rows or HTTP retry attempts. | Removing the `Set` restores duplicate reads and donor counters; no stored schema changes. |
+| 5 — Adapted (donor-divergent) behaviours: redirect refusal | Keep `redirect:"error"` on every fetch; a redirect fails rather than following to another endpoint. Native repair C-4e protects against repeating a POST body on 307/308. | Removing the option restores fetch's donor redirect-following behavior but loses this hardening. |
+
+One existing safe-failure case covers decision 1 against fake transport and HTTP
+503, including bounded-code fallback, all sync operations and Error refusals.
+One new fake-HTTP SKU case covers decision 2, actual encoded URLs, dedup counters
+and counted unsafe-segment failures. One existing product case covers decision 3,
+including short/non-numeric/blank EANs and nonpositive/fractional/fallback quantities.
+Net-new **1**, whole round **76 / 100**; all six characterization files unchanged.
+
+Plain-object throw audit: dispatch throws only Errors internally; readback and
+observation call `observation()` which still throws plain `missing_correlation`
+and `malformed` refusals internally. Their enclosing catches return the frozen
+port's result unions; no plain object escapes these public methods. Those port
+semantics are preserved rather than replaced with public exceptions.
+
+Simplicity pre-check: reuse client encoding and donor mapping, remove the extra
+read filters, and add one private Error projection. No new exported type, worker
+result shape, dependency or generic sanitizer is needed. Unsafe SKUs use the
+existing worker failure counter rather than a parallel reporting mechanism.
+
+Focused verification: lint passed (0 errors, 33 existing warnings), including
+Core/Outbox/Platform builds. Platform strict no-emit typecheck and `api:check`
+passed with no snapshot change. Direct Vitest over fulfillment, package boundary
+and cold consumer passed **1,822 tests / 29 files**; factory **30**, unchanged
+characterization **18**. Public neutrality reported **0 increases** and UI
+neutrality passed. Policy/docs regeneration passed with no generated delta;
+final policy and commit gitleaks results are recorded in the local handoff.
+An extra standalone strict check of the factory test reports existing TS2339 on
+`profile.readiness.refusal`; the unchanged baseline reproduces the same diagnostic
+(one line earlier). This is outside the package build's source-only typecheck and
+is left unchanged. No broad test, install or network command was run.
+
+Self-retro: the initial factory probe lacked built Core declarations and collected
+no tests; the lint prebuild resolved it. Reuse the documented build prerequisite
+before direct Vitest. Removing the read filters preserved donor evidence with
+less code; one existing worker failure path also made unsafe SKUs observable.
+
 Fixture adaptations replace private identity, catalog, contact, location, barcode
 and carrier/service examples with synthetic SKU/order subjects, reserved example
 hosts/email, example telephone and neutral service codes. These changes preserve
@@ -167,14 +228,14 @@ cancel has no callable member. Their descriptors remain supported:false with rea
 
 | Destination | Cases | Status | O-P1 + O-P2 running total |
 | --- | ---: | --- | ---: |
-| `packages/platform/test/fulfillment/omnipack/factory.test.ts` | 29 | net-new glue/refusal/redaction; rounds 1/2/4/5/6/8 add 4/1/2/1/1/1; existing replay/model cases extended | 53 |
-| `packages/platform/test/fulfillment/omnipack/transportAdaptation.test.ts` | 1 | round 2 unreadable rejection; 3 O-P1 cases retained | 54 |
-| `scripts/packages/platform-cold-consumer.test.ts` | 1 | net-new installed import/default-off/injected I/O | 55 |
+| `packages/platform/test/fulfillment/omnipack/factory.test.ts` | 30 | net-new glue/refusal/redaction; rounds 1/2/4/5/6/8 add 4/1/2/1/1/1; donor parity adds 1; existing replay/model cases extended | 54 |
+| `packages/platform/test/fulfillment/omnipack/transportAdaptation.test.ts` | 1 | round 2 unreadable rejection; 3 O-P1 cases retained | 55 |
+| `scripts/packages/platform-cold-consumer.test.ts` | 1 | net-new installed import/default-off/injected I/O | 56 |
 
-Current counts: factory **29**, transport **4** (3 O-P1 + 1 O-P2), characterization
-**18**, adapter total **51**. O-P2 is **31 net-new** including the one cold-consumer
-case. O-P1 + O-P2 is **55**; private V-C1 18 + 55 + O-P3 2 = **75 / 100**,
-leaving 25 cases, including the 10-case planning reserve. The earlier conservative
+Current counts: factory **30**, transport **4** (3 O-P1 + 1 O-P2), characterization
+**18**, adapter total **52**. O-P2 is **32 net-new** including the one cold-consumer
+case. O-P1 + O-P2 is **56**; private V-C1 18 + 56 + O-P3 2 = **76 / 100**,
+leaving 24 cases, including the 10-case planning reserve. The earlier conservative
 77/100 projection counted two separate scratch worker cases; O-P3 combines those
 scenarios into one authored case and the runner fixtures into one. Repair 1 adds no
 `it()` cases. Generated package-boundary rows remain separate under ruling A.
@@ -309,7 +370,7 @@ default binding, persistence or budget control changes are authorized.
 | `packages/platform/test/fulfillment/omnipack/conformance.test.ts`: one subject, 13 runner evidence rows | 1 | 74 |
 | Same file: real worker restart and eviction scenarios, one authored case | 1 | 75 |
 
-O-P3 is **2 net-new**; public O-P1/O-P2/O-P3 is **57**; private V-C1 **18** gives
+At O-P3 integration, before the parity repair above: O-P3 was **2 net-new**; public O-P1/O-P2/O-P3 was **57**; private V-C1 **18** gives
 **75 / 100**, with **25** remaining. Runner evidence rows and loop scenarios are
 assertions within authored cases, not generated cases. Generated package-boundary
 rows remain separate under ruling A. No donor witness is removed or weakened.
