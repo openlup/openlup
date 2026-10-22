@@ -428,8 +428,6 @@ it("keeps sync failures as safe typed Errors and readback as a closed result", a
       return jsonResponse({ code, ...plants }, status);
     });
     for (const [operation, invoke] of [
-      ["getStock", () => f.adapter.stockSync.getStock()],
-      ["getStockMovements", () => f.adapter.stockSync.getStockMovements()],
       ["getProduct", () => f.adapter.productSync.getProductPacks("SKU-A")],
       ["getStock", () => f.adapter.productSync.listStockedSkus()],
     ] as const) {
@@ -437,7 +435,7 @@ it("keeps sync failures as safe typed Errors and readback as a closed result", a
       expect(error).toBeInstanceOf(Error);
       expect(error).toMatchObject({ message: `OmniPack request failed: ${operation}`, reason: "io_failure", phase: "sync",
         providerFailure: true, status, code: status === null ? "network_error" : code === "FAKE_PROVIDER_DOWN" ? code : "http_503",
-        retryable: true });
+        retryable: status !== null });
       safe({ message: error.message, ...error });
     }
     const result = await f.adapter.readback.read(reading); expect(result.kind).toBe("unknown"); safe(result);
@@ -950,10 +948,11 @@ it("reports unsafe stock and movement rows while preserving valid observations (
   expect(f.cursor()).toMatchObject({ counts: { checked: 1, updated: 2, movements: 1, rejected: 2, failures: 2 },
     status: "succeeded", lastStockSyncedAt: probeAt, error: null, refusal: null });
   expect(JSON.stringify(f.cursor())).not.toMatch(/SKU\/1|provider_read_failed/);
-  // A valid movement also keeps a batch successful when every stock row is rejected.
+  // Valid movements cannot establish stock freshness when every stock row is rejected.
   f.input.provider.getStock = async () => [{ kind: "rejected", itemIndex: 0, reason: "invalid_sku_ref" }];
-  expect(await run(f.input)).toMatchObject({ ok: true, checked: 0, movements: 1, rejected: 2 });
-  expect(f.cursor()).toMatchObject({ status: "succeeded", lastStockSyncedAt: probeAt, error: null, refusal: null });
+  expect(await run(f.input)).toMatchObject({ ok: false, checked: 0, movements: 1, rejected: 2, reason: "invalid_sku_ref" });
+  expect(f.cursor()).toMatchObject({ status: "failed", lastStockSyncedAt: null, coverageGapSkus: ["sku-a"],
+    error: { reason: "invalid_sku_ref" }, refusal: { reason: "malformed", retryable: false } });
 });
 
 it("preserves duplicate rows and movement counts/window evidence (S3 stock-duplicate/stock-movements)", async () => {
@@ -970,4 +969,44 @@ it("records a terminal failure when alert persistence fails after item writes (S
   f.input.port.recordLowStockEvidence = async () => { throw Object.assign(Error("private payload"), { code: "23505" }); };
   expect(await run(f.input)).toMatchObject({ ok: false, checked: 1, failures: 1, reason: "stock_evidence_write_failed:23505" });
   expect(f.cursor()).toMatchObject({ status: "failed", coverageGapSkus: [], error: { reason: "stock_evidence_write_failed:23505" } });
+});
+
+
+it("preserves product read retry counts and refusal diagnostics for network and redirect failures (#311)", async () => {
+  for (const status of [null, 302]) {
+    for (const operation of ["getProductPacks", "listStockedSkus"] as const) {
+      const f = fixture(() => {
+        if (status === null) throw new TypeError("fetch failed", { cause: Error("unexpected redirect") });
+        return jsonResponse({}, status);
+      });
+      const adapter = entry.createOmnipackFulfillmentAdapter({ ...f.config, http: { ...f.config.http, safeReadRetries: 1 } });
+      const error = await (operation === "getProductPacks"
+        ? adapter.productSync.getProductPacks("SKU-A") : adapter.productSync.listStockedSkus()).catch(error => error);
+      expect(error).toMatchObject({ reason: "io_failure", phase: "sync", status,
+        code: status === null ? "network_error" : "http_302", retryable: false });
+      expect(error.providerError).toBeUndefined();
+      expect(f.fetchImpl).toHaveBeenCalledTimes(2);
+      expect(f.fetchImpl.mock.calls.every(([, init]) => init?.redirect === "error")).toBe(true);
+    }
+  }
+});
+
+it("retains disabled, not-ready and bad-identity adapter refusals in stock results and cursors", async () => {
+  for (const [config, reason] of [
+    [{ selected: false }, "disabled"], [{ readiness: { ready: false } }, "not_ready"],
+    [{ mintSyncRunId: () => "" }, "malformed"], [{ clock: () => "invalid" }, "malformed"],
+  ] as const) {
+    for (const operation of ["getStock", "getStockMovements"] as const) {
+      const f = stockFixture(), adapter = fixture(undefined, config);
+      f.input.provider = operation === "getStock" ? adapter.adapter.stockSync
+        : { getStock: async () => [], getStockMovements: adapter.adapter.stockSync.getStockMovements };
+      const refusal = { reason, phase: "sync", retryable: false };
+      const result = await run(f.input);
+      expect(result).toMatchObject({ ok: false, reason, refusal });
+      expect(result.providerError).toBeUndefined();
+      expect(f.cursor()).toMatchObject({ status: "failed", error: { reason }, refusal });
+      expect(f.cursor()?.error?.providerError).toBeUndefined();
+      expect(adapter.fetchImpl).not.toHaveBeenCalled();
+    }
+  }
 });

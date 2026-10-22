@@ -14,19 +14,31 @@ in the source repository.
   consumers must discriminate rejections with
   `"kind" in row && row.kind === "rejected"` before reading observation fields.
   Provider read failures now return failed worker results (`ok: false`) with
-  persisted `providerError` diagnostics instead of throwing. Hosts can map those
+  persisted `providerError` diagnostics when the provider supplies a typed failure,
+  instead of throwing. Hosts can map those
   failures to HTTP 502; terminal cursor-write failures still reject.
   Cursor reads, running-cursor writes, local stock/class/reservation reads and
   stock/evidence writes or SKU evidence resolution now also resolve `ok: false`
   instead of rejecting when a terminal failed cursor can be persisted.
-- Mixed valid/rejected stock or movement batches succeed, retain rejection
+- `SyncCursor` adds optional `syncRunId`, `counts`, `items`, `alerts`, `staleSync`
+  and `error`, worker results add `rejected`, `items`, `providerError` and `refusal`,
+  and `fulfillment_stock_sync_cursors.error_code` now stores safe operation reasons
+  (including `operation:SQLSTATE`) or typed provider/admission reasons instead of
+  the generic `io_failure`.
+- Mixed valid/rejected batches with valid stock rows succeed, retain rejection
   counts and diagnostics, evaluate/resolve alerts for valid SKUs and advance
-  `lastStockSyncedAt`; only entirely rejected batches are malformed and
-  non-retryable, while operational failure semantics are unchanged.
+  `lastStockSyncedAt`; an empty stock response is also valid, but a nonempty stock
+  response with no valid stock rows is malformed and non-retryable even with valid
+  movements, preserves prior coverage gaps and cannot resolve stale alerts.
+  Typed disabled, not-ready and bad-identity refusals retain their original reason
+  and retryability in the worker result and cursor.
   Blank stock SKU references are skipped before persistence; stale-sync recovery
   resolves after the terminal cursor, with cleanup failure preserving success.
   Stock and movement rejection diagnostics carry a `kind` discriminator.
-  Refused redirects are non-retryable and make only one GET attempt.
+  Stock-sync redirects are non-retryable, report `redirect_refused` and make only
+  one GET attempt; exhausted stock network reads remain retryable through the stock
+  failure projection. Product-sync retains the base client diagnostics and retry
+  behavior, including `retryable: false` after exhausted network reads.
 - Stock-sync alert fingerprints now contain only `requestKey`, `skuRef` and
   `thresholdKind`: changing quantities, severity or run evidence under the same
   key returns `replayed: true`. Different SKUs or thresholds use different keys;

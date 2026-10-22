@@ -8,6 +8,7 @@ interface StockSyncResult {
   lastMovementOccurredAt: string | null; reason?: string;
   rejected: number; items: NonNullable<SyncCursor["items"]>[number][];
   providerError?: NonNullable<SyncCursor["error"]>["providerError"];
+  refusal?: NonNullable<SyncCursor["refusal"]>;
 }
 export async function runFulfillmentStockSyncWorker(input: {
   port: FulfillmentStockSyncPort;
@@ -51,9 +52,11 @@ export async function runFulfillmentStockSyncWorker(input: {
   let operationalReason: string | undefined;
   let staleSync: SyncCursor["staleSync"];
   let recoverStaleSync = false;
+  let previousCursor: SyncCursor | null = null;
+  let rejectedStockResponse = false;
   const currentCoverageGapSkus = new Set<string>();
   try {
-    const previousCursor = await input.port.readCursor();
+    previousCursor = await input.port.readCursor();
 
     // Stale-sync alert: if the last successful sync aged past the threshold, open a stale_sync
     // low-stock evidence row (evidence/warn — never blocks sales); a healthy run resolves it
@@ -86,7 +89,7 @@ export async function runFulfillmentStockSyncWorker(input: {
       lastStockSyncedAt: null,
       lastMovementOccurredAt: null,
       continuation: { nextRef: null, startLocalDate: null, endLocalDate: null },
-      coverageGapSkus: [], refusal: null,
+      coverageGapSkus: previousCursor?.coverageGapSkus ?? [], refusal: null,
     });
 
     stage = "stock_read_failed";
@@ -106,6 +109,7 @@ export async function runFulfillmentStockSyncWorker(input: {
       }
     }
     const skus = [...new Set(stockItems.map(({ stock }) => stock.skuRef))];
+    rejectedStockResponse = providerStock.length > 0 && stockItems.length === 0;
     stage = "stock_inventory_read_failed";
     const [inventoryClasses, activeReservations] = await Promise.all([
       input.port.readSkuInventoryClasses(skus),
@@ -125,7 +129,7 @@ export async function runFulfillmentStockSyncWorker(input: {
         movements.push(item);
       }
     }
-    if (result.rejected > 0 && stockItems.length + movements.length === 0) {
+    if (rejectedStockResponse || (result.rejected > 0 && stockItems.length + movements.length === 0)) {
       result.ok = false;
       result.reason = "invalid_sku_ref";
     }
@@ -227,17 +231,19 @@ export async function runFulfillmentStockSyncWorker(input: {
     result.ok = false;
     result.failures += 1;
     result.providerError = providerDiagnostic(error);
-    operationalReason ??= result.providerError ? `provider_${result.providerError.operation}_failed:${result.providerError.code}` : safeReason(error, stage);
+    if (stage === "stock_read_failed" || stage === "stock_movements_read_failed") result.refusal = admissionRefusal(error);
+    operationalReason ??= result.providerError ? `provider_${result.providerError.operation}_failed:${result.providerError.code}` : result.refusal?.reason ?? safeReason(error, stage);
   }
 
   result.reason = operationalReason ?? result.reason;
+  if (!result.ok) result.refusal ??= { reason: result.failures === result.rejected ? "malformed" : "io_failure", phase: "sync", retryable: result.providerError?.retryable ?? result.failures > result.rejected };
   await input.port.recordCursor({
     status: result.ok ? "succeeded" : "failed", syncRunId,
     lastStockSyncedAt: result.ok ? now.toISOString() : null,
     lastMovementOccurredAt: result.lastMovementOccurredAt,
     continuation: { nextRef: null, startLocalDate: null, endLocalDate: null },
-    coverageGapSkus: result.ok ? [...currentCoverageGapSkus].sort() : [],
-    refusal: result.ok ? null : { reason: result.failures === result.rejected ? "malformed" : "io_failure", phase: "sync", retryable: result.providerError?.retryable ?? result.failures > result.rejected },
+    coverageGapSkus: result.ok ? [...currentCoverageGapSkus].sort() : rejectedStockResponse ? previousCursor?.coverageGapSkus ?? [] : [],
+    refusal: result.refusal ?? null,
     error: result.ok ? null : { reason: result.reason!, ...(result.providerError ? { providerError: result.providerError } : {}) },
     counts: { checked: result.checked, updated: result.updated, movements: result.movements, rejected: result.rejected,
       failures: result.failures, providerCalls: result.providerCalls, readBacks: result.readBacks },
@@ -302,4 +308,11 @@ function providerDiagnostic(error: unknown): StockSyncResult["providerError"] {
   return { operation: detail.operation, code: detail.code,
     status: typeof detail.status === "number" && Number.isInteger(detail.status) && detail.status >= 100 && detail.status <= 599 ? detail.status : null,
     retryable: detail.retryable === true };
+}
+
+function admissionRefusal(error: unknown): StockSyncResult["refusal"] {
+  if (!error || typeof error !== "object" || !("reason" in error) || !("phase" in error) || !("retryable" in error)) return undefined;
+  if (error.phase !== "sync" || typeof error.retryable !== "boolean") return undefined;
+  if (error.reason !== "disabled" && error.reason !== "not_ready" && error.reason !== "malformed") return undefined;
+  return { reason: error.reason, phase: error.phase, retryable: error.retryable };
 }

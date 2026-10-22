@@ -45,7 +45,7 @@ export interface OmnipackClient {
   createProduct(payload: Record<string, unknown>, sku: string): Promise<OmnipackProductCreatedEvidence>;
   getProduct(sku: string): Promise<OmnipackProductEvidence>;
   createProductPack(sku: string, payload: Record<string, unknown>, ean: string): Promise<OmnipackProductPackCreatedEvidence>;
-  getStock(): Promise<OmnipackStockEvidence[]>;
+  getStock(options?: { refuseRedirectRetry: boolean }): Promise<OmnipackStockEvidence[]>;
   getStockMovements(params?: OmnipackQueryParams): Promise<OmnipackStockMovementEvidence[]>;
   getFulfilmentsPage(params?: OmnipackQueryParams): Promise<{ rows: OmnipackFulfilmentEvidence[]; complete: boolean }>;
   getFulfilments(params?: OmnipackQueryParams): Promise<OmnipackFulfilmentEvidence[]>;
@@ -87,8 +87,8 @@ export function createOmnipackClient(
       return mapOmnipackProductPackCreatedResponse(body, sku, ean);
     },
 
-    async getStock() {
-      return mapOmnipackStockResponse(await requestJson(fetchImpl, config, "getStock", "/stock", { method: "GET" }));
+    async getStock(options) {
+      return mapOmnipackStockResponse(await requestJson(fetchImpl, config, "getStock", "/stock", { method: "GET" }, options?.refuseRedirectRetry));
     },
 
     async getStockMovements(params) {
@@ -98,6 +98,7 @@ export function createOmnipackClient(
         "getStockMovements",
         withQuery("/stock-movements", params),
         { method: "GET" },
+        true,
       ));
     },
 
@@ -141,6 +142,7 @@ async function requestJson(
   operation: string,
   path: string,
   init: RequestInit,
+  refuseRedirectRetry = false,
 ): Promise<unknown> {
   const method = (init.method ?? "GET").toUpperCase();
   const attempts = method === "GET" ? config.safeReadRetries + 1 : 1;
@@ -161,7 +163,7 @@ async function requestJson(
       lastError = new OmnipackProviderError({
         operation,
         status: response.status,
-        code: response.status >= 300 && response.status < 400 ? "redirect_refused" : readProviderErrorCode(body) ?? `http_${response.status}`,
+        code: refuseRedirectRetry && response.status >= 300 && response.status < 400 ? "redirect_refused" : readProviderErrorCode(body) ?? `http_${response.status}`,
         retryable,
         mayHaveSucceeded: mayPostHaveSucceeded(method, response.status),
       });
@@ -173,11 +175,11 @@ async function requestJson(
         : new OmnipackProviderError({
           operation,
           status: null,
-          code: isRedirectRefusal(error) ? "redirect_refused" : "network_error",
-          retryable: method === "GET" && !isRedirectRefusal(error),
+          code: refuseRedirectRetry && isRedirectRefusal(error) ? "redirect_refused" : "network_error",
+          retryable,
           mayHaveSucceeded: submitted && mayPostHaveSucceeded(method, null),
         });
-      if (!retryable || lastError.code === "redirect_refused") throw lastError;
+      if (!retryable || (refuseRedirectRetry && lastError.code === "redirect_refused")) throw lastError;
     }
   }
 

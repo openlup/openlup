@@ -2813,6 +2813,7 @@ interface StockSyncResult {
     rejected: number;
     items: NonNullable<SyncCursor["items"]>[number][];
     providerError?: NonNullable<SyncCursor["error"]>["providerError"];
+    refusal?: NonNullable<SyncCursor["refusal"]>;
 }
 export declare function runFulfillmentStockSyncWorker(input: {
     port: FulfillmentStockSyncPort;

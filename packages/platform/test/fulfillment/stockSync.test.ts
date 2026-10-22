@@ -206,3 +206,34 @@ it("preserves successful completion when stale recovery throws synchronously", a
   expect(f.cursor()).toMatchObject({ status: "succeeded", lastStockSyncedAt: at, error: null, refusal: null });
   expect(recoveries).toBe(1);
 });
+
+
+it("keeps prior coverage gaps and stale alerts when all stock rows are rejected despite valid movements", async () => {
+  for (const lastStockSyncedAt of ["2026-10-21T06:00:00.000Z", at]) {
+    const f = fixture(), [stock] = await f.input.provider.getStock();
+    if ("kind" in stock) throw Error("expected_stock_fixture");
+    f.setCursor({ status: "succeeded", lastStockSyncedAt, lastMovementOccurredAt: null,
+      continuation: { nextRef: null, startLocalDate: null, endLocalDate: null }, coverageGapSkus: ["sku-a"], refusal: null });
+    f.input.provider.getStock = async () => [{ kind: "rejected", itemIndex: 0, reason: "invalid_sku_ref" }];
+    f.input.provider.getStockMovements = async () => [{ ...stock, quantityKind: "movement", quantity: 1, occurredAt: at,
+      operationType: "receipt", documentRef: null, lotRef: null, expirationDate: null }];
+    const cursors: SyncCursor[] = [], recordCursor = f.input.port.recordCursor;
+    f.input.port.recordCursor = async value => { cursors.push(value); await recordCursor(value); };
+    expect(await run(f.input)).toMatchObject({ ok: false, checked: 0, updated: 0, movements: 1, rejected: 1,
+      reason: "invalid_sku_ref", refusal: { reason: "malformed", retryable: false } });
+    expect(cursors.map(cursor => cursor.coverageGapSkus)).toEqual([["sku-a"], ["sku-a"]]);
+    expect(f.cursor()).toMatchObject({ status: "failed", lastStockSyncedAt: null, coverageGapSkus: ["sku-a"],
+      error: { reason: "invalid_sku_ref" }, refusal: { reason: "malformed", phase: "sync", retryable: false } });
+    expect(f.snapshots).toEqual([]);
+    expect(f.resolutions).toEqual([]);
+    expect(f.evidence.every(value => value.thresholdKind === "stale_sync")).toBe(true);
+  }
+});
+
+it("preserves typed admission retryability without copying arbitrary error fields", async () => {
+  const f = fixture();
+  f.input.provider.getStock = async () => { throw { reason: "not_ready", phase: "sync", retryable: true, payload: "private-value" }; };
+  expect(await run(f.input)).toMatchObject({ ok: false, reason: "not_ready", refusal: { reason: "not_ready", phase: "sync", retryable: true } });
+  expect(f.cursor()).toMatchObject({ refusal: { reason: "not_ready", phase: "sync", retryable: true } });
+  expect(JSON.stringify(f.cursor())).not.toContain("private-value");
+});

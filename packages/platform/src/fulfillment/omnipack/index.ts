@@ -267,7 +267,7 @@ export function createOmnipackFulfillmentAdapter(config: OmnipackFulfillmentAdap
         requireSync();
         try {
           const identity = syncIdentity();
-          return (await client.getStock()).map((row, itemIndex) => {
+          return (await client.getStock({ refuseRedirectRetry: true })).map((row, itemIndex) => {
             const skuRef = reference(row.sku);
             if (!skuRef) return { kind: "rejected" as const, itemIndex, reason: "invalid_sku_ref" as const };
             return { ...identity, skuRef, quantityKind: "snapshot" as const, totalQuantity: row.totalQuantity,
@@ -343,10 +343,10 @@ function commandDigest(request: FulfillmentDispatchRequest): string {
 
 /** Translate only the contributed client's typed error; never copy a message or payload. */
 function stockFailure(error: unknown, operation: "get_stock" | "get_stock_movements") {
-  const retryable = error instanceof OmnipackProviderError ? error.retryable : false;
-  if (error instanceof OmnipackSyncError) return error;
-  return Object.assign(syncFailure(operation === "get_stock" ? "getStock" : "getStockMovements", error), { providerError: {
-    operation, status: error instanceof OmnipackProviderError ? error.status : null,
-    code: error instanceof OmnipackProviderError ? error.code : "provider_read_failed", retryable,
+  const failure = syncFailure(operation === "get_stock" ? "getStock" : "getStockMovements", error);
+  if (!(error instanceof OmnipackProviderError)) return failure;
+  const retryable = error.code !== "redirect_refused" && (error.retryable || error.code === "network_error");
+  return Object.assign(failure, { retryable, providerError: {
+    operation, status: error.status, code: error.code, retryable,
   } });
 }
