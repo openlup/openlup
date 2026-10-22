@@ -180,7 +180,7 @@ export function readReviewedForwardRegistry(bytes: Buffer): ReviewedForwardRegis
 }
 
 /** Split top-level SQL only. Comments, quoted literals and dollar bodies cannot introduce statements. */
-function sqlStatements(sql: string, dump = false): string[] {
+function sqlStatements(sql: string, dump = false, creation = false): string[] {
   const statements: string[] = [];
   let start = -1;
   for (let index = 0; index < sql.length;) {
@@ -194,7 +194,10 @@ function sqlStatements(sql: string, dump = false): string[] {
     if (sql.startsWith("/*", index)) {
       let depth = 1; index += 2;
       while (index < sql.length && depth) {
-        if (sql.startsWith("/*", index)) { depth++; index += 2; }
+        if (sql.startsWith("/*", index)) {
+          if (creation) throw new Error("reviewed portable creation refuses nested block comments");
+          depth++; index += 2;
+        }
         else if (sql.startsWith("*/", index)) { depth--; index += 2; }
         else index++;
       }
@@ -202,11 +205,16 @@ function sqlStatements(sql: string, dump = false): string[] {
       continue;
     }
     if (start < 0) start = index;
+    if (creation && (sql[index] === "\\" || (/^(?:E'|U&['"])/iu.test(sql.slice(index)) && !/[A-Za-z0-9_$]/u.test(sql[index - 1] ?? "")))) throw new Error("reviewed portable creation refuses backslashes and escape strings outside dollar bodies");
     const quote = sql[index];
     if (quote === "'" || quote === '"') {
       index++; let closed = false;
       while (index < sql.length) {
-        if (sql[index] === "\\") { index += 2; continue; }
+        if (creation && (sql[index] === "\n" || (quote === '"' && /[;$]/u.test(sql[index]!)))) throw new Error("reviewed portable creation refuses multiline quotes and statement or dollar delimiters in identifiers");
+        if (sql[index] === "\\") {
+          if (creation) throw new Error("reviewed portable creation refuses backslashes outside dollar bodies");
+          index += 2; continue;
+        }
         if (sql[index++] === quote) { if (sql[index] === quote) { index++; continue; } closed = true; break; }
       }
       if (!closed) throw new Error("reviewed replacement SQL has an unterminated literal");
@@ -214,6 +222,7 @@ function sqlStatements(sql: string, dump = false): string[] {
     }
     const tag = sql[index] === "$" ? /^\$(?:[A-Za-z_][A-Za-z0-9_]*)?\$/u.exec(sql.slice(index))?.[0] : undefined;
     if (tag) {
+      if (creation && tag !== "$$") throw new Error("reviewed portable creation refuses named dollar tags");
       const end = sql.indexOf(tag, index + tag.length);
       if (end < 0) throw new Error("reviewed replacement SQL has an unterminated body");
       index = end + tag.length; continue;
@@ -275,7 +284,7 @@ function assertFunctionStatements(bytes: Buffer, definitions: Map<string, string
  * Refuses control characters other than tab and line feed (PostgreSQL also ends a `--` comment at a carriage return, so no classifier models line ends differently); procedural/dynamic SQL also refuses.
  * Existing SQL is frozen, so only new forwards pass through this predicate.
  */
-export function isExpandOnlyPlatformForward(sql: string): boolean {
+export function isExpandOnlyPlatformForward(sql: string, reviewedCreationTable = false): boolean {
   if (Buffer.from(sql, "utf8").some((byte) => (byte < 0x20 && byte !== 0x09 && byte !== 0x0a) || byte === 0x7f)) return false;
   const tokens: string[] = [];
   for (let index = 0; index < sql.length;) {
@@ -309,15 +318,18 @@ export function isExpandOnlyPlatformForward(sql: string): boolean {
     if (word) { tokens.push(word.toUpperCase()); index += word.length; continue; }
     const number = /^[0-9]+(?:\.[0-9]+)?/u.exec(rest)?.[0];
     if (number) { tokens.push("<literal>"); index += number.length; continue; }
-    if (!";.,()+-=[]".includes(rest[0]!)) return false;
+    if (!";.,()+-=[]".includes(rest[0]!) && !(reviewedCreationTable && "<>:~".includes(rest[0]!))) return false;
     tokens.push(rest[0]!); index++;
   }
   const statements: string[][] = [[]];
   for (const token of tokens) { if (token === ";") statements.push([]); else statements.at(-1)!.push(token); }
   const nonempty = statements.filter((statement) => statement.length);
   return nonempty.length > 0 && nonempty.every((statement) => {
-    if (statement.some((token) => ["DROP", "TRUNCATE", "RENAME", "OWNER", "SET", "APP", "DELETE", "UPDATE", "REPLACE", "SELECT", "EXECUTE", "CALL", "DETACH", "ATTACH", "INHERIT", "DISABLE", "ENABLE", "VALIDATE", "AUTHORIZATION"].includes(token))) return false;
     const text = statement.join(" ");
+    // Pinned new tables use scalar operators/casts and these foreign-key actions.
+    // Mask only those actions, leaving standalone DELETE/SET and every other refusal intact.
+    const checked = reviewedCreationTable && /^CREATE TABLE /u.test(text) ? text.replace(/ ON DELETE (?:CASCADE|SET NULL)(?= |$)/gu, "").split(" ") : statement;
+    if (checked.some((token) => ["DROP", "TRUNCATE", "RENAME", "OWNER", "SET", "APP", "DELETE", "UPDATE", "REPLACE", "SELECT", "EXECUTE", "CALL", "DETACH", "ATTACH", "INHERIT", "INHERITS", "DISABLE", "ENABLE", "VALIDATE", "AUTHORIZATION"].includes(token))) return false;
     if (text === "BEGIN" || text === "COMMIT") return true;
     if (/^INSERT INTO /u.test(text)) {
       const values = statement.indexOf("VALUES"), conflict = statement.indexOf("ON", values);
@@ -373,20 +385,21 @@ export function assertPortableCreationStatements(bytes: Buffer, preceding: Buffe
     if (!type || (type.startsWith("public.") && !tables.has(type))) throw new Error("reviewed portable creation refuses an unsupported argument type or default");
     return type;
   }).join(",");
-  for (const statement of sqlStatements(bytes.toString("utf8"))) {
+  for (const statement of sqlStatements(bytes.toString("utf8"), false, true)) {
     if (/^(?:BEGIN|COMMIT);$/iu.test(statement)) continue;
     const table = /^CREATE TABLE (public\.[a-z_][a-z0-9_]*)\s*\([\s\S]+\);$/iu.exec(statement);
-    if (table) { const name = table[1]!.toLowerCase(); add(name, relations, tables); continue; }
+    if (table && isExpandOnlyPlatformForward(statement, true)) { const name = table[1]!.toLowerCase(); add(name, relations, tables); continue; }
     const insert = /^INSERT INTO (public\.[a-z_][a-z0-9_]*)(?=\s|\()/iu.exec(statement);
     if (insert && tables.has(insert[1]!.toLowerCase()) && isExpandOnlyPlatformForward(statement)) continue;
     const index = /^CREATE(?: UNIQUE)? INDEX ([a-z_][a-z0-9_]*)\s+ON (public\.[a-z_][a-z0-9_]*)\s*\([\s\S]+;$/iu.exec(statement);
-    if (index && tables.has(index[2]!.toLowerCase())) { add(`public.${index[1]!.toLowerCase()}`, relations, indexes); continue; }
+    if (index && tables.has(index[2]!.toLowerCase()) && isExpandOnlyPlatformForward(statement)) { add(`public.${index[1]!.toLowerCase()}`, relations, indexes); continue; }
     const view = /^CREATE VIEW (public\.[a-z_][a-z0-9_]*)\s+AS\s+SELECT\s+[\s\S]+;$/iu.exec(statement);
     if (view) { add(view[1]!.toLowerCase(), relations, views); continue; }
     // Admit only the attributes present in the approved invoker definitions.
-    // Anchoring through the closing dollar tag also refuses trailing attributes.
-    const routine = /^CREATE FUNCTION (public\.[a-z_][a-z0-9_]*)\(([\s\S]*?)\)\s+RETURNS\s+((?:SETOF\s+)?(?:boolean|jsonb|text|void|trigger|public\.[a-z_][a-z0-9_]*))\s+LANGUAGE\s+(?:sql|plpgsql)\s+(?:(?:IMMUTABLE|STABLE)\s+)?(?:SECURITY INVOKER\s+)?SET search_path\s*=\s*pg_catalog\s+AS (\$(?:[A-Za-z_][A-Za-z0-9_]*)?\$)[\s\S]*\4\s*;$/iu.exec(statement);
+    const routine = /^CREATE FUNCTION (public\.[a-z_][a-z0-9_]*)\(([\s\S]*?)\)\s+RETURNS\s+((?:SETOF\s+)?(?:boolean|jsonb|text|void|trigger|public\.[a-z_][a-z0-9_]*))\s+LANGUAGE\s+(?:sql|plpgsql)\s+(?:(?:IMMUTABLE|STABLE)\s+)?(?:SECURITY INVOKER\s+)?SET search_path\s*=\s*pg_catalog\s+AS (\$(?:[A-Za-z_][A-Za-z0-9_]*)?\$)/iu.exec(statement);
     if (routine) {
+      const closing = statement.indexOf(routine[4]!, routine[0].length);
+      if (closing < 0 || !/^\s*;\s*$/u.test(statement.slice(closing + routine[4]!.length))) throw new Error("reviewed portable creation refuses attributes after its first closing dollar tag");
       const name = routine[1]!.toLowerCase(), types = argumentTypes(routine[2]!);
       const returns = routine[3]!.toLowerCase();
       if (returns.startsWith("public.") && !tables.has(returns)) throw new Error("reviewed portable creation refuses a pre-existing return row type");

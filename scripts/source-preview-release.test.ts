@@ -489,6 +489,18 @@ COMMIT;
         for (const gate of gates(sample, head)) expect(gate).toThrow(/reviewed replacement path or bytes/u);
       } finally { sample.cleanup(); }
     });
+    it("admits doubled standard quotes and backslashes or escape strings inside a dollar body", () => {
+      const contents = [exact[0]! + `
+CREATE TABLE public.zz_quotes (c text DEFAULT 'it''s', "double""quote" text);
+CREATE VIEW public.zz_quotes_view AS SELECT 'it''s';
+CREATE FUNCTION public.zz_body() RETURNS text LANGUAGE sql SET search_path=pg_catalog AS $$ SELECT E'a\\b'; $$;
+`, exact[1]!];
+      const sample = creationFixture(contents, true);
+      try {
+        sample.append(); const head = sample.commit("Standard creation quotes and dollar body");
+        for (const gate of gates(sample, head)) expect(gate).not.toThrow();
+      } finally { sample.cleanup(); }
+    });
     it.each([
       ...["PUBLIC", "anon", "authenticated", "service_role"].map((role) => `GRANT SELECT ON public.fulfillment_provider_attempts TO ${role};`),
       "CREATE OR REPLACE FUNCTION public.existing() RETURNS text LANGUAGE sql AS $$ SELECT 'changed'; $$;",
@@ -496,8 +508,27 @@ COMMIT;
       "CREATE OR REPLACE TRIGGER existing BEFORE INSERT ON public.subscription_cycles FOR EACH ROW EXECUTE FUNCTION public.commerce_fulfillment_provider_command_guard();",
       "ALTER TABLE public.subscription_cycles ADD COLUMN extra text;",
       "DROP TABLE public.subscription_cycles;",
+      "CREATE TABLE public.zz_t (c text DEFAULT 'a\\'); DROP TABLE public.subscriptions; -- '\nCREATE TABLE public.zz_following (id text);",
+      "CREATE VIEW public.zz_v AS SELECT 'a\\'; GRANT SELECT ON public.subscriptions TO anon; -- '\nCREATE TABLE public.zz_following (id text);",
+      'CREATE VIEW public.zz_v AS SELECT 1 AS "a\\"; GRANT SELECT ON public.subscriptions TO anon; -- "\nCREATE TABLE public.zz_following (id text);',
+      "CREATE VIEW public.zz_v AS SELECT E'one';",
+      "/* outer /* inner */ CREATE VIEW public.zz_v AS SELECT 1; */ GRANT SELECT ON public.subscriptions TO anon;",
+      "CREATE VIEW public.zz_v AS SELECT U&'plain';",
+      'CREATE VIEW public.zz_v AS SELECT 1 AS U&"plain";',
+      'CREATE VIEW public.zz_v AS SELECT 1 AS "a;b";',
+      'CREATE VIEW public.zz_v AS SELECT 1 AS "a$b";',
+      "CREATE FUNCTION public.zz_named() RETURNS text LANGUAGE sql SET search_path=pg_catalog AS $fn$ SELECT 'one'; $fn$;",
+      "CREATE FUNCTION public.zz_different() RETURNS text LANGUAGE sql SET search_path=pg_catalog AS $fn$ SELECT $$one$$; $fn$; GRANT SELECT ON public.subscriptions TO anon;",
+      "CREATE VIEW public.zz_v AS SELECT -- 'misleading opening\n'line one\nline two'; GRANT SELECT ON public.subscriptions TO anon;",
+      'CREATE VIEW public.zz_v AS SELECT 1 AS -- "misleading opening\n"line one\nline two"; GRANT SELECT ON public.subscriptions TO anon;',
+      "CREATE TABLE public.zz_t (id text) INHERITS (public.commerce_settings);",
+      "CREATE TABLE public.zz_t (id integer DEFAULT (SELECT 1));",
+      "CREATE TABLE public.zz_t (id integer); DELETE FROM public.subscriptions;",
+      "CREATE INDEX zz_idx ON public.fulfillment_provider_attempts (id) INCLUDE (id) TABLESPACE app;",
       "CREATE FUNCTION public.bad() RETURNS text LANGUAGE sql SECURITY DEFINER SET search_path=pg_catalog AS $$ SELECT 'bad'; $$;",
       "CREATE FUNCTION public.bad() RETURNS text LANGUAGE sql SET search_path=pg_catalog AS $$ SELECT 'bad'; $$ SECURITY DEFINER;",
+      "CREATE FUNCTION public.bad() RETURNS text LANGUAGE sql SET search_path=pg_catalog AS $$ select 1 $$ SECURITY DEFINER SET statement_timeout = $$0$$;",
+      "CREATE FUNCTION public.bad() RETURNS text LANGUAGE sql SET search_path=pg_catalog AS $body$ select 1 $body$ SECURITY DEFINER SET statement_timeout = $body$0$body$;",
       "CREATE TRIGGER bad BEFORE INSERT ON public.subscription_cycles FOR EACH ROW EXECUTE FUNCTION public.existing();",
       "CREATE TRIGGER bad BEFORE INSERT ON app.existing FOR EACH ROW EXECUTE FUNCTION public.commerce_fulfillment_provider_command_guard();",
       "CREATE INDEX bad ON public.subscription_cycles (id);",
@@ -1503,6 +1534,9 @@ describe("expand-only platform SQL admission", () => {
     "ALTER TABLE public.example RENAME TO other;", "ALTER TABLE public.example SET SCHEMA other;",
     "ALTER TABLE public.example OWNER TO other;", "dRoP/**/TABLE public.example;",
     "CREATE TABLE app.example (id int);", 'CREATE TABLE "app".example (id int);',
+    "CREATE TABLE public.example (id int) INHERITS (public.commerce_settings);",
+    "CREATE TABLE public.example (id int CHECK (id > 0));",
+    "CREATE TABLE public.example (id uuid REFERENCES public.commerce_settings(id) ON DELETE SET NULL);",
     "DO $$ BEGIN EXECUTE 'DROP TABLE public.example'; END $$;",
     "CREATE OR REPLACE FUNCTION public.example() RETURNS void AS $$ DROP TABLE public.example; $$ LANGUAGE sql;",
     "INSERT INTO public.example (id) SELECT destructive_function() ON CONFLICT DO NOTHING;",

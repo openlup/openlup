@@ -247,9 +247,24 @@ the statement classifier does not establish their behavioral correctness.
 Functions use SQL or `plpgsql` with `search_path = pg_catalog`, default or explicit
 invoker security and the admitted volatility attributes. Trigger functions must
 be created in the same file, accept no arguments and return `trigger`.
+Table and index statements must also pass the expand-only predicate. For these
+pinned new tables it accepts scalar comparison/regex operators, casts, and
+foreign-key `ON DELETE CASCADE` or `ON DELETE SET NULL` actions; inheritance and
+its other refused keywords remain excluded. Outside dollar-quoted bodies,
+backslashes, `E'...'` and `U&` escape strings/identifiers refuse. Standard strings
+and quoted identifiers use doubled quotes; multiline quoted sections and quoted
+identifiers containing `;` or `$` refuse. Nested block comments and named dollar
+tags also refuse: these forms are not needed by the pinned files. Line comments
+end at the next line feed regardless of quotes inside the comment. A function
+body uses `$$` and ends at its first closing `$$`; only whitespace and the
+terminating semicolon may follow.
 New triggers may attach to existing public tables, including
 `commerce_order_holds`, `fulfillment_shipments` and `subscription_cycles`;
 this admits a new trigger attachment, never replacement of an existing trigger.
+The [disposable catalog proof](../../tests/postgres/reviewedPortableCreation.test.ts)
+applies each pinned fixture after its portable prefix and checks invoker security,
+new-object ACL entries, unchanged earlier relation/function definitions and the
+exact explicit trigger attachments with functions created by that file.
 
 Seed `INSERT` is admitted only into a table created in the same pinned file,
 using the existing expand-only predicate: literal-only `VALUES` with
