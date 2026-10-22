@@ -6,6 +6,7 @@ import { dockerAvailable, runPostgresContainer, waitForPostgresTcpReady, type Po
 
 let container: PostgresContainer | undefined;
 let pool: Pool | undefined;
+const boundaryFunction = "a".repeat(63);
 beforeAll(async () => {
   if (!await dockerAvailable()) throw new Error("Expand-only expression conformance requires Docker PostgreSQL");
   container = await runPostgresContainer({ name: `expand-only-expressions-${process.pid}`, password: "synthetic-conformance", image: "postgres:16" });
@@ -15,6 +16,8 @@ beforeAll(async () => {
 afterAll(async () => { await pool?.end(); await container?.remove(); });
 
 it.each([
+  // PostgreSQL keeps NBSP and now in the identifier, then truncates it to 63 bytes.
+  ["DEFAULT identifier boundary at 63 bytes with NBSP", `CREATE TABLE public.example (id int, value text DEFAULT ${boundaryFunction}\u00a0now()); INSERT INTO public.example (id) VALUES (1) ON CONFLICT DO NOTHING;`, "SELECT count(*) = 1 AS observed FROM public.app_call_log"],
   ["INSERT TABLE union before VALUES", "CREATE TABLE public.example (value text); INSERT INTO public.example (value) TABLE public.existing UNION ALL VALUES ('next') ON CONFLICT DO NOTHING;", "SELECT count(*) = 1 AS observed FROM public.example WHERE value = 'prior'"],
   ["INSERT parenthesized TABLE with LIMIT call", "CREATE TABLE public.example (value text); INSERT INTO public.example (value) (TABLE public.existing LIMIT pg_catalog.setval('public.app_sequence', 42)) UNION VALUES ('next') ON CONFLICT DO NOTHING;", "SELECT last_value = 42 AS observed FROM public.app_sequence"],
   ["INSERT quoted on typed literal", 'CREATE TYPE public."on" AS ENUM (\'x\'); CREATE TABLE public.example (a public."on", b bigint); INSERT INTO public.example VALUES ("on" \'x\', pg_catalog.setval(\'public.app_sequence\', 42)) ON CONFLICT DO NOTHING;', "SELECT last_value = 42 AS observed FROM public.app_sequence"],
@@ -44,6 +47,11 @@ it.each([
       REVOKE ALL ON public.existing FROM PUBLIC;
       CREATE SEQUENCE public.app_sequence START WITH 1;
       CREATE TABLE public.app_call_log (value text);
+      CREATE FUNCTION public.${boundaryFunction}() RETURNS text LANGUAGE plpgsql VOLATILE AS $$
+      BEGIN
+        INSERT INTO public.app_call_log VALUES ('recorded');
+        RETURN 'recorded';
+      END $$;
       CREATE FUNCTION public.app_record_call() RETURNS text LANGUAGE plpgsql VOLATILE AS $$
       BEGIN
         INSERT INTO public.app_call_log VALUES ('recorded');

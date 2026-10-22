@@ -1068,6 +1068,10 @@ suffixes are accepted only at verified type positions; array constructors and
 subscripts refuse before element splitting. PG16 witnesses include a quoted
 typed literal before a sequence call, an `if` column with a default call, and
 a domain check inside an array default evaluated by a seed INSERT.
+Expand-only token separators are ASCII space, tab and LF; non-ASCII outside
+single-quoted literals and comments refuses, including in quoted identifiers.
+The PG16 identifier-boundary witness observes a call after a name containing
+non-ASCII bytes is truncated to PostgreSQL's 63-byte identifier limit.
 This database-free comparison does not derive the live object inventory digest.
 The source contract continues to bind the manifest bytes, and the portable
 runner compares `objectInventorySha256` with the selected database catalogue

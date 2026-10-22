@@ -439,7 +439,9 @@ export function isExpandOnlyPlatformForward(sql: string, reviewedCreationTable =
   const tokens: string[] = [];
   for (let index = 0; index < sql.length;) {
     const rest = sql.slice(index);
-    if (/^\s/u.test(rest)) { index++; continue; }
+    // PostgreSQL treats non-ASCII bytes as identifier characters, not separators.
+    if (!reviewedCreationTable && rest.charCodeAt(0) > 0x7f) return false;
+    if ((reviewedCreationTable ? /^\s/u : /^[ \t\n]/u).test(rest)) { index++; continue; }
     if (rest.startsWith("--")) { const end = sql.indexOf("\n", index); index = end < 0 ? sql.length : end; continue; }
     if (rest.startsWith("/*")) {
       let depth = 1; index += 2;
@@ -454,6 +456,7 @@ export function isExpandOnlyPlatformForward(sql: string, reviewedCreationTable =
     if (rest[0] === "'" || rest[0] === '"') {
       const quote = rest[0]; let value = "", closed = false; index++;
       while (index < sql.length) {
+        if (!reviewedCreationTable && quote === '"' && sql.charCodeAt(index) > 0x7f) return false;
         if (sql[index] === "\\") return false; // Refuse escape-string ambiguity.
         if (sql[index] === quote) {
           if (sql[index + 1] === quote) { value += quote; index += 2; continue; }

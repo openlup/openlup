@@ -1489,6 +1489,10 @@ describe("expand-only platform SQL admission", () => {
     ]);
   });
   it.each([
+    ["DEFAULT identifier boundary at 63 bytes with NBSP", `CREATE TABLE public.example (id int, value text DEFAULT ${"a".repeat(63)}\u00a0now()); INSERT INTO public.example (id) VALUES (1) ON CONFLICT DO NOTHING;`],
+    ["NBSP separator", "CREATE\u00a0TABLE public.example (id int);"],
+    ["non-ASCII unquoted identifier", "CREATE TABLE public.examplé (id int);"],
+    ["non-ASCII quoted identifier", 'CREATE TYPE public."examplé" AS ENUM (\'x\');'],
     ["INSERT TABLE union before VALUES", "INSERT INTO public.example (value) TABLE public.existing UNION ALL VALUES ('next') ON CONFLICT DO NOTHING;"],
     ["INSERT parenthesized TABLE with LIMIT call", "INSERT INTO public.example (value) (TABLE public.existing LIMIT pg_catalog.setval('public.app_sequence', 42)) UNION VALUES ('next') ON CONFLICT DO NOTHING;"],
     ["INSERT overriding clause", "INSERT INTO public.example (value) OVERRIDING SYSTEM VALUE VALUES (1) ON CONFLICT DO NOTHING;"],
@@ -1601,6 +1605,9 @@ describe("expand-only platform SQL admission", () => {
     ["schema IF NOT EXISTS", "CREATE SCHEMA IF NOT EXISTS example;"],
     ["schema named if", "CREATE SCHEMA if;"],
     ["sequence without ownership", "CREATE SEQUENCE public.example START WITH 1;"],
+    ["non-ASCII literal", "CREATE TABLE public.example (value text DEFAULT 'café\u00a0text');"],
+    ["non-ASCII line comment", "-- café\u00a0text\nCREATE TABLE public.example (id int);"],
+    ["non-ASCII block comment", "CREATE /* café\u00a0text */ TABLE public.example (id int);"],
     ["ownership words in a literal", "INSERT INTO public.example VALUES ('owned by') ON CONFLICT DO NOTHING;"],
     ...["if", "add", "key", "identity", "include", "nulls", "first", "last", '"asc"', '"desc"', '"using"', "generated"].flatMap((column) => [
       [`CREATE keyword column ${column}`, `CREATE TABLE public.example (${column} numeric(10, 2) DEFAULT pg_catalog.now());`],
