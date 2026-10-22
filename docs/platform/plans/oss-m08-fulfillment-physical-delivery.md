@@ -559,7 +559,7 @@ publication SHA-1s, rather than candidate artifacts:
 | --- | ---: | --- | ---: | ---: |
 | core | 161,706 | `ac58095053ee349a85e151f565dbec6d99ba2b4c` | 167,864 | 17,102 |
 | outbox | 39,494 | `3c84fe085237831c2bebdd88634b282b6bd1c89e` | 38,967 | 13,018 |
-| platform | 1,008,887 | `ba508c97229e4fac836de54ac69a8b15bddb18b0` | 1,183,920 | 48,848 |
+| platform | 1,008,887 | `ba508c97229e4fac836de54ac69a8b15bddb18b0` | 1,183,925 | 48,849 |
 
 All caps remain unchanged; platform docs are below 49,152 B. No package crosses
 the 30% release growth tripwire. These are working-tree artifact measurements
@@ -605,9 +605,8 @@ unselected sibling tests are outside this measurement, not missing M08 proof.
 
 Certification route: Node `24.21.0`, npm `11.19.0`, cached PostgreSQL 16 image
 `sha256:ca0bd484cb98bf4b24eb1010e73fb3fcbd6714d240fbc1a10eea5b7dbecb641d`,
-one Vitest worker, file parallelism off, retries zero. The source is the S1
-working tree on `a2e4163215ec48ad528074c773d558de40d63490`; no executable source
-or test differs from that predecessor. Use `scripts/run-vitest.mjs run` for the
+one Vitest worker, file parallelism off, retries zero. Use
+`scripts/run-vitest.mjs run` for the
 18 platform fulfillment files, five native PostgreSQL fulfillment files,
 `server/runtime/public-reference/m08FulfillmentBinding.test.ts` and
 `src/pages/admin/fulfillmentActionPresentation.test.ts`; use the core config for
@@ -624,7 +623,30 @@ cleanup, transforms and other harness overhead are also charged in the wall
 total; startup logs do not isolate those costs. This local measurement is not a
 hosted median or installation/activation certificate.
 
-Self-retro: direct wrapper invocation lacked npm's local binary PATH and failed
-before collecting tests; use the repository binary PATH with the existing
-wrapper. Working-tree artifact measurement avoids weakening committed-candidate
-gates; no new release or budget mechanism is needed.
+## C4 record: 0.22.0 publication readback
+
+S1 merged as `76926e9f62cba0ef245505130bfca1c861f759c4` (#306). One authorized
+dispatch of `publish-package.yml` (package `all`, version `0.22.0`, target that
+commit) ran as run 39766124457; the owner approved the protected `release`
+environment, and the three `publish-packages.yml` runs completed on 2026-10-22.
+npm `latest` is `0.22.0` for all three packages.
+
+C4 readback on 2026-10-22, against the published packages: **PASS, 4/4**.
+
+- Registry integrity: each downloaded tarball matches its `dist.integrity` and
+  `dist.shasum` — core `e0b7bda6f5a71d443b4b58d51e2c77690f164c9e`, outbox
+  `48d337dba73ea93769280b315eafd0c35a7a3784`, platform
+  `7fab5ed274552359acb565750cc0c85a3c13dc3d`.
+- Content equivalence: the extracted published trees are identical to the
+  cold tarballs witnessed from the release commit (core 224, outbox 41, platform
+  1,645 files). Compressed bytes differ only in DEFLATE encoding; the complete
+  decompressed tar streams, file contents and member metadata are identical.
+- Provenance: SLSA v1 statements bind each tarball to `publish-packages.yml`,
+  the tag `openlup-{core,outbox,platform}-v0.22.0` and `gitCommit`
+  `76926e9f62cba0ef245505130bfca1c861f759c4`; each remote tag dereferences to
+  that commit.
+- `npm audit signatures`: 4 verified registry signatures and 4 verified
+  attestations.
+
+The M08 release set is published; adopter adoption starts from these versions.
+The known limitations in the `[0.22.0]` notes are unchanged.
