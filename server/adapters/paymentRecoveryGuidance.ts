@@ -1,8 +1,8 @@
 import { z } from "../../src/lib/validation/zod.js";
 import type { PaymentRecoveryEvidence } from "@openlup/core/payment";
 import type { PaymentFailureEvidence } from "./paymentFailureEvidence.js";
-import { normalizeStripeFailureEvidence } from "./stripe/stripeFailureEvidence.js";
-import { normalizeTpayFailureEvidence } from "./tpay/tpayFailureEvidence.js";
+import { normalizeStripeFailureEvidence } from "@openlup/platform/payments/stripe";
+import { normalizeTpayFailureEvidence } from "@openlup/platform/payments/tpay";
 
 const token = z.string().regex(/^[a-zA-Z0-9_:.-]{1,96}$/);
 const evidenceSchema = z.object({

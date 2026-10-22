@@ -127,6 +127,28 @@ it("keeps the second payment adapter and its market token within the approved al
     expect(allowedPaymentAdapterWords(path, vendor, category)).toBe(1);
     expect(allowedPaymentAdapterWords(path, currency, "ui-5")).toBe(0);
   }
+  const reportPath = `packages/platform/api/payments-${vendor}.api.md`;
+  const declaration = `    currency: "${currency}";`;
+  for (const [path, contents, allowed, remaining] of [
+    [reportPath, declaration, 1, 0],
+    [reportPath, `${declaration}\n    otherCurrency: "${currency}";`, 1, 1],
+    [reportPath, `    otherCurrency: "${currency}";`, 0, 1],
+    [reportPath, ` ${declaration}`, 0, 1],
+    [reportPath, `${declaration} // other`, 0, 1],
+    [reportPath, declaration.replace(";", ""), 0, 1],
+    [`packages/platform/api/payments-${["str", "ipe"].join("")}.api.md`, declaration, 0, 1],
+    ["packages/platform/api/other.api.md", declaration, 0, 1],
+    [`packages/platform/payments-${vendor}.api.md`, declaration, 0, 1],
+    ["packages/platform/README.md", declaration, 0, 1],
+  ] as const) {
+    const measured = JSON.parse(execFileSync(process.execPath, ["--experimental-strip-types", "packages/ui/smoke/neutrality.ts", "--counts-json"], {
+      input: JSON.stringify([{ path, contents }]), encoding: "utf8",
+    })).counts[0].counts["ui-5"];
+    expect(allowedPaymentAdapterWords(path, contents, "ui-5")).toBe(allowed);
+    expect(measured - allowed).toBe(remaining);
+    expect(neutralityIncreases({}, { [path]: { "ui-5": measured - allowed } }))
+      .toHaveLength(remaining === 0 ? 0 : 1);
+  }
   const outside = ["packages/platform/src/payments/index.ts", `packages/platform/src/payments/${vendor}-other/index.ts`,
     "packages/platform/README.md", "packages/platform/package.json", "packages/platform/changes/a-two.md",
     ...["src", "test"].map(root => `packages/platform/${root}/payments/${["str", "ipe"].join("")}/index.ts`)];

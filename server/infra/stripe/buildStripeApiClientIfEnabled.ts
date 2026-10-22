@@ -1,6 +1,7 @@
 import { createStripeApiClient } from "./stripeApiClient.js";
 import { assertStripeKeyMode } from "../providerReadiness.js";
-import type { StripeSandboxClient } from "../../adapters/stripe/stripeSandboxPaymentExecutionAdapter.js";
+import { createStripeSandboxPaymentExecutionAdapter } from "@openlup/platform/payments/stripe";
+type StripeSandboxClient = Parameters<typeof createStripeSandboxPaymentExecutionAdapter>[0]["client"];
 
 /**
  * Wave D-4a — returns a Stripe API client when `STRIPE_PROVIDER_ENABLED=true`

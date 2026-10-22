@@ -1,6 +1,7 @@
 import { evidencePayload } from "../../../domains/payment/paymentProviderReconciliationEvidence.js";
-import { normalizeStripeIntent } from "../../stripe/stripePaymentReconciliationProvider.js";
-import { stripeFailureEvidence } from "../../stripe/stripeFailureEvidence.js";
+import { createStripePaymentReconciliationProvider, mapStripeIntent } from "@openlup/platform/payments/stripe";
+const normalizeStripeIntent = (intent: ReturnType<typeof mapStripeIntent>) =>
+  createStripePaymentReconciliationProvider({ retrievePaymentIntent: async () => intent }).readPayment({ providerPaymentId: intent.id });
 import { createPaymentRecoveryEvidenceNormalizer } from "../../paymentRecoveryGuidance.js";
 import { describe, expect, it, vi } from "vitest";
 import type { PaymentRecoveryEvidence } from "@openlup/core/payment";
@@ -151,8 +152,7 @@ it("projects actual reconciliation producer evidence from providerPayload, inclu
   const providerObject = { id: "payment-1", status: "requires_payment_method", latest_charge: "charge-1",
     last_payment_error: { type: "card_error", code: "card_declined", decline_code: "insufficient_funds",
       payment_method: { type: "card" } } };
-  const status = normalizeStripeIntent({ ...providerObject,
-    diagnosticFailureEvidence: stripeFailureEvidence(providerObject, { source: "readback" })! });
+  const status = await normalizeStripeIntent(mapStripeIntent(providerObject));
   const stored = evidencePayload(attempt, status, { applied: false });
   expect(stored).not.toHaveProperty("failureEvidence");
   expect(stored).toMatchObject({ normalizedStatus: "failed", providerPayload: { failureEvidence: {

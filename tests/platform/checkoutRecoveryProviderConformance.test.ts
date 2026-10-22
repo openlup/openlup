@@ -1,12 +1,12 @@
 import { buildStartedRuntimeResponse } from "../../server/domains/commerce/commerceRuntimeStartResponse.js";
-import { declineFromError, declinedExecutionFacts } from "../../server/adapters/stripe/executionDecline.js";
+import { createStripeSandboxPaymentExecutionAdapter } from "@openlup/platform/payments/stripe";
 import { createCommerceCheckoutHandler } from "../../server/domains/commerce/commerceCheckoutHandler.js";
 import { CLIENT_ID, ORDER_ID, PAYMENT_INTENT_ID, PET_ID, createPorts, createResponse, intent, request } from "../../server/domains/commerce/commerceCheckoutHandler.testFixtures.js";
 import { describe, expect, it, vi } from "vitest";
 import { derivePaymentRecoveryGuidance, type PaymentRecoveryEvidence } from "@openlup/core/payment";
 import { createPaymentRecoveryEvidenceNormalizer } from "../../server/adapters/paymentRecoveryGuidance.js";
-import { stripeFailureEvidence, normalizeStripeFailureEvidence } from "../../server/adapters/stripe/stripeFailureEvidence.js";
-import { tpayFailureEvidence, normalizeTpayFailureEvidence } from "../../server/adapters/tpay/tpayFailureEvidence.js";
+import { mapStripeIntent, normalizeStripeFailureEvidence } from "@openlup/platform/payments/stripe";
+import { createTpayPaymentExecutionAdapter, createTpayPaymentReconciliationProvider, normalizeTpayFailureEvidence, tpayPaymentCapabilities } from "@openlup/platform/payments/tpay";
 
 import { readAuthorizedPaymentRecovery } from "../../server/domains/commerce/paymentRecoveryGuidanceAuthorization.js";
 import { displayReasonFor } from "../../server/adapters/paymentFailureDisplay.js";
@@ -14,31 +14,51 @@ import { createCheckoutPaymentContinuationCodec } from "../../server/domains/com
 import { hasCheckoutRecoveryCopy, presentCheckoutRecoveryGuidance } from "../../src/checkout/machine/checkoutRecoveryGuidance.js";
 
 const blik = { kind: "blik", recoveryMethodKey: "blik", interaction: "new_instrument" as const };
-const stripe = (recurring: boolean) => stripeFailureEvidence({ id: "pi_test", status: "requires_payment_method",
+const cardEvidence = (recurring: boolean) => {
+  const providerObject = { id: "pi_test", status: "requires_payment_method",
   setup_future_usage: recurring ? "off_session" : null, metadata: { providerFlow: "one_time_payment" },
   payment_method: { id: "pm_code", type: "blik" },
   last_payment_error: { code: "card_declined", payment_method: { id: "pm_code", type: "blik" } },
-}, { source: "readback", confirmedFailureEvent: true })!;
-const tpay = (recurring: boolean) => tpayFailureEvidence({ source: "execution", providerPaymentId: "tx_test",
-  refusalVerified: true, flow: recurring ? "blik_recurring_activation" : "blik_one_time",
-  observation: { disposition: "present", code: "63" } });
+};
+  return mapStripeIntent(providerObject).diagnosticFailureEvidence!;
+};
+const codeEvidence = async (recurring: boolean) => {
+  const client = { createTransaction: async () => ({ transactionId: "tx_test", title: "tx_test", status: "pending",
+    transactionPaymentUrl: null, requestId: null, errors: [{ errorCode: "payment_failed", errorMessage: "", fieldName: null }], payIdEligible: null }),
+    getTransaction: async () => ({ transactionId: "tx_test", title: "tx_test", status: "pending", amount: null,
+      currency: null, transactionPaymentUrl: null, requestId: null, payments: { attempts: [{ paymentErrorCode: "63" }] } }),
+    listPaymentChannels: async () => [],
+  };
+  const result = await createTpayPaymentExecutionAdapter({ client, notificationUrl: "https://example.test/notify",
+    successUrl: "https://example.test/success", errorUrl: "https://example.test/error", modelOActivationEnabled: true })
+    .execute({ idempotencyKey: "test", providerIdempotencyKey: "provider-test", providerRequestFingerprint: "fingerprint", paymentIntentId: "intent", amountMinor: 1000, currency: tpayPaymentCapabilities.supportedCurrencies[0]!, mode: recurring ? "subscription_cycle" : "one_time", saveForFutureUse: recurring, orderRef: "order",
+      payer: { email: "fixture@example.test", name: "Customer" },
+      transientProviderInput: { provider: "tpay", flow: recurring ? "blik_recurring_activation" : "blik_one_time", blikToken: "123456", recurringModel: "O" } });
+  return result.responsePayload.failureEvidence as Parameters<typeof normalizeTpayFailureEvidence>[0];
+};
+const tpayReadback = async () => {
+  const result = await createTpayPaymentReconciliationProvider({ getTransaction: async () => ({ transactionId: "tx_test", title: "tx_test",
+    status: "pending", amount: null, currency: null, transactionPaymentUrl: null, requestId: null,
+    payments: { attempts: [{ paymentErrorCode: "63" }] } }) }).readPayment({ providerPaymentId: "tx_test" });
+  return result.rawPayload.failureEvidence as Parameters<typeof normalizeTpayFailureEvidence>[0];
+};
 const project = (evidence: PaymentRecoveryEvidence, previous = evidence) => derivePaymentRecoveryGuidance({
   paymentState: "failed", activeAttemptId: "current", historyComplete: true,
   attempts: [{ id: "current", status: "failed", evidence }, { id: "previous", status: "failed", evidence: previous }],
 });
 
 describe("portable checkout recovery adapter conformance", () => {
-  it("maps actual Stripe and Tpay BLIK facts into one recurring-setup meaning", () => {
-    const a = normalizeStripeFailureEvidence(stripe(true));
-    const b = normalizeTpayFailureEvidence(tpay(true));
+  it("maps actual Stripe and Tpay BLIK facts into one recurring-setup meaning", async () => {
+    const a = normalizeStripeFailureEvidence(cardEvidence(true));
+    const b = normalizeTpayFailureEvidence(await codeEvidence(true));
     expect(a).toEqual(b);
     // The operation is shared; neither adapter reads a refused agreement from it.
     expect(a).toMatchObject({ cause: "generic_decline", method: blik, operation: "recurring_setup" });
     expect(project(a)).toEqual(project(b));
   });
-  it("does not confuse ordinary BLIK with recurring registration", () => {
-    const a = normalizeStripeFailureEvidence(stripe(false));
-    const b = normalizeTpayFailureEvidence(tpay(false));
+  it("does not confuse ordinary BLIK with recurring registration", async () => {
+    const a = normalizeStripeFailureEvidence(cardEvidence(false));
+    const b = normalizeTpayFailureEvidence(await codeEvidence(false));
     expect(a).toEqual(b);
     expect(project(a, b)).toMatchObject({ cause: "generic_decline", consecutiveRefusals: 2 });
   });
@@ -50,9 +70,8 @@ describe("portable checkout recovery adapter conformance", () => {
     expect(getResource).toHaveBeenCalledWith("pl", "checkout", "recoveryGuidance.messages.c01");
   });
   it.each([false, true])("keeps a card alternative through actual recurring refusal and context-free readback (reverse=%s)", async (reverse) => {
-    const execution = tpay(true);
-    const readback = tpayFailureEvidence({ source: "readback", providerPaymentId: "tx_test",
-      refusalVerified: true, flow: null, observation: { disposition: "present", code: "63" } });
+    const execution = await codeEvidence(true);
+    const readback = await tpayReadback();
     const observations = reverse ? [readback, execution] : [execution, readback];
     const evidence = createPaymentRecoveryEvidenceNormalizer()({ provider: "tpay", evidence: observations });
     // The cause remains conservative: retaining method context must not invent C07 certainty.
@@ -91,9 +110,8 @@ describe("portable checkout recovery adapter conformance", () => {
       actions: [{ kind: "change_instrument", method: "blik" }] });
   });
   it("preserves exact unsupported recurring guidance when normalized evidence has no advice", async () => {
-    const execution = tpay(true);
-    const readback = tpayFailureEvidence({ source: "readback", providerPaymentId: "tx_test",
-      refusalVerified: true, flow: null, observation: { disposition: "present", code: "63" } });
+    const execution = await codeEvidence(true);
+    const readback = await tpayReadback();
     const evidence = createPaymentRecoveryEvidenceNormalizer()({ provider: "tpay", evidence: [execution, readback] });
     expect(evidence).toMatchObject({ cause: "generic_decline", certainty: "unknown", method: blik,
       operation: "recurring_setup", advice: null });
@@ -127,18 +145,18 @@ describe("portable checkout recovery adapter conformance", () => {
     ] })).toMatchObject({ messageKey: "checkout:recoveryGuidance.messages.c07",
       actions: [{ kind: "change_method", method: "card" }] });
   });
-  it("allows a synthetic third adapter without kernel or locale edits", () => {
+  it("allows a synthetic third adapter without kernel or locale edits", async () => {
     const normalize = createPaymentRecoveryEvidenceNormalizer([{ provider: "example_operator", normalize: (native) => ({
       refusalVerified: native.refusalVerified, cause: native.code === "E_AGREEMENT" ? "recurring_setup_failed" : "generic_decline",
       certainty: native.code === "E_AGREEMENT" ? "verified" : "unknown", disclosure: "safe",
       method: blik, operation: native.operation, advice: null,
     }) }]);
-    const third = normalize({ provider: "example_operator", evidence: [{ ...tpay(true), code: "E_AGREEMENT", declineCode: null }] })!;
+    const third = normalize({ provider: "example_operator", evidence: [{ ...await codeEvidence(true), code: "E_AGREEMENT", declineCode: null }] })!;
     // An adapter that actually proves a refused agreement may still name the setup cause.
     expect(third).toEqual({ refusalVerified: true, cause: "recurring_setup_failed", certainty: "verified",
       disclosure: "safe", method: blik, operation: "recurring_setup", advice: null });
     expect(project(third)).toMatchObject({ cause: "recurring_setup_failed", method: blik, operation: "recurring_setup" });
-    expect(project(normalizeStripeFailureEvidence(stripe(true)))).toEqual(project(normalizeTpayFailureEvidence(tpay(true))));
+    expect(project(normalizeStripeFailureEvidence(cardEvidence(true)))).toEqual(project(normalizeTpayFailureEvidence(await codeEvidence(true))));
   });
 });
 
@@ -147,17 +165,19 @@ describe("portable checkout recovery adapter conformance", () => {
     const ports = createPorts();
     const paymentAttemptId = "66666666-6666-4666-8666-666666666666";
     const paymentId = "77777777-7777-4777-8777-777777777777";
-    const execution = { provider: "stripe" as const, requestPayload: {}, ...declinedExecutionFacts(declineFromError({
-      type: "StripeCardError", code: "card_declined", decline_code: "insufficient_funds",
-      payment_intent: { id: "pi_actual_declined", status: "requires_payment_method" }, payment_method: { type: "card" },
-    })!) };
+    const execution = await createStripeSandboxPaymentExecutionAdapter({ client: {
+      createPaymentIntent: async () => { throw { type: "StripeCardError", code: "card_declined", decline_code: "insufficient_funds",
+        payment_intent: { id: "pi_actual_declined", status: "requires_payment_method" }, payment_method: { type: "card" } }; },
+      createSetupIntent: async () => { throw new Error("unexpected setup"); },
+    } }).execute({ idempotencyKey: "test", providerIdempotencyKey: "provider-test", providerRequestFingerprint: "fingerprint", paymentIntentId: PAYMENT_INTENT_ID, amountMinor: 1000, currency: "EUR",
+      mode: "subscription_cycle", orderRef: "order", providerFlow: "off_session_payment", paymentMethodRef: "method" });
     expect(execution).toMatchObject({ clientSecret: null, providerAttemptId: null,
       responsePayload: { providerAttemptId: "pi_actual_declined", failureEvidence: { providerPaymentId: "pi_actual_declined" } } });
     type Input = Parameters<typeof buildStartedRuntimeResponse>[0];
     const applyResult = vi.fn<Input["paymentPort"]["applyResult"]>(async () => ({ paymentIntentId: PAYMENT_INTENT_ID,
       paymentAttemptId, paymentId, orderId: ORDER_ID, status: "failed", kind: "recoverable_decline", replayed: false }));
     vi.mocked(ports.runtimePort.startRuntime).mockImplementation(async () => buildStartedRuntimeResponse({
-      paymentExecutionIdempotencyKey: "actual-refusal", continuationActionOrigin: "fresh_execution", execution,
+      paymentExecutionIdempotencyKey: "actual-refusal", continuationActionOrigin: "fresh_execution", execution: execution as Input["execution"],
       paymentPort: { applyResult, createIntent: async () => { throw new Error("unexpected new intent"); },
         recordAttempt: async () => { throw new Error("unexpected new attempt"); } },
       readinessPort: { evaluateOrderReadiness: async () => ({ omsEligibility: { allowed: false, reason: "order_not_paid" },

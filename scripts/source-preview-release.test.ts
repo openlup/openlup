@@ -1,7 +1,7 @@
 import { isChangelogFragment } from "./packages/changelog-fragments.ts";
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { chmodSync, cpSync, existsSync, lstatSync, mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, cpSync, existsSync, lstatSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -429,6 +429,184 @@ ${identityPrivileges[3]}
     () => assertAppendOnlyMigrationHistory(sample.repo, sample.approval, head),
     () => assertDescendantSourceRelease(sample.repo, sample.rootCommit, head),
   ];
+  describe("portable reviewed creation", () => {
+    const manifestPath = "config/platform-migration-manifest.json";
+    const portableBaseline = "db/platform/migrations/00000000000000_platform_baseline.sql";
+    const approved = readReviewedForwardRegistry(readFileSync(new URL(`../${REVIEWED_FORWARD_PATH}`, import.meta.url)));
+    const bindings = approved.portableCreationForwards!;
+    // Immutable snapshots let the control PR test the exact future SQL without
+    // introducing it into either installation chain or depending on Git history.
+    const exact = bindings.map(({ path }) => readFileSync(new URL(`./fixtures/${path.split("/").at(-1)}`, import.meta.url), "utf8"));
+    const prior = "CREATE TABLE public.fulfillment_shipments (id uuid);\nCREATE TABLE public.commerce_order_holds (id uuid);\nCREATE TABLE public.subscription_cycles (id uuid);";
+    function creationFixture(contents = exact, repin = false, history = "", historyInForward = false) {
+      const manifest = JSON.parse(SYNTHETIC_TREE[manifestPath]!);
+      const baseline = prior + (historyInForward ? "" : history);
+      manifest.baseline.sha256 = sqlSha256(baseline);
+      const priorPath = "db/platform/migrations/20261022070000_existing.sql";
+      if (historyInForward) manifest.forward.push({ file: priorPath, sha256: sqlSha256(history) });
+      const sample = fixture(undefined, null, false, false, { [portableBaseline]: baseline, [manifestPath]: json(manifest), ...(historyInForward ? { [priorPath]: history } : {}) });
+      sample.registry.portableCreationForwards = structuredClone(bindings);
+      if (repin) sample.registry.portableCreationForwards.forEach((entry, index) => { entry.sha256 = sqlSha256(contents[index]!); });
+      sample.apply({ [REVIEWED_FORWARD_PATH]: json(sample.registry) });
+      sample.approval = sample.commit("Separate portable creation approval");
+      const append = (paths = bindings.map(({ path }) => path)) => {
+        const next = structuredClone(manifest);
+        paths.forEach((path, index) => { next.forward.push({ file: path, sha256: sqlSha256(contents[index]!) }); });
+        sample.apply({ ...Object.fromEntries(paths.map((path, index) => [path, contents[index]!])), [manifestPath]: json(next) });
+      };
+      return { ...sample, append };
+    }
+    it("admits both exact P4 files through CI and release admission, with their actual hashes", () => {
+      const sample = creationFixture();
+      try {
+        exact.forEach((sql, index) => { expect(sqlSha256(sql)).toBe(bindings[index]!.sha256); expect(isExpandOnlyPlatformForward(sql)).toBe(false); });
+        sample.append(); const head = sample.commit("Exact portable creations");
+        for (const gate of gates(sample, head)) expect(gate).not.toThrow();
+      } finally { sample.cleanup(); }
+    });
+    it("admits transaction boundaries and comments only on newly created objects", () => {
+      const contents = [exact[0]! + `
+BEGIN;
+COMMENT ON FUNCTION public.commerce_fulfillment_provider_command_guard() IS 'Guard';
+COMMENT ON INDEX public.idx_fulfillment_provider_commands_claim IS 'Claim index';
+COMMENT ON TRIGGER commerce_fulfillment_provider_command_guard ON public.commerce_fulfillment_provider_commands IS 'Guard trigger';
+COMMIT;
+`, exact[1]!];
+      const sample = creationFixture(contents, true);
+      try {
+        sample.append([bindings[0]!.path]); const head = sample.commit("Creation comments and transaction");
+        for (const gate of gates(sample, head)) expect(gate).not.toThrow();
+      } finally { sample.cleanup(); }
+    });
+    it.each(["byte", "path", "version"])("refuses an unpinned portable creation %s in both gates", (probe) => {
+      const contents = [...exact];
+      if (probe === "byte") contents[0] += " ";
+      const sample = creationFixture(contents);
+      try {
+        const paths = bindings.map(({ path }) => path);
+        if (probe !== "byte") paths[0] = paths[0]!.replace(probe === "path" ? "fulfillment_command_ledger" : "20261022080000", probe === "path" ? "unlisted" : "20261022080001");
+        sample.append(paths); const head = sample.commit("Unpinned portable creation");
+        for (const gate of gates(sample, head)) expect(gate).toThrow(/reviewed replacement path or bytes/u);
+      } finally { sample.cleanup(); }
+    });
+    it("admits doubled standard quotes and backslashes or escape strings inside a dollar body", () => {
+      const contents = [exact[0]! + `
+CREATE TABLE public.zz_quotes (c text DEFAULT 'it''s', "double""quote" text);
+CREATE VIEW public.zz_quotes_view AS SELECT 'it''s';
+CREATE FUNCTION public.zz_body() RETURNS text LANGUAGE sql SET search_path=pg_catalog AS $$ SELECT E'a\\b'; $$;
+`, exact[1]!];
+      const sample = creationFixture(contents, true);
+      try {
+        sample.append(); const head = sample.commit("Standard creation quotes and dollar body");
+        for (const gate of gates(sample, head)) expect(gate).not.toThrow();
+      } finally { sample.cleanup(); }
+    });
+    it.each([
+      ...["PUBLIC", "anon", "authenticated", "service_role"].map((role) => `GRANT SELECT ON public.fulfillment_provider_attempts TO ${role};`),
+      "CREATE OR REPLACE FUNCTION public.existing() RETURNS text LANGUAGE sql AS $$ SELECT 'changed'; $$;",
+      "CREATE OR REPLACE VIEW public.existing AS SELECT 1;",
+      "CREATE OR REPLACE TRIGGER existing BEFORE INSERT ON public.subscription_cycles FOR EACH ROW EXECUTE FUNCTION public.commerce_fulfillment_provider_command_guard();",
+      "ALTER TABLE public.subscription_cycles ADD COLUMN extra text;",
+      "DROP TABLE public.subscription_cycles;",
+      "CREATE TABLE public.zz_t (c text DEFAULT 'a\\'); DROP TABLE public.subscriptions; -- '\nCREATE TABLE public.zz_following (id text);",
+      "CREATE VIEW public.zz_v AS SELECT 'a\\'; GRANT SELECT ON public.subscriptions TO anon; -- '\nCREATE TABLE public.zz_following (id text);",
+      'CREATE VIEW public.zz_v AS SELECT 1 AS "a\\"; GRANT SELECT ON public.subscriptions TO anon; -- "\nCREATE TABLE public.zz_following (id text);',
+      "CREATE VIEW public.zz_v AS SELECT E'one';",
+      "/* outer /* inner */ CREATE VIEW public.zz_v AS SELECT 1; */ GRANT SELECT ON public.subscriptions TO anon;",
+      "CREATE VIEW public.zz_v AS SELECT U&'plain';",
+      'CREATE VIEW public.zz_v AS SELECT 1 AS U&"plain";',
+      'CREATE VIEW public.zz_v AS SELECT 1 AS "a;b";',
+      'CREATE VIEW public.zz_v AS SELECT 1 AS "a$b";',
+      "CREATE VIEW public.zz_v AS SELECT 1 AS x$$; GRANT SELECT ON public.subscriptions TO anon; SELECT 1 AS y$$;",
+      "CREATE VIEW public.zz_v AS SELECT 1 AS x$$; DROP TABLE public.subscriptions; CREATE VIEW public.zz_w AS SELECT 1 AS y$$;",
+      ...["x$1", "x$$", "_$$", "x0$$", "é$$", "é", '"é"', "1\u00a0", "1\ufeff"].map((alias) => `CREATE VIEW public.zz_v AS SELECT 1 AS ${alias};`),
+      "CREATE VIEW public.zz_v AS SELECT $$one$$;",
+      "CREATE VIEW public.zz_v AS SELECT $1;",
+      "CREATE VIEW public.zz_v AS SELECT 'unterminated;",
+      'CREATE VIEW public.zz_v AS SELECT 1 AS "unterminated;',
+      "CREATE VIEW public.zz_v AS SELECT 1",
+      "CREATE VIEW public.zz_v AS SELECT 1; GRANT SELECT ON public.subscriptions TO anon;",
+      "CREATE FUNCTION public.zz_named() RETURNS text LANGUAGE sql SET search_path=pg_catalog AS $fn$ SELECT 'one'; $fn$;",
+      "CREATE FUNCTION public.zz_different() RETURNS text LANGUAGE sql SET search_path=pg_catalog AS $fn$ SELECT $$one$$; $fn$; GRANT SELECT ON public.subscriptions TO anon;",
+      "CREATE VIEW public.zz_v AS SELECT -- 'misleading opening\n'line one\nline two'; GRANT SELECT ON public.subscriptions TO anon;",
+      'CREATE VIEW public.zz_v AS SELECT 1 AS -- "misleading opening\n"line one\nline two"; GRANT SELECT ON public.subscriptions TO anon;',
+      "CREATE TABLE public.zz_t (id text) INHERITS (public.commerce_settings);",
+      "CREATE TABLE public.zz_t (id integer DEFAULT (SELECT 1));",
+      "CREATE TABLE public.zz_t (id integer); DELETE FROM public.subscriptions;",
+      "CREATE INDEX zz_idx ON public.fulfillment_provider_attempts (id) INCLUDE (id) TABLESPACE app;",
+      "CREATE FUNCTION public.bad() RETURNS text LANGUAGE sql SECURITY DEFINER SET search_path=pg_catalog AS $$ SELECT 'bad'; $$;",
+      "CREATE FUNCTION public.bad() RETURNS text LANGUAGE sql SET search_path=pg_catalog AS $$ SELECT 'bad'; $$ SECURITY DEFINER;",
+      "CREATE FUNCTION public.bad() RETURNS text LANGUAGE sql SET search_path=pg_catalog AS $$ select 1 $$ SECURITY DEFINER SET statement_timeout = $$0$$;",
+      "CREATE FUNCTION public.bad() RETURNS text LANGUAGE sql SET search_path=pg_catalog AS $body$ select 1 $body$ SECURITY DEFINER SET statement_timeout = $body$0$body$;",
+      "CREATE TRIGGER bad BEFORE INSERT ON public.subscription_cycles FOR EACH ROW EXECUTE FUNCTION public.existing();",
+      "CREATE TRIGGER bad BEFORE INSERT ON app.existing FOR EACH ROW EXECUTE FUNCTION public.commerce_fulfillment_provider_command_guard();",
+      "CREATE INDEX bad ON public.subscription_cycles (id);",
+      "CREATE TABLE app.bad (id uuid);",
+      "CREATE TABLE public.subscription_cycles (id uuid);",
+      "REVOKE ALL ON public.subscription_cycles FROM PUBLIC, anon, authenticated;",
+      "REVOKE ALL ON FUNCTION public.existing() FROM PUBLIC;",
+      "REVOKE ALL ON public.fulfillment_provider_attempts FROM service_role;",
+      "COMMENT ON TABLE public.subscription_cycles IS 'unrelated';",
+      "COMMENT ON FUNCTION public.existing() IS 'unrelated';",
+      "INSERT INTO public.subscription_cycles (id) VALUES ('existing') ON CONFLICT DO NOTHING;",
+      "INSERT INTO public.fulfillment_provider_attempts (id) SELECT id FROM public.subscription_cycles ON CONFLICT DO NOTHING;",
+      "INSERT INTO public.fulfillment_provider_attempts (id) VALUES ('new') ON CONFLICT (id) DO UPDATE SET id = 'changed';",
+      "DELETE FROM public.fulfillment_provider_attempts;",
+      "DO $$ BEGIN NULL; END $$;",
+      "CREATE SCHEMA extra;",
+      "BEGIN;\r\nCOMMIT;",
+      "-- control\u0001\n",
+      "/* unterminated",
+      "CREATE FUNCTION public.bad() RETURNS text LANGUAGE sql AS $$ unterminated",
+    ])("refuses independently repinned creation statements in both gates: %s", (addition) => {
+      const contents = [exact[0]! + "\n" + addition, exact[1]!];
+      const sample = creationFixture(contents, true);
+      try {
+        sample.append(); const head = sample.commit("Repinned unsupported creation");
+        for (const gate of gates(sample, head)) expect(gate).toThrow(/reviewed portable creation|reviewed replacement|control characters/u);
+      } finally { sample.cleanup(); }
+    });
+    it.each([false, true].flatMap((inForward) => [
+      "CREATE FUNCTION public.commerce_fulfillment_provider_command_guard() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NEW; END $$;",
+      "CREATE TABLE public.fulfillment_provider_attempts (id uuid);",
+      "CREATE TRIGGER commerce_fulfillment_provider_command_guard BEFORE UPDATE ON public.fulfillment_shipments FOR EACH ROW EXECUTE FUNCTION public.existing();",
+    ].map((history) => [inForward, "\n" + history] as const)))("refuses existing objects from the preceding chain (forward: %s): %s", (inForward, history) => {
+      const sample = creationFixture(exact, false, history, inForward);
+      try {
+        sample.append(); const head = sample.commit("Existing portable function name");
+        for (const gate of gates(sample, head)) expect(gate).toThrow(/pre-existing or duplicate object/u);
+      } finally { sample.cleanup(); }
+    });
+    it.each(["simultaneous", "late", "changed"])("refuses %s portable creation approval", (timing) => {
+      const sample = creationFixture();
+      try {
+        if (timing !== "changed") {
+          sample.apply({ [REVIEWED_FORWARD_PATH]: json({ ...sample.registry, portableCreationForwards: undefined }) });
+          sample.approval = sample.commit("Before creation approval");
+        }
+        sample.append();
+        if (timing === "simultaneous") sample.apply({ [REVIEWED_FORWARD_PATH]: json(sample.registry) });
+        let head = sample.commit("Creation introduction");
+        if (timing !== "simultaneous") {
+          if (timing === "changed") sample.registry.portableCreationForwards![0]!.sha256 = "1".repeat(64);
+          sample.apply({ [REVIEWED_FORWARD_PATH]: json(sample.registry) });
+          head = sample.commit("Creation approval after introduction");
+        }
+        for (const gate of gates(sample, head)) expect(gate).toThrow(/approved separately/u);
+      } finally { sample.cleanup(); }
+    });
+    it.each(["missing", "extra", "duplicate", "path", "hash", "fields", "replacement overlap"])("refuses malformed portable creation registry: %s", (probe) => {
+      const registry = structuredClone(approved), entries = registry.portableCreationForwards!;
+      if (probe === "missing") entries.pop();
+      else if (probe === "extra") entries.push(structuredClone(entries[0]!));
+      else if (probe === "duplicate") entries[1] = structuredClone(entries[0]!);
+      else if (probe === "path") entries[0]!.path = "db/platform/migrations/20261022080000_unlisted.sql";
+      else if (probe === "hash") entries[0]!.sha256 = "invalid";
+      else if (probe === "fields") Object.assign(entries[0]!, { functions: [] });
+      else registry.portableReplacementForwards![0]!.path = entries[0]!.path;
+      expect(() => readReviewedForwardRegistry(Buffer.from(json(registry)))).toThrow(/reviewed portable creation/u);
+    });
+  });
   describe("portable reviewed replacement", () => {
     const path = "db/platform/migrations/20261021120000_dunning_lifecycle_active_repair.sql";
     const priorPath = "db/platform/migrations/20260815090000_dunning_lifecycle_state.sql";
@@ -1300,6 +1478,164 @@ describe("descendant source release check", () => {
 });
 
 describe("expand-only platform SQL admission", () => {
+  it("preserves the admitted set over every real portable forward", () => {
+    const directory = fileURLToPath(new URL("../db/platform/migrations/", import.meta.url));
+    expect(readdirSync(directory).sort().filter((file) => isExpandOnlyPlatformForward(readFileSync(join(directory, file), "utf8")))).toEqual([
+      "20261018120000_identity_operator_invitations.sql",
+      "20261018180000_identity_operator_challenges.sql",
+      "20261018190000_identity_privacy_erasures.sql",
+      "20261019200000_communications_native_operations.sql",
+      "20261021200000_shipping_flat_rate_seed.sql",
+    ]);
+  });
+  it.each([
+    ["DEFAULT identifier boundary at 63 bytes with NBSP", `CREATE TABLE public.example (id int, value text DEFAULT ${"a".repeat(63)}\u00a0now()); INSERT INTO public.example (id) VALUES (1) ON CONFLICT DO NOTHING;`],
+    ["NBSP separator", "CREATE\u00a0TABLE public.example (id int);"],
+    ["non-ASCII unquoted identifier", "CREATE TABLE public.examplé (id int);"],
+    ["non-ASCII quoted identifier", 'CREATE TYPE public."examplé" AS ENUM (\'x\');'],
+    ["INSERT TABLE union before VALUES", "INSERT INTO public.example (value) TABLE public.existing UNION ALL VALUES ('next') ON CONFLICT DO NOTHING;"],
+    ["INSERT parenthesized TABLE with LIMIT call", "INSERT INTO public.example (value) (TABLE public.existing LIMIT pg_catalog.setval('public.app_sequence', 42)) UNION VALUES ('next') ON CONFLICT DO NOTHING;"],
+    ["INSERT overriding clause", "INSERT INTO public.example (value) OVERRIDING SYSTEM VALUE VALUES (1) ON CONFLICT DO NOTHING;"],
+    ["INSERT default values", "INSERT INTO public.example (value) DEFAULT VALUES ON CONFLICT DO NOTHING;"],
+    ["INSERT column expression", "INSERT INTO public.example (value + 1) VALUES (1) ON CONFLICT DO NOTHING;"],
+    ["INSERT quoted on typed literal", 'INSERT INTO public.example VALUES ("on" \'x\', pg_catalog.setval(\'public.app_sequence\', 42)) ON CONFLICT DO NOTHING;'],
+    ["INSERT quoted true call", 'INSERT INTO public.example VALUES ("true"(1)) ON CONFLICT DO NOTHING;'],
+    ["INSERT quoted null", 'INSERT INTO public.example VALUES ("null") ON CONFLICT DO NOTHING;'],
+    ["INSERT quoted values column", 'INSERT INTO public.example ("values") VALUES (1) ON CONFLICT DO NOTHING;'],
+    ["INSERT quoted values target", 'INSERT INTO public."values" VALUES (1) ON CONFLICT DO NOTHING;'],
+    ["quoted statement delimiter column", 'CREATE TABLE public.example (";" int);'],
+    ["schema named alter", "CREATE SCHEMA alter;"],
+    ["schema IF NOT EXISTS alter", "CREATE SCHEMA IF NOT EXISTS alter;"],
+    ["schema quoted create", 'CREATE SCHEMA "create";'],
+    ["INSERT quoted conflict keywords", 'INSERT INTO t VALUES (1) ON CONFLICT "do" "nothing";'],
+    ["INSERT quoted constraint keyword", 'INSERT INTO t VALUES (1) ON CONFLICT ON "constraint" c DO NOTHING;'],
+    ["INSERT quoted column punctuation", 'INSERT INTO t "(" a ")" VALUES (1) ON CONFLICT DO NOTHING;'],
+    ["ARRAY domain call with seed", "CREATE TABLE public.example (id int, a boolean[] DEFAULT ARRAY[true, NOT public.app_domain 't']); INSERT INTO public.example (id) VALUES (1) ON CONFLICT DO NOTHING;"],
+    ["ARRAY CASE typed literal", "CREATE TABLE public.example (id int, a text[] DEFAULT ARRAY['x', CASE public.app_text 'x' WHEN 'x' THEN 'y' END]);"],
+    ...["varchar(1)", "pg_catalog.varchar(1)"].map((call) => [`ARRAY CASE ${call}`, `CREATE TABLE public.example (a text[] DEFAULT ARRAY['x', CASE ${call} WHEN 'x' THEN 'y' END]);`]),
+    ...[
+      "CREATE INDEX example_value ON public.existing ((ARRAY[1, 2]));",
+      "ALTER TABLE public.existing ADD a boolean[] DEFAULT ARRAY[true, NOT public.app_domain 't'];",
+      "CREATE TABLE public.example AS VALUES (ARRAY[1, 2]);",
+      "CREATE TABLE public.example (a numeric(ARRAY[1, 2]));",
+      "CREATE TABLE public.example (a text DEFAULT CAST(ARRAY['x', 'y'] AS text[]));",
+      "CREATE TABLE public.example (a int DEFAULT value[]);",
+      "CREATE SEQUENCE public.example START WITH ARRAY[1, 2];",
+      "CREATE TYPE public.example AS (a int[]);",
+      "CREATE TABLE public.example (a int[);",
+      "CREATE TABLE public.example (a int]);",
+      "CREATE TABLE public.example (a int DEFAULT ARRAY[(1, 2)]);",
+      "CREATE INDEX example_value ON public.existing (a) WITH (fillfactor = ARRAY[1, 2]);",
+    ].map((sql) => ["brackets outside empty type suffix", sql]),
+    ["CREATE SCHEMA GRANT element", "CREATE SCHEMA example GRANT ALL ON public.existing TO PUBLIC;"],
+    ["CREATE SCHEMA TABLE element", "CREATE SCHEMA example CREATE TABLE added (id int);"],
+    ["sequence column ownership", "CREATE SEQUENCE public.example OWNED BY public.existing.value;"],
+    ["ownership outside sequence", "CREATE TABLE public.example (value int) OWNED BY public.existing.value;"],
+    ...["if", "add"].flatMap((column) => ["public.now()", "extensions.gen_random_uuid()", "public.app_num '1'", "- public.now()"].flatMap((expression) => [
+      [`CREATE ${column} column DEFAULT ${expression}`, `CREATE TABLE public.example (id int, ${column} double precision DEFAULT ${expression});`],
+      [`ALTER ${column} column DEFAULT ${expression}`, `ALTER TABLE public.existing ADD COLUMN ${column} double precision DEFAULT ${expression};`],
+      [`ALTER ${column} without COLUMN DEFAULT ${expression}`, `ALTER TABLE public.existing ADD ${column} double precision DEFAULT ${expression};`],
+    ])),
+    ["CREATE if integer column DEFAULT", "CREATE TABLE public.example (if int DEFAULT - public.now());"],
+    ["index named if unqualified target expression", "CREATE INDEX if ON existing (public.now());"],
+    ["index named if expression", "CREATE INDEX if ON public.existing (public.now());"],
+    ["table named if expression", "CREATE TABLE if (value double precision DEFAULT public.now());"],
+    ["ALTER table named add expression", "ALTER TABLE add ADD if double precision DEFAULT public.now();"],
+    ["ALTER table named add", "ALTER TABLE add ADD if numeric(10, 2);"],
+    ["ALTER quoted table named add", 'ALTER TABLE "add" ADD COLUMN x int;'],
+    ["ALTER quoted closing parenthesis column", 'ALTER TABLE public.existing ADD COLUMN ")" int;'],
+    ["ALTER quoted comma column", 'ALTER TABLE public.existing ADD COLUMN "," int;'],
+    ["DEFAULT call with seed INSERT", "CREATE TABLE public.example (id int, value text DEFAULT public.app_record_call()); INSERT INTO public.example (id) VALUES (1) ON CONFLICT DO NOTHING;"],
+    ["CHECK call with seed INSERT", "CREATE TABLE public.example (value text CHECK (public.app_record_call() = 'recorded')); INSERT INTO public.example (value) VALUES ('recorded') ON CONFLICT DO NOTHING;"],
+    ["CTAS VALUES call", "CREATE TABLE public.example AS VALUES (public.app_record_call());"],
+    ["CTAS VALUES sequence call", "CREATE TABLE public.example AS VALUES (pg_catalog.setval('public.app_sequence', 42));"],
+    ["CTAS VALUES setting call", "CREATE TABLE public.example AS VALUES (pg_catalog.set_config('app.admission', 'changed', true));"],
+    ["CTAS parenthesized VALUES", "CREATE TABLE public.example AS (VALUES (1));"],
+    ["CTAS TABLE copy", "CREATE TABLE public.example AS TABLE public.existing;"],
+    ["CTAS parenthesized TABLE copy", "CREATE TABLE public.example AS (TABLE public.existing);"],
+    ["CTAS SELECT", "CREATE TABLE public.example AS SELECT 1;"],
+    ["CTAS named columns with unqualified TABLE", "CREATE TABLE public.example (value) AS TABLE existing;"],
+    ["CTAS named columns", "CREATE TABLE public.example (value) AS VALUES (1);"],
+    ["index key expression call", "CREATE INDEX example_value ON public.existing (public.app_record_call());"],
+    ["parenthesized index expression call", "CREATE INDEX example_value ON public.existing ((public.app_record_call()));"],
+    ["index WHERE call", "CREATE INDEX example_value ON public.existing (value) WHERE public.app_record_call() = 'recorded';"],
+    ["generated column call", "CREATE TABLE public.example (value text GENERATED ALWAYS AS (public.app_record_call()) STORED);"],
+    ["ALTER ADD COLUMN DEFAULT call", "ALTER TABLE public.existing ADD COLUMN value text DEFAULT public.app_record_call();"],
+    ["ALTER ADD DEFAULT call without COLUMN", "ALTER TABLE public.existing ADD value text DEFAULT public.app_record_call();"],
+    ["ALTER ADD CONSTRAINT CHECK call", "ALTER TABLE public.existing ADD CONSTRAINT example_check CHECK (public.app_record_call() = 'recorded');"],
+    ["ALTER ADD CHECK call", "ALTER TABLE public.existing ADD CHECK (public.app_record_call() = 'recorded');"],
+    ["ALTER SET DEFAULT", "ALTER TABLE public.existing ALTER COLUMN value SET DEFAULT now();"],
+    ["PARTITION OF", "CREATE TABLE public.example PARTITION OF public.existing FOR VALUES IN (1);"],
+    ["LIKE element", "CREATE TABLE public.example (LIKE public.existing INCLUDING ALL);"],
+    ["LIKE operator", "CREATE TABLE public.example (value text CHECK (value LIKE 'a%'));"],
+    ["OPERATOR reference", "CREATE TABLE public.example (value integer CHECK (value OPERATOR(public.+) 1 = 2));"],
+    ["OPERATOR outside table expressions", "CREATE SEQUENCE public.example OPERATOR;"],
+    ["CAST to public type", "CREATE TABLE public.example (value text DEFAULT CAST('x' AS public.app_text));"],
+    ["CAST to three-part type", "CREATE TABLE public.example (value text DEFAULT CAST('x' AS db.pg_catalog.text));"],
+    ["quoted call name", 'CREATE TABLE public.example (value text DEFAULT "now"());'],
+    ["public-qualified allowlisted name", "CREATE TABLE public.example (value text DEFAULT public.now());"],
+    ["three-part call name", "CREATE TABLE public.example (value text DEFAULT db.pg_catalog.now());"],
+    ["quoted qualifier", 'CREATE TABLE public.example (value text DEFAULT "pg_catalog".now());'],
+    ["qualified quoted call name", 'CREATE TABLE public.example (value text DEFAULT pg_catalog."now"());'],
+    ["non-pg_catalog operator class", "CREATE INDEX example_value ON public.existing (value public.text_ops);"],
+    ["unqualified operator class", "CREATE INDEX example_value ON public.existing (value text_ops);"],
+    ["index collation", 'CREATE INDEX example_value ON public.existing (value COLLATE public."C");'],
+    ["typed literal of a public type", "CREATE TABLE public.example (value text DEFAULT public.app_text 'x');"],
+    ["qualified column in CHECK", "CREATE TABLE public.example (value text CHECK (public.value = 'x'));"],
+    ["keyword contents call", "CREATE TABLE public.example (value text DEFAULT COALESCE(app_record_call(), 'x'));"],
+    ["nested unlisted call", "CREATE TABLE public.example (value text DEFAULT lower(app_record_call()));"],
+    ["nonliteral type modifier", "CREATE TABLE public.example (value numeric(length('x')));"],
+    ["unbalanced expression", "CREATE TABLE public.example (value text DEFAULT lower('x');"],
+    ["unaccounted parenthesis in type position", "CREATE TABLE public.example (value custom_type(1));"],
+    ["qualified call in type position", "CREATE TABLE public.t (a public.lower(1));"],
+    ["allowlisted call in type position", "CREATE TABLE public.t (a lower(1));"],
+    ["type modifier name in expression position", "CREATE TABLE public.example (value text DEFAULT varchar(1));"],
+  ])("refuses expression form: %s", (_label, sql) => { expect(isExpandOnlyPlatformForward(sql)).toBe(false); });
+  it.each([
+    ...["btrim", "gen_random_uuid", "jsonb_typeof", "length", "lower", "now", "translate", "char_length", "clock_timestamp", "octet_length"].flatMap((name) => [name, `pg_catalog.${name}`].flatMap((call) => [
+      [call + " DEFAULT", `CREATE TABLE public.example (value text DEFAULT ${call}());`],
+      [call + " CHECK", `CREATE TABLE public.example (value text CHECK (${call}(value) = value));`],
+      [call + " index key", `CREATE INDEX example_value ON public.existing (${call}(value));`],
+      [call + " index WHERE", `CREATE INDEX example_value ON public.existing (value) WHERE ${call}(value) = value;`],
+    ])),
+    ...["example", "public.example"].flatMap((target) => ["", " (id, value)"].flatMap((columns) => ["", " (id)", " ON CONSTRAINT example_key"].map((conflict) => [
+      `literal seed ${target}${columns}${conflict}`, `INSERT INTO ${target}${columns} VALUES (1, 'first'), (2, 'next') ON CONFLICT${conflict} DO NOTHING;`,
+    ]))),
+    ["schema name", "CREATE SCHEMA example;"],
+    ["schema IF NOT EXISTS", "CREATE SCHEMA IF NOT EXISTS example;"],
+    ["schema named if", "CREATE SCHEMA if;"],
+    ["sequence without ownership", "CREATE SEQUENCE public.example START WITH 1;"],
+    ["non-ASCII literal", "CREATE TABLE public.example (value text DEFAULT 'café\u00a0text');"],
+    ["non-ASCII line comment", "-- café\u00a0text\nCREATE TABLE public.example (id int);"],
+    ["non-ASCII block comment", "CREATE /* café\u00a0text */ TABLE public.example (id int);"],
+    ["ownership words in a literal", "INSERT INTO public.example VALUES ('owned by') ON CONFLICT DO NOTHING;"],
+    ...["if", "add", "key", "identity", "include", "nulls", "first", "last", '"asc"', '"desc"', '"using"', "generated"].flatMap((column) => [
+      [`CREATE keyword column ${column}`, `CREATE TABLE public.example (${column} numeric(10, 2) DEFAULT pg_catalog.now());`],
+      [`ALTER keyword column ${column}`, `ALTER TABLE public.existing ADD COLUMN ${column} numeric(10, 2) DEFAULT pg_catalog.now();`],
+    ]),
+    ["index named if", "CREATE INDEX if ON public.existing (value);"],
+    ["index named if unqualified target", "CREATE INDEX if ON existing (value);"],
+    ["index IF NOT EXISTS", "CREATE INDEX IF NOT EXISTS example_value ON public.existing (value);"],
+    ["table named if", "CREATE TABLE if (value numeric(10, 2));"],
+    ["table IF NOT EXISTS", "CREATE TABLE IF NOT EXISTS public.example (value numeric(10, 2));"],
+    ["ALTER column IF NOT EXISTS", "ALTER TABLE public.existing ADD COLUMN IF NOT EXISTS value numeric(10, 2);"],
+    ["ALTER if column IF NOT EXISTS", "ALTER TABLE public.existing ADD IF NOT EXISTS if numeric(10, 2);"],
+    ["nested calls", "CREATE UNIQUE INDEX example_value ON public.existing (lower(btrim(email)));"],
+    ["keyword constructs", "CREATE TABLE public.example (value text CHECK (NOT (value IN ('a', 'b')) OR (COALESCE(NULLIF(value, ''), 'x') = 'x') AND (value IS NOT NULL)));"],
+    ["builtin casts", "CREATE TABLE public.example (value text DEFAULT CAST('x' AS pg_catalog.text), amount numeric(10, 2) DEFAULT CAST(1 AS numeric(10, 2)));"],
+    ["generated expression", "CREATE TABLE public.example (value text, normalized text GENERATED ALWAYS AS (lower(value)) STORED);"],
+    ["generated identity", "CREATE TABLE public.example (id bigint GENERATED ALWAYS AS IDENTITY);"],
+    ["identity options", "CREATE TABLE public.example (id bigint GENERATED BY DEFAULT AS IDENTITY (START WITH 1));"],
+    ["ALTER DEFAULT", "ALTER TABLE public.existing ADD COLUMN value text DEFAULT lower('x'), ADD extra varchar(20);"],
+    ["ALTER CHECK", "ALTER TABLE public.existing ADD CONSTRAINT example_check CHECK (length(value) = 1);"],
+    ["structural column lists", "CREATE TABLE public.example (id int, parent int REFERENCES public.existing(id), PRIMARY KEY (id), UNIQUE (parent), FOREIGN KEY (parent) REFERENCES public.existing(id));"],
+    ["index ordering", "CREATE INDEX example_value ON public.existing ((lower(value)) DESC NULLS LAST);"],
+    ["index method and INCLUDE", "CREATE INDEX example_value ON public.existing USING btree (value ASC NULLS FIRST) INCLUDE (id) WITH (fillfactor = 90);"],
+    ["qualified object names", "CREATE INDEX public.example_value ON public.existing (value);"],
+    ["empty array type suffixes", "CREATE TABLE public.example (a int[], b varchar(20)[][] DEFAULT CAST(NULL AS pg_catalog.text[]));"],
+    ["ALTER empty array type suffix", "ALTER TABLE public.example ADD a text[];"],
+    ["quoted column", 'CREATE TABLE public.example ("value" text DEFAULT now());'],
+  ])("admits expression form: %s", (_label, sql) => { expect(isExpandOnlyPlatformForward(sql)).toBe(true); });
   const controlCharacters = [
     ["NUL inside a comment", "CREATE TABLE public.first (id int);\n-- example\0\n"],
     ["VT 0x0B", "CREATE TABLE public.first (id int);\n-- example\x0b\n"],
@@ -1364,7 +1700,11 @@ describe("expand-only platform SQL admission", () => {
     "ALTER TABLE public.example DROP COLUMN extra;", "TRUNCATE public.example;",
     "ALTER TABLE public.example RENAME TO other;", "ALTER TABLE public.example SET SCHEMA other;",
     "ALTER TABLE public.example OWNER TO other;", "dRoP/**/TABLE public.example;",
+    'CREATE TABLE public."DO" (id int);', 'CREATE TABLE public."ALTER" (id int);',
     "CREATE TABLE app.example (id int);", 'CREATE TABLE "app".example (id int);',
+    "CREATE TABLE public.example (id int) INHERITS (public.commerce_settings);",
+    "CREATE TABLE public.example (id int CHECK (id > 0));",
+    "CREATE TABLE public.example (id uuid REFERENCES public.commerce_settings(id) ON DELETE SET NULL);",
     "DO $$ BEGIN EXECUTE 'DROP TABLE public.example'; END $$;",
     "CREATE OR REPLACE FUNCTION public.example() RETURNS void AS $$ DROP TABLE public.example; $$ LANGUAGE sql;",
     "INSERT INTO public.example (id) SELECT destructive_function() ON CONFLICT DO NOTHING;",

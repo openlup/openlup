@@ -1219,3 +1219,24 @@ provenance and failure prose stay absent. Payer, authorization, certificates and
 raw bodies never enter the evidence; audit facts do not affect event identity or
 fingerprints. The offline M07 P2 conformance witness uses two distinct intents,
 attempts, amounts and provider references, with replay and refusal boundaries.
+
+### Reference-support surface
+
+The vendor subpaths additionally expose these experimental helpers for the
+reference application's existing host bindings. Each declaration names its exact
+reference consumer and carries `@experimental`: Reference-application support
+surface; may change.
+
+| Entry | Additional exports |
+| --- | --- |
+| `@openlup/platform/payments/stripe` | `createStripeSandboxPaymentExecutionAdapter`, `createStripePaymentReconciliationProvider`, `mapStripeIntent`, `mapSetupIntent`, `normalizeStripeFailureEvidence` |
+| `@openlup/platform/payments/tpay` | `createTpayPaymentExecutionAdapter`, `createTpayPaymentReconciliationProvider`, `createTpayHttpClient`, `normalizeTpayFailureEvidence`, `aliasValue`, `ProviderAttemptPreDispatchError` |
+
+Types are inferred from those functions; no extra type export or neutral payment
+entry is added. These are the existing contributed implementations, including
+rich execution, recovery and filtered audit carriers. The host still owns SDK
+construction, environment/feature flags, callback/return presentation, account
+readiness and simulator composition. Its prepared-attempt facade re-exports the
+same error class so `instanceof` preserves the no-charge trust boundary.
+The M07 factories' neutral envelopes and capability limits remain unchanged;
+reference-support availability establishes no provider activation or stable API.

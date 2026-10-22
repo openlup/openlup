@@ -33,8 +33,9 @@ names the offline falsifiers and their limits.
 
 ## Opt-in payment example
 
-The experimental Node `payments/stripe` subpath exposes only its factory,
-configuration type and observed capability descriptor. The host owns SDK and
+The experimental Node `payments/stripe` subpath exposes its M07 factory,
+configuration type and observed capability descriptor, plus the bounded
+[reference-support surface](../../packages/platform/README.md#reference-support-surface). The host owns SDK and
 transport construction, customer association, mode policy and explicit activation.
 No import installs a route, binding or schedule. Attempt identity, fingerprint
 and provider idempotency key pass through to the donor execution seam. A
@@ -95,6 +96,16 @@ missing failure provenance stays absent. Payer, authorization, certificates and
 raw bodies are excluded. Audit fields do not participate in event identity or
 fingerprints. Offline multi-subject M07 P2 conformance covers replay, chargeback,
 exact readback and verification refusals without establishing account activation.
+
+The reference-support execution and readback factories retain their contributed
+rich host contracts: setup/customer association, provider audit facts and
+purpose-sensitive recovery actions. They are separate from the M07 factory's
+neutral envelopes. The reference host translates its subject key and localized
+return paths at the bank/code adapter's injected transaction client, preserving callback origin,
+query values and simulator return context. It uses the package's real
+`ProviderAttemptPreDispatchError` class for nominal no-charge retry/release
+checks; matching fields alone never establish trusted no-charge evidence.
+The neutral `payments` and `payments/contracts` exports are unchanged.
 
 ## Canonical status
 
@@ -543,6 +554,9 @@ binds exact managed SQL files and old/new function definitions. Its replacement
 list contains exactly three existing signatures in two files; a distinct creation
 list requires the two price-setup signatures to be absent before their forward.
 The optional runtime list pins the capability and identity forwards described above.
+The separate `portableCreationForwards` list pins the two fulfillment creation
+forwards by path and whole-file hash, requiring new objects and invoker functions;
+the portable replacement list retains its single dunning function boundary.
 Required self-check keeps the whole registry unchanged from the feature comparison
 base. Release compares each forward's own entry, list position and shared registry
 fields with its introduction parent, allowing later controls to append approvals.

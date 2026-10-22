@@ -30,6 +30,21 @@ state writer is not an extension seam.
 
 ## Runtime boundaries
 
+The reference application's renewal execution, readback registry, recovery
+guidance, setup routes, channel list and activation bind through the experimental
+[reference-support exports](../../packages/platform/README.md#reference-support-surface).
+SDK and HTTP client construction, environment and mode flags, and the simulator
+remain host-owned. The prepared-attempt binding imports and re-exports the
+package's `ProviderAttemptPreDispatchError`, preserving one class identity for
+nominal no-charge retry and release checks.
+
+The shared root [webhook HTTP helper](../../server/_lib/payment/webhookSignature.ts)
+retains raw-body reading, HMAC verification, timing-safe equality and body-size
+limits for existing callers. Its unused provider-specific signature verifier
+has retired; provider verification remains inside the opt-in package adapters.
+The six generic helper cases remain in the root witness.
+
+
 Payments uses the existing bundle composer’s optional named binder. The host
 injects a scoped truth port and cleanup through `createPaymentServices`; schema
 or capability absence refuses selection. There is one executor per runtime unit,
@@ -406,6 +421,15 @@ exact absence is omitted because the donor search cannot prove completeness.
 Cancellation is offered only when injected. Account readiness stays pending
 owner TEST evidence. See [the payment adapter contract](CANONICAL_CONTRACTS.md#opt-in-payment-example)
 and [A2 ledger](plans/oss-a2-payment-adapters.md).
+
+The vendor subpaths also expose the eleven bounded experimental
+[reference-support helpers](../../packages/platform/README.md#reference-support-surface).
+The root execution/readback bindings consume those contributed implementations
+instead of retaining duplicate algorithms. Reference flags, SDK construction,
+payer fallback, repair handoffs and localized return presentation stay with the
+host. Capability projections reuse package facts without adding a neutral seam;
+the shared no-charge error retains genuine class identity across the boundary.
+This adds no package, dependency, migration or neutral payment export.
 
 The opt-in Node `payments/tpay` example shares that package lifecycle and M07
 boundary. The host supplies HTTP and certificate I/O, credentials, callback URLs,
