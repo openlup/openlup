@@ -48,8 +48,11 @@ and writes to adopter-owned `app`. Its bounded SQL predicate accepts additive
 object creation, `ALTER TABLE ... ADD`, transaction boundaries and literal
 `INSERT ... VALUES ... ON CONFLICT ... DO NOTHING` seeds with a single literal
 VALUES list immediately after the target name and optional plain column list.
-`CREATE SCHEMA [IF NOT EXISTS] name` takes no schema elements, and sequences take
-no `OWNED BY` clause. Procedural or dynamic SQL
+`CREATE SCHEMA [IF NOT EXISTS] name` takes no schema elements; expand-only
+statements take no `OWNED BY` clause. Quoted identifiers are not seed literals
+or conflict keywords. The original `ALTER TABLE ... ADD` checks remain required
+alongside expression checks, and type parentheses require a listed built-in
+modifier type. Procedural or dynamic SQL
 and unsupported forms refuse; see [Versioning and EOL](../../.github/VERSIONING_AND_EOL.md#publish-refuse-and-recover)
 for the exact admission boundary. Passing admission does not prove N-1 or live
 schema compatibility. Test the actual selected chain, constraints and replay.

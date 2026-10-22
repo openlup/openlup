@@ -1061,7 +1061,10 @@ parentheses at verified object, column/type and constraint positions. Keyword-sh
 names do not skip expression checks. Seed INSERTs require VALUES immediately
 after the target and optional plain column list; schemas take no schema elements,
 and expand-only statements take no OWNED BY clause. These tests do not broaden
-the separately reviewed creation class.
+the separately reviewed creation class. Seed literal checks preserve identifier
+quotes, and type-position parentheses require a listed built-in modifier type.
+The original ALTER checks also remain required. PG16 witnesses include a quoted
+typed literal before a sequence call and an `if` column with a default call.
 This database-free comparison does not derive the live object inventory digest.
 The source contract continues to bind the manifest bytes, and the portable
 runner compares `objectInventorySha256` with the selected database catalogue

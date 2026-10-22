@@ -314,7 +314,7 @@ function expandOnlyExpressions(tokens: string[]): boolean {
       structural.add(end);
       return tokens.slice(end + 1, closing.get(end)).every((token) => token === "<literal>" || token === ",");
     }
-    return true;
+    return tokens[end] !== "(";
   };
   const indexStatement = tokens[1] === "INDEX" || (tokens[1] === "UNIQUE" && tokens[2] === "INDEX");
   let open: number;
@@ -456,6 +456,7 @@ export function isExpandOnlyPlatformForward(sql: string, reviewedCreationTable =
         value += sql[index++];
       }
       if (!closed) return false;
+      if (!reviewedCreationTable && quote === '"' && value === ";") return false; // Preserve the original delimiter refusal.
       tokens.push(quote === "'" ? "<literal>" : reviewedCreationTable ? value.toUpperCase() : `"${value.toUpperCase()}"`); continue;
     }
     const word = /^[A-Za-z_][A-Za-z0-9_]*/u.exec(rest)?.[0];
@@ -478,11 +479,12 @@ export function isExpandOnlyPlatformForward(sql: string, reviewedCreationTable =
     if (checked.some((token) => ["DROP", "TRUNCATE", "RENAME", "OWNER", "SET", "APP", "DELETE", "UPDATE", "REPLACE", "SELECT", "EXECUTE", "CALL", "DETACH", "ATTACH", "INHERIT", "INHERITS", "DISABLE", "ENABLE", "VALIDATE", "AUTHORIZATION"].includes(token))) return false;
     if (text === "BEGIN" || text === "COMMIT") return true;
     if (/^INSERT INTO /u.test(text)) {
-      const values = normalized.indexOf("VALUES"), conflict = normalized.indexOf("ON", values);
+      const values = statement.indexOf("VALUES"), conflict = reviewedCreationTable ? statement.indexOf("ON", values) : statement.findIndex((token, index) => index > values && token === "ON" && statement[index + 1] === "CONFLICT");
+      if (values !== normalized.indexOf("VALUES")) return false; // Preserve the original VALUES-position refusal.
       if (values < 0 || conflict < 0 || !/ ON CONFLICT(?: \( [A-Z_][A-Z0-9_]*(?: , [A-Z_][A-Z0-9_]*)* \)| ON CONSTRAINT [A-Z_][A-Z0-9_]*)? DO NOTHING$/u.test(text)) return false;
       if (!reviewedCreationTable && !/^INSERT INTO [A-Z_][A-Z0-9_]*(?: \. [A-Z_][A-Z0-9_]*)*(?: \( [A-Z_][A-Z0-9_]*(?: , [A-Z_][A-Z0-9_]*)* \))? VALUES$/u.test(normalized.slice(0, values + 1).join(" "))) return false;
       // Seed values are literals only; no subquery, function or dynamic execution.
-      return normalized.slice(values + 1, conflict).every((token) => ["<literal>", "TRUE", "FALSE", "NULL", "(", ")", ",", "+", "-"].includes(token)) && normalized.filter((token) => token === "DO").length === 1;
+      return statement.slice(values + 1, conflict).every((token) => ["<literal>", "TRUE", "FALSE", "NULL", "(", ")", ",", "+", "-"].includes(token)) && normalized.filter((token) => token === "DO").length === 1;
     }
     if (normalized.includes("DO")) return false;
     if (!reviewedCreationTable && /^CREATE SCHEMA /u.test(text)) return /^CREATE SCHEMA (?:IF NOT EXISTS )?[A-Z_][A-Z0-9_]*$/u.test(text);
@@ -499,14 +501,13 @@ export function isExpandOnlyPlatformForward(sql: string, reviewedCreationTable =
     }
     if (/^CREATE (?:UNIQUE )?(?:TABLE|INDEX|TYPE|SEQUENCE|SCHEMA) /u.test(text)) return !normalized.includes("ALTER") && normalized.filter((token) => token === "CREATE").length === 1;
     if (/^ALTER TABLE /u.test(text)) {
-      const target = /^ALTER TABLE ([A-Z_][A-Z0-9_]*(?: \. [A-Z_][A-Z0-9_]*)*) ADD /u.exec(text);
-      const add = reviewedCreationTable ? normalized.indexOf("ADD") : target ? 2 + target[1]!.split(" ").length : -1;
+      const add = normalized.indexOf("ADD");
       if (add <= 2 || normalized.slice(2, add).includes(",") || normalized.filter((token) => token === "ALTER").length !== 1) return false;
       let depth = 0;
-      for (let index = add; index < statement.length; index++) {
-        if (statement[index] === "(") depth++;
-        if (statement[index] === ")") depth--;
-        if (depth < 0 || (depth === 0 && statement[index] === "," && statement[index + 1] !== "ADD")) return false;
+      for (let index = add; index < normalized.length; index++) {
+        if (normalized[index] === "(") depth++;
+        if (normalized[index] === ")") depth--;
+        if (depth < 0 || (depth === 0 && normalized[index] === "," && normalized[index + 1] !== "ADD")) return false;
       }
       return depth === 0;
     }
