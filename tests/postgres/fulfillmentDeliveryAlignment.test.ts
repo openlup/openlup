@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { readFileSync,readdirSync } from 'node:fs';
 import { join } from 'node:path';
 import { afterAll,beforeAll,expect,it } from 'vitest';
-import { createPostgresDeliveryAlignmentPort,createPostgresFulfillmentShipmentSpinePort } from '@openlup/platform/fulfillment';
+import { createPostgresDeliveryAlignmentPort,createPostgresFulfillmentDispatchStore,createPostgresFulfillmentShipmentSpinePort } from '@openlup/platform/fulfillment';
 import { createPostgresRenewalSettlementPort } from '../../server/adapters/postgres/commerce/renewalSettlement.js';
 import { executor,fixture,nativeHarness,openCase,replacement,schedule } from '../helpers/fulfillmentNative.js';
 const h=nativeHarness('alignment');
@@ -190,4 +190,76 @@ it.each(['paid','planned'])('unordered %s history cannot suppress numbered renew
   expect((await schedule(h.pool,f.subscription)).next_cycle_at.toISOString()).toBe('2026-08-29T12:00:00.000Z');
  }
  expect((await h.pool.query('SELECT * FROM public.subscription_delivery_alignment_admission_receipts WHERE subscription_id=$1',[f.subscription])).rows).toEqual([]);
+});
+
+it('off is inert across local cancellation, arrival, provider exception, admission and one-time dispatch',async()=>{
+ const spine=createPostgresFulfillmentShipmentSpinePort(executor(h.pool),{portKey:'fixture-port'});
+ const native=createPostgresFulfillmentDispatchStore(executor(h.pool),{async prepare(){return {disposition:'ready',contactRevision:1};},async readCandidate(){return null;}});
+ const evidence={commandFingerprint:'a'.repeat(64),contactRevision:{schemaVersion:1,source:'fixture',revision:1},providerRef:'warehouse-a',carrierRef:null,serviceRef:null};
+ for(const [mode,oneTime] of [['off',false],['off',true],['auto_align',true]] as const){
+  await h.pool.query("SELECT public.subscription_delivery_alignment_set_mode('off')");
+  const f=await fixture(h.pool);
+  if(oneTime){
+   f.order=randomUUID();f.shipment=randomUUID();const db=await h.pool.connect();
+   try{await db.query('BEGIN');await db.query("INSERT INTO public.commerce_orders(id,client_id,status,currency_code,total_amount_minor) VALUES($1,$2,'paid','XXX',900)",[f.order,f.client]);await db.query('INSERT INTO public.commerce_order_items(order_id,line_ordinal,quantity,unit_amount_minor,line_amount_minor) VALUES($1,1,1,900,900)',[f.order]);await db.query('COMMIT');}catch(error){await db.query('ROLLBACK');throw error;}finally{db.release();}
+   await h.pool.query("INSERT INTO public.fulfillment_shipments(id,order_id,port_key,provider_type,create_idempotency_key) VALUES($1,$2,'fixture-port','3pl',$3)",[f.shipment,f.order,`create-${f.shipment}`]);
+   expect((await h.pool.query('SELECT subscription_cycle_id FROM public.commerce_orders WHERE id=$1',[f.order])).rows[0].subscription_cycle_id).toBeNull();
+  }
+  await h.pool.query('SELECT public.subscription_delivery_alignment_set_mode($1)',[mode]);
+  const sibling=await replacement(h.pool,f);
+  const cancel={idempotencyKey:`cancel-${f.shipment}`,shipmentId:f.shipment,reason:'local correction'};
+  await spine.cancel(cancel);await spine.cancel(cancel);
+  expect((await h.pool.query('SELECT status,delivered_at FROM public.fulfillment_shipments WHERE id=$1',[f.shipment])).rows).toEqual([{status:'cancelled',delivered_at:null}]);
+  expect((await h.pool.query('SELECT * FROM public.commerce_order_holds WHERE order_id=$1',[f.order])).rows).toEqual([]);
+  expect((await h.pool.query("SELECT * FROM public.outbox_events WHERE aggregate_id=$1 AND event_type='commerce.shipment.exception'",[f.order])).rows).toEqual([]);
+  await h.pool.query("INSERT INTO public.fulfillment_dispatch_contexts(shipment_id,contact_revision,provider_ref) VALUES($1,$2,'warehouse-a')",[sibling,evidence.contactRevision]);
+  const claim=await native.claim({requestKey:`dispatch-${sibling}`,fulfillmentRef:sibling,orderRef:f.order,parcelRef:null,mode:'live',evidence});
+  if(claim.kind!=='claimed')throw new Error('inert sweep claim refused');
+  expect(await native.begin({dispatchRef:claim.record.dispatchRef,commandFingerprint:evidence.commandFingerprint})).toMatchObject({kind:'begun',begun:true});
+  const arrived=await replacement(h.pool,f,f.shipment,2);
+  await arrival(arrived);
+  expect(await cases(f.order)).toEqual([]);
+  if(mode==='off'){
+   expect(await admit(f.subscription)).toMatchObject({allowed:true,state:'off'});
+   await h.pool.query("INSERT INTO public.subscription_cycles(subscription_id,scheduled_at,status) VALUES($1,'2026-08-29T12:00:00Z','payment_pending')",[f.subscription]);
+   expect((await h.pool.query('SELECT * FROM public.subscription_delivery_alignment_cases WHERE subscription_id=$1',[f.subscription])).rows).toEqual([]);
+  }
+  expect((await h.pool.query('SELECT * FROM public.subscription_delivery_alignment_admission_receipts WHERE subscription_id=$1',[f.subscription])).rows).toEqual([]);
+  // Only the explicit provider exception may create the native hold and event.
+  await spine.raiseException({idempotencyKey:`provider-${sibling}`,shipmentId:sibling,reason:'provider_rejected'});
+  const holds=(await h.pool.query('SELECT * FROM public.commerce_order_holds WHERE order_id=$1',[f.order])).rows;
+  expect(holds).toHaveLength(1);expect(holds[0]).toMatchObject({reason:'fulfillment_exception',status:'active',created_by:null});
+  const events=(await h.pool.query("SELECT payload FROM public.outbox_events WHERE aggregate_id=$1 AND event_type='commerce.shipment.exception'",[f.order])).rows;
+  expect(events).toHaveLength(1);expect(events[0].payload.holdUuid).toBe(holds[0].id);
+  expect(await cases(f.order)).toEqual([]);
+  expect((await h.pool.query('SELECT * FROM public.subscription_delivery_alignment_admission_receipts WHERE subscription_id=$1',[f.subscription])).rows).toEqual([]);
+  expect(await schedule(h.pool,f.subscription)).toMatchObject({status:'active',next_cycle_at:new Date('2026-08-29T12:00:00Z')});
+  expect((await h.pool.query('SELECT * FROM public.subscription_pause_windows WHERE subscription_id=$1',[f.subscription])).rows).toEqual([]);
+ }
+});
+it.each(['protect','auto_align'])('local cancellation remains outstanding at %s admission without manufacturing an exception hold',async(mode)=>{
+ await h.pool.query("SELECT public.subscription_delivery_alignment_set_mode('off')");const f=await fixture(h.pool);
+ await h.pool.query('SELECT public.subscription_delivery_alignment_set_mode($1)',[mode]);
+ await createPostgresFulfillmentShipmentSpinePort(executor(h.pool),{portKey:'fixture-port'}).cancel({idempotencyKey:`cancel-${f.shipment}`,shipmentId:f.shipment,reason:'local correction'});
+ expect(await cases(f.order)).toEqual([]);
+ expect((await h.pool.query('SELECT * FROM public.commerce_order_holds WHERE order_id=$1',[f.order])).rows).toEqual([]);
+ expect((await h.pool.query("SELECT * FROM public.outbox_events WHERE aggregate_id=$1 AND event_type='commerce.shipment.exception'",[f.order])).rows).toEqual([]);
+ expect(await admit(f.subscription)).toMatchObject({allowed:false,state:'protected'});
+ expect(await cases(f.order)).toMatchObject([{shipment_id:f.shipment,captured_mode:mode,state:'protected',evidence_kind:'overdue_renewal'}]);
+ await expect(h.pool.query("INSERT INTO public.subscription_cycles(subscription_id,scheduled_at,status) VALUES($1,'2026-08-29T12:00:00Z','payment_pending')",[f.subscription])).rejects.toThrow('alignment_protected');
+ expect((await h.pool.query('SELECT * FROM public.subscription_delivery_alignment_admission_receipts WHERE subscription_id=$1',[f.subscription])).rows).toEqual([]);
+ expect((await schedule(h.pool,f.subscription)).status).toBe('active');
+});
+it.each(['shadow','protect','auto_align'])('explicit provider exception hold opens a %s case without pausing',async(mode)=>{
+ await h.pool.query("SELECT public.subscription_delivery_alignment_set_mode('off')");const f=await fixture(h.pool);
+ await h.pool.query('SELECT public.subscription_delivery_alignment_set_mode($1)',[mode]);
+ const spine=createPostgresFulfillmentShipmentSpinePort(executor(h.pool),{portKey:'fixture-port'});
+ const exception={idempotencyKey:`provider-${f.shipment}`,shipmentId:f.shipment,reason:'provider_rejected'};
+ await spine.raiseException(exception);await spine.raiseException(exception);
+ expect(await cases(f.order)).toMatchObject([{shipment_id:f.shipment,captured_mode:mode,state:mode==='shadow'?'shadow':'protected',evidence_kind:'fulfillment_exception'}]);
+ expect(await cases(f.order)).toHaveLength(1);
+ expect((await h.pool.query('SELECT * FROM public.commerce_order_holds WHERE order_id=$1',[f.order])).rows).toHaveLength(1);
+ expect((await h.pool.query("SELECT * FROM public.outbox_events WHERE aggregate_id=$1 AND event_type='commerce.shipment.exception'",[f.order])).rows).toHaveLength(1);
+ expect(await schedule(h.pool,f.subscription)).toMatchObject({status:'active',next_cycle_at:new Date('2026-08-29T12:00:00Z')});
+ expect((await h.pool.query('SELECT * FROM public.subscription_pause_windows WHERE subscription_id=$1',[f.subscription])).rows).toEqual([]);
 });

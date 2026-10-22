@@ -299,8 +299,8 @@
     },
     {
       "file": "db/platform/migrations/20261022090000_fulfillment_delivery_alignment.sql",
-      "sha256": "8ad91c069c51ee32eb648258337328efafcd0dafd8f71bd59baaeaabf88c8a44"
+      "sha256": "1e1435a481dba547a23231625144b66557d94960faff9c2993d7760e5c123efe"
     }
   ],
-  "objectInventorySha256": "cea1fdbf209b21b929e937914b8dfaf75984997e9172b5708c09c11e87c0bca7"
+  "objectInventorySha256": "f947d1700437a67f55aae26d6c26896064ff7327735beb4e7cf00d70a3a71d2e"
 }

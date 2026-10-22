@@ -289,6 +289,9 @@ BEGIN
 END;
 $$;
 
+-- Observe an existing active exception hold; never create a hold or an event.
+-- Local cancellation remains a local state change. An undelivered, unsuperseded
+-- cancelled parcel still counts as outstanding when renewal admission is enabled.
 CREATE FUNCTION public.subscription_delivery_alignment_open_exception_case()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -1040,21 +1043,6 @@ CREATE TRIGGER trg_subscription_delivery_alignment_guard_cycle_insert
 BEFORE INSERT ON public.subscription_cycles
 FOR EACH ROW EXECUTE FUNCTION public.subscription_delivery_alignment_guard_cycle_insert();
 
-CREATE FUNCTION public.subscription_delivery_alignment_on_cancelled_shipment()
-RETURNS trigger LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog AS $$
-BEGIN
-  IF NEW.status = 'cancelled' AND (TG_OP = 'INSERT' OR OLD.status IS DISTINCT FROM NEW.status) THEN
-    INSERT INTO public.commerce_order_holds(order_id, reason, status, idempotency_key)
-    VALUES(NEW.order_id, 'fulfillment_exception', 'active', 'alignment:cancelled:' || NEW.id)
-    ON CONFLICT DO NOTHING;
-  END IF;
-  RETURN NEW;
-END;
-$$;
-CREATE TRIGGER trg_subscription_delivery_alignment_cancelled
-AFTER INSERT OR UPDATE OF status ON public.fulfillment_shipments
-FOR EACH ROW EXECUTE FUNCTION public.subscription_delivery_alignment_on_cancelled_shipment();
-
 REVOKE ALL ON FUNCTION public.subscription_delivery_alignment_get_mode() FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.subscription_delivery_alignment_set_mode(text) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.subscription_delivery_alignment_record_allowed_receipt(uuid, timestamptz, timestamptz, text) FROM PUBLIC, anon, authenticated;
@@ -1065,7 +1053,6 @@ REVOKE ALL ON FUNCTION public.subscription_delivery_alignment_admit_renewal(uuid
 REVOKE ALL ON FUNCTION public.subscription_delivery_alignment_resolve_case(uuid, text, text) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.subscription_delivery_alignment_confirm_replacement(uuid, text) FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON FUNCTION public.subscription_delivery_alignment_guard_cycle_insert() FROM PUBLIC, anon, authenticated;
-REVOKE ALL ON FUNCTION public.subscription_delivery_alignment_on_cancelled_shipment() FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON public.subscription_delivery_alignment_control FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON public.subscription_delivery_alignment_cases FROM PUBLIC, anon, authenticated;
 REVOKE ALL ON public.subscription_delivery_alignment_admission_receipts FROM PUBLIC, anon, authenticated;

@@ -838,6 +838,16 @@ receipt; other unordered cycles prevent automatic arrival alignment regardless
 of scheduled date. They neither outrank known predecessors nor silently permit
 an autonomous renewal. Shadow mode observes this ambiguity without blocking.
 
+Local pre-dispatch cancellation changes only the shipment locally: alignment
+creates no hold or shipment-exception event and does not block other shipments
+of the order. An undelivered, unsuperseded cancelled parcel still counts as
+outstanding at renewal admission in `protect` and `auto_align`. An explicit
+provider exception uses the existing fulfillment-exception hold and notification
+rules; alignment observes that active hold to open a case only when control is not
+`off`, the order belongs to a paid subscription cycle and the subscription is
+active. One-time orders do not open alignment cases. Exception cases never
+pause subscriptions.
+
 The overdue-delivery guard applies only to NEW cycle
 admission/insert. Existing-cycle renewal and dunning retries never pass through
 admission and neither mint nor consume its one-use receipts. There is no

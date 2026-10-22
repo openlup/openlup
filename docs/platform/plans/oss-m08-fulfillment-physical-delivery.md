@@ -344,6 +344,16 @@ an operator calls `public.subscription_delivery_alignment_set_mode('auto_align')
 The other modes are `shadow` and `protect`. Existing cases retain their captured
 mode and protection when the control changes.
 
+Local pre-dispatch cancellation changes only the shipment locally: alignment
+creates no hold or shipment-exception event and does not block other shipments
+of the order. An undelivered, unsuperseded cancelled parcel still counts as
+outstanding at renewal admission in `protect` and `auto_align`. An explicit
+provider exception uses the existing fulfillment-exception hold and notification
+rules; alignment observes that active hold to open a case only when control is not
+`off`, the order belongs to a paid subscription cycle and the subscription is
+active. One-time orders do not open alignment cases. Exception cases never
+pause subscriptions.
+
 For automatic alignment, trusted durable arrivals settle only when no
 unsuperseded shipment remains undelivered. The target is the latest arrival plus
 subscription cadence, clamped by the existing next-cycle date with `GREATEST`.
