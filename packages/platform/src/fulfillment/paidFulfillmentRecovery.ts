@@ -227,7 +227,9 @@ function groupBy<T>(rows: T[], key: (row: T) => string): Map<string, T[]> {
   const groups = new Map<string, T[]>();
   for (const row of rows) {
     const rowKey = key(row);
-    groups.set(rowKey, [...(groups.get(rowKey) ?? []), row]);
+    const group = groups.get(rowKey);
+    if (group) group.push(row);
+    else groups.set(rowKey, [row]);
   }
   return groups;
 }

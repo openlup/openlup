@@ -44,7 +44,7 @@ function isAtpUsable(line: StockLine, requestedAt: string): boolean {
   return true;
 }
 
-function emptyLocal(sku: string): LocalStock {
+export function emptyLocal(sku: string): LocalStock {
   return { skuRef: sku, onHand: 0, reserved: 0, unavailable: 0, safetyStock: 0 };
 }
 
