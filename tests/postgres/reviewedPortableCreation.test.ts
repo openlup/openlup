@@ -3,7 +3,7 @@ import { readFileSync } from "node:fs";
 import { Pool } from "pg";
 import { beforeAll, expect, it } from "vitest";
 import type { PlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
-import { readReviewedForwardRegistry } from "../../scripts/reviewed-platform-forward.js";
+import { assertPortableCreationStatements, readReviewedForwardRegistry } from "../../scripts/reviewed-platform-forward.js";
 import { dockerAvailable, runPostgresContainer, waitForPostgresTcpReady } from "../helpers/postgresContainer.js";
 
 const manifest: PlatformMigrationManifest = JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8"));
@@ -84,6 +84,23 @@ it.each(fixtures.map((fixture, index) => ({ ...fixture, index })))("preserves th
     expect(attached.map(({ table_name, name, function_name }) => ({ table_name, name, function_name }))).toEqual(expectedTriggers[index]);
     const createdFunctions = new Set(newFunctions.map(row => row.oid));
     for (const trigger of attached) expect(createdFunctions.has(trigger.tgfoid)).toBe(true);
+    if (index === 0) {
+      // PostgreSQL and admission must agree on statement boundaries even when
+      // delimiters appear in literals/comments, prefixed strings or operators.
+      const lexicalSql = `-- misleading ' " $$ ; é
+CREATE VIEW public.zz_lexical AS SELECT
+  'it''s;--/*$$é'::text AS "double""quote", N'n;$$' AS national,
+  B'10' AS bits, X'ff' AS hex, 'one'
+  'two' AS continued, 1_000 + 0x1 +/* ; ' " $$ é */2 AS number;
+CREATE FUNCTION public.zz_lexical_body() RETURNS text LANGUAGE sql SET search_path=pg_catalog AS $$ SELECT 'é;--/*$named$'; $$;
+-- trailing ' " $$ ; é`;
+      expect(() => assertPortableCreationStatements(Buffer.from(lexicalSql), [])).not.toThrow();
+      const results = await pool.query(lexicalSql);
+      expect(Array.isArray(results) && results.map(result => result.command)).toEqual(["CREATE", "CREATE"]);
+      expect((await pool.query('SELECT "double""quote", national, bits::text, hex::text, continued, number, public.zz_lexical_body() AS body FROM public.zz_lexical')).rows).toEqual([
+        { 'double"quote': "it's;--/*$$é", national: "n;$$", bits: "10", hex: "11111111", continued: "onetwo", number: 1003, body: "é;--/*$named$" },
+      ]);
+    }
   } finally {
     await pool?.end();
     await container.remove();

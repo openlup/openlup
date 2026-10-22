@@ -254,7 +254,10 @@ its other refused keywords remain excluded. Outside dollar-quoted bodies,
 backslashes, `E'...'` and `U&` escape strings/identifiers refuse. Standard strings
 and quoted identifiers use doubled quotes; multiline quoted sections and quoted
 identifiers containing `;` or `$` refuse. Nested block comments and named dollar
-tags also refuse: these forms are not needed by the pinned files. Line comments
+tags also refuse: these forms are not needed by the pinned files. Any other `$`
+outside strings or comments refuses; a dollar body opens only as `AS` followed
+by whitespace and `$$`. Non-ASCII outside strings, comments and dollar bodies
+also refuses, including in quoted identifiers. Line comments
 end at the next line feed regardless of quotes inside the comment. A function
 body uses `$$` and ends at its first closing `$$`; only whitespace and the
 terminating semicolon may follow.
@@ -347,8 +350,8 @@ entry and list position, and every registry field outside the forward lists
 mainline commit, squash or merge, that introduces it; a feature branch's own
 earlier commits do not count. Only other forwards' entries may differ, so a later
 control may append approvals without stranding an unreleased forward. A feature still cannot approve itself. Missing history refuses. Existing
-history, version and manifest rules still apply, and the expand-only predicate
-is unchanged.
+history, version and manifest rules still apply. The expand-only predicate also
+refuses `INHERITS`, preventing a new table from inheriting an existing one.
 Admission is process evidence of exact reviewed bytes, not proof of live schema
 compatibility or authorization to release. Independent control review and the
 affected database behavior tests remain required.

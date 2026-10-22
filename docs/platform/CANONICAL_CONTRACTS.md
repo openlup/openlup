@@ -530,6 +530,9 @@ binds exact managed SQL files and old/new function definitions. Its replacement
 list contains exactly three existing signatures in two files; a distinct creation
 list requires the two price-setup signatures to be absent before their forward.
 The optional runtime list pins the capability and identity forwards described above.
+The separate `portableCreationForwards` list pins the two fulfillment creation
+forwards by path and whole-file hash, requiring new objects and invoker functions;
+the portable replacement list retains its single dunning function boundary.
 Required self-check keeps the whole registry unchanged from the feature comparison
 base. Release compares each forward's own entry, list position and shared registry
 fields with its introduction parent, allowing later controls to append approvals.

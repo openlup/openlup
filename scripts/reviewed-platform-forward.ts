@@ -184,6 +184,7 @@ function sqlStatements(sql: string, dump = false, creation = false): string[] {
   const statements: string[] = [];
   let start = -1;
   for (let index = 0; index < sql.length;) {
+    if (creation && sql.charCodeAt(index) > 0x7f) throw new Error("reviewed portable creation refuses non-ASCII outside strings, comments and dollar bodies");
     if (/\s/u.test(sql[index]!)) { index++; continue; }
     if (dump && start < 0 && sql[index] === "\\") {
       const command = /^\\(?:un)?restrict [A-Za-z0-9]+(?:\r?\n|$)/u.exec(sql.slice(index))?.[0];
@@ -210,6 +211,7 @@ function sqlStatements(sql: string, dump = false, creation = false): string[] {
     if (quote === "'" || quote === '"') {
       index++; let closed = false;
       while (index < sql.length) {
+        if (creation && quote === '"' && sql.charCodeAt(index) > 0x7f) throw new Error("reviewed portable creation refuses non-ASCII identifiers");
         if (creation && (sql[index] === "\n" || (quote === '"' && /[;$]/u.test(sql[index]!)))) throw new Error("reviewed portable creation refuses multiline quotes and statement or dollar delimiters in identifiers");
         if (sql[index] === "\\") {
           if (creation) throw new Error("reviewed portable creation refuses backslashes outside dollar bodies");
@@ -221,8 +223,10 @@ function sqlStatements(sql: string, dump = false, creation = false): string[] {
       continue;
     }
     const tag = sql[index] === "$" ? /^\$(?:[A-Za-z_][A-Za-z0-9_]*)?\$/u.exec(sql.slice(index))?.[0] : undefined;
+    // The pinned files open bodies only as AS $$. PostgreSQL includes an
+    // identifier-adjacent dollar in that identifier, so never guess here.
+    if (creation && sql[index] === "$" && (tag !== "$$" || !/(?:^|[^A-Za-z0-9_$])AS[ \t\n]+$/iu.test(sql.slice(0, index)))) throw new Error("reviewed portable creation requires dollar bodies immediately after AS and whitespace");
     if (tag) {
-      if (creation && tag !== "$$") throw new Error("reviewed portable creation refuses named dollar tags");
       const end = sql.indexOf(tag, index + tag.length);
       if (end < 0) throw new Error("reviewed replacement SQL has an unterminated body");
       index = end + tag.length; continue;
