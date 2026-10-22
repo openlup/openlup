@@ -14982,6 +14982,10 @@
       "class": "public-output"
     },
     {
+      "path": "server/runtime/subscription/deliveryAlignmentRenewalStore.ts",
+      "class": "public-output"
+    },
+    {
       "path": "server/runtime/subscription/subscriberRetentionMessagingBinding.test.ts",
       "class": "public-output"
     },
@@ -22623,6 +22627,10 @@
     },
     {
       "path": "tests/postgres/fulfillmentPreparationBinding.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/fulfillmentRenewalAdmission.test.ts",
       "class": "public-output"
     },
     {

@@ -90,7 +90,8 @@ export interface AutomaticRenewalStorePort {
   admitDeliveryAlignment(input: {
     subscriptionId: string;
     scheduledAt: string;
-  }): Promise<{ allowed: boolean; reason: string | null }>;
+    occurredAt?: string;
+  }): Promise<{ allowed: boolean; reason: string | null; deferred?: true }>;
   claimDue(input: {
     snapshot: AutomaticRenewalCycleSnapshot;
     workerId: string;

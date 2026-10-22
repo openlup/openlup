@@ -79,6 +79,15 @@ current obligation, so it must never be passed to
 the fact "Parcel delivered". Host adapters supply delivery evidence without
 moving this physical-delivery decision into the browser-shareable engine.
 
+The server’s [automatic-renewal port](../../../server/domains/subscription/automaticRenewalPorts.ts)
+accepts an optional runner observation time for delivery admission. The host
+decorator marks native alignment denials with `deferred: true`; the runner and
+batch return `deferred` without recording a terminal refusal. Claims stay active
+until lease expiry, then the same schedule can be offered again. Static terms
+refusals remain terminal. Direct hook calls that omit the observation time use
+the decorator’s clock. These are server orchestration contracts; the pure engine
+and browser-shareable lifecycle remain unchanged.
+
 ## Starter-pack charges
 
 A starter-pack subscription (marker `subscriptions.starter_pack`) prices its

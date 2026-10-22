@@ -224,8 +224,24 @@ all precede worker invocation. Source edits
 and context updates commit together; an error rolls both back. Credentials remain
 host closures. Construction adds no route, schedule or automatic dispatch, and
 the public reference server does not select this binding by default. Renewal
-admission remains a separate integration; native alignment mode stays off until
-that boundary is wired.
+admission uses the [host store decorator](../../server/runtime/subscription/deliveryAlignmentRenewalStore.ts)
+around the automatic runner's existing hook. A host that composes the native
+automatic-renewal runner must wrap its store port with this decorator; until it
+does, native delivery-alignment mode stays off or shadow. This boundary stops at
+the decorator and supplies no runner composer, factory or production entrypoint.
+Construction installs no route or schedule. It preserves the
+static terms gate, skips admission for off with no non-terminal captured case,
+and processes captured cases through native admission even after rollback to off.
+Prepared attempts, existing cycles and dunning retries bypass new-cycle admission.
+Native admission denials carry a typed deferral: the runner and batch report
+`deferred`, leaving the operation claimed without a terminal refusal write. The
+same schedule is offered again only after lease expiry, including after protect
+release, manual-review resolution or auto alignment without an extension. Static
+terms refusals retain their terminal behavior. The hook uses the runner’s
+`occurredAt`; direct callers may omit it and use the decorator’s clock. Previously
+refused operations and reservation-expiry recovery are unchanged. Enforcing
+new-cycle inserts require the successful exact-schedule admission and consume
+its receipt once.
 Host status-map, normalized-fact and current-parcel facades are unchanged;
 package adoption is outside this change. The default and subscription client
 and SSR graphs, identity clients for both auth providers, and installed core

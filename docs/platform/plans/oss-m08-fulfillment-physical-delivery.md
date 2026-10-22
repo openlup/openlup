@@ -2,7 +2,7 @@
 
 Development-preview programme design and contents. The boundary is recorded in
 decisions D0–D13, carrier-fit amendments G1–G17, the approved
-[replacement, operator, customer-projection and host-read amendments G18–G22](#lifecycle-handlers-and-customer-projections), and the export/source
+[replacement, operator, customer-projection, host-read and renewal-admission amendments G18–G23](#lifecycle-handlers-and-customer-projections), and the export/source
 registers below. Donor source provenance is `d902ac7f4`. Donor material supplies
 source provenance for the neutral contracts and behavior described here.
 
@@ -47,18 +47,18 @@ stable-framework support are not established by this design.
 | --- | --- |
 | D0 | Retain contributed characterization witnesses. Integration requires the payments and money-truth boundary; this change adds contracts and callable orchestration without activation. |
 | D1 | Existing platform package, only fulfillment and fulfillment/contracts. |
-| D2 | Freeze ports against donor fit; G1–G22 are approved amendments, described below. Arrival-only replacement confirmation applies. |
+| D2 | Freeze ports against donor fit; G1–G23 are approved amendments, described below. Arrival-only replacement confirmation applies. |
 | D3 | Private adapters/defaults/codecs stay private; direct carrier dormant, simulator separate; pickup lookup remains shipping-owned. |
 | D4 | Managed and native execution graphs stay distinct; no runtime equivalence is implied. |
 | D5 | Preserve contributed characterization witnesses unchanged within their 31-case allocation. |
 | D6 | Reconcile shared payment-contract and payment-adapter package companions; no unrelated source changes. |
 | D7 | Note-only replacement confirmation unchanged, no caller; arrival discipline belongs in the alignment contract and platform page. |
-| D8 | The ordinary cap is 35 paths per pull request, including generated files. Preserve contributed logic before refactoring. Explicit host composition, callable lifecycle integration and offline installed-consumer proof are included. Mounted operator UI, the renewal admission wrapper and activation remain excluded. |
+| D8 | The ordinary cap is 35 paths per pull request, including generated files. Preserve contributed logic before refactoring. Explicit host composition, callable lifecycle integration and offline installed-consumer proof are included. The host renewal-admission decorator is included under G23. Native runner composition, mounted operator UI and activation remain excluded. |
 | D8 amendment | The approved combined contracts and orchestration change has a ≤55-path regroup cap, including generated files; this amends the ordinary 35-path cap. |
 | D9 | Target 89 authored cases within the 94-case/27-second module budget and outer 100-case/30-second cap. Count generated packageBoundary rows separately; charge all execution time. |
 | D10 | Validate package artifacts and every subcap; no cap increase or guessed version. |
 | D11 | Host status-map, normalized-fact and current-parcel facades are unchanged; package adoption is outside this change. Explicit fulfillment composition has no default binder. The order-management status ladder and live queue remain together at the host, with no parallel mapper. |
-| D12 | Callable lifecycle handlers, offline host fixtures and installed-consumer proof are included. Activation, live provider/host calls, mounted operator UI and the renewal admission wrapper remain excluded. |
+| D12 | Callable lifecycle handlers, offline host fixtures and installed-consumer proof are included. The host renewal-admission decorator is included under G23. Native runner composition, activation, live provider/host calls and mounted operator UI remain excluded. |
 | D13 | Native command fencing and delivery alignment use PostgreSQL transactions. Only new-cycle admission/insert is guarded; existing-cycle renewal and dunning retries bypass admission. Late arrival uses the monotonic maximum once, and undelivered replacements remain outstanding. |
 
 ## Export register
@@ -154,6 +154,7 @@ The approved amendments extend the injected host boundary:
 | G20 | [customerAlignment.ts](../../../packages/platform/src/fulfillment/contracts/customerAlignment.ts) adds CustomerDeliveryAlignment (protected or aligned) and FulfillmentCustomerAlignmentRowsReader. The reader returns host rows or FulfillmentNativeUnsupported. [readFulfillmentDelay](../../../packages/platform/src/fulfillment/delayReadModel.ts) exposes protected cases and aligned cases whose aligned schedule equals the subscription's current next-cycle schedule; absence from the map means no current customer case. Manual-review and advanced aligned history are hidden; the projection changes no schedule or delivery fact. |
 | G21 | [read.ts](../../../packages/platform/src/fulfillment/contracts/read.ts) adds FulfillmentCommerceReadPort and FulfillmentShipmentsOverviewPort for host-owned list, detail and overview read callbacks, with FulfillmentCommerceReadPolicy for host eligibility. Payment status passes through unchanged from the payments projection and is never recomputed. Overview bucket rows and counts remain host-owned, with no native substitution. List, detail and overview callbacks accept the shared FulfillmentNativeUnsupported refusal. |
 | G22 | [m08FulfillmentBinding.ts](../../../server/runtime/public-reference/m08FulfillmentBinding.ts) binds one transaction lane, store, provider and readiness observer. Preparation locks the native dispatch identity then the shipment row, reads authoritative host facts and upserts only contact revision, provider and withholding. editAuthoritative requires actorUserId and idempotencyKey; its host closure owns authorization and replay receipts and edits the source in that same locked transaction before synchronization. Every authoritative contact/selection/withholding edit must use this route. Disabled, capability-selection/readiness and unsupported-dispatch refusals take precedence over FULFILLMENT_NATIVE_UNSUPPORTED for a missing binding; all precede worker invocation. Activation is explicit and default-off; construction registers no route, schedule or dispatch. |
+| G23 | [deliveryAlignmentRenewalStore.ts](../../../server/runtime/subscription/deliveryAlignmentRenewalStore.ts) decorates the existing automatic-renewal admission hook in host code. The static terms gate runs first and its refusals remain terminal. A typed native alignment denial returns `deferred` from the runner and batch without a refusal write: the operation stays claimed until lease expiry, when the same schedule can be offered again. Admission uses the runner’s observation time, with a decorator clock fallback for direct callers. Existing cycles and their dunning retries bypass native admission; prepared attempts bypass the hook in the runner. Off with no non-terminal captured case returns the static result without calling admission. Captured cases retain their authority after rollback to off; other modes call the existing native admission routine before new-cycle preparation. Enforcing inserts consume the exact-schedule receipt once. A host that composes the native automatic-renewal runner must wrap its store port with this decorator; until it does, native delivery-alignment mode stays off or shadow. The runner recognizes only that typed deferral; no runner composer, factory or production entrypoint is supplied, and no package export, migration, SQL routine change, route or schedule is added. |
 
 The [commerce handlers](../../../packages/platform/src/fulfillment/commerceFulfillmentHandlers.ts),
 [overview handler](../../../packages/platform/src/fulfillment/shipmentsOverviewHandler.ts)
@@ -435,9 +436,22 @@ captured mode and protection when the control changes.
 Enforcing modes (`protect`, `auto_align`) require the host's renewal path to call
 `subscription_delivery_alignment_admit_renewal` before inserting the cycle.
 The [native renewal store](../../../server/adapters/postgres/subscription/automaticRenewal.ts)
-does not yet call it, so switching a native install to an enforcing mode halts
-every autonomous renewal with `subscription_delivery_alignment_admission_required`.
-Native installs must keep mode `off` until that wiring lands.
+does not call it; a host that composes the native automatic-renewal runner wraps
+that store port with the
+[renewal admission decorator](../../../server/runtime/subscription/deliveryAlignmentRenewalStore.ts).
+Without the decorator, an enforcing mode halts every autonomous renewal with
+`subscription_delivery_alignment_admission_required`, so native installs keep
+mode `off` or `shadow` until the host wraps the port.
+
+The decorator distinguishes native alignment denials from static terms refusals.
+Native denials produce a non-terminal `deferred` runner/batch result before
+reservation or payment preparation, leaving the operation claimed with no
+refusal write. Releasing a protect or manual-review case, or aligning without
+extending the schedule, keeps that schedule eligible after the claim lease
+expires; the due list does not offer it while the lease is active. This does not
+revive previously refused operations or alter reservation-expiry recovery.
+Admission receives the runner’s `occurredAt`, with the decorator clock used only
+when a direct caller omits it.
 
 In enforcing modes, a subscription whose paid history has no activation or
 renewal link, such as imported data, holds every due renewal for manual review.

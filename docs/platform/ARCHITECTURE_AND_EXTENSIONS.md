@@ -33,6 +33,15 @@ state writer is not an extension seam.
 The host status-map, normalized-fact and current-parcel facades are unchanged.
 Their adoption of package helpers is outside this change.
 
+The native automatic-renewal hook accepts the runner’s optional `occurredAt`.
+Its delivery-alignment store decorator preserves the static terms gate and marks
+only native admission denials as deferred. The runner and batch return
+`deferred` before reservation or preparation, with no terminal refusal write;
+the operation stays claimed and the same schedule is offered only after lease
+expiry. Static gate refusals remain terminal. Direct hook callers that omit
+`occurredAt` use the decorator’s clock. This changes neither the PostgreSQL
+renewal adapters nor cycle-insert receipt enforcement.
+
 Payments uses the existing bundle composer’s optional named binder. The host
 injects a scoped truth port and cleanup through `createPaymentServices`; schema
 or capability absence refuses selection. There is one executor per runtime unit,
@@ -790,7 +799,7 @@ labels, step resolution and payment recovery controls.
 | Operator lifecycle mutations | Unsupported; the native shipment spine port does not carry the operator transaction | Actor-bound mutation callbacks and replay receipts |
 | Commerce orders list/detail and shipments overview | No equivalent native commerce read | Host read callbacks for orders list, detail and shipments overview; payment status passes through the existing payments projection using core payment-intent statuses |
 | Dispatch preparation writer | Explicit host preparation binding synchronizes revision, provider and withholding under the shipment lock, including authoritative edits | Required host reader/edit closures and transaction lane; disabled, capability-selection/readiness and unsupported-dispatch refusals precede the shared typed refusal for an absent binding, all before any worker |
-| Enforcing delivery alignment | Installation without renewal admission wiring cannot enforce the complete lifecycle | Admission wrapper before new-cycle insertion; keep native mode off until wired |
+| Enforcing delivery alignment | The [host admission decorator](../../server/runtime/subscription/deliveryAlignmentRenewalStore.ts) preserves static terms and captured cases, skips off/no-case admission and obtains one-use schedule receipts before new cycles. Native denials return non-terminal `deferred` results, leaving claims retryable at the same schedule after lease expiry; static refusals remain terminal | A host that composes the native automatic-renewal runner must wrap its store port with the decorator; until it does, native delivery-alignment mode stays off or shadow. No runner composer, factory or production entrypoint is supplied |
 
 `createNativeUnsupportedFulfillmentPorts` returns the single typed
 `FULFILLMENT_NATIVE_UNSUPPORTED` refusal for replacement, operator mutations and
@@ -889,9 +898,12 @@ mode and existing protection after later control changes.
 Enforcing modes (`protect`, `auto_align`) require the host's renewal path to call
 `subscription_delivery_alignment_admit_renewal` before inserting the cycle.
 The [native renewal store](../../server/adapters/postgres/subscription/automaticRenewal.ts)
-does not yet call it, so switching a native install to an enforcing mode halts
-every autonomous renewal with `subscription_delivery_alignment_admission_required`.
-Native installs must keep mode `off` until that wiring lands.
+does not call it; a host that composes the native automatic-renewal runner wraps
+that store port with the
+[renewal admission decorator](../../server/runtime/subscription/deliveryAlignmentRenewalStore.ts).
+Without the decorator, an enforcing mode halts every autonomous renewal with
+`subscription_delivery_alignment_admission_required`, so native installs keep
+mode `off` or `shadow` until the host wraps the port.
 
 In enforcing modes, a subscription whose paid history has no activation or
 renewal link, such as imported data, holds every due renewal for manual review.
