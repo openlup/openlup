@@ -242,10 +242,13 @@ terms refusals retain their terminal behavior. The hook uses the runner’s
 refused operations and reservation-expiry recovery are unchanged. Enforcing
 new-cycle inserts require the successful exact-schedule admission and consume
 its receipt once.
-Host status-map, normalized-fact and current-parcel facades are unchanged;
-package adoption is outside this change. The default and subscription client
-and SSR graphs, identity clients for both auth providers, and installed core
-browser consumer exclude platform fulfillment modules and the preparation binding.
+Host status-map, normalized-fact and current-parcel facades delegate to
+`@openlup/core/fulfillment` with their existing names; the status facade retains
+private provider trace metadata. Account order UI imports core progress helpers
+and types. The subscription browser inventory declares only the parsed core
+fulfillment modules. The default and subscription client and SSR graphs, identity
+clients for both auth providers, and installed core browser consumer exclude
+platform fulfillment modules, the preparation binding and the account order screens.
 
 The inert [payments binding](../../server/runtime/public-reference/m07PaymentBinding.ts)
 selects injected truth services or verified ingress only by explicit host choice.

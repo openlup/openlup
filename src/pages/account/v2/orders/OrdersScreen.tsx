@@ -1,4 +1,4 @@
-import { fulfillmentProgressPresentation } from "@openlup/platform/fulfillment";
+import { fulfillmentProgressPresentation } from "@openlup/core/fulfillment";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ChevronDown, CreditCard, FileText, MapPin, Package, Truck } from "lucide-react";

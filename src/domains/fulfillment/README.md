@@ -41,11 +41,12 @@ is not part of the published tree.
   status/operation timelines without migrating direct-carrier data.
   `providerCapabilities` exposes browser-safe plugin metadata for each registered
   provider kind; it is descriptive and does not authorize provider mutations.
-- Host status-map, normalized-fact and current-parcel facades are unchanged;
-  package adoption is outside this change.
-- Normalized evidence: `normalizedFulfillmentFacts.ts` binds the generic
-  `@openlup/core/fulfillment` fact schema to the single Layer B vocabulary
-  derived from `statusMap.ts`. Its public unknown-input parser validates the
+- Host status-map, normalized-fact and current-parcel facades delegate to
+  `@openlup/core/fulfillment`, preserving existing host names. The status facade
+  adds only private provider trace metadata. Order UI imports core progress
+  values and types; browser graphs declare only core fulfillment modules.
+- Normalized evidence: `normalizedFulfillmentFacts.ts` aliases the canonical
+  `@openlup/core/fulfillment` parsers and types for the single Layer B vocabulary. Its public unknown-input parser validates the
   existing canon; the application that eventually writes facts must mint the
   `evidence:<uuid>` reference and keep provider/customer payloads behind that
   governed evidence boundary. It defines no mapper, reducer, persistence, or

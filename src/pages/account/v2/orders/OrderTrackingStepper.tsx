@@ -3,7 +3,7 @@ import { Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { CUSTOMER_STEP_SEQUENCE } from "@/domains/fulfillment/statusMap";
 
-import type { FulfillmentProgressPresentation } from "@openlup/platform/fulfillment/contracts";
+import type { FulfillmentProgressPresentation } from "@openlup/core/fulfillment";
 
 const STEPS = CUSTOMER_STEP_SEQUENCE;
 

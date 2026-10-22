@@ -36,8 +36,8 @@ The account order tracking stepper uses actual-evidence progress from
 `fulfillmentProgressPresentation`. A reference operator page and status component
 ship unmounted and opt-in; the host owns access and mounting.
 
-Excluded: concrete provider adapters, mounted executors/routes, reference facade
-rewiring, mounted operator UI integration, money implementation, inventory
+Excluded: concrete provider adapters, mounted executors/routes,
+mounted operator UI integration, money implementation, inventory
 authority, replacement-confirmation callers, version preparation and release.
 Provider/account/secret access, activation, deployment endpoints and external
 operations are outside this scope. Native continuity, provider operation and
@@ -59,7 +59,7 @@ stable-framework support are not established by this design.
 | D8 amendment | The approved combined contracts and orchestration change has a ≤55-path regroup cap, including generated files; this amends the ordinary 35-path cap. |
 | D9 | Target 89 authored cases within the 94-case/27-second module budget and outer 100-case/30-second cap. Count generated packageBoundary rows separately; charge all execution time. |
 | D10 | Validate package artifacts and every subcap; no cap increase or guessed version. |
-| D11 | Host status-map, normalized-fact and current-parcel facades and order UI imports are unchanged; direct core adoption remains separate. Explicit fulfillment composition has no default binder. The order-management status ladder and live queue remain together at the host, with no parallel mapper. |
+| D11 | Host status-map, normalized-fact and current-parcel facades delegate to @openlup/core/fulfillment with existing host names and private provider trace metadata. Order UI imports core progress values and types. Browser graphs declare only core fulfillment modules and exclude platform fulfillment, the preparation binding and account order screens. Explicit fulfillment composition has no default binder. The order-management status ladder and live queue remain together at the host, with no parallel mapper. |
 | D12 | Callable lifecycle handlers, offline host fixtures and installed-consumer proof are included. The host renewal-admission decorator is included under G23. Native runner composition, activation, live provider/host calls and mounted operator UI remain excluded. |
 | D13 | Native command fencing and delivery alignment use PostgreSQL transactions. Only new-cycle admission/insert is guarded; existing-cycle renewal and dunning retries bypass admission. Late arrival uses the monotonic maximum once, and undelivered replacements remain outstanding. |
 
@@ -277,7 +277,7 @@ The donor alias remains host-owned. The surface is additive and requires no
 migration of existing public behavior. Native store implementations bind the
 ports to PostgreSQL; concrete provider adapter integration remains separate.
 The reference facade is retained. The account order tracking stepper uses
-[actual-evidence progress](../../../packages/platform/src/fulfillment/trackingProgress.ts)
+[actual-evidence progress](../../../packages/core/src/fulfillment/trackingProgress.ts)
 through [OrdersScreen](../../../src/pages/account/v2/orders/OrdersScreen.tsx).
 [ReferenceFulfillmentPage](../../../src/pages/ReferenceFulfillmentPage.tsx) and
 [FulfillmentDeliveryStatus](../../../src/components/FulfillmentDeliveryStatus.tsx)

@@ -30,8 +30,10 @@ state writer is not an extension seam.
 
 ## Runtime boundaries
 
-The host status-map, normalized-fact and current-parcel facades are unchanged.
-Their adoption of package helpers is outside this change.
+The host status-map, normalized-fact and current-parcel facades delegate to
+`@openlup/core/fulfillment`, retaining host names and private provider trace
+metadata. Browser import inventories declare only the core fulfillment modules;
+platform fulfillment remains outside browser runtime graphs.
 
 The native automatic-renewal hook accepts the runner’s optional `occurredAt`.
 Its delivery-alignment store decorator preserves the static terms gate and marks
@@ -697,7 +699,11 @@ server orchestration and selects only injected capability profiles. Provider,
 carrier and service remain independent; empty provider selection refuses, and
 potential support never enables a dormant route. Raw commands, credentials and
 signed label URLs stay transient at the host/adapter boundary; durable contracts
-carry typed facts, safe references and actual-command fingerprints. Reference status-map, normalized-fact and current-parcel facades and account order UI retain their existing imports; direct core adoption remains separate.
+carry typed facts, safe references and actual-command fingerprints. Reference status-map, normalized-fact and current-parcel facades delegate to
+`@openlup/core/fulfillment`; the status facade adds only private provider trace
+metadata. Account order UI imports progress values and types directly from core.
+Browser graphs declare only core fulfillment modules and exclude platform
+fulfillment, the reference preparation binding and the account order screens.
 The order-management status ladder/queue pair remains host-owned.
 
 The [dispatch port](../../packages/platform/src/fulfillment/contracts/dispatch.ts)
