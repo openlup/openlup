@@ -1250,6 +1250,10 @@
       "class": "public-output"
     },
     {
+      "path": "docs/platform/plans/oss-a3-fulfillment-adapter.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/oss-m04-communications-triggers.md",
       "class": "platform-documentation"
     },
@@ -3354,6 +3358,54 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/fulfillment/omnipack/client.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/omnipack/mappers.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/omnipack/omnipackDispatchPayload.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/omnipack/omnipackOutboundOrderPayload.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/omnipack/omnipackProductPackPayload.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/omnipack/omnipackProductPayload.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/omnipack/omnipackReconciliationPayload.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/omnipack/omnipackStatusVocabulary.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/omnipack/omnipackWebhookPayload.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/omnipack/productSyncMappers.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/omnipack/providerError.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/omnipack/trackingReferences.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/fulfillment/paidFulfillmentRecovery.ts",
       "class": "public-output"
     },
@@ -4918,6 +4970,38 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/fulfillment/omnipack/a3OmnipackDispatchCharacterization.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/fulfillment/omnipack/a3OmnipackObservationCharacterization.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/fulfillment/omnipack/a3OmnipackProductCharacterization.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/fulfillment/omnipack/a3OmnipackReadbackCharacterization.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/fulfillment/omnipack/a3OmnipackStockCharacterization.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/fulfillment/omnipack/a3OmnipackWireCharacterization.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/fulfillment/omnipack/fixtures.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/fulfillment/omnipack/transportAdaptation.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/fulfillment/paidHandoff.test.ts",
       "class": "public-output"
     },
@@ -6019,6 +6103,14 @@
     },
     {
       "path": "scripts/fixtures/20260824074601_marketing_lead_backfill_residual_boundary.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/fixtures/20261022080000_fulfillment_command_ledger.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/fixtures/20261022090000_fulfillment_delivery_alignment.sql",
       "class": "public-output"
     },
     {
@@ -7838,63 +7930,11 @@
       "class": "public-output"
     },
     {
-      "path": "server/adapters/stripe/declineFailureHints.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/adapters/stripe/declineFailureHints.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/adapters/stripe/executionDecline.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/adapters/stripe/executionDecline.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/adapters/stripe/stripeAdapterFactory.test.ts",
       "class": "public-output"
     },
     {
       "path": "server/adapters/stripe/stripeAdapterFactory.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/adapters/stripe/stripeFailureEvidence.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/adapters/stripe/stripeFailureEvidence.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/adapters/stripe/stripeIntentConfirmationEvidence.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/adapters/stripe/stripeIntentConfirmationEvidence.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/adapters/stripe/stripePaymentReconciliationProvider.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/adapters/stripe/stripePaymentReconciliationProvider.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/adapters/stripe/stripeSandboxPaymentExecutionAdapter.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/adapters/stripe/stripeWebhookNormalizer.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/adapters/stripe/stripeWebhookNormalizer.ts",
       "class": "public-output"
     },
     {
@@ -9554,47 +9594,7 @@
       "class": "public-output"
     },
     {
-      "path": "server/adapters/tpay/declineFailureHints.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/adapters/tpay/declineFailureHints.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/adapters/tpay/tpayAdapterFactory.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/adapters/tpay/tpayCreateTransactionInput.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/adapters/tpay/tpayDeclineEvidence.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/adapters/tpay/tpayDeclineEvidence.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/adapters/tpay/tpayFailureEvidence.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/adapters/tpay/tpayFailureEvidence.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/adapters/tpay/tpayPaymentExecutionAdapter.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/adapters/tpay/tpayPaymentReconciliationProvider.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/adapters/tpay/tpayPaymentReconciliationProvider.ts",
       "class": "public-output"
     },
     {
@@ -14294,10 +14294,6 @@
       "class": "public-output"
     },
     {
-      "path": "server/infra/providerWebhookVerifier.test.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/infra/resend/emailOriginMetadata.ts",
       "class": "public-output"
     },
@@ -14346,31 +14342,11 @@
       "class": "public-output"
     },
     {
-      "path": "server/infra/stripe/paymentIntentMapper.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/infra/stripe/stripeApiClient.test.ts",
       "class": "public-output"
     },
     {
       "path": "server/infra/stripe/stripeApiClient.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/infra/stripe/webhookVerifier.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/infra/tpay/blikRecurringMapper.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/infra/tpay/tpayDispatchFailure.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/infra/tpay/tpayDispatchFailure.ts",
       "class": "public-output"
     },
     {
@@ -14382,39 +14358,7 @@
       "class": "public-output"
     },
     {
-      "path": "server/infra/tpay/tpayHttpClient.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/infra/tpay/tpayHttpFailure.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/infra/tpay/tpayHttpFailure.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/infra/tpay/tpaySimulatorClient.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/infra/tpay/tpayTransactionPayload.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/infra/tpay/webhookJwsVerifier.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/infra/tpay/webhookJwsVerifier.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/infra/tpay/webhookNormalizer.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/infra/tpay/webhookVerifier.ts",
       "class": "public-output"
     },
     {
@@ -22638,6 +22582,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/expandOnlyExpressions.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/feedbackMediaAuthority.test.ts",
       "class": "public-output"
     },
@@ -22731,6 +22679,10 @@
     },
     {
       "path": "tests/postgres/promotionsNative.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/reviewedPortableCreation.test.ts",
       "class": "public-output"
     },
     {

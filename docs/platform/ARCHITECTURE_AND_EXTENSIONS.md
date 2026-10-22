@@ -44,6 +44,21 @@ expiry. Static gate refusals remain terminal. Direct hook callers that omit
 `occurredAt` use the decorator’s clock. This changes neither the PostgreSQL
 renewal adapters nor cycle-insert receipt enforcement.
 
+The reference application's renewal execution, readback registry, recovery
+guidance, setup routes, channel list and activation bind through the experimental
+[reference-support exports](../../packages/platform/README.md#reference-support-surface).
+SDK and HTTP client construction, environment and mode flags, and the simulator
+remain host-owned. The prepared-attempt binding imports and re-exports the
+package's `ProviderAttemptPreDispatchError`, preserving one class identity for
+nominal no-charge retry and release checks.
+
+The shared root [webhook HTTP helper](../../server/_lib/payment/webhookSignature.ts)
+retains raw-body reading, HMAC verification, timing-safe equality and body-size
+limits for existing callers. Its unused provider-specific signature verifier
+has retired; provider verification remains inside the opt-in package adapters.
+The six generic helper cases remain in the root witness.
+
+
 Payments uses the existing bundle composer’s optional named binder. The host
 injects a scoped truth port and cleanup through `createPaymentServices`; schema
 or capability absence refuses selection. There is one executor per runtime unit,
@@ -421,6 +436,15 @@ Cancellation is offered only when injected. Account readiness stays pending
 owner TEST evidence. See [the payment adapter contract](CANONICAL_CONTRACTS.md#opt-in-payment-example)
 and [A2 ledger](plans/oss-a2-payment-adapters.md).
 
+The vendor subpaths also expose the eleven bounded experimental
+[reference-support helpers](../../packages/platform/README.md#reference-support-surface).
+The root execution/readback bindings consume those contributed implementations
+instead of retaining duplicate algorithms. Reference flags, SDK construction,
+payer fallback, repair handoffs and localized return presentation stay with the
+host. Capability projections reuse package facts without adding a neutral seam;
+the shared no-charge error retains genuine class identity across the boundary.
+This adds no package, dependency, migration or neutral payment export.
+
 The opt-in Node `payments/tpay` example shares that package lifecycle and M07
 boundary. The host supplies HTTP and certificate I/O, credentials, callback URLs,
 mode and Model O policy. Bank/code attempts and Model O alias charges are
@@ -705,6 +729,15 @@ metadata. Account order UI imports progress values and types directly from core.
 Browser graphs declare only core fulfillment modules and exclude platform
 fulfillment, the reference preparation binding and the account order screens.
 The order-management status ladder/queue pair remains host-owned.
+
+The internal `fulfillment/omnipack` transport contributes injected HTTP, per-request
+credential resolution, provider codecs and selected donor witnesses without adding
+a public subpath. Order preparation materializes canonical JSON once; its SHA-256
+fingerprint and transport use exactly those bytes. Every fetch refuses redirects
+so a 307/308 cannot repeat a POST body. The transport installs no route,
+schedule or default binding. Root reference implementations remain unchanged;
+neutral-port glue, closed evidence projection and public registration are later
+phases in the [A3 ledger](plans/oss-a3-fulfillment-adapter.md).
 
 The [dispatch port](../../packages/platform/src/fulfillment/contracts/dispatch.ts)
 prepares the actual provider command without submitting it, returns its fingerprint

@@ -4,6 +4,12 @@ Status: development-preview contract. No recipe in this document is a supported 
 
 ## Runtime model
 
+The reference payment-channel BFF retains its feature and mode admission gates,
+and now supplies the package HTTP client to the same domain handler. Its local
+simulator branch and disabled empty-channel response remain unchanged. Customer
+setup routes continue through the host SDK builder, whose mappings now come
+from the vendor subpath; this adds no route or browser exposure.
+
 The [M06 shipping binding](../../server/runtime/public-reference/m06ShippingBinding.ts)
 composes selected selection, address and flat-rate ports with host schemas and
 authority. Native address writes remain refused. Native flat-rate save requires a
@@ -551,6 +557,26 @@ client projects status and tracking text only; it exposes no address, raw operat
 payload, signed-label link or mutation. Commerce list/detail and overview require
 host read callbacks; [native parity boundaries](ARCHITECTURE_AND_EXTENSIONS.md#native-parity-boundaries)
 describe their shared typed refusal.
+
+Reference payment composition now calls the experimental vendor-subpath
+execution, reconciliation, HTTP, mapping and evidence helpers documented in the
+[package reference-support surface](../../packages/platform/README.md#reference-support-surface).
+Checkout, renewal, recovery/setup, channels, accounting payout SDK calls and
+activation keep their host wiring and flags. The bank/code binding translates `petId` to the
+package subject input and translates the outgoing account path/query and
+simulator return path back at its injected transaction client. The fallback
+payer label remains host-owned. Package no-charge errors reach prepared-attempt
+retry/release as the same class; arbitrary transport failures stay ambiguous.
+Default-off construction does no SDK/fetch/certificate work. This rebinding
+adds no route, schedule, activation or environment setting.
+
+Unused root payment webhook verifiers, notification normalization and test-only
+draft mappers have retired after production-importer checks. The shared HTTP
+helpers and unrelated mapper/readiness tests remain. Opt-in package payment
+adapters retain their implementations and witnesses; no host composition or
+provider activation changes. The [retirement ledger](plans/oss-a2-payment-adapters.md#o-p3b-1-unused-root-retirement-2026-10-22)
+records the exact root cases and remaining adopter leg.
+
 
 
 Communications server algorithms now delegate through the platform package. The

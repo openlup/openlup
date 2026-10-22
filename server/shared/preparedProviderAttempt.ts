@@ -1,3 +1,5 @@
+import { ProviderAttemptPreDispatchError } from "@openlup/platform/payments/tpay";
+export { ProviderAttemptPreDispatchError };
 import type {
   PaymentControlRuntimePort,
   PreparedProviderAttemptRuntimePort,
@@ -16,9 +18,11 @@ import {
   type ProviderAttemptFailurePhase,
 } from "./providerAttemptFailureDiagnostic.js";
 
+type PreparedProvider = Extract<PaymentExecutionProvider, "stripe" | "tpay">;
+
 export function requiresPreparedProviderAttempt(
   provider: PaymentExecutionProvider,
-): provider is Extract<PaymentExecutionProvider, "stripe" | "tpay"> {
+): provider is PreparedProvider {
   return provider === "stripe" || provider === "tpay";
 }
 
@@ -73,37 +77,6 @@ export class ProviderAttemptInFlightError extends Error {
     this.name = "ProviderAttemptInFlightError";
     this.paymentAttemptId = preparedAttempt.paymentAttemptId;
     this.attemptStatus = preparedAttempt.status;
-  }
-}
-
-/** A PSP boundary proved the provider holds no transaction. `dispatchState` keeps the two grades
- * apart; neither may be inferred from silence, a timeout or a transport loss. The name predates the
- * second grade and is kept because it is the type every caller of this rail already branches on. */
-export class ProviderAttemptPreDispatchError extends Error {
-  readonly phase: TrustedProviderAttemptNoChargeFailure["phase"];
-  readonly code: TrustedProviderAttemptNoChargeFailure["code"];
-  readonly dispatchState: TrustedProviderAttemptNoChargeFailure["dispatchState"];
-  paymentAttemptId: string | null;
-  retryCount = 0;
-
-  constructor(failure: TrustedProviderAttemptNoChargeFailure, paymentAttemptId: string | null = null) {
-    const kind = failure.dispatchState === "refused" ? "provider_refused_pre_transaction" : "provider_pre_dispatch_failed";
-    super(`${kind}:${failure.phase}:${failure.code}`);
-    this.name = "ProviderAttemptPreDispatchError";
-    this.phase = failure.phase;
-    this.code = failure.code;
-    this.dispatchState = failure.dispatchState;
-    this.paymentAttemptId = paymentAttemptId;
-  }
-
-  withPaymentAttempt(paymentAttemptId: string): this {
-    this.paymentAttemptId = paymentAttemptId;
-    return this;
-  }
-
-  withRetryCount(retryCount: number): this {
-    this.retryCount = retryCount;
-    return this;
   }
 }
 
@@ -181,7 +154,7 @@ export async function preserveProviderDispatchUncertainty<T>(
 export async function executePreparedProviderAttempt(input: {
   paymentPort: PreparedProviderAttemptRuntimePort;
   executionPort: PaymentExecutionPort;
-  provider: Extract<PaymentExecutionProvider, "stripe" | "tpay">;
+  provider: PreparedProvider;
   paymentIntentId: string;
   executionInput: PaymentExecutionInput;
   prepareIdempotencyKey: string;

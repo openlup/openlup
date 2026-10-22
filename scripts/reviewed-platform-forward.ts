@@ -16,11 +16,16 @@ const creations = new Set([
 const portableReplacements = new Set([
   "public.dunning_lifecycle_handle_failure(uuid,timestamptz,text,text,integer,timestamptz,text,text)",
 ]);
+const portableCreationPaths = [
+  "db/platform/migrations/20261022080000_fulfillment_command_ledger.sql",
+  "db/platform/migrations/20261022090000_fulfillment_delivery_alignment.sql",
+];
+type PortableCreationBinding = { path: string; sha256: string };
 type FunctionBinding = { signature: string; beforeSha256: string | null; afterSha256: string };
 type PolicyBinding = { table: string; name: string; beforeSha256: string };
 type RuntimeForwardBinding = ForwardBinding & { privileges: string[]; retiredPolicies?: PolicyBinding[] };
 type ForwardBinding = { path: string; sha256: string; functions: FunctionBinding[] };
-export type ReviewedForwardRegistry = { schemaVersion: 1; baselineSha256: string; replacementForwards: ForwardBinding[]; creationForwards: ForwardBinding[]; runtimeForwards?: RuntimeForwardBinding[]; portableReplacementForwards?: ForwardBinding[] };
+export type ReviewedForwardRegistry = { schemaVersion: 1; baselineSha256: string; replacementForwards: ForwardBinding[]; creationForwards: ForwardBinding[]; runtimeForwards?: RuntimeForwardBinding[]; portableReplacementForwards?: ForwardBinding[]; portableCreationForwards?: PortableCreationBinding[] };
 export const sqlSha256 = (bytes: Buffer | string): string => createHash("sha256").update(bytes).digest("hex");
 const runtimeReplacements = new Set([
   "public.admin_clients_search_v3(text,integer,integer,text)",
@@ -164,14 +169,22 @@ export function readReviewedForwardRegistry(bytes: Buffer): ReviewedForwardRegis
     const binding = forward.functions[0]!;
     if (!portableReplacements.has(binding.signature) || !hash(binding.beforeSha256) || !hash(binding.afterSha256)) throw new Error("reviewed portable replacement registry must bind exactly the approved existing signature");
   }
+  if (raw.portableCreationForwards !== undefined) {
+    if (!Array.isArray(raw.portableCreationForwards) || raw.portableCreationForwards.length !== portableCreationPaths.length) throw new Error("reviewed portable creation registry requires exactly the approved forwards");
+    for (const [index, forward] of raw.portableCreationForwards.entries()) {
+      if (!forward || Object.keys(forward).sort().join(",") !== "path,sha256" || forward.path !== portableCreationPaths[index] || paths.has(forward.path) || raw.portableReplacementForwards?.some((entry) => entry.path === forward.path) || !hash(forward.sha256)) throw new Error("reviewed portable creation registry has an invalid or duplicate forward");
+      paths.add(forward.path);
+    }
+  }
   return raw;
 }
 
 /** Split top-level SQL only. Comments, quoted literals and dollar bodies cannot introduce statements. */
-function sqlStatements(sql: string, dump = false): string[] {
+function sqlStatements(sql: string, dump = false, creation = false): string[] {
   const statements: string[] = [];
   let start = -1;
   for (let index = 0; index < sql.length;) {
+    if (creation && sql.charCodeAt(index) > 0x7f) throw new Error("reviewed portable creation refuses non-ASCII outside strings, comments and dollar bodies");
     if (/\s/u.test(sql[index]!)) { index++; continue; }
     if (dump && start < 0 && sql[index] === "\\") {
       const command = /^\\(?:un)?restrict [A-Za-z0-9]+(?:\r?\n|$)/u.exec(sql.slice(index))?.[0];
@@ -182,7 +195,10 @@ function sqlStatements(sql: string, dump = false): string[] {
     if (sql.startsWith("/*", index)) {
       let depth = 1; index += 2;
       while (index < sql.length && depth) {
-        if (sql.startsWith("/*", index)) { depth++; index += 2; }
+        if (sql.startsWith("/*", index)) {
+          if (creation) throw new Error("reviewed portable creation refuses nested block comments");
+          depth++; index += 2;
+        }
         else if (sql.startsWith("*/", index)) { depth--; index += 2; }
         else index++;
       }
@@ -190,17 +206,26 @@ function sqlStatements(sql: string, dump = false): string[] {
       continue;
     }
     if (start < 0) start = index;
+    if (creation && (sql[index] === "\\" || (/^(?:E'|U&['"])/iu.test(sql.slice(index)) && !/[A-Za-z0-9_$]/u.test(sql[index - 1] ?? "")))) throw new Error("reviewed portable creation refuses backslashes and escape strings outside dollar bodies");
     const quote = sql[index];
     if (quote === "'" || quote === '"') {
       index++; let closed = false;
       while (index < sql.length) {
-        if (sql[index] === "\\") { index += 2; continue; }
+        if (creation && quote === '"' && sql.charCodeAt(index) > 0x7f) throw new Error("reviewed portable creation refuses non-ASCII identifiers");
+        if (creation && (sql[index] === "\n" || (quote === '"' && /[;$]/u.test(sql[index]!)))) throw new Error("reviewed portable creation refuses multiline quotes and statement or dollar delimiters in identifiers");
+        if (sql[index] === "\\") {
+          if (creation) throw new Error("reviewed portable creation refuses backslashes outside dollar bodies");
+          index += 2; continue;
+        }
         if (sql[index++] === quote) { if (sql[index] === quote) { index++; continue; } closed = true; break; }
       }
       if (!closed) throw new Error("reviewed replacement SQL has an unterminated literal");
       continue;
     }
     const tag = sql[index] === "$" ? /^\$(?:[A-Za-z_][A-Za-z0-9_]*)?\$/u.exec(sql.slice(index))?.[0] : undefined;
+    // The pinned files open bodies only as AS $$. PostgreSQL includes an
+    // identifier-adjacent dollar in that identifier, so never guess here.
+    if (creation && sql[index] === "$" && (tag !== "$$" || !/(?:^|[^A-Za-z0-9_$])AS[ \t\n]+$/iu.test(sql.slice(0, index)))) throw new Error("reviewed portable creation requires dollar bodies immediately after AS and whitespace");
     if (tag) {
       const end = sql.indexOf(tag, index + tag.length);
       if (end < 0) throw new Error("reviewed replacement SQL has an unterminated body");
@@ -259,6 +284,333 @@ function assertFunctionStatements(bytes: Buffer, definitions: Map<string, string
   }
 }
 
+/** Account for structural parentheses first; every remaining identifier before `(` is an expression. */
+function expandOnlyExpressions(tokens: string[]): boolean {
+  const calls = new Set(["BTRIM", "GEN_RANDOM_UUID", "JSONB_TYPEOF", "LENGTH", "LOWER", "NOW", "TRANSLATE", "CHAR_LENGTH", "CLOCK_TIMESTAMP", "OCTET_LENGTH"]);
+  const constructs = new Set(["IN", "AND", "OR", "NOT", "COALESCE", "NULLIF", "CAST"]);
+  const modifiers = new Set(["NUMERIC", "DECIMAL", "VARCHAR", "CHAR", "CHARACTER", "BIT", "VARBIT", "TIMESTAMP", "TIMESTAMPTZ", "TIME", "TIMETZ", "INTERVAL"]);
+  const identifier = (token = "") => /^[A-Z_][A-Z0-9_]*$/u.test(token) || token.startsWith('"');
+  const structural = new Set<number>(), qualified = new Set<number>(), arrays = new Set<number>(), closing = new Map<number, number>();
+  const stack: number[] = [];
+  for (const [index, token] of tokens.entries()) {
+    // Refuse constructors/subscripts before any comma splitter; only empty type brackets remain.
+    if ((token === "[" && tokens[index + 1] !== "]") || (token === "]" && tokens[index - 1] !== "[")) return false;
+    if (token === "(") stack.push(index);
+    if (token === ")") { const open = stack.pop(); if (open === undefined) return false; closing.set(open, index); }
+  }
+  if (stack.length) return false;
+  // Object/column type names are outside expression regions. Preserve their dots separately.
+  const nameEnd = (start: number) => {
+    if (!identifier(tokens[start])) return -1;
+    let end = start + 1;
+    while (tokens[end] === ".") {
+      if (!identifier(tokens[end + 1])) return -1;
+      qualified.add(end); end += 2;
+    }
+    return end;
+  };
+  const typeModifier = (start: number) => {
+    let end = nameEnd(start);
+    if (end < 0) return false;
+    if (tokens[end] === "(" && modifiers.has(tokens[end - 1]!) && (end === start + 1 || (end === start + 3 && tokens[start] === "PG_CATALOG"))) {
+      structural.add(end);
+      if (!tokens.slice(end + 1, closing.get(end)).every((token) => token === "<literal>" || token === ",")) return false;
+      end = closing.get(end)! + 1;
+    }
+    if (tokens[end] === "(") return false;
+    while (tokens[end] === "[" && tokens[end + 1] === "]") { arrays.add(end); arrays.add(end + 1); end += 2; }
+    return true;
+  };
+  const indexStatement = tokens[1] === "INDEX" || (tokens[1] === "UNIQUE" && tokens[2] === "INDEX");
+  let open: number;
+  if (indexStatement) {
+    const object = tokens[1] === "UNIQUE" ? 3 : 2;
+    const on = nameEnd(tokens.slice(object, object + 3).join(" ") === "IF NOT EXISTS" ? object + 3 : object);
+    if (on < 0 || tokens[on] !== "ON") return false;
+    open = nameEnd(on + 1);
+    if (open < 0) return false;
+    if (tokens[open] === "USING") {
+      if (!identifier(tokens[open + 1])) return false;
+      open += 2;
+    }
+  } else if (tokens[0] === "CREATE") {
+    open = nameEnd(tokens.slice(2, 5).join(" ") === "IF NOT EXISTS" ? 5 : 2);
+  } else {
+    const add = nameEnd(2);
+    if (add < 0 || tokens[add] !== "ADD") return false;
+    open = -1;
+  }
+  if (tokens[0] === "CREATE" && (open < 0 || tokens[open] !== "(")) return false;
+  if (open >= 0) structural.add(open);
+
+  if (indexStatement) {
+    const end = closing.get(open);
+    if (end === undefined) return false;
+    // A key is one column, call or parenthesized expression, followed only by ordering.
+    for (let start = open + 1; start < end;) {
+      let keyEnd = start + 1;
+      if (tokens[start] === "(") keyEnd = closing.get(start)! + 1;
+      else {
+        while (tokens[keyEnd] === ".") keyEnd += 2;
+        if (tokens[keyEnd] === "(") keyEnd = closing.get(keyEnd)! + 1;
+        else if (!identifier(tokens[start])) return false;
+      }
+      let next = keyEnd;
+      while (next < end && tokens[next] !== ",") next++;
+      if (!/^(?:(?:ASC|DESC)(?: |$))?(?:NULLS (?:FIRST|LAST))?$/u.test(tokens.slice(keyEnd, next).join(" "))) return false;
+      start = next + 1;
+    }
+    // INCLUDE column lists and storage parameters are structural, not calls.
+    let suffix = end + 1;
+    for (const clause of ["INCLUDE", "WITH"]) {
+      if (tokens[suffix] !== clause) continue;
+      if (tokens[suffix + 1] !== "(") return false;
+      structural.add(suffix + 1);
+      const close = closing.get(suffix + 1)!;
+      if (clause === "INCLUDE" && !/^[A-Z_][A-Z0-9_]*(?: , [A-Z_][A-Z0-9_]*)*$/u.test(tokens.slice(suffix + 2, close).map((token) => token.startsWith('"') ? token.slice(1, -1) : token).join(" "))) return false;
+      suffix = close + 1;
+    }
+    if (suffix < tokens.length && tokens[suffix] !== "WHERE") return false;
+  } else {
+    const end = open >= 0 ? closing.get(open) : tokens.length;
+    if (end === undefined) return false;
+    for (let start = open >= 0 ? open + 1 : nameEnd(2); start < end;) {
+      let next = start;
+      while (next < end && tokens[next] !== ",") next = tokens[next] === "(" ? closing.get(next)! + 1 : next + 1;
+      let column = start;
+      if (open < 0) {
+        if (tokens[column++] !== "ADD") return false;
+        if (tokens[column] === "COLUMN") column++;
+        if (tokens.slice(column, column + 3).join(" ") === "IF NOT EXISTS") column += 3;
+      }
+      const constraint = ["CONSTRAINT", "PRIMARY", "FOREIGN", "UNIQUE", "CHECK"].includes(tokens[column]!);
+      if (!constraint && (!identifier(tokens[column]) || !typeModifier(column + 1))) return false;
+      // Start after the column/type or constraint name, never at a keyword-shaped column name.
+      let index = constraint ? column : nameEnd(column + 1);
+      if (tokens[index] === "CONSTRAINT") {
+        if (!identifier(tokens[index + 1])) return false;
+        index += 2;
+      }
+      for (; index < next; index++) {
+        const token = tokens[index];
+        if (token === "REFERENCES") {
+          const targetEnd = nameEnd(index + 1);
+          if (targetEnd < 0) return false;
+          if (tokens[targetEnd] === "(") structural.add(targetEnd);
+          index = targetEnd - 1;
+        }
+        if ((token === "CHECK" || token === "UNIQUE" || (token === "KEY" && ["PRIMARY", "FOREIGN"].includes(tokens[index - 1]!))) && tokens[index + 1] === "(") structural.add(index + 1);
+        if (token === "GENERATED") {
+          const as = tokens[index + 1] === "ALWAYS" ? index + 2 : tokens.slice(index + 1, index + 3).join(" ") === "BY DEFAULT" ? index + 3 : -1;
+          if (as < 0 || tokens[as] !== "AS") return false;
+          const expression = tokens[as + 1] === "IDENTITY" ? as + 2 : as + 1;
+          if (tokens[expression] === "(") structural.add(expression);
+          index = expression - 1;
+        }
+        if (token === "(") index = closing.get(index)!;
+      }
+      start = next + 1;
+    }
+  }
+  for (const [index, token] of tokens.entries()) {
+    if ((token === "[" || token === "]") && !arrays.has(index)) return false;
+    if (token === "CAST" && tokens[index + 1] === "(") {
+      const end = closing.get(index + 1)!;
+      let as = index + 2;
+      while (as < end && tokens[as] !== "AS") as = tokens[as] === "(" ? closing.get(as)! + 1 : as + 1;
+      if (as === end) return false;
+      if (tokens[as + 2] === "." && (tokens[as + 1] !== "PG_CATALOG" || tokens[as + 4] === ".")) return false;
+      if (!typeModifier(as + 1)) return false;
+    }
+    if (token === "." && !qualified.has(index) && !(tokens[index - 1] === "PG_CATALOG" && calls.has(tokens[index + 1]!) && tokens[index + 2] === "(" && tokens[index - 2] !== ".")) return false;
+    if (token !== "(" || structural.has(index) || !identifier(tokens[index - 1])) continue;
+    const previous = tokens[index - 1]!;
+    if (!calls.has(previous) && !(tokens[index - 2] !== "." && constructs.has(previous))) return false;
+  }
+  return true;
+}
+
+/** A deliberately bounded SQL admission check, not a general SQL interpreter.
+ * Refuses control characters other than tab and line feed (PostgreSQL also ends a `--` comment at a carriage return, so no classifier models line ends differently); procedural/dynamic SQL also refuses.
+ * Existing SQL is frozen, so only new forwards pass through this predicate.
+ */
+export function isExpandOnlyPlatformForward(sql: string, reviewedCreationTable = false): boolean {
+  if (Buffer.from(sql, "utf8").some((byte) => (byte < 0x20 && byte !== 0x09 && byte !== 0x0a) || byte === 0x7f)) return false;
+  const tokens: string[] = [];
+  for (let index = 0; index < sql.length;) {
+    const rest = sql.slice(index);
+    // PostgreSQL treats non-ASCII bytes as identifier characters, not separators.
+    if (!reviewedCreationTable && rest.charCodeAt(0) > 0x7f) return false;
+    if ((reviewedCreationTable ? /^\s/u : /^[ \t\n]/u).test(rest)) { index++; continue; }
+    if (rest.startsWith("--")) { const end = sql.indexOf("\n", index); index = end < 0 ? sql.length : end; continue; }
+    if (rest.startsWith("/*")) {
+      let depth = 1; index += 2;
+      while (index < sql.length && depth) {
+        if (sql.startsWith("/*", index)) { depth++; index += 2; }
+        else if (sql.startsWith("*/", index)) { depth--; index += 2; }
+        else index++;
+      }
+      if (depth) return false;
+      continue;
+    }
+    if (rest[0] === "'" || rest[0] === '"') {
+      const quote = rest[0]; let value = "", closed = false; index++;
+      while (index < sql.length) {
+        if (!reviewedCreationTable && quote === '"' && sql.charCodeAt(index) > 0x7f) return false;
+        if (sql[index] === "\\") return false; // Refuse escape-string ambiguity.
+        if (sql[index] === quote) {
+          if (sql[index + 1] === quote) { value += quote; index += 2; continue; }
+          index++; closed = true; break;
+        }
+        value += sql[index++];
+      }
+      if (!closed) return false;
+      if (!reviewedCreationTable && quote === '"' && value === ";") return false; // Preserve the original delimiter refusal.
+      tokens.push(quote === "'" ? "<literal>" : reviewedCreationTable ? value.toUpperCase() : `"${value.toUpperCase()}"`); continue;
+    }
+    const word = /^[A-Za-z_][A-Za-z0-9_]*/u.exec(rest)?.[0];
+    if (word) { tokens.push(word.toUpperCase()); index += word.length; continue; }
+    const number = /^[0-9]+(?:\.[0-9]+)?/u.exec(rest)?.[0];
+    if (number) { tokens.push("<literal>"); index += number.length; continue; }
+    if (!";.,()+-=[]".includes(rest[0]!) && !(reviewedCreationTable && "<>:~".includes(rest[0]!))) return false;
+    tokens.push(rest[0]!); index++;
+  }
+  const statements: string[][] = [[]];
+  for (const token of tokens) { if (token === ";") statements.push([]); else statements.at(-1)!.push(token); }
+  const nonempty = statements.filter((statement) => statement.length);
+  return nonempty.length > 0 && nonempty.every((quoted) => {
+    const statement = reviewedCreationTable ? quoted : quoted.map((token) => token.startsWith('"') ? token.slice(1, -1) : token);
+    const text = statement.join(" ");
+    if (!reviewedCreationTable) {
+      if (quoted.includes("OPERATOR") || quoted.some((token, index) => token === "OWNED" && quoted[index + 1] === "BY")) return false;
+      if (/^INSERT INTO /u.test(text)) {
+        const values = quoted.indexOf("VALUES"), conflict = quoted.indexOf("ON", values);
+        if (!/^INSERT INTO [A-Z_][A-Z0-9_]*(?: \. [A-Z_][A-Z0-9_]*)*(?: \( [A-Z_][A-Z0-9_]*(?: , [A-Z_][A-Z0-9_]*)* \))? VALUES$/u.test(quoted.slice(0, values + 1).join(" "))) return false;
+        if (!/ ON CONFLICT(?: \( [A-Z_][A-Z0-9_]*(?: , [A-Z_][A-Z0-9_]*)* \)| ON CONSTRAINT [A-Z_][A-Z0-9_]*)? DO NOTHING$/u.test(quoted.join(" "))) return false;
+        if (!quoted.slice(values + 1, conflict).every((token) => ["<literal>", "TRUE", "FALSE", "NULL", "(", ")", ",", "+", "-"].includes(token))) return false;
+      }
+      if (/^CREATE SCHEMA /u.test(text) && !/^CREATE SCHEMA (?:IF NOT EXISTS )?[A-Z_][A-Z0-9_]*$/u.test(quoted.join(" "))) return false;
+      if (/^(?:CREATE (?:UNIQUE )?(?:TABLE|INDEX)|ALTER TABLE) /u.test(text)) {
+        // No evaluated forward uses LIKE, including its expression-operator form.
+        if (quoted.includes("LIKE") || quoted.some((token, index) => token === "PARTITION" && quoted[index + 1] === "OF")) return false;
+        if (!expandOnlyExpressions(quoted)) return false;
+        let depth = 0;
+        for (const token of quoted) {
+          if (token === "(") depth++;
+          if (token === ")") depth--;
+          if (quoted[0] === "CREATE" && quoted[1] === "TABLE" && depth === 0 && token === "AS") return false;
+        }
+      } else if (quoted.includes("[") || quoted.includes("]")) return false;
+    }
+    // Base admission remains unchanged; the expand-only checks above only add refusals.
+    // Pinned new tables use scalar operators/casts and these foreign-key actions.
+    // Mask only those actions, leaving standalone DELETE/SET and every other refusal intact.
+    const checked = reviewedCreationTable && /^CREATE TABLE /u.test(text) ? text.replace(/ ON DELETE (?:CASCADE|SET NULL)(?= |$)/gu, "").split(" ") : statement;
+    if (checked.some((token) => ["DROP", "TRUNCATE", "RENAME", "OWNER", "SET", "APP", "DELETE", "UPDATE", "REPLACE", "SELECT", "EXECUTE", "CALL", "DETACH", "ATTACH", "INHERIT", "INHERITS", "DISABLE", "ENABLE", "VALIDATE", "AUTHORIZATION"].includes(token))) return false;
+    if (text === "BEGIN" || text === "COMMIT") return true;
+    if (/^INSERT INTO /u.test(text)) {
+      const values = statement.indexOf("VALUES"), conflict = statement.indexOf("ON", values);
+      if (values < 0 || conflict < 0 || !/ ON CONFLICT(?: \( [A-Z_][A-Z0-9_]*(?: , [A-Z_][A-Z0-9_]*)* \)| ON CONSTRAINT [A-Z_][A-Z0-9_]*)? DO NOTHING$/u.test(text)) return false;
+      // Seed values are literals only; no subquery, function or dynamic execution.
+      return statement.slice(values + 1, conflict).every((token) => ["<literal>", "TRUE", "FALSE", "NULL", "(", ")", ",", "+", "-"].includes(token)) && statement.filter((token) => token === "DO").length === 1;
+    }
+    if (statement.includes("DO")) return false;
+    if (/^CREATE (?:UNIQUE )?(?:TABLE|INDEX|TYPE|SEQUENCE|SCHEMA) /u.test(text)) return !statement.includes("ALTER") && statement.filter((token) => token === "CREATE").length === 1;
+    if (/^ALTER TABLE /u.test(text)) {
+      const add = statement.indexOf("ADD");
+      if (add <= 2 || statement.slice(2, add).includes(",") || statement.filter((token) => token === "ALTER").length !== 1) return false;
+      let depth = 0;
+      for (let index = add; index < statement.length; index++) {
+        if (statement[index] === "(") depth++;
+        if (statement[index] === ")") depth--;
+        if (depth < 0 || (depth === 0 && statement[index] === "," && statement[index + 1] !== "ADD")) return false;
+      }
+      return depth === 0;
+    }
+    return false;
+  });
+}
+
+/** A pinned creation file may add invoker objects, never redefine earlier objects.
+ * Trigger attachments to existing public tables are intentional: both the trigger
+ * name and its zero-argument trigger function must be new in this file.
+ * This is a bounded statement classifier, not a general SQL/body safety analyser;
+ * the separately approved whole-file hash binds every body and expression.
+ */
+export function assertPortableCreationStatements(bytes: Buffer, preceding: Buffer[]): void {
+  const relations = new Set<string>(), functions = new Set<string>(), triggers = new Set<string>(), priorTables = new Set<string>();
+  for (const source of preceding) {
+    for (const statement of sqlStatements(source.toString("utf8"), true)) {
+      const relation = /^CREATE (?:(?:OR REPLACE|UNIQUE|MATERIALIZED|UNLOGGED) )?(?:TABLE|INDEX|VIEW|SEQUENCE|TYPE) (?:IF NOT EXISTS )?(?:public\.)?"?([a-z_][a-z0-9_]*)"?(?:\s|\()/iu.exec(statement);
+      if (relation) relations.add(`public.${relation[1]!.toLowerCase()}`);
+      if (relation && /^CREATE (?:UNLOGGED )?TABLE /iu.test(statement)) priorTables.add(`public.${relation[1]!.toLowerCase()}`);
+      const routine = /^CREATE(?: OR REPLACE)? FUNCTION public\."?([a-z_][a-z0-9_]*)"?\s*\(/iu.exec(statement);
+      if (routine) functions.add(`public.${routine[1]!.toLowerCase()}`);
+      const trigger = /^CREATE(?: OR REPLACE)? TRIGGER "?([a-z_][a-z0-9_]*)"?\s/iu.exec(statement);
+      if (trigger) triggers.add(trigger[1]!.toLowerCase());
+    }
+  }
+  const tables = new Set<string>(), views = new Set<string>(), indexes = new Set<string>();
+  const definitions = new Set<string>(), createdFunctions = new Set<string>(), triggerFunctions = new Set<string>(), addedTriggers = new Set<string>();
+  const triggerTables = new Map<string, string>();
+  const add = (name: string, existing: Set<string>, added: Set<string>) => {
+    if (existing.has(name) || added.has(name)) throw new Error(`reviewed portable creation refuses a pre-existing or duplicate object: ${name}`);
+    existing.add(name); added.add(name);
+  };
+  const argumentTypes = (args: string): string => args.trim() === "" ? "" : args.split(",").map((argument) => {
+    const type = /^(?:[a-z_][a-z0-9_]*\s+)?(uuid|text|jsonb|integer|bigint|boolean|timestamptz|public\.[a-z_][a-z0-9_]*)(?:\s+DEFAULT\s+(?:NULL|false|\d+|now\(\)))?$/iu.exec(argument.trim())?.[1]?.toLowerCase();
+    if (!type || (type.startsWith("public.") && !tables.has(type))) throw new Error("reviewed portable creation refuses an unsupported argument type or default");
+    return type;
+  }).join(",");
+  for (const statement of sqlStatements(bytes.toString("utf8"), false, true)) {
+    if (/^(?:BEGIN|COMMIT);$/iu.test(statement)) continue;
+    const table = /^CREATE TABLE (public\.[a-z_][a-z0-9_]*)\s*\([\s\S]+\);$/iu.exec(statement);
+    if (table && isExpandOnlyPlatformForward(statement, true)) { const name = table[1]!.toLowerCase(); add(name, relations, tables); continue; }
+    const insert = /^INSERT INTO (public\.[a-z_][a-z0-9_]*)(?=\s|\()/iu.exec(statement);
+    if (insert && tables.has(insert[1]!.toLowerCase()) && isExpandOnlyPlatformForward(statement)) continue;
+    const index = /^CREATE(?: UNIQUE)? INDEX ([a-z_][a-z0-9_]*)\s+ON (public\.[a-z_][a-z0-9_]*)\s*\([\s\S]+;$/iu.exec(statement);
+    if (index && tables.has(index[2]!.toLowerCase()) && isExpandOnlyPlatformForward(statement)) { add(`public.${index[1]!.toLowerCase()}`, relations, indexes); continue; }
+    const view = /^CREATE VIEW (public\.[a-z_][a-z0-9_]*)\s+AS\s+SELECT\s+[\s\S]+;$/iu.exec(statement);
+    if (view) { add(view[1]!.toLowerCase(), relations, views); continue; }
+    // Admit only the attributes present in the approved invoker definitions.
+    const routine = /^CREATE FUNCTION (public\.[a-z_][a-z0-9_]*)\(([\s\S]*?)\)\s+RETURNS\s+((?:SETOF\s+)?(?:boolean|jsonb|text|void|trigger|public\.[a-z_][a-z0-9_]*))\s+LANGUAGE\s+(?:sql|plpgsql)\s+(?:(?:IMMUTABLE|STABLE)\s+)?(?:SECURITY INVOKER\s+)?SET search_path\s*=\s*pg_catalog\s+AS (\$(?:[A-Za-z_][A-Za-z0-9_]*)?\$)/iu.exec(statement);
+    if (routine) {
+      const closing = statement.indexOf(routine[4]!, routine[0].length);
+      if (closing < 0 || !/^\s*;\s*$/u.test(statement.slice(closing + routine[4]!.length))) throw new Error("reviewed portable creation refuses attributes after its first closing dollar tag");
+      const name = routine[1]!.toLowerCase(), types = argumentTypes(routine[2]!);
+      const returns = routine[3]!.toLowerCase();
+      if (returns.startsWith("public.") && !tables.has(returns)) throw new Error("reviewed portable creation refuses a pre-existing return row type");
+      // Refuse all overloads of an earlier name as well as exact identity collisions.
+      add(name, functions, createdFunctions);
+      definitions.add(`${name}(${types})`);
+      if (returns === "trigger" && types === "") triggerFunctions.add(name);
+      continue;
+    }
+    const trigger = /^CREATE TRIGGER ([a-z_][a-z0-9_]*)\s+(?:BEFORE|AFTER) (?:INSERT|UPDATE(?: OF [a-z_, ]+)?)(?: OR (?:INSERT|UPDATE(?: OF [a-z_, ]+)?))*\s+ON (public\.[a-z_][a-z0-9_]*)\s+FOR EACH ROW EXECUTE FUNCTION (public\.[a-z_][a-z0-9_]*)\(\);$/iu.exec(statement);
+    if (trigger && (priorTables.has(trigger[2]!.toLowerCase()) || tables.has(trigger[2]!.toLowerCase())) && triggerFunctions.has(trigger[3]!.toLowerCase())) {
+      const name = trigger[1]!.toLowerCase();
+      add(name, triggers, addedTriggers); triggerTables.set(name, trigger[2]!.toLowerCase()); continue;
+    }
+    const revoke = /^REVOKE ALL ON (FUNCTION |TABLE )?([\s\S]+) FROM ([a-z_, ]+);$/iu.exec(statement);
+    if (revoke && revoke[3]!.split(",").every((role) => ["public", "anon", "authenticated"].includes(role.trim().toLowerCase()))) {
+      if (revoke[1]?.toUpperCase() === "FUNCTION ") {
+        const target = /^(public\.[a-z_][a-z0-9_]*)\(([^)]*)\)$/iu.exec(revoke[2]!);
+        if (target && definitions.has(`${target[1]!.toLowerCase()}(${argumentTypes(target[2]!)})`)) continue;
+      } else if (revoke[2]!.split(",").every((target) => tables.has(target.trim().toLowerCase()) || (!revoke[1] && views.has(target.trim().toLowerCase())))) continue;
+    }
+    const comment = /^COMMENT ON (TABLE|VIEW|INDEX|COLUMN) (public\.[a-z_][a-z0-9_]*)(\.[a-z_][a-z0-9_]*)? IS\s+'(?:[^']|'')*';$/iu.exec(statement);
+    if (comment) {
+      const kind = comment[1]!.toUpperCase(), name = comment[2]!.toLowerCase();
+      if (kind === "COLUMN" ? !!comment[3] && (tables.has(name) || views.has(name)) : !comment[3] && (kind === "TABLE" ? tables : kind === "VIEW" ? views : indexes).has(name)) continue;
+    }
+    const functionComment = /^COMMENT ON FUNCTION (public\.[a-z_][a-z0-9_]*)\(([^)]*)\) IS\s+'(?:[^']|'')*';$/iu.exec(statement);
+    if (functionComment && definitions.has(`${functionComment[1]!.toLowerCase()}(${argumentTypes(functionComment[2]!)})`)) continue;
+    const triggerComment = /^COMMENT ON TRIGGER ([a-z_][a-z0-9_]*) ON (public\.[a-z_][a-z0-9_]*) IS\s+'(?:[^']|'')*';$/iu.exec(statement);
+    if (triggerComment && triggerTables.get(triggerComment[1]!.toLowerCase()) === triggerComment[2]!.toLowerCase()) continue;
+    throw new Error(`reviewed portable creation refuses an unsupported statement, pre-existing target or function attributes: ${statement.slice(0, 100)}`);
+  }
+}
+
 const git = (root: string, args: string[]) => documentationGit(root, args);
 function blob(root: string, revision: string, path: string): Buffer | undefined {
   const listing = git(root, ["ls-tree", "-z", revision, "--", path]).toString("utf8");
@@ -277,14 +629,14 @@ export function assertUnchangedForwardApproval(root: string, base: string, head:
       try {
         const prior = readReviewedForwardRegistry(before), current = readReviewedForwardRegistry(after);
         const binding = (registry: ReviewedForwardRegistry) => {
-          for (const list of ["replacementForwards", "creationForwards", "runtimeForwards", "portableReplacementForwards"] as const) {
+          for (const list of ["replacementForwards", "creationForwards", "runtimeForwards", "portableReplacementForwards", "portableCreationForwards"] as const) {
             const index = registry[list]?.findIndex((entry) => entry.path === path) ?? -1;
             if (index >= 0) return { list, index, entry: registry[list]![index] };
           }
           return null;
         };
         const canonical = (value: unknown) => JSON.stringify(value, (_key, item: unknown) => item && typeof item === "object" && !Array.isArray(item) ? Object.fromEntries(Object.entries(item).sort(([left], [right]) => left.localeCompare(right))) : item);
-        const shared = (registry: ReviewedForwardRegistry) => Object.fromEntries(Object.entries(registry).filter(([key]) => !["replacementForwards", "creationForwards", "runtimeForwards", "portableReplacementForwards"].includes(key)));
+        const shared = (registry: ReviewedForwardRegistry) => Object.fromEntries(Object.entries(registry).filter(([key]) => !["replacementForwards", "creationForwards", "runtimeForwards", "portableReplacementForwards", "portableCreationForwards"].includes(key)));
         const previous = binding(prior), next = binding(current);
         if (canonical(shared(prior)) === canonical(shared(current)) && previous && next && canonical(previous) === canonical(next)) return;
       } catch { /* Invalid historical approvals cannot authorize a release. */ }
@@ -324,7 +676,7 @@ export function assertReviewedPlatformForward(root: string, base: string, head: 
   if (!targetRegistry) throw new Error(`non-expand-only forward has no reviewed replacement approval: ${path}`);
   const registry = readReviewedForwardRegistry(targetRegistry);
   const portable = path.startsWith("db/platform/migrations/");
-  const candidates = portable ? registry.portableReplacementForwards ?? [] : [...registry.replacementForwards, ...registry.creationForwards, ...(registry.runtimeForwards ?? [])];
+  const candidates = portable ? [...registry.portableReplacementForwards ?? [], ...registry.portableCreationForwards ?? []] : [...registry.replacementForwards, ...registry.creationForwards, ...(registry.runtimeForwards ?? [])];
   const forward = candidates.find((entry) => entry.path === path);
   if (!forward) throw new Error(`non-expand-only forward differs from reviewed replacement path or bytes: ${path}`);
   let approval = base;
@@ -341,7 +693,14 @@ export function assertReviewedPlatformForward(root: string, base: string, head: 
   const baselinePath = portable ? PLATFORM_BASELINE_FILE : MANAGED_BASELINE;
   const baseline = blob(root, approval, baselinePath);
   if (!baseline || (!portable && sqlSha256(baseline) !== registry.baselineSha256)) throw new Error("reviewed replacement immutable baseline drifted");
-  const names = new Set(forward.functions.map(({ signature }) => signature.split("(")[0]!));
+  if (registry.portableCreationForwards?.includes(forward)) {
+    const paths = git(root, ["ls-tree", "-r", "--name-only", head, "--", "db/platform/migrations/"]).toString("utf8").trim().split("\n").filter((item) => item < path).sort();
+    assertPortableCreationStatements(bytes, paths.map((priorPath) => blob(root, head, priorPath)!));
+    return;
+  }
+  // Creation-only entries returned above; existing classes retain their function bindings.
+  const functionForward = forward as ForwardBinding;
+  const names = new Set(functionForward.functions.map(({ signature }) => signature.split("(")[0]!));
   const prior = reviewedFunctionDefinitions(baseline, names);
   const priorPolicies = reviewedPolicyDefinitions(baseline);
   const priorStatements = new Map<string, string>();
@@ -366,7 +725,7 @@ export function assertReviewedPlatformForward(root: string, base: string, head: 
   if (portable) {
     const statements = sqlStatements(bytes.toString("utf8"));
     const statement = statements[0]!;
-    const preceding = priorStatements.get(forward.functions[0]!.signature);
+    const preceding = priorStatements.get(functionForward.functions[0]!.signature);
     if (statements.length !== 1 || !/^CREATE OR REPLACE FUNCTION public\.[a-z_][a-z0-9_]*\(/u.test(statement)) throw new Error("reviewed portable replacement requires only one CREATE OR REPLACE FUNCTION");
     if (!preceding || headerAttributes(statement) !== headerAttributes(preceding)) throw new Error("reviewed portable replacement function attributes drifted");
   } else if (registry.runtimeForwards?.includes(forward as RuntimeForwardBinding)) {
@@ -396,8 +755,8 @@ export function assertReviewedPlatformForward(root: string, base: string, head: 
     if (retiredPolicies.length !== (runtime.retiredPolicies?.length ?? 0)) throw new Error("reviewed replacement runtime has missing policy retirements");
     if (privileges.length !== runtime.privileges.length || privileges.some((statement, index) => statement !== runtime.privileges[index])) throw new Error("reviewed replacement runtime privileges differ from exact statement pins");
   } else assertFunctionStatements(bytes, definitions);
-  if (definitions.size !== forward.functions.length) throw new Error("reviewed replacement has missing or additional function signatures");
-  for (const binding of forward.functions) {
+  if (definitions.size !== functionForward.functions.length) throw new Error("reviewed replacement has missing or additional function signatures");
+  for (const binding of functionForward.functions) {
     if (definitions.get(binding.signature) !== binding.afterSha256 || (prior.get(binding.signature) ?? null) !== binding.beforeSha256) throw new Error(`reviewed replacement definition drifted: ${binding.signature}`);
   }
 }

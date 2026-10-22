@@ -141,7 +141,12 @@ export function allowedPaymentAdapterWords(path, contents, category = "ui-13") {
   }
   if (category === "ui-5") {
     const ownPath = new RegExp(`^packages/platform/(?:src|test)/payments/${paymentAdapterNames[1]}/`);
-    return ownPath.test(path) ? [...contents.matchAll(new RegExp(`\\b${String.fromCharCode(80, 76, 78)}\\b`, "g"))].length : 0;
+    const currency = String.fromCharCode(80, 76, 78);
+    if (path === `packages/platform/api/payments-${paymentAdapterNames[1]}.api.md`) {
+      const declaration = `    currency: "${currency}";`;
+      return contents.split("\n").filter(line => line === declaration).length;
+    }
+    return ownPath.test(path) ? [...contents.matchAll(new RegExp(`\\b${currency}\\b`, "g"))].length : 0;
   }
   const name = paymentAdapterNames[category === "ui-13" ? 0 : category === "ui-14" ? 1 : -1];
   if (!name) return 0;
@@ -159,6 +164,23 @@ export function allowedPaymentAdapterWords(path, contents, category = "ui-13") {
     tokens.push(...contents.matchAll(paymentAdapterReport));
   }
   return tokens.reduce((count, [token]) => count + [...token.matchAll(word)].length, 0);
+}
+
+// One vendor category, with exact paths and complete, case-sensitive carrier tokens.
+const fulfillmentAdapterName = "omni" + "pack";
+const fulfillmentAdapterWord = new RegExp(`\\b${fulfillmentAdapterName}\\b`, "gi");
+const fulfillmentAdapterPaths = new RegExp(`^packages/platform/(?:src|test)/fulfillment/${fulfillmentAdapterName}/`);
+const fulfillmentAdapterSubpath = new RegExp(`(?<![\\w-])fulfillment/${fulfillmentAdapterName}(?![\\w-])`, "g");
+const fulfillmentAdapterReport = new RegExp(`(?<![\\w.-])fulfillment-${fulfillmentAdapterName}\\.api\\.md(?![\\w./-])`, "g");
+export function allowedFulfillmentAdapterWords(path, contents) {
+  if (fulfillmentAdapterPaths.test(path) || path === `packages/platform/api/fulfillment-${fulfillmentAdapterName}.api.md`
+    || path === "docs/platform/plans/oss-a3-fulfillment-adapter.md") return [...contents.matchAll(fulfillmentAdapterWord)].length;
+  if (!paymentAdapterCarriers.has(path) && !/^packages\/platform\/changes\/[^/]+\.md$/.test(path)) return 0;
+  const tokens = [...contents.matchAll(fulfillmentAdapterSubpath)];
+  if (["packages/platform/release-gates.json", "config/openlup-publication-catalog.json"].includes(path)) {
+    tokens.push(...contents.matchAll(fulfillmentAdapterReport));
+  }
+  return tokens.reduce((count, [token]) => count + [...token.matchAll(fulfillmentAdapterWord)].length, 0);
 }
 
 export function neutralityIncreases(baseline, current) {
@@ -306,6 +328,10 @@ export function scanSnapshots(snapshots) {
   if (typeof adoptionBrand !== "string" || !/^[a-z]+$/.test(adoptionBrand)) throw new Error("invalid adoption brand policy");
   const sourceContents = new Map(sources.map(({ path, contents }) => [path, contents]));
   for (const row of ui.counts) {
+    if (row.counts?.["ui-15"]) {
+      row.counts["ui-15"] -= allowedFulfillmentAdapterWords(row.path, sourceContents.get(row.path) ?? "");
+      if (row.counts["ui-15"] === 0) delete row.counts["ui-15"];
+    }
     for (const category of ["ui-13", "ui-14", "ui-5", "ui-8"]) {
       if (row.counts?.[category]) {
         row.counts[category] -= allowedPaymentAdapterWords(row.path, sourceContents.get(row.path) ?? "", category);

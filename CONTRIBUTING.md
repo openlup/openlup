@@ -147,6 +147,15 @@ new-cycle inserts. Docker unavailability fails these required proofs; report
 container setup separately from case runtime. This adds no collector, profile,
 coverage budget or live provider dependency.
 
+The payment reference-support rebinding reuses existing host and producer cases:
+localized callback/query and simulator-return parity, nominal no-charge retry,
+customer/setup metadata and inert default-off construction are assertions inside
+existing cases. Duplicate root suites retire while their package witnesses stay.
+The packed consumer checks the eleven additional experimental vendor exports,
+no leakage into neutral payment entries and no SDK or import-time I/O. Its local
+pack/extract fixture needs no package installation; provider-account verification
+and hosted time-budget evidence remain separate obligations.
+
 The opt-in payment example retains donor execution, decline, refund, lifecycle
 and purpose-sensitive readback witnesses in the existing Platform/root Node
 collectors. Its focused factory tests add neutral-envelope and refusal coverage.
@@ -1037,6 +1046,14 @@ After removing debt, lower the affected counts; never raise them.
 After all allowances are subtracted, a negative count fails the ratchet with
 the category, quoted path and remainder; allowances never clamp counts to zero.
 
+The internal fulfillment example lane subtracts only ui-15 at its exact source,
+test, API-report and [A3 ledger](docs/platform/plans/oss-a3-fulfillment-adapter.md)
+paths. Fixed registration carriers and platform change fragments admit only the
+complete case-sensitive subpath token; the report filename is admitted only in
+release gates and the publication catalogue. Outside paths, bare vendor prose,
+lookalikes, casing changes and other categories still fail. The script's tests
+exercise these plants and negative subtraction without changing the baseline.
+
 The named first-party adoption example has a narrow prose allowance: only the
 approved complete lines in the root README, the documentation owner's page and
 the exact screenshot catalogue reference are counted once. It subtracts only
@@ -1059,6 +1076,26 @@ edits, deletions and mode changes to existing managed or portable migrations,
 backdated versions, unbound portable forwards and non-expand-only new SQL.
 The portable manifest must preserve its prior baseline and forward prefix.
 The CLI returns a failing exit when this comparison refuses a candidate.
+Expand-only expression admission is covered by the predicate cases and the pinned
+portable-chain admitted set in `scripts/source-preview-release.test.ts`;
+`tests/postgres/expandOnlyExpressions.test.ts` separately executes refused forms
+on disposable PostgreSQL 16 and observes their effects before rollback. The
+classifier admits only listed expression calls and accounted structural
+parentheses at verified object, column/type and constraint positions. Keyword-shaped
+names do not skip expression checks. Seed INSERTs require VALUES immediately
+after the target and optional plain column list; schemas take no schema elements,
+and expand-only statements take no OWNED BY clause. These tests do not broaden
+the separately reviewed creation class. Seed literal checks preserve identifier
+quotes, and type-position parentheses require a listed built-in modifier type.
+All base checks remain required after the additional refusal checks. Empty `[]`
+suffixes are accepted only at verified type positions; array constructors and
+subscripts refuse before element splitting. PG16 witnesses include a quoted
+typed literal before a sequence call, an `if` column with a default call, and
+a domain check inside an array default evaluated by a seed INSERT.
+Expand-only token separators are ASCII space, tab and LF; non-ASCII outside
+single-quoted literals and comments refuses, including in quoted identifiers.
+The PG16 identifier-boundary witness observes a call after a name containing
+non-ASCII bytes is truncated to PostgreSQL's 63-byte identifier limit.
 This database-free comparison does not derive the live object inventory digest.
 The source contract continues to bind the manifest bytes, and the portable
 runner compares `objectInventorySha256` with the selected database catalogue

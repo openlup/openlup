@@ -10,7 +10,7 @@ import {
 import type { VercelRequest, VercelResponse } from "../../_lib/types/vercel.js";
 import { sendBffError } from "../../_lib/bff/response.js";
 import { createTpayChannelsHandler } from "../../domains/commerce/tpayChannelsHandler.js";
-import { createTpayHttpClient } from "../../infra/tpay/tpayHttpClient.js";
+import { createTpayHttpClient } from "@openlup/platform/payments/tpay";
 import {
   isTpayProductionOpenApiBaseUrl,
   isTpaySandboxOpenApiBaseUrl,

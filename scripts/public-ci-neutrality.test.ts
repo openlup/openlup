@@ -4,7 +4,7 @@ import { mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, 
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { neutralityIncreases, scanSnapshots, validateBaseline } from "./public-ci-neutrality.mjs";
+import { allowedFulfillmentAdapterWords, neutralityIncreases, scanSnapshots, validateBaseline } from "./public-ci-neutrality.mjs";
 
 vi.mock("node:child_process", async importOriginal => {
   const original = await importOriginal<typeof import("node:child_process")>();
@@ -74,6 +74,128 @@ function validBaseline() {
   return { schemaVersion: 2, sourceCommit: "a".repeat(40), scannerPins: Object.fromEntries(scannerPaths.map((path) => [path, "c".repeat(40)])), counts: { ["b".repeat(64)]: { brand: 1 } } };
 }
 describe("tree-wide neutrality ratchet", () => {
+  it("subtracts only the fulfillment vendor category at its exact paths and complete carrier tokens", () => {
+    const { root, base } = installed();
+    const vendor = ["omni", "pack"].join("");
+    const before = readFileSync(join(root, baselinePath), "utf8");
+    const paths = [`packages/platform/src/fulfillment/${vendor}/client.ts`, `packages/platform/test/fulfillment/${vendor}/wire.test.ts`,
+      `packages/platform/api/fulfillment-${vendor}.api.md`, "docs/platform/plans/oss-a3-fulfillment-adapter.md"];
+    for (const path of paths) put(root, path, `${vendor} ${vendor.toUpperCase()}\n`);
+    const carriers = ["packages/platform/package.json", "packages/platform/release-gates.json", "packages/platform/test/packageBoundary.test.ts",
+      "packages/platform/README.md", "config/openlup-publication-catalog.json", "docs/platform/ARCHITECTURE_AND_EXTENSIONS.md",
+      "docs/platform/CANONICAL_CONTRACTS.md", "scripts/packages/platform-cold-consumer.ts", "scripts/packages/platform-cold-consumer.test.ts",
+      "packages/platform/changes/a-three.md"];
+    for (const path of carriers) put(root, path, `fulfillment/${vendor}\n`);
+    for (const path of [carriers[1], carriers[4]]) put(root, path, `fulfillment/${vendor} fulfillment-${vendor}.api.md\n`);
+    expect(cli(root, base).status).toBe(0);
+    expect(readFileSync(join(root, baselinePath), "utf8")).toBe(before);
+  }, 30_000);
+
+  it("refuses fulfillment outside-path, bare-prose, casing and lookalike plants while retaining other categories", () => {
+    const vendor = ["omni", "pack"].join("");
+    const plants: Array<[string, string, string]> = [
+      ["src/example.ts", vendor, "ui-15"],
+      [`packages/core/src/fulfillment/${vendor}/x.ts`, vendor, "ui-15"],
+      [`docs/packages/platform/src/fulfillment/${vendor}/x.ts`, vendor, "ui-15"],
+      [`packages/platform/lib/fulfillment/${vendor}/x.ts`, vendor, "ui-15"],
+      ["docs/platform/plans/other.md", vendor, "ui-15"],
+      ["packages/platform/api/other.api.md", vendor, "ui-15"],
+      ["packages/platform/changes/a-three.txt", `fulfillment/${vendor}`, "ui-15"],
+      ["packages/platform/README.md", `x-fulfillment/${vendor}`, "ui-15"],
+      ["packages/platform/README.md", `bare ${vendor}`, "ui-15"],
+      ["packages/platform/README.md", `fulfillment/${vendor}-x`, "ui-15"],
+      ["packages/platform/README.md", `fulfillment/${vendor.toUpperCase()}`, "ui-15"],
+      ["packages/platform/README.md", `fulfillment-${vendor}.api.md`, "ui-15"],
+      [`packages/platform/src/fulfillment/${vendor}-x/client.ts`, vendor, "ui-15"],
+      [`packages/platform/src/fulfillment/${vendor.toUpperCase()}/client.ts`, vendor, "ui-15"],
+      ["packages/platform/changes/nested/a-three.md", `fulfillment/${vendor}`, "ui-15"],
+      [`packages/platform/src/fulfillment/${vendor}/client.ts`, `${vendor} ${["str", "ipe"].join("")}`, "ui-13"],
+      [`packages/platform/test/fulfillment/${vendor}/wire.test.ts`, `${vendor} ${String.fromCharCode(80, 76, 78)}`, "ui-5"],
+    ];
+    const cliPlants = [...plants];
+    // Keep the real CLI plants above; exercise the larger matcher matrix at its
+    // exported pure boundary to avoid one Git/scanner subprocess per permutation.
+    const ownPaths = [`packages/platform/src/fulfillment/${vendor}/client.ts`,
+      `packages/platform/test/fulfillment/${vendor}/wire.test.ts`];
+    const exactPaths = [`packages/platform/api/fulfillment-${vendor}.api.md`,
+      "docs/platform/plans/oss-a3-fulfillment-adapter.md"];
+    for (const path of [...ownPaths, ...exactPaths, "packages/platform/changes/a-three.md"]) {
+      const contents = path.includes("/changes/") ? `fulfillment/${vendor}` : vendor;
+      for (const outside of [`x/${path}`, `x\n${path}`, `${path}x`, `${path}\nx`, path.toUpperCase(),
+        ...path.split("/").slice(0, -1).flatMap((_segment, index) =>
+          ["other", "other/nested"].map(segment => path.split("/").map((part, offset) => offset === index ? segment : part).join("/"))),
+        path.replace(/\.md$/, ".txt"), path.replace(/\.api\.md$/, ".api.txt")]) {
+        // Own directories intentionally allow arbitrary descendants.
+        if (ownPaths.includes(path) && [`${path}x`, `${path}\nx`].includes(outside)) continue;
+        if (outside !== path) plants.push([outside, contents, "ui-15"]);
+      }
+    }
+    for (const path of exactPaths) {
+      const parts = path.split("/");
+      for (let index = 1; index < parts.length; index++) {
+        plants.push([`${parts.slice(0, index).join("/")}/other.md`, vendor, "ui-15"],
+          [`other/${parts.slice(index).join("/")}`, vendor, "ui-15"]);
+      }
+      for (let index = 0; index < path.length; index++) {
+        if ("/.-".includes(path[index])) {
+          plants.push([path.slice(0, index), vendor, "ui-15"],
+            [path.slice(index + 1), vendor, "ui-15"]);
+        }
+      }
+    }
+    plants.push(["docs/platform/plans/oss-a3-other.md", vendor, "ui-15"],
+      [`packages/platform/api/other-fulfillment-${vendor}.api.md`, vendor, "ui-15"],
+      ["packages/platform/changes/a-three.mdx", `fulfillment/${vendor}`, "ui-15"]);
+    const carriers = ["packages/platform/package.json", "packages/platform/release-gates.json", "packages/platform/test/packageBoundary.test.ts",
+      "packages/platform/README.md", "config/openlup-publication-catalog.json", "docs/platform/ARCHITECTURE_AND_EXTENSIONS.md",
+      "docs/platform/CANONICAL_CONTRACTS.md", "scripts/packages/platform-cold-consumer.ts", "scripts/packages/platform-cold-consumer.test.ts"];
+    for (const path of carriers) {
+      for (const outside of [`x/${path}`, `${path}x`, `${path}/extra`, `x\n${path}`, `${path}\nx`, path.toUpperCase()]) {
+        plants.push([outside, `fulfillment/${vendor}`, "ui-15"]);
+      }
+      for (const contents of [`Xfulfillment/${vendor}`, `-fulfillment/${vendor}`, `fulfillment/${vendor}X`,
+        `fulfillment/${vendor}-`, `FULFILLMENT/${vendor}`, `fulfillment/${vendor.toUpperCase()}`,
+        `other/${vendor}`, `other/nested/${vendor}`, "fulfillment/other"]) {
+        plants.push([path, contents, "ui-15"]);
+      }
+    }
+    for (const path of ["packages/platform/release-gates.json", "config/openlup-publication-catalog.json"]) {
+      const report = `fulfillment-${vendor}.api.md`;
+      for (const contents of [
+        ...["X", "-", "."].map(prefix => `${prefix}${report}`),
+        ...["X", ".", "/", "-"].map(suffix => `${report}${suffix}`),
+        report.toUpperCase(), `FULFILLMENT-${vendor}.api.md`, `fulfillment-${vendor.toUpperCase()}.api.md`,
+        `fulfillment-${vendor}.API.md`, `fulfillment-${vendor}.api.MD`,
+        `fulfillment-${vendor}.api.txt`, `fulfillment-${vendor}.other.md`, `other-${vendor}.api.md`,
+        `fulfillment-other-${vendor}.api.md`, `fulfillment-${vendor}-other.api.md`,
+        `fulfillment-${vendor}/nested.api.md`, `fulfillment-${vendor}Xapi.md`, `fulfillment-${vendor}.apiXmd`,
+      ]) plants.push([path, contents, "ui-15"]);
+    }
+    for (const [path, contents, category] of plants) {
+      if (category === "ui-15") expect(allowedFulfillmentAdapterWords(path, contents), JSON.stringify([path, contents])).toBe(0);
+    }
+    const { root, base } = installed();
+    for (const [path, contents, category] of cliPlants) {
+      put(root, path, contents);
+      const result = cli(root, base);
+      expect(result.status, result.output).toBe(1); expect(result.output).toContain(`${category} increased`);
+      rmSync(join(root, path));
+    }
+  }, 30_000);
+
+  it("fails closed when the fulfillment allowance exceeds the ui-15 scanner count", () => {
+    const vendor = ["omni", "pack"].join("");
+    const path = `packages/platform/src/fulfillment/${vendor}/client.ts`;
+    const invoke = vi.mocked(execFileSync);
+    invoke.mockReturnValueOnce(JSON.stringify({ counts: [{ path, counts: { "ui-15": 1 } }],
+      policy: { rules: [{ id: "tree-brand", terms: [debt] }] } }));
+    invoke.mockReturnValueOnce(JSON.stringify([]));
+    try {
+      expect(() => scanSnapshots(new Map([[path, Buffer.from(`${vendor} ${vendor}`)]])))
+        .toThrow(`neutrality allowance over-subtracted ui-15 in ${JSON.stringify(path)}: -1`);
+    } finally { invoke.mockClear(); }
+  });
+
   it("fails closed when the communications allowance exceeds the ui-12 scanner count", () => {
     const vendor = ["res", "end"].join("");
     const path = `packages/platform/src/communications/${vendor}/index.ts`;

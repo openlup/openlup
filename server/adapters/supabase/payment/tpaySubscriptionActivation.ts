@@ -9,7 +9,7 @@ import {
   paymentIntentIdFromAlias,
   tpayProviderMethodRef,
 } from "../../../domains/payment/tpayAliasLinkage.js";
-import { aliasValue } from "../../tpay/tpayCreateTransactionInput.js";
+import { aliasValue } from "@openlup/platform/payments/tpay";
 
 export interface TpaySubscriptionActivationClient {
   rpc(functionName: string, args: Record<string, unknown>): PromiseLike<{ data: unknown; error: TpayRpcError | null }>;

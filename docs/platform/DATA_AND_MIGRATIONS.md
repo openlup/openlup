@@ -46,10 +46,22 @@ The release producer refuses destructive DDL (`DROP TABLE`, `SCHEMA`, `VIEW`,
 `TYPE` or `COLUMN`, and `TRUNCATE`), renames, schema moves, ownership transfers
 and writes to adopter-owned `app`. Its bounded SQL predicate accepts additive
 object creation, `ALTER TABLE ... ADD`, transaction boundaries and literal
-`INSERT ... VALUES ... ON CONFLICT ... DO NOTHING`. Procedural or dynamic SQL
+`INSERT ... VALUES ... ON CONFLICT ... DO NOTHING` seeds with a single literal
+VALUES list immediately after the target name and optional plain column list.
+`CREATE SCHEMA [IF NOT EXISTS] name` takes no schema elements; expand-only
+statements take no `OWNED BY` clause. Quoted identifiers are not seed literals
+or conflict keywords. The original `ALTER TABLE ... ADD` checks remain required
+alongside expression checks. New checks only add refusals before base admission.
+Type parentheses require a listed built-in modifier type; square brackets are
+limited to empty `[]` suffixes at verified type positions. Array constructors
+and subscripts refuse before element splitting. Procedural or dynamic SQL
 and unsupported forms refuse; see [Versioning and EOL](../../.github/VERSIONING_AND_EOL.md#publish-refuse-and-recover)
 for the exact admission boundary. Passing admission does not prove N-1 or live
 schema compatibility. Test the actual selected chain, constraints and replay.
+Expand-only admission refuses query-bearing `CREATE TABLE`, `PARTITION OF` and
+`LIKE`, operator references and function calls in default, check,
+generated and index expressions other than a short allowlist of side-effect-free
+built-ins; it is a bounded classifier, not a general SQL analyser.
 
 Rows that platform behaviour depends on must ship as idempotent statements in a
 forward, rather than relying on a reference fixture or process startup. A missing
@@ -316,6 +328,64 @@ unchanged. Only comments and that single `CREATE OR REPLACE FUNCTION` are
 admitted, with approval preceding introduction; no privileges or other statements
 are allowed. This control approval adds no SQL file or runtime behavior.
 
+The separate `portableCreationForwards` class binds these portable paths and
+whole-file SHA-256 digests in the same allowlist:
+
+| Path | SHA-256 |
+| --- | --- |
+| [db/platform/migrations/20261022080000_fulfillment_command_ledger.sql](../../scripts/fixtures/20261022080000_fulfillment_command_ledger.sql) | `c6806906cdb0b6931b29f7a5c7c800016e98d04e6ea956f3c1e219a6cdb7e9d1` |
+| [db/platform/migrations/20261022090000_fulfillment_delivery_alignment.sql](../../scripts/fixtures/20261022090000_fulfillment_delivery_alignment.sql) | `d9966ae79fe77a0feae8317dc5b46ef2d8196dd0790b1cd0ee1b06ab58061499` |
+
+It admits new public tables, indexes on tables created in the file, invoker
+functions, views, and row triggers. Relation, function and trigger names must
+be absent from the portable baseline and preceding portable forwards; duplicate
+creations also refuse. Function row arguments and returns may use tables created
+in that file. Function bodies and expressions are bound by the whole-file hash;
+the statement classifier does not establish their behavioral correctness.
+Functions use SQL or `plpgsql` with `search_path = pg_catalog`, default or explicit
+invoker security and the admitted volatility attributes. Trigger functions must
+be created in the same file, accept no arguments and return `trigger`.
+Table and index statements must also pass the expand-only predicate. For these
+pinned new tables it accepts scalar comparison/regex operators, casts, and
+foreign-key `ON DELETE CASCADE` or `ON DELETE SET NULL` actions; inheritance and
+its other refused keywords remain excluded. Outside dollar-quoted bodies,
+backslashes, `E'...'` and `U&` escape strings/identifiers refuse. Standard strings
+and quoted identifiers use doubled quotes; multiline quoted sections and quoted
+identifiers containing `;` or `$` refuse. Nested block comments and named dollar
+tags also refuse: these forms are not needed by the pinned files. Any other `$`
+outside strings or comments refuses; a dollar body opens only as `AS` followed
+by whitespace and `$$`. Non-ASCII outside strings, comments and dollar bodies
+also refuses, including in quoted identifiers. Line comments
+end at the next line feed regardless of quotes inside the comment. A function
+body uses `$$` and ends at its first closing `$$`; only whitespace and the
+terminating semicolon may follow.
+New triggers may attach to existing public tables, including
+`commerce_order_holds`, `fulfillment_shipments` and `subscription_cycles`;
+this admits a new trigger attachment, never replacement of an existing trigger.
+The [disposable catalog proof](../../tests/postgres/reviewedPortableCreation.test.ts)
+applies each pinned fixture after its portable prefix and checks invoker security,
+new-object ACL entries, unchanged earlier relation/function definitions and the
+exact explicit trigger attachments with functions created by that file.
+
+Seed `INSERT` is admitted only into a table created in the same pinned file,
+using the existing expand-only predicate: literal-only `VALUES` with
+`ON CONFLICT ... DO NOTHING`, without subqueries, functions or procedural `DO`.
+Inserts into pre-existing tables, `INSERT ... SELECT` and
+`ON CONFLICT ... DO UPDATE` refuse.
+Only `REVOKE ALL ... FROM PUBLIC, anon, authenticated` (or subsets of those
+recipients), comments on objects created in the file, and `BEGIN`/`COMMIT` are
+otherwise admitted. Revocation targets must also be created in that file.
+Unpinned paths, changed bytes, `CREATE OR REPLACE`, `ALTER`, `DROP`,
+`SECURITY DEFINER`, grants to any role (including `PUBLIC`, `anon` and
+`authenticated`), references to pre-existing objects in comments or revocations,
+and all other statement forms refuse. Approval must precede both the feature
+comparison base and the SQL introduction parent. This class does not change
+the managed or portable replacement classes or install runtime permissions.
+The exact future file bytes are also kept as
+[command-ledger](../../scripts/fixtures/20261022080000_fulfillment_command_ledger.sql)
+and [delivery-alignment](../../scripts/fixtures/20261022090000_fulfillment_delivery_alignment.sql)
+test snapshots; snapshots are not installation-chain entries.
+
 [The shared checker](../../scripts/reviewed-platform-forward.ts) verifies the
 immutable managed baseline hash, each old definition and each new definition.
 A definition hash covers the raw `CREATE` statement through its terminating
@@ -378,8 +448,8 @@ entry and list position, and every registry field outside the forward lists
 mainline commit, squash or merge, that introduces it; a feature branch's own
 earlier commits do not count. Only other forwards' entries may differ, so a later
 control may append approvals without stranding an unreleased forward. A feature still cannot approve itself. Missing history refuses. Existing
-history, version and manifest rules still apply, and the expand-only predicate
-is unchanged.
+history, version and manifest rules still apply. The expand-only predicate also
+refuses `INHERITS`, preventing a new table from inheriting an existing one.
 Admission is process evidence of exact reviewed bytes, not proof of live schema
 compatibility or authorization to release. Independent control review and the
 affected database behavior tests remain required.

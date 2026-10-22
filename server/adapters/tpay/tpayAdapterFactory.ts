@@ -1,5 +1,4 @@
 import type { PaymentExecutionPort } from "../../../src/domains/payment/ports.js";
-import { createTpayHttpClient } from "../../infra/tpay/tpayHttpClient.js";
 import {
   isCanonicalTpayProductionCallbackUrl,
   isTpayProductionOpenApiBaseUrl,
@@ -7,49 +6,23 @@ import {
 } from "../../infra/tpay/tpayEnvironment.js";
 import { createTpaySimulatorClient } from "../../infra/tpay/tpaySimulatorClient.js";
 import {
+  createTpayHttpClient,
   createTpayPaymentExecutionAdapter,
-  PROVIDER_KIND,
-} from "./tpayPaymentExecutionAdapter.js";
+  tpayPaymentCapabilities,
+} from "@openlup/platform/payments/tpay";
 import type { PaymentProviderCapabilityDescriptor } from "@openlup/core/payment";
 
-/**
- * What renewal orchestration may do with a stored method of this provider,
- * stated as capabilities rather than as an identity to compare against.
- *
- * Every value here restates behaviour this provider ALREADY has on the
- * off-session renewal path; nothing reads this descriptor yet.
- */
+/** Package protocol facts plus this host's existing repair and payer fallback policy. */
 export const unattendedChargeCapability: PaymentProviderCapabilityDescriptor = {
-  providerKind: PROVIDER_KIND,
-  // The mandate model is local DB evidence, read before a durable provider
-  // attempt exists so a consent that cannot be charged unattended enters
-  // customer repair instead of being mislabelled an indeterminate charge.
-  requiresStoredMandateEvidence: true,
-  // Only a model O mandate permits a variable amount without the payer
-  // confirming each charge. Absent or unknown is NOT model O: fail closed.
-  assessMandate: (snapshot) => snapshot.recurringModel === "O"
-    ? { chargeable: true }
-    : { chargeable: false, blockReason: "mandate_model_unsupported_for_unattended_charge" },
-  // Re-registering this rail's alias needs the payer to type a short-lived
-  // authorisation code. Declared because the rail can do it, not because any
-  // client drives it today: the repair surface offers only handoffs it
-  // implements, so this one is filtered rather than rendered.
+  providerKind: tpayPaymentCapabilities.providerKind,
+  requiresStoredMandateEvidence: tpayPaymentCapabilities.requiresStoredMandateEvidence,
+  assessMandate: tpayPaymentCapabilities.assessMandate,
+  unattendedChargeFlow: tpayPaymentCapabilities.unattendedChargeFlow,
+  methodHealth: tpayPaymentCapabilities.methodHealth,
+  terminalOutcomeReporting: tpayPaymentCapabilities.terminalOutcomeReporting,
+  mandateUpsertIsSubscriptionScoped: tpayPaymentCapabilities.mandateUpsertIsSubscriptionScoped,
   captureFlows: [{ kind: "scheme_alias_registration", handoff: "payer_supplied_code" }],
-  unattendedChargeFlow: "recurring_charge",
-  payerContext: { requiresPayerBlock: true, customerRefFallsBackToContactEmail: true },
-  methodHealth: {
-    requiresCustomerRef: false,
-    requiredMethodKind: "blik_payid",
-    requiresPayerContact: true,
-  },
-  mandateUpsertIsSubscriptionScoped: true,
-  // Measured, not assumed: a refused charge on this rail leaves the readback's
-  // own status non-terminal and reports the refusal per attempt, which is how a
-  // production renewal polled as pending for 33h on 2026-08-12 with the reason
-  // available the whole time. Six hours is a deliberately quiet first value for
-  // a rail whose unattended charges normally settle in seconds; it is a
-  // suspicion threshold for a human, never grounds to terminalize.
-  terminalOutcomeReporting: { kind: "attempt_records", silenceBecomesSuspectAfterMinutes: 360 },
+  payerContext: { ...tpayPaymentCapabilities.payerContext, customerRefFallsBackToContactEmail: true },
 };
 
 export interface TpayAdapterFactoryResult {
@@ -76,7 +49,7 @@ export function buildTpayAdapterIfEnabled(
     if (!urls) return null;
     return {
       mode: "simulator",
-      adapter: createTpayPaymentExecutionAdapter({
+      adapter: createReferenceTpayAdapter({
         client: createTpaySimulatorClient(),
         notificationUrl: urls.notificationUrl,
         successUrl: urls.successUrl,
@@ -118,7 +91,7 @@ export function buildTpayAdapterIfEnabled(
 
   return {
     mode: productionEnabled ? "production" : verifiedTestEnabled ? "verified_test" : "sandbox",
-    adapter: createTpayPaymentExecutionAdapter({
+    adapter: createReferenceTpayAdapter({
       client: createTpayHttpClient({ baseUrl, clientId, clientSecret }),
       notificationUrl,
       successUrl,
@@ -152,4 +125,43 @@ function previewOrigin(env: Record<string, string | undefined>): string | null {
   if (env.CUSTOMER_AUTH_REDIRECT_ORIGIN) return env.CUSTOMER_AUTH_REDIRECT_ORIGIN.replace(/\/+$/, "");
   if (env.VERCEL_URL) return `https://${env.VERCEL_URL.replace(/^https?:\/\//, "")}`;
   return null;
+}
+
+/** Keep localized reference presentation outside the contributed protocol implementation. */
+function createReferenceTpayAdapter(options: Parameters<typeof createTpayPaymentExecutionAdapter>[0]): PaymentExecutionPort {
+  const bind = (input: Parameters<PaymentExecutionPort["execute"]>[0]) => createTpayPaymentExecutionAdapter({
+    ...options,
+    resolvePayer: input => input.payer ?? (input.customerRef ? { email: input.customerRef, name: "openlup customer" } : null),
+    client: {
+      ...options.client,
+      createTransaction: transaction => options.client.createTransaction({
+        ...transaction,
+        successUrl: referenceReturnUrl(transaction.successUrl, options.successUrl, input),
+        errorUrl: referenceReturnUrl(transaction.errorUrl, options.errorUrl, input),
+        simulatorContext: input.returnContext === "account" && transaction.simulatorContext
+          ? { ...transaction.simulatorContext, returnPath: "/konto/zamowienie/status" } : transaction.simulatorContext,
+      }),
+    },
+  });
+  return {
+    validateInput: input => bind(input).validateInput?.({ ...input, subjectId: input.petId }),
+    async execute(input) {
+      return await bind(input).execute({ ...input, subjectId: input.petId }) as Awaited<ReturnType<PaymentExecutionPort["execute"]>>;
+    },
+  };
+}
+
+function referenceReturnUrl(value: string, baseUrl: string, input: Parameters<PaymentExecutionPort["execute"]>[0]): string {
+  if (input.returnContext !== "account") return value;
+  const url = new URL(value);
+  url.pathname = "/konto/zamowienie/status";
+  // Preserve the host's original query and insertion order, including any
+  // pre-existing subject/order keys; only the host owns localized pet scope.
+  url.search = new URL(baseUrl).search;
+  if (input.orderId) url.searchParams.set("orderId", input.orderId);
+  url.searchParams.set("paymentIntentId", input.paymentIntentId);
+  if (input.clientId) url.searchParams.set("clientId", input.clientId);
+  if (input.petId) url.searchParams.set("pet", input.petId);
+  url.searchParams.set("order", input.orderRef);
+  return url.toString();
 }

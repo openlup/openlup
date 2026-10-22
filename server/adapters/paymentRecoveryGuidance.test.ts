@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createPaymentRecoveryEvidenceNormalizer } from "./paymentRecoveryGuidance.js";
 import type { PaymentFailureEvidence } from "./paymentFailureEvidence.js";
-import { tpayFailureEvidence } from "./tpay/tpayFailureEvidence.js";
 
 const observation = (patch: Partial<PaymentFailureEvidence> = {}): PaymentFailureEvidence => ({
   version: 1, source: "execution", disposition: "present", refusalVerified: true,
@@ -46,11 +45,10 @@ describe("diagnostic recovery composition", () => {
     })] })).toMatchObject({ method: null, operation: null });
   });
   it.each([false, true])("retains known Tpay checkout context with an unknown-flow readback, reversed=%s", (reverse) => {
-    const build = (source: "execution" | "readback", flow: string | null) => tpayFailureEvidence({
-      source, flow, providerPaymentId: "tx_same", refusalVerified: true,
-      observation: { code: "105", disposition: "present" },
-    });
-    const evidence = [build("execution", "blik_recurring_activation"), build("readback", null)];
+    const execution = observation({ source: "execution", providerPaymentId: "tx_same", providerChargeId: null,
+      code: null, declineCode: "105", adviceOrigin: "unknown", operation: "recurring_setup",
+      method: { kind: "blik", recoveryMethodKey: "blik", interaction: "new_instrument" }, methodSource: "execution_contract" });
+    const evidence = [execution, { ...execution, source: "readback" as const, operation: null, method: null, methodSource: "unknown" as const }];
     expect(normalize({ provider: "tpay", evidence: reverse ? evidence.reverse() : evidence })).toEqual({
       refusalVerified: true, cause: "generic_decline", certainty: "unknown", disclosure: "safe",
       method: { kind: "blik", recoveryMethodKey: "blik", interaction: "new_instrument" },
