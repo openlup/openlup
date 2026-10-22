@@ -1174,6 +1174,10 @@
       "class": "public-output"
     },
     {
+      "path": "docs/platform/PLATFORM_PACKAGE_REFERENCE.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/README.md",
       "class": "platform-documentation"
     },

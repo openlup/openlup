@@ -63,7 +63,7 @@ The native watchdog requires a selected readback function and reports unavailabl
 when that function or storage cannot be used. Managed thresholds and branches
 remain unchanged. No default timer or deployment cadence is installed. Consent excludes managed frequency caps and
 legacy contact-touching and is not a send-time fence. See the
-[package recipe](../../packages/platform/README.md#native-communications-operations-development-preview).
+[package recipe](PLATFORM_PACKAGE_REFERENCE.md#native-communications-operations-development-preview).
 
 The reference BFF mounts `POST /api/bff/admin/identity/privacy/export` and
 `POST /api/bff/admin/identity/privacy/erase` in the shipped entrypoint, including

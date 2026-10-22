@@ -706,7 +706,7 @@ replays the complete committed managed chain into a fresh disposable local stack
 with ambient default ACLs removed and adds no grant. It proves immediate
 activation, repeat/concurrent recovery and revoked-member refusal under the
 shipped grants. It does not establish managed/direct lifecycle parity.
-The [package guide](../../packages/platform/README.md#operator-invitations) gives
+The [package guide](PLATFORM_PACKAGE_REFERENCE.md#operator-invitations) gives
 its local endpoints, controlled setup and exact invocation.
 
 Runtime capability regressions execute operator and support gates as

@@ -266,7 +266,7 @@ Marketing types come from `./communications/contracts`: `MarketingSyncProvider`
 covers profile sync, consent readback and erasure, and `ConsentPushPort` covers
 consent push. The marketing example also implements
 `MarketingAutomationProviderPort` and a refusal-only `NewsletterSyncProviderPort`.
-See the [communications import](../../packages/platform/README.md#communications-import)
+See the [communications import](PLATFORM_PACKAGE_REFERENCE.md#communications-import)
 and the [marketing adapter](#opt-in-singleton-marketing-adapter).
 
 A payments (M07) adapter implements `PaymentAdapter` and declares

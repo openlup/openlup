@@ -69,6 +69,13 @@ immutable release; see the [install support policy](../../.github/INSTALL_SUPPOR
 
 ## Ownership
 
+The platform package README remains its API entry point, with brief module
+summaries and preserved top-level anchors. Longer identity and communications
+recipes live verbatim in the [platform package reference](PLATFORM_PACKAGE_REFERENCE.md),
+which the publication catalogue includes in the public source tree rather than
+the npm artifact. Detailed recipe links point there directly; existing identity,
+runtime and package ownership routes remain unchanged.
+
 Release preparation inventories core, outbox and platform changelog histories as
 public source documentation. These verbatim archives remain outside the npm
 artifacts; each packed changelog retains the current and two previous releases.

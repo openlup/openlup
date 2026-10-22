@@ -83,7 +83,7 @@ bridge. Raw Auth closures use `createAuthEmailTransport`. Names and caller-owned
 capture flags grant no exemption. Explicit drop is skipped, block is failed,
 and package capture is local acceptance only. Existing control, required-audit,
 ledger order and subscription ownership remain unchanged. The
-[package contract](../../../packages/platform/README.md#communications-import)
+[package contract](../../../docs/platform/PLATFORM_PACKAGE_REFERENCE.md#communications-import)
 describes decision validation and host trust; the
 [M04 expectation ledger](../../../docs/platform/plans/oss-m04-communications-triggers.md#b1-egress-boundary)
 lists the intentional alternate-transport changes.
@@ -282,7 +282,7 @@ and active-only patches, under live verified human operator authorization.
 Native consent records a durable authoritative P4 decision and active admin
 recipient gate. It excludes managed 16-hour / 2-day / 4-week frequency caps and
 legacy contact-touching; evaluation is not a send-time fence. Optional tester
-pause state remains host-owned. See the [native package recipe](../../../packages/platform/README.md#native-communications-operations-development-preview),
+pause state remains host-owned. See the [native package recipe](../../../docs/platform/PLATFORM_PACKAGE_REFERENCE.md#native-communications-operations-development-preview),
 [B3 changed expectations](../../../docs/platform/plans/oss-m04-communications-triggers.md#b3-native-stores)
 and [real-PG conformance](../../../tests/postgres/communicationsNative.test.ts).
 The callable binding adds no HTTP cron/UI activation or default network provider.
