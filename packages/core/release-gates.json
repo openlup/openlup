@@ -290,8 +290,8 @@
       "release-gates.json"
     ],
     "baseline": {
-      "version": "0.20.0",
-      "packedBytes": 161695
+      "version": "0.21.0",
+      "packedBytes": 161706
     },
     "browserEntries": {}
   },

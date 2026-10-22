@@ -38,7 +38,9 @@ ship unmounted and opt-in; the host owns access and mounting.
 
 Excluded: concrete provider adapters, mounted executors/routes,
 mounted operator UI integration, money implementation, inventory
-authority, replacement-confirmation callers, version preparation and release.
+authority and replacement-confirmation callers. The implementation scope excludes
+version preparation; S1 below separately prepares the release set. Publication
+and release activation remain excluded.
 Provider/account/secret access, activation, deployment endpoints and external
 operations are outside this scope. Native continuity, provider operation and
 stable-framework support are not established by this design.
@@ -57,7 +59,7 @@ stable-framework support are not established by this design.
 | D7 | Note-only replacement confirmation unchanged, no caller; arrival discipline belongs in the alignment contract and platform page. |
 | D8 | The ordinary cap is 35 paths per pull request, including generated files. Preserve contributed logic before refactoring. Explicit host composition, callable lifecycle integration and offline installed-consumer proof are included. The host renewal-admission decorator is included under G23. Native runner composition, mounted operator UI and activation remain excluded. |
 | D8 amendment | The approved combined contracts and orchestration change has a ≤55-path regroup cap, including generated files; this amends the ordinary 35-path cap. |
-| D9 | Target 89 authored cases within the 94-case/27-second module budget and outer 100-case/30-second cap. Count generated packageBoundary rows separately; charge all execution time. |
+| D9 | The coordinator-set S1 proof budget is the measured corpus: 84 semantic definitions, 126 executed rows, 198 generated packageBoundary rows and 53.010 seconds serial wall time, including setup. Count each parameterized definition once semantically and every executed row separately. Retain invariant proofs and G18–G23 seams; no assertion deletion or skip to meet a forecast. See the S1 measurement below. |
 | D10 | Validate package artifacts and every subcap; no cap increase or guessed version. |
 | D11 | Host status-map, normalized-fact and current-parcel facades delegate to @openlup/core/fulfillment with existing host names and private provider trace metadata. Order UI imports core progress values and types. Browser graphs declare only core fulfillment modules and exclude platform fulfillment, the preparation binding and account order screens. Explicit fulfillment composition has no default binder. The order-management status ladder and live queue remain together at the host, with no parallel mapper. |
 | D12 | Callable lifecycle handlers, offline host fixtures and installed-consumer proof are included. The host renewal-admission decorator is included under G23. Native runner composition, activation, live provider/host calls and mounted operator UI remain excluded. |
@@ -531,3 +533,98 @@ activation, false arrival evidence and replay-key drift. Concrete envelopes,
 injected selection and direct PostgreSQL bindings preserve these controls
 without a new plugin framework or retry engine. Package-boundary, API,
 neutrality, publication and artifact checks cover the exported surface.
+
+## S1 release-set preparation: 0.22.0
+
+Prepare core, outbox and platform at `0.22.0` with exact core peers and matching
+root/core lock carriers; UI stays private `0.0.0`. Core adds browser-shareable
+fulfillment presentation; outbox is an unchanged republication. This is local
+release preparation, with no publication, activation, provider-account proof or
+adopter deployment. The maintainer-read packet precedes any separately authorized
+commit, native review, submission or release action.
+
+The canonical bump assembles the legacy core notes and all 12 platform fragments
+in byte order: `a2-reference-support` (the payment-adapter reference-support exports),
+`a3-op2`, `a3-op3`, `m08-p1`, `m08-p2`, `m08-p3`, `m08-p4`, `m08-p5a`,
+`m08-p5b`, `m08-p6`, `m08-p7a`, `m08-p7c`. Each changelog has one empty
+Unreleased section and retains `0.22.0`, `0.21.0`, `0.20.0`; older sections
+remain verbatim in its source-only `CHANGELOG-HISTORY.md`. The publication
+catalogue includes the two new core/outbox histories. Native installation uses
+the complete canonical chain through units 73/74, never sparse projections.
+
+Size baselines use cached published `0.21.0` tarballs, matched to the recorded
+publication SHA-1s, rather than candidate artifacts:
+
+| Package | Baseline packed B | Published SHA-1 | Candidate packed B | Candidate docs gzip B |
+| --- | ---: | --- | ---: | ---: |
+| core | 161,706 | `ac58095053ee349a85e151f565dbec6d99ba2b4c` | 167,864 | 17,102 |
+| outbox | 39,494 | `3c84fe085237831c2bebdd88634b282b6bd1c89e` | 38,967 | 13,018 |
+| platform | 1,008,887 | `ba508c97229e4fac836de54ac69a8b15bddb18b0` | 1,183,920 | 48,848 |
+
+All caps remain unchanged; platform docs are below 49,152 B. No package crosses
+the 30% release growth tripwire. These are working-tree artifact measurements
+using the existing size, tarball and browser checkers, not a committed cold-set
+certificate. Required package gates and the release-set cold path refuse dirty
+package inputs; they must pass on a separately authorized committed candidate.
+Source-release preparation refreshes the derived inventory/class, lock,
+publication-catalogue and canonical migration-manifest bindings; it changes no
+migration bytes, API snapshot, identity or compatibility control.
+
+The standalone [0.22.0 limitations](../../../packages/platform/CHANGELOG.md#0220)
+retain cumulative limits and the G18–G22 host-owned/native-refusal table, G23
+runner composition requirement, localized core label follow-up and opt-in
+warehouse adapter boundary. Native alignment stays off or shadow until the host composes
+the automatic-renewal runner with the G23 admission decorator. Core's notes also
+carry its localized-label limitation. Deferred claims at an old schedule have
+no reader/reservation effect; changed terms snapshots conflict.
+
+### S1 measured proof budget
+
+Budget rationale: durable command and arrival invariant proofs plus the
+G18–G23 lifecycle, customer/read, preparation and renewal seams require the
+retained corpus. The owner rule permits the coordinator to set this allowance
+to the measured value. No test, assertion or required proof is removed to fit a
+forecast; the measurement includes retained core facts and host/UI witnesses,
+not a claim that every definition is newly authored.
+
+| Corpus | Semantic definitions | Executed rows |
+| --- | ---: | ---: |
+| Platform fulfillment (excluding the separately owned warehouse adapter example) | 37 | 53 |
+| Core fulfillment | 12 | 23 |
+| Native PostgreSQL fulfillment | 29 | 44 |
+| Reference preparation binding | 1 | 1 |
+| Host operator presentation | 4 | 4 |
+| Existing packed fulfillment/composition consumer | 1 | 1 |
+| Total | 84 | 126 |
+
+The 126 executions include 42 parameter-expansion rows beyond the semantic
+count. The three generated source-boundary matrices add 198 rows over 65
+fulfillment source files and the composition contribution, counted separately.
+All selected cases pass. The consumer and generated runs select named cases;
+unselected sibling tests are outside this measurement, not missing M08 proof.
+
+Certification route: Node `24.21.0`, npm `11.19.0`, cached PostgreSQL 16 image
+`sha256:ca0bd484cb98bf4b24eb1010e73fb3fcbd6714d240fbc1a10eea5b7dbecb641d`,
+one Vitest worker, file parallelism off, retries zero. The source is the S1
+working tree on `a2e4163215ec48ad528074c773d558de40d63490`; no executable source
+or test differs from that predecessor. Use `scripts/run-vitest.mjs run` for the
+18 platform fulfillment files, five native PostgreSQL fulfillment files,
+`server/runtime/public-reference/m08FulfillmentBinding.test.ts` and
+`src/pages/admin/fulfillmentActionPresentation.test.ts`; use the core config for
+its five `test/fulfillment*.test.ts` files. Select the existing
+`payments and fulfillment: installed packed consumer` case and the three
+`packageBoundary` matrices for fulfillment (excluding the adapter-specific subtree)
+and `composition/fulfillmentContribution.ts`. The exact command arrays and
+per-file results accompany the maintainer-read packet.
+
+Serial wall time is **53.010 s**: root 46.768 s, core 0.718 s, packed consumer
+4.856 s and generated boundaries 0.668 s. Assertion-body time is **16.622 s**;
+logged container startup is **19.341 s**, included in wall time. Migration,
+cleanup, transforms and other harness overhead are also charged in the wall
+total; startup logs do not isolate those costs. This local measurement is not a
+hosted median or installation/activation certificate.
+
+Self-retro: direct wrapper invocation lacked npm's local binary PATH and failed
+before collecting tests; use the repository binary PATH with the existing
+wrapper. Working-tree artifact measurement avoids weakening committed-candidate
+gates; no new release or budget mechanism is needed.

@@ -1414,6 +1414,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/core/CHANGELOG-HISTORY.md",
+      "class": "public-output"
+    },
+    {
       "path": "packages/core/CHANGELOG.md",
       "class": "public-output"
     },
@@ -2115,6 +2119,10 @@
     },
     {
       "path": "packages/outbox/AGENTS.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/outbox/CHANGELOG-HISTORY.md",
       "class": "public-output"
     },
     {

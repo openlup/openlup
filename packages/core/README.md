@@ -8,6 +8,12 @@ application" section, which `docs:check` requires, tells an application's agent
 not to edit or patch the installed package and to upgrade every `@openlup/*`
 package together.
 
+The prepared `0.22.0` set adds the pure fulfillment presentation helpers and
+retains compatible platform re-exports. Upgrade all packages together and read
+[the migration and label limitation](CHANGELOG.md#0220). The size baseline is
+the published `0.21.0` artifact; older releases remain in the source-only
+`CHANGELOG-HISTORY.md`. Preparation establishes no npm publication.
+
 ## Channel and stability
 
 - **Channel:** npm, on the `latest` dist-tag. Each version is published with

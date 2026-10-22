@@ -226,7 +226,7 @@ owns release permissions, setup, detailed refusals and recovery. The sequence is
    legacy body first, then validated package fragments in byte order of path,
    and deletes only consumed fragments after successful planning and writes,
    then stages exactly those deletions so preparation can read the Git inventory;
-   historical sections stay byte-identical. The packed `@openlup/platform`
+   historical sections stay byte-identical. Each packed package
    CHANGELOG keeps the current release and the two previous ones; older sections
    move verbatim to its non-packed `CHANGELOG-HISTORY.md`. Add notable-change notes under
    `packages/<package>/changes/`, with no per-file catalogue rows. A version bump
