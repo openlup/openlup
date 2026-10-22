@@ -692,3 +692,90 @@ introduced. No reference alias or provider SDK is imported by this capability.
 The contribution describes explicit host selections and never mounts a second
 executor. Browser preview values remain reference-owned. See the
 [M04 scope](plans/oss-m04-communications-triggers.md).
+
+## Fulfillment contracts
+
+Fulfillment lives at the two existing-package subpaths
+`@openlup/platform/fulfillment` and `/fulfillment/contracts`; no topology trigger
+requires another package or dependency. The type-only contracts entry has no runtime,
+server or cross-module edge; its only dependency is a type import of the core
+normalized fulfillment fact. The runtime entry binds core evidence parsers to the
+contributed status canon and selects only injected capability profiles. Provider,
+carrier and service remain independent; empty provider selection refuses, and
+potential support never enables a dormant route. Raw commands, credentials and
+signed label URLs stay transient at the host/adapter boundary; durable contracts
+carry typed facts, safe references and actual-command fingerprints. Existing reference facades
+and the order-management status ladder/queue pair remain host-owned until explicit later adoption.
+
+The [dispatch port](../../packages/platform/src/fulfillment/contracts/dispatch.ts)
+prepares the actual provider command without submitting it, returns its fingerprint
+and sanitized evidence, and keeps command bytes transient inside the adapter.
+Feed that evidence to store claim and its fingerprint to begin before dispatch;
+dispatch sends exactly the prepared command identified by the same evidence.
+A contact_stale remap rebuilds the request and requires a new prepare, claim and
+begin. Selection failures retain their exact reasons; a non-dispatchable request
+refuses as not_dispatchable. Absent/mismatched command preparation refuses with
+reason not_dispatchable, phase dispatch, retryable false, before I/O.
+FulfillmentStorePort.prepare checks contact readiness/withholding;
+FulfillmentDispatchPort.prepare builds the transient command and its evidence.
+Unknown external outcomes require readback rather
+than blind submission; accepted evidence can repair a lost local acknowledgement.
+
+runFulfillmentDispatchWorker keeps one contact remap across claim and begin.
+A correctable draft re-claim atomically refreshes fingerprint and evidence, then
+reads the authoritative row. Approved amendment G14 records the mapped provider
+attempt at that point, before shadow exit, unsafe-state refusal or begin. Its
+host-supplied opaque key preserves initial/remap identities; only allowlisted
+prepared evidence, mode/status and references persist. Same-key replay writes no
+second attempt. Unknown/submitting/failed states never automatically POST;
+accepted proof repairs a lost local ACK without a provider call. Only a
+post-dispatch ACK failure triggers readback and an attempt to finalize accepted
+proof as uncertain with its external reference retained when acceptance is not
+already committed. Loop-start and concurrent-begin recovery ACK failures reach
+the outer catch without that rescue.
+Main and repair ACKs use identical host acceptance keys, ignoring adapter-provided
+key fields so a committed ACK replays after a lost response.
+The separate createFulfillmentCommandLedger protocol delegates atomic fenced
+operations to a durable store; it does not keep lease/retry state locally. The
+host supplies keys, actual-command fingerprints, candidate selection, paid truth
+and inventory authority. After payload validation, unless an enabled risk gate
+returns early, the paid outbox handler awaits its injected fulfillment call before returning an
+outcome. Risk `review`/`block` returns `processed` without calling fulfillment;
+fulfillment `completed`, `skipped` and `manual_review` also return `processed`
+and settle the event. Settlement therefore does not always mean fulfillment
+completed. Recovery classifies missing/stale/uncertain
+work for local requeue, waiting or operator review, without dispatching it.
+The donor OrderPaidFulfillmentPort in paidHandoffPorts.ts retains the handler's
+outcome ladder; later host composition bridges it to FulfillmentPaidHandoffPort,
+with the concrete durable bridge owned by later native store work.
+Store/adapter conformance and native SQL/atomicity proofs remain later work.
+
+[Labels](../../packages/platform/src/fulfillment/contracts/label.ts) separate durable
+object pointers from transient signed downloads. Missing PDF is not missing parcel;
+proceedable cleanup is not confirmed deletion. Observations authenticate untouched
+bytes before parsing and separate event identity/first receipt from core fact
+fingerprints/nullable occurrence. Token authentication alone proves no signed
+freshness. Readback distinguishes found, exact scoped absence with proof, unknown
+and unsupported; empty pages and missing local records prove no external absence.
+Sync retains collection identity, nullable source revisions, sanitized continuation,
+movements, lots, expiry, replay and conflicts. Inventory reservations/availability
+and catalog facts retain their existing owners. Host storage label reads remain
+independent of provider support; capability selection performs no I/O.
+
+[Delivery alignment](../../packages/platform/src/fulfillment/contracts/alignment.ts)
+preserves the arrival-only rule: late delivery extends the next cycle, never stacks
+deliveries or moves it earlier. A replacement may settle alignment as `aligned`
+only after reaching the customer. Its superseded predecessor is no longer
+outstanding, but an in-flight or undelivered replacement still is. Never call
+`subscription_delivery_alignment_confirm_replacement` for a replacement that did
+not arrive: it records the customer-facing fact "Parcel delivered" and shifts the
+cycle later. The note-only operator attestation remains unchanged; this surface adds
+no caller. Native alignment implementation and continuity proof remain later work.
+
+Inspect the [contract witnesses](../../packages/platform/test/fulfillment/contracts.test.ts),
+[status parity](../../packages/platform/test/fulfillment/statusMap.test.ts),
+[port fit](../../packages/platform/test/fulfillment/portFit.test.ts) and
+[programme record](plans/oss-m08-fulfillment-physical-delivery.md) for provenance,
+declared adaptations and later obligations. Callable orchestration and a durable-store protocol are provided without a concrete
+adapter, persistent store, mounted executor, route or activation; reference
+composition stays unchanged.

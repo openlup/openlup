@@ -195,6 +195,16 @@
       "types": "./dist/payments/tpay/index.d.ts",
       "import": "./dist/payments/tpay/index.js",
       "default": "./dist/payments/tpay/index.js"
+    },
+    "./fulfillment": {
+      "types": "./dist/fulfillment/index.d.ts",
+      "import": "./dist/fulfillment/index.js",
+      "default": "./dist/fulfillment/index.js"
+    },
+    "./fulfillment/contracts": {
+      "types": "./dist/fulfillment/contracts/index.d.ts",
+      "import": "./dist/fulfillment/contracts/index.js",
+      "default": "./dist/fulfillment/contracts/index.js"
     }
   },
   "repository": {
