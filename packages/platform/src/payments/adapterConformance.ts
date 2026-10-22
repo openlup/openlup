@@ -2,7 +2,7 @@ import { projectVerifiedEvidence } from "./verifiedEvidenceProjection.js";
 import { validatePaymentExecutionContractResult } from "@openlup/core/testing";
 import type {
   PaymentAdapterConformanceEvidence, PaymentAdapterConformanceSubject,
-  PaymentVerifyNormalizePort,
+  PaymentAttemptIdentity, PaymentMoney, PaymentVerifyNormalizePort,
 } from "./contracts/index.js";
 
 /** Runner-independent adapter proof. Verification fixtures are owned by each adapter. */
@@ -77,6 +77,11 @@ export async function runPaymentAdapterConformance(
       const verified = await adapter.verifyPort.verifyAndNormalize(fixture.input);
       requireFact(JSON.stringify(verified) === JSON.stringify(fixture.expected), "verified fixture");
       if (verified.kind !== "refusal") {
+        requireFact(verified.kind !== "money" || (verified.money !== null
+          && Number.isSafeInteger(verified.money.amountMinor) && verified.money.amountMinor > 0
+          && verified.money.currency.trim().length > 0)
+          || (verified.outcome !== "succeeded" && verified.outcome !== "refunded" && verified.outcome !== "disputed"),
+          "settling outcome requires positive money");
         requireFact(!sensitiveForms.some(value => JSON.stringify({ payload: projectVerifiedEvidence(verified, fixture.input, "require-evidence").rawPayload, diagnostics: result.diagnostics }).includes(value)),
           "audit payload secret redaction");
         const outcome = verified.kind + ":" + verified.outcome;
@@ -104,10 +109,10 @@ export async function runPaymentAdapterConformance(
 function requireFact(value: boolean, label: string): void {
   if (!value) throw new Error(`payment_adapter_conformance:${label}`);
 }
-function sameMoney(left: { amountMinor: number; currency: string }, right: { amountMinor: number; currency: string }): boolean {
+function sameMoney(left: PaymentMoney, right: PaymentMoney): boolean {
   return left.amountMinor === right.amountMinor && left.currency === right.currency;
 }
-function sameIdentity(left: { provider: string; providerPaymentRef: string | null; intentRef: string; attemptRef: string }, right: typeof left): boolean {
+function sameIdentity(left: PaymentAttemptIdentity, right: typeof left): boolean {
   return left.provider === right.provider && left.providerPaymentRef === right.providerPaymentRef
     && left.intentRef === right.intentRef && left.attemptRef === right.attemptRef;
 }

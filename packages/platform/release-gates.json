@@ -424,7 +424,10 @@
         "test/packageBoundary.test.ts",
         "test/fulfillment/contracts.test.ts",
         "test/fulfillment/statusMap.test.ts",
-        "test/fulfillment/portFit.test.ts"
+        "test/fulfillment/portFit.test.ts",
+        "test/fulfillment/dispatchRecovery.test.ts",
+        "test/fulfillment/paidHandoff.test.ts",
+        "test/fulfillment/providerCommandLedger.test.ts"
       ],
       "entrypoint": "dist/fulfillment/index.d.ts",
       "snapshot": "api/fulfillment.api.md"
@@ -467,8 +470,8 @@
     "maxUnpackedBytes": 5734400,
     "maxFiles": 2100,
     "baseline": {
-      "version": "0.19.0",
-      "packedBytes": 805872
+      "version": "0.20.0",
+      "packedBytes": 809376
     },
     "browserEntries": {
       "./catalog/contracts": 4096,

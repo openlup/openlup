@@ -455,6 +455,7 @@ export type { PaymentIngressPort } from "./evidence.js";
 export type { ProviderReconciliationStatusKind, ProviderReconciliationStatus, PaymentProviderReconciliationProvider, ClaimedPaymentAttempt, PaymentProviderReconciliationPort, InteractivePreparedAttemptManualReconciliationPort, ManualInteractivePreparedAttemptAbsenceEvidence, InteractivePreparedAttemptReopenResult, PaymentProviderReconciliationWorkerResult, PaymentProviderReconciliationWorkerInput, SilenceWindowLookup, PaymentVerifyReadPort, VerifiableAttemptSnapshot, PaymentVerifyNowResult, } from "./reconciliation.js";
 export type { PostgresPaymentTruthOptions } from "./truth.js";
 export type { ActivePaymentActionAuthority, CheckoutActivePaymentActionResolver, CheckoutRecoveryPaymentResolver, CheckoutRecoveryPaymentResolution, PaymentRecoveryAction, PaymentRepairMethodPort } from "./repair.js";
+export type { PaymentServicesOptions, PaymentServices } from "./repair.js";
 ```
 ## dist/payments/contracts/preparedAttempt.d.ts
 
@@ -918,6 +919,19 @@ export interface PaymentRepairMethodPort {
         kind: "unsupported";
     }>;
 }
+/** Host-selected durable truth scope. Unsupported schema never opens a store. */
+export interface PaymentServicesOptions {
+    schema?: {
+        truth: "supported" | "unsupported";
+    };
+    openTruth?: () => Promise<{
+        port: import("./truth.js").PaymentTruthPort;
+        close(): Promise<void>;
+    }>;
+}
+export interface PaymentServices {
+    run<T>(work: (port: import("./truth.js").PaymentTruthPort) => Promise<T>): Promise<T>;
+}
 ```
 ## dist/payments/contracts/truth.d.ts
 
@@ -1158,6 +1172,61 @@ export interface StripePaymentAdapterConfig {
 export declare const stripePaymentCapabilities: Readonly<PaymentAdapterCapabilities>;
 /** Explicit construction is the only activation point; importing performs no I/O. */
 export declare function createStripePaymentAdapter(config: StripePaymentAdapterConfig): PaymentAdapter;
+/**
+ * @experimental Reference-application support surface; may change.
+ * Reference consumer: `server/adapters/stripe/stripeAdapterFactory.ts`.
+ */
+export { createStripeSandboxPaymentExecutionAdapter } from "./stripeSandboxPaymentExecutionAdapter.js";
+/**
+ * @experimental Reference-application support surface; may change.
+ * Reference consumer: `server/runtime/paymentProviderReadbackRegistry.ts`.
+ */
+export { createStripePaymentReconciliationProvider } from "./stripePaymentReconciliationProvider.js";
+/**
+ * @experimental Reference-application support surface; may change.
+ * Reference consumer: `server/infra/stripe/stripeApiClient.ts`.
+ */
+export { mapStripeIntent } from "./intentMapper.js";
+/**
+ * @experimental Reference-application support surface; may change.
+ * Reference consumer: `server/infra/stripe/stripeApiClient.ts`.
+ */
+export { mapSetupIntent } from "./intentMapper.js";
+/**
+ * @experimental Reference-application support surface; may change.
+ * Reference consumer: `server/adapters/paymentRecoveryGuidance.ts`.
+ */
+export { normalizeStripeFailureEvidence } from "./stripeFailureEvidence.js";
+```
+## dist/payments/stripe/intentMapper.d.ts
+
+```ts
+import { type StripeIntentLike } from "./stripeFailureEvidence.js";
+type Reference = string | {
+    id: string;
+} | null;
+interface StripeIntentShape {
+    id: string;
+    status: string;
+    customer?: Reference;
+    payment_method?: Reference;
+    latest_charge?: Reference;
+    client_secret?: string | null;
+    next_action?: {
+        type?: string | null;
+    } | null;
+    amount?: number;
+    amount_received?: number;
+    currency?: string;
+    last_payment_error?: {
+        code?: string | null;
+        message?: string | null;
+        type?: string | null;
+    } | null;
+}
+export declare function mapStripeIntent(intent: StripeIntentShape, knownCardOnlyRequest?: boolean, source?: "execution" | "readback"): StripeIntentLike;
+export declare function mapSetupIntent(intent: StripeIntentShape): StripeIntentLike;
+export {};
 ```
 ## dist/payments/stripe/paymentFailureEvidence.d.ts
 

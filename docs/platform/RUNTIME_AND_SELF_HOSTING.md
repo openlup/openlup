@@ -4,6 +4,12 @@ Status: development-preview contract. No recipe in this document is a supported 
 
 ## Runtime model
 
+The reference payment-channel BFF retains its feature and mode admission gates,
+and now supplies the package HTTP client to the same domain handler. Its local
+simulator branch and disabled empty-channel response remain unchanged. Customer
+setup routes continue through the host SDK builder, whose mappings now come
+from the vendor subpath; this adds no route or browser exposure.
+
 The [M06 shipping binding](../../server/runtime/public-reference/m06ShippingBinding.ts)
 composes selected selection, address and flat-rate ports with host schemas and
 authority. Native address writes remain refused. Native flat-rate save requires a
@@ -174,9 +180,25 @@ Method evidence registration data contains neutral provider references, method
 kind and status. The host's `resolveMethodOwner` supplies the client and optional
 subscription identity before projection; untrusted adapter ownership fields are
 ignored. Without that resolver no reusable registration carrier is produced.
-The native schema descriptor still refuses method setup. The reference ingress
-clock switch, remaining host reader tests and runtime admission belong to the
-later binding phase; this repair composition changes none of those boundaries.
+The native schema descriptor still refuses method setup. The direct truth
+binding now supplies its host executor to `createPaymentServices`; each runtime
+unit closes its scope after either result. `bindM07Payments` refuses unknown or
+unavailable selections. The existing bundle composer has one optional payments
+binder; it installs no cron or dormant-event handler.
+
+`bindM07PaymentIngress` selects the package verified ingress only when explicitly
+requested. No existing provider route is remounted. The reference store accepts
+the adapter fingerprint on the first receipt and reads the winning stored receipt
+instant on replay. D11 deliberately changes redelivery application and hooks to
+reuse that first instant, preventing a later provider timestamp from shifting a
+cycle. Missing durable receipt evidence fails closed. Historical rows retain
+their evidence; this change adds no backfill or schema migration.
+
+Missing audit bags supply no gateway failure diagnosis or alias activation fact;
+recurring saved-method resolution still requires explicit consent. The profile
+reader retains its existing default alias presentation, which is not recurring
+execution authority. These four reader paths are tested directly even though the
+opt-in selector mounts no live route feeding them.
 
 
 ## Self-host boundary
@@ -193,6 +215,14 @@ It must fail safely when a required dependency is absent rather than silently
 substituting a different business behaviour.
 
 ## Opt-in disposable subscription reference
+
+The inert [payments binding](../../server/runtime/public-reference/m07PaymentBinding.ts)
+selects injected truth services or verified ingress only by explicit host choice.
+Unknown selections refuse and omission stays cold. No existing provider route or
+schedule is installed. Selected ingress retains its adapter fingerprint and first
+stored receipt clock on replay (D11); missing durable clock evidence refuses.
+The direct truth host separately opens one database scope per runtime unit and
+closes it after success or failure through the package binding.
 
 The inert [shipping binding](../../server/runtime/public-reference/m06ShippingBinding.ts)
 requires selected ports and host authority. Native address writes remain refused.
@@ -477,6 +507,26 @@ falsifiers; follow [testing](../../CONTRIBUTING.md#test-scope-and-diagnostics) f
 execution. Second-runtime and deployed conformance remain separate adoption proof.
 
 ## Provider and host boundaries
+
+Reference payment composition now calls the experimental vendor-subpath
+execution, reconciliation, HTTP, mapping and evidence helpers documented in the
+[package reference-support surface](../../packages/platform/README.md#reference-support-surface).
+Checkout, renewal, recovery/setup, channels, accounting payout SDK calls and
+activation keep their host wiring and flags. The bank/code binding translates `petId` to the
+package subject input and translates the outgoing account path/query and
+simulator return path back at its injected transaction client. The fallback
+payer label remains host-owned. Package no-charge errors reach prepared-attempt
+retry/release as the same class; arbitrary transport failures stay ambiguous.
+Default-off construction does no SDK/fetch/certificate work. This rebinding
+adds no route, schedule, activation or environment setting.
+
+Unused root payment webhook verifiers, notification normalization and test-only
+draft mappers have retired after production-importer checks. The shared HTTP
+helpers and unrelated mapper/readiness tests remain. Opt-in package payment
+adapters retain their implementations and witnesses; no host composition or
+provider activation changes. The [retirement ledger](plans/oss-a2-payment-adapters.md#o-p3b-1-unused-root-retirement-2026-10-22)
+records the exact root cases and remaining adopter leg.
+
 
 
 Communications server algorithms now delegate through the platform package. The

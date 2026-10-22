@@ -134,7 +134,7 @@ vi.mock("@/domains/payment/components/PaymentStatusPoller", () => ({
 }));
 
 import { requirePaymentProviderCapability } from "../../server/adapters/paymentProviderCapabilityRegistry.js";
-import { createStripeSandboxPaymentExecutionAdapter } from "../../server/adapters/stripe/stripeSandboxPaymentExecutionAdapter.js";
+import { createStripeSandboxPaymentExecutionAdapter } from "@openlup/platform/payments/stripe";
 import {
   chargeSubscriptionCycleOffSession,
   type ChargeDeps,
@@ -357,7 +357,7 @@ describe("Stripe critical path fake gate", () => {
     const adapter = createStripeSandboxPaymentExecutionAdapter({
       client: { createPaymentIntent, createSetupIntent: vi.fn() },
       defaultFlow: "off_session_payment",
-    });
+    }) as ChargeDeps["executionPort"];
     const renewal = renewalClient();
     const paymentPort = renewalPaymentPort();
     const due = renewalDue(`pm_saved_after_${origin}`);

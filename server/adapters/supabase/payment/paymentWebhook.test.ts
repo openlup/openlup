@@ -1,3 +1,6 @@
+import { bindM07PaymentIngress } from "../../../runtime/public-reference/m07PaymentBinding.js";
+import { createSubscriptionWebhookDunningAfterProcessedViaGateway } from "./paymentWebhookGateway.js";
+import { isActiveTpayBlikAliasEvent } from "../../../domains/payment/tpayAliasLinkage.js";
 import { describe, expect, it, vi } from "vitest";
 import type { CanonicalPaymentEvent } from "../../../../src/domains/payment/types.js";
 import type {
@@ -92,7 +95,7 @@ describe("supabase payment webhook port", () => {
     });
   });
 
-  it("writes normalized provider events through payment-control ingest RPC", async () => {
+  it("writes normalized provider events through payment-control ingest RPC, preserves the first-insert fingerprint, omits missing-audit failure reasons and refuses missing-audit alias activation", async () => {
     const rpc = vi.fn().mockResolvedValue({
       data: {
         paymentEvent: {
@@ -142,6 +145,87 @@ describe("supabase payment webhook port", () => {
         },
       },
     });
+    const firstFingerprint = "a".repeat(64);
+    const firstReceipt = "2026-06-06T12:00:00.000Z";
+    const receiptClient = {
+      rpc,
+      from: () => ({ select: () => ({ eq: () => ({ single: async () => ({
+        data: { source_evidence: { observedAt: firstReceipt } }, error: null,
+      }) }) }) }),
+    };
+    const firstInput = {
+      provider: rpc.mock.calls[0][1].p_provider, providerEventId: "event-receipt", eventType: "payment.succeeded" as const,
+      providerPaymentId: "payment-receipt", occurredAt: firstReceipt,
+      rawPayload: { openlupEvidence: { fingerprint: firstFingerprint, outcome: "succeeded" } },
+    };
+    const receiptPort = createSupabasePaymentWebhookControlPort(receiptClient);
+    await receiptPort.ingestPaymentEvent(firstInput);
+    expect(rpc.mock.calls.at(-1)?.[1].p_payload.__paymentTruth.fingerprint, "First receipt stores the adapter fingerprint").toBe(firstFingerprint);
+    rpc.mockResolvedValueOnce({ data: { paymentEvent: { id: PAYMENT_EVENT_ID,
+      paymentIntentId: PAYMENT_INTENT_ID, paymentAttemptId: null, replayed: true } }, error: null });
+    await expect(receiptPort.ingestPaymentEvent({ ...firstInput, occurredAt: "2026-06-07T12:00:00.000Z",
+      rawPayload: { openlupEvidence: { fingerprint: firstFingerprint, outcome: "succeeded", providerOccurredAt: "2026-06-07T12:00:00.000Z" } },
+    })).resolves.toMatchObject({ replayed: true, occurredAt: firstReceipt });
+    expect(rpc.mock.calls.at(-1)?.[1].p_payload.__paymentTruth.fingerprint).toBe(firstFingerprint);
+    const durable = new Map<string, { fingerprint: string; observedAt: string }>();
+    const applied = new Set<string>();
+    const clocks: string[] = [];
+    const durableRpc = vi.fn(async (name: string, args: Record<string, unknown>) => {
+      if (name === "commerce_payment_control_ingest_event") {
+        const truth = (args.p_payload as { __paymentTruth: { fingerprint: string; evidence: { observedAt: string } } }).__paymentTruth;
+        const previous = durable.get("event");
+        if (previous && previous.fingerprint !== truth.fingerprint) throw Error("commerce_payment_event_idempotency_conflict");
+        durable.set("event", previous ?? { fingerprint: truth.fingerprint, observedAt: truth.evidence.observedAt });
+        return { data: { paymentEvent: { id: PAYMENT_EVENT_ID, paymentIntentId: PAYMENT_INTENT_ID,
+          paymentAttemptId: null, replayed: !!previous } }, error: null };
+      }
+      clocks.push(String(args.p_occurred_at));
+      const key = JSON.stringify(args);
+      const replayed = applied.has(key);
+      applied.add(key);
+      return { data: { paymentResult: { replayed } }, error: null };
+    });
+    let receiptAvailable = true;
+    const durablePort = createSupabasePaymentWebhookControlPort({ rpc: durableRpc,
+      from: () => ({ select: () => ({ eq: () => ({ single: async () => ({
+        data: { source_evidence: { observedAt: receiptAvailable ? durable.get("event")?.observedAt : null } }, error: null,
+      }) }) }) }),
+    });
+    let providerOccurredAt = firstReceipt;
+    const selectedIngress = bindM07PaymentIngress("verified", {
+      provider: firstInput.provider, paymentControlPort: durablePort,
+      verifyPort: { verifyAndNormalize: async () => ({
+        kind: "money", provider: firstInput.provider, providerEventId: firstInput.providerEventId,
+        fingerprint: firstFingerprint, providerOccurredAt, intentRef: PAYMENT_INTENT_ID,
+        attemptRef: null, providerPaymentRef: firstInput.providerPaymentId,
+        outcome: "succeeded", money: { amountMinor: 1490, currency: "XXX" },
+      }) },
+    })!;
+    const request = { rawBody: new Uint8Array(), headers: {}, receivedAt: firstReceipt };
+    expect((await selectedIngress.receive(request)).status).toBe(200);
+    providerOccurredAt = "2026-06-07T12:00:00.000Z";
+    expect((await selectedIngress.receive({ ...request, receivedAt: providerOccurredAt })).data.replayed).toBe(true);
+    expect(clocks).toEqual([firstReceipt, firstReceipt]);
+    expect(applied.size).toBe(1);
+    expect(durable.get("event")?.fingerprint).toBe(firstFingerprint);
+    receiptAvailable = false;
+    expect((await selectedIngress.receive(request)).status).toBe(503);
+    expect(clocks).toEqual([firstReceipt, firstReceipt]);
+
+
+    // No adapter audit bag: the reason reader supplies no invented diagnosis.
+    const missingBagRpc = vi.fn(async () => ({ data: {}, error: null }));
+    const hook = createSubscriptionWebhookDunningAfterProcessedViaGateway({
+      asService: async (work: (client: unknown) => unknown) => work({ rpc: missingBagRpc }),
+    } as never);
+    await hook({ event: { ...firstInput, eventType: "payment.failed", rawPayload: { openlupEvidence: {} } },
+      ingested: { paymentEventId: PAYMENT_EVENT_ID, paymentIntentId: PAYMENT_INTENT_ID, paymentAttemptId: null, replayed: false },
+      resultStatus: "failed" });
+    expect(missingBagRpc, "Missing audit supplies no invented gateway failure reason").toHaveBeenCalledWith("subscription_open_dunning_from_failed_payment_result",
+      expect.objectContaining({ p_failure_reason: null }));
+    expect(isActiveTpayBlikAliasEvent({ ...firstInput, eventType: "setup.succeeded",
+      rawPayload: { openlupEvidence: {} } }), "Missing audit does not activate an alias").toBe(false);
+
   });
 
   it("applies matched canonical results only through commerce_payment_control_apply_result", async () => {

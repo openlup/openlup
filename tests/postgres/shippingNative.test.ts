@@ -19,7 +19,7 @@ const seed = SHIPPING_MIGRATIONS.find(entry => entry.id === version)!;
 const containers: PostgresContainer[] = [], pools: Pool[] = [];
 const bindings: ReturnType<typeof createM06ShippingReferenceBinding>[] = [];
 type NativeReadiness = { nativeRateReadiness: ReadinessReport; nativeRateSchema: SchemaObservation };
-let prefix: string, beforeAcl: unknown, oldReadiness: NativeReadiness;
+let prefix: string, beforeAcl: unknown, afterSeedAcl: unknown, oldReadiness: NativeReadiness;
 const runner = (pool: Pool, root = process.cwd()) => createPostgresMigrationRunner({ connectionString: "injected" }, { root, poolFactory: () => pool });
 function binding(index: number, readiness?: NativeReadiness) {
   const result = createM06ShippingReferenceBinding({
@@ -78,6 +78,9 @@ beforeAll(async () => {
   await runner(pools[0]).apply(); await runner(pools[1], prefix).apply();
   await pools[1].query("INSERT INTO public.commerce_settings(key,value_minor) VALUES ('shipping_flat_minor',1234)");
   beforeAcl = await acl(pools[1]); oldReadiness = await readiness(1);
+  // Compare the seed's own before/after pair, even when later forwards change ACLs.
+  await pools[1].query(readFileSync(file, "utf8"));
+  afterSeedAcl = await acl(pools[1]);
 }, 120_000);
 afterAll(async () => {
   await Promise.all(bindings.map(value => value.close())); await Promise.all(pools.map(pool => pool.end()));
@@ -143,7 +146,7 @@ it("denies commerce settings reads and updates to anon, authenticated and a PUBL
   } finally { await client.query("RESET ROLE"); client.release(); await pools[0].query("DROP ROLE shipping_public_only"); }
 });
 it("leaves whole-catalog ACLs, default privileges and role memberships byte-identical across the seed forward", async () => {
-  expect(await acl(pools[1])).toEqual(beforeAcl);
+  expect(afterSeedAcl).toEqual(beforeAcl);
 });
 it("refuses a missing row by name and keeps unsupported audit failure nonblocking after a real save", async () => {
   const selected = binding(0, await readiness(0));

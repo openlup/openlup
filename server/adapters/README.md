@@ -12,6 +12,16 @@ current adapter only as an implementation detail. The neutral surface map lives
 in [Architecture and extension boundaries](../../docs/platform/ARCHITECTURE_AND_EXTENSIONS.md).
 
 ## Owns
+The unused root payment webhook normalizer and its 26-case witness have
+retired after production-importer checks. The opt-in package implementation and
+witness remain. Root payment execution, reconciliation and failure algorithms
+also retire in O-P3b-2: existing host factories now use the eleven experimental
+vendor-subpath helpers. The factories retain flags, repair capability projection,
+payer fallback and localized return translation; SDK construction and simulator
+behavior remain host-owned. Existing root diagnostic/producer cases now consume
+package factories, mappings and explicit persisted evidence fixtures. The [payment retirement ledger](../../docs/platform/plans/oss-a2-payment-adapters.md#o-p3b-1-unused-root-retirement-2026-10-22)
+records the separate root and adopter legs.
+
 The native SKU envelope reader, its mapper and the isolated draft store now
 have their package implementation under `packages/platform/src/catalog/`.
 The old store paths preserve factory identity through named package exports;
@@ -42,6 +52,16 @@ mapping and the pre-update technical-row check. Neither classifier chooses a
 default. Reusing the same named reference value preserves the adapter's
 system-managed read-only refusal, mirror ownership checks and currency mapping;
 no database predicate, query or audit behavior changes.
+
+The reference payment-control store takes verified ingress identity from the
+normalized `openlupEvidence.fingerprint` on the first insert. Receipt time and
+adapter audit payload do not redefine that identity. On replay it reads the
+winning row's `source_evidence.observedAt`; missing durable clock evidence
+refuses processing. The selected package ingress applies and post-processes at
+that first receipt instant (D11). Existing routes are not automatically moved
+to the opt-in ingress. Direct missing-audit tests cover failure diagnosis, alias
+activation, saved-method consent and profile alias presentation; the profile's
+existing presentation fallback grants no recurring execution authority.
 
 ## Does Not Own
 

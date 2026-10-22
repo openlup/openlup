@@ -41,6 +41,7 @@ const adapterSubpathFiles = new Set([
   "packages/platform/test/packageBoundary.test.ts",
   "config/openlup-publication-catalog.json",
   "packages/platform/CHANGELOG.md",
+  "packages/platform/CHANGELOG-HISTORY.md",
   "docs/platform/CANONICAL_CONTRACTS.md",
   "docs/platform/ARCHITECTURE_AND_EXTENSIONS.md",
   adapterLedger,
@@ -140,7 +141,12 @@ export function allowedPaymentAdapterWords(path, contents, category = "ui-13") {
   }
   if (category === "ui-5") {
     const ownPath = new RegExp(`^packages/platform/(?:src|test)/payments/${paymentAdapterNames[1]}/`);
-    return ownPath.test(path) ? [...contents.matchAll(new RegExp(`\\b${String.fromCharCode(80, 76, 78)}\\b`, "g"))].length : 0;
+    const currency = String.fromCharCode(80, 76, 78);
+    if (path === `packages/platform/api/payments-${paymentAdapterNames[1]}.api.md`) {
+      const declaration = `    currency: "${currency}";`;
+      return contents.split("\n").filter(line => line === declaration).length;
+    }
+    return ownPath.test(path) ? [...contents.matchAll(new RegExp(`\\b${currency}\\b`, "g"))].length : 0;
   }
   const name = paymentAdapterNames[category === "ui-13" ? 0 : category === "ui-14" ? 1 : -1];
   if (!name) return 0;

@@ -61,6 +61,7 @@ it("keeps injected capabilities default-off with independent selection, readines
   expect(readFulfillmentCapabilities([descriptor], selection)).toMatchObject({ kind: "refused", refusal: { reason: "disabled" } });
   expect(Object.keys(fulfillment).sort()).toEqual([
     "CANONICAL_LOCAL_FULFILLMENT_STATUSES", "CUSTOMER_STEP_SEQUENCE", "FULFILLMENT_STATUS_MAP",
+    "collectPaidFulfillmentRecoveryCandidates", "createFulfillmentCommandLedger", "createOutboxOrderPaidFulfillmentHandler", "runFulfillmentDispatchWorker",
     "canonicalStatusToken", "customerStepFromSignals", "parseFulfillmentFact", "parseFulfillmentTransitionConflict",
     "phaseIndexForStep", "readFulfillmentCapabilities", "stepForToken", "stepLabelKey", "stepUsesTruckIcon", "timelineLabelForStep", "trackingPhaseKeyForStep",
   ].sort());

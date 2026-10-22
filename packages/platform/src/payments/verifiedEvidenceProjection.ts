@@ -1,5 +1,5 @@
 import type {
-  PaymentRefundObservation, PaymentVerifyNormalizePort, RefundEvidencePolicy,
+  PaymentMoney, PaymentRefundObservation, PaymentVerifyNormalizePort, RefundEvidencePolicy,
   VerifiedMethodEvidence, VerifiedPaymentEvidence,
 } from "./contracts/evidence.js";
 import type { ProviderWebhookWithMethodLifecycle } from "./paymentMethodLifecycle.js";
@@ -25,6 +25,13 @@ export function projectVerifiedEvidence(
   };
   switch (evidence.kind) {
     case "money": {
+      // The donor treats absent money as unasserted and skips parity checks.
+      // Settling adapter evidence must instead use its existing mismatch refusal.
+      if ((evidence.outcome === "succeeded" || evidence.outcome === "refunded" || evidence.outcome === "disputed")
+        && (evidence.money === null || !Number.isSafeInteger(evidence.money.amountMinor)
+          || evidence.money.amountMinor <= 0 || !evidence.money.currency.trim())) {
+        throw new Error("payment_control_result_amount_mismatch");
+      }
       const reversal = evidence.refund;
       const refundKind = evidence.outcome === "refunded"
         ? (reversal ? projectRefund(reversal, evidence) : null) ?? (policy === "legacy-assume-full" ? "full" : null)
@@ -105,6 +112,7 @@ function auditPayload(evidence: VerifiedPaymentEvidence | VerifiedMethodEvidence
   // Explicit typed fields only: unknown envelope properties never enter storage.
   const normalized = {
     provider: evidence.provider, providerEventId: evidence.providerEventId,
+    fingerprint: evidence.fingerprint,
     providerOccurredAt: evidence.providerOccurredAt, kind: evidence.kind,
     intentRef: evidence.intentRef, outcome: evidence.outcome,
     ...(evidence.kind === "money" ? {
@@ -148,7 +156,7 @@ function auditPayload(evidence: VerifiedPaymentEvidence | VerifiedMethodEvidence
   return payload;
 }
 
-function money(value: { amountMinor: number; currency: string }) {
+function money(value: PaymentMoney) {
   return { amountMinor: value.amountMinor, currency: value.currency };
 }
 function refund(value: PaymentRefundObservation) {
