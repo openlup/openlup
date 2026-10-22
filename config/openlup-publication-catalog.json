@@ -70,6 +70,10 @@
       "class": "public-output"
     },
     {
+      "path": ".github/workflows/mirror-ci-images.yml",
+      "class": "public-output"
+    },
+    {
       "path": ".github/workflows/publish-package.yml",
       "class": "public-output"
     },
@@ -619,6 +623,10 @@
     },
     {
       "path": "config/canonical-order-money-legacy-exceptions.json",
+      "class": "public-output"
+    },
+    {
+      "path": "config/ci-images.json",
       "class": "public-output"
     },
     {
@@ -6099,6 +6107,14 @@
     },
     {
       "path": "scripts/checkout-refusal-recovery-evidence.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/ci-image-mirror.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/ci-image-mirror.test.ts",
       "class": "public-output"
     },
     {
