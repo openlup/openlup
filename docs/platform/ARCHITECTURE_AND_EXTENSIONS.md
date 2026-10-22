@@ -747,8 +747,9 @@ completed. Recovery classifies missing/stale/uncertain
 work for local requeue, waiting or operator review, without dispatching it.
 The donor OrderPaidFulfillmentPort in paidHandoffPorts.ts retains the handler's
 outcome ladder; later host composition bridges it to FulfillmentPaidHandoffPort,
-with the concrete durable bridge owned by later native store work.
-Durable store conformance and native SQL/atomicity proofs remain later work.
+with native obligation/acknowledgement persistence supplied by
+`createPostgresPaidFulfillmentHandoffStore`. Native stores bind the callable
+ports to PostgreSQL; host composition still owns handler integration.
 
 [Labels](../../packages/platform/src/fulfillment/contracts/label.ts) separate durable
 object pointers from transient signed downloads. Missing PDF is not missing parcel;
@@ -815,7 +816,8 @@ expectations (command bytes are not inspected), before-I/O mismatch refusal, req
 unsupported operations, exact absence scope/proof, local-missing unknown, selection
 and redaction. An optional host store fixture checks mapped-attempt replay/remap
 and draft re-claim evidence; a worker exercise caps contact remapping at one.
-Native database atomicity and arrival continuity remain later work. The runner
+Native database atomicity and arrival alignment have separate PostgreSQL
+conformance sources. The runner
 requires default-off adapter capabilities, and the workers/handlers are unmounted;
 no live provider or installation claim follows from fixture proof.
 
@@ -826,13 +828,96 @@ only after reaching the customer. Its superseded predecessor is no longer
 outstanding, but an in-flight or undelivered replacement still is. Never call
 `subscription_delivery_alignment_confirm_replacement` for a replacement that did
 not arrive: it records the customer-facing fact "Parcel delivered" and shifts the
-cycle later. The note-only operator attestation remains unchanged; this surface adds
-no caller. Native alignment implementation and continuity proof remain later work.
+cycle later. The note-only operator attestation has no machine arrival predicate
+and no production caller in this surface; the
+[agent arrival-only rule](AGENT_GUIDE.md#architecture-rules) remains binding.
+
+The invariant "a late delivery extends the next cycle" is enforced automatically
+only when native delivery-alignment control mode is set to `auto_align`.
+`public.subscription_delivery_alignment_control.mode` defaults to `off` for
+rollout safety. Installation alone does not enforce the invariant. The accepted
+modes are `off`, `shadow`, `protect` and `auto_align`, selected through
+`public.subscription_delivery_alignment_set_mode`. Cases retain their captured
+mode and existing protection after later control changes.
+
+Enforcing modes (`protect`, `auto_align`) require the host's renewal path to call
+`subscription_delivery_alignment_admit_renewal` before inserting the cycle.
+The [native renewal store](../../server/adapters/postgres/subscription/automaticRenewal.ts)
+does not yet call it, so switching a native install to an enforcing mode halts
+every autonomous renewal with `subscription_delivery_alignment_admission_required`.
+Native installs must keep mode `off` until that wiring lands.
+
+In enforcing modes, a subscription whose paid history has no activation or
+renewal link, such as imported data, holds every due renewal for manual review.
+Operators should check for such cycles before switching modes.
+
+Automatic arrival alignment uses the latest arrival plus cadence with an outer
+`GREATEST` against the existing next-cycle date, once per settled case.
+Subscription locks precede case locks; rollback preserves both protection and
+the previous schedule.
+
+The native forwards
+[`20261022080000_fulfillment_command_ledger.sql`](../../db/platform/migrations/20261022080000_fulfillment_command_ledger.sql)
+and [`20261022090000_fulfillment_delivery_alignment.sql`](../../db/platform/migrations/20261022090000_fulfillment_delivery_alignment.sql)
+add command fencing and alignment. Donor fulfillment orders map to
+`public.fulfillment_shipments`, and `replaces_fulfillment_order_id` maps to
+`replaces_shipment_id`. Subscription identity follows order → cycle →
+subscription. [The native translation decision](plans/oss-m08-fulfillment-physical-delivery.md#native-admission-and-delivery-alignment) maps donor activation cycle 1 ↔ native activation ordinal 0, and donor
+renewal n+1 ↔ native renewal n. The activation ordinal requires a cycle with no
+renewal operation whose linked order is the active `subscription_activations`
+row's order for the same subscription. Renewal operation numbers remain ≥1.
+Admission selects the highest known paid ordinal, so activation protects the
+first renewal and each later paid renewal outranks activation. Successor
+artifacts have a greater effective ordinal. Other unnumbered cycles remain
+unordered: paid ones require manual review at due admission without minting a
+receipt; other unordered cycles prevent automatic arrival alignment regardless
+of scheduled date. They neither outrank known predecessors nor silently permit
+an autonomous renewal. Shadow mode observes this ambiguity without blocking.
+
+Local pre-dispatch cancellation changes only the shipment locally: alignment
+creates no hold or shipment-exception event and does not block other shipments
+of the order. An undelivered, unsuperseded cancelled parcel still counts as
+outstanding at renewal admission in `protect` and `auto_align`. An explicit
+provider exception uses the existing fulfillment-exception hold and notification
+rules; alignment observes that active hold to open a case only when control is not
+`off`, the order belongs to a paid subscription cycle and the subscription is
+active. One-time orders do not open alignment cases. Exception cases never
+pause subscriptions.
+
+The overdue-delivery guard applies only to NEW cycle
+admission/insert. Existing-cycle renewal and dunning retries never pass through
+admission and neither mint nor consume its one-use receipts. There is no
+`retry_scheduled` state or change to the payments lifecycle.
+
+Native dispatch uses host-supplied contact preparation and candidate data. The
+host synchronizes `fulfillment_dispatch_contexts` during preparation and every
+authoritative contact/selection edit under the shipment lock. Claim/begin compare
+stored revision with prepared evidence. Submission rechecks paid state, holds,
+shipment status, port readiness and selected provider. Direct and command lanes
+share a dispatch lock; direct submission supersedes only pristine, never-claimed
+queued commands, while effect-bearing history refuses it. ACK records native
+`dispatch` evidence, fencing cancellation without asserting an owned label or
+physical packing.
+
+The native stores implement G14 mapped-attempt persistence, G15 coverage-gap
+cursors, G16 injected timed inventory-line reads with native reservation reads,
+and G17 atomic received/processed receipts plus separate status chronology.
+Inventory authority is unchanged. All new routines, including helpers and
+trigger routines, are invokers with `PUBLIC`, `anon` and `authenticated` access
+revoked. There is no `SECURITY DEFINER` routine or new execution role. The initial
+executor is the deployment owner; a separate service principal requires explicit
+least-privilege grants on routines and underlying objects. Install the complete
+canonical catalogue; `FULFILLMENT_MIGRATIONS` contains byte-identical sparse
+projections. See [native installation boundaries](DATA_AND_MIGRATIONS.md#module-catalogues-and-installed-histories).
 
 Inspect the [contract witnesses](../../packages/platform/test/fulfillment/contracts.test.ts),
 [status parity](../../packages/platform/test/fulfillment/statusMap.test.ts),
 [port fit](../../packages/platform/test/fulfillment/portFit.test.ts) and
 [programme record](plans/oss-m08-fulfillment-physical-delivery.md) for provenance,
-declared adaptations and later obligations. Callable orchestration and a durable-store protocol are provided without a concrete
-adapter, persistent store, mounted executor, route or activation; reference
-composition stays unchanged.
+declared adaptations and boundaries. The
+[native store contract](../../packages/platform/test/fulfillment/postgresStore.test.ts),
+[native conformance](../../tests/postgres/fulfillmentNativeConformance.test.ts) and
+[alignment tests](../../tests/postgres/fulfillmentDeliveryAlignment.test.ts)
+cover persistence and refusal behavior. Callable orchestration, native stores
+and the durable command protocol mount no provider adapter, executor or route;
+reference composition and activation remain host choices.

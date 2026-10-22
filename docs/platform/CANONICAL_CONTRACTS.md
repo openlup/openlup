@@ -185,8 +185,9 @@ readback and sync ports from
 [fulfillment owner](ARCHITECTURE_AND_EXTENSIONS.md#fulfillment-contracts) for
 command preparation, host keys, replay, paid handoff and proof/storage boundaries.
 The offline runFulfillmentAdapterConformance checks adapter-owned fixtures and
-returns sanitized evidence; concrete example adapters and native store proof remain
-later work. This surface activates no provider or reference route.
+returns sanitized evidence. Native stores and real PostgreSQL conformance cover
+durable storage and arrival alignment; concrete example adapters remain later
+work. This surface activates no provider or reference route.
 
 | Class | Shipped example subpaths |
 | --- | --- |
@@ -394,7 +395,25 @@ the protected case and schedule unchanged.
 These are source and persistence contracts, not evidence that any hosted
 deployment, provider adapter, or public release has activated the rail.
 
+The native fulfillment translation uses `fulfillment_shipments.replaces_shipment_id` and
+order → cycle → subscription correlation, with cycle number on the renewal
+operation. Its admission guard applies only to NEW cycle admission/insert;
+existing-cycle retries in renewal operations and dunning bypass admission and
+neither mint nor consume receipts. The native graph gains no `retry_scheduled`
+state and the payments lifecycle is unchanged. Automatic alignment still requires an
+actual arrival; missing correlation remains manual review. Native invoker
+privileges and complete catalogue installation are described in
+[Data and migrations](DATA_AND_MIGRATIONS.md#module-catalogues-and-installed-histories).
+
 ## Compatibility posture
+
+Fulfillment appends command/alignment units 73/74 and binds
+their byte-identical package projections through `FULFILLMENT_MIGRATIONS`.
+The canonical manifest retains its baseline and full prior prefix; its refreshed
+object-inventory digest describes the complete selected graph. No managed
+forward, old hash, role or payments lifecycle is changed. Native continuity is checked by
+full-catalogue fresh/prefix/replay tests; a package descriptor alone establishes
+no installation readiness.
 
 The reviewed-forward registry additionally pins one portable function replacement
 to keep active subscriptions active on dunning exhaustion (invariant repair).

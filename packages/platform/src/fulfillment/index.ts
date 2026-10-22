@@ -13,3 +13,13 @@ export { runFulfillmentProductSyncWorker } from "./providerProductSyncWorker.js"
 export { createFulfillmentLowStockEvidenceHandler } from "./lowStockEvidenceHandler.js";
 export { createProductReconciliationEvidenceHandler } from "./productReconciliationEvidenceHandler.js";
 export { runFulfillmentAdapterConformance } from "./adapterConformance.js";
+export { createPostgresFulfillmentShipmentSpinePort } from './postgresShipmentSpine.js';
+export { createPostgresFulfillmentLowStockEvidencePort } from './postgresEvidenceReadPort.js';
+export { createPostgresFulfillmentStockSyncPort } from './postgresStockSyncPort.js';
+export { createPostgresPaidFulfillmentRecoveryOpsPort } from './postgresPaidFulfillmentRecovery.js';
+export { createPostgresFulfillmentDispatchStore } from './postgresDispatchStore.js';
+export { createPostgresPaidFulfillmentHandoffStore } from './postgresPaidHandoffStore.js';
+export { createPostgresDeliveryAlignmentPort } from './postgresDeliveryAlignment.js';
+export { readDeliveryAlignment } from './deliveryAlignmentReadModel.js';
+export { FULFILLMENT_NATIVE_CAPABILITIES } from './schemaCapabilities.js';
+export { FULFILLMENT_MIGRATIONS } from './migrations.js';

@@ -12,7 +12,9 @@ contracts, unchanged contributed status logic, core parser binding, injected cap
 a paid-order outbox handler, recovery classification, dispatch orchestration,
 sanitized evidence projection and a durable command-ledger protocol. Observation
 reconciliation adds verified ingress, effects, tracking, stock/product sync,
-read-only evidence handlers and offline adapter/store fixture conformance.
+read-only evidence handlers and offline adapter/store fixture conformance. Native
+persistence adds shipment, dispatch, paid-handoff, recovery, observation and stock
+stores, command fencing, delivery alignment and sparse migration projections.
 
 Only `@openlup/platform/fulfillment` and
 `@openlup/platform/fulfillment/contracts` are added. The contracts entry is
@@ -24,8 +26,8 @@ Platform maintains the experimental contracts; adapters and host policy remain
 host-owned. The [fulfillment architecture section](../ARCHITECTURE_AND_EXTENSIONS.md#fulfillment-contracts)
 is the documentation owner.
 
-Excluded: SQL/migrations, concrete adapters and persistent stores, mounted
-executors/routes, reference facade rewiring, UI, money implementation, inventory
+Excluded: concrete provider adapters, mounted executors/routes, reference facade
+rewiring, UI, money implementation, inventory
 authority, replacement-confirmation callers, version preparation and release.
 Provider/account/secret access, activation, deployment endpoints and external
 operations are outside this scope. Native continuity, provider operation and
@@ -43,13 +45,13 @@ stable-framework support are not established by this design.
 | D5 | Preserve contributed characterization witnesses unchanged within their 31-case allocation. |
 | D6 | Reconcile shared payment-contract and payment-adapter package companions; no unrelated source changes. |
 | D7 | Note-only replacement confirmation unchanged, no caller; arrival discipline belongs in the alignment contract and platform page. |
-| D8 | The ordinary cap is 35 paths per pull request, including generated files. Preserve contributed logic before refactoring. Durable runtime conformance, native storage/alignment, host composition, UI, installed-consumer and lifecycle proofs remain outside this combined contracts and orchestration change. |
+| D8 | The ordinary cap is 35 paths per pull request, including generated files. Preserve contributed logic before refactoring. Host composition, UI, installed-consumer and lifecycle integration remain separate boundaries. |
 | D8 amendment | The approved combined contracts and orchestration change has a ≤55-path regroup cap, including generated files; this amends the ordinary 35-path cap. |
 | D9 | Target 89 authored cases within the 94-case/27-second module budget and outer 100-case/30-second cap. Count generated packageBoundary rows separately; charge all execution time. |
 | D10 | Validate package artifacts and every subcap; no cap increase or guessed version. |
 | D11 | One package status-map authoring source after explicit host adoption; reference composition is unchanged here. The order-management status ladder and live queue remain together at the host, with no parallel mapper. |
 | D12 | No activation or live provider/host calls; lifecycle and installed-consumer proofs belong to their later lanes. |
-| D13 | Native storage work must prove fencing and delivery alignment against PostgreSQL; late arrival uses the monotonic maximum once, and undelivered replacements remain outstanding. |
+| D13 | Native command fencing and delivery alignment use PostgreSQL transactions. Only new-cycle admission/insert is guarded; existing-cycle renewal and dunning retries bypass admission. Late arrival uses the monotonic maximum once, and undelivered replacements remain outstanding. |
 
 ## Export register
 
@@ -74,6 +76,16 @@ and capability selection values.
 | lowStockEvidenceHandler.ts | createFulfillmentLowStockEvidenceHandler |
 | productReconciliationEvidenceHandler.ts | createProductReconciliationEvidenceHandler |
 | adapterConformance.ts | runFulfillmentAdapterConformance |
+| postgresShipmentSpine.ts | createPostgresFulfillmentShipmentSpinePort |
+| postgresEvidenceReadPort.ts | createPostgresFulfillmentLowStockEvidencePort |
+| postgresStockSyncPort.ts | createPostgresFulfillmentStockSyncPort |
+| postgresPaidFulfillmentRecovery.ts | createPostgresPaidFulfillmentRecoveryOpsPort |
+| postgresDispatchStore.ts | createPostgresFulfillmentDispatchStore |
+| postgresPaidHandoffStore.ts | createPostgresPaidFulfillmentHandoffStore |
+| postgresDeliveryAlignment.ts | createPostgresDeliveryAlignmentPort |
+| deliveryAlignmentReadModel.ts | readDeliveryAlignment |
+| schemaCapabilities.ts | FULFILLMENT_NATIVE_CAPABILITIES |
+| migrations.ts | FULFILLMENT_MIGRATIONS |
 
 The contracts entry exports only these types, including the prepare-result and
 evidence envelopes. G14–G17 amend methods, fields or inline inputs without new
@@ -122,15 +134,16 @@ recording does not consume the initial index. Write after authoritative claim
 readback and before shadow exit, unsafe-status refusal or begin. Persist only
 sanitized DispatchEvidence, mode, recorded status and opaque fulfillment/key
 references. The same key returns replayed true without a second write; remapped
-recorded evidence has its own key. Durable store conformance remains future work.
+recorded evidence has its own key. The native dispatch store implements this
+idempotent write through `fulfillment_record_provider_attempt`.
 
 Private bytes, headers, commands and signed URLs are transient. Durable contracts
 have no generic audit bag, raw pass-through or copied recipient proof. Safe
 strings and opaque references require host redaction/minting. Token authentication
 provides no signed freshness; collection identity provides no provider ordering;
 empty pages never certify absence. Inventory owns reservations/availability and
-catalog owns product facts. Durable runtime conformance remains future work;
-offline adapter/store fixture conformance is described below.
+catalog owns product facts. Native persistence and offline adapter/store fixture
+conformance have distinct verification boundaries described below.
 
 ## Donor provenance and neutralization register
 
@@ -156,9 +169,10 @@ Donor paths below refer to the provenance revision above. Public destinations ar
 Empty or absent selection refuses with `selection_required`. The donor host's
 empty-selection-to-simulator alias is excluded; the reference app is unchanged.
 The donor alias remains host-owned. The surface is additive and requires no
-migration of existing public behavior. Durable store implementations and adapter
-integration remain future work. The reference facade is retained; UI integration
-remains future work, defaults stay injected, and money SQL remains payment-owned.
+migration of existing public behavior. Native store implementations bind the
+ports to PostgreSQL; concrete provider adapter integration remains separate.
+The reference facade is retained; UI integration remains future work, defaults
+stay injected, and money SQL remains payment-owned.
 
 Every ACK path uses host acceptance keys, ignoring adapter-provided key fields:
 main post-dispatch ACK, loop-start accepted-proof recovery and concurrent begin.
@@ -192,8 +206,9 @@ After payload validation, unless an enabled risk gate returns early, the paid ha
 `manual_review` also return `processed` and settle the event; this does not always
 mean fulfillment completed. Outbox ACK follows the handler outcome in the outbox
 worker. OrderPaidFulfillmentPort in paidHandoffPorts.ts retains this outcome
-ladder; bridging it to FulfillmentPaidHandoffPort remains future host composition
-and native store work.
+ladder; `createPostgresPaidFulfillmentHandoffStore` implements
+FulfillmentPaidHandoffPort. Host composition supplies the bridge between the
+handler outcome ladder and this obligation/acknowledgement port.
 
 The command ledger is a structural protocol separate from dispatch-reference
 draft/claim/begin state. Each operation delegates an atomic durable transaction
@@ -202,14 +217,16 @@ lease jointly fence writes. Store expiry queues only pre-submission claims and
 makes submitting/accepted work uncertain. Confirmation and uncertain retry require
 identity-bound proofs; retry needs authoritative scoped absence, never a missing
 local row. There is no second local persistence/retry engine, generated fingerprint,
-lease takeover or retry scheduler. Native store work must prove SQL atomicity,
-access controls, contention and lease/time/proof validation.
+lease takeover or retry scheduler. The native dispatch store binds these operations
+to SQL routines; database conformance covers atomicity, access controls,
+contention and lease/time/proof validation.
 
 ## Observation reconciliation and sync design
 
 Observation reconciliation uses the existing runtime and type-only entries.
 Private authentication, payload mapping, carrier codecs and persistence stay behind
-injected ports; no concrete adapter, store, route or scheduler is added.
+injected ports. Native stores implement durable receipts and sync persistence;
+no concrete provider adapter, route or scheduler is mounted.
 
 | Amendment | Contract and behavior |
 | --- | --- |
@@ -251,33 +268,138 @@ An optional fresh host-store fixture checks mapped-attempt replay, remap keys an
 draft re-claim evidence; a worker exercise caps contact remapping at one. Fixture
 conformance does not establish native database atomicity or arrival alignment.
 
-## Arrival discipline, limits and risks
+## Native persistence and mapping
 
-D2/D7 preserve the subscription invariant: a late delivery extends the next cycle;
-the monotonic clamp must never stack deliveries or move a cycle earlier. A
-replacement may settle delivery alignment as `aligned` only after it reached the
-customer. Its superseded predecessor is no longer an outstanding obligation, but
-an in-flight or undelivered replacement still is. Never call
+The canonical forwards
+[`20261022080000_fulfillment_command_ledger.sql`](../../../db/platform/migrations/20261022080000_fulfillment_command_ledger.sql)
+and [`20261022090000_fulfillment_delivery_alignment.sql`](../../../db/platform/migrations/20261022090000_fulfillment_delivery_alignment.sql)
+append command fencing and alignment. `FULFILLMENT_MIGRATIONS` supplies
+byte-identical package projections of the shipment, stock, replacement, command
+and alignment units. Install the complete canonical catalogue and preserve its
+installed prefix; sparse projections are not an independent install chain.
+Managed and native execution graphs remain distinct.
+
+| Donor representation | Native representation |
+| --- | --- |
+| Fulfillment orders | `public.fulfillment_shipments` |
+| `replaces_fulfillment_order_id` | `fulfillment_shipments.replaces_shipment_id` |
+| Order subscription identity | `commerce_orders.subscription_cycle_id` → `subscription_cycles.subscription_id` → `subscriptions.id` |
+| Cycle number | `subscription_renewal_operations.cycle_number`; missing correlation enters manual review |
+
+The native dispatch store delegates candidate data and contact preparation to the
+host. The host synchronizes `fulfillment_dispatch_contexts` during preparation
+and authoritative contact/selection edits under the shipment lock. Claim and
+begin compare stored revisions with prepared evidence. Before submission the
+store rechecks paid state, active holds, shipment status, port readiness and
+selected provider. Direct and command lanes share a dispatch lock. Direct
+submission supersedes only a pristine, never-claimed queued command; effect-bearing
+history refuses it. Command claim refuses after direct submission or accepted
+proof. ACK records the existing native `dispatch` evidence receipt, preserving
+the cancellation fence without asserting an owned label or physical packing.
+
+The native stores implement amendments G14–G17: mapped-attempt replay in the
+dispatch store; coverage-gap cursors and the injected timed inventory-line reader
+in the stock store; and atomic received/processed receipts, separate status
+evidence and local chronology in the shipment store. Receipt time alone is not
+applied status chronology. Inventory retains balance and reservation authority.
+The native capability descriptor marks local inventory and contact preparation
+as host-required, and product packs, provider access and automatic replacement
+confirmation as unsupported.
+
+All new routines, including helpers and trigger routines, execute as invokers.
+No `SECURITY DEFINER` routine or new execution role is introduced. Access to new
+objects is revoked from `PUBLIC`, `anon` and `authenticated`. The initial native
+executor is the existing deployment owner. A separate service principal needs
+an explicit least-privilege grant set for the called routines and underlying
+objects; invoker execution does not elevate its privileges. See
+[installation and grant boundaries](../DATA_AND_MIGRATIONS.md#module-catalogues-and-installed-histories).
+
+## Native admission and delivery alignment
+
+The D13 native translation guards only NEW cycle admission/insert, matching the
+donor cycle-insert guard. `subscription_delivery_alignment_admit_renewal`
+creates an allowed schedule-bound receipt and
+`subscription_delivery_alignment_guard_cycle_insert` consumes it once in the
+new-cycle transaction. Existing-cycle renewal-operation and dunning retries
+never pass through admission and neither mint nor consume these receipts. There
+is no `retry_scheduled` state or change to the payments lifecycle.
+
+D13 maps donor activation cycle 1 ↔ native activation ordinal 0, and donor
+renewal n+1 ↔ native renewal n. The activation ordinal requires a cycle with no
+renewal operation whose linked order is the active `subscription_activations`
+row's order for the same subscription. Renewal operation numbers remain ≥1.
+Admission selects the highest known paid ordinal, so activation protects the
+first renewal and each later paid renewal outranks activation. Successor
+artifacts have a greater effective ordinal. Other unnumbered cycles remain
+unordered: paid ones require manual review at due admission without minting a
+receipt; other unordered cycles prevent automatic arrival alignment regardless
+of scheduled date. They neither outrank known predecessors nor silently permit
+an autonomous renewal. Shadow mode observes this ambiguity without blocking.
+
+Automatic enforcement of the invariant "a late delivery extends the next cycle"
+requires native delivery-alignment control mode `auto_align`. The singleton
+`public.subscription_delivery_alignment_control.mode` defaults to `off` for
+rollout safety, so installation alone does not enforce this invariant. The other
+modes are `shadow` and `protect`, selected through
+`public.subscription_delivery_alignment_set_mode`. Existing cases retain their
+captured mode and protection when the control changes.
+
+Enforcing modes (`protect`, `auto_align`) require the host's renewal path to call
+`subscription_delivery_alignment_admit_renewal` before inserting the cycle.
+The [native renewal store](../../../server/adapters/postgres/subscription/automaticRenewal.ts)
+does not yet call it, so switching a native install to an enforcing mode halts
+every autonomous renewal with `subscription_delivery_alignment_admission_required`.
+Native installs must keep mode `off` until that wiring lands.
+
+In enforcing modes, a subscription whose paid history has no activation or
+renewal link, such as imported data, holds every due renewal for manual review.
+Operators should check for such cycles before switching modes.
+
+Local pre-dispatch cancellation changes only the shipment locally: alignment
+creates no hold or shipment-exception event and does not block other shipments
+of the order. An undelivered, unsuperseded cancelled parcel still counts as
+outstanding at renewal admission in `protect` and `auto_align`. An explicit
+provider exception uses the existing fulfillment-exception hold and notification
+rules; alignment observes that active hold to open a case only when control is not
+`off`, the order belongs to a paid subscription cycle and the subscription is
+active. One-time orders do not open alignment cases. Exception cases never
+pause subscriptions.
+
+For automatic alignment, trusted durable arrivals settle only when no
+unsuperseded shipment remains undelivered. The target is the latest arrival plus
+subscription cadence, clamped by the existing next-cycle date with `GREATEST`.
+The operation neither stacks deliveries nor moves a cycle earlier, and replay
+cannot extend a settled case again. Subscription locks precede case locks;
+failed transactions roll back arrival and schedule changes together. Missing
+correlation, open dunning or an existing renewal artifact prevents automatic
+alignment; inactive subscriptions do not acquire a new autonomous renewal.
+
+A replacement may settle alignment as `aligned` only after reaching the customer.
+Its superseded predecessor is no longer outstanding, but an in-flight or
+undelivered replacement still is. As required by the
+[agent arrival-only rule](../AGENT_GUIDE.md#architecture-rules), never call
 `subscription_delivery_alignment_confirm_replacement` for a replacement that did
-not arrive: the operation records the customer-facing fact "Parcel delivered"
-and shifts the cycle later. The note-only operator attestation is unchanged and
-has no caller here; native alignment and continuity proof remain future work.
+not arrive: it records the customer-facing fact "Parcel delivered" and shifts
+the cycle later. This remains a note-only operator attestation, with no machine
+arrival predicate and no production caller in this surface.
 
-Known limits: capability lookup lowercases selected providerRef but compares
-it with injected descriptors as supplied. This case asymmetry arises from injected
-descriptors. recordArrival accepts parcelRef without fulfillmentRef; native
-fencing and alignment remain future work.
-Fixture stores establish worker behavior and protocol transport, not durable
-atomicity, expiry, lease enforcement or database proof validity.
+## Limits and verification surface
+
+Capability lookup lowercases selected providerRef but compares injected
+descriptors as supplied. `recordArrival` accepts parcelRef without fulfillmentRef;
+the native port resolves that parcel reference to a shipment. Fixture stores
+establish worker behavior and protocol transport; real PostgreSQL tests cover
+durable atomicity, expiry, leases, proof validity and arrival alignment.
+
+Inspect the [native store contract](../../../packages/platform/test/fulfillment/postgresStore.test.ts),
+[native conformance](../../../tests/postgres/fulfillmentNativeConformance.test.ts)
+and [delivery alignment](../../../tests/postgres/fulfillmentDeliveryAlignment.test.ts)
+for install/prefix/replay, dispatch fences, ACK recovery, arrival/replacement,
+retry/admission, lock/rollback and denied-access boundaries. These tests are
+verification sources, not a hosted installation or activation claim.
 
 Main risks are lost carrier fields, invented external absence, accidental
-activation, false arrival evidence, replay-key drift and package/browser growth.
-Use concrete type envelopes, direct injected descriptor lookup and the unchanged
-decision table; no generic plugin framework, dependency or persistence abstraction
-is needed. Contract/status-parity/port-fit witnesses, paid/recovery ladders,
-claim/begin remap bounds, ordering/redaction, shadow/replay/unsafe statuses, lost
-ACK before/after persistence, ambiguous/definite provider outcomes and ledger
-fence/proof transport define the affected verification surface. Package-boundary
-and cold-consumer checks cover entry isolation. Validate structural/lint, types,
-API, neutrality, publication policy/navigation and artifact/browser budgets;
-serialize generation/build/pack and phases that mutate dist.
+activation, false arrival evidence and replay-key drift. Concrete envelopes,
+injected selection and direct PostgreSQL bindings preserve these controls
+without a new plugin framework or retry engine. Package-boundary, API,
+neutrality, publication and artifact checks cover the exported surface.
