@@ -1187,7 +1187,18 @@ Future terms and receipts require an atomic command store.
 Stock recovery is restricted to never-executed stock refusals, with transaction-bound
 all-line reacquisition and fencing. A provider-owned or ambiguous attempt cannot
 be reset by a wait ledger. The [design](plans/oss-m10-subscriptions-renewal-dunning.md)
-keeps serving composition and later store implementation outside this contract step.
+keeps serving composition outside this implementation step. The package's native
+renewal store consumes an injected executor and a required wire-snapshot codec:
+the host supplies exact identity/fingerprint bytes, frozen revision and explicit
+logical-cycle correlation. Existing operation snapshots take precedence over
+mutable future terms. The retry store calls N1 without implementing M07 payment
+execution, and preserves its prepare replay fence. The generic native executor
+uses the P1 ports with injected input/identity/classification policy. The initial
+binding opens the existing donor-keyed case first, then links N1 bookkeeping in
+the M07 terminal transaction. Initial terminal replay reuses its immutable
+failure receipt after later case changes or recovery; conflicting terminal
+evidence still refuses. Subsequent failures retain their separate case advance. G23, transaction/correlation policy and runtime selection remain host
+composition.
 
 ### Renewal port recipe
 
@@ -1226,8 +1237,8 @@ deferring until resolved. A deferred result preserves the schedule and may carry
 durable case.
 
 Native multi-cycle prepaid, generic bundle commands, command-bound receipts and
-the M07 prepared-attempt store have typed unsupported refusals. Retry and stock
-recovery remain unavailable until selected stores demonstrate them. Native generic
+the M07 prepared-attempt store have typed unsupported refusals. Stock recovery
+remains unavailable; N1 retry recovery is selected after its store proofs. Native generic
 bundle commands and command-bound receipts arrive with a later native command lifecycle;
 until then, the descriptor refuses them. Existing native pause/resume/skip/cancel
 operations keep their own contracts. The

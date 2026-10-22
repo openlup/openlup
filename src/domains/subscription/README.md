@@ -19,6 +19,11 @@ contracts that cross domain boundaries.
   replacement-confirmation operation (`server/domains/subscription` plus the
   ordered database migrations).
 
+The server's hosted charge/failure facades now bind the contributed platform
+subscription mechanisms to existing application policy and M07 payment ports.
+The native N1 adapter keeps retry obligations separate from this pure lifecycle
+surface; neither graph gains provider execution or method vaulting here.
+
 ## Shim boundary
 
 ⚠️ **The engine is not in this directory.** It lives in

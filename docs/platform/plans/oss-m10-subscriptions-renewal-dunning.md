@@ -111,3 +111,43 @@ The complete naming and placement adaptation is:
 No vendor name, persisted value, error code, key byte or executable expression
 requires neutralization. Further behavior changes need their own contract and
 characterization decision; later native stores do not inherit hosted readiness.
+
+
+## P2 design and declared adaptations
+
+Folded CTL note (a): test-only registry pull hardening for the M10 catalog gate (digest pins, ghcr-first fallback, bounded retry)
+
+E-gate-replay-loop-landed-untested moved to P3b by the coordinator (P2 path cap)
+
+P2 carries only pinned N1, in native version order before N2 and N3. Its F16
+repair uses the same obligation through decline, retry and authorized recovery.
+The shared PostgreSQL selection checks exact-prefix restart, catalog rollback,
+ACLs, replay, contention, atomic prepare failure, exhaustion and each captured
+alignment rollback branch. It is not a serving or activation receipt.
+
+The application hosted charge/failure facades bind the P1 mechanisms to existing
+M07 ports and existing policy functions. Their order, persisted reasons, durable
+failure instant, deliberate null retry and idempotency keys remain unchanged.
+Native orchestration follows the donor's claim/resume/admit/reserve/prepare/
+execute/ACK/readback/handoff order with these declared H1–H7 adaptations:
+
+- Native carriers use P1's frozen pricing/order/template envelopes and separate
+  evidence-bound logical cycle from native renewal counter (H2, H7). The codec
+  preserves the original wire snapshot, key and fingerprint dialect.
+- Execution input, validation, provider failure classification and key policy
+  are injected (H3); normalized explicit failure reason/class survives the
+  payment port. M07 still owns execution and truth.
+- Readback consumes verified evidence identity, observation/first-recorded time,
+  ambiguity and nullable money (H4). Missing positive money or occurrence cannot
+  settle or authorize a new charge.
+- G23 deferral keeps its case reference (H1). Existing native transaction units
+  and the N1 retry receipt fence remain intact (H5, H6).
+
+The initial native binding opens the existing donor-keyed dunning case first,
+then records terminal outcome, N1 bookkeeping and the same-case link in one
+local transaction. Initial failure handoff never calls N1's apply-failure route;
+its terminal binding applies bookkeeping only after the original outcome.
+Subsequent retry failures retain apply-before-case order. A synthetic failure
+between terminal recording and bookkeeping must roll back both; replay after
+recovery must remain idempotent. This resolves N1's wrapper precondition without
+changing its pin, introducing another case store, or executing payment in SQL.

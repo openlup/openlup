@@ -1,50 +1,5 @@
-import { nextRetryAttemptAt } from "../../../src/domains/subscription/cycleHardening.js";
+import { propagateRenewalFailure, type RenewalFailurePolicy } from "@openlup/platform/subscriptions";
 import { resolvedFailureClassification } from "../../shared/applyPaymentResultRpc.js";
-
-/**
- * Propagates a subscription-cycle charge failure with explicit terminal
- * evidence (provider decline, off-session `requires_action`, or local preflight)
- * through four steps, each one a named method on the injected
- * {@link CycleChargeFailurePropagationPort}:
- *
- *   1. `recordBlockedPreflightAttempt` for a local preflight block when the
- *      caller has not already prepared an attempt. It uses the local-only
- *      `"blocked_preflight"` status so we do not claim a provider call
- *      happened. The terminal `failed` state is carried by the applied result
- *      in step 2, NOT by the initial attempt row. Recording the attempt here is
- *      also what stamps the intent's active attempt, which applying a result
- *      requires to exist.
- *   2. `applyFailedResult`, which bumps the cycle's retry attempt and computes
- *      `next_retry_at` using the canonical backoff ladder.
- *   3. `readCycleRetryState` — a read of the cycle's new
- *      `(retry_attempt, next_retry_at)` so we can hand the dunning step the
- *      exact integer it stamps on the row (any drift would trip the
- *      `subscription_dunning_retry_attempt_stale` guard).
- *   4. `openDunningCase` to insert the dunning case and queue the notification
- *      row the active `subscription-dunning-dispatch` worker picks up.
- *
- * All three writes are idempotent on `(scope, idempotency_key)`. We derive
- * deterministic keys from the cron's `executionIdempotencyKey` so a replay of
- * the same row replays the same chain without opening duplicate cases. A
- * deterministic KEY is not enough: applying a result also fingerprints
- * `occurredAt`, so steps 2 and 4 take their instant from a durable row —
- * see {@link resolveDurableOccurredAt} for the poison pill that forces this.
- *
- * Errors from the dunning step do not throw (the cycle is already failed and must
- * not be undone) but are NOT swallowed — see {@link RENEWAL_DUNNING_PROPAGATION_FAILED_KEY}.
- * Errors from recording the attempt / applying the result are surfaced. If the
- * attempt commits and applying the result fails, the intent can temporarily sit
- * in `processing` with an active `blocked_preflight` attempt; the deterministic
- * keys let the next cron/replay finish the same chain rather than open a second
- * attempt.
- *
- * A thrown PSP execution is deliberately absent from this API: timeout/network
- * failure is indeterminate after prepare and must stay on the prepared-attempt
- * reconciliation path. Off-session SCA follows the explicit-result boundary:
- * only a caller with a prepared/finalized active attempt may classify it as
- * failed and open customer dunning.
- */
-
 export type FailurePropagationKind =
   | "off_session_requires_action"
   /**
@@ -162,138 +117,18 @@ export interface FailurePropagationResult {
   dunningPropagationFailed: boolean;
 }
 
+export const renewalFailurePolicy: RenewalFailurePolicy = {
+  resolveClassification: resolvedFailureClassification,
+  recordKey: key => `${key}:record-attempt`, applyKey: key => `${key}:apply-result`,
+  dunningKey: (key, attempt) => `${key}:dunning:${attempt}`,
+  preparedSuffix: ":prepare-attempt", blockedSuffix: ":record-attempt",
+  dunningFailureKey: RENEWAL_DUNNING_PROPAGATION_FAILED_KEY,
+  logBelowRetry: fields => console.warn("[subscription-renewal] skipping dunning — retry_attempt below 1", fields),
+  logRejected: fields => console.error("[subscription-renewal] dunning RPC error", fields),
+  logUnavailable: fields => console.error("[subscription-renewal] dunning RPC threw", fields),
+};
 export async function propagateSubscriptionCycleChargeFailure(
-  port: CycleChargeFailurePropagationPort,
-  ctx: FailurePropagationContext,
+  port: CycleChargeFailurePropagationPort, ctx: FailurePropagationContext,
 ): Promise<FailurePropagationResult> {
-  if (ctx.kind === "off_session_requires_action" && ctx.attemptAlreadyPrepared !== true) {
-    return { dunningCaseId: null, retryAttempt: null, applyReplayed: false, dunningPropagationFailed: false };
-  }
-  if (ctx.kind === "preflight_block" && ctx.attemptAlreadyPrepared !== true) {
-    await port.recordBlockedPreflightAttempt({
-      idempotencyKey: `${ctx.executionIdempotencyKey}:record-attempt`,
-      paymentIntentId: ctx.paymentIntentId,
-      providerKind: ctx.providerKind,
-      providerIdempotencyKey: ctx.providerIdempotencyKey,
-      providerRequestFingerprint: ctx.providerRequestFingerprint,
-      failureReason: ctx.failureReason,
-    });
-  }
-  const occurredAt = await resolveDurableOccurredAt(port, ctx);
-  const applied = await port.applyFailedResult({
-    idempotencyKey: `${ctx.executionIdempotencyKey}:apply-result`,
-    paymentIntentId: ctx.paymentIntentId,
-    occurredAt,
-    failureReason: ctx.failureReason,
-    failureClassification: resolvedFailureClassification(ctx.failureClassification, ctx.failureReason),
-  });
-  const cycleSnapshot = await port.readCycleRetryState(ctx.cycleId);
-  return {
-    ...await openDunningCase(port, ctx, cycleSnapshot, occurredAt),
-    applyReplayed: applied.replayed,
-  };
-}
-
-/**
- * The instant this failure was FIRST observed, not the instant we are trying to
- * record it.
- *
- * Applying a result fingerprints `occurredAt`, so two presentations of one key
- * must carry the same value or the second is rejected with
- * `payment_control_result_idempotency_conflict` — and since the write is atomic,
- * that rejection rolls the row back and leaves it due, failing identically,
- * forever. A caller can re-present the same key whenever the same rung is driven
- * twice — a cron tick that overlaps its predecessor, a replayed row, a retried
- * invocation — and this anchor is what makes that second presentation carry the
- * first one's instant instead of conflicting.
- *
- * It is no longer what holds the preflight path together. Until
- * `20260826`-era, that path built its execution key from the cycle alone,
- * without the retry-attempt scoping the charge path's builder adds, so EVERY
- * later tick re-presented one key and this anchor froze the ladder at rung one
- * rather than merely making the repeat safe. Both paths now scope by
- * `retry_attempt`, so a new rung mints a new key and reaches the `null` fallback
- * with the caller's own clock.
- *
- * The anchor is the attempt row that same key already created, matched on the
- * UNIQUE `(payment_intent_id, idempotency_key)` pair the apply key derives
- * from. Scoping it to the KEY is what makes the fallback correct, not just
- * safe: when prepare replays an older non-terminal attempt under a NEW key,
- * nothing carries that key and the caller's clock is exactly right — that path
- * advances the ladder every tick. An unreadable anchor falls back too;
- * poison-pill hardening must never create a row error of its own.
- */
-async function resolveDurableOccurredAt(
-  port: Pick<CycleChargeFailurePropagationPort, "readDurableAttemptInstant">,
-  ctx: FailurePropagationContext,
-): Promise<string> {
-  const suffix = ctx.attemptAlreadyPrepared === true ? ":prepare-attempt" : ":record-attempt";
-  const durable = await port.readDurableAttemptInstant({
-    paymentIntentId: ctx.paymentIntentId,
-    attemptIdempotencyKey: `${ctx.executionIdempotencyKey}${suffix}`,
-  });
-  return durable !== null && durable.length > 0 ? durable : ctx.occurredAt;
-}
-
-// Takes the same durable instant the applied result was given: it derives
-// `next_retry_at` from it and the fallback below re-derives it, so two clock
-// reads would let the case and the cycle disagree about when to retry.
-async function openDunningCase(
-  port: Pick<CycleChargeFailurePropagationPort, "openDunningCase">,
-  ctx: FailurePropagationContext,
-  cycle: CycleRetryState,
-  occurredAt: string,
-): Promise<Omit<FailurePropagationResult, "applyReplayed">> {
-  const retryAttempt = cycle.retryAttempt ?? 1;
-  const failureClass = resolvedFailureClassification(
-    ctx.failureClassification,
-    ctx.failureReason,
-  ).failureClass;
-  // console.ERROR, not warn, on the branches below: that is where the customer
-  // silently ends up with no case, no token and no email.
-  const stranded = { cycleId: ctx.cycleId, subscriptionId: ctx.subscriptionId, retryAttempt,
-    rowOutcomeKey: RENEWAL_DUNNING_PROPAGATION_FAILED_KEY };
-  if (retryAttempt < 1) {
-    console.warn("[subscription-renewal] skipping dunning — retry_attempt below 1", { cycleId: ctx.cycleId, retryAttempt });
-    return { dunningCaseId: null, retryAttempt, dunningPropagationFailed: false };
-  }
-  // The stored schedule wins whenever there IS a stored schedule to read —
-  // including when what it stores is "none". A cycle the apply body left without
-  // a next retry has been terminated on purpose, and re-deriving one here would
-  // open a case whose schedule contradicts the cycle it belongs to. The ladder is
-  // consulted only when the row itself could not be read, where it is the best
-  // guess available and past its end it terminates too.
-  const nextRetryAt = cycle.rowPresent
-    ? cycle.nextRetryAt
-    : nextRetryAttemptAt(
-      occurredAt,
-      retryAttempt,
-      undefined,
-      failureClass,
-    );
-  const outcome = await port.openDunningCase({
-    idempotencyKey: `${ctx.executionIdempotencyKey}:dunning:${retryAttempt}`,
-    cycleId: ctx.cycleId,
-    subscriptionId: ctx.subscriptionId,
-    orderUuid: ctx.orderUuid,
-    paymentIntentId: ctx.paymentIntentId,
-    retryAttempt,
-    nextRetryAt,
-    failureReason: ctx.failureReason,
-    occurredAt,
-    failureClass,
-  });
-  if (outcome.status === "rejected") {
-    console.error("[subscription-renewal] dunning RPC error", {
-      ...stranded, code: outcome.code, reason: outcome.reason,
-    });
-    return { dunningCaseId: null, retryAttempt, dunningPropagationFailed: true };
-  }
-  if (outcome.status === "unavailable") {
-    console.error("[subscription-renewal] dunning RPC threw", {
-      ...stranded, reason: outcome.reason,
-    });
-    return { dunningCaseId: null, retryAttempt, dunningPropagationFailed: true };
-  }
-  return { dunningCaseId: outcome.caseId, retryAttempt, dunningPropagationFailed: false };
+  return propagateRenewalFailure(port, ctx, renewalFailurePolicy);
 }

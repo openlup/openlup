@@ -521,6 +521,13 @@ privileges and complete catalogue installation are described in
 
 ## Compatibility posture
 
+Native subscription retry N1 extends the existing migration prefix without
+changing earlier rows. Its manifest inventory is recomputed by the repository
+runner on the complete prefix plus N1, and its package SQL copy retains the CTL
+creation pin. Command/stock-wait forwards remain later additions; installing this
+unit does not activate a runner or grant M07 native prepared-store capability.
+
+
 The M10/F17 `batchedForwards` registry adds exact approval data and inert
 snapshots only. Its ordered paths, raw statement/definition hashes, signature
 chains and exact grants/seeds do not install SQL, change a baseline, activate a
@@ -1060,6 +1067,25 @@ disposition. A late positive settles the same obligation, never a new charge.
 A persisted retry row with null `nextRetryAt` is intentional exhaustion or a
 class stop; fallback cadence is allowed only when the row is absent.
 
+Native N1 records retries against the original refused renewal without resetting
+that terminal operation or minting another cycle. Each failure receipt advances
+the rung once, separately from case propagation; a prepared receipt permits only
+its first caller to dispatch. Unknown observations and missing acknowledgements
+require reconciliation. Recovery consumes M07's verified matching positive
+payment evidence and commits settlement, receipt, case, cycle and native counter
+effects together. It never guesses a logical number from the native counter,
+pauses the subscription, or moves `next_cycle_at` earlier. Exhaustion keeps the
+case open with a null retry. Reopening a class stop or exhausted ladder requires
+a same-case token and durable healthy-method evidence before scheduling.
+
+The initial runner handoff must open the case before the terminal outcome;
+subsequent retry failures apply settlement and rung once before advancing that
+case. N1's case wrapper requires an already recorded failure, so it is not by
+itself the initial handoff. The package binding opens the existing case first and atomically attaches N1
+bookkeeping during terminal recording, using the same case and preserving the
+initial handoff key. Hosts supply its transaction/correlation/M07 ports; payment
+execution stays outside every local transaction.
+
 Nothing in automatic renewal pauses an active subscription. Arrival alignment
 uses the outer schedule maximum and actual latest arrival plus cadence; no
 cycle moves earlier or stacks. A superseded predecessor is no longer outstanding,
@@ -1073,8 +1099,7 @@ protected cases whose arrival meets open dunning or a successor cycle, keep
 deferring until resolved.
 
 The native descriptor refuses multi-cycle prepaid, generic bundle commands,
-command-bound receipts and M07 prepared-store parity by name, and declares retry
-and stock recovery unavailable. Native generic bundle commands and command-bound
+command-bound receipts and M07 prepared-store parity by name, and selects the N1 retry recovery adapter while stock recovery remains unavailable. Native generic bundle commands and command-bound
 receipts arrive with a later native command lifecycle; until then, the
 descriptor refuses them. It selects one executor, default off, with
 mandatory delivery admission. Host-selected M04 descriptors carry recorded

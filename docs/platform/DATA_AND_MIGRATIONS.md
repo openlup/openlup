@@ -608,6 +608,34 @@ stable upgrade guarantee.
 
 ## Compatibility lifecycle
 
+The native `20261022160000_subscription_retry_lifecycle` forward adds three
+subscription retry ledgers and nine invoker functions. Install it through the
+complete ordered native manifest; its package SQL projection is byte-identical.
+This is N1, the F16 repair for terminal renewal declines that previously removed
+an active subscription from the due list indefinitely. It adds neither N2
+commands nor N3 stock wait. Disable the retry driver before rollback and retain
+the ledgers for reconciliation; do not delete refusal or payment history.
+
+The retry ledger keeps the original operation, cycle, order, settlement, schedule
+and snapshot. Retry zero is the original attempt. Failures one, two and three
+schedule +24, +72 and +168 hours from each failure; four exhausts the ladder.
+A terminating class can clear the retry earlier. Exhaustion leaves an open case,
+null retry and active subscription. An authorized same-case token and durable
+healthy-method evidence can re-offer the original obligation. Verified M07
+positive evidence settles that obligation and advances its native counter once,
+using the later-only schedule clamp. SQL performs no provider calls. Prepared
+receipts fence dispatch even when the acknowledgement was lost.
+
+Initial case-before-outcome handoff and subsequent retry failure are different
+transaction routes. N1's `subscription_retry_open_case` requires an existing
+failure row, while its initial `subscription_retry_apply_failure` can record the
+terminal outcome. The package binding opens the donor-keyed existing dunning case first, then
+attaches N1 bookkeeping inside the M07 terminal transaction, linking the same
+case. It never applies the initial money result twice; any bookkeeping failure
+rolls the terminal transaction back for safe replay. Hosts supply its
+transaction executor and evidence-bound correlation; no runner is activated.
+
+
 Fulfillment expands the native graph with new command and
 alignment objects at positions 73/74. It preserves all position-0–72 identities,
 existing rows and the managed graph. Upgrade the complete prefix before enabling
