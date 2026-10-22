@@ -19,7 +19,14 @@ in the source repository.
   including failures and exhaustion, separately from transport retries.
 - Add redacted dispatch transcript/mapping fields, typed operation errors,
   acceptance recovery evidence and provider-status occurrence evidence. Existing
-  unchanged dispatch identities retain their stored evidence for native replay.
+  unchanged stage/live dispatch identities retain their stored evidence for native replay.
+- Migration: shadow drafts/attempts recorded by `0.22.0`'s native dispatch store
+  do not replay after this change: shadow now hashes the local candidate rather
+  than the provider-prepared command. Claim may consume a remap or raise
+  `fulfillment_dispatch_remap_exhausted`; an existing attempt may raise
+  `fulfillment_attempt_key_conflict`. Complete or abandon such drafts before
+  upgrading. The `0.22.0` native dispatch store has no adopter; no compatibility
+  transition is supplied.
 - D2 KEEP-GAP: native `fulfillment_dispatch_finish` drops rejected/unknown error
   detail; durable retention is a scheduled SQL follow-up.
 

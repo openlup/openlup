@@ -18,20 +18,34 @@ export function operationError(error: Omit<FulfillmentOperationError, "cause"> &
     retryable: error.retryable === true, mayHaveSucceeded: error.mayHaveSucceeded === true,
     ...(typeof error.cause === "string" && /^ack(?::[A-Za-z0-9_]{1,96}){0,2}$/u.test(error.cause) ? { cause: error.cause.slice(0,180) } : {}) };
 }
-const reference = (value: string | null | undefined): string | null => typeof value === "string" && value.length <= 256
-  && !/[@\r\n]|[a-z][a-z0-9+.-]*:\/\//iu.test(value) ? value : null;
+// The fulfillment opaque-ID rule; never accept free-form metadata as a reference.
+const reference = (value: string | null | undefined): string | null => typeof value === "string"
+  && /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u.test(value) ? value : null;
+const isoDate = (value: string | null | undefined): string | null => typeof value === "string"
+  && /^\d{4}-\d\d-\d\d$/u.test(value) && Number.isFinite(Date.parse(value))
+  && new Date(value).toISOString().slice(0, 10) === value ? value : null;
 /** Copy only the durable allowlist, including when an adapter object has extra runtime properties. */
 export function dispatchEvidence(evidence: DispatchEvidence): DispatchEvidence {
+  const priorCount = evidence.transcript?.redactedFieldCount ?? 0;
+  let redactedFieldCount = Number.isSafeInteger(priorCount) && priorCount > 0 ? priorCount : 0;
+  const sanitize = (value: string | null | undefined, validate = reference) => {
+    const safe = validate(value);
+    if (value != null && safe === null) redactedFieldCount += 1;
+    return safe;
+  };
+  const transcript = evidence.transcript ? {
+    itemCount: evidence.transcript.items.length,
+    items: evidence.transcript.items.map(item => ({ skuRef: sanitize(item.skuRef) ?? "redacted", quantity: Number.isSafeInteger(item.quantity) && item.quantity > 0 ? item.quantity : 0,
+      lotRef: sanitize(item.lotRef), expirationDate: sanitize(item.expirationDate, isoDate) })),
+    deliveryKind: evidence.transcript.deliveryKind === "parcel-locker" ? "parcel-locker" as const : "courier" as const,
+    pickupPointRef: sanitize(evidence.transcript.pickupPointRef),
+    ...(redactedFieldCount > 0 ? { redactedFieldCount } : {}),
+  } : null;
   return {
     commandFingerprint: evidence.commandFingerprint,
     contactRevision: { schemaVersion: evidence.contactRevision.schemaVersion, source: evidence.contactRevision.source, revision: evidence.contactRevision.revision },
     providerRef: evidence.providerRef, carrierRef: evidence.carrierRef, serviceRef: evidence.serviceRef,
-    ...(evidence.transcript ? { transcript: {
-      itemCount: evidence.transcript.items.length,
-      items: evidence.transcript.items.map(item => ({ skuRef: reference(item.skuRef) ?? "redacted", quantity: Number.isSafeInteger(item.quantity) && item.quantity > 0 ? item.quantity : 0,
-        lotRef: reference(item.lotRef), expirationDate: reference(item.expirationDate) })),
-      deliveryKind: evidence.transcript.deliveryKind === "parcel-locker" ? "parcel-locker" : "courier", pickupPointRef: reference(evidence.transcript.pickupPointRef),
-    } } : {}),
+    ...(transcript ? { transcript } : {}),
     ...(evidence.mapping ? { mapping: { source: "dispatch_worker" as const, mode: evidence.mapping.mode, shadowMode: evidence.mapping.mode === "shadow" } } : {}),
   };
 }

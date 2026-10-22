@@ -35,6 +35,8 @@ export interface DispatchEvidence {
     itemCount: number;
     items: readonly { skuRef: string; quantity: number; lotRef: string | null; expirationDate: string | null }[];
     deliveryKind: DeliveryKind; pickupPointRef: string | null;
+    /** Count of populated reference/date fields redacted by the durable projection. */
+    redactedFieldCount?: number;
   };
   mapping?: { source: "dispatch_worker"; mode: "shadow" | "stage" | "live"; shadowMode: boolean };
 }

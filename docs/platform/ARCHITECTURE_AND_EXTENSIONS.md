@@ -803,7 +803,7 @@ reads the authoritative row. Approved amendment G14 records the mapped provider
 attempt at that point, before shadow exit, unsafe-state refusal or begin. Its
 host-supplied opaque key preserves initial/remap identities; only allowlisted
 prepared evidence, mode/status and references persist. Same-key replay writes no
-second attempt. For an unchanged fingerprint, contact revision and selection,
+second attempt. For an unchanged stage/live fingerprint, contact revision and selection,
 replay preserves the stored evidence JSON, including legacy five-field evidence;
 new transcript/mapping metadata alone never consumes the native remap allowance.
 Unknown/submitting/failed states never automatically POST;
@@ -816,11 +816,20 @@ Main and repair ACKs use identical host acceptance keys, ignoring adapter-provid
 key fields so a committed ACK replays after a lost response. Mapped evidence now
 retains item count, SKU/quantity/lot/expiry, delivery kind and pickup-point reference,
 the contact revision and provider/carrier/service selection, and worker source,
-mode and shadow flag. Contact values, arbitrary provider properties, secrets and
-signed URLs are excluded. The command fingerprint still commits to the transient
+mode and shadow flag. Transcript references (including lot references) use the
+opaque-ID allowlist `[A-Za-z0-9][A-Za-z0-9._:-]{0,127}`; expiry accepts only a
+valid calendar date in `YYYY-MM-DD` form. Invalid populated reference/date fields
+become null (invalid SKU becomes `redacted`) before persistence and contribute to
+the transcript's optional `redactedFieldCount` diagnostic; they never fail dispatch.
+This rejects contact JSON in lot metadata and phone numbers in expiry. Arbitrary
+provider properties and raw JSON are omitted; no contact fields, secrets or signed
+URLs are copied into the transcript. The command fingerprint still commits to the transient
 provider command bytes. Shadow instead builds a local command identity from the
 host candidate; it requires neither a provider port nor provider preparation or
-credentials. Host readiness and selected capability checks still apply.
+credentials. Legacy `0.22.0` native shadow drafts/attempts do not replay under that
+new identity; complete or abandon them before upgrading (see the package
+[migration note](../../packages/platform/CHANGELOG.md#unreleased)). Host readiness
+and selected capability checks still apply.
 
 Dispatch results retain neutral typed error code, HTTP status, retryability and
 ambiguity. Local failures retain a machine cause/SQLSTATE under their stage;

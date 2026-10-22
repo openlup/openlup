@@ -446,6 +446,8 @@ export interface DispatchEvidence {
         }[];
         deliveryKind: DeliveryKind;
         pickupPointRef: string | null;
+        /** Count of populated reference/date fields redacted by the durable projection. */
+        redactedFieldCount?: number;
     };
     mapping?: {
         source: "dispatch_worker";

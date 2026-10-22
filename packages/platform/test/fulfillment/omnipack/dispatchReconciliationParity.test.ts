@@ -17,11 +17,12 @@ function candidate(): FulfillmentDispatchRequest {
     lines: [{ skuRef: "SKU-A", quantity: 1, title: null, productRef: null, packRef: null }],
     selection: { providerRef: "omnipack", carrierRef: "CARRIER-A", serviceRef: "SERVICE-A", deliveryKind: "courier", pickupPoint: null } };
 }
-function adapter(reply: (url: URL, init: RequestInit) => Response | Promise<Response> = () => Response.json({ orderId: "external-a" })) {
+function adapter(reply: (url: URL, init: RequestInit) => Response | Promise<Response> = () => Response.json({ orderId: "external-a" }),
+  metadata = { lotNumber: "LOT-A", expirationDate: "2027-01-01" }) {
   const http = vi.fn(async (url: URL | RequestInfo, init?: RequestInit) => reply(new URL(String(url)), init!));
   const credentials = vi.fn(() => ({ username: "fake", password: "fake" }));
   return { http, credentials, adapter: createOmnipackFulfillmentAdapter({ http: { baseUrl: "https://warehouse.invalid", fetchImpl: http, credentials, timeoutMs: 5, safeReadRetries: 1, productPath: "/products" },
-    selected: true, readiness: { ready: true }, resolveProduct: async () => ({ lotNumber: "LOT-A", expirationDate: "2027-01-01" }),
+    selected: true, readiness: { ready: true }, resolveProduct: async () => metadata,
     notification: { token: () => "fake", expectedEvent: "order.shipped" }, clock: () => now,
     mintEvidenceReference: () => "evidence:00000000-0000-4000-8000-000000000001", mintSyncRunId: () => "sync-a", approveTrackingUrl: () => true }) };
 }
@@ -61,6 +62,37 @@ it("dispatch-ok persists the redacted mapped items, revisions, selection and mod
     mapping: { source: "dispatch_worker", mode: "stage", shadowMode: false } });
   expect(JSON.stringify(attempts)).not.toMatch(/example@example|1202555|Synthetic|recipient|password|signedUrl/);
   expect(f.http).toHaveBeenCalledTimes(1);
+});
+it.each(["stage", "shadow"] as const)("%s transcript metadata is validated before persistence without failing dispatch", async mode => {
+  const contactJson = JSON.stringify({ email: candidate().recipient.email, phone: candidate().recipient.phone });
+  const cases = [
+    { lotNumber: contactJson, expirationDate: "2027-01-01", lotRef: null, date: "2027-01-01", count: 1 },
+    { lotNumber: "LOT-A", expirationDate: candidate().recipient.phone!, lotRef: "LOT-A", date: null, count: 1 },
+    { lotNumber: "LOT-A", expirationDate: "2027-02-30", lotRef: "LOT-A", date: null, count: 1 },
+    { lotNumber: "LOT-A_1:2.3", expirationDate: "2028-02-29", lotRef: "LOT-A_1:2.3", date: "2028-02-29", count: 0 },
+  ];
+  for (const spec of cases) {
+    const f = dispatchFixture(adapter(undefined, spec)), req = candidate();
+    req.lines = [{ ...req.lines[0]!, lotRef: spec.lotNumber, expirationDate: spec.expirationDate }];
+    f.store.readCandidate = async () => req;
+    expect(await runFulfillmentDispatchWorker({ store: f.store, provider: mode === "shadow" ? null : f.adapter.dispatch,
+      keys, listCandidates: async () => [req], config: { mode, batchLimit: 1 } })).toMatchObject({ ok: true, failures: 0, providerCalls: mode === "shadow" ? 0 : 1 });
+    const evidence = (await f.base.readMappedAttempts())[0]!.preparedEvidence;
+    expect(evidence.transcript!.items[0]).toEqual({ skuRef: "SKU-A", quantity: 1, lotRef: spec.lotRef, expirationDate: spec.date });
+    expect(evidence.transcript!.redactedFieldCount ?? 0).toBe(spec.count);
+    const query = vi.fn(async (_statement: string, _values?: unknown[]) => ({ rows: [{ response: {} }] }));
+    const native = createPostgresFulfillmentDispatchStore({ query }, { prepare: f.store.prepare, readCandidate: f.store.readCandidate });
+    // Exercise repeated sanitization at every native evidence write boundary.
+    await native.claim({ requestKey: keys.request(), fulfillmentRef: req.fulfillmentRef, orderRef: req.orderRef, parcelRef: req.parcelRef, mode, evidence });
+    await native.recordProviderAttempt(keys.mappedAttempt(keys.request(), 0), req.fulfillmentRef, evidence, mode, "recorded");
+    await native.acknowledge({ dispatchRef: "dispatch-a", acceptance: { kind: "accepted", externalRef: "external-a", evidence, ...keys.acceptance() } });
+    const calls = query.mock.calls;
+    expect(JSON.parse(calls[0]![1]![5] as string)).toEqual(evidence);
+    expect(JSON.parse(calls[1]![1]![2] as string)).toEqual(evidence);
+    expect(JSON.parse(calls[2]![1]![1] as string).evidence).toEqual(evidence);
+    expect(JSON.stringify([await f.base.read(keys.request()), calls])).not.toMatch(/example@example|1202555|email/);
+    if (mode === "shadow") { expect(f.credentials).not.toHaveBeenCalled(); expect(f.http).not.toHaveBeenCalled(); }
+  }
 });
 it.each(["lost", "committed", "readback_failed", "finalize_failed"] as const)("ACK %s preserves proof and never repeats POST", async scenario => {
   const f = dispatchFixture();
@@ -253,7 +285,10 @@ it("refuses transcript tampering before HTTP and projects nested diagnostic/evid
 });
 
 
-it.each([0, 1])("legacy five-field native attempts replay without consuming remaps (used=%s)", async used => {
+it.each([
+  { mode: "stage", used: 0 }, { mode: "stage", used: 1 },
+  { mode: "shadow", used: 0 }, { mode: "shadow", used: 1 },
+] as const)("legacy five-field native attempts preserve $mode migration semantics (used=$used)", async ({ mode, used }) => {
   const a = adapter(), req = candidate(), prepared = await a.adapter.dispatch.prepare(req);
   if (prepared.kind !== "prepared") throw Error("expected_preparation");
   const { commandFingerprint, contactRevision, providerRef, carrierRef, serviceRef } = prepared.evidence;
@@ -264,7 +299,7 @@ it.each([0, 1])("legacy five-field native attempts replay without consuming rema
   expect(sql).toContain("v_ref.evidence IS DISTINCT FROM p_evidence AND v_ref.status='draft'");
   let remaps = used;
   const record: DispatchRecord = { dispatchRef: "dispatch-a", requestKey: keys.request(), fulfillmentRef: req.fulfillmentRef,
-    orderRef: req.orderRef, parcelRef: req.parcelRef, mode: "stage", status: "draft", externalRef: null, evidence: legacy, replayed: true };
+    orderRef: req.orderRef, parcelRef: req.parcelRef, mode, status: "draft", externalRef: null, evidence: legacy, replayed: true };
   const attempts = new Map([[keys.mappedAttempt(keys.request(), 0), structuredClone(legacy)]]);
   const query = vi.fn(async (statement: string, values: unknown[] = []) => {
     if (statement.startsWith("UPDATE")) return { rows: [] };
@@ -296,7 +331,16 @@ it.each([0, 1])("legacy five-field native attempts replay without consuming rema
     return { rows: [{ response }] };
   });
   const store = createPostgresFulfillmentDispatchStore({ query }, { prepare: async () => ({ disposition: "ready", contactRevision: 1 }), readCandidate: async () => req });
-  const run = () => runFulfillmentDispatchWorker({ store, provider: a.adapter.dispatch, keys, listCandidates: async () => [req], config: { mode: "stage", batchLimit: 2 } });
+  const prepare = vi.spyOn(a.adapter.dispatch, "prepare");
+  const run = () => runFulfillmentDispatchWorker({ store, provider: mode === "shadow" ? null : a.adapter.dispatch, keys, listCandidates: async () => [req], config: { mode, batchLimit: 2 } });
+  if (mode === "shadow") {
+    expect(await run()).toMatchObject({ ok: false, failures: 1, providerCalls: 0,
+      reason: used === 0 ? expect.stringContaining("fulfillment_attempt_key_conflict") : "dispatch_claim_failed" });
+    expect(remaps).toBe(1);
+    expect(await run()).toMatchObject({ ok: false, failures: 1, providerCalls: 0 });
+    expect(prepare).not.toHaveBeenCalled(); expect(a.credentials).not.toHaveBeenCalled(); expect(a.http).not.toHaveBeenCalled();
+    return;
+  }
   expect(await run()).toMatchObject({ ok: true, failures: 0, providerCalls: 1 });
   expect(await run()).toMatchObject({ ok: true, failures: 0, providerCalls: 0 });
   expect(remaps).toBe(used); expect(a.http).toHaveBeenCalledTimes(1);
