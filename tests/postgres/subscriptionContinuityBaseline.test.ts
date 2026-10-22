@@ -127,10 +127,15 @@ it('captured auto_align protection survives off, preserves the obligation, then 
   expect(await schedule(h.pool, f.subscription)).toEqual(aligned);
   expect((await h.pool.query('SELECT count(*)::int AS n FROM public.subscription_cycles WHERE subscription_id=$1', [f.subscription])).rows).toEqual([{ n: 1 }]);
   const nextAt = '2026-10-22T14:00:00.000Z';
-  const next = (await r.store.listDue(1000, nextAt)).find(row => row.subscriptionId === f.subscription)!;
+  const dueAfterArrival = await r.store.listDue(1000, nextAt);
+  expect(dueAfterArrival).not.toContainEqual(due);
+  const next = dueAfterArrival.find(row => row.subscriptionId === f.subscription)!;
   expect(new Date(next.scheduledAt).toISOString()).toBe('2026-10-02T12:00:00.000Z');
   expect(await runOneAutomaticSubscriptionRenewal(r.deps, next, nextAt)).toMatchObject({ status: 'awaiting_provider' });
   expect(r.executions()).toBe(1); expect(r.admissions()).toBe(2);
+  // The old claim remains a historical readback, not a due obligation or a blocker.
+  expect(await r.store.readRenewal(deferred.identityKey)).toEqual(protectedOperation);
+  expect((await r.store.listDue(1000, nextAt)).filter(row => row.subscriptionId === f.subscription)).toEqual([]);
   expect(await schedule(h.pool, f.subscription)).toEqual(aligned);
   expect((await h.pool.query('SELECT count(*)::int AS n FROM public.subscription_cycles WHERE subscription_id=$1', [f.subscription])).rows).toEqual([{ n: 2 }]);
   expect((await h.pool.query("SELECT * FROM public.subscription_delivery_alignment_cases WHERE subscription_id=$1 AND state IN ('protected','manual_review')", [f.subscription])).rows).toEqual([]);

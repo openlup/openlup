@@ -1032,11 +1032,15 @@ uses the outer schedule maximum and actual latest arrival plus cadence; no
 cycle moves earlier or stacks. A superseded predecessor is no longer outstanding,
 but an undelivered replacement still is. Never call
 `subscription_delivery_alignment_confirm_replacement` until that replacement
-arrives. Captured cases still pass admission after mode rollback.
+arrives. After rollback to off, captured cases still go through admission and stay
+deferred until actual arrival; arrival only moves the schedule later, never
+earlier or stacked.
 
 The native descriptor refuses multi-cycle prepaid, generic bundle commands,
 command-bound receipts and M07 prepared-store parity by name, and declares retry
-and stock recovery unavailable. It selects one executor, default off, with
-mandatory delivery admission. Host-selected M04 descriptors retain immutable
+and stock recovery unavailable. Native generic bundle commands and command-bound
+receipts arrive with the native command lifecycle in M10 P4; until then, the
+descriptor refuses them. It selects one executor, default off, with
+mandatory delivery admission. Host-selected M04 descriptors carry recorded
 lifecycle facts; copy, recipient, consent and delivery remain host/M04-owned.
 See the [architecture boundary](ARCHITECTURE_AND_EXTENSIONS.md#subscription-contracts).

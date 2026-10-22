@@ -1111,15 +1111,15 @@ original timestamp text and nested snapshots survive retries and future edits.
 
 Logical cycle number and native renewal counter are separate evidence-bound
 fields; an activation or legacy ambiguity never licenses a blanket offset.
-Native bundle-command and command-bound-receipt parity is unsupported. Future
-terms and receipts require an atomic command store before that claim can change.
+Native generic bundle commands and command-bound receipts arrive with the native
+command lifecycle in M10 P4; until then, the descriptor refuses them. Future
+terms and receipts require an atomic command store.
 Stock recovery is restricted to never-executed stock refusals, with transaction-bound
 all-line reacquisition and fencing. A provider-owned or ambiguous attempt cannot
 be reset by a wait ledger. The [design](plans/oss-m10-subscriptions-renewal-dunning.md)
 keeps serving composition and later store implementation outside this contract step.
 
 ### Renewal port recipe
-
 
 The experimental `@openlup/platform/subscriptions` entry exposes the hosted
 cycle, refusal and failure mechanisms with injected policy, identity forwarding
@@ -1147,13 +1147,17 @@ the next cycle using the maximum of its existing date and latest actual arrival
 plus cadence; it never moves earlier or stacks cycles. Never invoke
 `subscription_delivery_alignment_confirm_replacement` for an undelivered
 replacement: that operation records the customer-facing fact “Parcel delivered”.
-The required native delivery admission must process captured cases after rollback
-to off. A deferred result preserves the schedule and may carry a durable case.
+After rollback to off, captured cases still go through admission and stay
+deferred until actual arrival; arrival only moves the schedule later, never
+earlier or stacked. A deferred result preserves the schedule and may carry a
+durable case.
 
 Native multi-cycle prepaid, generic bundle commands, command-bound receipts and
 the M07 prepared-attempt store have typed unsupported refusals. Retry and stock
-recovery remain unavailable until selected stores demonstrate them. Existing
+recovery remain unavailable until selected stores demonstrate them. Native generic
+bundle commands and command-bound receipts arrive with the native command lifecycle
+in M10 P4; until then, the descriptor refuses them. Existing
 native pause/resume/skip/cancel operations keep their own contracts. The
-[P1 witnesses](../../packages/platform/test/subscriptions/portFit.test.ts) test
+[Subscription port witnesses](../../packages/platform/test/subscriptions/portFit.test.ts) test
 each port amendment, and the [native baseline](../../tests/postgres/subscriptionContinuityBaseline.test.ts)
 exercises the complete current prefix without subscription SQL additions.

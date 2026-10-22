@@ -1,13 +1,13 @@
 export { renewalIdentity } from "./renewalIdentity.js";
-export const NATIVE_SUBSCRIPTION_CAPABILITIES = {
+export const NATIVE_SUBSCRIPTION_CAPABILITIES = Object.freeze({
   graph: "native",
-  multiCyclePrepaid: { supported: false, refusalCode: "multi_cycle_prepaid_unsupported" },
-  genericBundleCommands: { supported: false, refusalCode: "native_generic_bundle_commands_unsupported" },
-  commandBoundReceipts: { supported: false, refusalCode: "native_command_bound_receipts_unsupported" },
-  preparedAttemptStore: { supported: false, refusalCode: "native_prepared_attempt_store_unsupported" },
+  multiCyclePrepaid: Object.freeze({ supported: false, refusalCode: "multi_cycle_prepaid_unsupported" }),
+  genericBundleCommands: Object.freeze({ supported: false, refusalCode: "native_generic_bundle_commands_unsupported" }),
+  commandBoundReceipts: Object.freeze({ supported: false, refusalCode: "native_command_bound_receipts_unsupported" }),
+  preparedAttemptStore: Object.freeze({ supported: false, refusalCode: "native_prepared_attempt_store_unsupported" }),
   retryRecovery: "unavailable", stockRecovery: "unavailable",
   deliveryAdmission: "required", executorCount: 1, defaultEnabled: false,
-} as const satisfies import("./contracts/commands.js").SubscriptionCapabilities;
+} as const satisfies import("./contracts/commands.js").SubscriptionCapabilities);
 export { executeRenewalCycle, prepareRenewalAttempt, checkRenewalDeliveryAdmission } from "./renewalCycleMechanism.js";
 export type { RenewalCyclePolicy } from "./renewalCycleMechanism.js";
 export { recordRenewalPreflightBlock, replayRenewalAttempt, declinedRenewalOutcome, requiresActionRenewalOutcome } from "./renewalCycleRefusalMechanism.js";

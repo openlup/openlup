@@ -543,30 +543,30 @@ export type RenewalResult = {
 
 ```ts
 export { renewalIdentity } from "./renewalIdentity.js";
-export declare const NATIVE_SUBSCRIPTION_CAPABILITIES: {
+export declare const NATIVE_SUBSCRIPTION_CAPABILITIES: Readonly<{
     readonly graph: "native";
-    readonly multiCyclePrepaid: {
-        readonly supported: false;
-        readonly refusalCode: "multi_cycle_prepaid_unsupported";
-    };
-    readonly genericBundleCommands: {
-        readonly supported: false;
-        readonly refusalCode: "native_generic_bundle_commands_unsupported";
-    };
-    readonly commandBoundReceipts: {
-        readonly supported: false;
-        readonly refusalCode: "native_command_bound_receipts_unsupported";
-    };
-    readonly preparedAttemptStore: {
-        readonly supported: false;
-        readonly refusalCode: "native_prepared_attempt_store_unsupported";
-    };
+    readonly multiCyclePrepaid: Readonly<{
+        supported: false;
+        refusalCode: "multi_cycle_prepaid_unsupported";
+    }>;
+    readonly genericBundleCommands: Readonly<{
+        supported: false;
+        refusalCode: "native_generic_bundle_commands_unsupported";
+    }>;
+    readonly commandBoundReceipts: Readonly<{
+        supported: false;
+        refusalCode: "native_command_bound_receipts_unsupported";
+    }>;
+    readonly preparedAttemptStore: Readonly<{
+        supported: false;
+        refusalCode: "native_prepared_attempt_store_unsupported";
+    }>;
     readonly retryRecovery: "unavailable";
     readonly stockRecovery: "unavailable";
     readonly deliveryAdmission: "required";
     readonly executorCount: 1;
     readonly defaultEnabled: false;
-};
+}>;
 export { executeRenewalCycle, prepareRenewalAttempt, checkRenewalDeliveryAdmission } from "./renewalCycleMechanism.js";
 export type { RenewalCyclePolicy } from "./renewalCycleMechanism.js";
 export { recordRenewalPreflightBlock, replayRenewalAttempt, declinedRenewalOutcome, requiresActionRenewalOutcome } from "./renewalCycleRefusalMechanism.js";

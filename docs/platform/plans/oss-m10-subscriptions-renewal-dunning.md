@@ -36,9 +36,9 @@ candidate scan. All-line reacquisition shares the wait transition transaction;
 stock-only reset refuses prepared, acknowledged, ambiguous or money-owned work.
 Future-term commands preserve the frozen current obligation and require actor,
 key and actual-command receipts committed with their events and term writes.
-Native generic bundle commands and command-bound receipts are unsupported;
-their follow-up belongs after the coherent module release. Multi-cycle prepaid
-is unsupported with a named refusal. Existing native lifecycle commands remain.
+Native generic bundle commands and command-bound receipts arrive with the native
+command lifecycle in M10 P4; until then, the descriptor refuses them. Multi-cycle
+prepaid is unsupported with a named refusal. Existing native lifecycle commands remain.
 M04 owns delivery of host-described lifecycle facts; providers, account
 aggregation, private pricing/copy and scheduling hosts remain outside the module.
 
@@ -47,10 +47,11 @@ aggregation, private pricing/copy and scheduling hosts remain outside the module
 [Port fit](../../../packages/platform/test/subscriptions/portFit.test.ts) covers the
 contract amendments. [Current-prefix PostgreSQL](../../../tests/postgres/subscriptionContinuityBaseline.test.ts)
 proves arrival maximum/no stacking and native exhaustion without pause. With mode
-off and no captured case, renewal proceeds without an admission RPC. A captured
-auto-align case still defers after rollback to off until actual arrival; arrival
-extends the schedule later only, and the next due run proceeds without permanent
-deferral. Subsequent stores require their own
+off and no captured case, renewal proceeds without an admission RPC.
+After rollback to off, captured cases still go through admission and stay
+deferred until actual arrival; arrival only moves the schedule later, never
+earlier or stacked. The next due run proceeds without permanent deferral.
+Subsequent stores require their own
 transaction, replay, contention and refusal proofs before serving composition.
 The [package owner](../../../packages/platform/README.md#subscription-contracts-and-renewal-port)
 and [canonical contract](../CANONICAL_CONTRACTS.md#subscription-port-boundary)

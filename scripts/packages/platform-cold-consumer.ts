@@ -183,6 +183,7 @@ console.log("subscriptions consumer passed");
 `);
 }
 
+/** Offline installed payments trial with host-owned persistence and refusal policy. */
 export function provePaymentsConsumer(consumer: string): void {
   consumerNode(consumer, `
 import assert from "node:assert/strict";
