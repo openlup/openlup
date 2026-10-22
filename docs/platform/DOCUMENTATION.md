@@ -69,6 +69,11 @@ immutable release; see the [install support policy](../../.github/INSTALL_SUPPOR
 
 ## Ownership
 
+Fulfillment routing covers the complete `fulfillment*.api.md` report family,
+including the opt-in example report, under the existing architecture owner.
+The generated source map lists that family alongside its source and witnesses;
+this changes navigation coverage without adding an export or claiming conformance.
+
 O-P3b-2 removes the 27 duplicate root payment implementation/test paths from the
 publication catalogue. The package README owns the eleven experimental
 reference-support exports; payment contracts own nominal error trust and

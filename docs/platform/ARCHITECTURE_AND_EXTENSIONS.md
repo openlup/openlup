@@ -695,8 +695,9 @@ executor. Browser preview values remain reference-owned. See the
 
 ## Fulfillment contracts
 
-Fulfillment lives at the two existing-package subpaths
-`@openlup/platform/fulfillment` and `/fulfillment/contracts`; no topology trigger
+Fulfillment lives at three existing-package subpaths:
+`@openlup/platform/fulfillment`, `/fulfillment/contracts` and the opt-in
+`/fulfillment/omnipack` example; no topology trigger
 requires another package or dependency. The type-only contracts entry has no runtime,
 server or cross-module edge; its only dependency is a type import of the core
 normalized fulfillment fact. The runtime entry binds core evidence parsers to the
@@ -707,6 +708,9 @@ signed label URLs stay transient at the host/adapter boundary; durable contracts
 carry typed facts, safe references and actual-command fingerprints. Existing reference facades
 and the order-management status ladder/queue pair remain host-owned until explicit later adoption.
 
+The deeply frozen, readonly default-off descriptor remains unselected and unready
+after host construction. Numeric HTTP settings refuse invalid values at construction.
+Every fetch refuses redirects so a 307/308 cannot repeat a POST body.
 The opt-in `@openlup/platform/fulfillment/omnipack` example composes the contributed
 transport/codecs with the frozen ports. Its host supplies HTTP, per-call secrets,
 product metadata and explicit selection/readiness. Preparation computes canonical
@@ -747,7 +751,7 @@ Sync projects collection identity and closed data, with product writes only on
 explicit invocation. No route, schedule or default binding is installed. Root
 reference implementations remain unchanged. See the [example contract](CANONICAL_CONTRACTS.md#opt-in-fulfillment-example)
 and [A3 ledger](plans/oss-a3-fulfillment-adapter.md); actual M08 conformance remains
-O-P3 work when its runner ships.
+O-P3 work with the shipped runner.
 
 The [dispatch port](../../packages/platform/src/fulfillment/contracts/dispatch.ts)
 prepares the actual provider command without submitting it, returns its fingerprint

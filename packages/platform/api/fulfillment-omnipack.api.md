@@ -696,7 +696,7 @@ export {};
 ```ts
 import type { FulfillmentCapabilityDescriptor } from "../contracts/index.js";
 /** Offline protocol capabilities; selection and account readiness belong to the host. */
-export declare const omnipackFulfillmentCapabilities: FulfillmentCapabilityDescriptor;
+export declare const omnipackFulfillmentCapabilities: Readonly<FulfillmentCapabilityDescriptor>;
 ```
 ## dist/fulfillment/omnipack/index.d.ts
 

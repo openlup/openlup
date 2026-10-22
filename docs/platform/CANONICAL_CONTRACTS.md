@@ -114,7 +114,8 @@ its factory, configuration type and capability descriptor. Construction installs
 no route, schedule or default binding. The host explicitly selects the adapter,
 attests account readiness and supplies HTTP, credentials and notification tokens
 per call, product metadata, clock, evidence references and tracking URL approval.
-Credentials never establish readiness. The descriptor starts unselected and not ready.
+Credentials never establish readiness. The descriptor is deeply frozen and readonly; it stays unselected and not ready
+after a host constructs a selected, ready adapter.
 
 Preparation is stateless: it resolves host metadata, serializes the command once,
 returns only the fingerprint over those exact bytes, full contact revision and
@@ -179,7 +180,8 @@ missing event kind and rejects malformed explicit values and mismatches. Event i
 provider/order identity, fulfillment and nullable occurrence, independently of
 receipt time. Token auth proves no freshness; missing occurrence stays null.
 Readback accepts only a unique positive identity match from an explicitly complete
-single-page collection; missing totals, pagination, truncation, empty, unmatched
+single-page collection of at most 100 rows (page 0, size 100); missing totals,
+pagination, truncation, empty, unmatched
 or unknown-status collections stay unknown. Exact absence, label create/void,
 cancellation and courier pickup remain unsupported; label reads belong to host
 storage. The required label port returns explicit unsupported refusals without I/O
@@ -191,8 +193,8 @@ host approval. Stock collections carry a run ID/time and nullable source revisio
 collection time is no provider ordering. Product reads are pull-only in scheduled
 composition; writes require explicit host invocation and metadata.
 
-Offline witnesses cover these boundaries. Conformance runs with M08's runner
-when it ships; this entry claims no conformance pass or provider-account proof.
+Offline witnesses cover these boundaries. Actual M08 runner conformance remains
+O-P3 work; this entry claims no conformance pass or provider-account proof.
 See the [A3 ledger](plans/oss-a3-fulfillment-adapter.md).
 
 ## Canonical status

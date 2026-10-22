@@ -618,8 +618,7 @@
       "paths": [
         "packages/platform/src/fulfillment/**",
         "packages/platform/test/fulfillment/**",
-        "packages/platform/api/fulfillment.api.md",
-        "packages/platform/api/fulfillment-contracts.api.md"
+        "packages/platform/api/fulfillment*.api.md"
       ],
       "doc": "docs/platform/ARCHITECTURE_AND_EXTENSIONS.md",
       "anchor": "#fulfillment-contracts"

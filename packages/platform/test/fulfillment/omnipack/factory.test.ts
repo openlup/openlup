@@ -75,6 +75,25 @@ it("exposes exactly two runtime symbols and an inert, unselected, unready token 
   expect((await f.adapter.dispatch.prepare(request())).kind).toBe("refused");
   const unready = fixture(undefined, { readiness: undefined });
   expect(await unready.adapter.dispatch.prepare(request())).toMatchObject({ kind: "refused", refusal: { reason: "not_ready" } });
+  const twin = fixture();
+  const evidence = await prepare(twin.adapter, request());
+  expect(twin.adapter.capabilities).toMatchObject({ selected: true, readiness: { ready: true } });
+  expect(entry.omnipackFulfillmentCapabilities).toMatchObject({ defaultOff: true, selected: false, readiness: { ready: false } });
+  const profile = entry.omnipackFulfillmentCapabilities;
+  for (const value of [profile, profile.readiness, profile.readiness.refusal, profile.operations,
+    ...Object.values(profile.operations), profile.actionPolicy]) expect(Object.isFrozen(value)).toBe(true);
+  for (const [inactive, reason] of [[f, "disabled"], [unready, "not_ready"]] as const) {
+    expect(await inactive.adapter.dispatch.dispatch(request(), evidence)).toEqual({ kind: "not_dispatched", effectMayHaveSucceeded: false,
+      refusal: { reason: "not_dispatchable", phase: "dispatch", retryable: false } });
+    expect(await inactive.adapter.readback.read(reading)).toEqual({ kind: "unsupported", refusal: { reason, phase: "readback", retryable: false } });
+    for (const invoke of [() => inactive.adapter.stockSync.getStock(), () => inactive.adapter.stockSync.getStockMovements(),
+      () => inactive.adapter.productSync.ensureProduct("SKU-A"), () => inactive.adapter.productSync.getProductPacks("SKU-A"),
+      () => inactive.adapter.productSync.addProductPack("SKU-A", { ean: "12345678", quantity: 1 }), () => inactive.adapter.productSync.listStockedSkus()]) {
+      await expect(invoke()).rejects.toEqual({ reason, phase: "sync", retryable: false });
+    }
+    expect(inactive.credentials).not.toHaveBeenCalled(); expect(inactive.fetchImpl).not.toHaveBeenCalled();
+  }
+  expect(twin.credentials).not.toHaveBeenCalled(); expect(twin.fetchImpl).not.toHaveBeenCalled();
   expect(f.credentials).not.toHaveBeenCalled(); expect(f.fetchImpl).not.toHaveBeenCalled();
 });
 it("explicitly refuses label create without I/O", async () => {
@@ -388,10 +407,16 @@ it("never leaks transport failures through sync or readback", async () => {
   const result = await f.adapter.readback.read(reading); expect(result.kind).toBe("unknown"); safe(result);
 });
 
-it("refuses unsafe host paths and invalid retention caps at construction before credentials or HTTP", () => {
+it("refuses unsafe host paths and invalid numeric configuration at construction before credentials or HTTP", () => {
   const f = fixture();
   for (const maxRetainedSubmissions of [0, -1, 1.5, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1, null, "1"]) {
     expect(() => entry.createOmnipackFulfillmentAdapter({ ...f.config, maxRetainedSubmissions: maxRetainedSubmissions as number })).toThrow("Invalid fulfillment configuration");
+  }
+  for (const field of ["timeoutMs", "safeReadRetries"] as const) {
+    for (const value of [undefined, null, "1", -1, 0.5, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1, ...(field === "timeoutMs" ? [0] : [])]) {
+      expect(() => entry.createOmnipackFulfillmentAdapter({ ...f.config, http: { ...f.config.http, [field]: value as number } }))
+        .toThrow("Invalid fulfillment configuration");
+    }
   }
   for (const productPath of ["//other.example.test/products", "https://other.example.test/products", "//user:pass@other.example.test/products", "/\\other.example.test", "/../products", "/%2fother/products", "/products?token=a", "/products#fragment", "/products//packs"]) {
     expect(() => entry.createOmnipackFulfillmentAdapter({ ...f.config, http: { ...f.config.http, productPath } })).toThrow("Invalid fulfillment configuration");

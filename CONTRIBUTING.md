@@ -1040,9 +1040,9 @@ exercise these plants and negative subtraction without changing the baseline.
 Its installed-consumer proof imports the opt-in fulfillment entry
 with optional peers and SDK absent, blocks ambient network I/O, checks the exact
 runtime inventory and unselected/unready defaults, then exercises only injected
-HTTP with explicit host readiness. Missing preparation refuses before credential
+HTTP with explicit host readiness. Missing or malformed evidence refuses before credential
 resolution; successful dispatch exposes closed evidence rather than command PII
-or response bags. The focused glue tests do not replace M08's future conformance
+or response bags. The focused glue tests do not replace the actual M08 conformance
 runner or the supervisor's committed review and full gates.
 
 The named first-party adoption example has a narrow prose allowance: only the
