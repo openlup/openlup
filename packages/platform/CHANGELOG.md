@@ -30,6 +30,45 @@ in the source repository.
 - D2 KEEP-GAP: native `fulfillment_dispatch_finish` drops rejected/unknown error
   detail; durable retention is a scheduled SQL follow-up.
 
+- Compatibility: `getStock()` and `getStockMovements()` now return a row union;
+  consumers must discriminate rejections with
+  `"kind" in row && row.kind === "rejected"` before reading observation fields.
+  Provider read failures now return failed worker results (`ok: false`) with
+  persisted `providerError` diagnostics when the provider supplies a typed failure,
+  instead of throwing. Hosts can map those
+  failures to HTTP 502; terminal cursor-write failures still reject.
+  Cursor reads, running-cursor writes, local stock/class/reservation reads and
+  stock/evidence writes or SKU evidence resolution now also resolve `ok: false`
+  instead of rejecting when a terminal failed cursor can be persisted.
+- `SyncCursor` adds optional `syncRunId`, `counts`, `items`, `alerts`, `staleSync`
+  and `error`, worker results add `rejected`, `items`, `providerError` and `refusal`,
+  and `fulfillment_stock_sync_cursors.error_code` now stores safe operation reasons
+  (including `operation:SQLSTATE`) or typed provider/admission reasons instead of
+  the generic `io_failure`.
+- Mixed valid/rejected batches with valid stock rows succeed, retain rejection
+  counts and diagnostics, evaluate/resolve alerts for valid SKUs and advance
+  `lastStockSyncedAt`; an empty stock response is also valid, but a nonempty stock
+  response with no valid stock rows is malformed and non-retryable even with valid
+  movements, preserves prior coverage gaps and cannot resolve stale alerts.
+  Typed disabled, not-ready and bad-identity refusals retain their original reason
+  and retryability in the worker result and cursor.
+  Blank stock SKU references are skipped before persistence; stale-sync recovery
+  resolves after the terminal cursor, with cleanup failure preserving success.
+  Stock and movement rejection diagnostics carry a `kind` discriminator.
+  Stock-sync redirects are non-retryable, report `redirect_refused` and make only
+  one GET attempt; exhausted stock network reads remain retryable through the stock
+  failure projection. Product-sync retains the base client diagnostics and retry
+  behavior, including `retryable: false` after exhausted network reads.
+- Stock-sync alert fingerprints now contain only `requestKey`, `skuRef` and
+  `thresholdKind`: changing quantities, severity or run evidence under the same
+  key returns `replayed: true`. Different SKUs or thresholds use different keys;
+  a changed identity under a reused key still conflicts.
+- KEEP-GAP: alert refresh and reopen-on-replay are a scheduled forward SQL fix,
+  required before stock adoption. Current native replay updates only
+  `last_seen_at`, retaining stored severity, quantities and status.
+
+Migration: alert rows written by 0.22.0's native port carry the earlier whole-input fingerprint; subsequent writes under those keys conflict with SQLSTATE `23505`, and resolve only marks the row resolved while retaining its key and fingerprint, so it does not clear the conflict. Legacy fingerprints are documented only; this change does not rewrite them.
+
 ## [0.22.0]
 
 - Publishable on the npm `latest` dist-tag as `0.22.0`, from tag
