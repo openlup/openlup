@@ -739,6 +739,42 @@ movements, lots, expiry, replay and conflicts. Inventory reservations/availabili
 and catalog facts retain their existing owners. Host storage label reads remain
 independent of provider support; capability selection performs no I/O.
 
+The operator lifecycle handlers preserve the host's mutation schemas and response
+receipts. Every mutation callback requires the authorized actor and idempotency
+key; the host must bind both into its replay fingerprint and commit all effects
+and the response receipt atomically. Provider payloads and signed label URLs in
+legacy mutation inputs stay transient at this host boundary; they are not safe
+durable evidence for the native stores. Replacement creation remains a host-owned
+transaction: it checks paid state, current parcel, contact, blocking holds and
+stock reservations, releases only fulfillment-exception holds and creates the
+successor with its predecessor and sequence. Requesting or replaying a replacement
+neither dispatches it nor attests arrival. The port has no confirmation operation.
+
+The customer delay projection accepts current host rows and the subscription's
+current next-cycle schedule. A missing map entry means no current customer case.
+Only protected cases and aligned cases whose aligned schedule still equals that
+schedule are exposed; advanced aligned history and manual-review cases remain
+hidden. Manual review never implies protection. The projection changes no control
+mode, schedule or delivery fact. The current-parcel helpers select the highest
+sequence, then identifier descending, and retain unattributed companion rows.
+
+### Native parity boundaries
+
+| Capability | Native installation boundary | Required host binding |
+| --- | --- | --- |
+| Replacement creation | Unsupported; no shipment, reservation, hold, receipt or outbox write | Atomic replacement port |
+| Operator lifecycle mutations | Unsupported; the smaller shipment rail cannot substitute for the operator transaction | Actor-bound mutation callbacks and replay receipts |
+| Commerce read/detail and shipments overview | No equivalent commerce projection | Host read callbacks; payment status passes through the payments projection |
+| Dispatch preparation writer | No authoritative contact/selection writer | Host synchronization under the shipment lock |
+| Enforcing delivery alignment | Installation without renewal admission wiring cannot enforce the complete lifecycle | Admission wrapper before new-cycle insertion; keep native mode off until wired |
+
+`createNativeUnsupportedFulfillmentPorts` returns the single typed
+`FULFILLMENT_NATIVE_UNSUPPORTED` refusal for replacement, operator mutations and
+customer alignment rows. It has no database executor and performs no partial
+write or substitute operation. The same refusal type is available to host-owned
+read and preparation boundaries. Supplying a host fixture proves that seam's
+handler behavior; it does not establish native parity or activate any route.
+
 The [verified ingress](../../packages/platform/src/fulfillment/verifiedIngress.ts)
 and [reconciliation worker](../../packages/platform/src/fulfillment/providerReconciliationWorker.ts)
 use approved G17 inline host persistence. Ingress requires recordObservation to
