@@ -29,9 +29,17 @@ it("never repeats ambiguous POSTs including response loss and missing acceptance
     const timedOut = vi.fn((_url: URL | RequestInfo, init?: RequestInit) => new Promise<Response>((_resolve, reject) => {
       init?.signal?.addEventListener("abort", () => reject(new Error("deadline elapsed")), { once: true });
     }));
-    const rejection = expect(createOmnipackClient({ ...config, timeoutMs: deadline }, timedOut).createOrder("{}"))
+    let settled = false;
+    const pending = createOmnipackClient({ ...config, timeoutMs: deadline }, timedOut).createOrder("{}");
+    void pending.then(() => { settled = true; }, () => { settled = true; });
+    const rejection = expect(pending)
       .rejects.toMatchObject({ status: null, code: "network_error", mayHaveSucceeded: true });
-    await vi.advanceTimersByTimeAsync(deadline);
+    await vi.advanceTimersByTimeAsync(deadline - 1);
+    expect(settled).toBe(false);
+    expect(timedOut.mock.calls[0][1]?.signal?.aborted).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(timedOut.mock.calls[0][1]?.signal?.aborted).toBe(true);
+    expect(settled).toBe(true);
     await rejection;
     expect(timedOut).toHaveBeenCalledOnce();
     expect(timedOut.mock.calls[0][1]).toMatchObject({ method: "POST", body: "{}" });

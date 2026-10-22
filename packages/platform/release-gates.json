@@ -427,7 +427,8 @@
         "test/fulfillment/portFit.test.ts",
         "test/fulfillment/dispatchRecovery.test.ts",
         "test/fulfillment/paidHandoff.test.ts",
-        "test/fulfillment/providerCommandLedger.test.ts"
+        "test/fulfillment/providerCommandLedger.test.ts",
+        "test/fulfillment/postgresStore.test.ts"
       ],
       "entrypoint": "dist/fulfillment/index.d.ts",
       "snapshot": "api/fulfillment.api.md"
