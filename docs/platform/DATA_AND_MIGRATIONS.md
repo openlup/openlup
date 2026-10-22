@@ -50,6 +50,10 @@ object creation, `ALTER TABLE ... ADD`, transaction boundaries and literal
 and unsupported forms refuse; see [Versioning and EOL](../../.github/VERSIONING_AND_EOL.md#publish-refuse-and-recover)
 for the exact admission boundary. Passing admission does not prove N-1 or live
 schema compatibility. Test the actual selected chain, constraints and replay.
+Expand-only admission refuses query-bearing `CREATE TABLE`, `PARTITION OF` and
+`LIKE` elements, operator references and function calls in default, check,
+generated and index expressions other than a short allowlist of side-effect-free
+built-ins; it is a bounded classifier, not a general SQL analyser.
 
 Rows that platform behaviour depends on must ship as idempotent statements in a
 forward, rather than relying on a reference fixture or process startup. A missing

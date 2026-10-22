@@ -1,7 +1,7 @@
 import { isChangelogFragment } from "./packages/changelog-fragments.ts";
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { chmodSync, cpSync, existsSync, lstatSync, mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, cpSync, existsSync, lstatSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -1478,6 +1478,82 @@ describe("descendant source release check", () => {
 });
 
 describe("expand-only platform SQL admission", () => {
+  it("preserves the admitted set over every real portable forward", () => {
+    const directory = fileURLToPath(new URL("../db/platform/migrations/", import.meta.url));
+    expect(readdirSync(directory).sort().filter((file) => isExpandOnlyPlatformForward(readFileSync(join(directory, file), "utf8")))).toEqual([
+      "20261018120000_identity_operator_invitations.sql",
+      "20261018180000_identity_operator_challenges.sql",
+      "20261018190000_identity_privacy_erasures.sql",
+      "20261019200000_communications_native_operations.sql",
+      "20261021200000_shipping_flat_rate_seed.sql",
+    ]);
+  });
+  it.each([
+    ["DEFAULT call with seed INSERT", "CREATE TABLE public.example (id int, value text DEFAULT public.app_record_call()); INSERT INTO public.example (id) VALUES (1) ON CONFLICT DO NOTHING;"],
+    ["CHECK call with seed INSERT", "CREATE TABLE public.example (value text CHECK (public.app_record_call() = 'recorded')); INSERT INTO public.example (value) VALUES ('recorded') ON CONFLICT DO NOTHING;"],
+    ["CTAS VALUES call", "CREATE TABLE public.example AS VALUES (public.app_record_call());"],
+    ["CTAS VALUES sequence call", "CREATE TABLE public.example AS VALUES (pg_catalog.setval('public.app_sequence', 42));"],
+    ["CTAS VALUES setting call", "CREATE TABLE public.example AS VALUES (pg_catalog.set_config('app.admission', 'changed', true));"],
+    ["CTAS parenthesized VALUES", "CREATE TABLE public.example AS (VALUES (1));"],
+    ["CTAS TABLE copy", "CREATE TABLE public.example AS TABLE public.existing;"],
+    ["CTAS parenthesized TABLE copy", "CREATE TABLE public.example AS (TABLE public.existing);"],
+    ["CTAS SELECT", "CREATE TABLE public.example AS SELECT 1;"],
+    ["CTAS named columns with unqualified TABLE", "CREATE TABLE public.example (value) AS TABLE existing;"],
+    ["CTAS named columns", "CREATE TABLE public.example (value) AS VALUES (1);"],
+    ["index key expression call", "CREATE INDEX example_value ON public.existing (public.app_record_call());"],
+    ["parenthesized index expression call", "CREATE INDEX example_value ON public.existing ((public.app_record_call()));"],
+    ["index WHERE call", "CREATE INDEX example_value ON public.existing (value) WHERE public.app_record_call() = 'recorded';"],
+    ["generated column call", "CREATE TABLE public.example (value text GENERATED ALWAYS AS (public.app_record_call()) STORED);"],
+    ["ALTER ADD COLUMN DEFAULT call", "ALTER TABLE public.existing ADD COLUMN value text DEFAULT public.app_record_call();"],
+    ["ALTER ADD DEFAULT call without COLUMN", "ALTER TABLE public.existing ADD value text DEFAULT public.app_record_call();"],
+    ["ALTER ADD CONSTRAINT CHECK call", "ALTER TABLE public.existing ADD CONSTRAINT example_check CHECK (public.app_record_call() = 'recorded');"],
+    ["ALTER ADD CHECK call", "ALTER TABLE public.existing ADD CHECK (public.app_record_call() = 'recorded');"],
+    ["ALTER SET DEFAULT", "ALTER TABLE public.existing ALTER COLUMN value SET DEFAULT now();"],
+    ["PARTITION OF", "CREATE TABLE public.example PARTITION OF public.existing FOR VALUES IN (1);"],
+    ["LIKE element", "CREATE TABLE public.example (LIKE public.existing INCLUDING ALL);"],
+    ["LIKE operator", "CREATE TABLE public.example (value text CHECK (value LIKE 'a%'));"],
+    ["OPERATOR reference", "CREATE TABLE public.example (value integer CHECK (value OPERATOR(public.+) 1 = 2));"],
+    ["OPERATOR outside table expressions", "CREATE SEQUENCE public.example OPERATOR;"],
+    ["CAST to public type", "CREATE TABLE public.example (value text DEFAULT CAST('x' AS public.app_text));"],
+    ["CAST to three-part type", "CREATE TABLE public.example (value text DEFAULT CAST('x' AS db.pg_catalog.text));"],
+    ["quoted call name", 'CREATE TABLE public.example (value text DEFAULT "now"());'],
+    ["public-qualified allowlisted name", "CREATE TABLE public.example (value text DEFAULT public.now());"],
+    ["three-part call name", "CREATE TABLE public.example (value text DEFAULT db.pg_catalog.now());"],
+    ["quoted qualifier", 'CREATE TABLE public.example (value text DEFAULT "pg_catalog".now());'],
+    ["qualified quoted call name", 'CREATE TABLE public.example (value text DEFAULT pg_catalog."now"());'],
+    ["non-pg_catalog operator class", "CREATE INDEX example_value ON public.existing (value public.text_ops);"],
+    ["unqualified operator class", "CREATE INDEX example_value ON public.existing (value text_ops);"],
+    ["index collation", 'CREATE INDEX example_value ON public.existing (value COLLATE public."C");'],
+    ["typed literal of a public type", "CREATE TABLE public.example (value text DEFAULT public.app_text 'x');"],
+    ["qualified column in CHECK", "CREATE TABLE public.example (value text CHECK (public.value = 'x'));"],
+    ["keyword contents call", "CREATE TABLE public.example (value text DEFAULT COALESCE(app_record_call(), 'x'));"],
+    ["nested unlisted call", "CREATE TABLE public.example (value text DEFAULT lower(app_record_call()));"],
+    ["nonliteral type modifier", "CREATE TABLE public.example (value numeric(length('x')));"],
+    ["unbalanced expression", "CREATE TABLE public.example (value text DEFAULT lower('x');"],
+    ["unaccounted parenthesis in type position", "CREATE TABLE public.example (value custom_type(1));"],
+    ["type modifier name in expression position", "CREATE TABLE public.example (value text DEFAULT varchar(1));"],
+  ])("refuses expression form: %s", (_label, sql) => { expect(isExpandOnlyPlatformForward(sql)).toBe(false); });
+  it.each([
+    ...["btrim", "gen_random_uuid", "jsonb_typeof", "length", "lower", "now", "translate", "char_length", "clock_timestamp", "octet_length"].flatMap((name) => [name, `pg_catalog.${name}`].flatMap((call) => [
+      [call + " DEFAULT", `CREATE TABLE public.example (value text DEFAULT ${call}());`],
+      [call + " CHECK", `CREATE TABLE public.example (value text CHECK (${call}(value) = value));`],
+      [call + " index key", `CREATE INDEX example_value ON public.existing (${call}(value));`],
+      [call + " index WHERE", `CREATE INDEX example_value ON public.existing (value) WHERE ${call}(value) = value;`],
+    ])),
+    ["nested calls", "CREATE UNIQUE INDEX example_value ON public.existing (lower(btrim(email)));"],
+    ["keyword constructs", "CREATE TABLE public.example (value text CHECK (NOT (value IN ('a', 'b')) OR (COALESCE(NULLIF(value, ''), 'x') = 'x') AND (value IS NOT NULL)));"],
+    ["builtin casts", "CREATE TABLE public.example (value text DEFAULT CAST('x' AS pg_catalog.text), amount numeric(10, 2) DEFAULT CAST(1 AS numeric(10, 2)));"],
+    ["generated expression", "CREATE TABLE public.example (value text, normalized text GENERATED ALWAYS AS (lower(value)) STORED);"],
+    ["generated identity", "CREATE TABLE public.example (id bigint GENERATED ALWAYS AS IDENTITY);"],
+    ["identity options", "CREATE TABLE public.example (id bigint GENERATED BY DEFAULT AS IDENTITY (START WITH 1));"],
+    ["ALTER DEFAULT", "ALTER TABLE public.existing ADD COLUMN value text DEFAULT lower('x'), ADD extra varchar(20);"],
+    ["ALTER CHECK", "ALTER TABLE public.existing ADD CONSTRAINT example_check CHECK (length(value) = 1);"],
+    ["structural column lists", "CREATE TABLE public.example (id int, parent int REFERENCES public.existing(id), PRIMARY KEY (id), UNIQUE (parent), FOREIGN KEY (parent) REFERENCES public.existing(id));"],
+    ["index ordering", "CREATE INDEX example_value ON public.existing ((lower(value)) DESC NULLS LAST);"],
+    ["index method and INCLUDE", "CREATE INDEX example_value ON public.existing USING btree (value ASC NULLS FIRST) INCLUDE (id) WITH (fillfactor = 90);"],
+    ["qualified object names", "CREATE INDEX public.example_value ON public.existing (value);"],
+    ["quoted column", 'CREATE TABLE public.example ("value" text DEFAULT now());'],
+  ])("admits expression form: %s", (_label, sql) => { expect(isExpandOnlyPlatformForward(sql)).toBe(true); });
   const controlCharacters = [
     ["NUL inside a comment", "CREATE TABLE public.first (id int);\n-- example\0\n"],
     ["VT 0x0B", "CREATE TABLE public.first (id int);\n-- example\x0b\n"],
@@ -1542,6 +1618,7 @@ describe("expand-only platform SQL admission", () => {
     "ALTER TABLE public.example DROP COLUMN extra;", "TRUNCATE public.example;",
     "ALTER TABLE public.example RENAME TO other;", "ALTER TABLE public.example SET SCHEMA other;",
     "ALTER TABLE public.example OWNER TO other;", "dRoP/**/TABLE public.example;",
+    'CREATE TABLE public."DO" (id int);', 'CREATE TABLE public."ALTER" (id int);',
     "CREATE TABLE app.example (id int);", 'CREATE TABLE "app".example (id int);',
     "CREATE TABLE public.example (id int) INHERITS (public.commerce_settings);",
     "CREATE TABLE public.example (id int CHECK (id > 0));",

@@ -1052,6 +1052,12 @@ edits, deletions and mode changes to existing managed or portable migrations,
 backdated versions, unbound portable forwards and non-expand-only new SQL.
 The portable manifest must preserve its prior baseline and forward prefix.
 The CLI returns a failing exit when this comparison refuses a candidate.
+Expand-only expression admission is covered by the predicate cases and the pinned
+portable-chain admitted set in `scripts/source-preview-release.test.ts`;
+`tests/postgres/expandOnlyExpressions.test.ts` separately executes refused forms
+on disposable PostgreSQL 16 and observes their effects before rollback. The
+classifier admits only listed expression calls and accounted structural
+parentheses; these tests do not broaden the separately reviewed creation class.
 This database-free comparison does not derive the live object inventory digest.
 The source contract continues to bind the manifest bytes, and the portable
 runner compares `objectInventorySha256` with the selected database catalogue
