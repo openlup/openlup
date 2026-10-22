@@ -2,7 +2,7 @@
 
 Development-preview programme design and contents. The boundary is recorded in
 decisions D0–D13, carrier-fit amendments G1–G17, the approved
-[replacement, operator and customer-projection amendments G18–G20](#lifecycle-handlers-and-customer-projections), and the export/source
+[replacement, operator, customer-projection and host-read amendments G18–G21](#lifecycle-handlers-and-customer-projections), and the export/source
 registers below. Donor source provenance is `d902ac7f4`. Donor material supplies
 source provenance for the neutral contracts and behavior described here.
 
@@ -30,8 +30,12 @@ Platform maintains the experimental contracts; adapters and host policy remain
 host-owned. The [fulfillment architecture section](../ARCHITECTURE_AND_EXTENSIONS.md#fulfillment-contracts)
 is the documentation owner.
 
+The account order tracking stepper uses actual-evidence progress from
+`fulfillmentProgressPresentation`. A reference operator page and status component
+ship unmounted and opt-in; the host owns access and mounting.
+
 Excluded: concrete provider adapters, mounted executors/routes, reference facade
-rewiring, UI, money implementation, inventory
+rewiring, mounted operator UI integration, money implementation, inventory
 authority, replacement-confirmation callers, version preparation and release.
 Provider/account/secret access, activation, deployment endpoints and external
 operations are outside this scope. Native continuity, provider operation and
@@ -43,13 +47,13 @@ stable-framework support are not established by this design.
 | --- | --- |
 | D0 | Retain contributed characterization witnesses. Integration requires the payments and money-truth boundary; this change adds contracts and callable orchestration without activation. |
 | D1 | Existing platform package, only fulfillment and fulfillment/contracts. |
-| D2 | Freeze ports against donor fit; G1–G20 are approved amendments, described below. Arrival-only replacement confirmation applies. |
+| D2 | Freeze ports against donor fit; G1–G21 are approved amendments, described below. Arrival-only replacement confirmation applies. |
 | D3 | Private adapters/defaults/codecs stay private; direct carrier dormant, simulator separate; pickup lookup remains shipping-owned. |
 | D4 | Managed and native execution graphs stay distinct; no runtime equivalence is implied. |
 | D5 | Preserve contributed characterization witnesses unchanged within their 31-case allocation. |
 | D6 | Reconcile shared payment-contract and payment-adapter package companions; no unrelated source changes. |
 | D7 | Note-only replacement confirmation unchanged, no caller; arrival discipline belongs in the alignment contract and platform page. |
-| D8 | The ordinary cap is 35 paths per pull request, including generated files. Preserve contributed logic before refactoring. Host composition, UI, installed-consumer and lifecycle integration remain separate boundaries. |
+| D8 | The ordinary cap is 35 paths per pull request, including generated files. Preserve contributed logic before refactoring. Host composition, mounted operator UI, installed-consumer and lifecycle integration remain separate boundaries. |
 | D8 amendment | The approved combined contracts and orchestration change has a ≤55-path regroup cap, including generated files; this amends the ordinary 35-path cap. |
 | D9 | Target 89 authored cases within the 94-case/27-second module budget and outer 100-case/30-second cap. Count generated packageBoundary rows separately; charge all execution time. |
 | D10 | Validate package artifacts and every subcap; no cap increase or guessed version. |
@@ -100,11 +104,15 @@ the [runtime entry](../../../packages/platform/src/fulfillment/index.ts) and
 | currentFulfillmentParcel.ts | currentParcel, currentParcelFor, currentParcelPerOrder, currentParcelFirst, belongsToParcel, rowsForParcel, parcelSequenceNo, compareParcelPrecedence |
 | nativeUnsupported.ts | FULFILLMENT_NATIVE_UNSUPPORTED, createNativeUnsupportedFulfillmentPorts |
 | replacementRefusals.ts | FULFILLMENT_REPLACEMENT_REFUSALS |
+| commerceFulfillmentReadModel.ts | buildCommerceFulfillmentOrdersListResponse, buildCommerceFulfillmentOrderDetailResponse |
+| shipmentsOverviewHandler.ts | createFulfillmentShipmentsOverviewHandler |
+| trackingProgress.ts | fulfillmentProgressPresentation |
 
 The contracts entry exports only these types, including the prepare-result and
 evidence envelopes. G14–G17 amend methods, fields or inline inputs without new
-type names; offline conformance adds the subject and evidence types. G18–G20 add
-replacement, operator and customer-alignment types with a shared native refusal.
+type names; offline conformance adds the subject and evidence types. G18–G21 add
+replacement, operator, customer-alignment and host-read types with a shared native
+refusal. The read contracts also include tracking-progress input and presentation.
 The register matches the [contracts entry](../../../packages/platform/src/fulfillment/contracts/index.ts)
 and [contracts API report](../../../packages/platform/api/fulfillment-contracts.api.md).
 
@@ -124,6 +132,7 @@ and [contracts API report](../../../packages/platform/api/fulfillment-contracts.
 | replacement.ts | FulfillmentReplacementPort, FulfillmentReplacementRequest, FulfillmentReplacementResult |
 | operator.ts | FulfillmentOperatorMutationPort, FulfillmentOperatorMutationResult |
 | customerAlignment.ts | CustomerDeliveryAlignment, FulfillmentCustomerAlignmentRowsReader |
+| read.ts | FulfillmentCommerceReadPort, FulfillmentCommerceReadPolicy, FulfillmentPaymentStatus, FulfillmentCommerceOrder, FulfillmentOrdersListRequest, FulfillmentOrdersListResponse, FulfillmentOrderDetailRequest, FulfillmentOrderDetailResponse, FulfillmentShipmentsOverviewPort, FulfillmentShipmentsOverviewRequest, FulfillmentShipmentsOverviewResponse, FulfillmentProgressInput, FulfillmentProgressPresentation |
 
 ## Lifecycle handlers and customer projections
 
@@ -134,18 +143,22 @@ The approved amendments extend the injected host boundary:
 | G18 | [replacement.ts](../../../packages/platform/src/fulfillment/contracts/replacement.ts) adds FulfillmentReplacementPort, FulfillmentReplacementRequest and FulfillmentReplacementResult. requestReplacementShipment requires actorUserId and idempotencyKey and returns a replacement/operation receipt with replayed, or FulfillmentNativeUnsupported. The host owns atomic paid/contact/current-parcel/hold/reservation checks and actor-bound replay receipts. The port neither dispatches nor confirms arrival. |
 | G19 | [operator.ts](../../../packages/platform/src/fulfillment/contracts/operator.ts) adds FulfillmentOperatorMutationPort and FulfillmentOperatorMutationResult for create, provider-attempt, label, handoff, tracking-event and cancellation callbacks. Every input requires actorUserId and idempotencyKey; callbacks return a lifecycle receipt with replayed, or FulfillmentNativeUnsupported. The host owns atomic effects and replay receipts. |
 | G20 | [customerAlignment.ts](../../../packages/platform/src/fulfillment/contracts/customerAlignment.ts) adds CustomerDeliveryAlignment (protected or aligned) and FulfillmentCustomerAlignmentRowsReader. The reader returns host rows or FulfillmentNativeUnsupported. [readFulfillmentDelay](../../../packages/platform/src/fulfillment/delayReadModel.ts) exposes protected cases and aligned cases whose aligned schedule equals the subscription's current next-cycle schedule; absence from the map means no current customer case. Manual-review and advanced aligned history are hidden; the projection changes no schedule or delivery fact. |
+| G21 | [read.ts](../../../packages/platform/src/fulfillment/contracts/read.ts) adds FulfillmentCommerceReadPort and FulfillmentShipmentsOverviewPort for host-owned list, detail and overview read callbacks, with FulfillmentCommerceReadPolicy for host eligibility. Payment status passes through unchanged from the payments projection and is never recomputed. Overview bucket rows and counts remain host-owned, with no native substitution. List, detail and overview callbacks accept the shared FulfillmentNativeUnsupported refusal. |
 
-The [commerce handlers](../../../packages/platform/src/fulfillment/commerceFulfillmentHandlers.ts)
+The [commerce handlers](../../../packages/platform/src/fulfillment/commerceFulfillmentHandlers.ts),
+[overview handler](../../../packages/platform/src/fulfillment/shipmentsOverviewHandler.ts)
 and [replacement handler](../../../packages/platform/src/fulfillment/replacementShipmentHandler.ts)
 check the method, authorize, validate the request, invoke the host callback and
 validate the response. Mutation handlers supply the authorized actor. Commerce
-list/detail callbacks return their response shapes (or null for a missing detail).
-Replacement and operator callbacks accept the
+list/detail callbacks return their response shapes (or null for a missing detail),
+and the overview callback returns the host bucket rows and counts. List, detail,
+overview, replacement and operator callbacks also accept the
 [shared native refusal](../../../packages/platform/src/fulfillment/contracts/nativeUnsupported.ts);
-the mutation handlers translate it to UPSTREAM_UNAVAILABLE.
+their handlers translate FulfillmentNativeUnsupported to UPSTREAM_UNAVAILABLE.
 [createNativeUnsupportedFulfillmentPorts](../../../packages/platform/src/fulfillment/nativeUnsupported.ts)
-returns that refusal for replacement, operator mutations and customer alignment
-rows without a database executor or partial write.
+returns that refusal for replacement, operator mutations, customer alignment
+rows, commerce list/detail and shipments overview without a database executor
+or partial write.
 
 [Label helpers](../../../packages/platform/src/fulfillment/labelLifecycle.ts) delegate
 storage reads and actor/idempotency-bound cleanup; a missing cached label proves
@@ -225,8 +238,13 @@ empty-selection-to-simulator alias is excluded; the reference app is unchanged.
 The donor alias remains host-owned. The surface is additive and requires no
 migration of existing public behavior. Native store implementations bind the
 ports to PostgreSQL; concrete provider adapter integration remains separate.
-The reference facade is retained; UI integration remains future work, defaults
-stay injected, and money SQL remains payment-owned.
+The reference facade is retained. The account order tracking stepper uses
+[actual-evidence progress](../../../packages/platform/src/fulfillment/trackingProgress.ts)
+through [OrdersScreen](../../../src/pages/account/v2/orders/OrdersScreen.tsx).
+[ReferenceFulfillmentPage](../../../src/pages/ReferenceFulfillmentPage.tsx) and
+[FulfillmentDeliveryStatus](../../../src/components/FulfillmentDeliveryStatus.tsx)
+ship as an unmounted, opt-in operator example; mounted operator UI integration
+remains outside scope. Defaults stay injected, and money SQL remains payment-owned.
 
 Every ACK path uses host acceptance keys, ignoring adapter-provided key fields:
 main post-dispatch ACK, loop-start accepted-proof recovery and concurrent begin.
