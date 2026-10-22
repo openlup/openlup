@@ -16,16 +16,37 @@ const creations = new Set([
 const portableReplacements = new Set([
   "public.dunning_lifecycle_handle_failure(uuid,timestamptz,text,text,integer,timestamptz,text,text)",
 ]);
+const paymentTerminalSignature = "public.payment_truth_apply_terminal(uuid,text,text,timestamptz,text,text,jsonb,text,text,text)";
+const managedInvoicing = [
+  { path: "supabase/migrations/20261022193000_invoicing_correction_claims.sql", creation: true, signatures: [
+    "public.accounting_invoice_correction_outbox_claim(integer,integer,text)",
+    "public.accounting_invoice_correction_outbox_succeed(uuid,text,text,jsonb,integer)",
+    "public.accounting_invoice_correction_outbox_fail(uuid,jsonb,integer,integer)",
+  ] },
+  { path: "supabase/migrations/20261022193100_invoicing_correction_compatibility.sql", creation: false, signatures: [
+    "public.accounting_invoice_correction_outbox_claim(integer,integer)",
+    "public.accounting_invoice_correction_outbox_succeed(uuid,text,text,jsonb)",
+    "public.accounting_invoice_correction_outbox_fail(uuid,jsonb,integer)",
+  ] },
+  { path: "supabase/migrations/20261022195100_invoicing_seller_revision.sql", creation: true, signatures: [
+    "public.invoicing_managed_request_with_seller_policy(text,text,uuid,text,jsonb)",
+    "public.invoicing_managed_claim_with_seller(integer,uuid,jsonb,text)",
+    "public.invoicing_managed_claim_corrections_with_seller(integer,jsonb,text)",
+  ] },
+];
 const portableCreationPaths = [
   "db/platform/migrations/20261022080000_fulfillment_command_ledger.sql",
   "db/platform/migrations/20261022090000_fulfillment_delivery_alignment.sql",
+  "db/platform/migrations/20261022190000_invoicing_durable_duties.sql",
+  "db/platform/migrations/20261022191000_invoicing_document_effects.sql",
+  "db/platform/migrations/20261022195000_invoicing_seller_revision.sql",
 ];
 type PortableCreationBinding = { path: string; sha256: string };
 type FunctionBinding = { signature: string; beforeSha256: string | null; afterSha256: string };
 type PolicyBinding = { table: string; name: string; beforeSha256: string };
 type RuntimeForwardBinding = ForwardBinding & { privileges: string[]; retiredPolicies?: PolicyBinding[] };
 type ForwardBinding = { path: string; sha256: string; functions: FunctionBinding[] };
-export type ReviewedForwardRegistry = { schemaVersion: 1; baselineSha256: string; replacementForwards: ForwardBinding[]; creationForwards: ForwardBinding[]; runtimeForwards?: RuntimeForwardBinding[]; portableReplacementForwards?: ForwardBinding[]; portableCreationForwards?: PortableCreationBinding[] };
+export type ReviewedForwardRegistry = { schemaVersion: 1; baselineSha256: string; replacementForwards: ForwardBinding[]; creationForwards: ForwardBinding[]; runtimeForwards?: RuntimeForwardBinding[]; portableReplacementForwards?: ForwardBinding[]; portableCreationForwards?: PortableCreationBinding[]; managedInvoicingForwards?: ForwardBinding[] };
 export const sqlSha256 = (bytes: Buffer | string): string => createHash("sha256").update(bytes).digest("hex");
 const runtimeReplacements = new Set([
   "public.admin_clients_search_v3(text,integer,integer,text)",
@@ -163,14 +184,26 @@ export function readReviewedForwardRegistry(bytes: Buffer): ReviewedForwardRegis
     }
   }
   if (raw.portableReplacementForwards !== undefined) {
-    if (!Array.isArray(raw.portableReplacementForwards) || raw.portableReplacementForwards.length !== 1) throw new Error("reviewed portable replacement registry requires exactly one forward");
-    const forward = raw.portableReplacementForwards[0]!;
-    if (!/^db\/platform\/migrations\/\d{14}_[A-Za-z0-9_-]+\.sql$/u.test(forward.path) || !hash(forward.sha256) || !Array.isArray(forward.functions) || forward.functions.length !== portableReplacements.size) throw new Error("reviewed portable replacement registry has an invalid forward");
-    const binding = forward.functions[0]!;
-    if (!portableReplacements.has(binding.signature) || !hash(binding.beforeSha256) || !hash(binding.afterSha256)) throw new Error("reviewed portable replacement registry must bind exactly the approved existing signature");
+    if (!Array.isArray(raw.portableReplacementForwards) || ![1,2].includes(raw.portableReplacementForwards.length)) throw new Error("reviewed portable replacement registry requires one or two fixed forwards");
+    for (const [index, forward] of raw.portableReplacementForwards.entries()) {
+      if (!forward || Object.keys(forward).sort().join(",") !== "functions,path,sha256" || !/^db\/platform\/migrations\/\d{14}_[A-Za-z0-9_-]+\.sql$/u.test(forward.path) || raw.portableReplacementForwards.findIndex(entry => entry.path === forward.path) !== index || !hash(forward.sha256) || !Array.isArray(forward.functions) || forward.functions.length !== 1) throw new Error("reviewed portable replacement registry has an invalid forward");
+      const binding = forward.functions[0]!;
+      if (Object.keys(binding).sort().join(",") !== "afterSha256,beforeSha256,signature" || !(index === 0 ? portableReplacements.has(binding.signature) : forward.path === "db/platform/migrations/20261022192000_invoicing_payment_decoupling.sql" && binding.signature === paymentTerminalSignature) || !hash(binding.beforeSha256) || !hash(binding.afterSha256)) throw new Error("reviewed portable replacement registry must bind exactly the approved existing signature");
+    }
+  }
+  if (raw.managedInvoicingForwards !== undefined) {
+    if (!Array.isArray(raw.managedInvoicingForwards) || raw.managedInvoicingForwards.length !== managedInvoicing.length) throw new Error("reviewed managed invoicing requires exactly three fixed forwards");
+    for (const [index, forward] of raw.managedInvoicingForwards.entries()) {
+      const allowed = managedInvoicing[index]!;
+      if (!forward || Object.keys(forward).sort().join(",") !== "functions,path,sha256" || forward.path !== allowed.path || paths.has(forward.path) || !hash(forward.sha256) || !Array.isArray(forward.functions) || forward.functions.length !== allowed.signatures.length) throw new Error("reviewed managed invoicing has an invalid forward");
+      paths.add(forward.path);
+      for (const [position, binding] of forward.functions.entries()) {
+        if (Object.keys(binding).sort().join(",") !== "afterSha256,beforeSha256,signature" || binding.signature !== allowed.signatures[position] || !hash(binding.afterSha256) || (allowed.creation ? binding.beforeSha256 !== null : !hash(binding.beforeSha256))) throw new Error("reviewed managed invoicing signature or creation/replacement class drifted");
+      }
+    }
   }
   if (raw.portableCreationForwards !== undefined) {
-    if (!Array.isArray(raw.portableCreationForwards) || raw.portableCreationForwards.length !== portableCreationPaths.length) throw new Error("reviewed portable creation registry requires exactly the approved forwards");
+    if (!Array.isArray(raw.portableCreationForwards) || ![2,portableCreationPaths.length].includes(raw.portableCreationForwards.length)) throw new Error("reviewed portable creation registry requires exactly the approved forwards");
     for (const [index, forward] of raw.portableCreationForwards.entries()) {
       if (!forward || Object.keys(forward).sort().join(",") !== "path,sha256" || forward.path !== portableCreationPaths[index] || paths.has(forward.path) || raw.portableReplacementForwards?.some((entry) => entry.path === forward.path) || !hash(forward.sha256)) throw new Error("reviewed portable creation registry has an invalid or duplicate forward");
       paths.add(forward.path);
@@ -246,7 +279,7 @@ function functionSignature(name: string, argumentsText: string): string {
   });
   const signature = `${name.toLowerCase()}(${types.join(",")})`;
   if (types.includes("timestamp with time zone") && !runtimeReplacements.has(signature)) throw new Error("reviewed replacement has an unsupported timestamp identity");
-  if (types.includes("timestamptz") && !portableReplacements.has(signature)) throw new Error("reviewed replacement has an unsupported portable timestamp identity");
+  if (types.includes("timestamptz") && !portableReplacements.has(signature) && signature !== paymentTerminalSignature) throw new Error("reviewed replacement has an unsupported portable timestamp identity");
   return signature;
 }
 
@@ -562,15 +595,23 @@ export function assertPortableCreationStatements(bytes: Buffer, preceding: Buffe
     if (!type || (type.startsWith("public.") && !tables.has(type))) throw new Error("reviewed portable creation refuses an unsupported argument type or default");
     return type;
   }).join(",");
+  let cutoverSeeded = false;
   for (const statement of sqlStatements(bytes.toString("utf8"), false, true)) {
     if (/^(?:BEGIN|COMMIT);$/iu.test(statement)) continue;
     const table = /^CREATE TABLE (public\.[a-z_][a-z0-9_]*)\s*\([\s\S]+\);$/iu.exec(statement);
     if (table && isExpandOnlyPlatformForward(statement, true)) { const name = table[1]!.toLowerCase(); add(name, relations, tables); continue; }
+    // One exact install-time snapshot into the newly created keyed M09 table.
+    // This does not admit arbitrary INSERT SELECT or alter the expand-only class.
+    if (tables.has("public.invoicing_cutover") && !cutoverSeeded && statement.replace(/\s+/gu," ").trim() ===
+      "INSERT INTO public.invoicing_cutover(source_kind,source_id) SELECT 'paid',id FROM public.commerce_settlement_transitions UNION ALL SELECT 'handoff',id FROM public.fulfillment_shipment_operations ON CONFLICT DO NOTHING;") {
+      cutoverSeeded = true;
+      continue;
+    }
     const insert = /^INSERT INTO (public\.[a-z_][a-z0-9_]*)(?=\s|\()/iu.exec(statement);
     if (insert && tables.has(insert[1]!.toLowerCase()) && isExpandOnlyPlatformForward(statement)) continue;
     const index = /^CREATE(?: UNIQUE)? INDEX ([a-z_][a-z0-9_]*)\s+ON (public\.[a-z_][a-z0-9_]*)\s*\([\s\S]+;$/iu.exec(statement);
     if (index && tables.has(index[2]!.toLowerCase()) && isExpandOnlyPlatformForward(statement)) { add(`public.${index[1]!.toLowerCase()}`, relations, indexes); continue; }
-    const view = /^CREATE VIEW (public\.[a-z_][a-z0-9_]*)\s+AS\s+SELECT\s+[\s\S]+;$/iu.exec(statement);
+    const view = /^CREATE VIEW (public\.[a-z_][a-z0-9_]*)(?:\s+WITH \(security_invoker=true\))?\s+AS\s+SELECT\s+[\s\S]+;$/iu.exec(statement);
     if (view) { add(view[1]!.toLowerCase(), relations, views); continue; }
     // Admit only the attributes present in the approved invoker definitions.
     const routine = /^CREATE FUNCTION (public\.[a-z_][a-z0-9_]*)\(([\s\S]*?)\)\s+RETURNS\s+((?:SETOF\s+)?(?:boolean|jsonb|text|void|trigger|public\.[a-z_][a-z0-9_]*))\s+LANGUAGE\s+(?:sql|plpgsql)\s+(?:(?:IMMUTABLE|STABLE)\s+)?(?:SECURITY INVOKER\s+)?SET search_path\s*=\s*pg_catalog\s+AS (\$(?:[A-Za-z_][A-Za-z0-9_]*)?\$)/iu.exec(statement);
@@ -611,6 +652,42 @@ export function assertPortableCreationStatements(bytes: Buffer, preceding: Buffe
   }
 }
 
+/** Fixed M09 managed graph: donor definer attributes, service-only execution,
+ * exactly one optional seller table, no triggers or additional statements.
+ * Whole-file pins and before/after definitions remain independently required.
+ */
+export function assertManagedInvoicingStatements(bytes: Buffer, path: string): void {
+  const allowed = managedInvoicing.find(entry => entry.path === path);
+  if (!allowed) throw new Error("reviewed managed invoicing path is not approved");
+  const definitions = new Set<string>(), grants = new Set<string>(), revokes = new Set<string>();
+  let tables = 0, rls = 0;
+  for (const statement of sqlStatements(bytes.toString("utf8"), false, true)) {
+    const routine = /^CREATE( OR REPLACE)? FUNCTION (public\.[a-z_][a-z0-9_]*)\(([\s\S]*?)\)\s+RETURNS jsonb\s+LANGUAGE (?:sql|plpgsql)\s+SECURITY DEFINER\s+SET search_path = public, pg_catalog\s+AS (\$\$)/u.exec(statement);
+    if (routine) {
+      const signature = functionSignature(routine[2]!, routine[3]!);
+      const closing = statement.indexOf("$$", routine[0].length);
+      if (closing < 0 || !/^\s*;$/u.test(statement.slice(closing + 2)) || !!routine[1] === allowed.creation || !allowed.signatures.includes(signature) || definitions.has(signature)) throw new Error("reviewed managed invoicing definition or attributes drifted");
+      definitions.add(signature); continue;
+    }
+    if (allowed === managedInvoicing[2] && /^CREATE TABLE public\.invoicing_managed_seller_revisions\s*\(/u.test(statement) && isExpandOnlyPlatformForward(statement, true) && tables++ === 0) continue;
+    if (allowed === managedInvoicing[2] && statement === "REVOKE ALL ON TABLE public.invoicing_managed_seller_revisions FROM PUBLIC, anon, authenticated;") {
+      if (revokes.has("table")) throw new Error("reviewed managed invoicing duplicate table revoke");
+      revokes.add("table"); continue;
+    }
+    if (allowed === managedInvoicing[2] && statement === "ALTER TABLE public.invoicing_managed_seller_revisions ENABLE ROW LEVEL SECURITY;" && rls++ === 0) continue;
+    const privilege = /^(REVOKE ALL|GRANT EXECUTE) ON FUNCTION (public\.[a-z_][a-z0-9_]*)\(([^)]*)\) (FROM PUBLIC, anon, authenticated|TO service_role);$/u.exec(statement);
+    if (privilege) {
+      const signature = functionSignature(privilege[2]!, privilege[3]!);
+      const revoke = privilege[1] === "REVOKE ALL";
+      const seen = revoke ? revokes : grants;
+      if (!definitions.has(signature) || seen.has(signature) || privilege[4] !== (revoke ? "FROM PUBLIC, anon, authenticated" : "TO service_role")) throw new Error("reviewed managed invoicing privilege drifted");
+      seen.add(signature); continue;
+    }
+    throw new Error("reviewed managed invoicing refuses statement or donor attribute drift");
+  }
+  if (definitions.size !== allowed.signatures.length || grants.size !== definitions.size || revokes.size !== definitions.size + (allowed === managedInvoicing[2] ? 1 : 0) || tables !== (allowed === managedInvoicing[2] ? 1 : 0) || rls !== (allowed === managedInvoicing[2] ? 1 : 0)) throw new Error("reviewed managed invoicing has missing definitions or service-only ACLs");
+}
+
 const git = (root: string, args: string[]) => documentationGit(root, args);
 function blob(root: string, revision: string, path: string): Buffer | undefined {
   const listing = git(root, ["ls-tree", "-z", revision, "--", path]).toString("utf8");
@@ -629,14 +706,14 @@ export function assertUnchangedForwardApproval(root: string, base: string, head:
       try {
         const prior = readReviewedForwardRegistry(before), current = readReviewedForwardRegistry(after);
         const binding = (registry: ReviewedForwardRegistry) => {
-          for (const list of ["replacementForwards", "creationForwards", "runtimeForwards", "portableReplacementForwards", "portableCreationForwards"] as const) {
+          for (const list of ["replacementForwards", "creationForwards", "runtimeForwards", "portableReplacementForwards", "portableCreationForwards", "managedInvoicingForwards"] as const) {
             const index = registry[list]?.findIndex((entry) => entry.path === path) ?? -1;
             if (index >= 0) return { list, index, entry: registry[list]![index] };
           }
           return null;
         };
         const canonical = (value: unknown) => JSON.stringify(value, (_key, item: unknown) => item && typeof item === "object" && !Array.isArray(item) ? Object.fromEntries(Object.entries(item).sort(([left], [right]) => left.localeCompare(right))) : item);
-        const shared = (registry: ReviewedForwardRegistry) => Object.fromEntries(Object.entries(registry).filter(([key]) => !["replacementForwards", "creationForwards", "runtimeForwards", "portableReplacementForwards", "portableCreationForwards"].includes(key)));
+        const shared = (registry: ReviewedForwardRegistry) => Object.fromEntries(Object.entries(registry).filter(([key]) => !["replacementForwards", "creationForwards", "runtimeForwards", "portableReplacementForwards", "portableCreationForwards", "managedInvoicingForwards"].includes(key)));
         const previous = binding(prior), next = binding(current);
         if (canonical(shared(prior)) === canonical(shared(current)) && previous && next && canonical(previous) === canonical(next)) return;
       } catch { /* Invalid historical approvals cannot authorize a release. */ }
@@ -676,7 +753,7 @@ export function assertReviewedPlatformForward(root: string, base: string, head: 
   if (!targetRegistry) throw new Error(`non-expand-only forward has no reviewed replacement approval: ${path}`);
   const registry = readReviewedForwardRegistry(targetRegistry);
   const portable = path.startsWith("db/platform/migrations/");
-  const candidates = portable ? [...registry.portableReplacementForwards ?? [], ...registry.portableCreationForwards ?? []] : [...registry.replacementForwards, ...registry.creationForwards, ...(registry.runtimeForwards ?? [])];
+  const candidates = portable ? [...registry.portableReplacementForwards ?? [], ...registry.portableCreationForwards ?? []] : [...registry.replacementForwards, ...registry.creationForwards, ...(registry.runtimeForwards ?? []), ...(registry.managedInvoicingForwards ?? [])];
   const forward = candidates.find((entry) => entry.path === path);
   if (!forward) throw new Error(`non-expand-only forward differs from reviewed replacement path or bytes: ${path}`);
   let approval = base;
@@ -754,6 +831,8 @@ export function assertReviewedPlatformForward(root: string, base: string, head: 
     }
     if (retiredPolicies.length !== (runtime.retiredPolicies?.length ?? 0)) throw new Error("reviewed replacement runtime has missing policy retirements");
     if (privileges.length !== runtime.privileges.length || privileges.some((statement, index) => statement !== runtime.privileges[index])) throw new Error("reviewed replacement runtime privileges differ from exact statement pins");
+  } else if (registry.managedInvoicingForwards?.includes(functionForward)) {
+    assertManagedInvoicingStatements(bytes, path);
   } else assertFunctionStatements(bytes, definitions);
   if (definitions.size !== functionForward.functions.length) throw new Error("reviewed replacement has missing or additional function signatures");
   for (const binding of functionForward.functions) {
