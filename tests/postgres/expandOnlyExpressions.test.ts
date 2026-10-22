@@ -23,6 +23,7 @@ it.each([
   ["OPERATOR reference", "CREATE TABLE public.example (value int CHECK (value OPERATOR(public.+) 1 = 2)); INSERT INTO public.example VALUES (1) ON CONFLICT DO NOTHING;", "SELECT count(*) = 1 AS observed FROM public.app_call_log"],
   ["generated column call", "CREATE TABLE public.example (value text, normalized text GENERATED ALWAYS AS (public.app_index_value(value)) STORED); INSERT INTO public.example (value) VALUES ('prior') ON CONFLICT DO NOTHING;", "SELECT count(*) = 1 AS observed FROM public.app_call_log"],
   ["index WHERE call", "CREATE INDEX example_value ON public.existing (value) WHERE public.app_index_value(value) = 'recordedprior';", "SELECT count(*) = 1 AS observed FROM public.app_call_log"],
+  ["ARRAY domain call with seed INSERT", "CREATE TABLE public.example (id int, a boolean[] DEFAULT ARRAY[true, NOT public.app_domain 't']); INSERT INTO public.example (id) VALUES (1) ON CONFLICT DO NOTHING;", "SELECT EXISTS (SELECT 1 FROM public.app_call_log) AS observed"],
   ["DEFAULT call with seed INSERT", "CREATE TABLE public.example (id int, value text DEFAULT public.app_record_call()); INSERT INTO public.example (id) VALUES (1) ON CONFLICT DO NOTHING;", "SELECT count(*) = 1 AS observed FROM public.app_call_log"],
   ["if column DEFAULT call with seed INSERT", "CREATE TABLE public.example (id int, if text DEFAULT public.app_record_call()); INSERT INTO public.example (id) VALUES (1) ON CONFLICT DO NOTHING;", "SELECT count(*) = 1 AS observed FROM public.app_call_log"],
   ["CHECK call with seed INSERT", "CREATE TABLE public.example (value text CHECK (public.app_record_call() = 'recorded')); INSERT INTO public.example (value) VALUES ('recorded') ON CONFLICT DO NOTHING;", "SELECT count(*) = 1 AS observed FROM public.app_call_log"],
@@ -48,6 +49,7 @@ it.each([
         INSERT INTO public.app_call_log VALUES ('recorded');
         RETURN 'recorded';
       END $$;
+      CREATE DOMAIN public.app_domain AS boolean CHECK (public.app_record_call() IS NOT NULL);
       -- Index expressions require an IMMUTABLE declaration; a nested volatile call still executes.
       CREATE FUNCTION public.app_index_value(value text) RETURNS text LANGUAGE plpgsql IMMUTABLE AS $$
       BEGIN
