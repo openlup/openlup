@@ -42,7 +42,7 @@ function expectedObservation(source: "provider_webhook" | "provider_reconciliati
     rawEvent: { reference: evidenceRef, digestAlgorithm: "sha256", digest: hash(raw) } },
     eventKind: "order.delivered", eventKey, firstReceivedAt: now,
     correlation: { orderRef: null, fulfillmentRef: source === "provider_webhook" ? null : "fulfillment-a",
-      externalRef: "external-a", orderNumber: null, providerFulfillmentRef: "parcel-a", parcelRef: null }, trackingRefs };
+      externalRef: "external-a", orderNumber: null, providerFulfillmentRef: "parcel-a", parcelRef: null }, trackingRefs, diagnostics: { redactedFieldCount: 1 } };
 }
 const readInput = (externalRef: string) => ({ providerRef: "omnipack", requestKey: "request-a", fulfillmentRef: "fulfillment-a", externalRef, mode: "command" as const });
 const readbackRawEvidence = { provider: "omnipack", event: "order.delivered", providerOrderId: "external-a", orderNumber: null,

@@ -26,6 +26,7 @@ export interface FulfillmentDispatchRequest {
 }
 /** Allowlisted durable evidence; fingerprint commits to actual adapter command bytes. */
 export interface DispatchEvidence {
+  redactedFieldCount?: number;
   commandFingerprint: string;
   contactRevision: FulfillmentDispatchRequest["contactRevision"];
   providerRef: string;
@@ -41,11 +42,12 @@ export interface DispatchEvidence {
   mapping?: { source: "dispatch_worker"; mode: "shadow" | "stage" | "live"; shadowMode: boolean };
 }
 export interface FulfillmentOperationError {
+  redactedFieldCount?: number;
   code: string; status: number | null; retryable: boolean; mayHaveSucceeded: boolean;
   /** Machine cause only; never an arbitrary exception message. */
   cause?: string;
 }
-export type FulfillmentDispatchResult = ({ error?: FulfillmentOperationError } & (
+export type FulfillmentDispatchResult = ({ error?: FulfillmentOperationError; redactedFieldCount?: number } & (
   | { kind: "accepted"; externalRef: string; evidence: DispatchEvidence; providerAttemptKey: string; labelKey: string; recovery?: { source: "persisted_acceptance"; proof: "persisted_external_ref"; noProviderPost: true } }
   | { kind: "not_dispatched"; effectMayHaveSucceeded: false; refusal: FulfillmentRefusal }
   | { kind: "unknown"; effectMayHaveSucceeded: true; refusal: FulfillmentRefusal }));

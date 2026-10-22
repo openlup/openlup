@@ -3,50 +3,67 @@ import type { DispatchEvidence, DispatchRecord, FulfillmentDispatchRequest, Fulf
 
 /** Machine identities only: arbitrary exception prose, URLs and credentials are omitted. */
 export function safeDiagnosticCode(value: unknown): string | null {
-  return typeof value === "string" && /^[A-Za-z0-9][A-Za-z0-9_]{0,95}$/u.test(value) ? value : null;
+  return reference(value) && typeof value === "string" && /^[A-Za-z0-9][A-Za-z0-9_]{0,95}$/u.test(value) ? value : null;
 }
-export function localFailureReason(stage: string, error: unknown): string {
+export function localFailureReason(stage: string, error: unknown, privacy = durableStrings()): string {
   if (!error || typeof error !== "object") return stage;
   const fields = error as { code?: unknown; causeCode?: unknown; causeMessage?: unknown; message?: unknown };
+  for (const value of [fields.code, fields.causeCode, fields.causeMessage, fields.message]) if (typeof value === "string") privacy.token(value);
   const message = typeof fields.message === "string" ? fields.message.match(/^([A-Za-z][A-Za-z0-9_]*)(?::([A-Z0-9]{5}))?$/u) : null;
   const cause = safeDiagnosticCode(fields.causeMessage) ?? (message && (message[2] || /_(?:failed|down|missing|invalid|conflict|not_found)$/u.test(message[1]!)) ? safeDiagnosticCode(message[1]) : null);
   const code = safeDiagnosticCode(fields.causeCode) ?? safeDiagnosticCode(fields.code) ?? message?.[2];
   return [stage, cause, code].filter(Boolean).join(":");
 }
 export function operationError(error: Omit<FulfillmentOperationError, "cause"> & { cause?: unknown }): FulfillmentOperationError {
-  return { code: safeDiagnosticCode(error.code) ?? "operation_failed", status: Number.isInteger(error.status) && error.status! >= 100 && error.status! <= 599 ? error.status : null,
+  const privacy = durableStrings(error.redactedFieldCount);
+  const code = privacy.token(error.code, safeDiagnosticCode) ?? "operation_failed";
+  const cause = typeof error.cause === "string" ? privacy.token(error.cause,
+    value => /^ack(?::[A-Za-z0-9_]{1,96}){0,2}$/u.test(value) ? value.slice(0,180) : null) : null;
+  return { code, status: Number.isInteger(error.status) && error.status! >= 100 && error.status! <= 599 ? error.status : null,
     retryable: error.retryable === true, mayHaveSucceeded: error.mayHaveSucceeded === true,
-    ...(typeof error.cause === "string" && /^ack(?::[A-Za-z0-9_]{1,96}){0,2}$/u.test(error.cause) ? { cause: error.cause.slice(0,180) } : {}) };
+    ...(cause ? { cause } : {}), ...(privacy.redactedFieldCount ? { redactedFieldCount: privacy.redactedFieldCount } : {}) };
 }
 // The fulfillment opaque-ID rule; never accept free-form metadata as a reference.
-const reference = (value: string | null | undefined): string | null => typeof value === "string"
+export const reference = (value: unknown): string | null => typeof value === "string"
   && /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u.test(value) ? value : null;
 const isoDate = (value: string | null | undefined): string | null => typeof value === "string"
   && /^\d{4}-\d\d-\d\d$/u.test(value) && Number.isFinite(Date.parse(value))
   && new Date(value).toISOString().slice(0, 10) === value ? value : null;
+/** One counted sanitizer for durable projections; codecs are explicit host policy. */
+export function durableStrings(priorCount = 0) {
+  let count = Number.isSafeInteger(priorCount) && priorCount > 0 ? priorCount : 0;
+  return {
+    token(value: string | null | undefined, codec: (value: string) => string | null = reference) {
+      if (value == null) return null;
+      const safe = codec(value);
+      if (safe === null) count += 1;
+      return safe;
+    },
+    get redactedFieldCount() { return count; },
+  };
+}
 /** Copy only the durable allowlist, including when an adapter object has extra runtime properties. */
 export function dispatchEvidence(evidence: DispatchEvidence): DispatchEvidence {
-  const priorCount = evidence.transcript?.redactedFieldCount ?? 0;
-  let redactedFieldCount = Number.isSafeInteger(priorCount) && priorCount > 0 ? priorCount : 0;
-  const sanitize = (value: string | null | undefined, validate = reference) => {
-    const safe = validate(value);
-    if (value != null && safe === null) redactedFieldCount += 1;
-    return safe;
-  };
+  const privacy = durableStrings(evidence.redactedFieldCount ?? evidence.transcript?.redactedFieldCount);
+  const sanitize = privacy.token;
+  const commandFingerprint = sanitize(evidence.commandFingerprint) ?? "redacted";
+  const source = sanitize(evidence.contactRevision.source) ?? "redacted";
+  const providerRef = sanitize(evidence.providerRef) ?? "redacted", carrierRef = sanitize(evidence.carrierRef), serviceRef = sanitize(evidence.serviceRef);
+  const mode = evidence.mapping ? (sanitize(evidence.mapping.mode) ?? "shadow") as NonNullable<DispatchEvidence["mapping"]>["mode"] : null;
   const transcript = evidence.transcript ? {
     itemCount: evidence.transcript.items.length,
     items: evidence.transcript.items.map(item => ({ skuRef: sanitize(item.skuRef) ?? "redacted", quantity: Number.isSafeInteger(item.quantity) && item.quantity > 0 ? item.quantity : 0,
       lotRef: sanitize(item.lotRef), expirationDate: sanitize(item.expirationDate, isoDate) })),
     deliveryKind: evidence.transcript.deliveryKind === "parcel-locker" ? "parcel-locker" as const : "courier" as const,
     pickupPointRef: sanitize(evidence.transcript.pickupPointRef),
-    ...(redactedFieldCount > 0 ? { redactedFieldCount } : {}),
+    ...(privacy.redactedFieldCount > 0 ? { redactedFieldCount: privacy.redactedFieldCount } : {}),
   } : null;
   return {
-    commandFingerprint: evidence.commandFingerprint,
-    contactRevision: { schemaVersion: evidence.contactRevision.schemaVersion, source: evidence.contactRevision.source, revision: evidence.contactRevision.revision },
-    providerRef: evidence.providerRef, carrierRef: evidence.carrierRef, serviceRef: evidence.serviceRef,
-    ...(transcript ? { transcript } : {}),
-    ...(evidence.mapping ? { mapping: { source: "dispatch_worker" as const, mode: evidence.mapping.mode, shadowMode: evidence.mapping.mode === "shadow" } } : {}),
+    commandFingerprint,
+    contactRevision: { schemaVersion: evidence.contactRevision.schemaVersion, source, revision: evidence.contactRevision.revision },
+    providerRef, carrierRef, serviceRef,
+    ...(transcript ? { transcript } : privacy.redactedFieldCount ? { redactedFieldCount: privacy.redactedFieldCount } : {}),
+    ...(evidence.mapping ? { mapping: { source: "dispatch_worker" as const, mode: mode!, shadowMode: evidence.mapping.mode === "shadow" } } : {}),
   };
 }
 /** Shadow has a local command identity; it never invokes a provider or resolves credentials. */
@@ -60,12 +77,19 @@ export function shadowDispatchEvidence(request: FulfillmentDispatchRequest): Dis
       deliveryKind: request.selection.deliveryKind, pickupPointRef: request.selection.pickupPoint?.id ?? null } });
 }
 export function dispatchResult(result: FulfillmentDispatchResult): FulfillmentDispatchResult {
+  const privacy = durableStrings(result.redactedFieldCount);
+  const externalRef = result.kind === "accepted" ? privacy.token(result.externalRef) ?? "redacted" : null;
+  const providerAttemptKey = result.kind === "accepted" ? privacy.token(result.providerAttemptKey) ?? "redacted" : null;
+  const labelKey = result.kind === "accepted" ? privacy.token(result.labelKey) ?? "redacted" : null;
+  const refusal = result.kind !== "accepted" ? { reason: (privacy.token(result.refusal.reason) ?? "malformed") as typeof result.refusal.reason,
+    phase: (privacy.token(result.refusal.phase) ?? "normalize") as typeof result.refusal.phase, retryable: result.refusal.retryable } : null;
+  const redactions = privacy.redactedFieldCount ? { redactedFieldCount: privacy.redactedFieldCount } : {};
   const error = result.error ? { error: operationError({ ...result.error, mayHaveSucceeded: result.kind !== "not_dispatched" }) } : {};
   switch (result.kind) {
-    case "accepted": return { kind: "accepted", externalRef: result.externalRef, providerAttemptKey: result.providerAttemptKey, labelKey: result.labelKey, evidence: dispatchEvidence(result.evidence), ...error,
+    case "accepted": return { kind: "accepted", externalRef: externalRef!, providerAttemptKey: providerAttemptKey!, labelKey: labelKey!, ...redactions, evidence: dispatchEvidence(result.evidence), ...error,
       ...(result.recovery ? { recovery: { source: "persisted_acceptance", proof: "persisted_external_ref", noProviderPost: true } } : {}) };
-    case "not_dispatched": return { kind: "not_dispatched", effectMayHaveSucceeded: false, refusal: { reason: result.refusal.reason, phase: result.refusal.phase, retryable: result.refusal.retryable }, ...error };
-    case "unknown": return { kind: "unknown", effectMayHaveSucceeded: true, refusal: { reason: result.refusal.reason, phase: result.refusal.phase, retryable: result.refusal.retryable }, ...error };
+    case "not_dispatched": return { kind: "not_dispatched", effectMayHaveSucceeded: false, refusal: refusal!, ...redactions, ...error };
+    case "unknown": return { kind: "unknown", effectMayHaveSucceeded: true, refusal: refusal!, ...redactions, ...error };
   }
 }
 export function acceptedProviderProof(record: DispatchRecord | null): record is DispatchRecord & { externalRef: string } {

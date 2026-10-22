@@ -8,6 +8,7 @@ type DispatchRef = { orderRef: string; fulfillmentRef: string; dispatchRef: stri
 /** Adapter verification owns auth-before-parse; the host owns durable replay. */
 export async function verifyAndNormalizeFulfillmentObservation(input: {
   enabled: boolean;
+  approveTrackingUrl?(url: string): boolean;
   provider: FulfillmentObservationPort;
   verification: Parameters<FulfillmentObservationPort["verifyAndNormalize"]>[0];
   localPersistence: {
@@ -30,7 +31,7 @@ export async function verifyAndNormalizeFulfillmentObservation(input: {
   if (!input.enabled) return { kind: "refused", refusal: { reason: "disabled", phase: "verify", retryable: false } };
   const verified = await input.provider.verifyAndNormalize(input.verification);
   if (verified.kind === "refused") return verified;
-  const observation = projectObservation(verified.observation);
+  const observation = projectObservation(verified.observation, input.approveTrackingUrl);
   const inbound = await input.localPersistence.recordObservation(observation);
   const ref = await input.lifecycle.findDispatchRef(observation);
   if (!ref) {

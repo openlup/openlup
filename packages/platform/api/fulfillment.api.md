@@ -290,6 +290,7 @@ type SyncFixture<Port> = {
 }[keyof Port];
 /** Offline adapter-owned inputs and exact expected outputs; never real customer data. */
 export interface FulfillmentAdapterConformanceSubject {
+    approveTrackingUrl?(url: string): boolean;
     subjectId: string;
     adapter: {
         capabilities: FulfillmentCapabilityDescriptor;
@@ -431,6 +432,7 @@ export interface FulfillmentDispatchRequest {
 }
 /** Allowlisted durable evidence; fingerprint commits to actual adapter command bytes. */
 export interface DispatchEvidence {
+    redactedFieldCount?: number;
     commandFingerprint: string;
     contactRevision: FulfillmentDispatchRequest["contactRevision"];
     providerRef: string;
@@ -456,6 +458,7 @@ export interface DispatchEvidence {
     };
 }
 export interface FulfillmentOperationError {
+    redactedFieldCount?: number;
     code: string;
     status: number | null;
     retryable: boolean;
@@ -465,6 +468,7 @@ export interface FulfillmentOperationError {
 }
 export type FulfillmentDispatchResult = ({
     error?: FulfillmentOperationError;
+    redactedFieldCount?: number;
 } & ({
     kind: "accepted";
     externalRef: string;
@@ -615,6 +619,7 @@ export interface FulfillmentObservation {
         subStatus: string | null;
     };
     diagnostics?: {
+        redactedFieldCount?: number;
         refusal?: FulfillmentRefusal;
         stockContention?: {
             sqlState: "55P03";
@@ -870,7 +875,7 @@ export interface FulfillmentReadbackPort {
 export type FulfillmentReconciliationObservation = FulfillmentReadbackResult | {
     kind: "unmapped";
     externalRef: string | null;
-    evidence: Pick<FulfillmentObservation, "correlation" | "eventKey" | "providerStatus">;
+    evidence: Pick<FulfillmentObservation, "correlation" | "eventKey" | "providerStatus" | "diagnostics">;
 };
 export interface FulfillmentObservationPagePort {
     readPage(input: {
@@ -2402,6 +2407,7 @@ interface ShipmentSpineMutationPort {
 }
 export interface PostgresFulfillmentShipmentSpineOptions {
     portKey: string;
+    approveTrackingUrl?(url: string): boolean;
     evidenceChannel?: "poll" | "push";
     requiredProviderType?: "simulator";
 }
@@ -2410,7 +2416,7 @@ export declare function createPostgresFulfillmentShipmentSpinePort(executor: PgQ
     localPersistence: ReturnType<typeof localPersistence>;
 };
 /** G17 native local persistence, composed on the same injected executor. */
-declare function localPersistence(executor: PgQueryExecutor): {
+declare function localPersistence(executor: PgQueryExecutor, approveTrackingUrl?: (url: string) => boolean): {
     readLocalFulfillmentState(ref: string): Promise<{
         status: string | null;
         latestStatusOccurredAt: string | null;
@@ -2669,6 +2675,19 @@ export declare function runFulfillmentDispatchWorker(input: {
     };
     now?: () => Date;
 }): Promise<{
+    redactedFieldCount: number;
+    ok: boolean;
+    skipped: boolean;
+    checked: number;
+    updated: number;
+    failures: number;
+    mode: "shadow" | "stage" | "live";
+    replayed: number;
+    providerCalls: number;
+    readBacks: number;
+    reason: string | undefined;
+} | {
+    redactedFieldCount?: undefined;
     ok: boolean;
     skipped: boolean;
     checked: number;
@@ -2720,7 +2739,7 @@ import type { FulfillmentObservation, FulfillmentObservationPagePort, Fulfillmen
 import { enrichTrackingReference } from "./providerTrackingReferences.js";
 type Ingress = Parameters<typeof import("./verifiedIngress.js").verifyAndNormalizeFulfillmentObservation>[0];
 type DispatchRef = NonNullable<Awaited<ReturnType<Ingress["lifecycle"]["findDispatchRef"]>>>;
-type PollEvidence = Pick<FulfillmentObservation, "correlation" | "eventKey" | "providerStatus"> | FulfillmentObservation;
+type PollEvidence = Pick<FulfillmentObservation, "correlation" | "eventKey" | "providerStatus" | "diagnostics"> | FulfillmentObservation;
 export interface ReconciliationResult {
     ok: boolean;
     checked: number;
@@ -2732,6 +2751,7 @@ export interface ReconciliationResult {
     stale: number;
     offTrackSkips: number;
     replayed: number;
+    redactedFieldCount?: number;
     failures: number;
     invoiceIssueFailures: number;
     invoiceIssueRefused: number;
@@ -2857,6 +2877,7 @@ export declare function enrichTrackingReference(ref: FulfillmentTrackingReferenc
     carrierRef: string | null;
     serviceRef: string | null;
 } | null, codecs: {
+    approveTrackingUrl?(url: string): boolean;
     normalizeCarrier(input: {
         carrierRef: string | null;
         serviceRef: string | null;
@@ -2947,6 +2968,7 @@ type DispatchRef = {
 /** Adapter verification owns auth-before-parse; the host owns durable replay. */
 export declare function verifyAndNormalizeFulfillmentObservation(input: {
     enabled: boolean;
+    approveTrackingUrl?(url: string): boolean;
     provider: FulfillmentObservationPort;
     verification: Parameters<FulfillmentObservationPort["verifyAndNormalize"]>[0];
     localPersistence: {

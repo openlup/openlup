@@ -12,7 +12,7 @@ export interface FulfillmentObservation {
   trackingRefs: readonly FulfillmentTrackingReference[];
   /** Original provider status tokens; canonical status does not identify an occurrence. */
   providerStatus?: { primary: string | null; subStatus: string | null };
-  diagnostics?: { refusal?: FulfillmentRefusal; stockContention?: { sqlState: "55P03"; phase: "provider_stock_consumed"; retryable: true }; annotation?: "recorded" | "failed"; recoveredPickedReceipt?: { receiptRef: string; closed: boolean } };
+  diagnostics?: { redactedFieldCount?: number; refusal?: FulfillmentRefusal; stockContention?: { sqlState: "55P03"; phase: "provider_stock_consumed"; retryable: true }; annotation?: "recorded" | "failed"; recoveredPickedReceipt?: { receiptRef: string; closed: boolean } };
 }
 export interface FulfillmentObservationPort {
   /** Authenticate untouched bytes before parsing. Inputs live only during verification. */

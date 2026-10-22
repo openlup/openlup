@@ -1,5 +1,5 @@
 import type { DispatchRecord, FulfillmentDispatchPort, FulfillmentDispatchRequest, FulfillmentDispatchResult, FulfillmentStorePort } from "./contracts/index.js";
-import { acceptedProviderProof, dispatchEvidence, dispatchResult, localFailureReason, shadowDispatchEvidence } from "./dispatchProjection.js";
+import { durableStrings, acceptedProviderProof, dispatchEvidence, dispatchResult, localFailureReason, shadowDispatchEvidence } from "./dispatchProjection.js";
 import { acknowledgeAcceptedDispatch, recoverDispatchAcceptanceWrite } from "./providerDispatchAcceptance.js";
 import { unknownDispatchFailure } from "./providerDispatchError.js";
 
@@ -16,11 +16,14 @@ export async function runFulfillmentDispatchWorker(input: {
   config: { mode: DispatchRecord["mode"]; batchLimit: number };
   now?: () => Date;
 }) {
+  const privacy = durableStrings();
+  const failure = (stage: string, error: unknown) => localFailureReason(stage, error, privacy);
+  const diagnostics = () => privacy.redactedFieldCount ? { redactedFieldCount: privacy.redactedFieldCount } : {};
   const result = { ok: true, skipped: false, checked: 0, updated: 0, failures: 0,
     mode: input.config.mode, replayed: 0, providerCalls: 0, readBacks: 0, reason: undefined as string | undefined };
   if (input.config.mode !== "shadow") {
     try { await input.store.markStaleSubmissionsUncertain(new Date((input.now?.() ?? new Date()).getTime() - 5 * 60_000).toISOString()); }
-    catch (error) { return { ...result, ok: false, failures: 1, reason: localFailureReason("dispatch_stale_submission_sweep_failed", error) }; }
+    catch (error) { return { ...result, ok: false, failures: 1, reason: failure("dispatch_stale_submission_sweep_failed", error), ...diagnostics() }; }
   }
   const candidates = await input.listCandidates(input.config.batchLimit);
   result.checked = candidates.length;
@@ -57,7 +60,7 @@ export async function runFulfillmentDispatchWorker(input: {
           ? { kind: "prepared" as const, evidence: shadowDispatchEvidence(request) }
           : await input.provider!.prepare(request);
         if (prepared.kind === "refused") {
-          result.ok = false; result.failures += 1; result.reason ??= prepared.refusal.reason; continue candidateLoop;
+          result.ok = false; result.failures += 1; result.reason ??= privacy.token(prepared.refusal.reason) ?? "redacted"; continue candidateLoop;
         }
         providerEvidence = dispatchEvidence(prepared.evidence);
         evidence = { ...providerEvidence, mapping: { source: "dispatch_worker", mode: input.config.mode, shadowMode: input.config.mode === "shadow" } };
@@ -73,7 +76,7 @@ export async function runFulfillmentDispatchWorker(input: {
             if (!refreshed) throw new Error("dispatch_contact_remap_candidate_missing");
             mappedCandidate = refreshed; continue;
           }
-          result.ok = false; result.failures += 1; result.reason ??= claim.refusal.reason; continue candidateLoop;
+          result.ok = false; result.failures += 1; result.reason ??= privacy.token(claim.refusal.reason) ?? "redacted"; continue candidateLoop;
         }
         dispatchRef = claim.record;
         if (dispatchRef.replayed) result.replayed += 1;
@@ -100,7 +103,7 @@ export async function runFulfillmentDispatchWorker(input: {
             if (!refreshed) throw new Error("dispatch_contact_remap_candidate_missing");
             mappedCandidate = refreshed; continue;
           }
-          result.ok = false; result.failures += 1; result.reason ??= submission.refusal.reason; continue candidateLoop;
+          result.ok = false; result.failures += 1; result.reason ??= privacy.token(submission.refusal.reason) ?? "redacted"; continue candidateLoop;
         }
         if (!submission.begun) {
           stage = "dispatch_concurrent_read_failed";
@@ -142,10 +145,10 @@ export async function runFulfillmentDispatchWorker(input: {
       }
       result.updated += 1;
     } catch (error) {
-      result.ok = false; result.failures += 1; result.reason ??= localFailureReason(stage, error);
+      result.ok = false; result.failures += 1; result.reason ??= failure(stage, error);
     }
   }
-  return result;
+  return { ...result, ...diagnostics() };
 }
 
 function sameCommandIdentity(a: DispatchRecord["evidence"], b: DispatchRecord["evidence"]): boolean {

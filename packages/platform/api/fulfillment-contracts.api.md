@@ -153,6 +153,7 @@ type SyncFixture<Port> = {
 }[keyof Port];
 /** Offline adapter-owned inputs and exact expected outputs; never real customer data. */
 export interface FulfillmentAdapterConformanceSubject {
+    approveTrackingUrl?(url: string): boolean;
     subjectId: string;
     adapter: {
         capabilities: FulfillmentCapabilityDescriptor;
@@ -294,6 +295,7 @@ export interface FulfillmentDispatchRequest {
 }
 /** Allowlisted durable evidence; fingerprint commits to actual adapter command bytes. */
 export interface DispatchEvidence {
+    redactedFieldCount?: number;
     commandFingerprint: string;
     contactRevision: FulfillmentDispatchRequest["contactRevision"];
     providerRef: string;
@@ -319,6 +321,7 @@ export interface DispatchEvidence {
     };
 }
 export interface FulfillmentOperationError {
+    redactedFieldCount?: number;
     code: string;
     status: number | null;
     retryable: boolean;
@@ -328,6 +331,7 @@ export interface FulfillmentOperationError {
 }
 export type FulfillmentDispatchResult = ({
     error?: FulfillmentOperationError;
+    redactedFieldCount?: number;
 } & ({
     kind: "accepted";
     externalRef: string;
@@ -478,6 +482,7 @@ export interface FulfillmentObservation {
         subStatus: string | null;
     };
     diagnostics?: {
+        redactedFieldCount?: number;
         refusal?: FulfillmentRefusal;
         stockContention?: {
             sqlState: "55P03";
@@ -733,7 +738,7 @@ export interface FulfillmentReadbackPort {
 export type FulfillmentReconciliationObservation = FulfillmentReadbackResult | {
     kind: "unmapped";
     externalRef: string | null;
-    evidence: Pick<FulfillmentObservation, "correlation" | "eventKey" | "providerStatus">;
+    evidence: Pick<FulfillmentObservation, "correlation" | "eventKey" | "providerStatus" | "diagnostics">;
 };
 export interface FulfillmentObservationPagePort {
     readPage(input: {

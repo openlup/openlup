@@ -816,14 +816,23 @@ Main and repair ACKs use identical host acceptance keys, ignoring adapter-provid
 key fields so a committed ACK replays after a lost response. Mapped evidence now
 retains item count, SKU/quantity/lot/expiry, delivery kind and pickup-point reference,
 the contact revision and provider/carrier/service selection, and worker source,
-mode and shadow flag. Transcript references (including lot references) use the
-opaque-ID allowlist `[A-Za-z0-9][A-Za-z0-9._:-]{0,127}`; expiry accepts only a
-valid calendar date in `YYYY-MM-DD` form. Invalid populated reference/date fields
-become null (invalid SKU becomes `redacted`) before persistence and contribute to
-the transcript's optional `redactedFieldCount` diagnostic; they never fail dispatch.
-This rejects contact JSON in lot metadata and phone numbers in expiry. Arbitrary
-provider properties and raw JSON are omitted; no contact fields, secrets or signed
-URLs are copied into the transcript. The command fingerprint still commits to the transient
+mode and shadow flag. Durable dispatch transcripts/receipts, observation and provider-status evidence,
+reconciliation quarantine evidence, and worker diagnostics share one counted
+string sanitizer at their output projections. Provider-derived strings must
+match the existing opaque-ID rule `[A-Za-z0-9][A-Za-z0-9._:-]{0,127}` or an
+explicit adopter codec; refused values become null (required references use
+`redacted`) and increment `redactedFieldCount` in the existing evidence or
+diagnostic envelope. Counts survive repeated native projection. Expiry additionally
+requires a real `YYYY-MM-DD` calendar date. Tracking URLs require the adopter's
+approval at each projection that retains them, including reconciliation tracking
+codecs and native observation-store options; omission redacts the URL. Occurrence
+identity hashes original provider status/subStatus bytes, so redaction cannot
+collapse distinct occurrences. Arbitrary properties, contact fields, raw JSON,
+credentials and signed URLs are omitted. The
+[exhaustive field sweep](../../packages/platform/test/fulfillment/omnipack/dispatchReconciliationParity.test.ts)
+feeds five sensitive-value shapes through every provider string input and captures
+native write arguments, evidence callbacks, transcripts, checkpoints and diagnostics.
+The command fingerprint still commits to the transient
 provider command bytes. Shadow instead builds a local command identity from the
 host candidate; it requires neither a provider port nor provider preparation or
 credentials. Legacy `0.22.0` native shadow drafts/attempts do not replay under that

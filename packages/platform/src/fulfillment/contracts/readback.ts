@@ -13,7 +13,7 @@ export interface FulfillmentReadbackPort {
 /** Collection observation is separate from authoritative exact lookup. */
 export type FulfillmentReconciliationObservation = FulfillmentReadbackResult | {
   kind: "unmapped"; externalRef: string | null;
-  evidence: Pick<FulfillmentObservation, "correlation" | "eventKey" | "providerStatus">;
+  evidence: Pick<FulfillmentObservation, "correlation" | "eventKey" | "providerStatus" | "diagnostics">;
 };
 export interface FulfillmentObservationPagePort {
   readPage(input: { page: number; size: number }): Promise<
