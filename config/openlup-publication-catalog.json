@@ -6110,11 +6110,27 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/ci-image-mirror.d.mts",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/ci-image-mirror.mjs",
       "class": "public-output"
     },
     {
       "path": "scripts/ci-image-mirror.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/ci-image-pull.d.mts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/ci-image-pull.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/ci-image-pull.test.ts",
       "class": "public-output"
     },
     {
@@ -22891,6 +22907,10 @@
     },
     {
       "path": "tests/postgres/platformBffMovedRoutes.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/postgresContainer.test.ts",
       "class": "public-output"
     },
     {

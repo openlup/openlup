@@ -18,45 +18,18 @@ const pgtapSource = readFileSync("scripts/public-ci-pgtap.mjs", "utf8");
 const batchSource = readFileSync("tests/postgres/reviewedBatchForwards.test.ts", "utf8");
 const ownedConfig = () => JSON.parse(readFileSync("config/ci-images.json", "utf8"));
 
-function assertReviewedBatchPins(config: ReturnType<typeof ownedConfig>, source = batchSource) {
-  // Match only the exact literal declarations, without importing the Docker-backed test.
-  // A declaration shape change refuses until this temporary PR-B bridge is updated.
-  const literal = (pattern: RegExp) => {
-    const matches = [...source.matchAll(pattern)];
-    expect(matches, "expected exactly one reviewed-batch literal declaration").toHaveLength(1);
-    return matches[0];
-  };
-  const managed = literal(/^const managedDigest = "(sha256:[a-f0-9]{64})";$/gmu)[1];
-  const native = literal(/^const nativeDigest = "(sha256:[a-f0-9]{64})";$/gmu)[1];
-  const sources = literal(/^const imageSources = \{\n {2}native: (\[[^\n]+\]),\n {2}managed: (\[[^\n]+\]),\n\};$/gmu);
-  for (const [name, digest, orderedSources] of [
-    ["test-postgres", native, JSON.parse(sources[1])],
-    ["managed-batch-postgres", managed, JSON.parse(sources[2])],
-  ]) {
-    const entries = ownedImages(config).filter((image) => image.name === name);
-    expect(entries, `exactly one JSON pin for ${name}`).toHaveLength(1);
-    expect(entries[0].digest, `${name} digest drift`).toBe(digest);
-    expect(entries[0].sources, `${name} ordered upstream sources drift`).toEqual(orderedSources);
-  }
+function assertSingleOwner(source: string) {
+  expect(source).not.toMatch(/sha256:[a-f0-9]{64}/u);
+  expect(source).not.toMatch(/\[[^\]\n]*["'`](?:ghcr\.io|docker\.io|public\.ecr\.aws)\//u);
 }
 
 describe("CI image derivation and digest preservation", () => {
-  it("guards reviewed-batch digest and ordered upstream literals against the JSON owner", () => {
-    assertReviewedBatchPins(ownedConfig());
-  });
-
-  it.each(["test-postgres", "managed-batch-postgres"])("rejects digest and source-order drift for %s in memory", (name) => {
-    const changedDigest = ownedConfig();
-    changedDigest.images.find((image: { name: string }) => image.name === name).digest = different;
-    expect(() => assertReviewedBatchPins(changedDigest)).toThrow("digest drift");
-    const changedOrder = ownedConfig();
-    changedOrder.images.find((image: { name: string }) => image.name === name).sources.reverse();
-    expect(() => assertReviewedBatchPins(changedOrder)).toThrow("ordered upstream sources drift");
-  });
-
-  it("refuses missing or duplicate reviewed-batch declarations", () => {
-    expect(() => assertReviewedBatchPins(ownedConfig(), batchSource.replace("const managedDigest =", "const renamedDigest ="))).toThrow("exactly one");
-    expect(() => assertReviewedBatchPins(ownedConfig(), `${batchSource}\n${batchSource}`)).toThrow("exactly one");
+  it("keeps reviewed-batch pins and source lists in the JSON reader only", () => {
+    assertSingleOwner(batchSource);
+    expect(batchSource).toContain('readCiImage("test-postgres")');
+    expect(batchSource).toContain('readCiImage("managed-batch-postgres")');
+    expect(() => assertSingleOwner(`${batchSource}\nconst digest = "${digest}";`)).toThrow();
+    expect(() => assertSingleOwner(`${batchSource}\nconst sources = ["docker.io/library/postgres"];`)).toThrow();
   });
 
   it("reads exactly one literal CLI pin, including the actual pgTAP workflow", () => {
@@ -68,12 +41,12 @@ describe("CI image derivation and digest preservation", () => {
     }
   });
 
-  it("derives only included bootstrap services plus the binary's unique pg_prove tag", () => {
+  it("retains every schema-init image despite service exclusions, plus the binary pg_prove tag", () => {
     const derived = cliImages(services, binary, pgtapSource);
     expect(derived.map(({ repository, tag }) => `${repository}:${tag}`)).toEqual([
-      "supabase/postgres:1.2.3", "supabase/pg_prove:3.36",
+      "supabase/postgres:1.2.3", "supabase/gotrue:1.2.3", "supabase/realtime:1.2.3", "supabase/storage-api:1.2.3", "supabase/pg_prove:3.36",
     ]);
-    expect(derived).toEqual([{ repository: "supabase/postgres", tag: "1.2.3" }, { repository: "supabase/pg_prove", tag: "3.36" }]);
+    expect(derived).toEqual([...services.map(({ name, local }) => ({ repository: name, tag: local })), { repository: "supabase/pg_prove", tag: "3.36" }]);
     for (const invalid of [services.slice(1), [...services, services[0]], [{ ...services[0], local: undefined }, ...services.slice(1)]]) {
       expect(() => cliImages(invalid, binary, pgtapSource)).toThrow("exactly one local");
     }
@@ -83,7 +56,12 @@ describe("CI image derivation and digest preservation", () => {
   });
 
   it("derives exclusions from pgTAP without weakening service, registry or binary refusals", () => {
-    expect(cliImages(services, binary, pgtapSource.replace('"gotrue,', '"'))[1].repository).toBe("supabase/gotrue");
+    expect(cliImages(services, binary, pgtapSource.replace('"gotrue,', '"'))).toEqual(cliImages(services, binary, pgtapSource));
+    const runtime = { name: "postgrest/postgrest", local: "v14.10" };
+    expect(cliImages([...services, runtime], binary, pgtapSource)).toHaveLength(5);
+    for (const name of ["postgrest", "kong", "mailpit", "imgproxy", "vector"]) {
+      expect(() => cliImages([...services, runtime], binary, pgtapSource.replace(`${name},`, ""))).toThrow("uncovered runtime image");
+    }
     expect(() => cliImages(services.slice(0, -1), binary, pgtapSource)).toThrow("exactly one local");
     for (const invalid of ["", pgtapSource + pgtapSource, pgtapSource.replace('"gotrue,', '"postgres,gotrue,'),
       pgtapSource.replace('"gotrue,', '"gotrue,gotrue,'), pgtapSource.replace('"--exclude", excluded', '"--exclude", other')]) {
@@ -103,7 +81,10 @@ describe("CI image derivation and digest preservation", () => {
     }
   });
 
-  it("accepts only repository/tag pairs and constructs upstreams in the writer", () => {
+  it("accepts exactly the five derived repositories and constructs upstreams in the writer", () => {
+    const derived = cliImages(services, binary, pgtapSource);
+    expect(plannedImages(JSON.stringify(derived)).map(({ repository }) => repository)).toEqual(derived.map(({ repository }) => repository));
+    expect(() => plannedImages(JSON.stringify([...derived, { repository: "supabase/migra", tag: "3.0" }]))).toThrow("invalid CLI image plan");
     expect(plannedImages(JSON.stringify([{ repository: "supabase/postgres", tag: "17.1" }]))).toEqual([
       { repository: "supabase/postgres", tag: "17.1", sources: ["public.ecr.aws/supabase/postgres", "docker.io/supabase/postgres"] },
     ]);
@@ -116,10 +97,11 @@ describe("CI image derivation and digest preservation", () => {
     const valid = { repository: "supabase/postgres", tag: "17.1" };
     const inputs = [
       "not JSON", "null", "{}", JSON.stringify([null]), JSON.stringify([[]]),
-      ...["supabase/unknown", "evil.io/supabase/postgres", "../supabase/postgres", "supabase/../postgres", "supabase/postgres/extra"]
+      ...["supabase/unknown", "supabase/migra", "supabase/postgres-meta", "supabase/studio", "supabase/edge-runtime", "evil.io/supabase/postgres", "../supabase/postgres", "supabase/../postgres", "supabase/postgres/extra"]
         .map((repository) => JSON.stringify([{ ...valid, repository }])),
-      ...["../17", "17/extra", "_17", "17:evil", "17@sha256:abc", "17; echo unsafe", "", "a".repeat(129), 17, null]
-        .map((tag) => JSON.stringify([{ ...valid, tag }])),
+      ...["supabase/postgres", "supabase/gotrue", "supabase/realtime", "supabase/storage-api", "supabase/pg_prove"].flatMap(repository =>
+        ["../17", "17/extra", "_17", "17:evil", "17@sha256:abc", "17; echo unsafe", "", "a".repeat(129), 17, null]
+          .map(tag => JSON.stringify([{ repository, tag }]))),
       ...["registry", "target", "digest", "sources"].map((field) => JSON.stringify([{ ...valid, [field]: "evil" }])),
       JSON.stringify([valid, valid]), JSON.stringify([valid, { repository: "supabase/pg_prove", tag: "3.36" }, valid]),
     ];

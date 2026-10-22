@@ -72,9 +72,11 @@ immutable release; see the [install support policy](../../.github/INSTALL_SUPPOR
 The CI image mirror workflow, dependency-free script and offline witnesses are
 public source outputs in the publication catalogue. Contributor checks own its
 default-branch execution and one-time package visibility/access setup; canonical
-contracts own the non-CLI pin inventory and its later consumer migration.
-The generated source bindings and navigation record these additions without
-claiming a registry publication or changing CI consumers.
+contracts own the non-CLI pin inventory and mirror-first consumer selection.
+The shared pull module, PostgreSQL helper and pgTAP pre-pull witnesses are public
+source outputs. Contributor checks own their bounded retry/fallback and CLI
+local-name reconciliation, including exact local reuse, the gate's shared pull path and remaining-budget
+Retry-After fall-through before non-GHCR fallback; generated bindings establish no registry publication.
 
 The platform package README remains its API entry point, with brief module
 summaries and preserved top-level anchors. Longer identity and communications

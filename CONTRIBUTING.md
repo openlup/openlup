@@ -140,15 +140,17 @@ with committed attacks. Missing Docker, PostgreSQL or pgTAP fails; the lexer is
 only a pre-filter. Fixtures under `scripts/fixtures/reviewed-m10/` are inert
 approval snapshots and do not join an installation manifest. Root test discovery
 already includes both suites; no extra runner or optional skip is introduced.
-The M10 gate's external CI image dependencies are PG16
-`sha256:9e2cf6287f25c3151f4c9421ccce2b17f3e60061c111a29165e0d2cdd9ff0a97`
-(Docker Hub library → ECR Docker Library) and Supabase PG17
-`sha256:b15d862126dd2dac02da524696ccfde2dcce2ceaee0a58973b2727befe492706`
-(ghcr `17.11.0.004` → Docker Hub → ECR), in that source order with the same
-digest at each source. The gate verifies the pulled RepoDigest; only transient
-pull failures retry, at most three attempts per source within a total 120-second
-pull budget, honouring Retry-After up to that budget. Inspection, container and
-SQL failures are not retried; exhausting the sources fails loudly without a skip.
+The M10 gate reads its native PG16 and managed Supabase PG17 pins from
+[the CI image inventory](config/ci-images.json), with mirror-first fallback as
+specified in [CI image mirror](#ci-image-mirror). The gate
+uses the shared pull module to reuse an exact local pin or verify the pulled
+RepoDigest. Transient pulls retry at most three attempts per source within a
+300-second pull budget; each attempt gets the remaining budget. Retry-After
+above the source's share of remaining time advances to the next source;
+otherwise waits are capped at five seconds. An unavailable mirror advances
+immediately. Inspection, container-start (except the shared helper's existing
+port-rebind retry) and SQL failures are outside the pull retry; exhausting
+sources fails without a skip.
 
 
 Subscription package contract changes use package-local contract, identity and
@@ -524,15 +526,66 @@ The separate [CI image mirror](.github/workflows/mirror-ci-images.yml) runs in
 dispatch from `main`. The workflow lists the six derivation input paths explicitly.
 Its read-only plan job derives only repository/tag pairs and validates the four Supabase
 bootstrap service tags with the pgTAP job's
-single pinned CLI and rendered reference Supabase config, then omits services
-in the exclusion list read directly from `scripts/public-ci-pgtap.mjs`.
-The remaining database image and `pg_prove` from that CLI binary are mirrored.
+single pinned CLI and rendered reference Supabase config, then checks the exclusion list read directly from `scripts/public-ci-pgtap.mjs`
+for uncovered runtime images. Exclusions remove long-running services, but not
+the enabled GoTrue, Realtime and Storage API schema-init jobs. Those three images,
+the database image and `pg_prove` from that CLI binary are mirrored.
 Missing or ambiguous exclusions, service tags, CLI pins or binary tags refuse
 derivation. [The non-CLI pins](config/ci-images.json) cover install-proof
 PostgreSQL, the test harness default and the managed-batch gate database.
-Consumers move onto this inventory and the mirror in a later change. Until
-then, a Docker-free guard reads the reviewed-batch test's literal digests and
-ordered upstream sources and requires exact equality with the JSON pins.
+The reviewed-batch gate and shared PostgreSQL test helper read these JSON pins
+through [the shared reader and pull loop](scripts/ci-image-pull.mjs). The reader
+imports the JSON module directly so the same pins load in plain Node and both
+Vitest projects, including jsdom. They try
+the organization mirror first, then the existing upstream order with the same
+digest: managed uses GHCR, Docker Hub, ECR; native uses Docker Hub, ECR.
+The helper's default is the pinned test PostgreSQL image; explicit images retain
+their behavior unless they exactly match an inventory pin. Shared acquisition
+first inspects every source locally and reuses only an exact pinned index digest;
+absent or nonmatching pins require pulling, while daemon/inspection errors refuse.
+It resolves once per process per exact input reference before port retries, then
+runs the successful
+reference with `--pull=never`. Explicit pinned overrides first verify the exact
+local RepoDigest, avoiding a second pull phase after the gate resolves its image. Failed
+resolutions are evicted from that process cache.
+The gate, helper and pgTAP runner use the same pull implementation. It tries at
+most three times per source within a 300-second pull budget measured with a
+monotonic clock. Each pull receives the remaining budget, clamped to at least
+one millisecond; there is no separate per-attempt cap that could repeatedly
+cancel a cold, non-resumable layer. This leaves about half the gate's 600-second
+hook for startup and the migration prefix. `IMAGE_PULL_BUDGET_MS` in the shared
+module owns that calibration; hosted cold-pull measurements can adjust it.
+Retry-After seconds and Go subsecond units above the current source's equal
+share of the remaining budget immediately advance to the next source.
+Otherwise 1s/2s minimum waits are capped at five seconds and the remaining budget;
+expiry prevents another pull. Backoff adds at most 10 seconds per failed source
+(30s native or 40s managed/pgTAP per image), all inside the pull budget. There
+are at most nine native or twelve managed/pgTAP pulls per image.
+The shared loop retries transport, context-deadline, killed process timeout,
+registry 5xx and 429 failures. Mirror not-found,
+denied or unauthorized errors immediately fall through without retry. An empty
+or private mirror therefore needs no login and does not by itself fail CI.
+Local daemon/disk/malformed failures, upstream non-transient errors and pinned
+RepoDigest mismatches refuse rather than silently selecting another image.
+The gate's offline guard rejects literal digest pins or registry source lists.
+
+The pgTAP runner reuses mirror CLI derivation for Postgres, GoTrue, Realtime, Storage API and `pg_prove`, pulls
+before `supabase start`, and tries mirror, GHCR, ECR, then Docker Hub by derived tag. CLI tags
+have no inventory digest; local reuse requires the exact tag that the CLI will
+request, while any available derived digest requires exact index equality. The
+selected registry is passed explicitly to start/test/stop with
+`SUPABASE_INTERNAL_IMAGE_REGISTRY`, overriding setup-cli's GHCR default. When
+images succeed at different registries, the first image's successful registry
+wins; local tag aliases make every exact CLI-requested name available without
+additional pulls. Docker Hub retains the original `supabase/<name>:<tag>`;
+other registries request `<registry>/supabase/<name>:<tag>`, matching CLI 2.98.2.
+After aliasing, the runner inspects every exact requested name from the same
+five-image derivation. Any missing names refuse before `supabase start` and are
+reported together; only `No such image` counts as absence, while other inspect
+errors refuse directly. Offline lifecycle tests cover present, missing and
+mixed-registry names, so the CLI never needs to pull. No upstream push or registry
+write occurs. Other launchers and the
+install-proof service retain their existing acquisition behavior.
 An upstream source may retain an explicit tag only when it matches its JSON tag;
 resolution preserves that spelling and always verifies the pinned digest.
 The script resolves upstream tags to digests, copies complete indexes to
@@ -556,8 +609,8 @@ GHCR creates packages private). After the first authorized run, for each package
 under **openlup → Packages**, use **Connect repository → openlup/openlup**; in
 **Package settings → Manage Actions access**, add that repository with **Write**
 access if inheritance does not already grant it. Under **Danger Zone → Change
-visibility**, select **Public** and confirm. Check anonymous pulls before moving
-consumers. `GITHUB_TOKEN` cannot make a package public; linking a public
+visibility**, select **Public** and confirm. Check anonymous mirror pulls after making packages public; consumers already
+fall back while packages are absent or private. `GITHUB_TOKEN` cannot make a package public; linking a public
 repository does not change package visibility. See GitHub's
 [package access and visibility procedure](https://docs.github.com/en/packages/learn-github-packages/configuring-a-packages-access-control-and-visibility)
 and [repository linking procedure](https://docs.github.com/en/packages/learn-github-packages/connecting-a-repository-to-a-package).

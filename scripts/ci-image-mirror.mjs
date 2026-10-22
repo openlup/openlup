@@ -7,10 +7,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 
+export const MIRROR_REGISTRY = "ghcr.io/openlup";
+
 const tagPattern = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u;
 const repositoryPattern = /^[a-z0-9]+(?:[._-][a-z0-9]+)*(?:\/[a-z0-9]+(?:[._-][a-z0-9]+)*)+$/u;
 const digestPattern = /^sha256:[a-f0-9]{64}$/u;
 const cliRepositories = ["supabase/postgres", "supabase/gotrue", "supabase/realtime", "supabase/storage-api"];
+const plannedRepositories = [...cliRepositories, "supabase/pg_prove"];
 
 export function cliPin(workflow) {
   // Accept the repository's literal step format only; refuse expressions, duplicate steps or pins.
@@ -28,6 +31,13 @@ export function cliImages(services, binary, pgtapSource) {
   if (exclusions.length !== 1 || (pgtapSource.match(/"--exclude", excluded/gu) ?? []).length !== 1) throw new Error("expected exactly one literal pgTAP exclusion list and use");
   const excluded = new Set(exclusions[0][1].split(","));
   if (excluded.has("postgres") || excluded.size !== exclusions[0][1].split(",").length) throw new Error("invalid pgTAP exclusion list");
+  // CLI e4a7ace: internal/start/start.go:218-246 filters running services only.
+  // Refuse a broader startup set: services omits kong/mailpit/imgproxy/vector.
+  if ([...services.map((service) => service.name).filter((name) => !cliRepositories.includes(name)),
+    "library/kong", "axllent/mailpit", "darthsim/imgproxy", "timberio/vector"]
+    .some((name) => typeof name !== "string" || !excluded.has(name.split("/").at(-1)))) {
+    throw new Error("pgTAP exclusion list leaves an uncovered runtime image");
+  }
   const images = cliRepositories.map((repository) => {
     const entries = services.filter((service) => service.name === repository);
     if (entries.length !== 1 || typeof entries[0].local !== "string" || !tagPattern.test(entries[0].local)) throw new Error(`expected exactly one local service tag for ${repository}`);
@@ -36,18 +46,21 @@ export function cliImages(services, binary, pgtapSource) {
   const prove = [...new Set(binary.match(/supabase\/pg_prove:[0-9][0-9A-Za-z._-]+/gu))];
   if (prove.length !== 1) throw new Error("expected exactly one supabase/pg_prove tag in the CLI binary");
   images.push({ repository: "supabase/pg_prove", tag: prove[0].split(":")[1] });
-  return images.filter(({ repository }) => !excluded.has(repository.slice("supabase/".length)));
+  // CLI e4a7ace: internal/db/start/start.go:268-352 initializes enabled auth,
+  // realtime and storage with these images even when their services are excluded.
+  // The rendered reference config enables all three; never subtract --exclude.
+  return images;
 }
 
 // This is the write job's trust boundary: never accept registry, target or digest fields.
 export function plannedImages(input) {
   const images = JSON.parse(input);
-  if (!Array.isArray(images) || images.length > 2) throw new Error("invalid CLI image plan");
+  if (!Array.isArray(images) || images.length > plannedRepositories.length) throw new Error("invalid CLI image plan");
   const repositories = new Set();
   for (const image of images) {
     if (!image || typeof image !== "object" || Array.isArray(image)
       || Object.keys(image).sort().join(",") !== "repository,tag"
-      || !["supabase/postgres", "supabase/pg_prove"].includes(image.repository)
+      || !plannedRepositories.includes(image.repository)
       || typeof image.tag !== "string" || !tagPattern.test(image.tag)
       || repositories.has(image.repository)) throw new Error("invalid CLI image plan");
     repositories.add(image.repository);
@@ -107,7 +120,7 @@ export function resolveImage(image, registryInspect = inspect) {
     try { digest = registryInspect(ref); } catch (error) { failures.push(String(error.message)); continue; }
     if (digest === null) { failures.push(`missing ${ref}`); continue; }
     if (!digestPattern.test(digest) || (image.digest && digest !== image.digest)) throw new Error(`source digest mismatch: ${ref}`);
-    return { source: `${source}@${digest}`, target: `ghcr.io/openlup/${image.repository}:${image.tag}`, digest };
+    return { source: `${source}@${digest}`, target: `${MIRROR_REGISTRY}/${image.repository}:${image.tag}`, digest };
   }
   throw new Error(`no verified upstream for ${image.repository}:${image.tag}: ${failures.join("; ")}`);
 }
@@ -123,26 +136,32 @@ export function mirrorImage(image, registryInspect = inspect, copy = (source, ta
   return "copied and verified";
 }
 
-export function deriveCliImages(root) {
-  const version = cliPin(readFileSync(join(root, ".github/workflows/published-tree-ci.yml"), "utf8"));
-  if (command("supabase", ["--version"]).trim() !== version) throw new Error(`requires Supabase CLI ${version}`);
-  const directory = mkdtempSync(join(tmpdir(), "ci-image-mirror-"));
+export function deriveCliImages(root, directory) {
+  const temporary = directory === undefined;
+  // pgTAP checks its CLI version before passing its existing work directory.
+  if (temporary) {
+    const version = cliPin(readFileSync(join(root, ".github/workflows/published-tree-ci.yml"), "utf8"));
+    if (command("supabase", ["--version"]).trim() !== version) throw new Error(`requires Supabase CLI ${version}`);
+  }
+  directory ??= mkdtempSync(join(tmpdir(), "ci-image-mirror-"));
   try {
-    mkdirSync(join(directory, "supabase"));
-    // The same template as public-ci-pgtap.mjs; only disposable IDs/ports are rendered.
-    const values = { PROJECT_ID: "ci-image-mirror", SHADOW_PORT: 55300, API_PORT: 55301, DB_PORT: 55302,
-      STUDIO_PORT: 55303, MAIL_PORT: 55304, POOLER_PORT: 55309, APP_PORT: 55310 };
-    const config = readFileSync(join(root, "config/public-reference-subscription-supabase.toml"), "utf8")
-      .replace(/\{\{([A-Z_]+)\}\}/gu, (_, key) => {
-        if (!(key in values)) throw new Error(`unknown Supabase config placeholder: ${key}`);
-        return String(values[key]);
-      });
-    writeFileSync(join(directory, "supabase/config.toml"), config);
+    if (temporary) {
+      mkdirSync(join(directory, "supabase"));
+      // The same template as public-ci-pgtap.mjs; only disposable IDs/ports are rendered.
+      const values = { PROJECT_ID: "ci-image-mirror", SHADOW_PORT: 55300, API_PORT: 55301, DB_PORT: 55302,
+        STUDIO_PORT: 55303, MAIL_PORT: 55304, POOLER_PORT: 55309, APP_PORT: 55310 };
+      const config = readFileSync(join(root, "config/public-reference-subscription-supabase.toml"), "utf8")
+        .replace(/\{\{([A-Z_]+)\}\}/gu, (_, key) => {
+          if (!(key in values)) throw new Error(`unknown Supabase config placeholder: ${key}`);
+          return String(values[key]);
+        });
+      writeFileSync(join(directory, "supabase/config.toml"), config);
+    }
     const services = JSON.parse(command("supabase", ["services", "--workdir", directory, "-o", "json"]));
     const binary = readFileSync(command("which", ["supabase"]).trim()).toString("latin1");
     const pgtapSource = readFileSync(join(root, "scripts/public-ci-pgtap.mjs"), "utf8");
     return cliImages(services, binary, pgtapSource);
-  } finally { rmSync(directory, { recursive: true, force: true }); }
+  } finally { if (temporary) rmSync(directory, { recursive: true, force: true }); }
 }
 
 // Validate both inputs completely before the first exec or registry request.
