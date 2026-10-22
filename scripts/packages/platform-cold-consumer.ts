@@ -222,8 +222,6 @@ export function compileConsumer(consumer: string, entries: readonly string[], co
     writeFileSync(configuration, JSON.stringify({ compilerOptions: {
       target: "ES2022", module: mode === "NodeNext" ? "NodeNext" : "ESNext", moduleResolution: mode,
       strict: true, skipLibCheck: false, noEmit: true, types: ["node"],
-      // Reuse unchanged declaration checks; tsc still revalidates each mode's resolution and changed inputs.
-      incremental: true, tsBuildInfoFile: join(consumer, "consumer.tsbuildinfo"),
       typeRoots: [join(consumer, "node_modules/@types")],
     }, files: [file] }));
     process.stdout.write(command(process.execPath, [compiler, "-p", configuration], consumer));
