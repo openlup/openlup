@@ -22038,6 +22038,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/expandOnlyExpressions.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/feedbackMediaAuthority.test.ts",
       "class": "public-output"
     },

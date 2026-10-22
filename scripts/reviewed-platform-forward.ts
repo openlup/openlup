@@ -284,6 +284,152 @@ function assertFunctionStatements(bytes: Buffer, definitions: Map<string, string
   }
 }
 
+/** Account for structural parentheses first; every remaining identifier before `(` is an expression. */
+function expandOnlyExpressions(tokens: string[]): boolean {
+  const calls = new Set(["BTRIM", "GEN_RANDOM_UUID", "JSONB_TYPEOF", "LENGTH", "LOWER", "NOW", "TRANSLATE", "CHAR_LENGTH", "CLOCK_TIMESTAMP", "OCTET_LENGTH"]);
+  const constructs = new Set(["IN", "AND", "OR", "NOT", "COALESCE", "NULLIF", "CAST"]);
+  const modifiers = new Set(["NUMERIC", "DECIMAL", "VARCHAR", "CHAR", "CHARACTER", "BIT", "VARBIT", "TIMESTAMP", "TIMESTAMPTZ", "TIME", "TIMETZ", "INTERVAL"]);
+  const identifier = (token = "") => /^[A-Z_][A-Z0-9_]*$/u.test(token) || token.startsWith('"');
+  const structural = new Set<number>(), qualified = new Set<number>(), arrays = new Set<number>(), closing = new Map<number, number>();
+  const stack: number[] = [];
+  for (const [index, token] of tokens.entries()) {
+    // Refuse constructors/subscripts before any comma splitter; only empty type brackets remain.
+    if ((token === "[" && tokens[index + 1] !== "]") || (token === "]" && tokens[index - 1] !== "[")) return false;
+    if (token === "(") stack.push(index);
+    if (token === ")") { const open = stack.pop(); if (open === undefined) return false; closing.set(open, index); }
+  }
+  if (stack.length) return false;
+  // Object/column type names are outside expression regions. Preserve their dots separately.
+  const nameEnd = (start: number) => {
+    if (!identifier(tokens[start])) return -1;
+    let end = start + 1;
+    while (tokens[end] === ".") {
+      if (!identifier(tokens[end + 1])) return -1;
+      qualified.add(end); end += 2;
+    }
+    return end;
+  };
+  const typeModifier = (start: number) => {
+    let end = nameEnd(start);
+    if (end < 0) return false;
+    if (tokens[end] === "(" && modifiers.has(tokens[end - 1]!) && (end === start + 1 || (end === start + 3 && tokens[start] === "PG_CATALOG"))) {
+      structural.add(end);
+      if (!tokens.slice(end + 1, closing.get(end)).every((token) => token === "<literal>" || token === ",")) return false;
+      end = closing.get(end)! + 1;
+    }
+    if (tokens[end] === "(") return false;
+    while (tokens[end] === "[" && tokens[end + 1] === "]") { arrays.add(end); arrays.add(end + 1); end += 2; }
+    return true;
+  };
+  const indexStatement = tokens[1] === "INDEX" || (tokens[1] === "UNIQUE" && tokens[2] === "INDEX");
+  let open: number;
+  if (indexStatement) {
+    const object = tokens[1] === "UNIQUE" ? 3 : 2;
+    const on = nameEnd(tokens.slice(object, object + 3).join(" ") === "IF NOT EXISTS" ? object + 3 : object);
+    if (on < 0 || tokens[on] !== "ON") return false;
+    open = nameEnd(on + 1);
+    if (open < 0) return false;
+    if (tokens[open] === "USING") {
+      if (!identifier(tokens[open + 1])) return false;
+      open += 2;
+    }
+  } else if (tokens[0] === "CREATE") {
+    open = nameEnd(tokens.slice(2, 5).join(" ") === "IF NOT EXISTS" ? 5 : 2);
+  } else {
+    const add = nameEnd(2);
+    if (add < 0 || tokens[add] !== "ADD") return false;
+    open = -1;
+  }
+  if (tokens[0] === "CREATE" && (open < 0 || tokens[open] !== "(")) return false;
+  if (open >= 0) structural.add(open);
+
+  if (indexStatement) {
+    const end = closing.get(open);
+    if (end === undefined) return false;
+    // A key is one column, call or parenthesized expression, followed only by ordering.
+    for (let start = open + 1; start < end;) {
+      let keyEnd = start + 1;
+      if (tokens[start] === "(") keyEnd = closing.get(start)! + 1;
+      else {
+        while (tokens[keyEnd] === ".") keyEnd += 2;
+        if (tokens[keyEnd] === "(") keyEnd = closing.get(keyEnd)! + 1;
+        else if (!identifier(tokens[start])) return false;
+      }
+      let next = keyEnd;
+      while (next < end && tokens[next] !== ",") next++;
+      if (!/^(?:(?:ASC|DESC)(?: |$))?(?:NULLS (?:FIRST|LAST))?$/u.test(tokens.slice(keyEnd, next).join(" "))) return false;
+      start = next + 1;
+    }
+    // INCLUDE column lists and storage parameters are structural, not calls.
+    let suffix = end + 1;
+    for (const clause of ["INCLUDE", "WITH"]) {
+      if (tokens[suffix] !== clause) continue;
+      if (tokens[suffix + 1] !== "(") return false;
+      structural.add(suffix + 1);
+      const close = closing.get(suffix + 1)!;
+      if (clause === "INCLUDE" && !/^[A-Z_][A-Z0-9_]*(?: , [A-Z_][A-Z0-9_]*)*$/u.test(tokens.slice(suffix + 2, close).map((token) => token.startsWith('"') ? token.slice(1, -1) : token).join(" "))) return false;
+      suffix = close + 1;
+    }
+    if (suffix < tokens.length && tokens[suffix] !== "WHERE") return false;
+  } else {
+    const end = open >= 0 ? closing.get(open) : tokens.length;
+    if (end === undefined) return false;
+    for (let start = open >= 0 ? open + 1 : nameEnd(2); start < end;) {
+      let next = start;
+      while (next < end && tokens[next] !== ",") next = tokens[next] === "(" ? closing.get(next)! + 1 : next + 1;
+      let column = start;
+      if (open < 0) {
+        if (tokens[column++] !== "ADD") return false;
+        if (tokens[column] === "COLUMN") column++;
+        if (tokens.slice(column, column + 3).join(" ") === "IF NOT EXISTS") column += 3;
+      }
+      const constraint = ["CONSTRAINT", "PRIMARY", "FOREIGN", "UNIQUE", "CHECK"].includes(tokens[column]!);
+      if (!constraint && (!identifier(tokens[column]) || !typeModifier(column + 1))) return false;
+      // Start after the column/type or constraint name, never at a keyword-shaped column name.
+      let index = constraint ? column : nameEnd(column + 1);
+      if (tokens[index] === "CONSTRAINT") {
+        if (!identifier(tokens[index + 1])) return false;
+        index += 2;
+      }
+      for (; index < next; index++) {
+        const token = tokens[index];
+        if (token === "REFERENCES") {
+          const targetEnd = nameEnd(index + 1);
+          if (targetEnd < 0) return false;
+          if (tokens[targetEnd] === "(") structural.add(targetEnd);
+          index = targetEnd - 1;
+        }
+        if ((token === "CHECK" || token === "UNIQUE" || (token === "KEY" && ["PRIMARY", "FOREIGN"].includes(tokens[index - 1]!))) && tokens[index + 1] === "(") structural.add(index + 1);
+        if (token === "GENERATED") {
+          const as = tokens[index + 1] === "ALWAYS" ? index + 2 : tokens.slice(index + 1, index + 3).join(" ") === "BY DEFAULT" ? index + 3 : -1;
+          if (as < 0 || tokens[as] !== "AS") return false;
+          const expression = tokens[as + 1] === "IDENTITY" ? as + 2 : as + 1;
+          if (tokens[expression] === "(") structural.add(expression);
+          index = expression - 1;
+        }
+        if (token === "(") index = closing.get(index)!;
+      }
+      start = next + 1;
+    }
+  }
+  for (const [index, token] of tokens.entries()) {
+    if ((token === "[" || token === "]") && !arrays.has(index)) return false;
+    if (token === "CAST" && tokens[index + 1] === "(") {
+      const end = closing.get(index + 1)!;
+      let as = index + 2;
+      while (as < end && tokens[as] !== "AS") as = tokens[as] === "(" ? closing.get(as)! + 1 : as + 1;
+      if (as === end) return false;
+      if (tokens[as + 2] === "." && (tokens[as + 1] !== "PG_CATALOG" || tokens[as + 4] === ".")) return false;
+      if (!typeModifier(as + 1)) return false;
+    }
+    if (token === "." && !qualified.has(index) && !(tokens[index - 1] === "PG_CATALOG" && calls.has(tokens[index + 1]!) && tokens[index + 2] === "(" && tokens[index - 2] !== ".")) return false;
+    if (token !== "(" || structural.has(index) || !identifier(tokens[index - 1])) continue;
+    const previous = tokens[index - 1]!;
+    if (!calls.has(previous) && !(tokens[index - 2] !== "." && constructs.has(previous))) return false;
+  }
+  return true;
+}
+
 /** A deliberately bounded SQL admission check, not a general SQL interpreter.
  * Refuses control characters other than tab and line feed (PostgreSQL also ends a `--` comment at a carriage return, so no classifier models line ends differently); procedural/dynamic SQL also refuses.
  * Existing SQL is frozen, so only new forwards pass through this predicate.
@@ -293,7 +439,9 @@ export function isExpandOnlyPlatformForward(sql: string, reviewedCreationTable =
   const tokens: string[] = [];
   for (let index = 0; index < sql.length;) {
     const rest = sql.slice(index);
-    if (/^\s/u.test(rest)) { index++; continue; }
+    // PostgreSQL treats non-ASCII bytes as identifier characters, not separators.
+    if (!reviewedCreationTable && rest.charCodeAt(0) > 0x7f) return false;
+    if ((reviewedCreationTable ? /^\s/u : /^[ \t\n]/u).test(rest)) { index++; continue; }
     if (rest.startsWith("--")) { const end = sql.indexOf("\n", index); index = end < 0 ? sql.length : end; continue; }
     if (rest.startsWith("/*")) {
       let depth = 1; index += 2;
@@ -308,6 +456,7 @@ export function isExpandOnlyPlatformForward(sql: string, reviewedCreationTable =
     if (rest[0] === "'" || rest[0] === '"') {
       const quote = rest[0]; let value = "", closed = false; index++;
       while (index < sql.length) {
+        if (!reviewedCreationTable && quote === '"' && sql.charCodeAt(index) > 0x7f) return false;
         if (sql[index] === "\\") return false; // Refuse escape-string ambiguity.
         if (sql[index] === quote) {
           if (sql[index + 1] === quote) { value += quote; index += 2; continue; }
@@ -316,7 +465,8 @@ export function isExpandOnlyPlatformForward(sql: string, reviewedCreationTable =
         value += sql[index++];
       }
       if (!closed) return false;
-      tokens.push(quote === "'" ? "<literal>" : value.toUpperCase()); continue;
+      if (!reviewedCreationTable && quote === '"' && value === ";") return false; // Preserve the original delimiter refusal.
+      tokens.push(quote === "'" ? "<literal>" : reviewedCreationTable ? value.toUpperCase() : `"${value.toUpperCase()}"`); continue;
     }
     const word = /^[A-Za-z_][A-Za-z0-9_]*/u.exec(rest)?.[0];
     if (word) { tokens.push(word.toUpperCase()); index += word.length; continue; }
@@ -328,8 +478,31 @@ export function isExpandOnlyPlatformForward(sql: string, reviewedCreationTable =
   const statements: string[][] = [[]];
   for (const token of tokens) { if (token === ";") statements.push([]); else statements.at(-1)!.push(token); }
   const nonempty = statements.filter((statement) => statement.length);
-  return nonempty.length > 0 && nonempty.every((statement) => {
+  return nonempty.length > 0 && nonempty.every((quoted) => {
+    const statement = reviewedCreationTable ? quoted : quoted.map((token) => token.startsWith('"') ? token.slice(1, -1) : token);
     const text = statement.join(" ");
+    if (!reviewedCreationTable) {
+      if (quoted.includes("OPERATOR") || quoted.some((token, index) => token === "OWNED" && quoted[index + 1] === "BY")) return false;
+      if (/^INSERT INTO /u.test(text)) {
+        const values = quoted.indexOf("VALUES"), conflict = quoted.indexOf("ON", values);
+        if (!/^INSERT INTO [A-Z_][A-Z0-9_]*(?: \. [A-Z_][A-Z0-9_]*)*(?: \( [A-Z_][A-Z0-9_]*(?: , [A-Z_][A-Z0-9_]*)* \))? VALUES$/u.test(quoted.slice(0, values + 1).join(" "))) return false;
+        if (!/ ON CONFLICT(?: \( [A-Z_][A-Z0-9_]*(?: , [A-Z_][A-Z0-9_]*)* \)| ON CONSTRAINT [A-Z_][A-Z0-9_]*)? DO NOTHING$/u.test(quoted.join(" "))) return false;
+        if (!quoted.slice(values + 1, conflict).every((token) => ["<literal>", "TRUE", "FALSE", "NULL", "(", ")", ",", "+", "-"].includes(token))) return false;
+      }
+      if (/^CREATE SCHEMA /u.test(text) && !/^CREATE SCHEMA (?:IF NOT EXISTS )?[A-Z_][A-Z0-9_]*$/u.test(quoted.join(" "))) return false;
+      if (/^(?:CREATE (?:UNIQUE )?(?:TABLE|INDEX)|ALTER TABLE) /u.test(text)) {
+        // No evaluated forward uses LIKE, including its expression-operator form.
+        if (quoted.includes("LIKE") || quoted.some((token, index) => token === "PARTITION" && quoted[index + 1] === "OF")) return false;
+        if (!expandOnlyExpressions(quoted)) return false;
+        let depth = 0;
+        for (const token of quoted) {
+          if (token === "(") depth++;
+          if (token === ")") depth--;
+          if (quoted[0] === "CREATE" && quoted[1] === "TABLE" && depth === 0 && token === "AS") return false;
+        }
+      } else if (quoted.includes("[") || quoted.includes("]")) return false;
+    }
+    // Base admission remains unchanged; the expand-only checks above only add refusals.
     // Pinned new tables use scalar operators/casts and these foreign-key actions.
     // Mask only those actions, leaving standalone DELETE/SET and every other refusal intact.
     const checked = reviewedCreationTable && /^CREATE TABLE /u.test(text) ? text.replace(/ ON DELETE (?:CASCADE|SET NULL)(?= |$)/gu, "").split(" ") : statement;

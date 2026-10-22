@@ -1052,6 +1052,26 @@ edits, deletions and mode changes to existing managed or portable migrations,
 backdated versions, unbound portable forwards and non-expand-only new SQL.
 The portable manifest must preserve its prior baseline and forward prefix.
 The CLI returns a failing exit when this comparison refuses a candidate.
+Expand-only expression admission is covered by the predicate cases and the pinned
+portable-chain admitted set in `scripts/source-preview-release.test.ts`;
+`tests/postgres/expandOnlyExpressions.test.ts` separately executes refused forms
+on disposable PostgreSQL 16 and observes their effects before rollback. The
+classifier admits only listed expression calls and accounted structural
+parentheses at verified object, column/type and constraint positions. Keyword-shaped
+names do not skip expression checks. Seed INSERTs require VALUES immediately
+after the target and optional plain column list; schemas take no schema elements,
+and expand-only statements take no OWNED BY clause. These tests do not broaden
+the separately reviewed creation class. Seed literal checks preserve identifier
+quotes, and type-position parentheses require a listed built-in modifier type.
+All base checks remain required after the additional refusal checks. Empty `[]`
+suffixes are accepted only at verified type positions; array constructors and
+subscripts refuse before element splitting. PG16 witnesses include a quoted
+typed literal before a sequence call, an `if` column with a default call, and
+a domain check inside an array default evaluated by a seed INSERT.
+Expand-only token separators are ASCII space, tab and LF; non-ASCII outside
+single-quoted literals and comments refuses, including in quoted identifiers.
+The PG16 identifier-boundary witness observes a call after a name containing
+non-ASCII bytes is truncated to PostgreSQL's 63-byte identifier limit.
 This database-free comparison does not derive the live object inventory digest.
 The source contract continues to bind the manifest bytes, and the portable
 runner compares `objectInventorySha256` with the selected database catalogue
