@@ -64,7 +64,7 @@ The maintained factory is explicitly registered through
 egress. That trusted host bridge must only register policy-enforcing senders;
 it adds no routing or credential change. Auth keeps that admission through
 `createAuthEmailTransport`, preserving the original envelope mapping. See the
-[package contract](../../../packages/platform/README.md#communications-import)
+[package contract](../../../docs/platform/PLATFORM_PACKAGE_REFERENCE.md#communications-import)
 for decision fields and the M04 changed-expectation ledger.
 
 ## Current source wiring

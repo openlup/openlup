@@ -170,7 +170,7 @@ host-injected; no managed/vendor path is replaced. The
 [callable native composition](../runtime/communications/communicationsLifecycleBinding.ts)
 adds no process or route activation. [Real-PG proof](../../tests/postgres/communicationsNative.test.ts)
 covers durable effects, concurrency, token/ACL refusals and rollback; the
-[package guide](../../packages/platform/README.md#native-communications-operations-development-preview)
+[package guide](../../docs/platform/PLATFORM_PACKAGE_REFERENCE.md#native-communications-operations-development-preview)
 defines the bounded consent guarantee and schema prerequisite.
 
 The C-compose [native preference adapter](postgres/communicationPreferences.ts)
