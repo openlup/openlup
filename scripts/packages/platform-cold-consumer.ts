@@ -11,6 +11,8 @@ import { assertInstalledPackages, isolatedConsumerEnv, readCurrentPackManifest }
 import { POSTGRES_PROOF_IMAGE } from "./outbox-disposable-postgres.ts";
 
 export const NON_ADAPTER_ENTRIES = [
+  "subscriptions",
+  "subscriptions/contracts",
   "fulfillment",
   "fulfillment/contracts",
   "payments",
@@ -156,7 +158,31 @@ assert.deepEqual(readFulfillmentCapabilities([], null), {kind:"refused",refusal:
 `);
 }
 
-/** Offline installed payments trial with host-owned persistence and refusal policy. */
+/** Offline installed subscription trial with host-owned policies and refusal declarations. */
+export function proveSubscriptionsConsumer(consumer: string): void {
+  consumerNode(consumer, `
+import assert from "node:assert/strict";
+import { renewalIdentity, NATIVE_SUBSCRIPTION_CAPABILITIES, executeRenewalCycle, prepareRenewalAttempt, checkRenewalDeliveryAdmission, propagateRenewalFailure } from "@openlup/platform/subscriptions";
+import * as contracts from "@openlup/platform/subscriptions/contracts";
+assert.deepEqual(Object.keys(contracts), []);
+assert.equal(NATIVE_SUBSCRIPTION_CAPABILITIES.defaultEnabled, false);
+assert.equal(NATIVE_SUBSCRIPTION_CAPABILITIES.executorCount, 1);
+for (const [capability, refusalCode] of [
+  ["multiCyclePrepaid", "multi_cycle_prepaid_unsupported"],
+  ["genericBundleCommands", "native_generic_bundle_commands_unsupported"],
+  ["commandBoundReceipts", "native_command_bound_receipts_unsupported"],
+  ["preparedAttemptStore", "native_prepared_attempt_store_unsupported"],
+]) assert.deepEqual(NATIVE_SUBSCRIPTION_CAPABILITIES[capability], {supported:false,refusalCode});
+const input = {subscriptionId:"subscription",scheduledAt:"2026-10-21T14:00:00+02:00",scheduledInstant:1792584000000};
+const identity = {cycleIdempotencyKey:"original:cycle",executionIdempotencyKey:"original:execute",externalIdempotencyKey:"original:external",requestFingerprint:"original:fingerprint"};
+assert.equal(renewalIdentity(input, value => { assert.equal(value,input); return identity; }), identity);
+for (const mechanism of [executeRenewalCycle, prepareRenewalAttempt, propagateRenewalFailure]) assert.equal(typeof mechanism,"function");
+const allowed={allowed:true,state:"clear",reason:"synthetic"};
+assert.equal((await checkRenewalDeliveryAdmission({admitDeliveryAlignment:async value=>{assert.equal(value.scheduledAt,input.scheduledAt);return allowed;}},{subscriptionId:input.subscriptionId,nextCycleAt:input.scheduledAt},"now")).admitted,allowed);
+console.log("subscriptions consumer passed");
+`);
+}
+
 export function provePaymentsConsumer(consumer: string): void {
   consumerNode(consumer, `
 import assert from "node:assert/strict";
@@ -1052,6 +1078,7 @@ assert.throws(() => promotions.resolvePromotionBenefitDefinition({ discount_type
     provePaymentAdapterConsumer(consumer);
     proveWarehouseAdapterConsumer(consumer);
     proveMarketingSyncConsumer(consumer);
+    proveSubscriptionsConsumer(consumer);
     provePaymentsConsumer(consumer);
     proveFulfillmentConsumer(consumer);
     installA1HostBinding(consumer, checkout);

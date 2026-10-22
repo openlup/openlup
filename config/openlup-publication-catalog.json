@@ -1278,6 +1278,10 @@
       "class": "public-output"
     },
     {
+      "path": "docs/platform/plans/oss-m10-subscriptions-renewal-dunning.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/public-ci-completeness.md",
       "class": "platform-documentation"
     },
@@ -2399,6 +2403,14 @@
     },
     {
       "path": "packages/platform/api/shipping.api.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/api/subscriptions-contracts.api.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/api/subscriptions.api.md",
       "class": "public-output"
     },
     {
@@ -4690,6 +4702,50 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/subscriptions/contracts/commands.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/subscriptions/contracts/dunning.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/subscriptions/contracts/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/subscriptions/contracts/messages.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/subscriptions/contracts/renewal.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/subscriptions/contracts/stockWait.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/subscriptions/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/subscriptions/renewalCycleFailureMechanism.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/subscriptions/renewalCycleMechanism.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/subscriptions/renewalCycleRefusalMechanism.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/subscriptions/renewalIdentity.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/bff/dispatch.test.ts",
       "class": "public-output"
     },
@@ -5787,6 +5843,22 @@
     },
     {
       "path": "packages/platform/test/shipping/shippingRateConformance.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/subscriptions/contracts.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/subscriptions/portFit.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/subscriptions/renewalCycleMechanism.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/subscriptions/renewalKeys.test.ts",
       "class": "public-output"
     },
     {
@@ -22731,6 +22803,10 @@
     },
     {
       "path": "tests/postgres/shippingNative.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/subscriptionContinuityBaseline.test.ts",
       "class": "public-output"
     },
     {

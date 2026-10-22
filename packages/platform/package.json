@@ -210,6 +210,16 @@
       "types": "./dist/fulfillment/omnipack/index.d.ts",
       "import": "./dist/fulfillment/omnipack/index.js",
       "default": "./dist/fulfillment/omnipack/index.js"
+    },
+    "./subscriptions": {
+      "types": "./dist/subscriptions/index.d.ts",
+      "import": "./dist/subscriptions/index.js",
+      "default": "./dist/subscriptions/index.js"
+    },
+    "./subscriptions/contracts": {
+      "types": "./dist/subscriptions/contracts/index.d.ts",
+      "import": "./dist/subscriptions/contracts/index.js",
+      "default": "./dist/subscriptions/contracts/index.js"
     }
   },
   "repository": {

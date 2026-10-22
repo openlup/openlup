@@ -76,6 +76,12 @@ which the publication catalogue includes in the public source tree rather than
 the npm artifact. Detailed recipe links point there directly; existing identity,
 runtime and package ownership routes remain unchanged.
 
+Subscription source, contract witnesses and generated subscription API reports
+route to the [subscription architecture owner](ARCHITECTURE_AND_EXTENSIONS.md#subscription-contracts).
+The package README links the exact export and refusal surface in that owner;
+canonical contracts own continuity and payment-evidence meaning. Navigation describes this
+contract step without implying that later stores or a runner are installed.
+
 Release preparation inventories core, outbox and platform changelog histories as
 public source documentation. These verbatim archives remain outside the npm
 artifacts; each packed changelog retains the current and two previous releases.

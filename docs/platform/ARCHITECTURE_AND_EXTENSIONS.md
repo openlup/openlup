@@ -1087,3 +1087,73 @@ declared adaptations and boundaries. The
 cover persistence and refusal behavior. Callable orchestration, native stores
 and the durable command protocol mount no provider adapter, executor or route;
 reference composition and activation remain host choices.
+
+## Subscription contracts
+
+Place server orchestration in the existing platform package's exact
+`subscriptions` entry and browser-shareable declarations in its type-only
+`subscriptions/contracts` entry. No new package, dependency, testing subpath or
+star export is needed. The [package entry](../../packages/platform/README.md#subscription-contracts-and-renewal-port)
+links to this owner for concrete carriers, the unchanged hosted
+cycle/refusal/failure contribution and its characterization. Hosted RPC carriers stay distinct from native claims;
+the local prepared-attempt type projection preserves the existing M07 shape
+without a cross-module contract edge. Pure cadence/retry arithmetic remains in
+`@openlup/core/subscription`; adapters own SQL translation and hosts own channel,
+mandate, identity dialect, pricing, stock selection, trusted actor and copy policy.
+
+A native prepare commits cycle/order/items/settlement/reservation and attempt;
+a native outcome commits settlement, outcome, schedule/counter and reservation.
+Verified recovery must bind the same cycle and commit settlement/receipt/case and
+counter together. Managed create/prepare and failure RPCs remain separate units;
+no transaction spans external payment execution. Never interpret missing ACK or
+nullable money as permission to execute again. Frozen revision, fingerprint,
+original timestamp text and nested snapshots survive retries and future edits.
+
+Logical cycle number and native renewal counter are separate evidence-bound
+fields; an activation or legacy ambiguity never licenses a blanket offset.
+Native bundle-command and command-bound-receipt parity is unsupported. Future
+terms and receipts require an atomic command store before that claim can change.
+Stock recovery is restricted to never-executed stock refusals, with transaction-bound
+all-line reacquisition and fencing. A provider-owned or ambiguous attempt cannot
+be reset by a wait ledger. The [design](plans/oss-m10-subscriptions-renewal-dunning.md)
+keeps serving composition and later store implementation outside this contract step.
+
+### Renewal port recipe
+
+
+The experimental `@openlup/platform/subscriptions` entry exposes the hosted
+cycle, refusal and failure mechanisms with injected policy, identity forwarding
+and an honest native capability descriptor. The browser-safe
+`subscriptions/contracts` entry emits no runtime values. Its concrete carriers
+cover frozen obligations, claims and leases, nullable verified payment evidence,
+dunning repair, command receipts, stock waits and lifecycle message descriptors.
+These declarations and mechanisms do not install a store or activate a runner.
+Hosted compatibility snapshots stay host-owned; native frozen snapshots remain
+concrete. The hosted blocked result remains `skipped`, separate from native
+`deferred`. The [naming map](plans/oss-m10-subscriptions-renewal-dunning.md#unchanged-hosted-contribution-and-naming-map)
+records the unchanged contribution and type-only M07 projection.
+[Characterization](../../packages/platform/test/subscriptions/renewalCycleMechanism.test.ts) preserves
+order, replay, receivers, raw errors and stored-null retry behavior.
+
+Preserve original schedule text and all host-generated key bytes. A due listing
+is not a lease. Logical cycle numbers require evidence-bound correlation with
+activation and the native counter; legacy ambiguity stays explicit. Native
+prepare/outcome/recovery transaction units differ from the managed RPC sequence;
+external payment execution never belongs inside a database transaction. Reuse
+`@openlup/core/subscription` for pure retry and cadence arithmetic.
+
+Nothing in automatic renewal pauses an active subscription. Late delivery extends
+the next cycle using the maximum of its existing date and latest actual arrival
+plus cadence; it never moves earlier or stacks cycles. Never invoke
+`subscription_delivery_alignment_confirm_replacement` for an undelivered
+replacement: that operation records the customer-facing fact “Parcel delivered”.
+The required native delivery admission must process captured cases after rollback
+to off. A deferred result preserves the schedule and may carry a durable case.
+
+Native multi-cycle prepaid, generic bundle commands, command-bound receipts and
+the M07 prepared-attempt store have typed unsupported refusals. Retry and stock
+recovery remain unavailable until selected stores demonstrate them. Existing
+native pause/resume/skip/cancel operations keep their own contracts. The
+[P1 witnesses](../../packages/platform/test/subscriptions/portFit.test.ts) test
+each port amendment, and the [native baseline](../../tests/postgres/subscriptionContinuityBaseline.test.ts)
+exercises the complete current prefix without subscription SQL additions.

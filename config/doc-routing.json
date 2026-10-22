@@ -622,6 +622,17 @@
       ],
       "doc": "docs/platform/ARCHITECTURE_AND_EXTENSIONS.md",
       "anchor": "#fulfillment-contracts"
+    },
+    {
+      "id": "subscriptions-package",
+      "when": "Subscription renewal ports, frozen obligations, graph transaction units and explicit capability refusals",
+      "paths": [
+        "packages/platform/src/subscriptions/**",
+        "packages/platform/test/subscriptions/**",
+        "packages/platform/api/subscriptions*.api.md"
+      ],
+      "doc": "docs/platform/ARCHITECTURE_AND_EXTENSIONS.md",
+      "anchor": "#subscription-contracts"
     }
   ]
 }

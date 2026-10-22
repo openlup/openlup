@@ -455,6 +455,33 @@
       ],
       "entrypoint": "dist/fulfillment/omnipack/index.d.ts",
       "snapshot": "api/fulfillment-omnipack.api.md"
+    },
+    "./subscriptions": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/packageBoundary.test.ts",
+        "test/subscriptions/contracts.test.ts",
+        "test/subscriptions/portFit.test.ts",
+        "test/subscriptions/renewalKeys.test.ts",
+        "test/subscriptions/renewalCycleMechanism.test.ts"
+      ],
+      "entrypoint": "dist/subscriptions/index.d.ts",
+      "snapshot": "api/subscriptions.api.md"
+    },
+    "./subscriptions/contracts": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/packageBoundary.test.ts",
+        "test/subscriptions/contracts.test.ts",
+        "test/subscriptions/portFit.test.ts",
+        "test/subscriptions/renewalKeys.test.ts"
+      ],
+      "entrypoint": "dist/subscriptions/contracts/index.d.ts",
+      "snapshot": "api/subscriptions-contracts.api.md"
     }
   },
   "pack": {
@@ -482,7 +509,8 @@
       "./promotions/contracts": 32,
       "./shipping/contracts": 32,
       "./payments/contracts": 32,
-      "./fulfillment/contracts": 32
+      "./fulfillment/contracts": 32,
+      "./subscriptions/contracts": 32
     }
   }
 }

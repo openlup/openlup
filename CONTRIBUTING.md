@@ -131,6 +131,18 @@ its users or operators can observe.
 
 ## Development-preview checks
 
+Subscription package contract changes use package-local contract, identity and
+port-fit witnesses alongside the generated package boundary census. The cold
+consumer classifies both exact subscription entries as having no optional peer
+requirement and exercises their installed declarations and runtime refusals.
+`tests/postgres/subscriptionContinuityBaseline.test.ts` uses the full current
+native manifest and disposable Docker harness for arrival maximum, exhaustion
+and captured-case rollback behavior; it must not replace a failed invariant
+with a mock, skip or admission bypass. These focused witnesses complement the
+existing complete contribution gate and establish no runner activation. Declare
+the subscription module in the ESLint graph with a browser contracts subtree
+and no cross-module edge; existing provider and package isolation rules apply.
+
 Fulfillment preparation conformance runs the production reference writer under
 its advisory and shipment row locks in
 `tests/postgres/fulfillmentPreparationBinding.test.ts`; the packed
