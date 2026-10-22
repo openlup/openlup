@@ -46,7 +46,8 @@ type FunctionBinding = { signature: string; beforeSha256: string | null; afterSh
 type PolicyBinding = { table: string; name: string; beforeSha256: string };
 type RuntimeForwardBinding = ForwardBinding & { privileges: string[]; retiredPolicies?: PolicyBinding[] };
 type ForwardBinding = { path: string; sha256: string; functions: FunctionBinding[] };
-export type ReviewedForwardRegistry = { schemaVersion: 1; baselineSha256: string; replacementForwards: ForwardBinding[]; creationForwards: ForwardBinding[]; runtimeForwards?: RuntimeForwardBinding[]; portableReplacementForwards?: ForwardBinding[]; portableCreationForwards?: PortableCreationBinding[]; managedInvoicingForwards?: ForwardBinding[] };
+export type BatchedForwardBinding = ForwardBinding & { statements: { sha256: string; sql?: string }[] };
+export type ReviewedForwardRegistry = { batchedForwards?: BatchedForwardBinding[]; schemaVersion: 1; baselineSha256: string; replacementForwards: ForwardBinding[]; creationForwards: ForwardBinding[]; runtimeForwards?: RuntimeForwardBinding[]; portableReplacementForwards?: ForwardBinding[]; portableCreationForwards?: PortableCreationBinding[]; managedInvoicingForwards?: ForwardBinding[] };
 export const sqlSha256 = (bytes: Buffer | string): string => createHash("sha256").update(bytes).digest("hex");
 const runtimeReplacements = new Set([
   "public.admin_clients_search_v3(text,integer,integer,text)",
@@ -186,7 +187,8 @@ export function readReviewedForwardRegistry(bytes: Buffer): ReviewedForwardRegis
   if (raw.portableReplacementForwards !== undefined) {
     if (!Array.isArray(raw.portableReplacementForwards) || ![1,2].includes(raw.portableReplacementForwards.length)) throw new Error("reviewed portable replacement registry requires one or two fixed forwards");
     for (const [index, forward] of raw.portableReplacementForwards.entries()) {
-      if (!forward || Object.keys(forward).sort().join(",") !== "functions,path,sha256" || !/^db\/platform\/migrations\/\d{14}_[A-Za-z0-9_-]+\.sql$/u.test(forward.path) || raw.portableReplacementForwards.findIndex(entry => entry.path === forward.path) !== index || !hash(forward.sha256) || !Array.isArray(forward.functions) || forward.functions.length !== 1) throw new Error("reviewed portable replacement registry has an invalid forward");
+      if (!forward || Object.keys(forward).sort().join(",") !== "functions,path,sha256" || !/^db\/platform\/migrations\/\d{14}_[A-Za-z0-9_-]+\.sql$/u.test(forward.path) || paths.has(forward.path) || raw.portableReplacementForwards.findIndex(entry => entry.path === forward.path) !== index || !hash(forward.sha256) || !Array.isArray(forward.functions) || forward.functions.length !== 1) throw new Error("reviewed portable replacement registry has an invalid forward");
+      paths.add(forward.path);
       const binding = forward.functions[0]!;
       if (Object.keys(binding).sort().join(",") !== "afterSha256,beforeSha256,signature" || !(index === 0 ? portableReplacements.has(binding.signature) : forward.path === "db/platform/migrations/20261022192000_invoicing_payment_decoupling.sql" && binding.signature === paymentTerminalSignature) || !hash(binding.beforeSha256) || !hash(binding.afterSha256)) throw new Error("reviewed portable replacement registry must bind exactly the approved existing signature");
     }
@@ -209,11 +211,12 @@ export function readReviewedForwardRegistry(bytes: Buffer): ReviewedForwardRegis
       paths.add(forward.path);
     }
   }
+  if (raw.batchedForwards !== undefined) validateBatchedForwards(raw.batchedForwards, paths);
   return raw;
 }
 
 /** Split top-level SQL only. Comments, quoted literals and dollar bodies cannot introduce statements. */
-function sqlStatements(sql: string, dump = false, creation = false): string[] {
+export function sqlStatements(sql: string, dump = false, creation = false): string[] {
   const statements: string[] = [];
   let start = -1;
   for (let index = 0; index < sql.length;) {
@@ -706,14 +709,14 @@ export function assertUnchangedForwardApproval(root: string, base: string, head:
       try {
         const prior = readReviewedForwardRegistry(before), current = readReviewedForwardRegistry(after);
         const binding = (registry: ReviewedForwardRegistry) => {
-          for (const list of ["replacementForwards", "creationForwards", "runtimeForwards", "portableReplacementForwards", "portableCreationForwards", "managedInvoicingForwards"] as const) {
+          for (const list of ["replacementForwards", "creationForwards", "runtimeForwards", "portableReplacementForwards", "portableCreationForwards", "managedInvoicingForwards", "batchedForwards"] as const) {
             const index = registry[list]?.findIndex((entry) => entry.path === path) ?? -1;
             if (index >= 0) return { list, index, entry: registry[list]![index] };
           }
           return null;
         };
         const canonical = (value: unknown) => JSON.stringify(value, (_key, item: unknown) => item && typeof item === "object" && !Array.isArray(item) ? Object.fromEntries(Object.entries(item).sort(([left], [right]) => left.localeCompare(right))) : item);
-        const shared = (registry: ReviewedForwardRegistry) => Object.fromEntries(Object.entries(registry).filter(([key]) => !["replacementForwards", "creationForwards", "runtimeForwards", "portableReplacementForwards", "portableCreationForwards", "managedInvoicingForwards"].includes(key)));
+        const shared = (registry: ReviewedForwardRegistry) => Object.fromEntries(Object.entries(registry).filter(([key]) => !["replacementForwards", "creationForwards", "runtimeForwards", "portableReplacementForwards", "portableCreationForwards", "managedInvoicingForwards", "batchedForwards"].includes(key)));
         const previous = binding(prior), next = binding(current);
         if (canonical(shared(prior)) === canonical(shared(current)) && previous && next && canonical(previous) === canonical(next)) return;
       } catch { /* Invalid historical approvals cannot authorize a release. */ }
@@ -754,7 +757,7 @@ export function assertReviewedPlatformForward(root: string, base: string, head: 
   const registry = readReviewedForwardRegistry(targetRegistry);
   const portable = path.startsWith("db/platform/migrations/");
   const candidates = portable ? [...registry.portableReplacementForwards ?? [], ...registry.portableCreationForwards ?? []] : [...registry.replacementForwards, ...registry.creationForwards, ...(registry.runtimeForwards ?? []), ...(registry.managedInvoicingForwards ?? [])];
-  const forward = candidates.find((entry) => entry.path === path);
+  const forward = [...candidates, ...(registry.batchedForwards ?? [])].find((entry) => entry.path === path);
   if (!forward) throw new Error(`non-expand-only forward differs from reviewed replacement path or bytes: ${path}`);
   let approval = base;
   if (release) {
@@ -770,6 +773,16 @@ export function assertReviewedPlatformForward(root: string, base: string, head: 
   const baselinePath = portable ? PLATFORM_BASELINE_FILE : MANAGED_BASELINE;
   const baseline = blob(root, approval, baselinePath);
   if (!baseline || (!portable && sqlSha256(baseline) !== registry.baselineSha256)) throw new Error("reviewed replacement immutable baseline drifted");
+  if (registry.batchedForwards?.includes(forward as BatchedForwardBinding)) {
+    for (const prior of registry.batchedForwards!) {
+      if (prior.path >= path || prior.path.startsWith("db/") !== portable) continue;
+      const landed = blob(root, head, prior.path);
+      if (!landed || sqlSha256(landed) !== prior.sha256) throw new Error("reviewed batch requires every earlier same-rail pin landed first");
+    }
+    const paths = git(root, ["ls-tree", "-r", "--name-only", head, "--", portable ? "db/platform/migrations/" : "supabase/migrations/"]).toString("utf8").trim().split("\n").filter((item) => item < path).sort();
+    assertBatchedForward(forward as BatchedForwardBinding, bytes, paths.map((priorPath) => blob(root, head, priorPath)!));
+    return;
+  }
   if (registry.portableCreationForwards?.includes(forward)) {
     const paths = git(root, ["ls-tree", "-r", "--name-only", head, "--", "db/platform/migrations/"]).toString("utf8").trim().split("\n").filter((item) => item < path).sort();
     assertPortableCreationStatements(bytes, paths.map((priorPath) => blob(root, head, priorPath)!));
@@ -837,5 +850,130 @@ export function assertReviewedPlatformForward(root: string, base: string, head: 
   if (definitions.size !== functionForward.functions.length) throw new Error("reviewed replacement has missing or additional function signatures");
   for (const binding of functionForward.functions) {
     if (definitions.get(binding.signature) !== binding.afterSha256 || (prior.get(binding.signature) ?? null) !== binding.beforeSha256) throw new Error(`reviewed replacement definition drifted: ${binding.signature}`);
+  }
+}
+
+
+// This list is separate from the legacy classes: no timestamp/private-schema
+// widening reaches #267/#295/#300. Per rail, pins must land as a prefix in version order.
+const batchedShapes = new Map<string, readonly string[]>([
+  ["db/platform/migrations/20261022160000_subscription_retry_lifecycle.sql", ["public.subscription_retry_read(uuid)","public.subscription_retry_candidates(integer,timestamptz)","public.subscription_retry_apply_failure(uuid,text,jsonb)","public.subscription_retry_open_case(uuid,text,text)","public.subscription_retry_authorize_recovery(uuid,uuid,text,text,timestamptz)","public.subscription_retry_schedule_recovery(uuid,text,uuid,timestamptz)","public.subscription_retry_prepare(uuid,text,jsonb,timestamptz)","public.subscription_retry_record_recovery(uuid,text,jsonb)","public.subscription_retry_note_row_outcome(uuid,text,jsonb)"]],
+  ["db/platform/migrations/20261022170000_subscription_command_lifecycle.sql", ["public.subscription_command_preview(uuid,uuid,text,uuid,text,jsonb,timestamptz)","public.subscription_command_apply(uuid,uuid,text,uuid,text,jsonb,timestamptz)"]],
+  ["db/platform/migrations/20261022180000_subscription_stock_wait.sql", ["public.subscription_stock_wait_projection(public.subscription_stock_wait_cases)","public.subscription_stock_wait_read(uuid)","public.subscription_stock_wait_frozen(uuid,timestamptz)","public.subscription_stock_wait_deficits(jsonb,uuid,timestamptz)","public.subscription_stock_wait_enqueue(public.subscription_stock_wait_cases,text)","public.subscription_stock_wait_recover_refusal(uuid,text,text,timestamptz)","public.subscription_stock_wait_admit(jsonb,jsonb,timestamptz)","public.subscription_stock_wait_candidates(integer,timestamptz)","public.subscription_stock_wait_normal_due(integer,timestamptz)","public.subscription_stock_wait_mark_resumed(uuid)","public.subscription_stock_wait_summary(text)","public.subscription_stock_wait_bind_notice(uuid,uuid,jsonb)"]],
+  ["db/platform/migrations/20261022183000_inventory_available_to_promise.sql", ["public.inventory_channel_exposure_quantity(text,text)","public.inventory_available_to_promise(text,text,timestamptz,boolean)","public.inventory_new_purchase_stock_read(text,jsonb,timestamptz)"]],
+  ["db/platform/migrations/20261022184000_subscription_renewal_reserve_uses_seam.sql", ["public.fulfillment_reserve_subscription_renewal(uuid,uuid,integer,timestamptz)"]],
+  ["supabase/migrations/20261022155000_refunds_preserve_subscription_lifecycle.sql", ["public.commerce_payment_control_apply_before_sub_lock(text,uuid,uuid,text,timestamptz,text,text)"]],
+  ["supabase/migrations/20261022160000_subscription_dunning_continuity.sql", ["public.subscription_handle_payment_failure_dunning_before_cancel_fence(text,uuid,uuid,uuid,uuid,integer,timestamptz,text,timestamptz)","public.subscription_record_payment_recovery_before_expired_resume(text,text,text,text,timestamptz)","public.subscription_try_schedule_recovery_retry(uuid,text,timestamptz,text)","public.subscription_list_due_for_renewal(integer,timestamptz)","public.commerce_payment_control_prepare_provider_attempt(text,uuid,text,text,text,text,text,jsonb)"]],
+  ["supabase/migrations/20261022175000_inventory_available_to_promise.sql", ["public.inventory_channel_exposure_quantity(uuid)","public.inventory_available_to_promise(uuid,timestamptz,boolean)"]],
+  ["supabase/migrations/20261022180000_subscription_stock_wait.sql", ["public.subscription_stock_wait_projection(public.subscription_stock_wait_cases)","public.subscription_stock_wait_read(uuid)","public.subscription_stock_wait_frozen(uuid,timestamptz)","public.subscription_stock_wait_deficits(jsonb,uuid,timestamptz)","public.subscription_stock_wait_enqueue(public.subscription_stock_wait_cases,text)","public.subscription_stock_wait_admit(jsonb,jsonb,timestamptz)","public.subscription_stock_wait_candidates(integer,timestamptz)","public.subscription_stock_wait_mark_resumed(uuid)","public.subscription_stock_wait_normal_due(integer,timestamptz)","public.subscription_stock_wait_summary(text)","public.subscription_stock_wait_bind_notice(uuid,uuid,jsonb)"]],
+  ["supabase/migrations/20261022181000_subscription_stock_wait_due.sql", ["public.subscription_list_due_for_renewal(integer,timestamptz)"]],
+  ["supabase/migrations/20261022182000_subscription_lifecycle_message_scan.sql", ["private.outbox_resend_event_types()","public.communication_email_delivery_template_for_event(text)","public.subscription_list_due_for_winback(integer)"]],
+  ["supabase/migrations/20261022184000_inventory_reserve_order_uses_seam.sql", ["public.inventory_reserve_order(text,uuid,uuid,uuid,uuid,integer,text,text,timestamptz,jsonb,text)"]],
+  ["supabase/migrations/20261022185000_provider_refund_evidence.sql", ["public.commerce_order_provider_refund_evidence(uuid)"]],
+  ["supabase/migrations/20261022185100_m07_refund_parity.sql", ["public.commerce_emit_order_refunded_outbox()","public.commerce_payment_control_apply_before_sub_lock(text,uuid,uuid,text,timestamptz,text,text)"]],
+]);
+const batchIdentity = (name: string, args: string): string => {
+  const types = args.trim() ? args.split(",").map(argument => {
+    const type = /^(?:[a-z_][a-z0-9_]*\s+)?(uuid|text|jsonb|integer|bigint|boolean|timestamptz|timestamp with time zone|public\.subscription_stock_wait_cases)(?:\s+DEFAULT\s+[\s\S]+)?$/iu.exec(argument.trim())?.[1];
+    if (!type) throw new Error("reviewed batch refuses unsupported argument identity");
+    return type.toLowerCase().replace("timestamp with time zone", "timestamptz");
+  }) : [];
+  return `${name.toLowerCase()}(${types.join(",")})`;
+};
+
+/** Separate identity reader; raw CREATE bytes, including defaults, stay hashed. */
+export function batchedFunctionDefinitions(bytes: Buffer, names?: Set<string>): Map<string, string> {
+  const result = new Map<string, string>();
+  for (const statement of sqlStatements(bytes.toString("utf8"), true)) {
+    const prefix = /^CREATE(?: OR REPLACE)? FUNCTION ((?:public|private)\.[a-z_][a-z0-9_]*)\s*\(/iu.exec(statement);
+    if (names && (!prefix || !names.has(prefix[1]!.toLowerCase()))) continue;
+    const header = /^CREATE(?: OR REPLACE)? FUNCTION ((?:public|private)\.[a-z_][a-z0-9_]*)\s*\(([\s\S]*?)\)\s*RETURNS\s/iu.exec(statement);
+    if (!header) {
+      if (/^CREATE(?: OR REPLACE)? FUNCTION /iu.test(statement)) throw new Error("reviewed batch refuses unsupported function header");
+      continue;
+    }
+    const signature = batchIdentity(header[1]!, header[2]!);
+    if (result.has(signature)) throw new Error(`reviewed batch duplicate signature: ${signature}`);
+    result.set(signature, sqlSha256(statement));
+  }
+  return result;
+}
+
+function validateBatchedForwards(forwards: BatchedForwardBinding[], paths: Set<string>): void {
+  if (!Array.isArray(forwards) || forwards.length !== batchedShapes.size) throw new Error("reviewed batch requires exactly the approved forwards");
+  const last = new Map<string, string>();
+  for (const [index, forward] of forwards.entries()) {
+    const shape = [...batchedShapes][index]!;
+    if (!forward || Object.keys(forward).sort().join(",") !== "functions,path,sha256,statements" || forward.path !== shape[0] || paths.has(forward.path) || !hash(forward.sha256) || !Array.isArray(forward.functions) || JSON.stringify(forward.functions.map(fn => fn.signature)) !== JSON.stringify(shape[1]) || !Array.isArray(forward.statements) || !forward.statements.length) throw new Error("reviewed batch has an invalid path, order or signature inventory");
+    paths.add(forward.path);
+    for (const fn of forward.functions) {
+      if (Object.keys(fn).sort().join(",") !== "afterSha256,beforeSha256,signature" || !hash(fn.afterSha256) || (fn.beforeSha256 !== null && !hash(fn.beforeSha256))) throw new Error("reviewed batch has invalid definition hashes");
+      const key = `${forward.path.startsWith("db/") ? "native" : "managed"}:${fn.signature}`;
+      if (last.has(key) && fn.beforeSha256 !== last.get(key)) throw new Error("reviewed batch replacement chain is reordered or discontinuous");
+      last.set(key, fn.afterSha256);
+    }
+    for (const statement of forward.statements) {
+      if (!statement || !hash(statement.sha256) || !["sha256", "sha256,sql"].includes(Object.keys(statement).sort().join(",")) || (statement.sql !== undefined && (typeof statement.sql !== "string" || sqlSha256(statement.sql) !== statement.sha256))) throw new Error("reviewed batch has an invalid statement pin");
+    }
+  }
+}
+
+/** Lexer is a pre-filter. Required real-PG/pgTAP tests prove the catalog delta. */
+export function assertBatchedForward(forward: BatchedForwardBinding, bytes: Buffer, preceding: Buffer[]): void {
+  if (bytes.some(byte => (byte < 0x20 && byte !== 9 && byte !== 10) || byte === 0x7f)) throw new Error("reviewed batch refuses control characters");
+  if (!batchedShapes.has(forward.path) || sqlSha256(bytes) !== forward.sha256) throw new Error("reviewed batch path or bytes drifted");
+  const definitions = batchedFunctionDefinitions(bytes);
+  const prior = new Map<string, string>();
+  const names = new Set(forward.functions.map(fn => fn.signature.split("(")[0]!));
+  for (const source of preceding) for (const [signature, digest] of batchedFunctionDefinitions(source, names)) prior.set(signature, digest);
+  if (definitions.size !== forward.functions.length) throw new Error("reviewed batch missing or extra signatures");
+  for (const fn of forward.functions) {
+    if (definitions.get(fn.signature) !== fn.afterSha256 || (prior.get(fn.signature) ?? null) !== fn.beforeSha256) throw new Error(`reviewed batch definition drifted: ${fn.signature}`);
+  }
+  const statements = sqlStatements(bytes.toString("utf8"));
+  // Only the 184000 body-only replacement skips the native creation classifier;
+  // its header, exact bytes and statements are checked separately.
+  if (forward.path.startsWith("db/") && forward.path < "db/platform/migrations/20261022184000") assertPortableCreationStatements(bytes, preceding);
+  if (statements.length !== forward.statements.length) throw new Error("reviewed batch missing or extra statements");
+  for (const [index, statement] of statements.entries()) {
+    const pin = forward.statements[index]!;
+    if (sqlSha256(statement) !== pin.sha256 || (pin.sql !== undefined && statement !== pin.sql)) throw new Error("reviewed batch ordered statement pin drifted");
+    const routine = /^CREATE(?: OR REPLACE)? FUNCTION ((?:public|private)\.[a-z_][a-z0-9_]*)\s*\(/iu.exec(statement);
+    if (routine) {
+      headerAttributes(statement);
+      continue;
+    }
+    // Every non-function statement carries its exact SQL as well as its hash.
+    if (pin.sql !== statement) throw new Error("reviewed batch requires exact non-function statements");
+    if (/^(?:GRANT EXECUTE ON FUNCTION|REVOKE ALL ON FUNCTION) /iu.test(statement)) {
+      const target = /^(GRANT EXECUTE|REVOKE ALL) ON FUNCTION ((?:public|private)\.[a-z_][a-z0-9_]*)\(([^)]*)\) (TO|FROM) ([a-z_, ]+);$/iu.exec(statement);
+      if (target && definitions.has(batchIdentity(target[2]!, target[3]!)) && (target[1]!.toUpperCase() !== "GRANT EXECUTE" || (forward.path.startsWith("supabase/") && forward.functions.some(fn => fn.signature === batchIdentity(target[2]!, target[3]!) && fn.beforeSha256 === null))) && (target[1]!.toUpperCase() === "GRANT EXECUTE" ? target[4]!.toUpperCase() === "TO" && target[5] === "service_role" : target[4]!.toUpperCase() === "FROM" && target[5]!.split(",").every(role => ["public", "anon", "authenticated", "openlup_mcp_reader"].includes(role.trim().toLowerCase())))) continue;
+      throw new Error("reviewed batch function privilege target or grantee drifted");
+    }
+    if (forward.path.endsWith("20261022160000_subscription_dunning_continuity.sql") && statement === "GRANT SELECT (id, retry_attempt) ON public.subscription_cycles TO service_role;") continue;
+    if (forward.path === "supabase/migrations/20261022180000_subscription_stock_wait.sql" && statement === "GRANT SELECT, INSERT, UPDATE, DELETE ON public.subscription_stock_wait_cases TO service_role;") continue;
+    if (/^ALTER TABLE public\.subscription_stock_wait_cases ENABLE ROW LEVEL SECURITY;$/u.test(statement)) continue;
+    if (/^INSERT INTO public\.comms_notification_controls\(slug,enabled\) VALUES\s+\('subscription-stock-wait-started',true\),\('subscription-stock-wait-resumed',true\) ON CONFLICT\(slug\) DO NOTHING;$/u.test(statement)) continue;
+    if (/^INSERT INTO public\.client_absorption_policy \(table_name, disposition, note\) VALUES\s+\('subscription_stock_wait_cases', 'block',\s+'A frozen subscription delivery is a commercial obligation bound to its original client; never carry or rebind it when absorbing a lead\.'\);$/u.test(statement)) continue;
+    if (/^COMMENT ON FUNCTION public\.commerce_emit_order_refunded_outbox\(\) IS\s+'(?:[^']|'')*';$/u.test(statement)) continue;
+    const revokeTable = /^REVOKE ALL ON (?:TABLE )?([a-z_., ]+) FROM ([a-z_, ]+);$/iu.exec(statement);
+    if (revokeTable) {
+      const tables = new Set(statements.flatMap(sql => /^CREATE TABLE (public\.[a-z_][a-z0-9_]*)\s*\(/u.exec(sql)?.[1] ?? []));
+      if (revokeTable[1]!.split(",").every(target => tables.has(target.trim())) && revokeTable[2]!.split(",").every(role => ["public", "anon", "authenticated", "openlup_mcp_reader"].includes(role.trim().toLowerCase()))) continue;
+      throw new Error("reviewed batch table revocation target or role drifted");
+    }
+    if (/^CREATE (?:TABLE|INDEX) /u.test(statement)) {
+      // New-object safety is checked by the native classifier where applicable;
+      // all actual objects/ACLs are independently inventoried by PostgreSQL.
+      if (!forward.functions.every(fn => fn.beforeSha256 === null)) throw new Error("reviewed batch replacement cannot create relations");
+      continue;
+    }
+    throw new Error(`reviewed batch unexpected statement kind: ${statement.slice(0,100)}`);
+  }
+  if (forward.path === "db/platform/migrations/20261022184000_subscription_renewal_reserve_uses_seam.sql") {
+    const statement = statements[0]!;
+    const name = forward.functions[0]!.signature;
+    const previous = preceding.flatMap(source => sqlStatements(source.toString("utf8"), true)).filter(sql => batchedFunctionDefinitions(Buffer.from(sql), names).has(name)).at(-1);
+    if (statements.length !== 1 || !/^CREATE OR REPLACE FUNCTION /u.test(statement) || !previous || headerAttributes(statement) !== headerAttributes(previous)) throw new Error("reviewed batch portable replacement attributes drifted");
   }
 }

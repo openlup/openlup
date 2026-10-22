@@ -521,6 +521,15 @@ privileges and complete catalogue installation are described in
 
 ## Compatibility posture
 
+The M10/F17 `batchedForwards` registry adds exact approval data and inert
+snapshots only. Its ordered paths, raw statement/definition hashes, signature
+chains and exact grants/seeds do not install SQL, change a baseline, activate a
+runtime or establish upgrade compatibility. The
+[reviewed-forward boundary](DATA_AND_MIGRATIONS.md#exact-reviewed-function-forwards)
+requires a separate feature introduction and mandatory real-PG/pgTAP catalog
+evidence; existing admission classes keep their prior behavior.
+
+
 Fulfillment appends command/alignment units 73/74 and binds
 their byte-identical package projections through `FULFILLMENT_MIGRATIONS`.
 The canonical manifest retains its baseline and full prior prefix; its refreshed

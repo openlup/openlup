@@ -6258,6 +6258,62 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/fixtures/reviewed-m10/db/platform/migrations/20261022160000_subscription_retry_lifecycle.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/fixtures/reviewed-m10/db/platform/migrations/20261022170000_subscription_command_lifecycle.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/fixtures/reviewed-m10/db/platform/migrations/20261022180000_subscription_stock_wait.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/fixtures/reviewed-m10/db/platform/migrations/20261022183000_inventory_available_to_promise.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/fixtures/reviewed-m10/db/platform/migrations/20261022184000_subscription_renewal_reserve_uses_seam.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/fixtures/reviewed-m10/supabase/migrations/20261022155000_refunds_preserve_subscription_lifecycle.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/fixtures/reviewed-m10/supabase/migrations/20261022160000_subscription_dunning_continuity.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/fixtures/reviewed-m10/supabase/migrations/20261022175000_inventory_available_to_promise.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/fixtures/reviewed-m10/supabase/migrations/20261022180000_subscription_stock_wait.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/fixtures/reviewed-m10/supabase/migrations/20261022181000_subscription_stock_wait_due.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/fixtures/reviewed-m10/supabase/migrations/20261022182000_subscription_lifecycle_message_scan.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/fixtures/reviewed-m10/supabase/migrations/20261022184000_inventory_reserve_order_uses_seam.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/fixtures/reviewed-m10/supabase/migrations/20261022185000_provider_refund_evidence.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/fixtures/reviewed-m10/supabase/migrations/20261022185100_m07_refund_parity.sql",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/fulfillment-stock-evidence-proof.ts",
       "class": "public-output"
     },
@@ -6643,6 +6699,14 @@
     },
     {
       "path": "scripts/retry-ladder-terminating-classes.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/reviewed-batch-forward.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/reviewed-batch-rail.ts",
       "class": "public-output"
     },
     {
@@ -22823,6 +22887,14 @@
     },
     {
       "path": "tests/postgres/promotionsNative.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/reviewedBatchCatalog.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/reviewedBatchForwards.test.ts",
       "class": "public-output"
     },
     {
