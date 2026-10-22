@@ -314,8 +314,12 @@ Timestamp aliases share identity within this class (`timestamptz` and
 `timestamp with time zone`); raw definition hashes retain the original spelling.
 The due reader chains M2 → M4 and the payment applicator M1 → F17: each later
 before hash must equal the earlier after hash, and admission reads the actual
-preceding rail in filename order. Missing, duplicate or extra signatures,
-preimage drift, reordered chains, unpinned private objects, extra/wider grants,
+preceding rail in filename order. Per rail, pins land as a prefix in version
+order: native P2 (160000) → P4 (170000) → P5 (180000, 183000, 184000),
+and managed P3b (155000, 160000) → P5 (175000–184000) → F17 (185000, 185100).
+Every earlier same-rail pin must already exist at the candidate head with its
+whole-file pinned digest; a later landing cannot skip an absent pin.
+Missing, duplicate or extra signatures, preimage drift, reordered chains, unpinned private objects, extra/wider grants,
 changed bytes/paths and unexpected statements refuse. The native allocator
 admits exactly one replacement with an unchanged header and ACL, including its
 pre-existing PUBLIC EXECUTE default; this approval does not harden that default.
@@ -323,9 +327,10 @@ pre-existing PUBLIC EXECUTE default; this approval does not harden that default.
 The lexer is only a pre-filter. The mandatory
 [real PostgreSQL/pgTAP catalog gate](../../tests/postgres/reviewedBatchForwards.test.ts)
 uses native PostgreSQL 16 and managed PostgreSQL 17/pgTAP. Per rail it applies
-only committed non-pinned files sorting before the first pin, then each pin in
-order. A landed rail file must be byte-equal to its inert fixture; an absent
-file uses the fixture. Each forward runs once, before and after feature landing.
+all committed rail files in filename order through the last pin, including
+unpinned files interleaved between pins. Pins use landed or fixture bytes exactly
+once; landed pins must form a prefix before the absent fixture suffix. A landed
+rail file must be byte-equal to its inert fixture; an absent file uses the fixture. Each forward runs once, before and after feature landing.
 It compares `pg_proc` metadata and bodies, `pg_class` and `pg_attribute` relation
 and column ACLs and RLS; snapshots also compare `pg_namespace`, `pg_type`,
 `pg_trigger`, `pg_policy`, `pg_default_acl`, `pg_roles`, `pg_auth_members`,
@@ -334,7 +339,8 @@ and column ACLs and RLS; snapshots also compare `pg_namespace`, `pg_type`,
 Only the pinned creations, replacements, column grant, absorption row,
 notification rows and refund-function comment may change. Rollback must restore
 the complete prefix. Committed plants falsify both admission and the catalog
-observer, including authenticated EXECUTE on a pinned new function. Missing
+observer, including authenticated EXECUTE on a pinned new function, an altered
+native allocator ACL, and a repinned managed index on an existing table. Missing
 Docker, PostgreSQL or pgTAP fails the required `test` aggregate; a lexical PASS
 cannot replace this gate. The managed setup budget includes its first image pull.
 These batch rules do not broaden the earlier #267, #295 or #300 classes.

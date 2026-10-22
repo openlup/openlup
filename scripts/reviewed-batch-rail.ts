@@ -2,13 +2,18 @@ import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import type { BatchedForwardBinding } from "./reviewed-platform-forward.ts";
 
-/** Replay only the committed prefix before this rail's first approved pin. */
-export function reviewedBatchPrefix(root: string, directory: string, pins: BatchedForwardBinding[]): string[] {
-  const paths = new Set(pins.map(pin => pin.path));
-  const first = pins.map(pin => pin.path).sort()[0];
-  if (!first) throw new Error("reviewed batch rail has no pins");
-  return readdirSync(join(root, directory)).filter(path => path.endsWith(".sql"))
-    .map(path => `${directory}/${path}`).filter(path => !paths.has(path) && path < first).sort();
+/** Replay every committed file through the last pin, filling only an absent suffix. */
+export function reviewedBatchPaths(root: string, directory: string, pins: BatchedForwardBinding[]): string[] {
+  const last = pins.at(-1)?.path;
+  if (!last) throw new Error("reviewed batch rail has no pins");
+  let absent = false;
+  for (const pin of pins) {
+    if (!existsSync(join(root, pin.path))) absent = true;
+    else if (absent) throw new Error("reviewed batch requires every earlier same-rail pin landed first");
+  }
+  const committed = readdirSync(join(root, directory)).filter(path => path.endsWith(".sql"))
+    .map(path => `${directory}/${path}`).filter(path => path <= last);
+  return [...new Set([...committed, ...pins.map(pin => pin.path)])].sort();
 }
 
 /** A landed pin must equal the frozen fixture; each pin is applied once. */

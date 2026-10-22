@@ -2,7 +2,7 @@ import { execFileSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { reviewedBatchBytes, reviewedBatchPrefix } from "./reviewed-batch-rail.ts";
+import { reviewedBatchBytes, reviewedBatchPaths } from "./reviewed-batch-rail.ts";
 import { describe, expect, it } from "vitest";
 import { assertBatchedForward, assertReviewedPlatformForward, batchedFunctionDefinitions, readReviewedForwardRegistry, sqlSha256, sqlStatements, type BatchedForwardBinding } from "./reviewed-platform-forward.ts";
 
@@ -14,8 +14,8 @@ const rail = (pin: BatchedForwardBinding) => pin.path.startsWith("db/") ? "db/pl
 function prefix(pin: BatchedForwardBinding): Buffer[] {
   const folder = rail(pin);
   const railPins = pins.filter(prior => rail(prior) === folder);
-  return [...reviewedBatchPrefix(process.cwd(), folder, railPins).map(path => readFileSync(path)),
-    ...railPins.filter(prior => prior.path < pin.path).map(prior => reviewedBatchBytes(process.cwd(), process.cwd(), prior))];
+  return reviewedBatchPaths(process.cwd(), folder, railPins).filter(path => path < pin.path)
+    .map(path => { const prior = railPins.find(pin => pin.path === path); return prior ? bytes(prior) : readFileSync(path); });
 }
 const repin = (pin: BatchedForwardBinding, sql: string): BatchedForwardBinding => ({ ...structuredClone(pin), sha256: sqlSha256(sql), statements: sqlStatements(sql).map(statement => ({ sha256: sqlSha256(statement), ...(!/^CREATE(?: OR REPLACE)? FUNCTION /u.test(statement) ? { sql: statement } : {}) })) });
 
@@ -33,7 +33,7 @@ describe.each(pins)("refusal plants: $path", pin => {
     const sql = statements.join("\n");
     expect(() => assertBatchedForward(repin(pin,sql),Buffer.from(sql),prefix(pin))).toThrow(/reviewed batch/u);
   });
-  it.each(["changed byte", "another path", "missing signature", "duplicate signature", "extra signature", "before drift", "extra grant", "wider grantee", "private object", "unexpected statement"])("refuses %s", attack => {
+  it.each(["changed byte", "another path", "missing signature", "duplicate signature", "extra signature", "before drift", "extra grant (count/classifier)", "wider grantee (count/classifier)", "private function (signature count)", "unexpected statement (count/classifier)"])("refuses %s", attack => {
     const changed = structuredClone(pin);
     let sql = bytes(pin).toString("utf8");
     if (attack === "changed byte") sql += " ";
@@ -42,24 +42,25 @@ describe.each(pins)("refusal plants: $path", pin => {
     if (attack === "duplicate signature") changed.functions.push(changed.functions[0]!);
     if (attack === "extra signature") changed.functions.push({ ...changed.functions[0]!, signature: "public.unpinned()" });
     if (attack === "before drift") changed.functions[0]!.beforeSha256 = "0".repeat(64);
-    if (attack === "extra grant") sql += "\nGRANT SELECT ON public.subscriptions TO service_role;";
-    if (attack === "wider grantee") sql += "\nGRANT EXECUTE ON FUNCTION public.unpinned() TO PUBLIC;";
+    if (attack === "extra grant (count/classifier)") sql += "\nGRANT SELECT ON public.subscriptions TO service_role;";
+    if (attack === "wider grantee (count/classifier)") sql += "\nGRANT EXECUTE ON FUNCTION public.unpinned() TO PUBLIC;";
     // The unpinned private-object plant is refused structurally by statement/signature counts.
-    if (attack === "private object") sql += "\nCREATE FUNCTION private.unpinned() RETURNS text LANGUAGE sql AS $$ SELECT 'attack'; $$;";
-    if (attack === "unexpected statement") sql += "\nCREATE SCHEMA unpinned;";
+    if (attack === "private function (signature count)") sql += "\nCREATE FUNCTION private.unpinned() RETURNS text LANGUAGE sql AS $$ SELECT 'attack'; $$;";
+    if (attack === "unexpected statement (count/classifier)") sql += "\nCREATE SCHEMA unpinned;";
     // Statement plants repin the file, but leave the independent ordered pins.
-    if (["extra grant", "wider grantee", "private object", "unexpected statement"].includes(attack)) changed.sha256 = sqlSha256(sql);
+    if (["extra grant (count/classifier)", "wider grantee (count/classifier)", "private function (signature count)", "unexpected statement (count/classifier)"].includes(attack)) changed.sha256 = sqlSha256(sql);
     expect(() => assertBatchedForward(changed, Buffer.from(sql), prefix(pin))).toThrow(/reviewed batch|reviewed portable creation/u);
   });
 });
 
-it.each(["order", "chain", "path", "private signature", "missing", "duplicate", "extra"])("refuses malformed registry %s", attack => {
+it.each(["order", "chain", "path", "private signature", "portable replacement collision", "missing", "duplicate", "extra"])("refuses malformed registry %s", attack => {
   const changed = structuredClone(registry);
   const batch = changed.batchedForwards!;
   if (attack === "order") [batch[6], batch[9]] = [batch[9]!, batch[6]!];
   if (attack === "chain") batch[9]!.functions[0]!.beforeSha256 = "0".repeat(64);
   if (attack === "path") batch[0]!.path += ".sql";
   if (attack === "private signature") batch[10]!.functions[0]!.signature = "private.unpinned()";
+  if (attack === "portable replacement collision") changed.portableReplacementForwards![0]!.path = batch[0]!.path;
   if (attack === "missing") batch[0]!.functions.pop();
   if (attack === "duplicate") batch[0]!.functions.push(batch[0]!.functions[0]!);
   if (attack === "extra") batch.push(batch[0]!);
@@ -101,6 +102,32 @@ it("uses separate prior approval in CI and release, and refuses self-approval", 
     }
     put("config/reviewed-platform-forwards.json", registryBytes);
     const approval = commit("Exact control approval");
+    // Every same-rail prefix is admissible; a hole is never filled by a fixture.
+    for (const directory of ["db/platform/migrations", "supabase/migrations"]) {
+      const railPins = pins.filter(pin => rail(pin) === directory);
+      for (const pin of railPins) {
+        put(pin.path, bytes(pin));
+        const head = commit("Next same-rail prefix");
+        expect(() => reviewedBatchPaths(folder, directory, railPins)).not.toThrow();
+        expect(() => assertReviewedPlatformForward(folder, approval, head, pin.path, bytes(pin))).not.toThrow();
+      }
+      git("reset", "--hard", approval);
+    }
+    for (const [suffix, earlier] of [
+      ["20261022184000_subscription_renewal_reserve_uses_seam.sql", "20261022183000_inventory_available_to_promise.sql"],
+      ["20261022184000_inventory_reserve_order_uses_seam.sql", "20261022175000_inventory_available_to_promise.sql"],
+      ["20261022185000_provider_refund_evidence.sql", "20261022175000_inventory_available_to_promise.sql"],
+    ]) {
+      const pin = pins.find(pin => pin.path.endsWith(suffix!))!;
+      const railPins = pins.filter(prior => rail(prior) === rail(pin));
+      for (const prior of railPins.filter(prior => prior.path <= pin.path && !prior.path.endsWith(earlier!))) put(prior.path, bytes(prior));
+      // F17 after P3b, with the entire P5 suffix absent.
+      if (suffix!.includes("185000")) for (const prior of railPins.filter(prior => /202610221[78]/u.test(prior.path) && prior.path < pin.path)) rmSync(join(folder, prior.path), { force: true });
+      const head = commit("Hole in landed rail");
+      expect(() => assertReviewedPlatformForward(folder, approval, head, pin.path, bytes(pin))).toThrow("reviewed batch requires every earlier same-rail pin landed first");
+      expect(() => reviewedBatchPaths(folder, rail(pin), railPins)).toThrow("reviewed batch requires every earlier same-rail pin landed first");
+      git("reset", "--hard", approval);
+    }
     for (const pin of pins) put(pin.path, bytes(pin));
     const head = commit("Pinned feature bytes");
     for (const pin of pins) for (const release of [false, true]) expect(() => assertReviewedPlatformForward(folder, approval, head, pin.path, bytes(pin), release)).not.toThrow();
@@ -126,21 +153,23 @@ it.each([0, 1, "all"] as const)("replays each rail once with %s landed pins and 
   try {
     for (const directory of ["db/platform/migrations", "supabase/migrations"]) {
       const railPins = pins.filter(pin => rail(pin) === directory);
-      const originalPrefix = reviewedBatchPrefix(process.cwd(), directory, railPins);
+      const originalPrefix = reviewedBatchPaths(process.cwd(), directory, railPins).filter(path => !railPins.some(pin => pin.path === path));
       for (const path of originalPrefix) put(path, readFileSync(path));
       for (const pin of railPins.slice(0, landed === "all" ? undefined : landed)) put(pin.path, bytes(pin));
       // A later unpinned file must not enter the pre-pin replay either.
       put(`${directory}/99999999999999_unrelated.sql`, "SELECT 1;");
-      const paths = reviewedBatchPrefix(root, directory, railPins);
-      expect(paths).toEqual(originalPrefix);
-      const preceding = paths.map(path => readFileSync(join(root, path)));
-      for (const pin of railPins) {
-        const source = reviewedBatchBytes(root, process.cwd(), pin);
-        expect(source).toEqual(bytes(pin));
-        assertBatchedForward(pin, source, preceding);
+      const interleaved = `${directory}/20261022180500_unpinned.sql`;
+      put(interleaved, "SELECT 1;");
+      const paths = reviewedBatchPaths(root, directory, railPins);
+      expect(paths).toEqual([...originalPrefix, ...railPins.map(pin => pin.path), interleaved].sort());
+      const preceding: Buffer[] = [];
+      for (const path of paths) {
+        const pin = railPins.find(pin => pin.path === path);
+        const source = pin ? reviewedBatchBytes(root, process.cwd(), pin) : readFileSync(join(root, path));
+        if (pin) assertBatchedForward(pin, source, preceding);
         preceding.push(source);
       }
-      expect(preceding).toHaveLength(originalPrefix.length + railPins.length);
+      expect(preceding).toHaveLength(originalPrefix.length + railPins.length + 1);
       const pin = railPins[0]!;
       put(pin.path, Buffer.concat([bytes(pin), Buffer.from(" ")]));
       expect(() => reviewedBatchBytes(root, process.cwd(), pin)).toThrow("landed bytes drifted");

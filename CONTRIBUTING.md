@@ -1243,7 +1243,10 @@ refusal and approval before introduction in both gates; managed counts remain
 unchanged. Required self-check keeps the whole registry
 unchanged from the feature comparison base; release compares each forward's own
 entry, list position and shared registry fields with its introduction parent, so later
-controls may append approvals. A feature cannot approve itself. These forwards
+controls may append approvals. A feature cannot approve itself. Batched pins land per rail as a prefix in version
+order: all earlier same-rail pins must be present with their pinned whole-file
+digests. The PG gate refuses landed holes and replays committed interleaved
+files through the last pin along with the absent fixture suffix. These forwards
 are not expand-only. See
 [the exact class](docs/platform/DATA_AND_MIGRATIONS.md#exact-reviewed-function-forwards)
 and its refusal tests in `scripts/source-preview-release.test.ts`.

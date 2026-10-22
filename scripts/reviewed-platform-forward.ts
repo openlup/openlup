@@ -187,7 +187,8 @@ export function readReviewedForwardRegistry(bytes: Buffer): ReviewedForwardRegis
   if (raw.portableReplacementForwards !== undefined) {
     if (!Array.isArray(raw.portableReplacementForwards) || ![1,2].includes(raw.portableReplacementForwards.length)) throw new Error("reviewed portable replacement registry requires one or two fixed forwards");
     for (const [index, forward] of raw.portableReplacementForwards.entries()) {
-      if (!forward || Object.keys(forward).sort().join(",") !== "functions,path,sha256" || !/^db\/platform\/migrations\/\d{14}_[A-Za-z0-9_-]+\.sql$/u.test(forward.path) || raw.portableReplacementForwards.findIndex(entry => entry.path === forward.path) !== index || !hash(forward.sha256) || !Array.isArray(forward.functions) || forward.functions.length !== 1) throw new Error("reviewed portable replacement registry has an invalid forward");
+      if (!forward || Object.keys(forward).sort().join(",") !== "functions,path,sha256" || !/^db\/platform\/migrations\/\d{14}_[A-Za-z0-9_-]+\.sql$/u.test(forward.path) || paths.has(forward.path) || raw.portableReplacementForwards.findIndex(entry => entry.path === forward.path) !== index || !hash(forward.sha256) || !Array.isArray(forward.functions) || forward.functions.length !== 1) throw new Error("reviewed portable replacement registry has an invalid forward");
+      paths.add(forward.path);
       const binding = forward.functions[0]!;
       if (Object.keys(binding).sort().join(",") !== "afterSha256,beforeSha256,signature" || !(index === 0 ? portableReplacements.has(binding.signature) : forward.path === "db/platform/migrations/20261022192000_invoicing_payment_decoupling.sql" && binding.signature === paymentTerminalSignature) || !hash(binding.beforeSha256) || !hash(binding.afterSha256)) throw new Error("reviewed portable replacement registry must bind exactly the approved existing signature");
     }
@@ -773,6 +774,11 @@ export function assertReviewedPlatformForward(root: string, base: string, head: 
   const baseline = blob(root, approval, baselinePath);
   if (!baseline || (!portable && sqlSha256(baseline) !== registry.baselineSha256)) throw new Error("reviewed replacement immutable baseline drifted");
   if (registry.batchedForwards?.includes(forward as BatchedForwardBinding)) {
+    for (const prior of registry.batchedForwards!) {
+      if (prior.path >= path || prior.path.startsWith("db/") !== portable) continue;
+      const landed = blob(root, head, prior.path);
+      if (!landed || sqlSha256(landed) !== prior.sha256) throw new Error("reviewed batch requires every earlier same-rail pin landed first");
+    }
     const paths = git(root, ["ls-tree", "-r", "--name-only", head, "--", portable ? "db/platform/migrations/" : "supabase/migrations/"]).toString("utf8").trim().split("\n").filter((item) => item < path).sort();
     assertBatchedForward(forward as BatchedForwardBinding, bytes, paths.map((priorPath) => blob(root, head, priorPath)!));
     return;
@@ -849,7 +855,7 @@ export function assertReviewedPlatformForward(root: string, base: string, head: 
 
 
 // This list is separate from the legacy classes: no timestamp/private-schema
-// widening reaches #267/#295/#300. Registry order is installation order per rail.
+// widening reaches #267/#295/#300. Per rail, pins must land as a prefix in version order.
 const batchedShapes = new Map<string, readonly string[]>([
   ["db/platform/migrations/20261022160000_subscription_retry_lifecycle.sql", ["public.subscription_retry_read(uuid)","public.subscription_retry_candidates(integer,timestamptz)","public.subscription_retry_apply_failure(uuid,text,jsonb)","public.subscription_retry_open_case(uuid,text,text)","public.subscription_retry_authorize_recovery(uuid,uuid,text,text,timestamptz)","public.subscription_retry_schedule_recovery(uuid,text,uuid,timestamptz)","public.subscription_retry_prepare(uuid,text,jsonb,timestamptz)","public.subscription_retry_record_recovery(uuid,text,jsonb)","public.subscription_retry_note_row_outcome(uuid,text,jsonb)"]],
   ["db/platform/migrations/20261022170000_subscription_command_lifecycle.sql", ["public.subscription_command_preview(uuid,uuid,text,uuid,text,jsonb,timestamptz)","public.subscription_command_apply(uuid,uuid,text,uuid,text,jsonb,timestamptz)"]],
@@ -934,7 +940,6 @@ export function assertBatchedForward(forward: BatchedForwardBinding, bytes: Buff
     if (sqlSha256(statement) !== pin.sha256 || (pin.sql !== undefined && statement !== pin.sql)) throw new Error("reviewed batch ordered statement pin drifted");
     const routine = /^CREATE(?: OR REPLACE)? FUNCTION ((?:public|private)\.[a-z_][a-z0-9_]*)\s*\(/iu.exec(statement);
     if (routine) {
-      if (routine[1]!.startsWith("private.") && routine[1] !== "private.outbox_resend_event_types") throw new Error("reviewed batch unpinned private object");
       headerAttributes(statement);
       continue;
     }

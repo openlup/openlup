@@ -1,8 +1,10 @@
-import { readFileSync } from "node:fs";
-import { reviewedBatchBytes, reviewedBatchPrefix } from "../../scripts/reviewed-batch-rail.js";
+import { cpSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
+import { reviewedBatchBytes, reviewedBatchPaths } from "../../scripts/reviewed-batch-rail.js";
 import { Pool } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { assertBatchedForward, readReviewedForwardRegistry, sqlSha256, type BatchedForwardBinding } from "../../scripts/reviewed-platform-forward.js";
+import { assertBatchedForward, readReviewedForwardRegistry, sqlSha256, sqlStatements, type BatchedForwardBinding } from "../../scripts/reviewed-platform-forward.js";
 import { dockerAvailable, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
 import { readManagedMigrationChain } from "../../scripts/public-ci-pgtap.mjs";
 import { assertBatchCatalog, assertSameSnapshot, batchSnapshot } from "./reviewedBatchCatalog.js";
@@ -20,7 +22,29 @@ describe.each(["native", "managed"] as const)("exact batch catalog gate: %s", gr
   let container: PostgresContainer | undefined;
   let db: Pool;
   const preceding: Buffer[] = [];
+  let replayRoot: string;
+  let paths: string[];
+  const interleaved = `${directory}/20261022180500_unpinned_gate_probe.sql`;
+  const applyCommittedBefore = async (limit: string) => {
+    for (const path of paths.filter(path => path < limit && !pins.some(pin => pin.path === path))) {
+      const bytes = readFileSync(join(replayRoot, path));
+      if (portable && path !== interleaved) {
+        const manifest = JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8"));
+        expect([manifest.baseline, ...manifest.forward].find(unit => unit.file === path).sha256).toBe(sqlSha256(bytes));
+      }
+      preceding.push(bytes);
+      await db.query(bytes.toString().replace(/^\\(?:un)?restrict [A-Za-z0-9]+\r?$/gmu, ""));
+    }
+    paths = paths.filter(path => path >= limit);
+  };
   beforeAll(async () => {
+    // Refuse holes before any fixture can fill a missing predecessor.
+    reviewedBatchPaths(process.cwd(), directory, pins);
+    for (const pin of pins) fixture(pin);
+    replayRoot = mkdtempSync(join(tmpdir(), "openlup-batch-pg-"));
+    cpSync(directory, join(replayRoot, directory), { recursive: true });
+    writeFileSync(join(replayRoot, interleaved), "SELECT set_config('openlup.batch_interleaved', 'applied', false);");
+    paths = reviewedBatchPaths(replayRoot, directory, pins);
     if (!await dockerAvailable()) throw new Error("Reviewed batch gate requires real PostgreSQL and pgTAP");
     container = await runPostgresContainer({ name: `reviewed-batch-${graph}-${process.pid}`, password: "synthetic-conformance", image: portable ? "postgres:16" : image });
     if (!await waitForPostgresTcpReady(container.connectionString)) throw new Error("Reviewed batch PostgreSQL unavailable");
@@ -45,21 +69,15 @@ describe.each(["native", "managed"] as const)("exact batch catalog gate: %s", gr
       readManagedMigrationChain(process.cwd()); // Verifies the committed complete managed prefix.
       expect(sqlSha256(readFileSync(`${directory}/00000000000000_platform_schema_baseline.sql`))).toBe(registry.baselineSha256);
     }
-    for (const path of reviewedBatchPrefix(process.cwd(), directory, pins)) {
-      const bytes = readFileSync(path);
-      if (portable) {
-        const manifest = JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8"));
-        expect([manifest.baseline, ...manifest.forward].find(unit => unit.file === path).sha256).toBe(sqlSha256(bytes));
-      }
-      preceding.push(bytes);
-      await db.query(bytes.toString().replace(/^\\(?:un)?restrict [A-Za-z0-9]+\r?$/gmu, ""));
-    }
+    await applyCommittedBefore(pins[0]!.path);
     // Reset dump session settings. Validate bodies of every new forward in PG.
     await db.query("SET check_function_bodies=on; SET search_path=public,extensions");
   }, 600_000); // Includes a first managed PG17 image pull and the complete prefix.
-  afterAll(async () => { await db?.end(); await container?.remove(); });
+  afterAll(async () => { await db?.end(); await container?.remove(); if (replayRoot) rmSync(replayRoot, { recursive: true, force: true }); });
 
   it.each(pins)("proves exact objects, ACLs and rows after the integrated prefix: $path", async pin => {
+    await applyCommittedBefore(pin.path);
+    if (pin.path > interleaved) expect((await db.query("SELECT current_setting('openlup.batch_interleaved') AS value")).rows).toEqual([{ value: "applied" }]);
     const bytes = fixture(pin);
     assertBatchedForward(pin, bytes, preceding);
     const before = await batchSnapshot(db);
@@ -73,6 +91,21 @@ describe.each(["native", "managed"] as const)("exact batch catalog gate: %s", gr
       }
     } finally { await db.query("ROLLBACK"); }
     assertSameSnapshot(before, await batchSnapshot(db));
+    const attacks = portable && pin.path.includes("20261022184000")
+      ? [`REVOKE EXECUTE ON FUNCTION ${pin.functions[0]!.signature} FROM PUBLIC;`]
+      : !portable && pin.path.includes("20261022175000")
+        ? ["CREATE INDEX unpinned_existing_table_index ON public.subscriptions(id);"] : [];
+    for (const attack of attacks) {
+      const sql = bytes.toString() + "\n" + attack;
+      const repinned = { ...pin, sha256: sqlSha256(sql), statements: sqlStatements(sql).map(statement => ({ sha256: sqlSha256(statement), ...(!/^CREATE(?: OR REPLACE)? FUNCTION /u.test(statement) ? { sql: statement } : {}) })) };
+      if (!portable) expect(() => assertBatchedForward(repinned, Buffer.from(sql), preceding)).not.toThrow();
+      await db.query("BEGIN");
+      try {
+        await db.query(sql);
+        await expect(assertBatchCatalog(db, repinned, Buffer.from(sql), before, await batchSnapshot(db)), attack).rejects.toThrow();
+      } finally { await db.query("ROLLBACK"); }
+      assertSameSnapshot(before, await batchSnapshot(db));
+    }
     await db.query(bytes.toString());
     preceding.push(bytes);
     if (!portable) {
@@ -125,4 +158,21 @@ describe.each(["native", "managed"] as const)("exact batch catalog gate: %s", gr
       expect(rows.map(row => row.result)).toEqual([`1..${pins.length}`]);
     }
   }, 120_000);
+});
+
+it.each([
+  ["db/platform/migrations", "20261022184000", "20261022183000"],
+  ["supabase/migrations", "20261022184000", "20261022175000"],
+  ["supabase/migrations", "20261022185000", "20261022175000"],
+])("refuses a landed later pin over an absent predecessor: %s %s", (directory, later, missing) => {
+  const root = mkdtempSync(join(tmpdir(), "openlup-batch-pg-hole-"));
+  const pins = registry.batchedForwards!.filter(pin => pin.path.startsWith(directory));
+  try {
+    for (const pin of pins.filter(pin => later.includes("185000") ? pin.path.includes(later) || pin.path < `${directory}/20261022170000` : pin.path <= pins.find(pin => pin.path.includes(later))!.path && !pin.path.includes(missing))) {
+      mkdirSync(dirname(join(root, pin.path)), { recursive: true });
+      writeFileSync(join(root, pin.path), fixture(pin));
+    }
+    expect(pins.some(pin => pin.path.includes(missing))).toBe(true);
+    expect(() => reviewedBatchPaths(root, directory, pins)).toThrow("reviewed batch requires every earlier same-rail pin landed first");
+  } finally { rmSync(root, { recursive: true, force: true }); }
 });

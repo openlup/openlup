@@ -4,7 +4,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSy
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { allowedFulfillmentAdapterWords, neutralityIncreases, scanSnapshots, unreviewedPinnedIntroductionIncreases, validateBaseline, validateReviewedPinnedIntroductions } from "./public-ci-neutrality.mjs";
+import { allowedFulfillmentAdapterWords, reviewedPinnedIntroductions, neutralityIncreases, scanSnapshots, unreviewedPinnedIntroductionIncreases, validateBaseline, validateReviewedPinnedIntroductions } from "./public-ci-neutrality.mjs";
 
 vi.mock("node:child_process", async importOriginal => {
   const original = await importOriginal<typeof import("node:child_process")>();
@@ -702,4 +702,24 @@ describe("neutrality scan reuse", () => {
     }
   });
 
+});
+
+it("keeps the C94 allowance closed at exactly 13 paths and 15 tuples", () => {
+  expect(reviewedPinnedIntroductions).toHaveLength(13);
+  expect(new Set(reviewedPinnedIntroductions.map(([path]) => path)).size).toBe(13);
+  expect(reviewedPinnedIntroductions.flatMap(([, , counts]) => counts)).toHaveLength(15);
+});
+
+it("refuses regenerated C94 counts below their pin without writing the baseline", () => {
+  const { root, base } = installed(Object.fromEntries(managedPinnedSources()));
+  const before = readFileSync(join(root, baselinePath));
+  // A decrease passes the ratchet, but cannot regenerate an inexact pinned key.
+  const source = readFileSync(join(root, refundRail), "utf8");
+  const word = ["str", "ipe"].join("");
+  expect(source.toLowerCase()).toContain(word);
+  put(root, refundRail, source.replace(`'${word}'`, "'neutral'"));
+  const result = cli(root, base, "--write-baseline");
+  expect(result.status, result.output).toBe(1);
+  expect(result.output).toContain(`pinned introduction baseline count mismatch: "${refundRail}"`);
+  expect(readFileSync(join(root, baselinePath))).toEqual(before);
 });
