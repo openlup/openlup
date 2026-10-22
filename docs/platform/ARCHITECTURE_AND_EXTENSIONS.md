@@ -750,8 +750,13 @@ The frozen label port returns unsupported refusals without I/O for all its metho
 Sync projects collection identity and closed data, with product writes only on
 explicit invocation. No route, schedule or default binding is installed. Root
 reference implementations remain unchanged. See the [example contract](CANONICAL_CONTRACTS.md#opt-in-fulfillment-example)
-and [A3 ledger](plans/oss-a3-fulfillment-adapter.md); actual M08 conformance remains
-O-P3 work with the shipped runner.
+and [A3 ledger](plans/oss-a3-fulfillment-adapter.md). The example passes M08's
+offline runner with injected HTTP, synthetic sensitive-value plants and explicit
+unsupported refusals. Its [conformance witness](../../packages/platform/test/fulfillment/omnipack/conformance.test.ts)
+also runs the real dispatch worker against a begun/recorded host ledger after
+adapter restart and completed-record eviction, requiring zero provider calls.
+These fixtures establish neither provider-account readiness nor durable store
+atomicity; account readbacks remain owner acts.
 
 The [dispatch port](../../packages/platform/src/fulfillment/contracts/dispatch.ts)
 prepares the actual provider command without submitting it, returns its fingerprint

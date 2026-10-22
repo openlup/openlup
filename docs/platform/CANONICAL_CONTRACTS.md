@@ -193,8 +193,14 @@ host approval. Stock collections carry a run ID/time and nullable source revisio
 collection time is no provider ordering. Product reads are pull-only in scheduled
 composition; writes require explicit host invocation and metadata.
 
-Offline witnesses cover these boundaries. Actual M08 runner conformance remains
-O-P3 work; this entry claims no conformance pass or provider-account proof.
+The example passes M08's offline `runFulfillmentAdapterConformance` with injected
+fake HTTP and synthetic sensitive-value plants in the
+[conformance witness](../../packages/platform/test/fulfillment/omnipack/conformance.test.ts).
+It covers dispatch/replay and pre-I/O mismatch refusal, unsupported label
+create/void, observation, positive and empty readback, stock and product sync.
+The real M08 worker also refuses fresh-instance and evicted-fingerprint replays
+against an already-begun host ledger without provider I/O. These offline checks
+provide no provider-account proof; account readbacks remain owner acts.
 See the [A3 ledger](plans/oss-a3-fulfillment-adapter.md).
 
 ## Canonical status
@@ -279,8 +285,9 @@ command preparation, host keys, replay, paid handoff and proof/storage boundarie
 The offline `runFulfillmentAdapterConformance` checks adapter-owned fixtures and
 returns sanitized evidence. The [opt-in fulfillment example](#opt-in-fulfillment-example)
 is the template for another warehouse, marketplace fulfillment service or parcel
-adapter; its actual runner conformance remains O-P3 work. Native store proof
-remains separate. This surface activates no provider or reference route.
+adapter and passes M08's offline runner with adapter-owned fixtures.
+Provider-account proof and native store proof remain separate; account readbacks
+remain owner acts. This surface activates no provider or reference route.
 
 | Class | Shipped example subpaths |
 | --- | --- |
