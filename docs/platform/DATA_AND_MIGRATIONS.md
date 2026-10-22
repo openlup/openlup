@@ -46,12 +46,15 @@ The release producer refuses destructive DDL (`DROP TABLE`, `SCHEMA`, `VIEW`,
 `TYPE` or `COLUMN`, and `TRUNCATE`), renames, schema moves, ownership transfers
 and writes to adopter-owned `app`. Its bounded SQL predicate accepts additive
 object creation, `ALTER TABLE ... ADD`, transaction boundaries and literal
-`INSERT ... VALUES ... ON CONFLICT ... DO NOTHING`. Procedural or dynamic SQL
+`INSERT ... VALUES ... ON CONFLICT ... DO NOTHING` seeds with a single literal
+VALUES list immediately after the target name and optional plain column list.
+`CREATE SCHEMA [IF NOT EXISTS] name` takes no schema elements, and sequences take
+no `OWNED BY` clause. Procedural or dynamic SQL
 and unsupported forms refuse; see [Versioning and EOL](../../.github/VERSIONING_AND_EOL.md#publish-refuse-and-recover)
 for the exact admission boundary. Passing admission does not prove N-1 or live
 schema compatibility. Test the actual selected chain, constraints and replay.
 Expand-only admission refuses query-bearing `CREATE TABLE`, `PARTITION OF` and
-`LIKE` elements, operator references and function calls in default, check,
+`LIKE`, operator references and function calls in default, check,
 generated and index expressions other than a short allowlist of side-effect-free
 built-ins; it is a bounded classifier, not a general SQL analyser.
 

@@ -299,12 +299,17 @@ function expandOnlyExpressions(tokens: string[]): boolean {
   if (stack.length) return false;
   // Object/column type names are outside expression regions. Preserve their dots separately.
   const nameEnd = (start: number) => {
+    if (!identifier(tokens[start])) return -1;
     let end = start + 1;
-    while (tokens[end] === "." && identifier(tokens[end + 1])) { qualified.add(end); end += 2; }
+    while (tokens[end] === ".") {
+      if (!identifier(tokens[end + 1])) return -1;
+      qualified.add(end); end += 2;
+    }
     return end;
   };
   const typeModifier = (start: number) => {
     const end = nameEnd(start);
+    if (end < 0) return false;
     if (tokens[end] === "(" && modifiers.has(tokens[end - 1]!) && (end === start + 1 || (end === start + 3 && tokens[start] === "PG_CATALOG"))) {
       structural.add(end);
       return tokens.slice(end + 1, closing.get(end)).every((token) => token === "<literal>" || token === ",");
@@ -315,15 +320,23 @@ function expandOnlyExpressions(tokens: string[]): boolean {
   let open: number;
   if (indexStatement) {
     const object = tokens[1] === "UNIQUE" ? 3 : 2;
-    nameEnd(tokens[object] === "IF" ? object + 3 : object);
-    const on = tokens.indexOf("ON");
-    if (on < 0) return false;
+    const on = nameEnd(tokens.slice(object, object + 3).join(" ") === "IF NOT EXISTS" ? object + 3 : object);
+    if (on < 0 || tokens[on] !== "ON") return false;
     open = nameEnd(on + 1);
-    if (tokens[open] === "USING") open += 2;
+    if (open < 0) return false;
+    if (tokens[open] === "USING") {
+      if (!identifier(tokens[open + 1])) return false;
+      open += 2;
+    }
   } else if (tokens[0] === "CREATE") {
-    open = nameEnd(tokens[2] === "IF" ? 5 : 2);
-  } else { nameEnd(2); open = -1; }
-  if (open >= 0 && tokens[open] === "(") structural.add(open);
+    open = nameEnd(tokens.slice(2, 5).join(" ") === "IF NOT EXISTS" ? 5 : 2);
+  } else {
+    const add = nameEnd(2);
+    if (add < 0 || tokens[add] !== "ADD") return false;
+    open = -1;
+  }
+  if (tokens[0] === "CREATE" && (open < 0 || tokens[open] !== "(")) return false;
+  if (open >= 0) structural.add(open);
 
   if (indexStatement) {
     const end = closing.get(open);
@@ -343,25 +356,52 @@ function expandOnlyExpressions(tokens: string[]): boolean {
       start = next + 1;
     }
     // INCLUDE column lists and storage parameters are structural, not calls.
-    for (let index = end + 1; index < tokens.length; index++) {
-      if (["INCLUDE", "WITH"].includes(tokens[index]!) && tokens[index + 1] === "(") structural.add(index + 1);
-      if (tokens[index] === "WHERE") break;
+    let suffix = end + 1;
+    for (const clause of ["INCLUDE", "WITH"]) {
+      if (tokens[suffix] !== clause) continue;
+      if (tokens[suffix + 1] !== "(") return false;
+      structural.add(suffix + 1);
+      const close = closing.get(suffix + 1)!;
+      if (clause === "INCLUDE" && !/^[A-Z_][A-Z0-9_]*(?: , [A-Z_][A-Z0-9_]*)*$/u.test(tokens.slice(suffix + 2, close).map((token) => token.startsWith('"') ? token.slice(1, -1) : token).join(" "))) return false;
+      suffix = close + 1;
     }
+    if (suffix < tokens.length && tokens[suffix] !== "WHERE") return false;
   } else {
     const end = open >= 0 ? closing.get(open) : tokens.length;
     if (end === undefined) return false;
-    for (let start = open >= 0 ? open + 1 : tokens.indexOf("ADD") + 1; start < end;) {
+    for (let start = open >= 0 ? open + 1 : nameEnd(2); start < end;) {
       let next = start;
       while (next < end && tokens[next] !== ",") next = tokens[next] === "(" ? closing.get(next)! + 1 : next + 1;
       let column = start;
-      if (tokens[column] === "ADD") column++;
-      if (tokens[column] === "COLUMN") column++;
-      if (tokens[column] === "IF") column += 3;
-      if (!["CONSTRAINT", "PRIMARY", "FOREIGN", "UNIQUE", "CHECK"].includes(tokens[column]!) && !typeModifier(column + 1)) return false;
-      for (let index = column; index < next; index++) {
+      if (open < 0) {
+        if (tokens[column++] !== "ADD") return false;
+        if (tokens[column] === "COLUMN") column++;
+        if (tokens.slice(column, column + 3).join(" ") === "IF NOT EXISTS") column += 3;
+      }
+      const constraint = ["CONSTRAINT", "PRIMARY", "FOREIGN", "UNIQUE", "CHECK"].includes(tokens[column]!);
+      if (!constraint && (!identifier(tokens[column]) || !typeModifier(column + 1))) return false;
+      // Start after the column/type or constraint name, never at a keyword-shaped column name.
+      let index = constraint ? column : nameEnd(column + 1);
+      if (tokens[index] === "CONSTRAINT") {
+        if (!identifier(tokens[index + 1])) return false;
+        index += 2;
+      }
+      for (; index < next; index++) {
         const token = tokens[index];
-        if (token === "REFERENCES") { const targetEnd = nameEnd(index + 1); if (tokens[targetEnd] === "(") structural.add(targetEnd); }
-        if ((token === "CHECK" || token === "UNIQUE" || (token === "KEY" && ["PRIMARY", "FOREIGN"].includes(tokens[index - 1]!)) || (token === "AS" && tokens.slice(column, index).includes("GENERATED")) || (token === "IDENTITY" && tokens[index - 1] === "AS")) && tokens[index + 1] === "(") structural.add(index + 1);
+        if (token === "REFERENCES") {
+          const targetEnd = nameEnd(index + 1);
+          if (targetEnd < 0) return false;
+          if (tokens[targetEnd] === "(") structural.add(targetEnd);
+          index = targetEnd - 1;
+        }
+        if ((token === "CHECK" || token === "UNIQUE" || (token === "KEY" && ["PRIMARY", "FOREIGN"].includes(tokens[index - 1]!))) && tokens[index + 1] === "(") structural.add(index + 1);
+        if (token === "GENERATED") {
+          const as = tokens[index + 1] === "ALWAYS" ? index + 2 : tokens.slice(index + 1, index + 3).join(" ") === "BY DEFAULT" ? index + 3 : -1;
+          if (as < 0 || tokens[as] !== "AS") return false;
+          const expression = tokens[as + 1] === "IDENTITY" ? as + 2 : as + 1;
+          if (tokens[expression] === "(") structural.add(expression);
+          index = expression - 1;
+        }
         if (token === "(") index = closing.get(index)!;
       }
       start = next + 1;
@@ -434,16 +474,18 @@ export function isExpandOnlyPlatformForward(sql: string, reviewedCreationTable =
     // Pinned new tables use scalar operators/casts and these foreign-key actions.
     // Mask only those actions, leaving standalone DELETE/SET and every other refusal intact.
     const checked = reviewedCreationTable && /^CREATE TABLE /u.test(text) ? text.replace(/ ON DELETE (?:CASCADE|SET NULL)(?= |$)/gu, "").split(" ") : normalized;
-    if (!reviewedCreationTable && statement.includes("OPERATOR")) return false;
+    if (!reviewedCreationTable && (statement.includes("OPERATOR") || statement.some((token, index) => token === "OWNED" && statement[index + 1] === "BY"))) return false;
     if (checked.some((token) => ["DROP", "TRUNCATE", "RENAME", "OWNER", "SET", "APP", "DELETE", "UPDATE", "REPLACE", "SELECT", "EXECUTE", "CALL", "DETACH", "ATTACH", "INHERIT", "INHERITS", "DISABLE", "ENABLE", "VALIDATE", "AUTHORIZATION"].includes(token))) return false;
     if (text === "BEGIN" || text === "COMMIT") return true;
     if (/^INSERT INTO /u.test(text)) {
       const values = normalized.indexOf("VALUES"), conflict = normalized.indexOf("ON", values);
       if (values < 0 || conflict < 0 || !/ ON CONFLICT(?: \( [A-Z_][A-Z0-9_]*(?: , [A-Z_][A-Z0-9_]*)* \)| ON CONSTRAINT [A-Z_][A-Z0-9_]*)? DO NOTHING$/u.test(text)) return false;
+      if (!reviewedCreationTable && !/^INSERT INTO [A-Z_][A-Z0-9_]*(?: \. [A-Z_][A-Z0-9_]*)*(?: \( [A-Z_][A-Z0-9_]*(?: , [A-Z_][A-Z0-9_]*)* \))? VALUES$/u.test(normalized.slice(0, values + 1).join(" "))) return false;
       // Seed values are literals only; no subquery, function or dynamic execution.
       return normalized.slice(values + 1, conflict).every((token) => ["<literal>", "TRUE", "FALSE", "NULL", "(", ")", ",", "+", "-"].includes(token)) && normalized.filter((token) => token === "DO").length === 1;
     }
     if (normalized.includes("DO")) return false;
+    if (!reviewedCreationTable && /^CREATE SCHEMA /u.test(text)) return /^CREATE SCHEMA (?:IF NOT EXISTS )?[A-Z_][A-Z0-9_]*$/u.test(text);
     if (!reviewedCreationTable && /^(?:CREATE (?:UNIQUE )?(?:TABLE|INDEX)|ALTER TABLE) /u.test(text)) {
       // No evaluated forward uses LIKE, including its expression-operator form.
       if (statement.includes("LIKE") || statement.some((token, index) => token === "PARTITION" && statement[index + 1] === "OF")) return false;
@@ -457,7 +499,8 @@ export function isExpandOnlyPlatformForward(sql: string, reviewedCreationTable =
     }
     if (/^CREATE (?:UNIQUE )?(?:TABLE|INDEX|TYPE|SEQUENCE|SCHEMA) /u.test(text)) return !normalized.includes("ALTER") && normalized.filter((token) => token === "CREATE").length === 1;
     if (/^ALTER TABLE /u.test(text)) {
-      const add = normalized.indexOf("ADD");
+      const target = /^ALTER TABLE ([A-Z_][A-Z0-9_]*(?: \. [A-Z_][A-Z0-9_]*)*) ADD /u.exec(text);
+      const add = reviewedCreationTable ? normalized.indexOf("ADD") : target ? 2 + target[1]!.split(" ").length : -1;
       if (add <= 2 || normalized.slice(2, add).includes(",") || normalized.filter((token) => token === "ALTER").length !== 1) return false;
       let depth = 0;
       for (let index = add; index < statement.length; index++) {
