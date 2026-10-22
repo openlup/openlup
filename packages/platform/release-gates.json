@@ -451,6 +451,7 @@
       "maturity": "experimental",
       "compatibilityPolicy": "internal-candidate",
       "packageSmokeEvidence": [
+        "test/fulfillment/omnipack/conformance.test.ts",
         "test/fulfillment/omnipack/factory.test.ts",
         "test/fulfillment/omnipack/transportAdaptation.test.ts"
       ],

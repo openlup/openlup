@@ -4942,6 +4942,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/fulfillment/omnipack/conformance.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/fulfillment/omnipack/factory.test.ts",
       "class": "public-output"
     },

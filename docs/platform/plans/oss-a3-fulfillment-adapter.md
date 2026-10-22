@@ -2,8 +2,8 @@
 
 Status: development-preview implementation ledger, 2026-10-22. O-P1 contributes
 internal transport; O-P2 adds the opt-in OmniPack entry. Local native-review
-repair 1 and focused verification are complete; fresh native review and O-P3
-integration remain owed.
+repair 1 and O-P3 runner integration are implemented; O-P3 focused verification
+is recorded below. Fresh committed native review and the broad gate remain owed.
 No account-readiness, activation or release claim is made.
 
 ## Outcome, authority and boundary
@@ -148,8 +148,8 @@ readback and sync provider ports. No parent re-export, orchestration, default bi
 route, schedule, SDK, dependency or account activation is added.
 
 The repair-1 owner grant above supersedes earlier local-only Git restrictions.
-O-P3 owns committed integration with the actual, now-shipped M08 runner. Prior
-scratch results do not claim that integration or provider/account readiness.
+O-P3 integrates the actual, now-shipped M08 runner below. Prior scratch results
+do not establish current-tree integration or provider/account readiness.
 
 Current implementation/proof: retain the client/codecs and
 closed neutral projections, with stateless preparation and one bounded submission
@@ -173,9 +173,10 @@ cancel has no callable member. Their descriptors remain supported:false with rea
 
 Current counts: factory **29**, transport **4** (3 O-P1 + 1 O-P2), characterization
 **18**, adapter total **51**. O-P2 is **31 net-new** including the one cold-consumer
-case. O-P1 + O-P2 is **55**; private V-C1 18 + 55 + O-P3 projected 2 = **75 / 100**,
-leaving 25 cases, including the 10-case planning reserve. Counting the two scratch
-restart/eviction witnesses conservatively gives **77 / 100**. Repair 1 adds no
+case. O-P1 + O-P2 is **55**; private V-C1 18 + 55 + O-P3 2 = **75 / 100**,
+leaving 25 cases, including the 10-case planning reserve. The earlier conservative
+77/100 projection counted two separate scratch worker cases; O-P3 combines those
+scenarios into one authored case and the runner fixtures into one. Repair 1 adds no
 `it()` cases. Generated package-boundary rows remain separate under ruling A.
 
 Simplicity pre-check for Claude's committed reviews: reuse the contributed
@@ -285,3 +286,84 @@ Final self-retro: keeping the existing cases preserved the 75/100 round projecti
 The ledger consolidation removes 800+ narrative lines; the actual docs artifact
 measurement replaces stale projected headroom. No further in-scope improvement
 is needed.
+
+## O-P3 offline M08 integration (2026-10-22)
+
+Owner's minimal-mode grant: Codex implements and commits only in the assigned
+O-P3 worktree, stacked on O-P2 `423dbab7`, using the supplied identity/trailers.
+No push/PR, network, installs, secrets or account actions. Full `npm test` and
+`test:scoped` are excluded; Claude's committed native reviews and gated run remain
+separate and retain all existing counters and expiry. Scope is one conformance
+file, its public catalogue row, exactly one smoke-evidence line, contract and
+architecture-owner prose, this ledger, a change fragment and required generated
+navigation.
+
+Acceptance: actual merged M08 runner with injected fake HTTP and independent
+expected bytes/evidence; real worker with an in-memory begun/recorded host ledger
+for restart and eviction; focused checks, no API change, neutrality increases or
+case-budget overrun. No production adapter, M08 implementation, export, dependency,
+default binding, persistence or budget control changes are authorized.
+
+| Destination / responsibility | Cases | Round running total |
+| --- | ---: | ---: |
+| `packages/platform/test/fulfillment/omnipack/conformance.test.ts`: one subject, 13 runner evidence rows | 1 | 74 |
+| Same file: real worker restart and eviction scenarios, one authored case | 1 | 75 |
+
+O-P3 is **2 net-new**; public O-P1/O-P2/O-P3 is **57**; private V-C1 **18** gives
+**75 / 100**, with **25** remaining. Runner evidence rows and loop scenarios are
+assertions within authored cases, not generated cases. Generated package-boundary
+rows remain separate under ruling A. No donor witness is removed or weakened.
+
+The subject covers selection/default-off, accepted dispatch/replay, prepared
+fingerprint mismatch before I/O, refused prepare, label create/void unsupported,
+verified and unsupported observation, positive and empty readback (unknown,
+never exact absence), stock snapshots/movements and product packs/SKU listing.
+Sensitive plants cover contacts, credentials and signed tracking URLs. The worker
+fixture preserves one mapped attempt and a submitting record and requires zero
+provider dispatch, credentials, HTTP, begin, finalize or acknowledge calls after
+restart or completed-record eviction; this is offline host-ledger fencing proof,
+not a production store atomicity or provider-account claim.
+
+Simplicity pre-check for the supervisor's committed review: reuse M08's runner and
+worker directly; one fixture subject and one two-scenario host store avoid new
+runner abstractions and duplicate scratch cases.
+
+Focused verification: `npm run lint` passed (0 errors, 33 existing warnings),
+including Core/Outbox/Platform builds and Platform's strict build typecheck.
+The new test also passed a focused strict `tsc --noEmit` check with explicit
+Node types.
+Platform `api:check` passed without snapshot changes. Direct Vitest over
+`packages/platform/test/fulfillment`, `packageBoundary.test.ts` and the cold
+consumer passed **1,675 tests / 24 files**: fulfillment **83**, generated boundary
+**1,546**, cold consumer **46**. The new file passed **2 cases**, including one
+subject's **13** exact sanitized runner rows; restart and eviction each returned
+`dispatch_not_safe_to_submit:submitting` with **0** provider/HTTP calls. The
+existing factory remains **29**, transport **4**, characterization **18**;
+new conformance **2** gives **53** adapter cases. An initial probe needed the
+existing Core build prerequisite; the post-build probe and complete focused
+reruns passed. No full/gated test command was run.
+
+Tree neutrality passed with **0 increases**; UI smoke passed with zero forbidden
+hits; working-tree gitleaks found no leaks. The offline artifact preview used the
+existing tarball/content/size/browser check functions: **1,551 files**,
+**1,112,563 packed / 4,964,983 unpacked bytes**, code **968,390 / 1,126,400**,
+docs **46,386 / 49,152** (5 / 10 files), **2,766 docs bytes** headroom; no findings.
+The package checker requires committed bytes, so its final run follows the local
+commit. `release-gates.json` has exactly **one added line**, registering this test;
+all caps, API entries and other smoke rows are unchanged.
+
+Stacked documentation policy uses exact O-P2 `423dbab7`. It found two owner
+obligations: the architecture section now explains runner/worker proof, and the
+package README's unchanged contract is justified by the delta-bound commit
+trailer (only another smoke witness is registered). The final policy and
+`--docs-update` runs consume that own-commit trailer after signing; generated
+changes, if any, are committed before the final check. Current source-release
+bindings are computed; their stale release-preparation snapshot is informational.
+Fresh committed native review and the supervisor's broad gate remain owed;
+no native session, repair counter or expiry is replaced by these focused results.
+
+Self-retro: adopting the scratch assertions into two authored cases avoided
+separate runner-row and worker-scenario tests while retaining independent expected
+bytes and explicit eviction proof. Missing build prerequisites caused one failed
+probe; build the existing dependencies before probing package entry imports.
+No production mechanism or additional process was needed.
