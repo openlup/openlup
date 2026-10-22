@@ -187,11 +187,23 @@ cancellation and courier pickup remain unsupported; label reads belong to host
 storage. The required label port returns explicit unsupported refusals without I/O
 for create, void and read. Configured product paths accept only single-leading-slash
 path segments; request URLs must retain the configured HTTPS origin and have no
-credentials. Raw bags, provider errors, command PII and secrets never enter durable
+credentials. Raw bags, raw provider errors, command PII and secrets never enter durable
 outputs. Tracking URLs require query-free HTTPS without credentials and explicit
 host approval. Stock collections carry a run ID/time and nullable source revision;
 collection time is no provider ordering. Product reads are pull-only in scheduled
 composition; writes require explicit host invocation and metadata.
+Sync failures/refusals throw Error subclasses with safe messages and typed
+`reason`, `phase` and `retryable`; provider failures additionally carry
+`providerFailure:true`, status and bounded code for host HTTP 502 mapping.
+Product reads preserve the donor's nonempty string EANs and finite quantities
+(other values become zero), leaving pack validation/reconciliation to the host.
+Stocked product SKUs admit every nonblank string with percent-encoded path segments,
+retaining the original identity and deduplicating reads. Literal `.`/`..` and lone
+surrogates refuse visibly as `malformed / sync` before HTTP; the product worker
+counts per-SKU failures instead of silently dropping them. `pulledSkus`
+counts unique completed product reads; `providerCalls` adds the stock listing,
+excluding retry attempts.
+
 
 The example passes M08's offline `runFulfillmentAdapterConformance` with injected
 fake HTTP and synthetic sensitive-value plants in the
