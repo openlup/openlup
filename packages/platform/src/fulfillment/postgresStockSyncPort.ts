@@ -17,14 +17,14 @@ export function createPostgresFulfillmentStockSyncPort(db: PgExecutor, options: 
       const row = result.rows[0];
       if (!row) return null;
       const cursor = row.cursor as Partial<SyncCursor>;
-      return { status: row.status as SyncCursor['status'], lastStockSyncedAt: timestamp(row.last_stock_synced_at), lastMovementOccurredAt: timestamp(row.last_movement_occurred_at),
+      return { ...cursor, status: row.status as SyncCursor['status'], lastStockSyncedAt: timestamp(row.last_stock_synced_at), lastMovementOccurredAt: timestamp(row.last_movement_occurred_at),
         continuation: cursor.continuation ?? { nextRef: null, startLocalDate: null, endLocalDate: null }, coverageGapSkus: cursor.coverageGapSkus ?? [], refusal: cursor.refusal ?? null };
     },
     async recordCursor(v) {
       await db.query(`INSERT INTO public.fulfillment_stock_sync_cursors(source_key,status,last_stock_synced_at,last_movement_occurred_at,cursor,error_code,updated_at)
         VALUES($1,$2,$3,$4,$5::jsonb,$6,now()) ON CONFLICT(source_key) DO UPDATE SET status=EXCLUDED.status,
         last_stock_synced_at=EXCLUDED.last_stock_synced_at,last_movement_occurred_at=EXCLUDED.last_movement_occurred_at,cursor=EXCLUDED.cursor,error_code=EXCLUDED.error_code,updated_at=now()`,
-      [source,v.status,v.lastStockSyncedAt,v.lastMovementOccurredAt,JSON.stringify({ continuation: { nextRef: v.continuation.nextRef, startLocalDate: v.continuation.startLocalDate, endLocalDate: v.continuation.endLocalDate }, coverageGapSkus: [...(v.coverageGapSkus ?? [])], refusal: v.refusal }),v.refusal?.reason ?? null]);
+      [source,v.status,v.lastStockSyncedAt,v.lastMovementOccurredAt,JSON.stringify({ syncRunId: v.syncRunId, counts: v.counts, items: v.items, alerts: v.alerts, staleSync: v.staleSync, error: v.error, continuation: { nextRef: v.continuation.nextRef, startLocalDate: v.continuation.startLocalDate, endLocalDate: v.continuation.endLocalDate }, coverageGapSkus: [...(v.coverageGapSkus ?? [])], refusal: v.refusal }),v.error?.reason ?? v.refusal?.reason ?? null]);
     },
     async readSkuInventoryClasses(skus) {
       if (!skus.length) return new Map();
@@ -52,7 +52,10 @@ export function createPostgresFulfillmentStockSyncPort(db: PgExecutor, options: 
       const movement = { providerRef, syncRunId, collectedAt, sourceRevision, revisionSource, skuRef, quantityKind, quantity, occurredAt, operationType, documentRef, lotRef, expirationDate };
       return nativeCall(db,'fulfillment_record_stock_movement',[source,v.requestKey,fingerprint({ requestKey: v.requestKey, movement }),JSON.stringify(movement)]);
     },
-    recordLowStockEvidence: v => nativeCall(db,'fulfillment_record_stock_evidence',[source,v.requestKey,fingerprint(v),v.skuRef,v.thresholdKind,v.severity,v.providerForSaleQuantity,v.localAvailableQuantity]),
+    recordLowStockEvidence: v => nativeCall(db,'fulfillment_record_stock_evidence',[source,v.requestKey,
+      // Quantities, severity and run evidence are observations of the same alert identity.
+      fingerprint({ requestKey: v.requestKey, skuRef: v.skuRef, thresholdKind: v.thresholdKind }),
+      v.skuRef,v.thresholdKind,v.severity,v.providerForSaleQuantity,v.localAvailableQuantity]),
     resolveLowStockEvidence: v => nativeCall(db,'fulfillment_resolve_stock_evidence',[source,v.skuRef,v.activeThresholdKinds,v.syncRunId]),
   };
 }

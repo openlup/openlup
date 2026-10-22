@@ -267,25 +267,25 @@ export function createOmnipackFulfillmentAdapter(config: OmnipackFulfillmentAdap
         requireSync();
         try {
           const identity = syncIdentity();
-          return (await client.getStock()).map(row => {
+          return (await client.getStock({ refuseRedirectRetry: true })).map((row, itemIndex) => {
             const skuRef = reference(row.sku);
-            if (!skuRef) throw new OmnipackSyncError("malformed", "sync");
+            if (!skuRef) return { kind: "rejected" as const, itemIndex, reason: "invalid_sku_ref" as const };
             return { ...identity, skuRef, quantityKind: "snapshot" as const, totalQuantity: row.totalQuantity,
               forSaleQuantity: row.forSaleQuantity, reservedOrUnavailableQuantity: row.reservedOrUnavailableQuantity };
           });
-        } catch (error) { throw syncFailure("getStock", error); }
+        } catch (error) { throw stockFailure(error, "get_stock"); }
       },
       async getStockMovements(input) {
         requireSync();
         try {
           const identity = syncIdentity();
-          return (await client.getStockMovements(input)).map(row => {
+          return (await client.getStockMovements(input)).map((row, itemIndex) => {
             const skuRef = reference(row.sku);
-            if (!skuRef) throw new OmnipackSyncError("malformed", "sync");
+            if (!skuRef) return { kind: "rejected" as const, itemIndex, reason: "invalid_sku_ref" as const };
             return { ...identity, skuRef, quantityKind: "movement" as const, quantity: row.quantity, occurredAt: timestamp(row.occurredAt),
               operationType: reference(row.operationType), documentRef: reference(row.warehouseDocumentNumber), lotRef: reference(row.lotNumber), expirationDate: /^\d{4}-\d\d-\d\d$/u.test(row.expirationDate ?? "") ? row.expirationDate : null };
           });
-        } catch (error) { throw syncFailure("getStockMovements", error); }
+        } catch (error) { throw stockFailure(error, "get_stock_movements"); }
       },
     },
     productSync: {
@@ -339,4 +339,14 @@ function commandDigest(request: FulfillmentDispatchRequest): string {
       serviceRef: request.selection.serviceRef, deliveryKind: request.selection.deliveryKind,
       pickupPointId: request.selection.pickupPoint?.id ?? null },
   });
+}
+
+/** Translate only the contributed client's typed error; never copy a message or payload. */
+function stockFailure(error: unknown, operation: "get_stock" | "get_stock_movements") {
+  const failure = syncFailure(operation === "get_stock" ? "getStock" : "getStockMovements", error);
+  if (!(error instanceof OmnipackProviderError)) return failure;
+  const retryable = error.code !== "redirect_refused" && (error.retryable || error.code === "network_error");
+  return Object.assign(failure, { retryable, providerError: {
+    operation, status: error.status, code: error.code, retryable,
+  } });
 }
