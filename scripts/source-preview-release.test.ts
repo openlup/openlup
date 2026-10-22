@@ -960,6 +960,173 @@ $$;
       } finally { sample.cleanup(); }
     });
   });
+  describe("M08 stock-evidence replacement admission", () => {
+    const path = "db/platform/migrations/20261022200000_fulfillment_stock_evidence_replay_reopen.sql";
+    const priorPath = "db/platform/migrations/20260814000000_fulfillment_stock_evidence.sql";
+    const portableBaseline = "db/platform/migrations/00000000000000_platform_baseline.sql";
+    const manifestPath = "config/platform-migration-manifest.json";
+    const signature = "public.fulfillment_record_stock_evidence(text,text,text,text,text,text,integer,integer)";
+    // Exact future forward, including its single trailing LF; this control adds no SQL file.
+    const exactSql = `CREATE OR REPLACE FUNCTION public.fulfillment_record_stock_evidence(
+  p_source_key text, p_idempotency_key text, p_fingerprint text, p_sku text,
+  p_threshold_kind text, p_severity text, p_provider_for_sale integer,
+  p_local_available integer
+) RETURNS jsonb LANGUAGE plpgsql SET search_path = pg_catalog, public AS $$
+DECLARE v_existing public.fulfillment_stock_evidence%ROWTYPE;
+BEGIN
+  SELECT * INTO v_existing FROM public.fulfillment_stock_evidence
+   WHERE idempotency_key = p_idempotency_key FOR UPDATE;
+  IF FOUND THEN
+    IF v_existing.operation_fingerprint <> p_fingerprint THEN
+      RAISE EXCEPTION 'fulfillment_stock_evidence_idempotency_conflict' USING ERRCODE = '23505';
+    END IF;
+    UPDATE public.fulfillment_stock_evidence SET
+      status = 'open', severity = p_severity,
+      provider_for_sale_quantity = p_provider_for_sale,
+      local_available_quantity = p_local_available,
+      last_seen_at = clock_timestamp(), resolved_at = NULL
+     WHERE idempotency_key = p_idempotency_key;
+    RETURN jsonb_build_object('replayed', true);
+  END IF;
+  INSERT INTO public.fulfillment_stock_evidence(
+    idempotency_key, operation_fingerprint, source_key, sku, threshold_kind,
+    severity, provider_for_sale_quantity, local_available_quantity
+  ) VALUES (
+    p_idempotency_key, p_fingerprint, p_source_key, p_sku, p_threshold_kind,
+    p_severity, p_provider_for_sale, p_local_available
+  );
+  RETURN jsonb_build_object('replayed', false);
+END $$;
+`;
+    const approved = readReviewedForwardRegistry(readFileSync(new URL("../config/reviewed-platform-forwards.json", import.meta.url)));
+    const migration = readFileSync(new URL(`../${priorPath}`, import.meta.url), "utf8");
+    const start = migration.indexOf("CREATE FUNCTION public.fulfillment_record_stock_evidence(");
+    const priorSql = migration.slice(start, migration.indexOf("$$;", start) + 3);
+    function stockFixture(edit?: (registry: ReviewedForwardRegistry) => void, prior = priorSql, inBaseline = false) {
+      const manifest = JSON.parse(SYNTHETIC_TREE[manifestPath]!);
+      const history = inBaseline ? { [portableBaseline]: prior } : { [priorPath]: prior };
+      if (inBaseline) manifest.baseline.sha256 = sqlSha256(prior);
+      else manifest.forward.push({ file: priorPath, sha256: sqlSha256(prior) });
+      const sample = fixture(undefined, null, false, false, { ...history, [manifestPath]: json(manifest) });
+      // Carry existing M09 and M10 approvals unchanged, including absent future SQL.
+      for (const key of ["portableReplacementForwards", "portableCreationForwards", "managedInvoicingForwards", "batchedForwards"] as const) {
+        Object.assign(sample.registry, { [key]: structuredClone(approved[key]) });
+      }
+      edit?.(sample.registry);
+      sample.apply({ [REVIEWED_FORWARD_PATH]: json(sample.registry) });
+      sample.approval = sample.commit("Separate stock-evidence control approval");
+      const append = (sql = exactSql, targetPath = path) => {
+        const next = structuredClone(manifest);
+        next.forward.push({ file: targetPath, sha256: sqlSha256(sql) });
+        sample.apply({ [targetPath]: sql, [manifestPath]: json(next) });
+      };
+      return { ...sample, append };
+    }
+    it.each([false, true])("admits exact stock bytes with portable prior in baseline: %s", inBaseline => {
+      const sample = stockFixture(undefined, priorSql, inBaseline);
+      try {
+        const pin = sample.registry.portableReplacementForwards![2]!;
+        expect(pin.path).toBe(path);
+        expect(pin.sha256).toBe(sqlSha256(exactSql));
+        expect(pin.functions).toEqual([{ signature,
+          beforeSha256: reviewedFunctionDefinitions(Buffer.from(priorSql)).get(signature),
+          afterSha256: reviewedFunctionDefinitions(Buffer.from(exactSql)).get(signature),
+        }]);
+        expect(isExpandOnlyPlatformForward(exactSql)).toBe(false);
+        sample.append(); const head = sample.commit("Exact stock-evidence feature");
+        for (const gate of gates(sample, head)) expect(gate).not.toThrow();
+      } finally { sample.cleanup(); }
+    });
+    it.each(["body", "file repin", "definition repin", "file byte", "other function", "other version", "other path"])("refuses stock %s in both gates", probe => {
+      const changed = exactSql.replace("status = 'open'", "status = 'resolved'");
+      const sample = stockFixture(registry => {
+        const pin = registry.portableReplacementForwards![2]!;
+        if (probe === "file repin") pin.sha256 = sqlSha256(changed);
+        if (probe === "definition repin") pin.functions[0]!.afterSha256 = reviewedFunctionDefinitions(Buffer.from(changed)).get(signature)!;
+      });
+      try {
+        const sql = probe === "other function" ? exactSql.replace("public.fulfillment_record_stock_evidence(", "public.unrelated(")
+          : probe === "file byte" ? exactSql + "\n" : probe.endsWith("repin") || probe === "body" ? changed : exactSql;
+        const targetPath = probe === "other version" ? path.replace("20261022200000", "20261022200001")
+          : probe === "other path" ? path.replace("replay_reopen", "unlisted") : path;
+        sample.append(sql, targetPath); const head = sample.commit("Refused stock-evidence feature");
+        for (const gate of gates(sample, head)) expect(gate).toThrow(/reviewed replacement|reviewed portable/u);
+      } finally { sample.cleanup(); }
+    });
+    it.each(["path repin", "signature repin", "duplicate entry", "fourth entry", "wrong index", "missing function", "duplicate function", "null preimage"])("refuses stock registry %s", probe => {
+      const registry = structuredClone(approved);
+      const pins = registry.portableReplacementForwards!, pin = pins[2]!;
+      if (probe === "path repin") pin.path = path.replace("20261022200000", "20261022200001");
+      if (probe === "signature repin") pin.functions[0]!.signature = "public.unrelated(text,text,text,text,text,text,integer,integer)";
+      if (probe === "duplicate entry") pins[2] = structuredClone(pins[1]!);
+      if (probe === "fourth entry") pins.push(structuredClone(pin));
+      if (probe === "wrong index") [pins[1], pins[2]] = [pins[2]!, pins[1]!];
+      if (probe === "missing function") pin.functions = [];
+      if (probe === "duplicate function") pin.functions.push(structuredClone(pin.functions[0]!));
+      if (probe === "null preimage") pin.functions[0]!.beforeSha256 = null;
+      expect(() => readReviewedForwardRegistry(Buffer.from(json(registry)))).toThrow(/reviewed portable replacement/u);
+    });
+    it.each(["header", "trailing attribute", "grant", "revoke", "transaction", "extra statement", "extra function", "duplicate function"])("refuses independently repinned stock %s in both gates", probe => {
+      const sql = probe === "header" ? exactSql.replace("LANGUAGE plpgsql", "LANGUAGE plpgsql SECURITY DEFINER")
+        : probe === "trailing attribute" ? exactSql.replace("$$;", () => "$$ SECURITY DEFINER;")
+        : probe === "grant" ? exactSql + `GRANT EXECUTE ON FUNCTION ${signature} TO service_role;`
+        : probe === "revoke" ? exactSql + `REVOKE ALL ON FUNCTION ${signature} FROM PUBLIC;`
+        : probe === "transaction" ? exactSql + "BEGIN;"
+        : probe === "extra statement" ? exactSql + "SELECT 1;"
+        : probe === "extra function" ? exactSql + definition("public.unpinned()", 1, true) : exactSql + exactSql;
+      const sample = stockFixture(registry => {
+        const pin = registry.portableReplacementForwards![2]!;
+        pin.sha256 = sqlSha256(sql);
+        if (probe !== "duplicate function") pin.functions[0]!.afterSha256 = reviewedFunctionDefinitions(Buffer.from(sql)).get(signature)!;
+      });
+      try {
+        sample.append(sql); const head = sample.commit("Repinned unsupported stock SQL");
+        for (const gate of gates(sample, head)) expect(gate).toThrow(/reviewed replacement|reviewed portable/u);
+      } finally { sample.cleanup(); }
+    });
+    it.each([false, true])("refuses stock preimage drift with prior in baseline: %s", inBaseline => {
+      const sample = stockFixture(undefined, priorSql.replace("RETURN jsonb_build_object('replayed', true)", "RETURN jsonb_build_object('replayed', false)"), inBaseline);
+      try {
+        sample.append(); const head = sample.commit("Stock preimage drift");
+        for (const gate of gates(sample, head)) expect(gate).toThrow(/definition drifted/u);
+      } finally { sample.cleanup(); }
+    });
+    it.each(["new approval", "changed approval"])("refuses stock self-approval: %s", probe => {
+      const sample = stockFixture(probe === "new approval" ? registry => { registry.portableReplacementForwards!.pop(); } : undefined);
+      try {
+        const sql = probe === "changed approval" ? exactSql + "\n" : exactSql;
+        sample.append(sql);
+        sample.registry.portableReplacementForwards = structuredClone(approved.portableReplacementForwards!);
+        sample.registry.portableReplacementForwards[2]!.sha256 = sqlSha256(sql);
+        sample.apply({ [REVIEWED_FORWARD_PATH]: json(sample.registry) });
+        const head = sample.commit("Stock feature approves itself");
+        for (const gate of gates(sample, head)) expect(gate).toThrow(/approved separately/u);
+      } finally { sample.cleanup(); }
+    });
+    it.each(["M09", "M10"])("freezes existing %s controls in self-check while release binds the stock entry", programme => {
+      const sample = stockFixture();
+      try {
+        sample.append();
+        const pin = programme === "M09" ? sample.registry.portableReplacementForwards![1]! : sample.registry.batchedForwards![0]!;
+        pin.sha256 = "f".repeat(64);
+        sample.apply({ [REVIEWED_FORWARD_PATH]: json(sample.registry) });
+        const head = sample.commit("Feature changes existing control");
+        // Self-check freezes the whole registry; release binds the introduced forward's entry.
+        expect(gates(sample, head)[0]).toThrow(/approved separately/u);
+        expect(gates(sample, head)[1]).not.toThrow();
+      } finally { sample.cleanup(); }
+    });
+    it("binds the stock approval through later release controls", () => {
+      const sample = stockFixture();
+      try {
+        sample.append(); sample.commit("Stock feature before altered approval");
+        sample.registry.portableReplacementForwards![2]!.functions[0]!.afterSha256 = "f".repeat(64);
+        sample.apply({ [REVIEWED_FORWARD_PATH]: json(sample.registry) });
+        const head = sample.commit("Altered stock control");
+        expect(() => assertDescendantSourceRelease(sample.repo, sample.rootCommit, head)).toThrow(/approved separately/u);
+      } finally { sample.cleanup(); }
+    });
+  });
   it("admits exact bytes after a separate control commit, including new signatures in the pinned file", () => {
     const sample = fixture();
     try {

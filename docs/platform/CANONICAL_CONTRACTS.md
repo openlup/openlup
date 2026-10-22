@@ -538,9 +538,12 @@ forward, old hash, role or payments lifecycle is changed. Native continuity is c
 full-catalogue fresh/prefix/replay tests; a package descriptor alone establishes
 no installation readiness.
 
-The reviewed-forward registry additionally pins one portable function replacement
-to keep active subscriptions active on dunning exhaustion (invariant repair).
-The signature is fixed in code; its before hash binds the portable chain, while
+The reviewed-forward registry additionally pins portable function replacements
+to keep active subscriptions active on dunning exhaustion (invariant repair)
+and to reopen and refresh stock evidence on matching-fingerprint replay.
+The stock replacement keeps the supplied opaque fingerprint comparison and
+`23505` mismatch refusal; it does not rewrite legacy fingerprints.
+Each signature is fixed in code; its before hash binds the portable chain, while
 its after and whole-file hashes bind the proposed forward. This separate control
 approval supplies no migration or runtime activation. The
 [exact reviewed function rules](DATA_AND_MIGRATIONS.md#exact-reviewed-function-forwards)

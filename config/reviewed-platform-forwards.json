@@ -195,6 +195,17 @@
           "afterSha256": "ce65946e04dade071ee455a9a18101f6fe0c34fed098f06e997dc1299ceb391b"
         }
       ]
+    },
+    {
+      "path": "db/platform/migrations/20261022200000_fulfillment_stock_evidence_replay_reopen.sql",
+      "sha256": "6d132dec2820047f4e337bcf752b3d884600ccc12de03887fe6d6aa5575bc1db",
+      "functions": [
+        {
+          "signature": "public.fulfillment_record_stock_evidence(text,text,text,text,text,text,integer,integer)",
+          "beforeSha256": "9505a3037740acd0f625123eacfffa30420a83cccddcbecb56b58c4defc70d7e",
+          "afterSha256": "d08e15b9f33375d051292607b1a1ba813752ac77422a56a86442ac90806ea14a"
+        }
+      ]
     }
   ],
   "portableCreationForwards": [

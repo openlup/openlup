@@ -484,12 +484,13 @@ and regression coverage. A separate
 pins three managed function forwards, exactly three existing-function replacements
 and two new price-setup functions, plus an optional runtime list with the
 five-function capability forward and a second service-only identity capabilities
-forward. An optional portable replacement list admits exactly one file and one
-code-fixed existing signature to keep active subscriptions active on dunning
-exhaustion (invariant repair). Its priors come only from the portable baseline and
-earlier portable forwards; only comments and that single function replacement
-are admitted. The managed counts remain two replacement files, one creation file
-and one or two runtime files when the runtime list is present.
+forward. The optional portable replacement list binds code-fixed signatures for
+the dunning invariant repair, payment-terminal decoupling and stock-evidence
+replay reopening. Each file admits only comments and its single function
+replacement, with unchanged header attributes and no privilege statements.
+Priors come only from the portable baseline and earlier portable forwards.
+The managed counts remain two replacement files, one creation file and one or
+two runtime files when the runtime list is present.
 A separate exact `batchedForwards` list binds the M10/F17 packet (five native,
 nine managed paths), ordered statements, exact grants/seeds and every function
 preimage/postimage. Timestamp aliases normalize only identity; repeated managed
