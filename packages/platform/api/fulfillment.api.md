@@ -997,6 +997,52 @@ export interface SyncCursor {
     /** G15: successful sellable coverage gaps; legacy absent values read as []. */
     coverageGapSkus?: readonly string[];
     refusal: FulfillmentRefusal | null;
+    /** Bounded diagnostics and run evidence in the existing cursor JSON, never raw errors. */
+    syncRunId?: string;
+    counts?: {
+        checked: number;
+        updated: number;
+        movements: number;
+        rejected: number;
+        failures: number;
+        providerCalls: number;
+        readBacks: number;
+    };
+    items?: readonly {
+        itemIndex: number;
+        skuRef: string | null;
+        status: "recorded" | "failed" | "rejected";
+        reason?: string;
+        activeReserved?: number;
+        sellableNow?: number | null;
+        coverageGapQuantity?: number;
+    }[];
+    alerts?: readonly {
+        skuRef: string;
+        thresholdKind: Exclude<Threshold, "forecast">;
+        severity: "info" | "warning" | "critical";
+        providerForSaleQuantity: number;
+        localAvailableQuantity: number;
+        detectedAt: string;
+        activeReserved?: number;
+        coverageGapQuantity?: number;
+        gapHours?: number;
+        thresholdHours?: number;
+    }[];
+    staleSync?: {
+        gapHours: number;
+        thresholdHours: number;
+        detectedAt: string;
+    };
+    error?: {
+        reason: string;
+        providerError?: {
+            operation: "get_stock" | "get_stock_movements";
+            status: number | null;
+            code: string;
+            retryable: boolean;
+        };
+    } | null;
 }
 export interface LocalStock {
     skuRef: string;
@@ -1008,7 +1054,12 @@ export interface LocalStock {
 type Threshold = "safety_stock" | "reservation_coverage" | "forecast" | "stale_sync";
 type Conflict = "unknown_sku" | "ean_conflict" | "kind_quantity_conflict";
 export interface FulfillmentStockSyncProvider {
-    getStock(): Promise<StockSnapshot[]>;
+    /** Rejected rows carry only their input index and a closed reason, never an unsafe reference. */
+    getStock(): Promise<(StockSnapshot | {
+        kind: "rejected";
+        itemIndex: number;
+        reason: "invalid_sku_ref";
+    })[]>;
     getStockMovements(input?: {
         startLocalDate?: string;
         endLocalDate?: string;
@@ -2735,7 +2786,7 @@ export {};
 ## dist/fulfillment/providerStockSyncWorker.d.ts
 
 ```ts
-import type { FulfillmentStockSyncPort, FulfillmentStockSyncProvider } from "./contracts/index.js";
+import type { FulfillmentStockSyncPort, FulfillmentStockSyncProvider, SyncCursor } from "./contracts/index.js";
 type Threshold = Parameters<FulfillmentStockSyncPort["resolveLowStockEvidence"]>[0]["activeThresholdKinds"][number];
 interface StockSyncResult {
     ok: boolean;
@@ -2754,6 +2805,9 @@ interface StockSyncResult {
     syncRunId: string;
     lastMovementOccurredAt: string | null;
     reason?: string;
+    rejected: number;
+    items: NonNullable<SyncCursor["items"]>[number][];
+    providerError?: NonNullable<SyncCursor["error"]>["providerError"];
 }
 export declare function runFulfillmentStockSyncWorker(input: {
     port: FulfillmentStockSyncPort;

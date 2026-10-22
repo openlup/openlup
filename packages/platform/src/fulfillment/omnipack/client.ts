@@ -161,7 +161,7 @@ async function requestJson(
       lastError = new OmnipackProviderError({
         operation,
         status: response.status,
-        code: readProviderErrorCode(body) ?? `http_${response.status}`,
+        code: response.status >= 300 && response.status < 400 ? "redirect_refused" : readProviderErrorCode(body) ?? `http_${response.status}`,
         retryable,
         mayHaveSucceeded: mayPostHaveSucceeded(method, response.status),
       });
@@ -173,8 +173,8 @@ async function requestJson(
         : new OmnipackProviderError({
           operation,
           status: null,
-          code: "network_error",
-          retryable,
+          code: isRedirectRefusal(error) ? "redirect_refused" : "network_error",
+          retryable: method === "GET" && !isRedirectRefusal(error),
           mayHaveSucceeded: submitted && mayPostHaveSucceeded(method, null),
         });
       if (!retryable) throw lastError;
@@ -255,4 +255,11 @@ function readProviderErrorCode(body: unknown): string | null {
 
 function isRetryableStatus(status: number): boolean {
   return status === 408 || status === 429 || status >= 500;
+}
+
+// Fetch implementations expose redirect refusal as an exception, sometimes through cause.
+// Inspect it only to select a closed diagnostic; no exception text leaves this adapter.
+function isRedirectRefusal(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  return /redirect/i.test(error.message) || (error.cause instanceof Error && /redirect/i.test(error.cause.message));
 }

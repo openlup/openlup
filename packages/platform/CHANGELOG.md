@@ -10,6 +10,15 @@ in the source repository.
 
 ## [Unreleased]
 
+- Stock-sync alert fingerprints now contain only `requestKey`, `skuRef` and
+  `thresholdKind`: changing quantities, severity or run evidence under the same
+  key returns `replayed: true`. Different SKUs or thresholds use different keys;
+  a changed identity under a reused key still conflicts.
+- KEEP-GAP: in-place alert refresh needs a forward SQL version. Native replay
+  updates only `last_seen_at`, retaining stored severity, quantities and status.
+
+Migration: alert rows written by 0.22.0's native port carry the earlier whole-input fingerprint; subsequent writes under those keys conflict with SQLSTATE `23505`, and resolve only marks the row resolved while retaining its key and fingerprint, so it does not clear the conflict.
+
 ## [0.22.0]
 
 - Publishable on the npm `latest` dist-tag as `0.22.0`, from tag

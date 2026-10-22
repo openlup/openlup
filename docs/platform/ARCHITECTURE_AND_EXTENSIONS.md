@@ -942,8 +942,49 @@ also clear it. Approved G16 makes readLocalInventoryStock(requestedAt) return
 unaggregated lines with skuRef, quantity balances, fulfillable/location/lot status
 and expiry. The worker filters and sums at the same captured clock passed to
 active-reservation reads; expiry exactly at requestedAt is unusable. The provider
-stock-sync shape and inventory authority are unchanged. Host compatibility inputs
-preserve original run IDs, sentinel, keys and movement-window time zone. Product
+inventory authority remains unchanged. Host compatibility inputs preserve original
+run IDs, sentinel, keys and movement-window time zone.
+
+Stock reads can return a rejected row with its input index and the closed
+`invalid_sku_ref` reason. The worker counts every rejection, persists it with a
+null SKU, and continues current/snapshot writes for valid rows. A rejected batch
+finishes failed and clears coverage confirmation; unsafe references never reach
+the store. Hosts consuming `getStock()` directly must discriminate rejected rows.
+Item write failures retain an operation-specific reason and, when available, a
+SQLSTATE in both the per-item result and failed `SyncCursor.error`; arbitrary
+exception prose is discarded.
+
+Provider failures return `ok: false` with neutral `providerError` operation
+(`get_stock` or `get_stock_movements`), status, sanitized code and retryability,
+and persist that diagnostic in a terminal failed cursor. Read retries retain
+retryable classification after exhaustion. Redirects remain refused and report
+`redirect_refused`. A host may map a failed result to its job's HTTP 502; the
+package installs no HTTP wrapper. Terminal cursor-write failure still rejects,
+so callers must handle persistence failure rather than assume evidence exists.
+
+The native stock port retains run identity, counts, item ATP observations
+(`activeReserved`, `sellableNow`, `coverageGapQuantity`), alert quantities and
+stale gap hours/threshold/detection time in the existing cursor JSON column.
+These observations describe warning evidence, not a new ATP admission policy.
+Cursor evidence is the latest run and is overwritten by the next run; dedicated
+immutable snapshot/alert evidence columns remain a follow-up gap. Current and
+snapshot rows keep their existing sync-run columns. Alert fingerprints include
+only `requestKey`, `skuRef` and `thresholdKind`. Quantities, severity and run
+evidence may change under the same key and return `replayed: true`; a different
+SKU or threshold uses a different host key. Reusing a key for a different SKU or
+threshold retains the SQL conflict.
+
+KEEP-GAP: in-place alert refresh needs a forward SQL version. The native
+`fulfillment_record_stock_evidence` replay updates only `last_seen_at`; stored
+severity, quantities and status remain unchanged, including a resolved status.
+
+Migration: alert rows written by 0.22.0's native port carry the earlier whole-input fingerprint; subsequent writes under those keys conflict with SQLSTATE `23505`, and resolve only marks the row resolved while retaining its key and fingerprint, so it does not clear the conflict.
+
+See the [stock parity tests](../../packages/platform/test/fulfillment/stockSync.test.ts)
+for native replay, and the [adapter factory tests](../../packages/platform/test/fulfillment/omnipack/factory.test.ts)
+for failed cursors, diagnostic safety and mixed admission boundaries.
+
+Product
 sync retains additive pack push, missing-metadata skip and sync markers; pull
 delegates local ownership and unknown-SKU decisions to host upsert and records
 conflicts. Evidence handlers retain GET/authorization/validation/read order with

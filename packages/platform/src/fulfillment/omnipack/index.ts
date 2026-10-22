@@ -238,13 +238,13 @@ export function createOmnipackFulfillmentAdapter(config: OmnipackFulfillmentAdap
         requireSync();
         try {
           const identity = syncIdentity();
-          return (await client.getStock()).map(row => {
+          return (await client.getStock()).map((row, itemIndex) => {
             const skuRef = reference(row.sku);
-            if (!skuRef) throw refusal("malformed", "sync");
+            if (!skuRef) return { kind: "rejected" as const, itemIndex, reason: "invalid_sku_ref" as const };
             return { ...identity, skuRef, quantityKind: "snapshot" as const, totalQuantity: row.totalQuantity,
               forSaleQuantity: row.forSaleQuantity, reservedOrUnavailableQuantity: row.reservedOrUnavailableQuantity };
           });
-        } catch { throw refusal("io_failure", "sync"); }
+        } catch (error) { throw stockFailure(error, "get_stock"); }
       },
       async getStockMovements(input) {
         requireSync();
@@ -256,7 +256,7 @@ export function createOmnipackFulfillmentAdapter(config: OmnipackFulfillmentAdap
             return { ...identity, skuRef, quantityKind: "movement" as const, quantity: row.quantity, occurredAt: timestamp(row.occurredAt),
               operationType: reference(row.operationType), documentRef: reference(row.warehouseDocumentNumber), lotRef: reference(row.lotNumber), expirationDate: /^\d{4}-\d\d-\d\d$/u.test(row.expirationDate ?? "") ? row.expirationDate : null };
           });
-        } catch { throw refusal("io_failure", "sync"); }
+        } catch (error) { throw stockFailure(error, "get_stock_movements"); }
       },
     },
     productSync: {
@@ -309,4 +309,13 @@ function commandDigest(request: FulfillmentDispatchRequest): string {
       serviceRef: request.selection.serviceRef, deliveryKind: request.selection.deliveryKind,
       pickupPointId: request.selection.pickupPoint?.id ?? null },
   });
+}
+
+/** Translate only the contributed client's typed error; never copy a message or payload. */
+function stockFailure(error: unknown, operation: "get_stock" | "get_stock_movements") {
+  const retryable = error instanceof OmnipackProviderError ? error.retryable : false;
+  return { ...refusal("io_failure", "sync", retryable), providerError: {
+    operation, status: error instanceof OmnipackProviderError ? error.status : null,
+    code: error instanceof OmnipackProviderError ? error.code : "provider_read_failed", retryable,
+  } };
 }
