@@ -96,6 +96,13 @@ describe("tree-wide neutrality ratchet", () => {
     const vendor = ["omni", "pack"].join("");
     const plants: Array<[string, string, string]> = [
       ["src/example.ts", vendor, "ui-15"],
+      [`packages/core/src/fulfillment/${vendor}/x.ts`, vendor, "ui-15"],
+      [`docs/packages/platform/src/fulfillment/${vendor}/x.ts`, vendor, "ui-15"],
+      [`packages/platform/lib/fulfillment/${vendor}/x.ts`, vendor, "ui-15"],
+      ["docs/platform/plans/other.md", vendor, "ui-15"],
+      ["packages/platform/api/other.api.md", vendor, "ui-15"],
+      ["packages/platform/changes/a-three.txt", `fulfillment/${vendor}`, "ui-15"],
+      ["packages/platform/README.md", `x-fulfillment/${vendor}`, "ui-15"],
       ["packages/platform/README.md", `bare ${vendor}`, "ui-15"],
       ["packages/platform/README.md", `fulfillment/${vendor}-x`, "ui-15"],
       ["packages/platform/README.md", `fulfillment/${vendor.toUpperCase()}`, "ui-15"],

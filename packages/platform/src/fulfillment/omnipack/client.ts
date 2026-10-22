@@ -195,9 +195,10 @@ async function fetchWithTimeout(
   const timeout = setTimeout(() => controller.abort(), config.timeoutMs);
   try {
     const credentials = await config.credentials();
-    const requestInit = {
+    const requestInit: RequestInit = {
       ...init,
       signal: controller.signal,
+      redirect: "error",
       headers: {
         Accept: "application/json",
         "Content-Type": "application/json",

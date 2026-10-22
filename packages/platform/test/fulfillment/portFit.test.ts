@@ -62,6 +62,7 @@ it("keeps injected capabilities default-off with independent selection, readines
   expect(Object.keys(fulfillment).sort()).toEqual([
     "CANONICAL_LOCAL_FULFILLMENT_STATUSES", "CUSTOMER_STEP_SEQUENCE", "FULFILLMENT_STATUS_MAP",
     "collectPaidFulfillmentRecoveryCandidates", "createFulfillmentCommandLedger", "createOutboxOrderPaidFulfillmentHandler", "runFulfillmentDispatchWorker",
+    "verifyAndNormalizeFulfillmentObservation", "applyFulfillmentObservationEffects", "reconcileFulfillmentObservations", "runFulfillmentStockSyncWorker", "runFulfillmentProductSyncWorker", "createFulfillmentLowStockEvidenceHandler", "createProductReconciliationEvidenceHandler", "runFulfillmentAdapterConformance",
     "canonicalStatusToken", "customerStepFromSignals", "parseFulfillmentFact", "parseFulfillmentTransitionConflict",
     "phaseIndexForStep", "readFulfillmentCapabilities", "stepForToken", "stepLabelKey", "stepUsesTruckIcon", "timelineLabelForStep", "trackingPhaseKeyForStep",
   ].sort());

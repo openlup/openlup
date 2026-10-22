@@ -17,7 +17,7 @@ it("projects controlled errors, discards arbitrary failures and preserves POST a
   const sanitized = sanitizeOmnipackProviderError(new Error("recipient@example.test password placeholder"));
   expect(sanitized).toEqual({ code: "omnipack_provider_error", mayHaveSucceeded: true, message: "OmniPack request failed", operation: null, retryable: true, status: null });
   expect(JSON.stringify(sanitized)).not.toMatch(/recipient|password|placeholder/);
-  for (const code of [undefined, "recipient@example.test", "recipient address invalid", "123456", "A".repeat(65), "INVALID_ORDER", "A".repeat(64)]) {
+  for (const code of [undefined, "recipient@example.test", "Recipient@Example.test", "INVALID-ORDER", "INVALID_order", "invalid_order", "recipient address invalid", "123456", "A".repeat(65), "INVALID_ORDER", "A".repeat(64)]) {
     const expectedCode = code === "INVALID_ORDER" || code === "A".repeat(64) ? code : "http_400";
     const failure = await createOmnipackClient(config, async () => jsonResponse({ code }, 400))
       .createOrder("{}").catch((error: unknown) => error);

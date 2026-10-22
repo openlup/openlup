@@ -12,12 +12,13 @@ it("binds Basic authentication and the exact POST body to the configured origin"
   expect(init).toMatchObject({ method: "POST", body, headers: { Authorization: `Basic ${Buffer.from("example:placeholder").toString("base64")}` } });
 });
 it("never repeats ambiguous POSTs including response loss and missing acceptance proof", async () => {
-  for (const status of [408, 409, 425, 429, 500, 503, 599]) {
+  for (const status of [307, 308, 408, 409, 425, 429, 500, 503, 599]) {
     const fetchImpl = vi.fn(async () => jsonResponse({ code: `HTTP_${status}` }, status));
     await expect(createOmnipackClient(config, fetchImpl).createOrder("{}")).rejects.toMatchObject({
-      name: "OmnipackProviderError", operation: "createOrder", status, retryable: false, mayHaveSucceeded: true,
+      name: "OmnipackProviderError", operation: "createOrder", status, retryable: false, mayHaveSucceeded: status >= 400,
     });
     expect(fetchImpl).toHaveBeenCalledOnce();
+    expect(fetchImpl.mock.calls[0]).toEqual([expect.any(URL), expect.objectContaining({ redirect: "error" })]);
   }
   const lost = vi.fn(async () => { throw new TypeError("response lost"); });
   await expect(createOmnipackClient(config, lost).createOrder("{}")).rejects.toMatchObject({ status: null, code: "network_error", mayHaveSucceeded: true });
@@ -26,7 +27,7 @@ it("never repeats ambiguous POSTs including response loss and missing acceptance
   try {
     const deadline = 5;
     const timedOut = vi.fn((_url: URL | RequestInfo, init?: RequestInit) => new Promise<Response>((_resolve, reject) => {
-      init!.signal!.addEventListener("abort", () => reject(new Error("deadline elapsed")), { once: true });
+      init?.signal?.addEventListener("abort", () => reject(new Error("deadline elapsed")), { once: true });
     }));
     const rejection = expect(createOmnipackClient({ ...config, timeoutMs: deadline }, timedOut).createOrder("{}"))
       .rejects.toMatchObject({ status: null, code: "network_error", mayHaveSucceeded: true });

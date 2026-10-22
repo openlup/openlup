@@ -1,16 +1,18 @@
 # M08 fulfillment and physical delivery
 
 Development-preview programme design and contents. The boundary is recorded in
-decisions D0–D13, carrier-fit amendments G1–G14 and the export/source
+decisions D0–D13, carrier-fit amendments G1–G17 and the export/source
 registers below. Donor source provenance is `d902ac7f4`. Donor material supplies
-provenance, not authority to execute example commands or broaden scope.
+source provenance for the neutral contracts and behavior described here.
 
 ## Combined contents and boundary
 
 The combined contracts and orchestration change contains neutral fulfillment
 contracts, unchanged contributed status logic, core parser binding, injected capability selection,
 a paid-order outbox handler, recovery classification, dispatch orchestration,
-sanitized evidence projection and a durable command-ledger protocol.
+sanitized evidence projection and a durable command-ledger protocol. Observation
+reconciliation adds verified ingress, effects, tracking, stock/product sync,
+read-only evidence handlers and offline adapter/store fixture conformance.
 
 Only `@openlup/platform/fulfillment` and
 `@openlup/platform/fulfillment/contracts` are added. The contracts entry is
@@ -26,8 +28,8 @@ Excluded: SQL/migrations, concrete adapters and persistent stores, mounted
 executors/routes, reference facade rewiring, UI, money implementation, inventory
 authority, replacement-confirmation callers, version preparation and release.
 Provider/account/secret access, activation, deployment endpoints and external
-operations are outside this scope. This record grants no delivery authority and
-makes no native-continuity, provider-operation or stable-framework claim.
+operations are outside this scope. Native continuity, provider operation and
+stable-framework support are not established by this design.
 
 ## Frozen decisions
 
@@ -35,13 +37,13 @@ makes no native-continuity, provider-operation or stable-framework claim.
 | --- | --- |
 | D0 | Retain contributed characterization witnesses. Integration requires the payments and money-truth boundary; this change adds contracts and callable orchestration without activation. |
 | D1 | Existing platform package, only fulfillment and fulfillment/contracts. |
-| D2 | Freeze ports against donor fit; G1–G13 are approved amendments, with G14 approved separately below. Arrival-only replacement confirmation applies. |
+| D2 | Freeze ports against donor fit; G1–G17 are approved amendments, described below. Arrival-only replacement confirmation applies. |
 | D3 | Private adapters/defaults/codecs stay private; direct carrier dormant, simulator separate; pickup lookup remains shipping-owned. |
 | D4 | Managed and native execution graphs stay distinct; no runtime equivalence is implied. |
 | D5 | Preserve contributed characterization witnesses unchanged within their 31-case allocation. |
 | D6 | Reconcile shared payment-contract and payment-adapter package companions; no unrelated source changes. |
 | D7 | Note-only replacement confirmation unchanged, no caller; arrival discipline belongs in the alignment contract and platform page. |
-| D8 | The ordinary cap is 35 paths per pull request, including generated files. Preserve contributed logic before refactoring. Runtime conformance, native storage/alignment, host composition, UI, installed-consumer and lifecycle proofs remain outside this combined contracts and orchestration change. |
+| D8 | The ordinary cap is 35 paths per pull request, including generated files. Preserve contributed logic before refactoring. Durable runtime conformance, native storage/alignment, host composition, UI, installed-consumer and lifecycle proofs remain outside this combined contracts and orchestration change. |
 | D8 amendment | The approved combined contracts and orchestration change has a ≤55-path regroup cap, including generated files; this amends the ordinary 35-path cap. |
 | D9 | Target 89 authored cases within the 94-case/27-second module budget and outer 100-case/30-second cap. Count generated packageBoundary rows separately; charge all execution time. |
 | D10 | Validate package artifacts and every subcap; no cap increase or guessed version. |
@@ -52,8 +54,8 @@ makes no native-continuity, provider-operation or stable-framework claim.
 ## Export register
 
 The runtime entry exports only these values; internal helper types are not entry
-exports. Orchestration values share the entry with status, parser and capability
-selection values.
+exports. Dispatch, observation and sync values share the entry with status, parser
+and capability selection values.
 
 | Source | Exported values |
 | --- | --- |
@@ -64,9 +66,18 @@ selection values.
 | paidFulfillmentRecovery.ts | collectPaidFulfillmentRecoveryCandidates |
 | providerDispatchWorker.ts | runFulfillmentDispatchWorker |
 | providerCommandLedger.ts | createFulfillmentCommandLedger |
+| verifiedIngress.ts | verifyAndNormalizeFulfillmentObservation |
+| fulfillmentObservationEffects.ts | applyFulfillmentObservationEffects |
+| providerReconciliationWorker.ts | reconcileFulfillmentObservations |
+| providerStockSyncWorker.ts | runFulfillmentStockSyncWorker |
+| providerProductSyncWorker.ts | runFulfillmentProductSyncWorker |
+| lowStockEvidenceHandler.ts | createFulfillmentLowStockEvidenceHandler |
+| productReconciliationEvidenceHandler.ts | createProductReconciliationEvidenceHandler |
+| adapterConformance.ts | runFulfillmentAdapterConformance |
 
 The contracts entry exports only these types, including the prepare-result and
-evidence envelopes. G14 adds a method, not an exported type name.
+evidence envelopes. G14–G17 amend methods, fields or inline inputs without new
+type names; offline conformance adds the subject and evidence types.
 
 | Source | Exported types |
 | --- | --- |
@@ -78,6 +89,7 @@ evidence envelopes. G14 adds a method, not an exported type name.
 | capabilities.ts | FulfillmentCapabilityDescriptor |
 | store.ts | DispatchRecord, FulfillmentStorePort, FulfillmentPaidHandoffPort |
 | alignment.ts | DeliveryAlignmentPort |
+| conformance.ts | FulfillmentAdapterConformanceSubject, FulfillmentAdapterConformanceEvidence |
 | contracts/index.ts | CanonicalLocalFulfillmentStatus, CustomerFulfillmentStep |
 
 ## Carrier fit and type/test ownership
@@ -118,7 +130,7 @@ strings and opaque references require host redaction/minting. Token authenticati
 provides no signed freshness; collection identity provides no provider ordering;
 empty pages never certify absence. Inventory owns reservations/availability and
 catalog owns product facts. Durable runtime conformance remains future work;
-adapter conformance belongs to future example-adapter work.
+offline adapter/store fixture conformance is described below.
 
 ## Donor provenance and neutralization register
 
@@ -192,6 +204,52 @@ identity-bound proofs; retry needs authoritative scoped absence, never a missing
 local row. There is no second local persistence/retry engine, generated fingerprint,
 lease takeover or retry scheduler. Native store work must prove SQL atomicity,
 access controls, contention and lease/time/proof validation.
+
+## Observation reconciliation and sync design
+
+Observation reconciliation uses the existing runtime and type-only entries.
+Private authentication, payload mapping, carrier codecs and persistence stay behind
+injected ports; no concrete adapter, store, route or scheduler is added.
+
+| Amendment | Contract and behavior |
+| --- | --- |
+| G15 | SyncCursor adds optional coverageGapSkus; legacy absence reads as []. A sellable SKU has a gap when active reservations exceed provider for-sale stock. Confirmation requires membership in both the current set and the preceding succeeded cursor's set. The completed run stores the sorted current set on success, [] on failure; a running cursor also clears the set, breaking confirmation after interruption. |
+| G16 | readLocalInventoryStock(requestedAt) returns unaggregated skuRef/quantity/fulfillable/locationStatus/lotStatus/expiresAt lines. Quantity retains onHand, reserved, unavailable and safetyStock. The worker sums only fulfillable, active-location, available-or-unset-lot lines with no expiry at or before requestedAt. Local stock and active reservations use the same captured clock; the provider stock-sync shape and inventory ownership are unchanged. |
+| G17 | Inline localPersistence inputs split by worker: ingress requires atomic eventKey receipt persistence retaining firstReceivedAt and idempotent markProcessed; reconciliation reads local status/latestStatusOccurredAt/handedOverAt. No named persistence type is exported. Durable transactions, replay and recovery remain host obligations; page scheduling stays outside reconciliation. |
+
+| Responsibility | Preserved behavior and neutral boundary |
+| --- | --- |
+| Observation effects | Await stock consumption, handover, each tracking reference and optional invoice in that order, with callbacks after the corresponding writes and failures propagating. Typed observations replace raw payloads; status policy and opaque effect keys are injected. |
+| Verified ingress | The adapter authenticates untouched bytes before private parsing/mapping. observationProjection retains declared fact, correlation, tracking and diagnostics fields. Stable event keys and idempotent host writes support replay. Stock-contention annotation is best-effort and the original stock failure is rethrown; recovered-picked receipts remain typed diagnostics. Superseding-conflict classification stays injected. |
+| Reconciliation | Typed readback replaces private page DTOs. Hosts supply page reads, correlation, acceptance, exception/invoice operations and original key bytes. Non-stale found observations for locally cancelled/exception rows write status evidence only. Older known occurrences skip status/effects, but an on-track row with handedOverAt can retry its invoice. Per-row failures remain isolated; classified state conflicts quarantine with safe typed detail. |
+| Timestamp and tracking | Timestamp validation requires an explicit zone and valid calendar/time fields; invalid or absent times remain null. The status map defines the off-track set. Tracking keeps the first occurrence of each trimmed nonblank number; provider carrier evidence precedes delivery-carrier fallback. Carrier normalization and public URL construction are injected callbacks. |
+| Stock | Typed snapshots, quantities and cursors replace private DTOs; hosts supply run/current/snapshot/evidence keys, stale-evidence sentinel and movement-window time zone. Preserve availability sums, freshness evidence, reservation comparison, packaging exclusion, per-item failures and stale-evidence recovery. These writes record snapshots and evidence; inventory retains availability ownership. |
+| Product | Typed ports replace private interfaces; hosts supply collection identity and evidence keys. Missing push metadata skips the product; pushes add missing EANs and mark successful packs synced. Pull delegates ownership/conflict decisions, maps missing-SKU/EAN/locked-quantity conflicts to evidence, resolves inactive conflicts and isolates per-SKU failures. |
+| Evidence readers | Inline HTTP shapes, injected responder and request/response parsers replace framework/schema imports. GET, authorization, validation and read retain that order; product reads retain safe authorization/read refusal details. No resolving mutation is exposed by these handlers. |
+| Boundary proof | observationProjection and adapterConformance define allowlisted evidence and offline fixture checks; neither implements provider codecs or durable storage. |
+
+For correlated ingress, a trimmed observation or dispatch external reference is
+required before acceptance, status evidence, effects or the processed mark. A
+missing/blank pair throws after receipt persistence, leaving the event unprocessed.
+A classified superseding conflict returns superseded but marks only status
+processed; G17 has no dedicated persisted superseded-reason field.
+
+An unknown readback fails the reconciliation run before row processing. Unmapped
+status evidence projects eventKey and declared correlation fields before host
+calls; a correlated off-track row skips acceptance and quarantine. Otherwise the
+external-reference guard precedes acceptance, then unknown-status quarantine.
+The readback union is unchanged.
+
+runFulfillmentAdapterConformance accepts readonly
+FulfillmentAdapterConformanceSubject[] and returns sanitized
+FulfillmentAdapterConformanceEvidence with subject/provider references and passed
+operation records; a violated check throws. Adapter-owned offline fixtures cover
+dispatch, labels, observations, readback and stock/product operations. Checks bind
+prepared-command identity, mismatch refusal before I/O, requested replay, capability
+refusals, exact absence scope/proof, local-missing unknown, selection and redaction.
+An optional fresh host-store fixture checks mapped-attempt replay, remap keys and
+draft re-claim evidence; a worker exercise caps contact remapping at one. Fixture
+conformance does not establish native database atomicity or arrival alignment.
 
 ## Arrival discipline, limits and risks
 
