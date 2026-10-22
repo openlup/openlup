@@ -1,6 +1,6 @@
 import { expect, it } from 'vitest';
-import { fulfillmentProgressPresentation } from '../../src/fulfillment/index.js';
-import type { CustomerFulfillmentStep } from '../../src/fulfillment/contracts/index.js';
+import { fulfillmentProgressPresentation } from '../src/fulfillment/index.js';
+import type { CustomerFulfillmentStep } from '../src/fulfillment/index.js';
 
 it.each([
   ['paid', 'succeeded', null, 'paid', [], ['paid'], null],

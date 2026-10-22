@@ -1722,11 +1722,31 @@
       "class": "public-output"
     },
     {
+      "path": "packages/core/src/fulfillment/currentFulfillmentParcel.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/core/src/fulfillment/facts.ts",
       "class": "public-output"
     },
     {
       "path": "packages/core/src/fulfillment/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/core/src/fulfillment/normalizedFulfillmentFacts.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/core/src/fulfillment/statusMap.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/core/src/fulfillment/trackingProgress.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/core/src/fulfillment/types.ts",
       "class": "public-output"
     },
     {
@@ -1978,7 +1998,23 @@
       "class": "public-output"
     },
     {
+      "path": "packages/core/test/fulfillmentCurrentParcel.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/core/test/fulfillmentFacts.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/core/test/fulfillmentNormalizedFacts.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/core/test/fulfillmentStatusMap.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/core/test/fulfillmentTrackingProgress.test.ts",
       "class": "public-output"
     },
     {
@@ -4918,15 +4954,7 @@
       "class": "public-output"
     },
     {
-      "path": "packages/platform/test/fulfillment/statusMap.test.ts",
-      "class": "public-output"
-    },
-    {
       "path": "packages/platform/test/fulfillment/stockSync.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "packages/platform/test/fulfillment/trackingProgress.test.ts",
       "class": "public-output"
     },
     {

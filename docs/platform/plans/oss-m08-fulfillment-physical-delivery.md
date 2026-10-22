@@ -20,8 +20,10 @@ Lifecycle handlers add commerce fulfillment list/detail reads, operator mutation
 and replacement requests through injected host callbacks. Label lifecycle,
 current-parcel and customer alignment helpers remain callable without route mounting.
 
-Only `@openlup/platform/fulfillment` and
-`@openlup/platform/fulfillment/contracts` are added. The contracts entry is
+Fulfillment uses `@openlup/platform/fulfillment`,
+`@openlup/platform/fulfillment/contracts` and the existing
+`@openlup/core/fulfillment` subpath. Core owns pure presentation and canonical
+parser binding; platform retains compatibility re-exports and server orchestration. The contracts entry is
 type-only and browser-shareable. There is no new package, dependency, star export
 or testing subpath. Under the canonical
 [package placement decision](../ARCHITECTURE_AND_EXTENSIONS.md#package-placement-decision-canonical),
@@ -46,7 +48,7 @@ stable-framework support are not established by this design.
 | Decision | Binding disposition |
 | --- | --- |
 | D0 | Retain contributed characterization witnesses. Integration requires the payments and money-truth boundary; this change adds contracts and callable orchestration without activation. |
-| D1 | Existing platform package, only fulfillment and fulfillment/contracts. |
+| D1 | Existing core fulfillment subpath for pure presentation; existing platform fulfillment and fulfillment/contracts subpaths for compatibility and orchestration. |
 | D2 | Freeze ports against donor fit; G1–G23 are approved amendments, described below. Arrival-only replacement confirmation applies. |
 | D3 | Private adapters/defaults/codecs stay private; direct carrier dormant, simulator separate; pickup lookup remains shipping-owned. |
 | D4 | Managed and native execution graphs stay distinct; no runtime equivalence is implied. |
@@ -57,13 +59,34 @@ stable-framework support are not established by this design.
 | D8 amendment | The approved combined contracts and orchestration change has a ≤55-path regroup cap, including generated files; this amends the ordinary 35-path cap. |
 | D9 | Target 89 authored cases within the 94-case/27-second module budget and outer 100-case/30-second cap. Count generated packageBoundary rows separately; charge all execution time. |
 | D10 | Validate package artifacts and every subcap; no cap increase or guessed version. |
-| D11 | Host status-map, normalized-fact and current-parcel facades are unchanged; package adoption is outside this change. Explicit fulfillment composition has no default binder. The order-management status ladder and live queue remain together at the host, with no parallel mapper. |
+| D11 | Host status-map, normalized-fact and current-parcel facades and order UI imports are unchanged; direct core adoption remains separate. Explicit fulfillment composition has no default binder. The order-management status ladder and live queue remain together at the host, with no parallel mapper. |
 | D12 | Callable lifecycle handlers, offline host fixtures and installed-consumer proof are included. The host renewal-admission decorator is included under G23. Native runner composition, activation, live provider/host calls and mounted operator UI remain excluded. |
 | D13 | Native command fencing and delivery alignment use PostgreSQL transactions. Only new-cycle admission/insert is guarded; existing-cycle renewal and dunning retries bypass admission. Late arrival uses the monotonic maximum once, and undelivered replacements remain outstanding. |
 
 ## Export register
 
-The runtime entry exports only these values; internal helper types are not entry
+The [core fulfillment entry](../../../packages/core/src/fulfillment/index.ts) owns
+these browser-shareable values and types. Its generic fact exports remain unchanged;
+the canonical aliases narrow those generic types to CanonicalLocalFulfillmentStatus.
+
+| Core source | Exported values or types |
+| --- | --- |
+| statusMap.ts | FULFILLMENT_STATUS_MAP, CANONICAL_LOCAL_FULFILLMENT_STATUSES, CUSTOMER_STEP_SEQUENCE, canonicalStatusToken, stepForToken, customerStepFromSignals, phaseIndexForStep, stepLabelKey, timelineLabelForStep, trackingPhaseKeyForStep, stepUsesTruckIcon, FulfillmentStatusStage, FulfillmentStatusMap |
+| trackingProgress.ts | fulfillmentProgressPresentation |
+| currentFulfillmentParcel.ts | currentParcel, currentParcelFor, currentParcelPerOrder, currentParcelFirst, belongsToParcel, rowsForParcel, parcelSequenceNo, compareParcelPrecedence, FulfillmentParcelRow, ParcelAttributedRow |
+| normalizedFulfillmentFacts.ts | isCanonicalLocalFulfillmentStatus, parseFulfillmentFact, parseFulfillmentTransitionConflict, CanonicalNormalizedFulfillmentFact, CanonicalNormalizedFulfillmentFactV1, CanonicalNormalizedFulfillmentFactV0, CanonicalCompatibleNormalizedFulfillmentFact, CanonicalFulfillmentTransitionSnapshot, CanonicalTransitionConflict |
+| types.ts | CanonicalLocalFulfillmentStatus, CustomerFulfillmentStep, FulfillmentProgressInput, FulfillmentProgressPresentation |
+
+The platform statusMap, trackingProgress, currentFulfillmentParcel and
+normalizedFulfillmentFacts files re-export these implementations. The last file
+preserves its existing unprefixed narrowed type names through aliases; the
+platform contracts entry re-exports shared status and progress types from core.
+Core's status-map digest, progress matrices, current-parcel assertions and canonical
+parser case live in `packages/core/test/fulfillment*.test.ts`; platform retains
+label lifecycle and dispatch-contract tests. Host characterization witnesses
+retain their existing source and imports.
+
+The platform runtime entry exports only these values; internal helper types are not entry
 exports. Dispatch, observation, sync, lifecycle handlers and projections share the
 entry with status, parser and capability selection values. The register matches
 the [runtime entry](../../../packages/platform/src/fulfillment/index.ts) and
@@ -174,7 +197,7 @@ or partial write.
 [Label helpers](../../../packages/platform/src/fulfillment/labelLifecycle.ts) delegate
 storage reads and actor/idempotency-bound cleanup; a missing cached label proves
 no parcel absence, and canProceed does not confirm deletion.
-[Current-parcel helpers](../../../packages/platform/src/fulfillment/currentFulfillmentParcel.ts)
+[Current-parcel helpers](../../../packages/core/src/fulfillment/currentFulfillmentParcel.ts)
 select by sequence then identifier descending and retain unattributed companion
 rows. These handlers and helpers mount no route. Inspect the
 [lifecycle handler](../../../packages/platform/test/fulfillment/lifecycleHandlers.test.ts),
@@ -184,9 +207,11 @@ witnesses for their host fixture and refusal boundaries.
 
 ## Carrier fit and type/test ownership
 
-Contract sources are under `packages/platform/src/fulfillment/contracts/`;
-runtime sources are under `packages/platform/src/fulfillment/`, and witnesses
-are under `packages/platform/test/fulfillment/`.
+Platform contract sources are under `packages/platform/src/fulfillment/contracts/`;
+server orchestration and compatibility exports are under `packages/platform/src/fulfillment/`,
+with witnesses under `packages/platform/test/fulfillment/`. Pure presentation and
+canonical parser binding belong to `packages/core/src/fulfillment/`, with the
+corresponding witnesses under `packages/core/test/`.
 
 | Amendment | Concrete owner and focused witness |
 | --- | --- |
@@ -226,12 +251,13 @@ conformance have distinct verification boundaries described below.
 ## Donor provenance and neutralization register
 
 Donor paths below refer to the provenance revision above. Public destinations are relative to
-`packages/platform/src/fulfillment/` unless specified otherwise.
+`packages/platform/src/fulfillment/` unless specified otherwise. statusMap.ts and
+normalizedFulfillmentFacts.ts are compatibility re-exports of the same-named core sources.
 
 | Donor → public file | Preserved behavior and neutralization |
 | --- | --- |
-| src/domains/fulfillment/statusMap.ts → statusMap.ts | Remove private provider trace type, provider vocabulary columns and generation header. Preserve ranks, phases, canonical/local/FSM/order/alias tokens, effect metadata, labels, label keys, branch order and canonical projection. Type-only status/step declarations live in contracts; parity binds the duplicated literal status union to the map. No provider dictionary is added. |
-| src/domains/fulfillment/normalizedFulfillmentFacts.ts → normalizedFulfillmentFacts.ts | Keep core parser calls and canonical-set predicate; rename application exports to parseFulfillmentFact/parseFulfillmentTransitionConflict. Omit unfrozen core re-exports; copy no schema or fingerprint implementation; use .js imports. |
+| src/domains/fulfillment/statusMap.ts → packages/core/src/fulfillment/statusMap.ts | Remove private provider trace type, provider vocabulary columns and generation header. Preserve ranks, phases, canonical/local/FSM/order/alias tokens, effect metadata, labels, label keys, branch order and canonical projection. Type-only status/step declarations live in core types.ts and platform contracts re-export them; parity binds the duplicated literal status union to the map. No provider dictionary is added. |
+| src/domains/fulfillment/normalizedFulfillmentFacts.ts → packages/core/src/fulfillment/normalizedFulfillmentFacts.ts | Keep core parser calls and canonical-set predicate; rename application exports to parseFulfillmentFact/parseFulfillmentTransitionConflict. Omit unfrozen core re-exports; copy no schema or fingerprint implementation; use .js imports. |
 | src/domains/fulfillment/status.ts → omitted | Display/date/sort helpers have no reachable export or witness. Tracking classifiers, URL constructors and private dictionaries remain host-owned. |
 | Capability profile fields → contracts/capabilities.ts and providerCapabilities.ts | Retain role, action policy, stock authority and delivered-notice ownership. Neutralize private role to warehouse and closed provider union to host-injected opaque refs. Keep static registry, aliases, environment/credential reads and defaults host-owned. Preserve provider-before-carrier/service validation and readiness separation; G13 adds concrete operation reasons/authentication/freshness. Selection performs no I/O. |
 | Carrier-fit declarations → contracts/{dispatch,label,observation,readback,sync,store,alignment}.ts | Concrete approved packaging, without whole-file donor parity claims. Recipient/line snapshots remain inputs; private product payload metadata uses opaque product/pack refs. Private codecs/builders retain command translation, fingerprints and keys. |

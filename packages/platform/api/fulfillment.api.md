@@ -488,8 +488,6 @@ export type { SyncCursor, StockSnapshot, StockMovement, LocalStock, FulfillmentS
 export type { FulfillmentCapabilityDescriptor } from "./capabilities.js";
 export type { DispatchRecord, FulfillmentStorePort, FulfillmentPaidHandoffPort } from "./store.js";
 export type { DeliveryAlignmentPort } from "./alignment.js";
-export type CanonicalLocalFulfillmentStatus = "provider_received" | "picking" | "packed" | "in_transit" | "delivered" | "exception" | "cancelled";
-export type CustomerFulfillmentStep = "paid" | "accepted" | "packing" | "transit" | "delivered" | "exception" | "cancelled";
 export type { FulfillmentAdapterConformanceSubject, FulfillmentAdapterConformanceEvidence } from "./conformance.js";
 export type { FulfillmentNativeUnsupported } from './nativeUnsupported.js';
 export type { FulfillmentReplacementPort, FulfillmentReplacementRequest, FulfillmentReplacementResult } from './replacement.js';
@@ -498,6 +496,7 @@ export type { CustomerDeliveryAlignment, FulfillmentCustomerAlignmentRowsReader 
 export type { FulfillmentCommerceReadPort, FulfillmentCommerceReadPolicy, FulfillmentOrderStatus, FulfillmentPaymentStatus, FulfillmentCommerceOrder, FulfillmentOrdersListRequest, FulfillmentOrdersListResponse, FulfillmentOrderDetailRequest, FulfillmentOrderDetailResponse, FulfillmentShipmentsOverviewPort, FulfillmentShipmentsOverviewRequest, FulfillmentShipmentsOverviewResponse } from './read.js';
 export type { FulfillmentProgressInput, FulfillmentProgressPresentation } from './read.js';
 export type { FulfillmentServicesOptions, FulfillmentServices } from './bindings.js';
+export type { CanonicalLocalFulfillmentStatus, CustomerFulfillmentStep } from "@openlup/core/fulfillment";
 ```
 ## dist/fulfillment/contracts/label.d.ts
 
@@ -675,7 +674,6 @@ export {};
 ## dist/fulfillment/contracts/read.d.ts
 
 ```ts
-import type { CustomerFulfillmentStep } from './index.js';
 import type { SubscriptionCycleStatus } from '@openlup/core/subscription';
 import type { PaymentIntentStatus } from '@openlup/core/payment';
 import type { FulfillmentNativeUnsupported } from './nativeUnsupported.js';
@@ -785,19 +783,7 @@ export interface FulfillmentCommerceReadPolicy {
         inventoryStatus: FulfillmentCommerceOrder['inventory']['status'];
     }): FulfillmentCommerceOrder['omsEligibility'];
 }
-export interface FulfillmentProgressInput {
-    status: string;
-    paymentStatus?: string | null;
-    fulfillmentStatus?: string | null;
-    customerFulfillmentStep?: CustomerFulfillmentStep | null;
-    trackingTimeline: {
-        eventType: string;
-    }[];
-}
-export interface FulfillmentProgressPresentation {
-    completedSteps: CustomerFulfillmentStep[];
-    currentStep: CustomerFulfillmentStep | null;
-}
+export type { FulfillmentProgressInput, FulfillmentProgressPresentation } from "@openlup/core/fulfillment";
 ```
 ## dist/fulfillment/contracts/readback.d.ts
 
@@ -1146,22 +1132,8 @@ export {};
 ## dist/fulfillment/currentFulfillmentParcel.d.ts
 
 ```ts
-export type FulfillmentParcelRow = {
-    id?: unknown;
-    order_id?: unknown;
-    sequence_no?: unknown;
-};
-export declare function parcelSequenceNo(row: FulfillmentParcelRow): number;
-export declare function compareParcelPrecedence(left: FulfillmentParcelRow, right: FulfillmentParcelRow): number;
-export declare function currentParcel<Row extends FulfillmentParcelRow>(rows: readonly Row[]): Row | null;
-export declare function currentParcelFor<Row extends FulfillmentParcelRow>(rows: readonly Row[], orderId: unknown): Row | null;
-export declare function currentParcelPerOrder<Row extends FulfillmentParcelRow>(rows: readonly Row[]): Map<string, Row>;
-export declare function currentParcelFirst<Row extends FulfillmentParcelRow>(rows: readonly Row[]): Row[];
-export type ParcelAttributedRow = {
-    fulfillment_order_id?: unknown;
-};
-export declare function belongsToParcel(row: ParcelAttributedRow, parcelId: unknown): boolean;
-export declare function rowsForParcel<Row extends ParcelAttributedRow>(rows: readonly Row[], parcelId: unknown): Row[];
+export { parcelSequenceNo, compareParcelPrecedence, currentParcel, currentParcelFor, currentParcelPerOrder, currentParcelFirst, belongsToParcel, rowsForParcel } from "@openlup/core/fulfillment";
+export type { FulfillmentParcelRow, ParcelAttributedRow } from "@openlup/core/fulfillment";
 ```
 ## dist/fulfillment/delayReadModel.d.ts
 
@@ -2101,20 +2073,8 @@ export declare function createNativeUnsupportedFulfillmentPorts(): FulfillmentRe
 ## dist/fulfillment/normalizedFulfillmentFacts.d.ts
 
 ```ts
-import { type CompatibleNormalizedFulfillmentFact as CoreCompatibleNormalizedFulfillmentFact, type FulfillmentTransitionSnapshot as CoreFulfillmentTransitionSnapshot, type NormalizedFulfillmentFact as CoreNormalizedFulfillmentFact, type NormalizedFulfillmentFactV0 as CoreNormalizedFulfillmentFactV0, type NormalizedFulfillmentFactV1 as CoreNormalizedFulfillmentFactV1, type TransitionConflict as CoreTransitionConflict } from "@openlup/core/fulfillment";
-import type { CanonicalLocalFulfillmentStatus } from "./contracts/index.js";
-/** Application binding: core evidence narrowed to the single Layer B status canon. */
-export type NormalizedFulfillmentFact = CoreNormalizedFulfillmentFact<CanonicalLocalFulfillmentStatus>;
-export type NormalizedFulfillmentFactV1 = CoreNormalizedFulfillmentFactV1<CanonicalLocalFulfillmentStatus>;
-export type NormalizedFulfillmentFactV0 = CoreNormalizedFulfillmentFactV0<CanonicalLocalFulfillmentStatus>;
-export type CompatibleNormalizedFulfillmentFact = CoreCompatibleNormalizedFulfillmentFact<CanonicalLocalFulfillmentStatus>;
-export type FulfillmentTransitionSnapshot = CoreFulfillmentTransitionSnapshot<CanonicalLocalFulfillmentStatus>;
-export type TransitionConflict = CoreTransitionConflict<CanonicalLocalFulfillmentStatus>;
-export declare function isCanonicalLocalFulfillmentStatus(value: string): value is CanonicalLocalFulfillmentStatus;
-/** Strict unknown-input parser bound to the existing status canon. */
-export declare function parseFulfillmentFact(value: unknown): NormalizedFulfillmentFact;
-/** Strict conflict parser bound to the same status canon. */
-export declare function parseFulfillmentTransitionConflict(value: unknown): TransitionConflict;
+export { isCanonicalLocalFulfillmentStatus, parseFulfillmentFact, parseFulfillmentTransitionConflict } from "@openlup/core/fulfillment";
+export type { CanonicalNormalizedFulfillmentFact as NormalizedFulfillmentFact, CanonicalNormalizedFulfillmentFactV1 as NormalizedFulfillmentFactV1, CanonicalNormalizedFulfillmentFactV0 as NormalizedFulfillmentFactV0, CanonicalCompatibleNormalizedFulfillmentFact as CompatibleNormalizedFulfillmentFact, CanonicalFulfillmentTransitionSnapshot as FulfillmentTransitionSnapshot, CanonicalTransitionConflict as TransitionConflict } from "@openlup/core/fulfillment";
 ```
 ## dist/fulfillment/paidFulfillmentRecovery.d.ts
 
@@ -2890,234 +2850,13 @@ export declare function createFulfillmentShipmentsOverviewHandler<Response>({ re
 ## dist/fulfillment/statusMap.d.ts
 
 ```ts
-import type { CustomerFulfillmentStep } from "./contracts/index.js";
-export interface FulfillmentStatusStage {
-    /** Layer C — the provider-neutral customer step. */
-    customerStep: CustomerFulfillmentStep;
-    /** Precedence when several signals disagree — highest rank wins. */
-    rank: number;
-    /** Linear 5-step bar position (paid0 → delivered4); off-track states pinned. */
-    phaseIndex: number;
-    /** Whether this step sits on the normal paid→delivered track. */
-    onTrack: boolean;
-    /** i18n key for the short label (progress bar + cards). */
-    stepLabelKey: string;
-    /** Polish milestone label emitted server-side into the order-detail timeline. */
-    timelineLabel: string;
-    /** Key under `account:dashboard.panels.orders.trackingPhase.*` (start tile). */
-    trackingPhaseKey: string;
-    /** Short display label contributed with the status map. */
-    label: {
-        pl: string;
-        en: string;
-    };
-    /** Layer B `local_status` / durable FSM / order-level statuses resolving here. */
-    localStatus: readonly string[];
-    omsFulfillmentStatus: string[];
-    orderStatus: string[];
-    /** Extra provider/synonym tokens that also resolve here (for token→step). */
-    aliasTokens: string[];
-    /** Contributed effect metadata, pinned by the package test's projection digest. */
-    effects: {
-        stock: string;
-        handover: boolean;
-        customerEmail: string | false;
-    };
-}
-export interface FulfillmentStatusMap {
-    version: number;
-    comment: string;
-    stages: readonly FulfillmentStatusStage[];
-}
-export declare const FULFILLMENT_STATUS_MAP: {
-    readonly version: 1;
-    readonly comment: "SINGLE SOURCE OF TRUTH for fulfillment status across all layers. Layer C (customerStep) is the spine. Providers (Layer A) map ONLY to local_status (Layer B) in their own dictionary; the UI consumes only Layer C. statusMap.test.ts keeps every layer consistent.";
-    readonly stages: readonly [{
-        readonly customerStep: "paid";
-        readonly rank: 1;
-        readonly phaseIndex: 0;
-        readonly onTrack: true;
-        readonly stepLabelKey: "account:dashboard.ordersV2.steps.paid";
-        readonly timelineLabel: "Oplacone";
-        readonly trackingPhaseKey: "paid";
-        readonly label: {
-            readonly pl: "Opłacone";
-            readonly en: "Paid";
-        };
-        readonly localStatus: readonly [];
-        readonly omsFulfillmentStatus: ["created"];
-        readonly orderStatus: ["paid", "fulfillment_pending"];
-        readonly aliasTokens: [];
-        readonly effects: {
-            readonly stock: "reserved";
-            readonly handover: false;
-            readonly customerEmail: false;
-        };
-    }, {
-        readonly customerStep: "accepted";
-        readonly rank: 2;
-        readonly phaseIndex: 1;
-        readonly onTrack: true;
-        readonly stepLabelKey: "account:dashboard.ordersV2.steps.accepted";
-        readonly timelineLabel: "Przyjete do realizacji";
-        readonly trackingPhaseKey: "accepted";
-        readonly label: {
-            readonly pl: "Przyjęte";
-            readonly en: "Accepted";
-        };
-        readonly localStatus: readonly ["provider_received"];
-        readonly omsFulfillmentStatus: ["label_pending", "label_created"];
-        readonly orderStatus: [];
-        readonly aliasTokens: ["new", "accepted", "processing", "provider_attempt_recorded"];
-        readonly effects: {
-            readonly stock: "reserved";
-            readonly handover: false;
-            readonly customerEmail: false;
-        };
-    }, {
-        readonly customerStep: "packing";
-        readonly rank: 3;
-        readonly phaseIndex: 2;
-        readonly onTrack: true;
-        readonly stepLabelKey: "account:dashboard.ordersV2.steps.packing";
-        readonly timelineLabel: "Przygotowane do wysylki";
-        readonly trackingPhaseKey: "preparing";
-        readonly label: {
-            readonly pl: "Przygotowanie";
-            readonly en: "Preparing";
-        };
-        readonly localStatus: readonly ["picking", "packed"];
-        readonly omsFulfillmentStatus: ["packed"];
-        readonly orderStatus: [];
-        readonly aliasTokens: ["picked", "in_fulfillment", "ready_for_packing", "awaiting_courier", "ready_for_pickup"];
-        readonly effects: {
-            readonly stock: "consumed";
-            readonly handover: false;
-            readonly customerEmail: false;
-        };
-    }, {
-        readonly customerStep: "transit";
-        readonly rank: 4;
-        readonly phaseIndex: 3;
-        readonly onTrack: true;
-        readonly stepLabelKey: "account:dashboard.ordersV2.steps.transit";
-        readonly timelineLabel: "W drodze";
-        readonly trackingPhaseKey: "in_transit";
-        readonly label: {
-            readonly pl: "W drodze";
-            readonly en: "In transit";
-        };
-        readonly localStatus: readonly ["in_transit"];
-        readonly omsFulfillmentStatus: ["handed_over", "in_transit"];
-        readonly orderStatus: [];
-        readonly aliasTokens: ["shipped", "shipping", "out_for_delivery", "dispatched"];
-        readonly effects: {
-            readonly stock: "consumed";
-            readonly handover: true;
-            readonly customerEmail: "shipment.dispatched";
-        };
-    }, {
-        readonly customerStep: "delivered";
-        readonly rank: 7;
-        readonly phaseIndex: 4;
-        readonly onTrack: true;
-        readonly stepLabelKey: "account:dashboard.ordersV2.steps.delivered";
-        readonly timelineLabel: "Dostarczono";
-        readonly trackingPhaseKey: "delivered";
-        readonly label: {
-            readonly pl: "Dostarczone";
-            readonly en: "Delivered";
-        };
-        readonly localStatus: readonly ["delivered"];
-        readonly omsFulfillmentStatus: ["delivered"];
-        readonly orderStatus: ["fulfilled"];
-        readonly aliasTokens: ["delivery_delivered"];
-        readonly effects: {
-            readonly stock: "consumed";
-            readonly handover: true;
-            readonly customerEmail: false;
-        };
-    }, {
-        readonly customerStep: "exception";
-        readonly rank: 5;
-        readonly phaseIndex: 1;
-        readonly onTrack: false;
-        readonly stepLabelKey: "account:dashboard.ordersV2.status.exception";
-        readonly timelineLabel: "Wymaga sprawdzenia";
-        readonly trackingPhaseKey: "exception";
-        readonly label: {
-            readonly pl: "Wymaga sprawdzenia";
-            readonly en: "Needs review";
-        };
-        readonly localStatus: readonly ["exception"];
-        readonly omsFulfillmentStatus: ["exception"];
-        readonly orderStatus: [];
-        readonly aliasTokens: ["shipping_failed", "failed", "suspended", "returned_to_sender"];
-        readonly effects: {
-            readonly stock: "held";
-            readonly handover: false;
-            readonly customerEmail: "shipment.exception (provider exception before handoff)";
-        };
-    }, {
-        readonly customerStep: "cancelled";
-        readonly rank: 6;
-        readonly phaseIndex: 0;
-        readonly onTrack: false;
-        readonly stepLabelKey: "account:dashboard.ordersV2.status.cancelled";
-        readonly timelineLabel: "Anulowano";
-        readonly trackingPhaseKey: "cancelled";
-        readonly label: {
-            readonly pl: "Anulowano";
-            readonly en: "Cancelled";
-        };
-        readonly localStatus: readonly ["cancelled"];
-        readonly omsFulfillmentStatus: ["cancelled"];
-        readonly orderStatus: ["cancelled", "refunded"];
-        readonly aliasTokens: ["canceled"];
-        readonly effects: {
-            readonly stock: "released";
-            readonly handover: false;
-            readonly customerEmail: false;
-        };
-    }];
-};
-type CanonicalLocalFulfillmentStatus = import("./contracts/index.js").CanonicalLocalFulfillmentStatus;
-export declare const CANONICAL_LOCAL_FULFILLMENT_STATUSES: readonly CanonicalLocalFulfillmentStatus[];
-export declare const CUSTOMER_STEP_SEQUENCE: CustomerFulfillmentStep[];
-export declare function canonicalStatusToken(value: string | null | undefined): string | null;
-/**
- * Resolve a single raw token (a Layer B `local_status`, an FSM value, an order
- * status, or a provider/synonym) to a customer step. Exact map lookup first, then
- * a conservative substring fallback so an unknown FUTURE token never regresses to
- * a misleading default — it returns null and the caller decides (generic label /
- * "paid" floor). Never guesses a more-advanced state than the token implies.
- */
-export declare function stepForToken(token: string | null | undefined): CustomerFulfillmentStep | null;
-/**
- * The single customer step for an order, from all its real signals (order status,
- * durable fulfillment status, latest provider evidence). The most-advanced real
- * signal wins by rank — so the internal `label_created` (set at OUR dispatch) can
- * never overstate a box the provider has not started, and a real `picking`/
- * `in_transit` is never held back by a stale internal state. Floors at "paid".
- */
-export declare function customerStepFromSignals(tokens: Array<string | null | undefined>): CustomerFulfillmentStep;
-export declare function phaseIndexForStep(step: CustomerFulfillmentStep): number;
-/** i18n key for a step's short label (progress bar + cards). */
-export declare function stepLabelKey(step: CustomerFulfillmentStep): string;
-/** Server-emitted Polish milestone label for the order-detail timeline. */
-export declare function timelineLabelForStep(step: CustomerFulfillmentStep): string;
-/** `panels.orders.trackingPhase.*` key for a step (start-page tile). */
-export declare function trackingPhaseKeyForStep(step: CustomerFulfillmentStep): string;
-export declare function stepUsesTruckIcon(step: CustomerFulfillmentStep): boolean;
-export {};
+export { FULFILLMENT_STATUS_MAP, CANONICAL_LOCAL_FULFILLMENT_STATUSES, CUSTOMER_STEP_SEQUENCE, canonicalStatusToken, stepForToken, customerStepFromSignals, phaseIndexForStep, stepLabelKey, timelineLabelForStep, trackingPhaseKeyForStep, stepUsesTruckIcon } from "@openlup/core/fulfillment";
+export type { FulfillmentStatusStage, FulfillmentStatusMap } from "@openlup/core/fulfillment";
 ```
 ## dist/fulfillment/trackingProgress.d.ts
 
 ```ts
-import type { FulfillmentProgressInput, FulfillmentProgressPresentation } from './contracts/read.js';
-import type { CustomerFulfillmentStep } from './contracts/index.js';
-/** The host resolves its existing step; only actual recorded milestones complete. */
-export declare function fulfillmentProgressPresentation(order: FulfillmentProgressInput, step: CustomerFulfillmentStep): FulfillmentProgressPresentation | null;
+export { fulfillmentProgressPresentation } from "@openlup/core/fulfillment";
 ```
 ## dist/fulfillment/verifiedIngress.d.ts
 

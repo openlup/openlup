@@ -1,4 +1,3 @@
-import type { CustomerFulfillmentStep } from './index.js';
 import type { SubscriptionCycleStatus } from '@openlup/core/subscription';
 import type { PaymentIntentStatus } from '@openlup/core/payment';
 import type { FulfillmentNativeUnsupported } from './nativeUnsupported.js';
@@ -40,12 +39,4 @@ export interface FulfillmentCommerceReadPolicy {
   }): FulfillmentCommerceOrder['omsEligibility'];
 }
 
-export interface FulfillmentProgressInput {
-  status: string; paymentStatus?: string | null; fulfillmentStatus?: string | null;
-  customerFulfillmentStep?: CustomerFulfillmentStep | null;
-  trackingTimeline: { eventType: string }[];
-}
-export interface FulfillmentProgressPresentation {
-  completedSteps: CustomerFulfillmentStep[];
-  currentStep: CustomerFulfillmentStep | null;
-}
+export type { FulfillmentProgressInput, FulfillmentProgressPresentation } from "@openlup/core/fulfillment";

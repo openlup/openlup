@@ -683,16 +683,21 @@ executor. Browser preview values remain reference-owned. See the
 
 ## Fulfillment contracts
 
-Fulfillment lives at the two existing-package subpaths
-`@openlup/platform/fulfillment` and `/fulfillment/contracts`; no topology trigger
-requires another package or dependency. The type-only contracts entry has no runtime,
-server or cross-module edge; its dependencies are core fact, payment-status and
-subscription-status types. The runtime entry binds core evidence parsers to the
-contributed status canon and selects only injected capability profiles. Provider,
+Pure fulfillment presentation lives at the existing `@openlup/core/fulfillment`
+subpath: the status canon, actual-evidence tracking progress, current-parcel
+selection/attribution and parsers narrowed to the canonical status union. Its
+[local sources](../../packages/core/src/fulfillment/index.ts) have no I/O or platform
+dependency. Generic core fact types retain their names; narrowed aliases use the
+`Canonical` prefix. `@openlup/platform/fulfillment` keeps compatibility re-exports,
+and `/fulfillment/contracts` re-exports the shared status and progress types.
+The type-only contracts entry has no runtime or server edge; its dependencies
+are core fact, status, progress, payment-status and subscription-status types.
+No topology trigger requires another package or dependency. Platform owns the
+server orchestration and selects only injected capability profiles. Provider,
 carrier and service remain independent; empty provider selection refuses, and
 potential support never enables a dormant route. Raw commands, credentials and
 signed label URLs stay transient at the host/adapter boundary; durable contracts
-carry typed facts, safe references and actual-command fingerprints. Reference status-map, normalized-fact and current-parcel facades are unchanged; package adoption is outside this change.
+carry typed facts, safe references and actual-command fingerprints. Reference status-map, normalized-fact and current-parcel facades and account order UI retain their existing imports; direct core adoption remains separate.
 The order-management status ladder/queue pair remains host-owned.
 
 The [dispatch port](../../packages/platform/src/fulfillment/contracts/dispatch.ts)
@@ -989,7 +994,7 @@ canonical catalogue; `FULFILLMENT_MIGRATIONS` contains byte-identical sparse
 projections. See [native installation boundaries](DATA_AND_MIGRATIONS.md#module-catalogues-and-installed-histories).
 
 Inspect the [contract witnesses](../../packages/platform/test/fulfillment/contracts.test.ts),
-[status parity](../../packages/platform/test/fulfillment/statusMap.test.ts),
+[status parity](../../packages/core/test/fulfillmentStatusMap.test.ts),
 [port fit](../../packages/platform/test/fulfillment/portFit.test.ts) and
 [programme record](plans/oss-m08-fulfillment-physical-delivery.md) for provenance,
 declared adaptations and boundaries. The

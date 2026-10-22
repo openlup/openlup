@@ -80,6 +80,8 @@ ceilings. Its aggregate budgets in `release-gates.json` follow the measured
 decision its `$budgetReason` records; later growth still needs its own
 measured budget decision. Passing a local pack does not authorize publication.
 
+`./fulfillment` owns pure status, tracking-progress, current-parcel and canonical fact-parser helpers.
+
 ## Package Surface Maturity
 
 Every current export is an internal candidate, experimental kernel, or testing

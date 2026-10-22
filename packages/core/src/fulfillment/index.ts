@@ -32,3 +32,15 @@ export type {
   FulfillmentTransitionSnapshot,
   TransitionConflictReason,
 } from "./facts.js";
+
+export { FULFILLMENT_STATUS_MAP, CANONICAL_LOCAL_FULFILLMENT_STATUSES, CUSTOMER_STEP_SEQUENCE, canonicalStatusToken, stepForToken, customerStepFromSignals, phaseIndexForStep, stepLabelKey, timelineLabelForStep, trackingPhaseKeyForStep, stepUsesTruckIcon } from "./statusMap.js";
+export type { FulfillmentStatusStage, FulfillmentStatusMap } from "./statusMap.js";
+
+export { fulfillmentProgressPresentation } from "./trackingProgress.js";
+
+export { parcelSequenceNo, compareParcelPrecedence, currentParcel, currentParcelFor, currentParcelPerOrder, currentParcelFirst, belongsToParcel, rowsForParcel } from "./currentFulfillmentParcel.js";
+export type { FulfillmentParcelRow, ParcelAttributedRow } from "./currentFulfillmentParcel.js";
+
+export { isCanonicalLocalFulfillmentStatus, parseFulfillmentFact, parseFulfillmentTransitionConflict } from "./normalizedFulfillmentFacts.js";
+export type { CanonicalNormalizedFulfillmentFact, CanonicalNormalizedFulfillmentFactV1, CanonicalNormalizedFulfillmentFactV0, CanonicalCompatibleNormalizedFulfillmentFact, CanonicalFulfillmentTransitionSnapshot, CanonicalTransitionConflict } from "./normalizedFulfillmentFacts.js";
+export type { CanonicalLocalFulfillmentStatus, CustomerFulfillmentStep, FulfillmentProgressInput, FulfillmentProgressPresentation } from "./types.js";

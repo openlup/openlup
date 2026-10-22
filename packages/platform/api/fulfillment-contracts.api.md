@@ -351,8 +351,6 @@ export type { SyncCursor, StockSnapshot, StockMovement, LocalStock, FulfillmentS
 export type { FulfillmentCapabilityDescriptor } from "./capabilities.js";
 export type { DispatchRecord, FulfillmentStorePort, FulfillmentPaidHandoffPort } from "./store.js";
 export type { DeliveryAlignmentPort } from "./alignment.js";
-export type CanonicalLocalFulfillmentStatus = "provider_received" | "picking" | "packed" | "in_transit" | "delivered" | "exception" | "cancelled";
-export type CustomerFulfillmentStep = "paid" | "accepted" | "packing" | "transit" | "delivered" | "exception" | "cancelled";
 export type { FulfillmentAdapterConformanceSubject, FulfillmentAdapterConformanceEvidence } from "./conformance.js";
 export type { FulfillmentNativeUnsupported } from './nativeUnsupported.js';
 export type { FulfillmentReplacementPort, FulfillmentReplacementRequest, FulfillmentReplacementResult } from './replacement.js';
@@ -361,6 +359,7 @@ export type { CustomerDeliveryAlignment, FulfillmentCustomerAlignmentRowsReader 
 export type { FulfillmentCommerceReadPort, FulfillmentCommerceReadPolicy, FulfillmentOrderStatus, FulfillmentPaymentStatus, FulfillmentCommerceOrder, FulfillmentOrdersListRequest, FulfillmentOrdersListResponse, FulfillmentOrderDetailRequest, FulfillmentOrderDetailResponse, FulfillmentShipmentsOverviewPort, FulfillmentShipmentsOverviewRequest, FulfillmentShipmentsOverviewResponse } from './read.js';
 export type { FulfillmentProgressInput, FulfillmentProgressPresentation } from './read.js';
 export type { FulfillmentServicesOptions, FulfillmentServices } from './bindings.js';
+export type { CanonicalLocalFulfillmentStatus, CustomerFulfillmentStep } from "@openlup/core/fulfillment";
 ```
 ## dist/fulfillment/contracts/label.d.ts
 
@@ -538,7 +537,6 @@ export {};
 ## dist/fulfillment/contracts/read.d.ts
 
 ```ts
-import type { CustomerFulfillmentStep } from './index.js';
 import type { SubscriptionCycleStatus } from '@openlup/core/subscription';
 import type { PaymentIntentStatus } from '@openlup/core/payment';
 import type { FulfillmentNativeUnsupported } from './nativeUnsupported.js';
@@ -648,19 +646,7 @@ export interface FulfillmentCommerceReadPolicy {
         inventoryStatus: FulfillmentCommerceOrder['inventory']['status'];
     }): FulfillmentCommerceOrder['omsEligibility'];
 }
-export interface FulfillmentProgressInput {
-    status: string;
-    paymentStatus?: string | null;
-    fulfillmentStatus?: string | null;
-    customerFulfillmentStep?: CustomerFulfillmentStep | null;
-    trackingTimeline: {
-        eventType: string;
-    }[];
-}
-export interface FulfillmentProgressPresentation {
-    completedSteps: CustomerFulfillmentStep[];
-    currentStep: CustomerFulfillmentStep | null;
-}
+export type { FulfillmentProgressInput, FulfillmentProgressPresentation } from "@openlup/core/fulfillment";
 ```
 ## dist/fulfillment/contracts/readback.d.ts
 
