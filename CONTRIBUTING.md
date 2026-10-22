@@ -131,6 +131,26 @@ its users or operators can observe.
 
 ## Development-preview checks
 
+The M10/F17 exact-forward controls use
+`scripts/reviewed-batch-forward.test.ts` for per-file refusal plants and separate
+CI/release approval, and `tests/postgres/reviewedBatchForwards.test.ts` for the
+mandatory PostgreSQL/pgTAP catalog gate. The latter runs both complete prefixes,
+checks exact catalog/ACL/row changes and rollback, and falsifies its observer
+with committed attacks. Missing Docker, PostgreSQL or pgTAP fails; the lexer is
+only a pre-filter. Fixtures under `scripts/fixtures/reviewed-m10/` are inert
+approval snapshots and do not join an installation manifest. Root test discovery
+already includes both suites; no extra runner or optional skip is introduced.
+The M10 gate's external CI image dependencies are PG16
+`sha256:9e2cf6287f25c3151f4c9421ccce2b17f3e60061c111a29165e0d2cdd9ff0a97`
+(Docker Hub library → ECR Docker Library) and Supabase PG17
+`sha256:b15d862126dd2dac02da524696ccfde2dcce2ceaee0a58973b2727befe492706`
+(ghcr `17.11.0.004` → Docker Hub → ECR), in that source order with the same
+digest at each source. The gate verifies the pulled RepoDigest; only transient
+pull failures retry, at most three attempts per source within a total 120-second
+pull budget, honouring Retry-After up to that budget. Inspection, container and
+SQL failures are not retried; exhausting the sources fails loudly without a skip.
+
+
 Subscription package contract changes use package-local contract, identity and
 port-fit witnesses alongside the generated package boundary census. The cold
 consumer classifies both exact subscription entries as having no optional peer
@@ -1078,6 +1098,29 @@ The job also rejects baseline increases relative to the PR base/main push's
 previous commit. For a first baseline, or to regenerate from main without
 increasing debt, use `node scripts/public-ci-neutrality.mjs --write-baseline`.
 After removing debt, lower the affected counts; never raise them.
+
+The named **bounded debt C94 — M10 reviewed packet vocabulary** is the coordinator-approved
+bounded recalibration for immutable managed SQL and its pinned registry COMMENT,
+following the diagnostic-fixture debt treatment in #130. Its exact path/category
+counts are documented in [Data and migrations](docs/platform/DATA_AND_MIGRATIONS.md#exact-reviewed-function-forwards).
+This control change adds baseline keys only for the six existing managed fixtures
+and that registry carrier; existing counts stay unchanged. Each landing PR
+(P3b, P5, F17) adds only its own rail keys with the files and exact pinned counts.
+Every present baseline key for an allowance path must match all its pinned
+category counts exactly, including during regeneration; absent files cannot
+justify new keys. `reviewedPinnedIntroductions` in the wrapper is a closed
+list of exactly 13 paths: six inert managed SQL fixtures, their six future
+`supabase/migrations/` copies, and `config/reviewed-platform-forwards.json`.
+Each SQL entry pins the whole-file SHA-256 and exact category/before/after counts;
+the registry entry pins its exact SQL COMMENT text, so unrelated registry edits
+do not invalidate the pin. The filter applies on any base to measured-base
+increases and parent-baseline raises, including `--write-baseline`. Candidate
+counts must still fit the baseline. No wildcard, prefix or ceiling is admitted;
+changed bytes, paths, categories or counts refuse, as do native, TypeScript,
+package and docs entries. An unrelated increase remains a failure in the same run.
+Adding any further entry is a control change needing two fresh Opus reviews plus
+the coordinator's control read. Neutral replacements reduce the debt; rail-path
+entries can be retired after the F17 PR lands and the base carries their counts.
 After all allowances are subtracted, a negative count fails the ratchet with
 the category, quoted path and remainder; allowances never clamp counts to zero.
 
@@ -1213,7 +1256,10 @@ refusal and approval before introduction in both gates; managed counts remain
 unchanged. Required self-check keeps the whole registry
 unchanged from the feature comparison base; release compares each forward's own
 entry, list position and shared registry fields with its introduction parent, so later
-controls may append approvals. A feature cannot approve itself. These forwards
+controls may append approvals. A feature cannot approve itself. Batched pins land per rail as a prefix in version
+order: all earlier same-rail pins must be present with their pinned whole-file
+digests. The PG gate refuses landed holes and replays committed interleaved
+files through the last pin along with the absent fixture suffix. These forwards
 are not expand-only. See
 [the exact class](docs/platform/DATA_AND_MIGRATIONS.md#exact-reviewed-function-forwards)
 and its refusal tests in `scripts/source-preview-release.test.ts`.

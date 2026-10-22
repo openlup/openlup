@@ -290,6 +290,89 @@ separately from historical grant spellings or inherited CLI defaults.
 
 ## Exact reviewed function forwards
 
+The separate `batchedForwards` list approves the frozen M10/F17 packet: five
+native files and nine managed files. It adds no installation-chain SQL. Exact
+future bytes live only in [inert fixtures](../../scripts/fixtures/reviewed-m10/).
+The [registry](../../config/reviewed-platform-forwards.json) records each full
+path, SHA-256, ordered statement hash and exact function identity with raw
+before/after CREATE hashes. Non-function statements additionally carry their
+exact SQL, including every grant target, recipient, absorption row and seed.
+The checker fixes the ordered path/signature inventory separately from that data.
+
+This batch covers four native creations (retry, commands, stock wait and the
+M06 ATP/new-purchase seam), one native allocator body replacement, managed seam,
+stock-wait and refund-evidence creations, and the six managed replacement files.
+The managed creation includes its one table, index, RLS enablement, service-only
+grants and blocking `client_absorption_policy` row. The only new existing-table
+column grant is `SELECT (id, retry_attempt)` on `subscription_cycles` to
+`service_role`. The lifecycle-message forward replaces exactly
+`private.outbox_resend_event_types()` and its two public companions, and seeds
+only the enabled `subscription-stock-wait-started` / `subscription-stock-wait-resumed`
+notification controls with `ON CONFLICT(slug) DO NOTHING`.
+
+Timestamp aliases share identity within this class (`timestamptz` and
+`timestamp with time zone`); raw definition hashes retain the original spelling.
+The due reader chains M2 → M4 and the payment applicator M1 → F17: each later
+before hash must equal the earlier after hash, and admission reads the actual
+preceding rail in filename order. Per rail, pins land as a prefix in version
+order: native P2 (160000) → P4 (170000) → P5 (180000, 183000, 184000),
+and managed P3b (155000, 160000) → P5 (175000–184000) → F17 (185000, 185100).
+Every earlier same-rail pin must already exist at the candidate head with its
+whole-file pinned digest; a later landing cannot skip an absent pin.
+Missing, duplicate or extra signatures, preimage drift, reordered chains, unpinned private objects, extra/wider grants,
+changed bytes/paths and unexpected statements refuse. The native allocator
+admits exactly one replacement with an unchanged header and ACL, including its
+pre-existing PUBLIC EXECUTE default; this approval does not harden that default.
+
+The lexer is only a pre-filter. The mandatory
+[real PostgreSQL/pgTAP catalog gate](../../tests/postgres/reviewedBatchForwards.test.ts)
+uses native PostgreSQL 16 and managed PostgreSQL 17/pgTAP. Per rail it applies
+all committed rail files in filename order through the last pin, including
+unpinned files interleaved between pins. Pins use landed or fixture bytes exactly
+once; landed pins must form a prefix before the absent fixture suffix. A landed
+rail file must be byte-equal to its inert fixture; an absent file uses the fixture. Each forward runs once, before and after feature landing.
+It compares `pg_proc` metadata and bodies, `pg_class` and `pg_attribute` relation
+and column ACLs and RLS; snapshots also compare `pg_namespace`, `pg_type`,
+`pg_trigger`, `pg_policy`, `pg_default_acl`, `pg_roles`, `pg_auth_members`,
+`pg_constraint`, `pg_index`, `pg_rewrite`, `pg_foreign_server`, `pg_event_trigger`,
+`pg_extension` and `pg_description`, plus all public/private ordinary-table rows.
+Only the pinned creations, replacements, column grant, absorption row,
+notification rows and refund-function comment may change. Rollback must restore
+the complete prefix. Committed plants falsify both admission and the catalog
+observer, including authenticated EXECUTE on a pinned new function, an altered
+native allocator ACL, and a repinned managed index on an existing table. Missing
+Docker, PostgreSQL or pgTAP fails the required `test` aggregate; a lexical PASS
+cannot replace this gate. The managed setup budget includes its first image pull.
+These batch rules do not broaden the earlier #267, #295 or #300 classes.
+Coordinator control review and two fresh reviews remain separate delivery gates.
+
+**Named bounded debt C94 — M10 reviewed packet vocabulary.** The frozen managed
+SQL retains provider nouns inherited from that rail. The neutrality baseline
+records the scanner's exact counts for the six existing managed fixtures and the
+registry's pinned refund COMMENT: dunning continuity (`ui-13`: 2, `ui-14`: 3),
+ATP (`ui-15`: 3), stock wait (`ui-15`: 6), allocator (`ui-15`: 2), refund evidence
+and refund parity (each `ui-13`: 7), and the registry (`ui-13`: 1).
+Each landing PR (P3b, P5, F17) adds only its own rail keys together with the files,
+using these exact pinned counts per category. Any present baseline key for an
+allowance path must contain exactly its pinned category counts, including during
+regeneration; adding a key without the file refuses. No native,
+TypeScript, package or documentation allowance is added. This is vocabulary
+debt for the frozen packet, not provider activation or portable-contract parity;
+future neutral replacements must lower it. The [neutrality owner](../../CONTRIBUTING.md#package-policy-and-release-checks)
+owns the ratchet. Its `reviewedPinnedIntroductions` allowance is a closed list of
+exactly 13 paths (six fixture/rail pairs and the registry), grouping the two
+dunning categories per path. Each SQL pin requires the complete file's SHA-256
+and exact category and before/after counts, on any base. The registry instead
+pins the exact refund COMMENT text because later approvals edit unrelated
+registry data; extra counted vocabulary still refuses. The allowance filters
+measured-base increases and parent-baseline raises, including regeneration;
+candidate counts must still fit the baseline. Changed bytes, another path even
+with the same digest, another category or count, and unrelated increases refuse.
+No native rail, TypeScript, package or documentation path can enter this list.
+Adding any further entry is a control change needing two fresh Opus reviews plus
+the coordinator's control read. The six rail-path entries can be retired after
+the F17 PR lands and the base carries the counts.
+
 The managed runtime capability forward is shipped after its separate control
 approval. It changes no baseline bytes or function signature. Required service
 and authenticated column/helper permissions are explicit in that ordered file;
