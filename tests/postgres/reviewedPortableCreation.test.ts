@@ -1,25 +1,26 @@
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { Pool } from "pg";
-import { beforeAll, expect, it } from "vitest";
+import { afterAll, beforeAll, expect, it } from "vitest";
 import type { PlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
 import { assertPortableCreationStatements, readReviewedForwardRegistry } from "../../scripts/reviewed-platform-forward.js";
-import { dockerAvailable, runPostgresContainer, waitForPostgresTcpReady } from "../helpers/postgresContainer.js";
+import { dockerAvailable, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
 
 const manifest: PlatformMigrationManifest = JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8"));
-const pinned = readReviewedForwardRegistry(readFileSync("config/reviewed-platform-forwards.json")).portableCreationForwards!;
+const registry = readReviewedForwardRegistry(readFileSync("config/reviewed-platform-forwards.json"));
+const pinned = [...registry.portableCreationForwards!, ...registry.portableReplacementForwards!.filter(entry => entry.path.includes("invoicing"))].sort((a,b) => a.path.localeCompare(b.path));
 const fixtures = pinned.map(entry => ({ ...entry, bytes: readFileSync(`scripts/fixtures/${entry.path.split("/").at(-1)}`) }));
-const expectedTriggers = [[], [
+const expectedTriggers: Record<string, unknown[]> = { "db/platform/migrations/20261022080000_fulfillment_command_ledger.sql": [], "db/platform/migrations/20261022090000_fulfillment_delivery_alignment.sql": [
   { table_name: "public.commerce_order_holds", name: "trg_subscription_delivery_alignment_exception_case", function_name: "public.subscription_delivery_alignment_open_exception_case" },
   { table_name: "public.fulfillment_shipments", name: "trg_subscription_delivery_alignment_on_delivery", function_name: "public.subscription_delivery_alignment_on_delivery" },
   { table_name: "public.subscription_cycles", name: "trg_subscription_delivery_alignment_guard_cycle_insert", function_name: "public.subscription_delivery_alignment_guard_cycle_insert" },
-]];
+] };
 
 async function snapshot(pool: Pool) {
   const relations = (await pool.query(`SELECT c.oid, c.relacl::text, c.reloptions,
     (SELECT jsonb_agg(to_jsonb(a) ORDER BY a.attnum) FROM pg_attribute a WHERE a.attrelid=c.oid) AS attributes
     FROM pg_class c ORDER BY c.oid`)).rows;
-  const functions = (await pool.query(`SELECT p.oid, p.prosrc, p.proconfig, p.prosecdef, p.proacl::text,
+  const functions = (await pool.query(`SELECT p.oid, p.prosrc, p.proconfig, p.prosecdef, p.proacl::text, p.proowner, p.prorettype, pg_get_expr(p.proargdefaults,0) AS proargdefaults, p.provolatile,
     n.nspname || '.' || p.proname AS name FROM pg_proc p JOIN pg_namespace n ON n.oid=p.pronamespace ORDER BY p.oid`)).rows;
   const types = (await pool.query("SELECT oid, typacl::text FROM pg_type ORDER BY oid")).rows;
   // Constraint-generated internal FK triggers are dependencies of the new tables;
@@ -33,42 +34,38 @@ async function snapshot(pool: Pool) {
   return { relations, functions, types, triggers };
 }
 
+let container: PostgresContainer | undefined;
+let pool: Pool;
+const applied = new Set<string>();
+type CatalogSnapshot = Awaited<ReturnType<typeof snapshot>>;
+const catalogEvidence = new Map<string, { before: CatalogSnapshot; after: CatalogSnapshot; forbidden: unknown[] }>();
 beforeAll(async () => {
-  if (!await dockerAvailable()) throw new Error("Reviewed portable creation catalog proof requires real PostgreSQL");
-});
-
-it.each(fixtures.map((fixture, index) => ({ ...fixture, index })))("preserves the catalog boundary of $path", async ({ path, sha256, bytes, index }) => {
-  const container = await runPostgresContainer({ name: `reviewed-creation-${process.pid}-${index}`, password: "synthetic-conformance" });
-  let pool: Pool | undefined;
-  try {
-    if (!await waitForPostgresTcpReady(container.connectionString)) throw new Error("Reviewed portable creation PostgreSQL unavailable");
-    pool = new Pool({ connectionString: container.connectionString });
-    expect((await pool.query("SHOW standard_conforming_strings")).rows).toEqual([{ standard_conforming_strings: "on" }]);
+  if (!await dockerAvailable()) throw new Error("Reviewed forward catalog proof requires real PostgreSQL");
+  container = await runPostgresContainer({ name: `reviewed-creation-${process.pid}`, password: "synthetic-conformance" });
+  if (!await waitForPostgresTcpReady(container.connectionString)) throw new Error("Reviewed forward PostgreSQL unavailable");
+  pool = new Pool({ connectionString: container.connectionString });
+  // Apply and snapshot each boundary once before cases run, so shuffled cases
+  // still inspect their own real catalog proof rather than a sibling's state.
+  for (const { path, sha256, bytes } of fixtures) {
     // Apply the canonical portable prefix, then earlier pinned fixtures not yet
     // in the manifest. Each forward under proof still runs after its snapshot.
     for (const unit of [manifest.baseline, ...manifest.forward].filter(unit => unit.file < path)) {
+      if (applied.has(unit.file)) continue;
       const source = readFileSync(unit.file);
       expect(createHash("sha256").update(source).digest("hex")).toBe(unit.sha256);
       await pool.query(source.toString("utf8"));
+      applied.add(unit.file);
     }
-    for (const earlier of fixtures.slice(0, index).filter(entry => !manifest.forward.some(unit => unit.file === entry.path))) {
+    for (const earlier of fixtures.filter(entry => entry.path < path && !applied.has(entry.path))) {
       expect(createHash("sha256").update(earlier.bytes).digest("hex")).toBe(earlier.sha256);
       await pool.query(earlier.bytes.toString("utf8"));
+      applied.add(earlier.path);
     }
     expect(createHash("sha256").update(bytes).digest("hex")).toBe(sha256);
     const before = await snapshot(pool);
     await pool.query(bytes.toString("utf8"));
+    applied.add(path);
     const after = await snapshot(pool);
-    for (const kind of ["relations", "functions"] as const) {
-      const current = new Map(after[kind].map(row => [row.oid, row]));
-      for (const row of before[kind]) expect(current.get(row.oid), `${path}: pre-existing ${kind} ${row.oid}`).toEqual(row);
-    }
-    const oldFunctions = new Set(before.functions.map(row => row.oid));
-    const newFunctions = after.functions.filter(row => !oldFunctions.has(row.oid));
-    expect(newFunctions.length).toBeGreaterThan(0);
-    expect(newFunctions.filter(row => row.prosecdef)).toEqual([]);
-    // Inspect actual ACL entries, including column ACLs and generated row types;
-    // PUBLIC is grantee OID zero rather than a role in pg_roles.
     const forbidden = (await pool.query(`WITH new_acl AS (
       SELECT c.oid, 'relation' AS kind, c.relacl AS acl FROM pg_class c WHERE NOT (c.oid=ANY($1::oid[]))
       UNION ALL SELECT a.attrelid, 'column', a.attacl FROM pg_attribute a WHERE NOT (a.attrelid=ANY($1::oid[]))
@@ -77,14 +74,69 @@ it.each(fixtures.map((fixture, index) => ({ ...fixture, index })))("preserves th
     ) SELECT n.oid, n.kind, x.privilege_type, x.grantee FROM new_acl n CROSS JOIN LATERAL aclexplode(n.acl) x
       WHERE x.grantee=0 OR x.grantee IN (SELECT oid FROM pg_roles WHERE rolname IN ('anon','authenticated'))`,
     [before.relations.map(row => row.oid), before.functions.map(row => row.oid), before.types.map(row => row.oid)])).rows;
+    catalogEvidence.set(path, { before, after, forbidden });
+  }
+}, 120_000);
+afterAll(async () => { await pool?.end(); await container?.remove(); });
+
+it.each(fixtures)("preserves the catalog boundary of $path", async ({ path, sha256, bytes }) => {
+    expect((await pool.query("SHOW standard_conforming_strings")).rows).toEqual([{ standard_conforming_strings: "on" }]);
+    const { before, after, forbidden } = catalogEvidence.get(path)!;
+    expect(createHash("sha256").update(bytes).digest("hex")).toBe(sha256);
+    for (const kind of ["relations", "functions"] as const) {
+      const current = new Map(after[kind].map(row => [row.oid, row]));
+      for (const row of before[kind]) {
+        if (kind === "functions" && path.includes("payment_decoupling") && "name" in row && row.name === "public.payment_truth_apply_terminal") {
+          const changed = current.get(row.oid)!;
+          expect({ ...changed, prosrc: "omitted" }).toEqual({ ...row, prosrc: "omitted" });
+          expect(changed).not.toEqual(row);
+        } else expect(current.get(row.oid), `${path}: pre-existing ${kind} ${row.oid}`).toEqual(row);
+      }
+    }
+    const oldFunctions = new Set(before.functions.map(row => row.oid));
+    const newFunctions = after.functions.filter(row => !oldFunctions.has(row.oid));
+    if (path.includes("payment_decoupling")) expect(newFunctions).toEqual([]);
+    else expect(newFunctions.length).toBeGreaterThan(0);
+    expect(newFunctions.filter(row => row.prosecdef)).toEqual([]);
+    if (path.includes("invoicing") && !path.includes("payment_decoupling")) {
+      // Inspect every function PostgreSQL actually created, including readback
+      // and optional order filters, without reusing the replacement-only parser.
+      for (const routine of newFunctions) {
+        expect((await pool.query(`SELECT p.prosecdef,p.proconfig,
+          has_function_privilege('anon',p.oid,'EXECUTE') anon,
+          has_function_privilege('authenticated',p.oid,'EXECUTE') authenticated,
+          EXISTS(SELECT 1 FROM aclexplode(p.proacl) x WHERE x.grantee=0) public
+          FROM pg_proc p WHERE p.oid=$1::oid`,[routine.oid])).rows)
+          .toEqual([{prosecdef:false,proconfig:["search_path=pg_catalog"],anon:false,authenticated:false,public:false}]);
+      }
+    }
+    if(path.includes("durable_duties")) {
+      expect((await pool.query("SELECT attname FROM pg_attribute WHERE attrelid='public.invoicing_cutover'::regclass AND attnum>0 AND NOT attisdropped ORDER BY attnum")).rows)
+        .toEqual([{attname:"source_kind"},{attname:"source_id"}]);
+      expect((await pool.query("SELECT pg_get_constraintdef(oid) definition FROM pg_constraint WHERE conrelid='public.invoicing_cutover'::regclass AND contype='p'")).rows)
+        .toEqual([{definition:"PRIMARY KEY (source_kind, source_id)"}]);
+      expect((await pool.query("SELECT reloptions FROM pg_class WHERE oid='public.invoicing_due_sources'::regclass")).rows)
+        .toEqual([{reloptions:["security_invoker=true"]}]);
+      expect((await pool.query("SELECT indexname FROM pg_indexes WHERE schemaname='public' AND indexname IN ('invoicing_capture_faults_source','invoicing_capture_faults_order','invoicing_duties_available') ORDER BY indexname")).rows)
+        .toEqual([{indexname:"invoicing_capture_faults_order"},{indexname:"invoicing_capture_faults_source"},{indexname:"invoicing_duties_available"}]);
+    }
+    const keptSignatures = path.includes("durable_duties") ? [
+      ["public.invoicing_duty_readback(uuid)",0], ["public.invoicing_claim_duties(integer,integer,text,uuid)",1],
+    ] : path.includes("document_effects") ? [["public.invoicing_claim_deliveries(integer,integer,boolean,uuid)",1]]
+      : path.includes("seller_revision") ? [["public.invoicing_claim_with_seller(integer,integer,text,jsonb,text,uuid)",1]] : [];
+    for (const [signature,defaults] of keptSignatures) {
+      expect((await pool.query("SELECT pronargdefaults FROM pg_proc WHERE oid=$1::regprocedure",[signature])).rows).toEqual([{pronargdefaults:defaults}]);
+    }
+    // Inspect actual ACL entries, including column ACLs and generated row types;
+    // PUBLIC is grantee OID zero rather than a role in pg_roles.
     expect(forbidden).toEqual([]);
     const oldRelations = new Set(before.relations.map(row => row.oid));
     const oldTriggers = new Set(before.triggers.map(row => row.oid));
     const attached = after.triggers.filter(row => oldRelations.has(row.tgrelid) && !oldTriggers.has(row.oid));
-    expect(attached.map(({ table_name, name, function_name }) => ({ table_name, name, function_name }))).toEqual(expectedTriggers[index]);
+    expect(attached.map(({ table_name, name, function_name }) => ({ table_name, name, function_name }))).toEqual(expectedTriggers[path] ?? []);
     const createdFunctions = new Set(newFunctions.map(row => row.oid));
     for (const trigger of attached) expect(createdFunctions.has(trigger.tgfoid)).toBe(true);
-    if (index === 0) {
+    if (path.endsWith("fulfillment_command_ledger.sql")) {
       // PostgreSQL and admission must agree on statement boundaries even when
       // delimiters appear in literals/comments, prefixed strings or operators.
       const lexicalSql = `-- misleading ' " $$ ; é
@@ -101,8 +153,55 @@ CREATE FUNCTION public.zz_lexical_body() RETURNS text LANGUAGE sql SET search_pa
         { 'double"quote': "it's;--/*$$é", national: "n;$$", bits: "10", hex: "11111111", continued: "onetwo", number: 1003, body: "é;--/*$named$" },
       ]);
     }
-  } finally {
-    await pool?.end();
-    await container.remove();
-  }
+}, 120_000);
+
+it("applies all managed fixtures with exactly donor attributes, service-only ACLs and bounded catalog changes", async () => {
+  await pool.query("CREATE ROLE service_role NOLOGIN");
+  await pool.query("CREATE DATABASE reviewed_managed");
+  const managed = new Pool({ connectionString: container!.connectionStringFor("reviewed_managed") });
+  try {
+    // Minimal public managed prerequisites on stock PostgreSQL. The complete
+    // shipped baseline and preceding managed forwards execute without rewriting SQL.
+    await managed.query(`CREATE SCHEMA auth; CREATE TABLE auth.users(id uuid PRIMARY KEY);
+      CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql AS $$ SELECT null::uuid $$;
+      CREATE FUNCTION auth.role() RETURNS text LANGUAGE sql AS $$ SELECT null::text $$;`);
+    await managed.query(readFileSync("scripts/public-reference/subscription-prereqs.sql", "utf8"));
+    const paths = (await import("node:fs")).readdirSync("supabase/migrations").filter(name => name < "20261022193000").sort();
+    for (const name of paths) await managed.query(readFileSync(`supabase/migrations/${name}`, "utf8").replace(/^\\(?:un)?restrict .*$/gmu, ""));
+    for (const entry of registry.managedInvoicingForwards!) {
+      const bytes = readFileSync(`scripts/fixtures/${entry.path.split("/").at(-1)}`);
+      expect(createHash("sha256").update(bytes).digest("hex")).toBe(entry.sha256);
+      const before = await snapshot(managed);
+      await managed.query(bytes.toString("utf8"));
+      const after = await snapshot(managed);
+      const changedNames = new Set(entry.functions.filter(binding => binding.beforeSha256 !== null).map(binding => binding.signature.split("(")[0]));
+      for (const kind of ["relations", "functions"] as const) {
+        const current = new Map(after[kind].map(row => [row.oid, row]));
+        for (const row of before[kind]) {
+          if (kind === "functions" && "name" in row && changedNames.has(String(row.name))) {
+            const next = current.get(row.oid)!;
+            // Compatibility replaces the body/language intentionally; ownership,
+            // return/defaults and actual ACL remain at the managed boundary.
+            expect({ ...next, prosrc: "omitted" }).toEqual({ ...row, prosrc: "omitted" });
+          } else expect(current.get(row.oid)).toEqual(row);
+        }
+      }
+      expect(after.triggers).toEqual(before.triggers);
+      for (const binding of entry.functions) {
+        const result = (await managed.query(`SELECT p.prosecdef,p.proconfig,
+          has_function_privilege('service_role',p.oid,'EXECUTE') AS service,
+          has_function_privilege('anon',p.oid,'EXECUTE') AS anon,
+          has_function_privilege('authenticated',p.oid,'EXECUTE') AS authenticated,
+          EXISTS(SELECT 1 FROM aclexplode(p.proacl) x WHERE x.grantee=0) AS public
+          FROM pg_proc p WHERE p.oid=$1::regprocedure`, [binding.signature])).rows;
+        expect(result).toEqual([{ prosecdef: true, proconfig: ["search_path=public, pg_catalog"], service: true, anon: false, authenticated: false, public: false }]);
+      }
+      if (entry.path.includes("seller_revision")) expect((await managed.query("SELECT relrowsecurity FROM pg_class WHERE oid='public.invoicing_managed_seller_revisions'::regclass")).rows).toEqual([{relrowsecurity:true}]);
+      const oldRelations = new Set(before.relations.map(row => row.oid));
+      for (const relation of after.relations.filter(row => !oldRelations.has(row.oid))) {
+        expect((await managed.query(`SELECT x.grantee FROM pg_class c CROSS JOIN LATERAL aclexplode(c.relacl) x
+          WHERE c.oid=$1 AND (x.grantee=0 OR x.grantee IN (SELECT oid FROM pg_roles WHERE rolname IN ('anon','authenticated')))`, [relation.oid])).rows).toEqual([]);
+      }
+    }
+  } finally { await managed.end(); }
 }, 120_000);
