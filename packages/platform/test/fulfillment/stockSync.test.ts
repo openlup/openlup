@@ -192,3 +192,17 @@ it("resolves stale recovery only after the terminal cursor and preserves complet
   await expect(run(f.input)).rejects.toThrow("terminal-cursor-unavailable");
   expect(recoveries).toBe(1);
 });
+
+it("preserves successful completion when stale recovery throws synchronously", async () => {
+  const f = fixture();
+  f.input.provider.getStock = async () => [];
+  let recoveries = 0;
+  f.input.port.resolveLowStockEvidence = () => {
+    recoveries += 1;
+    expect(f.cursor()).toMatchObject({ status: "succeeded", lastStockSyncedAt: at });
+    throw Error("synchronous-cleanup-failure");
+  };
+  expect(await run(f.input)).toMatchObject({ ok: true, failures: 0 });
+  expect(f.cursor()).toMatchObject({ status: "succeeded", lastStockSyncedAt: at, error: null, refusal: null });
+  expect(recoveries).toBe(1);
+});

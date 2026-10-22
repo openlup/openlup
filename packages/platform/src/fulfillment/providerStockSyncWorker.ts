@@ -245,11 +245,13 @@ export async function runFulfillmentStockSyncWorker(input: {
   });
   // Recovery follows the durable succeeded cursor; a failed cleanup leaves the completed run intact.
   if (result.ok && recoverStaleSync) {
-    await input.port.resolveLowStockEvidence({
-      skuRef: input.compatibility.staleEvidenceSku,
-      activeThresholdKinds: [],
-      syncRunId,
-    }).catch(() => undefined);
+    try {
+      await input.port.resolveLowStockEvidence({
+        skuRef: input.compatibility.staleEvidenceSku,
+        activeThresholdKinds: [],
+        syncRunId,
+      });
+    } catch { /* Best-effort cleanup must not undo the completed run. */ }
   }
   return result;
 }
