@@ -20,8 +20,8 @@ Recovery must settle the original obligation with receipt/case/counter updates
 in one transaction. The managed graph retains separate create/prepare and failure
 RPC units. External execution occurs once outside SQL transactions. Ambiguity or
 missing acknowledgement permits readback, never redispatch. The generic runner
-is default off with one executor and mandatory delivery admission, including
-captured cases after mode rollback. Host composition supplies policy and stores.
+is default off with one executor and mandatory delivery admission. Host
+composition supplies policy and stores.
 
 ## Continuity and capabilities
 
@@ -36,8 +36,8 @@ candidate scan. All-line reacquisition shares the wait transition transaction;
 stock-only reset refuses prepared, acknowledged, ambiguous or money-owned work.
 Future-term commands preserve the frozen current obligation and require actor,
 key and actual-command receipts committed with their events and term writes.
-Native generic bundle commands and command-bound receipts arrive with the native
-command lifecycle in M10 P4; until then, the descriptor refuses them. Multi-cycle
+Native generic bundle commands and command-bound receipts arrive with a later native command lifecycle;
+until then, the descriptor refuses them. Multi-cycle
 prepaid is unsupported with a named refusal. Existing native lifecycle commands remain.
 M04 owns delivery of host-described lifecycle facts; providers, account
 aggregation, private pricing/copy and scheduling hosts remain outside the module.
@@ -48,9 +48,12 @@ aggregation, private pricing/copy and scheduling hosts remain outside the module
 contract amendments. [Current-prefix PostgreSQL](../../../tests/postgres/subscriptionContinuityBaseline.test.ts)
 proves arrival maximum/no stacking and native exhaustion without pause. With mode
 off and no captured case, renewal proceeds without an admission RPC.
-After rollback to off, captured cases still go through admission and stay
-deferred until actual arrival; arrival only moves the schedule later, never
-earlier or stacked. The next due run proceeds without permanent deferral.
+After rollback to `off`, shadow cases are admitted. Captured protected cases
+still go through admission and defer until actual arrival: `protect` releases
+the case; `auto_align` settles as `aligned` using the latest arrival plus cadence
+with the outer maximum, never earlier or stacked. `manual_review` cases, including
+protected cases whose arrival meets open dunning or a successor cycle, keep
+deferring until resolved.
 Subsequent stores require their own
 transaction, replay, contention and refusal proofs before serving composition.
 The [package owner](../../../packages/platform/README.md#subscription-contracts-and-renewal-port)

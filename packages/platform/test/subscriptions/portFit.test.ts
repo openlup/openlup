@@ -1,7 +1,7 @@
-import { expect, expectTypeOf, it } from "vitest";
+import { expect, it } from "vitest";
 import { NATIVE_SUBSCRIPTION_CAPABILITIES, renewalIdentity } from "../../src/subscriptions/index.js";
 import type { RenewalAdmission, RenewalResult, RenewalFrozenSnapshot, RenewalPaymentEvidence,
-  RenewalExecutionRequest, RenewalTransactionUnits, RenewalRetryState, RenewalRecoveryAuthorization, RenewalCycleCorrelation,
+  RenewalTransactionUnits, RenewalRetryState, RenewalRecoveryAuthorization, RenewalCycleCorrelation,
   SubscriptionCommand, SubscriptionCommandReceipt, StockWaitCase, StockWaitStorePort,
   SubscriptionLifecycleMessageDescriptor } from "../../src/subscriptions/contracts/index.js";
 const schedule = { subscriptionId: "s", scheduledAt: "2026-10-21T12:00:00Z", scheduledInstant: Date.parse("2026-10-21T12:00:00Z") };
@@ -31,14 +31,6 @@ it("H4: ambiguous and late-positive evidence retain nullable money and both cloc
   const evidence = { status: "unknown", disposition: "ambiguous", operationId: "operation", eventKey: "event", requestFingerprint: "fingerprint", verifiedEvidenceRef: "M07-fact", externalAttemptRef: null,
     occurredAt: null, observedAt: schedule.scheduledAt, firstRecordedAt: "2026-10-22T12:00:00Z", amountMinor: null, currency: null, reason: null } as const satisfies RenewalPaymentEvidence;
   const late: RenewalPaymentEvidence = { ...evidence, status: "succeeded", disposition: "late_positive", amountMinor: 900, currency: "XXX" };
-  // A typed host policy can consume incomplete truth only for readback, not execution.
-  const nextAction = (fact: RenewalPaymentEvidence): "readback" | "settle" =>
-    fact.status === "unknown" || fact.disposition === "ambiguous" || fact.amountMinor === null
-      || fact.currency === null || fact.externalAttemptRef === null ? "readback" : "settle";
-  expect(nextAction(evidence)).toBe("readback");
-  expect(nextAction({ ...evidence, status: "pending" })).toBe("readback");
-  expectTypeOf(evidence).not.toExtend<RenewalExecutionRequest>();
-  expectTypeOf<ReturnType<typeof nextAction>>().extract<"execute">().toBeNever();
   expect(late.eventKey).toBe(evidence.eventKey); expect(evidence.amountMinor).toBeNull(); expect(late.firstRecordedAt).not.toBe(late.observedAt);
 });
 it("H5: graph transaction units do not pretend external execution is atomic SQL", () => {

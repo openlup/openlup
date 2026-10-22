@@ -119,7 +119,7 @@ it('captured auto_align protection survives off, preserves the obligation, then 
 
   const alignment = createPostgresDeliveryAlignmentPort(executor(h.pool));
   const arrival = { requestKey: `rollback-arrival-${f.shipment}`, parcelRef: f.shipment,
-    deliveredAt: '2026-09-04T12:00:00Z', evidenceRef: `evidence:${f.shipment}` };
+    deliveredAt: '2026-09-04T12:00:00Z', evidenceRef: `evidence:${f.shipment}` } satisfies Parameters<typeof alignment.recordArrival>[0];
   expect(await alignment.recordArrival(arrival)).toMatchObject({ disposition: 'aligned', nextCycleAt: '2026-10-02T12:00:00.000Z' });
   const aligned = await schedule(h.pool, f.subscription);
   expect(aligned.next_cycle_at.getTime()).toBeGreaterThan(Date.parse(due.scheduledAt));

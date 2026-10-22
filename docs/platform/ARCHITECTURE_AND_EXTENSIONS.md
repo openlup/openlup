@@ -1111,9 +1111,7 @@ original timestamp text and nested snapshots survive retries and future edits.
 
 Logical cycle number and native renewal counter are separate evidence-bound
 fields; an activation or legacy ambiguity never licenses a blanket offset.
-Native generic bundle commands and command-bound receipts arrive with the native
-command lifecycle in M10 P4; until then, the descriptor refuses them. Future
-terms and receipts require an atomic command store.
+Future terms and receipts require an atomic command store.
 Stock recovery is restricted to never-executed stock refusals, with transaction-bound
 all-line reacquisition and fencing. A provider-owned or ambiguous attempt cannot
 be reset by a wait ledger. The [design](plans/oss-m10-subscriptions-renewal-dunning.md)
@@ -1147,17 +1145,20 @@ the next cycle using the maximum of its existing date and latest actual arrival
 plus cadence; it never moves earlier or stacks cycles. Never invoke
 `subscription_delivery_alignment_confirm_replacement` for an undelivered
 replacement: that operation records the customer-facing fact “Parcel delivered”.
-After rollback to off, captured cases still go through admission and stay
-deferred until actual arrival; arrival only moves the schedule later, never
-earlier or stacked. A deferred result preserves the schedule and may carry a
+After rollback to `off`, shadow cases are admitted. Captured protected cases
+still go through admission and defer until actual arrival: `protect` releases
+the case; `auto_align` settles as `aligned` using the latest arrival plus cadence
+with the outer maximum, never earlier or stacked. `manual_review` cases, including
+protected cases whose arrival meets open dunning or a successor cycle, keep
+deferring until resolved. A deferred result preserves the schedule and may carry a
 durable case.
 
 Native multi-cycle prepaid, generic bundle commands, command-bound receipts and
 the M07 prepared-attempt store have typed unsupported refusals. Retry and stock
 recovery remain unavailable until selected stores demonstrate them. Native generic
-bundle commands and command-bound receipts arrive with the native command lifecycle
-in M10 P4; until then, the descriptor refuses them. Existing
-native pause/resume/skip/cancel operations keep their own contracts. The
+bundle commands and command-bound receipts arrive with a later native command lifecycle;
+until then, the descriptor refuses them. Existing native pause/resume/skip/cancel
+operations keep their own contracts. The
 [Subscription port witnesses](../../packages/platform/test/subscriptions/portFit.test.ts) test
 each port amendment, and the [native baseline](../../tests/postgres/subscriptionContinuityBaseline.test.ts)
 exercises the complete current prefix without subscription SQL additions.
