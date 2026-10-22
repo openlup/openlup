@@ -803,7 +803,10 @@ reads the authoritative row. Approved amendment G14 records the mapped provider
 attempt at that point, before shadow exit, unsafe-state refusal or begin. Its
 host-supplied opaque key preserves initial/remap identities; only allowlisted
 prepared evidence, mode/status and references persist. Same-key replay writes no
-second attempt. Unknown/submitting/failed states never automatically POST;
+second attempt. For an unchanged fingerprint, contact revision and selection,
+replay preserves the stored evidence JSON, including legacy five-field evidence;
+new transcript/mapping metadata alone never consumes the native remap allowance.
+Unknown/submitting/failed states never automatically POST;
 accepted proof repairs a lost local ACK without a provider call. Only a
 post-dispatch ACK failure triggers readback and an attempt to finalize accepted
 proof as uncertain with its external reference retained when acceptance is not
@@ -960,8 +963,13 @@ injected.
 The separate `runFulfillmentReconciliationPage` operation consumes an explicit
 observation-page port. It resumes a validated version-1 `reconciliationPagination`
 checkpoint with the same page size; invalid or resized checkpoints start at zero.
-A full page advances even when item processing fails, while a short/empty or
-exhausted page resets to zero. The return value contains result counters, a
+A traversed full page advances even when individual items fail, while a
+short/empty or exhausted page resets to zero. An abort before traversal completes
+retains the current page. Mapping refusals stay row-local and preserve page
+cardinality; invalid occurrence timestamps normalize to null before mapping.
+Recognized siblings still process around row-level unknowns. `providerCalls`
+counts each attempted logical page-port read, including failed/exhausted reads;
+transport retries are separate. The return value contains result counters, a
 200/502 status projection, succeeded/failed ledger status and checkpoint metadata.
 The host owns HTTP, cron, ledger writes and checkpoint persistence; no process is
 installed. The opt-in example exposes this port as `adapter.reconciliation`,

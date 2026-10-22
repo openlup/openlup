@@ -72,7 +72,7 @@ it("preserves timestamp validation, nullable chronology, lazy tracking selection
 it("fails provider read uncertainty without local writes and projects unmapped evidence before every host call", async () => {
   const failed = fixture();
   failed.input.readPage = async () => [{ kind: "unknown", refusal: { reason: "io_failure", phase: "readback", retryable: true } }];
-  await expect(run(failed.input)).rejects.toThrow("fulfillment_reconciliation_provider_read_failed");
+  expect(await run(failed.input)).toMatchObject({ ok: false, checked: 1, failures: 1, reason: "fulfillment_reconciliation_provider_read_failed" });
   expect(failed.trace).toEqual([]); expect(failed.durableEffects).toEqual([]);
   const unmapped = fixture();
   const correlation = { ...observation().correlation, privateField: "synthetic-private-detail" };

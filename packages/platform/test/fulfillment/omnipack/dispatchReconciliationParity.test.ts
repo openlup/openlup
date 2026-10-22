@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { isDeepStrictEqual } from "node:util";
 import { expect, it, vi } from "vitest";
 import type { DispatchRecord, FulfillmentDispatchRequest, FulfillmentDispatchResult } from "../../../src/fulfillment/contracts/index.js";
 import { createFulfillmentServices, createPostgresFulfillmentDispatchStore, reconcileFulfillmentObservations, runFulfillmentDispatchWorker, runFulfillmentReconciliationPage } from "../../../src/fulfillment/index.js";
@@ -203,14 +205,14 @@ it("failed full pages advance; short and empty pages reset, and checkpoint resum
   expect(requested).toEqual([0,1,0]);
   f.input.lifecycle.classifyStateConflict = () => { throw Error("classifier_failed:42P01"); };
   const aborted = await runFulfillmentReconciliationPage({ ...f.input, provider: a.adapter.reconciliation, pageSize: 2, checkpoint: null });
-  expect(aborted).toMatchObject({ status: 502, result: { checked: 2 }, metadata: { reconciliationPagination: { nextPage: 1 } } });
+  expect(aborted).toMatchObject({ status: 502, result: { checked: 0, providerCalls: 1 }, metadata: { reconciliationPagination: { nextPage: 0 } } });
   const end = await runFulfillmentReconciliationPage({ ...f.input, provider: a.adapter.reconciliation, pageSize: 2, checkpoint: { reconciliationPagination: { version: 1, page: 1, nextPage: 2, pageSize: 2 } } });
   expect(end).toMatchObject({ status: 200, result: { checked: 0 }, metadata: { reconciliationPagination: { nextPage: 0 } } });
 });
 it.each(["ERR_PAGE_MUST_BE_LESS_THAN_TOTAL_PAGES", "OTHER_ERROR"])("page 400 %s has the exact exhausted-page classification", async code => {
   const f = reconciliationFixture(), a = adapter(() => Response.json({ code }, { status: 400 }));
   const result = await runFulfillmentReconciliationPage({ ...f.input, provider: a.adapter.reconciliation, pageSize: 2, checkpoint: { reconciliationPagination: { version: 1, page: 1, nextPage: 2, pageSize: 2 } } });
-  expect(result).toMatchObject({ status: code === "OTHER_ERROR" ? 502 : 200, result: { ok: code !== "OTHER_ERROR", checked: 0, reason: code === "OTHER_ERROR" ? code : "page_exhausted" }, metadata: { reconciliationPagination: { page: 2, nextPage: 0 } } });
+  expect(result).toMatchObject({ status: code === "OTHER_ERROR" ? 502 : 200, result: { ok: code !== "OTHER_ERROR", checked: 0, providerCalls: 1, reason: code === "OTHER_ERROR" ? code : "page_exhausted" }, metadata: { reconciliationPagination: { page: 2, nextPage: 0 } } });
   expect(f.trace).toEqual([]); expect(a.http).toHaveBeenCalledTimes(2);
 });
 it("invalid or resized checkpoints restart at zero; exact lookup still refuses partial and duplicate pages", async () => {
@@ -248,4 +250,88 @@ it("refuses transcript tampering before HTTP and projects nested diagnostic/evid
     error: { code: "BAD_SKU", status: 400, retryable: false, mayHaveSucceeded: false, cause: "https://tracking.invalid/?token=fake", message: req.recipient.email } };
   expect(dispatchResult(dirty)).toEqual({ kind: "unknown", effectMayHaveSucceeded: true, refusal: dirty.refusal,
     error: { code: "BAD_SKU", status: 400, retryable: false, mayHaveSucceeded: true } });
+});
+
+
+it.each([0, 1])("legacy five-field native attempts replay without consuming remaps (used=%s)", async used => {
+  const a = adapter(), req = candidate(), prepared = await a.adapter.dispatch.prepare(req);
+  if (prepared.kind !== "prepared") throw Error("expected_preparation");
+  const { commandFingerprint, contactRevision, providerRef, carrierRef, serviceRef } = prepared.evidence;
+  const legacy = { commandFingerprint, contactRevision, providerRef, carrierRef, serviceRef };
+  const sql = readFileSync(new URL("../../../sql/20261022080000_fulfillment_command_ledger.sql", import.meta.url), "utf8");
+  // Model the checked-in native JSONB equality, not the permissive memory store.
+  expect(sql).toContain("v_attempt.evidence IS DISTINCT FROM p_evidence");
+  expect(sql).toContain("v_ref.evidence IS DISTINCT FROM p_evidence AND v_ref.status='draft'");
+  let remaps = used;
+  const record: DispatchRecord = { dispatchRef: "dispatch-a", requestKey: keys.request(), fulfillmentRef: req.fulfillmentRef,
+    orderRef: req.orderRef, parcelRef: req.parcelRef, mode: "stage", status: "draft", externalRef: null, evidence: legacy, replayed: true };
+  const attempts = new Map([[keys.mappedAttempt(keys.request(), 0), structuredClone(legacy)]]);
+  const query = vi.fn(async (statement: string, values: unknown[] = []) => {
+    if (statement.startsWith("UPDATE")) return { rows: [] };
+    let response: unknown;
+    if (statement.startsWith("SELECT public.fulfillment_dispatch_read")) response = structuredClone(record);
+    else if (statement.includes("fulfillment_dispatch_claim(")) {
+      const incoming = JSON.parse(values[5] as string);
+      if (!isDeepStrictEqual(record.evidence, incoming)) {
+        if (remaps >= 1) throw Error("fulfillment_dispatch_remap_exhausted");
+        remaps++; record.evidence = incoming;
+      }
+      response = { kind: "claimed", record: structuredClone(record) };
+    } else if (statement.includes("fulfillment_record_provider_attempt(")) {
+      const incoming = JSON.parse(values[2] as string), prior = attempts.get(values[0] as string);
+      if (prior && !isDeepStrictEqual(prior, incoming)) throw Error("fulfillment_attempt_key_conflict");
+      expect(incoming).toEqual(record.evidence);
+      response = { replayed: !!prior };
+    } else if (statement.includes("fulfillment_dispatch_begin(")) {
+      expect(values[1]).toBe(commandFingerprint); record.status = "submitting";
+      response = { kind: "begun", begun: true, replayed: false, record: structuredClone(record) };
+    } else if (statement.includes("fulfillment_dispatch_finish(")) {
+      const acceptance = JSON.parse(values[1] as string);
+      expect(acceptance.evidence).toEqual(legacy);
+      if (record.acceptance && !isDeepStrictEqual(record.acceptance, acceptance)) throw Error("fulfillment_dispatch_ack_key_conflict");
+      const replayed = record.status === "created";
+      record.status = "created"; record.externalRef = acceptance.externalRef; record.acceptance = acceptance;
+      response = { acknowledged: true, replayed, record: structuredClone(record) };
+    } else throw Error("unexpected_query");
+    return { rows: [{ response }] };
+  });
+  const store = createPostgresFulfillmentDispatchStore({ query }, { prepare: async () => ({ disposition: "ready", contactRevision: 1 }), readCandidate: async () => req });
+  const run = () => runFulfillmentDispatchWorker({ store, provider: a.adapter.dispatch, keys, listCandidates: async () => [req], config: { mode: "stage", batchLimit: 2 } });
+  expect(await run()).toMatchObject({ ok: true, failures: 0, providerCalls: 1 });
+  expect(await run()).toMatchObject({ ok: true, failures: 0, providerCalls: 0 });
+  expect(remaps).toBe(used); expect(a.http).toHaveBeenCalledTimes(1);
+});
+
+it.each(["not-a-time", "2026-02-30T12:00:00Z"])("invalid occurrence %s becomes null without poisoning a valid sibling", async updatedAt => {
+  const f = reconciliationFixture([row, { ...row, orderId: "external-b", updatedAt }]);
+  const seen: unknown[] = [], record = f.input.lifecycle.recordStatusEvidence;
+  f.input.lifecycle.recordStatusEvidence = async (ref, observation) => { seen.push(observation.fact.occurredAt); return record(ref, observation); };
+  const result = await runFulfillmentReconciliationPage({ ...f.input, provider: f.adapter.reconciliation, pageSize: 2, checkpoint: null });
+  expect(result).toMatchObject({ result: { ok: true, checked: 2, updated: 2, providerCalls: 1 }, metadata: { reconciliationPagination: { nextPage: 1 } } });
+  expect(seen).toEqual([now, null]);
+});
+it("row mapping refusal retains page cardinality and processes a valid sibling", async () => {
+  const f = reconciliationFixture([row, { ...row, orderId: "", orderNumber: "", fulfilmentNumber: "" }]);
+  const page = await f.adapter.reconciliation.readPage({ page: 0, size: 2 });
+  expect(page).toMatchObject({ kind: "page", rows: [{ kind: "found" }, { kind: "unknown", refusal: { reason: "malformed" } }] });
+  const result = await runFulfillmentReconciliationPage({ ...f.input, provider: { readPage: async () => page }, pageSize: 2, checkpoint: null });
+  expect(result).toMatchObject({ result: { ok: false, checked: 2, updated: 1, failures: 1, providerCalls: 1 }, metadata: { reconciliationPagination: { nextPage: 1 } } });
+  expect(f.trace.filter(step => step === "ack")).toHaveLength(1);
+});
+it("a full found/unknown page attempts the recognized row before advancing", async () => {
+  const f = reconciliationFixture(), page = await f.adapter.reconciliation.readPage({ page: 0, size: 2 });
+  if (page.kind !== "page") throw Error("expected_page");
+  const provider = { readPage: async () => ({ kind: "page" as const, rows: [page.rows[0]!, { kind: "unknown" as const, refusal: { reason: "io_failure" as const, phase: "readback" as const, retryable: true } }] }) };
+  expect(await runFulfillmentReconciliationPage({ ...f.input, provider, pageSize: 2, checkpoint: null })).toMatchObject({ result: { checked: 2, updated: 1, failures: 1 }, metadata: { reconciliationPagination: { nextPage: 1 } } });
+  expect(f.trace).toContain("find"); expect(f.trace).toContain("ack");
+});
+it("a pre-traversal abort retains the current page", async () => {
+  const f = reconciliationFixture();
+  const provider = { readPage: async () => ({ kind: "page" as const, rows: null as never }) };
+  expect(await runFulfillmentReconciliationPage({ ...f.input, provider, pageSize: 2, checkpoint: { reconciliationPagination: { version: 1, pageSize: 2, page: 2, nextPage: 3 } } })).toMatchObject({ result: { checked: 0, failures: 1, providerCalls: 1 }, metadata: { reconciliationPagination: { page: 3, nextPage: 3 } } });
+  expect(f.trace).toEqual([]);
+});
+it("a thrown page read counts one logical provider call", async () => {
+  const f = reconciliationFixture();
+  expect(await runFulfillmentReconciliationPage({ ...f.input, provider: { readPage: async () => { throw Error("read_down"); } }, pageSize: 2, checkpoint: null })).toMatchObject({ result: { providerCalls: 1, failures: 1, checked: 0 } });
 });

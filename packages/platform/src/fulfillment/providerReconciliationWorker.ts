@@ -48,8 +48,6 @@ export async function reconcileFulfillmentObservations(input: {
   };
   const page = await input.readPage({ page: input.page ?? 0, size: input.batchSize });
   result.providerCalls += 1;
-  // A failed provider read cannot become a successful unknown-status quarantine.
-  if (page.some(readback => readback.kind === "unknown")) throw new Error("fulfillment_reconciliation_provider_read_failed");
   result.checked = page.length;
   const quarantine = async (observation: PollEvidence | null, reason: Parameters<typeof input.lifecycle.recordQuarantine>[1]) => {
     const evidence = await input.lifecycle.recordQuarantine(observation, reason);
@@ -74,6 +72,10 @@ export async function reconcileFulfillmentObservations(input: {
   for (const readback of page) {
     let observation: FulfillmentObservation | null = null;
     try {
+      if (readback.kind === "unknown") {
+        result.ok = false; result.failures += 1; result.reason ??= "fulfillment_reconciliation_provider_read_failed";
+        continue;
+      }
       if (readback.kind === "unmapped") {
         // An unknown primary status still correlates/ACKs, but an off-track row
         // must never trade a benign skip for a quarantine alarm.
@@ -166,22 +168,23 @@ export async function runFulfillmentReconciliationPage(input: Omit<Parameters<ty
   const page = saved?.version === 1 && saved.pageSize === input.pageSize && isPage(saved.page) && isPage(saved.nextPage)
     && (saved.nextPage === 0 || saved.nextPage === saved.page || saved.page < Number.MAX_SAFE_INTEGER && saved.nextPage === saved.page + 1) ? saved.nextPage : 0;
   let result: ReconciliationResult;
-  let observedCount = 0;
   let pageRead = false;
   const empty = (): ReconciliationResult => ({ ok: true, checked: 0, updated: 0, trackingRefs: 0, quarantined: 0, stateConflicts: 0, exceptions: 0,
-    stale: 0, offTrackSkips: 0, replayed: 0, failures: 0, invoiceIssueFailures: 0, invoiceIssueRefused: 0, invoiceIssueRefusals: [], providerCalls: 0, readBacks: 0, skipped: false });
+    stale: 0, offTrackSkips: 0, replayed: 0, failures: 0, invoiceIssueFailures: 0, invoiceIssueRefused: 0, invoiceIssueRefusals: [], providerCalls: 1, readBacks: 0, skipped: false });
   try {
     const response = await input.provider.readPage({ page, size: input.pageSize });
     if (response.kind === "page_exhausted") result = { ...empty(), reason: "page_exhausted" };
     else if (response.kind === "failed") result = { ...empty(), ok: false, failures: 1, ...(response.error ? { providerError: operationError(response.error) } : {}), reason: response.error ? safeDiagnosticCode(response.error.code) ?? response.refusal.reason : response.refusal.reason };
     else {
-      observedCount = response.rows.length; pageRead = true;
+      pageRead = true;
       result = await reconcileFulfillmentObservations({ ...input, batchSize: input.pageSize, page, readPage: async () => response.rows });
     }
   } catch (error) {
-    result = { ...empty(), checked: observedCount, providerCalls: pageRead ? 1 : 0, ok: false, failures: 1, reason: localFailureReason(pageRead ? "reconciliation_page_failed" : "reconciliation_provider_read_failed", error) };
+    result = { ...empty(), ok: false, failures: 1, reason: localFailureReason(pageRead ? "reconciliation_page_failed" : "reconciliation_provider_read_failed", error) };
   }
-  const nextPage = result.checked === input.pageSize && page < Number.MAX_SAFE_INTEGER ? page + 1 : 0;
+  // A pre-traversal abort must not skip a page. Item failures return normally.
+  const nextPage = pageRead && result.checked === 0 && !result.ok ? page
+    : result.checked === input.pageSize && page < Number.MAX_SAFE_INTEGER ? page + 1 : 0;
   return { status: result.ok ? 200 as const : 502 as const, ledgerStatus: result.ok ? "succeeded" as const : "failed" as const, result,
     metadata: { reconciliationPagination: { version: 1, page, pageSize: input.pageSize, nextPage } } };
 }

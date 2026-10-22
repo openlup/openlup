@@ -1,6 +1,7 @@
 import type { FulfillmentObservationPagePort, FulfillmentReconciliationObservation } from "../contracts/index.js";
 import { operationError } from "../dispatchProjection.js";
 import { projectProviderStatus } from "../observationProjection.js";
+import { normalizeReconciliationTimestamp } from "../providerReconciliationTimestamp.js";
 import type { OmnipackClient } from "./client.js";
 import { OmnipackProviderError } from "./client.js";
 import type { OmnipackFulfilmentEvidence } from "./mappers.js";
@@ -21,12 +22,13 @@ export function reconciliationObservation(row: OmnipackFulfilmentEvidence, confi
   if (!normalized) return { kind: "unmapped", externalRef: correlation.externalRef, evidence: { eventKey, correlation, providerStatus } };
   const status = localStatusFor(normalized) as "provider_received" | "picking" | "packed" | "in_transit" | "delivered" | "exception";
   const event = ({ provider_received: "shipment.accepted", picking: "order.processing_started", packed: "order.picked", in_transit: "order.shipped", delivered: "order.delivered", exception: "parcel.exception" } as const)[status];
+  const occurredAt = normalizeReconciliationTimestamp(row.updatedAt);
   const evidence = { provider: "omnipack" as const, event, providerOrderId: row.providerOrderId, orderNumber: row.orderNumber,
-    fulfilmentNumber: row.fulfilmentNumber, occurredAt: row.updatedAt, trackingNumbers: row.trackingNumbers,
+    fulfilmentNumber: row.fulfilmentNumber, occurredAt, trackingNumbers: row.trackingNumbers,
     trackingReferences: row.trackingReferences, shippingMethods: [] };
   const mapped = observation({ evidence, event, status, fulfillmentRef, receivedAt: config.clock(),
     rawDigest: digest(JSON.stringify({ ...evidence, providerStatus })), evidenceRef: config.mintEvidenceReference(), source: "provider_reconciliation", approveTrackingUrl: config.approveTrackingUrl });
-  return { kind: "found", externalRef: row.providerOrderId ?? "", createdAt: timestamp(row.createdAt), updatedAt: timestamp(row.updatedAt),
+  return { kind: "found", externalRef: row.providerOrderId ?? "", createdAt: timestamp(row.createdAt), updatedAt: timestamp(occurredAt),
     observation: { ...mapped, eventKey, fact: { ...mapped.fact, factId: eventKey }, providerStatus } };
 }
 
@@ -39,7 +41,10 @@ export function createReconciliationPagePort(client: OmnipackClient, config: Con
         return { kind: "failed", refusal: refusal("malformed", "readback") };
       try {
         const rows = await client.getFulfilments(input);
-        return { kind: "page", rows: rows.map(row => reconciliationObservation(row, config)) };
+        return { kind: "page", rows: rows.map(row => {
+          try { return reconciliationObservation(row, config); }
+          catch { return { kind: "unknown" as const, refusal: refusal("malformed", "normalize") }; }
+        }) };
       } catch (error) {
         if (error instanceof OmnipackProviderError && error.status === 400 && error.code === "ERR_PAGE_MUST_BE_LESS_THAN_TOTAL_PAGES") return { kind: "page_exhausted" };
         return { kind: "failed", refusal: refusal("io_failure", "readback", error instanceof OmnipackProviderError && error.retryable),

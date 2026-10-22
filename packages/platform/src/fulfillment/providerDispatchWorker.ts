@@ -61,6 +61,9 @@ export async function runFulfillmentDispatchWorker(input: {
         }
         providerEvidence = dispatchEvidence(prepared.evidence);
         evidence = { ...providerEvidence, mapping: { source: "dispatch_worker", mode: input.config.mode, shadowMode: input.config.mode === "shadow" } };
+        // Native claims count any JSON change as a remap; attempts compare
+        // the whole JSON. Enrichment must not rewrite an existing identity.
+        if (readBack && sameCommandIdentity(readBack.evidence, evidence)) evidence = dispatchEvidence(readBack.evidence);
         stage = "dispatch_claim_failed";
         const claim = await input.store.claim({ requestKey, fulfillmentRef: mappedCandidate.fulfillmentRef,
           orderRef: mappedCandidate.orderRef, parcelRef: mappedCandidate.parcelRef, mode: input.config.mode, evidence });
@@ -143,4 +146,11 @@ export async function runFulfillmentDispatchWorker(input: {
     }
   }
   return result;
+}
+
+function sameCommandIdentity(a: DispatchRecord["evidence"], b: DispatchRecord["evidence"]): boolean {
+  return a.commandFingerprint === b.commandFingerprint && a.providerRef === b.providerRef
+    && a.carrierRef === b.carrierRef && a.serviceRef === b.serviceRef
+    && a.contactRevision.schemaVersion === b.contactRevision.schemaVersion
+    && a.contactRevision.source === b.contactRevision.source && a.contactRevision.revision === b.contactRevision.revision;
 }

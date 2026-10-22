@@ -10,6 +10,19 @@ in the source repository.
 
 ## [Unreleased]
 
+- Fulfillment reconciliation inputs replace `readLocalFulfillmentState` with
+  `readLocalFulfillmentStatus`, `latestStatusOccurredAt` and `readHandedOverAt`;
+  migrate host persistence implementations to these three reads.
+- Add exported page observation contracts and `runFulfillmentReconciliationPage`
+  for host-owned scheduling, checkpoint resume and HTTP/ledger result projection;
+  exact lookup remains separate. `providerCalls` counts logical page-port reads,
+  including failures and exhaustion, separately from transport retries.
+- Add redacted dispatch transcript/mapping fields, typed operation errors,
+  acceptance recovery evidence and provider-status occurrence evidence. Existing
+  unchanged dispatch identities retain their stored evidence for native replay.
+- D2 KEEP-GAP: native `fulfillment_dispatch_finish` drops rejected/unknown error
+  detail; durable retention is a scheduled SQL follow-up.
+
 ## [0.22.0]
 
 - Publishable on the npm `latest` dist-tag as `0.22.0`, from tag
