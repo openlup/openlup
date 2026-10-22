@@ -185,5 +185,15 @@
         }
       ]
     }
+  ],
+  "portableCreationForwards": [
+    {
+      "path": "db/platform/migrations/20261022080000_fulfillment_command_ledger.sql",
+      "sha256": "c6806906cdb0b6931b29f7a5c7c800016e98d04e6ea956f3c1e219a6cdb7e9d1"
+    },
+    {
+      "path": "db/platform/migrations/20261022090000_fulfillment_delivery_alignment.sql",
+      "sha256": "d9966ae79fe77a0feae8317dc5b46ef2d8196dd0790b1cd0ee1b06ab58061499"
+    }
   ]
 }

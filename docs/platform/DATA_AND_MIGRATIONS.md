@@ -230,6 +230,46 @@ unchanged. Only comments and that single `CREATE OR REPLACE FUNCTION` are
 admitted, with approval preceding introduction; no privileges or other statements
 are allowed. This control approval adds no SQL file or runtime behavior.
 
+The separate `portableCreationForwards` class binds these portable paths and
+whole-file SHA-256 digests in the same allowlist:
+
+| Path | SHA-256 |
+| --- | --- |
+| [db/platform/migrations/20261022080000_fulfillment_command_ledger.sql](../../scripts/fixtures/20261022080000_fulfillment_command_ledger.sql) | `c6806906cdb0b6931b29f7a5c7c800016e98d04e6ea956f3c1e219a6cdb7e9d1` |
+| [db/platform/migrations/20261022090000_fulfillment_delivery_alignment.sql](../../scripts/fixtures/20261022090000_fulfillment_delivery_alignment.sql) | `d9966ae79fe77a0feae8317dc5b46ef2d8196dd0790b1cd0ee1b06ab58061499` |
+
+It admits new public tables, indexes on tables created in the file, invoker
+functions, views, and row triggers. Relation, function and trigger names must
+be absent from the portable baseline and preceding portable forwards; duplicate
+creations also refuse. Function row arguments and returns may use tables created
+in that file. Function bodies and expressions are bound by the whole-file hash;
+the statement classifier does not establish their behavioral correctness.
+Functions use SQL or `plpgsql` with `search_path = pg_catalog`, default or explicit
+invoker security and the admitted volatility attributes. Trigger functions must
+be created in the same file, accept no arguments and return `trigger`.
+New triggers may attach to existing public tables, including
+`commerce_order_holds`, `fulfillment_shipments` and `subscription_cycles`;
+this admits a new trigger attachment, never replacement of an existing trigger.
+
+Seed `INSERT` is admitted only into a table created in the same pinned file,
+using the existing expand-only predicate: literal-only `VALUES` with
+`ON CONFLICT ... DO NOTHING`, without subqueries, functions or procedural `DO`.
+Inserts into pre-existing tables, `INSERT ... SELECT` and
+`ON CONFLICT ... DO UPDATE` refuse.
+Only `REVOKE ALL ... FROM PUBLIC, anon, authenticated` (or subsets of those
+recipients), comments on objects created in the file, and `BEGIN`/`COMMIT` are
+otherwise admitted. Revocation targets must also be created in that file.
+Unpinned paths, changed bytes, `CREATE OR REPLACE`, `ALTER`, `DROP`,
+`SECURITY DEFINER`, grants to any role (including `PUBLIC`, `anon` and
+`authenticated`), references to pre-existing objects in comments or revocations,
+and all other statement forms refuse. Approval must precede both the feature
+comparison base and the SQL introduction parent. This class does not change
+the managed or portable replacement classes or install runtime permissions.
+The exact future file bytes are also kept as
+[command-ledger](../../scripts/fixtures/20261022080000_fulfillment_command_ledger.sql)
+and [delivery-alignment](../../scripts/fixtures/20261022090000_fulfillment_delivery_alignment.sql)
+test snapshots; snapshots are not installation-chain entries.
+
 [The shared checker](../../scripts/reviewed-platform-forward.ts) verifies the
 immutable managed baseline hash, each old definition and each new definition.
 A definition hash covers the raw `CREATE` statement through its terminating
