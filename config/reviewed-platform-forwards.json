@@ -195,5 +195,847 @@
       "path": "db/platform/migrations/20261022090000_fulfillment_delivery_alignment.sql",
       "sha256": "d9966ae79fe77a0feae8317dc5b46ef2d8196dd0790b1cd0ee1b06ab58061499"
     }
+  ],
+  "batchedForwards": [
+    {
+      "path": "db/platform/migrations/20261022160000_subscription_retry_lifecycle.sql",
+      "sha256": "c9571f669ba9d6af5b279e80630dcfffe9b2da63513542c21e540448d614144a",
+      "functions": [
+        {
+          "signature": "public.subscription_retry_read(uuid)",
+          "beforeSha256": null,
+          "afterSha256": "0b3fd51b8798d8d5c57db0f80eab2193cff922e4563e7f923a9b0a32f918424a"
+        },
+        {
+          "signature": "public.subscription_retry_candidates(integer,timestamptz)",
+          "beforeSha256": null,
+          "afterSha256": "173f8417686e3ee6d9a81b4932e5fc2fb04d0d846339dace513e8c3e61c5a412"
+        },
+        {
+          "signature": "public.subscription_retry_apply_failure(uuid,text,jsonb)",
+          "beforeSha256": null,
+          "afterSha256": "39842b1758dba40b0145d4f73acf3958f9780d2de52f73f8dad3832765e58be0"
+        },
+        {
+          "signature": "public.subscription_retry_open_case(uuid,text,text)",
+          "beforeSha256": null,
+          "afterSha256": "83910e75e766092f5a4ff31aee701d1165f92153d826092cfbdc8cf060e4df64"
+        },
+        {
+          "signature": "public.subscription_retry_authorize_recovery(uuid,uuid,text,text,timestamptz)",
+          "beforeSha256": null,
+          "afterSha256": "e38b079af57f5b94cd63d94969fc72d09a4865913e4cabdf67ec7f50bd50a3a4"
+        },
+        {
+          "signature": "public.subscription_retry_schedule_recovery(uuid,text,uuid,timestamptz)",
+          "beforeSha256": null,
+          "afterSha256": "845ef925291947967b26afec985ae05a5fcd0002b35f1f7f4de5afbc0825f533"
+        },
+        {
+          "signature": "public.subscription_retry_prepare(uuid,text,jsonb,timestamptz)",
+          "beforeSha256": null,
+          "afterSha256": "fba98bb98e04b4b91fac8ab23fd84bf0edfe92f01b5c28fcf44b28ed4ac5801e"
+        },
+        {
+          "signature": "public.subscription_retry_record_recovery(uuid,text,jsonb)",
+          "beforeSha256": null,
+          "afterSha256": "f06f32de90372843d339e8675084011b1ca6c805022c1971b21c599a777da376"
+        },
+        {
+          "signature": "public.subscription_retry_note_row_outcome(uuid,text,jsonb)",
+          "beforeSha256": null,
+          "afterSha256": "6dea246b8ed16cd4ed581e29b0ab1c678492032e759a39665f143fff6860cbe6"
+        }
+      ],
+      "statements": [
+        {
+          "sha256": "5e579f1530b042185296def372c638b3fff067d10501d33b85093558ab17d383",
+          "sql": "CREATE TABLE public.subscription_retry_obligations (\n  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),\n  renewal_operation_id uuid NOT NULL UNIQUE REFERENCES public.subscription_renewal_operations(id),\n  subscription_id uuid NOT NULL REFERENCES public.subscriptions(id),\n  cycle_id uuid NOT NULL UNIQUE REFERENCES public.subscription_cycles(id),\n  order_id uuid NOT NULL UNIQUE REFERENCES public.commerce_orders(id),\n  settlement_intent_id uuid NOT NULL UNIQUE REFERENCES public.commerce_settlement_intents(id),\n  logical_cycle_number integer NOT NULL CHECK (logical_cycle_number > 0),\n  identity_key text NOT NULL UNIQUE,\n  operation_fingerprint text NOT NULL CHECK (operation_fingerprint ~ '^[0-9a-f]{64}$'),\n  scheduled_at timestamptz NOT NULL,\n  cycle_snapshot jsonb NOT NULL,\n  retry_attempt integer NOT NULL DEFAULT 0 CHECK (retry_attempt >= 0),\n  attempt_sequence integer NOT NULL DEFAULT 0 CHECK (attempt_sequence >= 0),\n  state text NOT NULL DEFAULT 'waiting' CHECK (state IN ('waiting','prepared','recovered')),\n  next_retry_at timestamptz,\n  failure_class text,\n  failure_reason text,\n  failed_at timestamptz,\n  case_id uuid REFERENCES public.subscription_dunning_cases(id),\n  created_at timestamptz NOT NULL DEFAULT now(),\n  updated_at timestamptz NOT NULL DEFAULT now(),\n  UNIQUE (subscription_id, scheduled_at)\n);"
+        },
+        {
+          "sha256": "5396b9f9a364d0b4986c4fbec2316aaaef00b7ce0cfbe4642b99cf4227e5683a",
+          "sql": "CREATE INDEX subscription_retry_due_idx ON public.subscription_retry_obligations(state,next_retry_at,id);"
+        },
+        {
+          "sha256": "59551c163f955481c26c7a74aee930f04f735853296cfeba2a0d7eb2ee608590",
+          "sql": "CREATE TABLE public.subscription_retry_receipts (\n  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),\n  obligation_id uuid NOT NULL REFERENCES public.subscription_retry_obligations(id),\n  receipt_key text NOT NULL UNIQUE CHECK (btrim(receipt_key) <> ''),\n  kind text NOT NULL CHECK (kind IN ('failure','prepare','recovery','schedule')),\n  attempt_sequence integer NOT NULL CHECK (attempt_sequence >= 0),\n  input jsonb NOT NULL,\n  result jsonb NOT NULL,\n  created_at timestamptz NOT NULL DEFAULT now(),\n  UNIQUE (obligation_id, kind, attempt_sequence)\n);"
+        },
+        {
+          "sha256": "ae4415027c16b23a8df88acdf779f33da57da7c3dfc61c8fd136313e1a6abecf",
+          "sql": "CREATE TABLE public.subscription_retry_recovery_authorizations (\n  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),\n  obligation_id uuid NOT NULL REFERENCES public.subscription_retry_obligations(id),\n  token_id uuid NOT NULL REFERENCES public.commerce_checkout_recovery_tokens(id),\n  retry_attempt integer NOT NULL CHECK (retry_attempt > 0),\n  method_ref text NOT NULL CHECK (btrim(method_ref) <> ''),\n  method_evidence_ref text NOT NULL CHECK (btrim(method_evidence_ref) <> ''),\n  authorized_at timestamptz NOT NULL,\n  consumed_at timestamptz,\n  UNIQUE (token_id, retry_attempt),\n  UNIQUE (obligation_id, retry_attempt)\n);"
+        },
+        {
+          "sha256": "738fa64d2cb67fc115c03739b0cbb146e2b588a7cd9add448e66d8bdd0e405e5",
+          "sql": "REVOKE ALL ON TABLE public.subscription_retry_obligations, public.subscription_retry_receipts, public.subscription_retry_recovery_authorizations FROM PUBLIC, anon, authenticated;"
+        },
+        {
+          "sha256": "0b3fd51b8798d8d5c57db0f80eab2193cff922e4563e7f923a9b0a32f918424a"
+        },
+        {
+          "sha256": "173f8417686e3ee6d9a81b4932e5fc2fb04d0d846339dace513e8c3e61c5a412"
+        },
+        {
+          "sha256": "39842b1758dba40b0145d4f73acf3958f9780d2de52f73f8dad3832765e58be0"
+        },
+        {
+          "sha256": "83910e75e766092f5a4ff31aee701d1165f92153d826092cfbdc8cf060e4df64"
+        },
+        {
+          "sha256": "e38b079af57f5b94cd63d94969fc72d09a4865913e4cabdf67ec7f50bd50a3a4"
+        },
+        {
+          "sha256": "845ef925291947967b26afec985ae05a5fcd0002b35f1f7f4de5afbc0825f533"
+        },
+        {
+          "sha256": "fba98bb98e04b4b91fac8ab23fd84bf0edfe92f01b5c28fcf44b28ed4ac5801e"
+        },
+        {
+          "sha256": "f06f32de90372843d339e8675084011b1ca6c805022c1971b21c599a777da376"
+        },
+        {
+          "sha256": "6dea246b8ed16cd4ed581e29b0ab1c678492032e759a39665f143fff6860cbe6"
+        },
+        {
+          "sha256": "7545b3c2e98b56fdcf01fbae1a5fc0b4b17bd2b004c73b6326a8249da4c265cc",
+          "sql": "REVOKE ALL ON FUNCTION public.subscription_retry_read(uuid) FROM PUBLIC, anon, authenticated;"
+        },
+        {
+          "sha256": "a1c04ee3d41a9fef7222d0560e1f0623d81dbc7facb9ce1f1c49a4550d63e179",
+          "sql": "REVOKE ALL ON FUNCTION public.subscription_retry_candidates(integer,timestamptz) FROM PUBLIC, anon, authenticated;"
+        },
+        {
+          "sha256": "c1d144a549479f8abd25fc59cc5a7e9bc74beb97946b9cd7e899f52255ceddf3",
+          "sql": "REVOKE ALL ON FUNCTION public.subscription_retry_apply_failure(uuid,text,jsonb) FROM PUBLIC, anon, authenticated;"
+        },
+        {
+          "sha256": "bbfde5c784b736a88f0ccafe55e710464736face8105131edee35466a213074a",
+          "sql": "REVOKE ALL ON FUNCTION public.subscription_retry_open_case(uuid,text,text) FROM PUBLIC, anon, authenticated;"
+        },
+        {
+          "sha256": "f63960dba7ae444ce4e3f0caa3628057898d7c0d1083ef56cb3ff9f0f8a8847e",
+          "sql": "REVOKE ALL ON FUNCTION public.subscription_retry_authorize_recovery(uuid,uuid,text,text,timestamptz) FROM PUBLIC, anon, authenticated;"
+        },
+        {
+          "sha256": "a77bf98c2214bc0b8b876aa26fdc20f8abe2a16076d26ce15f0dc60e2fdc6ab5",
+          "sql": "REVOKE ALL ON FUNCTION public.subscription_retry_schedule_recovery(uuid,text,uuid,timestamptz) FROM PUBLIC, anon, authenticated;"
+        },
+        {
+          "sha256": "9846e120cd8fa2dea0da39b742a7b5cb368cf8db596b576d54be9270f3b807a9",
+          "sql": "REVOKE ALL ON FUNCTION public.subscription_retry_prepare(uuid,text,jsonb,timestamptz) FROM PUBLIC, anon, authenticated;"
+        },
+        {
+          "sha256": "404bce136debd14bc2c2ed7fe9949434e4e305e6470787fbcde78ccb7e78b925",
+          "sql": "REVOKE ALL ON FUNCTION public.subscription_retry_record_recovery(uuid,text,jsonb) FROM PUBLIC, anon, authenticated;"
+        },
+        {
+          "sha256": "74cf82ca4439b113da62a9a549e3922b962c135747651809a8f22ccfc3b2346f",
+          "sql": "REVOKE ALL ON FUNCTION public.subscription_retry_note_row_outcome(uuid,text,jsonb) FROM PUBLIC, anon, authenticated;"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261022170000_subscription_command_lifecycle.sql",
+      "sha256": "a58ead7a9f52fc7ffd74acf281729fcee94c7706ee59ec6471c865bd4865c014",
+      "functions": [
+        {
+          "signature": "public.subscription_command_preview(uuid,uuid,text,uuid,text,jsonb,timestamptz)",
+          "beforeSha256": null,
+          "afterSha256": "bfb65976bce09f7fcba3b4177a2d3734c9e5f2f31630975d2b4257988a6d62cd"
+        },
+        {
+          "signature": "public.subscription_command_apply(uuid,uuid,text,uuid,text,jsonb,timestamptz)",
+          "beforeSha256": null,
+          "afterSha256": "46cc96287603231687d1fa54f413087e1b6596e9ec8c2c1e5700e4a0951789be"
+        }
+      ],
+      "statements": [
+        {
+          "sha256": "a5228ad366a4b64098739c7ef61a73aa5843c50627da5788d8ac1bfb6017889a",
+          "sql": "CREATE TABLE public.subscription_command_receipts (\n id uuid PRIMARY KEY DEFAULT gen_random_uuid(),\n actor_id uuid NOT NULL,\n idempotency_key text NOT NULL CHECK (char_length(btrim(idempotency_key)) BETWEEN 8 AND 180),\n subscription_id uuid NOT NULL REFERENCES public.subscriptions(id),\n client_id uuid NOT NULL REFERENCES public.clients(id),\n command_fingerprint text NOT NULL CHECK (command_fingerprint ~ '^[0-9a-f]{64}$'),\n command jsonb NOT NULL CHECK (jsonb_typeof(command) = 'object'),\n quote_hash text,\n result jsonb NOT NULL,\n status text NOT NULL CHECK (status IN ('previewed','applied','noop','refused')),\n created_at timestamptz NOT NULL DEFAULT now(),\n CONSTRAINT subscription_command_actor_key UNIQUE (actor_id,idempotency_key)\n);"
+        },
+        {
+          "sha256": "bfb65976bce09f7fcba3b4177a2d3734c9e5f2f31630975d2b4257988a6d62cd"
+        },
+        {
+          "sha256": "46cc96287603231687d1fa54f413087e1b6596e9ec8c2c1e5700e4a0951789be"
+        },
+        {
+          "sha256": "a350f6f1173d18a0aaa90076fd657054981324bedf7c87461db12c9c3dbcaeb5",
+          "sql": "REVOKE ALL ON public.subscription_command_receipts FROM PUBLIC,anon,authenticated;"
+        },
+        {
+          "sha256": "9c8461f3856dc2a39b94fe1587a2a021265069bc3c89a2fa5c239581cd95884e",
+          "sql": "REVOKE ALL ON FUNCTION public.subscription_command_preview(uuid,uuid,text,uuid,text,jsonb,timestamptz) FROM PUBLIC,anon,authenticated;"
+        },
+        {
+          "sha256": "7050127a87c2a71b7624938a8ff41dc6dac4abbd7806a9384efd51d76c576a09",
+          "sql": "REVOKE ALL ON FUNCTION public.subscription_command_apply(uuid,uuid,text,uuid,text,jsonb,timestamptz) FROM PUBLIC,anon,authenticated;"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261022180000_subscription_stock_wait.sql",
+      "sha256": "d5dfc766f15cdd9ec8eb5c959b023f162a4a00c3a93d450d98c0473a4b17cd10",
+      "functions": [
+        {
+          "signature": "public.subscription_stock_wait_projection(public.subscription_stock_wait_cases)",
+          "beforeSha256": null,
+          "afterSha256": "69339923f9389948adbd76dbd631503dbeefd511a0df5126ff5491d3ec92aa80"
+        },
+        {
+          "signature": "public.subscription_stock_wait_read(uuid)",
+          "beforeSha256": null,
+          "afterSha256": "367b4e7c4631c4c80b610943b1ae4006ccbc5453f379473ccfad54bedaa5229f"
+        },
+        {
+          "signature": "public.subscription_stock_wait_frozen(uuid,timestamptz)",
+          "beforeSha256": null,
+          "afterSha256": "cc53c971c8e8b94952563a07067ce4898805394ea3524d31f9d47cef71f66c6d"
+        },
+        {
+          "signature": "public.subscription_stock_wait_deficits(jsonb,uuid,timestamptz)",
+          "beforeSha256": null,
+          "afterSha256": "baae19a3831dc8d635e9ba39875582c95e24448fbfc3a9fcc4be44977c9b1c61"
+        },
+        {
+          "signature": "public.subscription_stock_wait_enqueue(public.subscription_stock_wait_cases,text)",
+          "beforeSha256": null,
+          "afterSha256": "6536170e5d46f82aa0890b138a8f5e5f52844dde656ea6f99d89248e5f675581"
+        },
+        {
+          "signature": "public.subscription_stock_wait_recover_refusal(uuid,text,text,timestamptz)",
+          "beforeSha256": null,
+          "afterSha256": "050d976918ac85e7c2583a90cd54a2e4af644b344583d69eeea5134ff106f294"
+        },
+        {
+          "signature": "public.subscription_stock_wait_admit(jsonb,jsonb,timestamptz)",
+          "beforeSha256": null,
+          "afterSha256": "88f568ea334ed92df15f9149d2574fb06f5a56e82ee4d0c6740533ddfb882b4f"
+        },
+        {
+          "signature": "public.subscription_stock_wait_candidates(integer,timestamptz)",
+          "beforeSha256": null,
+          "afterSha256": "1f3157b88a48b01564bc449697cc5a139919971e3f9bcf31cc44489a9bdd29c6"
+        },
+        {
+          "signature": "public.subscription_stock_wait_normal_due(integer,timestamptz)",
+          "beforeSha256": null,
+          "afterSha256": "7a0de528bbc280f896ef25e8d9ba66220c78b5280dcb8af85b9ca5f30c916ca7"
+        },
+        {
+          "signature": "public.subscription_stock_wait_mark_resumed(uuid)",
+          "beforeSha256": null,
+          "afterSha256": "2e7fb0b314802e115187b3714ac71f60b821fcd220859e9105f44634627f3494"
+        },
+        {
+          "signature": "public.subscription_stock_wait_summary(text)",
+          "beforeSha256": null,
+          "afterSha256": "9f076e02f8fb83afa0d8137bbe61d0d123e9a5d179eb96c65409c32c5a4bc3bb"
+        },
+        {
+          "signature": "public.subscription_stock_wait_bind_notice(uuid,uuid,jsonb)",
+          "beforeSha256": null,
+          "afterSha256": "42145cdf40cb2561dbea45d4ba57ef81a360701e9923dbf9a4be0ca8034be88d"
+        }
+      ],
+      "statements": [
+        {
+          "sha256": "cf2b54626c2c961e03451157fc90ab76626a72b465879791d430661bdf71aa68",
+          "sql": "CREATE TABLE public.subscription_stock_wait_cases (\n id uuid PRIMARY KEY DEFAULT gen_random_uuid(),\n subscription_id uuid NOT NULL REFERENCES public.subscriptions(id),\n client_id uuid NOT NULL REFERENCES public.clients(id),\n renewal_operation_id uuid NOT NULL UNIQUE REFERENCES public.subscription_renewal_operations(id),\n scheduled_at timestamptz NOT NULL,\n cycle_number integer NOT NULL CHECK (cycle_number>0),\n state text NOT NULL CHECK (state IN ('waiting','stock_secured','resumed','closed')),\n due_snapshot jsonb NOT NULL,\n cycle_snapshot jsonb NOT NULL,\n fingerprint text NOT NULL CHECK (fingerprint ~ '^[0-9a-f]{64}$'),\n identity_key text NOT NULL,\n deficits jsonb NOT NULL CHECK (jsonb_typeof(deficits)='array'),\n notice_messages jsonb NOT NULL DEFAULT '{}',\n refusal_observations jsonb NOT NULL DEFAULT '[]',\n cycle_id uuid REFERENCES public.subscription_cycles(id),\n order_id uuid REFERENCES public.commerce_orders(id),\n fulfillment_id uuid REFERENCES public.fulfillment_shipments(id),\n opened_at timestamptz NOT NULL DEFAULT now(),\n last_checked_at timestamptz NOT NULL DEFAULT now(),\n last_selected_at timestamptz,\n stock_secured_at timestamptz,\n resumed_at timestamptz,\n closed_at timestamptz,\n block_reason text,\n CONSTRAINT subscription_stock_wait_schedule_key UNIQUE(subscription_id,scheduled_at)\n);"
+        },
+        {
+          "sha256": "61f3c446800dfcd26880178511946db747d4afc7b3e0ab6f185065b0d9f88c1d",
+          "sql": "CREATE INDEX subscription_stock_wait_candidates_idx ON public.subscription_stock_wait_cases(state,last_selected_at,id);"
+        },
+        {
+          "sha256": "ae2d1e62ae761be4789f8b9f95955b680b41036cf7fed25efbf06344897dc5eb",
+          "sql": "REVOKE ALL ON TABLE public.subscription_stock_wait_cases FROM PUBLIC, anon, authenticated;"
+        },
+        {
+          "sha256": "69339923f9389948adbd76dbd631503dbeefd511a0df5126ff5491d3ec92aa80"
+        },
+        {
+          "sha256": "367b4e7c4631c4c80b610943b1ae4006ccbc5453f379473ccfad54bedaa5229f"
+        },
+        {
+          "sha256": "cc53c971c8e8b94952563a07067ce4898805394ea3524d31f9d47cef71f66c6d"
+        },
+        {
+          "sha256": "baae19a3831dc8d635e9ba39875582c95e24448fbfc3a9fcc4be44977c9b1c61"
+        },
+        {
+          "sha256": "6536170e5d46f82aa0890b138a8f5e5f52844dde656ea6f99d89248e5f675581"
+        },
+        {
+          "sha256": "050d976918ac85e7c2583a90cd54a2e4af644b344583d69eeea5134ff106f294"
+        },
+        {
+          "sha256": "88f568ea334ed92df15f9149d2574fb06f5a56e82ee4d0c6740533ddfb882b4f"
+        },
+        {
+          "sha256": "1f3157b88a48b01564bc449697cc5a139919971e3f9bcf31cc44489a9bdd29c6"
+        },
+        {
+          "sha256": "7a0de528bbc280f896ef25e8d9ba66220c78b5280dcb8af85b9ca5f30c916ca7"
+        },
+        {
+          "sha256": "2e7fb0b314802e115187b3714ac71f60b821fcd220859e9105f44634627f3494"
+        },
+        {
+          "sha256": "9f076e02f8fb83afa0d8137bbe61d0d123e9a5d179eb96c65409c32c5a4bc3bb"
+        },
+        {
+          "sha256": "42145cdf40cb2561dbea45d4ba57ef81a360701e9923dbf9a4be0ca8034be88d"
+        },
+        {
+          "sha256": "0f5c23b51467da1a154271ceb516788abe9d80fd6edb3bded29c09014e3815ad",
+          "sql": "REVOKE ALL ON FUNCTION public.subscription_stock_wait_projection(public.subscription_stock_wait_cases) FROM PUBLIC, anon, authenticated;"
+        },
+        {
+          "sha256": "54bbab1a3d432496ff05be14b10996c610ff8aca0a35f09c1c38fdd674d114a9",
+          "sql": "REVOKE ALL ON FUNCTION public.subscription_stock_wait_read(uuid) FROM PUBLIC, anon, authenticated;"
+        },
+        {
+          "sha256": "b3ddb6d03a1e3ba40fcb0c2a5abc2cc4cd95fc8db7a0adea1635258ba771c518",
+          "sql": "REVOKE ALL ON FUNCTION public.subscription_stock_wait_frozen(uuid,timestamptz) FROM PUBLIC, anon, authenticated;"
+        },
+        {
+          "sha256": "bbe248d9a2329c0d78c00dff6da30aae81f91687c88c37c905f24852bca77549",
+          "sql": "REVOKE ALL ON FUNCTION public.subscription_stock_wait_deficits(jsonb,uuid,timestamptz) FROM PUBLIC, anon, authenticated;"
+        },
+        {
+          "sha256": "16ef66274b7169ca7c321b98c65322652b768e39efea41ff7a399c19ae470914",
+          "sql": "REVOKE ALL ON FUNCTION public.subscription_stock_wait_enqueue(public.subscription_stock_wait_cases,text) FROM PUBLIC, anon, authenticated;"
+        },
+        {
+          "sha256": "835ecee0d2d730f502fd741d2ab8900935922af4e270bb714288f1bc89a49382",
+          "sql": "REVOKE ALL ON FUNCTION public.subscription_stock_wait_admit(jsonb,jsonb,timestamptz) FROM PUBLIC, anon, authenticated;"
+        },
+        {
+          "sha256": "474801bcb5d3b83f4831b7fbfaa31e8105f1e7246014a5d10c0792266127ebb2",
+          "sql": "REVOKE ALL ON FUNCTION public.subscription_stock_wait_candidates(integer,timestamptz) FROM PUBLIC, anon, authenticated;"
+        },
+        {
+          "sha256": "b03d7b1e9afa42dc106832e310d0e9d6ccf4c0db89beed04d2b9b141518852f0",
+          "sql": "REVOKE ALL ON FUNCTION public.subscription_stock_wait_normal_due(integer,timestamptz) FROM PUBLIC, anon, authenticated;"
+        },
+        {
+          "sha256": "9a8566c2f35751f0b35665cc7600d139f3d5e39c3e6ce7286e4752d15e1e6312",
+          "sql": "REVOKE ALL ON FUNCTION public.subscription_stock_wait_mark_resumed(uuid) FROM PUBLIC, anon, authenticated;"
+        },
+        {
+          "sha256": "fef4cea8799ccdc052aa62a71ef607b8232420acaa7758b25ba678f42b3c788b",
+          "sql": "REVOKE ALL ON FUNCTION public.subscription_stock_wait_summary(text) FROM PUBLIC, anon, authenticated;"
+        },
+        {
+          "sha256": "7a06846b3d50e741d29aa3e2ae9789d6921a7b326fd54bce671bccdf206cc9f0",
+          "sql": "REVOKE ALL ON FUNCTION public.subscription_stock_wait_bind_notice(uuid,uuid,jsonb) FROM PUBLIC, anon, authenticated;"
+        },
+        {
+          "sha256": "35364be0920e0679af466acd25d4f4afaef82189fde082fda5276c5d0972ae0b",
+          "sql": "REVOKE ALL ON FUNCTION public.subscription_stock_wait_recover_refusal(uuid,text,text,timestamptz) FROM PUBLIC, anon, authenticated;"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261022183000_inventory_available_to_promise.sql",
+      "sha256": "96ec5e6007932fa4226c0cdf9d71a14137fdfcbd36858e81de6fb857ec5873f1",
+      "functions": [
+        {
+          "signature": "public.inventory_channel_exposure_quantity(text,text)",
+          "beforeSha256": null,
+          "afterSha256": "329d0fe168d4483d52d1b48011e7b262cd4e603f6048870746ea53ed988bce54"
+        },
+        {
+          "signature": "public.inventory_available_to_promise(text,text,timestamptz,boolean)",
+          "beforeSha256": null,
+          "afterSha256": "db3d06365a6893fa43151eb0416f2aa054f11be72d6d1deee14395e24bcb468d"
+        },
+        {
+          "signature": "public.inventory_new_purchase_stock_read(text,jsonb,timestamptz)",
+          "beforeSha256": null,
+          "afterSha256": "b195e5d48b991d67978d67d9983fdf7b7851d08558d8304177709a85d969d236"
+        }
+      ],
+      "statements": [
+        {
+          "sha256": "329d0fe168d4483d52d1b48011e7b262cd4e603f6048870746ea53ed988bce54"
+        },
+        {
+          "sha256": "90613ac857d4a1e1814af27eba76035ea855daaeec17b9089e890e58c6d9514a",
+          "sql": "REVOKE ALL ON FUNCTION public.inventory_channel_exposure_quantity(text,text) FROM PUBLIC, anon, authenticated;"
+        },
+        {
+          "sha256": "db3d06365a6893fa43151eb0416f2aa054f11be72d6d1deee14395e24bcb468d"
+        },
+        {
+          "sha256": "9707f056025d213ca0bf88c87652421bdecbdb243022c2b58db5f6e547f49803",
+          "sql": "REVOKE ALL ON FUNCTION public.inventory_available_to_promise(text,text,timestamptz,boolean) FROM PUBLIC, anon, authenticated;"
+        },
+        {
+          "sha256": "b195e5d48b991d67978d67d9983fdf7b7851d08558d8304177709a85d969d236"
+        },
+        {
+          "sha256": "f46733bb00def4f3cc1afb814f677f7a0772cd0d0568233052e6c4fe142ee1d1",
+          "sql": "REVOKE ALL ON FUNCTION public.inventory_new_purchase_stock_read(text,jsonb,timestamptz) FROM PUBLIC, anon, authenticated;"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261022184000_subscription_renewal_reserve_uses_seam.sql",
+      "sha256": "06fa67de97404a671a35cbe4244012dd83d202a67d42989e029a835110b73f0c",
+      "functions": [
+        {
+          "signature": "public.fulfillment_reserve_subscription_renewal(uuid,uuid,integer,timestamptz)",
+          "beforeSha256": "d41b92c6418b30bcbaac50028612bbbf753acc07768c568e2e7bf46eec78528b",
+          "afterSha256": "8522895db5e82b0900035d70ddce950e8013a54c7805667a8a17b3e1c853e337"
+        }
+      ],
+      "statements": [
+        {
+          "sha256": "8522895db5e82b0900035d70ddce950e8013a54c7805667a8a17b3e1c853e337"
+        }
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261022155000_refunds_preserve_subscription_lifecycle.sql",
+      "sha256": "8029afbcaf1dceb5b6b35475ee5345c4e047f82bee9d8bd778ca256159666055",
+      "functions": [
+        {
+          "signature": "public.commerce_payment_control_apply_before_sub_lock(text,uuid,uuid,text,timestamptz,text,text)",
+          "beforeSha256": "5f2af6c20c7fc7cfc86b3b432d25492c9649ccef87e68ebf8f0e58c7acbb03a6",
+          "afterSha256": "72b3346793fa6f869483e066e6b5ea624125d8fbaf3e40a13baad0e7cd5e2aae"
+        }
+      ],
+      "statements": [
+        {
+          "sha256": "72b3346793fa6f869483e066e6b5ea624125d8fbaf3e40a13baad0e7cd5e2aae"
+        }
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261022160000_subscription_dunning_continuity.sql",
+      "sha256": "327ce8e60d69213b47777f993fab76d23e754a27df1159580a2d22d854eecc74",
+      "functions": [
+        {
+          "signature": "public.subscription_handle_payment_failure_dunning_before_cancel_fence(text,uuid,uuid,uuid,uuid,integer,timestamptz,text,timestamptz)",
+          "beforeSha256": "fc2996136365057dc7de8163e4b176454aec0259eb9a570ce5c6bbe81cea4b79",
+          "afterSha256": "17b27d270ddbf5882d140bbb50d75853a1ab13be8d8eff73f0e68e9089f46d4b"
+        },
+        {
+          "signature": "public.subscription_record_payment_recovery_before_expired_resume(text,text,text,text,timestamptz)",
+          "beforeSha256": "0fbbc1ff99dd30cd31b17a8c40d29a94dbd8e5fb8e434ea7ee887d8ce9586c16",
+          "afterSha256": "7b696eda87155fd2a3df2dcdbc5e6d2cc2280a59c9c1a8ff376666375566ad28"
+        },
+        {
+          "signature": "public.subscription_try_schedule_recovery_retry(uuid,text,timestamptz,text)",
+          "beforeSha256": "9be7866b5c32877ca012de715bae9d545fb9eb17396c062ae9c76bc43822ff08",
+          "afterSha256": "d401a3b401f5bb9461960b4c7f5e7bf495d76522edd27fe48ae9595ce686f9fb"
+        },
+        {
+          "signature": "public.subscription_list_due_for_renewal(integer,timestamptz)",
+          "beforeSha256": "803a1fafa61b0cd467498f47f44902905b9574f742c523a9cda0767cc334d3aa",
+          "afterSha256": "287224ab231d735ce9b5248408e6bcabc042f8d11c8c04715d45bb299d506138"
+        },
+        {
+          "signature": "public.commerce_payment_control_prepare_provider_attempt(text,uuid,text,text,text,text,text,jsonb)",
+          "beforeSha256": "078bba0589f99cd74efb4ae9e234327f3cea6884585c7d20cf54324083ace3d1",
+          "afterSha256": "ed8b17d1a7c5cd5dac7916d95e73ffc03893ba7d3c0a2dd62b9bc285bee4ae19"
+        }
+      ],
+      "statements": [
+        {
+          "sha256": "17b27d270ddbf5882d140bbb50d75853a1ab13be8d8eff73f0e68e9089f46d4b"
+        },
+        {
+          "sha256": "7b696eda87155fd2a3df2dcdbc5e6d2cc2280a59c9c1a8ff376666375566ad28"
+        },
+        {
+          "sha256": "d401a3b401f5bb9461960b4c7f5e7bf495d76522edd27fe48ae9595ce686f9fb"
+        },
+        {
+          "sha256": "287224ab231d735ce9b5248408e6bcabc042f8d11c8c04715d45bb299d506138"
+        },
+        {
+          "sha256": "ed8b17d1a7c5cd5dac7916d95e73ffc03893ba7d3c0a2dd62b9bc285bee4ae19"
+        },
+        {
+          "sha256": "c91fc2901f4db53356da7816171022eb204d880dceec331f94f31fae6be25d5a",
+          "sql": "GRANT SELECT (id, retry_attempt) ON public.subscription_cycles TO service_role;"
+        }
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261022175000_inventory_available_to_promise.sql",
+      "sha256": "70706de1ea07c3ba8a17a7099da4931a51e01c5cfd60caa5266674e16428ccb0",
+      "functions": [
+        {
+          "signature": "public.inventory_channel_exposure_quantity(uuid)",
+          "beforeSha256": null,
+          "afterSha256": "1aeb7d89182ad987f049eec6eb752c8d7ec32d5b238e584c4d3771ffd5cd1867"
+        },
+        {
+          "signature": "public.inventory_available_to_promise(uuid,timestamptz,boolean)",
+          "beforeSha256": null,
+          "afterSha256": "92dd46b33ed999a68a48098fa0b4da8f7502146fe5a4c5d509b0a1ebed90d569"
+        }
+      ],
+      "statements": [
+        {
+          "sha256": "1aeb7d89182ad987f049eec6eb752c8d7ec32d5b238e584c4d3771ffd5cd1867"
+        },
+        {
+          "sha256": "2628aed33fa8bf34e6552231f1483446752bae9b13ec37d5abbbae438f81478c",
+          "sql": "REVOKE ALL ON FUNCTION public.inventory_channel_exposure_quantity(uuid) FROM PUBLIC, anon, authenticated, openlup_mcp_reader;"
+        },
+        {
+          "sha256": "01f2efccca3dcdc0f7447b2e60ba9aa35b2c4bc878370a22ee7a0b603c3c5b44",
+          "sql": "GRANT EXECUTE ON FUNCTION public.inventory_channel_exposure_quantity(uuid) TO service_role;"
+        },
+        {
+          "sha256": "92dd46b33ed999a68a48098fa0b4da8f7502146fe5a4c5d509b0a1ebed90d569"
+        },
+        {
+          "sha256": "467c26a43cef2013f34e1997775c0329742d309cc42a823c52d0a90533d872c0",
+          "sql": "REVOKE ALL ON FUNCTION public.inventory_available_to_promise(uuid,timestamptz,boolean) FROM PUBLIC, anon, authenticated, openlup_mcp_reader;"
+        },
+        {
+          "sha256": "c3d42f8cfdb711ebe3f18f13ba81e81dc8e17535067450afa841cd0730f06404",
+          "sql": "GRANT EXECUTE ON FUNCTION public.inventory_available_to_promise(uuid,timestamptz,boolean) TO service_role;"
+        }
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261022180000_subscription_stock_wait.sql",
+      "sha256": "b13b602c33e725f9f2ed94ed91d27fa62793d8322a5fbe4ea92be19838fd8963",
+      "functions": [
+        {
+          "signature": "public.subscription_stock_wait_projection(public.subscription_stock_wait_cases)",
+          "beforeSha256": null,
+          "afterSha256": "0d2df080d4108a1d05584adf4c37360fb07d207bd6755d48086940408dc260d5"
+        },
+        {
+          "signature": "public.subscription_stock_wait_read(uuid)",
+          "beforeSha256": null,
+          "afterSha256": "ab0d57069150c10f6978f605767ea75d5a0965a079c76ef8bc1d3f7cde386c0e"
+        },
+        {
+          "signature": "public.subscription_stock_wait_frozen(uuid,timestamptz)",
+          "beforeSha256": null,
+          "afterSha256": "2d34ee99cfc54e53bab9e40247080b8e3f209e8a1f060073d1814ec996fc2987"
+        },
+        {
+          "signature": "public.subscription_stock_wait_deficits(jsonb,uuid,timestamptz)",
+          "beforeSha256": null,
+          "afterSha256": "e7f0774ed64dcf64fc2044bb8a0fefca350df3ab9d248312858c80b236095ae6"
+        },
+        {
+          "signature": "public.subscription_stock_wait_enqueue(public.subscription_stock_wait_cases,text)",
+          "beforeSha256": null,
+          "afterSha256": "65a61ca0014eed0ef175d5fdf3bd2a0c410578402a9e180a3a65d1526dd90458"
+        },
+        {
+          "signature": "public.subscription_stock_wait_admit(jsonb,jsonb,timestamptz)",
+          "beforeSha256": null,
+          "afterSha256": "7a35d5bd7bb59d9e3a854c04775499db6a3bc392fd82cc1e33b0cb148dd0a03e"
+        },
+        {
+          "signature": "public.subscription_stock_wait_candidates(integer,timestamptz)",
+          "beforeSha256": null,
+          "afterSha256": "1a60a2c66f72236550627d7ebb96436fd0d4adcba4071bcb5465c822f2fb97a2"
+        },
+        {
+          "signature": "public.subscription_stock_wait_mark_resumed(uuid)",
+          "beforeSha256": null,
+          "afterSha256": "0004870791c9b6e23220916acd2507461cb6dc5f9301c22e403f74944f365b5e"
+        },
+        {
+          "signature": "public.subscription_stock_wait_normal_due(integer,timestamptz)",
+          "beforeSha256": null,
+          "afterSha256": "cca0c8205305c04a12569d4133fd8f23a208413870f489af1bdb93388eac5d39"
+        },
+        {
+          "signature": "public.subscription_stock_wait_summary(text)",
+          "beforeSha256": null,
+          "afterSha256": "69217bd5d62e583fca44acbee4f36d66fd9afb4d8806010c916cee3849a9996d"
+        },
+        {
+          "signature": "public.subscription_stock_wait_bind_notice(uuid,uuid,jsonb)",
+          "beforeSha256": null,
+          "afterSha256": "487b4f3252ae1cdd39e476af0fde2b58e7c5774fa8486e6ae650c26baade6b60"
+        }
+      ],
+      "statements": [
+        {
+          "sha256": "6cecc04cb318b82d8c7467198ddc5a250d4b3af77b4414cd49c30b645deeeb49",
+          "sql": "CREATE TABLE public.subscription_stock_wait_cases (\n  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),\n  subscription_id uuid NOT NULL REFERENCES public.subscriptions(id) ON DELETE RESTRICT,\n  client_id uuid NOT NULL REFERENCES public.clients(id) ON DELETE RESTRICT,\n  scheduled_at timestamptz NOT NULL,\n  state text NOT NULL CHECK (state IN ('waiting','stock_secured','resumed','closed')),\n  cycle_number integer NOT NULL CHECK (cycle_number > 0),\n  due_snapshot jsonb NOT NULL,\n  template_snapshot jsonb NOT NULL,\n  pricing_snapshot jsonb NOT NULL,\n  order_snapshot jsonb NOT NULL,\n  fingerprint text NOT NULL,\n  notice_messages jsonb NOT NULL DEFAULT '{}',\n  deficits jsonb NOT NULL CHECK (jsonb_typeof(deficits) = 'array'),\n  cycle_id uuid REFERENCES public.subscription_cycles(id) ON DELETE RESTRICT,\n  order_id uuid REFERENCES public.commerce_orders(id) ON DELETE RESTRICT,\n  fulfillment_id uuid REFERENCES public.commerce_fulfillment_orders(id) ON DELETE RESTRICT,\n  opened_at timestamptz NOT NULL DEFAULT now(),\n  last_checked_at timestamptz NOT NULL DEFAULT now(),\n  last_selected_at timestamptz,\n  stock_secured_at timestamptz,\n  resumed_at timestamptz,\n  closed_at timestamptz,\n  block_reason text,\n  UNIQUE (subscription_id, scheduled_at)\n);"
+        },
+        {
+          "sha256": "bbfa54a757f3b7901b8059371df8b562d688b23518ad6fdd56cd97f264e0216b",
+          "sql": "ALTER TABLE public.subscription_stock_wait_cases ENABLE ROW LEVEL SECURITY;"
+        },
+        {
+          "sha256": "0d83d894834af51fa424fd5b07587e62e22b2082b6e438e7716da2bbcc1c12f1",
+          "sql": "REVOKE ALL ON public.subscription_stock_wait_cases FROM PUBLIC, anon, authenticated;"
+        },
+        {
+          "sha256": "2b142e1b24842571036db1cbb156658302d3b7da3e49b642d664ebbb2a328587",
+          "sql": "REVOKE ALL ON public.subscription_stock_wait_cases FROM openlup_mcp_reader;"
+        },
+        {
+          "sha256": "49f00b2ec549248e94055f5c8ae5eeb5f96bfb95163e211756d0fb071257241c",
+          "sql": "GRANT SELECT, INSERT, UPDATE, DELETE ON public.subscription_stock_wait_cases TO service_role;"
+        },
+        {
+          "sha256": "b49f813e302e923fe80d8dc07e0241bdf7beba722d7640ca3aed87c3447e58ff",
+          "sql": "INSERT INTO public.client_absorption_policy (table_name, disposition, note) VALUES\n ('subscription_stock_wait_cases', 'block',\n  'A frozen subscription delivery is a commercial obligation bound to its original client; never carry or rebind it when absorbing a lead.');"
+        },
+        {
+          "sha256": "2263d5a1b76002921ac18b7a55795c729ea41250682dfcaafefcb5e84a5a6f72",
+          "sql": "CREATE INDEX subscription_stock_wait_candidates_idx\n  ON public.subscription_stock_wait_cases(state,last_checked_at,id);"
+        },
+        {
+          "sha256": "0d2df080d4108a1d05584adf4c37360fb07d207bd6755d48086940408dc260d5"
+        },
+        {
+          "sha256": "ab0d57069150c10f6978f605767ea75d5a0965a079c76ef8bc1d3f7cde386c0e"
+        },
+        {
+          "sha256": "2d34ee99cfc54e53bab9e40247080b8e3f209e8a1f060073d1814ec996fc2987"
+        },
+        {
+          "sha256": "e7f0774ed64dcf64fc2044bb8a0fefca350df3ab9d248312858c80b236095ae6"
+        },
+        {
+          "sha256": "65a61ca0014eed0ef175d5fdf3bd2a0c410578402a9e180a3a65d1526dd90458"
+        },
+        {
+          "sha256": "7a35d5bd7bb59d9e3a854c04775499db6a3bc392fd82cc1e33b0cb148dd0a03e"
+        },
+        {
+          "sha256": "1a60a2c66f72236550627d7ebb96436fd0d4adcba4071bcb5465c822f2fb97a2"
+        },
+        {
+          "sha256": "0004870791c9b6e23220916acd2507461cb6dc5f9301c22e403f74944f365b5e"
+        },
+        {
+          "sha256": "cca0c8205305c04a12569d4133fd8f23a208413870f489af1bdb93388eac5d39"
+        },
+        {
+          "sha256": "69217bd5d62e583fca44acbee4f36d66fd9afb4d8806010c916cee3849a9996d"
+        },
+        {
+          "sha256": "487b4f3252ae1cdd39e476af0fde2b58e7c5774fa8486e6ae650c26baade6b60"
+        },
+        {
+          "sha256": "ff4d354e04e3f391beb22bfc3d5330b194fd28b35a6f3f7d66e3e1844735de47",
+          "sql": "REVOKE ALL ON FUNCTION public.subscription_stock_wait_projection(public.subscription_stock_wait_cases) FROM PUBLIC,anon,authenticated;"
+        },
+        {
+          "sha256": "32423c989a0c91400d072b2da4f984ff7253e6dbe3d3011bbc48192d48efc963",
+          "sql": "GRANT EXECUTE ON FUNCTION public.subscription_stock_wait_projection(public.subscription_stock_wait_cases) TO service_role;"
+        },
+        {
+          "sha256": "18bfd3bccb0dd20e6ae7898bc786baf03811d5aa74382010f052389333f631af",
+          "sql": "REVOKE ALL ON FUNCTION public.subscription_stock_wait_read(uuid) FROM PUBLIC,anon,authenticated;"
+        },
+        {
+          "sha256": "0ba850f65439c4ce6910ce1f84f269a55991e025e6a98983f6a2e10bcbbf1f1c",
+          "sql": "GRANT EXECUTE ON FUNCTION public.subscription_stock_wait_read(uuid) TO service_role;"
+        },
+        {
+          "sha256": "d20661d37c1d5383632b076324f8226d06450eb77753315b331ae830c87b152c",
+          "sql": "REVOKE ALL ON FUNCTION public.subscription_stock_wait_frozen(uuid,timestamptz) FROM PUBLIC,anon,authenticated;"
+        },
+        {
+          "sha256": "b32f252a7b1828bb630fd94a520432ab655575ea6b0fb91961693e39508a857a",
+          "sql": "GRANT EXECUTE ON FUNCTION public.subscription_stock_wait_frozen(uuid,timestamptz) TO service_role;"
+        },
+        {
+          "sha256": "19b250e30cb5cf97177e77436f4c8352081669bcf82452f44ce6a21254b8f64d",
+          "sql": "REVOKE ALL ON FUNCTION public.subscription_stock_wait_deficits(jsonb,uuid,timestamptz) FROM PUBLIC,anon,authenticated;"
+        },
+        {
+          "sha256": "cb16df30185233d4024ef45570ca5663785aff7df6afe6382d58264d65f19353",
+          "sql": "GRANT EXECUTE ON FUNCTION public.subscription_stock_wait_deficits(jsonb,uuid,timestamptz) TO service_role;"
+        },
+        {
+          "sha256": "2b03910e46cc937dd5b400786abe45718f8b9a0211d8f845aafc797bd634cb37",
+          "sql": "REVOKE ALL ON FUNCTION public.subscription_stock_wait_enqueue(public.subscription_stock_wait_cases,text) FROM PUBLIC,anon,authenticated;"
+        },
+        {
+          "sha256": "02cee7ce4322e87c961bd59902e657bff2bd08cd925e8c979309be8cdfa3df96",
+          "sql": "GRANT EXECUTE ON FUNCTION public.subscription_stock_wait_enqueue(public.subscription_stock_wait_cases,text) TO service_role;"
+        },
+        {
+          "sha256": "478ff1957cf817d09ea74257d848e3dcd1d80ee0ff318d79fc4ed29b5a285f5f",
+          "sql": "REVOKE ALL ON FUNCTION public.subscription_stock_wait_admit(jsonb,jsonb,timestamptz) FROM PUBLIC,anon,authenticated;"
+        },
+        {
+          "sha256": "bb89db1ced3788a9de606c23aab7266fb85b5d672fa5a6829493786a7ce61592",
+          "sql": "GRANT EXECUTE ON FUNCTION public.subscription_stock_wait_admit(jsonb,jsonb,timestamptz) TO service_role;"
+        },
+        {
+          "sha256": "da145e8138c192fea77cae249599b01ae09100a294cc31c60411baf324de4332",
+          "sql": "REVOKE ALL ON FUNCTION public.subscription_stock_wait_candidates(integer,timestamptz) FROM PUBLIC,anon,authenticated;"
+        },
+        {
+          "sha256": "5bf61f182a79183902c43e86afbb43af0adebb3414d14170e4e26e6b1ec18897",
+          "sql": "GRANT EXECUTE ON FUNCTION public.subscription_stock_wait_candidates(integer,timestamptz) TO service_role;"
+        },
+        {
+          "sha256": "f8da8de4468b526d2aa00541efa7572b8c6b897e59d1a70b2dd141b17bd89eac",
+          "sql": "REVOKE ALL ON FUNCTION public.subscription_stock_wait_mark_resumed(uuid) FROM PUBLIC,anon,authenticated;"
+        },
+        {
+          "sha256": "fc75c4137eb18935273919512b83430eee0d6d774071c96644afea684a9246bf",
+          "sql": "GRANT EXECUTE ON FUNCTION public.subscription_stock_wait_mark_resumed(uuid) TO service_role;"
+        },
+        {
+          "sha256": "0f5aef6debe8824a8842c39fcecca6210646bfc9f64a6535393025962f6e1434",
+          "sql": "REVOKE ALL ON FUNCTION public.subscription_stock_wait_normal_due(integer,timestamptz) FROM PUBLIC,anon,authenticated;"
+        },
+        {
+          "sha256": "5870168c8352a88ec4d0d778fb027eb76881ac19eabc35bd0994506d5f1ce934",
+          "sql": "GRANT EXECUTE ON FUNCTION public.subscription_stock_wait_normal_due(integer,timestamptz) TO service_role;"
+        },
+        {
+          "sha256": "610ae1a2ecb02922383076587ee7ee31dc489360cc3aafe49d7a213bc2b02a62",
+          "sql": "REVOKE ALL ON FUNCTION public.subscription_stock_wait_summary(text) FROM PUBLIC,anon,authenticated;"
+        },
+        {
+          "sha256": "ca75782b40630e4fe0b4d7e2191bc2e591080963e6a322e223caf3657871b27d",
+          "sql": "GRANT EXECUTE ON FUNCTION public.subscription_stock_wait_summary(text) TO service_role;"
+        },
+        {
+          "sha256": "3e7bfb7026184546e3bc33e26f0873e70ec1020843e1b8d974c00aa402090435",
+          "sql": "REVOKE ALL ON FUNCTION public.subscription_stock_wait_bind_notice(uuid,uuid,jsonb) FROM PUBLIC,anon,authenticated;"
+        },
+        {
+          "sha256": "ec3a154e5cc1c8c54beed269daaeb6dd367b3e4cfd64416afab25f1cd26119d4",
+          "sql": "GRANT EXECUTE ON FUNCTION public.subscription_stock_wait_bind_notice(uuid,uuid,jsonb) TO service_role;"
+        }
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261022181000_subscription_stock_wait_due.sql",
+      "sha256": "9b01708d31842c7ebd9e858351fb4f23560ea1c26f32e2b63379f93238a72b84",
+      "functions": [
+        {
+          "signature": "public.subscription_list_due_for_renewal(integer,timestamptz)",
+          "beforeSha256": "287224ab231d735ce9b5248408e6bcabc042f8d11c8c04715d45bb299d506138",
+          "afterSha256": "87a312f3f63ad3fd2f7750b7a9fa87c4d5cab4a84e2ede875accb889dc76f1c3"
+        }
+      ],
+      "statements": [
+        {
+          "sha256": "87a312f3f63ad3fd2f7750b7a9fa87c4d5cab4a84e2ede875accb889dc76f1c3"
+        }
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261022182000_subscription_lifecycle_message_scan.sql",
+      "sha256": "a72e72e87dda050df41f1edd135980bb2e03cf413a972ea58125ada54e22145e",
+      "functions": [
+        {
+          "signature": "private.outbox_resend_event_types()",
+          "beforeSha256": "107624fbf6423b9ab358a9dc602a0bf8b5a10db9a884f2f99af6f6d752d5f7b2",
+          "afterSha256": "32bf7de38f741e607148b752c4f50422dd8337678459210fc28cbb56333d0885"
+        },
+        {
+          "signature": "public.communication_email_delivery_template_for_event(text)",
+          "beforeSha256": "97caec93142ce236386fc01624bd0d32e4d65cc88fa9e1260889b0a1d911c6c7",
+          "afterSha256": "98a8781112325ddbce63812242db8471b2f7797cc22b24c1e72cad4f558d5b9c"
+        },
+        {
+          "signature": "public.subscription_list_due_for_winback(integer)",
+          "beforeSha256": "0f64afc1dc76e61c1c7bf109bfca99bcec2eb722a2afac85d87a353787d601e4",
+          "afterSha256": "c9befe3e15c5658d8db266e2ab0bcdf1a6e610258689812c2740c121166eb471"
+        }
+      ],
+      "statements": [
+        {
+          "sha256": "32bf7de38f741e607148b752c4f50422dd8337678459210fc28cbb56333d0885"
+        },
+        {
+          "sha256": "98a8781112325ddbce63812242db8471b2f7797cc22b24c1e72cad4f558d5b9c"
+        },
+        {
+          "sha256": "c9befe3e15c5658d8db266e2ab0bcdf1a6e610258689812c2740c121166eb471"
+        },
+        {
+          "sha256": "dd75302778b531e6f8d27683e84655c3275de4c46d247749305a84818280ac61",
+          "sql": "INSERT INTO public.comms_notification_controls(slug,enabled) VALUES\n ('subscription-stock-wait-started',true),('subscription-stock-wait-resumed',true) ON CONFLICT(slug) DO NOTHING;"
+        }
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261022184000_inventory_reserve_order_uses_seam.sql",
+      "sha256": "41a99e7306f33bbb85ad504b9158aaf8074bd4c577d284ab6fb82af748514993",
+      "functions": [
+        {
+          "signature": "public.inventory_reserve_order(text,uuid,uuid,uuid,uuid,integer,text,text,timestamptz,jsonb,text)",
+          "beforeSha256": "7bdcad21a511301ceb5b91fc33261fdb8b96afc178c6a5aa48555ab9fe930563",
+          "afterSha256": "52a5e35e39ba2a55a55d3241c28fd5758a421af21629d64b7c0ba145d51c58c0"
+        }
+      ],
+      "statements": [
+        {
+          "sha256": "52a5e35e39ba2a55a55d3241c28fd5758a421af21629d64b7c0ba145d51c58c0"
+        }
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261022185000_provider_refund_evidence.sql",
+      "sha256": "1c5960eb1aced19f91b4a20a8333503a7978f7d5ab60c95fe7515d4da866d215",
+      "functions": [
+        {
+          "signature": "public.commerce_order_provider_refund_evidence(uuid)",
+          "beforeSha256": null,
+          "afterSha256": "eb3eb4b7293b2030f5171e097968a0e3da1bc8eb3f1cde48545449c9ff2ddd33"
+        }
+      ],
+      "statements": [
+        {
+          "sha256": "eb3eb4b7293b2030f5171e097968a0e3da1bc8eb3f1cde48545449c9ff2ddd33"
+        },
+        {
+          "sha256": "3244e6875eaf78cd0fa5fdb265bfd508e038680b180837219c1c1b4f863edf3a",
+          "sql": "REVOKE ALL ON FUNCTION public.commerce_order_provider_refund_evidence(uuid) FROM PUBLIC, anon, authenticated;"
+        },
+        {
+          "sha256": "2e6c47d5ee9e04339596a11e80986615d8b4e442d338ee27cae9d6b3e04ad2d5",
+          "sql": "GRANT EXECUTE ON FUNCTION public.commerce_order_provider_refund_evidence(uuid) TO service_role;"
+        }
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261022185100_m07_refund_parity.sql",
+      "sha256": "a4e2fb59eed52f5f16313a465a7a1884fde44ab2f0f84271b11886998685f1ee",
+      "functions": [
+        {
+          "signature": "public.commerce_emit_order_refunded_outbox()",
+          "beforeSha256": "12adae8af8c2b11b56957024956f9fc82f5d4310b186666e6a0b9a2bc08d002d",
+          "afterSha256": "0b18a066ddfb3ceb345c2fd59f73818cd691c814b980fbb418dd9e67a9b4e1c9"
+        },
+        {
+          "signature": "public.commerce_payment_control_apply_before_sub_lock(text,uuid,uuid,text,timestamptz,text,text)",
+          "beforeSha256": "72b3346793fa6f869483e066e6b5ea624125d8fbaf3e40a13baad0e7cd5e2aae",
+          "afterSha256": "860d03694b1b0df024e30ae54b8109c59e74c76573676fd41bc77ad7862a1cf0"
+        }
+      ],
+      "statements": [
+        {
+          "sha256": "0b18a066ddfb3ceb345c2fd59f73818cd691c814b980fbb418dd9e67a9b4e1c9"
+        },
+        {
+          "sha256": "f036750c10aae1e9600d98c737d573e5e4672ad817e83bd63aafe860e0685957",
+          "sql": "COMMENT ON FUNCTION public.commerce_emit_order_refunded_outbox() IS\n  'Emits one order refund notice from accepted Stripe cumulative snapshots or other-provider individual amounts.';"
+        },
+        {
+          "sha256": "860d03694b1b0df024e30ae54b8109c59e74c76573676fd41bc77ad7862a1cf0"
+        }
+      ]
+    }
   ]
 }

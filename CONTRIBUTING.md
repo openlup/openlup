@@ -131,6 +131,17 @@ its users or operators can observe.
 
 ## Development-preview checks
 
+The M10/F17 exact-forward controls use
+`scripts/reviewed-batch-forward.test.ts` for per-file refusal plants and separate
+CI/release approval, and `tests/postgres/reviewedBatchForwards.test.ts` for the
+mandatory PostgreSQL/pgTAP catalog gate. The latter runs both complete prefixes,
+checks exact catalog/ACL/row changes and rollback, and falsifies its observer
+with committed attacks. Missing Docker, PostgreSQL or pgTAP fails; the lexer is
+only a pre-filter. Fixtures under `scripts/fixtures/reviewed-m10/` are inert
+approval snapshots and do not join an installation manifest. Root test discovery
+already includes both suites; no extra runner or optional skip is introduced.
+
+
 Subscription package contract changes use package-local contract, identity and
 port-fit witnesses alongside the generated package boundary census. The cold
 consumer classifies both exact subscription entries as having no optional peer

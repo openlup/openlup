@@ -290,6 +290,50 @@ separately from historical grant spellings or inherited CLI defaults.
 
 ## Exact reviewed function forwards
 
+The separate `batchedForwards` list approves the frozen M10/F17 packet: five
+native files and nine managed files. It adds no installation-chain SQL. Exact
+future bytes live only in [inert fixtures](../../scripts/fixtures/reviewed-m10/).
+The [registry](../../config/reviewed-platform-forwards.json) records each full
+path, SHA-256, ordered statement hash and exact function identity with raw
+before/after CREATE hashes. Non-function statements additionally carry their
+exact SQL, including every grant target, recipient, absorption row and seed.
+The checker fixes the ordered path/signature inventory separately from that data.
+
+This batch covers four native creations (retry, commands, stock wait and the
+M06 ATP/new-purchase seam), one native allocator body replacement, managed seam,
+stock-wait and refund-evidence creations, and the six managed replacement files.
+The managed creation includes its one table, index, RLS enablement, service-only
+grants and blocking `client_absorption_policy` row. The only new existing-table
+column grant is `SELECT (id, retry_attempt)` on `subscription_cycles` to
+`service_role`. The lifecycle-message forward replaces exactly
+`private.outbox_resend_event_types()` and its two public companions, and seeds
+only the enabled `subscription-stock-wait-started` / `subscription-stock-wait-resumed`
+notification controls with `ON CONFLICT(slug) DO NOTHING`.
+
+Timestamp aliases share identity within this class (`timestamptz` and
+`timestamp with time zone`); raw definition hashes retain the original spelling.
+The due reader chains M2 → M4 and the payment applicator M1 → F17: each later
+before hash must equal the earlier after hash, and admission reads the actual
+preceding rail in filename order. Missing, duplicate or extra signatures,
+preimage drift, reordered chains, unpinned private objects, extra/wider grants,
+changed bytes/paths and unexpected statements refuse. The native allocator
+admits exactly one replacement with an unchanged header and ACL, including its
+pre-existing PUBLIC EXECUTE default; this approval does not harden that default.
+
+The lexer is only a pre-filter. The mandatory
+[real PostgreSQL/pgTAP catalog gate](../../tests/postgres/reviewedBatchForwards.test.ts)
+uses native PostgreSQL 16 and managed PostgreSQL 17/pgTAP. It applies every exact
+fixture after the current complete native or managed prefix
+and earlier batch fixtures. It compares function metadata and bodies, relation
+and column ACLs, RLS, catalog dependencies, roles, schemas, default privileges
+and all public/private table rows; only the pinned creations, replacements,
+column grant, absorption row, notification rows and refund-function comment may
+change. Rollback must restore the complete prefix. Committed plants falsify
+both admission and the catalog observer. Missing Docker, PostgreSQL or pgTAP
+fails the required `test` aggregate; a lexical PASS cannot replace this gate.
+These batch rules do not broaden the earlier #267, #295 or #300 classes.
+Coordinator control review and two fresh reviews remain separate delivery gates.
+
 The managed runtime capability forward is shipped after its separate control
 approval. It changes no baseline bytes or function signature. Required service
 and authenticated column/helper permissions are explicit in that ordered file;

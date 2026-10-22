@@ -1,0 +1,1 @@
+Approve only the exact frozen M10/F17 native and managed SQL packet through a separate forward-control class, with inert fixtures, refusal plants and a required real PostgreSQL/pgTAP catalog gate. This control adds no migration, runtime activation or new permission to an installation.

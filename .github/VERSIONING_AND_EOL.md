@@ -490,6 +490,15 @@ exhaustion (invariant repair). Its priors come only from the portable baseline a
 earlier portable forwards; only comments and that single function replacement
 are admitted. The managed counts remain two replacement files, one creation file
 and one or two runtime files when the runtime list is present.
+A separate exact `batchedForwards` list binds the M10/F17 packet (five native,
+nine managed paths), ordered statements, exact grants/seeds and every function
+preimage/postimage. Timestamp aliases normalize only identity; repeated managed
+signatures must form an ordered hash chain. The native allocator is a single
+body-only replacement with its existing ACL preserved. Legacy class counts and
+predicates above remain unchanged. Batch admission requires the committed
+[real-PG/pgTAP catalog gate](../tests/postgres/reviewedBatchForwards.test.ts) in
+the required test aggregate; unavailable PostgreSQL fails, and the lexer only
+pre-filters. This approval adds inert fixtures, never executable forward files.
 Both required self-check and release prepare call the same checker; replacement
 remains outside the expand-only predicate.
 Required self-check keeps the whole registry unchanged from the feature comparison
