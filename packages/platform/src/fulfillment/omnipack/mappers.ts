@@ -58,6 +58,7 @@ export interface OmnipackFulfilmentRequestEvidence {
 }
 
 export interface OmnipackWebhookEvidence {
+  rejectedTrackingRefs?: number;
   provider: "omnipack";
   event: string;
   providerOrderId: string | null;
@@ -177,13 +178,20 @@ export function mapOmnipackFulfilmentRequestsResponse(body: unknown): OmnipackFu
   });
 }
 
-export function mapOmnipackWebhookPayload(body: unknown, fallbackEvent = ""): OmnipackWebhookEvidence {
+export function mapOmnipackWebhookPayload(body: unknown, fallbackEvent = "", admitTrackingNumber?: (value: string) => boolean): OmnipackWebhookEvidence {
   const payload = asRecord(body);
   const shipments = readArray(payload.shipments).map(asRecord);
-  const trackingReferences = trackingReferencesFrom({ shipments });
+  let rejectedTrackingRefs = 0;
+  // Admit and count original entries before the contributed extractor trims/deduplicates.
+  const admitted = admitTrackingNumber ? shipments.filter(row => {
+    if (admitTrackingNumber(readString(row.trackingNo) || readString(row.trackingNumber))) return true;
+    rejectedTrackingRefs++; return false;
+  }) : shipments;
+  const trackingReferences = trackingReferencesFrom({ shipments: admitted });
   return {
     provider: "omnipack",
     event: readString(payload.event) || fallbackEvent,
+    ...(rejectedTrackingRefs ? { rejectedTrackingRefs } : {}),
     providerOrderId: readNullableString(payload.orderId) ?? readNullableString(payload.providerOrderId),
     orderNumber: readNullableString(payload.orderNumber),
     fulfilmentNumber: readNullableString(payload.fulfilmentNumber),

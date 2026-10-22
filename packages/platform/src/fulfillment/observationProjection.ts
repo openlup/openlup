@@ -15,6 +15,10 @@ export function projectProviderStatus(value: NonNullable<FulfillmentObservation[
 /** New boundary projection: arbitrary adapter properties are never durable. */
 export function projectObservation(value: FulfillmentObservation): FulfillmentObservation {
   const diagnostics: NonNullable<FulfillmentObservation["diagnostics"]> = {};
+  if (value.diagnostics?.admission) {
+    const count = (value: number) => Number.isSafeInteger(value) && value > 0 ? value : 0;
+    diagnostics.admission = { rejectedTrackingRefs: count(value.diagnostics.admission.rejectedTrackingRefs), rejectedTrackingUrls: count(value.diagnostics.admission.rejectedTrackingUrls) };
+  }
   if (value.diagnostics?.refusal) {
     const { reason, phase, retryable } = value.diagnostics.refusal;
     diagnostics.refusal = { reason, phase, retryable };

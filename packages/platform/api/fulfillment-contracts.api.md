@@ -450,7 +450,7 @@ import type { NormalizedFulfillmentFact } from "@openlup/core/fulfillment";
 import type { CanonicalLocalFulfillmentStatus } from "./index.js";
 import type { FulfillmentRefusal } from "./dispatch.js";
 export interface FulfillmentTrackingReference {
-    trackingNumber: string;
+    trackingNumber: string; /** Normalized carrier kind, never a raw provider code. */
     carrierRef: string | null;
     serviceRef: string | null;
     publicUrl: string | null;
@@ -476,6 +476,10 @@ export interface FulfillmentObservation {
         subStatus: string | null;
     };
     diagnostics?: {
+        admission?: {
+            rejectedTrackingRefs: number;
+            rejectedTrackingUrls: number;
+        };
         refusal?: FulfillmentRefusal;
         stockContention?: {
             sqlState: "55P03";
@@ -501,6 +505,9 @@ export interface FulfillmentObservationPort {
     } | {
         kind: "refused";
         refusal: FulfillmentRefusal;
+        diagnostics?: {
+            invalidTimestamp: true;
+        };
     }>;
 }
 ```

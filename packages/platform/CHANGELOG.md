@@ -10,6 +10,12 @@ in the source repository.
 
 ## [Unreleased]
 
+- Fulfillment ingress exposes receipt IDs, a host-neutral HTTP result mapping,
+  counted timestamp/tracking refusals and persisted safe superseded causes.
+  The opt-in adapter preserves donor webhook key bytes, admits safe trimmed
+  correlation/tracking references, and supports carrier and tracking-URL codecs
+  while keeping strict URL defaults. Hosts retain referenced raw evidence.
+
 - Fulfillment reconciliation inputs replace `readLocalFulfillmentState` with
   `readLocalFulfillmentStatus`, `latestStatusOccurredAt` and `readHandedOverAt`;
   migrate host persistence implementations to these three reads.

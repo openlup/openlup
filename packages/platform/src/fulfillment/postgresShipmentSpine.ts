@@ -1,3 +1,4 @@
+import { safeDiagnosticCode } from "./dispatchProjection.js";
 import { nativeCall } from './postgresDispatchStore.js';
 import { projectObservation } from './observationProjection.js';
 import type { PgExecutor as PgQueryExecutor } from './postgresDispatchStore.js';
@@ -324,8 +325,9 @@ function localPersistence(executor: PgQueryExecutor) {
     async recordStatusEvidence(ref: { fulfillmentRef: string }, observation: import('./contracts/index.js').FulfillmentObservation) {
       return nativeCall<{ replayed: boolean }>(executor,'fulfillment_record_status_evidence',[observation.eventKey,ref.fulfillmentRef]);
     },
-    async markProcessed(eventKey: string, outcome: { status: 'processed' | 'ignored'; refusal?: import('./contracts/index.js').FulfillmentRefusal }) {
+    async markProcessed(eventKey: string, outcome: { status: 'processed' | 'ignored'; refusal?: import('./contracts/index.js').FulfillmentRefusal; supersededCause?: string }) {
       await nativeCall(executor,'fulfillment_mark_observation_processed',[eventKey,JSON.stringify({ status: outcome.status,
+        ...(outcome.supersededCause ? { supersededCause: safeDiagnosticCode(outcome.supersededCause) ?? 'fulfillment_state_conflict' } : {}),
         ...(outcome.refusal ? { refusal: { reason: outcome.refusal.reason,phase: outcome.refusal.phase,retryable: outcome.refusal.retryable } } : {}) })]);
     },
   };

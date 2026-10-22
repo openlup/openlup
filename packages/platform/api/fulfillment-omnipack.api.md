@@ -450,7 +450,7 @@ import type { NormalizedFulfillmentFact } from "@openlup/core/fulfillment";
 import type { CanonicalLocalFulfillmentStatus } from "./index.js";
 import type { FulfillmentRefusal } from "./dispatch.js";
 export interface FulfillmentTrackingReference {
-    trackingNumber: string;
+    trackingNumber: string; /** Normalized carrier kind, never a raw provider code. */
     carrierRef: string | null;
     serviceRef: string | null;
     publicUrl: string | null;
@@ -476,6 +476,10 @@ export interface FulfillmentObservation {
         subStatus: string | null;
     };
     diagnostics?: {
+        admission?: {
+            rejectedTrackingRefs: number;
+            rejectedTrackingUrls: number;
+        };
         refusal?: FulfillmentRefusal;
         stockContention?: {
             sqlState: "55P03";
@@ -501,6 +505,9 @@ export interface FulfillmentObservationPort {
     } | {
         kind: "refused";
         refusal: FulfillmentRefusal;
+        diagnostics?: {
+            invalidTimestamp: true;
+        };
     }>;
 }
 ```
@@ -1066,6 +1073,7 @@ export declare const omnipackFulfillmentCapabilities: Readonly<FulfillmentCapabi
 ```ts
 import type { FulfillmentCapabilityDescriptor, FulfillmentDispatchPort, FulfillmentDispatchRequest, FulfillmentLabelPort, FulfillmentObservationPort, FulfillmentReadbackPort, FulfillmentObservationPagePort, FulfillmentStockSyncProvider, FulfillmentProductSyncProvider } from "../contracts/index.js";
 import { type OmnipackWebhookRouteEvent } from "./omnipackWebhookPayload.js";
+import { type OmnipackObservationCodecs } from "./observation.js";
 export { omnipackFulfillmentCapabilities } from "./capabilities.js";
 /** Node-only, explicit construction. Secrets are supplied per call, never retained as values. */
 export interface OmnipackFulfillmentAdapterConfig {
@@ -1101,6 +1109,7 @@ export interface OmnipackFulfillmentAdapterConfig {
     mintEvidenceReference: () => `evidence:${string}`;
     mintSyncRunId: () => string;
     approveTrackingUrl: (url: string) => boolean;
+    observationCodecs?: OmnipackObservationCodecs;
     /** Writes occur only through deliberate calls; scheduled composition must remain pull-only. */
     product?: {
         resolvePushMetadata: (sku: string) => Promise<Record<string, unknown> | null>;
@@ -1176,6 +1185,7 @@ export interface OmnipackFulfilmentRequestEvidence {
     state: string | null;
 }
 export interface OmnipackWebhookEvidence {
+    rejectedTrackingRefs?: number;
     provider: "omnipack";
     event: string;
     providerOrderId: string | null;
@@ -1192,8 +1202,44 @@ export declare function mapOmnipackStockResponse(body: unknown): OmnipackStockEv
 export declare function mapOmnipackStockMovementsResponse(body: unknown): OmnipackStockMovementEvidence[];
 export declare function mapOmnipackFulfilmentsResponse(body: unknown): OmnipackFulfilmentEvidence[];
 export declare function mapOmnipackFulfilmentRequestsResponse(body: unknown): OmnipackFulfilmentRequestEvidence[];
-export declare function mapOmnipackWebhookPayload(body: unknown, fallbackEvent?: string): OmnipackWebhookEvidence;
+export declare function mapOmnipackWebhookPayload(body: unknown, fallbackEvent?: string, admitTrackingNumber?: (value: string) => boolean): OmnipackWebhookEvidence;
 export declare function sanitizeOmnipackPayload(input: Record<string, unknown>): Record<string, unknown>;
+```
+## dist/fulfillment/omnipack/observation.d.ts
+
+```ts
+import type { CanonicalLocalFulfillmentStatus, FulfillmentObservation, FulfillmentRefusal } from "../contracts/index.js";
+import type { OmnipackWebhookEvidence } from "./mappers.js";
+import { type OmnipackWebhookRouteEvent } from "./omnipackWebhookPayload.js";
+export declare const refusal: (reason: FulfillmentRefusal["reason"], phase: FulfillmentRefusal["phase"], retryable?: boolean) => FulfillmentRefusal;
+export declare const digest: (bytes: string | Uint8Array) => string;
+/** References are opaque identifiers, never arbitrary provider prose or URLs. */
+export declare function reference(value: string | null | undefined): string | null;
+/** Correlation/tracking text stays opaque but may contain spaces or slashes. */
+export declare function correlationReference(value: string | null | undefined): string | null;
+export interface OmnipackObservationCodecs {
+    normalizeCarrier?(input: {
+        carrierRef: string | null;
+        serviceRef: string | null;
+    }): string | null;
+    /** Overrides query/hash policy; the adapter still requires HTTPS without credentials. */
+    trackingUrl?(url: string): string | null;
+}
+export declare function timestamp(value: string | null): string | null;
+export declare function eventKind(value: string): OmnipackWebhookRouteEvent | null;
+export declare function publicUrl(value: string | null, approve: (url: string) => boolean): string | null;
+export declare function observation(input: {
+    evidence: OmnipackWebhookEvidence;
+    event: FulfillmentObservation["eventKind"];
+    status?: CanonicalLocalFulfillmentStatus;
+    receivedAt: string;
+    rawDigest: string;
+    evidenceRef: `evidence:${string}`;
+    source: "provider_webhook" | "provider_reconciliation";
+    fulfillmentRef?: string;
+    approveTrackingUrl: (url: string) => boolean;
+    observationCodecs?: OmnipackObservationCodecs;
+}): FulfillmentObservation;
 ```
 ## dist/fulfillment/omnipack/omnipackStatusVocabulary.d.ts
 

@@ -7,7 +7,7 @@ import { mapOmnipackWebhookPayload } from "./mappers.js";
 import { verifyOmnipackWebhookToken, type OmnipackWebhookRouteEvent } from "./omnipackWebhookPayload.js";
 import { createReconciliationPagePort, reconciliationObservation } from "./reconciliation.js";
 import { dispatchEvidence, operationError } from "../dispatchProjection.js";
-import { digest, eventKind, observation, reference, refusal, timestamp } from "./observation.js";
+import { correlationReference, digest, eventKind, observation, reference, refusal, timestamp, type OmnipackObservationCodecs } from "./observation.js";
 export { omnipackFulfillmentCapabilities } from "./capabilities.js";
 
 /** Node-only, explicit construction. Secrets are supplied per call, never retained as values. */
@@ -28,6 +28,7 @@ export interface OmnipackFulfillmentAdapterConfig {
   mintEvidenceReference: () => `evidence:${string}`;
   mintSyncRunId: () => string;
   approveTrackingUrl: (url: string) => boolean;
+  observationCodecs?: OmnipackObservationCodecs;
   /** Writes occur only through deliberate calls; scheduled composition must remain pull-only. */
   product?: { resolvePushMetadata: (sku: string) => Promise<Record<string, unknown> | null> };
 }
@@ -205,13 +206,15 @@ export function createOmnipackFulfillmentAdapter(config: OmnipackFulfillmentAdap
           if (!payload || typeof payload !== "object" || Array.isArray(payload)) return { kind: "refused", refusal: refusal("malformed", "normalize") };
           if ("event" in payload && (typeof payload.event !== "string" || !eventKind(payload.event)))
             return { kind: "refused", refusal: refusal("unsupported_event", "normalize") };
-          const evidence = mapOmnipackWebhookPayload(payload, config.notification.expectedEvent);
+          const evidence = mapOmnipackWebhookPayload(payload, config.notification.expectedEvent, value => correlationReference(value) !== null);
           const event = eventKind(evidence.event);
           if (!event || event !== config.notification.expectedEvent) return { kind: "refused", refusal: refusal("unsupported_event", "normalize") };
-          if (![evidence.providerOrderId, evidence.orderNumber, evidence.fulfilmentNumber].some(value => reference(value)))
+          if (![evidence.providerOrderId, evidence.orderNumber, evidence.fulfilmentNumber].some(value => correlationReference(value)))
             return { kind: "refused", refusal: refusal("missing_correlation", "normalize") };
+          if (evidence.occurredAt && !timestamp(evidence.occurredAt))
+            return { kind: "refused", refusal: refusal("malformed", "normalize"), diagnostics: { invalidTimestamp: true } };
           return { kind: "verified", observation: observation({ evidence, event, receivedAt: input.receivedAt,
-            rawDigest: digest(rawBody), evidenceRef: config.mintEvidenceReference(), source: "provider_webhook", approveTrackingUrl: config.approveTrackingUrl }) };
+            rawDigest: digest(rawBody), evidenceRef: config.mintEvidenceReference(), source: "provider_webhook", approveTrackingUrl: config.approveTrackingUrl, observationCodecs: config.observationCodecs }) };
         } catch { return { kind: "refused", refusal: refusal("malformed", "normalize") }; }
       },
     },

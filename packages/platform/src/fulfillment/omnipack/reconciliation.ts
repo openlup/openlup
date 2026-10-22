@@ -5,10 +5,11 @@ import { normalizeReconciliationTimestamp } from "../providerReconciliationTimes
 import type { OmnipackClient } from "./client.js";
 import { OmnipackProviderError } from "./client.js";
 import type { OmnipackFulfilmentEvidence } from "./mappers.js";
-import { digest, observation, reference, refusal, timestamp } from "./observation.js";
+import { digest, observation, reference, refusal, timestamp, type OmnipackObservationCodecs } from "./observation.js";
 import { localStatusFor, normalizeStatus } from "./omnipackStatusVocabulary.js";
 
 type Config = {
+  observationCodecs?: OmnipackObservationCodecs;
   clock(): string; mintEvidenceReference(): `evidence:${string}`; approveTrackingUrl(url: string): boolean;
 };
 export function reconciliationObservation(row: OmnipackFulfilmentEvidence, config: Config, fulfillmentRef?: string): Extract<FulfillmentReconciliationObservation, { kind: "found" | "unmapped" }> {
@@ -27,7 +28,7 @@ export function reconciliationObservation(row: OmnipackFulfilmentEvidence, confi
     fulfilmentNumber: row.fulfilmentNumber, occurredAt, trackingNumbers: row.trackingNumbers,
     trackingReferences: row.trackingReferences, shippingMethods: [] };
   const mapped = observation({ evidence, event, status, fulfillmentRef, receivedAt: config.clock(),
-    rawDigest: digest(JSON.stringify({ ...evidence, providerStatus })), evidenceRef: config.mintEvidenceReference(), source: "provider_reconciliation", approveTrackingUrl: config.approveTrackingUrl });
+    rawDigest: digest(JSON.stringify({ ...evidence, providerStatus })), evidenceRef: config.mintEvidenceReference(), source: "provider_reconciliation", approveTrackingUrl: config.approveTrackingUrl, observationCodecs: config.observationCodecs });
   return { kind: "found", externalRef: row.providerOrderId ?? "", createdAt: timestamp(row.createdAt), updatedAt: timestamp(occurredAt),
     observation: { ...mapped, eventKey, fact: { ...mapped.fact, factId: eventKey }, providerStatus } };
 }

@@ -587,7 +587,7 @@ import type { NormalizedFulfillmentFact } from "@openlup/core/fulfillment";
 import type { CanonicalLocalFulfillmentStatus } from "./index.js";
 import type { FulfillmentRefusal } from "./dispatch.js";
 export interface FulfillmentTrackingReference {
-    trackingNumber: string;
+    trackingNumber: string; /** Normalized carrier kind, never a raw provider code. */
     carrierRef: string | null;
     serviceRef: string | null;
     publicUrl: string | null;
@@ -613,6 +613,10 @@ export interface FulfillmentObservation {
         subStatus: string | null;
     };
     diagnostics?: {
+        admission?: {
+            rejectedTrackingRefs: number;
+            rejectedTrackingUrls: number;
+        };
         refusal?: FulfillmentRefusal;
         stockContention?: {
             sqlState: "55P03";
@@ -638,6 +642,9 @@ export interface FulfillmentObservationPort {
     } | {
         kind: "refused";
         refusal: FulfillmentRefusal;
+        diagnostics?: {
+            invalidTimestamp: true;
+        };
     }>;
 }
 ```
@@ -1988,7 +1995,8 @@ export { createOutboxOrderPaidFulfillmentHandler } from "./paidHandoff.js";
 export { collectPaidFulfillmentRecoveryCandidates } from "./paidFulfillmentRecovery.js";
 export { runFulfillmentDispatchWorker } from "./providerDispatchWorker.js";
 export { createFulfillmentCommandLedger } from "./providerCommandLedger.js";
-export { verifyAndNormalizeFulfillmentObservation } from "./verifiedIngress.js";
+export type { FulfillmentIngressCounts, FulfillmentIngressResult } from "./verifiedIngress.js";
+export { verifyAndNormalizeFulfillmentObservation, fulfillmentIngressHttpResult } from "./verifiedIngress.js";
 export { applyFulfillmentObservationEffects } from "./fulfillmentObservationEffects.js";
 export { reconcileFulfillmentObservations, runFulfillmentReconciliationPage } from "./providerReconciliationWorker.js";
 export { runFulfillmentStockSyncWorker } from "./providerStockSyncWorker.js";
@@ -2428,6 +2436,7 @@ declare function localPersistence(executor: PgQueryExecutor): {
     markProcessed(eventKey: string, outcome: {
         status: "processed" | "ignored";
         refusal?: import("./contracts/index.js").FulfillmentRefusal;
+        supersededCause?: string;
     }): Promise<void>;
 };
 export {};
@@ -2942,6 +2951,34 @@ type DispatchRef = {
     dispatchRef: string;
     externalRef: string | null;
 };
+export interface FulfillmentIngressCounts {
+    invalidTimestamps: number;
+    rejectedTrackingRefs: number;
+    rejectedTrackingUrls: number;
+}
+export type FulfillmentIngressResult = {
+    counts: FulfillmentIngressCounts;
+} & ({
+    kind: "refused";
+    receiptId: null;
+    refusal: FulfillmentRefusal;
+    diagnostics?: {
+        invalidTimestamp: true;
+    };
+} | {
+    kind: "processed" | "ignored" | "superseded";
+    receiptId: string;
+    observation: FulfillmentObservation;
+    replayed: boolean;
+    trackingRefs: number;
+    trackingReadBacks: number;
+    supersededCause?: string;
+});
+/** Safe response classes only; the host owns HTTP and localized message text. */
+export declare function fulfillmentIngressHttpResult(result: FulfillmentIngressResult): {
+    status: 200 | 400 | 403 | 503;
+    messageClass: "accepted" | "bad_request" | "forbidden" | "upstream_unavailable";
+};
 /** Adapter verification owns auth-before-parse; the host owns durable replay. */
 export declare function verifyAndNormalizeFulfillmentObservation(input: {
     enabled: boolean;
@@ -2951,11 +2988,13 @@ export declare function verifyAndNormalizeFulfillmentObservation(input: {
         /** G17: atomic insert by eventKey; retries keep the first stored firstReceivedAt. */
         recordObservation(observation: FulfillmentObservation): Promise<{
             replayed: boolean;
+            receiptId?: string;
         }>;
         /** Idempotent; only called after completion or a classified superseding conflict. */
         markProcessed(eventKey: string, outcome: {
             status: "processed" | "ignored";
             refusal?: FulfillmentRefusal;
+            supersededCause?: string;
         }): Promise<void>;
     };
     lifecycle: {
@@ -2971,18 +3010,11 @@ export declare function verifyAndNormalizeFulfillmentObservation(input: {
             tracking(eventKey: string, number: string): string;
         };
         issueAccountingInvoice?(ref: string): Promise<void>;
+        /** Return a machine identity, never exception prose. */
+        supersededCause?(error: unknown): string | null;
         classifyFailure(error: unknown): "stock_contention" | "state_conflict" | "other";
         annotateStockContention?(eventKey: string, fulfillmentRef: string): Promise<void>;
     };
-}): Promise<{
-    kind: "refused";
-    refusal: FulfillmentRefusal;
-} | {
-    kind: "processed" | "ignored" | "superseded";
-    observation: FulfillmentObservation;
-    replayed: boolean;
-    trackingRefs: number;
-    trackingReadBacks: number;
-}>;
+}): Promise<FulfillmentIngressResult>;
 export {};
 ```

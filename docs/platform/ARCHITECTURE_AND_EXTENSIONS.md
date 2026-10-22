@@ -862,6 +862,48 @@ movements, lots, expiry, replay and conflicts. Inventory reservations/availabili
 and catalog facts retain their existing owners. Host storage label reads remain
 independent of provider support; capability selection performs no I/O.
 
+Ingress returns a typed `FulfillmentIngressResult` with a receipt ID, replay and
+tracking counters, and counted admission diagnostics. `fulfillmentIngressHttpResult`
+projects safe HTTP status/message classes for a host to apply: accepted outcomes
+map to 200, untrusted to 403, disabled/not-ready or retryable refusals to 503,
+and other refused input to 400. It installs no HTTP route. The host may return its
+own durable `receiptId` from `recordObservation`; otherwise the durable event key
+is the receipt identity. Invalid timestamps refuse before persistence and increment
+`counts.invalidTimestamps` with `diagnostics.invalidTimestamp`. Rejected tracking
+numbers and URLs are counted in both the observation admission diagnostics and
+ingress result. A superseded conflict persists and returns `supersededCause`, a
+safe machine identity supplied by the host classifier or the typed error's reason;
+unsafe or absent causes become `fulfillment_state_conflict`.
+
+The example webhook uses the contributed colon event key, retaining original
+occurrence bytes rather than normalized timestamp bytes. Fact IDs remain hashes
+and fact fulfillment references retain core opaque-ID validation; admitted provider
+correlation/tracking values are trimmed, nonblank and bounded, allowing spaces and
+slashes while refusing controls, email addresses and URLs. Correlation cannot
+silently place refused text into the event key. Generic ingress composes no vendor
+keys: the host must preserve its existing status/tracking/stock/handoff key builders
+and durable receipt namespace when switching adapters. This does not migrate
+receipts written by an older digest-key package version.
+
+The adapter's optional `observationCodecs.normalizeCarrier({ carrierRef, serviceRef })`
+returns the normalized carrier kind stored in `carrierRef` and passed to effects as
+`carrierKind`. Its default uses the contributed service-derived carrier kind,
+never the raw provider carrier. `observationCodecs.trackingUrl(url)` may retain
+adopter-required query parameters; HTTPS, no credentials and `approveTrackingUrl`
+still apply to its output. Without that codec the default also rejects query and
+fragment components. For example, configure approval for an exact tracking origin
+and a codec that returns the URL only when every query key is in the adopter's
+allowlist, returning null otherwise. The host owns that policy and retention of
+any permitted query data. No adopter dictionary is embedded in generic code.
+
+O3 deliberately retains a typed fact and an opaque raw-event pointer. The host
+must retain the referenced evidence under its own access and retention policy;
+the pointer/digest alone does not store the raw event. Invoice callbacks remain
+host composition, including any intended fail-soft production wrapper. Ingress
+keeps stock → handoff → tracking → invoice awaited and fail-stop, delivered-first
+suppression and first-wins tracking deduplication. It calls no replacement delivery
+confirmation or subscription alignment operation.
+
 The operator lifecycle handlers preserve the host's mutation schemas and response
 receipts. Every mutation callback requires the authorized actor and idempotency
 key; the host must bind both into its replay fingerprint and commit all effects
