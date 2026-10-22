@@ -506,7 +506,8 @@ export interface FulfillmentObservationPort {
         kind: "refused";
         refusal: FulfillmentRefusal;
         diagnostics?: {
-            invalidTimestamp: true;
+            invalidTimestamp?: true;
+            rejectedCorrelationRefs?: number;
         };
     }>;
 }

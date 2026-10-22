@@ -868,8 +868,12 @@ projects safe HTTP status/message classes for a host to apply: accepted outcomes
 map to 200, untrusted to 403, disabled/not-ready or retryable refusals to 503,
 and other refused input to 400. It installs no HTTP route. The host may return its
 own durable `receiptId` from `recordObservation`; otherwise the durable event key
-is the receipt identity. Invalid timestamps refuse before persistence and increment
-`counts.invalidTimestamps` with `diagnostics.invalidTimestamp`. Rejected tracking
+is the receipt identity. Supplied invalid timestamps (including non-string and
+empty values) refuse before lossy mapping or persistence and increment
+`counts.invalidTimestamps` with `diagnostics.invalidTimestamp`; absent/null
+occurrence remains unknown and is not counted. Rejected correlation fields refuse
+the event with `counts.rejectedCorrelationRefs` and a matching diagnostic, without
+returning the rejected values. Rejected tracking
 numbers and URLs are counted in both the observation admission diagnostics and
 ingress result. A superseded conflict persists and returns `supersededCause`, a
 safe machine identity supplied by the host classifier or the typed error's reason;
@@ -877,13 +881,26 @@ unsafe or absent causes become `fulfillment_state_conflict`.
 
 The example webhook uses the contributed colon event key, retaining original
 occurrence bytes rather than normalized timestamp bytes. Fact IDs remain hashes
-and fact fulfillment references retain core opaque-ID validation; admitted provider
-correlation/tracking values are trimmed, nonblank and bounded, allowing spaces and
-slashes while refusing controls, email addresses and URLs. Correlation cannot
-silently place refused text into the event key. Generic ingress composes no vendor
+and fact fulfillment references retain core opaque-ID validation. By default,
+correlation, tracking numbers and service references require the prior opaque-ID
+shape: 1–128 ASCII letters/digits or `._:-`, starting with a letter/digit.
+The optional `observationCodecs.approveReference(value)` is a pure allowlist on
+original references. An adopter can explicitly admit incumbent slash/space shapes,
+for example by matching a known identifier grammar plus the default opaque grammar
+and returning false otherwise. Admitted values are trimmed for correlation and
+tracking; the event key preserves original admitted reference bytes. Even with the
+allowlist, blank/overlong values, controls, email addresses and URLs are refused.
+Rejected tracking-number entries are counted before trimming/deduplication; rejected
+service references are omitted and counted as rejected tracking references.
+The adopter owns the privacy of its widened grammar; allowing arbitrary prose
+would permit contact/credential text into durable keys and fields. Correlation
+cannot silently place refused text into the event key. Generic ingress composes no vendor
 keys: the host must preserve its existing status/tracking/stock/handoff key builders
-and durable receipt namespace when switching adapters. This does not migrate
-receipts written by an older digest-key package version.
+and durable receipt namespace when switching from the donor. This compatibility
+does not cover native 0.22.0 digest receipts/effects or superseded outcomes: retries
+can repeat tracking or fail with `fulfillment_observation_outcome_conflict`.
+Drain in-flight observation retries before upgrading; see the
+[Unreleased migration note](../../packages/platform/CHANGELOG.md#unreleased).
 
 The adapter's optional `observationCodecs.normalizeCarrier({ carrierRef, serviceRef })`
 returns the normalized carrier kind stored in `carrierRef` and passed to effects as

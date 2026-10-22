@@ -5098,6 +5098,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/fulfillment/omnipack/observationIngressParity.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/fulfillment/omnipack/transportAdaptation.test.ts",
       "class": "public-output"
     },

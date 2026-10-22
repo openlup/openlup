@@ -643,7 +643,8 @@ export interface FulfillmentObservationPort {
         kind: "refused";
         refusal: FulfillmentRefusal;
         diagnostics?: {
-            invalidTimestamp: true;
+            invalidTimestamp?: true;
+            rejectedCorrelationRefs?: number;
         };
     }>;
 }
@@ -2953,6 +2954,7 @@ type DispatchRef = {
 };
 export interface FulfillmentIngressCounts {
     invalidTimestamps: number;
+    rejectedCorrelationRefs: number;
     rejectedTrackingRefs: number;
     rejectedTrackingUrls: number;
 }
@@ -2963,7 +2965,8 @@ export type FulfillmentIngressResult = {
     receiptId: null;
     refusal: FulfillmentRefusal;
     diagnostics?: {
-        invalidTimestamp: true;
+        invalidTimestamp?: true;
+        rejectedCorrelationRefs?: number;
     };
 } | {
     kind: "processed" | "ignored" | "superseded";

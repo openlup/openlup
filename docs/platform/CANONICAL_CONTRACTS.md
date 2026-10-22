@@ -188,7 +188,14 @@ storage. The required label port returns explicit unsupported refusals without I
 for create, void and read. Configured product paths accept only single-leading-slash
 path segments; request URLs must retain the configured HTTPS origin and have no
 credentials. Raw bags, provider errors, command PII and secrets never enter durable
-outputs. Tracking URLs default to query-free, fragment-free HTTPS without credentials
+outputs. Correlation, tracking-number and service references default to 1–128
+ASCII opaque-ID characters (letters/digits, `._:-`, starting with a letter/digit).
+`observationCodecs.approveReference` lets an adopter explicitly allow its wider
+incumbent identifier grammar, with privacy owned by that adopter; controls,
+blank/overlong values, email addresses and URLs still refuse. Correlation refusal
+is counted and reported before keys or durable observations are constructed;
+tracking-number/service refusals are counted in admission diagnostics and results.
+Tracking URLs default to query-free, fragment-free HTTPS without credentials
 and explicit host approval. An optional adapter `observationCodecs.trackingUrl`
 can retain required query data under adopter policy; HTTPS, no credentials and
 host approval still apply. The optional `normalizeCarrier` codec maps raw carrier/
@@ -1009,11 +1016,19 @@ lifecycle writes. For correlated ingress, a trimmed observation or dispatch
 external reference is required before acceptance/status/effects/processed mark;
 a missing/blank pair leaves the receipt unprocessed. Hosts own idempotent replay; a superseding conflict returns
 superseded and persists/returns its safe `supersededCause`. Ingress returns the
-host receipt ID (or durable event key), counters for rejected tracking numbers/URLs
-and invalid timestamps, and a diagnostic on early invalid-timestamp refusal.
+host receipt ID (or durable event key), counters for rejected correlation fields,
+tracking numbers/services/URLs and invalid timestamps, and diagnostics on early
+refusal. Original supplied occurrence is validated before mapping: numbers,
+objects, empty strings and invalid timestamp strings refuse and count; absent/null
+occurrence remains unknown without a refusal count.
 The host applies `fulfillmentIngressHttpResult` for status and safe message class;
 no route is installed. The webhook colon key retains original occurrence bytes;
-host-injected persistence/effect keys must keep the incumbent namespace for replay.
+host-injected persistence/effect keys must keep the donor namespace for replay.
+Native 0.22.0 digest receipts/effects and superseded outcomes are outside that
+compatibility: retries can repeat tracking or fail with
+`fulfillment_observation_outcome_conflict`. Drain in-flight observation retries
+before upgrading; the [Unreleased migration note](../../packages/platform/CHANGELOG.md#unreleased)
+records these limitations without a bridge or alias migration.
 The normalized fact uses a separate opaque identity. Hosts must retain the raw
 evidence referenced by its opaque pointer, with access/retention policy of their own.
 

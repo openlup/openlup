@@ -13,13 +13,16 @@ export const digest = (bytes: string | Uint8Array): string => createHash("sha256
 export function reference(value: string | null | undefined): string | null {
   return typeof value === "string" && /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u.test(value) ? value : null;
 }
-/** Correlation/tracking text stays opaque but may contain spaces or slashes. */
-export function correlationReference(value: string | null | undefined): string | null {
+/** Opaque by default; wider reference shapes require an explicit adopter allowlist. */
+export function correlationReference(value: string | null | undefined, codecs: OmnipackObservationCodecs = {}): string | null {
   if (typeof value !== "string" || /[\p{Cc}\p{Cf}]/u.test(value)) return null;
+  const admitted = codecs.approveReference ? codecs.approveReference(value) : reference(value) !== null;
   const text = value.trim();
-  return text && text.length <= 256 && !/[@]|[a-z][a-z0-9+.-]*:\/\//iu.test(text) ? text : null;
+  return admitted && text && text.length <= 256 && !/[@]|[a-z][a-z0-9+.-]*:\/\//iu.test(text) ? text : null;
 }
 export interface OmnipackObservationCodecs {
+  /** Pure allowlist for original correlation, tracking-number and service references; false refuses. */
+  approveReference?(value: string): boolean;
   normalizeCarrier?(input: { carrierRef: string | null; serviceRef: string | null }): string | null;
   /** Overrides query/hash policy; the adapter still requires HTTPS without credentials. */
   trackingUrl?(url: string): string | null;
@@ -43,7 +46,7 @@ function tracking(refs: OmnipackTrackingReferenceEvidence[], approve: (url: stri
   let rejectedTrackingRefs = 0, rejectedTrackingUrls = 0;
   const trackingRefs: FulfillmentObservation["trackingRefs"][number][] = [];
   for (const item of refs) {
-    const trackingNumber = correlationReference(item.trackingNumber);
+    const trackingNumber = correlationReference(item.trackingNumber, codecs);
     if (!trackingNumber) { rejectedTrackingRefs++; continue; }
     let url = publicUrl(item.trackingUrl, approve);
     if (item.trackingUrl && codecs.trackingUrl) {
@@ -55,7 +58,9 @@ function tracking(refs: OmnipackTrackingReferenceEvidence[], approve: (url: stri
     }
     if (item.trackingUrl && !url) rejectedTrackingUrls++;
     const carrierRef = reference(codecs.normalizeCarrier ? codecs.normalizeCarrier({ carrierRef: item.carrier, serviceRef: item.service }) : item.carrierKind);
-    trackingRefs.push({ trackingNumber, carrierRef, serviceRef: correlationReference(item.service), publicUrl: url });
+    const serviceRef = correlationReference(item.service, codecs);
+    if (item.service !== null && !serviceRef) rejectedTrackingRefs++;
+    trackingRefs.push({ trackingNumber, carrierRef, serviceRef, publicUrl: url });
   }
   return { trackingRefs, admission: { rejectedTrackingRefs, rejectedTrackingUrls } };
 }
@@ -67,15 +72,16 @@ export function observation(input: {
   observationCodecs?: OmnipackObservationCodecs;
 }): FulfillmentObservation {
   const evidence = input.evidence;
-  const externalRef = correlationReference(evidence.providerOrderId);
-  const providerFulfillmentRef = correlationReference(evidence.fulfilmentNumber);
-  const orderNumber = correlationReference(evidence.orderNumber);
+  const codecs = input.observationCodecs ?? {};
+  const externalRef = correlationReference(evidence.providerOrderId, codecs);
+  const providerFulfillmentRef = correlationReference(evidence.fulfilmentNumber, codecs);
+  const orderNumber = correlationReference(evidence.orderNumber, codecs);
   const fulfillmentRef = reference(input.fulfillmentRef) ?? providerFulfillmentRef ?? externalRef ?? orderNumber;
-  if (!fulfillmentRef || [evidence.providerOrderId, evidence.orderNumber, evidence.fulfilmentNumber].some(value => value !== null && !correlationReference(value))) throw refusal("missing_correlation", "normalize");
+  if (!fulfillmentRef || [evidence.providerOrderId, evidence.orderNumber, evidence.fulfilmentNumber].some(value => value !== null && !correlationReference(value, codecs))) throw refusal("missing_correlation", "normalize");
   const occurredAt = timestamp(evidence.occurredAt);
   if (evidence.occurredAt && !occurredAt) throw refusal("malformed", "normalize");
   const key = buildProviderEventId(evidence);
-  const normalizedTracking = tracking(evidence.trackingReferences, input.approveTrackingUrl, input.observationCodecs ?? {});
+  const normalizedTracking = tracking(evidence.trackingReferences, input.approveTrackingUrl, codecs);
   normalizedTracking.admission.rejectedTrackingRefs += evidence.rejectedTrackingRefs ?? 0;
   const status = input.status ?? localStatusFor(EVENT_TO_STATUS[input.event as OmnipackWebhookRouteEvent]);
   const fact = parseNormalizedFulfillmentFact({

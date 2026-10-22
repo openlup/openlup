@@ -16,5 +16,5 @@ export interface FulfillmentObservation {
 }
 export interface FulfillmentObservationPort {
   /** Authenticate untouched bytes before parsing. Inputs live only during verification. */
-  verifyAndNormalize(input: { rawBody: Uint8Array; headers: Readonly<Record<string, string>>; receivedAt: string }): Promise<{ kind: "verified"; observation: FulfillmentObservation } | { kind: "refused"; refusal: FulfillmentRefusal; diagnostics?: { invalidTimestamp: true } }>;
+  verifyAndNormalize(input: { rawBody: Uint8Array; headers: Readonly<Record<string, string>>; receivedAt: string }): Promise<{ kind: "verified"; observation: FulfillmentObservation } | { kind: "refused"; refusal: FulfillmentRefusal; diagnostics?: { invalidTimestamp?: true; rejectedCorrelationRefs?: number } }>;
 }

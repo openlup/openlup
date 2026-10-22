@@ -206,13 +206,19 @@ export function createOmnipackFulfillmentAdapter(config: OmnipackFulfillmentAdap
           if (!payload || typeof payload !== "object" || Array.isArray(payload)) return { kind: "refused", refusal: refusal("malformed", "normalize") };
           if ("event" in payload && (typeof payload.event !== "string" || !eventKind(payload.event)))
             return { kind: "refused", refusal: refusal("unsupported_event", "normalize") };
-          const evidence = mapOmnipackWebhookPayload(payload, config.notification.expectedEvent, value => correlationReference(value) !== null);
+          const original = payload as Record<string, unknown>;
+          if (original.occurredAt !== undefined && original.occurredAt !== null
+            && (typeof original.occurredAt !== "string" || !timestamp(original.occurredAt)))
+            return { kind: "refused", refusal: refusal("malformed", "normalize"), diagnostics: { invalidTimestamp: true } };
+          const rejectedCorrelationRefs = [original.orderId, original.providerOrderId, original.orderNumber, original.fulfilmentNumber]
+            .filter(value => value !== undefined && value !== null && (typeof value !== "string" || !correlationReference(value, config.observationCodecs))).length;
+          if (rejectedCorrelationRefs)
+            return { kind: "refused", refusal: refusal("missing_correlation", "normalize"), diagnostics: { rejectedCorrelationRefs } };
+          const evidence = mapOmnipackWebhookPayload(payload, config.notification.expectedEvent, value => correlationReference(value, config.observationCodecs) !== null);
           const event = eventKind(evidence.event);
           if (!event || event !== config.notification.expectedEvent) return { kind: "refused", refusal: refusal("unsupported_event", "normalize") };
-          if (![evidence.providerOrderId, evidence.orderNumber, evidence.fulfilmentNumber].some(value => correlationReference(value)))
+          if (![evidence.providerOrderId, evidence.orderNumber, evidence.fulfilmentNumber].some(value => correlationReference(value, config.observationCodecs)))
             return { kind: "refused", refusal: refusal("missing_correlation", "normalize") };
-          if (evidence.occurredAt && !timestamp(evidence.occurredAt))
-            return { kind: "refused", refusal: refusal("malformed", "normalize"), diagnostics: { invalidTimestamp: true } };
           return { kind: "verified", observation: observation({ evidence, event, receivedAt: input.receivedAt,
             rawDigest: digest(rawBody), evidenceRef: config.mintEvidenceReference(), source: "provider_webhook", approveTrackingUrl: config.approveTrackingUrl, observationCodecs: config.observationCodecs }) };
         } catch { return { kind: "refused", refusal: refusal("malformed", "normalize") }; }

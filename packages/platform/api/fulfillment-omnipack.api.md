@@ -506,7 +506,8 @@ export interface FulfillmentObservationPort {
         kind: "refused";
         refusal: FulfillmentRefusal;
         diagnostics?: {
-            invalidTimestamp: true;
+            invalidTimestamp?: true;
+            rejectedCorrelationRefs?: number;
         };
     }>;
 }
@@ -1215,9 +1216,11 @@ export declare const refusal: (reason: FulfillmentRefusal["reason"], phase: Fulf
 export declare const digest: (bytes: string | Uint8Array) => string;
 /** References are opaque identifiers, never arbitrary provider prose or URLs. */
 export declare function reference(value: string | null | undefined): string | null;
-/** Correlation/tracking text stays opaque but may contain spaces or slashes. */
-export declare function correlationReference(value: string | null | undefined): string | null;
+/** Opaque by default; wider reference shapes require an explicit adopter allowlist. */
+export declare function correlationReference(value: string | null | undefined, codecs?: OmnipackObservationCodecs): string | null;
 export interface OmnipackObservationCodecs {
+    /** Pure allowlist for original correlation, tracking-number and service references; false refuses. */
+    approveReference?(value: string): boolean;
     normalizeCarrier?(input: {
         carrierRef: string | null;
         serviceRef: string | null;

@@ -6,9 +6,9 @@ import { uniqueTrackingReferences } from "./providerTrackingReferences.js";
 
 type EffectInput = Parameters<typeof applyFulfillmentObservationEffects<FulfillmentObservation["fact"]["canonicalStatus"], "in_transit" | "delivered">>[0];
 type DispatchRef = { orderRef: string; fulfillmentRef: string; dispatchRef: string; externalRef: string | null };
-export interface FulfillmentIngressCounts { invalidTimestamps: number; rejectedTrackingRefs: number; rejectedTrackingUrls: number }
+export interface FulfillmentIngressCounts { invalidTimestamps: number; rejectedCorrelationRefs: number; rejectedTrackingRefs: number; rejectedTrackingUrls: number }
 export type FulfillmentIngressResult = { counts: FulfillmentIngressCounts } & (
-  | { kind: "refused"; receiptId: null; refusal: FulfillmentRefusal; diagnostics?: { invalidTimestamp: true } }
+  | { kind: "refused"; receiptId: null; refusal: FulfillmentRefusal; diagnostics?: { invalidTimestamp?: true; rejectedCorrelationRefs?: number } }
   | { kind: "processed" | "ignored" | "superseded"; receiptId: string; observation: FulfillmentObservation; replayed: boolean; trackingRefs: number; trackingReadBacks: number; supersededCause?: string });
 /** Safe response classes only; the host owns HTTP and localized message text. */
 export function fulfillmentIngressHttpResult(result: FulfillmentIngressResult): { status: 200 | 400 | 403 | 503; messageClass: "accepted" | "bad_request" | "forbidden" | "upstream_unavailable" } {
@@ -42,13 +42,18 @@ export async function verifyAndNormalizeFulfillmentObservation(input: {
     annotateStockContention?(eventKey: string, fulfillmentRef: string): Promise<void>;
   };
 }): Promise<FulfillmentIngressResult> {
-  const counts: FulfillmentIngressCounts = { invalidTimestamps: 0, rejectedTrackingRefs: 0, rejectedTrackingUrls: 0 };
+  const counts: FulfillmentIngressCounts = { invalidTimestamps: 0, rejectedCorrelationRefs: 0, rejectedTrackingRefs: 0, rejectedTrackingUrls: 0 };
   if (!input.enabled) return { kind: "refused", receiptId: null, counts, refusal: { reason: "disabled", phase: "verify", retryable: false } };
   const verified = await input.provider.verifyAndNormalize(input.verification);
   if (verified.kind === "refused") {
     if (verified.diagnostics?.invalidTimestamp) counts.invalidTimestamps++;
+    const rejected = verified.diagnostics?.rejectedCorrelationRefs;
+    if (typeof rejected === "number" && Number.isSafeInteger(rejected) && rejected > 0) counts.rejectedCorrelationRefs = rejected;
     return { kind: "refused", receiptId: null, refusal: verified.refusal, counts,
-      ...(counts.invalidTimestamps ? { diagnostics: { invalidTimestamp: true } } : {}) };
+      ...(counts.invalidTimestamps || counts.rejectedCorrelationRefs ? { diagnostics: {
+        ...(counts.invalidTimestamps ? { invalidTimestamp: true as const } : {}),
+        ...(counts.rejectedCorrelationRefs ? { rejectedCorrelationRefs: counts.rejectedCorrelationRefs } : {}),
+      } } : {}) };
   }
   const observation = projectObservation(verified.observation);
   counts.rejectedTrackingRefs = observation.diagnostics?.admission?.rejectedTrackingRefs ?? 0;

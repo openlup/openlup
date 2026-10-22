@@ -11,10 +11,20 @@ in the source repository.
 ## [Unreleased]
 
 - Fulfillment ingress exposes receipt IDs, a host-neutral HTTP result mapping,
-  counted timestamp/tracking refusals and persisted safe superseded causes.
-  The opt-in adapter preserves donor webhook key bytes, admits safe trimmed
-  correlation/tracking references, and supports carrier and tracking-URL codecs
-  while keeping strict URL defaults. Hosts retain referenced raw evidence.
+  counted correlation/timestamp/tracking refusals and persisted safe superseded
+  causes. The opt-in adapter preserves donor webhook key bytes and defaults to
+  strict opaque references. Adopters can explicitly allow wider reference shapes
+  through `observationCodecs.approveReference`; carrier and tracking-URL codecs
+  retain their strict defaults. Hosts retain referenced raw evidence.
+
+Migration (observation ingress): donor-format colon identities remain the
+compatibility target. Observation receipts/effects recorded by 0.22.0's native
+stores under package digest keys are not recognized under the incumbent colon
+keys, so retrying such an event can apply tracking again. Replaying a superseded
+receipt processed by 0.22.0 fails with `fulfillment_observation_outcome_conflict`.
+Drain in-flight observation retries before upgrading. No bridges or aliases are
+provided for these native rows. Wider incumbent correlation/tracking references
+require an explicit adopter allowlist; the default refuses and reports them.
 
 - Fulfillment reconciliation inputs replace `readLocalFulfillmentState` with
   `readLocalFulfillmentStatus`, `latestStatusOccurredAt` and `readHandedOverAt`;

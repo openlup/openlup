@@ -7,6 +7,9 @@ import { config as http } from "./fixtures.js";
 const eventKey = "order.shipped:external-a:parcel-a:2026-10-21T10:00:00+02:00";
 const payload = () => ({ event: "order.shipped", orderId: "external-a", fulfilmentNumber: "parcel-a", occurredAt: "2026-10-21T10:00:00+02:00",
   shipments: [{ trackingNo: "TRACK-A", carrier: "CARRIER-A", shippingMethod: "CARRIER-A_SERVICE", trackingUrl: "https://tracking.invalid/a" }] });
+// The adopter explicitly admits these additional incumbent references, not arbitrary prose.
+const incumbentReference = (value: string) => /^(?:external\/a b|TRACK A|TRACK\/B)$/u.test(value.trim())
+  || /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u.test(value);
 function fixture(body: unknown = payload(), overrides: Partial<OmnipackFulfillmentAdapterConfig> = {}) {
   const fetchImpl = vi.fn(() => { throw Error("unexpected_provider_call"); });
   const adapter = createOmnipackFulfillmentAdapter({ http: { ...http, fetchImpl }, notification: { token: () => "placeholder", expectedEvent: "order.shipped" },
@@ -79,17 +82,43 @@ it("returns and persists a safe superseded cause, including the native TypeScrip
   }
 });
 
-it("admits trimmed slash/space correlation while keeping typed fact IDs opaque and unsafe evidence out (O5)", async () => {
-  const f = fixture({ ...payload(), orderId: " external/a b ", fulfilmentNumber: null });
-  expect(await run(f.input)).toMatchObject({ kind: "processed", observation: { correlation: { externalRef: "external/a b" } } });
+it("requires an adopter codec for slash/space correlation and keeps typed fact IDs opaque (O5)", async () => {
+  const body = { ...payload(), orderId: " external/a b ", fulfilmentNumber: null };
+  expect(await run(fixture(body).input)).toMatchObject({ kind: "refused", counts: { rejectedCorrelationRefs: 1 } });
+  const f = fixture(body, { observationCodecs: { approveReference: incumbentReference } });
+  expect(await run(f.input)).toMatchObject({ kind: "processed", observation: {
+    eventKey: "order.shipped: external/a b :unknown-fulfilment:2026-10-21T10:00:00+02:00", correlation: { externalRef: "external/a b" } } });
   const stored = [...f.inbound.values()][0]!;
   expect(stored.fact.fulfillmentReference).toMatch(/^[a-f0-9]{64}$/u);
   for (const orderId of [" ", "recipient@example.invalid", "https://private.invalid/a", "bad\u0000ref", "\nexternal-a\n", "external-a\t", "a".repeat(257)]) {
     const refused = fixture({ ...payload(), orderId, fulfilmentNumber: null });
-    expect(await run(refused.input)).toMatchObject({ kind: "refused", refusal: { reason: "missing_correlation" } });
+    expect(await run(refused.input)).toMatchObject({ kind: "refused", refusal: { reason: "missing_correlation" },
+      counts: { rejectedCorrelationRefs: 1 }, diagnostics: { rejectedCorrelationRefs: 1 } });
     expect(refused.inbound.size).toBe(0);
     const mixed = fixture({ ...payload(), orderId });
     expect(await run(mixed.input)).toMatchObject({ kind: "refused" }); expect(mixed.inbound.size).toBe(0);
+  }
+});
+
+it("refuses credential/contact prose by default, counts it and excludes it from every durable output (B3/O5)", async () => {
+  // Synthetic plants only: no actual credentials or contact data.
+  for (const refused of ["Bearer placeholder-secret", "Jane Doe, +48 123 456 789"]) {
+    for (const field of ["orderId", "orderNumber", "fulfilmentNumber"] as const) {
+      const f = fixture({ ...payload(), [field]: refused });
+      const result = await run(f.input);
+      expect(result).toMatchObject({ kind: "refused", receiptId: null, counts: { rejectedCorrelationRefs: 1 }, diagnostics: { rejectedCorrelationRefs: 1 } });
+      expect(f.trace).toEqual([]); expect(f.inbound.size).toBe(0);
+      expect(JSON.stringify(result)).not.toContain(refused);
+    }
+    const body = { ...payload(), shipments: [...payload().shipments,
+      { trackingNo: refused }, { trackingNo: "TRACK-B", shippingMethod: refused }] };
+    const f = fixture(body); const result = await run(f.input);
+    expect(result).toMatchObject({ kind: "processed", counts: { rejectedTrackingRefs: 2 }, observation: {
+      eventKey, correlation: { externalRef: "external-a" }, diagnostics: { admission: { rejectedTrackingRefs: 2 } },
+      trackingRefs: [{ trackingNumber: "TRACK-A" }, { trackingNumber: "TRACK-B", serviceRef: null }] } });
+    // recordObservation receives the real projectObservation output, before any native JSON write.
+    const stored = [...f.inbound.values()][0]!;
+    for (const output of [result, stored.eventKey, stored.correlation, stored]) expect(JSON.stringify(output)).not.toContain(refused);
   }
 });
 
@@ -101,18 +130,29 @@ it("counts rejected tracking and blank entries, retains trimmed refs and dedupli
     { trackingNo: "bad\u0000ref" }, { trackingNo: "recipient@example.invalid" },
     { trackingNo: "recipient@example.invalid" }, { trackingNo: "\nTRACK-A\n" },
   ] };
-  const f = fixture(body); const result = await run(f.input);
+  const strict = await run(fixture(body).input);
+  expect(strict).toMatchObject({ kind: "processed", trackingRefs: 0, counts: { rejectedTrackingRefs: 10 } });
+  const f = fixture(body, { observationCodecs: { approveReference: incumbentReference } }); const result = await run(f.input);
   expect(result).toMatchObject({ kind: "processed", trackingRefs: 2, counts: { rejectedTrackingRefs: 7 }, observation: {
     trackingRefs: [{ trackingNumber: "TRACK A", carrierRef: "first" }, { trackingNumber: "TRACK/B" }], diagnostics: { admission: { rejectedTrackingRefs: 7 } } } });
 });
 
 it("refuses invalid occurrence early with a counted visible diagnostic and no persistence/effects (O6)", async () => {
-  for (const occurredAt of ["not-time", "2026-99-99T99:99:99Z", "2026-02-30T12:00:00Z", "2026-10-21T10:00:00"]) {
+  for (const occurredAt of [12345, {}, "", "not-time", "2026-99-99T99:99:99Z", "2026-02-30T12:00:00Z", "2026-10-21T10:00:00"]) {
     const f = fixture({ ...payload(), occurredAt });
     const result = await run(f.input);
     expect(result).toEqual({ kind: "refused", receiptId: null, refusal: { reason: "malformed", phase: "normalize", retryable: false },
-      counts: { invalidTimestamps: 1, rejectedTrackingRefs: 0, rejectedTrackingUrls: 0 }, diagnostics: { invalidTimestamp: true } });
+      counts: { invalidTimestamps: 1, rejectedCorrelationRefs: 0, rejectedTrackingRefs: 0, rejectedTrackingUrls: 0 }, diagnostics: { invalidTimestamp: true } });
     expect(httpResult(result).status).toBe(400); expect(f.trace).toEqual([]);
+  }
+});
+
+it("keeps absent/null occurrence unknown without counting a refusal (M1/O6)", async () => {
+  for (const occurredAt of [undefined, null]) {
+    const f = fixture({ ...payload(), occurredAt });
+    expect(await run(f.input)).toMatchObject({ kind: "processed", receiptId: "order.shipped:external-a:parcel-a:unknown-time",
+      counts: { invalidTimestamps: 0 }, observation: { fact: { occurredAt: null } } });
+    expect(f.inbound.size).toBe(1);
   }
 });
 
