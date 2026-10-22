@@ -61,5 +61,5 @@ export interface FulfillmentStatusStage {
 export interface FulfillmentStatusMap { version: number; comment: string; stages: readonly FulfillmentStatusStage[] }
 export const FULFILLMENT_STATUS_MAP = {
   ...CANONICAL_MAP,
-  stages: CANONICAL_MAP.stages.map(stage => ({ ...stage, providers: PROVIDER_TRACE[stage.customerStep] })),
+  stages: CANONICAL_MAP.stages.map(({ effects, ...stage }) => ({ ...stage, providers: PROVIDER_TRACE[stage.customerStep], effects })),
 } satisfies FulfillmentStatusMap;

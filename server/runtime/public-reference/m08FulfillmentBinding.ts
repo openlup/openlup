@@ -1,4 +1,4 @@
-import { createFulfillmentServices, createPostgresFulfillmentDispatchStore, FULFILLMENT_NATIVE_UNSUPPORTED } from '@openlup/platform/fulfillment';
+import { createFulfillmentServices, createPostgresFulfillmentDispatchStore } from '@openlup/platform/fulfillment';
 import type { FulfillmentDispatchRequest, FulfillmentServicesOptions } from '@openlup/platform/fulfillment/contracts';
 import { createFulfillmentContribution } from '@openlup/platform/composition';
 import type { RequiredSchema } from '@openlup/core/readiness';
@@ -21,7 +21,6 @@ export function createM08FulfillmentReferenceBinding(input: {
 }) {
   const { transactions, preparation } = input;
   const bound = typeof transactions?.run === 'function' && typeof preparation?.readAuthoritative === 'function';
-  const unsupported = FULFILLMENT_NATIVE_UNSUPPORTED;
   const run = <T>(work: (db: Executor) => Promise<T>) => transactions!.run(gateway => work(gateway as Executor));
   const executor: Executor = { query: (sql, values) => run(db => db.query(sql, values)) };
   async function lock(db: Executor, ref: string) {
@@ -57,9 +56,12 @@ export function createM08FulfillmentReferenceBinding(input: {
     async prepare(ref) { const { disposition, contactRevision } = await readPrepared(ref); return { disposition, contactRevision }; },
     async readCandidate(ref) { return (await readPrepared(ref)).candidate; },
   }) : null;
-  const services = createFulfillmentServices({ ...input.services, enabled: input.enabled, store,
-    readiness: async () => bound ? input.services.readiness() : { ready: false, refusal: unsupported },
-  });
+  const services = createFulfillmentServices({ ...input.services, enabled: input.enabled, store });
+  async function whenReady<T>(work: () => Promise<T>) {
+    const state = await services.readiness();
+    if (!state.ready) return 'kind' in state.refusal ? state.refusal : { kind: 'refused' as const, refusal: state.refusal };
+    return work();
+  }
   const contribution = createFulfillmentContribution({ version: input.version, requiredSchema: input.requiredSchema,
     fulfillment: { dispatch: bound ? services.runDispatch : null }, handlers: [], schedules: [], routes: [],
   });
@@ -67,21 +69,21 @@ export function createM08FulfillmentReferenceBinding(input: {
     services, ...contribution,
     /** No scheduler is registered. Preparation itself is also off until explicitly selected. */
     async prepare(ref: string) {
-      const state = await services.readiness();
-      if (!state.ready) return 'kind' in state.refusal ? state.refusal : { kind: 'refused' as const, refusal: state.refusal };
-      const { disposition, contactRevision } = await readPrepared(ref);
-      return { disposition, contactRevision };
+      return whenReady(async () => {
+        const { disposition, contactRevision } = await readPrepared(ref);
+        return { disposition, contactRevision };
+      });
     },
     /** Host edit, attribution/replay receipt and context update commit or roll back together. */
     async editAuthoritative(attribution: Attribution, apply: (db: Executor, attribution: Attribution) => Promise<void>) {
-      const state = await services.readiness();
-      if (!state.ready) return 'kind' in state.refusal ? state.refusal : { kind: 'refused' as const, refusal: state.refusal };
-      if (!attribution.actorUserId.trim() || !attribution.idempotencyKey.trim()) throw new Error('fulfillment_preparation_attribution_required');
-      return run(async db => {
-        const shipment = await lock(db, attribution.fulfillmentRef);
-        await apply(db, attribution);
-        const { disposition, contactRevision } = await synchronize(db, attribution.fulfillmentRef, shipment.order_id);
-        return { disposition, contactRevision };
+      return whenReady(async () => {
+        if (!attribution.actorUserId.trim() || !attribution.idempotencyKey.trim()) throw new Error('fulfillment_preparation_attribution_required');
+        return run(async db => {
+          const shipment = await lock(db, attribution.fulfillmentRef);
+          await apply(db, attribution);
+          const { disposition, contactRevision } = await synchronize(db, attribution.fulfillmentRef, shipment.order_id);
+          return { disposition, contactRevision };
+        });
       });
     },
   };

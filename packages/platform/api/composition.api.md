@@ -215,10 +215,11 @@ export interface PlatformBundle {
  * transactional binder also receives the bundle's data capability.
  */
 export interface PlatformBundleBinders {
-    /** Explicit host selection only; no default payment executor. */
+    /** Explicit host selection only; no default binder. */
     fulfillment?: (env: Env) => {
         runDispatch(): Promise<unknown>;
     } | null;
+    /** Explicit host selection only; no default payment executor. */
     payments?: (env: Env) => PaymentServices | null;
     /**
      * The supabase-js `createClient` used by the default Supabase Storage blob binder. Declared
