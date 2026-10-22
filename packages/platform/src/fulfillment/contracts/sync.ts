@@ -16,6 +16,8 @@ export interface SyncCursor {
   lastStockSyncedAt: string | null; lastMovementOccurredAt: string | null;
   /** Sanitized continuation only; no credentials, URLs or arbitrary provider payload. */
   continuation: { nextRef: string | null; startLocalDate: string | null; endLocalDate: string | null };
+  /** G15: successful sellable coverage gaps; legacy absent values read as []. */
+  coverageGapSkus?: readonly string[];
   refusal: FulfillmentRefusal | null;
 }
 export interface LocalStock { skuRef: string; onHand: number; reserved: number; unavailable: number; safetyStock: number }
@@ -27,7 +29,12 @@ export interface FulfillmentStockSyncProvider {
 }
 export interface FulfillmentStockSyncPort {
   readCursor(): Promise<SyncCursor | null>;
-  readLocalInventoryStock(): Promise<LocalStock[]>;
+  /** G16: unaggregated lines at the worker clock; quantity retains the four local balances. */
+  readLocalInventoryStock(requestedAt: string): Promise<readonly {
+    skuRef: string; quantity: Pick<LocalStock, "onHand" | "reserved" | "unavailable" | "safetyStock">;
+    fulfillable: boolean; locationStatus: "active" | "inactive";
+    lotStatus: "available" | "quarantined" | "expired" | "recalled" | null; expiresAt: string | null;
+  }[]>;
   readSkuInventoryClasses(skus: string[]): Promise<Map<string, "sellable" | "packaging" | null>>;
   readActiveReservations(skus: string[], requestedAt: string): Promise<Map<string, number>>;
   recordCursor(input: SyncCursor): Promise<void>;
