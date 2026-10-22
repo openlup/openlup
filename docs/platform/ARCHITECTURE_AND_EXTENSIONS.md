@@ -810,7 +810,27 @@ proof as uncertain with its external reference retained when acceptance is not
 already committed. Loop-start and concurrent-begin recovery ACK failures reach
 the outer catch without that rescue.
 Main and repair ACKs use identical host acceptance keys, ignoring adapter-provided
-key fields so a committed ACK replays after a lost response.
+key fields so a committed ACK replays after a lost response. Mapped evidence now
+retains item count, SKU/quantity/lot/expiry, delivery kind and pickup-point reference,
+the contact revision and provider/carrier/service selection, and worker source,
+mode and shadow flag. Contact values, arbitrary provider properties, secrets and
+signed URLs are excluded. The command fingerprint still commits to the transient
+provider command bytes. Shadow instead builds a local command identity from the
+host candidate; it requires neither a provider port nor provider preparation or
+credentials. Host readiness and selected capability checks still apply.
+
+Dispatch results retain neutral typed error code, HTTP status, retryability and
+ambiguity. Local failures retain a machine cause/SQLSTATE under their stage;
+unstructured exception prose is omitted. Redirect refusal remains conservative
+and names `redirect_refused`; a definitive unreadable 400 remains a rejection.
+After acceptance, failed ACK finalization retains `dispatch_acceptance_write_failed`,
+a safe ACK cause and the external reference with ambiguity. Recovery ACK metadata
+names the persisted external-reference proof and `noProviderPost`. The native
+store reads back the original acceptance JSON so a created ACK replays exactly,
+including recovery metadata. Native accepted-result JSON persists this evidence;
+the existing SQL finish operation discards non-accepted result detail, so durable
+rejected/unknown error retention remains a gap at that store boundary. No SQL or
+command-ledger authority is changed by these TypeScript projections.
 The separate createFulfillmentCommandLedger protocol delegates atomic fenced
 operations to a durable store; it does not keep lease/retry state locally. The
 host supplies keys, actual-command fingerprints, candidate selection, paid truth
@@ -912,7 +932,10 @@ use approved G17 inline host persistence. Ingress requires recordObservation to
 atomically deduplicate eventKey and retain firstReceivedAt, and markProcessed to
 be idempotent. Host lifecycle writes must also be idempotent so retries after
 interruption create no second durable effect. Reconciliation reads local status,
-latestStatusOccurredAt and handedOverAt through readLocalFulfillmentState.
+then ACKs acceptance, then reads latestStatusOccurredAt through separate local
+persistence methods. readHandedOverAt runs only for stale/exception invoice
+recovery. The native store retains its combined read for existing callers, but
+this worker uses the split reads so an unused handover query cannot fail a row.
 Non-stale found observations for locally cancelled/exception rows write status
 evidence only. Older known occurrences skip status/effects; an on-track row with
 handedOverAt can still retry its accounting invoice. Invalid or absent timestamps
@@ -933,6 +956,25 @@ reference before acceptance and unknown-status quarantine. Effects retain
 stock → handover → tracking → invoice order. Tracking keeps the first trimmed
 nonblank number and provider-carrier precedence; normalization/URL codecs stay
 injected.
+
+The separate `runFulfillmentReconciliationPage` operation consumes an explicit
+observation-page port. It resumes a validated version-1 `reconciliationPagination`
+checkpoint with the same page size; invalid or resized checkpoints start at zero.
+A full page advances even when item processing fails, while a short/empty or
+exhausted page resets to zero. The return value contains result counters, a
+200/502 status projection, succeeded/failed ledger status and checkpoint metadata.
+The host owns HTTP, cron, ledger writes and checkpoint persistence; no process is
+installed. The opt-in example exposes this port as `adapter.reconciliation`,
+decodes only its specific exhausted-page 400 into `page_exhausted`, and retains
+other read errors as failures. The exact `readback.read` operation still requires
+one unique match from an explicitly complete single page and never infers absence.
+Reconciliation evidence and occurrence identity retain primary/subStatus tokens,
+so distinct packed aliases remain distinct facts while identical rows replay.
+Unknown status rows correlate and ACK before quarantine; off-track unknowns stay
+benign. Accounting refusals retain safe accounting identifiers and SQLSTATE while
+preserving the permanent/transient distinction. The
+[parity witness](../../packages/platform/test/fulfillment/omnipack/dispatchReconciliationParity.test.ts)
+uses synthetic probe inputs to exercise these boundaries without a provider.
 
 [Stock sync](../../packages/platform/src/fulfillment/providerStockSyncWorker.ts)
 uses approved G15 coverageGapSkus on SyncCursor: absent is empty, and only the

@@ -1,6 +1,7 @@
-import type { FulfillmentObservation, FulfillmentReadbackResult } from "./contracts/index.js";
+import type { FulfillmentObservation, FulfillmentObservationPagePort, FulfillmentReconciliationObservation, FulfillmentOperationError } from "./contracts/index.js";
+import { localFailureReason, safeDiagnosticCode, operationError } from "./dispatchProjection.js";
 import { applyFulfillmentObservationEffects } from "./fulfillmentObservationEffects.js";
-import { observationStatusPolicy, projectCorrelation, projectObservation } from "./observationProjection.js";
+import { observationStatusPolicy, projectCorrelation, projectObservation, projectProviderStatus } from "./observationProjection.js";
 import { quarantineReconciliationStateConflict } from "./providerReconciliationError.js";
 import { isOffTrackFulfillmentStatus } from "./providerReconciliationTerminalSkip.js";
 import { normalizeReconciliationTimestamp } from "./providerReconciliationTimestamp.js";
@@ -8,22 +9,24 @@ import { enrichTrackingReference, trackingReferenceComplete, uniqueTrackingRefer
 
 type Ingress = Parameters<typeof import("./verifiedIngress.js").verifyAndNormalizeFulfillmentObservation>[0];
 type DispatchRef = NonNullable<Awaited<ReturnType<Ingress["lifecycle"]["findDispatchRef"]>>>;
-type PollEvidence = FulfillmentObservation | { correlation: FulfillmentObservation["correlation"]; eventKey: string };
-interface ReconciliationResult {
+type PollEvidence = Pick<FulfillmentObservation, "correlation" | "eventKey" | "providerStatus"> | FulfillmentObservation;
+export interface ReconciliationResult {
   ok: boolean; checked: number; updated: number; trackingRefs: number; quarantined: number;
   stateConflicts: number; exceptions: number; stale: number; offTrackSkips: number; replayed: number;
   failures: number; invoiceIssueFailures: number; invoiceIssueRefused: number;
   invoiceIssueRefusals: { fulfillmentRef: string; identifier: string | null; sqlstate: string; benign: boolean }[];
-  providerCalls: number; readBacks: number; skipped: boolean; reason?: string;
+  providerCalls: number; readBacks: number; skipped: boolean; reason?: string; providerError?: FulfillmentOperationError;
 }
 
 export async function reconcileFulfillmentObservations(input: {
   /** Adapter/host maps the private page into typed readback, preserving unknowns. */
-  readPage(input: { page: number; size: number }): Promise<readonly (FulfillmentReadbackResult | { kind: "unmapped"; evidence: { correlation: FulfillmentObservation["correlation"]; eventKey: string }; externalRef: string | null })[]>;
+  readPage(input: { page: number; size: number }): Promise<readonly FulfillmentReconciliationObservation[]>;
   batchSize: number; page?: number;
   localPersistence: {
     /** G17: local persisted chronology, never inferred from dispatch or provider state. */
-    readLocalFulfillmentState(ref: string): Promise<{ status: string | null; latestStatusOccurredAt: string | null; handedOverAt: string | null }>;
+    readLocalFulfillmentStatus(ref: string): Promise<string | null>;
+    latestStatusOccurredAt(ref: string): Promise<string | null>;
+    readHandedOverAt(ref: string): Promise<string | null>;
   };
   lifecycle: Pick<Ingress["lifecycle"], "recordStatusEvidence" | "effects" | "keys"> & {
     findDispatchRef(evidence: PollEvidence): Promise<DispatchRef | null>;
@@ -60,12 +63,12 @@ export async function reconcileFulfillmentObservations(input: {
       if (refusal.permanent) {
         result.invoiceIssueRefused += 1;
         if (result.invoiceIssueRefusals.length < 10) result.invoiceIssueRefusals.push({ fulfillmentRef: ref,
-          identifier: refusal.identifier, sqlstate: refusal.sqlstate ?? "22023", benign: refusal.benign });
-        result.reason ??= "reconciliation_invoice_issue_refused";
+          identifier: safeDiagnosticCode(refusal.identifier), sqlstate: safeDiagnosticCode(refusal.sqlstate) ?? "22023", benign: refusal.benign });
+        result.reason ??= localFailureReason("reconciliation_invoice_issue_refused", { causeMessage: refusal.identifier, causeCode: refusal.sqlstate, message: error instanceof Error ? error.message : undefined });
         return;
       }
       result.ok = false; result.failures += 1; result.invoiceIssueFailures += 1;
-      result.reason ??= "reconciliation_invoice_issue_failed";
+      result.reason ??= localFailureReason("reconciliation_invoice_issue_failed", error);
     }
   };
   for (const readback of page) {
@@ -74,11 +77,12 @@ export async function reconcileFulfillmentObservations(input: {
       if (readback.kind === "unmapped") {
         // An unknown primary status still correlates/ACKs, but an off-track row
         // must never trade a benign skip for a quarantine alarm.
-        const evidence = { eventKey: readback.evidence.eventKey, correlation: projectCorrelation(readback.evidence.correlation) };
+        const evidence = { eventKey: readback.evidence.eventKey, correlation: projectCorrelation(readback.evidence.correlation),
+          ...(readback.evidence.providerStatus ? { providerStatus: projectProviderStatus(readback.evidence.providerStatus) } : {}) };
         const ref = await input.lifecycle.findDispatchRef(evidence);
         if (!ref) { await quarantine(evidence, "missing_correlation"); continue; }
-        const state = await input.localPersistence.readLocalFulfillmentState(ref.fulfillmentRef);
-        if (isOffTrackFulfillmentStatus(state.status)) { result.offTrackSkips += 1; continue; }
+        const localState = await input.localPersistence.readLocalFulfillmentStatus(ref.fulfillmentRef);
+        if (isOffTrackFulfillmentStatus(localState)) { result.offTrackSkips += 1; continue; }
         if (!(readback.externalRef?.trim() || ref.externalRef?.trim())) { await quarantine(evidence, "missing_external_ref"); continue; }
         await input.lifecycle.acknowledgeDispatchAcceptance(ref, evidence);
         await quarantine(evidence, "unknown_status");
@@ -91,8 +95,8 @@ export async function reconcileFulfillmentObservations(input: {
       observation = projectObservation(readback.observation);
       const ref = await input.lifecycle.findDispatchRef(observation);
       if (!ref) { await quarantine(observation, "missing_correlation"); continue; }
-      const state = await input.localPersistence.readLocalFulfillmentState(ref.fulfillmentRef);
-      const offTrack = isOffTrackFulfillmentStatus(state.status);
+      const localState = await input.localPersistence.readLocalFulfillmentStatus(ref.fulfillmentRef);
+      const offTrack = isOffTrackFulfillmentStatus(localState);
       if (offTrack) result.offTrackSkips += 1;
       if (!offTrack) {
         if (!(readback.externalRef.trim() || ref.externalRef?.trim())) { await quarantine(observation, "missing_external_ref"); continue; }
@@ -100,9 +104,10 @@ export async function reconcileFulfillmentObservations(input: {
       }
       const occurredAt = normalizeReconciliationTimestamp(readback.updatedAt);
       const localStatus = observation.fact.canonicalStatus;
-      if (state.latestStatusOccurredAt && occurredAt && Date.parse(occurredAt) < Date.parse(state.latestStatusOccurredAt)) {
+      const latest = await input.localPersistence.latestStatusOccurredAt(ref.fulfillmentRef);
+      if (latest && occurredAt && Date.parse(occurredAt) < Date.parse(latest)) {
         result.stale += 1;
-        if (!offTrack && input.lifecycle.issueAccountingInvoice && state.handedOverAt) await invoice(ref.fulfillmentRef);
+        if (!offTrack && input.lifecycle.issueAccountingInvoice && await input.localPersistence.readHandedOverAt(ref.fulfillmentRef)) await invoice(ref.fulfillmentRef);
         continue;
       }
       // The normalized fact carries the same nullable occurrence used by dedupe.
@@ -115,7 +120,7 @@ export async function reconcileFulfillmentObservations(input: {
         const exception = await input.lifecycle.recordProviderException(ref, observation);
         if (exception.replayed) result.replayed += 1;
         result.exceptions += exception.replayed ? 0 : 1;
-        if (input.lifecycle.issueAccountingInvoice && state.handedOverAt) await invoice(ref.fulfillmentRef);
+        if (input.lifecycle.issueAccountingInvoice && await input.localPersistence.readHandedOverAt(ref.fulfillmentRef)) await invoice(ref.fulfillmentRef);
         continue;
       }
       const trackingRefs = [];
@@ -143,8 +148,40 @@ export async function reconcileFulfillmentObservations(input: {
       const error = observation ? await quarantineReconciliationStateConflict(caught, observation,
         input.lifecycle.classifyStateConflict, input.lifecycle.recordQuarantine, result) : caught;
       if (error === null) continue;
-      result.ok = false; result.failures += 1; result.reason ??= "reconciliation_local_operation_failed";
+      result.ok = false; result.failures += 1; result.reason ??= localFailureReason("reconciliation_local_operation_failed", error);
     }
   }
   return result;
+}
+
+
+/** Host owns scheduling, HTTP and durable job-ledger writes. This operation only projects them. */
+export async function runFulfillmentReconciliationPage(input: Omit<Parameters<typeof reconcileFulfillmentObservations>[0], "readPage" | "batchSize" | "page"> & {
+  provider: FulfillmentObservationPagePort; pageSize: number; checkpoint: unknown;
+}) {
+  if (!Number.isSafeInteger(input.pageSize) || input.pageSize <= 0) throw new Error("reconciliation_page_size_invalid");
+  const isPage = (value: unknown): value is number => Number.isSafeInteger(value) && (value as number) >= 0;
+  const checkpoint = input.checkpoint as { reconciliationPagination?: { version?: unknown; pageSize?: unknown; page?: unknown; nextPage?: unknown } } | null;
+  const saved = checkpoint?.reconciliationPagination;
+  const page = saved?.version === 1 && saved.pageSize === input.pageSize && isPage(saved.page) && isPage(saved.nextPage)
+    && (saved.nextPage === 0 || saved.nextPage === saved.page || saved.page < Number.MAX_SAFE_INTEGER && saved.nextPage === saved.page + 1) ? saved.nextPage : 0;
+  let result: ReconciliationResult;
+  let observedCount = 0;
+  let pageRead = false;
+  const empty = (): ReconciliationResult => ({ ok: true, checked: 0, updated: 0, trackingRefs: 0, quarantined: 0, stateConflicts: 0, exceptions: 0,
+    stale: 0, offTrackSkips: 0, replayed: 0, failures: 0, invoiceIssueFailures: 0, invoiceIssueRefused: 0, invoiceIssueRefusals: [], providerCalls: 0, readBacks: 0, skipped: false });
+  try {
+    const response = await input.provider.readPage({ page, size: input.pageSize });
+    if (response.kind === "page_exhausted") result = { ...empty(), reason: "page_exhausted" };
+    else if (response.kind === "failed") result = { ...empty(), ok: false, failures: 1, ...(response.error ? { providerError: operationError(response.error) } : {}), reason: response.error ? safeDiagnosticCode(response.error.code) ?? response.refusal.reason : response.refusal.reason };
+    else {
+      observedCount = response.rows.length; pageRead = true;
+      result = await reconcileFulfillmentObservations({ ...input, batchSize: input.pageSize, page, readPage: async () => response.rows });
+    }
+  } catch (error) {
+    result = { ...empty(), checked: observedCount, providerCalls: pageRead ? 1 : 0, ok: false, failures: 1, reason: localFailureReason(pageRead ? "reconciliation_page_failed" : "reconciliation_provider_read_failed", error) };
+  }
+  const nextPage = result.checked === input.pageSize && page < Number.MAX_SAFE_INTEGER ? page + 1 : 0;
+  return { status: result.ok ? 200 as const : 502 as const, ledgerStatus: result.ok ? "succeeded" as const : "failed" as const, result,
+    metadata: { reconciliationPagination: { version: 1, page, pageSize: input.pageSize, nextPage } } };
 }

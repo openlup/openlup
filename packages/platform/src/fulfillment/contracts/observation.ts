@@ -10,6 +10,8 @@ export interface FulfillmentObservation {
   firstReceivedAt: string;
   correlation: { orderRef: string | null; fulfillmentRef: string | null; externalRef: string | null; orderNumber: string | null; providerFulfillmentRef: string | null; parcelRef: string | null };
   trackingRefs: readonly FulfillmentTrackingReference[];
+  /** Original provider status tokens; canonical status does not identify an occurrence. */
+  providerStatus?: { primary: string | null; subStatus: string | null };
   diagnostics?: { refusal?: FulfillmentRefusal; stockContention?: { sqlState: "55P03"; phase: "provider_stock_consumed"; retryable: true }; annotation?: "recorded" | "failed"; recoveredPickedReceipt?: { receiptRef: string; closed: boolean } };
 }
 export interface FulfillmentObservationPort {

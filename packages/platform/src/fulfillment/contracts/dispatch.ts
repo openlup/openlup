@@ -12,7 +12,7 @@ export interface FulfillmentRefusal {
   phase: "selection" | "prepare" | "claim" | "begin" | "dispatch" | "acknowledge" | "verify" | "normalize" | "apply" | "readback" | "sync";
   retryable: boolean;
 }
-/** Frozen domain input, never copied into command evidence. Credentials stay in adapter closures. */
+/** Frozen domain input. Contact PII stays transient; only allowlisted mapped items enter evidence. Credentials stay in adapter closures. */
 export interface FulfillmentDispatchRequest {
   requestKey: string;
   fulfillmentRef: string;
@@ -21,7 +21,7 @@ export interface FulfillmentDispatchRequest {
   parcelRef: string | null;
   contactRevision: { schemaVersion: number; source: string; revision: number };
   recipient: { name: string | null; email: string | null; phone: string | null; line1: string; line2: string | null; city: string; postalCode: string; country: string; deliveryInstructions: string | null; courierInstructions: string | null };
-  lines: readonly { skuRef: string; title: string | null; quantity: number; productRef: string | null; packRef: string | null }[];
+  lines: readonly { skuRef: string; title: string | null; quantity: number; productRef: string | null; packRef: string | null; lotRef?: string | null; expirationDate?: string | null }[];
   selection: FulfillmentSelection;
 }
 /** Allowlisted durable evidence; fingerprint commits to actual adapter command bytes. */
@@ -31,11 +31,22 @@ export interface DispatchEvidence {
   providerRef: string;
   carrierRef: string | null;
   serviceRef: string | null;
+  transcript?: {
+    itemCount: number;
+    items: readonly { skuRef: string; quantity: number; lotRef: string | null; expirationDate: string | null }[];
+    deliveryKind: DeliveryKind; pickupPointRef: string | null;
+  };
+  mapping?: { source: "dispatch_worker"; mode: "shadow" | "stage" | "live"; shadowMode: boolean };
 }
-export type FulfillmentDispatchResult =
-  | { kind: "accepted"; externalRef: string; evidence: DispatchEvidence; providerAttemptKey: string; labelKey: string }
+export interface FulfillmentOperationError {
+  code: string; status: number | null; retryable: boolean; mayHaveSucceeded: boolean;
+  /** Machine cause only; never an arbitrary exception message. */
+  cause?: string;
+}
+export type FulfillmentDispatchResult = ({ error?: FulfillmentOperationError } & (
+  | { kind: "accepted"; externalRef: string; evidence: DispatchEvidence; providerAttemptKey: string; labelKey: string; recovery?: { source: "persisted_acceptance"; proof: "persisted_external_ref"; noProviderPost: true } }
   | { kind: "not_dispatched"; effectMayHaveSucceeded: false; refusal: FulfillmentRefusal }
-  | { kind: "unknown"; effectMayHaveSucceeded: true; refusal: FulfillmentRefusal };
+  | { kind: "unknown"; effectMayHaveSucceeded: true; refusal: FulfillmentRefusal }));
 export type FulfillmentDispatchPrepareResult =
   | { kind: "prepared"; evidence: DispatchEvidence }
   | { kind: "refused"; refusal: FulfillmentRefusal };

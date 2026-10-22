@@ -81,7 +81,7 @@ function fixture(mode: DispatchRecord["mode"] = "live") {
     async dispatch(request, evidence) {
       trace.push("POST"); calls += 1;
       expect(evidence.commandFingerprint).toBe(`actual-command-${request.contactRevision.revision}`);
-      expect(evidence).toEqual(record!.evidence);
+      expect({ ...evidence, mapping: record!.evidence.mapping }).toEqual(record!.evidence);
       if (response instanceof Error) throw response;
       return response ?? { kind: "accepted", externalRef: "external-a", evidence,
         providerAttemptKey: "adapter-attempt-key", labelKey: "adapter-label-key" };
@@ -136,6 +136,7 @@ it("repairs accepted proof after a lost ACK locally and never posts twice, inclu
     expect(f.record().status).toBe(committed ? "created" : "uncertain");
     expect(f.record().externalRef).toBe("external-a");
     expect(await f.run()).toMatchObject({ ok: true, providerCalls: 0, replayed: committed ? 1 : 0, updated: committed ? 0 : 1 });
+    if (!committed) expect(f.writes.at(-1)).toMatchObject({ acceptance: { recovery: { source: "persisted_acceptance", proof: "persisted_external_ref", noProviderPost: true } } });
     expect(f.calls()).toBe(1); expect(f.record().status).toBe("created");
     expect(f.trace.slice(-3)).toEqual(["list", "read", "ack"]);
     expect(f.ackKeys).toEqual([f.keys.acceptance(), f.keys.acceptance()]);

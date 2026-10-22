@@ -9,7 +9,7 @@ function fixture(status = "label_created", latest: string | null = null) {
   const input: Parameters<typeof run>[0] = {
     batchSize: 10,
     readPage: async () => [{ kind: "found", externalRef: "external-a", createdAt: null, updatedAt: f.inbound.size ? null : "2026-10-21T11:00:00Z", observation: observation("in_transit", "2026-10-21T11:00:00Z") }],
-    localPersistence: { async readLocalFulfillmentState() { return { status, latestStatusOccurredAt: latest, handedOverAt: latest }; } },
+    localPersistence: { async readLocalFulfillmentStatus() { return status; }, async latestStatusOccurredAt() { return latest; }, async readHandedOverAt() { return latest; } },
     lifecycle: { ...f.input.lifecycle,
       async recordQuarantine(_observation, reason) { f.trace.push(`quarantine:${reason}`); return { replayed: false }; },
       async recordProviderException() { f.trace.push("exception"); return { replayed: false }; },
@@ -61,7 +61,7 @@ it("preserves timestamp validation, nullable chronology, lazy tracking selection
   unmapped.input.readPage = async () => [{ kind: "unmapped", evidence: { correlation: observation().correlation, eventKey: "legacy:unmapped" }, externalRef: "external-a" }];
   expect(await run(unmapped.input)).toMatchObject({ offTrackSkips: 1, quarantined: 0 });
   expect(unmapped.trace).toEqual(["find"]);
-  unmapped.input.localPersistence.readLocalFulfillmentState = async () => ({ status: "label_created", latestStatusOccurredAt: null, handedOverAt: null });
+  unmapped.input.localPersistence.readLocalFulfillmentStatus = async () => "label_created";
   expect(await run(unmapped.input)).toMatchObject({ quarantined: 1, offTrackSkips: 0 });
   expect(unmapped.trace.slice(-3)).toEqual(["find", "ack", "quarantine:unknown_status"]);
   const missing = fixture(); missing.input.lifecycle.findDispatchRef = async () => null;

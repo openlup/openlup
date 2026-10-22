@@ -7,7 +7,7 @@ export { runFulfillmentDispatchWorker } from "./providerDispatchWorker.js";
 export { createFulfillmentCommandLedger } from "./providerCommandLedger.js";
 export { verifyAndNormalizeFulfillmentObservation } from "./verifiedIngress.js";
 export { applyFulfillmentObservationEffects } from "./fulfillmentObservationEffects.js";
-export { reconcileFulfillmentObservations } from "./providerReconciliationWorker.js";
+export { reconcileFulfillmentObservations, runFulfillmentReconciliationPage } from "./providerReconciliationWorker.js";
 export { runFulfillmentStockSyncWorker } from "./providerStockSyncWorker.js";
 export { runFulfillmentProductSyncWorker } from "./providerProductSyncWorker.js";
 export { createFulfillmentLowStockEvidenceHandler } from "./lowStockEvidenceHandler.js";

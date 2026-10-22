@@ -260,7 +260,8 @@ it("maps definitive rejection to non-submission and drops provider prose and err
   for (const reply of [() => jsonResponse({ ...plants, code: "PRIVATE_PROVIDER_CODE", message: "recipient@example.test" }, 400), () => unreadableResponse(400)]) {
     const f = fixture(reply); const req = request(); const evidence = await prepare(f.adapter, req);
     const result = await f.adapter.dispatch.dispatch(req, evidence);
-    expect(result).toEqual({ kind: "not_dispatched", effectMayHaveSucceeded: false, refusal: { reason: "io_failure", phase: "dispatch", retryable: false } }); safe(result);
+    expect(result).toEqual({ kind: "not_dispatched", effectMayHaveSucceeded: false, refusal: { reason: "io_failure", phase: "dispatch", retryable: false },
+      error: { code: expect.stringMatching(/^(?:PRIVATE_PROVIDER_CODE|http_400)$/u), status: 400, retryable: false, mayHaveSucceeded: false } }); safe(result);
     expect(await prepare(f.adapter, req)).toEqual(evidence);
     expect(await f.adapter.dispatch.dispatch(req, evidence)).toEqual(result);
     expect(f.fetchImpl).toHaveBeenCalledTimes(1);
@@ -492,7 +493,8 @@ it("classifies credential and request construction failures before POST as defin
     const f = fixture(); f.config.http.credentials = credentials;
     const adapter = entry.createOmnipackFulfillmentAdapter(f.config), req = request();
     const result = await adapter.dispatch.dispatch(req, await prepare(adapter, req));
-    expect(result).toEqual({ kind: "not_dispatched", effectMayHaveSucceeded: false, refusal: { reason: "io_failure", phase: "dispatch", retryable: false } });
+    expect(result).toEqual({ kind: "not_dispatched", effectMayHaveSucceeded: false, refusal: { reason: "io_failure", phase: "dispatch", retryable: false },
+      error: { code: "network_error", status: null, retryable: false, mayHaveSucceeded: false } });
     safe(result); expect(f.fetchImpl).not.toHaveBeenCalled();
   }
   const f = fixture(); const req = request(); const evidence = await prepare(f.adapter, req);
@@ -586,8 +588,8 @@ it("models stateless dispatch, command binding, replay and eviction interleaving
         const proof = createHash("sha256").update(JSON.stringify(["external-a", fp])).digest("hex");
         const result: Result = outcome === 0
           ? { kind: "accepted", externalRef: "external-a", evidence: evidence[index]!, providerAttemptKey: `attempt:${proof}`, labelKey: `label:${proof}` }
-          : outcome === 1 ? { kind: "unknown", effectMayHaveSucceeded: true, refusal: { reason: "io_failure", phase: "dispatch", retryable: false } }
-            : { kind: "not_dispatched", effectMayHaveSucceeded: false, refusal: { reason: "io_failure", phase: "dispatch", retryable: false } };
+          : outcome === 1 ? { kind: "unknown", effectMayHaveSucceeded: true, refusal: { reason: "io_failure", phase: "dispatch", retryable: false }, error: { code: "http_503", status: 503, retryable: false, mayHaveSucceeded: true } }
+            : { kind: "not_dispatched", effectMayHaveSucceeded: false, refusal: { reason: "io_failure", phase: "dispatch", retryable: false }, error: { code: "http_400", status: 400, retryable: false, mayHaveSucceeded: false } };
         recorded.set(fp, { evidenceKey: key(index), commandGroup: Math.floor(index / 3), result });
         return result;
       });
@@ -653,8 +655,8 @@ it("models stateless dispatch, command binding, replay and eviction interleaving
         const proof = createHash("sha256").update(JSON.stringify(["external-a", fp])).digest("hex");
         expected = outcome === 0
           ? { kind: "accepted", externalRef: "external-a", evidence: e, providerAttemptKey: `attempt:${proof}`, labelKey: `label:${proof}` }
-          : outcome === 1 ? { kind: "unknown", effectMayHaveSucceeded: true, refusal: { reason: "io_failure", phase: "dispatch", retryable: false } }
-            : { kind: "not_dispatched", effectMayHaveSucceeded: false, refusal: { reason: "io_failure", phase: "dispatch", retryable: false } };
+          : outcome === 1 ? { kind: "unknown", effectMayHaveSucceeded: true, refusal: { reason: "io_failure", phase: "dispatch", retryable: false }, error: { code: "http_503", status: 503, retryable: false, mayHaveSucceeded: true } }
+            : { kind: "not_dispatched", effectMayHaveSucceeded: false, refusal: { reason: "io_failure", phase: "dispatch", retryable: false }, error: { code: "http_400", status: 400, retryable: false, mayHaveSucceeded: false } };
         expectedPosts++;
         retained.set(fp, expected);
         if (retained.size > 2) { retained.delete(retained.keys().next().value!); evictions++; }

@@ -7,6 +7,11 @@ export function projectCorrelation(value: FulfillmentObservation["correlation"])
   return { orderRef, fulfillmentRef, externalRef, orderNumber, providerFulfillmentRef, parcelRef };
 }
 
+export function projectProviderStatus(value: NonNullable<FulfillmentObservation["providerStatus"]>): NonNullable<FulfillmentObservation["providerStatus"]> {
+  const token = (text: string | null) => typeof text === "string" && /^[A-Za-z0-9][A-Za-z0-9_ .:-]{0,127}$/u.test(text) ? text : null;
+  return { primary: token(value.primary), subStatus: token(value.subStatus) };
+}
+
 /** New boundary projection: arbitrary adapter properties are never durable. */
 export function projectObservation(value: FulfillmentObservation): FulfillmentObservation {
   const diagnostics: NonNullable<FulfillmentObservation["diagnostics"]> = {};
@@ -21,6 +26,7 @@ export function projectObservation(value: FulfillmentObservation): FulfillmentOb
     diagnostics.recoveredPickedReceipt = { receiptRef, closed };
   }
   return {
+    ...(value.providerStatus ? { providerStatus: projectProviderStatus(value.providerStatus) } : {}),
     fact: parseFulfillmentFact(value.fact), eventKind: value.eventKind, eventKey: value.eventKey,
     firstReceivedAt: value.firstReceivedAt,
     correlation: projectCorrelation(value.correlation),

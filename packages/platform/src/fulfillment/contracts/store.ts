@@ -4,6 +4,7 @@ export interface DispatchRecord {
   externalRef: string | null; mode: "shadow" | "stage" | "live";
   status: "draft" | "submitting" | "created" | "uncertain" | "failed" | "cancel_requested" | "cancelled";
   evidence: DispatchEvidence; replayed: boolean;
+  acceptance?: Extract<FulfillmentDispatchResult, { kind: "accepted" }> | null;
 }
 export interface FulfillmentStorePort {
   read(requestKey: string): Promise<DispatchRecord | null>;
