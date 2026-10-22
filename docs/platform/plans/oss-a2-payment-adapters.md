@@ -15,7 +15,7 @@ framework, account activation or release claim.
   O2 injects the host's structural SDK client: no SDK dependency or SDK import
   is added anywhere in packages. O3 keeps account-dependent capabilities
   `verification_pending` until owner TEST readback in O-P3.
-- C1 freezes exactly three public symbols: `createStripePaymentAdapter`,
+- C1 originally froze three public symbols (the bounded O-P3b-2 decision below adds five reference-support exports): `createStripePaymentAdapter`,
   `type StripePaymentAdapterConfig`, `stripePaymentCapabilities`.
 - Ruling C retains donor modules and their characterization logic unchanged,
   except mechanical import/fixture relocation, neutral reference identity and
@@ -54,7 +54,7 @@ must translate that input to its selected SDK. In particular an off-session
 request must be confirmed server-side and associated with the saved method's
 customer. The host must restrict the offered interactive methods to the stated
 card/wallet contract. This package does not construct an SDK or read environment.
-Pure intent-mapping helpers remain private implementation details.
+The O-P3b-2 decision below exposes the two existing pure intent mappers solely as experimental reference support.
 
 The adapter offers client-confirmed payments, saved-method unattended charges,
 verified money/method observations and purpose-sensitive readback. The host
@@ -101,8 +101,8 @@ supervisor; these local checks grant none of that authority.
 
 ## O-P2 boundary and named deltas
 
-`@openlup/platform/payments/tpay` exports exactly `createTpayPaymentAdapter`,
-`type TpayPaymentAdapterConfig` and `tpayPaymentCapabilities`. The host explicitly
+`@openlup/platform/payments/tpay` originally exports `createTpayPaymentAdapter`,
+`type TpayPaymentAdapterConfig` and `tpayPaymentCapabilities`; O-P3b-2 adds six reference-support exports below. The host explicitly
 supplies HTTP credentials/fetch, callback and return URLs, mode, Model O
 activation policy, certificate root, HTTPS certificate directory prefix ending
 in `/`, and an asynchronous certificate resolver. Importing performs no I/O,
@@ -207,12 +207,12 @@ The programme budget of +100 cases / +30 s counts net-new cases. A test carried 
 | server/adapters/stripe/a2StripeSignatureCharacterization.test.ts | `a2StripeSignatureCharacterization.test.ts` | 3 | moved-pending: adopter copy retires at C5 |
 | server/adapters/stripe/a2StripeStatusCharacterization.test.ts | `a2StripeStatusCharacterization.test.ts` | 3 | moved-pending: adopter copy retires at C5 |
 | — | `conformance.test.ts` | 1 | net-new |
-| server/adapters/stripe/declineFailureHints.test.ts | `declineFailureHints.test.ts` | 41 | moved-pending: root `server/adapters/stripe/declineFailureHints.test.ts` retires at O-P3; adopter copy at C5 |
-| server/adapters/stripe/executionDecline.test.ts | `executionDecline.test.ts` | 10 | moved-pending: root `server/adapters/stripe/executionDecline.test.ts` retires at O-P3; adopter copy at C5 |
+| server/adapters/stripe/declineFailureHints.test.ts | `declineFailureHints.test.ts` | 41 | root-retired at O-P3b-2; moved-pending: adopter copy at C5 |
+| server/adapters/stripe/executionDecline.test.ts | `executionDecline.test.ts` | 10 | root-retired at O-P3b-2; moved-pending: adopter copy at C5 |
 | — | `factory.test.ts` | 16 | net-new |
-| server/adapters/stripe/stripeFailureEvidence.test.ts | `stripeFailureEvidence.test.ts` | 16 | moved-pending: root `server/adapters/stripe/stripeFailureEvidence.test.ts` retires at O-P3; adopter copy at C5 |
-| server/adapters/stripe/stripeIntentConfirmationEvidence.test.ts | `stripeIntentConfirmationEvidence.test.ts` | 12 | moved-pending: root `server/adapters/stripe/stripeIntentConfirmationEvidence.test.ts` retires at O-P3; adopter copy at C5 |
-| server/adapters/stripe/stripePaymentReconciliationProvider.test.ts | `stripePaymentReconciliationProvider.test.ts` | 33 | moved-pending: root `server/adapters/stripe/stripePaymentReconciliationProvider.test.ts` retires at O-P3; adopter copy at C5 |
+| server/adapters/stripe/stripeFailureEvidence.test.ts | `stripeFailureEvidence.test.ts` | 16 | root-retired at O-P3b-2; moved-pending: adopter copy at C5 |
+| server/adapters/stripe/stripeIntentConfirmationEvidence.test.ts | `stripeIntentConfirmationEvidence.test.ts` | 12 | root-retired at O-P3b-2; moved-pending: adopter copy at C5 |
+| server/adapters/stripe/stripePaymentReconciliationProvider.test.ts | `stripePaymentReconciliationProvider.test.ts` | 33 | root-retired at O-P3b-2; moved-pending: adopter copy at C5 |
 | server/adapters/stripe/stripeRefundEvidence.test.ts | `stripeRefundEvidence.test.ts` | 20 | moved-pending: adopter copy retires at C5 |
 | server/adapters/stripe/stripeSandboxPaymentExecutionAdapter.test.ts | `stripeSandboxPaymentExecutionAdapter.test.ts` | 39 | moved-pending: adopter copy retires at C5 |
 | server/adapters/stripe/stripeWebhookNormalizer.test.ts | `stripeWebhookNormalizer.test.ts` | 26 | root-retired at O-P3b-1; moved-pending: adopter copy at C5 |
@@ -225,17 +225,17 @@ The programme budget of +100 cases / +30 s counts net-new cases. A test carried 
 | Source (adopter) | Destination (`packages/platform/test/payments/tpay/`) | Cases | Status |
 |---|---|---:|---|
 | — | `conformance.test.ts` | 1 | net-new |
-| server/adapters/tpay/declineFailureHints.test.ts | `declineFailureHints.test.ts` | 12 | moved-pending: root `server/adapters/tpay/declineFailureHints.test.ts` retires at O-P3; adopter copy at C5 |
+| server/adapters/tpay/declineFailureHints.test.ts | `declineFailureHints.test.ts` | 12 | root-retired at O-P3b-2; moved-pending: adopter copy at C5 |
 | — | `factory.test.ts` | 64 | net-new |
 | — | `readbackParity.test.ts` | 5 | net-new: all 40 status/purpose/amount combinations, plus both success aliases (48 observations) |
 | server/adapters/tpay/tpayCreateTransactionInput.test.ts | `tpayCreateTransactionInput.test.ts` | 12 | moved-pending: adopter copy retires at C5 |
-| server/adapters/tpay/tpayDeclineEvidence.test.ts | `tpayDeclineEvidence.test.ts` | 71 | moved-pending: root `server/adapters/tpay/tpayDeclineEvidence.test.ts` retires at O-P3; adopter copy at C5 |
-| server/infra/tpay/tpayDispatchFailure.test.ts | `tpayDispatchFailure.test.ts` | 7 | moved-pending: root `server/infra/tpay/tpayDispatchFailure.test.ts` retires at O-P3; adopter copy at C5 |
-| server/adapters/tpay/tpayFailureEvidence.test.ts | `tpayFailureEvidence.test.ts` | 15 | moved-pending: root `server/adapters/tpay/tpayFailureEvidence.test.ts` retires at O-P3; adopter copy at C5 |
+| server/adapters/tpay/tpayDeclineEvidence.test.ts | `tpayDeclineEvidence.test.ts` | 71 | root-retired at O-P3b-2; moved-pending: adopter copy at C5 |
+| server/infra/tpay/tpayDispatchFailure.test.ts | `tpayDispatchFailure.test.ts` | 7 | root-retired at O-P3b-2; moved-pending: adopter copy at C5 |
+| server/adapters/tpay/tpayFailureEvidence.test.ts | `tpayFailureEvidence.test.ts` | 15 | root-retired at O-P3b-2; moved-pending: adopter copy at C5 |
 | server/infra/tpay/tpayHttpClient.test.ts | `tpayHttpClient.test.ts` | 18 | moved-pending: adopter copy retires at C5 |
-| server/infra/tpay/tpayHttpFailure.test.ts | `tpayHttpFailure.test.ts` | 6 | moved-pending: root `server/infra/tpay/tpayHttpFailure.test.ts` retires at O-P3; adopter copy at C5 |
+| server/infra/tpay/tpayHttpFailure.test.ts | `tpayHttpFailure.test.ts` | 6 | root-retired at O-P3b-2; moved-pending: adopter copy at C5 |
 | server/adapters/tpay/tpayPaymentExecutionAdapter.test.ts | `tpayPaymentExecutionAdapter.test.ts` | 56 | moved-pending: adopter copy retires at C5 |
-| server/adapters/tpay/tpayPaymentReconciliationProvider.test.ts | `tpayPaymentReconciliationProvider.test.ts` | 46 | moved-pending: root `server/adapters/tpay/tpayPaymentReconciliationProvider.test.ts` retires at O-P3; adopter copy at C5 |
+| server/adapters/tpay/tpayPaymentReconciliationProvider.test.ts | `tpayPaymentReconciliationProvider.test.ts` | 46 | root-retired at O-P3b-2; moved-pending: adopter copy at C5 |
 | server/infra/tpay/tpayTransactionPayload.test.ts | `tpayTransactionPayload.test.ts` | 14 | moved-pending: adopter copy retires at C5 |
 | server/infra/tpay/webhookJwsVerifier.test.ts | `webhookJwsVerifier.test.ts` | 8 | root-retired at O-P3b-1; moved-pending: adopter copy at C5 (root had 2 cases; package retains all 8) |
 | server/infra/tpay/webhookNormalizer.test.ts | `webhookNormalizer.test.ts` | 28 | moved-pending: adopter copy retires at C5 |
@@ -318,3 +318,38 @@ exist in this tree):
 | server/adapters/stripe/stripeWebhookNormalizer.test.ts | keeps an unreadable validity out of the snapshot instead of guessing one |
 | server/adapters/stripe/stripeWebhookNormalizer.test.ts | never copies the instrument number even when the payload volunteers one |
 | server/adapters/stripe/stripeWebhookNormalizer.test.ts | persists verified failure diagnostics without copying raw error messages or altering event identity |
+
+### O-P3b-2 reference support and root rebinding (2026-10-22)
+
+Coordinator decision option (i) approves exactly eleven experimental vendor-only
+exports, enumerated in the [package reference-support surface](../../../packages/platform/README.md#reference-support-surface).
+Each re-exports its existing implementation and names its reference consumer in
+TSDoc. No neutral export, extra exported type, dependency or release-gate row is
+added. SDK/environment/flags, repair handoffs and payer fallback remain host-owned.
+Tpay's injected transaction client translates the host subject key, account
+path/query and simulator return context. The root prepared-attempt facade uses
+the genuine package no-charge error class, preserving nominal retry/release trust.
+
+Five Stripe root suites retire (41+10+16+12+33 = 112 cases) and six Tpay root
+suites retire (12+71+15+46+7+6 = 157 cases): **269 root cases removed**, zero new
+cases. Together with O-P3b-1, all 307 package-witness root legs are retired;
+the actual root removal across those ledger legs is 301 because the root JWS
+suite had 2 cases while the package retains 8. O-P3b-1's 4 non-ledger retirements
+remain separate. All 494 contributed package witness assertions stay unchanged and
+moved-pending for C5; the 187 adopter-only cases remain moved-pending as before.
+The programme remains 100/100 net-new cases. Hosted +30-second proof and C5
+adopter retirement remain pending.
+
+The three existing dunning fixture manifests mechanically point the readback
+seam pin to its surviving package suite; titles and assertions are unchanged.
+The root HTTP forwarder is retired; the host simulator infers its client types
+from the public HTTP factory.
+
+Existing host cases are extended for default-off/no SDK/fetch construction,
+localized success/error URLs and queries, simulator returns and real package
+HTTP no-charge errors through same-attempt retry. Existing producer tests rebind
+to package execution/readback and mappers; no new case is needed. The metadata
+search and its host behavior are preserved by the contributed reconciliation
+factory; rebinding forces no empty-search behavior reduction. No account TEST,
+release, activation, committed native review or delivery is claimed by this
+local work; those remain with the supervisor.

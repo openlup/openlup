@@ -355,7 +355,7 @@ globalThis.fetch = forbidden; http.request = forbidden; https.request = forbidde
 for (const operation of ["writeFile", "writeFileSync"]) fs[operation] = forbidden;
 syncBuiltinESMExports();
 const adapter = await import("@openlup/platform/payments/stripe");
-assert.deepEqual(Object.keys(adapter).sort(), ["createStripePaymentAdapter", "stripePaymentCapabilities"]);
+assert.deepEqual(Object.keys(adapter).sort(), ["createStripePaymentAdapter", "stripePaymentCapabilities", "createStripeSandboxPaymentExecutionAdapter", "createStripePaymentReconciliationProvider", "mapStripeIntent", "mapSetupIntent", "normalizeStripeFailureEvidence"].sort());
 let calls = 0;
 const configured = adapter.createStripePaymentAdapter({ mode: "test", supportedCurrencies: ["EUR"], webhookSigningSecrets: ["fixture"], client: {
  createPaymentIntent: async (input, options) => { calls++; assert.equal(options.idempotencyKey,"host-key");
@@ -374,7 +374,11 @@ assert.equal(calls,1); assert.equal(configured.absencePort,undefined);
 const second = await import("@openlup/platform/payments/tpay");
 const secondFactory = "create" + "T" + "payPaymentAdapter";
 const secondCapabilities = "t" + "payPaymentCapabilities";
-assert.deepEqual(Object.keys(second).sort(), [secondFactory, secondCapabilities].sort());
+assert.deepEqual(Object.keys(second).sort(), [secondFactory, secondCapabilities, "createTpayPaymentExecutionAdapter", "createTpayPaymentReconciliationProvider", "createTpayHttpClient", "normalizeTpayFailureEvidence", "aliasValue", "ProviderAttemptPreDispatchError"].sort());
+for (const entry of ["payments", "payments/contracts"]) {
+ const neutral = await import("@openlup/platform/" + entry);
+ for (const name of [...Object.keys(adapter), ...Object.keys(second)]) assert(!Object.hasOwn(neutral, name), "vendor leaked to neutral entry");
+}
 assert.equal(second[secondCapabilities].exactAbsence,"unsupported");
 assert.equal(second[secondCapabilities].refundCreate,"unsupported");
 assert.equal(second[secondCapabilities].authorizationCaptureSplit,"unsupported");

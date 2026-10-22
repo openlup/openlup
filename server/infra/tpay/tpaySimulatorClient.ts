@@ -1,11 +1,10 @@
 import { createHash } from "node:crypto";
 
-import type {
-  TpayHttpClient,
-  TpayPaymentChannel,
-  TpayTransactionCreateInput,
-  TpayTransactionCreated,
-} from "./tpayHttpClient.js";
+import { createTpayHttpClient } from "@openlup/platform/payments/tpay";
+type TpayHttpClient = ReturnType<typeof createTpayHttpClient>;
+type TpayTransactionCreateInput = Parameters<TpayHttpClient["createTransaction"]>[0];
+type TpayTransactionCreated = Awaited<ReturnType<TpayHttpClient["createTransaction"]>>;
+type TpayPaymentChannel = Awaited<ReturnType<TpayHttpClient["listPaymentChannels"]>>[number];
 
 export const TPAY_SIMULATOR_CHANNELS: TpayPaymentChannel[] = [
   {
@@ -31,7 +30,7 @@ export const TPAY_SIMULATOR_CHANNELS: TpayPaymentChannel[] = [
 /**
  * BLIK code that makes the simulator refuse a recurring mandate.
  *
- * Real Tpay reports this refusal only in `payments.errors[]`, with `result` and
+ * The provider reports this refusal only in `payments.errors[]`, with `result` and
  * every `status` field still reading like a success — and it emits no webhook for
  * failures at all. Without a way to reproduce that here, the entire decline path
  * (reason propagation, the card fallback, reservation release) would be

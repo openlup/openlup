@@ -69,6 +69,15 @@ immutable release; see the [install support policy](../../.github/INSTALL_SUPPOR
 
 ## Ownership
 
+O-P3b-2 removes the 27 duplicate root payment implementation/test paths from the
+publication catalogue. The package README owns the eleven experimental
+reference-support exports; payment contracts own nominal error trust and
+host-return translation, architecture owns package/host placement, and runtime
+owns inert composition. Root adapter and payment owners describe retained host
+policy and unchanged domain contracts. Package donor witnesses stay in place;
+the [A2 ledger](plans/oss-a2-payment-adapters.md#o-p3b-2-reference-support-and-root-rebinding-2026-10-22)
+records root retirement separately from C5 adopter retirement.
+
 The bounded unused-root payment retirement removes only the ten deleted paths
 from the authored publication catalogue. Generic HTTP helpers, package adapter
 sources and their witnesses keep their existing inventory and owners. Generated

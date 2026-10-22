@@ -21,6 +21,12 @@ pending rows cannot starve finalized provider readback. The sequential worker
 hard-caps each run at four attempts to fit the cron runtime when PSP calls use
 their full timeout.
 
+Reference execution and readback are composed from the package vendor subpaths;
+this changes no domain port, status, persistence, retry or absence contract.
+The host keeps its capability projections and localized return presentation.
+Prepared-attempt orchestration trusts the single package no-charge error class,
+re-exported by its root facade, preserving the existing retry/release boundary.
+
 ## Owns / does not own
 - **Owns:** payment intent/attempt/event lifecycle, canonical
   `PaymentSession`, `PaymentExecutionPort` seam, provider-neutral method refs,

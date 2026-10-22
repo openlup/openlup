@@ -7422,55 +7422,11 @@
       "class": "public-output"
     },
     {
-      "path": "server/adapters/stripe/declineFailureHints.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/adapters/stripe/declineFailureHints.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/adapters/stripe/executionDecline.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/adapters/stripe/executionDecline.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/adapters/stripe/stripeAdapterFactory.test.ts",
       "class": "public-output"
     },
     {
       "path": "server/adapters/stripe/stripeAdapterFactory.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/adapters/stripe/stripeFailureEvidence.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/adapters/stripe/stripeFailureEvidence.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/adapters/stripe/stripeIntentConfirmationEvidence.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/adapters/stripe/stripeIntentConfirmationEvidence.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/adapters/stripe/stripePaymentReconciliationProvider.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/adapters/stripe/stripePaymentReconciliationProvider.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/adapters/stripe/stripeSandboxPaymentExecutionAdapter.ts",
       "class": "public-output"
     },
     {
@@ -9130,47 +9086,7 @@
       "class": "public-output"
     },
     {
-      "path": "server/adapters/tpay/declineFailureHints.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/adapters/tpay/declineFailureHints.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/adapters/tpay/tpayAdapterFactory.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/adapters/tpay/tpayCreateTransactionInput.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/adapters/tpay/tpayDeclineEvidence.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/adapters/tpay/tpayDeclineEvidence.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/adapters/tpay/tpayFailureEvidence.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/adapters/tpay/tpayFailureEvidence.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/adapters/tpay/tpayPaymentExecutionAdapter.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/adapters/tpay/tpayPaymentReconciliationProvider.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/adapters/tpay/tpayPaymentReconciliationProvider.ts",
       "class": "public-output"
     },
     {
@@ -13926,14 +13842,6 @@
       "class": "public-output"
     },
     {
-      "path": "server/infra/tpay/tpayDispatchFailure.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/infra/tpay/tpayDispatchFailure.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/infra/tpay/tpayEnvironment.test.ts",
       "class": "public-output"
     },
@@ -13942,23 +13850,7 @@
       "class": "public-output"
     },
     {
-      "path": "server/infra/tpay/tpayHttpClient.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/infra/tpay/tpayHttpFailure.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/infra/tpay/tpayHttpFailure.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/infra/tpay/tpaySimulatorClient.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/infra/tpay/tpayTransactionPayload.ts",
       "class": "public-output"
     },
     {

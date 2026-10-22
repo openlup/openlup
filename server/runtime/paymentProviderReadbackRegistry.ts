@@ -1,8 +1,7 @@
 import {
   createStripePaymentReconciliationProvider,
-  type StripePaymentIntentReader,
-} from "../adapters/stripe/stripePaymentReconciliationProvider.js";
-import { createTpayPaymentReconciliationProvider } from "../adapters/tpay/tpayPaymentReconciliationProvider.js";
+} from "@openlup/platform/payments/stripe";
+import { createTpayPaymentReconciliationProvider } from "@openlup/platform/payments/tpay";
 import type {
   PaymentProviderReconciliationProvider,
   ReconciliationProviderKind,
@@ -17,7 +16,7 @@ import {
   isTpayProductionOpenApiBaseUrl,
   isTpaySandboxOpenApiBaseUrl,
 } from "../infra/tpay/tpayEnvironment.js";
-import { createTpayHttpClient } from "../infra/tpay/tpayHttpClient.js";
+import { createTpayHttpClient } from "@openlup/platform/payments/tpay";
 import { createTpaySimulatorClient } from "../infra/tpay/tpaySimulatorClient.js";
 import { assertStripeKeyMode } from "../infra/providerReadiness.js";
 
@@ -64,9 +63,11 @@ function createStripeProvider(
 ): PaymentProviderRecoveryProvider | null {
   if (env.STRIPE_PROVIDER_ENABLED !== "true" || !env.STRIPE_SECRET_KEY) return null;
   assertStripeKeyMode(env.STRIPE_SECRET_KEY, env);
+  // Contributed recovery actions retain this rail's provider identity; the
+  // package's private structural carrier intentionally types that identity open.
   return createStripePaymentReconciliationProvider(
-    createStripeApiClient({ secretKey: env.STRIPE_SECRET_KEY }) as StripePaymentIntentReader,
-  );
+    createStripeApiClient({ secretKey: env.STRIPE_SECRET_KEY }),
+  ) as PaymentProviderRecoveryProvider;
 }
 
 function createTpayProvider(

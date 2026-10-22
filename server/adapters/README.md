@@ -14,8 +14,12 @@ in [Architecture and extension boundaries](../../docs/platform/ARCHITECTURE_AND_
 ## Owns
 The unused root payment webhook normalizer and its 26-case witness have
 retired after production-importer checks. The opt-in package implementation and
-witness remain; other root payment execution adapters retain their callers and
-ownership. The [payment retirement ledger](../../docs/platform/plans/oss-a2-payment-adapters.md#o-p3b-1-unused-root-retirement-2026-10-22)
+witness remain. Root payment execution, reconciliation and failure algorithms
+also retire in O-P3b-2: existing host factories now use the eleven experimental
+vendor-subpath helpers. The factories retain flags, repair capability projection,
+payer fallback and localized return translation; SDK construction and simulator
+behavior remain host-owned. Existing root diagnostic/producer cases now consume
+package factories, mappings and explicit persisted evidence fixtures. The [payment retirement ledger](../../docs/platform/plans/oss-a2-payment-adapters.md#o-p3b-1-unused-root-retirement-2026-10-22)
 records the separate root and adopter legs.
 
 The native SKU envelope reader, its mapper and the isolated draft store now

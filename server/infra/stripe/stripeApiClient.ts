@@ -1,14 +1,10 @@
-import { stripeFailureEvidence } from "../../adapters/stripe/stripeFailureEvidence.js";
 import Stripe from "stripe";
+import { mapStripeIntent, mapSetupIntent, createStripeSandboxPaymentExecutionAdapter,
+  createStripePaymentReconciliationProvider } from "@openlup/platform/payments/stripe";
 
-import type {
-  StripePaymentIntentReader,
-  StripePaymentIntentSearcher,
-} from "../../adapters/stripe/stripePaymentReconciliationProvider.js";
-import type {
-  StripeIntentLike,
-  StripeSandboxClient,
-} from "../../adapters/stripe/stripeSandboxPaymentExecutionAdapter.js";
+type StripeSandboxClient = Parameters<typeof createStripeSandboxPaymentExecutionAdapter>[0]["client"];
+type StripeReader = Parameters<typeof createStripePaymentReconciliationProvider>[0];
+type StripeIntentLike = ReturnType<typeof mapStripeIntent>;
 const STRIPE_API_VERSION = "2026-07-29.dahlia" as const;
 const DEFAULT_STRIPE_TIMEOUT_MS = 10_000;
 const DEFAULT_STRIPE_MAX_NETWORK_RETRIES = 0;
@@ -40,7 +36,7 @@ export interface StripeApiClientOptions {
 
 export function createStripeApiClient(
   options: StripeApiClientOptions,
-): StripeSandboxClient & StripePaymentIntentReader & StripePaymentIntentSearcher & StripePayoutSettlementReader {
+): StripeSandboxClient & Required<StripeReader> & StripePayoutSettlementReader {
   const stripe = new Stripe(options.secretKey, {
     apiVersion: (options.apiVersion ?? STRIPE_API_VERSION) as StripeClientConfig["apiVersion"],
     typescript: true,
@@ -192,55 +188,4 @@ function chargeSettlementRef(source: Stripe.BalanceTransaction["source"]): {
   const paymentIntentId = typeof paymentIntent === "string" ? paymentIntent : paymentIntent?.id ?? null;
   if (!paymentIntentId || !Number.isSafeInteger(source.amount) || !source.currency) return null;
   return { paymentIntentId, amount: source.amount, currency: source.currency.toUpperCase() };
-}
-
-function mapStripeIntent(intent: Stripe.PaymentIntent, knownCardOnlyRequest = false, source: "execution" | "readback" = "readback"): StripeIntentLike {
-  const customer = typeof intent.customer === "string" ? intent.customer : intent.customer?.id ?? null;
-  const paymentMethod =
-    typeof intent.payment_method === "string"
-      ? intent.payment_method
-      : intent.payment_method?.id ?? null;
-  const latestCharge =
-    typeof intent.latest_charge === "string"
-      ? intent.latest_charge
-      : intent.latest_charge?.id ?? null;
-  const mapped: StripeIntentLike = {
-    id: intent.id,
-    status: intent.status,
-    client_secret: intent.client_secret,
-    customer,
-    payment_method: paymentMethod,
-    latest_charge: latestCharge,
-    next_action: intent.next_action ? { type: intent.next_action.type ?? null } : null,
-  };
-  if (typeof intent.amount === "number") mapped.amount = intent.amount;
-  if (typeof intent.amount_received === "number") mapped.amount_received = intent.amount_received;
-  if (typeof intent.currency === "string") mapped.currency = intent.currency;
-  if (intent.last_payment_error) {
-    mapped.last_payment_error = {
-      code: intent.last_payment_error.code ?? null,
-      message: intent.last_payment_error.message ?? null,
-      type: intent.last_payment_error.type ?? null,
-    };
-  }
-  const evidence = stripeFailureEvidence(intent, { source, knownCardOnlyRequest });
-  if (evidence) mapped.diagnosticFailureEvidence = evidence;
-  return mapped;
-}
-
-function mapSetupIntent(intent: Stripe.SetupIntent): StripeIntentLike {
-  const customer = typeof intent.customer === "string" ? intent.customer : intent.customer?.id ?? null;
-  const paymentMethod =
-    typeof intent.payment_method === "string"
-      ? intent.payment_method
-      : intent.payment_method?.id ?? null;
-  return {
-    id: intent.id,
-    status: intent.status,
-    client_secret: intent.client_secret,
-    customer,
-    payment_method: paymentMethod,
-    latest_charge: null,
-    next_action: intent.next_action ? { type: intent.next_action.type ?? null } : null,
-  };
 }

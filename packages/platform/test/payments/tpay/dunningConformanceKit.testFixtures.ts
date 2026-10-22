@@ -86,7 +86,7 @@ export const DUNNING_CONFORMANCE_SCENARIOS: readonly DunningConformanceScenario[
     // contract that call travels.
     delegatesTo: [
       {
-        directory: "server/adapters",
+        directory: "packages/platform/test/payments",
         title: "keeps the code the transport parsed, and the class it reads as",
       },
       {
