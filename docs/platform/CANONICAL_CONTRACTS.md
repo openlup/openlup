@@ -107,6 +107,102 @@ query values and simulator return context. It uses the package's real
 checks; matching fields alone never establish trusted no-charge evidence.
 The neutral `payments` and `payments/contracts` exports are unchanged.
 
+## Opt-in fulfillment example
+
+The experimental Node `@openlup/platform/fulfillment/omnipack` entry exposes only
+its factory, configuration type and capability descriptor. Construction installs
+no route, schedule or default binding. The host explicitly selects the adapter,
+attests account readiness and supplies HTTP, credentials and notification tokens
+per call, product metadata, clock, evidence references and tracking URL approval.
+Credentials never establish readiness. The descriptor is deeply frozen and readonly; it stays unselected and not ready
+after a host constructs a selected, ready adapter.
+
+Preparation is stateless: it resolves host metadata, serializes the command once,
+returns only the fingerprint over those exact bytes, full contact revision and
+separate provider/carrier/service references, then discards the body. Dispatch
+first validates closed evidence and request contact/selection values and computes
+the command digest, without host callbacks, credentials or HTTP on failure.
+The single per-instance submission record retains one in-flight or
+completed result per command fingerprint, including accepted, unknown and refused
+outcomes, bound to the evidence key and canonical command digest used for submission.
+The same evidence key and command digest replay that result without I/O; a changed
+command or different evidence for an already submitted
+fingerprint refuses as `not_dispatchable`, phase `dispatch`, `retryable:false`.
+While retained, it permits no second POST. Recorded replay depends only on the
+fingerprint's submission record, complete evidence key and SHA-256 command digest,
+joining the in-flight result when necessary; later preparations cannot affect it.
+The digest covers request/order/fulfillment/parcel identity,
+contact revision, wire recipient fields, ordered line SKU/product/pack references
+and quantities, and provider/carrier/service/delivery-kind/point-ID selection.
+It excludes line titles, recipient line 2 and instructions, and pickup-point
+provider/name/address: the outbound codec forwards none of them to wire or evidence.
+Only the hash is retained in the in-memory submission record. Equivalent
+description changes remain irrelevant.
+For an unrecorded fingerprint, dispatch reserves the in-flight entry before any
+host callback, then rebuilds the body through the same computation as prepare.
+Host resolution callbacks run in prepare and again in a new dispatch and must
+return the same values for the same request. A changed fingerprint or failed
+resolution releases the reservation and refuses `not_dispatchable / dispatch /
+retryable:false` before credentials or provider I/O; the host must re-prepare.
+Otherwise dispatch resolves credentials and POSTs exactly the rebuilt bytes.
+Valid evidence can therefore dispatch without a prior prepare on this instance.
+Changed command evidence may submit once under its new fingerprint.
+The replay record is in-memory and per adapter instance, not the durable
+double-dispatch guard. Durable protection comes from M08's host ledger through
+`claim`, `begin`, `recordProviderAttempt` and `finalize`, plus any idempotency
+the provider honours. The donor evidence does not establish provider-side
+idempotency, so this example claims none.
+`OmnipackFulfillmentAdapterConfig.maxRetainedSubmissions` defaults to 10,000 and
+must be a positive safe integer at construction. It bounds completed submission
+retention with oldest-first eviction by admission order. Preparation retains no
+state and consumes no capacity. A new fingerprint is
+always admitted for submission capacity: in-flight entries are never evicted,
+so the submission map may temporarily exceed the target when all entries are in
+flight. Admission and each completion evict the oldest completed entries until
+the target is met or only in-flight entries remain. Matching retained replays
+keep their identical results; replay does not refresh an entry's age.
+Eviction ≡ restart for that fingerprint: there is no recorded result, so dispatch
+rebuilds and POSTs if the supplied evidence still matches current resolution.
+The host ledger is the durable guard, preserving its claim/begin/attempt/finalize state across eviction or restart.
+Credential, validation and request-construction
+failures before submission and definitive rejection are `not_dispatched`;
+an unreadable rejection body preserves the status-derived rejection. An unreadable
+successful acknowledgement, lost/malformed acknowledgement and ambiguous submission
+are `unknown`. Accepted
+results carry nonempty opaque proof keys derived from provider reference and
+command fingerprint; the host worker assigns its own authoritative keys. No adapter key
+is an acceptance authority. The donor wire uses service in both carrier/service
+fields; durable evidence keeps the selected references separate. The donor
+codec does not transmit line2 or delivery/courier instructions.
+
+Token verification precedes parsing. Trusted route configuration supplies a
+missing event kind and rejects malformed explicit values and mismatches. Event identity includes event,
+provider/order identity, fulfillment and nullable occurrence, independently of
+receipt time. Token auth proves no freshness; missing occurrence stays null.
+Readback accepts only a unique positive identity match from an explicitly complete
+single-page collection of at most 100 rows (page 0, size 100); missing totals,
+pagination, truncation, empty, unmatched
+or unknown-status collections stay unknown. Exact absence, label create/void,
+cancellation and courier pickup remain unsupported; label reads belong to host
+storage. The required label port returns explicit unsupported refusals without I/O
+for create, void and read. Configured product paths accept only single-leading-slash
+path segments; request URLs must retain the configured HTTPS origin and have no
+credentials. Raw bags, provider errors, command PII and secrets never enter durable
+outputs. Tracking URLs require query-free HTTPS without credentials and explicit
+host approval. Stock collections carry a run ID/time and nullable source revision;
+collection time is no provider ordering. Product reads are pull-only in scheduled
+composition; writes require explicit host invocation and metadata.
+
+The example passes M08's offline `runFulfillmentAdapterConformance` with injected
+fake HTTP and synthetic sensitive-value plants in the
+[conformance witness](../../packages/platform/test/fulfillment/omnipack/conformance.test.ts).
+It covers dispatch/replay and pre-I/O mismatch refusal, unsupported label
+create/void, observation, positive and empty readback, stock and product sync.
+The real M08 worker also refuses fresh-instance and evicted-fingerprint replays
+against an already-begun host ledger without provider I/O. These offline checks
+provide no provider-account proof; account readbacks remain owner acts.
+See the [A3 ledger](plans/oss-a3-fulfillment-adapter.md).
+
 ## Canonical status
 
 Each domain owns its canonical status vocabulary, allowed transitions, and
@@ -179,20 +275,26 @@ A payments (M07) adapter implements `PaymentAdapter` and declares
 `PaymentAdapterConformanceSubject` from `./payments/contracts` and verification
 fixtures. See the [opt-in payment example](#opt-in-payment-example).
 
-Fulfillment adapters implement the experimental dispatch, label, observation,
-readback and sync ports from
-`@openlup/platform/fulfillment/contracts`. See the
+A fulfillment (M08) adapter declares `FulfillmentCapabilityDescriptor` and
+implements the experimental dispatch, label, observation, readback and sync ports
+from `@openlup/platform/fulfillment/contracts` (`FulfillmentDispatchPort`,
+`FulfillmentObservationPort`, `FulfillmentReadbackPort`; optional
+`FulfillmentStockSyncProvider` and `FulfillmentProductSyncProvider`). See the
 [fulfillment owner](ARCHITECTURE_AND_EXTENSIONS.md#fulfillment-contracts) for
 command preparation, host keys, replay, paid handoff and proof/storage boundaries.
-The offline runFulfillmentAdapterConformance checks adapter-owned fixtures and
+The offline `runFulfillmentAdapterConformance` checks adapter-owned fixtures and
 returns sanitized evidence. Native stores and real PostgreSQL conformance cover
-durable storage and arrival alignment; concrete example adapters remain later
-work. This surface activates no provider or reference route.
+durable storage and arrival alignment. The [opt-in fulfillment example](#opt-in-fulfillment-example)
+is the template for another warehouse, marketplace fulfillment service or parcel
+adapter and passes M08's offline runner with adapter-owned fixtures.
+Provider-account proof remains separate; account readbacks remain owner acts.
+This surface activates no provider or reference route.
 
 | Class | Shipped example subpaths |
 | --- | --- |
 | Communications | `@openlup/platform/communications/resend`, `@openlup/platform/communications/klaviyo` |
 | Payments | `@openlup/platform/payments/stripe`, `@openlup/platform/payments/tpay` |
+| Fulfillment | `@openlup/platform/fulfillment/omnipack` |
 
 The examples are default-off and opt-in: the host selects an adapter for each
 port it needs, and default wiring includes none. To write another vendor's

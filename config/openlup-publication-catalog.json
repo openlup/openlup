@@ -2306,6 +2306,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/api/fulfillment-omnipack.api.md",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/api/fulfillment.api.md",
       "class": "public-output"
     },
@@ -3358,11 +3362,23 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/fulfillment/omnipack/capabilities.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/fulfillment/omnipack/client.ts",
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/fulfillment/omnipack/index.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/fulfillment/omnipack/mappers.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/omnipack/observation.ts",
       "class": "public-output"
     },
     {
@@ -4991,6 +5007,14 @@
     },
     {
       "path": "packages/platform/test/fulfillment/omnipack/a3OmnipackWireCharacterization.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/fulfillment/omnipack/conformance.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/fulfillment/omnipack/factory.test.ts",
       "class": "public-output"
     },
     {

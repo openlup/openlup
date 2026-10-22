@@ -714,12 +714,15 @@ subpath: the status canon, actual-evidence tracking progress, current-parcel
 selection/attribution and parsers narrowed to the canonical status union. Its
 [local sources](../../packages/core/src/fulfillment/index.ts) have no I/O or platform
 dependency. Generic core fact types retain their names; narrowed aliases use the
-`Canonical` prefix. `@openlup/platform/fulfillment` keeps compatibility re-exports,
-and `/fulfillment/contracts` re-exports the shared status and progress types.
-The type-only contracts entry has no runtime or server edge; its dependencies
-are core fact, status, progress, payment-status and subscription-status types.
-No topology trigger requires another package or dependency. Platform owns the
-server orchestration and selects only injected capability profiles. Provider,
+`Canonical` prefix. Platform fulfillment lives at three existing-package subpaths:
+`@openlup/platform/fulfillment`, `/fulfillment/contracts` and the opt-in
+`/fulfillment/omnipack` example. `@openlup/platform/fulfillment` keeps compatibility
+re-exports of the core presentation, and `/fulfillment/contracts` re-exports the
+shared status and progress types. The type-only contracts entry has no runtime or
+server edge; its dependencies are core fact, status, progress, payment-status and
+subscription-status types. No topology trigger requires another package or
+dependency. Platform owns the server orchestration and selects only injected
+capability profiles. Provider,
 carrier and service remain independent; empty provider selection refuses, and
 potential support never enables a dormant route. Raw commands, credentials and
 signed label URLs stay transient at the host/adapter boundary; durable contracts
@@ -730,14 +733,55 @@ Browser graphs declare only core fulfillment modules and exclude platform
 fulfillment, the reference preparation binding and the account order screens.
 The order-management status ladder/queue pair remains host-owned.
 
-The internal `fulfillment/omnipack` transport contributes injected HTTP, per-request
-credential resolution, provider codecs and selected donor witnesses without adding
-a public subpath. Order preparation materializes canonical JSON once; its SHA-256
-fingerprint and transport use exactly those bytes. Every fetch refuses redirects
-so a 307/308 cannot repeat a POST body. The transport installs no route,
-schedule or default binding. Root reference implementations remain unchanged;
-neutral-port glue, closed evidence projection and public registration are later
-phases in the [A3 ledger](plans/oss-a3-fulfillment-adapter.md).
+The deeply frozen, readonly default-off descriptor remains unselected and unready
+after host construction. Numeric HTTP settings refuse invalid values at construction.
+Every fetch refuses redirects so a 307/308 cannot repeat a POST body.
+The opt-in `@openlup/platform/fulfillment/omnipack` example composes the contributed
+transport/codecs with the frozen ports. Its host supplies HTTP, per-call secrets,
+product metadata and explicit selection/readiness. Preparation computes canonical
+bytes and closed fingerprint/contact/selection evidence without retaining state.
+Equal-valued request/evidence copies work without JavaScript object identity.
+Dispatch validates evidence and request values before host callbacks; malformed
+or inconsistent evidence refuses before credentials or HTTP. The single
+per-instance submission record is keyed by command fingerprint and bound to the
+submitted evidence key and canonical SHA-256 command digest. Matching evidence
+and command values join or replay its result without callbacks or I/O; either
+mismatch refuses `not_dispatchable / dispatch / retryable:false`. Only the hash
+of command-bearing request values is retained; codec-omitted descriptions remain
+irrelevant. For a new fingerprint, dispatch reserves the entry, resolves host
+metadata again and rebuilds through the same path as prepare. Drift releases the
+reservation and refuses before credentials or provider I/O; matching evidence
+permits POST without prior local preparation. Host callbacks must return the same
+values for the same request across preparation and dispatch.
+The positive integer `maxRetainedSubmissions` (default 10,000) bounds completed
+submission retention with oldest-first eviction by admission order, without
+evicting in-flight entries or refusing new fingerprints for capacity. In-flight
+overflow is trimmed on each completion; retained replay does not refresh age.
+Eviction is equivalent to restart for that fingerprint: dispatch rebuilds and
+may POST again when evidence still matches. M08's durable claim/begin/attempt/
+finalize ledger remains the double-dispatch guard. Provider idempotency is not
+established by the donor evidence. See the [example contract](CANONICAL_CONTRACTS.md#opt-in-fulfillment-example)
+for resolution consistency and refusal phases.
+Proven pre-submission failures and definitive HTTP rejections are
+non-submissions even if the rejection body is unreadable; successful statuses
+without a readable acknowledgement and ambiguous POSTs stay unknown without retry. Accepted provider
+proof keys are opaque and deterministic; host keys remain worker-owned. Configured
+product paths cannot change the HTTPS origin or carry credentials. Observations
+authenticate before parsing and reject malformed explicit event kinds. Nullable
+occurrence is preserved; readback needs explicit complete single-page totals before
+a unique positive match, and incomplete or empty collections remain unknown.
+Label create/void and cancellation are unsupported; label reads remain host-owned.
+The frozen label port returns unsupported refusals without I/O for all its methods.
+Sync projects collection identity and closed data, with product writes only on
+explicit invocation. No route, schedule or default binding is installed. Root
+reference implementations remain unchanged. See the [example contract](CANONICAL_CONTRACTS.md#opt-in-fulfillment-example)
+and [A3 ledger](plans/oss-a3-fulfillment-adapter.md). The example passes M08's
+offline runner with injected HTTP, synthetic sensitive-value plants and explicit
+unsupported refusals. Its [conformance witness](../../packages/platform/test/fulfillment/omnipack/conformance.test.ts)
+also runs the real dispatch worker against a begun/recorded host ledger after
+adapter restart and completed-record eviction, requiring zero provider calls.
+These fixtures establish neither provider-account readiness nor durable store
+atomicity; account readbacks remain owner acts.
 
 The [dispatch port](../../packages/platform/src/fulfillment/contracts/dispatch.ts)
 prepares the actual provider command without submitting it, returns its fingerprint
