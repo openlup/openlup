@@ -1,8 +1,10 @@
 # A3 fulfillment example adapter
 
-Status: development-preview implementation ledger, 2026-10-21. O-P1 contributes
-internal OmniPack transport and witnesses only. It adds no public entry and makes
-no account-readiness, activation or release claim.
+Status: development-preview implementation ledger, 2026-10-22. O-P1 contributes
+internal transport; O-P2 adds the opt-in OmniPack entry. Local native-review
+repair 1 and focused verification are complete; fresh native review and O-P3
+integration remain owed.
+No account-readiness, activation or release claim is made.
 
 ## Outcome, authority and boundary
 
@@ -13,14 +15,14 @@ after M08's port freeze; no direct-carrier packaging.” The frozen M08 P1 input
 hosts own credentials, transport policy, metadata, account verification and activation.
 
 Owner repair-1 grant (2026-10-22): Codex performs local merges, repairs, focused
-checks and commits in O-P1 then O-P2, using the supplied identity and trailers.
+checks and commits in O-P1 then O-P2 with the supplied identity and trailers.
 Only `git fetch origin` is authorized network access; no push, PR, release,
-account/adoption action, provider/database access, secrets or installs. Claude
-retains native re-review and delivery.
-Acceptance here is the selected donor slice with the bounded error-code adaptation below, injected I/O,
-exact serialized-body fingerprint binding, 18 equivalent witnesses plus minimal
-adaptation tests, scoped neutrality with no baseline increase and answered docs
-impact. Full gates and the two fresh committed control reviews remain with Claude.
+account/adoption action, provider/database access, secrets or installs. Heavy
+runs are serialized. Claude retains committed native re-review, broad gates and
+delivery. Scope is the four supplied native reports, M08 merge reconciliation,
+the selected hardening and documentation fixes; other advisory trims are excluded.
+Acceptance is the focused checks in the owner brief, exact three-symbol entry,
+unchanged registration, current documentation, bounded counts and clean worktrees.
 
 O-P1 excludes public factory/configuration/descriptor, exports, API report,
 package manifest and release gates. Publication catalogue registration is part
@@ -72,11 +74,9 @@ Destination prefix: `packages/platform/test/fulfillment/omnipack/`.
 | Allowance, refusal plants, negative subtraction → `scripts/public-ci-neutrality.test.ts` | 3 | net-new | 24 |
 | Synthetic fixture helpers → `fixtures.ts` | 0 | helper only | 24 |
 
-O-P1 is **24 net-new**. Projection: private V-C1 18 + O-P1 24 + O-P2 glue 16 and
-cold import 2 + O-P3 conformance 2 = **62**, leaving 38 below the round's +100 cap
-(10 of that headroom is a planning reserve). Generated package-boundary rows are
-reported separately under ruling A; their actual runtime still counts. Recount
-expanded cases at each phase; stop if the complete projection exceeds 100.
+O-P1 remains **24 net-new**. Current O-P2 and whole-round counts appear below;
+loops extend assertions within existing authored cases. Generated package-boundary
+rows are reported separately under ruling A; actual runtime still counts.
 
 ## Provenance and mechanical adaptations
 
@@ -88,7 +88,7 @@ for comparison; identical rows below were checked by bytes. Destination prefix:
 
 | V source; O root reference at the same path | Destination | Boundary adaptation |
 | --- | --- | --- |
-| `server/infra/omnipack/client.ts` (identical) | `client.ts` | Remove environment/readiness reader and ambient-fetch default; require injected HTTP and a per-attempt credential supplier. Omit unused cancellation/inbound methods, related imports and config. Order creation takes serialized bytes; retry, timeout and auth semantics unchanged. Host explicitly supplies timing/path settings. Lead-approved repair: surface provider-supplied codes only when matching `^[A-Z][A-Z0-9_]{0,63}$`, otherwise reuse the donor's missing-code fallback `http_<status>`; payload values must not escape through error codes; donor passed codes unchanged. |
+| `server/infra/omnipack/client.ts` (identical) | `client.ts` | Remove environment/readiness reader and ambient-fetch default; require injected HTTP and a per-attempt credential supplier. Omit unused cancellation/inbound methods, related imports and config. Order creation takes serialized bytes; retry counts, timeout and wire auth semantics unchanged. Host explicitly supplies timing/path settings. Lead-approved repair: surface provider-supplied codes only when matching `^[A-Z][A-Z0-9_]{0,63}$`, otherwise reuse the donor's missing-code fallback `http_<status>`; payload values must not escape through error codes; donor passed codes unchanged. Round 2 adaptation: classify non-2xx status before consuming its body; on unreadable rejection bodies keep `http_<status>` and the status-derived submission classification rather than the donor network-error fallback, because a known definitive rejection must remain non-submission. Successful unreadable ACKs remain unknown. |
 | `server/infra/omnipack/providerError.ts` (identical) | `providerError.ts` | None; native Error base already neutral. This internal projection is not the O-P2 public refusal contract. |
 | `server/infra/omnipack/mappers.ts` (identical) | `mappers.ts` | Omit unused inbound/cancellation interfaces/functions; remaining logic unchanged. |
 | `server/infra/omnipack/productSyncMappers.ts` (root differs in host comment) | `productSyncMappers.ts` | Neutral host terminology in a comment only. |
@@ -137,91 +137,151 @@ Generated navigation is refreshed after impact review. No public contract or
 package export is introduced by the internal modules. The catalogue inventories
 their public source/test outputs and ledger without exposing a public entry.
 
-## Execution evidence and handoff
+## O-P2 public neutral-port glue
 
-Initial implementation results (2026-10-21; historical, before repair round 1):
+Outcome: add only the opt-in `@openlup/platform/fulfillment/omnipack` entry on
+updated O-P1, retaining current main's M08 contracts and all donor witnesses.
+The three public symbols are `createOmnipackFulfillmentAdapter`,
+`omnipackFulfillmentCapabilities` and `type OmnipackFulfillmentAdapterConfig`.
+The factory's inline return type uses the frozen dispatch, label, observation,
+readback and sync provider ports. No parent re-export, orchestration, default binding,
+route, schedule, SDK, dependency or account activation is added.
 
-- `npx --no -- ast-grep scan --error=no-suppress-all --error=unused-suppression`:
-  passed after source and control edits.
-- `npm run lint`: passed, including all three package builds/typechecks, structural
-  rule tests and ESLint; 33 existing warnings elsewhere, no errors.
-- Requested package witnesses and neutrality tests plus package-boundary and
-  cold-consumer tests: **1,566 passed across 10 files**, 50.37 s wall time.
-  Expanded enumeration: package witnesses 21, neutrality 35 (32 existing + 3),
-  package boundary 1,465 (36 generated rows from these 12 source files), cold
-  consumer 45. No extra cold-consumer cases were authored.
-- Initial focused run: 55 passed, one boundary assertion failed because it treated
-  a type-only import expression as executable. The structural type moved to a
-  named type import; the complete focused rerun above passed.
-- `node scripts/public-ci-neutrality.mjs`: passed, zero increases.
-- `node --experimental-strip-types packages/ui/smoke/neutrality.ts`: passed.
-- Both requested `gitleaks detect --no-git --source` directory scans: no findings.
-- Root reference files, package manifests, export maps, release gates and
-  neutrality baseline are unchanged. The catalogue adds 21 `public-output` rows.
-- Documentation impact evaluated with the existing checker API against frozen P1:
-  two obligations, **zero unanswered**, answered by the architecture and contributor
-  sections. `--policy --docs-update` regenerated navigation without a byte delta.
-  Initial policy execution was blocked before catalogue registration; that scope
-  conflict is resolved by the O-P1 registration decision above. Review of candidate
-  `93e3d482` observed policy **PASS** with `OPENLUP_STACK_BASE=9328b676f28dfd08ccba159c25feb502e4c45ddd`,
-  two obligations and zero unanswered. Reviewers' sandbox-blocked Vitest and
-  neutrality attempts establish no test pass.
+The repair-1 owner grant above supersedes earlier local-only Git restrictions.
+O-P3 owns committed integration with the actual, now-shipped M08 runner. Prior
+scratch results do not claim that integration or provider/account readiness.
 
-Repair round 1 focused results (2026-10-21):
+Current implementation/proof: retain the client/codecs and
+closed neutral projections, with stateless preparation and one bounded submission
+record. Dispatch validates evidence/request values, joins or replays retained
+results by evidence and command digest, otherwise reserves and rebuilds before
+credentials/HTTP. Callback drift refuses and releases the reservation. Host
+selection and readiness are independent of secrets. Provider bags/errors are discarded, unsafe
+tracking URLs dropped, occurrence remains nullable and empty reads stay unknown.
+Accepted results carry nonempty opaque hashes of provider reference and command
+fingerprint as provider proof keys; the worker supplies authoritative host keys. Product writes require
+explicit invocation; no scheduled push is installed. Unsupported labels return typed refusals through the required frozen label port;
+cancel has no callable member. Their descriptors remain supported:false with reasons.
 
-- Package witnesses, neutrality, package-boundary and cold-consumer tests:
-  **1,566 passed across 10 files**, 77.85 s; expanded counts remain 21, 35,
-  1,465 and 45 respectively. No authored cases were added: O-P1 remains 24
-  net-new and the round projection remains 62.
-- Platform typecheck (`tsc -p packages/platform/tsconfig.build.json --noEmit`)
-  and the requested ast-grep scan passed. Full lint/gates remain Claude-owned.
-- Tree-wide neutrality passed with zero increases; both package source/test
-  directory gitleaks scans found no leaks.
-- Pinned publication policy passed with two obligations and zero unanswered.
-  Generated navigation is refreshed with `--policy --docs-update` before the
-  final policy check.
-- Removed the three extra EOF blank lines identified in review; stacked
-  `git diff --check 9328b676f28dfd08ccba159c25feb502e4c45ddd` now passes.
-- No git writes, installs, network access or credential reads were performed.
+### O-P2 case ledger
 
-Native signed-commit reviews, broad checks and delivery are Claude-owned; no
-local check claims their completion. O-P2 must bind prepared requests/evidence,
-project safe facts, add explicit unsupported-operation refusals and register the
-three-symbol entry. O-P3 must use the real M08 runner; no substitute is created.
+| Destination | Cases | Status | O-P1 + O-P2 running total |
+| --- | ---: | --- | ---: |
+| `packages/platform/test/fulfillment/omnipack/factory.test.ts` | 29 | net-new glue/refusal/redaction; rounds 1/2/4/5/6/8 add 4/1/2/1/1/1; existing replay/model cases extended | 53 |
+| `packages/platform/test/fulfillment/omnipack/transportAdaptation.test.ts` | 1 | round 2 unreadable rejection; 3 O-P1 cases retained | 54 |
+| `scripts/packages/platform-cold-consumer.test.ts` | 1 | net-new installed import/default-off/injected I/O | 55 |
 
-Simplicity pre-check for the supervisor's first review: retain the selected donor
-functions and inject the two host I/O seams directly; a parallel transport or new
-abstraction would duplicate existing semantics without improving this boundary.
-Self-retro: a type-only import caused one false boundary failure; use a named type
-import to keep the selected runtime dependency boundary explicit. Selected donor
-witnesses avoid wholesale duplication while retaining the relevant behaviors.
-Repair rethink/self-retro: weakened witnesses and unrestricted response codes →
-extend the existing cases and constrain the response extraction seam, preserving
-the donor fallback and avoiding a new error vocabulary or extra cases.
+Current counts: factory **29**, transport **4** (3 O-P1 + 1 O-P2), characterization
+**18**, adapter total **51**. O-P2 is **31 net-new** including the one cold-consumer
+case. O-P1 + O-P2 is **55**; private V-C1 18 + 55 + O-P3 projected 2 = **75 / 100**,
+leaving 25 cases, including the 10-case planning reserve. Counting the two scratch
+restart/eviction witnesses conservatively gives **77 / 100**. Repair 1 adds no
+`it()` cases. Generated package-boundary rows remain separate under ruling A.
+
+Simplicity pre-check for Claude's committed reviews: reuse the contributed
+transport/codecs, keep preparation transient and project allowlisted fields;
+a second transport, durable command cache or generic sanitization framework is
+unnecessary. Native reviewers must review the committed stabilized tree, with
+two independent full reviews under the existing process, including simplicity.
+
+## Prior local repairs: findings → decision → lesson
+
+Nine local repair rounds preceded these native reports. They do not reset any
+native session counter, repair budget, finding history or expiry. Those remain in
+the existing native session; this ledger is not a review receipt. Historical
+local/scratch observations below are not current-tree acceptance evidence.
+
+| Rounds / findings | Decision | Lesson |
+| --- | --- | --- |
+| 1: mutable requests, incomplete readback, explicit malformed event | Snapshot command inputs, require complete page totals, distinguish absent and malformed event kinds. | Admit evidence only at its actual boundary. |
+| 2: unreadable HTTP rejection, weak input shape | Preserve definitive rejection from status and validate before callbacks. | Response parsing must not erase known non-submission. |
+| 3: replay identity and neutral projection gaps | Bind full evidence/contact and project closed outputs. | Keep provider bags transient. |
+| 4: object identity blocked cloned worker inputs | Bind equal-valued request/evidence; use the actual worker in scratch. | Value contracts must survive serialization. |
+| 5: preparation capacity and callback races | Bound state and reserve before awaiting resolution. | Async admission needs a single owner. |
+| 6: crossed-command replay | Model concurrent/repeated preparation and recorded submission independently. | Tests need an independent state oracle. |
+| 7: changed-command stale evidence | Bind evidence plus command-bearing request digest; omit codec-unused descriptions. | Keep precisely the identity that affects the command. |
+| 8: unbounded completed retention | Evict oldest completed entries, never in-flight; eviction behaves like restart. | Durable double-dispatch protection belongs to the host ledger. |
+| 9: preparation history consumed capacity and outlived submissions | Remove all preparation state; rebuild only new submissions and compare fingerprints. | Replaceable caches beside replay fences → pure preparation plus one bounded record. |
+
+Round 9's unchanged seeded model rejected three earlier defective implementations
+and passed the repaired tree: 36 sequences, 3,456 generated operations, 2,592
+bounded dispatch/join transitions and 25 command variants. Historical focused
+checks passed 1,606 tests / 11 files. Scratch used 15 byte-matched M08 inputs,
+10 tests and actual worker restart/eviction refusal with zero provider calls.
+Those disposable paths and unreachable intermediate commits are omitted; none
+establish committed O-P3 conformance. Earlier scope, failed attempts and consumed
+budgets carry forward; no successor programme is opened.
 
 ## Native-review repair 1 (2026-10-22)
 
-| Finding | Decision and witness | Lesson |
+Inputs: native O-P1 reports A/B failed with material A-1/A-2/B-1; O-P2 report C
+failed with material C-1, while D passed with advisory findings. The owner selected
+the fixes below. Fresh native review remains owed after these local commits.
+
+| Finding | Fix / decision | Lesson |
 | --- | --- | --- |
-| A-1 | W2 uses optional signal access so dropping the fetch signal cannot masquerade as a timeout. | Observe the deadline rather than an incidental TypeError. |
-| A-2 | Existing error-code loop adds mixed-case email, hyphen and mixed/lowercase code plants. | Bound each independent regex widening. |
-| B-1 | Existing ui-15 plants add wrong package/prefix/segment, other ledger/report, fragment extension and token-prefix rows; matcher unchanged; all seven corresponding broadened mutants failed, then the scanner was restored. | Negative plants must discriminate broader matchers. |
-| B-4 | Main's fulfillment lead precedes the internal A3 paragraph after the M08 merge. | Preserve canonical owner context. |
-| C-4e | Every fetch uses `redirect: "error"`; existing ambiguous-POST case covers 307/308 and asserts redirect refusal policy. | A POST must not follow a redirect with its body. |
+| A-1 | W2 optional signal access prevents a removed signal becoming a false timeout pass. | Observe the deadline, not an incidental TypeError. |
+| A-2 | Existing error loop adds mixed-case email, hyphen and mixed/lowercase code plants. | Discriminate each independent regex widening. |
+| B-1 | Existing ui-15 plants cover package/prefix/segment, other plans/report, extension and token-prefix boundaries. All seven broader mutants failed; matcher restored unchanged. | Negative plants must fail on broadening. |
+| B-4 | A3 follows main's M08 architecture lead. | Preserve canonical owner context. |
+| C-4e | Every fetch refuses redirects; existing POST case includes 307/308 and checks `redirect: "error"`. O-P2 annotates its intermediate request as `RequestInit`. | Prevent redirected POST body repetition at the transport boundary. |
+| C-1 | Existing default-off case dispatches selected-twin evidence against unselected and unready adapters; readback and all sync methods refuse with zero credential/fetch calls. | Test each callable gate on a new submission. |
+| C-2 / D-4 | Selected/ready construction leaves the exported descriptor default-off; freeze every nested object and expose `Readonly` like the payment descriptor precedent. | Runtime immutability complements a copied profile. |
+| A-4 | Existing factory already validates numeric settings; existing construction case now rejects invalid timeout/retry values before credentials or HTTP. | Pin the constructor boundary without duplicate validation. |
+| D-1 | Three fulfillment subpaths and the whole API report family are documented in architecture and generated source mapping. | Navigation must cover the opt-in entry. |
+| D-2 | Contributor proof and fragment name missing or malformed evidence, consistent with stateless preparation. | Describe the current refusal, not an obsolete cache. |
+| D-3 | Replace long repair history with this table; remove machine-local paths, unreachable intermediate SHAs and stale projections/authority. | Retain decisions, budgets and proof limits without replaying chronology. |
+| D-6 | Canonical readback contract states page 0 / size 100 and at most 100 rows. | State the practical coverage bound. |
 
-Merged current main with M08 sources/reports/contracts intact, unioned publication
-rows, and preserved the existing A3 neutrality and contributor deltas. One merge
-base remains. No new authored cases: O-P1 stays 24 net-new.
+Merges retain main's M08 sources, contracts, reports, plan, release rows, consumer
+parts and generated release snapshot. Publication rows are the sorted union;
+README has the OmniPack row once and Canonical Contracts has one combined class
+paragraph. Both branches have exactly one merge base with main. The approved
+package export and release-gates row remain unchanged.
 
-Self-retro: broadened negative plants fit the existing case; no additional harness
-or matcher change was needed. Focused verification results are recorded below.
+Self-retro: O-P1's first focused run caught an edit syntax error and a wrong 307
+expectation, fixed before its 1,623-test rerun. Neutrality also caught a vendor
+word in redirect prose; neutral wording passed without a scanner change. The
+O-P2 merge build caught literal widening in its intermediate request object;
+a `RequestInit` annotation fixed integration without changing behavior. Existing
+cases cover these repairs, so no new harness or authored test case was needed.
 
-Verification: lint (including platform build) passed with 33 warnings and no
-errors; platform no-emit typecheck and API check passed. Fulfillment, package
-boundary and neutrality tooling: **1,623 tests / 22 files passed** (47.43 s).
-Seven broadened matcher mutants were killed. Policy pre-check, navigation
-regeneration and final policy passed with **2 obligations / 0 unanswered** and no
-generated byte delta. Initial redirect prose matched a communications vendor
-word; neutral wording fixes that without changing the scanner or baseline. The
-first focused invocation caught an edit syntax error and an incorrect 307
-expectation; both were corrected before the complete passing rerun.
+## Repair-1 focused evidence
+
+O-P1: merge and repair committed on the internal branch. Lint/build (33 warnings,
+zero errors), no-emit typecheck and API check passed. Fulfillment, package-boundary
+and neutrality tooling passed **1,623 tests / 22 files** in **47.43 s**. All seven
+broadened neutrality mutants failed; the scanner was restored. Tree neutrality
+had **0 increases**, UI smoke passed, commit-range gitleaks found no leaks, and
+policy/regeneration/final policy passed **2 obligations / 0 unanswered**.
+
+O-P2: transitive M08 declarations were regenerated during the merge; the repair
+API delta adds `Readonly` only. Compiler symbol inspection confirms exactly the
+three intended exports. Serialized lint/build (33 warnings, zero errors),
+no-emit typecheck and API check passed. Fulfillment, package-boundary, neutrality
+and cold-consumer suites passed **1,708 tests / 24 files** in **46.68 s**. The
+first new gate assertion used the wrong phase/reason; the corrected existing
+`not_dispatchable / dispatch` contract passed the targeted and complete reruns.
+Tree neutrality had **0 increases** and UI smoke passed. Stacked policy, docs
+regeneration and final policy passed **4 obligations / 0 unanswered**, pinned to
+updated O-P1. The source-map routing change required the substantive ownership
+explanation in Documentation; regeneration includes the whole report family.
+The package artifact gate passed on the committed package bytes: **1,551 files**,
+**1,112,562 packed bytes**, **4,964,926 unpacked bytes**; code class
+**968,390 / 1,126,400 bytes**, docs class **46,381 / 49,152 bytes** (5 / 10 files),
+leaving **2,771 docs bytes**. All size/file/browser caps passed with no findings;
+no budget, export registration or release-gates row changed. The local pack ran
+with offline npm and no installs. Commit-range gitleaks found no leaks. This
+closing evidence update changes no package bytes.
+
+Local repair handoff: both assigned worktrees are clean after their commits,
+M08-owned files match main, the A3 scanner implementation is unchanged by this
+repair, and no push or PR was performed. Fresh committed native reviews, their
+existing counters/expiry, the supervisor's broad gates and O-P3 remain external
+to this bounded repair; no acceptance or review budget was reset.
+
+Final self-retro: keeping the existing cases preserved the 75/100 round projection
+(77/100 conservatively) while adding independent refusal and mutation evidence.
+The ledger consolidation removes 800+ narrative lines; the actual docs artifact
+measurement replaces stale projected headroom. No further in-scope improvement
+is needed.
