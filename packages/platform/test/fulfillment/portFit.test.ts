@@ -62,7 +62,7 @@ it("keeps injected capabilities default-off with independent selection, readines
   expect(Object.keys(fulfillment).sort()).toEqual([
     "CANONICAL_LOCAL_FULFILLMENT_STATUSES", "CUSTOMER_STEP_SEQUENCE", "FULFILLMENT_STATUS_MAP",
     "buildCommerceFulfillmentOrdersListResponse", "buildCommerceFulfillmentOrderDetailResponse", "createFulfillmentShipmentsOverviewHandler", "fulfillmentProgressPresentation",
-    "collectPaidFulfillmentRecoveryCandidates", "createFulfillmentCommandLedger", "createOutboxOrderPaidFulfillmentHandler", "runFulfillmentDispatchWorker",
+    "collectPaidFulfillmentRecoveryCandidates", "createFulfillmentServices", "createFulfillmentCommandLedger", "createOutboxOrderPaidFulfillmentHandler", "runFulfillmentDispatchWorker",
     "verifyAndNormalizeFulfillmentObservation", "applyFulfillmentObservationEffects", "reconcileFulfillmentObservations", "runFulfillmentStockSyncWorker", "runFulfillmentProductSyncWorker", "createFulfillmentLowStockEvidenceHandler", "createProductReconciliationEvidenceHandler", "runFulfillmentAdapterConformance",
     "createPostgresFulfillmentShipmentSpinePort", "createPostgresFulfillmentLowStockEvidencePort", "createPostgresFulfillmentStockSyncPort", "createPostgresPaidFulfillmentRecoveryOpsPort", "createPostgresFulfillmentDispatchStore", "createPostgresPaidFulfillmentHandoffStore", "createPostgresDeliveryAlignmentPort", "readDeliveryAlignment", "FULFILLMENT_MIGRATIONS", "FULFILLMENT_NATIVE_CAPABILITIES",
     "canonicalStatusToken", "customerStepFromSignals", "parseFulfillmentFact", "parseFulfillmentTransitionConflict",

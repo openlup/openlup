@@ -30,6 +30,13 @@ state writer is not an extension seam.
 
 ## Runtime boundaries
 
+The host's current-parcel facade delegates precedence and attribution to
+`@openlup/platform/fulfillment`: highest sequence then descending identifier,
+with unattributed companion rows retaining their existing inclusion. The
+status-map facade appends only private trace metadata to the canonical package
+map, and normalized-fact parsers retain their existing host names as aliases.
+These facades preserve public values and introduce no runtime activation.
+
 Payments uses the existing bundle composer’s optional named binder. The host
 injects a scoped truth port and cleanup through `createPaymentServices`; schema
 or capability absence refuses selection. There is one executor per runtime unit,
@@ -680,8 +687,8 @@ contributed status canon and selects only injected capability profiles. Provider
 carrier and service remain independent; empty provider selection refuses, and
 potential support never enables a dormant route. Raw commands, credentials and
 signed label URLs stay transient at the host/adapter boundary; durable contracts
-carry typed facts, safe references and actual-command fingerprints. Existing reference facades
-and the order-management status ladder/queue pair remain host-owned until explicit later adoption.
+carry typed facts, safe references and actual-command fingerprints. Reference facades delegate to the package status canon, fact parsers and current-parcel helpers while preserving their existing public names and private trace metadata.
+The order-management status ladder/queue pair remains host-owned.
 
 The [dispatch port](../../packages/platform/src/fulfillment/contracts/dispatch.ts)
 prepares the actual provider command without submitting it, returns its fingerprint
@@ -786,7 +793,7 @@ labels, step resolution and payment recovery controls.
 | Replacement creation | Unsupported; no shipment, reservation, hold, receipt or outbox write | Atomic replacement port |
 | Operator lifecycle mutations | Unsupported; the native shipment spine port does not carry the operator transaction | Actor-bound mutation callbacks and replay receipts |
 | Commerce orders list/detail and shipments overview | No equivalent native commerce read | Host read callbacks for orders list, detail and shipments overview; payment status passes through the existing payments projection using core payment-intent statuses |
-| Dispatch preparation writer | No authoritative contact/selection writer | Host synchronization under the shipment lock |
+| Dispatch preparation writer | Explicit host preparation binding synchronizes revision, provider and withholding under the shipment lock, including authoritative edits | Required host reader/edit closures and transaction lane; disabled, capability-selection/readiness and unsupported-dispatch refusals precede the shared typed refusal for an absent binding, all before any worker |
 | Enforcing delivery alignment | Installation without renewal admission wiring cannot enforce the complete lifecycle | Admission wrapper before new-cycle insertion; keep native mode off until wired |
 
 `createNativeUnsupportedFulfillmentPorts` returns the single typed
@@ -800,8 +807,10 @@ write or substitute operation. The refusal is accepted by
 and the [commerce and overview read ports](../../packages/platform/src/fulfillment/contracts/read.ts);
 [`readFulfillmentDelay`](../../packages/platform/src/fulfillment/delayReadModel.ts)
 propagates it. The commerce and overview handlers return this refusal as
-UPSTREAM_UNAVAILABLE with its typed details. Dispatch preparation retains its
-own declared return type. Supplying a host fixture proves that seam's
+UPSTREAM_UNAVAILABLE with its typed details. Dispatch preparation checks activation,
+capability selection/readiness and dispatch support before returning the shared
+typed refusal for a missing host binding, all before invoking a worker.
+Supplying a host fixture proves that seam's
 handler behavior; it does not establish native parity or activate any route.
 
 The [verified ingress](../../packages/platform/src/fulfillment/verifiedIngress.ts)
@@ -930,7 +939,27 @@ admission/insert. Existing-cycle renewal and dunning retries never pass through
 admission and neither mint nor consume its one-use receipts. There is no
 `retry_scheduled` state or change to the payments lifecycle.
 
-Native dispatch uses host-supplied contact preparation and candidate data. The
+[createFulfillmentServices](../../packages/platform/src/fulfillment/bindings.ts)
+checks explicit activation, capability selection/readiness, dispatch support,
+store/provider presence and host readiness, in that order, before invoking
+the dispatch worker, including its write-capable stale-submission sweep.
+`FulfillmentServicesOptions` carries in-memory ports and closures; credentials
+remain captured by host adapters and must never be serialized with options.
+[createFulfillmentContribution](../../packages/platform/src/composition/fulfillmentContribution.ts)
+declares structural selected ports, handlers, schedules and routes. Core readiness
+retains duplicate event, schedule and route ownership checks. The bundle composer
+has an explicit fulfillment slot with no default binder.
+
+Native dispatch uses host-supplied contact preparation and candidate data.
+The [reference binding](../../server/runtime/public-reference/m08FulfillmentBinding.ts)
+uses one transaction lane and selected store/provider/readiness observer.
+It acquires the native dispatch advisory lock, then locks the shipment row before
+reading authoritative data. Its edit callback requires actor and idempotency
+attribution; the host owns authorization and replay receipts. Source edits and
+redacted context synchronization share that transaction. All authoritative edits
+must use this route. Disabled, capability-selection/readiness and
+unsupported-dispatch refusals take precedence over the shared native refusal for
+a missing preparation binding. Construction mounts and schedules nothing. The
 host synchronizes `fulfillment_dispatch_contexts` during preparation and every
 authoritative contact/selection edit under the shipment lock. Claim/begin compare
 stored revision with prepared evidence. Submission rechecks paid state, holds,

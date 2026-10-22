@@ -3130,6 +3130,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/composition/fulfillmentContribution.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/composition/httpBinding.ts",
       "class": "public-output"
     },
@@ -3182,6 +3186,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/fulfillment/bindings.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/fulfillment/commerceFulfillmentHandlers.ts",
       "class": "public-output"
     },
@@ -3191,6 +3199,10 @@
     },
     {
       "path": "packages/platform/src/fulfillment/contracts/alignment.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/contracts/bindings.ts",
       "class": "public-output"
     },
     {
@@ -4835,6 +4847,10 @@
     },
     {
       "path": "packages/platform/test/fulfillment/adapterConformance.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/fulfillment/bindings.test.ts",
       "class": "public-output"
     },
     {
@@ -14906,6 +14922,14 @@
       "class": "public-output"
     },
     {
+      "path": "server/runtime/public-reference/m08FulfillmentBinding.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/runtime/public-reference/m08FulfillmentBinding.ts",
+      "class": "public-output"
+    },
+    {
       "path": "server/runtime/public-reference/serve.test.ts",
       "class": "public-output"
     },
@@ -22386,6 +22410,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/helpers/fulfillmentComposition.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/helpers/fulfillmentNative.ts",
       "class": "public-output"
     },
@@ -22591,6 +22619,10 @@
     },
     {
       "path": "tests/postgres/fulfillmentNativeConformance.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/fulfillmentPreparationBinding.test.ts",
       "class": "public-output"
     },
     {

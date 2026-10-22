@@ -192,6 +192,9 @@ interface PaymentServices {
 }
 type Env = Record<string, string | undefined>;
 export interface PlatformBundlePorts {
+    fulfillment?: {
+        runDispatch(): Promise<unknown>;
+    } | null;
     payments?: PaymentServices | null;
     http: HttpRuntimePort | null;
     scheduler: SchedulerPort | null;
@@ -213,6 +216,9 @@ export interface PlatformBundle {
  */
 export interface PlatformBundleBinders {
     /** Explicit host selection only; no default payment executor. */
+    fulfillment?: (env: Env) => {
+        runDispatch(): Promise<unknown>;
+    } | null;
     payments?: (env: Env) => PaymentServices | null;
     /**
      * The supabase-js `createClient` used by the default Supabase Storage blob binder. Declared
@@ -239,6 +245,31 @@ export type ComposeBundle = (env: Env) => PlatformBundle;
 export declare function createBundleComposer(binders?: PlatformBundleBinders): ComposeBundle;
 export {};
 ```
+## dist/composition/fulfillmentContribution.d.ts
+
+```ts
+import type { Contribution, RequiredSchema } from '@openlup/core/readiness';
+/** Structural callables keep composition independent of fulfillment implementation types. */
+export declare function createFulfillmentContribution(input: {
+    version: string;
+    requiredSchema: RequiredSchema;
+    fulfillment: Readonly<Record<string, ((...args: never[]) => unknown) | null>>;
+    handlers: Contribution['handlers'];
+    schedules: Contribution['schedules'];
+    routes: Contribution['routes'];
+}): {
+    contributions: Contribution[];
+    ports: {
+        [k: string]: ((...args: never[]) => unknown) | null;
+    };
+    routes: {
+        [k: string]: (...args: never[]) => unknown;
+    };
+    triggers: {
+        [k: string]: (...args: never[]) => unknown;
+    };
+};
+```
 ## dist/composition/httpBinding.d.ts
 
 ```ts
@@ -260,6 +291,7 @@ export { createNodeHost, type NodeHost, type NodeHostAdmission, type NodeHostDep
 export { createCatalogContribution, type CatalogContributionInput } from "./catalogContribution.js";
 export { createInventoryContribution } from "./inventoryContribution.js";
 export { createShippingContribution } from "./shippingContribution.js";
+export { createFulfillmentContribution } from "./fulfillmentContribution.js";
 ```
 ## dist/composition/inventoryContribution.d.ts
 

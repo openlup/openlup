@@ -210,6 +210,24 @@ substituting a different business behaviour.
 
 ## Opt-in disposable subscription reference
 
+The inert [M08 fulfillment binding](../../server/runtime/public-reference/m08FulfillmentBinding.ts)
+selects one transaction lane, dispatch store, provider and readiness observer.
+Activation is default-off and checked before worker invocation, including the
+worker's stale-submission writes. The host supplies an authoritative reader
+using the locked transaction and routes every contact, selection or withholding
+edit through `editAuthoritative`, with actor and idempotency attribution and
+host-owned authorization/replay receipts. The writer locks the native dispatch
+identity and shipment, then synchronizes only revision, provider and withholding.
+Disabled, capability-selection/readiness and unsupported-dispatch refusals take
+precedence over the shared typed native refusal for missing preparation;
+all precede worker invocation. Source edits
+and context updates commit together; an error rolls both back. Credentials remain
+host closures. Construction adds no route, schedule or automatic dispatch, and
+the public reference server does not select this binding by default. Renewal
+admission remains a separate integration; native alignment mode stays off until
+that boundary is wired.
+
+
 The inert [payments binding](../../server/runtime/public-reference/m07PaymentBinding.ts)
 selects injected truth services or verified ingress only by explicit host choice.
 Unknown selections refuse and omission stays cold. No existing provider route or

@@ -13,6 +13,13 @@ import type { FulfillmentAdapterConformanceEvidence, FulfillmentAdapterConforman
 /** Runner-independent offline proof using only adapter-owned fixtures. Throws on a violated contract. */
 export declare function runFulfillmentAdapterConformance(subjects: readonly FulfillmentAdapterConformanceSubject[]): Promise<FulfillmentAdapterConformanceEvidence>;
 ```
+## dist/fulfillment/bindings.d.ts
+
+```ts
+import type { FulfillmentServices, FulfillmentServicesOptions } from './contracts/index.js';
+/** Explicit selection; no environment readers, implicit provider or automatic dispatch. */
+export declare function createFulfillmentServices(options: FulfillmentServicesOptions): FulfillmentServices;
+```
 ## dist/fulfillment/commerceFulfillmentHandlers.d.ts
 
 ```ts
@@ -162,6 +169,61 @@ export interface DeliveryAlignmentPort {
     read(fulfillmentRef: string): Promise<{
         disposition: "aligned" | "outstanding" | "manual_review";
         nextCycleAt: string | null;
+    }>;
+}
+```
+## dist/fulfillment/contracts/bindings.d.ts
+
+```ts
+import type { FulfillmentCapabilityDescriptor } from './capabilities.js';
+import type { FulfillmentDispatchPort, FulfillmentDispatchRequest, FulfillmentRefusal, FulfillmentSelection } from './dispatch.js';
+import type { FulfillmentNativeUnsupported } from './nativeUnsupported.js';
+import type { DispatchRecord, FulfillmentStorePort } from './store.js';
+/** In-memory ports and host closures only; never serialize options or recipient inputs. */
+export interface FulfillmentServicesOptions {
+    enabled?: boolean;
+    selection: FulfillmentSelection | null;
+    capability: FulfillmentCapabilityDescriptor | null;
+    store: FulfillmentStorePort | null;
+    provider: FulfillmentDispatchPort | null;
+    readiness(): Promise<{
+        ready: true;
+    } | {
+        ready: false;
+        refusal: FulfillmentRefusal | FulfillmentNativeUnsupported;
+    }>;
+    listCandidates(limit: number): Promise<readonly FulfillmentDispatchRequest[]>;
+    keys: {
+        request(candidate: FulfillmentDispatchRequest): string;
+        mappedAttempt(requestKey: string, mappedAttemptIndex: number): string;
+        acceptance(fulfillmentRef: string): {
+            providerAttemptKey: string;
+            labelKey: string;
+        };
+    };
+    config: {
+        mode: DispatchRecord['mode'];
+        batchLimit: number;
+    };
+    now?: () => Date;
+}
+/** Import and construction are inert. Every invocation checks activation before any worker. */
+export interface FulfillmentServices {
+    readiness(): ReturnType<FulfillmentServicesOptions['readiness']>;
+    runDispatch(): Promise<FulfillmentNativeUnsupported | {
+        kind: 'refused';
+        refusal: FulfillmentRefusal;
+    } | {
+        ok: boolean;
+        skipped: boolean;
+        checked: number;
+        updated: number;
+        failures: number;
+        mode: DispatchRecord['mode'];
+        replayed: number;
+        providerCalls: number;
+        readBacks: number;
+        reason: string | undefined;
     }>;
 }
 ```
@@ -435,6 +497,7 @@ export type { FulfillmentOperatorMutationPort, FulfillmentOperatorMutationResult
 export type { CustomerDeliveryAlignment, FulfillmentCustomerAlignmentRowsReader } from './customerAlignment.js';
 export type { FulfillmentCommerceReadPort, FulfillmentCommerceReadPolicy, FulfillmentOrderStatus, FulfillmentPaymentStatus, FulfillmentCommerceOrder, FulfillmentOrdersListRequest, FulfillmentOrdersListResponse, FulfillmentOrderDetailRequest, FulfillmentOrderDetailResponse, FulfillmentShipmentsOverviewPort, FulfillmentShipmentsOverviewRequest, FulfillmentShipmentsOverviewResponse } from './read.js';
 export type { FulfillmentProgressInput, FulfillmentProgressPresentation } from './read.js';
+export type { FulfillmentServicesOptions, FulfillmentServices } from './bindings.js';
 ```
 ## dist/fulfillment/contracts/label.d.ts
 
@@ -1920,6 +1983,7 @@ export { FULFILLMENT_REPLACEMENT_REFUSALS } from './replacementRefusals.js';
 export { buildCommerceFulfillmentOrdersListResponse, buildCommerceFulfillmentOrderDetailResponse } from './commerceFulfillmentReadModel.js';
 export { createFulfillmentShipmentsOverviewHandler } from './shipmentsOverviewHandler.js';
 export { fulfillmentProgressPresentation } from './trackingProgress.js';
+export { createFulfillmentServices } from './bindings.js';
 ```
 ## dist/fulfillment/labelLifecycle.d.ts
 

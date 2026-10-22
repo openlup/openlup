@@ -41,6 +41,11 @@ is not part of the published tree.
   status/operation timelines without migrating direct-carrier data.
   `providerCapabilities` exposes browser-safe plugin metadata for each registered
   provider kind; it is descriptive and does not authorize provider mutations.
+- Compatibility facades: `statusMap.ts` imports the canonical package map and
+  appends only existing private provider trace metadata. `normalizedFulfillmentFacts.ts`
+  aliases the package parsers under the existing application names, while
+  `src/lib/currentFulfillmentParcel.ts` re-exports the exact existing helpers.
+  Public fields, status values, parser types and parcel precedence are preserved.
 - Normalized evidence: `normalizedFulfillmentFacts.ts` binds the generic
   `@openlup/core/fulfillment` fact schema to the single Layer B vocabulary
   derived from `statusMap.ts`. Its public unknown-input parser validates the

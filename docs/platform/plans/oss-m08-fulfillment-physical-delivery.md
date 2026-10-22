@@ -2,7 +2,7 @@
 
 Development-preview programme design and contents. The boundary is recorded in
 decisions D0–D13, carrier-fit amendments G1–G17, the approved
-[replacement, operator, customer-projection and host-read amendments G18–G21](#lifecycle-handlers-and-customer-projections), and the export/source
+[replacement, operator, customer-projection and host-read amendments G18–G22](#lifecycle-handlers-and-customer-projections), and the export/source
 registers below. Donor source provenance is `d902ac7f4`. Donor material supplies
 source provenance for the neutral contracts and behavior described here.
 
@@ -34,8 +34,7 @@ The account order tracking stepper uses actual-evidence progress from
 `fulfillmentProgressPresentation`. A reference operator page and status component
 ship unmounted and opt-in; the host owns access and mounting.
 
-Excluded: concrete provider adapters, mounted executors/routes, reference facade
-rewiring, mounted operator UI integration, money implementation, inventory
+Excluded: concrete provider adapters, mounted executors/routes, mounted operator UI integration, money implementation, inventory
 authority, replacement-confirmation callers, version preparation and release.
 Provider/account/secret access, activation, deployment endpoints and external
 operations are outside this scope. Native continuity, provider operation and
@@ -47,18 +46,18 @@ stable-framework support are not established by this design.
 | --- | --- |
 | D0 | Retain contributed characterization witnesses. Integration requires the payments and money-truth boundary; this change adds contracts and callable orchestration without activation. |
 | D1 | Existing platform package, only fulfillment and fulfillment/contracts. |
-| D2 | Freeze ports against donor fit; G1–G21 are approved amendments, described below. Arrival-only replacement confirmation applies. |
+| D2 | Freeze ports against donor fit; G1–G22 are approved amendments, described below. Arrival-only replacement confirmation applies. |
 | D3 | Private adapters/defaults/codecs stay private; direct carrier dormant, simulator separate; pickup lookup remains shipping-owned. |
 | D4 | Managed and native execution graphs stay distinct; no runtime equivalence is implied. |
 | D5 | Preserve contributed characterization witnesses unchanged within their 31-case allocation. |
 | D6 | Reconcile shared payment-contract and payment-adapter package companions; no unrelated source changes. |
 | D7 | Note-only replacement confirmation unchanged, no caller; arrival discipline belongs in the alignment contract and platform page. |
-| D8 | The ordinary cap is 35 paths per pull request, including generated files. Preserve contributed logic before refactoring. Host composition, mounted operator UI, installed-consumer and lifecycle integration remain separate boundaries. |
+| D8 | The ordinary cap is 35 paths per pull request, including generated files. Preserve contributed logic before refactoring. Explicit host composition, host facade adoption, callable lifecycle integration and offline installed-consumer proof are included. Mounted operator UI, the renewal admission wrapper and activation remain excluded. |
 | D8 amendment | The approved combined contracts and orchestration change has a ≤55-path regroup cap, including generated files; this amends the ordinary 35-path cap. |
 | D9 | Target 89 authored cases within the 94-case/27-second module budget and outer 100-case/30-second cap. Count generated packageBoundary rows separately; charge all execution time. |
 | D10 | Validate package artifacts and every subcap; no cap increase or guessed version. |
-| D11 | One package status-map authoring source after explicit host adoption; reference composition is unchanged here. The order-management status ladder and live queue remain together at the host, with no parallel mapper. |
-| D12 | No activation or live provider/host calls; lifecycle and installed-consumer proofs belong to their later lanes. |
+| D11 | The host status-map facade adopts the package's status canon and helpers while retaining its private trace vocabulary; the host fact-parser facade delegates to the package parsers. Explicit fulfillment composition has no default binder. The order-management status ladder and live queue remain together at the host, with no parallel mapper. |
+| D12 | Callable lifecycle handlers, offline host fixtures and installed-consumer proof are included. Activation, live provider/host calls, mounted operator UI and the renewal admission wrapper remain excluded. |
 | D13 | Native command fencing and delivery alignment use PostgreSQL transactions. Only new-cycle admission/insert is guarded; existing-cycle renewal and dunning retries bypass admission. Late arrival uses the monotonic maximum once, and undelivered replacements remain outstanding. |
 
 ## Export register
@@ -72,6 +71,7 @@ the [runtime entry](../../../packages/platform/src/fulfillment/index.ts) and
 | Source | Exported values |
 | --- | --- |
 | statusMap.ts | FULFILLMENT_STATUS_MAP, CANONICAL_LOCAL_FULFILLMENT_STATUSES, CUSTOMER_STEP_SEQUENCE, canonicalStatusToken, stepForToken, customerStepFromSignals, phaseIndexForStep, stepLabelKey, timelineLabelForStep, trackingPhaseKeyForStep, stepUsesTruckIcon |
+| bindings.ts | createFulfillmentServices |
 | normalizedFulfillmentFacts.ts | parseFulfillmentFact, parseFulfillmentTransitionConflict |
 | providerCapabilities.ts | readFulfillmentCapabilities |
 | paidHandoff.ts | createOutboxOrderPaidFulfillmentHandler |
@@ -112,12 +112,15 @@ The contracts entry exports only these types, including the prepare-result and
 evidence envelopes. G14–G17 amend methods, fields or inline inputs without new
 type names; offline conformance adds the subject and evidence types. G18–G21 add
 replacement, operator, customer-alignment and host-read types with a shared native
-refusal. The read contracts also include tracking-progress input and presentation.
+refusal. G22 supplies the host preparation binding. The contracts entry also exposes
+FulfillmentServicesOptions and FulfillmentServices for explicit service selection,
+readiness and dispatch. The read contracts include tracking-progress input and presentation.
 The register matches the [contracts entry](../../../packages/platform/src/fulfillment/contracts/index.ts)
 and [contracts API report](../../../packages/platform/api/fulfillment-contracts.api.md).
 
 | Source | Exported types |
 | --- | --- |
+| bindings.ts | FulfillmentServicesOptions, FulfillmentServices |
 | dispatch.ts | DispatchEvidence, FulfillmentDispatchPrepareResult, FulfillmentSelection, FulfillmentDispatchRequest, FulfillmentDispatchResult, FulfillmentDispatchPort, FulfillmentRefusal |
 | label.ts | LabelDocument, FulfillmentLabelPort |
 | observation.ts | FulfillmentObservation, FulfillmentObservationPort, FulfillmentTrackingReference |
@@ -134,6 +137,11 @@ and [contracts API report](../../../packages/platform/api/fulfillment-contracts.
 | customerAlignment.ts | CustomerDeliveryAlignment, FulfillmentCustomerAlignmentRowsReader |
 | read.ts | FulfillmentCommerceReadPort, FulfillmentCommerceReadPolicy, FulfillmentOrderStatus, FulfillmentPaymentStatus, FulfillmentCommerceOrder, FulfillmentOrdersListRequest, FulfillmentOrdersListResponse, FulfillmentOrderDetailRequest, FulfillmentOrderDetailResponse, FulfillmentShipmentsOverviewPort, FulfillmentShipmentsOverviewRequest, FulfillmentShipmentsOverviewResponse, FulfillmentProgressInput, FulfillmentProgressPresentation |
 
+`createFulfillmentContribution` is exported from the existing `./composition`
+entry. Its structural callables declare the selected ports, event descriptors,
+schedules and routes; core readiness rejects duplicate event, schedule and route ownership. The bundle
+composer accepts an explicit fulfillment binder and supplies no default.
+
 ## Lifecycle handlers and customer projections
 
 The approved amendments extend the injected host boundary:
@@ -144,6 +152,7 @@ The approved amendments extend the injected host boundary:
 | G19 | [operator.ts](../../../packages/platform/src/fulfillment/contracts/operator.ts) adds FulfillmentOperatorMutationPort and FulfillmentOperatorMutationResult for create, provider-attempt, label, handoff, tracking-event and cancellation callbacks. Every input requires actorUserId and idempotencyKey; callbacks return a lifecycle receipt with replayed, or FulfillmentNativeUnsupported. The host owns atomic effects and replay receipts. |
 | G20 | [customerAlignment.ts](../../../packages/platform/src/fulfillment/contracts/customerAlignment.ts) adds CustomerDeliveryAlignment (protected or aligned) and FulfillmentCustomerAlignmentRowsReader. The reader returns host rows or FulfillmentNativeUnsupported. [readFulfillmentDelay](../../../packages/platform/src/fulfillment/delayReadModel.ts) exposes protected cases and aligned cases whose aligned schedule equals the subscription's current next-cycle schedule; absence from the map means no current customer case. Manual-review and advanced aligned history are hidden; the projection changes no schedule or delivery fact. |
 | G21 | [read.ts](../../../packages/platform/src/fulfillment/contracts/read.ts) adds FulfillmentCommerceReadPort and FulfillmentShipmentsOverviewPort for host-owned list, detail and overview read callbacks, with FulfillmentCommerceReadPolicy for host eligibility. Payment status passes through unchanged from the payments projection and is never recomputed. Overview bucket rows and counts remain host-owned, with no native substitution. List, detail and overview callbacks accept the shared FulfillmentNativeUnsupported refusal. |
+| G22 | [m08FulfillmentBinding.ts](../../../server/runtime/public-reference/m08FulfillmentBinding.ts) binds one transaction lane, store, provider and readiness observer. Preparation locks the native dispatch identity then the shipment row, reads authoritative host facts and upserts only contact revision, provider and withholding. editAuthoritative requires actorUserId and idempotencyKey; its host closure owns authorization and replay receipts and edits the source in that same locked transaction before synchronization. Every authoritative contact/selection/withholding edit must use this route. Disabled, capability-selection/readiness and unsupported-dispatch refusals take precedence over FULFILLMENT_NATIVE_UNSUPPORTED for a missing binding; all precede worker invocation. Activation is explicit and default-off; construction registers no route, schedule or dispatch. |
 
 The [commerce handlers](../../../packages/platform/src/fulfillment/commerceFulfillmentHandlers.ts),
 [overview handler](../../../packages/platform/src/fulfillment/shipmentsOverviewHandler.ts)
@@ -234,7 +243,8 @@ Donor paths below refer to the provenance revision above. Public destinations ar
 ## Declared adaptations and runtime design
 
 Empty or absent selection refuses with `selection_required`. The donor host's
-empty-selection-to-simulator alias is excluded; the reference app is unchanged.
+empty-selection-to-simulator alias is excluded; the reference app preserves its
+selection and default-activation behavior.
 The donor alias remains host-owned. The surface is additive and requires no
 migration of existing public behavior. Native store implementations bind the
 ports to PostgreSQL; concrete provider adapter integration remains separate.
@@ -359,8 +369,13 @@ Managed and native execution graphs remain distinct.
 | Cycle number | `subscription_renewal_operations.cycle_number`; missing correlation enters manual review |
 
 The native dispatch store delegates candidate data and contact preparation to the
-host. The host synchronizes `fulfillment_dispatch_contexts` during preparation
-and authoritative contact/selection edits under the shipment lock. Claim and
+host. The [reference preparation writer](../../../server/runtime/public-reference/m08FulfillmentBinding.ts)
+synchronizes `fulfillment_dispatch_contexts` during preparation and authoritative
+contact/selection/withholding edits under the shipment lock. Its host reader uses
+the same transaction, with no recipient payload copied into the context. Missing
+candidate data deletes the context so submission refuses. The
+[real PostgreSQL witness](../../../tests/postgres/fulfillmentPreparationBinding.test.ts)
+exercises this writer, lock contention, atomic source edits, rollback and absent-binding refusal. Claim and
 begin compare stored revisions with prepared evidence. Before submission the
 store rechecks paid state, active holds, shipment status, port readiness and
 selected provider. Direct and command lanes share a dispatch lock. Direct

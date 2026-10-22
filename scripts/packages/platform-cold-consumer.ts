@@ -127,9 +127,29 @@ export function assertExportInventory(consumer: string): void {
 export function proveFulfillmentConsumer(consumer: string): void {
   consumerNode(consumer, `
 import assert from "node:assert/strict";
-import { customerStepFromSignals, readFulfillmentCapabilities } from "@openlup/platform/fulfillment";
+import { customerStepFromSignals, readFulfillmentCapabilities, createFulfillmentServices, FULFILLMENT_NATIVE_UNSUPPORTED } from "@openlup/platform/fulfillment";
+import { createBundleComposer, createFulfillmentContribution } from "@openlup/platform/composition";
 import * as contracts from "@openlup/platform/fulfillment/contracts";
 assert.deepEqual(Object.keys(contracts), []);
+for (const entry of ["fulfillment", "fulfillment/contracts", "composition"]) assert(import.meta.resolve("@openlup/platform/" + entry).startsWith(new URL("./node_modules/", import.meta.url).href));
+let writes = 0, reads = 0;
+const support = {supported:true}, no = {supported:false,reason:"not_exposed"};
+const capability = {providerRef:"warehouse-a",role:"warehouse",defaultOff:true,selected:true,readiness:{ready:true},
+  operations:Object.fromEntries(["dispatch","readback","exactAbsence","verifyObservation","syncStock","syncProducts","labelCreate","labelRead","labelVoid","cancel","pickupPoint","courierPickup"].map(key=>[key,key==="dispatch"?support:no])),
+  authentication:"none",freshness:"not_available",ownsDeliveredNotification:false,stockAuthority:"local_atp",labelReadOwner:"none",actionPolicy:{providerSpecificAdminActions:false,genericAdminActions:false,mutationSurface:"none"}};
+const options = {selection:{providerRef:"warehouse-a",carrierRef:"carrier-a",serviceRef:"service-a",deliveryKind:"courier",pickupPoint:null},capability,
+  store:{async markStaleSubmissionsUncertain(){writes++;return 0;}},provider:{},readiness:async()=>({ready:true}),listCandidates:async()=>{reads++;return [];},
+  keys:{request:v=>v.requestKey,mappedAttempt:key=>key,acceptance:ref=>({providerAttemptKey:ref,labelKey:ref})},config:{mode:"live",batchLimit:1}};
+const off = createFulfillmentServices(options);
+assert.equal((await off.runDispatch()).refusal.reason,"disabled");assert.equal(writes,0);assert.equal(reads,0);
+const refused = createFulfillmentServices({...options,enabled:true,store:null});
+assert.equal(await refused.runDispatch(),FULFILLMENT_NATIVE_UNSUPPORTED);
+const ready = createFulfillmentServices({...options,enabled:true});
+assert.equal(createBundleComposer({blob:()=>null,fulfillment:()=>ready})({}).ports.fulfillment,ready);
+const contribution=createFulfillmentContribution({version:"0.21.0",requiredSchema:{version:"fixture",migration:"fixture",objects:[]},fulfillment:{dispatch:ready.runDispatch},handlers:[],schedules:[],routes:[]});
+assert.equal(contribution.ports["@openlup/platform/fulfillment:dispatch"],ready.runDispatch);
+assert.equal((await ready.runDispatch()).checked,0);assert.equal(writes,1);assert.equal(reads,1);
+
 assert.equal(customerStepFromSignals(["label_created", "picking"]), "packing");
 assert.deepEqual(readFulfillmentCapabilities([], null), {kind:"refused",refusal:{reason:"selection_required",phase:"selection",retryable:false}});
 `);
@@ -185,6 +205,15 @@ export function compileConsumer(consumer: string, entries: readonly string[], co
     'import type { createPaymentServices } from "@openlup/platform/payments";',
     "declare const services: NonNullable<ReturnType<typeof createPaymentServices>>;",
     "export const composedWithPayments = createBundleComposer({ blob: () => null, payments: () => services });",
+  ].join("\n"));
+  if (entries.includes("fulfillment") && entries.includes("fulfillment/contracts") && entries.includes("composition")) surfaces.push([
+    'import { createFulfillmentServices } from "@openlup/platform/fulfillment";',
+    'import { createFulfillmentContribution, createBundleComposer as composeFulfillment } from "@openlup/platform/composition";',
+    'import type { FulfillmentServicesOptions, FulfillmentServices } from "@openlup/platform/fulfillment/contracts";',
+    'declare const fulfillmentOptions: FulfillmentServicesOptions;',
+    'const fulfillment: FulfillmentServices = createFulfillmentServices(fulfillmentOptions);',
+    'export const composedFulfillment = composeFulfillment({blob:()=>null,fulfillment:()=>fulfillment});',
+    'export const fulfillmentContribution = createFulfillmentContribution({version:"0.21.0",requiredSchema:{version:"fixture",migration:"fixture",objects:[]},fulfillment:{dispatch:fulfillment.runDispatch},handlers:[],schedules:[],routes:[]});',
   ].join("\n"));
   writeFileSync(file, surfaces.join("\n"));
   for (const mode of ["NodeNext", "Bundler"]) {

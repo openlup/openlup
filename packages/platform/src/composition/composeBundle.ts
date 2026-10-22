@@ -38,6 +38,7 @@ interface PaymentServices {
 type Env = Record<string, string | undefined>;
 
 export interface PlatformBundlePorts {
+  fulfillment?: { runDispatch(): Promise<unknown> } | null;
   payments?: PaymentServices | null;
   http: HttpRuntimePort | null;
   scheduler: SchedulerPort | null;
@@ -61,6 +62,7 @@ export interface PlatformBundle {
  */
 export interface PlatformBundleBinders {
   /** Explicit host selection only; no default payment executor. */
+  fulfillment?: (env: Env) => { runDispatch(): Promise<unknown> } | null;
   payments?: (env: Env) => PaymentServices | null;
   /**
    * The supabase-js `createClient` used by the default Supabase Storage blob binder. Declared
@@ -111,6 +113,7 @@ export function createBundleComposer(binders: PlatformBundleBinders = {}): Compo
       analytics: binders.analytics?.(capabilities.analytics, env) ?? null,
       transactional: binders.transactional?.(capabilities.transactional, capabilities.data, env) ?? null,
     };
+    if (binders.fulfillment) ports.fulfillment = binders.fulfillment(env);
     if (binders.payments) ports.payments = binders.payments(env);
     ports.scheduler = binders.scheduler?.(capabilities.scheduler, env) ?? null;
     return { id, descriptor, ports };

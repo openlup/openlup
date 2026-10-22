@@ -35,3 +35,4 @@ export { FULFILLMENT_REPLACEMENT_REFUSALS } from './replacementRefusals.js';
 export { buildCommerceFulfillmentOrdersListResponse, buildCommerceFulfillmentOrderDetailResponse } from './commerceFulfillmentReadModel.js';
 export { createFulfillmentShipmentsOverviewHandler } from './shipmentsOverviewHandler.js';
 export { fulfillmentProgressPresentation } from './trackingProgress.js';
+export { createFulfillmentServices } from './bindings.js';
