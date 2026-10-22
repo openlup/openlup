@@ -3,7 +3,9 @@ import { describe, expect, it } from "vitest";
 import { KNOWN_UNMAPPED_FAILURE_REASONS, displayReasonFor } from "./paymentFailureDisplay.js";
 import { PAYMENT_FAILURE_DISPLAY_REASONS } from "../../src/domains/commerce/paymentFailureDisplayContracts.js";
 import { DECLINE_FAILURE_REASONS } from "../shared/finalizeDeclinedAttempt.js";
-import { normalizeStripeIntent as normalize } from "./stripe/stripePaymentReconciliationProvider.js";
+import { createStripePaymentReconciliationProvider, mapStripeIntent } from "@openlup/platform/payments/stripe";
+const normalize = (intent: ReturnType<typeof mapStripeIntent>) =>
+  createStripePaymentReconciliationProvider({ retrievePaymentIntent: async () => intent }).readPayment({ providerPaymentId: intent.id });
 
 describe("paymentFailureDisplay", () => {
   it("preserves both stable synchronous-decline recovery reasons", () => {
@@ -17,8 +19,8 @@ describe("paymentFailureDisplay", () => {
     expect(displayReasonFor("tpay_decline_103")).toBe("provider_declined");
   });
 
-  it("does not call an unconfirmed intent an issuer decline", () => {
-    const unconfirmed = normalize({ id: "pi_unconfirmed", status: "requires_payment_method" });
+  it("does not call an unconfirmed intent an issuer decline", async () => {
+    const unconfirmed = await normalize({ id: "pi_unconfirmed", status: "requires_payment_method" });
     expect(unconfirmed.failureReason).toBe("stripe_requires_payment_method");
     expect(unconfirmed.rawPayload).toMatchObject({ latestChargePresent: false, lastPaymentErrorCode: null });
     expect(displayReasonFor(unconfirmed.failureReason)).toBeNull();

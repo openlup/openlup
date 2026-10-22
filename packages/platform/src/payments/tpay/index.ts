@@ -255,3 +255,39 @@ function mapVerifiedTpayEvent(rawBody: string, occurred: string | null, mode: "l
   return { ...evidence, fingerprint: createHash("sha256").update(JSON.stringify(evidence)).digest("hex"),
     providerAuditPayload: payload };
 }
+
+/**
+ * @experimental Reference-application support surface; may change.
+ * Reference consumer: `server/adapters/tpay/tpayAdapterFactory.ts`.
+ */
+export { createTpayPaymentExecutionAdapter } from "./tpayPaymentExecutionAdapter.js";
+
+/**
+ * @experimental Reference-application support surface; may change.
+ * Reference consumer: `server/runtime/paymentProviderReadbackRegistry.ts`.
+ */
+export { createTpayPaymentReconciliationProvider } from "./tpayPaymentReconciliationProvider.js";
+
+/**
+ * @experimental Reference-application support surface; may change.
+ * Reference consumer: `server/bff/commerce/tpay-channels.ts`.
+ */
+export { createTpayHttpClient } from "./tpayHttpClient.js";
+
+/**
+ * @experimental Reference-application support surface; may change.
+ * Reference consumer: `server/adapters/paymentRecoveryGuidance.ts`.
+ */
+export { normalizeTpayFailureEvidence } from "./tpayFailureEvidence.js";
+
+/**
+ * @experimental Reference-application support surface; may change.
+ * Reference consumer: `server/adapters/supabase/payment/tpaySubscriptionActivation.ts`.
+ */
+export { aliasValue } from "./tpayCreateTransactionInput.js";
+
+/**
+ * @experimental Reference-application support surface; may change.
+ * Reference consumer: `server/shared/preparedProviderAttempt.ts`.
+ */
+export { ProviderAttemptPreDispatchError } from "./preparedProviderAttempt.js";
