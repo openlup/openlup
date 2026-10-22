@@ -194,6 +194,10 @@ jobs:
     if: ${{ github.event.repository.private == false && (github.event_name != 'pull_request' || (github.event.pull_request.draft == false && (github.event.pull_request.user.login != 'dependabot[bot]' || (github.event.action == 'ready_for_review' && github.event.sender.type == 'User')))) }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    permissions:
+      contents: read
+      actions: read
+      packages: read
     strategy:
       fail-fast: false
       max-parallel: 4
@@ -227,6 +231,12 @@ jobs:
         env:
           OPENLUP_VITEST_EXCLUDE_FILE: ${{ runner.temp }}/ci-test-exclude.txt
         run: node scripts/ci-test-scope.mjs
+      - name: Authenticate GitHub Container Registry pulls
+        if: steps.reused.outputs.reuse != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_ACTOR: ${{ github.actor }}
+        run: echo "$GH_TOKEN" | docker login ghcr.io -u "$GH_ACTOR" --password-stdin
       # Every shard derives the same included set before native file sharding.
       - name: Complete published root test shard
         if: steps.reused.outputs.reuse != 'true'
@@ -306,6 +316,10 @@ jobs:
     if: ${{ github.event.repository.private == false && (github.event_name != 'pull_request' || (github.event.pull_request.draft == false && (github.event.pull_request.user.login != 'dependabot[bot]' || (github.event.action == 'ready_for_review' && github.event.sender.type == 'User')))) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 20
+    permissions:
+      contents: read
+      actions: read
+      packages: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -333,6 +347,12 @@ jobs:
       - name: Install locked workspace dependencies
         if: steps.reused.outputs.reuse != 'true'
         run: npm ci --prefer-offline --no-audit --fund=false
+      - name: Authenticate GitHub Container Registry pulls
+        if: steps.reused.outputs.reuse != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_ACTOR: ${{ github.actor }}
+        run: echo "$GH_TOKEN" | docker login ghcr.io -u "$GH_ACTOR" --password-stdin
       - name: Every shipped pgTAP test against the owned managed baseline
         if: steps.reused.outputs.reuse != 'true'
         run: node scripts/public-ci-pgtap.mjs

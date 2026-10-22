@@ -152,7 +152,7 @@ describe("complete public CI", () => {
   it("keeps lint fatal after installation and never filters the diagnostic root command", () => {
     const typecheck = workflowJob("typecheck");
     expect(workflowCommands(typecheck)).toEqual(["node scripts/public-ci-reuse.mjs", "npm ci", "npm run lint", "npm run oss:published-tree -- --typecheck"]);
-    expect(workflowCommands(workflowJob("test-full-shard"))).toEqual(["node scripts/public-ci-reuse.mjs", "npm ci", "node scripts/ci-test-scope.mjs", "npm test -- --shard=${{ matrix.shard }}/4"]);
+    expect(workflowCommands(workflowJob("test-full-shard"))).toEqual(["node scripts/public-ci-reuse.mjs", "npm ci", "node scripts/ci-test-scope.mjs", 'echo "$GH_TOKEN" | docker login ghcr.io -u "$GH_ACTOR" --password-stdin', "npm test -- --shard=${{ matrix.shard }}/4"]);
     expect(PUBLIC_TEST_COMMAND).toBe("node scripts/run-vitest.mjs run");
     expect(workflow).not.toMatch(/--exclude|continue-on-error|\|\|\s*true|set \+e/u);
     const config = readFileSync(join(ROOT, "vitest.config.ts"), "utf8");
@@ -163,6 +163,21 @@ describe("complete public CI", () => {
     expect(job).toContain("npm ci --prefer-offline --no-audit --fund=false");
     expect(job.indexOf("npm ci ")).toBeLessThan(job.indexOf("node scripts/public-ci-pgtap.mjs"));
     expect(job).toContain("node-version: 24.21.0");
+  });
+  it("limits registry authentication to non-reused image-pull jobs with read permissions", () => {
+    expect(workflow.split("\njobs:\n")[0]).toContain("permissions:\n  contents: read\n  actions: read\n");
+    expect(workflow.match(/packages: read/gu)).toHaveLength(2);
+    expect(workflow.match(/docker login/gu)).toHaveLength(2);
+    for (const [name, command] of [["test-full-shard", "npm test --"], ["pgtap", "node scripts/public-ci-pgtap.mjs"]]) {
+      const job = workflowJob(name);
+      expect(job).toContain("    permissions:\n      contents: read\n      actions: read\n      packages: read\n");
+      const login = job.split("      - name: Authenticate GitHub Container Registry pulls\n")[1]?.split(/(?=^ {6}- )/mu)[0];
+      expect(login).toContain("        if: steps.reused.outputs.reuse != 'true'\n");
+      expect(login).toContain("        env:\n          GH_TOKEN: ${{ github.token }}\n          GH_ACTOR: ${{ github.actor }}\n");
+      expect(login.split("run:")[1]).not.toContain("${{");
+      expect(login).toContain('run: echo "$GH_TOKEN" | docker login ghcr.io -u "$GH_ACTOR" --password-stdin');
+      expect(job.indexOf("docker login")).toBeLessThan(job.indexOf(`run: ${command}`));
+    }
   });
   it("uses the pinned local CLI and checks neutrality against the event base", () => {
     expect(workflow).toContain("supabase/setup-cli@45a513f8c64c0bc8e0e3dfe572b5c95be85f6359");
@@ -242,7 +257,7 @@ describe("complete public CI", () => {
 `);
     expect(installProof).toContain("          OPENLUP_PROOF_SERVICE_CONTAINER: ${{ job.services.postgres.id }}\n          OPENLUP_PROOF_SERVICE_PORT: ${{ job.services.postgres.ports[5432] }}\n");
     expect(workflowJob("test")).not.toMatch(/services:|OPENLUP_PROOF_SERVICE_/u);
-    expect(workflowCommands(workflowJob("pgtap"))).toEqual(["node scripts/public-ci-reuse.mjs", "npm ci --prefer-offline --no-audit --fund=false", "node scripts/public-ci-pgtap.mjs"]);
+    expect(workflowCommands(workflowJob("pgtap"))).toEqual(["node scripts/public-ci-reuse.mjs", "npm ci --prefer-offline --no-audit --fund=false", 'echo "$GH_TOKEN" | docker login ghcr.io -u "$GH_ACTOR" --password-stdin', "node scripts/public-ci-pgtap.mjs"]);
 
     expect(workflowCommands(workflowJob("self-check"))).toEqual([
       "npm run oss:published-tree -- --policy", "npm run oss:published-tree -- --inventory",
