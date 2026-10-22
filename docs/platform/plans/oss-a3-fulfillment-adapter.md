@@ -2,7 +2,7 @@
 
 Status: development-preview implementation ledger, 2026-10-22. O-P1 contributes
 internal transport; O-P2 adds the opt-in OmniPack entry. Local native-review
-repair 1 is implemented; artifact verification, fresh native review and O-P3
+repair 1 and focused verification are complete; fresh native review and O-P3
 integration remain owed.
 No account-readiness, activation or release claim is made.
 
@@ -266,4 +266,22 @@ Tree neutrality had **0 increases** and UI smoke passed. Stacked policy, docs
 regeneration and final policy passed **4 obligations / 0 unanswered**, pinned to
 updated O-P1. The source-map routing change required the substantive ownership
 explanation in Documentation; regeneration includes the whole report family.
-The package artifact gate and final commit-range scan follow this source commit.
+The package artifact gate passed on the committed package bytes: **1,551 files**,
+**1,112,562 packed bytes**, **4,964,926 unpacked bytes**; code class
+**968,390 / 1,126,400 bytes**, docs class **46,381 / 49,152 bytes** (5 / 10 files),
+leaving **2,771 docs bytes**. All size/file/browser caps passed with no findings;
+no budget, export registration or release-gates row changed. The local pack ran
+with offline npm and no installs. Commit-range gitleaks found no leaks. This
+closing evidence update changes no package bytes.
+
+Local repair handoff: both assigned worktrees are clean after their commits,
+M08-owned files match main, the A3 scanner implementation is unchanged by this
+repair, and no push or PR was performed. Fresh committed native reviews, their
+existing counters/expiry, the supervisor's broad gates and O-P3 remain external
+to this bounded repair; no acceptance or review budget was reset.
+
+Final self-retro: keeping the existing cases preserved the 75/100 round projection
+(77/100 conservatively) while adding independent refusal and mutation evidence.
+The ledger consolidation removes 800+ narrative lines; the actual docs artifact
+measurement replaces stale projected headroom. No further in-scope improvement
+is needed.
