@@ -21,6 +21,8 @@ This is the public documentation set for the OpenLup platform. It describes the 
 
 ## Implementation plans
 
+- [Subscription renewal and dunning](plans/oss-m10-subscriptions-renewal-dunning.md) — frozen obligation ports, graph transaction units, continuity and explicit capability limits.
+
 - [Payments and money truth](plans/oss-m07-payments-money-truth.md) — prepared attempts and neutral adapter contracts; later truth/store/repair work remains pending.
 
 - [Inventory and delivery extraction](plans/oss-m06-stock-reservations-delivery.md) — M06 frozen lanes, inventory imports, SQL projections, inventory/shipping store composition, evidence and pending parity and budgets.

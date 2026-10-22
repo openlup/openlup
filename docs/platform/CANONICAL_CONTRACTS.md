@@ -1015,3 +1015,35 @@ run before row processing. Unmapped evidence is projected before host calls;
 correlated off-track rows skip acceptance/quarantine. These workers call no
 alignment or replacement-confirmation operation; native late-arrival alignment
 must preserve the later-only monotonic rule.
+
+## Subscription port boundary
+
+The experimental [subscription declarations](../../packages/platform/src/subscriptions/contracts/index.ts)
+carry deferred admission independently of terminal refusal, original schedule
+text independently of its comparison instant, frozen revisions and complete
+claim readback. Verified M07 evidence carries original occurrence, observation
+and first-recorded clocks with nullable money and explicit ambiguity/late-positive
+disposition. A late positive settles the same obligation, never a new charge.
+A persisted retry row with null `nextRetryAt` is intentional exhaustion or a
+class stop; fallback cadence is allowed only when the row is absent.
+
+Nothing in automatic renewal pauses an active subscription. Arrival alignment
+uses the outer schedule maximum and actual latest arrival plus cadence; no
+cycle moves earlier or stacks. A superseded predecessor is no longer outstanding,
+but an undelivered replacement still is. Never call
+`subscription_delivery_alignment_confirm_replacement` until that replacement
+arrives. After rollback to `off`, shadow cases are admitted. Captured protected cases
+still go through admission and defer until actual arrival: `protect` releases
+the case; `auto_align` settles as `aligned` using the latest arrival plus cadence
+with the outer maximum, never earlier or stacked. `manual_review` cases, including
+protected cases whose arrival meets open dunning or a successor cycle, keep
+deferring until resolved.
+
+The native descriptor refuses multi-cycle prepaid, generic bundle commands,
+command-bound receipts and M07 prepared-store parity by name, and declares retry
+and stock recovery unavailable. Native generic bundle commands and command-bound
+receipts arrive with a later native command lifecycle; until then, the
+descriptor refuses them. It selects one executor, default off, with
+mandatory delivery admission. Host-selected M04 descriptors carry recorded
+lifecycle facts; copy, recipient, consent and delivery remain host/M04-owned.
+See the [architecture boundary](ARCHITECTURE_AND_EXTENSIONS.md#subscription-contracts).

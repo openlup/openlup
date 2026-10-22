@@ -39,6 +39,7 @@ Longer module recipes live in the [platform package reference](../../docs/platfo
 | `./fulfillment/omnipack` | Opt-in Node fulfillment example with injected I/O; default-off. |
 | `./payments` | Experimental prepared-attempt ordering with injected persistence, execution and failure policy; contracts at `./payments/contracts`. |
 | `./fulfillment`, `./fulfillment/contracts` | [Experimental fulfillment services, contracts and status canon](../../docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#fulfillment-contracts). |
+| `./subscriptions`, `./subscriptions/contracts` | [Experimental subscription contracts and renewal port](../../docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#subscription-contracts). |
 | `./inventory` | Experimental schemas/ports, handlers, native stores, projection, injected forecast and SQL descriptor; `./inventory/contracts` DTOs. |
 | `./catalog` | Experimental neutral catalog schemas, drafts, reads, media source packs and publication ports |
 | `./catalog/contracts` | Dependency-free catalog DTOs, media resolver, authority and canonicalization helpers |
@@ -669,3 +670,11 @@ readiness and simulator composition. Its prepared-attempt facade re-exports the
 same error class so `instanceof` preserves the no-charge trust boundary.
 The M07 factories' neutral envelopes and capability limits remain unchanged;
 reference-support availability establishes no provider activation or stable API.
+
+## Subscription contracts and renewal port
+
+The experimental `./subscriptions` entry exposes hosted renewal mechanisms and
+an explicit native capability descriptor; `./subscriptions/contracts` is
+browser-safe and type-only. The [subscription architecture and recipe](../../docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#subscription-contracts)
+owns the concrete ports, continuity rules, capability refusals and witnesses.
+These entries do not install a store or activate a runner.
