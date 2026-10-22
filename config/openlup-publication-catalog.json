@@ -3182,6 +3182,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/fulfillment/commerceFulfillmentHandlers.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/fulfillment/contracts/alignment.ts",
       "class": "public-output"
     },
@@ -3191,6 +3195,10 @@
     },
     {
       "path": "packages/platform/src/fulfillment/contracts/conformance.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/contracts/customerAlignment.ts",
       "class": "public-output"
     },
     {
@@ -3206,11 +3214,23 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/fulfillment/contracts/nativeUnsupported.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/fulfillment/contracts/observation.ts",
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/fulfillment/contracts/operator.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/fulfillment/contracts/readback.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/contracts/replacement.ts",
       "class": "public-output"
     },
     {
@@ -3219,6 +3239,14 @@
     },
     {
       "path": "packages/platform/src/fulfillment/contracts/sync.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/currentFulfillmentParcel.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/delayReadModel.ts",
       "class": "public-output"
     },
     {
@@ -3234,7 +3262,19 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/fulfillment/handlerSchemas.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/handlerSupport.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/fulfillment/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/labelLifecycle.ts",
       "class": "public-output"
     },
     {
@@ -3243,6 +3283,10 @@
     },
     {
       "path": "packages/platform/src/fulfillment/migrations.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/nativeUnsupported.ts",
       "class": "public-output"
     },
     {
@@ -3347,6 +3391,14 @@
     },
     {
       "path": "packages/platform/src/fulfillment/providerTrackingReferences.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/replacementRefusals.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/replacementShipmentHandler.ts",
       "class": "public-output"
     },
     {
@@ -4782,6 +4834,18 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/fulfillment/labelTracking.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/fulfillment/lifecycleHandlers.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/fulfillment/lifecycleHostFixture.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/fulfillment/observationEffects.test.ts",
       "class": "public-output"
     },
@@ -4811,6 +4875,10 @@
     },
     {
       "path": "packages/platform/test/fulfillment/reconciliationEvidence.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/fulfillment/replacementDelay.test.ts",
       "class": "public-output"
     },
     {
@@ -22331,6 +22399,10 @@
     },
     {
       "path": "tests/postgres/fulfillmentDeliveryAlignment.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/fulfillmentHostSeamRefusals.test.ts",
       "class": "public-output"
     },
     {

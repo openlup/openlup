@@ -165,6 +165,16 @@ export interface FulfillmentAdapterConformanceEvidence {
 }
 export {};
 ```
+## dist/fulfillment/contracts/customerAlignment.d.ts
+
+```ts
+import type { FulfillmentNativeUnsupported } from './nativeUnsupported.js';
+export interface CustomerDeliveryAlignment {
+    state: 'protected' | 'aligned';
+}
+/** Absence from the map means no current customer case, distinct from protected. */
+export type FulfillmentCustomerAlignmentRowsReader = (subscriptionIds: string[]) => Promise<Record<string, unknown>[] | FulfillmentNativeUnsupported>;
+```
 ## dist/fulfillment/contracts/dispatch.d.ts
 
 ```ts
@@ -289,6 +299,10 @@ export type { DeliveryAlignmentPort } from "./alignment.js";
 export type CanonicalLocalFulfillmentStatus = "provider_received" | "picking" | "packed" | "in_transit" | "delivered" | "exception" | "cancelled";
 export type CustomerFulfillmentStep = "paid" | "accepted" | "packing" | "transit" | "delivered" | "exception" | "cancelled";
 export type { FulfillmentAdapterConformanceSubject, FulfillmentAdapterConformanceEvidence } from "./conformance.js";
+export type { FulfillmentNativeUnsupported } from './nativeUnsupported.js';
+export type { FulfillmentReplacementPort, FulfillmentReplacementRequest, FulfillmentReplacementResult } from './replacement.js';
+export type { FulfillmentOperatorMutationPort, FulfillmentOperatorMutationResult } from './operator.js';
+export type { CustomerDeliveryAlignment, FulfillmentCustomerAlignmentRowsReader } from './customerAlignment.js';
 ```
 ## dist/fulfillment/contracts/label.d.ts
 
@@ -327,6 +341,16 @@ export interface FulfillmentLabelPort {
         canProceed: boolean;
         refusal?: FulfillmentRefusal;
     }>;
+}
+```
+## dist/fulfillment/contracts/nativeUnsupported.d.ts
+
+```ts
+/** Shared refusal for host-owned operations without native parity. No partial write is permitted. */
+export interface FulfillmentNativeUnsupported {
+    readonly kind: 'native_unsupported';
+    readonly reason: 'host_binding_required';
+    readonly retryable: false;
 }
 ```
 ## dist/fulfillment/contracts/observation.d.ts
@@ -385,6 +409,74 @@ export interface FulfillmentObservationPort {
     }>;
 }
 ```
+## dist/fulfillment/contracts/operator.d.ts
+
+```ts
+import type { FulfillmentNativeUnsupported } from './nativeUnsupported.js';
+/** Host transaction inputs. actorUserId and idempotencyKey are required for attribution and replay receipts. */
+interface MutationInput {
+    idempotencyKey: string;
+    actorUserId: string;
+    metadata?: Record<string, unknown>;
+}
+interface ParcelMutationInput extends MutationInput {
+    fulfillmentOrderId: string;
+}
+type AdminCommerceFulfillmentCreateRequest = MutationInput & {
+    orderId: string;
+};
+type AdminCommerceFulfillmentRecordProviderAttemptRequest = ParcelMutationInput & {
+    providerKind: string;
+    status: 'recorded' | 'succeeded' | 'failed';
+    requestPayload?: Record<string, unknown>;
+    responsePayload?: Record<string, unknown>;
+    error?: string | null;
+};
+type AdminCommerceFulfillmentRecordLabelRequest = ParcelMutationInput & {
+    providerKind: string;
+    providerTrackingId: string;
+    labelUrl?: string | null;
+    deliveryEstimateDays?: number | null;
+    rawProviderPayload?: Record<string, unknown>;
+};
+type AdminCommerceFulfillmentHandOffRequest = ParcelMutationInput;
+type AdminCommerceFulfillmentTrackingEventRequest = ParcelMutationInput & {
+    status: 'in_transit' | 'delivered' | 'exception';
+    providerTrackingId?: string;
+    rawEvent?: Record<string, unknown>;
+};
+type AdminCommerceFulfillmentCancelRequest = ParcelMutationInput & {
+    reason: string;
+};
+export interface FulfillmentOperatorMutationResult {
+    contractVersion: 'commerce.fulfillment.v0';
+    fulfillmentOrderId: string;
+    orderId: string;
+    status: 'created' | 'packed' | 'label_pending' | 'label_created' | 'handed_over' | 'in_transit' | 'delivered' | 'exception' | 'cancelled';
+    replayed: boolean;
+}
+export interface FulfillmentOperatorMutationPort {
+    createCommerceFulfillmentOrder(request: AdminCommerceFulfillmentCreateRequest & {
+        actorUserId: string;
+    }): Promise<FulfillmentOperatorMutationResult | FulfillmentNativeUnsupported>;
+    recordCommerceFulfillmentProviderAttempt(request: AdminCommerceFulfillmentRecordProviderAttemptRequest & {
+        actorUserId: string;
+    }): Promise<FulfillmentOperatorMutationResult | FulfillmentNativeUnsupported>;
+    recordCommerceFulfillmentLabel(request: AdminCommerceFulfillmentRecordLabelRequest & {
+        actorUserId: string;
+    }): Promise<FulfillmentOperatorMutationResult | FulfillmentNativeUnsupported>;
+    handOffCommerceFulfillmentOrder(request: AdminCommerceFulfillmentHandOffRequest & {
+        actorUserId: string;
+    }): Promise<FulfillmentOperatorMutationResult | FulfillmentNativeUnsupported>;
+    recordCommerceFulfillmentTrackingEvent(request: AdminCommerceFulfillmentTrackingEventRequest & {
+        actorUserId: string;
+    }): Promise<FulfillmentOperatorMutationResult | FulfillmentNativeUnsupported>;
+    cancelCommerceFulfillmentOrder(request: AdminCommerceFulfillmentCancelRequest & {
+        actorUserId: string;
+    }): Promise<FulfillmentOperatorMutationResult | FulfillmentNativeUnsupported>;
+}
+export {};
+```
 ## dist/fulfillment/contracts/readback.d.ts
 
 ```ts
@@ -425,6 +517,44 @@ export interface FulfillmentReadbackPort {
         externalRef: string | null;
         mode: "command" | "parcel";
     }): Promise<FulfillmentReadbackResult>;
+}
+```
+## dist/fulfillment/contracts/replacement.d.ts
+
+```ts
+import type { FulfillmentNativeUnsupported } from './nativeUnsupported.js';
+export interface FulfillmentReplacementRequest {
+    idempotencyKey: string;
+    actorUserId: string;
+    orderId: string;
+    reason: 'damaged' | 'lost' | 'returned_undelivered' | 'other';
+    metadata?: Record<string, unknown>;
+}
+export interface FulfillmentReplacementResult {
+    contractVersion: 'commerce.v0';
+    operation: {
+        id: string;
+        orderId: string;
+        type: 'hold_created' | 'hold_released' | 'fulfillment_reviewed' | 'support_note' | 'shipping_address_updated' | 'order_marked_refunded' | 'order_cancelled_manual' | 'replacement_shipment_requested';
+        holdId: string | null;
+        actorUserId: string | null;
+        occurredAt: string;
+        payload: Record<string, unknown>;
+    };
+    replacement: {
+        fulfillmentOrderId: string;
+        orderId: string;
+        sequenceNo: number;
+        replacesFulfillmentOrderId: string;
+        reason: FulfillmentReplacementRequest['reason'];
+        status: string;
+    };
+    releasedHoldIds: string[];
+    replayed: boolean;
+}
+/** Host owns atomic paid/contact/current-parcel/hold/reservation checks and actor-bound fingerprint/replay receipts. No confirmation or dispatch operation exists here. */
+export interface FulfillmentReplacementPort {
+    requestReplacementShipment(request: FulfillmentReplacementRequest): Promise<FulfillmentReplacementResult | FulfillmentNativeUnsupported>;
 }
 ```
 ## dist/fulfillment/contracts/store.d.ts

@@ -23,3 +23,12 @@ export { createPostgresDeliveryAlignmentPort } from './postgresDeliveryAlignment
 export { readDeliveryAlignment } from './deliveryAlignmentReadModel.js';
 export { FULFILLMENT_NATIVE_CAPABILITIES } from './schemaCapabilities.js';
 export { FULFILLMENT_MIGRATIONS } from './migrations.js';
+
+export { createAdminCommerceFulfillmentOrdersListHandler, createAdminCommerceFulfillmentOrderDetailHandler, createAdminCommerceFulfillmentCreateOrderHandler, createAdminCommerceFulfillmentRecordProviderAttemptHandler, createAdminCommerceFulfillmentRecordLabelHandler, createAdminCommerceFulfillmentHandOffHandler, createAdminCommerceFulfillmentTrackingEventHandler, createAdminCommerceFulfillmentCancelOrderHandler } from './commerceFulfillmentHandlers.js';
+export { createAdminCommerceOrderRequestReplacementShipmentHandler } from './replacementShipmentHandler.js';
+export { CommerceFulfillmentConflictError } from './handlerSupport.js';
+export { readFulfillmentDelay } from './delayReadModel.js';
+export { readFulfillmentLabel, cleanupFulfillmentLabel } from './labelLifecycle.js';
+export { currentParcel, currentParcelFor, currentParcelPerOrder, currentParcelFirst, belongsToParcel, rowsForParcel, parcelSequenceNo, compareParcelPrecedence } from './currentFulfillmentParcel.js';
+export { FULFILLMENT_NATIVE_UNSUPPORTED, createNativeUnsupportedFulfillmentPorts } from './nativeUnsupported.js';
+export { FULFILLMENT_REPLACEMENT_REFUSALS } from './replacementRefusals.js';

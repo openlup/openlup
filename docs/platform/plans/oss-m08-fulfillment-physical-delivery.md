@@ -1,7 +1,8 @@
 # M08 fulfillment and physical delivery
 
 Development-preview programme design and contents. The boundary is recorded in
-decisions D0–D13, carrier-fit amendments G1–G17 and the export/source
+decisions D0–D13, carrier-fit amendments G1–G17, the approved
+[replacement, operator and customer-projection amendments G18–G20](#lifecycle-handlers-and-customer-projections), and the export/source
 registers below. Donor source provenance is `d902ac7f4`. Donor material supplies
 source provenance for the neutral contracts and behavior described here.
 
@@ -15,6 +16,9 @@ reconciliation adds verified ingress, effects, tracking, stock/product sync,
 read-only evidence handlers and offline adapter/store fixture conformance. Native
 persistence adds shipment, dispatch, paid-handoff, recovery, observation and stock
 stores, command fencing, delivery alignment and sparse migration projections.
+Lifecycle handlers add commerce fulfillment list/detail reads, operator mutations
+and replacement requests through injected host callbacks. Label lifecycle,
+current-parcel and customer alignment helpers remain callable without route mounting.
 
 Only `@openlup/platform/fulfillment` and
 `@openlup/platform/fulfillment/contracts` are added. The contracts entry is
@@ -39,7 +43,7 @@ stable-framework support are not established by this design.
 | --- | --- |
 | D0 | Retain contributed characterization witnesses. Integration requires the payments and money-truth boundary; this change adds contracts and callable orchestration without activation. |
 | D1 | Existing platform package, only fulfillment and fulfillment/contracts. |
-| D2 | Freeze ports against donor fit; G1–G17 are approved amendments, described below. Arrival-only replacement confirmation applies. |
+| D2 | Freeze ports against donor fit; G1–G20 are approved amendments, described below. Arrival-only replacement confirmation applies. |
 | D3 | Private adapters/defaults/codecs stay private; direct carrier dormant, simulator separate; pickup lookup remains shipping-owned. |
 | D4 | Managed and native execution graphs stay distinct; no runtime equivalence is implied. |
 | D5 | Preserve contributed characterization witnesses unchanged within their 31-case allocation. |
@@ -56,8 +60,10 @@ stable-framework support are not established by this design.
 ## Export register
 
 The runtime entry exports only these values; internal helper types are not entry
-exports. Dispatch, observation and sync values share the entry with status, parser
-and capability selection values.
+exports. Dispatch, observation, sync, lifecycle handlers and projections share the
+entry with status, parser and capability selection values. The register matches
+the [runtime entry](../../../packages/platform/src/fulfillment/index.ts) and
+[runtime API report](../../../packages/platform/api/fulfillment.api.md).
 
 | Source | Exported values |
 | --- | --- |
@@ -86,10 +92,21 @@ and capability selection values.
 | deliveryAlignmentReadModel.ts | readDeliveryAlignment |
 | schemaCapabilities.ts | FULFILLMENT_NATIVE_CAPABILITIES |
 | migrations.ts | FULFILLMENT_MIGRATIONS |
+| commerceFulfillmentHandlers.ts | createAdminCommerceFulfillmentOrdersListHandler, createAdminCommerceFulfillmentOrderDetailHandler, createAdminCommerceFulfillmentCreateOrderHandler, createAdminCommerceFulfillmentRecordProviderAttemptHandler, createAdminCommerceFulfillmentRecordLabelHandler, createAdminCommerceFulfillmentHandOffHandler, createAdminCommerceFulfillmentTrackingEventHandler, createAdminCommerceFulfillmentCancelOrderHandler |
+| replacementShipmentHandler.ts | createAdminCommerceOrderRequestReplacementShipmentHandler |
+| handlerSupport.ts | CommerceFulfillmentConflictError |
+| delayReadModel.ts | readFulfillmentDelay |
+| labelLifecycle.ts | readFulfillmentLabel, cleanupFulfillmentLabel |
+| currentFulfillmentParcel.ts | currentParcel, currentParcelFor, currentParcelPerOrder, currentParcelFirst, belongsToParcel, rowsForParcel, parcelSequenceNo, compareParcelPrecedence |
+| nativeUnsupported.ts | FULFILLMENT_NATIVE_UNSUPPORTED, createNativeUnsupportedFulfillmentPorts |
+| replacementRefusals.ts | FULFILLMENT_REPLACEMENT_REFUSALS |
 
 The contracts entry exports only these types, including the prepare-result and
 evidence envelopes. G14–G17 amend methods, fields or inline inputs without new
-type names; offline conformance adds the subject and evidence types.
+type names; offline conformance adds the subject and evidence types. G18–G20 add
+replacement, operator and customer-alignment types with a shared native refusal.
+The register matches the [contracts entry](../../../packages/platform/src/fulfillment/contracts/index.ts)
+and [contracts API report](../../../packages/platform/api/fulfillment-contracts.api.md).
 
 | Source | Exported types |
 | --- | --- |
@@ -103,6 +120,43 @@ type names; offline conformance adds the subject and evidence types.
 | alignment.ts | DeliveryAlignmentPort |
 | conformance.ts | FulfillmentAdapterConformanceSubject, FulfillmentAdapterConformanceEvidence |
 | contracts/index.ts | CanonicalLocalFulfillmentStatus, CustomerFulfillmentStep |
+| nativeUnsupported.ts | FulfillmentNativeUnsupported |
+| replacement.ts | FulfillmentReplacementPort, FulfillmentReplacementRequest, FulfillmentReplacementResult |
+| operator.ts | FulfillmentOperatorMutationPort, FulfillmentOperatorMutationResult |
+| customerAlignment.ts | CustomerDeliveryAlignment, FulfillmentCustomerAlignmentRowsReader |
+
+## Lifecycle handlers and customer projections
+
+The approved amendments extend the injected host boundary:
+
+| Amendment | Contract and behavior |
+| --- | --- |
+| G18 | [replacement.ts](../../../packages/platform/src/fulfillment/contracts/replacement.ts) adds FulfillmentReplacementPort, FulfillmentReplacementRequest and FulfillmentReplacementResult. requestReplacementShipment requires actorUserId and idempotencyKey and returns a replacement/operation receipt with replayed, or FulfillmentNativeUnsupported. The host owns atomic paid/contact/current-parcel/hold/reservation checks and actor-bound replay receipts. The port neither dispatches nor confirms arrival. |
+| G19 | [operator.ts](../../../packages/platform/src/fulfillment/contracts/operator.ts) adds FulfillmentOperatorMutationPort and FulfillmentOperatorMutationResult for create, provider-attempt, label, handoff, tracking-event and cancellation callbacks. Every input requires actorUserId and idempotencyKey; callbacks return a lifecycle receipt with replayed, or FulfillmentNativeUnsupported. The host owns atomic effects and replay receipts. |
+| G20 | [customerAlignment.ts](../../../packages/platform/src/fulfillment/contracts/customerAlignment.ts) adds CustomerDeliveryAlignment (protected or aligned) and FulfillmentCustomerAlignmentRowsReader. The reader returns host rows or FulfillmentNativeUnsupported. [readFulfillmentDelay](../../../packages/platform/src/fulfillment/delayReadModel.ts) exposes protected cases and aligned cases whose aligned schedule equals the subscription's current next-cycle schedule; absence from the map means no current customer case. Manual-review and advanced aligned history are hidden; the projection changes no schedule or delivery fact. |
+
+The [commerce handlers](../../../packages/platform/src/fulfillment/commerceFulfillmentHandlers.ts)
+and [replacement handler](../../../packages/platform/src/fulfillment/replacementShipmentHandler.ts)
+check the method, authorize, validate the request, invoke the host callback and
+validate the response. Mutation handlers supply the authorized actor. Commerce
+list/detail callbacks return their response shapes (or null for a missing detail).
+Replacement and operator callbacks accept the
+[shared native refusal](../../../packages/platform/src/fulfillment/contracts/nativeUnsupported.ts);
+the mutation handlers translate it to UPSTREAM_UNAVAILABLE.
+[createNativeUnsupportedFulfillmentPorts](../../../packages/platform/src/fulfillment/nativeUnsupported.ts)
+returns that refusal for replacement, operator mutations and customer alignment
+rows without a database executor or partial write.
+
+[Label helpers](../../../packages/platform/src/fulfillment/labelLifecycle.ts) delegate
+storage reads and actor/idempotency-bound cleanup; a missing cached label proves
+no parcel absence, and canProceed does not confirm deletion.
+[Current-parcel helpers](../../../packages/platform/src/fulfillment/currentFulfillmentParcel.ts)
+select by sequence then identifier descending and retain unattributed companion
+rows. These handlers and helpers mount no route. Inspect the
+[lifecycle handler](../../../packages/platform/test/fulfillment/lifecycleHandlers.test.ts),
+[replacement/delay](../../../packages/platform/test/fulfillment/replacementDelay.test.ts)
+and [label/tracking](../../../packages/platform/test/fulfillment/labelTracking.test.ts)
+witnesses for their host fixture and refusal boundaries.
 
 ## Carrier fit and type/test ownership
 
