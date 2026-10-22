@@ -1,4 +1,4 @@
-import { aggregateAtpCompatibleStock, stockMovementWindow } from "./providerStockAvailability.js";
+import { aggregateAtpCompatibleStock, emptyLocal, stockMovementWindow } from "./providerStockAvailability.js";
 import type { FulfillmentStockSyncPort, FulfillmentStockSyncProvider, LocalStock, StockSnapshot, StockMovement } from "./contracts/index.js";
 type Threshold = Parameters<FulfillmentStockSyncPort["resolveLowStockEvidence"]>[0]["activeThresholdKinds"][number];
 interface StockSyncResult {
@@ -212,10 +212,6 @@ function readStringSet(value: unknown): Set<string> {
 
 function availableQuantity(balance: LocalStock): number {
   return Math.max(0, balance.onHand - balance.reserved - balance.unavailable - balance.safetyStock);
-}
-
-function emptyLocal(sku: string): LocalStock {
-  return { skuRef: sku, onHand: 0, reserved: 0, unavailable: 0, safetyStock: 0 };
 }
 
 function latestOccurredAt(movements: StockMovement[]): string | null {

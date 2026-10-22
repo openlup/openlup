@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { FULFILLMENT_STATUS_MAP, CANONICAL_LOCAL_FULFILLMENT_STATUSES, CUSTOMER_STEP_SEQUENCE, canonicalStatusToken, customerStepFromSignals, phaseIndexForStep, stepForToken, stepLabelKey, timelineLabelForStep, trackingPhaseKeyForStep, stepUsesTruckIcon } from "../../src/fulfillment/index.js";
+import { FULFILLMENT_STATUS_MAP, CANONICAL_LOCAL_FULFILLMENT_STATUSES, CUSTOMER_STEP_SEQUENCE, canonicalStatusToken, customerStepFromSignals, phaseIndexForStep, stepForToken, stepLabelKey, timelineLabelForStep, trackingPhaseKeyForStep, stepUsesTruckIcon } from "../src/fulfillment/index.js";
 
 describe("contributed status canon (W1)", () => {
   it("preserves the donor canonical projection bytes after removing private trace columns", () => {

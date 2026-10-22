@@ -1726,11 +1726,31 @@
       "class": "public-output"
     },
     {
+      "path": "packages/core/src/fulfillment/currentFulfillmentParcel.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/core/src/fulfillment/facts.ts",
       "class": "public-output"
     },
     {
       "path": "packages/core/src/fulfillment/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/core/src/fulfillment/normalizedFulfillmentFacts.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/core/src/fulfillment/statusMap.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/core/src/fulfillment/trackingProgress.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/core/src/fulfillment/types.ts",
       "class": "public-output"
     },
     {
@@ -1982,7 +2002,23 @@
       "class": "public-output"
     },
     {
+      "path": "packages/core/test/fulfillmentCurrentParcel.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/core/test/fulfillmentFacts.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/core/test/fulfillmentNormalizedFacts.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/core/test/fulfillmentStatusMap.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/core/test/fulfillmentTrackingProgress.test.ts",
       "class": "public-output"
     },
     {
@@ -3138,6 +3174,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/composition/fulfillmentContribution.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/composition/httpBinding.ts",
       "class": "public-output"
     },
@@ -3190,11 +3230,23 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/fulfillment/bindings.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/fulfillment/commerceFulfillmentHandlers.ts",
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/fulfillment/commerceFulfillmentReadModel.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/fulfillment/contracts/alignment.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/contracts/bindings.ts",
       "class": "public-output"
     },
     {
@@ -3231,6 +3283,10 @@
     },
     {
       "path": "packages/platform/src/fulfillment/contracts/operator.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/contracts/read.ts",
       "class": "public-output"
     },
     {
@@ -3474,7 +3530,15 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/fulfillment/shipmentsOverviewHandler.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/fulfillment/statusMap.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/trackingProgress.ts",
       "class": "public-output"
     },
     {
@@ -4890,6 +4954,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/fulfillment/bindings.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/fulfillment/contracts.test.ts",
       "class": "public-output"
     },
@@ -4978,6 +5046,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/fulfillment/readModel.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/fulfillment/reconciliation.test.ts",
       "class": "public-output"
     },
@@ -4987,10 +5059,6 @@
     },
     {
       "path": "packages/platform/test/fulfillment/replacementDelay.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "packages/platform/test/fulfillment/statusMap.test.ts",
       "class": "public-output"
     },
     {
@@ -14850,6 +14918,14 @@
       "class": "public-output"
     },
     {
+      "path": "server/runtime/public-reference/m08FulfillmentBinding.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/runtime/public-reference/m08FulfillmentBinding.ts",
+      "class": "public-output"
+    },
+    {
       "path": "server/runtime/public-reference/serve.test.ts",
       "class": "public-output"
     },
@@ -14899,6 +14975,10 @@
     },
     {
       "path": "server/runtime/subscription/automaticRenewalPaymentRails.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/runtime/subscription/deliveryAlignmentRenewalStore.ts",
       "class": "public-output"
     },
     {
@@ -15607,6 +15687,14 @@
     },
     {
       "path": "src/components/FlavorMegaMenu.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/components/FulfillmentDeliveryStatus.test.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/components/FulfillmentDeliveryStatus.tsx",
       "class": "public-output"
     },
     {
@@ -18302,6 +18390,10 @@
       "class": "public-output"
     },
     {
+      "path": "src/domains/fulfillment/referenceFulfillmentClient.ts",
+      "class": "public-output"
+    },
+    {
       "path": "src/domains/fulfillment/status.test.ts",
       "class": "public-output"
     },
@@ -20474,6 +20566,14 @@
       "class": "public-output"
     },
     {
+      "path": "src/pages/ReferenceFulfillmentPage.test.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/pages/ReferenceFulfillmentPage.tsx",
+      "class": "public-output"
+    },
+    {
       "path": "src/pages/ReferencePaymentRepairPage.test.tsx",
       "class": "public-output"
     },
@@ -20715,6 +20815,10 @@
     },
     {
       "path": "src/pages/account/v2/orders/OrderTrackingStepper.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/pages/account/v2/orders/OrdersScreen.test.tsx",
       "class": "public-output"
     },
     {
@@ -22306,6 +22410,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/helpers/fulfillmentComposition.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/helpers/fulfillmentNative.ts",
       "class": "public-output"
     },
@@ -22515,6 +22623,14 @@
     },
     {
       "path": "tests/postgres/fulfillmentNativeConformance.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/fulfillmentPreparationBinding.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/fulfillmentRenewalAdmission.test.ts",
       "class": "public-output"
     },
     {

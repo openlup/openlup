@@ -30,6 +30,20 @@ state writer is not an extension seam.
 
 ## Runtime boundaries
 
+The host status-map, normalized-fact and current-parcel facades delegate to
+`@openlup/core/fulfillment`, retaining host names and private provider trace
+metadata. Browser import inventories declare only the core fulfillment modules;
+platform fulfillment remains outside browser runtime graphs.
+
+The native automatic-renewal hook accepts the runner’s optional `occurredAt`.
+Its delivery-alignment store decorator preserves the static terms gate and marks
+only native admission denials as deferred. The runner and batch return
+`deferred` before reservation or preparation, with no terminal refusal write;
+the operation stays claimed and the same schedule is offered only after lease
+expiry. Static gate refusals remain terminal. Direct hook callers that omit
+`occurredAt` use the decorator’s clock. This changes neither the PostgreSQL
+renewal adapters nor cycle-insert receipt enforcement.
+
 The reference application's renewal execution, readback registry, recovery
 guidance, setup routes, channel list and activation bind through the experimental
 [reference-support exports](../../packages/platform/README.md#reference-support-surface).
@@ -695,18 +709,29 @@ executor. Browser preview values remain reference-owned. See the
 
 ## Fulfillment contracts
 
-Fulfillment lives at three existing-package subpaths:
+Pure fulfillment presentation lives at the existing `@openlup/core/fulfillment`
+subpath: the status canon, actual-evidence tracking progress, current-parcel
+selection/attribution and parsers narrowed to the canonical status union. Its
+[local sources](../../packages/core/src/fulfillment/index.ts) have no I/O or platform
+dependency. Generic core fact types retain their names; narrowed aliases use the
+`Canonical` prefix. Platform fulfillment lives at three existing-package subpaths:
 `@openlup/platform/fulfillment`, `/fulfillment/contracts` and the opt-in
-`/fulfillment/omnipack` example; no topology trigger
-requires another package or dependency. The type-only contracts entry has no runtime,
-server or cross-module edge; its only dependency is a type import of the core
-normalized fulfillment fact. The runtime entry binds core evidence parsers to the
-contributed status canon and selects only injected capability profiles. Provider,
+`/fulfillment/omnipack` example. `@openlup/platform/fulfillment` keeps compatibility
+re-exports of the core presentation, and `/fulfillment/contracts` re-exports the
+shared status and progress types. The type-only contracts entry has no runtime or
+server edge; its dependencies are core fact, status, progress, payment-status and
+subscription-status types. No topology trigger requires another package or
+dependency. Platform owns the server orchestration and selects only injected
+capability profiles. Provider,
 carrier and service remain independent; empty provider selection refuses, and
 potential support never enables a dormant route. Raw commands, credentials and
 signed label URLs stay transient at the host/adapter boundary; durable contracts
-carry typed facts, safe references and actual-command fingerprints. Existing reference facades
-and the order-management status ladder/queue pair remain host-owned until explicit later adoption.
+carry typed facts, safe references and actual-command fingerprints. Reference status-map, normalized-fact and current-parcel facades delegate to
+`@openlup/core/fulfillment`; the status facade adds only private provider trace
+metadata. Account order UI imports progress values and types directly from core.
+Browser graphs declare only core fulfillment modules and exclude platform
+fulfillment, the reference preparation binding and the account order screens.
+The order-management status ladder/queue pair remains host-owned.
 
 The deeply frozen, readonly default-off descriptor remains unselected and unready
 after host construction. Numeric HTTP settings refuse invalid values at construction.
@@ -833,26 +858,52 @@ hidden. Manual review never implies protection. The projection changes no contro
 mode, schedule or delivery fact. The current-parcel helpers select the highest
 sequence, then identifier descending, and retain unattributed companion rows.
 
+The [commerce read models](../../packages/platform/src/fulfillment/commerceFulfillmentReadModel.ts)
+assemble host-provided lines, address snapshots, operations, reservations, active
+tracking references, holds and cycle statuses. Payment status is already projected
+by the payments owner and passes through unchanged; eligibility is delegated to
+the existing host commerce policy. Missing required list context fails rather
+than inventing an order or payment. Snapshot projection retains only the declared
+address fields. The [overview handler](../../packages/platform/src/fulfillment/shipmentsOverviewHandler.ts)
+checks method, authorization and filter before its host read, then validates the
+response with a required host-supplied schema. Bucket rows remain opaque to the
+package; the host schema retains private-row validation. The host owns privacy
+and date-filter semantics; native shipment counts cannot replace its buckets.
+
+[fulfillmentProgressPresentation](../../packages/platform/src/fulfillment/trackingProgress.ts)
+accepts the host's resolved customer step, order status, optional nullable payment
+and fulfillment statuses, optional customer step and timeline event types. Only recorded
+physical milestones complete, capped at that step; later progress does not imply
+earlier milestones or payment. Paid completion requires the existing succeeded
+or historical paid account payment spelling. Terminal, draft, expired and off-track
+orders have no progress spine. OrdersScreen uses this projection with its existing
+labels, step resolution and payment recovery controls.
+
 ### Native parity boundaries
 
 | Capability | Native installation boundary | Required host binding |
 | --- | --- | --- |
 | Replacement creation | Unsupported; no shipment, reservation, hold, receipt or outbox write | Atomic replacement port |
 | Operator lifecycle mutations | Unsupported; the native shipment spine port does not carry the operator transaction | Actor-bound mutation callbacks and replay receipts |
-| Commerce orders list/detail and shipments overview | No equivalent native commerce read | Host read callbacks for the orders list and detail (and for the shipments overview when its handler ships); payment status uses the core payment-intent statuses |
-| Dispatch preparation writer | No authoritative contact/selection writer | Host synchronization under the shipment lock |
-| Enforcing delivery alignment | Installation without renewal admission wiring cannot enforce the complete lifecycle | Admission wrapper before new-cycle insertion; keep native mode off until wired |
+| Commerce orders list/detail and shipments overview | No equivalent native commerce read | Host read callbacks for orders list, detail and shipments overview; payment status passes through the existing payments projection using core payment-intent statuses |
+| Dispatch preparation writer | Explicit host preparation binding synchronizes revision, provider and withholding under the shipment lock, including authoritative edits | Required host reader/edit closures and transaction lane; disabled, capability-selection/readiness and unsupported-dispatch refusals precede the shared typed refusal for an absent binding, all before any worker |
+| Enforcing delivery alignment | The [host admission decorator](../../server/runtime/subscription/deliveryAlignmentRenewalStore.ts) preserves static terms and captured cases, skips off/no-case admission and obtains one-use schedule receipts before new cycles. Native denials return non-terminal `deferred` results, leaving claims retryable at the same schedule after lease expiry; static refusals remain terminal | A host that composes the native automatic-renewal runner must wrap its store port with the decorator; until it does, native delivery-alignment mode stays off or shadow. No runner composer, factory or production entrypoint is supplied |
 
 `createNativeUnsupportedFulfillmentPorts` returns the single typed
 `FULFILLMENT_NATIVE_UNSUPPORTED` refusal for replacement, operator mutations and
-customer alignment rows. It has no database executor and performs no partial
+customer alignment rows, commerce list/detail and shipments overview. It has no
+database executor and performs no partial
 write or substitute operation. The refusal is accepted by
 [`FulfillmentReplacementPort`](../../packages/platform/src/fulfillment/contracts/replacement.ts),
-[`FulfillmentOperatorMutationPort`](../../packages/platform/src/fulfillment/contracts/operator.ts)
-and [`FulfillmentCustomerAlignmentRowsReader`](../../packages/platform/src/fulfillment/contracts/customerAlignment.ts);
+[`FulfillmentOperatorMutationPort`](../../packages/platform/src/fulfillment/contracts/operator.ts),
+[`FulfillmentCustomerAlignmentRowsReader`](../../packages/platform/src/fulfillment/contracts/customerAlignment.ts),
+and the [commerce and overview read ports](../../packages/platform/src/fulfillment/contracts/read.ts);
 [`readFulfillmentDelay`](../../packages/platform/src/fulfillment/delayReadModel.ts)
-propagates it. Commerce list/detail reads and dispatch preparation retain their
-own declared return types. Supplying a host fixture proves that seam's
+propagates it. The commerce and overview handlers return this refusal as
+UPSTREAM_UNAVAILABLE with its typed details. Dispatch preparation checks activation,
+capability selection/readiness and dispatch support before returning the shared
+typed refusal for a missing host binding, all before invoking a worker.
+Supplying a host fixture proves that seam's
 handler behavior; it does not establish native parity or activate any route.
 
 The [verified ingress](../../packages/platform/src/fulfillment/verifiedIngress.ts)
@@ -935,9 +986,12 @@ mode and existing protection after later control changes.
 Enforcing modes (`protect`, `auto_align`) require the host's renewal path to call
 `subscription_delivery_alignment_admit_renewal` before inserting the cycle.
 The [native renewal store](../../server/adapters/postgres/subscription/automaticRenewal.ts)
-does not yet call it, so switching a native install to an enforcing mode halts
-every autonomous renewal with `subscription_delivery_alignment_admission_required`.
-Native installs must keep mode `off` until that wiring lands.
+does not call it; a host that composes the native automatic-renewal runner wraps
+that store port with the
+[renewal admission decorator](../../server/runtime/subscription/deliveryAlignmentRenewalStore.ts).
+Without the decorator, an enforcing mode halts every autonomous renewal with
+`subscription_delivery_alignment_admission_required`, so native installs keep
+mode `off` or `shadow` until the host wraps the port.
 
 In enforcing modes, a subscription whose paid history has no activation or
 renewal link, such as imported data, holds every due renewal for manual review.
@@ -981,7 +1035,27 @@ admission/insert. Existing-cycle renewal and dunning retries never pass through
 admission and neither mint nor consume its one-use receipts. There is no
 `retry_scheduled` state or change to the payments lifecycle.
 
-Native dispatch uses host-supplied contact preparation and candidate data. The
+[createFulfillmentServices](../../packages/platform/src/fulfillment/bindings.ts)
+checks explicit activation, capability selection/readiness, dispatch support,
+store/provider presence and host readiness, in that order, before invoking
+the dispatch worker, including its write-capable stale-submission sweep.
+`FulfillmentServicesOptions` carries in-memory ports and closures; credentials
+remain captured by host adapters and must never be serialized with options.
+[createFulfillmentContribution](../../packages/platform/src/composition/fulfillmentContribution.ts)
+declares structural selected ports, handlers, schedules and routes. Core readiness
+retains duplicate event, schedule and route ownership checks. The bundle composer
+has an explicit fulfillment slot with no default binder.
+
+Native dispatch uses host-supplied contact preparation and candidate data.
+The [reference binding](../../server/runtime/public-reference/m08FulfillmentBinding.ts)
+uses one transaction lane and selected store/provider/readiness observer.
+It acquires the native dispatch advisory lock, then locks the shipment row before
+reading authoritative data. Its edit callback requires actor and idempotency
+attribution; the host owns authorization and replay receipts. Source edits and
+redacted context synchronization share that transaction. All authoritative edits
+must use this route. Disabled, capability-selection/readiness and
+unsupported-dispatch refusals take precedence over the shared native refusal for
+a missing preparation binding. Construction mounts and schedules nothing. The
 host synchronizes `fulfillment_dispatch_contexts` during preparation and every
 authoritative contact/selection edit under the shipment lock. Claim/begin compare
 stored revision with prepared evidence. Submission rechecks paid state, holds,
@@ -1003,7 +1077,7 @@ canonical catalogue; `FULFILLMENT_MIGRATIONS` contains byte-identical sparse
 projections. See [native installation boundaries](DATA_AND_MIGRATIONS.md#module-catalogues-and-installed-histories).
 
 Inspect the [contract witnesses](../../packages/platform/test/fulfillment/contracts.test.ts),
-[status parity](../../packages/platform/test/fulfillment/statusMap.test.ts),
+[status parity](../../packages/core/test/fulfillmentStatusMap.test.ts),
 [port fit](../../packages/platform/test/fulfillment/portFit.test.ts) and
 [programme record](plans/oss-m08-fulfillment-physical-delivery.md) for provenance,
 declared adaptations and boundaries. The

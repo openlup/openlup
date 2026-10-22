@@ -131,6 +131,12 @@ its users or operators can observe.
 
 ## Development-preview checks
 
+Fulfillment preparation conformance runs the production reference writer under
+its advisory and shipment row locks in
+`tests/postgres/fulfillmentPreparationBinding.test.ts`; the packed
+`scripts/packages/platform-cold-consumer.test.ts` scenario also covers the
+fulfillment services and contribution from installed bytes.
+
 Native fulfillment conformance uses the existing Node collector and disposable
 PostgreSQL harness in `tests/postgres/fulfillmentNativeConformance.test.ts` and
 `tests/postgres/fulfillmentDeliveryAlignment.test.ts`. It covers complete install and

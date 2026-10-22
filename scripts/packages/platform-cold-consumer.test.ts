@@ -26,8 +26,12 @@ function fixture() {
   // The typed consumer registers the payments factory with the composer.
   writeFileSync(join(consumer, "node_modules/@openlup/platform/index.d.ts"), [
     "export interface Synthetic { value: string }",
+    "export interface FulfillmentServicesOptions {}",
+    "export interface FulfillmentServices { runDispatch(): Promise<unknown> }",
+    "export declare function createFulfillmentServices(options: FulfillmentServicesOptions): FulfillmentServices;",
+    "export declare function createFulfillmentContribution(input: unknown): unknown;",
     "export declare function createPaymentServices(): { run<T>(work: (port: { kind: \"truth\" }) => Promise<T>): Promise<T> } | null;",
-    "export declare function createBundleComposer(binders: { blob: () => null; payments?: () => { run<T>(work: (port: unknown) => Promise<T>): Promise<T> } | null }): unknown;",
+    "export declare function createBundleComposer(binders: { blob: () => null; fulfillment?: () => FulfillmentServices | null; payments?: () => { run<T>(work: (port: unknown) => Promise<T>): Promise<T> } | null }): unknown;",
   ].join("\n") + "\n");
   packageFixture(consumer, "zod", { ".": "./index.js" });
   return consumer;
@@ -428,12 +432,15 @@ const inventoryForecastFixture = {
     expect(reference.inventorySubscriptionForecastResponseSchema.safeParse(inventoryForecastFixture).success).toBe(false);
   });
 
-it("payments and fulfillment: installed packed consumer proves injected execution, truth scope, fulfillment entries and refusal", () => {
+it("payments and fulfillment: installed packed consumer proves injected execution, truth scope, fulfillment services, default-off and contribution", () => {
   const consumer = pristinePackedA1Fixture();
   assertConsumerIsolation(consumer, root);
   provePaymentsConsumer(consumer);
   proveFulfillmentConsumer(consumer);
-});
+  for (const name of ['@types/node', 'undici-types']) cpSync(join(root, 'node_modules', name), join(consumer, 'node_modules', name), { recursive: true });
+  compileConsumer(consumer, NON_ADAPTER_ENTRIES, join(root, 'node_modules/typescript/lib/tsc.js'));
+  // Hosted runners compile both resolution modes uncached, which can exceed the default floor.
+}, 30_000);
 
 it("proves both opt-in installed payment adapters without SDK or import-time I/O", () => {
   const consumer = pristinePackedA1Fixture();

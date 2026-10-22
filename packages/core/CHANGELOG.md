@@ -8,6 +8,14 @@ SemVer promise.
 
 ## [Unreleased]
 
+- Add pure fulfillment status, tracking-progress, current-parcel and canonical
+  fact-parser helpers to the existing `./fulfillment` subpath. Generic fact types
+  retain their names; narrowed fact aliases use the `Canonical` prefix. New
+  fulfillment re-exports carry the same `@beta` annotation as existing facts.
+
+Migration: existing platform fulfillment imports remain compatible re-exports;
+no application import or schema migration is required.
+
 ## [0.21.0]
 
 - Publishable on the npm `latest` dist-tag as `0.21.0`, from tag

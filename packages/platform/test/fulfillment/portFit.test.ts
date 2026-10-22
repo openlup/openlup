@@ -1,4 +1,5 @@
 import { expect, expectTypeOf, it } from "vitest";
+import * as coreFulfillment from "@openlup/core/fulfillment";
 import * as fulfillment from "../../src/fulfillment/index.js";
 const { readFulfillmentCapabilities } = fulfillment;
 import type { FulfillmentCapabilityDescriptor, FulfillmentObservation, FulfillmentObservationPort, FulfillmentReadbackResult, FulfillmentStockSyncProvider, FulfillmentStockSyncPort, FulfillmentProductSyncProvider, FulfillmentProductSyncPort, FulfillmentStorePort } from "../../src/fulfillment/contracts/index.js";
@@ -59,9 +60,14 @@ it("keeps injected capabilities default-off with independent selection, readines
   expect(descriptor.freshness).toBe("not_available");
   descriptor.role = "direct_carrier"; descriptor.selected = false;
   expect(readFulfillmentCapabilities([descriptor], selection)).toMatchObject({ kind: "refused", refusal: { reason: "disabled" } });
+  expect(fulfillment.FULFILLMENT_STATUS_MAP).toBe(coreFulfillment.FULFILLMENT_STATUS_MAP);
+  expect(fulfillment.fulfillmentProgressPresentation).toBe(coreFulfillment.fulfillmentProgressPresentation);
+  expect(fulfillment.currentParcel).toBe(coreFulfillment.currentParcel);
+  expect(fulfillment.parseFulfillmentFact).toBe(coreFulfillment.parseFulfillmentFact);
   expect(Object.keys(fulfillment).sort()).toEqual([
     "CANONICAL_LOCAL_FULFILLMENT_STATUSES", "CUSTOMER_STEP_SEQUENCE", "FULFILLMENT_STATUS_MAP",
-    "collectPaidFulfillmentRecoveryCandidates", "createFulfillmentCommandLedger", "createOutboxOrderPaidFulfillmentHandler", "runFulfillmentDispatchWorker",
+    "buildCommerceFulfillmentOrdersListResponse", "buildCommerceFulfillmentOrderDetailResponse", "createFulfillmentShipmentsOverviewHandler", "fulfillmentProgressPresentation",
+    "collectPaidFulfillmentRecoveryCandidates", "createFulfillmentServices", "createFulfillmentCommandLedger", "createOutboxOrderPaidFulfillmentHandler", "runFulfillmentDispatchWorker",
     "verifyAndNormalizeFulfillmentObservation", "applyFulfillmentObservationEffects", "reconcileFulfillmentObservations", "runFulfillmentStockSyncWorker", "runFulfillmentProductSyncWorker", "createFulfillmentLowStockEvidenceHandler", "createProductReconciliationEvidenceHandler", "runFulfillmentAdapterConformance",
     "createPostgresFulfillmentShipmentSpinePort", "createPostgresFulfillmentLowStockEvidencePort", "createPostgresFulfillmentStockSyncPort", "createPostgresPaidFulfillmentRecoveryOpsPort", "createPostgresFulfillmentDispatchStore", "createPostgresPaidFulfillmentHandoffStore", "createPostgresDeliveryAlignmentPort", "readDeliveryAlignment", "FULFILLMENT_MIGRATIONS", "FULFILLMENT_NATIVE_CAPABILITIES",
     "canonicalStatusToken", "customerStepFromSignals", "parseFulfillmentFact", "parseFulfillmentTransitionConflict",

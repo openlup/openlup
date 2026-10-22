@@ -80,6 +80,8 @@ ceilings. Its aggregate budgets in `release-gates.json` follow the measured
 decision its `$budgetReason` records; later growth still needs its own
 measured budget decision. Passing a local pack does not authorize publication.
 
+`./fulfillment` owns pure status, tracking-progress, current-parcel and canonical fact-parser helpers.
+
 ## Package Surface Maturity
 
 Every current export is an internal candidate, experimental kernel, or testing
@@ -91,7 +93,7 @@ promise.
 | `./bundle` | kernel | candidate | `smoke/subscriptionBundleStandalone.test.ts` |
 | `./catalog` | kernel | candidate | `smoke/catalogStandalone.test.ts` |
 | `./company-identity` | kernel | experimental | `smoke/companyIdentityStandalone.test.ts` |
-| `./fulfillment` | kernel | experimental | `smoke/fulfillmentStandalone.test.ts` |
+| `./fulfillment` | kernel | experimental | `smoke/fulfillmentStandalone.test.ts`<br>`test/fulfillmentStatusMap.test.ts`<br>`test/fulfillmentTrackingProgress.test.ts`<br>`test/fulfillmentCurrentParcel.test.ts`<br>`test/fulfillmentNormalizedFacts.test.ts` |
 | `./inventory` | kernel | candidate | `smoke/inventoryStandalone.test.ts` |
 | `./marketing/research` | kernel | experimental | `smoke/marketingResearchStandalone.test.ts` |
 | `./partners` | kernel | experimental | `smoke/partnersStandalone.test.ts` |

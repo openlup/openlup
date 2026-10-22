@@ -23,6 +23,8 @@ export function writeViteConsumerConfig(
       "    name: 'assert-core-dist-resolution',",
       "    buildEnd() {",
       "      const moduleIds = [...this.getModuleIds()].map((id) => id.replaceAll('\\\\', '/'));",
+      "      const forbidden = moduleIds.filter((id) => /(?:packages\\/platform|node_modules\\/@openlup\\/platform)\\/dist\\/fulfillment\\//.test(id) || id.endsWith('/server/runtime/public-reference/m08FulfillmentBinding.ts') || id.endsWith('/server/runtime/public-reference/m08FulfillmentBinding.js') || id.endsWith('/src/pages/account/v2/orders/OrdersScreen.tsx') || id.endsWith('/src/pages/account/v2/orders/OrderTrackingStepper.tsx'));",
+      "      if (forbidden.length > 0) throw new Error(`core browser consumer loaded fulfillment runtime or host UI: ${forbidden.join(', ')}`);",
       "      const coreIds = moduleIds.filter((id) => id.startsWith(expectedPackageRoot));",
       `      if (coreIds.length < ${expectedExports}) throw new Error(\`core package Vite loaded only \${coreIds.length}/${expectedExports} public export modules\`);`,
       "      const outsideDist = coreIds.filter((id) => !id.startsWith(expectedDistRoot));",

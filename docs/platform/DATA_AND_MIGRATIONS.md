@@ -88,9 +88,14 @@ their captured mode and protection after a control change.
 Enforcing modes (`protect`, `auto_align`) require the host's renewal path to call
 `subscription_delivery_alignment_admit_renewal` before inserting the cycle.
 The [native renewal store](../../server/adapters/postgres/subscription/automaticRenewal.ts)
-does not yet call it, so switching a native install to an enforcing mode halts
-every autonomous renewal with `subscription_delivery_alignment_admission_required`.
-Native installs must keep mode `off` until that wiring lands.
+retains its static terms gate. A host that composes the native automatic-renewal
+runner must wrap its store port with the
+[admission decorator](../../server/runtime/subscription/deliveryAlignmentRenewalStore.ts)
+before selecting an enforcing mode; an uncomposed
+new-cycle insertion refuses with `subscription_delivery_alignment_admission_required`.
+Until the host wraps that port, native delivery-alignment mode stays `off` or
+`shadow`. The supplied boundary stops at the decorator, with no runner composer,
+factory or production entrypoint. Captured protection survives rollback to `off`.
 
 In enforcing modes, a subscription whose paid history has no activation or
 renewal link, such as imported data, holds every due renewal for manual review.

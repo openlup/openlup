@@ -216,6 +216,46 @@ substituting a different business behaviour.
 
 ## Opt-in disposable subscription reference
 
+The inert [M08 fulfillment binding](../../server/runtime/public-reference/m08FulfillmentBinding.ts)
+selects one transaction lane, dispatch store, provider and readiness observer.
+Activation is default-off and checked before worker invocation, including the
+worker's stale-submission writes. The host supplies an authoritative reader
+using the locked transaction and routes every contact, selection or withholding
+edit through `editAuthoritative`, with actor and idempotency attribution and
+host-owned authorization/replay receipts. The writer locks the native dispatch
+identity and shipment, then synchronizes only revision, provider and withholding.
+Disabled, capability-selection/readiness and unsupported-dispatch refusals take
+precedence over the shared typed native refusal for missing preparation;
+all precede worker invocation. Source edits
+and context updates commit together; an error rolls both back. Credentials remain
+host closures. Construction adds no route, schedule or automatic dispatch, and
+the public reference server does not select this binding by default. Renewal
+admission uses the [host store decorator](../../server/runtime/subscription/deliveryAlignmentRenewalStore.ts)
+around the automatic runner's existing hook. A host that composes the native
+automatic-renewal runner must wrap its store port with this decorator; until it
+does, native delivery-alignment mode stays off or shadow. This boundary stops at
+the decorator and supplies no runner composer, factory or production entrypoint.
+Construction installs no route or schedule. It preserves the
+static terms gate, skips admission for off with no non-terminal captured case,
+and processes captured cases through native admission even after rollback to off.
+Prepared attempts, existing cycles and dunning retries bypass new-cycle admission.
+Native admission denials carry a typed deferral: the runner and batch report
+`deferred`, leaving the operation claimed without a terminal refusal write. The
+same schedule is offered again only after lease expiry, including after protect
+release, manual-review resolution or auto alignment without an extension. Static
+terms refusals retain their terminal behavior. The hook uses the runner’s
+`occurredAt`; direct callers may omit it and use the decorator’s clock. Previously
+refused operations and reservation-expiry recovery are unchanged. Enforcing
+new-cycle inserts require the successful exact-schedule admission and consume
+its receipt once.
+Host status-map, normalized-fact and current-parcel facades delegate to
+`@openlup/core/fulfillment` with their existing names; the status facade retains
+private provider trace metadata. Account order UI imports core progress helpers
+and types. The subscription browser inventory declares only the parsed core
+fulfillment modules. The default and subscription client and SSR graphs, identity
+clients for both auth providers, and installed core browser consumer exclude
+platform fulfillment modules, the preparation binding and the account order screens.
+
 The inert [payments binding](../../server/runtime/public-reference/m07PaymentBinding.ts)
 selects injected truth services or verified ingress only by explicit host choice.
 Unknown selections refuse and omission stays cold. No existing provider route or
@@ -507,6 +547,16 @@ falsifiers; follow [testing](../../CONTRIBUTING.md#test-scope-and-diagnostics) f
 execution. Second-runtime and deployed conformance remain separate adoption proof.
 
 ## Provider and host boundaries
+
+[ReferenceFulfillmentPage](../../src/pages/ReferenceFulfillmentPage.tsx) is an
+opt-in operator read example with no default runtime importer or route. Mounting
+requires a host-owned operator session and order identity; the existing detail
+endpoint remains responsible for authorization. The page reads only on explicit
+interaction and reports unavailable reads without claiming delivery. Its neutral
+client projects status and tracking text only; it exposes no address, raw operation
+payload, signed-label link or mutation. Commerce list/detail and overview require
+host read callbacks; [native parity boundaries](ARCHITECTURE_AND_EXTENSIONS.md#native-parity-boundaries)
+describe their shared typed refusal.
 
 Reference payment composition now calls the experimental vendor-subpath
 execution, reconciliation, HTTP, mapping and evidence helpers documented in the

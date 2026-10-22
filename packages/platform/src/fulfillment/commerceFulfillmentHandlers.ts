@@ -12,12 +12,8 @@ import {
   adminCommerceFulfillmentTrackingEventRequestSchema,
 } from "./handlerSchemas.js";
 import type { FulfillmentOperatorMutationPort as CommerceFulfillmentMutationPort } from './contracts/operator.js';
-import type { AdminCommerceFulfillmentOrdersListRequest, AdminCommerceFulfillmentOrdersListResponse, AdminCommerceFulfillmentOrderDetailRequest, AdminCommerceFulfillmentOrderDetailResponse } from './handlerSchemas.js';
+import type { FulfillmentCommerceReadPort as CommerceFulfillmentReadPort } from './contracts/read.js';
 import { CommerceFulfillmentConflictError, authorize, isNativeUnsupported, type BaseDeps, type FulfillmentHandlerRequest } from './handlerSupport.js';
-type CommerceFulfillmentReadPort = {
-  listCommerceFulfillmentOrders(request: AdminCommerceFulfillmentOrdersListRequest): Promise<AdminCommerceFulfillmentOrdersListResponse>;
-  getCommerceFulfillmentOrderDetail(request: AdminCommerceFulfillmentOrderDetailRequest): Promise<AdminCommerceFulfillmentOrderDetailResponse | null>;
-};
 type PortRef<T> = T | (() => T);
 
 export function createAdminCommerceFulfillmentOrdersListHandler<Response>({
@@ -43,6 +39,10 @@ export function createAdminCommerceFulfillmentOrdersListHandler<Response>({
     try {
       const port = resolvePort(fulfillmentPort);
       const result = await port.listCommerceFulfillmentOrders(request.data);
+      if (isNativeUnsupported(result)) {
+        sendBffError(res, "UPSTREAM_UNAVAILABLE", "Native fulfillment operation unsupported", { details: result });
+        return;
+      }
       const response = adminCommerceFulfillmentOrdersListResponseSchema.safeParse(result);
       if (!response.success) {
         sendBffError(res, "INVALID_RESPONSE", "Admin commerce fulfillment orders response invalid");
@@ -78,6 +78,10 @@ export function createAdminCommerceFulfillmentOrderDetailHandler<Response>({
     try {
       const port = resolvePort(fulfillmentPort);
       const result = await port.getCommerceFulfillmentOrderDetail(request.data);
+      if (isNativeUnsupported(result)) {
+        sendBffError(res, "UPSTREAM_UNAVAILABLE", "Native fulfillment operation unsupported", { details: result });
+        return;
+      }
       if (!result) {
         sendBffError(res, "NOT_FOUND", "Commerce fulfillment order not found");
         return;

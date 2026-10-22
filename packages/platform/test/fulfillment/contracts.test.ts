@@ -2,7 +2,6 @@ import { expect, expectTypeOf, it } from "vitest";
 import { createHash } from "node:crypto";
 import * as contracts from "../../src/fulfillment/contracts/index.js";
 import type { DispatchEvidence, DispatchRecord, FulfillmentDispatchPrepareResult, FulfillmentDispatchPort, FulfillmentDispatchRequest, FulfillmentDispatchResult, FulfillmentStorePort, FulfillmentLabelPort, LabelDocument, SyncCursor, StockSnapshot, StockMovement, LocalStock } from "../../src/fulfillment/contracts/index.js";
-import { parseFulfillmentFact, parseFulfillmentTransitionConflict } from "../../src/fulfillment/index.js";
 
 it("isolates browser types, nullable pre-create parcels, actual-command proof and transient label responses (G1–G5)", () => {
   expect(Object.keys(contracts)).toEqual([]);
@@ -93,13 +92,4 @@ it("prepares actual command evidence before claim/begin and prepares again after
   expect(Object.keys(claimed.record).sort()).toEqual(["dispatchRef", "requestKey", "fulfillmentRef", "orderRef", "parcelRef", "mode", "evidence", "externalRef", "status", "replayed"].sort());
   expect(await adapter.prepare({ ...request, selection: { ...request.selection, providerRef: null } })).toMatchObject({ kind: "refused", refusal: { reason: "selection_required" } });
   expect(await adapter.prepare({ ...request, lines: [] })).toMatchObject({ kind: "refused", refusal: { reason: "not_dispatchable" } });
-});
-
-it("binds strict core fact and conflict parsers to the contributed status canon", () => {
-  const fact = { schemaVersion: 1, mapperVersion: "private-v1", factId: "event-a", providerKind: "warehouse-a", fulfillmentReference: "remote-a", canonicalStatus: "picking", provenance: { source: "provider_webhook", authority: "provider_asserted" }, occurredAt: null, receivedAt: "2026-10-21T10:00:00Z", rawEvent: { reference: "evidence:00000000-0000-4000-8000-000000000001", digestAlgorithm: "sha256", digest: "a".repeat(64) } };
-  expect(parseFulfillmentFact(fact)).toEqual(fact);
-  expect(() => parseFulfillmentFact({ ...fact, canonicalStatus: "private_state" })).toThrow();
-  expect(() => parseFulfillmentFact({ ...fact, password: "synthetic-secret" })).toThrow();
-  expect(() => parseFulfillmentFact({ ...fact, rawEvent: { ...fact.rawEvent, url: "https://example.invalid/?signed=synthetic" } })).toThrow();
-  expect(() => parseFulfillmentTransitionConflict({})).toThrow();
 });

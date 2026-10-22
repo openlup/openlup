@@ -75,7 +75,11 @@
       "maturity": "experimental",
       "compatibilityPolicy": "internal-candidate",
       "packageSmokeEvidence": [
-        "smoke/fulfillmentStandalone.test.ts"
+        "smoke/fulfillmentStandalone.test.ts",
+        "test/fulfillmentStatusMap.test.ts",
+        "test/fulfillmentTrackingProgress.test.ts",
+        "test/fulfillmentCurrentParcel.test.ts",
+        "test/fulfillmentNormalizedFacts.test.ts"
       ],
       "entrypoint": "dist/fulfillment/index.d.ts",
       "snapshot": "api/fulfillment.api.md"
