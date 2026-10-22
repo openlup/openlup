@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { reviewedBatchBytes, reviewedBatchPaths } from "./reviewed-batch-rail.ts";
@@ -158,8 +158,10 @@ it.each([0, 1, "all"] as const)("replays each rail once with %s landed pins and 
       for (const pin of railPins.slice(0, landed === "all" ? undefined : landed)) put(pin.path, bytes(pin));
       // A later unpinned file must not enter the pre-pin replay either.
       put(`${directory}/99999999999999_unrelated.sql`, "SELECT 1;");
-      const interleaved = `${directory}/20261022180500_unpinned.sql`;
-      put(interleaved, "SELECT 1;");
+      const interleaved = Array.from({ length: 60 }, (_, second) => `${directory}/202610221805${String(second).padStart(2, "0")}_unpinned.sql`)
+        .find(path => !existsSync(join(root, path)));
+      if (!interleaved) throw new Error("Reviewed batch test has no free interleaved probe filename");
+      writeFileSync(join(root, interleaved), "SELECT 1;", { flag: "wx" });
       const paths = reviewedBatchPaths(root, directory, railPins);
       expect(paths).toEqual([...originalPrefix, ...railPins.map(pin => pin.path), interleaved].sort());
       const preceding: Buffer[] = [];

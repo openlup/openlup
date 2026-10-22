@@ -1,4 +1,4 @@
-import { cpSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { reviewedBatchBytes, reviewedBatchPaths } from "../../scripts/reviewed-batch-rail.js";
@@ -24,7 +24,7 @@ describe.each(["native", "managed"] as const)("exact batch catalog gate: %s", gr
   const preceding: Buffer[] = [];
   let replayRoot: string;
   let paths: string[];
-  const interleaved = `${directory}/20261022180500_unpinned_gate_probe.sql`;
+  let interleaved: string;
   const applyCommittedBefore = async (limit: string) => {
     for (const path of paths.filter(path => path < limit && !pins.some(pin => pin.path === path))) {
       const bytes = readFileSync(join(replayRoot, path));
@@ -43,7 +43,12 @@ describe.each(["native", "managed"] as const)("exact batch catalog gate: %s", gr
     for (const pin of pins) fixture(pin);
     replayRoot = mkdtempSync(join(tmpdir(), "openlup-batch-pg-"));
     cpSync(directory, join(replayRoot, directory), { recursive: true });
-    writeFileSync(join(replayRoot, interleaved), "SELECT set_config('openlup.batch_interleaved', 'applied', false);");
+    // Stay between the 18:00 pin and the next pin on either rail without replacing committed bytes.
+    const free = Array.from({ length: 60 }, (_, second) => `${directory}/202610221805${String(second).padStart(2, "0")}_unpinned_gate_probe.sql`)
+      .find(path => !existsSync(join(replayRoot, path)));
+    if (!free) throw new Error("Reviewed batch gate has no free interleaved probe filename");
+    interleaved = free;
+    writeFileSync(join(replayRoot, interleaved), "SELECT set_config('openlup.batch_interleaved', 'applied', false);", { flag: "wx" });
     paths = reviewedBatchPaths(replayRoot, directory, pins);
     if (!await dockerAvailable()) throw new Error("Reviewed batch gate requires real PostgreSQL and pgTAP");
     container = await runPostgresContainer({ name: `reviewed-batch-${graph}-${process.pid}`, password: "synthetic-conformance", image: portable ? "postgres:16" : image });
