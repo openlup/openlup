@@ -1,5 +1,5 @@
 import type { DispatchEvidence, FulfillmentCapabilityDescriptor, FulfillmentDispatchPort, FulfillmentDispatchRequest,
-  FulfillmentLabelPort, FulfillmentObservationPort, FulfillmentReadbackPort, FulfillmentStockSyncProvider, FulfillmentProductSyncProvider } from "../contracts/index.js";
+  FulfillmentLabelPort, FulfillmentObservationPort, FulfillmentReadbackPort, FulfillmentStockSyncProvider, FulfillmentProductSyncProvider, FulfillmentRefusal } from "../contracts/index.js";
 import { createOmnipackClient, OmnipackProviderError } from "./client.js";
 import { omnipackFulfillmentCapabilities } from "./capabilities.js";
 import { buildOmnipackDispatchCommand, serializeOmnipackDispatchPayload, stableDispatchHash } from "./omnipackDispatchPayload.js";
@@ -8,6 +8,35 @@ import { verifyOmnipackWebhookToken, type OmnipackWebhookRouteEvent } from "./om
 import { localStatusFor, normalizeStatus } from "./omnipackStatusVocabulary.js";
 import { digest, eventKind, observation, reference, refusal, timestamp } from "./observation.js";
 export { omnipackFulfillmentCapabilities } from "./capabilities.js";
+
+// Internal error projection: retain diagnostics without exposing a provider payload or cause.
+class OmnipackSyncError extends Error implements FulfillmentRefusal {
+  readonly phase = "sync";
+  readonly retryable: boolean;
+  readonly providerFailure: boolean;
+  readonly status: number | null;
+  readonly code: string | null;
+
+  constructor(readonly reason: FulfillmentRefusal["reason"], operation: string, error?: unknown) {
+    super(reason === "io_failure" ? `OmniPack request failed: ${operation}` : `OmniPack sync refused: ${reason}`);
+    this.name = "OmnipackSyncError";
+    this.providerFailure = reason === "io_failure";
+    this.retryable = error instanceof OmnipackProviderError ? error.retryable : false;
+    this.status = error instanceof OmnipackProviderError ? error.status : null;
+    this.code = error instanceof OmnipackProviderError ? error.code : null;
+  }
+}
+function syncFailure(operation: string, error: unknown): OmnipackSyncError {
+  return error instanceof OmnipackSyncError ? error : new OmnipackSyncError("io_failure", operation, error);
+}
+function requireProductSku(sku: string): void {
+  // URL resolution collapses dot segments; encodeURIComponent rejects lone surrogates.
+  // Keep these SKUs in the listing so the worker counts a visible per-SKU failure.
+  try {
+    if (!sku.trim() || sku === "." || sku === "..") throw Error();
+    encodeURIComponent(sku);
+  } catch { throw new OmnipackSyncError("malformed", "getProduct"); }
+}
 
 /** Node-only, explicit construction. Secrets are supplied per call, never retained as values. */
 export interface OmnipackFulfillmentAdapterConfig {
@@ -72,12 +101,12 @@ export function createOmnipackFulfillmentAdapter(config: OmnipackFulfillmentAdap
     return null;
   };
   const requireSync = () => {
-    if (!capabilities.selected || !capabilities.readiness.ready) throw refusal(capabilities.selected ? "not_ready" : "disabled", "sync");
+    if (!capabilities.selected || !capabilities.readiness.ready) throw new OmnipackSyncError(capabilities.selected ? "not_ready" : "disabled", "selection");
   };
   const syncIdentity = () => {
     const syncRunId = reference(config.mintSyncRunId());
     const collectedAt = timestamp(config.clock());
-    if (!syncRunId || !collectedAt) throw refusal("malformed", "sync");
+    if (!syncRunId || !collectedAt) throw new OmnipackSyncError("malformed", "sync");
     return { providerRef: capabilities.providerRef, syncRunId, collectedAt, sourceRevision: null, revisionSource: "collection" as const };
   };
   // Shared computation: host metadata and serialized bytes live only for this call.
@@ -240,11 +269,11 @@ export function createOmnipackFulfillmentAdapter(config: OmnipackFulfillmentAdap
           const identity = syncIdentity();
           return (await client.getStock()).map(row => {
             const skuRef = reference(row.sku);
-            if (!skuRef) throw refusal("malformed", "sync");
+            if (!skuRef) throw new OmnipackSyncError("malformed", "sync");
             return { ...identity, skuRef, quantityKind: "snapshot" as const, totalQuantity: row.totalQuantity,
               forSaleQuantity: row.forSaleQuantity, reservedOrUnavailableQuantity: row.reservedOrUnavailableQuantity };
           });
-        } catch { throw refusal("io_failure", "sync"); }
+        } catch (error) { throw syncFailure("getStock", error); }
       },
       async getStockMovements(input) {
         requireSync();
@@ -252,11 +281,11 @@ export function createOmnipackFulfillmentAdapter(config: OmnipackFulfillmentAdap
           const identity = syncIdentity();
           return (await client.getStockMovements(input)).map(row => {
             const skuRef = reference(row.sku);
-            if (!skuRef) throw refusal("malformed", "sync");
+            if (!skuRef) throw new OmnipackSyncError("malformed", "sync");
             return { ...identity, skuRef, quantityKind: "movement" as const, quantity: row.quantity, occurredAt: timestamp(row.occurredAt),
               operationType: reference(row.operationType), documentRef: reference(row.warehouseDocumentNumber), lotRef: reference(row.lotNumber), expirationDate: /^\d{4}-\d\d-\d\d$/u.test(row.expirationDate ?? "") ? row.expirationDate : null };
           });
-        } catch { throw refusal("io_failure", "sync"); }
+        } catch (error) { throw syncFailure("getStockMovements", error); }
       },
     },
     productSync: {
@@ -267,23 +296,24 @@ export function createOmnipackFulfillmentAdapter(config: OmnipackFulfillmentAdap
           if (!metadata) return null;
           await client.createProduct(metadata, sku);
           return { replayed: false };
-        } catch { throw refusal("io_failure", "sync"); }
+        } catch (error) { throw syncFailure("createProduct", error); }
       },
       async getProductPacks(sku) {
         requireSync();
-        try { return (await client.getProduct(sku)).packs.filter(pack => /^\d{8,14}$/u.test(pack.ean) && Number.isSafeInteger(pack.quantity) && pack.quantity > 0).map(pack => ({ ean: pack.ean, quantity: pack.quantity })); }
-        catch { throw refusal("io_failure", "sync"); }
+        requireProductSku(sku);
+        try { return (await client.getProduct(sku)).packs.map(pack => ({ ean: pack.ean, quantity: pack.quantity })); }
+        catch (error) { throw syncFailure("getProduct", error); }
       },
       async addProductPack(sku, pack) {
         requireSync();
-        if (!/^\d{8,14}$/u.test(pack.ean) || !Number.isSafeInteger(pack.quantity) || pack.quantity <= 0) throw refusal("malformed", "sync");
+        if (!/^\d{8,14}$/u.test(pack.ean) || !Number.isSafeInteger(pack.quantity) || pack.quantity <= 0) throw new OmnipackSyncError("malformed", "sync");
         try { await client.createProductPack(sku, { ean: pack.ean, quantity: pack.quantity }, pack.ean); }
-        catch { throw refusal("io_failure", "sync"); }
+        catch (error) { throw syncFailure("createProductPack", error); }
       },
       async listStockedSkus() {
         requireSync();
-        try { return [...new Set((await client.getStock()).flatMap(row => reference(row.sku) ? [row.sku] : []))]; }
-        catch { throw refusal("io_failure", "sync"); }
+        try { return [...new Set((await client.getStock()).flatMap(row => row.sku.trim() ? [row.sku] : []))]; }
+        catch (error) { throw syncFailure("getStock", error); }
       },
     },
   };
