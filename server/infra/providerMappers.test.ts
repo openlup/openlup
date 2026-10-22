@@ -12,61 +12,8 @@ import {
   readOmnipackCredentialGate,
   readOmnipackReadinessConfig,
 } from "./omnipack/outboundOrderMapper.js";
-import { buildStripePaymentIntentDraft, readStripeReadinessConfig } from "./stripe/paymentIntentMapper.js";
-import {
-  buildTpayBlikAliasChargeDraft,
-  buildTpayBlikAliasRegistrationDraft,
-  readTpayReadinessConfig,
-} from "./tpay/blikRecurringMapper.js";
 
 describe("hidden provider mappers", () => {
-  it("maps Stripe card setup facts without calling Stripe", () => {
-    expect(readStripeReadinessConfig({}).enabled).toBe(false);
-    expect(
-      buildStripePaymentIntentDraft({
-        amountMinor: 1490,
-        currency: "PLN",
-        customerRef: "cus_local",
-        orderRef: "order_123",
-        reusableMethodRef: "pm_card",
-      }),
-    ).toMatchObject({
-      provider: "stripe",
-      requestKind: "payment_intent",
-      amount: 1490,
-      currency: "pln",
-      setup_future_usage: "off_session",
-      payment_method: "pm_card",
-    });
-  });
-
-  it("maps Tpay BLIK PAYID registration and alias charge drafts", () => {
-    expect(readTpayReadinessConfig({ TPAY_CLIENT_ID: "id" }).enabled).toBe(false);
-    expect(
-      buildTpayBlikAliasRegistrationDraft({
-        orderRef: "order_123",
-        amountMinor: 1490,
-        currency: "PLN",
-        customerEmail: "client@example.test",
-        staticWebhookUrl: "https://example.test/api/bff/payment/webhooks/tpay",
-        consentRef: "consent_123",
-      }),
-    ).toMatchObject({
-      provider: "tpay",
-      requestKind: "blik_alias_registration",
-      fallbackRequiredWhenAliasUnavailable: true,
-    });
-    expect(
-      buildTpayBlikAliasChargeDraft({
-        orderRef: "order_124",
-        payId: "payid_123",
-        amountMinor: 2490,
-        currency: "PLN",
-        staticWebhookUrl: "https://example.test/api/bff/payment/webhooks/tpay",
-      }),
-    ).toMatchObject({ requestKind: "blik_alias_charge", payId: "payid_123" });
-  });
-
   it("maps immutable invoice snapshots and preserves Omnipack lot metadata", () => {
     const b2bDraft = buildFakturowniaInvoiceDraft({
         orderRef: "order_123",
