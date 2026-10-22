@@ -423,7 +423,6 @@
       "packageSmokeEvidence": [
         "test/packageBoundary.test.ts",
         "test/fulfillment/contracts.test.ts",
-        "test/fulfillment/statusMap.test.ts",
         "test/fulfillment/portFit.test.ts",
         "test/fulfillment/dispatchRecovery.test.ts",
         "test/fulfillment/paidHandoff.test.ts",
@@ -440,7 +439,6 @@
       "packageSmokeEvidence": [
         "test/packageBoundary.test.ts",
         "test/fulfillment/contracts.test.ts",
-        "test/fulfillment/statusMap.test.ts",
         "test/fulfillment/portFit.test.ts"
       ],
       "entrypoint": "dist/fulfillment/contracts/index.d.ts",

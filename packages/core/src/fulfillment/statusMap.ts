@@ -38,7 +38,7 @@ export const FULFILLMENT_STATUS_MAP = {
   // the projection digest, token round-trips and helpers; it does not check host
   // provider dictionaries or i18n resources.
   comment:
-    "SINGLE SOURCE OF TRUTH for fulfillment status across all layers. Layer C (customerStep) is the spine. Providers (Layer A) map ONLY to local_status (Layer B) in their own dictionary; the UI consumes only Layer C. statusMap.test.ts keeps every layer consistent.",
+    "SINGLE SOURCE OF TRUTH for fulfillment status across all layers. Layer C (customerStep) is the spine. Providers (Layer A) map ONLY to local_status (Layer B) in their own dictionary; the UI consumes only Layer C. test/fulfillmentStatusMap.test.ts keeps every layer consistent.",
   stages: [
     {
       customerStep: "paid",
