@@ -51,6 +51,7 @@ export interface FulfillmentDispatchPort {
   /**
    * Send exactly the prepared command identified by this evidence. Never silently
    * rebuild a different command; absent/mismatched preparation refuses before I/O.
+   * Absent/mismatched preparation: not_dispatchable, phase dispatch, retryable false.
    * Unknown submission outcomes require readback, never blind re-submission.
    */
   dispatch(request: FulfillmentDispatchRequest, evidence: DispatchEvidence): Promise<FulfillmentDispatchResult>;

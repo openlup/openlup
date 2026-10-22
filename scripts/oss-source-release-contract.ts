@@ -4,7 +4,9 @@ import { PUBLICATION_CATALOG_PATH, PUBLIC_POLICY_REGISTRY_PATH, effectivePublicC
 import { PUBLIC_EXECUTION_ENTRYPOINTS, isDirectExecutionEntrypoint } from "./oss-publication-contract.ts";
 import { readPublicTypecheckCompatibility, type PublicTypecheckCompatibility } from "./oss-public-typecheck.ts";
 import { documentationGit } from "./documentation-routing.ts";
-import { assertReviewedPlatformForward } from "./reviewed-platform-forward.ts";
+import { assertReviewedPlatformForward, isExpandOnlyPlatformForward } from "./reviewed-platform-forward.ts";
+
+export { isExpandOnlyPlatformForward } from "./reviewed-platform-forward.ts";
 
 export const SOURCE_RELEASE_CONTRACT_PATH = "config/openlup-source-release-contract.json";
 export const SOURCE_RELEASE_EVIDENCE_CLASS = "local-fixture";
@@ -175,77 +177,6 @@ const isSchemaBearingSourceReleasePath = (path: string): boolean => SCHEMA_BEARI
 /** Contract fields a descendant keeps from the previous release; the validator separately fixes `runtime`. */
 const PREVIOUS_RELEASE_CONTRACT_FIELDS = ["schemaVersion", "platformMigrationManifest.path", "databaseSchema", "policy.registryDigest", "repository", "release"] as const;
 const controlByte = (byte: number) => (byte < 0x20 && byte !== 0x09 && byte !== 0x0a) || byte === 0x7f;
-/** A deliberately bounded SQL admission check, not a general SQL interpreter.
- * Refuses control characters other than tab and line feed (PostgreSQL also ends a `--` comment at a carriage return, so no classifier models line ends differently); procedural/dynamic SQL also refuses.
- * Existing SQL is frozen, so only new forwards pass through this predicate.
- */
-export function isExpandOnlyPlatformForward(sql: string): boolean {
-  if (Buffer.from(sql, "utf8").some(controlByte)) return false;
-  const tokens: string[] = [];
-  for (let index = 0; index < sql.length;) {
-    const rest = sql.slice(index);
-    if (/^\s/u.test(rest)) { index++; continue; }
-    if (rest.startsWith("--")) { const end = sql.indexOf("\n", index); index = end < 0 ? sql.length : end; continue; }
-    if (rest.startsWith("/*")) {
-      let depth = 1; index += 2;
-      while (index < sql.length && depth) {
-        if (sql.startsWith("/*", index)) { depth++; index += 2; }
-        else if (sql.startsWith("*/", index)) { depth--; index += 2; }
-        else index++;
-      }
-      if (depth) return false;
-      continue;
-    }
-    if (rest[0] === "'" || rest[0] === '"') {
-      const quote = rest[0]; let value = "", closed = false; index++;
-      while (index < sql.length) {
-        if (sql[index] === "\\") return false; // Refuse escape-string ambiguity.
-        if (sql[index] === quote) {
-          if (sql[index + 1] === quote) { value += quote; index += 2; continue; }
-          index++; closed = true; break;
-        }
-        value += sql[index++];
-      }
-      if (!closed) return false;
-      tokens.push(quote === "'" ? "<literal>" : value.toUpperCase()); continue;
-    }
-    const word = /^[A-Za-z_][A-Za-z0-9_]*/u.exec(rest)?.[0];
-    if (word) { tokens.push(word.toUpperCase()); index += word.length; continue; }
-    const number = /^[0-9]+(?:\.[0-9]+)?/u.exec(rest)?.[0];
-    if (number) { tokens.push("<literal>"); index += number.length; continue; }
-    if (!";.,()+-=[]".includes(rest[0]!)) return false;
-    tokens.push(rest[0]!); index++;
-  }
-  const statements: string[][] = [[]];
-  for (const token of tokens) { if (token === ";") statements.push([]); else statements.at(-1)!.push(token); }
-  const nonempty = statements.filter((statement) => statement.length);
-  return nonempty.length > 0 && nonempty.every((statement) => {
-    if (statement.some((token) => ["DROP", "TRUNCATE", "RENAME", "OWNER", "SET", "APP", "DELETE", "UPDATE", "REPLACE", "SELECT", "EXECUTE", "CALL", "DETACH", "ATTACH", "INHERIT", "DISABLE", "ENABLE", "VALIDATE", "AUTHORIZATION"].includes(token))) return false;
-    const text = statement.join(" ");
-    if (text === "BEGIN" || text === "COMMIT") return true;
-    if (/^INSERT INTO /u.test(text)) {
-      const values = statement.indexOf("VALUES"), conflict = statement.indexOf("ON", values);
-      if (values < 0 || conflict < 0 || !/ ON CONFLICT(?: \( [A-Z_][A-Z0-9_]*(?: , [A-Z_][A-Z0-9_]*)* \)| ON CONSTRAINT [A-Z_][A-Z0-9_]*)? DO NOTHING$/u.test(text)) return false;
-      // Seed values are literals only; no subquery, function or dynamic execution.
-      return statement.slice(values + 1, conflict).every((token) => ["<literal>", "TRUE", "FALSE", "NULL", "(", ")", ",", "+", "-"].includes(token)) && statement.filter((token) => token === "DO").length === 1;
-    }
-    if (statement.includes("DO")) return false;
-    if (/^CREATE (?:UNIQUE )?(?:TABLE|INDEX|TYPE|SEQUENCE|SCHEMA) /u.test(text)) return !statement.includes("ALTER") && statement.filter((token) => token === "CREATE").length === 1;
-    if (/^ALTER TABLE /u.test(text)) {
-      const add = statement.indexOf("ADD");
-      if (add <= 2 || statement.slice(2, add).includes(",") || statement.filter((token) => token === "ALTER").length !== 1) return false;
-      let depth = 0;
-      for (let index = add; index < statement.length; index++) {
-        if (statement[index] === "(") depth++;
-        if (statement[index] === ")") depth--;
-        if (depth < 0 || (depth === 0 && statement[index] === "," && statement[index + 1] !== "ADD")) return false;
-      }
-      return depth === 0;
-    }
-    return false;
-  });
-}
-
 /** Refuses control characters other than tab and line feed (PostgreSQL also ends a `--` comment at a carriage return, so no classifier models line ends differently). */
 export function assertAdmittedPlatformForward(root: string, base: string, head: string, path: string, bytes: Buffer, release = false): void {
   if (bytes.some(controlByte)) throw new Error(`migration SQL refuses control characters: ${path}`);

@@ -233,3 +233,33 @@ function mapVerifiedStripeEvent(raw: Record<string, unknown>): VerificationResul
   return { ...result, fingerprint: createHash("sha256").update(JSON.stringify(result)).digest("hex"),
     providerAuditPayload: normalized.rawPayload };
 }
+
+/**
+ * @experimental Reference-application support surface; may change.
+ * Reference consumer: `server/adapters/stripe/stripeAdapterFactory.ts`.
+ */
+export { createStripeSandboxPaymentExecutionAdapter } from "./stripeSandboxPaymentExecutionAdapter.js";
+
+/**
+ * @experimental Reference-application support surface; may change.
+ * Reference consumer: `server/runtime/paymentProviderReadbackRegistry.ts`.
+ */
+export { createStripePaymentReconciliationProvider } from "./stripePaymentReconciliationProvider.js";
+
+/**
+ * @experimental Reference-application support surface; may change.
+ * Reference consumer: `server/infra/stripe/stripeApiClient.ts`.
+ */
+export { mapStripeIntent } from "./intentMapper.js";
+
+/**
+ * @experimental Reference-application support surface; may change.
+ * Reference consumer: `server/infra/stripe/stripeApiClient.ts`.
+ */
+export { mapSetupIntent } from "./intentMapper.js";
+
+/**
+ * @experimental Reference-application support surface; may change.
+ * Reference consumer: `server/adapters/paymentRecoveryGuidance.ts`.
+ */
+export { normalizeStripeFailureEvidence } from "./stripeFailureEvidence.js";

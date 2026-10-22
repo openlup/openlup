@@ -30,6 +30,29 @@ state writer is not an extension seam.
 
 ## Runtime boundaries
 
+The reference application's renewal execution, readback registry, recovery
+guidance, setup routes, channel list and activation bind through the experimental
+[reference-support exports](../../packages/platform/README.md#reference-support-surface).
+SDK and HTTP client construction, environment and mode flags, and the simulator
+remain host-owned. The prepared-attempt binding imports and re-exports the
+package's `ProviderAttemptPreDispatchError`, preserving one class identity for
+nominal no-charge retry and release checks.
+
+The shared root [webhook HTTP helper](../../server/_lib/payment/webhookSignature.ts)
+retains raw-body reading, HMAC verification, timing-safe equality and body-size
+limits for existing callers. Its unused provider-specific signature verifier
+has retired; provider verification remains inside the opt-in package adapters.
+The six generic helper cases remain in the root witness.
+
+
+Payments uses the existing bundle composer’s optional named binder. The host
+injects a scoped truth port and cleanup through `createPaymentServices`; schema
+or capability absence refuses selection. There is one executor per runtime unit,
+no package environment/driver discovery and no additional scheduler. The reference
+verified ingress remains explicit and default-off. Its adapter fingerprint is
+stored on first receipt; replay application and hooks reuse the first durable
+instant, including when the provider timestamp moves later (D11).
+
 The reference payment status and verify routes serve the checkout's original
 order/intent/client identity; a verify response requests readback and cannot
 mark payment paid. The opt-in reference store mounts the repair view; exact
@@ -399,6 +422,15 @@ Cancellation is offered only when injected. Account readiness stays pending
 owner TEST evidence. See [the payment adapter contract](CANONICAL_CONTRACTS.md#opt-in-payment-example)
 and [A2 ledger](plans/oss-a2-payment-adapters.md).
 
+The vendor subpaths also expose the eleven bounded experimental
+[reference-support helpers](../../packages/platform/README.md#reference-support-surface).
+The root execution/readback bindings consume those contributed implementations
+instead of retaining duplicate algorithms. Reference flags, SDK construction,
+payer fallback, repair handoffs and localized return presentation stay with the
+host. Capability projections reuse package facts without adding a neutral seam;
+the shared no-charge error retains genuine class identity across the boundary.
+This adds no package, dependency, migration or neutral payment export.
+
 The opt-in Node `payments/tpay` example shares that package lifecycle and M07
 boundary. The host supplies HTTP and certificate I/O, credentials, callback URLs,
 mode and Model O policy. Bank/code attempts and Model O alias charges are
@@ -671,16 +703,17 @@ schedule or default binding. Root reference implementations remain unchanged;
 neutral-port glue, closed evidence projection and public registration are later
 phases in the [A3 ledger](plans/oss-a3-fulfillment-adapter.md).
 
-Fulfillment P1 lives at the two existing-package subpaths
+Fulfillment lives at the two existing-package subpaths
 `@openlup/platform/fulfillment` and `/fulfillment/contracts`; no topology trigger
-requires another package or dependency. The type-only contracts entry has no server
-or cross-module edge. The runtime entry binds core evidence parsers to the
+requires another package or dependency. The type-only contracts entry has no runtime,
+server or cross-module edge; its only dependency is a type import of the core
+normalized fulfillment fact. The runtime entry binds core evidence parsers to the
 contributed status canon and selects only injected capability profiles. Provider,
 carrier and service remain independent; empty provider selection refuses, and
 potential support never enables a dormant route. Raw commands, credentials and
 signed label URLs stay transient at the host/adapter boundary; durable contracts
 carry typed facts, safe references and actual-command fingerprints. Existing reference facades
-and the OMS ladder/queue pair remain host-owned until their explicit later phase.
+and the order-management status ladder/queue pair remain host-owned until explicit later adoption.
 
 The [dispatch port](../../packages/platform/src/fulfillment/contracts/dispatch.ts)
 prepares the actual provider command without submitting it, returns its fingerprint
@@ -689,8 +722,41 @@ Feed that evidence to store claim and its fingerprint to begin before dispatch;
 dispatch sends exactly the prepared command identified by the same evidence.
 A contact_stale remap rebuilds the request and requires a new prepare, claim and
 begin. Selection failures retain their exact reasons; a non-dispatchable request
-refuses as not_dispatchable. Unknown external outcomes require readback rather
+refuses as not_dispatchable. Absent/mismatched command preparation refuses with
+reason not_dispatchable, phase dispatch, retryable false, before I/O.
+FulfillmentStorePort.prepare checks contact readiness/withholding;
+FulfillmentDispatchPort.prepare builds the transient command and its evidence.
+Unknown external outcomes require readback rather
 than blind submission; accepted evidence can repair a lost local acknowledgement.
+
+runFulfillmentDispatchWorker keeps one contact remap across claim and begin.
+A correctable draft re-claim atomically refreshes fingerprint and evidence, then
+reads the authoritative row. Approved amendment G14 records the mapped provider
+attempt at that point, before shadow exit, unsafe-state refusal or begin. Its
+host-supplied opaque key preserves initial/remap identities; only allowlisted
+prepared evidence, mode/status and references persist. Same-key replay writes no
+second attempt. Unknown/submitting/failed states never automatically POST;
+accepted proof repairs a lost local ACK without a provider call. Only a
+post-dispatch ACK failure triggers readback and an attempt to finalize accepted
+proof as uncertain with its external reference retained when acceptance is not
+already committed. Loop-start and concurrent-begin recovery ACK failures reach
+the outer catch without that rescue.
+Main and repair ACKs use identical host acceptance keys, ignoring adapter-provided
+key fields so a committed ACK replays after a lost response.
+The separate createFulfillmentCommandLedger protocol delegates atomic fenced
+operations to a durable store; it does not keep lease/retry state locally. The
+host supplies keys, actual-command fingerprints, candidate selection, paid truth
+and inventory authority. After payload validation, unless an enabled risk gate
+returns early, the paid outbox handler awaits its injected fulfillment call before returning an
+outcome. Risk `review`/`block` returns `processed` without calling fulfillment;
+fulfillment `completed`, `skipped` and `manual_review` also return `processed`
+and settle the event. Settlement therefore does not always mean fulfillment
+completed. Recovery classifies missing/stale/uncertain
+work for local requeue, waiting or operator review, without dispatching it.
+The donor OrderPaidFulfillmentPort in paidHandoffPorts.ts retains the handler's
+outcome ladder; later host composition bridges it to FulfillmentPaidHandoffPort,
+with the concrete durable bridge owned by later native store work.
+Store/adapter conformance and native SQL/atomicity proofs remain later work.
 
 [Labels](../../packages/platform/src/fulfillment/contracts/label.ts) separate durable
 object pointers from transient signed downloads. Missing PDF is not missing parcel;
@@ -711,12 +777,13 @@ only after reaching the customer. Its superseded predecessor is no longer
 outstanding, but an in-flight or undelivered replacement still is. Never call
 `subscription_delivery_alignment_confirm_replacement` for a replacement that did
 not arrive: it records the customer-facing fact "Parcel delivered" and shifts the
-cycle later. The note-only operator attestation remains unchanged; P1 adds no
-caller. Native alignment implementation and continuity proof remain P4 work.
+cycle later. The note-only operator attestation remains unchanged; this surface adds
+no caller. Native alignment implementation and continuity proof remain later work.
 
 Inspect the [contract witnesses](../../packages/platform/test/fulfillment/contracts.test.ts),
 [status parity](../../packages/platform/test/fulfillment/statusMap.test.ts),
 [port fit](../../packages/platform/test/fulfillment/portFit.test.ts) and
 [programme record](plans/oss-m08-fulfillment-physical-delivery.md) for provenance,
-declared adaptations and later obligations. These contracts establish no adapter,
-executor, persistent store, route or activation; reference composition stays unchanged.
+declared adaptations and later obligations. Callable orchestration and a durable-store protocol are provided without a concrete
+adapter, persistent store, mounted executor, route or activation; reference
+composition stays unchanged.

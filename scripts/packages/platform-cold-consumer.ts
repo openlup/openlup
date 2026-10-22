@@ -139,9 +139,23 @@ assert.deepEqual(readFulfillmentCapabilities([], null), {kind:"refused",refusal:
 export function provePaymentsConsumer(consumer: string): void {
   consumerNode(consumer, `
 import assert from "node:assert/strict";
-import { executePreparedAttemptMechanism } from "@openlup/platform/payments";
+import { executePreparedAttemptMechanism, createPaymentServices } from "@openlup/platform/payments";
+import { createBundleComposer } from "@openlup/platform/composition";
 import * as contracts from "@openlup/platform/payments/contracts";
 assert.deepEqual(Object.keys(contracts), []);
+let opened = 0, closed = 0;
+assert.equal(createPaymentServices({schema:{truth:"unsupported"},openTruth:async()=>{opened++;throw Error("unexpected");}}),null);
+const services = createPaymentServices({schema:{truth:"supported"},openTruth:async()=>{
+ opened++; return {port:{readEvent:async()=>null},close:async()=>{closed++;}};
+}});
+assert.equal(opened,0);
+assert.equal(await services.run(port=>port.readEvent("event-a")),null);
+assert.equal(opened,1); assert.equal(closed,1);
+assert.equal(createBundleComposer({blob:()=>null})({}).ports.payments,undefined);
+assert.equal(createBundleComposer({blob:()=>null,payments:()=>services})({}).ports.payments,services);
+assert.equal(opened,1);
+
+
 const trace = [];
 const stored = {paymentAttemptId:"attempt-a",status:"created",replayed:false,providerAttemptId:null,providerSessionId:null,nextActionKind:null};
 const execution = {provider:"provider-a",providerAttemptId:"remote-a",providerSessionId:null,attemptStatus:"processing",nextActionKind:null,requestPayload:{},responsePayload:{}};
@@ -164,7 +178,15 @@ assert.deepEqual(trace,[]);
 
 export function compileConsumer(consumer: string, entries: readonly string[], compiler: string): void {
   const file = join(consumer, "consumer.ts");
-  writeFileSync(file, entries.map((name, index) => `import type * as Entry${index} from "@openlup/platform/${name}";\nexport type Surface${index} = typeof Entry${index};`).join("\n"));
+  const surfaces = entries.map((name, index) => `import type * as Entry${index} from "@openlup/platform/${name}";\nexport type Surface${index} = typeof Entry${index};`);
+  // The composer's structural payments slot must accept the payments factory result for typed hosts.
+  if (entries.includes("composition") && entries.includes("payments")) surfaces.push([
+    'import { createBundleComposer } from "@openlup/platform/composition";',
+    'import type { createPaymentServices } from "@openlup/platform/payments";',
+    "declare const services: NonNullable<ReturnType<typeof createPaymentServices>>;",
+    "export const composedWithPayments = createBundleComposer({ blob: () => null, payments: () => services });",
+  ].join("\n"));
+  writeFileSync(file, surfaces.join("\n"));
   for (const mode of ["NodeNext", "Bundler"]) {
     const configuration = join(consumer, "tsconfig.json");
     writeFileSync(configuration, JSON.stringify({ compilerOptions: {
@@ -347,7 +369,7 @@ globalThis.fetch = forbidden; http.request = forbidden; https.request = forbidde
 for (const operation of ["writeFile", "writeFileSync"]) fs[operation] = forbidden;
 syncBuiltinESMExports();
 const adapter = await import("@openlup/platform/payments/stripe");
-assert.deepEqual(Object.keys(adapter).sort(), ["createStripePaymentAdapter", "stripePaymentCapabilities"]);
+assert.deepEqual(Object.keys(adapter).sort(), ["createStripePaymentAdapter", "stripePaymentCapabilities", "createStripeSandboxPaymentExecutionAdapter", "createStripePaymentReconciliationProvider", "mapStripeIntent", "mapSetupIntent", "normalizeStripeFailureEvidence"].sort());
 let calls = 0;
 const configured = adapter.createStripePaymentAdapter({ mode: "test", supportedCurrencies: ["EUR"], webhookSigningSecrets: ["fixture"], client: {
  createPaymentIntent: async (input, options) => { calls++; assert.equal(options.idempotencyKey,"host-key");
@@ -366,7 +388,11 @@ assert.equal(calls,1); assert.equal(configured.absencePort,undefined);
 const second = await import("@openlup/platform/payments/tpay");
 const secondFactory = "create" + "T" + "payPaymentAdapter";
 const secondCapabilities = "t" + "payPaymentCapabilities";
-assert.deepEqual(Object.keys(second).sort(), [secondFactory, secondCapabilities].sort());
+assert.deepEqual(Object.keys(second).sort(), [secondFactory, secondCapabilities, "createTpayPaymentExecutionAdapter", "createTpayPaymentReconciliationProvider", "createTpayHttpClient", "normalizeTpayFailureEvidence", "aliasValue", "ProviderAttemptPreDispatchError"].sort());
+for (const entry of ["payments", "payments/contracts"]) {
+ const neutral = await import("@openlup/platform/" + entry);
+ for (const name of [...Object.keys(adapter), ...Object.keys(second)]) assert(!Object.hasOwn(neutral, name), "vendor leaked to neutral entry");
+}
 assert.equal(second[secondCapabilities].exactAbsence,"unsupported");
 assert.equal(second[secondCapabilities].refundCreate,"unsupported");
 assert.equal(second[secondCapabilities].authorizationCaptureSplit,"unsupported");

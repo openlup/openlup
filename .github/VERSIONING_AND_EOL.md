@@ -474,6 +474,9 @@ binds every forward's bytes and mode through its commit.
 The admission predicate accepts a bounded SQL subset: additive `CREATE TABLE`,
 `INDEX`, `TYPE`, `SEQUENCE` or `SCHEMA`, `ALTER TABLE ... ADD`, transaction
 boundaries, and literal `INSERT ... VALUES ... ON CONFLICT ... DO NOTHING` seeds.
+Seed INSERTs take a single literal VALUES list immediately after the target name
+and optional plain column list. `CREATE SCHEMA [IF NOT EXISTS] name` takes no
+schema elements; expand-only statements take no `OWNED BY` clause.
 It refuses other statements, procedural/dynamic SQL, ambiguous escapes and
 unterminated comments or quotations. A new form needs its own reviewed predicate
 and regression coverage. A separate

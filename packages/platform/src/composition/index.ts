@@ -1,3 +1,4 @@
+// The existing composer accepts one explicit payments binder; default hosts stay cold.
 export {
   createBundleComposer,
   type ComposeBundle,

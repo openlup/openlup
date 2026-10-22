@@ -455,6 +455,7 @@ export type { PaymentIngressPort } from "./evidence.js";
 export type { ProviderReconciliationStatusKind, ProviderReconciliationStatus, PaymentProviderReconciliationProvider, ClaimedPaymentAttempt, PaymentProviderReconciliationPort, InteractivePreparedAttemptManualReconciliationPort, ManualInteractivePreparedAttemptAbsenceEvidence, InteractivePreparedAttemptReopenResult, PaymentProviderReconciliationWorkerResult, PaymentProviderReconciliationWorkerInput, SilenceWindowLookup, PaymentVerifyReadPort, VerifiableAttemptSnapshot, PaymentVerifyNowResult, } from "./reconciliation.js";
 export type { PostgresPaymentTruthOptions } from "./truth.js";
 export type { ActivePaymentActionAuthority, CheckoutActivePaymentActionResolver, CheckoutRecoveryPaymentResolver, CheckoutRecoveryPaymentResolution, PaymentRecoveryAction, PaymentRepairMethodPort } from "./repair.js";
+export type { PaymentServicesOptions, PaymentServices } from "./repair.js";
 ```
 ## dist/payments/contracts/preparedAttempt.d.ts
 
@@ -918,6 +919,19 @@ export interface PaymentRepairMethodPort {
         kind: "unsupported";
     }>;
 }
+/** Host-selected durable truth scope. Unsupported schema never opens a store. */
+export interface PaymentServicesOptions {
+    schema?: {
+        truth: "supported" | "unsupported";
+    };
+    openTruth?: () => Promise<{
+        port: import("./truth.js").PaymentTruthPort;
+        close(): Promise<void>;
+    }>;
+}
+export interface PaymentServices {
+    run<T>(work: (port: import("./truth.js").PaymentTruthPort) => Promise<T>): Promise<T>;
+}
 ```
 ## dist/payments/contracts/truth.d.ts
 
@@ -1022,6 +1036,226 @@ import type { PaymentAdapterCapabilities } from "../contracts/index.js";
 /** Bank-redirect, one-time-code and unattended Model O attempts are supported with host payer/method input; account availability remains verification_pending. */
 export declare const tpayPaymentCapabilities: Readonly<PaymentAdapterCapabilities>;
 ```
+## dist/payments/tpay/declineFailureHints.d.ts
+
+```ts
+import type { PaymentFailureHint, PaymentRetryAdviceCode } from "@openlup/core/payment";
+/**
+ * ⚠️ UNOFFICIAL INFERENCE — the whole table below.
+ *
+ * The provider publishes no retryable-versus-terminal classification for these
+ * numeric refusal codes. Every row is this adapter's reading of the code's
+ * documented MEANING, not a documented retry verdict, and one of them
+ * (`"100"`) appears in no published table at all. Treat the table as a
+ * hypothesis under test. The class it produces is already DISPLAY-load-bearing:
+ * it becomes the sentence the payer reads about their own refusal, so a wrong
+ * row here misinforms a customer today. It is still not a cadence input: the
+ * dunning programme validates this table against the historical refusal corpus
+ * before anything in the retry ladder is allowed to branch on it.
+ *
+ * The contract that would end the inference is OUTSTANDING, not absent: the
+ * dunning programme's letter to the provider asks for the official meaning of
+ * these codes, and is tracked there as an open item. Until it is answered, a row
+ * may be read more narrowly than it is written — see `assertableHints` in
+ * `tpayDeclineEvidence.ts`, where each observation decides how much of its own
+ * reading it is entitled to state — but no row may be read more widely.
+ *
+ * Two rails read this table, and both reach it through the attempt log's
+ * `paymentErrorCode`: the reconciliation poll, and — since the 2026-08-26
+ * incident — the synchronous execution path, which until then decided a
+ * mandate refusal by pattern-matching the refusal MESSAGE.
+ *
+ * Codes arrive as strings because that is how they leave the transport layer.
+ *
+ * Two rows carry a decision worth stating rather than a lookup:
+ *
+ *   - `"101"` (refused by the payer) and `"107"` (refused on security grounds)
+ *     are NOT credential death — the instrument may be in perfect health and
+ *     the payer may approve the very next charge on it. There is no hint for
+ *     "terminal for this attempt, instrument fine", so this adapter instead
+ *     states the retry verdict directly, as advice: an unattended repeat of a
+ *     refusal the payer or their bank made deliberately is the retry that
+ *     cannot succeed and still costs a scheme fee. Naming it as advice is also
+ *     the more honest shape — it records what this adapter concludes about
+ *     RETRYING, without asserting anything about the instrument.
+ *   - `"100"` and `"102"` get NO reading. Nothing published says what they mean
+ *     precisely enough to classify, and `indeterminate` is the correct answer to
+ *     a code we cannot read. They are named in
+ *     `KNOWN_UNREADABLE_DECLINE_CODES` below, so their absence stays a recorded
+ *     decision rather than an oversight.
+ */
+export interface DeclineCodeReading {
+    hints?: readonly PaymentFailureHint[];
+    adviceCode?: PaymentRetryAdviceCode;
+}
+export declare const DECLINE_CODE_READING_TABLE: Readonly<Record<string, DeclineCodeReading>>;
+/**
+ * Codes this adapter has SEEN and still cannot read. They are deliberately absent
+ * from the table above rather than mapped to a guess: a row there must state
+ * vocabulary the kernel declares, and `indeterminate` is the honest answer to a
+ * code whose meaning is unconfirmed. Listing them here separates "we have met
+ * this code and refuse to invent its semantics" from "we have never seen it",
+ * which read identically at the lookup.
+ *
+ *   - `"100"` — observed in production on 2026-08-26, as the first attempt of a
+ *     refused mandate registration whose second attempt was `"105"`. Nothing
+ *     published says what it means, so it maps to no hint and no advice.
+ *   - `"102"` — same standing, from the same unpublished range.
+ *
+ * A code moving out of this list into the table is a semantics decision backed by
+ * evidence, not a lookup edit.
+ */
+export declare const KNOWN_UNREADABLE_DECLINE_CODES: readonly string[];
+/**
+ * This adapter's reading of one refusal code. Own-property lookup, so an
+ * inherited key (`constructor`, `toString`) is not a mapping.
+ */
+export declare function declineCodeReading(code: string | undefined): DeclineCodeReading;
+```
+## dist/payments/tpay/donorContracts.d.ts
+
+```ts
+/** Private structural contracts for the unchanged execution and observation slices. */
+import type { PaymentExecutionBaseInput, PaymentExecutionBaseResult } from "@openlup/core/payment";
+import type { ProviderReadPurpose } from "../contracts/index.js";
+export type PaymentProviderFlow = "one_time_payment" | "setup_reusable_method" | "off_session_payment" | "blik_one_time" | "blik_one_click" | "pbl_one_time" | "blik_recurring_activation" | "recurring_charge";
+export declare const PAYMENT_NEXT_ACTION_KINDS: readonly ["redirect", "3ds_challenge", "sca_required"];
+export type PaymentNextActionKind = (typeof PAYMENT_NEXT_ACTION_KINDS)[number];
+export interface PaymentExecutionInput extends PaymentExecutionBaseInput {
+    orderRef: string;
+    orderId?: string;
+    subjectId?: string | null;
+    returnContext?: "public" | "account";
+    payer?: {
+        email: string;
+        name: string;
+        ip?: string | null;
+        userAgent?: string | null;
+    };
+    transientProviderInput?: TpayTransientProviderInput | null;
+    paymentMethodAliasType?: "UID" | "PAYID";
+    paymentMethodRecurringModel?: "O" | "M";
+    providerFlow?: PaymentProviderFlow;
+    customerRef?: string;
+    paymentMethodRef?: string;
+    saveForFutureUse?: boolean;
+    clientId?: string;
+}
+export interface PaymentExecutionResult extends PaymentExecutionBaseResult {
+    nextActionKind: PaymentNextActionKind | null;
+    redirectUrl?: string | null;
+    clientSecret?: string | null;
+    customerProviderRef?: string | null;
+    paymentMethodRef?: string | null;
+    webhookExpected?: boolean;
+    recoveryRequired?: boolean;
+}
+export interface PaymentExecutionPort {
+    validateInput?(input: PaymentExecutionInput): void;
+    execute(input: PaymentExecutionInput): Promise<PaymentExecutionResult>;
+}
+export type PaymentWebhookEventType = "payment.succeeded" | "payment.failed" | "payment.refunded" | "payment.requires_action" | "payment.disputed" | "setup.succeeded" | "setup.failed" | "setup.requires_action";
+export interface CanonicalPaymentEvent {
+    provider_event_id: string;
+    event_type: PaymentWebhookEventType;
+    payment_provider_id: string;
+    amount_minor?: number;
+    next_action_kind?: PaymentNextActionKind;
+    raw_payload: Record<string, unknown>;
+}
+export interface NormalizedProviderPaymentWebhook {
+    provider: string;
+    providerEventId: string;
+    eventType: PaymentWebhookEventType;
+    providerPaymentId: string;
+    paymentIntentId?: string | null;
+    paymentAttemptId?: string | null;
+    amountMinor?: number | null;
+    currency?: string | null;
+    occurredAt: string;
+    refundKind?: "full" | "partial" | null;
+    rawPayload: Record<string, unknown>;
+    reusableMethod?: {
+        clientId: string;
+        subscriptionId?: string | null;
+        providerCustomerRef?: string | null;
+        providerMethodRef: string;
+        providerMandateRef?: string | null;
+        methodKind: "card";
+        status: "active";
+        consentSnapshot?: Record<string, unknown>;
+    } | null;
+}
+export interface ProviderReconciliationStatus {
+    status: "succeeded" | "failed" | "pending" | "unknown";
+    providerStatus: string;
+    occurredAt: string | null;
+    failureReason: string | null;
+    amountMinor: number | null;
+    currency: string | null;
+    rawPayload: Record<string, unknown>;
+}
+export interface ClaimedPaymentAttempt {
+    paymentAttemptId: string;
+    paymentIntentId: string;
+    paymentId: string;
+    orderId: string;
+    subscriptionId: string | null;
+    subscriptionCycleId: string | null;
+    provider: string;
+    providerPaymentId: string | null;
+    providerAttemptId: string | null;
+    providerSessionId: string | null;
+    attemptStatus: string;
+    intentStatus: string;
+    amountMinor: number;
+    currency: string;
+    orderMode: "one_time" | "subscription_cycle";
+    cycleRetryAttempt: number;
+    cycleNextRetryAt: string | null;
+    localUpdatedAt: string;
+}
+export type ProviderRecoveryAction = {
+    kind: "redirect";
+    url: string;
+};
+export interface PaymentProviderRecoveryProvider {
+    resolvePaymentReference(input: {
+        providerAttemptId: string | null;
+        intentProviderPaymentId: string | null;
+        providerSessionId: string | null;
+    }): string | null;
+    readPayment(input: {
+        providerPaymentId: string;
+        attempt?: ClaimedPaymentAttempt;
+        purpose?: ProviderReadPurpose;
+    }): Promise<ProviderReconciliationStatus>;
+    readRecoveryPayment(input: {
+        providerPaymentId: string;
+        attempt: Pick<ClaimedPaymentAttempt, "amountMinor" | "currency">;
+        purpose?: ProviderReadPurpose;
+    }): Promise<{
+        status: ProviderReconciliationStatus;
+        identityMatches: boolean;
+        configuredMoneyMatches: boolean;
+        manualReviewRequired: boolean;
+        clientAction: ProviderRecoveryAction | null;
+    }>;
+    closePayment?(input: {
+        providerPaymentId: string;
+    }): Promise<ProviderReconciliationStatus>;
+    findPaymentByLocalIntent?(input: {
+        attempt: ClaimedPaymentAttempt;
+    }): Promise<"found" | "absent">;
+}
+export interface TpayTransientProviderInput {
+    provider: "tpay";
+    flow: "blik_one_time" | "blik_one_click" | "pbl_one_time" | "blik_recurring_activation" | "recurring_charge";
+    blikToken?: string;
+    channelId?: string;
+    recurringModel?: "O" | "M";
+}
+```
 ## dist/payments/tpay/index.d.ts
 
 ```ts
@@ -1068,6 +1302,549 @@ export interface TpayPaymentAdapterConfig {
 }
 /** Construction explicitly selects this adapter; the host owns account activation and I/O policy. */
 export declare function createTpayPaymentAdapter(config: TpayPaymentAdapterConfig): PaymentAdapter;
+/**
+ * @experimental Reference-application support surface; may change.
+ * Reference consumer: `server/adapters/tpay/tpayAdapterFactory.ts`.
+ */
+export { createTpayPaymentExecutionAdapter } from "./tpayPaymentExecutionAdapter.js";
+/**
+ * @experimental Reference-application support surface; may change.
+ * Reference consumer: `server/runtime/paymentProviderReadbackRegistry.ts`.
+ */
+export { createTpayPaymentReconciliationProvider } from "./tpayPaymentReconciliationProvider.js";
+/**
+ * @experimental Reference-application support surface; may change.
+ * Reference consumer: `server/bff/commerce/tpay-channels.ts`.
+ */
+export { createTpayHttpClient } from "./tpayHttpClient.js";
+/**
+ * @experimental Reference-application support surface; may change.
+ * Reference consumer: `server/adapters/paymentRecoveryGuidance.ts`.
+ */
+export { normalizeTpayFailureEvidence } from "./tpayFailureEvidence.js";
+/**
+ * @experimental Reference-application support surface; may change.
+ * Reference consumer: `server/adapters/supabase/payment/tpaySubscriptionActivation.ts`.
+ */
+export { aliasValue } from "./tpayCreateTransactionInput.js";
+/**
+ * @experimental Reference-application support surface; may change.
+ * Reference consumer: `server/shared/preparedProviderAttempt.ts`.
+ */
+export { ProviderAttemptPreDispatchError } from "./preparedProviderAttempt.js";
+```
+## dist/payments/tpay/paymentFailureEvidence.d.ts
+
+```ts
+import type { PaymentRecoveryMethod, PaymentRecoveryOperation } from "@openlup/core/payment";
+export type FailureObservationSource = "execution" | "webhook" | "readback";
+export type FailureObservationDisposition = "present" | "absent" | "unreadable" | "read_failed" | "read_timeout";
+/** Protected provider facts, not a customer message or a retry-policy input. */
+export interface PaymentFailureEvidence {
+    version: 1;
+    source: FailureObservationSource;
+    disposition: FailureObservationDisposition;
+    refusalVerified: boolean;
+    providerPaymentId: string | null;
+    providerChargeId: string | null;
+    code: string | null;
+    declineCode: string | null;
+    adviceCode: string | null;
+    adviceOrigin: "provider" | "inferred" | "unknown";
+    operation: PaymentRecoveryOperation | null;
+    method: PaymentRecoveryMethod | null;
+    methodSource: "provider" | "execution_contract" | "unknown";
+}
+/** Bounded machine tokens only. Free-form response fields never cross this seam. */
+export declare function evidenceToken(value: unknown): string | null;
+export declare function evidenceRecord(value: unknown): Record<string, unknown>;
+/** Explicit construction prevents accidental payload expansion by object spreading. */
+export declare function serializeFailureEvidence(input: PaymentFailureEvidence): PaymentFailureEvidence;
+/** Persist beside legacy fields; never merge the diagnostic codes into them. */
+export declare function failureEvidencePayload(evidence: PaymentFailureEvidence | null | undefined): Record<string, unknown>;
+```
+## dist/payments/tpay/preparedProviderAttempt.d.ts
+
+```ts
+export interface TrustedProviderAttemptPreDispatchFailure {
+    phase: "oauth" | "transaction_dispatch";
+    code: "tpay_oauth_failed" | "tpay_oauth_timeout" | "tpay_oauth_invalid_response" | "tpay_request_encode_failed" | "tpay_request_deadline_exhausted";
+    dispatchState: "not_dispatched";
+}
+/** Either proof the provider holds no transaction: the POST was never invoked, or it was and the
+ * provider refused the request document. Two closed shapes, so neither absorbs the other. */
+export type TrustedProviderAttemptNoChargeFailure = TrustedProviderAttemptPreDispatchFailure | {
+    phase: "response_decode";
+    code: "tpay_request_refused";
+    dispatchState: "refused";
+};
+export declare class ProviderAttemptPreDispatchError extends Error {
+    readonly phase: TrustedProviderAttemptNoChargeFailure["phase"];
+    readonly code: TrustedProviderAttemptNoChargeFailure["code"];
+    readonly dispatchState: TrustedProviderAttemptNoChargeFailure["dispatchState"];
+    paymentAttemptId: string | null;
+    retryCount: number;
+    constructor(failure: TrustedProviderAttemptNoChargeFailure, paymentAttemptId?: string | null);
+    withPaymentAttempt(paymentAttemptId: string): this;
+    withRetryCount(retryCount: number): this;
+}
+```
+## dist/payments/tpay/tpayCreateTransactionInput.d.ts
+
+```ts
+import type { PaymentExecutionInput, TpayTransientProviderInput } from "./donorContracts.js";
+import type { TpayPayerInput, TpayTransactionCreateInput } from "./tpayHttpClient.js";
+export declare function buildCreateTransactionInput(input: {
+    input: PaymentExecutionInput;
+    transient: TpayTransientProviderInput;
+    payer: TpayPayerInput;
+    notificationUrl: string;
+    successUrl: string;
+    errorUrl: string;
+    aliasRegistrationOnCodeEnabled: boolean;
+    modelOActivationEnabled: boolean;
+}): TpayTransactionCreateInput;
+/**
+ * The autopayment model actually sent to Tpay.
+ *
+ * Once the Model O activation switch is on, every recurring activation registers
+ * as model O: it is the only model that permits a variable amount without the
+ * payer confirming each charge, which is what a configurable subscription needs.
+ * Model M would silently degrade every renewal into an approval prompt.
+ *
+ * Single source of truth on purpose — the new-activation switch and the alias
+ * payload must never disagree about which model this activation attempt is.
+ */
+export declare function resolveRecurringModel(requested: "O" | "M" | undefined, modelOActivationEnabled: boolean): "O" | "M";
+export declare function aliasValue(paymentIntentId: string): string;
+```
+## dist/payments/tpay/tpayDeclineEvidence.d.ts
+
+```ts
+import type { PaymentFailureHint } from "@openlup/core/payment";
+import type { DeclineCodeReading } from "./declineFailureHints.js";
+import type { TpayHttpClient } from "./tpayHttpClient.js";
+/**
+ * What this rail is allowed to conclude from a refusal, and from which evidence.
+ *
+ * Two rails ask the same question — "which refusal code does this transaction
+ * stand on" — the reconciliation poll and the execution path the moment the
+ * provider says no, so the scan lives here once rather than twice against the
+ * same payload shape. The message-shape heuristic lives here too, as the weakest
+ * grade of evidence and the last one consulted.
+ */
+/**
+ * Short on purpose. This read only EXPLAINS a refusal the provider has already
+ * decided; the attempt is finalized either way, so every millisecond spent here
+ * is pure added latency inside the money path. Well below the transport client's
+ * own request timeout, so the deadline that fires is this one.
+ */
+export declare const DECLINE_CODE_READBACK_TIMEOUT_MS = 3000;
+export interface RefusalRow {
+    row: Record<string, unknown>;
+    code: string;
+}
+/**
+ * The last row carrying a refusal code. Last rather than first: a payer may retry
+ * inside their banking app, so the most recent row describes the charge's current
+ * standing. Asserted only from an explicit code — never from silence or elapsed
+ * time — so a charge genuinely still running is never turned terminal. The row
+ * travels back with the code because a caller may need its date; a caller that
+ * does not can ignore it.
+ */
+export declare function lastRefusalRow(rows: unknown, codeKey: string): RefusalRow | null;
+/**
+ * The refusal code the provider's own attempt log stands on, or `null`.
+ *
+ * FAIL-OPEN BY CONSTRUCTION. A rejected request, a malformed body, a client that
+ * never settles, an attempt log without codes — every one of them resolves to
+ * `null`, which is the caller's "read nothing" branch. This function cannot
+ * throw and cannot block past its deadline, because the only thing it can add is
+ * a better explanation of a refusal that is already final. Anything stronger
+ * would put a provider read on the critical path of terminalizing an attempt,
+ * and a stalled terminalization is a stalled subscription cycle.
+ */
+export interface AttemptDeclineObservation {
+    /** Diagnostic-only quarantine; code remains the unchanged legacy classifier input. */
+    identityMismatch?: true;
+    code: string | null;
+    disposition: "present" | "absent" | "unreadable" | "read_failed" | "read_timeout";
+}
+/** Compatibility accessor: the existing classifier still sees exactly code or null. */
+export declare function readAttemptDeclineCode(client: Pick<TpayHttpClient, "getTransaction">, transactionId: string, timeoutMs?: number): Promise<string | null>;
+export declare function attemptDeclineObservation(transaction: unknown): AttemptDeclineObservation;
+/** One bounded read; diagnostic failure never changes terminalization or legacy code. */
+export declare function readAttemptDeclineObservation(client: Pick<TpayHttpClient, "getTransaction">, transactionId: string, timeoutMs?: number): Promise<AttemptDeclineObservation>;
+/** Legacy attribution remains a separate field with unchanged precedence. */
+export declare function declineEvidenceSource(input: {
+    attemptCode: string | null;
+    decidingAttemptReading: DeclineCodeReading | null;
+    mandateUnsupported: boolean;
+    reading: DeclineCodeReading;
+    errorCode: string;
+}): string;
+/** Whether a reading says anything at all, as opposed to `indeterminate`. */
+export declare function states(reading: DeclineCodeReading): boolean;
+/**
+ * Whether an observation of this flow may conclude anything about the payer's
+ * BANK being able to hold a mandate.
+ *
+ * Only a mandate REGISTRATION can answer that question. A refused charge on an
+ * already-registered mandate proves the bank held one, so a capability code
+ * arriving there says something else — which one, nobody here knows.
+ *
+ * `observedFlow` is `null` for an observer that cannot establish the flow at
+ * all, and that is a real answer rather than a missing argument: the
+ * reconciliation poll sees a transaction readback, and the flow is not a column
+ * of the claim it works from. Unknown is fail-closed for a capability claim, so
+ * such an observer abstains. Parameterized rather than hardcoded per rail, so a
+ * rail that later LEARNS its flow starts stating the claim by passing it, with
+ * no second copy of this rule to keep in step.
+ */
+export declare function mandateCapabilityReadable(observedFlow: string | null): boolean;
+/**
+ * The hints one observation is allowed to assert from a reading.
+ *
+ * The reading table is a reading of a CODE and knows nothing about the charge
+ * the code arrived on; this is where the observation's own context is applied
+ * to it. Both rails funnel through here, because a refusal that classifies one
+ * way when the execution path sees it and another way when the poll sees it is
+ * a race rather than a verdict — and the retry ladder cannot be allowed to
+ * terminate on a race.
+ *
+ * Narrow on purpose: only the mandate-capability hint depends on context. Every
+ * other hint states something about the charge itself and crosses untouched.
+ *
+ * The reconciliation rail passes `null` here and therefore always abstains from
+ * that one hint: it reads a transaction back, and a readback cannot tell a
+ * refused mandate REGISTRATION from a refused charge on a mandate the bank
+ * already holds. Abstaining is what it costs to have one verdict per refusal;
+ * the claim stays reachable from evidence that is not a guess, which on a
+ * renewal is the preflight reason this deployment writes itself.
+ */
+export declare function assertableHints(hints: readonly PaymentFailureHint[] | undefined, observedFlow: string | null): readonly PaymentFailureHint[] | undefined;
+/**
+ * FALLBACK ONLY, since the 2026-08-26 incident. Whether a decline means "this
+ * bank cannot hold a mandate" — the one cause a retry can never fix, and the
+ * only one worth telling a buyer to use a card.
+ *
+ * The deciding signal is now the refusal code in the transaction's attempt log,
+ * read back by `readAttemptDeclineCode`. This heuristic runs only when that read
+ * yields no code, or a code the reading table cannot read. It exists because the
+ * create response's own `errorCode` is generic (`payment_failed` covers a
+ * mistyped code, an expired code and an incapable bank alike), and
+ * `payIdEligible` is absent on EVERY rejection, not just this one — so absence
+ * alone would brand a fat-fingered code as "your bank does not support
+ * recurring". Reading the message is the last resort it always should have been:
+ * only its shape is consulted, and the text itself is never returned or stored,
+ * because it is free-form and can carry payer-identifying detail.
+ *
+ * Restricted to mandate REGISTRATION: a failed charge on an already-registered
+ * mandate proves the bank can hold one, so bank capability is never the answer
+ * there.
+ *
+ * Anything uncertain falls through to a generic decline, whose copy is never
+ * wrong — only less specific.
+ */
+export declare function isMandateRefusal(flow: string, payIdEligible: boolean | null, errorMessage: string): boolean;
+```
+## dist/payments/tpay/tpayFailureEvidence.d.ts
+
+```ts
+import type { PaymentRecoveryEvidence } from "@openlup/core/payment";
+import { type FailureObservationSource, type PaymentFailureEvidence } from "./paymentFailureEvidence.js";
+import { type AttemptDeclineObservation } from "./tpayDeclineEvidence.js";
+import type { DeclineCodeReading } from "./declineFailureHints.js";
+export declare function tpayFailureEvidence(input: {
+    source: FailureObservationSource;
+    providerPaymentId: string | null;
+    refusalVerified: boolean;
+    flow: string | null;
+    observation: AttemptDeclineObservation;
+    errorCode?: string | null;
+    reading?: DeclineCodeReading;
+}): PaymentFailureEvidence;
+/** Numeric code hypotheses are not promoted into new customer-facing facts. */
+export declare function normalizeTpayFailureEvidence(input: PaymentFailureEvidence): PaymentRecoveryEvidence;
+/** Existing reconciliation classification; moved intact, never fed new evidence. */
+export declare function refusalCapture(refusal: {
+    code: string;
+    reading: DeclineCodeReading;
+}, failureReasonKey: string): Record<string, unknown>;
+```
+## dist/payments/tpay/tpayHttpClient.d.ts
+
+```ts
+import { type TpayTransactionCreateInput, type TpayTransactionCreated } from "./tpayTransactionPayload.js";
+export { TpayHttpError } from "./tpayHttpFailure.js";
+export interface TpayFetchLike {
+    (url: string, init?: {
+        method?: string;
+        headers?: Record<string, string>;
+        body?: string;
+        signal?: AbortSignal;
+    }): Promise<{
+        ok: boolean;
+        status: number;
+        json(): Promise<unknown>;
+        text(): Promise<string>;
+    }>;
+}
+export interface TpayHttpClientOptions {
+    baseUrl: string;
+    clientId: string;
+    clientSecret: string;
+    timeoutMs?: number;
+    fetchImpl?: TpayFetchLike;
+    now?: () => number;
+}
+export type { TpayAliasInput, TpayPayerInput, TpayPaymentError, TpayTransactionCreateInput, TpayTransactionCreated, } from "./tpayTransactionPayload.js";
+export interface TpayPaymentChannel {
+    id: string;
+    name: string;
+    fullName: string;
+    available: boolean;
+    onlinePayment: boolean;
+    instantRedirection: boolean;
+    groups: Array<{
+        id: number;
+        name: string;
+    }>;
+}
+export interface TpayHttpClient {
+    createTransaction(input: TpayTransactionCreateInput): Promise<TpayTransactionCreated>;
+    getTransaction(transactionId: string): Promise<TpayTransactionReadback>;
+    listPaymentChannels(): Promise<TpayPaymentChannel[]>;
+}
+export interface TpayTransactionReadback extends Record<string, unknown> {
+    transactionId: string;
+    title: string | null;
+    status: string;
+    transactionPaymentUrl: string | null;
+    amount: number | null;
+    currency: string | null;
+    requestId: string | null;
+    payments: Record<string, unknown>;
+}
+export declare function createTpayHttpClient({ baseUrl, clientId, clientSecret, timeoutMs, fetchImpl, now, }: TpayHttpClientOptions): TpayHttpClient;
+```
+## dist/payments/tpay/tpayHttpFailure.d.ts
+
+```ts
+export interface TpayHttpFailureDiagnostic {
+    httpStatus: number;
+    requestId: string | null;
+    providerErrorCodes: string[];
+    fieldNames: string[];
+}
+/**
+ * The provider answered, and its answer is read for two independent things: the
+ * sanitized diagnostic that may be logged, and whether the refusal PROVES no
+ * transaction was created.
+ */
+export interface TpayHttpFailure {
+    diagnostic: TpayHttpFailureDiagnostic;
+    /**
+     * Tpay rejected the request document itself, so no transaction row can exist.
+     * `false` is the fail-closed answer and the only one any ambiguity produces.
+     */
+    refusedBeforeTransaction: boolean;
+}
+/**
+ * Tpay error codes that describe the REQUEST DOCUMENT — a missing field, a wrong
+ * type, an out-of-range or malformed value, an unknown field, an unparseable
+ * body, a wrong content type. Every one of them is decided by request validation
+ * and therefore cannot be produced once a transaction row exists.
+ *
+ * Deliberately excluded, and each for a reason: `crc_not_unique` names an
+ * ALREADY EXISTING transaction; `transaction_lock`, `transaction_blocked`,
+ * `payment_failed` and `ts:transaction:*` describe a transaction's outcome or a
+ * partially completed insert; `cannot_create_transaction`,
+ * `partner_cannot_create_transaction` and every channel/merchant availability
+ * code refuse for reasons whose ordering against creation we cannot prove from
+ * here; `general` and `internal_server_error` are opaque. A refusal carrying any
+ * of them keeps today's behavior and defers to reconciliation.
+ *
+ * ⚠️ This list is matched against the RAW body, never against
+ * `TpayHttpFailureDiagnostic.providerErrorCodes` — that projection drops any code
+ * outside the loggable set, which would turn a mixed body into a uniformly safe
+ * one.
+ */
+export declare const TPAY_PRE_TRANSACTION_REFUSAL_CODES: ReadonlySet<string>;
+export declare function readTpayHttpFailure(response: {
+    status: number;
+    text(): Promise<string>;
+}): Promise<TpayHttpFailure>;
+export declare function tpayHttpFailureDiagnostic(error: unknown): TpayHttpFailureDiagnostic | null;
+export declare class TpayHttpError extends Error {
+    readonly code: string;
+    readonly status: number;
+    readonly failureDiagnostic: TpayHttpFailureDiagnostic | null;
+    /**
+     * Set only from a body this client actually parsed. It never crosses a
+     * boundary as a claim on its own — the dispatch boundary turns it into typed
+     * evidence, and the control-plane RPC re-proves the attempt independently.
+     */
+    readonly refusedBeforeTransaction: boolean;
+    constructor(code: string, status: number, failureDiagnostic?: TpayHttpFailureDiagnostic | null, refusedBeforeTransaction?: boolean);
+}
+```
+## dist/payments/tpay/tpayPaymentExecutionAdapter.d.ts
+
+```ts
+import type { PaymentExecutionPort } from "./donorContracts.js";
+import type { PaymentExecutionInput } from "./donorContracts.js";
+import type { TpayHttpClient, TpayPayerInput } from "./tpayHttpClient.js";
+/** The one place this adapter spells its own provider identity. */
+export declare const PROVIDER_KIND: "tpay";
+export interface TpayPaymentExecutionAdapterOptions {
+    client: TpayHttpClient;
+    notificationUrl: string;
+    successUrl: string;
+    errorUrl: string;
+    oneClickEnabled?: boolean;
+    aliasRegistrationOnCodeEnabled?: boolean;
+    /** One public switch for admitting new subscription BLIK Model O mandates. */
+    modelOActivationEnabled?: boolean;
+    resolvePayer?: (input: PaymentExecutionInput) => TpayPayerInput | null;
+}
+export declare function createTpayPaymentExecutionAdapter({ client, notificationUrl, successUrl, errorUrl, oneClickEnabled, aliasRegistrationOnCodeEnabled, modelOActivationEnabled, resolvePayer, }: TpayPaymentExecutionAdapterOptions): PaymentExecutionPort;
+export declare class TpayExecutionInputError extends Error {
+    constructor(message: string);
+}
+```
+## dist/payments/tpay/tpayPaymentReconciliationProvider.d.ts
+
+```ts
+import type { ProviderReconciliationStatus } from "./donorContracts.js";
+import type { PaymentProviderRecoveryProvider } from "./donorContracts.js";
+import type { TpayHttpClient } from "./tpayHttpClient.js";
+export declare function createTpayPaymentReconciliationProvider(client: Pick<TpayHttpClient, "getTransaction">): PaymentProviderRecoveryProvider;
+export declare function normalizeTpayTransaction(transaction: Record<string, unknown>): ProviderReconciliationStatus;
+```
+## dist/payments/tpay/tpayTransactionPayload.d.ts
+
+```ts
+export interface TpayPayerInput {
+    email: string;
+    name: string;
+    ip?: string | null;
+    userAgent?: string | null;
+}
+/**
+ * BLIK alias sent on transaction create.
+ *
+ * `UID` is merchant-scoped one-click; `PAYID` is the recurring mandate.
+ * `recommendedAuthLevel` is a SIBLING of `autopayment`, not a field inside it
+ * (Tpay SDK `Model/Objects/Transactions/Alias.php`), and Tpay documents it as
+ * available and required only for autopayment model `O`, where it omits the
+ * per-charge authorization screen.
+ */
+export interface TpayAliasInput {
+    value: string;
+    type: "UID" | "PAYID";
+    label?: string;
+    recommendedAuthLevel?: "NOCONFREQ";
+    /**
+     * Collect immediately instead of giving the payer 72 hours to approve. Required
+     * on every model `O` charge; available for models `A` and `O` only.
+     */
+    noDelay?: boolean;
+    /**
+     * `frequency` is deliberately absent: Tpay requires it for model `A`, treats it
+     * as optional for `M`, and does not accept it for `O`. We only ever register
+     * variable-amount mandates, so no caller needs it.
+     */
+    autopayment?: {
+        model: "A" | "M" | "O";
+    };
+}
+export interface TpayTransactionCreateInput {
+    amount: number;
+    currency: "PLN";
+    description: string;
+    hiddenDescription: string;
+    payer: TpayPayerInput;
+    notificationUrl: string;
+    successUrl: string;
+    errorUrl: string;
+    groupId?: number;
+    channelId?: string;
+    blikPaymentType?: 2;
+    blikToken?: string;
+    /**
+     * Ask BLIK to reject the transaction outright when the payer's bank does not
+     * support recurring payments, instead of taking the money and silently never
+     * showing the mandate invitation. Only meaningful when registering a `PAYID`
+     * alias; never set it for a plain one-off BLIK payment.
+     */
+    refuseNoPayId?: boolean;
+    alias?: TpayAliasInput | null;
+    simulatorContext?: {
+        orderId?: string;
+        paymentIntentId: string;
+        clientId?: string;
+        /** Stable per provider attempt; simulator-only and never sent to Tpay. */
+        providerAttemptKey?: string;
+        /**
+         * In-account terminal path the simulator panel returns to after the buyer
+         * settles (account `returnContext` only). Absent for the public flow, which
+         * keeps the simulator page's own `/checkout/payment` return so the
+         * public path stays byte-identical (and client-side localized).
+         */
+        returnPath?: string;
+    };
+}
+/** One entry of Tpay's `payments.errors[]`. `errorCode` is low-cardinality. */
+export interface TpayPaymentError {
+    errorCode: string;
+    errorMessage: string;
+    fieldName: string | null;
+}
+/**
+ * Create-transaction result.
+ *
+ * ⚠️ Tpay signals a synchronous BLIK rejection ONLY through `payments.errors[]`
+ * and the absence of `payments.payIdEligible`. Verified against production
+ * 2026-07-20: a rejected recurring BLIK still returns HTTP 200 with
+ * `result: "success"`, top-level `status: "pending"` AND `payments.status:
+ * "pending"`. Those three fields therefore prove nothing — never branch on them
+ * to decide success. `payments.method` is equally useless: it reads
+ * `"pay_by_link"` even for a settled BLIK PayID charge.
+ *
+ * This matters because Tpay has no async channel for failures — the transaction
+ * webhook's `tr_status` only ever carries `true` or `chargeback`, so a decline
+ * that is not read out of this response is never reported at all.
+ */
+export interface TpayTransactionCreated {
+    transactionId: string;
+    title: string;
+    status: string;
+    transactionPaymentUrl: string | null;
+    requestId: string | null;
+    /**
+     * Whether BLIK considers the payer's bank capable of registering a PayID
+     * mandate. Present and `true` when eligible; absent entirely when Tpay
+     * rejected the transaction.
+     *
+     * ⚠️ UNDOCUMENTED — observed empirically, absent from Tpay's OpenAPI spec and
+     * from their official SDK. Treat as a hint that may vanish without notice and
+     * always keep `errors` as the fallback signal.
+     */
+    payIdEligible: boolean | null;
+    /** Synchronous provider errors. Empty when the request was accepted. */
+    errors: TpayPaymentError[];
+}
+/**
+ * Builds the `POST /transactions` wire payload.
+ *
+ * Every BLIK-specific field lives under `pay.blikPaymentData`; `aliases` carries
+ * the mandate. `refuseNoPayId` sits beside `aliases` (not inside it), while
+ * `recommendedAuthLevel` and `noDelay` sit inside the alias object as siblings of
+ * `autopayment` — matching Tpay's SDK object model and verified against
+ * production on 2026-07-20.
+ */
+export declare function buildTpayTransactionPayload(input: TpayTransactionCreateInput): Record<string, unknown>;
 ```
 ## dist/payments/tpay/webhookJwsVerifier.d.ts
 

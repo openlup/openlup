@@ -1,4 +1,4 @@
-import type { PaymentTruthOutcome, PaymentTruthRefusalClass, PaymentSourceEvidence, PaymentTruthEvent, PaymentReconciliationResult, PaymentTruthReadback, PaymentTruthPort, CanonicalPaymentSource } from "./contracts/truth.js";
+import type { PaymentTruthRefusalClass, PaymentSourceEvidence, PaymentTruthEvent, PaymentReconciliationResult, CanonicalPaymentSource } from "./contracts/truth.js";
 import { createHash } from "node:crypto";
 
 const PAYMENT_TRUTH_REFUSAL_CLASSES: readonly PaymentTruthRefusalClass[] = [
