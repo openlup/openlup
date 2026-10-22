@@ -132,7 +132,7 @@ and [contracts API report](../../../packages/platform/api/fulfillment-contracts.
 | replacement.ts | FulfillmentReplacementPort, FulfillmentReplacementRequest, FulfillmentReplacementResult |
 | operator.ts | FulfillmentOperatorMutationPort, FulfillmentOperatorMutationResult |
 | customerAlignment.ts | CustomerDeliveryAlignment, FulfillmentCustomerAlignmentRowsReader |
-| read.ts | FulfillmentCommerceReadPort, FulfillmentCommerceReadPolicy, FulfillmentPaymentStatus, FulfillmentCommerceOrder, FulfillmentOrdersListRequest, FulfillmentOrdersListResponse, FulfillmentOrderDetailRequest, FulfillmentOrderDetailResponse, FulfillmentShipmentsOverviewPort, FulfillmentShipmentsOverviewRequest, FulfillmentShipmentsOverviewResponse, FulfillmentProgressInput, FulfillmentProgressPresentation |
+| read.ts | FulfillmentCommerceReadPort, FulfillmentCommerceReadPolicy, FulfillmentOrderStatus, FulfillmentPaymentStatus, FulfillmentCommerceOrder, FulfillmentOrdersListRequest, FulfillmentOrdersListResponse, FulfillmentOrderDetailRequest, FulfillmentOrderDetailResponse, FulfillmentShipmentsOverviewPort, FulfillmentShipmentsOverviewRequest, FulfillmentShipmentsOverviewResponse, FulfillmentProgressInput, FulfillmentProgressPresentation |
 
 ## Lifecycle handlers and customer projections
 

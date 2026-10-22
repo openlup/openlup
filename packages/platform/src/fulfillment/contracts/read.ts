@@ -41,9 +41,9 @@ export interface FulfillmentCommerceReadPolicy {
 }
 
 export interface FulfillmentProgressInput {
-  status: string; paymentStatus: string | null; fulfillmentStatus: string | null;
+  status: string; paymentStatus?: string | null; fulfillmentStatus?: string | null;
   customerFulfillmentStep?: CustomerFulfillmentStep | null;
-  trackingTimeline: { eventType: string; occurredAt?: string | null }[];
+  trackingTimeline: { eventType: string }[];
 }
 export interface FulfillmentProgressPresentation {
   completedSteps: CustomerFulfillmentStep[];

@@ -3306,10 +3306,6 @@
       "class": "public-output"
     },
     {
-      "path": "packages/platform/src/fulfillment/overviewSchemas.ts",
-      "class": "public-output"
-    },
-    {
       "path": "packages/platform/src/fulfillment/paidFulfillmentRecovery.ts",
       "class": "public-output"
     },
@@ -3319,10 +3315,6 @@
     },
     {
       "path": "packages/platform/src/fulfillment/paidHandoffPorts.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "packages/platform/src/fulfillment/ports.ts",
       "class": "public-output"
     },
     {

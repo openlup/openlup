@@ -31,7 +31,7 @@ function progressPresentation(
   if (terminal || ["draft", "expired"].includes(order.status.toLowerCase())
     || step === "exception" || step === "cancelled" || !paid && !advancedParcel) return null;
   const completed = new Set<CustomerFulfillmentStep>(paid ? ["paid"] : []);
-  const record = (token: string | null) => {
+  const record = (token: string | null | undefined) => {
     const observed = stepForToken(token);
     // No historical inference from an index, and no payment proof from parcel tokens.
     if (observed && observed !== "paid" && CUSTOMER_STEP_SEQUENCE.includes(observed as typeof CUSTOMER_STEP_SEQUENCE[number])

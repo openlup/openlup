@@ -433,7 +433,7 @@ export type { FulfillmentNativeUnsupported } from './nativeUnsupported.js';
 export type { FulfillmentReplacementPort, FulfillmentReplacementRequest, FulfillmentReplacementResult } from './replacement.js';
 export type { FulfillmentOperatorMutationPort, FulfillmentOperatorMutationResult } from './operator.js';
 export type { CustomerDeliveryAlignment, FulfillmentCustomerAlignmentRowsReader } from './customerAlignment.js';
-export type { FulfillmentCommerceReadPort, FulfillmentCommerceReadPolicy, FulfillmentPaymentStatus, FulfillmentCommerceOrder, FulfillmentOrdersListRequest, FulfillmentOrdersListResponse, FulfillmentOrderDetailRequest, FulfillmentOrderDetailResponse, FulfillmentShipmentsOverviewPort, FulfillmentShipmentsOverviewRequest, FulfillmentShipmentsOverviewResponse } from './read.js';
+export type { FulfillmentCommerceReadPort, FulfillmentCommerceReadPolicy, FulfillmentOrderStatus, FulfillmentPaymentStatus, FulfillmentCommerceOrder, FulfillmentOrdersListRequest, FulfillmentOrdersListResponse, FulfillmentOrderDetailRequest, FulfillmentOrderDetailResponse, FulfillmentShipmentsOverviewPort, FulfillmentShipmentsOverviewRequest, FulfillmentShipmentsOverviewResponse } from './read.js';
 export type { FulfillmentProgressInput, FulfillmentProgressPresentation } from './read.js';
 ```
 ## dist/fulfillment/contracts/label.d.ts
@@ -724,12 +724,11 @@ export interface FulfillmentCommerceReadPolicy {
 }
 export interface FulfillmentProgressInput {
     status: string;
-    paymentStatus: string | null;
-    fulfillmentStatus: string | null;
+    paymentStatus?: string | null;
+    fulfillmentStatus?: string | null;
     customerFulfillmentStep?: CustomerFulfillmentStep | null;
     trackingTimeline: {
         eventType: string;
-        occurredAt?: string | null;
     }[];
 }
 export interface FulfillmentProgressPresentation {
@@ -2183,11 +2182,6 @@ export interface OrderPaidFulfillmentPort {
     }): Promise<OrderPaidFulfillmentResult>;
 }
 ```
-## dist/fulfillment/ports.d.ts
-
-```ts
-export type { FulfillmentShipmentsOverviewPort } from './contracts/read.js';
-```
 ## dist/fulfillment/postgresDeliveryAlignment.d.ts
 
 ```ts
@@ -2813,8 +2807,7 @@ export declare const FULFILLMENT_NATIVE_CAPABILITIES: {
 
 ```ts
 import { type FulfillmentHandlerRequest, type FulfillmentHandlerResponder } from './handlerSupport.js';
-import type { FulfillmentShipmentsOverviewResponse } from './contracts/read.js';
-import type { FulfillmentShipmentsOverviewPort } from "./ports.js";
+import type { FulfillmentShipmentsOverviewPort, FulfillmentShipmentsOverviewResponse } from './contracts/read.js';
 export interface FulfillmentShipmentsOverviewHandlerDeps<Response> {
     respond: FulfillmentHandlerResponder<Response>;
     overviewPort: FulfillmentShipmentsOverviewPort;

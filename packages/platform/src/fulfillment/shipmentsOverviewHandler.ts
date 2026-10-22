@@ -1,9 +1,10 @@
 import { isNativeUnsupported, type FulfillmentHandlerRequest, type FulfillmentHandlerResponder } from './handlerSupport.js';
-import {
-  adminShipmentsOverviewRequestSchema,
-} from "./overviewSchemas.js";
-import type { FulfillmentShipmentsOverviewResponse } from './contracts/read.js';
-import type { FulfillmentShipmentsOverviewPort } from "./ports.js";
+import { z } from 'zod';
+import type { FulfillmentShipmentsOverviewPort, FulfillmentShipmentsOverviewResponse } from './contracts/read.js';
+
+const adminShipmentsOverviewRequestSchema = z.object({
+  shippedFilter: z.enum(['today', '7d', '30d', 'all']).default('7d'),
+});
 
 export interface FulfillmentShipmentsOverviewHandlerDeps<Response> {
   respond: FulfillmentHandlerResponder<Response>;

@@ -14,5 +14,5 @@ export type { FulfillmentNativeUnsupported } from './nativeUnsupported.js';
 export type { FulfillmentReplacementPort, FulfillmentReplacementRequest, FulfillmentReplacementResult } from './replacement.js';
 export type { FulfillmentOperatorMutationPort, FulfillmentOperatorMutationResult } from './operator.js';
 export type { CustomerDeliveryAlignment, FulfillmentCustomerAlignmentRowsReader } from './customerAlignment.js';
-export type { FulfillmentCommerceReadPort, FulfillmentCommerceReadPolicy, FulfillmentPaymentStatus, FulfillmentCommerceOrder, FulfillmentOrdersListRequest, FulfillmentOrdersListResponse, FulfillmentOrderDetailRequest, FulfillmentOrderDetailResponse, FulfillmentShipmentsOverviewPort, FulfillmentShipmentsOverviewRequest, FulfillmentShipmentsOverviewResponse } from './read.js';
+export type { FulfillmentCommerceReadPort, FulfillmentCommerceReadPolicy, FulfillmentOrderStatus, FulfillmentPaymentStatus, FulfillmentCommerceOrder, FulfillmentOrdersListRequest, FulfillmentOrdersListResponse, FulfillmentOrderDetailRequest, FulfillmentOrderDetailResponse, FulfillmentShipmentsOverviewPort, FulfillmentShipmentsOverviewRequest, FulfillmentShipmentsOverviewResponse } from './read.js';
 export type { FulfillmentProgressInput, FulfillmentProgressPresentation } from './read.js';

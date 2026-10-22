@@ -771,7 +771,8 @@ package; the host schema retains private-row validation. The host owns privacy
 and date-filter semantics; native shipment counts cannot replace its buckets.
 
 [fulfillmentProgressPresentation](../../packages/platform/src/fulfillment/trackingProgress.ts)
-accepts the host's resolved customer step and existing account facts. Only recorded
+accepts the host's resolved customer step, order status, optional nullable payment
+and fulfillment statuses, optional customer step and timeline event types. Only recorded
 physical milestones complete, capped at that step; later progress does not imply
 earlier milestones or payment. Paid completion requires the existing succeeded
 or historical paid account payment spelling. Terminal, draft, expired and off-track
