@@ -771,8 +771,13 @@ sequence, then identifier descending, and retain unattributed companion rows.
 `createNativeUnsupportedFulfillmentPorts` returns the single typed
 `FULFILLMENT_NATIVE_UNSUPPORTED` refusal for replacement, operator mutations and
 customer alignment rows. It has no database executor and performs no partial
-write or substitute operation. The same refusal type is available to host-owned
-read and preparation boundaries. Supplying a host fixture proves that seam's
+write or substitute operation. The refusal is accepted by
+[`FulfillmentReplacementPort`](../../packages/platform/src/fulfillment/contracts/replacement.ts),
+[`FulfillmentOperatorMutationPort`](../../packages/platform/src/fulfillment/contracts/operator.ts)
+and [`FulfillmentCustomerAlignmentRowsReader`](../../packages/platform/src/fulfillment/contracts/customerAlignment.ts);
+[`readFulfillmentDelay`](../../packages/platform/src/fulfillment/delayReadModel.ts)
+propagates it. Commerce list/detail reads and dispatch preparation retain their
+own declared return types. Supplying a host fixture proves that seam's
 handler behavior; it does not establish native parity or activate any route.
 
 The [verified ingress](../../packages/platform/src/fulfillment/verifiedIngress.ts)
