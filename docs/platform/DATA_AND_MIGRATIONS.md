@@ -68,6 +68,87 @@ forward, rather than relying on a reference fixture or process startup. A missin
 twin in the other chain is a documented compatibility gap, not implicit parity.
 
 ## Module catalogues and installed histories
+
+Fulfillment appends native command and alignment units,
+`20261022080000_fulfillment_command_ledger.sql` and
+`20261022090000_fulfillment_delivery_alignment.sql`, after the shipping seed.
+`FULFILLMENT_MIGRATIONS` projects units 5, 27, 51, 73 and 74 with canonical identities and byte-identical package assets. Install the
+complete catalogue, preserve the full installed prefix and verify its live
+object inventory; the sparse projections are not an install chain. Existing
+native and managed migration bytes remain unchanged.
+
+For a fresh native install, the invariant "a late delivery extends the next cycle"
+is enforced automatically only when delivery-alignment control mode is
+`auto_align`. `public.subscription_delivery_alignment_control.mode` defaults to
+`off` for rollout safety, so installation alone does not enforce the invariant.
+The complete mode set is `off`, `shadow`, `protect` and `auto_align`, selected
+through `public.subscription_delivery_alignment_set_mode`. Existing cases retain
+their captured mode and protection after a control change.
+
+Enforcing modes (`protect`, `auto_align`) require the host's renewal path to call
+`subscription_delivery_alignment_admit_renewal` before inserting the cycle.
+The [native renewal store](../../server/adapters/postgres/subscription/automaticRenewal.ts)
+does not yet call it, so switching a native install to an enforcing mode halts
+every autonomous renewal with `subscription_delivery_alignment_admission_required`.
+Native installs must keep mode `off` until that wiring lands.
+
+In enforcing modes, a subscription whose paid history has no activation or
+renewal link, such as imported data, holds every due renewal for manual review.
+Operators should check for such cycles before switching modes.
+
+The command forward adds durable dispatch/attempt/paid-handoff and observation
+receipts. Atomic ACK records the native `dispatch` external reference: the `3pl`
+archetype does not create an owned label, and acceptance cannot imply physical
+packing. That receipt also retains the native local-cancellation refusal.
+Observation persistence distinguishes received observations from recorded status
+evidence; only the latter supplies local occurrence chronology. Stock movements retain opaque
+keys and replay fingerprints, while sync cursor state retains coverage gaps.
+Host inventory lines and authoritative contact preparation remain injected.
+
+The alignment forward translates managed fulfillment rows to native shipments,
+replacement links to `replaces_shipment_id`, and subscription identity through
+order → cycle → subscription. The effective cycle ordinal
+comes from renewal operation numbering or the explicit activation-order link.
+
+[The native translation decision](plans/oss-m08-fulfillment-physical-delivery.md#native-admission-and-delivery-alignment) maps donor activation cycle 1 ↔ native activation ordinal 0, and donor
+renewal n+1 ↔ native renewal n. The activation ordinal requires a cycle with no
+renewal operation whose linked order is the active `subscription_activations`
+row's order for the same subscription. Renewal operation numbers remain ≥1.
+Admission selects the highest known paid ordinal, so activation protects the
+first renewal and each later paid renewal outranks activation. Successor
+artifacts have a greater effective ordinal. Other unnumbered cycles remain
+unordered: paid ones require manual review at due admission without minting a
+receipt; other unordered cycles prevent automatic arrival alignment regardless
+of scheduled date. They neither outrank known predecessors nor silently permit
+an autonomous renewal. Shadow mode observes this ambiguity without blocking.
+
+Local pre-dispatch cancellation changes only the shipment locally: alignment
+creates no hold or shipment-exception event and does not block other shipments
+of the order. An undelivered, unsuperseded cancelled parcel still counts as
+outstanding at renewal admission in `protect` and `auto_align`. An explicit
+provider exception uses the existing fulfillment-exception hold and notification
+rules; alignment observes that active hold to open a case only when control is not
+`off`, the order belongs to a paid subscription cycle and the subscription is
+active. One-time orders do not open alignment cases. Exception cases never
+pause subscriptions.
+
+Existing-cycle renewal and dunning
+retries bypass new-cycle admission and receipts. The new-cycle INSERT guard
+retains exact schedule-bound, one-use receipt consumption. Default-off control
+does not erase captured protected cases. Only durable arrival can settle the
+automatic route, using the latest arrival plus cadence with the outer maximum.
+
+All new routines are invokers with PUBLIC/anon/authenticated access revoked,
+including helpers and trigger routines. The initial native executor is the
+existing deployment owner; no role, SECURITY DEFINER, default grant or browser
+capability is added. A separate service principal requires the maintainer's
+explicit least-privilege grants on routines and underlying objects; owner
+execution does not establish a non-owner grant set. Receipt pruning needs DELETE
+on that receipt table if such an invoker is configured. Replacement confirmation remains a note-only operator
+attestation with no automatic caller or new arrival predicate. The
+[arrival-only discipline](plans/oss-m08-fulfillment-physical-delivery.md#native-admission-and-delivery-alignment)
+remains binding.
+
 Payments publishes `PAYMENT_MIGRATIONS` as byte-identical projections of canonical
 positions 10 (settlement), 35 (truth/reconciliation) and 56 (later-only cycle).
 Each retains its canonical path, SHA-256 and package asset URL. These three assets
@@ -425,12 +506,26 @@ mode other than `auto_align` before either a new journey or restart proof. This
 mode is the prerequisite for the monotonic late-delivery rule in
 [Canonical contracts](CANONICAL_CONTRACTS.md#subscription-delivery-alignment).
 
-There is no portable twin: the delivery-alignment rail is managed-only. The
-portable installation's lack of this capability remains a known gap; this
-forward establishes neither installation-path parity nor the complete
-late-delivery journey or a stable upgrade guarantee.
+The managed singleton seed has no portable twin. The native chain carries
+delivery alignment in its own
+[`fulfillment_delivery_alignment` forward](../../db/platform/migrations/20261022090000_fulfillment_delivery_alignment.sql),
+which creates the control row with mode `off`; `auto_align` enables the
+late-delivery invariant. Native store and real PostgreSQL conformance tests
+cover admission and arrival alignment. These checks do not establish
+installation-path parity, a complete installed late-delivery journey or a
+stable upgrade guarantee.
 
 ## Compatibility lifecycle
+
+Fulfillment expands the native graph with new command and
+alignment objects at positions 73/74. It preserves all position-0–72 identities,
+existing rows and the managed graph. Upgrade the complete prefix before enabling
+the new stores; sparse package assets are projections only. Default-off alignment
+creates no cases during upgrade. Code rollback retains accepted dispatch proof
+and already extended dates; repair those facts forward. Invoker-only owner
+execution adds no browser privilege or service account. The
+[module catalogue notes](#module-catalogues-and-installed-histories) distinguish
+native dispatch commitment, missing correlation and future service grants.
 
 The portable forward
 `20261021120000_dunning_lifecycle_active_repair.sql` appends position 71 to keep
