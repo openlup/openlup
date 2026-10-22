@@ -59,6 +59,8 @@ export function observation(input: {
   if (!fulfillmentRef || input.source === "provider_webhook" && [evidence.providerOrderId, evidence.orderNumber, evidence.fulfilmentNumber].some(value => value !== null && !correlationReference(value, codecs))) throw refusal("missing_correlation", "normalize");
   const occurredAt = timestamp(evidence.occurredAt);
   if (evidence.occurredAt && !occurredAt) throw refusal("malformed", "normalize");
+  // The occurrence codec above admits the key's timestamp too. Compose with its
+  // original bytes, including minute precision and offsets, rather than the UTC fact.
   const key = buildProviderEventId(evidence);
   const normalizedTracking = tracking(evidence.trackingReferences, codecs, input.approveTrackingUrl);
   const rejectedTrackingRefs = normalizedTracking.rejectedTrackingRefs + (evidence.rejectedTrackingRefs ?? 0)

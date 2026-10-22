@@ -4,8 +4,9 @@ import { expect, it, vi } from "vitest";
 import type { DispatchRecord, FulfillmentDispatchRequest, FulfillmentDispatchResult } from "../../../src/fulfillment/contracts/index.js";
 import { createFulfillmentServices, createPostgresFulfillmentDispatchStore, createPostgresFulfillmentShipmentSpinePort, reconcileFulfillmentObservations, runFulfillmentDispatchWorker, runFulfillmentReconciliationPage } from "../../../src/fulfillment/index.js";
 import { createOmnipackFulfillmentAdapter } from "../../../src/fulfillment/omnipack/index.js";
-import { dispatchResult } from "../../../src/fulfillment/dispatchProjection.js";
-import { ingressFixture, memoryStore, profile, request } from "../fixtures.js";
+import { dispatchResult, durableStrings, localFailureReason } from "../../../src/fulfillment/dispatchProjection.js";
+import { projectObservation } from "../../../src/fulfillment/observationProjection.js";
+import { ingressFixture, memoryStore, observation, profile, request } from "../fixtures.js";
 
 // Synthetic inputs preserved from the M08 b3 probe dispatch/reconciliation scenarios.
 const now = "2026-10-22T22:30:00.000Z";
@@ -42,6 +43,50 @@ function dispatchFixture(a = adapter()) {
   };
   return { ...a, base, store, writes, trace,
     run: (mode: DispatchRecord["mode"] = "stage") => runFulfillmentDispatchWorker({ store, provider: a.adapter.dispatch, keys, listCandidates: async () => [candidate()], config: { mode, batchLimit: 10 }, now: () => new Date(now) }) };
+}
+// Model the native receipt's whole-JSON fence, rather than just its externalRef.
+function nativeDispatchFixture(capture: (sink: string, value: unknown) => void, ackError?: Error) {
+  const memory = memoryStore(), receipts: unknown[] = [];
+  let acceptance: Extract<FulfillmentDispatchResult, { kind: "accepted" }> | undefined, failAck = Boolean(ackError);
+  const native = createPostgresFulfillmentDispatchStore({ async query(statement, values = []) {
+    let result: unknown;
+    if (statement.startsWith("UPDATE")) return { rows: [] };
+    if (statement.startsWith("SELECT public.fulfillment_dispatch_read")) {
+      const record = await memory.read(String(values[0]));
+      result = record && { ...record, ...(acceptance ? { acceptance } : {}) };
+    } else {
+      capture("native-dispatch", { statement, values });
+      if (statement.includes("fulfillment_dispatch_claim(")) result = await memory.claim({ requestKey: String(values[0]), fulfillmentRef: String(values[1]),
+        orderRef: String(values[2]), parcelRef: values[3] as string | null, mode: values[4] as DispatchRecord["mode"], evidence: JSON.parse(values[5] as string) });
+      else if (statement.includes("fulfillment_record_provider_attempt(")) result = await memory.recordProviderAttempt(String(values[0]), String(values[1]), JSON.parse(values[2] as string), values[3] as DispatchRecord["mode"], "recorded");
+      else if (statement.includes("fulfillment_dispatch_begin(")) result = await memory.begin({ dispatchRef: String(values[0]), commandFingerprint: String(values[1]) });
+      else if (statement.includes("fulfillment_dispatch_finish(")) {
+        const receipt = JSON.parse(values[1] as string) as FulfillmentDispatchResult;
+        if (values[2]) {
+          if (failAck) { failAck = false; throw ackError; }
+          const record = await memory.read(keys.request()), replayed = record?.status === "created";
+          if (replayed && !isDeepStrictEqual(acceptance, receipt)) throw Error("fulfillment_dispatch_ack_key_conflict");
+          if (receipt.kind !== "accepted") throw Error("expected_acceptance");
+          acceptance = receipt; receipts.push(structuredClone(receipt));
+          result = { ...await memory.acknowledge({ dispatchRef: String(values[0]), acceptance }), replayed };
+        } else {
+          if (receipt.kind === "accepted") acceptance = receipt;
+          capture(receipt.kind === "accepted" ? "accepted-ack-recovery" : "dispatch-finalize", receipt);
+          result = await memory.finalize({ dispatchRef: String(values[0]), result: receipt });
+        }
+      } else throw Error("unexpected_native_call");
+    }
+    return { rows: [{ response: result }] };
+  } }, { prepare: memory.prepare, readCandidate: async () => candidate() });
+  return { native, memory, receipts };
+}
+function assertNativeObservation(values: unknown[]) {
+  const observation = JSON.parse(values[2] as string);
+  for (const value of [values[3], observation.firstReceivedAt, observation.fact.receivedAt, observation.fact.occurredAt]) {
+    if (value === null) continue;
+    expect(value).toMatch(/^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?(?:Z|[+-]\d\d:\d\d)$/u);
+    expect(Number.isFinite(Date.parse(value as string))).toBe(true);
+  }
 }
 it.each(["sweep", "begin", "attempt"] as const)("dispatch-%s retains stage and safe SQLSTATE before POST", async stage => {
   const f = dispatchFixture();
@@ -381,6 +426,35 @@ it("a thrown page read counts one logical provider call", async () => {
 });
 
 
+it("native observation ingestion preserves host event identity and RFC3339 offset timestamps", async () => {
+  const receivedAt = "2026-10-22T19:00:00+02:00", fixture = observation();
+  const event = { ...fixture, eventKey: "host/event:+02:00", firstReceivedAt: receivedAt,
+    correlation: { ...fixture.correlation, orderRef: "host/order", fulfillmentRef: "host/fulfillment", parcelRef: "host/parcel" },
+    diagnostics: { recoveredPickedReceipt: { receiptRef: "host/receipt", closed: true } },
+    fact: { ...fixture.fact, receivedAt, occurredAt: receivedAt } };
+  const writes: unknown[][] = [];
+  const native = createPostgresFulfillmentShipmentSpinePort({ async query(_statement, values = []) {
+    assertNativeObservation(values); writes.push(values); return { rows: [{ response: { replayed: writes.length > 1 } }] };
+  } }, { portKey: "timestamp-test" }).localPersistence;
+  expect(await native.recordObservation(event)).toEqual({ replayed: false });
+  expect(await native.recordObservation(projectObservation(event))).toEqual({ replayed: true });
+  expect(writes[1]).toEqual(writes[0]);
+  expect(writes[0]![0]).toBe(event.eventKey); expect(writes[0]![3]).toBe(receivedAt);
+  expect(JSON.parse(writes[0]![2] as string).correlation).toEqual(event.correlation);
+  expect(JSON.parse(writes[0]![2] as string).diagnostics.recoveredPickedReceipt).toEqual(event.diagnostics.recoveredPickedReceipt);
+  expect(JSON.parse(writes[0]![2] as string).diagnostics?.redactedFieldCount).toBe(1); // unapproved tracking URL only
+  await expect(native.recordObservation({ ...event, firstReceivedAt: "redacted" })).rejects.toThrow();
+  expect(writes).toHaveLength(2);
+});
+it("diagnostic codecs count refused fields once", async () => {
+  const privacy = durableStrings();
+  expect(localFailureReason("stage", { code: "bad/code", causeMessage: "bad.code" }, privacy)).toBe("stage");
+  expect(privacy.redactedFieldCount).toBe(2);
+  const f = reconciliationFixture();
+  f.input.lifecycle.issueAccountingInvoice = async () => { throw Error("invoice_rpc_failed"); };
+  f.input.lifecycle.invoiceFailure = () => ({ permanent: true, identifier: "bad/code", sqlstate: "bad.code", benign: false });
+  expect(await f.run()).toMatchObject({ redactedFieldCount: 2, invoiceIssueRefusals: [{ identifier: null, sqlstate: "22023" }] });
+});
 it("sweeps every provider string field through adapters, workers and durable sink projections", async () => {
   const plants = ["Jane Doe +12025550123", "jane.doe@example.invalid", "12 Example Street", '{"contact":{"email":"jane@example.invalid","phone":"+12025550123"}}', "Bearer synthetic.secret/contact+token="];
   // All strings read from PR2 provider inputs, including fallback spellings and
@@ -415,6 +489,7 @@ it("sweeps every provider string field through adapters, workers and durable sin
       f.input.lifecycle.readDeliveryCarrier = async () => null;
       const native = createPostgresFulfillmentShipmentSpinePort({ async query(statement, values) {
         if (field === "subStatus" && statement.includes("fulfillment_record_observation(")) expect(JSON.parse(values![2] as string).diagnostics.redactedFieldCount).toBe(1);
+        if (statement.includes("fulfillment_record_observation(")) assertNativeObservation(values!);
         capture("native-observation", { statement, values }); return { rows: [{ response: { replayed: false } }] };
       } }, { portKey: "privacy-test" }).localPersistence;
       f.input.lifecycle.acknowledgeDispatchAcceptance = async (ref, evidence) => capture("ack-evidence", { ref, evidence });
@@ -443,26 +518,22 @@ it("sweeps every provider string field through adapters, workers and durable sin
       if (field.startsWith("resolveProduct.")) set(metadata, field.split(".")[1]!, plant);
       if (field === "response.orderId") response.orderId = plant;
       const a = adapter(() => field === "error.code" ? Response.json({ code: plant }, { status: 400 }) : Response.json(response), metadata);
-      const memory = memoryStore();
-      const native = createPostgresFulfillmentDispatchStore({ async query(statement, values = []) {
-        let result: unknown;
-        if (statement.startsWith("UPDATE")) return { rows: [] };
-        if (statement.startsWith("SELECT public.fulfillment_dispatch_read")) result = await memory.read(String(values[0]));
-        else {
-          capture("native-dispatch", { statement, values });
-          if (statement.includes("fulfillment_dispatch_claim(")) result = await memory.claim({ requestKey: String(values[0]), fulfillmentRef: String(values[1]),
-            orderRef: String(values[2]), parcelRef: values[3] as string | null, mode: values[4] as DispatchRecord["mode"], evidence: JSON.parse(values[5] as string) });
-          else if (statement.includes("fulfillment_record_provider_attempt(")) result = await memory.recordProviderAttempt(String(values[0]), String(values[1]), JSON.parse(values[2] as string), values[3] as DispatchRecord["mode"], "recorded");
-          else if (statement.includes("fulfillment_dispatch_begin(")) result = await memory.begin({ dispatchRef: String(values[0]), commandFingerprint: String(values[1]) });
-          else if (statement.includes("fulfillment_dispatch_finish(")) result = values[2] ? await memory.acknowledge({ dispatchRef: String(values[0]), acceptance: JSON.parse(values[1] as string) })
-            : await memory.finalize({ dispatchRef: String(values[0]), result: JSON.parse(values[1] as string) });
-          else throw Error("unexpected_native_call");
-        }
-        return { rows: [{ response: result }] };
-      } }, { prepare: memory.prepare, readCandidate: async () => candidate() });
-      const run = await runFulfillmentDispatchWorker({ store: native, provider: a.adapter.dispatch, keys,
+      const { native, memory, receipts } = nativeDispatchFixture(capture);
+      const replayKeys = { ...keys, acceptance: () => ({ providerAttemptKey: "host:attempt/accepted", labelKey: "host/label:ack" }) };
+      const run = await runFulfillmentDispatchWorker({ store: native, provider: a.adapter.dispatch, keys: replayKeys,
         listCandidates: async () => [candidate()], config: { mode: "stage", batchLimit: 1 } });
       expect(run.providerCalls).toBe(1);
+      if (field.startsWith("resolveProduct.")) {
+        for (let replay = 0; replay < 2; replay++) {
+          const result = await runFulfillmentDispatchWorker({ store: native, provider: a.adapter.dispatch, keys: replayKeys,
+            listCandidates: async () => [candidate()], config: { mode: "stage", batchLimit: 1 } });
+          expect(result, `${field}: ${JSON.stringify(result)}`).toMatchObject({ ok: true, failures: 0, providerCalls: 0, replayed: 1 });
+        }
+        expect(receipts).toHaveLength(3);
+        expect(receipts[1]).toEqual(receipts[0]); expect(receipts[2]).toEqual(receipts[0]);
+        expect(receipts[0]).toMatchObject(replayKeys.acceptance());
+        expect(a.http).toHaveBeenCalledTimes(1);
+      }
       const attempts = await memory.readMappedAttempts(); expect(attempts).toHaveLength(1);
       if (field.startsWith("resolveProduct.")) expect(attempts[0]!.preparedEvidence.transcript!.redactedFieldCount).toBe(1);
       capture("transcript", attempts); capture("dispatch-diagnostics", run);
@@ -477,11 +548,30 @@ it("sweeps every provider string field through adapters, workers and durable sin
       const error = Object.assign(Error("operation_failed"), { [field]: plant });
       const f = dispatchFixture(); f.store.markStaleSubmissionsUncertain = async () => { throw error; };
       capture("dispatch-diagnostics", await f.run());
+      const recovery = nativeDispatchFixture(capture, error), a = adapter();
+      const recover = () => runFulfillmentDispatchWorker({ store: recovery.native, provider: a.adapter.dispatch, keys,
+        listCandidates: async () => [candidate()], config: { mode: "stage", batchLimit: 1 } });
+      expect(await recover()).toMatchObject({ ok: false, providerCalls: 1 });
+      const persisted = await recovery.native.read(keys.request());
+      expect(persisted).toMatchObject({ status: "uncertain", acceptance: { error: { code: "dispatch_acceptance_write_failed", redactedFieldCount: 1 } } });
+      capture("accepted-ack-recovery-readback", persisted);
+      expect(await recover()).toMatchObject({ ok: true, providerCalls: 0 });
+      expect(await recover()).toMatchObject({ ok: true, providerCalls: 0 });
+      expect(recovery.receipts[1]).toEqual(recovery.receipts[0]);
+      expect(a.http).toHaveBeenCalledTimes(1);
       const r = reconciliationFixture(); r.input.lifecycle.issueAccountingInvoice = async () => { throw error; };
       r.input.lifecycle.invoiceFailure = () => ({ permanent: true, identifier: plant, sqlstate: plant, benign: false });
       capture("reconciliation-diagnostics", await r.run());
       capture("checkpoint-and-diagnostics", await runFulfillmentReconciliationPage({ ...r.input, provider: { readPage: async () => { throw error; } }, pageSize: 1, checkpoint: null }));
     }
+    const exception = reconciliationFixture([{ ...row, status: "shipping_failed", subStatus: plant }]);
+    exception.input.lifecycle.recordProviderException = async (ref, evidence) => {
+      capture("provider-exception", { ref, evidence });
+      expect(evidence.providerStatus).toEqual({ primary: "shipping_failed", subStatus: null });
+      expect(evidence.diagnostics?.redactedFieldCount).toBe(1);
+      return { replayed: false };
+    };
+    expect(await exception.run()).toMatchObject({ ok: true, exceptions: 1 });
     const bytes = JSON.stringify(captured);
     for (const forbidden of plants) {
       expect(bytes).not.toContain(forbidden);
@@ -499,12 +589,12 @@ it("sweeps every provider string field through adapters, workers and durable sin
   const approved = reconciliationFixture(), nativeWrites: unknown[][] = [];
   const policy = (url: string) => url === "https://tracking.invalid/TRACK-A";
   const native = createPostgresFulfillmentShipmentSpinePort({ async query(_statement, values = []) {
-    nativeWrites.push(values); return { rows: [{ response: { replayed: false } }] };
+    assertNativeObservation(values); nativeWrites.push(values); return { rows: [{ response: { replayed: false } }] };
   } }, { portKey: "privacy-test", approveTrackingUrl: policy }).localPersistence;
   approved.input.lifecycle.recordStatusEvidence = async (_ref, evidence) => native.recordObservation(evidence);
   expect(await approved.run()).toMatchObject({ ok: true, trackingRefs: 1 });
   expect(JSON.parse(nativeWrites[0]![2] as string).trackingRefs[0].publicUrl).toBe(row.shipments[0]!.trackingUrl);
   expect(new Set(statusKeys).size).toBe(plants.length);
   expect(new Set(subStatusKeys).size).toBe(plants.length);
-  expect([...sinks]).toEqual(expect.arrayContaining(["native-dispatch", "native-observation", "provider-status", "quarantine", "ack-evidence", "effect", "transcript", "checkpoint-and-diagnostics", "dispatch-diagnostics", "reconciliation-diagnostics"]));
+  expect([...sinks]).toEqual(expect.arrayContaining(["native-dispatch", "native-observation", "provider-status", "quarantine", "ack-evidence", "effect", "transcript", "checkpoint-and-diagnostics", "dispatch-diagnostics", "reconciliation-diagnostics", "provider-exception", "accepted-ack-recovery", "accepted-ack-recovery-readback"]));
 });

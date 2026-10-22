@@ -1,22 +1,24 @@
-import { createHash } from "node:crypto";
+import { z } from "zod";
 import type { CanonicalLocalFulfillmentStatus, FulfillmentObservation, FulfillmentObservationCodecs } from "./contracts/index.js";
 import { parseFulfillmentFact } from "./normalizedFulfillmentFacts.js";
 import { admittedReference, durableStrings, reference } from "./dispatchProjection.js";
 import { FULFILLMENT_STATUS_MAP } from "./statusMap.js";
 
 type Privacy = ReturnType<typeof durableStrings>;
+const timestamp = z.iso.datetime({ offset: true });
 export function projectCorrelation(value: FulfillmentObservation["correlation"], privacy = durableStrings(), codecs: FulfillmentObservationCodecs = {}): FulfillmentObservation["correlation"] {
   const token = (value: string | null) => privacy.token(value, text => admittedReference(text, codecs.approveReference));
-  return { orderRef: token(value.orderRef), fulfillmentRef: token(value.fulfillmentRef), externalRef: token(value.externalRef),
-    orderNumber: token(value.orderNumber), providerFulfillmentRef: token(value.providerFulfillmentRef), parcelRef: token(value.parcelRef) };
+  return { orderRef: value.orderRef, fulfillmentRef: value.fulfillmentRef, externalRef: token(value.externalRef),
+    orderNumber: token(value.orderNumber), providerFulfillmentRef: token(value.providerFulfillmentRef), parcelRef: value.parcelRef };
 }
 
 export function projectProviderStatus(value: NonNullable<FulfillmentObservation["providerStatus"]>, privacy = durableStrings()): NonNullable<FulfillmentObservation["providerStatus"]> {
   return { primary: privacy.token(value.primary), subStatus: privacy.token(value.subStatus) };
 }
 export type PollEvidence = Pick<FulfillmentObservation, "correlation" | "eventKey" | "providerStatus" | "diagnostics">;
-function pollEvidence(value: PollEvidence, privacy: Privacy, codecs: FulfillmentObservationCodecs = {}, eventKeyCodec = reference): PollEvidence {
-  return { eventKey: privacy.token(value.eventKey, eventKeyCodec) ?? createHash("sha256").update(value.eventKey).digest("hex"), correlation: projectCorrelation(value.correlation, privacy, codecs),
+function pollEvidence(value: PollEvidence, privacy: Privacy, codecs: FulfillmentObservationCodecs = {}): PollEvidence {
+  // Host identities and keys composed from admitted parts are already authoritative.
+  return { eventKey: value.eventKey, correlation: projectCorrelation(value.correlation, privacy, codecs),
     ...(value.providerStatus ? { providerStatus: projectProviderStatus(value.providerStatus, privacy) } : {}) };
 }
 /** Unknown-status quarantine/ACK evidence has the same privacy boundary as observations. */
@@ -44,26 +46,6 @@ export function projectTrackingReference(value: FulfillmentObservation["tracking
     publicUrl: privacy.token(value.publicUrl, url => publicTrackingUrl(url, approveTrackingUrl, codecs.trackingUrl)) };
 }
 
-/** Validate donor composite identities against admitted components, preserving original bytes. */
-function observationEventKey(value: FulfillmentObservation, codecs: FulfillmentObservationCodecs): string | null {
-  if (reference(value.eventKey)) return value.eventKey;
-  if (!reference(value.eventKind)) return null;
-  const prefix = `${value.eventKind}:`;
-  const time = value.eventKey.match(/:(unknown-time|\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d(?:\.\d+)?(?:Z|[+-]\d\d:\d\d))$/u)?.[1];
-  if (!time || !value.eventKey.startsWith(prefix) || value.eventKey.length > 1024) return null;
-  if (time === "unknown-time" ? value.fact.occurredAt !== null : Date.parse(time) !== Date.parse(value.fact.occurredAt ?? "")) return null;
-  const parts = value.eventKey.slice(prefix.length, -(time.length + 1));
-  const order = admittedReference(value.correlation.externalRef ?? value.correlation.orderNumber, codecs.approveReference);
-  const parcel = admittedReference(value.correlation.providerFulfillmentRef, codecs.approveReference);
-  for (let split = 0; split < parts.length; split++) {
-    if (parts[split] !== ":") continue;
-    const rawOrder = parts.slice(0, split), rawParcel = parts.slice(split + 1);
-    if ((order === null ? rawOrder === "unknown-order" : admittedReference(rawOrder, codecs.approveReference) === order)
-      && (parcel === null ? rawParcel === "unknown-fulfilment" : admittedReference(rawParcel, codecs.approveReference) === parcel)) return value.eventKey;
-  }
-  return null;
-}
-
 /** New boundary projection: arbitrary adapter properties are never durable. */
 export function projectObservation(value: FulfillmentObservation, approveTrackingUrl?: (url: string) => boolean, codecs: FulfillmentObservationCodecs = {}): FulfillmentObservation {
   const privacy = durableStrings(value.diagnostics?.redactedFieldCount), token = privacy.token;
@@ -80,13 +62,13 @@ export function projectObservation(value: FulfillmentObservation, approveTrackin
   if (value.diagnostics?.annotation) diagnostics.annotation = token(value.diagnostics.annotation) as typeof value.diagnostics.annotation;
   if (value.diagnostics?.recoveredPickedReceipt) {
     const { receiptRef, closed } = value.diagnostics.recoveredPickedReceipt;
-    diagnostics.recoveredPickedReceipt = { receiptRef: token(receiptRef) ?? "redacted", closed };
+    diagnostics.recoveredPickedReceipt = { receiptRef, closed };
   }
   const fact = parseFulfillmentFact(value.fact);
   const safe = {
-    ...pollEvidence(value, privacy, codecs, () => observationEventKey(value, codecs)),
+    ...pollEvidence(value, privacy, codecs),
     fact: { ...fact, mapperVersion: token(fact.mapperVersion) ?? "redacted" }, eventKind: (token(value.eventKind) ?? "redacted") as FulfillmentObservation["eventKind"],
-    firstReceivedAt: token(value.firstReceivedAt) ?? "redacted",
+    firstReceivedAt: timestamp.parse(value.firstReceivedAt),
     trackingRefs: value.trackingRefs.map(ref => projectTrackingReference(ref, privacy, approveTrackingUrl, codecs)),
   };
   if (privacy.redactedFieldCount) diagnostics.redactedFieldCount = privacy.redactedFieldCount;

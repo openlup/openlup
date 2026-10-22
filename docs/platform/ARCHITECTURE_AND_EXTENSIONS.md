@@ -822,7 +822,11 @@ string sanitizer at their output projections. Provider-derived strings must
 match the existing opaque-ID rule `[A-Za-z0-9][A-Za-z0-9._:-]{0,127}` or an
 explicit adopter codec; refused values become null (required references use
 `redacted`) and increment `redactedFieldCount` in the existing evidence or
-diagnostic envelope. Counts survive repeated native projection. Expiry additionally
+diagnostic envelope. Each field is counted once using its admission codec;
+counts survive repeated native projection. Host-owned acceptance/attempt/label
+and event keys, fingerprints and identities built from admitted parts pass through
+unchanged. Timestamps use RFC3339 validation, preserving identity-bearing bytes,
+and never use the token sanitizer. Expiry additionally
 requires a real `YYYY-MM-DD` calendar date. Tracking URLs require the adopter's
 approval at each projection that retains them, including reconciliation tracking
 codecs and native observation-store options; omission redacts the URL. Forward the
@@ -836,7 +840,12 @@ credentials and signed URLs are omitted. The
 [exhaustive field sweep](../../packages/platform/test/fulfillment/omnipack/dispatchReconciliationParity.test.ts)
 and the [observation ingress sweep](../../packages/platform/test/fulfillment/omnipack/observationIngressParity.test.ts)
 feed five sensitive-value shapes through every provider string input and capture
-native write arguments, evidence callbacks, transcripts, checkpoints and diagnostics.
+native write arguments, evidence callbacks, transcripts, checkpoints and diagnostics,
+including provider exceptions and accepted-ACK recovery. The native mocks check
+whole-receipt equality on replay and timestamp types at observation ingestion.
+Donor colon keys retain original occurrence bytes, including minute-precision
+timezone offsets admitted by the occurrence codec; the sink does not revalidate
+or hash these keys.
 The command fingerprint still commits to the transient
 provider command bytes. Shadow instead builds a local command identity from the
 host candidate; it requires neither a provider port nor provider preparation or

@@ -68,6 +68,52 @@ it("replays donor event/status/tracking keys after a switch and retries remainin
   expect(f.trace).toContain("invoice"); expect(f.inbound.size).toBe(1);
 });
 
+it("replays a preseeded donor minute-precision offset key through ingress and native projection (B4)", async () => {
+  const occurredAt = "2026-10-21T10:00+02:00";
+  const donorKey = `order.shipped:external-a:parcel-a:${occurredAt}`;
+  const f = fixture({ ...payload(), occurredAt });
+  const verified = await f.adapter.observation.verifyAndNormalize(f.input.verification);
+  if (verified.kind !== "verified") throw Error("expected_observation");
+  expect(verified.observation.eventKey).toBe(donorKey);
+  f.inbound.set(donorKey, verified.observation);
+  const nativeReceipts = new Map([[donorKey, JSON.stringify(verified.observation)]]);
+  const nativeWrites: unknown[][] = [];
+  const native = createPostgresFulfillmentShipmentSpinePort({ async query(_statement, values = []) {
+    const [key, , json, receivedAt] = values;
+    expect(key).toBe(donorKey);
+    expect(receivedAt).toBe(at);
+    expect(Number.isFinite(Date.parse(receivedAt as string))).toBe(true);
+    expect(JSON.parse(json as string).fact.occurredAt).toBe("2026-10-21T08:00:00.000Z");
+    const replayed = nativeReceipts.has(key as string);
+    if (replayed) expect(json).toBe(nativeReceipts.get(key as string));
+    else nativeReceipts.set(key as string, json as string);
+    nativeWrites.push(values);
+    return { rows: [{ response: { replayed } }] };
+  } }, { portKey: "donor-replay", approveTrackingUrl: f.input.approveTrackingUrl }).localPersistence;
+  const memoryReceipt = f.input.localPersistence.recordObservation;
+  f.input.localPersistence.recordObservation = async value => {
+    expect(await memoryReceipt(value)).toEqual({ replayed: true });
+    return native.recordObservation(value);
+  };
+  const statusKeys = new Set([`omnipack:webhook:${donorKey}:status`]);
+  const trackingKeys = new Set([`omnipack:webhook:${donorKey}:tracking:TRACK-A`]);
+  let newTracking = 0;
+  f.input.lifecycle.recordStatusEvidence = async (_ref, value) => ({ replayed: statusKeys.has(`omnipack:webhook:${value.eventKey}:status`) });
+  f.input.lifecycle.effects.recordTrackingReference = async request => {
+    const replayed = trackingKeys.has(request.idempotencyKey);
+    if (!replayed) { trackingKeys.add(request.idempotencyKey); newTracking++; }
+    return { replayed, readBack: true };
+  };
+  for (let retry = 0; retry < 2; retry++) {
+    expect(await run(f.input)).toMatchObject({ receiptId: donorKey, replayed: true, trackingRefs: 0, trackingReadBacks: 1,
+      counts: { invalidTimestamps: 0 }, observation: { eventKey: donorKey } });
+  }
+  expect(f.inbound.size).toBe(1); expect(nativeReceipts.size).toBe(1);
+  expect(newTracking).toBe(0); expect(trackingKeys.size).toBe(1);
+  expect(nativeWrites).toHaveLength(2); expect(nativeWrites[1]).toEqual(nativeWrites[0]);
+  expect(f.fetchImpl).not.toHaveBeenCalled();
+});
+
 it("returns and persists a safe superseded cause, including the native TypeScript store projection (O4)", async () => {
   for (const reason of ["fulfillment_already_terminal", "https://private.invalid/?token=placeholder"]) {
     const f = fixture();

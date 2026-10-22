@@ -8,10 +8,13 @@ export function safeDiagnosticCode(value: unknown): string | null {
 export function localFailureReason(stage: string, error: unknown, privacy = durableStrings()): string {
   if (!error || typeof error !== "object") return stage;
   const fields = error as { code?: unknown; causeCode?: unknown; causeMessage?: unknown; message?: unknown };
-  for (const value of [fields.code, fields.causeCode, fields.causeMessage, fields.message]) if (typeof value === "string") privacy.token(value);
-  const message = typeof fields.message === "string" ? fields.message.match(/^([A-Za-z][A-Za-z0-9_]*)(?::([A-Z0-9]{5}))?$/u) : null;
-  const cause = safeDiagnosticCode(fields.causeMessage) ?? (message && (message[2] || /_(?:failed|down|missing|invalid|conflict|not_found)$/u.test(message[1]!)) ? safeDiagnosticCode(message[1]) : null);
-  const code = safeDiagnosticCode(fields.causeCode) ?? safeDiagnosticCode(fields.code) ?? message?.[2];
+  const diagnostic = (value: unknown) => typeof value === "string" ? privacy.token(value, safeDiagnosticCode) : null;
+  const ownCode = diagnostic(fields.code), causeCode = diagnostic(fields.causeCode), causeMessage = diagnostic(fields.causeMessage);
+  const messagePattern = /^([A-Za-z][A-Za-z0-9_]*)(?::([A-Z0-9]{5}))?$/u;
+  const safeMessage = typeof fields.message === "string" ? privacy.token(fields.message, value => messagePattern.test(value) ? value : null) : null;
+  const message = safeMessage?.match(messagePattern);
+  const cause = causeMessage ?? (message && (message[2] || /_(?:failed|down|missing|invalid|conflict|not_found)$/u.test(message[1]!)) ? safeDiagnosticCode(message[1]) : null);
+  const code = causeCode ?? ownCode ?? message?.[2];
   return [stage, cause, code].filter(Boolean).join(":");
 }
 export function operationError(error: Omit<FulfillmentOperationError, "cause"> & { cause?: unknown }): FulfillmentOperationError {
@@ -53,8 +56,8 @@ export function durableStrings(priorCount = 0) {
 export function dispatchEvidence(evidence: DispatchEvidence): DispatchEvidence {
   const privacy = durableStrings(evidence.redactedFieldCount ?? evidence.transcript?.redactedFieldCount);
   const sanitize = privacy.token;
-  const commandFingerprint = sanitize(evidence.commandFingerprint) ?? "redacted";
-  const source = sanitize(evidence.contactRevision.source) ?? "redacted";
+  const commandFingerprint = evidence.commandFingerprint;
+  const source = evidence.contactRevision.source;
   const providerRef = sanitize(evidence.providerRef) ?? "redacted", carrierRef = sanitize(evidence.carrierRef), serviceRef = sanitize(evidence.serviceRef);
   const mode = evidence.mapping ? (sanitize(evidence.mapping.mode) ?? "shadow") as NonNullable<DispatchEvidence["mapping"]>["mode"] : null;
   const transcript = evidence.transcript ? {
@@ -86,14 +89,12 @@ export function shadowDispatchEvidence(request: FulfillmentDispatchRequest): Dis
 export function dispatchResult(result: FulfillmentDispatchResult): FulfillmentDispatchResult {
   const privacy = durableStrings(result.redactedFieldCount);
   const externalRef = result.kind === "accepted" ? privacy.token(result.externalRef) ?? "redacted" : null;
-  const providerAttemptKey = result.kind === "accepted" ? privacy.token(result.providerAttemptKey) ?? "redacted" : null;
-  const labelKey = result.kind === "accepted" ? privacy.token(result.labelKey) ?? "redacted" : null;
   const refusal = result.kind !== "accepted" ? { reason: (privacy.token(result.refusal.reason) ?? "malformed") as typeof result.refusal.reason,
     phase: (privacy.token(result.refusal.phase) ?? "normalize") as typeof result.refusal.phase, retryable: result.refusal.retryable } : null;
   const redactions = privacy.redactedFieldCount ? { redactedFieldCount: privacy.redactedFieldCount } : {};
   const error = result.error ? { error: operationError({ ...result.error, mayHaveSucceeded: result.kind !== "not_dispatched" }) } : {};
   switch (result.kind) {
-    case "accepted": return { kind: "accepted", externalRef: externalRef!, providerAttemptKey: providerAttemptKey!, labelKey: labelKey!, ...redactions, evidence: dispatchEvidence(result.evidence), ...error,
+    case "accepted": return { kind: "accepted", externalRef: externalRef!, providerAttemptKey: result.providerAttemptKey, labelKey: result.labelKey, ...redactions, evidence: dispatchEvidence(result.evidence), ...error,
       ...(result.recovery ? { recovery: { source: "persisted_acceptance", proof: "persisted_external_ref", noProviderPost: true } } : {}) };
     case "not_dispatched": return { kind: "not_dispatched", effectMayHaveSucceeded: false, refusal: refusal!, ...redactions, ...error };
     case "unknown": return { kind: "unknown", effectMayHaveSucceeded: true, refusal: refusal!, ...redactions, ...error };
