@@ -1,14 +1,15 @@
-import { createHash } from "node:crypto";
+import { z } from "zod";
 import type { CanonicalLocalFulfillmentStatus, FulfillmentObservation } from "./contracts/index.js";
 import { parseFulfillmentFact } from "./normalizedFulfillmentFacts.js";
 import { durableStrings } from "./dispatchProjection.js";
 import { FULFILLMENT_STATUS_MAP } from "./statusMap.js";
 
 type Privacy = ReturnType<typeof durableStrings>;
+const timestamp = z.iso.datetime({ offset: true });
 export function projectCorrelation(value: FulfillmentObservation["correlation"], privacy = durableStrings()): FulfillmentObservation["correlation"] {
   const token = privacy.token;
-  return { orderRef: token(value.orderRef), fulfillmentRef: token(value.fulfillmentRef), externalRef: token(value.externalRef),
-    orderNumber: token(value.orderNumber), providerFulfillmentRef: token(value.providerFulfillmentRef), parcelRef: token(value.parcelRef) };
+  return { orderRef: value.orderRef, fulfillmentRef: value.fulfillmentRef, externalRef: token(value.externalRef),
+    orderNumber: token(value.orderNumber), providerFulfillmentRef: token(value.providerFulfillmentRef), parcelRef: value.parcelRef };
 }
 
 export function projectProviderStatus(value: NonNullable<FulfillmentObservation["providerStatus"]>, privacy = durableStrings()): NonNullable<FulfillmentObservation["providerStatus"]> {
@@ -16,7 +17,7 @@ export function projectProviderStatus(value: NonNullable<FulfillmentObservation[
 }
 export type PollEvidence = Pick<FulfillmentObservation, "correlation" | "eventKey" | "providerStatus" | "diagnostics">;
 function pollEvidence(value: PollEvidence, privacy: Privacy): PollEvidence {
-  return { eventKey: privacy.token(value.eventKey) ?? createHash("sha256").update(value.eventKey).digest("hex"), correlation: projectCorrelation(value.correlation, privacy),
+  return { eventKey: value.eventKey, correlation: projectCorrelation(value.correlation, privacy),
     ...(value.providerStatus ? { providerStatus: projectProviderStatus(value.providerStatus, privacy) } : {}) };
 }
 /** Unknown-status quarantine/ACK evidence has the same privacy boundary as observations. */
@@ -51,13 +52,13 @@ export function projectObservation(value: FulfillmentObservation, approveTrackin
   if (value.diagnostics?.annotation) diagnostics.annotation = token(value.diagnostics.annotation) as typeof value.diagnostics.annotation;
   if (value.diagnostics?.recoveredPickedReceipt) {
     const { receiptRef, closed } = value.diagnostics.recoveredPickedReceipt;
-    diagnostics.recoveredPickedReceipt = { receiptRef: token(receiptRef) ?? "redacted", closed };
+    diagnostics.recoveredPickedReceipt = { receiptRef, closed };
   }
   const fact = parseFulfillmentFact(value.fact);
   const safe = {
     ...pollEvidence(value, privacy),
     fact: { ...fact, mapperVersion: token(fact.mapperVersion) ?? "redacted" }, eventKind: (token(value.eventKind) ?? "redacted") as FulfillmentObservation["eventKind"],
-    firstReceivedAt: token(value.firstReceivedAt) ?? "redacted",
+    firstReceivedAt: timestamp.parse(value.firstReceivedAt),
     trackingRefs: value.trackingRefs.map(ref => projectTrackingReference(ref, privacy, approveTrackingUrl)),
   };
   if (privacy.redactedFieldCount) diagnostics.redactedFieldCount = privacy.redactedFieldCount;

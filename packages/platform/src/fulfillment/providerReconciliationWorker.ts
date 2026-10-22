@@ -62,9 +62,10 @@ export async function reconcileFulfillmentObservations(input: {
       const refusal = input.lifecycle.invoiceFailure(error);
       if (refusal.permanent) {
         result.invoiceIssueRefused += 1;
+        const identifier = privacy.token(refusal.identifier, safeDiagnosticCode), sqlstate = privacy.token(refusal.sqlstate, safeDiagnosticCode);
         if (result.invoiceIssueRefusals.length < 10) result.invoiceIssueRefusals.push({ fulfillmentRef: ref,
-          identifier: privacy.token(refusal.identifier, safeDiagnosticCode), sqlstate: privacy.token(refusal.sqlstate, safeDiagnosticCode) ?? "22023", benign: refusal.benign });
-        result.reason ??= failure("reconciliation_invoice_issue_refused", { causeMessage: refusal.identifier, causeCode: refusal.sqlstate, message: error instanceof Error ? error.message : undefined });
+          identifier, sqlstate: sqlstate ?? "22023", benign: refusal.benign });
+        result.reason ??= failure("reconciliation_invoice_issue_refused", { causeMessage: identifier, causeCode: sqlstate, message: error instanceof Error ? error.message : undefined });
         return;
       }
       result.ok = false; result.failures += 1; result.invoiceIssueFailures += 1;
