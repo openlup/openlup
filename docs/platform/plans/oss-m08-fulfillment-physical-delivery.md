@@ -339,10 +339,21 @@ an autonomous renewal. Shadow mode observes this ambiguity without blocking.
 Automatic enforcement of the invariant "a late delivery extends the next cycle"
 requires native delivery-alignment control mode `auto_align`. The singleton
 `public.subscription_delivery_alignment_control.mode` defaults to `off` for
-rollout safety, so a fresh native install does not enforce this invariant until
-an operator calls `public.subscription_delivery_alignment_set_mode('auto_align')`.
-The other modes are `shadow` and `protect`. Existing cases retain their captured
-mode and protection when the control changes.
+rollout safety, so installation alone does not enforce this invariant. The other
+modes are `shadow` and `protect`, selected through
+`public.subscription_delivery_alignment_set_mode`. Existing cases retain their
+captured mode and protection when the control changes.
+
+Enforcing modes (`protect`, `auto_align`) require the host's renewal path to call
+`subscription_delivery_alignment_admit_renewal` before inserting the cycle.
+The [native renewal store](../../../server/adapters/postgres/subscription/automaticRenewal.ts)
+does not yet call it, so switching a native install to an enforcing mode halts
+every autonomous renewal with `subscription_delivery_alignment_admission_required`.
+Native installs must keep mode `off` until that wiring lands.
+
+In enforcing modes, a subscription whose paid history has no activation or
+renewal link, such as imported data, holds every due renewal for manual review.
+Operators should check for such cycles before switching modes.
 
 Local pre-dispatch cancellation changes only the shipment locally: alignment
 creates no hold or shipment-exception event and does not block other shipments

@@ -263,3 +263,52 @@ it.each(['shadow','protect','auto_align'])('explicit provider exception hold ope
  expect(await schedule(h.pool,f.subscription)).toMatchObject({status:'active',next_cycle_at:new Date('2026-08-29T12:00:00Z')});
  expect((await h.pool.query('SELECT * FROM public.subscription_pause_windows WHERE subscription_id=$1',[f.subscription])).rows).toEqual([]);
 });
+
+it.each(['shadow','protect','auto_align'])('unordered paid exception history stays observation-only in shadow and requires manual review in %s',async(mode)=>{
+ await h.pool.query("SELECT public.subscription_delivery_alignment_set_mode('off')");const f=await fixture(h.pool,null);
+ expect((await h.pool.query('SELECT renewal_operation_id,cycle_number FROM public.subscription_delivery_alignment_cycles WHERE id=$1',[f.cycle])).rows).toEqual([{renewal_operation_id:null,cycle_number:null}]);
+ expect((await h.pool.query("SELECT * FROM public.subscription_activations WHERE subscription_id=$1 AND state='active'",[f.subscription])).rows).toEqual([]);
+ await openCase(h.pool,f,mode);
+ expect(await cases(f.order)).toHaveLength(1);
+ expect(await cases(f.order)).toMatchObject([{shipment_id:f.shipment,predecessor_cycle_number:null,captured_mode:mode,state:mode==='shadow'?'shadow':'manual_review',manual_review_reason:mode==='shadow'?null:'missing_renewal_correlation',evidence_kind:'fulfillment_exception'}]);
+ if(mode==='shadow'){
+  expect(await admit(f.subscription)).toMatchObject({allowed:true,state:'shadow',reason:'missing_renewal_correlation'});
+  await h.pool.query("SELECT public.subscription_delivery_alignment_set_mode('off')");
+  await h.pool.query("INSERT INTO public.subscription_cycles(subscription_id,scheduled_at,status) VALUES($1,'2026-08-29T12:00:00Z','payment_pending')",[f.subscription]);
+  expect((await h.pool.query("SELECT * FROM public.subscription_delivery_alignment_cases WHERE subscription_id=$1 AND state IN ('protected','manual_review')",[f.subscription])).rows).toEqual([]);
+ }else{
+  expect(await admit(f.subscription)).toMatchObject({allowed:false,state:'manual_review'});
+  await expect(h.pool.query("INSERT INTO public.subscription_cycles(subscription_id,scheduled_at,status) VALUES($1,'2026-08-29T12:00:00Z','payment_pending')",[f.subscription])).rejects.toThrow('subscription_delivery_alignment_protected');
+ }
+ expect((await h.pool.query('SELECT * FROM public.subscription_delivery_alignment_admission_receipts WHERE subscription_id=$1',[f.subscription])).rows).toEqual([]);
+});
+
+it('native renewal preparation under auto_align requires explicit admission and consumes its receipt only once',async()=>{
+ await h.pool.query("SELECT public.subscription_delivery_alignment_set_mode('off')");const f=await fixture(h.pool);
+ await arrival(f.shipment);
+ const operation=randomUUID(),token=randomUUID(),skuId=randomUUID(),sku=`SKU-${skuId}`;
+ const at='2026-08-29T12:00:00.000Z',now=new Date().toISOString(),fingerprint='b'.repeat(64);
+ const snapshot={contractVersion:'platform.subscription.renewal.v1',subscriptionId:f.subscription,clientId:f.client,scheduledAt:at,cycleNumber:2,currency:'XXX',totalAmountMinor:900,stockSourceKey:'fixture',settlementChannelKey:'fixture',authorizationRef:'fixture-authorized',payerAccountRef:null,lines:[{lineOrdinal:1,sku,quantity:1,unitAmountMinor:900}]};
+ await h.pool.query("INSERT INTO public.catalog_products(id,slug,name) VALUES($1,$2,'Fixture')",[skuId,sku]);
+ await h.pool.query("INSERT INTO public.catalog_skus(id,product_id,sku,title) VALUES($1,$1,$2,'Fixture')",[skuId,sku]);
+ // A reserved operation is the native settlement store's preparation input.
+ await h.pool.query(`INSERT INTO public.subscription_renewal_operations(id,subscription_id,scheduled_at,cycle_number,identity_key,operation_fingerprint,cycle_snapshot,state,claim_token,claimed_by,claimed_at,lease_expires_at)
+ VALUES($1,$2,$3,2,$4,$5,$6,'reserved',$7,'fixture',now(),now()+interval '1 hour')`,[operation,f.subscription,at,`subscription:${f.subscription}:cycle:${at}`,fingerprint,snapshot,token]);
+ await h.pool.query("INSERT INTO public.fulfillment_inventory_reservations(renewal_operation_id,operation_fingerprint,source_key,expires_at) VALUES($1,$2,'fixture',now()+interval '1 hour')",[operation,fingerprint]);
+ await h.pool.query("SELECT public.subscription_delivery_alignment_set_mode('auto_align')");
+ const native=createPostgresRenewalSettlementPort(executor(h.pool));const input={operationId:operation,claimToken:token,now};
+ await expect(native.prepareRenewal(input)).rejects.toThrow('subscription_delivery_alignment_admission_required');
+ expect((await h.pool.query('SELECT * FROM public.subscription_cycles WHERE renewal_operation_id=$1',[operation])).rows).toEqual([]);
+ expect((await h.pool.query('SELECT state FROM public.subscription_renewal_operations WHERE id=$1',[operation])).rows).toEqual([{state:'reserved'}]);
+ expect((await h.pool.query('SELECT * FROM public.subscription_delivery_alignment_admission_receipts WHERE subscription_id=$1',[f.subscription])).rows).toEqual([]);
+ expect(await admit(f.subscription,at)).toMatchObject({allowed:true,reason:'predecessor_delivered'});
+ const admitted=(await h.pool.query('SELECT * FROM public.subscription_delivery_alignment_admission_receipts WHERE subscription_id=$1',[f.subscription])).rows;
+ expect(admitted).toHaveLength(1);expect(admitted[0]).toMatchObject({scheduled_at:new Date(at),consumed_at:null});
+ const prepared=await native.prepareRenewal(input);expect(prepared).toMatchObject({operationId:operation,state:'attempt_prepared',replayed:false});
+ const consumed=(await h.pool.query('SELECT * FROM public.subscription_delivery_alignment_admission_receipts WHERE subscription_id=$1',[f.subscription])).rows;
+ expect(consumed).toHaveLength(1);expect(consumed[0]).toMatchObject({id:admitted[0].id,scheduled_at:new Date(at)});expect(consumed[0].consumed_at).not.toBeNull();
+ expect(await native.prepareRenewal(input)).toEqual({...prepared,replayed:true});
+ expect((await h.pool.query('SELECT * FROM public.subscription_delivery_alignment_admission_receipts WHERE subscription_id=$1',[f.subscription])).rows).toEqual(consumed);
+ expect((await h.pool.query('SELECT id FROM public.subscription_cycles WHERE renewal_operation_id=$1',[operation])).rows).toEqual([{id:prepared.cycleId}]);
+ await expect(h.pool.query("INSERT INTO public.subscription_cycles(subscription_id,scheduled_at,status) VALUES($1,$2,'payment_pending')",[f.subscription,at])).rejects.toThrow('subscription_delivery_alignment_admission_required');
+});

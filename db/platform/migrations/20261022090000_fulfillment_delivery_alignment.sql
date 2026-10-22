@@ -124,6 +124,13 @@ AS $$
    WHERE singleton = true
 $$;
 
+-- Enforcing modes (protect, auto_align) require the host renewal path to call
+-- subscription_delivery_alignment_admit_renewal before inserting a cycle.
+-- The native renewal store does not yet call it: switching to an enforcing mode
+-- halts every autonomous renewal with subscription_delivery_alignment_admission_required.
+-- Native installs must keep mode off until that wiring lands. Before switching,
+-- check for paid cycles without an activation or renewal link: enforcing modes
+-- hold every due renewal on such subscriptions for manual review.
 CREATE FUNCTION public.subscription_delivery_alignment_set_mode(
   p_mode text
 )
@@ -212,15 +219,18 @@ BEGIN
     RETURN;
   END IF;
 
-  -- An unordered non-activation cycle cannot authorize automatic alignment.
-  IF p_predecessor_cycle_number IS NULL THEN
-    p_manual_review_reason := 'missing_renewal_correlation';
+  IF p_mode = 'shadow' THEN
+    v_state := 'shadow';
+  ELSE
+    -- An unordered non-activation cycle cannot authorize automatic alignment.
+    IF p_predecessor_cycle_number IS NULL THEN
+      p_manual_review_reason := 'missing_renewal_correlation';
+    END IF;
+    v_state := CASE
+      WHEN p_manual_review_reason IS NOT NULL THEN 'manual_review'
+      ELSE 'protected'
+    END;
   END IF;
-  v_state := CASE
-    WHEN p_manual_review_reason IS NOT NULL THEN 'manual_review'
-    WHEN p_mode = 'shadow' THEN 'shadow'
-    ELSE 'protected'
-  END;
 
   IF p_shipment_id IS NULL THEN
     INSERT INTO public.subscription_delivery_alignment_cases (

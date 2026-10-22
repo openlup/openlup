@@ -811,10 +811,22 @@ and no production caller in this surface; the
 The invariant "a late delivery extends the next cycle" is enforced automatically
 only when native delivery-alignment control mode is set to `auto_align`.
 `public.subscription_delivery_alignment_control.mode` defaults to `off` for
-rollout safety. A fresh native install therefore does not enforce the invariant
-until an operator calls `public.subscription_delivery_alignment_set_mode('auto_align')`.
-The accepted modes are `off`, `shadow`, `protect` and `auto_align`. Cases retain
-their captured mode and existing protection after later control changes.
+rollout safety. Installation alone does not enforce the invariant. The accepted
+modes are `off`, `shadow`, `protect` and `auto_align`, selected through
+`public.subscription_delivery_alignment_set_mode`. Cases retain their captured
+mode and existing protection after later control changes.
+
+Enforcing modes (`protect`, `auto_align`) require the host's renewal path to call
+`subscription_delivery_alignment_admit_renewal` before inserting the cycle.
+The [native renewal store](../../server/adapters/postgres/subscription/automaticRenewal.ts)
+does not yet call it, so switching a native install to an enforcing mode halts
+every autonomous renewal with `subscription_delivery_alignment_admission_required`.
+Native installs must keep mode `off` until that wiring lands.
+
+In enforcing modes, a subscription whose paid history has no activation or
+renewal link, such as imported data, holds every due renewal for manual review.
+Operators should check for such cycles before switching modes.
+
 Automatic arrival alignment uses the latest arrival plus cadence with an outer
 `GREATEST` against the existing next-cycle date, once per settled case.
 Subscription locks precede case locks; rollback preserves both protection and
@@ -826,7 +838,7 @@ and [`20261022090000_fulfillment_delivery_alignment.sql`](../../db/platform/migr
 add command fencing and alignment. Donor fulfillment orders map to
 `public.fulfillment_shipments`, and `replaces_fulfillment_order_id` maps to
 `replaces_shipment_id`. Subscription identity follows order → cycle →
-subscription. D13 maps donor activation cycle 1 ↔ native activation ordinal 0, and donor
+subscription. [The native translation decision](plans/oss-m08-fulfillment-physical-delivery.md#native-admission-and-delivery-alignment) maps donor activation cycle 1 ↔ native activation ordinal 0, and donor
 renewal n+1 ↔ native renewal n. The activation ordinal requires a cycle with no
 renewal operation whose linked order is the active `subscription_activations`
 row's order for the same subscription. Renewal operation numbers remain ≥1.

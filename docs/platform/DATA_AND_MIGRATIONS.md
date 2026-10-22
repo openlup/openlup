@@ -69,10 +69,20 @@ For a fresh native install, the invariant "a late delivery extends the next cycl
 is enforced automatically only when delivery-alignment control mode is
 `auto_align`. `public.subscription_delivery_alignment_control.mode` defaults to
 `off` for rollout safety, so installation alone does not enforce the invariant.
-An operator enables it through
-`public.subscription_delivery_alignment_set_mode('auto_align')`; the complete
-mode set is `off`, `shadow`, `protect` and `auto_align`. Existing cases retain
+The complete mode set is `off`, `shadow`, `protect` and `auto_align`, selected
+through `public.subscription_delivery_alignment_set_mode`. Existing cases retain
 their captured mode and protection after a control change.
+
+Enforcing modes (`protect`, `auto_align`) require the host's renewal path to call
+`subscription_delivery_alignment_admit_renewal` before inserting the cycle.
+The [native renewal store](../../server/adapters/postgres/subscription/automaticRenewal.ts)
+does not yet call it, so switching a native install to an enforcing mode halts
+every autonomous renewal with `subscription_delivery_alignment_admission_required`.
+Native installs must keep mode `off` until that wiring lands.
+
+In enforcing modes, a subscription whose paid history has no activation or
+renewal link, such as imported data, holds every due renewal for manual review.
+Operators should check for such cycles before switching modes.
 
 The command forward adds durable dispatch/attempt/paid-handoff and observation
 receipts. Atomic ACK records the native `dispatch` external reference: the `3pl`
@@ -88,7 +98,7 @@ replacement links to `replaces_shipment_id`, and subscription identity through
 order → cycle → subscription. The effective cycle ordinal
 comes from renewal operation numbering or the explicit activation-order link.
 
-D13 maps donor activation cycle 1 ↔ native activation ordinal 0, and donor
+[The native translation decision](plans/oss-m08-fulfillment-physical-delivery.md#native-admission-and-delivery-alignment) maps donor activation cycle 1 ↔ native activation ordinal 0, and donor
 renewal n+1 ↔ native renewal n. The activation ordinal requires a cycle with no
 renewal operation whose linked order is the active `subscription_activations`
 row's order for the same subscription. Renewal operation numbers remain ≥1.
