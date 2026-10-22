@@ -1048,7 +1048,7 @@ unprocessed. Stock-contention annotation is a best-effort host write before the
 original stock failure is rethrown; recovered-picked receipts remain typed
 diagnostics. A classified superseding conflict returns superseded but marks only
 processed status; G17 has no dedicated persisted superseded-reason field.
-Unknown readback fails reconciliation before row processing. Unmapped evidence
+Unknown readback stays row-local: recognized rows still process. Unmapped evidence
 projects eventKey and declared correlation fields before host calls; correlated
 off-track rows skip acceptance/quarantine, while other rows require an external
 reference before acceptance and unknown-status quarantine. Effects retain
@@ -1060,8 +1060,9 @@ The separate `runFulfillmentReconciliationPage` operation consumes an explicit
 observation-page port. It resumes a validated version-1 `reconciliationPagination`
 checkpoint with the same page size; invalid or resized checkpoints start at zero.
 A traversed full page advances even when individual items fail, while a
-short/empty or exhausted page resets to zero. An abort before traversal completes
-retains the current page. Mapping refusals stay row-local and preserve page
+short/empty or exhausted page resets to zero. A failed or thrown page read also
+resets to zero; an abort after the read but before traversal completes retains
+the current page. Mapping refusals stay row-local and preserve page
 cardinality; invalid occurrence timestamps normalize to null before mapping.
 Recognized siblings still process around row-level unknowns. `providerCalls`
 counts each attempted logical page-port read, including failed/exhausted reads;
