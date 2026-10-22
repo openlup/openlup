@@ -179,6 +179,7 @@ async function fetchWithTimeout(
     return await fetchImpl(url, {
       ...init,
       signal: controller.signal,
+      redirect: "error",
       headers: {
         Accept: "application/json",
         "Content-Type": "application/json",

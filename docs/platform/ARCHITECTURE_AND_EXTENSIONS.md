@@ -710,7 +710,8 @@ and the order-management status ladder/queue pair remain host-owned until explic
 The internal `fulfillment/omnipack` transport contributes injected HTTP, per-request
 credential resolution, provider codecs and selected donor witnesses without adding
 a public subpath. Order preparation materializes canonical JSON once; its SHA-256
-fingerprint and transport use exactly those bytes. The transport installs no route,
+fingerprint and transport use exactly those bytes. Every fetch refuses redirects
+so a 307/308 cannot repeat a POST body. The transport installs no route,
 schedule or default binding. Root reference implementations remain unchanged;
 neutral-port glue, closed evidence projection and public registration are later
 phases in the [A3 ledger](plans/oss-a3-fulfillment-adapter.md).
