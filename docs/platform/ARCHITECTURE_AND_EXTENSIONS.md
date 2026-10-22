@@ -773,7 +773,11 @@ a unique positive match, and incomplete or empty collections remain unknown.
 Label create/void and cancellation are unsupported; label reads remain host-owned.
 The frozen label port returns unsupported refusals without I/O for all its methods.
 Sync projects collection identity and closed data, with product writes only on
-explicit invocation. No route, schedule or default binding is installed. Root
+explicit invocation. Sync exceptions are safe Errors with typed refusal fields;
+provider failures retain bounded diagnostics for host failure mapping. Product
+reads preserve donor pack evidence and admit nonblank SKUs through encoded paths,
+with deduplicated reads and visible per-SKU failures for unrepresentable segments;
+see the example contract for exact admission and counter semantics. No route, schedule or default binding is installed. Root
 reference implementations remain unchanged. See the [example contract](CANONICAL_CONTRACTS.md#opt-in-fulfillment-example)
 and [A3 ledger](plans/oss-a3-fulfillment-adapter.md). The example passes M08's
 offline runner with injected HTTP, synthetic sensitive-value plants and explicit

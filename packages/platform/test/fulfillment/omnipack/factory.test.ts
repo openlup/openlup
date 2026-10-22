@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import { expect, it, vi } from "vitest";
+import { runFulfillmentProductSyncWorker } from "../../../src/fulfillment/providerProductSyncWorker.js";
 import * as entry from "../../../src/fulfillment/omnipack/index.js";
 import type { OmnipackFulfillmentAdapterConfig } from "../../../src/fulfillment/omnipack/index.js";
 import type { DispatchEvidence, FulfillmentDispatchRequest, FulfillmentStockSyncPort, StockSnapshot, SyncCursor } from "../../../src/fulfillment/contracts/index.js";
@@ -91,7 +92,7 @@ it("exposes exactly two runtime symbols and an inert, unselected, unready token 
     for (const invoke of [() => inactive.adapter.stockSync.getStock(), () => inactive.adapter.stockSync.getStockMovements(),
       () => inactive.adapter.productSync.ensureProduct("SKU-A"), () => inactive.adapter.productSync.getProductPacks("SKU-A"),
       () => inactive.adapter.productSync.addProductPack("SKU-A", { ean: "12345678", quantity: 1 }), () => inactive.adapter.productSync.listStockedSkus()]) {
-      await expect(invoke()).rejects.toEqual({ reason, phase: "sync", retryable: false });
+      await expect(invoke()).rejects.toMatchObject({ reason, phase: "sync", retryable: false });
     }
     expect(inactive.credentials).not.toHaveBeenCalled(); expect(inactive.fetchImpl).not.toHaveBeenCalled();
   }
@@ -390,32 +391,92 @@ it("projects stock/movements with collection identity, nullable revision and clo
   expect(movements[0]).toMatchObject({ quantity: -2, lotRef: "LOT-A", expirationDate: "2027-01-01", occurredAt: null }); safe([snapshots, movements]);
 });
 it("keeps product reads pull-only and strips donor response bags from explicit writes", async () => {
-  const f = fixture(() => jsonResponse({ sku: "SKU-A", packs: [{ ean: "0000000000012", quantity: 2 }, { ean: secret, quantity: 1 }], ...plants }));
+  const packs = [{ ean: "0000000000012", quantity: 2 }, { ean: "PACK-A", quantity: 0 },
+    { ean: "12", quantity: 1.5 }, { ean: "NEG", quantity: -2 }, { ean: "FALLBACK", quantity: "invalid" },
+    { ean: "NULL", quantity: null }, { ean: " ", quantity: 1 }, { ean: "", quantity: 2 }, { quantity: 1 }];
+  const f = fixture(() => jsonResponse({ sku: "SKU-A", packs, ...plants }));
   expect(await f.adapter.productSync.ensureProduct("SKU-A")).toBeNull(); expect(f.fetchImpl).not.toHaveBeenCalled();
-  expect(await f.adapter.productSync.getProductPacks("SKU-A")).toEqual([{ ean: "0000000000012", quantity: 2 }]);
+  expect(await f.adapter.productSync.getProductPacks("SKU-A")).toEqual([
+    { ean: "0000000000012", quantity: 2 }, { ean: "PACK-A", quantity: 0 }, { ean: "12", quantity: 1.5 },
+    { ean: "NEG", quantity: -2 }, { ean: "FALLBACK", quantity: 0 }, { ean: "NULL", quantity: 0 }, { ean: " ", quantity: 1 },
+  ]);
   expect(f.fetchImpl.mock.calls.every(([, init]) => init?.method === "GET")).toBe(true);
   const writer = fixture(undefined, { product: { resolvePushMetadata: async sku => ({ sku, title: "Example" }) } });
   const result = await writer.adapter.productSync.ensureProduct("SKU-A");
   expect(result).toEqual({ replayed: false }); safe(result);
   await writer.adapter.productSync.addProductPack("SKU-A", { ean: "0000000000012", quantity: 2 });
   expect(writer.fetchImpl.mock.calls.map(([, init]) => init?.method)).toEqual(["POST", "POST"]);
-  await expect(writer.adapter.productSync.addProductPack("SKU-A", { ean: secret, quantity: 0 })).rejects.toEqual({ reason: "malformed", phase: "sync", retryable: false });
+  await expect(writer.adapter.productSync.addProductPack("SKU-A", { ean: secret, quantity: 0 })).rejects.toMatchObject({ reason: "malformed", phase: "sync", retryable: false });
 });
 it("never leaks transport failures through sync or readback", async () => {
   const f = fixture(() => { throw Error(JSON.stringify(plants)); });
-  for (const invoke of [() => f.adapter.productSync.getProductPacks("SKU-A"), () => f.adapter.productSync.listStockedSkus()]) {
-    await expect(invoke()).rejects.toEqual({ reason: "io_failure", phase: "sync", retryable: false });
-  }
   for (const [operation, invoke] of [
     ["get_stock", () => f.adapter.stockSync.getStock()],
     ["get_stock_movements", () => f.adapter.stockSync.getStockMovements()],
   ] as const) {
     const error = await invoke().catch(error => error);
-    expect(error).toEqual({ reason: "io_failure", phase: "sync", retryable: true,
+    expect(error).toMatchObject({ reason: "io_failure", phase: "sync", retryable: true,
       providerError: { operation, status: null, code: "network_error", retryable: true } });
     safe(error);
   }
   const result = await f.adapter.readback.read(reading); expect(result.kind).toBe("unknown"); safe(result);
+});
+it("keeps sync failures as safe typed Errors and readback as a closed result", async () => {
+  for (const status of [null, 503]) for (const code of ["FAKE_PROVIDER_DOWN", plants.arbitrary]) {
+    const f = fixture(() => {
+      if (status === null) throw { payload: plants };
+      return jsonResponse({ code, ...plants }, status);
+    });
+    for (const [operation, invoke] of [
+      ["getStock", () => f.adapter.stockSync.getStock()],
+      ["getStockMovements", () => f.adapter.stockSync.getStockMovements()],
+      ["getProduct", () => f.adapter.productSync.getProductPacks("SKU-A")],
+      ["getStock", () => f.adapter.productSync.listStockedSkus()],
+    ] as const) {
+      const error = await invoke().catch(error => error);
+      expect(error).toBeInstanceOf(Error);
+      expect(error).toMatchObject({ message: `OmniPack request failed: ${operation}`, reason: "io_failure", phase: "sync",
+        providerFailure: true, status, code: status === null ? "network_error" : code === "FAKE_PROVIDER_DOWN" ? code : "http_503",
+        retryable: true });
+      safe({ message: error.message, ...error });
+    }
+    const result = await f.adapter.readback.read(reading); expect(result.kind).toBe("unknown"); safe(result);
+  }
+  const inactive = fixture(undefined, { selected: false });
+  const disabled = await inactive.adapter.productSync.listStockedSkus().catch(error => error);
+  expect(disabled).toBeInstanceOf(Error); expect(disabled).toMatchObject({ reason: "disabled", phase: "sync", providerFailure: false });
+  const malformed = fixture(undefined, { mintSyncRunId: () => "" });
+  expect(await malformed.adapter.stockSync.getStock().catch(error => error)).toMatchObject({ reason: "malformed", phase: "sync" });
+  const writer = fixture(() => { throw { payload: plants }; }, { product: { resolvePushMetadata: async () => ({ sku: "SKU-A" }) } });
+  for (const invoke of [() => writer.adapter.productSync.ensureProduct("SKU-A"),
+    () => writer.adapter.productSync.addProductPack("SKU-A", { ean: "12345678", quantity: 1 }),
+    () => writer.adapter.productSync.addProductPack("SKU-A", { ean: "", quantity: 0 })]) {
+    const error = await invoke().catch(error => error);
+    expect(error).toBeInstanceOf(Error); expect(error.phase).toBe("sync"); safe({ message: error.message, ...error });
+  }
+});
+it("admits donor SKUs with encoded paths, deduplicates reads and counts unsafe segments as failures", async () => {
+  const skus = ["SKU/1", " SKU ?#% ", "żółć", "A".repeat(129), "SKU/1", "", " ", ".", "..", "\ud800"];
+  const f = fixture(url => jsonResponse(url.endsWith("/stock")
+    ? { _embedded: { stockItems: skus.map(sku => ({ sku })) } } : { packs: [] }));
+  expect(await f.adapter.productSync.listStockedSkus()).toEqual([...new Set(skus.filter(sku => sku.trim()))]);
+  f.fetchImpl.mockClear();
+  const result = await runFulfillmentProductSyncWorker({ provider: f.adapter.productSync, mode: "pull",
+    port: { listLocalProductPacks: async () => [], markPackSynced: async () => {},
+      upsertPulledPack: async () => ({ replayed: false, conflict: "none" }),
+      recordReconciliationEvidence: async () => ({ replayed: false }), resolveReconciliationEvidence: async () => ({ resolved: 0 }) },
+    compatibility: { identity: () => ({ providerRef: "omnipack", syncRunId: "sync-a", collectedAt: now, sourceRevision: null, revisionSource: "collection" }),
+      evidenceKey: () => "unused" } });
+  expect(result).toMatchObject({ ok: false, pulledSkus: 4, providerCalls: 5, failures: 3, reason: "product_sync_operation_failed" });
+  expect(f.fetchImpl.mock.calls.map(([url]) => url.toString())).toEqual([
+    "https://warehouse.example.test/stock",
+    ...skus.slice(0, 4).map(sku => `https://warehouse.example.test/products/${encodeURIComponent(sku)}`),
+  ]);
+  for (const sku of skus.slice(-3)) {
+    const error = await f.adapter.productSync.getProductPacks(sku).catch(error => error);
+    expect(error).toBeInstanceOf(Error); expect(error).toMatchObject({ reason: "malformed", phase: "sync", providerFailure: false });
+  }
+  expect(f.fetchImpl).toHaveBeenCalledTimes(5);
 });
 
 it("refuses unsafe host paths and invalid numeric configuration at construction before credentials or HTTP", () => {

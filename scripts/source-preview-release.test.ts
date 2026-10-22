@@ -12,7 +12,7 @@ import { CANONICAL_ACTIVATION_REPOSITORY, CANONICAL_ACTIVATION_SECURITY_ROUTE, a
 import { annotatedTag, assertDraft, assertNextPreview, checkDraft, preparePreview, previewInputs, previousPreview, verifyPublished, type GithubFetch } from "./source-preview-release.ts";
 import { MANAGED_ALIGNMENT_FORWARD, readManagedForward } from "./public-reference/subscription-alignment.mjs";
 import { assertAppendOnlyMigrationHistory } from "./oss-published-tree-check.ts";
-import { MANAGED_BASELINE, REVIEWED_FORWARD_PATH, readReviewedForwardRegistry, reviewedFunctionDefinitions, reviewedPolicyDefinitions, sqlSha256, type ReviewedForwardRegistry } from "./reviewed-platform-forward.ts";
+import { assertManagedInvoicingStatements, assertPortableCreationStatements, MANAGED_BASELINE, REVIEWED_FORWARD_PATH, readReviewedForwardRegistry, reviewedFunctionDefinitions, reviewedPolicyDefinitions, sqlSha256, type ReviewedForwardRegistry } from "./reviewed-platform-forward.ts";
 
 const target = "a".repeat(40), previousCommit = "d".repeat(40), tag = "openlup-source-preview/2", oldTag = "openlup-source-preview/1", root = "https://api.github.com/repos/openlup/openlup";
 const previousTagObject = "6".repeat(40), targetTagObject = "c".repeat(40);
@@ -429,11 +429,155 @@ ${identityPrivileges[3]}
     () => assertAppendOnlyMigrationHistory(sample.repo, sample.approval, head),
     () => assertDescendantSourceRelease(sample.repo, sample.rootCommit, head),
   ];
+  describe("M09 exact seven-forward admission", () => {
+    const approved = readReviewedForwardRegistry(readFileSync(new URL(`../${REVIEWED_FORWARD_PATH}`, import.meta.url)));
+    const entries = [...approved.portableCreationForwards!.filter(entry => entry.path.includes("invoicing")),
+      ...approved.portableReplacementForwards!.filter(entry => entry.path.includes("invoicing")), ...approved.managedInvoicingForwards!];
+    const actual = entries.map(entry => ({ ...entry, bytes: readFileSync(new URL(`./fixtures/${entry.path.split("/").at(-1)}`, import.meta.url), "utf8") }));
+    it("admits every final file through both gates and refuses byte, browser grant, definer and unpinned replacement plants", () => {
+      // Keep exact preimages, rather than replaying an unrelated multi-megabyte
+      // managed graph in every process plant. Real PostgreSQL owns graph proof.
+      const managedSource = readFileSync(new URL(`../${MANAGED_BASELINE}`, import.meta.url), "utf8");
+      const extract = (source:string,name:string) => { const start=source.indexOf(`CREATE FUNCTION public.${name}(`); const end=source.indexOf("\n$$;",start); if(start<0||end<0)throw new Error("Missing exact preimage");return source.slice(start,end+4); };
+      const managedBaseline = ["accounting_invoice_correction_outbox_claim","accounting_invoice_correction_outbox_fail","accounting_invoice_correction_outbox_succeed"].map(name=>extract(managedSource,name)).join("\n");
+      const nativeBaseline = extract(readFileSync(new URL("../db/platform/migrations/20260815150000_payment_truth_reconciliation.sql",import.meta.url),"utf8"),"payment_truth_apply_terminal");
+      const replacement=actual.find(entry=>entry.path.includes("payment_decoupling"))!.bytes;
+      const oldStart=nativeBaseline.indexOf("    SELECT COALESCE(jsonb_agg(");
+      const oldEnd=nativeBaseline.indexOf("    IF v_order.subscription_cycle_id",oldStart);
+      const newStart=replacement.indexOf("    -- Capture owed work only;");
+      const newEnd=replacement.indexOf("    IF v_order.subscription_cycle_id",newStart);
+      expect(replacement.slice(0,newStart)).toBe(nativeBaseline.slice(0,oldStart).replace("CREATE FUNCTION","CREATE OR REPLACE FUNCTION"));
+      expect(replacement.slice(newEnd)).toBe(nativeBaseline.slice(oldEnd)+"\n");
+      const native = { ...JSON.parse(SYNTHETIC_TREE["config/platform-migration-manifest.json"]!), forward:[] };
+      native.baseline.sha256=sqlSha256(nativeBaseline);
+      const extra:Record<string,string> = { [MANAGED_BASELINE]:managedBaseline, [native.baseline.file]:nativeBaseline, "config/platform-migration-manifest.json":json(native) };
+      const sample = fixture(registry => {
+        registry.baselineSha256 = sqlSha256(managedBaseline);
+        registry.portableCreationForwards = structuredClone(approved.portableCreationForwards);
+        registry.portableReplacementForwards = structuredClone(approved.portableReplacementForwards);
+        registry.managedInvoicingForwards = structuredClone(approved.managedInvoicingForwards);
+      }, null, false, false, extra);
+      const append = (plant?: { path:string; bytes:string }) => {
+        const manifest = structuredClone(native);
+        const change: Record<string,string> = {};
+        for (const entry of actual) {
+          const bytes = plant?.path === entry.path ? plant.bytes : entry.bytes;
+          change[entry.path] = bytes;
+          if (entry.path.startsWith("db/")) manifest.forward.push({ file:entry.path, sha256:sqlSha256(bytes) });
+        }
+        manifest.forward.sort((a: {file:string},b: {file:string}) => a.file.localeCompare(b.file));
+        change["config/platform-migration-manifest.json"] = json(manifest);
+        sample.apply(change);
+      };
+      try {
+        append();
+        const head = sample.commit("Exact M09 final files");
+        for (const gate of gates(sample, head)) expect(gate).not.toThrow();
+        for (const entry of actual) {
+          expect(entry.path.split("/").at(-1)!.slice(0,14) > "20261022185100").toBe(true);
+          expect(sqlSha256(entry.bytes)).toBe(entry.sha256);
+          for (const bytes of [entry.bytes + " ", entry.bytes + "\nGRANT EXECUTE ON FUNCTION public.existing() TO anon;\n",
+            entry.bytes.replace(/LANGUAGE (?:plpgsql|sql)/u, "LANGUAGE plpgsql SECURITY DEFINER"),
+            entry.bytes + "\nCREATE OR REPLACE FUNCTION public.unpinned() RETURNS jsonb LANGUAGE sql AS $$ SELECT '{}'::jsonb $$;\n"]) {
+            expect(() => assertAdmittedPlatformForward(sample.repo,sample.approval,head,entry.path,Buffer.from(bytes))).toThrow(/reviewed|migration/u);
+            expect(() => assertAdmittedPlatformForward(sample.repo,sample.rootCommit,head,entry.path,Buffer.from(bytes),true)).toThrow(/reviewed|migration/u);
+          }
+        }
+        sample.run(["checkout","--detach",sample.rootCommit]);
+        sample.apply({[REVIEWED_FORWARD_PATH]:json(sample.registry)});
+        append();
+        const selfApproved=sample.commit("M09 SQL and its own approval together");
+        for(const entry of actual) {
+          expect(()=>assertAdmittedPlatformForward(sample.repo,sample.rootCommit,selfApproved,entry.path,Buffer.from(entry.bytes))).toThrow(/approved separately/u);
+          expect(()=>assertAdmittedPlatformForward(sample.repo,sample.rootCommit,selfApproved,entry.path,Buffer.from(entry.bytes),true)).toThrow(/approved separately/u);
+        }
+        // These approval commits deliberately repin malicious bytes: semantic
+        // refusals must run after the whole-file and function hashes pass.
+        for (const entry of actual) {
+          for (const kind of ["attributes","statement"] as const) {
+            sample.run(["checkout","--detach",sample.approval]);
+            const bytes=kind === "attributes"
+              ? entry.path.includes("payment_decoupling") ? entry.bytes.replace("LANGUAGE plpgsql\nSET", "LANGUAGE plpgsql\nSECURITY DEFINER\nSET") : entry.bytes.replace(/SECURITY (?:INVOKER|DEFINER)/u,entry.path.startsWith("supabase/") ? "SECURITY INVOKER" : "SECURITY DEFINER")
+              : entry.bytes+"\nGRANT SELECT ON public.invoicing_duties TO anon;\n";
+            const repinned=structuredClone(sample.registry);
+            const binding=[...repinned.portableCreationForwards!,...repinned.portableReplacementForwards!,...repinned.managedInvoicingForwards!].find(item=>item.path===entry.path)!;
+            binding.sha256=sqlSha256(bytes);
+            if ("functions" in binding) {
+              const definitions=reviewedFunctionDefinitions(Buffer.from(bytes));
+              for (const fn of binding.functions) fn.afterSha256=definitions.get(fn.signature)!;
+            }
+            sample.apply({[REVIEWED_FORWARD_PATH]:json(repinned)});
+            const control=sample.commit("Repinned semantic plant control");
+            append({path:entry.path,bytes});
+            const planted=sample.commit("Repinned semantic plant feature");
+            expect(() => assertAdmittedPlatformForward(sample.repo,control,planted,entry.path,Buffer.from(bytes)),`${entry.path}: ${kind}`).toThrow(/attributes|statement|privilege|unsupported|only one/u);
+            expect(() => assertAdmittedPlatformForward(sample.repo,sample.rootCommit,planted,entry.path,Buffer.from(bytes),true)).toThrow(/attributes|statement|privilege|unsupported|only one/u);
+          }
+        }
+        sample.run(["checkout","--detach",sample.approval]);
+        append(); sample.commit("Managed entries introduced");
+        const modified=structuredClone(sample.registry);modified.managedInvoicingForwards![2]!.sha256="a".repeat(64);
+        sample.apply({[REVIEWED_FORWARD_PATH]:json(modified)});
+        const changed=sample.commit("Managed approval modified after introduction");
+        expect(() => assertAdmittedPlatformForward(sample.repo,sample.rootCommit,changed,actual.at(-1)!.path,Buffer.from(actual.at(-1)!.bytes),true)).toThrow(/approved separately/u);
+      } finally { sample.cleanup(); }
+    }, 120_000);
+    it("keeps structural managed and native refusals even with otherwise repinned malicious bytes", () => {
+      for (const entry of actual) {
+        const creation = approved.portableCreationForwards!.some(item => item.path === entry.path);
+        const managed = entry.path.startsWith("supabase/");
+        if (!creation && !managed) continue;
+        const check = (bytes:string) => managed ? assertManagedInvoicingStatements(Buffer.from(bytes),entry.path) : assertPortableCreationStatements(Buffer.from(bytes),[]);
+        expect(() => check(entry.bytes)).not.toThrow();
+        const plants = [entry.bytes + "\nGRANT SELECT ON public.invoicing_duties TO anon;", entry.bytes + "\nCREATE OR REPLACE FUNCTION public.unpinned() RETURNS jsonb LANGUAGE sql AS $$ SELECT '{}'::jsonb $$;"];
+        plants.push(managed ? entry.bytes.replace("SECURITY DEFINER", "SECURITY INVOKER") : entry.bytes.replace("SECURITY INVOKER", "SECURITY DEFINER"));
+        plants.push(managed ? entry.bytes.replace("TO service_role", "TO authenticated") : entry.bytes + "\nCREATE TRIGGER injected AFTER INSERT ON public.commerce_orders FOR EACH ROW EXECUTE FUNCTION public.existing();");
+        plants.push(entry.bytes + "\nCREATE VIEW public.zz AS SELECT E'escape';");
+        for (const bytes of plants) expect(() => check(bytes)).toThrow(/reviewed/u);
+      }
+      const cutover=actual.find(entry=>entry.path.includes("durable_duties"))!.bytes;
+      for(const bytes of [cutover.replace("SELECT 'paid',id", "SELECT 'paid',gen_random_uuid()"),
+        cutover.replace("FROM public.commerce_settlement_transitions\n  UNION", "FROM public.commerce_orders\n  UNION"),
+        cutover.replace("ON CONFLICT DO NOTHING;", "ON CONFLICT DO UPDATE SET source_kind='paid';"),
+        cutover+cutover.slice(cutover.indexOf("INSERT INTO public.invoicing_cutover"),cutover.indexOf("-- No order/duty FK"))]) {
+        expect(()=>assertPortableCreationStatements(Buffer.from(bytes),[])).toThrow(/reviewed/u);
+      }
+      for (const index of [0,1,2]) for (const probe of ["path","missing","replacement class","extra signature","extra key","swapped"] as const) {
+        const registry = structuredClone(approved);
+        const entry = registry.managedInvoicingForwards![index]!;
+        if (probe === "path") entry.path += ".extra";
+        if (probe === "missing") registry.managedInvoicingForwards!.pop();
+        if (probe === "replacement class") entry.functions[0]!.beforeSha256 = index===1 ? null : "0".repeat(64);
+        if (probe === "extra signature") entry.functions[0]!.signature = "public.unpinned()";
+        if (probe === "extra key") Object.assign(entry,{extra:true});
+        if (probe === "swapped") [registry.managedInvoicingForwards![0],registry.managedInvoicingForwards![1]]=[registry.managedInvoicingForwards![1]!,registry.managedInvoicingForwards![0]!];
+        expect(() => readReviewedForwardRegistry(Buffer.from(json(registry)))).toThrow(/managed invoicing/u);
+      }
+      for (const probe of ["path","signature","timestamp","dunning","null hash","swapped","duplicate","extra key","binding key"] as const) {
+        const registry=structuredClone(approved), entry=registry.portableReplacementForwards![1]!;
+        if(probe==="extra key")Object.assign(entry,{extra:true});
+        if(probe==="binding key")Object.assign(entry.functions[0]!,{extra:true});
+        if(probe==="path")entry.path=entry.path.replace("192000","192001");
+        if(probe==="signature")entry.functions[0]!.signature="public.unpinned()";
+        if(probe==="timestamp")entry.functions[0]!.signature=entry.functions[0]!.signature.replace("timestamptz","timestamp with time zone");
+        if(probe==="dunning")entry.functions[0]!.signature=registry.portableReplacementForwards![0]!.functions[0]!.signature;
+        if(probe==="null hash")Object.assign(entry.functions[0]!,{beforeSha256:null});
+        if(probe==="swapped")registry.portableReplacementForwards!.reverse();
+        if(probe==="duplicate")entry.path=registry.portableReplacementForwards![0]!.path;
+        expect(()=>readReviewedForwardRegistry(Buffer.from(json(registry)))).toThrow(/portable replacement/u);
+      }
+      for(const length of [3,4,6]) {
+        const registry=structuredClone(approved);
+        registry.portableCreationForwards=Array.from({length},(_,i)=>structuredClone(approved.portableCreationForwards![i%5]!));
+        expect(()=>readReviewedForwardRegistry(Buffer.from(json(registry)))).toThrow(/portable creation/u);
+      }
+    });
+  });
   describe("portable reviewed creation", () => {
     const manifestPath = "config/platform-migration-manifest.json";
     const portableBaseline = "db/platform/migrations/00000000000000_platform_baseline.sql";
     const approved = readReviewedForwardRegistry(readFileSync(new URL(`../${REVIEWED_FORWARD_PATH}`, import.meta.url)));
-    const bindings = approved.portableCreationForwards!;
+    const bindings = approved.portableCreationForwards!.slice(0, 2);
     // Immutable snapshots let the control PR test the exact future SQL without
     // introducing it into either installation chain or depending on Git history.
     const exact = bindings.map(({ path }) => readFileSync(new URL(`./fixtures/${path.split("/").at(-1)}`, import.meta.url), "utf8"));
