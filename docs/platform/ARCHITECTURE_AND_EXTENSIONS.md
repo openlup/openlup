@@ -1252,3 +1252,14 @@ operations keep their own contracts. The
 [Subscription port witnesses](../../packages/platform/test/subscriptions/portFit.test.ts) test
 each port amendment, and the [native baseline](../../tests/postgres/subscriptionContinuityBaseline.test.ts)
 exercises the complete current prefix without subscription SQL additions.
+
+## Invoicing contracts
+
+Place invoicing contracts and descriptor interpretation in the existing platform
+package's exact `invoicing` and type-only `invoicing/contracts` entries. The module
+has no graph edges, provider dependencies or environment discovery. The host owns
+fiscal/identifier/rounding policy, frozen facts, seller, M07 reads, storage, registry,
+M04 delivery and authorized M12 history. Missing parity returns typed unsupported
+before writes; no native store or executor is supplied. The
+[invoicing reference](PLATFORM_PACKAGE_REFERENCE.md#invoicing-contracts) describes
+correction, payout item and account-lineage seams and their source witnesses.

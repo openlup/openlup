@@ -685,3 +685,12 @@ ports; host composition supplies G23, M07, transaction and correlation policy.
 The initial binding preserves case-before-outcome ordering with atomic bookkeeping.
 N1's same-obligation recovery repairs the native decline stall (F16); it does not
 supply M07 prepared-store parity or activate a runner.
+
+## Invoicing contracts
+
+Experimental `@openlup/platform/invoicing` exposes `readInvoiceCapabilities`;
+`invoicing/contracts` contains types only. Host selection is explicit and default-off.
+Frozen facts, correction recovery, exact absence, owed duties and host-only fiscal,
+artifact, delivery, payout and owned-history seams are described in the
+[invoicing reference](../../docs/platform/PLATFORM_PACKAGE_REFERENCE.md#invoicing-contracts).
+No store, worker, adapter, route or activation is supplied by this contract step.

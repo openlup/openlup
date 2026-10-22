@@ -633,6 +633,17 @@
       ],
       "doc": "docs/platform/ARCHITECTURE_AND_EXTENSIONS.md",
       "anchor": "#subscription-contracts"
+    },
+    {
+      "id": "invoicing-package",
+      "when": "Neutral invoicing facts, exact recovery, owed duties and explicit host capability seams",
+      "paths": [
+        "packages/platform/src/invoicing/**",
+        "packages/platform/test/invoicing/**",
+        "packages/platform/api/invoicing*.api.md"
+      ],
+      "doc": "docs/platform/ARCHITECTURE_AND_EXTENSIONS.md",
+      "anchor": "#invoicing-contracts"
     }
   ]
 }

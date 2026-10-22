@@ -602,3 +602,68 @@ opt-in browser profile adds no npm entry or UI package export.
 Source contributors record notable changes in package changelog fragments;
 release preparation assembles the shipped CHANGELOG. Follow the
 [public contribution guide](https://github.com/openlup/openlup/blob/main/CONTRIBUTING.md#development-preview-checks).
+
+## Invoicing contracts
+
+The experimental `@openlup/platform/invoicing` entry interprets explicit host
+selection through `readInvoiceCapabilities`. Disabled activation and missing or
+mismatched provider selection refuse before any host call. A ready descriptor
+reports declared operations; it is not proof of fiscal readiness or host parity.
+`@openlup/platform/invoicing/contracts` exports declarations only, with no browser
+runtime values or server import edge. There is no new npm package or dependency.
+
+The host supplies frozen order/buyer/line/tax/money facts, seller and jurisdiction
+routing. Facts retain revision, original request keys, ordered canonical line
+amounts, explicit delivery/discount components, dates and references. Amounts are
+safe integer currency minor units; no FX, catalogue reread or zero-tax substitute
+is supplied. Legacy line kinds and order-money headers can remain explicitly null;
+the host cannot invent missing facts. The provider owns fiscal numbering; local references and nullable
+external numbers remain distinct. Identifier, tax and rounding policy references
+and the host fiscal verification seam carry policy, rather than country rules.
+
+Issue and full-reversal correction use stable identities and immutable BEFORE
+facts; full reversal has explicit zero AFTER totals. A bridge must prove the
+parent and correction reference on recovery. Unknown remote outcome stays unknown;
+only a complete exact lookup of the full scope can establish absence. A failed,
+ambiguous or unsupported lookup cannot authorize another create. Local pre-issue
+void is separate from unsupported remote void. Each store call is a local
+transaction; remote I/O never belongs inside it. A late accepted issue retains
+its external identity and atomically creates one compensation duty at finalization.
+
+Every missing host binding returns typed `unsupported` before unsupported writes.
+The required seams are facts, seller, fiscal policy, read-only M07 money,
+artifacts/storage, registry, clearance observation, M04 delivery, payout item
+recording/resolution, policy decisions and M12 account history. Registry evidence
+retains identifier scheme, legal name, optional registration/address/tax evidence,
+source, fingerprint and observation time; host validation/freshness/fallback do not
+replace checkout truth or require a lookup for renewal.
+
+Policy suppression enumerates `channel_issues` and `no_document`; an explicit
+operator skip retains actor, reason and key. Neither fabricates an invoice ID.
+The owed-duty readback matches `invoicing_duty_readback`: order, capture faults,
+duty/parent/document identity, state, attempts, closed diagnostic code and lease
+chronology. Ready maps to owed and processing to claimed; unsupported obligations
+remain visible. Empty duties and payment truth's `accountingRequested=false` do
+not establish invoice absence. Capture faults remain separately observable.
+
+Artifacts retain opaque durable references and proof; URLs/download bytes remain
+transient. Download authorization precedes fetch; PDF type/size/signature validation
+precedes M04 send. Delivery retains local order/document and provider identities,
+nullable client/source facts and any known receipt after a lost local acknowledgement.
+Provider acceptance does not prove inbox delivery. Uncertain send never authorizes
+blind repeat send. Clearance is observation only, with
+`not_submitted`, `pending`, `rejected`, `accepted`, `not_required` and `unsupported`
+kept distinct; no submission or country-specific mapping is installed.
+
+Payout evidence preserves distinct item references even for the same batch and
+payment. Native uniqueness cannot silently merge them or replace nullable links;
+a conforming host recorder/resolver is required. Account history preserves the
+owner, order, parent lineage, signed correction totals and currency in a safe
+projection, without buyer payloads, raw diagnostics or signed URLs. The host owns
+customer authentication, operator authorization, retention and original key bytes.
+
+Inspect the [contract](../../packages/platform/test/invoicing/contracts.test.ts)
+and [carrier fit](../../packages/platform/test/invoicing/portFit.test.ts) witnesses.
+These declarations install no worker, native store, SQL, provider, scheduler or
+subscription writer. Physical delivery and renewal money never depend on invoice
+availability; the later durable-duty executor must preserve that independence.
