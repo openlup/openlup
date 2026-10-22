@@ -129,7 +129,7 @@ it('A10 new overdue cycle inserts require admission exactly as the donor guard, 
 it('paid activation history cannot hide an undelivered paid renewal from overdue admission',async()=>{
  const f=await fixture(h.pool,1,true);
  const history=(await h.pool.query('SELECT cycle_number,status,scheduled_at,order_id FROM public.subscription_delivery_alignment_cycles WHERE subscription_id=$1 ORDER BY scheduled_at',[f.subscription])).rows;
- expect(history).toMatchObject([{cycle_number:null,status:'paid',scheduled_at:new Date('2026-07-04T12:00:00Z')},{cycle_number:1,status:'paid',scheduled_at:new Date('2026-08-01T12:00:00Z'),order_id:f.order}]);
+ expect(history).toMatchObject([{cycle_number:0,status:'paid',scheduled_at:new Date('2026-07-04T12:00:00Z')},{cycle_number:1,status:'paid',scheduled_at:new Date('2026-08-01T12:00:00Z'),order_id:f.order}]);
  expect(history[0].order_id).not.toBeNull();
  await h.pool.query("SELECT public.subscription_delivery_alignment_set_mode('auto_align')");
  expect(await admit(f.subscription)).toMatchObject({allowed:false,state:'protected',reason:'delivery_alignment_protected'});
@@ -148,4 +148,46 @@ it.each(['2026-08-29T12:00:00.000Z','2026-10-10T12:00:00.000Z'])('paid activatio
  expect((await cases(f.order)).every(row=>row.state==='aligned'&&row.manual_review_reason===null)).toBe(true);
  expect((await schedule(h.pool,f.subscription)).next_cycle_at.toISOString()).toBe(expected);
  const before=await cases(f.order);await arrival(two,'2026-09-01T12:00:00Z');expect(await cases(f.order)).toEqual(before);
+});
+
+it.each(['2026-08-29T12:00:00.000Z','2026-10-10T12:00:00.000Z'])('activation alone protects first renewal and aligns once with outer maximum %s',async(nextCycleAt)=>{
+ const f=await fixture(h.pool,null,true,true);
+ expect((await h.pool.query('SELECT id,cycle_number FROM public.subscription_delivery_alignment_cycles WHERE subscription_id=$1',[f.subscription])).rows).toEqual([{id:f.cycle,cycle_number:0}]);
+ await h.pool.query("SELECT public.subscription_delivery_alignment_set_mode('auto_align')");
+ expect(await admit(f.subscription)).toMatchObject({allowed:false,state:'protected'});
+ expect(await cases(f.order)).toMatchObject([{predecessor_cycle_id:f.cycle,predecessor_cycle_number:0,state:'protected',manual_review_reason:null}]);
+ await expect(h.pool.query("INSERT INTO public.subscription_cycles(subscription_id,scheduled_at,status) VALUES($1,'2026-08-29T12:00:00Z','payment_pending')",[f.subscription])).rejects.toThrow('alignment_protected');
+ expect((await h.pool.query('SELECT * FROM public.subscription_delivery_alignment_admission_receipts WHERE subscription_id=$1',[f.subscription])).rows).toEqual([]);
+ const one=await replacement(h.pool,f);const two=await replacement(h.pool,f,f.shipment,2);
+ await h.pool.query('UPDATE public.subscriptions SET next_cycle_at=$2 WHERE id=$1',[f.subscription,nextCycleAt]);
+ expect(await arrival(one,'2026-09-08T12:00:00Z')).toMatchObject({disposition:'outstanding'});
+ const expected=nextCycleAt>'2026-10-06T12:00:00.000Z'?nextCycleAt:'2026-10-06T12:00:00.000Z';
+ expect(await arrival(two,'2026-09-01T12:00:00Z')).toMatchObject({disposition:'aligned',nextCycleAt:expected});
+ expect((await cases(f.order)).every(row=>row.state==='aligned'&&row.manual_review_reason===null)).toBe(true);
+ expect((await schedule(h.pool,f.subscription)).next_cycle_at.toISOString()).toBe(expected);
+ const before=await cases(f.order);await arrival(two,'2026-09-01T12:00:00Z');expect(await cases(f.order)).toEqual(before);
+});
+it.each([false,true])('unlinked unnumbered paid history refuses admission without becoming activation (known activation: %s)',async(withActivation)=>{
+ const f=await fixture(h.pool,null,withActivation);
+ const history=(await h.pool.query('SELECT id,cycle_number FROM public.subscription_delivery_alignment_cycles WHERE subscription_id=$1',[f.subscription])).rows;
+ expect(history.find(row=>row.id===f.cycle).cycle_number).toBeNull();
+ if(withActivation) expect(history.find(row=>row.id!==f.cycle).cycle_number).toBe(0);
+ await h.pool.query("SELECT public.subscription_delivery_alignment_set_mode('auto_align')");
+ expect(await admit(f.subscription)).toMatchObject({allowed:false,state:'manual_review',reason:'missing_renewal_correlation'});
+ expect((await h.pool.query('SELECT * FROM public.subscription_delivery_alignment_admission_receipts WHERE subscription_id=$1',[f.subscription])).rows).toEqual([]);
+});
+it.each(['paid','planned'])('unordered %s history cannot suppress numbered renewal protection by an earlier schedule',async(status)=>{
+ const f=await fixture(h.pool,1,true);
+ await h.pool.query("INSERT INTO public.subscription_cycles(subscription_id,scheduled_at,status) VALUES($1,'2026-06-01T12:00:00Z',$2)",[f.subscription,status]);
+ await h.pool.query("SELECT public.subscription_delivery_alignment_set_mode('auto_align')");
+ if(status==='paid') {
+  expect(await admit(f.subscription)).toMatchObject({allowed:false,state:'manual_review',reason:'missing_renewal_correlation'});
+ } else {
+  expect(await admit(f.subscription)).toMatchObject({allowed:false,state:'protected'});
+  expect(await cases(f.order)).toMatchObject([{predecessor_cycle_number:1,state:'protected'}]);
+  await arrival(f.shipment);
+  expect(await cases(f.order)).toMatchObject([{predecessor_cycle_number:1,state:'manual_review',manual_review_reason:'renewal_cycle_already_created'}]);
+  expect((await schedule(h.pool,f.subscription)).next_cycle_at.toISOString()).toBe('2026-08-29T12:00:00.000Z');
+ }
+ expect((await h.pool.query('SELECT * FROM public.subscription_delivery_alignment_admission_receipts WHERE subscription_id=$1',[f.subscription])).rows).toEqual([]);
 });

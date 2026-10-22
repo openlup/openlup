@@ -872,7 +872,7 @@ export declare const FULFILLMENT_MIGRATIONS: readonly [{
 }, {
     readonly position: 74;
     readonly catalogPath: "db/platform/migrations/20261022090000_fulfillment_delivery_alignment.sql";
-    readonly sha256: "46c60b53622b727f5674579aa4df5fa01d11298f18ca2b3da5c3e41b9cabd6a5";
+    readonly sha256: "8ad91c069c51ee32eb648258337328efafcd0dafd8f71bd59baaeaabf88c8a44";
     readonly url: URL;
 }];
 ```

@@ -85,8 +85,22 @@ Host inventory lines and authoritative contact preparation remain injected.
 
 The alignment forward translates managed fulfillment rows to native shipments,
 replacement links to `replaces_shipment_id`, and subscription identity through
-order → cycle → subscription. Cycle number belongs to the renewal operation;
-missing correlation enters manual review. Existing-cycle renewal and dunning
+order → cycle → subscription. The effective cycle ordinal
+comes from renewal operation numbering or the explicit activation-order link.
+
+D13 maps donor activation cycle 1 ↔ native activation ordinal 0, and donor
+renewal n+1 ↔ native renewal n. The activation ordinal requires a cycle with no
+renewal operation whose linked order is the active `subscription_activations`
+row's order for the same subscription. Renewal operation numbers remain ≥1.
+Admission selects the highest known paid ordinal, so activation protects the
+first renewal and each later paid renewal outranks activation. Successor
+artifacts have a greater effective ordinal. Other unnumbered cycles remain
+unordered: paid ones require manual review at due admission without minting a
+receipt; other unordered cycles prevent automatic arrival alignment regardless
+of scheduled date. They neither outrank known predecessors nor silently permit
+an autonomous renewal. Shadow mode observes this ambiguity without blocking.
+
+Existing-cycle renewal and dunning
 retries bypass new-cycle admission and receipts. The new-cycle INSERT guard
 retains exact schedule-bound, one-use receipt consumption. Default-off control
 does not erase captured protected cases. Only durable arrival can settle the

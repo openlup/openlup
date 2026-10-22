@@ -1,7 +1,11 @@
 -- D13 native translation of the effective managed delivery-alignment rail.
 -- New invoker objects only; default off, deployment owner execution, no browser grants.
 -- Existing history, payment lifecycle and managed graph remain unchanged.
--- Missing renewal correlation stays manual; native cycle numbers belong to renewal operations.
+-- Donor activation cycle 1 ↔ native activation ordinal 0;
+-- donor renewal n+1 ↔ native renewal n (renewal operation numbers remain >= 1).
+-- Activation requires no renewal operation and its active activation-order link.
+-- Other unnumbered cycles remain unordered: paid ones refuse due admission for
+-- manual review; any other unordered cycle prevents automatic arrival alignment.
 -- D13 native translation note: only NEW cycle admission/INSERT is guarded.
 -- Existing-cycle renewal/dunning retries bypass admission and one-use receipts.
 -- confirm_replacement remains a note-only operator attestation. Never invoke it
@@ -28,7 +32,7 @@ CREATE TABLE public.subscription_delivery_alignment_cases (
   predecessor_order_id uuid NOT NULL REFERENCES public.commerce_orders(id) ON DELETE CASCADE,
   subscription_id uuid NOT NULL REFERENCES public.subscriptions(id) ON DELETE CASCADE,
   predecessor_cycle_id uuid NOT NULL REFERENCES public.subscription_cycles(id) ON DELETE CASCADE,
-  predecessor_cycle_number integer CHECK (predecessor_cycle_number >= 1),
+  predecessor_cycle_number integer CHECK (predecessor_cycle_number >= 0),
   captured_mode text NOT NULL CHECK (captured_mode IN ('shadow', 'protect', 'auto_align')),
   state text NOT NULL CHECK (state IN ('shadow', 'protected', 'aligned', 'released', 'manual_review')),
   evidence_kind text NOT NULL CHECK (evidence_kind IN ('fulfillment_exception', 'overdue_renewal', 'missing_fulfillment')),
@@ -94,7 +98,18 @@ COMMENT ON TABLE public.subscription_delivery_alignment_admission_receipts IS
   'One-time, schedule-bound authorization consumed by a protecting-mode payment_pending cycle insert. Created only by a successful due renewal admission.';
 
 CREATE VIEW public.subscription_delivery_alignment_cycles AS
-SELECT cycle.*, operation.cycle_number, order_row.id AS order_id
+SELECT cycle.*,
+  CASE
+    WHEN operation.cycle_number >= 1 THEN operation.cycle_number
+    WHEN cycle.renewal_operation_id IS NULL AND EXISTS (
+      SELECT 1 FROM public.subscription_activations activation
+       WHERE activation.state = 'active'
+         AND activation.subscription_id = cycle.subscription_id
+         AND activation.order_id = order_row.id
+    ) THEN 0
+    ELSE NULL
+  END AS cycle_number,
+  order_row.id AS order_id
 FROM public.subscription_cycles cycle
 LEFT JOIN public.subscription_renewal_operations operation ON operation.id = cycle.renewal_operation_id
 LEFT JOIN public.commerce_orders order_row ON order_row.subscription_cycle_id = cycle.id;
@@ -197,7 +212,7 @@ BEGIN
     RETURN;
   END IF;
 
-  -- Missing native renewal correlation cannot authorize automatic alignment.
+  -- An unordered non-activation cycle cannot authorize automatic alignment.
   IF p_predecessor_cycle_number IS NULL THEN
     p_manual_review_reason := 'missing_renewal_correlation';
   END IF;
@@ -453,16 +468,14 @@ BEGIN
       SELECT 1 FROM public.subscription_delivery_alignment_cycles successor
       JOIN public.subscription_renewal_operations operation ON operation.id = successor.renewal_operation_id
       WHERE successor.subscription_id = v_subscription.id
-        AND (successor.cycle_number > v_case.predecessor_cycle_number OR (successor.cycle_number IS NULL AND successor.scheduled_at >
-             (SELECT scheduled_at FROM public.subscription_cycles WHERE id = v_case.predecessor_cycle_id)))
+        AND (successor.cycle_number > v_case.predecessor_cycle_number OR (successor.cycle_number IS NULL AND successor.id <> v_case.predecessor_cycle_id))
         AND operation.attempt_prepared_at IS NOT NULL
     ) THEN 'existing_provider_attempt'
     WHEN EXISTS (
       SELECT 1 FROM public.subscription_delivery_alignment_cycles successor
       WHERE successor.subscription_id = v_subscription.id
         AND (successor.cycle_number > v_case.predecessor_cycle_number
-             OR (successor.cycle_number IS NULL AND successor.scheduled_at >
-                 (SELECT scheduled_at FROM public.subscription_cycles WHERE id = v_case.predecessor_cycle_id)))
+             OR (successor.cycle_number IS NULL AND successor.id <> v_case.predecessor_cycle_id))
     ) THEN 'renewal_cycle_already_created'
     ELSE NULL
   END INTO v_artifact_reason;
@@ -560,8 +573,8 @@ BEGIN
     FROM public.subscription_delivery_alignment_cycles
    WHERE subscription_id = p_subscription_id
      AND status = 'paid'
-     AND cycle_number >= 1
-   ORDER BY cycle_number DESC, scheduled_at DESC
+     AND cycle_number >= 0
+   ORDER BY cycle_number DESC NULLS LAST, scheduled_at DESC
    LIMIT 1;
   v_has_paid_predecessor := FOUND;
 
@@ -611,6 +624,22 @@ BEGIN
   END IF;
   IF p_scheduled_at > p_as_of THEN
     RETURN jsonb_build_object('allowed', true, 'state', 'none', 'reason', 'not_due');
+  END IF;
+
+  -- Unknown paid history cannot outrank a known predecessor, but ignoring it
+  -- could admit a charge while an uncorrelated parcel is still outstanding.
+  -- Refuse without a receipt; shadow remains observation-only. Do not invent
+  -- an ordinal from scheduled_at or silently classify it as activation.
+  IF EXISTS (
+    SELECT 1 FROM public.subscription_delivery_alignment_cycles
+     WHERE subscription_id = p_subscription_id
+       AND status = 'paid' AND cycle_number IS NULL
+  ) THEN
+    RETURN jsonb_build_object(
+      'allowed', v_mode = 'shadow',
+      'state', CASE WHEN v_mode = 'shadow' THEN 'shadow' ELSE 'manual_review' END,
+      'reason', 'missing_renewal_correlation'
+    );
   END IF;
 
   IF NOT v_has_paid_predecessor OR v_predecessor.order_id IS NULL THEN

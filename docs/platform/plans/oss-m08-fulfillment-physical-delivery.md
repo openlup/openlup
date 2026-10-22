@@ -324,6 +324,18 @@ new-cycle transaction. Existing-cycle renewal-operation and dunning retries
 never pass through admission and neither mint nor consume these receipts. There
 is no `retry_scheduled` state or change to the payments lifecycle.
 
+D13 maps donor activation cycle 1 ↔ native activation ordinal 0, and donor
+renewal n+1 ↔ native renewal n. The activation ordinal requires a cycle with no
+renewal operation whose linked order is the active `subscription_activations`
+row's order for the same subscription. Renewal operation numbers remain ≥1.
+Admission selects the highest known paid ordinal, so activation protects the
+first renewal and each later paid renewal outranks activation. Successor
+artifacts have a greater effective ordinal. Other unnumbered cycles remain
+unordered: paid ones require manual review at due admission without minting a
+receipt; other unordered cycles prevent automatic arrival alignment regardless
+of scheduled date. They neither outrank known predecessors nor silently permit
+an autonomous renewal. Shadow mode observes this ambiguity without blocking.
+
 Automatic enforcement of the invariant "a late delivery extends the next cycle"
 requires native delivery-alignment control mode `auto_align`. The singleton
 `public.subscription_delivery_alignment_control.mode` defaults to `off` for

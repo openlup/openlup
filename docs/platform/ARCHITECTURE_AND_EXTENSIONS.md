@@ -826,8 +826,19 @@ and [`20261022090000_fulfillment_delivery_alignment.sql`](../../db/platform/migr
 add command fencing and alignment. Donor fulfillment orders map to
 `public.fulfillment_shipments`, and `replaces_fulfillment_order_id` maps to
 `replaces_shipment_id`. Subscription identity follows order → cycle →
-subscription; cycle number belongs to the renewal operation. Missing correlation
-enters manual review. The overdue-delivery guard applies only to NEW cycle
+subscription. D13 maps donor activation cycle 1 ↔ native activation ordinal 0, and donor
+renewal n+1 ↔ native renewal n. The activation ordinal requires a cycle with no
+renewal operation whose linked order is the active `subscription_activations`
+row's order for the same subscription. Renewal operation numbers remain ≥1.
+Admission selects the highest known paid ordinal, so activation protects the
+first renewal and each later paid renewal outranks activation. Successor
+artifacts have a greater effective ordinal. Other unnumbered cycles remain
+unordered: paid ones require manual review at due admission without minting a
+receipt; other unordered cycles prevent automatic arrival alignment regardless
+of scheduled date. They neither outrank known predecessors nor silently permit
+an autonomous renewal. Shadow mode observes this ambiguity without blocking.
+
+The overdue-delivery guard applies only to NEW cycle
 admission/insert. Existing-cycle renewal and dunning retries never pass through
 admission and neither mint nor consume its one-use receipts. There is no
 `retry_scheduled` state or change to the payments lifecycle.
