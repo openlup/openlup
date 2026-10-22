@@ -140,6 +140,15 @@ with committed attacks. Missing Docker, PostgreSQL or pgTAP fails; the lexer is
 only a pre-filter. Fixtures under `scripts/fixtures/reviewed-m10/` are inert
 approval snapshots and do not join an installation manifest. Root test discovery
 already includes both suites; no extra runner or optional skip is introduced.
+The M10 gate's external CI image dependencies are PG16
+`sha256:9e2cf6287f25c3151f4c9421ccce2b17f3e60061c111a29165e0d2cdd9ff0a97`
+(Docker Hub library → ECR Docker Library) and Supabase PG17
+`sha256:b15d862126dd2dac02da524696ccfde2dcce2ceaee0a58973b2727befe492706`
+(ghcr `17.11.0.004` → Docker Hub → ECR), in that source order with the same
+digest at each source. The gate verifies the pulled RepoDigest; only transient
+pull failures retry, at most three attempts per source within a total 120-second
+pull budget, honouring Retry-After up to that budget. Inspection, container and
+SQL failures are not retried; exhausting the sources fails loudly without a skip.
 
 
 Subscription package contract changes use package-local contract, identity and

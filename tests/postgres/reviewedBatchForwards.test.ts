@@ -1,6 +1,8 @@
+import { execFile } from "node:child_process";
 import { cpSync, existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
+import { promisify } from "node:util";
 import { reviewedBatchBytes, reviewedBatchPaths } from "../../scripts/reviewed-batch-rail.js";
 import { Pool } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
@@ -11,7 +13,161 @@ import { assertBatchCatalog, assertSameSnapshot, batchSnapshot } from "./reviewe
 
 const registry = readReviewedForwardRegistry(readFileSync("config/reviewed-platform-forwards.json"));
 const fixture = (pin: BatchedForwardBinding) => reviewedBatchBytes(process.cwd(), process.cwd(), pin);
-const image = "public.ecr.aws/supabase/postgres:17.11.0.004";
+const managedDigest = "sha256:b15d862126dd2dac02da524696ccfde2dcce2ceaee0a58973b2727befe492706";
+// Rechecked 2026-10-22 with `docker buildx imagetools inspect` on Docker Hub :16;
+// The ECR Docker Library fallback uses the same pinned OCI index.
+const nativeDigest = "sha256:9e2cf6287f25c3151f4c9421ccce2b17f3e60061c111a29165e0d2cdd9ff0a97";
+const imageSources = {
+  native: ["docker.io/library/postgres", "public.ecr.aws/docker/library/postgres"],
+  managed: ["ghcr.io/supabase/postgres:17.11.0.004", "docker.io/supabase/postgres", "public.ecr.aws/supabase/postgres"],
+};
+const exec = promisify(execFile);
+const imageIo = {
+  pull: async (reference: string, timeout: number) => { await exec("docker", ["pull", reference], { timeout }); },
+  repoDigests: async (reference: string): Promise<string[]> => {
+    const { stdout } = await exec("docker", ["image", "inspect", reference, "--format", "{{json .RepoDigests}}"], { timeout: 5_000 });
+    return JSON.parse(stdout);
+  },
+  sleep: async (ms: number) => { await new Promise(resolve => setTimeout(resolve, ms)); },
+  now: () => Date.now(),
+};
+
+async function pullPinnedImage(graph: keyof typeof imageSources, io = imageIo): Promise<string> {
+  const digest = graph === "native" ? nativeDigest : managedDigest;
+  const deadline = io.now() + 120_000;
+  const failures: string[] = [];
+  for (const source of imageSources[graph]) {
+    const reference = `${source}@${digest}`;
+    for (let attempt = 0; attempt < 3 && io.now() < deadline; attempt += 1) {
+      try {
+        await io.pull(reference, Math.min(30_000, deadline - io.now()));
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        // Only transient pull failures may retry or fall through to another registry.
+        if (!/toomanyrequests|too many requests|429|timed?\s*out|timeout|ETIMEDOUT|ECONN|ENOTFOUND|EAI_AGAIN|no such host|connection|network|TLS handshake|\bEOF\b/iu.test(message)
+          && !(error instanceof Error && "killed" in error && error.killed === true)) throw error;
+        failures.push(`${reference} attempt ${attempt + 1}: ${message}`);
+        if (attempt < 2) {
+          // Docker registries report seconds or Go-style subsecond durations.
+          // The remaining global budget caps the wait; never pull again after expiry.
+          const retryAfter = /retry-after:\s*(\d+(?:\.\d+)?)\s*(ns|[µμu]s|ms|s(?:ec(?:ond)?s?)?)?(?![\wµμ])/iu.exec(message);
+          const unit = retryAfter?.[2]?.toLowerCase();
+          const retryMs = retryAfter ? Number(retryAfter[1]) * (unit === "ns" ? 0.000001
+            : unit && ["µs", "μs", "us"].includes(unit) ? 0.001 : unit === "ms" ? 1 : 1_000) : 0;
+          await io.sleep(Math.min(Math.max(1_000 * (attempt + 1), retryMs), Math.max(0, deadline - io.now())));
+        }
+        continue;
+      }
+      // Inspect and all subsequent container/SQL errors are outside the retry scope.
+      // Docker omits docker.io/library for official-image RepoDigest names.
+      const canonical = (value: string) => value.replace(/^docker\.io\/(?:library\/)?/u, "").replace(/:[^/@]+@/u, "@");
+      expect((await io.repoDigests(reference)).map(canonical), "pulled image must have the exact pinned RepoDigest").toContain(canonical(reference));
+      return reference;
+    }
+  }
+  throw new Error(`Reviewed batch gate could not pull pinned ${graph} image within 120s; no source succeeded:\n${failures.join("\n")}`);
+}
+
+describe("pinned image selection (Docker-free)", () => {
+  const witness = () => {
+    const pulls: string[] = [];
+    const waits: number[] = [];
+    let elapsed = 0;
+    const io = {
+      pull: async (reference: string, _timeout: number) => { pulls.push(reference); },
+      repoDigests: async (reference: string) => [reference],
+      sleep: async (ms: number) => { waits.push(ms); elapsed += ms; },
+      now: () => elapsed,
+    };
+    return { io, pulls, waits };
+  };
+  it("keeps the approved source order and pins", () => {
+    expect(imageSources).toEqual({
+      native: ["docker.io/library/postgres", "public.ecr.aws/docker/library/postgres"],
+      managed: ["ghcr.io/supabase/postgres:17.11.0.004", "docker.io/supabase/postgres", "public.ecr.aws/supabase/postgres"],
+    });
+    expect(nativeDigest).toBe("sha256:9e2cf6287f25c3151f4c9421ccce2b17f3e60061c111a29165e0d2cdd9ff0a97");
+    expect(managedDigest).toBe("sha256:b15d862126dd2dac02da524696ccfde2dcce2ceaee0a58973b2727befe492706");
+  });
+  it.each(["native", "managed"] as const)("uses the first pinned source for %s", async graph => {
+    const { io, pulls, waits } = witness();
+    const reference = await pullPinnedImage(graph, io);
+    expect(reference).toBe(`${imageSources[graph][0]}@${graph === "native" ? nativeDigest : managedDigest}`);
+    expect(pulls).toEqual([reference]);
+    expect(waits).toEqual([]);
+  });
+  it.each(["native", "managed"] as const)("bounds retries and preserves source order on %s rate limits", async graph => {
+    const { io, pulls, waits } = witness();
+    io.pull = async reference => { pulls.push(reference); throw new Error("toomanyrequests: 429"); };
+    await expect(pullPinnedImage(graph, io)).rejects.toThrow("no source succeeded");
+    expect(pulls).toEqual(imageSources[graph].flatMap(source => Array<string>(3).fill(`${source}@${graph === "native" ? nativeDigest : managedDigest}`)));
+    expect(waits).toEqual(imageSources[graph].flatMap(() => [1_000, 2_000]));
+  });
+  it.each([
+    ["736.176µs", 1_000], ["736.176μs", 1_000], ["1500ms", 1_500],
+    ["4", 4_000], ["4.5s", 4_500], ["5 seconds", 5_000],
+  ] as const)("honours retry-after %s with a fake clock", async (value, delay) => {
+    const { io, pulls, waits } = witness();
+    io.pull = async reference => {
+      pulls.push(reference);
+      if (pulls.length === 1) throw new Error(`toomanyrequests: 429; retry-after: ${value}`);
+    };
+    await pullPinnedImage("managed", io);
+    expect(waits).toEqual([delay]);
+    expect(io.now()).toBe(delay);
+    expect(pulls).toHaveLength(2);
+  });
+  it("caps Retry-After at the total budget and makes no later pull", async () => {
+    const { io, pulls, waits } = witness();
+    io.pull = async reference => { pulls.push(reference); throw new Error("429; retry-after: 300"); };
+    await expect(pullPinnedImage("managed", io)).rejects.toThrow("no source succeeded");
+    expect(waits).toEqual([120_000]);
+    expect(io.now()).toBe(120_000);
+    expect(pulls).toHaveLength(1);
+  });
+  it("uses a successful fallback after exhausting a rate-limited source", async () => {
+    const { io, pulls } = witness();
+    io.pull = async reference => { pulls.push(reference); if (reference.startsWith("ghcr.io/")) throw new Error("toomanyrequests"); };
+    expect(await pullPinnedImage("managed", io)).toBe(`${imageSources.managed[1]}@${managedDigest}`);
+    expect(pulls).toHaveLength(4);
+  });
+  it("bounds the whole pull phase even when every pull times out", async () => {
+    const { io, pulls } = witness();
+    io.pull = async (reference, timeout) => { pulls.push(reference); await io.sleep(timeout); throw new Error("connection timed out"); };
+    await expect(pullPinnedImage("managed", io)).rejects.toThrow("within 120s");
+    expect(io.now()).toBe(120_000);
+    expect(pulls.length).toBeLessThanOrEqual(9);
+  });
+  it("refuses a digest mismatch without retry or fallback", async () => {
+    const { io, pulls } = witness();
+    io.repoDigests = async () => [`${imageSources.managed[0]}@${nativeDigest}`];
+    await expect(pullPinnedImage("managed", io)).rejects.toThrow("exact pinned RepoDigest");
+    expect(pulls).toHaveLength(1);
+  });
+  it("accepts a tagged pull's untagged RepoDigest spelling", async () => {
+    const { io } = witness();
+    io.repoDigests = async () => [`ghcr.io/supabase/postgres@${managedDigest}`];
+    expect(await pullPinnedImage("managed", io)).toBe(`${imageSources.managed[0]}@${managedDigest}`);
+  });
+  it("accepts Docker's canonical official-image RepoDigest spelling", async () => {
+    const { io } = witness();
+    io.repoDigests = async () => [`postgres@${nativeDigest}`];
+    expect(await pullPinnedImage("native", io)).toBe(`${imageSources.native[0]}@${nativeDigest}`);
+  });
+  it("does not retry inspection failures", async () => {
+    const { io, pulls } = witness();
+    io.repoDigests = async () => { throw new Error("connection reset during inspect"); };
+    await expect(pullPinnedImage("managed", io)).rejects.toThrow("connection reset during inspect");
+    expect(pulls).toHaveLength(1);
+  });
+  it("does not retry a non-transient pull failure", async () => {
+    const { io, pulls, waits } = witness();
+    io.pull = async reference => { pulls.push(reference); throw new Error("manifest unknown"); };
+    await expect(pullPinnedImage("native", io)).rejects.toThrow("manifest unknown");
+    expect(pulls).toHaveLength(1);
+    expect(waits).toEqual([]);
+  });
+});
 
 // Always part of the required test aggregate. Neither absent Docker nor absent
 // PostgreSQL/pgTAP can turn a control proof into a skipped test or lexical PASS.
@@ -51,7 +207,8 @@ describe.each(["native", "managed"] as const)("exact batch catalog gate: %s", gr
     writeFileSync(join(replayRoot, interleaved), "SELECT set_config('openlup.batch_interleaved', 'applied', false);", { flag: "wx" });
     paths = reviewedBatchPaths(replayRoot, directory, pins);
     if (!await dockerAvailable()) throw new Error("Reviewed batch gate requires real PostgreSQL and pgTAP");
-    container = await runPostgresContainer({ name: `reviewed-batch-${graph}-${process.pid}`, password: "synthetic-conformance", image: portable ? "postgres:16" : image });
+    const image = await pullPinnedImage(graph);
+    container = await runPostgresContainer({ name: `reviewed-batch-${graph}-${process.pid}`, password: "synthetic-conformance", image });
     if (!await waitForPostgresTcpReady(container.connectionString)) throw new Error("Reviewed batch PostgreSQL unavailable");
     db = new Pool({ connectionString: portable ? container.connectionString : container.connectionString.replace("postgres://postgres:", "postgres://supabase_admin:"), max: 1 });
     expect((await db.query("SHOW standard_conforming_strings")).rows).toEqual([{ standard_conforming_strings: "on" }]);
