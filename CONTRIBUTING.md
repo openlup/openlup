@@ -557,6 +557,10 @@ local listener; they never establish provider-account readiness.
 Required root `test` accepts only success from all four `test-full-shard` jobs;
 failed, cancelled or skipped shard jobs refuse it. Main-push reuse requires a
 complete successful exact-commit merge-group run, including raw pgTAP.
+The `test-full-shard` and `pgtap` jobs authenticate ghcr.io pulls with the
+job's `GITHUB_TOKEN` and `packages: read` before non-reused tests; login failure
+fails the job. The pinned Supabase setup action selects ghcr.io for CLI 2.98.2;
+`install-proof` retains its Docker Hub service, which is pulled before steps run.
 See [Test scope and diagnostics](#test-scope-and-diagnostics) for selection,
 sharding, discovery and test-author guidance.
 

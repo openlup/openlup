@@ -941,13 +941,81 @@ injected.
 [Stock sync](../../packages/platform/src/fulfillment/providerStockSyncWorker.ts)
 uses approved G15 coverageGapSkus on SyncCursor: absent is empty, and only the
 preceding succeeded run can confirm a repeated sellable coverage gap. A completed
-run writes the sorted current set on success or [] on failure; running cursors
-also clear it. Approved G16 makes readLocalInventoryStock(requestedAt) return
+run writes the sorted current set on success or [] on operational failure; running
+cursors preserve the prior set, as does a malformed run with no valid stock rows.
+The failed status prevents that retained set from confirming a gap in the next run.
+Approved G16 makes readLocalInventoryStock(requestedAt) return
 unaggregated lines with skuRef, quantity balances, fulfillable/location/lot status
 and expiry. The worker filters and sums at the same captured clock passed to
 active-reservation reads; expiry exactly at requestedAt is unusable. The provider
-stock-sync shape and inventory authority are unchanged. Host compatibility inputs
-preserve original run IDs, sentinel, keys and movement-window time zone. Product
+inventory authority remains unchanged. Host compatibility inputs preserve original
+run IDs, sentinel, keys and movement-window time zone.
+
+Stock and movement reads can return a rejected row with its input index and the closed
+`invalid_sku_ref` reason. The worker counts every rejection, persists it with a
+null SKU and a `kind` of `stock` or `movement`, and continues current/snapshot
+writes for valid rows. A mixed valid/rejected batch succeeds: alert evaluation,
+SKU evidence resolution and stale recovery proceed for valid SKUs, coverage
+confirmation is retained, and `lastStockSyncedAt` advances. Success requires a
+valid stock row or a genuinely empty stock response. A nonempty stock response
+with no valid stock rows finishes malformed and non-retryable even with valid
+movements, preserves prior coverage gaps and cannot resolve stale alerts. An empty
+stock response with entirely rejected movement rows also fails as malformed.
+Operational failures retain their failure and retry semantics. Rejections remain included in both the `rejected`
+and `failures` counters even on a successful mixed run. Unsafe references never
+reach the store; the worker skips blank stock SKU references before classification
+and persistence, preserving base behavior. Valid movements still contribute to
+counts and the latest occurrence.
+Hosts consuming `getStock()` or `getStockMovements()` directly must discriminate
+`"kind" in row && row.kind === "rejected"` before accessing observation fields.
+Item write failures retain an operation-specific reason and, when available, a
+SQLSTATE in both the per-item result and failed `SyncCursor.error`; arbitrary
+exception prose is discarded. Operational reasons take precedence over rejections
+in the failed cursor; retryability follows operational failures independently of
+rejection counts.
+
+Provider failures return `ok: false` with neutral `providerError`, when the provider
+supplies a typed failure, carrying operation
+(`get_stock` or `get_stock_movements`), status, sanitized code and retryability,
+and persist that diagnostic in a terminal failed cursor. Stock failure projection
+keeps exhausted network reads retryable; stock redirects report `redirect_refused`
+and are non-retryable without another GET attempt. Product-sync retains base
+client diagnostics and retries, including a non-retryable final network failure.
+Disabled, not-ready and bad-identity adapter refusals preserve their typed reason
+and retryability in result `refusal` and the failed cursor, without a providerError.
+A host may map a failed result to its job's HTTP 502; the
+package installs no HTTP wrapper. Terminal cursor-write failure still rejects,
+so callers must handle persistence failure rather than assume evidence exists.
+Compatibility: cursor reads, running-cursor writes, local stock/class/reservation
+reads and stock/evidence writes or SKU evidence resolution now also resolve
+`ok: false` instead of rejecting when a terminal failed cursor can be persisted.
+Stale-sync recovery resolution runs after the succeeded terminal cursor; its
+best-effort cleanup failure leaves that cursor and the successful result intact.
+
+The native stock port retains run identity, counts, item ATP observations
+(`activeReserved`, `sellableNow`, `coverageGapQuantity`), alert quantities and
+stale gap hours/threshold/detection time in the existing cursor JSON column.
+These observations describe warning evidence, not a new ATP admission policy.
+Cursor evidence is the latest run and is overwritten by the next run; dedicated
+immutable snapshot/alert evidence columns remain a follow-up gap. Current and
+snapshot rows keep their existing sync-run columns. Alert fingerprints include
+only `requestKey`, `skuRef` and `thresholdKind`. Quantities, severity and run
+evidence may change under the same key and return `replayed: true`; a different
+SKU or threshold uses a different host key. Reusing a key for a different SKU or
+threshold retains the SQL conflict.
+
+KEEP-GAP: alert refresh and reopen-on-replay are a scheduled forward SQL fix,
+required before stock adoption. The current native
+`fulfillment_record_stock_evidence` replay updates only `last_seen_at`; stored
+severity, quantities and status remain unchanged, including a resolved status.
+
+Migration: alert rows written by 0.22.0's native port carry the earlier whole-input fingerprint; subsequent writes under those keys conflict with SQLSTATE `23505`, and resolve only marks the row resolved while retaining its key and fingerprint, so it does not clear the conflict. Legacy fingerprints are documented only; this change does not rewrite them.
+
+See the [stock parity tests](../../packages/platform/test/fulfillment/stockSync.test.ts)
+for native replay, and the [adapter factory tests](../../packages/platform/test/fulfillment/omnipack/factory.test.ts)
+for failed cursors, diagnostic safety and mixed admission boundaries.
+
+Product
 sync retains additive pack push, missing-metadata skip and sync markers; pull
 delegates local ownership and unknown-SKU decisions to host upsert and records
 conflicts. Evidence handlers retain GET/authorization/validation/read order with

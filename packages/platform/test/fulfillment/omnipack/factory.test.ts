@@ -3,7 +3,9 @@ import { expect, it, vi } from "vitest";
 import { runFulfillmentProductSyncWorker } from "../../../src/fulfillment/providerProductSyncWorker.js";
 import * as entry from "../../../src/fulfillment/omnipack/index.js";
 import type { OmnipackFulfillmentAdapterConfig } from "../../../src/fulfillment/omnipack/index.js";
-import type { DispatchEvidence, FulfillmentDispatchRequest } from "../../../src/fulfillment/contracts/index.js";
+import type { DispatchEvidence, FulfillmentDispatchRequest, FulfillmentStockSyncPort, StockSnapshot, SyncCursor } from "../../../src/fulfillment/contracts/index.js";
+import { runFulfillmentStockSyncWorker as run } from "../../../src/fulfillment/index.js";
+import { at } from "../fixtures.js";
 import { config as http, jsonResponse, stock } from "./fixtures.js";
 
 const now = "2026-10-21T10:00:00Z";
@@ -406,6 +408,19 @@ it("keeps product reads pull-only and strips donor response bags from explicit w
   expect(writer.fetchImpl.mock.calls.map(([, init]) => init?.method)).toEqual(["POST", "POST"]);
   await expect(writer.adapter.productSync.addProductPack("SKU-A", { ean: secret, quantity: 0 })).rejects.toMatchObject({ reason: "malformed", phase: "sync", retryable: false });
 });
+it("never leaks transport failures through sync or readback", async () => {
+  const f = fixture(() => { throw Error(JSON.stringify(plants)); });
+  for (const [operation, invoke] of [
+    ["get_stock", () => f.adapter.stockSync.getStock()],
+    ["get_stock_movements", () => f.adapter.stockSync.getStockMovements()],
+  ] as const) {
+    const error = await invoke().catch(error => error);
+    expect(error).toMatchObject({ reason: "io_failure", phase: "sync", retryable: true,
+      providerError: { operation, status: null, code: "network_error", retryable: true } });
+    safe(error);
+  }
+  const result = await f.adapter.readback.read(reading); expect(result.kind).toBe("unknown"); safe(result);
+});
 it("keeps sync failures as safe typed Errors and readback as a closed result", async () => {
   for (const status of [null, 503]) for (const code of ["FAKE_PROVIDER_DOWN", plants.arbitrary]) {
     const f = fixture(() => {
@@ -413,8 +428,6 @@ it("keeps sync failures as safe typed Errors and readback as a closed result", a
       return jsonResponse({ code, ...plants }, status);
     });
     for (const [operation, invoke] of [
-      ["getStock", () => f.adapter.stockSync.getStock()],
-      ["getStockMovements", () => f.adapter.stockSync.getStockMovements()],
       ["getProduct", () => f.adapter.productSync.getProductPacks("SKU-A")],
       ["getStock", () => f.adapter.productSync.listStockedSkus()],
     ] as const) {
@@ -733,5 +746,267 @@ it("models stateless dispatch, command binding, replay and eviction interleaving
       if (step % 4 === 3) for (let old = 0; old < requests.length; old++) await boundedDispatch(old);
     }
     expect(evictions).toBeGreaterThan(0);
+  }
+});
+
+function stockFixture() {
+  let cursor: SyncCursor | null = null, fail = false;
+  const evidence: Parameters<FulfillmentStockSyncPort["recordLowStockEvidence"]>[0][] = [], snapshots: Parameters<FulfillmentStockSyncPort["recordStockSnapshot"]>[0][] = [], requested: string[] = [], resolutions: Parameters<FulfillmentStockSyncPort["resolveLowStockEvidence"]>[0][] = [];
+  const stock: StockSnapshot = { providerRef: "warehouse-a", syncRunId: "legacy-run", collectedAt: at, sourceRevision: null, revisionSource: "collection", skuRef: "sku-a", quantityKind: "snapshot", totalQuantity: 9, forSaleQuantity: 5, reservedOrUnavailableQuantity: 4 };
+  const line: Awaited<ReturnType<FulfillmentStockSyncPort["readLocalInventoryStock"]>>[number] = { skuRef: "sku-a", quantity: { onHand: 10, reserved: 2, unavailable: 1, safetyStock: 0 }, fulfillable: true, locationStatus: "active", lotStatus: "available", expiresAt: null };
+  const lines = [line];
+  const input: Parameters<typeof run>[0] = {
+    now: () => new Date(at), movementBatchSize: 20,
+    compatibility: { syncRunId: () => "legacy-stock-run", staleEvidenceSku: "legacy-sentinel", timeZone: "Etc/GMT-2", currentKey: (r, s) => `${r}:current:${s}`, snapshotKey: (r, s) => `${r}:snapshot:${s}`, lowStockKey: (s, t) => `legacy:${s}:${t}`, staleKey: last => `legacy-stale:${last}` },
+    provider: { async getStock() { return [stock]; }, async getStockMovements() { return []; } },
+    port: { async readCursor() { return cursor; }, async readLocalInventoryStock(requestedAt) { requested.push(requestedAt); return lines; },
+      async readSkuInventoryClasses() { return new Map([["sku-a", "sellable"]]); }, async readActiveReservations(_skus, requestedAt) { requested.push(requestedAt); return new Map([["sku-a", 6]]); },
+      async recordCursor(value) { cursor = structuredClone(value); },
+      async recordStockSnapshot(value) { snapshots.push(value); if (fail) throw new Error("synthetic-private-stock"); return { replayed: false, readBack: true }; },
+      async recordProviderStockCurrent() { return { replayed: false, readBack: true }; }, async recordMovement() { return { replayed: false, readBack: false }; },
+      async recordLowStockEvidence(value) { evidence.push(value); return { replayed: false }; }, async resolveLowStockEvidence(value) { resolutions.push(value); return { resolved: 1 }; },
+    },
+  };
+  return { input, lines, evidence, snapshots, requested, resolutions, cursor: () => cursor, setCursor(value: SyncCursor | null) { cursor = value; }, fail(value: boolean) { fail = value; } };
+}
+
+// Inputs reused from b3 probe stock scenarios: total9/forSale5, local10/2/1/1,
+// activeReservations6, 22:30Z, two read attempts and a 5ms timeout. No provider access.
+const probeAt = "2026-10-22T22:30:00.000Z";
+const probeStock = { sku: "sku-a", totalQuantity: 9, forSaleQuantity: 5 };
+function probe(reply?: (url: URL, init?: RequestInit) => Promise<Response> | Response) {
+  const f = stockFixture(), calls: { url: URL; init?: RequestInit }[] = [];
+  f.input.now = () => new Date(probeAt);
+  f.lines[0].quantity.safetyStock = 1;
+  f.input.compatibility.syncRunId = date => `stock-run:${date.toISOString()}`;
+  f.input.provider = entry.createOmnipackFulfillmentAdapter({
+    http: { ...http, timeoutMs: 5, fetchImpl: (async (url, init) => {
+      const target = new URL(String(url)); calls.push({ url: target, init });
+      return reply ? reply(target, init) : jsonResponse(target.pathname === "/stock"
+        ? { _embedded: { stockItems: [probeStock] } } : { _embedded: [] });
+    }) as typeof fetch },
+    selected: true, readiness: { ready: true }, resolveProduct: async () => null,
+    notification: { token: () => "placeholder", expectedEvent: "order.delivered" },
+    clock: () => probeAt, mintEvidenceReference: () => "evidence:probe", mintSyncRunId: () => "provider-run",
+    approveTrackingUrl: () => false,
+  }).stockSync;
+  return { ...f, calls };
+}
+
+it("keeps the safe per-item failure in the result and failed cursor (S1 stock-local-error)", async () => {
+  const f = probe();
+  f.input.port.recordStockSnapshot = async () => { throw Error("snapshot_write_failed:23505"); };
+  const result = await run(f.input);
+  expect(result).toMatchObject({ ok: false, failures: 1, checked: 0, reason: "snapshot_write_failed:23505",
+    items: [{ skuRef: "sku-a", status: "failed", reason: "snapshot_write_failed:23505" }] });
+  expect(f.cursor()).toMatchObject({ status: "failed", error: { reason: result.reason }, counts: { failures: 1 } });
+});
+
+it("keeps a transient snapshot failure retryable alongside a rejected SKU (S1/S5)", async () => {
+  const f = probe(url => jsonResponse(url.pathname === "/stock"
+    ? { _embedded: { stockItems: [{ ...probeStock, sku: "SKU/1" }, probeStock] } } : { _embedded: [] }));
+  f.input.port.recordStockSnapshot = async () => { throw Object.assign(Error("private payload"), { code: "40001" }); };
+  expect(await run(f.input)).toMatchObject({ ok: false, failures: 2, rejected: 1, reason: "snapshot_write_failed:40001",
+    items: [{ kind: "stock", itemIndex: 0, skuRef: null, status: "rejected", reason: "invalid_sku_ref" },
+      { itemIndex: 1, skuRef: "sku-a", status: "failed", reason: "snapshot_write_failed:40001" }] });
+  expect(f.cursor()).toMatchObject({ status: "failed", counts: { failures: 2, rejected: 1 },
+    error: { reason: "snapshot_write_failed:40001" }, refusal: { reason: "io_failure", retryable: true } });
+  expect(JSON.stringify(f.cursor())).not.toMatch(/SKU\/1|private payload/);
+});
+
+it("keeps a SQLSTATE but excludes arbitrary exception prose and payloads (S1)", async () => {
+  const f = probe();
+  f.input.port.recordStockSnapshot = async () => { throw Object.assign(Error("https://private.invalid/?token=secret recipient@example.test"), { code: "42P01" }); };
+  expect(await run(f.input)).toMatchObject({ reason: "snapshot_write_failed:42P01" });
+  expect(JSON.stringify(f.cursor())).not.toMatch(/secret|private.invalid|recipient@example/);
+  f.input.port.recordStockSnapshot = async () => { throw Error("secret_payload_value"); };
+  expect(await run(f.input)).toMatchObject({ reason: "snapshot_write_failed" });
+});
+
+it("persists operation/status/code/retryability after exhausted provider 503 reads (S2 stock-503)", async () => {
+  const f = probe(() => jsonResponse({ code: "FAKE_PROVIDER_DOWN", token: "secret" }, 503));
+  const providerError = { operation: "get_stock", status: 503, code: "FAKE_PROVIDER_DOWN", retryable: true };
+  expect(await run(f.input)).toMatchObject({ ok: false, failures: 1, providerCalls: 1, providerError });
+  expect(f.calls).toHaveLength(2);
+  expect(f.cursor()).toMatchObject({ status: "failed", error: { providerError }, refusal: { retryable: true } });
+  expect(JSON.stringify(f.cursor())).not.toContain("secret");
+});
+
+it("retains timeout retryability after the final attempt (S2 stock-timeout)", async () => {
+  const f = probe((_url, init) => new Promise((_resolve, reject) => {
+    init!.signal!.addEventListener("abort", () => reject(new DOMException("scripted timeout secret", "AbortError")), { once: true });
+  }));
+  expect(await run(f.input)).toMatchObject({ ok: false, providerError: { operation: "get_stock", status: null, code: "network_error", retryable: true } });
+  expect(f.calls).toHaveLength(2);
+  expect(f.cursor()).toMatchObject({ status: "failed", refusal: { retryable: true } });
+});
+
+it("names redirect refusal and makes one GET attempt while preserving the credential destination policy (S2)", async () => {
+  for (const httpRedirect of [false, true]) {
+    const f = probe((_url, init) => {
+      expect(init?.redirect).toBe("error");
+      if (httpRedirect) return jsonResponse({}, 302);
+      throw new TypeError("fetch failed", { cause: Error("unexpected redirect") });
+    });
+    expect(await run(f.input)).toMatchObject({ providerError: { code: "redirect_refused", retryable: false } });
+    expect(f.cursor()).toMatchObject({ status: "failed", error: { providerError: { code: "redirect_refused" } } });
+    expect(f.calls).toHaveLength(1);
+  }
+});
+
+it("distinguishes movement-read failures and sanitizes unsafe provider error codes (S2)", async () => {
+  const f = probe(url => url.pathname === "/stock" ? jsonResponse({ _embedded: { stockItems: [{ ...probeStock, sku: "SKU/1" }, probeStock] } })
+    : jsonResponse({ code: "https://private.invalid/?token=secret" }, 400));
+  expect(await run(f.input)).toMatchObject({ ok: false, rejected: 1, failures: 2, reason: "provider_get_stock_movements_failed:http_400",
+    providerError: { operation: "get_stock_movements", status: 400, code: "http_400", retryable: false } });
+  expect(f.cursor()).toMatchObject({ status: "failed", error: { reason: "provider_get_stock_movements_failed:http_400" },
+    refusal: { reason: "io_failure", retryable: false }, counts: { providerCalls: 2 } });
+  expect(JSON.stringify(f.cursor())).not.toContain("secret");
+});
+
+it("retries a transient read and completes with no failed-provider diagnostic (S2 stock-retry)", async () => {
+  let stockReads = 0;
+  const f = probe(url => url.pathname === "/stock"
+    ? ++stockReads === 1 ? jsonResponse({ code: "FAKE_PROVIDER_DOWN" }, 503) : jsonResponse({ _embedded: { stockItems: [probeStock] } })
+    : jsonResponse({ _embedded: [] }));
+  expect(await run(f.input)).toMatchObject({ ok: true, checked: 1, updated: 2 });
+  expect(f.calls).toHaveLength(3);
+  expect(f.cursor()).toMatchObject({ status: "succeeded", error: null });
+});
+
+it("persists run, ATP and stale/shortage evidence using cursor JSON (S3 stock-stale/stock-gap)", async () => {
+  const f = probe();
+  f.setCursor({ status: "succeeded", lastStockSyncedAt: "2026-10-22T00:00:00.000Z", lastMovementOccurredAt: null,
+    continuation: { nextRef: null, startLocalDate: null, endLocalDate: null }, coverageGapSkus: ["sku-a"], refusal: null });
+  expect(await run(f.input)).toMatchObject({ ok: true, lowStock: 2, reservationCoverage: 1 });
+  expect(f.cursor()).toMatchObject({ syncRunId: `stock-run:${probeAt}`, counts: { checked: 1, updated: 2, movements: 0 },
+    staleSync: { gapHours: 22.5, thresholdHours: 6, detectedAt: probeAt },
+    items: [{ skuRef: "sku-a", activeReserved: 6, sellableNow: 0, coverageGapQuantity: 1 }],
+    alerts: [expect.objectContaining({ thresholdKind: "stale_sync", gapHours: 22.5, detectedAt: probeAt }),
+      expect.objectContaining({ thresholdKind: "safety_stock", activeReserved: 6, coverageGapQuantity: 1 }),
+      expect.objectContaining({ thresholdKind: "reservation_coverage", activeReserved: 6, coverageGapQuantity: 1 })] });
+});
+
+it("round-trips cursor counts, item/alert evidence and safe provider errors through the native JSON column (S1–S3)", async () => {
+  const f = probe(() => jsonResponse({ code: "FAKE_PROVIDER_DOWN" }, 503)); await run(f.input);
+  const { createPostgresFulfillmentStockSyncPort } = await import("../../../src/fulfillment/postgresStockSyncPort.js");
+  let values: unknown[] = [];
+  const port = createPostgresFulfillmentStockSyncPort({ async query(sql, input = []) {
+    if (sql.startsWith("INSERT")) { values = input; return { rows: [] }; }
+    return { rows: [{ status: values[1], last_stock_synced_at: values[2], last_movement_occurred_at: values[3], cursor: JSON.parse(String(values[4])) }] };
+  } }, { sourceKey: "warehouse-a", readLocalInventoryStock: async () => [] });
+  await port.recordCursor(f.cursor()!);
+  expect(await port.readCursor()).toEqual(f.cursor());
+  expect(values[5]).toBe("provider_get_stock_failed:FAKE_PROVIDER_DOWN");
+  const healthy = probe(); await run(healthy.input); await port.recordCursor(healthy.cursor()!);
+  expect(await port.readCursor()).toEqual(healthy.cursor());
+});
+
+it("admits valid rows while counting and reporting every unsafe SKU by index (S5 stock-slash)", async () => {
+  const f = probe(url => jsonResponse(url.pathname === "/stock" ? { _embedded: { stockItems: [
+    { ...probeStock, sku: "SKU/1" }, probeStock, { ...probeStock, sku: "https://private.invalid/?token=secret" },
+  ] } } : { _embedded: [] }));
+  expect(await run(f.input)).toMatchObject({ ok: true, checked: 1, updated: 2, failures: 2, rejected: 2,
+    items: expect.arrayContaining([{ kind: "stock", itemIndex: 0, skuRef: null, status: "rejected", reason: "invalid_sku_ref" },
+      { kind: "stock", itemIndex: 2, skuRef: null, status: "rejected", reason: "invalid_sku_ref" }, expect.objectContaining({ itemIndex: 1, skuRef: "sku-a", status: "recorded" })]) });
+  expect(f.snapshots.map(value => value.snapshot.skuRef)).toEqual(["sku-a"]);
+  expect(f.cursor()).toMatchObject({ status: "succeeded", lastStockSyncedAt: probeAt, counts: { rejected: 2 }, refusal: null, error: null });
+  expect(JSON.stringify(f.cursor())).not.toMatch(/SKU\/1|secret|private.invalid/);
+});
+
+it("reports entirely rejected stock, movement or combined batches as malformed and non-retryable (S5)", async () => {
+  for (const source of ["stock", "movement", "both"]) {
+    const f = probe(url => jsonResponse(url.pathname === "/stock"
+      ? { _embedded: { stockItems: source === "movement" ? [] : [{ ...probeStock, sku: "SKU/1" }] } }
+      : { _embedded: source === "stock" ? [] : [{ sku: "SKU/1", quantity: 2, occurredAt: probeAt }] }));
+    const rejected = source === "both" ? 2 : 1;
+    expect(await run(f.input)).toMatchObject({ ok: false, checked: 0, updated: 0, rejected, failures: rejected, reason: "invalid_sku_ref" });
+    expect(f.snapshots).toEqual([]);
+    expect(f.cursor()).toMatchObject({ status: "failed", lastStockSyncedAt: null, error: { reason: "invalid_sku_ref" }, coverageGapSkus: [], refusal: { reason: "malformed", retryable: false } });
+  }
+});
+
+it("reports unsafe stock and movement rows while preserving valid observations (S5)", async () => {
+  const movement = { sku: "sku-a", quantity: 2, occurredAt: probeAt, operationType: "receipt", warehouseDocumentNumber: "DOC-A" };
+  const f = probe(url => jsonResponse(url.pathname === "/stock"
+    ? { _embedded: { stockItems: [probeStock, { ...probeStock, sku: "SKU/1" }] } }
+    : { _embedded: [movement, { ...movement, sku: "SKU/1", occurredAt: "2026-10-22T23:00:00.000Z" }] }));
+  const current = vi.fn(f.input.port.recordProviderStockCurrent);
+  const recordMovement = vi.fn(f.input.port.recordMovement);
+  f.input.port.recordProviderStockCurrent = current;
+  f.input.port.recordMovement = recordMovement;
+  const result = await run(f.input);
+  const rejection = { itemIndex: 1, skuRef: null, status: "rejected", reason: "invalid_sku_ref" };
+  expect(result).toMatchObject({ ok: true, checked: 1, updated: 2, movements: 1, lastMovementOccurredAt: probeAt,
+    rejected: 2, failures: 2 });
+  expect(result.items.filter(item => item.status === "rejected")).toEqual([{ ...rejection, kind: "stock" }, { ...rejection, kind: "movement" }]);
+  expect(result.items).toContainEqual(expect.objectContaining({ skuRef: "sku-a", status: "recorded" }));
+  expect(result.providerError).toBeUndefined();
+  expect(f.snapshots.map(value => value.snapshot.skuRef)).toEqual(["sku-a"]);
+  expect(current.mock.calls.map(([value]) => value.snapshot.skuRef)).toEqual(["sku-a"]);
+  expect(recordMovement).not.toHaveBeenCalled();
+  expect(f.cursor()).toMatchObject({ counts: { checked: 1, updated: 2, movements: 1, rejected: 2, failures: 2 },
+    status: "succeeded", lastStockSyncedAt: probeAt, error: null, refusal: null });
+  expect(JSON.stringify(f.cursor())).not.toMatch(/SKU\/1|provider_read_failed/);
+  // Valid movements cannot establish stock freshness when every stock row is rejected.
+  f.input.provider.getStock = async () => [{ kind: "rejected", itemIndex: 0, reason: "invalid_sku_ref" }];
+  expect(await run(f.input)).toMatchObject({ ok: false, checked: 0, movements: 1, rejected: 2, reason: "invalid_sku_ref" });
+  expect(f.cursor()).toMatchObject({ status: "failed", lastStockSyncedAt: null, coverageGapSkus: ["sku-a"],
+    error: { reason: "invalid_sku_ref" }, refusal: { reason: "malformed", retryable: false } });
+});
+
+it("preserves duplicate rows and movement counts/window evidence (S3 stock-duplicate/stock-movements)", async () => {
+  const f = probe(url => jsonResponse(url.pathname === "/stock" ? { _embedded: { stockItems: [probeStock, probeStock] } }
+    : { _embedded: [{ sku: "sku-a", quantity: 2, occurredAt: probeAt, operationType: "receipt", warehouseDocumentNumber: "DOC-A" },
+      { sku: "sku-a", quantity: 2, occurredAt: probeAt, operationType: "receipt", warehouseDocumentNumber: "DOC-A" }] }));
+  expect(await run(f.input)).toMatchObject({ checked: 2, movements: 2, lastMovementOccurredAt: probeAt });
+  expect(f.cursor()).toMatchObject({ counts: { checked: 2, movements: 2 }, lastMovementOccurredAt: probeAt });
+  expect(f.calls[1].url.searchParams.get("startLocalDate")).toBe("2026-10-22");
+});
+
+it("records a terminal failure when alert persistence fails after item writes (S1/S4)", async () => {
+  const f = probe();
+  f.input.port.recordLowStockEvidence = async () => { throw Object.assign(Error("private payload"), { code: "23505" }); };
+  expect(await run(f.input)).toMatchObject({ ok: false, checked: 1, failures: 1, reason: "stock_evidence_write_failed:23505" });
+  expect(f.cursor()).toMatchObject({ status: "failed", coverageGapSkus: [], error: { reason: "stock_evidence_write_failed:23505" } });
+});
+
+
+it("preserves product read retry counts and refusal diagnostics for network and redirect failures (#311)", async () => {
+  for (const status of [null, 302]) {
+    for (const operation of ["getProductPacks", "listStockedSkus"] as const) {
+      const f = fixture(() => {
+        if (status === null) throw new TypeError("fetch failed", { cause: Error("unexpected redirect") });
+        return jsonResponse({}, status);
+      });
+      const adapter = entry.createOmnipackFulfillmentAdapter({ ...f.config, http: { ...f.config.http, safeReadRetries: 1 } });
+      const error = await (operation === "getProductPacks"
+        ? adapter.productSync.getProductPacks("SKU-A") : adapter.productSync.listStockedSkus()).catch(error => error);
+      expect(error).toMatchObject({ reason: "io_failure", phase: "sync", status,
+        code: status === null ? "network_error" : "http_302", retryable: false });
+      expect(error.providerError).toBeUndefined();
+      expect(f.fetchImpl).toHaveBeenCalledTimes(2);
+      expect(f.fetchImpl.mock.calls.every(([, init]) => init?.redirect === "error")).toBe(true);
+    }
+  }
+});
+
+it("retains disabled, not-ready and bad-identity adapter refusals in stock results and cursors", async () => {
+  for (const [config, reason] of [
+    [{ selected: false }, "disabled"], [{ readiness: { ready: false } }, "not_ready"],
+    [{ mintSyncRunId: () => "" }, "malformed"], [{ clock: () => "invalid" }, "malformed"],
+  ] as const) {
+    for (const operation of ["getStock", "getStockMovements"] as const) {
+      const f = stockFixture(), adapter = fixture(undefined, config);
+      f.input.provider = operation === "getStock" ? adapter.adapter.stockSync
+        : { getStock: async () => [], getStockMovements: adapter.adapter.stockSync.getStockMovements };
+      const refusal = { reason, phase: "sync", retryable: false };
+      const result = await run(f.input);
+      expect(result).toMatchObject({ ok: false, reason, refusal });
+      expect(result.providerError).toBeUndefined();
+      expect(f.cursor()).toMatchObject({ status: "failed", error: { reason }, refusal });
+      expect(f.cursor()?.error?.providerError).toBeUndefined();
+      expect(adapter.fetchImpl).not.toHaveBeenCalled();
+    }
   }
 });
