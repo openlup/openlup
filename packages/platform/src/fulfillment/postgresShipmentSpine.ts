@@ -1,3 +1,4 @@
+import type { FulfillmentObservationCodecs } from "./contracts/index.js";
 import { safeDiagnosticCode } from "./dispatchProjection.js";
 import { nativeCall } from './postgresDispatchStore.js';
 import { projectObservation } from './observationProjection.js';
@@ -65,6 +66,8 @@ const RAISE_EXCEPTION_SQL = `
 
 export interface PostgresFulfillmentShipmentSpineOptions {
   portKey: string;
+  approveTrackingUrl?(url: string): boolean;
+  observationCodecs?: FulfillmentObservationCodecs;
   evidenceChannel?: "poll" | "push";
   requiredProviderType?: "simulator";
 }
@@ -116,7 +119,7 @@ export function createPostgresFulfillmentShipmentSpinePort(
   };
 
   return {
-    localPersistence: localPersistence(executor),
+    localPersistence: localPersistence(executor, options.approveTrackingUrl, options.observationCodecs),
     createShipment(request) {
       return callCreate(executor, portKey, [
         request.idempotencyKey,
@@ -297,7 +300,7 @@ function asRecord(value: unknown): Record<string, unknown> | null {
 }
 
 /** G17 native local persistence, composed on the same injected executor. */
-function localPersistence(executor: PgQueryExecutor) {
+function localPersistence(executor: PgQueryExecutor, approveTrackingUrl?: (url: string) => boolean, observationCodecs?: FulfillmentObservationCodecs) {
   return {
     async readLocalFulfillmentState(ref: string) {
       const result = await executor.query(`SELECT shipment.status,shipment.handed_over_at,
@@ -319,7 +322,7 @@ function localPersistence(executor: PgQueryExecutor) {
       return date(result.rows[0]?.handed_over_at);
     },
     async recordObservation(observation: import('./contracts/index.js').FulfillmentObservation) {
-      const safe = projectObservation(observation);
+      const safe = projectObservation(observation, approveTrackingUrl, observationCodecs);
       return nativeCall<{ replayed: boolean }>(executor,'fulfillment_record_observation',[safe.eventKey,safe.correlation.fulfillmentRef,JSON.stringify(safe),safe.firstReceivedAt]);
     },
     async recordStatusEvidence(ref: { fulfillmentRef: string }, observation: import('./contracts/index.js').FulfillmentObservation) {

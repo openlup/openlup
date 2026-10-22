@@ -80,7 +80,7 @@ export async function runFulfillmentAdapterConformance(subjects: readonly Fulfil
       requireSame(result, fixture.expected, "observation fixture"); assertDurable(result, subject);
       if (!caps.operations.verifyObservation.supported) requireFact(result.kind === "refused" && result.refusal.reason === "unsupported", "unsupported observation");
       if (result.kind === "verified") {
-        requireSame(result.observation, projectObservation(result.observation), "observation allowlist");
+        requireSame(result.observation, projectObservation(result.observation, subject.approveTrackingUrl, subject.observationCodecs), "observation allowlist");
         const observation = result.observation;
         const identity = stable({ provider: observation.fact.providerKind, reference: observation.fact.fulfillmentReference,
           kind: observation.eventKind, outcome: observation.fact.canonicalStatus, occurredAt: observation.fact.occurredAt });

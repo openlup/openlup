@@ -1,6 +1,6 @@
 import type { FulfillmentObservationPagePort, FulfillmentReconciliationObservation } from "../contracts/index.js";
 import { operationError } from "../dispatchProjection.js";
-import { projectProviderStatus } from "../observationProjection.js";
+import { projectPollEvidence, projectObservation } from "../observationProjection.js";
 import { normalizeReconciliationTimestamp } from "../providerReconciliationTimestamp.js";
 import type { OmnipackClient } from "./client.js";
 import { OmnipackProviderError } from "./client.js";
@@ -13,14 +13,14 @@ type Config = {
   clock(): string; mintEvidenceReference(): `evidence:${string}`; approveTrackingUrl(url: string): boolean;
 };
 export function reconciliationObservation(row: OmnipackFulfilmentEvidence, config: Config, fulfillmentRef?: string): Extract<FulfillmentReconciliationObservation, { kind: "found" | "unmapped" }> {
-  const providerStatus = projectProviderStatus({ primary: row.status, subStatus: row.subStatus });
+  const providerStatus = { primary: row.status, subStatus: row.subStatus };
   // Original status and occurrence bytes remain part of identity, even for aliases
   // mapping to the same canonical event. Received time never changes that identity.
-  const eventKey = digest(JSON.stringify([row.providerOrderId, row.fulfilmentNumber, row.orderNumber, providerStatus.primary, providerStatus.subStatus, row.updatedAt]));
+  const eventKey = digest(JSON.stringify([row.providerOrderId, row.fulfilmentNumber, row.orderNumber, row.status, row.subStatus, row.updatedAt]));
   const correlation = { orderRef: null, fulfillmentRef: fulfillmentRef ?? null, externalRef: reference(row.providerOrderId),
     orderNumber: reference(row.orderNumber), providerFulfillmentRef: reference(row.fulfilmentNumber), parcelRef: null };
   const normalized = normalizeStatus(row.status);
-  if (!normalized) return { kind: "unmapped", externalRef: correlation.externalRef, evidence: { eventKey, correlation, providerStatus } };
+  if (!normalized) return { kind: "unmapped", externalRef: correlation.externalRef, evidence: projectPollEvidence({ eventKey, correlation: { ...correlation, externalRef: row.providerOrderId, orderNumber: row.orderNumber, providerFulfillmentRef: row.fulfilmentNumber }, providerStatus }) };
   const status = localStatusFor(normalized) as "provider_received" | "picking" | "packed" | "in_transit" | "delivered" | "exception";
   const event = ({ provider_received: "shipment.accepted", picking: "order.processing_started", packed: "order.picked", in_transit: "order.shipped", delivered: "order.delivered", exception: "parcel.exception" } as const)[status];
   const occurredAt = normalizeReconciliationTimestamp(row.updatedAt);
@@ -30,7 +30,7 @@ export function reconciliationObservation(row: OmnipackFulfilmentEvidence, confi
   const mapped = observation({ evidence, event, status, fulfillmentRef, receivedAt: config.clock(),
     rawDigest: digest(JSON.stringify({ ...evidence, providerStatus })), evidenceRef: config.mintEvidenceReference(), source: "provider_reconciliation", approveTrackingUrl: config.approveTrackingUrl, observationCodecs: config.observationCodecs });
   return { kind: "found", externalRef: row.providerOrderId ?? "", createdAt: timestamp(row.createdAt), updatedAt: timestamp(occurredAt),
-    observation: { ...mapped, eventKey, fact: { ...mapped.fact, factId: eventKey }, providerStatus } };
+    observation: projectObservation({ ...mapped, eventKey, fact: { ...mapped.fact, factId: eventKey }, providerStatus }, config.approveTrackingUrl, config.observationCodecs) };
 }
 
 export function createReconciliationPagePort(client: OmnipackClient, config: Config, ready: () => ReturnType<typeof refusal> | null): FulfillmentObservationPagePort {

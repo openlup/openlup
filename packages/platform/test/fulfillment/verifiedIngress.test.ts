@@ -48,7 +48,7 @@ it("retains contention, failed annotation, recovery receipt and superseding hand
 
 
 it("retries missing external references before acceptance and effects; either reference permits processing", async () => {
-  for (const [observedRef, dispatchRef] of [[null, null], ["  ", "\t"], [" observed-a ", null], [null, " dispatch-a "]] as const) {
+  for (const [observedRef, dispatchRef] of [[null, null], ["  ", "\t"], ["observed-a", null], [null, " dispatch-a "]] as const) {
     const value = observation(); value.correlation.externalRef = observedRef;
     const f = ingressFixture(value);
     f.input.lifecycle.findDispatchRef = async () => {

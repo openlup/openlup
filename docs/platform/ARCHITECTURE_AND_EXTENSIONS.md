@@ -803,7 +803,7 @@ reads the authoritative row. Approved amendment G14 records the mapped provider
 attempt at that point, before shadow exit, unsafe-state refusal or begin. Its
 host-supplied opaque key preserves initial/remap identities; only allowlisted
 prepared evidence, mode/status and references persist. Same-key replay writes no
-second attempt. For an unchanged fingerprint, contact revision and selection,
+second attempt. For an unchanged stage/live fingerprint, contact revision and selection,
 replay preserves the stored evidence JSON, including legacy five-field evidence;
 new transcript/mapping metadata alone never consumes the native remap allowance.
 Unknown/submitting/failed states never automatically POST;
@@ -816,11 +816,34 @@ Main and repair ACKs use identical host acceptance keys, ignoring adapter-provid
 key fields so a committed ACK replays after a lost response. Mapped evidence now
 retains item count, SKU/quantity/lot/expiry, delivery kind and pickup-point reference,
 the contact revision and provider/carrier/service selection, and worker source,
-mode and shadow flag. Contact values, arbitrary provider properties, secrets and
-signed URLs are excluded. The command fingerprint still commits to the transient
+mode and shadow flag. Durable dispatch transcripts/receipts, observation and provider-status evidence,
+reconciliation quarantine evidence, and worker diagnostics share one counted
+string sanitizer at their output projections. Provider-derived strings must
+match the existing opaque-ID rule `[A-Za-z0-9][A-Za-z0-9._:-]{0,127}` or an
+explicit adopter codec; refused values become null (required references use
+`redacted`) and increment `redactedFieldCount` in the existing evidence or
+diagnostic envelope. Counts survive repeated native projection. Expiry additionally
+requires a real `YYYY-MM-DD` calendar date. Tracking URLs require the adopter's
+approval at each projection that retains them, including reconciliation tracking
+codecs and native observation-store options; omission redacts the URL. Forward the
+same `approveReference` and `trackingUrl` codecs through ingress/native-store
+`observationCodecs`, conformance-subject `observationCodecs`, and reconciliation
+`trackingCodecs` when using wider references or approved query data. These all use
+the same sink sanitizer and URL policy, rather than separate adapter/sink rules. Occurrence
+identity hashes original provider status/subStatus bytes, so redaction cannot
+collapse distinct occurrences. Arbitrary properties, contact fields, raw JSON,
+credentials and signed URLs are omitted. The
+[exhaustive field sweep](../../packages/platform/test/fulfillment/omnipack/dispatchReconciliationParity.test.ts)
+and the [observation ingress sweep](../../packages/platform/test/fulfillment/omnipack/observationIngressParity.test.ts)
+feed five sensitive-value shapes through every provider string input and capture
+native write arguments, evidence callbacks, transcripts, checkpoints and diagnostics.
+The command fingerprint still commits to the transient
 provider command bytes. Shadow instead builds a local command identity from the
 host candidate; it requires neither a provider port nor provider preparation or
-credentials. Host readiness and selected capability checks still apply.
+credentials. Legacy `0.22.0` native shadow drafts/attempts do not replay under that
+new identity; complete or abandon them before upgrading (see the package
+[migration note](../../packages/platform/CHANGELOG.md#unreleased)). Host readiness
+and selected capability checks still apply.
 
 Dispatch results retain neutral typed error code, HTTP status, retryability and
 ambiguity. Local failures retain a machine cause/SQLSTATE under their stage;
@@ -890,8 +913,12 @@ for example by matching a known identifier grammar plus the default opaque gramm
 and returning false otherwise. Admitted values are trimmed for correlation and
 tracking; the event key preserves original admitted reference bytes. Even with the
 allowlist, blank/overlong values, controls, email addresses and URLs are refused.
-Rejected tracking-number entries are counted before trimming/deduplication; rejected
-service references are omitted and counted as rejected tracking references.
+Rejected tracking-number entries and every supplied service/URL spelling are
+counted before extraction or first-wins deduplication, including malformed values
+and discarded duplicates. Rejected service references are omitted and counted as
+rejected tracking references. Service admission precedes carrier derivation: a
+refused service suppresses its derived carrier even if the prefix looks opaque.
+The durable sink independently suppresses a carrier paired with a refused service.
 The adopter owns the privacy of its widened grammar; allowing arbitrary prose
 would permit contact/credential text into durable keys and fields. Correlation
 cannot silently place refused text into the event key. Generic ingress composes no vendor
@@ -905,7 +932,8 @@ Drain in-flight observation retries before upgrading; see the
 The adapter's optional `observationCodecs.normalizeCarrier({ carrierRef, serviceRef })`
 returns the normalized carrier kind stored in `carrierRef` and passed to effects as
 `carrierKind`. Its default uses the contributed service-derived carrier kind,
-never the raw provider carrier. `observationCodecs.trackingUrl(url)` may retain
+never the raw provider carrier. A refused service cannot reach this derivation or
+the carrier codec. `observationCodecs.trackingUrl(url)` may retain
 adopter-required query parameters; HTTPS, no credentials and `approveTrackingUrl`
 still apply to its output. Without that codec the default also rejects query and
 fragment components. For example, configure approval for an exact tracking origin

@@ -1,6 +1,6 @@
 import { expect, it, vi } from "vitest";
 import { createOmnipackFulfillmentAdapter, type OmnipackFulfillmentAdapterConfig } from "../../../src/fulfillment/omnipack/index.js";
-import { fulfillmentIngressHttpResult as httpResult, verifyAndNormalizeFulfillmentObservation as run, createPostgresFulfillmentShipmentSpinePort } from "../../../src/fulfillment/index.js";
+import { fulfillmentIngressHttpResult as httpResult, verifyAndNormalizeFulfillmentObservation as run, reconcileFulfillmentObservations, createPostgresFulfillmentShipmentSpinePort } from "../../../src/fulfillment/index.js";
 import { ingressFixture, at } from "../fixtures.js";
 import { config as http } from "./fixtures.js";
 
@@ -17,6 +17,8 @@ function fixture(body: unknown = payload(), overrides: Partial<OmnipackFulfillme
     mintEvidenceReference: () => "evidence:00000000-0000-4000-8000-000000000001", approveTrackingUrl: url => new URL(url).hostname === "tracking.invalid", ...overrides });
   const f = ingressFixture();
   f.input.provider = adapter.observation;
+  f.input.approveTrackingUrl = url => new URL(url).hostname === "tracking.invalid";
+  f.input.observationCodecs = overrides.observationCodecs;
   f.input.verification = { rawBody: Buffer.from(JSON.stringify(body)), headers: { authorization: "Bearer placeholder" }, receivedAt: at };
   f.input.lifecycle.keys = { stock: ref => `omnipack:webhook:${ref}:provider-stock-consumed`, handoff: ref => `omnipack:webhook:${ref}:handoff`, tracking: (key, number) => `omnipack:webhook:${key}:tracking:${number}` };
   return { ...f, fetchImpl, adapter };
@@ -190,4 +192,142 @@ it("keeps delivered-first suppression, awaited fail-stop effect ordering and unp
     const all = ["stock", "handoff", "tracking", "invoice"];
     expect(trace).toEqual(failAt ? all.slice(0, all.indexOf(failAt) + 1) : all);
   }
+});
+
+// Capture every write callback plus the native adapter's serialized arguments;
+// the executor is fake and never executes SQL or opens a database connection.
+function captureDurable(f: ReturnType<typeof fixture>, overrides: Partial<OmnipackFulfillmentAdapterConfig> = {}) {
+  const writes: { sink: string; value: unknown }[] = [];
+  const capture = (sink: string, value: unknown) => { writes.push({ sink, value: structuredClone(value) }); };
+  const native = createPostgresFulfillmentShipmentSpinePort({ async query(statement, values) {
+    capture("native", { statement, values }); return { rows: [{ response: { replayed: false } }] };
+  } }, { portKey: "privacy-test", approveTrackingUrl: f.input.approveTrackingUrl, observationCodecs: overrides.observationCodecs }).localPersistence;
+  const persistence = f.input.localPersistence;
+  f.input.localPersistence = {
+    async recordObservation(value) { capture("receipt", value); await native.recordObservation(value); return persistence.recordObservation(value); },
+    async markProcessed(key, value) { capture("processed", { key, value }); await native.markProcessed(key, value); return persistence.markProcessed(key, value); },
+  };
+  f.input.lifecycle.acknowledgeDispatchAcceptance = async (ref, value) => { capture("ack", { ref, value }); };
+  f.input.lifecycle.recordStatusEvidence = async (ref, value) => { capture("status", { ref, value }); return native.recordStatusEvidence(ref, value); };
+  for (const effect of ["markProviderStockConsumed", "markHandedOver", "recordTrackingReference"] as const) {
+    f.input.lifecycle.effects[effect] = async value => { capture(effect, value); return { replayed: false, readBack: false }; };
+  }
+  f.input.lifecycle.issueAccountingInvoice = async ref => { capture("invoice", ref); };
+  return writes;
+}
+
+it("suppresses carriers derived from refused services in durable writes and effects, including an explicit deny allowlist (B3)", async () => {
+  for (const [shippingMethod, observationCodecs] of [
+    ["synthetic-secret_/private", undefined],
+    ["DENIED_SERVICE", { approveReference: (value: string) => ["external-a", "parcel-a", "TRACK-A"].includes(value) }],
+  ] as const) {
+    const overrides = { observationCodecs };
+    const f = fixture({ ...payload(), shipments: [{ trackingNo: "TRACK-A", shippingMethod }] }, overrides);
+    const writes = captureDurable(f, overrides);
+    const result = await run(f.input);
+    expect(result).toMatchObject({ kind: "processed", counts: { rejectedTrackingRefs: 1 }, observation: {
+      diagnostics: { redactedFieldCount: 1 }, trackingRefs: [{ trackingNumber: "TRACK-A", carrierRef: null, serviceRef: null }] } });
+    for (const value of [result, writes]) {
+      const text = JSON.stringify(value).toLowerCase();
+      expect(text).not.toContain(shippingMethod.toLowerCase());
+      expect(text).not.toContain(shippingMethod.split("_")[0]!.toLowerCase());
+    }
+    expect(writes.map(write => write.sink)).toContain("recordTrackingReference");
+    // Bypass adapter admission: the real durable sink must independently reject
+    // an opaque-looking carrier paired with a refused original service.
+    const candidate = [...f.inbound.values()][0]!;
+    candidate.trackingRefs = [{ trackingNumber: "TRACK-A", carrierRef: shippingMethod.split("_")[0]!.toLowerCase(), serviceRef: shippingMethod, publicUrl: null }];
+    candidate.diagnostics = undefined;
+    const query = vi.fn(async (_statement: string, _values?: unknown[]) => ({ rows: [{ response: { replayed: false } }] }));
+    await createPostgresFulfillmentShipmentSpinePort({ query }, { portKey: "privacy-test", observationCodecs }).localPersistence.recordObservation(candidate);
+    const stored = JSON.parse(query.mock.calls[0]![1]![2] as string);
+    expect(stored).toMatchObject({ diagnostics: { redactedFieldCount: 2 }, trackingRefs: [{ carrierRef: null, serviceRef: null }] });
+    expect(JSON.stringify(stored).toLowerCase()).not.toContain(shippingMethod.split("_")[0]!.toLowerCase());
+  }
+});
+
+it("counts malformed and rejected service/URL inputs before extraction and deduplication while retaining first-wins data (M2)", async () => {
+  for (const metadata of [
+    { shippingMethod: {}, trackingUrl: 123 },
+    { shippingMethod: "Jane Doe +12025550123", trackingUrl: "https://unapproved.invalid/a" },
+    { service: "", trackingURL: "", trackingLink: false, publicTrackingUrl: {} },
+  ]) {
+    const body = { ...payload(), shipments: [{ trackingNo: "TRACK-A", ...metadata }] };
+    const rejectedRefs = 1;
+    const rejectedUrls = "trackingUrl" in metadata ? 1 : 3;
+    const malformed = await run(fixture(body).input);
+    expect(malformed).toMatchObject({ kind: "processed", counts: { rejectedTrackingRefs: rejectedRefs, rejectedTrackingUrls: rejectedUrls } });
+    const f = fixture({ ...payload(), shipments: [...payload().shipments, ...body.shipments] });
+    const result = await run(f.input);
+    expect(result).toMatchObject({ kind: "processed", trackingRefs: 1, counts: { rejectedTrackingRefs: rejectedRefs, rejectedTrackingUrls: rejectedUrls }, observation: {
+      trackingRefs: [{ trackingNumber: "TRACK-A", carrierRef: "carrier-a", serviceRef: "CARRIER-A_SERVICE", publicUrl: "https://tracking.invalid/a" }] } });
+    expect([...f.inbound.values()][0]!.trackingRefs).toHaveLength(1);
+    const rejectedNumber = await run(fixture({ ...payload(), shipments: [{ trackingNo: "", ...metadata }] }).input);
+    expect(rejectedNumber).toMatchObject({ counts: { rejectedTrackingRefs: rejectedRefs + 1, rejectedTrackingUrls: rejectedUrls } });
+  }
+});
+
+it("sweeps every webhook string field through observation ingress, projections and all durable writes", async () => {
+  const plants = ["Jane Doe +12025550123", "jane.doe@example.invalid", "12 Example Street", '{"contact":{"email":"jane@example.invalid","phone":"+12025550123"}}', "Bearer synthetic.secret/contact+token="];
+  const fields = ["event", "orderId", "providerOrderId", "orderNumber", "fulfilmentNumber", "occurredAt",
+    "shipments.trackingNo", "shipments.trackingNumber", "shipments.shippingMethod", "shipments.service",
+    "shipments.trackingUrl", "shipments.trackingURL", "shipments.trackingLink", "shipments.publicTrackingUrl",
+    "shipments.carrier", "shipments.carrierCode", "authorization", "x-omnipack-webhook-token"];
+  const reached = new Set<string>();
+  for (const field of fields) for (const plant of plants) {
+    const body: Record<string, unknown> = { ...payload(), shipments: [{ trackingNo: "TRACK-A" }] };
+    if (field.startsWith("shipments.")) {
+      const shipment = (body.shipments as Record<string, unknown>[])[0]!;
+      if (field === "shipments.trackingNumber") delete shipment.trackingNo;
+      shipment[field.slice("shipments.".length)] = plant;
+    } else if (!["authorization", "x-omnipack-webhook-token"].includes(field)) {
+      if (field === "providerOrderId") delete body.orderId;
+      body[field] = plant;
+    }
+    const f = fixture(body);
+    if (field === "authorization") f.input.verification.headers = { authorization: plant };
+    if (field === "x-omnipack-webhook-token") f.input.verification.headers = { [field]: plant };
+    const writes = captureDurable(f);
+    const result = await run(f.input);
+    const refuses = ["event", "orderId", "providerOrderId", "orderNumber", "fulfilmentNumber", "occurredAt", "authorization", "x-omnipack-webhook-token"].includes(field);
+    expect(result.kind, field).toBe(refuses ? "refused" : "processed");
+    if (refuses) expect(writes, field).toEqual([]);
+    else for (const write of writes) reached.add(write.sink);
+    for (const output of [result, writes, [...f.inbound.values()], [...f.processed.values()]]) {
+      const text = JSON.stringify(output);
+      for (const forbidden of plants) {
+        expect(text, field).not.toContain(forbidden);
+        expect(text, field).not.toContain(JSON.stringify(forbidden).slice(1, -1));
+        expect(text.toLowerCase(), field).not.toContain(forbidden.toLowerCase());
+      }
+    }
+  }
+  expect([...reached]).toEqual(expect.arrayContaining(["receipt", "native", "processed", "ack", "status", "markProviderStockConsumed", "markHandedOver", "recordTrackingReference", "invoice"]));
+});
+
+it("forwards one adopter policy through repeated ingress and native projections without losing approved URL queries or reference bytes", async () => {
+  const overrides = { observationCodecs: { approveReference: incumbentReference, trackingUrl: (url: string) => url } };
+  const f = fixture({ ...payload(), orderId: " external/a b ", shipments: [{ trackingNo: "TRACK A", trackingUrl: "https://tracking.invalid/a?parcel=TRACK-A" }] }, overrides);
+  const writes = captureDurable(f, overrides);
+  expect(await run(f.input)).toMatchObject({ kind: "processed", counts: { rejectedTrackingUrls: 0 }, observation: {
+    eventKey: "order.shipped: external/a b :parcel-a:2026-10-21T10:00:00+02:00", correlation: { externalRef: "external/a b" },
+    trackingRefs: [{ trackingNumber: "TRACK A", publicUrl: "https://tracking.invalid/a?parcel=TRACK-A" }] } });
+  const receipt = writes.find(write => write.sink === "receipt")!.value;
+  const native = writes.find(write => write.sink === "native")!.value as { values: unknown[] };
+  expect(JSON.parse(native.values[2] as string)).toEqual(receipt);
+  const verification = await f.adapter.observation.verifyAndNormalize(f.input.verification);
+  if (verification.kind !== "verified") throw Error("expected_observation");
+  writes.length = 0;
+  const reconciled = await reconcileFulfillmentObservations({ batchSize: 1,
+    readPage: async () => [{ kind: "found", externalRef: "external-a", createdAt: at, updatedAt: at, observation: verification.observation }],
+    localPersistence: { readLocalFulfillmentStatus: async () => "in_transit", latestStatusOccurredAt: async () => null, readHandedOverAt: async () => null },
+    lifecycle: { ...f.input.lifecycle,
+      recordQuarantine: async () => { throw Error("unexpected_quarantine"); },
+      recordProviderException: async () => { throw Error("unexpected_exception"); },
+      readDeliveryCarrier: async () => null,
+      trackingCodecs: { ...overrides.observationCodecs, approveTrackingUrl: f.input.approveTrackingUrl, normalizeCarrier: value => value.carrierRef, publicUrl: () => null },
+      invoiceFailure: () => { throw Error("unexpected_invoice_failure"); }, classifyStateConflict: () => null,
+    } });
+  expect(reconciled).toMatchObject({ ok: true, trackingRefs: 1 });
+  expect(writes.find(write => write.sink === "recordTrackingReference")!.value).toMatchObject({ trackingNumber: "TRACK A", trackingUrl: "https://tracking.invalid/a?parcel=TRACK-A" });
 });

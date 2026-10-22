@@ -1,4 +1,4 @@
-import type { FulfillmentObservation, FulfillmentObservationPort, FulfillmentRefusal } from "./contracts/index.js";
+import type { FulfillmentObservation, FulfillmentObservationCodecs, FulfillmentObservationPort, FulfillmentRefusal } from "./contracts/index.js";
 import { safeDiagnosticCode } from "./dispatchProjection.js";
 import { applyFulfillmentObservationEffects } from "./fulfillmentObservationEffects.js";
 import { observationStatusPolicy, projectObservation } from "./observationProjection.js";
@@ -21,6 +21,8 @@ export function fulfillmentIngressHttpResult(result: FulfillmentIngressResult): 
 /** Adapter verification owns auth-before-parse; the host owns durable replay. */
 export async function verifyAndNormalizeFulfillmentObservation(input: {
   enabled: boolean;
+  approveTrackingUrl?(url: string): boolean;
+  observationCodecs?: FulfillmentObservationCodecs;
   provider: FulfillmentObservationPort;
   verification: Parameters<FulfillmentObservationPort["verifyAndNormalize"]>[0];
   localPersistence: {
@@ -55,7 +57,7 @@ export async function verifyAndNormalizeFulfillmentObservation(input: {
         ...(counts.rejectedCorrelationRefs ? { rejectedCorrelationRefs: counts.rejectedCorrelationRefs } : {}),
       } } : {}) };
   }
-  const observation = projectObservation(verified.observation);
+  const observation = projectObservation(verified.observation, input.approveTrackingUrl, input.observationCodecs);
   counts.rejectedTrackingRefs = observation.diagnostics?.admission?.rejectedTrackingRefs ?? 0;
   counts.rejectedTrackingUrls = observation.diagnostics?.admission?.rejectedTrackingUrls ?? 0;
   const inbound = await input.localPersistence.recordObservation(observation);

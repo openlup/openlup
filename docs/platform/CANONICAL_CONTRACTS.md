@@ -195,10 +195,17 @@ incumbent identifier grammar, with privacy owned by that adopter; controls,
 blank/overlong values, email addresses and URLs still refuse. Correlation refusal
 is counted and reported before keys or durable observations are constructed;
 tracking-number/service refusals are counted in admission diagnostics and results.
+Supplied service/URL values are counted before extraction and deduplication,
+including malformed values and discarded duplicates; retained tracking data stays
+first-wins. A refused service cannot supply a derived carrier, and the shared
+durable sink also suppresses carriers paired with refused service evidence.
 Tracking URLs default to query-free, fragment-free HTTPS without credentials
 and explicit host approval. An optional adapter `observationCodecs.trackingUrl`
 can retain required query data under adopter policy; HTTPS, no credentials and
-host approval still apply. The optional `normalizeCarrier` codec maps raw carrier/
+host approval still apply at every projection. Forward that same reference/URL
+policy through ingress and native-store `observationCodecs`, conformance-subject
+`observationCodecs`, and reconciliation `trackingCodecs`; an omitted policy keeps
+the strict default. The optional `normalizeCarrier` codec maps raw carrier/
 service evidence to a normalized kind; raw carrier is never forwarded as the kind. Stock collections carry a run ID/time and nullable source revision;
 collection time is no provider ordering. Product reads are pull-only in scheduled
 composition; writes require explicit host invocation and metadata.

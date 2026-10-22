@@ -1,3 +1,4 @@
+import { publicTrackingUrl } from "../observationProjection.js";
 import type { DispatchEvidence, FulfillmentCapabilityDescriptor, FulfillmentDispatchPort, FulfillmentDispatchRequest,
   FulfillmentLabelPort, FulfillmentObservationPort, FulfillmentReadbackPort, FulfillmentObservationPagePort, FulfillmentStockSyncProvider, FulfillmentProductSyncProvider } from "../contracts/index.js";
 import { createOmnipackClient, OmnipackProviderError } from "./client.js";
@@ -214,7 +215,10 @@ export function createOmnipackFulfillmentAdapter(config: OmnipackFulfillmentAdap
             .filter(value => value !== undefined && value !== null && (typeof value !== "string" || !correlationReference(value, config.observationCodecs))).length;
           if (rejectedCorrelationRefs)
             return { kind: "refused", refusal: refusal("missing_correlation", "normalize"), diagnostics: { rejectedCorrelationRefs } };
-          const evidence = mapOmnipackWebhookPayload(payload, config.notification.expectedEvent, value => correlationReference(value, config.observationCodecs) !== null);
+          const evidence = mapOmnipackWebhookPayload(payload, config.notification.expectedEvent, value => correlationReference(value, config.observationCodecs) !== null, {
+            service: value => correlationReference(value, config.observationCodecs) !== null,
+            url: value => publicTrackingUrl(value, config.approveTrackingUrl, config.observationCodecs?.trackingUrl) !== null,
+          });
           const event = eventKind(evidence.event);
           if (!event || event !== config.notification.expectedEvent) return { kind: "refused", refusal: refusal("unsupported_event", "normalize") };
           if (![evidence.providerOrderId, evidence.orderNumber, evidence.fulfilmentNumber].some(value => correlationReference(value, config.observationCodecs)))

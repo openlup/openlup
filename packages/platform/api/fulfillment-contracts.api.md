@@ -129,7 +129,7 @@ export interface FulfillmentCapabilityDescriptor {
 import type { FulfillmentCapabilityDescriptor } from "./capabilities.js";
 import type { FulfillmentDispatchPort, FulfillmentDispatchRequest } from "./dispatch.js";
 import type { FulfillmentLabelPort } from "./label.js";
-import type { FulfillmentObservationPort } from "./observation.js";
+import type { FulfillmentObservationPort, FulfillmentObservationCodecs } from "./observation.js";
 import type { FulfillmentReadbackPort } from "./readback.js";
 import type { FulfillmentStockSyncProvider, FulfillmentProductSyncProvider } from "./sync.js";
 import type { FulfillmentStorePort } from "./store.js";
@@ -153,6 +153,8 @@ type SyncFixture<Port> = {
 }[keyof Port];
 /** Offline adapter-owned inputs and exact expected outputs; never real customer data. */
 export interface FulfillmentAdapterConformanceSubject {
+    approveTrackingUrl?(url: string): boolean;
+    observationCodecs?: FulfillmentObservationCodecs;
     subjectId: string;
     adapter: {
         capabilities: FulfillmentCapabilityDescriptor;
@@ -294,6 +296,7 @@ export interface FulfillmentDispatchRequest {
 }
 /** Allowlisted durable evidence; fingerprint commits to actual adapter command bytes. */
 export interface DispatchEvidence {
+    redactedFieldCount?: number;
     commandFingerprint: string;
     contactRevision: FulfillmentDispatchRequest["contactRevision"];
     providerRef: string;
@@ -309,6 +312,8 @@ export interface DispatchEvidence {
         }[];
         deliveryKind: DeliveryKind;
         pickupPointRef: string | null;
+        /** Count of populated reference/date fields redacted by the durable projection. */
+        redactedFieldCount?: number;
     };
     mapping?: {
         source: "dispatch_worker";
@@ -317,6 +322,7 @@ export interface DispatchEvidence {
     };
 }
 export interface FulfillmentOperationError {
+    redactedFieldCount?: number;
     code: string;
     status: number | null;
     retryable: boolean;
@@ -326,6 +332,7 @@ export interface FulfillmentOperationError {
 }
 export type FulfillmentDispatchResult = ({
     error?: FulfillmentOperationError;
+    redactedFieldCount?: number;
 } & ({
     kind: "accepted";
     externalRef: string;
@@ -378,7 +385,7 @@ export {};
 export type { FulfillmentOperationError, DispatchEvidence, FulfillmentDispatchPrepareResult, FulfillmentSelection, FulfillmentDispatchRequest, FulfillmentDispatchResult, FulfillmentDispatchPort, FulfillmentRefusal } from "./dispatch.js";
 export type { LabelDocument, FulfillmentLabelPort } from "./label.js";
 /** G17 local reads/ingress persistence are inline runtime worker inputs; this provider envelope is unchanged. */
-export type { FulfillmentObservation, FulfillmentObservationPort, FulfillmentTrackingReference } from "./observation.js";
+export type { FulfillmentObservation, FulfillmentObservationCodecs, FulfillmentObservationPort, FulfillmentTrackingReference } from "./observation.js";
 export type { FulfillmentReadbackResult, FulfillmentReadbackPort, FulfillmentReconciliationObservation, FulfillmentObservationPagePort } from "./readback.js";
 export type { SyncCursor, StockSnapshot, StockMovement, LocalStock, FulfillmentStockSyncProvider, FulfillmentStockSyncPort, FulfillmentProductSyncProvider, FulfillmentProductSyncPort } from "./sync.js";
 export type { FulfillmentCapabilityDescriptor } from "./capabilities.js";
@@ -449,6 +456,12 @@ export interface FulfillmentNativeUnsupported {
 import type { NormalizedFulfillmentFact } from "@openlup/core/fulfillment";
 import type { CanonicalLocalFulfillmentStatus } from "./index.js";
 import type { FulfillmentRefusal } from "./dispatch.js";
+/** Explicit adopter policy, forwarded through each durable observation projection. */
+export interface FulfillmentObservationCodecs {
+    approveReference?(value: string): boolean;
+    /** Overrides the query/fragment default; HTTPS, no credentials and URL approval still apply. */
+    trackingUrl?(url: string): string | null;
+}
 export interface FulfillmentTrackingReference {
     trackingNumber: string; /** Normalized carrier kind, never a raw provider code. */
     carrierRef: string | null;
@@ -476,6 +489,7 @@ export interface FulfillmentObservation {
         subStatus: string | null;
     };
     diagnostics?: {
+        redactedFieldCount?: number;
         admission?: {
             rejectedTrackingRefs: number;
             rejectedTrackingUrls: number;
@@ -739,7 +753,7 @@ export interface FulfillmentReadbackPort {
 export type FulfillmentReconciliationObservation = FulfillmentReadbackResult | {
     kind: "unmapped";
     externalRef: string | null;
-    evidence: Pick<FulfillmentObservation, "correlation" | "eventKey" | "providerStatus">;
+    evidence: Pick<FulfillmentObservation, "correlation" | "eventKey" | "providerStatus" | "diagnostics">;
 };
 export interface FulfillmentObservationPagePort {
     readPage(input: {

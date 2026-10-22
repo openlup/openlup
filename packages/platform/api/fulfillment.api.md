@@ -266,7 +266,7 @@ export interface FulfillmentCapabilityDescriptor {
 import type { FulfillmentCapabilityDescriptor } from "./capabilities.js";
 import type { FulfillmentDispatchPort, FulfillmentDispatchRequest } from "./dispatch.js";
 import type { FulfillmentLabelPort } from "./label.js";
-import type { FulfillmentObservationPort } from "./observation.js";
+import type { FulfillmentObservationPort, FulfillmentObservationCodecs } from "./observation.js";
 import type { FulfillmentReadbackPort } from "./readback.js";
 import type { FulfillmentStockSyncProvider, FulfillmentProductSyncProvider } from "./sync.js";
 import type { FulfillmentStorePort } from "./store.js";
@@ -290,6 +290,8 @@ type SyncFixture<Port> = {
 }[keyof Port];
 /** Offline adapter-owned inputs and exact expected outputs; never real customer data. */
 export interface FulfillmentAdapterConformanceSubject {
+    approveTrackingUrl?(url: string): boolean;
+    observationCodecs?: FulfillmentObservationCodecs;
     subjectId: string;
     adapter: {
         capabilities: FulfillmentCapabilityDescriptor;
@@ -431,6 +433,7 @@ export interface FulfillmentDispatchRequest {
 }
 /** Allowlisted durable evidence; fingerprint commits to actual adapter command bytes. */
 export interface DispatchEvidence {
+    redactedFieldCount?: number;
     commandFingerprint: string;
     contactRevision: FulfillmentDispatchRequest["contactRevision"];
     providerRef: string;
@@ -446,6 +449,8 @@ export interface DispatchEvidence {
         }[];
         deliveryKind: DeliveryKind;
         pickupPointRef: string | null;
+        /** Count of populated reference/date fields redacted by the durable projection. */
+        redactedFieldCount?: number;
     };
     mapping?: {
         source: "dispatch_worker";
@@ -454,6 +459,7 @@ export interface DispatchEvidence {
     };
 }
 export interface FulfillmentOperationError {
+    redactedFieldCount?: number;
     code: string;
     status: number | null;
     retryable: boolean;
@@ -463,6 +469,7 @@ export interface FulfillmentOperationError {
 }
 export type FulfillmentDispatchResult = ({
     error?: FulfillmentOperationError;
+    redactedFieldCount?: number;
 } & ({
     kind: "accepted";
     externalRef: string;
@@ -515,7 +522,7 @@ export {};
 export type { FulfillmentOperationError, DispatchEvidence, FulfillmentDispatchPrepareResult, FulfillmentSelection, FulfillmentDispatchRequest, FulfillmentDispatchResult, FulfillmentDispatchPort, FulfillmentRefusal } from "./dispatch.js";
 export type { LabelDocument, FulfillmentLabelPort } from "./label.js";
 /** G17 local reads/ingress persistence are inline runtime worker inputs; this provider envelope is unchanged. */
-export type { FulfillmentObservation, FulfillmentObservationPort, FulfillmentTrackingReference } from "./observation.js";
+export type { FulfillmentObservation, FulfillmentObservationCodecs, FulfillmentObservationPort, FulfillmentTrackingReference } from "./observation.js";
 export type { FulfillmentReadbackResult, FulfillmentReadbackPort, FulfillmentReconciliationObservation, FulfillmentObservationPagePort } from "./readback.js";
 export type { SyncCursor, StockSnapshot, StockMovement, LocalStock, FulfillmentStockSyncProvider, FulfillmentStockSyncPort, FulfillmentProductSyncProvider, FulfillmentProductSyncPort } from "./sync.js";
 export type { FulfillmentCapabilityDescriptor } from "./capabilities.js";
@@ -586,6 +593,12 @@ export interface FulfillmentNativeUnsupported {
 import type { NormalizedFulfillmentFact } from "@openlup/core/fulfillment";
 import type { CanonicalLocalFulfillmentStatus } from "./index.js";
 import type { FulfillmentRefusal } from "./dispatch.js";
+/** Explicit adopter policy, forwarded through each durable observation projection. */
+export interface FulfillmentObservationCodecs {
+    approveReference?(value: string): boolean;
+    /** Overrides the query/fragment default; HTTPS, no credentials and URL approval still apply. */
+    trackingUrl?(url: string): string | null;
+}
 export interface FulfillmentTrackingReference {
     trackingNumber: string; /** Normalized carrier kind, never a raw provider code. */
     carrierRef: string | null;
@@ -613,6 +626,7 @@ export interface FulfillmentObservation {
         subStatus: string | null;
     };
     diagnostics?: {
+        redactedFieldCount?: number;
         admission?: {
             rejectedTrackingRefs: number;
             rejectedTrackingUrls: number;
@@ -876,7 +890,7 @@ export interface FulfillmentReadbackPort {
 export type FulfillmentReconciliationObservation = FulfillmentReadbackResult | {
     kind: "unmapped";
     externalRef: string | null;
-    evidence: Pick<FulfillmentObservation, "correlation" | "eventKey" | "providerStatus">;
+    evidence: Pick<FulfillmentObservation, "correlation" | "eventKey" | "providerStatus" | "diagnostics">;
 };
 export interface FulfillmentObservationPagePort {
     readPage(input: {
@@ -2374,6 +2388,7 @@ export declare function createPostgresPaidFulfillmentHandoffStore(db: PgExecutor
 ## dist/fulfillment/postgresShipmentSpine.d.ts
 
 ```ts
+import type { FulfillmentObservationCodecs } from "./contracts/index.js";
 import type { PgExecutor as PgQueryExecutor } from './postgresDispatchStore.js';
 interface ShipmentSpineResult {
     shipmentId: string;
@@ -2409,6 +2424,8 @@ interface ShipmentSpineMutationPort {
 }
 export interface PostgresFulfillmentShipmentSpineOptions {
     portKey: string;
+    approveTrackingUrl?(url: string): boolean;
+    observationCodecs?: FulfillmentObservationCodecs;
     evidenceChannel?: "poll" | "push";
     requiredProviderType?: "simulator";
 }
@@ -2417,7 +2434,7 @@ export declare function createPostgresFulfillmentShipmentSpinePort(executor: PgQ
     localPersistence: ReturnType<typeof localPersistence>;
 };
 /** G17 native local persistence, composed on the same injected executor. */
-declare function localPersistence(executor: PgQueryExecutor): {
+declare function localPersistence(executor: PgQueryExecutor, approveTrackingUrl?: (url: string) => boolean, observationCodecs?: FulfillmentObservationCodecs): {
     readLocalFulfillmentState(ref: string): Promise<{
         status: string | null;
         latestStatusOccurredAt: string | null;
@@ -2677,6 +2694,19 @@ export declare function runFulfillmentDispatchWorker(input: {
     };
     now?: () => Date;
 }): Promise<{
+    redactedFieldCount: number;
+    ok: boolean;
+    skipped: boolean;
+    checked: number;
+    updated: number;
+    failures: number;
+    mode: "shadow" | "stage" | "live";
+    replayed: number;
+    providerCalls: number;
+    readBacks: number;
+    reason: string | undefined;
+} | {
+    redactedFieldCount?: undefined;
     ok: boolean;
     skipped: boolean;
     checked: number;
@@ -2728,7 +2758,7 @@ import type { FulfillmentObservation, FulfillmentObservationPagePort, Fulfillmen
 import { enrichTrackingReference } from "./providerTrackingReferences.js";
 type Ingress = Parameters<typeof import("./verifiedIngress.js").verifyAndNormalizeFulfillmentObservation>[0];
 type DispatchRef = NonNullable<Awaited<ReturnType<Ingress["lifecycle"]["findDispatchRef"]>>>;
-type PollEvidence = Pick<FulfillmentObservation, "correlation" | "eventKey" | "providerStatus"> | FulfillmentObservation;
+type PollEvidence = Pick<FulfillmentObservation, "correlation" | "eventKey" | "providerStatus" | "diagnostics"> | FulfillmentObservation;
 export interface ReconciliationResult {
     ok: boolean;
     checked: number;
@@ -2740,6 +2770,7 @@ export interface ReconciliationResult {
     stale: number;
     offTrackSkips: number;
     replayed: number;
+    redactedFieldCount?: number;
     failures: number;
     invoiceIssueFailures: number;
     invoiceIssueRefused: number;
@@ -2858,13 +2889,14 @@ export {};
 ## dist/fulfillment/providerTrackingReferences.d.ts
 
 ```ts
-import type { FulfillmentTrackingReference } from "./contracts/index.js";
+import type { FulfillmentTrackingReference, FulfillmentObservationCodecs } from "./contracts/index.js";
 export declare function trackingReferenceComplete(ref: FulfillmentTrackingReference): boolean;
 /** Provider evidence wins as a unit; private carrier/URL codecs stay injected. */
 export declare function enrichTrackingReference(ref: FulfillmentTrackingReference, deliveryCarrier: {
     carrierRef: string | null;
     serviceRef: string | null;
-} | null, codecs: {
+} | null, codecs: FulfillmentObservationCodecs & {
+    approveTrackingUrl?(url: string): boolean;
     normalizeCarrier(input: {
         carrierRef: string | null;
         serviceRef: string | null;
@@ -2943,7 +2975,7 @@ export { fulfillmentProgressPresentation } from "@openlup/core/fulfillment";
 ## dist/fulfillment/verifiedIngress.d.ts
 
 ```ts
-import type { FulfillmentObservation, FulfillmentObservationPort, FulfillmentRefusal } from "./contracts/index.js";
+import type { FulfillmentObservation, FulfillmentObservationCodecs, FulfillmentObservationPort, FulfillmentRefusal } from "./contracts/index.js";
 import { applyFulfillmentObservationEffects } from "./fulfillmentObservationEffects.js";
 type EffectInput = Parameters<typeof applyFulfillmentObservationEffects<FulfillmentObservation["fact"]["canonicalStatus"], "in_transit" | "delivered">>[0];
 type DispatchRef = {
@@ -2985,6 +3017,8 @@ export declare function fulfillmentIngressHttpResult(result: FulfillmentIngressR
 /** Adapter verification owns auth-before-parse; the host owns durable replay. */
 export declare function verifyAndNormalizeFulfillmentObservation(input: {
     enabled: boolean;
+    approveTrackingUrl?(url: string): boolean;
+    observationCodecs?: FulfillmentObservationCodecs;
     provider: FulfillmentObservationPort;
     verification: Parameters<FulfillmentObservationPort["verifyAndNormalize"]>[0];
     localPersistence: {

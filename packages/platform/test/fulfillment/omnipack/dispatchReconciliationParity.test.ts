@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { isDeepStrictEqual } from "node:util";
 import { expect, it, vi } from "vitest";
 import type { DispatchRecord, FulfillmentDispatchRequest, FulfillmentDispatchResult } from "../../../src/fulfillment/contracts/index.js";
-import { createFulfillmentServices, createPostgresFulfillmentDispatchStore, reconcileFulfillmentObservations, runFulfillmentDispatchWorker, runFulfillmentReconciliationPage } from "../../../src/fulfillment/index.js";
+import { createFulfillmentServices, createPostgresFulfillmentDispatchStore, createPostgresFulfillmentShipmentSpinePort, reconcileFulfillmentObservations, runFulfillmentDispatchWorker, runFulfillmentReconciliationPage } from "../../../src/fulfillment/index.js";
 import { createOmnipackFulfillmentAdapter } from "../../../src/fulfillment/omnipack/index.js";
 import { dispatchResult } from "../../../src/fulfillment/dispatchProjection.js";
 import { ingressFixture, memoryStore, profile, request } from "../fixtures.js";
@@ -17,11 +17,12 @@ function candidate(): FulfillmentDispatchRequest {
     lines: [{ skuRef: "SKU-A", quantity: 1, title: null, productRef: null, packRef: null }],
     selection: { providerRef: "omnipack", carrierRef: "CARRIER-A", serviceRef: "SERVICE-A", deliveryKind: "courier", pickupPoint: null } };
 }
-function adapter(reply: (url: URL, init: RequestInit) => Response | Promise<Response> = () => Response.json({ orderId: "external-a" })) {
+function adapter(reply: (url: URL, init: RequestInit) => Response | Promise<Response> = () => Response.json({ orderId: "external-a" }),
+  metadata = { lotNumber: "LOT-A", expirationDate: "2027-01-01" }) {
   const http = vi.fn(async (url: URL | RequestInfo, init?: RequestInit) => reply(new URL(String(url)), init!));
   const credentials = vi.fn(() => ({ username: "fake", password: "fake" }));
   return { http, credentials, adapter: createOmnipackFulfillmentAdapter({ http: { baseUrl: "https://warehouse.invalid", fetchImpl: http, credentials, timeoutMs: 5, safeReadRetries: 1, productPath: "/products" },
-    selected: true, readiness: { ready: true }, resolveProduct: async () => ({ lotNumber: "LOT-A", expirationDate: "2027-01-01" }),
+    selected: true, readiness: { ready: true }, resolveProduct: async () => metadata,
     notification: { token: () => "fake", expectedEvent: "order.shipped" }, clock: () => now,
     mintEvidenceReference: () => "evidence:00000000-0000-4000-8000-000000000001", mintSyncRunId: () => "sync-a", approveTrackingUrl: () => true }) };
 }
@@ -61,6 +62,37 @@ it("dispatch-ok persists the redacted mapped items, revisions, selection and mod
     mapping: { source: "dispatch_worker", mode: "stage", shadowMode: false } });
   expect(JSON.stringify(attempts)).not.toMatch(/example@example|1202555|Synthetic|recipient|password|signedUrl/);
   expect(f.http).toHaveBeenCalledTimes(1);
+});
+it.each(["stage", "shadow"] as const)("%s transcript metadata is validated before persistence without failing dispatch", async mode => {
+  const contactJson = JSON.stringify({ email: candidate().recipient.email, phone: candidate().recipient.phone });
+  const cases = [
+    { lotNumber: contactJson, expirationDate: "2027-01-01", lotRef: null, date: "2027-01-01", count: 1 },
+    { lotNumber: "LOT-A", expirationDate: candidate().recipient.phone!, lotRef: "LOT-A", date: null, count: 1 },
+    { lotNumber: "LOT-A", expirationDate: "2027-02-30", lotRef: "LOT-A", date: null, count: 1 },
+    { lotNumber: "LOT-A_1:2.3", expirationDate: "2028-02-29", lotRef: "LOT-A_1:2.3", date: "2028-02-29", count: 0 },
+  ];
+  for (const spec of cases) {
+    const f = dispatchFixture(adapter(undefined, spec)), req = candidate();
+    req.lines = [{ ...req.lines[0]!, lotRef: spec.lotNumber, expirationDate: spec.expirationDate }];
+    f.store.readCandidate = async () => req;
+    expect(await runFulfillmentDispatchWorker({ store: f.store, provider: mode === "shadow" ? null : f.adapter.dispatch,
+      keys, listCandidates: async () => [req], config: { mode, batchLimit: 1 } })).toMatchObject({ ok: true, failures: 0, providerCalls: mode === "shadow" ? 0 : 1 });
+    const evidence = (await f.base.readMappedAttempts())[0]!.preparedEvidence;
+    expect(evidence.transcript!.items[0]).toEqual({ skuRef: "SKU-A", quantity: 1, lotRef: spec.lotRef, expirationDate: spec.date });
+    expect(evidence.transcript!.redactedFieldCount ?? 0).toBe(spec.count);
+    const query = vi.fn(async (_statement: string, _values?: unknown[]) => ({ rows: [{ response: {} }] }));
+    const native = createPostgresFulfillmentDispatchStore({ query }, { prepare: f.store.prepare, readCandidate: f.store.readCandidate });
+    // Exercise repeated sanitization at every native evidence write boundary.
+    await native.claim({ requestKey: keys.request(), fulfillmentRef: req.fulfillmentRef, orderRef: req.orderRef, parcelRef: req.parcelRef, mode, evidence });
+    await native.recordProviderAttempt(keys.mappedAttempt(keys.request(), 0), req.fulfillmentRef, evidence, mode, "recorded");
+    await native.acknowledge({ dispatchRef: "dispatch-a", acceptance: { kind: "accepted", externalRef: "external-a", evidence, ...keys.acceptance() } });
+    const calls = query.mock.calls;
+    expect(JSON.parse(calls[0]![1]![5] as string)).toEqual(evidence);
+    expect(JSON.parse(calls[1]![1]![2] as string)).toEqual(evidence);
+    expect(JSON.parse(calls[2]![1]![1] as string).evidence).toEqual(evidence);
+    expect(JSON.stringify([await f.base.read(keys.request()), calls])).not.toMatch(/example@example|1202555|email/);
+    if (mode === "shadow") { expect(f.credentials).not.toHaveBeenCalled(); expect(f.http).not.toHaveBeenCalled(); }
+  }
 });
 it.each(["lost", "committed", "readback_failed", "finalize_failed"] as const)("ACK %s preserves proof and never repeats POST", async scenario => {
   const f = dispatchFixture();
@@ -148,7 +180,7 @@ function reconciliationFixture(rows = [row]) {
     lifecycle: { ...f.input.lifecycle,
       async recordQuarantine(_evidence, reason) { f.trace.push(`quarantine:${reason}`); return { replayed: false }; },
       async recordProviderException() { f.trace.push("exception"); return { replayed: false }; },
-      async readDeliveryCarrier() { throw Error("unused_read"); }, trackingCodecs: { normalizeCarrier: value => value.carrierRef, publicUrl: () => null },
+      async readDeliveryCarrier() { throw Error("unused_read"); }, trackingCodecs: { approveTrackingUrl: url => url.startsWith("https://tracking.invalid/"), normalizeCarrier: value => value.carrierRef, publicUrl: () => null },
       invoiceFailure: error => { const e = error as { causeCode: string; causeMessage: string }; return { permanent: e.causeCode === "22023", identifier: e.causeMessage, sqlstate: e.causeCode, benign: false }; }, classifyStateConflict: () => null,
     } };
   return { ...a, ...f, input, run: () => reconcileFulfillmentObservations(input) };
@@ -249,11 +281,14 @@ it("refuses transcript tampering before HTTP and projects nested diagnostic/evid
   const dirty = { kind: "unknown" as const, effectMayHaveSucceeded: true as const, refusal: { reason: "io_failure" as const, phase: "dispatch" as const, retryable: false },
     error: { code: "BAD_SKU", status: 400, retryable: false, mayHaveSucceeded: false, cause: "https://tracking.invalid/?token=fake", message: req.recipient.email } };
   expect(dispatchResult(dirty)).toEqual({ kind: "unknown", effectMayHaveSucceeded: true, refusal: dirty.refusal,
-    error: { code: "BAD_SKU", status: 400, retryable: false, mayHaveSucceeded: true } });
+    error: { code: "BAD_SKU", status: 400, retryable: false, mayHaveSucceeded: true, redactedFieldCount: 1 } });
 });
 
 
-it.each([0, 1])("legacy five-field native attempts replay without consuming remaps (used=%s)", async used => {
+it.each([
+  { mode: "stage", used: 0 }, { mode: "stage", used: 1 },
+  { mode: "shadow", used: 0 }, { mode: "shadow", used: 1 },
+] as const)("legacy five-field native attempts preserve $mode migration semantics (used=$used)", async ({ mode, used }) => {
   const a = adapter(), req = candidate(), prepared = await a.adapter.dispatch.prepare(req);
   if (prepared.kind !== "prepared") throw Error("expected_preparation");
   const { commandFingerprint, contactRevision, providerRef, carrierRef, serviceRef } = prepared.evidence;
@@ -264,7 +299,7 @@ it.each([0, 1])("legacy five-field native attempts replay without consuming rema
   expect(sql).toContain("v_ref.evidence IS DISTINCT FROM p_evidence AND v_ref.status='draft'");
   let remaps = used;
   const record: DispatchRecord = { dispatchRef: "dispatch-a", requestKey: keys.request(), fulfillmentRef: req.fulfillmentRef,
-    orderRef: req.orderRef, parcelRef: req.parcelRef, mode: "stage", status: "draft", externalRef: null, evidence: legacy, replayed: true };
+    orderRef: req.orderRef, parcelRef: req.parcelRef, mode, status: "draft", externalRef: null, evidence: legacy, replayed: true };
   const attempts = new Map([[keys.mappedAttempt(keys.request(), 0), structuredClone(legacy)]]);
   const query = vi.fn(async (statement: string, values: unknown[] = []) => {
     if (statement.startsWith("UPDATE")) return { rows: [] };
@@ -296,7 +331,16 @@ it.each([0, 1])("legacy five-field native attempts replay without consuming rema
     return { rows: [{ response }] };
   });
   const store = createPostgresFulfillmentDispatchStore({ query }, { prepare: async () => ({ disposition: "ready", contactRevision: 1 }), readCandidate: async () => req });
-  const run = () => runFulfillmentDispatchWorker({ store, provider: a.adapter.dispatch, keys, listCandidates: async () => [req], config: { mode: "stage", batchLimit: 2 } });
+  const prepare = vi.spyOn(a.adapter.dispatch, "prepare");
+  const run = () => runFulfillmentDispatchWorker({ store, provider: mode === "shadow" ? null : a.adapter.dispatch, keys, listCandidates: async () => [req], config: { mode, batchLimit: 2 } });
+  if (mode === "shadow") {
+    expect(await run()).toMatchObject({ ok: false, failures: 1, providerCalls: 0,
+      reason: used === 0 ? expect.stringContaining("fulfillment_attempt_key_conflict") : "dispatch_claim_failed" });
+    expect(remaps).toBe(1);
+    expect(await run()).toMatchObject({ ok: false, failures: 1, providerCalls: 0 });
+    expect(prepare).not.toHaveBeenCalled(); expect(a.credentials).not.toHaveBeenCalled(); expect(a.http).not.toHaveBeenCalled();
+    return;
+  }
   expect(await run()).toMatchObject({ ok: true, failures: 0, providerCalls: 1 });
   expect(await run()).toMatchObject({ ok: true, failures: 0, providerCalls: 0 });
   expect(remaps).toBe(used); expect(a.http).toHaveBeenCalledTimes(1);
@@ -334,4 +378,133 @@ it("a pre-traversal abort retains the current page", async () => {
 it("a thrown page read counts one logical provider call", async () => {
   const f = reconciliationFixture();
   expect(await runFulfillmentReconciliationPage({ ...f.input, provider: { readPage: async () => { throw Error("read_down"); } }, pageSize: 2, checkpoint: null })).toMatchObject({ result: { providerCalls: 1, failures: 1, checked: 0 } });
+});
+
+
+it("sweeps every provider string field through adapters, workers and durable sink projections", async () => {
+  const plants = ["Jane Doe +12025550123", "jane.doe@example.invalid", "12 Example Street", '{"contact":{"email":"jane@example.invalid","phone":"+12025550123"}}', "Bearer synthetic.secret/contact+token="];
+  // All strings read from PR2 provider inputs, including fallback spellings and
+  // mapper fields not currently retained. Each field is poisoned independently.
+  const reconciliationFields = [
+    "orderId", "providerOrderId", "fulfilmentNumber", "externalNumber", "orderNumber", "createdAt", "updatedAt", "status", "subStatus",
+    "trackingNumbers.0", "shipments.0.trackingNo", "shipments.0.trackingNumber",
+    "shipments.0.trackingUrl", "shipments.0.trackingURL", "shipments.0.trackingLink", "shipments.0.publicTrackingUrl",
+    "shipments.0.carrier", "shipments.0.carrierCode", "shipments.0.shippingMethod", "shipments.0.service",
+    "items.0.sku", "items.0.productLotNumber", "items.0.expirationDate",
+  ];
+  const dispatchFields = ["resolveProduct.lotNumber", "resolveProduct.expirationDate", "response.orderId", "error.code"];
+  const diagnosticFields = ["message", "code", "causeCode", "causeMessage"];
+  const set = (value: Record<string, unknown>, path: string, text: string) => {
+    const parts = path.split("."); let target = value;
+    for (const part of parts.slice(0, -1)) target = target[part] as Record<string, unknown>;
+    target[parts.at(-1)!] = text;
+  };
+  const statusKeys: string[] = [], subStatusKeys: string[] = [];
+  const sinks = new Set<string>();
+  for (const plant of plants) {
+    const captured: { sink: string; value: unknown }[] = [];
+    const capture = (sink: string, value: unknown) => { sinks.add(sink); captured.push({ sink, value: structuredClone(value) }); };
+    for (const field of reconciliationFields) {
+      const poisoned: Record<string, unknown> = { ...row, status: "delivered", shipments: [{ trackingNo: "TRACK-A" }],
+        trackingNumbers: ["TRACK-B"], items: [{ sku: "SKU-A", productLotNumber: "LOT-A", expirationDate: "2027-01-01" }] };
+      if (field === "providerOrderId") delete poisoned.orderId;
+      if (field === "shipments.0.trackingNumber") delete (poisoned.shipments as Record<string, unknown>[])[0]!.trackingNo;
+      set(poisoned, field, plant);
+      const f = reconciliationFixture([poisoned as typeof row]);
+      f.input.lifecycle.trackingCodecs = { normalizeCarrier: value => value.carrierRef, publicUrl: () => null };
+      f.input.lifecycle.readDeliveryCarrier = async () => null;
+      const native = createPostgresFulfillmentShipmentSpinePort({ async query(statement, values) {
+        if (field === "subStatus" && statement.includes("fulfillment_record_observation(")) expect(JSON.parse(values![2] as string).diagnostics.redactedFieldCount).toBe(1);
+        capture("native-observation", { statement, values }); return { rows: [{ response: { replayed: false } }] };
+      } }, { portKey: "privacy-test" }).localPersistence;
+      f.input.lifecycle.acknowledgeDispatchAcceptance = async (ref, evidence) => capture("ack-evidence", { ref, evidence });
+      f.input.lifecycle.recordQuarantine = async (evidence, reason) => { capture("quarantine", { evidence, reason }); return { replayed: false }; };
+      f.input.lifecycle.recordStatusEvidence = async (ref, evidence) => {
+        capture("provider-status", evidence);
+        if (field === "subStatus") { subStatusKeys.push(evidence.eventKey); expect(evidence.diagnostics?.redactedFieldCount).toBe(1); }
+        await native.recordObservation(evidence);
+        return native.recordStatusEvidence(ref, evidence);
+      };
+      for (const effect of ["markProviderStockConsumed", "markHandedOver", "recordTrackingReference"] as const) {
+        f.input.lifecycle.effects[effect] = async value => { capture("effect", value); return { replayed: false, readBack: false }; };
+      }
+      const quarantine = f.input.lifecycle.recordQuarantine;
+      f.input.lifecycle.recordQuarantine = async (evidence, reason, detail) => {
+        if (field === "status") { statusKeys.push(evidence!.eventKey); expect(evidence!.diagnostics?.redactedFieldCount).toBe(1); }
+        return quarantine(evidence, reason, detail);
+      };
+      const run = await runFulfillmentReconciliationPage({ ...f.input, provider: f.adapter.reconciliation, pageSize: 1,
+        checkpoint: { extra: plant, reconciliationPagination: { version: 1, page: 0, nextPage: 0, pageSize: 1, extra: plant } } });
+      expect(run.result).toMatchObject({ checked: 1, failures: 0, quarantined: field === "status" ? 1 : 0, updated: field === "status" ? 0 : 1 });
+      capture("checkpoint-and-diagnostics", run);
+    }
+    for (const field of dispatchFields) {
+      const metadata = { lotNumber: "LOT-A", expirationDate: "2027-01-01" }, response = { orderId: "external-a" };
+      if (field.startsWith("resolveProduct.")) set(metadata, field.split(".")[1]!, plant);
+      if (field === "response.orderId") response.orderId = plant;
+      const a = adapter(() => field === "error.code" ? Response.json({ code: plant }, { status: 400 }) : Response.json(response), metadata);
+      const memory = memoryStore();
+      const native = createPostgresFulfillmentDispatchStore({ async query(statement, values = []) {
+        let result: unknown;
+        if (statement.startsWith("UPDATE")) return { rows: [] };
+        if (statement.startsWith("SELECT public.fulfillment_dispatch_read")) result = await memory.read(String(values[0]));
+        else {
+          capture("native-dispatch", { statement, values });
+          if (statement.includes("fulfillment_dispatch_claim(")) result = await memory.claim({ requestKey: String(values[0]), fulfillmentRef: String(values[1]),
+            orderRef: String(values[2]), parcelRef: values[3] as string | null, mode: values[4] as DispatchRecord["mode"], evidence: JSON.parse(values[5] as string) });
+          else if (statement.includes("fulfillment_record_provider_attempt(")) result = await memory.recordProviderAttempt(String(values[0]), String(values[1]), JSON.parse(values[2] as string), values[3] as DispatchRecord["mode"], "recorded");
+          else if (statement.includes("fulfillment_dispatch_begin(")) result = await memory.begin({ dispatchRef: String(values[0]), commandFingerprint: String(values[1]) });
+          else if (statement.includes("fulfillment_dispatch_finish(")) result = values[2] ? await memory.acknowledge({ dispatchRef: String(values[0]), acceptance: JSON.parse(values[1] as string) })
+            : await memory.finalize({ dispatchRef: String(values[0]), result: JSON.parse(values[1] as string) });
+          else throw Error("unexpected_native_call");
+        }
+        return { rows: [{ response: result }] };
+      } }, { prepare: memory.prepare, readCandidate: async () => candidate() });
+      const run = await runFulfillmentDispatchWorker({ store: native, provider: a.adapter.dispatch, keys,
+        listCandidates: async () => [candidate()], config: { mode: "stage", batchLimit: 1 } });
+      expect(run.providerCalls).toBe(1);
+      const attempts = await memory.readMappedAttempts(); expect(attempts).toHaveLength(1);
+      if (field.startsWith("resolveProduct.")) expect(attempts[0]!.preparedEvidence.transcript!.redactedFieldCount).toBe(1);
+      capture("transcript", attempts); capture("dispatch-diagnostics", run);
+      // The same transcript projection also guards provider-free shadow writes.
+      const req = candidate(); req.lines = [{ ...req.lines[0]!, lotRef: plant, expirationDate: plant }];
+      const shadow = memoryStore(); shadow.readCandidate = async () => req;
+      capture("shadow-diagnostics", await runFulfillmentDispatchWorker({ store: shadow, provider: null, keys, listCandidates: async () => [req], config: { mode: "shadow", batchLimit: 1 } }));
+      capture("transcript", await shadow.readMappedAttempts());
+    }
+    // Exception fields read by both workers and the reconciliation invoice codec.
+    for (const field of diagnosticFields) {
+      const error = Object.assign(Error("operation_failed"), { [field]: plant });
+      const f = dispatchFixture(); f.store.markStaleSubmissionsUncertain = async () => { throw error; };
+      capture("dispatch-diagnostics", await f.run());
+      const r = reconciliationFixture(); r.input.lifecycle.issueAccountingInvoice = async () => { throw error; };
+      r.input.lifecycle.invoiceFailure = () => ({ permanent: true, identifier: plant, sqlstate: plant, benign: false });
+      capture("reconciliation-diagnostics", await r.run());
+      capture("checkpoint-and-diagnostics", await runFulfillmentReconciliationPage({ ...r.input, provider: { readPage: async () => { throw error; } }, pageSize: 1, checkpoint: null }));
+    }
+    const bytes = JSON.stringify(captured);
+    for (const forbidden of plants) {
+      expect(bytes).not.toContain(forbidden);
+      expect(bytes).not.toContain(JSON.stringify(forbidden).slice(1, -1));
+      expect(bytes.toLowerCase()).not.toContain(forbidden.toLowerCase());
+    }
+  }
+  // Machine tokens survive; only the adopter's explicit URL policy permits a URL
+  // through both the worker projection and repeated native observation projection.
+  const tokens = reconciliationFixture([{ ...row, status: "IN_TRANSIT" }]);
+  tokens.input.lifecycle.recordQuarantine = async evidence => {
+    expect(evidence!.providerStatus!.primary).toBe("IN_TRANSIT"); return { replayed: false };
+  };
+  expect(await tokens.run()).toMatchObject({ quarantined: 1 });
+  const approved = reconciliationFixture(), nativeWrites: unknown[][] = [];
+  const policy = (url: string) => url === "https://tracking.invalid/TRACK-A";
+  const native = createPostgresFulfillmentShipmentSpinePort({ async query(_statement, values = []) {
+    nativeWrites.push(values); return { rows: [{ response: { replayed: false } }] };
+  } }, { portKey: "privacy-test", approveTrackingUrl: policy }).localPersistence;
+  approved.input.lifecycle.recordStatusEvidence = async (_ref, evidence) => native.recordObservation(evidence);
+  expect(await approved.run()).toMatchObject({ ok: true, trackingRefs: 1 });
+  expect(JSON.parse(nativeWrites[0]![2] as string).trackingRefs[0].publicUrl).toBe(row.shipments[0]!.trackingUrl);
+  expect(new Set(statusKeys).size).toBe(plants.length);
+  expect(new Set(subStatusKeys).size).toBe(plants.length);
+  expect([...sinks]).toEqual(expect.arrayContaining(["native-dispatch", "native-observation", "provider-status", "quarantine", "ack-evidence", "effect", "transcript", "checkpoint-and-diagnostics", "dispatch-diagnostics", "reconciliation-diagnostics"]));
 });

@@ -1,5 +1,5 @@
 import type { DispatchRecord, FulfillmentDispatchResult, FulfillmentStorePort } from "./contracts/index.js";
-import { dispatchEvidence, dispatchResult, localFailureReason } from "./dispatchProjection.js";
+import { durableStrings, dispatchEvidence, dispatchResult, localFailureReason } from "./dispatchProjection.js";
 
 export function acknowledgeAcceptedDispatch(input: {
   store: FulfillmentStorePort;
@@ -21,11 +21,13 @@ export async function recoverDispatchAcceptanceWrite(input: {
   let readBacks = record ? 1 : 0;
   const committed = () => record?.status === "created" && record.externalRef === input.acceptance.externalRef;
   if (committed()) return { committed: true, readBacks };
+  const privacy = durableStrings();
+  const cause = localFailureReason("ack", input.error, privacy);
   try {
     // Accepted proof survives a failed atomic ACK; finalization records uncertainty,
     // and the next worker repairs the ACK locally without another provider call.
     record = await input.store.finalize({ dispatchRef: input.dispatchRef, result: { ...input.acceptance, error: {
-      code: "dispatch_acceptance_write_failed", cause: localFailureReason("ack", input.error), status: null, retryable: false, mayHaveSucceeded: true,
+      code: "dispatch_acceptance_write_failed", cause, ...(privacy.redactedFieldCount ? { redactedFieldCount: privacy.redactedFieldCount } : {}), status: null, retryable: false, mayHaveSucceeded: true,
     } } });
     readBacks += 1;
   } catch {
