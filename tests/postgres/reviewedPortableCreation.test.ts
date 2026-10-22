@@ -44,14 +44,14 @@ it.each(fixtures.map((fixture, index) => ({ ...fixture, index })))("preserves th
     if (!await waitForPostgresTcpReady(container.connectionString)) throw new Error("Reviewed portable creation PostgreSQL unavailable");
     pool = new Pool({ connectionString: container.connectionString });
     expect((await pool.query("SHOW standard_conforming_strings")).rows).toEqual([{ standard_conforming_strings: "on" }]);
-    // Apply the canonical portable prefix, then any earlier pinned fixture. Never
-    // install the proposed files into the real manifest or read another worktree.
+    // Apply the canonical portable prefix, then earlier pinned fixtures not yet
+    // in the manifest. Each forward under proof still runs after its snapshot.
     for (const unit of [manifest.baseline, ...manifest.forward].filter(unit => unit.file < path)) {
       const source = readFileSync(unit.file);
       expect(createHash("sha256").update(source).digest("hex")).toBe(unit.sha256);
       await pool.query(source.toString("utf8"));
     }
-    for (const earlier of fixtures.slice(0, index)) {
+    for (const earlier of fixtures.slice(0, index).filter(entry => !manifest.forward.some(unit => unit.file === entry.path))) {
       expect(createHash("sha256").update(earlier.bytes).digest("hex")).toBe(earlier.sha256);
       await pool.query(earlier.bytes.toString("utf8"));
     }
