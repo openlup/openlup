@@ -8,7 +8,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { createPostgresMigrationRunner } from "../../server/adapters/postgres/migrationRunner.js";
 import {
-  dockerAvailable,
+  closePostgres, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, dockerAvailable,
   runPostgresContainer,
   waitForPostgresTcpReady,
   type PostgresContainer,
@@ -43,14 +43,11 @@ beforeAll(async () => {
     { poolFactory: () => platformPool as Pool },
   ).apply()).applied;
   ready = true;
-}, 180_000);
+}, postgresSetupTimeoutMs);
 
 afterAll(async () => {
-  await Promise.all([
-    platformPool?.end().catch(() => {}),
-  ]);
-  await container?.remove();
-});
+  await closePostgres(container, platformPool);
+}, postgresTeardownTimeoutMs);
 
 function requirePostgres(ctx: { skip: (note?: string) => void }): void {
   if (!ready) ctx.skip("Docker or postgres:16 unavailable on this machine");

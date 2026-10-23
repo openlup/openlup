@@ -18,7 +18,7 @@ import { ShippingFieldsCard } from "./ShippingFieldsCard";
 import { ShippingRateCard } from "../admin/ShippingRateCard";
 import { createPostgresMigrationRunner } from "../../../server/adapters/postgres/migrationRunner.js";
 import { createStaticDeliverySelectionPort } from "../../../server/domains/shipping/staticDeliverySelectionPort.js";
-import { dockerAvailable, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../../../tests/helpers/postgresContainer.js";
+import { closePostgres, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, dockerAvailable, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../../../tests/helpers/postgresContainer.js";
 import { deliveryOptionsResponseSchema, pickupPointValidationRequestSchema, pickupPointValidationResponseSchema, pickupPointAddressSchema } from "@/domains/shipping/deliverySelectionContracts";
 import { pickupPointSearchRequestSchema, pickupPointSearchResponseSchema } from "@/domains/shipping/pickupPointSearchContracts";
 import { customerAddressesRequestSchema, customerAddressesResponseSchema } from "@/domains/customers/contracts";
@@ -62,9 +62,9 @@ beforeAll(async () => {
     INSERT INTO public.catalog_skus(id,product_id,sku,title) VALUES ('f6000000-0000-4000-8000-000000000004','f6000000-0000-4000-8000-000000000003','FINAL','Fixture');
     INSERT INTO public.fulfillment_stock_current(source_key,sku,total_quantity,for_sale_quantity,reserved_unavailable_quantity,inventory_class,last_synced_at,stale_after,sync_run_id,idempotency_key,operation_fingerprint)
     VALUES ('fixture','FINAL',9,9,0,'sellable',now(),now()+interval '1 hour','fixture','final-stock',repeat('a',64))`.replace("$1", `'${clientId}'`));
-}, 180_000);
+}, postgresSetupTimeoutMs);
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
-afterAll(async () => { await rateLane?.close(); await pool?.end(); await container?.remove(); if (scratch) rmSync(scratch, { recursive: true, force: true }); });
+afterAll(async () => { await rateLane?.close(); await closePostgres(container, pool); if (scratch) rmSync(scratch, { recursive: true, force: true }); }, postgresTeardownTimeoutMs);
 async function invoke(handler: NonNullable<ReturnType<typeof shipping.createShippingBindings>["handlers"]["rate"]>, method: string, body?: unknown) {
   let status = 0, payload: { ok: boolean; data?: unknown } | undefined;
   const response = { status(value: number) { status = value; return this; }, json(value: typeof payload) { payload = value; return this; }, setHeader() {} };

@@ -7,7 +7,7 @@ import { afterAll, beforeAll, expect, it } from 'vitest';
 import { FULFILLMENT_MIGRATIONS, createPostgresFulfillmentStockSyncPort } from '@openlup/platform/fulfillment';
 import { createPostgresMigrationRunner } from '../../server/adapters/postgres/migrationRunner.js';
 import { readSelectedCatalogProjection, selectedCatalogProjectionPayload } from '../../server/adapters/postgres/selectedCatalogProjection.js';
-import { dockerAvailable, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from '../helpers/postgresContainer.js';
+import { closePostgres, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, dockerAvailable, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from '../helpers/postgresContainer.js';
 import { executor, manifest, units } from '../helpers/fulfillmentNative.js';
 
 // The shared helper's pinned PostgreSQL 16 image.
@@ -43,8 +43,8 @@ beforeAll(async () => {
   pool = new Pool({ connectionString: container.connectionString });
   await runner(pool).apply();
   console.log(`M08 stock replay image=${image}; full-chain setup ms=${Date.now() - started}`);
-}, 120_000);
-afterAll(async () => { if (pool && !pool.ended) await pool.end(); await container?.remove(); });
+}, postgresSetupTimeoutMs);
+afterAll(async () => { await closePostgres(container, pool); }, postgresTeardownTimeoutMs);
 
 it('inserts, refreshes observations with stable identity, resolves, reopens and resolves exactly once again', async () => {
   const value = evidence('lifecycle');

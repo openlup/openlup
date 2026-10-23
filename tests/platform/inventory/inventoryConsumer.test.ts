@@ -13,7 +13,7 @@ import type { ActiveBundleComposition } from "@openlup/platform/catalog";
 import { createM06InventoryReferenceBinding } from "../../../server/runtime/public-reference/m06InventoryBinding.js";
 import { createPostgresMigrationRunner } from "../../../server/adapters/postgres/migrationRunner.js";
 import { assertConsumerIsolation } from "../../../scripts/packages/platform-cold-consumer.js";
-import { dockerAvailable, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../../helpers/postgresContainer.js";
+import { closePostgres, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, dockerAvailable, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../../helpers/postgresContainer.js";
 
 let installedResolve: (name: string) => string;
 let scratch: string, container: PostgresContainer | undefined, pool: Pool;
@@ -41,8 +41,8 @@ beforeAll(async () => {
     INSERT INTO public.catalog_skus(id,product_id,sku,title) VALUES ('f5000000-0000-4000-8000-000000000002','f5000000-0000-4000-8000-000000000001','INSTALLED','Fixture');
     INSERT INTO public.fulfillment_stock_current(source_key,sku,total_quantity,for_sale_quantity,reserved_unavailable_quantity,inventory_class,last_synced_at,stale_after,sync_run_id,idempotency_key,operation_fingerprint)
     VALUES ('fixture','INSTALLED',8,8,0,'sellable',now(),now()+interval '1 hour','fixture','installed-stock',repeat('a',64))`);
-}, 180_000);
-afterAll(async () => { await pool?.end(); await container?.remove(); if (scratch) rmSync(scratch, { recursive: true, force: true }); });
+}, postgresSetupTimeoutMs);
+afterAll(async () => { await closePostgres(container, pool); if (scratch) rmSync(scratch, { recursive: true, force: true }); }, postgresTeardownTimeoutMs);
 
 it("reads the actual native store from an isolated tarball with exact SQL projection identities", async () => {
   const bindings = inventory.createInventoryBindings({ dataKind: "postgres", executor: pool, provider: { stockMasterProvider: "fixture", providerSchema: z.literal("fixture") } });

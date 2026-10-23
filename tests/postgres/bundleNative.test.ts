@@ -5,7 +5,7 @@ import { Pool, type PoolClient } from "pg";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { BUNDLE_MIGRATIONS, BundleCatalogReadError, createPostgresBundleCatalogStore } from "@openlup/platform/catalog";
 import { createPostgresMigrationRunner } from "../../server/adapters/postgres/migrationRunner.js";
-import { dockerAvailable, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
+import { closePostgres, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, dockerAvailable, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
 
 let container: PostgresContainer | undefined, pool: Pool;
 const actor = "c5000000-0000-4000-8000-000000000001";
@@ -51,8 +51,8 @@ beforeAll(async () => {
     for (const [sku, amount] of currency === "XXX" ? [["UNIT-A", 1000], ["UNIT-B", 500]] as const : [["UNIT-M", 600]] as const)
       await pool.query("INSERT INTO public.price_entries(price_list_id,variant_id,unit_price_minor) SELECT $1,id,$3 FROM public.catalog_skus WHERE sku=$2", [list, sku, amount]);
   }
-}, 120_000);
-afterAll(async () => { await pool?.end(); await container?.remove(); });
+}, postgresSetupTimeoutMs);
+afterAll(async () => { await closePostgres(container, pool); }, postgresTeardownTimeoutMs);
 
 it("installs the full canonical chain, binds sparse 16/19 bytes and repeats without pending work", async () => {
   expect(BUNDLE_MIGRATIONS.map(unit => unit.position)).toEqual([16, 19]);

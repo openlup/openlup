@@ -597,6 +597,18 @@ imports the JSON module directly so the same pins load in plain Node and both
 Vitest projects, including jsdom. They try
 the organization mirror first, then the existing upstream order with the same
 digest: managed uses GHCR, Docker Hub, ECR; native uses Docker Hub, ECR.
+Disposable PostgreSQL suites use `postgresSetupTimeoutMs` (600 seconds), including
+the existing 300-second cold image pull and schema installation, and
+`postgresTeardownTimeoutMs` (45 seconds). These are explicit integration-hook
+budgets; ordinary test deadlines remain unchanged. The shared helper bounds
+Docker availability to five seconds, each start/removal command to 30 seconds,
+and TCP readiness to 60 seconds of wall-clock time, including connect/query
+attempts and waits. Readiness destroys its throwaway client after each probe.
+`closePostgres` gives a pool five seconds to close, then attempts container
+removal even if the pool failed or stalled. Its separate elapsed timings identify
+the slow phase, and aggregated cleanup failures remain failures. An already
+absent container is the only ignored removal error.
+
 The helper's default is the pinned test PostgreSQL image; explicit images retain
 their behavior unless they exactly match an inventory pin. Shared acquisition
 first inspects every source locally and reuses only an exact pinned index digest;

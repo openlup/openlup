@@ -7,7 +7,7 @@ import { Pool, type PoolClient } from "pg";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { createPostgresMigrationRunner } from "../../server/adapters/postgres/migrationRunner.js";
 import type { PlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
-import { dockerAvailable, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
+import { closePostgres, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, dockerAvailable, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
 
 const forward = "db/platform/migrations/20261021120000_dunning_lifecycle_active_repair.sql";
 const expectedSha = "8918204df731aade89976953f8434afe08cfcbe84b6382a51728b9d14100e7ea";
@@ -102,7 +102,7 @@ describe("real PostgreSQL portable dunning forward", () => {
     prefixAcl = await privileges(upgrade);
     upgradeApplied = (await runner(upgrade).apply()).applied;
     freshApplied = (await runner(fresh).apply()).applied;
-  }, 120_000);
+  }, postgresSetupTimeoutMs);
 
   beforeEach(async context => {
     if (!available) context.skip("Docker unavailable; real PostgreSQL proof did not run");
@@ -126,10 +126,9 @@ describe("real PostgreSQL portable dunning forward", () => {
     if (db) { await db.query("ROLLBACK"); db.release(); db = undefined; }
   });
   afterAll(async () => {
-    await Promise.all(pools.map(pool => pool.end()));
-    await Promise.all(containers.map(container => container.remove()));
+    await Promise.all(containers.map((container, index) => closePostgres(container, pools[index])));
     if (prefixRoot) rmSync(prefixRoot, { recursive: true, force: true });
-  });
+  }, postgresTeardownTimeoutMs);
 
   it("installs the full catalogue at the next ledger position and replays without writes", async () => {
     expect(freshApplied).toEqual(units.map(unit => unit.file));

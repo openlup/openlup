@@ -6,14 +6,14 @@ import { Pool } from 'pg';
 import { afterAll,beforeAll,expect,it } from 'vitest';
 import { FULFILLMENT_MIGRATIONS,createPostgresFulfillmentDispatchStore,createPostgresPaidFulfillmentHandoffStore,createPostgresFulfillmentShipmentSpinePort,createPostgresFulfillmentStockSyncPort } from '@openlup/platform/fulfillment';
 import { readSelectedCatalogProjection,selectedCatalogProjectionPayload } from '../../server/adapters/postgres/selectedCatalogProjection.js';
-import { runPostgresContainer,waitForPostgresTcpReady,type PostgresContainer } from '../helpers/postgresContainer.js';
+import { postgresSetupTimeoutMs, postgresTeardownTimeoutMs, runPostgresContainer,waitForPostgresTcpReady,type PostgresContainer } from '../helpers/postgresContainer.js';
 import { executor,fixture,manifest,nativeHarness,units } from '../helpers/fulfillmentNative.js';
 import type { FulfillmentObservation } from '@openlup/platform/fulfillment/contracts';
 function observation(): FulfillmentObservation {
  const at='2026-10-21T12:00:00.000Z';
  return {fact:{schemaVersion:1,mapperVersion:'fixture-v1',factId:'fact:fixture',providerKind:'warehouse-a',fulfillmentReference:'external-fixture',canonicalStatus:'in_transit',provenance:{source:'provider_webhook',authority:'provider_asserted'},occurredAt:at,receivedAt:at,rawEvent:{reference:'evidence:00000000-0000-4000-8000-000000000001',digestAlgorithm:'sha256',digest:'a'.repeat(64)}},eventKind:'order.shipped',eventKey:'fixture-shipped',firstReceivedAt:at,correlation:{orderRef:null,fulfillmentRef:null,externalRef:'external-fixture',orderNumber:null,providerFulfillmentRef:null,parcelRef:null},trackingRefs:[]};
 }
-const h=nativeHarness('stores');beforeAll(()=>h.start(),120_000);afterAll(()=>h.stop());
+const h=nativeHarness('stores');beforeAll(()=>h.start(),postgresSetupTimeoutMs);afterAll(()=>h.stop(), postgresTeardownTimeoutMs);
 const revision={schemaVersion:1,source:'fixture',revision:1};
 const evidence={commandFingerprint:'a'.repeat(64),contactRevision:revision,providerRef:'warehouse-a',carrierRef:null,serviceRef:null};
 const store=()=>createPostgresFulfillmentDispatchStore(executor(h.pool),{async prepare(){return {disposition:'ready',contactRevision:1};},async readCandidate(){return null;}});

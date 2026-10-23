@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { Pool, type PoolClient } from 'pg';
 import { createPostgresMigrationRunner } from '../../server/adapters/postgres/migrationRunner.js';
-import { dockerAvailable,runPostgresContainer,waitForPostgresTcpReady,type PostgresContainer } from './postgresContainer.js';
+import { closePostgres, dockerAvailable,runPostgresContainer,waitForPostgresTcpReady,type PostgresContainer } from './postgresContainer.js';
 export const manifest=JSON.parse(readFileSync('config/platform-migration-manifest.json','utf8'));
 export const units: { file:string;sha256:string }[]=[manifest.baseline,...manifest.forward];
 export const executor=(db: Pool | PoolClient) => ({query:(sql:string,values?:unknown[]) => db.query(sql,values)});
@@ -18,7 +18,7 @@ export function nativeHarness(label:string) {
    console.log(`P4 ${label} Docker setup ms=${Date.now()-at}`);
    pool=new Pool({connectionString:container.connectionString});await this.runner().apply();
   },
-  async stop(){await pool?.end();await container?.remove();},
+  async stop(){await closePostgres(container, pool);},
  };
 }
 async function paidOrder(pool:Pool,order:string,client:string,cycle:string|null) {

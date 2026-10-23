@@ -6,7 +6,7 @@ import { Pool } from "pg";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import type { PlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
 import { assertPortableCreationStatements, readReviewedForwardRegistry } from "../../scripts/reviewed-platform-forward.js";
-import { dockerAvailable, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
+import { closePostgres, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, dockerAvailable, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
 
 const manifest: PlatformMigrationManifest = JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8"));
 const registry = readReviewedForwardRegistry(readFileSync("config/reviewed-platform-forwards.json"));
@@ -96,8 +96,8 @@ beforeAll(async () => {
     [before.relations.map(row => row.oid), before.functions.map(row => row.oid), before.types.map(row => row.oid)])).rows;
     catalogEvidence.set(path, { before, after, forbidden });
   }
-}, 120_000);
-afterAll(async () => { await pool?.end(); await container?.remove(); });
+}, postgresSetupTimeoutMs);
+afterAll(async () => { await closePostgres(container, pool); }, postgresTeardownTimeoutMs);
 
 it.each(pinned)("preserves the catalog boundary of $path", async ({ path, sha256 }) => {
     const { bytes } = selected.native.find(entry => entry.path === path)!;

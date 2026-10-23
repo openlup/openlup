@@ -1,3 +1,4 @@
+import { postgresSetupTimeoutMs, postgresTeardownTimeoutMs } from '../helpers/postgresContainer.js';
 /** P1 invariant proof against the complete current native manifest, without M10 forwards. */
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, expect, it } from 'vitest';
@@ -11,8 +12,8 @@ import { executor, fixture, nativeHarness, openCase, replacement, schedule } fro
 
 const h = nativeHarness('m10-p1-baseline');
 const now = '2026-10-22T12:00:00.000Z';
-beforeAll(() => h.start(), 120_000);
-afterAll(() => h.stop());
+beforeAll(() => h.start(), postgresSetupTimeoutMs);
+afterAll(() => h.stop(), postgresTeardownTimeoutMs);
 
 it('late auto_align arrival uses the maximum, never earlier or stacked, and waits for replacement arrival', async () => {
   await h.pool.query("SELECT public.subscription_delivery_alignment_set_mode('off')");

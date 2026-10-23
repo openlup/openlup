@@ -2,7 +2,7 @@ import { Pool, type PoolClient } from "pg";
 import { afterAll, afterEach, beforeAll, beforeEach, expect, it } from "vitest";
 import { createPostgresBundleCatalogStore } from "@openlup/platform/catalog";
 import { createPostgresMigrationRunner } from "../../server/adapters/postgres/migrationRunner.js";
-import { dockerAvailable, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
+import { closePostgres, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, dockerAvailable, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
 
 const now = "2026-05-20T12:00:00.000Z", before = "2026-05-01T00:00:00.000Z", after = "2026-06-01T00:00:00.000Z";
 let container: PostgresContainer | undefined, pool: Pool, db: PoolClient;
@@ -22,8 +22,8 @@ beforeAll(async () => {
   if (!await waitForPostgresTcpReady(container.connectionString)) throw new Error("Effective bundle PostgreSQL unavailable");
   pool = new Pool({ connectionString: container.connectionString });
   await createPostgresMigrationRunner({ connectionString: container.connectionString }, { poolFactory: () => pool }).apply();
-}, 120_000);
-afterAll(async () => { await pool?.end(); await container?.remove(); });
+}, postgresSetupTimeoutMs);
+afterAll(async () => { await closePostgres(container, pool); }, postgresTeardownTimeoutMs);
 beforeEach(async () => {
   db = await pool.connect(); await db.query("BEGIN");
   product = (await db.query("INSERT INTO public.catalog_products(slug,name) VALUES ('parity-parts','Synthetic parts') RETURNING id")).rows[0].id;

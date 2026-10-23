@@ -9,7 +9,7 @@ import { afterAll, beforeAll, expect, it } from "vitest";
 import { INVENTORY_MIGRATIONS, createInventoryBindings, createPostgresAdminInventoryPort, createPostgresRenewalReservationPort } from "@openlup/platform/inventory";
 import { createPostgresMigrationRunner } from "../../server/adapters/postgres/migrationRunner.js";
 import { readSelectedCatalogProjection, selectedCatalogProjectionPayload } from "../../server/adapters/postgres/selectedCatalogProjection.js";
-import { dockerAvailable, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
+import { closePostgres, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, dockerAvailable, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
 
 const AT = "2026-10-20T12:00:00.000Z";
 const manifest = JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8"));
@@ -26,8 +26,8 @@ beforeAll(async () => {
   if (!await waitForPostgresTcpReady(container.connectionString)) throw new Error("Inventory PostgreSQL unavailable");
   pool = new Pool({ connectionString: container.connectionString });
   await runner().apply();
-}, 120_000);
-afterAll(async () => { await pool?.end(); await container?.remove(); });
+}, postgresSetupTimeoutMs);
+afterAll(async () => { await closePostgres(container, pool); }, postgresTeardownTimeoutMs);
 
 async function fixture(quantity = 2, available = 10, at = AT) {
   const client = randomUUID(), subscription = randomUUID(), skuId = randomUUID(), source = randomUUID(), sku = `SKU-${skuId}`;

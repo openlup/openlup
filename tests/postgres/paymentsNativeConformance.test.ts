@@ -8,7 +8,7 @@ import { afterAll, beforeAll, expect, it } from "vitest";
 import { PAYMENT_MIGRATIONS, createPostgresPaymentTruthPort } from "@openlup/platform/payments";
 import { createPostgresMigrationRunner } from "../../server/adapters/postgres/migrationRunner.js";
 import { readSelectedCatalogProjection, selectedCatalogProjectionPayload } from "../../server/adapters/postgres/selectedCatalogProjection.js";
-import { dockerAvailable, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
+import { closePostgres, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, dockerAvailable, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
 
 const AT = "2026-10-20T12:00:00.000Z";
 const manifest = JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8"));
@@ -26,8 +26,8 @@ beforeAll(async () => {
   if (!await waitForPostgresTcpReady(container.connectionString)) throw new Error("Payments PostgreSQL unavailable");
   pool = new Pool({ connectionString: container.connectionString });
   await runner().apply();
-}, 120_000);
-afterAll(async () => { await pool?.end(); await container?.remove(); });
+}, postgresSetupTimeoutMs);
+afterAll(async () => { await closePostgres(container, pool); }, postgresTeardownTimeoutMs);
 
 it("installs the full catalogue, binds projections 10/35/56 and replays the canonical ledger/object inventory", async () => {
   expect(PAYMENT_MIGRATIONS.map(unit => unit.position)).toEqual([10, 35, 56]);
