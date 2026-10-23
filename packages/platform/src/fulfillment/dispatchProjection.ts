@@ -24,6 +24,8 @@ export function operationError(error: Omit<FulfillmentOperationError, "cause"> &
     value => /^ack(?::[A-Za-z0-9_]{1,96}){0,2}$/u.test(value) ? value.slice(0,180) : null) : null;
   return { code, status: Number.isInteger(error.status) && error.status! >= 100 && error.status! <= 599 ? error.status : null,
     retryable: error.retryable === true, mayHaveSucceeded: error.mayHaveSucceeded === true,
+    ...(typeof error.submissionAttempted === "boolean" ? { submissionAttempted: error.submissionAttempted } : {}),
+    ...(typeof error.responseBodyRead === "boolean" ? { responseBodyRead: error.responseBodyRead } : {}),
     ...(cause ? { cause } : {}), ...(privacy.redactedFieldCount ? { redactedFieldCount: privacy.redactedFieldCount } : {}) };
 }
 // The fulfillment opaque-ID rule; never accept free-form metadata as a reference.
@@ -77,9 +79,9 @@ export function dispatchEvidence(evidence: DispatchEvidence): DispatchEvidence {
   };
 }
 /** Shadow has a local command identity; it never invokes a provider or resolves credentials. */
-export function shadowDispatchEvidence(request: FulfillmentDispatchRequest): DispatchEvidence {
+export function shadowDispatchEvidence(request: FulfillmentDispatchRequest, commandFingerprint?: string): DispatchEvidence {
   if (!request.selection.providerRef || !request.lines.length || request.lines.some(line => !Number.isSafeInteger(line.quantity) || line.quantity <= 0)) throw new Error("dispatch_shadow_command_invalid");
-  return dispatchEvidence({ commandFingerprint: createHash("sha256").update(JSON.stringify(request)).digest("hex"),
+  return dispatchEvidence({ commandFingerprint: commandFingerprint ?? createHash("sha256").update(JSON.stringify(request)).digest("hex"),
     contactRevision: request.contactRevision, providerRef: request.selection.providerRef,
     carrierRef: request.selection.carrierRef, serviceRef: request.selection.serviceRef,
     transcript: { itemCount: request.lines.length, items: request.lines.map(line => ({ skuRef: line.skuRef, quantity: line.quantity,

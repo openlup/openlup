@@ -464,6 +464,10 @@ export interface FulfillmentOperationError {
     status: number | null;
     retryable: boolean;
     mayHaveSucceeded: boolean;
+    /** Whether provider submission was attempted; absent means unknown, never proven false. */
+    submissionAttempted?: boolean;
+    /** Whether the HTTP response body was read, including empty or malformed JSON; absent means no body-read evidence. */
+    responseBodyRead?: boolean;
     /** Machine cause only; never an arbitrary exception message. */
     cause?: string;
 }
@@ -2753,8 +2757,46 @@ export declare function runFulfillmentDispatchWorker(input: {
         mode: DispatchRecord["mode"];
         batchLimit: number;
     };
+    /** Pure local shadow fingerprint: a lowercase 64-hex SHA-256 digest of the adopter's canonical command bytes. Invalid output or a throw refuses before evidence writes. Never return raw command/PII. Used across shadow claim/readback/attempt; shadow never begins, and live preparation must produce the same identity. */
+    shadowCommandFingerprint?: (request: FulfillmentDispatchRequest) => string;
     now?: () => Date;
 }): Promise<{
+    redactedFieldCount: number;
+    ok: boolean;
+    failures: number;
+    reason: "adopter_fingerprint_invalid" | "adopter_fingerprint_failed";
+    refusal: {
+        reason: "malformed";
+        phase: "prepare";
+        retryable: false;
+        cause: "adopter_fingerprint_invalid" | "adopter_fingerprint_failed";
+    };
+    skipped: boolean;
+    checked: number;
+    updated: number;
+    mode: "shadow" | "stage" | "live";
+    replayed: number;
+    providerCalls: number;
+    readBacks: number;
+} | {
+    redactedFieldCount?: undefined;
+    ok: boolean;
+    failures: number;
+    reason: "adopter_fingerprint_invalid" | "adopter_fingerprint_failed";
+    refusal: {
+        reason: "malformed";
+        phase: "prepare";
+        retryable: false;
+        cause: "adopter_fingerprint_invalid" | "adopter_fingerprint_failed";
+    };
+    skipped: boolean;
+    checked: number;
+    updated: number;
+    mode: "shadow" | "stage" | "live";
+    replayed: number;
+    providerCalls: number;
+    readBacks: number;
+} | {
     redactedFieldCount: number;
     ok: boolean;
     skipped: boolean;

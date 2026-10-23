@@ -153,35 +153,42 @@ async function requestJson(
 
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
     let submitted = false;
+    let responseBodyRead: boolean | undefined;
+    const dispatchFacts = () => operation === "createOrder" ? { submissionAttempted: submitted,
+      ...(responseBodyRead !== undefined ? { responseBodyRead } : {}) } : {};
     try {
       const base = new URL(config.baseUrl);
       const url = new URL(path, base);
       if (url.origin !== base.origin || url.username || url.password || url.protocol !== "https:") throw new Error("Invalid fulfillment path");
       const response = await fetchWithTimeout(fetchImpl, url, config, init, () => { submitted = true; });
-      if (response.ok) return await readJsonBody(response);
+      responseBodyRead = false;
+      const body = await readJsonBody(response).then(value => { responseBodyRead = true; return value; }).catch(error => {
+        if (response.ok) throw error;
+        return null;
+      });
+      if (response.ok) return body;
 
       const retryable = method === "GET" && isRetryableStatus(response.status);
       // A failed body read cannot erase the rejection status already received.
-      const body = await readJsonBody(response).catch(() => null);
-      lastError = new OmnipackProviderError({
+      lastError = Object.assign(new OmnipackProviderError({
         operation,
         status: response.status,
         code: refuseRedirectRetry && response.status >= 300 && response.status < 400 ? "redirect_refused" : readProviderErrorCode(body) ?? `http_${response.status}`,
         retryable,
         mayHaveSucceeded: mayPostHaveSucceeded(method, response.status),
-      });
+      }), dispatchFacts());
       if (!retryable || attempt === attempts) throw lastError;
     } catch (error) {
       const retryable = method === "GET" && attempt < attempts;
       lastError = submitted && error instanceof OmnipackProviderError
         ? error
-        : new OmnipackProviderError({
+        : Object.assign(new OmnipackProviderError({
           operation,
           status: null,
           code: diagnoseRedirectFailure && isRedirectRefusal(error) ? "redirect_refused" : "network_error",
           retryable,
           mayHaveSucceeded: submitted && mayPostHaveSucceeded(method, null),
-        });
+        }), dispatchFacts());
       if (!retryable || (refuseRedirectRetry && lastError.code === "redirect_refused")) throw lastError;
     }
   }
