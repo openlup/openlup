@@ -129,7 +129,7 @@ export interface FulfillmentCapabilityDescriptor {
 import type { FulfillmentCapabilityDescriptor } from "./capabilities.js";
 import type { FulfillmentDispatchPort, FulfillmentDispatchRequest } from "./dispatch.js";
 import type { FulfillmentLabelPort } from "./label.js";
-import type { FulfillmentObservationPort } from "./observation.js";
+import type { FulfillmentObservationPort, FulfillmentObservationCodecs } from "./observation.js";
 import type { FulfillmentReadbackPort } from "./readback.js";
 import type { FulfillmentStockSyncProvider, FulfillmentProductSyncProvider } from "./sync.js";
 import type { FulfillmentStorePort } from "./store.js";
@@ -154,6 +154,7 @@ type SyncFixture<Port> = {
 /** Offline adapter-owned inputs and exact expected outputs; never real customer data. */
 export interface FulfillmentAdapterConformanceSubject {
     approveTrackingUrl?(url: string): boolean;
+    observationCodecs?: FulfillmentObservationCodecs;
     subjectId: string;
     adapter: {
         capabilities: FulfillmentCapabilityDescriptor;
@@ -384,7 +385,7 @@ export {};
 export type { FulfillmentOperationError, DispatchEvidence, FulfillmentDispatchPrepareResult, FulfillmentSelection, FulfillmentDispatchRequest, FulfillmentDispatchResult, FulfillmentDispatchPort, FulfillmentRefusal } from "./dispatch.js";
 export type { LabelDocument, FulfillmentLabelPort } from "./label.js";
 /** G17 local reads/ingress persistence are inline runtime worker inputs; this provider envelope is unchanged. */
-export type { FulfillmentObservation, FulfillmentObservationPort, FulfillmentTrackingReference } from "./observation.js";
+export type { FulfillmentObservation, FulfillmentObservationCodecs, FulfillmentObservationPort, FulfillmentTrackingReference } from "./observation.js";
 export type { FulfillmentReadbackResult, FulfillmentReadbackPort, FulfillmentReconciliationObservation, FulfillmentObservationPagePort } from "./readback.js";
 export type { SyncCursor, StockSnapshot, StockMovement, LocalStock, FulfillmentStockSyncProvider, FulfillmentStockSyncPort, FulfillmentProductSyncProvider, FulfillmentProductSyncPort } from "./sync.js";
 export type { FulfillmentCapabilityDescriptor } from "./capabilities.js";
@@ -455,8 +456,14 @@ export interface FulfillmentNativeUnsupported {
 import type { NormalizedFulfillmentFact } from "@openlup/core/fulfillment";
 import type { CanonicalLocalFulfillmentStatus } from "./index.js";
 import type { FulfillmentRefusal } from "./dispatch.js";
+/** Explicit adopter policy, forwarded through each durable observation projection. */
+export interface FulfillmentObservationCodecs {
+    approveReference?(value: string): boolean;
+    /** Overrides the query/fragment default; HTTPS, no credentials and URL approval still apply. */
+    trackingUrl?(url: string): string | null;
+}
 export interface FulfillmentTrackingReference {
-    trackingNumber: string;
+    trackingNumber: string; /** Normalized carrier kind, never a raw provider code. */
     carrierRef: string | null;
     serviceRef: string | null;
     publicUrl: string | null;
@@ -483,6 +490,10 @@ export interface FulfillmentObservation {
     };
     diagnostics?: {
         redactedFieldCount?: number;
+        admission?: {
+            rejectedTrackingRefs: number;
+            rejectedTrackingUrls: number;
+        };
         refusal?: FulfillmentRefusal;
         stockContention?: {
             sqlState: "55P03";
@@ -508,6 +519,10 @@ export interface FulfillmentObservationPort {
     } | {
         kind: "refused";
         refusal: FulfillmentRefusal;
+        diagnostics?: {
+            invalidTimestamp?: true;
+            rejectedCorrelationRefs?: number;
+        };
     }>;
 }
 ```

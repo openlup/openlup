@@ -1,7 +1,7 @@
 import type { FulfillmentCapabilityDescriptor } from "./capabilities.js";
 import type { FulfillmentDispatchPort, FulfillmentDispatchRequest } from "./dispatch.js";
 import type { FulfillmentLabelPort } from "./label.js";
-import type { FulfillmentObservationPort } from "./observation.js";
+import type { FulfillmentObservationPort, FulfillmentObservationCodecs } from "./observation.js";
 import type { FulfillmentReadbackPort } from "./readback.js";
 import type { FulfillmentStockSyncProvider, FulfillmentProductSyncProvider } from "./sync.js";
 import type { FulfillmentStorePort } from "./store.js";
@@ -15,6 +15,7 @@ type SyncFixture<Port> = { [K in keyof Port]: Port[K] extends (...args: never[])
 /** Offline adapter-owned inputs and exact expected outputs; never real customer data. */
 export interface FulfillmentAdapterConformanceSubject {
   approveTrackingUrl?(url: string): boolean;
+  observationCodecs?: FulfillmentObservationCodecs;
   subjectId: string;
   adapter: {
     capabilities: FulfillmentCapabilityDescriptor; dispatch: FulfillmentDispatchPort;

@@ -1,4 +1,4 @@
-import type { FulfillmentTrackingReference } from "./contracts/index.js";
+import type { FulfillmentTrackingReference, FulfillmentObservationCodecs } from "./contracts/index.js";
 
 export function trackingReferenceComplete(ref: FulfillmentTrackingReference): boolean {
   return Boolean(ref.carrierRef && ref.publicUrl && ref.serviceRef);
@@ -7,7 +7,7 @@ export function trackingReferenceComplete(ref: FulfillmentTrackingReference): bo
 export function enrichTrackingReference(
   ref: FulfillmentTrackingReference,
   deliveryCarrier: { carrierRef: string | null; serviceRef: string | null } | null,
-  codecs: {
+  codecs: FulfillmentObservationCodecs & {
     approveTrackingUrl?(url: string): boolean;
     normalizeCarrier(input: { carrierRef: string | null; serviceRef: string | null }): string | null;
     publicUrl(carrierRef: string | null, trackingNumber: string): string | null;

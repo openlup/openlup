@@ -85,6 +85,29 @@ in the source repository.
 
 Migration: alert rows written by 0.22.0's native port carry the earlier whole-input fingerprint; subsequent writes under those keys conflict with SQLSTATE `23505`, and resolve only marks the row resolved while retaining its key and fingerprint, so it does not clear the conflict. Legacy fingerprints are documented only; this change does not rewrite them.
 
+- Fulfillment ingress exposes receipt IDs, a host-neutral HTTP result mapping,
+  counted correlation/timestamp/tracking refusals and persisted safe superseded
+  causes. The opt-in adapter preserves donor webhook key bytes and defaults to
+  strict opaque references. Adopters can explicitly allow wider reference shapes
+  through `observationCodecs.approveReference`; tracking URLs retain their strict
+  default policy. `carrierRef` now stores the service-derived lowercase carrier
+  prefix by default, or the safe kind returned by `normalizeCarrier`, and effects
+  receive that same value as `carrierKind`. Both are null when no kind is available
+  or service evidence is refused; raw provider carrier codes have no fallback,
+  matching donor deduplication. Strict timestamp validation applies only at
+  webhook ingress, accepting compact offsets and local timestamps as before;
+  reconciliation and stock-movement timestamp parsing retain PR2 behavior.
+  Hosts retain referenced raw evidence.
+
+Migration (observation ingress): donor-format colon identities remain the
+compatibility target. Observation receipts/effects recorded by 0.22.0's native
+stores under package digest keys are not recognized under the incumbent colon
+keys, so retrying such an event can apply tracking again. Replaying a superseded
+receipt processed by 0.22.0 fails with `fulfillment_observation_outcome_conflict`.
+Drain in-flight observation retries before upgrading. No bridges or aliases are
+provided for these native rows. Wider incumbent correlation/tracking references
+require an explicit adopter allowlist; the default refuses and reports them.
+
 ## [0.22.0]
 
 - Publishable on the npm `latest` dist-tag as `0.22.0`, from tag

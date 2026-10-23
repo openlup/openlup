@@ -29,6 +29,13 @@ export function operationError(error: Omit<FulfillmentOperationError, "cause"> &
 // The fulfillment opaque-ID rule; never accept free-form metadata as a reference.
 export const reference = (value: unknown): string | null => typeof value === "string"
   && /^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$/u.test(value) ? value : null;
+/** Opaque by default; an explicit allowlist can admit wider incumbent references. */
+export function admittedReference(value: string | null | undefined, approve?: (value: string) => boolean): string | null {
+  if (typeof value !== "string" || /[\p{Cc}\p{Cf}]/u.test(value)) return null;
+  const admitted = approve ? approve(value) : reference(value) !== null;
+  const text = value.trim();
+  return admitted && text && text.length <= 256 && !/[@]|[a-z][a-z0-9+.-]*:\/\//iu.test(text) ? text : null;
+}
 const isoDate = (value: string | null | undefined): string | null => typeof value === "string"
   && /^\d{4}-\d\d-\d\d$/u.test(value) && Number.isFinite(Date.parse(value))
   && new Date(value).toISOString().slice(0, 10) === value ? value : null;
