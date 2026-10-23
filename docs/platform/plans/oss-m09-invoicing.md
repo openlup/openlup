@@ -121,7 +121,9 @@ remains the result-meaning owner.
   `seller.read`. Order-scoped managed claims must never call the unscoped
   corrections wrapper. First-claim seller freezing retains legacy fallback.
   Readback must surface both terminal reversal outcomes: an owed duty whose
-  reversal answered `unsupported` remains owed without a diagnostic, and
+  reversal answered `unsupported` remains owed with no reversal diagnostic,
+  retaining any earlier fact-preparation diagnostic (for example `retryable`)
+  although it is never leased again, and
   preparation committed before reversal may leave an unclaimable
   `issue_requested` document and its request parked at infinity. Both are
   terminal by design; P7 must expose them without making them claimable.
