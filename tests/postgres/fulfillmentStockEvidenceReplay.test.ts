@@ -10,7 +10,7 @@ import { readSelectedCatalogProjection, selectedCatalogProjectionPayload } from 
 import { dockerAvailable, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from '../helpers/postgresContainer.js';
 import { executor, manifest, units } from '../helpers/fulfillmentNative.js';
 
-// Operational dependency: PR #315's existing PG16 mirror, never an anonymous tag.
+// The shared helper's pinned PostgreSQL 16 image.
 const image = 'ghcr.io/openlup/library/postgres@sha256:9e2cf6287f25c3151f4c9421ccce2b17f3e60061c111a29165e0d2cdd9ff0a97';
 const file = 'db/platform/migrations/20261022165000_fulfillment_stock_evidence_replay_reopen.sql';
 const signature = 'public.fulfillment_record_stock_evidence(text,text,text,text,text,text,integer,integer)';

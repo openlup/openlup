@@ -162,12 +162,9 @@ PostgreSQL cases: package-port refresh/resolve/reopen, acknowledged and nullable
 replay, identity conflicts, legacy fingerprints, row-lock/resolver races and
 fresh/exact-predecessor catalogue replay with package/inventory/ACL proof.
 `fulfillmentNativeConformance.test.ts` also binds the added sparse descriptor.
-The new suite uses the shared container helper with PR #315's existing PG16
-mirror explicitly pinned to
-`ghcr.io/openlup/library/postgres@sha256:9e2cf6287f25c3151f4c9421ccce2b17f3e60061c111a29165e0d2cdd9ff0a97`.
-Mirror read access and local Docker are required; missing infrastructure fails.
-Declare this operational dependency in the forward PR body. Run build-producing
-package checks serially because they share generated package directories.
+The suite needs local Docker and uses the shared container helper's pinned
+PostgreSQL 16 image. Run build-producing package checks serially because they
+share generated package directories.
 
 The M10/F17 exact-forward controls use
 `scripts/reviewed-batch-forward.test.ts` for per-file refusal plants and separate

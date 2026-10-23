@@ -654,10 +654,7 @@ its baseline already refreshes/reopens corresponding evidence. The
 [replay proof](../../tests/postgres/fulfillmentStockEvidenceReplay.test.ts) covers
 fresh installation, the exact predecessor upgrade and runner replay, unchanged
 ledger prefix and function ACL/header, package byte equality, lifecycle/refusals
-and bounded concurrent row locking. This test uses PR #315's existing PG16
-mirror at `ghcr.io/openlup/library/postgres@sha256:9e2cf6287f25c3151f4c9421ccce2b17f3e60061c111a29165e0d2cdd9ff0a97`
-through the shared container helper; mirror read access is an operational
-prerequisite, with no anonymous registry fallback.
+and bounded concurrent row locking.
 
 Fulfillment expands the native graph with new command and
 alignment objects at positions 73/74. It preserves all position-0–72 identities,
