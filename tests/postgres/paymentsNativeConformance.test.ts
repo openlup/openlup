@@ -14,6 +14,7 @@ const AT = "2026-10-20T12:00:00.000Z";
 const manifest = JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8"));
 const units: { file: string; sha256: string }[] = [manifest.baseline, ...manifest.forward];
 let container: PostgresContainer | undefined, pool: Pool;
+const prefixContainers: PostgresContainer[] = [], prefixPools: Pool[] = [];
 const executor = (db: Pool | PoolClient) => ({ query: (text: string, values?: unknown[]) => db.query(text, values) });
 const truth = (db: Pool | PoolClient = pool) => createPostgresPaymentTruthPort(executor(db), {
   dunningTemplateSlug: "payment_failed", recoveryUrlPath: "/recover", recoveryTemplateSlug: "payment_recovered",
@@ -27,7 +28,7 @@ beforeAll(async () => {
   pool = new Pool({ connectionString: container.connectionString });
   await runner().apply();
 }, postgresSetupTimeoutMs);
-afterAll(async () => { await closePostgres(container, pool); }, postgresTeardownTimeoutMs);
+afterAll(async () => { await closePostgres([container, ...prefixContainers], [pool, ...prefixPools]); }, postgresTeardownTimeoutMs);
 
 it("installs the full catalogue, binds projections 10/35/56 and replays the canonical ledger/object inventory", async () => {
   expect(PAYMENT_MIGRATIONS.map(unit => unit.position)).toEqual([10, 35, 56]);
@@ -51,8 +52,10 @@ it("upgrades the exact complete prefix before unit 56 without rewriting installe
     // separate, but its raw inventory probe can roll back roles and schema before
     // the real runner installs the same immutable prefix, avoiding a third boot.
     resource = await runPostgresContainer({ name: `payments-native-upgrade-${process.pid}`, password: "synthetic-conformance" });
+    prefixContainers.push(resource);
     if (!await waitForPostgresTcpReady(resource.connectionString)) throw new Error("Payments prefix PostgreSQL unavailable");
     upgrade = new Pool({ connectionString: resource.connectionString });
+    prefixPools.push(upgrade);
     const db = await upgrade.connect();
     let payload: string;
     try {
@@ -70,7 +73,7 @@ it("upgrades the exact complete prefix before unit 56 without rewriting installe
     expect((await upgrade.query("SELECT * FROM public.platform_schema_migrations WHERE position<56 ORDER BY position")).rows).toEqual(before);
     expect((await runner(upgrade).status()).pending).toEqual([]);
     expect(await runner(upgrade).apply()).toEqual({ applied: [] });
-  } finally { await upgrade?.end(); await resource?.remove(); rmSync(root, { recursive: true, force: true }); }
+  } finally { await closePostgres(resource, upgrade); rmSync(root, { recursive: true, force: true }); }
 }, 60_000);
 
 async function fixture(subscriptionDate?: string) {

@@ -18,7 +18,7 @@ export function nativeHarness(label:string) {
    console.log(`P4 ${label} Docker setup ms=${Date.now()-at}`);
    pool=new Pool({connectionString:container.connectionString});await this.runner().apply();
   },
-  async stop(){await closePostgres(container, pool);},
+  async stop(extraContainers:PostgresContainer[]=[],extraPools:Pool[]=[]){await closePostgres([container,...extraContainers], [pool,...extraPools]);},
  };
 }
 async function paidOrder(pool:Pool,order:string,client:string,cycle:string|null) {

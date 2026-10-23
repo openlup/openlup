@@ -224,7 +224,7 @@ it("applies all managed fixtures with exactly donor attributes, service-only ACL
           WHERE c.oid=$1 AND (x.grantee=0 OR x.grantee IN (SELECT oid FROM pg_roles WHERE rolname IN ('anon','authenticated')))`, [relation.oid])).rows).toEqual([]);
       }
     }
-  } finally { await managed.end(); }
+  } finally { await closePostgres(undefined, managed); }
 }, 120_000);
 
 const allTargets = [...pinned, ...registry.managedInvoicingForwards!];

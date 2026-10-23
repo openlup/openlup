@@ -166,7 +166,7 @@ it('binds fresh and exact-predecessor runner histories, package bytes, live inve
   expect(await inventory(pool)).toBe(manifest.objectInventorySha256);
   // Roles belong to the cluster: a second database would collide with the
   // complete prefix's CREATE ROLE statements. Keep one owned container at a time.
-  await pool.end(); await container!.remove(); container = undefined;
+  await closePostgres(container, pool); container = undefined;
   container = await runPostgresContainer({ name: `m08-stock-prefix-${process.pid}`, password: 'synthetic-conformance', image });
   if (!await waitForPostgresTcpReady(container.connectionString)) throw new Error('Stock evidence predecessor PostgreSQL unavailable');
   const upgrade = new Pool({ connectionString: container.connectionString });
@@ -210,5 +210,5 @@ it('binds fresh and exact-predecessor runner histories, package bytes, live inve
     expect(await runner(upgrade, root).apply()).toEqual({ applied: [] });
     expect((await runner(upgrade, root).status()).pending).toEqual([]);
     expect(await inventory(upgrade)).toBe(forwardInventory);
-  } finally { await upgrade.end(); rmSync(root, { recursive: true, force: true }); }
+  } finally { await closePostgres(undefined, upgrade); rmSync(root, { recursive: true, force: true }); }
 }, 60_000);

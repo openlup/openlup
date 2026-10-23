@@ -609,7 +609,10 @@ shared five-second close phase, then attempts every owned container removal even
 if a close failed or stalled. Suite teardowns pass opaque adapter closers into
 that phase instead of awaiting them first. All removals finish before cleanup
 reports its collected failures. Separate elapsed timings identify the slow phase;
-an already absent container is the only ignored removal error.
+an already absent container is the only ignored removal error. Secondary containers created inside upgrade tests are also
+registered with their suite's teardown immediately after creation, so a test
+that times out before reaching its local `finally` still has an owner that
+removes them. Local `finally` blocks reuse the same bounded cleanup.
 
 The helper's default is the pinned test PostgreSQL image; explicit images retain
 their behavior unless they exactly match an inventory pin. Shared acquisition

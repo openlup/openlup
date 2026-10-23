@@ -130,7 +130,7 @@ it("native-mounted-bundle-admin-stock-readback", async () => {
       skus: ["P7-UNIT", "P7-SECOND"], horizonDays: 7, excludeOrderId: null,
     });
     expect(observe.warn).not.toHaveBeenCalled();
-  } finally { await binding.close(); await readPool.end(); }
+  } finally { await closePostgres(undefined, readPool, [() => binding.close()]); }
 }, 30_000);
 
 it("native-bundle-replay-contention-characterization", async () => {
@@ -257,5 +257,5 @@ it("native consumer readback preserves quote authority, draft receipts and unsup
     expect(await binding.drafts.list({ limit: 1 }, authorized)).toMatchObject({ outcome: "listed", page: { items: [{ draftId, status: "open", revision: 1 }] } });
     expect(await binding.drafts.get({ draftId }, denied)).toMatchObject({ outcome: "unauthorized" });
     expect(await binding.catalog.getSkuEnvelope({ kind: "sku_code", skuCode: "P7-UNIT" })).toEqual(envelope);
-  } finally { await binding.close(); }
+  } finally { await closePostgres(undefined, undefined, [() => binding.close()]); }
 }, 30_000);

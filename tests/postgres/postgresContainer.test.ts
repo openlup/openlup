@@ -216,6 +216,15 @@ describe("PostgreSQL lifecycle deadlines and cleanup failures", () => {
     expect(settled).toBe(true);
   });
 
+  it("cleans partially initialized ownership lists without closing an already ended pool twice", async () => {
+    const { closePostgres, runPostgresContainer } = await import("../helpers/postgresContainer.js");
+    const container = await runPostgresContainer(spec);
+    const ended = { ended: true, end: vi.fn() };
+    await expect(closePostgres([undefined, container], [undefined, ended])).resolves.toBeUndefined();
+    expect(ended.end).not.toHaveBeenCalled();
+    expect(mocks.exec.mock.calls.at(-1)![1]).toEqual(["rm", "-f", spec.name]);
+  });
+
   it("uses a wall-clock readiness deadline even when each connection stalls", async () => {
     const { waitForPostgresTcpReady } = await import("../helpers/postgresContainer.js");
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "performance"] });

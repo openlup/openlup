@@ -74,8 +74,8 @@ type TestPool = Pick<Pool, "end" | "ended">;
 
 /** Close every test-owned pool/store, then attempt every container removal. */
 export async function closePostgres(
-  container: PostgresContainer | PostgresContainer[] | null | undefined,
-  pool?: TestPool | TestPool[] | null,
+  container: PostgresContainer | (PostgresContainer | null | undefined)[] | null | undefined,
+  pool?: TestPool | (TestPool | null | undefined)[] | null,
   additionalClosers: (() => Promise<unknown>)[] = [],
 ) {
   const failures: unknown[] = [];
