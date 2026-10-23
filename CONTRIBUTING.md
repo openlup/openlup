@@ -418,11 +418,23 @@ integration must recheck all function preimages against the combined ordered
 rails before introduction, including the payment-terminal replacement.
 Its only data-reading install seed is the exact keyed cutover `INSERT ... SELECT`
 from settlement transitions and shipment operations, admitted once into the newly
-created cutover table. The class also admits the invoker-rights view form;
+created cutover table. The re-pinned duty fixture seeds that table before
+FK-bearing tables acquire order/accounting locks; its whole-file pin binds this
+installation order as well as the stored-reversal void and latest-fault readback
+bodies. The admission classifier and exact seed literal stay unchanged.
+The class also admits the invoker-rights view form;
 arbitrary seed SELECTs and data-reading defaults gain no new admission.
-The checker plants exercise their exact bytes through PR and release admission,
-then refuse byte drift, browser grants, donor attribute drift and unpinned
-replacements. The existing real-PostgreSQL catalog suite applies all fixtures in
+Checker plants use landed invoicing bytes when present, requiring exact equality
+with the reviewed fixtures, and use fixtures before introduction. They exercise
+PR and release admission, then refuse byte drift, browser grants, donor attribute drift and unpinned
+replacements. Separate structural plants refuse replacement syntax in managed
+creation files, missing function grants/revokes, changed managed search paths and
+unsupported view options. The release suite also repins managed search-path and
+non-invoker-view mutations so semantic refusals run after the hashes pass.
+Native trigger plants distinguish a missing in-file
+function from a defined trigger function: the latter passes structural
+classification but fails the M09 whole-file pin in PR and release admission.
+The existing real-PostgreSQL catalog suite applies all fixtures in
 one owned container: native additions preserve prior objects and close browser
 ACLs, the payment-terminal replacement preserves incumbent attributes, and managed
 additions retain the donor's fixed-path, service-only definer authority. The
@@ -781,6 +793,8 @@ gitleaks git . --config config/gitleaks.toml --redact --no-banner
 The `prelint` and `pretest` scripts build Core, Outbox and Platform in dependency
 order. Before direct typecheck or Vitest commands after install or package-source
 edits, run `npm run pretest`; otherwise consumers may read stale `dist/` exports.
+
+The [reviewed-forward PostgreSQL proof](tests/postgres/reviewedPortableCreation.test.ts) rejects landed pin drift before replay and tests full and partial landings; [data and migrations](docs/platform/DATA_AND_MIGRATIONS.md#exact-reviewed-function-forwards) describes its catalog boundary.
 
 For the managed pgTAP runner, prerequisites and proof limits, follow
 [Test scope and diagnostics](#separate-db-package-and-coverage-proof).

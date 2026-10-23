@@ -1,5 +1,7 @@
 import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, join } from "node:path";
 import { Pool } from "pg";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import type { PlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
@@ -9,7 +11,29 @@ import { dockerAvailable, runPostgresContainer, waitForPostgresTcpReady, type Po
 const manifest: PlatformMigrationManifest = JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8"));
 const registry = readReviewedForwardRegistry(readFileSync("config/reviewed-platform-forwards.json"));
 const pinned = [...registry.portableCreationForwards!, ...registry.portableReplacementForwards!.filter(entry => entry.path.includes("invoicing"))].sort((a,b) => a.path.localeCompare(b.path));
-const fixtures = pinned.map(entry => ({ ...entry, bytes: readFileSync(`scripts/fixtures/${entry.path.split("/").at(-1)}`) }));
+const fixturePath = (path: string) => `scripts/fixtures/${path.split("/").at(-1)}`;
+function selectPinnedBytes<T extends { path: string; sha256: string }>(root: string, entries: T[]) {
+  return entries.map(entry => {
+    const fixture = readFileSync(join(root, fixturePath(entry.path)));
+    const source = existsSync(join(root, entry.path)) ? entry.path : fixturePath(entry.path);
+    const bytes = readFileSync(join(root, source));
+    if (!bytes.equals(fixture) || createHash("sha256").update(bytes).digest("hex") !== entry.sha256) {
+      throw new Error(`Reviewed forward PG bytes differ from pinned fixture: ${entry.path}`);
+    }
+    return { ...entry, source, bytes };
+  });
+}
+
+// This is the selection used by the PG setup, before any target is applied.
+function selectPgGateTargets(root: string) {
+  return {
+    native: selectPinnedBytes(root, pinned),
+    managed: selectPinnedBytes(root, registry.managedInvoicingForwards!),
+  };
+}
+let selected: ReturnType<typeof selectPgGateTargets>;
+const nativeTargetPaths = new Set(pinned.map(entry => entry.path));
+const managedTargetPaths = new Set(registry.managedInvoicingForwards!.map(entry => entry.path));
 const expectedTriggers: Record<string, unknown[]> = { "db/platform/migrations/20261022080000_fulfillment_command_ledger.sql": [], "db/platform/migrations/20261022090000_fulfillment_delivery_alignment.sql": [
   { table_name: "public.commerce_order_holds", name: "trg_subscription_delivery_alignment_exception_case", function_name: "public.subscription_delivery_alignment_open_exception_case" },
   { table_name: "public.fulfillment_shipments", name: "trg_subscription_delivery_alignment_on_delivery", function_name: "public.subscription_delivery_alignment_on_delivery" },
@@ -40,26 +64,22 @@ const applied = new Set<string>();
 type CatalogSnapshot = Awaited<ReturnType<typeof snapshot>>;
 const catalogEvidence = new Map<string, { before: CatalogSnapshot; after: CatalogSnapshot; forbidden: unknown[] }>();
 beforeAll(async () => {
+  selected = selectPgGateTargets(".");
   if (!await dockerAvailable()) throw new Error("Reviewed forward catalog proof requires real PostgreSQL");
   container = await runPostgresContainer({ name: `reviewed-creation-${process.pid}`, password: "synthetic-conformance" });
   if (!await waitForPostgresTcpReady(container.connectionString)) throw new Error("Reviewed forward PostgreSQL unavailable");
   pool = new Pool({ connectionString: container.connectionString });
   // Apply and snapshot each boundary once before cases run, so shuffled cases
   // still inspect their own real catalog proof rather than a sibling's state.
-  for (const { path, sha256, bytes } of fixtures) {
-    // Apply the canonical portable prefix, then earlier pinned fixtures not yet
-    // in the manifest. Each forward under proof still runs after its snapshot.
-    for (const unit of [manifest.baseline, ...manifest.forward].filter(unit => unit.file < path)) {
+  for (const { path, sha256, bytes } of selected.native) {
+    // Targets run only at their own snapshot boundary, even after landing in
+    // the manifest. Sorted earlier targets have already run from selected bytes.
+    for (const unit of [manifest.baseline, ...manifest.forward].filter(unit => unit.file < path && !nativeTargetPaths.has(unit.file))) {
       if (applied.has(unit.file)) continue;
       const source = readFileSync(unit.file);
       expect(createHash("sha256").update(source).digest("hex")).toBe(unit.sha256);
       await pool.query(source.toString("utf8"));
       applied.add(unit.file);
-    }
-    for (const earlier of fixtures.filter(entry => entry.path < path && !applied.has(entry.path))) {
-      expect(createHash("sha256").update(earlier.bytes).digest("hex")).toBe(earlier.sha256);
-      await pool.query(earlier.bytes.toString("utf8"));
-      applied.add(earlier.path);
     }
     expect(createHash("sha256").update(bytes).digest("hex")).toBe(sha256);
     const before = await snapshot(pool);
@@ -79,7 +99,8 @@ beforeAll(async () => {
 }, 120_000);
 afterAll(async () => { await pool?.end(); await container?.remove(); });
 
-it.each(fixtures)("preserves the catalog boundary of $path", async ({ path, sha256, bytes }) => {
+it.each(pinned)("preserves the catalog boundary of $path", async ({ path, sha256 }) => {
+    const { bytes } = selected.native.find(entry => entry.path === path)!;
     expect((await pool.query("SHOW standard_conforming_strings")).rows).toEqual([{ standard_conforming_strings: "on" }]);
     const { before, after, forbidden } = catalogEvidence.get(path)!;
     expect(createHash("sha256").update(bytes).digest("hex")).toBe(sha256);
@@ -166,10 +187,10 @@ it("applies all managed fixtures with exactly donor attributes, service-only ACL
       CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql AS $$ SELECT null::uuid $$;
       CREATE FUNCTION auth.role() RETURNS text LANGUAGE sql AS $$ SELECT null::text $$;`);
     await managed.query(readFileSync("scripts/public-reference/subscription-prereqs.sql", "utf8"));
-    const paths = (await import("node:fs")).readdirSync("supabase/migrations").filter(name => name < "20261022193000").sort();
+    const paths = (await import("node:fs")).readdirSync("supabase/migrations").filter(name => name < "20261022193000" && !managedTargetPaths.has(`supabase/migrations/${name}`)).sort();
     for (const name of paths) await managed.query(readFileSync(`supabase/migrations/${name}`, "utf8").replace(/^\\(?:un)?restrict .*$/gmu, ""));
-    for (const entry of registry.managedInvoicingForwards!) {
-      const bytes = readFileSync(`scripts/fixtures/${entry.path.split("/").at(-1)}`);
+    for (const entry of selected.managed) {
+      const { bytes } = entry;
       expect(createHash("sha256").update(bytes).digest("hex")).toBe(entry.sha256);
       const before = await snapshot(managed);
       await managed.query(bytes.toString("utf8"));
@@ -205,3 +226,46 @@ it("applies all managed fixtures with exactly donor attributes, service-only ACL
     }
   } finally { await managed.end(); }
 }, 120_000);
+
+const allTargets = [...pinned, ...registry.managedInvoicingForwards!];
+function withTargetRoot(landed: Set<string>, check: (root: string) => void) {
+  const root = mkdtempSync(join(tmpdir(), "reviewed-forward-bytes-"));
+  try {
+    for (const entry of allTargets) {
+      const bytes = readFileSync(fixturePath(entry.path));
+      for (const path of [fixturePath(entry.path), ...(landed.has(entry.path) ? [entry.path] : [])]) {
+        mkdirSync(dirname(join(root, path)), { recursive: true });
+        writeFileSync(join(root, path), bytes);
+      }
+    }
+    check(root);
+  } finally { rmSync(root, { recursive: true, force: true }); }
+}
+
+it.each(["full", "subset"])("selects landed bytes where present in a %s landing", mode => {
+  const landed = new Set(allTargets.filter((_, index) => mode === "full" || index % 2 === 0).map(entry => entry.path));
+  withTargetRoot(landed, root => {
+    const result = selectPgGateTargets(root);
+    expect([...result.native, ...result.managed].map(({ path, source, bytes }) => ({ path, source, bytes })))
+      .toEqual(allTargets.map(({ path }) => ({
+        path, source: landed.has(path) ? path : fixturePath(path), bytes: readFileSync(fixturePath(path)),
+      })));
+  });
+});
+
+it.each(allTargets)("refuses one-byte landed drift at $path", entry => {
+  withTargetRoot(new Set([entry.path]), root => {
+    writeFileSync(join(root, entry.path), Buffer.concat([readFileSync(join(root, entry.path)), Buffer.from(" ")]));
+    expect(() => selectPinnedBytes(root, [entry])).toThrow(entry.path);
+  });
+});
+
+it.each([
+  "db/platform/migrations/20261022190000_invoicing_durable_duties.sql",
+  "supabase/migrations/20261022193000_invoicing_correction_claims.sql",
+])("plants one-byte drift in the PG setup selection at %s", path => {
+  withTargetRoot(new Set([path]), root => {
+    writeFileSync(join(root, path), Buffer.concat([readFileSync(join(root, path)), Buffer.from(" ")]));
+    expect(() => selectPgGateTargets(root)).toThrow(path);
+  });
+});

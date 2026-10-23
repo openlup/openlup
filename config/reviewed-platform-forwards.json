@@ -219,7 +219,7 @@
     },
     {
       "path": "db/platform/migrations/20261022190000_invoicing_durable_duties.sql",
-      "sha256": "ad523f06c1fb576c1d6ded37dad6c9303e7ea525694f792e1861bf03c660351b"
+      "sha256": "962a10822cde442bbc143dd16d76de3843658958a1352c602dec48c88dbf085b"
     },
     {
       "path": "db/platform/migrations/20261022191000_invoicing_document_effects.sql",

@@ -433,7 +433,35 @@ ${identityPrivileges[3]}
     const approved = readReviewedForwardRegistry(readFileSync(new URL(`../${REVIEWED_FORWARD_PATH}`, import.meta.url)));
     const entries = [...approved.portableCreationForwards!.filter(entry => entry.path.includes("invoicing")),
       ...approved.portableReplacementForwards!.filter(entry => entry.path.includes("invoicing")), ...approved.managedInvoicingForwards!];
-    const actual = entries.map(entry => ({ ...entry, bytes: readFileSync(new URL(`./fixtures/${entry.path.split("/").at(-1)}`, import.meta.url), "utf8") }));
+    function readActual(root: string) {
+      return entries.map(entry => {
+        const fixture = join(root, "scripts/fixtures", entry.path.split("/").at(-1)!);
+        const landed = join(root, entry.path);
+        const source = existsSync(landed) ? landed : fixture;
+        const bytes = readFileSync(source);
+        expect(bytes.equals(readFileSync(fixture)), `Reviewed forward release bytes differ from fixture: ${entry.path}`).toBe(true);
+        return { ...entry, source, bytes: bytes.toString("utf8") };
+      });
+    }
+    const actual = readActual(fileURLToPath(new URL("../", import.meta.url)));
+    it("selects landed bytes, falls back before introduction and refuses landed byte drift", () => {
+      const root = mkdtempSync(join(tmpdir(), "openlup-m09-release-bytes-"));
+      try {
+        mkdirSync(join(root, "scripts/fixtures"), { recursive: true });
+        for (const entry of entries) {
+          const name = entry.path.split("/").at(-1)!;
+          cpSync(new URL(`./fixtures/${name}`, import.meta.url), join(root, "scripts/fixtures", name));
+        }
+        const entry = entries[0]!;
+        expect(readActual(root)[0]!.source).toBe(join(root, "scripts/fixtures", entry.path.split("/").at(-1)!));
+        const landed = join(root, entry.path);
+        mkdirSync(dirname(landed), { recursive: true });
+        cpSync(join(root, "scripts/fixtures", entry.path.split("/").at(-1)!), landed);
+        expect(readActual(root)[0]!.source).toBe(landed);
+        writeFileSync(landed, Buffer.concat([readFileSync(landed), Buffer.from(" ")]));
+        expect(() => readActual(root)).toThrow(`Reviewed forward release bytes differ from fixture: ${entry.path}`);
+      } finally { rmSync(root, { recursive: true, force: true }); }
+    });
     it("admits every final file through both gates and refuses byte, browser grant, definer and unpinned replacement plants", () => {
       // Keep exact preimages, rather than replaying an unrelated multi-megabyte
       // managed graph in every process plant. Real PostgreSQL owns graph proof.
@@ -476,11 +504,20 @@ ${identityPrivileges[3]}
         for (const entry of actual) {
           expect(entry.path.split("/").at(-1)!.slice(0,14) > "20261022185100").toBe(true);
           expect(sqlSha256(entry.bytes)).toBe(entry.sha256);
+          const nativeTriggerPlants: string[] = [];
+          if (approved.portableCreationForwards!.some(item => item.path === entry.path)) {
+            const table = /^CREATE TABLE (public\.[a-z_]+)/mu.exec(entry.bytes)![1]!;
+            const bytes = entry.bytes + `\nCREATE FUNCTION public.zz_trigger() RETURNS trigger LANGUAGE plpgsql SET search_path=pg_catalog AS $$ BEGIN RETURN NEW; END; $$;\nCREATE TRIGGER injected AFTER INSERT ON ${table} FOR EACH ROW EXECUTE FUNCTION public.zz_trigger();`;
+            // An in-file trigger function passes structural classification;
+            // M09's whole-file pin, rather than that classifier, excludes it.
+            expect(() => assertPortableCreationStatements(Buffer.from(bytes), [])).not.toThrow();
+            nativeTriggerPlants.push(bytes);
+          }
           for (const bytes of [entry.bytes + " ", entry.bytes + "\nGRANT EXECUTE ON FUNCTION public.existing() TO anon;\n",
             entry.bytes.replace(/LANGUAGE (?:plpgsql|sql)/u, "LANGUAGE plpgsql SECURITY DEFINER"),
-            entry.bytes + "\nCREATE OR REPLACE FUNCTION public.unpinned() RETURNS jsonb LANGUAGE sql AS $$ SELECT '{}'::jsonb $$;\n"]) {
-            expect(() => assertAdmittedPlatformForward(sample.repo,sample.approval,head,entry.path,Buffer.from(bytes))).toThrow(/reviewed|migration/u);
-            expect(() => assertAdmittedPlatformForward(sample.repo,sample.rootCommit,head,entry.path,Buffer.from(bytes),true)).toThrow(/reviewed|migration/u);
+            entry.bytes + "\nCREATE OR REPLACE FUNCTION public.unpinned() RETURNS jsonb LANGUAGE sql AS $$ SELECT '{}'::jsonb $$;\n", ...nativeTriggerPlants]) {
+            expect(() => assertAdmittedPlatformForward(sample.repo,sample.approval,head,entry.path,Buffer.from(bytes))).toThrow(`non-expand-only forward differs from reviewed replacement path or bytes: ${entry.path}`);
+            expect(() => assertAdmittedPlatformForward(sample.repo,sample.rootCommit,head,entry.path,Buffer.from(bytes),true)).toThrow(`non-expand-only forward differs from reviewed replacement path or bytes: ${entry.path}`);
           }
         }
         sample.run(["checkout","--detach",sample.rootCommit]);
@@ -494,11 +531,14 @@ ${identityPrivileges[3]}
         // These approval commits deliberately repin malicious bytes: semantic
         // refusals must run after the whole-file and function hashes pass.
         for (const entry of actual) {
-          for (const kind of ["attributes","statement"] as const) {
+          for (const kind of ["attributes","statement", ...(entry.path.startsWith("supabase/") ? ["search-path"] : []), ...(entry.path.includes("durable_duties") ? ["view-options"] : [])]) {
             sample.run(["checkout","--detach",sample.approval]);
             const bytes=kind === "attributes"
               ? entry.path.includes("payment_decoupling") ? entry.bytes.replace("LANGUAGE plpgsql\nSET", "LANGUAGE plpgsql\nSECURITY DEFINER\nSET") : entry.bytes.replace(/SECURITY (?:INVOKER|DEFINER)/u,entry.path.startsWith("supabase/") ? "SECURITY INVOKER" : "SECURITY DEFINER")
+              : kind === "search-path" ? entry.bytes.replace(/SET search_path = public, pg_catalog/gu, "SET search_path = public")
+              : kind === "view-options" ? entry.bytes.replace("WITH (security_invoker=true)", "WITH (security_invoker=false)")
               : entry.bytes+"\nGRANT SELECT ON public.invoicing_duties TO anon;\n";
+            expect(bytes, `${entry.path}: ${kind} plant must change actual bytes`).not.toBe(entry.bytes);
             const repinned=structuredClone(sample.registry);
             const binding=[...repinned.portableCreationForwards!,...repinned.portableReplacementForwards!,...repinned.managedInvoicingForwards!].find(item=>item.path===entry.path)!;
             binding.sha256=sqlSha256(bytes);
@@ -529,18 +569,44 @@ ${identityPrivileges[3]}
         if (!creation && !managed) continue;
         const check = (bytes:string) => managed ? assertManagedInvoicingStatements(Buffer.from(bytes),entry.path) : assertPortableCreationStatements(Buffer.from(bytes),[]);
         expect(() => check(entry.bytes)).not.toThrow();
-        const plants = [entry.bytes + "\nGRANT SELECT ON public.invoicing_duties TO anon;", entry.bytes + "\nCREATE OR REPLACE FUNCTION public.unpinned() RETURNS jsonb LANGUAGE sql AS $$ SELECT '{}'::jsonb $$;"];
-        plants.push(managed ? entry.bytes.replace("SECURITY DEFINER", "SECURITY INVOKER") : entry.bytes.replace("SECURITY INVOKER", "SECURITY DEFINER"));
-        plants.push(managed ? entry.bytes.replace("TO service_role", "TO authenticated") : entry.bytes + "\nCREATE TRIGGER injected AFTER INSERT ON public.commerce_orders FOR EACH ROW EXECUTE FUNCTION public.existing();");
-        plants.push(entry.bytes + "\nCREATE VIEW public.zz AS SELECT E'escape';");
-        for (const bytes of plants) expect(() => check(bytes)).toThrow(/reviewed/u);
+        const plants: [string, string, RegExp][] = [
+          ["browser grant", entry.bytes + "\nGRANT SELECT ON public.invoicing_duties TO anon;", /reviewed/u],
+          ["unpinned replacement", entry.bytes + "\nCREATE OR REPLACE FUNCTION public.unpinned() RETURNS jsonb LANGUAGE sql AS $$ SELECT '{}'::jsonb $$;", /reviewed/u],
+          ["security attribute", managed ? entry.bytes.replace("SECURITY DEFINER", "SECURITY INVOKER") : entry.bytes.replace("SECURITY INVOKER", "SECURITY DEFINER"), /reviewed/u],
+          ["escape string", entry.bytes + "\nCREATE VIEW public.zz AS SELECT E'escape';", /reviewed/u],
+        ];
+        if (managed) {
+          plants.push(
+            ["browser execute grant", entry.bytes.replace("TO service_role", "TO authenticated"), /^reviewed managed invoicing refuses statement or donor attribute drift$/u],
+            ["missing GRANT", entry.bytes.replace(/^GRANT EXECUTE[^\n]*\n/mu, ""), /^reviewed managed invoicing has missing definitions or service-only ACLs$/u],
+            ["missing REVOKE", entry.bytes.replace(/^REVOKE ALL ON FUNCTION[^\n]*\n/mu, ""), /^reviewed managed invoicing has missing definitions or service-only ACLs$/u],
+            ...["public, pg_temp", "pg_catalog, public"].map((path): [string, string, RegExp] =>
+              [`search_path = ${path}`, entry.bytes.replace("SET search_path = public, pg_catalog", `SET search_path = ${path}`), /^reviewed managed invoicing refuses statement or donor attribute drift$/u]),
+          );
+          if (!entry.path.includes("compatibility")) plants.push(
+            ["CREATE OR REPLACE in creation file", entry.bytes.replace("CREATE FUNCTION", "CREATE OR REPLACE FUNCTION"), /^reviewed managed invoicing definition or attributes drifted$/u],
+          );
+        } else {
+          // The target is created in this file: the missing in-file trigger
+          // function, rather than an unknown table, causes this refusal.
+          const table = /^CREATE TABLE (public\.[a-z_]+)/mu.exec(entry.bytes)![1]!;
+          plants.push(
+            ["trigger function not defined in file", entry.bytes + `\nCREATE TRIGGER injected AFTER INSERT ON ${table} FOR EACH ROW EXECUTE FUNCTION public.existing();`, /^reviewed portable creation refuses an unsupported statement, pre-existing target or function attributes: CREATE TRIGGER injected /u],
+            ["unsupported view WITH option", entry.bytes + "\nCREATE VIEW public.zz WITH (security_barrier=true) AS SELECT 1;", /^reviewed portable creation refuses an unsupported statement, pre-existing target or function attributes: CREATE VIEW public\.zz WITH \(security_barrier=true\) AS SELECT 1;$/u],
+          );
+        }
+        for (const [name, bytes, refusal] of plants) {
+          expect(bytes, `${entry.path}: ${name} must change the source`).not.toBe(entry.bytes);
+          expect(() => check(bytes), `${entry.path}: ${name}`).toThrow(refusal);
+        }
       }
       const cutover=actual.find(entry=>entry.path.includes("durable_duties"))!.bytes;
+      const cutoverSeed = /^INSERT INTO public\.invoicing_cutover\([\s\S]*?;/mu.exec(cutover)![0];
       for(const bytes of [cutover.replace("SELECT 'paid',id", "SELECT 'paid',gen_random_uuid()"),
         cutover.replace("FROM public.commerce_settlement_transitions\n  UNION", "FROM public.commerce_orders\n  UNION"),
         cutover.replace("ON CONFLICT DO NOTHING;", "ON CONFLICT DO UPDATE SET source_kind='paid';"),
-        cutover+cutover.slice(cutover.indexOf("INSERT INTO public.invoicing_cutover"),cutover.indexOf("-- No order/duty FK"))]) {
-        expect(()=>assertPortableCreationStatements(Buffer.from(bytes),[])).toThrow(/reviewed/u);
+        cutover+"\n"+cutoverSeed]) {
+        expect(()=>assertPortableCreationStatements(Buffer.from(bytes),[])).toThrow(/^reviewed portable creation refuses an unsupported statement, pre-existing target or function attributes: INSERT INTO public\.invoicing_cutover/u);
       }
       for (const index of [0,1,2]) for (const probe of ["path","missing","replacement class","extra signature","extra key","swapped"] as const) {
         const registry = structuredClone(approved);
