@@ -538,11 +538,7 @@ privileges and complete catalogue installation are described in
 
 ## Compatibility posture
 
-The managed correction v2 control remains fixture-only. Fenced finalizers also
-accept a parent already `corrected` by an earlier acceptance sync when its
-`correctionOutboxId` is absent or matches the claim. For classifying hosts only,
-blocked, unsupported or explicitly non-retryable `p_error` values retain `failed`
-with `next_attempt_at=infinity`; ordinary failures keep their retry delay.
+`20261022193000`/`20261022193100` introduce managed correction v2; its sync-first settlement and permanent-failure parking are owned by [M09 forward design](DATA_AND_MIGRATIONS.md#m09-invoicing-forward-design-and-control-approval).
 
 Native subscription retry N1 extends the existing migration prefix without
 changing earlier rows. Its manifest inventory is recomputed by the repository
@@ -626,7 +622,7 @@ approval supplies no migration or runtime activation. The
 [exact reviewed function rules](DATA_AND_MIGRATIONS.md#exact-reviewed-function-forwards)
 require unchanged headers, a single function statement and approval before SQL
 introduction. Existing managed classes retain their fixed counts; the separate
-[M09 fixture-only admission](DATA_AND_MIGRATIONS.md#m09-invoicing-forward-design-and-control-approval)
+[M09 forward admission](DATA_AND_MIGRATIONS.md#m09-invoicing-forward-design-and-control-approval)
 binds three managed forwards and the additional exact native payment-terminal
 replacement. New native routines stay invokers; managed wrappers retain donor
 service-only definer attributes. These approvals install no SQL or activation.
@@ -771,8 +767,7 @@ The separate `portableCreationForwards` list pins two fulfillment and three
 invoicing creation forwards by path and whole-file hash, requiring new objects
 and invoker functions. The portable replacement list pins the dunning function
 and the invoicing payment-terminal accounting block.
-M09's seven versioned paths sort above `20261022185100` so M10 can precede
-them; renumbering preserves every SQL byte and whole-file/function hash.
+Managed correction recovery, lock coupling, trigger admission, seller eligibility and migration ordering are owned by [M09 forward design](DATA_AND_MIGRATIONS.md#m09-invoicing-forward-design-and-control-approval).
 Required self-check keeps the whole registry unchanged from the feature comparison
 base. Release compares each forward's own entry, list position and shared registry
 fields with its introduction parent, allowing later controls to append approvals.
@@ -1219,6 +1214,8 @@ invoice. An owed-duty readback retains unsupported duties and capture faults;
 distinct, and account projections preserve owner and document lineage. Host
 artifact persistence, clearance observation and M04 acceptance are separate proofs.
 See the [invoicing contract reference](PLATFORM_PACKAGE_REFERENCE.md#invoicing-contracts).
+
+See the [M09 forward owner](DATA_AND_MIGRATIONS.md#m09-invoicing-forward-design-and-control-approval) for the registered managed-correction limit and follow-up.
 
 The invoicing refusal factory cannot clear a previously unknown effect: its
 unsupported result describes this call only. Offline conformance checks stable

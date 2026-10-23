@@ -1452,3 +1452,14 @@ verify saved amounts; legacy delivery residuals remain a compatibility path.
 Hosts supply seller, dates, tax defaults, labels, channel resolution, descriptors
 and exact key bytes. Handoff helpers preserve fail-soft dispatch and the explicit
 standalone strict option; they register no executor and change no native gate.
+
+Correction and reversal helpers use the same compatibility callback boundary.
+`runInvoiceCorrectionJob` validates the persisted outbox identity before projection,
+requires recovery on retries and carries the claimed generation to both outcomes.
+`createInvoiceReversalHandlers` preserves host event adapters and keys and passes
+through the RPC action (`voided`, `correction_requested`, `corrected`, `no_invoice`);
+it adds no money or fulfillment dependency. The reference
+host selects only an explicit `correctionRecovery` bridge. The legacy provider
+method alone is unsupported before claim; a conforming bridge owns exact lookup,
+parent validation and positive BEFORE/zero AFTER translation. Unknown outcomes
+remain failed/owed recovery work, never evidence of absence or success.

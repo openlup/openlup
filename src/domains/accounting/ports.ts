@@ -197,12 +197,14 @@ export interface AccountingInvoiceRuntimePort extends AccountingInvoiceDeliveryR
   claimInvoiceCorrections(limit: number): Promise<AccountingCorrectionOutboxTarget[]>;
   markInvoiceCorrectionSucceeded(input: {
     outboxId: string;
+    claimAttemptCount: number;
     providerInvoiceId: string;
     providerInvoiceNumber: string | null;
     providerRaw: Record<string, unknown>;
   }): Promise<void>;
   markInvoiceCorrectionFailed(input: {
     outboxId: string;
+    claimAttemptCount: number;
     error: Record<string, unknown>;
     retrySeconds: number;
   }): Promise<void>;

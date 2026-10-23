@@ -4070,6 +4070,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/invoicing/correction.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/invoicing/fulfillmentTrigger.ts",
       "class": "public-output"
     },
@@ -4091,6 +4095,10 @@
     },
     {
       "path": "packages/platform/src/invoicing/paymentReadback.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/invoicing/reversal.ts",
       "class": "public-output"
     },
     {
@@ -21938,6 +21946,14 @@
       "class": "public-output"
     },
     {
+      "path": "supabase/migrations/20261022193000_invoicing_correction_claims.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "supabase/migrations/20261022193100_invoicing_correction_compatibility.sql",
+      "class": "public-output"
+    },
+    {
       "path": "supabase/tests/abandoned_cart_tier_bounds_test.sql",
       "class": "public-output"
     },
@@ -21947,6 +21963,10 @@
     },
     {
       "path": "supabase/tests/accounting_billing_source_test.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "supabase/tests/accounting_correction_recovery_test.sql",
       "class": "public-output"
     },
     {
@@ -23055,6 +23075,10 @@
     },
     {
       "path": "tests/postgres/inventoryNative.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/invoicingManagedCorrection.test.ts",
       "class": "public-output"
     },
     {

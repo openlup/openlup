@@ -254,28 +254,41 @@ export function createSupabaseAccountingInvoicePort(
       const { data, error } = await client.rpc("accounting_invoice_correction_outbox_claim", {
         p_limit: limit,
         p_lease_seconds: 300,
+        p_contract_version: "accounting.correction.v2",
       });
       if (error) throw new AccountingInvoicePersistenceError("Accounting correction claim failed", error.code);
       return asArray<AccountingCorrectionOutboxTarget>(data);
     },
 
     async markInvoiceCorrectionSucceeded(input): Promise<void> {
-      const { error } = await client.rpc("accounting_invoice_correction_outbox_succeed", {
+      const { data, error } = await client.rpc("accounting_invoice_correction_outbox_succeed", {
         p_outbox_id: input.outboxId,
+        p_claim_attempt_count: input.claimAttemptCount,
         p_provider_invoice_id: input.providerInvoiceId,
         p_provider_invoice_number: input.providerInvoiceNumber,
         p_provider_raw: input.providerRaw,
       });
       if (error) throw new AccountingInvoicePersistenceError("Accounting correction success failed", error.code);
+      if ((data as { ok?: boolean } | null)?.ok !== true) {
+        throw new AccountingInvoicePersistenceError(
+          "Accounting correction success was fenced", (data as { code?: string } | null)?.code,
+        );
+      }
     },
 
     async markInvoiceCorrectionFailed(input): Promise<void> {
-      const { error } = await client.rpc("accounting_invoice_correction_outbox_fail", {
+      const { data, error } = await client.rpc("accounting_invoice_correction_outbox_fail", {
         p_outbox_id: input.outboxId,
+        p_claim_attempt_count: input.claimAttemptCount,
         p_error: input.error,
         p_retry_seconds: input.retrySeconds,
       });
       if (error) throw new AccountingInvoicePersistenceError("Accounting correction failure failed", error.code);
+      if ((data as { ok?: boolean } | null)?.ok !== true) {
+        throw new AccountingInvoicePersistenceError(
+          "Accounting correction failure was fenced", (data as { code?: string } | null)?.code,
+        );
+      }
     },
   };
 }

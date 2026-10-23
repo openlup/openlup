@@ -188,6 +188,15 @@ port-rebind retry) and SQL failures are outside the pull retry; exhausting
 sources fails without a skip.
 
 
+For managed correction changes, run the real PostgreSQL
+`tests/postgres/invoicingManagedCorrection.test.ts` and shipped
+`supabase/tests/accounting_correction_recovery_test.sql` through the managed
+pgTAP runner. The former exercises the actual v2 adapter, identity/reclaim,
+fences and roles; the latter retains committed-ACK, delivery and audit replay
+witnesses. The invoicing contract test also covers correction and reversal outcomes without
+another setup. Required package selection includes this file and the existing
+packed consumer. These checks do not establish provider wire or fiscal proof.
+
 Subscription package contract changes use package-local contract, identity and
 port-fit witnesses alongside the generated package boundary census. The cold
 consumer classifies both exact subscription entries as having no optional peer
@@ -413,9 +422,8 @@ refusals and require approval before the forward's introducing commit. These
 checks admit one reviewed contraction; they do not grant general policy edits.
 
 M09 control preparation adds seven final SQL fixtures without installing them.
-Their versions begin at `20261022190000`, above M10's last planned forward;
-integration must recheck all function preimages against the combined ordered
-rails before introduction, including the payment-terminal replacement.
+M09 lands before M10 and keeps its versions; see the
+[M09 forward owner](docs/platform/DATA_AND_MIGRATIONS.md#m09-invoicing-forward-design-and-control-approval).
 Its only data-reading install seed is the exact keyed cutover `INSERT ... SELECT`
 from settlement transitions and shipment operations, admitted once into the newly
 created cutover table. The re-pinned duty fixture seeds that table before
@@ -798,10 +806,7 @@ order. Before direct typecheck or Vitest commands after install or package-sourc
 edits, run `npm run pretest`; otherwise consumers may read stale `dist/` exports.
 
 The [reviewed-forward PostgreSQL proof](tests/postgres/reviewedPortableCreation.test.ts) rejects landed pin drift before replay and tests byte selection for full and partial landings; [data and migrations](docs/platform/DATA_AND_MIGRATIONS.md#exact-reviewed-function-forwards) describes its catalog boundary.
-The `20261022193000` fixture re-pin keeps the claim unchanged and admits
-sync-first fenced finalization and permanent-failure parking; the
-[compatibility posture](docs/platform/CANONICAL_CONTRACTS.md#compatibility-posture)
-describes those outcomes. The fixture and registry do not install SQL.
+See the [M09 forward owner](docs/platform/DATA_AND_MIGRATIONS.md#m09-invoicing-forward-design-and-control-approval) for managed correction finalization and parking. The fixture and registry do not install SQL.
 
 For the managed pgTAP runner, prerequisites and proof limits, follow
 [Test scope and diagnostics](#separate-db-package-and-coverage-proof).

@@ -871,13 +871,14 @@ SELECT is((
 ), 1, 'refund after provider issue enqueues one correction');
 
 CREATE TEMP TABLE _claimed_correction AS
-SELECT public.accounting_invoice_correction_outbox_claim(5, 300) AS r;
+SELECT public.accounting_invoice_correction_outbox_claim(5, 300, 'accounting.correction.v2') AS r;
 
 SELECT public.accounting_invoice_correction_outbox_succeed(
   (SELECT (r->0->>'outboxId')::uuid FROM _claimed_correction),
   'fv-correction-2',
   'KOR/2/2026',
-  '{"provider":"fakturownia"}'::jsonb
+  '{"provider":"fakturownia"}'::jsonb,
+  (SELECT (r->0->>'attemptCount')::integer FROM _claimed_correction)
 );
 
 CREATE TEMP TABLE _claimed_delivery AS

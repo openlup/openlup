@@ -1,8 +1,9 @@
 # Invoicing module design
 
 Status: development-preview design. The contract and offline conformance surface
-and issue helper surface is available for explicit host composition; stores, SQL projection,
-reference routes and release activation are separate implementation steps.
+and issue, correction and reversal helpers are available for explicit host
+composition, alongside the managed correction forwards. Native stores, SQL
+projection, reference routes and release activation are separate implementation steps.
 
 ## Placement and ownership
 
@@ -109,8 +110,8 @@ remains the result-meaning owner.
   revision in claim facts, and define claim behavior for unknown/unsupported
   `seller.read`. Order-scoped managed claims must never call the unscoped
   corrections wrapper. First-claim seller freezing retains legacy fallback.
-- S1 re-measures root-docs gzip (39,616 B of the 49,152 B cap at this change)
-  and trims only if the release set exceeds it.
+- S1 re-measures root-docs gzip against the package cap and trims only if the
+  release set exceeds it.
 
 The nine additional named contract exports have concrete consumers:
 `InvoiceDocumentIdentity` for artifact/clearance/download adapters;
@@ -124,7 +125,7 @@ only the refusal factory and conformance helper to the runtime entry.
 
 ## P2 issue helper boundary
 
-Nine helpers now cover issue sequencing, snapshot/canonical positions, both donor
+P2's nine helpers cover issue sequencing, snapshot/canonical positions, both donor
 allocators, payment readback and event/direct handoff wrappers. Existing host
 facades are their named consumers. The issue worker's compatibility callbacks
 preserve managed payloads and fenced finalization; they do not redefine P1 ports
@@ -147,3 +148,29 @@ seller/claim wrappers. This is parameter-order proof only; it does not bind
 `runInvoiceIssueJob` to native ports. Native issue binding remains a P4 obligation;
 seller pre-claim reads, document-scoped post-issue operations and delivery
 settlement remain with their phase owners above.
+
+## P3 correction and reversal boundary
+
+The P3 design uses `runInvoiceCorrectionJob` and `createInvoiceReversalHandlers`
+to retain the donor worker's identity validation, effect order, retry bounds and outcome vocabulary.
+Reference facades are their named consumers; the recovery bridge is explicit and
+not automatically supplied by the legacy vendor copy. The bridge owns exact
+recovery/absence, parent checks and provider positive BEFORE/zero AFTER mapping.
+Unknown/absent/issued remain distinct. Neither worker writes money or controls
+renewal parcel admission or dunning recovery.
+
+The [M09 forward owner](../DATA_AND_MIGRATIONS.md#m09-invoicing-forward-design-and-control-approval)
+owns managed installation, compatibility cutover and legacy reconciliation.
+F7's new semantic witnesses are additional proof, not claims about old coverage.
+F10's preview correction IDs/numbers derive from correctionRef, not the base order.
+No native forward, provider wire implementation or activation is added here.
+
+P3 builds on landed P1/P2; this design grants no merge or release authority.
+
+The native reversal design follows the [canonical reversal rules](../DATA_AND_MIGRATIONS.md#m09-invoicing-forward-design-and-control-approval):
+a safe completed failed attempt may void immediately; in-flight or unknown work
+requires readback. The managed compatibility facade preserves its separate
+incumbent RPC outcomes and late-document compensation; it does not implement
+the native store port.
+
+See the [M09 forward owner](../DATA_AND_MIGRATIONS.md#m09-invoicing-forward-design-and-control-approval) for the registered managed-correction limit, follow-up and finalization semantics.
