@@ -115,10 +115,6 @@ characterization decision; later native stores do not inherit hosted readiness.
 
 ## P2 design and declared adaptations
 
-Folded CTL note (a): test-only registry pull hardening for the M10 catalog gate (digest pins, ghcr-first fallback, bounded retry)
-
-E-gate-replay-loop-landed-untested moved to P3b by the coordinator (P2 path cap)
-
 P2 carries only pinned N1, in native version order before N2 and N3. Its F16
 repair uses the same obligation through decline, retry and authorized recovery.
 The shared PostgreSQL selection checks exact-prefix restart, catalog rollback,

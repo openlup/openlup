@@ -1127,6 +1127,8 @@ initial handoff key. Hosts supply its transaction/correlation/M07 ports; payment
 execution stays outside every local transaction. Initial terminal replay checks
 the immutable receipt and returns before settlement, case rebinding or case
 propagation; it preserves later retry state, notifications and events.
+A host or driver must never call `openCase` after a replayed `applyFailure`
+receipt, and the P8 retry driver must add a zero-delta replay witness.
 
 The host must establish explicit logical-cycle correlation before invoking the
 automatic runner, including its prepare/execute path; the terminal binding
