@@ -18,7 +18,7 @@ const revision={schemaVersion:1,source:'fixture',revision:1};
 const evidence={commandFingerprint:'a'.repeat(64),contactRevision:revision,providerRef:'warehouse-a',carrierRef:null,serviceRef:null};
 const store=()=>createPostgresFulfillmentDispatchStore(executor(h.pool),{async prepare(){return {disposition:'ready',contactRevision:1};},async readCandidate(){return null;}});
 it('fresh full-catalogue install binds sparse assets, hashes and object inventory, then replays without changing history',async()=>{
- expect(FULFILLMENT_MIGRATIONS.map(unit=>unit.position)).toEqual([5,27,51,73,74]);
+ expect(FULFILLMENT_MIGRATIONS.map(unit=>unit.position)).toEqual([5,27,51,73,74,76]);
  for(const unit of FULFILLMENT_MIGRATIONS){const bytes=readFileSync(unit.catalogPath);expect(readFileSync(unit.url)).toEqual(bytes);expect(createHash('sha256').update(bytes).digest('hex')).toBe(unit.sha256);expect(units[unit.position]).toEqual({file:unit.catalogPath,sha256:unit.sha256});}
  const history=(await h.pool.query('SELECT * FROM public.platform_schema_migrations ORDER BY position')).rows;
  expect(history.map(({catalog_path,sha256,position})=>({file:catalog_path,sha256,position}))).toEqual(units.map((u,position)=>({...u,position})));

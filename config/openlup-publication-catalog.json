@@ -1138,6 +1138,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261022165000_fulfillment_stock_evidence_replay_reopen.sql",
+      "class": "public-output"
+    },
+    {
       "path": "deploy/oci/public-reference-compose.yml",
       "class": "public-output"
     },
@@ -2579,6 +2583,10 @@
     },
     {
       "path": "packages/platform/sql/20261022160000_subscription_retry_lifecycle.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261022165000_fulfillment_stock_evidence_replay_reopen.sql",
       "class": "public-output"
     },
     {
@@ -22951,6 +22959,10 @@
     },
     {
       "path": "tests/postgres/fulfillmentRenewalAdmission.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/fulfillmentStockEvidenceReplay.test.ts",
       "class": "public-output"
     },
     {

@@ -671,6 +671,17 @@ same error class so `instanceof` preserves the no-charge trust boundary.
 The M07 factories' neutral envelopes and capability limits remain unchanged;
 reference-support availability establishes no provider activation or stable API.
 
+## Fulfillment stock evidence replay
+
+The fulfillment migration projection additionally includes the native
+`20261022165000_fulfillment_stock_evidence_replay_reopen.sql` forward at canonical
+position 76 in this catalogue. Install the complete chain before stock adoption.
+Matching-fingerprint alert replay refreshes severity/quantities, reopens status and
+clears `resolved_at`, preserving identity, first-seen time and historical resolver
+metadata. Mismatches, including legacy 0.22.0 whole-input fingerprints, still
+raise `23505`; no rewrite is supplied. See the [migration owner](../../docs/platform/DATA_AND_MIGRATIONS.md#module-catalogues-and-installed-histories)
+for upgrade and operational-dependency proof.
+
 ## Subscription contracts and renewal port
 
 The experimental `./subscriptions` entry exposes hosted renewal mechanisms and

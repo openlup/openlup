@@ -5,4 +5,5 @@ export const FULFILLMENT_MIGRATIONS = [
   { position: 51, catalogPath: "db/platform/migrations/20260819150000_fulfillment_shipment_sequence.sql", sha256: "906706cf66a6a555aa1219b12eb674d937eaa099abde6da18766310af43aaa9f", url: new URL("../../sql/20260819150000_fulfillment_shipment_sequence.sql", import.meta.url) },
   { position: 73, catalogPath: "db/platform/migrations/20261022080000_fulfillment_command_ledger.sql", sha256: "c6806906cdb0b6931b29f7a5c7c800016e98d04e6ea956f3c1e219a6cdb7e9d1", url: new URL("../../sql/20261022080000_fulfillment_command_ledger.sql", import.meta.url) },
   { position: 74, catalogPath: "db/platform/migrations/20261022090000_fulfillment_delivery_alignment.sql", sha256: "d9966ae79fe77a0feae8317dc5b46ef2d8196dd0790b1cd0ee1b06ab58061499", url: new URL("../../sql/20261022090000_fulfillment_delivery_alignment.sql", import.meta.url) },
+  { position: 76, catalogPath: "db/platform/migrations/20261022165000_fulfillment_stock_evidence_replay_reopen.sql", sha256: "6d132dec2820047f4e337bcf752b3d884600ccc12de03887fe6d6aa5575bc1db", url: new URL("../../sql/20261022165000_fulfillment_stock_evidence_replay_reopen.sql", import.meta.url) },
 ] as const;

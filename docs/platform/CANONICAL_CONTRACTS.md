@@ -545,6 +545,15 @@ creation pin. Command/stock-wait forwards remain later additions; installing thi
 unit does not activate a runner or grant M07 native prepared-store capability.
 
 
+The native stock-evidence replay forward `20261022165000` appends a file/hash
+row to the existing platform manifest without changing its immutable prefix or
+format. Its live object-inventory digest changes with the replacement function.
+Install the complete catalogue: the fulfillment package descriptor is a sparse
+byte-identical projection, not an alternative history. Matching fingerprints
+reopen and refresh evidence; legacy whole-input fingerprints still conflict with
+PR1 identities and are not migrated. See [data compatibility](DATA_AND_MIGRATIONS.md#compatibility-lifecycle)
+for the exact upgrade and replay boundary.
+
 The M10/F17 `batchedForwards` registry adds exact approval data and inert
 snapshots only. Its ordered paths, raw statement/definition hashes, signature
 chains and exact grants/seeds do not install SQL, change a baseline, activate a

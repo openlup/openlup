@@ -304,7 +304,11 @@
     {
       "file": "db/platform/migrations/20261022160000_subscription_retry_lifecycle.sql",
       "sha256": "c9571f669ba9d6af5b279e80630dcfffe9b2da63513542c21e540448d614144a"
+    },
+    {
+      "file": "db/platform/migrations/20261022165000_fulfillment_stock_evidence_replay_reopen.sql",
+      "sha256": "6d132dec2820047f4e337bcf752b3d884600ccc12de03887fe6d6aa5575bc1db"
     }
   ],
-  "objectInventorySha256": "31ab73b5483aa718c4252276010b4beaa12cf73ef73edb804083f3a506dd195f"
+  "objectInventorySha256": "93a469a5e284dc942cef26b92fe9cb2770590383aedbd9351b04fedb8b24c0e9"
 }
