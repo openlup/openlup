@@ -20,3 +20,9 @@ export { withAccountingInvoiceShadowTrigger } from "./fulfillmentTrigger.js";
 export { withAutoDispatchAccountingInvoiceTrigger } from "./fulfillmentTrigger.js";
 export { runInvoiceCorrectionJob } from "./correction.js";
 export { createInvoiceReversalHandlers } from "./reversal.js";
+/** @consumer Reference native accounting adapter/runtime and installed-consumer conformance. */
+export { createPostgresInvoiceStore, runNativeInvoiceIssueJob } from "./postgresInvoiceStore.js";
+/** @consumer Native migration conformance and installed-consumer asset verification. */
+export { INVOICING_MIGRATIONS } from "./migrations.js";
+export { collectInvoiceDuties } from "./dutyCollector.js";
+export { createIndependentInvoiceDutyBinding } from "./continuity.js";

@@ -1142,6 +1142,18 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261022190000_invoicing_durable_duties.sql",
+      "class": "public-source"
+    },
+    {
+      "path": "db/platform/migrations/20261022191000_invoicing_document_effects.sql",
+      "class": "public-source"
+    },
+    {
+      "path": "db/platform/migrations/20261022192000_invoicing_payment_decoupling.sql",
+      "class": "public-output"
+    },
+    {
       "path": "deploy/oci/public-reference-compose.yml",
       "class": "public-output"
     },
@@ -2478,6 +2490,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20260809210000_accounting_document_rail.sql",
+      "class": "public-source"
+    },
+    {
       "path": "packages/platform/sql/20260810120000_storefront_catalog_attributes.sql",
       "class": "public-output"
     },
@@ -2496,6 +2512,14 @@
     {
       "path": "packages/platform/sql/20260810204057_customer_identity_read.sql",
       "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20260811150000_accounting_payout_rail.sql",
+      "class": "public-source"
+    },
+    {
+      "path": "packages/platform/sql/20260812130000_accounting_document_lifecycle_rail.sql",
+      "class": "public-source"
     },
     {
       "path": "packages/platform/sql/20260812140000_sellable_bundle_catalog.sql",
@@ -2591,6 +2615,18 @@
     },
     {
       "path": "packages/platform/sql/20261022165000_fulfillment_stock_evidence_replay_reopen.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261022190000_invoicing_durable_duties.sql",
+      "class": "public-source"
+    },
+    {
+      "path": "packages/platform/sql/20261022191000_invoicing_document_effects.sql",
+      "class": "public-source"
+    },
+    {
+      "path": "packages/platform/sql/20261022192000_invoicing_payment_decoupling.sql",
       "class": "public-output"
     },
     {
@@ -4034,6 +4070,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/invoicing/continuity.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/invoicing/contracts/capabilities.ts",
       "class": "public-output"
     },
@@ -4074,6 +4114,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/invoicing/dutyCollector.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/invoicing/fulfillmentTrigger.ts",
       "class": "public-output"
     },
@@ -4090,12 +4134,20 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/invoicing/migrations.ts",
+      "class": "public-source"
+    },
+    {
       "path": "packages/platform/src/invoicing/nativeUnsupported.ts",
       "class": "public-output"
     },
     {
       "path": "packages/platform/src/invoicing/paymentReadback.ts",
       "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/invoicing/postgresInvoiceStore.ts",
+      "class": "public-source"
     },
     {
       "path": "packages/platform/src/invoicing/reversal.ts",
@@ -5522,6 +5574,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/invoicing/continuity.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/invoicing/contracts.test.ts",
       "class": "public-output"
     },
@@ -5543,6 +5599,10 @@
     },
     {
       "path": "packages/platform/test/invoicing/portFitFixtures.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/invoicing/postgresStore.test.ts",
       "class": "public-output"
     },
     {
@@ -14834,6 +14894,10 @@
       "class": "public-output"
     },
     {
+      "path": "server/runtime/accounting/invoicingDutyBinding.ts",
+      "class": "public-output"
+    },
+    {
       "path": "server/runtime/auth/adminAuthBinding.test.ts",
       "class": "public-output"
     },
@@ -22834,6 +22898,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/helpers/invoicingNativeHarness.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/helpers/postgresContainer.ts",
       "class": "public-output"
     },
@@ -23078,7 +23146,15 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/invoicingContinuity.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/invoicingManagedCorrection.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/invoicingNativeConformance.test.ts",
       "class": "public-output"
     },
     {

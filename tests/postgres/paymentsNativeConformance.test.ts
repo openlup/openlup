@@ -98,6 +98,11 @@ async function fixture(subscriptionDate?: string) {
   return { input, order, subscription, cycle };
 }
 
+// P4b enumerated public expectation changes (no payment export change):
+// 1. captured-event replay: accountingRequested true -> false.
+// 2. captured dunning recovery: accountingRequested true -> false.
+// 192000 records an independent owed duty, not an accounting document link.
+// All money, recovery, replay, refusal and monotonic-cycle expectations remain.
 it("commits accepted truth before acknowledgement, replays once and refuses fingerprint conflict", async () => {
   const f = await fixture();
   // Simulate lost transport acknowledgement after the real committed SQL call.
@@ -105,7 +110,7 @@ it("commits accepted truth before acknowledgement, replays once and refuses fing
   await expect(lostAck()).rejects.toThrow("ack_lost");
   const replay = await truth().ingestEvent(f.input);
   expect(replay).toMatchObject({ event: { replayed: true, state: "settled", outcome: "captured" },
-    effects: { paymentResultRecorded: true, accountingRequested: true }, financial: { orderStatus: "paid" } });
+    effects: { paymentResultRecorded: true, accountingRequested: false }, financial: { orderStatus: "paid" } });
   await expect(truth().ingestEvent({ ...f.input, amountMinor: 901 })).rejects.toMatchObject({ code: "23505" });
   expect((await pool.query("SELECT * FROM public.commerce_settlement_transitions WHERE intent_id=$1", [f.input.settlementIntentId])).rows).toHaveLength(1);
   expect(await truth().readEvent(replay.event.id)).toMatchObject({ event: { replayed: false, state: "settled" } });
@@ -142,7 +147,7 @@ it("refuses an unprivileged actor and applies refused settlement without paying 
   expect((await pool.query("SELECT * FROM public.subscription_dunning_cases WHERE subscription_id=$1", [f.subscription])).rows).toHaveLength(1);
   expect((await pool.query("SELECT * FROM public.subscription_dunning_notifications WHERE case_id=(SELECT id FROM public.subscription_dunning_cases WHERE subscription_id=$1)", [f.subscription])).rows).toHaveLength(1);
   const recovered = await truth().ingestEvent({ ...f.input, sourceEventId: `${f.input.sourceEventId}:recovery`, idempotencyKey: `${f.input.idempotencyKey}:recovery` });
-  expect(recovered.effects.accountingRequested).toBe(true);
+  expect(recovered.effects.accountingRequested).toBe(false);
   expect((await pool.query("SELECT status FROM public.subscription_dunning_cases WHERE subscription_id=$1", [f.subscription])).rows).toEqual([{ status: "recovered" }]);
 });
 it("serializes simultaneous identical events behind a row lock with exactly one financial effect", async () => {

@@ -188,6 +188,22 @@ port-rebind retry) and SQL failures are outside the pull retry; exhausting
 sources fails without a skip.
 
 
+M09 native invoicing uses six real-Postgres conformance cases and the package
+store/binding witnesses in `packages/platform/test/invoicing/postgresStore.test.ts`. The native harness includes fresh complete installation, preserved
+prefix upgrade, exact catalogue hashes, invoker/browser ACL refusals, keys and
+leases, scoped claims, incumbent fencing, scale and same-order dispatch under
+accounting contention. Its whole-file budget is 28 seconds; report setup and
+per-case time separately. The required package selection includes the store
+cases, and the existing packed consumer verifies the store, issue binding, migration
+descriptor and independent collector exports, plus all six SQL asset hashes
+without a driver installed. These
+checks establish the native persistence/continuity slice and offline issue binding,
+without fiscal provider readiness. The approved re-pin regressions share those six native
+cases: stored-reversal before-send/absence handling, retryable readback remaining
+unknown, latest terminal/resolved capture fault per source kind/ID, and exact
+cutover seeding before FK tables with a concurrent order writer. Keep the
+28-second whole-file ceiling when extending these cases.
+
 For managed correction changes, run the real PostgreSQL
 `tests/postgres/invoicingManagedCorrection.test.ts` and shipped
 `supabase/tests/accounting_correction_recovery_test.sql` through the managed

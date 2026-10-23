@@ -13,6 +13,16 @@ remote deletion, money reversal or document delivery. Correction execution needs
 an explicit conforming recovery bridge; the old vendor method alone stays
 unsupported before claim. No new job registration or default activation follows.
 
+The Postgres local-document adapter now consumes `createPostgresInvoiceStore`
+with the caller's structural executor and explicit local provider metadata.
+Its request key, local document reference, status and replay remain intact;
+this path supplies no fiscal facts and registers no invoicing worker.
+For the native store, use separate autocommit sweep, prepare and finish calls.
+The six [native witnesses](../../tests/postgres/invoicingNativeConformance.test.ts)
+cover row/lease fences, scope, locked accounting and unchanged renewal state.
+The combined P4 chain also installs the pinned payment-decoupling replacement;
+independent collection never joins a payment or parcel transaction.
+
 The reference payment-channel BFF retains its feature and mode admission gates,
 and now supplies the package HTTP client to the same domain handler. Its local
 simulator branch and disabled empty-channel response remain unchanged. Customer

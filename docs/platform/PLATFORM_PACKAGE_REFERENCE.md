@@ -670,9 +670,12 @@ not establish invoice absence. Capture faults remain separately observable.
 
 The seller read takes an order ID or null for an unscoped claim, including
 corrections: it reads current host configuration before the next claim, never per
-duty. P8 freezes that seller at first claim; `revisionRef` supplies the claim
-wrapper revision argument. Managed and native stores bind the selected provider
-at construction, including duty capture and reversal requests.
+duty. The separate seller-forward SQL freezes first-claim seller using
+`revisionRef` as the wrapper revision; P7 owns host composition under the
+[invoicing phase obligations](plans/oss-m09-invoicing.md#phase-obligations).
+Compatibility stores bind provider selection at construction. The structural
+native store instead accepts provider selection per claim and persists the first
+provider on the duty.
 
 Seller, fiscal-verification, policy-decision, policy-receipt and download-ticket
 reads distinguish transient `unknown`
@@ -685,6 +688,7 @@ nullable client/source facts and any known receipt after a lost local acknowledg
 Settlement retains the provider document reference and retry delay for managed
 pre-send backoff. Native takes `p_evidence.retrySeconds`: a whole number of seconds
 clamped to 60..86400, otherwise 900; `retryable:false` parks at infinity.
+P4's structural store leaves delivery unsupported until the host envelope is bound.
 For uncertain sends, native passes
 `p_receipt` NULL and retains a non-null receipt hint in `p_evidence`; managed
 passes the hint as the provider message ID.
