@@ -620,8 +620,8 @@ Each signature is fixed in code; its before hash binds the portable chain, while
 its after and whole-file hashes bind the proposed forward. This separate control
 approval supplies no migration or runtime activation. The
 [exact reviewed function rules](DATA_AND_MIGRATIONS.md#exact-reviewed-function-forwards)
-require unchanged headers, a single function statement and approval before SQL
-introduction. Existing managed classes retain their fixed counts; the separate
+require unchanged headers and a single function statement, with introduction
+following the [co-located SQL/pin rule](DATA_AND_MIGRATIONS.md#co-located-sql-and-approval-pins). Existing managed classes retain their fixed counts; the separate
 [M09 forward admission](DATA_AND_MIGRATIONS.md#m09-invoicing-forward-design-and-control-approval)
 binds three managed forwards and the additional exact native payment-terminal
 replacement. New native routines stay invokers; managed wrappers retain donor
@@ -729,8 +729,8 @@ the direct catalogue identity and the managed pending-lifecycle compatibility ga
 The runtime forward registry may pin exactly eight legacy browser-policy
 retirements alongside its fixed function and privilege bindings. Retirement
 checks exact names, tables, preceding statement hashes and ordered DROP
-statements; it does not admit arbitrary RLS changes. The approval must exist
-unchanged at the feature comparison base and the forward introduction parent.
+statements; it does not admit arbitrary RLS changes. Introduction follows the
+[co-located SQL/pin rule](DATA_AND_MIGRATIONS.md#co-located-sql-and-approval-pins).
 Control approval installs no database permission and cannot stand in for the
 corrected forward's actual-role tests.
 
@@ -750,9 +750,9 @@ UPDATE on `auth_user_id`, INSERT on `admin_users.id`, `email`, `role`,
 `membership_state`, `membership_provenance` and `membership_accepted_at` for
 operator activation (`is_machine_actor` keeps its false default), and SELECT on `admin_users.email`
 for invitation eligibility and conflict checks.
-It does not authorize arbitrary runtime grants. Approval must precede the SQL
-feature's comparison base and introducing commit; registry installation alone
-does not change database permissions.
+It does not authorize arbitrary runtime grants. Introduction follows the same
+co-located SQL/pin rule; registry installation alone does not change database
+permissions.
 
 Stable status, idempotency, and provider-extension commitments wait for the stable-framework requirements.
 Before then, changes must still preserve the contracts above and state their
@@ -768,10 +768,9 @@ invoicing creation forwards by path and whole-file hash, requiring new objects
 and invoker functions. The portable replacement list pins the dunning function
 and the invoicing payment-terminal accounting block.
 Managed correction recovery, lock coupling, trigger admission, seller eligibility and migration ordering are owned by [M09 forward design](DATA_AND_MIGRATIONS.md#m09-invoicing-forward-design-and-control-approval).
-Required self-check keeps the whole registry unchanged from the feature comparison
-base. Release compares each forward's own entry, list position and shared registry
-fields with its introduction parent, allowing later controls to append approvals.
-A feature cannot approve itself. Both gates share the same admission checker.
+Self-check and release share the admission checker and the canonical
+[co-located SQL/pin rule](DATA_AND_MIGRATIONS.md#co-located-sql-and-approval-pins).
+Existing control histories remain valid; later repins cannot authorize earlier SQL.
 This is a separately reviewed preview admission class, not expand-only or a live
 database compatibility proof; see
 [Data and migrations](DATA_AND_MIGRATIONS.md#exact-reviewed-function-forwards).

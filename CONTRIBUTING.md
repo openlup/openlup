@@ -168,7 +168,7 @@ share generated package directories.
 
 The M10/F17 exact-forward controls use
 `scripts/reviewed-batch-forward.test.ts` for per-file refusal plants and separate
-CI/release approval, and `tests/postgres/reviewedBatchForwards.test.ts` for the
+and co-located CI/release approval, and `tests/postgres/reviewedBatchForwards.test.ts` for the
 mandatory PostgreSQL/pgTAP catalog gate. The latter runs both complete prefixes,
 checks exact catalog/ACL/row changes and rollback, and falsifies its observer
 with committed attacks. Missing Docker, PostgreSQL or pgTAP fails; the lexer is
@@ -418,8 +418,9 @@ The runtime-forward checker also binds eight exact legacy policy retirements
 by table, name and preceding CREATE POLICY statement hash. It requires their
 ordered DROP statements before the fixed grants and rejects missing, duplicate
 or additional policy operations. Both PR and release-history tests check these
-refusals and require approval before the forward's introducing commit. These
-checks admit one reviewed contraction; they do not grant general policy edits.
+refusals and the canonical
+[co-located SQL/pin rule](docs/platform/DATA_AND_MIGRATIONS.md#co-located-sql-and-approval-pins).
+These checks admit one reviewed contraction; they do not grant general policy edits.
 
 M09 control preparation adds seven final SQL fixtures without installing them.
 M09 lands before M10 and keeps its versions; see the
@@ -451,16 +452,17 @@ ACLs, the payment-terminal replacement preserves incumbent attributes, and manag
 additions retain the donor's fixed-path, service-only definer authority. The
 [M09 design and retry contract](docs/platform/DATA_AND_MIGRATIONS.md#m09-invoicing-forward-design-and-control-approval)
 owns the duty sweep and feature introduction boundary. These checks do not
-introduce canonical migrations, relax approval-before-introduction or replace
+introduce canonical migrations, broaden the fixed SQL class or replace
 feature-level settlement, dispatch, correction, seller and delivery invariants.
 
 The reviewed runtime-forward checker admits an exact pinned five-function SQL
 file and an optional identity capabilities file with fixed service-only client
 writes, operator activation inserts and invitation email reads. Tests exercise both PR history and release
 history admission, including independently repinned forbidden columns, roles,
-writes, functions and changed execution attributes. The control must already
-exist before the SQL feature's base and introducing commit. Passing these tests
-is admission evidence, not proof that a draft overlay is the shipped chain.
+writes, functions and changed execution attributes. Approval follows the
+canonical co-located rule above, including its separate prior machinery-control
+boundary. Passing these tests is admission evidence, not proof that a draft
+overlay is the shipped chain.
 
 
 <!-- openlup-doc-impact {"unit":"tooling","digest":"sha256-7754f9a24ad3a5e6f570d6599e69a966ef6655741c48b1bb48f041236192b975","reason":"The shared admission function and predicate refuse control characters other than tab and line feed in migration SQL (parser parity with PostgreSQL), with focused and tracked-rail regression tests. The Additive forward release path in DATA_AND_MIGRATIONS documents this refusal. Contributor commands, required test selection and gate order in this section remain unchanged."} -->
@@ -1475,11 +1477,14 @@ decoupling and stock-evidence replay reopening. The stock control embeds the
 candidate SQL in the existing synthetic gate tests without adding a migration.
 The same focused test file covers exact bytes, portable-chain priors, registry
 cardinality, header preservation, extra-statement
-refusal and approval before introduction in both gates; managed counts remain
-unchanged. Required self-check keeps the whole registry
-unchanged from the feature comparison base; release compares each forward's own
-entry, list position and shared registry fields with its introduction parent, so later
-controls may append approvals. A feature cannot approve itself. Batched pins land per rail as a prefix in version
+refusal and introduction-time binding in both gates; managed counts remain
+unchanged. SQL and its pins may share a feature PR under the canonical
+[co-located SQL/pin rule](docs/platform/DATA_AND_MIGRATIONS.md#co-located-sql-and-approval-pins).
+Only bindings for that PR's new SQL may change; other entries and shared fields
+stay fixed. Trusted-main native admission refuses co-changing the machinery.
+Release preserves each binding from its actual mainline introduction; later
+repins cannot authorize earlier SQL. New classes and control changes still need
+prior separate approval. Batched pins land per rail as a prefix in version
 order: all earlier same-rail pins must be present with their pinned whole-file
 digests. The PG gate refuses landed holes and replays committed interleaved
 files through the last pin along with the absent fixture suffix. These forwards
@@ -1835,6 +1840,9 @@ own: a lessons change is an ordinary delivery under existing authority, and a
 promotion stays within its approved scope. The rethink record and the task's
 terminal self-retro carry the lesson until it lands. No other tracker is kept.
 
+- 2026-10-23, co-located SQL/pins: a trusted script cannot enforce its own
+  invocation → keep the documented workflow trust boundary explicit; reuse
+  existing sensitive review rather than claiming status-name isolation.
 - 2026-10-23, PostgreSQL teardown rethink: bounding only the fixture pool
   misses pools behind adapter/store `close()` → include every owned closer in
   the shared bounded close phase before attempting every container removal.
