@@ -18,3 +18,5 @@ export { createFulfillmentHandoffInvoiceHandler } from "./handoff.js";
 export { withAccountingInvoiceShadowTrigger } from "./fulfillmentTrigger.js";
 /** @consumer server/domains/accounting/fulfillmentInvoiceTrigger.ts */
 export { withAutoDispatchAccountingInvoiceTrigger } from "./fulfillmentTrigger.js";
+export { runInvoiceCorrectionJob } from "./correction.js";
+export { createInvoiceReversalHandlers } from "./reversal.js";

@@ -1,4 +1,4 @@
-import { runInvoiceIssueJob } from "@openlup/platform/invoicing";
+import { runInvoiceIssueJob, runInvoiceCorrectionJob } from "@openlup/platform/invoicing";
 import type {
   AccountingDocumentProviderPort,
   AccountingInvoiceRuntimePort,
@@ -101,37 +101,28 @@ export async function runAccountingInvoiceCorrectionJob({
   env: Record<string, string | undefined>;
   limit?: number;
 }): Promise<AccountingJobResult> {
-  if (!config.createEnabled) return skipped("create_disabled");
-  if (!provider) return skipped("provider_disabled");
-
-  const claims = await port.claimInvoiceCorrections(limit);
-  let updated = 0;
-  let failures = 0;
-  for (const claim of claims) {
-    try {
-      const snapshot = mapCorrectionClaimToProviderSnapshot(claim, env);
-      const result = await provider.createFullCorrection(snapshot, {
-        correctionReason: claim.correctionReason,
-        correctedProviderInvoiceId: claim.providerInvoiceId,
-      });
-      await port.markInvoiceCorrectionSucceeded({
-        outboxId: claim.outboxId,
-        providerInvoiceId: result.providerInvoiceId,
-        providerInvoiceNumber: result.providerInvoiceNumber,
-        providerRaw: result.raw,
-      });
-      updated += 1;
-    } catch (error) {
-      failures += 1;
-      await port.markInvoiceCorrectionFailed({
-        outboxId: claim.outboxId,
-        error: sanitizeAccountingError(error),
-        retrySeconds: retrySeconds(claim.attemptCount),
-      });
-    }
-  }
-
-  return { ok: failures === 0, checked: claims.length, updated, skipped: false, failures };
+  if (config.createEnabled && provider && !provider.correctionRecovery) return skipped("correction_recovery_unsupported");
+  return runInvoiceCorrectionJob({
+    createEnabled: config.createEnabled,
+    providerEnabled: Boolean(provider?.correctionRecovery),
+    claim: () => port.claimInvoiceCorrections(limit),
+    project: (claim) => mapCorrectionClaimToProviderSnapshot(claim, env),
+    create: async (snapshot, options) => {
+      const receipt = await provider!.correctionRecovery!.createFullCorrection(snapshot, options);
+      return { providerDocumentRef: receipt.providerInvoiceId, providerDocumentNumber: receipt.providerInvoiceNumber, receipt };
+    },
+    finish: (claim, result) => port.markInvoiceCorrectionSucceeded({
+      outboxId: claim.outboxId, claimAttemptCount: claim.attemptCount,
+      providerInvoiceId: result.receipt.providerInvoiceId, providerInvoiceNumber: result.receipt.providerInvoiceNumber, providerRaw: result.receipt.raw,
+    }),
+    isClaimFenceError: (error) => {
+      const code = typeof error === "object" && error !== null && "causeCode" in error ? error.causeCode : null;
+      return typeof code === "string" && code.startsWith("accounting_invoice_correction_claim_");
+    },
+    fail: (claim, error, retrySeconds) => port.markInvoiceCorrectionFailed({
+      outboxId: claim.outboxId, claimAttemptCount: claim.attemptCount, error: sanitizeAccountingError(error), retrySeconds,
+    }),
+  });
 }
 
 export async function runAccountingKsefStatusJob({
@@ -180,7 +171,5 @@ export async function runAccountingKsefStatusJob({
   }
   return { ok: failures === 0, checked: targets.length, updated, skipped: false, failures };
 }
-
-function retrySeconds(attemptCount: number): number { return Math.min(3600, 300 * Math.max(1, attemptCount)); }
 
 function skipped(reason: string): AccountingJobResult { return { ok: true, checked: 0, updated: 0, skipped: true, reason, failures: 0 }; }

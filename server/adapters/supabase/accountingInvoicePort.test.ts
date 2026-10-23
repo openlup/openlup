@@ -230,7 +230,7 @@ describe("supabase accounting invoice port", () => {
   });
 
   it("routes reversal and correction jobs to their service-role RPCs", async () => {
-    const rpc = vi.fn(async () => ({ data: [], error: null }));
+    const rpc = vi.fn(async () => ({ data: { ok: true }, error: null }));
     const port = createSupabaseAccountingInvoicePort({ rpc });
 
     await port.requestInvoiceReversalFromOrderStatus({
@@ -242,13 +242,13 @@ describe("supabase accounting invoice port", () => {
     });
     await port.claimInvoiceCorrections(7);
     await port.markInvoiceCorrectionSucceeded({
-      outboxId: "outbox-1",
+      outboxId: "outbox-1", claimAttemptCount: 2,
       providerInvoiceId: "correction-1",
       providerInvoiceNumber: "KOR/1/2026",
       providerRaw: { id: 123 },
     });
     await port.markInvoiceCorrectionFailed({
-      outboxId: "outbox-2",
+      outboxId: "outbox-2", claimAttemptCount: 3,
       error: { message: "retry" },
       retrySeconds: 60,
     });
@@ -263,18 +263,32 @@ describe("supabase accounting invoice port", () => {
     expect(rpc).toHaveBeenNthCalledWith(2, "accounting_invoice_correction_outbox_claim", {
       p_limit: 7,
       p_lease_seconds: 300,
+      p_contract_version: "accounting.correction.v2",
     });
     expect(rpc).toHaveBeenNthCalledWith(3, "accounting_invoice_correction_outbox_succeed", {
-      p_outbox_id: "outbox-1",
+      p_outbox_id: "outbox-1", p_claim_attempt_count: 2,
       p_provider_invoice_id: "correction-1",
       p_provider_invoice_number: "KOR/1/2026",
       p_provider_raw: { id: 123 },
     });
     expect(rpc).toHaveBeenNthCalledWith(4, "accounting_invoice_correction_outbox_fail", {
-      p_outbox_id: "outbox-2",
+      p_outbox_id: "outbox-2", p_claim_attempt_count: 3,
       p_error: { message: "retry" },
       p_retry_seconds: 60,
     });
+  });
+
+  it("surfaces rejected correction finalizers and transport errors with their durable refusal identity", async () => {
+    for (const stage of ["success", "failure"] as const) {
+      for (const code of ["accounting_invoice_correction_claim_generation_mismatch", "accounting_invoice_correction_claim_identity_missing", "accounting_invoice_correction_claim_inactive", "accounting_invoice_correction_claim_fence_required"]) {
+        const rpc = vi.fn(async () => ({ data: { ok: false, code }, error: null }));
+        const port = createSupabaseAccountingInvoicePort({ rpc });
+        const input = { outboxId: "outbox", claimAttemptCount: 2, providerInvoiceId: "correction", providerInvoiceNumber: null, providerRaw: {}, error: {}, retrySeconds: 60 };
+        await expect(stage === "success" ? port.markInvoiceCorrectionSucceeded(input) : port.markInvoiceCorrectionFailed(input)).rejects.toMatchObject({ causeCode: code });
+      }
+    }
+    const port = createSupabaseAccountingInvoicePort({ rpc: vi.fn(async () => ({ data: null, error: { code: "22023" } })) });
+    await expect(port.claimInvoiceCorrections(1)).rejects.toMatchObject({ causeCode: "22023" });
   });
 
   it("wraps RPC errors", async () => {

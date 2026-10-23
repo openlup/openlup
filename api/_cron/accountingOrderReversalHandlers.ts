@@ -1,3 +1,4 @@
+import { createInvoiceReversalHandlers } from "@openlup/platform/invoicing";
 import { z } from "zod";
 import {
   ACCOUNTING_ORDER_REVERSAL_REQUESTED_EVENT_TYPE,
@@ -13,9 +14,7 @@ import {
 import type {
   OutboxEventRow,
   OutboxHandler,
-  OutboxHandlerOutcome,
 } from "../../server/domains/commerce/contracts.js";
-const HANDLER_TIMEOUT_MS = 10_000;
 const legacyPayloadSchema = z.object({ orderUuid: z.guid(), orderId: z.string().min(1) }).passthrough();
 
 export type LegacyCommerceOrderReversalEventType =
@@ -96,59 +95,19 @@ export function buildAccountingOrderReversalHandlers(input: {
   providerKind: string;
   enabled: boolean;
 }): OutboxHandler[] {
-  if (!input.enabled) return [];
-  return [
-    createAccountingOrderReversalHandler({
-      eventType: COMMERCE_ORDER_CANCELED_EVENT_TYPE,
-      adapt: (row) => adaptLegacyCommerceOrderReversal(row, COMMERCE_ORDER_CANCELED_EVENT_TYPE),
-      accountingPort: input.accountingPort,
+  return createInvoiceReversalHandlers<OutboxEventRow, AccountingOrderReversalRequested, Awaited<ReturnType<AccountingCorrectionScaffoldPort["requestInvoiceReversalFromOrderStatus"]>>>({
+    enabled: input.enabled,
+    events: [
+      { eventType: COMMERCE_ORDER_CANCELED_EVENT_TYPE, adapt: (row) => adaptLegacyCommerceOrderReversal(row, COMMERCE_ORDER_CANCELED_EVENT_TYPE) },
+      { eventType: COMMERCE_ORDER_REFUNDED_EVENT_TYPE, adapt: (row) => adaptLegacyCommerceOrderReversal(row, COMMERCE_ORDER_REFUNDED_EVENT_TYPE) },
+      { eventType: ACCOUNTING_ORDER_REVERSAL_REQUESTED_EVENT_TYPE, adapt: adaptAccountingOrderReversalRequested },
+    ],
+    request: (request) => input.accountingPort.requestInvoiceReversalFromOrderStatus({
+      idempotencyKey: request.idempotencyKey,
+      orderId: request.orderUuid,
+      reason: request.reason,
       providerKind: input.providerKind,
+      payload: request.payload,
     }),
-    createAccountingOrderReversalHandler({
-      eventType: COMMERCE_ORDER_REFUNDED_EVENT_TYPE,
-      adapt: (row) => adaptLegacyCommerceOrderReversal(row, COMMERCE_ORDER_REFUNDED_EVENT_TYPE),
-      accountingPort: input.accountingPort,
-      providerKind: input.providerKind,
-    }),
-    createAccountingOrderReversalHandler({
-      eventType: ACCOUNTING_ORDER_REVERSAL_REQUESTED_EVENT_TYPE,
-      adapt: adaptAccountingOrderReversalRequested,
-      accountingPort: input.accountingPort,
-      providerKind: input.providerKind,
-    }),
-  ];
-}
-
-function createAccountingOrderReversalHandler(input: {
-  eventType: LegacyCommerceOrderReversalEventType | typeof ACCOUNTING_ORDER_REVERSAL_REQUESTED_EVENT_TYPE;
-  adapt: (row: OutboxEventRow) => AccountingOrderReversalCompatibilityResult;
-  accountingPort: AccountingCorrectionScaffoldPort;
-  providerKind: string;
-}): OutboxHandler {
-  return {
-    eventType: input.eventType,
-    timeoutMs: HANDLER_TIMEOUT_MS,
-    async handle(row: OutboxEventRow): Promise<OutboxHandlerOutcome> {
-      const compatibility = input.adapt(row);
-      if (compatibility.kind === "invalid_payload") {
-        return { kind: "discard", reason: "accounting_reversal_payload_invalid" };
-      }
-      try {
-        const result = await input.accountingPort.requestInvoiceReversalFromOrderStatus({
-          idempotencyKey: compatibility.request.idempotencyKey,
-          orderId: compatibility.request.orderUuid,
-          reason: compatibility.request.reason,
-          providerKind: input.providerKind,
-          payload: compatibility.request.payload,
-        });
-        return {
-          kind: "processed",
-          detail: { accountingReversalAction: result.action, invoiceStatus: result.invoice?.status ?? "no_invoice" },
-        };
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error);
-        return { kind: "retry", reason: message.slice(0, 300) };
-      }
-    },
-  };
+  });
 }

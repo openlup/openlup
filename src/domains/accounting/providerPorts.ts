@@ -37,10 +37,9 @@ export interface AccountingDocumentProviderInvoiceSnapshot {
     name: string;
     quantity: number;
     /**
-     * Unit of measure printed next to the quantity. Every invoicing provider
-     * renders such a column, so the concept belongs to the neutral port rather
-     * than to one adapter. Nothing populates it yet: the document provider
-     * supplies its own locale default when this is absent.
+     * Optional host-supplied unit printed next to the quantity. Canonical
+     * positions may carry it; legacy snapshots may omit it. An adapter owns
+     * any locale-specific default when absent.
      */
     quantityUnit?: string;
     unitNetMinor: number;
@@ -64,6 +63,14 @@ export interface AccountingDocumentProviderPort {
       recoveryLookupRequired: boolean;
     },
   ): Promise<AccountingDocumentProviderResult>;
+  /** Explicit conforming bridge; the legacy vendor method alone is not selected.
+   * Implements stable identity, exact recovery/absence and parent validation. */
+  correctionRecovery?: {
+    createFullCorrection(
+      snapshot: AccountingDocumentProviderInvoiceSnapshot,
+      options: { correctionReason: string; correctedProviderInvoiceId: string; correctionRef: string; recoveryLookupRequired: boolean },
+    ): Promise<AccountingDocumentProviderResult>;
+  };
   createFullCorrection(
     snapshot: AccountingDocumentProviderInvoiceSnapshot,
     options: {

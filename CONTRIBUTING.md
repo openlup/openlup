@@ -188,6 +188,15 @@ port-rebind retry) and SQL failures are outside the pull retry; exhausting
 sources fails without a skip.
 
 
+For managed correction changes, run the real PostgreSQL
+`tests/postgres/invoicingManagedCorrection.test.ts` and shipped
+`supabase/tests/accounting_correction_recovery_test.sql` through the managed
+pgTAP runner. The former exercises the actual v2 adapter, identity/reclaim,
+fences and roles; the latter retains committed-ACK, delivery and audit replay
+witnesses. The invoicing contract test also covers correction and reversal outcomes without
+another setup. Required package selection includes this file and the existing
+packed consumer. These checks do not establish provider wire or fiscal proof.
+
 Subscription package contract changes use package-local contract, identity and
 port-fit witnesses alongside the generated package boundary census. The cold
 consumer classifies both exact subscription entries as having no optional peer

@@ -127,3 +127,29 @@ schema authority. Record the actual command and result at the revision tested;
 mocked jobs do not prove live provider, database or installation behavior.
 
 <!-- openlup-doc-impact {"unit":"domain-accounting","digest":"sha256-bb8a6b880a81ef63e75dddab9e08923c9d1f1a5b476e2044a5d31d1375b64e39","reason":"The invoice-contract test supplies explicit synthetic jurisdiction routing instead of expecting the neutral default to accept an identifier. Default refusal, contract validation and accounting implementation described here are unchanged."} -->
+
+## Correction recovery
+
+The [correction facade](../../../server/domains/accounting/accountingJobService.ts)
+binds `runInvoiceCorrectionJob` to a deliberately selected `correctionRecovery`
+provider bridge. The old vendor method remains unchanged and cannot select itself.
+The bridge must recover the stable correction reference and validate its parent
+before retrying a create; vendor wire proof belongs to that bridge's owner.
+The managed [adapter](../../../server/adapters/supabase/accountingInvoicePort.ts)
+uses `accounting.correction.v2` and passes the attempt count on both finalizers;
+`ok:false` throws its durable refusal code. Stale catches cannot fail newer work.
+
+Operators identify stranded legacy corrections by `attempt_count > 0`, absent
+`payload.providerCreateIdentity` and invoice status `correction_requested`.
+These outboxes remain in their stored
+processing/failed state, with the invoice `correction_requested`. They require
+provider reconciliation; an empty v2 claim is not completion. No key is guessed
+or backfilled. Inspect the [managed proof](../../../tests/postgres/invoicingManagedCorrection.test.ts)
+and [pgTAP recovery witness](../../../supabase/tests/accounting_correction_recovery_test.sql)
+for recovery, lost ACK, exact replay, stale attempts and preserved history.
+
+Registered managed-correction limit: multi-reason / late-issue compensation can
+yield more than one full correction per invoice, as the incumbent does today.
+See the [forward owner](../../../docs/platform/DATA_AND_MIGRATIONS.md#m09-invoicing-forward-design-and-control-approval)
+for the separate control follow-up, replacement-forward requirement and parking
+for classifying hosts only; the reference host sends `{message}`.

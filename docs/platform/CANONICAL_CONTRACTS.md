@@ -771,8 +771,19 @@ The separate `portableCreationForwards` list pins two fulfillment and three
 invoicing creation forwards by path and whole-file hash, requiring new objects
 and invoker functions. The portable replacement list pins the dunning function
 and the invoicing payment-terminal accounting block.
-M09's seven versioned paths sort above `20261022185100` so M10 can precede
-them; renumbering preserves every SQL byte and whole-file/function hash.
+The managed correction worker requires a separately selected recovery bridge;
+the legacy vendor method is not sufficient. Its v2 RPC adapter binds both
+finalizers to the claimed attempt and surfaces every refusal. Legacy attempted
+corrections without a persisted identity remain unresolved in processing/failed
+state and require provider reconciliation. Correction claims lock invoice and outbox rows; existing order-reversal locks remain coupled to accounting. This
+managed change does not establish native money or parcel isolation.
+M09 admits no explicit trigger; fulfillment's separate admission is a finite
+list of exact attachments, not a general trigger allowance. Seller eligibility
+is marked for new base duties, including sweep capture. A genuinely new
+correction child is marked only when its request wrapper supplies the seller
+policy marker; first-claim seller wrappers consume those marks.
+M09 lands before M10 and keeps its assigned migration versions. Verify managed
+forwards against the landed managed prefix, independently of filename sorting.
 Required self-check keeps the whole registry unchanged from the feature comparison
 base. Release compares each forward's own entry, list position and shared registry
 fields with its introduction parent, allowing later controls to append approvals.
@@ -1219,6 +1230,11 @@ invoice. An owed-duty readback retains unsupported duties and capture faults;
 distinct, and account projections preserve owner and document lineage. Host
 artifact persistence, clearance observation and M04 acceptance are separate proofs.
 See the [invoicing contract reference](PLATFORM_PACKAGE_REFERENCE.md#invoicing-contracts).
+
+Registered managed-correction limit: multi-reason / late-issue compensation can
+yield more than one full correction per invoice, as the incumbent does today.
+The [forward owner](DATA_AND_MIGRATIONS.md#m09-invoicing-forward-design-and-control-approval)
+describes the separately designed control follow-up and replacement-forward requirement.
 
 The invoicing refusal factory cannot clear a previously unknown effect: its
 unsupported result describes this call only. Offline conformance checks stable

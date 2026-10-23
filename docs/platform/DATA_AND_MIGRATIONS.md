@@ -658,6 +658,15 @@ fresh installation, the exact predecessor upgrade and runner replay, unchanged
 ledger prefix and function ACL/header, package byte equality, lifecycle/refusals
 and bounded concurrent row locking.
 
+Managed correction v2 introduces overloads before replacing legacy claim and
+finalizer signatures with fail-closed compatibility bodies. Move adapter and
+pgTAP callers to explicit contract/generation arguments before installation;
+retire the old executor and reconcile attempted legacy rows rather than
+backfilling identity. The two canonical forwards must equal their reviewed
+fixtures and registry hashes byte for byte. See the
+[M09 forward boundary](#m09-invoicing-forward-design-and-control-approval) for
+lock coupling, unresolved work and verification against the landed managed prefix.
+
 Fulfillment expands the native graph with new command and
 alignment objects at positions 73/74. It preserves all position-0–72 identities,
 existing rows and the managed graph. Upgrade the complete prefix before enabling
@@ -990,11 +999,14 @@ bootstrap its executor's least privileges; these fixtures grant no browser or
 service principal access. Install the complete native catalogue, never sparse
 package projections independently. Native versions are `20261022190000`,
 `20261022191000`, `20261022192000` and `20261022195000`; managed versions are
-`20261022193000`, `20261022193100` and `20261022195100`. All sort above M10's
-last planned forward, `20261022185100`, preserving M09's internal order.
-The staged native manifest currently appends positions 75–78 after fulfillment
-alignment at 74; integration must place them after M10's native units and
-recompute function preimages against that complete preceding rail.
+`20261022193000`, `20261022193100` and `20261022195100`. M09 lands before M10
+and keeps these assigned versions; verify against the landed managed prefix,
+not an assumed M10 predecessor.
+The native manifest owns installation positions and preserves the landed
+subscription retry and stock-evidence forwards (`20261022160000` and
+`20261022165000`). Recompute function preimages against the complete selected
+preceding rail. Positional unit comments inside immutable SQL refer to its
+historical staging order; use versioned filenames for identity, not those ordinals.
 
 The fourth native pin is the single exact replacement of
 `payment_truth_apply_terminal(uuid,text,text,timestamptz,text,text,jsonb,text,text,text)`.
@@ -1087,12 +1099,43 @@ Only ready, pending, unattempted correction requests are hidden from the incumbe
 Before installing, retire the incumbent issue/correction executor. Drain the
 legacy managed correction worker first; reconcile any attempted or processing
 legacy correction against provider evidence, recording its actual outcome before
-cutover. P3 must migrate `accountingInvoicePort` and `accounting_paid_reversal_test`
-to v2 (`p_contract_version`, `p_claim_attempt_count`), throw on `ok:false`, add an
-adapter test and give attempted legacy corrections a visible reconciliation state.
-This adapter migration is a prerequisite for introducing `20261022193100`; it is not part
+cutover. The reference `accountingInvoicePort`, `accounting_paid_reversal_test`
+and correction recovery pgTAP use v2 (`p_contract_version`,
+`p_claim_attempt_count`); the adapter throws on `ok:false`. Attempted legacy
+rows lacking a durable identity stay processing/failed, with
+`correction_requested` on the invoice and their original error/payload retained.
+They require provider reconciliation; an empty claim is not completion.
+This adapter migration and its refusal/recovery proof are prerequisites for introducing `20261022193100`; it is not part
 of fixture-only control preparation. The managed `ksefRequired` key is retained
 for donor parity as a country-specific key, not a neutral native requirement.
+
+Native correction finalization calls the incumbent document transition path,
+whose operation insert takes a key-share lock on the order row through its
+foreign key. Its request/duty lock
+order does not remove that coupling; native continuity proof belongs to P4.
+Managed v2 correction claim locks both joined invoice and outbox rows; its
+finalizers lock invoice before outbox. Fenced finalizers also accept a parent
+already `corrected` by an earlier acceptance sync when its `correctionOutboxId`
+is absent or matches the claim; success still records `correction_issued` and
+the delivery outbox. `correctionOutboxId` is written only on successful finalization.
+For classifying hosts only, blocked, unsupported or explicitly non-retryable
+`p_error` values retain `failed` with `next_attempt_at=infinity`; ordinary failures
+keep their retry delay. The reference host sends `{message}`, so its failures
+keep ordinary retry timing.
+
+Registered managed-correction limit: multi-reason / late-issue compensation can
+yield more than one full correction per invoice, as the incumbent does today.
+The follow-up is a separately designed control change enumerating
+`order_status_reversal`, `provider_issue_after_order_status_reversal` and
+manual/scaffold interplay. After P3 lands it must be a replacement forward;
+this follow-up is outside M09.
+No transaction spans provider I/O. The
+existing managed order-reversal transaction still couples order and accounting
+locks; these forwards do not prove the later native money/parcel isolation.
+[Recovery proof](../../tests/postgres/invoicingManagedCorrection.test.ts) exercises
+the real v2 adapter, rollback/reclaim, stale outcomes and browser refusal.
+The shipped [pgTAP](../../supabase/tests/accounting_correction_recovery_test.sql)
+adds committed-ACK loss and unchanged delivery/audit witnesses.
 
 M09 request rows use `available_at='infinity'` at prepare, claim and fail,
 including corrections, so the incumbent queue cannot lease them. M09 also checks
@@ -1141,8 +1184,12 @@ Clearance and uncertain delivery affect document work only; unknown delivery
 acceptance cannot re-enter send after lease expiry. Source retention is a host
 lifecycle obligation until capture or an explicit terminal policy receipt.
 
-Capture marks newly created duties on the default paid terminal path; seller wrappers also mark genuinely new corrections. First claim captures the
-selected host seller and revision in the same transaction. Retry preserves that
+Native capture marks genuinely new base duties, including sweep capture, and
+the document-effects forward marks genuinely new correction children only when
+the seller request wrapper supplies `sellerPolicyVersion=invoicing.seller.v1`.
+The later seller
+wrappers materialize eligible seller rows; they do not make legacy work new.
+First claim captures the selected host seller and revision in the same transaction. Retry preserves that
 seller; new corrections have independent eligibility. A new sidecar around an
 old document/request is legacy and returns the execution-supplied fallback.
 Issued documents and historical seller/buyer/line facts are never rewritten.

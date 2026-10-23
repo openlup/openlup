@@ -188,3 +188,23 @@ The package does not add a reservation or claim writer; managed promotion
 adapters remain here with their existing read-only/mirror fences. Native query
 characterization moves with the store, while real PostgreSQL evidence lives in
 `tests/postgres/promotionsNative.test.ts` and uses the complete canonical chain.
+
+## Managed correction recovery
+
+The accounting invoice adapter calls the versioned correction claim and passes
+its claimed attempt to both finalizers; a returned refusal is a persistence
+error, including a stale or inactive lease. Legacy attempted rows without a
+persisted create identity remain visibly unresolved for provider reconciliation.
+The test provider's explicit recovery bridge derives correction IDs and numbers
+from correctionRef; repeated recovery returns the same receipt and independent
+corrections of one order remain distinct. The unchanged legacy vendor method is
+not a supported recovery binding. Vendor wire/parent/absence proof belongs to the
+separately owned conforming bridge. No live provider is used by these tests.
+
+Managed correction RPC arguments bind by parameter name; the adapter retains the donor object key order.
+
+Registered managed-correction limit: multi-reason / late-issue compensation can
+yield more than one full correction per invoice, as the incumbent does today.
+See the [forward owner](../../docs/platform/DATA_AND_MIGRATIONS.md#m09-invoicing-forward-design-and-control-approval)
+for the separate control follow-up, replacement-forward requirement and parking
+for classifying hosts only; the reference host sends `{message}`.
