@@ -37,6 +37,7 @@ export function registerAdapterCases(h:{pool:Pool}) {
   const key=`prepare-${f.operation}`,input=request({...f,original});
   const raced=await Promise.all([store.prepare(f.operation,key,input,later(24)),store.prepare(f.operation,key,input,later(24))]);
   expect(raced.filter(r=>r.execute)).toHaveLength(1);expect(raced[0].request).toEqual(input);
+  expect(await store.read(f.operation)).toMatchObject({state:'prepared',disposition:'retry_scheduled',nextRetryAt:null});
   const failureInput=failure(1,later(25));const failed=await store.applyFailure(f.operation,`retry-failed-${f.operation}`,failureInput);
   expect(failed).toMatchObject({retryAttempt:2});expect(new Date(failed.nextRetryAt!).toISOString()).toBe(later(97));
   expect(await store.applyFailure(f.operation,`retry-failed-${f.operation}`,failureInput)).toEqual(failed);
@@ -121,6 +122,78 @@ export function registerAdapterCases(h:{pool:Pool}) {
   }
   expect(await store.read(f.operation)).toEqual(before);expect(await receipt()).toEqual(initial);
   expect((await h.pool.query('SELECT count(*)::int n FROM public.subscription_renewal_outcomes WHERE renewal_operation_id=$1',[f.operation])).rows).toEqual([{n:1}]);
+  await unchangedIdentity(h.pool,f);
+ });
+
+ it('receipt replay has zero durable side effects through prepared retry, later failure and re-offered exhaustion',async()=>{
+  const f=await renewal(h.pool),original=await prepareOriginal(h.pool,f),store=createPostgresRetryStore(h.pool);
+  const writes:string[]=[];
+  const binding=createPostgresRetryLifecycleBinding({executor:h.pool,
+   async withTransaction(work) {
+    const db=await h.pool.connect();try {await db.query('BEGIN');
+     const result=await work({async query(sql:string,values?:unknown[]){writes.push(sql);return db.query(sql,values);}});
+     await db.query('COMMIT');return result;
+    }catch(error){await db.query('ROLLBACK');throw error;}finally{db.release();}
+   },
+   settlement:db=>createPostgresRenewalSettlementPort(db) as unknown as RenewalSettlementPort,
+   correlate:()=>({status:'correlated',logicalCycleNumber:3,nativeRenewalCounter:2,activationCycleId:null,evidenceRef:'explicit-host-correlation'}),
+   failureTemplate:'failed',recoveryPath:'/recover'});
+  const first=await binding.failureHandoff.handoffFailure({idempotencyKey:`${f.identity}:failure-handoff`,subscriptionId:f.subscription,
+   clientId:f.client,cycleId:original.cycleId,orderId:original.orderId,paymentIntentId:original.settlementIntentId,
+   retryAttempt:1,failureClass:'temporary',failureReason:'declined',nextRetryAt:later(24),occurredAt:AT,
+   amountMinor:f.snapshot.totalAmountMinor,currency:'XXX'});
+  const terminal={operationId:f.operation,eventKey:`${f.identity}:provider-refusal`,operationFingerprint:f.fingerprint,
+   outcome:'refused' as const,externalRef:'original-ack',reason:'declined',occurredAt:AT};
+  await binding.settlement.recordTerminalOutcome(terminal);
+  // Snapshot EVERY public table: all notifications, communications/outbox rails,
+  // events, full cases (including next_retry_at), obligations, receipts and graph.
+  // xmin also detects an otherwise invisible same-value re-link UPDATE.
+  const tables=(await h.pool.query(`SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY tablename`)).rows;
+  expect(tables.map(t=>t.tablename)).toEqual(expect.arrayContaining(['subscription_dunning_notifications','subscription_events',
+   'subscription_dunning_cases','subscription_retry_obligations','subscription_retry_receipts']));
+  async function effects() {
+   const state:Record<string,unknown>={};
+   for(const {tablename} of tables) {
+    const name=String(tablename).replaceAll('"','""');
+    state[name]=(await h.pool.query(`SELECT count(*)::int AS count,COALESCE(jsonb_agg(
+     jsonb_build_object('row',to_jsonb(t),'xmin',t.xmin::text) ORDER BY to_jsonb(t)::text),'[]'::jsonb) AS rows
+     FROM public."${name}" t`)).rows[0];
+   }
+   return state;
+  }
+  async function replayWithoutEffects() {
+   const before=await effects();writes.length=0;
+   for(let n=0;n<3;n++)expect(await binding.settlement.recordTerminalOutcome(terminal)).toMatchObject({replayed:true});
+   expect(await effects()).toEqual(before);
+   expect(writes.filter(sql=>/UPDATE |subscription_retry_(apply_failure|open_case)\(|commerce_record_subscription_renewal_outcome\(/.test(sql))).toEqual([]);
+  }
+  await replayWithoutEffects(); // Ordinary waiting rung: even same-value re-link is forbidden.
+  await store.prepare(f.operation,`prepare-${f.operation}-1`,request({...f,original}),later(24));
+  expect(await store.read(f.operation)).toMatchObject({state:'prepared',nextRetryAt:null,disposition:'retry_scheduled'});
+  expect((await h.pool.query('SELECT next_retry_at FROM public.subscription_dunning_cases WHERE id=$1',[first.caseId])).rows[0].next_retry_at).not.toBeNull();
+  await replayWithoutEffects(); // Would otherwise expire the case and append an event/notice.
+  await store.applyFailure(f.operation,`failure-${f.operation}-1`,{...failure(1,later(25)),reason:'later-decline'});
+  await store.openCase(f.operation,'failed','/recover');
+  await replayWithoutEffects(); // Interleaved later failure must retain its complete projection.
+  let now=25;
+  for(const [sequence,delay] of [[2,72],[3,168]]) {
+   now+=delay;
+   await store.prepare(f.operation,`prepare-${f.operation}-${sequence}`,request({...f,original}),later(now));
+   now++;
+   await store.applyFailure(f.operation,`failure-${f.operation}-${sequence}`,failure(sequence,later(now)));
+   await store.openCase(f.operation,'failed','/recover');
+  }
+  expect(await store.read(f.operation)).toMatchObject({retryAttempt:4,state:'waiting',nextRetryAt:null,disposition:'payment_failed'});
+  await replayWithoutEffects();
+  const tokenHash=f.operation.replaceAll('-','').repeat(2);
+  await call(h.pool,'dunning_lifecycle_issue_recovery_token',[first.caseId,tokenHash,'2027-01-01']);
+  await h.pool.query("INSERT INTO public.subscription_method_states(subscription_id,health_state) VALUES($1,'healthy')",[f.subscription]);
+  const token=(await h.pool.query('SELECT id FROM public.commerce_checkout_recovery_tokens WHERE token_hash=$1',[tokenHash])).rows[0].id;
+  const auth=await store.authorizeRecovery(f.operation,token,'method-1','usable-exhausted-evidence',later(now+1));
+  await store.scheduleRecovery(f.operation,`schedule-${f.operation}`,String(auth.id),later(now+1));
+  expect(await store.read(f.operation)).toMatchObject({retryAttempt:4,state:'waiting',disposition:'retry_scheduled'});
+  expect((await h.pool.query("SELECT * FROM public.subscription_dunning_notifications WHERE case_id=$1 AND notification_kind='payment_failed' AND retry_attempt=4",[first.caseId])).rows).toEqual([]);
+  await replayWithoutEffects(); // Would otherwise queue a new payment_failed attempt-4 notice.
   await unchangedIdentity(h.pool,f);
  });
 

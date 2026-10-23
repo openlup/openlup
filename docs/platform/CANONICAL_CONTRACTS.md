@@ -1102,8 +1102,10 @@ text independently of its comparison instant, frozen revisions and complete
 claim readback. Verified M07 evidence carries original occurrence, observation
 and first-recorded clocks with nullable money and explicit ambiguity/late-positive
 disposition. A late positive settles the same obligation, never a new charge.
-A persisted retry row with null `nextRetryAt` is intentional exhaustion or a
-class stop; fallback cadence is allowed only when the row is absent.
+A waiting retry row with disposition `payment_failed` and null `nextRetryAt`
+is intentional exhaustion or a class stop. An in-flight prepared retry retains
+`retry_scheduled` with a null date; it awaits evidence rather than another
+dispatch. Fallback cadence is allowed only when the row is absent.
 
 Native N1 records retries against the original refused renewal without resetting
 that terminal operation or minting another cycle. Each failure receipt advances
@@ -1122,7 +1124,16 @@ case. N1's case wrapper requires an already recorded failure, so it is not by
 itself the initial handoff. The package binding opens the existing case first and atomically attaches N1
 bookkeeping during terminal recording, using the same case and preserving the
 initial handoff key. Hosts supply its transaction/correlation/M07 ports; payment
-execution stays outside every local transaction.
+execution stays outside every local transaction. Initial terminal replay checks
+the immutable receipt and returns before settlement, case rebinding or case
+propagation; it preserves later retry state, notifications and events.
+
+The host must establish explicit logical-cycle correlation before invoking the
+automatic runner, including its prepare/execute path; the terminal binding
+cannot repair missing correlation after charging. Ordinary retries must use the
+frozen mandate/authorization. N1 does not bind an ordinary retry method to it:
+the P8 retry driver or host must enforce that binding, and P8 composition must
+add the matching witness.
 
 Nothing in automatic renewal pauses an active subscription. Arrival alignment
 uses the outer schedule maximum and actual latest arrival plus cadence; no

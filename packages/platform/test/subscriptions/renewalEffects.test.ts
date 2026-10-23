@@ -39,9 +39,26 @@ describe('native renewal effect ordering through the P1 port',()=>{
   expect(()=>correlatedLogicalCycle({...f.snapshot,cycle:{status:'ambiguous',logicalCycleNumber:null,nativeRenewalCounter:4,activationCycleId:null,reason:'no evidence'}})).toThrow('correlation_required');
  });
  it('a failed case handoff never silently records a terminal refusal',async()=>{
-  const f=effectsFixture();f.rail.execute=vi.fn(async()=>({status:'failed',externalAttemptRef:'ack'}));
+  const f=effectsFixture();f.rail.execute=vi.fn(async()=>({status:'failed',externalAttemptRef:'ack',failure:{reason:'declined',failureClass:'temporary'}}));
   f.deps.failureHandoff.handoffFailure=async()=>{throw Error('case unavailable');};
   await expect(runOneAutomaticSubscriptionRenewal(f.deps,f.due)).rejects.toThrow('case unavailable');
+  expect(f.deps.settlement.recordTerminalOutcome).not.toHaveBeenCalled();
+ });
+ it.each(['pending','unknown','succeeded','failed'] as const)('bare failed execution uses verified readback (%s)',async status=>{
+  const f=effectsFixture();f.rail.execute=vi.fn(async()=>({status:'failed',externalAttemptRef:'ack'}));
+  f.evidence.status=status;
+  const result=await runOneAutomaticSubscriptionRenewal(f.deps,f.due);
+  expect(f.rail.readOutcome).toHaveBeenCalledOnce();
+  expect(result.status).toBe(status==='failed'?'refused':status==='succeeded'?'succeeded':'awaiting_provider');
+  if(status==='pending'||status==='unknown') {
+   expect(f.deps.failureHandoff.handoffFailure).not.toHaveBeenCalled();
+   expect(f.deps.settlement.recordTerminalOutcome).not.toHaveBeenCalled();
+  }
+ });
+ it('bare failed execution without an ACK stays ambiguous without a failure handoff',async()=>{
+  const f=effectsFixture();f.rail.execute=vi.fn(async()=>({status:'failed',externalAttemptRef:null}));
+  expect(await runOneAutomaticSubscriptionRenewal(f.deps,f.due)).toMatchObject({status:'awaiting_provider',reason:'provider_attempt_ack_missing'});
+  expect(f.deps.failureHandoff.handoffFailure).not.toHaveBeenCalled();expect(f.rail.readOutcome).not.toHaveBeenCalled();
   expect(f.deps.settlement.recordTerminalOutcome).not.toHaveBeenCalled();
  });
  it('batch errors remain per-row and do not starve the next schedule',async()=>{

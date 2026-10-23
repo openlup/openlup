@@ -66,7 +66,7 @@ export async function runOneAutomaticSubscriptionRenewal(deps: AutomaticRenewalR
   catch { return automaticRenewalResult(claim, "awaiting_provider", "provider_execution_indeterminate"); }
   const externalAttemptRef = execution.externalAttemptRef?.trim() || null;
   if (externalAttemptRef) await deps.settlement.acknowledgeExternalAttempt({ operationId: claim.operationId, operationFingerprint: claim.operationFingerprint, externalAttemptRef, acknowledgedAt: occurredAt });
-  if (execution.status === "failed" || execution.status === "requires_action") {
+  if (execution.failure || execution.status === "requires_action") {
     const reason = execution.failure?.reason ?? (execution.status === "requires_action" ? "off_session_sca_required" : "provider_failed");
     return handoffRefusal(deps, claim, prepared, externalAttemptRef, reason, execution.failure?.failureClass ?? deps.policy.classifyFailure(reason), occurredAt);
   }

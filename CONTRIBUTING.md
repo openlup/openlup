@@ -137,8 +137,12 @@ It uses one disposable PostgreSQL container for N1 exact-prefix restart,
 rollback/replay and complete old-catalog comparison, plus retry and captured
 alignment behavior. Initial handoff is tested separately from subsequent retry
 failure: the case precedes terminal recording, bookkeeping rolls back with that
-terminal transaction, and initial replay after a later changed failure or recovery
-cannot advance another rung. Fixture-local late database faults separately prove
+terminal transaction, and an immutable receipt ends initial terminal replay
+before settlement, rebinding or case propagation. The real-PG witness compares
+counts, complete rows and row versions across every public table before and
+after three replays per state, including an in-flight prepared retry, later
+failure and a re-offered exhausted ladder; it detects notifications, events and
+even same-value re-link writes. Fixture-local late database faults separately prove
 rollback after the original graph and retry prepare writes; the stock-shortage
 case proves admission refusal.
 The same selection covers shadow/off admission, protect release after arrival

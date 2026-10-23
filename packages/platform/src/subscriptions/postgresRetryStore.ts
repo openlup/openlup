@@ -1,4 +1,5 @@
 import type { RenewalRetryObligation } from "./contracts/dunning.js";
+import type { RenewalReadback } from "./contracts/renewal.js";
 import { subscriptionRecord, type SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
 
 /** N1 accepts only verified M07 evidence; the host supplies logical-cycle correlation explicitly. */
@@ -40,7 +41,7 @@ export function createPostgresRetryStore(executor: SubscriptionQueryExecutor) {
       failureClass: r.failure_class == null ? null : String(r.failure_class),
       failureReason: r.failure_reason == null ? null : String(r.failure_reason), occurredAt: String(r.failed_at),
       identityKey: String(r.identity_key), requestFingerprint: String(r.operation_fingerprint),
-      disposition: r.state === "recovered" ? "paid" : r.next_retry_at == null ? "payment_failed" : "retry_scheduled",
+      disposition: r.state === "recovered" ? "paid" : r.state === "prepared" || r.next_retry_at != null ? "retry_scheduled" : "payment_failed",
       caseId: r.case_id == null ? null : String(r.case_id), state: r.state as NativeRetryRow["state"] };
   }
   return {
@@ -118,8 +119,14 @@ export function createPostgresRetryLifecycleBinding(options: NativeRetryLifecycl
           const result = await executor.query(`SELECT op.cycle_snapshot,op.cycle_number,c.id AS case_id,
             c.failure_class,c.failure_reason,c.next_retry_at::text AS next_retry_at,c.opened_at::text AS occurred_at,
             receipt.input AS initial_failure,
+            public.subscription_renewal_operation_response(op,false,true,'terminal_replay') AS terminal_response,
             terminal.id IS NOT NULL AND (terminal.reason IS DISTINCT FROM NULLIF(btrim($3::text),'')
-              OR terminal.occurred_at IS DISTINCT FROM $4::timestamptz) AS conflicting_terminal
+              OR terminal.occurred_at IS DISTINCT FROM $4::timestamptz
+              OR terminal.external_ref IS DISTINCT FROM $5::text
+              OR terminal.operation_fingerprint IS DISTINCT FROM $6::text
+              OR op.operation_fingerprint IS DISTINCT FROM $6::text
+              OR ($5::text IS NOT NULL AND op.external_attempt_ref IS DISTINCT FROM $5::text)
+              OR terminal.outcome <> 'refused') AS conflicting_terminal
             FROM public.subscription_renewal_operations op
             JOIN public.subscription_cycles cycle ON cycle.renewal_operation_id=op.id
             JOIN public.subscription_dunning_cases c ON c.cycle_id=cycle.id
@@ -129,28 +136,29 @@ export function createPostgresRetryLifecycleBinding(options: NativeRetryLifecycl
               AND receipt.receipt_key=$2::text AND receipt.kind='failure' AND receipt.attempt_sequence=0
             LEFT JOIN public.subscription_renewal_outcomes terminal ON terminal.renewal_operation_id=op.id
               AND terminal.event_key=$2::text
-            WHERE op.id=$1::uuid`, [input.operationId, input.eventKey, input.reason ?? null, input.occurredAt]);
+            WHERE op.id=$1::uuid`, [input.operationId, input.eventKey, input.reason ?? null, input.occurredAt,
+              input.externalRef ?? null, input.operationFingerprint]);
           const handoff = result.rows[0];
           // Provider-input preflight refusals never opened a customer case.
           if (!handoff) return options.settlement(executor).recordTerminalOutcome(input);
           if (handoff.conflicting_terminal) throw new Error("subscription_retry_replay_conflict");
+          // The immutable receipt ends replay before any settlement, rebinding
+          // or case propagation. The projection may describe a later attempt.
+          if (handoff.initial_failure != null) {
+            return subscriptionRecord(handoff.terminal_response) as unknown as RenewalReadback;
+          }
           const correlation = options.correlate(subscriptionRecord(handoff.cycle_snapshot), Number(handoff.cycle_number));
           if (correlation.status !== "correlated") throw new Error("subscription_renewal_cycle_correlation_required");
           const recorded = await options.settlement(executor).recordTerminalOutcome(input);
           const retry = createPostgresRetryStore(executor);
-          // Later case propagation can change the projection. Replay the original
-          // receipt, keeping caller-supplied evidence subject to N1 conflict checks.
-          const initial = handoff.initial_failure == null ? null : subscriptionRecord(handoff.initial_failure);
           await retry.applyFailure(input.operationId, input.eventKey, {
             attemptSequence: 0, logicalCycleNumber: correlation.logicalCycleNumber,
-            occurredAt: String(initial?.occurredAt ?? handoff.occurred_at),
-            failureClass: String(initial?.failureClass ?? handoff.failure_class),
-            reason: String(initial?.reason ?? handoff.failure_reason), externalRef: input.externalRef ?? null,
-            evidenceKey: input.eventKey, firstRecordedAt: String(initial?.firstRecordedAt ?? handoff.occurred_at),
+            occurredAt: String(handoff.occurred_at),
+            failureClass: String(handoff.failure_class),
+            reason: String(handoff.failure_reason), externalRef: input.externalRef ?? null,
+            evidenceKey: input.eventKey, firstRecordedAt: String(handoff.occurred_at),
           });
-          if ((await retry.read(input.operationId))?.state === "recovered") return recorded;
           // The original handoff owns cadence, including a deliberate null.
-          // Replaying it after later attempts must not reset their schedule.
           const linked = await executor.query(`UPDATE public.subscription_retry_obligations SET case_id=$2::uuid,
             next_retry_at=CASE WHEN attempt_sequence=0 AND retry_attempt=1 AND state='waiting'
               THEN $3::timestamptz ELSE next_retry_at END

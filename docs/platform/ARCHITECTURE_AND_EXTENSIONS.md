@@ -1172,6 +1172,13 @@ the local prepared-attempt type projection preserves the existing M07 shape
 without a cross-module contract edge. Pure cadence/retry arithmetic remains in
 `@openlup/core/subscription`; adapters own SQL translation and hosts own channel,
 mandate, identity dialect, pricing, stock selection, trusted actor and copy policy.
+Initial terminal replay in the native retry binding returns from the immutable
+receipt before any settlement, rebinding or case propagation. Prepared retry
+readback retains the existing non-terminal `retry_scheduled` disposition while
+awaiting evidence. The native runner treats only explicit execution failure or
+`requires_action` as synchronous refusal; bare failed status requires readback.
+See the [host preconditions](CANONICAL_CONTRACTS.md#subscription-port-boundary)
+for cycle correlation and frozen retry authorization.
 
 A native prepare commits cycle/order/items/settlement/reservation and attempt;
 a native outcome commits settlement, outcome, schedule/counter and reservation.
