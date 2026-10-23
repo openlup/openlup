@@ -84,6 +84,19 @@ packs run the full selected dependency audit again, including standalone locks,
 and a publish-only retry cannot reuse an earlier attempt's audit. See
 [dependency security and required checks](../../CONTRIBUTING.md#required-and-raw-checks).
 Root dependency updates and core's standalone production audit remain distinct scopes.
+The reference root, Core and Platform require Zod `^4.6.6` to reject oversized
+constrained collections before parsing each element (GHSA-mrhx-c7xc-m3w5).
+Keep both the workspace lock and Core's standalone lock at a fixed version.
+The root's scoped `@vercel/cli-config` override removes its older production
+Zod 4 copy; upstream still pins that copy, so changing only the direct dependency
+would leave the advisory reachable. This override does not change development
+tools that require Zod 3. Existing API and consumer gates remain required; the full production audit
+is required for publication as described above. No audit allowance or test
+retry is added.
+Core's build explicitly loads its existing development-only Node declarations
+for the standard `URL` type referenced by Zod's declarations. This adds no
+runtime import or dependency; declaration checking remains enabled, and the
+installed NodeNext and browser/Bundler consumer proofs still apply.
 Playwright specifications and explicit database/browser reference evaluation do
 not become mandatory per-PR execution just because their files exist; follow
 [execution ownership](../../CONTRIBUTING.md#development-preview-checks) and the

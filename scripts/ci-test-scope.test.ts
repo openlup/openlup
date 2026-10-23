@@ -40,6 +40,10 @@ describe('conservative tooling scope', () => {
     expect(excludedToolingTests(['config/openlup-packages.json'])).toEqual(all.filter(test =>
       !['outbox-consumer-proof', 'package-manifest-policy', 'package-size-policy', 'packages-check'].some(name => test.endsWith(`${name}.test.ts`))));
   });
+  it('retains the Outbox real-process witnesses for image-pin-only changes', () => {
+    expect(excludedToolingTests(['config/ci-images.json']))
+      .not.toContain('scripts/packages/outbox-consumer-proof.test.ts');
+  });
   it.each(Object.entries(TOOLING_INPUTS).flatMap(([test, inputs]) => inputs.map(input => [test, input] as const)))(
     'runs %s when its declared input %s changes', (test, input) => {
       expect(excludedToolingTests([input.endsWith('/') ? `${input}scope-witness.ts` : input])).not.toContain(test);

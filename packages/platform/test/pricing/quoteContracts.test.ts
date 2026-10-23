@@ -12,7 +12,7 @@ import type { CommerceCurrency, CommerceMoney, CommerceQuote } from "../../src/p
 import { z } from "zod";
 import { slugSchema } from "@openlup/core/catalog";
 
-const { commerceQuoteSchema, createQuoteResponseSchema, publicCreateQuoteBatchResponseSchema,
+const { commerceQuoteSchema, createQuoteRequestSchema, createQuoteResponseSchema, publicCreateQuoteBatchResponseSchema,
   publicCreateQuoteResponseSchema } = createCommerceQuoteSchemas({
   currencySchema: z.string().regex(/^[A-Z]{3}$/).refine(code => code === "XXX", { message: "currency_not_settlement_currency" }),
   productSlugSchema: slugSchema,
@@ -62,6 +62,26 @@ function validQuote(): CommerceQuote {
     taxTotal: money(110, "XXX"),
   };
 }
+
+describe("quote request collection bounds", () => {
+  it.each(["lines", "promoCodes"] as const)("rejects oversized invalid %s before collecting element errors", (field) => {
+    const result = createQuoteRequestSchema.safeParse({
+      lines: [{ sku: "ITEM-ALPHA-400", quantity: 1 }],
+      [field]: Array.from({ length: 200 }, () => null),
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.error.issues).toMatchObject([{ code: "too_big", path: [field] }]);
+      expect(result.error.issues).toHaveLength(1);
+    }
+  });
+
+  it("preserves bounded input normalization and request defaults", () => {
+    expect(createQuoteRequestSchema.parse({
+      lines: [{ sku: " ITEM-ALPHA-400 ", quantity: 1 }],
+    })).toEqual({ mode: "one_time", lines: [{ sku: "ITEM-ALPHA-400", quantity: 1 }], promoCodes: [] });
+  });
+});
 
 describe("quote money currency backstop", () => {
   it("accepts a quote whose money all uses the quote currency", () => {

@@ -180,7 +180,7 @@ The M10 gate reads its native PG16 and managed Supabase PG17 pins from
 specified in [CI image mirror](#ci-image-mirror). The gate
 uses the shared pull module to reuse an exact local pin or verify the pulled
 RepoDigest. Transient pulls retry at most three attempts per source within a
-300-second pull budget; each attempt gets the remaining budget. Retry-After
+300-second pull budget; retries share each source's deadline and reserve time for fallback as described below. Retry-After
 above the source's share of remaining time advances to the next source;
 otherwise waits are capped at five seconds. An unavailable mirror advances
 immediately. Inspection, container-start (except the shared helper's existing
@@ -628,11 +628,17 @@ local RepoDigest, avoiding a second pull phase after the gate resolves its image
 resolutions are evicted from that process cache.
 The gate, helper and pgTAP runner use the same pull implementation. It tries at
 most three times per source within a 300-second pull budget measured with a
-monotonic clock. Each pull receives the remaining budget, clamped to at least
-one millisecond; there is no separate per-attempt cap that could repeatedly
-cancel a cold, non-resumable layer. This leaves about half the gate's 600-second
-hook for startup and the migration prefix. `IMAGE_PULL_BUDGET_MS` in the shared
-module owns that calibration; hosted cold-pull measurements can adjust it.
+monotonic clock, including local inspections and final digest verification.
+Retries share a source deadline. With multiple sources, 60 seconds of the
+300-second budget is reserved across the remaining sources: a first cold pull
+can use up to 240 seconds, while a stalled first mirror cannot consume every
+fallback's opportunity. Fast refusals leave their unused time available. A
+single source retains the full 300 seconds. A shorter caller budget scales the
+reserve to 20%. Pulls receive their remaining source time, clamped to at least
+one millisecond. These are execution limits, not a throughput guarantee for a
+large cold layer; calibrate them against hosted cold-pull measurements. The
+300-second total still leaves half the gate's 600-second hook for startup and
+the migration prefix.
 Retry-After seconds and Go subsecond units above the current source's equal
 share of the remaining budget immediately advance to the next source.
 Otherwise 1s/2s minimum waits are capped at five seconds and the remaining budget;
@@ -648,7 +654,12 @@ RepoDigest mismatches refuse rather than silently selecting another image.
 The gate's offline guard rejects literal digest pins or registry source lists.
 
 The pgTAP runner reuses mirror CLI derivation for Postgres, GoTrue, Realtime, Storage API and `pg_prove`, pulls
-before `supabase start`, and tries mirror, GHCR, ECR, then Docker Hub by derived tag. CLI tags
+before `supabase start`, and tries mirror, GHCR, ECR, then Docker Hub by derived tag.
+The whole pre-pull phase, including aliases and inspections, shares a 600-second
+budget. Each image receives at most 300 seconds and never more than the phase's
+remaining time. This leaves half the hosted job's 20-minute limit for startup,
+migrations, tests and cleanup; phase exhaustion refuses before starting a stack.
+CLI tags
 have no inventory digest; local reuse requires the exact tag that the CLI will
 request, while any available derived digest requires exact index equality. The
 selected registry is passed explicitly to start/test/stop with
@@ -1213,13 +1224,34 @@ Root test/hook defaults are 10 seconds, or 30 with coverage; externally supplied
 
 To find optimisation targets, read the per-file durations Vitest prints in a hosted shard log (`✓ <file> (<n> tests) <ms>`) or locally with `npm test -- <path>`, and rank by file time. On 2026-10-19 the slowest root files were repository-tooling tests (`scripts/packages/outbox-consumer-proof.test.ts`, `scripts/source-preview-release.test.ts`, `scripts/public-ci-neutrality.test.ts`), each 40–80 s; slim one by moving decisions into table-driven cases and keeping only the real-process witnesses its requirement needs.
 
-Local worker defaults are 75%, coverage 50%; the wrapper lowers them under contention. Use `VITEST_MAX_WORKERS` for ordinary local reproduction; CI coverage and explicit serial mode have their own config. Do not change global limits, skip assertions or invent a new speed gate to make one test green.
+Ordinary local worker defaults are 75%, coverage 50%; the wrapper lowers them
+under contention. Plain local runs inside `verify-command` or an active resource
+broker instead default to at most four workers and the host's core count. A
+positive broker CPU-token count further caps workers at one less than that
+count, with a minimum of one, leaving capacity for the main process and child
+compilers. Explicit `VITEST_MAX_WORKERS` or `OPENLUP_VITEST_MAX_WORKERS` pins take
+precedence. The wrapper logs this verification default. CI scheduling and
+coverage retain their existing policies. Use `VITEST_MAX_WORKERS` for focused
+reproduction; do not skip assertions or introduce a speed gate to make a test green.
+
+Real package-size witnesses run separately for each package (30 seconds) and
+browser entry (15 seconds), so adding modules does not multiply one case's
+work. Their Git, npm-pack and browser-bundler children are bounded at 5, 20 and
+10 seconds respectively. The two-bundle growth refusal has a 25-second case
+budget. The source-release stale/fresh/dirty/changed witness retains its real
+CLI state transitions in one 60-second case, with 10-second fixture Git and CLI
+bounds. These limits enclose the necessary child work; they do not alter size,
+release or refusal assertions or enable retries.
 
 #### Extend tooling selection conservatively
 
 [ci-test-scope.mjs](scripts/ci-test-scope.mjs) contains eligible bounded tooling rows. **New and unlisted tests always run. A new tooling test does not need a row.** Add one only when skipping untouched inputs saves useful work and its complete dependency closure is understood.
 
 Declare every actual nonshared repository input the test or imported code reads: source, configuration, manifests, documentation, inventory, package outputs and reference wiring. Use an exact path or a directory prefix ending in `/`; no globs. Fixture strings are not reads of the corresponding real repository files. Prefer a broader prefix to incomplete precision.
+
+The Outbox companion reads `config/ci-images.json` through its image helper;
+image-pin-only changes therefore retain its real interruption and refusal
+witnesses even when unrelated bounded tooling fixtures are excluded.
 
 All rows already share `scripts/`, `tests/setup/`, `src/test/` and `src/checkout/machine/commerceRequestCache.ts`. Every root file and every dot-prefixed segment anywhere also runs everything. Package rows conservatively include `packages/`. Repository-wide inventory/policy/neutrality/removal scans stay unlisted. When a row gains a new read, extend it; when its closure becomes uncertain or tree-wide, remove it.
 
