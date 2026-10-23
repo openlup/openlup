@@ -794,7 +794,7 @@ The `prelint` and `pretest` scripts build Core, Outbox and Platform in dependenc
 order. Before direct typecheck or Vitest commands after install or package-source
 edits, run `npm run pretest`; otherwise consumers may read stale `dist/` exports.
 
-The [reviewed-forward PostgreSQL proof](tests/postgres/reviewedPortableCreation.test.ts) rejects landed pin drift before replay and tests full and partial landings; [data and migrations](docs/platform/DATA_AND_MIGRATIONS.md#exact-reviewed-function-forwards) describes its catalog boundary.
+The [reviewed-forward PostgreSQL proof](tests/postgres/reviewedPortableCreation.test.ts) rejects landed pin drift before replay and tests byte selection for full and partial landings; [data and migrations](docs/platform/DATA_AND_MIGRATIONS.md#exact-reviewed-function-forwards) describes its catalog boundary.
 
 For the managed pgTAP runner, prerequisites and proof limits, follow
 [Test scope and diagnostics](#separate-db-package-and-coverage-proof).

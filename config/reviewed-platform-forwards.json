@@ -223,7 +223,7 @@
     },
     {
       "path": "db/platform/migrations/20261022191000_invoicing_document_effects.sql",
-      "sha256": "7864098eacc441c0f2b1aa472308253fcd01ad14f2b9d9422c42872e8516a77e"
+      "sha256": "c9deaa32c2a3031d3c7475dd55caafff394cce4017185de82543ac1352802311"
     },
     {
       "path": "db/platform/migrations/20261022195000_invoicing_seller_revision.sql",

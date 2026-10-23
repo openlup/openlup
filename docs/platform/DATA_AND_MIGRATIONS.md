@@ -455,7 +455,9 @@ New triggers may attach to existing public tables, including
 `commerce_order_holds`, `fulfillment_shipments` and `subscription_cycles`;
 this admits a new trigger attachment, never replacement of an existing trigger.
 The [disposable catalog proof](../../tests/postgres/reviewedPortableCreation.test.ts)
-applies each pinned target exactly once after its portable prefix, using landed bytes only when identical to the fixture and registry SHA-256, otherwise using the fixture when absent; landed drift fails before replay. It checks invoker security,
+applies each pinned target exactly once after its portable prefix, using
+landed bytes when present (they must equal the fixture and registry SHA-256, else
+the proof fails naming the path); the fixture when absent. It checks invoker security,
 new-object ACL entries, unchanged earlier relation/function definitions and the
 exact explicit trigger attachments with functions created by that file.
 
@@ -1043,7 +1045,10 @@ count and next availability; a retained source receipt changes its readback stat
 `resolved`. Raw errors remain excluded. Source capture failures
 have their own eight-attempt/backoff ceiling, so one poisoned source cannot starve
 later sources or fact retries. Empty orders return an empty duty list.
-A reversal stored during processing voids the document, discards its request and
+With no claim or lease in flight, a reversal after a create attempt ended
+`retryable`/`before_send` or authoritatively `absent` immediately voids the document,
+discards its request and voids the duty. A reversal stored during processing voids
+the document, discards its request and
 voids the duty when a create claim fails with `retryable`/`before_send`, or when
 authoritative `absent` evidence confirms no remote document. A retryable readback
 still stays unknown; a confirmed issue still requests one correction.
@@ -1074,8 +1079,13 @@ fiscal execution still requires proven facts and must refuse to adopt an
 unproved local document rather than create a competing invoice. Fact completion
 checks neutral facts and totals before adopting an unowned document. An
 unsupported result requires existing document evidence and remains visible with
-its diagnostic reason. Reversal refuses to void an unlinked live base document
-or discard an attempted request; blocked duties return terminal `unsupported`.
+its diagnostic reason. At request time, reversal refuses to void an unlinked live
+base document. An attempt in flight or a possibly sent or unknown request returns
+`pending_readback`. After a create attempt ended `retryable`/`before_send` or was
+authoritatively absent, reversal immediately voids the document, discards its
+request and voids the duty if no claim or lease is in flight. A reversal stored
+during a claim voids through the failure path described above. Blocked duties
+return terminal `unsupported`.
 Only ready, pending, unattempted correction requests are hidden from the incumbent.
 
 Before installing, retire the incumbent issue/correction executor. Drain the
