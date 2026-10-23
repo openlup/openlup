@@ -9,12 +9,13 @@ import { createPostgresFulfillmentDispatchStore } from "@openlup/platform/fulfil
 import { fixture as shipmentFixture } from "../helpers/fulfillmentNative.js";
 import { createPostgresAccountingPaidOrderDocumentPort } from "../../server/adapters/postgres/accountingPaidOrderDocument.js";
 import { invoicingNativeHarness, manifest, prefixLength, sha256, units } from "../helpers/invoicingNativeHarness.js";
+import { postgresSetupTimeoutMs, postgresTeardownTimeoutMs } from "../helpers/postgresContainer.js";
 
 const h = invoicingNativeHarness();
-const started = performance.now();
+let started: number;
 let caseStarted: number;
-beforeAll(() => h.start(), 120_000);
-afterAll(async () => { await h.stop(); const elapsed=performance.now()-started; console.log(`M09 whole-file ms=${Math.round(elapsed)}`); expect(elapsed).toBeLessThanOrEqual(28_000); });
+beforeAll(async () => { await h.start(); started = performance.now(); }, postgresSetupTimeoutMs);
+afterAll(async () => { await h.stop(); const elapsed=performance.now()-started; console.log(`M09 whole-file ms=${Math.round(elapsed)}`); expect(elapsed).toBeLessThanOrEqual(28_000); }, postgresTeardownTimeoutMs);
 beforeEach(() => { caseStarted=performance.now(); });
 afterEach(context => { console.log(`M09 case ${context.task.name} ms=${Math.round(performance.now()-caseStarted)}`); });
 const executor = (db: Pool | PoolClient) => ({ query: (sql:string, values?:unknown[]) => db.query(sql,values) });

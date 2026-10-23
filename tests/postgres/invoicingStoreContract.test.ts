@@ -3,14 +3,15 @@ import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import { createPostgresInvoiceStore, runNativeInvoiceIssueJob } from "@openlup/platform/invoicing";
 import type { InvoiceFacts, InvoiceHostPorts, InvoiceIdentity, InvoiceProviderPort, InvoiceStorePort } from "@openlup/platform/invoicing/contracts";
 import { invoicingNativeHarness } from "../helpers/invoicingNativeHarness.js";
+import { postgresSetupTimeoutMs, postgresTeardownTimeoutMs } from "../helpers/postgresContainer.js";
 
 // P4 acceptance: pinned native store + issue binding (checks 2–5). Each row
 // checks the returned port/job result AND the installed SQL's durable state.
 // Existing six conformance cases and their 28 s budget remain in their own file.
 const h = invoicingNativeHarness();
 let started: number;
-beforeAll(async () => { started = performance.now(); await h.start(); }, 120_000);
-afterAll(async () => { await h.stop(); console.log(`M09 adapter contract whole-file ms=${Math.round(performance.now() - started)}`); });
+beforeAll(async () => { started = performance.now(); await h.start(); }, postgresSetupTimeoutMs);
+afterAll(async () => { await h.stop(); console.log(`M09 adapter contract whole-file ms=${Math.round(performance.now() - started)}`); }, postgresTeardownTimeoutMs);
 const executor = { query: (sql: string, values?: unknown[]) => h.pool.query(sql, values) };
 const store = createPostgresInvoiceStore(executor);
 type Claim = Parameters<InvoiceStorePort["preflight"]>[0]["claim"];

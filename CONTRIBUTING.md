@@ -192,8 +192,10 @@ M09 native invoicing uses six real-Postgres conformance cases and the package
 store/binding witnesses in `packages/platform/test/invoicing/postgresStore.test.ts`. The native harness includes fresh complete installation, preserved
 prefix upgrade, exact catalogue hashes, invoker/browser ACL refusals, keys and
 leases, scoped claims, incumbent fencing, scale and same-order dispatch under
-accounting contention. Its whole-file budget is 28 seconds; report setup and
-per-case time separately. The required package selection includes the store
+accounting contention. Its whole-file budget is 28 seconds excluding container/harness setup (report setup
+and per-case time separately), with additional M09 evidence in
+`tests/postgres/invoicingStoreContract.test.ts` (72 rows) and
+`tests/postgres/invoicingContinuity.test.ts` (3 cases). The required package selection includes the store
 cases, and the existing packed consumer verifies the store, issue binding, migration
 descriptor and independent collector exports, plus all six SQL asset hashes
 without a driver installed. These
