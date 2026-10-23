@@ -633,6 +633,9 @@ its external identity and atomically creates one compensation duty at finalizati
 
 Every missing host binding returns typed `unsupported` before unsupported writes.
 A recorded reversal that native SQL cannot fulfill returns `unsupported_recorded`.
+Reversal `missing` means no M09 duty, never invoice absence: retain/retry the
+intent and route legacy documents to the incumbent path. Local-only requests
+retain provider selection, document ID, invoice reference, status and replay.
 The required seams are facts, seller, fiscal policy, read-only M07 money,
 artifacts/storage, registry, clearance observation, M04 delivery, payout item
 recording/resolution, policy decisions and M12 account history. Registry evidence
@@ -651,10 +654,17 @@ chronology. Ready maps to owed and processing to claimed; unsupported obligation
 remain visible. Empty duties and payment truth's `accountingRequested=false` do
 not establish invoice absence. Capture faults remain separately observable.
 
+Seller, policy-receipt and download-ticket reads distinguish transient `unknown`
+from missing bindings, empty receipts and denied ownership. Artifact absence
+retains exact scoped `evidence`.
 Artifacts retain opaque durable references and proof; URLs/download bytes remain
 transient. Download authorization precedes fetch; PDF type/size/signature validation
 precedes M04 send. Delivery retains local order/document and provider identities,
 nullable client/source facts and any known receipt after a lost local acknowledgement.
+Settlement retains the provider document reference and retry delay for managed
+pre-send backoff (native ignores the delay). For uncertain sends, native passes
+`p_receipt` NULL and retains a non-null receipt hint in `p_evidence`; managed
+passes the hint as the provider message ID.
 Provider acceptance does not prove inbox delivery. Uncertain send never authorizes
 blind repeat send. Clearance is observation only, with
 `not_submitted`, `pending`, `rejected`, `accepted`, `not_required` and `unsupported`

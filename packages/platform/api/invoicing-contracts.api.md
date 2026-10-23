@@ -121,7 +121,7 @@ export type InvoiceArtifactResult = {
 } | {
     readonly kind: "absent";
     readonly identity: InvoiceDocumentIdentity;
-    readonly proof: InvoiceProof & {
+    readonly evidence: InvoiceProof & {
         readonly exact: true;
         readonly complete: true;
         readonly scope: {
@@ -317,6 +317,9 @@ export interface InvoiceHostPorts {
             readonly kind: "found";
             readonly seller: InvoiceSeller;
             readonly revisionRef: string;
+        } | {
+            readonly kind: "unknown";
+            readonly code: "unknown";
         } | InvoiceUnsupported>;
     };
     /** Read-only projection of the final claimed M07 identity, never a refund writer.
@@ -442,7 +445,10 @@ export interface InvoiceHostPorts {
             kind: "policy_suppressed" | "operator_skipped";
         }> & {
             readonly recordedAt: string;
-        })[] | InvoiceUnsupported>;
+        })[] | {
+            readonly kind: "unknown";
+            readonly code: "unknown";
+        } | InvoiceUnsupported>;
     };
     /** Authenticate and authorize ownership before reading artifacts. Safe projection
      * only: no buyer/seller payload, raw provider errors, signed URL or arbitrary meta.
@@ -495,6 +501,9 @@ export interface InvoiceHostPorts {
             readonly parentDocumentRef: string | null;
         } | {
             readonly kind: "denied";
+        } | {
+            readonly kind: "unknown";
+            readonly code: "unknown";
         } | InvoiceUnsupported>;
     };
 }
@@ -583,6 +592,9 @@ export interface InvoiceProof {
     readonly fingerprint: string;
     readonly observedAt: string;
 }
+/** Refused proves a definite provider refusal with no effect; post-request adapter
+ * or transport faults are unknown, even when no acknowledgement was received.
+ */
 export type InvoiceWriteResult = {
     readonly kind: "issued";
     readonly identity: InvoiceIdentity;
@@ -593,7 +605,7 @@ export type InvoiceWriteResult = {
 } | {
     readonly kind: "refused";
     readonly identity: InvoiceIdentity;
-    readonly code: Extract<InvoiceDiagnosticCode, "blocked" | "retryable" | "missing_facts" | "identity_mismatch" | "parent_mismatch" | "money_mismatch" | "faulted">;
+    readonly code: Extract<InvoiceDiagnosticCode, "blocked" | "retryable" | "missing_facts" | "identity_mismatch" | "parent_mismatch" | "money_mismatch">;
     readonly retryable: boolean;
     readonly effectMayHaveSucceeded: false;
 } | {
@@ -739,6 +751,7 @@ import type { InvoiceHostPorts } from "./host.js";
 import type { InvoiceFacts } from "./facts.js";
 import type { InvoiceIdentity, InvoiceDocumentIdentity, InvoiceProof, InvoiceUnsupported, InvoiceWriteResult, InvoiceReadbackResult } from "./provider.js";
 import type { InvoiceClearanceObservation, InvoiceArtifactResult, InvoiceDeliveryPort } from "./delivery.js";
+type InvoiceDutyStatus = "owed" | "blocked" | "ready" | "processing" | "unknown" | "issued" | "voided" | "unsupported" | "faulted";
 /** Native duty/lease fields map to the pinned invoicing_* fixtures. Managed hosts
  * translate their outboxId/attemptCount fences; never claim transaction equality.
  */
@@ -811,14 +824,14 @@ export interface InvoiceStorePort {
         };
     }): Promise<{
         readonly dutyId: string;
-        readonly status: string;
+        readonly status: InvoiceDutyStatus;
     } | InvoiceUnsupported>;
     installFacts(input: {
         readonly dutyId: string;
         readonly facts: InvoiceFacts;
     }): Promise<{
         readonly dutyId: string;
-        readonly status: "owed" | "blocked" | "ready" | "processing" | "unknown" | "issued" | "voided" | "unsupported" | "faulted";
+        readonly status: InvoiceDutyStatus;
         readonly replayed?: boolean;
     } | InvoiceUnsupported>;
     /** Pinned split facts lease: sweep and prepare commit separately; finishing
@@ -909,7 +922,10 @@ export interface InvoiceStorePort {
     })): Promise<{
         readonly kind: "recorded" | "voided" | "stale";
     } | InvoiceUnsupported>;
-    /** Native post-write unsupported maps to unsupported_recorded, retaining duty/replay. */
+    /** Native post-write unsupported maps to unsupported_recorded, retaining duty/replay.
+     * Missing means no M09 duty, never invoice absence: retain/retry the reversal
+     * intent and route legacy documents to the incumbent path.
+     */
     requestReversal(input: {
         readonly requestKey: string;
         readonly orderId: string;
@@ -928,9 +944,12 @@ export interface InvoiceStorePort {
     requestLocalDocument(input: {
         readonly requestKey: string;
         readonly orderId: string;
+        readonly providerRef: string;
     }): Promise<{
         readonly kind: "requested";
         readonly documentId: string;
+        readonly invoiceRef: string;
+        readonly status: string;
         readonly replayed: boolean;
     } | InvoiceUnsupported>;
     listClearanceTargets(limit: number): Promise<readonly {
@@ -974,21 +993,21 @@ export interface InvoiceStorePort {
         readonly providerDocumentRef: string;
         readonly delivery: Omit<Parameters<InvoiceDeliveryPort["send"]>[0], "filename" | "content" | "contentType">;
     }[] | InvoiceUnsupported>;
-    /** Native uncertain settlement stores a null receipt; transport hints stay evidence. */
+    /** Native uncertain settlement passes p_receipt NULL and retains a non-null
+     * receiptRef hint in p_evidence; managed uses it as the provider message id.
+     * Managed failed_before_send uses retrySeconds for backoff; native ignores it.
+     */
     settleDelivery(input: {
         readonly deliveryRef: string;
         readonly token: string;
         readonly generation: number;
-        readonly result: Exclude<Awaited<ReturnType<InvoiceDeliveryPort["send"]>>, InvoiceUnsupported | {
-            kind: "uncertain";
-        }> | (Extract<Awaited<ReturnType<InvoiceDeliveryPort["send"]>>, {
-            kind: "uncertain";
-        }> & {
-            readonly receiptRef: null;
-        });
+        readonly providerDocumentRef: string;
+        readonly retrySeconds: number;
+        readonly result: Exclude<Awaited<ReturnType<InvoiceDeliveryPort["send"]>>, InvoiceUnsupported>;
     }): Promise<{
         readonly kind: "recorded" | "stale";
         readonly replayed: boolean;
     } | InvoiceUnsupported>;
 }
+export {};
 ```

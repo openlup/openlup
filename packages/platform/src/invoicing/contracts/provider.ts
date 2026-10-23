@@ -47,9 +47,12 @@ export interface InvoiceProof {
   readonly fingerprint: string;
   readonly observedAt: string;
 }
+/** Refused proves a definite provider refusal with no effect; post-request adapter
+ * or transport faults are unknown, even when no acknowledgement was received.
+ */
 export type InvoiceWriteResult =
   | { readonly kind: "issued"; readonly identity: InvoiceIdentity; readonly providerDocumentRef: string; readonly providerDocumentNumber: string | null; readonly proof: InvoiceProof; readonly replayed: boolean }
-  | { readonly kind: "refused"; readonly identity: InvoiceIdentity; readonly code: Extract<InvoiceDiagnosticCode, "blocked" | "retryable" | "missing_facts" | "identity_mismatch" | "parent_mismatch" | "money_mismatch" | "faulted">; readonly retryable: boolean; readonly effectMayHaveSucceeded: false }
+  | { readonly kind: "refused"; readonly identity: InvoiceIdentity; readonly code: Extract<InvoiceDiagnosticCode, "blocked" | "retryable" | "missing_facts" | "identity_mismatch" | "parent_mismatch" | "money_mismatch">; readonly retryable: boolean; readonly effectMayHaveSucceeded: false }
   | { readonly kind: "unknown"; readonly identity: InvoiceIdentity; readonly code: "unknown"; readonly effectMayHaveSucceeded: true }
   | InvoiceUnsupported;
 /** Exact scope is the full identity, including operation, parent and revision.

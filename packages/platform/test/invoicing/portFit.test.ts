@@ -87,3 +87,37 @@ it("fits legacy document artifact, clearance and download carriers without inven
   expect(ticket.fileName).toBe("correction.pdf");
   expect(document).not.toHaveProperty("factRevision");
 });
+
+it("fits managed delivery settlement carriers and native uncertain receipt evidence without losing the hint", () => {
+  // invoiceDeliveryPorts.ts:69-81 + accountingInvoicePort.ts:170-185;
+  // pinned invoicing_settle_delivery(p_delivery,p_token,p_generation,p_kind,p_receipt,p_evidence).
+  type Settlement = Parameters<InvoiceStorePort["settleDelivery"]>[0];
+  const donor = { outboxId: "outbox-a", claimAttemptCount: 2, providerInvoiceId: "external-a", providerMessageId: "message-a", retrySeconds: 90 };
+  const input: Settlement = { deliveryRef: donor.outboxId, token: "lease-a", generation: donor.claimAttemptCount, providerDocumentRef: donor.providerInvoiceId, retrySeconds: donor.retrySeconds, result: { kind: "uncertain", code: "uncertain_delivery", receiptRef: donor.providerMessageId } };
+  if (input.result.kind !== "uncertain") throw new Error("expected_uncertain_fixture");
+  const managed = { p_outbox_id: input.deliveryRef, p_attempt_count: input.generation, p_provider_invoice_id: input.providerDocumentRef, p_provider_message_id: input.result.receiptRef };
+  const native = { p_delivery: input.deliveryRef, p_token: input.token, p_generation: input.generation, p_kind: input.result.kind, p_receipt: null, p_evidence: { code: input.result.code, receiptHint: input.result.receiptRef } };
+  expect(managed).toEqual({ p_outbox_id: donor.outboxId, p_attempt_count: donor.claimAttemptCount, p_provider_invoice_id: donor.providerInvoiceId, p_provider_message_id: donor.providerMessageId });
+  expect(native).toEqual({ p_delivery: donor.outboxId, p_token: "lease-a", p_generation: donor.claimAttemptCount, p_kind: "uncertain", p_receipt: null, p_evidence: { code: "uncertain_delivery", receiptHint: donor.providerMessageId } });
+  const noHint: Settlement = { ...input, result: { kind: "uncertain", code: "uncertain_delivery", receiptRef: null } };
+  expect(noHint.result).toMatchObject({ receiptRef: null });
+  const failed: Settlement = { ...input, result: { kind: "failed_before_send", retryable: true, code: "retryable" } };
+  expect({ p_provider_invoice_id: failed.providerDocumentRef, p_retry_seconds: failed.retrySeconds }).toEqual({ p_provider_invoice_id: donor.providerInvoiceId, p_retry_seconds: donor.retrySeconds });
+});
+
+it("fits the existing local paid-order document provider, reference, status and replay response", async () => {
+  // server/adapters/postgres/accountingPaidOrderDocument.ts:52-74: providerKind
+  // enters the request; invoiceRef is read from accounting_documents.document_ref.
+  const donorRequest = { idempotencyKey: " exact:local-key ", orderId: "order-a", providerKind: "local-a" };
+  const donorResponse = { invoice: { id: "document-a", invoiceRef: "local-invoice-a", status: "requested", replayed: true } };
+  let seen: typeof donorRequest | undefined;
+  const local: Pick<InvoiceStorePort, "requestLocalDocument"> = {
+    async requestLocalDocument(input) {
+      seen = { idempotencyKey: input.requestKey, orderId: input.orderId, providerKind: input.providerRef };
+      const { id, invoiceRef, status, replayed } = donorResponse.invoice;
+      return { kind: "requested", documentId: id, invoiceRef, status, replayed };
+    },
+  };
+  expect(await local.requestLocalDocument({ requestKey: donorRequest.idempotencyKey, orderId: donorRequest.orderId, providerRef: donorRequest.providerKind })).toEqual({ kind: "requested", documentId: "document-a", invoiceRef: "local-invoice-a", status: "requested", replayed: true });
+  expect(seen).toEqual(donorRequest);
+});

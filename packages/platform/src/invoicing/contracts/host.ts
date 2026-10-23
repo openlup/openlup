@@ -11,7 +11,7 @@ import type { InvoiceStorePort } from "./store.js";
  */
 export interface InvoiceHostPorts {
   facts: { read(orderId: string): Promise<{ readonly kind: "found"; readonly facts: InvoiceFacts } | { readonly kind: "unknown"; readonly code: "missing_facts" } | InvoiceUnsupported> };
-  seller: { read(input: { readonly orderId: string; readonly dutyId: string }): Promise<{ readonly kind: "found"; readonly seller: InvoiceSeller; readonly revisionRef: string } | InvoiceUnsupported> };
+  seller: { read(input: { readonly orderId: string; readonly dutyId: string }): Promise<{ readonly kind: "found"; readonly seller: InvoiceSeller; readonly revisionRef: string } | { readonly kind: "unknown"; readonly code: "unknown" } | InvoiceUnsupported> };
   /** Read-only projection of the final claimed M07 identity, never a refund writer.
    * Missing nullable money is unavailable, never fabricated zero or mismatch.
    */
@@ -48,7 +48,7 @@ export interface InvoiceHostPorts {
       | { readonly kind: "operator_skipped"; readonly outcome: "operator_skip"; readonly actorRef: string; readonly reason: string; readonly requestKey: string }
       | InvoiceUnsupported
     >;
-    receipts(orderId: string): Promise<readonly (Extract<Awaited<ReturnType<InvoiceHostPorts["policy"]["decide"]>>, { kind: "policy_suppressed" | "operator_skipped" }> & { readonly recordedAt: string })[] | InvoiceUnsupported>;
+    receipts(orderId: string): Promise<readonly (Extract<Awaited<ReturnType<InvoiceHostPorts["policy"]["decide"]>>, { kind: "policy_suppressed" | "operator_skipped" }> & { readonly recordedAt: string })[] | { readonly kind: "unknown"; readonly code: "unknown" } | InvoiceUnsupported>;
   };
   /** Authenticate and authorize ownership before reading artifacts. Safe projection
    * only: no buyer/seller payload, raw provider errors, signed URL or arbitrary meta.
@@ -61,7 +61,7 @@ export interface InvoiceHostPorts {
       | { readonly kind: "unknown"; readonly code: "unknown" }
       | InvoiceUnsupported
     >;
-    resolveDownload(input: { readonly accountRef: string; readonly orderId: string; readonly documentRef: string }): Promise<{ readonly kind: "authorized"; readonly identity: InvoiceDocumentIdentity; readonly artifactRef: string; readonly fileName: string; readonly parentDocumentRef: string | null } | { readonly kind: "denied" } | InvoiceUnsupported>;
+    resolveDownload(input: { readonly accountRef: string; readonly orderId: string; readonly documentRef: string }): Promise<{ readonly kind: "authorized"; readonly identity: InvoiceDocumentIdentity; readonly artifactRef: string; readonly fileName: string; readonly parentDocumentRef: string | null } | { readonly kind: "denied" } | { readonly kind: "unknown"; readonly code: "unknown" } | InvoiceUnsupported>;
   };
 }
 /** Future service composition inputs only; no constructor, worker or runtime route

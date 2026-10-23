@@ -138,7 +138,7 @@ assert.deepEqual(Object.keys(contracts), []);
 for (const entry of ["invoicing", "invoicing/contracts"]) assert(import.meta.resolve("@openlup/platform/" + entry).startsWith(new URL("./node_modules/", import.meta.url).href));
 const supported = {supported:true}, unsupported = {supported:false,reason:"host_required"};
 const capability = {version:"invoicing.capabilities.v1",providerRef:"fiscal-a",fiscalScope:{scopeRef:"host-scope",version:"v1"},policies:{identifierRef:"id-v1",taxRef:"tax-v1",roundingRef:"round-v1"},documentKinds:["host-document"],correctionKinds:["full_reversal"],numberingOwner:"provider",sellerTiming:"execution",defaultOff:true,
-operations:Object.fromEntries(["issue","correction","recovery","readback","exactAbsence","remoteVoid","artifact","clearance","settlement","companyLookup"].map(key=>[key,key==="issue"?supported:unsupported]))};
+operations:Object.fromEntries(["issue","correction","recovery","readback","exactAbsence","remoteVoid","artifact","clearance","settlement","companyLookup"].map(key=>[key,key==="issue"?supported:key==="remoteVoid"?{supported:false,reason:"not_implemented"}:unsupported]))};
 assert.equal(readInvoiceCapabilities({selection:{providerRef:"fiscal-a"},capability}).code,"disabled");
 assert.equal(readInvoiceCapabilities({enabled:true,selection:null,capability}).code,"selection_required");
 assert.equal(readInvoiceCapabilities({enabled:true,selection:{providerRef:"other"},capability}).code,"selection_required");

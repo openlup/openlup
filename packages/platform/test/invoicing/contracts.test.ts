@@ -46,6 +46,8 @@ it("requires scoped complete absence, separates uncertainty and retains the SQL 
 it("preserves pinned durable outcomes and permits retryable only with before-send evidence", () => {
   type Install = Exclude<Awaited<ReturnType<InvoiceStorePort["installFacts"]>>, InvoiceUnsupported>;
   expectTypeOf<Install["status"]>().toEqualTypeOf<"owed" | "blocked" | "ready" | "processing" | "unknown" | "issued" | "voided" | "unsupported" | "faulted">();
+  type Capture = Exclude<Awaited<ReturnType<InvoiceStorePort["captureDuty"]>>, InvoiceUnsupported>;
+  expectTypeOf<Capture["status"]>().toEqualTypeOf<Install["status"]>();
   type Fail = Parameters<InvoiceStorePort["fail"]>[0];
   expectTypeOf<Extract<Fail, { kind: "retryable" }>["phase"]>().toEqualTypeOf<"before_send">();
   expectTypeOf<Extract<Fail, { kind: "retryable" }>["proof"]>().toEqualTypeOf<InvoiceProof | null>();
@@ -55,8 +57,8 @@ it("preserves pinned durable outcomes and permits retryable only with before-sen
   expectTypeOf<Reversal["dutyId"]>().toEqualTypeOf<string | undefined>();
   expectTypeOf<Reversal["replayed"]>().toEqualTypeOf<boolean | undefined>();
   type RefusedCode = Extract<InvoiceWriteResult, { kind: "refused" }>["code"];
-  expectTypeOf<RefusedCode>().toEqualTypeOf<Extract<InvoiceDiagnosticCode, "blocked" | "retryable" | "missing_facts" | "identity_mismatch" | "parent_mismatch" | "money_mismatch" | "faulted">>();
-  expectTypeOf<Extract<RefusedCode, "unknown" | "absent" | "uncertain_delivery" | "unsupported" | "host_binding_required" | "disabled" | "selection_required">>().toEqualTypeOf<never>();
+  expectTypeOf<RefusedCode>().toEqualTypeOf<Extract<InvoiceDiagnosticCode, "blocked" | "retryable" | "missing_facts" | "identity_mismatch" | "parent_mismatch" | "money_mismatch">>();
+  expectTypeOf<Extract<RefusedCode, "unknown" | "absent" | "uncertain_delivery" | "unsupported" | "host_binding_required" | "disabled" | "selection_required" | "faulted">>().toEqualTypeOf<never>();
   expectTypeOf<Awaited<ReturnType<InvoiceProviderPort["void"]>>>().toEqualTypeOf<InvoiceUnsupported>();
   expectTypeOf<InvoiceCapabilities["operations"]["remoteVoid"]["supported"]>().toEqualTypeOf<false>();
   expectTypeOf<Parameters<InvoiceStorePort["finishFacts"]>[0]["result"]["status"]>().toEqualTypeOf<"owed" | "ready" | "issued" | "voided" | "unsupported">();
@@ -79,13 +81,27 @@ it("uses document scope for post-issue seams and requires native-compatible obse
   expectTypeOf<Parameters<InvoiceStorePort["recordObservation"]>[0]["eventKind"]>().toEqualTypeOf<"clearance" | "artifacts" | "unsupported" | "provider_mismatch">();
   type Accepted = Extract<InvoiceClearanceObservation, { state: "accepted" }>;
   expectTypeOf<Accepted["reference"]>().toEqualTypeOf<string>();
+  type LocalRequest = Exclude<Awaited<ReturnType<InvoiceStorePort["requestLocalDocument"]>>, InvoiceUnsupported>;
+  expectTypeOf<Parameters<InvoiceStorePort["requestLocalDocument"]>[0]["providerRef"]>().toEqualTypeOf<string>();
+  expectTypeOf<LocalRequest>().toEqualTypeOf<{ readonly kind: "requested"; readonly documentId: string; readonly invoiceRef: string; readonly status: string; readonly replayed: boolean }>();
+  expectTypeOf<Parameters<InvoiceStorePort["settleDelivery"]>[0]["providerDocumentRef"]>().toEqualTypeOf<string>();
+  expectTypeOf<Parameters<InvoiceStorePort["settleDelivery"]>[0]["retrySeconds"]>().toEqualTypeOf<number>();
+  expectTypeOf<Extract<InvoiceArtifactResult, { kind: "absent" }>["evidence"]["scope"]["identity"]>().toEqualTypeOf<InvoiceDocumentIdentity>();
+  expectTypeOf<Extract<InvoiceArtifactResult, { kind: "absent" }>>().not.toHaveProperty("proof");
   type Settlement = Parameters<InvoiceStorePort["settleDelivery"]>[0]["result"];
   expectTypeOf<Extract<Settlement, { kind: "unsupported" }>>().toEqualTypeOf<never>();
-  expectTypeOf<Extract<Settlement, { kind: "uncertain" }>["receiptRef"]>().toEqualTypeOf<null>();
+  expectTypeOf<Extract<Settlement, { kind: "uncertain" }>["receiptRef"]>().toEqualTypeOf<string | null>();
   expectTypeOf<Extract<Awaited<ReturnType<InvoiceHostPorts["artifacts"]["persist"]>>, { kind: "absent" }>>().toEqualTypeOf<never>();
   type AbsentItem = Extract<InvoiceSettlementResult, { kind: "absent" }>;
   expectTypeOf<AbsentItem["evidence"]["scope"]>().toEqualTypeOf<Parameters<InvoiceSettlementPort["resolve"]>[0]>();
   expectTypeOf<Parameters<InvoiceSettlementPort["record"]>[0]>().toEqualTypeOf<InvoiceSettlementItem>();
   type MissingCompany = Extract<Awaited<ReturnType<InvoiceHostPorts["registry"]["lookup"]>>, { kind: "not_found" }>;
   expectTypeOf<MissingCompany["identifier"]>().toEqualTypeOf<Parameters<InvoiceHostPorts["registry"]["lookup"]>[0]["identifier"]>();
+});
+
+it("keeps transient host read failures distinct from missing bindings, denial and empty receipts", () => {
+  type Unknown = { readonly kind: "unknown"; readonly code: "unknown" };
+  expectTypeOf<Extract<Awaited<ReturnType<InvoiceHostPorts["seller"]["read"]>>, { kind: "unknown" }>>().toEqualTypeOf<Unknown>();
+  expectTypeOf<Extract<Awaited<ReturnType<InvoiceHostPorts["policy"]["receipts"]>>, { kind: "unknown" }>>().toEqualTypeOf<Unknown>();
+  expectTypeOf<Extract<Awaited<ReturnType<InvoiceHostPorts["accountHistory"]["resolveDownload"]>>, { kind: "unknown" }>>().toEqualTypeOf<Unknown>();
 });

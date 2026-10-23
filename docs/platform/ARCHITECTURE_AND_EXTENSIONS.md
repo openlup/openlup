@@ -1260,6 +1260,8 @@ package's exact `invoicing` and type-only `invoicing/contracts` entries. The mod
 has no graph edges, provider dependencies or environment discovery. The host owns
 fiscal/identifier/rounding policy, frozen facts, seller, M07 reads, storage, registry,
 M04 delivery and authorized M12 history. Missing parity returns typed unsupported
-before writes; no native store or executor is supplied. The
+before writes; no native store or executor is supplied. Delivery settlement
+retains provider identity, retry delay and uncertain receipt hints; local document
+requests retain provider selection, invoice reference, status and replay. The
 [invoicing reference](PLATFORM_PACKAGE_REFERENCE.md#invoicing-contracts) describes
 correction, payout item and account-lineage seams and their source witnesses.
