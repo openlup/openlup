@@ -126,7 +126,7 @@ describe("real PostgreSQL portable dunning forward", () => {
     if (db) { await db.query("ROLLBACK"); db.release(); db = undefined; }
   });
   afterAll(async () => {
-    await Promise.all(containers.map((container, index) => closePostgres(container, pools[index])));
+    await closePostgres(containers, pools);
     if (prefixRoot) rmSync(prefixRoot, { recursive: true, force: true });
   }, postgresTeardownTimeoutMs);
 

@@ -40,7 +40,7 @@ beforeAll(async () => {
   await runner(0).apply();
   store = createPostgresOperatorIdentityStore({ connectionString: containers[0].connectionString }); stores.push(store);
 }, postgresSetupTimeoutMs);
-afterAll(async () => { await Promise.all(stores.map(s => s.close())); await Promise.all(containers.map((container, index) => closePostgres(container, pools[index]))); if (root) rmSync(root, { recursive: true, force: true }); }, postgresTeardownTimeoutMs);
+afterAll(async () => { await closePostgres(containers, pools, stores.map(value => () => value.close())); if (root) rmSync(root, { recursive: true, force: true }); }, postgresTeardownTimeoutMs);
 async function issue(value: string) { return store.issue({ email: 'admin@example.invalid', tokenHash: hash(value) }); }
 async function resetChallenges() { await fresh.query('DELETE FROM public.operator_identity_challenges'); }
 it('bootstrap failure retains a preexisting principal', async () => {

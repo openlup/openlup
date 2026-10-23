@@ -604,10 +604,12 @@ budgets; ordinary test deadlines remain unchanged. The shared helper bounds
 Docker availability to five seconds, each start/removal command to 30 seconds,
 and TCP readiness to 60 seconds of wall-clock time, including connect/query
 attempts and waits. Readiness destroys its throwaway client after each probe.
-`closePostgres` gives a pool five seconds to close, then attempts container
-removal even if the pool failed or stalled. Its separate elapsed timings identify
-the slow phase, and aggregated cleanup failures remain failures. An already
-absent container is the only ignored removal error.
+`closePostgres` gives all fixture pools and adapter/store close callbacks one
+shared five-second close phase, then attempts every owned container removal even
+if a close failed or stalled. Suite teardowns pass opaque adapter closers into
+that phase instead of awaiting them first. All removals finish before cleanup
+reports its collected failures. Separate elapsed timings identify the slow phase;
+an already absent container is the only ignored removal error.
 
 The helper's default is the pinned test PostgreSQL image; explicit images retain
 their behavior unless they exactly match an inventory pin. Shared acquisition
@@ -1799,6 +1801,9 @@ own: a lessons change is an ordinary delivery under existing authority, and a
 promotion stays within its approved scope. The rethink record and the task's
 terminal self-retro carry the lesson until it lands. No other tracker is kept.
 
+- 2026-10-23, PostgreSQL teardown rethink: bounding only the fixture pool
+  misses pools behind adapter/store `close()` → include every owned closer in
+  the shared bounded close phase before attempting every container removal.
 - 2026-10-19, native review simplification rethink: Resetting state and
   hand-copying fields across a session boundary drops whichever control was
   forgotten → never discard state: append a new intent and candidate to the

@@ -64,7 +64,7 @@ beforeAll(async () => {
     VALUES ('fixture','FINAL',9,9,0,'sellable',now(),now()+interval '1 hour','fixture','final-stock',repeat('a',64))`.replace("$1", `'${clientId}'`));
 }, postgresSetupTimeoutMs);
 afterEach(() => { cleanup(); vi.clearAllMocks(); });
-afterAll(async () => { await rateLane?.close(); await closePostgres(container, pool); if (scratch) rmSync(scratch, { recursive: true, force: true }); }, postgresTeardownTimeoutMs);
+afterAll(async () => { await closePostgres(container, pool, [() => rateLane?.close()]); if (scratch) rmSync(scratch, { recursive: true, force: true }); }, postgresTeardownTimeoutMs);
 async function invoke(handler: NonNullable<ReturnType<typeof shipping.createShippingBindings>["handlers"]["rate"]>, method: string, body?: unknown) {
   let status = 0, payload: { ok: boolean; data?: unknown } | undefined;
   const response = { status(value: number) { status = value; return this; }, json(value: typeof payload) { payload = value; return this; }, setHeader() {} };

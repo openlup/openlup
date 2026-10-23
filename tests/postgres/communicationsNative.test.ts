@@ -60,7 +60,7 @@ beforeAll(async()=>{
  await fresh.query("INSERT INTO public.platform_human_principals(principal_id,email) VALUES ($1,'second-admin@example.invalid')",[C]);
  await fresh.query("INSERT INTO public.platform_human_memberships(principal_id,role,membership_state,membership_provenance,membership_accepted_at) VALUES ($1,'admin','active','legacy',now())",[C]);
 },postgresSetupTimeoutMs);
-afterAll(async()=>{await Promise.all(stores.map(s=>s.close()));await Promise.all(containers.map((container, index) => closePostgres(container, pools[index])));if(prefix)rmSync(prefix,{recursive:true,force:true});}, postgresTeardownTimeoutMs);
+afterAll(async()=>{await closePostgres(containers, pools, stores.map(value => () => value.close()));if(prefix)rmSync(prefix,{recursive:true,force:true});}, postgresTeardownTimeoutMs);
 it("upgrades the real position-69 prefix, preserves representative state and replays without effects",async()=>{
  const queued=(await upgrade.query("SELECT * FROM public.outbox_events")).rows,permissions=(await upgrade.query("SELECT * FROM public.communication_recipient_consents")).rows;
  expect((await runner(upgrade).apply()).applied).toEqual(manifest.forward.slice(nativeIndex).map((entry:{file:string})=>entry.file));

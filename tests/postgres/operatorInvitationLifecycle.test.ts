@@ -14,7 +14,7 @@ async function operatorInvitationDatabase() {
   const pools: Pool[] = [];
   const roots: string[] = [];
   async function close() {
-    await Promise.all(containers.map((container, index) => closePostgres(container, pools[index])));
+    await closePostgres(containers, pools);
     for (const root of roots) rmSync(root, { recursive: true, force: true });
   }
   try {

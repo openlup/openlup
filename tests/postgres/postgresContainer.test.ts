@@ -163,12 +163,57 @@ describe("PostgreSQL lifecycle deadlines and cleanup failures", () => {
     vi.useFakeTimers();
     const end = vi.fn(() => new Promise<void>(() => {}));
     const result = expect(closePostgres(container, { end, ended: false })).rejects.toMatchObject({
-      errors: [expect.objectContaining({ message: "PostgreSQL pool.end exceeded 5000ms" })],
+      errors: [expect.objectContaining({ message: "PostgreSQL pool/store shutdown exceeded 5000ms" })],
     });
     await vi.advanceTimersByTimeAsync(5_000);
     await result;
     expect(mocks.exec.mock.calls.at(-1)![1]).toEqual(["rm", "-f", spec.name]);
     expect(postgresTeardownTimeoutMs).toBeGreaterThan(5_000 + 30_000);
+  });
+
+  it("attempts every owned container removal after an adapter close rejects", async () => {
+    const { closePostgres, runPostgresContainer } = await import("../helpers/postgresContainer.js");
+    const containers = await Promise.all([runPostgresContainer(spec), runPostgresContainer({ ...spec, name: "sibling" })]);
+    const adapter = vi.fn().mockRejectedValue(new Error("adapter pool failed"));
+    const end = vi.fn().mockResolvedValue(undefined);
+    mocks.exec.mockRejectedValueOnce(new Error("first removal failed"));
+    await expect(closePostgres(containers, [{ end, ended: false }], [adapter])).rejects.toMatchObject({
+      errors: [expect.objectContaining({ message: "adapter pool failed" }), expect.objectContaining({ cause: expect.objectContaining({ message: "first removal failed" }) })],
+    });
+    expect(end).toHaveBeenCalledTimes(1);
+    expect(adapter).toHaveBeenCalledTimes(1);
+    expect(mocks.exec.mock.calls.slice(-2).map(([, args]) => args)).toEqual([["rm", "-f", spec.name], ["rm", "-f", "sibling"]]);
+  });
+
+  it("bounds all adapter and fixture pool closes together and waits for every removal", async () => {
+    const { closePostgres, runPostgresContainer } = await import("../helpers/postgresContainer.js");
+    const containers = await Promise.all([runPostgresContainer(spec), runPostgresContainer({ ...spec, name: "sibling" })]);
+    vi.useFakeTimers();
+    const stalled = vi.fn(() => new Promise<void>(() => {}));
+    const rejected = vi.fn().mockRejectedValue(new Error("other adapter failed"));
+    const end = vi.fn().mockResolvedValue(undefined);
+    // The first removal fails quickly; the sibling still has to finish removal.
+    mocks.exec.mockImplementation(async (_command, args) => {
+      if (args[2] === spec.name) throw new Error("first removal failed");
+      await new Promise(resolve => setTimeout(resolve, 1_000));
+      return { stdout: "" };
+    });
+    let settled = false;
+    const result = closePostgres(containers, { end, ended: false }, [stalled, rejected]);
+    const assertion = expect(result).rejects.toMatchObject({ errors: [
+      expect.objectContaining({ message: "other adapter failed" }),
+      expect.objectContaining({ message: "PostgreSQL pool/store shutdown exceeded 5000ms" }),
+      expect.objectContaining({ cause: expect.objectContaining({ message: "first removal failed" }) }),
+    ] });
+    void result.then(() => { settled = true; }, () => { settled = true; });
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(end).toHaveBeenCalledTimes(1);
+    expect(stalled).toHaveBeenCalledTimes(1);
+    expect(rejected).toHaveBeenCalledTimes(1);
+    expect(settled).toBe(false);
+    await vi.advanceTimersByTimeAsync(1_000);
+    await assertion;
+    expect(settled).toBe(true);
   });
 
   it("uses a wall-clock readiness deadline even when each connection stalls", async () => {

@@ -70,28 +70,44 @@ async function removeContainer(name: string) {
   }
 }
 
-/** Close the test pool, then remove its container even after a pool failure. */
-export async function closePostgres(container: PostgresContainer | null | undefined, pool?: Pick<Pool, "end" | "ended"> | null) {
+type TestPool = Pick<Pool, "end" | "ended">;
+
+/** Close every test-owned pool/store, then attempt every container removal. */
+export async function closePostgres(
+  container: PostgresContainer | PostgresContainer[] | null | undefined,
+  pool?: TestPool | TestPool[] | null,
+  additionalClosers: (() => Promise<unknown>)[] = [],
+) {
   const failures: unknown[] = [];
+  const closers = [...additionalClosers];
+  for (const value of Array.isArray(pool) ? pool : [pool]) {
+    if (value && !value.ended) closers.push(() => value.end());
+  }
+  // Start every close before waiting: one failed store must not bypass another
+  // pool, and one stalled store must not add another five seconds per pool.
+  const closing = closers.map(close => Promise.resolve().then(close).catch(error => { failures.push(error); }));
   let timer: ReturnType<typeof setTimeout> | undefined;
   const started = performance.now();
   try {
-    if (pool && !pool.ended) await Promise.race([
-      pool.end(),
+    await Promise.race([
+      Promise.all(closing),
       new Promise<never>((_, reject) => {
-        timer = setTimeout(() => reject(new Error(`PostgreSQL pool.end exceeded ${poolCloseTimeoutMs}ms`)), poolCloseTimeoutMs);
+        timer = setTimeout(() => reject(new Error(`PostgreSQL pool/store shutdown exceeded ${poolCloseTimeoutMs}ms`)), poolCloseTimeoutMs);
       }),
     ]);
   } catch (error) {
     failures.push(error);
   } finally {
     clearTimeout(timer);
-    console.info(`PostgreSQL pool.end ms=${Math.round(performance.now() - started)}`);
+    console.info(`PostgreSQL pools.close ms=${Math.round(performance.now() - started)}`);
   }
   const removing = performance.now();
-  try { await container?.remove(); } catch (error) { failures.push(error); }
-  finally { console.info(`PostgreSQL container.remove ms=${Math.round(performance.now() - removing)}`); }
-  if (failures.length) throw Object.assign(new Error("PostgreSQL cleanup failed"), { errors: failures });
+  try {
+    await Promise.all((Array.isArray(container) ? container : [container]).map(async value => {
+      try { await value?.remove(); } catch (error) { failures.push(error); }
+    }));
+  } finally { console.info(`PostgreSQL containers.remove ms=${Math.round(performance.now() - removing)}`); }
+  if (failures.length) throw Object.assign(new Error("PostgreSQL cleanup failed"), { errors: [...failures] });
 }
 
 async function pinnedImage(reference: string, explicit: boolean): Promise<string | undefined> {

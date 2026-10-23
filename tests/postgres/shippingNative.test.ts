@@ -83,7 +83,7 @@ beforeAll(async () => {
   afterSeedAcl = await acl(pools[1]);
 }, postgresSetupTimeoutMs);
 afterAll(async () => {
-  await Promise.all(bindings.map(value => value.close())); await Promise.all(containers.map((container, index) => closePostgres(container, pools[index]))); if (prefix) rmSync(prefix, { recursive: true, force: true });
+  await closePostgres(containers, pools, bindings.map(value => () => value.close())); if (prefix) rmSync(prefix, { recursive: true, force: true });
 }, postgresTeardownTimeoutMs);
 it("fresh full portable installation seeds and saves through the reference binding", async () => {
   expect((await pools[0].query("SELECT value_minor FROM public.commerce_settings WHERE key='shipping_flat_minor'")).rows).toEqual([{ value_minor: 0 }]);
