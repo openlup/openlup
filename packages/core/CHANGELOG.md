@@ -10,6 +10,19 @@ in the source repository.
 
 ## [Unreleased]
 
+## [0.23.0]
+
+- Publishable on the npm `latest` dist-tag as `0.23.0`, from tag
+  `openlup-core-v0.23.0`.
+
+- Republish unchanged APIs, runtime behavior and shipped SQL from `0.22.0` as part of the complete `0.23.0` package set.
+
+Migration: upgrade the complete set together for exact internal peers; core introduces no API or schema migration.
+
+### Known limitations
+
+The fulfillment status map retains localized adopter labels; hosts still need injected labels or internationalization keys.
+
 ## [0.22.0]
 
 - Publishable on the npm `latest` dist-tag as `0.22.0`, from tag
@@ -33,14 +46,5 @@ no application import or schema migration is required.
   `openlup-core-v0.21.0`.
 
 - Republish unchanged APIs, runtime behavior and shipped SQL from `0.20.0` as part of the complete `0.21.0` package set.
-
-Migration: upgrade the complete set together; core introduces no API or schema migration in this release.
-
-## [0.20.0]
-
-- Publishable on the npm `latest` dist-tag as `0.20.0`, from tag
-  `openlup-core-v0.20.0`.
-
-- Republish unchanged APIs, runtime behavior and shipped SQL from `0.19.0` as part of the complete `0.20.0` package set.
 
 Migration: upgrade the complete set together; core introduces no API or schema migration in this release.
