@@ -538,6 +538,12 @@ privileges and complete catalogue installation are described in
 
 ## Compatibility posture
 
+The managed correction v2 control remains fixture-only. Fenced finalizers also
+accept a parent already `corrected` by an earlier acceptance sync when its
+`correctionOutboxId` is absent or matches the claim. For classifying hosts only,
+blocked, unsupported or explicitly non-retryable `p_error` values retain `failed`
+with `next_attempt_at=infinity`; ordinary failures keep their retry delay.
+
 Native subscription retry N1 extends the existing migration prefix without
 changing earlier rows. Its manifest inventory is recomputed by the repository
 runner on the complete prefix plus N1, and its package SQL copy retains the CTL
