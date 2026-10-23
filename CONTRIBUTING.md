@@ -742,6 +742,32 @@ sharding, discovery and test-author guidance.
 
 The required `install-proof` job runs the shared package gate after both reference-profile builds, independently of the required `test` job in a separate checkout and installation. It discovers every publishable package from `config/openlup-packages.json` and its actual npm workspace, and refuses missing `api:check`, `ci:required` or `test:consumer` scripts before packing. The existing cold producer emits one current-set manifest. All API checks run before any package's `ci:required`, which receives the same verified manifest and exact checkout commit through `OPENLUP_PACK_MANIFEST` and `OPENLUP_PACK_COMMIT`. Cold preparation clears each workspace per target, so the API phase restores each package's built declarations and prerequisites through the existing build helper; it leaves the retained tarballs untouched and includes that cost in its timing. There is no missing-script skip or package-name routing table. A new module must supply installed-artifact consumer coverage, meaningful failure cases and its owning required batch; script declarations alone do not prove that those assertions are sound. Review checks that the batch actually invokes its consumer and preserves its required tests. Keep API checks out of that batch because the shared phase already runs them.
 
+Dependency security has two boundaries. PR/merge-group admission refuses newly
+selected vulnerable production dependencies against the exact comparison base;
+an advisory affecting an unchanged dependency inherited from that base remains a
+Dependabot alert, not a repository-wide merge freeze. Unknown dependency scope
+is treated as production. Unavailable or incomplete audit data does not establish
+PASS when dependency security inputs changed. This uses the existing
+`install-proof` status; tests, API, lock, license, SBOM, pack and publish controls
+remain required. Core's `ci:required` runs `release:admission`, which preserves
+those controls without repeating the absolute live audit. Standalone `ci` and
+`release:check` retain the absolute audit.
+
+Publication is stricter: `packages:check --release-tag` / `--release-set` packing
+runs a fresh full audit of the selected committed workspace dependency graph,
+including internal prerequisites and their standalone locks, under the existing
+zero-vulnerability budget. npm's production flags may conservatively include
+shared dependencies also used by development tooling; optional peers absent
+from the lock are not newly resolved. An audit failure retains no publication
+artifacts. Manifest-only checks remain installation-free and do not audit.
+The existing release gate also refuses a target with different pack/audit/publisher
+control blobs from fetched main, before target code runs; older source is allowed
+when these controls are unchanged. Historical release workflow definitions remain
+pinned to their own commits.
+The publishing workflow requires packing/audit from its current attempt; retry
+all jobs after publication failure so the full audit runs again. Existing release
+approvals, immutable version rules and protected credentials remain unchanged.
+
 A module added to an existing distribution extends that package's consumer and
 required batch; it does not need another npm workspace, runner or CI job.
 Preserve the complete package proof and name the new module's behavior,

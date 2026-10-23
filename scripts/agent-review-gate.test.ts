@@ -125,13 +125,13 @@ describe('six real Git witnesses', () => {
     const request = join(f.scratch, 'intent.json');
     if (scenario === 'disjoint') {
       await expect(f.cli('prepare', request)).resolves.toBe(0);
-      await expect(verifyCandidateCommand({ cwd: f.cwd, session, command: 'costly-check', run })).resolves.toBe(0);
+      await expect(verifyCandidateCommand({ cwd: f.cwd, session, command: 'costly-check', run, env: {} })).resolves.toBe(0);
       await expect(f.cli('receipt', '12')).resolves.toBe(0);
       expect(run).toHaveBeenCalledTimes(1);
     } else {
       await expect(f.cli('prepare', request)).rejects.toThrow('merge_preflight');
       expect(await readFile(f.statePath, 'utf8')).toBe(prepared);
-      await expect(verifyCandidateCommand({ cwd: f.cwd, session, command: 'costly-check', run })).rejects.toThrow('merge_preflight');
+      await expect(verifyCandidateCommand({ cwd: f.cwd, session, command: 'costly-check', run, env: {} })).rejects.toThrow('merge_preflight');
       await expect(f.cli('receipt', '12')).rejects.toThrow('merge_preflight');
       expect(run).not.toHaveBeenCalled();
     }
