@@ -1,3 +1,5 @@
+import { readAccountingSellerRevision } from "../../domains/accounting/accountingProviderSnapshot.js";
+import type { InvoiceServices } from "@openlup/platform/invoicing";
 import { createInvoicingDutyBinding } from "./invoicingDutyBinding.js";
 import { createSupabaseDataGateway } from "../../adapters/supabase/dataGateway.js";
 import { readSupabaseDataGatewayEnv, type SupabaseDataGatewayEnv } from "../../adapters/supabase/dataGatewayClientFactory.js";
@@ -110,12 +112,15 @@ export async function runAccountingRuntimeOnce({
   env = process.env,
   gatewayFactory = createSupabaseDataGateway,
   runControl = platformRunControl,
+  invoicing,
 }: {
   kind: AccountingJobKind;
   context: AccountingInvocationContext;
   env?: AccountingRuntimeEnv;
   gatewayFactory?: AccountingGatewayFactory;
   runControl?: AccountingRunControl;
+  /** Explicit module selection, using this same host lease/executor. */
+  invoicing?: InvoiceServices<AccountingJobResult>;
 }): Promise<AccountingRuntimeResult> {
   // KSeF is intentionally never a worker obligation. Its explicit HTTP/operator
   // route stays disabled until the separate government activation proof exists.
@@ -123,6 +128,22 @@ export async function runAccountingRuntimeOnce({
     return { status: 200, body: { ok: true, skipped: true, reason: "ksef_worker_not_supported" } };
   }
 
+  // Default-off performs no gateway construction or job lease claim.
+  const config = readAccountingRuntimeConfig(env);
+  const enabled = kind === "invoice-delivery" ? config.providerEmailEnabled
+    : kind === "ksef-status" ? config.ksefPollEnabled : config.createEnabled;
+  if (!enabled) return { status: 200, body: { ok: true, skipped: true, checked: 0, updated: 0, failures: 0, reason: "disabled" } };
+  assertAccountingRuntimeConfigAllowed(env, config);
+  if (invoicing) {
+    const state = await invoicing.readiness();
+    if (state.kind !== "ready") return { status: 503, body: { ok: false, skipped: true, reason: state.code } };
+  }
+
+  if (kind === "invoice-correction" && context.orderId) return { status: 503, body: { ok: false, skipped: true, reason: "order_scoped_correction_unsupported" } };
+  // Injected factories have no per-invocation order scope. Refuse before the
+  // host lease rather than turning a targeted invocation into a global run.
+  if (invoicing && context.orderId) return { status: 503, body: { ok: false, skipped: true, reason: "order_scoped_invoicing_unsupported" } };
+  if (!invoicing && !createAccountingProviderFromEnv(env)) return { status: 503, body: { ok: false, skipped: true, reason: "provider_not_selected" } };
   const gatewayEnv = readSupabaseDataGatewayEnv(env);
   if (!gatewayEnv) return { status: 503, body: { ok: false, error: "supabase_env_required" } };
 
@@ -135,9 +156,12 @@ export async function runAccountingRuntimeOnce({
 
     let result: AccountingJobResult;
     try {
-      result = await executeAccountingJobWithClient({
-        kind, env, client, orderId: context.orderId ?? null,
-      });
+      const operation = kind === "invoice-issue" ? "issue" : kind === "invoice-correction" ? "correction" : kind === "invoice-delivery" ? "delivery" : null;
+      const outcome = invoicing && operation ? await invoicing.run(operation)
+        : await executeAccountingJobWithClient({ kind, env, client, orderId: context.orderId ?? null });
+      result = "kind" in outcome
+        ? { ok: false, checked: 0, updated: 0, skipped: true, failures: 0, reason: outcome.code }
+        : outcome;
       await runControl.finish(client, jobName, lease.runId, result.ok ? "success" : "failed", result, context);
     } catch (error) {
       result = { ok: false, checked: 0, updated: 0, skipped: false, failures: 1, reason: safeMessage(error) };
@@ -199,7 +223,7 @@ async function executeAccountingJobWithClient({
 }): Promise<AccountingJobResult> {
   const config = readAccountingRuntimeConfig(env);
   assertAccountingRuntimeConfigAllowed(env, config);
-  const port = createSupabaseAccountingInvoicePort(client as never);
+  const port = createSupabaseAccountingInvoicePort(client as never, { readSeller: async () => readAccountingSellerRevision(env) });
   const provider = createAccountingProviderFromEnv(env);
   const deliveryPort = kind === "invoice-delivery" && config.providerEmailEnabled && provider
     ? createInvoiceDeliveryPort({ env, client })

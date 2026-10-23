@@ -1154,6 +1154,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261022195000_invoicing_seller_revision.sql",
+      "class": "public-output"
+    },
+    {
       "path": "deploy/oci/public-reference-compose.yml",
       "class": "public-output"
     },
@@ -2630,6 +2634,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20261022195000_invoicing_seller_revision.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/bff/dispatch.ts",
       "class": "public-output"
     },
@@ -4066,6 +4074,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/invoicing/bindings.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/invoicing/capabilities.ts",
       "class": "public-output"
     },
@@ -4111,6 +4123,10 @@
     },
     {
       "path": "packages/platform/src/invoicing/contracts/store.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/invoicing/contribution.ts",
       "class": "public-output"
     },
     {
@@ -4175,6 +4191,10 @@
     },
     {
       "path": "packages/platform/src/invoicing/reversal.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/invoicing/sellerRevision.ts",
       "class": "public-output"
     },
     {
@@ -5602,6 +5622,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/invoicing/bindings.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/invoicing/canonicalLines.test.ts",
       "class": "public-output"
     },
@@ -5647,6 +5671,10 @@
     },
     {
       "path": "packages/platform/test/invoicing/readback.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/invoicing/sellerRevision.test.ts",
       "class": "public-output"
     },
     {
@@ -15442,6 +15470,18 @@
       "class": "public-output"
     },
     {
+      "path": "server/runtime/public-reference/m09InvoicingBinding.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/runtime/public-reference/m09InvoicingBinding.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/runtime/public-reference/readiness.ts",
+      "class": "public-output"
+    },
+    {
       "path": "server/runtime/public-reference/serve.test.ts",
       "class": "public-output"
     },
@@ -22071,6 +22111,10 @@
     },
     {
       "path": "supabase/migrations/20261022193100_invoicing_correction_compatibility.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "supabase/migrations/20261022195100_invoicing_seller_revision.sql",
       "class": "public-output"
     },
     {

@@ -261,7 +261,7 @@ export interface InvoiceFacts {
     readonly clearanceRequired: boolean;
     readonly currency: string;
     readonly buyer: InvoiceBuyer;
-    /** Supplied separately for execution; P8 freezes it at first claim before provider I/O. */
+    /** Claim projection only: the first durable claim freezes the seller; legacy obligations retain execution-time fallback. */
     readonly seller?: InvoiceSeller;
     readonly payment: {
         readonly intentRef: string;
@@ -283,6 +283,16 @@ export interface InvoiceFacts {
     readonly totalTaxMinor: number;
     readonly totalGrossMinor: number;
     readonly chargedTotalGrossMinor: number;
+}
+/** Host-selected immutable revision; it contains no provider or country defaults. */
+export interface InvoiceSellerRevision<Seller = InvoiceSeller> {
+    readonly seller: Seller;
+    readonly revisionRef: string;
+}
+/** Added only to returned claim facts, never to installed historical revisions. */
+export interface InvoiceClaimedFacts extends InvoiceFacts {
+    readonly sellerRevision?: string;
+    readonly sellerMode?: "frozen" | "legacy_fallback";
 }
 ```
 ## dist/invoicing/contracts/host.d.ts
@@ -310,8 +320,8 @@ export interface InvoiceHostPorts {
         } | InvoiceUnsupported>;
     };
     /** Read the current host seller for the next claim, never per duty. Null orderId
-     * means an unscoped claim (including corrections). P8 freezes this seller at
-     * first claim; revisionRef feeds the claim wrapper's revision argument.
+     * means an unscoped claim (including corrections). The durable wrapper freezes this seller at
+     * the first-ever claim; revisionRef feeds the claim wrapper's revision argument.
      */
     seller: {
         read(input: {
@@ -518,8 +528,7 @@ export interface InvoiceHostPorts {
         } | InvoiceUnsupported>;
     };
 }
-/** Future service composition inputs only; no constructor, worker or runtime route
- * is supplied in P1. Closures/credentials must never be serialized with options.
+/** Explicit service composition inputs; the host retains worker and route authority. Closures/credentials must never be serialized with options.
  */
 export interface InvoiceServicesOptions {
     readonly enabled?: boolean;
@@ -539,7 +548,7 @@ export interface InvoiceServicesOptions {
 
 ```ts
 /** @consumer Frozen fact provider and installed declaration consumer. */
-export type { InvoiceFacts, InvoiceLine, InvoiceSeller, InvoiceBuyer } from "./facts.js";
+export type { InvoiceFacts, InvoiceLine, InvoiceSeller, InvoiceBuyer, InvoiceSellerRevision } from "./facts.js";
 /** @consumer A4 issue/correction bridge, adapters and operator proof readback. */
 export type { InvoiceIdentity, InvoiceDocumentIdentity, InvoiceWriteResult, InvoiceReadbackResult, InvoiceProviderPort, InvoiceUnsupported, InvoiceDiagnosticCode, InvoiceProof } from "./provider.js";
 /** @consumer Host artifact storage/download binding. */
@@ -759,7 +768,7 @@ export {};
 
 ```ts
 import type { InvoiceHostPorts } from "./host.js";
-import type { InvoiceFacts } from "./facts.js";
+import type { InvoiceFacts, InvoiceClaimedFacts } from "./facts.js";
 import type { InvoiceIdentity, InvoiceDocumentIdentity, InvoiceProof, InvoiceUnsupported, InvoiceWriteResult, InvoiceReadbackResult } from "./provider.js";
 import type { InvoiceClearanceObservation, InvoiceArtifactResult, InvoiceDeliveryPort } from "./delivery.js";
 type InvoiceDutyStatus = "owed" | "blocked" | "ready" | "processing" | "unknown" | "issued" | "voided" | "unsupported" | "faulted";
@@ -774,7 +783,7 @@ export interface InvoiceClaim {
     readonly generation: number;
     readonly leaseUntil: string;
     readonly identity: InvoiceIdentity;
-    readonly facts: InvoiceFacts;
+    readonly facts: InvoiceClaimedFacts;
     readonly action: "create" | "readback";
     readonly correction: {
         readonly before: InvoiceFacts;
@@ -838,6 +847,9 @@ export interface InvoiceStorePort {
     }): Promise<{
         readonly dutyId: string;
         readonly status: InvoiceDutyStatus;
+    } | {
+        readonly kind: "conflict";
+        readonly code: "identity_mismatch";
     } | InvoiceUnsupported>;
     installFacts(input: {
         readonly dutyId: string;
@@ -955,6 +967,9 @@ export interface InvoiceStorePort {
         readonly kind: "unsupported_recorded";
         readonly dutyId?: string;
         readonly replayed?: boolean;
+    } | {
+        readonly kind: "conflict";
+        readonly code: "identity_mismatch";
     } | InvoiceUnsupported>;
     /** Existing local-only request remains distinct from fiscal issuance. */
     requestLocalDocument(input: {

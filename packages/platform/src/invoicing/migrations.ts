@@ -10,6 +10,7 @@ export const INVOICING_MIGRATIONS = {
       { position: 77, catalogPath: "db/platform/migrations/20261022190000_invoicing_durable_duties.sql", sha256: "2d7bf98924b4ef29b3e8f902d768e45dd9c850242f4358a0193a0c00d0f3d081", url: new URL("../../sql/20261022190000_invoicing_durable_duties.sql", import.meta.url) },
       { position: 78, catalogPath: "db/platform/migrations/20261022191000_invoicing_document_effects.sql", sha256: "0eac3453e2b82c43e4fff9e35bcd6daefdd0bb5f992937f7f411d690550428cf", url: new URL("../../sql/20261022191000_invoicing_document_effects.sql", import.meta.url) },
       { position: 79, catalogPath: "db/platform/migrations/20261022192000_invoicing_payment_decoupling.sql", sha256: "f4af30ee4c9365ea51bd0e95e5cc7ae869cf15dce5867fdd640f679438b36058", url: new URL("../../sql/20261022192000_invoicing_payment_decoupling.sql", import.meta.url) },
+      { position: 80, catalogPath: "db/platform/migrations/20261022195000_invoicing_seller_revision.sql", sha256: "5a6348d9af296cfc6383894e3489f70af1f3bb5026c0cc329daa9f3f95802b22", url: new URL("../../sql/20261022195000_invoicing_seller_revision.sql", import.meta.url) },
     ],
   },
   managed: {
@@ -18,6 +19,7 @@ export const INVOICING_MIGRATIONS = {
     units: [
       "supabase/migrations/20261022193000_invoicing_correction_claims.sql",
       "supabase/migrations/20261022193100_invoicing_correction_compatibility.sql",
+      "supabase/migrations/20261022195100_invoicing_seller_revision.sql",
     ],
   },
 } as const;

@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type {
   AccountingCorrectionOutboxTarget,
   AccountingDocumentProviderInvoiceSnapshot,
@@ -5,6 +6,7 @@ import type {
 } from "../../../src/domains/accounting/ports.js";
 import {
   neutralTaxIdRouting,
+  type AccountingSellerConfig,
   readAccountingSellerConfig,
   type TaxIdRoutingPort,
 } from "../../../src/domains/accounting/invoiceContracts.js";
@@ -22,7 +24,7 @@ export function mapInvoiceClaimToProviderSnapshot(
     issueDate: dateOnly(claim.invoice.packageShippedAt ?? claim.invoice.paymentCompletedAt),
     sellDate: dateOnly(claim.invoice.paymentCompletedAt),
     currency: claim.invoice.currency,
-    seller: readAccountingSellerConfig(env, APP_DEFAULT_SELLER),
+    seller: claimedSeller(claim) ?? readAccountingSellerConfig(env, APP_DEFAULT_SELLER),
     buyerSnapshot: claim.invoice.buyerSnapshot,
     documentKind: claim.invoice.documentKind === "b2b_vat" ? "b2b_vat" as const : "b2c_named" as const,
     governmentClearanceRequired: claim.invoice.ksefRequired,
@@ -54,7 +56,7 @@ export function mapCorrectionClaimToProviderSnapshot(
     issueDate: dateOnly(new Date().toISOString()),
     sellDate: dateOnly(new Date().toISOString()),
     currency: claim.invoice.currency,
-    seller: readAccountingSellerConfig(env, APP_DEFAULT_SELLER),
+    seller: claimedSeller(claim) ?? readAccountingSellerConfig(env, APP_DEFAULT_SELLER),
     buyer: {
       name: textValue(claim.invoice.buyerSnapshot.name) ?? "Customer",
       email: textValue(claim.invoice.buyerSnapshot.email),
@@ -178,4 +180,20 @@ function numberValue(value: unknown): number | null {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value && typeof value === "object" && !Array.isArray(value));
+}
+
+/** Host-owned selection; changes to any selected field yield a distinct revision. */
+export function readAccountingSellerRevision(env: Record<string, string | undefined>) {
+  const seller = readAccountingSellerConfig(env, APP_DEFAULT_SELLER);
+  return { kind: "found" as const, seller, revisionRef: createHash("sha256").update(JSON.stringify(seller)).digest("hex") };
+}
+function claimedSeller(claim: object): AccountingSellerConfig | null {
+  const value = claim as { seller?: AccountingSellerConfig; sellerRevision?: string; sellerMode?: string };
+  if (value.sellerMode === "frozen") {
+    if (!value.seller || !value.sellerRevision) throw new Error("accounting_claim_seller_missing");
+    return value.seller;
+  }
+  // Legacy obligations keep the execution-time host read, even if the wrapper
+  // returned an earlier selection alongside the claim.
+  return null;
 }

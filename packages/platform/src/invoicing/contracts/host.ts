@@ -12,8 +12,8 @@ import type { InvoiceStorePort } from "./store.js";
 export interface InvoiceHostPorts {
   facts: { read(orderId: string): Promise<{ readonly kind: "found"; readonly facts: InvoiceFacts } | { readonly kind: "unknown"; readonly code: "missing_facts" } | InvoiceUnsupported> };
   /** Read the current host seller for the next claim, never per duty. Null orderId
-   * means an unscoped claim (including corrections). P8 freezes this seller at
-   * first claim; revisionRef feeds the claim wrapper's revision argument.
+   * means an unscoped claim (including corrections). The durable wrapper freezes this seller at
+   * the first-ever claim; revisionRef feeds the claim wrapper's revision argument.
    */
   seller: { read(input: { readonly orderId: string | null }): Promise<{ readonly kind: "found"; readonly seller: InvoiceSeller; readonly revisionRef: string } | { readonly kind: "unknown"; readonly code: "unknown" } | InvoiceUnsupported> };
   /** Read-only projection of the final claimed M07 identity, never a refund writer.
@@ -71,8 +71,7 @@ export interface InvoiceHostPorts {
     resolveDownload(input: { readonly accountRef: string; readonly orderId: string; readonly documentRef: string }): Promise<{ readonly kind: "authorized"; readonly identity: InvoiceDocumentIdentity; readonly artifactRef: string; readonly fileName: string; readonly parentDocumentRef: string | null } | { readonly kind: "denied" } | { readonly kind: "unknown"; readonly code: "unknown" } | InvoiceUnsupported>;
   };
 }
-/** Future service composition inputs only; no constructor, worker or runtime route
- * is supplied in P1. Closures/credentials must never be serialized with options.
+/** Explicit service composition inputs; the host retains worker and route authority. Closures/credentials must never be serialized with options.
  */
 export interface InvoiceServicesOptions {
   readonly enabled?: boolean;

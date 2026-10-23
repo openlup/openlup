@@ -2,6 +2,8 @@ import { expect, it, vi } from "vitest";
 import { createPostgresInvoiceStore, INVOICING_MIGRATIONS, runNativeInvoiceIssueJob } from "../../src/invoicing/index.js";
 import type { InvoiceFacts, InvoiceProviderPort, InvoiceStorePort } from "../../src/invoicing/contracts/index.js";
 
+const selectedSeller = { name: "Seller", address: { line1: "Example", postalCode: "00000", city: "Example" }, taxIdentifier: { scheme: "host", value: "synthetic" }, bankAccount: null, routingRef: null };
+const seller = { read: async () => ({ kind: "found" as const, seller: selectedSeller, revisionRef: "seller-v1" }) };
 type Claim = Parameters<InvoiceStorePort["preflight"]>[0]["claim"];
 const facts: InvoiceFacts = {
   factRevision: "facts-a", policyVersion: "host-v1", refs: { orderId: "order-a", orderRef: "ORDER/A", invoiceRef: "INVOICE/A" },
@@ -12,14 +14,14 @@ const facts: InvoiceFacts = {
   lines: [{ description: "Saved item", quantity: 1, unitNetMinor: 750, unitGrossMinor: 900, totalNetMinor: 750, totalTaxMinor: 150, totalGrossMinor: 900, taxRateBps: 2000, positionKind: "item", catalogTotalGrossMinor: null, discountAllocatedMinor: null, shippingGrossMinor: null, shippingDiscountMinor: null }],
   totalNetMinor: 750, totalTaxMinor: 150, totalGrossMinor: 900, chargedTotalGrossMinor: 900,
 };
-const raw = { id: "duty-a", document_id: "document-a", request_id: "request-a", claim_token: "token-a", generation: 2, lease_until: "2026-10-22T12:00:00Z", parent_duty_id: null, provider: "host-a", original_key: "  Exact key  ", providerCreateIdentity: "invoicing:duty-a", facts, last_result: { action: "readback" } };
+const raw = { id: "duty-a", document_id: "document-a", request_id: "request-a", claim_token: "token-a", generation: 2, lease_until: "2026-10-22T12:00:00Z", parent_duty_id: null, provider: "host-a", original_key: "  Exact key  ", providerCreateIdentity: "invoicing:duty-a", seller: selectedSeller, sellerRevision: "seller-v1", sellerMode: "frozen", facts, last_result: { action: "readback" } };
 it("maps the native lease, exact identity and facts, split transactions, preflight and fenced results without a driver dependency", async () => {
   const query = vi.fn(async (_sql: string, _values?: unknown[]): Promise<{ rows: Record<string, unknown>[] }> => ({ rows: [{ response: { kind: "ready" } }] }));
-  const store = createPostgresInvoiceStore({ query });
+  const store = createPostgresInvoiceStore({ query }, { seller });
   query.mockResolvedValueOnce({ rows: [{ facts }] }).mockResolvedValueOnce({ rows: [{ response: [raw] }] });
   const claims = await store.claim({ limit: 1, visibilitySeconds: 300, providerRef: "host-a", orderId: "order-a" });
   expect(Array.isArray(claims)).toBe(true); const claim = (claims as readonly Claim[])[0]!;
-  expect(query).toHaveBeenLastCalledWith(expect.stringContaining("invoicing_claim_duties($1,$2,$3,$4)"), [1,300,"host-a","order-a"]);
+  expect(query).toHaveBeenLastCalledWith(expect.stringContaining("invoicing_claim_with_seller($1,$2,$3,$4,$5,$6)"), [1,300,"host-a",selectedSeller,"seller-v1","order-a"]);
   expect(claim).toMatchObject({ dutyId: "duty-a", documentId: "document-a", token: "token-a", generation: 2, action: "readback", facts, correction: null });
   expect(claim.identity).toEqual({ providerRef: "host-a", requestKey: "  Exact key  ", providerCreateIdentity: "invoicing:duty-a",
     factRevision: "facts-a", orderRef: "ORDER/A", invoiceRef: "INVOICE/A", operation: "issue", correctionRef: null, parentProviderDocumentRef: null });
@@ -38,12 +40,12 @@ it("maps the native lease, exact identity and facts, split transactions, preflig
   expect(await store.fail({ claim, kind: "unknown", proof: null, retrySeconds: 0 })).toEqual({ kind: "recorded" });
   expect(INVOICING_MIGRATIONS.native.correctionStorage).toBe("child_document");
   expect(INVOICING_MIGRATIONS.managed.correctionStorage).toBe("base_row");
-  expect(INVOICING_MIGRATIONS.native.units).toHaveLength(6);
+  expect(INVOICING_MIGRATIONS.native.units).toHaveLength(7);
   expect(query.mock.calls.flatMap(c => c[0])).not.toEqual(expect.arrayContaining(["BEGIN", "COMMIT"]));
 });
 it("refuses missing host facts, unsafe money and mismatched recovery before writes; leaves duty reads and local-only requests distinct", async () => {
   const query = vi.fn(async (_sql: string, _values?: unknown[]): Promise<{ rows: Record<string, unknown>[] }> => ({ rows: [] }));
-  const store = createPostgresInvoiceStore({ query });
+  const store = createPostgresInvoiceStore({ query }, { seller });
   for (const invalid of [null, {}, { ...facts, payment: { ...facts.payment, currency: null } }, { ...facts, factRevision: 4 }, { ...facts, lines: [null] }, { ...facts, documentKind: "" }, { ...facts, lines: [{ ...facts.lines[0], taxRateBps: 50000 }] }, { ...facts, totalTaxMinor: 151 }]) {
     expect(await store.installFacts({ dutyId: "owed-a", facts: invalid as InvoiceFacts })).toMatchObject({ kind: "unsupported", effectMayHaveSucceeded: false });
   }
@@ -70,10 +72,10 @@ it("binds capture duty and fact installation to the exact native SQL argument or
   const evidence = { settlementIntentId: sourceId, amountMinor: 900, currency: "XXX" };
   const occurredAt = "2026-10-21T12:34:56Z";
   const query = vi.fn(async (_sql: string, _values?: unknown[]) => ({ rows: [{ response: { dutyId, status: "owed" } }] }));
-  const store = createPostgresInvoiceStore({ query });
+  const store = createPostgresInvoiceStore({ query }, { seller });
   expect(await store.captureDuty({ requestKey: " exact capture key ", sourceKind: "paid", sourceId, orderId, evidence, occurredAt })).toEqual({ dutyId, status: "owed" });
   expect(query).toHaveBeenLastCalledWith(
-    "SELECT public.invoicing_capture_duty($1,$2,$3,$4,$5,$6) AS response",
+    "SELECT public.invoicing_request_with_seller_policy($1,$2,$3,$4,$5,$6) AS response",
     [" exact capture key ", "paid", sourceId, orderId, evidence, occurredAt],
   );
   expect(await store.installFacts({ dutyId, facts })).toEqual({ dutyId, status: "owed" });
@@ -86,20 +88,20 @@ it.each(["missing", "voided", "pending_readback", "correction_requested", "unsup
   "preserves the native reversal %s result and binds key/order/reason/proof in order", async kind => {
     const response = { kind, dutyId: "10000000-0000-4000-8000-000000000001", replayed: true };
     const query = vi.fn(async (_sql: string, _values?: unknown[]) => ({ rows: [{ response }] }));
-    const store = createPostgresInvoiceStore({ query });
+    const store = createPostgresInvoiceStore({ query }, { seller });
     const orderId = "30000000-0000-4000-8000-000000000003";
     expect(await store.requestReversal({ requestKey: " exact reversal key ", orderId, reason: "order_refunded", proof }))
       .toEqual({ ...response, kind: kind === "unsupported" ? "unsupported_recorded" : kind });
     expect(query).toHaveBeenCalledExactlyOnceWith(
-      "SELECT public.invoicing_request_reversal($1,$2,$3,$4) AS response",
-      [" exact reversal key ", orderId, "order_refunded", proof],
+      "SELECT public.invoicing_request_with_seller_policy($1,$2,$3,$4,$5,$6) AS response",
+      [" exact reversal key ", "correction", null, orderId, { ...proof, reason: "order_refunded" }, null],
     );
   },
 );
 it.each(["unknown", "blocked", "unsupported", "retryable", "absent"] as const)(
   "binds native fail %s to duty/token/generation/kind/evidence/delay", async kind => {
     const query = vi.fn(async (_sql: string, _values?: unknown[]) => ({ rows: [{ response: { kind: "unknown" } }] }));
-    const store = createPostgresInvoiceStore({ query });
+    const store = createPostgresInvoiceStore({ query }, { seller });
     const { claim } = issueFixture();
     const absence = { exact: true as const, complete: true as const, scope: claim.identity, ...proof };
     const result = await store.fail(kind === "absent"
@@ -278,7 +280,7 @@ it("maps a native correction claim to the full parent identity and zero-after co
   query.mockResolvedValueOnce({ rows: [{ facts: correctionFacts }] }).mockResolvedValueOnce({ rows: [{ response: [
     { ...raw, parent_duty_id: "parent-duty-a", facts: correctionFacts },
   ] }] });
-  const claims = await createPostgresInvoiceStore({ query }).claim({ limit: 1, visibilitySeconds: 300, providerRef: "host-a" });
+  const claims = await createPostgresInvoiceStore({ query }, { seller }).claim({ limit: 1, visibilitySeconds: 300, providerRef: "host-a" });
   expect(Array.isArray(claims)).toBe(true);
   const claim = (claims as readonly Claim[])[0]!;
   expect(claim.correction).toEqual({ before: facts, reason: "order_refunded", after: { totalNetMinor: 0, totalTaxMinor: 0, totalGrossMinor: 0 } });
@@ -332,16 +334,16 @@ it.each([1, 2, 3, 4])("native issue generation %s preserves the recovery boundar
 it("preserves every lease field, empty batches, exact claim filters and nullable order binding", async () => {
   const query = vi.fn(async (_sql: string, _values?: unknown[]): Promise<{ rows: Record<string, unknown>[] }> => ({ rows: [{ response: [raw] }] }));
   query.mockResolvedValueOnce({ rows: [] });
-  const claims = await createPostgresInvoiceStore({ query }).claim({ limit: 7, visibilitySeconds: 91, providerRef: "host-a" });
+  const claims = await createPostgresInvoiceStore({ query }, { seller }).claim({ limit: 7, visibilitySeconds: 91, providerRef: "host-a" });
   expect(claims).toEqual([{ dutyId: raw.id, documentId: raw.document_id, requestId: raw.request_id, token: raw.claim_token,
-    generation: 2, leaseUntil: raw.lease_until, facts, identity: {
+    generation: 2, leaseUntil: raw.lease_until, facts: { ...facts, seller: selectedSeller, sellerRevision: "seller-v1", sellerMode: "frozen" }, identity: {
       ...issueFixture().claim.identity, requestKey: raw.original_key }, action: "readback", correction: null }]);
   expect(query.mock.calls[0]).toEqual([`SELECT f.facts FROM public.invoicing_duties d
         JOIN public.invoicing_fact_revisions f ON f.duty_id=d.id
         WHERE ($1::uuid IS NULL OR d.order_id=$1) AND (d.provider IS NULL OR d.provider=$2)
           AND d.status IN ('ready','processing','unknown') AND d.available_at<=now()
           AND (d.status<>'processing' OR d.lease_until<=now())`, [null, "host-a"]]);
-  expect(query.mock.calls[1]).toEqual(["SELECT public.invoicing_claim_duties($1,$2,$3,$4) AS response", [7, 91, "host-a", null]]);
+  expect(query.mock.calls[1]).toEqual(["SELECT public.invoicing_claim_with_seller($1,$2,$3,$4,$5,$6) AS response", [7, 91, "host-a", selectedSeller, "seller-v1", null]]);
 });
 
 const invalidFactCases: readonly (readonly [string, (value: Record<string, unknown>) => void])[] = [
@@ -383,7 +385,7 @@ const invalidFactCases: readonly (readonly [string, (value: Record<string, unkno
 it.each(invalidFactCases)("refuses invalid fiscal projection %s before install and lease writes", async (_name, mutate) => {
   const invalid = structuredClone(facts) as unknown as Record<string, unknown>; mutate(invalid);
   const query = vi.fn(async (_sql: string, _values?: unknown[]): Promise<{ rows: Record<string, unknown>[] }> => ({ rows: [{ response: [] }] }));
-  const store = createPostgresInvoiceStore({ query });
+  const store = createPostgresInvoiceStore({ query }, { seller });
   await expect(store.installFacts({ dutyId: "duty-a", facts: invalid as unknown as InvoiceFacts })).resolves.toEqual({ kind: "unsupported", code: "host_binding_required", retryable: false, effectMayHaveSucceeded: false });
   expect(query).not.toHaveBeenCalled();
   query.mockResolvedValueOnce({ rows: [{ facts: invalid }] });
@@ -401,7 +403,7 @@ it("accepts multiple fiscal lines, tax endpoints and both clearance values witho
 });
 it.each(["providerRef", "requestKey", "providerCreateIdentity", "factRevision", "orderRef", "invoiceRef", "operation", "correctionRef", "parentProviderDocumentRef"] as const)("fences finish and both absence identities on %s", async key => {
   const claim = issueFixture().claim, foreign = { ...claim.identity, [key]: "foreign" };
-  const query = vi.fn(async () => ({ rows: [{ response: { kind: "recorded" } }] })); const store = createPostgresInvoiceStore({ query });
+  const query = vi.fn(async () => ({ rows: [{ response: { kind: "recorded" } }] })); const store = createPostgresInvoiceStore({ query }, { seller });
   expect(await store.finish({ claim, result: { kind: "found", identity: foreign, providerDocumentRef: "remote", providerDocumentNumber: null, proof } })).toMatchObject({ kind: "unsupported" });
   for (const identity of [foreign, claim.identity]) {
     expect(await store.fail({ claim, kind: "absent", retrySeconds: 23, evidence: { kind: "absent", identity,
@@ -421,7 +423,7 @@ it.each([
 });
 it("binds sweep, prepare/finish facts and duty reads and preserves missing RPC response refusal", async () => {
   const response = { status: "ready", requestId: "req-a", documentId: "doc-a" };
-  const query = vi.fn(async (_sql: string, _values?: unknown[]): Promise<{ rows: Record<string, unknown>[] }> => ({ rows: [{ response }] })); const store = createPostgresInvoiceStore({ query });
+  const query = vi.fn(async (_sql: string, _values?: unknown[]): Promise<{ rows: Record<string, unknown>[] }> => ({ rows: [{ response }] })); const store = createPostgresInvoiceStore({ query }, { seller });
   expect(await store.sweep(37)).toEqual(response); expect(query).toHaveBeenLastCalledWith("SELECT public.invoicing_sweep_duties($1) AS response", [37]);
   for (const kind of [undefined, "retryable", "legacy_facts_unproved"] as const) {
     query.mockResolvedValueOnce({ rows: [{ response: { ...response, ...(kind ? { kind } : {}) } }] });
@@ -543,7 +545,7 @@ it("native mixed batch counts every duty and continues after a failure", async (
 
 it("emits the bounded discovery and incumbent paid-order snapshot SQL contracts", async () => {
   const query = vi.fn(async (_sql: string, _values?: unknown[]): Promise<{ rows: Record<string, unknown>[] }> => ({ rows: [] }));
-  const store = createPostgresInvoiceStore({ query });
+  const store = createPostgresInvoiceStore({ query }, { seller });
   expect(await store.discoverDuties(11, "cursor-a")).toEqual([]);
   expect(query).toHaveBeenLastCalledWith(`SELECT d.id AS "dutyId", d.order_id AS "orderId"
         FROM public.invoicing_duties d
@@ -601,9 +603,9 @@ it("preserves create action and distinct identifiers in a second native lease", 
     lease_until: "2026-10-23T14:00:00Z", original_key: "second-key", providerCreateIdentity: "invoicing:duty-b", last_result: { action: "create" } };
   const query = vi.fn(async (_sql: string, _values?: unknown[]): Promise<{ rows: Record<string, unknown>[] }> => ({ rows: [{ response: [row] }] }));
   query.mockResolvedValueOnce({ rows: [{ facts }] });
-  expect(await createPostgresInvoiceStore({ query }).claim({ limit: 2, visibilitySeconds: 90, providerRef: "host-a" })).toEqual([
+  expect(await createPostgresInvoiceStore({ query }, { seller }).claim({ limit: 2, visibilitySeconds: 90, providerRef: "host-a" })).toEqual([
     { dutyId: "duty-b", documentId: "document-b", requestId: "request-b", token: "token-b", generation: 7, leaseUntil: row.lease_until,
-      facts, action: "create", correction: null, identity: { ...issueFixture().claim.identity, requestKey: "second-key", providerCreateIdentity: "invoicing:duty-b" } },
+      facts: { ...facts, seller: selectedSeller, sellerRevision: "seller-v1", sellerMode: "frozen" }, action: "create", correction: null, identity: { ...issueFixture().claim.identity, requestKey: "second-key", providerCreateIdentity: "invoicing:duty-b" } },
   ]);
 });
 it.each(["fresh money", "correction", "finish"] as const)("native thrown %s respects the remote boundary", async phase => {

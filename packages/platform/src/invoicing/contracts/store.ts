@@ -1,5 +1,5 @@
 import type { InvoiceHostPorts } from "./host.js";
-import type { InvoiceFacts } from "./facts.js";
+import type { InvoiceFacts, InvoiceClaimedFacts } from "./facts.js";
 import type { InvoiceIdentity, InvoiceDocumentIdentity, InvoiceProof, InvoiceUnsupported, InvoiceWriteResult, InvoiceReadbackResult } from "./provider.js";
 import type { InvoiceClearanceObservation, InvoiceArtifactResult, InvoiceDeliveryPort } from "./delivery.js";
 type InvoiceDutyStatus = "owed" | "blocked" | "ready" | "processing" | "unknown" | "issued" | "voided" | "unsupported" | "faulted";
@@ -14,7 +14,7 @@ export interface InvoiceClaim {
   readonly generation: number;
   readonly leaseUntil: string;
   readonly identity: InvoiceIdentity;
-  readonly facts: InvoiceFacts;
+  readonly facts: InvoiceClaimedFacts;
   readonly action: "create" | "readback";
   readonly correction: { readonly before: InvoiceFacts; readonly reason: string; readonly after: { readonly totalNetMinor: 0; readonly totalTaxMinor: 0; readonly totalGrossMinor: 0 } } | null;
 }
@@ -48,7 +48,7 @@ export interface InvoiceStorePort {
   /** Never call inside a renewal money, dunning or dispatch transaction without
    * isolation: capture failure must not propagate; the sweep recovers.
    */
-  captureDuty(input: { readonly requestKey: string; readonly sourceKind: "paid" | "handoff"; readonly sourceId: string; readonly orderId: string; readonly occurredAt: string; readonly evidence: { readonly settlementIntentId: string; readonly amountMinor: number; readonly currency: string } | { readonly shipmentId: string; readonly handedOverAt: string } }): Promise<{ readonly dutyId: string; readonly status: InvoiceDutyStatus } | InvoiceUnsupported>;
+  captureDuty(input: { readonly requestKey: string; readonly sourceKind: "paid" | "handoff"; readonly sourceId: string; readonly orderId: string; readonly occurredAt: string; readonly evidence: { readonly settlementIntentId: string; readonly amountMinor: number; readonly currency: string } | { readonly shipmentId: string; readonly handedOverAt: string } }): Promise<{ readonly dutyId: string; readonly status: InvoiceDutyStatus } | { readonly kind: "conflict"; readonly code: "identity_mismatch" } | InvoiceUnsupported>;
   installFacts(input: { readonly dutyId: string; readonly facts: InvoiceFacts }): Promise<{ readonly dutyId: string; readonly status: InvoiceDutyStatus; readonly replayed?: boolean } | InvoiceUnsupported>;
   /** Pinned split facts lease: sweep and prepare commit separately; finishing
    * requires the same token and authoritative document/fact match. No host I/O
@@ -81,7 +81,7 @@ export interface InvoiceStorePort {
    * Missing means no M09 duty, never invoice absence: retain/retry the reversal
    * intent and route legacy documents to the incumbent path.
    */
-  requestReversal(input: { readonly requestKey: string; readonly orderId: string; readonly reason: "order_canceled" | "order_refunded"; readonly proof: InvoiceProof }): Promise<{ readonly kind: "missing" | "voided" | "pending_readback" | "correction_requested"; readonly dutyId?: string; readonly replayed?: boolean } | { readonly kind: "unsupported_recorded"; readonly dutyId?: string; readonly replayed?: boolean } | InvoiceUnsupported>;
+  requestReversal(input: { readonly requestKey: string; readonly orderId: string; readonly reason: "order_canceled" | "order_refunded"; readonly proof: InvoiceProof }): Promise<{ readonly kind: "missing" | "voided" | "pending_readback" | "correction_requested"; readonly dutyId?: string; readonly replayed?: boolean } | { readonly kind: "unsupported_recorded"; readonly dutyId?: string; readonly replayed?: boolean } | { readonly kind: "conflict"; readonly code: "identity_mismatch" } | InvoiceUnsupported>;
   /** Existing local-only request remains distinct from fiscal issuance. */
   requestLocalDocument(input: { readonly requestKey: string; readonly orderId: string; readonly providerRef: string }): Promise<{ readonly kind: "requested"; readonly documentId: string; readonly invoiceRef: string; readonly status: string; readonly replayed: boolean } | InvoiceUnsupported>;
   listClearanceTargets(limit: number): Promise<readonly { readonly documentId: string; readonly identity: InvoiceDocumentIdentity; readonly providerDocumentRef: string; readonly providerDocumentNumber: string | null; readonly state: InvoiceClearanceObservation["state"] }[] | InvoiceUnsupported>;

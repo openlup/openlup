@@ -1,5 +1,9 @@
+import { claimInvoiceSellerRevision } from "@openlup/platform/invoicing";
+import type { InvoiceSellerRevision } from "@openlup/platform/invoicing/contracts";
+import type { AccountingSellerConfig } from "../../../src/domains/accounting/invoiceContracts.js";
 import {
   AccountingInvoicePersistenceError,
+  AccountingControlConflictError,
   type AccountingCorrectionScaffoldPort,
   type AccountingCorrectionOutboxTarget,
   type AccountingInvoiceDeliveryTarget,
@@ -23,15 +27,23 @@ interface RpcError {
 }
 export function createSupabaseAccountingInvoicePort(
   client: AccountingSupabaseClient,
-): AccountingInvoiceIssuePort & AccountingInvoiceRuntimePort & AccountingCorrectionScaffoldPort {
+  options: { readSeller?: () => Promise<({ readonly kind: "found" } & InvoiceSellerRevision<AccountingSellerConfig>) | { readonly kind: "unknown"; readonly code: "unknown" } | { readonly kind: "unsupported"; readonly code: "host_binding_required"; readonly retryable: false; readonly effectMayHaveSucceeded: false }> } = {},
+): AccountingInvoiceIssuePort & Omit<AccountingInvoiceRuntimePort, "claimInvoiceCorrections"> & AccountingCorrectionScaffoldPort & {
+  claimInvoiceCorrections(limit: number, options?: { orderId?: string | null }): Promise<AccountingCorrectionOutboxTarget[]>;
+} {
+  async function sellerSelection() {
+    if (!options.readSeller) throw new AccountingInvoicePersistenceError("Accounting seller selection required", "seller_unavailable");
+    const selected = await claimInvoiceSellerRevision(options.readSeller);
+    if (selected.kind !== "found") throw new AccountingInvoicePersistenceError("Accounting seller selection unavailable", selected.kind);
+    return selected;
+  }
   return {
     async requestInvoiceIssueFromFulfillmentHandoff(
       request: AccountingInvoiceIssueRequest,
     ): Promise<AccountingInvoiceIssueResponse> {
-      const { data, error } = await client.rpc("accounting_invoice_issue_request_from_handoff", {
-        p_idempotency_key: request.idempotencyKey,
-        p_fulfillment_order_id: request.fulfillmentOrderId,
-        p_provider_kind: request.providerKind,
+      const { data, error } = await client.rpc("invoicing_managed_request_with_seller_policy", {
+        p_key: request.idempotencyKey, p_source_kind: "handoff", p_source_id: request.fulfillmentOrderId,
+        p_provider: request.providerKind, p_evidence: {},
       });
       if (error) {
         throw new AccountingInvoicePersistenceError("Accounting invoice issue request failed", error.code, error.message);
@@ -40,10 +52,9 @@ export function createSupabaseAccountingInvoicePort(
     },
 
     async requestInvoiceIssueFromPaidOrder(request): Promise<AccountingInvoiceIssueResponse> {
-      const { data, error } = await client.rpc("accounting_invoice_issue_request_from_paid_order", {
-        p_idempotency_key: request.idempotencyKey,
-        p_order_id: request.orderId,
-        p_provider_kind: request.providerKind,
+      const { data, error } = await client.rpc("invoicing_managed_request_with_seller_policy", {
+        p_key: request.idempotencyKey, p_source_kind: "paid", p_source_id: request.orderId,
+        p_provider: request.providerKind, p_evidence: {},
       });
       if (error) {
         throw new AccountingInvoicePersistenceError("Accounting paid invoice issue request failed", error.code, error.message);
@@ -55,11 +66,10 @@ export function createSupabaseAccountingInvoicePort(
       limit: number,
       options: { orderId?: string | null } = {},
     ): Promise<ClaimedAccountingInvoiceIssue[]> {
-      const { data, error } = await client.rpc("accounting_invoice_issue_outbox_claim", {
-        p_limit: limit,
-        p_lease_seconds: 300,
-        p_order_id: options.orderId ?? null,
-        p_contract_version: "accounting.issue.v2",
+      const selected = await sellerSelection();
+      const { data, error } = await client.rpc("invoicing_managed_claim_with_seller", {
+        p_limit: limit, p_order: options.orderId ?? null,
+        p_seller: selected.seller, p_revision: selected.revisionRef,
       });
       if (error) throw new AccountingInvoicePersistenceError("Accounting invoice issue claim failed", error.code);
       return asArray<ClaimedAccountingInvoiceIssue>(data);
@@ -228,33 +238,32 @@ export function createSupabaseAccountingInvoicePort(
     },
 
     async requestCorrectionScaffold(input) {
-      const { data, error } = await client.rpc("accounting_invoice_request_correction_scaffold", {
-        p_invoice_id: input.invoiceId,
-        p_reason: input.reason,
-        p_payload: input.payload,
-        p_provider_kind: input.providerKind,
+      const { data, error } = await client.rpc("invoicing_managed_request_with_seller_policy", {
+        p_key: `accounting-correction:${input.invoiceId}:${input.reason}`, p_source_kind: "correction",
+        p_source_id: input.invoiceId, p_provider: input.providerKind,
+        p_evidence: { ...input.payload, reason: input.reason },
       });
+      if (error?.code === "23505") throw new AccountingControlConflictError("Accounting correction request conflict", { code: "identity_mismatch" });
       if (error) throw new AccountingInvoicePersistenceError("Accounting correction scaffold failed", error.code);
       return data as { correctionOutbox: { id: string; invoiceId: string; status: string } };
     },
 
     async requestInvoiceReversalFromOrderStatus(input) {
-      const { data, error } = await client.rpc("accounting_invoice_request_reversal_from_order_status", {
-        p_idempotency_key: input.idempotencyKey,
-        p_order_id: input.orderId,
-        p_reason: input.reason,
-        p_payload: input.payload ?? {},
-        p_provider_kind: input.providerKind,
+      const { data, error } = await client.rpc("invoicing_managed_request_with_seller_policy", {
+        p_key: input.idempotencyKey, p_source_kind: "order_status_reversal",
+        p_source_id: input.orderId, p_provider: input.providerKind,
+        p_evidence: { reason: input.reason, payload: input.payload ?? {} },
       });
       if (error) throw new AccountingInvoicePersistenceError("Accounting invoice reversal failed", error.code);
       return data as { invoice: { id: string; status: string; providerInvoiceId: string | null } | null; action: string; replayed: boolean };
     },
 
-    async claimInvoiceCorrections(limit: number): Promise<AccountingCorrectionOutboxTarget[]> {
-      const { data, error } = await client.rpc("accounting_invoice_correction_outbox_claim", {
-        p_limit: limit,
-        p_lease_seconds: 300,
-        p_contract_version: "accounting.correction.v2",
+    async claimInvoiceCorrections(limit: number, options: { orderId?: string | null } = {}): Promise<AccountingCorrectionOutboxTarget[]> {
+      // The pinned correction wrapper has no order filter. Refuse before any lease.
+      if (options.orderId) throw new AccountingInvoicePersistenceError("Order-scoped corrections unsupported", "unsupported");
+      const selected = await sellerSelection();
+      const { data, error } = await client.rpc("invoicing_managed_claim_corrections_with_seller", {
+        p_limit: limit, p_seller: selected.seller, p_revision: selected.revisionRef,
       });
       if (error) throw new AccountingInvoicePersistenceError("Accounting correction claim failed", error.code);
       return asArray<AccountingCorrectionOutboxTarget>(data);

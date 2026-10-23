@@ -502,7 +502,9 @@
         "test/invoicing/delivery.test.ts",
         "test/invoicing/readback.test.ts",
         "test/invoicing/settlementSync.test.ts",
-        "test/invoicing/readModel.test.ts"
+        "test/invoicing/readModel.test.ts",
+        "test/invoicing/bindings.test.ts",
+        "test/invoicing/sellerRevision.test.ts"
       ],
       "entrypoint": "dist/invoicing/index.d.ts",
       "snapshot": "api/invoicing.api.md"

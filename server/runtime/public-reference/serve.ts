@@ -1,3 +1,4 @@
+import type { createM09InvoicingReferenceBinding } from "./m09InvoicingBinding.js";
 import type { CommunicationsReferenceMount } from "./communications.js";
 import { readCustomerRouteEnv } from "../../bff/customers/shared.js";
 import { enforceDeploymentRoutePolicy } from "#deployment-route-policy";
@@ -46,6 +47,8 @@ export type PublicReferenceServerOptions = {
   distDir?: string;
   env?: NodeJS.ProcessEnv;
   communications?: CommunicationsReferenceMount;
+  /** Inert host admission seam; no invoice routes, cron or worker are mounted. */
+  invoicing?: Pick<ReturnType<typeof createM09InvoicingReferenceBinding>, "readiness">;
   identity?: ReferenceIdentityAdmission & { profile?: IdentityReferenceProfile; authOrigin?: string };
 };
 
@@ -232,6 +235,7 @@ export async function startPublicReferenceServer(options: PublicReferenceServerO
   port?: number;
   host?: string;
 } = {}) {
+  if (options.invoicing && (await options.invoicing.readiness()).kind !== "ready") throw new Error("Public reference invoicing readiness refused before listener");
   const communicationsSelected=(options.env??runtimeEnvironment).OPENLUP_REFERENCE_PROFILE==="communications";
   if(communicationsSelected&&!options.communications)throw new Error("Communications reference requires startup admission");
   if(options.communications){

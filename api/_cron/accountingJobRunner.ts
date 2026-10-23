@@ -17,6 +17,7 @@ export async function runAccountingCron(
   kind: AccountingCronKind,
   env: Env = process.env,
   gatewayFactory?: AccountingGatewayFactory,
+  invoicing?: Parameters<typeof runAccountingRuntimeOnce>[0]["invoicing"],
 ): Promise<{ status: number; body: Record<string, unknown> }> {
   const methodAllowed = kind === "ksef-status"
     ? req.method === "GET"
@@ -46,6 +47,7 @@ export async function runAccountingCron(
     kind,
     env,
     gatewayFactory,
+    invoicing,
     context: {
       triggerKind: "scheduler",
       invocationSource: "authenticated_http_scheduler",

@@ -1,6 +1,7 @@
+import { runPostgresContainer, waitForPostgresTcpReady } from "../helpers/postgresContainer.js";
 import { randomUUID } from "node:crypto";
-import { readFileSync } from "node:fs";
-import type { Pool, PoolClient } from "pg";
+import { readFileSync, readdirSync } from "node:fs";
+import { Pool, type PoolClient } from "pg";
 import { afterAll, afterEach, beforeAll, beforeEach, expect, it } from "vitest";
 import { createPostgresInvoiceStore, INVOICING_MIGRATIONS, runNativeInvoiceIssueJob } from "@openlup/platform/invoicing";
 import { createPostgresPaymentTruthPort } from "@openlup/platform/payments";
@@ -136,7 +137,7 @@ it("fresh complete install and exact pre-M09 prefix upgrade preserve rows/histor
   } finally {await writer.query("ROLLBACK");await seed.query("ROLLBACK");writer.release();seed.release();}
 
   const routines=(await h.pool.query("SELECT oid,prosecdef,proconfig,proacl FROM pg_proc WHERE pronamespace='public'::regnamespace AND proname LIKE 'invoicing_%'")).rows;
-  expect(routines.length).toBe(15);
+  expect(routines.length).toBe(17);
   for(const routine of routines) {
     expect(routine.prosecdef).toBe(false);expect(routine.proconfig).toEqual(["search_path=pg_catalog"]);
     expect((await h.pool.query("SELECT has_function_privilege('anon',$1::oid,'EXECUTE') anon,has_function_privilege('authenticated',$1::oid,'EXECUTE') authenticated",[routine.oid])).rows).toEqual([{anon:false,authenticated:false}]);
@@ -429,7 +430,7 @@ it("incumbent claimer cannot see M09 pending, expired processing, failed or corr
   const localFirst=await localPort.requestInvoiceIssueFromPaidOrder(localRequest);
   expect(await localPort.requestInvoiceIssueFromPaidOrder(localRequest)).toEqual({invoice:{...localFirst.invoice,replayed:true}});
   expect((await h.pool.query("SELECT tax_rate_bps FROM public.accounting_document_positions WHERE document_id=$1",[localFirst.invoice.id])).rows).toEqual([{tax_rate_bps:0}]);
-  const actual=await duty(), native=createPostgresInvoiceStore(executor(h.pool));
+  const actual=await duty(), native=createPostgresInvoiceStore(executor(h.pool), { seller: { read: async () => ({ kind: "found", seller: sellerFacts, revisionRef: "first" }) } });
   const claims=await native.claim({limit:1,visibilitySeconds:300,providerRef:"fixture",orderId:actual.order});
   if(!Array.isArray(claims)||claims.length!==1)throw new Error("Native store claim missing");
   const selected=claims[0];expect(selected.identity.requestKey).toBe(`duty-${actual.order}`);
@@ -438,7 +439,7 @@ it("incumbent claimer cannot see M09 pending, expired processing, failed or corr
   expect(await native.finish({claim:selected,result:{kind:"issued",identity:selected.identity,providerDocumentRef:`actual-${actual.order}`,providerDocumentNumber:null,proof:remoteProof,replayed:false}})).toEqual({kind:"issued",replayed:false});
   // Native binding: readback -> absent -> create -> fresh mismatch must settle
   // blocked, rather than reclaiming the same mismatched create indefinitely.
-  const bound=await duty(), nativeStore=createPostgresInvoiceStore(executor(h.pool));
+  const bound=await duty(), nativeStore=createPostgresInvoiceStore(executor(h.pool), { seller: { read: async () => ({ kind: "found", seller: sellerFacts, revisionRef: "bound-first" }) } });
   const first=await claim(bound.duty);
   await rpc(h.pool,"invoicing_fail_duty",[first.id,first.claim_token,first.generation,"unknown",{},0]);
   const io: string[]=[];
@@ -474,4 +475,138 @@ it("incumbent claimer cannot see M09 pending, expired processing, failed or corr
   const child=await rpc(h.pool,"invoicing_request_reversal",[`incumbent-child-${base.order}`,base.order,"order_refunded",{}]);
   const childRequest=(await h.pool.query("SELECT request_id FROM public.invoicing_duties WHERE id=$1",[child.dutyId])).rows[0].request_id;
   expect((await h.pool.query("SELECT * FROM public.accounting_document_queue_claim(ARRAY['correction'],100,30,20)")).rows.map(row=>row.id)).not.toContain(childRequest);
+});
+
+// PART B: the existing shared native harness also owns the seller proof.
+const sellerFacts = { name: "First seller", address: { line1: "Example", postalCode: "00000", city: "Example" }, taxIdentifier: { scheme: "host", value: "synthetic" }, bankAccount: null, routingRef: null };
+it("O2 native first-claim race, retry reuse, correction independence, legacy fallback and rollback", async () => {
+  const f = await duty();
+  const raced = (await Promise.all([
+    rpc(h.pool, "invoicing_claim_with_seller", [1,300,"fixture",sellerFacts,"first",f.order]),
+    rpc(h.pool, "invoicing_claim_with_seller", [1,300,"fixture",{...sellerFacts,name:"Racer"},"racer",f.order]),
+  ])).flat();
+  expect(raced).toHaveLength(1); const first = raced[0];
+  expect(first.sellerMode).toBe("frozen");
+  await h.pool.query("UPDATE public.invoicing_duties SET lease_until=now()-interval '1 second' WHERE id=$1",[f.duty]);
+  const [retry] = await rpc(h.pool,"invoicing_claim_with_seller",[1,300,"fixture",{...sellerFacts,name:"Changed"},"changed",f.order]);
+  expect(retry).toMatchObject({seller:first.seller,sellerRevision:first.sellerRevision,sellerMode:"frozen",generation:2});
+  expect(retry.facts).toEqual(first.facts);
+  await finish(retry,`seller-parent-${f.order}`,"readback_found");
+  const store=createPostgresInvoiceStore(executor(h.pool), {seller:{read:async()=>({kind:"found",seller:sellerFacts,revisionRef:"correction-first"})}});
+  const correction=await store.requestReversal({requestKey:`seller-correction-${f.order}`,orderId:f.order,reason:"order_refunded",proof:{evidenceRef:"synthetic",fingerprint:"hash",observedAt:"2026-10-23"}});
+  expect(correction.kind).toBe("correction_requested");
+  const children=await store.claim({limit:1,visibilitySeconds:300,providerRef:"fixture",orderId:f.order});
+  expect(children).toHaveLength(1); if(!Array.isArray(children))throw Error("correction missing");
+  expect(children[0].facts).toMatchObject({seller:sellerFacts,sellerRevision:"correction-first",sellerMode:"frozen"});
+  const legacy=await duty();
+  await h.pool.query("UPDATE public.invoicing_duties SET seller_policy_version=NULL WHERE id=$1",[legacy.duty]);
+  const [old]=await rpc(h.pool,"invoicing_claim_with_seller",[1,300,"fixture",sellerFacts,"old",legacy.order]);
+  await h.pool.query("UPDATE public.invoicing_duties SET lease_until=now()-interval '1 second' WHERE id=$1",[legacy.duty]);
+  const [oldRetry]=await rpc(h.pool,"invoicing_claim_with_seller",[1,300,"fixture",{...sellerFacts,name:"Legacy changed"},"new",legacy.order]);
+  expect(old.sellerMode).toBe("legacy_fallback"); expect(oldRetry).toMatchObject({sellerRevision:"new",sellerMode:"legacy_fallback",seller:{name:"Legacy changed"}});
+  expect((await h.pool.query("SELECT * FROM public.invoicing_seller_revisions WHERE duty_id=$1",[legacy.duty])).rows).toEqual([]);
+  const rollback=await duty(), db=await h.pool.connect();
+  try {await db.query("BEGIN");await rpc(db,"invoicing_claim_with_seller",[1,300,"fixture",sellerFacts,"rolled-back",rollback.order]);await db.query("ROLLBACK");}
+  finally {await db.query("ROLLBACK");db.release();}
+  expect((await h.pool.query("SELECT * FROM public.invoicing_seller_revisions WHERE duty_id=$1",[rollback.duty])).rows).toEqual([]);
+  const [committed]=await rpc(h.pool,"invoicing_claim_with_seller",[1,300,"fixture",sellerFacts,"committed",rollback.order]);
+  expect(committed).toMatchObject({generation:1,sellerRevision:"committed",sellerMode:"frozen"});
+});
+
+it("O2 managed first-claim race, retry, legacy and rollback use the pinned wrappers on the managed graph",async()=>{
+  // Same owned container; a separate database preserves the distinct managed graph.
+  await h.pool.query("CREATE DATABASE m09_p7_managed");
+  const url=new URL(h.pool.options.connectionString!);url.pathname="/m09_p7_managed";
+  const managed=new Pool({connectionString:url.href});
+  try {
+    await managed.query(`DO $$ BEGIN IF NOT EXISTS(SELECT 1 FROM pg_roles WHERE rolname='service_role') THEN CREATE ROLE service_role; END IF; END $$;
+      CREATE SCHEMA auth; CREATE TABLE auth.users(id uuid PRIMARY KEY);
+      CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql AS $$ SELECT null::uuid $$;
+      CREATE FUNCTION auth.role() RETURNS text LANGUAGE sql AS $$ SELECT null::text $$;`);
+    await managed.query(readFileSync("scripts/public-reference/subscription-prereqs.sql","utf8"));
+    for(const name of readdirSync("supabase/migrations").filter(name=>name<="20261022195100_invoicing_seller_revision.sql").sort()) {
+      await managed.query(readFileSync(`supabase/migrations/${name}`,"utf8").replace(/^\\(?:un)?restrict .*$/gmu,""));
+    }
+    const seed=async(issue=false)=>{
+      const client=randomUUID(),order=randomUUID(),invoice=randomUUID(),address=randomUUID(),payment=randomUUID(),intent=randomUUID();
+      await managed.query("INSERT INTO public.clients(id,email) VALUES($1,$2)",[client,`${client}@example.invalid`]);
+      await managed.query("INSERT INTO public.addresses(id,client_id,kind,line1,city,postal_code,country) VALUES($1,$2,'both','Example','Example','00000','XX')",[address,client]);
+      await managed.query("INSERT INTO public.commerce_orders(id,client_id,order_number,status,currency,subtotal_cents,tax_cents,total_cents,shipping_address_id) VALUES($1,$2,$3,'paid','XTS',1080,80,1080,$4)",[order,client,order,address]);
+      await managed.query("INSERT INTO public.commerce_order_items(order_id,quantity,unit_price_cents,total_cents,discount_allocated_cents,effective_total_cents,effective_net_cents,vat_rate_bps,allocation_ordinal,product_snapshot) VALUES($1,1,1080,1080,0,1080,1000,800,1,'{\"name\":\"Saved item\"}')",[order]);
+      await managed.query("INSERT INTO public.commerce_payments(id,order_id,provider,status,amount_cents,currency) VALUES($1,$2,'test_provider','succeeded',1080,'XTS')",[payment,order]);
+      await managed.query("INSERT INTO public.commerce_payment_intents(id,target_kind,order_id,payment_id,status,amount_cents,currency) VALUES($1,'one_time_order',$2,$3,'succeeded',1080,'XTS')",[intent,order,payment]);
+      await managed.query(`INSERT INTO public.accounting_invoices(id,order_id,order_ref,invoice_ref,status,currency,buyer_snapshot,order_snapshot,tax_snapshot,lines_snapshot,total_net_cents,total_gross_cents,provider_kind,provider_invoice_id,document_kind,ksef_required,ksef_status,email_status,correction_status)
+        VALUES($1,$2,$3,$3,$4,'XTS','{"name":"Saved buyer"}','{}','{}','[{"name":"Saved item","quantity":1,"totalGrossMinor":1080,"vatRate":"8"}]',1000,1080,'test_provider',$5,'b2c_named',false,'not_required','sent','none')`,[invoice,order,`${order}:base`,issue?"issue_requested":"issued",issue?null:"parent"]);
+      return {client,order,invoice};
+    };
+    // Real issue claims use existing persisted facts and a v2 payment projection.
+    const issue=await seed(true);
+    await managed.query("DELETE FROM public.accounting_invoices WHERE id=$1",[issue.invoice]);
+    const requested=await rpc(managed,"invoicing_managed_request_with_seller_policy",["paid-seller-request","paid",issue.order,"test_provider",{}]);
+    const outbox=(await managed.query("SELECT id FROM public.accounting_invoice_issue_outbox WHERE invoice_id=$1",[requested.invoice.id])).rows[0].id;
+    expect((await managed.query("SELECT obligation_id FROM public.invoicing_managed_seller_revisions WHERE obligation_kind='issue' AND obligation_id=$1",[outbox])).rows).toEqual([{obligation_id:outbox}]);
+    const race=(await Promise.all([rpc(managed,"invoicing_managed_claim_with_seller",[1,issue.order,sellerFacts,"first"]),rpc(managed,"invoicing_managed_claim_with_seller",[1,issue.order,{...sellerFacts,name:"Racer"},"racer"])])).flat();
+    expect(race).toHaveLength(1);
+    await managed.query("UPDATE public.accounting_invoice_issue_outbox SET next_attempt_at=now()-interval '1 second' WHERE id=$1",[outbox]);
+    const [issueRetry]=await rpc(managed,"invoicing_managed_claim_with_seller",[1,issue.order,{...sellerFacts,name:"Changed"},"changed"]);
+    expect(issueRetry).toMatchObject({seller:race[0].seller,sellerRevision:race[0].sellerRevision,sellerMode:"frozen",attemptCount:2});
+    const parent=await seed();
+    const request=await rpc(managed,"invoicing_managed_request_with_seller_policy",["correction-request","correction",parent.invoice,"test_provider",{reason:"order_refunded"}]);
+    const correctionId=request.correctionOutbox.id;
+    const corrections=(await Promise.all([rpc(managed,"invoicing_managed_claim_corrections_with_seller",[1,sellerFacts,"correction-first"]),rpc(managed,"invoicing_managed_claim_corrections_with_seller",[1,{...sellerFacts,name:"Racer"},"correction-racer"])])).flat();
+    expect(corrections).toHaveLength(1);expect(corrections[0]).toMatchObject({outboxId:correctionId,sellerMode:"frozen"});
+    await managed.query("UPDATE public.accounting_invoice_correction_outbox SET next_attempt_at=now()-interval '1 second' WHERE id=$1",[correctionId]);
+    const [correctionRetry]=await rpc(managed,"invoicing_managed_claim_corrections_with_seller",[1,{...sellerFacts,name:"Changed"},"changed"]);
+    expect(correctionRetry).toMatchObject({seller:corrections[0].seller,sellerRevision:corrections[0].sellerRevision,sellerMode:"frozen",attemptCount:2});
+    expect(correctionRetry.sellerRevision).not.toBe(issueRetry.sellerRevision);
+    const legacy=await seed();
+    const legacyRequest=await rpc(managed,"accounting_invoice_request_correction_scaffold",[legacy.invoice,"legacy",{},"test_provider"]);
+    const legacyId=legacyRequest.correctionOutbox.id;
+    const [old]=await rpc(managed,"invoicing_managed_claim_corrections_with_seller",[1,sellerFacts,"legacy-first"]);
+    expect(old).toMatchObject({outboxId:legacyId,sellerMode:"legacy_fallback"});
+    await managed.query("UPDATE public.accounting_invoice_correction_outbox SET next_attempt_at=now()-interval '1 second' WHERE id=$1",[legacyId]);
+    const [oldRetry]=await rpc(managed,"invoicing_managed_claim_corrections_with_seller",[1,{...sellerFacts,name:"Legacy changed"},"legacy-next"]);
+    expect(oldRetry).toMatchObject({outboxId:legacyId,sellerRevision:"legacy-next",sellerMode:"legacy_fallback"});
+    const rollback=await seed();
+    const pending=await rpc(managed,"invoicing_managed_request_with_seller_policy",["rollback-correction","correction",rollback.invoice,"test_provider",{reason:"order_refunded"}]);
+    const db=await managed.connect();try {await db.query("BEGIN");await rpc(db,"invoicing_managed_claim_corrections_with_seller",[1,sellerFacts,"rolled-back"]);await db.query("ROLLBACK");}finally{await db.query("ROLLBACK");db.release();}
+    expect((await managed.query("SELECT seller_facts,revision_ref FROM public.invoicing_managed_seller_revisions WHERE obligation_kind='correction' AND obligation_id=$1",[pending.correctionOutbox.id])).rows).toEqual([{seller_facts:null,revision_ref:null}]);
+    expect((await rpc(managed,"invoicing_managed_claim_corrections_with_seller",[1,sellerFacts,"committed"]))[0]).toMatchObject({sellerRevision:"committed",attemptCount:1});
+    // The approved wrapper marks a newly inserted order-reversal correction.
+    const reversal=await seed();
+    await rpc(managed,"invoicing_managed_request_with_seller_policy",["reversal-request","order_status_reversal",reversal.order,"test_provider",{reason:"order_refunded",payload:{source:"contract"}}]);
+    expect((await managed.query("SELECT obligation_kind,invoice_id,seller_facts FROM public.invoicing_managed_seller_revisions WHERE invoice_id=$1",[reversal.invoice])).rows).toEqual([{obligation_kind:"correction",invoice_id:reversal.invoice,seller_facts:null}]);
+  } finally {await managed.end();}
+});
+
+it("keeps a native duty claimed before the seller upgrade in legacy fallback",async()=>{
+  // This upgrade proof needs a fresh cluster: native bootstrap intentionally refuses
+  // pre-existing cluster roles. Keep those controls unchanged rather than filtering SQL.
+  const container=await runPostgresContainer({name:`m09-p7-legacy-${process.pid}`,password:"synthetic-conformance"});
+  if(!await waitForPostgresTcpReady(container.connectionString)){await container.remove();throw Error("Legacy proof TCP unavailable");}
+  const db=new Pool({connectionString:container.connectionString,max:1});
+  try {
+    for(const unit of units.filter(unit=>!unit.file.includes("20261022195000")))await db.query(readFileSync(unit.file,"utf8"));
+    const client=randomUUID(),order=randomUUID(),intent=randomUUID();
+    await db.query("INSERT INTO public.clients(id,email) VALUES($1,$2)",[client,`${client}@example.invalid`]);
+    await db.query("BEGIN");
+    await db.query("INSERT INTO public.commerce_orders(id,client_id,currency_code,total_amount_minor) VALUES($1,$2,'XXX',900)",[order,client]);
+    await db.query("INSERT INTO public.commerce_order_items(order_id,line_ordinal,quantity,unit_amount_minor,line_amount_minor) VALUES($1,1,1,900,900)",[order]);
+    await db.query("INSERT INTO public.commerce_settlement_intents(id,order_id,channel_key,amount_minor,currency_code,open_idempotency_key) VALUES($1,$2,'fixture',900,'XXX',$3)",[intent,order,`legacy-seller-${intent}`]);
+    await rpc(db,"commerce_record_settlement",[`legacy-seller-${order}`,intent,"succeeded",null,{},"2026-10-22T12:00:00Z"]);
+    const captured=await rpc(db,"invoicing_capture_duty",[`legacy-seller-${order}`,"paid",intent,order,{},"2026-10-22T12:00:00Z"]);
+    await rpc(db,"invoicing_install_facts",[captured.dutyId,facts(),"before-seller-upgrade"]);
+    const leases=await rpc(db,"invoicing_sweep_duties",[10]);
+    for(const lease of leases.claims){const result=await rpc(db,"invoicing_prepare_facts",[lease.dutyId,lease.token]);await rpc(db,"invoicing_finish_facts",[lease.dutyId,lease.token,result]);}
+    const [beforeUpgrade]=await rpc(db,"invoicing_claim_duties",[1,300,"fixture",order]);
+    expect(beforeUpgrade).toMatchObject({generation:1});
+    await db.query("UPDATE public.invoicing_duties SET lease_until=now()-interval '1 second' WHERE id=$1",[captured.dutyId]);
+    await db.query("COMMIT");
+    // First durable claim already happened before 195000, with no seller revision.
+    // The monotonic claim counter prevents a late seller freeze.
+    await db.query(readFileSync("db/platform/migrations/20261022195000_invoicing_seller_revision.sql","utf8"));
+    const [claim]=await rpc(db,"invoicing_claim_with_seller",[1,300,"fixture",sellerFacts,"after-upgrade",order]);
+    expect(claim).toMatchObject({generation:2,sellerMode:"legacy_fallback",sellerRevision:"after-upgrade"});
+    expect((await db.query("SELECT * FROM public.invoicing_seller_revisions WHERE duty_id=$1",[captured.dutyId])).rows).toEqual([]);
+  }finally{await db.end();await container.remove();}
 });
