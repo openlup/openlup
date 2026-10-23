@@ -34,15 +34,15 @@ const webhookPayload = { event: "order.delivered", orderId: "external-a", fulfil
 const webhook = (body: unknown) => ({ rawBody: Buffer.from(JSON.stringify(body)), headers: { authorization: `Bearer ${credential}` }, receivedAt: now });
 const trackingRefs = [{ trackingNumber: "TRACK-A", carrierRef: null, serviceRef: null, publicUrl: null }];
 function expectedObservation(source: "provider_webhook" | "provider_reconciliation", raw: string | Uint8Array): FulfillmentObservation {
-  const eventKey = hash(JSON.stringify(source === "provider_webhook" ? ["order.delivered", "external-a", "parcel-a", now]
-    : ["external-a", "parcel-a", null, "delivered", null, now]));
-  return { ...(source === "provider_reconciliation" ? { providerStatus: { primary: "delivered", subStatus: null } } : {}), fact: { schemaVersion: 1, mapperVersion: "1", factId: eventKey, providerKind: "omnipack",
+  const eventKey = source === "provider_webhook" ? `order.delivered:external-a:parcel-a:${now}`
+    : hash(JSON.stringify(["external-a", "parcel-a", null, "delivered", null, now]));
+  return { ...(source === "provider_reconciliation" ? { providerStatus: { primary: "delivered", subStatus: null } } : {}), fact: { schemaVersion: 1, mapperVersion: "1", factId: source === "provider_webhook" ? hash(eventKey) : eventKey, providerKind: "omnipack",
     fulfillmentReference: source === "provider_webhook" ? "parcel-a" : "fulfillment-a", canonicalStatus: "delivered",
     provenance: { source, authority: "provider_asserted" }, occurredAt: now, receivedAt: now,
     rawEvent: { reference: evidenceRef, digestAlgorithm: "sha256", digest: hash(raw) } },
     eventKind: "order.delivered", eventKey, firstReceivedAt: now,
     correlation: { orderRef: null, fulfillmentRef: source === "provider_webhook" ? null : "fulfillment-a",
-      externalRef: "external-a", orderNumber: null, providerFulfillmentRef: "parcel-a", parcelRef: null }, trackingRefs, diagnostics: { redactedFieldCount: 1 } };
+      externalRef: "external-a", orderNumber: null, providerFulfillmentRef: "parcel-a", parcelRef: null }, trackingRefs, diagnostics: { redactedFieldCount: 1, admission: { rejectedTrackingRefs: 0, rejectedTrackingUrls: 1 } } };
 }
 const readInput = (externalRef: string) => ({ providerRef: "omnipack", requestKey: "request-a", fulfillmentRef: "fulfillment-a", externalRef, mode: "command" as const });
 const readbackRawEvidence = { provider: "omnipack", event: "order.delivered", providerOrderId: "external-a", orderNumber: null,

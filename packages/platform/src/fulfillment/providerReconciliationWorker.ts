@@ -96,7 +96,7 @@ export async function reconcileFulfillmentObservations(input: {
         // Neither unsupported nor a provider absence is a local transition.
         continue;
       }
-      observation = projectObservation(readback.observation, input.lifecycle.trackingCodecs.approveTrackingUrl);
+      observation = projectObservation(readback.observation, input.lifecycle.trackingCodecs.approveTrackingUrl, input.lifecycle.trackingCodecs);
       if (observation.diagnostics?.redactedFieldCount) {
         result.redactedFieldCount = (result.redactedFieldCount ?? 0) + observation.diagnostics.redactedFieldCount;
       }
@@ -137,7 +137,7 @@ export async function reconcileFulfillmentObservations(input: {
           if (!trackingReferenceComplete(tracking) && carrier === undefined) carrier = await input.lifecycle.readDeliveryCarrier(ref.fulfillmentRef);
           const codecs = input.lifecycle.trackingCodecs;
           const candidate = enrichTrackingReference(tracking, carrier ?? null, { ...codecs, publicUrl: () => null });
-          const enriched = projectTrackingReference(candidate, privacy, codecs.approveTrackingUrl);
+          const enriched = projectTrackingReference(candidate, privacy, codecs.approveTrackingUrl, codecs);
           if (!enriched) continue;
           // Host-built links use admitted parts and pass through unchanged, including queries.
           enriched.publicUrl ??= codecs.publicUrl(enriched.carrierRef, enriched.trackingNumber);

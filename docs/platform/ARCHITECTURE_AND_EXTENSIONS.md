@@ -832,19 +832,28 @@ counts survive repeated native projection. Host-owned acceptance/attempt/label
 and event keys, fingerprints and identities built from admitted parts pass through
 unchanged. Timestamps use RFC3339 validation, preserving identity-bearing bytes,
 and never use the token sanitizer. Expiry additionally
-requires a real `YYYY-MM-DD` calendar date. Provider tracking URLs require
-query-free, credential-free HTTPS and the adopter's approval at each projection
+requires a real `YYYY-MM-DD` calendar date. Under the strict default, provider
+tracking URLs require query-free, credential-free HTTPS and the adopter's approval at each projection
 that retains them, including reconciliation tracking
 codecs and native observation-store options; omission redacts the URL. Host-built
-tracking URLs pass unchanged, including query strings. Occurrence
+tracking URLs pass unchanged, including query strings. Forward the
+same `approveReference` and `trackingUrl` codecs through ingress/native-store
+`observationCodecs`, conformance-subject `observationCodecs`, and reconciliation
+`trackingCodecs` when using wider references or approved query data. The optional
+`trackingUrl` codec overrides the query/fragment default; HTTPS, no credentials
+and host approval still apply. These use the same sink sanitizer and URL policy. Occurrence
 identity hashes original provider status/subStatus bytes, so redaction cannot
 collapse distinct occurrences. Arbitrary properties, contact fields, raw JSON,
 credentials and signed URLs are omitted. The
 [exhaustive field sweep](../../packages/platform/test/fulfillment/omnipack/dispatchReconciliationParity.test.ts)
-feeds five sensitive-value shapes through every provider string input and captures
+and the [observation ingress sweep](../../packages/platform/test/fulfillment/omnipack/observationIngressParity.test.ts)
+feed five sensitive-value shapes through every provider string input and capture
 native write arguments, evidence callbacks, transcripts, checkpoints and diagnostics,
-including provider exceptions and accepted-ACK recovery. Its native mock checks
+including provider exceptions and accepted-ACK recovery. The native mocks check
 whole-receipt equality on replay and timestamp types at observation ingestion.
+Donor colon keys retain original occurrence bytes, including minute-precision
+timezone offsets admitted by the occurrence codec; the sink does not revalidate
+or hash these keys.
 The command fingerprint still commits to the transient
 provider command bytes. Shadow instead builds a local command identity from the
 host candidate; it requires neither a provider port nor provider preparation or
@@ -892,6 +901,77 @@ Sync retains collection identity, nullable source revisions, sanitized continuat
 movements, lots, expiry, replay and conflicts. Inventory reservations/availability
 and catalog facts retain their existing owners. Host storage label reads remain
 independent of provider support; capability selection performs no I/O.
+
+Ingress returns a typed `FulfillmentIngressResult` with a receipt ID, replay and
+tracking counters, and counted admission diagnostics. `fulfillmentIngressHttpResult`
+projects safe HTTP status/message classes for a host to apply: accepted outcomes
+map to 200, untrusted to 403, disabled/not-ready or retryable refusals to 503,
+and other refused input to 400. It installs no HTTP route. The host may return its
+own durable `receiptId` from `recordObservation`; otherwise the durable event key
+is the receipt identity. Supplied invalid timestamps (including non-string and
+empty values) refuse before lossy mapping or persistence and increment
+`counts.invalidTimestamps` with `diagnostics.invalidTimestamp`; absent/null
+occurrence remains unknown and is not counted. Rejected correlation fields refuse
+the event with `counts.rejectedCorrelationRefs` and a matching diagnostic, without
+returning the rejected values. Rejected tracking
+numbers and URLs are counted in both the observation admission diagnostics and
+ingress result. A superseded conflict persists and returns `supersededCause`, a
+safe machine identity supplied by the host classifier or the typed error's reason;
+unsafe or absent causes become `fulfillment_state_conflict`.
+
+The example webhook uses the contributed colon event key, retaining original
+occurrence bytes rather than normalized timestamp bytes. Fact IDs remain hashes
+and fact fulfillment references retain core opaque-ID validation. By default,
+correlation, tracking numbers and service references require the prior opaque-ID
+shape: 1–128 ASCII letters/digits or `._:-`, starting with a letter/digit.
+The optional `observationCodecs.approveReference(value)` is a pure allowlist on
+original references. An adopter can explicitly admit incumbent slash/space shapes,
+for example by matching a known identifier grammar plus the default opaque grammar
+and returning false otherwise. Admitted values are trimmed for correlation and
+tracking; the event key preserves original admitted reference bytes. Even with the
+allowlist, blank/overlong values, controls, email addresses and URLs are refused.
+Rejected tracking-number entries and every supplied service/URL spelling are
+counted before extraction or first-wins deduplication, including malformed values
+and discarded duplicates. Rejected service references are omitted and counted as
+rejected tracking references. Service admission precedes carrier derivation: a
+refused service suppresses its derived carrier even if the prefix looks opaque.
+The durable sink independently suppresses a carrier paired with a refused service.
+The adopter owns the privacy of its widened grammar; allowing arbitrary prose
+would permit contact/credential text into durable keys and fields. Correlation
+cannot silently place refused text into the event key. Generic ingress composes no vendor
+keys: the host must preserve its existing status/tracking/stock/handoff key builders
+and durable receipt namespace when switching from the donor. This compatibility
+does not cover native 0.22.0 digest receipts/effects or superseded outcomes: retries
+can repeat tracking or fail with `fulfillment_observation_outcome_conflict`.
+Drain in-flight observation retries before upgrading; see the
+[Unreleased migration note](../../packages/platform/CHANGELOG.md#unreleased).
+
+The adapter's optional `observationCodecs.normalizeCarrier({ carrierRef, serviceRef })`
+returns the normalized carrier kind stored in `carrierRef` and passed to effects as
+`carrierKind`. Its default uses the contributed service-derived lowercase carrier
+prefix, or null without a service-derived kind. Donor deduplication drops raw
+carrier codes; there is no raw-carrier fallback. A refused service cannot reach this derivation or
+the carrier codec. `observationCodecs.trackingUrl(url)` may retain
+adopter-required query parameters; HTTPS, no credentials and `approveTrackingUrl`
+still apply to its output. Without that codec the default also rejects query and
+fragment components. For example, configure approval for an exact tracking origin
+and a codec that returns the URL only when every query key is in the adopter's
+allowlist, returning null otherwise. The host owns that policy and retention of
+any permitted query data. No adopter dictionary is embedded in generic code.
+
+Strict occurrence validation is local to the webhook ingress pre-check, where
+invalid supplied timestamps are refused and counted. Compact offsets such as
+`+0200`, minute precision and timestamps without a zone retain base acceptance;
+original bytes still identify the webhook. The shared timestamp parser remains
+unchanged from PR2 for reconciliation, `createdAt` and stock movements.
+
+O3 deliberately retains a typed fact and an opaque raw-event pointer. The host
+must retain the referenced evidence under its own access and retention policy;
+the pointer/digest alone does not store the raw event. Invoice callbacks remain
+host composition, including any intended fail-soft production wrapper. Ingress
+keeps stock → handoff → tracking → invoice awaited and fail-stop, delivered-first
+suppression and first-wins tracking deduplication. It calls no replacement delivery
+confirmation or subscription alignment operation.
 
 The operator lifecycle handlers preserve the host's mutation schemas and response
 receipts. Every mutation callback requires the authorized actor and idempotency

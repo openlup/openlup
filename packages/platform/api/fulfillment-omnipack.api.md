@@ -129,7 +129,7 @@ export interface FulfillmentCapabilityDescriptor {
 import type { FulfillmentCapabilityDescriptor } from "./capabilities.js";
 import type { FulfillmentDispatchPort, FulfillmentDispatchRequest } from "./dispatch.js";
 import type { FulfillmentLabelPort } from "./label.js";
-import type { FulfillmentObservationPort } from "./observation.js";
+import type { FulfillmentObservationPort, FulfillmentObservationCodecs } from "./observation.js";
 import type { FulfillmentReadbackPort } from "./readback.js";
 import type { FulfillmentStockSyncProvider, FulfillmentProductSyncProvider } from "./sync.js";
 import type { FulfillmentStorePort } from "./store.js";
@@ -154,6 +154,7 @@ type SyncFixture<Port> = {
 /** Offline adapter-owned inputs and exact expected outputs; never real customer data. */
 export interface FulfillmentAdapterConformanceSubject {
     approveTrackingUrl?(url: string): boolean;
+    observationCodecs?: FulfillmentObservationCodecs;
     subjectId: string;
     adapter: {
         capabilities: FulfillmentCapabilityDescriptor;
@@ -384,7 +385,7 @@ export {};
 export type { FulfillmentOperationError, DispatchEvidence, FulfillmentDispatchPrepareResult, FulfillmentSelection, FulfillmentDispatchRequest, FulfillmentDispatchResult, FulfillmentDispatchPort, FulfillmentRefusal } from "./dispatch.js";
 export type { LabelDocument, FulfillmentLabelPort } from "./label.js";
 /** G17 local reads/ingress persistence are inline runtime worker inputs; this provider envelope is unchanged. */
-export type { FulfillmentObservation, FulfillmentObservationPort, FulfillmentTrackingReference } from "./observation.js";
+export type { FulfillmentObservation, FulfillmentObservationCodecs, FulfillmentObservationPort, FulfillmentTrackingReference } from "./observation.js";
 export type { FulfillmentReadbackResult, FulfillmentReadbackPort, FulfillmentReconciliationObservation, FulfillmentObservationPagePort } from "./readback.js";
 export type { SyncCursor, StockSnapshot, StockMovement, LocalStock, FulfillmentStockSyncProvider, FulfillmentStockSyncPort, FulfillmentProductSyncProvider, FulfillmentProductSyncPort } from "./sync.js";
 export type { FulfillmentCapabilityDescriptor } from "./capabilities.js";
@@ -455,8 +456,14 @@ export interface FulfillmentNativeUnsupported {
 import type { NormalizedFulfillmentFact } from "@openlup/core/fulfillment";
 import type { CanonicalLocalFulfillmentStatus } from "./index.js";
 import type { FulfillmentRefusal } from "./dispatch.js";
+/** Explicit adopter policy, forwarded through each durable observation projection. */
+export interface FulfillmentObservationCodecs {
+    approveReference?(value: string): boolean;
+    /** Overrides the query/fragment default; HTTPS, no credentials and URL approval still apply. */
+    trackingUrl?(url: string): string | null;
+}
 export interface FulfillmentTrackingReference {
-    trackingNumber: string;
+    trackingNumber: string; /** Normalized carrier kind, never a raw provider code. */
     carrierRef: string | null;
     serviceRef: string | null;
     publicUrl: string | null;
@@ -483,6 +490,10 @@ export interface FulfillmentObservation {
     };
     diagnostics?: {
         redactedFieldCount?: number;
+        admission?: {
+            rejectedTrackingRefs: number;
+            rejectedTrackingUrls: number;
+        };
         refusal?: FulfillmentRefusal;
         stockContention?: {
             sqlState: "55P03";
@@ -508,6 +519,10 @@ export interface FulfillmentObservationPort {
     } | {
         kind: "refused";
         refusal: FulfillmentRefusal;
+        diagnostics?: {
+            invalidTimestamp?: true;
+            rejectedCorrelationRefs?: number;
+        };
     }>;
 }
 ```
@@ -1117,6 +1132,36 @@ export interface FulfillmentProductSyncPort {
 }
 export {};
 ```
+## dist/fulfillment/dispatchProjection.d.ts
+
+```ts
+import type { DispatchEvidence, DispatchRecord, FulfillmentDispatchRequest, FulfillmentDispatchResult, FulfillmentOperationError } from "./contracts/index.js";
+/** Machine identities only: arbitrary exception prose, URLs and credentials are omitted. */
+export declare function safeDiagnosticCode(value: unknown): string | null;
+export declare function localFailureReason(stage: string, error: unknown, privacy?: {
+    token(value: string | null | undefined, codec?: (value: string) => string | null): string | null;
+    readonly redactedFieldCount: number;
+}): string;
+export declare function operationError(error: Omit<FulfillmentOperationError, "cause"> & {
+    cause?: unknown;
+}): FulfillmentOperationError;
+export declare const reference: (value: unknown) => string | null;
+/** Opaque by default; an explicit allowlist can admit wider incumbent references. */
+export declare function admittedReference(value: string | null | undefined, approve?: (value: string) => boolean): string | null;
+/** One counted sanitizer for durable projections; codecs are explicit host policy. */
+export declare function durableStrings(priorCount?: number): {
+    token(value: string | null | undefined, codec?: (value: string) => string | null): string | null;
+    readonly redactedFieldCount: number;
+};
+/** Copy only the durable allowlist, including when an adapter object has extra runtime properties. */
+export declare function dispatchEvidence(evidence: DispatchEvidence): DispatchEvidence;
+/** Shadow has a local command identity; it never invokes a provider or resolves credentials. */
+export declare function shadowDispatchEvidence(request: FulfillmentDispatchRequest): DispatchEvidence;
+export declare function dispatchResult(result: FulfillmentDispatchResult): FulfillmentDispatchResult;
+export declare function acceptedProviderProof(record: DispatchRecord | null): record is DispatchRecord & {
+    externalRef: string;
+};
+```
 ## dist/fulfillment/omnipack/capabilities.d.ts
 
 ```ts
@@ -1129,6 +1174,7 @@ export declare const omnipackFulfillmentCapabilities: Readonly<FulfillmentCapabi
 ```ts
 import type { FulfillmentCapabilityDescriptor, FulfillmentDispatchPort, FulfillmentDispatchRequest, FulfillmentLabelPort, FulfillmentObservationPort, FulfillmentReadbackPort, FulfillmentObservationPagePort, FulfillmentStockSyncProvider, FulfillmentProductSyncProvider } from "../contracts/index.js";
 import { type OmnipackWebhookRouteEvent } from "./omnipackWebhookPayload.js";
+import { type OmnipackObservationCodecs } from "./observation.js";
 export { omnipackFulfillmentCapabilities } from "./capabilities.js";
 /** Node-only, explicit construction. Secrets are supplied per call, never retained as values. */
 export interface OmnipackFulfillmentAdapterConfig {
@@ -1164,6 +1210,7 @@ export interface OmnipackFulfillmentAdapterConfig {
     mintEvidenceReference: () => `evidence:${string}`;
     mintSyncRunId: () => string;
     approveTrackingUrl: (url: string) => boolean;
+    observationCodecs?: OmnipackObservationCodecs;
     /** Writes occur only through deliberate calls; scheduled composition must remain pull-only. */
     product?: {
         resolvePushMetadata: (sku: string) => Promise<Record<string, unknown> | null>;
@@ -1239,6 +1286,9 @@ export interface OmnipackFulfilmentRequestEvidence {
     state: string | null;
 }
 export interface OmnipackWebhookEvidence {
+    rejectedTrackingRefs?: number;
+    rejectedServices?: number;
+    rejectedTrackingUrls?: number;
     provider: "omnipack";
     event: string;
     providerOrderId: string | null;
@@ -1255,8 +1305,43 @@ export declare function mapOmnipackStockResponse(body: unknown): OmnipackStockEv
 export declare function mapOmnipackStockMovementsResponse(body: unknown): OmnipackStockMovementEvidence[];
 export declare function mapOmnipackFulfilmentsResponse(body: unknown): OmnipackFulfilmentEvidence[];
 export declare function mapOmnipackFulfilmentRequestsResponse(body: unknown): OmnipackFulfilmentRequestEvidence[];
-export declare function mapOmnipackWebhookPayload(body: unknown, fallbackEvent?: string): OmnipackWebhookEvidence;
+export declare function mapOmnipackWebhookPayload(body: unknown, fallbackEvent?: string, admitTrackingNumber?: (value: string) => boolean, admitMetadata?: {
+    service(value: string): boolean;
+    url(value: string): boolean;
+}): OmnipackWebhookEvidence;
 export declare function sanitizeOmnipackPayload(input: Record<string, unknown>): Record<string, unknown>;
+```
+## dist/fulfillment/omnipack/observation.d.ts
+
+```ts
+export { reference } from "../dispatchProjection.js";
+import type { CanonicalLocalFulfillmentStatus, FulfillmentObservation, FulfillmentObservationCodecs, FulfillmentRefusal } from "../contracts/index.js";
+import type { OmnipackWebhookEvidence } from "./mappers.js";
+import { type OmnipackWebhookRouteEvent } from "./omnipackWebhookPayload.js";
+export declare const refusal: (reason: FulfillmentRefusal["reason"], phase: FulfillmentRefusal["phase"], retryable?: boolean) => FulfillmentRefusal;
+export declare const digest: (bytes: string | Uint8Array) => string;
+/** Share admission with the durable sink, including explicit deny allowlists. */
+export declare function correlationReference(value: string | null | undefined, codecs?: OmnipackObservationCodecs): string | null;
+export interface OmnipackObservationCodecs extends FulfillmentObservationCodecs {
+    normalizeCarrier?(input: {
+        carrierRef: string | null;
+        serviceRef: string | null;
+    }): string | null;
+}
+export declare function timestamp(value: string | null): string | null;
+export declare function eventKind(value: string): OmnipackWebhookRouteEvent | null;
+export declare function observation(input: {
+    evidence: OmnipackWebhookEvidence;
+    event: FulfillmentObservation["eventKind"];
+    status?: CanonicalLocalFulfillmentStatus;
+    receivedAt: string;
+    rawDigest: string;
+    evidenceRef: `evidence:${string}`;
+    source: "provider_webhook" | "provider_reconciliation";
+    fulfillmentRef?: string;
+    approveTrackingUrl: (url: string) => boolean;
+    observationCodecs?: OmnipackObservationCodecs;
+}): FulfillmentObservation;
 ```
 ## dist/fulfillment/omnipack/omnipackStatusVocabulary.d.ts
 

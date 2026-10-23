@@ -266,7 +266,7 @@ export interface FulfillmentCapabilityDescriptor {
 import type { FulfillmentCapabilityDescriptor } from "./capabilities.js";
 import type { FulfillmentDispatchPort, FulfillmentDispatchRequest } from "./dispatch.js";
 import type { FulfillmentLabelPort } from "./label.js";
-import type { FulfillmentObservationPort } from "./observation.js";
+import type { FulfillmentObservationPort, FulfillmentObservationCodecs } from "./observation.js";
 import type { FulfillmentReadbackPort } from "./readback.js";
 import type { FulfillmentStockSyncProvider, FulfillmentProductSyncProvider } from "./sync.js";
 import type { FulfillmentStorePort } from "./store.js";
@@ -291,6 +291,7 @@ type SyncFixture<Port> = {
 /** Offline adapter-owned inputs and exact expected outputs; never real customer data. */
 export interface FulfillmentAdapterConformanceSubject {
     approveTrackingUrl?(url: string): boolean;
+    observationCodecs?: FulfillmentObservationCodecs;
     subjectId: string;
     adapter: {
         capabilities: FulfillmentCapabilityDescriptor;
@@ -521,7 +522,7 @@ export {};
 export type { FulfillmentOperationError, DispatchEvidence, FulfillmentDispatchPrepareResult, FulfillmentSelection, FulfillmentDispatchRequest, FulfillmentDispatchResult, FulfillmentDispatchPort, FulfillmentRefusal } from "./dispatch.js";
 export type { LabelDocument, FulfillmentLabelPort } from "./label.js";
 /** G17 local reads/ingress persistence are inline runtime worker inputs; this provider envelope is unchanged. */
-export type { FulfillmentObservation, FulfillmentObservationPort, FulfillmentTrackingReference } from "./observation.js";
+export type { FulfillmentObservation, FulfillmentObservationCodecs, FulfillmentObservationPort, FulfillmentTrackingReference } from "./observation.js";
 export type { FulfillmentReadbackResult, FulfillmentReadbackPort, FulfillmentReconciliationObservation, FulfillmentObservationPagePort } from "./readback.js";
 export type { SyncCursor, StockSnapshot, StockMovement, LocalStock, FulfillmentStockSyncProvider, FulfillmentStockSyncPort, FulfillmentProductSyncProvider, FulfillmentProductSyncPort } from "./sync.js";
 export type { FulfillmentCapabilityDescriptor } from "./capabilities.js";
@@ -592,8 +593,14 @@ export interface FulfillmentNativeUnsupported {
 import type { NormalizedFulfillmentFact } from "@openlup/core/fulfillment";
 import type { CanonicalLocalFulfillmentStatus } from "./index.js";
 import type { FulfillmentRefusal } from "./dispatch.js";
+/** Explicit adopter policy, forwarded through each durable observation projection. */
+export interface FulfillmentObservationCodecs {
+    approveReference?(value: string): boolean;
+    /** Overrides the query/fragment default; HTTPS, no credentials and URL approval still apply. */
+    trackingUrl?(url: string): string | null;
+}
 export interface FulfillmentTrackingReference {
-    trackingNumber: string;
+    trackingNumber: string; /** Normalized carrier kind, never a raw provider code. */
     carrierRef: string | null;
     serviceRef: string | null;
     publicUrl: string | null;
@@ -620,6 +627,10 @@ export interface FulfillmentObservation {
     };
     diagnostics?: {
         redactedFieldCount?: number;
+        admission?: {
+            rejectedTrackingRefs: number;
+            rejectedTrackingUrls: number;
+        };
         refusal?: FulfillmentRefusal;
         stockContention?: {
             sqlState: "55P03";
@@ -645,6 +656,10 @@ export interface FulfillmentObservationPort {
     } | {
         kind: "refused";
         refusal: FulfillmentRefusal;
+        diagnostics?: {
+            invalidTimestamp?: true;
+            rejectedCorrelationRefs?: number;
+        };
     }>;
 }
 ```
@@ -2051,7 +2066,8 @@ export { createOutboxOrderPaidFulfillmentHandler } from "./paidHandoff.js";
 export { collectPaidFulfillmentRecoveryCandidates } from "./paidFulfillmentRecovery.js";
 export { runFulfillmentDispatchWorker } from "./providerDispatchWorker.js";
 export { createFulfillmentCommandLedger } from "./providerCommandLedger.js";
-export { verifyAndNormalizeFulfillmentObservation } from "./verifiedIngress.js";
+export type { FulfillmentIngressCounts, FulfillmentIngressResult } from "./verifiedIngress.js";
+export { verifyAndNormalizeFulfillmentObservation, fulfillmentIngressHttpResult } from "./verifiedIngress.js";
 export { applyFulfillmentObservationEffects } from "./fulfillmentObservationEffects.js";
 export { reconcileFulfillmentObservations, runFulfillmentReconciliationPage } from "./providerReconciliationWorker.js";
 export { runFulfillmentStockSyncWorker } from "./providerStockSyncWorker.js";
@@ -2428,6 +2444,7 @@ export declare function createPostgresPaidFulfillmentHandoffStore(db: PgExecutor
 ## dist/fulfillment/postgresShipmentSpine.d.ts
 
 ```ts
+import type { FulfillmentObservationCodecs } from "./contracts/index.js";
 import type { PgExecutor as PgQueryExecutor } from './postgresDispatchStore.js';
 interface ShipmentSpineResult {
     shipmentId: string;
@@ -2464,6 +2481,7 @@ interface ShipmentSpineMutationPort {
 export interface PostgresFulfillmentShipmentSpineOptions {
     portKey: string;
     approveTrackingUrl?(url: string): boolean;
+    observationCodecs?: FulfillmentObservationCodecs;
     evidenceChannel?: "poll" | "push";
     requiredProviderType?: "simulator";
 }
@@ -2472,7 +2490,7 @@ export declare function createPostgresFulfillmentShipmentSpinePort(executor: PgQ
     localPersistence: ReturnType<typeof localPersistence>;
 };
 /** G17 native local persistence, composed on the same injected executor. */
-declare function localPersistence(executor: PgQueryExecutor, approveTrackingUrl?: (url: string) => boolean): {
+declare function localPersistence(executor: PgQueryExecutor, approveTrackingUrl?: (url: string) => boolean, observationCodecs?: FulfillmentObservationCodecs): {
     readLocalFulfillmentState(ref: string): Promise<{
         status: string | null;
         latestStatusOccurredAt: string | null;
@@ -2492,6 +2510,7 @@ declare function localPersistence(executor: PgQueryExecutor, approveTrackingUrl?
     markProcessed(eventKey: string, outcome: {
         status: "processed" | "ignored";
         refusal?: import("./contracts/index.js").FulfillmentRefusal;
+        supersededCause?: string;
     }): Promise<void>;
 };
 export {};
@@ -2930,13 +2949,13 @@ export {};
 ## dist/fulfillment/providerTrackingReferences.d.ts
 
 ```ts
-import type { FulfillmentTrackingReference } from "./contracts/index.js";
+import type { FulfillmentTrackingReference, FulfillmentObservationCodecs } from "./contracts/index.js";
 export declare function trackingReferenceComplete(ref: FulfillmentTrackingReference): boolean;
 /** Provider evidence wins as a unit; private carrier/URL codecs stay injected. */
 export declare function enrichTrackingReference(ref: FulfillmentTrackingReference, deliveryCarrier: {
     carrierRef: string | null;
     serviceRef: string | null;
-} | null, codecs: {
+} | null, codecs: FulfillmentObservationCodecs & {
     approveTrackingUrl?(url: string): boolean;
     normalizeCarrier(input: {
         carrierRef: string | null;
@@ -3016,7 +3035,7 @@ export { fulfillmentProgressPresentation } from "@openlup/core/fulfillment";
 ## dist/fulfillment/verifiedIngress.d.ts
 
 ```ts
-import type { FulfillmentObservation, FulfillmentObservationPort, FulfillmentRefusal } from "./contracts/index.js";
+import type { FulfillmentObservation, FulfillmentObservationCodecs, FulfillmentObservationPort, FulfillmentRefusal } from "./contracts/index.js";
 import { applyFulfillmentObservationEffects } from "./fulfillmentObservationEffects.js";
 type EffectInput = Parameters<typeof applyFulfillmentObservationEffects<FulfillmentObservation["fact"]["canonicalStatus"], "in_transit" | "delivered">>[0];
 type DispatchRef = {
@@ -3025,21 +3044,54 @@ type DispatchRef = {
     dispatchRef: string;
     externalRef: string | null;
 };
+export interface FulfillmentIngressCounts {
+    invalidTimestamps: number;
+    rejectedCorrelationRefs: number;
+    rejectedTrackingRefs: number;
+    rejectedTrackingUrls: number;
+}
+export type FulfillmentIngressResult = {
+    counts: FulfillmentIngressCounts;
+} & ({
+    kind: "refused";
+    receiptId: null;
+    refusal: FulfillmentRefusal;
+    diagnostics?: {
+        invalidTimestamp?: true;
+        rejectedCorrelationRefs?: number;
+    };
+} | {
+    kind: "processed" | "ignored" | "superseded";
+    receiptId: string;
+    observation: FulfillmentObservation;
+    replayed: boolean;
+    trackingRefs: number;
+    trackingReadBacks: number;
+    supersededCause?: string;
+});
+/** Safe response classes only; the host owns HTTP and localized message text. */
+export declare function fulfillmentIngressHttpResult(result: FulfillmentIngressResult): {
+    status: 200 | 400 | 403 | 503;
+    messageClass: "accepted" | "bad_request" | "forbidden" | "upstream_unavailable";
+};
 /** Adapter verification owns auth-before-parse; the host owns durable replay. */
 export declare function verifyAndNormalizeFulfillmentObservation(input: {
     enabled: boolean;
     approveTrackingUrl?(url: string): boolean;
+    observationCodecs?: FulfillmentObservationCodecs;
     provider: FulfillmentObservationPort;
     verification: Parameters<FulfillmentObservationPort["verifyAndNormalize"]>[0];
     localPersistence: {
         /** G17: atomic insert by eventKey; retries keep the first stored firstReceivedAt. */
         recordObservation(observation: FulfillmentObservation): Promise<{
             replayed: boolean;
+            receiptId?: string;
         }>;
         /** Idempotent; only called after completion or a classified superseding conflict. */
         markProcessed(eventKey: string, outcome: {
             status: "processed" | "ignored";
             refusal?: FulfillmentRefusal;
+            supersededCause?: string;
         }): Promise<void>;
     };
     lifecycle: {
@@ -3055,18 +3107,11 @@ export declare function verifyAndNormalizeFulfillmentObservation(input: {
             tracking(eventKey: string, number: string): string;
         };
         issueAccountingInvoice?(ref: string): Promise<void>;
+        /** Return a machine identity, never exception prose. */
+        supersededCause?(error: unknown): string | null;
         classifyFailure(error: unknown): "stock_contention" | "state_conflict" | "other";
         annotateStockContention?(eventKey: string, fulfillmentRef: string): Promise<void>;
     };
-}): Promise<{
-    kind: "refused";
-    refusal: FulfillmentRefusal;
-} | {
-    kind: "processed" | "ignored" | "superseded";
-    observation: FulfillmentObservation;
-    replayed: boolean;
-    trackingRefs: number;
-    trackingReadBacks: number;
-}>;
+}): Promise<FulfillmentIngressResult>;
 export {};
 ```

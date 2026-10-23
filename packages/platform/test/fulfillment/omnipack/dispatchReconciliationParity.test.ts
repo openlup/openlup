@@ -391,6 +391,15 @@ it.each([
   expect(remaps).toBe(used); expect(a.http).toHaveBeenCalledTimes(1);
 });
 
+it("finds a reconciliation row with a compact offset and retains base createdAt parsing", async () => {
+  const createdAt = "2026-10-21T09:00:00";
+  const f = reconciliationFixture([{ ...row, updatedAt: "2026-10-21T10:00:00+0100", createdAt }]);
+  expect(await f.adapter.reconciliation.readPage({ page: 0, size: 2 })).toMatchObject({ kind: "page", rows: [
+    { kind: "found", createdAt: new Date(createdAt).toISOString(), updatedAt: "2026-10-21T09:00:00.000Z",
+      observation: { fact: { occurredAt: "2026-10-21T09:00:00.000Z" } } },
+  ] });
+});
+
 it.each(["not-a-time", "2026-02-30T12:00:00Z"])("invalid occurrence %s becomes null without poisoning a valid sibling", async updatedAt => {
   const f = reconciliationFixture([row, { ...row, orderId: "external-b", updatedAt }]);
   const seen: unknown[] = [], record = f.input.lifecycle.recordStatusEvidence;
