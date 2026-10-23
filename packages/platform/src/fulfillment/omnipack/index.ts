@@ -239,10 +239,13 @@ export function createOmnipackFulfillmentAdapter(config: OmnipackFulfillmentAdap
             return { kind: "refused", refusal: refusal("unsupported_event", "normalize") };
           const original = payload as Record<string, unknown>;
           // Validate calendar fields here only; keep compact offsets and local
-          // timestamps accepted by the base parser, without rewriting key bytes.
+          // timestamps and minute precision accepted by the base parser,
+          // without rewriting key bytes.
           if (original.occurredAt !== undefined && original.occurredAt !== null
             && (typeof original.occurredAt !== "string" || !timestamp(original.occurredAt)
-              || !z.iso.datetime({ offset: true, local: true }).safeParse(original.occurredAt.replace(/([+-]\d{2})(\d{2})$/u, "$1:$2")).success))
+              || !z.iso.datetime({ offset: true, local: true })
+                .or(z.iso.datetime({ offset: true, local: true, precision: -1 }))
+                .safeParse(original.occurredAt.replace(/([+-]\d{2})(\d{2})$/u, "$1:$2")).success))
             return { kind: "refused", refusal: refusal("malformed", "normalize"), diagnostics: { invalidTimestamp: true } };
           const rejectedCorrelationRefs = [original.orderId, original.providerOrderId, original.orderNumber, original.fulfilmentNumber]
             .filter(value => value !== undefined && value !== null && (typeof value !== "string" || !correlationReference(value, config.observationCodecs))).length;

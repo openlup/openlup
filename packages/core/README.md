@@ -13,6 +13,12 @@ Upgrade all packages together and read [the migration and label limitation](CHAN
 The size baseline is the published `0.22.0` artifact; older releases remain in
 the source-only `CHANGELOG-HISTORY.md`. Preparation establishes no npm publication.
 
+The unreleased workspace requires Zod `^4.6.6` for GHSA-mrhx-c7xc-m3w5.
+Oversized constrained collections fail before per-element errors accumulate;
+bounded valid inputs and public exports are preserved. Both dependency locks
+select the fixed runtime. The build uses the existing development-only Node
+types for Zod's standard `URL` declaration; Core adds no runtime Node import.
+
 ## Channel and stability
 
 - **Channel:** npm, on the `latest` dist-tag. Each version is published with
