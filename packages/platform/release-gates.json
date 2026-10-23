@@ -482,6 +482,30 @@
       ],
       "entrypoint": "dist/subscriptions/contracts/index.d.ts",
       "snapshot": "api/subscriptions-contracts.api.md"
+    },
+    "./invoicing": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/packageBoundary.test.ts",
+        "test/invoicing/contracts.test.ts",
+        "test/invoicing/portFit.test.ts"
+      ],
+      "entrypoint": "dist/invoicing/index.d.ts",
+      "snapshot": "api/invoicing.api.md"
+    },
+    "./invoicing/contracts": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/packageBoundary.test.ts",
+        "test/invoicing/contracts.test.ts",
+        "test/invoicing/portFit.test.ts"
+      ],
+      "entrypoint": "dist/invoicing/contracts/index.d.ts",
+      "snapshot": "api/invoicing-contracts.api.md"
     }
   },
   "pack": {
@@ -510,7 +534,8 @@
       "./shipping/contracts": 32,
       "./payments/contracts": 32,
       "./fulfillment/contracts": 32,
-      "./subscriptions/contracts": 32
+      "./subscriptions/contracts": 32,
+      "./invoicing/contracts": 32
     }
   }
 }

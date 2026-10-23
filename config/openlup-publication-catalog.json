@@ -70,6 +70,10 @@
       "class": "public-output"
     },
     {
+      "path": ".github/workflows/mirror-ci-images.yml",
+      "class": "public-output"
+    },
+    {
       "path": ".github/workflows/publish-package.yml",
       "class": "public-output"
     },
@@ -622,6 +626,10 @@
       "class": "public-output"
     },
     {
+      "path": "config/ci-images.json",
+      "class": "public-output"
+    },
+    {
       "path": "config/customer-360-parity-expectation.json",
       "class": "public-output"
     },
@@ -1123,6 +1131,10 @@
     },
     {
       "path": "db/platform/migrations/20261022090000_fulfillment_delivery_alignment.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/20261022160000_subscription_retry_lifecycle.sql",
       "class": "public-output"
     },
     {
@@ -2350,6 +2362,14 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/api/invoicing-contracts.api.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/api/invoicing.api.md",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/api/job-ledger.api.md",
       "class": "public-output"
     },
@@ -2555,6 +2575,10 @@
     },
     {
       "path": "packages/platform/sql/20261022090000_fulfillment_delivery_alignment.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261022160000_subscription_retry_lifecycle.sql",
       "class": "public-output"
     },
     {
@@ -3978,6 +4002,50 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/invoicing/capabilities.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/invoicing/contracts/capabilities.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/invoicing/contracts/companyLookup.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/invoicing/contracts/delivery.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/invoicing/contracts/facts.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/invoicing/contracts/host.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/invoicing/contracts/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/invoicing/contracts/provider.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/invoicing/contracts/settlement.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/invoicing/contracts/store.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/invoicing/index.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/job-ledger/index.ts",
       "class": "public-output"
     },
@@ -4706,6 +4774,14 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/subscriptions/automaticRenewal.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/subscriptions/automaticRenewalExecution.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/subscriptions/contracts/commands.ts",
       "class": "public-output"
     },
@@ -4731,6 +4807,18 @@
     },
     {
       "path": "packages/platform/src/subscriptions/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/subscriptions/paymentOutcomes.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/subscriptions/postgresRenewalStore.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/subscriptions/postgresRetryStore.ts",
       "class": "public-output"
     },
     {
@@ -5366,6 +5454,14 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/invoicing/contracts.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/invoicing/portFit.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/job-ledger/postgres.test.ts",
       "class": "public-output"
     },
@@ -5862,11 +5958,23 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/subscriptions/paymentOutcomes.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/subscriptions/portFit.test.ts",
       "class": "public-output"
     },
     {
       "path": "packages/platform/test/subscriptions/renewalCycleMechanism.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/subscriptions/renewalEffects.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/subscriptions/renewalEffectsFixture.ts",
       "class": "public-output"
     },
     {
@@ -6114,6 +6222,30 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/ci-image-mirror.d.mts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/ci-image-mirror.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/ci-image-mirror.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/ci-image-pull.d.mts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/ci-image-pull.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/ci-image-pull.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/ci-test-scope.mjs",
       "class": "public-output"
     },
@@ -6259,6 +6391,62 @@
     },
     {
       "path": "scripts/fixtures/20261022195100_invoicing_seller_revision.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/fixtures/reviewed-m10/db/platform/migrations/20261022160000_subscription_retry_lifecycle.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/fixtures/reviewed-m10/db/platform/migrations/20261022170000_subscription_command_lifecycle.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/fixtures/reviewed-m10/db/platform/migrations/20261022180000_subscription_stock_wait.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/fixtures/reviewed-m10/db/platform/migrations/20261022183000_inventory_available_to_promise.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/fixtures/reviewed-m10/db/platform/migrations/20261022184000_subscription_renewal_reserve_uses_seam.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/fixtures/reviewed-m10/supabase/migrations/20261022155000_refunds_preserve_subscription_lifecycle.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/fixtures/reviewed-m10/supabase/migrations/20261022160000_subscription_dunning_continuity.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/fixtures/reviewed-m10/supabase/migrations/20261022175000_inventory_available_to_promise.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/fixtures/reviewed-m10/supabase/migrations/20261022180000_subscription_stock_wait.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/fixtures/reviewed-m10/supabase/migrations/20261022181000_subscription_stock_wait_due.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/fixtures/reviewed-m10/supabase/migrations/20261022182000_subscription_lifecycle_message_scan.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/fixtures/reviewed-m10/supabase/migrations/20261022184000_inventory_reserve_order_uses_seam.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/fixtures/reviewed-m10/supabase/migrations/20261022185000_provider_refund_evidence.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/fixtures/reviewed-m10/supabase/migrations/20261022185100_m07_refund_parity.sql",
       "class": "public-output"
     },
     {
@@ -6647,6 +6835,14 @@
     },
     {
       "path": "scripts/retry-ladder-terminating-classes.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/reviewed-batch-forward.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/reviewed-batch-rail.ts",
       "class": "public-output"
     },
     {
@@ -22826,7 +23022,19 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/postgresContainer.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/promotionsNative.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/reviewedBatchCatalog.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/reviewedBatchForwards.test.ts",
       "class": "public-output"
     },
     {
@@ -22846,7 +23054,27 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/subscriptionAlignmentRollbackCases.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/subscriptionContinuityBaseline.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/subscriptionNativeFixture.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/subscriptionRenewalAdapterCases.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/subscriptionRenewalLifecycle.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/subscriptionRetryLifecycleCases.ts",
       "class": "public-output"
     },
     {

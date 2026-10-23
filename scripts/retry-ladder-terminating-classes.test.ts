@@ -54,7 +54,8 @@ const CORE = relative(".", CORE_REAL).replaceAll("\\", "/");
 const REQUIRED_CLASS_AWARE_CALLS = [
   `${CORE}/src/subscription/subscriptionEnginePayment.ts`,
   "server/domains/subscription/automaticRenewalExecution.ts",
-  "server/domains/subscription/propagateSubscriptionCycleChargeFailure.ts",
+  "packages/platform/src/subscriptions/automaticRenewalExecution.ts",
+  "packages/platform/src/subscriptions/renewalCycleFailureMechanism.ts",
 ] as const;
 
 function productionTypeScriptFiles(directory: string): string[] {
@@ -69,8 +70,16 @@ function productionTypeScriptFiles(directory: string): string[] {
   });
 }
 
-function retryCallSites(): Array<{ file: string; line: number; failureClassArg: string | null }> {
-  const calls: Array<{ file: string; line: number; failureClassArg: string | null }> = [];
+type RetryCallSite = {
+  file: string;
+  line: number;
+  failureClassArg: string | null;
+  classRemovalStart: number;
+  classRemovalEnd: number;
+};
+
+function retryCallSites(sourceOverrides = new Map<string, string>()): RetryCallSite[] {
+  const calls: RetryCallSite[] = [];
   const roots = [...new Set([`${CORE}/src`, "packages", "server", "src", "api", "vercel", "mcp"])]
     .filter(existsSync);
   // Every direct, aliased-import, or property-access call site still spells the
@@ -87,11 +96,11 @@ function retryCallSites(): Array<{ file: string; line: number; failureClassArg: 
   const configFile = ts.readConfigFile(configPath, ts.sys.readFile);
   if (configFile.error) throw new Error(ts.flattenDiagnosticMessageText(configFile.error.messageText, "\n"));
   const config = ts.parseJsonConfigFileContent(configFile.config, ts.sys, ".");
-  const program = ts.createProgram(files, {
-    ...config.options,
-    noEmit: true,
-    skipLibCheck: true,
-  });
+  const options = { ...config.options, noEmit: true, skipLibCheck: true };
+  const host = ts.createCompilerHost(options);
+  const readSource = host.readFile;
+  host.readFile = (file) => sourceOverrides.get(resolve(file)) ?? readSource(file);
+  const program = ts.createProgram(files, options, host);
   const checker = program.getTypeChecker();
   const resolvedSymbol = (expression: ts.Expression): ts.Symbol | undefined => {
     const location = ts.isPropertyAccessExpression(expression) ? expression.name : expression;
@@ -122,6 +131,8 @@ function retryCallSites(): Array<{ file: string; line: number; failureClassArg: 
           file,
           line: sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile)).line + 1,
           failureClassArg: node.arguments[3]?.getText(sourceFile) ?? null,
+          classRemovalStart: node.arguments[2]?.end ?? node.arguments.pos,
+          classRemovalEnd: node.arguments.end,
         });
       }
       ts.forEachChild(node, visit);
@@ -130,6 +141,15 @@ function retryCallSites(): Array<{ file: string; line: number; failureClassArg: 
   }
   return calls;
 }
+
+function assertClassAwareRetryCalls(calls: RetryCallSite[]): void {
+  expect(calls.map(({ file }) => file)).toEqual(expect.arrayContaining(REQUIRED_CLASS_AWARE_CALLS));
+  expect(calls.filter(({ failureClassArg }) =>
+    failureClassArg === null || failureClassArg === "null" || failureClassArg === "undefined",
+  )).toEqual([]);
+}
+
+const productionRetryCalls = retryCallSites();
 
 describe("the terminating set is one set with two spellings", () => {
   it("names the same classes in the migration and in the kernel", () => {
@@ -152,11 +172,20 @@ describe("the terminating set is one set with two spellings", () => {
   });
 
   it("threads the refusal class through every production retry call", () => {
-    const calls = retryCallSites();
-    expect(calls.map(({ file }) => file)).toEqual(expect.arrayContaining(REQUIRED_CLASS_AWARE_CALLS));
-    expect(calls.filter(({ failureClassArg }) =>
-      failureClassArg === null || failureClassArg === "null" || failureClassArg === "undefined",
-    )).toEqual([]);
+    assertClassAwareRetryCalls(productionRetryCalls);
+  });
+
+  it.each(productionRetryCalls)("rejects a dropped refusal class at $file:$line", (call) => {
+    assertClassAwareRetryCalls(productionRetryCalls);
+    const source = readFileSync(call.file, "utf8");
+    // Mutate only the compiler's input: production files and built declarations
+    // stay untouched, and each call must independently trip the real guard.
+    const planted = source.slice(0, call.classRemovalStart) + source.slice(call.classRemovalEnd);
+    const plantedCalls = retryCallSites(new Map([[resolve(call.file), planted]]));
+    expect(plantedCalls).toHaveLength(productionRetryCalls.length);
+    expect(plantedCalls.filter(({ failureClassArg }) => failureClassArg === null)
+      .map(({ file }) => file)).toEqual([call.file]);
+    expect(() => assertClassAwareRetryCalls(plantedCalls), `${call.file}:${call.line}`).toThrow();
   });
 });
 

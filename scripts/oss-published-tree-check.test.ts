@@ -4,7 +4,7 @@
 
 import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -40,6 +40,104 @@ const workflow = readFileSync(join(ROOT, WORKFLOW), "utf8");
 const sourcePreviewWorkflow = readFileSync(join(ROOT, ".github/workflows/publish-source-preview.yml"), "utf8");
 const workflowJob = (name: string, source = workflow) => source.split(`\n  ${name}:\n`)[1]?.split(/^ {2}[a-z][a-z-]*:\n/mu)[0] ?? "";
 const workflowCommands = (job: string) => [...job.matchAll(/^ {6}(?:- | {2})run: (?!\|)(.+)$/gmu)].map((match) => match[1]);
+
+describe("CI image mirror workflow controls", () => {
+  const mirror = readFileSync(join(ROOT, ".github/workflows/mirror-ci-images.yml"), "utf8");
+  const permissionBlocks = (source: string) => [...source.matchAll(/^( *)permissions:([^\n]*)\n((?:\1 +[^\n]*\n)*)/gmu)].map(([block]) => block.trimEnd());
+  const firstPartyActions = [
+    ["actions/checkout", "3d3c42e5aac5ba805825da76410c181273ba90b1"],
+    ["actions/setup-node", "249970729cb0ef3589644e2896645e5dc5ba9c38"],
+  ];
+  const assertControls = (source: string) => {
+    expect(source.match(/^on:\n(?: +[^\n]*\n|\n)*/mu)?.[0].trimEnd()).toBe(`on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: [config/ci-images.json, .github/workflows/published-tree-ci.yml, scripts/public-ci-pgtap.mjs, scripts/ci-image-mirror.mjs, config/public-reference-subscription-supabase.toml, .github/workflows/mirror-ci-images.yml]`);
+    expect(permissionBlocks(source)).toEqual(["permissions: {contents: read}", "    permissions: {contents: read}", "    permissions: {contents: read, packages: write}"]);
+    expect([...(source.split("\njobs:\n")[1] ?? "").matchAll(/^ {2}([a-z-]+):$/gmu)].map((match) => match[1])).toEqual(["plan", "mirror"]);
+    // Inspect every run form, including a step beginning with `- run:` and folded blocks.
+    let runIndent: number | undefined;
+    for (const line of source.split("\n")) {
+      const indent = line.length - line.trimStart().length;
+      if (runIndent !== undefined && (line.trim() === "" || indent > runIndent)) {
+        expect(line).not.toContain("${{");
+        continue;
+      }
+      runIndent = undefined;
+      const run = /^( *)(?:- )?run: (.*)$/u.exec(line);
+      if (run) {
+        expect(run[2]).not.toContain("${{");
+        if (/^[|>][-+]?$/u.test(run[2])) runIndent = run[1].length;
+      }
+    }
+    for (const name of ["plan", "mirror"]) {
+      const job = workflowJob(name, source);
+      expect(job).toContain("    if: github.repository == 'openlup/openlup' && github.ref == 'refs/heads/main'\n");
+      expect(job).toContain('with: {ref: "${{ github.sha }}", persist-credentials: false}');
+      expect(job).toContain("with: {node-version: 24.21.0, package-manager-cache: false}");
+      const actions = [...job.matchAll(/uses: ([^@\n]+)@([^\s#]+)/gu)].map((match) => [match[1], match[2]]);
+      expect(actions).toEqual(name === "plan" ? [...firstPartyActions, ["supabase/setup-cli", "45a513f8c64c0bc8e0e3dfe572b5c95be85f6359"]] : firstPartyActions);
+    }
+    const plan = workflowJob("plan", source), writer = workflowJob("mirror", source);
+    expect(plan).toContain('outputs: {images: "${{ steps.plan.outputs.images }}"}');
+    expect(plan).toContain('run: node scripts/ci-image-mirror.mjs pin >> "$GITHUB_OUTPUT"');
+    expect(plan).toContain('with: {version: "${{ steps.pin.outputs.version }}"}');
+    expect(plan).toContain('images=$(node scripts/ci-image-mirror.mjs plan)');
+    expect(plan).toContain(`printf 'images=%s\\n' "$images" >> "$GITHUB_OUTPUT"`);
+    expect(plan).not.toMatch(/GHCR_TOKEN|github\.token/u);
+    expect(writer).toContain("    needs: plan\n");
+    expect(writer).toContain('env: {PLAN_IMAGES: "${{ needs.plan.outputs.images }}", GHCR_TOKEN: "${{ github.token }}", GHCR_ACTOR: "${{ github.actor }}"}');
+    expect(workflowCommands(writer)).toEqual(["node scripts/ci-image-mirror.mjs mirror"]);
+    expect(writer).not.toMatch(/setup-cli|npm |supabase /u);
+    expect((source.match(/GHCR_TOKEN:/gu) ?? [])).toHaveLength(1);
+    expect(source).not.toMatch(/secrets\.|upload-artifact|actions\/cache|curl|password=/u);
+  };
+
+  it("isolates CLI planning from the minimal writer with exact triggers, permissions and guards", () => assertControls(mirror));
+
+  it("rejects extra triggers/scopes, untrusted checkout, actions and shell interpolation", () => {
+    for (const [from, to] of [
+      ["  workflow_dispatch:\n", '  workflow_dispatch:\n  schedule:\n    - cron: "17 4 * * 1"\n'],
+      ["  workflow_dispatch:\n", "  workflow_dispatch:\n  pull_request:\n"],
+      ["  workflow_dispatch:\n", "  workflow_dispatch:\n  pull_request_target:\n"],
+      ["permissions: {contents: read}", "permissions: {contents: read, packages: write}"],
+      ["packages: write}", "packages: write, actions: write}"],
+      ['ref: "${{ github.sha }}"', 'ref: "${{ github.event.pull_request.head.sha }}"'],
+      ["needs: plan", "needs: other"],
+      ["  mirror:\n", "      - run: echo '${{ needs.plan.outputs.images }}'\n  mirror:\n"],
+      ["  mirror:\n", "      - run: >\n          echo '${{ needs.plan.outputs.images }}'\n  mirror:\n"],
+      ["run: node scripts/ci-image-mirror.mjs mirror", "run: echo done"],
+      ["run: node scripts/ci-image-mirror.mjs mirror", "run: echo '${{ needs.plan.outputs.images }}'"],
+      ["run: node scripts/ci-image-mirror.mjs mirror", "run: |\n          echo '${{ needs.plan.outputs.images }}'\n"],
+      ["run: node scripts/ci-image-mirror.mjs mirror", "run: node scripts/ci-image-mirror.mjs mirror\n      - uses: supabase/setup-cli@45a513f8c64c0bc8e0e3dfe572b5c95be85f6359"],
+    ]) expect(() => assertControls(mirror.replace(from, to))).toThrow();
+    for (const name of ["plan", "mirror"]) {
+      const job = workflowJob(name, mirror);
+      expect(() => assertControls(mirror.replace(job, job.replace("github.ref == 'refs/heads/main'", "true")))).toThrow();
+    }
+  });
+
+  const workflows = () => readdirSync(join(ROOT, ".github/workflows")).filter((name) => /\.ya?ml$/u.test(name))
+    .map((name) => ({ name, source: readFileSync(join(ROOT, ".github/workflows", name), "utf8") }));
+  const assertSoleWriter = (sources: Array<{ name: string; source: string }>) => {
+    const writers = sources.flatMap(({ name, source }) => permissionBlocks(source)
+      .filter((block) => /permissions: *write-all\b|\bpackages: *write\b/u.test(block)).map((block) => ({ name, block })));
+    expect(writers).toEqual([{ name: "mirror-ci-images.yml", block: "    permissions: {contents: read, packages: write}" }]);
+  };
+
+  it("grants packages write in exactly the mirror job across every workflow", () => assertSoleWriter(workflows()));
+
+  it.each([
+    "name: Planted\npermissions: write-all\njobs: {}\n",
+    "name: Planted\njobs:\n  planted:\n    permissions: write-all\n",
+    "name: Planted\njobs:\n  planted:\n    permissions: { packages: write }\n",
+    "name: Planted\njobs:\n  planted:\n    permissions: {packages: write}\n",
+    "name: Planted\npermissions:\n  contents: read\n  packages: write\njobs: {}\n",
+  ])("rejects a second writer in alternate permission spelling: %s", (source) => {
+    expect(() => assertSoleWriter([...workflows(), { name: "planted.yml", source }])).toThrow();
+  });
+});
 
 // The workflow uses the same inventory-driven route for future packages.
 function assertPublishedPackageRoutes(inventory: string, source = workflow): void {
@@ -152,7 +250,7 @@ describe("complete public CI", () => {
   it("keeps lint fatal after installation and never filters the diagnostic root command", () => {
     const typecheck = workflowJob("typecheck");
     expect(workflowCommands(typecheck)).toEqual(["node scripts/public-ci-reuse.mjs", "npm ci", "npm run lint", "npm run oss:published-tree -- --typecheck"]);
-    expect(workflowCommands(workflowJob("test-full-shard"))).toEqual(["node scripts/public-ci-reuse.mjs", "npm ci", "node scripts/ci-test-scope.mjs", "npm test -- --shard=${{ matrix.shard }}/4"]);
+    expect(workflowCommands(workflowJob("test-full-shard"))).toEqual(["node scripts/public-ci-reuse.mjs", "npm ci", "node scripts/ci-test-scope.mjs", 'echo "$GH_TOKEN" | docker login ghcr.io -u "$GH_ACTOR" --password-stdin', "npm test -- --shard=${{ matrix.shard }}/4"]);
     expect(PUBLIC_TEST_COMMAND).toBe("node scripts/run-vitest.mjs run");
     expect(workflow).not.toMatch(/--exclude|continue-on-error|\|\|\s*true|set \+e/u);
     const config = readFileSync(join(ROOT, "vitest.config.ts"), "utf8");
@@ -163,6 +261,21 @@ describe("complete public CI", () => {
     expect(job).toContain("npm ci --prefer-offline --no-audit --fund=false");
     expect(job.indexOf("npm ci ")).toBeLessThan(job.indexOf("node scripts/public-ci-pgtap.mjs"));
     expect(job).toContain("node-version: 24.21.0");
+  });
+  it("limits registry authentication to non-reused image-pull jobs with read permissions", () => {
+    expect(workflow.split("\njobs:\n")[0]).toContain("permissions:\n  contents: read\n  actions: read\n");
+    expect(workflow.match(/packages: read/gu)).toHaveLength(2);
+    expect(workflow.match(/docker login/gu)).toHaveLength(2);
+    for (const [name, command] of [["test-full-shard", "npm test --"], ["pgtap", "node scripts/public-ci-pgtap.mjs"]]) {
+      const job = workflowJob(name);
+      expect(job).toContain("    permissions:\n      contents: read\n      actions: read\n      packages: read\n");
+      const login = job.split("      - name: Authenticate GitHub Container Registry pulls\n")[1]?.split(/(?=^ {6}- )/mu)[0];
+      expect(login).toContain("        if: steps.reused.outputs.reuse != 'true'\n");
+      expect(login).toContain("        env:\n          GH_TOKEN: ${{ github.token }}\n          GH_ACTOR: ${{ github.actor }}\n");
+      expect(login.split("run:")[1]).not.toContain("${{");
+      expect(login).toContain('run: echo "$GH_TOKEN" | docker login ghcr.io -u "$GH_ACTOR" --password-stdin');
+      expect(job.indexOf("docker login")).toBeLessThan(job.indexOf(`run: ${command}`));
+    }
   });
   it("uses the pinned local CLI and checks neutrality against the event base", () => {
     expect(workflow).toContain("supabase/setup-cli@45a513f8c64c0bc8e0e3dfe572b5c95be85f6359");
@@ -242,7 +355,7 @@ describe("complete public CI", () => {
 `);
     expect(installProof).toContain("          OPENLUP_PROOF_SERVICE_CONTAINER: ${{ job.services.postgres.id }}\n          OPENLUP_PROOF_SERVICE_PORT: ${{ job.services.postgres.ports[5432] }}\n");
     expect(workflowJob("test")).not.toMatch(/services:|OPENLUP_PROOF_SERVICE_/u);
-    expect(workflowCommands(workflowJob("pgtap"))).toEqual(["node scripts/public-ci-reuse.mjs", "npm ci --prefer-offline --no-audit --fund=false", "node scripts/public-ci-pgtap.mjs"]);
+    expect(workflowCommands(workflowJob("pgtap"))).toEqual(["node scripts/public-ci-reuse.mjs", "npm ci --prefer-offline --no-audit --fund=false", 'echo "$GH_TOKEN" | docker login ghcr.io -u "$GH_ACTOR" --password-stdin', "node scripts/public-ci-pgtap.mjs"]);
 
     expect(workflowCommands(workflowJob("self-check"))).toEqual([
       "npm run oss:published-tree -- --policy", "npm run oss:published-tree -- --inventory",
@@ -838,7 +951,8 @@ describe("committed managed migration inventory", () => {
 });
 
 describe("owned pgTAP command lifecycle", () => {
-  type Observation = { stage: string; args: string[]; input: string; tests?: Record<string, string>; config?: string };
+  type Observation = { stage: string; args: string[]; input: string; registry?: string; tests?: Record<string, string>; config?: string; waitMs?: number; local?: string[] };
+  const cliImageTags = ["postgres:1.2.3", "gotrue:1.2.3", "realtime:1.2.3", "storage-api:1.2.3", "pg_prove:3.36"];
   // Execute the shipped runner, with every external command replaced on PATH.
   // These subprocesses cannot find the host's Docker, Supabase or Git binaries.
   function observe(scenario: string, check: (result: ReturnType<typeof spawnSync>, calls: Observation[], directory: string) => void) {
@@ -851,9 +965,10 @@ describe("owned pgTAP command lifecycle", () => {
     try {
       writeFileSync(join(directory, "package.json"), '{"type":"commonjs"}\n');
       for (const folder of ["scripts/public-reference", "config", "supabase/migrations", "supabase/tests", "bin"]) mkdirSync(join(directory, folder), { recursive: true });
-      writeFileSync(join(directory, "scripts/public-ci-pgtap.mjs"), readFileSync(join(ROOT, "scripts/public-ci-pgtap.mjs")));
+      for (const file of ["public-ci-pgtap.mjs", "ci-image-mirror.mjs", "ci-image-pull.mjs"]) writeFileSync(join(directory, "scripts", file), readFileSync(join(ROOT, "scripts", file)));
       writeFileSync(join(directory, "scripts/public-reference/subscription-prereqs.sql"), "SELECT 'prerequisites';\n");
       writeFileSync(join(directory, "config/public-reference-subscription-supabase.toml"), readFileSync(join(ROOT, "config/public-reference-subscription-supabase.toml")));
+      writeFileSync(join(directory, "config/ci-images.json"), readFileSync(join(ROOT, "config/ci-images.json")));
       for (const [name, bytes] of Object.entries(migrations)) writeFileSync(join(directory, "supabase/migrations", name), bytes);
       if (scenario === "inventory") writeFileSync(join(directory, "supabase/migrations", forward), "SELECT 'uncommitted';\n");
       writeFileSync(join(directory, "supabase/tests/first_test.sql"), "BEGIN; SELECT 'first assertion'; ROLLBACK;\n");
@@ -866,8 +981,13 @@ const args = process.argv.slice(2);
 const environment = Reflect.get(process, 'env');
 const scenario = environment.PGTAP_STAND_IN_SCENARIO;
 const input = fs.readFileSync(0, 'utf8');
-const stage = command === 'git' ? 'inventory' : command === 'supabase' ? (args[0] === '--version' ? 'version' : args[0]) : args[0] === 'restart' ? 'restart' : args.includes('-1') ? 'replay' : args.includes('-i') ? 'formatter' : 'readback';
-const row = { stage, args, input };
+// CLI embedded image metadata used by the shared mirror derivation:
+// public.ecr.aws supabase/pg_prove:3.36
+const stage = command === 'which' ? 'which' : command === 'git' ? 'inventory' : command === 'supabase' ? (args[0] === '--version' ? 'version' : args[0]) : args[0] === 'pull' ? 'pull' : args[0] === 'image' ? args[1] : args[0] === 'restart' ? 'restart' : args.includes('-1') ? 'replay' : args.includes('-i') ? 'formatter' : 'readback';
+const statePath = path.join(path.dirname(environment.PGTAP_STAND_IN_LOG), 'local-images.json');
+const local = new Set(fs.existsSync(statePath) ? JSON.parse(fs.readFileSync(statePath, 'utf8')) : []);
+const row = { stage, args, input, registry: environment.SUPABASE_INTERNAL_IMAGE_REGISTRY };
+if (stage === 'start' || stage === 'test') row.local = [...local];
 if (stage === 'start' || stage === 'test') {
   const directory = args[args.indexOf('--workdir') + 1];
   row.config = fs.readFileSync(path.join(directory, 'supabase/config.toml'), 'utf8');
@@ -877,7 +997,19 @@ fs.appendFileSync(environment.PGTAP_STAND_IN_LOG, JSON.stringify(row) + '\\n');
 if (stage === 'inventory') {
   if (JSON.stringify(args.slice(0, 3)) !== JSON.stringify(['--no-replace-objects', '-C', process.cwd()]) || args[3] !== 'ls-tree') process.exit(90);
   process.stdout.write(JSON.parse(environment.PGTAP_STAND_IN_INVENTORY));
-} else if (stage === 'version') process.stdout.write(scenario === 'version' ? '2.98.1\\n' : '2.98.2\\n');
+} else if (stage === 'which') process.stdout.write(path.join(path.dirname(process.argv[1]), 'supabase'));
+else if (stage === 'services') process.stdout.write(JSON.stringify(['postgres', 'gotrue', 'realtime', 'storage-api'].map(name => ({ name: 'supabase/' + name, local: '1.2.3' }))));
+else if (stage === 'inspect') {
+  if (args.length === 3 && scenario === 'inspect-error') { process.stderr.write('permission denied inspecting local images'); process.exit(1); }
+  if (args.length === 3 && ((scenario === 'missing-local' && args[2].includes('/realtime:')) || (scenario === 'missing-two' && ['/realtime:', '/pg_prove:'].some(name => args[2].includes(name))))) { process.stderr.write('No such image: ' + args[2]); process.exit(1); }
+  if (!local.has(args[2])) { process.stderr.write('No such image'); process.exit(1); }
+  process.stdout.write('[]');
+}
+else if (stage === 'pull' && ['ghcr-outage', 'dockerhub-fallback'].includes(scenario) && args[1].startsWith('ghcr.io/')) { process.stderr.write('toomanyrequests: 429'); process.exit(1); }
+else if (stage === 'pull' && scenario === 'dockerhub-fallback' && args[1].startsWith('public.ecr.aws/')) { process.stderr.write('503 service unavailable'); process.exit(1); }
+else if (stage === 'pull' && scenario === 'missing-init' && args[1].startsWith('ghcr.io/openlup/supabase/realtime:')) { process.stderr.write('manifest unknown'); process.exit(1); }
+else if (stage === 'pull' && scenario === 'empty-mirror' && args[1].startsWith('ghcr.io/openlup/')) { process.stderr.write('unauthorized: not found'); process.exit(1); }
+else if (stage === 'version') process.stdout.write(scenario === 'version' ? '2.98.1\\n' : '2.98.2\\n');
 else if (stage === 'readback') process.stdout.write(scenario === 'readback' ? 'f\\n' : 't\\n');
 else if (stage === 'test') {
   process.stdout.write('raw pgTAP stdout\\n');
@@ -888,15 +1020,43 @@ if ((scenario === stage && !['inventory', 'version', 'readback'].includes(stage)
   process.stderr.write('stand-in ' + stage + ' failure\\n');
   process.exit(stage === 'test' ? 37 : 42);
 }
+if (stage === 'pull') local.add(args[1]);
+if (stage === 'tag') {
+  if (!local.has(args[2])) process.exit(91);
+  local.add(args[3]);
+}
+if (stage === 'pull' || stage === 'tag') fs.writeFileSync(statePath, JSON.stringify([...local]));
+if (stage === 'start' || stage === 'test') {
+  for (const image of ['postgres:1.2.3', 'gotrue:1.2.3', 'realtime:1.2.3', 'storage-api:1.2.3', 'pg_prove:3.36']) {
+    const registry = environment.SUPABASE_INTERNAL_IMAGE_REGISTRY;
+    const reference = (registry === 'docker.io' ? '' : registry + '/') + 'supabase/' + image;
+    if (!local.has(reference)) { process.stderr.write('CLI would pull missing image: ' + reference); process.exit(92); }
+  }
+}
 `;
-      for (const command of ["git", "supabase", "docker"]) {
+      for (const command of ["git", "supabase", "docker", "which"]) {
         const path = join(directory, "bin", command);
         writeFileSync(path, standIn);
         chmodSync(path, 0o755);
       }
       const log = join(directory, "calls.jsonl");
-      const result = spawnSync(process.execPath, [join(directory, "scripts/public-ci-pgtap.mjs")], {
-        cwd: directory, encoding: "utf8", timeout: 10_000, maxBuffer: 1024 * 1024,
+      const clockArgs: string[] = [];
+      if (["ghcr-outage", "dockerhub-fallback"].includes(scenario)) {
+        // Replace only the shared pull clock before the shipped runner loads.
+        const clock = join(directory, "retry-clock.mjs");
+        writeFileSync(clock, `import { appendFileSync } from 'node:fs';
+import { imageIo } from './scripts/ci-image-pull.mjs';
+let elapsed = 0;
+imageIo.now = () => elapsed;
+imageIo.sleep = async (ms) => {
+  elapsed += ms;
+  appendFileSync(new URL('./calls.jsonl', import.meta.url), JSON.stringify({ stage: 'sleep', args: [], input: '', waitMs: ms }) + '\\n');
+};
+`);
+        clockArgs.push("--import", clock);
+      }
+      const result = spawnSync(process.execPath, [...clockArgs, join(directory, "scripts/public-ci-pgtap.mjs")], {
+        cwd: directory, encoding: "utf8", timeout: 25_000, maxBuffer: 1024 * 1024,
         env: { PATH: join(directory, "bin"), PGTAP_STAND_IN_SCENARIO: scenario, PGTAP_STAND_IN_LOG: log, PGTAP_STAND_IN_INVENTORY: JSON.stringify(inventory) },
       });
       expect(result.error).toBeUndefined();
@@ -907,9 +1067,14 @@ if ((scenario === stage && !['inventory', 'version', 'readback'].includes(stage)
   }
   it("replays the ordered chain in one transaction and runs every SQL file unchanged before own cleanup", () => {
     observe("pass", (result, calls) => {
-      expect(result.status).toBe(0);
-      expect(calls.map(({ stage }) => stage)).toEqual(["inventory", "version", "start", "formatter", "restart", "readback", "replay", "test", "stop"]);
+      expect(result.status, result.stderr).toBe(0);
+      expect(calls.map(({ stage }) => stage)).toEqual(["inventory", "version", "services", "which", ...cliImageTags.flatMap(() => ["inspect", "inspect", "inspect", "inspect", "pull"]), ...cliImageTags.map(() => "inspect"), "start", "formatter", "restart", "readback", "replay", "test", "stop"]);
+      expect(calls.filter(({ stage, args }) => stage === "inspect" && args.length === 3).map(({ args }) => args)).toEqual(cliImageTags.map(image => ["image", "inspect", `ghcr.io/openlup/supabase/${image}`]));
       const start = calls.find(({ stage }) => stage === "start")!, replay = calls.find(({ stage }) => stage === "replay")!, tests = calls.find(({ stage }) => stage === "test")!, stop = calls.at(-1)!;
+      expect(start.registry).toBe("ghcr.io/openlup");
+      expect(tests.registry).toBe(start.registry);
+      expect(calls.filter(({ stage }) => stage === "pull").map(({ args }) => args[1])).toEqual(cliImageTags.map(image => `ghcr.io/openlup/supabase/${image}`));
+      expect(start.local).toEqual(cliImageTags.map(image => `ghcr.io/openlup/supabase/${image}`));
       expect(start.args).toContain("--exclude");
       expect(start.config).toMatch(/project_id = "openlup-ci-[a-f0-9]{16}"/u);
       expect(start.config).not.toContain("{{");
@@ -937,6 +1102,98 @@ if ((scenario === stage && !['inventory', 'version', 'readback'].includes(stage)
       expect(tests.args).toContain("--db-url");
       expect(tests.args.at(-1)).toMatch(/^postgresql:\/\/postgres:postgres@127\.0\.0\.1:\d+\/postgres$/u);
       expect(stop.args).toEqual(["stop", "--workdir", start.args[start.args.indexOf("--workdir") + 1], "--no-backup"]);
+    });
+  });
+  it("pre-pulls before start and sets the successful upstream registry when the mirror is empty", () => {
+    observe("empty-mirror", (result, calls) => {
+      expect(result.status, result.stderr).toBe(0);
+      const start = calls.findIndex(({ stage }) => stage === "start");
+      const pulls = calls.filter(({ stage }) => stage === "pull");
+      expect(pulls.map(({ args }) => args[1])).toEqual(cliImageTags.flatMap(image => [`ghcr.io/openlup/supabase/${image}`, `ghcr.io/supabase/${image}`]));
+      expect(calls.slice(start).some(({ stage }) => stage === "pull")).toBe(false);
+      for (const call of calls.filter(({ stage }) => ["start", "test", "stop"].includes(stage))) expect(call.registry).toBe("ghcr.io");
+    });
+  });
+  it("falls back for a missing init image and aliases it before any CLI image request", () => {
+    observe("missing-init", (result, calls) => {
+      expect(result.status, result.stderr).toBe(0);
+      const target = "ghcr.io/openlup/supabase/realtime:1.2.3";
+      expect(calls.filter(({ stage }) => stage === "pull").map(({ args }) => args[1])).toEqual([
+        ...cliImageTags.slice(0, 3).map(image => `ghcr.io/openlup/supabase/${image}`),
+        "ghcr.io/supabase/realtime:1.2.3",
+        ...cliImageTags.slice(3).map(image => `ghcr.io/openlup/supabase/${image}`),
+      ]);
+      const alias = calls.findIndex(({ stage }) => stage === "tag");
+      const start = calls.findIndex(({ stage }) => stage === "start");
+      expect(calls[alias].args).toEqual(["image", "tag", "ghcr.io/supabase/realtime:1.2.3", target]);
+      expect(alias).toBeLessThan(start);
+      expect(calls.slice(alias + 1, start).map(({ args }) => args)).toEqual(cliImageTags.map(image => ["image", "inspect", `ghcr.io/openlup/supabase/${image}`]));
+      expect(calls.slice(start).some(({ stage }) => ["pull", "tag"].includes(stage))).toBe(false);
+      for (const call of calls.filter(({ stage }) => ["start", "test"].includes(stage))) {
+        expect(call.registry).toBe("ghcr.io/openlup");
+        expect(call.local).toEqual(expect.arrayContaining(cliImageTags.map(image => `ghcr.io/openlup/supabase/${image}`)));
+      }
+    });
+  });
+  it("sets ECR on start/test/stop after three 429s from each GHCR source per CLI image", () => {
+    observe("ghcr-outage", (result, calls) => {
+      expect(result.status, result.stderr).toBe(0);
+      expect(calls.filter(({ stage }) => stage === "sleep").map(({ waitMs }) => waitMs)).toEqual(cliImageTags.flatMap(() => [1_000, 2_000, 1_000, 2_000]));
+      expect(calls.filter(({ stage }) => stage === "pull").map(({ args }) => args[1])).toEqual(
+        cliImageTags.flatMap(image => [
+          ...Array(3).fill(`ghcr.io/openlup/supabase/${image}`),
+          ...Array(3).fill(`ghcr.io/supabase/${image}`),
+          `public.ecr.aws/supabase/${image}`,
+        ]),
+      );
+      for (const call of calls.filter(({ stage }) => ["start", "test", "stop"].includes(stage))) expect(call.registry).toBe("public.ecr.aws");
+    });
+  }, 30_000);
+  it("sets Docker Hub on start/test/stop after exhausting GHCR 429s and transient ECR failures", () => {
+    observe("dockerhub-fallback", (result, calls) => {
+      expect(result.status, result.stderr).toBe(0);
+      expect(calls.filter(({ stage }) => stage === "sleep").map(({ waitMs }) => waitMs)).toEqual(cliImageTags.flatMap(() => [1_000, 2_000, 1_000, 2_000, 1_000, 2_000]));
+      const pulls = calls.filter(({ stage }) => stage === "pull");
+      expect(pulls.map(({ args }) => args[1])).toEqual(
+        cliImageTags.flatMap(image => [
+          ...Array(3).fill(`ghcr.io/openlup/supabase/${image}`),
+          ...Array(3).fill(`ghcr.io/supabase/${image}`),
+          ...Array(3).fill(`public.ecr.aws/supabase/${image}`),
+          `docker.io/supabase/${image}`,
+        ]),
+      );
+      expect(pulls).toHaveLength(50);
+      const start = calls.findIndex(({ stage }) => stage === "start");
+      expect(calls.slice(start).some(({ stage }) => stage === "pull")).toBe(false);
+      const lifecycle = calls.filter(({ stage }) => ["start", "test", "stop"].includes(stage));
+      expect(lifecycle.map(({ stage }) => stage)).toEqual(["start", "test", "stop"]);
+      for (const call of lifecycle) expect(call.registry).toBe("docker.io");
+      expect(calls.filter(({ stage }) => stage === "tag").map(({ args }) => args)).toEqual(cliImageTags.map(image => ["image", "tag", `docker.io/supabase/${image}`, `supabase/${image}`]));
+      expect(calls.slice(start - 5, start).map(({ args }) => args)).toEqual(cliImageTags.map(image => ["image", "inspect", `supabase/${image}`]));
+    });
+  }, 30_000);
+  it.each(["missing-local", "missing-two"])("refuses absent exact CLI names before start: %s", scenario => {
+    observe(scenario, (result, calls) => {
+      expect(result.status).toBe(1);
+      expect(calls.some(({ stage }) => ["start", "test", "stop"].includes(stage))).toBe(false);
+      expect(result.stderr).toContain("CLI must never pull; missing local images before supabase start:");
+      expect(result.stderr).toContain("ghcr.io/openlup/supabase/realtime:1.2.3");
+      if (scenario === "missing-two") expect(result.stderr).toContain("ghcr.io/openlup/supabase/pg_prove:3.36");
+      expect(calls.slice(-5).map(({ args }) => args)).toEqual(cliImageTags.map(image => ["image", "inspect", `ghcr.io/openlup/supabase/${image}`]));
+    });
+  });
+  it("refuses other exact-name inspect errors without treating them as absence", () => {
+    observe("inspect-error", (result, calls) => {
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain("permission denied inspecting local images");
+      expect(result.stderr).not.toContain("missing local images");
+      expect(calls.some(({ stage }) => ["start", "test", "stop"].includes(stage))).toBe(false);
+    });
+  });
+  it.each(["services", "pull"])("refuses %s failure before starting a stack", scenario => {
+    observe(scenario, (result, calls) => {
+      expect(result.status).toBe(1);
+      expect(calls.some(({ stage }) => ["start", "test", "stop"].includes(stage))).toBe(false);
     });
   });
   it("preserves a raw test failure, both output streams and its log while cleaning up", () => {

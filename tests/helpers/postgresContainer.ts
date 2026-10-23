@@ -38,8 +38,27 @@ import { execFile } from "node:child_process";
 import { createServer } from "node:net";
 import { promisify } from "node:util";
 import type { Pool } from "pg";
+import { imageReference, pullWithRetry, readCiImage, readCiImages, resolvePinnedImage } from "../../scripts/ci-image-pull.mjs";
 
 const exec = promisify(execFile);
+const defaultPin = readCiImage("test-postgres");
+export const defaultPostgresImage = `${defaultPin.repository.replace(/^library\//u, "")}:${defaultPin.tag}@${defaultPin.digest}`;
+const pulls = new Map<string, Promise<string>>();
+
+async function pinnedImage(reference: string, explicit: boolean): Promise<string | undefined> {
+  const pin = readCiImages().find(image => [
+    `${image.repository.replace(/^library\//u, "")}:${image.tag}@${image.digest}`,
+    `${image.repository}:${image.tag}@${image.digest}`,
+    ...image.sources.flatMap(source => [`${source}@${image.digest}`, imageReference(image, source)]),
+  ].includes(reference));
+  if (!pin) return undefined;
+  let pending = pulls.get(reference);
+  if (!pending) {
+    pending = (explicit ? resolvePinnedImage(pin, reference) : pullWithRetry(pin)).catch(error => { pulls.delete(reference); throw error; });
+    pulls.set(reference, pending);
+  }
+  return pending;
+}
 
 export type PostgresReadyOptions = {
   /** Total attempts before giving up. */
@@ -108,7 +127,9 @@ export type PostgresContainer = {
  * image, a full disk or a dead daemon still fails the suite immediately.
  */
 export async function runPostgresContainer(spec: PostgresContainerSpec): Promise<PostgresContainer> {
-  const image = spec.image ?? "postgres:16";
+  const requested = spec.image ?? defaultPostgresImage;
+  const pulled = await pinnedImage(requested, spec.image !== undefined);
+  const image = pulled ?? requested;
   let lastError: unknown;
 
   for (let attempt = 0; attempt < 5; attempt += 1) {
@@ -116,6 +137,7 @@ export async function runPostgresContainer(spec: PostgresContainerSpec): Promise
     const port = await reservePort();
     const args = [
       "run", "-d", "--name", spec.name,
+      ...(pulled ? ["--pull=never"] : []),
       "-e", `POSTGRES_PASSWORD=${spec.password}`,
       ...(spec.database ? ["-e", `POSTGRES_DB=${spec.database}`] : []),
       "-p", `127.0.0.1:${port}:5432`,

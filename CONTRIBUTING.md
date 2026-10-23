@@ -131,6 +131,53 @@ its users or operators can observe.
 
 ## Development-preview checks
 
+The native subscription renewal selection is
+`npm test -- tests/postgres/subscriptionRenewalLifecycle.test.ts --maxWorkers=1`.
+It uses one disposable PostgreSQL container for N1 exact-prefix restart,
+rollback/replay and complete old-catalog comparison, plus retry and captured
+alignment behavior. Initial handoff is tested separately from subsequent retry
+failure: the case precedes terminal recording, bookkeeping rolls back with that
+terminal transaction, and an immutable receipt ends initial terminal replay
+before settlement, rebinding or case propagation. The real-PG witness compares
+counts, complete rows and row versions across every public table before and
+after three replays per state, including an in-flight prepared retry, later
+failure and a re-offered exhausted ladder; it detects notifications, events and
+even same-value re-link writes. Fixture-local late database faults separately prove
+rollback after the original graph and retry prepare writes; the stock-shortage
+case proves admission refusal.
+The same selection covers shadow/off admission, protect release after arrival
+and lease expiry, manual resolution, open/expired dunning and supersession by a
+later paid cycle. Keep the shared harness when extending these witnesses; report
+case counts and whole-selection wall time, including startup and cleanup.
+
+
+The retry-class threading guard in `scripts/retry-ladder-terminating-classes.test.ts`
+resolves every production retry call across the core, package and host sources.
+Its mutation witness removes the refusal class from each discovered call in
+memory and requires the same guard to reject each omission.
+
+The M10/F17 exact-forward controls use
+`scripts/reviewed-batch-forward.test.ts` for per-file refusal plants and separate
+CI/release approval, and `tests/postgres/reviewedBatchForwards.test.ts` for the
+mandatory PostgreSQL/pgTAP catalog gate. The latter runs both complete prefixes,
+checks exact catalog/ACL/row changes and rollback, and falsifies its observer
+with committed attacks. Missing Docker, PostgreSQL or pgTAP fails; the lexer is
+only a pre-filter. Fixtures under `scripts/fixtures/reviewed-m10/` are inert
+approval snapshots and do not join an installation manifest. Root test discovery
+already includes both suites; no extra runner or optional skip is introduced.
+The M10 gate reads its native PG16 and managed Supabase PG17 pins from
+[the CI image inventory](config/ci-images.json), with mirror-first fallback as
+specified in [CI image mirror](#ci-image-mirror). The gate
+uses the shared pull module to reuse an exact local pin or verify the pulled
+RepoDigest. Transient pulls retry at most three attempts per source within a
+300-second pull budget; each attempt gets the remaining budget. Retry-After
+above the source's share of remaining time advances to the next source;
+otherwise waits are capped at five seconds. An unavailable mirror advances
+immediately. Inspection, container-start (except the shared helper's existing
+port-rebind retry) and SQL failures are outside the pull retry; exhausting
+sources fails without a skip.
+
+
 Subscription package contract changes use package-local contract, identity and
 port-fit witnesses alongside the generated package boundary census. The cold
 consumer classifies both exact subscription entries as having no optional peer
@@ -497,6 +544,102 @@ Configuration references: [automatic analysis](https://docs.sonarsource.com/sona
 [quality profiles](https://docs.sonarsource.com/sonarqube-cloud/standards/managing-quality-profiles/understanding-quality-profiles),
 and [PR analysis](https://docs.sonarsource.com/sonarqube-cloud/analyzing-source-code/pull-request-analysis).
 
+### CI image mirror
+
+The separate [CI image mirror](.github/workflows/mirror-ci-images.yml) runs in
+`openlup/openlup` on pushes to `main` that change a derivation input, and on manual
+dispatch from `main`. The workflow lists the six derivation input paths explicitly.
+Its read-only plan job derives only repository/tag pairs and validates the four Supabase
+bootstrap service tags with the pgTAP job's
+single pinned CLI and rendered reference Supabase config, then checks the exclusion list read directly from `scripts/public-ci-pgtap.mjs`
+for uncovered runtime images. Exclusions remove long-running services, but not
+the enabled GoTrue, Realtime and Storage API schema-init jobs. Those three images,
+the database image and `pg_prove` from that CLI binary are mirrored.
+Missing or ambiguous exclusions, service tags, CLI pins or binary tags refuse
+derivation. [The non-CLI pins](config/ci-images.json) cover install-proof
+PostgreSQL, the test harness default and the managed-batch gate database.
+The reviewed-batch gate and shared PostgreSQL test helper read these JSON pins
+through [the shared reader and pull loop](scripts/ci-image-pull.mjs). The reader
+imports the JSON module directly so the same pins load in plain Node and both
+Vitest projects, including jsdom. They try
+the organization mirror first, then the existing upstream order with the same
+digest: managed uses GHCR, Docker Hub, ECR; native uses Docker Hub, ECR.
+The helper's default is the pinned test PostgreSQL image; explicit images retain
+their behavior unless they exactly match an inventory pin. Shared acquisition
+first inspects every source locally and reuses only an exact pinned index digest;
+absent or nonmatching pins require pulling, while daemon/inspection errors refuse.
+It resolves once per process per exact input reference before port retries, then
+runs the successful
+reference with `--pull=never`. Explicit pinned overrides first verify the exact
+local RepoDigest, avoiding a second pull phase after the gate resolves its image. Failed
+resolutions are evicted from that process cache.
+The gate, helper and pgTAP runner use the same pull implementation. It tries at
+most three times per source within a 300-second pull budget measured with a
+monotonic clock. Each pull receives the remaining budget, clamped to at least
+one millisecond; there is no separate per-attempt cap that could repeatedly
+cancel a cold, non-resumable layer. This leaves about half the gate's 600-second
+hook for startup and the migration prefix. `IMAGE_PULL_BUDGET_MS` in the shared
+module owns that calibration; hosted cold-pull measurements can adjust it.
+Retry-After seconds and Go subsecond units above the current source's equal
+share of the remaining budget immediately advance to the next source.
+Otherwise 1s/2s minimum waits are capped at five seconds and the remaining budget;
+expiry prevents another pull. Backoff adds at most 10 seconds per failed source
+(30s native or 40s managed/pgTAP per image), all inside the pull budget. There
+are at most nine native or twelve managed/pgTAP pulls per image.
+The shared loop retries transport, context-deadline, killed process timeout,
+registry 5xx and 429 failures. Mirror not-found,
+denied or unauthorized errors immediately fall through without retry. An empty
+or private mirror therefore needs no login and does not by itself fail CI.
+Local daemon/disk/malformed failures, upstream non-transient errors and pinned
+RepoDigest mismatches refuse rather than silently selecting another image.
+The gate's offline guard rejects literal digest pins or registry source lists.
+
+The pgTAP runner reuses mirror CLI derivation for Postgres, GoTrue, Realtime, Storage API and `pg_prove`, pulls
+before `supabase start`, and tries mirror, GHCR, ECR, then Docker Hub by derived tag. CLI tags
+have no inventory digest; local reuse requires the exact tag that the CLI will
+request, while any available derived digest requires exact index equality. The
+selected registry is passed explicitly to start/test/stop with
+`SUPABASE_INTERNAL_IMAGE_REGISTRY`, overriding setup-cli's GHCR default. When
+images succeed at different registries, the first image's successful registry
+wins; local tag aliases make every exact CLI-requested name available without
+additional pulls. Docker Hub retains the original `supabase/<name>:<tag>`;
+other registries request `<registry>/supabase/<name>:<tag>`, matching CLI 2.98.2.
+After aliasing, the runner inspects every exact requested name from the same
+five-image derivation. Any missing names refuse before `supabase start` and are
+reported together; only `No such image` counts as absence, while other inspect
+errors refuse directly. Offline lifecycle tests cover present, missing and
+mixed-registry names, so the CLI never needs to pull. No upstream push or registry
+write occurs. Other launchers and the
+install-proof service retain their existing acquisition behavior.
+An upstream source may retain an explicit tag only when it matches its JSON tag;
+resolution preserves that spelling and always verifies the pinned digest.
+The script resolves upstream tags to digests, copies complete indexes to
+`ghcr.io/openlup/<upstream-repository>:<tag>` (slashes retained), skips identical
+target tags, refuses conflicting tags and verifies the digest after copying.
+Only the mirror job receives `packages: write`: it validates the untrusted pairs against
+a closed repository allowlist, reads owned pins from its own checkout, and runs only
+SHA-pinned first-party actions plus the dependency-free repository script; CLI tags are
+trust-on-first-use and a moved tag is refused.
+The token reaches login through environment and stdin after validation and resolution,
+immediately before copying; a `finally` block removes the temporary registry
+credentials.
+The mirror never re-points an existing tag, so an owned pin's digest bump must use a
+new, more specific upstream tag; the old target tag stays as it is.
+Offline derivation, skip/refuse and verification tests accompany exact workflow
+trigger, permission, checkout and credential-transport assertions.
+
+One-time owner setup is required: organization **Settings → Packages → Package
+Creation** must allow Public packages (and initial private creation, because
+GHCR creates packages private). After the first authorized run, for each package
+under **openlup → Packages**, use **Connect repository → openlup/openlup**; in
+**Package settings → Manage Actions access**, add that repository with **Write**
+access if inheritance does not already grant it. Under **Danger Zone → Change
+visibility**, select **Public** and confirm. Check anonymous mirror pulls after making packages public; consumers already
+fall back while packages are absent or private. `GITHUB_TOKEN` cannot make a package public; linking a public
+repository does not change package visibility. See GitHub's
+[package access and visibility procedure](https://docs.github.com/en/packages/learn-github-packages/configuring-a-packages-access-control-and-visibility)
+and [repository linking procedure](https://docs.github.com/en/packages/learn-github-packages/connecting-a-repository-to-a-package).
+
 ### Required and raw checks
 
 Use the Node version recorded in [.nvmrc](.nvmrc), npm 11.19.0 (the
@@ -537,6 +680,10 @@ local listener; they never establish provider-account readiness.
 Required root `test` accepts only success from all four `test-full-shard` jobs;
 failed, cancelled or skipped shard jobs refuse it. Main-push reuse requires a
 complete successful exact-commit merge-group run, including raw pgTAP.
+The `test-full-shard` and `pgtap` jobs authenticate ghcr.io pulls with the
+job's `GITHUB_TOKEN` and `packages: read` before non-reused tests; login failure
+fails the job. The pinned Supabase setup action selects ghcr.io for CLI 2.98.2;
+`install-proof` retains its Docker Hub service, which is pulled before steps run.
 See [Test scope and diagnostics](#test-scope-and-diagnostics) for selection,
 sharding, discovery and test-author guidance.
 
@@ -758,6 +905,14 @@ does not move prompts or reports. A receipt timeout needs submission or expiry
 recovery, as [Merge queue](#merge-queue) describes. Freshness is checked at
 admission, not guaranteed at the later merge; same-name checks from a malicious
 writer remain outside this process-evidence boundary.
+
+The experimental invoicing module adds an isolated row to the existing platform
+module graph, with a type-only browser contracts entry and no module edges.
+Its installed cold-consumer producer exercises default-off and explicit provider
+selection from the packed artifact; declaration compilation covers both NodeNext
+and Bundler modes. The existing package selection, boundary tests, API reports,
+AST rules and required verification routes remain binding; this contract step
+adds no separate runner or provider-access requirement.
 
 ### Commands and lint rules
 
@@ -1074,6 +1229,29 @@ The job also rejects baseline increases relative to the PR base/main push's
 previous commit. For a first baseline, or to regenerate from main without
 increasing debt, use `node scripts/public-ci-neutrality.mjs --write-baseline`.
 After removing debt, lower the affected counts; never raise them.
+
+The named **bounded debt C94 — M10 reviewed packet vocabulary** is the coordinator-approved
+bounded recalibration for immutable managed SQL and its pinned registry COMMENT,
+following the diagnostic-fixture debt treatment in #130. Its exact path/category
+counts are documented in [Data and migrations](docs/platform/DATA_AND_MIGRATIONS.md#exact-reviewed-function-forwards).
+This control change adds baseline keys only for the six existing managed fixtures
+and that registry carrier; existing counts stay unchanged. Each landing PR
+(P3b, P5, F17) adds only its own rail keys with the files and exact pinned counts.
+Every present baseline key for an allowance path must match all its pinned
+category counts exactly, including during regeneration; absent files cannot
+justify new keys. `reviewedPinnedIntroductions` in the wrapper is a closed
+list of exactly 13 paths: six inert managed SQL fixtures, their six future
+`supabase/migrations/` copies, and `config/reviewed-platform-forwards.json`.
+Each SQL entry pins the whole-file SHA-256 and exact category/before/after counts;
+the registry entry pins its exact SQL COMMENT text, so unrelated registry edits
+do not invalidate the pin. The filter applies on any base to measured-base
+increases and parent-baseline raises, including `--write-baseline`. Candidate
+counts must still fit the baseline. No wildcard, prefix or ceiling is admitted;
+changed bytes, paths, categories or counts refuse, as do native, TypeScript,
+package and docs entries. An unrelated increase remains a failure in the same run.
+Adding any further entry is a control change needing two fresh Opus reviews plus
+the coordinator's control read. Neutral replacements reduce the debt; rail-path
+entries can be retired after the F17 PR lands and the base carries their counts.
 After all allowances are subtracted, a negative count fails the ratchet with
 the category, quoted path and remainder; allowances never clamp counts to zero.
 
@@ -1209,7 +1387,10 @@ refusal and approval before introduction in both gates; managed counts remain
 unchanged. Required self-check keeps the whole registry
 unchanged from the feature comparison base; release compares each forward's own
 entry, list position and shared registry fields with its introduction parent, so later
-controls may append approvals. A feature cannot approve itself. These forwards
+controls may append approvals. A feature cannot approve itself. Batched pins land per rail as a prefix in version
+order: all earlier same-rail pins must be present with their pinned whole-file
+digests. The PG gate refuses landed holes and replays committed interleaved
+files through the last pin along with the absent fixture suffix. These forwards
 are not expand-only. See
 [the exact class](docs/platform/DATA_AND_MIGRATIONS.md#exact-reviewed-function-forwards)
 and its refusal tests in `scripts/source-preview-release.test.ts`.

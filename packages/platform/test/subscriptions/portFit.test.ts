@@ -43,7 +43,7 @@ it("H6: persisted null retry is intentional and authorization binds method plus 
   const authorization: RenewalRecoveryAuthorization = { tokenId: "token", tokenHash: "hash", caseId: "case", clientId: "client", authUserId: null, subscriptionId: "s", cycleId: "cycle", orderId: "order", payerAccountRef: null,
     purpose: "repair_payment", retryAttempt: 4, paymentMethodRef: "method", paymentMethodKind: "card", expiresAt: "2026-10-23T12:00:00Z", usedAt: null, revokedAt: null, requestedAt: schedule.scheduledAt };
   expect(retry.nextRetryAt).toBeNull(); expect(authorization.retryAttempt).toBe(retry.retryAttempt);
-  expect(NATIVE_SUBSCRIPTION_CAPABILITIES.retryRecovery).toBe("unavailable");
+  expect(NATIVE_SUBSCRIPTION_CAPABILITIES.retryRecovery).toBe("selected");
 });
 it("H7: ambiguous activation correlation never fabricates a logical number", () => {
   const ambiguous: RenewalCycleCorrelation = { status: "ambiguous", logicalCycleNumber: null, nativeRenewalCounter: 8, activationCycleId: null, reason: "legacy_correlation_missing" };
