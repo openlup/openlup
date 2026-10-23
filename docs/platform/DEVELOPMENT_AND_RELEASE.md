@@ -170,7 +170,10 @@ The admission script is checked out from `main`, but the job YAML comes from
 the PR or merge-group tree. A candidate can replace `native-review` with a
 successful no-op. Review of `.github/` edits is the current in-repo control;
 carry-over's protected-path refusal does not prevent a modified job from skipping
-admission. A separately authorized owner must configure a ruleset-required
+admission. For [co-located SQL and pins](DATA_AND_MIGRATIONS.md#co-located-sql-and-approval-pins),
+the invoked main admission also validates the data under its trusted checker and
+refuses simultaneous machinery changes or a machinery move since the reviewed
+base. This adds no workflow isolation. A separately authorized owner must configure a ruleset-required
 workflow pinned to a trusted definition outside candidate control to close this
 bypass. Requiring the status name alone does not pin its implementation. See
 [Merge queue](../../CONTRIBUTING.md#merge-queue) for the control and residual risk.
