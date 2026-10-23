@@ -69,6 +69,12 @@ immutable release; see the [install support policy](../../.github/INSTALL_SUPPOR
 
 ## Ownership
 
+The plain Vitest worker-policy witness is a public tooling source in the
+publication catalogue; its embedded child CLI is also a declared execution
+entrypoint, like the existing process witnesses. Register new tracked test paths there before final
+policy/inventory checks; those checks compare Git's tracked paths, so an
+untracked test alone cannot establish complete publication evidence.
+
 The CI image mirror workflow, dependency-free script and offline witnesses are
 public source outputs in the publication catalogue. Contributor checks own its
 default-branch execution and one-time package visibility/access setup; canonical
