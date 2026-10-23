@@ -1,16 +1,15 @@
-import type { InvoiceIdentity, InvoiceProof, InvoiceUnsupported } from "./provider.js";
+import type { InvoiceDocumentIdentity, InvoiceProof, InvoiceUnsupported } from "./provider.js";
 /** Durable opaque references; signed URLs and downloaded bytes are transient. */
 export type InvoiceArtifactResult =
-  | { readonly kind: "found"; readonly identity: InvoiceIdentity; readonly artifact: { readonly kind: "pdf" | "structured_document" | "clearance_receipt"; readonly ref: string; readonly owner: "provider" | "host_storage"; readonly mediaType: string; readonly proof: InvoiceProof } }
-  | { readonly kind: "absent"; readonly identity: InvoiceIdentity; readonly proof: InvoiceProof & { readonly exact: true; readonly complete: true; readonly scope: { readonly identity: InvoiceIdentity; readonly kind: "pdf" | "structured_document" | "clearance_receipt"; readonly artifactRef: string | null } } }
-  | { readonly kind: "unknown"; readonly identity: InvoiceIdentity; readonly code: "unknown" }
+  | { readonly kind: "found"; readonly identity: InvoiceDocumentIdentity; readonly artifact: { readonly kind: "pdf" | "structured_document" | "clearance_receipt"; readonly ref: string; readonly owner: "provider" | "host_storage"; readonly mediaType: string; readonly proof: InvoiceProof } }
+  | { readonly kind: "absent"; readonly identity: InvoiceDocumentIdentity; readonly proof: InvoiceProof & { readonly exact: true; readonly complete: true; readonly scope: { readonly identity: InvoiceDocumentIdentity; readonly kind: "pdf" | "structured_document" | "clearance_receipt"; readonly artifactRef: string | null } } }
+  | { readonly kind: "unknown"; readonly identity: InvoiceDocumentIdentity; readonly code: "unknown" }
   | InvoiceUnsupported;
 /** Observation only; unsupported is never not_required. No clearance submission. */
-export interface InvoiceClearanceObservation {
-  readonly state: "not_submitted" | "pending" | "rejected" | "accepted" | "not_required" | "unsupported";
-  readonly reference: string | null;
-  readonly proof: InvoiceProof;
-}
+export type InvoiceClearanceObservation = { readonly proof: InvoiceProof } & (
+  | { readonly state: "accepted"; readonly reference: string }
+  | { readonly state: "not_submitted" | "pending" | "rejected" | "not_required" | "unsupported"; readonly reference: string | null }
+);
 export interface InvoiceDeliveryPort {
   /** Host M04 content/transport; provider acceptance is not inbox delivery.
    * Preserve delivery/request keys, recipient, filename and bytes. Validate PDF

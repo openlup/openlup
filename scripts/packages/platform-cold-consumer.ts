@@ -266,10 +266,10 @@ export function compileConsumer(consumer: string, entries: readonly string[], co
   ].join("\n"));
   if (entries.includes("invoicing") && entries.includes("invoicing/contracts")) surfaces.push([
     'import { readInvoiceCapabilities } from "@openlup/platform/invoicing";',
-    'import type { InvoiceFacts, InvoiceLine, InvoiceSeller, InvoiceBuyer, InvoiceIdentity, InvoiceWriteResult, InvoiceReadbackResult, InvoiceArtifactResult, InvoiceSettlementResult, InvoiceCapabilities, InvoiceCompanyLookupPort, InvoiceStorePort, InvoiceHostPorts, InvoiceServicesOptions } from "@openlup/platform/invoicing/contracts";',
+    'import type { InvoiceFacts, InvoiceLine, InvoiceSeller, InvoiceBuyer, InvoiceIdentity, InvoiceWriteResult, InvoiceReadbackResult, InvoiceArtifactResult, InvoiceSettlementResult, InvoiceCapabilities, InvoiceCompanyLookupPort, InvoiceStorePort, InvoiceHostPorts, InvoiceServicesOptions, InvoiceDocumentIdentity, InvoiceProviderPort, InvoiceSettlementPort, InvoiceSettlementItem, InvoiceDutyReadback, InvoiceUnsupported, InvoiceDiagnosticCode, InvoiceProof, InvoiceClearanceObservation } from "@openlup/platform/invoicing/contracts";',
     'declare const invoiceCapability: InvoiceCapabilities;',
     'export const invoiceSelection = readInvoiceCapabilities({ enabled: true, selection: { providerRef: invoiceCapability.providerRef }, capability: invoiceCapability });',
-    'export type InvoiceConsumer = [InvoiceFacts, InvoiceLine, InvoiceSeller, InvoiceBuyer, InvoiceIdentity, InvoiceWriteResult, InvoiceReadbackResult, InvoiceArtifactResult, InvoiceSettlementResult, InvoiceCompanyLookupPort, InvoiceStorePort, InvoiceHostPorts, InvoiceServicesOptions];',
+    'export type InvoiceConsumer = [InvoiceFacts, InvoiceLine, InvoiceSeller, InvoiceBuyer, InvoiceIdentity, InvoiceWriteResult, InvoiceReadbackResult, InvoiceArtifactResult, InvoiceSettlementResult, InvoiceCompanyLookupPort, InvoiceStorePort, InvoiceHostPorts, InvoiceServicesOptions, InvoiceDocumentIdentity, InvoiceProviderPort, InvoiceSettlementPort, InvoiceSettlementItem, InvoiceDutyReadback, InvoiceUnsupported, InvoiceDiagnosticCode, InvoiceProof, InvoiceClearanceObservation];',
     'declare const invoiceIdentity: InvoiceIdentity;',
     'export const invoiceAbsent: InvoiceReadbackResult = { kind: "absent", identity: invoiceIdentity, evidence: { exact: true, complete: true, scope: invoiceIdentity, evidenceRef: "lookup-a", fingerprint: "fingerprint-a", observedAt: "2026-10-22T12:00:00Z" } };',
   ].join("\n"));

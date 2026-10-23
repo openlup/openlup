@@ -1,5 +1,5 @@
 import type { InvoiceFacts, InvoiceSeller } from "./facts.js";
-import type { InvoiceIdentity, InvoiceProof, InvoiceProviderPort, InvoiceUnsupported } from "./provider.js";
+import type { InvoiceDocumentIdentity, InvoiceProof, InvoiceProviderPort, InvoiceUnsupported } from "./provider.js";
 import type { InvoiceArtifactResult, InvoiceClearanceObservation, InvoiceDeliveryPort } from "./delivery.js";
 import type { InvoiceCompanyLookupPort } from "./companyLookup.js";
 import type { InvoiceSettlementPort } from "./settlement.js";
@@ -22,10 +22,10 @@ export interface InvoiceHostPorts {
     | InvoiceUnsupported
   > };
   artifacts: {
-    read(input: { readonly identity: InvoiceIdentity; readonly kind: "pdf" | "structured_document" | "clearance_receipt" }): Promise<InvoiceArtifactResult>;
+    read(input: { readonly identity: InvoiceDocumentIdentity; readonly kind: "pdf" | "structured_document" | "clearance_receipt" }): Promise<InvoiceArtifactResult>;
     /** Ownership must already be authorized; response bytes are not a storage receipt. */
-    download(input: { readonly identity: InvoiceIdentity; readonly artifactRef: string }): Promise<{ readonly kind: "downloaded"; readonly content: Uint8Array; readonly contentType: string } | { readonly kind: "unknown"; readonly code: "unknown" } | InvoiceUnsupported>;
-    persist(input: { readonly identity: InvoiceIdentity; readonly kind: "pdf" | "structured_document" | "clearance_receipt"; readonly content: Uint8Array; readonly contentType: string }): Promise<InvoiceArtifactResult>;
+    download(input: { readonly identity: InvoiceDocumentIdentity; readonly artifactRef: string }): Promise<{ readonly kind: "downloaded"; readonly content: Uint8Array; readonly contentType: string } | { readonly kind: "unknown"; readonly code: "unknown" } | InvoiceUnsupported>;
+    persist(input: { readonly identity: InvoiceDocumentIdentity; readonly kind: "pdf" | "structured_document" | "clearance_receipt"; readonly content: Uint8Array; readonly contentType: string }): Promise<Exclude<InvoiceArtifactResult, { kind: "absent" }>>;
   };
   /** Host identifier/tax/rounding policy; refs must match the selected descriptor.
    * No jurisdictional default is supplied. Carrier: TaxIdRoutingPort and injected
@@ -34,18 +34,21 @@ export interface InvoiceHostPorts {
   fiscal: { verify(input: { readonly facts: InvoiceFacts; readonly policies: InvoiceCapabilities["policies"] }): Promise<{ readonly kind: "verified"; readonly documentKind: string; readonly clearanceRequired: boolean; readonly proof: InvoiceProof } | { readonly kind: "refused"; readonly code: "blocked" | "money_mismatch" } | InvoiceUnsupported> };
   registry: InvoiceCompanyLookupPort;
   delivery: InvoiceDeliveryPort;
-  clearance: { observe(input: { readonly identity: InvoiceIdentity; readonly providerDocumentRef: string }): Promise<InvoiceClearanceObservation | { readonly kind: "unknown"; readonly code: "unknown" } | InvoiceUnsupported> };
+  clearance: { observe(input: { readonly identity: InvoiceDocumentIdentity; readonly providerDocumentRef: string }): Promise<{ readonly kind: "observed"; readonly observation: InvoiceClearanceObservation } | { readonly kind: "unknown"; readonly code: "unknown" } | InvoiceUnsupported> };
   settlement: InvoiceSettlementPort;
   policy: {
     /** Carrier: channelInvoicePolicyGate and the approved explicit operator skip.
      * Suppression receipts have no fabricated document ID. Host persists attribution.
+     * Executor decides before installFacts: suppressed orders get no local document.
+     * Readback consumers merge recorded receipts with duty readback.
      */
-    decide(input: { readonly orderId: string; readonly requestKey: string }): Promise<
+    decide(input: { readonly requestKey: string; readonly lookup: { readonly by: "order"; readonly orderId: string } | { readonly by: "fulfillmentOrder"; readonly fulfillmentOrderRef: string } }): Promise<
       | { readonly kind: "issue"; readonly policyVersion: string }
       | { readonly kind: "policy_suppressed"; readonly outcome: "channel_issues" | "no_document"; readonly policyVersion: string; readonly requestKey: string }
       | { readonly kind: "operator_skipped"; readonly outcome: "operator_skip"; readonly actorRef: string; readonly reason: string; readonly requestKey: string }
       | InvoiceUnsupported
     >;
+    receipts(orderId: string): Promise<readonly (Extract<Awaited<ReturnType<InvoiceHostPorts["policy"]["decide"]>>, { kind: "policy_suppressed" | "operator_skipped" }> & { readonly recordedAt: string })[] | InvoiceUnsupported>;
   };
   /** Authenticate and authorize ownership before reading artifacts. Safe projection
    * only: no buyer/seller payload, raw provider errors, signed URL or arbitrary meta.
@@ -53,12 +56,12 @@ export interface InvoiceHostPorts {
    */
   accountHistory: {
     read(input: { readonly accountRef: string; readonly orderId: string }): Promise<
-      | { readonly kind: "found"; readonly accountRef: string; readonly orderId: string; readonly documents: readonly { readonly documentRef: string; readonly invoiceRef: string; readonly parentDocumentRef: string | null; readonly role: "original" | "correction" | "replacement"; readonly status: string; readonly providerDocumentNumber: string | null; readonly totalGrossMinor: number | null; readonly currency: string; readonly emailState: "not_requested" | "pending" | "provider_accepted" | "failed"; readonly isCurrent: boolean; readonly createdAt: string; readonly downloadAvailable: boolean }[] }
+      | { readonly kind: "found"; readonly accountRef: string; readonly orderId: string; readonly documents: readonly { readonly documentRef: string; readonly invoiceRef: string; readonly parentDocumentRef: string | null; readonly role: "original" | "correction" | "replacement"; readonly status: string; readonly issuedAt: string | null; readonly clearance: { readonly state: InvoiceClearanceObservation["state"]; readonly reference: string | null } | null; readonly documentKind: string | null; readonly artifact: "invoice" | "correction"; readonly providerDocumentNumber: string | null; readonly totalGrossMinor: number | null; readonly currency: string; readonly emailState: "not_requested" | "pending" | "provider_accepted" | "failed"; readonly isCurrent: boolean; readonly createdAt: string; readonly downloadAvailable: boolean }[] }
       | { readonly kind: "denied" }
       | { readonly kind: "unknown"; readonly code: "unknown" }
       | InvoiceUnsupported
     >;
-    resolveDownload(input: { readonly accountRef: string; readonly orderId: string; readonly documentRef: string }): Promise<{ readonly kind: "authorized"; readonly identity: InvoiceIdentity; readonly artifactRef: string; readonly parentDocumentRef: string | null } | { readonly kind: "denied" } | InvoiceUnsupported>;
+    resolveDownload(input: { readonly accountRef: string; readonly orderId: string; readonly documentRef: string }): Promise<{ readonly kind: "authorized"; readonly identity: InvoiceDocumentIdentity; readonly artifactRef: string; readonly fileName: string; readonly parentDocumentRef: string | null } | { readonly kind: "denied" } | InvoiceUnsupported>;
   };
 }
 /** Future service composition inputs only; no constructor, worker or runtime route

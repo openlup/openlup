@@ -1,7 +1,7 @@
 import { expect, expectTypeOf, it } from "vitest";
 import * as contracts from "../../src/invoicing/contracts/index.js";
 import * as runtime from "../../src/invoicing/index.js";
-import type { InvoiceCapabilities, InvoiceIdentity, InvoiceReadbackResult, InvoiceWriteResult, InvoiceArtifactResult, InvoiceSettlementResult, InvoiceStorePort, InvoiceHostPorts } from "../../src/invoicing/contracts/index.js";
+import type { InvoiceCapabilities, InvoiceIdentity, InvoiceReadbackResult, InvoiceWriteResult, InvoiceArtifactResult, InvoiceSettlementResult, InvoiceStorePort, InvoiceHostPorts, InvoiceProviderPort, InvoiceDiagnosticCode, InvoiceDocumentIdentity, InvoiceClearanceObservation, InvoiceFacts, InvoiceUnsupported, InvoiceSettlementPort, InvoiceSettlementItem, InvoiceProof, InvoiceDutyReadback } from "../../src/invoicing/contracts/index.js";
 
 const capability: InvoiceCapabilities = {
   version: "invoicing.capabilities.v1", providerRef: "fiscal-a", fiscalScope: { scopeRef: "host-scope", version: "v1" },
@@ -41,4 +41,51 @@ it("requires scoped complete absence, separates uncertainty and retains the SQL 
   expectTypeOf<History["documents"][number]>().not.toHaveProperty("buyer");
   expectTypeOf<History["documents"][number]>().not.toHaveProperty("raw");
   expectTypeOf<History["documents"][number]>().toHaveProperty("parentDocumentRef");
+});
+
+it("preserves pinned durable outcomes and permits retryable only with before-send evidence", () => {
+  type Install = Exclude<Awaited<ReturnType<InvoiceStorePort["installFacts"]>>, InvoiceUnsupported>;
+  expectTypeOf<Install["status"]>().toEqualTypeOf<"owed" | "blocked" | "ready" | "processing" | "unknown" | "issued" | "voided" | "unsupported" | "faulted">();
+  type Fail = Parameters<InvoiceStorePort["fail"]>[0];
+  expectTypeOf<Extract<Fail, { kind: "retryable" }>["phase"]>().toEqualTypeOf<"before_send">();
+  expectTypeOf<Extract<Fail, { kind: "retryable" }>["proof"]>().toEqualTypeOf<InvoiceProof | null>();
+  expectTypeOf<Exclude<Awaited<ReturnType<InvoiceStorePort["fail"]>>, InvoiceUnsupported>["kind"]>().toEqualTypeOf<"recorded" | "voided" | "stale">();
+  type Reversal = Exclude<Awaited<ReturnType<InvoiceStorePort["requestReversal"]>>, InvoiceUnsupported>;
+  expectTypeOf<Extract<Reversal["kind"], "unsupported_recorded">>().toEqualTypeOf<"unsupported_recorded">();
+  expectTypeOf<Reversal["dutyId"]>().toEqualTypeOf<string | undefined>();
+  expectTypeOf<Reversal["replayed"]>().toEqualTypeOf<boolean | undefined>();
+  type RefusedCode = Extract<InvoiceWriteResult, { kind: "refused" }>["code"];
+  expectTypeOf<RefusedCode>().toEqualTypeOf<Extract<InvoiceDiagnosticCode, "blocked" | "retryable" | "missing_facts" | "identity_mismatch" | "parent_mismatch" | "money_mismatch" | "faulted">>();
+  expectTypeOf<Extract<RefusedCode, "unknown" | "absent" | "uncertain_delivery" | "unsupported" | "host_binding_required" | "disabled" | "selection_required">>().toEqualTypeOf<never>();
+  expectTypeOf<Awaited<ReturnType<InvoiceProviderPort["void"]>>>().toEqualTypeOf<InvoiceUnsupported>();
+  expectTypeOf<InvoiceCapabilities["operations"]["remoteVoid"]["supported"]>().toEqualTypeOf<false>();
+  expectTypeOf<Parameters<InvoiceStorePort["finishFacts"]>[0]["result"]["status"]>().toEqualTypeOf<"owed" | "ready" | "issued" | "voided" | "unsupported">();
+  type AbsentMoney = Extract<Awaited<ReturnType<InvoiceHostPorts["money"]["read"]>>, { kind: "absent" }>;
+  expectTypeOf<Extract<Parameters<InvoiceStorePort["preflight"]>[0], { status: "absent" }>["evidence"]>().toEqualTypeOf<AbsentMoney["evidence"]>();
+  expectTypeOf<InvoiceFacts["payment"]["currency"]>().toEqualTypeOf<string>();
+  expectTypeOf<InvoiceDutyReadback["orderId"]>().toEqualTypeOf<string>();
+});
+
+it("uses document scope for post-issue seams and requires native-compatible observation/settlement evidence", () => {
+  expectTypeOf<Parameters<InvoiceHostPorts["artifacts"]["read"]>[0]["identity"]>().toEqualTypeOf<InvoiceDocumentIdentity>();
+  expectTypeOf<Parameters<InvoiceHostPorts["artifacts"]["download"]>[0]["identity"]>().toEqualTypeOf<InvoiceDocumentIdentity>();
+  expectTypeOf<Parameters<InvoiceHostPorts["artifacts"]["persist"]>[0]["identity"]>().toEqualTypeOf<InvoiceDocumentIdentity>();
+  expectTypeOf<Parameters<InvoiceHostPorts["clearance"]["observe"]>[0]["identity"]>().toEqualTypeOf<InvoiceDocumentIdentity>();
+  type Targets = Exclude<Awaited<ReturnType<InvoiceStorePort["listClearanceTargets"]>>, InvoiceUnsupported>;
+  expectTypeOf<Targets[number]["identity"]>().toEqualTypeOf<InvoiceDocumentIdentity>();
+  type Deliveries = Exclude<Awaited<ReturnType<InvoiceStorePort["claimDeliveries"]>>, InvoiceUnsupported>;
+  expectTypeOf<Deliveries[number]["identity"]>().toEqualTypeOf<InvoiceDocumentIdentity>();
+  expectTypeOf<Parameters<InvoiceStorePort["recordObservation"]>[0]["identity"]>().toEqualTypeOf<InvoiceDocumentIdentity>();
+  expectTypeOf<Parameters<InvoiceStorePort["recordObservation"]>[0]["eventKind"]>().toEqualTypeOf<"clearance" | "artifacts" | "unsupported" | "provider_mismatch">();
+  type Accepted = Extract<InvoiceClearanceObservation, { state: "accepted" }>;
+  expectTypeOf<Accepted["reference"]>().toEqualTypeOf<string>();
+  type Settlement = Parameters<InvoiceStorePort["settleDelivery"]>[0]["result"];
+  expectTypeOf<Extract<Settlement, { kind: "unsupported" }>>().toEqualTypeOf<never>();
+  expectTypeOf<Extract<Settlement, { kind: "uncertain" }>["receiptRef"]>().toEqualTypeOf<null>();
+  expectTypeOf<Extract<Awaited<ReturnType<InvoiceHostPorts["artifacts"]["persist"]>>, { kind: "absent" }>>().toEqualTypeOf<never>();
+  type AbsentItem = Extract<InvoiceSettlementResult, { kind: "absent" }>;
+  expectTypeOf<AbsentItem["evidence"]["scope"]>().toEqualTypeOf<Parameters<InvoiceSettlementPort["resolve"]>[0]>();
+  expectTypeOf<Parameters<InvoiceSettlementPort["record"]>[0]>().toEqualTypeOf<InvoiceSettlementItem>();
+  type MissingCompany = Extract<Awaited<ReturnType<InvoiceHostPorts["registry"]["lookup"]>>, { kind: "not_found" }>;
+  expectTypeOf<MissingCompany["identifier"]>().toEqualTypeOf<Parameters<InvoiceHostPorts["registry"]["lookup"]>[0]["identifier"]>();
 });

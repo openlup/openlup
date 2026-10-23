@@ -8,7 +8,7 @@ export interface InvoiceCapabilities {
   readonly correctionKinds: readonly "full_reversal"[];
   readonly numberingOwner: "provider";
   readonly sellerTiming: "execution" | "first_claim";
-  readonly operations: Readonly<Record<"issue" | "correction" | "recovery" | "readback" | "exactAbsence" | "remoteVoid" | "artifact" | "clearance" | "settlement" | "companyLookup", { readonly supported: true } | { readonly supported: false; readonly reason: "host_required" | "not_implemented" | "not_exposed" }>>;
+  readonly operations: Readonly<Record<"issue" | "correction" | "recovery" | "readback" | "exactAbsence" | "artifact" | "clearance" | "settlement" | "companyLookup", { readonly supported: true } | { readonly supported: false; readonly reason: "host_required" | "not_implemented" | "not_exposed" }>> & { readonly remoteVoid: { readonly supported: false; readonly reason: "not_implemented" } };
   readonly defaultOff: true;
 }
 /** Interpretation only: no environment discovery, activation, writes or provider calls. */

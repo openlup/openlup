@@ -26,12 +26,17 @@ export interface InvoiceCapabilities {
     readonly correctionKinds: readonly "full_reversal"[];
     readonly numberingOwner: "provider";
     readonly sellerTiming: "execution" | "first_claim";
-    readonly operations: Readonly<Record<"issue" | "correction" | "recovery" | "readback" | "exactAbsence" | "remoteVoid" | "artifact" | "clearance" | "settlement" | "companyLookup", {
+    readonly operations: Readonly<Record<"issue" | "correction" | "recovery" | "readback" | "exactAbsence" | "artifact" | "clearance" | "settlement" | "companyLookup", {
         readonly supported: true;
     } | {
         readonly supported: false;
         readonly reason: "host_required" | "not_implemented" | "not_exposed";
-    }>>;
+    }>> & {
+        readonly remoteVoid: {
+            readonly supported: false;
+            readonly reason: "not_implemented";
+        };
+    };
     readonly defaultOff: true;
 }
 /** Interpretation only: no environment discovery, activation, writes or provider calls. */
@@ -88,6 +93,7 @@ export interface InvoiceCompanyLookupPort {
         readonly proof: InvoiceProof;
     } | {
         readonly kind: "not_found";
+        readonly identifier: Parameters<InvoiceCompanyLookupPort["lookup"]>[0]["identifier"];
         readonly sourceRef: string;
         readonly proof: InvoiceProof;
     } | {
@@ -100,11 +106,11 @@ export interface InvoiceCompanyLookupPort {
 ## dist/invoicing/contracts/delivery.d.ts
 
 ```ts
-import type { InvoiceIdentity, InvoiceProof, InvoiceUnsupported } from "./provider.js";
+import type { InvoiceDocumentIdentity, InvoiceProof, InvoiceUnsupported } from "./provider.js";
 /** Durable opaque references; signed URLs and downloaded bytes are transient. */
 export type InvoiceArtifactResult = {
     readonly kind: "found";
-    readonly identity: InvoiceIdentity;
+    readonly identity: InvoiceDocumentIdentity;
     readonly artifact: {
         readonly kind: "pdf" | "structured_document" | "clearance_receipt";
         readonly ref: string;
@@ -114,27 +120,31 @@ export type InvoiceArtifactResult = {
     };
 } | {
     readonly kind: "absent";
-    readonly identity: InvoiceIdentity;
+    readonly identity: InvoiceDocumentIdentity;
     readonly proof: InvoiceProof & {
         readonly exact: true;
         readonly complete: true;
         readonly scope: {
-            readonly identity: InvoiceIdentity;
+            readonly identity: InvoiceDocumentIdentity;
             readonly kind: "pdf" | "structured_document" | "clearance_receipt";
             readonly artifactRef: string | null;
         };
     };
 } | {
     readonly kind: "unknown";
-    readonly identity: InvoiceIdentity;
+    readonly identity: InvoiceDocumentIdentity;
     readonly code: "unknown";
 } | InvoiceUnsupported;
 /** Observation only; unsupported is never not_required. No clearance submission. */
-export interface InvoiceClearanceObservation {
-    readonly state: "not_submitted" | "pending" | "rejected" | "accepted" | "not_required" | "unsupported";
-    readonly reference: string | null;
+export type InvoiceClearanceObservation = {
     readonly proof: InvoiceProof;
-}
+} & ({
+    readonly state: "accepted";
+    readonly reference: string;
+} | {
+    readonly state: "not_submitted" | "pending" | "rejected" | "not_required" | "unsupported";
+    readonly reference: string | null;
+});
 export interface InvoiceDeliveryPort {
     /** Host M04 content/transport; provider acceptance is not inbox delivery.
      * Preserve delivery/request keys, recipient, filename and bytes. Validate PDF
@@ -258,6 +268,7 @@ export interface InvoiceFacts {
         readonly providerRef: string | null;
         readonly providerPaymentRef: string | null;
         readonly amountMinor: number;
+        readonly currency: string;
         readonly localSettlementState: "matched" | "unavailable";
     };
     readonly orderMoney: {
@@ -278,7 +289,7 @@ export interface InvoiceFacts {
 
 ```ts
 import type { InvoiceFacts, InvoiceSeller } from "./facts.js";
-import type { InvoiceIdentity, InvoiceProof, InvoiceProviderPort, InvoiceUnsupported } from "./provider.js";
+import type { InvoiceDocumentIdentity, InvoiceProof, InvoiceProviderPort, InvoiceUnsupported } from "./provider.js";
 import type { InvoiceArtifactResult, InvoiceClearanceObservation, InvoiceDeliveryPort } from "./delivery.js";
 import type { InvoiceCompanyLookupPort } from "./companyLookup.js";
 import type { InvoiceSettlementPort } from "./settlement.js";
@@ -340,12 +351,12 @@ export interface InvoiceHostPorts {
     };
     artifacts: {
         read(input: {
-            readonly identity: InvoiceIdentity;
+            readonly identity: InvoiceDocumentIdentity;
             readonly kind: "pdf" | "structured_document" | "clearance_receipt";
         }): Promise<InvoiceArtifactResult>;
         /** Ownership must already be authorized; response bytes are not a storage receipt. */
         download(input: {
-            readonly identity: InvoiceIdentity;
+            readonly identity: InvoiceDocumentIdentity;
             readonly artifactRef: string;
         }): Promise<{
             readonly kind: "downloaded";
@@ -356,11 +367,13 @@ export interface InvoiceHostPorts {
             readonly code: "unknown";
         } | InvoiceUnsupported>;
         persist(input: {
-            readonly identity: InvoiceIdentity;
+            readonly identity: InvoiceDocumentIdentity;
             readonly kind: "pdf" | "structured_document" | "clearance_receipt";
             readonly content: Uint8Array;
             readonly contentType: string;
-        }): Promise<InvoiceArtifactResult>;
+        }): Promise<Exclude<InvoiceArtifactResult, {
+            kind: "absent";
+        }>>;
     };
     /** Host identifier/tax/rounding policy; refs must match the selected descriptor.
      * No jurisdictional default is supplied. Carrier: TaxIdRoutingPort and injected
@@ -384,9 +397,12 @@ export interface InvoiceHostPorts {
     delivery: InvoiceDeliveryPort;
     clearance: {
         observe(input: {
-            readonly identity: InvoiceIdentity;
+            readonly identity: InvoiceDocumentIdentity;
             readonly providerDocumentRef: string;
-        }): Promise<InvoiceClearanceObservation | {
+        }): Promise<{
+            readonly kind: "observed";
+            readonly observation: InvoiceClearanceObservation;
+        } | {
             readonly kind: "unknown";
             readonly code: "unknown";
         } | InvoiceUnsupported>;
@@ -395,10 +411,18 @@ export interface InvoiceHostPorts {
     policy: {
         /** Carrier: channelInvoicePolicyGate and the approved explicit operator skip.
          * Suppression receipts have no fabricated document ID. Host persists attribution.
+         * Executor decides before installFacts: suppressed orders get no local document.
+         * Readback consumers merge recorded receipts with duty readback.
          */
         decide(input: {
-            readonly orderId: string;
             readonly requestKey: string;
+            readonly lookup: {
+                readonly by: "order";
+                readonly orderId: string;
+            } | {
+                readonly by: "fulfillmentOrder";
+                readonly fulfillmentOrderRef: string;
+            };
         }): Promise<{
             readonly kind: "issue";
             readonly policyVersion: string;
@@ -414,6 +438,11 @@ export interface InvoiceHostPorts {
             readonly reason: string;
             readonly requestKey: string;
         } | InvoiceUnsupported>;
+        receipts(orderId: string): Promise<readonly (Extract<Awaited<ReturnType<InvoiceHostPorts["policy"]["decide"]>>, {
+            kind: "policy_suppressed" | "operator_skipped";
+        }> & {
+            readonly recordedAt: string;
+        })[] | InvoiceUnsupported>;
     };
     /** Authenticate and authorize ownership before reading artifacts. Safe projection
      * only: no buyer/seller payload, raw provider errors, signed URL or arbitrary meta.
@@ -433,6 +462,13 @@ export interface InvoiceHostPorts {
                 readonly parentDocumentRef: string | null;
                 readonly role: "original" | "correction" | "replacement";
                 readonly status: string;
+                readonly issuedAt: string | null;
+                readonly clearance: {
+                    readonly state: InvoiceClearanceObservation["state"];
+                    readonly reference: string | null;
+                } | null;
+                readonly documentKind: string | null;
+                readonly artifact: "invoice" | "correction";
                 readonly providerDocumentNumber: string | null;
                 readonly totalGrossMinor: number | null;
                 readonly currency: string;
@@ -453,8 +489,9 @@ export interface InvoiceHostPorts {
             readonly documentRef: string;
         }): Promise<{
             readonly kind: "authorized";
-            readonly identity: InvoiceIdentity;
+            readonly identity: InvoiceDocumentIdentity;
             readonly artifactRef: string;
+            readonly fileName: string;
             readonly parentDocumentRef: string | null;
         } | {
             readonly kind: "denied";
@@ -483,18 +520,18 @@ export interface InvoiceServicesOptions {
 ```ts
 /** @consumer Frozen fact provider and installed declaration consumer. */
 export type { InvoiceFacts, InvoiceLine, InvoiceSeller, InvoiceBuyer } from "./facts.js";
-/** @consumer Issue/correction bridge and exact readback adapter. */
-export type { InvoiceIdentity, InvoiceWriteResult, InvoiceReadbackResult } from "./provider.js";
+/** @consumer A4 issue/correction bridge, adapters and operator proof readback. */
+export type { InvoiceIdentity, InvoiceDocumentIdentity, InvoiceWriteResult, InvoiceReadbackResult, InvoiceProviderPort, InvoiceUnsupported, InvoiceDiagnosticCode, InvoiceProof } from "./provider.js";
 /** @consumer Host artifact storage/download binding. */
-export type { InvoiceArtifactResult } from "./delivery.js";
+export type { InvoiceArtifactResult, InvoiceClearanceObservation } from "./delivery.js";
 /** @consumer Host payout item recorder and resolver. */
-export type { InvoiceSettlementResult } from "./settlement.js";
+export type { InvoiceSettlementResult, InvoiceSettlementPort, InvoiceSettlementItem } from "./settlement.js";
 /** @consumer Explicit host selection and readInvoiceCapabilities. */
 export type { InvoiceCapabilities } from "./capabilities.js";
 /** @consumer Injected registry adapter (A5). */
 export type { InvoiceCompanyLookupPort } from "./companyLookup.js";
-/** @consumer Managed/native persistence adapter; no implementation supplied. */
-export type { InvoiceStorePort } from "./store.js";
+/** @consumer Managed/native persistence adapter and operator duty readback; no implementation supplied. */
+export type { InvoiceStorePort, InvoiceDutyReadback } from "./store.js";
 /** @consumer Host composition and offline port-fit witnesses. */
 export type { InvoiceHostPorts, InvoiceServicesOptions } from "./host.js";
 ```
@@ -517,15 +554,30 @@ export interface InvoiceIdentity {
     readonly correctionRef: string | null;
     readonly parentProviderDocumentRef: string | null;
 }
-/** A closed diagnostic allowlist in the neutral contract. Codes only. */
+/** Document rows and donor delivery/history carriers need no issue-duty metadata.
+ * @consumer Host artifacts, clearance, delivery and authorized download adapters.
+ */
+export interface InvoiceDocumentIdentity {
+    readonly providerRef: string;
+    readonly documentRef: string;
+    readonly providerDocumentRef: string | null;
+    readonly orderRef: string;
+    readonly invoiceRef: string;
+    readonly parentProviderDocumentRef: string | null;
+}
+/** A closed diagnostic allowlist in the neutral contract. Codes only.
+ * @consumer A4 bridge and provider/store adapters. */
 export type InvoiceDiagnosticCode = "faulted" | "missing_facts" | "legacy_facts_unproved" | "retryable" | "blocked" | "unsupported" | "unknown" | "absent" | "host_binding_required" | "selection_required" | "disabled" | "identity_mismatch" | "parent_mismatch" | "money_mismatch" | "money_unavailable" | "invalid_artifact" | "uncertain_delivery";
+/** Missing binding or capability: nothing written.
+ * @consumer Host and provider adapters. */
 export interface InvoiceUnsupported {
     readonly kind: "unsupported";
     readonly code: "host_binding_required" | "unsupported";
     readonly retryable: false;
     readonly effectMayHaveSucceeded: false;
 }
-/** Evidence references/fingerprints are adapter-filtered; never raw payloads or errors. */
+/** Evidence references/fingerprints are adapter-filtered; never raw payloads or errors.
+ * @consumer Host recorder, operator readback and adapters. */
 export interface InvoiceProof {
     readonly evidenceRef: string;
     readonly fingerprint: string;
@@ -541,7 +593,7 @@ export type InvoiceWriteResult = {
 } | {
     readonly kind: "refused";
     readonly identity: InvoiceIdentity;
-    readonly code: InvoiceDiagnosticCode;
+    readonly code: Extract<InvoiceDiagnosticCode, "blocked" | "retryable" | "missing_facts" | "identity_mismatch" | "parent_mismatch" | "money_mismatch" | "faulted">;
     readonly retryable: boolean;
     readonly effectMayHaveSucceeded: false;
 } | {
@@ -576,6 +628,7 @@ export type InvoiceReadbackResult = {
 /** Correction bridge: positive immutable BEFORE facts, explicit zero AFTER,
  * stable correctionRef and parent proof. Retry requires exact recovery before I/O.
  * Carrier: donor createFullCorrection options and accountingProviderSnapshot.
+ * @consumer A4 conforming correction bridge and issue/readback adapters.
  */
 export interface InvoiceProviderPort {
     issue(input: {
@@ -603,16 +656,10 @@ export interface InvoiceProviderPort {
         readonly recoveryLookupRequired: boolean;
     }): Promise<InvoiceWriteResult>;
     read(input: InvoiceIdentity): Promise<InvoiceReadbackResult>;
-    /** No remote deletion implementation or local-void substitution. */
+    /** Remote void stays cut; always refuse before I/O, never substitute local void. */
     void(input: InvoiceIdentity & {
         readonly operation: "remote_void";
-    }): Promise<{
-        readonly kind: "voided";
-        readonly identity: InvoiceIdentity;
-        readonly proof: InvoiceProof;
-    } | Exclude<InvoiceWriteResult, {
-        kind: "issued";
-    }>>;
+    }): Promise<InvoiceUnsupported>;
 }
 ```
 ## dist/invoicing/contracts/settlement.d.ts
@@ -621,6 +668,7 @@ export interface InvoiceProviderPort {
 import type { InvoiceProof, InvoiceUnsupported } from "./provider.js";
 /** One immutable balance item, never unique by batch+payment alone.
  * Carrier: accountingControlContracts settlement + payout balance transaction ID.
+ * @consumer Host payout item recorder.
  * Null links and bankReceivedAt are facts; settlement is not an invoice gate.
  */
 export interface InvoiceSettlementItem {
@@ -654,6 +702,7 @@ export type InvoiceSettlementResult = {
     readonly evidence: InvoiceProof & {
         readonly exact: true;
         readonly complete: true;
+        readonly scope: ItemScope;
     };
 } | {
     readonly kind: "recorded";
@@ -670,6 +719,7 @@ export type InvoiceSettlementResult = {
     readonly code: "unknown";
 } | InvoiceUnsupported;
 /** Host recorder/resolver owns richer item identity. Unsupported before any write
+ * @consumer Host payout item recorder/resolver.
  * when a native batch/payment row cannot represent distinct items or nullable links.
  */
 export interface InvoiceSettlementPort {
@@ -685,8 +735,9 @@ export {};
 ## dist/invoicing/contracts/store.d.ts
 
 ```ts
+import type { InvoiceHostPorts } from "./host.js";
 import type { InvoiceFacts } from "./facts.js";
-import type { InvoiceIdentity, InvoiceProof, InvoiceUnsupported, InvoiceWriteResult, InvoiceReadbackResult } from "./provider.js";
+import type { InvoiceIdentity, InvoiceDocumentIdentity, InvoiceProof, InvoiceUnsupported, InvoiceWriteResult, InvoiceReadbackResult } from "./provider.js";
 import type { InvoiceClearanceObservation, InvoiceArtifactResult, InvoiceDeliveryPort } from "./delivery.js";
 /** Native duty/lease fields map to the pinned invoicing_* fixtures. Managed hosts
  * translate their outboxId/attemptCount fences; never claim transaction equality.
@@ -713,6 +764,7 @@ export interface InvoiceClaim {
 }
 /** Exact camel-case shape returned by invoicing_duty_readback. This is not
  * payment truth's accountingRequested; empty duties never assert invoice absence.
+ * @consumer Operator owed-duty readback.
  */
 export interface InvoiceDutyReadback {
     readonly orderId: string;
@@ -740,6 +792,9 @@ export interface InvoiceDutyReadback {
  * No implementation, executor or migration is installed by these declarations.
  */
 export interface InvoiceStorePort {
+    /** Never call inside a renewal money, dunning or dispatch transaction without
+     * isolation: capture failure must not propagate; the sweep recovers.
+     */
     captureDuty(input: {
         readonly requestKey: string;
         readonly sourceKind: "paid" | "handoff";
@@ -763,7 +818,7 @@ export interface InvoiceStorePort {
         readonly facts: InvoiceFacts;
     }): Promise<{
         readonly dutyId: string;
-        readonly status: "owed" | "blocked";
+        readonly status: "owed" | "blocked" | "ready" | "processing" | "unknown" | "issued" | "voided" | "unsupported" | "faulted";
         readonly replayed?: boolean;
     } | InvoiceUnsupported>;
     /** Pinned split facts lease: sweep and prepare commit separately; finishing
@@ -789,7 +844,9 @@ export interface InvoiceStorePort {
     finishFacts(input: {
         readonly dutyId: string;
         readonly token: string;
-        readonly result: Exclude<Awaited<ReturnType<InvoiceStorePort["prepareFacts"]>>, InvoiceUnsupported>;
+        readonly result: Omit<Exclude<Awaited<ReturnType<InvoiceStorePort["prepareFacts"]>>, InvoiceUnsupported>, "status"> & {
+            readonly status: "owed" | "ready" | "issued" | "voided" | "unsupported";
+        };
     }): Promise<{
         readonly dutyId: string;
         readonly status: "owed" | "ready" | "issued" | "voided" | "unsupported" | "faulted" | "stale";
@@ -804,11 +861,17 @@ export interface InvoiceStorePort {
     }): Promise<readonly InvoiceClaim[] | InvoiceUnsupported>;
     preflight(input: {
         readonly claim: InvoiceClaim;
-        readonly status: "succeeded" | "failed" | "pending" | "unknown" | "unavailable";
         readonly amountMinor: number | null;
         readonly currency: string | null;
+    } & ({
+        readonly status: "succeeded" | "failed" | "pending" | "unknown" | "unavailable";
         readonly proof: InvoiceProof | null;
-    }): Promise<{
+    } | {
+        readonly status: "absent";
+        readonly evidence: Extract<Awaited<ReturnType<InvoiceHostPorts["money"]["read"]>>, {
+            kind: "absent";
+        }>["evidence"];
+    })): Promise<{
         readonly kind: "ready" | "blocked" | "mismatch" | "unavailable" | "stale";
     } | InvoiceUnsupported>;
     finish(input: {
@@ -824,6 +887,10 @@ export interface InvoiceStorePort {
     } | {
         readonly kind: "stale";
     } | InvoiceUnsupported>;
+    /** Retryable requires a definite refusal (effectMayHaveSucceeded:false) or a
+     * pre-I/O failure and phase before_send. Every other failure maps to unknown.
+     * Native result kinds other than stale/voided map to recorded.
+     */
     fail(input: {
         readonly claim: InvoiceClaim;
         readonly retrySeconds: number;
@@ -833,11 +900,16 @@ export interface InvoiceStorePort {
             kind: "absent";
         }>;
     } | {
-        readonly kind: "retryable" | "blocked" | "unsupported" | "unknown";
+        readonly kind: "retryable";
+        readonly phase: "before_send";
+        readonly proof: InvoiceProof | null;
+    } | {
+        readonly kind: "blocked" | "unsupported" | "unknown";
         readonly proof: InvoiceProof | null;
     })): Promise<{
-        readonly kind: "recorded" | "stale";
+        readonly kind: "recorded" | "voided" | "stale";
     } | InvoiceUnsupported>;
+    /** Native post-write unsupported maps to unsupported_recorded, retaining duty/replay. */
     requestReversal(input: {
         readonly requestKey: string;
         readonly orderId: string;
@@ -845,6 +917,10 @@ export interface InvoiceStorePort {
         readonly proof: InvoiceProof;
     }): Promise<{
         readonly kind: "missing" | "voided" | "pending_readback" | "correction_requested";
+        readonly dutyId?: string;
+        readonly replayed?: boolean;
+    } | {
+        readonly kind: "unsupported_recorded";
         readonly dutyId?: string;
         readonly replayed?: boolean;
     } | InvoiceUnsupported>;
@@ -859,17 +935,20 @@ export interface InvoiceStorePort {
     } | InvoiceUnsupported>;
     listClearanceTargets(limit: number): Promise<readonly {
         readonly documentId: string;
-        readonly identity: InvoiceIdentity;
+        readonly identity: InvoiceDocumentIdentity;
         readonly providerDocumentRef: string;
         readonly providerDocumentNumber: string | null;
         readonly state: InvoiceClearanceObservation["state"];
     }[] | InvoiceUnsupported>;
+    /** Native maps clearance state unsupported to observation kind unsupported;
+     * provider_mismatch returns InvoiceUnsupported before recording anything.
+     */
     recordObservation(input: {
         readonly requestKey: string;
         readonly documentId: string;
         readonly eventRef: string;
-        readonly eventKind: "clearance" | "artifacts" | "provider_mismatch";
-        readonly identity: InvoiceIdentity;
+        readonly eventKind: "clearance" | "artifacts" | "unsupported" | "provider_mismatch";
+        readonly identity: InvoiceDocumentIdentity;
         readonly providerDocumentRef: string;
         readonly providerDocumentNumber: string | null;
         readonly clearance: InvoiceClearanceObservation | null;
@@ -882,6 +961,7 @@ export interface InvoiceStorePort {
     }): Promise<{
         readonly replayed: boolean;
     } | InvoiceUnsupported>;
+    /** Verify M04 binding before claiming; document rows need no M09 issue duty. */
     claimDeliveries(input: {
         readonly limit: number;
         readonly visibilitySeconds: number;
@@ -890,15 +970,22 @@ export interface InvoiceStorePort {
     }): Promise<readonly {
         readonly token: string;
         readonly generation: number;
-        readonly identity: InvoiceIdentity;
+        readonly identity: InvoiceDocumentIdentity;
         readonly providerDocumentRef: string;
         readonly delivery: Omit<Parameters<InvoiceDeliveryPort["send"]>[0], "filename" | "content" | "contentType">;
     }[] | InvoiceUnsupported>;
+    /** Native uncertain settlement stores a null receipt; transport hints stay evidence. */
     settleDelivery(input: {
         readonly deliveryRef: string;
         readonly token: string;
         readonly generation: number;
-        readonly result: Awaited<ReturnType<InvoiceDeliveryPort["send"]>>;
+        readonly result: Exclude<Awaited<ReturnType<InvoiceDeliveryPort["send"]>>, InvoiceUnsupported | {
+            kind: "uncertain";
+        }> | (Extract<Awaited<ReturnType<InvoiceDeliveryPort["send"]>>, {
+            kind: "uncertain";
+        }> & {
+            readonly receiptRef: null;
+        });
     }): Promise<{
         readonly kind: "recorded" | "stale";
         readonly replayed: boolean;

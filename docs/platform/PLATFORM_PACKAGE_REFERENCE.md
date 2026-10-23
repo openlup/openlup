@@ -613,8 +613,9 @@ reports declared operations; it is not proof of fiscal readiness or host parity.
 runtime values or server import edge. There is no new npm package or dependency.
 
 The host supplies frozen order/buyer/line/tax/money facts, seller and jurisdiction
-routing. Facts retain revision, original request keys, ordered canonical line
-amounts, explicit delivery/discount components, dates and references. Amounts are
+routing. Facts retain revision, ordered canonical line amounts, explicit
+delivery/discount components, dates and references. `InvoiceIdentity` retains
+original request keys. Amounts are
 safe integer currency minor units; no FX, catalogue reread or zero-tax substitute
 is supplied. Legacy line kinds and order-money headers can remain explicitly null;
 the host cannot invent missing facts. The provider owns fiscal numbering; local references and nullable
@@ -631,6 +632,7 @@ transaction; remote I/O never belongs inside it. A late accepted issue retains
 its external identity and atomically creates one compensation duty at finalization.
 
 Every missing host binding returns typed `unsupported` before unsupported writes.
+A recorded reversal that native SQL cannot fulfill returns `unsupported_recorded`.
 The required seams are facts, seller, fiscal policy, read-only M07 money,
 artifacts/storage, registry, clearance observation, M04 delivery, payout item
 recording/resolution, policy decisions and M12 account history. Registry evidence
@@ -639,7 +641,10 @@ source, fingerprint and observation time; host validation/freshness/fallback do 
 replace checkout truth or require a lookup for renewal.
 
 Policy suppression enumerates `channel_issues` and `no_document`; an explicit
-operator skip retains actor, reason and key. Neither fabricates an invoice ID.
+operator skip retains actor, reason and key. The executor decides policy before
+installing facts, so suppressed orders get no local document. Readback consumers
+merge host-recorded receipts (including recordedAt) with owed duties. Neither
+receipt fabricates an invoice ID.
 The owed-duty readback matches `invoicing_duty_readback`: order, capture faults,
 duty/parent/document identity, state, attempts, closed diagnostic code and lease
 chronology. Ready maps to owed and processing to claimed; unsupported obligations
