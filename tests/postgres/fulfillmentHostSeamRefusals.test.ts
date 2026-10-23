@@ -1,3 +1,4 @@
+import { postgresSetupTimeoutMs, postgresTeardownTimeoutMs } from '../helpers/postgresContainer.js';
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, expect, it } from 'vitest';
 import { createNativeUnsupportedFulfillmentPorts, FULFILLMENT_NATIVE_UNSUPPORTED, createPostgresFulfillmentShipmentSpinePort, createAdminCommerceOrderRequestReplacementShipmentHandler, createAdminCommerceFulfillmentCreateOrderHandler, createAdminCommerceFulfillmentRecordProviderAttemptHandler, createAdminCommerceFulfillmentRecordLabelHandler, createAdminCommerceFulfillmentHandOffHandler, createAdminCommerceFulfillmentTrackingEventHandler, createAdminCommerceFulfillmentCancelOrderHandler, readFulfillmentDelay } from '@openlup/platform/fulfillment';
@@ -6,8 +7,8 @@ import type { HttpResponse } from '@openlup/platform/http';
 import { executor, nativeHarness } from '../helpers/fulfillmentNative.js';
 
 const h = nativeHarness('p5a-refusal');
-beforeAll(() => h.start(), 120_000);
-afterAll(() => h.stop());
+beforeAll(() => h.start(), postgresSetupTimeoutMs);
+afterAll(() => h.stop(), postgresTeardownTimeoutMs);
 it('native replacement/operator requests share one typed refusal and leave all PostgreSQL state byte-identical with mode off', async () => {
   const clientId = randomUUID(), orderId = randomUUID(), actorUserId = randomUUID();
   await h.pool.query('INSERT INTO public.clients(id,email) VALUES($1,$2)',[clientId,`${clientId}@example.invalid`]);

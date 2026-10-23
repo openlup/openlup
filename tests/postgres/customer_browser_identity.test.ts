@@ -6,7 +6,7 @@ import { createPostgresDataGateway, type PgGatewayClient } from '@openlup/platfo
 import { createCapturedCustomerChallengeDelivery, createCustomerIdentityVerifier, createPostgresCustomerMePort, resolveCustomerSessionBinding, type CustomerSessionBinding } from '@openlup/platform/identity';
 import { createPostgresCustomerAuthPort } from '../../src/integrations/postgres/customerAuthPort';
 import { getCustomerMe } from '../../src/domains/customers/customerMeClient';
-import { dockerAvailable, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from '../helpers/postgresContainer.js';
+import { closePostgres, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, dockerAvailable, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from '../helpers/postgresContainer.js';
 
 const A = '11111111-1111-4111-8111-111111111111';
 const B = '22222222-2222-4222-8222-222222222222';
@@ -65,8 +65,8 @@ beforeAll(async () => {
     } else throw new Error('Unexpected browser transport');
     return new Response(JSON.stringify({ ok: true, data }), { headers: { 'content-type': 'application/json' } });
   }));
-}, 180_000);
-afterAll(async () => { vi.unstubAllGlobals(); await pool?.end(); await container?.remove(); });
+}, postgresSetupTimeoutMs);
+afterAll(async () => { vi.unstubAllGlobals(); await closePostgres(container, pool); }, postgresTeardownTimeoutMs);
 
 describe('direct browser identity on the complete selected PostgreSQL catalogue', () => {
   it('redeemed challenge reads only its linked customer', async () => {

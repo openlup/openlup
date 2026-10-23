@@ -9,12 +9,13 @@ import { afterAll, beforeAll, expect, it } from "vitest";
 import { INVENTORY_MIGRATIONS, createInventoryBindings, createPostgresAdminInventoryPort, createPostgresRenewalReservationPort } from "@openlup/platform/inventory";
 import { createPostgresMigrationRunner } from "../../server/adapters/postgres/migrationRunner.js";
 import { readSelectedCatalogProjection, selectedCatalogProjectionPayload } from "../../server/adapters/postgres/selectedCatalogProjection.js";
-import { dockerAvailable, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
+import { closePostgres, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, dockerAvailable, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
 
 const AT = "2026-10-20T12:00:00.000Z";
 const manifest = JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8"));
 const units: { file: string; sha256: string }[] = [manifest.baseline, ...manifest.forward];
 let container: PostgresContainer | undefined, pool: Pool;
+const prefixContainers: PostgresContainer[] = [], prefixPools: Pool[] = [];
 const executor = (db: Pool | PoolClient) => ({ query: (text: string, values?: unknown[]) => db.query(text, values) });
 const read = (db: Pool | PoolClient = pool) => createPostgresAdminInventoryPort(executor(db), { stockMasterProvider: "fixture", providerSchema: z.literal("fixture") }, () => AT);
 const reserve = (db: Pool | PoolClient = pool) => createPostgresRenewalReservationPort(executor(db));
@@ -25,9 +26,14 @@ beforeAll(async () => {
   container = await runPostgresContainer({ name: `inventory-native-${process.pid}`, password: "synthetic-conformance" });
   if (!await waitForPostgresTcpReady(container.connectionString)) throw new Error("Inventory PostgreSQL unavailable");
   pool = new Pool({ connectionString: container.connectionString });
+  // Acquire the secondary fixture before any test's 60s body can begin.
+  const prefix = await runPostgresContainer({ name: `inventory-native-upgrade-${process.pid}`, password: "synthetic-conformance" });
+  prefixContainers.push(prefix);
+  if (!await waitForPostgresTcpReady(prefix.connectionString)) throw new Error("Prefix PostgreSQL unavailable");
+  prefixPools.push(new Pool({ connectionString: prefix.connectionString }));
   await runner().apply();
-}, 120_000);
-afterAll(async () => { await pool?.end(); await container?.remove(); });
+}, postgresSetupTimeoutMs);
+afterAll(async () => { await closePostgres([container, ...prefixContainers], [pool, ...prefixPools]); }, postgresTeardownTimeoutMs);
 
 async function fixture(quantity = 2, available = 10, at = AT) {
   const client = randomUUID(), subscription = randomUUID(), skuId = randomUUID(), source = randomUUID(), sku = `SKU-${skuId}`;
@@ -66,15 +72,12 @@ it("installs the full catalogue, binds projections 27/33 and replays the canonic
   expect((await pool.query("SELECT * FROM public.platform_schema_migrations ORDER BY position")).rows).toEqual(history);
 });
 it("upgrades the exact complete prefix before unit 33 without rewriting installed history", async () => {
-  let resource: PostgresContainer | undefined, upgrade: Pool | undefined;
+  const resource = prefixContainers[0], upgrade = prefixPools[0];
   const root = mkdtempSync(join(tmpdir(), "inventory-prefix-"));
   try {
     // The full-install cluster owns global roles. This clean prefix cluster is
     // separate, but its raw inventory probe can roll back roles and schema before
     // the real runner installs the same immutable prefix, avoiding a third boot.
-    resource = await runPostgresContainer({ name: `inventory-native-upgrade-${process.pid}`, password: "synthetic-conformance" });
-    if (!await waitForPostgresTcpReady(resource.connectionString)) throw new Error("Inventory prefix PostgreSQL unavailable");
-    upgrade = new Pool({ connectionString: resource.connectionString });
     const db = await upgrade.connect();
     let payload: string;
     try {
@@ -92,7 +95,7 @@ it("upgrades the exact complete prefix before unit 33 without rewriting installe
     expect((await upgrade.query("SELECT * FROM public.platform_schema_migrations WHERE position<33 ORDER BY position")).rows).toEqual(before);
     expect((await runner(upgrade).status()).pending).toEqual([]);
     expect(await runner(upgrade).apply()).toEqual({ applied: [] });
-  } finally { await upgrade?.end(); await resource?.remove(); rmSync(root, { recursive: true, force: true }); }
+  } finally { await closePostgres(resource, upgrade); rmSync(root, { recursive: true, force: true }); }
 }, 60_000);
 it("projects fresh/stale/missing stock, held/committed/expired rows and aggregate demand while refusing adjustment", async () => {
   const f = await fixture();

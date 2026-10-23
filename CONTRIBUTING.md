@@ -517,32 +517,28 @@ node scripts/agent-review-session.mjs verify-command --resource openlup:coverage
 ```
 
 Keep every required command below, including package gates and coverage; this
-wrapper adds no test selection, cache, stamp or authority. It first checks the
-clean committed candidate, policy, inventory, predicted merge and native review.
-When the predicted tree differs from HEAD, the existing policy/inventory checks
-run on that combined tree in a disposable checkout. A conflict or stale aggregate
-stops before expensive work; resolve by merging main and regenerate, never rebase
-the reviewed lineage merely for freshness. This is local early feedback, not
-hosted admission or a claim of deployment readiness.
+wrapper adds no test selection, cache, stamp or authority. Before starting the
+command, it checks the clean committed candidate and its native review. After
+the command exits, it checks candidate identity, cleanliness and review validity
+again. A changed candidate or expired review refuses final evidence; a valid
+candidate preserves the underlying command's exit code.
 
-Output exclusion is scoped to the real worktree, so separate projects and task
-worktrees do not wait for unrelated output directories. When `ai-resource-gate`
-is installed on PATH, the wrapper additionally uses its bounded host CPU/RAM
-admission; CI and an already brokered process keep their existing scheduler.
-Its resource key is per worktree; host capacity alone coordinates independent
-projects. Select the existing broker profile for the actual command with
-`--resource` (for example `openlup:coverage`, `openlup:build` or
-`openlup:typecheck`). An installed broker requires this explicit selection;
-the wrapper supplies no CPU, memory, worker-count or timeout policy of its own.
-The broker's configured admission policy and refusal remain binding. A busy
-worktree output lease refuses immediately. The lease is released only by its owner;
-inspect a stranded owner before cleanup. Nested wrappers refuse immediately:
-wrap the underlying required command once. The stack pin is removed from heavy
-child environments so independent test repositories resolve their own bases.
-Preflight is repeated after waiting, source identity is checked after execution,
-and native review is checked again after success. A changed source or expired
-review supplies no final evidence. Existing maintainer-local stamps and hooks
-remain required where installed.
+With `--resource`, the wrapper requires `ai-resource-gate` on PATH and runs the
+command through its waiting admission route. Select the existing profile for
+the actual command, such as `openlup:coverage`, `openlup:build` or
+`openlup:typecheck`; the resource key includes the worktree's directory name.
+The broker's configured CPU/RAM, timeout and refusal policies remain binding;
+the wrapper defines none of them. Without `--resource`, it runs the command
+directly. It refuses invocation inside an active resource broker or another
+verification wrapper, so wrap the underlying command once.
+
+Freeze tracked inputs and serialize commands sharing mutable output. The wrapper
+adds no output lease, policy/inventory check or predicted-merge preflight, and
+performs no intermediate candidate check after a broker wait. It passes the
+existing environment, including any `OPENLUP_STACK_BASE`, to the child command.
+Run the separately required checks yourself; existing maintainer-local stamps
+and hooks remain required where installed. This wrapper is local verification,
+not hosted admission or evidence of deployment readiness.
 
 ### Optional SonarQube Cloud diagnostics
 
@@ -613,6 +609,26 @@ imports the JSON module directly so the same pins load in plain Node and both
 Vitest projects, including jsdom. They try
 the organization mirror first, then the existing upstream order with the same
 digest: managed uses GHCR, Docker Hub, ECR; native uses Docker Hub, ECR.
+Disposable PostgreSQL suites use `postgresSetupTimeoutMs` (600 seconds), including
+the existing 300-second cold image pull and schema installation, and
+`postgresTeardownTimeoutMs` (45 seconds). These are explicit integration-hook
+budgets; ordinary test deadlines remain unchanged. The shared helper bounds
+Docker availability to five seconds, each start/removal command to 30 seconds,
+and TCP readiness to 60 seconds of wall-clock time, including connect/query
+attempts and waits. After image resolution, port-conflict retries share a
+60-second startup budget; failed-start cleanup still gets its 30-second removal
+budget before reporting failure. Readiness destroys its throwaway client after each probe.
+`closePostgres` gives all fixture pools and adapter/store close callbacks one
+shared five-second close phase, then attempts every owned container removal even
+if a close failed or stalled. Suite teardowns pass opaque adapter closers into
+that phase instead of awaiting them first. All removals finish before cleanup
+reports its collected failures. Separate elapsed timings identify the slow phase;
+an already absent container is the only ignored removal error. Secondary upgrade containers are acquired by the owned `beforeAll` fixture,
+registered immediately, and ready before the 60-second test bodies begin.
+A body that times out before its local `finally` therefore cannot leave a pending
+acquisition that returns after suite teardown. Local `finally` blocks reuse the
+same bounded cleanup.
+
 The helper's default is the pinned test PostgreSQL image; explicit images retain
 their behavior unless they exactly match an inventory pin. Shared acquisition
 first inspects every source locally and reuses only an exact pinned index digest;
@@ -1803,6 +1819,9 @@ own: a lessons change is an ordinary delivery under existing authority, and a
 promotion stays within its approved scope. The rethink record and the task's
 terminal self-retro carry the lesson until it lands. No other tracker is kept.
 
+- 2026-10-23, PostgreSQL teardown rethink: bounding only the fixture pool
+  misses pools behind adapter/store `close()` → include every owned closer in
+  the shared bounded close phase before attempting every container removal.
 - 2026-10-19, native review simplification rethink: Resetting state and
   hand-copying fields across a session boundary drops whichever control was
   forgotten → never discard state: append a new intent and candidate to the
