@@ -145,68 +145,99 @@ it("fits pre-claim seller reads to order-scoped and unscoped first-claim wrapper
 });
 
 
-it("supplies native store and seller-wrapper arguments in pinned SQL signature order", async () => {
-  // This is a translation witness, not a store implementation or a SQL runner.
-  // Required port inputs are checked by TypeScript; object key order is checked
-  // against the actual pinned signatures, including the fenced managed overloads.
-  const claim = { dutyId: "duty-a", documentId: "document-a", requestId: "request-a", token: "lease-a", generation: 2, leaseUntil: proof.observedAt, identity, facts, action: "create", correction: null } as const satisfies Parameters<InvoiceStorePort["finish"]>[0]["claim"];
-  const capture: Parameters<InvoiceStorePort["captureDuty"]>[0] = { requestKey: "paid-key", sourceKind: "paid", sourceId: "transition-a", orderId: facts.refs.orderId, occurredAt: proof.observedAt, evidence: { settlementIntentId: facts.payment.intentRef, amountMinor: 120, currency: facts.currency } };
-  const install: Parameters<InvoiceStorePort["installFacts"]>[0] = { dutyId: claim.dutyId, facts };
-  const prepare: Parameters<InvoiceStorePort["prepareFacts"]>[0] = { dutyId: claim.dutyId, token: claim.token };
-  const finishFacts: Parameters<InvoiceStorePort["finishFacts"]>[0] = { ...prepare, result: { status: "ready", documentId: claim.documentId, requestId: claim.requestId } };
-  const scope: Parameters<InvoiceStorePort["claim"]>[0] = { limit: 10, visibilitySeconds: 300, providerRef: identity.providerRef, orderId: facts.refs.orderId };
-  const preflight: Parameters<InvoiceStorePort["preflight"]>[0] = { claim, status: "succeeded", amountMinor: 120, currency: facts.currency, proof };
-  const finish: Parameters<InvoiceStorePort["finish"]>[0] = { claim, result: { kind: "issued", identity, providerDocumentRef: "external-a", providerDocumentNumber: null, proof, replayed: false } };
-  const fail: Parameters<InvoiceStorePort["fail"]>[0] = { claim, retrySeconds: 90, kind: "retryable", phase: "before_send", proof };
-  const reversal: Parameters<InvoiceStorePort["requestReversal"]>[0] = { requestKey: "reversal-a", orderId: facts.refs.orderId, reason: "order_refunded", proof };
-  const observation: Parameters<InvoiceStorePort["recordObservation"]>[0] = { requestKey: "observation-a", documentId: claim.documentId, eventRef: "event-a", eventKind: "clearance", identity: { providerRef: identity.providerRef, documentRef: claim.documentId, providerDocumentRef: "external-a", orderRef: identity.orderRef, invoiceRef: identity.invoiceRef, parentProviderDocumentRef: null }, providerDocumentRef: "external-a", providerDocumentNumber: null, clearance: { state: "accepted", reference: "clearance-a", proof }, artifacts: [], observedAt: proof.observedAt, payloadHash: proof.fingerprint, source: "provider_api" };
-  const delivery: Parameters<InvoiceStorePort["claimDeliveries"]>[0] = { limit: 10, visibilitySeconds: 300, requireClearance: true, orderId: facts.refs.orderId };
-  const settle: Parameters<InvoiceStorePort["settleDelivery"]>[0] = { deliveryRef: "delivery-a", token: claim.token, generation: claim.generation, providerDocumentRef: "external-a", retrySeconds: 90, result: { kind: "failed_before_send", retryable: true, code: "retryable" } };
-  const current: InvoiceHostPorts["seller"] = { async read() { return { kind: "found", seller, revisionRef: "seller-revision-a" }; } };
-  const snapshot = await current.read({ orderId: scope.orderId ?? null });
-  if (snapshot.kind !== "found") throw new Error("expected_seller_fixture");
-  // Provider selection is a store-construction dependency for managed requests;
-  // seller is read before claim. Neither depends on a returned duty identifier.
-  const selectedProvider = scope.providerRef;
-  const fences = { p_duty: claim.dutyId, p_token: claim.token, p_generation: claim.generation };
-  const completion = { ...fences, p_external: finish.result.providerDocumentRef, p_number: finish.result.providerDocumentNumber, p_proof: { kind: "issued", externalId: finish.result.providerDocumentRef, providerCreateIdentity: claim.identity.providerCreateIdentity, ...finish.result.proof } };
-  const calls: readonly [string, string, Record<string, unknown>][] = [
-    ["190000_invoicing_durable_duties", "invoicing_capture_duty", { p_key: capture.requestKey, p_source_kind: capture.sourceKind, p_source_id: capture.sourceId, p_order_id: capture.orderId, p_evidence: capture.evidence, p_occurred_at: capture.occurredAt }],
-    ["190000_invoicing_durable_duties", "invoicing_install_facts", { p_duty: install.dutyId, p_facts: install.facts, p_revision: install.facts.factRevision }],
-    ["190000_invoicing_durable_duties", "invoicing_sweep_duties", { p_limit: scope.limit }],
-    ["190000_invoicing_durable_duties", "invoicing_prepare_facts", { p_duty: prepare.dutyId, p_token: prepare.token }],
-    ["190000_invoicing_durable_duties", "invoicing_finish_facts", { p_duty: finishFacts.dutyId, p_token: finishFacts.token, p_result: finishFacts.result }],
-    ["190000_invoicing_durable_duties", "invoicing_duty_readback", { p_order_id: capture.orderId }],
-    ["190000_invoicing_durable_duties", "invoicing_claim_duties", { p_limit: scope.limit, p_visibility: scope.visibilitySeconds, p_provider: scope.providerRef, p_order_id: scope.orderId }],
-    ["190000_invoicing_durable_duties", "invoicing_preflight_duty", { ...fences, p_evidence: { kind: "observed", outcome: "captured", amountMinor: preflight.amountMinor, currency: preflight.currency, proof: preflight.proof } }],
-    ["190000_invoicing_durable_duties", "invoicing_finish_issue", completion],
-    ["190000_invoicing_durable_duties", "invoicing_fail_duty", { ...fences, p_kind: fail.kind, p_evidence: { phase: fail.phase, proof: fail.proof }, p_delay: fail.retrySeconds }],
-    ["191000_invoicing_document_effects", "invoicing_request_reversal", { p_key: reversal.requestKey, p_order: reversal.orderId, p_reason: reversal.reason, p_evidence: reversal.proof }],
-    ["191000_invoicing_document_effects", "invoicing_finish_correction", { ...completion, p_proof: { ...completion.p_proof, parentExternalId: "parent-a" } }],
-    ["191000_invoicing_document_effects", "invoicing_record_observation", { p_key: observation.requestKey, p_document: observation.documentId, p_observation: { kind: observation.eventKind, state: observation.clearance?.state, reference: observation.clearance?.reference, observedAt: observation.observedAt } }],
-    ["191000_invoicing_document_effects", "invoicing_claim_deliveries", { p_limit: delivery.limit, p_visibility: delivery.visibilitySeconds, p_require_clearance: delivery.requireClearance, p_order_id: delivery.orderId }],
-    ["191000_invoicing_document_effects", "invoicing_settle_delivery", { p_delivery: settle.deliveryRef, p_token: settle.token, p_generation: settle.generation, p_kind: settle.result.kind, p_receipt: null, p_evidence: { phase: "before_send", code: "retryable" } }],
-    ["193000_invoicing_correction_claims", "accounting_invoice_correction_outbox_claim", { p_limit: scope.limit, p_lease_seconds: scope.visibilitySeconds, p_contract_version: "accounting.correction.v2" }],
-    ["193000_invoicing_correction_claims", "accounting_invoice_correction_outbox_succeed", { p_outbox_id: claim.dutyId, p_provider_invoice_id: finish.result.providerDocumentRef, p_provider_invoice_number: finish.result.providerDocumentNumber, p_provider_raw: finish.result.proof, p_claim_attempt_count: claim.generation }],
-    ["193000_invoicing_correction_claims", "accounting_invoice_correction_outbox_fail", { p_outbox_id: claim.dutyId, p_error: fail.proof, p_retry_seconds: fail.retrySeconds, p_claim_attempt_count: claim.generation }],
-    ["195000_invoicing_seller_revision", "invoicing_request_with_seller_policy", { p_key: capture.requestKey, p_source_kind: capture.sourceKind, p_source_id: capture.sourceId, p_order_id: capture.orderId, p_evidence: capture.evidence, p_occurred_at: capture.occurredAt }],
-    ["195000_invoicing_seller_revision", "invoicing_claim_with_seller", { p_limit: scope.limit, p_visibility: scope.visibilitySeconds, p_provider: scope.providerRef, p_seller: snapshot.seller, p_revision: snapshot.revisionRef, p_order_id: scope.orderId }],
-    ["195100_invoicing_seller_revision", "invoicing_managed_request_with_seller_policy", { p_key: capture.requestKey, p_source_kind: capture.sourceKind, p_source_id: capture.orderId, p_provider: selectedProvider, p_evidence: capture.evidence }],
-    ["195100_invoicing_seller_revision", "invoicing_managed_claim_with_seller", { p_limit: scope.limit, p_order: scope.orderId, p_seller: snapshot.seller, p_revision: snapshot.revisionRef }],
-    ["195100_invoicing_seller_revision", "invoicing_managed_claim_corrections_with_seller", { p_limit: scope.limit, p_seller: snapshot.seller, p_revision: snapshot.revisionRef }],
+// Distribute over union arms: absent/retryable evidence must be covered too.
+type RequiredKeys<T> = T extends object ? { [K in keyof T]-?: object extends Pick<T, K> ? never : K }[keyof T] : "$value";
+type Input<M extends keyof InvoiceStorePort> = Parameters<InvoiceStorePort[M]>[0];
+type InputPath<T, D extends readonly unknown[] = []> = T extends object ? {
+  [K in keyof T & string]: K | (D["length"] extends 3 ? never : NonNullable<T[K]> extends readonly unknown[] ? never : `${K}.${InputPath<NonNullable<T[K]>, [...D, 0]>}`)
+}[keyof T & string] : never;
+type SellerSnapshot = Extract<Awaited<ReturnType<InvoiceHostPorts["seller"]["read"]>>, { kind: "found" }>;
+type Source<M extends keyof InvoiceStorePort> = (Input<M> extends object ? `input.${InputPath<Input<M>>}` : "input")
+  | "adapter.boundProvider" | "adapter.correctionContractV2" | "adapter.parentInvoiceId" | "adapter.correctionSourceKind"
+  | `seller.read.${keyof Pick<SellerSnapshot, "seller" | "revisionRef">}`;
+type InputRoot<S> = S extends "input" ? "$value" : S extends `input.${infer P}` ? P extends `${infer K}.${string}` ? K : P : never;
+
+// The final argument accounts for required inputs consumed outside this SQL call
+// (binding checks, managed translation, or a documented native no-op). It cannot
+// silently omit a new required field. Typed paths also reject renamed/dropped keys.
+function sqlCall<M extends keyof InvoiceStorePort, const A extends readonly (readonly [string, ...Source<M>[]])[]>(
+  method: M, fixture: string, name: string, args: A,
+  local: Record<Exclude<RequiredKeys<Input<M>>, InputRoot<A[number][number]>>, string>,
+) {
+  return { method, fixture, name, args, local };
+}
+
+it("covers required seam inputs in pinned SQL parameter order, including seller reads and adapter values", () => {
+  // Each tuple is [SQL parameter, ordered seam/adapter sources]. Composite JSON
+  // parameters list their inputs; this is a call-shape witness, not an adapter.
+  const fences = [["p_duty", "input.claim.dutyId"], ["p_token", "input.claim.token"], ["p_generation", "input.claim.generation"]] as const;
+  const completion = [...fences, ["p_external", "input.result.providerDocumentRef"], ["p_number", "input.result.providerDocumentNumber"], ["p_proof", "input.result.proof", "input.result.kind", "input.result.identity", "input.claim.identity"]] as const;
+  const capture = [["p_key", "input.requestKey"], ["p_source_kind", "input.sourceKind"], ["p_source_id", "input.sourceId"], ["p_order_id", "input.orderId"], ["p_evidence", "input.evidence"], ["p_occurred_at", "input.occurredAt"]] as const;
+  const claim = [["p_limit", "input.limit"], ["p_visibility", "input.visibilitySeconds"], ["p_provider", "input.providerRef"], ["p_order_id", "input.orderId"]] as const;
+  const managedClaim = { visibilitySeconds: "Seller wrapper fixes its internal lease to 300 seconds (managed translation).", providerRef: "Validate against the store's selected provider before claiming." };
+  const calls = [
+    sqlCall("captureDuty", "190000_invoicing_durable_duties", "invoicing_capture_duty", capture, {}),
+    sqlCall("installFacts", "190000_invoicing_durable_duties", "invoicing_install_facts", [["p_duty", "input.dutyId"], ["p_facts", "input.facts"], ["p_revision", "input.facts.factRevision"]], {}),
+    sqlCall("sweep", "190000_invoicing_durable_duties", "invoicing_sweep_duties", [["p_limit", "input"]], {}),
+    sqlCall("prepareFacts", "190000_invoicing_durable_duties", "invoicing_prepare_facts", [["p_duty", "input.dutyId"], ["p_token", "input.token"]], {}),
+    sqlCall("finishFacts", "190000_invoicing_durable_duties", "invoicing_finish_facts", [["p_duty", "input.dutyId"], ["p_token", "input.token"], ["p_result", "input.result"]], {}),
+    sqlCall("readDuties", "190000_invoicing_durable_duties", "invoicing_duty_readback", [["p_order_id", "input"]], {}),
+    sqlCall("claim", "190000_invoicing_durable_duties", "invoicing_claim_duties", claim, {}),
+    sqlCall("preflight", "190000_invoicing_durable_duties", "invoicing_preflight_duty", [...fences, ["p_evidence", "input.status", "input.amountMinor", "input.currency", "input.proof", "input.evidence"]], {}),
+    sqlCall("finish", "190000_invoicing_durable_duties", "invoicing_finish_issue", completion, {}),
+    sqlCall("fail", "190000_invoicing_durable_duties", "invoicing_fail_duty", [...fences, ["p_kind", "input.kind"], ["p_evidence", "input.phase", "input.proof", "input.evidence"], ["p_delay", "input.retrySeconds"]], {}),
+    sqlCall("requestReversal", "191000_invoicing_document_effects", "invoicing_request_reversal", [["p_key", "input.requestKey"], ["p_order", "input.orderId"], ["p_reason", "input.reason"], ["p_evidence", "input.proof"]], {}),
+    sqlCall("finish", "191000_invoicing_document_effects", "invoicing_finish_correction", completion, {}),
+    sqlCall("recordObservation", "191000_invoicing_document_effects", "invoicing_record_observation", [["p_key", "input.requestKey"], ["p_document", "input.documentId"], ["p_observation", "input.eventRef", "input.eventKind", "input.identity", "input.providerDocumentRef", "input.providerDocumentNumber", "input.clearance", "input.artifacts", "input.observedAt", "input.payloadHash", "input.source"]], {}),
+    sqlCall("claimDeliveries", "191000_invoicing_document_effects", "invoicing_claim_deliveries", [["p_limit", "input.limit"], ["p_visibility", "input.visibilitySeconds"], ["p_require_clearance", "input.requireClearance"], ["p_order_id", "input.orderId"]], {}),
+    sqlCall("settleDelivery", "191000_invoicing_document_effects", "invoicing_settle_delivery", [["p_delivery", "input.deliveryRef"], ["p_token", "input.token"], ["p_generation", "input.generation"], ["p_kind", "input.result.kind"], ["p_receipt", "input.result.receiptRef"], ["p_evidence", "input.result"]], { providerDocumentRef: "Validate the claimed document identity before settlement.", retrySeconds: "Native ignores backoff; managed settlement consumes it (store contract)." }),
+    sqlCall("claim", "193000_invoicing_correction_claims", "accounting_invoice_correction_outbox_claim", [["p_limit", "input.limit"], ["p_lease_seconds", "input.visibilitySeconds"], ["p_contract_version", "adapter.correctionContractV2"]], { providerRef: "Validate the selected provider; correction claims are not provider-filtered by this SQL." }),
+    sqlCall("finish", "193000_invoicing_correction_claims", "accounting_invoice_correction_outbox_succeed", [["p_outbox_id", "input.claim.dutyId"], ["p_provider_invoice_id", "input.result.providerDocumentRef"], ["p_provider_invoice_number", "input.result.providerDocumentNumber"], ["p_provider_raw", "input.result.proof"], ["p_claim_attempt_count", "input.claim.generation"]], {}),
+    sqlCall("fail", "193000_invoicing_correction_claims", "accounting_invoice_correction_outbox_fail", [["p_outbox_id", "input.claim.dutyId"], ["p_error", "input.kind", "input.phase", "input.proof", "input.evidence"], ["p_retry_seconds", "input.retrySeconds"], ["p_claim_attempt_count", "input.claim.generation"]], {}),
+    sqlCall("captureDuty", "195000_invoicing_seller_revision", "invoicing_request_with_seller_policy", capture, {}),
+    sqlCall("claim", "195000_invoicing_seller_revision", "invoicing_claim_with_seller", [claim[0], claim[1], claim[2], ["p_seller", "seller.read.seller"], ["p_revision", "seller.read.revisionRef"], ["p_order_id", "input.orderId"]], {}),
+    // Managed paid sources use orderId; handoff sources use sourceId. Preserve
+    // occurrence/evidence in JSON rather than dropping native capture inputs.
+    sqlCall("captureDuty", "195100_invoicing_seller_revision", "invoicing_managed_request_with_seller_policy", [["p_key", "input.requestKey"], ["p_source_kind", "input.sourceKind"], ["p_source_id", "input.orderId", "input.sourceId"], ["p_provider", "adapter.boundProvider"], ["p_evidence", "input.evidence", "input.occurredAt"]], {}),
+    // Managed reversal resolves the parent invoice from orderId, sets source kind
+    // correction, and supplies the construction-bound provider (not a new input).
+    sqlCall("requestReversal", "195100_invoicing_seller_revision", "invoicing_managed_request_with_seller_policy", [["p_key", "input.requestKey"], ["p_source_kind", "adapter.correctionSourceKind"], ["p_source_id", "input.orderId", "adapter.parentInvoiceId"], ["p_provider", "adapter.boundProvider"], ["p_evidence", "input.reason", "input.proof"]], {}),
+    sqlCall("claim", "195100_invoicing_seller_revision", "invoicing_managed_claim_with_seller", [["p_limit", "input.limit"], ["p_order", "input.orderId"], ["p_seller", "seller.read.seller"], ["p_revision", "seller.read.revisionRef"]], managedClaim),
+    sqlCall("claim", "195100_invoicing_seller_revision", "invoicing_managed_claim_corrections_with_seller", [["p_limit", "input.limit"], ["p_seller", "seller.read.seller"], ["p_revision", "seller.read.revisionRef"]], managedClaim),
   ];
-  for (const [fixture, name, args] of calls) {
+  for (const { method, fixture, name, args, local } of calls) {
     const sql = readFileSync(new URL(`../../../../scripts/fixtures/20261022${fixture}.sql`, import.meta.url), "utf8");
-    const signature = sql.match(new RegExp(`CREATE (?:OR REPLACE )?FUNCTION public\\.${name}\\(([^)]*)\\)`));
-    expect(signature, name).not.toBeNull();
-    const parameters = signature![1].split(",").map(parameter => parameter.trim().split(/\s+/)[0]);
-    expect(Object.keys(args), name).toEqual(parameters);
+    const signatures = [...sql.matchAll(new RegExp(`CREATE (?:OR REPLACE )?FUNCTION public\\.${name}\\(([^)]*)\\)`, "g"))];
+    expect(signatures, name).toHaveLength(1);
+    const parameters = signatures[0][1].split(",").map(parameter => ({
+      name: parameter.trim().split(/\s+/)[0], optional: /\bDEFAULT\b/i.test(parameter),
+    }));
+    const names = args.map(([parameter]) => parameter);
+    expect(new Set(names).size, name).toBe(names.length);
+    // Include DEFAULT-able parameters explicitly: SQL optionality must not hide
+    // orderId or a fenced managed argument from the witness.
+    expect(names, `${method} -> ${name}`).toEqual(parameters.map(parameter => parameter.name));
+    expect(names.filter((_, index) => !parameters[index].optional), name)
+      .toEqual(parameters.filter(parameter => !parameter.optional).map(parameter => parameter.name));
+    expect(parameters.filter(parameter => parameter.optional).map(parameter => parameter.name), name)
+      .toEqual(fixture.startsWith("190000") && method === "claim" || name === "invoicing_claim_with_seller" || method === "claimDeliveries" ? ["p_order_id"] : []);
+    for (const [, ...sources] of args) expect(sources.length, name).toBeGreaterThan(0);
+    for (const reason of Object.values(local)) expect(reason.length, name).toBeGreaterThan(0);
   }
-  // The seventh native fixture is a caller of capture, not a new M09 store port.
+  expect(new Set(calls.map(call => call.method)).size).toBe(14);
+  expect(calls).toHaveLength(24);
+  // The payment fixture calls capture; it does not introduce a store seam.
   const paymentSql = readFileSync(new URL("../../../../scripts/fixtures/20261022192000_invoicing_payment_decoupling.sql", import.meta.url), "utf8");
   expect(paymentSql).toContain("public.invoicing_capture_duty(");
-  // The old managed overloads refuse; callers must use the fenced v2 signatures.
+  // 193100's legacy overloads are deliberately NOT seam mappings: they refuse
+  // missing contract/generation fences. Parse their defaults as well as names.
   const compatibility = readFileSync(new URL("../../../../scripts/fixtures/20261022193100_invoicing_correction_compatibility.sql", import.meta.url), "utf8");
+  const legacy = [...compatibility.matchAll(/CREATE OR REPLACE FUNCTION public\.(\w+)\(([^)]*)\)/g)];
+  expect(legacy.map(([, name, signature]) => [name, signature.split(",").map(parameter => [parameter.trim().split(/\s+/)[0], /\bDEFAULT\b/i.test(parameter)])])).toEqual([
+    ["accounting_invoice_correction_outbox_claim", [["p_limit", true], ["p_lease_seconds", true]]],
+    ["accounting_invoice_correction_outbox_succeed", [["p_outbox_id", false], ["p_provider_invoice_id", false], ["p_provider_invoice_number", false], ["p_provider_raw", true]]],
+    ["accounting_invoice_correction_outbox_fail", [["p_outbox_id", false], ["p_error", false], ["p_retry_seconds", true]]],
+  ]);
   expect(compatibility).toContain("accounting_invoice_correction_claim_contract_required");
   expect(compatibility.match(/accounting_invoice_correction_claim_fence_required/g)).toHaveLength(2);
 });
