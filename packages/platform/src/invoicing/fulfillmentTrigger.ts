@@ -53,7 +53,9 @@ export interface AccountingHandoffTriggerOptions {
 
 export function withAccountingInvoiceShadowTrigger<TResult, TPort extends FulfillmentHandoffPort<TResult>>(
   fulfillmentPort: TPort,
-  options: AccountingHandoffTriggerOptions,
+  options: Omit<AccountingHandoffTriggerOptions, "accountingPort"> & {
+    accountingPort: Pick<AccountingInvoiceIssuePort, "requestInvoiceIssueFromFulfillmentHandoff"> & Partial<AccountingInvoiceIssuePort>;
+  },
 ): TPort {
   return {
     ...fulfillmentPort,

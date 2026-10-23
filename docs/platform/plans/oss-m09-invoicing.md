@@ -96,6 +96,12 @@ remains the result-meaning owner.
 
 - P4 must discover captured duties without installed facts; fact preparation
   cannot depend on already having a claimable fiscal snapshot.
+- P4 native issue binding must treat non-observed local evidence as unavailable
+  without stopping the duty (pinned 190000:382-386). Only `action: "create"`
+  claims may issue, with `attemptCount = generation`. Route `action: "readback"`
+  claims to provider read, then finish on `found` or fail on `absent`/`unknown`.
+  Convert a native `{ kind: "stale" }` preflight or finish result into the claim-fence
+  error: write no failure and count zero updates.
 - P5 must give native delivery a terminal outcome or bounded backoff for
   non-retryable `failed_before_send`, rather than reclaiming it forever.
 - P7 must route native reversals through the correction branch of
@@ -134,10 +140,10 @@ registration changes. P8 still owns first-claim seller freezing. Eight semantic
 cases extend the existing required selection; incumbent host arithmetic tests
 remain the donor witness rather than a second copied suite.
 
-The compatibility callbacks retain the reviewed issue/store result distinctions:
-unknown is never exact absence or an accepted document. The issue seam witness
-binds claim, both preflights, money read, provider issue and finish/fail to the
-frozen ports and checks the pinned native SQL parameter order. This offline
-translation witness supplies no native implementation; seller pre-claim reads,
-document-scoped post-issue operations and delivery settlement remain with their
-phase owners above.
+The compatibility callbacks retain the reviewed managed issue result distinctions:
+unknown is never exact absence or an accepted document. The port-fit witness
+checks typed seam inputs against pinned SQL parameter order, including managed
+seller/claim wrappers. This is parameter-order proof only; it does not bind
+`runInvoiceIssueJob` to native ports. Native issue binding remains a P4 obligation;
+seller pre-claim reads, document-scoped post-issue operations and delivery
+settlement remain with their phase owners above.

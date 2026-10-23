@@ -12,11 +12,14 @@ it("keeps canonical ordered positions and the entire projected snapshot with inj
     { name: "Host delivery", quantity: 1, unitGrossMinor: 108, unitNetMinor: 100, totalGrossMinor: 108, totalNetMinor: 100, vatRate: "8" },
   ];
   expect(mapCanonicalIssueLines([item, delivery], 1188, 1100, options.defaultLineLabel)).toEqual(lines);
-  expect(mapInvoiceClaimToProviderSnapshot(input, options)).toEqual({
+  const snapshot = mapInvoiceClaimToProviderSnapshot(input, options);
+  const expected = {
     orderRef: "ORDER", issueDate: "2026-10-22", sellDate: "2026-10-21", currency: "XTS", seller: input.seller,
     buyer: { name: "Saved buyer", email: "buyer@example.test", taxId: null, companyName: null, address: { line1: null, postalCode: null, city: null, country: null } },
     documentKind: "host-consumer", governmentClearanceRequired: false, payment: input.payment, lines, chargedTotalGrossMinor: 1188,
-  });
+  };
+  expect(snapshot).toEqual(expected);
+  expect(JSON.stringify(snapshot)).toBe(JSON.stringify(expected));
   const legacy = mapInvoiceClaimToProviderSnapshot({ ...input, buyerSnapshot: {}, linesSnapshot: [{ quantity: 1, totalGrossMinor: 1080 }], orderMoney: { subtotalCents: 1080, discountCents: 0, totalCents: 1188 } }, options);
   expect(legacy.buyer.name).toBe("Host buyer");
   expect(legacy.lines).toEqual([{ ...lines[0], name: "Host item" }, lines[1]]);

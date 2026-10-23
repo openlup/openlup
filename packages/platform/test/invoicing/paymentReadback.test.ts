@@ -1,7 +1,7 @@
 import { expect, it, vi } from "vitest";
 import { readInvoicePaymentEvidence } from "../../src/invoicing/index.js";
 
-it("reads only the final claimed payment identity and preserves mismatch, unknown and unavailable distinctions", async () => {
+it("reads the supplied payment identity and preserves normalized, unknown and unavailable evidence", async () => {
   const payment = { provider: "money-a", providerPaymentId: "final-claimed-id" };
   const provider = { readPayment: vi.fn(async () => ({ status: "succeeded" as "succeeded" | "unknown", providerStatus: "settled", amountMinor: 999 as number | null, currency: " xts " as string | null })) };
   expect(await readInvoicePaymentEvidence(payment, provider)).toEqual({ providerStatus: "succeeded", providerAmountCents: 999, providerCurrency: "XTS", providerEvidence: { source: "provider_api", provider: "money-a", providerPaymentId: "final-claimed-id", providerStatus: "settled", amountAvailable: true, currencyAvailable: true } });

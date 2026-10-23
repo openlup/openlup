@@ -178,18 +178,11 @@ it("covers required seam inputs in pinned SQL parameter order, including seller 
     sqlCall("claim", "195100_invoicing_seller_revision", "invoicing_managed_claim_corrections_with_seller", [["p_limit", "input.limit"], ["p_seller", "seller.read.seller"], ["p_revision", "seller.read.revisionRef"]], managedClaim),
   ];
   for (const { method, fixture, name, args, local } of calls) {
-    expectPinnedSqlOrder(fixture, name, args.map(([parameter]) => parameter));
-    const sql = readFileSync(new URL(`../../../../scripts/fixtures/20261022${fixture}.sql`, import.meta.url), "utf8");
-    const signatures = [...sql.matchAll(new RegExp(`CREATE (?:OR REPLACE )?FUNCTION public\\.${name}\\(([^)]*)\\)`, "g"))];
-    expect(signatures, name).toHaveLength(1);
-    const parameters = signatures[0][1].split(",").map(parameter => ({
-      name: parameter.trim().split(/\s+/)[0], optional: /\bDEFAULT\b/i.test(parameter),
-    }));
+    const parameters = expectPinnedSqlOrder(fixture, name, args.map(([parameter]) => parameter));
     const names = args.map(([parameter]) => parameter);
     expect(new Set(names).size, name).toBe(names.length);
     // Include DEFAULT-able parameters explicitly: SQL optionality must not hide
     // orderId or a fenced managed argument from the witness.
-    expect(names, `${method} -> ${name}`).toEqual(parameters.map(parameter => parameter.name));
     expect(names.filter((_, index) => !parameters[index].optional), name)
       .toEqual(parameters.filter(parameter => !parameter.optional).map(parameter => parameter.name));
     expect(parameters.filter(parameter => parameter.optional).map(parameter => parameter.name), name)

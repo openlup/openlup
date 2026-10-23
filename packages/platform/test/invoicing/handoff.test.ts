@@ -49,7 +49,7 @@ it("keeps direct handoff/paid key scopes, suppressed receipts, and fail-soft ful
   const request = { idempotencyKey: "operator-handoff", fulfillmentOrderId: "shipment", actorUserId: "actor" };
   const hostResult = { handedOver: true };
   const shadow = { handOffCommerceFulfillmentOrder: vi.fn(async (_request: { idempotencyKey: string; fulfillmentOrderId: string; actorUserId: string }) => hostResult) };
-  expect(await withAccountingInvoiceShadowTrigger(shadow, options).handOffCommerceFulfillmentOrder(request)).toBe(hostResult);
+  expect(await withAccountingInvoiceShadowTrigger(shadow, { ...options, accountingPort: { requestInvoiceIssueFromFulfillmentHandoff: accountingPort.requestInvoiceIssueFromFulfillmentHandoff } }).handOffCommerceFulfillmentOrder(request)).toBe(hostResult);
   expect(accountingPort.requestInvoiceIssueFromFulfillmentHandoff).toHaveBeenLastCalledWith({ idempotencyKey: "operator-handoff:accounting-invoice", fulfillmentOrderId: "shipment", providerKind: "host-fiscal" });
   accountingPort.requestInvoiceIssueFromFulfillmentHandoff.mockClear();
   for (const action of ["suppress", "channel_issues"] as const) {

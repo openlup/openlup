@@ -37,5 +37,9 @@ export function expectPinnedSqlOrder(fixture: string, name: string, names: reado
   const sql = readFileSync(new URL(`../../../../scripts/fixtures/20261022${fixture}.sql`, import.meta.url), "utf8");
   const signatures = [...sql.matchAll(new RegExp(`CREATE (?:OR REPLACE )?FUNCTION public\\.${name}\\(([^)]*)\\)`, "g"))];
   expect(signatures, name).toHaveLength(1);
-  expect(names, name).toEqual(signatures[0][1].split(",").map(parameter => parameter.trim().split(/\s+/)[0]));
+  const parameters = signatures[0][1].split(",").map(parameter => ({
+    name: parameter.trim().split(/\s+/)[0], optional: /\bDEFAULT\b/i.test(parameter),
+  }));
+  expect(names, name).toEqual(parameters.map(parameter => parameter.name));
+  return parameters;
 }
