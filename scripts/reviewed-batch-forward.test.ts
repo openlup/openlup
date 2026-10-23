@@ -226,17 +226,29 @@ describe("co-located SQL and pins under an existing policy", () => {
     } finally { f.cleanup(); }
   });
 
-  it("accepts the actual M09 packet, legacy two-PR history and later unrelated release approvals", () => {
+  it("accepts the actual M09 packet in admission, migration and release checks", () => {
     const f = correctionFixture();
     try {
       f.install(); const head = f.commit();
       expect(() => assertCoLocatedForwardApproval(f.root, f.base, head)).not.toThrow();
       expect(() => assertAppendOnlyMigrationHistory(f.root, f.base, head)).not.toThrow();
       for (const path of correctionPaths) expect(() => assertReviewedPlatformForward(f.root, f.base, head, path, readFileSync(path), true)).not.toThrow();
+    } finally { f.cleanup(); }
+  });
+
+  it("preserves co-located bindings through later unrelated release approvals", () => {
+    const f = correctionFixture();
+    try {
+      f.install(); f.commit();
       const later = structuredClone(registry); later.managedInvoicingForwards![2]!.sha256 = "f".repeat(64);
       f.put("config/reviewed-platform-forwards.json", JSON.stringify(later)); const release = f.commit();
       for (const path of correctionPaths) expect(() => assertReviewedPlatformForward(f.root, f.base, release, path, readFileSync(path), true)).not.toThrow();
-      f.git("reset", "--hard", f.base);
+    } finally { f.cleanup(); }
+  });
+
+  it("retains the actual M09 legacy two-PR control and feature history", () => {
+    const f = correctionFixture();
+    try {
       f.put("config/reviewed-platform-forwards.json", registryBytes); const control = f.commit();
       f.install(); const feature = f.commit();
       expect(() => assertAppendOnlyMigrationHistory(f.root, control, feature)).not.toThrow();
