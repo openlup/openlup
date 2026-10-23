@@ -678,3 +678,10 @@ an explicit native capability descriptor; `./subscriptions/contracts` is
 browser-safe and type-only. The [subscription architecture and recipe](../../docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#subscription-contracts)
 owns the concrete ports, continuity rules, capability refusals and witnesses.
 These entries do not install a store or activate a runner.
+
+Native renewal and N1 retry stores accept injected SQL executors and explicit
+snapshot/identity policy. The generic native executor consumes the subscription
+ports; host composition supplies G23, M07, transaction and correlation policy.
+The initial binding preserves case-before-outcome ordering with atomic bookkeeping.
+N1's same-obligation recovery repairs the native decline stall (F16); it does not
+supply M07 prepared-store parity or activate a runner.

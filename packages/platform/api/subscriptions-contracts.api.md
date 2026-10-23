@@ -817,6 +817,10 @@ export interface RenewalPaymentRail {
     execute(input: RenewalExecutionRequest): Promise<{
         status: "succeeded" | "failed" | "requires_action" | "pending" | "unknown";
         externalAttemptRef: string | null;
+        failure?: {
+            reason: string;
+            failureClass: string;
+        };
     }>;
     findExternalAttempt(input: {
         settlementIntentId: string;

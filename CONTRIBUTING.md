@@ -131,6 +131,31 @@ its users or operators can observe.
 
 ## Development-preview checks
 
+The native subscription renewal selection is
+`npm test -- tests/postgres/subscriptionRenewalLifecycle.test.ts --maxWorkers=1`.
+It uses one disposable PostgreSQL container for N1 exact-prefix restart,
+rollback/replay and complete old-catalog comparison, plus retry and captured
+alignment behavior. Initial handoff is tested separately from subsequent retry
+failure: the case precedes terminal recording, bookkeeping rolls back with that
+terminal transaction, and an immutable receipt ends initial terminal replay
+before settlement, rebinding or case propagation. The real-PG witness compares
+counts, complete rows and row versions across every public table before and
+after three replays per state, including an in-flight prepared retry, later
+failure and a re-offered exhausted ladder; it detects notifications, events and
+even same-value re-link writes. Fixture-local late database faults separately prove
+rollback after the original graph and retry prepare writes; the stock-shortage
+case proves admission refusal.
+The same selection covers shadow/off admission, protect release after arrival
+and lease expiry, manual resolution, open/expired dunning and supersession by a
+later paid cycle. Keep the shared harness when extending these witnesses; report
+case counts and whole-selection wall time, including startup and cleanup.
+
+
+The retry-class threading guard in `scripts/retry-ladder-terminating-classes.test.ts`
+resolves every production retry call across the core, package and host sources.
+Its mutation witness removes the refusal class from each discovered call in
+memory and requires the same guard to reject each omission.
+
 The M10/F17 exact-forward controls use
 `scripts/reviewed-batch-forward.test.ts` for per-file refusal plants and separate
 CI/release approval, and `tests/postgres/reviewedBatchForwards.test.ts` for the

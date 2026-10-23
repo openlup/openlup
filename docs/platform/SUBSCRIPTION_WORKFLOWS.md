@@ -42,6 +42,14 @@ challenge the package boundary; delivery protection belongs to the durable rail.
 
 ## Renew one cycle
 
+The hosted charge and failure files are application policy facades over the
+contributed P1 package mechanisms. The package receives the same M07 ports and
+existing key/identity builders; it does not select a provider or regenerate keys.
+Native renewal/retry stores are separate graph bindings. N1 never turns an
+unknown provider result into a retry. The initial binding opens the existing
+case before terminal recording and links N1 bookkeeping within that terminal
+transaction; subsequent retry failure and case advance retain separate units.
+
 The [local operator tick composition](../../server/bff/subscriptions/renewal-ticks.ts)
 shows an injected clock, runtime ports and an outer platform-job lease. It calls
 `runSubscriptionRenewalBatch` in
