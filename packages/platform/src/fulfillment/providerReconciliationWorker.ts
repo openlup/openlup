@@ -97,6 +97,9 @@ export async function reconcileFulfillmentObservations(input: {
         continue;
       }
       observation = projectObservation(readback.observation, input.lifecycle.trackingCodecs.approveTrackingUrl, input.lifecycle.trackingCodecs);
+      if (observation.diagnostics?.redactedFieldCount) {
+        result.redactedFieldCount = (result.redactedFieldCount ?? 0) + observation.diagnostics.redactedFieldCount;
+      }
       const ref = await input.lifecycle.findDispatchRef(observation);
       if (!ref) { await quarantine(observation, "missing_correlation"); continue; }
       const localState = await input.localPersistence.readLocalFulfillmentStatus(ref.fulfillmentRef);
@@ -133,9 +136,11 @@ export async function reconcileFulfillmentObservations(input: {
         for (const tracking of uniqueTrackingReferences(observation.trackingRefs)) {
           if (!trackingReferenceComplete(tracking) && carrier === undefined) carrier = await input.lifecycle.readDeliveryCarrier(ref.fulfillmentRef);
           const codecs = input.lifecycle.trackingCodecs;
-          const candidate = enrichTrackingReference(tracking, carrier ?? null, codecs);
-          const enriched = projectTrackingReference(candidate, privacy,
-            url => codecs.approveTrackingUrl?.(url) === true || url === codecs.publicUrl(candidate.carrierRef, candidate.trackingNumber), codecs);
+          const candidate = enrichTrackingReference(tracking, carrier ?? null, { ...codecs, publicUrl: () => null });
+          const enriched = projectTrackingReference(candidate, privacy, codecs.approveTrackingUrl, codecs);
+          if (!enriched) continue;
+          // Host-built links use admitted parts and pass through unchanged, including queries.
+          enriched.publicUrl ??= codecs.publicUrl(enriched.carrierRef, enriched.trackingNumber);
           trackingRefs.push({ trackingNumber: enriched.trackingNumber, trackingUrl: enriched.publicUrl, carrierKind: enriched.carrierRef, service: enriched.serviceRef });
         }
       }
@@ -158,7 +163,7 @@ export async function reconcileFulfillmentObservations(input: {
       result.ok = false; result.failures += 1; result.reason ??= failure("reconciliation_local_operation_failed", error);
     }
   }
-  return { ...result, ...(privacy.redactedFieldCount ? { redactedFieldCount: privacy.redactedFieldCount } : {}) };
+  return { ...result, ...(privacy.redactedFieldCount ? { redactedFieldCount: (result.redactedFieldCount ?? 0) + privacy.redactedFieldCount } : {}) };
 }
 
 

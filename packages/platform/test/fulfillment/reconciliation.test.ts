@@ -1,5 +1,5 @@
-import { expect, it } from "vitest";
-import { reconcileFulfillmentObservations as run } from "../../src/fulfillment/index.js";
+import { expect, it, vi } from "vitest";
+import { createPostgresFulfillmentShipmentSpinePort, reconcileFulfillmentObservations as run } from "../../src/fulfillment/index.js";
 import { normalizeReconciliationTimestamp } from "../../src/fulfillment/providerReconciliationTimestamp.js";
 import { enrichTrackingReference, uniqueTrackingReferences } from "../../src/fulfillment/providerTrackingReferences.js";
 import { ingressFixture, observation } from "./fixtures.js";
@@ -21,6 +21,49 @@ function fixture(status = "label_created", latest: string | null = null) {
   };
   return { ...f, input };
 }
+
+it.each([null, "https://provider.example.invalid/track?number=TRACK-a", "https://user:password@provider.example.invalid/track"])("passes a host-built query URL unchanged while applying provider rules to %s", async providerUrl => {
+  const f = fixture(), value = observation();
+  value.trackingRefs[0]!.publicUrl = providerUrl;
+  const url = "https://tracking.example.invalid/track?number=TRACK-a";
+  f.input.readPage = async () => [{ kind: "found", externalRef: "external-a", createdAt: null, updatedAt: null, observation: value }];
+  f.input.lifecycle.trackingCodecs.publicUrl = () => url;
+  f.input.lifecycle.trackingCodecs.approveTrackingUrl = () => true;
+  const query = vi.fn(async () => ({ rows: [{ response: {
+    contractVersion: "platform.fulfillment.shipment.v1", replayed: false,
+    shipment: { id: "fulfillment-a", orderId: "order-a", status: "in_transit" },
+  } }] }));
+  const spine = createPostgresFulfillmentShipmentSpinePort({ query }, { portKey: "warehouse-a", evidenceChannel: "poll" });
+  const recordTrackingReference = vi.fn(async (tracking: Parameters<typeof f.input.lifecycle.effects.recordTrackingReference>[0]) => {
+    const result = await spine.recordTracking({ idempotencyKey: tracking.idempotencyKey, shipmentId: tracking.fulfillmentOrderId,
+      externalRef: tracking.trackingNumber, status: tracking.status, metadata: { trackingUrl: tracking.trackingUrl } });
+    return { replayed: result.replayed, readBack: false };
+  });
+  f.input.lifecycle.effects.recordTrackingReference = recordTrackingReference;
+  const result = await run(f.input);
+  expect(result).toMatchObject({ ok: true, trackingRefs: 1 });
+  expect(result.redactedFieldCount).toBe(providerUrl ? 1 : undefined);
+  expect(recordTrackingReference).toHaveBeenCalledWith(expect.objectContaining({ trackingUrl: url }));
+  expect(query).toHaveBeenCalledWith(expect.stringContaining("fulfillment_record_evidence"), expect.arrayContaining([{ trackingUrl: url }]));
+  expect(query).toHaveBeenCalledWith(expect.stringContaining("fulfillment_advance_shipment"), expect.arrayContaining([{ trackingUrl: url }]));
+});
+
+it("drops and counts distinct refused tracking numbers before reconciliation evidence, codecs and tracking effects", async () => {
+  const f = fixture(), value = observation();
+  value.trackingRefs = ["invalid number", "invalid/number"].map(trackingNumber => ({
+    trackingNumber, carrierRef: null, serviceRef: null, publicUrl: null,
+  }));
+  f.input.readPage = async () => [{ kind: "found", externalRef: "external-a", createdAt: null, updatedAt: null, observation: value }];
+  const recordTrackingReference = vi.spyOn(f.input.lifecycle.effects, "recordTrackingReference");
+  const recordStatusEvidence = vi.spyOn(f.input.lifecycle, "recordStatusEvidence");
+  const publicUrl = vi.spyOn(f.input.lifecycle.trackingCodecs, "publicUrl");
+  expect(await run(f.input)).toMatchObject({ ok: true, trackingRefs: 0, redactedFieldCount: 2 });
+  expect(recordStatusEvidence).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+    trackingRefs: [], diagnostics: { redactedFieldCount: 2 },
+  }));
+  expect(recordTrackingReference).not.toHaveBeenCalled();
+  expect(publicUrl).not.toHaveBeenCalled();
+});
 
 it("writes evidence only for locally cancelled created dispatches, and skips older shipped effects without moving or stacking alignment (G17)", async () => {
   const cancelled = fixture("cancelled");

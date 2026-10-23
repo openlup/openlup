@@ -39,10 +39,12 @@ export function publicTrackingUrl(value: string, approve?: (url: string) => bool
 }
 export function projectTrackingReference(value: FulfillmentObservation["trackingRefs"][number], privacy = durableStrings(), approveTrackingUrl?: (url: string) => boolean, codecs: FulfillmentObservationCodecs = {}) {
   const token = (value: string | null) => privacy.token(value, text => admittedReference(text, codecs.approveReference));
+  const trackingNumber = token(value.trackingNumber);
+  if (trackingNumber === null) return null;
   const serviceRef = token(value.serviceRef);
   // Even an opaque-looking derived carrier is unsafe when its service was refused.
   const carrierRef = privacy.token(value.carrierRef, text => value.serviceRef !== null && serviceRef === null ? null : reference(text));
-  return { trackingNumber: token(value.trackingNumber) ?? "redacted", carrierRef, serviceRef,
+  return { trackingNumber, carrierRef, serviceRef,
     publicUrl: privacy.token(value.publicUrl, url => publicTrackingUrl(url, approveTrackingUrl, codecs.trackingUrl)) };
 }
 
@@ -69,7 +71,10 @@ export function projectObservation(value: FulfillmentObservation, approveTrackin
     ...pollEvidence(value, privacy, codecs),
     fact: { ...fact, mapperVersion: token(fact.mapperVersion) ?? "redacted" }, eventKind: (token(value.eventKind) ?? "redacted") as FulfillmentObservation["eventKind"],
     firstReceivedAt: timestamp.parse(value.firstReceivedAt),
-    trackingRefs: value.trackingRefs.map(ref => projectTrackingReference(ref, privacy, approveTrackingUrl, codecs)),
+    trackingRefs: value.trackingRefs.flatMap(ref => {
+      const projected = projectTrackingReference(ref, privacy, approveTrackingUrl, codecs);
+      return projected ? [projected] : [];
+    }),
   };
   if (privacy.redactedFieldCount) diagnostics.redactedFieldCount = privacy.redactedFieldCount;
   return { ...safe, ...(Object.keys(diagnostics).length ? { diagnostics } : {}) };

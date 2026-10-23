@@ -10,22 +10,22 @@ in the source repository.
 
 ## [Unreleased]
 
-- Fulfillment ingress exposes receipt IDs, a host-neutral HTTP result mapping,
-  counted correlation/timestamp/tracking refusals and persisted safe superseded
-  causes. The opt-in adapter preserves donor webhook key bytes and defaults to
-  strict opaque references. Adopters can explicitly allow wider reference shapes
-  through `observationCodecs.approveReference`; carrier and tracking-URL codecs
-  retain their strict defaults. Hosts retain referenced raw evidence.
-
-Migration (observation ingress): donor-format colon identities remain the
-compatibility target. Observation receipts/effects recorded by 0.22.0's native
-stores under package digest keys are not recognized under the incumbent colon
-keys, so retrying such an event can apply tracking again. Replaying a superseded
-receipt processed by 0.22.0 fails with `fulfillment_observation_outcome_conflict`.
-Drain in-flight observation retries before upgrading. No bridges or aliases are
-provided for these native rows. Wider incumbent correlation/tracking references
-require an explicit adopter allowlist; the default refuses and reports them.
-
+- Add `approveTrackingUrl` inputs to `verifyAndNormalizeFulfillmentObservation`,
+  `PostgresFulfillmentShipmentSpineOptions`, `FulfillmentAdapterConformanceSubject`
+  and reconciliation `trackingCodecs`. Under the strict default, provider tracking
+  URLs persist only with host approval and must be query-free and credential-free
+  HTTPS; host-built tracking URLs pass unchanged, including query strings.
+- Existing `reconcileFulfillmentObservations` callers now receive row-local unknown
+  readback failures (`ok: false` with `failures`) while recognized rows still
+  process.
+- Observation ingest (`verifyAndNormalizeFulfillmentObservation`, the native
+  `recordObservation`, `reconcileFulfillmentObservations` and
+  `runFulfillmentReconciliationPage`) now applies the durable-sink sanitizer: provider-derived
+  references outside the opaque reference rule (for example `#1001` or
+  `ORD/2026/1`) are stored as null or redacted and counted instead of verbatim,
+  and `firstReceivedAt` must be an RFC 3339 timestamp with an offset; other
+  values fail ingest or the reconciliation row. A correlation refused to null can
+  be quarantined as `missing_correlation` in reconciliation.
 - Fulfillment reconciliation inputs replace `readLocalFulfillmentState` with
   `readLocalFulfillmentStatus`, `latestStatusOccurredAt` and `readHandedOverAt`;
   migrate host persistence implementations to these three reads.
@@ -84,6 +84,22 @@ require an explicit adopter allowlist; the default refuses and reports them.
   `last_seen_at`, retaining stored severity, quantities and status.
 
 Migration: alert rows written by 0.22.0's native port carry the earlier whole-input fingerprint; subsequent writes under those keys conflict with SQLSTATE `23505`, and resolve only marks the row resolved while retaining its key and fingerprint, so it does not clear the conflict. Legacy fingerprints are documented only; this change does not rewrite them.
+
+- Fulfillment ingress exposes receipt IDs, a host-neutral HTTP result mapping,
+  counted correlation/timestamp/tracking refusals and persisted safe superseded
+  causes. The opt-in adapter preserves donor webhook key bytes and defaults to
+  strict opaque references. Adopters can explicitly allow wider reference shapes
+  through `observationCodecs.approveReference`; carrier and tracking-URL codecs
+  retain their strict defaults. Hosts retain referenced raw evidence.
+
+Migration (observation ingress): donor-format colon identities remain the
+compatibility target. Observation receipts/effects recorded by 0.22.0's native
+stores under package digest keys are not recognized under the incumbent colon
+keys, so retrying such an event can apply tracking again. Replaying a superseded
+receipt processed by 0.22.0 fails with `fulfillment_observation_outcome_conflict`.
+Drain in-flight observation retries before upgrading. No bridges or aliases are
+provided for these native rows. Wider incumbent correlation/tracking references
+require an explicit adopter allowlist; the default refuses and reports them.
 
 ## [0.22.0]
 

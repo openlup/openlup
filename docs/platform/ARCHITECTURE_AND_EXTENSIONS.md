@@ -825,19 +825,23 @@ reconciliation quarantine evidence, and worker diagnostics share one counted
 string sanitizer at their output projections. Provider-derived strings must
 match the existing opaque-ID rule `[A-Za-z0-9][A-Za-z0-9._:-]{0,127}` or an
 explicit adopter codec; refused values become null (required references use
-`redacted`) and increment `redactedFieldCount` in the existing evidence or
+`redacted`; refused tracking numbers drop the entire reference) and increment
+`redactedFieldCount` in the existing evidence or
 diagnostic envelope. Each field is counted once using its admission codec;
 counts survive repeated native projection. Host-owned acceptance/attempt/label
 and event keys, fingerprints and identities built from admitted parts pass through
 unchanged. Timestamps use RFC3339 validation, preserving identity-bearing bytes,
 and never use the token sanitizer. Expiry additionally
-requires a real `YYYY-MM-DD` calendar date. Tracking URLs require the adopter's
-approval at each projection that retains them, including reconciliation tracking
-codecs and native observation-store options; omission redacts the URL. Forward the
+requires a real `YYYY-MM-DD` calendar date. Under the strict default, provider
+tracking URLs require query-free, credential-free HTTPS and the adopter's approval at each projection
+that retains them, including reconciliation tracking
+codecs and native observation-store options; omission redacts the URL. Host-built
+tracking URLs pass unchanged, including query strings. Forward the
 same `approveReference` and `trackingUrl` codecs through ingress/native-store
 `observationCodecs`, conformance-subject `observationCodecs`, and reconciliation
-`trackingCodecs` when using wider references or approved query data. These all use
-the same sink sanitizer and URL policy, rather than separate adapter/sink rules. Occurrence
+`trackingCodecs` when using wider references or approved query data. The optional
+`trackingUrl` codec overrides the query/fragment default; HTTPS, no credentials
+and host approval still apply. These use the same sink sanitizer and URL policy. Occurrence
 identity hashes original provider status/subStatus bytes, so redaction cannot
 collapse distinct occurrences. Arbitrary properties, contact fields, raw JSON,
 credentials and signed URLs are omitted. The

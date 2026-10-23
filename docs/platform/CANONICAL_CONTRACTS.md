@@ -1120,8 +1120,9 @@ evidence referenced by its opaque pointer, with access/retention policy of their
 Reconciliation reads local chronology independently of provider readback.
 Non-stale found observations for locally cancelled/exception rows write status
 evidence only. Older known occurrences skip status/effects; only on-track rows
-with handedOverAt may retry an invoice on that path. Unknown readback fails the
-run before row processing. Unmapped evidence is projected before host calls;
+with handedOverAt may retry an invoice on that path. Unknown readback is row-local:
+it counts a run failure while recognized rows still process. Unmapped evidence
+is projected before host calls;
 correlated off-track rows skip acceptance/quarantine. These workers call no
 alignment or replacement-confirmation operation; native late-arrival alignment
 must preserve the later-only monotonic rule.
