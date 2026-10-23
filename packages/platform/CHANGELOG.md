@@ -12,7 +12,7 @@ in the source repository.
 
 - Require Zod `^4.6.6` to fix GHSA-mrhx-c7xc-m3w5; oversized constrained
   request collections fail before element validation accumulates errors.
-- Preserve Omnipack's accepted minute-precision occurrence timestamps and raw
+- Preserve the observation adapter's accepted minute-precision occurrence timestamps and raw
   idempotency-key bytes with the updated validator; impossible dates still fail.
 
 ## [0.23.0]
