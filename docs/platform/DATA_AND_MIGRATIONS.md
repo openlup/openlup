@@ -1272,13 +1272,11 @@ provider, deployment or fiscal-readiness evidence.
 
 `INVOICING_MIGRATIONS.native.units` projects unchanged accounting rails at
 positions 7, 13 and 15 and the three pinned M09 forwards at 77, 78 and 79.
-Every packaged asset is byte-identical to its canonical file; all three new files
-also equal the reviewed fixture/hash. The
+Every packaged asset is byte-identical to its canonical file. The
 [M09 migration owner](#m09-invoicing-forward-design-and-control-approval) defines
 installation order and prefix preservation.
 The native descriptor declares child-document corrections and explicit host
 fiscal facts. The separate managed descriptor names P3's base-row correction
 forwards; neither descriptor claims storage or fiscal parity.
 
-Seller-revision forwards and default service activation remain later work. Immutable SQL position comments describe historical staging order; use
-versioned filenames and manifest positions for the installation identity.
+Seller-revision forwards and default service activation remain later work.
