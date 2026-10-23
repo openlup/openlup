@@ -7,11 +7,17 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, it } from "vitest";
 import { isolatedConsumerEnv } from "./pack-manifest-input.ts";
-import { POSTGRES_PROOF_IMAGE } from "./outbox-disposable-postgres.ts";
+import { preparePostgresProofImage } from "./outbox-disposable-postgres.ts";
+import { IMAGE_PULL_BUDGET_MS } from "../ci-image-pull.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../.."), env = isolatedConsumerEnv();
 const commit = execFileSync("git", ["rev-parse", "HEAD"], { cwd: root, encoding: "utf8", env }).trim();
-let scratch: string, basePacks: string;
+let scratch: string, basePacks: string, postgresProofImage: string;
+// Registry work finishes before interruption scenarios start their own deadlines.
+beforeAll(async () => {
+  postgresProofImage = await preparePostgresProofImage();
+  // The pull helper owns one overall budget; leave hook scheduling headroom.
+}, IMAGE_PULL_BUDGET_MS + 30_000);
 beforeAll(() => {
   // Owned warm mechanical fixtures, not cold-producer/candidate evidence.
   scratch = mkdtempSync(join(tmpdir(), "outbox-consumer-falsifiers-")); basePacks = join(scratch, "packs"); mkdirSync(basePacks);
@@ -35,7 +41,7 @@ function fixture() {
   // This is a test-input subset, with no checkout or Git identity. Tooling is explicit.
   const config = JSON.parse(readFileSync(join(root, "config/openlup-packages.json"), "utf8"));
   const directories = config.packages.filter((entry: { publish: boolean }) => entry.publish).map((entry: { directory: string }) => entry.directory);
-  const files = ["config/openlup-packages.json", ...directories.map((directory: string) => `${directory}/package.json`), "packages/outbox/scripts/consumer-proof.ts", "server/runtime/outbox/referenceContribution.ts", "server/runtime/outbox/candidateAdmission.ts", "packages/outbox/smoke/wiring.ts", "packages/outbox/smoke/schemaProof.ts", "packages/outbox/smoke/groupedSchemaProof.ts", "scripts/packages/schema-budget-proof.mjs", ...["outbox-consumer-proof", "outbox-disposable-postgres", "pack-manifest-input", "package-manifest-policy"].map(name => `scripts/packages/${name}.ts`)];
+  const files = ["config/openlup-packages.json", "config/ci-images.json", "scripts/ci-image-pull.mjs", "scripts/ci-image-mirror.mjs", ...directories.map((directory: string) => `${directory}/package.json`), "packages/outbox/scripts/consumer-proof.ts", "server/runtime/outbox/referenceContribution.ts", "server/runtime/outbox/candidateAdmission.ts", "packages/outbox/smoke/wiring.ts", "packages/outbox/smoke/schemaProof.ts", "packages/outbox/smoke/groupedSchemaProof.ts", "scripts/packages/schema-budget-proof.mjs", ...["outbox-consumer-proof", "outbox-disposable-postgres", "pack-manifest-input", "package-manifest-policy"].map(name => `scripts/packages/${name}.ts`)];
   for (const file of files) { mkdirSync(dirname(join(target, file)), { recursive: true }); cpSync(join(root, file), join(target, file)); }
   writeFileSync(join(target, "package.json"), JSON.stringify({ type: "module", workspaces: directories }) + "\n"); mkdirSync(join(target, "node_modules"));
   for (const name of ["typescript", "pg"]) symlinkSync(join(root, "node_modules", name), join(target, "node_modules", name), "dir");
@@ -55,7 +61,7 @@ function fixtureDriver(f: ReturnType<typeof fixture>, operation: string, mode: s
     'import {chmodSync, existsSync, mkdirSync, readFileSync, rmSync, writeFileSync, renameSync} from "node:fs";',
     'import {join} from "node:path";',
     'import {isolatedConsumerEnv} from "./scripts/packages/pack-manifest-input.ts";',
-    `const env = isolatedConsumerEnv(), commit = ${JSON.stringify(commit)}, root = ${JSON.stringify(root)}, POSTGRES_PROOF_IMAGE = ${JSON.stringify(POSTGRES_PROOF_IMAGE)};`,
+    `const env = isolatedConsumerEnv(), commit = ${JSON.stringify(commit)}, root = ${JSON.stringify(root)}, postgresProofImage = ${JSON.stringify(postgresProofImage)};`,
     // A dead worker closes its output pipe. Output errors must not kill cleanup.
     'process.stdout.on("error", () => {}); process.stderr.on("error", () => {});',
     body,
@@ -75,6 +81,9 @@ it.each(["direct", "package-group"] as const)("handles repeated interruption thr
 it.each(["container-response", "container-owner-mismatch", "database-response"] as const)("cleans owned startup effects after %s", async mode => {
   await driverCompletion(fixtureDriver(fixture(), "exerciseStartupLoss", mode));
 }, 90_000);
+it.each(["image-reference", "image-digest"] as const)("refuses supplied service with an untrusted %s before SQL", async mode => {
+  await driverCompletion(fixtureDriver(fixture(), "exerciseStartupLoss", mode));
+}, 60_000);
 it.each(["cleanup-inspect", "cleanup-remove", "cleanup-drop"] as const)("finishes actual owned cleanup despite group cancellation during %s", async mode => {
   await driverCompletion(fixtureDriver(fixture(), "exerciseStartupLoss", mode));
 }, 90_000);
@@ -191,7 +200,7 @@ async function exerciseInterruption(mode: string, f: { target: string; packs: st
   let failure: unknown;
   try {
     attemptedService = true;
-    container = docker(["run", "--detach", "--rm", "--name", name, "--label", `openlup-interruption-test=${owner}`, "--cpus=1", "--memory=512m", "--pids-limit=128", "--tmpfs", "/var/lib/postgresql/data", "--publish", "127.0.0.1::5432", "--env", "POSTGRES_HOST_AUTH_METHOD=trust", POSTGRES_PROOF_IMAGE]);
+    container = docker(["run", "--pull=never", "--detach", "--rm", "--name", name, "--label", `openlup-interruption-test=${owner}`, "--cpus=1", "--memory=512m", "--pids-limit=128", "--tmpfs", "/var/lib/postgresql/data", "--publish", "127.0.0.1::5432", "--env", "POSTGRES_HOST_AUTH_METHOD=trust", postgresProofImage]);
     await fixtureStopPoint("service-created", { id: container, name, label: `openlup-interruption-test=${owner}` }, life.signal);
     const port = docker(["port", container, "5432/tcp"]).split(":").at(-1)!;
     // Both processes resist TERM, exercising the launcher's bounded group KILL.
@@ -271,7 +280,7 @@ async function exerciseStartupLoss(mode: string, f: { target: string; packs: str
   delete environment.OPENLUP_PROOF_SERVICE_CONTAINER; delete environment.OPENLUP_PROOF_SERVICE_PORT;
   const docker = (args: string[]) => spawnSync(realDocker, args, { env: environment, encoding: "utf8", timeout: 30_000 });
   const effect = join(f.target, "effect.json"), attempted = join(f.target, "attempted.json"), tools = join(f.target, "tools"); mkdirSync(tools);
-  const shim = join(tools, "docker"), cleanupMode = mode.startsWith("cleanup-");
+  const shim = join(tools, "docker"), cleanupMode = mode.startsWith("cleanup-"), imageRefusal = mode.startsWith("image-");
   if (cleanupMode) writeFileSync(join(f.target, "scripts/packages/outbox-consumer-proof.ts"), 'console.log("SYNTHETIC_PROCESS_FINISHED");\n');
   writeFileSync(shim, `#!${process.execPath}
 ` + [
@@ -281,6 +290,13 @@ async function exerciseStartupLoss(mode: string, f: { target: string; packs: str
     'const args = argv.slice(2);',
     'const publish = (path, value) => { writeFileSync(path + ".tmp", JSON.stringify(value)); renameSync(path + ".tmp", path); };',
     `const mode = ${JSON.stringify(mode)}, effect = ${JSON.stringify(effect)}, attempted = ${JSON.stringify(attempted)};`,
+    'if (mode === "image-digest" && args[0] === "image" && args[1] === "inspect") { process.stdout.write("[]"); process.exit(0); }',
+    'if (mode === "image-reference" && args[0] === "inspect") {',
+    ` const actual = spawnSync(${JSON.stringify(realDocker)}, args, {encoding:"utf8", timeout:30000});`,
+    ' if(actual.status !== 0) {process.stderr.write(actual.stderr);process.exit(actual.status ?? 1);}',
+    ` const info = JSON.parse(actual.stdout); info[0].Config.Image = ${JSON.stringify("untrusted.invalid/postgres:17@" + postgresProofImage.split("@")[1])}; process.stdout.write(JSON.stringify(info)); process.exit(0);`,
+    '}',
+    'if (mode.startsWith("image-") && args[0] === "exec") publish(attempted, {args});',
     'const create = args.at(-1)?.match(/^CREATE DATABASE (openlup_outbox_proof_[a-f0-9]{32})$/);',
     'const cleanup = mode.startsWith("cleanup-");',
     'const drop = args.at(-1)?.match(/^DROP DATABASE IF EXISTS (openlup_outbox_proof_[a-f0-9]{32}) WITH [(]FORCE[)]$/);',
@@ -310,9 +326,9 @@ async function exerciseStartupLoss(mode: string, f: { target: string; packs: str
   let failure: unknown;
   try {
     const supplied: NodeJS.ProcessEnv = { ...environment, PATH: `${tools}:${environment.PATH}`, OPENLUP_PACK_MANIFEST: join(f.packs, "packages-manifest.json"), OPENLUP_PACK_COMMIT: commit };
-    if (mode === "database-response" || mode === "cleanup-drop") {
+    if (mode === "database-response" || mode === "cleanup-drop" || imageRefusal) {
       attemptedService = true;
-      const started = docker(["run", "--detach", "--rm", "--name", serviceName, "--label", `openlup-startup-test=${owner}`, "--cpus=1", "--memory=512m", "--pids-limit=128", "--tmpfs", "/var/lib/postgresql/data", "--publish", "127.0.0.1::5432", "--env", "POSTGRES_HOST_AUTH_METHOD=trust", POSTGRES_PROOF_IMAGE]);
+      const started = docker(["run", "--pull=never", "--detach", "--rm", "--name", serviceName, "--label", `openlup-startup-test=${owner}`, "--cpus=1", "--memory=512m", "--pids-limit=128", "--tmpfs", "/var/lib/postgresql/data", "--publish", "127.0.0.1::5432", "--env", "POSTGRES_HOST_AUTH_METHOD=trust", postgresProofImage]);
       assert.equal(started.status, 0); service = started.stdout.trim();
       const readyDeadline = performance.now() + 30_000;
       while (!life.signal.aborted && docker(["exec", service, "pg_isready", "-h", "127.0.0.1", "-U", "postgres", "-t", "1"]).status !== 0) { if (performance.now() >= readyDeadline) throw new Error("Owned test service startup deadline"); await new Promise(done => setTimeout(done, 100)); }
@@ -324,26 +340,34 @@ async function exerciseStartupLoss(mode: string, f: { target: string; packs: str
     launcher.stdout!.on("data", bytes => { stdout += bytes.toString(); }); launcher.stderr!.on("data", bytes => { stderr += bytes.toString(); });
     const completion = new Promise<number | null>((done, fail) => { launcher!.once("error", fail); launcher!.once("close", code => done(code)); });
     void completion.catch(() => {});
-    const startupDeadline = performance.now() + 45_000;
-    while (!existsSync(effect) && !life.signal.aborted) { if (launcher.exitCode !== null || performance.now() >= startupDeadline) throw new Error(`Lost response setup: ${stdout} ${stderr}`); await new Promise(done => setTimeout(done, 25)); }
-    if (life.signal.aborted) throw new Error("Fixture interrupted");
-    const observed = JSON.parse(readFileSync(effect, "utf8"));
-    if (!service) { const info = JSON.parse(docker(["inspect", observed.id]).stdout)[0]; assert.equal(info.Name, `/${observed.name}`); assert.equal(info.Config.Labels["openlup-proof"], observed.label.slice("openlup-proof=".length)); assert.equal(info.State.Running, true); }
-    process.kill(-launcher.pid!, "SIGTERM");
-    let timer: NodeJS.Timeout | undefined;
-    try {
-      const result = await Promise.race([completion, new Promise<never>((_, fail) => { timer = setTimeout(() => fail(new Error(`Lost response cleanup deadline: ${stdout} ${stderr}`)), 10_000); })]);
-      if (!cleanupMode) assert.notEqual(result, 0);
-    } finally { if (timer) clearTimeout(timer); }
-    assert.ok((stdout).includes("Owned PostgreSQL cleanup"));
-    if (service) {
-      const remaining = docker(["exec", service, "psql", "-U", "postgres", "-d", "postgres", "-At", "-c", `select datname from pg_database where datname in ('${observed.database}', 'openlup_outbox_proof') order by datname`]);
-      assert.equal(remaining.status, 0); assert.equal(remaining.stdout.trim(), "openlup_outbox_proof"); assert.equal(JSON.parse(docker(["inspect", service]).stdout)[0].State.Running, true);
-    } else if (mode === "container-owner-mismatch") {
-      assert.ok((stderr).includes("Container cleanup ownership mismatch")); assert.equal(JSON.parse(docker(["inspect", observed.id]).stdout)[0].State.Running, true);
-    } else assert.notEqual(docker(["inspect", observed.id]).status, 0);
-    if (!cleanupMode) assert.ok(!(stdout).includes("Packed proof process"));
-    else assert.ok(stdout.includes("SYNTHETIC_PROCESS_FINISHED"));
+    if (imageRefusal) {
+      await fixtureWait(() => launcher!.exitCode !== null || launcher!.signalCode !== null, life.signal, 30_000);
+      assert.notEqual(await completion, 0);
+      assert.ok(stderr.includes(mode === "image-reference" ? "Job service is not the exact pinned running container/port" : "pulled image must have the exact pinned RepoDigest"), stderr);
+      assert.equal(existsSync(attempted), false, "Refused service performed SQL");
+      assert.equal(JSON.parse(docker(["inspect", service!]).stdout)[0].State.Running, true);
+    } else {
+      const startupDeadline = performance.now() + 45_000;
+      while (!existsSync(effect) && !life.signal.aborted) { if (launcher.exitCode !== null || performance.now() >= startupDeadline) throw new Error(`Lost response setup: ${stdout} ${stderr}`); await new Promise(done => setTimeout(done, 25)); }
+      if (life.signal.aborted) throw new Error("Fixture interrupted");
+      const observed = JSON.parse(readFileSync(effect, "utf8"));
+      if (!service) { const info = JSON.parse(docker(["inspect", observed.id]).stdout)[0]; assert.equal(info.Name, `/${observed.name}`); assert.equal(info.Config.Labels["openlup-proof"], observed.label.slice("openlup-proof=".length)); assert.equal(info.State.Running, true); }
+      process.kill(-launcher.pid!, "SIGTERM");
+      let timer: NodeJS.Timeout | undefined;
+      try {
+        const result = await Promise.race([completion, new Promise<never>((_, fail) => { timer = setTimeout(() => fail(new Error(`Lost response cleanup deadline: ${stdout} ${stderr}`)), 10_000); })]);
+        if (!cleanupMode) assert.notEqual(result, 0);
+      } finally { if (timer) clearTimeout(timer); }
+      assert.ok((stdout).includes("Owned PostgreSQL cleanup"));
+      if (service) {
+        const remaining = docker(["exec", service, "psql", "-U", "postgres", "-d", "postgres", "-At", "-c", `select datname from pg_database where datname in ('${observed.database}', 'openlup_outbox_proof') order by datname`]);
+        assert.equal(remaining.status, 0); assert.equal(remaining.stdout.trim(), "openlup_outbox_proof"); assert.equal(JSON.parse(docker(["inspect", service]).stdout)[0].State.Running, true);
+      } else if (mode === "container-owner-mismatch") {
+        assert.ok((stderr).includes("Container cleanup ownership mismatch")); assert.equal(JSON.parse(docker(["inspect", observed.id]).stdout)[0].State.Running, true);
+      } else assert.notEqual(docker(["inspect", observed.id]).status, 0);
+      if (!cleanupMode) assert.ok(!(stdout).includes("Packed proof process"));
+      else assert.ok(stdout.includes("SYNTHETIC_PROCESS_FINISHED"));
+    }
   } catch (error) { failure = error; } finally {
     const cleanupErrors: unknown[] = [];
     if (launcher?.pid) { try { process.kill(-launcher.pid, "SIGTERM"); } catch { /* Already stopped. */ } }
@@ -393,7 +417,7 @@ async function exerciseCleanupRecovery(mode: string, f: { target: string; packs:
   let container: string | undefined, attempted = false, failure: unknown;
   try {
     attempted = true;
-    container = execFileSync(realDocker, ["run", "--detach", "--rm", "--name", name, "--label", label, "--cpus=1", "--memory=512m", "--pids-limit=128", "--tmpfs", "/var/lib/postgresql/data", "--env", "POSTGRES_HOST_AUTH_METHOD=trust", POSTGRES_PROOF_IMAGE], { env: environment, encoding: "utf8", timeout: 30_000 }).trim();
+    container = execFileSync(realDocker, ["run", "--pull=never", "--detach", "--rm", "--name", name, "--label", label, "--cpus=1", "--memory=512m", "--pids-limit=128", "--tmpfs", "/var/lib/postgresql/data", "--env", "POSTGRES_HOST_AUTH_METHOD=trust", postgresProofImage], { env: environment, encoding: "utf8", timeout: 30_000 }).trim();
     if (life.signal.aborted) throw new Error("Fixture interrupted");
     let refused: unknown; const started = performance.now();
     try { fixtureRemoveService(container, name, label, supplied); } catch (error) { refused = error; }

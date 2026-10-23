@@ -21,7 +21,7 @@ function fixture() {
   const root = mkdtempSync(join(tmpdir(), "carry-source-")); roots.push(root);
   const write = (path: string, text: string | Buffer) => { mkdirSync(dirname(join(root, path)), { recursive: true }); writeFileSync(join(root, path), text); };
   const read = (path: string) => readFileSync(join(root, path), "utf8");
-  const git = (...args: string[]) => execFileSync("git", ["-c", "core.hooksPath=/dev/null", "-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", ...args], { cwd: root, encoding: "utf8" }).trim();
+  const git = (...args: string[]) => execFileSync("git", ["-c", "core.hooksPath=/dev/null", "-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", ...args], { cwd: root, encoding: "utf8", timeout: 10_000 }).trim();
   git("init", "-qb", "main");
   for (const path of PUBLIC_EXECUTION_ENTRYPOINTS) write(path, "public fixture\n");
   for (const { path } of PUBLIC_PACKAGE_EXECUTION_SURFACES) write(path, path === "package.json" ? JSON.stringify({ workspaces: JSON.parse(readFileSync(join(ROOT, path), "utf8")).workspaces, scripts: Object.fromEntries(PUBLIC_PACKAGE_COMMANDS.map(({ name, command }) => [name, command])) }) : readFileSync(join(ROOT, path)));
@@ -116,6 +116,7 @@ describe("release-only source snapshots", () => {
       expect(f.read(SOURCE_RELEASE_CONTRACT_PATH)).toBe(before);
     } finally { broken.mockRestore(); }
   });
+  // Four bounded real CLI witnesses share one fixture and its state transitions.
   it("package preflight/protected prepare/set and resume refuse stale exact targets before reads or writes; fresh passes", async () => {
     const f = fixture(), head = f.git("rev-parse", "HEAD"), input = packageReleaseInputs("core", "0.17.0", head, "note\n");
     const out = mkdtempSync(join(tmpdir(), "carry-notes-")); roots.push(out);
@@ -140,7 +141,7 @@ describe("release-only source snapshots", () => {
     f.write("package.json", f.read("package.json") + "\n"); const changed = f.commit();
     await expect(preflightPackageRelease(f.root, { ...ready, target: changed }, undefined, network, () => {})).rejects.toThrow(/byte-for-byte/);
     expect(resume()).toMatchObject({ status: 1, stderr: expect.stringContaining("byte-for-byte") });
-  });
+  }, 60_000);
   it("disjoint module branches merge cleanly on CHANGELOG, contract and catalog and pass live policy/inventory", () => {
     const f = fixture(); prepareSourceRelease(f.root, "--write", () => {}); const base = f.commit();
     const add = (name: string) => {

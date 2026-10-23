@@ -6942,6 +6942,10 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/run-vitest.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/serverless-function-closure.ts",
       "class": "public-output"
     },
