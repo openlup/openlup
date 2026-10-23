@@ -1,14 +1,32 @@
 /** Own only this proof's disposable database/container, never an ambient service. */
 import { env as processEnvironment } from "node:process";
-import { execFileSync, spawn, spawnSync } from "node:child_process";
+import { execFile, execFileSync, spawn, spawnSync } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { mkdirSync, mkdtempSync, realpathSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { promisify } from "node:util";
+import { imageIo, imageReference, pullWithRetry, readCiImage, resolvePinnedImage } from "../ci-image-pull.mjs";
 import { isolatedConsumerEnv, readCurrentPackManifest } from "./pack-manifest-input.ts";
 
 export const POSTGRES_PROOF_IMAGE = "postgres:17@sha256:ae69c452f483507a6b99fb654cf93aad7fe156ffd2c56247707eef4e36d3c12b";
 const deadlineMs = 180_000;
+const execFileAsync = promisify(execFile);
+function proofImage() {
+  const image = readCiImage("install-proof-postgres");
+  if (`postgres:${image.tag}@${image.digest}` !== POSTGRES_PROOF_IMAGE) throw new Error("Outbox PostgreSQL pin differs from the CI image policy");
+  return image;
+}
+function proofImageIo(signal?: AbortSignal) {
+  return { ...imageIo, exec: async (args: string[], timeout = 5_000) => {
+    const pending = execFileAsync("docker", args, { timeout, signal, env: isolatedConsumerEnv(), maxBuffer: 64 * 1024 * 1024 });
+    pending.child.stdin?.end();
+    return (await pending).stdout;
+  } };
+}
+export async function preparePostgresProofImage(signal?: AbortSignal): Promise<string> {
+  return pullWithRetry(proofImage(), proofImageIo(signal));
+}
 const docker = (args: string[], timeout = 30_000): string => execFileSync("docker", args, { encoding: "utf8", timeout, env: isolatedConsumerEnv() }).trim();
 function cleanupDocker(args: string[]): string {
   // The owner remains in the verifier group until teardown finishes. Its
@@ -73,13 +91,17 @@ export async function runDisposablePostgres(args: readonly string[]): Promise<vo
     if (service) {
       // Identity comes from job.services, not an ambient port/URL. Require the pinned image.
       const info = JSON.parse(docker(["inspect", service]))[0];
-      if (info?.Id !== service || info?.Config?.Image !== POSTGRES_PROOF_IMAGE || !info?.State?.Running || !info?.NetworkSettings?.Ports?.["5432/tcp"]?.some((binding: { HostPort: string }) => binding.HostPort === port)) throw new Error("Job service is not the exact pinned running container/port");
+      const image = proofImage(), reference = info?.Config?.Image;
+      if (info?.Id !== service || ![POSTGRES_PROOF_IMAGE, ...image.sources.map((source: string) => imageReference(image, source))].includes(reference) || !info?.State?.Running || !info?.NetworkSettings?.Ports?.["5432/tcp"]?.some((binding: { HostPort: string }) => binding.HostPort === port)) throw new Error("Job service is not the exact pinned running container/port");
+      if (await resolvePinnedImage(image, reference, proofImageIo(controller.signal)) !== reference) throw new Error("Job service image is not the exact local pinned reference");
       container = service;
     } else {
       // Creation can succeed even when its response is interrupted. The known
       // unique name and owner label remain sufficient for checked cleanup.
+      const image = await preparePostgresProofImage(controller.signal);
+      controller.signal.throwIfAborted();
       attemptedContainer = true;
-      container = docker(["run", "--detach", "--rm", "--name", name, "--label", `openlup-proof=${owner}`, "--cpus=1", "--memory=512m", "--pids-limit=128", "--tmpfs", "/var/lib/postgresql/data", "--publish", "127.0.0.1::5432", "--env", "POSTGRES_HOST_AUTH_METHOD=trust", POSTGRES_PROOF_IMAGE]);
+      container = docker(["run", "--pull=never", "--detach", "--rm", "--name", name, "--label", `openlup-proof=${owner}`, "--cpus=1", "--memory=512m", "--pids-limit=128", "--tmpfs", "/var/lib/postgresql/data", "--publish", "127.0.0.1::5432", "--env", "POSTGRES_HOST_AUTH_METHOD=trust", image]);
     }
     let ready = false;
     const startupDeadline = performance.now() + 30_000;
