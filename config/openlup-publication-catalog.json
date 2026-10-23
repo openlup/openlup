@@ -1143,11 +1143,11 @@
     },
     {
       "path": "db/platform/migrations/20261022190000_invoicing_durable_duties.sql",
-      "class": "public-source"
+      "class": "public-output"
     },
     {
       "path": "db/platform/migrations/20261022191000_invoicing_document_effects.sql",
-      "class": "public-source"
+      "class": "public-output"
     },
     {
       "path": "db/platform/migrations/20261022192000_invoicing_payment_decoupling.sql",
@@ -2491,7 +2491,7 @@
     },
     {
       "path": "packages/platform/sql/20260809210000_accounting_document_rail.sql",
-      "class": "public-source"
+      "class": "public-output"
     },
     {
       "path": "packages/platform/sql/20260810120000_storefront_catalog_attributes.sql",
@@ -2515,11 +2515,11 @@
     },
     {
       "path": "packages/platform/sql/20260811150000_accounting_payout_rail.sql",
-      "class": "public-source"
+      "class": "public-output"
     },
     {
       "path": "packages/platform/sql/20260812130000_accounting_document_lifecycle_rail.sql",
-      "class": "public-source"
+      "class": "public-output"
     },
     {
       "path": "packages/platform/sql/20260812140000_sellable_bundle_catalog.sql",
@@ -2619,11 +2619,11 @@
     },
     {
       "path": "packages/platform/sql/20261022190000_invoicing_durable_duties.sql",
-      "class": "public-source"
+      "class": "public-output"
     },
     {
       "path": "packages/platform/sql/20261022191000_invoicing_document_effects.sql",
-      "class": "public-source"
+      "class": "public-output"
     },
     {
       "path": "packages/platform/sql/20261022192000_invoicing_payment_decoupling.sql",
@@ -4135,7 +4135,7 @@
     },
     {
       "path": "packages/platform/src/invoicing/migrations.ts",
-      "class": "public-source"
+      "class": "public-output"
     },
     {
       "path": "packages/platform/src/invoicing/nativeUnsupported.ts",
@@ -4147,7 +4147,7 @@
     },
     {
       "path": "packages/platform/src/invoicing/postgresInvoiceStore.ts",
-      "class": "public-source"
+      "class": "public-output"
     },
     {
       "path": "packages/platform/src/invoicing/reversal.ts",

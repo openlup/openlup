@@ -61,6 +61,59 @@ it("refuses missing host facts, unsafe money and mismatched recovery before writ
 });
 
 const proof = { evidenceRef: "money-a", fingerprint: "a".repeat(64), observedAt: "2026-10-22T12:00:00Z" };
+it("binds capture duty and fact installation to the exact native SQL argument order", async () => {
+  const dutyId = "10000000-0000-4000-8000-000000000001";
+  const sourceId = "20000000-0000-4000-8000-000000000002";
+  const orderId = "30000000-0000-4000-8000-000000000003";
+  const evidence = { settlementIntentId: sourceId, amountMinor: 900, currency: "XXX" };
+  const occurredAt = "2026-10-21T12:34:56Z";
+  const query = vi.fn(async (_sql: string, _values?: unknown[]) => ({ rows: [{ response: { dutyId, status: "owed" } }] }));
+  const store = createPostgresInvoiceStore({ query });
+  expect(await store.captureDuty({ requestKey: " exact capture key ", sourceKind: "paid", sourceId, orderId, evidence, occurredAt })).toEqual({ dutyId, status: "owed" });
+  expect(query).toHaveBeenLastCalledWith(
+    "SELECT public.invoicing_capture_duty($1,$2,$3,$4,$5,$6) AS response",
+    [" exact capture key ", "paid", sourceId, orderId, evidence, occurredAt],
+  );
+  expect(await store.installFacts({ dutyId, facts })).toEqual({ dutyId, status: "owed" });
+  expect(query).toHaveBeenLastCalledWith(
+    "SELECT public.invoicing_install_facts($1,$2,$3) AS response", [dutyId, facts, "facts-a"],
+  );
+  expect(query).toHaveBeenCalledTimes(2);
+});
+it.each(["missing", "voided", "pending_readback", "correction_requested", "unsupported"] as const)(
+  "preserves the native reversal %s result and binds key/order/reason/proof in order", async kind => {
+    const response = { kind, dutyId: "10000000-0000-4000-8000-000000000001", replayed: true };
+    const query = vi.fn(async (_sql: string, _values?: unknown[]) => ({ rows: [{ response }] }));
+    const store = createPostgresInvoiceStore({ query });
+    const orderId = "30000000-0000-4000-8000-000000000003";
+    expect(await store.requestReversal({ requestKey: " exact reversal key ", orderId, reason: "order_refunded", proof }))
+      .toEqual({ ...response, kind: kind === "unsupported" ? "unsupported_recorded" : kind });
+    expect(query).toHaveBeenCalledExactlyOnceWith(
+      "SELECT public.invoicing_request_reversal($1,$2,$3,$4) AS response",
+      [" exact reversal key ", orderId, "order_refunded", proof],
+    );
+  },
+);
+it.each(["unknown", "blocked", "unsupported", "retryable", "absent"] as const)(
+  "binds native fail %s to duty/token/generation/kind/evidence/delay", async kind => {
+    const query = vi.fn(async (_sql: string, _values?: unknown[]) => ({ rows: [{ response: { kind: "unknown" } }] }));
+    const store = createPostgresInvoiceStore({ query });
+    const { claim } = issueFixture();
+    const absence = { exact: true as const, complete: true as const, scope: claim.identity, ...proof };
+    const result = await store.fail(kind === "absent"
+      ? { claim, kind, retrySeconds: 73, evidence: { kind, identity: claim.identity, evidence: absence } }
+      : kind === "retryable" ? { claim, kind, phase: "before_send", proof, retrySeconds: 73 }
+        : { claim, kind, proof, retrySeconds: 73 });
+    expect(result).toEqual({ kind: "recorded" });
+    const evidence = kind === "absent"
+      ? { kind: "authoritative_absence", providerCreateIdentity: "invoicing:duty-a", proof: absence }
+      : kind === "retryable" ? { phase: "before_send", proof } : { proof };
+    expect(query).toHaveBeenCalledExactlyOnceWith(
+      "SELECT public.invoicing_fail_duty($1,$2,$3,$4,$5,$6) AS response",
+      ["duty-a", "token-a", 4, kind, evidence, 73],
+    );
+  },
+);
 function issueFixture(action: "create" | "readback" = "create") {
   const claim: Claim = { dutyId: "duty-a", documentId: "doc-a", requestId: "req-a", token: "token-a", generation: 4,
     leaseUntil: "2026-10-22T12:00:00Z", facts, action, correction: null,

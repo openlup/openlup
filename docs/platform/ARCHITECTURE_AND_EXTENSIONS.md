@@ -1510,7 +1510,7 @@ and dunning recovery; paid/handoff facts remain the sweep's recovery source.
 `runNativeInvoiceIssueJob` binds native claims to local and fresh M07 evidence
 and explicit provider ports. Only create claims dispatch; their attempt count
 is the native generation. Non-observed local evidence remains unavailable and
-continues to the fresh read. A fresh mismatch/blocked result is durably blocked;
+continues to the fresh read; a local observed mismatch/blocked result settles blocked before that read. A fresh mismatch/blocked result is durably blocked;
 unavailable is retryable before send. Readback claims only read the provider and
 finish found or record absent/unknown. A stale preflight or finish is a claim
 fence: no failure write and zero updates. The host invokes this helper explicitly;

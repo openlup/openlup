@@ -105,7 +105,7 @@ remains the result-meaning owner.
   claims to provider read, then finish on `found` or fail on `absent`/`unknown`.
   Convert a native `{ kind: "stale" }` preflight or finish result into the claim-fence
   error: write no failure and count zero updates. A fresh non-ready preflight
-  settles through fail before returning: blocked for mismatch/blocked; retryable
+  settles through fail before returning (a local observed mismatch/blocked also settles blocked before the fresh read): blocked for mismatch/blocked; retryable
   with before_send for unavailable. P4 supplies these bindings in
   `runNativeInvoiceIssueJob`; P7 owns their policy/seller/service composition.
 - P5 must pass `retryable` and `retrySeconds` evidence for native delivery

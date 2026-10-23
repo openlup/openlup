@@ -77,17 +77,18 @@ describe("outbox handler group readiness", () => {
     expect(result.disabledHandlerGroups.fulfillment).toBeUndefined();
   });
 
-  it("fails direct fulfillment closed when its paid-order accounting duty is disabled", () => {
+  it.each([undefined, "false"])("admits direct fulfillment with accounting disabled (%s)", accountingEnabled => {
     const result = readOutboxHandlerGroupReadiness({
       PLATFORM_BUNDLE: "node-postgres",
       COMMERCE_FULFILLMENT_AUTO_DISPATCH_ENABLED: "true",
       COMMERCE_FULFILLMENT_AUTO_DISPATCH_PROVIDER: "simulator",
       FULFILLMENT_PORT_KEY: "operator-provisioned-port",
+      ACCOUNTING_REQUEST_ENABLED: accountingEnabled,
     });
 
-    expect(result.readyGroups).toEqual([]);
-    expect(result.disabledHandlerGroups.fulfillment).toBe("accounting_request_required");
-    expect(result.noReadyError).toBe("accounting_request_required");
+    expect(result.readyGroups).toEqual(["fulfillment"]);
+    expect(result.disabledHandlerGroups.fulfillment).toBeUndefined();
+    expect(result.noReadyError).toBeNull();
   });
 
   it("keeps the local OmniPack obligation handler ready when provider dispatch is off", () => {

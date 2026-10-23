@@ -6,7 +6,7 @@ It holds the runnable server substrate an OpenLup application composes: the Node
 
 For the prepared `0.23.0` set, read the [adjacent-release migration and known
 limitations](CHANGELOG.md#0230) before selecting the opt-in parity seams.
-Install the complete native chain through position 79; follow the `0.22.0`
+Install `0.23.0` through position 76 (this unreleased source tree ends at 79); follow the `0.22.0`
 native-row migration notes. Native delivery alignment stays off or shadow until
 a host composes its automatic-renewal runner with G23 admission.
 M10 subscription renewal/retry (P1 exports, forward controls, P2 stores/executor,
