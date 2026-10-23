@@ -60,9 +60,9 @@ async function docker(args: string[], operation: string, timeout = dockerTimeout
   }
 }
 
-async function removeContainer(name: string) {
+async function removeContainer(name: string, timeout = dockerTimeoutMs) {
   try {
-    await docker(["rm", "-f", name], `remove ${name}`);
+    await docker(["rm", "-f", name], `remove ${name}`, timeout);
   } catch (error) {
     // Removing a container that never started (or was already removed) is safe.
     const cause = (error as Error & { cause?: unknown }).cause as { stderr?: string } | undefined;
@@ -197,10 +197,19 @@ export async function runPostgresContainer(spec: PostgresContainerSpec): Promise
   const requested = spec.image ?? defaultPostgresImage;
   const pulled = await pinnedImage(requested, spec.image !== undefined);
   const image = pulled ?? requested;
+  // Port-conflict retries share one startup budget; they cannot multiply the
+  // owning fixture's deadline by the number of attempts. Failed-start cleanup
+  // still gets its own removal budget before this function rejects.
+  const deadline = performance.now() + 60_000;
+  const remaining = () => {
+    const ms = Math.floor(deadline - performance.now());
+    if (ms <= 0) throw new Error(`PostgreSQL startup deadline exceeded for ${spec.name} (60000ms)`);
+    return Math.min(dockerTimeoutMs, ms);
+  };
   let lastError: unknown;
 
   for (let attempt = 0; attempt < 5; attempt += 1) {
-    await removeContainer(spec.name);
+    await removeContainer(spec.name, remaining());
     const port = await reservePort();
     const args = [
       "run", "-d", "--name", spec.name,
@@ -211,7 +220,7 @@ export async function runPostgresContainer(spec: PostgresContainerSpec): Promise
       image,
     ];
     try {
-      await docker(args, `start ${spec.name}`);
+      await docker(args, `start ${spec.name}`, remaining());
     } catch (error) {
       lastError = error;
       try { await removeContainer(spec.name); }

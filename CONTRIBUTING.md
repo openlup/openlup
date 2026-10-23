@@ -603,16 +603,19 @@ the existing 300-second cold image pull and schema installation, and
 budgets; ordinary test deadlines remain unchanged. The shared helper bounds
 Docker availability to five seconds, each start/removal command to 30 seconds,
 and TCP readiness to 60 seconds of wall-clock time, including connect/query
-attempts and waits. Readiness destroys its throwaway client after each probe.
+attempts and waits. After image resolution, port-conflict retries share a
+60-second startup budget; failed-start cleanup still gets its 30-second removal
+budget before reporting failure. Readiness destroys its throwaway client after each probe.
 `closePostgres` gives all fixture pools and adapter/store close callbacks one
 shared five-second close phase, then attempts every owned container removal even
 if a close failed or stalled. Suite teardowns pass opaque adapter closers into
 that phase instead of awaiting them first. All removals finish before cleanup
 reports its collected failures. Separate elapsed timings identify the slow phase;
-an already absent container is the only ignored removal error. Secondary containers created inside upgrade tests are also
-registered with their suite's teardown immediately after creation, so a test
-that times out before reaching its local `finally` still has an owner that
-removes them. Local `finally` blocks reuse the same bounded cleanup.
+an already absent container is the only ignored removal error. Secondary upgrade containers are acquired by the owned `beforeAll` fixture,
+registered immediately, and ready before the 60-second test bodies begin.
+A body that times out before its local `finally` therefore cannot leave a pending
+acquisition that returns after suite teardown. Local `finally` blocks reuse the
+same bounded cleanup.
 
 The helper's default is the pinned test PostgreSQL image; explicit images retain
 their behavior unless they exactly match an inventory pin. Shared acquisition

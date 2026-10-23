@@ -14,7 +14,15 @@ function observation(): FulfillmentObservation {
  return {fact:{schemaVersion:1,mapperVersion:'fixture-v1',factId:'fact:fixture',providerKind:'warehouse-a',fulfillmentReference:'external-fixture',canonicalStatus:'in_transit',provenance:{source:'provider_webhook',authority:'provider_asserted'},occurredAt:at,receivedAt:at,rawEvent:{reference:'evidence:00000000-0000-4000-8000-000000000001',digestAlgorithm:'sha256',digest:'a'.repeat(64)}},eventKind:'order.shipped',eventKey:'fixture-shipped',firstReceivedAt:at,correlation:{orderRef:null,fulfillmentRef:null,externalRef:'external-fixture',orderNumber:null,providerFulfillmentRef:null,parcelRef:null},trackingRefs:[]};
 }
 const prefixContainers:PostgresContainer[]=[],prefixPools:Pool[]=[];
-const h=nativeHarness('stores');beforeAll(()=>h.start(),postgresSetupTimeoutMs);afterAll(()=>h.stop(prefixContainers,prefixPools), postgresTeardownTimeoutMs);
+const h=nativeHarness('stores');
+beforeAll(async()=>{
+ const resource=await runPostgresContainer({name:`m08-p4-prefix-${process.pid}`,password:'synthetic-conformance'});
+ prefixContainers.push(resource);
+ if(!await waitForPostgresTcpReady(resource.connectionString))throw new Error('P4 prefix PostgreSQL unavailable');
+ prefixPools.push(new Pool({connectionString:resource.connectionString}));
+ await h.start();
+},postgresSetupTimeoutMs);
+afterAll(()=>h.stop(prefixContainers,prefixPools), postgresTeardownTimeoutMs);
 const revision={schemaVersion:1,source:'fixture',revision:1};
 const evidence={commandFingerprint:'a'.repeat(64),contactRevision:revision,providerRef:'warehouse-a',carrierRef:null,serviceRef:null};
 const store=()=>createPostgresFulfillmentDispatchStore(executor(h.pool),{async prepare(){return {disposition:'ready',contactRevision:1};},async readCandidate(){return null;}});
@@ -28,10 +36,9 @@ it('fresh full-catalogue install binds sparse assets, hashes and object inventor
  const client=await h.pool.connect();try{expect(createHash('sha256').update(selectedCatalogProjectionPayload(await readSelectedCatalogProjection(client))).digest('hex')).toBe(manifest.objectInventorySha256);}finally{client.release();}
 });
 it('complete immutable prefix 72 upgrades through 73/74, preserves rows/history and replays the full catalogue',async()=>{
- let resource:PostgresContainer|undefined,db:Pool|undefined;const root=mkdtempSync(join(tmpdir(),'m08-p4-prefix-'));
+ const resource=prefixContainers[0],db=prefixPools[0];const root=mkdtempSync(join(tmpdir(),'m08-p4-prefix-'));
  try{
-  const boot=Date.now();resource=await runPostgresContainer({name:`m08-p4-prefix-${process.pid}`,password:'synthetic-conformance'});prefixContainers.push(resource);if(!await waitForPostgresTcpReady(resource.connectionString))throw new Error('P4 prefix PostgreSQL unavailable');console.log(`P4 prefix Docker setup ms=${Date.now()-boot}`);
-  db=new Pool({connectionString:resource.connectionString});prefixPools.push(db);const tx=await db.connect();let payload:string;
+  const tx=await db.connect();let payload:string;
   try{await tx.query('BEGIN');for(const unit of units.slice(0,73))await tx.query(readFileSync(unit.file,'utf8'));payload=selectedCatalogProjectionPayload(await readSelectedCatalogProjection(tx));}finally{await tx.query('ROLLBACK');tx.release();}
   const prefix={...manifest,forward:manifest.forward.slice(0,72),objectInventorySha256:createHash('sha256').update(payload!).digest('hex')};
   for(const unit of units.slice(0,73)){const path=join(root,unit.file);mkdirSync(dirname(path),{recursive:true});writeFileSync(path,readFileSync(unit.file));}

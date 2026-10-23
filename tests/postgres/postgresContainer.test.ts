@@ -122,6 +122,31 @@ describe("PostgreSQL lifecycle deadlines and cleanup failures", () => {
     expect(mocks.exec.mock.calls.every(([, , options]) => options.timeout === 30_000 && options.killSignal === "SIGKILL")).toBe(true);
   });
 
+  it("does not let delayed bind-conflict acquisition multiply the fixture startup budget", async () => {
+    const { runPostgresContainer } = await import("../helpers/postgresContainer.js");
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "performance"] });
+    let removals = 0;
+    mocks.exec.mockImplementation(async (_command, args, options) => {
+      if (args[0] === "run") {
+        await new Promise(resolve => setTimeout(resolve, 29_000));
+        throw new Error("port is already allocated");
+      }
+      removals += 1;
+      if (removals === 1) return { stdout: "" };
+      // Cleanup takes 29s; the next pre-removal must be stopped after the
+      // two remaining seconds, rather than starting another 30s phase.
+      const wait = Math.min(29_000, options.timeout);
+      await new Promise(resolve => setTimeout(resolve, wait));
+      if (wait < 29_000) throw new Error("killed: timeout");
+      return { stdout: "" };
+    });
+    const result = expect(runPostgresContainer(spec)).rejects.toThrow(`PostgreSQL Docker remove ${spec.name} failed`);
+    await vi.advanceTimersByTimeAsync(60_000);
+    await result;
+    expect(mocks.exec.mock.calls.filter(([, args]) => args[0] === "run")).toHaveLength(1);
+    expect(mocks.exec.mock.calls.at(-1)![2].timeout).toBe(2_000);
+  });
+
   it("does not hide a failed removal, while already absent containers are safe to remove", async () => {
     const { runPostgresContainer } = await import("../helpers/postgresContainer.js");
     const container = await runPostgresContainer(spec);

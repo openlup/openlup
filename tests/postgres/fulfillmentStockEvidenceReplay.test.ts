@@ -17,6 +17,8 @@ const signature = 'public.fulfillment_record_stock_evidence(text,text,text,text,
 const hash = (value: string | Buffer) => createHash('sha256').update(value).digest('hex');
 let container: PostgresContainer | undefined;
 let pool: Pool;
+let prefixContainer: PostgresContainer, prefixPool: Pool;
+const ownedContainers: PostgresContainer[] = [], ownedPools: Pool[] = [];
 const port = (db: Pool | PoolClient = pool) => createPostgresFulfillmentStockSyncPort(executor(db), {
   sourceKey: 'fixture-stock-replay', async readLocalInventoryStock() { return []; },
 });
@@ -39,12 +41,19 @@ beforeAll(async () => {
   if (!await dockerAvailable()) throw new Error('Stock evidence replay proof requires Docker PostgreSQL');
   const started = Date.now();
   container = await runPostgresContainer({ name: `m08-stock-replay-${process.pid}`, password: 'synthetic-conformance', image });
+  ownedContainers.push(container);
   if (!await waitForPostgresTcpReady(container.connectionString)) throw new Error('Stock evidence PostgreSQL unavailable');
   pool = new Pool({ connectionString: container.connectionString });
+  ownedPools.push(pool);
+  prefixContainer = await runPostgresContainer({ name: `m08-stock-prefix-${process.pid}`, password: 'synthetic-conformance', image });
+  ownedContainers.push(prefixContainer);
+  if (!await waitForPostgresTcpReady(prefixContainer.connectionString)) throw new Error('Stock evidence predecessor PostgreSQL unavailable');
+  prefixPool = new Pool({ connectionString: prefixContainer.connectionString });
+  ownedPools.push(prefixPool);
   await runner(pool).apply();
   console.log(`M08 stock replay image=${image}; full-chain setup ms=${Date.now() - started}`);
 }, postgresSetupTimeoutMs);
-afterAll(async () => { await closePostgres(container, pool); }, postgresTeardownTimeoutMs);
+afterAll(async () => { await closePostgres(ownedContainers, ownedPools); }, postgresTeardownTimeoutMs);
 
 it('inserts, refreshes observations with stable identity, resolves, reopens and resolves exactly once again', async () => {
   const value = evidence('lifecycle');
@@ -164,12 +173,11 @@ it('binds fresh and exact-predecessor runner histories, package bytes, live inve
   expect(await runner(pool).apply()).toEqual({ applied: [] });
   expect((await pool.query('SELECT * FROM public.platform_schema_migrations ORDER BY position')).rows).toEqual(history);
   expect(await inventory(pool)).toBe(manifest.objectInventorySha256);
-  // Roles belong to the cluster: a second database would collide with the
-  // complete prefix's CREATE ROLE statements. Keep one owned container at a time.
-  await closePostgres(container, pool); container = undefined;
-  container = await runPostgresContainer({ name: `m08-stock-prefix-${process.pid}`, password: 'synthetic-conformance', image });
-  if (!await waitForPostgresTcpReady(container.connectionString)) throw new Error('Stock evidence predecessor PostgreSQL unavailable');
-  const upgrade = new Pool({ connectionString: container.connectionString });
+  // Roles belong to the cluster: use the separately owned prefix cluster,
+  // acquired before the test body, rather than a second database in this one.
+  await closePostgres(container, pool);
+  container = prefixContainer;
+  const upgrade = prefixPool;
   pool = upgrade;
   const root = mkdtempSync(join(tmpdir(), 'm08-stock-prefix-'));
   try {

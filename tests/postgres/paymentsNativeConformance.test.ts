@@ -26,6 +26,11 @@ beforeAll(async () => {
   container = await runPostgresContainer({ name: `payments-native-${process.pid}`, password: "synthetic-conformance" });
   if (!await waitForPostgresTcpReady(container.connectionString)) throw new Error("Payments PostgreSQL unavailable");
   pool = new Pool({ connectionString: container.connectionString });
+  // Acquire the secondary fixture before any test's 60s body can begin.
+  const prefix = await runPostgresContainer({ name: `payments-native-upgrade-${process.pid}`, password: "synthetic-conformance" });
+  prefixContainers.push(prefix);
+  if (!await waitForPostgresTcpReady(prefix.connectionString)) throw new Error("Prefix PostgreSQL unavailable");
+  prefixPools.push(new Pool({ connectionString: prefix.connectionString }));
   await runner().apply();
 }, postgresSetupTimeoutMs);
 afterAll(async () => { await closePostgres([container, ...prefixContainers], [pool, ...prefixPools]); }, postgresTeardownTimeoutMs);
@@ -45,17 +50,12 @@ it("installs the full catalogue, binds projections 10/35/56 and replays the cano
   expect((await pool.query("SELECT * FROM public.platform_schema_migrations ORDER BY position")).rows).toEqual(history);
 });
 it("upgrades the exact complete prefix before unit 56 without rewriting installed history", async () => {
-  let resource: PostgresContainer | undefined, upgrade: Pool | undefined;
+  const resource = prefixContainers[0], upgrade = prefixPools[0];
   const root = mkdtempSync(join(tmpdir(), "payments-prefix-"));
   try {
     // The full-install cluster owns global roles. This clean prefix cluster is
     // separate, but its raw inventory probe can roll back roles and schema before
     // the real runner installs the same immutable prefix, avoiding a third boot.
-    resource = await runPostgresContainer({ name: `payments-native-upgrade-${process.pid}`, password: "synthetic-conformance" });
-    prefixContainers.push(resource);
-    if (!await waitForPostgresTcpReady(resource.connectionString)) throw new Error("Payments prefix PostgreSQL unavailable");
-    upgrade = new Pool({ connectionString: resource.connectionString });
-    prefixPools.push(upgrade);
     const db = await upgrade.connect();
     let payload: string;
     try {
