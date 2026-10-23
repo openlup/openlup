@@ -23158,6 +23158,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/invoicingStoreContract.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/m05CatalogComposition.test.ts",
       "class": "public-output"
     },

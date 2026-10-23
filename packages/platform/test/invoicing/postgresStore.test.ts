@@ -191,6 +191,7 @@ it("native issue continues after unavailable local evidence, freshly checks mone
   expect(f.provider.issue).toHaveBeenCalledWith(expect.objectContaining({ recoveryLookupRequired: true, facts }));
   expect(f.store.fail).not.toHaveBeenCalled(); expect(f.provider.read).not.toHaveBeenCalled();
   expect(f.money.read).toHaveBeenCalledOnce();
+  expect(f.readLocalPayment).toHaveBeenCalledExactlyOnceWith({ ...f.claim, attemptCount: 4 });
 });
 it.each(["mismatch", "blocked"] as const)("native local observed %s settles blocked before fresh money or dispatch", async kind => {
   const f = issueFixture();
@@ -310,7 +311,7 @@ it.each(["local payment", "provider issue", "unsupported finish"] as const)("nat
     expect(f.money.read).not.toHaveBeenCalled();
   } else expect(f.provider.issue).toHaveBeenCalledOnce();
 });
-it.each([1, 4])("native correction generation %s routes the exact correction and recovery requirement", async generation => {
+it.each([1, 2, 3, 4])("native correction generation %s routes the exact correction and recovery requirement", async generation => {
   const f = issueFixture();
   const identity = { ...f.claim.identity, operation: "full_reversal" as const, correctionRef: "invoicing:duty-a", parentProviderDocumentRef: "parent-remote-a" };
   const correction = { before: facts, reason: "order_refunded", after: { totalNetMinor: 0 as const, totalTaxMinor: 0 as const, totalGrossMinor: 0 as const } };
@@ -321,11 +322,11 @@ it.each([1, 4])("native correction generation %s routes the exact correction and
     after: { totalNetMinor: 0, totalTaxMinor: 0, totalGrossMinor: 0 }, recoveryLookupRequired: generation > 1 });
   expect(f.provider.issue).not.toHaveBeenCalled();
 });
-it("native first-generation issue does not require recovery lookup", async () => {
+it.each([1, 2, 3, 4])("native issue generation %s preserves the recovery boundary", async generation => {
   const f = issueFixture();
-  f.store.claim.mockResolvedValue([{ ...f.claim, generation: 1 }]);
+  f.store.claim.mockResolvedValue([{ ...f.claim, generation }]);
   expect(await f.run()).toEqual({ checked: 1, updated: 1, failures: 0, ok: true });
-  expect(f.provider.issue).toHaveBeenCalledExactlyOnceWith({ identity: f.claim.identity, facts, recoveryLookupRequired: false });
+  expect(f.provider.issue).toHaveBeenCalledExactlyOnceWith({ identity: f.claim.identity, facts, recoveryLookupRequired: generation > 1 });
 });
 
 it("preserves every lease field, empty batches, exact claim filters and nullable order binding", async () => {
@@ -455,8 +456,12 @@ it("native claim refusal and empty batches preserve the batch result without I/O
 });
 it("native explicit claim limits and money routing preserve host references", async () => {
   const f = issueFixture();
-  const payment = { ...facts.payment, providerRef: "money-host", providerPaymentRef: "provider-payment-a" };
-  const claim = { ...f.claim, facts: { ...facts, payment } };
+  const payment = { ...facts.payment, amountMinor: 907, providerRef: "money-host", providerPaymentRef: "provider-payment-a" };
+  const lines = [
+    { ...facts.lines[0]!, quantity: 2, unitNetMinor: 100, unitGrossMinor: 120, totalNetMinor: 200, totalTaxMinor: 40, totalGrossMinor: 240 },
+    { ...facts.lines[0]!, description: "Second item", quantity: 5, unitNetMinor: 110, unitGrossMinor: 132, totalNetMinor: 550, totalTaxMinor: 110, totalGrossMinor: 660 },
+  ];
+  const claim = { ...f.claim, facts: { ...facts, payment, lines } };
   f.store.claim.mockResolvedValue([claim]);
   expect(await runNativeInvoiceIssueJob({ ...f, providerRef: "host-a", orderId: "order-a", limit: 7, visibilitySeconds: 83 })).toEqual({ checked: 1, updated: 1, failures: 0, ok: true });
   expect(f.store.claim).toHaveBeenCalledExactlyOnceWith({ limit: 7, visibilitySeconds: 83, providerRef: "host-a", orderId: "order-a" });
