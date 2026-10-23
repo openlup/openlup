@@ -89,8 +89,15 @@ Migration: alert rows written by 0.22.0's native port carry the earlier whole-in
   counted correlation/timestamp/tracking refusals and persisted safe superseded
   causes. The opt-in adapter preserves donor webhook key bytes and defaults to
   strict opaque references. Adopters can explicitly allow wider reference shapes
-  through `observationCodecs.approveReference`; carrier and tracking-URL codecs
-  retain their strict defaults. Hosts retain referenced raw evidence.
+  through `observationCodecs.approveReference`; tracking URLs retain their strict
+  default policy. `carrierRef` now stores the service-derived lowercase carrier
+  prefix by default, or the safe kind returned by `normalizeCarrier`, and effects
+  receive that same value as `carrierKind`. Both are null when no kind is available
+  or service evidence is refused; raw provider carrier codes have no fallback,
+  matching donor deduplication. Strict timestamp validation applies only at
+  webhook ingress, accepting compact offsets and local timestamps as before;
+  reconciliation and stock-movement timestamp parsing retain PR2 behavior.
+  Hosts retain referenced raw evidence.
 
 Migration (observation ingress): donor-format colon identities remain the
 compatibility target. Observation receipts/effects recorded by 0.22.0's native

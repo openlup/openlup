@@ -1,4 +1,3 @@
-import { z } from "zod";
 import { admittedReference, reference } from "../dispatchProjection.js";
 import { projectObservation, publicTrackingUrl } from "../observationProjection.js";
 export { reference } from "../dispatchProjection.js";
@@ -19,9 +18,8 @@ export function correlationReference(value: string | null | undefined, codecs: O
 export interface OmnipackObservationCodecs extends FulfillmentObservationCodecs {
   normalizeCarrier?(input: { carrierRef: string | null; serviceRef: string | null }): string | null;
 }
-const occurrenceTimestamp = z.iso.datetime({ offset: true });
 export function timestamp(value: string | null): string | null {
-  return value && occurrenceTimestamp.safeParse(value).success && Number.isFinite(Date.parse(value)) ? new Date(value).toISOString() : null;
+  return value && /^\d{4}-\d\d-\d\dT/u.test(value) && Number.isFinite(Date.parse(value)) ? new Date(value).toISOString() : null;
 }
 export function eventKind(value: string): OmnipackWebhookRouteEvent | null {
   return Object.hasOwn(EVENT_TO_STATUS, value) ? value as OmnipackWebhookRouteEvent : null;
@@ -59,7 +57,7 @@ export function observation(input: {
   if (!fulfillmentRef || input.source === "provider_webhook" && [evidence.providerOrderId, evidence.orderNumber, evidence.fulfilmentNumber].some(value => value !== null && !correlationReference(value, codecs))) throw refusal("missing_correlation", "normalize");
   const occurredAt = timestamp(evidence.occurredAt);
   if (evidence.occurredAt && !occurredAt) throw refusal("malformed", "normalize");
-  // The occurrence codec above admits the key's timestamp too. Compose with its
+  // Compose the key with the provider's
   // original bytes, including minute precision and offsets, rather than the UTC fact.
   const key = buildProviderEventId(evidence);
   const normalizedTracking = tracking(evidence.trackingReferences, codecs, input.approveTrackingUrl);

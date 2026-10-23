@@ -185,8 +185,15 @@ it("counts rejected tracking and blank entries, retains trimmed refs and dedupli
     trackingRefs: [{ trackingNumber: "TRACK A", carrierRef: "first" }, { trackingNumber: "TRACK/B" }], diagnostics: { admission: { rejectedTrackingRefs: 7 } } } });
 });
 
+it.each(["2026-10-21T10:00:00+0200", "2026-10-21T10:00+0200", "2026-10-21T10:00:00"])("admits the base webhook occurrence format %s without changing key bytes (O6)", async occurredAt => {
+  const f = fixture({ ...payload(), occurredAt });
+  expect(await run(f.input)).toMatchObject({ kind: "processed", receiptId: `order.shipped:external-a:parcel-a:${occurredAt}`,
+    counts: { invalidTimestamps: 0 }, observation: { fact: { occurredAt: new Date(occurredAt).toISOString() } } });
+  expect(f.inbound.size).toBe(1);
+});
+
 it("refuses invalid occurrence early with a counted visible diagnostic and no persistence/effects (O6)", async () => {
-  for (const occurredAt of [12345, {}, "", "not-time", "2026-99-99T99:99:99Z", "2026-02-30T12:00:00Z", "2026-10-21T10:00:00"]) {
+  for (const occurredAt of [12345, {}, "", "not-time", "2026-99-99T99:99:99Z", "2026-02-30T12:00:00Z", "2026-02-30T12:00:00+0200"]) {
     const f = fixture({ ...payload(), occurredAt });
     const result = await run(f.input);
     expect(result).toEqual({ kind: "refused", receiptId: null, refusal: { reason: "malformed", phase: "normalize", retryable: false },
@@ -204,7 +211,7 @@ it("keeps absent/null occurrence unknown without counting a refusal (M1/O6)", as
   }
 });
 
-it("normalizes carrier evidence through the adapter codec and never forwards raw carrier as carrierKind (O8)", async () => {
+it("normalizes carrier evidence through the adapter codec and drops raw-only carrier evidence like the donor (O8)", async () => {
   const normalizeCarrier = vi.fn(() => "normalized-a");
   const f = fixture(payload(), { observationCodecs: { normalizeCarrier } });
   const record = vi.fn(async () => ({ replayed: false, readBack: false }));
@@ -214,6 +221,11 @@ it("normalizes carrier evidence through the adapter codec and never forwards raw
   expect(record).toHaveBeenCalledWith(expect.objectContaining({ carrierKind: "normalized-a" }));
   const defaultResult = await run(fixture().input);
   expect(defaultResult).toMatchObject({ observation: { trackingRefs: [{ carrierRef: "carrier-a" }] } });
+  const rawOnly = fixture({ ...payload(), shipments: [{ trackingNo: "TRACK-A", carrier: "CARRIERX" }] });
+  const rawRecord = vi.fn(async () => ({ replayed: false, readBack: false }));
+  rawOnly.input.lifecycle.effects.recordTrackingReference = rawRecord;
+  expect(await run(rawOnly.input)).toMatchObject({ observation: { trackingRefs: [{ carrierRef: null }] } });
+  expect(rawRecord).toHaveBeenCalledWith(expect.objectContaining({ carrierKind: null }));
 });
 
 it("keeps strict URL defaults and lets a host retain approved query parameters with a codec (O7)", async () => {

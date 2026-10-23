@@ -948,8 +948,9 @@ Drain in-flight observation retries before upgrading; see the
 
 The adapter's optional `observationCodecs.normalizeCarrier({ carrierRef, serviceRef })`
 returns the normalized carrier kind stored in `carrierRef` and passed to effects as
-`carrierKind`. Its default uses the contributed service-derived carrier kind,
-never the raw provider carrier. A refused service cannot reach this derivation or
+`carrierKind`. Its default uses the contributed service-derived lowercase carrier
+prefix, or null without a service-derived kind. Donor deduplication drops raw
+carrier codes; there is no raw-carrier fallback. A refused service cannot reach this derivation or
 the carrier codec. `observationCodecs.trackingUrl(url)` may retain
 adopter-required query parameters; HTTPS, no credentials and `approveTrackingUrl`
 still apply to its output. Without that codec the default also rejects query and
@@ -957,6 +958,12 @@ fragment components. For example, configure approval for an exact tracking origi
 and a codec that returns the URL only when every query key is in the adopter's
 allowlist, returning null otherwise. The host owns that policy and retention of
 any permitted query data. No adopter dictionary is embedded in generic code.
+
+Strict occurrence validation is local to the webhook ingress pre-check, where
+invalid supplied timestamps are refused and counted. Compact offsets such as
+`+0200`, minute precision and timestamps without a zone retain base acceptance;
+original bytes still identify the webhook. The shared timestamp parser remains
+unchanged from PR2 for reconciliation, `createdAt` and stock movements.
 
 O3 deliberately retains a typed fact and an opaque raw-event pointer. The host
 must retain the referenced evidence under its own access and retention policy;
