@@ -114,6 +114,59 @@ it.each(["unknown", "blocked", "unsupported", "retryable", "absent"] as const)(
     );
   },
 );
+it("preserves the native fail stale result as a claim fence", async () => {
+  const query = vi.fn(async (_sql: string, _values?: unknown[]) => ({ rows: [{ response: { kind: "stale" } }] }));
+  const { claim } = issueFixture();
+  expect(await createPostgresInvoiceStore({ query }).fail({ claim, kind: "unknown", proof, retrySeconds: 73 }))
+    .toEqual({ kind: "stale" });
+  expect(query).toHaveBeenCalledExactlyOnceWith(
+    "SELECT public.invoicing_fail_duty($1,$2,$3,$4,$5,$6) AS response",
+    ["duty-a", "token-a", 4, "unknown", { proof }, 73],
+  );
+});
+it.each(["inexact", "incomplete", "scope create identity", "scope fact revision", "scope request key", "evidence identity"] as const)(
+  "refuses %s absence before querying the native store", async variant => {
+    const query = vi.fn(async (_sql: string, _values?: unknown[]) => ({ rows: [{ response: { kind: "unknown" } }] }));
+    const { claim } = issueFixture("readback");
+    const evidence = {
+      kind: "absent" as const,
+      identity: variant === "evidence identity" ? { ...claim.identity, providerCreateIdentity: "foreign-duty" } : claim.identity,
+      evidence: { ...proof, exact: variant !== "inexact", complete: variant !== "incomplete",
+        scope: { ...claim.identity,
+          ...(variant === "scope create identity" ? { providerCreateIdentity: "foreign-duty" } : {}),
+          ...(variant === "scope fact revision" ? { factRevision: "foreign-facts" } : {}),
+          ...(variant === "scope request key" ? { requestKey: "foreign-key" } : {}),
+        } },
+    };
+    // Exercise runtime refusal of provider evidence outside the exact/complete contract.
+    expect(await createPostgresInvoiceStore({ query }).fail({ claim, kind: "absent", retrySeconds: 73,
+      evidence: evidence as Extract<Parameters<InvoiceStorePort["fail"]>[0], { kind: "absent" }>["evidence"],
+    })).toMatchObject({ kind: "unsupported", effectMayHaveSucceeded: false });
+    expect(query).not.toHaveBeenCalled();
+  },
+);
+it.each([
+  { kind: "issued", correction: false }, { kind: "found", correction: false },
+  { kind: "issued", correction: true }, { kind: "found", correction: true },
+] as const)("binds native finish $kind (correction=$correction) to its RPC and proof kind", async ({ kind, correction }) => {
+  const query = vi.fn(async (_sql: string, _values?: unknown[]) => ({ rows: [{ response: { kind: "issued", replayed: false } }] }));
+  const original = issueFixture().claim;
+  const claim: Claim = correction ? { ...original,
+    identity: { ...original.identity, operation: "full_reversal", correctionRef: "correction-a", parentProviderDocumentRef: "parent-a" },
+    correction: { before: facts, reason: "order_refunded", after: { totalNetMinor: 0, totalTaxMinor: 0, totalGrossMinor: 0 } },
+  } : original;
+  expect(await createPostgresInvoiceStore({ query }).finish({ claim,
+    result: { kind, identity: claim.identity, providerDocumentRef: "remote-a", providerDocumentNumber: "REMOTE/A", proof, replayed: false },
+  })).toEqual({ kind: "issued", replayed: false });
+  expect(query).toHaveBeenCalledExactlyOnceWith(
+    correction ? "SELECT public.invoicing_finish_correction($1,$2,$3,$4,$5,$6) AS response"
+      : "SELECT public.invoicing_finish_issue($1,$2,$3,$4,$5,$6) AS response",
+    ["duty-a", "token-a", 4, "remote-a", "REMOTE/A", {
+      kind: kind === "issued" ? "issued" : "readback_found", externalId: "remote-a",
+      providerCreateIdentity: "invoicing:duty-a", parentExternalId: correction ? "parent-a" : null, proof,
+    }],
+  );
+});
 function issueFixture(action: "create" | "readback" = "create") {
   const claim: Claim = { dutyId: "duty-a", documentId: "doc-a", requestId: "req-a", token: "token-a", generation: 4,
     leaseUntil: "2026-10-22T12:00:00Z", facts, action, correction: null,
@@ -126,7 +179,7 @@ function issueFixture(action: "create" | "readback" = "create") {
   const provider = { issue: vi.fn(async () => issued), correct: vi.fn(async () => issued),
     read: vi.fn(async (): Promise<import("../../src/invoicing/contracts/index.js").InvoiceReadbackResult> => ({ ...issued, kind: "found" })) };
   const money = { read: vi.fn(async () => ({ kind: "observed" as const, status: "succeeded" as const, amountMinor: 900, currency: "XXX", proof })) };
-  const readLocalPayment = vi.fn(async () => ({ kind: "unavailable" as const, code: "money_unavailable" as const }));
+  const readLocalPayment = vi.fn<Parameters<typeof runNativeInvoiceIssueJob>[0]["readLocalPayment"]>(async () => ({ kind: "unavailable" as const, code: "money_unavailable" as const }));
   return { claim, store, provider, money, readLocalPayment, run: () => runNativeInvoiceIssueJob({ store, provider, money, readLocalPayment, providerRef: "host-a", orderId: "order-a" }) };
 }
 it("native issue continues after unavailable local evidence, freshly checks money and uses generation as attemptCount", async () => {
@@ -136,6 +189,20 @@ it("native issue continues after unavailable local evidence, freshly checks mone
   expect(f.provider.issue).toHaveBeenCalledWith(expect.objectContaining({ recoveryLookupRequired: true, facts }));
   expect(f.store.fail).not.toHaveBeenCalled(); expect(f.provider.read).not.toHaveBeenCalled();
   expect(f.money.read).toHaveBeenCalledOnce();
+});
+it.each(["mismatch", "blocked"] as const)("native local observed %s settles blocked before fresh money or dispatch", async kind => {
+  const f = issueFixture();
+  f.readLocalPayment.mockResolvedValue({ kind: "observed", status: "succeeded", amountMinor: 899, currency: "XXX", proof });
+  f.store.preflight.mockResolvedValueOnce({ kind });
+  expect(await f.run()).toEqual({ checked: 1, updated: 0, failures: 1, ok: false });
+  expect(f.readLocalPayment).toHaveBeenCalledOnce();
+  expect(f.store.preflight).toHaveBeenCalledExactlyOnceWith({ claim: { ...f.claim, attemptCount: 4 },
+    status: "succeeded", amountMinor: 899, currency: "XXX", proof });
+  expect(f.store.fail).toHaveBeenCalledExactlyOnceWith({ claim: { ...f.claim, attemptCount: 4 },
+    retrySeconds: 1200, kind: "blocked", proof: null });
+  expect(f.money.read).not.toHaveBeenCalled();
+  expect(f.provider.issue).not.toHaveBeenCalled(); expect(f.provider.correct).not.toHaveBeenCalled();
+  expect(f.store.finish).not.toHaveBeenCalled();
 });
 it.each(["blocked", "mismatch", "unavailable"] as const)("native fresh %s settles the claim before returning without dispatch", async kind => {
   const f = issueFixture(); f.store.preflight.mockResolvedValueOnce({ kind: "unavailable" }).mockResolvedValueOnce({ kind });
