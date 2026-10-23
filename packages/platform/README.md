@@ -714,3 +714,10 @@ No store, worker, adapter, route or activation is supplied by this contract step
 `createNativeUnsupportedInvoicePorts` supplies inert typed refusals for every
 host, store and provider seam. `runInvoiceAdapterConformance` checks adapter-owned
 offline fixtures; its sanitized evidence does not establish live fiscal readiness.
+
+Issue helpers in `invoicing` preserve claim/preflight/projection/fresh-money/
+create/fenced-finalize order. Hosts bind compatibility payloads, seller/date/tax
+policy, captions, event descriptors and key scopes. Canonical and legacy line
+checks share the unchanged donor allocation; handoff helpers register no job or
+executor. Eight issue/line/payment/handoff cases join the existing package smoke
+selection. Native stores, continuity cutover and activation remain separate.

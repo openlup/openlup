@@ -612,6 +612,16 @@ reports declared operations; it is not proof of fiscal readiness or host parity.
 `@openlup/platform/invoicing/contracts` exports declarations only, with no browser
 runtime values or server import edge. There is no new npm package or dependency.
 
+Nine compatibility helpers serve host facades: `runInvoiceIssueJob` takes managed
+claim/preflight/provider/finalizer callbacks; `mapInvoiceClaimToProviderSnapshot`
+and `mapCanonicalIssueLines` take saved facts and host labels/tax defaults;
+`allocateChargedGrossTotals` and `allocateDiscountedGrossTotals` take gross totals;
+`readInvoicePaymentEvidence` takes payment identity and a selected provider;
+`createFulfillmentHandoffInvoiceHandler` takes the host descriptor, parser, policy,
+request and error callbacks; `withAccountingInvoiceShadowTrigger` and
+`withAutoDispatchAccountingInvoiceTrigger` take fulfillment/accounting ports,
+provider selection, exact key functions and optional resolved channel policy.
+
 The host supplies frozen order/buyer/line/tax/money facts, seller and jurisdiction
 routing. Facts retain revision, ordered canonical line amounts, explicit
 delivery/discount components, dates and references. `InvoiceIdentity` retains

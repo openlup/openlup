@@ -1437,9 +1437,18 @@ requests retain provider selection, invoice reference, status and replay. The
 [invoicing reference](PLATFORM_PACKAGE_REFERENCE.md#invoicing-contracts) describes
 correction, payout item and account-lineage seams and their source witnesses.
 
-The [invoicing design](plans/oss-m09-invoicing.md) separates these contracts from
-later orchestration and native persistence. The native refusal factory has no
+The [invoicing design](plans/oss-m09-invoicing.md) separates the available issue helpers from
+later native persistence and service composition. The native refusal factory has no
 executor and never inspects inputs. The conformance helper consumes offline
 adapter fixtures and returns filtered case evidence; it installs no provider or
 runtime route. Its [contract tests](../../packages/platform/test/invoicing/adapterConformance.test.ts)
 cover parent recovery, exact absence and distinct payout item receipts.
+
+The issue helpers preserve donor sequencing: claim, local preflight, snapshot,
+fresh money read, final preflight, provider create/recover, fenced finalize.
+Compatibility callbacks bind existing host claims and payloads without replacing
+`InvoiceStorePort` or inventing provider proof. Canonical lines and allocation
+verify saved amounts; legacy delivery residuals remain a compatibility path.
+Hosts supply seller, dates, tax defaults, labels, channel resolution, descriptors
+and exact key bytes. Handoff helpers preserve fail-soft dispatch and the explicit
+standalone strict option; they register no executor and change no native gate.

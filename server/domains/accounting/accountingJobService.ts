@@ -1,3 +1,4 @@
+import { runInvoiceIssueJob } from "@openlup/platform/invoicing";
 import type {
   AccountingDocumentProviderPort,
   AccountingInvoiceRuntimePort,
@@ -44,106 +45,47 @@ export async function runAccountingInvoiceIssueJob({
   orderId?: string | null;
   paymentProviders?: AccountingPaymentProviderReadbackRegistry;
 }): Promise<AccountingJobResult> {
-  if (!config.createEnabled) return skipped("create_disabled");
-  if (!provider) return skipped("provider_disabled");
-
-  const claims = await port.claimInvoiceIssues(limit, { orderId });
-  let updated = 0;
-  let failures = 0;
-
-  for (const claim of claims) {
-    try {
-      const localPreflight = await port.preflightInvoiceIssuePayment({
-        invoiceId: claim.invoice.id,
-        outboxId: claim.outboxId,
-        claimAttemptCount: claim.attemptCount,
-        providerStatus: "unavailable",
-        providerAmountCents: null,
-        providerCurrency: null,
-        providerEvidence: { source: "local_canonical_snapshot" },
-      });
-      if (!localPreflight.ok) {
-        failures += 1;
-        continue;
-      }
-
-      let snapshot;
-      try {
-        snapshot = mapInvoiceClaimToProviderSnapshot(claim, env);
-        // The opt-in: this deployment's jurisdiction module, named here at the
-        // composition root rather than defaulted to inside the policy. The
-        // policy's own default refuses, so forgetting this blocks documents.
-        assertProviderInvoiceTaxIdSafe(snapshot, routeInvoiceByTaxId);
-      } catch (error) {
-        const canonicalCode = canonicalMapperErrorCode(error);
-        if (!canonicalCode) throw error;
-        await port.blockInvoiceIssueCanonicalMapper({
-          invoiceId: claim.invoice.id,
-          outboxId: claim.outboxId,
-          claimAttemptCount: claim.attemptCount,
-          code: canonicalCode,
-          evidence: { stage: "independent_mapper", message: error instanceof Error ? error.message : String(error) },
-        });
-        failures += 1;
-        continue;
-      }
-
-      const providerEvidence = await readAccountingPaymentProviderEvidence(claim, paymentProviders);
-      const preflight = await port.preflightInvoiceIssuePayment({
-        invoiceId: claim.invoice.id,
-        outboxId: claim.outboxId,
-        claimAttemptCount: claim.attemptCount,
-        providerStatus: providerEvidence.providerStatus,
-        providerAmountCents: providerEvidence.providerAmountCents,
-        providerCurrency: providerEvidence.providerCurrency,
-        providerEvidence: providerEvidence.providerEvidence,
-      });
-      if (!preflight.ok) {
-        // The preflight RPC atomically blocks the invoice and records the
-        // stable non-retryable code on the outbox. Do not pass this through the
-        // generic retry path, which would overwrite that evidence and schedule
-        // a misleading retry.
-        failures += 1;
-        continue;
-      }
-      const result = await provider.createInvoice(snapshot, {
-        recoveryLookupRequired: claim.attemptCount > 1,
-      });
-      await port.markInvoiceIssueSucceeded({
-        outboxId: claim.outboxId,
-        claimAttemptCount: claim.attemptCount,
-        providerInvoiceId: result.providerInvoiceId,
-        providerInvoiceNumber: result.providerInvoiceNumber,
-        providerRaw: result.raw,
-      });
-      updated += 1;
-    } catch (error) {
-      failures += 1;
-      if (isInvoiceIssueClaimFenceError(error)) {
-        continue;
-      }
-      await port.markInvoiceIssueFailed({
-        outboxId: claim.outboxId,
-        claimAttemptCount: claim.attemptCount,
-        error: sanitizeAccountingError(error),
-        retrySeconds: retrySeconds(claim.attemptCount),
-      });
-    }
-  }
-
-  return { ok: failures === 0, checked: claims.length, updated, skipped: false, failures };
+  return runInvoiceIssueJob({
+    createEnabled: config.createEnabled,
+    providerEnabled: Boolean(provider),
+    claim: () => port.claimInvoiceIssues(limit, { orderId }),
+    localPreflight: async (claim) => (await port.preflightInvoiceIssuePayment({
+      invoiceId: claim.invoice.id, outboxId: claim.outboxId, claimAttemptCount: claim.attemptCount,
+      providerStatus: "unavailable", providerAmountCents: null, providerCurrency: null,
+      providerEvidence: { source: "local_canonical_snapshot" },
+    })).ok,
+    project: (claim) => {
+      const snapshot = mapInvoiceClaimToProviderSnapshot(claim, env);
+      assertProviderInvoiceTaxIdSafe(snapshot, routeInvoiceByTaxId);
+      return snapshot;
+    },
+    blockMapper: (claim, code, error) => port.blockInvoiceIssueCanonicalMapper({
+      invoiceId: claim.invoice.id, outboxId: claim.outboxId, claimAttemptCount: claim.attemptCount,
+      code, evidence: { stage: "independent_mapper", message: error instanceof Error ? error.message : String(error) },
+    }),
+    readPayment: (claim) => readAccountingPaymentProviderEvidence(claim, paymentProviders),
+    freshPreflight: async (claim, evidence) => (await port.preflightInvoiceIssuePayment({
+      invoiceId: claim.invoice.id, outboxId: claim.outboxId, claimAttemptCount: claim.attemptCount, ...evidence,
+    })).ok,
+    create: async (snapshot, options) => {
+      const receipt = await provider!.createInvoice(snapshot, options);
+      return { providerDocumentRef: receipt.providerInvoiceId, providerDocumentNumber: receipt.providerInvoiceNumber, receipt };
+    },
+    finish: (claim, result) => port.markInvoiceIssueSucceeded({
+      outboxId: claim.outboxId, claimAttemptCount: claim.attemptCount,
+      providerInvoiceId: result.receipt.providerInvoiceId, providerInvoiceNumber: result.receipt.providerInvoiceNumber, providerRaw: result.receipt.raw,
+    }),
+    isClaimFenceError: isInvoiceIssueClaimFenceError,
+    fail: (claim, error, retrySeconds) => port.markInvoiceIssueFailed({
+      outboxId: claim.outboxId, claimAttemptCount: claim.attemptCount, error: sanitizeAccountingError(error), retrySeconds,
+    }),
+  });
 }
 
 function isInvoiceIssueClaimFenceError(error: unknown): boolean {
   const causeCode = typeof error === "object" && error !== null && "causeCode" in error
     ? (error as { causeCode?: unknown }).causeCode : null;
   return typeof causeCode === "string" && causeCode.startsWith("accounting_invoice_issue_claim_");
-}
-
-function canonicalMapperErrorCode(error: unknown): string | null {
-  if (!(error instanceof Error)) return null;
-  const match = /\b(accounting_invoice_canonical_[a-z0-9_]+)/.exec(error.message);
-  return match?.[1] ?? null;
 }
 
 export async function runAccountingInvoiceCorrectionJob({

@@ -46,7 +46,11 @@ Start with
 An issue job refuses disabled configuration or a missing provider before
 claiming work. For each claim it performs local canonical-payment preflight,
 maps the claimed snapshot, obtains provider payment evidence, and performs the
-final preflight before document creation.
+final preflight before document creation. The issue, line allocation, snapshot,
+payment evidence and handoff facades delegate to `@openlup/platform/invoicing`.
+They retain environment reads, seller/date/tax routing, channel-policy resolution,
+event validation, exact request keys and provider compatibility payloads.
+Correction/delivery jobs and native continuity remain separate boundaries.
 
 The important internal boundaries are:
 

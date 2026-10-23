@@ -1,3 +1,4 @@
+import { withAccountingInvoiceShadowTrigger as shadow, withAutoDispatchAccountingInvoiceTrigger as autoDispatch } from "@openlup/platform/invoicing";
 import type { AccountingInvoiceIssuePort } from "../../../src/domains/accounting/ports.js";
 import {
   decideChannelInvoice,
@@ -48,91 +49,27 @@ export interface AccountingHandoffTriggerOptions {
 }
 
 export function withAccountingInvoiceShadowTrigger<TResult, TPort extends FulfillmentHandoffPort<TResult>>(
-  fulfillmentPort: TPort,
-  options: AccountingHandoffTriggerOptions,
+  fulfillmentPort: TPort, options: AccountingHandoffTriggerOptions,
 ): TPort {
-  return {
-    ...fulfillmentPort,
-    async handOffCommerceFulfillmentOrder(request: FulfillmentHandoffRequest) {
-      const result = await fulfillmentPort.handOffCommerceFulfillmentOrder(request);
-      try {
-        // The operator hand-off reaches this wrapper holding only the
-        // fulfillment order id, so the policy is read by that key.
-        const decision = await decideChannelInvoice(options.invoicePolicyReader, {
-          by: "fulfillmentOrder",
-          fulfillmentOrderId: request.fulfillmentOrderId,
-        });
-        if (decision.issue) {
-          await options.accountingPort.requestInvoiceIssueFromFulfillmentHandoff({
-            idempotencyKey: `${request.idempotencyKey}:accounting-invoice`,
-            fulfillmentOrderId: request.fulfillmentOrderId,
-            providerKind: options.providerKind ?? "fakturownia",
-          });
-        }
-      } catch (error) {
-        if (options.failOnAccountingError) throw error;
-      }
-      return result;
-    },
-  } as TPort;
+  return shadow(fulfillmentPort, packageOptions(options));
 }
-
-// Auto-dispatch sibling of withAccountingInvoiceShadowTrigger. The outbox
-// commerce.order.paid -> fulfillment path drives handoff through the
-// OrderPaidFulfillmentPort (ensureFulfilledFromPaidOrder), which issues the
-// mark-handed-over RPC directly and therefore never reaches the admin
-// hand-off wrapper above. Without this, an auto-dispatched paid order reaches
-// handed_over but no accounting invoice is ever requested. Same semantics:
-// idempotent (the issue RPC dedups on the order-derived invoice_ref, so any
-// key is duplicate-safe) and fail-soft (accounting errors never fail the
-// fulfillment dispatch — the outbox event still settles as processed).
 export function withAutoDispatchAccountingInvoiceTrigger(
-  fulfillmentPort: AutoDispatchFulfillmentPort,
-  options: AccountingHandoffTriggerOptions,
+  fulfillmentPort: AutoDispatchFulfillmentPort, options: AccountingHandoffTriggerOptions,
 ): AutoDispatchFulfillmentPort {
-  return {
-    async ensureFulfilledFromPaidOrder(input) {
-      // Both branches hold the order uuid, so both ask by the order key — the
-      // strongest key available, and the one that needs no join.
-      const lookup = { by: "order" as const, orderUuid: input.orderUuid };
-      if (options.issueTrigger === "paid") {
-        try {
-          const decision = await decideChannelInvoice(options.invoicePolicyReader, lookup);
-          if (decision.issue) {
-            await options.accountingPort.requestInvoiceIssueFromPaidOrder({
-              idempotencyKey: `order-paid-dispatch:${input.orderUuid}:accounting-invoice-paid`,
-              orderId: input.orderUuid,
-              providerKind: options.providerKind ?? "fakturownia",
-            });
-          }
-        } catch (error) {
-          if (options.failOnAccountingError) throw error;
-        }
-      }
-      const result = await fulfillmentPort.ensureFulfilledFromPaidOrder(input);
-      if (options.issueTrigger === "paid") return result;
-      const fulfillmentOrderId = readHandedOverFulfillmentOrderId(result);
-      if (fulfillmentOrderId) {
-        try {
-          const decision = await decideChannelInvoice(options.invoicePolicyReader, lookup);
-          if (decision.issue) {
-            await options.accountingPort.requestInvoiceIssueFromFulfillmentHandoff({
-              idempotencyKey: `order-paid-dispatch:${input.orderUuid}:accounting-invoice`,
-              fulfillmentOrderId,
-              providerKind: options.providerKind ?? "fakturownia",
-            });
-          }
-        } catch (error) {
-          if (options.failOnAccountingError) throw error;
-        }
-      }
-      return result;
-    },
-  };
+  return autoDispatch(fulfillmentPort, packageOptions(options));
 }
-
-function readHandedOverFulfillmentOrderId(result: AutoDispatchFulfillmentResult): string | null {
-  if (result.kind !== "completed" && result.kind !== "skipped") return null;
-  const id = result.detail?.fulfillmentOrderId;
-  return typeof id === "string" ? id : null;
+function packageOptions(options: AccountingHandoffTriggerOptions) {
+  return {
+    ...options,
+    providerKind: options.providerKind ?? "fakturownia",
+    keys: {
+      shadow: (key: string) => `${key}:accounting-invoice`,
+      paid: (orderId: string) => `order-paid-dispatch:${orderId}:accounting-invoice-paid`,
+      handoff: (orderId: string) => `order-paid-dispatch:${orderId}:accounting-invoice`,
+    },
+    invoicePolicyReader: options.invoicePolicyReader ? {
+      readOrderInvoicePolicy: async (lookup: Parameters<OrderInvoicePolicyReader["readOrderInvoicePolicy"]>[0]) =>
+        (await decideChannelInvoice(options.invoicePolicyReader, lookup)).action,
+    } : undefined,
+  };
 }

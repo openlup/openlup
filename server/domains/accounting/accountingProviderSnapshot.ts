@@ -9,8 +9,7 @@ import {
   type TaxIdRoutingPort,
 } from "../../../src/domains/accounting/invoiceContracts.js";
 import { APP_DEFAULT_SELLER } from "../../../src/lib/brand/appBrand.js";
-import { mapCanonicalIssueLines } from "./accountingCanonicalProviderLines.js";
-import { allocateChargedGrossTotals } from "./accountingLineAllocation.js";
+import { mapInvoiceClaimToProviderSnapshot as mapIssueSnapshot } from "@openlup/platform/invoicing";
 
 export type AccountingProviderInvoiceSnapshot = AccountingDocumentProviderInvoiceSnapshot;
 
@@ -18,129 +17,25 @@ export function mapInvoiceClaimToProviderSnapshot(
   claim: ClaimedAccountingInvoiceIssue,
   env: Record<string, string | undefined>,
 ): AccountingProviderInvoiceSnapshot {
-  return {
+  return mapIssueSnapshot({
     orderRef: claim.invoice.orderRef,
     issueDate: dateOnly(claim.invoice.packageShippedAt ?? claim.invoice.paymentCompletedAt),
     sellDate: dateOnly(claim.invoice.paymentCompletedAt),
     currency: claim.invoice.currency,
     seller: readAccountingSellerConfig(env, APP_DEFAULT_SELLER),
-    buyer: {
-      name: textValue(claim.invoice.buyerSnapshot.name) ?? "Customer",
-      email: textValue(claim.invoice.buyerSnapshot.email),
-      taxId: textValue(claim.invoice.buyerSnapshot.taxId),
-      companyName: textValue(claim.invoice.buyerSnapshot.companyName),
-      address: mapBuyerAddress(claim.invoice.buyerSnapshot.address),
-    },
-    documentKind: claim.invoice.documentKind === "b2b_vat" ? "b2b_vat" : "b2c_named",
-    // The claim is an SQL-built JSON document cast without validation, so its
-    // key names are a database contract; the neutral snapshot's are not.
+    buyerSnapshot: claim.invoice.buyerSnapshot,
+    documentKind: claim.invoice.documentKind === "b2b_vat" ? "b2b_vat" as const : "b2c_named" as const,
     governmentClearanceRequired: claim.invoice.ksefRequired,
     payment: {
       provider: textValue(claim.invoice.metadata.paymentProvider),
       providerPaymentId: claim.invoice.providerPaymentId,
       paymentCompletedAt: claim.invoice.paymentCompletedAt ?? "",
     },
-    lines: mapIssueLinesToChargedTotal(
-      claim.invoice.linesSnapshot,
-      claim.invoice.totalGrossCents,
-      claim.invoice.totalNetCents,
-      claim.invoice.orderMoney,
-    ),
-    chargedTotalGrossMinor: claim.invoice.totalGrossCents,
-  };
-}
-
-const DELIVERY_POSITION_NAME = "Dostawa";
-
-// Canonical issue snapshots already carry effective item and explicit delivery
-// positions and are verified as a zero-delta passthrough. Historical snapshots
-// without positionKind retain the independent #1693 reconciliation below.
-function mapIssueLinesToChargedTotal(
-  linesSnapshot: unknown[],
-  chargedTotalGrossMinor: number,
-  chargedTotalNetMinor: number,
-  orderMoney: unknown,
-): AccountingProviderInvoiceSnapshot["lines"] {
-  const canonicalKinds = linesSnapshot.map((line) => textValue(isRecord(line) ? line.positionKind : null));
-  if (canonicalKinds.some(Boolean)) {
-    if (!canonicalKinds.every((kind) => kind === "item" || kind === "delivery")) {
-      throw new Error("accounting_invoice_canonical_positions_mixed_or_invalid");
-    }
-    return mapCanonicalIssueLines(
-      linesSnapshot,
-      chargedTotalGrossMinor,
-      chargedTotalNetMinor,
-    );
-  }
-
-  const parsed = linesSnapshot.map(parseLineSnapshot);
-  const deliveryGrossMinor = readDeliveryGrossMinor(orderMoney, chargedTotalGrossMinor);
-  const chargedTotals = allocateChargedGrossTotals(
-    parsed.map((line) => line.totalGrossMinor),
-    chargedTotalGrossMinor - deliveryGrossMinor,
-  );
-  const positions: AccountingProviderInvoiceSnapshot["lines"] = parsed.map((line, index) => {
-    const totalGrossMinor = chargedTotals[index];
-    const totalNetMinor = estimateNetMinor(totalGrossMinor, line.vatRate);
-    return {
-      name: line.name,
-      quantity: line.quantity,
-      unitGrossMinor: Math.round(totalGrossMinor / line.quantity),
-      unitNetMinor: Math.round(totalNetMinor / line.quantity),
-      totalGrossMinor,
-      totalNetMinor,
-      vatRate: line.vatRate,
-    };
-  });
-  if (deliveryGrossMinor > 0) {
-    positions.push(buildDeliveryPosition(deliveryGrossMinor, parsed));
-  }
-  return positions;
-}
-
-// Legacy-only compatibility: pre-canonical claims had no explicit delivery
-// position, so their effective delivery is the closed header residual. Current
-// canonical claims never enter this path and use persisted shipping columns.
-// Every inconsistent legacy shape degrades to 0 and then fails closed if the
-// catalog lines cannot reconcile to the charged header.
-function readDeliveryGrossMinor(orderMoney: unknown, chargedTotalGrossMinor: number): number {
-  if (!isRecord(orderMoney)) return 0;
-  const subtotal = numberValue(orderMoney.subtotalCents);
-  const discount = numberValue(orderMoney.discountCents);
-  const total = numberValue(orderMoney.totalCents);
-  if (subtotal === null || discount === null || total === null) return 0;
-  if (![subtotal, discount, total].every((value) => Number.isInteger(value) && value >= 0)) return 0;
-  if (discount > subtotal) return 0;
-  if (total !== chargedTotalGrossMinor) return 0;
-  const deliveryGrossMinor = chargedTotalGrossMinor - (subtotal - discount);
-  return deliveryGrossMinor > 0 ? deliveryGrossMinor : 0;
-}
-
-// Delivery is an ancillary supply and follows the goods' VAT rate; with mixed
-// item rates (or no item line to source a rate from) the correct rate is
-// ambiguous, so the claim fails closed into the outbox last_error.
-function buildDeliveryPosition(
-  deliveryGrossMinor: number,
-  itemLines: Array<{ vatRate: string }>,
-): AccountingProviderInvoiceSnapshot["lines"][number] {
-  const rates = [...new Set(itemLines.map((line) => line.vatRate.trim()))];
-  if (rates.length === 0) {
-    throw new Error(`accounting_invoice_delivery_vat_rate_unavailable delivery=${deliveryGrossMinor}`);
-  }
-  if (rates.length > 1) {
-    throw new Error(`accounting_invoice_delivery_vat_rates_mixed rates=${rates.join(",")}`);
-  }
-  const vatRate = rates[0];
-  const totalNetMinor = estimateNetMinor(deliveryGrossMinor, vatRate);
-  return {
-    name: DELIVERY_POSITION_NAME,
-    quantity: 1,
-    unitGrossMinor: deliveryGrossMinor,
-    unitNetMinor: totalNetMinor,
-    totalGrossMinor: deliveryGrossMinor,
-    totalNetMinor,
-    vatRate,
-  };
+    linesSnapshot: claim.invoice.linesSnapshot,
+    totalGrossMinor: claim.invoice.totalGrossCents,
+    totalNetMinor: claim.invoice.totalNetCents,
+    orderMoney: claim.invoice.orderMoney,
+  }, { defaultLineLabel: "Product", defaultBuyerLabel: "Customer", deliveryLabel: "Dostawa", defaultTaxRate: "8" });
 }
 
 // Pro-rata discount allocation in integer minor units over the item portion
@@ -238,16 +133,6 @@ function mapCorrectionLineSnapshot(value: unknown) {
     totalGrossMinor,
     totalNetMinor,
     vatRate,
-  };
-}
-
-function mapBuyerAddress(value: unknown): AccountingProviderInvoiceSnapshot["buyer"]["address"] {
-  const address = isRecord(value) ? value : {};
-  return {
-    line1: textValue(address.line1),
-    postalCode: textValue(address.postalCode),
-    city: textValue(address.city),
-    country: textValue(address.country),
   };
 }
 
