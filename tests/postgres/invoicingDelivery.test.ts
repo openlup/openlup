@@ -30,6 +30,7 @@ const rows = [
   { name: "stale token writes nothing", mode: "stale" },
   { name: "provider mismatch refuses before settlement", mode: "mismatch" },
   { name: "cross-document projection never reaches transport", mode: "projection" },
+  { name: "a projection failure retries before send while another leased row is sent", mode: "batch_projection" },
 ] as const;
 
 it.each(rows)("native delivery: $name", async row => {
@@ -50,15 +51,26 @@ it.each(rows)("native delivery: $name", async row => {
   };
   const identity = { providerRef: "fiscal-provider", documentRef: local.documentId, providerDocumentRef: external,
     orderRef: envelope.orderRef, invoiceRef: envelope.invoiceRef, parentProviderDocumentRef: "parent-provider-document" };
+  const goodDeliveryRef = randomUUID();
+  const goodEnvelope = { ...envelope, deliveryRef: goodDeliveryRef, requestKey: `delivery:${goodDeliveryRef}` };
+  if (row.mode === "batch_projection") {
+    await h.pool.query(`INSERT INTO public.accounting_document_deliveries(id,document_id,channel,recipient_reference,attempts)
+      VALUES($1,$2,'host-receipt-other','recipient:other',0)`, [goodDeliveryRef, local.documentId]);
+  }
   const store = createPostgresInvoiceStore(db, { async projectDelivery(input) {
+    if (row.mode === "batch_projection") {
+      if (input.deliveryRef === deliveryRef) throw new Error("host recipient lookup unavailable");
+      expect(input).toEqual({ deliveryRef: goodDeliveryRef, documentId: local.documentId, channel: "host-receipt-other", recipientRef: "recipient:other", attemptCount: 1 });
+      return { identity, delivery: goodEnvelope };
+    }
     expect(input).toEqual({ deliveryRef, documentId: local.documentId, channel: "host-receipt", recipientRef: "recipient:opaque", attemptCount: 1 });
     return { identity: row.mode === "projection" ? { ...identity, documentRef: randomUUID() } : identity, delivery: envelope };
   } });
-  const claimOptions = { ...options, orderId: f.order };
-  const state = async () => (await h.pool.query(`SELECT to_jsonb(d) AS delivery, to_jsonb(r) AS receipt,
+  const claimOptions = { ...options, limit: row.mode === "batch_projection" ? 2 : options.limit, orderId: f.order };
+  const state = async (id = deliveryRef) => (await h.pool.query(`SELECT to_jsonb(d) AS delivery, to_jsonb(r) AS receipt,
     (SELECT coalesce(jsonb_agg(to_jsonb(a) ORDER BY a.attempt_ordinal),'[]') FROM public.accounting_document_delivery_attempts a WHERE a.delivery_id=d.id) AS attempts,
     CASE WHEN d.available_at='infinity' THEN NULL ELSE extract(epoch FROM d.available_at-d.updated_at)::integer END AS delay
-    FROM public.accounting_document_deliveries d LEFT JOIN public.invoicing_delivery_receipts r ON r.delivery_id=d.id WHERE d.id=$1`, [deliveryRef])).rows[0];
+    FROM public.accounting_document_deliveries d LEFT JOIN public.invoicing_delivery_receipts r ON r.delivery_id=d.id WHERE d.id=$1`, [id])).rows[0];
   const before = await state();
   if (row.mode === "unbound" || row.mode === "malformed") {
     const refused = row.mode === "unbound" ? unbound : createPostgresInvoiceStore(db, {} as never);
@@ -67,10 +79,38 @@ it.each(rows)("native delivery: $name", async row => {
     return;
   }
   if (row.mode === "projection") {
-    await expect(runInvoiceDeliveryJob({ enabled: true, providerEnabled: true, deliveryEnabled: true, store, claimOptions,
+    expect(await runInvoiceDeliveryJob({ enabled: true, providerEnabled: true, deliveryEnabled: true, store, claimOptions,
       download: async () => { throw new Error("must not download"); }, filename: () => "invoice.pdf",
-      send: async () => { throw new Error("must not send"); } })).rejects.toThrow("invoicing_delivery_projection_invalid");
-    expect(await state()).toMatchObject({ delivery: { status: "processing", attempts: 1 }, receipt: { state: "processing", generation: 1 }, attempts: [] });
+      send: async () => { throw new Error("must not send"); } })).toEqual({ ok: true, checked: 0, updated: 0, skipped: false, failures: 0 });
+    expect(await state()).toMatchObject({ delivery: { status: "failed", attempts: 1, available_at: "infinity",
+      last_error: { phase: "before_send", retryable: false, code: "identity_mismatch" } },
+      receipt: { state: "failed", generation: 1, claim_token: null, lease_until: null }, attempts: [{ outcome: "failed", attempt_ordinal: 1 }] });
+    return;
+  }
+  if (row.mode === "batch_projection") {
+    const downloads: string[] = [], sends: string[] = [];
+    expect(await runInvoiceDeliveryJob({ enabled: true, providerEnabled: true, deliveryEnabled: true, store, claimOptions,
+      download: async claim => {
+        downloads.push(claim.delivery.deliveryRef);
+        return { content: new TextEncoder().encode("%PDF-1.7"), contentType: "application/pdf" };
+      }, filename: () => "invoice.pdf", send: async input => {
+        sends.push(input.deliveryRef);
+        expect(input).toEqual({ ...goodEnvelope, filename: "invoice.pdf", content: new TextEncoder().encode("%PDF-1.7"), contentType: "application/pdf" });
+        return { kind: "provider_accepted", receiptRef: "batch-receipt", proof };
+      } })).toEqual({ ok: true, checked: 1, updated: 1, skipped: false, failures: 0 });
+    expect(downloads).toEqual([goodDeliveryRef]);
+    expect(sends).toEqual([goodDeliveryRef]);
+    const failed = await state(), sent = await state(goodDeliveryRef);
+    expect(failed).toMatchObject({ delivery: { status: "failed", lease_until: null,
+      last_error: { phase: "before_send", retryable: true, retrySeconds: 300, code: "retryable" } }, delay: 300,
+      receipt: { state: "failed", claim_token: null, lease_until: null, result: { kind: "failed_before_send", receipt: null } },
+      attempts: [{ outcome: "failed", attempt_ordinal: 1 }] });
+    expect(failed.attempts[0].error).toEqual(failed.delivery.last_error);
+    expect(sent).toMatchObject({ delivery: { status: "succeeded", receipt_reference: "batch-receipt", lease_until: null },
+      receipt: { state: "sent", claim_token: null, lease_until: null }, attempts: [{ outcome: "delivered", attempt_ordinal: 1 }] });
+    expect(await store.claimDeliveries(claimOptions)).toEqual([]);
+    expect((await state()).receipt.state).toBe("failed");
+    expect((await state(goodDeliveryRef)).receipt.state).toBe("sent");
     return;
   }
   if (row.mode === "job") {

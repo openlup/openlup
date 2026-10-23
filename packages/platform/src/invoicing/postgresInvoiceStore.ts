@@ -118,17 +118,30 @@ export function createPostgresInvoiceStore(db: Executor, deliveryProjection?: De
         "invoicing_claim_deliveries", [v.limit, v.visibilitySeconds, v.requireClearance, v.orderId ?? null]);
       const claims: DeliveryClaim[] = [];
       for (const row of rows) {
-        const projected = await deliveryProjection.projectDelivery({ deliveryRef: row.delivery_id, documentId: row.document_id,
-          channel: row.channel, recipientRef: row.recipient_reference, attemptCount: row.generation });
-        const doc = (await db.query("SELECT order_id, provider_reference FROM public.accounting_documents WHERE id=$1::uuid", [row.document_id])).rows[0];
-        const { identity, delivery } = projected;
-        if (!doc || !nonempty(doc.provider_reference) || identity.documentRef !== row.document_id
-          || identity.providerDocumentRef !== doc.provider_reference || delivery.documentRef !== row.document_id
-          || delivery.deliveryRef !== row.delivery_id || delivery.orderId !== doc.order_id
-          || delivery.providerDocumentRef !== doc.provider_reference || delivery.attemptCount !== row.generation
-          || delivery.orderRef !== identity.orderRef || delivery.invoiceRef !== identity.invoiceRef
-          || !nonempty(delivery.requestKey) || !nonempty(delivery.recipient)) throw new Error("invoicing_delivery_projection_invalid");
-        claims.push({ ...projected, token: row.claim_token, generation: row.generation, providerDocumentRef: doc.provider_reference });
+        let retryable = true;
+        try {
+          const projected = await deliveryProjection.projectDelivery({ deliveryRef: row.delivery_id, documentId: row.document_id,
+            channel: row.channel, recipientRef: row.recipient_reference, attemptCount: row.generation });
+          const doc = (await db.query("SELECT order_id, provider_reference FROM public.accounting_documents WHERE id=$1::uuid", [row.document_id])).rows[0];
+          const { identity, delivery } = projected;
+          if (!doc || !nonempty(doc.provider_reference) || identity.documentRef !== row.document_id
+            || identity.providerDocumentRef !== doc.provider_reference || delivery.documentRef !== row.document_id
+            || delivery.deliveryRef !== row.delivery_id || delivery.orderId !== doc.order_id
+            || delivery.providerDocumentRef !== doc.provider_reference || delivery.attemptCount !== row.generation
+            || delivery.orderRef !== identity.orderRef || delivery.invoiceRef !== identity.invoiceRef
+            || !nonempty(delivery.requestKey) || !nonempty(delivery.recipient)) {
+            retryable = false;
+            throw new Error("invoicing_delivery_projection_invalid");
+          }
+          claims.push({ ...projected, token: row.claim_token, generation: row.generation, providerDocumentRef: doc.provider_reference });
+        } catch {
+          const settled = await call<{ kind: string }>("invoicing_settle_delivery", [
+            row.delivery_id, row.claim_token, row.generation, "failed_before_send", null,
+            { phase: "before_send", retryable, retrySeconds: Math.min(3600, 300 * Math.max(1, row.generation)),
+              code: retryable ? "retryable" : "identity_mismatch" },
+          ]);
+          if (settled.kind !== "failed_before_send") throw new Error("invoicing_delivery_fence");
+        }
       }
       return claims;
     },

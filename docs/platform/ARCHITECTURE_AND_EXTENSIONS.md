@@ -1545,7 +1545,10 @@ With CTL-M09-3's 191000 pin, a native host binds `failedBeforeSend` by settling
 backoff, and `terminalFailure` with `{phase:'before_send', retryable:false}` for
 terminal no-reclaim. The optional `createPostgresInvoiceStore` delivery projection
 supplies the host envelope; `runInvoiceDeliveryJob` store mode supplies fenced
-finalizers. Missing projection refuses before leasing. Uncertain transport
+finalizers. Missing projection refuses before leasing. Per-row projection or
+document-read exceptions settle retryable `failed_before_send` with generation-based
+backoff; envelope mismatches settle non-retryable and park. Other valid leased rows
+continue, with no uncertain receipt for these unsent failures. Uncertain transport
 or lost local acknowledgement cannot become another send.
 
 The account-history host projection verifies owner/order before its query and
