@@ -98,18 +98,35 @@ remains the result-meaning owner.
 - P4 must discover captured duties without installed facts; fact preparation
   cannot depend on already having a claimable fiscal snapshot.
 - P4 native issue binding must treat non-observed local evidence as unavailable
-  without stopping the duty (pinned 190000:382-386). Only `action: "create"`
+  without stopping the duty (pinned `invoicing_preflight_duty`). Only `action: "create"`
   claims may issue, with `attemptCount = generation`. Route `action: "readback"`
   claims to provider read, then finish on `found` or fail on `absent`/`unknown`.
   Convert a native `{ kind: "stale" }` preflight or finish result into the claim-fence
   error: write no failure and count zero updates.
-- P5 must give native delivery a terminal outcome or bounded backoff for
-  non-retryable `failed_before_send`, rather than reclaiming it forever.
+- P5 must pass `retryable` and `retrySeconds` evidence for native delivery
+  `failed_before_send`: the kind asserts failure before send; no `phase` is required.
+  Boolean false parks the failure; otherwise a whole JSON number delays retry
+  by 60..86400 seconds (clamped); absent or invalid delay uses 900 seconds.
+  This pin supersedes the frozen "native ignores it" sentence in
+  `packages/platform/src/invoicing/contracts/store.ts:95`, its copies in
+  `packages/platform/api/invoicing-contracts.api.md` and `invoicing.api.md`, and
+  the "Native ignores backoff" mapping reason in
+  `packages/platform/test/invoicing/portFit.test.ts`, plus the "native no-op"
+  mapping in `scripts/packages/platform-cold-consumer.ts:304`. The PR that next
+  touches those files must update the claims and map `p_evidence` to the result plus
+  `retrySeconds`; those files stay frozen here.
 - P7 must route native reversals through the correction branch of
   `invoicing_request_with_seller_policy`, retain the wrapper-returned seller and
   revision in claim facts, and define claim behavior for unknown/unsupported
   `seller.read`. Order-scoped managed claims must never call the unscoped
   corrections wrapper. First-claim seller freezing retains legacy fallback.
+  Readback must surface both terminal reversal outcomes: an owed duty whose
+  reversal answered `unsupported` remains owed with no reversal diagnostic,
+  retaining any earlier fact-preparation diagnostic (for example `retryable`)
+  although it is never leased again, and
+  preparation committed before reversal may leave an unclaimable
+  `issue_requested` document and its request parked at infinity. Both are
+  terminal by design; P7 must expose them without making them claimable.
 - S1 re-measures root-docs gzip against the package cap and trims only if the
   release set exceeds it.
 
