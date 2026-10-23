@@ -1432,8 +1432,10 @@ host configuration before the next claim, scoped by order or null for unscoped
 claims, never by duty. P8 freezes the seller at first claim, using revisionRef as
 the claim wrapper revision. Stores bind the selected provider at construction.
 Delivery settlement
-retains provider identity, retry delay (native ignores it) and uncertain receipt hints; local document
-requests retain provider selection, invoice reference, status and replay. The
+retains provider identity, retry delay and uncertain receipt hints. Native takes
+`p_evidence.retrySeconds`: a whole number of seconds clamped to 60..86400,
+otherwise 900; `retryable:false` parks at infinity. Local document requests
+retain provider selection, invoice reference, status and replay. The
 [invoicing reference](PLATFORM_PACKAGE_REFERENCE.md#invoicing-contracts) describes
 correction, payout item and account-lineage seams and their source witnesses.
 

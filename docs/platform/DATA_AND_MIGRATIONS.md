@@ -1024,8 +1024,10 @@ stages immutable facts only. This reuses the outbox claim/token/visibility patte
 SKIP LOCKED claims, five-minute leases, eight attempts, exponential backoff from
 60 seconds capped at one hour, and a visible `faulted` terminal state. Expired
 claims recover without retaining order/duty locks across accounting work. Prepare
-holds no explicit order/duty row lock, bounds unavoidable database waits to 100 ms,
-and preserves the incumbent deterministic document reference. Host keys remain
+holds no explicit order row lock, bounds unavoidable database waits to 100 ms,
+and preserves the incumbent deterministic document reference. Its final NOWAIT
+duty lock rechecks the live fact token, wall-clock lease, unlinked request,
+owed/blocked state and absent reversal; a failed recheck rolls back preparation. Host keys remain
 exact in duty/receipt/metadata; the internal document operation uses the stable
 duty identity so two intents may legitimately reuse a host key.
 Accounting errors keep the fact revision and owed duty durable; missing host facts block
@@ -1053,8 +1055,9 @@ later sources or fact retries. Empty orders return an empty duty list.
 Execution remains restricted to the explicitly bootstrapped trusted host.
 
 Duty and delivery claims accept a trailing optional order UUID, as does the
-seller claim wrapper. The predicate runs before row locks and LIMIT; targeted
-recovery never leases unrelated orders. Omitting it retains batch behavior.
+seller claim wrapper. The predicate runs before row locks and LIMIT, except
+for the unscoped expiry of already-expired delivery receipts; targeted recovery
+never leases unrelated orders. Omitting it retains batch behavior.
 Clearance observations already record `not_submitted`, `pending`, `accepted`,
 `rejected`, `not_required` and explicit unsupported observations; polling targets,
 per-target orchestration and national mappings remain host/package work.
@@ -1174,7 +1177,13 @@ identity then compensates a pending reversal atomically. Correction BEFORE facts
 remain positive history while native positions carry the negative delta. No
 fiscal numbering, provider transport, market policy or money writer is added.
 Clearance and uncertain delivery affect document work only; unknown delivery
-acceptance cannot re-enter send after lease expiry. Source retention is a host
+acceptance cannot re-enter send after lease expiry. Native delivery claims hide
+claimed deliveries from the incumbent claimer with `lease_until='infinity'`,
+and expired processing receipts become `uncertain` with `lease_expired`, never
+eligible for repeat send. Settlement checks exact sent replay first, then refuses expired or
+null leases; `failed_before_send` with `retryable:false` parks at infinity,
+otherwise it backs off by a whole `retrySeconds` clamped to 60..86400 seconds
+(or 900 for absent or invalid values). Source retention is a host
 lifecycle obligation until capture or an explicit terminal policy receipt.
 
 Native capture marks genuinely new base duties, including sweep capture, and

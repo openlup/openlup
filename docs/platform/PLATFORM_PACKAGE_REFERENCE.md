@@ -683,7 +683,9 @@ transient. Download authorization precedes fetch; PDF type/size/signature valida
 precedes M04 send. Delivery retains local order/document and provider identities,
 nullable client/source facts and any known receipt after a lost local acknowledgement.
 Settlement retains the provider document reference and retry delay for managed
-pre-send backoff (native ignores the delay). For uncertain sends, native passes
+pre-send backoff. Native takes `p_evidence.retrySeconds`: a whole number of seconds
+clamped to 60..86400, otherwise 900; `retryable:false` parks at infinity.
+For uncertain sends, native passes
 `p_receipt` NULL and retains a non-null receipt hint in `p_evidence`; managed
 passes the hint as the provider message ID.
 Provider acceptance does not prove inbox delivery. Uncertain send never authorizes

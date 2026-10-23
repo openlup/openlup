@@ -39,9 +39,12 @@ BEGIN
   IF NOT FOUND THEN RETURN jsonb_build_object('kind','missing'); END IF;
   v_reversal:=jsonb_build_object('key',p_key,'reason',p_reason,'evidence',p_evidence);
   SELECT * INTO v_prior FROM public.invoicing_effect_receipts WHERE receipt_key='reversal-key:'||p_key;
-  IF FOUND AND (v_prior.duty_id<>v_base.id OR v_prior.payload IS DISTINCT FROM v_reversal) THEN
+  IF FOUND AND (v_prior.duty_id IS DISTINCT FROM v_base.id OR v_prior.payload IS DISTINCT FROM v_reversal) THEN
     RAISE EXCEPTION 'invoicing_reversal_key_conflict' USING ERRCODE='23505'; END IF;
   INSERT INTO public.invoicing_effect_receipts(receipt_key,duty_id,payload) VALUES('reversal-key:'||p_key,v_base.id,v_reversal) ON CONFLICT DO NOTHING;
+  SELECT * INTO v_prior FROM public.invoicing_effect_receipts WHERE receipt_key='reversal-key:'||p_key;
+  IF v_prior.duty_id IS DISTINCT FROM v_base.id OR v_prior.payload IS DISTINCT FROM v_reversal THEN
+    RAISE EXCEPTION 'invoicing_reversal_key_conflict' USING ERRCODE='23505'; END IF;
   -- Once a compensation intent exists, later aliases cannot change its reason/evidence.
   IF v_base.reversal IS NOT NULL AND (v_base.reversal-'key') IS DISTINCT FROM (v_reversal-'key') THEN
     RAISE EXCEPTION 'invoicing_reversal_conflict' USING ERRCODE='23505'; END IF;
@@ -172,6 +175,9 @@ CREATE FUNCTION public.invoicing_claim_deliveries(p_limit integer,p_visibility i
 RETURNS jsonb LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog AS $$
 DECLARE v_delivery public.accounting_document_deliveries%ROWTYPE; v_receipt public.invoicing_delivery_receipts%ROWTYPE; v_rows jsonb:='[]';
 BEGIN
+  UPDATE public.invoicing_delivery_receipts SET state='uncertain',claim_token=NULL,lease_until=NULL,
+    result=jsonb_build_object('kind','uncertain','receipt',NULL,'evidence',jsonb_build_object('code','lease_expired'))
+    WHERE state='processing' AND lease_until<=clock_timestamp();
   FOR v_delivery IN SELECT d.* FROM public.accounting_document_deliveries d
     JOIN public.accounting_documents doc ON doc.id=d.document_id
     WHERE (p_order_id IS NULL OR doc.order_id=p_order_id)
@@ -180,12 +186,12 @@ BEGIN
       AND (p_require_clearance IS NOT TRUE OR doc.submission_required IS NOT TRUE OR doc.submission_state='accepted')
       AND NOT EXISTS (SELECT 1 FROM public.invoicing_delivery_receipts s WHERE s.delivery_id=d.id AND s.state IN ('processing','sent','uncertain'))
     ORDER BY d.created_at,d.id LIMIT least(greatest(coalesce(p_limit,10),1),100) FOR UPDATE OF d, doc SKIP LOCKED LOOP
-    INSERT INTO public.invoicing_delivery_receipts(delivery_id) VALUES(v_delivery.id) ON CONFLICT DO NOTHING;
+    INSERT INTO public.invoicing_delivery_receipts(delivery_id,generation) VALUES(v_delivery.id,v_delivery.attempts) ON CONFLICT DO NOTHING;
     SELECT * INTO v_receipt FROM public.invoicing_delivery_receipts WHERE delivery_id=v_delivery.id FOR UPDATE;
     IF v_receipt.state IN ('processing','sent','uncertain') THEN CONTINUE; END IF;
-    UPDATE public.invoicing_delivery_receipts SET generation=generation+1,claim_token=gen_random_uuid(),state='processing',
+    UPDATE public.invoicing_delivery_receipts SET generation=greatest(generation,v_delivery.attempts)+1,claim_token=gen_random_uuid(),state='processing',
       lease_until=now()+make_interval(secs=>least(greatest(coalesce(p_visibility,300),1),3600)) WHERE delivery_id=v_delivery.id RETURNING * INTO v_receipt;
-    UPDATE public.accounting_document_deliveries SET status='processing',attempts=v_receipt.generation,lease_until=v_receipt.lease_until,updated_at=now() WHERE id=v_delivery.id;
+    UPDATE public.accounting_document_deliveries SET status='processing',attempts=v_receipt.generation,lease_until='infinity',updated_at=now() WHERE id=v_delivery.id;
     v_rows:=v_rows||jsonb_build_array(to_jsonb(v_delivery)||to_jsonb(v_receipt));
   END LOOP;
   RETURN v_rows;
@@ -203,11 +209,11 @@ BEGIN
     RETURN jsonb_build_object('kind','sent','replayed',true);
   END IF;
   IF v_row.delivery_id IS NULL OR v_row.state<>'processing' OR v_row.claim_token IS DISTINCT FROM p_token OR v_row.generation IS DISTINCT FROM p_generation
+    OR v_row.lease_until IS NULL OR v_row.lease_until<=clock_timestamp()
     THEN RETURN jsonb_build_object('kind','stale'); END IF;
   IF p_kind IS NULL OR p_kind NOT IN ('sent','uncertain','failed_before_send') OR jsonb_typeof(p_evidence) IS DISTINCT FROM 'object'
     OR (p_kind='sent' AND nullif(btrim(p_receipt),'') IS NULL)
     OR (p_kind<>'sent' AND p_receipt IS NOT NULL)
-    OR (p_kind='failed_before_send' AND p_evidence->>'phase' IS DISTINCT FROM 'before_send')
   THEN RAISE EXCEPTION 'invoicing_delivery_evidence_invalid' USING ERRCODE='22023'; END IF;
   UPDATE public.invoicing_delivery_receipts SET state=CASE WHEN p_kind='failed_before_send' THEN 'failed' ELSE p_kind END,
     result=v_payload,claim_token=NULL,lease_until=NULL WHERE delivery_id=p_delivery;
@@ -215,7 +221,13 @@ BEGIN
     UPDATE public.accounting_document_deliveries SET status='succeeded',receipt_reference=p_receipt,delivered_at=now(),lease_until=NULL,updated_at=now() WHERE id=p_delivery;
     INSERT INTO public.accounting_document_delivery_attempts(delivery_id,attempt_ordinal,outcome,receipt_reference) VALUES(p_delivery,p_generation,'delivered',p_receipt);
   ELSIF p_kind='failed_before_send' THEN
-    UPDATE public.accounting_document_deliveries SET status='failed',lease_until=NULL,available_at=now(),last_error=p_evidence,updated_at=now() WHERE id=p_delivery;
+    UPDATE public.accounting_document_deliveries SET status='failed',lease_until=NULL,
+      available_at=CASE WHEN p_evidence->'retryable'='false'::jsonb THEN 'infinity'::timestamptz
+        ELSE now()+make_interval(secs=>CASE WHEN jsonb_typeof(p_evidence->'retrySeconds')='number' THEN
+          CASE WHEN (p_evidence->>'retrySeconds')::numeric=trunc((p_evidence->>'retrySeconds')::numeric)
+            THEN least(greatest((p_evidence->>'retrySeconds')::numeric,60),86400)::integer ELSE 900 END
+          ELSE 900 END) END,
+      last_error=p_evidence,updated_at=now() WHERE id=p_delivery;
     INSERT INTO public.accounting_document_delivery_attempts(delivery_id,attempt_ordinal,outcome,error) VALUES(p_delivery,p_generation,'failed',p_evidence);
   END IF;
   RETURN jsonb_build_object('kind',p_kind,'replayed',false);
