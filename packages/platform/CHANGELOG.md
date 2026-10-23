@@ -17,13 +17,15 @@ in the source repository.
   HTTPS; host-built tracking URLs pass unchanged, including query strings.
 - Existing `reconcileFulfillmentObservations` callers now receive row-local unknown
   readback failures (`ok: false` with `failures`) while recognized rows still
-  process; `ReconciliationResult` is exported.
-- Observation ingest (`verifyAndNormalizeFulfillmentObservation` and the native
-  `recordObservation`) now applies the durable-sink sanitizer: provider-derived
+  process.
+- Observation ingest (`verifyAndNormalizeFulfillmentObservation`, the native
+  `recordObservation`, `reconcileFulfillmentObservations` and
+  `runFulfillmentReconciliationPage`) now applies the durable-sink sanitizer: provider-derived
   references outside the opaque reference rule (for example `#1001` or
   `ORD/2026/1`) are stored as null or redacted and counted instead of verbatim,
   and `firstReceivedAt` must be an RFC 3339 timestamp with an offset; other
-  values fail ingest.
+  values fail ingest or the reconciliation row. A correlation refused to null can
+  be quarantined as `missing_correlation` in reconciliation.
 - Fulfillment reconciliation inputs replace `readLocalFulfillmentState` with
   `readLocalFulfillmentStatus`, `latestStatusOccurredAt` and `readHandedOverAt`;
   migrate host persistence implementations to these three reads.
