@@ -1208,9 +1208,23 @@ the document-effects forward marks genuinely new correction children only when
 the seller request wrapper supplies `sellerPolicyVersion=invoicing.seller.v1`.
 The later seller
 wrappers materialize eligible seller rows; they do not make legacy work new.
-First claim captures the selected host seller and revision in the same transaction. Retry preserves that
+The first-ever claim captures the selected host seller and revision in the same
+transaction: native duty generation 1 or managed outbox attempt count 1. An
+uncaptured revision remains legacy after a bare claim; a later wrapper claim
+cannot freeze it. Retry preserves that
 seller; new corrections have independent eligibility. A new sidecar around an
-old document/request is legacy and returns the execution-supplied fallback.
+old document/request or a duty already claimed before seller freezing is legacy
+and returns the execution-supplied fallback. The managed request wrapper accepts
+`order_status_reversal` with the order ID, reason and nested payload, preserving
+the incumbent result and effects while marking only a newly inserted correction.
+For the managed `correction` branch, an unissued parent delegates to the incumbent
+void path only when it is the order's latest invoice and the reason is
+`order_canceled` or `order_refunded`; other parents/reasons retain scaffold
+validation. New scaffold requests store `sellerRequestKey` and an original evidence snapshot
+in the correction payload. Replays require the same key and evidence, excluding
+`providerCreateIdentity`; conflicts raise SQLSTATE `23505`. Rows without a stored
+key keep legacy replay behaviour. Native corrections always delegate to the
+reversal RPC's validation and deduplication.
 Issued documents and historical seller/buyer/line facts are never rewritten.
 
 `managedInvoicingForwards` is a separate bounded admission, with three fixed
