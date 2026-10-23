@@ -88,9 +88,12 @@ fresh/upgrade/replay/concurrency/ACL proof, seller revision race/legacy witnesse
 and actual installed service composition. Measure package/code/docs/browser caps
 at each material addition; long recipes stay in the package reference outside the
 npm artifact. The platform unpacked cap is 6,400 KiB for the M09/M10 wave
-(see [package release policy](../../../.github/VERSIONING_AND_EOL.md)); packed,
-code-gzip and docs-gzip caps remain unchanged. No other cap increase, behavior
-cut, release or activation follows from this design. [Canonical evidence](../CANONICAL_CONTRACTS.md#invoicing-evidence)
+(see [package release policy](../../../.github/VERSIONING_AND_EOL.md)). P5's
+cumulative pack crosses the prior code-gzip cap, so its approved cap edit raises
+code-gzip to 1,228,800 B, packed to 1,474,560 B and docs-gzip to 57,344 B;
+unpacked remains 6,553,600 B. M09 is the largest module, the caps date from M05,
+and P5/P7 exceed the remaining headroom. No behavior cut, release or activation
+follows from that budget change. [Canonical evidence](../CANONICAL_CONTRACTS.md#invoicing-evidence)
 remains the result-meaning owner.
 
 ## Phase obligations
@@ -112,6 +115,9 @@ remains the result-meaning owner.
   `failed_before_send`: the kind asserts failure before send; no `phase` is required.
   Boolean false parks the failure; otherwise a whole JSON number delays retry
   by 60..86400 seconds (clamped); absent or invalid delay uses 900 seconds.
+  The native store's optional delivery projection and `runInvoiceDeliveryJob`
+  store mode bind these outcomes; executed evidence belongs to the table-driven
+  [native delivery contract](../../../tests/postgres/invoicingDelivery.test.ts).
 - P7 must route native reversals through the correction branch of
   `invoicing_request_with_seller_policy`, retain the wrapper-returned seller and
   revision in claim facts, and define claim behavior for unknown/unsupported
@@ -217,3 +223,55 @@ Registered follow-up limit (coordinator ruling): unchanged M07
 `payment_truth_readback` joins accounting_documents, so ACCESS EXCLUSIVE DDL
 or denied readback ACL can block/refuse the overall call. Practical exposure is
 operator DDL windows/misconfiguration; M09 does not widen or repair this boundary.
+
+## P5 read side
+
+Seven helpers add delivery, PDF validation/filenames, document synchronization,
+payout recording, lineage and a read model. Existing host facades keep transport,
+query/auth, keys and legacy column projection. `syncAcceptedInvoiceDocuments`
+also accepts target/observer/status callbacks: pending/rejected/not-submitted
+observations are recorded without artifact sync; accepted targets download all
+host-selected attachments after status recording, with per-target failure counts.
+No separate polling export or scheduling/composition is added.
+
+`createInvoiceReadModel` keeps found, exact scoped absence, unknown and unsupported
+separate. Readback checks every identity field and exact/complete scope; it has no
+create writer. The native account-history binding checks ownership before its
+host query, preserves parent lineage, signed totals and currency, and projects
+only safe fields. Missing parity is `host_binding_required`; empty duties never
+prove invoice absence. Customer tickets resolve the real client/order owner before
+PDF fetch; the host operator handler authorizes before querying. The browser
+reference client consumes that host route; HTTP/UI projections show closed diagnostic codes only.
+
+Migration: F8 retains the host payout reader and original item keys; the host
+recorder/resolver owns richer item evidence and nullable links (KEEP #12). F11
+retains M04 content, locale, transport and uncertain no-resend behavior. F9/F12
+keep bounded reference clients, runbook URLs and correction-request intent in the
+host; intent creates no fiscal correction. Accepted artifact references remain
+provider references, with transient downloads distinct from storage receipts.
+KEEP #21 retains native history through an injected safe host projection rather
+than claiming an unavailable native schema query. Native delivery claim/settlement
+and duty readback retain P1 input shapes; the seam witness checks every required
+input against pinned SQL parameter order. P5 extends P4's store with an optional
+M04 envelope projection and native claim/settlement routing; it changes no SQL.
+The table-driven real-PostgreSQL contract exercises the package store and job,
+checking adapter results and persisted delivery/receipt/attempt state.
+
+P5's managed payout facade preserves the donor's legacy recorder calls, side
+effects and aggregate counts. The package returns per-item receipts: reuse of a
+real settlement receipt for a different provider/batch/item/payment scope becomes
+`conflict` / `identity_mismatch`, with no extra write and continued processing.
+Legacy batch/payment storage can therefore yield fewer item-level successes than
+the host aggregate. An item-capable host recorder/resolver yields distinct
+`recorded` receipts (KEEP #12). Neither granularity establishes payment success.
+CTL-M09-3's FINAL 191000 `public.invoicing_settle_delivery` receives native
+`failedBeforeSend` evidence `{phase:'before_send', retryable:true, retrySeconds}`.
+Whole-number seconds clamp to 60..86400; absent/invalid delay uses 900 seconds.
+`terminalFailure` settles the same branch with `{phase:'before_send', retryable:false}`:
+`available_at='infinity'` prevents reclaim while status `failed` and `last_error`
+remain visible. Callback mode requires an explicit `terminalFailure` before claim;
+store mode supplies it. Without a native projection the store refuses before leasing.
+The native delivery contract tests claim, sent, uncertain, bounded/default delays,
+terminal parking, stale fencing and projection refusal against the installed
+pinned SQL. Hosts still supply M04 transport/content and authorized envelope facts;
+these tests establish neither provider readiness nor inbox delivery.

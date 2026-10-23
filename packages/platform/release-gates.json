@@ -497,7 +497,12 @@
         "test/invoicing/paymentReadback.test.ts",
         "test/invoicing/handoff.test.ts",
         "test/invoicing/postgresStore.test.ts",
-        "test/invoicing/continuity.test.ts"
+        "test/invoicing/continuity.test.ts",
+        "test/invoicing/artifacts.test.ts",
+        "test/invoicing/delivery.test.ts",
+        "test/invoicing/readback.test.ts",
+        "test/invoicing/settlementSync.test.ts",
+        "test/invoicing/readModel.test.ts"
       ],
       "entrypoint": "dist/invoicing/index.d.ts",
       "snapshot": "api/invoicing.api.md"
@@ -517,14 +522,14 @@
   },
   "pack": {
     "code": {
-      "maxPackedBytes": 1126400,
+      "maxPackedBytes": 1228800,
       "maxFiles": 2000
     },
     "docs": {
-      "maxPackedBytes": 49152,
+      "maxPackedBytes": 57344,
       "maxFiles": 10
     },
-    "maxPackedBytes": 1351680,
+    "maxPackedBytes": 1474560,
     "maxUnpackedBytes": 6553600,
     "maxFiles": 2100,
     "baseline": {

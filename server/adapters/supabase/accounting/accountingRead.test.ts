@@ -7,7 +7,7 @@ import {
 type QueryResult = { data: unknown; error: { code?: string; message?: string } | null };
 
 describe("supabase accounting read port", () => {
-  it("maps sanitized issue outbox failure context", async () => {
+  it("projects closed diagnostic codes without provider free text or secret/URL detail", async () => {
     const selected: Record<string, string> = {};
     const ordered: Record<string, string> = {};
     const port = createSupabaseAccountingReadPort(fakeClient(selected, ordered));
@@ -22,8 +22,8 @@ describe("supabase accounting read port", () => {
           attemptCount: 3,
           nextAttemptAt: "2026-06-05T11:00:00+00:00",
           lastError: {
-            code: "invoice_provider_failed",
-            message: "[redacted-secret] failed for [redacted-email]",
+            code: "unknown",
+            message: null,
             retryable: true,
           },
         },

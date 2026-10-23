@@ -1,3 +1,5 @@
+import { createInvoiceReadModel } from "@openlup/platform/invoicing";
+import type { InvoiceHostPorts } from "@openlup/platform/invoicing/contracts";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { CustomerOrdersListResponse } from "../../../src/domains/customers/accountV2Contracts.js";
 import {
@@ -171,4 +173,30 @@ function groupBy(rows: Row[], column: string): Map<string, Row[]> {
 
 function text(value: unknown): string {
   return typeof value === "string" ? value : "";
+}
+
+/** Native account history is supplied as a safe projection, after real host
+ * ownership authorization. Missing native parity stays typed unsupported. No
+ * raw metadata, provider URLs or mutation callback crosses this boundary. */
+export function createCustomerInvoiceHistoryReadModel(binding: {
+  ownsOrder(input: { accountRef: string; orderId: string }): Promise<boolean>;
+  readDocuments?: (orderId: string) => Promise<Extract<Awaited<ReturnType<InvoiceHostPorts["accountHistory"]["read"]>>, { kind: "found" }>["documents"]>;
+  resolveDownload?: InvoiceHostPorts["accountHistory"]["resolveDownload"];
+  artifacts?: Pick<InvoiceHostPorts["artifacts"], "download">;
+}) {
+  const unsupported = { kind: "unsupported", code: "host_binding_required", retryable: false, effectMayHaveSucceeded: false } as const;
+  return createInvoiceReadModel({
+    artifacts: binding.artifacts,
+    accountHistory: {
+      async read(input) {
+        if (!await binding.ownsOrder(input)) return { kind: "denied" };
+        if (!binding.readDocuments) return unsupported;
+        return { kind: "found", ...input, documents: await binding.readDocuments(input.orderId) };
+      },
+      async resolveDownload(input) {
+        if (!await binding.ownsOrder(input)) return { kind: "denied" };
+        return binding.resolveDownload ? binding.resolveDownload(input) : unsupported;
+      },
+    },
+  });
 }

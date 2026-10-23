@@ -104,6 +104,8 @@ export function createSupabaseAccountingReadPort(
         throw new AccountingControlPersistenceError("Accounting order summary operation read failed");
       }
       const operations = Array.isArray(operationResult.data) ? operationResult.data as Record<string, unknown>[] : [];
+      // The compatibility projection feeds the package lineage resolver; SQL,
+      // legacy column names and operator diagnostics remain host-owned.
       const history = resolveAccountingDocumentHistory({ invoices, operations });
       const invoice = history.current
         ? invoices.find((row) => row.id === history.current?.invoiceId) ?? null
@@ -216,32 +218,20 @@ function accountingRecoveryGuidance(outboxStatus: string | null, invoiceStatus: 
   return outboxStatus ? "none" : "not_requested";
 }
 
+const INVOICE_DIAGNOSTIC_CODES = new Set([
+  "faulted", "missing_facts", "legacy_facts_unproved", "retryable", "blocked", "unsupported",
+  "unknown", "absent", "host_binding_required", "selection_required", "disabled", "identity_mismatch",
+  "parent_mismatch", "money_mismatch", "money_unavailable", "invalid_artifact", "uncertain_delivery",
+]);
 function sanitizeAccountingLastError(value: unknown) {
   if (!isRecord(value)) return null;
-  const code =
-    readSafeText(value, "code", 80) ??
-    readSafeText(value, "errorCode", 80) ??
-    readSafeText(value, "reason", 80) ??
-    readSafeText(value, "type", 80);
-  const message =
-    readSafeText(value, "operatorMessage", 240) ??
-    readSafeText(value, "message", 240);
+  const candidate = value.code ?? value.errorCode ?? value.reason ?? value.type;
   const retryable = typeof value.retryable === "boolean" ? value.retryable : null;
-  if (!code && !message && retryable === null) return null;
-  return { code, message, retryable };
-}
-
-function readSafeText(record: Record<string, unknown>, key: string, maxLength: number): string | null {
-  const value = record[key];
-  if (typeof value !== "string") return null;
-  const normalized = redactSensitiveText(value.trim().replace(/\s+/g, " "));
-  return normalized ? normalized.slice(0, maxLength) : null;
-}
-
-function redactSensitiveText(value: string): string {
-  return value
-    .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[redacted-email]")
-    .replace(/\b(?:bearer|token|secret|api[_-]?key|authorization)\s*[:=]?\s+[A-Za-z0-9._~+/=-]{8,}/gi, "[redacted-secret]");
+  return {
+    code: typeof candidate === "string" && INVOICE_DIAGNOSTIC_CODES.has(candidate) ? candidate : "unknown",
+    message: null,
+    retryable,
+  };
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

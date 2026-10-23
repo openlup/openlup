@@ -4062,6 +4062,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/invoicing/artifacts.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/invoicing/capabilities.ts",
       "class": "public-output"
     },
@@ -4114,6 +4118,18 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/invoicing/delivery.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/invoicing/documentHistory.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/invoicing/documentSync.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/invoicing/dutyCollector.ts",
       "class": "public-output"
     },
@@ -4150,7 +4166,19 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/invoicing/readModel.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/invoicing/readback.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/invoicing/reversal.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/invoicing/settlementSync.ts",
       "class": "public-output"
     },
     {
@@ -5570,6 +5598,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/invoicing/artifacts.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/invoicing/canonicalLines.test.ts",
       "class": "public-output"
     },
@@ -5579,6 +5611,10 @@
     },
     {
       "path": "packages/platform/test/invoicing/contracts.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/invoicing/delivery.test.ts",
       "class": "public-output"
     },
     {
@@ -5603,6 +5639,18 @@
     },
     {
       "path": "packages/platform/test/invoicing/postgresStore.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/invoicing/readModel.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/invoicing/readback.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/invoicing/settlementSync.test.ts",
       "class": "public-output"
     },
     {
@@ -17094,6 +17142,10 @@
       "class": "public-output"
     },
     {
+      "path": "src/domains/accounting/referenceInvoicingClient.ts",
+      "class": "public-output"
+    },
+    {
       "path": "src/domains/accounting/stripeAccountingE2EProof.ts",
       "class": "public-output"
     },
@@ -21506,6 +21558,10 @@
       "class": "public-output"
     },
     {
+      "path": "src/pages/admin/OrderDetailAccountingPanel.test.tsx",
+      "class": "public-output"
+    },
+    {
       "path": "src/pages/admin/OrderDetailAccountingPanel.tsx",
       "class": "public-output"
     },
@@ -23147,6 +23203,10 @@
     },
     {
       "path": "tests/postgres/invoicingContinuity.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/invoicingDelivery.test.ts",
       "class": "public-output"
     },
     {

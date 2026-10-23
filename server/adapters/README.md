@@ -210,3 +210,15 @@ SQL to `createPostgresInvoiceStore`, retaining explicit provider metadata,
 request key bytes and document reference/status/replay. The zero-tax positions
 belong only to this local path. Fiscal invoicing requires frozen host facts;
 missing facts never authorize a guessed invoice or consume an owed duty.
+
+The invoice read adapters retain legacy database columns and HTTP/SDK queries.
+Their compatibility shim calls the package lineage resolver. The optional native
+customer-history projection checks owner/order before its host query and returns
+only safe P1 history fields, preserving correction parents, signed totals and
+currency. An unavailable native projection returns typed `host_binding_required`;
+no raw metadata, signed URL, storage receipt or fiscal parity is inferred.
+
+The operator invoice summary maps persisted failures to the closed invoice
+allowlist and omits free-text provider messages, including URLs and credentials.
+Unknown historical codes become `unknown`; attempts, retryability and recovery
+guidance remain visible.
