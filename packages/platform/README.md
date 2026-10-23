@@ -4,14 +4,19 @@ Development preview. This package is part of the publishable set with core and o
 
 It holds the runnable server substrate an OpenLup application composes: the Node HTTP runtime, BFF dispatch, scheduling and job leases, blob storage, data gateways, the node-postgres migration runner and bundle composition. Ports and their contracts stay in `@openlup/core/platform-runtime`.
 
-For the prepared `0.22.0` set, read the [adjacent-release migration and known
-limitations](CHANGELOG.md#0220) before selecting the opt-in M05 parity seams or
-M06 composition bindings, the M07 payment selectors, or M08 fulfillment services. Native delivery alignment stays off or shadow until a host composes its automatic-renewal runner with the G23 admission decorator. M07 payment truth is complete for this wave; its selectors are default-off. M06 remains incomplete: inventory and shipping entries
-are development-preview surfaces, with managed-host proof classes pending in the
+For the prepared `0.23.0` set, read the [adjacent-release migration and known
+limitations](CHANGELOG.md#0230) before selecting the opt-in parity seams.
+Install the complete native chain through position 76; follow the `0.22.0`
+native-row migration notes. Native delivery alignment stays off or shadow until
+a host composes its automatic-renewal runner with G23 admission.
+M10 subscription renewal/retry (P1 exports, forward controls, P2 stores/executor,
+native N1 SQL landed) and M09 invoicing selection/type-only contracts (no SQL)
+are **EXPERIMENTAL, INCOMPLETE and DEFAULT-OFF**, not for adopter activation.
+No runner is activated; G23/N1 host obligations remain pending.
+M06 managed-host proof classes remain pending in the
 [M06 parity ledger](../../docs/platform/plans/oss-m06-stock-reservations-delivery.md#parity-pending-rows).
-The size gate compares the prepared `0.22.0` set with the published `0.21.0` tarball;
-preparation, offline adapter evidence and a passing size cap grant no publication
-or provider-account certification.
+Size comparison uses the published `0.22.0` tarball. Preparation and offline
+adapter evidence grant no publication or provider-account certification.
 
 Longer module recipes live in the [platform package reference](../../docs/platform/PLATFORM_PACKAGE_REFERENCE.md).
 
@@ -39,7 +44,8 @@ Longer module recipes live in the [platform package reference](../../docs/platfo
 | `./fulfillment/omnipack` | Opt-in Node fulfillment example with injected I/O; default-off. |
 | `./payments` | Experimental prepared-attempt ordering with injected persistence, execution and failure policy; contracts at `./payments/contracts`. |
 | `./fulfillment`, `./fulfillment/contracts` | [Experimental fulfillment services, contracts and status canon](../../docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#fulfillment-contracts). |
-| `./subscriptions`, `./subscriptions/contracts` | [Experimental subscription contracts and renewal port](../../docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#subscription-contracts). |
+| `./subscriptions`, `./subscriptions/contracts` | Default-off, incomplete; [experimental subscription contracts and renewal port](../../docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#subscription-contracts). |
+| `./invoicing`, `./invoicing/contracts` | Default-off, incomplete invoicing selection and type-only contracts; no SQL or activation. |
 | `./inventory` | Experimental schemas/ports, handlers, native stores, projection, injected forecast and SQL descriptor; `./inventory/contracts` DTOs. |
 | `./catalog` | Experimental neutral catalog schemas, drafts, reads, media source packs and publication ports |
 | `./catalog/contracts` | Dependency-free catalog DTOs, media resolver, authority and canonicalization helpers |

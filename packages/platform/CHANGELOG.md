@@ -10,6 +10,11 @@ in the source repository.
 
 ## [Unreleased]
 
+## [0.23.0]
+
+- Publishable on the npm `latest` dist-tag as `0.23.0`, from tag
+  `openlup-platform-v0.23.0`.
+
 - Add `approveTrackingUrl` inputs to `verifyAndNormalizeFulfillmentObservation`,
   `PostgresFulfillmentShipmentSpineOptions`, `FulfillmentAdapterConformanceSubject`
   and reconciliation `trackingCodecs`. Under the strict default, provider tracking
@@ -113,6 +118,119 @@ receipt processed by 0.22.0 fails with `fulfillment_observation_outcome_conflict
 Drain in-flight observation retries before upgrading. No bridges or aliases are
 provided for these native rows. Wider incumbent correlation/tracking references
 require an explicit adopter allowlist; the default refuses and reports them.
+
+Close the scheduled native stock-evidence refresh/reopen gap with forward
+`20261022165000_fulfillment_stock_evidence_replay_reopen.sql` and its byte-identical
+fulfillment package projection. Matching fingerprints refresh severity and nullable
+quantities, reopen status, and clear `resolved_at`; identity, first-seen time and
+historical resolver metadata survive. Existing-row replays and resolution serialize
+on the row lock. Fingerprint mismatches still raise `23505`.
+
+Migration: install the complete canonical native catalogue through `20261022165000`
+before stock adoption, preserving its immutable ledger prefix. Sparse package SQL
+is not a standalone install chain. The managed baseline already has this behavior.
+Legacy 0.22.0 whole-input fingerprints are not rewritten and still conflict with
+PR1 identity fingerprints, including after resolution.
+
+- Add experimental invoicing declarations and explicit default-off capability selection, preserving exact absence, uncertain effects, correction identity and owed-duty visibility.
+- Freeze host fiscal/facts/seller/money, registry, artifact, delivery, payout-item and safe account-history seams without installing a worker, store, provider or route.
+
+Approve only the exact frozen M10/F17 native and managed SQL packet through a separate forward-control class, with inert fixtures, refusal plants and a required real PostgreSQL/pgTAP catalog gate. This control adds no migration, runtime activation or new permission to an installation.
+
+- Add experimental subscription contracts and exact server/browser subpaths, preserving schedule identity, graph transaction boundaries, deferred admission and explicit native capability refusals.
+- Contribute the unchanged hosted cycle, refusal and durable failure mechanisms with injected policy and their characterization; preserve native captured-case protection through rollback until actual arrival.
+
+- Add injected native renewal and retry stores and a native executor using the subscription ports; bind hosted charge/failure facades to the contributed mechanism and existing M07 policies.
+- Type-level change visible to dev-preview consumers: `capabilities.retryRecovery` changes from `"unavailable"` to `"selected"` (asserted in packages/platform/test/subscriptions/portFit.test.ts).
+
+Migration: Install native N1 through the full ordered manifest before composing the retry driver. Native declines can retry or recover the original obligation instead of stalling indefinitely (F16); exhaustion leaves an active subscription and open case with no next retry. Preserve ledgers on rollback. The initial binding preserves case-before-outcome order and atomic terminal/bookkeeping writes. An existing immutable receipt short-circuits initial terminal replay before settlement, rebinding or case propagation, preserving all later retry effects; no runner is activated and M07 native prepared-store parity remains unavailable.
+
+Host obligations: establish explicit logical-cycle correlation before invoking the runner (including prepare/execute). Ordinary retries must use the frozen mandate/authorization; N1 does not bind an ordinary retry method, so the P8 retry driver or host must enforce this, with a composition witness added in P8. Prepared retries retain the existing non-terminal `retry_scheduled` disposition with no next dispatch date. Bare `failed` execution status without explicit failure evidence requires verified readback (or remains awaiting an ACK).
+
+A host or driver must never call `openCase` after a replayed `applyFailure` receipt, and the P8 retry driver must add a zero-delta replay witness.
+
+### Warehouse product-sync parity
+
+A3 #311 restores product-sync parity and safe diagnostics in the opt-in warehouse
+adapter, including product/pack projection and injected transport behavior.
+It remains default-off with offline evidence only and no provider-account proof.
+
+Migration: upgrade the complete core/outbox/platform set from `0.22.0` to
+`0.23.0` for exact peers. Install the complete canonical native chain through
+position 76 (`20261022165000_fulfillment_stock_evidence_replay_reopen.sql`),
+including native N1, before selecting native stores. Sparse package SQL is not
+an installation chain. Follow the shadow-draft, observation-retry and legacy
+alert-fingerprint migration notes above; rollback preserves the forward ledger.
+
+### Experimental stages: no adopter activation
+
+M10 subscription renewal/retry is **EXPERIMENTAL, INCOMPLETE and DEFAULT-OFF**,
+not for adopter activation. This set includes P1 exports, the forward controls,
+and P2 native renewal/retry stores and executor with native N1 SQL landed.
+No runner is activated. G23 composition and N1 correlation, frozen authorization
+and replay obligations remain pending: compose admission before any new cycle,
+bind a logical cycle before prepare/execute, enforce frozen authorization on
+ordinary retries, and never open a case after a replayed failure receipt.
+The later retry driver still owes its zero-delta replay witness.
+
+M09 invoicing capability selection and type-only contracts are
+**EXPERIMENTAL, INCOMPLETE and DEFAULT-OFF**, not for adopter activation.
+There is no invoicing SQL, store, worker, provider or route in this stage.
+Installing the set does not register subscription or invoicing routes, workers
+or a renewal runner; host composition remains explicit.
+
+### Known limitations
+
+- Managed dunning exhaustion still pauses active subscriptions; retaining active status needs a managed forward. Native N1 lands the bounded retry/failure repair, with the host obligations below still pending.
+- D8-1: native advisory v2 promo-code candidates/rejection details unavailable.
+- D8-2: native mounted v2 issue/honor/fallback unavailable.
+- D8-3: native acquisition-only mounted issuance/honor unavailable.
+- D8-4: full native/managed eligibility equivalence unavailable.
+- Bundle-1: independent DB human-only actor-kind enforcement absent natively; first in the native-backend parity round.
+- Bundle-2: managed-equivalent actor-kind/email history absent natively.
+- Bundle-3 closes injected-reader M05 mounted admin/feed readback only. Native new-purchase stock read absent despite P5a installed-store proof; deferred second after bundle-1 (owner 2026-10-21); readiness refuses.
+- Bundle-4: incumbent real-PostgreSQL contention only; no exactly-once guarantee.
+- Managed schema/pgTAP retain `44.404`; removal needs owner decision/forward; reference composition supplies it to app code.
+- A1 offline only; account/hosted-time/owner TEST evidence unclaimed; `communications/klaviyo` verification-pending.
+- M05 omitted opt-ins preserve defaults/outputs/read order/schedules/refusals/acceptance-token bytes/SQL.
+- Native inventory adjustment unavailable; address writes refuse readiness. Flat-rate save needs selected port/Core readiness/applied-seed observation.
+- Native shipping audit unavailable; handler swallows best-effort audit failure.
+- Native flat-rate integer bounds (0 through host maximum; reference 100,000 minor units) use request schema, not DB CHECK.
+- Managed ATP/forecast/dated-supply/pagination readback unproved/pending M06.
+- Managed two-session locks/concurrency/uncovered compensation unproved/pending M06.
+- Managed exact-prefix upgrade/ledger unproved/pending M06.
+- Managed address idempotency/conflict/readback unproved/pending M06.
+- Managed successful flat-rate read/save unproved/pending host authority.
+- M06 stock-wait lifecycle/durable timing/staging controls retain C5/C6; busy/try-gate, continuity/flag/TTL transfers are dispositions, not PASS.
+- Shipping national-registry fields/locale-specific `canonicalAddressKey` fold await M16 host market pack/key migration; reference shipping copy stays locale-specific until M16.
+- Native durable prepared storage, method setup, absence reopen and cumulative refunds unavailable; no production installation parity claimed.
+- Typed refusal-envelope forwarding unavailable (`failureReason` only); reusable registration needs host ownership resolution.
+- Incomplete chargebacks stay refunds/unapplied: reclassification bypasses evidence validation into dispute apply; limited operator recovery.
+- Audit compatibility still detects `chargeId`; refund operation identity/original money supply no typed charge identity.
+- M07 follow-up: repair poll can clear host redirect; post-timeout verify never restarts polling; unlocalized poller; fixture builds/never calls handler.
+- M07 follow-up: reference status route wrong-rail witness.
+- M07 follow-up: explicit reference-route refusal for unsupported method setup.
+- M07 follow-up: deployment-neutral disabled-verify reason.
+- M07 follow-up: reference card normalizer missing-amount path; package settling evidence already requires positive money.
+
+- Native delivery alignment stays off or shadow until a host composes the native automatic-renewal runner with the G23 renewal admission decorator. The decorator alone neither composes nor activates the runner.
+- The core fulfillment status map carries localized adopter labels; replace them with host-injected labels or internationalization keys at the host presentation boundary.
+- The warehouse adapter example is opt-in and has offline conformance only; no provider-account proof or activation is established. Exact absence, label create/void and cancellation remain unsupported.
+- After an alignment extension, a deferred renewal operation at the old schedule remains claimed with no reader or reservation effect. Changed terms snapshots conflict under the existing snapshot-conflict rules.
+
+Native parity remains host-owned at these seams. Missing native bindings use the shared `FULFILLMENT_NATIVE_UNSUPPORTED` refusal; no partial write or parity claim is implied.
+
+| Amendment | Host-owned seam and native boundary |
+| --- | --- |
+| G18 | Replacement creation and atomic eligibility/replay receipts; native replacement callback refuses. |
+| G19 | Operator mutations, actor attribution and replay receipts; native mutation callbacks refuse. |
+| G20 | Customer alignment rows; native reader refuses, while the pure delay projection remains callable. |
+| G21 | Commerce list/detail and shipments overview; native read callbacks refuse. |
+| G22 | Authoritative preparation edits, authorization and replay receipts; missing preparation binding refuses before dispatch, after disabled/selection/readiness checks. |
+
+- M08 parity D2 KEEP-GAP: native dispatch finish still loses rejected/unknown error detail.
+- M08 parity KEEP-GAP: immutable stock snapshot/alert evidence storage is absent; cursor JSON is overwritten. Hosts retain referenced evidence.
+- Stock-evidence replay/reopen is CLOSED by native position 76; legacy `0.22.0` alert fingerprints still conflict with `23505`, including after resolution.
 
 ## [0.22.0]
 
@@ -382,102 +500,3 @@ Migration: D11 changes every caller of the reference payment control port (the s
 - M07 follow-up: explicit reference-route refusal for unsupported method setup.
 - M07 follow-up: deployment-neutral disabled-verify reason.
 - M07 follow-up: reference card normalizer missing-amount path; package settling evidence already requires positive money.
-
-## [0.20.0]
-
-- Publishable on the npm `latest` dist-tag as `0.20.0`, from tag
-  `openlup-platform-v0.20.0`.
-
-- Refresh release size-gate baselines from the published `0.19.0` tarballs; all caps remain unchanged.
-
-- Keep active subscriptions active on portable dunning exhaustion (invariant repair).
-
-Migration: apply the complete portable catalogue through
-`20261021120000_dunning_lifecycle_active_repair.sql` at position 71. Previously,
-NULL next retry expired the case and paused an active subscription; it now leaves
-the case open and repairable, retains the final notice and exhaustion event, and
-changes no subscription or cycle dates. Existing rows are not rewritten. Pass
-NULL only when `isDunningLadderExhausted` holds; a class-terminated rung-one refusal
-still must not be passed as NULL. There is no managed twin yet; the managed
-baseline still needs a separate forward.
-
-- Add the readiness-gated native flat-rate binding; the host supplies the named
-  role-free lane and fixed-key rate port, as in the reference composition.
-- Require the native port and Core readiness for the shipping seed migration.
-- Refuse missing-row saves; native audit remains explicitly unsupported and best effort.
-
-Migration:
-Apply the complete portable chain through 20261021200000_shipping_flat_rate_seed.
-The seed preserves an existing rate and inserts zero only when absent; no ACL or
-role changes are made. New code on an unmigrated schema keeps refusing. Older code
-reads the seeded zero as it read an absent row. An application rollback does not reverse either forward
-(positions 71 and 72), and older runners refuse the extended ledger.
-Managed host-save authority remains pending.
-
-- Add the shipping `SHIPPING_MIGRATIONS` export and the optional
-  `nativeRateReadiness` / `nativeRateSchema` binding dependencies.
-
-Migration: upgrade the complete `@openlup/*` set from `0.19.0` to `0.20.0`
-for exact internal pins. Native rate bindings require the selected port plus
-Core readiness and a same-database schema observation of the applied seed.
-Install the complete canonical migration catalogue, never sparse package
-projections as an installation chain.
-
-### Cumulative M06 status
-
-- M06 remains incomplete: inventory and shipping are development-preview
-  surfaces, with managed-host proof classes pending.
-- Inventory and shipping contracts, stock/ATP reads, reserve/release/expire
-  operations, subscription forecasts, delivery selection, address and flat-rate
-  handlers first shipped in `0.18.0`. Opt-in inventory/shipping/composition
-  bindings (P5a/P5b) first shipped in `0.19.0`. M06's only new behaviour in
-  `0.20.0` is native flat-rate save behind readiness; the portable dunning
-  invariant repair is separate from M06. Host-owned policy and unsupported
-  operations retain their explicit boundaries.
-
-### Known limitations
-
-- The portable dunning invariant repair has no managed twin in this set. The
-  managed baseline pauses active subscriptions on exhaustion; keeping them active
-  requires a separate managed forward. Portable proof does not establish managed parity.
-
-- D8-1: native advisory v2 promo-code candidates and rejection details are not supported on the native backend.
-- D8-2: native mounted v2 code issue/honor/fallback is not supported on the native backend.
-- D8-3: acquisition-only mounted issuance/honor is not supported on the native backend.
-- D8-4: full native/managed eligibility equivalence is not supported on the native backend.
-- Bundle-1: independent database human-only actor-kind enforcement is not supported on the native backend and is the first item of a future native-backend parity round.
-- Bundle-2: managed-equivalent actor-kind/email history is not supported on the native backend.
-- Bundle-3 remains closed for M05 mounted admin/feed readback with an injected stock reader, while native new-purchase stock reads remain unsupported despite P5a's installed native inventory-store read proof.
-- Bundle-4 establishes only incumbent real-PostgreSQL contention characterization and provides no exactly-once guarantee.
-- The managed baseline schema and its pgTAP tests retain the incumbent legacy value `44.404`; removing it needs a forward migration and an owner decision, while reference composition supplies that value to application code.
-- A1 evidence is offline only: account verification, hosted-time behaviour and owner TEST certification are not claimed, and the `communications/klaviyo` adapter's capabilities stay verification-pending.
-- M05 parity seams are opt-in and omitted bindings preserve incumbent defaults, outputs, read order, scheduling, refusals, acceptance-token bytes and exported SQL.
-- Native inventory adjustment remains unsupported; native address writes refuse
-  required-capability readiness. Native flat-rate save is supported only behind
-  the selected port, Core readiness and applied-seed schema observation.
-- Native new-purchase stock read is deferred to the native-backend parity round
-  (owner 2026-10-21), second after M05 bundle-1; required readiness still refuses
-  honestly.
-- Native shipping-rate save has no durable audit: audit is explicitly unsupported,
-  and the incumbent handler swallows the best-effort audit failure.
-- Native flat-rate value bounds (integer, 0 <= value <= the host request schema's
-  maximum) are enforced by that schema, not a database CHECK; the reference
-  maximum is 100,000 minor units.
-- Managed host ATP/forecast/dated-supply/pagination readback is not proved and
-  remains pending in the M06 ledger; no managed-host parity is claimed.
-- Managed two-session lock order/concurrency and uncovered compensation paths
-  are not proved on a managed host and remain pending; no equivalence is claimed.
-- Managed exact-prefix upgrade/ledger is not proved on a managed host and remains
-  pending; no managed installation equivalence is claimed.
-- Managed address adapter idempotency/conflict/readback is not proved on a managed
-  host and remains pending; no fixture-to-host equivalence is claimed.
-- Managed successful flat-rate read/save remains pending host authority and is
-  not proved on a managed host; no successful managed host-save claim is made.
-- M06 adopter stock-wait lifecycle, durable subscription timing and staging
-  control observations retain their separate C5/C6 evidence gates. Busy/try-gate
-  protocol, durable stock-wait continuity and staging flag/TTL rows transferred
-  to C5 adopter evidence are dispositions, not PASS.
-- Shipping contracts retain national-registry address fields and
-  `canonicalAddressKey` retains a locale-specific character fold. M16 owns their
-  move behind a host-supplied market pack with a canonical-key migration plan.
-- Reference shipping UI copy remains locale-specific until M16.

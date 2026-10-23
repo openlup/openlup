@@ -650,3 +650,31 @@ C4 readback on 2026-10-22, against the published packages: **PASS, 4/4**.
 
 The M08 release set is published; adopter adoption starts from these versions.
 The known limitations in the `[0.22.0]` notes are unchanged.
+
+## Parity wave and next set preparation
+
+Status: design boundary for the prepared `0.23.0` set; no activation authority.
+Stock sync preserves rejected-row diagnostics, partial success, cursor evidence
+and identity fingerprints. Dispatch preserves sanitized transcripts, typed
+failures, acceptance recovery and host-approved tracking. Paged reconciliation
+and observation ingress retain host-owned scheduling, checkpoint and receipt
+projection, counted refusals and strict evidence sinks. Hosts retain referenced
+raw evidence and explicitly admit wider provider references.
+
+Native stock-evidence replay reopens matching alerts and refreshes quantities
+through the complete canonical migration chain. Legacy native alert fingerprints
+still conflict, including after resolution; native shadow drafts and observation
+retries require the migration steps in the [candidate notes](../../../packages/platform/CHANGELOG.md#0230).
+D2 rejected/unknown dispatch-detail durability and immutable stock snapshot/alert
+evidence storage remain KEEP-GAPs. The warehouse adapter retains opt-in product
+sync parity and offline diagnostics without provider-account evidence.
+
+The release set republishes core and outbox unchanged and carries subscription
+renewal/retry and invoicing contract stages as EXPERIMENTAL, INCOMPLETE and
+DEFAULT-OFF, not for adopter activation. Native renewal/retry stores and executor
+include N1 SQL; there is no runner activation, and G23/N1 composition,
+correlation, authorization and replay obligations remain pending. Invoicing
+selection/type-only contracts install no SQL, worker or route. Packed default
+configuration must leave both capabilities off. Set preparation requires the
+existing artifact budgets, released-artifact baselines, source snapshot refresh
+and cold-consumer gates; it creates no publication or adopter permission.
