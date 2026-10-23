@@ -289,6 +289,8 @@ it.each(["handshake", "query"])("closes real TCP sockets when a peer stalls the 
   const server = createServer(socket => {
     sockets.add(socket);
     socket.on("close", () => sockets.delete(socket));
+    // The probe deliberately destroys its client when the peer stalls.
+    socket.on("error", () => {});
     let authenticated = false;
     socket.on("data", data => {
       if (phase === "handshake") return;
