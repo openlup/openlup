@@ -2757,7 +2757,7 @@ export declare function runFulfillmentDispatchWorker(input: {
         mode: DispatchRecord["mode"];
         batchLimit: number;
     };
-    /** Pure local fingerprint for shadow only: 1–128 characters from [A-Za-z0-9:_-]. Invalid output or a throw refuses before evidence writes. Never return raw command/PII; keep stable across replay and live preparation. */
+    /** Pure local shadow fingerprint: a lowercase 64-hex SHA-256 digest of the adopter's canonical command bytes. Invalid output or a throw refuses before evidence writes. Never return raw command/PII. Used across shadow claim/readback/attempt; shadow never begins, and live preparation must produce the same identity. */
     shadowCommandFingerprint?: (request: FulfillmentDispatchRequest) => string;
     now?: () => Date;
 }): Promise<{

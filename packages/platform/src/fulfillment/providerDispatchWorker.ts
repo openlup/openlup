@@ -14,7 +14,7 @@ export async function runFulfillmentDispatchWorker(input: {
     acceptance(fulfillmentRef: string): { providerAttemptKey: string; labelKey: string };
   };
   config: { mode: DispatchRecord["mode"]; batchLimit: number };
-  /** Pure local fingerprint for shadow only: 1–128 characters from [A-Za-z0-9:_-]. Invalid output or a throw refuses before evidence writes. Never return raw command/PII; keep stable across replay and live preparation. */
+  /** Pure local shadow fingerprint: a lowercase 64-hex SHA-256 digest of the adopter's canonical command bytes. Invalid output or a throw refuses before evidence writes. Never return raw command/PII. Used across shadow claim/readback/attempt; shadow never begins, and live preparation must produce the same identity. */
   shadowCommandFingerprint?: (request: FulfillmentDispatchRequest) => string;
   now?: () => Date;
 }) {
@@ -64,7 +64,7 @@ export async function runFulfillmentDispatchWorker(input: {
           let cause: "adopter_fingerprint_invalid" | "adopter_fingerprint_failed" | undefined;
           try { value = input.shadowCommandFingerprint(request); }
           catch { cause = "adopter_fingerprint_failed"; }
-          if (!cause && typeof value === "string" && value.length > 0 && value.length <= 128 && !/[^A-Za-z0-9:_-]/u.test(value)) shadowFingerprint = value;
+          if (!cause && typeof value === "string" && /^[a-f0-9]{64}$/.test(value)) shadowFingerprint = value;
           else cause ??= "adopter_fingerprint_invalid";
           if (cause) return { ...result, ok: false, failures: result.failures + 1, reason: cause,
             refusal: { reason: "malformed" as const, phase: "prepare" as const, retryable: false as const, cause }, ...diagnostics() };

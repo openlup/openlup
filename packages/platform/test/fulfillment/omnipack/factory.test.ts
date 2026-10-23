@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { expect, it, vi } from "vitest";
 import { createPostgresFulfillmentDispatchStore, runFulfillmentDispatchWorker } from "../../../src/fulfillment/index.js";
 import { dispatchResult, shadowDispatchEvidence } from "../../../src/fulfillment/dispatchProjection.js";
@@ -1028,6 +1029,8 @@ function seamLedger(req: FulfillmentDispatchRequest) {
     if (sql.includes("fulfillment_dispatch_claim")) {
       trace.push("claim");
       const evidence = JSON.parse(values[5] as string) as DispatchEvidence;
+      // Match the native claim domain before retaining evidence.
+      if (!/^[a-f0-9]{64}$/.test(evidence.commandFingerprint)) throw Error("fulfillment_dispatch_evidence_invalid");
       if (record) { expect(JSON.stringify(evidence)).toBe(JSON.stringify(record.evidence)); expect(values[4]).toBe(record.mode); }
       const replayed = record !== null;
       record ??= { dispatchRef: "dispatch-a", requestKey: first as string, fulfillmentRef: req.fulfillmentRef,
@@ -1072,6 +1075,7 @@ it("preserves the default shadow evidence bytes and JSON request fingerprint", (
 it("uses the injected shadow identity through native claim/readback/attempt replay and live begin", async () => {
   const f = fixture(() => jsonResponse({}, 400)), req = request(), ledger = seamLedger(req);
   const prepared = await prepare(f.adapter, req);
+  expect(prepared.commandFingerprint).toMatch(/^[a-f0-9]{64}$/);
   const fingerprint = vi.fn(() => prepared.commandFingerprint);
   expect(prepared.commandFingerprint).not.toBe(shadowDispatchEvidence(req).commandFingerprint);
   expect(await ledger.run(f.adapter.dispatch, "shadow", fingerprint)).toMatchObject({ ok: true, providerCalls: 0 });
@@ -1090,9 +1094,14 @@ it("uses the injected shadow identity through native claim/readback/attempt repl
   expect(live.record().evidence.commandFingerprint).toBe(ledger.record().evidence.commandFingerprint);
   expect(live.trace.slice(0,6)).toEqual(["read", "claim", "read", "attempt", "begin", "finalize"]);
   expect(f.fetchImpl).toHaveBeenCalledTimes(1);
+  // The adopter guard mirrors the native claim's fingerprint contract exactly.
+  const claimSql = readFileSync(new URL("../../../sql/20261022080000_fulfillment_command_ledger.sql", import.meta.url), "utf8");
+  const workerSource = readFileSync(new URL("../../../src/fulfillment/providerDispatchWorker.ts", import.meta.url), "utf8");
+  expect(claimSql).toContain("p_evidence->>'commandFingerprint' !~ '^[a-f0-9]{64}$'");
+  expect(workerSource).toContain('/^[a-f0-9]{64}$/.test(value)');
 });
 it.each([
-  { name: "invalid output", raw: "private fingerprint", fingerprint: () => "private fingerprint", cause: "adopter_fingerprint_invalid" },
+  { name: "invalid output", raw: "v1:cmd_A", fingerprint: () => "v1:cmd_A", cause: "adopter_fingerprint_invalid" },
   { name: "throw", raw: "private_fingerprint_failed", fingerprint: () => { throw Error("private_fingerprint_failed"); }, cause: "adopter_fingerprint_failed" },
 ])("refuses adopter fingerprint $name with a closed cause and no persistence or raw diagnostics", async ({ raw, fingerprint, cause }) => {
   const f = fixture(), ledger = seamLedger(request()), callback = vi.fn(fingerprint);
