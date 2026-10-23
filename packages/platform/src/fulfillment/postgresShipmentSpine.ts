@@ -64,6 +64,7 @@ const RAISE_EXCEPTION_SQL = `
 
 export interface PostgresFulfillmentShipmentSpineOptions {
   portKey: string;
+  approveTrackingUrl?(url: string): boolean;
   evidenceChannel?: "poll" | "push";
   requiredProviderType?: "simulator";
 }
@@ -115,7 +116,7 @@ export function createPostgresFulfillmentShipmentSpinePort(
   };
 
   return {
-    localPersistence: localPersistence(executor),
+    localPersistence: localPersistence(executor, options.approveTrackingUrl),
     createShipment(request) {
       return callCreate(executor, portKey, [
         request.idempotencyKey,
@@ -296,7 +297,7 @@ function asRecord(value: unknown): Record<string, unknown> | null {
 }
 
 /** G17 native local persistence, composed on the same injected executor. */
-function localPersistence(executor: PgQueryExecutor) {
+function localPersistence(executor: PgQueryExecutor, approveTrackingUrl?: (url: string) => boolean) {
   return {
     async readLocalFulfillmentState(ref: string) {
       const result = await executor.query(`SELECT shipment.status,shipment.handed_over_at,
@@ -305,8 +306,20 @@ function localPersistence(executor: PgQueryExecutor) {
       const row = result.rows[0];
       return { status: typeof row?.status === 'string' ? row.status : null, latestStatusOccurredAt: date(row?.latest_status_occurred_at), handedOverAt: date(row?.handed_over_at) };
     },
+    async readLocalFulfillmentStatus(ref: string) {
+      const result = await executor.query('SELECT status FROM public.fulfillment_shipments WHERE id=$1::uuid', [ref]);
+      return typeof result.rows[0]?.status === 'string' ? result.rows[0].status : null;
+    },
+    async latestStatusOccurredAt(ref: string) {
+      const result = await executor.query("SELECT max((observation#>>'{fact,occurredAt}')::timestamptz) AS latest_status_occurred_at FROM public.fulfillment_observations WHERE shipment_id=$1::uuid AND status_recorded", [ref]);
+      return date(result.rows[0]?.latest_status_occurred_at);
+    },
+    async readHandedOverAt(ref: string) {
+      const result = await executor.query('SELECT handed_over_at FROM public.fulfillment_shipments WHERE id=$1::uuid', [ref]);
+      return date(result.rows[0]?.handed_over_at);
+    },
     async recordObservation(observation: import('./contracts/index.js').FulfillmentObservation) {
-      const safe = projectObservation(observation);
+      const safe = projectObservation(observation, approveTrackingUrl);
       return nativeCall<{ replayed: boolean }>(executor,'fulfillment_record_observation',[safe.eventKey,safe.correlation.fulfillmentRef,JSON.stringify(safe),safe.firstReceivedAt]);
     },
     async recordStatusEvidence(ref: { fulfillmentRef: string }, observation: import('./contracts/index.js').FulfillmentObservation) {

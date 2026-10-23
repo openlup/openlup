@@ -8,6 +8,7 @@ export function enrichTrackingReference(
   ref: FulfillmentTrackingReference,
   deliveryCarrier: { carrierRef: string | null; serviceRef: string | null } | null,
   codecs: {
+    approveTrackingUrl?(url: string): boolean;
     normalizeCarrier(input: { carrierRef: string | null; serviceRef: string | null }): string | null;
     publicUrl(carrierRef: string | null, trackingNumber: string): string | null;
   },

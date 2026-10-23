@@ -3466,6 +3466,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/fulfillment/omnipack/reconciliation.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/fulfillment/omnipack/trackingReferences.ts",
       "class": "public-output"
     },
@@ -5167,6 +5171,10 @@
     },
     {
       "path": "packages/platform/test/fulfillment/omnipack/conformance.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/fulfillment/omnipack/dispatchReconciliationParity.test.ts",
       "class": "public-output"
     },
     {

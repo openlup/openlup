@@ -146,6 +146,9 @@ async function requestJson(
 ): Promise<unknown> {
   const method = (init.method ?? "GET").toUpperCase();
   const attempts = method === "GET" ? config.safeReadRetries + 1 : 1;
+  // Dispatch/readback diagnostics must not change product-sync or stock retry policy.
+  const diagnoseRedirectFailure = refuseRedirectRetry || operation === "createOrder"
+    || operation === "getFulfilments" || operation === "getFulfilmentRequests";
   let lastError: OmnipackProviderError | null = null;
 
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
@@ -175,7 +178,7 @@ async function requestJson(
         : new OmnipackProviderError({
           operation,
           status: null,
-          code: refuseRedirectRetry && isRedirectRefusal(error) ? "redirect_refused" : "network_error",
+          code: diagnoseRedirectFailure && isRedirectRefusal(error) ? "redirect_refused" : "network_error",
           retryable,
           mayHaveSucceeded: submitted && mayPostHaveSucceeded(method, null),
         });

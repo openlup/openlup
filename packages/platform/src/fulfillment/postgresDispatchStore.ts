@@ -21,7 +21,7 @@ export function createPostgresFulfillmentDispatchStore(db: PgExecutor, host: {
     readCandidate: ref => host.readCandidate(ref),
     prepare: ref => host.prepare(ref),
     async read(key) {
-      const result = await db.query('SELECT public.fulfillment_dispatch_read(ref) AS response FROM public.fulfillment_dispatch_refs ref WHERE request_key=$1', [key]);
+      const result = await db.query("SELECT public.fulfillment_dispatch_read(ref) || jsonb_build_object('acceptance',ref.acceptance) AS response FROM public.fulfillment_dispatch_refs ref WHERE request_key=$1", [key]);
       return result.rows[0]?.response as DispatchRecord | undefined ?? null;
     },
     claim: input => nativeCall(db, 'fulfillment_dispatch_claim', [input.requestKey, input.fulfillmentRef, input.orderRef, input.parcelRef, input.mode, JSON.stringify(dispatchEvidence(input.evidence))]),

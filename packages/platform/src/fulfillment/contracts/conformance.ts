@@ -14,6 +14,7 @@ type SyncFixture<Port> = { [K in keyof Port]: Port[K] extends (...args: never[])
 
 /** Offline adapter-owned inputs and exact expected outputs; never real customer data. */
 export interface FulfillmentAdapterConformanceSubject {
+  approveTrackingUrl?(url: string): boolean;
   subjectId: string;
   adapter: {
     capabilities: FulfillmentCapabilityDescriptor; dispatch: FulfillmentDispatchPort;

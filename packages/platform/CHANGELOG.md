@@ -10,6 +10,42 @@ in the source repository.
 
 ## [Unreleased]
 
+- Add `approveTrackingUrl` inputs to `verifyAndNormalizeFulfillmentObservation`,
+  `PostgresFulfillmentShipmentSpineOptions`, `FulfillmentAdapterConformanceSubject`
+  and reconciliation `trackingCodecs`. Under the strict default, provider tracking
+  URLs persist only with host approval and must be query-free and credential-free
+  HTTPS; host-built tracking URLs pass unchanged, including query strings.
+- Existing `reconcileFulfillmentObservations` callers now receive row-local unknown
+  readback failures (`ok: false` with `failures`) while recognized rows still
+  process.
+- Observation ingest (`verifyAndNormalizeFulfillmentObservation`, the native
+  `recordObservation`, `reconcileFulfillmentObservations` and
+  `runFulfillmentReconciliationPage`) now applies the durable-sink sanitizer: provider-derived
+  references outside the opaque reference rule (for example `#1001` or
+  `ORD/2026/1`) are stored as null or redacted and counted instead of verbatim,
+  and `firstReceivedAt` must be an RFC 3339 timestamp with an offset; other
+  values fail ingest or the reconciliation row. A correlation refused to null can
+  be quarantined as `missing_correlation` in reconciliation.
+- Fulfillment reconciliation inputs replace `readLocalFulfillmentState` with
+  `readLocalFulfillmentStatus`, `latestStatusOccurredAt` and `readHandedOverAt`;
+  migrate host persistence implementations to these three reads.
+- Add exported page observation contracts and `runFulfillmentReconciliationPage`
+  for host-owned scheduling, checkpoint resume and HTTP/ledger result projection;
+  exact lookup remains separate. `providerCalls` counts logical page-port reads,
+  including failures and exhaustion, separately from transport retries.
+- Add redacted dispatch transcript/mapping fields, typed operation errors,
+  acceptance recovery evidence and provider-status occurrence evidence. Existing
+  unchanged stage/live dispatch identities retain their stored evidence for native replay.
+- Migration: shadow drafts/attempts recorded by `0.22.0`'s native dispatch store
+  do not replay after this change: shadow now hashes the local candidate rather
+  than the provider-prepared command. Claim may consume a remap or raise
+  `fulfillment_dispatch_remap_exhausted`; an existing attempt may raise
+  `fulfillment_attempt_key_conflict`. Complete or abandon such drafts before
+  upgrading. The `0.22.0` native dispatch store has no adopter; no compatibility
+  transition is supplied.
+- D2 KEEP-GAP: native `fulfillment_dispatch_finish` drops rejected/unknown error
+  detail; durable retention is a scheduled SQL follow-up.
+
 - Compatibility: `getStock()` and `getStockMovements()` now return a row union;
   consumers must discriminate rejections with
   `"kind" in row && row.kind === "rejected"` before reading observation fields.

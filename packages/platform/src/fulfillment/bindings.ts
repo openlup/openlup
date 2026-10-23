@@ -12,7 +12,7 @@ export function createFulfillmentServices(options: FulfillmentServicesOptions): 
     const selected = readFulfillmentCapabilities(capability ? [capability] : [], selection);
     if (selected.kind === 'refused') return { ready: false, refusal: selected.refusal };
     if (!selected.descriptor.operations.dispatch.supported) return { ready: false, refusal: { reason: 'unsupported', phase: 'selection', retryable: false } };
-    if (!store || !provider) return { ready: false, refusal: FULFILLMENT_NATIVE_UNSUPPORTED };
+    if (!store || (config.mode !== "shadow" && !provider)) return { ready: false, refusal: FULFILLMENT_NATIVE_UNSUPPORTED };
     return observe();
   };
   return {
