@@ -798,6 +798,10 @@ order. Before direct typecheck or Vitest commands after install or package-sourc
 edits, run `npm run pretest`; otherwise consumers may read stale `dist/` exports.
 
 The [reviewed-forward PostgreSQL proof](tests/postgres/reviewedPortableCreation.test.ts) rejects landed pin drift before replay and tests byte selection for full and partial landings; [data and migrations](docs/platform/DATA_AND_MIGRATIONS.md#exact-reviewed-function-forwards) describes its catalog boundary.
+The `20261022193000` fixture re-pin keeps the claim unchanged and admits
+sync-first fenced finalization and permanent-failure parking; the
+[compatibility posture](docs/platform/CANONICAL_CONTRACTS.md#compatibility-posture)
+describes those outcomes. The fixture and registry do not install SQL.
 
 For the managed pgTAP runner, prerequisites and proof limits, follow
 [Test scope and diagnostics](#separate-db-package-and-coverage-proof).
