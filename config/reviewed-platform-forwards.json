@@ -197,7 +197,7 @@
       ]
     },
     {
-      "path": "db/platform/migrations/20261022200000_fulfillment_stock_evidence_replay_reopen.sql",
+      "path": "db/platform/migrations/20261022165000_fulfillment_stock_evidence_replay_reopen.sql",
       "sha256": "6d132dec2820047f4e337bcf752b3d884600ccc12de03887fe6d6aa5575bc1db",
       "functions": [
         {

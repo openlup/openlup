@@ -961,7 +961,7 @@ $$;
     });
   });
   describe("M08 stock-evidence replacement admission", () => {
-    const path = "db/platform/migrations/20261022200000_fulfillment_stock_evidence_replay_reopen.sql";
+    const path = "db/platform/migrations/20261022165000_fulfillment_stock_evidence_replay_reopen.sql";
     const priorPath = "db/platform/migrations/20260814000000_fulfillment_stock_evidence.sql";
     const portableBaseline = "db/platform/migrations/00000000000000_platform_baseline.sql";
     const manifestPath = "config/platform-migration-manifest.json";
@@ -1047,7 +1047,7 @@ END $$;
       try {
         const sql = probe === "other function" ? exactSql.replace("public.fulfillment_record_stock_evidence(", "public.unrelated(")
           : probe === "file byte" ? exactSql + "\n" : probe.endsWith("repin") || probe === "body" ? changed : exactSql;
-        const targetPath = probe === "other version" ? path.replace("20261022200000", "20261022200001")
+        const targetPath = probe === "other version" ? path.replace("20261022165000", "20261022165001")
           : probe === "other path" ? path.replace("replay_reopen", "unlisted") : path;
         sample.append(sql, targetPath); const head = sample.commit("Refused stock-evidence feature");
         for (const gate of gates(sample, head)) expect(gate).toThrow(/reviewed replacement|reviewed portable/u);
@@ -1056,7 +1056,7 @@ END $$;
     it.each(["path repin", "signature repin", "duplicate entry", "fourth entry", "wrong index", "missing function", "duplicate function", "null preimage"])("refuses stock registry %s", probe => {
       const registry = structuredClone(approved);
       const pins = registry.portableReplacementForwards!, pin = pins[2]!;
-      if (probe === "path repin") pin.path = path.replace("20261022200000", "20261022200001");
+      if (probe === "path repin") pin.path = path.replace("20261022165000", "20261022165001");
       if (probe === "signature repin") pin.functions[0]!.signature = "public.unrelated(text,text,text,text,text,text,integer,integer)";
       if (probe === "duplicate entry") pins[2] = structuredClone(pins[1]!);
       if (probe === "fourth entry") pins.push(structuredClone(pin));
