@@ -72,7 +72,7 @@ twin in the other chain is a documented compatibility gap, not implicit parity.
 Fulfillment appends native command and alignment units,
 `20261022080000_fulfillment_command_ledger.sql` and
 `20261022090000_fulfillment_delivery_alignment.sql`, after the shipping seed.
-`FULFILLMENT_MIGRATIONS` projects units 5, 27, 51, 73 and 74 with canonical identities and byte-identical package assets. Install the
+`FULFILLMENT_MIGRATIONS` projects units 5, 27, 51, 73, 74 and 76 with canonical identities and byte-identical package assets. Install the
 complete catalogue, preserve the full installed prefix and verify its live
 object inventory; the sparse projections are not an install chain. Existing
 native and managed migration bytes remain unchanged.
@@ -641,6 +641,20 @@ case. It never applies the initial money result twice; any bookkeeping failure
 rolls the terminal transaction back for safe replay. Hosts supply its
 transaction executor and evidence-bound correlation; no runner is activated.
 
+
+The stock-evidence replay forward `20261022165000` appends native position 76
+on this catalogue and joins the sparse fulfillment projection. It replaces only
+`fulfillment_record_stock_evidence`: matching-fingerprint replays reopen and refresh
+the alert, clear `resolved_at`, and retain its identity, first-seen time and
+historical resolver run. Mismatches still raise `23505`; legacy 0.22.0 whole-input
+fingerprints are not rewritten, even after resolution. The resolver itself is
+unchanged. Preserve every preceding manifest row and recompute the live
+selected-catalog-v2 digest after the full chain. No managed forward is needed:
+its baseline already refreshes/reopens corresponding evidence. The
+[replay proof](../../tests/postgres/fulfillmentStockEvidenceReplay.test.ts) covers
+fresh installation, the exact predecessor upgrade and runner replay, unchanged
+ledger prefix and function ACL/header, package byte equality, lifecycle/refusals
+and bounded concurrent row locking.
 
 Fulfillment expands the native graph with new command and
 alignment objects at positions 73/74. It preserves all position-0–72 identities,

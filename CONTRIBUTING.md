@@ -156,6 +156,16 @@ resolves every production retry call across the core, package and host sources.
 Its mutation witness removes the refusal class from each discovered call in
 memory and requires the same guard to reject each omission.
 
+The native stock-evidence forward uses
+`npm test -- tests/postgres/fulfillmentStockEvidenceReplay.test.ts` for six real
+PostgreSQL cases: package-port refresh/resolve/reopen, acknowledged and nullable
+replay, identity conflicts, legacy fingerprints, row-lock/resolver races and
+fresh/exact-predecessor catalogue replay with package/inventory/ACL proof.
+`fulfillmentNativeConformance.test.ts` also binds the added sparse descriptor.
+The suite needs local Docker and uses the shared container helper's pinned
+PostgreSQL 16 image. Run build-producing package checks serially because they
+share generated package directories.
+
 The M10/F17 exact-forward controls use
 `scripts/reviewed-batch-forward.test.ts` for per-file refusal plants and separate
 CI/release approval, and `tests/postgres/reviewedBatchForwards.test.ts` for the

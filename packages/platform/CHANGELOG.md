@@ -79,9 +79,15 @@ in the source repository.
   `thresholdKind`: changing quantities, severity or run evidence under the same
   key returns `replayed: true`. Different SKUs or thresholds use different keys;
   a changed identity under a reused key still conflicts.
-- KEEP-GAP: alert refresh and reopen-on-replay are a scheduled forward SQL fix,
-  required before stock adoption. Current native replay updates only
-  `last_seen_at`, retaining stored severity, quantities and status.
+- Closed the scheduled KEEP-GAP for stock alert refresh/reopen with native forward
+  `20261022165000_fulfillment_stock_evidence_replay_reopen.sql`. Matching-identity
+  replay reopens the alert, refreshes severity/quantities and clears `resolved_at`;
+  identity mismatches retain SQLSTATE `23505`.
+
+Migration: install the complete native catalogue through `20261022165000` before
+stock adoption. The package descriptor and SQL asset project that same forward;
+replay preserves the row identity, first-seen time and historical resolver run.
+There is no managed forward or legacy fingerprint rewrite.
 
 Migration: alert rows written by 0.22.0's native port carry the earlier whole-input fingerprint; subsequent writes under those keys conflict with SQLSTATE `23505`, and resolve only marks the row resolved while retaining its key and fingerprint, so it does not clear the conflict. Legacy fingerprints are documented only; this change does not rewrite them.
 

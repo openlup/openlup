@@ -1162,10 +1162,19 @@ evidence may change under the same key and return `replayed: true`; a different
 SKU or threshold uses a different host key. Reusing a key for a different SKU or
 threshold retains the SQL conflict.
 
-KEEP-GAP: alert refresh and reopen-on-replay are a scheduled forward SQL fix,
-required before stock adoption. The current native
-`fulfillment_record_stock_evidence` replay updates only `last_seen_at`; stored
-severity, quantities and status remain unchanged, including a resolved status.
+The native forward `20261022165000_fulfillment_stock_evidence_replay_reopen.sql`
+closes the scheduled alert refresh/reopen gap. A matching identity replay sets
+status to `open`, refreshes severity and both quantities (including SQL NULL),
+uses `clock_timestamp()` for `last_seen_at` and clears `resolved_at`. It preserves
+the row ID, first-seen time, fingerprint and historical `last_sync_run_id`.
+The existing resolver can resolve that reopened alert again; an active threshold
+remains exempt. The SQL compares the supplied opaque fingerprint and retains
+SQLSTATE `23505` for a mismatch. Existing-row replay and resolution serialize on
+the row lock; the last lock holder wins, without a chronological freshness promise.
+Concurrent first inserts can still conflict, and callers updating multiple rows
+must retain consistent lock order. See the [real PostgreSQL replay proof](../../tests/postgres/fulfillmentStockEvidenceReplay.test.ts).
+Install the complete canonical catalogue through this forward before stock adoption;
+the managed baseline already refreshes/reopens its corresponding evidence.
 
 Migration: alert rows written by 0.22.0's native port carry the earlier whole-input fingerprint; subsequent writes under those keys conflict with SQLSTATE `23505`, and resolve only marks the row resolved while retaining its key and fingerprint, so it does not clear the conflict. Legacy fingerprints are documented only; this change does not rewrite them.
 

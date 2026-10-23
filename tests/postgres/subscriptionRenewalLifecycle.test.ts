@@ -40,10 +40,11 @@ beforeAll(async()=>{
  pool=new Pool({connectionString:container.connectionString});
  const db=await pool.connect(),query=db.query.bind(db);
  // Observe the runner's actual SQL boundary. A savepoint exercises rollback of
- // each new forward; the full baseline/prefix is installed only once. Restore
+ // the M10 P2 forward; later units run without probing. The full baseline/prefix
+ // is installed only once. Restore
  // the connection before any behavior/concurrency fixture uses the pool.
  db.query=(async(sql:string,values?:unknown[])=>{
-  const n=units.slice(index).findIndex(u=>readFileSync(u.file,'utf8')===sql);
+  const n=units.slice(index,index+1).findIndex(u=>readFileSync(u.file,'utf8')===sql);
   if(n<0) return query(sql,values);
   const u=units[index+n],bytes=readFileSync(u.file);
   if(n===0 && prefixLedger.length===0) {
@@ -87,7 +88,8 @@ beforeAll(async()=>{
  }) as typeof db.query;
  db.release();
  try {
-  expect(units.slice(index)).toHaveLength(1);
+  expect(index).toBeGreaterThan(0);
+  expect(units[index].file).toMatch(/20261022160000_subscription_retry_lifecycle\.sql$/);
   await expect(runner().apply()).rejects.toThrow('m10_exact_prefix_boundary');
   expect(prefixLedger).toHaveLength(index);
   expect((await runner().apply()).applied).toEqual(units.slice(index).map(u=>u.file));
@@ -96,7 +98,7 @@ beforeAll(async()=>{
 },120_000);
 afterAll(async()=>{await pool?.end();await container?.remove();});
 it('upgrades the exact prefix, preserves old catalogs, closes N1 ACLs, rolls back and replays the runner',async()=>{
- expect(checked).toEqual(units.slice(index).map(u=>u.file));
+ expect(checked).toEqual(units.slice(index,index+1).map(u=>u.file));
  expect((await pool.query('SELECT * FROM public.platform_schema_migrations ORDER BY position')).rows.slice(0,index)).toEqual(prefixLedger);
  expect(await runner().apply()).toEqual({applied:[]});expect((await runner().status()).pending).toEqual([]);
 });
