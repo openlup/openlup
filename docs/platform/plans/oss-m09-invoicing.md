@@ -125,7 +125,7 @@ only the refusal factory and conformance helper to the runtime entry.
 
 ## P2 issue helper boundary
 
-Nine helpers now cover issue sequencing, snapshot/canonical positions, both donor
+P2's nine helpers cover issue sequencing, snapshot/canonical positions, both donor
 allocators, payment readback and event/direct handoff wrappers. Existing host
 facades are their named consumers. The issue worker's compatibility callbacks
 preserve managed payloads and fenced finalization; they do not redefine P1 ports
@@ -165,8 +165,7 @@ F7's new semantic witnesses are additional proof, not claims about old coverage.
 F10's preview correction IDs/numbers derive from correctionRef, not the base order.
 No native forward, provider wire implementation or activation is added here.
 
-P1/P2 remain separate prerequisites; this design grants no merge or release
-authority.
+P3 builds on landed P1/P2; this design grants no merge or release authority.
 
 The native reversal design follows the [canonical reversal rules](../DATA_AND_MIGRATIONS.md#m09-invoicing-forward-design-and-control-approval):
 a safe completed failed attempt may void immediately; in-flight or unknown work
@@ -174,7 +173,4 @@ requires readback. The managed compatibility facade preserves its separate
 incumbent RPC outcomes and late-document compensation; it does not implement
 the native store port.
 
-Registered managed-correction limit: multi-reason / late-issue compensation can
-yield more than one full correction per invoice, as the incumbent does today.
-See the forward owner above for follow-up scope, F4 sync-first settlement and
-F9 parking for classifying hosts only; the reference host sends `{message}`.
+See the [M09 forward owner](../DATA_AND_MIGRATIONS.md#m09-invoicing-forward-design-and-control-approval) for the registered managed-correction limit, follow-up and finalization semantics.

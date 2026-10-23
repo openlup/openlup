@@ -203,8 +203,4 @@ separately owned conforming bridge. No live provider is used by these tests.
 
 Managed correction RPC arguments bind by parameter name; the adapter retains the donor object key order.
 
-Registered managed-correction limit: multi-reason / late-issue compensation can
-yield more than one full correction per invoice, as the incumbent does today.
-See the [forward owner](../../docs/platform/DATA_AND_MIGRATIONS.md#m09-invoicing-forward-design-and-control-approval)
-for the separate control follow-up, replacement-forward requirement and parking
-for classifying hosts only; the reference host sends `{message}`.
+See the [M09 forward owner](../../docs/platform/DATA_AND_MIGRATIONS.md#m09-invoicing-forward-design-and-control-approval) for the registered managed-correction limit, follow-up and finalization semantics.

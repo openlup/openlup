@@ -140,16 +140,11 @@ uses `accounting.correction.v2` and passes the attempt count on both finalizers;
 `ok:false` throws its durable refusal code. Stale catches cannot fail newer work.
 
 Operators identify stranded legacy corrections by `attempt_count > 0`, absent
-`payload.providerCreateIdentity` and invoice status `correction_requested`.
-These outboxes remain in their stored
-processing/failed state, with the invoice `correction_requested`. They require
-provider reconciliation; an empty v2 claim is not completion. No key is guessed
-or backfilled. Inspect the [managed proof](../../../tests/postgres/invoicingManagedCorrection.test.ts)
+`payload.providerCreateIdentity` and outbox status in (`processing`, `failed`),
+whatever the invoice status. See the
+[M09 forward owner](../../../docs/platform/DATA_AND_MIGRATIONS.md#m09-invoicing-forward-design-and-control-approval)
+for reconciliation and cutover requirements. Inspect the [managed proof](../../../tests/postgres/invoicingManagedCorrection.test.ts)
 and [pgTAP recovery witness](../../../supabase/tests/accounting_correction_recovery_test.sql)
 for recovery, lost ACK, exact replay, stale attempts and preserved history.
 
-Registered managed-correction limit: multi-reason / late-issue compensation can
-yield more than one full correction per invoice, as the incumbent does today.
-See the [forward owner](../../../docs/platform/DATA_AND_MIGRATIONS.md#m09-invoicing-forward-design-and-control-approval)
-for the separate control follow-up, replacement-forward requirement and parking
-for classifying hosts only; the reference host sends `{message}`.
+See the [M09 forward owner](../../../docs/platform/DATA_AND_MIGRATIONS.md#m09-invoicing-forward-design-and-control-approval) for the registered managed-correction limit, follow-up and finalization semantics.

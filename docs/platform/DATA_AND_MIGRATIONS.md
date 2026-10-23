@@ -658,14 +658,7 @@ fresh installation, the exact predecessor upgrade and runner replay, unchanged
 ledger prefix and function ACL/header, package byte equality, lifecycle/refusals
 and bounded concurrent row locking.
 
-Managed correction v2 introduces overloads before replacing legacy claim and
-finalizer signatures with fail-closed compatibility bodies. Move adapter and
-pgTAP callers to explicit contract/generation arguments before installation;
-retire the old executor and reconcile attempted legacy rows rather than
-backfilling identity. The two canonical forwards must equal their reviewed
-fixtures and registry hashes byte for byte. See the
-[M09 forward boundary](#m09-invoicing-forward-design-and-control-approval) for
-lock coupling, unresolved work and verification against the landed managed prefix.
+See the [M09 forward owner](#m09-invoicing-forward-design-and-control-approval) for managed correction v2 installation, cutover and reconciliation.
 
 Fulfillment expands the native graph with new command and
 alignment objects at positions 73/74. It preserves all position-0–72 identities,
@@ -985,11 +978,11 @@ owners; no provider mapping or new schema enters the package.
 
 ## M09 invoicing forward design and control approval
 
-Status: design and fixture-only control preparation. These seven fixtures do not
-install SQL, append manifest rows, publish package assets or activate invoicing.
-The feature changes must introduce exactly the approved bytes later. A changed
-byte requires a separate reviewed control before introduction; the self-approval
-refusal remains binding in both CI and release preparation.
+Status: `20261022193000` and `20261022193100` introduce the two managed
+correction forwards; the remaining forwards stay fixture-only. Introduction
+must use exactly the approved bytes. A changed byte requires a separate reviewed
+control before introduction; the self-approval refusal remains binding in both
+CI and release preparation.
 
 Three additional native creation pins cover durable duties, document effects and
 seller revisions. New functions are invokers with `search_path = pg_catalog`;
@@ -1102,8 +1095,8 @@ legacy correction against provider evidence, recording its actual outcome before
 cutover. The reference `accountingInvoicePort`, `accounting_paid_reversal_test`
 and correction recovery pgTAP use v2 (`p_contract_version`,
 `p_claim_attempt_count`); the adapter throws on `ok:false`. Attempted legacy
-rows lacking a durable identity stay processing/failed, with
-`correction_requested` on the invoice and their original error/payload retained.
+rows lacking a durable identity stay processing/failed with their original
+error/payload retained, regardless of the invoice's current status.
 They require provider reconciliation; an empty claim is not completion.
 This adapter migration and its refusal/recovery proof are prerequisites for introducing `20261022193100`; it is not part
 of fixture-only control preparation. The managed `ksefRequired` key is retained
@@ -1127,7 +1120,7 @@ Registered managed-correction limit: multi-reason / late-issue compensation can
 yield more than one full correction per invoice, as the incumbent does today.
 The follow-up is a separately designed control change enumerating
 `order_status_reversal`, `provider_issue_after_order_status_reversal` and
-manual/scaffold interplay. After P3 lands it must be a replacement forward;
+manual/scaffold interplay. After the `20261022193000` forward lands it must be a replacement forward;
 this follow-up is outside M09.
 No transaction spans provider I/O. The
 existing managed order-reversal transaction still couples order and accounting

@@ -730,7 +730,4 @@ selection includes correction/reversal witnesses in `test/invoicing/contracts.te
 See the [invoicing design](../../docs/platform/plans/oss-m09-invoicing.md#p3-correction-and-reversal-boundary)
 for managed migration and reconciliation limits.
 
-Registered managed-correction limit: multi-reason / late-issue compensation can
-yield more than one full correction per invoice, as the incumbent does today.
-The [forward owner](../../docs/platform/DATA_AND_MIGRATIONS.md#m09-invoicing-forward-design-and-control-approval)
-owns the separate control follow-up and replacement-forward requirement.
+See the [M09 forward owner](../../docs/platform/DATA_AND_MIGRATIONS.md#m09-invoicing-forward-design-and-control-approval) for the registered managed-correction limit and follow-up.

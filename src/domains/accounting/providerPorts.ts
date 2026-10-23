@@ -37,9 +37,10 @@ export interface AccountingDocumentProviderInvoiceSnapshot {
     name: string;
     quantity: number;
     /**
-     * Optional host-supplied unit printed next to the quantity. Canonical
-     * positions may carry it; legacy snapshots may omit it. An adapter owns
-     * any locale-specific default when absent.
+     * Unit of measure printed next to the quantity. Every invoicing provider
+     * renders such a column, so the concept belongs to the neutral port rather
+     * than to one adapter. Nothing populates it yet: the document provider
+     * supplies its own locale default when this is absent.
      */
     quantityUnit?: string;
     unitNetMinor: number;
