@@ -198,6 +198,65 @@ it("requires unknown recovery for each supported write and refuses recreation", 
   }
 });
 
+it("rejects a second recovery-required create on unknown readback while conforming unknown and exact absence pass", async () => {
+  for (const [readKind, creates] of [["unknown", true], ["unknown", false], ["absent", true]] as const) {
+    const subject = fixture(), original = subject.provider.issue;
+    const input = { ...issue, identity: { ...identity, invoiceRef: "second-recovery", providerCreateIdentity: "second-recovery" }, recoveryLookupRequired: true };
+    let writes = 0;
+    const count = subject.readWriteCount;
+    Object.assign(subject, { readWriteCount: () => count() + writes });
+    const result: InvoiceWriteResult = creates
+      ? { kind: "issued", identity: input.identity, providerDocumentRef: "external-second", providerDocumentNumber: null, proof, replayed: false }
+      : { kind: "unknown", identity: input.identity, code: "unknown", effectMayHaveSucceeded: true };
+    subject.provider.issue = async request => {
+      if (request.identity.providerCreateIdentity !== input.identity.providerCreateIdentity) return original(request);
+      if (creates) writes++;
+      return result;
+    };
+    const readback: InvoiceReadbackResult = readKind === "absent"
+      ? { kind: "absent", identity: input.identity, evidence: { ...proof, exact: true, complete: true, scope: input.identity } }
+      : { kind: "unknown", identity: input.identity, code: "unknown" };
+    const read = subject.provider.read;
+    subject.provider.read = async request => request.providerCreateIdentity === input.identity.providerCreateIdentity ? readback : read(request);
+    Object.assign(subject.fixtures, {
+      issue: [...subject.fixtures.issue, { input, expected: result }],
+      readback: [...subject.fixtures.readback, { input: input.identity, expected: readback }],
+    });
+    if (creates && readKind === "unknown") await expect(runInvoiceAdapterConformance([subject])).rejects.toThrow(/^INVOICE_CONFORMANCE:recovery_create_without_absence$/);
+    else await expect(runInvoiceAdapterConformance([subject])).resolves.toBeDefined();
+    expect(writes).toBe(creates ? 1 : 0);
+  }
+});
+
+it("rejects every recovery-required create when recovery is undeclared and accepts no-write refusal", async () => {
+  for (const creates of [true, false]) {
+    const subject = fixture();
+    Object.assign(subject, { capability: { ...capability, operations: { ...capability.operations, recovery: { supported: false, reason: "not_implemented" } } } });
+    for (const operation of ["issue", "correction"] as const) {
+      const original = operation === "issue" ? subject.provider.issue : subject.provider.correct;
+      const invoke = async (input: Parameters<typeof original>[0]) => input.recoveryLookupRequired && input.identity.parentProviderDocumentRef !== "wrong-parent" ? refusal : original(input as never);
+      if (operation === "issue") subject.provider.issue = invoke;
+      else subject.provider.correct = invoke;
+      Object.assign(subject.fixtures, { [operation]: subject.fixtures[operation].map(row => ({ ...row, replay: false, expected: row.input.recoveryLookupRequired && row.input.identity.parentProviderDocumentRef !== "wrong-parent" ? refusal : row.expected })) });
+    }
+    const original = subject.provider.issue;
+    const input = { ...issue, identity: { ...identity, providerCreateIdentity: "undeclared-recovery" }, recoveryLookupRequired: true };
+    const result: InvoiceWriteResult = creates ? { kind: "issued", identity: input.identity, providerDocumentRef: "external-undeclared", providerDocumentNumber: null, proof, replayed: false } : refusal;
+    let writes = 0;
+    const count = subject.readWriteCount;
+    Object.assign(subject, { readWriteCount: () => count() + writes });
+    subject.provider.issue = async request => {
+      if (request.identity.providerCreateIdentity !== input.identity.providerCreateIdentity) return original(request);
+      if (creates) writes++;
+      return result;
+    };
+    Object.assign(subject.fixtures, { issue: [...subject.fixtures.issue, { input, expected: result }] });
+    if (creates) await expect(runInvoiceAdapterConformance([subject])).rejects.toThrow(/^INVOICE_CONFORMANCE:recovery_create_without_absence$/);
+    else await expect(runInvoiceAdapterConformance([subject])).resolves.toBeDefined();
+    expect(writes).toBe(creates ? 1 : 0);
+  }
+});
+
 it("allows supported writes with recovery undeclared only with a non-create recovery refusal", async () => {
   const subject = fixture();
   Object.assign(subject, { capability: { ...capability, operations: { ...capability.operations, recovery: { supported: false, reason: "not_implemented" } } } });

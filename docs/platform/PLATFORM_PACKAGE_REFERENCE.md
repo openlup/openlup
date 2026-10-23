@@ -706,6 +706,14 @@ without a write, or unsupported when recovery is undeclared. When recovery and
 readback are both declared, each unknown recovery fixture needs a readback
 fixture expecting unknown for the same full identity. Correction additionally
 needs a mismatched-parent recovery result of refused or unknown without a write.
+For every issue or correction fixture with `recoveryLookupRequired === true`, a
+write-counter increase or an issued result with `replayed === false` requires
+`operations.recovery.supported`, `operations.readback.supported` and
+`operations.exactAbsence.supported`, plus a readback fixture for the same full
+identity expecting exact complete absence. Any readback fixture for that identity
+expecting unknown or unsupported forbids that write or create, even if an absence
+fixture also exists. When recovery is undeclared, every recovery-required fixture
+must return a non-issued result without changing the write counter.
 Declared readback needs found/unknown fixtures and, when exact absence is declared,
 exact scoped absence. Unsupported methods and read-only operations must not write. Optional
 artifact, clearance, settlement and registry support needs host-owned positive

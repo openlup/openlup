@@ -152,6 +152,14 @@ export async function runInvoiceAdapterConformance(subjects: readonly Subject[])
           const invoke = operation === "issue" ? () => provider.issue(row.input as Parameters<Provider["issue"]>[0]) : () => provider.correct(row.input as Parameters<Provider["correct"]>[0]);
           const result = await invoke(); documentResult(result, row.input.identity, "write"); safe(result, subject);
           if (unknownRecovery.includes(row)) requireFact(result.kind === row.expected.kind && subject.readWriteCount() === before, "recovery_unknown_no_write");
+          if (row.input.recoveryLookupRequired === true) {
+            if (!caps.operations.recovery.supported) requireFact(result.kind !== "issued" && subject.readWriteCount() === before, "recovery_create_without_absence");
+            if (subject.readWriteCount() > before || (result.kind === "issued" && result.replayed === false)) {
+              requireFact(caps.operations.recovery.supported && caps.operations.readback.supported && caps.operations.exactAbsence.supported
+                && fixtures.readback.some(read => same(read.input, row.input.identity) && read.expected.kind === "absent")
+                && !fixtures.readback.some(read => same(read.input, row.input.identity) && (read.expected.kind === "unknown" || read.expected.kind === "unsupported")), "recovery_create_without_absence");
+            }
+          }
           requireFact(same(result, row.expected), "write_fixture");
           if (!caps.operations[operation].supported) requireFact(result.kind === "unsupported", "declared_unsupported");
           if (operation === "correction" && caps.operations.correction.supported) {
