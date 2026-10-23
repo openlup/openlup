@@ -8,12 +8,13 @@ import { afterAll, beforeAll, expect, it } from "vitest";
 import { PAYMENT_MIGRATIONS, createPostgresPaymentTruthPort } from "@openlup/platform/payments";
 import { createPostgresMigrationRunner } from "../../server/adapters/postgres/migrationRunner.js";
 import { readSelectedCatalogProjection, selectedCatalogProjectionPayload } from "../../server/adapters/postgres/selectedCatalogProjection.js";
-import { dockerAvailable, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
+import { closePostgres, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, dockerAvailable, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
 
 const AT = "2026-10-20T12:00:00.000Z";
 const manifest = JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8"));
 const units: { file: string; sha256: string }[] = [manifest.baseline, ...manifest.forward];
 let container: PostgresContainer | undefined, pool: Pool;
+const prefixContainers: PostgresContainer[] = [], prefixPools: Pool[] = [];
 const executor = (db: Pool | PoolClient) => ({ query: (text: string, values?: unknown[]) => db.query(text, values) });
 const truth = (db: Pool | PoolClient = pool) => createPostgresPaymentTruthPort(executor(db), {
   dunningTemplateSlug: "payment_failed", recoveryUrlPath: "/recover", recoveryTemplateSlug: "payment_recovered",
@@ -25,9 +26,14 @@ beforeAll(async () => {
   container = await runPostgresContainer({ name: `payments-native-${process.pid}`, password: "synthetic-conformance" });
   if (!await waitForPostgresTcpReady(container.connectionString)) throw new Error("Payments PostgreSQL unavailable");
   pool = new Pool({ connectionString: container.connectionString });
+  // Acquire the secondary fixture before any test's 60s body can begin.
+  const prefix = await runPostgresContainer({ name: `payments-native-upgrade-${process.pid}`, password: "synthetic-conformance" });
+  prefixContainers.push(prefix);
+  if (!await waitForPostgresTcpReady(prefix.connectionString)) throw new Error("Prefix PostgreSQL unavailable");
+  prefixPools.push(new Pool({ connectionString: prefix.connectionString }));
   await runner().apply();
-}, 120_000);
-afterAll(async () => { await pool?.end(); await container?.remove(); });
+}, postgresSetupTimeoutMs);
+afterAll(async () => { await closePostgres([container, ...prefixContainers], [pool, ...prefixPools]); }, postgresTeardownTimeoutMs);
 
 it("installs the full catalogue, binds projections 10/35/56 and replays the canonical ledger/object inventory", async () => {
   expect(PAYMENT_MIGRATIONS.map(unit => unit.position)).toEqual([10, 35, 56]);
@@ -44,15 +50,12 @@ it("installs the full catalogue, binds projections 10/35/56 and replays the cano
   expect((await pool.query("SELECT * FROM public.platform_schema_migrations ORDER BY position")).rows).toEqual(history);
 });
 it("upgrades the exact complete prefix before unit 56 without rewriting installed history", async () => {
-  let resource: PostgresContainer | undefined, upgrade: Pool | undefined;
+  const resource = prefixContainers[0], upgrade = prefixPools[0];
   const root = mkdtempSync(join(tmpdir(), "payments-prefix-"));
   try {
     // The full-install cluster owns global roles. This clean prefix cluster is
     // separate, but its raw inventory probe can roll back roles and schema before
     // the real runner installs the same immutable prefix, avoiding a third boot.
-    resource = await runPostgresContainer({ name: `payments-native-upgrade-${process.pid}`, password: "synthetic-conformance" });
-    if (!await waitForPostgresTcpReady(resource.connectionString)) throw new Error("Payments prefix PostgreSQL unavailable");
-    upgrade = new Pool({ connectionString: resource.connectionString });
     const db = await upgrade.connect();
     let payload: string;
     try {
@@ -70,7 +73,7 @@ it("upgrades the exact complete prefix before unit 56 without rewriting installe
     expect((await upgrade.query("SELECT * FROM public.platform_schema_migrations WHERE position<56 ORDER BY position")).rows).toEqual(before);
     expect((await runner(upgrade).status()).pending).toEqual([]);
     expect(await runner(upgrade).apply()).toEqual({ applied: [] });
-  } finally { await upgrade?.end(); await resource?.remove(); rmSync(root, { recursive: true, force: true }); }
+  } finally { await closePostgres(resource, upgrade); rmSync(root, { recursive: true, force: true }); }
 }, 60_000);
 
 async function fixture(subscriptionDate?: string) {

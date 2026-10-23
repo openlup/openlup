@@ -259,11 +259,20 @@ describe("co-located SQL and pins under an existing policy", () => {
     } finally { f.cleanup(); }
   });
 
-  it.each(["scripts/reviewed-platform-forward.ts", "scripts/platform-migration-manifest.ts", "scripts/documentation-git.ts", "scripts/documentation-routing.ts", "scripts/oss-source-release-contract.ts", "scripts/oss-published-tree-check.ts", "scripts/agent-review-queue.mjs", "package.json", "package-lock.json", ".github/workflows/published-tree-ci.yml"])("trusted invocation refuses co-changing %s", path => {
+  it.each(["scripts/reviewed-platform-forward.ts", "scripts/platform-migration-manifest.ts", "scripts/documentation-git.ts", "scripts/documentation-routing.ts", "scripts/oss-source-release-contract.ts", "scripts/oss-published-tree-check.ts", "scripts/source-preview-release.ts", "scripts/source-release-preparation.ts", "scripts/oss-publication-policy.ts", "scripts/packages/release-gate.ts", "scripts/agent-review-queue.mjs", "package.json", "package-lock.json", ".github/workflows/published-tree-ci.yml"])("trusted invocation refuses co-changing %s", path => {
     const f = correctionFixture();
     try {
       f.install(); f.put(path, "candidate-controlled machinery"); const head = f.commit();
       expect(() => assertCoLocatedForwardApproval(f.root, f.base, head)).toThrow(/machinery must be approved separately/u);
+    } finally { f.cleanup(); }
+  });
+
+  it("allows test-only coverage changes alongside the co-located SQL/pins", () => {
+    const f = correctionFixture();
+    try {
+      f.install(); f.put("scripts/source-preview-release.test.ts", "// Additional SQL regression coverage\n");
+      const head = f.commit();
+      expect(() => assertCoLocatedForwardApproval(f.root, f.base, head)).not.toThrow();
     } finally { f.cleanup(); }
   });
 

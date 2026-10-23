@@ -2,7 +2,7 @@
 import { Pool } from "pg";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { isExpandOnlyPlatformForward } from "../../scripts/reviewed-platform-forward.ts";
-import { dockerAvailable, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
+import { closePostgres, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, dockerAvailable, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
 
 let container: PostgresContainer | undefined;
 let pool: Pool | undefined;
@@ -12,8 +12,8 @@ beforeAll(async () => {
   container = await runPostgresContainer({ name: `expand-only-expressions-${process.pid}`, password: "synthetic-conformance", image: "postgres:16" });
   if (!await waitForPostgresTcpReady(container.connectionString)) throw new Error("PostgreSQL unavailable");
   pool = new Pool({ connectionString: container.connectionString });
-}, 120000);
-afterAll(async () => { await pool?.end(); await container?.remove(); });
+}, postgresSetupTimeoutMs);
+afterAll(async () => { await closePostgres(container, pool); }, postgresTeardownTimeoutMs);
 
 it.each([
   // PostgreSQL keeps NBSP and now in the identifier, then truncates it to 63 bytes.

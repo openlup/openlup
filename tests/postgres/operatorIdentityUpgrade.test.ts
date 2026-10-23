@@ -7,7 +7,7 @@ import { Pool } from 'pg';
 import { afterAll, beforeAll, expect, it } from 'vitest';
 import { createPostgresMigrationRunner } from '../../server/adapters/postgres/migrationRunner.js';
 import { createPostgresOperatorIdentityStore } from '@openlup/platform/identity';
-import { dockerAvailable, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from '../helpers/postgresContainer.js';
+import { closePostgres, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, dockerAvailable, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from '../helpers/postgresContainer.js';
 const A = '11111111-1111-4111-8111-111111111111';
 const C = '22222222-2222-4222-8222-222222222222';
 const M = '33333333-3333-4333-8333-333333333333';
@@ -39,8 +39,8 @@ beforeAll(async () => {
   await upgrade.query('INSERT INTO public.platform_control_operators (principal_id, active) VALUES ($1, true)', [M]);
   await runner(0).apply();
   store = createPostgresOperatorIdentityStore({ connectionString: containers[0].connectionString }); stores.push(store);
-}, 120000);
-afterAll(async () => { await Promise.all(stores.map(s => s.close())); await Promise.all(pools.map(p => p.end())); await Promise.all(containers.map(c => c.remove())); if (root) rmSync(root, { recursive: true, force: true }); });
+}, postgresSetupTimeoutMs);
+afterAll(async () => { await closePostgres(containers, pools, stores.map(value => () => value.close())); if (root) rmSync(root, { recursive: true, force: true }); }, postgresTeardownTimeoutMs);
 async function issue(value: string) { return store.issue({ email: 'admin@example.invalid', tokenHash: hash(value) }); }
 async function resetChallenges() { await fresh.query('DELETE FROM public.operator_identity_challenges'); }
 it('bootstrap failure retains a preexisting principal', async () => {

@@ -759,9 +759,10 @@ export function assertCoLocatedForwardApproval(root: string, base: string, head:
   const added = git(root, ["diff", "--name-only", "--no-renames", "--diff-filter=A", "-z", base, head, "--", "db/platform/migrations/", "supabase/migrations/"]).toString("utf8").split("\0").filter((path) => path.endsWith(".sql"));
   if (added.length === 0) return; // Existing control-only preparation remains available.
   if (!before || !after) throw new Error("reviewed replacement registry must be approved separately before introducing SQL");
-  const controls = ["scripts/reviewed-platform-forward.ts", "scripts/platform-migration-manifest.ts", "scripts/documentation-git.ts", "scripts/documentation-routing.ts", "scripts/oss-source-release-contract.ts", "scripts/oss-published-tree-check.ts", "package.json", "package-lock.json"];
+  const controls = ["scripts/reviewed-platform-forward.ts", "scripts/platform-migration-manifest.ts", "scripts/documentation-git.ts", "scripts/documentation-routing.ts", "package.json", "package-lock.json"];
   const changed = [head, trustedBase].flatMap((revision) => git(root, ["diff", "--name-only", "--no-renames", "-z", base, revision]).toString("utf8").split("\0"));
-  if (changed.some((path) => controls.includes(path) || path.startsWith(".github/") || path.startsWith("scripts/agent-review-"))) throw new Error("reviewed replacement admission machinery must be approved separately before co-located SQL/pins");
+  const releaseTool = (path: string) => /^scripts\/(?:agent-review-|oss-|source-|packages\/)/u.test(path) && !/\.test\.[cm]?[jt]sx?$/u.test(path);
+  if (changed.some((path) => controls.includes(path) || path.startsWith(".github/") || releaseTool(path))) throw new Error("reviewed replacement admission machinery must be approved separately before co-located SQL/pins");
   assertForwardApproval(root, base, head);
   const registry = readReviewedForwardRegistry(after);
   for (const list of FORWARD_LISTS) for (const entry of registry[list] ?? []) {

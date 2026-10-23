@@ -307,7 +307,12 @@ Changes to a class, validator, its dependencies, review/admission or release
 machinery need a separate control change before using the new rule. The existing
 native admission, invoked from trusted main, validates co-located data with its
 own checker and refuses simultaneous machinery changes or machinery drift since
-the reviewed base. It reads candidate Git objects without running candidate code.
+the reviewed base. Production tooling in `scripts/agent-review-*`, `scripts/oss-*`,
+`scripts/source-*` and `scripts/packages/` stays unchanged for this route, including
+release entry points and preparation; test-only coverage changes remain allowed.
+The checker and its direct dependency closure, root manifests/lockfile and
+`.github/` files also stay unchanged. Admission reads candidate Git objects
+without running candidate code.
 The [documented workflow invocation limitation](DEVELOPMENT_AND_RELEASE.md#reading-results-and-recovering)
 remains: candidate YAML can omit the job, so sensitive review and the applicable
 maintainer/delegate read of workflow edits remain the control for that case.
