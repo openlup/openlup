@@ -711,3 +711,6 @@ Frozen facts, correction recovery, exact absence, owed duties and host-only fisc
 artifact, delivery, payout and owned-history seams are described in the
 [invoicing reference](../../docs/platform/PLATFORM_PACKAGE_REFERENCE.md#invoicing-contracts).
 No store, worker, adapter, route or activation is supplied by this contract step.
+`createNativeUnsupportedInvoicePorts` supplies inert typed refusals for every
+host, store and provider seam. `runInvoiceAdapterConformance` checks adapter-owned
+offline fixtures; its sanitized evidence does not establish live fiscal readiness.

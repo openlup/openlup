@@ -82,7 +82,9 @@ Invoicing source, contract witnesses and both API reports route to the
 [invoicing architecture owner](ARCHITECTURE_AND_EXTENSIONS.md#invoicing-contracts).
 The package README keeps a short export summary; the package reference owns the
 longer host-seam recipe outside the npm tarball. Canonical contracts distinguish
-unknown, exact absence and unsupported duties; navigation adds no runtime authority.
+unknown, exact absence and unsupported duties. The design plan and offline conformance
+witnesses describe their limited proof without making a store or activation claim;
+navigation adds no runtime authority.
 
 The platform package README remains its API entry point, with brief module
 summaries and preserved top-level anchors. Longer identity and communications

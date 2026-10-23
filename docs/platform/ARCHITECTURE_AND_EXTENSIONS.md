@@ -1436,3 +1436,10 @@ retains provider identity, retry delay (native ignores it) and uncertain receipt
 requests retain provider selection, invoice reference, status and replay. The
 [invoicing reference](PLATFORM_PACKAGE_REFERENCE.md#invoicing-contracts) describes
 correction, payout item and account-lineage seams and their source witnesses.
+
+The [invoicing design](plans/oss-m09-invoicing.md) separates these contracts from
+later orchestration and native persistence. The native refusal factory has no
+executor and never inspects inputs. The conformance helper consumes offline
+adapter fixtures and returns filtered case evidence; it installs no provider or
+runtime route. Its [contract tests](../../packages/platform/test/invoicing/adapterConformance.test.ts)
+cover parent recovery, exact absence and distinct payout item receipts.

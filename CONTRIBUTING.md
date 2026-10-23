@@ -919,8 +919,14 @@ writer remain outside this process-evidence boundary.
 The experimental invoicing module adds an isolated row to the existing platform
 module graph, with a type-only browser contracts entry and no module edges.
 Its installed cold-consumer producer exercises default-off and explicit provider
-selection from the packed artifact; declaration compilation covers both NodeNext
-and Bundler modes. The existing package selection, boundary tests, API reports,
+selection from the packed artifact and exercises typed native host/store refusals
+and offline adapter conformance. Declaration compilation covers the native-port
+factory and conformance helper in both NodeNext and Bundler modes. Per-seam
+`Record<RequiredKeys, string>` checks cover all 14 pinned-SQL store seams, including
+union-arm evidence and explicitly local handling. A CI-run falsifier adds a required
+field to a packed declaration and requires both the NodeNext and Bundler compiles
+to reject it. The existing
+package selection, boundary tests, API reports,
 AST rules and required verification routes remain binding; this contract step
 adds no separate runner or provider-access requirement.
 
