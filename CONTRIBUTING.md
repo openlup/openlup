@@ -429,8 +429,11 @@ with the reviewed fixtures, and use fixtures before introduction. They exercise
 PR and release admission, then refuse byte drift, browser grants, donor attribute drift and unpinned
 replacements. Separate structural plants refuse replacement syntax in managed
 creation files, missing function grants/revokes, changed managed search paths and
-unsupported view options. The release suite also repins managed search-path and
-non-invoker-view mutations so semantic refusals run after the hashes pass.
+unsupported view options. The release suite repins the managed search-path
+mutation and the `security_invoker=false` view-option mutation so semantic
+refusals run after the hashes pass. A view without a WITH clause stays structurally
+admitted; for M09, the whole-file pin and the catalog proof's
+`security_invoker=true` reloptions check refuse it.
 Native trigger plants distinguish a missing in-file
 function from a defined trigger function: the latter passes structural
 classification but fails the M09 whole-file pin in PR and release admission.
