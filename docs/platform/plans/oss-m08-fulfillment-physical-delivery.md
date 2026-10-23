@@ -651,9 +651,12 @@ C4 readback on 2026-10-22, against the published packages: **PASS, 4/4**.
 The M08 release set is published; adopter adoption starts from these versions.
 The known limitations in the `[0.22.0]` notes are unchanged.
 
-## Parity wave and next set preparation
+## Package parity wave and closure: 0.23.0
 
-Status: design boundary for the prepared `0.23.0` set; no activation authority.
+Status: M08 package parity wave closed on 2026-10-23 with C4 PASS, C5 adoption
+and C6 PASS_WITH_NOTES. The A3 follow-up and owner production-promotion checklist
+remain SCHEDULED; this record grants no activation or production authority.
+
 Stock sync preserves rejected-row diagnostics, partial success, cursor evidence
 and identity fingerprints. Dispatch preserves sanitized transcripts, typed
 failures, acceptance recovery and host-approved tracking. Paged reconciliation
@@ -661,11 +664,18 @@ and observation ingress retain host-owned scheduling, checkpoint and receipt
 projection, counted refusals and strict evidence sinks. Hosts retain referenced
 raw evidence and explicitly admit wider provider references.
 
+The accepted adaptations retain a source-scoped reservation seam, definitive
+failure for an HTTP 400 with an unreadable body, and safe exact-lookup refusal
+alongside the separate paged observation route. Provider strings use strict
+defaults or explicit adopter codecs; refused values are visible and counted.
+
 Native stock-evidence replay reopens matching alerts and refreshes quantities
-through the complete canonical migration chain. Legacy native alert fingerprints
+and severity through the complete canonical migration chain. The forward
+`20261022165000_fulfillment_stock_evidence_replay_reopen.sql` at native position
+76 closes the scheduled reopen gap. Legacy native alert fingerprints
 still conflict, including after resolution; native shadow drafts and observation
-retries require the migration steps in the [candidate notes](../../../packages/platform/CHANGELOG.md#0230).
-D2 rejected/unknown dispatch-detail durability and immutable stock snapshot/alert
+retries require the migration steps in the [0.23.0 notes](../../../packages/platform/CHANGELOG.md#0230).
+D2 native dispatch-finish rejected/unknown detail retention and immutable stock snapshot/alert
 evidence storage remain KEEP-GAPs. The warehouse adapter retains opt-in product
 sync parity and offline diagnostics without provider-account evidence.
 
@@ -678,3 +688,103 @@ selection/type-only contracts install no SQL, worker or route. Packed default
 configuration must leave both capabilities off. Set preparation requires the
 existing artifact budgets, released-artifact baselines, source snapshot refresh
 and cold-consumer gates; it creates no publication or adopter permission.
+
+### C4 record: 0.23.0 publication readback
+
+The core, outbox and platform set was published from
+`d430754f63e494ab3de3e625b860a210e44e78dc`. The dispatch of
+`publish-package.yml` (package `all`, version `0.23.0`, target that commit) ran
+as run 39931099452; the three `publish-packages.yml` runs completed on
+2026-10-23. npm `latest` is `0.23.0` for all three packages.
+
+C4 readback on 2026-10-23, against the published packages: **PASS, 4/4 for
+core, outbox and platform**.
+
+- Registry integrity: each downloaded tarball matches its `dist.integrity` and
+  `dist.shasum` — core `327cebbff6d1c42a955e24fae5684f6ac9459c10`, outbox
+  `e8cae65e02552b59ad81e6660288315e1d0346b4`, platform
+  `5ceb4b0670872dbd6065015ae0fa3cbdee80d254`. Registry tarballs also match the
+  corresponding release-run pack artifacts byte for byte.
+- Content equivalence: the extracted published trees are identical to the
+  supplied cold set (core 224, outbox 41, platform 1,731 files). Compressed bytes
+  differ only in DEFLATE encoding; the complete decompressed tar streams, file
+  contents and member metadata are identical.
+- Provenance: SLSA v1 statements bind each tarball to `publish-packages.yml`,
+  the tag `openlup-{core,outbox,platform}-v0.23.0` and `gitCommit`
+  `d430754f63e494ab3de3e625b860a210e44e78dc`; each remote tag dereferences to
+  that commit. Rekor entries and inclusion evidence were verified.
+- `npm audit signatures`: 4 verified registry signatures and 4 verified
+  attestations.
+
+### C5 record: adopter parity adoption
+
+The adopter's #4516 adopts `0.23.0`: stock sync and observation ingress/effects
+delegate to the package through managed bindings. The stock-sync,
+status-pipeline and accounting-trigger proofs are re-pointed with unchanged
+assertions. Dispatch and reconciliation orchestration remain retained pending
+the separate A3 follow-up.
+
+Adopter configuration is bounded to current behavior: the tracking-URL allowlist
+admits only the existing carrier number, typ/p1 and tracking-id shapes on current
+hosts, with foreign-host and extra-parameter refusals covered.
+Reference approval and carrier normalization reuse the existing host functions.
+
+The accepted ADAPTED rows are:
+
+- Provider stock SKU admission: rows outside the package's opaque reference
+  rule are rejected and counted, with rejected SKUs in cron metadata and logs.
+  Mixed batches write conforming rows unchanged; only an all-rejected batch is
+  malformed. The structural audit found all 20 repository SKUs admitted, and
+  catalogue publication enforces a strict subset of the package rule.
+- Typed stock failures: closed reasons, operation tokens, network retryability,
+  attempted-call/write/rejection counts and cursor diagnostics replace the
+  donor's thrown-error/reset behavior. Failed runs retain HTTP 502; stale
+  evidence cleanup after durable success is best-effort.
+- Observation projection and refusals: typed facts and evidence pointers replace
+  tracking raw payloads; the host retains referenced evidence and digests.
+  Timestamp, correlation and tracking-URL refusals are counted and visible.
+  Replay uses the durable original observation and winning stored evidence;
+  carrier delivery time preserves chronology and the donor's cycle shift.
+- Redirect refusal: provider GET redirects are refused with a safe diagnostic;
+  stock reports `redirect_refused` as non-retryable instead of following the
+  redirect.
+
+### C6 record: PASS_WITH_NOTES
+
+The final coordinator and owner disposition on 2026-10-23 accepts exactly one
+force staging dispatch and its successful immutable deployment at
+`e5092bfe8eace40650c4df2624bee6b088cbf73a`. All three `0.23.0` packages were
+admitted; health, marker and governance were GREEN. The alignment canary passed
+in `auto_align`, with alignment-off skipped. Accepted local and proof evidence
+is `./veli verify` PASS, the C1 witnesses 31/31 twice, 32 adopter cases, the
+three re-pointed proofs with unchanged assertions and the package real-PostgreSQL
+suites.
+
+The three counters and four flows below were **NOT observable on staging**;
+none of the counters is asserted zero. The stock-sync driver was inactive
+(`skipped: inactive_driver`); observation and redirect counter readback needed
+unavailable staging job-metadata/Axiom credentials. Existing hosted tooling did
+not exercise the four flows. Staging uses the warehouse provider's stage account with a
+synthetic overlay and dispatch simulator; this is no real-provider-account
+readback. The coordinator moved these items to the owner's production-promotion
+checklist.
+
+Lighthouse is an advisory note only under the owner's final ruling, outside the
+programme scope: Home TBT was 804 versus 449 ms and performance 0.74 versus 0.80
+against the paired same-run reference `9bfdb585d`. Attribution stopped without a
+re-measure; no cause or normal-variance conclusion is asserted. It does not gate
+the accepted PASS_WITH_NOTES disposition.
+
+### Scheduled follow-ups
+
+- **SCHEDULED — A3 dispatch/readback adoption:** carries the binding safe-message
+  adoption from #311 and requires its own staging readback. Acceptance must
+  preserve dispatch's uncertain-vs-failed classification byte for byte, with a
+  witness test. C5 retains that dispatch path; this closure does not complete A3.
+- **SCHEDULED — owner production-promotion checklist:** on the first production
+  run, verify stock-sync rejected=0, observation refusals=0 and no
+  `redirect_refused` against the real provider account. A stock rejection goes
+  to the owner for catalogue repair or an adopter SKU mapping. Obtain the four
+  remaining flow witnesses: managed stock replay→resolve→reopen; coverage/stale
+  recovery; webhook replay/delivered-first; accounting callback→durable
+  obligation. These remain pending owner items, not completed staging proof.
