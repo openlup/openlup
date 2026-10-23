@@ -700,6 +700,42 @@ function blob(root: string, revision: string, path: string): Buffer | undefined 
   return git(root, ["cat-file", "blob", match[1]!]);
 }
 
+const FORWARD_LISTS = ["replacementForwards", "creationForwards", "runtimeForwards", "portableReplacementForwards", "portableCreationForwards", "managedInvoicingForwards", "batchedForwards"] as const;
+const canonical = (value: unknown): string => JSON.stringify(value, (_key, item: unknown) => item && typeof item === "object" && !Array.isArray(item) ? Object.fromEntries(Object.entries(item).sort(([left], [right]) => left.localeCompare(right))) : item);
+const sharedApproval = (registry: ReviewedForwardRegistry) => Object.fromEntries(Object.entries(registry).filter(([key]) => !FORWARD_LISTS.includes(key as typeof FORWARD_LISTS[number])));
+const approvalBinding = (registry: ReviewedForwardRegistry, path: string) => {
+  for (const list of FORWARD_LISTS) {
+    const index = registry[list]?.findIndex((entry) => entry.path === path) ?? -1;
+    if (index >= 0) return { list, index, entry: registry[list]![index] };
+  }
+  return null;
+};
+
+/** Only an existing policy class may bind the SQL introduced by this candidate. */
+export function changedForwardApprovals(before: Buffer, after: Buffer): string[] {
+  const prior = readReviewedForwardRegistry(before), current = readReviewedForwardRegistry(after);
+  if (canonical(sharedApproval(prior)) !== canonical(sharedApproval(current))) throw new Error("reviewed replacement shared approval fields must be approved separately");
+  const changed: string[] = [];
+  for (const list of FORWARD_LISTS) {
+    const previous = prior[list] ?? [], next = current[list] ?? [];
+    if (next.length < previous.length) throw new Error("reviewed replacement approval removal must be approved separately");
+    for (const [index, entry] of next.entries()) {
+      if (previous[index] && previous[index]!.path !== entry.path) throw new Error("reviewed replacement approval positions must be approved separately");
+      if (canonical(previous[index]) !== canonical(entry)) changed.push(entry.path);
+    }
+  }
+  return changed;
+}
+
+export function assertForwardApproval(root: string, base: string, head: string): void {
+  const before = blob(root, base, REVIEWED_FORWARD_PATH), after = blob(root, head, REVIEWED_FORWARD_PATH);
+  if (!before || !after) throw new Error("reviewed replacement registry must be approved separately before introducing SQL");
+  if (before.equals(after)) return;
+  for (const path of changedForwardApprovals(before, after)) {
+    if (blob(root, base, path) || !blob(root, head, path)) throw new Error(`reviewed replacement pin must be approved separately unless its SQL is introduced in this PR: ${path}`);
+  }
+}
+
 export function assertUnchangedForwardApproval(root: string, base: string, head: string, path?: string): void {
   const before = blob(root, base, REVIEWED_FORWARD_PATH), after = blob(root, head, REVIEWED_FORWARD_PATH);
   if (before && after) {
@@ -708,21 +744,29 @@ export function assertUnchangedForwardApproval(root: string, base: string, head:
     if (path !== undefined) {
       try {
         const prior = readReviewedForwardRegistry(before), current = readReviewedForwardRegistry(after);
-        const binding = (registry: ReviewedForwardRegistry) => {
-          for (const list of ["replacementForwards", "creationForwards", "runtimeForwards", "portableReplacementForwards", "portableCreationForwards", "managedInvoicingForwards", "batchedForwards"] as const) {
-            const index = registry[list]?.findIndex((entry) => entry.path === path) ?? -1;
-            if (index >= 0) return { list, index, entry: registry[list]![index] };
-          }
-          return null;
-        };
-        const canonical = (value: unknown) => JSON.stringify(value, (_key, item: unknown) => item && typeof item === "object" && !Array.isArray(item) ? Object.fromEntries(Object.entries(item).sort(([left], [right]) => left.localeCompare(right))) : item);
-        const shared = (registry: ReviewedForwardRegistry) => Object.fromEntries(Object.entries(registry).filter(([key]) => !["replacementForwards", "creationForwards", "runtimeForwards", "portableReplacementForwards", "portableCreationForwards", "managedInvoicingForwards", "batchedForwards"].includes(key)));
-        const previous = binding(prior), next = binding(current);
-        if (canonical(shared(prior)) === canonical(shared(current)) && previous && next && canonical(previous) === canonical(next)) return;
+        const previous = approvalBinding(prior, path), next = approvalBinding(current, path);
+        if (canonical(sharedApproval(prior)) === canonical(sharedApproval(current)) && previous && next && canonical(previous) === canonical(next)) return;
       } catch { /* Invalid historical approvals cannot authorize a release. */ }
     }
   }
   throw new Error("reviewed replacement allowlist must be approved separately before a feature PR adds SQL");
+}
+
+/** Run from trusted main. Candidate objects are data; their validator is never loaded. */
+export function assertCoLocatedForwardApproval(root: string, base: string, head: string, trustedBase = base): void {
+  const before = blob(root, base, REVIEWED_FORWARD_PATH), after = blob(root, head, REVIEWED_FORWARD_PATH);
+  if (before && after && before.equals(after)) return;
+  const added = git(root, ["diff", "--name-only", "--no-renames", "--diff-filter=A", "-z", base, head, "--", "db/platform/migrations/", "supabase/migrations/"]).toString("utf8").split("\0").filter((path) => path.endsWith(".sql"));
+  if (added.length === 0) return; // Existing control-only preparation remains available.
+  if (!before || !after) throw new Error("reviewed replacement registry must be approved separately before introducing SQL");
+  const controls = ["scripts/reviewed-platform-forward.ts", "scripts/platform-migration-manifest.ts", "scripts/documentation-git.ts", "scripts/documentation-routing.ts", "scripts/oss-source-release-contract.ts", "scripts/oss-published-tree-check.ts", "package.json", "package-lock.json"];
+  const changed = [head, trustedBase].flatMap((revision) => git(root, ["diff", "--name-only", "--no-renames", "-z", base, revision]).toString("utf8").split("\0"));
+  if (changed.some((path) => controls.includes(path) || path.startsWith(".github/") || path.startsWith("scripts/agent-review-"))) throw new Error("reviewed replacement admission machinery must be approved separately before co-located SQL/pins");
+  assertForwardApproval(root, base, head);
+  const registry = readReviewedForwardRegistry(after);
+  for (const list of FORWARD_LISTS) for (const entry of registry[list] ?? []) {
+    if (added.includes(entry.path)) assertReviewedPlatformForward(root, base, head, entry.path, blob(root, head, entry.path)!);
+  }
 }
 
 /** Pin the actual policy statement, not a registry-supplied predicate. */
@@ -761,14 +805,17 @@ export function assertReviewedPlatformForward(root: string, base: string, head: 
   if (!forward) throw new Error(`non-expand-only forward differs from reviewed replacement path or bytes: ${path}`);
   let approval = base;
   if (release) {
-    // A preview can include the earlier control PR and later feature PRs. The approval must
-    // already exist in the parent of the mainline commit that first introduces each SQL file.
+    // Bind at the unique mainline introduction, never at a later repair of the pins.
     const commits = git(root, ["log", "--first-parent", "--format=%H", "--diff-filter=A", `${base}..${head}`, "--", path]).toString("utf8").trim().split("\n").filter(Boolean);
     if (commits.length !== 1) throw new Error("reviewed replacement requires one unambiguous forward introduction");
     approval = git(root, ["rev-parse", `${commits[0]}^`]).toString("utf8").trim();
     git(root, ["merge-base", "--is-ancestor", approval, head]);
+    try { assertUnchangedForwardApproval(root, approval, commits[0]!, path); }
+    catch { assertForwardApproval(root, approval, commits[0]!); }
+    assertUnchangedForwardApproval(root, commits[0]!, head, path);
+  } else {
+    assertForwardApproval(root, base, head);
   }
-  assertUnchangedForwardApproval(root, approval, head, release ? path : undefined);
   if (sqlSha256(bytes) !== forward.sha256) throw new Error(`non-expand-only forward differs from reviewed replacement path or bytes: ${path}`);
   const baselinePath = portable ? PLATFORM_BASELINE_FILE : MANAGED_BASELINE;
   const baseline = blob(root, approval, baselinePath);

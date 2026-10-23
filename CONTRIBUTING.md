@@ -168,7 +168,7 @@ share generated package directories.
 
 The M10/F17 exact-forward controls use
 `scripts/reviewed-batch-forward.test.ts` for per-file refusal plants and separate
-CI/release approval, and `tests/postgres/reviewedBatchForwards.test.ts` for the
+and co-located CI/release approval, and `tests/postgres/reviewedBatchForwards.test.ts` for the
 mandatory PostgreSQL/pgTAP catalog gate. The latter runs both complete prefixes,
 checks exact catalog/ACL/row changes and rollback, and falsifies its observer
 with committed attacks. Missing Docker, PostgreSQL or pgTAP fails; the lexer is
@@ -1424,10 +1424,13 @@ candidate SQL in the existing synthetic gate tests without adding a migration.
 The same focused test file covers exact bytes, portable-chain priors, registry
 cardinality, header preservation, extra-statement
 refusal and approval before introduction in both gates; managed counts remain
-unchanged. Required self-check keeps the whole registry
-unchanged from the feature comparison base; release compares each forward's own
-entry, list position and shared registry fields with its introduction parent, so later
-controls may append approvals. A feature cannot approve itself. Batched pins land per rail as a prefix in version
+unchanged. SQL and its pins may share a feature PR under the canonical
+[co-located SQL/pin rule](docs/platform/DATA_AND_MIGRATIONS.md#co-located-sql-and-approval-pins).
+Only bindings for that PR's new SQL may change; other entries and shared fields
+stay fixed. Trusted-main native admission refuses co-changing the machinery.
+Release preserves each binding from its actual mainline introduction; later
+repins cannot authorize earlier SQL. New classes and control changes still need
+prior separate approval. Batched pins land per rail as a prefix in version
 order: all earlier same-rail pins must be present with their pinned whole-file
 digests. The PG gate refuses landed holes and replays committed interleaved
 files through the last pin along with the absent fixture suffix. These forwards
@@ -1783,6 +1786,9 @@ own: a lessons change is an ordinary delivery under existing authority, and a
 promotion stays within its approved scope. The rethink record and the task's
 terminal self-retro carry the lesson until it lands. No other tracker is kept.
 
+- 2026-10-23, co-located SQL/pins: a trusted script cannot enforce its own
+  invocation → keep the documented workflow trust boundary explicit; reuse
+  existing sensitive review rather than claiming status-name isolation.
 - 2026-10-19, native review simplification rethink: Resetting state and
   hand-copying fields across a session boundary drops whichever control was
   forgotten → never discard state: append a new intent and candidate to the
