@@ -103,8 +103,9 @@ remains the result-meaning owner.
   claims to provider read, then finish on `found` or fail on `absent`/`unknown`.
   Convert a native `{ kind: "stale" }` preflight or finish result into the claim-fence
   error: write no failure and count zero updates.
-- P5 must give native delivery a terminal outcome or bounded backoff for
-  non-retryable `failed_before_send`, rather than reclaiming it forever.
+- P5 must pass `retryable` and `retrySeconds` evidence for native delivery
+  `failed_before_send`: boolean false parks the failure; a whole JSON number
+  delays retry by 0..86400 seconds (clamped); absent or invalid delay retries immediately.
 - P7 must route native reversals through the correction branch of
   `invoicing_request_with_seller_policy`, retain the wrapper-returned seller and
   revision in claim facts, and define claim behavior for unknown/unsupported

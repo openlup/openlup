@@ -215,7 +215,13 @@ BEGIN
     UPDATE public.accounting_document_deliveries SET status='succeeded',receipt_reference=p_receipt,delivered_at=now(),lease_until=NULL,updated_at=now() WHERE id=p_delivery;
     INSERT INTO public.accounting_document_delivery_attempts(delivery_id,attempt_ordinal,outcome,receipt_reference) VALUES(p_delivery,p_generation,'delivered',p_receipt);
   ELSIF p_kind='failed_before_send' THEN
-    UPDATE public.accounting_document_deliveries SET status='failed',lease_until=NULL,available_at=now(),last_error=p_evidence,updated_at=now() WHERE id=p_delivery;
+    UPDATE public.accounting_document_deliveries SET status='failed',lease_until=NULL,
+      available_at=CASE WHEN p_evidence->'retryable'='false'::jsonb THEN 'infinity'::timestamptz
+        ELSE now()+make_interval(secs=>CASE WHEN jsonb_typeof(p_evidence->'retrySeconds')='number' THEN
+          CASE WHEN (p_evidence->>'retrySeconds')::numeric=trunc((p_evidence->>'retrySeconds')::numeric)
+            THEN least(greatest((p_evidence->>'retrySeconds')::numeric,0),86400)::integer ELSE 0 END
+          ELSE 0 END) END,
+      last_error=p_evidence,updated_at=now() WHERE id=p_delivery;
     INSERT INTO public.accounting_document_delivery_attempts(delivery_id,attempt_ordinal,outcome,error) VALUES(p_delivery,p_generation,'failed',p_evidence);
   END IF;
   RETURN jsonb_build_object('kind',p_kind,'replayed',false);

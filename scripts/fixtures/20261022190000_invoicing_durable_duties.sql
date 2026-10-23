@@ -199,6 +199,7 @@ BEGIN
   FOR v_duty IN SELECT d.* FROM public.invoicing_duties d
     JOIN public.invoicing_fact_revisions f ON f.duty_id=d.id
     WHERE d.request_id IS NULL AND d.status IN ('owed','blocked') AND d.available_at<=now()
+      AND d.reversal IS NULL
       AND (d.fact_token IS NULL OR d.fact_lease_until<=now())
     ORDER BY d.created_at,d.id LIMIT least(greatest(coalesce(p_limit,10),1),100) FOR UPDATE OF d SKIP LOCKED LOOP
     IF v_duty.fact_attempts>=8 THEN
@@ -223,7 +224,7 @@ DECLARE v_duty public.invoicing_duties%ROWTYPE; v_document public.accounting_doc
 BEGIN
   IF NOT pg_try_advisory_xact_lock(hashtextextended('invoicing:'||(SELECT order_id::text FROM public.invoicing_duties WHERE id=p_duty),0)) THEN RETURN '{"status":"owed","kind":"retryable"}'; END IF;
   SELECT * INTO v_duty FROM public.invoicing_duties WHERE id=p_duty;
-  IF NOT FOUND OR p_token IS NULL OR v_duty.fact_token IS NULL OR v_duty.fact_lease_until IS NULL OR v_duty.fact_token IS DISTINCT FROM p_token OR v_duty.fact_lease_until<=now() OR v_duty.request_id IS NOT NULL OR v_duty.status NOT IN ('owed','blocked') THEN RETURN '{"status":"stale"}'; END IF;
+  IF NOT FOUND OR p_token IS NULL OR v_duty.fact_token IS NULL OR v_duty.fact_lease_until IS NULL OR v_duty.fact_token IS DISTINCT FROM p_token OR v_duty.fact_lease_until<=now() OR v_duty.request_id IS NOT NULL OR v_duty.status NOT IN ('owed','blocked') OR v_duty.reversal IS NOT NULL THEN RETURN '{"status":"stale"}'; END IF;
   SELECT facts INTO v_facts FROM public.invoicing_fact_revisions WHERE duty_id=p_duty;
   v_timeout:=current_setting('lock_timeout');
   BEGIN
@@ -275,7 +276,7 @@ BEGIN
       RAISE EXCEPTION 'invoicing_fact_result_mismatch' USING ERRCODE='22023'; END IF;
   END IF;
   SELECT * INTO v_duty FROM public.invoicing_duties WHERE id=p_duty FOR UPDATE;
-  IF NOT FOUND OR p_token IS NULL OR v_duty.fact_token IS NULL OR v_duty.fact_lease_until IS NULL OR v_duty.fact_token IS DISTINCT FROM p_token OR v_duty.fact_lease_until<=now() OR v_duty.request_id IS NOT NULL OR v_duty.status NOT IN ('owed','blocked') THEN RETURN '{"status":"stale"}'; END IF;
+  IF NOT FOUND OR p_token IS NULL OR v_duty.fact_token IS NULL OR v_duty.fact_lease_until IS NULL OR v_duty.fact_token IS DISTINCT FROM p_token OR v_duty.fact_lease_until<=now() OR v_duty.request_id IS NOT NULL OR v_duty.status NOT IN ('owed','blocked') OR v_duty.reversal IS NOT NULL THEN RETURN '{"status":"stale"}'; END IF;
   SELECT facts INTO v_facts FROM public.invoicing_fact_revisions WHERE duty_id=p_duty;
   v_status:=p_result->>'status';
   v_kind:=p_result->>'kind';

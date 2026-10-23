@@ -219,11 +219,11 @@
     },
     {
       "path": "db/platform/migrations/20261022190000_invoicing_durable_duties.sql",
-      "sha256": "962a10822cde442bbc143dd16d76de3843658958a1352c602dec48c88dbf085b"
+      "sha256": "7428f88fb3d6fedcb094055a23ebd80598ced854f75fb1aacfe0a58a6b045d5d"
     },
     {
       "path": "db/platform/migrations/20261022191000_invoicing_document_effects.sql",
-      "sha256": "c9deaa32c2a3031d3c7475dd55caafff394cce4017185de82543ac1352802311"
+      "sha256": "8f09bb562c26a08fe4f0b9272bbbad628e362e7fb21e6bfa0906be119e520bb4"
     },
     {
       "path": "db/platform/migrations/20261022195000_invoicing_seller_revision.sql",
