@@ -403,7 +403,13 @@ The optional `portableReplacementForwards` list includes the exact forward to
 keep active subscriptions active on dunning exhaustion (invariant repair).
 Its only function is
 `public.dunning_lifecycle_handle_failure(uuid,timestamptz,text,text,integer,timestamptz,text,text)`,
-fixed in checker code independently of the registry. Prior definitions come only
+fixed in checker code independently of the registry. The list also binds the native
+payment-terminal replacement and the stock-evidence replay replacement.
+The latter admits only
+`public.fulfillment_record_stock_evidence(text,text,text,text,text,text,integer,integer)`:
+matching-fingerprint replay reopens evidence and refreshes severity, quantities
+and last-seen time, clearing resolution time; a fingerprint mismatch still
+refuses with `23505`. Prior definitions come only
 from the portable baseline and earlier portable forwards in strict filename
 order, as required by the manifest. Exact path, file and before/after definition
 hashes must match; arguments, return, volatility, security and settings remain

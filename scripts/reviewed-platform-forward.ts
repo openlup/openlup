@@ -185,12 +185,12 @@ export function readReviewedForwardRegistry(bytes: Buffer): ReviewedForwardRegis
     }
   }
   if (raw.portableReplacementForwards !== undefined) {
-    if (!Array.isArray(raw.portableReplacementForwards) || ![1,2].includes(raw.portableReplacementForwards.length)) throw new Error("reviewed portable replacement registry requires one or two fixed forwards");
+    if (!Array.isArray(raw.portableReplacementForwards) || ![1,2,3].includes(raw.portableReplacementForwards.length)) throw new Error("reviewed portable replacement registry requires one, two or three fixed forwards");
     for (const [index, forward] of raw.portableReplacementForwards.entries()) {
       if (!forward || Object.keys(forward).sort().join(",") !== "functions,path,sha256" || !/^db\/platform\/migrations\/\d{14}_[A-Za-z0-9_-]+\.sql$/u.test(forward.path) || paths.has(forward.path) || raw.portableReplacementForwards.findIndex(entry => entry.path === forward.path) !== index || !hash(forward.sha256) || !Array.isArray(forward.functions) || forward.functions.length !== 1) throw new Error("reviewed portable replacement registry has an invalid forward");
       paths.add(forward.path);
       const binding = forward.functions[0]!;
-      if (Object.keys(binding).sort().join(",") !== "afterSha256,beforeSha256,signature" || !(index === 0 ? portableReplacements.has(binding.signature) : forward.path === "db/platform/migrations/20261022192000_invoicing_payment_decoupling.sql" && binding.signature === paymentTerminalSignature) || !hash(binding.beforeSha256) || !hash(binding.afterSha256)) throw new Error("reviewed portable replacement registry must bind exactly the approved existing signature");
+      if (Object.keys(binding).sort().join(",") !== "afterSha256,beforeSha256,signature" || !(index === 0 ? portableReplacements.has(binding.signature) : index === 1 ? forward.path === "db/platform/migrations/20261022192000_invoicing_payment_decoupling.sql" && binding.signature === paymentTerminalSignature : forward.path === "db/platform/migrations/20261022165000_fulfillment_stock_evidence_replay_reopen.sql" && binding.signature === "public.fulfillment_record_stock_evidence(text,text,text,text,text,text,integer,integer)") || !hash(binding.beforeSha256) || !hash(binding.afterSha256)) throw new Error("reviewed portable replacement registry must bind exactly the approved existing signature");
     }
   }
   if (raw.managedInvoicingForwards !== undefined) {

@@ -1379,10 +1379,12 @@ Reviewed function forwards use the same checker in required self-check and relea
 prepare. Their whole-file bytes, signatures, old/new definitions and runtime
 privileges are pinned in `config/reviewed-platform-forwards.json`. The runtime
 list admits the five-function capability forward and an optional service-only
-identity capabilities forward. The optional portable replacement list admits
-exactly one code-fixed function to keep active subscriptions active on dunning
-exhaustion (invariant repair). The same focused test file covers exact bytes,
-portable-chain priors, registry cardinality, header preservation, extra-statement
+identity capabilities forward. The optional portable replacement list binds
+code-fixed functions for the dunning invariant repair, payment-terminal
+decoupling and stock-evidence replay reopening. The stock control embeds the
+candidate SQL in the existing synthetic gate tests without adding a migration.
+The same focused test file covers exact bytes, portable-chain priors, registry
+cardinality, header preservation, extra-statement
 refusal and approval before introduction in both gates; managed counts remain
 unchanged. Required self-check keeps the whole registry
 unchanged from the feature comparison base; release compares each forward's own
