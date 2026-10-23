@@ -86,23 +86,25 @@ Later workers and stores need unchanged donor characterization, real PostgreSQL
 fresh/upgrade/replay/concurrency/ACL proof, seller revision race/legacy witnesses,
 and actual installed service composition. Measure package/code/docs/browser caps
 at each material addition; long recipes stay in the package reference outside the
-npm artifact. No cap increase, behavior cut, release or activation follows from
-this design. [Canonical evidence](../CANONICAL_CONTRACTS.md#invoicing-evidence)
+npm artifact. The platform unpacked cap is 6,400 KiB for the M09/M10 wave
+(see [package release policy](../../../.github/VERSIONING_AND_EOL.md)); packed,
+code-gzip and docs-gzip caps remain unchanged. No other cap increase, behavior
+cut, release or activation follows from this design. [Canonical evidence](../CANONICAL_CONTRACTS.md#invoicing-evidence)
 remains the result-meaning owner.
 
 ## Phase obligations
 
-- P4a/P4b must discover captured duties without installed facts; fact preparation
+- P4 must discover captured duties without installed facts; fact preparation
   cannot depend on already having a claimable fiscal snapshot.
-- P5a must give native delivery a terminal outcome or bounded backoff for
+- P5 must give native delivery a terminal outcome or bounded backoff for
   non-retryable `failed_before_send`, rather than reclaiming it forever.
-- P8 must route native reversals through the correction branch of
+- P7 must route native reversals through the correction branch of
   `invoicing_request_with_seller_policy`, retain the wrapper-returned seller and
   revision in claim facts, and define claim behavior for unknown/unsupported
   `seller.read`. Order-scoped managed claims must never call the unscoped
   corrections wrapper. First-claim seller freezing retains legacy fallback.
-- S1a must trim packed root documentation: P1a's README adds about 162 gzip bytes
-  against the 304-byte anchor headroom; measure the combined artifact again.
+- S1 re-measures root-docs gzip (39,616 B of the 49,152 B cap at this change)
+  and trims only if the release set exceeds it.
 
 The nine additional named contract exports have concrete consumers:
 `InvoiceDocumentIdentity` for artifact/clearance/download adapters;

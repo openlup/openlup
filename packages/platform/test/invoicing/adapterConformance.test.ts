@@ -26,21 +26,26 @@ function fixture(): Subject {
     async issue(input) {
       const previous = existing.get(input.identity.providerCreateIdentity);
       if (previous) return { ...previous, replayed: true };
+      if (input.recoveryLookupRequired) return { kind: "unknown", identity: input.identity, code: "unknown", effectMayHaveSucceeded: true };
       writes++; const result = issued(input.identity, "external-a"); existing.set(input.identity.providerCreateIdentity, result); return result;
     },
     async correct(input) {
       const previous = existing.get(input.identity.providerCreateIdentity);
       if (previous && previous.identity.parentProviderDocumentRef !== input.identity.parentProviderDocumentRef) return { kind: "refused", identity: input.identity, code: "parent_mismatch", retryable: false, effectMayHaveSucceeded: false };
       if (previous) return { ...previous, replayed: true };
+      if (input.recoveryLookupRequired) return { kind: "unknown", identity: input.identity, code: "unknown", effectMayHaveSucceeded: true };
       writes++; const result = issued(input.identity, "external-correction-a"); existing.set(input.identity.providerCreateIdentity, result); return result;
     },
     async read(input) { return read(input); }, async void() { return refusal; },
   };
   const mismatch = { ...correction, identity: { ...correction.identity, parentProviderDocumentRef: "wrong-parent" }, recoveryLookupRequired: true };
+  const unknownIssue = { ...issue, identity: { ...identity, invoiceRef: "unknown", providerCreateIdentity: "unknown-issue" }, recoveryLookupRequired: true };
+  const unknownCorrection = { ...correction, identity: { ...correction.identity, invoiceRef: "unknown", providerCreateIdentity: "unknown-correction", correctionRef: "unknown-correction" }, recoveryLookupRequired: true };
+  const unknownWrite = (input: InvoiceIdentity) => ({ kind: "unknown", identity: input, code: "unknown", effectMayHaveSucceeded: true } as const);
   return { subjectId: "offline-bridge", capability, provider, readWriteCount: () => writes, sensitiveValues: ["synthetic-private"], fixtures: {
-    issue: [{ input: issue, expected: issued(identity, "external-a"), replay: true }],
-    correction: [{ input: correction, expected: issued(correction.identity, "external-correction-a"), replay: true }, { input: mismatch, expected: { kind: "refused", identity: mismatch.identity, code: "parent_mismatch", retryable: false, effectMayHaveSucceeded: false } }],
-    readback: [identity, { ...identity, invoiceRef: "absent" }, { ...identity, invoiceRef: "unknown" }].map(input => ({ input, expected: read(input) })),
+    issue: [{ input: issue, expected: issued(identity, "external-a"), replay: true }, { input: unknownIssue, expected: unknownWrite(unknownIssue.identity) }],
+    correction: [{ input: correction, expected: issued(correction.identity, "external-correction-a"), replay: true }, { input: mismatch, expected: { kind: "refused", identity: mismatch.identity, code: "parent_mismatch", retryable: false, effectMayHaveSucceeded: false } }, { input: unknownCorrection, expected: unknownWrite(unknownCorrection.identity) }],
+    readback: [unknownIssue.identity, unknownCorrection.identity, identity, { ...identity, invoiceRef: "absent" }, { ...identity, invoiceRef: "unknown" }].map(input => ({ input, expected: read(input) })),
     void: [{ input: voidInput, expected: refusal }],
   } };
 }
@@ -85,10 +90,10 @@ it("rejects mismatched parent recovery, incomplete/scopeless absence, leaked dia
     subject => { subject.provider.issue = async input => ({ kind: "unknown", identity: input.identity, code: "unknown" } as InvoiceWriteResult); },
     subject => { subject.provider.void = async () => ({ kind: "voided", identity: voidInput, proof } as unknown as Awaited<ReturnType<Provider["void"]>>); },
   ];
-  for (const change of changes) {
+  const codes = ["identity_scope", "exact_complete_absence", "identity_scope", "read_fixture", "unexpected_field", "adapter_threw", "sensitive_result", "refusal_before_write", "unknown_not_absent", "document_result_kind"];
+  for (const [index, change] of changes.entries()) {
     const subject = fixture(); change(subject);
-    await expect(runInvoiceAdapterConformance([subject])).rejects.toThrow(/^INVOICE_CONFORMANCE:/);
-
+    await expect(runInvoiceAdapterConformance([subject])).rejects.toThrow(new RegExp(`^INVOICE_CONFORMANCE:${codes[index]}$`));
   }
   // Matching adapter/expected bytes must still fail when the runtime union is invalid.
   for (const kind of ["refused", "unknown"] as const) {
@@ -97,7 +102,7 @@ it("rejects mismatched parent recovery, incomplete/scopeless absence, leaked dia
     const invalid = { kind, identity: input.identity, code: kind === "refused" ? "absent" : "unknown", ...(kind === "refused" ? { retryable: false } : {}), effectMayHaveSucceeded: false } as unknown as InvoiceWriteResult;
     subject.provider.issue = async request => request.identity.invoiceRef === "bad-arm" ? invalid : original(request);
     Object.assign(subject.fixtures, { issue: [...subject.fixtures.issue, { input, expected: invalid }] });
-    await expect(runInvoiceAdapterConformance([subject])).rejects.toThrow(kind === "refused" ? "INVOICE_CONFORMANCE:refusal_before_write" : "INVOICE_CONFORMANCE:unknown_not_absent");
+    await expect(runInvoiceAdapterConformance([subject])).rejects.toThrow(kind === "refused" ? /^INVOICE_CONFORMANCE:refusal_before_write$/ : /^INVOICE_CONFORMANCE:unknown_not_absent$/);
   }
 
 });
@@ -127,7 +132,17 @@ it("checks declared host artifact/clearance/company capabilities and refuses col
   const positive = hostSubject();
   expect((await runInvoiceAdapterConformance([positive])).subjects[0].cases).toContain("settlement");
   expect(positive.readWriteCount()).toBe(4);
-  await expect(runInvoiceAdapterConformance([hostSubject(true)])).rejects.toThrow("INVOICE_CONFORMANCE:distinct_payout_items");
+  await expect(runInvoiceAdapterConformance([hostSubject(true)])).rejects.toThrow(/^INVOICE_CONFORMANCE:distinct_payout_items$/);
+  for (const defect of ["missing", "different_batch", "different_payment", "different_provider", "same_item", "conflict"] as const) {
+    const subject = hostSubject();
+    const rows = subject.fixtures.settlement;
+    if (!rows || !subject.host) throw new Error("settlement fixture required");
+    if (defect === "conflict") {
+      const record = subject.host.settlement.record;
+      subject.host.settlement.record = async input => input.itemRef === "balance-b" ? { kind: "conflict", itemRef: input.itemRef, code: "identity_mismatch" } : record(input);
+    } else Object.assign(subject.fixtures, { settlement: defect === "missing" ? rows.slice(0, 1) : rows.map((row, index) => index === 0 ? row : { ...row, input: { ...row.input, ...(defect === "different_batch" ? { batchRef: "batch-b" } : defect === "different_payment" ? { providerPaymentRef: "payment-b" } : defect === "different_provider" ? { providerRef: "money-b" } : { itemRef: rows[0].input.itemRef }) } }) });
+    await expect(runInvoiceAdapterConformance([subject])).rejects.toThrow(new RegExp(`^INVOICE_CONFORMANCE:${defect === "conflict" ? "distinct_payout_items" : "distinct_payout_fixtures_required"}$`));
+  }
   for (const defect of ["scope", "incomplete", "old_proof", "old_clearance"] as const) {
     const subject = hostSubject();
     if (!subject.host) throw new Error("host fixture required");
@@ -141,16 +156,78 @@ it("checks declared host artifact/clearance/company capabilities and refuses col
       return result;
     };
     if (defect === "old_clearance") subject.host.clearance.observe = async () => ({ state: "accepted", reference: "clearance-a", proof } as unknown as Awaited<ReturnType<typeof subject.host.clearance.observe>>);
-    await expect(runInvoiceAdapterConformance([subject])).rejects.toThrow(/^INVOICE_CONFORMANCE:/);
+    await expect(runInvoiceAdapterConformance([subject])).rejects.toThrow(new RegExp(`^INVOICE_CONFORMANCE:${defect === "old_proof" ? "unexpected_field" : defect === "old_clearance" ? "unexpected_field" : "artifact_absence"}$`));
   }
   const partial = hostSubject();
   if (!partial.host) throw new Error("host fixture required");
   const record = partial.host.settlement.record;
   partial.host.settlement.record = async row => {
     const result = await record(row); // Count the partial write before refusing.
-    return row.itemRef === "balance-b" ? refusal : result;
+    return row.itemRef === "balance-c" ? refusal : result;
   };
-  Object.assign(partial.fixtures, { settlement: partial.fixtures.settlement?.map((row, index) => index === 1 ? { ...row, expected: refusal } : row) });
-  await expect(runInvoiceAdapterConformance([partial])).rejects.toThrow("INVOICE_CONFORMANCE:host_unsupported_write");
+  const extra = partial.fixtures.settlement?.[0];
+  if (!extra) throw new Error("settlement fixture required");
+  Object.assign(partial.fixtures, { settlement: [...partial.fixtures.settlement ?? [], { input: { ...extra.input, itemRef: "balance-c" }, expected: refusal }] });
+  await expect(runInvoiceAdapterConformance([partial])).rejects.toThrow(/^INVOICE_CONFORMANCE:host_unsupported_write$/);
 
+});
+
+it("requires unknown recovery for each supported write and refuses recreation", async () => {
+  for (const operation of ["issue", "correction"] as const) {
+    for (const defect of ["missing", "readback", "recreate", "unknown_after_write"] as const) {
+      const subject = fixture(), rows = subject.fixtures[operation];
+      const unknown = rows.find(row => row.expected.kind === "unknown");
+      if (!unknown) throw new Error("unknown recovery fixture required");
+      if (defect === "missing") Object.assign(subject.fixtures, { [operation]: rows.filter(row => row !== unknown) });
+      if (defect === "readback") Object.assign(subject.fixtures, { readback: subject.fixtures.readback.filter(row => row.input !== unknown.input.identity) });
+      if (defect === "recreate" || defect === "unknown_after_write") {
+        const original = operation === "issue" ? subject.provider.issue : subject.provider.correct;
+        const invoke = async (input: Parameters<typeof original>[0]) => {
+          if (input.identity === unknown.input.identity) {
+            // The faulty adapter treats unknown as absence and performs another create.
+            const created = await original({ ...input, recoveryLookupRequired: false } as never);
+            return defect === "unknown_after_write" ? unknown.expected : created;
+          }
+          return original(input as never);
+        };
+        if (operation === "issue") subject.provider.issue = invoke;
+        else subject.provider.correct = invoke;
+      }
+      await expect(runInvoiceAdapterConformance([subject])).rejects.toThrow(new RegExp(`^INVOICE_CONFORMANCE:${defect === "missing" ? "recovery_unknown_fixture_required" : defect === "readback" ? "recovery_unknown_readback_required" : "recovery_unknown_no_write"}$`));
+    }
+  }
+});
+
+it("allows supported writes with recovery undeclared only with a non-create recovery refusal", async () => {
+  const subject = fixture();
+  Object.assign(subject, { capability: { ...capability, operations: { ...capability.operations, recovery: { supported: false, reason: "not_implemented" } } } });
+  for (const operation of ["issue", "correction"] as const) {
+    const original = operation === "issue" ? subject.provider.issue : subject.provider.correct;
+    const invoke = async (input: Parameters<typeof original>[0]) => input.recoveryLookupRequired ? refusal : original(input as never);
+    if (operation === "issue") subject.provider.issue = invoke;
+    else subject.provider.correct = invoke;
+    Object.assign(subject.fixtures, { [operation]: subject.fixtures[operation].map(row => ({ ...row, replay: false, expected: row.input.recoveryLookupRequired ? refusal : row.expected })) });
+  }
+  // Parent mismatch is still a refused/unknown result, even without recovery support.
+  const mismatch = subject.fixtures.correction[1];
+  const correct = subject.provider.correct;
+  subject.provider.correct = async input => input.identity.parentProviderDocumentRef === "wrong-parent" ? { kind: "refused", identity: input.identity, code: "parent_mismatch", retryable: false, effectMayHaveSucceeded: false } : correct(input);
+  Object.assign(subject.fixtures, { correction: subject.fixtures.correction.map(row => row === mismatch ? { ...row, expected: { kind: "refused", identity: row.input.identity, code: "parent_mismatch", retryable: false, effectMayHaveSucceeded: false } } : row) });
+  await expect(runInvoiceAdapterConformance([subject])).resolves.toBeDefined();
+});
+
+it("reports missing readback proof and a provider write followed by refusal with exact codes", async () => {
+  const missing = fixture(), read = missing.provider.read;
+  missing.provider.read = async input => {
+    const result = await read(input);
+    return result.kind === "found" ? { ...result, proof: undefined } as unknown as InvoiceReadbackResult : result;
+  };
+  await expect(runInvoiceAdapterConformance([missing])).rejects.toThrow(/^INVOICE_CONFORMANCE:proof_required$/);
+  const partial = fixture(), issue = partial.provider.issue;
+  const refused = { kind: "refused", identity, code: "blocked", retryable: false, effectMayHaveSucceeded: false } as const;
+  partial.provider.issue = async input => { await issue(input); return refused; };
+  Object.assign(partial.fixtures, { issue: partial.fixtures.issue.map((row, index) => index === 0 ? { ...row, expected: refused } : row) });
+  // Retain a required issued fixture so the partial-write assertion is exercised.
+  Object.assign(partial.fixtures, { issue: [...partial.fixtures.issue, { input: partial.fixtures.issue[0].input, expected: { kind: "issued", identity, providerDocumentRef: "external-a", providerDocumentNumber: null, proof, replayed: true } }] });
+  await expect(runInvoiceAdapterConformance([partial])).rejects.toThrow(/^INVOICE_CONFORMANCE:refused_write$/);
 });

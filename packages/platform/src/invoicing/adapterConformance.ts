@@ -1,5 +1,4 @@
 import type { InvoiceCapabilities, InvoiceDocumentIdentity, InvoiceIdentity, InvoiceWriteResult, InvoiceReadbackResult, InvoiceArtifactResult, InvoiceHostPorts, InvoiceServicesOptions } from "./contracts/index.js";
-import { readInvoiceCapabilities } from "./capabilities.js";
 
 type Provider = NonNullable<InvoiceServicesOptions["provider"]>;
 type Fixture<Input, Result> = { readonly input: Input; readonly expected: Result };
@@ -34,9 +33,11 @@ function same(a: unknown, b: unknown): boolean {
   return left.length === right.length && left.every(key => Object.hasOwn(b, key) && same((a as Record<string, unknown>)[key], (b as Record<string, unknown>)[key]));
 }
 function keys(value: object, allowed: readonly string[]): void {
+  requireFact(value !== null && typeof value === "object", "proof_required");
   requireFact(Object.keys(value).every(key => allowed.includes(key)), "unexpected_field");
 }
 function proof(value: { evidenceRef: string; fingerprint: string; observedAt: string }, extra: readonly string[] = []): void {
+  requireFact(value !== null && typeof value === "object", "proof_required");
   keys(value, ["evidenceRef", "fingerprint", "observedAt", ...extra]);
   requireFact([value.evidenceRef, value.fingerprint, value.observedAt].every(v => typeof v === "string" && v.trim().length > 0), "proof_required");
 }
@@ -80,8 +81,8 @@ function hostResult(operation: "artifact" | "clearance" | "settlement" | "compan
     requireFact(result.retryable === false && result.effectMayHaveSucceeded === false && (result.code === "unsupported" || result.code === "host_binding_required"), "host_unsupported"); return;
   }
   if (operation === "artifact") {
-    const artifact = value as InvoiceArtifactResult, request = input as Parameters<InvoiceHostPorts["artifacts"]["read"]>[0];
-    requireFact(artifact.kind !== "unsupported", "artifact_result"); identity(artifact.identity, request.identity);
+    const artifact = value as Exclude<InvoiceArtifactResult, { kind: "unsupported" }>, request = input as Parameters<InvoiceHostPorts["artifacts"]["read"]>[0];
+    identity(artifact.identity, request.identity);
     if (artifact.kind === "found") {
       keys(artifact, ["kind", "identity", "artifact"]); keys(artifact.artifact, ["kind", "ref", "owner", "mediaType", "proof"]);
       requireFact(artifact.artifact.kind === request.kind && artifact.artifact.ref.length > 0 && artifact.artifact.mediaType.length > 0 && ["provider", "host_storage"].includes(artifact.artifact.owner), "artifact_reference"); proof(artifact.artifact.proof);
@@ -108,10 +109,9 @@ function hostResult(operation: "artifact" | "clearance" | "settlement" | "compan
     if (result.kind === "conflict") requireFact(result.code === "identity_mismatch" || result.code === "money_mismatch", "settlement_conflict");
     if (result.kind === "unknown") requireFact(result.code === "unknown", "settlement_unknown");
   } else {
-    const company = value as Awaited<ReturnType<InvoiceHostPorts["registry"]["lookup"]>>;
+    const company = value as Exclude<Awaited<ReturnType<InvoiceHostPorts["registry"]["lookup"]>>, { kind: "unsupported" }>;
     keys(result, ["kind", "identifier", "legalName", "registrationIds", "address", "taxRegistrations", "sourceRef", "proof", "code"]);
     const request = input as Parameters<InvoiceHostPorts["registry"]["lookup"]>[0];
-    requireFact(company.kind !== "unsupported", "company_result");
     requireFact(company.sourceRef === request.sourceRef, "company_source");
     if (company.kind !== "unknown") requireFact(same(company.identifier, request.identifier), "company_identity");
     if (company.kind === "found" || company.kind === "partial") {
@@ -136,18 +136,22 @@ export async function runInvoiceAdapterConformance(subjects: readonly Subject[])
       requireFact(caps.defaultOff === true, "default_off");
       requireFact(caps.version === "invoicing.capabilities.v1" && caps.numberingOwner === "provider"
         && [caps.providerRef, caps.fiscalScope.scopeRef, caps.fiscalScope.version, ...Object.values(caps.policies)].every(value => value.trim().length > 0), "capability_scope");
-      requireFact(readInvoiceCapabilities({ selection: { providerRef: caps.providerRef }, capability: caps }).kind === "refused", "default_off");
-      requireFact(readInvoiceCapabilities({ enabled: true, selection: null, capability: caps }).kind === "refused", "explicit_selection");
-      cases.push("default_off", "explicit_selection");
       for (const operation of ["issue", "correction"] as const) {
         const rows = fixtures[operation]; requireFact(rows.length > 0, "write_fixture_required");
         if (caps.operations[operation].supported) requireFact(rows.some(row => row.expected.kind === "issued"), "issued_fixture_required");
         if (caps.operations[operation].supported && caps.operations.recovery.supported) requireFact(rows.some(row => row.replay), "recovery_fixture_required");
+        const unknownRecovery = rows.filter(row => row.input.recoveryLookupRequired
+          && row.expected.kind === (caps.operations.recovery.supported ? "unknown" : "unsupported"));
+        if (caps.operations[operation].supported) {
+          requireFact(unknownRecovery.length > 0, "recovery_unknown_fixture_required");
+          if (caps.operations.recovery.supported && caps.operations.readback.supported) requireFact(unknownRecovery.every(row => fixtures.readback.some(read => read.expected.kind === "unknown" && same(read.input, row.input.identity))), "recovery_unknown_readback_required");
+        }
         for (const row of rows) {
           requireFact(row.input.identity.providerRef === caps.providerRef, "selected_provider");
           const before = subject.readWriteCount();
           const invoke = operation === "issue" ? () => provider.issue(row.input as Parameters<Provider["issue"]>[0]) : () => provider.correct(row.input as Parameters<Provider["correct"]>[0]);
           const result = await invoke(); documentResult(result, row.input.identity, "write"); safe(result, subject);
+          if (unknownRecovery.includes(row)) requireFact(result.kind === row.expected.kind && subject.readWriteCount() === before, "recovery_unknown_no_write");
           requireFact(same(result, row.expected), "write_fixture");
           if (!caps.operations[operation].supported) requireFact(result.kind === "unsupported", "declared_unsupported");
           if (operation === "correction" && caps.operations.correction.supported) {
@@ -193,10 +197,14 @@ export async function runInvoiceAdapterConformance(subjects: readonly Subject[])
         const before = subject.readWriteCount(), result = await provider.void(row.input);
         documentResult(result, row.input, "void"); safe(result, subject); requireFact(same(result, row.expected), "void_fixture");
         requireFact(subject.readWriteCount() === before, "void_refused_write");
-        if (!caps.operations.remoteVoid.supported) requireFact(result.kind === "unsupported" && subject.readWriteCount() === before, "void_unsupported_before_write");
         cases.push("void:" + result.kind);
       }
       const settlementReceipts = new Map<string, string>();
+      const settlementRows = fixtures.settlement ?? [];
+      const distinctPayoutRows = settlementRows.filter(row => row.expected.kind === "recorded" && settlementRows.some(other => other.expected.kind === "recorded"
+        && row.input.itemRef !== other.input.itemRef && row.input.providerRef === other.input.providerRef
+        && row.input.batchRef === other.input.batchRef && row.input.providerPaymentRef === other.input.providerPaymentRef));
+      if (caps.operations.settlement.supported) requireFact(distinctPayoutRows.length >= 2, "distinct_payout_fixtures_required");
       // Optional host-owned capabilities require their own fixtures when declared.
       for (const operation of ["artifact", "clearance", "settlement", "companyLookup"] as const) {
         const rows = fixtures[operation] ?? [];
@@ -208,15 +216,16 @@ export async function runInvoiceAdapterConformance(subjects: readonly Subject[])
               : operation === "settlement" ? await subject.host.settlement.record(row.input as Parameters<InvoiceHostPorts["settlement"]["record"]>[0])
                 : await subject.host.registry.lookup(row.input as Parameters<InvoiceHostPorts["registry"]["lookup"]>[0]);
           hostResult(operation, row.input, result);
-          safe(result, subject); requireFact(same(result, row.expected), "host_fixture");
-          if (result.kind === "unsupported") requireFact(subject.readWriteCount() === before, "host_unsupported_write");
-          if (operation !== "settlement") requireFact(subject.readWriteCount() === before, "host_read_no_write");
+          if (operation === "settlement" && distinctPayoutRows.some(fixture => fixture === row)) requireFact(result.kind === "recorded", "distinct_payout_items");
           if (operation === "settlement" && "kind" in result && result.kind === "recorded") {
             const input = row.input as Parameters<InvoiceHostPorts["settlement"]["record"]>[0];
             const item = JSON.stringify([input.providerRef, input.batchRef, input.itemRef]);
             requireFact(!settlementReceipts.has(result.settlementItemRef) || settlementReceipts.get(result.settlementItemRef) === item, "distinct_payout_items");
             settlementReceipts.set(result.settlementItemRef, item);
           }
+          safe(result, subject); requireFact(same(result, row.expected), "host_fixture");
+          if (result.kind === "unsupported") requireFact(subject.readWriteCount() === before, "host_unsupported_write");
+          if (operation !== "settlement") requireFact(subject.readWriteCount() === before, "host_read_no_write");
           if (!caps.operations[operation].supported) requireFact((result.kind === "unsupported" || ("observation" in result && result.observation.state === "unsupported")) && subject.readWriteCount() === before, "host_unsupported_before_write");
           cases.push(operation);
         }

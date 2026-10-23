@@ -922,9 +922,10 @@ Its installed cold-consumer producer exercises default-off and explicit provider
 selection from the packed artifact and exercises typed native host/store refusals
 and offline adapter conformance. Declaration compilation covers the native-port
 factory and conformance helper in both NodeNext and Bundler modes. Per-seam
-`Record<RequiredKeys, string>` checks cover all 14 SQL-mapped store inputs, including
+`Record<RequiredKeys, string>` checks cover all 14 pinned-SQL store seams, including
 union-arm evidence and explicitly local handling. A CI-run falsifier adds a required
-field to a packed declaration and requires both compilers to reject it. The existing
+field to a packed declaration and requires both the NodeNext and Bundler compiles
+to reject it. The existing
 package selection, boundary tests, API reports,
 AST rules and required verification routes remain binding; this contract step
 adds no separate runner or provider-access requirement.

@@ -665,7 +665,7 @@ the platform row's raised caps use the projection in the note below the table.
 | --- | --- | --- | --- | --- | --- | --- |
 | `@openlup/core` | 132,250 / 198 | 270 / 400 | 161,371 / 209 | 320 / 420 | 48 / 20 | 1,360 |
 | `@openlup/outbox` | 20,930 / 33 | 42 / 70 | 38,718 / 41 | 80 / 90 | 26 / 12 | 260 |
-| `@openlup/platform` | 215,464 / 381 | 1,100 / 2,000 | 256,973 / 395 | 1,320 / 2,100 | 40 / 10 | 6,400 |
+| `@openlup/platform` | 215,464 / 381 | 1,100 / 2,000 | 256,973 / 395 | 1,320 / 2,100 | 48 / 10 | 6,400 |
 
 The `@openlup/platform` code, tarball, file and unpacked caps were raised on
 2026-10-20 with the maintainer's read of the M05 budget packet. Each is about

@@ -700,11 +700,18 @@ its owning duty must stay visible for a selected host adapter or operator.
 `runInvoiceAdapterConformance(subjects)` is independent of a test runner. Each
 subject supplies selected provider ports, a descriptor, offline fixtures and a
 write counter over every injected transport. Supported issue and correction need
-issued and recovery fixtures; correction additionally needs a mismatched-parent
-recovery refusal. Readback needs found/unknown and, when declared, exact scoped
-absence. Unsupported methods and read-only operations must not write. Optional
+issued fixtures and, when recovery is declared, issued replay fixtures. Each
+supported write also needs a recovery-required fixture that returns unknown
+without a write, or unsupported when recovery is undeclared. When recovery and
+readback are both declared, each unknown recovery fixture needs a readback
+fixture expecting unknown for the same full identity. Correction additionally
+needs a mismatched-parent recovery result of refused or unknown without a write.
+Declared readback needs found/unknown fixtures and, when exact absence is declared,
+exact scoped absence. Unsupported methods and read-only operations must not write. Optional
 artifact, clearance, settlement and registry support needs host-owned positive
-fixtures. Distinct payout items cannot reuse one receipt. Results and proofs are
+fixtures. Declared settlement needs two recorded fixtures with distinct itemRef
+and equal providerRef, batchRef and providerPaymentRef; they must return distinct
+settlementItemRefs. Distinct payout items cannot reuse one receipt. Results and proofs are
 checked for identity, scoped absence, closed fields and synthetic sensitive
 sentinels; adapter exceptions become a fixed failure code. Returned evidence
 contains only subject/provider references and case names, never result payloads.
