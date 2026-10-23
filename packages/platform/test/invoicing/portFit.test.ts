@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { expect, expectTypeOf, it } from "vitest";
 import type { InvoiceFacts, InvoiceLine, InvoiceBuyer, InvoiceSeller, InvoiceIdentity, InvoiceReadbackResult, InvoiceWriteResult, InvoiceCompanyLookupPort, InvoiceHostPorts, InvoiceProviderPort, InvoiceDocumentIdentity, InvoiceStorePort } from "../../src/invoicing/contracts/index.js";
 
@@ -120,4 +121,92 @@ it("fits the existing local paid-order document provider, reference, status and 
   };
   expect(await local.requestLocalDocument({ requestKey: donorRequest.idempotencyKey, orderId: donorRequest.orderId, providerRef: donorRequest.providerKind })).toEqual({ kind: "requested", documentId: "document-a", invoiceRef: "local-invoice-a", status: "requested", replayed: true });
   expect(seen).toEqual(donorRequest);
+});
+
+
+it("fits pre-claim seller reads to order-scoped and unscoped first-claim wrappers", async () => {
+  // Pinned 195000 invoicing_claim_with_seller + 195100 managed claim wrappers;
+  // donor readAccountingSellerConfig reads configuration without any duty.
+  const seen: (string | null)[] = [];
+  const current: InvoiceHostPorts["seller"] = {
+    async read(input) { seen.push(input.orderId); return { kind: "found", seller, revisionRef: "seller-revision-a" }; },
+  };
+  for (const orderId of ["order-a", null]) {
+    const snapshot = await current.read({ orderId });
+    if (snapshot.kind !== "found") throw new Error("expected_seller_fixture");
+    const native = { p_limit: 10, p_visibility: 300, p_provider: "fiscal-a", p_seller: snapshot.seller, p_revision: snapshot.revisionRef, p_order_id: orderId };
+    const managed = { p_limit: 10, p_order: orderId, p_seller: snapshot.seller, p_revision: snapshot.revisionRef };
+    const corrections = { p_limit: 10, p_seller: snapshot.seller, p_revision: snapshot.revisionRef };
+    expect(native.p_revision).toBe("seller-revision-a");
+    expect(managed).toMatchObject({ p_order: orderId, p_seller: seller, p_revision: native.p_revision });
+    expect(corrections).toEqual({ p_limit: 10, p_seller: seller, p_revision: native.p_revision });
+  }
+  expect(seen).toEqual(["order-a", null]);
+});
+
+
+it("supplies native store and seller-wrapper arguments in pinned SQL signature order", async () => {
+  // This is a translation witness, not a store implementation or a SQL runner.
+  // Required port inputs are checked by TypeScript; object key order is checked
+  // against the actual pinned signatures, including the fenced managed overloads.
+  const claim = { dutyId: "duty-a", documentId: "document-a", requestId: "request-a", token: "lease-a", generation: 2, leaseUntil: proof.observedAt, identity, facts, action: "create", correction: null } as const satisfies Parameters<InvoiceStorePort["finish"]>[0]["claim"];
+  const capture: Parameters<InvoiceStorePort["captureDuty"]>[0] = { requestKey: "paid-key", sourceKind: "paid", sourceId: "transition-a", orderId: facts.refs.orderId, occurredAt: proof.observedAt, evidence: { settlementIntentId: facts.payment.intentRef, amountMinor: 120, currency: facts.currency } };
+  const install: Parameters<InvoiceStorePort["installFacts"]>[0] = { dutyId: claim.dutyId, facts };
+  const prepare: Parameters<InvoiceStorePort["prepareFacts"]>[0] = { dutyId: claim.dutyId, token: claim.token };
+  const finishFacts: Parameters<InvoiceStorePort["finishFacts"]>[0] = { ...prepare, result: { status: "ready", documentId: claim.documentId, requestId: claim.requestId } };
+  const scope: Parameters<InvoiceStorePort["claim"]>[0] = { limit: 10, visibilitySeconds: 300, providerRef: identity.providerRef, orderId: facts.refs.orderId };
+  const preflight: Parameters<InvoiceStorePort["preflight"]>[0] = { claim, status: "succeeded", amountMinor: 120, currency: facts.currency, proof };
+  const finish: Parameters<InvoiceStorePort["finish"]>[0] = { claim, result: { kind: "issued", identity, providerDocumentRef: "external-a", providerDocumentNumber: null, proof, replayed: false } };
+  const fail: Parameters<InvoiceStorePort["fail"]>[0] = { claim, retrySeconds: 90, kind: "retryable", phase: "before_send", proof };
+  const reversal: Parameters<InvoiceStorePort["requestReversal"]>[0] = { requestKey: "reversal-a", orderId: facts.refs.orderId, reason: "order_refunded", proof };
+  const observation: Parameters<InvoiceStorePort["recordObservation"]>[0] = { requestKey: "observation-a", documentId: claim.documentId, eventRef: "event-a", eventKind: "clearance", identity: { providerRef: identity.providerRef, documentRef: claim.documentId, providerDocumentRef: "external-a", orderRef: identity.orderRef, invoiceRef: identity.invoiceRef, parentProviderDocumentRef: null }, providerDocumentRef: "external-a", providerDocumentNumber: null, clearance: { state: "accepted", reference: "clearance-a", proof }, artifacts: [], observedAt: proof.observedAt, payloadHash: proof.fingerprint, source: "provider_api" };
+  const delivery: Parameters<InvoiceStorePort["claimDeliveries"]>[0] = { limit: 10, visibilitySeconds: 300, requireClearance: true, orderId: facts.refs.orderId };
+  const settle: Parameters<InvoiceStorePort["settleDelivery"]>[0] = { deliveryRef: "delivery-a", token: claim.token, generation: claim.generation, providerDocumentRef: "external-a", retrySeconds: 90, result: { kind: "failed_before_send", retryable: true, code: "retryable" } };
+  const current: InvoiceHostPorts["seller"] = { async read() { return { kind: "found", seller, revisionRef: "seller-revision-a" }; } };
+  const snapshot = await current.read({ orderId: scope.orderId ?? null });
+  if (snapshot.kind !== "found") throw new Error("expected_seller_fixture");
+  // Provider selection is a store-construction dependency for managed requests;
+  // seller is read before claim. Neither depends on a returned duty identifier.
+  const selectedProvider = scope.providerRef;
+  const fences = { p_duty: claim.dutyId, p_token: claim.token, p_generation: claim.generation };
+  const completion = { ...fences, p_external: finish.result.providerDocumentRef, p_number: finish.result.providerDocumentNumber, p_proof: { kind: "issued", externalId: finish.result.providerDocumentRef, providerCreateIdentity: claim.identity.providerCreateIdentity, ...finish.result.proof } };
+  const calls: readonly [string, string, Record<string, unknown>][] = [
+    ["190000_invoicing_durable_duties", "invoicing_capture_duty", { p_key: capture.requestKey, p_source_kind: capture.sourceKind, p_source_id: capture.sourceId, p_order_id: capture.orderId, p_evidence: capture.evidence, p_occurred_at: capture.occurredAt }],
+    ["190000_invoicing_durable_duties", "invoicing_install_facts", { p_duty: install.dutyId, p_facts: install.facts, p_revision: install.facts.factRevision }],
+    ["190000_invoicing_durable_duties", "invoicing_sweep_duties", { p_limit: scope.limit }],
+    ["190000_invoicing_durable_duties", "invoicing_prepare_facts", { p_duty: prepare.dutyId, p_token: prepare.token }],
+    ["190000_invoicing_durable_duties", "invoicing_finish_facts", { p_duty: finishFacts.dutyId, p_token: finishFacts.token, p_result: finishFacts.result }],
+    ["190000_invoicing_durable_duties", "invoicing_duty_readback", { p_order_id: capture.orderId }],
+    ["190000_invoicing_durable_duties", "invoicing_claim_duties", { p_limit: scope.limit, p_visibility: scope.visibilitySeconds, p_provider: scope.providerRef, p_order_id: scope.orderId }],
+    ["190000_invoicing_durable_duties", "invoicing_preflight_duty", { ...fences, p_evidence: { kind: "observed", outcome: "captured", amountMinor: preflight.amountMinor, currency: preflight.currency, proof: preflight.proof } }],
+    ["190000_invoicing_durable_duties", "invoicing_finish_issue", completion],
+    ["190000_invoicing_durable_duties", "invoicing_fail_duty", { ...fences, p_kind: fail.kind, p_evidence: { phase: fail.phase, proof: fail.proof }, p_delay: fail.retrySeconds }],
+    ["191000_invoicing_document_effects", "invoicing_request_reversal", { p_key: reversal.requestKey, p_order: reversal.orderId, p_reason: reversal.reason, p_evidence: reversal.proof }],
+    ["191000_invoicing_document_effects", "invoicing_finish_correction", { ...completion, p_proof: { ...completion.p_proof, parentExternalId: "parent-a" } }],
+    ["191000_invoicing_document_effects", "invoicing_record_observation", { p_key: observation.requestKey, p_document: observation.documentId, p_observation: { kind: observation.eventKind, state: observation.clearance?.state, reference: observation.clearance?.reference, observedAt: observation.observedAt } }],
+    ["191000_invoicing_document_effects", "invoicing_claim_deliveries", { p_limit: delivery.limit, p_visibility: delivery.visibilitySeconds, p_require_clearance: delivery.requireClearance, p_order_id: delivery.orderId }],
+    ["191000_invoicing_document_effects", "invoicing_settle_delivery", { p_delivery: settle.deliveryRef, p_token: settle.token, p_generation: settle.generation, p_kind: settle.result.kind, p_receipt: null, p_evidence: { phase: "before_send", code: "retryable" } }],
+    ["193000_invoicing_correction_claims", "accounting_invoice_correction_outbox_claim", { p_limit: scope.limit, p_lease_seconds: scope.visibilitySeconds, p_contract_version: "accounting.correction.v2" }],
+    ["193000_invoicing_correction_claims", "accounting_invoice_correction_outbox_succeed", { p_outbox_id: claim.dutyId, p_provider_invoice_id: finish.result.providerDocumentRef, p_provider_invoice_number: finish.result.providerDocumentNumber, p_provider_raw: finish.result.proof, p_claim_attempt_count: claim.generation }],
+    ["193000_invoicing_correction_claims", "accounting_invoice_correction_outbox_fail", { p_outbox_id: claim.dutyId, p_error: fail.proof, p_retry_seconds: fail.retrySeconds, p_claim_attempt_count: claim.generation }],
+    ["195000_invoicing_seller_revision", "invoicing_request_with_seller_policy", { p_key: capture.requestKey, p_source_kind: capture.sourceKind, p_source_id: capture.sourceId, p_order_id: capture.orderId, p_evidence: capture.evidence, p_occurred_at: capture.occurredAt }],
+    ["195000_invoicing_seller_revision", "invoicing_claim_with_seller", { p_limit: scope.limit, p_visibility: scope.visibilitySeconds, p_provider: scope.providerRef, p_seller: snapshot.seller, p_revision: snapshot.revisionRef, p_order_id: scope.orderId }],
+    ["195100_invoicing_seller_revision", "invoicing_managed_request_with_seller_policy", { p_key: capture.requestKey, p_source_kind: capture.sourceKind, p_source_id: capture.orderId, p_provider: selectedProvider, p_evidence: capture.evidence }],
+    ["195100_invoicing_seller_revision", "invoicing_managed_claim_with_seller", { p_limit: scope.limit, p_order: scope.orderId, p_seller: snapshot.seller, p_revision: snapshot.revisionRef }],
+    ["195100_invoicing_seller_revision", "invoicing_managed_claim_corrections_with_seller", { p_limit: scope.limit, p_seller: snapshot.seller, p_revision: snapshot.revisionRef }],
+  ];
+  for (const [fixture, name, args] of calls) {
+    const sql = readFileSync(new URL(`../../../../scripts/fixtures/20261022${fixture}.sql`, import.meta.url), "utf8");
+    const signature = sql.match(new RegExp(`CREATE (?:OR REPLACE )?FUNCTION public\\.${name}\\(([^)]*)\\)`));
+    expect(signature, name).not.toBeNull();
+    const parameters = signature![1].split(",").map(parameter => parameter.trim().split(/\s+/)[0]);
+    expect(Object.keys(args), name).toEqual(parameters);
+  }
+  // The seventh native fixture is a caller of capture, not a new M09 store port.
+  const paymentSql = readFileSync(new URL("../../../../scripts/fixtures/20261022192000_invoicing_payment_decoupling.sql", import.meta.url), "utf8");
+  expect(paymentSql).toContain("public.invoicing_capture_duty(");
+  // The old managed overloads refuse; callers must use the fenced v2 signatures.
+  const compatibility = readFileSync(new URL("../../../../scripts/fixtures/20261022193100_invoicing_correction_compatibility.sql", import.meta.url), "utf8");
+  expect(compatibility).toContain("accounting_invoice_correction_claim_contract_required");
+  expect(compatibility.match(/accounting_invoice_correction_claim_fence_required/g)).toHaveLength(2);
 });

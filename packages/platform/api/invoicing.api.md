@@ -145,7 +145,7 @@ export interface InvoiceFacts {
     readonly clearanceRequired: boolean;
     readonly currency: string;
     readonly buyer: InvoiceBuyer;
-    /** Supplied separately at execution; first-claim revision persistence belongs to P8. */
+    /** Supplied separately for execution; P8 freezes it at first claim before provider I/O. */
     readonly seller?: InvoiceSeller;
     readonly payment: {
         readonly intentRef: string;

@@ -654,9 +654,16 @@ chronology. Ready maps to owed and processing to claimed; unsupported obligation
 remain visible. Empty duties and payment truth's `accountingRequested=false` do
 not establish invoice absence. Capture faults remain separately observable.
 
-Seller, policy-receipt and download-ticket reads distinguish transient `unknown`
+The seller read takes an order ID or null for an unscoped claim, including
+corrections: it reads current host configuration before the next claim, never per
+duty. P8 freezes that seller at first claim; `revisionRef` supplies the claim
+wrapper revision argument. Managed and native stores bind the selected provider
+at construction, including duty capture and reversal requests.
+
+Seller, fiscal-verification, policy-decision, policy-receipt and download-ticket
+reads distinguish transient `unknown`
 from missing bindings, empty receipts and denied ownership. Artifact absence
-retains exact scoped `evidence`.
+retains exact scoped `evidence`. Unknown policy decisions record no receipt.
 Artifacts retain opaque durable references and proof; URLs/download bytes remain
 transient. Download authorization precedes fetch; PDF type/size/signature validation
 precedes M04 send. Delivery retains local order/document and provider identities,
@@ -674,7 +681,8 @@ Payout evidence preserves distinct item references even for the same batch and
 payment. Native uniqueness cannot silently merge them or replace nullable links;
 a conforming host recorder/resolver is required. Account history preserves the
 owner, order, parent lineage, signed correction totals and currency in a safe
-projection, without buyer payloads, raw diagnostics or signed URLs. The host owns
+projection, without buyer payloads, raw diagnostics or signed URLs. A found history
+is the complete owned projection; incomplete reads return unknown. The host owns
 customer authentication, operator authorization, retention and original key bytes.
 
 Inspect the [contract](../../packages/platform/test/invoicing/contracts.test.ts)

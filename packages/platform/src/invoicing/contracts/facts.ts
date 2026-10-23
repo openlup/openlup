@@ -48,7 +48,7 @@ export interface InvoiceFacts {
   readonly clearanceRequired: boolean;
   readonly currency: string;
   readonly buyer: InvoiceBuyer;
-  /** Supplied separately at execution; first-claim revision persistence belongs to P8. */
+  /** Supplied separately for execution; P8 freezes it at first claim before provider I/O. */
   readonly seller?: InvoiceSeller;
   readonly payment: { readonly intentRef: string; readonly providerRef: string | null; readonly providerPaymentRef: string | null; readonly amountMinor: number; readonly currency: string; readonly localSettlementState: "matched" | "unavailable" };
   readonly orderMoney: { readonly subtotalMinor: number; readonly discountMinor: number; readonly shippingMinor: number; readonly shippingDiscountMinor: number; readonly totalMinor: number } | null;

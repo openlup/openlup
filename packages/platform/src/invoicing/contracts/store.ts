@@ -40,6 +40,7 @@ export interface InvoiceDutyReadback {
 }
 /** Every operation is one local transaction; commit before external I/O. Native
  * success atomically saves late identity and compensation; stale catch writes nothing.
+ * Managed and native stores are bound to the selected provider at construction.
  * No implementation, executor or migration is installed by these declarations.
  */
 export interface InvoiceStorePort {
@@ -56,7 +57,10 @@ export interface InvoiceStorePort {
   prepareFacts(input: { readonly dutyId: string; readonly token: string }): Promise<{ readonly status: "owed" | "ready" | "issued" | "voided" | "unsupported" | "stale"; readonly documentId?: string; readonly requestId?: string; readonly code?: "retryable" | "legacy_facts_unproved" } | InvoiceUnsupported>;
   finishFacts(input: { readonly dutyId: string; readonly token: string; readonly result: Omit<Exclude<Awaited<ReturnType<InvoiceStorePort["prepareFacts"]>>, InvoiceUnsupported>, "status"> & { readonly status: "owed" | "ready" | "issued" | "voided" | "unsupported" } }): Promise<{ readonly dutyId: string; readonly status: "owed" | "ready" | "issued" | "voided" | "unsupported" | "faulted" | "stale" } | InvoiceUnsupported>;
   readDuties(orderId: string): Promise<InvoiceDutyReadback | InvoiceUnsupported>;
-  /** Filter order before locking/limit; never lease unrelated orders then filter. */
+  /** Filter order before locking/limit; never lease unrelated orders then filter.
+   * P8 reads the injected host seller before calling the first-claim SQL wrapper;
+   * its revisionRef supplies p_revision, without requiring a duty from the caller.
+   */
   claim(input: { readonly limit: number; readonly visibilitySeconds: number; readonly providerRef: string; readonly orderId?: string | null }): Promise<readonly InvoiceClaim[] | InvoiceUnsupported>;
   preflight(input: { readonly claim: InvoiceClaim; readonly amountMinor: number | null; readonly currency: string | null } & (
     | { readonly status: "succeeded" | "failed" | "pending" | "unknown" | "unavailable"; readonly proof: InvoiceProof | null }

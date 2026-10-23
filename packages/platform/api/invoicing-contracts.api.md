@@ -261,7 +261,7 @@ export interface InvoiceFacts {
     readonly clearanceRequired: boolean;
     readonly currency: string;
     readonly buyer: InvoiceBuyer;
-    /** Supplied separately at execution; first-claim revision persistence belongs to P8. */
+    /** Supplied separately for execution; P8 freezes it at first claim before provider I/O. */
     readonly seller?: InvoiceSeller;
     readonly payment: {
         readonly intentRef: string;
@@ -309,10 +309,13 @@ export interface InvoiceHostPorts {
             readonly code: "missing_facts";
         } | InvoiceUnsupported>;
     };
+    /** Read the current host seller for the next claim, never per duty. Null orderId
+     * means an unscoped claim (including corrections). P8 freezes this seller at
+     * first claim; revisionRef feeds the claim wrapper's revision argument.
+     */
     seller: {
         read(input: {
-            readonly orderId: string;
-            readonly dutyId: string;
+            readonly orderId: string | null;
         }): Promise<{
             readonly kind: "found";
             readonly seller: InvoiceSeller;
@@ -394,6 +397,9 @@ export interface InvoiceHostPorts {
         } | {
             readonly kind: "refused";
             readonly code: "blocked" | "money_mismatch";
+        } | {
+            readonly kind: "unknown";
+            readonly code: "unknown";
         } | InvoiceUnsupported>;
     };
     registry: InvoiceCompanyLookupPort;
@@ -416,6 +422,7 @@ export interface InvoiceHostPorts {
          * Suppression receipts have no fabricated document ID. Host persists attribution.
          * Executor decides before installFacts: suppressed orders get no local document.
          * Readback consumers merge recorded receipts with duty readback.
+         * Transient read failures return unknown without recording a receipt.
          */
         decide(input: {
             readonly requestKey: string;
@@ -440,6 +447,9 @@ export interface InvoiceHostPorts {
             readonly actorRef: string;
             readonly reason: string;
             readonly requestKey: string;
+        } | {
+            readonly kind: "unknown";
+            readonly code: "unknown";
         } | InvoiceUnsupported>;
         receipts(orderId: string): Promise<readonly (Extract<Awaited<ReturnType<InvoiceHostPorts["policy"]["decide"]>>, {
             kind: "policy_suppressed" | "operator_skipped";
@@ -452,6 +462,7 @@ export interface InvoiceHostPorts {
     };
     /** Authenticate and authorize ownership before reading artifacts. Safe projection
      * only: no buyer/seller payload, raw provider errors, signed URL or arbitrary meta.
+     * Found is a complete owned projection; incomplete reads return unknown.
      * Carrier: donor document history + customer download ticket owner/lineage.
      */
     accountHistory: {
@@ -680,8 +691,8 @@ export interface InvoiceProviderPort {
 import type { InvoiceProof, InvoiceUnsupported } from "./provider.js";
 /** One immutable balance item, never unique by batch+payment alone.
  * Carrier: accountingControlContracts settlement + payout balance transaction ID.
- * @consumer Host payout item recorder.
  * Null links and bankReceivedAt are facts; settlement is not an invoice gate.
+ * @consumer Host payout item recorder.
  */
 export interface InvoiceSettlementItem {
     readonly requestKey: string;
@@ -731,8 +742,8 @@ export type InvoiceSettlementResult = {
     readonly code: "unknown";
 } | InvoiceUnsupported;
 /** Host recorder/resolver owns richer item identity. Unsupported before any write
- * @consumer Host payout item recorder/resolver.
  * when a native batch/payment row cannot represent distinct items or nullable links.
+ * @consumer Host payout item recorder/resolver.
  */
 export interface InvoiceSettlementPort {
     record(item: InvoiceSettlementItem): Promise<Exclude<InvoiceSettlementResult, {
@@ -802,6 +813,7 @@ export interface InvoiceDutyReadback {
 }
 /** Every operation is one local transaction; commit before external I/O. Native
  * success atomically saves late identity and compensation; stale catch writes nothing.
+ * Managed and native stores are bound to the selected provider at construction.
  * No implementation, executor or migration is installed by these declarations.
  */
 export interface InvoiceStorePort {
@@ -865,7 +877,10 @@ export interface InvoiceStorePort {
         readonly status: "owed" | "ready" | "issued" | "voided" | "unsupported" | "faulted" | "stale";
     } | InvoiceUnsupported>;
     readDuties(orderId: string): Promise<InvoiceDutyReadback | InvoiceUnsupported>;
-    /** Filter order before locking/limit; never lease unrelated orders then filter. */
+    /** Filter order before locking/limit; never lease unrelated orders then filter.
+     * P8 reads the injected host seller before calling the first-claim SQL wrapper;
+     * its revisionRef supplies p_revision, without requiring a duty from the caller.
+     */
     claim(input: {
         readonly limit: number;
         readonly visibilitySeconds: number;

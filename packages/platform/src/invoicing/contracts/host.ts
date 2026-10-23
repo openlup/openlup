@@ -11,7 +11,11 @@ import type { InvoiceStorePort } from "./store.js";
  */
 export interface InvoiceHostPorts {
   facts: { read(orderId: string): Promise<{ readonly kind: "found"; readonly facts: InvoiceFacts } | { readonly kind: "unknown"; readonly code: "missing_facts" } | InvoiceUnsupported> };
-  seller: { read(input: { readonly orderId: string; readonly dutyId: string }): Promise<{ readonly kind: "found"; readonly seller: InvoiceSeller; readonly revisionRef: string } | { readonly kind: "unknown"; readonly code: "unknown" } | InvoiceUnsupported> };
+  /** Read the current host seller for the next claim, never per duty. Null orderId
+   * means an unscoped claim (including corrections). P8 freezes this seller at
+   * first claim; revisionRef feeds the claim wrapper's revision argument.
+   */
+  seller: { read(input: { readonly orderId: string | null }): Promise<{ readonly kind: "found"; readonly seller: InvoiceSeller; readonly revisionRef: string } | { readonly kind: "unknown"; readonly code: "unknown" } | InvoiceUnsupported> };
   /** Read-only projection of the final claimed M07 identity, never a refund writer.
    * Missing nullable money is unavailable, never fabricated zero or mismatch.
    */
@@ -31,7 +35,7 @@ export interface InvoiceHostPorts {
    * No jurisdictional default is supplied. Carrier: TaxIdRoutingPort and injected
    * canonical tax safety in accountingProviderSnapshot.
    */
-  fiscal: { verify(input: { readonly facts: InvoiceFacts; readonly policies: InvoiceCapabilities["policies"] }): Promise<{ readonly kind: "verified"; readonly documentKind: string; readonly clearanceRequired: boolean; readonly proof: InvoiceProof } | { readonly kind: "refused"; readonly code: "blocked" | "money_mismatch" } | InvoiceUnsupported> };
+  fiscal: { verify(input: { readonly facts: InvoiceFacts; readonly policies: InvoiceCapabilities["policies"] }): Promise<{ readonly kind: "verified"; readonly documentKind: string; readonly clearanceRequired: boolean; readonly proof: InvoiceProof } | { readonly kind: "refused"; readonly code: "blocked" | "money_mismatch" } | { readonly kind: "unknown"; readonly code: "unknown" } | InvoiceUnsupported> };
   registry: InvoiceCompanyLookupPort;
   delivery: InvoiceDeliveryPort;
   clearance: { observe(input: { readonly identity: InvoiceDocumentIdentity; readonly providerDocumentRef: string }): Promise<{ readonly kind: "observed"; readonly observation: InvoiceClearanceObservation } | { readonly kind: "unknown"; readonly code: "unknown" } | InvoiceUnsupported> };
@@ -41,17 +45,20 @@ export interface InvoiceHostPorts {
      * Suppression receipts have no fabricated document ID. Host persists attribution.
      * Executor decides before installFacts: suppressed orders get no local document.
      * Readback consumers merge recorded receipts with duty readback.
+     * Transient read failures return unknown without recording a receipt.
      */
     decide(input: { readonly requestKey: string; readonly lookup: { readonly by: "order"; readonly orderId: string } | { readonly by: "fulfillmentOrder"; readonly fulfillmentOrderRef: string } }): Promise<
       | { readonly kind: "issue"; readonly policyVersion: string }
       | { readonly kind: "policy_suppressed"; readonly outcome: "channel_issues" | "no_document"; readonly policyVersion: string; readonly requestKey: string }
       | { readonly kind: "operator_skipped"; readonly outcome: "operator_skip"; readonly actorRef: string; readonly reason: string; readonly requestKey: string }
+      | { readonly kind: "unknown"; readonly code: "unknown" }
       | InvoiceUnsupported
     >;
     receipts(orderId: string): Promise<readonly (Extract<Awaited<ReturnType<InvoiceHostPorts["policy"]["decide"]>>, { kind: "policy_suppressed" | "operator_skipped" }> & { readonly recordedAt: string })[] | { readonly kind: "unknown"; readonly code: "unknown" } | InvoiceUnsupported>;
   };
   /** Authenticate and authorize ownership before reading artifacts. Safe projection
    * only: no buyer/seller payload, raw provider errors, signed URL or arbitrary meta.
+   * Found is a complete owned projection; incomplete reads return unknown.
    * Carrier: donor document history + customer download ticket owner/lineage.
    */
   accountHistory: {

@@ -1,8 +1,8 @@
 import type { InvoiceProof, InvoiceUnsupported } from "./provider.js";
 /** One immutable balance item, never unique by batch+payment alone.
  * Carrier: accountingControlContracts settlement + payout balance transaction ID.
- * @consumer Host payout item recorder.
  * Null links and bankReceivedAt are facts; settlement is not an invoice gate.
+ * @consumer Host payout item recorder.
  */
 export interface InvoiceSettlementItem {
   readonly requestKey: string;
@@ -30,8 +30,8 @@ export type InvoiceSettlementResult =
   | { readonly kind: "unknown"; readonly itemRef: string; readonly code: "unknown" }
   | InvoiceUnsupported;
 /** Host recorder/resolver owns richer item identity. Unsupported before any write
- * @consumer Host payout item recorder/resolver.
  * when a native batch/payment row cannot represent distinct items or nullable links.
+ * @consumer Host payout item recorder/resolver.
  */
 export interface InvoiceSettlementPort {
   record(item: InvoiceSettlementItem): Promise<Exclude<InvoiceSettlementResult, { kind: "found" | "absent" }>>;

@@ -102,6 +102,15 @@ it("uses document scope for post-issue seams and requires native-compatible obse
 it("keeps transient host read failures distinct from missing bindings, denial and empty receipts", () => {
   type Unknown = { readonly kind: "unknown"; readonly code: "unknown" };
   expectTypeOf<Extract<Awaited<ReturnType<InvoiceHostPorts["seller"]["read"]>>, { kind: "unknown" }>>().toEqualTypeOf<Unknown>();
+  expectTypeOf<Extract<Awaited<ReturnType<InvoiceHostPorts["policy"]["decide"]>>, { kind: "unknown" }>>().toEqualTypeOf<Unknown>();
+  expectTypeOf<Extract<Awaited<ReturnType<InvoiceHostPorts["fiscal"]["verify"]>>, { kind: "unknown" }>>().toEqualTypeOf<Unknown>();
   expectTypeOf<Extract<Awaited<ReturnType<InvoiceHostPorts["policy"]["receipts"]>>, { kind: "unknown" }>>().toEqualTypeOf<Unknown>();
   expectTypeOf<Extract<Awaited<ReturnType<InvoiceHostPorts["accountHistory"]["resolveDownload"]>>, { kind: "unknown" }>>().toEqualTypeOf<Unknown>();
+});
+
+
+it("reads the current seller before a duty exists and preserves the first-claim revision", () => {
+  expectTypeOf<Parameters<InvoiceHostPorts["seller"]["read"]>[0]>().toEqualTypeOf<{ readonly orderId: string | null }>();
+  type Seller = Extract<Awaited<ReturnType<InvoiceHostPorts["seller"]["read"]>>, { kind: "found" }>;
+  expectTypeOf<Seller["revisionRef"]>().toEqualTypeOf<string>();
 });
