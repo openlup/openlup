@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { admit, carryOver, demand, RECEIPT_MARKER } from './agent-review-decide.mjs';
 import { captureCommittedReviewCandidate, git } from './agent-review-session.mjs';
+import { assertCoLocatedForwardApproval, REVIEWED_FORWARD_PATH } from './reviewed-platform-forward.ts';
 
 const execute = promisify(execFile);
 const SHA = /^[a-f0-9]{40}$/u;
@@ -87,10 +88,12 @@ export async function waitNativeAdmission({ event, env = process.env, api, cwd =
       } catch (error) { reason = `receipt objects could not be verified: ${error.message}; post a corrected receipt`; continue; }
       let decision = admit({ receipt, observed: { ...candidate, pr: prNumber, baseValid }, now: now() });
       if (!decision.ok) { reason = `${decision.code}: ${decision.reason}`; continue; }
+      if (candidate.changedPaths.includes(REVIEWED_FORWARD_PATH)) assertCoLocatedForwardApproval(cwd, candidate.base, candidate.head, main);
       if (group) {
         const tree = (await runGit(cwd, 'rev-parse', '--verify', `${group.head_sha}^{tree}`)).trim();
         decision = await carryOverSourceReview(cwd, candidate, { base: group.base_sha, tree }, runGit);
         demand(decision.ok, decision.reason, decision.code);
+        if (candidate.changedPaths.includes(REVIEWED_FORWARD_PATH)) assertCoLocatedForwardApproval(cwd, group.base_sha, group.head_sha, main);
       }
       const live = await api.get(`${root}/pulls/${prNumber}`);
       demand(live.head?.sha === pr.head.sha && live.state === 'open' && live.draft === false && !live.merged && live.base?.ref === 'main', 'PR changed during admission; rerun CI', 'stale');

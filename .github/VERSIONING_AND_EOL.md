@@ -502,11 +502,16 @@ the required test aggregate; unavailable PostgreSQL fails, and the lexer only
 pre-filters. This approval adds inert fixtures, never executable forward files.
 Both required self-check and release prepare call the same checker; replacement
 remains outside the expand-only predicate.
-Required self-check keeps the whole registry unchanged from the feature comparison
-base. Release compares each forward's own entry, list position and shared registry
-fields with its introduction parent; later controls may append approvals. A feature
-cannot approve itself. Exact path, whole-file bytes, old/new definition hashes and
-signature cardinality must match. Admission checks syntax and pinned evidence,
+Required self-check permits only approval changes for SQL introduced by the same
+PR under an existing trusted policy class. Other entries, list positions and
+shared fields stay unchanged. Native admission from main validates this narrow
+route and refuses co-changing admission machinery. Release binds each forward to
+its unique mainline introduction and preserves that binding through later controls;
+a later pin cannot authorize an earlier installation. Existing separate control
+histories remain valid. See the canonical
+[co-located SQL/pin rule](../docs/platform/DATA_AND_MIGRATIONS.md#co-located-sql-and-approval-pins),
+including its control-change and workflow-invocation boundaries. Exact path,
+whole-file bytes, old/new definition hashes and signature cardinality must match. Admission checks syntax and pinned evidence,
 not live database compatibility;
 review constraints, defaults and replay behaviour on the selected installation.
 Rows required by platform behaviour belong in idempotent forward statements.
