@@ -665,7 +665,7 @@ the platform row's raised caps use the projection in the note below the table.
 | --- | --- | --- | --- | --- | --- | --- |
 | `@openlup/core` | 132,250 / 198 | 270 / 400 | 161,371 / 209 | 320 / 420 | 48 / 20 | 1,360 |
 | `@openlup/outbox` | 20,930 / 33 | 42 / 70 | 38,718 / 41 | 80 / 90 | 26 / 12 | 260 |
-| `@openlup/platform` | 215,464 / 381 | 1,100 / 2,000 | 256,973 / 395 | 1,320 / 2,100 | 40 / 10 | 5,600 |
+| `@openlup/platform` | 215,464 / 381 | 1,100 / 2,000 | 256,973 / 395 | 1,320 / 2,100 | 40 / 10 | 6,400 |
 
 The `@openlup/platform` code, tarball, file and unpacked caps were raised on
 2026-10-20 with the maintainer's read of the M05 budget packet. Each is about
@@ -676,6 +676,10 @@ pricing parts (789 files, 771 code files, 480,886 tarball bytes, 2,038,883
 unpacked bytes, 406,639 compressed code bytes) plus the estimated growth of the
 remaining M05 parts. The docs, browser-entry and baseline values and the growth
 tripwire are unchanged.
+
+The `@openlup/platform` unpacked cap was raised to 6,400 KiB (6,553,600 B) on
+2026-10-22 with the maintainer's read of the M09 and M10 wave budget. Its
+packed, code-gzip, docs-gzip and file caps stay unchanged.
 
 **Release growth tripwire.** Each `pack.baseline` records the last released
 version and its total compressed tarball bytes, initially `0.16.0` and the

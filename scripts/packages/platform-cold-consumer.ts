@@ -132,7 +132,7 @@ export function assertExportInventory(consumer: string): void {
 export function proveInvoicingConsumer(consumer: string): void {
   consumerNode(consumer, `
 import assert from "node:assert/strict";
-import { readInvoiceCapabilities } from "@openlup/platform/invoicing";
+import { readInvoiceCapabilities, createNativeUnsupportedInvoicePorts, runInvoiceAdapterConformance } from "@openlup/platform/invoicing";
 import * as contracts from "@openlup/platform/invoicing/contracts";
 assert.deepEqual(Object.keys(contracts), []);
 for (const entry of ["invoicing", "invoicing/contracts"]) assert(import.meta.resolve("@openlup/platform/" + entry).startsWith(new URL("./node_modules/", import.meta.url).href));
@@ -143,6 +143,18 @@ assert.equal(readInvoiceCapabilities({selection:{providerRef:"fiscal-a"},capabil
 assert.equal(readInvoiceCapabilities({enabled:true,selection:null,capability}).code,"selection_required");
 assert.equal(readInvoiceCapabilities({enabled:true,selection:{providerRef:"other"},capability}).code,"selection_required");
 assert.equal(readInvoiceCapabilities({enabled:true,selection:{providerRef:"fiscal-a"},capability}).capability,capability);
+const native=createNativeUnsupportedInvoicePorts();
+const unsupportedResult={kind:"unsupported",code:"host_binding_required",retryable:false,effectMayHaveSucceeded:false};
+assert.deepEqual(await native.host.facts.read("order-a"),unsupportedResult);
+assert.deepEqual(await native.host.settlement.record({}),unsupportedResult);
+assert.deepEqual(await native.store.requestLocalDocument({}),unsupportedResult);
+const identity={providerRef:"fiscal-a",requestKey:"key-a",providerCreateIdentity:"create-a",factRevision:"revision-a",orderRef:"order-a",invoiceRef:"invoice-a",operation:"issue",correctionRef:null,parentProviderDocumentRef:null};
+const correction={...identity,operation:"full_reversal",correctionRef:"correction-a",parentProviderDocumentRef:"external-a"};
+const evidence=await runInvoiceAdapterConformance([{subjectId:"native",capability:{...capability,operations:{...Object.fromEntries(Object.keys(capability.operations).map(key=>[key,unsupported])),remoteVoid:capability.operations.remoteVoid}},provider:native.provider,readWriteCount:()=>0,sensitiveValues:[],fixtures:{
+issue:[{input:{identity,facts:{},recoveryLookupRequired:false},expected:unsupportedResult}],
+correction:[{input:{identity:correction,before:{},after:{totalNetMinor:0,totalTaxMinor:0,totalGrossMinor:0},reason:"reason",recoveryLookupRequired:true},expected:unsupportedResult}],
+readback:[{input:identity,expected:unsupportedResult}],void:[{input:{...identity,operation:"remote_void"},expected:unsupportedResult}]}}]);
+assert(evidence.subjects[0].cases.includes("read:unsupported"));
 console.log("invoicing consumer passed");
 `);
 }
@@ -265,11 +277,31 @@ export function compileConsumer(consumer: string, entries: readonly string[], co
     'export const fulfillmentContribution = createFulfillmentContribution({version:"0.21.0",requiredSchema:{version:"fixture",migration:"fixture",objects:[]},fulfillment:{dispatch:fulfillment.runDispatch},handlers:[],schedules:[],routes:[]});',
   ].join("\n"));
   if (entries.includes("invoicing") && entries.includes("invoicing/contracts")) surfaces.push([
-    'import { readInvoiceCapabilities } from "@openlup/platform/invoicing";',
+    'import { readInvoiceCapabilities, createNativeUnsupportedInvoicePorts, runInvoiceAdapterConformance } from "@openlup/platform/invoicing";',
     'import type { InvoiceFacts, InvoiceLine, InvoiceSeller, InvoiceBuyer, InvoiceIdentity, InvoiceWriteResult, InvoiceReadbackResult, InvoiceArtifactResult, InvoiceSettlementResult, InvoiceCapabilities, InvoiceCompanyLookupPort, InvoiceStorePort, InvoiceHostPorts, InvoiceServicesOptions, InvoiceDocumentIdentity, InvoiceProviderPort, InvoiceSettlementPort, InvoiceSettlementItem, InvoiceDutyReadback, InvoiceUnsupported, InvoiceDiagnosticCode, InvoiceProof, InvoiceClearanceObservation } from "@openlup/platform/invoicing/contracts";',
     'declare const invoiceCapability: InvoiceCapabilities;',
+    'export const unsupportedInvoices = createNativeUnsupportedInvoicePorts();',
+    'export type InvoiceConformanceSubject = Parameters<typeof runInvoiceAdapterConformance>[0][number];',
     'export const invoiceSelection = readInvoiceCapabilities({ enabled: true, selection: { providerRef: invoiceCapability.providerRef }, capability: invoiceCapability });',
     'export type InvoiceConsumer = [InvoiceFacts, InvoiceLine, InvoiceSeller, InvoiceBuyer, InvoiceIdentity, InvoiceWriteResult, InvoiceReadbackResult, InvoiceArtifactResult, InvoiceSettlementResult, InvoiceCompanyLookupPort, InvoiceStorePort, InvoiceHostPorts, InvoiceServicesOptions, InvoiceDocumentIdentity, InvoiceProviderPort, InvoiceSettlementPort, InvoiceSettlementItem, InvoiceDutyReadback, InvoiceUnsupported, InvoiceDiagnosticCode, InvoiceProof, InvoiceClearanceObservation];',
+    // CI compiles the 14 pinned SQL seam mappings from portFit.test.ts against installed types.
+    // Distribute over union arms so absent evidence and before_send phase cannot disappear.
+    'type RequiredKeys<T> = T extends object ? { [K in keyof T]-?: object extends Pick<T, K> ? never : K }[keyof T] : "$value";',
+    'type SeamInput<M extends keyof InvoiceStorePort> = Parameters<InvoiceStorePort[M]>[0];',
+    'export const invoiceSeam_captureDuty = {"requestKey": "p_key", "sourceKind": "p_source_kind", "sourceId": "p_source_id", "orderId": "p_order_id", "occurredAt": "p_occurred_at", "evidence": "p_evidence"} satisfies Record<RequiredKeys<SeamInput<"captureDuty">>, string>;',
+    'export const invoiceSeam_installFacts = {"dutyId": "p_duty", "facts": "p_facts + p_revision"} satisfies Record<RequiredKeys<SeamInput<"installFacts">>, string>;',
+    'export const invoiceSeam_sweep = {"$value": "p_limit"} satisfies Record<RequiredKeys<SeamInput<"sweep">>, string>;',
+    'export const invoiceSeam_prepareFacts = {"dutyId": "p_duty", "token": "p_token"} satisfies Record<RequiredKeys<SeamInput<"prepareFacts">>, string>;',
+    'export const invoiceSeam_finishFacts = {"dutyId": "p_duty", "token": "p_token", "result": "p_result"} satisfies Record<RequiredKeys<SeamInput<"finishFacts">>, string>;',
+    'export const invoiceSeam_readDuties = {"$value": "p_order_id"} satisfies Record<RequiredKeys<SeamInput<"readDuties">>, string>;',
+    'export const invoiceSeam_claim = {"limit": "p_limit", "visibilitySeconds": "p_visibility / managed local lease", "providerRef": "p_provider / managed binding validation"} satisfies Record<RequiredKeys<SeamInput<"claim">>, string>;',
+    'export const invoiceSeam_preflight = {"claim": "p_duty + p_token + p_generation", "amountMinor": "p_evidence", "currency": "p_evidence", "status": "p_evidence", "proof": "p_evidence (observed arm)", "evidence": "p_evidence (absent arm)"} satisfies Record<RequiredKeys<SeamInput<"preflight">>, string>;',
+    'export const invoiceSeam_finish = {"claim": "p_duty + p_token + p_generation", "result": "p_external + p_number + p_proof"} satisfies Record<RequiredKeys<SeamInput<"finish">>, string>;',
+    'export const invoiceSeam_fail = {"claim": "p_duty + p_token + p_generation", "retrySeconds": "p_delay", "kind": "p_kind", "phase": "p_evidence (retryable arm)", "proof": "p_evidence", "evidence": "p_evidence (absent arm)"} satisfies Record<RequiredKeys<SeamInput<"fail">>, string>;',
+    'export const invoiceSeam_requestReversal = {"requestKey": "p_key", "orderId": "p_order", "reason": "p_reason", "proof": "p_evidence"} satisfies Record<RequiredKeys<SeamInput<"requestReversal">>, string>;',
+    'export const invoiceSeam_recordObservation = {"requestKey": "p_key", "documentId": "p_document", "eventRef": "p_observation", "eventKind": "p_observation", "identity": "p_observation", "providerDocumentRef": "p_observation", "providerDocumentNumber": "p_observation", "clearance": "p_observation", "artifacts": "p_observation", "observedAt": "p_observation", "payloadHash": "p_observation", "source": "p_observation"} satisfies Record<RequiredKeys<SeamInput<"recordObservation">>, string>;',
+    'export const invoiceSeam_claimDeliveries = {"limit": "p_limit", "visibilitySeconds": "p_visibility", "requireClearance": "p_require_clearance"} satisfies Record<RequiredKeys<SeamInput<"claimDeliveries">>, string>;',
+    'export const invoiceSeam_settleDelivery = {"deliveryRef": "p_delivery", "token": "p_token", "generation": "p_generation", "providerDocumentRef": "local claimed document validation", "retrySeconds": "local managed backoff; native no-op", "result": "p_kind + p_receipt + p_evidence"} satisfies Record<RequiredKeys<SeamInput<"settleDelivery">>, string>;',
     'declare const invoiceIdentity: InvoiceIdentity;',
     'export const invoiceAbsent: InvoiceReadbackResult = { kind: "absent", identity: invoiceIdentity, evidence: { exact: true, complete: true, scope: invoiceIdentity, evidenceRef: "lookup-a", fingerprint: "fingerprint-a", observedAt: "2026-10-22T12:00:00Z" } };',
   ].join("\n"));

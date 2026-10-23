@@ -690,3 +690,24 @@ and [carrier fit](../../packages/platform/test/invoicing/portFit.test.ts) witnes
 These declarations install no worker, native store, SQL, provider, scheduler or
 subscription writer. Physical delivery and renewal money never depend on invoice
 availability; the later durable-duty executor must preserve that independence.
+
+`createNativeUnsupportedInvoicePorts()` returns `{ host, store, provider }` with
+all operations refusing `host_binding_required`, `retryable=false` and no possible
+effect in the current call. It takes no executor or configuration and inspects no
+input. The refusal cannot prove absence or settle an existing unknown outcome;
+its owning duty must stay visible for a selected host adapter or operator.
+
+`runInvoiceAdapterConformance(subjects)` is independent of a test runner. Each
+subject supplies selected provider ports, a descriptor, offline fixtures and a
+write counter over every injected transport. Supported issue and correction need
+issued and recovery fixtures; correction additionally needs a mismatched-parent
+recovery refusal. Readback needs found/unknown and, when declared, exact scoped
+absence. Unsupported methods and read-only operations must not write. Optional
+artifact, clearance, settlement and registry support needs host-owned positive
+fixtures. Distinct payout items cannot reuse one receipt. Results and proofs are
+checked for identity, scoped absence, closed fields and synthetic sensitive
+sentinels; adapter exceptions become a fixed failure code. Returned evidence
+contains only subject/provider references and case names, never result payloads.
+Use [the conformance witnesses](../../packages/platform/test/invoicing/adapterConformance.test.ts)
+for offline examples. Fixtures and counters are adapter-owned assertions, not
+remote attestation, PostgreSQL atomicity proof or fiscal certification.

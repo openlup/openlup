@@ -26,10 +26,12 @@ function fixture() {
   // The typed consumer registers the payments factory with the composer.
   writeFileSync(join(consumer, "node_modules/@openlup/platform/index.d.ts"), [
     "export interface Synthetic { value: string }",
-    "export type InvoiceDocumentIdentity = Synthetic; export type InvoiceProviderPort = Synthetic; export type InvoiceSettlementPort = Synthetic; export type InvoiceSettlementItem = Synthetic; export type InvoiceDutyReadback = Synthetic; export type InvoiceUnsupported = Synthetic; export type InvoiceDiagnosticCode = Synthetic; export type InvoiceProof = Synthetic; export type InvoiceClearanceObservation = Synthetic; export type InvoiceFacts = Synthetic; export type InvoiceLine = Synthetic; export type InvoiceSeller = Synthetic; export type InvoiceBuyer = Synthetic; export type InvoiceIdentity = Synthetic; export type InvoiceWriteResult = Synthetic; export type InvoiceArtifactResult = Synthetic; export type InvoiceSettlementResult = Synthetic; export type InvoiceCompanyLookupPort = Synthetic; export type InvoiceStorePort = Synthetic; export type InvoiceHostPorts = Synthetic; export type InvoiceServicesOptions = Synthetic;",
+    "export type InvoiceDocumentIdentity = Synthetic; export type InvoiceProviderPort = Synthetic; export type InvoiceSettlementPort = Synthetic; export type InvoiceSettlementItem = Synthetic; export type InvoiceDutyReadback = Synthetic; export type InvoiceUnsupported = Synthetic; export type InvoiceDiagnosticCode = Synthetic; export type InvoiceProof = Synthetic; export type InvoiceClearanceObservation = Synthetic; export type InvoiceFacts = Synthetic; export type InvoiceLine = Synthetic; export type InvoiceSeller = Synthetic; export type InvoiceBuyer = Synthetic; export type InvoiceIdentity = Synthetic; export type InvoiceWriteResult = Synthetic; export type InvoiceArtifactResult = Synthetic; export type InvoiceSettlementResult = Synthetic; export type InvoiceCompanyLookupPort = Synthetic; export type { InvoiceStorePort } from \"./invoicing-contracts/index.js\"; export type InvoiceHostPorts = Synthetic; export type InvoiceServicesOptions = Synthetic;",
     "export interface InvoiceCapabilities { providerRef: string }",
     "export interface InvoiceReadbackResult { kind: 'absent'; identity: InvoiceIdentity; evidence: { exact: true; complete: true; scope: InvoiceIdentity; evidenceRef: string; fingerprint: string; observedAt: string } }",
     "export declare function readInvoiceCapabilities(input: unknown): unknown;",
+    "export declare function createNativeUnsupportedInvoicePorts(): unknown;",
+    "export declare function runInvoiceAdapterConformance(subjects: readonly unknown[]): Promise<unknown>;",
     "export interface FulfillmentServicesOptions {}",
     "export interface FulfillmentServices { runDispatch(): Promise<unknown> }",
     "export declare function createFulfillmentServices(options: FulfillmentServicesOptions): FulfillmentServices;",
@@ -37,6 +39,7 @@ function fixture() {
     "export declare function createPaymentServices(): { run<T>(work: (port: { kind: \"truth\" }) => Promise<T>): Promise<T> } | null;",
     "export declare function createBundleComposer(binders: { blob: () => null; fulfillment?: () => FulfillmentServices | null; payments?: () => { run<T>(work: (port: unknown) => Promise<T>): Promise<T> } | null }): unknown;",
   ].join("\n") + "\n");
+  cpSync(join(root, "packages/platform/src/invoicing/contracts"), join(consumer, "node_modules/@openlup/platform/invoicing-contracts"), { recursive: true });
   packageFixture(consumer, "zod", { ".": "./index.js" });
   return consumer;
 }
@@ -450,6 +453,32 @@ it("payments and fulfillment: installed packed consumer proves injected executio
   for (const name of ['@types/node', 'undici-types']) cpSync(join(root, 'node_modules', name), join(consumer, 'node_modules', name), { recursive: true });
   compileConsumer(consumer, NON_ADAPTER_ENTRIES, join(root, 'node_modules/typescript/lib/tsc.js'));
   // Hosted runners compile both resolution modes uncached, which can exceed the default floor.
+}, 30_000);
+
+it("CI rejects an added required invoice seam field in installed NodeNext and Bundler declarations", () => {
+  const consumer = pristinePackedA1Fixture();
+  for (const name of ["@types/node", "undici-types"]) cpSync(join(root, "node_modules", name), join(consumer, "node_modules", name), { recursive: true });
+  const compiler = join(root, "node_modules/typescript/lib/tsc.js");
+  const path = join(consumer, "node_modules/@openlup/platform/dist/invoicing/contracts/store.d.ts");
+  const original = readFileSync(path, "utf8");
+  // Change a real packed declaration, not the consumer check or its expected key list.
+  const mutated = original.replace(/captureDuty\(input: \{/, '$& readonly unmappedRequiredSeamField: string;');
+  expect(mutated).not.toBe(original);
+  function rejectsMissingField(run: () => void) {
+    let failure: unknown;
+    try { run(); } catch (error) { failure = error; }
+    expect(failure).toMatchObject({ status: 2, stdout: expect.stringContaining("unmappedRequiredSeamField") });
+  }
+  try {
+    writeFileSync(path, mutated);
+    rejectsMissingField(() => compileConsumer(consumer, ["invoicing", "invoicing/contracts"], compiler));
+    const configPath = join(consumer, "tsconfig.json"), config = JSON.parse(readFileSync(configPath, "utf8"));
+    expect(config.compilerOptions.moduleResolution).toBe("NodeNext");
+    config.compilerOptions.module = "ESNext"; config.compilerOptions.moduleResolution = "Bundler";
+    writeFileSync(configPath, JSON.stringify(config));
+    rejectsMissingField(() => { execFileSync(process.execPath, [compiler, "-p", configPath], { cwd: consumer, encoding: "utf8", stdio: "pipe" }); });
+  } finally { writeFileSync(path, original); }
+  compileConsumer(consumer, ["invoicing", "invoicing/contracts"], compiler);
 }, 30_000);
 
 it("proves both opt-in installed payment adapters without SDK or import-time I/O", () => {

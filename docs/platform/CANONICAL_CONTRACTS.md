@@ -1212,3 +1212,9 @@ invoice. An owed-duty readback retains unsupported duties and capture faults;
 distinct, and account projections preserve owner and document lineage. Host
 artifact persistence, clearance observation and M04 acceptance are separate proofs.
 See the [invoicing contract reference](PLATFORM_PACKAGE_REFERENCE.md#invoicing-contracts).
+
+The invoicing refusal factory cannot clear a previously unknown effect: its
+unsupported result describes this call only. Offline conformance checks stable
+identity, recovery without a second write and parent mismatch before another
+write. Adapter-owned fixtures establish this contract boundary; live fiscal
+readiness, native database fencing and inbox delivery require their own evidence.

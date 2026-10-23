@@ -636,7 +636,7 @@
     },
     {
       "id": "invoicing-package",
-      "when": "Neutral invoicing facts, exact recovery, owed duties and explicit host capability seams",
+      "when": "Neutral invoicing contracts, owed duties, explicit host seams and offline conformance",
       "paths": [
         "packages/platform/src/invoicing/**",
         "packages/platform/test/invoicing/**",

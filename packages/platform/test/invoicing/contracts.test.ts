@@ -12,7 +12,7 @@ const capability: InvoiceCapabilities = {
 
 it("keeps contracts runtime-empty and selection default-off without invoking host effects", () => {
   expect(Object.keys(contracts)).toEqual([]);
-  expect(Object.keys(runtime)).toEqual(["readInvoiceCapabilities"]);
+  expect(Object.keys(runtime).sort()).toEqual(["createNativeUnsupportedInvoicePorts", "readInvoiceCapabilities", "runInvoiceAdapterConformance"]);
   for (const enabled of [undefined, false]) expect(runtime.readInvoiceCapabilities({ enabled, selection: { providerRef: capability.providerRef }, capability })).toMatchObject({ kind: "refused", code: "disabled", effectMayHaveSucceeded: false });
   for (const selection of [null, { providerRef: "other" }]) expect(runtime.readInvoiceCapabilities({ enabled: true, selection, capability })).toMatchObject({ kind: "refused", code: "selection_required" });
   expect(runtime.readInvoiceCapabilities({ enabled: true, selection: { providerRef: capability.providerRef }, capability: null })).toMatchObject({ kind: "refused", code: "selection_required" });
