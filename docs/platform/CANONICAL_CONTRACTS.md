@@ -534,19 +534,39 @@ upstream repositories, tags, index digests and ordered public-registry sources
 for the non-CLI mirror inputs. It records the install-proof database, disposable
 test default and managed-batch database pins; Supabase CLI images remain derived
 as repository/tag pairs by a read-only plan job from the workflow's CLI pin and
-reference config, filtered by the pgTAP runner's own exclusion list.
-The write job validates those untrusted pairs against a closed repository allowlist,
-reads owned pins from its own checkout, and runs only pinned first-party actions plus
-the repository script; CLI images are trust-on-first-use with refusal on a moved tag. A
-temporary Docker-free equality guard reads the
-reviewed-batch test's literal digests and ordered source lists without executing
-that test; changes to either must agree with this JSON owner. Its managed source
-order is GHCR, Docker Hub, then ECR; native uses Docker Hub, then ECR. An explicit
-source tag must match the entry's tag and is preserved during resolution.
-This change prepares the mirror only: a later change moves consumers onto these pins. Updating this
-inventory alone does not change runtime defaults or establish public package
-visibility. [Contributor checks](../../CONTRIBUTING.md#ci-image-mirror)
-own mirror execution, digest refusals and the owner's GHCR setup.
+reference config. The pgTAP runner's exclusions constrain long-running services;
+they never remove enabled GoTrue, Realtime or Storage API schema-init images.
+The derived set contains those three images, Postgres and the binary's `pg_prove`.
+An exclusion change leaving an uncovered runtime image refuses derivation.
+The write job validates those untrusted pairs against a closed repository allowlist
+before any exec or registry call, reads typed owned pins from its own checkout,
+and builds upstream sources and mirror targets itself. It runs only pinned
+first-party actions plus the repository script, re-resolves source digests, skips
+identical targets, refuses moved tags and verifies every copy. CLI images are
+trust-on-first-use. The shared reader prepends the single mirror
+registry to inventory sources for consumers; mirror copying still uses only
+upstreams. The reviewed-batch gate and shared disposable PostgreSQL helper use
+these pins, preserving the exact digest on every fallback. Their source order
+is mirror, then GHCR/Docker Hub/ECR for managed, or Docker Hub/ECR for native.
+The default helper uses the test pin, resolves once per exact ref per process and
+runs the successful digest-qualified source with `--pull=never`; explicit
+non-inventory overrides keep their existing behavior. Before any shared pull,
+exact local index digests (or exact CLI tags when unpinned) bypass network access;
+inspection errors refuse. The gate, helper and pgTAP runner share one pull retry
+implementation; long Retry-After hints advance by the remaining per-source
+share, while shorter waits are capped to preserve non-GHCR fallback.
+A Docker-free guard rejects literal digests or registry source lists in the gate test.
+An explicit source tag must match the entry's tag and is preserved during
+resolution. Mirror absence/private access immediately advances to upstream;
+it does not require credentials or make CI depend on mirror publication.
+The pgTAP runner uses the same CLI derivation as mirror planning and pre-pulls
+all five derived tags with mirror/GHCR/ECR/Docker Hub fallback before start. Those CLI tags have
+no pinned inventory digest; a derived digest, when present, is verified. Local
+aliases reconcile mixed successful registries with the CLI's requested names.
+Other launchers and the install-proof service remain unchanged. These changes
+establish no public package visibility or runtime/application default.
+[CI image mirror guidance](../../CONTRIBUTING.md#ci-image-mirror) owns retry
+budgets, refusal boundaries, mirror execution and the owner's GHCR setup.
 
 Fulfillment appends command/alignment units 73/74 and binds
 their byte-identical package projections through `FULFILLMENT_MIGRATIONS`.
