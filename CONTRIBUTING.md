@@ -418,8 +418,9 @@ The runtime-forward checker also binds eight exact legacy policy retirements
 by table, name and preceding CREATE POLICY statement hash. It requires their
 ordered DROP statements before the fixed grants and rejects missing, duplicate
 or additional policy operations. Both PR and release-history tests check these
-refusals and require approval before the forward's introducing commit. These
-checks admit one reviewed contraction; they do not grant general policy edits.
+refusals and the canonical
+[co-located SQL/pin rule](docs/platform/DATA_AND_MIGRATIONS.md#co-located-sql-and-approval-pins).
+These checks admit one reviewed contraction; they do not grant general policy edits.
 
 M09 control preparation adds seven final SQL fixtures without installing them.
 M09 lands before M10 and keeps its versions; see the
@@ -451,16 +452,17 @@ ACLs, the payment-terminal replacement preserves incumbent attributes, and manag
 additions retain the donor's fixed-path, service-only definer authority. The
 [M09 design and retry contract](docs/platform/DATA_AND_MIGRATIONS.md#m09-invoicing-forward-design-and-control-approval)
 owns the duty sweep and feature introduction boundary. These checks do not
-introduce canonical migrations, relax approval-before-introduction or replace
+introduce canonical migrations, broaden the fixed SQL class or replace
 feature-level settlement, dispatch, correction, seller and delivery invariants.
 
 The reviewed runtime-forward checker admits an exact pinned five-function SQL
 file and an optional identity capabilities file with fixed service-only client
 writes, operator activation inserts and invitation email reads. Tests exercise both PR history and release
 history admission, including independently repinned forbidden columns, roles,
-writes, functions and changed execution attributes. The control must already
-exist before the SQL feature's base and introducing commit. Passing these tests
-is admission evidence, not proof that a draft overlay is the shipped chain.
+writes, functions and changed execution attributes. Approval follows the
+canonical co-located rule above, including its separate prior machinery-control
+boundary. Passing these tests is admission evidence, not proof that a draft
+overlay is the shipped chain.
 
 
 <!-- openlup-doc-impact {"unit":"tooling","digest":"sha256-7754f9a24ad3a5e6f570d6599e69a966ef6655741c48b1bb48f041236192b975","reason":"The shared admission function and predicate refuse control characters other than tab and line feed in migration SQL (parser parity with PostgreSQL), with focused and tracked-rail regression tests. The Additive forward release path in DATA_AND_MIGRATIONS documents this refusal. Contributor commands, required test selection and gate order in this section remain unchanged."} -->
@@ -1423,7 +1425,7 @@ decoupling and stock-evidence replay reopening. The stock control embeds the
 candidate SQL in the existing synthetic gate tests without adding a migration.
 The same focused test file covers exact bytes, portable-chain priors, registry
 cardinality, header preservation, extra-statement
-refusal and approval before introduction in both gates; managed counts remain
+refusal and introduction-time binding in both gates; managed counts remain
 unchanged. SQL and its pins may share a feature PR under the canonical
 [co-located SQL/pin rule](docs/platform/DATA_AND_MIGRATIONS.md#co-located-sql-and-approval-pins).
 Only bindings for that PR's new SQL may change; other entries and shared fields

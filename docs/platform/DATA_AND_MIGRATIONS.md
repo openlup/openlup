@@ -445,8 +445,8 @@ from the portable baseline and earlier portable forwards in strict filename
 order, as required by the manifest. Exact path, file and before/after definition
 hashes must match; arguments, return, volatility, security and settings remain
 unchanged. Only comments and that single `CREATE OR REPLACE FUNCTION` are
-admitted, with approval preceding introduction; no privileges or other statements
-are allowed. This control approval adds no SQL file or runtime behavior.
+admitted under the co-located SQL/pin rule above; no privileges or other statements
+are allowed. The original class-control approval added no SQL file or runtime behavior.
 
 The separate `portableCreationForwards` class binds these portable paths and
 whole-file SHA-256 digests in the same allowlist:
@@ -566,18 +566,14 @@ Operator activation consumes INSERT on `admin_users` columns `id`, `email`,
 SELECT on `admin_users.email` alongside the first entry's membership reads.
 Browser roles gain nothing; the approved identity forward now ships in the managed chain.
 
-Required PR/merge-group self-check requires the whole allowlist to remain unchanged
-from the feature comparison base. Release prepare compares each forward's own
-entry and list position, and every registry field outside the forward lists
-(schema version, baseline hash and any other key), with the first parent of the
-mainline commit, squash or merge, that introduces it; a feature branch's own
-earlier commits do not count. Only other forwards' entries may differ, so a later
-control may append approvals without stranding an unreleased forward. A feature still cannot approve itself. Missing history refuses. Existing
-history, version and manifest rules still apply. The expand-only predicate also
-refuses `INHERITS`, preventing a new table from inheriting an existing one.
-Admission is process evidence of exact reviewed bytes, not proof of live schema
-compatibility or authorization to release. Independent control review and the
-affected database behavior tests remain required.
+PR/merge-group self-check and release prepare follow the canonical
+[co-located SQL/pin rule](#co-located-sql-and-approval-pins), including existing
+separate control histories and refusal of later retroactive pins. Missing history
+refuses; existing history, version and manifest rules still apply. The expand-only
+predicate also refuses `INHERITS`, preventing a new table from inheriting an
+existing one. Admission is process evidence of exact reviewed bytes, not proof
+of live schema compatibility or authorization to release. Applicable control
+review and affected database behavior tests remain required.
 
 An adopter's hosted chain may already carry a managed forward under its own
 migration name. Such a file is a platform companion: its leading comment block
