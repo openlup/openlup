@@ -227,7 +227,7 @@
     },
     {
       "path": "db/platform/migrations/20261022195000_invoicing_seller_revision.sql",
-      "sha256": "e7c749779be007e83be0115efcc04661bb8dc6a4589f54bc96caf5d1700f8b3c"
+      "sha256": "5a6348d9af296cfc6383894e3489f70af1f3bb5026c0cc329daa9f3f95802b22"
     }
   ],
   "managedInvoicingForwards": [
@@ -275,22 +275,22 @@
     },
     {
       "path": "supabase/migrations/20261022195100_invoicing_seller_revision.sql",
-      "sha256": "77c2d19ef938a09a04865b3f89d47050c536a4c4b26ddea9ec954e690c53ee0c",
+      "sha256": "7cd2227840c7a8b7c1f85e2c112448a21138ce39c0cbb70d5529da4067d873fc",
       "functions": [
         {
           "signature": "public.invoicing_managed_request_with_seller_policy(text,text,uuid,text,jsonb)",
           "beforeSha256": null,
-          "afterSha256": "8535da6575f630d33c834e14a784ee6f855ed265ea72ac58852d8dafe447b1ef"
+          "afterSha256": "87298d9879146226023ff8f95b9e1f86a27a8fce782f03af4298df713eab6388"
         },
         {
           "signature": "public.invoicing_managed_claim_with_seller(integer,uuid,jsonb,text)",
           "beforeSha256": null,
-          "afterSha256": "8c2134d6f1124d1a006ff40d1e009c391829b375d25e96b925b219ed96dcc0aa"
+          "afterSha256": "d2bea7abf7e6c3a426ac6496064660d4535f0a49087a3adf0e5a35ed8c667b79"
         },
         {
           "signature": "public.invoicing_managed_claim_corrections_with_seller(integer,jsonb,text)",
           "beforeSha256": null,
-          "afterSha256": "b57790c9e67460abc138cea49facba438e1c6ee5a748af1b4fe933d828059cf9"
+          "afterSha256": "00dc7c0c61bb322cbacadc6faba2fc5b99b35847d1b56b7d8c5274bbcfd711ba"
         }
       ]
     }

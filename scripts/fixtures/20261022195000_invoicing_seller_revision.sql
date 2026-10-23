@@ -14,8 +14,6 @@ RETURNS jsonb LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog AS 
 DECLARE v_result jsonb; v_existing boolean; v_prior_duty boolean; v_duty uuid; v_timeout text:=current_setting('lock_timeout');
 BEGIN
   IF p_source_kind='correction' THEN
-    SELECT child.id INTO v_duty FROM public.invoicing_duties child JOIN public.invoicing_duties parent ON parent.id=child.parent_duty_id WHERE parent.order_id=p_order_id;
-    IF FOUND THEN RETURN jsonb_build_object('kind','correction_requested','dutyId',v_duty,'replayed',true); END IF;
     RETURN public.invoicing_request_reversal(p_key,p_order_id,p_evidence->>'reason',p_evidence||jsonb_build_object('sellerPolicyVersion','invoicing.seller.v1'));
   END IF;
   IF NOT pg_try_advisory_xact_lock(hashtextextended('invoicing:'||p_order_id::text,0)) THEN RAISE EXCEPTION 'invoicing_capture_busy' USING ERRCODE='55P03'; END IF;
@@ -40,12 +38,13 @@ BEGIN
   IF jsonb_typeof(p_seller) IS DISTINCT FROM 'object' OR nullif(btrim(p_revision),'') IS NULL THEN
     RAISE EXCEPTION 'invoicing_seller_required' USING ERRCODE='22023'; END IF;
   FOR v_claim IN SELECT value FROM jsonb_array_elements(public.invoicing_claim_duties(p_limit,p_visibility,p_provider,p_order_id)) LOOP
-    -- Only unit-76 children explicitly marked at their creation are eligible.
+    -- Generation advances only in invoicing_claim_duties: 1 is the first-ever claim.
+    -- A pre-wrapper claim must never acquire a seller revision on retry.
     INSERT INTO public.invoicing_seller_revisions(duty_id,eligibility_version)
-      SELECT id,'invoicing.seller.v1' FROM public.invoicing_duties WHERE id=(v_claim->>'id')::uuid AND seller_policy_version='invoicing.seller.v1'
+      SELECT id,'invoicing.seller.v1' FROM public.invoicing_duties WHERE id=(v_claim->>'id')::uuid AND seller_policy_version='invoicing.seller.v1' AND (v_claim->>'generation')::integer=1
       ON CONFLICT DO NOTHING;
     SELECT * INTO v_seller FROM public.invoicing_seller_revisions WHERE duty_id=(v_claim->>'id')::uuid FOR UPDATE;
-    IF FOUND THEN
+    IF FOUND AND (v_seller.seller_facts IS NOT NULL OR (v_claim->>'generation')::integer=1) THEN
       UPDATE public.invoicing_seller_revisions SET seller_facts=coalesce(seller_facts,p_seller),revision_ref=coalesce(revision_ref,p_revision),
         captured_at=coalesce(captured_at,now()),capture_generation=coalesce(capture_generation,(v_claim->>'generation')::integer)
         WHERE duty_id=v_seller.duty_id RETURNING * INTO v_seller;
