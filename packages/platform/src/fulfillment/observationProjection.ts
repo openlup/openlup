@@ -1,32 +1,73 @@
+import { z } from "zod";
 import type { CanonicalLocalFulfillmentStatus, FulfillmentObservation } from "./contracts/index.js";
 import { parseFulfillmentFact } from "./normalizedFulfillmentFacts.js";
+import { durableStrings } from "./dispatchProjection.js";
 import { FULFILLMENT_STATUS_MAP } from "./statusMap.js";
 
-export function projectCorrelation(value: FulfillmentObservation["correlation"]): FulfillmentObservation["correlation"] {
-  const { orderRef, fulfillmentRef, externalRef, orderNumber, providerFulfillmentRef, parcelRef } = value;
-  return { orderRef, fulfillmentRef, externalRef, orderNumber, providerFulfillmentRef, parcelRef };
+type Privacy = ReturnType<typeof durableStrings>;
+const timestamp = z.iso.datetime({ offset: true });
+export function projectCorrelation(value: FulfillmentObservation["correlation"], privacy = durableStrings()): FulfillmentObservation["correlation"] {
+  const token = privacy.token;
+  return { orderRef: value.orderRef, fulfillmentRef: value.fulfillmentRef, externalRef: token(value.externalRef),
+    orderNumber: token(value.orderNumber), providerFulfillmentRef: token(value.providerFulfillmentRef), parcelRef: value.parcelRef };
+}
+
+export function projectProviderStatus(value: NonNullable<FulfillmentObservation["providerStatus"]>, privacy = durableStrings()): NonNullable<FulfillmentObservation["providerStatus"]> {
+  return { primary: privacy.token(value.primary), subStatus: privacy.token(value.subStatus) };
+}
+export type PollEvidence = Pick<FulfillmentObservation, "correlation" | "eventKey" | "providerStatus" | "diagnostics">;
+function pollEvidence(value: PollEvidence, privacy: Privacy): PollEvidence {
+  return { eventKey: value.eventKey, correlation: projectCorrelation(value.correlation, privacy),
+    ...(value.providerStatus ? { providerStatus: projectProviderStatus(value.providerStatus, privacy) } : {}) };
+}
+/** Unknown-status quarantine/ACK evidence has the same privacy boundary as observations. */
+export function projectPollEvidence(value: PollEvidence): PollEvidence {
+  const privacy = durableStrings(value.diagnostics?.redactedFieldCount);
+  const safe = pollEvidence(value, privacy);
+  return { ...safe, ...(privacy.redactedFieldCount ? { diagnostics: { redactedFieldCount: privacy.redactedFieldCount } } : {}) };
+}
+
+/** Provider URLs require query-free, credential-free HTTPS plus host approval. */
+export function publicTrackingUrl(value: string, approve?: (url: string) => boolean): string | null {
+  try {
+    const url = new URL(value);
+    return url.protocol === "https:" && !url.username && !url.password && !url.search && !url.hash && approve?.(url.href) ? url.href : null;
+  } catch { return null; }
+}
+export function projectTrackingReference(value: FulfillmentObservation["trackingRefs"][number], privacy = durableStrings(), approveTrackingUrl?: (url: string) => boolean) {
+  const token = privacy.token;
+  const trackingNumber = token(value.trackingNumber);
+  if (trackingNumber === null) return null;
+  return { trackingNumber, carrierRef: token(value.carrierRef), serviceRef: token(value.serviceRef),
+    publicUrl: token(value.publicUrl, url => publicTrackingUrl(url, approveTrackingUrl)) };
 }
 
 /** New boundary projection: arbitrary adapter properties are never durable. */
-export function projectObservation(value: FulfillmentObservation): FulfillmentObservation {
+export function projectObservation(value: FulfillmentObservation, approveTrackingUrl?: (url: string) => boolean): FulfillmentObservation {
+  const privacy = durableStrings(value.diagnostics?.redactedFieldCount), token = privacy.token;
   const diagnostics: NonNullable<FulfillmentObservation["diagnostics"]> = {};
   if (value.diagnostics?.refusal) {
     const { reason, phase, retryable } = value.diagnostics.refusal;
-    diagnostics.refusal = { reason, phase, retryable };
+    diagnostics.refusal = { reason: token(reason) as typeof reason, phase: token(phase) as typeof phase, retryable };
   }
   if (value.diagnostics?.stockContention) diagnostics.stockContention = { sqlState: "55P03", phase: "provider_stock_consumed", retryable: true };
-  if (value.diagnostics?.annotation) diagnostics.annotation = value.diagnostics.annotation;
+  if (value.diagnostics?.annotation) diagnostics.annotation = token(value.diagnostics.annotation) as typeof value.diagnostics.annotation;
   if (value.diagnostics?.recoveredPickedReceipt) {
     const { receiptRef, closed } = value.diagnostics.recoveredPickedReceipt;
     diagnostics.recoveredPickedReceipt = { receiptRef, closed };
   }
-  return {
-    fact: parseFulfillmentFact(value.fact), eventKind: value.eventKind, eventKey: value.eventKey,
-    firstReceivedAt: value.firstReceivedAt,
-    correlation: projectCorrelation(value.correlation),
-    trackingRefs: value.trackingRefs.map(({ trackingNumber, carrierRef, serviceRef, publicUrl }) => ({ trackingNumber, carrierRef, serviceRef, publicUrl })),
-    ...(Object.keys(diagnostics).length ? { diagnostics } : {}),
+  const fact = parseFulfillmentFact(value.fact);
+  const safe = {
+    ...pollEvidence(value, privacy),
+    fact: { ...fact, mapperVersion: token(fact.mapperVersion) ?? "redacted" }, eventKind: (token(value.eventKind) ?? "redacted") as FulfillmentObservation["eventKind"],
+    firstReceivedAt: timestamp.parse(value.firstReceivedAt),
+    trackingRefs: value.trackingRefs.flatMap(ref => {
+      const projected = projectTrackingReference(ref, privacy, approveTrackingUrl);
+      return projected ? [projected] : [];
+    }),
   };
+  if (privacy.redactedFieldCount) diagnostics.redactedFieldCount = privacy.redactedFieldCount;
+  return { ...safe, ...(Object.keys(diagnostics).length ? { diagnostics } : {}) };
 }
 
 const HANDOVER_STATUSES: ReadonlySet<string> = new Set(

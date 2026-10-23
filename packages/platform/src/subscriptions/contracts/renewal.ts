@@ -316,7 +316,7 @@ export interface RenewalExecutionRequest extends RenewalIdentity {
   payer: { email: string | null; name: string | null } | null;
 }
 export interface RenewalPaymentRail {
-  execute(input: RenewalExecutionRequest): Promise<{ status: "succeeded" | "failed" | "requires_action" | "pending" | "unknown"; externalAttemptRef: string | null }>;
+  execute(input: RenewalExecutionRequest): Promise<{ status: "succeeded" | "failed" | "requires_action" | "pending" | "unknown"; externalAttemptRef: string | null; failure?: { reason: string; failureClass: string } }>;
   findExternalAttempt(input: { settlementIntentId: string }): Promise<string | null>;
   readOutcome(input: { externalAttemptRef: string; settlementIntentId: string; orderId: string; subscriptionId: string; amountMinor: number; currency: string }): Promise<RenewalPaymentEvidence>;
 }

@@ -1,6 +1,21 @@
-import { expect, it } from "vitest";
+import { expect, it, vi } from "vitest";
 import { verifyAndNormalizeFulfillmentObservation as run } from "../../src/fulfillment/index.js";
 import { at, ingressFixture, observation } from "./fixtures.js";
+
+it("drops and counts distinct refused tracking numbers before ingress persistence and tracking effects", async () => {
+  const value = observation();
+  value.trackingRefs = ["invalid number", "invalid/number"].map(trackingNumber => ({
+    trackingNumber, carrierRef: null, serviceRef: null, publicUrl: null,
+  }));
+  const f = ingressFixture(value);
+  const recordTrackingReference = vi.spyOn(f.input.lifecycle.effects, "recordTrackingReference");
+  for (let attempt = 0; attempt < 2; attempt++) {
+    expect(await run(f.input)).toMatchObject({ kind: "processed", trackingRefs: 0,
+      observation: { trackingRefs: [], diagnostics: { redactedFieldCount: 2 } } });
+  }
+  expect(f.inbound.get(value.eventKey)).toMatchObject({ trackingRefs: [], diagnostics: { redactedFieldCount: 2 } });
+  expect(recordTrackingReference).not.toHaveBeenCalled();
+});
 
 it("authenticates before parse, keeps first receipt on redelivery and settles processing idempotently (G7/G17)", async () => {
   const f = ingressFixture();
@@ -48,7 +63,7 @@ it("retains contention, failed annotation, recovery receipt and superseding hand
 
 
 it("retries missing external references before acceptance and effects; either reference permits processing", async () => {
-  for (const [observedRef, dispatchRef] of [[null, null], ["  ", "\t"], [" observed-a ", null], [null, " dispatch-a "]] as const) {
+  for (const [observedRef, dispatchRef] of [[null, null], ["  ", "\t"], ["observed-a", null], [null, " dispatch-a "]] as const) {
     const value = observation(); value.correlation.externalRef = observedRef;
     const f = ingressFixture(value);
     f.input.lifecycle.findDispatchRef = async () => {

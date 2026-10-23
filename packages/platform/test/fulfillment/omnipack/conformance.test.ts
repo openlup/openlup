@@ -25,7 +25,8 @@ const commandBody = JSON.stringify({
   shippingDetails: { address: { city: "Example City", country: "US", email, name: "Example Recipient", phone, postCode: "10001", street: "123 Example Street" }, carrier: "SERVICE-A", service: "SERVICE-A" },
 });
 const preparedEvidence: DispatchEvidence = { commandFingerprint: hash(commandBody), contactRevision: request().contactRevision,
-  providerRef: "omnipack", carrierRef: "CARRIER-A", serviceRef: "SERVICE-A" };
+  providerRef: "omnipack", carrierRef: "CARRIER-A", serviceRef: "SERVICE-A",
+  transcript: { itemCount: 1, items: [{ skuRef: "SKU-A", quantity: 2, lotRef: "LOT-A", expirationDate: "2027-01-01" }], deliveryKind: "courier", pickupPointRef: null } };
 // Independently derived opaque provider proof keys; the worker supplies host keys.
 const accepted = { kind: "accepted" as const, externalRef: "external-a", evidence: preparedEvidence, providerAttemptKey: `attempt:${hash(JSON.stringify(["external-a", preparedEvidence.commandFingerprint]))}`, labelKey: `label:${hash(JSON.stringify(["external-a", preparedEvidence.commandFingerprint]))}` };
 const webhookPayload = { event: "order.delivered", orderId: "external-a", fulfilmentNumber: "parcel-a", occurredAt: now,
@@ -33,14 +34,15 @@ const webhookPayload = { event: "order.delivered", orderId: "external-a", fulfil
 const webhook = (body: unknown) => ({ rawBody: Buffer.from(JSON.stringify(body)), headers: { authorization: `Bearer ${credential}` }, receivedAt: now });
 const trackingRefs = [{ trackingNumber: "TRACK-A", carrierRef: null, serviceRef: null, publicUrl: null }];
 function expectedObservation(source: "provider_webhook" | "provider_reconciliation", raw: string | Uint8Array): FulfillmentObservation {
-  const eventKey = hash(JSON.stringify(["order.delivered", "external-a", "parcel-a", now]));
-  return { fact: { schemaVersion: 1, mapperVersion: "1", factId: eventKey, providerKind: "omnipack",
+  const eventKey = hash(JSON.stringify(source === "provider_webhook" ? ["order.delivered", "external-a", "parcel-a", now]
+    : ["external-a", "parcel-a", null, "delivered", null, now]));
+  return { ...(source === "provider_reconciliation" ? { providerStatus: { primary: "delivered", subStatus: null } } : {}), fact: { schemaVersion: 1, mapperVersion: "1", factId: eventKey, providerKind: "omnipack",
     fulfillmentReference: source === "provider_webhook" ? "parcel-a" : "fulfillment-a", canonicalStatus: "delivered",
     provenance: { source, authority: "provider_asserted" }, occurredAt: now, receivedAt: now,
     rawEvent: { reference: evidenceRef, digestAlgorithm: "sha256", digest: hash(raw) } },
     eventKind: "order.delivered", eventKey, firstReceivedAt: now,
     correlation: { orderRef: null, fulfillmentRef: source === "provider_webhook" ? null : "fulfillment-a",
-      externalRef: "external-a", orderNumber: null, providerFulfillmentRef: "parcel-a", parcelRef: null }, trackingRefs };
+      externalRef: "external-a", orderNumber: null, providerFulfillmentRef: "parcel-a", parcelRef: null }, trackingRefs, diagnostics: { redactedFieldCount: 1 } };
 }
 const readInput = (externalRef: string) => ({ providerRef: "omnipack", requestKey: "request-a", fulfillmentRef: "fulfillment-a", externalRef, mode: "command" as const });
 const readbackRawEvidence = { provider: "omnipack", event: "order.delivered", providerOrderId: "external-a", orderNumber: null,
@@ -93,7 +95,7 @@ function subject(): { value: Subject; calls: { method: string; path: string; bod
       ],
       readback: [
         { input: [readInput("external-a")], expected: { kind: "found", externalRef: "external-a", createdAt: null, updatedAt: now,
-          observation: expectedObservation("provider_reconciliation", JSON.stringify(readbackRawEvidence)) } },
+          observation: expectedObservation("provider_reconciliation", JSON.stringify({ ...readbackRawEvidence, providerStatus: { primary: "delivered", subStatus: null } })) } },
         { input: [readInput("external-missing")], expected: { kind: "unknown", refusal: refusal("local_missing", "readback") }, localMissing: true },
       ],
       stockSync: [
@@ -168,7 +170,7 @@ it("M08 host ledger fences fresh-instance and evicted-fingerprint replays before
     // Durable host state after claim/recordProviderAttempt/begin, before acceptance.
     const record: DispatchRecord = { dispatchRef: "dispatch-a", requestKey: candidate.requestKey, fulfillmentRef: candidate.fulfillmentRef,
       orderRef: candidate.orderRef, parcelRef: null, mode: "stage", externalRef: null, status: "submitting",
-      evidence: preparation.evidence, replayed: true };
+      evidence: { ...preparation.evidence, mapping: { source: "dispatch_worker", mode: "stage", shadowMode: false } }, replayed: true };
     const ledger = new Map([[candidate.requestKey, structuredClone(record)]]);
     const attempts = new Map([["mapped-a", structuredClone(record.evidence)]]);
     const store: FulfillmentStorePort = {

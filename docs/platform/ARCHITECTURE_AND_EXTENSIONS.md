@@ -807,14 +807,64 @@ reads the authoritative row. Approved amendment G14 records the mapped provider
 attempt at that point, before shadow exit, unsafe-state refusal or begin. Its
 host-supplied opaque key preserves initial/remap identities; only allowlisted
 prepared evidence, mode/status and references persist. Same-key replay writes no
-second attempt. Unknown/submitting/failed states never automatically POST;
+second attempt. For an unchanged stage/live fingerprint, contact revision and selection,
+replay preserves the stored evidence JSON, including legacy five-field evidence;
+new transcript/mapping metadata alone never consumes the native remap allowance.
+Unknown/submitting/failed states never automatically POST;
 accepted proof repairs a lost local ACK without a provider call. Only a
 post-dispatch ACK failure triggers readback and an attempt to finalize accepted
 proof as uncertain with its external reference retained when acceptance is not
 already committed. Loop-start and concurrent-begin recovery ACK failures reach
 the outer catch without that rescue.
 Main and repair ACKs use identical host acceptance keys, ignoring adapter-provided
-key fields so a committed ACK replays after a lost response.
+key fields so a committed ACK replays after a lost response. Mapped evidence now
+retains item count, SKU/quantity/lot/expiry, delivery kind and pickup-point reference,
+the contact revision and provider/carrier/service selection, and worker source,
+mode and shadow flag. Durable dispatch transcripts/receipts, observation and provider-status evidence,
+reconciliation quarantine evidence, and worker diagnostics share one counted
+string sanitizer at their output projections. Provider-derived strings must
+match the existing opaque-ID rule `[A-Za-z0-9][A-Za-z0-9._:-]{0,127}` or an
+explicit adopter codec; refused values become null (required references use
+`redacted`; refused tracking numbers drop the entire reference) and increment
+`redactedFieldCount` in the existing evidence or
+diagnostic envelope. Each field is counted once using its admission codec;
+counts survive repeated native projection. Host-owned acceptance/attempt/label
+and event keys, fingerprints and identities built from admitted parts pass through
+unchanged. Timestamps use RFC3339 validation, preserving identity-bearing bytes,
+and never use the token sanitizer. Expiry additionally
+requires a real `YYYY-MM-DD` calendar date. Provider tracking URLs require
+query-free, credential-free HTTPS and the adopter's approval at each projection
+that retains them, including reconciliation tracking
+codecs and native observation-store options; omission redacts the URL. Host-built
+tracking URLs pass unchanged, including query strings. Occurrence
+identity hashes original provider status/subStatus bytes, so redaction cannot
+collapse distinct occurrences. Arbitrary properties, contact fields, raw JSON,
+credentials and signed URLs are omitted. The
+[exhaustive field sweep](../../packages/platform/test/fulfillment/omnipack/dispatchReconciliationParity.test.ts)
+feeds five sensitive-value shapes through every provider string input and captures
+native write arguments, evidence callbacks, transcripts, checkpoints and diagnostics,
+including provider exceptions and accepted-ACK recovery. Its native mock checks
+whole-receipt equality on replay and timestamp types at observation ingestion.
+The command fingerprint still commits to the transient
+provider command bytes. Shadow instead builds a local command identity from the
+host candidate; it requires neither a provider port nor provider preparation or
+credentials. Legacy `0.22.0` native shadow drafts/attempts do not replay under that
+new identity; complete or abandon them before upgrading (see the package
+[migration note](../../packages/platform/CHANGELOG.md#unreleased)). Host readiness
+and selected capability checks still apply.
+
+Dispatch results retain neutral typed error code, HTTP status, retryability and
+ambiguity. Local failures retain a machine cause/SQLSTATE under their stage;
+unstructured exception prose is omitted. Redirect refusal remains conservative
+and names `redirect_refused`; a definitive unreadable 400 remains a rejection.
+After acceptance, failed ACK finalization retains `dispatch_acceptance_write_failed`,
+a safe ACK cause and the external reference with ambiguity. Recovery ACK metadata
+names the persisted external-reference proof and `noProviderPost`. The native
+store reads back the original acceptance JSON so a created ACK replays exactly,
+including recovery metadata. Native accepted-result JSON persists this evidence;
+the existing SQL finish operation discards non-accepted result detail, so durable
+rejected/unknown error retention remains a gap at that store boundary. No SQL or
+command-ledger authority is changed by these TypeScript projections.
 The separate createFulfillmentCommandLedger protocol delegates atomic fenced
 operations to a durable store; it does not keep lease/retry state locally. The
 host supplies keys, actual-command fingerprints, candidate selection, paid truth
@@ -916,7 +966,10 @@ use approved G17 inline host persistence. Ingress requires recordObservation to
 atomically deduplicate eventKey and retain firstReceivedAt, and markProcessed to
 be idempotent. Host lifecycle writes must also be idempotent so retries after
 interruption create no second durable effect. Reconciliation reads local status,
-latestStatusOccurredAt and handedOverAt through readLocalFulfillmentState.
+then ACKs acceptance, then reads latestStatusOccurredAt through separate local
+persistence methods. readHandedOverAt runs only for stale/exception invoice
+recovery. The native store retains its combined read for existing callers, but
+this worker uses the split reads so an unused handover query cannot fail a row.
 Non-stale found observations for locally cancelled/exception rows write status
 evidence only. Older known occurrences skip status/effects; an on-track row with
 handedOverAt can still retry its accounting invoice. Invalid or absent timestamps
@@ -930,13 +983,38 @@ unprocessed. Stock-contention annotation is a best-effort host write before the
 original stock failure is rethrown; recovered-picked receipts remain typed
 diagnostics. A classified superseding conflict returns superseded but marks only
 processed status; G17 has no dedicated persisted superseded-reason field.
-Unknown readback fails reconciliation before row processing. Unmapped evidence
+Unknown readback stays row-local: recognized rows still process. Unmapped evidence
 projects eventKey and declared correlation fields before host calls; correlated
 off-track rows skip acceptance/quarantine, while other rows require an external
 reference before acceptance and unknown-status quarantine. Effects retain
 stock → handover → tracking → invoice order. Tracking keeps the first trimmed
 nonblank number and provider-carrier precedence; normalization/URL codecs stay
 injected.
+
+The separate `runFulfillmentReconciliationPage` operation consumes an explicit
+observation-page port. It resumes a validated version-1 `reconciliationPagination`
+checkpoint with the same page size; invalid or resized checkpoints start at zero.
+A traversed full page advances even when individual items fail, while a
+short/empty or exhausted page resets to zero. A failed or thrown page read also
+resets to zero; an abort after the read but before traversal completes retains
+the current page. Mapping refusals stay row-local and preserve page
+cardinality; invalid occurrence timestamps normalize to null before mapping.
+Recognized siblings still process around row-level unknowns. `providerCalls`
+counts each attempted logical page-port read, including failed/exhausted reads;
+transport retries are separate. The return value contains result counters, a
+200/502 status projection, succeeded/failed ledger status and checkpoint metadata.
+The host owns HTTP, cron, ledger writes and checkpoint persistence; no process is
+installed. The opt-in example exposes this port as `adapter.reconciliation`,
+decodes only its specific exhausted-page 400 into `page_exhausted`, and retains
+other read errors as failures. The exact `readback.read` operation still requires
+one unique match from an explicitly complete single page and never infers absence.
+Reconciliation evidence and occurrence identity retain primary/subStatus tokens,
+so distinct packed aliases remain distinct facts while identical rows replay.
+Unknown status rows correlate and ACK before quarantine; off-track unknowns stay
+benign. Accounting refusals retain safe accounting identifiers and SQLSTATE while
+preserving the permanent/transient distinction. The
+[parity witness](../../packages/platform/test/fulfillment/omnipack/dispatchReconciliationParity.test.ts)
+uses synthetic probe inputs to exercise these boundaries without a provider.
 
 [Stock sync](../../packages/platform/src/fulfillment/providerStockSyncWorker.ts)
 uses approved G15 coverageGapSkus on SyncCursor: absent is empty, and only the
@@ -1172,6 +1250,13 @@ the local prepared-attempt type projection preserves the existing M07 shape
 without a cross-module contract edge. Pure cadence/retry arithmetic remains in
 `@openlup/core/subscription`; adapters own SQL translation and hosts own channel,
 mandate, identity dialect, pricing, stock selection, trusted actor and copy policy.
+Initial terminal replay in the native retry binding returns from the immutable
+receipt before any settlement, rebinding or case propagation. Prepared retry
+readback retains the existing non-terminal `retry_scheduled` disposition while
+awaiting evidence. The native runner treats only explicit execution failure or
+`requires_action` as synchronous refusal; bare failed status requires readback.
+See the [host preconditions](CANONICAL_CONTRACTS.md#subscription-port-boundary)
+for cycle correlation and frozen retry authorization.
 
 A native prepare commits cycle/order/items/settlement/reservation and attempt;
 a native outcome commits settlement, outcome, schedule/counter and reservation.
@@ -1187,7 +1272,18 @@ Future terms and receipts require an atomic command store.
 Stock recovery is restricted to never-executed stock refusals, with transaction-bound
 all-line reacquisition and fencing. A provider-owned or ambiguous attempt cannot
 be reset by a wait ledger. The [design](plans/oss-m10-subscriptions-renewal-dunning.md)
-keeps serving composition and later store implementation outside this contract step.
+keeps serving composition outside this implementation step. The package's native
+renewal store consumes an injected executor and a required wire-snapshot codec:
+the host supplies exact identity/fingerprint bytes, frozen revision and explicit
+logical-cycle correlation. Existing operation snapshots take precedence over
+mutable future terms. The retry store calls N1 without implementing M07 payment
+execution, and preserves its prepare replay fence. The generic native executor
+uses the P1 ports with injected input/identity/classification policy. The initial
+binding opens the existing donor-keyed case first, then links N1 bookkeeping in
+the M07 terminal transaction. Initial terminal replay reuses its immutable
+failure receipt after later case changes or recovery; conflicting terminal
+evidence still refuses. Subsequent failures retain their separate case advance. G23, transaction/correlation policy and runtime selection remain host
+composition.
 
 ### Renewal port recipe
 
@@ -1226,11 +1322,28 @@ deferring until resolved. A deferred result preserves the schedule and may carry
 durable case.
 
 Native multi-cycle prepaid, generic bundle commands, command-bound receipts and
-the M07 prepared-attempt store have typed unsupported refusals. Retry and stock
-recovery remain unavailable until selected stores demonstrate them. Native generic
+the M07 prepared-attempt store have typed unsupported refusals. Stock recovery
+remains unavailable; N1 retry recovery is selected after its store proofs. Native generic
 bundle commands and command-bound receipts arrive with a later native command lifecycle;
 until then, the descriptor refuses them. Existing native pause/resume/skip/cancel
 operations keep their own contracts. The
 [Subscription port witnesses](../../packages/platform/test/subscriptions/portFit.test.ts) test
 each port amendment, and the [native baseline](../../tests/postgres/subscriptionContinuityBaseline.test.ts)
 exercises the complete current prefix without subscription SQL additions.
+
+## Invoicing contracts
+
+Place invoicing contracts and descriptor interpretation in the existing platform
+package's exact `invoicing` and type-only `invoicing/contracts` entries. The module
+has no graph edges, provider dependencies or environment discovery. The host owns
+fiscal/identifier/rounding policy, frozen facts, seller, M07 reads, storage, registry,
+M04 delivery and authorized M12 history. Missing parity returns typed unsupported
+before writes; no native store or executor is supplied. Seller reads select the current
+host configuration before the next claim, scoped by order or null for unscoped
+claims, never by duty. P8 freezes the seller at first claim, using revisionRef as
+the claim wrapper revision. Stores bind the selected provider at construction.
+Delivery settlement
+retains provider identity, retry delay (native ignores it) and uncertain receipt hints; local document
+requests retain provider selection, invoice reference, status and replay. The
+[invoicing reference](PLATFORM_PACKAGE_REFERENCE.md#invoicing-contracts) describes
+correction, payout item and account-lineage seams and their source witnesses.

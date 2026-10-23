@@ -18,7 +18,7 @@ function subject(full: boolean): Subject {
   };
   const input = request(); const document = { objectRef: "label-a", mediaType: "application/pdf" as const, externalRef: "external-a" };
   const s: Subject = {
-    subjectId: full ? "full-fixture" : "minimal-fixture", adapter: {
+    subjectId: full ? "full-fixture" : "minimal-fixture", approveTrackingUrl: url => url === "https://tracking.example.invalid/TRACK-a", adapter: {
       capabilities: profile(full),
       dispatch: {
         async prepare(value) {

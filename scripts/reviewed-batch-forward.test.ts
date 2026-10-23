@@ -87,6 +87,7 @@ it.each([
   expect(() => assertBatchedForward(repin(pin, sql), Buffer.from(sql), prefix(pin))).toThrow(/reviewed batch|reviewed portable creation/u);
 });
 
+// Measured alone at 74.99 s (2026-10-23); about 3x keeps shared-machine load from timing it out.
 it("uses separate prior approval in CI and release, and refuses self-approval", () => {
   const folder = mkdtempSync(join(tmpdir(), "openlup-batch-control-"));
   const git = (...args: string[]) => execFileSync("git", ["-C", folder, ...args], { encoding: "utf8" }).trim();
@@ -136,7 +137,7 @@ it("uses separate prior approval in CI and release, and refuses self-approval", 
     const self = commit("Feature attempts to change its own approval");
     expect(() => assertReviewedPlatformForward(folder, approval, self, pins[0]!.path, bytes(pins[0]!))).toThrow(/approved separately/u);
   } finally { rmSync(folder, { recursive: true, force: true }); }
-}, 120_000);
+}, 240_000);
 
 // Repin the changed statement so refusal reaches the grantee predicate.
 it.each(["authenticated", "service_role, authenticated"])("refuses a repinned managed creation grantee: %s", grantee => {

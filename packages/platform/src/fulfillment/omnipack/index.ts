@@ -1,11 +1,12 @@
 import type { DispatchEvidence, FulfillmentCapabilityDescriptor, FulfillmentDispatchPort, FulfillmentDispatchRequest,
-  FulfillmentLabelPort, FulfillmentObservationPort, FulfillmentReadbackPort, FulfillmentStockSyncProvider, FulfillmentProductSyncProvider, FulfillmentRefusal } from "../contracts/index.js";
+  FulfillmentLabelPort, FulfillmentObservationPort, FulfillmentReadbackPort, FulfillmentObservationPagePort, FulfillmentStockSyncProvider, FulfillmentProductSyncProvider, FulfillmentRefusal } from "../contracts/index.js";
 import { createOmnipackClient, OmnipackProviderError } from "./client.js";
 import { omnipackFulfillmentCapabilities } from "./capabilities.js";
 import { buildOmnipackDispatchCommand, serializeOmnipackDispatchPayload, stableDispatchHash } from "./omnipackDispatchPayload.js";
 import { mapOmnipackWebhookPayload } from "./mappers.js";
 import { verifyOmnipackWebhookToken, type OmnipackWebhookRouteEvent } from "./omnipackWebhookPayload.js";
-import { localStatusFor, normalizeStatus } from "./omnipackStatusVocabulary.js";
+import { createReconciliationPagePort, reconciliationObservation } from "./reconciliation.js";
+import { dispatchEvidence, operationError } from "../dispatchProjection.js";
 import { digest, eventKind, observation, reference, refusal, timestamp } from "./observation.js";
 export { omnipackFulfillmentCapabilities } from "./capabilities.js";
 
@@ -67,6 +68,7 @@ export function createOmnipackFulfillmentAdapter(config: OmnipackFulfillmentAdap
   label: FulfillmentLabelPort;
   observation: FulfillmentObservationPort;
   readback: FulfillmentReadbackPort;
+  reconciliation: FulfillmentObservationPagePort;
   stockSync: FulfillmentStockSyncProvider;
   productSync: FulfillmentProductSyncProvider;
 } {
@@ -130,9 +132,12 @@ export function createOmnipackFulfillmentAdapter(config: OmnipackFulfillmentAdap
         selectedDelivery: { providerKind: capabilities.providerRef, carrierKind: request.selection.carrierRef,
           serviceCode: request.selection.serviceRef, deliveryKind: request.selection.deliveryKind, pickupPoint: request.selection.pickupPoint } }, lines,
     });
-    const evidence: DispatchEvidence = { commandFingerprint: command.requestFingerprint,
+    const evidence: DispatchEvidence = dispatchEvidence({ commandFingerprint: command.requestFingerprint,
       contactRevision: { schemaVersion: request.contactRevision.schemaVersion, source: request.contactRevision.source, revision: request.contactRevision.revision },
-      providerRef: capabilities.providerRef, carrierRef: request.selection.carrierRef, serviceRef: request.selection.serviceRef };
+      providerRef: capabilities.providerRef, carrierRef: request.selection.carrierRef, serviceRef: request.selection.serviceRef,
+      transcript: { itemCount: command.providerPayload.items.length,
+        items: command.providerPayload.items.map(item => ({ skuRef: item.sku, quantity: item.quantity, lotRef: item.lotNumber ?? null, expirationDate: item.expirationDate ?? null })),
+        deliveryKind: request.selection.deliveryKind, pickupPointRef: request.selection.pickupPoint?.id ?? null } });
     return { body: command.body, evidence };
   };
   return {
@@ -151,7 +156,7 @@ export function createOmnipackFulfillmentAdapter(config: OmnipackFulfillmentAdap
         let requestCommandDigest: string;
         try {
           // Validate the closed evidence and its request-bound values without consulting preparation state.
-          if (Object.keys(evidence).length !== 5 || Object.keys(evidence.contactRevision).length !== 3
+          if (Object.keys(evidence).length !== 6 || Object.keys(evidence.contactRevision).length !== 3
             || typeof evidence.commandFingerprint !== "string" || !/^[a-f0-9]{64}$/u.test(evidence.commandFingerprint)
             || !reference(evidence.providerRef)
             || !reference(evidence.carrierRef) || !reference(evidence.serviceRef)
@@ -164,6 +169,7 @@ export function createOmnipackFulfillmentAdapter(config: OmnipackFulfillmentAdap
             || evidence.providerRef !== request.selection.providerRef
             || evidence.carrierRef !== request.selection.carrierRef || evidence.serviceRef !== request.selection.serviceRef) throw Error();
           evidenceKey = serializeOmnipackDispatchPayload(evidence).body;
+          if (serializeOmnipackDispatchPayload(dispatchEvidence(evidence)).body !== evidenceKey) throw Error();
           requestCommandDigest = commandDigest(request);
           const submitted = submissions.get(evidence.commandFingerprint);
           if (submitted) {
@@ -180,7 +186,7 @@ export function createOmnipackFulfillmentAdapter(config: OmnipackFulfillmentAdap
           let command;
           try {
             command = await buildCommand(commandRequest);
-            if (command.evidence.commandFingerprint !== fingerprint) throw Error();
+            if (command.evidence.commandFingerprint !== fingerprint || serializeOmnipackDispatchPayload(command.evidence).body !== evidenceKey) throw Error();
           } catch {
             // A stale or unresolved command has never reached credentials or HTTP.
             submissions.delete(fingerprint);
@@ -195,9 +201,10 @@ export function createOmnipackFulfillmentAdapter(config: OmnipackFulfillmentAdap
             return { kind: "accepted" as const, externalRef, evidence: structuredClone(command.evidence),
               providerAttemptKey: `attempt:${proof}`, labelKey: `label:${proof}` };
           } catch (error) {
-            return error instanceof OmnipackProviderError && !error.mayHaveSucceeded
-              ? { kind: "not_dispatched" as const, effectMayHaveSucceeded: false as const, refusal: refusal("io_failure", "dispatch") }
-              : { kind: "unknown" as const, effectMayHaveSucceeded: true as const, refusal: refusal("io_failure", "dispatch") };
+            const detail = operationError(error instanceof OmnipackProviderError ? error : { code: "provider_dispatch_failed", status: null, retryable: true, mayHaveSucceeded: true });
+            return !detail.mayHaveSucceeded
+              ? { kind: "not_dispatched" as const, effectMayHaveSucceeded: false as const, refusal: refusal("io_failure", "dispatch", detail.retryable), error: detail }
+              : { kind: "unknown" as const, effectMayHaveSucceeded: true as const, refusal: refusal("io_failure", "dispatch", detail.retryable), error: detail };
           } finally {
             command.body = "";
             submissions.get(fingerprint)!.completed = true;
@@ -248,20 +255,13 @@ export function createOmnipackFulfillmentAdapter(config: OmnipackFulfillmentAdap
           const matches = collection.rows.filter(row => input.mode === "parcel"
             ? row.fulfilmentNumber === input.externalRef : row.providerOrderId === input.externalRef);
           if (matches.length !== 1) return { kind: "unknown", refusal: refusal("local_missing", "readback") };
-          const row = matches[0]!;
-          const normalized = normalizeStatus(row.status);
-          if (!normalized) return { kind: "unknown", refusal: refusal("unsupported_event", "readback") };
-          const status = localStatusFor(normalized) as "provider_received" | "picking" | "packed" | "in_transit" | "delivered" | "exception";
-          const event = ({ provider_received: "shipment.accepted", picking: "order.processing_started", packed: "order.picked", in_transit: "order.shipped", delivered: "order.delivered", exception: "parcel.exception" } as const)[status];
-          const evidence = { provider: "omnipack" as const, event, providerOrderId: row.providerOrderId, orderNumber: row.orderNumber,
-            fulfilmentNumber: row.fulfilmentNumber, occurredAt: row.updatedAt, trackingNumbers: row.trackingNumbers,
-            trackingReferences: row.trackingReferences, shippingMethods: [] };
-          return { kind: "found", externalRef: input.externalRef!, createdAt: timestamp(row.createdAt), updatedAt: timestamp(row.updatedAt),
-            observation: observation({ evidence, event, status, fulfillmentRef: input.fulfillmentRef, receivedAt: config.clock(),
-              rawDigest: digest(JSON.stringify(evidence)), evidenceRef: config.mintEvidenceReference(), source: "provider_reconciliation", approveTrackingUrl: config.approveTrackingUrl }) };
+          const mapped = reconciliationObservation(matches[0]!, config, input.fulfillmentRef);
+          return mapped.kind === "unmapped" ? { kind: "unknown", refusal: refusal("unsupported_event", "readback") } : { ...mapped, externalRef: input.externalRef! };
         } catch { return { kind: "unknown", refusal: refusal("io_failure", "readback") }; }
       },
     },
+    reconciliation: createReconciliationPagePort(client, config, () => !capabilities.selected || !capabilities.readiness.ready
+      ? refusal(capabilities.selected ? "not_ready" : "disabled", "readback") : null),
     stockSync: {
       async getStock() {
         requireSync();

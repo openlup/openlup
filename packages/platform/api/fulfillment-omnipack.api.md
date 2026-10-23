@@ -153,6 +153,7 @@ type SyncFixture<Port> = {
 }[keyof Port];
 /** Offline adapter-owned inputs and exact expected outputs; never real customer data. */
 export interface FulfillmentAdapterConformanceSubject {
+    approveTrackingUrl?(url: string): boolean;
     subjectId: string;
     adapter: {
         capabilities: FulfillmentCapabilityDescriptor;
@@ -257,7 +258,7 @@ export interface FulfillmentRefusal {
     phase: "selection" | "prepare" | "claim" | "begin" | "dispatch" | "acknowledge" | "verify" | "normalize" | "apply" | "readback" | "sync";
     retryable: boolean;
 }
-/** Frozen domain input, never copied into command evidence. Credentials stay in adapter closures. */
+/** Frozen domain input. Contact PII stays transient; only allowlisted mapped items enter evidence. Credentials stay in adapter closures. */
 export interface FulfillmentDispatchRequest {
     requestKey: string;
     fulfillmentRef: string;
@@ -287,23 +288,61 @@ export interface FulfillmentDispatchRequest {
         quantity: number;
         productRef: string | null;
         packRef: string | null;
+        lotRef?: string | null;
+        expirationDate?: string | null;
     }[];
     selection: FulfillmentSelection;
 }
 /** Allowlisted durable evidence; fingerprint commits to actual adapter command bytes. */
 export interface DispatchEvidence {
+    redactedFieldCount?: number;
     commandFingerprint: string;
     contactRevision: FulfillmentDispatchRequest["contactRevision"];
     providerRef: string;
     carrierRef: string | null;
     serviceRef: string | null;
+    transcript?: {
+        itemCount: number;
+        items: readonly {
+            skuRef: string;
+            quantity: number;
+            lotRef: string | null;
+            expirationDate: string | null;
+        }[];
+        deliveryKind: DeliveryKind;
+        pickupPointRef: string | null;
+        /** Count of populated reference/date fields redacted by the durable projection. */
+        redactedFieldCount?: number;
+    };
+    mapping?: {
+        source: "dispatch_worker";
+        mode: "shadow" | "stage" | "live";
+        shadowMode: boolean;
+    };
 }
-export type FulfillmentDispatchResult = {
+export interface FulfillmentOperationError {
+    redactedFieldCount?: number;
+    code: string;
+    status: number | null;
+    retryable: boolean;
+    mayHaveSucceeded: boolean;
+    /** Machine cause only; never an arbitrary exception message. */
+    cause?: string;
+}
+export type FulfillmentDispatchResult = ({
+    error?: FulfillmentOperationError;
+    redactedFieldCount?: number;
+} & ({
     kind: "accepted";
     externalRef: string;
     evidence: DispatchEvidence;
     providerAttemptKey: string;
     labelKey: string;
+    recovery?: {
+        source: "persisted_acceptance";
+        proof: "persisted_external_ref";
+        noProviderPost: true;
+    };
 } | {
     kind: "not_dispatched";
     effectMayHaveSucceeded: false;
@@ -312,7 +351,7 @@ export type FulfillmentDispatchResult = {
     kind: "unknown";
     effectMayHaveSucceeded: true;
     refusal: FulfillmentRefusal;
-};
+}));
 export type FulfillmentDispatchPrepareResult = {
     kind: "prepared";
     evidence: DispatchEvidence;
@@ -342,11 +381,11 @@ export {};
 ## dist/fulfillment/contracts/index.d.ts
 
 ```ts
-export type { DispatchEvidence, FulfillmentDispatchPrepareResult, FulfillmentSelection, FulfillmentDispatchRequest, FulfillmentDispatchResult, FulfillmentDispatchPort, FulfillmentRefusal } from "./dispatch.js";
+export type { FulfillmentOperationError, DispatchEvidence, FulfillmentDispatchPrepareResult, FulfillmentSelection, FulfillmentDispatchRequest, FulfillmentDispatchResult, FulfillmentDispatchPort, FulfillmentRefusal } from "./dispatch.js";
 export type { LabelDocument, FulfillmentLabelPort } from "./label.js";
 /** G17 local reads/ingress persistence are inline runtime worker inputs; this provider envelope is unchanged. */
 export type { FulfillmentObservation, FulfillmentObservationPort, FulfillmentTrackingReference } from "./observation.js";
-export type { FulfillmentReadbackResult, FulfillmentReadbackPort } from "./readback.js";
+export type { FulfillmentReadbackResult, FulfillmentReadbackPort, FulfillmentReconciliationObservation, FulfillmentObservationPagePort } from "./readback.js";
 export type { SyncCursor, StockSnapshot, StockMovement, LocalStock, FulfillmentStockSyncProvider, FulfillmentStockSyncPort, FulfillmentProductSyncProvider, FulfillmentProductSyncPort } from "./sync.js";
 export type { FulfillmentCapabilityDescriptor } from "./capabilities.js";
 export type { DispatchRecord, FulfillmentStorePort, FulfillmentPaidHandoffPort } from "./store.js";
@@ -437,7 +476,13 @@ export interface FulfillmentObservation {
         parcelRef: string | null;
     };
     trackingRefs: readonly FulfillmentTrackingReference[];
+    /** Original provider status tokens; canonical status does not identify an occurrence. */
+    providerStatus?: {
+        primary: string | null;
+        subStatus: string | null;
+    };
     diagnostics?: {
+        redactedFieldCount?: number;
         refusal?: FulfillmentRefusal;
         stockContention?: {
             sqlState: "55P03";
@@ -689,6 +734,27 @@ export interface FulfillmentReadbackPort {
         mode: "command" | "parcel";
     }): Promise<FulfillmentReadbackResult>;
 }
+/** Collection observation is separate from authoritative exact lookup. */
+export type FulfillmentReconciliationObservation = FulfillmentReadbackResult | {
+    kind: "unmapped";
+    externalRef: string | null;
+    evidence: Pick<FulfillmentObservation, "correlation" | "eventKey" | "providerStatus" | "diagnostics">;
+};
+export interface FulfillmentObservationPagePort {
+    readPage(input: {
+        page: number;
+        size: number;
+    }): Promise<{
+        kind: "page";
+        rows: readonly FulfillmentReconciliationObservation[];
+    } | {
+        kind: "page_exhausted";
+    } | {
+        kind: "failed";
+        refusal: FulfillmentRefusal;
+        error?: import("./dispatch.js").FulfillmentOperationError;
+    }>;
+}
 ```
 ## dist/fulfillment/contracts/replacement.d.ts
 
@@ -743,6 +809,9 @@ export interface DispatchRecord {
     status: "draft" | "submitting" | "created" | "uncertain" | "failed" | "cancel_requested" | "cancelled";
     evidence: DispatchEvidence;
     replayed: boolean;
+    acceptance?: Extract<FulfillmentDispatchResult, {
+        kind: "accepted";
+    }> | null;
 }
 export interface FulfillmentStorePort {
     read(requestKey: string): Promise<DispatchRecord | null>;
@@ -1058,7 +1127,7 @@ export declare const omnipackFulfillmentCapabilities: Readonly<FulfillmentCapabi
 ## dist/fulfillment/omnipack/index.d.ts
 
 ```ts
-import type { FulfillmentCapabilityDescriptor, FulfillmentDispatchPort, FulfillmentDispatchRequest, FulfillmentLabelPort, FulfillmentObservationPort, FulfillmentReadbackPort, FulfillmentStockSyncProvider, FulfillmentProductSyncProvider } from "../contracts/index.js";
+import type { FulfillmentCapabilityDescriptor, FulfillmentDispatchPort, FulfillmentDispatchRequest, FulfillmentLabelPort, FulfillmentObservationPort, FulfillmentReadbackPort, FulfillmentObservationPagePort, FulfillmentStockSyncProvider, FulfillmentProductSyncProvider } from "../contracts/index.js";
 import { type OmnipackWebhookRouteEvent } from "./omnipackWebhookPayload.js";
 export { omnipackFulfillmentCapabilities } from "./capabilities.js";
 /** Node-only, explicit construction. Secrets are supplied per call, never retained as values. */
@@ -1107,6 +1176,7 @@ export declare function createOmnipackFulfillmentAdapter(config: OmnipackFulfill
     label: FulfillmentLabelPort;
     observation: FulfillmentObservationPort;
     readback: FulfillmentReadbackPort;
+    reconciliation: FulfillmentObservationPagePort;
     stockSync: FulfillmentStockSyncProvider;
     productSync: FulfillmentProductSyncProvider;
 };

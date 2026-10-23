@@ -521,6 +521,13 @@ privileges and complete catalogue installation are described in
 
 ## Compatibility posture
 
+Native subscription retry N1 extends the existing migration prefix without
+changing earlier rows. Its manifest inventory is recomputed by the repository
+runner on the complete prefix plus N1, and its package SQL copy retains the CTL
+creation pin. Command/stock-wait forwards remain later additions; installing this
+unit does not activate a runner or grant M07 native prepared-store capability.
+
+
 The M10/F17 `batchedForwards` registry adds exact approval data and inert
 snapshots only. Its ordered paths, raw statement/definition hashes, signature
 chains and exact grants/seeds do not install SQL, change a baseline, activate a
@@ -529,6 +536,44 @@ runtime or establish upgrade compatibility. The
 requires a separate feature introduction and mandatory real-PG/pgTAP catalog
 evidence; existing admission classes keep their prior behavior.
 
+The CI-only [image inventory](../../config/ci-images.json) owns logical names,
+upstream repositories, tags, index digests and ordered public-registry sources
+for the non-CLI mirror inputs. It records the install-proof database, disposable
+test default and managed-batch database pins; Supabase CLI images remain derived
+as repository/tag pairs by a read-only plan job from the workflow's CLI pin and
+reference config. The pgTAP runner's exclusions constrain long-running services;
+they never remove enabled GoTrue, Realtime or Storage API schema-init images.
+The derived set contains those three images, Postgres and the binary's `pg_prove`.
+An exclusion change leaving an uncovered runtime image refuses derivation.
+The write job validates those untrusted pairs against a closed repository allowlist
+before any exec or registry call, reads typed owned pins from its own checkout,
+and builds upstream sources and mirror targets itself. It runs only pinned
+first-party actions plus the repository script, re-resolves source digests, skips
+identical targets, refuses moved tags and verifies every copy. CLI images are
+trust-on-first-use. The shared reader prepends the single mirror
+registry to inventory sources for consumers; mirror copying still uses only
+upstreams. The reviewed-batch gate and shared disposable PostgreSQL helper use
+these pins, preserving the exact digest on every fallback. Their source order
+is mirror, then GHCR/Docker Hub/ECR for managed, or Docker Hub/ECR for native.
+The default helper uses the test pin, resolves once per exact ref per process and
+runs the successful digest-qualified source with `--pull=never`; explicit
+non-inventory overrides keep their existing behavior. Before any shared pull,
+exact local index digests (or exact CLI tags when unpinned) bypass network access;
+inspection errors refuse. The gate, helper and pgTAP runner share one pull retry
+implementation; long Retry-After hints advance by the remaining per-source
+share, while shorter waits are capped to preserve non-GHCR fallback.
+A Docker-free guard rejects literal digests or registry source lists in the gate test.
+An explicit source tag must match the entry's tag and is preserved during
+resolution. Mirror absence/private access immediately advances to upstream;
+it does not require credentials or make CI depend on mirror publication.
+The pgTAP runner uses the same CLI derivation as mirror planning and pre-pulls
+all five derived tags with mirror/GHCR/ECR/Docker Hub fallback before start. Those CLI tags have
+no pinned inventory digest; a derived digest, when present, is verified. Local
+aliases reconcile mixed successful registries with the CLI's requested names.
+Other launchers and the install-proof service remain unchanged. These changes
+establish no public package visibility or runtime/application default.
+[CI image mirror guidance](../../CONTRIBUTING.md#ci-image-mirror) owns retry
+budgets, refusal boundaries, mirror execution and the owner's GHCR setup.
 
 Fulfillment appends command/alignment units 73/74 and binds
 their byte-identical package projections through `FULFILLMENT_MIGRATIONS`.
@@ -1046,8 +1091,9 @@ superseded but marks only processed status, without a dedicated persisted reason
 Reconciliation reads local chronology independently of provider readback.
 Non-stale found observations for locally cancelled/exception rows write status
 evidence only. Older known occurrences skip status/effects; only on-track rows
-with handedOverAt may retry an invoice on that path. Unknown readback fails the
-run before row processing. Unmapped evidence is projected before host calls;
+with handedOverAt may retry an invoice on that path. Unknown readback is row-local:
+it counts a run failure while recognized rows still process. Unmapped evidence
+is projected before host calls;
 correlated off-track rows skip acceptance/quarantine. These workers call no
 alignment or replacement-confirmation operation; native late-arrival alignment
 must preserve the later-only monotonic rule.
@@ -1060,8 +1106,40 @@ text independently of its comparison instant, frozen revisions and complete
 claim readback. Verified M07 evidence carries original occurrence, observation
 and first-recorded clocks with nullable money and explicit ambiguity/late-positive
 disposition. A late positive settles the same obligation, never a new charge.
-A persisted retry row with null `nextRetryAt` is intentional exhaustion or a
-class stop; fallback cadence is allowed only when the row is absent.
+A waiting retry row with disposition `payment_failed` and null `nextRetryAt`
+is intentional exhaustion or a class stop. An in-flight prepared retry retains
+`retry_scheduled` with a null date; it awaits evidence rather than another
+dispatch. Fallback cadence is allowed only when the row is absent.
+
+Native N1 records retries against the original refused renewal without resetting
+that terminal operation or minting another cycle. Each failure receipt advances
+the rung once, separately from case propagation; a prepared receipt permits only
+its first caller to dispatch. Unknown observations and missing acknowledgements
+require reconciliation. Recovery consumes M07's verified matching positive
+payment evidence and commits settlement, receipt, case, cycle and native counter
+effects together. It never guesses a logical number from the native counter,
+pauses the subscription, or moves `next_cycle_at` earlier. Exhaustion keeps the
+case open with a null retry. Reopening a class stop or exhausted ladder requires
+a same-case token and durable healthy-method evidence before scheduling.
+
+The initial runner handoff must open the case before the terminal outcome;
+subsequent retry failures apply settlement and rung once before advancing that
+case. N1's case wrapper requires an already recorded failure, so it is not by
+itself the initial handoff. The package binding opens the existing case first and atomically attaches N1
+bookkeeping during terminal recording, using the same case and preserving the
+initial handoff key. Hosts supply its transaction/correlation/M07 ports; payment
+execution stays outside every local transaction. Initial terminal replay checks
+the immutable receipt and returns before settlement, case rebinding or case
+propagation; it preserves later retry state, notifications and events.
+A host or driver must never call `openCase` after a replayed `applyFailure`
+receipt, and the P8 retry driver must add a zero-delta replay witness.
+
+The host must establish explicit logical-cycle correlation before invoking the
+automatic runner, including its prepare/execute path; the terminal binding
+cannot repair missing correlation after charging. Ordinary retries must use the
+frozen mandate/authorization. N1 does not bind an ordinary retry method to it:
+the P8 retry driver or host must enforce that binding, and P8 composition must
+add the matching witness.
 
 Nothing in automatic renewal pauses an active subscription. Arrival alignment
 uses the outer schedule maximum and actual latest arrival plus cadence; no
@@ -1076,10 +1154,20 @@ protected cases whose arrival meets open dunning or a successor cycle, keep
 deferring until resolved.
 
 The native descriptor refuses multi-cycle prepaid, generic bundle commands,
-command-bound receipts and M07 prepared-store parity by name, and declares retry
-and stock recovery unavailable. Native generic bundle commands and command-bound
+command-bound receipts and M07 prepared-store parity by name, and selects the N1 retry recovery adapter while stock recovery remains unavailable. Native generic bundle commands and command-bound
 receipts arrive with a later native command lifecycle; until then, the
 descriptor refuses them. It selects one executor, default off, with
 mandatory delivery admission. Host-selected M04 descriptors carry recorded
 lifecycle facts; copy, recipient, consent and delivery remain host/M04-owned.
 See the [architecture boundary](ARCHITECTURE_AND_EXTENSIONS.md#subscription-contracts).
+
+## Invoicing evidence
+
+Invoicing keeps issued proof, exact scoped absence, unknown and unsupported
+separate. Unknown never authorizes another create; correction recovery binds
+stable correction identity and parent. Local void cannot erase an issued
+invoice. An owed-duty readback retains unsupported duties and capture faults;
+`accountingRequested=false` does not prove absence. Distinct payout items stay
+distinct, and account projections preserve owner and document lineage. Host
+artifact persistence, clearance observation and M04 acceptance are separate proofs.
+See the [invoicing contract reference](PLATFORM_PACKAGE_REFERENCE.md#invoicing-contracts).

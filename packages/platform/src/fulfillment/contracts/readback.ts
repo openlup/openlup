@@ -9,3 +9,16 @@ export interface FulfillmentReadbackPort {
   /** Empty pages and missing local rows cannot certify external absence. */
   read(input: { providerRef: string; requestKey: string; fulfillmentRef: string; externalRef: string | null; mode: "command" | "parcel" }): Promise<FulfillmentReadbackResult>;
 }
+
+/** Collection observation is separate from authoritative exact lookup. */
+export type FulfillmentReconciliationObservation = FulfillmentReadbackResult | {
+  kind: "unmapped"; externalRef: string | null;
+  evidence: Pick<FulfillmentObservation, "correlation" | "eventKey" | "providerStatus" | "diagnostics">;
+};
+export interface FulfillmentObservationPagePort {
+  readPage(input: { page: number; size: number }): Promise<
+    | { kind: "page"; rows: readonly FulfillmentReconciliationObservation[] }
+    | { kind: "page_exhausted" }
+    | { kind: "failed"; refusal: FulfillmentRefusal; error?: import("./dispatch.js").FulfillmentOperationError }
+  >;
+}
