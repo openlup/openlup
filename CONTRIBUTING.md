@@ -91,6 +91,29 @@ in commits, issue reports, test fixtures, screenshots, or logs. Follow
 [SECURITY.md](SECURITY.md) for responsible disclosure and sensitive-material
 handling.
 
+### Instruction freshness and handoffs
+
+At task start, resume after compaction, and handoff, recover the approved scope,
+open findings, failed attempts and consumed budgets from the existing task record.
+Check the applicable instructions against a freshly fetched policy revision and
+retain its full main commit in that record, separately from the code review base.
+At the next boundary, compare the relevant instruction paths since that pin and
+read their changed owners; do not fetch before every command. Offline, retain the
+last verified pin and identify freshness as unverified. New task isolation follows
+the approved base or stack dependency; an active branch needs no rebase, reset or
+main merge solely to read current instructions. If a required tool is absent on
+that code base, report the incompatibility rather than simulate its check.
+
+Project memory and handoff notes link to canonical instructions instead of
+maintaining competing rule copies; preserve useful lessons and existing evidence.
+Keep backups outside automatically loaded memory. Verify what the actual agent
+host loads, including relevant local or parent instructions: a file's presence in
+context does not prove the correct policy revision was read. A tool-specific
+import or existing start/compaction hook may restore a short task/pin reminder;
+avoid another full rule copy. A template is not proof of installation, and a
+loaded instruction is not enforced configuration. Host settings and memory edits
+still require their actual scope; this procedure installs no hook or global rule.
+
 ### Contribute existing adopter code, then refactor
 
 Code that already runs in an adopter's application reaches OpenLup in a fixed
@@ -853,7 +876,8 @@ material finding IDs require closure; evidence expires 24 hours after the
 earliest counted PASS report for the current candidate. Unchanged prepare
 preserves evidence. Three repair cycles are automatic; `needs_owner` then
 requires an owner decision recorded with `continue "<note>"`, adding three.
-A rethink remains recommended practice. `prepare --new` records a changed
+Follow [Regroup when work stops converging](#regroup-when-work-stops-converging).
+`prepare --new` records a changed
 intent or a rebase in the same append-only session history; findings, reviewers
 and the repair count carry on. Only `continue` adds cycles. Put the
 simplicity pre-check in the first review request as prose. See the
@@ -1159,6 +1183,38 @@ Use the smallest proof that can detect the failure:
 | Browser journey | Broken interaction in the selected mounted application. |
 
 Extend an existing meaningful case first; add a test for changed behavior, a discovered defect, or a required contract/refusal/replay boundary. Migrations, status mappings and idempotency rules require failure/replay regressions. Demonstrate adapter capabilities and refusals without live providers. Preserve the unchanged [adopter characterization witness](#contribute-existing-adopter-code-then-refactor) during refactoring. Do not test private implementation shape or add a harness solely to test the harness.
+
+#### Sufficient evidence and material test gaps
+
+Before counted review, clarify the approved behavior, its failure boundary and
+the smallest discriminating executed proof in the existing task record. A few
+sentences or a small table suffice; this is not an inventory of every branch or
+another audit. The review brief links to that record and states scope/exclusions.
+
+An actual reachable defect violating the accepted contract blocks regardless of
+test presence. A material proof gap identifies a required, unproved behavior class
+or boundary, a credible mistake mechanism at the changed boundary, and why all
+relevant executed proofs fail to distinguish it. Include scenarios requiring
+refusal. A test's existence, name or coverage percentage alone proves none of this.
+The map does not waive a newly discovered required boundary or a mandatory gate.
+
+Mutation is a bounded way to challenge that proof, not a completeness target.
+Reachability and nonequivalence are necessary but insufficient for a blocking
+mutation finding. Additional variants within an already discriminated class are
+advice unless they expose such a mechanism or a separate obligation. For example,
+equal document/predecessor IDs in every fixture can hide an argument swap when the
+contract permits different IDs; one distinct case may resolve it. A swap where
+the contract requires equality, or arbitrary new amount-specific corruption, does
+not itself justify an endless series of cases. Missing required replay proof
+remains material if removing its protection could create a second fiscal effect.
+
+Choose proof by the boundary: a real-DB table can test translation and durable
+effects, but a superuser does not prove role restrictions, sequential rows do not
+prove concurrency, and final DB state may miss duplicate external effects. Keep
+required role, transaction, concurrency, installed-artifact and fault witnesses.
+Changing proof technique within the approved requirement is autonomous; weakening
+that requirement or changing a characterization witness's meaning needs its
+applicable owner decision. Never rewrite acceptance merely to obtain PASS.
 
 Keep executable tests tied to a current offered contract, installed safety
 boundary or selected reference behaviour. Historical migration spellings,
@@ -1663,7 +1719,8 @@ reading, exact merge scope and protected release approval still apply.
    - repeat until `verify` reports `reviewed`. Three repair cycles are automatic;
      after `needs_owner`, only an owner decision recorded with
      `node scripts/agent-review-session.mjs continue "<note>"` adds three more.
-     A rethink remains recommended practice.
+     Follow [Regroup when work stops converging](#regroup-when-work-stops-converging)
+     before further repairs when its condition is met.
 
    Preliminary local semantic snapshots help prepare the owner packet but are
    not this committed native admission. Preserve their findings and any real
@@ -1749,10 +1806,9 @@ recorded in the session history and each other, and not reused from earlier cand
 
 Three repair cycles are automatic. `needs_owner` then requires the owner to
 continue, narrow or stop; `continue "<note>"` records an authorized continuation
-and adds three cycles. A rethink remains recommended practice: question the
-criteria and checking tool, group findings by root cause, consider simpler
-alternatives and record `pattern → simpler path`. This grants no delivery or
-settings authority. `prepare --new` records a changed intent or a rebase in the
+and adds three cycles. Follow the mandatory supervisor procedure in
+[Regroup when work stops converging](#regroup-when-work-stops-converging);
+it is not another native state gate. `prepare --new` records a changed intent or a rebase in the
 same append-only session history; findings, reviewers and the repair count carry
 on. Only `continue` adds cycles. A version-1 session file from before
 2026-10-19 cannot be converted: delete `.context/scratch/agent-review/session.json`
@@ -1790,6 +1846,36 @@ Read the [AI contribution policy](.github/AI_CONTRIBUTION_POLICY.md) before
 submitting material AI-assisted work. Human accountability and DCO, independent
 native review, and actual task publication authority remain required.
 
+#### Regroup when work stops converging
+
+After two consecutive completed candidate evaluations that leave a material
+obstacle to the same approved outcome, the supervisor must rethink the approach
+before the next batch of repairs and proof. The initial candidate counts; the
+required reviewers of one candidate constitute one evaluation, not two. Waiting
+for another report, a test or infrastructure is not a completed failed attempt.
+A PASS with an open material finding does not close the obstacle. Outside native
+review, apply the same intervention after two executed attempts to resolve the
+same acceptance gap without resolving it; repetition without new information can
+trigger it earlier. Judge progress from existing results, without a second CI
+counter. Stricter existing retry limits remain binding from the start.
+
+In the existing task note, identify the two attempts and record briefly: the
+remaining gap and its contract/owner; the cause and a simpler alternative; one
+next discriminating step and its expected observable result. Question criteria,
+test level and data, group findings by cause, and consider removing the cause
+before adding cases or mechanisms. The same method may continue when new
+information justifies it. End with the lesson `pattern → simpler path`.
+
+Continue autonomously within approved scope, change technique, regroup within
+that boundary or identify the actual missing owner decision. No extra reviewer,
+challenge round or human read is required. A method, agent, context or PR change
+does not erase the unresolved issue or its history. Do not repeat a rethink of
+the same issue without decision-changing information. Existing `needs_owner`,
+exhausted budgets and material contract changes keep their actual owner route.
+Rethink grants no authority, cycles, finding closure, PASS renewal or extra expiry;
+it does not run `continue`. The native `cycle` counts changed candidates, not
+completed evaluations. No new CLI event, receipt, job or counter is introduced.
+
 ### Review lessons
 
 Each rethink ends with a one-line lesson. Before cycle 1 of a review, the author
@@ -1808,6 +1894,10 @@ own: a lessons change is an ordinary delivery under existing authority, and a
 promotion stays within its approved scope. The rethink record and the task's
 terminal self-retro carry the lesson until it lands. No other tracker is kept.
 
+- 2026-10-23, execution-process rethink: repeated uninformative mutants and stale
+  instruction copies → use [required behavior-class proof](#sufficient-evidence-and-material-test-gaps),
+  [early regroup](#regroup-when-work-stops-converging) and
+  [canonical instruction readback](#instruction-freshness-and-handoffs).
 - 2026-10-23, co-located SQL/pins: a trusted script cannot enforce its own
   invocation → keep the documented workflow trust boundary explicit; reuse
   existing sensitive review rather than claiming status-name isolation.

@@ -143,8 +143,9 @@ run, a dashboard, service framework or permanent third reviewer.
    cards, actual repair and interaction context, without old verdicts or author
    history. Every material finding needs explicit closure. Three repair cycles
    are automatic; `needs_owner` then requires an owner decision to continue,
-   narrow or stop. An authorized `continue "<note>"` adds three cycles. A rethink
-   remains recommended practice, not an encoded gate. Preserve findings and
+   narrow or stop. An authorized `continue "<note>"` adds three cycles. Follow the
+   mandatory supervisor [regroup procedure](../../../CONTRIBUTING.md#regroup-when-work-stops-converging),
+   without adding an encoded gate or budget. Preserve findings and
    failed attempts in the task record. `prepare --new` records a changed intent
    or a rebase in the same append-only session history; findings, reviewers and
    the repair count carry on. Merging `main`
@@ -271,9 +272,9 @@ cycles, `needs_owner` refuses until the owner authorizes continuation:
 node scripts/agent-review-session.mjs continue "<owner decision and reason>"
 ```
 
-This records a timestamped note and adds three cycles. A rethink is recommended
-practice: question the goal, criteria and tool, group findings by cause and
-consider a simpler approach. It is not a state-file gate.
+This records a timestamped note and adds three cycles. The mandatory supervisor
+[regroup procedure](../../../CONTRIBUTING.md#regroup-when-work-stops-converging)
+uses existing task notes, not a state-file gate or this native cycle counter.
 `prepare --new <intent.json>` records a changed intent or a rebase in the same
 append-only session history; findings, reviewers and the repair count carry on.
 Each prepare event records its intent, candidate and author; verdicts and receipts

@@ -113,9 +113,8 @@ expires 24 hours after the earliest counted PASS report for the current candidat
 Unchanged prepare preserves evidence. Three repair cycles are automatic; after
 that `needs_owner` requires the owner to decide whether to continue, narrow or
 stop. Record an authorized continuation with `continue "<note>"`, which adds
-three cycles. A rethink remains recommended practice: question the criteria
-and tool, group findings by root cause, consider simpler alternatives and record
-`pattern → simpler path`. The [agent guide](../AGENTS.md#change-and-verification-rules)
+three cycles. The mandatory supervisor [regroup procedure](../CONTRIBUTING.md#regroup-when-work-stops-converging)
+adds no native gate or budget. The [agent guide](../AGENTS.md#change-and-verification-rules)
 owns this process; exhaustion cannot bypass review or authorize a merge.
 The review base is the candidate's
 fork point, the single `git merge-base HEAD origin/main`, so `main` moving ahead does not
