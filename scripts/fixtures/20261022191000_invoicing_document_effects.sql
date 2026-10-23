@@ -189,7 +189,7 @@ BEGIN
     INSERT INTO public.invoicing_delivery_receipts(delivery_id,generation) VALUES(v_delivery.id,v_delivery.attempts) ON CONFLICT DO NOTHING;
     SELECT * INTO v_receipt FROM public.invoicing_delivery_receipts WHERE delivery_id=v_delivery.id FOR UPDATE;
     IF v_receipt.state IN ('processing','sent','uncertain') THEN CONTINUE; END IF;
-    UPDATE public.invoicing_delivery_receipts SET generation=generation+1,claim_token=gen_random_uuid(),state='processing',
+    UPDATE public.invoicing_delivery_receipts SET generation=greatest(generation,v_delivery.attempts)+1,claim_token=gen_random_uuid(),state='processing',
       lease_until=now()+make_interval(secs=>least(greatest(coalesce(p_visibility,300),1),3600)) WHERE delivery_id=v_delivery.id RETURNING * INTO v_receipt;
     UPDATE public.accounting_document_deliveries SET status='processing',attempts=v_receipt.generation,lease_until='infinity',updated_at=now() WHERE id=v_delivery.id;
     v_rows:=v_rows||jsonb_build_array(to_jsonb(v_delivery)||to_jsonb(v_receipt));
