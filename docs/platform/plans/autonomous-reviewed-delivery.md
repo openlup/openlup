@@ -377,14 +377,11 @@ its summary as soon as the PR is open and ready. A new head needs new evidence.
 For a merge group, admission uses the PR number from
 `gh-readonly-queue/main/pr-<N>-<sha>` and actual event base/head identities.
 
-Source review carries over when:
-- the group tree equals the reviewed tree; or
-- `git merge-tree --write-tree` of the group base and reviewed head predicts
-  exactly the group tree, and the base's net change since the reviewed base
-  touches neither the change's paths nor `.github/`, `scripts/agent-review-*`,
-  `scripts/documentation-git.ts`, root or `packages/<name>/package.json`,
-  `package-lock.json`, `supabase/migrations/` or
-  `config/platform-migration-manifest.json`.
+Native admission establishes carry-over under the canonical
+[source-review conditions](../../../CONTRIBUTING.md#required-and-raw-checks).
+That procedure owns the exact tree/base checks, protected paths and narrow
+exception for disjoint package `exports` additions; this plan does not maintain
+a second list. Existing review evidence remains subject to those native rules.
 
 Otherwise reject the group: merge `main` and re-review. There is no run-keyed or
 integration-review receipt route. At most two automatic queue-rebuild retries
