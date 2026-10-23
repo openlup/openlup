@@ -4014,11 +4014,23 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/invoicing/accountingCanonicalProviderLines.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/invoicing/accountingLineAllocation.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/invoicing/adapterConformance.ts",
       "class": "public-output"
     },
     {
       "path": "packages/platform/src/invoicing/capabilities.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/invoicing/channelPolicy.ts",
       "class": "public-output"
     },
     {
@@ -4058,11 +4070,31 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/invoicing/fulfillmentTrigger.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/invoicing/handoff.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/invoicing/index.ts",
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/invoicing/issue.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/invoicing/nativeUnsupported.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/invoicing/paymentReadback.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/invoicing/snapshot.ts",
       "class": "public-output"
     },
     {
@@ -5478,11 +5510,31 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/invoicing/canonicalLines.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/invoicing/contracts.test.ts",
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/invoicing/handoff.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/invoicing/issue.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/invoicing/paymentReadback.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/invoicing/portFit.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/invoicing/portFitFixtures.ts",
       "class": "public-output"
     },
     {

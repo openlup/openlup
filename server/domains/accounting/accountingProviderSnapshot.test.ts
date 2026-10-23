@@ -1,3 +1,4 @@
+import { APP_DEFAULT_SELLER } from "../../../src/lib/brand/appBrand.js";
 import { describe, expect, it } from "vitest";
 import type {
   AccountingCorrectionOutboxTarget,
@@ -14,12 +15,15 @@ describe("accounting provider snapshot mapping", () => {
   it("maps paid invoice claims with payment date as the fallback issue date", () => {
     const snapshot = mapInvoiceClaimToProviderSnapshot(baseClaim(), {});
 
-    expect(snapshot).toMatchObject({
-      orderRef: "ORDER-1",
-      issueDate: "2026-06-05",
-      sellDate: "2026-06-05",
-      buyer: { name: "Customer", email: "buyer@example.test", taxId: null },
-      lines: [{ name: "Food", quantity: 2, unitGrossMinor: 540, unitNetMinor: 500, vatRate: "8" }],
+    expect(snapshot).toEqual({
+      orderRef: "ORDER-1", issueDate: "2026-06-05", sellDate: "2026-06-05", currency: baseClaim().invoice.currency,
+      seller: { ...APP_DEFAULT_SELLER, taxId: "123", departmentId: null },
+      buyer: { name: "Customer", email: "buyer@example.test", taxId: null, companyName: null,
+        address: { line1: null, postalCode: null, city: null, country: null } },
+      documentKind: "b2c_named", governmentClearanceRequired: false,
+      payment: { provider: baseClaim().invoice.metadata.paymentProvider, providerPaymentId: "pi_123", paymentCompletedAt: "2026-06-05T10:00:00.000Z" },
+      lines: [{ name: "Food", quantity: 2, unitGrossMinor: 540, unitNetMinor: 500, totalGrossMinor: 1080, totalNetMinor: 1000, vatRate: "8" }],
+      chargedTotalGrossMinor: 1080,
     });
   });
 

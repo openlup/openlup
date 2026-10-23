@@ -491,7 +491,11 @@
         "test/packageBoundary.test.ts",
         "test/invoicing/contracts.test.ts",
         "test/invoicing/portFit.test.ts",
-        "test/invoicing/adapterConformance.test.ts"
+        "test/invoicing/adapterConformance.test.ts",
+        "test/invoicing/issue.test.ts",
+        "test/invoicing/canonicalLines.test.ts",
+        "test/invoicing/paymentReadback.test.ts",
+        "test/invoicing/handoff.test.ts"
       ],
       "entrypoint": "dist/invoicing/index.d.ts",
       "snapshot": "api/invoicing.api.md"

@@ -1,7 +1,7 @@
 # Invoicing module design
 
 Status: development-preview design. The contract and offline conformance surface
-is available for explicit host composition; orchestration, stores, SQL projection,
+and issue helper surface is available for explicit host composition; stores, SQL projection,
 reference routes and release activation are separate implementation steps.
 
 ## Placement and ownership
@@ -115,3 +115,29 @@ bindings; `InvoiceDiagnosticCode` for adapter diagnostics; `InvoiceProof` for
 host evidence recorders; and `InvoiceClearanceObservation` for clearance
 observers. Installed declaration compiles consume all nine by name. P1b adds
 only the refusal factory and conformance helper to the runtime entry.
+
+## P2 issue helper boundary
+
+Nine helpers now cover issue sequencing, snapshot/canonical positions, both donor
+allocators, payment readback and event/direct handoff wrappers. Existing host
+facades are their named consumers. The issue worker's compatibility callbacks
+preserve managed payloads and fenced finalization; they do not redefine P1 ports
+or manufacture the proofs required by a future native binding. Recovery remains
+inside the selected provider and is required on every reclaimed attempt.
+
+Migration: F5 default captions and legacy tax labels are explicit host inputs;
+F6 event type/timeout, event and direct-dispatch keys, and executor selection stay
+host-owned with unchanged output. F9 imports only the named accounting slices.
+Channel policy resolution and correction projection stay in the host. No native
+D7/O2 expectation, SQL, money/dunning writer, subscription alignment or dispatch
+registration changes. P8 still owns first-claim seller freezing. Eight semantic
+cases extend the existing required selection; incumbent host arithmetic tests
+remain the donor witness rather than a second copied suite.
+
+The compatibility callbacks retain the reviewed issue/store result distinctions:
+unknown is never exact absence or an accepted document. The issue seam witness
+binds claim, both preflights, money read, provider issue and finish/fail to the
+frozen ports and checks the pinned native SQL parameter order. This offline
+translation witness supplies no native implementation; seller pre-claim reads,
+document-scoped post-issue operations and delivery settlement remain with their
+phase owners above.

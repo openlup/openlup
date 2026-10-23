@@ -1,3 +1,10 @@
 export { readInvoiceCapabilities } from "./capabilities.js";
 export { createNativeUnsupportedInvoicePorts } from "./nativeUnsupported.js";
 export { runInvoiceAdapterConformance } from "./adapterConformance.js";
+export { runInvoiceIssueJob } from "./issue.js";
+export { mapInvoiceClaimToProviderSnapshot } from "./snapshot.js";
+export { mapCanonicalIssueLines } from "./accountingCanonicalProviderLines.js";
+export { allocateChargedGrossTotals, allocateDiscountedGrossTotals } from "./accountingLineAllocation.js";
+export { readInvoicePaymentEvidence } from "./paymentReadback.js";
+export { createFulfillmentHandoffInvoiceHandler } from "./handoff.js";
+export { withAccountingInvoiceShadowTrigger, withAutoDispatchAccountingInvoiceTrigger } from "./fulfillmentTrigger.js";

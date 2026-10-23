@@ -75,6 +75,13 @@ describe("accounting job service", () => {
       recoveryLookupRequired: false,
     });
     expect(port.preflightInvoiceIssuePayment).toHaveBeenCalledTimes(2);
+    expect(port.preflightInvoiceIssuePayment.mock.invocationCallOrder[0]).toBeLessThan(port.preflightInvoiceIssuePayment.mock.invocationCallOrder[1]);
+    expect(port.preflightInvoiceIssuePayment.mock.invocationCallOrder[1]).toBeLessThan(provider.createInvoice.mock.invocationCallOrder[0]);
+    expect(provider.createInvoice.mock.invocationCallOrder[0]).toBeLessThan(port.markInvoiceIssueSucceeded.mock.invocationCallOrder[0]);
+    expect(port.markInvoiceIssueSucceeded).toHaveBeenCalledWith({
+      outboxId: "outbox-1", claimAttemptCount: 1,
+      providerInvoiceId: "provider-123", providerInvoiceNumber: "FV/1/2026", providerRaw: { id: 123, number: "FV/1/2026" },
+    });
     expect(port.preflightInvoiceIssuePayment).toHaveBeenNthCalledWith(1, expect.objectContaining({
       providerEvidence: { source: "local_canonical_snapshot" },
     }));
