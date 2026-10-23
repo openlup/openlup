@@ -98,14 +98,15 @@ remains the result-meaning owner.
 - P4 must discover captured duties without installed facts; fact preparation
   cannot depend on already having a claimable fiscal snapshot.
 - P4 native issue binding must treat non-observed local evidence as unavailable
-  without stopping the duty (pinned 190000:382-386). Only `action: "create"`
+  without stopping the duty (pinned `invoicing_preflight_duty`). Only `action: "create"`
   claims may issue, with `attemptCount = generation`. Route `action: "readback"`
   claims to provider read, then finish on `found` or fail on `absent`/`unknown`.
   Convert a native `{ kind: "stale" }` preflight or finish result into the claim-fence
   error: write no failure and count zero updates.
 - P5 must pass `retryable` and `retrySeconds` evidence for native delivery
-  `failed_before_send`: boolean false parks the failure; a whole JSON number
-  delays retry by 0..86400 seconds (clamped); absent or invalid delay retries immediately.
+  `failed_before_send`: the kind asserts failure before send; no `phase` is required.
+  Boolean false parks the failure; otherwise a whole JSON number delays retry
+  by 60..86400 seconds (clamped); absent or invalid delay uses 900 seconds.
 - P7 must route native reversals through the correction branch of
   `invoicing_request_with_seller_policy`, retain the wrapper-returned seller and
   revision in claim facts, and define claim behavior for unknown/unsupported

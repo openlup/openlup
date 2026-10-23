@@ -177,8 +177,9 @@ BEGIN
 END;
 $$;
 
--- Same claim/token/visibility/attempt ceiling as @openlup/outbox. Call and
--- commit this function before invoking accounting work. Capture never installs.
+-- Outbox-style claim/token/visibility; source capture and fact preparation
+-- each stop at eight attempts. Provider duty claims have no attempt ceiling.
+-- Commit before invoking accounting work. Capture never installs.
 CREATE FUNCTION public.invoicing_sweep_duties(p_limit integer)
 RETURNS jsonb LANGUAGE plpgsql SECURITY INVOKER SET search_path = pg_catalog AS $$
 DECLARE v_source record; v_duty record; v_seen integer:=0; v_attempt integer; v_claims jsonb:='[]'; v_timeout text:=current_setting('lock_timeout');
@@ -214,7 +215,8 @@ BEGIN
 END;
 $$;
 
--- Accounting transaction: no order or duty FOR UPDATE and no external I/O.
+-- Accounting transaction: no order FOR UPDATE and no external I/O.
+-- The final duty fence uses NOWAIT so it cannot delay order work.
 -- Deterministic document_ref preserves the incumbent one-document identity.
 -- Bound unavoidable FK/unique waits. Commit before the lease-guarded mark RPC.
 CREATE FUNCTION public.invoicing_prepare_facts(p_duty uuid,p_token uuid)
@@ -254,6 +256,10 @@ BEGIN
       WHERE id=v_request AND status='pending' AND attempts=0 AND claim_token IS NULL RETURNING id INTO v_ready;
     v_status:=CASE WHEN v_document.provider_reference IS NOT NULL THEN 'issued' WHEN v_document.status='voided' THEN 'voided'
       WHEN v_ready IS NULL THEN 'unsupported' ELSE 'ready' END;
+    PERFORM 1 FROM public.invoicing_duties WHERE id=p_duty AND fact_token=p_token
+      AND fact_lease_until>clock_timestamp() AND request_id IS NULL
+      AND status IN ('owed','blocked') AND reversal IS NULL FOR UPDATE NOWAIT;
+    IF NOT FOUND THEN RAISE EXCEPTION 'invoicing_fact_lease_stale' USING ERRCODE='40001'; END IF;
     PERFORM set_config('lock_timeout',v_timeout,true);
     RETURN jsonb_build_object('status',v_status,'documentId',v_document.id,'requestId',v_request);
   EXCEPTION WHEN OTHERS OR query_canceled THEN
@@ -351,7 +357,7 @@ BEGIN
       AND d.status IN ('ready','processing','unknown') AND d.available_at<=now()
       AND (d.status<>'processing' OR d.lease_until<=now())
       AND (d.provider IS NULL OR d.provider=p_provider)
-    ORDER BY r.created_at,r.id LIMIT least(greatest(coalesce(p_limit,10),1),100) FOR UPDATE OF r, d SKIP LOCKED LOOP
+    ORDER BY d.available_at,r.created_at,r.id LIMIT least(greatest(coalesce(p_limit,10),1),100) FOR UPDATE OF r, d SKIP LOCKED LOOP
     SELECT * INTO v_duty FROM public.invoicing_duties WHERE request_id=v_request.id FOR UPDATE SKIP LOCKED;
     IF NOT FOUND THEN CONTINUE; END IF;
     IF v_request.attempts IS DISTINCT FROM v_duty.generation OR v_request.claim_token IS DISTINCT FROM v_duty.claim_token THEN

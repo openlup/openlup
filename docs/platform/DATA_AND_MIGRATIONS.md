@@ -1024,8 +1024,10 @@ stages immutable facts only. This reuses the outbox claim/token/visibility patte
 SKIP LOCKED claims, five-minute leases, eight attempts, exponential backoff from
 60 seconds capped at one hour, and a visible `faulted` terminal state. Expired
 claims recover without retaining order/duty locks across accounting work. Prepare
-holds no explicit order/duty row lock, bounds unavoidable database waits to 100 ms,
-and preserves the incumbent deterministic document reference. Host keys remain
+holds no explicit order row lock, bounds unavoidable database waits to 100 ms,
+and preserves the incumbent deterministic document reference. Its final NOWAIT
+duty lock rechecks the live fact token, wall-clock lease, unlinked request,
+owed/blocked state and absent reversal; a failed recheck rolls back preparation. Host keys remain
 exact in duty/receipt/metadata; the internal document operation uses the stable
 duty identity so two intents may legitimately reuse a host key.
 Accounting errors keep the fact revision and owed duty durable; missing host facts block
