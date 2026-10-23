@@ -79,6 +79,18 @@ pack budgets, declaration snapshots and publish-control checks. See its
 [release gates](../../packages/core/release-gates.json) and
 [contribution guide](../../packages/core/CONTRIBUTING.md).
 Root dependency updates and core's production audit are different scopes.
+The reference root, Core and Platform require Zod `^4.6.6` to reject oversized
+constrained collections before parsing each element (GHSA-mrhx-c7xc-m3w5).
+Keep both the workspace lock and Core's standalone lock at a fixed version.
+The root's scoped `@vercel/cli-config` override removes its older production
+Zod 4 copy; upstream still pins that copy, so changing only the direct dependency
+would leave the advisory reachable. This override does not change development
+tools that require Zod 3. Existing API, consumer and production-audit gates
+remain required; no audit allowance or test retry is added.
+Core's build explicitly loads its existing development-only Node declarations
+for the standard `URL` type referenced by Zod's declarations. This adds no
+runtime import or dependency; declaration checking remains enabled, and the
+installed NodeNext and browser/Bundler consumer proofs still apply.
 Playwright specifications and explicit database/browser reference evaluation do
 not become mandatory per-PR execution just because their files exist; follow
 [execution ownership](../../CONTRIBUTING.md#development-preview-checks) and the

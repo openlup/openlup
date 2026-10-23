@@ -20,6 +20,11 @@ adapter evidence grant no publication or provider-account certification.
 
 Longer module recipes live in the [platform package reference](../../docs/platform/PLATFORM_PACKAGE_REFERENCE.md).
 
+The unreleased workspace requires Zod `^4.6.6` for GHSA-mrhx-c7xc-m3w5.
+Public quote requests retain their collection limits and valid-input behavior;
+oversized collections now fail with the size error before accumulating invalid
+element errors. Package API and installed-consumer checks remain required.
+
 ## Package surface
 
 `release-gates.json` declares kind `rail`: this foundation provides runtime infrastructure over core ports, matching the architecture's rail responsibility. Its experimental entries each bind a declaration snapshot and package-owned smoke tests. The API checker reads this same inventory.
