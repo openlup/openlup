@@ -6,7 +6,7 @@ import { evaluatePromos } from "@openlup/core/promo";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { createPostgresCommercePromoDataPort, createPostgresPromotionClaimSweepPort, PROMOTIONS_MIGRATIONS } from "@openlup/platform/promotions";
 import { createPostgresMigrationRunner } from "../../server/adapters/postgres/migrationRunner.js";
-import { dockerAvailable, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
+import { closePostgres, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, dockerAvailable, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
 
 let container: PostgresContainer | undefined, pool: Pool;
 const customer = "c5000000-0000-4000-8000-000000000001";
@@ -48,8 +48,8 @@ beforeAll(async () => {
   await pool.query("INSERT INTO public.clients(id,email) VALUES ($1,'customer@example.invalid')", [customer]);
   for (const [id, status, active] of [["example", "active", true], ["inactive", "active", false], ["paused", "paused", true]] as const)
     await pool.query("INSERT INTO public.commerce_promotion_definitions(promotion_id,definition,active) VALUES ($1,$2,$3)", [id, definition(id, status), active]);
-}, 120_000);
-afterAll(async () => { await pool?.end(); await container?.remove(); });
+}, postgresSetupTimeoutMs);
+afterAll(async () => { await closePostgres(container, pool); }, postgresTeardownTimeoutMs);
 
 it("installs the complete canonical chain, validates 47/48 projections and replays with no pending work", async () => {
   expect(PROMOTIONS_MIGRATIONS.map(unit => unit.position)).toEqual([47, 48]);

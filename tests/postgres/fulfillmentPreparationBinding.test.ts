@@ -1,3 +1,4 @@
+import { postgresSetupTimeoutMs, postgresTeardownTimeoutMs } from '../helpers/postgresContainer.js';
 import { afterAll, beforeAll, expect, it, vi } from 'vitest';
 import { FULFILLMENT_NATIVE_UNSUPPORTED, createPostgresFulfillmentDispatchStore } from '@openlup/platform/fulfillment';
 import { createM08FulfillmentReferenceBinding } from '../../server/runtime/public-reference/m08FulfillmentBinding.js';
@@ -6,7 +7,7 @@ import { profile, request } from '../helpers/fulfillmentComposition.js';
 import { executor, fixture, nativeHarness } from '../helpers/fulfillmentNative.js';
 
 const h = nativeHarness('preparation');
-beforeAll(() => h.start(), 120_000); afterAll(() => h.stop());
+beforeAll(() => h.start(), postgresSetupTimeoutMs); afterAll(() => h.stop(), postgresTeardownTimeoutMs);
 it.each(['bound', 'unbound'] as const)('G22 production preparation writer: %s', async mode => {
   const f = await fixture(h.pool), candidate = { ...request(), fulfillmentRef: f.shipment, orderRef: f.order };
   // Authoritative host facts live outside the dispatch context; no context seed is used.
