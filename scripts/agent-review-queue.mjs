@@ -4,9 +4,11 @@ import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
-import { admit, carryOver, demand, RECEIPT_MARKER } from './agent-review-decide.mjs';
-import { captureCommittedReviewCandidate, git } from './agent-review-session.mjs';
+import { admit, demand, RECEIPT_MARKER } from './agent-review-decide.mjs';
+import { captureCommittedReviewCandidate, carryOverSourceReview, git } from './agent-review-session.mjs';
 import { assertCoLocatedForwardApproval, REVIEWED_FORWARD_PATH } from './reviewed-platform-forward.ts';
+
+export { carryOverSourceReview } from './agent-review-session.mjs';
 
 const execute = promisify(execFile);
 const SHA = /^[a-f0-9]{40}$/u;
@@ -38,27 +40,6 @@ export async function readReceipts(api, root, pr, head, now, permissions = new M
     if (permissions.get(key)) receipts.push(receipt);
   }
   return receipts;
-}
-async function ancestor(runGit, cwd, base, head) {
-  try { await runGit(cwd, 'merge-base', '--is-ancestor', base, head); return true; } catch { return false; }
-}
-export async function carryOverSourceReview(cwd, candidate, group, runGit = git) {
-  const baseAncestor = await ancestor(runGit, cwd, candidate.base, group.base);
-  let predictedTree; let movedPaths = []; const manifests = {};
-  if (baseAncestor && candidate.tree !== group.tree) {
-    try { predictedTree = (await runGit(cwd, 'merge-tree', '--write-tree', `--merge-base=${candidate.base}`, group.base, candidate.head)).trim(); } catch { predictedTree = null; }
-    movedPaths = (await runGit(cwd, 'diff', '--name-only', '--no-renames', '-z', candidate.base, group.base)).split('\0').filter(Boolean);
-    for (const path of movedPaths.filter(path => /^packages\/[\w.-]+\/package\.json$/u.test(path))) {
-      const [base, queueBase, head, merged] = await Promise.all([candidate.base, group.base, candidate.head, group.tree].map(async sha => {
-        try {
-          const blob = await runGit(cwd, 'show', `${sha}:${path}`);
-          return Buffer.byteLength(blob, 'utf8') <= 1024 * 1024 ? JSON.parse(blob) : undefined;
-        } catch { return undefined; }
-      }));
-      manifests[path] = { base, queueBase, head, group: merged };
-    }
-  }
-  return carryOver({ reviewedTree: candidate.tree, groupTree: group.tree, baseAncestor, predictedTree, changedPaths: candidate.changedPaths, movedPaths, manifests });
 }
 export async function waitNativeAdmission({ event, env = process.env, api, cwd = process.cwd(), now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), deadlineMs = 20 * 60 * 1000, runGit = git }) {
   demand(/^[\w.-]+\/[\w.-]+$/u.test(env.GITHUB_REPOSITORY ?? '') && event.repository?.private === false, 'use a public repository GitHub event');

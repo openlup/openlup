@@ -196,8 +196,13 @@ retain finding cards and the repair counter. Three repair cycles are automatic;
 A rebase or changed intent uses `prepare --new`, which references the old session.
 Optional review advice does not add acceptance obligations. A `native-review` timeout is a missing or late
 PR comment receipt. A merge group that cannot carry over is rejected with
-"merge main and re-review"; it has no integration-review receipt route. For
-recovery, see the receipt-timeout rule in
+"merge main and re-review". The existing session can prove prior coverage for
+focused integration inspection by two fresh reviewers; inherited expiry and all
+mechanical checks remain binding. It has no separate integration receipt route.
+Refresh local main before prepare/final verify so their preflight rejects known
+conflicts or failed carry-over early. A DIRTY PR stops enqueue attempts until its
+head or mergeability changes; see [review after integration](../../CONTRIBUTING.md#native-review-and-accountability).
+For recovery, see the receipt-timeout rule in
 [Merge queue](../../CONTRIBUTING.md#merge-queue). See [review policy](../../.github/AI_CONTRIBUTION_POLICY.md#admission-native-review-and-dco)
 for the complete protocol.
 

@@ -519,8 +519,10 @@ directly. It refuses invocation inside an active resource broker or another
 verification wrapper, so wrap the underlying command once.
 
 Freeze tracked inputs and serialize commands sharing mutable output. The wrapper
-adds no output lease, policy/inventory check or predicted-merge preflight, and
-performs no intermediate candidate check after a broker wait. It passes the
+adds no output lease or policy/inventory check. Its cheap predicted-merge
+preflight reuses queue carry-over against locally fetched `origin/main` before
+the command starts; refresh that ref before final verification. It performs no
+intermediate candidate check after a broker wait. It passes the
 existing environment, including any `OPENLUP_STACK_BASE`, to the child command.
 Run the separately required checks yourself; existing maintainer-local stamps
 and hooks remain required where installed. This wrapper is local verification,
@@ -1658,7 +1660,13 @@ reading, exact merge scope and protected release approval still apply.
        two for `behavior` or `unknown`.
      - Codex may omit `authorSessionId`, which is then taken from
        `CODEX_THREAD_ID`. Every other supervisor sets it to its own session ID.
-   - run `node scripts/agent-review-session.mjs prepare .context/scratch/agent-review/intent.json`;
+   - refresh `origin/main` with `git fetch origin main`, then run
+     `node scripts/agent-review-session.mjs prepare .context/scratch/agent-review/intent.json`.
+     Its cheap merge preflight refuses a known conflict or failed carry-over before
+     reviewers start. `verify-command` repeats it before expensive verification,
+     and `receipt` before submission, against the locally fetched main. It does
+     not fetch or promise that main will remain unchanged. An unlanded stack pin
+     may still be reviewed locally; hosted admission waits for its prerequisite;
    - launch fresh reviewers and `record` each report;
    - repeat until `verify` reports `reviewed`. Three repair cycles are automatic;
      after `needs_owner`, only an owner decision recorded with
@@ -1687,6 +1695,9 @@ reading, exact merge scope and protected release approval still apply.
      the clean committed tree. It must report `REQUIRED PASS`, and it writes the
      stamp that the pre-push hook requires.
    - Elsewhere, run the [required check commands](#required-and-raw-checks).
+     When native review evidence is available, the existing `verify-command`
+     wrapper performs the merge preflight before the command. Refresh
+     `origin/main` before the final run so it sees current main.
 5. **Push** with `git push -u origin HEAD`. A push is publication, within your
    delivery authority. If `main` has moved since the review, push as is: verify
    and pre-push accept the review while its fork point is unchanged. Do not
@@ -1759,6 +1770,27 @@ on. Only `continue` adds cycles. A version-1 session file from before
 and prepare again. A conflict or
 failed queue carry-over is resolved by merging `main` and re-reviewing.
 
+**Review after integrating main.** `prepare` can supply `candidate.integration`
+with the preceding reviewed base/head/tree and its expiry. This requires a valid
+PASS in the same append-only session, unchanged intent and author, and exactly
+two merge parents: the prior head and the new review base on main. Two fresh
+reviewers still approve the complete current tree against the approved criteria.
+Their inspection may focus on the complete old-head-to-new-head delta, the
+old-base-to-new-base delta, both versions of the task's own diff, conflict
+resolution and interactions with the existing implementation. Read changed
+admission, dependency, migration and other control machinery even when it is
+outside the task's own paths. A merge commit can contain additional edits;
+parent identity alone does not prove unchanged implementation. Supply these
+pinned source identities, not old verdict text or author discussion. Uncertainty
+requires full inspection within those reviews, not an automatic extra round.
+
+Focused integration review inherits the earliest source-coverage expiry; fresh
+reports do not renew it. Reports are never copied to another tree. Findings,
+reviewer uniqueness and repair cycles remain in the same history. Missing,
+expired or unproven prior coverage, a rebase or `prepare --new` uses full review
+under the normal reviewer floor. An unchanged prepare preserves existing evidence.
+The receipt format and all mechanical checks are unchanged.
+
 Handle `needs_agent_review` in the active task without asking the owner to repeat
 approved behaviour. After criteria, review and checks pass, stop optional edits
 and proceed only through authorized delivery steps.
@@ -1808,6 +1840,10 @@ own: a lessons change is an ordinary delivery under existing authority, and a
 promotion stays within its approved scope. The rethink record and the task's
 terminal self-retro carry the lesson until it lands. No other tracker is kept.
 
+- 2026-10-23, queue integration rethink: repeated full reading after a base
+  merge and enqueue polling on an unchanged conflict waste work → check the
+  existing carry-over predicate before expensive phases; reuse valid source
+  coverage to focus fresh current-tree review on the complete integration delta.
 - 2026-10-23, co-located SQL/pins: a trusted script cannot enforce its own
   invocation → keep the documented workflow trust boundary explicit; reuse
   existing sensitive review rather than claiming status-name isolation.
@@ -1896,14 +1932,21 @@ records why these rules exist.
 - **No rebasing for freshness.** Do not rebase a pull request, or merge `main`
   into it, only because it is behind. A review is bound to the branch's fork
   point, so verify and pre-push keep accepting it while the branch is behind.
-  Integrate `main` only for a textual conflict, by merging it, and then obtain a
-  fresh full review.
+  Integrate `main` only for a textual conflict or failed carry-over/preflight,
+  by merging it, and then obtain a fresh review, using the integration scope above when `prepare` proves coverage.
 - **Arming.** Arm auto-merge only under actual merge authority, and only after
   the required checks, the native review and any required maintainer read:
   `gh pr merge <PR> --auto --author-email <address>`; the queue sets the merge
   method. Use the maintainer's configured author address. Confirm arming only
   by a non-null GraphQL `mergeQueueEntry` on the pull request, never by
-  `autoMergeRequest`.
+  `autoMergeRequest`. Before arming, read the live head and mergeability.
+  `DIRTY`/`CONFLICTING` stops enqueue attempts until the head or mergeability
+  changes and the conflict is resolved; do not spend queue retries polling the
+  same refusal.
+  `UNKNOWN` permits one fresh read, then stops for diagnosis if still unknown.
+  Leave `BEHIND` to the queue when carry-over remains valid. A watcher follows
+  these same rules and resumes only after a relevant head or mergeability change;
+  it does not repeatedly arm an unchanged blocked PR.
 - **Receipts.** While native admission is active, a supervisor with delivery
   authority posts one source receipt per reviewed PR head as soon as the pull
   request is open and ready, using step 7. A group that cannot carry over is
@@ -1961,8 +2004,8 @@ other or touch the same shared files:
   exactly both additions; root manifests and lockfiles still block.
   Other base changes are rejected: merge `main` and re-review.
 - If another change on `main` conflicts with it, merge `main` into it once (do
-  not rebase), regenerate its shared records and get a fresh full review, as
-  for a textual conflict.
+  not rebase), regenerate its shared records and get fresh review, using the
+  integration scope above when `prepare` proves coverage.
 - If a predecessor changes, merge its new head into each stacked pull request
   above it (do not rebase); each result is reviewed again under the usual repair
   rules and budget.
