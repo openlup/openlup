@@ -327,6 +327,10 @@ export interface FulfillmentOperationError {
     status: number | null;
     retryable: boolean;
     mayHaveSucceeded: boolean;
+    /** Whether provider submission was attempted; absent means unknown, never proven false. */
+    submissionAttempted?: boolean;
+    /** Whether the HTTP response body was read, including empty or malformed JSON; absent means no body-read evidence. */
+    responseBodyRead?: boolean;
     /** Machine cause only; never an arbitrary exception message. */
     cause?: string;
 }

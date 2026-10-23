@@ -14,6 +14,8 @@ export async function runFulfillmentDispatchWorker(input: {
     acceptance(fulfillmentRef: string): { providerAttemptKey: string; labelKey: string };
   };
   config: { mode: DispatchRecord["mode"]; batchLimit: number };
+  /** Pure local fingerprint for shadow only: 1–128 characters from [A-Za-z0-9:_-]. Invalid output or a throw refuses before evidence writes. Never return raw command/PII; keep stable across replay and live preparation. */
+  shadowCommandFingerprint?: (request: FulfillmentDispatchRequest) => string;
   now?: () => Date;
 }) {
   const privacy = durableStrings();
@@ -56,8 +58,19 @@ export async function runFulfillmentDispatchWorker(input: {
       for (let remapCount = 0; ; remapCount += 1) {
         const request = { ...mappedCandidate, requestKey };
         stage = "dispatch_command_prepare_failed";
+        let shadowFingerprint: string | undefined;
+        if (input.config.mode === "shadow" && input.shadowCommandFingerprint) {
+          let value: unknown;
+          let cause: "adopter_fingerprint_invalid" | "adopter_fingerprint_failed" | undefined;
+          try { value = input.shadowCommandFingerprint(request); }
+          catch { cause = "adopter_fingerprint_failed"; }
+          if (!cause && typeof value === "string" && value.length > 0 && value.length <= 128 && !/[^A-Za-z0-9:_-]/u.test(value)) shadowFingerprint = value;
+          else cause ??= "adopter_fingerprint_invalid";
+          if (cause) return { ...result, ok: false, failures: result.failures + 1, reason: cause,
+            refusal: { reason: "malformed" as const, phase: "prepare" as const, retryable: false as const, cause }, ...diagnostics() };
+        }
         const prepared = input.config.mode === "shadow"
-          ? { kind: "prepared" as const, evidence: shadowDispatchEvidence(request) }
+          ? { kind: "prepared" as const, evidence: shadowDispatchEvidence(request, shadowFingerprint) }
           : await input.provider!.prepare(request);
         if (prepared.kind === "refused") {
           result.ok = false; result.failures += 1; result.reason ??= privacy.token(prepared.refusal.reason) ?? "redacted"; continue candidateLoop;
