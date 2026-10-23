@@ -1,6 +1,17 @@
 -- Independent document obligations. Capture touches only the neutral duty/receipt rail;
 -- accounting locks, facts and provider work belong to the sweep/executor transaction.
 -- Native execution requires the host's explicit owner/least-privilege bootstrap.
+-- Capture the install boundary by source identity. These rails have no
+-- insertion timestamp, and occurred_at is host evidence that can arrive late.
+CREATE TABLE public.invoicing_cutover (
+  source_kind text NOT NULL CHECK (source_kind IN ('paid','handoff')),
+  source_id uuid NOT NULL,
+  PRIMARY KEY (source_kind,source_id)
+);
+INSERT INTO public.invoicing_cutover(source_kind,source_id)
+  SELECT 'paid',id FROM public.commerce_settlement_transitions
+  UNION ALL SELECT 'handoff',id FROM public.fulfillment_shipment_operations
+  ON CONFLICT DO NOTHING;
 CREATE TABLE public.invoicing_duties (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   order_id uuid NOT NULL REFERENCES public.commerce_orders(id),
@@ -39,17 +50,6 @@ CREATE TABLE public.invoicing_effect_receipts (
   payload jsonb NOT NULL,
   recorded_at timestamptz NOT NULL DEFAULT now()
 );
--- Capture the install boundary by source identity. These rails have no
--- insertion timestamp, and occurred_at is host evidence that can arrive late.
-CREATE TABLE public.invoicing_cutover (
-  source_kind text NOT NULL CHECK (source_kind IN ('paid','handoff')),
-  source_id uuid NOT NULL,
-  PRIMARY KEY (source_kind,source_id)
-);
-INSERT INTO public.invoicing_cutover(source_kind,source_id)
-  SELECT 'paid',id FROM public.commerce_settlement_transitions
-  UNION ALL SELECT 'handoff',id FROM public.fulfillment_shipment_operations
-  ON CONFLICT DO NOTHING;
 -- No order/duty FK: recording a capture fault must not reacquire money locks.
 CREATE TABLE public.invoicing_capture_faults (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -323,7 +323,7 @@ $$;
 CREATE FUNCTION public.invoicing_duty_readback(p_order_id uuid)
 RETURNS jsonb LANGUAGE sql STABLE SECURITY INVOKER SET search_path = pg_catalog AS $$
   SELECT jsonb_build_object('orderId',p_order_id,'captureFaults',
-    (SELECT coalesce(jsonb_agg(jsonb_build_object('sourceId',f.source_id,'state',CASE WHEN EXISTS(SELECT 1 FROM public.invoicing_effect_receipts r WHERE r.receipt_key='source:'||f.source_kind||':'||f.source_id::text) THEN 'resolved' ELSE f.state END,'attempts',f.attempts,'availableAt',f.available_at) ORDER BY f.recorded_at,f.id),'[]'::jsonb) FROM public.invoicing_capture_faults f WHERE f.order_id=p_order_id),'duties',coalesce(jsonb_agg(
+    (SELECT coalesce(jsonb_agg(jsonb_build_object('sourceId',f.source_id,'state',CASE WHEN EXISTS(SELECT 1 FROM public.invoicing_effect_receipts r WHERE r.receipt_key='source:'||f.source_kind||':'||f.source_id::text) THEN 'resolved' ELSE f.state END,'attempts',f.attempts,'availableAt',f.available_at) ORDER BY f.recorded_at,f.id),'[]'::jsonb) FROM (SELECT DISTINCT ON (source_kind,source_id) * FROM public.invoicing_capture_faults WHERE order_id=p_order_id ORDER BY source_kind,source_id,recorded_at DESC,id DESC) f),'duties',coalesce(jsonb_agg(
     jsonb_build_object('dutyId',d.id,'parentDutyId',d.parent_duty_id,'documentId',d.document_id,
       'state',CASE d.status WHEN 'ready' THEN 'owed' WHEN 'processing' THEN 'claimed' ELSE d.status END,
       'attempts',d.generation,'factAttempts',d.fact_attempts,
@@ -438,6 +438,15 @@ BEGIN
     OR (p_kind='absent' AND (p_evidence->>'kind' IS DISTINCT FROM 'authoritative_absence'
       OR p_evidence->>'providerCreateIdentity' IS DISTINCT FROM 'invoicing:'||p_duty::text))
   THEN RAISE EXCEPTION 'invoicing_failure_evidence_invalid' USING ERRCODE='22023'; END IF;
+  IF v_duty.reversal IS NOT NULL AND (p_kind='absent'
+    OR (p_kind='retryable' AND v_duty.last_result->>'action'='create')) THEN
+    PERFORM public.accounting_document_advance('invoicing:void:'||v_duty.id::text,v_duty.document_id,'voided');
+    UPDATE public.accounting_document_requests SET status='discarded',claim_token=NULL,updated_at=now(),
+      available_at='infinity' WHERE id=v_duty.request_id;
+    UPDATE public.invoicing_duties SET status='voided',claim_token=NULL,lease_until=NULL,
+      last_result=jsonb_build_object('kind',p_kind,'evidence',p_evidence) WHERE id=p_duty;
+    RETURN jsonb_build_object('kind','voided');
+  END IF;
   UPDATE public.invoicing_duties SET status=CASE WHEN p_kind='retryable' AND v_duty.last_result->>'action'='readback' THEN 'unknown' WHEN p_kind IN ('retryable','absent') THEN 'ready' WHEN p_kind='unknown' THEN 'unknown' ELSE p_kind END,
     last_result=jsonb_build_object('kind',p_kind,'evidence',p_evidence),claim_token=NULL,lease_until=NULL,
     available_at=now()+make_interval(secs=>least(greatest(coalesce(p_delay,60),0),86400)) WHERE id=p_duty;

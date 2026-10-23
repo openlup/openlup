@@ -25,6 +25,7 @@ DECLARE
   v_prior public.invoicing_effect_receipts%ROWTYPE;
   v_existing_document uuid;
   v_ready uuid;
+  v_safe_void boolean;
 BEGIN
   IF nullif(btrim(p_key),'') IS NULL OR nullif(btrim(p_reason),'') IS NULL OR jsonb_typeof(p_evidence) IS DISTINCT FROM 'object' THEN
     RAISE EXCEPTION 'invoicing_reversal_invalid' USING ERRCODE='22023'; END IF;
@@ -47,7 +48,7 @@ BEGIN
   UPDATE public.invoicing_duties SET reversal=coalesce(reversal,v_reversal) WHERE id=v_base.id;
   IF v_base.status='voided' THEN RETURN jsonb_build_object('kind','voided','replayed',true); END IF;
   IF v_base.status='blocked' THEN RETURN jsonb_build_object('kind','unsupported'); END IF;
-  IF v_base.status IN ('processing','unknown') THEN RETURN jsonb_build_object('kind','pending_readback'); END IF;
+  IF v_base.status IN ('processing','unknown') OR v_base.claim_token IS NOT NULL OR v_base.lease_until IS NOT NULL THEN RETURN jsonb_build_object('kind','pending_readback'); END IF;
   IF v_base.document_id IS NULL THEN
     SELECT o.document_id,r.id INTO v_base.document_id,v_base.request_id FROM public.accounting_document_operations o
       JOIN public.accounting_document_requests r ON r.document_id=o.document_id AND r.request_kind='issue'
@@ -57,11 +58,14 @@ BEGIN
   IF EXISTS (SELECT 1 FROM public.accounting_documents a WHERE a.order_id=p_order
     AND a.correction_of_document_id IS NULL AND a.status<>'voided'
     AND a.id IS DISTINCT FROM v_base.document_id) THEN RETURN jsonb_build_object('kind','unsupported'); END IF;
+  v_safe_void:=coalesce(
+    (v_base.last_result->>'kind'='retryable' AND v_base.last_result->'evidence'->>'phase'='before_send')
+    OR (v_base.last_result->>'kind'='absent' AND v_base.last_result->'evidence'->>'kind'='authoritative_absence'
+      AND v_base.last_result->'evidence'->>'providerCreateIdentity'='invoicing:'||v_base.id::text),false);
   IF v_base.status<>'issued' AND EXISTS (SELECT 1 FROM public.accounting_document_requests
-    WHERE id=v_base.request_id AND attempts>0) THEN RETURN jsonb_build_object('kind','pending_readback'); END IF;
-  IF v_base.document_id IS NULL OR (v_base.status<>'issued' AND (v_base.generation=0
-    OR (v_base.last_result->>'kind'='retryable' AND v_base.last_result->'evidence'->>'phase'='before_send')
-    OR v_base.last_result->>'kind'='absent')) THEN
+    WHERE id=v_base.request_id AND (status='processing' OR claim_token IS NOT NULL
+      OR (attempts>0 AND NOT v_safe_void))) THEN RETURN jsonb_build_object('kind','pending_readback'); END IF;
+  IF v_base.document_id IS NULL OR (v_base.status<>'issued' AND (v_base.generation=0 OR v_safe_void)) THEN
     IF v_base.document_id IS NOT NULL THEN
       PERFORM public.accounting_document_advance('invoicing:void:'||v_base.id::text,v_base.document_id,'voided');
       UPDATE public.accounting_document_requests SET status='discarded',claim_token=NULL,updated_at=now() WHERE id=v_base.request_id;

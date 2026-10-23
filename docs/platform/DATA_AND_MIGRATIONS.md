@@ -455,7 +455,9 @@ New triggers may attach to existing public tables, including
 `commerce_order_holds`, `fulfillment_shipments` and `subscription_cycles`;
 this admits a new trigger attachment, never replacement of an existing trigger.
 The [disposable catalog proof](../../tests/postgres/reviewedPortableCreation.test.ts)
-applies each pinned fixture after its portable prefix and checks invoker security,
+applies each pinned target exactly once after its portable prefix, using
+landed bytes when present (they must equal the fixture and registry SHA-256, else
+the proof fails naming the path); the fixture when absent. It checks invoker security,
 new-object ACL entries, unchanged earlier relation/function definitions and the
 exact explicit trigger attachments with functions created by that file.
 
@@ -1037,7 +1039,8 @@ and a nullable diagnostic code. Ready work reads as `owed`; processing reads as
 `missing_facts`, `legacy_facts_unproved`, `retryable`, `blocked`, `unsupported`,
 `unknown`, `absent`, `faulted`; other kinds return null. Raw SQLSTATE, provider evidence and
 claim tokens never enter this readback. Fact-install attempts are separate from
-provider generations. `captureFaults` exposes source ID, retry/fault state, attempt
+provider generations. `captureFaults` exposes only the latest fault row per
+`(source_kind,source_id)`, with source ID, retry/fault state, attempt
 count and next availability; a retained source receipt changes its readback state to
 `resolved`. Raw errors remain excluded. Source capture failures
 have their own eight-attempt/backoff ceiling, so one poisoned source cannot starve
@@ -1069,8 +1072,16 @@ fiscal execution still requires proven facts and must refuse to adopt an
 unproved local document rather than create a competing invoice. Fact completion
 checks neutral facts and totals before adopting an unowned document. An
 unsupported result requires existing document evidence and remains visible with
-its diagnostic reason. Reversal refuses to void an unlinked live base document
-or discard an attempted request; blocked duties return terminal `unsupported`.
+its diagnostic reason. At request time, reversal refuses to void an unlinked live
+base document. An attempt in flight or a possibly sent or unknown request returns
+`pending_readback`. After a create attempt ended `retryable`/`before_send` or was
+authoritatively absent, reversal immediately voids the document, discards its
+request and voids the duty if no claim or lease is in flight. A reversal stored
+during processing voids the document, discards its request and voids the duty
+when a create claim fails with `retryable`/`before_send`, or when authoritative
+`absent` evidence confirms no remote document. A retryable readback still stays
+unknown; a confirmed issue still requests one correction. Blocked duties return
+terminal `unsupported`.
 Only ready, pending, unattempted correction requests are hidden from the incumbent.
 
 Before installing, retire the incumbent issue/correction executor. Drain the
@@ -1100,10 +1111,11 @@ The install cutover records existing settlement/handoff identities once because
 these rails have no insertion timestamp and host occurrence times may arrive late.
 The keyed `(source_kind,source_id)` primary-key table is filled once by the
 single exactly admitted `INSERT ... SELECT ... UNION ALL ... ON CONFLICT DO NOTHING`.
-No data-reading column default is admitted. Installation takes table locks for
-the new foreign keys before scanning the source rails for this seed; order,
-settlement and dispatch writes pause until the install transaction commits.
-Schedule that write pause for the size of the existing source history. Sweeps use indexed `NOT EXISTS` against that set, with source/order
+No data-reading column default is admitted. Creation and seeding of this table
+precede every FK-bearing invoicing table, so the history scan holds no locks on
+orders or accounting tables and permits order, settlement and dispatch writes.
+The subsequent FK installation still takes table locks until the install
+transaction commits; schedule that shorter write pause. Sweeps use indexed `NOT EXISTS` against that set, with source/order
 fault lookup and duty status/availability indexes. The automatic sweep excludes
 those historical identities, whether previously
 invoiced or uninvoiced, and orders with any non-void accounting document. It never
@@ -1142,8 +1154,12 @@ seller table with RLS enabled. Whole-file and function before/after hashes bind 
 It preserves the donor's `SECURITY DEFINER`, `search_path = public, pg_catalog`
 and EXECUTE only to service_role, with PUBLIC/anon/authenticated revokes. The
 native creation class additionally admits the exact cutover seed and the
-`WITH (security_invoker=true)` view form; existing managed classes are unchanged. Unexpected
-signatures, attributes, triggers, tables, grants or lexical forms refuse.
+`WITH (security_invoker=true)` view form; existing managed classes are unchanged.
+The managed class refuses unexpected signatures, attributes, triggers, tables,
+grants or lexical forms. Native structural classification permits a new trigger
+with an in-file trigger function. M09's whole-file pins exclude native triggers;
+the catalog proof also verifies that these forwards add no explicit trigger
+attachments to pre-existing tables.
 
 The [registry](../../config/reviewed-platform-forwards.json) binds all seven final
 fixture paths and hashes. The [catalog proof](../../tests/postgres/reviewedPortableCreation.test.ts)

@@ -628,7 +628,8 @@ When introduced, new F13 captures intentionally read `accountingRequested=false`
 on payment readback: they record an owed obligation without linking a document
 into payment truth. This is a declared readback change. The trusted-host
 `invoicing_duty_readback(uuid)` is the owed-invoice view (KEPT #5), including
-subsequent issue state; historical linked payment events keep their readback.
+subsequent issue state and only the latest capture fault per source kind/ID;
+historical linked payment events keep their readback.
 
 The portable dunning invariant repair appends exactly one manifest row at
 position 71 and refreshes `objectInventorySha256` from the complete live
