@@ -825,15 +825,18 @@ reconciliation quarantine evidence, and worker diagnostics share one counted
 string sanitizer at their output projections. Provider-derived strings must
 match the existing opaque-ID rule `[A-Za-z0-9][A-Za-z0-9._:-]{0,127}` or an
 explicit adopter codec; refused values become null (required references use
-`redacted`) and increment `redactedFieldCount` in the existing evidence or
+`redacted`; refused tracking numbers drop the entire reference) and increment
+`redactedFieldCount` in the existing evidence or
 diagnostic envelope. Each field is counted once using its admission codec;
 counts survive repeated native projection. Host-owned acceptance/attempt/label
 and event keys, fingerprints and identities built from admitted parts pass through
 unchanged. Timestamps use RFC3339 validation, preserving identity-bearing bytes,
 and never use the token sanitizer. Expiry additionally
-requires a real `YYYY-MM-DD` calendar date. Tracking URLs require the adopter's
-approval at each projection that retains them, including reconciliation tracking
-codecs and native observation-store options; omission redacts the URL. Occurrence
+requires a real `YYYY-MM-DD` calendar date. Provider tracking URLs require
+query-free, credential-free HTTPS and the adopter's approval at each projection
+that retains them, including reconciliation tracking
+codecs and native observation-store options; omission redacts the URL. Host-built
+tracking URLs pass unchanged, including query strings. Occurrence
 identity hashes original provider status/subStatus bytes, so redaction cannot
 collapse distinct occurrences. Arbitrary properties, contact fields, raw JSON,
 credentials and signed URLs are omitted. The

@@ -10,6 +10,12 @@ in the source repository.
 
 ## [Unreleased]
 
+- Add `approveTrackingUrl` inputs to `verifyAndNormalizeFulfillmentObservation`,
+  `PostgresFulfillmentShipmentSpineOptions`, `FulfillmentAdapterConformanceSubject`
+  and reconciliation `trackingCodecs`. Under the strict default, provider tracking
+  URLs persist only with host approval and must be query-free and credential-free
+  HTTPS; host-built tracking URLs pass unchanged, including query strings.
+- Existing `reconcileFulfillmentObservations` callers now receive row-local unknown readback failures (`ok: false` with `failures`) while recognized rows still process; export `ReconciliationResult`.
 - Fulfillment reconciliation inputs replace `readLocalFulfillmentState` with
   `readLocalFulfillmentStatus`, `latestStatusOccurredAt` and `readHandedOverAt`;
   migrate host persistence implementations to these three reads.

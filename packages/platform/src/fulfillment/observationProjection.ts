@@ -27,7 +27,7 @@ export function projectPollEvidence(value: PollEvidence): PollEvidence {
   return { ...safe, ...(privacy.redactedFieldCount ? { diagnostics: { redactedFieldCount: privacy.redactedFieldCount } } : {}) };
 }
 
-/** Existing query-free tracking URL codec; host approval never admits credentials/signatures. */
+/** Provider URLs require query-free, credential-free HTTPS plus host approval. */
 export function publicTrackingUrl(value: string, approve?: (url: string) => boolean): string | null {
   try {
     const url = new URL(value);
@@ -36,7 +36,9 @@ export function publicTrackingUrl(value: string, approve?: (url: string) => bool
 }
 export function projectTrackingReference(value: FulfillmentObservation["trackingRefs"][number], privacy = durableStrings(), approveTrackingUrl?: (url: string) => boolean) {
   const token = privacy.token;
-  return { trackingNumber: token(value.trackingNumber) ?? "redacted", carrierRef: token(value.carrierRef), serviceRef: token(value.serviceRef),
+  const trackingNumber = token(value.trackingNumber);
+  if (trackingNumber === null) return null;
+  return { trackingNumber, carrierRef: token(value.carrierRef), serviceRef: token(value.serviceRef),
     publicUrl: token(value.publicUrl, url => publicTrackingUrl(url, approveTrackingUrl)) };
 }
 
@@ -59,7 +61,10 @@ export function projectObservation(value: FulfillmentObservation, approveTrackin
     ...pollEvidence(value, privacy),
     fact: { ...fact, mapperVersion: token(fact.mapperVersion) ?? "redacted" }, eventKind: (token(value.eventKind) ?? "redacted") as FulfillmentObservation["eventKind"],
     firstReceivedAt: timestamp.parse(value.firstReceivedAt),
-    trackingRefs: value.trackingRefs.map(ref => projectTrackingReference(ref, privacy, approveTrackingUrl)),
+    trackingRefs: value.trackingRefs.flatMap(ref => {
+      const projected = projectTrackingReference(ref, privacy, approveTrackingUrl);
+      return projected ? [projected] : [];
+    }),
   };
   if (privacy.redactedFieldCount) diagnostics.redactedFieldCount = privacy.redactedFieldCount;
   return { ...safe, ...(Object.keys(diagnostics).length ? { diagnostics } : {}) };
