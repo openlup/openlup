@@ -11,6 +11,8 @@ import { assertInstalledPackages, isolatedConsumerEnv, readCurrentPackManifest }
 import { POSTGRES_PROOF_IMAGE } from "./outbox-disposable-postgres.ts";
 
 export const NON_ADAPTER_ENTRIES = [
+  "invoicing",
+  "invoicing/contracts",
   "subscriptions",
   "subscriptions/contracts",
   "fulfillment",
@@ -125,6 +127,25 @@ export function assertExportInventory(consumer: string): void {
   if (JSON.stringify(Object.keys(metadata.exports).sort()) !== JSON.stringify(expected)) throw new Error("Platform export inventory needs classification");
 }
 
+
+/** Actual installed P1 descriptor and browser import; no live provider or worker. */
+export function proveInvoicingConsumer(consumer: string): void {
+  consumerNode(consumer, `
+import assert from "node:assert/strict";
+import { readInvoiceCapabilities } from "@openlup/platform/invoicing";
+import * as contracts from "@openlup/platform/invoicing/contracts";
+assert.deepEqual(Object.keys(contracts), []);
+for (const entry of ["invoicing", "invoicing/contracts"]) assert(import.meta.resolve("@openlup/platform/" + entry).startsWith(new URL("./node_modules/", import.meta.url).href));
+const supported = {supported:true}, unsupported = {supported:false,reason:"host_required"};
+const capability = {version:"invoicing.capabilities.v1",providerRef:"fiscal-a",fiscalScope:{scopeRef:"host-scope",version:"v1"},policies:{identifierRef:"id-v1",taxRef:"tax-v1",roundingRef:"round-v1"},documentKinds:["host-document"],correctionKinds:["full_reversal"],numberingOwner:"provider",sellerTiming:"execution",defaultOff:true,
+operations:Object.fromEntries(["issue","correction","recovery","readback","exactAbsence","remoteVoid","artifact","clearance","settlement","companyLookup"].map(key=>[key,key==="issue"?supported:key==="remoteVoid"?{supported:false,reason:"not_implemented"}:unsupported]))};
+assert.equal(readInvoiceCapabilities({selection:{providerRef:"fiscal-a"},capability}).code,"disabled");
+assert.equal(readInvoiceCapabilities({enabled:true,selection:null,capability}).code,"selection_required");
+assert.equal(readInvoiceCapabilities({enabled:true,selection:{providerRef:"other"},capability}).code,"selection_required");
+assert.equal(readInvoiceCapabilities({enabled:true,selection:{providerRef:"fiscal-a"},capability}).capability,capability);
+console.log("invoicing consumer passed");
+`);
+}
 
 /** Offline fulfillment contract and explicit-selection proof from installed bytes. */
 export function proveFulfillmentConsumer(consumer: string): void {
@@ -242,6 +263,15 @@ export function compileConsumer(consumer: string, entries: readonly string[], co
     'const fulfillment: FulfillmentServices = createFulfillmentServices(fulfillmentOptions);',
     'export const composedFulfillment = composeFulfillment({blob:()=>null,fulfillment:()=>fulfillment});',
     'export const fulfillmentContribution = createFulfillmentContribution({version:"0.21.0",requiredSchema:{version:"fixture",migration:"fixture",objects:[]},fulfillment:{dispatch:fulfillment.runDispatch},handlers:[],schedules:[],routes:[]});',
+  ].join("\n"));
+  if (entries.includes("invoicing") && entries.includes("invoicing/contracts")) surfaces.push([
+    'import { readInvoiceCapabilities } from "@openlup/platform/invoicing";',
+    'import type { InvoiceFacts, InvoiceLine, InvoiceSeller, InvoiceBuyer, InvoiceIdentity, InvoiceWriteResult, InvoiceReadbackResult, InvoiceArtifactResult, InvoiceSettlementResult, InvoiceCapabilities, InvoiceCompanyLookupPort, InvoiceStorePort, InvoiceHostPorts, InvoiceServicesOptions, InvoiceDocumentIdentity, InvoiceProviderPort, InvoiceSettlementPort, InvoiceSettlementItem, InvoiceDutyReadback, InvoiceUnsupported, InvoiceDiagnosticCode, InvoiceProof, InvoiceClearanceObservation } from "@openlup/platform/invoicing/contracts";',
+    'declare const invoiceCapability: InvoiceCapabilities;',
+    'export const invoiceSelection = readInvoiceCapabilities({ enabled: true, selection: { providerRef: invoiceCapability.providerRef }, capability: invoiceCapability });',
+    'export type InvoiceConsumer = [InvoiceFacts, InvoiceLine, InvoiceSeller, InvoiceBuyer, InvoiceIdentity, InvoiceWriteResult, InvoiceReadbackResult, InvoiceArtifactResult, InvoiceSettlementResult, InvoiceCompanyLookupPort, InvoiceStorePort, InvoiceHostPorts, InvoiceServicesOptions, InvoiceDocumentIdentity, InvoiceProviderPort, InvoiceSettlementPort, InvoiceSettlementItem, InvoiceDutyReadback, InvoiceUnsupported, InvoiceDiagnosticCode, InvoiceProof, InvoiceClearanceObservation];',
+    'declare const invoiceIdentity: InvoiceIdentity;',
+    'export const invoiceAbsent: InvoiceReadbackResult = { kind: "absent", identity: invoiceIdentity, evidence: { exact: true, complete: true, scope: invoiceIdentity, evidenceRef: "lookup-a", fingerprint: "fingerprint-a", observedAt: "2026-10-22T12:00:00Z" } };',
   ].join("\n"));
   writeFileSync(file, surfaces.join("\n"));
   for (const mode of ["NodeNext", "Bundler"]) {
@@ -1079,6 +1109,7 @@ assert.throws(() => promotions.resolvePromotionBenefitDefinition({ discount_type
     provePaymentAdapterConsumer(consumer);
     proveWarehouseAdapterConsumer(consumer);
     proveMarketingSyncConsumer(consumer);
+    proveInvoicingConsumer(consumer);
     proveSubscriptionsConsumer(consumer);
     provePaymentsConsumer(consumer);
     proveFulfillmentConsumer(consumer);

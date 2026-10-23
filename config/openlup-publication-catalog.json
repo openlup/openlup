@@ -2362,6 +2362,14 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/api/invoicing-contracts.api.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/api/invoicing.api.md",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/api/job-ledger.api.md",
       "class": "public-output"
     },
@@ -3990,6 +3998,50 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/invoicing/capabilities.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/invoicing/contracts/capabilities.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/invoicing/contracts/companyLookup.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/invoicing/contracts/delivery.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/invoicing/contracts/facts.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/invoicing/contracts/host.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/invoicing/contracts/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/invoicing/contracts/provider.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/invoicing/contracts/settlement.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/invoicing/contracts/store.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/invoicing/index.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/job-ledger/index.ts",
       "class": "public-output"
     },
@@ -5387,6 +5439,14 @@
     },
     {
       "path": "packages/platform/test/inventory/subscriptionForecastCalculation.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/invoicing/contracts.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/invoicing/portFit.test.ts",
       "class": "public-output"
     },
     {

@@ -1156,3 +1156,14 @@ descriptor refuses them. It selects one executor, default off, with
 mandatory delivery admission. Host-selected M04 descriptors carry recorded
 lifecycle facts; copy, recipient, consent and delivery remain host/M04-owned.
 See the [architecture boundary](ARCHITECTURE_AND_EXTENSIONS.md#subscription-contracts).
+
+## Invoicing evidence
+
+Invoicing keeps issued proof, exact scoped absence, unknown and unsupported
+separate. Unknown never authorizes another create; correction recovery binds
+stable correction identity and parent. Local void cannot erase an issued
+invoice. An owed-duty readback retains unsupported duties and capture faults;
+`accountingRequested=false` does not prove absence. Distinct payout items stay
+distinct, and account projections preserve owner and document lineage. Host
+artifact persistence, clearance observation and M04 acceptance are separate proofs.
+See the [invoicing contract reference](PLATFORM_PACKAGE_REFERENCE.md#invoicing-contracts).

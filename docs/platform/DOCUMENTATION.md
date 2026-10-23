@@ -78,6 +78,12 @@ source outputs. Contributor checks own their bounded retry/fallback and CLI
 local-name reconciliation, including exact local reuse, the gate's shared pull path and remaining-budget
 Retry-After fall-through before non-GHCR fallback; generated bindings establish no registry publication.
 
+Invoicing source, contract witnesses and both API reports route to the
+[invoicing architecture owner](ARCHITECTURE_AND_EXTENSIONS.md#invoicing-contracts).
+The package README keeps a short export summary; the package reference owns the
+longer host-seam recipe outside the npm tarball. Canonical contracts distinguish
+unknown, exact absence and unsupported duties; navigation adds no runtime authority.
+
 The platform package README remains its API entry point, with brief module
 summaries and preserved top-level anchors. Longer identity and communications
 recipes live verbatim in the [platform package reference](PLATFORM_PACKAGE_REFERENCE.md),

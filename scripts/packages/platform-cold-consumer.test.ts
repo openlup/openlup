@@ -5,7 +5,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { isolatedConsumerEnv } from "./pack-manifest-input.ts";
 import { afterAll, afterEach, beforeAll, expect, it } from "vitest";
-import { proveSubscriptionsConsumer, proveWarehouseAdapterConsumer, proveFulfillmentConsumer, provePaymentAdapterConsumer, provePaymentsConsumer, installA1HostBinding, proveA1ReferenceBindingConsumer, ADAPTER_ENTRIES, assertConsumerIsolation, assertExportInventory, compileConsumer, consumerNode, NON_ADAPTER_ENTRIES, OPTIONAL_PEERS, proveAdapterRefusals, proveOidcRefusals, provePostgresOperations, proveNativeCommunicationsOperations, proveResendConsumer, proveMarketingSyncConsumer, runPlatformColdConsumer } from "./platform-cold-consumer.ts";
+import { proveInvoicingConsumer, proveSubscriptionsConsumer, proveWarehouseAdapterConsumer, proveFulfillmentConsumer, provePaymentAdapterConsumer, provePaymentsConsumer, installA1HostBinding, proveA1ReferenceBindingConsumer, ADAPTER_ENTRIES, assertConsumerIsolation, assertExportInventory, compileConsumer, consumerNode, NON_ADAPTER_ENTRIES, OPTIONAL_PEERS, proveAdapterRefusals, proveOidcRefusals, provePostgresOperations, proveNativeCommunicationsOperations, proveResendConsumer, proveMarketingSyncConsumer, runPlatformColdConsumer } from "./platform-cold-consumer.ts";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const temporary: string[] = [];
@@ -26,6 +26,10 @@ function fixture() {
   // The typed consumer registers the payments factory with the composer.
   writeFileSync(join(consumer, "node_modules/@openlup/platform/index.d.ts"), [
     "export interface Synthetic { value: string }",
+    "export type InvoiceDocumentIdentity = Synthetic; export type InvoiceProviderPort = Synthetic; export type InvoiceSettlementPort = Synthetic; export type InvoiceSettlementItem = Synthetic; export type InvoiceDutyReadback = Synthetic; export type InvoiceUnsupported = Synthetic; export type InvoiceDiagnosticCode = Synthetic; export type InvoiceProof = Synthetic; export type InvoiceClearanceObservation = Synthetic; export type InvoiceFacts = Synthetic; export type InvoiceLine = Synthetic; export type InvoiceSeller = Synthetic; export type InvoiceBuyer = Synthetic; export type InvoiceIdentity = Synthetic; export type InvoiceWriteResult = Synthetic; export type InvoiceArtifactResult = Synthetic; export type InvoiceSettlementResult = Synthetic; export type InvoiceCompanyLookupPort = Synthetic; export type InvoiceStorePort = Synthetic; export type InvoiceHostPorts = Synthetic; export type InvoiceServicesOptions = Synthetic;",
+    "export interface InvoiceCapabilities { providerRef: string }",
+    "export interface InvoiceReadbackResult { kind: 'absent'; identity: InvoiceIdentity; evidence: { exact: true; complete: true; scope: InvoiceIdentity; evidenceRef: string; fingerprint: string; observedAt: string } }",
+    "export declare function readInvoiceCapabilities(input: unknown): unknown;",
     "export interface FulfillmentServicesOptions {}",
     "export interface FulfillmentServices { runDispatch(): Promise<unknown> }",
     "export declare function createFulfillmentServices(options: FulfillmentServicesOptions): FulfillmentServices;",
@@ -40,6 +44,8 @@ function fixture() {
 it("accepts ordinary confined packages and independently verifies absent peers", () => {
   const consumer = fixture(); assertConsumerIsolation(consumer, root); assertExportInventory(consumer);
   expect(NON_ADAPTER_ENTRIES).toEqual(expect.arrayContaining([
+    "invoicing",
+    "invoicing/contracts",
     "subscriptions",
     "subscriptions/contracts",
     "fulfillment",
@@ -439,6 +445,7 @@ it("payments and fulfillment: installed packed consumer proves injected executio
   assertConsumerIsolation(consumer, root);
   provePaymentsConsumer(consumer);
   proveFulfillmentConsumer(consumer);
+  proveInvoicingConsumer(consumer);
   proveSubscriptionsConsumer(consumer);
   for (const name of ['@types/node', 'undici-types']) cpSync(join(root, 'node_modules', name), join(consumer, 'node_modules', name), { recursive: true });
   compileConsumer(consumer, NON_ADAPTER_ENTRIES, join(root, 'node_modules/typescript/lib/tsc.js'));

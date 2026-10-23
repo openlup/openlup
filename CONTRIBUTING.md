@@ -906,6 +906,14 @@ recovery, as [Merge queue](#merge-queue) describes. Freshness is checked at
 admission, not guaranteed at the later merge; same-name checks from a malicious
 writer remain outside this process-evidence boundary.
 
+The experimental invoicing module adds an isolated row to the existing platform
+module graph, with a type-only browser contracts entry and no module edges.
+Its installed cold-consumer producer exercises default-off and explicit provider
+selection from the packed artifact; declaration compilation covers both NodeNext
+and Bundler modes. The existing package selection, boundary tests, API reports,
+AST rules and required verification routes remain binding; this contract step
+adds no separate runner or provider-access requirement.
+
 ### Commands and lint rules
 
 The complete projected root command inventory is `build`,
