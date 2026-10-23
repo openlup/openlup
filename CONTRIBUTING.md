@@ -517,6 +517,51 @@ Configuration references: [automatic analysis](https://docs.sonarsource.com/sona
 [quality profiles](https://docs.sonarsource.com/sonarqube-cloud/standards/managing-quality-profiles/understanding-quality-profiles),
 and [PR analysis](https://docs.sonarsource.com/sonarqube-cloud/analyzing-source-code/pull-request-analysis).
 
+### CI image mirror
+
+The separate [CI image mirror](.github/workflows/mirror-ci-images.yml) runs in
+`openlup/openlup` on pushes to `main` that change a derivation input, and on manual
+dispatch from `main`. The workflow lists the six derivation input paths explicitly.
+Its read-only plan job derives only repository/tag pairs and validates the four Supabase
+bootstrap service tags with the pgTAP job's
+single pinned CLI and rendered reference Supabase config, then omits services
+in the exclusion list read directly from `scripts/public-ci-pgtap.mjs`.
+The remaining database image and `pg_prove` from that CLI binary are mirrored.
+Missing or ambiguous exclusions, service tags, CLI pins or binary tags refuse
+derivation. [The non-CLI pins](config/ci-images.json) cover install-proof
+PostgreSQL, the test harness default and the managed-batch gate database.
+Consumers move onto this inventory and the mirror in a later change. Until
+then, a Docker-free guard reads the reviewed-batch test's literal digests and
+ordered upstream sources and requires exact equality with the JSON pins.
+An upstream source may retain an explicit tag only when it matches its JSON tag;
+resolution preserves that spelling and always verifies the pinned digest.
+The script resolves upstream tags to digests, copies complete indexes to
+`ghcr.io/openlup/<upstream-repository>:<tag>` (slashes retained), skips identical
+target tags, refuses conflicting tags and verifies the digest after copying.
+Only the mirror job receives `packages: write`: it validates the untrusted pairs against
+a closed repository allowlist, reads owned pins from its own checkout, and runs only
+SHA-pinned first-party actions plus the dependency-free repository script; CLI tags are
+trust-on-first-use and a moved tag is refused.
+The token reaches login through environment and stdin after validation and resolution,
+immediately before copying; a `finally` block removes the temporary registry
+credentials.
+The mirror never re-points an existing tag, so an owned pin's digest bump must use a
+new, more specific upstream tag; the old target tag stays as it is.
+Offline derivation, skip/refuse and verification tests accompany exact workflow
+trigger, permission, checkout and credential-transport assertions.
+
+One-time owner setup is required: organization **Settings → Packages → Package
+Creation** must allow Public packages (and initial private creation, because
+GHCR creates packages private). After the first authorized run, for each package
+under **openlup → Packages**, use **Connect repository → openlup/openlup**; in
+**Package settings → Manage Actions access**, add that repository with **Write**
+access if inheritance does not already grant it. Under **Danger Zone → Change
+visibility**, select **Public** and confirm. Check anonymous pulls before moving
+consumers. `GITHUB_TOKEN` cannot make a package public; linking a public
+repository does not change package visibility. See GitHub's
+[package access and visibility procedure](https://docs.github.com/en/packages/learn-github-packages/configuring-a-packages-access-control-and-visibility)
+and [repository linking procedure](https://docs.github.com/en/packages/learn-github-packages/connecting-a-repository-to-a-package).
+
 ### Required and raw checks
 
 Use the Node version recorded in [.nvmrc](.nvmrc), npm 11.19.0 (the

@@ -69,6 +69,13 @@ immutable release; see the [install support policy](../../.github/INSTALL_SUPPOR
 
 ## Ownership
 
+The CI image mirror workflow, dependency-free script and offline witnesses are
+public source outputs in the publication catalogue. Contributor checks own its
+default-branch execution and one-time package visibility/access setup; canonical
+contracts own the non-CLI pin inventory and its later consumer migration.
+The generated source bindings and navigation record these additions without
+claiming a registry publication or changing CI consumers.
+
 The platform package README remains its API entry point, with brief module
 summaries and preserved top-level anchors. Longer identity and communications
 recipes live verbatim in the [platform package reference](PLATFORM_PACKAGE_REFERENCE.md),

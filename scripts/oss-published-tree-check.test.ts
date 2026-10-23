@@ -4,7 +4,7 @@
 
 import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -40,6 +40,104 @@ const workflow = readFileSync(join(ROOT, WORKFLOW), "utf8");
 const sourcePreviewWorkflow = readFileSync(join(ROOT, ".github/workflows/publish-source-preview.yml"), "utf8");
 const workflowJob = (name: string, source = workflow) => source.split(`\n  ${name}:\n`)[1]?.split(/^ {2}[a-z][a-z-]*:\n/mu)[0] ?? "";
 const workflowCommands = (job: string) => [...job.matchAll(/^ {6}(?:- | {2})run: (?!\|)(.+)$/gmu)].map((match) => match[1]);
+
+describe("CI image mirror workflow controls", () => {
+  const mirror = readFileSync(join(ROOT, ".github/workflows/mirror-ci-images.yml"), "utf8");
+  const permissionBlocks = (source: string) => [...source.matchAll(/^( *)permissions:([^\n]*)\n((?:\1 +[^\n]*\n)*)/gmu)].map(([block]) => block.trimEnd());
+  const firstPartyActions = [
+    ["actions/checkout", "3d3c42e5aac5ba805825da76410c181273ba90b1"],
+    ["actions/setup-node", "249970729cb0ef3589644e2896645e5dc5ba9c38"],
+  ];
+  const assertControls = (source: string) => {
+    expect(source.match(/^on:\n(?: +[^\n]*\n|\n)*/mu)?.[0].trimEnd()).toBe(`on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: [config/ci-images.json, .github/workflows/published-tree-ci.yml, scripts/public-ci-pgtap.mjs, scripts/ci-image-mirror.mjs, config/public-reference-subscription-supabase.toml, .github/workflows/mirror-ci-images.yml]`);
+    expect(permissionBlocks(source)).toEqual(["permissions: {contents: read}", "    permissions: {contents: read}", "    permissions: {contents: read, packages: write}"]);
+    expect([...(source.split("\njobs:\n")[1] ?? "").matchAll(/^ {2}([a-z-]+):$/gmu)].map((match) => match[1])).toEqual(["plan", "mirror"]);
+    // Inspect every run form, including a step beginning with `- run:` and folded blocks.
+    let runIndent: number | undefined;
+    for (const line of source.split("\n")) {
+      const indent = line.length - line.trimStart().length;
+      if (runIndent !== undefined && (line.trim() === "" || indent > runIndent)) {
+        expect(line).not.toContain("${{");
+        continue;
+      }
+      runIndent = undefined;
+      const run = /^( *)(?:- )?run: (.*)$/u.exec(line);
+      if (run) {
+        expect(run[2]).not.toContain("${{");
+        if (/^[|>][-+]?$/u.test(run[2])) runIndent = run[1].length;
+      }
+    }
+    for (const name of ["plan", "mirror"]) {
+      const job = workflowJob(name, source);
+      expect(job).toContain("    if: github.repository == 'openlup/openlup' && github.ref == 'refs/heads/main'\n");
+      expect(job).toContain('with: {ref: "${{ github.sha }}", persist-credentials: false}');
+      expect(job).toContain("with: {node-version: 24.21.0, package-manager-cache: false}");
+      const actions = [...job.matchAll(/uses: ([^@\n]+)@([^\s#]+)/gu)].map((match) => [match[1], match[2]]);
+      expect(actions).toEqual(name === "plan" ? [...firstPartyActions, ["supabase/setup-cli", "45a513f8c64c0bc8e0e3dfe572b5c95be85f6359"]] : firstPartyActions);
+    }
+    const plan = workflowJob("plan", source), writer = workflowJob("mirror", source);
+    expect(plan).toContain('outputs: {images: "${{ steps.plan.outputs.images }}"}');
+    expect(plan).toContain('run: node scripts/ci-image-mirror.mjs pin >> "$GITHUB_OUTPUT"');
+    expect(plan).toContain('with: {version: "${{ steps.pin.outputs.version }}"}');
+    expect(plan).toContain('images=$(node scripts/ci-image-mirror.mjs plan)');
+    expect(plan).toContain(`printf 'images=%s\\n' "$images" >> "$GITHUB_OUTPUT"`);
+    expect(plan).not.toMatch(/GHCR_TOKEN|github\.token/u);
+    expect(writer).toContain("    needs: plan\n");
+    expect(writer).toContain('env: {PLAN_IMAGES: "${{ needs.plan.outputs.images }}", GHCR_TOKEN: "${{ github.token }}", GHCR_ACTOR: "${{ github.actor }}"}');
+    expect(workflowCommands(writer)).toEqual(["node scripts/ci-image-mirror.mjs mirror"]);
+    expect(writer).not.toMatch(/setup-cli|npm |supabase /u);
+    expect((source.match(/GHCR_TOKEN:/gu) ?? [])).toHaveLength(1);
+    expect(source).not.toMatch(/secrets\.|upload-artifact|actions\/cache|curl|password=/u);
+  };
+
+  it("isolates CLI planning from the minimal writer with exact triggers, permissions and guards", () => assertControls(mirror));
+
+  it("rejects extra triggers/scopes, untrusted checkout, actions and shell interpolation", () => {
+    for (const [from, to] of [
+      ["  workflow_dispatch:\n", '  workflow_dispatch:\n  schedule:\n    - cron: "17 4 * * 1"\n'],
+      ["  workflow_dispatch:\n", "  workflow_dispatch:\n  pull_request:\n"],
+      ["  workflow_dispatch:\n", "  workflow_dispatch:\n  pull_request_target:\n"],
+      ["permissions: {contents: read}", "permissions: {contents: read, packages: write}"],
+      ["packages: write}", "packages: write, actions: write}"],
+      ['ref: "${{ github.sha }}"', 'ref: "${{ github.event.pull_request.head.sha }}"'],
+      ["needs: plan", "needs: other"],
+      ["  mirror:\n", "      - run: echo '${{ needs.plan.outputs.images }}'\n  mirror:\n"],
+      ["  mirror:\n", "      - run: >\n          echo '${{ needs.plan.outputs.images }}'\n  mirror:\n"],
+      ["run: node scripts/ci-image-mirror.mjs mirror", "run: echo done"],
+      ["run: node scripts/ci-image-mirror.mjs mirror", "run: echo '${{ needs.plan.outputs.images }}'"],
+      ["run: node scripts/ci-image-mirror.mjs mirror", "run: |\n          echo '${{ needs.plan.outputs.images }}'\n"],
+      ["run: node scripts/ci-image-mirror.mjs mirror", "run: node scripts/ci-image-mirror.mjs mirror\n      - uses: supabase/setup-cli@45a513f8c64c0bc8e0e3dfe572b5c95be85f6359"],
+    ]) expect(() => assertControls(mirror.replace(from, to))).toThrow();
+    for (const name of ["plan", "mirror"]) {
+      const job = workflowJob(name, mirror);
+      expect(() => assertControls(mirror.replace(job, job.replace("github.ref == 'refs/heads/main'", "true")))).toThrow();
+    }
+  });
+
+  const workflows = () => readdirSync(join(ROOT, ".github/workflows")).filter((name) => /\.ya?ml$/u.test(name))
+    .map((name) => ({ name, source: readFileSync(join(ROOT, ".github/workflows", name), "utf8") }));
+  const assertSoleWriter = (sources: Array<{ name: string; source: string }>) => {
+    const writers = sources.flatMap(({ name, source }) => permissionBlocks(source)
+      .filter((block) => /permissions: *write-all\b|\bpackages: *write\b/u.test(block)).map((block) => ({ name, block })));
+    expect(writers).toEqual([{ name: "mirror-ci-images.yml", block: "    permissions: {contents: read, packages: write}" }]);
+  };
+
+  it("grants packages write in exactly the mirror job across every workflow", () => assertSoleWriter(workflows()));
+
+  it.each([
+    "name: Planted\npermissions: write-all\njobs: {}\n",
+    "name: Planted\njobs:\n  planted:\n    permissions: write-all\n",
+    "name: Planted\njobs:\n  planted:\n    permissions: { packages: write }\n",
+    "name: Planted\njobs:\n  planted:\n    permissions: {packages: write}\n",
+    "name: Planted\npermissions:\n  contents: read\n  packages: write\njobs: {}\n",
+  ])("rejects a second writer in alternate permission spelling: %s", (source) => {
+    expect(() => assertSoleWriter([...workflows(), { name: "planted.yml", source }])).toThrow();
+  });
+});
 
 // The workflow uses the same inventory-driven route for future packages.
 function assertPublishedPackageRoutes(inventory: string, source = workflow): void {

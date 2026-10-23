@@ -529,6 +529,24 @@ runtime or establish upgrade compatibility. The
 requires a separate feature introduction and mandatory real-PG/pgTAP catalog
 evidence; existing admission classes keep their prior behavior.
 
+The CI-only [image inventory](../../config/ci-images.json) owns logical names,
+upstream repositories, tags, index digests and ordered public-registry sources
+for the non-CLI mirror inputs. It records the install-proof database, disposable
+test default and managed-batch database pins; Supabase CLI images remain derived
+as repository/tag pairs by a read-only plan job from the workflow's CLI pin and
+reference config, filtered by the pgTAP runner's own exclusion list.
+The write job validates those untrusted pairs against a closed repository allowlist,
+reads owned pins from its own checkout, and runs only pinned first-party actions plus
+the repository script; CLI images are trust-on-first-use with refusal on a moved tag. A
+temporary Docker-free equality guard reads the
+reviewed-batch test's literal digests and ordered source lists without executing
+that test; changes to either must agree with this JSON owner. Its managed source
+order is GHCR, Docker Hub, then ECR; native uses Docker Hub, then ECR. An explicit
+source tag must match the entry's tag and is preserved during resolution.
+This change prepares the mirror only: a later change moves consumers onto these pins. Updating this
+inventory alone does not change runtime defaults or establish public package
+visibility. [Contributor checks](../../CONTRIBUTING.md#ci-image-mirror)
+own mirror execution, digest refusals and the owner's GHCR setup.
 
 Fulfillment appends command/alignment units 73/74 and binds
 their byte-identical package projections through `FULFILLMENT_MIGRATIONS`.
