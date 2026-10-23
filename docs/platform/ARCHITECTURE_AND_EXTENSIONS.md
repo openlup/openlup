@@ -1247,6 +1247,13 @@ the local prepared-attempt type projection preserves the existing M07 shape
 without a cross-module contract edge. Pure cadence/retry arithmetic remains in
 `@openlup/core/subscription`; adapters own SQL translation and hosts own channel,
 mandate, identity dialect, pricing, stock selection, trusted actor and copy policy.
+Initial terminal replay in the native retry binding returns from the immutable
+receipt before any settlement, rebinding or case propagation. Prepared retry
+readback retains the existing non-terminal `retry_scheduled` disposition while
+awaiting evidence. The native runner treats only explicit execution failure or
+`requires_action` as synchronous refusal; bare failed status requires readback.
+See the [host preconditions](CANONICAL_CONTRACTS.md#subscription-port-boundary)
+for cycle correlation and frozen retry authorization.
 
 A native prepare commits cycle/order/items/settlement/reservation and attempt;
 a native outcome commits settlement, outcome, schedule/counter and reservation.
@@ -1262,7 +1269,18 @@ Future terms and receipts require an atomic command store.
 Stock recovery is restricted to never-executed stock refusals, with transaction-bound
 all-line reacquisition and fencing. A provider-owned or ambiguous attempt cannot
 be reset by a wait ledger. The [design](plans/oss-m10-subscriptions-renewal-dunning.md)
-keeps serving composition and later store implementation outside this contract step.
+keeps serving composition outside this implementation step. The package's native
+renewal store consumes an injected executor and a required wire-snapshot codec:
+the host supplies exact identity/fingerprint bytes, frozen revision and explicit
+logical-cycle correlation. Existing operation snapshots take precedence over
+mutable future terms. The retry store calls N1 without implementing M07 payment
+execution, and preserves its prepare replay fence. The generic native executor
+uses the P1 ports with injected input/identity/classification policy. The initial
+binding opens the existing donor-keyed case first, then links N1 bookkeeping in
+the M07 terminal transaction. Initial terminal replay reuses its immutable
+failure receipt after later case changes or recovery; conflicting terminal
+evidence still refuses. Subsequent failures retain their separate case advance. G23, transaction/correlation policy and runtime selection remain host
+composition.
 
 ### Renewal port recipe
 
@@ -1301,11 +1319,28 @@ deferring until resolved. A deferred result preserves the schedule and may carry
 durable case.
 
 Native multi-cycle prepaid, generic bundle commands, command-bound receipts and
-the M07 prepared-attempt store have typed unsupported refusals. Retry and stock
-recovery remain unavailable until selected stores demonstrate them. Native generic
+the M07 prepared-attempt store have typed unsupported refusals. Stock recovery
+remains unavailable; N1 retry recovery is selected after its store proofs. Native generic
 bundle commands and command-bound receipts arrive with a later native command lifecycle;
 until then, the descriptor refuses them. Existing native pause/resume/skip/cancel
 operations keep their own contracts. The
 [Subscription port witnesses](../../packages/platform/test/subscriptions/portFit.test.ts) test
 each port amendment, and the [native baseline](../../tests/postgres/subscriptionContinuityBaseline.test.ts)
 exercises the complete current prefix without subscription SQL additions.
+
+## Invoicing contracts
+
+Place invoicing contracts and descriptor interpretation in the existing platform
+package's exact `invoicing` and type-only `invoicing/contracts` entries. The module
+has no graph edges, provider dependencies or environment discovery. The host owns
+fiscal/identifier/rounding policy, frozen facts, seller, M07 reads, storage, registry,
+M04 delivery and authorized M12 history. Missing parity returns typed unsupported
+before writes; no native store or executor is supplied. Seller reads select the current
+host configuration before the next claim, scoped by order or null for unscoped
+claims, never by duty. P8 freezes the seller at first claim, using revisionRef as
+the claim wrapper revision. Stores bind the selected provider at construction.
+Delivery settlement
+retains provider identity, retry delay (native ignores it) and uncertain receipt hints; local document
+requests retain provider selection, invoice reference, status and replay. The
+[invoicing reference](PLATFORM_PACKAGE_REFERENCE.md#invoicing-contracts) describes
+correction, payout item and account-lineage seams and their source witnesses.

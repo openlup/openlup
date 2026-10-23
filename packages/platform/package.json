@@ -220,6 +220,16 @@
       "types": "./dist/subscriptions/contracts/index.d.ts",
       "import": "./dist/subscriptions/contracts/index.js",
       "default": "./dist/subscriptions/contracts/index.js"
+    },
+    "./invoicing": {
+      "types": "./dist/invoicing/index.d.ts",
+      "import": "./dist/invoicing/index.js",
+      "default": "./dist/invoicing/index.js"
+    },
+    "./invoicing/contracts": {
+      "types": "./dist/invoicing/contracts/index.d.ts",
+      "import": "./dist/invoicing/contracts/index.js",
+      "default": "./dist/invoicing/contracts/index.js"
     }
   },
   "repository": {
