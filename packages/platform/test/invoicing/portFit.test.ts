@@ -100,7 +100,7 @@ it("fits managed delivery settlement carriers and native uncertain receipt evide
 });
 
 it("fits the existing local paid-order document provider, reference, status and replay response", async () => {
-  // server/adapters/postgres/accountingPaidOrderDocument.ts:52-74: providerKind
+  // server/adapters/postgres/accountingPaidOrderDocument.ts:14-23: providerKind
   // enters the request; invoiceRef is read from accounting_documents.document_ref.
   const donorRequest = { idempotencyKey: " exact:local-key ", orderId: "order-a", providerKind: "local-a" };
   const donorResponse = { invoice: { id: "document-a", invoiceRef: "local-invoice-a", status: "requested", replayed: true } };
