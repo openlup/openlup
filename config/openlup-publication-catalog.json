@@ -22226,6 +22226,34 @@
       "class": "public-output"
     },
     {
+      "path": "supabase/migrations/20261024175000_inventory_available_to_promise.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "supabase/migrations/20261024180000_subscription_stock_wait.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "supabase/migrations/20261024181000_subscription_stock_wait_due.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "supabase/migrations/20261024182000_subscription_lifecycle_message_scan.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "supabase/migrations/20261024184000_inventory_reserve_order_uses_seam.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "supabase/migrations/20261024185000_provider_refund_evidence.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "supabase/migrations/20261024185100_m07_refund_parity.sql",
+      "class": "public-output"
+    },
+    {
       "path": "supabase/tests/abandoned_cart_tier_bounds_test.sql",
       "class": "public-output"
     },
@@ -22826,6 +22854,10 @@
       "class": "public-output"
     },
     {
+      "path": "supabase/tests/stripe_refund_cumulative_snapshot_test.sql",
+      "class": "public-output"
+    },
+    {
       "path": "supabase/tests/subscription_active_requires_lines_test.sql",
       "class": "public-output"
     },
@@ -22935,6 +22967,10 @@
     },
     {
       "path": "supabase/tests/subscription_locked_cycle_guard_matches_renewal_lane_test.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "supabase/tests/subscription_managed_atp_test.sql",
       "class": "public-output"
     },
     {
@@ -23055,6 +23091,14 @@
     },
     {
       "path": "supabase/tests/subscription_status_transition_matrix_test.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "supabase/tests/subscription_stock_wait_test.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "supabase/tests/subscription_stock_wait_unpaid_discovery_test.sql",
       "class": "public-output"
     },
     {
@@ -23475,6 +23519,10 @@
     },
     {
       "path": "tests/postgres/subscriptionContinuityBaseline.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/subscriptionManagedStock.test.ts",
       "class": "public-output"
     },
     {

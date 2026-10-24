@@ -722,13 +722,13 @@ The managed prefix now includes M1
 `20261024160000_subscription_dunning_continuity.sql`, byte-equal to the reviewed
 batch fixtures. M1 removes only refund-driven subscription/cycle cancellation
 and activation reversal, retaining the existing stock-release guard. It does
-not repair historical rows or import the later refund-evidence changes.
+not repair historical rows; F17 later extends refund evidence as described below.
 M2 keeps exhaustion open with NULL retry, an active subscription and a repair
 token. Recovery binds the consumed token, durable method, current cycle and rung;
 no automatic retry follows exhaustion. Historical expired cases keep their
 separate resume route. The [managed dunning proof](../../supabase/tests/subscription_dunning_continuity_test.sql)
 and [refund proof](../../supabase/tests/refunds_preserve_subscription_lifecycle_test.sql)
-exercise this prefix without stock-wait or refund-evidence suffix fixtures.
+exercise lifecycle continuity on the complete installed prefix.
 
 The catalog gate applies every non-pin before the next pin exactly once,
 including interleaved files. Docker-free tests cover native N1
@@ -779,6 +779,52 @@ ledger prefix and function ACL/header, package byte equality, lifecycle/refusals
 and bounded concurrent row locking.
 
 See the [M09 forward owner](#m09-invoicing-forward-design-and-control-approval) for managed correction v2 installation, cutover and reconciliation.
+
+### Managed stock wait, ATP and refund parity
+
+Migration: the managed prefix appends `20261024175000` (ATP seam), `180000`
+(M3 stock wait), `181000` (M4 due reader), `182000` (M5 message scan), `184000`
+(M6 allocator), `185000` (F17 evidence helper) and `185100` (F17 applicator/outbox).
+Each rail file equals its frozen fixture and registry digest. The ordered managed
+directory and publication catalogue are the existing install inventory; these
+forwards add no native manifest or package SQL twins. M4's before-function hash
+is M2's after-hash; F17 follows M1's applicator replacement. No landed pin changes.
+
+The managed [stock-wait proof](../../supabase/tests/subscription_stock_wait_test.sql),
+[unpaid-discovery proof](../../supabase/tests/subscription_stock_wait_unpaid_discovery_test.sql)
+and [ATP proof](../../supabase/tests/subscription_managed_atp_test.sql) cover rollback,
+restock, rotation, private bindings and one-time refusal. Existing dunning and
+arrival proofs retain active service, consumed-token/method authority and the
+maximum delivery clamp through a rollback to off. The
+[refund lifecycle proof](../../supabase/tests/refunds_preserve_subscription_lifecycle_test.sql)
+checks both first-cycle and renewal refunds against future hard/soft protection.
+The [cumulative snapshot proof](../../supabase/tests/stripe_refund_cumulative_snapshot_test.sql)
+checks cumulative maximum evidence, once-per-order refunded transitions, rejected
+provenance and equal/older snapshot ignore/replay. Ignored snapshots can retain
+receipt/event/transition bookkeeping; they create no new refund effect. Matching
+stored applicator receipts return before lifecycle or stock writes. M1's lifecycle
+independence survives F17; this does not mean its whole applicator body is unchanged.
+
+Donor sources are `20260928170000_new_purchase_stock_availability.sql:26–76,200–291`
+and `20260710131002_no_cron_inventory_reservation_leases.sql:15–315` (seam/M6),
+`20261003123000_subscription_stock_wait.sql:51–650` and
+`20261003142320_subscription_stock_wait_unpaid_discovery.sql:12–324` (M3),
+`20261009110000_subscription_dunning_active_repair.sql:744–930` (M4),
+`20260802120000_subscription_winback_positive_customer_marker.sql:34–81` (M5),
+`20261009111000_stripe_refund_cumulative_snapshot.sql:18–85,167–952` and
+`20261021130000_refunds_preserve_subscription_lifecycle.sql:18–758` (F17), all
+under donor `supabase/migrations/`. Five C94-bound headers remain frozen; these
+citations supply provenance without altering their bytes. Current donor
+`20261013173001_channel_exposure_inventory_admission.sql` global/channel controls
+are deferred, and the exposure hook remains zero.
+
+Known donor-identical limits remain: SQL NULL summary state returns empty totals
+rather than refusing (B12); additive-provider helper evidence lacks the cumulative branch's
+signature/status/exact-attempt filter (C18). Neither changes in this landing.
+Keep captured cases, payment history and receipts on rollback; disable the host
+stock-wait driver first. Reverting code does not undo function replacements.
+Any SQL repair requires a separately reviewed forward. No backfill, host activation
+or stable upgrade claim follows from these source/probe paths.
 
 ### Native stock wait and ATP (N3)
 

@@ -466,8 +466,14 @@ state and no pause event. Explicit owner pauses remain separate.
 Managed M1 makes refunds independent of subscription lifecycle: neither a first
 nor renewal refund cancels service, erases cycle payment history or emits
 `activation_reversed`. Existing first-cycle stock release remains; historical
-cancelled rows are not resurrected. Further refund-evidence parity belongs to
-its separately reviewed follow-up.
+cancelled rows are not resurrected. F17 now accepts signed, exact-attempt
+F17 cumulative snapshots, emits one order-refunded notice on transition and
+ignores equal/older snapshots without a new refund effect. Receipt/event
+bookkeeping still records ignored evidence. First-cycle and renewal refunds
+preserve the active subscription's future hard holds and 14-day soft protection;
+a one-time allocation cannot spend that demand. Managed stock wait retains active
+service and the original obligation until later-only settlement/delivery alignment.
+See the [managed prefix and proof limits](DATA_AND_MIGRATIONS.md#managed-stock-wait-atp-and-refund-parity).
 
 The engine models the decision; the host keeps the durable duties the managed
 SQL restarts also perform. Both restarts require the customer's confirmation of

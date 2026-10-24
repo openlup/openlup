@@ -1,6 +1,17 @@
 -- Managed full-refund lifecycle boundary: first-cycle stock release, renewal and replay.
 BEGIN;
-SELECT plan(30);
+SELECT plan(38);
+-- Read the installed, approved provider binding rather than duplicating its vendor literal.
+-- The real-PG harness separately binds these units to their immutable registry digests.
+CREATE TEMP TABLE managed_stock_fixture AS SELECT
+ (regexp_match(pg_get_functiondef('public.inventory_available_to_promise(uuid,timestamptz,boolean)'::regprocedure),
+  $binding$stock.provider_kind='([^']+)'$binding$))[1] AS provider,
+ (regexp_match(pg_get_functiondef('public.inventory_reserve_order(text,uuid,uuid,uuid,uuid,integer,text,text,timestamptz,jsonb,text)'::regprocedure),
+  $binding$WHERE code = '([^']+)'$binding$))[1] AS location;
+INSERT INTO public.providers(kind,capability,display_name,status,enabled_for_region)
+VALUES((SELECT provider FROM managed_stock_fixture),'fulfillment','Synthetic refund stock','active',ARRAY['ZZ']) ON CONFLICT(kind) DO NOTHING;
+INSERT INTO public.inventory_locations(code,display_name,kind,status,region,fulfillable,provider_kind)
+VALUES((SELECT location FROM managed_stock_fixture),'Synthetic refund stock','third_party_logistics','active','ZZ',true,(SELECT provider FROM managed_stock_fixture)) ON CONFLICT(code) DO NOTHING;
 
 CREATE TEMP TABLE refund_lifecycle_cases (
   label text PRIMARY KEY, cycle_number integer, client_id uuid DEFAULT gen_random_uuid(),
@@ -9,6 +20,8 @@ CREATE TEMP TABLE refund_lifecycle_cases (
   product_id uuid DEFAULT gen_random_uuid(), location_id uuid DEFAULT gen_random_uuid(),
   reservation_id uuid DEFAULT gen_random_uuid(), intent_id uuid, event_id uuid,
   subscription_before jsonb, cycle_before jsonb, reservation_before jsonb,
+  future_cycle_id uuid DEFAULT gen_random_uuid(), future_order_id uuid DEFAULT gen_random_uuid(),
+  future_reservation_id uuid DEFAULT gen_random_uuid(), future_before jsonb, atp_before jsonb,
   response jsonb, replay_response jsonb, state_before_replay jsonb
 );
 INSERT INTO refund_lifecycle_cases(label, cycle_number) VALUES ('first', 1), ('renewal', 2);
@@ -61,6 +74,27 @@ RESET ROLE;
 INSERT INTO public.inventory_reservations(id, idempotency_key, order_id, subscription_cycle_id, sku_id, location_id, quantity, status, kind)
 SELECT reservation_id, 'refund-lifecycle:' || label || ':hold', order_id, cycle_id, sku_id, location_id, 2, 'reserved', 'subscription_retry_window'
 FROM refund_lifecycle_cases;
+-- Future-cycle protection belongs to the active subscription, not the refund.
+UPDATE public.subscriptions s SET next_cycle_at=now()+interval '7 days'
+FROM refund_lifecycle_cases f WHERE s.id=f.subscription_id;
+UPDATE public.subscription_lines sl SET qty=3 FROM refund_lifecycle_cases f WHERE sl.subscription_id=f.subscription_id;
+SELECT public.fulfillment_provider_upsert_stock_current('refund-future-stock-'||label,(SELECT provider FROM managed_stock_fixture),'REFUND-LIFECYCLE-'||label,
+ 5,5,0,now(),now()+interval '1 hour','refund-future-run','{}') FROM refund_lifecycle_cases;
+INSERT INTO public.subscription_cycles(id,subscription_id,cycle_number,scheduled_at,status,engine_idempotency_key)
+SELECT future_cycle_id,subscription_id,cycle_number+1,now()+interval '7 days','planned','refund-future-'||label FROM refund_lifecycle_cases;
+INSERT INTO public.commerce_orders(id,client_id,status,mode,currency,total_cents,subtotal_cents,subscription_id,subscription_cycle_id)
+SELECT future_order_id,client_id,'pending_payment','subscription_cycle','XTS',10000,10000,subscription_id,future_cycle_id FROM refund_lifecycle_cases;
+UPDATE public.subscription_cycles c SET order_id=f.future_order_id FROM refund_lifecycle_cases f WHERE c.id=f.future_cycle_id;
+INSERT INTO public.inventory_reservations(id,idempotency_key,order_id,subscription_cycle_id,sku_id,location_id,quantity,status,kind,metadata)
+SELECT future_reservation_id,'refund-future-hold-'||label,future_order_id,future_cycle_id,sku_id,(SELECT id FROM public.inventory_locations WHERE code=(SELECT location FROM managed_stock_fixture)),2,'reserved',
+ 'subscription_retry_window',jsonb_build_object('providerKind',(SELECT provider FROM managed_stock_fixture)) FROM refund_lifecycle_cases;
+INSERT INTO public.inventory_balances(sku_id,location_id,on_hand,reserved)
+SELECT sku_id,(SELECT id FROM public.inventory_locations WHERE code=(SELECT location FROM managed_stock_fixture)),5,2 FROM refund_lifecycle_cases
+ON CONFLICT ON CONSTRAINT inventory_balances_unique_stock_key DO UPDATE SET reserved=EXCLUDED.reserved;
+UPDATE refund_lifecycle_cases f SET future_before=to_jsonb(r),atp_before=(SELECT to_jsonb(a) FROM public.inventory_available_to_promise(f.sku_id,now(),false) a)
+FROM public.inventory_reservations r WHERE r.id=f.future_reservation_id;
+SELECT is(atp_before->>'soft_subscription_demand_quantity','1',label||': future hard hold leaves one soft protected unit') FROM refund_lifecycle_cases;
+SELECT is(atp_before->>'available_quantity','2',label||': three future units remain protected') FROM refund_lifecycle_cases;
 UPDATE public.subscriptions s SET updated_at = '2025-01-01' FROM refund_lifecycle_cases f WHERE s.id = f.subscription_id;
 UPDATE public.subscription_cycles c SET updated_at = '2025-01-01' FROM refund_lifecycle_cases f WHERE c.id = f.cycle_id;
 UPDATE refund_lifecycle_cases f SET subscription_before = to_jsonb(s), cycle_before = to_jsonb(c), reservation_before = to_jsonb(r)
@@ -99,6 +133,11 @@ SELECT is((SELECT reserved FROM public.inventory_balances WHERE sku_id = f.sku_i
   'first: reserved balance is released') FROM refund_lifecycle_cases f WHERE label = 'first';
 SELECT is((SELECT to_jsonb(r) FROM public.inventory_reservations r WHERE id = reservation_id), reservation_before,
   'renewal: existing stock reservation is unchanged') FROM refund_lifecycle_cases WHERE label = 'renewal';
+
+SELECT is((SELECT to_jsonb(r) FROM public.inventory_reservations r WHERE r.id=f.future_reservation_id),future_before,
+ label||': refund never releases or shrinks the future-cycle hold') FROM refund_lifecycle_cases f;
+SELECT is((SELECT to_jsonb(a) FROM public.inventory_available_to_promise(sku_id,now(),false) a),atp_before,
+ label||': refund preserves hard and soft future-cycle ATP protection') FROM refund_lifecycle_cases;
 
 -- Capture durable writes as owner, then replay the exact key/event as service_role.
 CREATE FUNCTION pg_temp.refund_lifecycle_state(p_order uuid, p_subscription uuid, p_intent uuid) RETURNS jsonb

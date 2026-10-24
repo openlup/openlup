@@ -14,11 +14,9 @@
 --   F — customer re-cancel after an old winback event      → ELIGIBLE
 --   G — ghost: cancelled, ended_at set, no reason, no marker → excluded
 --   H — system_provisional_activation_timeout source       → excluded (marker)
---   I — customer-cancelled just under 14 days ago          → excluded (floor)
+--   I — customer-cancelled just under 14 days ago          → ELIGIBLE (no floor)
 --   J — customer-cancelled exactly 14 days ago             → ELIGIBLE
--- Every marker case sits well inside the window on purpose: with the 14-day
--- floor in place, a 3-day-old seed would be excluded by the window and the
--- marker assertion would pass for the wrong reason.
+-- M5 removes the 14-day floor; the positive marker and 120-day window remain.
 -- G is the shape the previous negative predicate could only exclude via a
 -- sweep-order metadata fingerprint; the marker excludes it directly.
 -- Respects subscriptions_check (ended_at >= started_at): started_at is set
@@ -34,7 +32,7 @@ SELECT has_function(
 INSERT INTO public.clients (id, email)
 VALUES ('b6000000-0000-0000-0000-000000000001', 'winback-rpc@example.invalid');
 
-WITH fixture_settings(value) AS (VALUES ('PLN'))
+WITH fixture_settings(value) AS (VALUES ('XTS'))
 INSERT INTO public.subscriptions
   (id, client_id, cadence_days, currency, status, started_at, ended_at,
    cancellation_reason, cancellation_source)
@@ -79,7 +77,7 @@ VALUES
    28, (SELECT value FROM fixture_settings), 'cancelled',
    now() - interval '200 days', now() - interval '20 days',
    'provisional_payment_window_elapsed', 'system_provisional_activation_timeout'),
-  -- I: customer-cancelled, but still inside the 14-day floor
+  -- I: customer-cancelled, immediately eligible within the previous floor
   ('b6100000-0000-0000-0000-000000000012', 'b6000000-0000-0000-0000-000000000001',
    28, (SELECT value FROM fixture_settings), 'cancelled',
    now() - interval '200 days', now() - interval '13 days 23 hours',
@@ -107,14 +105,14 @@ VALUES (
 
 SELECT is(
   (SELECT count(*)::int FROM public.subscription_list_due_for_winback(50)),
-  3,
+  4,
   'S5b: only customer-marked, not-yet-nudged current cancellation episodes are returned');
 
 SELECT is(
   (SELECT string_agg(subscription_id::text, ',' ORDER BY ended_at ASC)
      FROM public.subscription_list_due_for_winback(50)),
-  'b6100000-0000-0000-0000-00000000000a,b6100000-0000-0000-0000-00000000000f,b6100000-0000-0000-0000-000000000013',
-  'S5b: eligible subscriptions are A, repeat-cancelled F, and boundary J');
+  'b6100000-0000-0000-0000-00000000000a,b6100000-0000-0000-0000-00000000000f,b6100000-0000-0000-0000-000000000013,b6100000-0000-0000-0000-000000000012',
+  'S5b: eligible subscriptions are A, repeat-cancelled F, boundary J and immediate I');
 
 SELECT is(
   (SELECT count(*)::int FROM public.subscription_list_due_for_winback(50)
@@ -134,13 +132,12 @@ SELECT is(
   0,
   'S5b: a cancelled row with no positive customer marker is never a win-back candidate');
 
--- The floor exists so the win-back nudge does not land on the same day as the
--- cancellation confirmation. I is a textbook candidate in every other respect.
+-- Immediate eligibility is independent of the previous 14-day floor.
 SELECT is(
   (SELECT count(*)::int FROM public.subscription_list_due_for_winback(50)
     WHERE subscription_id = 'b6100000-0000-0000-0000-000000000012'),
-  0,
-  'S5b: a cancellation younger than the 14-day floor is not yet a win-back candidate');
+  1,
+  'S5b: a fresh customer cancellation is immediately a win-back candidate');
 
 SELECT is(
   (SELECT count(*)::int FROM public.subscription_list_due_for_winback(50)

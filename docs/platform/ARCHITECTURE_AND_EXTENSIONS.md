@@ -1420,15 +1420,46 @@ order. Only the fenced renewal allocator uses that exemption. Native safety and
 channel exposure are zero in this seam. This is no advance future-cycle hold or
 one-time checkout mutation contract. Existing own commitments can remain admitted
 when observed stock drops below them, matching the donor limit. No physical
-coverage guarantee or managed stock-wait support follows.
+coverage guarantee follows. The managed SQL surface has its own proof below.
 
 [Native witnesses](../../tests/postgres/subscriptionStockWaitCases.ts) and
 [stock-accounting witnesses](../../tests/postgres/subscriptionStockAccountingCases.ts)
 cover refusal recovery, whole-basket rollback, fairness, X/Y replay and refund
 independence. Capability selection requires passing real PostgreSQL evidence;
 source installation and offline adapter tests alone leave stock recovery unavailable.
-P5m owns the managed half; P8 owns serving composition and G23. No executor or
-schedule is installed here.
+P8 owns serving composition and G23. No executor or schedule is installed here.
+
+### Managed stock wait and ATP
+
+The managed rail installs the service-role stock-wait SQL functions and shared
+provider ATP seam. The host currently has no TypeScript stock-wait or stock
+availability adapter implementing the P5n ports. The exported
+`MANAGED_SUBSCRIPTION_STOCK_CAPABILITIES` therefore describes SQL surfaces and
+keeps `stockRecovery` unavailable for package composition. SQL behavior is covered
+by [managed pgTAP/real-PG probes](../../tests/postgres/subscriptionManagedStock.test.ts);
+these do not select a serving executor or prove a hosted installation.
+
+M3 freezes the original unpaid cycle/order/payment binding and snapshots. Its
+all-line reacquisition shares a subtransaction; shortage rolls back partial work
+before recording waiting. Replenishment reuses that graph, and captured and
+uncaptured candidates rotate independently of processing. Provider-owned or
+ambiguous money cannot be reopened. Waiting retains the original schedule and
+active subscription; late settlement/delivery supplies the later-only shift.
+Stock secured is not payment, realization is not parcel arrival, and no payment
+I/O runs inside these SQL transactions. M4 retains M2 recovery eligibility and
+excludes waits before the normal LIMIT. M5 maps started/resumed transactional
+notices and immediately admits positive customer cancellations to the existing
+120-day, cancellation-episode-deduplicated winback scan.
+
+Managed ATP subtracts live provider hard holds, fulfillable-location safety and
+remaining active subscription demand within 14 days. Only the concrete
+order/cycle allocator may use the renewal exemption; a one-time order cannot
+obtain it through metadata or hold kind. Refund of cycle 1 or a renewal preserves
+future-cycle hard holds and soft demand. The exposure hook is zero; current
+donor global/channel admission remains deferred. Existing own commitments can
+survive a lower fresh stock observation, as in the donor. The managed SQL does
+not establish an advance reservation lifecycle or a package purchase-write port.
+See [managed installation and refund boundaries](DATA_AND_MIGRATIONS.md#managed-stock-wait-atp-and-refund-parity).
 
 ### Renewal port recipe
 

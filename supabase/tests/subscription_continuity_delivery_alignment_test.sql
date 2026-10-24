@@ -1,6 +1,6 @@
 -- M10 consumes existing managed alignment: max arrival plus cadence, never stacked.
 BEGIN;
-SELECT plan(8);
+SELECT plan(10);
 SET LOCAL ROLE service_role;
 SELECT public.subscription_delivery_alignment_set_mode('auto_align');
 RESET ROLE;
@@ -20,7 +20,12 @@ INSERT INTO public.commerce_fulfillment_orders(id,order_id,client_id,shipping_ad
 VALUES('e3600000-0000-4000-8000-000000000002','e3500000-0000-4000-8000-000000000001','e3100000-0000-4000-8000-000000000001','e3200000-0000-4000-8000-000000000001','managed-arrival-second','in_transit','{}',1,'e3600000-0000-4000-8000-000000000001','other');
 SET LOCAL ROLE service_role;
 SELECT is(public.subscription_delivery_alignment_admit_renewal('e3300000-0000-4000-8000-000000000001','2030-01-29Z','2030-01-30Z')->>'allowed','false','outstanding predecessor blocks successor');
+-- Roll the global mode back after capture; the original obligation retains authority.
+SELECT public.subscription_delivery_alignment_set_mode('off');
+SELECT is(public.subscription_delivery_alignment_admit_renewal('e3300000-0000-4000-8000-000000000001','2030-01-29Z','2030-01-30Z')->>'allowed','false',
+ 'captured protection survives rollback to off');
 RESET ROLE;
+SELECT is((SELECT status FROM public.subscriptions WHERE id='e3300000-0000-4000-8000-000000000001'),'active','rollback never pauses active service');
 UPDATE public.commerce_fulfillment_orders SET delivered_at='2030-02-01Z' WHERE id='e3600000-0000-4000-8000-000000000001';
 SELECT is((SELECT next_cycle_at FROM public.subscriptions WHERE id='e3300000-0000-4000-8000-000000000001'),'2030-01-29Z'::timestamptz,'predecessor arrival cannot settle the outstanding replacement');
 UPDATE public.commerce_fulfillment_orders SET delivered_at='2030-02-03Z' WHERE id='e3600000-0000-4000-8000-000000000002';

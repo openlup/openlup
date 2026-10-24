@@ -30,3 +30,15 @@ export type { NativeSubscriptionCommand, NativeSubscriptionCommandBinding } from
 
 export { createPostgresStockWaitStore } from "./postgresStockWaitStore.js";
 export type { NativeStockWaitBinding, NativeStockWaitAdmission } from "./postgresStockWaitStore.js";
+
+/** Managed SQL is exposed for service-role hosts; no StockWaitStorePort or
+ * NewPurchaseStockReadPort TypeScript adapter is composed for this graph.
+ * SQL behavior is proved by the managed pgTAP/real-PostgreSQL witnesses.
+ */
+export const MANAGED_SUBSCRIPTION_STOCK_CAPABILITIES = Object.freeze({
+  graph: "managed",
+  stockRecovery: "unavailable",
+  stockWaitSurface: "sql",
+  stockAvailabilitySurface: "sql",
+  defaultEnabled: false,
+} as const);
