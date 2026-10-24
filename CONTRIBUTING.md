@@ -1087,7 +1087,7 @@ Otherwise admission rejects the group with "merge main and re-review": merge
 `main` into the source branch, commit, obtain fresh review and post a new receipt.
 There is no separate integration-review receipt route.
 
-The supervisor follows actual admission in the same conversation; the maintainer
+The supervisor follows actual admission in the same logical task; the maintainer
 does not move prompts or reports. A receipt timeout needs submission or expiry
 recovery, as [Merge queue](#merge-queue) describes. Freshness is checked at
 admission, not guaranteed at the later merge; same-name checks from a malicious
@@ -1511,7 +1511,7 @@ increases and parent-baseline raises, including `--write-baseline`. Candidate
 counts must still fit the baseline. No wildcard, prefix or ceiling is admitted;
 changed bytes, paths, categories or counts refuse, as do native, TypeScript,
 package and docs entries. An unrelated increase remains a failure in the same run.
-Adding any further entry is a control change needing two fresh Opus reviews plus
+Adding any further entry is a control change needing two independent fresh full reviews under the native review contract plus
 the coordinator's control read. Neutral replacements reduce the debt; rail-path
 entries can be retired after the F17 PR lands and the base carries their counts.
 After all allowances are subtracted, a negative count fails the ratchet with
@@ -1786,7 +1786,7 @@ refreshes the committed snapshot before strict release admission.
 
 ### Local contribution handoff
 
-If your agent lacks native-subagent capability or you lack upstream write
+If your agent lacks supported independent-review capability or you lack upstream write
 authority, finish the authorized local change, signed commits and
 [public required checks](#required-and-raw-checks), then hand off the existing
 task record and commits to an authorized maintainer or supervisor. Include the
@@ -1948,11 +1948,13 @@ A repair commit restarts from step 3 for the new candidate.
 ### Native review and accountability
 
 The [autonomous delivery plan](docs/platform/plans/autonomous-reviewed-delivery.md)
-uses the supervisor in the current conversation to launch independent
-fresh-context subagents under the existing subscription. The maintainer controls
-scope and delivery authority without reading every diff or transferring prompts,
-reports or authentication between sessions. The same contract applies to Codex,
-Claude Code and future agents; no model API, backend or new host is required.
+uses one task supervisor to obtain independent fresh-context review through
+native subagents or a supported local CLI under existing subscriptions. Follow
+[provider-neutral execution](docs/platform/plans/autonomous-reviewed-delivery.md#provider-neutral-execution)
+for context identity, observed completion, actor exclusions and task handoff.
+Coordination, implementation and delivery may use different providers/models
+within their actual grants. The maintainer need not move prompts or reports
+between tools; no model API, backend, new host or authentication transfer is required.
 
 Use one initial bounded review for ordinary prose or narrow routine code,
 with two independent parallel reviews for sensitive or material behaviour,

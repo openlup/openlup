@@ -44,9 +44,17 @@ DCO certifies human provenance and the right to submit under the licence; it is
 not a certification of code quality or personal reading of every diff. The
 maintainer controls outcomes, important contracts and delivery authority.
 Technical review of maintainer-authorized agent tasks is delegated to independent
-fresh-context reviewers in the same task conversation.
+fresh-context reviewers in the same logical task and evidence history.
 
-An author without native-subagent capability or upstream write authority can
+Coordination, task supervision, implementation, verification and independent review
+are roles, not provider assignments. One active supervisor owns each task's review
+evidence and authorized delivery. Codex, Claude Code or another compatible agent
+may fill any role within the actual maintainer grant; selecting a provider or model
+does not extend it. Local work and review may be delegated within scope without
+renewed approval unless the grant restricts actors. External writes retain their
+actual grants, and coordinator-only delegation does not pass to every worker.
+
+An author without supported independent-review capability or upstream write authority can
 prepare signed local commits and public check evidence, then use the
 [local contribution handoff](../CONTRIBUTING.md#local-contribution-handoff).
 The authorized maintainer or supervisor owns independent native review, source
@@ -55,11 +63,13 @@ check result grants none of those rights.
 
 The [autonomous delivery intent](../docs/platform/plans/autonomous-reviewed-delivery-intent.md)
 and [implementation plan](../docs/platform/plans/autonomous-reviewed-delivery.md)
-define the native subscription-backed default. The active supervisor launches
-reviewers using the platform's own subagent tools, without author conversation
-or another reviewer's verdict. Codex, Claude Code and future providers share
-this contract. No model API, backend, new host or authentication transfer is
-required; the maintainer performs no action between implementation and review.
+define the subscription-backed task contract. The supervisor launches reviewers
+through native subagent tools or a supported local CLI, with observed fresh
+contexts and complete exact-candidate results, without author history or another
+reviewer's verdict. The [execution contract](../docs/platform/plans/autonomous-reviewed-delivery.md#provider-neutral-execution)
+owns that qualification. A CLI result is not counted merely because it contains
+PASS or a new run ID. No model API, backend, new host or authentication transfer
+is required; the maintainer need not move prompts or reports between tools.
 
 Installed verify and pre-push must refuse missing, stale, partial, mismatched or
 unresolved material evidence for the exact committed candidate. Their
@@ -71,7 +81,7 @@ Required source and merge-group mechanical checks and publication authority rema
 Native execution observations and receipts enforce the process; they do not
 cryptographically attest remote agent execution or establish hard OS separation
 between author and supervisor. An author-written approval is not independent
-review. The supervisor must obtain actual complete native platform observations.
+review. The supervisor must obtain actual complete execution observations under the review contract.
 
 The workflow records each task's outcome, scope, authority, acceptance,
 risk and execution/proof plan in one compact record. A separate specification
@@ -246,6 +256,16 @@ maintainer-authorized agent tasks while retaining human accountability, DCO and
 actual publication/merge authority. The earlier mandatory protected-root and
 GitHub model API routes are superseded. Installed enforcement must still pass
 its real refusal tests; process receipts are not cryptographic remote attestation.
+
+**Provider-neutral allocation, decided 2026-10-24.** The owner authorized the
+minimal public/private policy amendment and delivery through merge. Native
+subagents and qualified fresh local CLI contexts may provide independent review
+under the same logical task and evidence history. This extends the execution
+route above without changing V2 state/receipts, reviewer floors, budgets, expiry,
+required checks or reserved owner acts. The amendment itself uses the previously
+allowed native review route; CLI use requires actual execution proof and any
+applicable programme allocation amendment. Existing tasks may adopt at a stable
+boundary without a new programme admission or evidence reset.
 
 **Source-keyed pull-request receipts, decided 2026-10-03.** The rule read that
 the supervisor submits review observations "for the exact hosted run and
