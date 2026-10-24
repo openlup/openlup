@@ -73,3 +73,11 @@ mounted reference interface is not proof that an adopter deployment exposes it.
 <!-- openlup-doc-impact {"unit":"domain-customers","digest":"sha256-8c38e8ee26d1d87ed2d482ae2f59edb9738544501e74ff8928f0f4089addcd92","reason":"The order-history schema test resolves current installed table statements instead of a removed historical managed forward filename. Customer-owned reads, shipment tracking projection, authorization and route availability described here are unchanged."} -->
 
 The customer authentication and `me` engine now live in the [identity module](../../../docs/platform/IDENTITY.md). Existing source paths compose its factories with the reference response schema and observed request-ID reader. Browser account pages and the remaining customer use cases retain their existing owners.
+
+Invoice downloads use the invoicing read model's ticket-before-PDF orchestration.
+The existing host resolver checks the linked client and invoice order ownership
+before the provider fetch. MIME, size and PDF signature are validated before
+streaming with the existing no-store headers; invalid bytes return an unavailable
+response. Customer correction requests remain host-owned intent events and do
+not create fiscal corrections. Missing native history/download bindings remain
+typed unsupported rather than an empty history or invented storage reference.

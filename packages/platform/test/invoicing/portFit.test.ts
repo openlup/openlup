@@ -100,7 +100,7 @@ it("fits managed delivery settlement carriers and native uncertain receipt evide
 });
 
 it("fits the existing local paid-order document provider, reference, status and replay response", async () => {
-  // server/adapters/postgres/accountingPaidOrderDocument.ts:52-74: providerKind
+  // server/adapters/postgres/accountingPaidOrderDocument.ts:14-23: providerKind
   // enters the request; invoiceRef is read from accounting_documents.document_ref.
   const donorRequest = { idempotencyKey: " exact:local-key ", orderId: "order-a", providerKind: "local-a" };
   const donorResponse = { invoice: { id: "document-a", invoiceRef: "local-invoice-a", status: "requested", replayed: true } };
@@ -162,7 +162,7 @@ it("covers required seam inputs in pinned SQL parameter order, including seller 
     sqlCall("finish", "191000_invoicing_document_effects", "invoicing_finish_correction", completion, {}),
     sqlCall("recordObservation", "191000_invoicing_document_effects", "invoicing_record_observation", [["p_key", "input.requestKey"], ["p_document", "input.documentId"], ["p_observation", "input.eventRef", "input.eventKind", "input.identity", "input.providerDocumentRef", "input.providerDocumentNumber", "input.clearance", "input.artifacts", "input.observedAt", "input.payloadHash", "input.source"]], {}),
     sqlCall("claimDeliveries", "191000_invoicing_document_effects", "invoicing_claim_deliveries", [["p_limit", "input.limit"], ["p_visibility", "input.visibilitySeconds"], ["p_require_clearance", "input.requireClearance"], ["p_order_id", "input.orderId"]], {}),
-    sqlCall("settleDelivery", "191000_invoicing_document_effects", "invoicing_settle_delivery", [["p_delivery", "input.deliveryRef"], ["p_token", "input.token"], ["p_generation", "input.generation"], ["p_kind", "input.result.kind"], ["p_receipt", "input.result.receiptRef"], ["p_evidence", "input.result"]], { providerDocumentRef: "Validate the claimed document identity before settlement.", retrySeconds: "Native ignores backoff; managed settlement consumes it (store contract)." }),
+    sqlCall("settleDelivery", "191000_invoicing_document_effects", "invoicing_settle_delivery", [["p_delivery", "input.deliveryRef"], ["p_token", "input.token"], ["p_generation", "input.generation"], ["p_kind", "input.result.kind"], ["p_receipt", "input.result.receiptRef"], ["p_evidence", "input.result", "input.retrySeconds"]], { providerDocumentRef: "Validate the claimed document identity before settlement." }),
     sqlCall("claim", "193000_invoicing_correction_claims", "accounting_invoice_correction_outbox_claim", [["p_limit", "input.limit"], ["p_lease_seconds", "input.visibilitySeconds"], ["p_contract_version", "adapter.correctionContractV2"]], { providerRef: "Validate the selected provider; correction claims are not provider-filtered by this SQL." }),
     sqlCall("finish", "193000_invoicing_correction_claims", "accounting_invoice_correction_outbox_succeed", [["p_outbox_id", "input.claim.dutyId"], ["p_provider_invoice_id", "input.result.providerDocumentRef"], ["p_provider_invoice_number", "input.result.providerDocumentNumber"], ["p_provider_raw", "input.result.proof"], ["p_claim_attempt_count", "input.claim.generation"]], {}),
     sqlCall("fail", "193000_invoicing_correction_claims", "accounting_invoice_correction_outbox_fail", [["p_outbox_id", "input.claim.dutyId"], ["p_error", "input.kind", "input.phase", "input.proof", "input.evidence"], ["p_retry_seconds", "input.retrySeconds"], ["p_claim_attempt_count", "input.claim.generation"]], {}),

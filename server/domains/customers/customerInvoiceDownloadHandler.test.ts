@@ -122,6 +122,18 @@ describe("customer invoice download handler", () => {
     );
     expect(res.status).toHaveBeenCalledWith(404);
   });
+  it("refuses malformed bytes from an owned ticket before streaming", async () => {
+    const handler = createCustomerInvoiceDownloadHandler({
+      invoiceDownloadPort: { getInvoiceDownloadTicket: vi.fn(async () => ({ invoiceId: "invoice-a", invoiceRef: "INV-1", providerKind: "fiscal-a", providerInvoiceId: "external-a", providerInvoiceNumber: null, artifact: "invoice" as const, fileName: "INV-1.pdf" })) },
+      invoicePdfProvider: { downloadInvoicePdf: vi.fn(async () => ({ content: Buffer.from("bad bytes"), contentType: "application/pdf" })) },
+      authenticateUser: async () => ({ ok: true, userId: "owner-a" }),
+    });
+    const res = response();
+    await handler(request(), res);
+    expect(res.status).toHaveBeenCalledWith(503);
+    expect(res.send).not.toHaveBeenCalled();
+  });
+
 });
 
 function request(): VercelRequest {

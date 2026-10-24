@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import type { TFunction } from "i18next";
-import { getAdminAccountingOrderSummary } from "@/domains/accounting/accountingClient";
+import { getReferenceInvoiceOrderSummary } from "@/domains/accounting/referenceInvoicingClient";
 import { OrderDetailAccountingSection } from "./OrderDetailAccountingSection";
 
 export function OrderDetailAccountingPanel({
@@ -19,7 +19,7 @@ export function OrderDetailAccountingPanel({
     enabled: Boolean(orderId && accessToken),
     queryFn: async () => {
       if (!accessToken) throw new Error("Admin session required");
-      return getAdminAccountingOrderSummary(accessToken, orderId);
+      return getReferenceInvoiceOrderSummary(accessToken, orderId);
     },
     retry: false,
   });

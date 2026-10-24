@@ -1,3 +1,4 @@
+import { syncAcceptedInvoiceDocuments } from "@openlup/platform/invoicing";
 import { createHash } from "node:crypto";
 import type {
   AccountingInvoiceRuntimePort,
@@ -27,11 +28,14 @@ export async function syncAcceptedKsefDocuments({
     raw: Record<string, unknown>;
   };
 }): Promise<void> {
-  const [pdf, xml, upo] = await Promise.all([
-    provider.downloadInvoicePdf(target.providerInvoiceId),
-    provider.downloadKsefAttachment(target.providerInvoiceId, "gov"),
-    provider.downloadKsefAttachment(target.providerInvoiceId, "gov_upo"),
-  ]);
+  await syncAcceptedInvoiceDocuments({
+    target, status,
+    downloads: [
+      target => provider.downloadInvoicePdf(target.providerInvoiceId),
+      target => provider.downloadKsefAttachment(target.providerInvoiceId, "gov"),
+      target => provider.downloadKsefAttachment(target.providerInvoiceId, "gov_upo"),
+    ],
+    record: async (target, status, [pdf, xml, upo]) => {
   const refs = {
     providerPdfRef: providerDocumentRef(target.providerKind, target.providerInvoiceId, "pdf"),
     providerXmlRef: providerDocumentRef(target.providerKind, target.providerInvoiceId, "gov"),
@@ -62,6 +66,8 @@ export async function syncAcceptedKsefDocuments({
     observedAt: new Date().toISOString(),
     payloadHash: hashPayload(payload),
     payload,
+  });
+    },
   });
 }
 

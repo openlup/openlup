@@ -67,6 +67,17 @@ export declare function runInvoiceAdapterConformance(subjects: readonly Subject[
 }>;
 export {};
 ```
+## dist/invoicing/artifacts.d.ts
+
+```ts
+/** Validate transient bytes; this is neither storage proof nor delivery proof. */
+export declare function assertInvoicePdf(pdf: {
+    content: Uint8Array;
+    contentType: string;
+}): void;
+/** The host supplies its existing fallback caption. No locale/content default. */
+export declare function invoicePdfFilename(reference: string, fallback?: string): string;
+```
 ## dist/invoicing/capabilities.d.ts
 
 ```ts
@@ -113,6 +124,22 @@ export interface ChannelInvoiceDecision {
  */
 export declare function decideChannelInvoice(reader: OrderInvoicePolicyReader | undefined, lookup: InvoicePolicyLookup): Promise<ChannelInvoiceDecision>;
 export {};
+```
+## dist/invoicing/continuity.d.ts
+
+```ts
+import { collectInvoiceDuties } from "./dutyCollector.js";
+/** Explicit independent host invocation, never an inline fulfillment/payment hook.
+ * Durable source receipts and fact leases own replay, backoff and fault ceilings.
+ * A collector outage remains visible and can be retried by the host later.
+ * @consumer Reference native accounting runtime and installed cold consumer.
+ */
+export declare function createIndependentInvoiceDutyBinding(input: Parameters<typeof collectInvoiceDuties>[0]): {
+    collect(): Promise<Awaited<ReturnType<typeof collectInvoiceDuties>> | {
+        kind: "unavailable";
+        code: "retryable";
+    }>;
+};
 ```
 ## dist/invoicing/contracts/capabilities.d.ts
 
@@ -921,7 +948,8 @@ export interface InvoiceDutyReadback {
 }
 /** Every operation is one local transaction; commit before external I/O. Native
  * success atomically saves late identity and compensation; stale catch writes nothing.
- * Managed and native stores are bound to the selected provider at construction.
+ * Compatibility stores bind provider selection at construction; the structural
+ * native store accepts it per claim and persists the first provider on the duty.
  * No implementation, executor or migration is installed by these declarations.
  */
 export interface InvoiceStorePort {
@@ -986,7 +1014,7 @@ export interface InvoiceStorePort {
     } | InvoiceUnsupported>;
     readDuties(orderId: string): Promise<InvoiceDutyReadback | InvoiceUnsupported>;
     /** Filter order before locking/limit; never lease unrelated orders then filter.
-     * P8 reads the injected host seller before calling the first-claim SQL wrapper;
+     * P7 host composition reads the injected seller before the separate first-claim SQL wrapper;
      * its revisionRef supplies p_revision, without requiring a duty from the caller.
      */
     claim(input: {
@@ -1118,7 +1146,10 @@ export interface InvoiceStorePort {
     }[] | InvoiceUnsupported>;
     /** Native uncertain settlement passes p_receipt NULL and retains a non-null
      * receiptRef hint in p_evidence; managed uses it as the provider message id.
-     * Managed failed_before_send uses retrySeconds for backoff; native ignores it.
+     * Managed failed_before_send uses the retrySeconds RPC argument. Native
+     * failed_before_send carries { phase: 'before_send', retryable, retrySeconds }
+     * in p_evidence: whole seconds clamp to 60..86400, absent/invalid uses 900.
+     * retryable:false parks at infinity, with failed status and last_error visible.
      */
     settleDelivery(input: {
         readonly deliveryRef: string;
@@ -1179,6 +1210,196 @@ export declare function runInvoiceCorrectionJob<Claim extends {
     skipped: boolean;
     failures: number;
 }>;
+```
+## dist/invoicing/delivery.d.ts
+
+```ts
+import type { InvoiceUnsupported } from "./contracts/provider.js";
+import type { InvoiceStorePort } from "./contracts/store.js";
+import type { InvoiceDeliveryPort } from "./contracts/delivery.js";
+type DeliveryOutcome = Omit<Extract<Awaited<ReturnType<InvoiceDeliveryPort["send"]>>, {
+    kind: "provider_accepted";
+}>, "proof"> | Exclude<Awaited<ReturnType<InvoiceDeliveryPort["send"]>>, {
+    kind: "provider_accepted";
+}>;
+/** Donor sequencing over host claims, original keys, M04 transport and fenced
+ * finalizers. Native hosts MUST bind terminalFailure before leasing work.
+ * With CTL-M09-3's 191000 pin, failedBeforeSend settles failed_before_send with
+ * evidence { phase: 'before_send', retrySeconds }: whole seconds clamped
+ * to 60..86400, absent/invalid uses 900;
+ * terminalFailure uses { phase: 'before_send', retryable: false } for no reclaim.
+ * Native store mode refuses before claim unless its host projection is bound.
+ * @consumer Host delivery facade and explicit native M04 binding.
+ */
+type DeliveryJobInput<Claim, Result extends DeliveryOutcome> = {
+    enabled: boolean;
+    providerEnabled: boolean;
+    deliveryEnabled: boolean;
+    claim(): Promise<readonly Claim[] | InvoiceUnsupported>;
+    attemptCount(claim: Claim): number;
+    validate(claim: Claim): void;
+    download(claim: Claim): Promise<{
+        content: Uint8Array;
+        contentType: string;
+    }>;
+    filename(claim: Claim): string;
+    /** A rejected promise proves failure BEFORE transport entry. Once entered,
+     * the M04 binding must return uncertain, including timeout/lost ACK. */
+    send(claim: Claim, document: {
+        filename: string;
+        content: Uint8Array;
+        contentType: string;
+    }): Promise<Result>;
+    failedBeforeSend(claim: Claim, error: unknown, retrySeconds: number): Promise<unknown>;
+    /** Must durably stop reclaim using the same fence. Native failed_before_send
+     * evidence { phase: 'before_send', retryable: false } sets available_at to infinity. */
+    terminalFailure(claim: Claim, result: Extract<Result, {
+        kind: "failed_before_send" | "unsupported";
+    }>): Promise<unknown>;
+    uncertain(claim: Claim, result: Extract<Result, {
+        kind: "uncertain";
+    }>): Promise<unknown>;
+    accepted(claim: Claim, result: Extract<Result, {
+        kind: "provider_accepted";
+    }>): Promise<unknown>;
+    finalizeUncertain(claim: Claim, receiptRef: string): Promise<unknown>;
+};
+type NativeClaim = Exclude<Awaited<ReturnType<InvoiceStorePort["claimDeliveries"]>>, InvoiceUnsupported>[number];
+type NativeDeliveryJobInput = {
+    enabled: boolean;
+    providerEnabled: boolean;
+    deliveryEnabled: boolean;
+    store: Pick<InvoiceStorePort, "claimDeliveries" | "settleDelivery">;
+    claimOptions: Parameters<InvoiceStorePort["claimDeliveries"]>[0];
+    download(claim: NativeClaim): Promise<{
+        content: Uint8Array;
+        contentType: string;
+    }>;
+    filename(claim: NativeClaim): string;
+    send: InvoiceDeliveryPort["send"];
+};
+/** Host callback mode preserves donor sequencing. Native store mode supplies
+ * fenced terminal/backoff finalizers and the M04 envelope from claimDeliveries.
+ * @consumer Host delivery facade and explicit native M04 binding.
+ */
+export declare function runInvoiceDeliveryJob(input: NativeDeliveryJobInput): ReturnType<typeof runDeliveryJob>;
+export declare function runInvoiceDeliveryJob<Claim, Result extends DeliveryOutcome>(input: DeliveryJobInput<Claim, Result>): ReturnType<typeof runDeliveryJob>;
+declare function runDeliveryJob<Claim, Result extends DeliveryOutcome>(input: DeliveryJobInput<Claim, Result>): Promise<{
+    ok: boolean;
+    checked: number;
+    updated: number;
+    skipped: boolean;
+    reason: string;
+    failures: number;
+} | {
+    ok: boolean;
+    checked: number;
+    updated: number;
+    skipped: boolean;
+    failures: number;
+}>;
+export {};
+```
+## dist/invoicing/documentHistory.d.ts
+
+```ts
+type InvoiceDocumentRole = "original" | "correction" | "replacement";
+type InvoiceDocumentArtifact = "invoice" | "correction";
+type InvoiceDocumentEmailState = "not_requested" | "pending" | "provider_accepted" | "failed";
+type InvoiceDocumentHistoryRow = Record<string, unknown>;
+interface InvoiceDocumentHistoryEntry {
+    documentKey: string;
+    invoiceId: string;
+    parentDocumentRef: string | null;
+    orderId: string;
+    invoiceRef: string;
+    role: InvoiceDocumentRole;
+    artifact: InvoiceDocumentArtifact;
+    status: string;
+    blockedReason: string | null;
+    documentKind: string | null;
+    providerKind: string | null;
+    providerDocumentRef: string | null;
+    providerDocumentNumber: string | null;
+    clearanceReference: string | null;
+    clearanceState: string;
+    totalGrossMinor: number | null;
+    /**
+     * The currency the document was **issued in**, copied from
+     * `accounting_invoices.currency` (`NOT NULL CHECK (char_length = 3)`).
+     *
+     * It travels with the amount rather than being resolved by whoever renders it. An
+     * issued invoice is the most historical money the platform holds: it is a document
+     * of record whose denomination was fixed the day it was written, and a reader that
+     * asked the current settlement profile instead would re-label the customer's own
+     * accounting the first time a deployment changed what it sells in.
+     */
+    currency: string;
+    issuedAt: string | null;
+    createdAt: string;
+    isCurrent: boolean;
+    downloadAvailable: boolean;
+    emailState: InvoiceDocumentEmailState;
+}
+interface InvoiceDocumentHistory {
+    current: InvoiceDocumentHistoryEntry | null;
+    documents: InvoiceDocumentHistoryEntry[];
+}
+interface ResolveInvoiceDocumentHistoryInput {
+    invoices: InvoiceDocumentHistoryRow[];
+    operations?: InvoiceDocumentHistoryRow[];
+    deliveryOutboxes?: InvoiceDocumentHistoryRow[];
+    providerArtifactEligible?: (providerKind: string) => boolean;
+}
+export declare function resolveInvoiceDocumentHistory({ invoices, operations, deliveryOutboxes, providerArtifactEligible, }: ResolveInvoiceDocumentHistoryInput): InvoiceDocumentHistory;
+export {};
+```
+## dist/invoicing/documentSync.d.ts
+
+```ts
+/** Direct donor extraction: host supplies attachment kinds, durable provider
+ * references, status/event keys, hashing and recording. Downloads confer no blob
+ * storage proof. The optional observation mode retains polling without adding
+ * another public runner/export or provider-specific status vocabulary. */
+export declare function syncAcceptedInvoiceDocuments<Target, Status, Document>(input: {
+    target: Target;
+    status: Status;
+    downloads: readonly ((target: Target) => Promise<Document>)[];
+    record(target: Target, status: Status, documents: readonly Document[]): Promise<unknown>;
+}): Promise<void>;
+export declare function syncAcceptedInvoiceDocuments<Target, Status, Document>(input: {
+    targets(): Promise<readonly Target[]>;
+    observe(target: Target): Promise<Status>;
+    recordStatus(target: Target, status: Status): Promise<unknown>;
+    accepted(status: Status): boolean;
+    downloads: readonly ((target: Target) => Promise<Document>)[];
+    record(target: Target, status: Status, documents: readonly Document[]): Promise<unknown>;
+}): Promise<{
+    ok: boolean;
+    checked: number;
+    updated: number;
+    skipped: false;
+    failures: number;
+}>;
+```
+## dist/invoicing/dutyCollector.d.ts
+
+```ts
+import type { InvoiceStorePort, InvoiceUnsupported } from "./contracts/index.js";
+/** Collect retained sources, then prepare each leased duty in separate transactions.
+ * The host commits every store call; no money/parcel callback or provider I/O is
+ * accepted here. Missing facts stay owed until the host installs their revision.
+ * @consumer Independent invoice duty binding.
+ */
+export declare function collectInvoiceDuties(input: {
+    store: Pick<InvoiceStorePort, "sweep" | "prepareFacts" | "finishFacts">;
+    limit?: number;
+}): Promise<{
+    kind: "collected";
+    collected: number;
+    prepared: number;
+    failures: number;
+} | InvoiceUnsupported>;
 ```
 ## dist/invoicing/fulfillmentTrigger.d.ts
 
@@ -1306,6 +1527,18 @@ export { withAccountingInvoiceShadowTrigger } from "./fulfillmentTrigger.js";
 export { withAutoDispatchAccountingInvoiceTrigger } from "./fulfillmentTrigger.js";
 export { runInvoiceCorrectionJob } from "./correction.js";
 export { createInvoiceReversalHandlers } from "./reversal.js";
+/** @consumer Reference native accounting adapter/runtime and installed-consumer conformance. */
+export { createPostgresInvoiceStore, runNativeInvoiceIssueJob } from "./postgresInvoiceStore.js";
+/** @consumer Native migration conformance and installed-consumer asset verification. */
+export { INVOICING_MIGRATIONS } from "./migrations.js";
+export { collectInvoiceDuties } from "./dutyCollector.js";
+export { createIndependentInvoiceDutyBinding } from "./continuity.js";
+export { runInvoiceDeliveryJob } from "./delivery.js";
+export { assertInvoicePdf, invoicePdfFilename } from "./artifacts.js";
+export { syncAcceptedInvoiceDocuments } from "./documentSync.js";
+export { syncInvoicePayoutSettlements } from "./settlementSync.js";
+export { resolveInvoiceDocumentHistory } from "./documentHistory.js";
+export { createInvoiceReadModel } from "./readModel.js";
 ```
 ## dist/invoicing/issue.d.ts
 
@@ -1350,6 +1583,53 @@ export declare function runInvoiceIssueJob<Claim extends {
     failures: number;
 }>;
 ```
+## dist/invoicing/migrations.d.ts
+
+```ts
+/** Sparse native projections, not an installation chain. Install the full catalogue. */
+export declare const INVOICING_MIGRATIONS: {
+    readonly native: {
+        readonly correctionStorage: "child_document";
+        readonly fiscalScope: "explicit_host_facts";
+        readonly units: readonly [{
+            readonly position: 7;
+            readonly catalogPath: "db/platform/migrations/20260809210000_accounting_document_rail.sql";
+            readonly sha256: "f5c6c4b3d5ccdd7c7137669edba7d45c63685edc57fe982e3e8fd559214ccc8e";
+            readonly url: URL;
+        }, {
+            readonly position: 13;
+            readonly catalogPath: "db/platform/migrations/20260811150000_accounting_payout_rail.sql";
+            readonly sha256: "b127631196362d59ceb94700426766659589601c69a5adfb1b5d6bbeadf5b0db";
+            readonly url: URL;
+        }, {
+            readonly position: 15;
+            readonly catalogPath: "db/platform/migrations/20260812130000_accounting_document_lifecycle_rail.sql";
+            readonly sha256: "450ae24b8ba9438ea267cfbf52f9c78a790b1803f369c216577566952fa43b5f";
+            readonly url: URL;
+        }, {
+            readonly position: 77;
+            readonly catalogPath: "db/platform/migrations/20261022190000_invoicing_durable_duties.sql";
+            readonly sha256: "2d7bf98924b4ef29b3e8f902d768e45dd9c850242f4358a0193a0c00d0f3d081";
+            readonly url: URL;
+        }, {
+            readonly position: 78;
+            readonly catalogPath: "db/platform/migrations/20261022191000_invoicing_document_effects.sql";
+            readonly sha256: "0eac3453e2b82c43e4fff9e35bcd6daefdd0bb5f992937f7f411d690550428cf";
+            readonly url: URL;
+        }, {
+            readonly position: 79;
+            readonly catalogPath: "db/platform/migrations/20261022192000_invoicing_payment_decoupling.sql";
+            readonly sha256: "f4af30ee4c9365ea51bd0e95e5cc7ae869cf15dce5867fdd640f679438b36058";
+            readonly url: URL;
+        }];
+    };
+    readonly managed: {
+        readonly correctionStorage: "base_row";
+        readonly fiscalScope: "host_managed_projection";
+        readonly units: readonly ["supabase/migrations/20261022193000_invoicing_correction_claims.sql", "supabase/migrations/20261022193100_invoicing_correction_compatibility.sql"];
+    };
+};
+```
 ## dist/invoicing/nativeUnsupported.d.ts
 
 ```ts
@@ -1386,6 +1666,141 @@ export declare function readInvoicePaymentEvidence(payment: {
     }>;
 } | undefined): Promise<PaymentEvidence>;
 export {};
+```
+## dist/invoicing/postgresInvoiceStore.d.ts
+
+```ts
+import type { InvoiceStorePort, InvoiceHostPorts, InvoiceProviderPort } from "./contracts/index.js";
+type InvoiceClaim = Parameters<InvoiceStorePort["preflight"]>[0]["claim"];
+type NativeStore = InvoiceStorePort & {
+    /** Read-only discovery before a host can install facts. Replays may repeat targets. */
+    discoverDuties(limit: number, afterDutyId?: string | null): Promise<readonly {
+        readonly dutyId: string;
+        readonly orderId: string;
+    }[]>;
+};
+type DeliveryClaim = Exclude<Awaited<ReturnType<InvoiceStorePort["claimDeliveries"]>>, {
+    kind: "unsupported";
+}>[number];
+type DeliveryProjection = {
+    /** Host-owned M04 keys, presentation and recipient resolution, after leasing.
+     * Return only the envelope for this document; a failed projection never sends.
+     */
+    projectDelivery(input: {
+        readonly deliveryRef: string;
+        readonly documentId: string;
+        readonly channel: string;
+        readonly recipientRef: string;
+        readonly attemptCount: number;
+    }): Promise<Pick<DeliveryClaim, "identity" | "delivery">>;
+};
+type Executor = {
+    query(text: string, values?: unknown[]): Promise<{
+        rows: Record<string, unknown>[];
+    }>;
+};
+/** Bind an autocommit executor. Never pass a transaction spanning host/provider I/O.
+ * Missing fiscal facts or delivery binding refuse before writes; no scheduler is installed.
+ */
+export declare function createPostgresInvoiceStore(db: Executor, deliveryProjection?: DeliveryProjection): NativeStore;
+type MoneyEvidence = Awaited<ReturnType<InvoiceHostPorts["money"]["read"]>>;
+/** Native issue/readback binding; every store operation commits before host I/O.
+ * @consumer Explicit native host issue binding and installed-consumer conformance.
+ */
+export declare function runNativeInvoiceIssueJob(input: {
+    store: Pick<InvoiceStorePort, "claim" | "preflight" | "finish" | "fail">;
+    provider: Pick<InvoiceProviderPort, "issue" | "correct" | "read">;
+    money: InvoiceHostPorts["money"];
+    readLocalPayment(claim: InvoiceClaim): Promise<MoneyEvidence>;
+    providerRef: string;
+    orderId?: string | null;
+    limit?: number;
+    visibilitySeconds?: number;
+}): Promise<import("./contracts/provider.js").InvoiceUnsupported | {
+    checked: number;
+    updated: number;
+    failures: number;
+    ok: boolean;
+}>;
+export {};
+```
+## dist/invoicing/readModel.d.ts
+
+```ts
+import type { InvoiceHostPorts, InvoiceIdentity, InvoiceProviderPort, InvoiceStorePort } from "./contracts/index.js";
+/** Read-only orchestration. Auth, owner resolution and queries stay in host
+ * callbacks. Safe native account projections preserve negative correction totals,
+ * currency and parent identity without exposing provider payloads or URLs.
+ * @consumer Customer download/history and authorized operator host facades.
+ */
+export declare function createInvoiceReadModel(ports?: {
+    accountHistory?: InvoiceHostPorts["accountHistory"];
+    artifacts?: Pick<InvoiceHostPorts["artifacts"], "download">;
+    provider?: Pick<InvoiceProviderPort, "read">;
+    duties?: Pick<InvoiceStorePort, "readDuties">;
+}): {
+    history(input: Parameters<InvoiceHostPorts["accountHistory"]["read"]>[0]): ReturnType<InvoiceHostPorts["accountHistory"]["read"]>;
+    download(input: Parameters<InvoiceHostPorts["accountHistory"]["resolveDownload"]>[0]): Promise<{
+        readonly kind: "unsupported";
+        readonly code: "host_binding_required";
+        readonly retryable: false;
+        readonly effectMayHaveSucceeded: false;
+    } | {
+        readonly kind: "unknown";
+        readonly code: "unknown";
+    } | {
+        kind: "denied";
+        content?: undefined;
+        contentType?: undefined;
+        fileName?: undefined;
+        parentDocumentRef?: undefined;
+    } | {
+        kind: "downloaded";
+        content: Uint8Array<ArrayBufferLike>;
+        contentType: string;
+        fileName: string;
+        parentDocumentRef: string | null;
+    }>;
+    readback(identity: InvoiceIdentity): Promise<import("./contracts/provider.js").InvoiceReadbackResult | {
+        readonly kind: "unsupported";
+        readonly code: "host_binding_required";
+        readonly retryable: false;
+        readonly effectMayHaveSucceeded: false;
+    }>;
+    /** Operator-only duty readback. The host must authorize the caller before
+     * invoking it, as operator() does; this method has no auth hook of its own. */
+    readDuties(orderId: string): Promise<import("./contracts/provider.js").InvoiceUnsupported | import("./contracts/store.js").InvoiceDutyReadback | {
+        readonly kind: "unknown";
+        readonly code: "unknown";
+    }>;
+    /** The authorize callback runs before the query. HTTP status mapping stays host-owned. */
+    operator<Summary>(input: {
+        authorize(): Promise<boolean>;
+        read(): Promise<Summary>;
+    }): Promise<{
+        kind: "denied";
+        value?: undefined;
+    } | {
+        kind: "found";
+        value: Awaited<Summary>;
+    }>;
+    /** Legacy ticket resolver verifies the real order owner before any PDF I/O. */
+    ownedPdf<Ticket, Pdf extends {
+        content: Uint8Array;
+        contentType: string;
+    }>(input: {
+        resolve(): Promise<Ticket | null>;
+        download(ticket: Ticket): Promise<Pdf>;
+    }): Promise<{
+        kind: "denied";
+        ticket?: undefined;
+        pdf?: undefined;
+    } | {
+        kind: "downloaded";
+        ticket: NonNullable<Awaited<Ticket>>;
+        pdf: Pdf;
+    }>;
+};
 ```
 ## dist/invoicing/reversal.d.ts
 
@@ -1427,6 +1842,28 @@ export declare function createInvoiceReversalHandlers<Row, Request, Result exten
         reason: string;
     }>;
 }[];
+```
+## dist/invoicing/settlementSync.d.ts
+
+```ts
+import type { InvoiceSettlementPort, InvoiceSettlementItem } from "./contracts/settlement.js";
+/** Preserve each immutable balance item, nullable links and original host key.
+ * Transport, resolution and richer durable item storage remain host-owned.
+ * Legacy batch/payment receipts may collapse items: later reuse is returned as
+ * identity_mismatch without another write; processing continues. Only an item-capable
+ * recorder can produce distinct recorded receipts. This records bank evidence only and has no payment-success writer.
+ */
+export declare function syncInvoicePayoutSettlements<Item>(input: {
+    list(limit: number): Promise<readonly Item[]>;
+    project(item: Item): InvoiceSettlementItem | Promise<InvoiceSettlementItem>;
+    settlement: Pick<InvoiceSettlementPort, "record">;
+    limit?: number;
+}): Promise<{
+    checked: number;
+    recorded: number;
+    replayed: number;
+    items: Awaited<ReturnType<InvoiceSettlementPort["record"]>>[];
+}>;
 ```
 ## dist/invoicing/snapshot.d.ts
 

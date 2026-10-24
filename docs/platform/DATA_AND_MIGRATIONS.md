@@ -648,6 +648,14 @@ stable upgrade guarantee.
 
 ## Compatibility lifecycle
 
+The [M09 migration owner](#m09-invoicing-forward-design-and-control-approval)
+records the reviewed payment-decoupling forward and its installation boundary.
+For new unlinked P4 settlements, `accountingRequested` remains false even after
+independent invoicing; P4 supplies no payment-event linkback writer. Historical
+linked events retain their readback. Use `invoicing_duty_readback` for invoice
+progress and retained settlements for late recovery.
+
+
 The native `20261022160000_subscription_retry_lifecycle` forward adds three
 subscription retry ledgers and nine invoker functions. Install it through the
 complete ordered native manifest; its package SQL projection is byte-identical.
@@ -1011,9 +1019,10 @@ owners; no provider mapping or new schema enters the package.
 ## M09 invoicing forward design and control approval
 
 Status: `20261022193000` and `20261022193100` introduce the two managed
-correction forwards; the remaining forwards stay fixture-only. Introduction
-must use exactly the pinned bytes. An unintroduced forward may carry its changed
-pins in the feature under the co-located rule above. The two introduced forwards
+correction forwards. P4 introduces native durable duties, document effects and
+payment decoupling at positions 77–79; the remaining forwards stay fixture-only.
+Introduction must use exactly the pinned bytes. An unintroduced forward may carry its changed
+pins in the feature under the co-located rule above. The introduced forwards
 are immutable; their repair requires a new authorized forward. Existing control
 approvals and their review history remain valid.
 
@@ -1022,17 +1031,19 @@ seller revisions. New functions are invokers with `search_path = pg_catalog`;
 new tables, views and functions revoke PUBLIC, anon and authenticated access.
 There are no new native triggers, definers or grants. The host must explicitly
 bootstrap its executor's least privileges; these fixtures grant no browser or
-service principal access. Install the complete native catalogue, never sparse
-package projections independently. Native versions are `20261022190000`,
+service principal access. Native versions are `20261022190000`,
 `20261022191000`, `20261022192000` and `20261022195000`; managed versions are
 `20261022193000`, `20261022193100` and `20261022195100`. M09 lands before M10
 and keeps these assigned versions; verify against the landed managed prefix,
-not an assumed M10 predecessor.
-The native manifest owns installation positions and preserves the landed
-subscription retry and stock-evidence forwards (`20261022160000` and
-`20261022165000`). Recompute function preimages against the complete selected
-preceding rail. Positional unit comments inside immutable SQL refer to its
-historical staging order; use versioned filenames for identity, not those ordinals.
+not an assumed M10 predecessor. The native P4 units occupy positions 77–79 after the installed subscription
+160000 and fulfillment 165000 tail at 75/76; seller revision follows separately at 80.
+Install the complete native catalogue with its preserved ledger prefix and exact
+replacement preimage; sparse package projections are not an install chain.
+Positional unit comments inside immutable SQL refer to its historical staging order;
+use versioned filenames for identity, not those ordinals.
+Canonical and packaged P4 assets equal their reviewed fixtures and pins, and the
+manifest binds the full selected object inventory. No pending M10 forward or
+runtime is required.
 
 The fourth native pin is the single exact replacement of
 `payment_truth_apply_terminal(uuid,text,text,timestamptz,text,text,jsonb,text,text,text)`.
@@ -1123,7 +1134,9 @@ when a create claim fails with `retryable`/`before_send`, or when authoritative
 `absent` evidence confirms no remote document. A retryable readback still stays
 unknown; a confirmed issue still requests one correction. Blocked duties return
 terminal `unsupported`.
-Only ready, pending, unattempted correction requests are hidden from the incumbent.
+Initial legacy-child adoption hides only ready, pending, unattempted correction
+requests. Once M09 owns a request, the [incumbent queue fence](#m09-incumbent-queue-fence)
+continues through processing, expiry and failure.
 
 Before installing, retire the incumbent issue/correction executor. Drain the
 legacy managed correction worker first; reconcile any attempted or processing
@@ -1138,10 +1151,12 @@ This adapter migration and its refusal/recovery proof are prerequisites for intr
 of fixture-only control preparation. The managed `ksefRequired` key is retained
 for donor parity as a country-specific key, not a neutral native requirement.
 
-Native correction finalization calls the incumbent document transition path,
-whose operation insert takes a key-share lock on the order row through its
-foreign key. Its request/duty lock
-order does not remove that coupling; native continuity proof belongs to P4.
+Native correction finalization locks the parent request, child request, parent
+duty and child duty before advancing the child and base accounting documents.
+The native document transition updates accounting records, and its operation insert
+takes a key-share lock on the order row through its foreign key; that lock order does
+not remove the coupling. P4's native continuity
+witness exercises dispatch while accounting work is blocked.
 Managed v2 correction claim locks both joined invoice and outbox rows; its
 finalizers lock invoice before outbox. Fenced finalizers also accept a parent
 already `corrected` by an earlier acceptance sync when its `correctionOutboxId`
@@ -1165,6 +1180,8 @@ locks; these forwards do not prove the later native money/parcel isolation.
 the real v2 adapter, rollback/reclaim, stale outcomes and browser refusal.
 The shipped [pgTAP](../../supabase/tests/accounting_correction_recovery_test.sql)
 adds committed-ACK loss and unchanged delivery/audit witnesses.
+
+### M09 incumbent queue fence
 
 M09 request rows use `available_at='infinity'` at prepare, claim and fail,
 including corrections, so the incumbent queue cannot lease them. M09 also checks
@@ -1264,3 +1281,16 @@ boundaries except the exact pinned replacements and checking native invoker
 versus managed service-only attributes. Positive and refusal plants exercise
 both CI and release admission. Control approval alone provides no runtime,
 provider, deployment or fiscal-readiness evidence.
+
+### P4a native store projections
+
+`INVOICING_MIGRATIONS.native.units` projects unchanged accounting rails at
+positions 7, 13 and 15 and the three pinned M09 forwards at 77, 78 and 79.
+Every packaged asset is byte-identical to its canonical file. The
+[M09 migration owner](#m09-invoicing-forward-design-and-control-approval) defines
+installation order and prefix preservation.
+The native descriptor declares child-document corrections and explicit host
+fiscal facts. The separate managed descriptor names P3's base-row correction
+forwards; neither descriptor claims storage or fiscal parity.
+
+Seller-revision forwards and default service activation remain later work.

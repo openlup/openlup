@@ -603,6 +603,14 @@ establish no public package visibility or runtime/application default.
 [CI image mirror guidance](../../CONTRIBUTING.md#ci-image-mirror) owns retry
 budgets, refusal boundaries, mirror execution and the owner's GHCR setup.
 
+The native catalogue now appends the three reviewed M09 duty/effect/payment
+forwards after its preserved prefix. The manifest inventory digest and sparse
+package descriptor bind that complete selected tree; they do not declare
+native/managed correction storage or fiscal support equivalent. The approved
+pre-install duty re-pin is reflected in both native SQL projections, the file
+hash and the live object-inventory hash; these bindings must move together.
+It does not authorize rewriting a migration already recorded by an installation.
+
 Fulfillment appends command/alignment units 73/74 and binds
 their byte-identical package projections through `FULFILLMENT_MIGRATIONS`.
 The canonical manifest retains its baseline and full prior prefix; its refreshed
@@ -1220,4 +1228,9 @@ The invoicing refusal factory cannot clear a previously unknown effect: its
 unsupported result describes this call only. Offline conformance checks stable
 identity, recovery without a second write and parent mismatch before another
 write. Adapter-owned fixtures establish this contract boundary; live fiscal
-readiness, native database fencing and inbox delivery require their own evidence.
+readiness and inbox delivery require their own evidence. Native P4a fencing is
+covered by the real-Postgres conformance witness, with no provider access. The
+store refuses absent host facts before writes; the duty stays owed. Native
+child-document corrections and managed base-row corrections have separate
+migration descriptors. An unknown claim always recovers by exact readback;
+only authoritative scoped absence can authorize a fresh create.

@@ -7,7 +7,16 @@ import {
 type QueryResult = { data: unknown; error: { code?: string; message?: string } | null };
 
 describe("supabase accounting read port", () => {
-  it("maps sanitized issue outbox failure context", async () => {
+  it("keeps an empty last error null for a healthy succeeded outbox", async () => {
+    const port = createSupabaseAccountingReadPort(fakeClient({}, {}, [invoiceRow({ status: "issued" })], [], [{
+      status: "succeeded", attempt_count: 1, next_attempt_at: null, last_error: {},
+      created_at: "2026-06-05T10:00:00+00:00",
+    }]));
+    await expect(port.getOrderSummary({ orderId: "22222222-2222-4222-8222-222222222222" }))
+      .resolves.toMatchObject({ summary: { outbox: { status: "succeeded", lastError: null } } });
+  });
+
+  it("projects closed diagnostic codes without provider free text or secret/URL detail", async () => {
     const selected: Record<string, string> = {};
     const ordered: Record<string, string> = {};
     const port = createSupabaseAccountingReadPort(fakeClient(selected, ordered));
@@ -22,8 +31,8 @@ describe("supabase accounting read port", () => {
           attemptCount: 3,
           nextAttemptAt: "2026-06-05T11:00:00+00:00",
           lastError: {
-            code: "invoice_provider_failed",
-            message: "[redacted-secret] failed for [redacted-email]",
+            code: "unknown",
+            message: null,
             retryable: true,
           },
         },
@@ -82,6 +91,7 @@ function fakeClient(
   ordered: Record<string, string>,
   invoices = [invoiceRow()],
   operations: Record<string, unknown>[] = [],
+  outboxes = outboxRows(),
 ): AccountingReadSupabaseClient {
   return {
     from(table: string) {
@@ -109,7 +119,7 @@ function fakeClient(
               ? invoices
               : table === "accounting_invoice_operations"
                 ? operations
-                : outboxRows(),
+                : outboxes,
             error: null,
           }).then(onfulfilled, onrejected);
         },

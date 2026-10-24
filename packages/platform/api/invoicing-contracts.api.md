@@ -813,7 +813,8 @@ export interface InvoiceDutyReadback {
 }
 /** Every operation is one local transaction; commit before external I/O. Native
  * success atomically saves late identity and compensation; stale catch writes nothing.
- * Managed and native stores are bound to the selected provider at construction.
+ * Compatibility stores bind provider selection at construction; the structural
+ * native store accepts it per claim and persists the first provider on the duty.
  * No implementation, executor or migration is installed by these declarations.
  */
 export interface InvoiceStorePort {
@@ -878,7 +879,7 @@ export interface InvoiceStorePort {
     } | InvoiceUnsupported>;
     readDuties(orderId: string): Promise<InvoiceDutyReadback | InvoiceUnsupported>;
     /** Filter order before locking/limit; never lease unrelated orders then filter.
-     * P8 reads the injected host seller before calling the first-claim SQL wrapper;
+     * P7 host composition reads the injected seller before the separate first-claim SQL wrapper;
      * its revisionRef supplies p_revision, without requiring a duty from the caller.
      */
     claim(input: {
@@ -1010,7 +1011,10 @@ export interface InvoiceStorePort {
     }[] | InvoiceUnsupported>;
     /** Native uncertain settlement passes p_receipt NULL and retains a non-null
      * receiptRef hint in p_evidence; managed uses it as the provider message id.
-     * Managed failed_before_send uses retrySeconds for backoff; native ignores it.
+     * Managed failed_before_send uses the retrySeconds RPC argument. Native
+     * failed_before_send carries { phase: 'before_send', retryable, retrySeconds }
+     * in p_evidence: whole seconds clamp to 60..86400, absent/invalid uses 900.
+     * retryable:false parks at infinity, with failed status and last_error visible.
      */
     settleDelivery(input: {
         readonly deliveryRef: string;

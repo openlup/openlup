@@ -148,3 +148,23 @@ and [pgTAP recovery witness](../../../supabase/tests/accounting_correction_recov
 for recovery, lost ACK, exact replay, stale attempts and preserved history.
 
 See the [M09 forward owner](../../../docs/platform/DATA_AND_MIGRATIONS.md#m09-invoicing-forward-design-and-control-approval) for the registered managed-correction limit, follow-up and finalization semantics.
+
+The reference host now consumes the seven invoicing read helpers through explicit
+host callbacks. Delivery keeps the managed claim/key/receipt/uncertainty behavior;
+PDF validation and the existing filename fallback are bound by the host facade.
+Accepted-document synchronization keeps host attachment kinds, event keys, hash
+and provider references. Payout transport stays A2-owned and each balance item
+keeps its own key, including multiple items for one payout/payment.
+
+The document-history shim projects legacy columns into the package's neutral
+lineage resolver and returns its existing DTO. Operator authorization precedes
+summary queries. The reference browser client consumes the host route, filters
+errors to closed diagnostic codes and omits provider free text; runbook URLs and
+correction intent remain host responsibilities. No customer or package mutation
+authority is added.
+
+The managed payout importer preserves its existing legacy recorder calls and
+aggregate results. Package per-item receipts report a reused batch/payment row
+as an identity conflict, continue with remaining items and make no extra write.
+Distinct recorded item receipts require the richer host recorder/resolver; legacy
+aggregate results do not establish item granularity or payment success.
