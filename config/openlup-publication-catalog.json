@@ -23282,6 +23282,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/postgresContainerCleanup.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/promotionsNative.test.ts",
       "class": "public-output"
     },
