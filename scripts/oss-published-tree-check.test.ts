@@ -41,6 +41,40 @@ const sourcePreviewWorkflow = readFileSync(join(ROOT, ".github/workflows/publish
 const workflowJob = (name: string, source = workflow) => source.split(`\n  ${name}:\n`)[1]?.split(/^ {2}[a-z][a-z-]*:\n/mu)[0] ?? "";
 const workflowCommands = (job: string) => [...job.matchAll(/^ {6}(?:- | {2})run: (?!\|)(.+)$/gmu)].map((match) => match[1]);
 
+describe("queue completion trust boundary", () => {
+  const source = readFileSync(join(ROOT, ".github/workflows/queue-handoff.yml"), "utf8");
+  const assertControls = (value: string) => {
+    expect(value).toContain("  workflow_run:\n    workflows: [Published Tree CI]\n    types: [completed]");
+    expect(value).not.toMatch(/^ {2}(?:schedule|workflow_dispatch|pull_request|pull_request_target|push):/mu);
+    expect(value).toContain("permissions: {}\n");
+    const job = workflowJob("enqueue", value);
+    for (const guard of ["github.repository == 'openlup/openlup'", "github.ref == 'refs/heads/main'",
+      "github.event.workflow_run.event == 'pull_request'", "vars.OPENLUP_NATIVE_QUEUE == 'enabled'",
+      "vars.OPENLUP_QUEUE_APP_CLIENT_ID != ''", "environment: openlup-merge-queue",
+      "ref: ${{ github.sha }}", "persist-credentials: false", "repositories: openlup",
+      "permission-merge-queues: write", "permission-contents: read", "permission-pull-requests: read",
+      "GH_TOKEN: ${{ github.token }}", "OPENLUP_QUEUE_TOKEN: ${{ steps.queue-identity.outputs.token }}"])
+      expect(job).toContain(guard);
+    expect(job).not.toMatch(/\b(?:contents|actions|issues|pull-requests): write\b|\bwrite-all\b/u);
+    expect(workflowCommands(job)).toEqual(["node scripts/agent-review-queue.mjs enqueue"]);
+    expect(job).not.toMatch(/download-artifact|npm (?:ci|install)|github\.event\.workflow_run\.head_sha/u);
+  };
+  it("uses trusted main code and an isolated queue identity without another required check", () => assertControls(source));
+  it.each([
+    ["  workflow_run:\n", "  pull_request_target:\n"],
+    ["github.ref == 'refs/heads/main'", "true"],
+    ["environment: openlup-merge-queue", "environment: npm-stage"],
+    ["ref: ${{ github.sha }}", "ref: ${{ github.event.workflow_run.head_sha }}"],
+    ["persist-credentials: false", "persist-credentials: true"],
+    ["repositories: openlup", "repositories: other"],
+    ["permission-contents: read", "permission-contents: write"],
+    ["GH_TOKEN: ${{ github.token }}", "GH_TOKEN: ${{ steps.queue-identity.outputs.token }}"],
+    ["run: node scripts/agent-review-queue.mjs enqueue", "run: npm ci"],
+  ])("refuses an unsafe workflow substitution %s", (before, after) => {
+    expect(() => assertControls(source.replace(before, after))).toThrow();
+  });
+});
+
 describe("CI image mirror workflow controls", () => {
   const mirror = readFileSync(join(ROOT, ".github/workflows/mirror-ci-images.yml"), "utf8");
   const permissionBlocks = (source: string) => [...source.matchAll(/^( *)permissions:([^\n]*)\n((?:\1 +[^\n]*\n)*)/gmu)].map(([block]) => block.trimEnd());
