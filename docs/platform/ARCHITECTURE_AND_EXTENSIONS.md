@@ -981,6 +981,11 @@ invalid supplied timestamps are refused and counted. Compact offsets such as
 `+0200`, minute precision and timestamps without a zone retain base acceptance;
 original bytes still identify the webhook. The shared timestamp parser remains
 unchanged from PR2 for reconciliation, `createdAt` and stock movements.
+With Zod 4.6.6, the ingress explicitly admits minute precision as well as the
+default seconds/fractions precision. Both branches enforce calendar validity;
+compact offsets are expanded only in the validation copy, never in receipt-key
+input. The existing replay witness and invalid-calendar cases protect that
+compatibility boundary when the validation dependency changes.
 
 O3 deliberately retains a typed fact and an opaque raw-event pointer. The host
 must retain the referenced evidence under its own access and retention policy;
@@ -1573,7 +1578,10 @@ With CTL-M09-3's 191000 pin, a native host binds `failedBeforeSend` by settling
 backoff, and `terminalFailure` with `{phase:'before_send', retryable:false}` for
 terminal no-reclaim. The optional `createPostgresInvoiceStore` delivery projection
 supplies the host envelope; `runInvoiceDeliveryJob` store mode supplies fenced
-finalizers. Missing projection refuses before leasing. Uncertain transport
+finalizers. Missing projection refuses before leasing. Per-row projection or
+document-read exceptions settle retryable `failed_before_send` with generation-based
+backoff; envelope mismatches settle non-retryable and park. Other valid leased rows
+continue, with no uncertain receipt for these unsent failures. Uncertain transport
 or lost local acknowledgement cannot become another send.
 
 The account-history host projection verifies owner/order before its query and

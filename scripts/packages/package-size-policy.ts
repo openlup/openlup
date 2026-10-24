@@ -73,7 +73,7 @@ try {
   if (output.length !== 1 || output[0].type !== 'chunk') throw new Error('browser entry must produce one bundle');
   process.stdout.write(String(gzipSync(output[0].code).length));
 } finally { await bundle.close(); }`;
-  return Number(execFileSync(process.execPath, ["--input-type=module", "-e", script], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }));
+  return Number(execFileSync(process.execPath, ["--input-type=module", "-e", script], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 10_000 }));
 }
 
 export function checkBrowserEntry(entry: PackageEntry, subpath: string, measured: number, cap: number): Finding[] {

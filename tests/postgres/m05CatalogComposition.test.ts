@@ -21,7 +21,7 @@ import { applyPromotionCodesV2 } from "../../server/domains/commerce/quotePromot
 import { createRoutePromotionAcceptanceIssuer } from "../../server/bff/commerce/promotionCodeQuoteComposition.js";
 import { deriveOfferAvailability } from "../../src/domains/commerce/offerAvailability.js";
 import { createResponse } from "../helpers/catalogRouteResponse.js";
-import { dockerAvailable, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
+import { closePostgres, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, dockerAvailable, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
 
 let container: PostgresContainer | undefined, pool: Pool;
 const actor = "c7000000-0000-4000-8000-000000000001";
@@ -51,8 +51,8 @@ beforeAll(async () => {
   const list = (await pool.query("INSERT INTO public.price_lists(name,region_code,currency) VALUES ('Synthetic list','ZZ','XXX') RETURNING id")).rows[0].id;
   await pool.query("INSERT INTO public.price_entries(price_list_id,variant_id,mode,unit_price_minor) VALUES ($1,$2,'one_time',1000),($1,$2,'subscription',900)", [list, sku]);
   await pool.query("INSERT INTO public.platform_communication_operators(principal_id,active) VALUES ($1,true)", [actor]);
-}, 120_000);
-afterAll(async () => { await pool?.end(); await container?.remove(); });
+}, postgresSetupTimeoutMs);
+afterAll(async () => { await closePostgres(container, pool); }, postgresTeardownTimeoutMs);
 
 it("native-mounted-bundle-admin-stock-readback", async () => {
   const code = "p7-stock";
@@ -130,7 +130,7 @@ it("native-mounted-bundle-admin-stock-readback", async () => {
       skus: ["P7-UNIT", "P7-SECOND"], horizonDays: 7, excludeOrderId: null,
     });
     expect(observe.warn).not.toHaveBeenCalled();
-  } finally { await binding.close(); await readPool.end(); }
+  } finally { await closePostgres(undefined, readPool, [() => binding.close()]); }
 }, 30_000);
 
 it("native-bundle-replay-contention-characterization", async () => {
@@ -257,5 +257,5 @@ it("native consumer readback preserves quote authority, draft receipts and unsup
     expect(await binding.drafts.list({ limit: 1 }, authorized)).toMatchObject({ outcome: "listed", page: { items: [{ draftId, status: "open", revision: 1 }] } });
     expect(await binding.drafts.get({ draftId }, denied)).toMatchObject({ outcome: "unauthorized" });
     expect(await binding.catalog.getSkuEnvelope({ kind: "sku_code", skuCode: "P7-UNIT" })).toEqual(envelope);
-  } finally { await binding.close(); }
+  } finally { await closePostgres(undefined, undefined, [() => binding.close()]); }
 }, 30_000);

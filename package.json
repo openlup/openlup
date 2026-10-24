@@ -125,7 +125,7 @@
     "tailwind-merge": "^3.6.0",
     "tailwindcss-animate": "^1.0.7",
     "vaul": "^1.1.2",
-    "zod": "^4.4.3",
+    "zod": "^4.6.6",
     "@openlup/outbox": "file:packages/outbox",
     "@openlup/platform": "file:packages/platform"
   },
@@ -167,6 +167,9 @@
     "onnxruntime-node"
   ],
   "overrides": {
+    "@vercel/cli-config": {
+      "zod": "^4.6.6"
+    },
     "rolldown": "1.1.4",
     "fast-uri": "^3.1.6",
     "qs": "^6.16.0"

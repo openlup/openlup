@@ -6,7 +6,7 @@ import { join, dirname } from "node:path";
 import { Pool } from "pg";
 import { invitationPredecessor } from "./operatorInvitationCatalogue.js";
 import { createPostgresMigrationRunner } from "../../server/adapters/postgres/migrationRunner.js";
-import { dockerAvailable, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
+import { closePostgres, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, dockerAvailable, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
 
 async function operatorInvitationDatabase() {
   if (!await dockerAvailable()) throw new Error("Operator invitation conformance requires ephemeral PostgreSQL; Docker is unavailable");
@@ -14,8 +14,7 @@ async function operatorInvitationDatabase() {
   const pools: Pool[] = [];
   const roots: string[] = [];
   async function close() {
-    await Promise.all(pools.map((pool) => pool.end()));
-    await Promise.all(containers.map((container) => container.remove()));
+    await closePostgres(containers, pools);
     for (const root of roots) rmSync(root, { recursive: true, force: true });
   }
   try {
@@ -259,8 +258,8 @@ async function acceptanceRemovalRace(pool: Pool, firstCommand: "accept" | "remov
 }
 
 describe("operator invitations, complete canonical PostgreSQL catalogue", () => {
-  beforeAll(async () => { db = await operatorInvitationDatabase(); }, 120000);
-  afterAll(async () => { await db?.close(); });
+  beforeAll(async () => { db = await operatorInvitationDatabase(); }, postgresSetupTimeoutMs);
+  afterAll(async () => { await db?.close(); }, postgresTeardownTimeoutMs);
   it("fresh install and exact predecessor ledger upgrade retain authority and lifecycle", async () => {
     await seed(db.upgrade);
     const legacy = (await db.upgrade.query("SELECT * FROM public.platform_human_memberships ORDER BY principal_id")).rows;

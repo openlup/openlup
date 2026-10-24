@@ -26,6 +26,15 @@ adapter evidence grant no publication or provider-account certification.
 
 Longer module recipes live in the [platform package reference](../../docs/platform/PLATFORM_PACKAGE_REFERENCE.md).
 
+The unreleased workspace requires Zod `^4.6.6` for GHSA-mrhx-c7xc-m3w5.
+Public quote requests retain their collection limits and valid-input behavior;
+oversized collections now fail with the size error before accumulating invalid
+element errors. Package API and installed-consumer checks remain required.
+The observation adapter explicitly retains minute-precision timestamps
+alongside seconds/fractions, compact offsets and local timestamps. Calendar
+validation still rejects impossible dates; validation never rewrites the raw
+timestamp used in the webhook's idempotency key.
+
 ## Package surface
 
 `release-gates.json` declares kind `rail`: this foundation provides runtime infrastructure over core ports, matching the architecture's rail responsibility. Its experimental entries each bind a declaration snapshot and package-owned smoke tests. The API checker reads this same inventory.

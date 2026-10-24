@@ -210,6 +210,15 @@ const CONTROLS: Record<string, (workflows: Workflows) => boolean> = {
     return publish.includes("    needs: pack\n") && !/actions\/checkout@|npm ci|npm install|npm run/u.test(publish)
       && [`manifest.commit !== ${ENV}.GITHUB_SHA`, "manifest.packages.length !== 1", "unlisted file", "if (actual !== sha256)"].every((clause) => publish.includes(clause));
   },
+  "publication requires the audit from the same attempt": ({ producer }) =>
+    job(producer, "pack").includes("      audit-attempt: ${{ steps.checked.outputs.audit-attempt }}\n")
+    && step(producer, "Pack and check the release's package").startsWith("        id: checked\n")
+    && inOrder(step(producer, "Pack and check the release's package"), ["npm run packages:check", 'echo "audit-attempt=$GITHUB_RUN_ATTEMPT" >> "$GITHUB_OUTPUT"'])
+    && inOrder(job(producer, "publish"), ["Require the dependency audit from this workflow attempt", "actions/download-artifact@"])
+    && step(producer, "Require the dependency audit from this workflow attempt").includes('if ! [[ "$AUDIT_ATTEMPT" =~ ^[1-9][0-9]*$ && "$AUDIT_ATTEMPT" = "$GITHUB_RUN_ATTEMPT" ]]; then')
+    && step(producer, "Require the dependency audit from this workflow attempt").includes("          exit 1\n")
+    && step(producer, "Require the dependency audit from this workflow attempt").includes("AUDIT_ATTEMPT: ${{ needs.pack.outputs.audit-attempt }}")
+    && !step(producer, "Require the dependency audit from this workflow attempt").includes("continue-on-error"),
   "checkouts keep no credentials": ({ dispatch, producer }) => [dispatch, producer].every((text) => count(text, "actions/checkout@") === count(text, "persist-credentials: false")),
   "inputs reach scripts only through env": ({ dispatch, producer }) => [dispatch, producer].every((text) => runLines(text).length > 20 && runLines(text).every((line) => !line.includes("${{"))),
   "no overwrite or deletion": ({ dispatch, producer }) => [dispatch, producer].every((text) => !/--clobber|--force|--method DELETE|npm unpublish|npm dist-tag|gh release upload|gh release delete/u.test(text)),
@@ -220,6 +229,8 @@ type Defect = { control: string; plant: string; in: keyof Workflows; from: strin
 
 /** One or more planted defects per control. Each replaces committed text, so a stale anchor fails too. */
 const DEFECTS: Defect[] = [
+  { control: "publication requires the audit from the same attempt", plant: "accept an old audit", in: "producer", from: '"$AUDIT_ATTEMPT" = "$GITHUB_RUN_ATTEMPT"', to: '"$AUDIT_ATTEMPT" = "$AUDIT_ATTEMPT"' },
+  { control: "publication requires the audit from the same attempt", plant: "ignore stale audit failure", in: "producer", from: "          fi\n      - uses: actions/download-artifact@", to: "          fi\n        continue-on-error: true\n      - uses: actions/download-artifact@" },
   { control: "release environment", plant: "drop the protected environment", in: "dispatch", from: "    environment: release\n", to: "" },
   { control: "release environment", plant: "rename the environment", in: "dispatch", from: "    environment: release\n", to: "    environment: release-unprotected\n" },
   { control: "release environment", plant: "release without the preflight", in: "dispatch", from: "    needs: preflight\n", to: "" },
@@ -342,7 +353,7 @@ const DEFECTS: Defect[] = [
   { control: "App credential only where the release writes", plant: "App key in the unprivileged preflight", in: "dispatch", from: "      RELEASE_NOTES: ${{ inputs.notes }}\n    steps:\n      - name: Validate dispatch coordinates before checkout\n        run: |\n          [[ \"$PACKAGE\"", to: "      RELEASE_NOTES: ${{ inputs.notes }}\n      KEY: ${{ secrets.OPENLUP_RELEASE_APP_PRIVATE_KEY }}\n    steps:\n      - name: Validate dispatch coordinates before checkout\n        run: |\n          [[ \"$PACKAGE\"" },
   { control: "App credential only where the release writes", plant: "tag written with the default token", in: "dispatch", from: `          ${APP_TOKEN_ENV}\n        run: |\n          gate=`, to: `          GITHUB_TOKEN: \${{ github.token }}\n        run: |\n          gate=` },
   { control: "App credential only where the release writes", plant: "write permission on the default token", in: "dispatch", from: "    permissions:\n      contents: read\n      checks: read\n      actions: read\n    env:", to: "    permissions:\n      contents: write\n      checks: read\n      actions: read\n    env:" },
-  { control: "publish job gets only the checked tarball", plant: "checkout in the publish job", in: "producer", from: "    steps:\n      - uses: actions/download-artifact@", to: "    steps:\n      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7\n        with:\n          persist-credentials: false\n      - uses: actions/download-artifact@" },
+  { control: "publish job gets only the checked tarball", plant: "checkout in the publish job", in: "producer", from: "      - uses: actions/download-artifact@", to: "      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7\n        with:\n          persist-credentials: false\n      - uses: actions/download-artifact@" },
   { control: "publish job gets only the checked tarball", plant: "commit unchecked", in: "producer", from: `manifest.commit !== ${ENV}.GITHUB_SHA`, to: "false" },
   { control: "checkouts keep no credentials", plant: "persisted checkout token", in: "dispatch", from: "          fetch-depth: 0\n          persist-credentials: false\n", to: "          fetch-depth: 0\n" },
   { control: "inputs reach scripts only through env", plant: "dispatch notes interpolated into shell", in: "dispatch", from: "run: node --experimental-strip-types scripts/packages/package-release.ts preflight", to: 'run: node --experimental-strip-types scripts/packages/package-release.ts preflight "${{ inputs.notes }}"' },
@@ -379,6 +390,19 @@ describe("package release workflow controls", () => {
   });
 });
 
+describe("publication audit freshness", () => {
+  const guard = script(step(committed.producer, "Require the dependency audit from this workflow attempt"));
+  it("accepts the current audit and refuses an earlier/missing audit on publish-only recovery", () => {
+    for (const [audit, attempt, expected] of [["1", "1", 0], ["1", "2", 1], ["", "2", 1], ["", "", 1], ["x", "x", 1]]) {
+      const inherited = Reflect.get(process, "env") as NodeJS.ProcessEnv;
+      const result = spawnSync("bash", ["--noprofile", "--norc", "-e", "-c", guard], {
+        encoding: "utf8", env: { ...inherited, AUDIT_ATTEMPT: audit, GITHUB_RUN_ATTEMPT: attempt },
+      });
+      expect(result.status, `${audit}/${attempt}: ${result.stderr}`).toBe(expected);
+    }
+  });
+});
+
 describe("the per-package pack step on a fresh runner", () => {
   const pack = script(step(committed.producer, "Pack and check the release's package"));
   // Routing fixture only; packages-check.test runs these actual workflow commands
@@ -402,10 +426,10 @@ if (args === 'run packages:check -- --cold --out packs --release-tag openlup-${n
       chmodSync(join(bin, "npm"), 0o755);
       const inherited = Reflect.get(process, "env") as NodeJS.ProcessEnv;
       const result = spawnSync("bash", ["--noprofile", "--norc", "-eo", "pipefail", "-c", source], {
-        cwd: directory, env: { ...inherited, PATH: `${bin}:${inherited.PATH}`, RELEASE_TAG: `openlup-${name}-v0.13.1` }, encoding: "utf8", timeout: 30_000,
+        cwd: directory, env: { ...inherited, PATH: `${bin}:${inherited.PATH}`, RELEASE_TAG: `openlup-${name}-v0.13.1`, GITHUB_OUTPUT: join(directory, "output"), GITHUB_RUN_ATTEMPT: "1" }, encoding: "utf8", timeout: 30_000,
       });
       const manifest = join(directory, "packs/packages-manifest.json");
-      return { status: result.status, stderr: result.stderr, commands: readFileSync(join(directory, "commands"), "utf8").trim().split("\n"), packages: existsSync(manifest) ? JSON.parse(readFileSync(manifest, "utf8")).packages : [] };
+      return { status: result.status, stderr: result.stderr, commands: readFileSync(join(directory, "commands"), "utf8").trim().split("\n"), packages: existsSync(manifest) ? JSON.parse(readFileSync(manifest, "utf8")).packages : [], auditOutput: existsSync(join(directory, "output")) ? readFileSync(join(directory, "output"), "utf8") : "" };
     } finally { rmSync(directory, { recursive: true, force: true }); }
   }
 
@@ -415,6 +439,7 @@ if (args === 'run packages:check -- --cold --out packs --release-tag openlup-${n
       expect(result.status, result.stderr).toBe(0);
       expect(result.commands).toEqual([`run packages:check -- --cold --out packs --release-tag openlup-${name}-v0.13.1`]);
       expect(result.packages).toEqual([{ name: `@openlup/${name}` }]);
+      expect(result.auditOutput).toBe("audit-attempt=1\n");
     }
     const missingPrerequisite = pack.replace("--cold ", "");
     expect(missingPrerequisite).not.toBe(pack);
@@ -429,6 +454,7 @@ if (args === 'run packages:check -- --cold --out packs --release-tag openlup-${n
     expect(failed.status).not.toBe(0);
     expect(failed.commands).toEqual(["run packages:check -- --cold --out packs --release-tag openlup-outbox-v0.13.1"]);
     expect(failed.packages).toEqual([]);
+    expect(failed.auditOutput).toBe("");
   });
 });
 

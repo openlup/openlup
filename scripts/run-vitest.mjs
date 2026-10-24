@@ -105,6 +105,18 @@ if (isCoverageRun && env.AI_RESOURCE_GATE_CPU_TOKENS && !env.VITEST_MAX_WORKERS)
   env.VITEST_MAX_WORKERS = env.AI_RESOURCE_GATE_CPU_TOKENS;
 }
 
+// Required local verification uses plain Vitest, even when admitted through the
+// broker's coverage lane. Its CPU accounting includes the main process and
+// child compilers, so leave one token for those instead of treating every token
+// as another worker. Explicit machine/caller pins still take precedence.
+if (!isCoverageRun && env.CI !== "true" && !env.VITEST_MAX_WORKERS
+  && (env.OPENLUP_HEAVY_ACTIVE || env.AI_RESOURCE_GATE_ACTIVE === "1")) {
+  const tokens = Number(env.AI_RESOURCE_GATE_CPU_TOKENS);
+  const available = Number.isInteger(tokens) && tokens > 0 ? Math.max(1, tokens - 1) : 4;
+  env.VITEST_MAX_WORKERS = String(Math.max(1, Math.min(4, cpus().length, available)));
+  console.error(`Local verification Vitest workers=${env.VITEST_MAX_WORKERS}`);
+}
+
 if (!env.VITEST_MAX_WORKERS && process.env.CI !== "true") {
   const cores = Math.max(1, cpus().length);
   const highLoad = loadavg()[0] > cores;

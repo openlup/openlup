@@ -1,4 +1,4 @@
-import { runPostgresContainer, waitForPostgresTcpReady } from "../helpers/postgresContainer.js";
+import { closePostgres, runPostgresContainer, waitForPostgresTcpReady } from "../helpers/postgresContainer.js";
 import { randomUUID } from "node:crypto";
 import { readFileSync, readdirSync } from "node:fs";
 import { Pool, type PoolClient } from "pg";
@@ -10,12 +10,13 @@ import { createPostgresFulfillmentDispatchStore } from "@openlup/platform/fulfil
 import { fixture as shipmentFixture } from "../helpers/fulfillmentNative.js";
 import { createPostgresAccountingPaidOrderDocumentPort } from "../../server/adapters/postgres/accountingPaidOrderDocument.js";
 import { invoicingNativeHarness, manifest, prefixLength, sha256, units } from "../helpers/invoicingNativeHarness.js";
+import { postgresSetupTimeoutMs, postgresTeardownTimeoutMs } from "../helpers/postgresContainer.js";
 
 const h = invoicingNativeHarness();
-const started = performance.now();
+let started: number;
 let caseStarted: number;
-beforeAll(() => h.start(), 120_000);
-afterAll(async () => { await h.stop(); const elapsed=performance.now()-started; console.log(`M09 whole-file ms=${Math.round(elapsed)}`); expect(elapsed).toBeLessThanOrEqual(28_000); });
+beforeAll(async () => { await h.start(); started = performance.now(); }, postgresSetupTimeoutMs);
+afterAll(async () => { await h.stop(); const elapsed=performance.now()-started; console.log(`M09 whole-file ms=${Math.round(elapsed)}`); expect(elapsed).toBeLessThanOrEqual(28_000); }, postgresTeardownTimeoutMs);
 beforeEach(() => { caseStarted=performance.now(); });
 afterEach(context => { console.log(`M09 case ${context.task.name} ms=${Math.round(performance.now()-caseStarted)}`); });
 const executor = (db: Pool | PoolClient) => ({ query: (sql:string, values?:unknown[]) => db.query(sql,values) });
@@ -576,16 +577,17 @@ it("O2 managed first-claim race, retry, legacy and rollback use the pinned wrapp
     const reversal=await seed();
     await rpc(managed,"invoicing_managed_request_with_seller_policy",["reversal-request","order_status_reversal",reversal.order,"test_provider",{reason:"order_refunded",payload:{source:"contract"}}]);
     expect((await managed.query("SELECT obligation_kind,invoice_id,seller_facts FROM public.invoicing_managed_seller_revisions WHERE invoice_id=$1",[reversal.invoice])).rows).toEqual([{obligation_kind:"correction",invoice_id:reversal.invoice,seller_facts:null}]);
-  } finally {await managed.end();}
+  } finally {await closePostgres(undefined, managed);}
 });
 
 it("keeps a native duty claimed before the seller upgrade in legacy fallback",async()=>{
   // This upgrade proof needs a fresh cluster: native bootstrap intentionally refuses
   // pre-existing cluster roles. Keep those controls unchanged rather than filtering SQL.
   const container=await runPostgresContainer({name:`m09-p7-legacy-${process.pid}`,password:"synthetic-conformance"});
-  if(!await waitForPostgresTcpReady(container.connectionString)){await container.remove();throw Error("Legacy proof TCP unavailable");}
-  const db=new Pool({connectionString:container.connectionString,max:1});
+  let db: Pool | undefined;
   try {
+    if(!await waitForPostgresTcpReady(container.connectionString))throw Error("Legacy proof TCP unavailable");
+    db=new Pool({connectionString:container.connectionString,max:1});
     for(const unit of units.filter(unit=>!unit.file.includes("20261022195000")))await db.query(readFileSync(unit.file,"utf8"));
     const client=randomUUID(),order=randomUUID(),intent=randomUUID();
     await db.query("INSERT INTO public.clients(id,email) VALUES($1,$2)",[client,`${client}@example.invalid`]);
@@ -608,5 +610,5 @@ it("keeps a native duty claimed before the seller upgrade in legacy fallback",as
     const [claim]=await rpc(db,"invoicing_claim_with_seller",[1,300,"fixture",sellerFacts,"after-upgrade",order]);
     expect(claim).toMatchObject({generation:2,sellerMode:"legacy_fallback",sellerRevision:"after-upgrade"});
     expect((await db.query("SELECT * FROM public.invoicing_seller_revisions WHERE duty_id=$1",[captured.dutyId])).rows).toEqual([]);
-  }finally{await db.end();await container.remove();}
-});
+  }finally{await closePostgres(container, db);}
+}, postgresSetupTimeoutMs);

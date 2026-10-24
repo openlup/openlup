@@ -4,7 +4,7 @@ import { Pool, type PoolClient } from "pg";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { readReviewedForwardRegistry } from "../../scripts/reviewed-platform-forward.js";
 import { createSupabaseAccountingInvoicePort } from "../../server/adapters/supabase/accountingInvoicePort.js";
-import { dockerAvailable, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
+import { closePostgres, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, dockerAvailable, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
 
 const managedSeller = {name:"Managed seller",street:"Seller street",postalCode:"12345",city:"Seller city",taxId:"seller-tax",krs:"seller-register",bankAccount:null,departmentId:null};
 const ids = { client: "b6100000-0000-4000-8000-000000000001", order: "b6200000-0000-4000-8000-000000000001", invoice: "b6300000-0000-4000-8000-000000000001", outbox: "b6400000-0000-4000-8000-000000000001" };
@@ -30,8 +30,8 @@ beforeAll(async () => {
     expect(createHash("sha256").update(bytes).digest("hex")).toBe(entry.sha256);
     await pool.query(bytes.toString("utf8"));
   }
-}, 120_000);
-afterAll(async () => { await pool?.end(); await container?.remove(); });
+}, postgresSetupTimeoutMs);
+afterAll(async () => { await closePostgres(container, pool); }, postgresTeardownTimeoutMs);
 async function seeded(run: (db: PoolClient) => Promise<void>, initialStatus = "correction_requested") {
   const db = await pool.connect();
   try {

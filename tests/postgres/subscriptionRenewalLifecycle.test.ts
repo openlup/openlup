@@ -4,7 +4,7 @@ import { Pool,type PoolClient } from 'pg';
 import { afterAll,beforeAll,describe,expect,it } from 'vitest';
 import { createPostgresMigrationRunner } from '../../server/adapters/postgres/migrationRunner.js';
 import { assertPortableCreationStatements } from '../../scripts/reviewed-platform-forward.js';
-import { dockerAvailable,runPostgresContainer,waitForPostgresTcpReady,type PostgresContainer } from '../helpers/postgresContainer.js';
+import { closePostgres, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, dockerAvailable,runPostgresContainer,waitForPostgresTcpReady,type PostgresContainer } from '../helpers/postgresContainer.js';
 import { registerAdapterCases } from './subscriptionRenewalAdapterCases.js';
 import { registerRetryCases } from './subscriptionRetryLifecycleCases.js';
 import { registerAlignmentRollbackCases } from './subscriptionAlignmentRollbackCases.js';
@@ -95,8 +95,8 @@ beforeAll(async()=>{
   expect((await runner().apply()).applied).toEqual(units.slice(index).map(u=>u.file));
  }
  finally{db.query=query;}
-},120_000);
-afterAll(async()=>{await pool?.end();await container?.remove();});
+},postgresSetupTimeoutMs);
+afterAll(async()=>{await closePostgres(container, pool);}, postgresTeardownTimeoutMs);
 it('upgrades the exact prefix, preserves old catalogs, closes N1 ACLs, rolls back and replays the runner',async()=>{
  expect(checked).toEqual(units.slice(index,index+1).map(u=>u.file));
  expect((await pool.query('SELECT * FROM public.platform_schema_migrations ORDER BY position')).rows.slice(0,index)).toEqual(prefixLedger);

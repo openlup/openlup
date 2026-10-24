@@ -14,6 +14,26 @@ it("retains donor original/correction/replacement chronology, currency and email
   expect(history.documents[1]).toMatchObject({ parentDocumentRef: "invoice:base-a", emailState: "provider_accepted" });
 });
 
+it("denies history for a different order with the same account", async () => {
+  const model = createInvoiceReadModel({ accountHistory: {
+    read: async () => ({ kind: "found", accountRef: "owner-a", orderId: "order-b", documents: [] }),
+    resolveDownload: async () => ({ kind: "denied" }),
+  } });
+  expect(await model.history({ accountRef: "owner-a", orderId: "order-a" })).toEqual({ kind: "denied" });
+});
+
+it("denies a different document ticket before artifact read or bytes", async () => {
+  const download = vi.fn();
+  const model = createInvoiceReadModel({ accountHistory: {
+    read: async () => ({ kind: "denied" }),
+    resolveDownload: async () => ({ kind: "authorized", identity: { providerRef: "fiscal-a", documentRef: "doc-b",
+      providerDocumentRef: "external-a", orderRef: "order-ref-a", invoiceRef: "INV-1", parentProviderDocumentRef: null },
+      artifactRef: "fiscal-a:invoice:external-a:pdf", fileName: "INV-1.pdf", parentDocumentRef: null }),
+  }, artifacts: { download } });
+  expect(await model.download({ accountRef: "owner-a", orderId: "order-a", documentRef: "doc-a" })).toEqual({ kind: "denied" });
+  expect(download).not.toHaveBeenCalled();
+});
+
 it("preserves owner-bound native child correction lineage and negative totals, while projecting only safe fields; missing parity is typed unsupported", async () => {
   const document = { documentRef: "child-a", invoiceRef: "COR-1", parentDocumentRef: "parent-a", role: "correction", status: "issued", issuedAt: "2026-10-22T12:00:00Z", clearance: null, documentKind: "correction", artifact: "correction", providerDocumentNumber: "COR/1", totalGrossMinor: -120, currency: "XXX", emailState: "not_requested", isCurrent: true, createdAt: "2026-10-22T12:00:00Z", downloadAvailable: false, raw: { secret: "forbidden" }, signedUrl: "https://example.invalid/private" } as const;
   const accountHistory: InvoiceHostPorts["accountHistory"] = {

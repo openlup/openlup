@@ -292,6 +292,7 @@ describe("complete public CI", () => {
     expect(manifest.scripts).not.toHaveProperty("pretest:required");
     expect(workflowCommands(workflowJob("install-proof"))).toEqual([
       "node scripts/public-ci-reuse.mjs",
+      "node scripts/public-ci-dependencies.mjs",
       "npm ci --prefer-offline --no-audit --fund=false",
       "npm run build",
       "npm run build:public-reference",
@@ -368,8 +369,10 @@ describe("complete public CI", () => {
     assertPublishedPackageRoutes(inventory);
     const core = JSON.parse(readFileSync(join(ROOT, "packages/core/package.json"), "utf8"));
     for (const step of ["test:coverage", "typecheck:smoke", "api:check", "docs:check", "release:check", "test:consumer"]) expect(core.scripts.ci).toContain(`npm run ${step}`);
-    // The common API phase plus the owning batch preserves the whole previous CI once.
-    expect(core.scripts["ci:required"].split(" && ")).toEqual(core.scripts.ci.split(" && ").filter((command: string) => command !== "npm run api:check"));
+    // Preserve every mechanical obligation once; absolute audit belongs to publication.
+    expect(core.scripts["ci:required"].split(" && ")).toEqual(core.scripts.ci.split(" && ")
+      .filter((command: string) => command !== "npm run api:check")
+      .map((command: string) => command === "npm run release:check" ? "npm run release:admission" : command));
     expect(JSON.parse(readFileSync(join(ROOT, "packages/outbox/package.json"), "utf8")).scripts["ci:required"]).toBe("npm run test:consumer");
     const { createVitest } = await import("vitest/node");
     const root = await createVitest("test", { root: ROOT, watch: false });

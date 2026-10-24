@@ -143,12 +143,16 @@ run, a dashboard, service framework or permanent third reviewer.
    cards, actual repair and interaction context, without old verdicts or author
    history. Every material finding needs explicit closure. Three repair cycles
    are automatic; `needs_owner` then requires an owner decision to continue,
-   narrow or stop. An authorized `continue "<note>"` adds three cycles. A rethink
-   remains recommended practice, not an encoded gate. Preserve findings and
+   narrow or stop. An authorized `continue "<note>"` adds three cycles. Follow the
+   mandatory supervisor [regroup procedure](../../../CONTRIBUTING.md#regroup-when-work-stops-converging),
+   without adding an encoded gate or budget. Preserve findings and
    failed attempts in the task record. `prepare --new` records a changed intent
    or a rebase in the same append-only session history; findings, reviewers and
    the repair count carry on. Merging `main`
-   requires fresh review of the resulting candidate.
+   requires fresh review of the resulting candidate. A proved exact main
+   integration may focus inspection using prior source coverage, under
+   [review after integration](../../../CONTRIBUTING.md#native-review-and-accountability);
+   two fresh reviewers and inherited source expiry remain required.
 6. Record bounded session evidence and retry the installed gate. Verify and
    pre-push refuse missing, stale, dirty, mismatched, incomplete or unresolved
    review. Unchanged prepare retains current evidence. Handle
@@ -166,7 +170,8 @@ or unknown work, with the changed-path and mode floor able to raise the count.
 Reviewers must be cold, non-author, distinct and not reused from earlier candidates.
 
 Evidence expires 24 hours after the earliest counted PASS report for the current
-candidate. There is no inherited expiry or closure-lineage validation. The gate
+candidate, limited by inherited source expiry for proved integration coverage.
+There is no reduced-reviewer closure route. The gate
 captures the candidate and checks the clean worktree and exact tree binding.
 An unchanged installation baseline is not task approval. The hosted summary
 receipt carries only PR, base, head, tree, risk, reviewers, verdict, expiry and
@@ -255,7 +260,11 @@ node scripts/agent-review-session.mjs status
 ```
 
 `prepare [--new] <intent.json>` captures the candidate and reviewer floor and
-writes version-2 state to `.context/scratch/agent-review/session.json`. The base
+writes version-2 state to `.context/scratch/agent-review/session.json`. Refresh
+`origin/main` first. Prepare, verify-command and receipt reuse the queue's cheap
+merge/carry-over preflight against that local ref; a conflict or ineligible base
+move refuses before expensive work. An unlanded stack pin still permits local
+preparation, while hosted admission waits for the prerequisite. The base
 is the single `git merge-base --all HEAD origin/main`; no or multiple merge bases
 refuse. `OPENLUP_STACK_BASE` may pin a predecessor between that fork point and
 HEAD. Documentation and local review use the same pin; hosted admission requires
@@ -271,9 +280,9 @@ cycles, `needs_owner` refuses until the owner authorizes continuation:
 node scripts/agent-review-session.mjs continue "<owner decision and reason>"
 ```
 
-This records a timestamped note and adds three cycles. A rethink is recommended
-practice: question the goal, criteria and tool, group findings by cause and
-consider a simpler approach. It is not a state-file gate.
+This records a timestamped note and adds three cycles. The mandatory supervisor
+[regroup procedure](../../../CONTRIBUTING.md#regroup-when-work-stops-converging)
+uses existing task notes, not a state-file gate or this native cycle counter.
 `prepare --new <intent.json>` records a changed intent or a rebase in the same
 append-only session history; findings, reviewers and the repair count carry on.
 Each prepare event records its intent, candidate and author; verdicts and receipts
@@ -299,7 +308,13 @@ Reviewers assess semantics independently and escalate uncertainty to two reviews
 
 `verify` exits zero and prints `reviewed` only with a clean matching candidate,
 enough PASS reports, closed material findings and unexpired evidence. Expiry is
-24 hours after the earliest counted PASS report for the current candidate.
+24 hours after the earliest counted PASS report for the current candidate,
+or the earlier inherited source expiry when `candidate.integration` is present.
+Prepare supplies that context only for a valid prior PASS in the same session,
+unchanged intent/author and an exact two-parent merge of prior head and new base.
+It binds the prior base/head/tree and expiry. Two fresh current-tree reports
+remain required; unavailable coverage uses full review. See the canonical
+[inspection scope](../../../CONTRIBUTING.md#native-review-and-accountability).
 Failures use `needs_agent_review`, `needs_owner`, `stale`, `expired`, `dirty` or
 `invalid` with an actionable reason; `status` prints JSON.
 
@@ -315,8 +330,8 @@ node scripts/agent-review-session.mjs receipt "$PR" | gh pr comment "$PR" --body
 `verify-command [--resource PROFILE] -- CMD ARGS...` verifies before and after
 the command, requiring an unchanged HEAD tree and clean worktree. With a resource
 profile it invokes the existing `ai-resource-gate` broker; nested broker use
-refuses. Merge previews, proof leases and policy/inventory runs are removed
-from this wrapper. Exclusive locking and atomic rename protect state writes;
+refuses. The merge preflight reuses the existing queue predicate; proof leases
+and policy/inventory runs remain outside this wrapper. Exclusive locking and atomic rename protect state writes;
 input/state bounds remain 1 MiB/8 MiB.
 
 The report schema in `scripts/agent-review-session.mjs` is the implementation
@@ -376,14 +391,11 @@ its summary as soon as the PR is open and ready. A new head needs new evidence.
 For a merge group, admission uses the PR number from
 `gh-readonly-queue/main/pr-<N>-<sha>` and actual event base/head identities.
 
-Source review carries over when:
-- the group tree equals the reviewed tree; or
-- `git merge-tree --write-tree` of the group base and reviewed head predicts
-  exactly the group tree, and the base's net change since the reviewed base
-  touches neither the change's paths nor `.github/`, `scripts/agent-review-*`,
-  `scripts/documentation-git.ts`, root or `packages/<name>/package.json`,
-  `package-lock.json`, `supabase/migrations/` or
-  `config/platform-migration-manifest.json`.
+Native admission establishes carry-over under the canonical
+[source-review conditions](../../../CONTRIBUTING.md#required-and-raw-checks).
+That procedure owns the exact tree/base checks, protected paths and narrow
+exception for disjoint package `exports` additions; this plan does not maintain
+a second list. Existing review evidence remains subject to those native rules.
 
 Otherwise reject the group: merge `main` and re-review. There is no run-keyed or
 integration-review receipt route. At most two automatic queue-rebuild retries

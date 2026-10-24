@@ -18,6 +18,15 @@ import * as check from "./packages-check.ts";
 import * as bump from "./release-bump.ts";
 import * as release from "./package-release.ts";
 
+const publicationAudits = vi.hoisted(() => vi.fn());
+vi.mock("node:child_process", async (original) => {
+  const actual = await original<typeof import("node:child_process")>();
+  return { ...actual, execFileSync: (...args: Parameters<typeof actual.execFileSync>) => {
+    if (Array.isArray(args[1]) && args[1][1]?.endsWith("/packages/core/scripts/release-npm-checks.ts")) return publicationAudits(...args);
+    return actual.execFileSync(...args);
+  } };
+});
+
 const FILES = { policy: "package-manifest-policy.ts", check: "packages-check.ts", bump: "release-bump.ts", release: "package-release.ts" } as const;
 /** The modules, and the file the release workflow runs as package-release.ts. */
 type Modules = { policy: typeof policy; check: typeof check; bump: typeof bump; release: typeof release; releaseScript: string };
@@ -57,6 +66,7 @@ function fixture({ kitPublishable = true } = {}): Fixture & { a: string } {
   const read = (path: string) => readFileSync(join(root, path), "utf8");
   const commit = (message: string) => { snapshotFixture(root, write); git(root, "add", "--all"); git(root, "commit", "--quiet", "-m", message); return git(root, "rev-parse", "HEAD"); };
   write("config/openlup-packages.json", json({ schemaVersion: 2, packages: [{ name: "@openlup/core", directory: "packages/core", publish: true }, { name: "@openlup/kit", directory: "packages/kit", publish: kitPublishable }, { name: "@openlup/demo", directory: "packages/demo", publish: false }], unreleased: [] }));
+  write("package.json", json({ private: true, workspaces: ["packages/core", "packages/kit", "packages/demo"] }));
   write("packages/core/package.json", json(publishable("core", "0.4.0")));
   const kit = { peerDependencies: { "@openlup/core": "0.4.0" } };
   write("packages/kit/package.json", json(kitPublishable ? publishable("kit", "0.4.0", kit) : { name: "@openlup/kit", version: "0.4.0", private: true, exports: { ".": "./dist/a.js" }, ...kit }));
@@ -162,7 +172,13 @@ const BEHAVIOUR: Record<string, (m: Modules) => Promise<void>> = {
     quiet();
     const { root } = fixture();
     const out = mkdtempSync(join(scratch, "packs-"));
+    publicationAudits.mockClear();
     expect(m.check.runPackagesCheck(root, ["--release-set", "0.4.0", "--out", out])).toBe(0);
+    expect(publicationAudits.mock.calls.map(([, args, options]) => ({ root: options.cwd, arguments: args.slice(2) }))).toEqual([
+      { root, arguments: ["audit", "./packages/core", "./packages/kit"] },
+      { root: join(root, "packages/core"), arguments: ["audit"] },
+      { root: join(root, "packages/kit"), arguments: ["audit"] },
+    ]);
     const manifest = JSON.parse(readFileSync(join(out, check.PACKAGES_MANIFEST_FILE), "utf8")) as { packages: Array<{ name: string; version: string }> };
     expect(manifest.packages.map(({ name, version }) => `${name}@${version}`)).toEqual(["@openlup/core@0.4.0", "@openlup/kit@0.4.0"]);
     for (const version of ["0.4.1", "0.5.0", "1.0.0", "0.4"]) expect(m.check.runPackagesCheck(root, ["--release-set", version]), version).toBe(1);

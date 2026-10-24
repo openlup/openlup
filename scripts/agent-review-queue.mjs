@@ -4,8 +4,11 @@ import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
-import { admit, carryOver, demand, RECEIPT_MARKER } from './agent-review-decide.mjs';
-import { captureCommittedReviewCandidate, git } from './agent-review-session.mjs';
+import { admit, demand, RECEIPT_MARKER } from './agent-review-decide.mjs';
+import { captureCommittedReviewCandidate, carryOverSourceReview, git } from './agent-review-session.mjs';
+import { assertCoLocatedForwardApproval, REVIEWED_FORWARD_PATH } from './reviewed-platform-forward.ts';
+
+export { carryOverSourceReview } from './agent-review-session.mjs';
 
 const execute = promisify(execFile);
 const SHA = /^[a-f0-9]{40}$/u;
@@ -38,27 +41,6 @@ export async function readReceipts(api, root, pr, head, now, permissions = new M
   }
   return receipts;
 }
-async function ancestor(runGit, cwd, base, head) {
-  try { await runGit(cwd, 'merge-base', '--is-ancestor', base, head); return true; } catch { return false; }
-}
-export async function carryOverSourceReview(cwd, candidate, group, runGit = git) {
-  const baseAncestor = await ancestor(runGit, cwd, candidate.base, group.base);
-  let predictedTree; let movedPaths = []; const manifests = {};
-  if (baseAncestor && candidate.tree !== group.tree) {
-    try { predictedTree = (await runGit(cwd, 'merge-tree', '--write-tree', `--merge-base=${candidate.base}`, group.base, candidate.head)).trim(); } catch { predictedTree = null; }
-    movedPaths = (await runGit(cwd, 'diff', '--name-only', '--no-renames', '-z', candidate.base, group.base)).split('\0').filter(Boolean);
-    for (const path of movedPaths.filter(path => /^packages\/[\w.-]+\/package\.json$/u.test(path))) {
-      const [base, queueBase, head, merged] = await Promise.all([candidate.base, group.base, candidate.head, group.tree].map(async sha => {
-        try {
-          const blob = await runGit(cwd, 'show', `${sha}:${path}`);
-          return Buffer.byteLength(blob, 'utf8') <= 1024 * 1024 ? JSON.parse(blob) : undefined;
-        } catch { return undefined; }
-      }));
-      manifests[path] = { base, queueBase, head, group: merged };
-    }
-  }
-  return carryOver({ reviewedTree: candidate.tree, groupTree: group.tree, baseAncestor, predictedTree, changedPaths: candidate.changedPaths, movedPaths, manifests });
-}
 export async function waitNativeAdmission({ event, env = process.env, api, cwd = process.cwd(), now = Date.now, sleep = ms => new Promise(resolve => setTimeout(resolve, ms)), deadlineMs = 20 * 60 * 1000, runGit = git }) {
   demand(/^[\w.-]+\/[\w.-]+$/u.test(env.GITHUB_REPOSITORY ?? '') && event.repository?.private === false, 'use a public repository GitHub event');
   const root = `/repos/${env.GITHUB_REPOSITORY}`; const group = env.GITHUB_EVENT_NAME === 'merge_group' ? event.merge_group : null;
@@ -87,10 +69,12 @@ export async function waitNativeAdmission({ event, env = process.env, api, cwd =
       } catch (error) { reason = `receipt objects could not be verified: ${error.message}; post a corrected receipt`; continue; }
       let decision = admit({ receipt, observed: { ...candidate, pr: prNumber, baseValid }, now: now() });
       if (!decision.ok) { reason = `${decision.code}: ${decision.reason}`; continue; }
+      if (candidate.changedPaths.includes(REVIEWED_FORWARD_PATH)) assertCoLocatedForwardApproval(cwd, candidate.base, candidate.head, main);
       if (group) {
         const tree = (await runGit(cwd, 'rev-parse', '--verify', `${group.head_sha}^{tree}`)).trim();
         decision = await carryOverSourceReview(cwd, candidate, { base: group.base_sha, tree }, runGit);
         demand(decision.ok, decision.reason, decision.code);
+        if (candidate.changedPaths.includes(REVIEWED_FORWARD_PATH)) assertCoLocatedForwardApproval(cwd, group.base_sha, group.head_sha, main);
       }
       const live = await api.get(`${root}/pulls/${prNumber}`);
       demand(live.head?.sha === pr.head.sha && live.state === 'open' && live.draft === false && !live.merged && live.base?.ref === 'main', 'PR changed during admission; rerun CI', 'stale');

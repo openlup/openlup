@@ -227,6 +227,9 @@ function sanitizeAccountingLastError(value: unknown) {
   if (!isRecord(value)) return null;
   const candidate = value.code ?? value.errorCode ?? value.reason ?? value.type;
   const retryable = typeof value.retryable === "boolean" ? value.retryable : null;
+  const hasErrorText = [value.code, value.errorCode, value.reason, value.type, value.operatorMessage, value.message]
+    .some(text => typeof text === "string" && text.trim().length > 0);
+  if (!hasErrorText && retryable === null) return null;
   return {
     code: typeof candidate === "string" && INVOICE_DIAGNOSTIC_CODES.has(candidate) ? candidate : "unknown",
     message: null,

@@ -764,8 +764,12 @@ Construct that store with `createPostgresInvoiceStore(executor, {projectDelivery
 The projector resolves host M04 keys, recipient and presentation facts after lease;
 the store checks document/order/provider identity and the projected attempt count
 before returning the claim.
-An absent projector refuses before leasing; a throwing or mismatched projection
-never sends; a later claim sweep after lease expiry marks its receipt uncertain.
+An absent projector refuses before leasing. A projection or document-read exception
+settles only that row as retryable `failed_before_send`, with the same generation-based
+backoff as the job (300 seconds per attempt, capped at 3600). A mismatched envelope
+settles as non-retryable `failed_before_send` and parks the row. Neither sends or
+creates an uncertain receipt; other valid rows in the leased batch continue.
+Job counters cover only the valid claims returned by the store.
 A thrown M04 send is permitted only
 before entering transport; after entry, return uncertain. The managed facade
 retains its existing key and diagnostic bytes. `assertInvoicePdf` checks MIME,
