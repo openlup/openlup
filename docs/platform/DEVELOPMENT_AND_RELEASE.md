@@ -58,6 +58,7 @@ remain in [Test scope and diagnostics](../../CONTRIBUTING.md#test-scope-and-diag
 | `npm run lint` | File-wide suppression hygiene, ast-grep scans/rule tests, ESLint and import boundaries; local and CI `typecheck`. | Required. npm prelint builds Core, Outbox and Platform first; it is not just formatting. |
 | `npm run oss:published-tree -- --typecheck` | TypeScript projects checked against tracked preview compatibility debt; local and CI `typecheck`. | Required. Not equivalent to claiming zero compiler diagnostics. Run `npm run pretest` before invoking directly after package-source edits. |
 | `npm run oss:published-tree -- --policy` and `--inventory` | Publication classification, documentation ownership/impact/navigation and tree inventory; local and CI `self-check`. | Required. These check structure and recorded obligations, not the truth of arbitrary prose or runtime behavior. |
+| `node scripts/verify-local.mjs` (add `--pgtap` for DB inputs or an explicitly requested diagnostic) | Normal full local command set after committed native review; one install and root run, serialized builds/package gates, fixed existing resource profiles when the optional broker is present. | Required mechanical equivalents; [contributor commands](../../CONTRIBUTING.md#required-and-raw-checks) own scope and limits. Logs retain exits, timing and the first root-worker observation. No hosted admission, new stamp, retry or cached pass. |
 | `node scripts/agent-review-session.mjs verify-command -- <heavy required command>` | Native review verification before and after the command, with unchanged HEAD tree and clean worktree; optional installed host resource broker. | Command wrapper; preserves underlying commands and installed stamp requirements, but does not attest completeness of selected commands. Before starting, it predicts merge/carry-over against locally fetched `origin/main`; refresh that ref first. The [canonical wrapper limits](../../CONTRIBUTING.md#local-stack-bases-and-heavy-verification) include local review of unlanded stacks. It adds no proof lease or policy/inventory check. Independent PRs use their normal base; stacked PRs export the exact `OPENLUP_STACK_BASE`. No cache, hosted receipt, settings change or merge authority. |
 | `node scripts/public-ci-neutrality.mjs --base-commit <full-base-sha>` and UI neutrality smoke | Tree-wide shrink-only neutrality and portable UI boundary; local and CI `self-check`. | Required. Use the exact event/comparison base, not a guessed latest main. |
 | Shared `scripts/packages/required-package-gates.ts` in [required checks](../../CONTRIBUTING.md#required-and-raw-checks) | Discover each publishable workspace and its required scripts; cold-pack the current set, check all APIs, then run each owning required batch with the same artifacts. Core retains mechanical CI obligations and uses dependency-regression admission instead of the absolute release audit; Outbox owns schema/SQL/replay. | Required `install-proof` follows both builds in its own checkout, independently of root tests. Local package preparation and tests remain serial because they share build outputs. Missing routes, artifacts or runtimes refuse. Future modules use the same semantic consumer proof; only SQL modules require a database. |
@@ -103,6 +104,14 @@ not become mandatory per-PR execution just because their files exist; follow
 [selected subscription evaluation](SUBSCRIPTION_REFERENCE.md).
 
 ## Local maintainer layer
+
+Without that private helper, use the public `node scripts/verify-local.mjs`
+route in [required and raw checks](../../CONTRIBUTING.md#required-and-raw-checks).
+It runs the existing local equivalents rather than replaying all hosted jobs:
+one `test:scoped`, with no additional local shards or GitHub-only event checks.
+It uses existing broker profiles automatically when available and runs the same
+native wrapper directly otherwise. It does not install or impersonate the
+maintainer layer.
 
 Where installed, `openlup-dev doctor` diagnoses prerequisites and installation
 or workflow-mirror drift. It is not a substitute for candidate verification.

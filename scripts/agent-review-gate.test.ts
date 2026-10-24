@@ -10,8 +10,8 @@ import { carryOverSourceReview, waitNativeAdmission } from './agent-review-queue
 const directories: string[] = [];
 afterEach(async () => { vi.restoreAllMocks(); vi.unstubAllEnvs(); for (const cwd of directories.splice(0)) await rm(cwd, { recursive: true, force: true }); });
 const intent = { risk: 'routine', criteria: 'Preserve the reviewed source' };
-async function fixture() {
-  const cwd = await mkdtemp(join(tmpdir(), 'native-review-v2-')); directories.push(cwd);
+async function fixture(prefix = 'native-review-v2-') {
+  const cwd = await mkdtemp(join(tmpdir(), prefix)); directories.push(cwd);
   const git = (...args: string[]) => execFileSync('git', ['-C', cwd, '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', '-c', 'commit.gpgSign=false', '-c', 'core.hooksPath=/dev/null', '-c', 'maintenance.auto=false', '-c', 'gc.auto=0', ...args], { encoding: 'utf8' }).trim();
   const commit = () => { git('add', 'source.txt'); git('commit', '-qm', 'fixture'); };
   git('init', '-q', '-b', 'main'); await writeFile(join(cwd, 'source.txt'), 'before\n'); commit();
@@ -33,6 +33,23 @@ async function fixture() {
 }
 
 describe('six real Git witnesses', () => {
+  it('keeps broker lane keywords independent of worktree names and keys scoped to each worktree', async () => {
+    const f = await fixture('coverage-pgtap-build-e2e-'); const session = await f.review();
+    const broker = join(f.scratch, 'ai-resource-gate'); await writeFile(broker, 'stub'); await chmod(broker, 0o700);
+    const run = vi.fn(async (command: string, args: string[]) => { expect(command).toBe(broker); expect(args[0]).toBe('run'); return 0; }); const keys: string[] = [];
+    for (const resource of ['openlup:build', 'openlup:typecheck', 'openlup:coverage', 'openlup:pgtap', 'openlup:build']) {
+      await verifyCandidateCommand({ cwd: f.cwd, session, command: 'stub', resource, env: { PATH: f.scratch }, run,
+        snapshot: (cwd, base) => captureSessionCandidate(cwd, base, { env: {} }) });
+      const key = run.mock.calls.at(-1)![1][2];
+      expect(key.startsWith(`${resource}:wt`)).toBe(true);
+      expect(key.slice(resource.length)).toMatch(/^:wt[0-9]+$/u); keys.push(key);
+    }
+    expect(keys[0]).toBe(keys[4]);
+    const other = await fixture('coverage-pgtap-build-e2e-'); const otherSession = await other.review();
+    await verifyCandidateCommand({ cwd: other.cwd, session: otherSession, command: 'stub', resource: 'openlup:build',
+      env: { PATH: f.scratch }, run, snapshot: (cwd, base) => captureSessionCandidate(cwd, base, { env: {} }) });
+    expect(run.mock.calls.at(-1)![1][2]).not.toBe(keys[0]);
+  });
   it('uses system Git and a fixed search path despite an injected git executable', async () => {
     const f = await fixture();
     const fakeGit = join(f.scratch, 'git'); await writeFile(fakeGit, '#!/bin/sh\necho substituted-git\n'); await chmod(fakeGit, 0o700);
@@ -249,7 +266,7 @@ describe('six real Git witnesses', () => {
     const frozen = async () => candidate;
     const broker = join(f.scratch, 'ai-resource-gate'); await writeFile(broker, 'stub'); await chmod(broker, 0o700);
     await expect(verifyCandidateCommand({ cwd: f.cwd, session, command: 'stub', resource: 'openlup:coverage', env: { PATH: f.scratch }, run, snapshot: frozen })).resolves.toBe(0);
-    expect(run).toHaveBeenLastCalledWith(broker, ['run', '--wait', `openlup:coverage:${f.cwd.split('/').at(-1)}`, '--', 'stub'], f.cwd, expect.any(Object));
+    expect(run).toHaveBeenLastCalledWith(broker, ['run', '--wait', expect.stringMatching(/^openlup:coverage:wt[0-9]+$/u), '--', 'stub'], f.cwd, expect.any(Object));
     const untouched = vi.fn();
     await expect(verifyCandidateCommand({ cwd: f.cwd, session, command: 'stub', env: {}, run: untouched, snapshot: async () => ({ ...candidate, clean: false }) })).rejects.toThrow('dirty');
     expect(untouched).not.toHaveBeenCalled();

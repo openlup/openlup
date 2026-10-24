@@ -556,7 +556,8 @@ candidate preserves the underlying command's exit code.
 With `--resource`, the wrapper requires `ai-resource-gate` on PATH and runs the
 command through its waiting admission route. Select the existing profile for
 the actual command, such as `openlup:coverage`, `openlup:build` or
-`openlup:typecheck`; the resource key includes the worktree's directory name.
+`openlup:typecheck`; the resource key uses a stable numeric worktree suffix, so directory names
+cannot select a different broker lane.
 The broker's configured CPU/RAM, timeout and refusal policies remain binding;
 the wrapper defines none of them. Without `--resource`, it runs the command
 directly. It refuses invocation inside an active resource broker or another
@@ -864,9 +865,31 @@ For communications characterization and mail-boundary witness evidence, see the
 [communications contract](docs/platform/CANONICAL_CONTRACTS.md#communications-import-compatibility)
 and [witness ledger](docs/platform/plans/oss-m04-communications-triggers.md).
 
+After committing and recording the required native reviews, run the normal full
+local command set with `node scripts/verify-local.mjs` from the task worktree root.
+Add `--pgtap` when the change reaches database inputs (including runtime, fixture,
+configuration or harness changes), or when requesting that raw diagnostic.
+The runner uses the commands below once: a single locked install, lint's package
+prerequisites, both reference builds, shared package/API/coverage gates and one
+`test:scoped`. Hosted shards, event-bound dependency comparison and receipt
+admission remain hosted checks. This command neither creates a maintainer-local
+stamp nor replaces an installed helper's requirements.
+
+Each phase uses the existing native before/after review and candidate checks.
+Where the optional resource broker is installed, a closed phase map selects its
+existing coverage, build, typecheck and pgTAP profiles; task names never select
+resources, and an unknown phase refuses before execution. Otherwise the native
+wrapper runs directly. Logs retain exact commands, profiles, exits, timings and
+the first root-worker observation; later synthetic fixture output cannot stand
+in for it. Machine resource policy and explicit worker settings remain effective.
+Build/package/root phases stay serial because they share generated outputs.
+SSR output stays in a unique ignored worktree scratch directory so external npm
+imports still resolve; cold package artifacts stay outside the checkout.
+The first failure stops the run without an automatic retry or reuse of earlier
+passes. The manual equivalents remain available:
+
 ```bash
 npm ci
-
 
 # Direct typecheck consumes built Core, Outbox and Platform declarations.
 npm run pretest
@@ -2062,6 +2085,10 @@ own: a lessons change is an ordinary delivery under existing authority, and a
 promotion stays within its approved scope. The rethink record and the task's
 terminal self-retro carry the lesson until it lands. No other tracker is kept.
 
+- 2026-10-24, local verification rethink: replaying hosted shards and choosing
+  resources from task names duplicated tests and silently selected one worker →
+  use the [single local command set](#required-and-raw-checks), fixed phase
+  profiles and the first root-worker observation; measure the next full run.
 - 2026-10-24, queue integration rethink: mechanical base merges consumed repair
   cycles and repeated full local proof → use the proved mechanical case in
   [native review](#native-review-and-accountability), retaining fresh interaction

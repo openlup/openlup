@@ -114,6 +114,11 @@ if (!isCoverageRun && env.CI !== "true" && !env.VITEST_MAX_WORKERS
   const tokens = Number(env.AI_RESOURCE_GATE_CPU_TOKENS);
   const available = Number.isInteger(tokens) && tokens > 0 ? Math.max(1, tokens - 1) : 4;
   env.VITEST_MAX_WORKERS = String(Math.max(1, Math.min(4, cpus().length, available)));
+}
+// Emit the effective local pin too; otherwise a nested fixture's diagnostic
+// could be mistaken for this invocation's worker count.
+if (!isCoverageRun && env.CI !== "true"
+  && (env.OPENLUP_HEAVY_ACTIVE || env.AI_RESOURCE_GATE_ACTIVE === "1")) {
   console.error(`Local verification Vitest workers=${env.VITEST_MAX_WORKERS}`);
 }
 
