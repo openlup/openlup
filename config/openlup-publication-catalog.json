@@ -7154,6 +7154,14 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/verify-local.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/verify-local.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/vite-manual-chunks-guard.test.ts",
       "class": "public-output"
     },
