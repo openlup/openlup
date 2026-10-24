@@ -2,10 +2,12 @@ import { describe, expect, it, vi } from "vitest";
 import { AccountingInvoicePersistenceError } from "../../../src/domains/accounting/ports.js";
 import { createSupabaseAccountingInvoicePort } from "./accountingInvoicePort.js";
 
+const seller = { name: "Saved", street: "Example", postalCode: "00000", city: "Example", taxId: "synthetic", krs: "", bankAccount: null, departmentId: null };
+const options = { readSeller: async () => ({ kind: "found" as const, seller, revisionRef: "seller-v1" }) };
 describe("supabase accounting invoice port", () => {
   it("routes paid-order issue requests to the paid-order RPC", async () => {
     const rpc = vi.fn(async () => ({ data: { invoice: { id: "invoice-1" } }, error: null }));
-    const port = createSupabaseAccountingInvoicePort({ rpc });
+    const port = createSupabaseAccountingInvoicePort({ rpc }, options);
 
     await expect(port.requestInvoiceIssueFromPaidOrder({
       idempotencyKey: "paid-1",
@@ -13,16 +15,14 @@ describe("supabase accounting invoice port", () => {
       providerKind: "fakturownia",
     })).resolves.toEqual({ invoice: { id: "invoice-1" } });
 
-    expect(rpc).toHaveBeenCalledWith("accounting_invoice_issue_request_from_paid_order", {
-      p_idempotency_key: "paid-1",
-      p_order_id: "order-1",
-      p_provider_kind: "fakturownia",
+    expect(rpc).toHaveBeenCalledWith("invoicing_managed_request_with_seller_policy", {
+      p_key: "paid-1", p_source_kind: "paid", p_source_id: "order-1", p_provider: "fakturownia", p_evidence: {},
     });
   });
 
   it("passes B2B KSeF email policy to the delivery claim RPC", async () => {
     const rpc = vi.fn(async () => ({ data: [], error: null }));
-    const port = createSupabaseAccountingInvoicePort({ rpc });
+    const port = createSupabaseAccountingInvoicePort({ rpc }, options);
 
     await port.claimInvoiceDeliveries(5, { requireKsefAcceptanceForB2b: false, orderId: "order-1" });
 
@@ -36,7 +36,7 @@ describe("supabase accounting invoice port", () => {
 
   it("routes fenced Resend delivery outcomes to their atomic RPCs", async () => {
     const rpc = vi.fn(async () => ({ data: {}, error: null }));
-    const port = createSupabaseAccountingInvoicePort({ rpc });
+    const port = createSupabaseAccountingInvoicePort({ rpc }, options);
 
     await port.markInvoiceDeliverySucceeded({
       outboxId: "outbox-1", claimAttemptCount: 2,
@@ -72,21 +72,16 @@ describe("supabase accounting invoice port", () => {
 
   it("passes targeted order id to the invoice issue claim RPC", async () => {
     const rpc = vi.fn(async () => ({ data: [], error: null }));
-    const port = createSupabaseAccountingInvoicePort({ rpc });
+    const port = createSupabaseAccountingInvoicePort({ rpc }, options);
 
     await port.claimInvoiceIssues(3, { orderId: "order-2" });
 
-    expect(rpc).toHaveBeenCalledWith("accounting_invoice_issue_outbox_claim", {
-      p_limit: 3,
-      p_lease_seconds: 300,
-      p_order_id: "order-2",
-      p_contract_version: "accounting.issue.v2",
-    });
+    expect(rpc).toHaveBeenCalledWith("invoicing_managed_claim_with_seller", { p_limit: 3, p_order: "order-2", p_seller: seller, p_revision: "seller-v1" });
   });
 
   it("persists canonical mapper disagreement as a terminal block", async () => {
     const rpc = vi.fn(async () => ({ data: { ok: true }, error: null }));
-    const port = createSupabaseAccountingInvoicePort({ rpc });
+    const port = createSupabaseAccountingInvoicePort({ rpc }, options);
 
     await port.blockInvoiceIssueCanonicalMapper({
       invoiceId: "invoice-1",
@@ -110,7 +105,7 @@ describe("supabase accounting invoice port", () => {
       data: { ok: false, code: "accounting_invoice_issue_claim_generation_mismatch" },
       error: null,
     }));
-    const port = createSupabaseAccountingInvoicePort({ rpc });
+    const port = createSupabaseAccountingInvoicePort({ rpc }, options);
 
     await expect(port.blockInvoiceIssueCanonicalMapper({
       invoiceId: "invoice-1",
@@ -128,7 +123,7 @@ describe("supabase accounting invoice port", () => {
       data: { ok: true, code: null, providerReadbackState: "matched", paymentIntentId: "intent-1" },
       error: null,
     }));
-    const port = createSupabaseAccountingInvoicePort({ rpc });
+    const port = createSupabaseAccountingInvoicePort({ rpc }, options);
 
     await expect(port.preflightInvoiceIssuePayment({
       invoiceId: "invoice-1",
@@ -153,7 +148,7 @@ describe("supabase accounting invoice port", () => {
 
   it("fences provider success with the claimed attempt count", async () => {
     const rpc = vi.fn(async () => ({ data: { ok: true, code: null }, error: null }));
-    const port = createSupabaseAccountingInvoicePort({ rpc });
+    const port = createSupabaseAccountingInvoicePort({ rpc }, options);
 
     await port.markInvoiceIssueSucceeded({
       outboxId: "outbox-1",
@@ -177,7 +172,7 @@ describe("supabase accounting invoice port", () => {
       data: { ok: false, code: "accounting_invoice_issue_claim_generation_mismatch" },
       error: null,
     }));
-    const port = createSupabaseAccountingInvoicePort({ rpc });
+    const port = createSupabaseAccountingInvoicePort({ rpc }, options);
 
     await expect(port.markInvoiceIssueSucceeded({
       outboxId: "outbox-1",
@@ -195,7 +190,7 @@ describe("supabase accounting invoice port", () => {
       data: { ok: false, code: "accounting_invoice_issue_claim_generation_mismatch" },
       error: null,
     }));
-    const port = createSupabaseAccountingInvoicePort({ rpc });
+    const port = createSupabaseAccountingInvoicePort({ rpc }, options);
 
     await expect(port.markInvoiceIssueFailed({
       outboxId: "outbox-1",
@@ -217,7 +212,7 @@ describe("supabase accounting invoice port", () => {
       data: { ok: false, code: "accounting_invoice_issue_status_invalid" },
       error: null,
     }));
-    const port = createSupabaseAccountingInvoicePort({ rpc });
+    const port = createSupabaseAccountingInvoicePort({ rpc }, options);
 
     await expect(port.markInvoiceIssueFailed({
       outboxId: "outbox-1",
@@ -231,7 +226,7 @@ describe("supabase accounting invoice port", () => {
 
   it("routes reversal and correction jobs to their service-role RPCs", async () => {
     const rpc = vi.fn(async () => ({ data: { ok: true }, error: null }));
-    const port = createSupabaseAccountingInvoicePort({ rpc });
+    const port = createSupabaseAccountingInvoicePort({ rpc }, options);
 
     await port.requestInvoiceReversalFromOrderStatus({
       idempotencyKey: "reversal-1",
@@ -253,18 +248,11 @@ describe("supabase accounting invoice port", () => {
       retrySeconds: 60,
     });
 
-    expect(rpc).toHaveBeenNthCalledWith(1, "accounting_invoice_request_reversal_from_order_status", {
-      p_idempotency_key: "reversal-1",
-      p_order_id: "order-1",
-      p_reason: "order_refunded",
-      p_payload: { source: "test" },
-      p_provider_kind: "fakturownia",
+    expect(rpc).toHaveBeenNthCalledWith(1, "invoicing_managed_request_with_seller_policy", {
+      p_key: "reversal-1", p_source_kind: "order_status_reversal", p_source_id: "order-1",
+      p_provider: "fakturownia", p_evidence: { reason: "order_refunded", payload: { source: "test" } },
     });
-    expect(rpc).toHaveBeenNthCalledWith(2, "accounting_invoice_correction_outbox_claim", {
-      p_limit: 7,
-      p_lease_seconds: 300,
-      p_contract_version: "accounting.correction.v2",
-    });
+    expect(rpc).toHaveBeenNthCalledWith(2, "invoicing_managed_claim_corrections_with_seller", { p_limit: 7, p_seller: seller, p_revision: "seller-v1" });
     expect(rpc).toHaveBeenNthCalledWith(3, "accounting_invoice_correction_outbox_succeed", {
       p_outbox_id: "outbox-1", p_claim_attempt_count: 2,
       p_provider_invoice_id: "correction-1",
@@ -282,18 +270,18 @@ describe("supabase accounting invoice port", () => {
     for (const stage of ["success", "failure"] as const) {
       for (const code of ["accounting_invoice_correction_claim_generation_mismatch", "accounting_invoice_correction_claim_identity_missing", "accounting_invoice_correction_claim_inactive", "accounting_invoice_correction_claim_fence_required"]) {
         const rpc = vi.fn(async () => ({ data: { ok: false, code }, error: null }));
-        const port = createSupabaseAccountingInvoicePort({ rpc });
+        const port = createSupabaseAccountingInvoicePort({ rpc }, options);
         const input = { outboxId: "outbox", claimAttemptCount: 2, providerInvoiceId: "correction", providerInvoiceNumber: null, providerRaw: {}, error: {}, retrySeconds: 60 };
         await expect(stage === "success" ? port.markInvoiceCorrectionSucceeded(input) : port.markInvoiceCorrectionFailed(input)).rejects.toMatchObject({ causeCode: code });
       }
     }
-    const port = createSupabaseAccountingInvoicePort({ rpc: vi.fn(async () => ({ data: null, error: { code: "22023" } })) });
+    const port = createSupabaseAccountingInvoicePort({ rpc: vi.fn(async () => ({ data: null, error: { code: "22023" } })) }, options);
     await expect(port.claimInvoiceCorrections(1)).rejects.toMatchObject({ causeCode: "22023" });
   });
 
   it("wraps RPC errors", async () => {
     const rpc = vi.fn(async () => ({ data: null, error: { code: "P0001" } }));
-    const port = createSupabaseAccountingInvoicePort({ rpc });
+    const port = createSupabaseAccountingInvoicePort({ rpc }, options);
 
     await expect(port.requestInvoiceIssueFromPaidOrder({
       idempotencyKey: "paid-1",
@@ -301,4 +289,56 @@ describe("supabase accounting invoice port", () => {
       providerKind: "fakturownia",
     })).rejects.toThrow(AccountingInvoicePersistenceError);
   });
+});
+
+it("refuses unknown/missing seller and order-scoped correction claims before RPC", async () => {
+  const rpc = vi.fn();
+  await expect(createSupabaseAccountingInvoicePort({ rpc }).claimInvoiceIssues(1)).rejects.toMatchObject({ causeCode: "seller_unavailable" });
+  const port = createSupabaseAccountingInvoicePort({ rpc }, { readSeller: async () => ({ kind: "unknown", code: "unknown" }) });
+  await expect(port.claimInvoiceIssues(1)).rejects.toMatchObject({ causeCode: "unknown" });
+  await expect(port.claimInvoiceCorrections(1, { orderId: "order" })).rejects.toMatchObject({ causeCode: "unsupported" });
+  expect(rpc).not.toHaveBeenCalled();
+});
+it("keeps wrapper-returned seller/revision/mode on the claimed compatibility facts", async () => {
+  const row = { seller, sellerRevision: "first", sellerMode: "frozen", outboxId: "outbox", attemptCount: 2 };
+  const rpc = vi.fn(async () => ({ data: [row], error: null }));
+  const port = createSupabaseAccountingInvoicePort({ rpc }, options);
+  expect(await port.claimInvoiceIssues(1)).toEqual([row]);
+  expect(await port.claimInvoiceCorrections(1)).toEqual([row]);
+});
+
+it("maps handoff and explicit correction requests to every pinned eligibility argument", async () => {
+  const rpc = vi.fn(async () => ({ data: {}, error: null }));
+  const port = createSupabaseAccountingInvoicePort({ rpc }, options);
+  await port.requestInvoiceIssueFromFulfillmentHandoff({idempotencyKey:"exact-key",fulfillmentOrderId:"fulfillment",providerKind:"host"});
+  await port.requestCorrectionScaffold({invoiceId:"invoice",reason:"refund",providerKind:"host",payload:{saved:"fact"}});
+  expect(rpc.mock.calls).toEqual([
+    ["invoicing_managed_request_with_seller_policy",{p_key:"exact-key",p_source_kind:"handoff",p_source_id:"fulfillment",p_provider:"host",p_evidence:{}}],
+    ["invoicing_managed_request_with_seller_policy",{p_key:"accounting-correction:invoice:refund",p_source_kind:"correction",p_source_id:"invoice",p_provider:"host",p_evidence:{saved:"fact",reason:"refund"}}],
+  ]);
+});
+
+it.each(["paid", "handoff"] as const)("surfaces %s lock refusal immediately and preserves other errors", async kind => {
+  const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
+  try {
+    const rpc = vi.fn(async () => ({ data: null, error: { code: "55P03" } }));
+    const port = createSupabaseAccountingInvoicePort({ rpc });
+    const request = () => kind === "paid"
+      ? port.requestInvoiceIssueFromPaidOrder({ idempotencyKey: "same-key", orderId: "order", providerKind: "host" })
+      : port.requestInvoiceIssueFromFulfillmentHandoff({ idempotencyKey: "same-key", fulfillmentOrderId: "fulfillment", providerKind: "host" });
+    await expect(request()).rejects.toMatchObject({ name: "AccountingInvoicePersistenceError", causeCode: "55P03" });
+    expect(rpc).toHaveBeenCalledTimes(1);
+    expect(warning).toHaveBeenCalledExactlyOnceWith("[accounting] invoice request refused", {
+      kind: "refused", name: "AccountingInvoicePersistenceError", causeCode: "55P03",
+      sourceKind: kind, sourceId: kind === "paid" ? "order" : "fulfillment",
+      retryable: true, effectMayHaveSucceeded: false,
+    });
+    for (const code of ["23505", "P0001"]) {
+      rpc.mockClear().mockResolvedValue({ data: null, error: { code } });
+      warning.mockClear();
+      await expect(request()).rejects.toMatchObject({ name: "AccountingInvoicePersistenceError", causeCode: code });
+      expect(rpc).toHaveBeenCalledTimes(1);
+      expect(warning).not.toHaveBeenCalled();
+    }
+  } finally { warning.mockRestore(); }
 });

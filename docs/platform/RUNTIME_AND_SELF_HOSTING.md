@@ -4,6 +4,11 @@ Status: development-preview contract. No recipe in this document is a supported 
 
 ## Runtime model
 
+The accounting HTTP scheduler accepts an explicitly composed invoicing service
+and passes it to the existing accounting runtime after HTTP method and bearer
+authorization checks. It adds no cron or executor. Runtime enablement and service
+readiness still precede the shared durable job lease.
+
 The accounting reversal host delegates outcome handling to the invoicing helper
 while retaining its three event adapters, provider selection and exact business
 keys. The package helper hardcodes the donor's 10 s timeout. Disabled selection creates no handler. Invalid payloads discard;
@@ -18,7 +23,7 @@ with the caller's structural executor and explicit local provider metadata.
 Its request key, local document reference, status and replay remain intact;
 this path supplies no fiscal facts and registers no invoicing worker.
 For the native store, use separate autocommit sweep, prepare and finish calls.
-The six [native witnesses](../../tests/postgres/invoicingNativeConformance.test.ts)
+The [native conformance witnesses](../../tests/postgres/invoicingNativeConformance.test.ts)
 cover row/lease fences, scope, locked accounting and unchanged renewal state.
 The combined P4 chain also installs the pinned payment-decoupling replacement;
 independent collection never joins a payment or parcel transaction.
@@ -234,6 +239,16 @@ It must fail safely when a required dependency is absent rather than silently
 substituting a different business behaviour.
 
 ## Opt-in disposable subscription reference
+
+The inert M09 reference binding admits invoicing only when explicitly enabled,
+selected and ready. Server startup checks an explicitly supplied invoicing
+binding before opening its listener and mounts no invoice routes or schedules.
+Explicitly selected module execution checks enablement and readiness before the
+host job lease. Unselected accounting execution retains its existing in-lease
+skips and failed-run recording; module
+factories supply no cron, worker or environment reader. The native D7 removal
+and payment-decoupling predecessor keep invoicing outside parcel and money
+execution; invoicing cannot delay, stop or roll back those obligations.
 
 The inert [M08 fulfillment binding](../../server/runtime/public-reference/m08FulfillmentBinding.ts)
 selects one transaction lane, dispatch store, provider and readiness observer.

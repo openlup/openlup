@@ -48,7 +48,7 @@ export interface InvoiceFacts {
   readonly clearanceRequired: boolean;
   readonly currency: string;
   readonly buyer: InvoiceBuyer;
-  /** Supplied separately for execution; P8 freezes it at first claim before provider I/O. */
+  /** Claim projection only: the first durable claim freezes the seller; legacy obligations retain execution-time fallback. */
   readonly seller?: InvoiceSeller;
   readonly payment: { readonly intentRef: string; readonly providerRef: string | null; readonly providerPaymentRef: string | null; readonly amountMinor: number; readonly currency: string; readonly localSettlementState: "matched" | "unavailable" };
   readonly orderMoney: { readonly subtotalMinor: number; readonly discountMinor: number; readonly shippingMinor: number; readonly shippingDiscountMinor: number; readonly totalMinor: number } | null;
@@ -57,4 +57,15 @@ export interface InvoiceFacts {
   readonly totalTaxMinor: number;
   readonly totalGrossMinor: number;
   readonly chargedTotalGrossMinor: number;
+}
+
+/** Host-selected immutable revision; it contains no provider or country defaults. */
+export interface InvoiceSellerRevision<Seller = InvoiceSeller> {
+  readonly seller: Seller;
+  readonly revisionRef: string;
+}
+/** Added only to returned claim facts, never to installed historical revisions. */
+export interface InvoiceClaimedFacts extends InvoiceFacts {
+  readonly sellerRevision?: string;
+  readonly sellerMode?: "frozen" | "legacy_fallback";
 }

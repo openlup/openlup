@@ -538,6 +538,12 @@ privileges and complete catalogue installation are described in
 
 ## Compatibility posture
 
+The invoicing reference capability is default-off and installs no routes or
+scheduler. Its seller migration entries are forward-only introductions of the
+approved fixtures; they preserve the preceding native manifest rows and hashes.
+The native seller descriptor follows payment decoupling at position 80. Claims
+preserve first-ever seller timing and legacy fallback without rewriting history.
+
 `20261022193000`/`20261022193100` introduce managed correction v2; its sync-first settlement and permanent-failure parking are owned by [M09 forward design](DATA_AND_MIGRATIONS.md#m09-invoicing-forward-design-and-control-approval).
 
 Native subscription retry N1 extends the existing migration prefix without
@@ -1212,6 +1218,15 @@ lifecycle facts; copy, recipient, consent and delivery remain host/M04-owned.
 See the [architecture boundary](ARCHITECTURE_AND_EXTENSIONS.md#subscription-contracts).
 
 ## Invoicing evidence
+
+The seller wrapper freezes only eligible obligations at their first durable
+claim; retries reuse its returned revision. A correction has its own eligibility
+and first-claim seller. Pre-cutover obligations retain execution-time fallback
+on later retries, and issued history is immutable. Missing/unknown seller reads
+consume no claim. Managed correction claims with an order scope refuse before
+the unscoped wrapper can run. Managed order-status reversals use the seller
+request wrapper and preserve the incumbent result. SQL replay identity conflicts
+surface as typed conflicts. Native upgrades never freeze a previously claimed duty.
 
 Invoicing keeps issued proof, exact scoped absence, unknown and unsupported
 separate. Unknown never authorizes another create; correction recovery binds

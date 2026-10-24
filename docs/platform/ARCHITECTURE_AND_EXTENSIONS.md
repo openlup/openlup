@@ -30,6 +30,12 @@ state writer is not an extension seam.
 
 ## Runtime boundaries
 
+Invoicing service composition stays in the platform `/invoicing` entry. The
+reference host selects its existing accounting executor and job lease explicitly;
+module readiness runs before claim. Contributions describe existing registrations
+and install no scheduler. Native collection, issue and read-side helpers keep
+host identity, auth, transport and transaction ownership at the existing seams.
+
 Native accounting duty collection has an explicit independent runtime binding;
 fulfillment composition no longer constructs or awaits an accounting binding.
 The collector is host-invoked and does not register another executor or scheduler.
@@ -1438,6 +1444,39 @@ exercises the complete current prefix without subscription SQL additions.
 
 ## Invoicing contracts
 
+`createInvoiceServices` and `createInvoiceContribution` are exported through
+`@openlup/platform/invoicing`. Explicit provider selection and host readiness
+precede factory construction or claim. Factories bind the existing issue,
+correction, delivery, document/settlement sync, duty collection and history
+services; there is no module cron or second executor. Contributions describe the
+host's existing handlers, schedules and routes without registering them. The
+reference binding is inert by default. The accounting runtime retains its job
+lease and authentication. Only explicitly selected module execution checks
+readiness and enablement before constructing a gateway or claiming a lease;
+unselected accounting jobs retain their in-lease skip and failure recording.
+Injected service factories have no invocation order scope, so the host refuses
+targeted module runs before leasing rather than executing an unscoped job.
+
+Migration: the pinned seller forwards add eligibility sidecars and first-claim
+wrappers. Claims retain the SQL-returned seller, revision and mode separately
+from installed buyer/line facts. New eligible obligations reuse the first
+claimed seller, including independently eligible corrections. Native correction providers receive
+the correction claim's seller, revision and mode in their `before` facts; legacy obligations
+keep execution-time fallback. Unknown or unsupported seller selection refuses
+before claim. Native reversals use the request wrapper's correction branch.
+Managed order-scoped correction claims refuse because the pinned correction
+wrapper is unscoped. Issued documents are never rewritten. Managed order-status reversals call the
+seller request wrapper with their order identity, reason and original payload;
+the wrapper preserves the incumbent result and marks only new obligations.
+Managed paid and handoff contention surfaces as a typed
+`AccountingInvoicePersistenceError` with cause `55P03` and no database effect.
+The adapter emits a structured refusal diagnostic before throwing, so automatic
+and operator fail-soft handoffs remain visible to operators while dispatch
+continues. The diagnostic identifies the source kind and ID and records
+`retryable: true` and `effectMayHaveSucceeded: false`. There is no automatic
+retry; operators can recover the missing request. Other error handling,
+including identity conflicts, is unchanged.
+
 Place invoicing contracts and descriptor interpretation in the existing platform
 package's exact `invoicing` and type-only `invoicing/contracts` entries. The module
 has no graph edges, provider dependencies or environment discovery. The host owns
@@ -1445,7 +1484,7 @@ fiscal/identifier/rounding policy, frozen facts, seller, M07 reads, storage, reg
 M04 delivery and authorized M12 history. Missing parity returns typed unsupported
 before writes. A structural-executor native store is supplied; the host owns the driver and independent transaction lane. Seller reads select the current
 host configuration before the next claim, scoped by order or null for unscoped
-claims, never by duty. P8 freezes the seller at first claim, using revisionRef as
+claims, never by duty. The seller wrapper freezes the first-ever claim, using revisionRef as
 the claim wrapper revision. Compatibility stores bind the selected provider at
 construction. The structural native store accepts it per claim and persists the
 first provider on the duty.
@@ -1459,7 +1498,7 @@ delivery retry evidence, correction, payout item and account-lineage seams and
 their source witnesses.
 
 The [invoicing design](plans/oss-m09-invoicing.md) separates the available issue helpers and
-native persistence from later service composition. The native refusal factory has no
+native persistence and explicit service composition from activation. The native refusal factory has no
 executor and never inspects inputs. The conformance helper consumes offline
 adapter fixtures and returns filtered case evidence; it installs no provider or
 runtime route. Its [contract tests](../../packages/platform/test/invoicing/adapterConformance.test.ts)

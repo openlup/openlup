@@ -13,7 +13,7 @@ const capability: InvoiceCapabilities = {
 
 it("keeps contracts runtime-empty and selection default-off without invoking host effects", () => {
   expect(Object.keys(contracts)).toEqual([]);
-  expect(Object.keys(runtime).sort()).toEqual(["runNativeInvoiceIssueJob", "createPostgresInvoiceStore", "INVOICING_MIGRATIONS", "collectInvoiceDuties", "createIndependentInvoiceDutyBinding", "allocateChargedGrossTotals", "allocateDiscountedGrossTotals", "createFulfillmentHandoffInvoiceHandler", "createNativeUnsupportedInvoicePorts", "createInvoiceReversalHandlers", "mapCanonicalIssueLines", "mapInvoiceClaimToProviderSnapshot", "readInvoiceCapabilities", "readInvoicePaymentEvidence", "runInvoiceAdapterConformance", "runInvoiceIssueJob", "runInvoiceCorrectionJob", "withAccountingInvoiceShadowTrigger", "withAutoDispatchAccountingInvoiceTrigger", "runInvoiceDeliveryJob", "assertInvoicePdf", "invoicePdfFilename", "syncAcceptedInvoiceDocuments", "syncInvoicePayoutSettlements", "resolveInvoiceDocumentHistory", "createInvoiceReadModel"].sort());
+  expect(Object.keys(runtime).sort()).toEqual(["createInvoiceServices", "createInvoiceContribution", "claimInvoiceSellerRevision", "runNativeInvoiceIssueJob", "createPostgresInvoiceStore", "INVOICING_MIGRATIONS", "collectInvoiceDuties", "createIndependentInvoiceDutyBinding", "allocateChargedGrossTotals", "allocateDiscountedGrossTotals", "createFulfillmentHandoffInvoiceHandler", "createNativeUnsupportedInvoicePorts", "createInvoiceReversalHandlers", "mapCanonicalIssueLines", "mapInvoiceClaimToProviderSnapshot", "readInvoiceCapabilities", "readInvoicePaymentEvidence", "runInvoiceAdapterConformance", "runInvoiceIssueJob", "runInvoiceCorrectionJob", "withAccountingInvoiceShadowTrigger", "withAutoDispatchAccountingInvoiceTrigger", "runInvoiceDeliveryJob", "assertInvoicePdf", "invoicePdfFilename", "syncAcceptedInvoiceDocuments", "syncInvoicePayoutSettlements", "resolveInvoiceDocumentHistory", "createInvoiceReadModel"].sort());
   for (const enabled of [undefined, false]) expect(runtime.readInvoiceCapabilities({ enabled, selection: { providerRef: capability.providerRef }, capability })).toMatchObject({ kind: "refused", code: "disabled", effectMayHaveSucceeded: false });
   for (const selection of [null, { providerRef: "other" }]) expect(runtime.readInvoiceCapabilities({ enabled: true, selection, capability })).toMatchObject({ kind: "refused", code: "selection_required" });
   expect(runtime.readInvoiceCapabilities({ enabled: true, selection: { providerRef: capability.providerRef }, capability: null })).toMatchObject({ kind: "refused", code: "selection_required" });
@@ -47,13 +47,13 @@ it("requires scoped complete absence, separates uncertainty and retains the SQL 
 it("preserves pinned durable outcomes and permits retryable only with before-send evidence", () => {
   type Install = Exclude<Awaited<ReturnType<InvoiceStorePort["installFacts"]>>, InvoiceUnsupported>;
   expectTypeOf<Install["status"]>().toEqualTypeOf<"owed" | "blocked" | "ready" | "processing" | "unknown" | "issued" | "voided" | "unsupported" | "faulted">();
-  type Capture = Exclude<Awaited<ReturnType<InvoiceStorePort["captureDuty"]>>, InvoiceUnsupported>;
+  type Capture = Exclude<Awaited<ReturnType<InvoiceStorePort["captureDuty"]>>, { kind: string }>;
   expectTypeOf<Capture["status"]>().toEqualTypeOf<Install["status"]>();
   type Fail = Parameters<InvoiceStorePort["fail"]>[0];
   expectTypeOf<Extract<Fail, { kind: "retryable" }>["phase"]>().toEqualTypeOf<"before_send">();
   expectTypeOf<Extract<Fail, { kind: "retryable" }>["proof"]>().toEqualTypeOf<InvoiceProof | null>();
   expectTypeOf<Exclude<Awaited<ReturnType<InvoiceStorePort["fail"]>>, InvoiceUnsupported>["kind"]>().toEqualTypeOf<"recorded" | "voided" | "stale">();
-  type Reversal = Exclude<Awaited<ReturnType<InvoiceStorePort["requestReversal"]>>, InvoiceUnsupported>;
+  type Reversal = Exclude<Awaited<ReturnType<InvoiceStorePort["requestReversal"]>>, InvoiceUnsupported | { kind: "conflict" }>;
   expectTypeOf<Extract<Reversal["kind"], "unsupported_recorded">>().toEqualTypeOf<"unsupported_recorded">();
   expectTypeOf<Reversal["dutyId"]>().toEqualTypeOf<string | undefined>();
   expectTypeOf<Reversal["replayed"]>().toEqualTypeOf<boolean | undefined>();

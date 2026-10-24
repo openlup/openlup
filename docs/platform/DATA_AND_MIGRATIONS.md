@@ -648,6 +648,17 @@ stable upgrade guarantee.
 
 ## Compatibility lifecycle
 
+Migration: native `20261022195000_invoicing_seller_revision.sql` and managed
+`20261022195100_invoicing_seller_revision.sql` introduce the approved CTL-M09-4
+fixtures byte for byte. The native descriptor and manifest append 195000 after
+192000 at position 80. Request wrappers mark newly created obligations; claim
+wrappers freeze only their first-ever durable claim. Retries retain a frozen
+seller; work claimed before the wrappers keeps execution-time fallback, including
+an empty eligibility sidecar. Corrections capture their own seller revision.
+Managed order-status reversals preserve the incumbent result and effects through
+the seller request wrapper. No issued-document or historical-fact rewrite occurs.
+The complete native catalogue is required; sparse package assets are projections.
+
 The [M09 migration owner](#m09-invoicing-forward-design-and-control-approval)
 records the reviewed payment-decoupling forward and its installation boundary.
 For new unlinked P4 settlements, `accountingRequested` remains false even after
@@ -1293,4 +1304,6 @@ The native descriptor declares child-document corrections and explicit host
 fiscal facts. The separate managed descriptor names P3's base-row correction
 forwards; neither descriptor claims storage or fiscal parity.
 
-Seller-revision forwards and default service activation remain later work.
+The seller-revision forwards are introduced by this change as described in the
+[compatibility lifecycle](#compatibility-lifecycle). Default service activation
+remains later work.

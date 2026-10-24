@@ -1,5 +1,14 @@
 # Server Execution Adapters
 
+The accounting managed adapter uses the pinned seller-policy request and claim
+wrappers. Host code supplies a seller revision before leasing; unknown or absent
+selection refuses without an RPC. Claims retain the wrapper-returned seller and
+revision. The unscoped correction wrapper cannot serve order-scoped execution.
+Managed order-status reversals use the seller request wrapper with the original
+order identity, reason and payload. Its incumbent result is returned unchanged;
+new correction eligibility is recorded under the same SQL operation. Replay
+identity conflicts surface as the existing typed control conflict.
+
 Status: source-of-truth
 
 `server/adapters` contains execution adapters that implement provider-neutral

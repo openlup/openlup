@@ -320,7 +320,11 @@
     {
       "file": "db/platform/migrations/20261022192000_invoicing_payment_decoupling.sql",
       "sha256": "f4af30ee4c9365ea51bd0e95e5cc7ae869cf15dce5867fdd640f679438b36058"
+    },
+    {
+      "file": "db/platform/migrations/20261022195000_invoicing_seller_revision.sql",
+      "sha256": "5a6348d9af296cfc6383894e3489f70af1f3bb5026c0cc329daa9f3f95802b22"
     }
   ],
-  "objectInventorySha256": "0c65b1c81a534e561d92137f3e3cb089500795acb99d5e0f52cc2f15b399ae08"
+  "objectInventorySha256": "39027e0cb02bf9ff2cd3b93be19d1d2dd480f3e7aed5fe5253e36257bd575e8f"
 }

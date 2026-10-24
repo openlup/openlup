@@ -32,3 +32,8 @@ export { syncAcceptedInvoiceDocuments } from "./documentSync.js";
 export { syncInvoicePayoutSettlements } from "./settlementSync.js";
 export { resolveInvoiceDocumentHistory } from "./documentHistory.js";
 export { createInvoiceReadModel } from "./readModel.js";
+export { createInvoiceServices } from "./bindings.js";
+export type { InvoiceServices } from "./bindings.js";
+export { createInvoiceContribution } from "./contribution.js";
+export { claimInvoiceSellerRevision } from "./sellerRevision.js";
+export type { InvoiceSellerRevision, InvoiceClaimedFacts } from "./contracts/facts.js";

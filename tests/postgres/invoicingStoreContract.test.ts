@@ -10,10 +10,13 @@ import { postgresSetupTimeoutMs, postgresTeardownTimeoutMs } from "../helpers/po
 // Existing six conformance cases and their 28 s budget remain in their own file.
 const h = invoicingNativeHarness();
 let started: number;
-beforeAll(async () => { started = performance.now(); await h.start(); }, postgresSetupTimeoutMs);
+beforeAll(async () => { await h.start(); started = performance.now(); }, postgresSetupTimeoutMs);
 afterAll(async () => { await h.stop(); console.log(`M09 adapter contract whole-file ms=${Math.round(performance.now() - started)}`); }, postgresTeardownTimeoutMs);
 const executor = { query: (sql: string, values?: unknown[]) => h.pool.query(sql, values) };
-const store = createPostgresInvoiceStore(executor);
+const seller = { name: "Contract seller", address: { line1: "Seller street", postalCode: "12345", city: "Seller city" }, taxIdentifier: { scheme: "host-id", value: "seller-tax" }, bankAccount: "seller-bank", routingRef: "seller-route" };
+const sellerRevision = "seller-contract-first";
+const sellerBinding = { read: async () => ({ kind: "found" as const, seller, revisionRef: sellerRevision }) };
+const store = createPostgresInvoiceStore(executor, { seller: sellerBinding });
 type Claim = Parameters<InvoiceStorePort["preflight"]>[0]["claim"];
 type Money = Awaited<ReturnType<InvoiceHostPorts["money"]["read"]>>;
 const proof = { evidenceRef: "contract-proof", fingerprint: "b".repeat(64), observedAt: "2026-10-21T13:14:15Z" };
@@ -40,8 +43,8 @@ function identity(dutyId: string, requestKey: string, saved: InvoiceFacts, paren
     orderRef: saved.refs.orderRef, invoiceRef: saved.refs.invoiceRef, operation: parent ? "full_reversal" : "issue",
     correctionRef: parent ? `invoicing:${dutyId}` : null, parentProviderDocumentRef: parent };
 }
-async function claim(orderId: string) {
-  const result = await store.claim({ orderId, providerRef, limit: 1, visibilitySeconds: 83 });
+async function claim(orderId: string, selectedStore = store) {
+  const result = await selectedStore.claim({ orderId, providerRef, limit: 1, visibilitySeconds: 83 });
   if ("kind" in result || result.length !== 1) throw new Error(`Expected one contract claim for ${orderId}`);
   return result[0]!;
 }
@@ -88,7 +91,7 @@ async function seed() {
   if ("kind" in prepared || prepared.status !== "ready") throw new Error("Preparation refused");
   expect(await store.finishFacts({ ...lease, result: { ...prepared, status: prepared.status } })).toEqual({ dutyId, status: "ready" });
   expect(await state(dutyId)).toMatchObject({ status: "ready", generation: 0, last_result: null, request_status: "pending", attempts: 0, document_status: "issue_requested", provider_reference: null, reversal: null });
-  return { dutyId, orderId, saved, requestKey };
+  return { dutyId, orderId, saved, requestKey, capture };
 }
 const positive = (id: InvoiceIdentity, kind: "issued" | "found" = "issued") => ({ kind, identity: id,
   providerDocumentRef: `external:${id.providerCreateIdentity}`, providerDocumentNumber: `NUMBER/${id.invoiceRef}`, proof, replayed: false });
@@ -102,7 +105,7 @@ async function correction(base: Awaited<ReturnType<typeof seed>>) {
   if (result.kind !== "correction_requested" || !result.dutyId) throw new Error("Correction missing");
   expect(result).toEqual({ kind: "correction_requested", dutyId: result.dutyId, replayed: false });
   expect(await store.requestReversal(reversal)).toEqual({ ...result, replayed: true });
-  expect(await state(base.dutyId)).toMatchObject({ status: "issued", document_status: "correction_requested", reversal: { key: requestKey, reason, evidence: proof } });
+  expect(await state(base.dutyId)).toMatchObject({ status: "issued", document_status: "correction_requested", reversal: { key: requestKey, reason, evidence: { ...proof, reason, sellerPolicyVersion: "invoicing.seller.v1" } } });
   expect(await state(result.dutyId)).toMatchObject({ parent_duty_id: base.dutyId, original_key: requestKey, status: "ready", generation: 0, last_result: null,
     request_status: "pending", attempts: 0, document_status: "draft", reversal: null });
   return { ...base, dutyId: result.dutyId, requestKey, parent: positive(parentClaim.identity).providerDocumentRef, baseDutyId: base.dutyId };
@@ -140,28 +143,31 @@ it.each(rows)("P4 installed adapter contract: $name", async row => {
       expect(await state(base.dutyId)).toMatchObject({ status: blocked ? "blocked" : "voided", generation: blocked ? 1 : 0,
         claim_token: null, lease_until: null, request_status: blocked ? "failed" : "discarded", attempts: blocked ? 1 : 0,
         request_token: null, document_status: blocked ? "issue_requested" : "voided", provider_reference: null,
-        reversal: { key: reversal.requestKey, reason, evidence: proof }, last_result: blocked ? { kind: "blocked", evidence: { proof } } : null });
+        reversal: { key: reversal.requestKey, reason, evidence: { ...proof, reason, sellerPolicyVersion: "invoicing.seller.v1" } }, last_result: blocked ? { kind: "blocked", evidence: { proof } } : null });
       expect((await h.pool.query("SELECT payload FROM public.invoicing_effect_receipts WHERE receipt_key=$1", [`reversal-key:${reversal.requestKey}`])).rows)
-        .toEqual([{ payload: { key: reversal.requestKey, reason, evidence: proof } }]);
+        .toEqual([{ payload: { key: reversal.requestKey, reason, evidence: { ...proof, reason, sellerPolicyVersion: "invoicing.seller.v1" } } }]);
     }
     expect((await h.pool.query("SELECT id FROM public.accounting_documents WHERE order_id=$1", [base.orderId])).rows).toHaveLength(1);
     return;
   }
   const f = row.correction ? await correction(base) : { ...base, parent: null, baseDutyId: null };
+  const claimedSeller = row.correction ? { ...seller, name: "Correction contract seller" } : seller;
+  const claimedRevision = row.correction ? "seller-correction-first" : sellerRevision;
+  const selectedStore = createPostgresInvoiceStore(executor, { seller: { read: async () => ({ kind: "found", seller: claimedSeller, revisionRef: claimedRevision }) } });
   const expectedIdentity = identity(f.dutyId, f.requestKey, f.saved, f.parent);
   const readback = ["found", "absent", "read_unknown", "read_unsupported", "reversal_absent", "reversal_found"].includes(row.arm);
   const generation = row.generation ?? (readback ? 2 : 1);
   // Advance through genuine SQL leases and failures, preserving the request fence.
   for (let prior = 1; prior < generation; prior++) {
-    const leased = await claim(f.orderId);
+    const leased = await claim(f.orderId, selectedStore);
     expect(leased.generation).toBe(prior);
-    expect(await store.fail(readback ? { claim: leased, kind: "unknown", proof, retrySeconds: 0 }
+    expect(await selectedStore.fail(readback ? { claim: leased, kind: "unknown", proof, retrySeconds: 0 }
       : { claim: leased, kind: "retryable", phase: "before_send", proof, retrySeconds: 0 })).toEqual({ kind: "recorded" });
   }
-  let reversal: { key: string; reason: string; evidence: typeof proof } | null = null;
+  let reversal: { key: string; reason: string; evidence: typeof proof & { reason: string; sellerPolicyVersion: string } } | null = null;
   if (row.arm === "reversal_absent" || row.arm === "reversal_found") {
-    reversal = { key: `pending:${f.orderId}`, reason, evidence: proof };
-    expect(await store.requestReversal({ requestKey: reversal.key, orderId: f.orderId, reason, proof })).toEqual({ kind: "pending_readback" });
+    reversal = { key: `pending:${f.orderId}`, reason, evidence: { ...proof, reason, sellerPolicyVersion: "invoicing.seller.v1" } };
+    expect(await selectedStore.requestReversal({ requestKey: reversal.key, orderId: f.orderId, reason, proof })).toEqual({ kind: "pending_readback" });
   }
   const evidence = (variant: Evidence = "succeeded"): Money => variant === "absent" ? { kind: "absent", evidence: { ...proof, exact: true, complete: true,
     scope: { intentRef: f.saved.payment.intentRef, providerRef: "money-provider", providerPaymentRef: "remote-payment", expectedMoney: { amountMinor: 900, currency: "XXX" } } } }
@@ -179,8 +185,8 @@ it.each(rows)("P4 installed adapter contract: $name", async row => {
   const write = async (id: InvoiceIdentity) => {
     if (row.arm === "stale_finish" || row.arm === "stale_fail") await expire();
     if (row.arm === "reversal_retryable") {
-      reversal = { key: `inflight:${f.orderId}`, reason, evidence: proof };
-      expect(await store.requestReversal({ requestKey: reversal.key, orderId: f.orderId, reason, proof })).toEqual({ kind: "pending_readback" });
+      reversal = { key: `inflight:${f.orderId}`, reason, evidence: { ...proof, reason, sellerPolicyVersion: "invoicing.seller.v1" } };
+      expect(await selectedStore.requestReversal({ requestKey: reversal.key, orderId: f.orderId, reason, proof })).toEqual({ kind: "pending_readback" });
     }
     if (row.arm === "retryable" || row.arm === "blocked" || row.arm === "stale_fail" || row.arm === "reversal_retryable") return {
       kind: "refused" as const, identity: id, code: "blocked" as const, retryable: row.arm !== "blocked", effectMayHaveSucceeded: false as const,
@@ -201,7 +207,7 @@ it.each(rows)("P4 installed adapter contract: $name", async row => {
     }),
   };
   // Spies record real port calls; no SQL responses or store decisions are faked.
-  const bound = { ...store, claim: vi.fn(store.claim), preflight: vi.fn(store.preflight), finish: vi.fn(store.finish), fail: vi.fn(store.fail) };
+  const bound = { ...selectedStore, claim: vi.fn(selectedStore.claim), preflight: vi.fn(selectedStore.preflight), finish: vi.fn(selectedStore.finish), fail: vi.fn(selectedStore.fail) };
   const localBlocked = ["failed", "pending", "amount_mismatch", "currency_mismatch"].includes(row.local ?? "");
   const freshBlocked = ["failed", "pending", "amount_mismatch", "currency_mismatch"].includes(row.fresh ?? "");
   const freshUnavailable = ["absent", "unavailable", "unknown"].includes(row.fresh ?? "");
@@ -214,7 +220,7 @@ it.each(rows)("P4 installed adapter contract: $name", async row => {
   const selected = claims[0]!;
   const before = row.correction ? { ...f.saved, before: f.saved, after: zero, parentDocumentId: (await state(base.dutyId)).document_id, parentExternalId: f.parent, reason } : f.saved;
   expect(selected).toEqual({ dutyId: f.dutyId, documentId: expect.any(String), requestId: expect.any(String), token: expect.any(String), generation,
-    leaseUntil: expect.any(String), identity: expectedIdentity, facts: before, action: readback ? "readback" : "create",
+    leaseUntil: expect.any(String), identity: expectedIdentity, facts: { ...before, seller: claimedSeller, sellerRevision: claimedRevision, sellerMode: "frozen" }, action: readback ? "readback" : "create",
     correction: row.correction ? { before: f.saved, after: zero, reason } : null });
   const workerClaim = { ...selected, attemptCount: generation };
   if (readback) {
@@ -243,8 +249,8 @@ it.each(rows)("P4 installed adapter contract: $name", async row => {
   }
   const dispatched = io.includes("issue") || io.includes("correct");
   if (dispatched) {
-    if (row.correction) expect(provider.correct).toHaveBeenCalledExactlyOnceWith({ identity: expectedIdentity, before: f.saved, after: zero, reason, recoveryLookupRequired: generation > 1 });
-    else expect(provider.issue).toHaveBeenCalledExactlyOnceWith({ identity: expectedIdentity, facts: f.saved, recoveryLookupRequired: generation > 1 });
+    if (row.correction) expect(provider.correct).toHaveBeenCalledExactlyOnceWith({ identity: expectedIdentity, before: { ...f.saved, seller: claimedSeller, sellerRevision: claimedRevision, sellerMode: "frozen" }, after: zero, reason, recoveryLookupRequired: generation > 1 });
+    else expect(provider.issue).toHaveBeenCalledExactlyOnceWith({ identity: expectedIdentity, facts: { ...f.saved, seller: claimedSeller, sellerRevision: claimedRevision, sellerMode: "frozen" }, recoveryLookupRequired: generation > 1 });
   }
   if (!dispatched || row.correction) expect(provider.issue).not.toHaveBeenCalled();
   if (!dispatched || !row.correction) expect(provider.correct).not.toHaveBeenCalled();
@@ -293,5 +299,114 @@ it.each(rows)("P4 installed adapter contract: $name", async row => {
   if (row.arm === "reversal_found") {
     const child = (await h.pool.query("SELECT id FROM public.invoicing_duties WHERE parent_duty_id=$1", [f.dutyId])).rows[0]!.id;
     expect(await state(child)).toMatchObject({ status: "ready", generation: 0, original_key: reversal!.key, request_status: "pending", document_status: "draft" });
+  }
+});
+
+// PART B: actual package store against the complete approved native SQL chain.
+const sellerRows = ["lock contention", "paid replay", "handoff", "capture conflict", "reversal conflict", "frozen", "retry", "legacy", "bare claim", "correction", "unknown", "unsupported", "missing seller", "rollback", "race"] as const;
+it.each(sellerRows)("P7 installed seller store: %s", async arm => {
+  const base = await seed();
+  const selected = { limit: 1, visibilitySeconds: 97, providerRef, orderId: base.orderId };
+  const revisionState = async (dutyId = base.dutyId) => (await h.pool.query("SELECT revision_ref,seller_facts,capture_generation FROM public.invoicing_seller_revisions WHERE duty_id=$1", [dutyId])).rows;
+  if (arm === "lock contention") {
+    const snapshot = async () => ({ duty: await state(base.dutyId), revisions: await revisionState(),
+      receipts: (await h.pool.query("SELECT * FROM public.invoicing_effect_receipts WHERE duty_id=$1 ORDER BY receipt_key", [base.dutyId])).rows });
+    const before = await snapshot(), locker = await h.pool.connect();
+    const handoff = { ...base.capture, requestKey: `busy-handoff:${base.orderId}`, sourceKind: "handoff" as const,
+      sourceId: randomUUID(), evidence: { shipmentId: randomUUID(), handedOverAt: base.capture.occurredAt } };
+    try {
+      for (const lock of ["row", "advisory"] as const) {
+        await locker.query("BEGIN");
+        if (lock === "row") await locker.query("SELECT id FROM public.commerce_orders WHERE id=$1 FOR UPDATE", [base.orderId]);
+        else await locker.query("SELECT pg_advisory_xact_lock(hashtextextended('invoicing:'||$1::text,0))", [base.orderId]);
+        for (const input of [base.capture, handoff]) await expect(store.captureDuty(input)).rejects.toMatchObject({ code: "55P03" });
+        if (lock === "advisory") await expect(store.requestReversal({ requestKey: `busy-reversal:${base.orderId}`, orderId: base.orderId, reason, proof }))
+          .rejects.toMatchObject({ code: "55P03", message: "invoicing_capture_busy" });
+        expect(await snapshot()).toEqual(before);
+        await locker.query("ROLLBACK");
+      }
+    } finally { await locker.query("ROLLBACK"); locker.release(); }
+    for (const input of [base.capture, handoff]) expect(await store.captureDuty(input)).toEqual({ dutyId: base.dutyId, status: "ready" });
+    expect(await state(base.dutyId)).toEqual(before.duty);
+    expect(await revisionState()).toEqual(before.revisions);
+    expect((await h.pool.query("SELECT count(*)::int count FROM public.invoicing_duties WHERE order_id=$1", [base.orderId])).rows).toEqual([{ count: 1 }]);
+    const reversal = { requestKey: `busy-reversal:${base.orderId}`, orderId: base.orderId, reason, proof };
+    expect(await store.requestReversal(reversal)).toEqual({ kind: "voided", replayed: false });
+    expect(await store.requestReversal(reversal)).toEqual({ kind: "voided", replayed: true });
+    expect(await state(base.dutyId)).toMatchObject({ status: "voided", document_status: "voided" });
+    return;
+  }
+  if (arm === "paid replay" || arm === "handoff" || arm === "capture conflict") {
+    const before = await state(base.dutyId);
+    const input = arm === "handoff" ? { ...base.capture, sourceKind: "handoff" as const, sourceId: randomUUID(), requestKey: `handoff:${base.orderId}`, evidence: { shipmentId: randomUUID(), handedOverAt: "2026-10-17T06:05:04Z" } }
+      : arm === "capture conflict" ? { ...base.capture, evidence: { ...base.capture.evidence, amountMinor: 901 } } : base.capture;
+    expect(await store.captureDuty(input)).toEqual(arm === "capture conflict" ? { kind: "conflict", code: "identity_mismatch" } : { dutyId: base.dutyId, status: "ready" });
+    expect(await state(base.dutyId)).toEqual(before);
+    expect(await revisionState()).toEqual([{ revision_ref: null, seller_facts: null, capture_generation: null }]);
+    const receipts = (await h.pool.query("SELECT payload FROM public.invoicing_effect_receipts WHERE receipt_key=$1", [`source:${input.sourceKind}:${input.sourceId}`])).rows;
+    expect(receipts).toEqual([{ payload: { sourceKind: input.sourceKind, sourceId: input.sourceId, orderId: base.orderId,
+      evidence: arm === "capture conflict" ? base.capture.evidence : input.evidence, occurredAt: "2026-10-18T09:08:07.000000Z" } }]);
+    return;
+  }
+  if (arm === "reversal conflict") {
+    const input = { requestKey: `reversal-conflict:${base.orderId}`, orderId: base.orderId, reason, proof };
+    expect(await store.requestReversal(input)).toEqual({ kind: "voided", replayed: false });
+    const before = await state(base.dutyId);
+    expect(await store.requestReversal({ ...input, proof: { ...proof, evidenceRef: "different-evidence" } })).toEqual({ kind: "conflict", code: "identity_mismatch" });
+    expect(await state(base.dutyId)).toEqual(before);
+    expect((await h.pool.query("SELECT payload FROM public.invoicing_effect_receipts WHERE receipt_key=$1", [`reversal-key:${input.requestKey}`])).rows)
+      .toEqual([{ payload: { key: input.requestKey, reason, evidence: { ...proof, reason, sellerPolicyVersion: "invoicing.seller.v1" } } }]);
+    return;
+  }
+  if (arm === "unknown" || arm === "unsupported" || arm === "missing seller") {
+    const before = await state(base.dutyId);
+    const result = arm === "unknown" ? { kind: "unknown", code: "unknown" } as const : { kind: "unsupported", code: "host_binding_required", retryable: false, effectMayHaveSucceeded: false } as const;
+    const refused = createPostgresInvoiceStore(executor, arm === "missing seller" ? undefined : { seller: { read: async () => result } });
+    expect(await refused.claim(selected)).toEqual({ kind: "unsupported", code: "host_binding_required", retryable: false, effectMayHaveSucceeded: false });
+    expect(await state(base.dutyId)).toEqual(before);
+    expect(await revisionState()).toEqual([{ revision_ref: null, seller_facts: null, capture_generation: null }]);
+    return;
+  }
+  if (arm === "rollback") {
+    const before = await state(base.dutyId), db = await h.pool.connect();
+    try {
+      await db.query("BEGIN");
+      const tx = createPostgresInvoiceStore({ query: (sql, values) => db.query(sql, values) }, { seller: sellerBinding });
+      expect(await tx.claim(selected)).toMatchObject([{ generation: 1, facts: { seller, sellerRevision, sellerMode: "frozen" } }]);
+      await db.query("ROLLBACK");
+    } finally { await db.query("ROLLBACK"); db.release(); }
+    expect(await state(base.dutyId)).toEqual(before);
+    expect(await revisionState()).toEqual([{ revision_ref: null, seller_facts: null, capture_generation: null }]);
+    return;
+  }
+  if (arm === "legacy") {
+    await h.pool.query("DELETE FROM public.invoicing_seller_revisions WHERE duty_id=$1", [base.dutyId]);
+    await h.pool.query("UPDATE public.invoicing_duties SET seller_policy_version=NULL WHERE id=$1", [base.dutyId]);
+  }
+  if (arm === "bare claim") {
+    const raw = (await h.pool.query("SELECT public.invoicing_claim_duties(1,97,$1,$2) result", [providerRef, base.orderId])).rows[0].result;
+    expect(raw).toMatchObject([{ generation: 1 }]);
+    await h.pool.query("UPDATE public.invoicing_duties SET lease_until=now()-interval '1 second' WHERE id=$1", [base.dutyId]);
+  }
+  const target = arm === "correction" ? await correction(base) : base;
+  const changed = createPostgresInvoiceStore(executor, { seller: { read: async () => ({ kind: "found", seller: { ...seller, name: "Later seller" }, revisionRef: "later-revision" }) } });
+  const batch = arm === "race" ? (await Promise.all([store.claim(selected), changed.claim(selected)])).flat() : await store.claim(selected);
+  if (!Array.isArray(batch) || batch.length !== 1) throw new Error(`Expected one ${arm} claim`);
+  const first = batch[0]!;
+  if ("kind" in first) throw new Error("Seller claim refused");
+  const mode = arm === "legacy" || arm === "bare claim" ? "legacy_fallback" : "frozen";
+  expect(first).toMatchObject({ dutyId: target.dutyId, generation: arm === "bare claim" ? 2 : 1,
+    facts: { seller: arm === "race" ? first.facts.seller : seller, sellerRevision: arm === "race" ? first.facts.sellerRevision : sellerRevision, sellerMode: mode } });
+  expect(await state(target.dutyId)).toMatchObject({ status: "processing", generation: first.generation, claim_token: first.token });
+  expect(await revisionState(target.dutyId)).toEqual(arm === "legacy" ? [] : arm === "bare claim" ? [{ revision_ref: null, seller_facts: null, capture_generation: null }]
+    : [{ revision_ref: first.facts.sellerRevision, seller_facts: first.facts.seller, capture_generation: first.generation }]);
+  if (arm === "retry" || arm === "legacy" || arm === "bare claim") {
+    await h.pool.query("UPDATE public.invoicing_duties SET lease_until=now()-interval '1 second' WHERE id=$1", [target.dutyId]);
+    const retry = await changed.claim(selected);
+    expect(retry).toMatchObject([{ generation: first.generation + 1, facts: { sellerMode: mode,
+      seller: mode === "frozen" ? seller : { ...seller, name: "Later seller" }, sellerRevision: mode === "frozen" ? sellerRevision : "later-revision" } }]);
+    expect(await state(target.dutyId)).toMatchObject({ generation: first.generation + 1, status: "processing" });
+    expect(await revisionState(target.dutyId)).toEqual(arm === "legacy" ? [] : arm === "bare claim" ? [{ revision_ref: null, seller_facts: null, capture_generation: null }]
+      : [{ revision_ref: sellerRevision, seller_facts: seller, capture_generation: 1 }]);
   }
 });

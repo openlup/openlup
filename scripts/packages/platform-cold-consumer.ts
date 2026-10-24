@@ -132,7 +132,7 @@ export function assertExportInventory(consumer: string): void {
 export function proveInvoicingConsumer(consumer: string): void {
   consumerNode(consumer, `
 import assert from "node:assert/strict";
-import { readInvoiceCapabilities, createNativeUnsupportedInvoicePorts, runInvoiceAdapterConformance, createPostgresInvoiceStore, INVOICING_MIGRATIONS, runNativeInvoiceIssueJob, collectInvoiceDuties, createIndependentInvoiceDutyBinding } from "@openlup/platform/invoicing";
+import { createInvoiceServices, createInvoiceContribution, claimInvoiceSellerRevision, readInvoiceCapabilities, createNativeUnsupportedInvoicePorts, runInvoiceAdapterConformance, createPostgresInvoiceStore, INVOICING_MIGRATIONS, runNativeInvoiceIssueJob, collectInvoiceDuties, createIndependentInvoiceDutyBinding } from "@openlup/platform/invoicing";
 import * as contracts from "@openlup/platform/invoicing/contracts";
 assert.deepEqual(Object.keys(contracts), []);
 for (const entry of ["invoicing", "invoicing/contracts"]) assert(import.meta.resolve("@openlup/platform/" + entry).startsWith(new URL("./node_modules/", import.meta.url).href));
@@ -144,6 +144,14 @@ assert.equal(readInvoiceCapabilities({enabled:true,selection:null,capability}).c
 assert.equal(readInvoiceCapabilities({enabled:true,selection:{providerRef:"other"},capability}).code,"selection_required");
 assert.equal(readInvoiceCapabilities({enabled:true,selection:{providerRef:"fiscal-a"},capability}).capability,capability);
 const native=createNativeUnsupportedInvoicePorts();
+let factoryRuns=0;
+const composition={...native,selection:{providerRef:"fiscal-a"},capability,readiness:async()=>({kind:"ready"}),factories:{issue:()=>async()=>{factoryRuns++;return "installed-run";}}};
+assert.equal((await createInvoiceServices(composition).run("issue")).code,"disabled");assert.equal(factoryRuns,0);
+assert.equal(await createInvoiceServices({...composition,enabled:true}).run("issue"),"installed-run");assert.equal(factoryRuns,1);
+assert.equal((await createInvoiceServices({...composition,enabled:true}).run("correction")).kind,"unsupported");
+assert.deepEqual(await claimInvoiceSellerRevision(async()=>({kind:"unknown",code:"unknown"})),{kind:"unknown",code:"unknown"});
+assert.deepEqual(await claimInvoiceSellerRevision(async()=>({kind:"found",seller:{name:"installed-seller"},revisionRef:"installed-revision"})),{kind:"found",seller:{name:"installed-seller"},revisionRef:"installed-revision"});
+assert.equal(createInvoiceContribution({version:"test",requiredSchema:{version:"full",migration:"full",objects:[]},invoicing:{},handlers:[],schedules:[],routes:[]}).contributions[0].manifest.module.id,"invoicing");
 const unsupportedResult={kind:"unsupported",code:"host_binding_required",retryable:false,effectMayHaveSucceeded:false};
 assert.deepEqual(await native.host.facts.read("order-a"),unsupportedResult);
 assert.deepEqual(await native.host.settlement.record({}),unsupportedResult);
@@ -305,9 +313,15 @@ export function compileConsumer(consumer: string, entries: readonly string[], co
     'export const fulfillmentContribution = createFulfillmentContribution({version:"0.21.0",requiredSchema:{version:"fixture",migration:"fixture",objects:[]},fulfillment:{dispatch:fulfillment.runDispatch},handlers:[],schedules:[],routes:[]});',
   ].join("\n"));
   if (entries.includes("invoicing") && entries.includes("invoicing/contracts")) surfaces.push([
-    'import { readInvoiceCapabilities, createNativeUnsupportedInvoicePorts, runInvoiceAdapterConformance } from "@openlup/platform/invoicing";',
-    'import type { InvoiceFacts, InvoiceLine, InvoiceSeller, InvoiceBuyer, InvoiceIdentity, InvoiceWriteResult, InvoiceReadbackResult, InvoiceArtifactResult, InvoiceSettlementResult, InvoiceCapabilities, InvoiceCompanyLookupPort, InvoiceStorePort, InvoiceHostPorts, InvoiceServicesOptions, InvoiceDocumentIdentity, InvoiceProviderPort, InvoiceSettlementPort, InvoiceSettlementItem, InvoiceDutyReadback, InvoiceUnsupported, InvoiceDiagnosticCode, InvoiceProof, InvoiceClearanceObservation } from "@openlup/platform/invoicing/contracts";',
+    'import { createInvoiceServices, createInvoiceContribution, claimInvoiceSellerRevision, type InvoiceServices, readInvoiceCapabilities, createNativeUnsupportedInvoicePorts, runInvoiceAdapterConformance } from "@openlup/platform/invoicing";',
+    'import type { InvoiceFacts, InvoiceLine, InvoiceSeller, InvoiceBuyer, InvoiceIdentity, InvoiceWriteResult, InvoiceReadbackResult, InvoiceArtifactResult, InvoiceSettlementResult, InvoiceCapabilities, InvoiceCompanyLookupPort, InvoiceStorePort, InvoiceHostPorts, InvoiceServicesOptions, InvoiceDocumentIdentity, InvoiceProviderPort, InvoiceSettlementPort, InvoiceSettlementItem, InvoiceDutyReadback, InvoiceUnsupported, InvoiceDiagnosticCode, InvoiceProof, InvoiceClearanceObservation, InvoiceSellerRevision } from "@openlup/platform/invoicing/contracts";',
     'declare const invoiceCapability: InvoiceCapabilities;',
+    'declare const invoiceOptions: InvoiceServicesOptions;',
+    'export const invoiceServices: InvoiceServices = createInvoiceServices({ ...invoiceOptions, factories: {} });',
+    'export const invoiceRun: Promise<unknown> = invoiceServices.run("issue");',
+    'declare const sellerRevision: InvoiceSellerRevision;',
+    'export const selectedSeller = claimInvoiceSellerRevision(async () => ({ kind: "found", ...sellerRevision }));',
+    'export const invoiceContribution = createInvoiceContribution({ version: "test", requiredSchema: { version: "complete", migration: "complete", objects: [] }, invoicing: {}, handlers: [], routes: [], schedules: [] });',
     'export const unsupportedInvoices = createNativeUnsupportedInvoicePorts();',
     'export type InvoiceConformanceSubject = Parameters<typeof runInvoiceAdapterConformance>[0][number];',
     'export const invoiceSelection = readInvoiceCapabilities({ enabled: true, selection: { providerRef: invoiceCapability.providerRef }, capability: invoiceCapability });',

@@ -1,5 +1,11 @@
 # @openlup/platform
 
+Invoicing exports explicit `createInvoiceServices`, `InvoiceServices` and inert
+`createInvoiceContribution` through `/invoicing`, with no new composition entry.
+`claimInvoiceSellerRevision` reads an injected selection before claim; the pinned
+SQL wrappers persist it for eligible obligations. `InvoiceSellerRevision` is also
+available from the type-only contracts entry. Legacy obligations keep fallback.
+
 Development preview. This package is part of the publishable set with core and outbox; preparation does not establish a registry release or a stable API. Its repository-directory publish command refuses publication; the authorized package-release workflow owns publication.
 
 It holds the runnable server substrate an OpenLup application composes: the Node HTTP runtime, BFF dispatch, scheduling and job leases, blob storage, data gateways, the node-postgres migration runner and bundle composition. Ports and their contracts stay in `@openlup/core/platform-runtime`.
@@ -746,7 +752,7 @@ owed duties, split fact leases, claims and fenced issue/correction results.
 Missing host facts refuse before writes; clearance remains host work. Delivery
 requires an explicit host envelope projection and M04 transport. `INVOICING_MIGRATIONS` separates native child-document and managed
 base-row correction storage. Install the complete native catalogue, not its
-six sparse byte-identical SQL assets. The local-only Postgres adapter consumes
+seven sparse byte-identical SQL assets. The local-only Postgres adapter consumes
 this store without claiming fiscal parity or registering a worker. The
 [invoicing architecture owner](../../docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#invoicing-contracts)
 describes reversal recovery, capture faults and cutover fencing.
@@ -771,3 +777,13 @@ The invoicing read side adds `runInvoiceDeliveryJob`, `assertInvoicePdf`,
 `createInvoiceReadModel`. Hosts supply authorization, storage, M04 transport,
 terminal/backoff callbacks or the native store, and safe native history projection. See the
 [read-helper recipe](../../docs/platform/PLATFORM_PACKAGE_REFERENCE.md#invoicing-read-helpers).
+
+`createInvoiceServices` and `createInvoiceContribution` compose the existing
+helpers through `/invoicing`, with explicit selection, default-off and readiness
+before execution. Native collection, issue, delivery, document/payout sync and
+history use their module implementations; host facades may bind factories where
+transport or query projection is host-owned. No executor is installed.
+`claimInvoiceSellerRevision` selects a seller before leasing. The optional native
+store seller binding and managed wrappers persist its first-ever claim revision;
+legacy fallback and forward-only migration limits are owned by the
+[M09 migration section](../../docs/platform/DATA_AND_MIGRATIONS.md#m09-invoicing-forward-design-and-control-approval).

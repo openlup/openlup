@@ -1,4 +1,5 @@
 import type { InvoiceFacts, InvoiceIdentity, InvoiceStorePort, InvoiceHostPorts, InvoiceProviderPort } from "./contracts/index.js";
+import { claimInvoiceSellerRevision } from "./sellerRevision.js";
 import { createNativeUnsupportedInvoicePorts } from "./nativeUnsupported.js";
 
 type InvoiceClaim = Parameters<InvoiceStorePort["preflight"]>[0]["claim"];
@@ -19,7 +20,7 @@ const unsupported = { kind: "unsupported", code: "host_binding_required", retrya
 /** Bind an autocommit executor. Never pass a transaction spanning host/provider I/O.
  * Missing fiscal facts or delivery binding refuse before writes; no scheduler is installed.
  */
-export function createPostgresInvoiceStore(db: Executor, deliveryProjection?: DeliveryProjection): NativeStore {
+export function createPostgresInvoiceStore(db: Executor, options?: Partial<DeliveryProjection> & { readonly seller?: InvoiceHostPorts["seller"] }): NativeStore {
   async function call<T>(name: string, values: unknown[]): Promise<T> {
     const result = await db.query(`SELECT public.${name}(${values.map((_, i) => `$${i + 1}`).join(",")}) AS response`, values);
     if (result.rows[0]?.response === undefined) throw new Error("invoicing_native_response_missing");
@@ -38,7 +39,10 @@ export function createPostgresInvoiceStore(db: Executor, deliveryProjection?: De
         ORDER BY d.id LIMIT least(greatest(coalesce($1::integer,10),1),100)`, [limit, afterDutyId]);
       return result.rows.map(row => ({ dutyId: row.dutyId as string, orderId: row.orderId as string }));
     },
-    captureDuty: v => call("invoicing_capture_duty", [v.requestKey, v.sourceKind, v.sourceId, v.orderId, v.evidence, v.occurredAt]),
+    async captureDuty(v) {
+      try { return await call<Awaited<ReturnType<InvoiceStorePort["captureDuty"]>>>("invoicing_request_with_seller_policy", [v.requestKey, v.sourceKind, v.sourceId, v.orderId, v.evidence, v.occurredAt]); }
+      catch (error) { if (isConflict(error)) return { kind: "conflict", code: "identity_mismatch" }; throw error; }
+    },
     async installFacts(v) {
       if (!validFacts(v.facts)) return unsupported;
       return call<Awaited<ReturnType<InvoiceStorePort["installFacts"]>>>("invoicing_install_facts", [v.dutyId, v.facts, v.facts.factRevision]);
@@ -55,6 +59,9 @@ export function createPostgresInvoiceStore(db: Executor, deliveryProjection?: De
     },
     readDuties: orderId => call("invoicing_duty_readback", [orderId]),
     async claim(v) {
+      if (!options?.seller) return unsupported;
+      const selected = await claimInvoiceSellerRevision(() => options!.seller!.read({ orderId: v.orderId ?? null }));
+      if (selected.kind !== "found") return unsupported;
       // Revisions are immutable. Refuse legacy/incomplete host projections before
       // the lease RPC mutates a duty; supported writers install through this store.
       const candidates = await db.query(`SELECT f.facts FROM public.invoicing_duties d
@@ -63,7 +70,7 @@ export function createPostgresInvoiceStore(db: Executor, deliveryProjection?: De
           AND d.status IN ('ready','processing','unknown') AND d.available_at<=now()
           AND (d.status<>'processing' OR d.lease_until<=now())`, [v.orderId ?? null, v.providerRef]);
       if (candidates.rows.some(row => !validFacts(row.facts as InvoiceFacts))) return unsupported;
-      const rows = await call<Record<string, unknown>[]>("invoicing_claim_duties", [v.limit, v.visibilitySeconds, v.providerRef, v.orderId ?? null]);
+      const rows = await call<Record<string, unknown>[]>("invoicing_claim_with_seller", [v.limit, v.visibilitySeconds, v.providerRef, selected.seller, selected.revisionRef, v.orderId ?? null]);
       return rows.map(row => {
         const facts = row.facts as InvoiceFacts & { before?: InvoiceFacts; reason?: string; parentExternalId?: string };
         if (!validFacts(facts)) throw new Error("invoicing_native_facts_invalid");
@@ -71,7 +78,7 @@ export function createPostgresInvoiceStore(db: Executor, deliveryProjection?: De
         return {
           dutyId: row.id as string, documentId: row.document_id as string, requestId: row.request_id as string,
           token: row.claim_token as string, generation: row.generation as number, leaseUntil: row.lease_until as string,
-          identity: identity(row, facts), facts,
+          identity: identity(row, facts), facts: { ...facts, seller: row.seller as InvoiceFacts["seller"], sellerRevision: row.sellerRevision as string, sellerMode: row.sellerMode as "frozen" | "legacy_fallback" },
           action: (row.last_result as { action: "create" | "readback" }).action,
           correction: correction ? { before: facts.before!, reason: facts.reason!, after: { totalNetMinor: 0, totalTaxMinor: 0, totalGrossMinor: 0 } } : null,
         };
@@ -101,8 +108,10 @@ export function createPostgresInvoiceStore(db: Executor, deliveryProjection?: De
       return { kind: result.kind === "stale" || result.kind === "voided" ? result.kind : "recorded" };
     },
     async requestReversal(v) {
-      const result = await call<{ kind: "missing" | "voided" | "pending_readback" | "correction_requested" | "unsupported"; dutyId?: string; replayed?: boolean }>("invoicing_request_reversal", [v.requestKey, v.orderId, v.reason, v.proof]);
+      try {
+      const result = await call<{ kind: "missing" | "voided" | "pending_readback" | "correction_requested" | "unsupported"; dutyId?: string; replayed?: boolean }>("invoicing_request_with_seller_policy", [v.requestKey, "correction", null, v.orderId, { ...v.proof, reason: v.reason }, null]);
       return result.kind === "unsupported" ? { ...result, kind: "unsupported_recorded" } : { ...result, kind: result.kind };
+      } catch (error) { if (isConflict(error)) return { kind: "conflict", code: "identity_mismatch" }; throw error; }
     },
     async requestLocalDocument(v) {
       const result = await db.query(LOCAL_DOCUMENT_SQL, [v.requestKey, v.orderId, v.providerRef]);
@@ -113,14 +122,14 @@ export function createPostgresInvoiceStore(db: Executor, deliveryProjection?: De
       return { kind: "requested", documentId: response.document.id, invoiceRef: document.document_ref, replayed: response.replayed, status: response.document.status };
     },
     async claimDeliveries(v) {
-      if (typeof deliveryProjection?.projectDelivery !== "function") return unsupported;
+      if (typeof options?.projectDelivery !== "function") return unsupported;
       const rows = await call<{ delivery_id: string; document_id: string; channel: string; recipient_reference: string; claim_token: string; generation: number }[]>(
         "invoicing_claim_deliveries", [v.limit, v.visibilitySeconds, v.requireClearance, v.orderId ?? null]);
       const claims: DeliveryClaim[] = [];
       for (const row of rows) {
         let retryable = true;
         try {
-          const projected = await deliveryProjection.projectDelivery({ deliveryRef: row.delivery_id, documentId: row.document_id,
+          const projected = await options!.projectDelivery!({ deliveryRef: row.delivery_id, documentId: row.document_id,
             channel: row.channel, recipientRef: row.recipient_reference, attemptCount: row.generation });
           const doc = (await db.query("SELECT order_id, provider_reference FROM public.accounting_documents WHERE id=$1::uuid", [row.document_id])).rows[0];
           const { identity, delivery } = projected;
@@ -146,7 +155,7 @@ export function createPostgresInvoiceStore(db: Executor, deliveryProjection?: De
       return claims;
     },
     async settleDelivery(v) {
-      if (typeof deliveryProjection?.projectDelivery !== "function") return unsupported;
+      if (typeof options?.projectDelivery !== "function") return unsupported;
       const doc = (await db.query(`SELECT doc.provider_reference FROM public.accounting_document_deliveries d
         JOIN public.accounting_documents doc ON doc.id=d.document_id WHERE d.id=$1::uuid`, [v.deliveryRef])).rows[0];
       if (!doc || doc.provider_reference !== v.providerDocumentRef) return unsupported;
@@ -163,6 +172,7 @@ export function createPostgresInvoiceStore(db: Executor, deliveryProjection?: De
   };
 }
 
+function isConflict(error: unknown): boolean { return typeof error === "object" && error !== null && "code" in error && error.code === "23505"; }
 function sameIdentity(a: InvoiceIdentity, b: InvoiceIdentity): boolean {
   return (Object.keys(a) as (keyof InvoiceIdentity)[]).every(key => a[key] === b[key]);
 }
@@ -293,11 +303,15 @@ export async function runNativeInvoiceIssueJob(input: {
           : { claim, retrySeconds, kind: "blocked", proof: null });
         failures++; continue;
       }
+      const correctionFacts = claim.correction && { ...claim.correction.before,
+        seller: claim.facts.seller, sellerRevision: claim.facts.sellerRevision, sellerMode: claim.facts.sellerMode };
       remoteStarted = true;
       const result = claim.correction
         ? await input.provider.correct({ identity: { ...claim.identity, operation: "full_reversal",
           correctionRef: claim.identity.correctionRef!, parentProviderDocumentRef: claim.identity.parentProviderDocumentRef! },
-          ...claim.correction, recoveryLookupRequired: claim.attemptCount > 1 })
+          ...claim.correction,
+          before: correctionFacts!,
+          recoveryLookupRequired: claim.attemptCount > 1 })
         : await input.provider.issue({ identity: { ...claim.identity, operation: "issue", correctionRef: null, parentProviderDocumentRef: null },
           facts: claim.facts, recoveryLookupRequired: claim.attemptCount > 1 });
       if (result.kind === "issued") {

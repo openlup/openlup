@@ -3,7 +3,8 @@
 Status: development-preview design. The contract and offline conformance surface,
 the issue, correction and reversal helpers, the managed correction forwards, and
 the native store with its SQL projections are available for explicit host composition.
-Reference routes, service composition and release activation remain later steps.
+Explicit service composition is available; reference route selection and release
+activation remain host decisions.
 
 ## Placement and ownership
 
@@ -275,3 +276,21 @@ The native delivery contract tests claim, sent, uncertain, bounded/default delay
 terminal parking, stale fencing and projection refusal against the installed
 pinned SQL. Hosts still supply M04 transport/content and authorized envelope facts;
 these tests establish neither provider readiness nor inbox delivery.
+
+## P7 composition and seller revision
+
+PART A reuses the host executor/registry and the real P4 collection and P5
+read-side helpers. Services and contributions remain inert until explicitly
+selected; readiness precedes claim. Transport-specific factories stay host-owned.
+The accepted targeted-module refusal precedes leasing, preserving order scope.
+
+PART B introduces the approved CTL-M09-4 seller fixtures without changing their
+bytes. Native reversals use `invoicing_request_with_seller_policy`'s correction
+branch. Claimed facts keep the wrapper-returned seller, revision and mode.
+Unknown/unsupported seller reads consume no lease. Order-scoped managed
+corrections never call the unscoped wrapper. First-ever claim freezing preserves
+legacy fallback after upgrade; managed order-status reversals use the request
+wrapper with source kind `order_status_reversal` and preserve incumbent results.
+Issued documents are unchanged. Replay conflicts return typed identity conflicts.
+The native descriptor appends 195000 at position 80, after 192000; install the
+complete ordered catalogue. PART A and PART B remain separately reviewable.

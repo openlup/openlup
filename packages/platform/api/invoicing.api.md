@@ -78,6 +78,56 @@ export declare function assertInvoicePdf(pdf: {
 /** The host supplies its existing fallback caption. No locale/content default. */
 export declare function invoicePdfFilename(reference: string, fallback?: string): string;
 ```
+## dist/invoicing/bindings.d.ts
+
+```ts
+import type { InvoiceServicesOptions } from "./contracts/host.js";
+import type { InvoiceUnsupported } from "./contracts/provider.js";
+import { runNativeInvoiceIssueJob } from "./postgresInvoiceStore.js";
+import { syncAcceptedInvoiceDocuments } from "./documentSync.js";
+import { syncInvoicePayoutSettlements } from "./settlementSync.js";
+import { createInvoiceReadModel } from "./readModel.js";
+type Operation = "issue" | "correction" | "delivery" | "documentSync" | "settlementSync" | "collectDuties" | "history";
+type Ports = Pick<InvoiceServicesOptions, "host"> & Required<{
+    provider: NonNullable<InvoiceServicesOptions["provider"]>;
+    store: NonNullable<InvoiceServicesOptions["store"]>;
+    capability: NonNullable<InvoiceServicesOptions["capability"]>;
+}>;
+type Refusal = InvoiceUnsupported | {
+    readonly kind: "refused";
+    readonly code: "disabled" | "selection_required";
+    readonly retryable: false;
+    readonly effectMayHaveSucceeded: false;
+};
+/** Host factories bind existing workers/readers, never another executor or cron. */
+export interface InvoiceServices<Result = unknown> {
+    readiness(): Promise<{
+        readonly kind: "ready";
+    } | Refusal>;
+    run(operation: Operation): Promise<Result | Refusal>;
+}
+/** Explicit selection and host readiness precede factory construction and claim.
+ * Native jobs use the installed module helpers; transport-specific host facades
+ * may supply factories. Auth, invocation scope and leases stay host-owned.
+ */
+export declare function createInvoiceServices<Result = unknown>(options: InvoiceServicesOptions & {
+    readonly factories?: Partial<Record<Operation, (ports: Ports) => () => Promise<Result>>>;
+    readonly jobs?: {
+        readonly issue?: Omit<Parameters<typeof runNativeInvoiceIssueJob>[0], "store" | "provider" | "money" | "providerRef">;
+        readonly delivery?: {
+            readonly claimOptions: Parameters<NonNullable<InvoiceServicesOptions["store"]>["claimDeliveries"]>[0];
+            filename(claim: Exclude<Awaited<ReturnType<NonNullable<InvoiceServicesOptions["store"]>["claimDeliveries"]>>, InvoiceUnsupported>[number]): string;
+        };
+        readonly documentSync?: Parameters<typeof syncAcceptedInvoiceDocuments>[0];
+        readonly settlementSync?: Omit<Parameters<typeof syncInvoicePayoutSettlements>[0], "settlement">;
+        readonly history?: Parameters<ReturnType<typeof createInvoiceReadModel>["history"]>[0];
+        readonly collectDuties?: {
+            readonly limit?: number;
+        };
+    };
+}): InvoiceServices<Result>;
+export {};
+```
 ## dist/invoicing/capabilities.d.ts
 
 ```ts
@@ -396,7 +446,7 @@ export interface InvoiceFacts {
     readonly clearanceRequired: boolean;
     readonly currency: string;
     readonly buyer: InvoiceBuyer;
-    /** Supplied separately for execution; P8 freezes it at first claim before provider I/O. */
+    /** Claim projection only: the first durable claim freezes the seller; legacy obligations retain execution-time fallback. */
     readonly seller?: InvoiceSeller;
     readonly payment: {
         readonly intentRef: string;
@@ -418,6 +468,16 @@ export interface InvoiceFacts {
     readonly totalTaxMinor: number;
     readonly totalGrossMinor: number;
     readonly chargedTotalGrossMinor: number;
+}
+/** Host-selected immutable revision; it contains no provider or country defaults. */
+export interface InvoiceSellerRevision<Seller = InvoiceSeller> {
+    readonly seller: Seller;
+    readonly revisionRef: string;
+}
+/** Added only to returned claim facts, never to installed historical revisions. */
+export interface InvoiceClaimedFacts extends InvoiceFacts {
+    readonly sellerRevision?: string;
+    readonly sellerMode?: "frozen" | "legacy_fallback";
 }
 ```
 ## dist/invoicing/contracts/host.d.ts
@@ -445,8 +505,8 @@ export interface InvoiceHostPorts {
         } | InvoiceUnsupported>;
     };
     /** Read the current host seller for the next claim, never per duty. Null orderId
-     * means an unscoped claim (including corrections). P8 freezes this seller at
-     * first claim; revisionRef feeds the claim wrapper's revision argument.
+     * means an unscoped claim (including corrections). The durable wrapper freezes this seller at
+     * the first-ever claim; revisionRef feeds the claim wrapper's revision argument.
      */
     seller: {
         read(input: {
@@ -653,8 +713,7 @@ export interface InvoiceHostPorts {
         } | InvoiceUnsupported>;
     };
 }
-/** Future service composition inputs only; no constructor, worker or runtime route
- * is supplied in P1. Closures/credentials must never be serialized with options.
+/** Explicit service composition inputs; the host retains worker and route authority. Closures/credentials must never be serialized with options.
  */
 export interface InvoiceServicesOptions {
     readonly enabled?: boolean;
@@ -674,7 +733,7 @@ export interface InvoiceServicesOptions {
 
 ```ts
 /** @consumer Frozen fact provider and installed declaration consumer. */
-export type { InvoiceFacts, InvoiceLine, InvoiceSeller, InvoiceBuyer } from "./facts.js";
+export type { InvoiceFacts, InvoiceLine, InvoiceSeller, InvoiceBuyer, InvoiceSellerRevision, InvoiceClaimedFacts } from "./facts.js";
 /** @consumer A4 issue/correction bridge, adapters and operator proof readback. */
 export type { InvoiceIdentity, InvoiceDocumentIdentity, InvoiceWriteResult, InvoiceReadbackResult, InvoiceProviderPort, InvoiceUnsupported, InvoiceDiagnosticCode, InvoiceProof } from "./provider.js";
 /** @consumer Host artifact storage/download binding. */
@@ -894,7 +953,7 @@ export {};
 
 ```ts
 import type { InvoiceHostPorts } from "./host.js";
-import type { InvoiceFacts } from "./facts.js";
+import type { InvoiceFacts, InvoiceClaimedFacts } from "./facts.js";
 import type { InvoiceIdentity, InvoiceDocumentIdentity, InvoiceProof, InvoiceUnsupported, InvoiceWriteResult, InvoiceReadbackResult } from "./provider.js";
 import type { InvoiceClearanceObservation, InvoiceArtifactResult, InvoiceDeliveryPort } from "./delivery.js";
 type InvoiceDutyStatus = "owed" | "blocked" | "ready" | "processing" | "unknown" | "issued" | "voided" | "unsupported" | "faulted";
@@ -909,7 +968,7 @@ export interface InvoiceClaim {
     readonly generation: number;
     readonly leaseUntil: string;
     readonly identity: InvoiceIdentity;
-    readonly facts: InvoiceFacts;
+    readonly facts: InvoiceClaimedFacts;
     readonly action: "create" | "readback";
     readonly correction: {
         readonly before: InvoiceFacts;
@@ -973,6 +1032,9 @@ export interface InvoiceStorePort {
     }): Promise<{
         readonly dutyId: string;
         readonly status: InvoiceDutyStatus;
+    } | {
+        readonly kind: "conflict";
+        readonly code: "identity_mismatch";
     } | InvoiceUnsupported>;
     installFacts(input: {
         readonly dutyId: string;
@@ -1090,6 +1152,9 @@ export interface InvoiceStorePort {
         readonly kind: "unsupported_recorded";
         readonly dutyId?: string;
         readonly replayed?: boolean;
+    } | {
+        readonly kind: "conflict";
+        readonly code: "identity_mismatch";
     } | InvoiceUnsupported>;
     /** Existing local-only request remains distinct from fiscal issuance. */
     requestLocalDocument(input: {
@@ -1164,6 +1229,31 @@ export interface InvoiceStorePort {
     } | InvoiceUnsupported>;
 }
 export {};
+```
+## dist/invoicing/contribution.d.ts
+
+```ts
+import type { Contribution, RequiredSchema } from "@openlup/core/readiness";
+/** Inert descriptors for the host's existing registry and executor. No registration. */
+export declare function createInvoiceContribution(input: {
+    version: string;
+    requiredSchema: RequiredSchema;
+    invoicing: Readonly<Record<string, ((...args: never[]) => unknown) | null>>;
+    handlers: Contribution["handlers"];
+    schedules: Contribution["schedules"];
+    routes: Contribution["routes"];
+}): {
+    contributions: Contribution[];
+    ports: {
+        [k: string]: ((...args: never[]) => unknown) | null;
+    };
+    routes: {
+        [k: string]: (...args: never[]) => unknown;
+    };
+    triggers: {
+        [k: string]: (...args: never[]) => unknown;
+    };
+};
 ```
 ## dist/invoicing/correction.d.ts
 
@@ -1539,6 +1629,11 @@ export { syncAcceptedInvoiceDocuments } from "./documentSync.js";
 export { syncInvoicePayoutSettlements } from "./settlementSync.js";
 export { resolveInvoiceDocumentHistory } from "./documentHistory.js";
 export { createInvoiceReadModel } from "./readModel.js";
+export { createInvoiceServices } from "./bindings.js";
+export type { InvoiceServices } from "./bindings.js";
+export { createInvoiceContribution } from "./contribution.js";
+export { claimInvoiceSellerRevision } from "./sellerRevision.js";
+export type { InvoiceSellerRevision, InvoiceClaimedFacts } from "./contracts/facts.js";
 ```
 ## dist/invoicing/issue.d.ts
 
@@ -1621,12 +1716,17 @@ export declare const INVOICING_MIGRATIONS: {
             readonly catalogPath: "db/platform/migrations/20261022192000_invoicing_payment_decoupling.sql";
             readonly sha256: "f4af30ee4c9365ea51bd0e95e5cc7ae869cf15dce5867fdd640f679438b36058";
             readonly url: URL;
+        }, {
+            readonly position: 80;
+            readonly catalogPath: "db/platform/migrations/20261022195000_invoicing_seller_revision.sql";
+            readonly sha256: "5a6348d9af296cfc6383894e3489f70af1f3bb5026c0cc329daa9f3f95802b22";
+            readonly url: URL;
         }];
     };
     readonly managed: {
         readonly correctionStorage: "base_row";
         readonly fiscalScope: "host_managed_projection";
-        readonly units: readonly ["supabase/migrations/20261022193000_invoicing_correction_claims.sql", "supabase/migrations/20261022193100_invoicing_correction_compatibility.sql"];
+        readonly units: readonly ["supabase/migrations/20261022193000_invoicing_correction_claims.sql", "supabase/migrations/20261022193100_invoicing_correction_compatibility.sql", "supabase/migrations/20261022195100_invoicing_seller_revision.sql"];
     };
 };
 ```
@@ -1702,7 +1802,9 @@ type Executor = {
 /** Bind an autocommit executor. Never pass a transaction spanning host/provider I/O.
  * Missing fiscal facts or delivery binding refuse before writes; no scheduler is installed.
  */
-export declare function createPostgresInvoiceStore(db: Executor, deliveryProjection?: DeliveryProjection): NativeStore;
+export declare function createPostgresInvoiceStore(db: Executor, options?: Partial<DeliveryProjection> & {
+    readonly seller?: InvoiceHostPorts["seller"];
+}): NativeStore;
 type MoneyEvidence = Awaited<ReturnType<InvoiceHostPorts["money"]["read"]>>;
 /** Native issue/readback binding; every store operation commits before host I/O.
  * @consumer Explicit native host issue binding and installed-consumer conformance.
@@ -1842,6 +1944,29 @@ export declare function createInvoiceReversalHandlers<Row, Request, Result exten
         reason: string;
     }>;
 }[];
+```
+## dist/invoicing/sellerRevision.d.ts
+
+```ts
+import type { InvoiceSellerRevision } from "./contracts/facts.js";
+import type { InvoiceUnsupported } from "./contracts/provider.js";
+/** Read the host selection before leasing. Persistence and race serialization
+ * belong exclusively to the pinned SQL wrapper, never to an in-memory cache.
+ * Unknown/unsupported selection consumes no claim and must be retried by the host.
+ */
+export declare function claimInvoiceSellerRevision<Seller extends object>(read: () => Promise<({
+    readonly kind: "found";
+} & InvoiceSellerRevision<Seller>) | {
+    readonly kind: "unknown";
+    readonly code: "unknown";
+} | InvoiceUnsupported>): Promise<InvoiceUnsupported | {
+    readonly kind: "unknown";
+    readonly code: "unknown";
+} | {
+    readonly kind: "found";
+    readonly seller: Seller;
+    readonly revisionRef: string;
+}>;
 ```
 ## dist/invoicing/settlementSync.d.ts
 

@@ -13,5 +13,6 @@
       "routes": ["/healthz"]
     }
   ],
+  "invoicing": { "defaultEnabled": false, "registration": "explicit-host", "executor": "accountingRuntime", "routes": [] },
   "refuses": ["admin", "api", "bff", "checkout", "cron", "mutation", "subscription"]
 }

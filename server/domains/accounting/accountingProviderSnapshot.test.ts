@@ -419,3 +419,19 @@ function correctionClaim(): AccountingCorrectionOutboxTarget {
     },
   };
 }
+
+it("O2 W1 issue and correction retry use their first-claim seller while legacy claims retain execution-time fallback", () => {
+  const saved = { ...APP_DEFAULT_SELLER, name: "First claim", taxId: "123", departmentId: null };
+  const env = { ACCOUNTING_SELLER_NAME: "Changed after claim" };
+  function check<Claim extends object>(claim: Claim, project: (claim: Claim, env: Record<string, string | undefined>) => { seller?: unknown; lines: unknown; buyer: unknown }) {
+    const frozen = project({ ...claim, seller: saved, sellerRevision: "first", sellerMode: "frozen" }, env);
+    expect(frozen.seller).toEqual(saved);
+    const legacy = project(claim, env);
+    const legacyWrapper = project({ ...claim, seller: saved, sellerRevision: "earlier-selection", sellerMode: "legacy_fallback" }, env);
+    expect(legacy.seller).toMatchObject({ name: "Changed after claim" });
+    expect(legacyWrapper.seller).toEqual(legacy.seller);
+    expect(frozen.lines).toEqual(legacy.lines); expect(frozen.buyer).toEqual(legacy.buyer);
+  }
+  check(baseClaim(), mapInvoiceClaimToProviderSnapshot);
+  check(correctionClaim(), mapCorrectionClaimToProviderSnapshot);
+});

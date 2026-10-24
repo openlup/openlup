@@ -1,5 +1,5 @@
 /** @consumer Frozen fact provider and installed declaration consumer. */
-export type { InvoiceFacts, InvoiceLine, InvoiceSeller, InvoiceBuyer } from "./facts.js";
+export type { InvoiceFacts, InvoiceLine, InvoiceSeller, InvoiceBuyer, InvoiceSellerRevision, InvoiceClaimedFacts } from "./facts.js";
 /** @consumer A4 issue/correction bridge, adapters and operator proof readback. */
 export type { InvoiceIdentity, InvoiceDocumentIdentity, InvoiceWriteResult, InvoiceReadbackResult, InvoiceProviderPort, InvoiceUnsupported, InvoiceDiagnosticCode, InvoiceProof } from "./provider.js";
 /** @consumer Host artifact storage/download binding. */
