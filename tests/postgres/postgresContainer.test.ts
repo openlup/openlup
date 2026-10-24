@@ -289,6 +289,11 @@ it.each(["handshake", "query"])("closes real TCP sockets when a peer stalls the 
   const server = createServer(socket => {
     sockets.add(socket);
     socket.on("close", () => sockets.delete(socket));
+    // Destroying the stalled probe can reset its peer while data is pending.
+    // Keep that expected fixture event owned; other socket errors still fail.
+    socket.on("error", (error: NodeJS.ErrnoException) => {
+      if (error.code !== "ECONNRESET") throw error;
+    });
     let authenticated = false;
     socket.on("data", data => {
       if (phase === "handshake") return;
