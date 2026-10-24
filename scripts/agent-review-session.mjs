@@ -143,7 +143,14 @@ export async function sessionMain(argv = process.argv.slice(2), { cwd = process.
         const baseAncestor = await ancestor(git, cwd, session.candidate.base, observed.base) &&
           await ancestor(git, cwd, observed.base, 'origin/main');
         const integration = integrationReviewContext(session, observed, { parents, baseAncestor }, now);
-        if (integration) observed.integration = integration;
+        if (integration) {
+          try {
+            integration.mechanical = (await git(cwd, 'merge-tree', '--write-tree', session.candidate.head, observed.base)).trim() === observed.tree;
+          } catch (error) {
+            if (error.code !== 1) throw new Error(`invalid: cannot verify mechanical integration: ${error.message}`);
+          }
+          observed.integration = integration;
+        }
       }
       const next = prepareCandidate(session, observed, now, fresh);
       await saveState(path, next);
