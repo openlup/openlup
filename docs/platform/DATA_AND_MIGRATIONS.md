@@ -798,8 +798,11 @@ same command replays the stored noop receipt without writes. The TS store also
 uses native preview for an unquoted direct apply, retaining only a noop
 receipt; a non-noop probe rolls back before ordinary apply, preserving each
 changed-state command's quote requirement or lifecycle behavior.
-Raw SQL bundle apply still requires either that receipt or a quote. Other add-on requests retain the existing
-normalization and duplicate-line refusal behavior. The
+Raw SQL bundle apply still requires either that receipt or a quote. Changed plan
+length commands quote and apply supplied core lines; omitting them expands the
+stored core lines. New add-ons default missing or nonpositive quantities to one.
+Add-on commands preserve the stored cadence, and quantity updates and removals
+compare variant UUIDs case-insensitively. Duplicate-line refusal remains in force. The
 [TS store witness](../../tests/postgres/subscriptionCommandLifecycleCases.ts)
 checks catalogue drift and compares every public table, including row versions,
 across preview and apply replay.

@@ -285,7 +285,10 @@ consumer classifies both exact subscription entries as having no optional peer
 requirement and exercises their installed declarations and runtime refusals.
 Native command cases run in the shared N1/N2 lifecycle harness: they bind the
 supported descriptor to real future-term/replay behavior and prove prepaid
-refusal and full transaction rollback without replacing SQL with doubles. Raw PostgreSQL cast/overflow messages are
+refusal and full transaction rollback without replacing SQL with doubles. Plan-length store rows check supplied core quantity and variant changes in quotes,
+persisted lines and future renewal terms, with unchanged-line/day no-ops and receipt replay.
+Typed future-term rows cover the same quantity and variant changes through
+`createPostgresSubscriptionCommands` and its package-template translation. Raw PostgreSQL cast/overflow messages are
 normalized to a closed refusal code, including when read from stored receipts.
 Adapter replay returns before mutable host future-term validation; changing the
 host address policy after commit cannot replace the original receipt.

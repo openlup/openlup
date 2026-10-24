@@ -9,6 +9,12 @@
 -- no-op truth (20260711170020), slide no-op truth (20260713110000), locked renewal
 -- lane (20260826160000). Portion mode/factor, introductory and address policy
 -- stay host-owned; native resize compares lines/cadence, not a stored mode.
+-- Donor files: supabase/migrations/20260711151000_subscription_generic_bundle_actions.sql
+-- (194-207, 645-782), 20260711170020_subscription_package_changed_noop_truth.sql
+-- (163-205), 20260713110000_subscription_slide_next_cycle_noop_truth.sql (100-118).
+-- Native quotes expand omitted plan coreLines from stored lines; donor apply receives
+-- already expanded recipeLines. Composition metadata has no native storage.
+-- Preview-only no-op parity; direct apply keeps native lifecycle guards/receipts.
 
 CREATE TABLE public.subscription_command_receipts (
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -90,7 +96,8 @@ BEGIN
   IF version IS NULL OR version<>s.template_version THEN
    RAISE EXCEPTION 'subscription_edit_stale_template' USING ERRCODE='22023';
   END IF;
-  cadence:=COALESCE((p_payload->>'cadenceDays')::integer,(p_payload->>'planDays')::integer,s.cadence_days);
+  cadence:=CASE WHEN p_action IN ('update_bundle','resize_bundle','update_package_template','update_plan_length')
+   THEN COALESCE((p_payload->>'cadenceDays')::integer,(p_payload->>'planDays')::integer,s.cadence_days) ELSE s.cadence_days END;
   IF cadence NOT BETWEEN 1 AND 90 OR s.price_list_id IS NULL OR s.currency_code IS NULL THEN
    RAISE EXCEPTION 'subscription_edit_invalid_request' USING ERRCODE='22023';
   END IF;
@@ -153,15 +160,17 @@ BEGIN
     (SELECT COALESCE(sum(quantity),0) FROM public.subscription_lines WHERE subscription_id=s.id AND NOT is_addon) THEN
     RAISE EXCEPTION 'subscription_command_bundle_total_mismatch' USING ERRCODE='22023';
    END IF;
+  ELSIF p_action='update_plan_length' THEN
+   core:=COALESCE(p_payload->'coreLines',core);
   ELSIF p_action='add_addon' THEN
-   addons:=addons||jsonb_build_array(jsonb_build_object('variantId',p_payload->>'variantId','qty',p_payload->'qty'));
+   addons:=addons||jsonb_build_array(jsonb_build_object('variantId',p_payload->>'variantId','qty',GREATEST(1,COALESCE((p_payload->>'qty')::integer,1))));
   ELSIF p_action IN ('remove_addon','update_addon_quantity') THEN
-   IF NOT EXISTS(SELECT 1 FROM jsonb_array_elements(addons) v WHERE v->>'variantId'=p_payload->>'variantId') THEN
+   IF NOT EXISTS(SELECT 1 FROM jsonb_array_elements(addons) v WHERE v->>'variantId'=lower(p_payload->>'variantId')) THEN
     RAISE EXCEPTION 'subscription_command_addon_not_found' USING ERRCODE='22023';
    END IF;
-   SELECT COALESCE(jsonb_agg(CASE WHEN v->>'variantId'=p_payload->>'variantId' THEN
+   SELECT COALESCE(jsonb_agg(CASE WHEN v->>'variantId'=lower(p_payload->>'variantId') THEN
     jsonb_set(v,'{qty}',p_payload->'qty') ELSE v END),'[]') INTO addons
-    FROM jsonb_array_elements(addons) v WHERE p_action<>'remove_addon' OR v->>'variantId'<>p_payload->>'variantId';
+    FROM jsonb_array_elements(addons) v WHERE p_action<>'remove_addon' OR v->>'variantId'<>lower(p_payload->>'variantId');
   END IF;
   IF core IS NULL OR jsonb_typeof(core)<>'array' OR jsonb_array_length(core) NOT BETWEEN 1 AND 6
    OR addons IS NULL OR jsonb_typeof(addons)<>'array' OR jsonb_array_length(addons)>12 THEN

@@ -222,6 +222,56 @@ it('supports generic resize/cadence and addon commands, while repeated equal bun
  expect(await invoke(f,'equal-bundle','update_bundle',payload)).toMatchObject({status:'replayed',originalStatus:'noop',templateVersion:version});
  expect((await h.pool.query('SELECT * FROM public.subscription_events WHERE subscription_id=$1',[f.subscription])).rows).toEqual(before);
 });
+it.each(['quantity','variant','equal'] as const)('preserves update_plan_length core %s semantics through the TS store',async change=>{
+ const f=await fixture(),variant=change==='variant'?randomUUID():f.sku;
+ if(change==='variant') {
+  const product=randomUUID();
+  await h.pool.query("INSERT INTO public.catalog_products(id,slug,name) VALUES($1::uuid,$1::text,'Plan variant')",[product]);
+  await h.pool.query("INSERT INTO public.catalog_skus(id,product_id,sku,title,status,sellable_in_subscription) VALUES($1::uuid,$2,$1::text,'Plan variant','active',true)",[variant,product]);
+  await h.pool.query("INSERT INTO public.price_entries(price_list_id,variant_id,unit_price_minor,valid_from) VALUES($1,$2,350,'2026-01-01')",[f.list,variant]);
+ }
+ const quantity=change==='quantity'?3:2,planDays=change==='equal'?28:21;
+ const store=createPostgresSubscriptionCommandStore({
+  async withTransaction<T>(work:(db:SubscriptionQueryExecutor)=>Promise<T>) {
+   const db=await h.pool.connect();try{await db.query('BEGIN');const result=await work(db);await db.query('COMMIT');return result;}
+   catch(error){await db.query('ROLLBACK');throw error;}finally{db.release();}
+  },
+ });
+ const input={actorId:f.actor,clientId:f.client,subscriptionId:f.subscription,idempotencyKey:`store-plan-core-${change}`,
+  action:'update_plan_length',payload:{coreLines:[{variantId:variant,qty:quantity}],planDays,expectedTemplateVersion:1},now:AT};
+ const before=await effects(),preview=await store.preview(input);
+ if(change==='equal') {
+  expect(preview).toMatchObject({status:'noop',templateVersion:1,eventId:null});
+  expect(preview).not.toHaveProperty('quoteHash');
+  const after=await effects();
+  for(const name of Object.keys(before).filter(name=>name!=='subscription_command_receipts'))
+   expect(after[name],`${change}: ${name} columns/xmin`).toEqual(before[name]);
+  const applied=await store.apply(input);
+  expect(applied).toMatchObject({...preview,status:'replayed',originalStatus:'noop'});
+  for(let n=0;n<3;n++)expect(await store.apply({...input,now:later(500)})).toEqual(applied);
+  expect(await effects()).toEqual(after);
+  return;
+ }
+ expect(preview).toMatchObject({status:'previewed',canApply:true,newTotalMinor:quantity*350});
+ const lines=[{variantId:variant,quantity,isAddon:false,sortOrder:0,unitPriceMinor:350,currency:'XXX'}];
+ expect(preview.lines).toEqual(lines);
+ expect((await h.pool.query(`SELECT proposed_lines,proposed_cadence_days FROM public.subscription_edit_quotes
+  WHERE subscription_id=$1`,[f.subscription])).rows).toEqual([{proposed_lines:lines,proposed_cadence_days:planDays}]);
+ const accepted={...input,payload:{...input.payload,acceptedQuoteHash:String(preview.quoteHash)}};
+ const applied=await store.apply(accepted);expect(applied).toMatchObject({status:'applied',templateVersion:2});
+ expect((await h.pool.query(`SELECT variant_id,quantity,is_addon,sort_order,unit_price_minor,currency_code
+  FROM public.subscription_lines WHERE subscription_id=$1 ORDER BY sort_order`,[f.subscription])).rows)
+  .toEqual([{variant_id:variant,quantity,is_addon:false,sort_order:0,unit_price_minor:'350',currency_code:'XXX'}]);
+ expect((await h.pool.query(`SELECT line_ordinal,sku,quantity,unit_amount_minor
+  FROM public.subscription_renewal_term_lines WHERE subscription_id=$1 ORDER BY line_ordinal`,[f.subscription])).rows)
+  .toEqual([{line_ordinal:1,sku:change==='variant'?variant:f.snapshot.lines[0].sku,quantity,unit_amount_minor:'350'}]);
+ expect((await h.pool.query('SELECT cadence_days FROM public.subscriptions WHERE id=$1',[f.subscription])).rows)
+  .toEqual([{cadence_days:planDays}]);
+ const beforeReplay=await effects();
+ for(let n=0;n<3;n++)expect(await store.apply({...accepted,now:later(500)}))
+  .toEqual({...applied,status:'replayed',originalStatus:'applied'});
+ expect(await effects()).toEqual(beforeReplay);
+});
 it.each(['update_bundle','add_addon','update_addon_quantity','update_plan_length',
  'resize_bundle','update_package_template','slide_next_cycle'] as const)(
  'returns %s noop through the TS store after price drift with only a receipt written',async action=>{
@@ -443,6 +493,50 @@ it.each(['previewed','direct'] as const)('accepts typed future-terms %s noops wi
  expect(await effects()).toEqual(after);
  expect(await commands.apply({...command,idempotencyKey:`typed-change-${mode}`,planDays:21,cadenceDays:21}))
   .toEqual({outcome:'refused',reason:'subscription_edit_quote_required'});
+});
+
+it.each(['quantity','variant'] as const)('quotes and applies typed future terms with a changed core %s',async change=>{
+ const f=await fixture(),variant=change==='variant'?randomUUID():f.sku;
+ if(change==='variant') {
+  const product=randomUUID();
+  await h.pool.query("INSERT INTO public.catalog_products(id,slug,name) VALUES($1::uuid,$1::text,'Plan variant')",[product]);
+  await h.pool.query("INSERT INTO public.catalog_skus(id,product_id,sku,title,status,sellable_in_subscription) VALUES($1::uuid,$2,$1::text,'Plan variant','active',true)",[variant,product]);
+  await h.pool.query("INSERT INTO public.price_entries(price_list_id,variant_id,unit_price_minor,valid_from) VALUES($1,$2,350,'2026-01-01')",[f.list,variant]);
+ }
+ const quantity=change==='quantity'?3:2,sku=change==='variant'?variant:f.snapshot.lines[0].sku;
+ const commands=createPostgresSubscriptionCommands({
+  async withTransaction<T>(work:(db:SubscriptionQueryExecutor)=>Promise<T>) {
+   const db=await h.pool.connect();try{await db.query('BEGIN');const result=await work(db);await db.query('COMMIT');return result;}
+   catch(error){await db.query('ROLLBACK');throw error;}finally{db.release();}
+  },
+  async futureTerms(command) {
+   return {coreLines:command.coreLines.map(line=>({variantId:variant,qty:line.quantity})),
+    addonLines:[],compositionConstraint:{kind:'units',value:quantity}};
+  },
+ });
+ const command:Extract<SubscriptionCommand,{action:'edit_future_terms'}>={
+  actor:{kind:'operator',actorId:f.actor,clientId:f.client},subscriptionId:f.subscription,now:AT,
+  idempotencyKey:`typed-core-${change}`,action:'edit_future_terms',shippingAddressId:'host-verified-address',
+  planDays:21,cadenceDays:21,expectedTemplateVersion:1,acceptedQuoteHash:'',confirmedChargeTiming:true,
+  coreLines:[{sku,quantity}],addonLines:[],compositionConstraint:`host-units-${quantity}`,
+ };
+ const preview=await commands.preview(command);
+ expect(preview).toMatchObject({status:'previewed',canApply:true,newTotalMinor:quantity*350,
+  lines:[{variantId:variant,quantity,isAddon:false,sortOrder:0,unitPriceMinor:350,currency:'XXX'}]});
+ const accepted={...command,acceptedQuoteHash:String('quoteHash' in preview?preview.quoteHash:'')};
+ const applied=await commands.apply(accepted) as SubscriptionCommandReceipt;
+ expect(applied).toMatchObject({outcome:'applied',subscriptionId:f.subscription,revision:'2'});
+ expect((await h.pool.query(`SELECT variant_id,quantity,is_addon,sort_order,unit_price_minor,currency_code
+  FROM public.subscription_lines WHERE subscription_id=$1 ORDER BY sort_order`,[f.subscription])).rows)
+  .toEqual([{variant_id:variant,quantity,is_addon:false,sort_order:0,unit_price_minor:'350',currency_code:'XXX'}]);
+ expect((await h.pool.query(`SELECT line_ordinal,sku,quantity,unit_amount_minor
+  FROM public.subscription_renewal_term_lines WHERE subscription_id=$1 ORDER BY line_ordinal`,[f.subscription])).rows)
+  .toEqual([{line_ordinal:1,sku,quantity,unit_amount_minor:'350'}]);
+ expect((await h.pool.query('SELECT cadence_days FROM public.subscriptions WHERE id=$1',[f.subscription])).rows)
+  .toEqual([{cadence_days:21}]);
+ const beforeReplay=await effects();
+ for(let n=0;n<3;n++)expect(await commands.apply({...accepted,now:later(500)})).toEqual({...applied,outcome:'replayed'});
+ expect(await effects()).toEqual(beforeReplay);
 });
 
 it('binds the supported descriptor to real native command success, replay, rollback and unsupported refusal',async()=>{
