@@ -76,9 +76,13 @@ describe("hidden subscription activation and dunning boundary", () => {
     }
   });
 
-  it("expires dunning by pausing the subscription without writing payment tables directly", () => {
-    expect(migration).toContain("SET status = 'paused'");
-    expect(migration).toContain("'payment_failed_expired'");
+  it("keeps exhausted dunning open with repair authority without pausing or writing payment tables directly", () => {
+    const failure = effectiveFunctionBody("subscription_handle_payment_failure_dunning_before_cancel_fence");
+    expect(failure).toContain("v_exhausted := p_next_retry_at IS NULL AND p_retry_attempt >= v_ladder_exhausted_from");
+    expect(failure).toContain("v_case_status := 'open'");
+    expect(failure).toContain("v_token_purpose := 'repair_payment'");
+    expect(failure).not.toContain("SET status = 'paused'");
+    expect(failure).not.toContain("'payment_failed_expired'");
     expect(migration).not.toContain("UPDATE public.commerce_payments");
     expect(migration).not.toContain("UPDATE public.commerce_payment_intents");
     expect(migration).not.toContain("stripe");

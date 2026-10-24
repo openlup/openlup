@@ -457,10 +457,17 @@ subscription, because it neither skips the uncollected cycle nor moves a stale
 `next_cycle_at`; the managed `subscription_resume_after_expired_dunning` and the
 engine's `resumeSubscriptionFromExpiredDunning` handle it.
 
-Two known gaps still pause on exhaustion and must not gain new callers: the
-managed SQL `subscription_handle_payment_failure_dunning` (owned by a managed
-follow-up forward) and the engine's `pauseSubscriptionForExpiredDunning`, gated
-by `isDunningLadderExhausted` (owned by the M10 engine follow-up).
+Managed M2 now keeps exhausted cases open with a NULL retry and a repair token.
+Token redemption, durable method setup and the current cycle/rung must converge
+before recovery is authorized; replay cannot mint a second charge. The core
+compatibility helper `pauseSubscriptionForExpiredDunning` returns unchanged
+state and no pause event. Explicit owner pauses remain separate.
+
+Managed M1 makes refunds independent of subscription lifecycle: neither a first
+nor renewal refund cancels service, erases cycle payment history or emits
+`activation_reversed`. Existing first-cycle stock release remains; historical
+cancelled rows are not resurrected. Further refund-evidence parity belongs to
+its separately reviewed follow-up.
 
 The engine models the decision; the host keeps the durable duties the managed
 SQL restarts also perform. Both restarts require the customer's confirmation of
@@ -545,6 +552,12 @@ The native seller descriptor follows payment decoupling at position 80. Claims
 preserve first-ever seller timing and legacy fallback without rewriting history.
 
 `20261022193000`/`20261022193100` introduce managed correction v2; its sync-first settlement and permanent-failure parking are owned by [M09 forward design](DATA_AND_MIGRATIONS.md#m09-invoicing-forward-design-and-control-approval).
+
+Managed M1/M2 land as the first reviewed managed prefix over native N1.
+Only M2 adds its immutable C94 rail-path vocabulary counts (`ui-13`: 2,
+`ui-14`: 3); M1 has no counted vocabulary. Existing baseline keys and all
+reviewed pins stay unchanged. This bounded accounting admits those exact SQL
+bytes, without granting activation or a broader compatibility promise.
 
 Native subscription retry N1 extends the existing migration prefix without
 changing earlier rows. Its manifest inventory is recomputed by the repository
@@ -663,7 +676,8 @@ position 71 and refreshes `objectInventorySha256` from the complete live
 PostgreSQL catalogue. Earlier file/hash rows remain an exact prefix. Install
 the full selected catalogue to keep active subscriptions active on dunning
 exhaustion (invariant repair); the forward does not rewrite existing paused
-subscriptions or expired cases. The managed chain still needs its own forward.
+subscriptions or expired cases. Managed M2 supplies continuity through its
+separately reviewed dunning forward.
 
 Bundle application/admin now has package ownership in the existing catalog server
 entry with named reference compatibility bindings. Read-error identity is shared

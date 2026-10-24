@@ -11,10 +11,11 @@
  *   - `ladderTerminatedByClass(failureClass, cadence?)` — whether the REASON for
  *     the refusal, rather than the rung reached, ends the ladder.
  *   - `isDunningLadderExhausted(cycle, cadence?)` — whether a refused cycle has
- *     run past the last rung, the only non-payment reason to pause.
+ *     run past the last rung; exhaustion leaves the subscription active.
  *
  * TERMINATING, not capping. An attempt past the end of the ladder answers
- * `null`, which is the pause signal; it does not answer "the last slot again".
+ * `null`, which ends automatic retries without pausing the subscription; it never
+ * answers "the last slot again".
  * Callers therefore never need a `attempt <= maxRetryAttempts()` guard of their
  * own — asking for the next slot IS the decision, and a second copy of the
  * budget check is exactly how two rails drift apart.
@@ -146,15 +147,11 @@ export function maxRetryAttempts(
  * Whether a refused cycle has EXHAUSTED the ladder: it failed, nothing is
  * scheduled after it, and the attempt that failed sits past the last rung.
  *
- * This is the one condition under which the platform may pause a live
- * subscription for non-payment. Both halves are required. An absent schedule on
- * its own is not exhaustion: a class-terminated refusal on rung one also leaves
- * nothing scheduled, and treating it as exhaustion would pause a subscription on
- * the day of its first refusal. The rung is derived from the cadence, so pass
- * the same cadence here and to `recordPaymentFailure`. The managed SQL dunning
- * boundary spells the shipped ladder's rung as a fixed constant
- * (`v_ladder_exhausted_from`, 4); a deployment that publishes a different
- * ladder must move that constant with it.
+ * Exhaustion stops automatic retries; it never pauses the subscription.
+ * An absent schedule alone is not exhaustion: a terminating refusal class can
+ * leave no retry on the first rung. Pass the same cadence here and to
+ * `recordPaymentFailure`. Legacy expired-dunning recovery also uses this
+ * predicate to distinguish an exhausted cycle from an early refusal.
  *
  * @beta
  */

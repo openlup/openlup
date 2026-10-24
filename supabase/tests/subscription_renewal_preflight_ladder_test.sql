@@ -9,9 +9,8 @@
 --     row, applies its own result, and moves the cycle one step further up the
 --     backoff ladder -- retry_attempt 1, 2, 3, 4 with next_retry_at at +24h,
 --     +72h, +168h and then NULL. A NULL next retry is the ladder's terminal
---     condition, and the dunning boundary answers it by closing the case as
---     `expired`, pausing the subscription and minting the 30-day
---     `resume_subscription` token.
+--     condition. Dunning keeps the case open and the subscription active,
+--     and mints a 30-day repair_payment token for the original cycle.
 --   * re-presenting a key that has already been driven changes nothing. That is
 --     the property the runtime relied on for its liveness before the keys were
 --     retry-scoped: with one key for every tick, rung one was the only rung this
@@ -262,18 +261,18 @@ SELECT public.subscription_handle_payment_failure_dunning(
 SELECT is(
   (SELECT status FROM public.subscription_dunning_cases
     WHERE subscription_id = 'bd200000-0000-4000-8000-000000000001'),
-  'expired', 'the null next retry closes the journey as expired');
+  'open', 'the null next retry leaves the exhausted journey open for repair');
 
 SELECT is(
   (SELECT status FROM public.subscriptions WHERE id = 'bd200000-0000-4000-8000-000000000001'),
-  'paused', 'the expired journey pauses the subscription');
+  'active', 'the exhausted journey leaves the subscription active');
 
 SELECT is(
   (SELECT count(*)::integer FROM public.subscription_payment_recovery_tokens token
      JOIN public.subscription_dunning_cases dunning_case ON dunning_case.id = token.case_id
     WHERE dunning_case.subscription_id = 'bd200000-0000-4000-8000-000000000001'
-      AND token.purpose = 'resume_subscription'),
-  1, 'exactly one resume link is minted, and only at the end');
+      AND token.purpose = 'repair_payment' AND token.revoked_at IS NULL),
+  1, 'exactly one current repair link survives the ladder');
 
 SELECT is(
   (SELECT count(*)::integer FROM public.subscription_dunning_notifications notification

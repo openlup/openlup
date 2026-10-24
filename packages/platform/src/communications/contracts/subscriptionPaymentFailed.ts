@@ -19,9 +19,10 @@ export interface SubscriptionPaymentFailedEmailVars {
   recoveryUrl?: string | null;
   /**
    * Pre-formatted calendar day of the scheduled next charge, in the merchant's
-   * zone (e.g. "11.08.2026"). The dunning row that selects THIS template always
-   * carries a scheduled retry, so in production this is present; null keeps the
-   * pre-date sentence rather than printing a placeholder date.
+   * zone (e.g. "11.08.2026"). Present only when a retry is actually scheduled:
+   * a first-rung hard decline selects this template with no next retry, and
+   * `retryScheduled: false` renders the no-retry copy. null/absent keeps the
+   * sentence without a date rather than printing a placeholder date.
    */
   nextRetryDateLabel?: string | null;
   /** Card scheme as stored on the method's consent snapshot, e.g. "visa". */
@@ -72,11 +73,10 @@ export function createSubscriptionPaymentFailedContentFactory(input: {
     // also why it is PREPENDED and never appended — the retry sentence must stay
     // last (see below).
     const causeSentence = subscriptionPaymentCauseSentence(locale, vars.cause ?? "unknown");
-    // Only an explicit `false` turns the promises off. Absent means "no producer
-    // told us", and the only rail that exists always schedules a retry, so absent
-    // must keep rendering today's copy rather than the safer-sounding new copy:
-    // telling a customer no attempt is coming when one is would push them to
-    // cancel a subscription that was about to recover on its own.
+    // Only an explicit `false` turns the retry promises off. Absence preserves
+    // the legacy rendering default; it does not prove a retry is scheduled.
+    // Producers must pass the actual schedule fact when retries have stopped,
+    // including class termination or exhaustion.
     const retryScheduled = vars.retryScheduled !== false;
     const detail = [
       ...(causeSentence ? [causeSentence] : []),

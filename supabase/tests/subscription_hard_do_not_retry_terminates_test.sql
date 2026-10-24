@@ -22,9 +22,8 @@
 --      failed notice queued.
 --   B  DOES NOT.     soft_retryable at rung one -> the unchanged +24h rung.
 --   C  DOES NOT.     no class at all at rung one -> the unchanged +24h rung.
---   D  UNCHANGED END. an unclassified refusal at rung four still exhausts:
---      case expired, subscription paused with its event, 30-day
---      resume_subscription token.
+--   D  EXHAUSTED. an unclassified refusal at rung four stops automatic retries:
+--      case open, subscription active without a pause, 30-day repair token.
 --
 -- Arms B and C are the fail-open proof. If either ever goes red, the terminating
 -- guard has stopped being an explicit-membership test and has started shortening
@@ -320,26 +319,26 @@ SELECT public.subscription_handle_payment_failure_dunning(
 SELECT is(
   (SELECT status FROM public.subscription_dunning_cases
     WHERE cycle_id = '9c000000-0000-4000-8000-00000000d001'),
-  'expired',
-  'D: exhaustion still expires the case');
+  'open',
+  'D: exhaustion preserves an open repair case');
 
 SELECT is(
   (SELECT status FROM public.subscriptions WHERE id = '9b000000-0000-4000-8000-00000000d001'),
-  'paused',
-  'D: exhaustion still pauses the subscription — this wave moved the cut-short case only');
+  'active',
+  'D: exhaustion also keeps the subscription active');
 
 SELECT is(
   (SELECT count(*)::integer FROM public.subscription_events
     WHERE subscription_id = '9b000000-0000-4000-8000-00000000d001'
       AND event_type = 'subscription.paused'),
-  1,
-  'D: and still emits exactly one pause event');
+  0,
+  'D: exhaustion emits no pause event');
 
 SELECT is(
   (SELECT purpose || '|' || expires_at::text FROM public.subscription_payment_recovery_tokens
     WHERE cycle_id = '9c000000-0000-4000-8000-00000000d001'),
-  'resume_subscription|2026-07-01 12:00:00+00',
-  'D: and still mints the 30-day resume token');
+  'repair_payment|2026-07-01 12:00:00+00',
+  'D: exhaustion retains its 30-day repair token');
 
 SELECT is(
   (SELECT notification_kind || '|' || template_slug FROM public.subscription_dunning_notifications

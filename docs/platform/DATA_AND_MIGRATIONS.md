@@ -686,6 +686,24 @@ independent invoicing; P4 supplies no payment-event linkback writer. Historical
 linked events retain their readback. Use `invoicing_duty_readback` for invoice
 progress and retained settlements for late recovery.
 
+The managed prefix now includes M1
+`20261024155000_refunds_preserve_subscription_lifecycle.sql` and M2
+`20261024160000_subscription_dunning_continuity.sql`, byte-equal to the reviewed
+batch fixtures. M1 removes only refund-driven subscription/cycle cancellation
+and activation reversal, retaining the existing stock-release guard. It does
+not repair historical rows or import the later refund-evidence changes.
+M2 keeps exhaustion open with NULL retry, an active subscription and a repair
+token. Recovery binds the consumed token, durable method, current cycle and rung;
+no automatic retry follows exhaustion. Historical expired cases keep their
+separate resume route. The [managed dunning proof](../../supabase/tests/subscription_dunning_continuity_test.sql)
+and [refund proof](../../supabase/tests/refunds_preserve_subscription_lifecycle_test.sql)
+exercise this prefix without stock-wait or refund-evidence suffix fixtures.
+
+The catalog gate applies every non-pin before the next pin exactly once,
+including interleaved files. Docker-free tests cover native N1
+and managed M1/M2 landed; CI/release admission refuses a digest-drifted M1 below M2.
+M1 has no counted vocabulary; only M2 adds a C94 baseline key (`ui-13`: 2,
+`ui-14`: 3), with no existing count changed.
 
 The native `20261022160000_subscription_retry_lifecycle` forward adds three
 subscription retry ledgers and nine invoker functions. Install it through the
@@ -972,14 +990,6 @@ boundary. See [Canonical contracts](CANONICAL_CONTRACTS.md) for the mapping and
 idempotency rules that prevent duplicate or stale writes.
 
 ## Paired chains diverge, and each side must say so
-
-The portable position-71 dunning invariant repair has no managed twin yet.
-The managed baseline's
-`subscription_handle_payment_failure_dunning_before_cancel_fence` still pauses
-an active subscription on exhaustion. This is a known managed gap: a separate
-managed forward is required to keep active subscriptions active on dunning
-exhaustion (invariant repair). Portable fresh/upgrade proof does not establish
-managed parity.
 
 Some forwards ship twice: once into the managed chain the hosted deployment
 applies, and once into the public platform catalogue an adopter applies. The two

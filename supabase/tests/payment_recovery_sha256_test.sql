@@ -237,11 +237,7 @@ SELECT (public.commerce_payment_control_create_intent(
   'd2000000-0000-0000-0000-000000000001', 'd2c00000-0000-0000-0000-000000000001', 2680, 'XTS', '{}'::jsonb
 ) -> 'paymentIntent' ->> 'id')::uuid AS intent_id;
 
--- next_retry_at NULL at the ladder's last rung -> 'expired' case +
--- 'resume_subscription' SHA-256 token. The rung matters: attempts 1..3 are always
--- handed a schedule, so only attempt 4 pairs with NULL by exhaustion, and the
--- cycle above is seeded on that rung to match. (A NULL below rung 4 is a
--- deliberately cut-short ladder and yields an OPEN case instead.)
+-- Historical expired episodes remain resumable; new exhaustion is open repair.
 CREATE TEMP TABLE _exp AS
 SELECT (public.subscription_handle_payment_failure_dunning(
   'recovery-sha256-expired-dunning',
@@ -251,6 +247,12 @@ SELECT (public.subscription_handle_payment_failure_dunning(
   (SELECT intent_id FROM _exp_intent),
   4, NULL, 'payment_expired', '2026-06-12T12:00:00Z'::timestamptz
 ) -> 'subscriptionDunning' ->> 'caseId')::uuid AS case_id;
+
+-- Model the stored pre-M2 episode; the migration never rewrites history.
+UPDATE public.subscription_dunning_cases SET status='expired',expired_at='2026-06-12T12:00:00Z'
+ WHERE id=(SELECT case_id FROM _exp);
+UPDATE public.subscriptions SET status='paused'
+ WHERE id=(SELECT subscription_id FROM public.subscription_dunning_cases WHERE id=(SELECT case_id FROM _exp));
 
 -- The generic method-redeem boundary used to fail closed here, because it had
 -- no way to resume an expired journey that did not leave the subscription
@@ -463,6 +465,12 @@ SELECT (public.subscription_handle_payment_failure_dunning(
   (SELECT intent_id FROM _direct_latest_intent),
   4, NULL, 'payment_expired', '2026-06-12T12:00:00Z'::timestamptz
 ) -> 'subscriptionDunning' ->> 'caseId')::uuid AS case_id;
+
+-- Model the stored pre-M2 episode; the migration never rewrites history.
+UPDATE public.subscription_dunning_cases SET status='expired',expired_at='2026-06-12T12:00:00Z'
+ WHERE id=(SELECT case_id FROM _direct_case);
+UPDATE public.subscriptions SET status='paused'
+ WHERE id=(SELECT subscription_id FROM public.subscription_dunning_cases WHERE id=(SELECT case_id FROM _direct_case));
 
 UPDATE public.subscription_cycles
    SET status = 'payment_failed', failure_reason = 'payment_expired'
