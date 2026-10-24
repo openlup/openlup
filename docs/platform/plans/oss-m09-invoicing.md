@@ -1,8 +1,9 @@
 # Invoicing module design
 
 Status: development-preview design. The contract and offline conformance surface
-and issue helper surface is available for explicit host composition; stores, SQL projection,
-reference routes and release activation are separate implementation steps.
+and issue, correction and reversal helpers are available for explicit host
+composition, alongside the managed correction forwards. Native stores, SQL
+projection, reference routes and release activation are separate implementation steps.
 
 ## Placement and ownership
 
@@ -97,20 +98,37 @@ remains the result-meaning owner.
 - P4 must discover captured duties without installed facts; fact preparation
   cannot depend on already having a claimable fiscal snapshot.
 - P4 native issue binding must treat non-observed local evidence as unavailable
-  without stopping the duty (pinned 190000:382-386). Only `action: "create"`
+  without stopping the duty (pinned `invoicing_preflight_duty`). Only `action: "create"`
   claims may issue, with `attemptCount = generation`. Route `action: "readback"`
   claims to provider read, then finish on `found` or fail on `absent`/`unknown`.
   Convert a native `{ kind: "stale" }` preflight or finish result into the claim-fence
   error: write no failure and count zero updates.
-- P5 must give native delivery a terminal outcome or bounded backoff for
-  non-retryable `failed_before_send`, rather than reclaiming it forever.
+- P5 must pass `retryable` and `retrySeconds` evidence for native delivery
+  `failed_before_send`: the kind asserts failure before send; no `phase` is required.
+  Boolean false parks the failure; otherwise a whole JSON number delays retry
+  by 60..86400 seconds (clamped); absent or invalid delay uses 900 seconds.
+  This pin supersedes the frozen "native ignores it" sentence in
+  `packages/platform/src/invoicing/contracts/store.ts:95`, its copies in
+  `packages/platform/api/invoicing-contracts.api.md` and `invoicing.api.md`, and
+  the "Native ignores backoff" mapping reason in
+  `packages/platform/test/invoicing/portFit.test.ts`, plus the "native no-op"
+  mapping in `scripts/packages/platform-cold-consumer.ts:304`. The PR that next
+  touches those files must update the claims and map `p_evidence` to the result plus
+  `retrySeconds`; those files stay frozen here.
 - P7 must route native reversals through the correction branch of
   `invoicing_request_with_seller_policy`, retain the wrapper-returned seller and
   revision in claim facts, and define claim behavior for unknown/unsupported
   `seller.read`. Order-scoped managed claims must never call the unscoped
   corrections wrapper. First-claim seller freezing retains legacy fallback.
-- S1 re-measures root-docs gzip (39,616 B of the 49,152 B cap at this change)
-  and trims only if the release set exceeds it.
+  Readback must surface both terminal reversal outcomes: an owed duty whose
+  reversal answered `unsupported` remains owed with no reversal diagnostic,
+  retaining any earlier fact-preparation diagnostic (for example `retryable`)
+  although it is never leased again, and
+  preparation committed before reversal may leave an unclaimable
+  `issue_requested` document and its request parked at infinity. Both are
+  terminal by design; P7 must expose them without making them claimable.
+- S1 re-measures root-docs gzip against the package cap and trims only if the
+  release set exceeds it.
 
 The nine additional named contract exports have concrete consumers:
 `InvoiceDocumentIdentity` for artifact/clearance/download adapters;
@@ -124,7 +142,7 @@ only the refusal factory and conformance helper to the runtime entry.
 
 ## P2 issue helper boundary
 
-Nine helpers now cover issue sequencing, snapshot/canonical positions, both donor
+P2's nine helpers cover issue sequencing, snapshot/canonical positions, both donor
 allocators, payment readback and event/direct handoff wrappers. Existing host
 facades are their named consumers. The issue worker's compatibility callbacks
 preserve managed payloads and fenced finalization; they do not redefine P1 ports
@@ -147,3 +165,29 @@ seller/claim wrappers. This is parameter-order proof only; it does not bind
 `runInvoiceIssueJob` to native ports. Native issue binding remains a P4 obligation;
 seller pre-claim reads, document-scoped post-issue operations and delivery
 settlement remain with their phase owners above.
+
+## P3 correction and reversal boundary
+
+The P3 design uses `runInvoiceCorrectionJob` and `createInvoiceReversalHandlers`
+to retain the donor worker's identity validation, effect order, retry bounds and outcome vocabulary.
+Reference facades are their named consumers; the recovery bridge is explicit and
+not automatically supplied by the legacy vendor copy. The bridge owns exact
+recovery/absence, parent checks and provider positive BEFORE/zero AFTER mapping.
+Unknown/absent/issued remain distinct. Neither worker writes money or controls
+renewal parcel admission or dunning recovery.
+
+The [M09 forward owner](../DATA_AND_MIGRATIONS.md#m09-invoicing-forward-design-and-control-approval)
+owns managed installation, compatibility cutover and legacy reconciliation.
+F7's new semantic witnesses are additional proof, not claims about old coverage.
+F10's preview correction IDs/numbers derive from correctionRef, not the base order.
+No native forward, provider wire implementation or activation is added here.
+
+P3 builds on landed P1/P2; this design grants no merge or release authority.
+
+The native reversal design follows the [canonical reversal rules](../DATA_AND_MIGRATIONS.md#m09-invoicing-forward-design-and-control-approval):
+a safe completed failed attempt may void immediately; in-flight or unknown work
+requires readback. The managed compatibility facade preserves its separate
+incumbent RPC outcomes and late-document compensation; it does not implement
+the native store port.
+
+See the [M09 forward owner](../DATA_AND_MIGRATIONS.md#m09-invoicing-forward-design-and-control-approval) for the registered managed-correction limit, follow-up and finalization semantics.

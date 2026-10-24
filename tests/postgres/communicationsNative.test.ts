@@ -9,7 +9,7 @@ import { CommunicationConflictError, createPostgresDeliveryReconciliationPort, c
 import { createPostgresOutboxStore } from "@openlup/outbox/postgres";
 import { createPostgresMigrationRunner } from "../../server/adapters/postgres/migrationRunner.js";
 import { createCommunicationsLifecycleBinding } from "../../server/runtime/communications/communicationsLifecycleBinding.js";
-import { dockerAvailable, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
+import { closePostgres, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, dockerAvailable, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
 const hash = (value: string) => createHash("sha256").update(value).digest("hex");
 const A="b3000000-0000-4000-8000-000000000001", C="b3000000-0000-4000-8000-000000000002", S="b3000000-0000-4000-8000-000000000003";
 const email="recipient@example.invalid", at="2026-10-19T10:00:00.000Z", now="2026-10-19T12:00:00.000Z";
@@ -59,8 +59,8 @@ beforeAll(async()=>{
  await fresh.query("INSERT INTO public.platform_communication_operators(principal_id) VALUES ($1)",[A]);
  await fresh.query("INSERT INTO public.platform_human_principals(principal_id,email) VALUES ($1,'second-admin@example.invalid')",[C]);
  await fresh.query("INSERT INTO public.platform_human_memberships(principal_id,role,membership_state,membership_provenance,membership_accepted_at) VALUES ($1,'admin','active','legacy',now())",[C]);
-},120000);
-afterAll(async()=>{await Promise.all(stores.map(s=>s.close()));await Promise.all(pools.map(p=>p.end()));await Promise.all(containers.map(c=>c.remove()));if(prefix)rmSync(prefix,{recursive:true,force:true});});
+},postgresSetupTimeoutMs);
+afterAll(async()=>{await closePostgres(containers, pools, stores.map(value => () => value.close()));if(prefix)rmSync(prefix,{recursive:true,force:true});}, postgresTeardownTimeoutMs);
 it("upgrades the real position-69 prefix, preserves representative state and replays without effects",async()=>{
  const queued=(await upgrade.query("SELECT * FROM public.outbox_events")).rows,permissions=(await upgrade.query("SELECT * FROM public.communication_recipient_consents")).rows;
  expect((await runner(upgrade).apply()).applied).toEqual(manifest.forward.slice(nativeIndex).map((entry:{file:string})=>entry.file));

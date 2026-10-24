@@ -327,6 +327,10 @@ export interface FulfillmentOperationError {
     status: number | null;
     retryable: boolean;
     mayHaveSucceeded: boolean;
+    /** Whether provider submission was attempted; absent means unknown, never proven false. */
+    submissionAttempted?: boolean;
+    /** Whether the HTTP response body was read, including empty or malformed JSON; absent means no body-read evidence. */
+    responseBodyRead?: boolean;
     /** Machine cause only; never an arbitrary exception message. */
     cause?: string;
 }
@@ -1156,7 +1160,7 @@ export declare function durableStrings(priorCount?: number): {
 /** Copy only the durable allowlist, including when an adapter object has extra runtime properties. */
 export declare function dispatchEvidence(evidence: DispatchEvidence): DispatchEvidence;
 /** Shadow has a local command identity; it never invokes a provider or resolves credentials. */
-export declare function shadowDispatchEvidence(request: FulfillmentDispatchRequest): DispatchEvidence;
+export declare function shadowDispatchEvidence(request: FulfillmentDispatchRequest, commandFingerprint?: string): DispatchEvidence;
 export declare function dispatchResult(result: FulfillmentDispatchResult): FulfillmentDispatchResult;
 export declare function acceptedProviderProof(record: DispatchRecord | null): record is DispatchRecord & {
     externalRef: string;

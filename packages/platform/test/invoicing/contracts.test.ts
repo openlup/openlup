@@ -1,7 +1,8 @@
-import { expect, expectTypeOf, it } from "vitest";
+import { expect, expectTypeOf, it, vi } from "vitest";
 import * as contracts from "../../src/invoicing/contracts/index.js";
 import * as runtime from "../../src/invoicing/index.js";
 import type { InvoiceCapabilities, InvoiceIdentity, InvoiceReadbackResult, InvoiceWriteResult, InvoiceArtifactResult, InvoiceSettlementResult, InvoiceStorePort, InvoiceHostPorts, InvoiceProviderPort, InvoiceDiagnosticCode, InvoiceDocumentIdentity, InvoiceClearanceObservation, InvoiceFacts, InvoiceUnsupported, InvoiceSettlementPort, InvoiceSettlementItem, InvoiceProof, InvoiceDutyReadback } from "../../src/invoicing/contracts/index.js";
+const { runInvoiceCorrectionJob, createInvoiceReversalHandlers } = runtime;
 
 const capability: InvoiceCapabilities = {
   version: "invoicing.capabilities.v1", providerRef: "fiscal-a", fiscalScope: { scopeRef: "host-scope", version: "v1" },
@@ -12,7 +13,7 @@ const capability: InvoiceCapabilities = {
 
 it("keeps contracts runtime-empty and selection default-off without invoking host effects", () => {
   expect(Object.keys(contracts)).toEqual([]);
-  expect(Object.keys(runtime).sort()).toEqual(["allocateChargedGrossTotals", "allocateDiscountedGrossTotals", "createFulfillmentHandoffInvoiceHandler", "createNativeUnsupportedInvoicePorts", "mapCanonicalIssueLines", "mapInvoiceClaimToProviderSnapshot", "readInvoiceCapabilities", "readInvoicePaymentEvidence", "runInvoiceAdapterConformance", "runInvoiceIssueJob", "withAccountingInvoiceShadowTrigger", "withAutoDispatchAccountingInvoiceTrigger"].sort());
+  expect(Object.keys(runtime).sort()).toEqual(["allocateChargedGrossTotals", "allocateDiscountedGrossTotals", "createFulfillmentHandoffInvoiceHandler", "createNativeUnsupportedInvoicePorts", "createInvoiceReversalHandlers", "mapCanonicalIssueLines", "mapInvoiceClaimToProviderSnapshot", "readInvoiceCapabilities", "readInvoicePaymentEvidence", "runInvoiceAdapterConformance", "runInvoiceIssueJob", "runInvoiceCorrectionJob", "withAccountingInvoiceShadowTrigger", "withAutoDispatchAccountingInvoiceTrigger"].sort());
   for (const enabled of [undefined, false]) expect(runtime.readInvoiceCapabilities({ enabled, selection: { providerRef: capability.providerRef }, capability })).toMatchObject({ kind: "refused", code: "disabled", effectMayHaveSucceeded: false });
   for (const selection of [null, { providerRef: "other" }]) expect(runtime.readInvoiceCapabilities({ enabled: true, selection, capability })).toMatchObject({ kind: "refused", code: "selection_required" });
   expect(runtime.readInvoiceCapabilities({ enabled: true, selection: { providerRef: capability.providerRef }, capability: null })).toMatchObject({ kind: "refused", code: "selection_required" });
@@ -113,4 +114,81 @@ it("reads the current seller before a duty exists and preserves the first-claim 
   expectTypeOf<Parameters<InvoiceHostPorts["seller"]["read"]>[0]>().toEqualTypeOf<{ readonly orderId: string | null }>();
   type Seller = Extract<Awaited<ReturnType<InvoiceHostPorts["seller"]["read"]>>, { kind: "found" }>;
   expectTypeOf<Seller["revisionRef"]>().toEqualTypeOf<string>();
+});
+
+const fence = new Error("stale correction generation");
+function subject(attemptCount = 2) {
+  const trace: string[] = [];
+  const claim = { outboxId: "saved-correction", attemptCount, providerInvoiceId: "parent", correctionReason: "full refund", payload: { providerCreateIdentity: "accounting-correction:saved-correction" } };
+  const before = { lines: [{ name: "Saved item", totalGrossMinor: 1080 }], totalGrossMinor: 1080 };
+  const receipt = { providerDocumentRef: "correction", providerDocumentNumber: null };
+  const input = {
+    createEnabled: true, providerEnabled: true,
+    claim: vi.fn(async () => { trace.push("claim"); return [claim]; }),
+    project: vi.fn((c: typeof claim) => { expect(c).toBe(claim); trace.push("project"); return before; }),
+    create: vi.fn(async (snapshot: typeof before, options: { correctionReason: string; correctedProviderInvoiceId: string; correctionRef: string; recoveryLookupRequired: boolean }) => {
+      expect(snapshot).toBe(before);
+      expect(options).toEqual({ correctionReason: "full refund", correctedProviderInvoiceId: "parent", correctionRef: "accounting-correction:saved-correction", recoveryLookupRequired: attemptCount > 1 });
+      trace.push("recover/create"); return receipt;
+    }),
+    finish: vi.fn(async (c: typeof claim, r: typeof receipt) => { expect(c).toBe(claim); expect(r).toBe(receipt); trace.push("finish"); }),
+    isClaimFenceError: (error: unknown) => error === fence,
+    fail: vi.fn(async (_c: typeof claim, _e: unknown, _retry: number) => { trace.push("fail"); }),
+  };
+  return { claim, before, receipt, input, trace };
+}
+it("carries positive BEFORE, durable correction/parent/reason and generation through create/recovery then finalize", async () => {
+  for (const attempt of [1, 2]) {
+    const s = subject(attempt);
+    expect(await runInvoiceCorrectionJob(s.input)).toEqual({ ok: true, checked: 1, updated: 1, skipped: false, failures: 0 });
+    expect(s.trace).toEqual(["claim", "project", "recover/create", "finish"]);
+    expect(s.input.fail).not.toHaveBeenCalled();
+  }
+});
+it("refuses missing identity and disabled work, preserves unknown recovery and fences both stale finalizers", async () => {
+  expectTypeOf<Extract<InvoiceWriteResult, { kind: "unknown" }>>().not.toMatchTypeOf<Awaited<ReturnType<Parameters<typeof runInvoiceCorrectionJob>[0]["create"]>>>();
+  for (const scenario of ["disabled", "provider", "identity", "unknown", "parent", "stale-success", "stale-failure", "failure-error"] as const) {
+    const s = subject(); const error = new Error(scenario);
+    if (scenario === "disabled") s.input.createEnabled = false;
+    if (scenario === "provider") s.input.providerEnabled = false;
+    if (scenario === "identity") s.claim.payload.providerCreateIdentity = "";
+    if (["unknown", "parent", "stale-failure", "failure-error"].includes(scenario)) s.input.create.mockRejectedValueOnce(error);
+    if (scenario === "stale-success") s.input.finish.mockRejectedValueOnce(fence);
+    if (scenario === "stale-failure") s.input.fail.mockRejectedValueOnce(fence);
+    if (scenario === "failure-error") s.input.fail.mockRejectedValueOnce(error);
+    if (scenario === "failure-error") { await expect(runInvoiceCorrectionJob(s.input)).rejects.toBe(error); continue; }
+    const result = await runInvoiceCorrectionJob(s.input);
+    expect(result.updated).toBe(0);
+    if (scenario === "disabled" || scenario === "provider") expect(s.input.claim).not.toHaveBeenCalled();
+    else expect(result.failures).toBe(1);
+    if (scenario === "identity") { expect(s.input.project).not.toHaveBeenCalled(); expect(s.input.create).not.toHaveBeenCalled(); }
+    if (scenario === "stale-success") expect(s.input.fail).not.toHaveBeenCalled();
+    if (scenario === "unknown" || scenario === "parent" || scenario === "stale-failure") {
+      expect(s.input.finish).not.toHaveBeenCalled();
+      expect(s.input.fail).toHaveBeenCalledWith(s.claim, error, 600);
+      expect(s.input.create).toHaveBeenCalledTimes(1);
+    }
+  }
+});
+
+it("preserves reversal adapter/writer outcomes, timeout and the RPC action", async () => {
+  const row = { id: "saved-event", payload: { orderId: "saved-order" } };
+  const request = { idempotencyKey: "saved-key", orderId: "saved-order", reason: "order_refunded" };
+  const adapt = vi.fn((_row: typeof row): { kind: "ready"; request: typeof request } | { kind: "invalid_payload" } => ({ kind: "ready", request }));
+  const write = vi.fn(async (_request: typeof request): Promise<{ action: string; invoice: { status: string } | null }> => ({ action: "voided", invoice: { status: "voided" } }));
+  const input = { enabled: true, events: [{ eventType: "saved.refund", adapt }], request: write };
+  const handlers = createInvoiceReversalHandlers(input);
+  expect(handlers).toHaveLength(1);
+  expect(handlers[0]).toMatchObject({ eventType: "saved.refund", timeoutMs: 10_000 });
+  for (const [action, status] of [["voided", "voided"], ["correction_requested", "correction_requested"], ["corrected", "corrected"], ["no_invoice", null]]) {
+    write.mockResolvedValueOnce({ action: action!, invoice: status ? { status } : null });
+    expect(await handlers[0]!.handle(row)).toEqual({ kind: "processed", detail: { accountingReversalAction: action, invoiceStatus: status ?? "no_invoice" } });
+    expect(adapt).toHaveBeenLastCalledWith(row); expect(write).toHaveBeenLastCalledWith(request);
+  }
+  adapt.mockReturnValueOnce({ kind: "invalid_payload" }); write.mockClear();
+  expect(await handlers[0]!.handle(row)).toEqual({ kind: "discard", reason: "accounting_reversal_payload_invalid" });
+  expect(write).not.toHaveBeenCalled();
+  write.mockRejectedValueOnce(new Error("x".repeat(350)));
+  expect(await handlers[0]!.handle(row)).toEqual({ kind: "retry", reason: "x".repeat(300) });
+  expect(createInvoiceReversalHandlers({ ...input, enabled: false })).toEqual([]);
 });

@@ -4,6 +4,15 @@ Status: development-preview contract. No recipe in this document is a supported 
 
 ## Runtime model
 
+The accounting reversal host delegates outcome handling to the invoicing helper
+while retaining its three event adapters, provider selection and exact business
+keys. The package helper hardcodes the donor's 10 s timeout. Disabled selection creates no handler. Invalid payloads discard;
+persistence failures retry with the existing bounded reason. A processed reversal
+may mean local pre-issue void, no invoice or a queued correction; it never proves
+remote deletion, money reversal or document delivery. Correction execution needs
+an explicit conforming recovery bridge; the old vendor method alone stays
+unsupported before claim. No new job registration or default activation follows.
+
 The reference payment-channel BFF retains its feature and mode admission gates,
 and now supplies the package HTTP client to the same domain handler. Its local
 simulator branch and disabled empty-channel response remain unchanged. Customer

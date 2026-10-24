@@ -113,7 +113,10 @@ BEGIN
       RETURN jsonb_build_object('ok', true, 'replayed', true);
     END IF;
     v_code := 'accounting_invoice_correction_claim_provider_identity_conflict';
-  ELSIF v_invoice.status IS DISTINCT FROM 'correction_requested'
+  ELSIF (v_invoice.status IS DISTINCT FROM 'correction_requested'
+    AND (v_invoice.status IS DISTINCT FROM 'corrected'
+      OR (v_invoice.metadata->>'correctionOutboxId' IS NOT NULL
+        AND v_invoice.metadata->>'correctionOutboxId' IS DISTINCT FROM v_outbox.id::text)))
     OR v_outbox.status IS DISTINCT FROM 'processing'
     OR v_outbox.next_attempt_at IS NULL OR v_outbox.next_attempt_at <= now()
   THEN
@@ -174,7 +177,10 @@ BEGIN
     v_code := 'accounting_invoice_correction_claim_generation_mismatch';
   ELSIF v_outbox.payload->>'providerCreateIdentity' IS DISTINCT FROM 'accounting-correction:' || v_outbox.id::text THEN
     v_code := 'accounting_invoice_correction_claim_identity_missing';
-  ELSIF v_invoice.status IS DISTINCT FROM 'correction_requested'
+  ELSIF (v_invoice.status IS DISTINCT FROM 'correction_requested'
+    AND (v_invoice.status IS DISTINCT FROM 'corrected'
+      OR (v_invoice.metadata->>'correctionOutboxId' IS NOT NULL
+        AND v_invoice.metadata->>'correctionOutboxId' IS DISTINCT FROM v_outbox.id::text)))
     OR v_outbox.status IS DISTINCT FROM 'processing'
     OR v_outbox.next_attempt_at IS NULL OR v_outbox.next_attempt_at <= now()
   THEN
@@ -183,7 +189,9 @@ BEGIN
   IF v_code IS NOT NULL THEN RETURN jsonb_build_object('ok', false, 'code', v_code); END IF;
   UPDATE public.accounting_invoice_correction_outbox
      SET status = 'failed', last_error = coalesce(p_error, '{}'::jsonb),
-         next_attempt_at = now() + make_interval(secs => greatest(coalesce(p_retry_seconds, 900), 60))
+         next_attempt_at = CASE WHEN p_error->>'kind' IN ('blocked', 'unsupported')
+           OR p_error->>'retryable' = 'false' THEN 'infinity'::timestamptz
+           ELSE now() + make_interval(secs => greatest(coalesce(p_retry_seconds, 900), 60)) END
    WHERE id = p_outbox_id RETURNING * INTO v_outbox;
   INSERT INTO public.accounting_invoice_operations (invoice_id, operation, provider_kind, payload)
   VALUES (v_outbox.invoice_id, 'correction_failed', v_outbox.provider_kind, coalesce(p_error, '{}'::jsonb));

@@ -44,6 +44,71 @@ const exec = promisify(execFile);
 const defaultPin = readCiImage("test-postgres");
 export const defaultPostgresImage = `${defaultPin.repository.replace(/^library\//u, "")}:${defaultPin.tag}@${defaultPin.digest}`;
 const pulls = new Map<string, Promise<string>>();
+// Cold pinned pulls can take 300s. Leave bounded startup/readiness and schema
+// installation time inside the same explicit integration hook as the batch gate.
+export const postgresSetupTimeoutMs = 600_000;
+export const postgresTeardownTimeoutMs = 45_000;
+const dockerTimeoutMs = 30_000;
+const poolCloseTimeoutMs = 5_000;
+
+async function docker(args: string[], operation: string, timeout = dockerTimeoutMs) {
+  const started = performance.now();
+  try {
+    return await exec("docker", args, { timeout, killSignal: "SIGKILL" });
+  } catch (error) {
+    throw Object.assign(new Error(`PostgreSQL Docker ${operation} failed after ${Math.round(performance.now() - started)}ms (limit ${timeout}ms)`), { cause: error });
+  }
+}
+
+async function removeContainer(name: string, timeout = dockerTimeoutMs) {
+  try {
+    await docker(["rm", "-f", name], `remove ${name}`, timeout);
+  } catch (error) {
+    // Removing a container that never started (or was already removed) is safe.
+    const cause = (error as Error & { cause?: unknown }).cause as { stderr?: string } | undefined;
+    if (!/No such container/iu.test(cause?.stderr ?? "")) throw error;
+  }
+}
+
+type TestPool = Pick<Pool, "end" | "ended">;
+
+/** Close every test-owned pool/store, then attempt every container removal. */
+export async function closePostgres(
+  container: PostgresContainer | (PostgresContainer | null | undefined)[] | null | undefined,
+  pool?: TestPool | (TestPool | null | undefined)[] | null,
+  additionalClosers: (() => Promise<unknown>)[] = [],
+) {
+  const failures: unknown[] = [];
+  const closers = [...additionalClosers];
+  for (const value of Array.isArray(pool) ? pool : [pool]) {
+    if (value && !value.ended) closers.push(() => value.end());
+  }
+  // Start every close before waiting: one failed store must not bypass another
+  // pool, and one stalled store must not add another five seconds per pool.
+  const closing = closers.map(close => Promise.resolve().then(close).catch(error => { failures.push(error); }));
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const started = performance.now();
+  try {
+    await Promise.race([
+      Promise.all(closing),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(`PostgreSQL pool/store shutdown exceeded ${poolCloseTimeoutMs}ms`)), poolCloseTimeoutMs);
+      }),
+    ]);
+  } catch (error) {
+    failures.push(error);
+  } finally {
+    clearTimeout(timer);
+    console.info(`PostgreSQL pools.close ms=${Math.round(performance.now() - started)}`);
+  }
+  const removing = performance.now();
+  try {
+    await Promise.all((Array.isArray(container) ? container : [container]).map(async value => {
+      try { await value?.remove(); } catch (error) { failures.push(error); }
+    }));
+  } finally { console.info(`PostgreSQL containers.remove ms=${Math.round(performance.now() - removing)}`); }
+  if (failures.length) throw Object.assign(new Error("PostgreSQL cleanup failed"), { errors: [...failures] });
+}
 
 async function pinnedImage(reference: string, explicit: boolean): Promise<string | undefined> {
   const pin = readCiImages().find(image => [
@@ -65,6 +130,8 @@ export type PostgresReadyOptions = {
   attempts?: number;
   /** Delay between attempts, in milliseconds. */
   intervalMs?: number;
+  /** Wall-clock budget including connection, query and retry waits. */
+  timeoutMs?: number;
 };
 
 /**
@@ -94,7 +161,7 @@ export async function reservePort(): Promise<number> {
 /** True when a local Docker daemon answers. Suites skip loudly when it does not. */
 export async function dockerAvailable(): Promise<boolean> {
   try {
-    await exec("docker", ["version", "--format", "{{.Server.Version}}"]);
+    await docker(["version", "--format", "{{.Server.Version}}"], "version", 5_000);
     return true;
   } catch {
     return false;
@@ -123,17 +190,26 @@ export type PostgresContainer = {
  * Start a disposable PostgreSQL container on a free loopback port.
  *
  * Retries only the port bind conflict described on `reservePort`, and only that
- * one: every other `docker run` failure is rethrown unchanged, so a broken
+ * one: every other `docker run` failure retains its cause and operation, so a broken
  * image, a full disk or a dead daemon still fails the suite immediately.
  */
 export async function runPostgresContainer(spec: PostgresContainerSpec): Promise<PostgresContainer> {
   const requested = spec.image ?? defaultPostgresImage;
   const pulled = await pinnedImage(requested, spec.image !== undefined);
   const image = pulled ?? requested;
+  // Port-conflict retries share one startup budget; they cannot multiply the
+  // owning fixture's deadline by the number of attempts. Failed-start cleanup
+  // still gets its own removal budget before this function rejects.
+  const deadline = performance.now() + 60_000;
+  const remaining = () => {
+    const ms = Math.floor(deadline - performance.now());
+    if (ms <= 0) throw new Error(`PostgreSQL startup deadline exceeded for ${spec.name} (60000ms)`);
+    return Math.min(dockerTimeoutMs, ms);
+  };
   let lastError: unknown;
 
   for (let attempt = 0; attempt < 5; attempt += 1) {
-    await exec("docker", ["rm", "-f", spec.name]).catch(() => {});
+    await removeContainer(spec.name, remaining());
     const port = await reservePort();
     const args = [
       "run", "-d", "--name", spec.name,
@@ -144,11 +220,13 @@ export async function runPostgresContainer(spec: PostgresContainerSpec): Promise
       image,
     ];
     try {
-      await exec("docker", args);
+      await docker(args, `start ${spec.name}`, remaining());
     } catch (error) {
       lastError = error;
-      await exec("docker", ["rm", "-f", spec.name]).catch(() => {});
-      const message = error instanceof Error ? error.message : String(error);
+      try { await removeContainer(spec.name); }
+      catch (cleanup) { throw Object.assign(new Error(`PostgreSQL start and cleanup failed for ${spec.name}`), { errors: [error, cleanup] }); }
+      const cause = error instanceof Error ? (error as Error & { cause?: unknown }).cause : error;
+      const message = cause instanceof Error ? cause.message : String(cause);
       if (!/port is already allocated|Bind .* failed|address already in use/i.test(message)) throw error;
       continue;
     }
@@ -159,9 +237,7 @@ export async function runPostgresContainer(spec: PostgresContainerSpec): Promise
       port,
       connectionString: connectionStringFor(spec.database ?? "postgres"),
       connectionStringFor,
-      remove: async () => {
-        await exec("docker", ["rm", "-f", spec.name]).catch(() => {});
-      },
+      remove: () => removeContainer(spec.name),
     };
   }
 
@@ -180,11 +256,8 @@ export async function runPostgresContainer(spec: PostgresContainerSpec): Promise
  * Returns false when the deadline passes, so callers keep their existing
  * "skip loudly rather than pretend" behaviour instead of failing obscurely.
  *
- * The default budget is deliberately close to the one it replaces rather than
- * larger: the probes it supersedes polled 40 times at one second plus the cost
- * of a `docker exec` each, and an attempt here fails fast while nothing is
- * listening. This wave is not buying reliability with a longer wait; the wait
- * is a consequence of gating on the right thing.
+ * The wall-clock budget also covers a listener that accepts TCP but never
+ * answers a query. Discard each probe client before closing its throwaway pool.
  */
 export async function waitForPostgresTcpReady(
   connectionString: string,
@@ -192,13 +265,18 @@ export async function waitForPostgresTcpReady(
 ): Promise<boolean> {
   const attempts = options.attempts ?? 60;
   const intervalMs = options.intervalMs ?? 1_000;
+  const deadline = performance.now() + (options.timeoutMs ?? 60_000);
   const pg = await import("pg");
   const PoolCtor = (pg.default?.Pool ?? pg.Pool) as typeof import("pg").Pool;
 
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     // A fresh pool per attempt: a pool that failed to connect must not be
     // reused, and a pool left open would outlive the probe.
-    const probe: Pool = new PoolCtor({ connectionString, connectionTimeoutMillis: 5_000 });
+    const remaining = deadline - performance.now();
+    if (remaining <= 0) break;
+    // Split the remaining budget so both connection and query fit this attempt.
+    const phaseTimeout = Math.max(1, Math.floor(Math.min(5_000, remaining / 2)));
+    const probe: Pool = new PoolCtor({ connectionString, connectionTimeoutMillis: phaseTimeout, query_timeout: phaseTimeout });
     // A pool is an EventEmitter: an "error" it emits while the server is still
     // coming up would be an unhandled event and take the whole worker down.
     // Swallowing it here is safe because this pool exists only to ask "yet?".
@@ -208,9 +286,9 @@ export async function waitForPostgresTcpReady(
       try {
         await client.query("SELECT 1");
       } finally {
-        client.release();
+        client.release(true);
       }
-      return true;
+      return performance.now() < deadline;
     } catch {
       // Not ready: no TCP listener yet, the temporary server is shutting down,
       // or the real server is still replaying. Any of these is a "wait", never
@@ -218,7 +296,10 @@ export async function waitForPostgresTcpReady(
     } finally {
       await probe.end().catch(() => {});
     }
-    await new Promise((wake) => setTimeout(wake, intervalMs));
+    if (attempt + 1 < attempts) {
+      const wait = Math.min(intervalMs, deadline - performance.now());
+      if (wait > 0) await new Promise((wake) => setTimeout(wake, wait));
+    }
   }
   return false;
 }

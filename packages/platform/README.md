@@ -20,6 +20,15 @@ adapter evidence grant no publication or provider-account certification.
 
 Longer module recipes live in the [platform package reference](../../docs/platform/PLATFORM_PACKAGE_REFERENCE.md).
 
+The unreleased workspace requires Zod `^4.6.6` for GHSA-mrhx-c7xc-m3w5.
+Public quote requests retain their collection limits and valid-input behavior;
+oversized collections now fail with the size error before accumulating invalid
+element errors. Package API and installed-consumer checks remain required.
+The observation adapter explicitly retains minute-precision timestamps
+alongside seconds/fractions, compact offsets and local timestamps. Calendar
+validation still rejects impossible dates; validation never rewrites the raw
+timestamp used in the webhook's idempotency key.
+
 ## Package surface
 
 `release-gates.json` declares kind `rail`: this foundation provides runtime infrastructure over core ports, matching the architecture's rail responsibility. Its experimental entries each bind a declaration snapshot and package-owned smoke tests. The API checker reads this same inventory.
@@ -721,3 +730,13 @@ policy, captions, event descriptors and key scopes. Canonical and legacy line
 checks share the unchanged donor allocation; handoff helpers register no job or
 executor. Eight issue/line/payment/handoff cases join the existing package smoke
 selection. Native stores, continuity cutover and activation remain separate.
+
+Correction and reversal workers preserve durable identity, recovery and fenced
+outcomes through host callbacks. The reference host requires a conforming
+correction bridge; the legacy vendor method stays unselected. Reversal handlers pass
+through the RPC action (`voided`, `correction_requested`, `corrected`, `no_invoice`). The required package
+selection includes correction/reversal witnesses in `test/invoicing/contracts.test.ts`.
+See the [invoicing design](../../docs/platform/plans/oss-m09-invoicing.md#p3-correction-and-reversal-boundary)
+for managed migration and reconciliation limits.
+
+See the [M09 forward owner](../../docs/platform/DATA_AND_MIGRATIONS.md#m09-invoicing-forward-design-and-control-approval) for the registered managed-correction limit and follow-up.

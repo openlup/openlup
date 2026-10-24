@@ -17,8 +17,13 @@ npm run ci
 
 The gate builds every export, runs standalone tests and isolated package smoke,
 verifies declaration snapshots, and checks license, SBOM, audit, pack, and
-publish controls. Root Vitest excludes this suite; CI's required `install-proof` job runs it separately through the shared package gate,
-independently of the required root `test` job.
+publish controls. Root Vitest excludes this suite. Required `install-proof`
+runs the shared API phase and `ci:required` separately from root tests.
+`ci:required` uses `release:admission`: the same release checks except the full
+live audit, which remains in standalone `ci`, `release:check` and publication.
+Repository admission instead refuses newly selected vulnerable production
+dependencies against the exact base; inherited advisories do not freeze
+unrelated PRs. See [required checks](https://github.com/openlup/openlup/blob/main/CONTRIBUTING.md#required-and-raw-checks).
 
 ## Scope
 

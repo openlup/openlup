@@ -290,6 +290,42 @@ separately from historical grant spellings or inherited CLI defaults.
 
 ## Exact reviewed function forwards
 
+### Co-located SQL and approval pins
+
+A PR introducing SQL in a class already admitted by its trusted comparison-base
+policy may also carry that SQL's pins. Only bindings for files introduced by
+that PR may change. Other entries and their list positions, shared fields,
+registry schema and immutable baselines stay unchanged. The fixed path/signature
+inventory, whole-file and function hashes, preimages, statement/grant limits,
+ordered prefixes and fixture/package equality still apply. A hash binds bytes;
+independent native review approves the complete candidate under the
+[existing review procedure](../../CONTRIBUTING.md#native-review-and-accountability).
+SQL risk assessment belongs in that required review, without a mandatory third
+review or a new report format. Applicable maintainer/delegate reads remain required.
+
+Changes to a class, validator, its dependencies, review/admission or release
+machinery need a separate control change before using the new rule. The existing
+native admission, invoked from trusted main, validates co-located data with its
+own checker and refuses simultaneous machinery changes or machinery drift since
+the reviewed base. Production tooling in `scripts/agent-review-*`, `scripts/oss-*`,
+`scripts/source-*` and `scripts/packages/` stays unchanged for this route, including
+release entry points and preparation; test-only coverage changes remain allowed.
+The checker and its direct dependency closure, root manifests/lockfile and
+`.github/` files also stay unchanged. Admission reads candidate Git objects
+without running candidate code.
+The [documented workflow invocation limitation](DEVELOPMENT_AND_RELEASE.md#reading-results-and-recovering)
+remains: candidate YAML can omit the job, so sensitive review and the applicable
+maintainer/delegate read of workflow edits remain the control for that case.
+
+Release binds each forward to its unique first-parent mainline introduction.
+Its pin must be valid at that introduction and unchanged afterwards; a later
+repin cannot legalize an earlier invalid installation. Existing separate
+control → feature histories remain valid. Pin-only preparation of future SQL
+retains its existing control decision; it is not an unrelated companion of a
+feature. Once introduced, migration bytes remain immutable and repairs use a
+new forward. Stopping new co-located PRs must retain release support for histories
+already admitted this way; reverting to parent-only approval would reject them.
+
 The separate `batchedForwards` list approves the frozen M10/F17 packet: five
 native files and nine managed files. It adds no installation-chain SQL. Exact
 future bytes live only in [inert fixtures](../../scripts/fixtures/reviewed-m10/).
@@ -384,9 +420,9 @@ Policy retirement is pinned to exact statements and preceding policy hashes; it
 is not general permission to alter RLS.
 The checker binds the fixed policy names, tables, preceding statement hashes
 and ordered DROP statements separately from the function and privilege pins.
-Other policy operations refuse. Approval must precede the corrected SQL
-comparison base and introduction parent; control approval alone grants no
-runtime permission or actual-role proof.
+Other policy operations refuse. The original capability forward used prior
+control approval; eligible later introductions may use the co-located route
+above. Approval alone grants no runtime permission or actual-role proof.
 
 Reviewed replacement is a separate admission class, not expand-only. The fixed
 [allowlist](../../config/reviewed-platform-forwards.json) pins three managed
@@ -414,8 +450,8 @@ from the portable baseline and earlier portable forwards in strict filename
 order, as required by the manifest. Exact path, file and before/after definition
 hashes must match; arguments, return, volatility, security and settings remain
 unchanged. Only comments and that single `CREATE OR REPLACE FUNCTION` are
-admitted, with approval preceding introduction; no privileges or other statements
-are allowed. This control approval adds no SQL file or runtime behavior.
+admitted under the co-located SQL/pin rule above; no privileges or other statements
+are allowed. The original class-control approval added no SQL file or runtime behavior.
 
 The separate `portableCreationForwards` class binds these portable paths and
 whole-file SHA-256 digests in the same allowlist:
@@ -472,9 +508,9 @@ otherwise admitted. Revocation targets must also be created in that file.
 Unpinned paths, changed bytes, `CREATE OR REPLACE`, `ALTER`, `DROP`,
 `SECURITY DEFINER`, grants to any role (including `PUBLIC`, `anon` and
 `authenticated`), references to pre-existing objects in comments or revocations,
-and all other statement forms refuse. Approval must precede both the feature
-comparison base and the SQL introduction parent. This class does not change
-the managed or portable replacement classes or install runtime permissions.
+and all other statement forms refuse. The co-located approval rule above also
+applies to this existing class; it does not broaden the managed or portable
+replacement classes or install runtime permissions.
 The exact future file bytes are also kept as
 [command-ledger](../../scripts/fixtures/20261022080000_fulfillment_command_ledger.sql)
 and [delivery-alignment](../../scripts/fixtures/20261022090000_fulfillment_delivery_alignment.sql)
@@ -535,18 +571,14 @@ Operator activation consumes INSERT on `admin_users` columns `id`, `email`,
 SELECT on `admin_users.email` alongside the first entry's membership reads.
 Browser roles gain nothing; the approved identity forward now ships in the managed chain.
 
-Required PR/merge-group self-check requires the whole allowlist to remain unchanged
-from the feature comparison base. Release prepare compares each forward's own
-entry and list position, and every registry field outside the forward lists
-(schema version, baseline hash and any other key), with the first parent of the
-mainline commit, squash or merge, that introduces it; a feature branch's own
-earlier commits do not count. Only other forwards' entries may differ, so a later
-control may append approvals without stranding an unreleased forward. A feature still cannot approve itself. Missing history refuses. Existing
-history, version and manifest rules still apply. The expand-only predicate also
-refuses `INHERITS`, preventing a new table from inheriting an existing one.
-Admission is process evidence of exact reviewed bytes, not proof of live schema
-compatibility or authorization to release. Independent control review and the
-affected database behavior tests remain required.
+PR/merge-group self-check and release prepare follow the canonical
+[co-located SQL/pin rule](#co-located-sql-and-approval-pins), including existing
+separate control histories and refusal of later retroactive pins. Missing history
+refuses; existing history, version and manifest rules still apply. The expand-only
+predicate also refuses `INHERITS`, preventing a new table from inheriting an
+existing one. Admission is process evidence of exact reviewed bytes, not proof
+of live schema compatibility or authorization to release. Applicable control
+review and affected database behavior tests remain required.
 
 An adopter's hosted chain may already carry a managed forward under its own
 migration name. Such a file is a platform companion: its leading comment block
@@ -657,6 +689,8 @@ its baseline already refreshes/reopens corresponding evidence. The
 fresh installation, the exact predecessor upgrade and runner replay, unchanged
 ledger prefix and function ACL/header, package byte equality, lifecycle/refusals
 and bounded concurrent row locking.
+
+See the [M09 forward owner](#m09-invoicing-forward-design-and-control-approval) for managed correction v2 installation, cutover and reconciliation.
 
 Fulfillment expands the native graph with new command and
 alignment objects at positions 73/74. It preserves all position-0–72 identities,
@@ -976,11 +1010,12 @@ owners; no provider mapping or new schema enters the package.
 
 ## M09 invoicing forward design and control approval
 
-Status: design and fixture-only control preparation. These seven fixtures do not
-install SQL, append manifest rows, publish package assets or activate invoicing.
-The feature changes must introduce exactly the approved bytes later. A changed
-byte requires a separate reviewed control before introduction; the self-approval
-refusal remains binding in both CI and release preparation.
+Status: `20261022193000` and `20261022193100` introduce the two managed
+correction forwards; the remaining forwards stay fixture-only. Introduction
+must use exactly the pinned bytes. An unintroduced forward may carry its changed
+pins in the feature under the co-located rule above. The two introduced forwards
+are immutable; their repair requires a new authorized forward. Existing control
+approvals and their review history remain valid.
 
 Three additional native creation pins cover durable duties, document effects and
 seller revisions. New functions are invokers with `search_path = pg_catalog`;
@@ -990,11 +1025,14 @@ bootstrap its executor's least privileges; these fixtures grant no browser or
 service principal access. Install the complete native catalogue, never sparse
 package projections independently. Native versions are `20261022190000`,
 `20261022191000`, `20261022192000` and `20261022195000`; managed versions are
-`20261022193000`, `20261022193100` and `20261022195100`. All sort above M10's
-last planned forward, `20261022185100`, preserving M09's internal order.
-The staged native manifest currently appends positions 75–78 after fulfillment
-alignment at 74; integration must place them after M10's native units and
-recompute function preimages against that complete preceding rail.
+`20261022193000`, `20261022193100` and `20261022195100`. M09 lands before M10
+and keeps these assigned versions; verify against the landed managed prefix,
+not an assumed M10 predecessor.
+The native manifest owns installation positions and preserves the landed
+subscription retry and stock-evidence forwards (`20261022160000` and
+`20261022165000`). Recompute function preimages against the complete selected
+preceding rail. Positional unit comments inside immutable SQL refer to its
+historical staging order; use versioned filenames for identity, not those ordinals.
 
 The fourth native pin is the single exact replacement of
 `payment_truth_apply_terminal(uuid,text,text,timestamptz,text,text,jsonb,text,text,text)`.
@@ -1019,8 +1057,10 @@ stages immutable facts only. This reuses the outbox claim/token/visibility patte
 SKIP LOCKED claims, five-minute leases, eight attempts, exponential backoff from
 60 seconds capped at one hour, and a visible `faulted` terminal state. Expired
 claims recover without retaining order/duty locks across accounting work. Prepare
-holds no explicit order/duty row lock, bounds unavoidable database waits to 100 ms,
-and preserves the incumbent deterministic document reference. Host keys remain
+holds no explicit order row lock, bounds unavoidable database waits to 100 ms,
+and preserves the incumbent deterministic document reference. Its final NOWAIT
+duty lock rechecks the live fact token, wall-clock lease, unlinked request,
+owed/blocked state and absent reversal; a failed recheck rolls back preparation. Host keys remain
 exact in duty/receipt/metadata; the internal document operation uses the stable
 duty identity so two intents may legitimately reuse a host key.
 Accounting errors keep the fact revision and owed duty durable; missing host facts block
@@ -1048,8 +1088,9 @@ later sources or fact retries. Empty orders return an empty duty list.
 Execution remains restricted to the explicitly bootstrapped trusted host.
 
 Duty and delivery claims accept a trailing optional order UUID, as does the
-seller claim wrapper. The predicate runs before row locks and LIMIT; targeted
-recovery never leases unrelated orders. Omitting it retains batch behavior.
+seller claim wrapper. The predicate runs before row locks and LIMIT, except
+for the unscoped expiry of already-expired delivery receipts; targeted recovery
+never leases unrelated orders. Omitting it retains batch behavior.
 Clearance observations already record `not_submitted`, `pending`, `accepted`,
 `rejected`, `not_required` and explicit unsupported observations; polling targets,
 per-target orchestration and national mappings remain host/package work.
@@ -1087,12 +1128,43 @@ Only ready, pending, unattempted correction requests are hidden from the incumbe
 Before installing, retire the incumbent issue/correction executor. Drain the
 legacy managed correction worker first; reconcile any attempted or processing
 legacy correction against provider evidence, recording its actual outcome before
-cutover. P3 must migrate `accountingInvoicePort` and `accounting_paid_reversal_test`
-to v2 (`p_contract_version`, `p_claim_attempt_count`), throw on `ok:false`, add an
-adapter test and give attempted legacy corrections a visible reconciliation state.
-This adapter migration is a prerequisite for introducing `20261022193100`; it is not part
+cutover. The reference `accountingInvoicePort`, `accounting_paid_reversal_test`
+and correction recovery pgTAP use v2 (`p_contract_version`,
+`p_claim_attempt_count`); the adapter throws on `ok:false`. Attempted legacy
+rows lacking a durable identity stay processing/failed with their original
+error/payload retained, regardless of the invoice's current status.
+They require provider reconciliation; an empty claim is not completion.
+This adapter migration and its refusal/recovery proof are prerequisites for introducing `20261022193100`; it is not part
 of fixture-only control preparation. The managed `ksefRequired` key is retained
 for donor parity as a country-specific key, not a neutral native requirement.
+
+Native correction finalization calls the incumbent document transition path,
+whose operation insert takes a key-share lock on the order row through its
+foreign key. Its request/duty lock
+order does not remove that coupling; native continuity proof belongs to P4.
+Managed v2 correction claim locks both joined invoice and outbox rows; its
+finalizers lock invoice before outbox. Fenced finalizers also accept a parent
+already `corrected` by an earlier acceptance sync when its `correctionOutboxId`
+is absent or matches the claim; success still records `correction_issued` and
+the delivery outbox. `correctionOutboxId` is written only on successful finalization.
+For classifying hosts only, blocked, unsupported or explicitly non-retryable
+`p_error` values retain `failed` with `next_attempt_at=infinity`; ordinary failures
+keep their retry delay. The reference host sends `{message}`, so its failures
+keep ordinary retry timing.
+
+Registered managed-correction limit: multi-reason / late-issue compensation can
+yield more than one full correction per invoice, as the incumbent does today.
+The follow-up is a separately designed control change enumerating
+`order_status_reversal`, `provider_issue_after_order_status_reversal` and
+manual/scaffold interplay. After the `20261022193000` forward lands it must be a replacement forward;
+this follow-up is outside M09.
+No transaction spans provider I/O. The
+existing managed order-reversal transaction still couples order and accounting
+locks; these forwards do not prove the later native money/parcel isolation.
+[Recovery proof](../../tests/postgres/invoicingManagedCorrection.test.ts) exercises
+the real v2 adapter, rollback/reclaim, stale outcomes and browser refusal.
+The shipped [pgTAP](../../supabase/tests/accounting_correction_recovery_test.sql)
+adds committed-ACK loss and unchanged delivery/audit witnesses.
 
 M09 request rows use `available_at='infinity'` at prepare, claim and fail,
 including corrections, so the incumbent queue cannot lease them. M09 also checks
@@ -1138,13 +1210,24 @@ identity then compensates a pending reversal atomically. Correction BEFORE facts
 remain positive history while native positions carry the negative delta. No
 fiscal numbering, provider transport, market policy or money writer is added.
 Clearance and uncertain delivery affect document work only; unknown delivery
-acceptance cannot re-enter send after lease expiry. Source retention is a host
+acceptance cannot re-enter send after lease expiry. Native delivery claims hide
+claimed deliveries from the incumbent claimer with `lease_until='infinity'`,
+and expired processing receipts become `uncertain` with `lease_expired`, never
+eligible for repeat send. Settlement checks exact sent replay first, then refuses expired or
+null leases; `failed_before_send` with `retryable:false` parks at infinity,
+otherwise it backs off by a whole `retrySeconds` clamped to 60..86400 seconds
+(or 900 for absent or invalid values). Source retention is a host
 lifecycle obligation until capture or an explicit terminal policy receipt.
 
-Capture marks newly created duties on the default paid terminal path; seller wrappers also mark genuinely new corrections. The first-ever claim captures the
-selected host seller and revision in the same transaction: native duty generation
-1 or managed outbox attempt count 1. An uncaptured revision remains legacy after
-a bare claim; a later wrapper claim cannot freeze it. Retry preserves that
+Native capture marks genuinely new base duties, including sweep capture, and
+the document-effects forward marks genuinely new correction children only when
+the seller request wrapper supplies `sellerPolicyVersion=invoicing.seller.v1`.
+The later seller
+wrappers materialize eligible seller rows; they do not make legacy work new.
+The first-ever claim captures the selected host seller and revision in the same
+transaction: native duty generation 1 or managed outbox attempt count 1. An
+uncaptured revision remains legacy after a bare claim; a later wrapper claim
+cannot freeze it. Retry preserves that
 seller; new corrections have independent eligibility. A new sidecar around an
 old document/request or a duty already claimed before seller freezing is legacy
 and returns the execution-supplied fallback. The managed request wrapper accepts

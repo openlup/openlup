@@ -30,7 +30,7 @@ export const TOOLING_INPUTS = {
   'scripts/ast-grep/check-filewide-ignore.test.ts': [], // Fixture source; actual rules under scripts/.
   'scripts/ast-grep/rule-tests/portable-no-industry-contracts.test.ts': [], // Fixture source and rules.
   'scripts/packages/eslint-import-map.test.ts': ['packages/', 'src/', 'server/'], // Config reads workspace exports and domain directories.
-  'scripts/packages/outbox-consumer-proof.test.ts': ['packages/', 'server/runtime/outbox/', 'config/openlup-packages.json'], // Actual config, packs, smoke scripts and reference wiring.
+  'scripts/packages/outbox-consumer-proof.test.ts': ['packages/', 'server/runtime/outbox/', 'config/openlup-packages.json', 'config/ci-images.json'], // Actual config, image pins, packs, smoke scripts and reference wiring.
   'scripts/packages/package-manifest-policy.test.ts': ['packages/', 'config/openlup-packages.json'], // Actual config, core exports and root tsconfigs.
   'scripts/packages/package-release.test.ts': ['packages/'], // Release module mutations and Git fixtures.
   'scripts/packages/package-size-policy.test.ts': ['packages/', 'config/openlup-packages.json'], // Actual config, npm packs/browser entries and budgets.

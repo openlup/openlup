@@ -1134,6 +1134,52 @@ export interface InvoiceStorePort {
 }
 export {};
 ```
+## dist/invoicing/correction.d.ts
+
+```ts
+import type { InvoiceWriteResult } from "./contracts/provider.js";
+/** Durable correction identity, recovery and claim fencing from the donor worker.
+ * Hosts project immutable BEFORE facts and bind a conforming recovery provider.
+ * @consumer server/domains/accounting/accountingJobService.ts
+ */
+export declare function runInvoiceCorrectionJob<Claim extends {
+    outboxId: string;
+    attemptCount: number;
+    providerInvoiceId: string;
+    correctionReason: string;
+    payload: Record<string, unknown>;
+}, Snapshot, Result extends Pick<Extract<InvoiceWriteResult, {
+    kind: "issued";
+}>, "providerDocumentRef" | "providerDocumentNumber">>(input: {
+    createEnabled: boolean;
+    providerEnabled: boolean;
+    claim(): Promise<readonly Claim[]>;
+    project(claim: Claim): Snapshot;
+    /** Resolve accepted/recovered receipts only; unknown is never an ACK or absence. */
+    create(snapshot: Snapshot, options: {
+        correctionReason: string;
+        correctedProviderInvoiceId: string;
+        correctionRef: string;
+        recoveryLookupRequired: boolean;
+    }): Promise<Result>;
+    finish(claim: Claim, result: Result): Promise<unknown>;
+    isClaimFenceError(error: unknown): boolean;
+    fail(claim: Claim, error: unknown, retrySeconds: number): Promise<unknown>;
+}): Promise<{
+    ok: boolean;
+    checked: number;
+    updated: number;
+    skipped: boolean;
+    reason: string;
+    failures: number;
+} | {
+    ok: boolean;
+    checked: number;
+    updated: number;
+    skipped: boolean;
+    failures: number;
+}>;
+```
 ## dist/invoicing/fulfillmentTrigger.d.ts
 
 ```ts
@@ -1258,6 +1304,8 @@ export { createFulfillmentHandoffInvoiceHandler } from "./handoff.js";
 export { withAccountingInvoiceShadowTrigger } from "./fulfillmentTrigger.js";
 /** @consumer server/domains/accounting/fulfillmentInvoiceTrigger.ts */
 export { withAutoDispatchAccountingInvoiceTrigger } from "./fulfillmentTrigger.js";
+export { runInvoiceCorrectionJob } from "./correction.js";
+export { createInvoiceReversalHandlers } from "./reversal.js";
 ```
 ## dist/invoicing/issue.d.ts
 
@@ -1338,6 +1386,47 @@ export declare function readInvoicePaymentEvidence(payment: {
     }>;
 } | undefined): Promise<PaymentEvidence>;
 export {};
+```
+## dist/invoicing/reversal.d.ts
+
+```ts
+/** Donor reversal outcome/order semantics over host event adapters and writer.
+ * @consumer api/_cron/accountingOrderReversalHandlers.ts
+ */
+export declare function createInvoiceReversalHandlers<Row, Request, Result extends {
+    action: string;
+    invoice: {
+        status: string;
+    } | null;
+}>(input: {
+    enabled: boolean;
+    events: readonly {
+        eventType: string;
+        adapt(row: Row): {
+            kind: "ready";
+            request: Request;
+        } | {
+            kind: "invalid_payload";
+        };
+    }[];
+    request(request: Request): Promise<Result>;
+}): {
+    eventType: string;
+    timeoutMs: number;
+    handle(row: Row): Promise<{
+        kind: "discard";
+        reason: string;
+    } | {
+        kind: "processed";
+        detail: {
+            accountingReversalAction: string;
+            invoiceStatus: string;
+        };
+    } | {
+        kind: "retry";
+        reason: string;
+    }>;
+}[];
 ```
 ## dist/invoicing/snapshot.d.ts
 

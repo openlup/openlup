@@ -1,5 +1,9 @@
 import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { expect, it, vi } from "vitest";
+import { createPostgresFulfillmentDispatchStore, runFulfillmentDispatchWorker } from "../../../src/fulfillment/index.js";
+import { dispatchResult, shadowDispatchEvidence } from "../../../src/fulfillment/dispatchProjection.js";
+import type { DispatchRecord, FulfillmentDispatchResult } from "../../../src/fulfillment/contracts/index.js";
 import { runFulfillmentProductSyncWorker } from "../../../src/fulfillment/providerProductSyncWorker.js";
 import * as entry from "../../../src/fulfillment/omnipack/index.js";
 import type { OmnipackFulfillmentAdapterConfig } from "../../../src/fulfillment/omnipack/index.js";
@@ -264,7 +268,7 @@ it("maps definitive rejection to non-submission and drops provider prose and err
     const f = fixture(reply); const req = request(); const evidence = await prepare(f.adapter, req);
     const result = await f.adapter.dispatch.dispatch(req, evidence);
     expect(result).toEqual({ kind: "not_dispatched", effectMayHaveSucceeded: false, refusal: { reason: "io_failure", phase: "dispatch", retryable: false },
-      error: { code: expect.stringMatching(/^(?:PRIVATE_PROVIDER_CODE|http_400)$/u), status: 400, retryable: false, mayHaveSucceeded: false } }); safe(result);
+      error: { code: expect.stringMatching(/^(?:PRIVATE_PROVIDER_CODE|http_400)$/u), status: 400, retryable: false, mayHaveSucceeded: false, submissionAttempted: true, responseBodyRead: expect.any(Boolean) } }); safe(result);
     expect(await prepare(f.adapter, req)).toEqual(evidence);
     expect(await f.adapter.dispatch.dispatch(req, evidence)).toEqual(result);
     expect(f.fetchImpl).toHaveBeenCalledTimes(1);
@@ -564,7 +568,7 @@ it("classifies credential and request construction failures before POST as defin
     const adapter = entry.createOmnipackFulfillmentAdapter(f.config), req = request();
     const result = await adapter.dispatch.dispatch(req, await prepare(adapter, req));
     expect(result).toEqual({ kind: "not_dispatched", effectMayHaveSucceeded: false, refusal: { reason: "io_failure", phase: "dispatch", retryable: false },
-      error: { code: "network_error", status: null, retryable: false, mayHaveSucceeded: false } });
+      error: { code: "network_error", status: null, retryable: false, mayHaveSucceeded: false, submissionAttempted: false } });
     safe(result); expect(f.fetchImpl).not.toHaveBeenCalled();
   }
   const f = fixture(); const req = request(); const evidence = await prepare(f.adapter, req);
@@ -658,8 +662,8 @@ it("models stateless dispatch, command binding, replay and eviction interleaving
         const proof = createHash("sha256").update(JSON.stringify(["external-a", fp])).digest("hex");
         const result: Result = outcome === 0
           ? { kind: "accepted", externalRef: "external-a", evidence: evidence[index]!, providerAttemptKey: `attempt:${proof}`, labelKey: `label:${proof}` }
-          : outcome === 1 ? { kind: "unknown", effectMayHaveSucceeded: true, refusal: { reason: "io_failure", phase: "dispatch", retryable: false }, error: { code: "http_503", status: 503, retryable: false, mayHaveSucceeded: true } }
-            : { kind: "not_dispatched", effectMayHaveSucceeded: false, refusal: { reason: "io_failure", phase: "dispatch", retryable: false }, error: { code: "http_400", status: 400, retryable: false, mayHaveSucceeded: false } };
+          : outcome === 1 ? { kind: "unknown", effectMayHaveSucceeded: true, refusal: { reason: "io_failure", phase: "dispatch", retryable: false }, error: { code: "http_503", status: 503, retryable: false, mayHaveSucceeded: true, submissionAttempted: true, responseBodyRead: true } }
+            : { kind: "not_dispatched", effectMayHaveSucceeded: false, refusal: { reason: "io_failure", phase: "dispatch", retryable: false }, error: { code: "http_400", status: 400, retryable: false, mayHaveSucceeded: false, submissionAttempted: true, responseBodyRead: expect.any(Boolean) } };
         recorded.set(fp, { evidenceKey: key(index), commandGroup: Math.floor(index / 3), result });
         return result;
       });
@@ -725,8 +729,8 @@ it("models stateless dispatch, command binding, replay and eviction interleaving
         const proof = createHash("sha256").update(JSON.stringify(["external-a", fp])).digest("hex");
         expected = outcome === 0
           ? { kind: "accepted", externalRef: "external-a", evidence: e, providerAttemptKey: `attempt:${proof}`, labelKey: `label:${proof}` }
-          : outcome === 1 ? { kind: "unknown", effectMayHaveSucceeded: true, refusal: { reason: "io_failure", phase: "dispatch", retryable: false }, error: { code: "http_503", status: 503, retryable: false, mayHaveSucceeded: true } }
-            : { kind: "not_dispatched", effectMayHaveSucceeded: false, refusal: { reason: "io_failure", phase: "dispatch", retryable: false }, error: { code: "http_400", status: 400, retryable: false, mayHaveSucceeded: false } };
+          : outcome === 1 ? { kind: "unknown", effectMayHaveSucceeded: true, refusal: { reason: "io_failure", phase: "dispatch", retryable: false }, error: { code: "http_503", status: 503, retryable: false, mayHaveSucceeded: true, submissionAttempted: true, responseBodyRead: true } }
+            : { kind: "not_dispatched", effectMayHaveSucceeded: false, refusal: { reason: "io_failure", phase: "dispatch", retryable: false }, error: { code: "http_400", status: 400, retryable: false, mayHaveSucceeded: false, submissionAttempted: true, responseBodyRead: expect.any(Boolean) } };
         expectedPosts++;
         retained.set(fp, expected);
         if (retained.size > 2) { retained.delete(retained.keys().next().value!); evictions++; }
@@ -1011,4 +1015,155 @@ it("retains disabled, not-ready and bad-identity adapter refusals in stock resul
       expect(adapter.fetchImpl).not.toHaveBeenCalled();
     }
   }
+});
+
+// The native boundary compares whole JSON, including on mapped-attempt replay.
+function seamLedger(req: FulfillmentDispatchRequest) {
+  let record: DispatchRecord | null = null;
+  let attempt: string | null = null;
+  const finalized: FulfillmentDispatchResult[] = [];
+  const trace: string[] = [];
+  const query = vi.fn(async (sql: string, values: unknown[] = []) => {
+    const [first] = values;
+    let response: unknown;
+    if (sql.includes("fulfillment_dispatch_claim")) {
+      trace.push("claim");
+      const evidence = JSON.parse(values[5] as string) as DispatchEvidence;
+      // Match the native claim domain before retaining evidence.
+      if (!/^[a-f0-9]{64}$/.test(evidence.commandFingerprint)) throw Error("fulfillment_dispatch_evidence_invalid");
+      if (record) { expect(JSON.stringify(evidence)).toBe(JSON.stringify(record.evidence)); expect(values[4]).toBe(record.mode); }
+      const replayed = record !== null;
+      record ??= { dispatchRef: "dispatch-a", requestKey: first as string, fulfillmentRef: req.fulfillmentRef,
+        orderRef: req.orderRef, parcelRef: req.parcelRef, mode: values[4] as DispatchRecord["mode"], evidence,
+        status: "draft", externalRef: null, replayed: false };
+      response = { kind: "claimed", record: { ...record, replayed } };
+    } else if (sql.includes("fulfillment_dispatch_read")) {
+      trace.push("read"); response = record;
+    } else if (sql.includes("fulfillment_record_provider_attempt")) {
+      trace.push("attempt"); expect(values[3]).toBe(record!.mode);
+      expect(values[2]).toBe(JSON.stringify(record!.evidence));
+      if (attempt) expect(values[2]).toBe(attempt);
+      response = { replayed: attempt !== null }; attempt = values[2] as string;
+    } else if (sql.includes("fulfillment_dispatch_begin")) {
+      trace.push("begin"); expect(record!.mode).not.toBe("shadow"); expect(values[1]).toBe(record!.evidence.commandFingerprint);
+      record!.status = "submitting"; response = { kind: "begun", begun: true, replayed: false, record };
+    } else if (sql.includes("fulfillment_dispatch_finish")) {
+      trace.push("finalize");
+      const result = JSON.parse(values[1] as string) as FulfillmentDispatchResult;
+      finalized.push(result); record!.status = result.kind === "unknown" ? "uncertain" : "failed"; response = record;
+    } else if (sql.includes("UPDATE public.fulfillment_dispatch_refs")) return { rows: [] };
+    else throw Error("Unexpected native operation");
+    return { rows: [{ response: structuredClone(response) }] };
+  });
+  const store = createPostgresFulfillmentDispatchStore({ query }, {
+    prepare: async () => ({ disposition: "ready", contactRevision: req.contactRevision.revision }), readCandidate: async () => structuredClone(req),
+  });
+  const run = (provider: ReturnType<typeof fixture>["adapter"]["dispatch"], mode: DispatchRecord["mode"] = "live", shadowCommandFingerprint?: (request: FulfillmentDispatchRequest) => string) =>
+    runFulfillmentDispatchWorker({ store, provider, config: { mode, batchLimit: 1 }, listCandidates: async () => [req], shadowCommandFingerprint,
+      keys: { request: r => r.requestKey, mappedAttempt: key => `${key}:attempt`, acceptance: () => ({ providerAttemptKey: "accepted-a", labelKey: "label-a" }) } });
+  return { store, run, trace, finalized, record: () => record! };
+}
+
+it("preserves the default shadow evidence bytes and JSON request fingerprint", () => {
+  const req = request(), bytes = JSON.stringify(req);
+  const expected = { commandFingerprint: createHash("sha256").update(bytes).digest("hex"), contactRevision: req.contactRevision,
+    providerRef: "omnipack", carrierRef: "CARRIER-A", serviceRef: "SERVICE-A",
+    transcript: { itemCount: 1, items: [{ skuRef: "SKU-A", quantity: 2, lotRef: null, expirationDate: null }], deliveryKind: "courier", pickupPointRef: null } };
+  expect(JSON.stringify(shadowDispatchEvidence(req))).toBe(JSON.stringify(expected));
+  expect(JSON.stringify(req)).toBe(bytes);
+});
+it("uses the injected shadow identity through native claim/readback/attempt replay and live begin", async () => {
+  const f = fixture(() => jsonResponse({}, 400)), req = request(), ledger = seamLedger(req);
+  const prepared = await prepare(f.adapter, req);
+  expect(prepared.commandFingerprint).toMatch(/^[a-f0-9]{64}$/);
+  const fingerprint = vi.fn(() => prepared.commandFingerprint);
+  expect(prepared.commandFingerprint).not.toBe(shadowDispatchEvidence(req).commandFingerprint);
+  expect(await ledger.run(f.adapter.dispatch, "shadow", fingerprint)).toMatchObject({ ok: true, providerCalls: 0 });
+  const bytes = JSON.stringify(ledger.record().evidence);
+  expect(await ledger.run(f.adapter.dispatch, "shadow", fingerprint)).toMatchObject({ ok: true, replayed: 1, providerCalls: 0 });
+  expect(JSON.stringify(ledger.record().evidence)).toBe(bytes);
+  expect(ledger.trace).not.toContain("begin");
+  // Native keys are mode-bound: prove live begin separately, never promote a shadow row.
+  const live = seamLedger(req);
+  expect(await live.run(f.adapter.dispatch, "live", fingerprint)).toMatchObject({ ok: false, providerCalls: 1 });
+  expect(await live.run(f.adapter.dispatch, "live", fingerprint)).toMatchObject({ ok: false, providerCalls: 0 });
+  const stage = seamLedger(req), staged = fixture(() => jsonResponse({}, 400));
+  expect(await stage.run(staged.adapter.dispatch, "stage", fingerprint)).toMatchObject({ ok: false, providerCalls: 1 });
+  expect(fingerprint).toHaveBeenCalledTimes(2); expect(fingerprint).toHaveBeenCalledWith(req);
+  expect(ledger.record().evidence.commandFingerprint).toBe(prepared.commandFingerprint);
+  expect(live.record().evidence.commandFingerprint).toBe(ledger.record().evidence.commandFingerprint);
+  expect(live.trace.slice(0,6)).toEqual(["read", "claim", "read", "attempt", "begin", "finalize"]);
+  expect(f.fetchImpl).toHaveBeenCalledTimes(1);
+  // The adopter guard mirrors the native claim's fingerprint contract exactly.
+  const claimSql = readFileSync(new URL("../../../sql/20261022080000_fulfillment_command_ledger.sql", import.meta.url), "utf8");
+  const workerSource = readFileSync(new URL("../../../src/fulfillment/providerDispatchWorker.ts", import.meta.url), "utf8");
+  expect(claimSql).toContain("p_evidence->>'commandFingerprint' !~ '^[a-f0-9]{64}$'");
+  expect(workerSource).toContain('/^[a-f0-9]{64}$/.test(value)');
+});
+it.each([
+  { name: "invalid output", raw: "v1:cmd_A", fingerprint: () => "v1:cmd_A", cause: "adopter_fingerprint_invalid" },
+  { name: "throw", raw: "private_fingerprint_failed", fingerprint: () => { throw Error("private_fingerprint_failed"); }, cause: "adopter_fingerprint_failed" },
+])("refuses adopter fingerprint $name with a closed cause and no persistence or raw diagnostics", async ({ raw, fingerprint, cause }) => {
+  const f = fixture(), ledger = seamLedger(request()), callback = vi.fn(fingerprint);
+  const persistence = (["claim", "recordProviderAttempt", "begin", "finalize", "acknowledge", "markStaleSubmissionsUncertain"] as const)
+    .map(method => vi.spyOn(ledger.store, method));
+  const diagnostics = [vi.spyOn(console, "error"), vi.spyOn(console, "warn"), vi.spyOn(console, "log")];
+  try {
+    const result = await ledger.run(f.adapter.dispatch, "shadow", callback);
+    expect(result).toMatchObject({ ok: false, failures: 1, updated: 0, providerCalls: 0, reason: cause,
+      refusal: { reason: "malformed", phase: "prepare", retryable: false, cause } });
+    expect(callback).toHaveBeenCalledTimes(1);
+    for (const write of persistence) expect(write).not.toHaveBeenCalled();
+    expect(ledger.finalized).toEqual([]);
+    expect(JSON.stringify({ result, diagnostics: diagnostics.map(spy => spy.mock.calls) })).not.toContain(raw);
+    safe(result); expect(f.fetchImpl).not.toHaveBeenCalled(); expect(f.credentials).not.toHaveBeenCalled();
+  } finally { for (const spy of diagnostics) spy.mockRestore(); }
+});
+it.each([
+  { name: "read 400", reply: () => jsonResponse(plants, 400), status: 400, read: true, kind: "not_dispatched" },
+  { name: "unreadable 400", reply: () => unreadableResponse(400), status: 400, read: false, kind: "not_dispatched" },
+  { name: "read 422", reply: () => jsonResponse(plants, 422), status: 422, read: true, kind: "not_dispatched" },
+  { name: "unreadable 422", reply: () => unreadableResponse(422), status: 422, read: false, kind: "not_dispatched" },
+  { name: "unreadable success", reply: () => unreadableResponse(), status: null, read: false, kind: "unknown" },
+])("preserves $name facts through typed results and native finalize without changing classification", async ({ reply, status, read, kind }) => {
+  const f = fixture(reply), req = request(), ledger = seamLedger(req);
+  const result = await f.adapter.dispatch.dispatch(req, await prepare(f.adapter, req));
+  const error = { code: status ? `http_${status}` : "network_error", status, retryable: false,
+    mayHaveSucceeded: kind === "unknown", submissionAttempted: true, ...(read !== undefined ? { responseBodyRead: read } : {}) };
+  expect(result).toMatchObject({ kind, error });
+  expect(result.error).toEqual(error);
+  expect(await ledger.run(f.adapter.dispatch)).toMatchObject({ ok: false, providerCalls: 1 });
+  expect(ledger.finalized).toEqual([result]);
+  expect(ledger.record().status).toBe(kind === "unknown" ? "uncertain" : "failed");
+  safe(ledger.finalized); expect(f.fetchImpl).toHaveBeenCalledTimes(1);
+});
+it("retains proven credential failure before submission through native finalize", async () => {
+  const f = fixture(), req = request(), ledger = seamLedger(req);
+  f.config.http.credentials = () => { throw Error(secret); };
+  const adapter = entry.createOmnipackFulfillmentAdapter(f.config);
+  expect(await ledger.run(adapter.dispatch)).toMatchObject({ ok: false });
+  expect(ledger.finalized[0]).toMatchObject({ kind: "not_dispatched", error: { submissionAttempted: false, mayHaveSucceeded: false } });
+  expect(ledger.finalized[0]!.error).not.toHaveProperty("responseBodyRead");
+  expect(ledger.record().status).toBe("failed"); safe(ledger.finalized); expect(f.fetchImpl).not.toHaveBeenCalled();
+});
+it("retains the closed command rebuild refusal before submission through native finalize", async () => {
+  const f = fixture(), req = request(), ledger = seamLedger(req);
+  const provider = { prepare: f.adapter.dispatch.prepare, dispatch: async (r: FulfillmentDispatchRequest, e: DispatchEvidence) => {
+    f.config.resolveProduct = async () => { throw Error(secret); };
+    return entry.createOmnipackFulfillmentAdapter(f.config).dispatch.dispatch(r, e);
+  } };
+  expect(await ledger.run(provider)).toMatchObject({ ok: false });
+  expect(ledger.finalized[0]).toEqual({ kind: "not_dispatched", effectMayHaveSucceeded: false,
+    refusal: { reason: "not_dispatchable", phase: "dispatch", retryable: false } });
+  safe(ledger.finalized); expect(f.fetchImpl).not.toHaveBeenCalled(); expect(f.credentials).not.toHaveBeenCalled();
+});
+it("allowlists boolean dispatch facts at the durable sink and preserves absent evidence", () => {
+  const base = { kind: "not_dispatched" as const, effectMayHaveSucceeded: false as const,
+    refusal: { reason: "io_failure" as const, phase: "dispatch" as const, retryable: false },
+    error: { code: "http_400", status: 400, retryable: false, mayHaveSucceeded: false } };
+  expect(dispatchResult(base)).toEqual(base);
+  const planted = { ...base, error: { ...base.error, submissionAttempted: secret, responseBodyRead: "recipient@example.test", rawBody: secret } };
+  expect(dispatchResult(planted as unknown as FulfillmentDispatchResult)).toEqual(base);
+  const facts = { ...base, error: { ...base.error, submissionAttempted: false, responseBodyRead: false } };
+  expect(dispatchResult(dispatchResult(facts))).toEqual(facts);
 });

@@ -181,7 +181,8 @@ it.each([
   }));
   expect(await f.run()).toMatchObject({ ok: false, providerCalls: 1, reason: spec.code });
   expect(f.writes[0]).toEqual({ kind: spec.ambiguous ? "unknown" : "not_dispatched", effectMayHaveSucceeded: spec.ambiguous,
-    refusal: { reason: "io_failure", phase: "dispatch", retryable: false }, error: { code: spec.code, status: spec.status, retryable: false, mayHaveSucceeded: spec.ambiguous } });
+    refusal: { reason: "io_failure", phase: "dispatch", retryable: false }, error: { code: spec.code, status: spec.status, retryable: false, mayHaveSucceeded: spec.ambiguous, submissionAttempted: true,
+      ...(spec.status !== null ? { responseBodyRead: spec.name !== "broken-400-body" } : {}) } });
   expect(await f.run()).toMatchObject({ providerCalls: 0 }); expect(f.http).toHaveBeenCalledTimes(1);
 });
 it("shadow-null builds locally and readiness does not require a provider", async () => {

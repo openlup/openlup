@@ -1,15 +1,25 @@
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
+import { env as processEnvironment } from "node:process";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { PUBLIC_REPOSITORY_URL } from "./package-manifest-policy.ts";
 import { bumpSet } from "./release-bump.ts";
 import { PACKAGES_MANIFEST_FILE, assertMigrationBlocks, runPackagesCheck } from "./packages-check.ts";
 
+const publicationAudits = vi.hoisted(() => vi.fn());
+vi.mock("node:child_process", async (original) => {
+  const actual = await original<typeof import("node:child_process")>();
+  return { ...actual, execFileSync: (...args: Parameters<typeof actual.execFileSync>) => {
+    if (Array.isArray(args[1]) && args[1][1]?.endsWith("/packages/core/scripts/release-npm-checks.ts")) return publicationAudits(...args);
+    return actual.execFileSync(...args);
+  } };
+});
+
 const roots: string[] = [];
-afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); vi.restoreAllMocks(); vi.unstubAllEnvs(); });
+afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); vi.restoreAllMocks(); vi.unstubAllEnvs(); publicationAudits.mockReset(); });
 const quiet = () => { vi.spyOn(console, "log").mockImplementation(() => undefined); return vi.spyOn(console, "error").mockImplementation(() => undefined); };
 const git = (root: string, ...args: string[]) => execFileSync("git", ["-c", "user.name=fixture", "-c", "user.email=fixture@example.invalid", "-c", "core.hooksPath=/dev/null", ...args], { cwd: root, stdio: "ignore" });
 const build = "node -e \"require('node:fs').mkdirSync('dist',{recursive:true});require('node:fs').writeFileSync('dist/a.js','export const a = 1;\\n')\"";
@@ -27,6 +37,10 @@ function fixture(extra: Record<string, string> = {}): string {
   write(".gitignore", "dist/\nout/\n");
   for (const name of ["demo", "pub", "kit"]) if (!extra[`packages/${name}/release-gates.json`]) write(`packages/${name}/release-gates.json`, JSON.stringify({ pack: { code: { maxPackedBytes: 1000000, maxFiles: 1000 }, docs: { maxPackedBytes: 1000000, maxFiles: 1000 }, maxPackedBytes: 2000000, maxUnpackedBytes: 4000000, maxFiles: 2000, baseline: { version: "0.3.0", packedBytes: 1000000 }, browserEntries: {} } }));
   for (const [path, contents] of Object.entries(extra)) write(path, contents);
+  const inventory = (JSON.parse(readFileSync(join(root, "config/openlup-packages.json"), "utf8")).packages as Array<{ directory: string }>).filter(({ directory }) => existsSync(join(root, directory, "package.json")));
+  if (!extra["package.json"]) write("package.json", JSON.stringify({ private: true, workspaces: inventory.map(({ directory }) => directory) }));
+  if (!extra["package-lock.json"]) write("package-lock.json", JSON.stringify({ lockfileVersion: 3, packages: Object.fromEntries(inventory.map(({ directory }) => [directory, JSON.parse(readFileSync(join(root, directory, "package.json"), "utf8"))])) }));
+  if (!extra["packages/core/release-gates.json"]) write("packages/core/release-gates.json", JSON.stringify({ audit: { maximumVulnerabilities: { critical: 0, high: 0, moderate: 0, low: 0, info: 0 } } }));
   git(root, "init", "-q");
   git(root, "add", "-A");
   git(root, "commit", "-q", "-m", "fixture");
@@ -45,6 +59,83 @@ function peers(prerequisite = build): string {
 }
 
 describe("packages:check", () => {
+  it("audits only the release selection and its internal peer prerequisites, including standalone locks", () => {
+    quiet();
+    const root = peers();
+    const metadata = JSON.parse(readFileSync(join(root, "packages/pub/package.json"), "utf8"));
+    writeFileSync(join(root, "packages/pub/package-lock.json"), JSON.stringify({ name: metadata.name, version: metadata.version, lockfileVersion: 3, packages: { "": metadata } }));
+    git(root, "add", "--all"); git(root, "commit", "-qm", "standalone prerequisite lock");
+    expect(runPackagesCheck(root, ["--cold", "--release-tag", "openlup-kit-v0.4.0"])).toBe(0);
+    expect(publicationAudits.mock.calls.map(([, args, options]) => ({ root: options.cwd, workspaces: args.slice(3) }))).toEqual([
+      { root, workspaces: ["./packages/kit", "./packages/pub"] },
+      { root: join(root, "packages/pub"), workspaces: [] },
+    ]);
+    publicationAudits.mockClear();
+    expect(runPackagesCheck(root, ["--release-tag", "openlup-pub-v0.4.0"])).toBe(0);
+    expect(publicationAudits).toHaveBeenNthCalledWith(1, process.execPath, ["--experimental-strip-types", join(root, "packages/core/scripts/release-npm-checks.ts"), "audit", "./packages/pub"], expect.objectContaining({ cwd: root }));
+    publicationAudits.mockClear();
+    expect(runPackagesCheck(root, ["--release-set", "0.4.0"])).toBe(0);
+    expect(publicationAudits).toHaveBeenNthCalledWith(1, process.execPath, ["--experimental-strip-types", join(root, "packages/core/scripts/release-npm-checks.ts"), "audit", "./packages/kit", "./packages/pub"], expect.objectContaining({ cwd: root }));
+    publicationAudits.mockClear();
+    expect(runPackagesCheck(root, [])).toBe(0);
+    expect(runPackagesCheck(root, ["--manifest-only", "--release-tag", "openlup-pub-v0.4.0"])).toBe(0);
+    expect(publicationAudits).not.toHaveBeenCalled();
+  }, 60_000);
+  it("retains no publication artifact when its dependency audit refuses", () => {
+    quiet();
+    const root = fixture();
+    publicationAudits.mockImplementation(() => { throw new Error("production audit budget exceeded"); });
+    expect(() => runPackagesCheck(root, ["--out", "out", "--release-tag", "openlup-pub-v0.4.0"])).toThrow("production audit budget exceeded");
+    expect(existsSync(join(root, "out"))).toBe(false);
+  }, 60_000);
+  it("refuses a missing or stale committed release graph before an audit can pass", () => {
+    quiet();
+    const root = fixture();
+    const lock = JSON.parse(readFileSync(join(root, "package-lock.json"), "utf8"));
+    lock.packages["packages/pub"].dependencies = { unrelated: "1.0.0" };
+    writeFileSync(join(root, "package-lock.json"), JSON.stringify(lock));
+    git(root, "add", "--all"); git(root, "commit", "-qm", "stale root carrier");
+    expect(() => runPackagesCheck(root, ["--release-tag", "openlup-pub-v0.4.0"])).toThrow("lock dependencies differs for @openlup/pub");
+    expect(publicationAudits).not.toHaveBeenCalled();
+  }, 60_000);
+  it("refuses root dependency pins changed before packing, by a build or during the audit", () => {
+    quiet();
+    for (const phase of ["before", "build", "audit"]) {
+      const root = fixture(), lockPath = join(root, "package-lock.json");
+      const lock = JSON.parse(readFileSync(lockPath, "utf8"));
+      lock.packages["node_modules/transitive"] = { version: "1.0.0", resolved: "https://registry.npmjs.org/transitive/-/transitive-1.0.0.tgz" };
+      writeFileSync(lockPath, JSON.stringify(lock));
+      const mutation = "const fs=require('node:fs'),p='../../package-lock.json',lock=JSON.parse(fs.readFileSync(p,'utf8'));lock.packages['node_modules/transitive'].version='9.0.0';fs.writeFileSync(p,JSON.stringify(lock));";
+      if (phase === "build") {
+        const path = join(root, "packages/pub/package.json"), metadata = JSON.parse(readFileSync(path, "utf8"));
+        metadata.scripts.build += ` && node -e ${JSON.stringify(mutation)}`;
+        writeFileSync(path, JSON.stringify(metadata));
+      }
+      git(root, "add", "--all"); git(root, "commit", "-qm", "pinned dependency fixture");
+      const mutate = () => { lock.packages["node_modules/transitive"].version = "9.0.0"; writeFileSync(lockPath, JSON.stringify(lock)); };
+      publicationAudits.mockReset();
+      if (phase === "before") mutate();
+      if (phase === "audit") publicationAudits.mockImplementation(mutate);
+      expect(() => runPackagesCheck(root, ["--out", "out", "--release-tag", "openlup-pub-v0.4.0"]), phase).toThrow("package-lock.json differs from the packed commit");
+      expect(existsSync(join(root, "out")), phase).toBe(false);
+      expect(publicationAudits).toHaveBeenCalledTimes(phase === "audit" ? 1 : 0);
+    }
+  }, 60_000);
+  it("the real publication audit CLI refuses a vulnerable report without retrying it away", () => {
+    quiet();
+    const root = fixture(), bin = join(root, "bin");
+    mkdirSync(bin);
+    const calls = join(root, "audit-calls");
+    writeFileSync(join(bin, "npm"), `#!/bin/sh\nprintf '%s\\n' "$*" >> '${calls}'\nprintf '%s\\n' '{"metadata":{"vulnerabilities":{"critical":0,"high":1,"moderate":0,"low":0,"info":0}}}'\nexit 1\n`);
+    chmodSync(join(bin, "npm"), 0o755);
+    const result = spawnSync(process.execPath, ["--experimental-strip-types", join(process.cwd(), "packages/core/scripts/release-npm-checks.ts"), "audit", "./packages/pub"], { cwd: root, env: { ...processEnvironment, PATH: `${bin}:${processEnvironment.PATH}` }, encoding: "utf8" });
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("production audit budget exceeded");
+    const attempts = readFileSync(calls, "utf8").trim().split("\n");
+    expect(attempts).toHaveLength(1);
+    expect(attempts[0]).toContain("audit --omit=dev --package-lock-only --json --include-workspace-root=false --workspace=./packages/pub");
+    expect(attempts[0]).not.toMatch(/install|fix/u);
+  });
   it("passes on the committed repository and refuses malformed arguments", () => {
     quiet();
     expect(runPackagesCheck(process.cwd(), ["--manifest-only"])).toBe(0);

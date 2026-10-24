@@ -6,14 +6,23 @@ import { Pool } from 'pg';
 import { afterAll,beforeAll,expect,it } from 'vitest';
 import { FULFILLMENT_MIGRATIONS,createPostgresFulfillmentDispatchStore,createPostgresPaidFulfillmentHandoffStore,createPostgresFulfillmentShipmentSpinePort,createPostgresFulfillmentStockSyncPort } from '@openlup/platform/fulfillment';
 import { readSelectedCatalogProjection,selectedCatalogProjectionPayload } from '../../server/adapters/postgres/selectedCatalogProjection.js';
-import { runPostgresContainer,waitForPostgresTcpReady,type PostgresContainer } from '../helpers/postgresContainer.js';
+import { closePostgres, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, runPostgresContainer,waitForPostgresTcpReady,type PostgresContainer } from '../helpers/postgresContainer.js';
 import { executor,fixture,manifest,nativeHarness,units } from '../helpers/fulfillmentNative.js';
 import type { FulfillmentObservation } from '@openlup/platform/fulfillment/contracts';
 function observation(): FulfillmentObservation {
  const at='2026-10-21T12:00:00.000Z';
  return {fact:{schemaVersion:1,mapperVersion:'fixture-v1',factId:'fact:fixture',providerKind:'warehouse-a',fulfillmentReference:'external-fixture',canonicalStatus:'in_transit',provenance:{source:'provider_webhook',authority:'provider_asserted'},occurredAt:at,receivedAt:at,rawEvent:{reference:'evidence:00000000-0000-4000-8000-000000000001',digestAlgorithm:'sha256',digest:'a'.repeat(64)}},eventKind:'order.shipped',eventKey:'fixture-shipped',firstReceivedAt:at,correlation:{orderRef:null,fulfillmentRef:null,externalRef:'external-fixture',orderNumber:null,providerFulfillmentRef:null,parcelRef:null},trackingRefs:[]};
 }
-const h=nativeHarness('stores');beforeAll(()=>h.start(),120_000);afterAll(()=>h.stop());
+const prefixContainers:PostgresContainer[]=[],prefixPools:Pool[]=[];
+const h=nativeHarness('stores');
+beforeAll(async()=>{
+ const resource=await runPostgresContainer({name:`m08-p4-prefix-${process.pid}`,password:'synthetic-conformance'});
+ prefixContainers.push(resource);
+ if(!await waitForPostgresTcpReady(resource.connectionString))throw new Error('P4 prefix PostgreSQL unavailable');
+ prefixPools.push(new Pool({connectionString:resource.connectionString}));
+ await h.start();
+},postgresSetupTimeoutMs);
+afterAll(()=>h.stop(prefixContainers,prefixPools), postgresTeardownTimeoutMs);
 const revision={schemaVersion:1,source:'fixture',revision:1};
 const evidence={commandFingerprint:'a'.repeat(64),contactRevision:revision,providerRef:'warehouse-a',carrierRef:null,serviceRef:null};
 const store=()=>createPostgresFulfillmentDispatchStore(executor(h.pool),{async prepare(){return {disposition:'ready',contactRevision:1};},async readCandidate(){return null;}});
@@ -27,10 +36,9 @@ it('fresh full-catalogue install binds sparse assets, hashes and object inventor
  const client=await h.pool.connect();try{expect(createHash('sha256').update(selectedCatalogProjectionPayload(await readSelectedCatalogProjection(client))).digest('hex')).toBe(manifest.objectInventorySha256);}finally{client.release();}
 });
 it('complete immutable prefix 72 upgrades through 73/74, preserves rows/history and replays the full catalogue',async()=>{
- let resource:PostgresContainer|undefined,db:Pool|undefined;const root=mkdtempSync(join(tmpdir(),'m08-p4-prefix-'));
+ const resource=prefixContainers[0],db=prefixPools[0];const root=mkdtempSync(join(tmpdir(),'m08-p4-prefix-'));
  try{
-  const boot=Date.now();resource=await runPostgresContainer({name:`m08-p4-prefix-${process.pid}`,password:'synthetic-conformance'});if(!await waitForPostgresTcpReady(resource.connectionString))throw new Error('P4 prefix PostgreSQL unavailable');console.log(`P4 prefix Docker setup ms=${Date.now()-boot}`);
-  db=new Pool({connectionString:resource.connectionString});const tx=await db.connect();let payload:string;
+  const tx=await db.connect();let payload:string;
   try{await tx.query('BEGIN');for(const unit of units.slice(0,73))await tx.query(readFileSync(unit.file,'utf8'));payload=selectedCatalogProjectionPayload(await readSelectedCatalogProjection(tx));}finally{await tx.query('ROLLBACK');tx.release();}
   const prefix={...manifest,forward:manifest.forward.slice(0,72),objectInventorySha256:createHash('sha256').update(payload!).digest('hex')};
   for(const unit of units.slice(0,73)){const path=join(root,unit.file);mkdirSync(dirname(path),{recursive:true});writeFileSync(path,readFileSync(unit.file));}
@@ -39,7 +47,7 @@ it('complete immutable prefix 72 upgrades through 73/74, preserves rows/history 
   const oldAcl=(await db.query("SELECT oid,proacl::text FROM pg_proc WHERE pronamespace='public'::regnamespace ORDER BY oid")).rows;expect(before).toHaveLength(73);expect((await h.runner(db).apply()).applied).toEqual(units.slice(73).map(u=>u.file));
   expect((await db.query('SELECT * FROM public.platform_schema_migrations WHERE position<=72 ORDER BY position')).rows).toEqual(before);expect((await db.query('SELECT * FROM public.fulfillment_shipments WHERE id=$1',[f.shipment])).rows).toEqual(rows);expect((await db.query('SELECT oid,proacl::text FROM pg_proc WHERE oid=ANY($1::oid[]) ORDER BY oid',[oldAcl.map(row=>row.oid)])).rows).toEqual(oldAcl);
   expect(await h.runner(db).apply()).toEqual({applied:[]});expect((await h.runner(db).status()).pending).toEqual([]);expect((await db.query('SELECT mode FROM public.subscription_delivery_alignment_control')).rows).toEqual([{mode:'off'}]);
- }finally{await db?.end();await resource?.remove();rmSync(root,{recursive:true,force:true});}
+ }finally{await closePostgres(resource,db);rmSync(root,{recursive:true,force:true});}
 },60_000);
 it('durable command/dispatch fences, G14/remap, atomic paid/accepted ACK, G15–G17 replay and rollback survive lost responses',async()=>{
  const f=await fixture(h.pool);const native=store();

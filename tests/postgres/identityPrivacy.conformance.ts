@@ -9,7 +9,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createPostgresPrivacyStore, createPostgresPrivacyUnitOfWork, createIdentityPersonalDataContributor, createPersonalDataContributorRegistry, createPrivacyOperations, createPostgresCustomerChallengeStore, createDirectOperatorInvitationStore, createPostgresOperatorIdentityStore } from "@openlup/platform/identity";
 import { createSubscriptionsPrivacyContributor } from "../../server/runtime/auth/subscriptionsPrivacyContributor.js";
 import { createPostgresMigrationRunner } from "../../server/adapters/postgres/migrationRunner.js";
-import { dockerAvailable, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
+import { closePostgres, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, dockerAvailable, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
 const A = "d4300000-0000-4000-8000-000000000001", P = "d4300000-0000-4000-8000-000000000002", C = "d4300000-0000-4000-8000-000000000003", O = "d4300000-0000-4000-8000-000000000004", S = "d4300000-0000-4000-8000-000000000005", K = "d4300000-0000-4000-8000-000000000006";
 const hash = (value: string) => createHash("sha256").update(value).digest("hex");
 const privacyPath = "db/platform/migrations/20261018190000_identity_privacy_erasures.sql";
@@ -45,8 +45,8 @@ export function registerIdentityPrivacyConformance(): void {
         expect(ledger).toEqual([current.baseline, ...current.forward].map((entry, position) => ({ catalog_path: entry.file, sha256: entry.sha256, position })));
       }
       await seed(pools[0]);
-    }, 120000);
-    afterAll(async () => { for (const pool of pools) await pool.end(); for (const container of containers) await container.remove(); if (predecessorRoot) rmSync(predecessorRoot, { recursive: true, force: true }); });
+    }, postgresSetupTimeoutMs);
+    afterAll(async () => { await closePostgres(containers, pools); if (predecessorRoot) rmSync(predecessorRoot, { recursive: true, force: true }); }, postgresTeardownTimeoutMs);
     async function seed(pool: Pool) {
       await pool.query(`INSERT INTO public.platform_human_principals (principal_id,email) VALUES ($1,'privacy-admin@example.invalid'),($2,'privacy-subject@example.invalid'),($3,'privacy-other@example.invalid')`, [A,P,O]);
       await pool.query(`INSERT INTO public.platform_human_memberships (principal_id,role,membership_state,membership_provenance,membership_accepted_at) VALUES ($1,'admin','active','legacy',now()),($2,'distributor','active','legacy',now())`, [A,P]);
@@ -131,7 +131,7 @@ export function registerIdentityPrivacyConformance(): void {
           await pool.query("GRANT SELECT ON public.identity_privacy_erasures TO PUBLIC");
           try { await expect(b.operations.erase({principalId:A},input)).rejects.toThrow("PRIVACY_STORE_PRIVILEGES_UNSAFE"); }
           finally { await pool.query("REVOKE SELECT ON public.identity_privacy_erasures FROM PUBLIC"); }
-        } finally { await b.unitOfWork.close(); await challengeStore.close(); await invitations.close(); await operator.close(); }
+        } finally { await closePostgres(undefined, undefined, [() => b.unitOfWork.close(), () => challengeStore.close(), () => invitations.close(), () => operator.close()]); }
       }
     },120000);
     it.each(["contact", "principal"] as const)("late raw issuance cannot re-link through package redemption with a %s receipt", async receiptKind => {
@@ -169,7 +169,7 @@ export function registerIdentityPrivacyConformance(): void {
         expect(await store.issue({ email: currentEmail, tokenHash: hash(`refused-${receiptKind}`), expiresAt: new Date(Date.now()+600000).toISOString() })).toEqual({ deliverable: false });
       } finally {
         await issuer.query("ROLLBACK"); await eraser.query("ROLLBACK");
-        issuer.release(); eraser.release(); await b.unitOfWork.close(); await store.close();
+        issuer.release(); eraser.release(); await closePostgres(undefined, undefined, [() => b.unitOfWork.close(), () => store.close()]);
       }
     });
     it("already revoked operators redact retained free text without another revocation", async () => {
@@ -181,7 +181,7 @@ export function registerIdentityPrivacyConformance(): void {
         await b.operations.erase({principalId:A},{subject:{kind:"contact",contactId:O},idempotencyKey:O});
         expect((await pool.query("SELECT role,membership_state,membership_revocation_reason FROM public.platform_human_memberships WHERE principal_id=$1",[O])).rows[0]).toEqual({role:"distributor",membership_state:"revoked",membership_revocation_reason:null});
         expect((await pool.query("SELECT * FROM public.platform_human_membership_audit_events WHERE target_principal_id=$1",[O])).rows).toEqual([]);
-      } finally { await b.unitOfWork.close(); }
+      } finally { await closePostgres(undefined, undefined, [() => b.unitOfWork.close()]); }
     });
     it("subscription activation cannot cross the held assessment lock", async () => {
       const pool = pools[0], reader = await pool.connect(), writer = await pool.connect();

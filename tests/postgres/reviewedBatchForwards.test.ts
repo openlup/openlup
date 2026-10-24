@@ -5,7 +5,7 @@ import { reviewedBatchBytes, reviewedBatchPaths } from "../../scripts/reviewed-b
 import { Pool } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { assertBatchedForward, readReviewedForwardRegistry, sqlSha256, sqlStatements, type BatchedForwardBinding } from "../../scripts/reviewed-platform-forward.js";
-import { dockerAvailable, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
+import { closePostgres, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, dockerAvailable, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
 import { imageIo, imageReference, pullWithRetry, readCiImage } from "../../scripts/ci-image-pull.mjs";
 import { readManagedMigrationChain } from "../../scripts/public-ci-pgtap.mjs";
 import { assertBatchCatalog, assertSameSnapshot, batchSnapshot } from "./reviewedBatchCatalog.js";
@@ -101,8 +101,8 @@ describe.each(["native", "managed"] as const)("exact batch catalog gate: %s", gr
     await applyCommittedBefore(pins[0]!.path);
     // Reset dump session settings. Validate bodies of every new forward in PG.
     await db.query("SET check_function_bodies=on; SET search_path=public,extensions");
-  }, 600_000); // Includes a first managed PG17 image pull and the complete prefix.
-  afterAll(async () => { await db?.end(); await container?.remove(); if (replayRoot) rmSync(replayRoot, { recursive: true, force: true }); });
+  }, postgresSetupTimeoutMs); // Includes a first managed PG17 image pull and the complete prefix.
+  afterAll(async () => { await closePostgres(container, db); if (replayRoot) rmSync(replayRoot, { recursive: true, force: true }); }, postgresTeardownTimeoutMs);
 
   it.each(pins)("proves exact objects, ACLs and rows after the integrated prefix: $path", async pin => {
     await applyCommittedBefore(pin.path);

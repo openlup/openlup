@@ -219,11 +219,11 @@
     },
     {
       "path": "db/platform/migrations/20261022190000_invoicing_durable_duties.sql",
-      "sha256": "962a10822cde442bbc143dd16d76de3843658958a1352c602dec48c88dbf085b"
+      "sha256": "2d7bf98924b4ef29b3e8f902d768e45dd9c850242f4358a0193a0c00d0f3d081"
     },
     {
       "path": "db/platform/migrations/20261022191000_invoicing_document_effects.sql",
-      "sha256": "c9deaa32c2a3031d3c7475dd55caafff394cce4017185de82543ac1352802311"
+      "sha256": "0eac3453e2b82c43e4fff9e35bcd6daefdd0bb5f992937f7f411d690550428cf"
     },
     {
       "path": "db/platform/migrations/20261022195000_invoicing_seller_revision.sql",
@@ -233,7 +233,7 @@
   "managedInvoicingForwards": [
     {
       "path": "supabase/migrations/20261022193000_invoicing_correction_claims.sql",
-      "sha256": "1e2e0e243c0dc3f28de6ba34d76cfe585a021f490e9e3591fbe40236802bf51b",
+      "sha256": "7e0c22424afa878ce05dab6a7608b83b93cfacae5e43ab0c582b1761eadf09ad",
       "functions": [
         {
           "signature": "public.accounting_invoice_correction_outbox_claim(integer,integer,text)",
@@ -243,12 +243,12 @@
         {
           "signature": "public.accounting_invoice_correction_outbox_succeed(uuid,text,text,jsonb,integer)",
           "beforeSha256": null,
-          "afterSha256": "22eb0f964efad217fdb2bcd14d6637a09fc9164e6a050c08003d4fb801c2fc5a"
+          "afterSha256": "7fd6f5778bab1630fab93d4d43c103fe32fd13e928ab6833f41d88900f393934"
         },
         {
           "signature": "public.accounting_invoice_correction_outbox_fail(uuid,jsonb,integer,integer)",
           "beforeSha256": null,
-          "afterSha256": "7049fd611e085d0a30f3afc1edbd79c010f84ccdfea9c64fb8cc5b83ac4cb9a9"
+          "afterSha256": "5a31b8557f73c0332bbee457d26180a90065e70614fdeb7628898e21f300826d"
         }
       ]
     },

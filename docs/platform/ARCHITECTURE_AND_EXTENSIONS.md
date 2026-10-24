@@ -964,6 +964,11 @@ invalid supplied timestamps are refused and counted. Compact offsets such as
 `+0200`, minute precision and timestamps without a zone retain base acceptance;
 original bytes still identify the webhook. The shared timestamp parser remains
 unchanged from PR2 for reconciliation, `createdAt` and stock movements.
+With Zod 4.6.6, the ingress explicitly admits minute precision as well as the
+default seconds/fractions precision. Both branches enforce calendar validity;
+compact offsets are expanded only in the validation copy, never in receipt-key
+input. The existing replay witness and invalid-calendar cases protect that
+compatibility boundary when the validation dependency changes.
 
 O3 deliberately retains a typed fact and an opaque raw-event pointer. The host
 must retain the referenced evidence under its own access and retention policy;
@@ -1432,8 +1437,10 @@ host configuration before the next claim, scoped by order or null for unscoped
 claims, never by duty. P8 freezes the seller at first claim, using revisionRef as
 the claim wrapper revision. Stores bind the selected provider at construction.
 Delivery settlement
-retains provider identity, retry delay (native ignores it) and uncertain receipt hints; local document
-requests retain provider selection, invoice reference, status and replay. The
+retains provider identity, retry delay and uncertain receipt hints. Native takes
+`p_evidence.retrySeconds`: a whole number of seconds clamped to 60..86400,
+otherwise 900; `retryable:false` parks at infinity. Local document requests
+retain provider selection, invoice reference, status and replay. The
 [invoicing reference](PLATFORM_PACKAGE_REFERENCE.md#invoicing-contracts) describes
 correction, payout item and account-lineage seams and their source witnesses.
 
@@ -1452,3 +1459,14 @@ verify saved amounts; legacy delivery residuals remain a compatibility path.
 Hosts supply seller, dates, tax defaults, labels, channel resolution, descriptors
 and exact key bytes. Handoff helpers preserve fail-soft dispatch and the explicit
 standalone strict option; they register no executor and change no native gate.
+
+Correction and reversal helpers use the same compatibility callback boundary.
+`runInvoiceCorrectionJob` validates the persisted outbox identity before projection,
+requires recovery on retries and carries the claimed generation to both outcomes.
+`createInvoiceReversalHandlers` preserves host event adapters and keys and passes
+through the RPC action (`voided`, `correction_requested`, `corrected`, `no_invoice`);
+it adds no money or fulfillment dependency. The reference
+host selects only an explicit `correctionRecovery` bridge. The legacy provider
+method alone is unsupported before claim; a conforming bridge owns exact lookup,
+parent validation and positive BEFORE/zero AFTER translation. Unknown outcomes
+remain failed/owed recovery work, never evidence of absence or success.
