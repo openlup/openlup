@@ -2081,9 +2081,10 @@ export interface SubscriptionPaymentFailedEmailVars {
     recoveryUrl?: string | null;
     /**
      * Pre-formatted calendar day of the scheduled next charge, in the merchant's
-     * zone (e.g. "11.08.2026"). The dunning row that selects THIS template always
-     * carries a scheduled retry, so in production this is present; null keeps the
-     * pre-date sentence rather than printing a placeholder date.
+     * zone (e.g. "11.08.2026"). Present only when a retry is actually scheduled:
+     * a first-rung hard decline selects this template with no next retry, and
+     * `retryScheduled: false` renders the no-retry copy. null/absent keeps the
+     * sentence without a date rather than printing a placeholder date.
      */
     nextRetryDateLabel?: string | null;
     /** Card scheme as stored on the method's consent snapshot, e.g. "visa". */
