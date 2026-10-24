@@ -793,6 +793,21 @@ subscription demand from new-purchase availability. Native safety and channel
 exposure remain zero. This is no advance reservation lifecycle or one-time
 checkout write contract. The allocator alone uses the renewal exemption.
 
+For a separate native runtime role, the host must explicitly grant `EXECUTE` on
+`public.inventory_available_to_promise(text,text,timestamptz,boolean)` and its
+helper `public.inventory_channel_exposure_quantity(text,text)`, including for
+roles that reserve renewals or call N3 deficits/admission/refusal recovery.
+New-purchase readers additionally need `EXECUTE` on
+`public.inventory_new_purchase_stock_read(text,jsonb,timestamptz)`.
+Alongside the caller's existing relation privileges, ATP requires `SELECT` on
+`fulfillment_stock_current`, `fulfillment_inventory_reservations`,
+`fulfillment_inventory_reservation_lines`, `subscriptions`,
+`subscription_renewal_terms`, `subscription_renewal_term_lines`,
+`subscription_renewal_operations` and `subscription_cycles` in `public`;
+new-purchase reads also require `SELECT` on `public.catalog_skus`.
+These invoker helpers have no shipped runtime grant. The allocator retains its
+existing ACL, and neither X nor Y calls ATP; their existing grants still apply.
+
 X restores released late-paid reservation lines to committed, non-expiring ATP
 holds once, returning from its immutable recovery receipt before further writes.
 Y excludes paid cycles and settled intents before the candidate limit. Refunds
