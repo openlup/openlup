@@ -13,4 +13,4 @@ introduced. The development-preview boundary remains.
 
 - Fix uninstalled N3 normal_due pagination to exclude waiting/stock_secured cases before LIMIT, preventing normal-renewal starvation.
 
-- Repair N2 add_addon no-op parity for an existing add-on at the same quantity before N2 is installed: preserve locked prices even after catalogue changes, without a quote, event or version increment.
+- Repair uninstalled N2 donor no-op truth for native bundle/resize, plan, package, add-on and same-UTC-day slide commands before repricing: preserve locked prices after catalogue changes, writing only the command receipt, with no quote, event or version increment. Native resize compares lines/cadence; portion mode/factor remain host-owned without native storage. Predicate-removal mutants cover every mapped donor action; apply stays unchanged.

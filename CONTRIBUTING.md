@@ -209,11 +209,15 @@ replay, one-time offer refusal and stale-settlement filtering before LIMIT. N3's
 In folded N2, a raw replay of the command preview returns the stored receipt. All 43
 fresh scenarios compare output bytes and public-table columns against the pre-fold preview body and folded N2;
 committed replays compare counts, all columns and xmin across a later command,
-and the apply definition remains unchanged. A separate existing-add-on witness
-checks a same-quantity `noop` before repricing even after catalogue prices change:
-no quote, line/price write, event or version increment, with actor/key receipt replay.
-It retains the different-quantity duplicate refusal and new-add-on behavior, and
-rejects both unconditional-append and guard-only bodies in rolled-back savepoints.
+and the apply definition remains unchanged. Table-driven N2 witnesses cover donor
+no-op truth mapped to native bundle/resize, plan, package, add-on and slide commands
+before repricing, even after catalogue prices change: only the actor/key receipt
+is written; every other public row, column and xmin stays unchanged. Native resize
+compares lines/cadence; portion mode/factor remain host-owned without native storage.
+Each row checks the changed-state preview/refusal and rejects its predicate-removal
+mutant in a rolled-back savepoint. The existing add-on rows retain actor/key replay,
+different-quantity duplicate refusal, new-add-on behavior and rejection of both
+unconditional-append and guard-only bodies.
 Root test discovery
 already includes both suites; no extra runner or optional skip is introduced.
 The M10 gate reads its native PG16 and managed Supabase PG17 pins from

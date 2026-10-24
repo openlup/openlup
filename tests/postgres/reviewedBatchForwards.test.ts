@@ -158,7 +158,7 @@ type Scenario = {name:string; action?:string; payload?:(f:Fixture)=>unknown; set
 const scenarios: Scenario[] = [
  {name:'resize', action:'resize_bundle', payload:f=>({...bundle(f), coreLines:[{variantId:f.sku,qty:3}]})},
  {name:'update-bundle', action:'update_bundle'},
- {name:'update-package-template', action:'update_package_template', payload:f=>({...bundle(f),addonLines:[]})},
+ {name:'update-package-template', action:'update_package_template',status:'noop', payload:f=>({...bundle(f),addonLines:[]})},
  {name:'cadence', action:'update_plan_length', payload:()=>({planDays:21,expectedTemplateVersion:1})},
  {name:'cadence-explicit', action:'update_plan_length', payload:()=>({cadenceDays:14,expectedTemplateVersion:1})},
  {name:'add-addon', action:'add_addon', payload:f=>({variantId:f.addon,qty:1,expectedTemplateVersion:1})},
@@ -181,13 +181,13 @@ const scenarios: Scenario[] = [
  {name:'addon-not-found',action:'remove_addon',status:'refused',payload:f=>({variantId:f.addon,expectedTemplateVersion:1})},
  {name:'empty-lines',status:'refused',payload:f=>({...bundle(f),coreLines:[]})},
  {name:'invalid-lines',status:'refused',payload:f=>({...bundle(f),coreLines:[{variantId:'bad',qty:0}]})},
- {name:'duplicate-lines',status:'refused',payload:f=>({...bundle(f),coreLines:[{variantId:f.sku,qty:1},{variantId:f.sku,qty:1}]})},
+ {name:'duplicate-lines',status:'noop',payload:f=>({...bundle(f),coreLines:[{variantId:f.sku,qty:1},{variantId:f.sku,qty:1}]})},
  {name:'catalog-unavailable',status:'refused',setup:f=>db.query('DELETE FROM public.price_entries WHERE price_list_id=$1',[f.list])},
  {name:'invalid-preview-accepted-hash',error:'22023',payload:f=>({...bundle(f),acceptedQuoteHash:'a'.repeat(64)})},
  {name:'invalid-preview-payload',error:'22023',payload:()=>[]},
  {name:'forbidden',error:'22023',setup:async f=>{f.client=randomUUID();}},
  // N2 preview has no quote-expired refusal: an expired apply quote and an expired edit window are distinct.
- {name:'fresh-after-unrelated-expired-quote',setup:async f=>{await raw(f,'old-expired-n2-quote','resize_bundle',bundle(f));await db.query("UPDATE public.subscription_edit_quotes SET expires_at='2026-01-01' WHERE subscription_id=$1",[f.subscription]);}},
+ {name:'fresh-after-unrelated-expired-quote',setup:async f=>{await raw(f,'old-expired-n2-quote','resize_bundle',{...bundle(f),cadenceDays:21});await db.query("UPDATE public.subscription_edit_quotes SET expires_at='2026-01-01' WHERE subscription_id=$1",[f.subscription]);}},
  {name:'apply-expired-quote',apply:true,status:'refused',at:later(1)},
  {name:'apply-stale-template',apply:true,status:'refused',setup:f=>db.query('UPDATE public.subscriptions SET template_version=2 WHERE id=$1',[f.subscription])},
  {name:'apply-resize',apply:true},
@@ -205,7 +205,7 @@ async function proveFreshCommandDifferential() {
   await db.query('BEGIN');
   try {
    const f = await commandFixture(), key = `fresh-${scenario.name}`;
-   let payload = scenario.payload ? scenario.payload(f) : bundle(f);
+   let payload = scenario.payload ? scenario.payload(f) : {...bundle(f),cadenceDays:21};
    if (scenario.apply) {
     const preview = await raw(f, key, 'resize_bundle', payload);
     payload = {...payload as Record<string,unknown>, acceptedQuoteHash:preview.result.quoteHash};
@@ -445,14 +445,7 @@ it('preserves the donor existing-addon noop without repricing and rejects both e
  expect((await raw(f,'different-addon-qty','add_addon',{...payload,qty:3})).result)
   .toMatchObject({status:'refused',reason:'subscription_edit_invalid_lines'});
  const definition=await commandDefinition();
- const noop=`   IF EXISTS(SELECT 1 FROM public.subscription_lines WHERE subscription_id=s.id
-    AND variant_id=(p_payload->>'variantId')::uuid AND is_addon
-    AND quantity=GREATEST(1,COALESCE((p_payload->>'qty')::integer,1))) THEN
-    answer:=jsonb_build_object('status','noop','subscriptionId',s.id,'action',p_action,'subscriptionStatus',s.status,
-     'nextCycleAt',s.next_cycle_at,'templateVersion',s.template_version,'eventId',NULL);
-    EXIT preview_command;
-   END IF;
-   addons:=addons||jsonb_build_array(jsonb_build_object('variantId',p_payload->>'variantId','qty',p_payload->'qty'));`;
+ const predicate="p_action IN ('add_addon','update_addon_quantity')";
  const append="   addons:=addons||jsonb_build_array(jsonb_build_object('variantId',p_payload->>'variantId','qty',p_payload->'qty'));";
  const guard=`   IF NOT EXISTS(SELECT 1 FROM public.subscription_lines WHERE subscription_id=s.id
     AND variant_id=(p_payload->>'variantId')::uuid AND is_addon
@@ -460,7 +453,7 @@ it('preserves the donor existing-addon noop without repricing and rejects both e
  ${append}
    END IF;`;
  for(const [name,body] of [['unconditional-append',append],['guard-only',guard]]) {
-  const mutant=definition.replace(noop,body);
+  const mutant=definition.replace(predicate,"p_action='update_addon_quantity'").replace(append,body);
   expect(mutant).not.toBe(definition);
   await db.query('SAVEPOINT addon_mutant');
   try {
@@ -472,8 +465,125 @@ it('preserves the donor existing-addon noop without repricing and rejects both e
  }
 }),120_000);
 
+// Legacy donor names describe provenance only; commands use the native generic vocabulary.
+const noopRows = [
+ {donor:'swap_recipe',action:'update_bundle',changed:'refused',reason:'subscription_edit_invalid_lines',
+  payload:(f:Fixture)=>bundle(f),change:(f:Fixture)=>({...bundle(f),coreLines:[{variantId:f.addon,qty:2}]})},
+ {donor:'add_addon',action:'add_addon',changed:'refused',reason:'subscription_edit_invalid_lines',
+  payload:(f:Fixture)=>({variantId:f.addon,qty:2,expectedTemplateVersion:1}),
+  change:(f:Fixture)=>({variantId:f.addon,qty:3,expectedTemplateVersion:1})},
+ {donor:'update_addon_quantity',action:'update_addon_quantity',changed:'previewed',
+  payload:(f:Fixture)=>({variantId:f.addon,qty:2,expectedTemplateVersion:1}),
+  change:(f:Fixture)=>({variantId:f.addon,qty:3,expectedTemplateVersion:1})},
+ {donor:'update_recipe_mix',action:'update_bundle',changed:'refused',reason:'subscription_command_bundle_total_mismatch',
+  payload:(f:Fixture)=>({...bundle(f),coreLines:[{variantId:f.sku.toUpperCase(),qty:1},{variantId:f.sku,qty:1}]}),
+  change:(f:Fixture)=>({...bundle(f),coreLines:[{variantId:f.sku,qty:3}]})},
+ {donor:'update_plan_length',action:'update_plan_length',changed:'previewed',
+  payload:(f:Fixture)=>({...bundle(f),planDays:28}),change:(f:Fixture)=>({...bundle(f),planDays:21})},
+ // Native resize has no persisted portion mode/factor; those remain host policy.
+ {donor:'set_portion_mode (native line/cadence equivalent)',action:'resize_bundle',changed:'previewed',
+  payload:(f:Fixture)=>bundle(f),change:(f:Fixture)=>({...bundle(f),coreLines:[{variantId:f.sku,qty:3}]})},
+ {donor:'update_package_template',action:'update_package_template',changed:'previewed',
+  payload:(f:Fixture)=>({...bundle(f),planDays:28,addonLines:[{variantId:f.addon,qty:2}]}),
+  change:(f:Fixture)=>({...bundle(f),planDays:21,addonLines:[{variantId:f.addon,qty:2}]})},
+ {donor:'slide_next_cycle',action:'slide_next_cycle',changed:'refused',reason:'subscription_command_preview_unsupported',
+  payload:()=>({newNextCycleAt:later(201)}),change:()=>({newNextCycleAt:later(224)})},
+] satisfies {donor:string;action:string;changed:string;reason?:string;payload:(f:Fixture)=>unknown;change:(f:Fixture)=>unknown}[];
+it.each(noopRows)('N2 donor $donor: price-drift noop, changed-state boundary and predicate mutant',async row=>scoped(async()=>{
+ const f=await commandFixture();
+ await db.query(`INSERT INTO public.subscription_lines(subscription_id,variant_id,quantity,sort_order,is_addon,unit_price_minor,currency_code)
+  VALUES($1,$2,2,1,true,70,'XXX')`,[f.subscription,f.addon]);
+ await db.query('UPDATE public.price_entries SET unit_price_minor=999 WHERE price_list_id=$1',[f.list]);
+ const nextCycleAt=(await db.query('SELECT to_jsonb(next_cycle_at) value FROM public.subscriptions WHERE id=$1',[f.subscription])).rows[0].value;
+ const payload=row.payload(f);
+ async function witness(key:string) {
+  const before=await effects(true);
+  const preview=await raw(f,key,row.action,payload);
+  expect(preview.result.status,`${key}: semantic noop`).toBe('noop');
+  expect(preview.result).toEqual({status:'noop',subscriptionId:f.subscription,action:row.action,
+   subscriptionStatus:'active',nextCycleAt,templateVersion:1,eventId:null});
+  const after=await effects(true);
+  for(const name of Object.keys(before).filter(name=>name!=='subscription_command_receipts'))
+   expect(after[name],`${row.donor}: ${name} columns/xmin`).toEqual(before[name]);
+  type ReceiptSnapshot={count:number;rows:{columns:Record<string,unknown>;xmin:string}[]};
+  const previous=before.subscription_command_receipts as ReceiptSnapshot;
+  const stored=after.subscription_command_receipts as ReceiptSnapshot;
+  expect(stored.count).toBe(previous.count+1);
+  const inserted=stored.rows.filter(r=>r.columns.actor_id===f.actor && r.columns.idempotency_key===key);
+  expect(inserted).toHaveLength(1);
+  expect(inserted[0].columns).toMatchObject({status:'noop',quote_hash:null,result:preview.result});
+  expect(stored.rows.filter(r=>r!==inserted[0])).toEqual(previous.rows);
+  expect(await raw(f,key,row.action,payload,later(500))).toEqual(preview);
+  expect((await raw(f,key,row.action,payload,AT,true)).result).toEqual({...preview.result,status:'replayed',originalStatus:'noop'});
+  expect(await effects(true)).toEqual(after);
+ }
+ await witness(`table-noop-${row.action}`);
+ const changed=await raw(f,`table-changed-${row.action}`,row.action,row.change(f));
+ expect(changed.result.status).toBe(row.changed);
+ if('reason' in row) expect(changed.result.reason).toBe(row.reason);
+ if(row.changed==='previewed') {
+  expect(changed.result.quoteHash).toEqual(expect.any(String));
+  const lines=changed.result.lines as {unitPriceMinor:number}[];
+  expect(lines.every(line=>line.unitPriceMinor===999)).toBe(true);
+ }
+ const definition=await commandDefinition();
+ const predicate=row.action==='add_addon' || row.action==='update_addon_quantity'
+  ? "p_action IN ('add_addon','update_addon_quantity')"
+  : row.action==='slide_next_cycle' ? "v_noop:=s.status='active'" : `ELSIF p_action='${row.action}' THEN`;
+ const removed=row.action==='add_addon' ? "p_action='update_addon_quantity'"
+  : row.action==='update_addon_quantity' ? "p_action='add_addon'"
+  : row.action==='slide_next_cycle' ? "v_noop:=false AND s.status='active'" : 'ELSIF false THEN';
+ const mutant=definition.replace(predicate,removed);
+ expect(mutant).not.toBe(definition);
+ await db.query('SAVEPOINT truth_table_mutant');
+ try {
+  await db.query(mutant);
+  const key=`table-mutant-${row.action}`;
+  await expect(witness(key)).rejects.toThrow(`${key}: semantic noop`);
+ }finally{await db.query('ROLLBACK TO truth_table_mutant');await db.query('RELEASE SAVEPOINT truth_table_mutant');}
+ expect(await commandDefinition()).toBe(definition);
+}),120_000);
+
+it('preserves the other predicate conjuncts, normalized add quantity and native refusal guards',async()=>scoped(async()=>{
+ const f=await commandFixture();
+ await db.query(`INSERT INTO public.subscription_lines(subscription_id,variant_id,quantity,sort_order,is_addon,unit_price_minor,currency_code)
+  VALUES($1,$2,1,1,true,70,'XXX')`,[f.subscription,f.addon]);
+ await db.query('UPDATE public.price_entries SET unit_price_minor=999 WHERE price_list_id=$1',[f.list]);
+ for(const qty of [undefined,null,0,-1,1]) {
+  const payload={variantId:f.addon.toUpperCase(),qty,expectedTemplateVersion:1};
+  const key=`normalized-add-${String(qty)}`;
+  expect((await raw(f,key,'add_addon',payload)).result.status).toBe('noop');
+ }
+ const coreChanged={...bundle(f),coreLines:[{variantId:f.sku,qty:3}]};
+ const cases:[string,unknown,string][]=[
+  ['update_addon_quantity',{variantId:f.addon,qty:0,expectedTemplateVersion:1},'refused'],
+  ['update_plan_length',{...coreChanged,planDays:28},'previewed'],
+  ['update_package_template',{...bundle(f),planDays:28,addonLines:[]},'previewed'],
+  ['update_package_template',{...coreChanged,planDays:28,addonLines:[{variantId:f.addon,qty:1}]},'previewed'],
+  ['update_bundle',{...bundle(f),addonLines:[]},'previewed'],
+  ['resize_bundle',{...bundle(f),cadenceDays:21},'previewed'],
+  ['slide_next_cycle',{newNextCycleAt:'bad-date'},'refused'],
+  ['slide_next_cycle',{newNextCycleAt:'2026-99-99'},'refused'],
+  ['slide_next_cycle',{},'refused'],
+ ];
+ for(const [index,[action,payload,status]] of cases.entries())
+  expect((await raw(f,`conjunct-${index}`,action,payload)).result.status,`${action} ${index}`).toBe(status);
+ // Native package guards still run before no-op detection.
+ for(const [name,sql,reason] of [
+  ['version',"UPDATE public.subscriptions SET template_version=2 WHERE id=$1",'subscription_edit_stale_template'],
+  ['payment',"DELETE FROM public.subscription_method_states WHERE subscription_id=$1",'subscription_command_payment_blocked'],
+  ['window',"UPDATE public.subscriptions SET next_cycle_at='2026-09-01' WHERE id=$1",'subscription_edit_window_closed'],
+ ] as const) {
+  await db.query('SAVEPOINT noop_guard');
+  try {
+   await db.query(sql,[f.subscription]);
+   expect((await raw(f,`noop-guard-${name}`,'resize_bundle',bundle(f))).result).toMatchObject({status:'refused',reason});
+  }finally{await db.query('ROLLBACK TO noop_guard');await db.query('RELEASE SAVEPOINT noop_guard');}
+ }
+}));
+
 it('returns stored raw receipts with zero counts/columns/xmin delta across committed replays interleaved with a later command', async () => {
- const f = await commandFixture(), key = 'zero-delta-n2-preview', payload = bundle(f);
+ const f = await commandFixture(), key = 'zero-delta-n2-preview', payload = {...bundle(f),cadenceDays:21};
  const original = await raw(f,key,'resize_bundle',payload);
  expect(original.result).toMatchObject({status:'previewed',canApply:true});
 

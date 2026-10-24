@@ -5,9 +5,10 @@
 -- acceptance and atomic future renewal terms. Prices lock until the next edit;
 -- proration is none. No operation/cycle/order/payment snapshot is rewritten.
 -- Raw preview replay extracts the stored payload before subtracting acceptedQuoteHash.
--- Donor semantics: generic_bundle_actions (20260711151000), package no-op truth
--- (20260711170020), slide no-op truth (20260713110000), locked renewal lane
--- (20260826160000). Private introductory and address policy stay host-owned.
+-- Donor semantics: generic_bundle_actions (20260711151000), native line/cadence
+-- no-op truth (20260711170020), slide no-op truth (20260713110000), locked renewal
+-- lane (20260826160000). Portion mode/factor, introductory and address policy
+-- stay host-owned; native resize compares lines/cadence, not a stored mode.
 
 CREATE TABLE public.subscription_command_receipts (
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -36,6 +37,7 @@ DECLARE
  q public.subscription_edit_quotes%ROWTYPE; command jsonb; fingerprint text;
  core jsonb; addons jsonb; requested jsonb; lines jsonb; cadence integer; version integer;
  total bigint; current_total bigint; quote_key text; quote_hash text; answer jsonb; reason text;
+ v_noop boolean:=false; core_matches boolean; addon_matches boolean;
 BEGIN
  IF p_actor_id IS NULL OR p_client_id IS NULL OR p_now IS NULL OR NOT isfinite(p_now)
   OR p_key IS NULL OR p_key<>btrim(p_key) OR char_length(p_key) NOT BETWEEN 8 AND 180
@@ -57,6 +59,18 @@ BEGIN
  END IF;
  <<preview_command>>
  BEGIN
+  IF p_action='slide_next_cycle' THEN
+   BEGIN
+    v_noop:=s.status='active' AND s.next_cycle_at IS NOT NULL
+     AND floor(extract(epoch FROM NULLIF(p_payload->>'newNextCycleAt','')::timestamptz)/86400)
+      =floor(extract(epoch FROM s.next_cycle_at)/86400);
+   EXCEPTION WHEN invalid_datetime_format OR datetime_field_overflow THEN
+    RAISE EXCEPTION 'subscription_command_preview_unsupported' USING ERRCODE='22023';
+   END;
+   IF v_noop IS NOT TRUE THEN
+    RAISE EXCEPTION 'subscription_command_preview_unsupported' USING ERRCODE='22023';
+   END IF;
+  ELSE
   IF p_action NOT IN ('update_bundle','resize_bundle','update_package_template','update_plan_length',
     'add_addon','remove_addon','update_addon_quantity') THEN
    RAISE EXCEPTION 'subscription_command_preview_unsupported' USING ERRCODE='22023';
@@ -85,13 +99,54 @@ BEGIN
    ORDER BY sort_order,id) FILTER(WHERE is_addon),'[]'),COALESCE(sum(quantity*unit_price_minor),0)
    INTO core,addons,current_total FROM public.subscription_lines WHERE subscription_id=s.id;
   IF p_action IN ('update_bundle','resize_bundle','update_package_template') THEN
-   core:=p_payload->'coreLines';
-   IF p_action='update_package_template' OR (p_action='update_bundle' AND p_payload ? 'addonLines') THEN
-    addons:=COALESCE(p_payload->'addonLines','[]');
-   END IF;
    IF p_payload->'compositionConstraint' IS NULL OR jsonb_typeof(p_payload->'compositionConstraint')<>'object'
     OR (p_payload->'compositionConstraint') ?| ARRAY['version','data'] THEN
     RAISE EXCEPTION 'subscription_command_invalid_composition_constraint' USING ERRCODE='22023';
+   END IF;
+  END IF;
+  -- Compare donor line sets by UUID and summed quantity, independently of order/prices.
+  SELECT bool_and(matches) FILTER(WHERE NOT is_addon),bool_and(matches) FILTER(WHERE is_addon)
+   INTO core_matches,addon_matches FROM (
+    SELECT is_addon,jsonb_typeof(wanted)='array' AND
+     (SELECT COALESCE(jsonb_object_agg(variant,qty),'{}') FROM (
+       SELECT (v->>'variantId')::uuid variant,sum((v->>'qty')::integer) qty
+       FROM jsonb_array_elements(CASE WHEN jsonb_typeof(wanted)='array' THEN wanted ELSE '[]' END) v
+       WHERE COALESCE(v->>'variantId','') ~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+        AND COALESCE(v->>'qty','') ~ '^[1-9][0-9]{0,5}$'
+       GROUP BY (v->>'variantId')::uuid) desired)
+     =(SELECT COALESCE(jsonb_object_agg(variant_id,qty),'{}') FROM (
+       SELECT variant_id,sum(quantity) qty FROM public.subscription_lines
+       WHERE subscription_id=s.id AND is_addon=inputs.is_addon GROUP BY variant_id) stored)
+     AND NOT EXISTS(SELECT 1 FROM jsonb_array_elements(
+       CASE WHEN jsonb_typeof(wanted)='array' THEN wanted ELSE '[]' END) v
+       WHERE COALESCE(v->>'variantId','') !~* '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'
+        OR COALESCE(v->>'qty','') !~ '^[1-9][0-9]{0,5}$') matches
+    FROM (VALUES(false,p_payload->'coreLines'),(true,COALESCE(p_payload->'addonLines','[]'))) inputs(is_addon,wanted)
+   ) line_sets;
+  IF p_action IN ('add_addon','update_addon_quantity') THEN
+   v_noop:=EXISTS(SELECT 1 FROM public.subscription_lines WHERE subscription_id=s.id
+    AND variant_id=NULLIF(p_payload->>'variantId','')::uuid AND is_addon
+    AND quantity=CASE WHEN p_action='add_addon' THEN GREATEST(1,COALESCE((p_payload->>'qty')::integer,1))
+     ELSE (p_payload->>'qty')::integer END);
+  ELSIF p_action='update_bundle' THEN
+   v_noop:=core_matches AND cadence=s.cadence_days AND (NOT p_payload ? 'addonLines' OR addon_matches);
+  ELSIF p_action='resize_bundle' THEN
+   v_noop:=core_matches AND cadence=s.cadence_days;
+  ELSIF p_action='update_plan_length' THEN
+   v_noop:=cadence=s.cadence_days AND core_matches;
+  ELSIF p_action='update_package_template' THEN
+   v_noop:=cadence=s.cadence_days AND core_matches AND addon_matches;
+  END IF;
+  END IF;
+  IF v_noop THEN
+   answer:=jsonb_build_object('status','noop','subscriptionId',s.id,'action',p_action,'subscriptionStatus',s.status,
+    'nextCycleAt',s.next_cycle_at,'templateVersion',s.template_version,'eventId',NULL);
+   EXIT preview_command;
+  END IF;
+  IF p_action IN ('update_bundle','resize_bundle','update_package_template') THEN
+   core:=p_payload->'coreLines';
+   IF p_action='update_package_template' OR (p_action='update_bundle' AND p_payload ? 'addonLines') THEN
+    addons:=COALESCE(p_payload->'addonLines','[]');
    END IF;
    IF p_action='update_bundle' AND cadence=s.cadence_days AND
     (SELECT COALESCE(sum((v->>'qty')::integer),0) FROM jsonb_array_elements(core) v)<>
@@ -99,13 +154,6 @@ BEGIN
     RAISE EXCEPTION 'subscription_command_bundle_total_mismatch' USING ERRCODE='22023';
    END IF;
   ELSIF p_action='add_addon' THEN
-   IF EXISTS(SELECT 1 FROM public.subscription_lines WHERE subscription_id=s.id
-    AND variant_id=(p_payload->>'variantId')::uuid AND is_addon
-    AND quantity=GREATEST(1,COALESCE((p_payload->>'qty')::integer,1))) THEN
-    answer:=jsonb_build_object('status','noop','subscriptionId',s.id,'action',p_action,'subscriptionStatus',s.status,
-     'nextCycleAt',s.next_cycle_at,'templateVersion',s.template_version,'eventId',NULL);
-    EXIT preview_command;
-   END IF;
    addons:=addons||jsonb_build_array(jsonb_build_object('variantId',p_payload->>'variantId','qty',p_payload->'qty'));
   ELSIF p_action IN ('remove_addon','update_addon_quantity') THEN
    IF NOT EXISTS(SELECT 1 FROM jsonb_array_elements(addons) v WHERE v->>'variantId'=p_payload->>'variantId') THEN
