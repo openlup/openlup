@@ -111,8 +111,10 @@ export async function runPostgresContainer(spec: PostgresContainerSpec): Promise
   const image = spec.image ?? "postgres:16";
   let lastError: unknown;
 
+  // PostgreSQL declares an anonymous data volume; remove it with its owned
+  // disposable container on every cleanup path. Named volumes are retained.
   for (let attempt = 0; attempt < 5; attempt += 1) {
-    await exec("docker", ["rm", "-f", spec.name]).catch(() => {});
+    await exec("docker", ["rm", "-f", "-v", spec.name]).catch(() => {});
     const port = await reservePort();
     const args = [
       "run", "-d", "--name", spec.name,
@@ -125,7 +127,7 @@ export async function runPostgresContainer(spec: PostgresContainerSpec): Promise
       await exec("docker", args);
     } catch (error) {
       lastError = error;
-      await exec("docker", ["rm", "-f", spec.name]).catch(() => {});
+      await exec("docker", ["rm", "-f", "-v", spec.name]).catch(() => {});
       const message = error instanceof Error ? error.message : String(error);
       if (!/port is already allocated|Bind .* failed|address already in use/i.test(message)) throw error;
       continue;
@@ -138,7 +140,7 @@ export async function runPostgresContainer(spec: PostgresContainerSpec): Promise
       connectionString: connectionStringFor(spec.database ?? "postgres"),
       connectionStringFor,
       remove: async () => {
-        await exec("docker", ["rm", "-f", spec.name]).catch(() => {});
+        await exec("docker", ["rm", "-f", "-v", spec.name]).catch(() => {});
       },
     };
   }
