@@ -3,6 +3,8 @@ import { readFileSync, readdirSync } from "node:fs";
 import { Pool, type PoolClient } from "pg";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { readReviewedForwardRegistry } from "../../scripts/reviewed-platform-forward.js";
+import { createFulfillmentHandoffInvoiceHandler } from "@openlup/platform/invoicing";
+import { AccountingInvoicePersistenceError } from "../../src/domains/accounting/ports.js";
 import { createSupabaseAccountingInvoicePort } from "../../server/adapters/supabase/accountingInvoicePort.js";
 import { closePostgres, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, dockerAvailable, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
 
@@ -218,7 +220,7 @@ it("parks blocked, unsupported and explicitly non-retryable failures while retai
 }));
 
 // PART B: all managed seller seams execute the actual adapter and pinned SQL.
-const sellerArms = ["paid", "handoff", "correction", "order reversal", "old reversal", "preissue reversal", "exact replay", "key conflict", "evidence conflict", "frozen retry", "correction legacy retry", "issue legacy retry", "unknown", "unsupported", "scoped correction", "rollback"] as const;
+const sellerArms = ["lock contention", "paid", "handoff", "correction", "order reversal", "old reversal", "preissue reversal", "exact replay", "key conflict", "evidence conflict", "frozen retry", "correction legacy retry", "issue legacy retry", "unknown", "unsupported", "scoped correction", "rollback"] as const;
 it.each(sellerArms)("P7 installed managed seller adapter: %s", async arm => seeded(async db => {
   const snapshot = async () => (await db.query(`SELECT to_jsonb(i) invoice,
     (SELECT coalesce(jsonb_agg(to_jsonb(o) ORDER BY o.id),'[]') FROM public.accounting_invoice_correction_outbox o WHERE o.invoice_id=i.id) corrections,
@@ -249,7 +251,7 @@ it.each(sellerArms)("P7 installed managed seller adapter: %s", async arm => seed
   }
   await db.query("DELETE FROM public.accounting_invoice_correction_outbox WHERE invoice_id=$1", [ids.invoice]);
   const port = adapter();
-  const issue = arm === "paid" || arm === "handoff" || arm === "issue legacy retry";
+  const issue = arm === "lock contention" || arm === "paid" || arm === "handoff" || arm === "issue legacy retry";
   let invoiceId: string = ids.invoice;
   let obligation: string;
   const payload = { originalEvidence: "saved-payload", source: "contract-source" };
@@ -263,10 +265,41 @@ it.each(sellerArms)("P7 installed managed seller adapter: %s", async arm => seed
       VALUES($1,1,1080,1080,0,1080,1000,800,1,'{"name":"Saved product"}')`, [ids.order]);
     await db.query("INSERT INTO public.commerce_payments(id,order_id,provider,status,amount_cents,currency) VALUES($1,$2,'test_provider','succeeded',1080,'XTS')", [payment,ids.order]);
     await db.query("INSERT INTO public.commerce_payment_intents(id,target_kind,order_id,payment_id,status,amount_cents,currency) VALUES($1,'one_time_order',$2,$3,'succeeded',1080,'XTS')", [intent,ids.order,payment]);
-    if (arm === "handoff") {
+    if (arm === "handoff" || arm === "lock contention") {
       const fulfillment = "b6800000-0000-4000-8000-000000000008";
       await db.query(`INSERT INTO public.commerce_fulfillment_orders(id,order_id,client_id,shipping_address_id,create_idempotency_key,status,shipping_address_snapshot,handed_over_at)
         VALUES($1,$2,$3,$4,'fulfillment-key','handed_over','{}','2026-10-20T11:12:13Z')`, [fulfillment,ids.order,ids.client,address]);
+      if (arm === "lock contention") {
+        const effects = async () => (await db.query(`SELECT
+          (SELECT jsonb_agg(to_jsonb(i) ORDER BY id) FROM public.accounting_invoices i) invoices,
+          (SELECT jsonb_agg(to_jsonb(o) ORDER BY id) FROM public.accounting_invoice_issue_outbox o) issues,
+          (SELECT jsonb_agg(to_jsonb(o) ORDER BY id) FROM public.accounting_invoice_correction_outbox o) corrections,
+          (SELECT jsonb_agg(to_jsonb(s) ORDER BY obligation_kind,obligation_id) FROM public.invoicing_managed_seller_revisions s) revisions`)).rows;
+        const before = await effects(), locker = await pool.connect();
+        try {
+          // Compatible with this fixture's reads; blocks the wrapper's INSERT.
+          await locker.query("BEGIN; LOCK TABLE public.invoicing_managed_seller_revisions IN SHARE MODE");
+          for (const request of [
+            () => port.requestInvoiceIssueFromPaidOrder({ idempotencyKey: "paid-busy", orderId: ids.order, providerKind: "test_provider" }),
+            () => port.requestInvoiceIssueFromFulfillmentHandoff({ idempotencyKey: "handoff-request-key", fulfillmentOrderId: fulfillment, providerKind: "test_provider" }),
+          ]) {
+            await expect(request()).rejects.toMatchObject({ name: "AccountingInvoicePersistenceError", causeCode: "55P03" });
+            const handler = createFulfillmentHandoffInvoiceHandler({
+              descriptor: { eventType: "contract", timeoutMs: 10000 },
+              parsePayload: () => ({ success: true, data: {} }), decide: async () => ({ issue: true, action: "issue", detail: {} }),
+              request: async () => ({ invoice: (await request()).invoice }), errorDetails: error => ({ message: (error as Error).message,
+                causeCode: error instanceof AccountingInvoicePersistenceError ? error.causeCode : undefined }),
+            });
+            expect(await handler.handle({ payload: {} }, new AbortController().signal)).toMatchObject({ kind: "retry", reason: expect.stringContaining("55P03") });
+            expect(await effects()).toEqual(before);
+          }
+        } finally { await locker.query("ROLLBACK"); locker.release(); }
+        const paid = await port.requestInvoiceIssueFromPaidOrder({ idempotencyKey: "paid-busy", orderId: ids.order, providerKind: "test_provider" });
+        expect(paid.invoice).toMatchObject({ replayed: false });
+        const stable = await effects();
+        expect(await port.requestInvoiceIssueFromPaidOrder({ idempotencyKey: "paid-busy", orderId: ids.order, providerKind: "test_provider" })).toEqual(paid);
+        expect(await effects()).toEqual(stable);
+      }
       invoiceId = (await port.requestInvoiceIssueFromFulfillmentHandoff({ idempotencyKey: "handoff-request-key", fulfillmentOrderId: fulfillment, providerKind: "test_provider" })).invoice.id;
     } else invoiceId = (await port.requestInvoiceIssueFromPaidOrder({ idempotencyKey: "paid-request-key", orderId: ids.order, providerKind: "test_provider" })).invoice.id;
     obligation = (await db.query("SELECT id FROM public.accounting_invoice_issue_outbox WHERE invoice_id=$1", [invoiceId])).rows[0].id;

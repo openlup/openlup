@@ -300,11 +300,39 @@ it.each(rows)("P4 installed adapter contract: $name", async row => {
 });
 
 // PART B: actual package store against the complete approved native SQL chain.
-const sellerRows = ["paid replay", "handoff", "capture conflict", "reversal conflict", "frozen", "retry", "legacy", "bare claim", "correction", "unknown", "unsupported", "missing seller", "rollback", "race"] as const;
+const sellerRows = ["lock contention", "paid replay", "handoff", "capture conflict", "reversal conflict", "frozen", "retry", "legacy", "bare claim", "correction", "unknown", "unsupported", "missing seller", "rollback", "race"] as const;
 it.each(sellerRows)("P7 installed seller store: %s", async arm => {
   const base = await seed();
   const selected = { limit: 1, visibilitySeconds: 97, providerRef, orderId: base.orderId };
   const revisionState = async (dutyId = base.dutyId) => (await h.pool.query("SELECT revision_ref,seller_facts,capture_generation FROM public.invoicing_seller_revisions WHERE duty_id=$1", [dutyId])).rows;
+  if (arm === "lock contention") {
+    const snapshot = async () => ({ duty: await state(base.dutyId), revisions: await revisionState(),
+      receipts: (await h.pool.query("SELECT * FROM public.invoicing_effect_receipts WHERE duty_id=$1 ORDER BY receipt_key", [base.dutyId])).rows });
+    const before = await snapshot(), locker = await h.pool.connect();
+    const handoff = { ...base.capture, requestKey: `busy-handoff:${base.orderId}`, sourceKind: "handoff" as const,
+      sourceId: randomUUID(), evidence: { shipmentId: randomUUID(), handedOverAt: base.capture.occurredAt } };
+    try {
+      for (const lock of ["row", "advisory"] as const) {
+        await locker.query("BEGIN");
+        if (lock === "row") await locker.query("SELECT id FROM public.commerce_orders WHERE id=$1 FOR UPDATE", [base.orderId]);
+        else await locker.query("SELECT pg_advisory_xact_lock(hashtextextended('invoicing:'||$1::text,0))", [base.orderId]);
+        for (const input of [base.capture, handoff]) await expect(store.captureDuty(input)).rejects.toMatchObject({ code: "55P03" });
+        if (lock === "advisory") await expect(store.requestReversal({ requestKey: `busy-reversal:${base.orderId}`, orderId: base.orderId, reason, proof }))
+          .rejects.toMatchObject({ code: "55P03", message: "invoicing_capture_busy" });
+        expect(await snapshot()).toEqual(before);
+        await locker.query("ROLLBACK");
+      }
+    } finally { await locker.query("ROLLBACK"); locker.release(); }
+    for (const input of [base.capture, handoff]) expect(await store.captureDuty(input)).toEqual({ dutyId: base.dutyId, status: "ready" });
+    expect(await state(base.dutyId)).toEqual(before.duty);
+    expect(await revisionState()).toEqual(before.revisions);
+    expect((await h.pool.query("SELECT count(*)::int count FROM public.invoicing_duties WHERE order_id=$1", [base.orderId])).rows).toEqual([{ count: 1 }]);
+    const reversal = { requestKey: `busy-reversal:${base.orderId}`, orderId: base.orderId, reason, proof };
+    expect(await store.requestReversal(reversal)).toEqual({ kind: "voided", replayed: false });
+    expect(await store.requestReversal(reversal)).toEqual({ kind: "voided", replayed: true });
+    expect(await state(base.dutyId)).toMatchObject({ status: "voided", document_status: "voided" });
+    return;
+  }
   if (arm === "paid replay" || arm === "handoff" || arm === "capture conflict") {
     const before = await state(base.dutyId);
     const input = arm === "handoff" ? { ...base.capture, sourceKind: "handoff" as const, sourceId: randomUUID(), requestKey: `handoff:${base.orderId}`, evidence: { shipmentId: randomUUID(), handedOverAt: "2026-10-17T06:05:04Z" } }
