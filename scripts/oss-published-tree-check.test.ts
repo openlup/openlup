@@ -51,7 +51,7 @@ describe("queue completion trust boundary", () => {
     for (const guard of ["github.repository == 'openlup/openlup'", "github.ref == 'refs/heads/main'",
       "github.event.workflow_run.event == 'pull_request'", "vars.OPENLUP_NATIVE_QUEUE == 'enabled'",
       "vars.OPENLUP_QUEUE_APP_CLIENT_ID != ''", "environment: openlup-merge-queue",
-      "ref: ${{ github.sha }}", "persist-credentials: false", "repositories: openlup",
+      "repository: openlup/openlup", "ref: ${{ github.sha }}", "persist-credentials: false", "repositories: openlup",
       "permission-merge-queues: write", "permission-contents: read", "permission-pull-requests: read",
       "GH_TOKEN: ${{ github.token }}", "OPENLUP_QUEUE_TOKEN: ${{ steps.queue-identity.outputs.token }}"])
       expect(job).toContain(guard);
@@ -64,6 +64,7 @@ describe("queue completion trust boundary", () => {
     ["  workflow_run:\n", "  pull_request_target:\n"],
     ["github.ref == 'refs/heads/main'", "true"],
     ["environment: openlup-merge-queue", "environment: npm-stage"],
+    ["repository: openlup/openlup", "repository: attacker/fork"],
     ["ref: ${{ github.sha }}", "ref: ${{ github.event.workflow_run.head_sha }}"],
     ["persist-credentials: false", "persist-credentials: true"],
     ["repositories: openlup", "repositories: other"],

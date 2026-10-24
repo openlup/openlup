@@ -22,6 +22,7 @@ jobs:
       # workflow_run uses the default branch; never execute the PR's checkout.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
+          repository: openlup/openlup
           ref: ${{ github.sha }}
           fetch-depth: 0
           persist-credentials: false
