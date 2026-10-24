@@ -469,6 +469,15 @@ it('preserves the donor existing-addon noop without repricing and rejects both e
 const noopRows = [
  {donor:'swap_recipe',action:'update_bundle',changed:'refused',reason:'subscription_edit_invalid_lines',
   payload:(f:Fixture)=>bundle(f),change:(f:Fixture)=>({...bundle(f),coreLines:[{variantId:f.addon,qty:2}]})},
+ {donor:'update_bundle changed cadence',action:'update_bundle',changed:'previewed',coreOnlyMutant:true,
+  payload:(f:Fixture)=>({...bundle(f),cadenceDays:28,addonLines:[{variantId:f.addon,qty:2}]}),
+  change:(f:Fixture)=>({...bundle(f),cadenceDays:21,addonLines:[{variantId:f.addon,qty:2}]})},
+ {donor:'update_bundle changed supplied add-ons',action:'update_bundle',changed:'previewed',coreOnlyMutant:true,
+  payload:(f:Fixture)=>({...bundle(f),cadenceDays:28,addonLines:[{variantId:f.addon,qty:2}]}),
+  change:(f:Fixture)=>({...bundle(f),cadenceDays:28,addonLines:[{variantId:f.addon,qty:3}]})},
+ {donor:'update_bundle all supplied fields equal',action:'update_bundle',changed:'refused',reason:'subscription_command_bundle_total_mismatch',
+  payload:(f:Fixture)=>({...bundle(f),cadenceDays:28,addonLines:[{variantId:f.addon,qty:2}]}),
+  change:(f:Fixture)=>({...bundle(f),cadenceDays:28,addonLines:[{variantId:f.addon,qty:2}],coreLines:[{variantId:f.sku,qty:3}]})},
  {donor:'add_addon',action:'add_addon',changed:'refused',reason:'subscription_edit_invalid_lines',
   payload:(f:Fixture)=>({variantId:f.addon,qty:2,expectedTemplateVersion:1}),
   change:(f:Fixture)=>({variantId:f.addon,qty:3,expectedTemplateVersion:1})},
@@ -488,7 +497,7 @@ const noopRows = [
   change:(f:Fixture)=>({...bundle(f),planDays:21,addonLines:[{variantId:f.addon,qty:2}]})},
  {donor:'slide_next_cycle',action:'slide_next_cycle',changed:'refused',reason:'subscription_command_preview_unsupported',
   payload:()=>({newNextCycleAt:later(201)}),change:()=>({newNextCycleAt:later(224)})},
-] satisfies {donor:string;action:string;changed:string;reason?:string;payload:(f:Fixture)=>unknown;change:(f:Fixture)=>unknown}[];
+] satisfies {donor:string;action:string;changed:string;reason?:string;coreOnlyMutant?:boolean;payload:(f:Fixture)=>unknown;change:(f:Fixture)=>unknown}[];
 it.each(noopRows)('N2 donor $donor: price-drift noop, changed-state boundary and predicate mutant',async row=>scoped(async()=>{
  const f=await commandFixture();
  await db.query(`INSERT INTO public.subscription_lines(subscription_id,variant_id,quantity,sort_order,is_addon,unit_price_minor,currency_code)
@@ -518,15 +527,29 @@ it.each(noopRows)('N2 donor $donor: price-drift noop, changed-state boundary and
   expect(await effects(true)).toEqual(after);
  }
  await witness(`table-noop-${row.action}`);
- const changed=await raw(f,`table-changed-${row.action}`,row.action,row.change(f));
- expect(changed.result.status).toBe(row.changed);
- if('reason' in row) expect(changed.result.reason).toBe(row.reason);
- if(row.changed==='previewed') {
-  expect(changed.result.quoteHash).toEqual(expect.any(String));
-  const lines=changed.result.lines as {unitPriceMinor:number}[];
-  expect(lines.every(line=>line.unitPriceMinor===999)).toBe(true);
+ async function changedWitness(key:string) {
+  const changed=await raw(f,key,row.action,row.change(f));
+  expect(changed.result.status,`${key}: changed supplied field`).toBe(row.changed);
+  if('reason' in row) expect(changed.result.reason).toBe(row.reason);
+  if(row.changed==='previewed') {
+   expect(changed.result.quoteHash).toEqual(expect.any(String));
+   const lines=changed.result.lines as {unitPriceMinor:number}[];
+   expect(lines.every(line=>line.unitPriceMinor===999)).toBe(true);
+  }
  }
+ await changedWitness(`table-changed-${row.action}`);
  const definition=await commandDefinition();
+ if('coreOnlyMutant' in row && row.coreOnlyMutant) {
+  const mutant=definition.replace("v_noop:=core_matches AND cadence=s.cadence_days AND (NOT p_payload ? 'addonLines' OR addon_matches);",'v_noop:=core_matches;');
+  expect(mutant).not.toBe(definition);
+  await db.query('SAVEPOINT core_only_mutant');
+  try {
+   await db.query(mutant);
+   const key=`core-only-mutant-${row.donor}`;
+   await expect(changedWitness(key)).rejects.toThrow(`${key}: changed supplied field`);
+  }finally{await db.query('ROLLBACK TO core_only_mutant');await db.query('RELEASE SAVEPOINT core_only_mutant');}
+  expect(await commandDefinition()).toBe(definition);
+ }
  const predicate=row.action==='add_addon' || row.action==='update_addon_quantity'
   ? "p_action IN ('add_addon','update_addon_quantity')"
   : row.action==='slide_next_cycle' ? "v_noop:=s.status='active'" : `ELSIF p_action='${row.action}' THEN`;
