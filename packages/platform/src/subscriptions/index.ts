@@ -5,7 +5,9 @@ export const NATIVE_SUBSCRIPTION_CAPABILITIES = Object.freeze({
   genericBundleCommands: Object.freeze({ supported: true }),
   commandBoundReceipts: Object.freeze({ supported: true }),
   preparedAttemptStore: Object.freeze({ supported: false, refusalCode: "native_prepared_attempt_store_unsupported" }),
-  retryRecovery: "selected", stockRecovery: "unavailable",
+  retryRecovery: "selected",
+  // Native N3 adapters exist; selection requires passing real-PG evidence.
+  stockRecovery: "unavailable",
   deliveryAdmission: "required", executorCount: 1, defaultEnabled: false,
 } as const satisfies import("./contracts/commands.js").SubscriptionCapabilities);
 export { executeRenewalCycle, prepareRenewalAttempt, checkRenewalDeliveryAdmission } from "./renewalCycleMechanism.js";
@@ -25,3 +27,6 @@ export type { NativeRetryLifecycleBinding } from "./postgresRetryStore.js";
 
 export { createPostgresSubscriptionCommandStore, createPostgresSubscriptionCommands } from "./postgresCommandStore.js";
 export type { NativeSubscriptionCommand, NativeSubscriptionCommandBinding } from "./postgresCommandStore.js";
+
+export { createPostgresStockWaitStore } from "./postgresStockWaitStore.js";
+export type { NativeStockWaitBinding, NativeStockWaitAdmission } from "./postgresStockWaitStore.js";

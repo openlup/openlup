@@ -8,11 +8,15 @@ import { closePostgres, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, docke
 import { registerAdapterCases } from './subscriptionRenewalAdapterCases.js';
 import { registerCommandCases } from './subscriptionCommandLifecycleCases.js';
 import { registerRetryCases } from './subscriptionRetryLifecycleCases.js';
+import { registerStockWaitCases } from './subscriptionStockWaitCases.js';
+import { registerStockAccountingCases } from './subscriptionStockAccountingCases.js';
 import { registerAlignmentRollbackCases } from './subscriptionAlignmentRollbackCases.js';
 const manifest=JSON.parse(readFileSync('config/platform-migration-manifest.json','utf8'));
 const units:{file:string;sha256:string}[]=[manifest.baseline,...manifest.forward];
 const probeFiles=['db/platform/migrations/20261022160000_subscription_retry_lifecycle.sql',
- 'db/platform/migrations/20261024170000_subscription_command_lifecycle.sql'];
+ 'db/platform/migrations/20261024170000_subscription_command_lifecycle.sql',
+ 'db/platform/migrations/20261024180000_subscription_stock_wait.sql',
+ 'db/platform/migrations/20261024183000_inventory_available_to_promise.sql'];
 const probeIndexes=probeFiles.map(file=>units.findIndex(u=>u.file===file));
 const index=probeIndexes[0];
 const sha=(s:string|Buffer)=>createHash('sha256').update(s).digest('hex');
@@ -30,8 +34,12 @@ async function snapshot(db:Pool|PoolClient) {
  return {procs,relations,types,triggers};
 }
 const names=[['subscription_retry_read','subscription_retry_candidates','subscription_retry_apply_failure','subscription_retry_open_case',
- 'subscription_retry_authorize_recovery','subscription_retry_schedule_recovery','subscription_retry_prepare','subscription_retry_record_recovery','subscription_retry_note_row_outcome'],['subscription_command_preview','subscription_command_apply']];
-const tables=[['subscription_retry_obligations','subscription_retry_receipts','subscription_retry_recovery_authorizations'],['subscription_command_receipts']];
+ 'subscription_retry_authorize_recovery','subscription_retry_schedule_recovery','subscription_retry_prepare','subscription_retry_record_recovery','subscription_retry_note_row_outcome'],['subscription_command_preview','subscription_command_apply'],
+ ['subscription_stock_wait_projection','subscription_stock_wait_read','subscription_stock_wait_frozen','subscription_stock_wait_deficits',
+ 'subscription_stock_wait_enqueue','subscription_stock_wait_recover_refusal','subscription_stock_wait_admit','subscription_stock_wait_candidates',
+ 'subscription_stock_wait_normal_due','subscription_stock_wait_mark_resumed','subscription_stock_wait_summary','subscription_stock_wait_bind_notice'],
+ ['inventory_channel_exposure_quantity','inventory_available_to_promise','inventory_new_purchase_stock_read']];
+const tables=[['subscription_retry_obligations','subscription_retry_receipts','subscription_retry_recovery_authorizations'],['subscription_command_receipts'],['subscription_stock_wait_cases'],[]];
 let container:PostgresContainer|undefined,pool:Pool;
 const h={get pool(){return pool;}};
 const checked:string[]=[];
@@ -93,7 +101,7 @@ beforeAll(async()=>{
  db.release();
  try {
   expect(index).toBeGreaterThan(0);
-  expect(probeIndexes[1]).toBeGreaterThan(index);
+  for(let n=1;n<probeIndexes.length;n++)expect(probeIndexes[n]).toBeGreaterThan(probeIndexes[n-1]);
   expect(probeIndexes.map(i=>units[i].file)).toEqual(probeFiles);
   await expect(runner().apply()).rejects.toThrow('m10_exact_prefix_boundary');
   expect(prefixLedger).toHaveLength(index);
@@ -112,3 +120,6 @@ describe('P1 rollback branches',()=>registerAlignmentRollbackCases(h));
 describe('selected P2 adapters',()=>registerAdapterCases(h));
 
 describe('N2 command lifecycle',()=>registerCommandCases(h));
+
+describe('N3 stock wait and ATP seam',()=>registerStockWaitCases(h));
+describe('X/Y stock accounting and refund independence',()=>registerStockAccountingCases(h));

@@ -299,7 +299,16 @@ async function proveFreshCommandDifferential() {
 
   if (portable) {
 const scoped = async (fn:()=>Promise<void>) => { await db.query('BEGIN'); try { await fn(); } finally { await db.query('ROLLBACK'); } };
-// These rows use the same committed native prefix and pinned N3 fixture as the catalog gate above.
+const normalDueSignature = 'public.subscription_stock_wait_normal_due(integer,timestamptz)';
+// The old filter-after-LIMIT body is an executable mutant, confined to a savepoint.
+const normalDueAfterLimit = `CREATE OR REPLACE FUNCTION public.subscription_stock_wait_normal_due(p_limit integer DEFAULT 50,p_now timestamptz DEFAULT now())
+RETURNS jsonb LANGUAGE sql STABLE SET search_path = pg_catalog AS $$
+ SELECT COALESCE(jsonb_agg(to_jsonb(d) ORDER BY d.scheduled_at,d.subscription_id),'[]'::jsonb)
+ FROM public.subscription_list_due_renewals(p_now,p_limit) d
+ WHERE NOT EXISTS(SELECT 1 FROM public.subscription_stock_wait_cases c
+  WHERE c.subscription_id=d.subscription_id AND c.scheduled_at=d.scheduled_at AND c.state IN ('waiting','stock_secured'));
+$$`;
+// These rows use the same committed native prefix and landed, registry-pinned N3 bytes as the catalog gate above.
 it.each([
  { name: '(i) backlog larger than limit', limit: 2, states: ['waiting','stock_secured','waiting',null,null,null] },
  { name: '(ii) backlog exactly at limit', limit: 2, states: ['waiting','waiting',null,null,null] },
@@ -308,10 +317,11 @@ it.each([
 ] as const)('N3 normal_due $name', async ({limit,states}) => scoped(async () => {
  // Isolate this page from other gate witnesses; all changes roll back.
  await db.query("UPDATE public.subscriptions SET status='paused' WHERE status='active'");
- const normal: string[] = [];
+ const normal: {subscriptionId:string;scheduled:string}[] = [];
  for (const [index,state] of states.entries()) {
-  const f = await renewal(db);
-  // Adjacent rows share a due time, exercising the base reader's UUID tie-break.
+  // Reverse insertion order within each tie, using fixed UUIDs so a missing
+  // subscription-id tie-break cannot hide behind the base reader's own result.
+  const f = await renewal(db,10,1,`00000000-0000-4000-8000-${String(states.length-index).padStart(12,'0')}`);
   const scheduled = later(-24 + Math.floor(index / 2));
   await db.query('UPDATE public.subscriptions SET next_cycle_at=$2 WHERE id=$1',[f.subscription,scheduled]);
   await db.query('UPDATE public.subscription_renewal_operations SET scheduled_at=$2 WHERE id=$1',[f.operation,scheduled]);
@@ -320,14 +330,32 @@ it.each([
    due_snapshot,cycle_snapshot,fingerprint,identity_key,deficits)
    VALUES($1,$2,$3,$4,2,$5,'{}',$6,$7,$8,'[]')`,
    [f.subscription,f.client,f.operation,scheduled,state,f.snapshot,f.fingerprint,f.identity]);
-  else normal.push(f.subscription);
+  else normal.push({subscriptionId:f.subscription,scheduled});
  }
  // At this clock the claim leases have expired: waits also occupy the base page.
  const base = (await db.query(`SELECT to_jsonb(d) AS row FROM public.subscription_list_due_renewals($1,500) d`,[later(1)])).rows.map(r=>r.row);
  expect(base).toHaveLength(states.length);
- const expected = base.filter(row=>normal.includes(row.subscription_id)).slice(0,limit);
+ const expectedIds = normal.sort((a,b)=>a.scheduled.localeCompare(b.scheduled)||a.subscriptionId.localeCompare(b.subscriptionId))
+  .slice(0,limit).map(row=>row.subscriptionId);
+ const expected = expectedIds.map(id=>base.find(row=>row.subscription_id===id));
  expect(expected).toHaveLength(limit);
+ const definition = await commandDefinition(normalDueSignature);
+ await db.query('SAVEPOINT n3_filter_after_limit');
+ try {
+  await db.query(normalDueAfterLimit);
+  const oldPage = await call(db,'subscription_stock_wait_normal_due',[limit,later(1)]);
+  if (states.some(state=>state!==null)) {
+   expect(oldPage).not.toEqual(expected);
+   expect(oldPage.length).toBeLessThan(limit);
+  } else expect(oldPage).toEqual(expected);
+ } finally {
+  await db.query('ROLLBACK TO n3_filter_after_limit');
+  await db.query('RELEASE SAVEPOINT n3_filter_after_limit');
+ }
+ expect(await commandDefinition(normalDueSignature)).toBe(definition);
+ const before = await effects(true);
  expect(await call(db,'subscription_stock_wait_normal_due',[limit,later(1)])).toEqual(expected);
+ expect(await effects(true)).toEqual(before);
  if (states.every(state=>state===null)) {
   const page = (await db.query('SELECT to_jsonb(d) AS row FROM public.subscription_list_due_renewals($1,$2) d',[later(1),limit])).rows.map(r=>r.row);
   expect(expected).toEqual(page);
@@ -496,6 +524,34 @@ it.each([
  }finally{await db.query('ROLLBACK TO n3_mutant');await db.query('RELEASE SAVEPOINT n3_mutant');}
  expect(await commandDefinition(mutant.signature)).toBe(definition);
 }),120_000);
+it.each([
+ {name:'resumed case',state:'resumed',eligible:true},
+ {name:'closed case',state:'closed',eligible:true},
+ {name:'stale-schedule waiting case',state:'waiting',stale:true,eligible:true},
+ {name:'stale-schedule secured case',state:'stock_secured',stale:true,eligible:true},
+ {name:'live lease',lease:true,eligible:false},
+ {name:'succeeded operation',terminal:'succeeded',eligible:false},
+ {name:'refused operation',terminal:'refused',eligible:false},
+ {name:'paused subscription',status:'paused',eligible:false},
+ {name:'cancelled subscription',status:'cancelled',eligible:false},
+])('N3 normal_due eligibility: $name',async scenario=>scoped(async()=>{
+ await db.query("UPDATE public.subscriptions SET status='paused' WHERE status='active'");
+ const f=await renewal(db);
+ const expected=(await db.query('SELECT to_jsonb(d) AS row FROM public.subscription_list_due_renewals($1,1) d',[later(1)])).rows.map(r=>r.row);
+ expect(expected).toHaveLength(1);
+ expect(expected[0].subscription_id).toBe(f.subscription);
+ if(scenario.state) await db.query(`INSERT INTO public.subscription_stock_wait_cases(
+  subscription_id,client_id,renewal_operation_id,scheduled_at,cycle_number,state,
+  due_snapshot,cycle_snapshot,fingerprint,identity_key,deficits)
+  VALUES($1,$2,$3,$4,2,$5,'{}',$6,$7,$8,'[]')`,
+  [f.subscription,f.client,f.operation,scenario.stale?later(-1):AT,scenario.state,f.snapshot,f.fingerprint,f.identity]);
+ if(scenario.lease) await db.query('UPDATE public.subscription_renewal_operations SET lease_expires_at=$2 WHERE id=$1',[f.operation,later(2)]);
+ if(scenario.terminal) await db.query('UPDATE public.subscription_renewal_operations SET state=$2,terminal_outcome=$2,terminal_at=$3 WHERE id=$1',[f.operation,scenario.terminal,AT]);
+ if(scenario.status) await db.query('UPDATE public.subscriptions SET status=$2 WHERE id=$1',[f.subscription,scenario.status]);
+ const before=await effects(true);
+ expect(await call(db,'subscription_stock_wait_normal_due',[1,later(1)])).toEqual(scenario.eligible?expected:[]);
+ expect(await effects(true)).toEqual(before);
+}));
 async function decline(available=2, lines=1) {
  const f = await renewal(db,available,lines), original = await prepareOriginal(db,f);
  expect((await reservation(f)).status).toBe('committed');

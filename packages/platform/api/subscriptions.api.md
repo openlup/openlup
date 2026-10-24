@@ -854,6 +854,94 @@ export type RenewalResult = {
     reason?: string;
 };
 ```
+## dist/subscriptions/contracts/stockWait.d.ts
+
+```ts
+import type { RenewalFrozenSnapshot, RenewalReadback, RenewalSchedule } from "./renewal.js";
+export interface StockWaitRecoveryBinding {
+    caseId: string | null;
+    cycleId: string | null;
+    orderId: string | null;
+    paymentId: string | null;
+    engineIdempotencyKey: string | null;
+}
+export interface StockWaitDeficit {
+    skuId: string;
+    sku: string;
+    displayName: string;
+    size: string | null;
+    required: number;
+    /** This operation's own reserved units. */
+    reserved: number;
+    /** Free ATP, excluding this operation's own reservation. */
+    available: number;
+    /** Required units minus both reserved and available units. */
+    missing: number;
+}
+export interface StockWaitCase extends RenewalSchedule {
+    caseId: string;
+    clientId: string;
+    state: "waiting" | "stock_secured" | "resumed" | "closed";
+    frozenSnapshot: RenewalFrozenSnapshot;
+    frozenFingerprint: string;
+    binding: StockWaitRecoveryBinding;
+    deficits: readonly StockWaitDeficit[];
+    fulfillmentRef: string | null;
+    blockReason: string | null;
+    openedAt: string;
+    checkedAt: string | null;
+    selectedAt: string | null;
+    securedAt: string | null;
+    resumedAt: string | null;
+    closedAt: string | null;
+    startedNoticeKey: string;
+    resumedNoticeKey: string;
+    noticeEligible: boolean;
+}
+/** Discovery can precede the durable waiting case; never invent a case ID. */
+export interface StockWaitFrozenCase extends RenewalSchedule {
+    operationId: string;
+    case: StockWaitCase | null;
+    frozenSnapshot: RenewalFrozenSnapshot;
+    frozenFingerprint: string;
+    binding: StockWaitRecoveryBinding;
+}
+/** All-line reserve/reacquire and the wait transition share a DB transaction.
+ * A shortage rolls back the subtransaction, retaining previous commitments;
+ * record the wait outside that failed subtransaction. Technical failure is unknown.
+ */
+export interface StockWaitStorePort {
+    listCandidates(input: {
+        limit: number;
+        asOf: string;
+    }): Promise<StockWaitFrozenCase[]>;
+    readFrozenCase(input: StockWaitRecoveryBinding): Promise<StockWaitCase | null>;
+    reserveAndTransition(input: {
+        caseId: string;
+        frozenFingerprint: string;
+        now: string;
+    }): Promise<StockWaitCase>;
+    /** Only elapsed, unprepared, unacknowledged, stock-only refusals may reset.
+     * Requires unchanged schedule/fingerprint and no payment artifacts or outcomes.
+     * Rotate fencing generation atomically with reacquisition. Never reset ambiguity.
+     */
+    recoverRefusedSchedule(input: {
+        operationId: string;
+        caseId: string;
+        claimGeneration: number;
+        frozenFingerprint: string;
+        scheduledAt: string;
+        now: string;
+    }): Promise<{
+        outcome: "recovered";
+        operation: RenewalReadback;
+        replayed: boolean;
+    } | {
+        outcome: "refused";
+        reason: "not_stock_only" | "external_ownership" | "stale_snapshot" | "lease_active" | "inventory_unavailable";
+    }>;
+}
+```
 ## dist/subscriptions/index.d.ts
 
 ```ts
@@ -896,6 +984,8 @@ export { createPostgresRetryLifecycleBinding } from "./postgresRetryStore.js";
 export type { NativeRetryLifecycleBinding } from "./postgresRetryStore.js";
 export { createPostgresSubscriptionCommandStore, createPostgresSubscriptionCommands } from "./postgresCommandStore.js";
 export type { NativeSubscriptionCommand, NativeSubscriptionCommandBinding } from "./postgresCommandStore.js";
+export { createPostgresStockWaitStore } from "./postgresStockWaitStore.js";
+export type { NativeStockWaitBinding, NativeStockWaitAdmission } from "./postgresStockWaitStore.js";
 ```
 ## dist/subscriptions/postgresCommandStore.d.ts
 
@@ -1049,6 +1139,72 @@ export interface NativeRetryLifecycleBinding {
 export declare function createPostgresRetryLifecycleBinding(options: NativeRetryLifecycleBinding): {
     failureHandoff: import("./contracts/dunning.js").RenewalFailureHandoffPort;
     settlement: import("./contracts/renewal.js").RenewalSettlementPort;
+};
+```
+## dist/subscriptions/postgresStockWaitStore.d.ts
+
+```ts
+import type { StockWaitCase, StockWaitDeficit, StockWaitFrozenCase, StockWaitRecoveryBinding } from "./contracts/stockWait.js";
+import type { RenewalSchedule } from "./contracts/renewal.js";
+import { type NativeRenewalCodec, type SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
+export interface NativeStockWaitBinding {
+    executor: SubscriptionQueryExecutor;
+    withTransaction<T>(work: (executor: SubscriptionQueryExecutor) => Promise<T>): Promise<T>;
+    codec: NativeRenewalCodec;
+    workerId: string;
+}
+export interface NativeStockWaitAdmission {
+    waiting: boolean;
+    caseId: string | null;
+    response: Record<string, unknown>;
+}
+/** Each multi-statement mutation uses the host transaction. Payment execution is
+ * deliberately outside this store. SQL owns stock locks and subtransactions. */
+export declare function createPostgresStockWaitStore(options: NativeStockWaitBinding): {
+    readFrozen(input: RenewalSchedule): Promise<StockWaitFrozenCase | null>;
+    listNormalDue(input: {
+        limit: number;
+        asOf: string;
+    }): Promise<import("./contracts/renewal.js").RenewalDue[]>;
+    deficits(input: {
+        snapshot: import("./contracts/renewal.js").RenewalFrozenSnapshot;
+        operationId: string;
+        now: string;
+    }): Promise<StockWaitDeficit[]>;
+    admit(input: {
+        operationId: string;
+        claimToken: string;
+        snapshot: import("./contracts/renewal.js").RenewalFrozenSnapshot;
+        recovery?: StockWaitRecoveryBinding;
+        now: string;
+    }): Promise<NativeStockWaitAdmission>;
+    enqueue(caseId: string, kind: "started" | "resumed"): Promise<void>;
+    markResumed(orderId: string): Promise<StockWaitCase | null>;
+    listCandidates(input: {
+        limit: number;
+        asOf: string;
+    }): Promise<StockWaitFrozenCase[]>;
+    readFrozenCase(input: StockWaitRecoveryBinding): Promise<StockWaitCase | null>;
+    reserveAndTransition(input: {
+        caseId: string;
+        frozenFingerprint: string;
+        now: string;
+    }): Promise<StockWaitCase>;
+    recoverRefusedSchedule(input: {
+        operationId: string;
+        caseId: string;
+        claimGeneration: number;
+        frozenFingerprint: string;
+        scheduledAt: string;
+        now: string;
+    }): Promise<{
+        outcome: "recovered";
+        operation: import("./contracts/renewal.js").RenewalReadback;
+        replayed: boolean;
+    } | {
+        outcome: "refused";
+        reason: "not_stock_only" | "external_ownership" | "stale_snapshot" | "lease_active" | "inventory_unavailable";
+    }>;
 };
 ```
 ## dist/subscriptions/renewalCycleFailureMechanism.d.ts

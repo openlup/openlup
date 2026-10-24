@@ -731,6 +731,16 @@ terms, event and receipt with no proration or current-cycle repricing. Hosts own
 authorization, address validation, SKU/composition translation and the transaction
 connection. Prepaid remains unsupported; the serving adapter refuses pause.
 
+Native N3 plus the ATP seam/allocator and X/Y suffix provide
+`createPostgresStockWaitStore` and `createPostgresStockAvailability` (the latter
+at `./inventory`). Hosts supply transactions, clock, source and the existing
+wire codec. Candidate discovery preserves uncaptured frozen operations; shortage
+creates a durable wait, and elapsed stock-only refusals may reacquire on the same
+identity with a new claim generation. Resumed means paid realization admitted.
+The fixed 14-day soft priority is distinct from durable advance reservations.
+Stock recovery stays unavailable until real-PG proof passes for the selected
+native graph; managed stock wait and serving composition remain separate work.
+
 ## Invoicing contracts
 
 Experimental `@openlup/platform/invoicing` exposes `readInvoiceCapabilities`;

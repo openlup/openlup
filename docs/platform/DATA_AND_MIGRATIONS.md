@@ -780,6 +780,28 @@ and bounded concurrent row locking.
 
 See the [M09 forward owner](#m09-invoicing-forward-design-and-control-approval) for managed correction v2 installation, cutover and reconciliation.
 
+### Native stock wait and ATP (N3)
+
+The native installation prefix now includes the five approved N3/seam/allocator/
+X/Y pins at `20261024180000`, `183000`, `184000`, `184500` and `184600`, each with
+its byte-identical package SQL twin. N3 adds frozen waiting cases and stock-only
+refusal recovery; the seam subtracts hard commitments and fixed 14-day active
+subscription demand from new-purchase availability. Native safety and channel
+exposure remain zero. This is no advance reservation lifecycle or one-time
+checkout write contract. The allocator alone uses the renewal exemption.
+
+X restores released late-paid reservation lines to committed, non-expiring ATP
+holds once, returning from its immutable recovery receipt before further writes.
+Y excludes paid cycles and settled intents before the candidate limit. Refunds
+remain financial; stock wait never pauses service or fabricates a delivery fact.
+Keep these forwards and captured obligations on code rollback; disable the host
+stock-wait driver first. Object inventory must come from selected-catalog-v2 on
+disposable pinned PostgreSQL, never from hashing SQL source. The
+[native suite](../../tests/postgres/subscriptionRenewalLifecycle.test.ts) binds
+creation probes to each unit's exact path, including rollback and ACL checks;
+its stock and accounting tables test behavior separately from SQL classification.
+Stock recovery remains unselected until that real-PG proof is available.
+
 ### Native subscription commands (N2)
 
 Migration: `20261024170000_subscription_command_lifecycle.sql` is the second

@@ -274,7 +274,7 @@ export interface RenewalFailureHandoffPort {
 ```ts
 export type { RenewalSchedule, RenewalIdentity, RenewalAdmission, RenewalLine, RenewalCycleCorrelation, RenewalTemplateSnapshot, RenewalPricingSnapshot, RenewalOrderSnapshot, RenewalFrozenSnapshot, RenewalDue, RenewalOperationState, RenewalReadback, RenewalPaymentEvidence, RenewalTransactionUnits, RenewalReservationResult, RenewalPreparedSettlement, RenewalStorePort, RenewalSettlementPort, RenewalExecutionRequest, RenewalPaymentRail, RenewalResult } from "./renewal.js";
 export type { DunningCaseOpenInput, DunningCaseOpened, DunningCaseAdvanced, DunningRefusalCode, DunningCaseLifecyclePort, RenewalRetryState, RenewalRetryObligation, RenewalRecoveryAuthorization, RenewalFailureHandoffPort } from "./dunning.js";
-export type { StockWaitRecoveryBinding, StockWaitDeficit, StockWaitCase, StockWaitStorePort } from "./stockWait.js";
+export type { StockWaitRecoveryBinding, StockWaitDeficit, StockWaitCase, StockWaitFrozenCase, StockWaitStorePort } from "./stockWait.js";
 export type { SubscriptionCommandContext, SubscriptionCommand, SubscriptionBundleLine, SubscriptionCommandReceipt, SubscriptionCommandRefusal, SubscriptionUnsupportedCode, SubscriptionUnsupported, SubscriptionCapabilities, SubscriptionCommandPort, SubscriptionActivationPort } from "./commands.js";
 export type { SubscriptionLifecycleFact, SubscriptionLifecycleMessageDescriptor, SubscriptionLifecycleMessagePort } from "./messages.js";
 export type { SubscriptionRenewalOutcome, HostedRenewalDue, SubscriptionRenewalChargeResult, SubscriptionCycleSnapshotResult, SubscriptionCycleOrderInput, SubscriptionCycleOrderResult, SubscriptionReservationPreflightResult, SubscriptionRenewalPersistencePort, FailurePropagationKind, FailurePropagationContext, CycleRetryState, DunningCaseOpenOutcome, CycleChargeFailurePropagationPort, FailurePropagationResult, RenewalPrepareInput, RenewalAttemptResult, RenewalIntentResult, RenewalPaymentPort, RenewalExecutionPort, RenewalDeliveryAdmission, RenewalAllowedAdmission, RenewalDeliveryClient, RenewalFailureDeps, RenewalPreflightDeps, RenewalCycleDeps, RenewalExecutionContext, RenewalOutcomeContext, RenewalReplayContext, RenewalPreparedAttemptPrepareInput, RenewalPreparedAttemptPersistenceResult, RenewalPreparedAttemptFinalizeInput, RenewalPreparedAttemptPersistencePort } from "./renewal.js";
@@ -880,8 +880,11 @@ export interface StockWaitDeficit {
     displayName: string;
     size: string | null;
     required: number;
+    /** This operation's own reserved units. */
     reserved: number;
+    /** Free ATP, excluding this operation's own reservation. */
     available: number;
+    /** Required units minus both reserved and available units. */
     missing: number;
 }
 export interface StockWaitCase extends RenewalSchedule {
@@ -904,6 +907,14 @@ export interface StockWaitCase extends RenewalSchedule {
     resumedNoticeKey: string;
     noticeEligible: boolean;
 }
+/** Discovery can precede the durable waiting case; never invent a case ID. */
+export interface StockWaitFrozenCase extends RenewalSchedule {
+    operationId: string;
+    case: StockWaitCase | null;
+    frozenSnapshot: RenewalFrozenSnapshot;
+    frozenFingerprint: string;
+    binding: StockWaitRecoveryBinding;
+}
 /** All-line reserve/reacquire and the wait transition share a DB transaction.
  * A shortage rolls back the subtransaction, retaining previous commitments;
  * record the wait outside that failed subtransaction. Technical failure is unknown.
@@ -912,7 +923,7 @@ export interface StockWaitStorePort {
     listCandidates(input: {
         limit: number;
         asOf: string;
-    }): Promise<StockWaitCase[]>;
+    }): Promise<StockWaitFrozenCase[]>;
     readFrozenCase(input: StockWaitRecoveryBinding): Promise<StockWaitCase | null>;
     reserveAndTransition(input: {
         caseId: string;
