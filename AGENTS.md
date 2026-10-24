@@ -98,8 +98,12 @@ review snapshots do not establish native admission/counter/expiry; preserve both
 histories and actually applicable limits without inferring or resetting state.
 Freeze tracked inputs and serialize verification phases sharing mutable output;
 run the existing cheap contract/artifact/platform checks before the broad gate.
-Preserve complete required local verification and coverage before submission;
-early focused feedback complements that gate and helps keep late failures rare.
+Complete required local verification and coverage before submission; the sole
+bounded alternative is the proved mechanical integration case in
+[Native review](CONTRIBUTING.md#native-review-and-accountability).
+It requires actual prior full proof, green main evidence and fresh integration
+review; missing proof keeps the full route. Early focused feedback helps keep
+late failures rare.
 For an authorized adopter continuation, use waits for independent, bounded
 read-only reconnaissance of its current pins, drift and ownership. Record the
 actual registry, adoption and staging endpoint when those outcomes are in scope.
@@ -194,8 +198,11 @@ For a conflict or failed carry-over, merge `main` and re-review.
 When `prepare` proves valid prior coverage and exact merge lineage in the same
 session, two fresh reviewers may focus on the full integration delta and its
 interactions, following [review after integration](CONTRIBUTING.md#native-review-and-accountability).
-Inherited source expiry, findings and repair cycles remain binding. Otherwise
-use full review. Refresh `origin/main` before prepare and final verification;
+Inherited source expiry and findings remain binding. A successful exact
+`merge-tree` result additionally marks `candidate.integration.mechanical`: only
+this proved case avoids a repair-cycle charge. Extra edits or manual resolution
+keep ordinary accounting; no old cycle or exhausted budget is refunded.
+Otherwise use full review. Refresh `origin/main` before prepare and final verification;
 the existing prepare, verify-command and receipt preflight refuse known conflicts
 or failed carry-over before expensive work. `prepare --new`
 records a changed intent or a rebase in the same append-only session history; findings, reviewers and the repair count carry on. Only

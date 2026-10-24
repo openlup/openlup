@@ -68,6 +68,12 @@ current candidate. A proved exact main integration may focus fresh inspection
 using prior source coverage and its earliest expiry, following
 [review after integration](../../../CONTRIBUTING.md#native-review-and-accountability).
 This adds no reduced reviewer count or copied reports.
+Only a clean integration whose tree equals the successful `git merge-tree`
+result for the prior reviewed head and exact new main base, proved as
+`candidate.integration.mechanical: true` with unchanged intent and author,
+avoids a repair-cycle charge. History, findings and earliest expiry remain.
+Manual resolution or extra edits use ordinary repair accounting and full local
+verification.
 
 Unchanged prepare preserves evidence. Three repair cycles are automatic;
 `needs_owner` then requires the owner to continue, narrow or stop. Record an
@@ -91,9 +97,13 @@ for the exact committed base (the candidate's fork point), head, tree, scope and
 pre-push require fresh matching review evidence; missing, stale, incomplete,
 bypassed or unresolved material evidence refuses. A `needs_agent_review` response
 returns control to the active agent, which launches reviews and retries the gate
-without asking the maintainer to repeat the authorized task. Mechanical checks
-remain required; baseline installation is not task approval and skipped hosted
-checks are not success.
+without asking the maintainer to repeat the authorized task. Source and merge-group
+mechanical checks remain required; baseline installation is not task approval
+and skipped hosted checks are not success.
+The [bounded local integration alternative](../../../CONTRIBUTING.md#native-review-and-accountability)
+alone permits selective local proof, subject to its full-anchor, chain and check-selection conditions.
+Unsupported installed verifiers retain full-run stamp requirements; wrappers do not attest completeness.
+Required source and merge-group CI commands still run in full.
 
 This is process enforcement within the task, not cryptographic remote
 attestation of an agent's execution or a claim that the supervisor and author
@@ -116,6 +126,12 @@ The old run-keyed integration receipt route is superseded too. All six mechanica
 checks remain required. The bounded `native-review` job reads eligible comments,
 recomputes source tree and reviewer floor, and checks live head, base and expiry.
 A source-head change cannot inherit the old admission.
+After local proof, current review, required maintainer reads and the ready-main-PR
+source receipt, actual merge authority permits enabling auto-merge once while
+source checks are pending, following [Merge queue](../../../CONTRIBUTING.md#merge-queue).
+Known failed checks, conflicts and unresolved mergeability keep their existing
+stops. A pending `autoMergeRequest` records enabled auto-merge; `mergeQueueEntry`
+alone confirms queue entry. Required source and group success still precedes merge.
 
 Carry-over remains available when the group tree equals the reviewed tree, or
 when `git merge-tree` predicts exactly that group and the base's net change

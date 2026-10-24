@@ -190,7 +190,7 @@ describe('native review decisions', () => {
     const source = passed();
     const actual = { ...observed, base: 'd'.repeat(40), head: 'e'.repeat(40), tree: 'f'.repeat(40), intent, authorSessionId: 'author' };
     const integration = integrationReviewContext(source, actual, { parents: [observed.head, actual.base], baseAncestor: true }, time + 1);
-    expect(integration).toMatchObject({ base: observed.base, head: observed.head, tree: observed.tree, expires: time + 86400000 });
+    expect(integration).toMatchObject({ base: observed.base, head: observed.head, tree: observed.tree, expires: time + 86400000, mechanical: false });
     let next = prepareCandidate(source, { ...actual, integration }, time + 1);
     expect(next.cycle).toBe(1);
     expect(next.history.slice(0, -1)).toEqual(source.history);
@@ -200,12 +200,16 @@ describe('native review decisions', () => {
     next = recordReport(next, report({ reviewer: 'fresh-b', tree: actual.tree }), time + 60000);
     expect(verdict(next, actual, time + 60000).ok).toBe(true);
     expect(receiptSummary(next, 12, time + 60000).expires).toBe(time + 86400000);
+    const legacy = structuredClone(next); delete legacy.candidate.integration.mechanical;
+    expect(verdict(legacy, actual, time + 60000).ok).toBe(true);
+    expect(prepareCandidate(legacy, actual, time + 60001)).toEqual(legacy);
     expect(verdict(next, actual, time + 86400000).code).toBe('expired');
     expect(prepareCandidate(next, actual, time + 60001)).toEqual(next);
     const renewed = prepareCandidate(next, actual, time + 86400000, true);
     expect(renewed.candidate.integration).toBeUndefined();
     expect(renewed.cycle).toBe(1);
     expect(() => prepareCandidate(source, { ...actual, integration: { ...integration, expires: integration.expires + 1 } }, time + 1)).toThrow('integration coverage');
+    expect(() => prepareCandidate(source, { ...actual, integration: { ...integration, mechanical: 'yes' } }, time + 1)).toThrow('integration coverage');
     expect(() => prepareCandidate(source, { ...actual, integration }, time + 1, true)).toThrow('integration coverage');
   });
   it.each(['missing', 'expired', 'open finding', 'wrong parent', 'extra parent', 'base not ancestor', 'changed intent', 'changed author'])('does not focus integration with %s coverage', reason => {
@@ -213,7 +217,23 @@ describe('native review decisions', () => {
     if (reason === 'open finding') source = recordReport(source, report({ reviewer: 'defect', verdict: 'FAIL', findings: [{ id: 'F1', summary: 'unresolved', material: true }] }), time);
     const actual = { ...observed, base: 'd'.repeat(40), head: 'e'.repeat(40), tree: 'f'.repeat(40), intent: reason === 'changed intent' ? { ...intent, criteria: 'Other goal' } : intent, authorSessionId: reason === 'changed author' ? 'other' : 'author' };
     const parents = reason === 'wrong parent' ? [actual.base, observed.head] : reason === 'extra parent' ? [observed.head, actual.base, observed.base] : [observed.head, actual.base];
-    expect(integrationReviewContext(source, actual, { parents, baseAncestor: reason !== 'base not ancestor' }, reason === 'expired' ? time + 86400000 : time + 1)).toBeUndefined();
+    expect(integrationReviewContext(source, actual, { parents, baseAncestor: reason !== 'base not ancestor', mechanical: true }, reason === 'expired' ? time + 86400000 : time + 1)).toBeUndefined();
+  });
+  it.each([false, true])('charges a changed integration at the repair limit only when not mechanical: %s', mechanical => {
+    const source = { ...passed(), cycle: 3 };
+    const actual = { ...observed, base: 'd'.repeat(40), head: 'e'.repeat(40), tree: 'f'.repeat(40), intent, authorSessionId: 'author' };
+    const integration = integrationReviewContext(source, actual, { parents: [observed.head, actual.base], baseAncestor: true, mechanical }, time + 1);
+    let next = prepareCandidate(source, { ...actual, integration }, time + 1);
+    expect(next.cycle).toBe(mechanical ? 3 : 4);
+    expect(next.allowedCycles).toBe(source.allowedCycles);
+    expect(next.history.slice(0, -1)).toEqual(source.history);
+    expect(verdict(next, actual, time + 1).code).toBe(mechanical ? 'needs_agent_review' : 'needs_owner');
+    if (mechanical) {
+      expect(() => prepareCandidate(source, { ...actual, clean: false, integration }, time + 1)).toThrow('dirty');
+      expect(() => prepareCandidate(source, { ...actual, integration }, time + 1, true)).toThrow('integration coverage');
+      for (const reviewer of ['integration-a', 'integration-b']) next = recordReport(next, report({ reviewer, tree: actual.tree }), time + 1);
+      expect(receiptSummary(next, 12, time + 1).expires).toBe(time + 86400000);
+    } else expect(() => recordReport(next, report({ reviewer: 'integration', tree: actual.tree }), time + 1)).toThrow('needs_owner');
   });
   it('preserves the sensitive reviewer floor and earliest expiry through consecutive integrations', () => {
     const sensitive = { ...observed, changedPaths: ['AGENTS.md'], intent, authorSessionId: 'author' };
@@ -221,8 +241,9 @@ describe('native review decisions', () => {
     for (const reviewer of ['first-a', 'first-b']) source = recordReport(source, report({ reviewer }), time);
     const integrate = (prior, base, head, tree, now) => {
       const actual = { ...observed, base: base.repeat(40), head: head.repeat(40), tree: tree.repeat(40), intent, authorSessionId: 'author' };
-      const integration = integrationReviewContext(prior, actual, { parents: [prior.candidate.head, actual.base], baseAncestor: true }, now);
+      const integration = integrationReviewContext(prior, actual, { parents: [prior.candidate.head, actual.base], baseAncestor: true, mechanical: true }, now);
       let next = prepareCandidate(prior, { ...actual, integration }, now);
+      expect(next.cycle).toBe(prior.cycle);
       next = recordReport(next, report({ reviewer: head + '-a', tree: actual.tree }), now);
       expect(verdict(next, actual, now).code).toBe('needs_agent_review');
       next = recordReport(next, report({ reviewer: head + '-b', tree: actual.tree }), now);
@@ -230,7 +251,10 @@ describe('native review decisions', () => {
       return next;
     };
     source = integrate(source, 'd', 'e', 'f', time + 1);
-    integrate(source, '1', '2', '3', time + 2);
+    source = integrate(source, '1', '2', '3', time + 2);
+    const repair = prepareCandidate(source, { ...observed, base: source.candidate.base, head: '4'.repeat(40), tree: '5'.repeat(40), intent, authorSessionId: 'author' }, time + 3);
+    expect(repair.cycle).toBe(source.cycle + 1);
+    expect(repair.candidate).not.toHaveProperty('integration');
   });
   it('emits only a bounded summary and validates the PR number', () => {
     const summary = receiptSummary(passed(), 12, time);

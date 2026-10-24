@@ -525,8 +525,11 @@ For each heavy final local command, use:
 node scripts/agent-review-session.mjs verify-command --resource openlup:coverage -- npm run test:scoped
 ```
 
-Keep every required command below, including package gates and coverage; this
-wrapper adds no test selection, cache, stamp or authority. Before starting the
+Keep every required command below, including package gates and coverage, unless
+an authorized supervisor establishes the bounded [mechanical integration
+alternative](#native-review-and-accountability). This wrapper adds no test
+selection, cache, stamp or authority; it does not establish complete local proof
+from one successful supplied command. Before starting the
 command, it checks the clean committed candidate and its native review. After
 the command exits, it checks candidate identity, cleanliness and review validity
 again. A changed candidate or expired review refuses final evidence; a valid
@@ -1817,11 +1820,14 @@ reading, exact merge scope and protected release approval still apply.
    gate is introduced.
    - Where the maintainer-local layer is installed, run `openlup-dev verify` on
      the clean committed tree. It must report `REQUIRED PASS`, and it writes the
-     stamp that the pre-push hook requires.
+     stamp that the pre-push hook requires. An installation that does not support
+     the mechanical integration alternative still requires its full run; never
+     copy an older stamp or bypass its refusal.
    - Elsewhere, run the [required check commands](#required-and-raw-checks).
-     When native review evidence is available, the existing `verify-command`
-     wrapper performs the merge preflight before the command. Refresh
-     `origin/main` before the final run so it sees current main.
+     Only the proved [mechanical integration alternative](#native-review-and-accountability)
+     permits the bounded local selection described there. When native review
+     evidence is available, the existing `verify-command` wrapper performs the
+     merge preflight before the command. Refresh `origin/main` before the final run.
 5. **Push** with `git push -u origin HEAD`. A push is publication, within your
    delivery authority. If `main` has moved since the review, push as is: verify
    and pre-push accept the review while its fork point is unchanged. Do not
@@ -1840,15 +1846,19 @@ reading, exact merge scope and protected release approval still apply.
    **Expiry.** Evidence expires 24 hours after the earliest counted PASS report
    for the current candidate. If expired, use `prepare --new <intent.json>`,
    obtain fresh reports, verify and post the refreshed receipt.
-8. **Hosted checks.** The six required contexts and `native-review` must pass.
-   Compare required root and raw `pgtap` failures with the exact base.
-9. **Revalidate authority and evidence.** The pull request states its sign-off
-   class and actual delivery grant. Recheck the live head and applicable
-   review/receipt identity and expiry before each write. Any later material
-   delta requiring a maintainer read returns to step 2 before its sign-off;
-   required reads, closed material findings and current checks precede merge.
-10. **Arm auto-merge** under merge authority, following the
-    [Merge queue](#merge-queue) rules.
+8. **Revalidate authority and evidence.** The pull request states its sign-off
+   class and actual delivery grant. Recheck the live head, mergeability, check
+   states and applicable review/receipt identity and expiry before each write.
+   Any later material delta requiring a maintainer read returns to step 2 before
+   sign-off. Required reads and closed material findings precede the request.
+9. **Request auto-merge once** under actual merge authority, following
+   [Merge queue](#merge-queue). With local proof, native review and the source
+   receipt complete, pending hosted checks need not delay this request. Record
+   whether it is waiting for checks or already queued; do not repeatedly arm it.
+10. **Hosted checks.** The six required contexts and `native-review` must pass;
+    GitHub then admits the requested PR to the queue automatically. Compare
+    required root and raw `pgtap` failures with the exact base. A pending request
+    is not successful admission or a completed merge.
 11. **Merge group.** Read the group's `native-review` log (see
     [Required and raw checks](#required-and-raw-checks)). Carry-over needs no
     further receipt. If carry-over fails, merge `main` and re-review, then post
@@ -1907,9 +1917,39 @@ parent identity alone does not prove unchanged implementation. Supply these
 pinned source identities, not old verdict text or author discussion. Uncertainty
 requires full inspection within those reviews, not an automatic extra round.
 
+`prepare` additionally marks `candidate.integration.mechanical` true only when
+Git successfully computes the merge of the preceding reviewed head and new base
+and its tree exactly equals the current candidate. This narrower case does not
+consume a repair cycle. A conflicting merge, manual resolution or extra edits
+use ordinary repair accounting, even when broader focused review is available.
+Missing mechanical proof in an older session establishes no exemption; a new
+prepare never retroactively refunds consumed cycles or an exhausted budget.
+
+For this proved mechanical case, an authorized supervisor using the public
+required-command route may avoid repeating the full local gate only when the
+existing task record identifies the preceding full local PASS by exact head/tree,
+commands and results, and complete green hosted evidence for the exact new main
+base. The two fresh integration reviewers assess those inputs, changed contracts
+and the affected local selection within their existing review. The prior full
+proof must remain applicable to the current required commands and gate inputs.
+A chain of mechanical integrations may retain that full anchor only with each
+link's fresh review and successful local interaction checks recorded. A focused
+PASS alone is never a full anchor.
+
+Run the applicable existing cheap checks, including DCO, policy, inventory,
+neutrality and whitespace, and the affected focused regression, type, build,
+package or SQL probes on the actual current candidate. Record their commands,
+results and exact identity in the same task record. Missing, failed, partial or
+inapplicable prior evidence, uncertain interactions or changed required gate
+obligations require the normal full local run. Installed verifiers retain their
+actual stamp requirements unless their owning implementation supports this
+alternative. No old stamp is copied, no full run is claimed for selected checks,
+and `verify-command` still proves only its supplied command. Every required
+source and merge-group CI command remains unchanged and must actually pass.
+
 Focused integration review inherits the earliest source-coverage expiry; fresh
 reports do not renew it. Reports are never copied to another tree. Findings,
-reviewer uniqueness and repair cycles remain in the same history. Missing,
+reviewer uniqueness and repair accounting remain in the same history. Missing,
 expired or unproven prior coverage, a rebase or `prepare --new` uses full review
 under the normal reviewer floor. An unchanged prepare preserves existing evidence.
 The receipt format and all mechanical checks are unchanged.
@@ -1972,8 +2012,9 @@ does not erase the unresolved issue or its history. Do not repeat a rethink of
 the same issue without decision-changing information. Existing `needs_owner`,
 exhausted budgets and material contract changes keep their actual owner route.
 Rethink grants no authority, cycles, finding closure, PASS renewal or extra expiry;
-it does not run `continue`. The native `cycle` counts changed candidates, not
-completed evaluations. No new CLI event, receipt, job or counter is introduced.
+it does not run `continue`. The native `cycle` counts changed candidates except
+proved mechanical integrations, not completed evaluations. No new CLI event,
+receipt, job or counter is introduced.
 
 ### Review lessons
 
@@ -1993,10 +2034,11 @@ own: a lessons change is an ordinary delivery under existing authority, and a
 promotion stays within its approved scope. The rethink record and the task's
 terminal self-retro carry the lesson until it lands. No other tracker is kept.
 
-- 2026-10-23, queue integration rethink: repeated full reading after a base
-  merge and enqueue polling on an unchanged conflict waste work → check the
-  existing carry-over predicate before expensive phases; reuse valid source
-  coverage to focus fresh current-tree review on the complete integration delta.
+- 2026-10-24, queue integration rethink: mechanical base merges consumed repair
+  cycles and repeated full local proof → use the proved mechanical case in
+  [native review](#native-review-and-accountability), retaining fresh interaction
+  review and full remote gates; [request auto-merge](#merge-queue) once after
+  local prerequisites and the receipt, letting GitHub wait for pending CI.
 - 2026-10-23, execution-process rethink: repeated uninformative mutants and stale
   instruction copies → use [required behavior-class proof](#sufficient-evidence-and-material-test-gaps),
   [early regroup](#regroup-when-work-stops-converging) and
@@ -2091,12 +2133,20 @@ records why these rules exist.
   point, so verify and pre-push keep accepting it while the branch is behind.
   Integrate `main` only for a textual conflict or failed carry-over/preflight,
   by merging it, and then obtain a fresh review, using the integration scope above when `prepare` proves coverage.
-- **Arming.** Arm auto-merge only under actual merge authority, and only after
-  the required checks, the native review and any required maintainer read:
-  `gh pr merge <PR> --auto --author-email <address>`; the queue sets the merge
-  method. Use the maintainer's configured author address. Confirm arming only
-  by a non-null GraphQL `mergeQueueEntry` on the pull request, never by
-  `autoMergeRequest`. Before arming, read the live head and mergeability.
+- **Arming.** Under actual merge authority, request auto-merge once after
+  applicable local proof, native review, any required maintainer read and the
+  source receipt are complete for the ready PR against `main`. Pending hosted
+  checks may finish afterwards:
+  `gh pr merge <PR> --auto --match-head-commit <reviewed-head> --author-email <address>`.
+  The queue sets the merge method; use the maintainer's configured author address.
+  Read back the live state: non-null GraphQL `autoMergeRequest` without a
+  `mergeQueueEntry` means requested and waiting for checks; only a non-null
+  `mergeQueueEntry` confirms actual queue entry. Neither is a completed merge.
+  Observe an existing request instead of repeatedly arming it. If neither is
+  present, confirmation is missing: read once again, then diagnose.
+  Before requesting, revalidate the live head, mergeability, checks and applicable
+  review/receipt identity and expiry. A known failed required check needs diagnosis;
+  a pending check is left to GitHub. `--admin` is never this route.
   `DIRTY`/`CONFLICTING` stops enqueue attempts until the head or mergeability
   changes and the conflict is resolved; do not spend queue retries polling the
   same refusal.
