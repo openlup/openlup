@@ -733,7 +733,7 @@ export interface InvoiceServicesOptions {
 
 ```ts
 /** @consumer Frozen fact provider and installed declaration consumer. */
-export type { InvoiceFacts, InvoiceLine, InvoiceSeller, InvoiceBuyer, InvoiceSellerRevision } from "./facts.js";
+export type { InvoiceFacts, InvoiceLine, InvoiceSeller, InvoiceBuyer, InvoiceSellerRevision, InvoiceClaimedFacts } from "./facts.js";
 /** @consumer A4 issue/correction bridge, adapters and operator proof readback. */
 export type { InvoiceIdentity, InvoiceDocumentIdentity, InvoiceWriteResult, InvoiceReadbackResult, InvoiceProviderPort, InvoiceUnsupported, InvoiceDiagnosticCode, InvoiceProof } from "./provider.js";
 /** @consumer Host artifact storage/download binding. */
@@ -1633,7 +1633,7 @@ export { createInvoiceServices } from "./bindings.js";
 export type { InvoiceServices } from "./bindings.js";
 export { createInvoiceContribution } from "./contribution.js";
 export { claimInvoiceSellerRevision } from "./sellerRevision.js";
-export type { InvoiceSellerRevision } from "./contracts/facts.js";
+export type { InvoiceSellerRevision, InvoiceClaimedFacts } from "./contracts/facts.js";
 ```
 ## dist/invoicing/issue.d.ts
 

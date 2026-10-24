@@ -1451,20 +1451,31 @@ correction, delivery, document/settlement sync, duty collection and history
 services; there is no module cron or second executor. Contributions describe the
 host's existing handlers, schedules and routes without registering them. The
 reference binding is inert by default. The accounting runtime retains its job
-lease and authentication; disabled execution constructs no gateway or lease.
+lease and authentication. Only explicitly selected module execution checks
+readiness and enablement before constructing a gateway or claiming a lease;
+unselected accounting jobs retain their in-lease skip and failure recording.
 Injected service factories have no invocation order scope, so the host refuses
 targeted module runs before leasing rather than executing an unscoped job.
 
 Migration: the pinned seller forwards add eligibility sidecars and first-claim
 wrappers. Claims retain the SQL-returned seller, revision and mode separately
 from installed buyer/line facts. New eligible obligations reuse the first
-claimed seller, including independently eligible corrections; legacy obligations
+claimed seller, including independently eligible corrections. Native correction providers receive
+the correction claim's seller, revision and mode in their `before` facts; legacy obligations
 keep execution-time fallback. Unknown or unsupported seller selection refuses
 before claim. Native reversals use the request wrapper's correction branch.
 Managed order-scoped correction claims refuse because the pinned correction
 wrapper is unscoped. Issued documents are never rewritten. Managed order-status reversals call the
 seller request wrapper with their order identity, reason and original payload;
 the wrapper preserves the incumbent result and marks only new obligations.
+Managed paid and handoff contention surfaces as a typed
+`AccountingInvoicePersistenceError` with cause `55P03` and no database effect.
+The adapter emits a structured refusal diagnostic before throwing, so automatic
+and operator fail-soft handoffs remain visible to operators while dispatch
+continues. The diagnostic identifies the source kind and ID and records
+`retryable: true` and `effectMayHaveSucceeded: false`. There is no automatic
+retry; operators can recover the missing request. Other error handling,
+including identity conflicts, is unchanged.
 
 Place invoicing contracts and descriptor interpretation in the existing platform
 package's exact `invoicing` and type-only `invoicing/contracts` entries. The module

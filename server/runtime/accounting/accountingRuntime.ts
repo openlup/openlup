@@ -128,13 +128,14 @@ export async function runAccountingRuntimeOnce({
     return { status: 200, body: { ok: true, skipped: true, reason: "ksef_worker_not_supported" } };
   }
 
-  // Default-off performs no gateway construction or job lease claim.
-  const config = readAccountingRuntimeConfig(env);
-  const enabled = kind === "invoice-delivery" ? config.providerEmailEnabled
-    : kind === "ksef-status" ? config.ksefPollEnabled : config.createEnabled;
-  if (!enabled) return { status: 200, body: { ok: true, skipped: true, checked: 0, updated: 0, failures: 0, reason: "disabled" } };
-  assertAccountingRuntimeConfigAllowed(env, config);
+  // Only explicit module selection adds pre-lease readiness gates. Incumbent
+  // jobs retain their in-lease skip and failed-run recording semantics.
   if (invoicing) {
+    const config = readAccountingRuntimeConfig(env);
+    const enabled = kind === "invoice-delivery" ? config.providerEmailEnabled
+      : kind === "ksef-status" ? config.ksefPollEnabled : config.createEnabled;
+    if (!enabled) return { status: 200, body: { ok: true, skipped: true, checked: 0, updated: 0, failures: 0, reason: "disabled" } };
+    assertAccountingRuntimeConfigAllowed(env, config);
     const state = await invoicing.readiness();
     if (state.kind !== "ready") return { status: 503, body: { ok: false, skipped: true, reason: state.code } };
   }
@@ -143,7 +144,6 @@ export async function runAccountingRuntimeOnce({
   // Injected factories have no per-invocation order scope. Refuse before the
   // host lease rather than turning a targeted invocation into a global run.
   if (invoicing && context.orderId) return { status: 503, body: { ok: false, skipped: true, reason: "order_scoped_invoicing_unsupported" } };
-  if (!invoicing && !createAccountingProviderFromEnv(env)) return { status: 503, body: { ok: false, skipped: true, reason: "provider_not_selected" } };
   const gatewayEnv = readSupabaseDataGatewayEnv(env);
   if (!gatewayEnv) return { status: 503, body: { ok: false, error: "supabase_env_required" } };
 

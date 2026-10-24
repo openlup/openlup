@@ -43,8 +43,8 @@ function identity(dutyId: string, requestKey: string, saved: InvoiceFacts, paren
     orderRef: saved.refs.orderRef, invoiceRef: saved.refs.invoiceRef, operation: parent ? "full_reversal" : "issue",
     correctionRef: parent ? `invoicing:${dutyId}` : null, parentProviderDocumentRef: parent };
 }
-async function claim(orderId: string) {
-  const result = await store.claim({ orderId, providerRef, limit: 1, visibilitySeconds: 83 });
+async function claim(orderId: string, selectedStore = store) {
+  const result = await selectedStore.claim({ orderId, providerRef, limit: 1, visibilitySeconds: 83 });
   if ("kind" in result || result.length !== 1) throw new Error(`Expected one contract claim for ${orderId}`);
   return result[0]!;
 }
@@ -151,20 +151,23 @@ it.each(rows)("P4 installed adapter contract: $name", async row => {
     return;
   }
   const f = row.correction ? await correction(base) : { ...base, parent: null, baseDutyId: null };
+  const claimedSeller = row.correction ? { ...seller, name: "Correction contract seller" } : seller;
+  const claimedRevision = row.correction ? "seller-correction-first" : sellerRevision;
+  const selectedStore = createPostgresInvoiceStore(executor, { seller: { read: async () => ({ kind: "found", seller: claimedSeller, revisionRef: claimedRevision }) } });
   const expectedIdentity = identity(f.dutyId, f.requestKey, f.saved, f.parent);
   const readback = ["found", "absent", "read_unknown", "read_unsupported", "reversal_absent", "reversal_found"].includes(row.arm);
   const generation = row.generation ?? (readback ? 2 : 1);
   // Advance through genuine SQL leases and failures, preserving the request fence.
   for (let prior = 1; prior < generation; prior++) {
-    const leased = await claim(f.orderId);
+    const leased = await claim(f.orderId, selectedStore);
     expect(leased.generation).toBe(prior);
-    expect(await store.fail(readback ? { claim: leased, kind: "unknown", proof, retrySeconds: 0 }
+    expect(await selectedStore.fail(readback ? { claim: leased, kind: "unknown", proof, retrySeconds: 0 }
       : { claim: leased, kind: "retryable", phase: "before_send", proof, retrySeconds: 0 })).toEqual({ kind: "recorded" });
   }
   let reversal: { key: string; reason: string; evidence: typeof proof & { reason: string; sellerPolicyVersion: string } } | null = null;
   if (row.arm === "reversal_absent" || row.arm === "reversal_found") {
     reversal = { key: `pending:${f.orderId}`, reason, evidence: { ...proof, reason, sellerPolicyVersion: "invoicing.seller.v1" } };
-    expect(await store.requestReversal({ requestKey: reversal.key, orderId: f.orderId, reason, proof })).toEqual({ kind: "pending_readback" });
+    expect(await selectedStore.requestReversal({ requestKey: reversal.key, orderId: f.orderId, reason, proof })).toEqual({ kind: "pending_readback" });
   }
   const evidence = (variant: Evidence = "succeeded"): Money => variant === "absent" ? { kind: "absent", evidence: { ...proof, exact: true, complete: true,
     scope: { intentRef: f.saved.payment.intentRef, providerRef: "money-provider", providerPaymentRef: "remote-payment", expectedMoney: { amountMinor: 900, currency: "XXX" } } } }
@@ -183,7 +186,7 @@ it.each(rows)("P4 installed adapter contract: $name", async row => {
     if (row.arm === "stale_finish" || row.arm === "stale_fail") await expire();
     if (row.arm === "reversal_retryable") {
       reversal = { key: `inflight:${f.orderId}`, reason, evidence: { ...proof, reason, sellerPolicyVersion: "invoicing.seller.v1" } };
-      expect(await store.requestReversal({ requestKey: reversal.key, orderId: f.orderId, reason, proof })).toEqual({ kind: "pending_readback" });
+      expect(await selectedStore.requestReversal({ requestKey: reversal.key, orderId: f.orderId, reason, proof })).toEqual({ kind: "pending_readback" });
     }
     if (row.arm === "retryable" || row.arm === "blocked" || row.arm === "stale_fail" || row.arm === "reversal_retryable") return {
       kind: "refused" as const, identity: id, code: "blocked" as const, retryable: row.arm !== "blocked", effectMayHaveSucceeded: false as const,
@@ -204,7 +207,7 @@ it.each(rows)("P4 installed adapter contract: $name", async row => {
     }),
   };
   // Spies record real port calls; no SQL responses or store decisions are faked.
-  const bound = { ...store, claim: vi.fn(store.claim), preflight: vi.fn(store.preflight), finish: vi.fn(store.finish), fail: vi.fn(store.fail) };
+  const bound = { ...selectedStore, claim: vi.fn(selectedStore.claim), preflight: vi.fn(selectedStore.preflight), finish: vi.fn(selectedStore.finish), fail: vi.fn(selectedStore.fail) };
   const localBlocked = ["failed", "pending", "amount_mismatch", "currency_mismatch"].includes(row.local ?? "");
   const freshBlocked = ["failed", "pending", "amount_mismatch", "currency_mismatch"].includes(row.fresh ?? "");
   const freshUnavailable = ["absent", "unavailable", "unknown"].includes(row.fresh ?? "");
@@ -217,7 +220,7 @@ it.each(rows)("P4 installed adapter contract: $name", async row => {
   const selected = claims[0]!;
   const before = row.correction ? { ...f.saved, before: f.saved, after: zero, parentDocumentId: (await state(base.dutyId)).document_id, parentExternalId: f.parent, reason } : f.saved;
   expect(selected).toEqual({ dutyId: f.dutyId, documentId: expect.any(String), requestId: expect.any(String), token: expect.any(String), generation,
-    leaseUntil: expect.any(String), identity: expectedIdentity, facts: { ...before, seller, sellerRevision, sellerMode: "frozen" }, action: readback ? "readback" : "create",
+    leaseUntil: expect.any(String), identity: expectedIdentity, facts: { ...before, seller: claimedSeller, sellerRevision: claimedRevision, sellerMode: "frozen" }, action: readback ? "readback" : "create",
     correction: row.correction ? { before: f.saved, after: zero, reason } : null });
   const workerClaim = { ...selected, attemptCount: generation };
   if (readback) {
@@ -246,8 +249,8 @@ it.each(rows)("P4 installed adapter contract: $name", async row => {
   }
   const dispatched = io.includes("issue") || io.includes("correct");
   if (dispatched) {
-    if (row.correction) expect(provider.correct).toHaveBeenCalledExactlyOnceWith({ identity: expectedIdentity, before: f.saved, after: zero, reason, recoveryLookupRequired: generation > 1 });
-    else expect(provider.issue).toHaveBeenCalledExactlyOnceWith({ identity: expectedIdentity, facts: { ...f.saved, seller, sellerRevision, sellerMode: "frozen" }, recoveryLookupRequired: generation > 1 });
+    if (row.correction) expect(provider.correct).toHaveBeenCalledExactlyOnceWith({ identity: expectedIdentity, before: { ...f.saved, seller: claimedSeller, sellerRevision: claimedRevision, sellerMode: "frozen" }, after: zero, reason, recoveryLookupRequired: generation > 1 });
+    else expect(provider.issue).toHaveBeenCalledExactlyOnceWith({ identity: expectedIdentity, facts: { ...f.saved, seller: claimedSeller, sellerRevision: claimedRevision, sellerMode: "frozen" }, recoveryLookupRequired: generation > 1 });
   }
   if (!dispatched || row.correction) expect(provider.issue).not.toHaveBeenCalled();
   if (!dispatched || !row.correction) expect(provider.correct).not.toHaveBeenCalled();

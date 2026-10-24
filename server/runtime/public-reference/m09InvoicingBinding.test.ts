@@ -14,11 +14,11 @@ it("default-off reference construction advertises no jobs or routes and never re
   expect(binding.contributions[0].manifest).toMatchObject({ handles: [], schedules: [], routes: [], env: [] });
   expect(readiness).not.toHaveBeenCalled();
 });
-it("default-off accounting and refused module readiness cannot construct a gateway or claim a host job lease", async () => {
+it("default-off selected accounting and refused module readiness cannot construct a gateway or claim a host job lease", async () => {
   const gatewayFactory = vi.fn(); const claim = vi.fn(); const finish = vi.fn();
   const common = { kind: "invoice-issue" as const, context: { triggerKind: "worker" as const, invocationSource: "test" }, gatewayFactory, runControl: { claim, finish } };
-  expect(await runAccountingRuntimeOnce({ ...common, env: {} })).toMatchObject({ body: { skipped: true, reason: "disabled" } });
   const run = vi.fn();
+  expect(await runAccountingRuntimeOnce({ ...common, env: {}, invoicing: { readiness: vi.fn(), run } })).toMatchObject({ body: { skipped: true, reason: "disabled" } });
   expect(await runAccountingRuntimeOnce({ ...common, env: { ACCOUNTING_CREATE_ENABLED: "true" }, invoicing: { readiness: async () => ({ kind: "unsupported", code: "host_binding_required", retryable: false, effectMayHaveSucceeded: false }), run } })).toMatchObject({ status: 503 });
   expect(gatewayFactory).not.toHaveBeenCalled(); expect(claim).not.toHaveBeenCalled(); expect(run).not.toHaveBeenCalled();
 });
@@ -66,4 +66,68 @@ it.each(["invoice-issue", "invoice-delivery"] as const)("refuses targeted %s bef
   })).toEqual({ status: 503, body: { ok: false, skipped: true, reason: "order_scoped_invoicing_unsupported" } });
   expect(gatewayFactory).not.toHaveBeenCalled(); expect(claim).not.toHaveBeenCalled();
   expect(run).not.toHaveBeenCalled(); expect(finish).not.toHaveBeenCalled();
+});
+
+it("refuses an order-scoped correction before the gateway or lease for unselected accounting", async () => {
+  const gatewayFactory = vi.fn(); const claim = vi.fn(); const finish = vi.fn();
+  expect(await runAccountingRuntimeOnce({ kind: "invoice-correction",
+    context: { triggerKind: "operator", invocationSource: "test", orderId: "target-order" },
+    env: {}, gatewayFactory, runControl: { claim, finish },
+  })).toEqual({ status: 503, body: { ok: false, skipped: true, reason: "order_scoped_correction_unsupported" } });
+  expect(gatewayFactory).not.toHaveBeenCalled(); expect(claim).not.toHaveBeenCalled(); expect(finish).not.toHaveBeenCalled();
+});
+
+  it("does not construct payment readback providers for non-issue jobs", async () => {
+    const finish = vi.fn();
+    const result = await runAccountingRuntimeOnce({
+      kind: "invoice-delivery",
+      context: { triggerKind: "worker", invocationSource: "test" },
+      env: runtimeEnvWithInvalidStripeKey(),
+      gatewayFactory: (() => ({ asService: async (run: (client: unknown) => unknown) => run({}) })) as never,
+      runControl: {
+        claim: vi.fn().mockResolvedValue({ acquired: true, runId: "run-1", reason: "claimed" }),
+        finish,
+      },
+    });
+
+    expect(result).toEqual({
+      status: 200,
+      body: expect.objectContaining({ ok: true, skipped: true, reason: "provider_email_disabled" }),
+    });
+    expect(finish).toHaveBeenCalledWith(
+      {}, "accounting-invoice-delivery", "run-1", "success",
+      expect.objectContaining({ reason: "provider_email_disabled" }),
+      expect.any(Object),
+    );
+  });
+
+
+function runtimeEnvWithInvalidStripeKey(): Record<string, string> {
+  return {
+    SUPABASE_URL: "https://example.supabase.co",
+    SUPABASE_SERVICE_ROLE_KEY: "service-role-test",
+    COMMERCE_ACCOUNTING_PROVIDER_MODE: "test",
+    ACCOUNTING_CREATE_ENABLED: "true",
+    STRIPE_PROVIDER_ENABLED: "true",
+    STRIPE_SECRET_KEY: "sk_live_not-confirmed",
+  };
+}
+
+it.each([
+  { name: "disabled", env: {}, reason: "create_disabled", status: 200, finishStatus: "success" },
+  { name: "provider rollback", env: { ACCOUNTING_CREATE_ENABLED: "true" }, reason: "provider_disabled", status: 200, finishStatus: "success" },
+  { name: "provider config error", env: { ACCOUNTING_PROVIDER: "test", ACCOUNTING_MUTATIONS_ENABLED: "true" }, reason: "accounting_provider_mode_conflict_real_mutations_enabled", status: 502, finishStatus: "failed" },
+])("records unselected $name inside the existing lease", async row => {
+  const trace: string[] = [];
+  const finish = vi.fn(async () => { trace.push("finish"); });
+  const result = await runAccountingRuntimeOnce({ kind: "invoice-issue",
+    context: { triggerKind: "scheduler", invocationSource: "test" },
+    env: { SUPABASE_URL: "https://example.invalid", SUPABASE_SERVICE_ROLE_KEY: "synthetic", ...row.env },
+    gatewayFactory: (() => ({ asService: async (run: (client: unknown) => unknown) => run({}) })) as never,
+    runControl: { claim: vi.fn(async () => { trace.push("claim"); return { acquired: true, runId: "run", reason: "claimed" }; }), finish },
+  });
+  expect(result).toMatchObject({ status: row.status, body: { reason: row.reason } });
+  expect(trace).toEqual(["claim", "finish"]);
+  expect(finish).toHaveBeenCalledWith({}, "accounting-invoice-issue", "run", row.finishStatus,
+    expect.objectContaining({ reason: row.reason }), expect.any(Object));
 });

@@ -243,7 +243,9 @@ substituting a different business behaviour.
 The inert M09 reference binding admits invoicing only when explicitly enabled,
 selected and ready. Server startup checks an explicitly supplied invoicing
 binding before opening its listener and mounts no invoice routes or schedules.
-Accounting execution continues through the existing host job lease; module
+Explicitly selected module execution checks enablement and readiness before the
+host job lease. Unselected accounting execution retains its existing in-lease
+skips and failed-run recording; module
 factories supply no cron, worker or environment reader. The native D7 removal
 and payment-decoupling predecessor keep invoicing outside parcel and money
 execution; invoicing cannot delay, stop or roll back those obligations.

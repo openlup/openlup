@@ -1304,4 +1304,6 @@ The native descriptor declares child-document corrections and explicit host
 fiscal facts. The separate managed descriptor names P3's base-row correction
 forwards; neither descriptor claims storage or fiscal parity.
 
-Seller-revision forwards and default service activation remain later work.
+The seller-revision forwards are introduced by this change as described in the
+[compatibility lifecycle](#compatibility-lifecycle). Default service activation
+remains later work.

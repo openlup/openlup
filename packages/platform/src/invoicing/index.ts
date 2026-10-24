@@ -36,4 +36,4 @@ export { createInvoiceServices } from "./bindings.js";
 export type { InvoiceServices } from "./bindings.js";
 export { createInvoiceContribution } from "./contribution.js";
 export { claimInvoiceSellerRevision } from "./sellerRevision.js";
-export type { InvoiceSellerRevision } from "./contracts/facts.js";
+export type { InvoiceSellerRevision, InvoiceClaimedFacts } from "./contracts/facts.js";

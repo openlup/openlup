@@ -303,11 +303,15 @@ export async function runNativeInvoiceIssueJob(input: {
           : { claim, retrySeconds, kind: "blocked", proof: null });
         failures++; continue;
       }
+      const correctionFacts = claim.correction && { ...claim.correction.before,
+        seller: claim.facts.seller, sellerRevision: claim.facts.sellerRevision, sellerMode: claim.facts.sellerMode };
       remoteStarted = true;
       const result = claim.correction
         ? await input.provider.correct({ identity: { ...claim.identity, operation: "full_reversal",
           correctionRef: claim.identity.correctionRef!, parentProviderDocumentRef: claim.identity.parentProviderDocumentRef! },
-          ...claim.correction, recoveryLookupRequired: claim.attemptCount > 1 })
+          ...claim.correction,
+          before: correctionFacts!,
+          recoveryLookupRequired: claim.attemptCount > 1 })
         : await input.provider.issue({ identity: { ...claim.identity, operation: "issue", correctionRef: null, parentProviderDocumentRef: null },
           facts: claim.facts, recoveryLookupRequired: claim.attemptCount > 1 });
       if (result.kind === "issued") {

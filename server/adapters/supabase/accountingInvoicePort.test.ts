@@ -317,3 +317,28 @@ it("maps handoff and explicit correction requests to every pinned eligibility ar
     ["invoicing_managed_request_with_seller_policy",{p_key:"accounting-correction:invoice:refund",p_source_kind:"correction",p_source_id:"invoice",p_provider:"host",p_evidence:{saved:"fact",reason:"refund"}}],
   ]);
 });
+
+it.each(["paid", "handoff"] as const)("surfaces %s lock refusal immediately and preserves other errors", async kind => {
+  const warning = vi.spyOn(console, "warn").mockImplementation(() => {});
+  try {
+    const rpc = vi.fn(async () => ({ data: null, error: { code: "55P03" } }));
+    const port = createSupabaseAccountingInvoicePort({ rpc });
+    const request = () => kind === "paid"
+      ? port.requestInvoiceIssueFromPaidOrder({ idempotencyKey: "same-key", orderId: "order", providerKind: "host" })
+      : port.requestInvoiceIssueFromFulfillmentHandoff({ idempotencyKey: "same-key", fulfillmentOrderId: "fulfillment", providerKind: "host" });
+    await expect(request()).rejects.toMatchObject({ name: "AccountingInvoicePersistenceError", causeCode: "55P03" });
+    expect(rpc).toHaveBeenCalledTimes(1);
+    expect(warning).toHaveBeenCalledExactlyOnceWith("[accounting] invoice request refused", {
+      kind: "refused", name: "AccountingInvoicePersistenceError", causeCode: "55P03",
+      sourceKind: kind, sourceId: kind === "paid" ? "order" : "fulfillment",
+      retryable: true, effectMayHaveSucceeded: false,
+    });
+    for (const code of ["23505", "P0001"]) {
+      rpc.mockClear().mockResolvedValue({ data: null, error: { code } });
+      warning.mockClear();
+      await expect(request()).rejects.toMatchObject({ name: "AccountingInvoicePersistenceError", causeCode: code });
+      expect(rpc).toHaveBeenCalledTimes(1);
+      expect(warning).not.toHaveBeenCalled();
+    }
+  } finally { warning.mockRestore(); }
+});

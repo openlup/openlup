@@ -31,6 +31,24 @@ export function createSupabaseAccountingInvoicePort(
 ): AccountingInvoiceIssuePort & Omit<AccountingInvoiceRuntimePort, "claimInvoiceCorrections"> & AccountingCorrectionScaffoldPort & {
   claimInvoiceCorrections(limit: number, options?: { orderId?: string | null }): Promise<AccountingCorrectionOutboxTarget[]>;
 } {
+  async function requestWithSellerPolicy(args: Record<string, unknown>) {
+    const result = await client.rpc("invoicing_managed_request_with_seller_policy", args);
+    if (result.error?.code === "55P03") {
+      // This statement rolled back. Report before fail-soft fulfillment catches
+      // the typed error so operators can recover the missing invoice request.
+      console.warn("[accounting] invoice request refused", {
+        kind: "refused",
+        name: "AccountingInvoicePersistenceError",
+        causeCode: "55P03",
+        sourceKind: args.p_source_kind,
+        sourceId: args.p_source_id,
+        retryable: true,
+        effectMayHaveSucceeded: false,
+      });
+    }
+    return result;
+  }
+
   async function sellerSelection() {
     if (!options.readSeller) throw new AccountingInvoicePersistenceError("Accounting seller selection required", "seller_unavailable");
     const selected = await claimInvoiceSellerRevision(options.readSeller);
@@ -41,7 +59,7 @@ export function createSupabaseAccountingInvoicePort(
     async requestInvoiceIssueFromFulfillmentHandoff(
       request: AccountingInvoiceIssueRequest,
     ): Promise<AccountingInvoiceIssueResponse> {
-      const { data, error } = await client.rpc("invoicing_managed_request_with_seller_policy", {
+      const { data, error } = await requestWithSellerPolicy({
         p_key: request.idempotencyKey, p_source_kind: "handoff", p_source_id: request.fulfillmentOrderId,
         p_provider: request.providerKind, p_evidence: {},
       });
@@ -52,7 +70,7 @@ export function createSupabaseAccountingInvoicePort(
     },
 
     async requestInvoiceIssueFromPaidOrder(request): Promise<AccountingInvoiceIssueResponse> {
-      const { data, error } = await client.rpc("invoicing_managed_request_with_seller_policy", {
+      const { data, error } = await requestWithSellerPolicy({
         p_key: request.idempotencyKey, p_source_kind: "paid", p_source_id: request.orderId,
         p_provider: request.providerKind, p_evidence: {},
       });

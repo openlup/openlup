@@ -316,11 +316,13 @@ it.each(["local payment", "provider issue", "unsupported finish"] as const)("nat
 it.each([1, 2, 3, 4])("native correction generation %s routes the exact correction and recovery requirement", async generation => {
   const f = issueFixture();
   const identity = { ...f.claim.identity, operation: "full_reversal" as const, correctionRef: "invoicing:duty-a", parentProviderDocumentRef: "parent-remote-a" };
-  const correction = { before: facts, reason: "order_refunded", after: { totalNetMinor: 0 as const, totalTaxMinor: 0 as const, totalGrossMinor: 0 as const } };
-  const claim = { ...f.claim, generation, identity, correction };
+  const correction = { before: { ...facts, seller: selectedSeller }, reason: "order_refunded", after: { totalNetMinor: 0 as const, totalTaxMinor: 0 as const, totalGrossMinor: 0 as const } };
+  const correctionSeller = { ...selectedSeller, name: "Correction seller" };
+  const claim = { ...f.claim, generation, identity, correction,
+    facts: { ...f.claim.facts, seller: correctionSeller, sellerRevision: "seller-correction", sellerMode: "frozen" as const } };
   f.store.claim.mockResolvedValue([claim]);
   expect(await f.run()).toEqual({ checked: 1, updated: 1, failures: 0, ok: true });
-  expect(f.provider.correct).toHaveBeenCalledExactlyOnceWith({ identity, before: facts, reason: "order_refunded",
+  expect(f.provider.correct).toHaveBeenCalledExactlyOnceWith({ identity, before: { ...facts, seller: correctionSeller, sellerRevision: "seller-correction", sellerMode: "frozen" }, reason: "order_refunded",
     after: { totalNetMinor: 0, totalTaxMinor: 0, totalGrossMinor: 0 }, recoveryLookupRequired: generation > 1 });
   expect(f.provider.issue).not.toHaveBeenCalled();
 });
