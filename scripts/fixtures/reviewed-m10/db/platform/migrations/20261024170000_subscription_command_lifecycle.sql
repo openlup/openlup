@@ -55,6 +55,7 @@ BEGIN
   END IF;
   RETURN r.result;
  END IF;
+ <<preview_command>>
  BEGIN
   IF p_action NOT IN ('update_bundle','resize_bundle','update_package_template','update_plan_length',
     'add_addon','remove_addon','update_addon_quantity') THEN
@@ -98,11 +99,14 @@ BEGIN
     RAISE EXCEPTION 'subscription_command_bundle_total_mismatch' USING ERRCODE='22023';
    END IF;
   ELSIF p_action='add_addon' THEN
-   IF NOT EXISTS(SELECT 1 FROM public.subscription_lines WHERE subscription_id=s.id
+   IF EXISTS(SELECT 1 FROM public.subscription_lines WHERE subscription_id=s.id
     AND variant_id=(p_payload->>'variantId')::uuid AND is_addon
     AND quantity=GREATEST(1,COALESCE((p_payload->>'qty')::integer,1))) THEN
-    addons:=addons||jsonb_build_array(jsonb_build_object('variantId',p_payload->>'variantId','qty',p_payload->'qty'));
+    answer:=jsonb_build_object('status','noop','subscriptionId',s.id,'action',p_action,'subscriptionStatus',s.status,
+     'nextCycleAt',s.next_cycle_at,'templateVersion',s.template_version,'eventId',NULL);
+    EXIT preview_command;
    END IF;
+   addons:=addons||jsonb_build_array(jsonb_build_object('variantId',p_payload->>'variantId','qty',p_payload->'qty'));
   ELSIF p_action IN ('remove_addon','update_addon_quantity') THEN
    IF NOT EXISTS(SELECT 1 FROM jsonb_array_elements(addons) v WHERE v->>'variantId'=p_payload->>'variantId') THEN
     RAISE EXCEPTION 'subscription_command_addon_not_found' USING ERRCODE='22023';

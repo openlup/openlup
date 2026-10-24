@@ -403,7 +403,7 @@ it('Y filters beyond LIMIT, keeps due ordering/ties, clamps and future rows, and
  for(const row of [...f.stale,...f.genuine]) await unchangedIdentity(db,row);
 }));
 
-it('preserves the donor existing-addon noop and rejects the unconditional-append mutant',async()=>scoped(async()=>{
+it('preserves the donor existing-addon noop without repricing and rejects both earlier bodies',async()=>scoped(async()=>{
  const f=await commandFixture();
  // A new add-on follows the existing path and aligns the future price lines.
  const initial={variantId:f.addon,qty:2,expectedTemplateVersion:1};
@@ -411,40 +411,65 @@ it('preserves the donor existing-addon noop and rejects the unconditional-append
  expect(added.result).toMatchObject({status:'previewed'});
  expect((await raw(f,'addon-first','add_addon',{...initial,acceptedQuoteHash:added.result.quoteHash},AT,true)).result)
   .toMatchObject({status:'applied',templateVersion:2});
+ expect((await db.query(`SELECT quantity,unit_price_minor FROM public.subscription_lines
+  WHERE subscription_id=$1 AND variant_id=$2`,[f.subscription,f.addon])).rows)
+  .toEqual([{quantity:2,unit_price_minor:'70'}]);
  const payload={...initial,expectedTemplateVersion:2};
- const lines=(await db.query(`SELECT jsonb_agg(jsonb_build_object('variantId',variant_id,'quantity',quantity,
-  'isAddon',is_addon,'sortOrder',sort_order,'unitPriceMinor',unit_price_minor,'currency',currency_code)
-  ORDER BY sort_order,id) lines FROM public.subscription_lines WHERE subscription_id=$1`,[f.subscription])).rows[0].lines;
+ const nextCycleAt=(await db.query('SELECT to_jsonb(next_cycle_at) value FROM public.subscriptions WHERE id=$1',[f.subscription])).rows[0].value;
  async function witness(key:string) {
   const before=await effects(true);
   const preview=await raw(f,key,'add_addon',payload);
-  expect(preview.result).toMatchObject({status:'previewed',canApply:true,templateVersion:2,lines});
+  expect(preview.result.status,`${key}: existing-addon preview status`).toBe('noop');
+  expect(preview.result).toEqual({status:'noop',subscriptionId:f.subscription,action:'add_addon',
+   subscriptionStatus:'active',nextCycleAt,templateVersion:2,eventId:null});
+  const stored=await effects(true);
+  // The receipt is the only write: quotes, every stored line/price, events and versions retain even xmin.
+  for(const name of Object.keys(before).filter(name=>name!=='subscription_command_receipts'))
+   expect(stored[name],name).toEqual(before[name]);
+  expect((await db.query(`SELECT status,quote_hash,result FROM public.subscription_command_receipts
+   WHERE actor_id=$1 AND idempotency_key=$2`,[f.actor,key])).rows)
+   .toEqual([{status:'noop',quote_hash:null,result:preview.result}]);
   expect(await raw(f,key,'add_addon',payload)).toEqual(preview);
-  const applied=await raw(f,key,'add_addon',{...payload,acceptedQuoteHash:preview.result.quoteHash},AT,true);
-  expect(applied.result).toMatchObject({status:'noop',templateVersion:2,eventId:null});
-  const after=await effects(true);
-  for(const name of Object.keys(before).filter(name=>!['subscription_command_receipts','subscription_edit_quotes'].includes(name)))
-   expect(after[name],name).toEqual(before[name]);
-  return preview;
+  const applied=await raw(f,key,'add_addon',payload,AT,true);
+  expect(applied.result).toEqual({...preview.result,status:'replayed',originalStatus:'noop'});
+  expect(await raw(f,key,'add_addon',payload,AT,true)).toEqual(applied);
+  expect((await raw(f,key,'add_addon',{...payload,qty:3},AT,true)).result)
+   .toMatchObject({status:'refused',reason:'subscription_command_idempotency_conflict'});
+  expect(await effects(true)).toEqual(stored);
  }
  await witness('same-addon-noop');
+ // Drift both catalogue prices after locking the core/add-on at 350/70.
+ await db.query('UPDATE public.price_entries SET unit_price_minor=999 WHERE price_list_id=$1',[f.list]);
+ await witness('same-addon-price-drift');
  // A different quantity still attempts an append and hits the existing duplicate refusal.
  expect((await raw(f,'different-addon-qty','add_addon',{...payload,qty:3})).result)
   .toMatchObject({status:'refused',reason:'subscription_edit_invalid_lines'});
  const definition=await commandDefinition();
+ const noop=`   IF EXISTS(SELECT 1 FROM public.subscription_lines WHERE subscription_id=s.id
+    AND variant_id=(p_payload->>'variantId')::uuid AND is_addon
+    AND quantity=GREATEST(1,COALESCE((p_payload->>'qty')::integer,1))) THEN
+    answer:=jsonb_build_object('status','noop','subscriptionId',s.id,'action',p_action,'subscriptionStatus',s.status,
+     'nextCycleAt',s.next_cycle_at,'templateVersion',s.template_version,'eventId',NULL);
+    EXIT preview_command;
+   END IF;
+   addons:=addons||jsonb_build_array(jsonb_build_object('variantId',p_payload->>'variantId','qty',p_payload->'qty'));`;
+ const append="   addons:=addons||jsonb_build_array(jsonb_build_object('variantId',p_payload->>'variantId','qty',p_payload->'qty'));";
  const guard=`   IF NOT EXISTS(SELECT 1 FROM public.subscription_lines WHERE subscription_id=s.id
     AND variant_id=(p_payload->>'variantId')::uuid AND is_addon
     AND quantity=GREATEST(1,COALESCE((p_payload->>'qty')::integer,1))) THEN
-    addons:=addons||jsonb_build_array(jsonb_build_object('variantId',p_payload->>'variantId','qty',p_payload->'qty'));
+ ${append}
    END IF;`;
- const mutant=definition.replace(guard,"   addons:=addons||jsonb_build_array(jsonb_build_object('variantId',p_payload->>'variantId','qty',p_payload->'qty'));");
- expect(mutant).not.toBe(definition);
- await db.query('SAVEPOINT addon_mutant');
- try {
-  await db.query(mutant);
-  await expect(witness('mutant-addon-noop')).rejects.toThrow();
- }finally{await db.query('ROLLBACK TO addon_mutant');await db.query('RELEASE SAVEPOINT addon_mutant');}
- expect(await commandDefinition()).toBe(definition);
+ for(const [name,body] of [['unconditional-append',append],['guard-only',guard]]) {
+  const mutant=definition.replace(noop,body);
+  expect(mutant).not.toBe(definition);
+  await db.query('SAVEPOINT addon_mutant');
+  try {
+   await db.query(mutant);
+   const key=`mutant-${name}`;
+   await expect(witness(key)).rejects.toThrow(`${key}: existing-addon preview status`);
+  }finally{await db.query('ROLLBACK TO addon_mutant');await db.query('RELEASE SAVEPOINT addon_mutant');}
+  expect(await commandDefinition()).toBe(definition);
+ }
 }),120_000);
 
 it('returns stored raw receipts with zero counts/columns/xmin delta across committed replays interleaved with a later command', async () => {

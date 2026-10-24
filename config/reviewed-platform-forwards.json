@@ -434,12 +434,12 @@
     },
     {
       "path": "db/platform/migrations/20261024170000_subscription_command_lifecycle.sql",
-      "sha256": "5694e4babee4682e4af558e192a60dbbfbb74520a0dd3e84f53398c81431c101",
+      "sha256": "d13e836aea7245f71bdd5eaa65acaf2c3464737d0fa8f7b4bfcfe2f2a7dab02d",
       "functions": [
         {
           "signature": "public.subscription_command_preview(uuid,uuid,text,uuid,text,jsonb,timestamptz)",
           "beforeSha256": null,
-          "afterSha256": "4a5f6111bfab425761760ff42acea0de08f305400a6cb17d61c0162902d3b1d0"
+          "afterSha256": "415934153c69990aba84ab056f2c2d6003e08f8c38ec6abb9bcb8d215d24e28c"
         },
         {
           "signature": "public.subscription_command_apply(uuid,uuid,text,uuid,text,jsonb,timestamptz)",
@@ -453,7 +453,7 @@
           "sql": "CREATE TABLE public.subscription_command_receipts (\n id uuid PRIMARY KEY DEFAULT gen_random_uuid(),\n actor_id uuid NOT NULL,\n idempotency_key text NOT NULL CHECK (char_length(btrim(idempotency_key)) BETWEEN 8 AND 180),\n subscription_id uuid NOT NULL REFERENCES public.subscriptions(id),\n client_id uuid NOT NULL REFERENCES public.clients(id),\n command_fingerprint text NOT NULL CHECK (command_fingerprint ~ '^[0-9a-f]{64}$'),\n command jsonb NOT NULL CHECK (jsonb_typeof(command) = 'object'),\n quote_hash text,\n result jsonb NOT NULL,\n status text NOT NULL CHECK (status IN ('previewed','applied','noop','refused')),\n created_at timestamptz NOT NULL DEFAULT now(),\n CONSTRAINT subscription_command_actor_key UNIQUE (actor_id,idempotency_key)\n);"
         },
         {
-          "sha256": "4a5f6111bfab425761760ff42acea0de08f305400a6cb17d61c0162902d3b1d0"
+          "sha256": "415934153c69990aba84ab056f2c2d6003e08f8c38ec6abb9bcb8d215d24e28c"
         },
         {
           "sha256": "46cc96287603231687d1fa54f413087e1b6596e9ec8c2c1e5700e4a0951789be"

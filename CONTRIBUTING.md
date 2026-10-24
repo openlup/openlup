@@ -210,9 +210,10 @@ In folded N2, a raw replay of the command preview returns the stored receipt. Al
 fresh scenarios compare output bytes and public-table columns against the pre-fold preview body and folded N2;
 committed replays compare counts, all columns and xmin across a later command,
 and the apply definition remains unchanged. A separate existing-add-on witness
-checks identical same-quantity preview lines and a no-event/no-version `noop`,
-retains the different-quantity duplicate refusal and new-add-on behavior, and
-rejects an unconditional-append function body within a rolled-back savepoint.
+checks a same-quantity `noop` before repricing even after catalogue prices change:
+no quote, line/price write, event or version increment, with actor/key receipt replay.
+It retains the different-quantity duplicate refusal and new-add-on behavior, and
+rejects both unconditional-append and guard-only bodies in rolled-back savepoints.
 Root test discovery
 already includes both suites; no extra runner or optional skip is introduced.
 The M10 gate reads its native PG16 and managed Supabase PG17 pins from

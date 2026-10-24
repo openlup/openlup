@@ -13,4 +13,4 @@ introduced. The development-preview boundary remains.
 
 - Fix uninstalled N3 normal_due pagination to exclude waiting/stock_secured cases before LIMIT, preventing normal-renewal starvation.
 
-- Repair N2 add_addon no-op parity for an existing add-on at the same quantity before N2 is installed.
+- Repair N2 add_addon no-op parity for an existing add-on at the same quantity before N2 is installed: preserve locked prices even after catalogue changes, without a quote, event or version increment.
