@@ -412,6 +412,8 @@ export { forecastSubscriptionInventoryShortages, buildSubscriptionInventoryForec
 export { calculateSubscriptionForecastSkus, calculateSubscriptionForecastTotals } from "./subscriptionForecastCalculation.js";
 export { INVENTORY_MIGRATIONS } from "./sql.js";
 export { createInventoryBindings, type InventoryBindingDependencies, type InventoryBindings } from "./bindings.js";
+export { createPostgresStockAvailability } from "./postgresStockAvailability.js";
+export type { NativeStockPromise } from "./postgresStockAvailability.js";
 ```
 ## dist/inventory/inventoryHandlers.d.ts
 
@@ -545,6 +547,34 @@ export declare class InventoryConflictError extends Error {
     readonly details: Record<string, unknown>;
     constructor(message?: string, details?: Record<string, unknown>);
 }
+```
+## dist/inventory/postgresStockAvailability.d.ts
+
+```ts
+import type { NewPurchaseStockReadPort } from "./newPurchaseStockAvailability.js";
+interface StockQueryExecutor {
+    query(text: string, values?: unknown[]): Promise<{
+        rows: Record<string, unknown>[];
+    }>;
+}
+export interface NativeStockPromise {
+    availableQuantity: number;
+    forSaleQuantity: number;
+    hardHoldQuantity: number;
+    safetyQuantity: number;
+    softSubscriptionDemandQuantity: number;
+    channelExposureQuantity: number;
+}
+/** Native read-only ATP. The fixed 14-day priority cannot be waived by a new
+ * purchase caller. Only the fenced native SQL allocator uses the renewal exemption. */
+export declare function createPostgresStockAvailability(executor: StockQueryExecutor, options: {
+    sourceKey: string;
+    now: () => string;
+}): {
+    readPort: NewPurchaseStockReadPort;
+    availableToPromise(sku: string, asOf: string): Promise<NativeStockPromise>;
+};
+export {};
 ```
 ## dist/inventory/renewalReservation.d.ts
 

@@ -9,9 +9,9 @@ export type Db=Pool|PoolClient;
 export async function call(db:Db,name:string,args:unknown[]) {
  return (await db.query(`SELECT public.${name}(${args.map((_,i)=>`$${i+1}`).join(',')}) AS result`,args)).rows[0].result;
 }
-export async function renewal(pool:Pool,availability=10,lines=1) {
+export async function renewal(pool:Pool,availability=10,lines=1,subscription=randomUUID()) {
  await call(pool,'subscription_delivery_alignment_set_mode',['off']);
- const client=randomUUID(),subscription=randomUUID(),source=randomUUID();
+ const client=randomUUID(),source=randomUUID();
  await pool.query("INSERT INTO public.clients(id,email) VALUES($1,$2)",[client,`${client}@example.invalid`]);
  await pool.query("INSERT INTO public.subscriptions(id,client_id,cadence_days,next_cycle_at) VALUES($1,$2,28,$3)",[subscription,client,AT]);
  await pool.query(`INSERT INTO public.subscription_renewal_terms(subscription_id,next_cycle_number,currency_code,stock_source_key,

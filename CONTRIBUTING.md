@@ -231,6 +231,10 @@ check current-obligation frozen reads, paused-wait preservation, eligibility
 before LIMIT, separate own/available deficit quantities, and closed/unpaid
 realization null no-ops followed by paid realization and zero-delta replay.
 Assignment/predicate mutants must fail the same witnesses inside rollback savepoints.
+Uncaptured N3 discovery uses real allocator refusals without wait rows: missing
+or stale stock keeps one recovery failing while a replenished refusal passes
+through `candidates(1)`. The operation selection stamp advances independently of
+case creation; restoring case-only stamping must fail the same table in rollback.
 Root test discovery
 already includes both suites; no extra runner or optional skip is introduced.
 The M10 gate reads its native PG16 and managed Supabase PG17 pins from

@@ -1166,6 +1166,26 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261024180000_subscription_stock_wait.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/20261024183000_inventory_available_to_promise.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/20261024184000_subscription_renewal_reserve_uses_seam.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/20261024184500_subscription_retry_late_positive_stock.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/20261024184600_subscription_retry_candidate_payment_filter.sql",
+      "class": "public-output"
+    },
+    {
       "path": "deploy/oci/public-reference-compose.yml",
       "class": "public-output"
     },
@@ -2650,6 +2670,26 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20261024180000_subscription_stock_wait.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261024183000_inventory_available_to_promise.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261024184000_subscription_renewal_reserve_uses_seam.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261024184500_subscription_retry_late_positive_stock.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261024184600_subscription_retry_candidate_payment_filter.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/bff/dispatch.ts",
       "class": "public-output"
     },
@@ -4050,6 +4090,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/inventory/postgresStockAvailability.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/inventory/renewalReservation.ts",
       "class": "public-output"
     },
@@ -4998,6 +5042,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/subscriptions/postgresStockWaitStore.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/subscriptions/renewalCycleFailureMechanism.ts",
       "class": "public-output"
     },
@@ -5622,6 +5670,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/inventory/postgresStockAvailability.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/inventory/reservationPolicyConformance.test.ts",
       "class": "public-output"
     },
@@ -6199,6 +6251,10 @@
     },
     {
       "path": "packages/platform/test/subscriptions/portFit.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/subscriptions/postgresStockWaitStore.test.ts",
       "class": "public-output"
     },
     {
@@ -23435,6 +23491,14 @@
     },
     {
       "path": "tests/postgres/subscriptionRetryLifecycleCases.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/subscriptionStockAccountingCases.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/subscriptionStockWaitCases.ts",
       "class": "public-output"
     },
     {

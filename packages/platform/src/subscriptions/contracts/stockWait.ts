@@ -5,7 +5,13 @@ export interface StockWaitRecoveryBinding {
 }
 export interface StockWaitDeficit {
   skuId: string; sku: string; displayName: string; size: string | null;
-  required: number; reserved: number; available: number; missing: number;
+  required: number;
+  /** This operation's own reserved units. */
+  reserved: number;
+  /** Free ATP, excluding this operation's own reservation. */
+  available: number;
+  /** Required units minus both reserved and available units. */
+  missing: number;
 }
 export interface StockWaitCase extends RenewalSchedule {
   caseId: string; clientId: string; state: "waiting" | "stock_secured" | "resumed" | "closed";
@@ -16,12 +22,18 @@ export interface StockWaitCase extends RenewalSchedule {
   securedAt: string | null; resumedAt: string | null; closedAt: string | null;
   startedNoticeKey: string; resumedNoticeKey: string; noticeEligible: boolean;
 }
+/** Discovery can precede the durable waiting case; never invent a case ID. */
+export interface StockWaitFrozenCase extends RenewalSchedule {
+  operationId: string; case: StockWaitCase | null;
+  frozenSnapshot: RenewalFrozenSnapshot; frozenFingerprint: string;
+  binding: StockWaitRecoveryBinding;
+}
 /** All-line reserve/reacquire and the wait transition share a DB transaction.
  * A shortage rolls back the subtransaction, retaining previous commitments;
  * record the wait outside that failed subtransaction. Technical failure is unknown.
  */
 export interface StockWaitStorePort {
-  listCandidates(input: { limit: number; asOf: string }): Promise<StockWaitCase[]>;
+  listCandidates(input: { limit: number; asOf: string }): Promise<StockWaitFrozenCase[]>;
   readFrozenCase(input: StockWaitRecoveryBinding): Promise<StockWaitCase | null>;
   reserveAndTransition(input: { caseId: string; frozenFingerprint: string; now: string }): Promise<StockWaitCase>;
   /** Only elapsed, unprepared, unacknowledged, stock-only refusals may reset.

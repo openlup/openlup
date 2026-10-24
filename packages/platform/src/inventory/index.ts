@@ -20,3 +20,5 @@ export { forecastSubscriptionInventoryShortages, buildSubscriptionInventoryForec
 export { calculateSubscriptionForecastSkus, calculateSubscriptionForecastTotals } from "./subscriptionForecastCalculation.js";
 export { INVENTORY_MIGRATIONS } from "./sql.js";
 export { createInventoryBindings, type InventoryBindingDependencies, type InventoryBindings } from "./bindings.js";
+export { createPostgresStockAvailability } from "./postgresStockAvailability.js";
+export type { NativeStockPromise } from "./postgresStockAvailability.js";

@@ -328,7 +328,27 @@
     {
       "file": "db/platform/migrations/20261024170000_subscription_command_lifecycle.sql",
       "sha256": "6508db9fbd5f466f013b167ebb0f03063134e8be03fd7f1324d107f7cc43901b"
+    },
+    {
+      "file": "db/platform/migrations/20261024180000_subscription_stock_wait.sql",
+      "sha256": "7e11901fd4f56e8247ad0fa76b03a8f1cf22e9356932c4147d7367e86330a0b3"
+    },
+    {
+      "file": "db/platform/migrations/20261024183000_inventory_available_to_promise.sql",
+      "sha256": "b79eae034cdff2a2d72eb013c2472dcd60284e3a530a81c058428e2a593dd5ff"
+    },
+    {
+      "file": "db/platform/migrations/20261024184000_subscription_renewal_reserve_uses_seam.sql",
+      "sha256": "ea3a8d48167a584c6aa0b6470dfb42175fd1f51ad18fc4dd0896b43f25e2280e"
+    },
+    {
+      "file": "db/platform/migrations/20261024184500_subscription_retry_late_positive_stock.sql",
+      "sha256": "a742350ca4e1baba514c0eff3279b68ae6fc6f8fec1889f0e5fb1cc2d586c11e"
+    },
+    {
+      "file": "db/platform/migrations/20261024184600_subscription_retry_candidate_payment_filter.sql",
+      "sha256": "062171a74b688c31f638c3f211e53e91266b839af8d7b797ef3a4aa236a65c9c"
     }
   ],
-  "objectInventorySha256": "86264e0a2484b2b83b8df8589574f09b1e26247d05d890dd047241d390d667b3"
+  "objectInventorySha256": "9dee58881dee9d5fe4267e09f1579a7c27197da6f4a40419b16901cbb9ded573"
 }

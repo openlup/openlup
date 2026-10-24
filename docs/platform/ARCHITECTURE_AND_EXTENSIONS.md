@@ -1398,6 +1398,38 @@ failure receipt after later case changes or recovery; conflicting terminal
 evidence still refuses. Subsequent failures retain their separate case advance. G23, transaction/correlation policy and runtime selection remain host
 composition.
 
+The native `createPostgresStockWaitStore` consumes N3 and the native M06 ATP
+seam through an injected executor, transaction callback, worker identity and
+wire-snapshot codec. Candidate discovery returns `StockWaitFrozenCase`, with a
+nullable case for refused operations not yet captured. Frozen graph bindings,
+deficits, original schedule and fingerprints remain distinct from mutable terms.
+Frozen discovery requires an active subscription on its current schedule; paused
+current waits remain open. Deficits report own reserved units separately from free ATP;
+missing units subtract both from the requirement. Closed or pending-payment
+resume callbacks return null without writes; paid fulfillment-pending orders
+can complete realization admission.
+Recovery checks schedule, generation and expired lease; N3 refuses any prepared,
+acknowledged or settled payment graph. Stock locks and whole-basket rollback
+belong to SQL. A resumed wait requires paid cycle/settlement, consumed stock and
+a local fulfillment obligation; it records no parcel arrival.
+
+`createPostgresStockAvailability` exposes read-only new-purchase ATP through the
+native seam. Its fixed 14-day soft priority and native hard holds are both
+protected; callers cannot request a renewal exemption, horizon change or excluded
+order. Only the fenced renewal allocator uses that exemption. Native safety and
+channel exposure are zero in this seam. This is no advance future-cycle hold or
+one-time checkout mutation contract. Existing own commitments can remain admitted
+when observed stock drops below them, matching the donor limit. No physical
+coverage guarantee or managed stock-wait support follows.
+
+[Native witnesses](../../tests/postgres/subscriptionStockWaitCases.ts) and
+[stock-accounting witnesses](../../tests/postgres/subscriptionStockAccountingCases.ts)
+cover refusal recovery, whole-basket rollback, fairness, X/Y replay and refund
+independence. Capability selection requires passing real PostgreSQL evidence;
+source installation and offline adapter tests alone leave stock recovery unavailable.
+P5m owns the managed half; P8 owns serving composition and G23. No executor or
+schedule is installed here.
+
 ### Renewal port recipe
 
 The experimental `@openlup/platform/subscriptions` entry exposes the hosted

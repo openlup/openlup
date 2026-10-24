@@ -63,6 +63,18 @@ describe.each([
   });
 });
 
+it("refuses a fully repinned X SECURITY DEFINER replacement at the shared header check", () => {
+  const pin = pins.find(pin => pin.path.includes("20261024184500"))!;
+  expect(() => assertBatchedForward(pin, bytes(pin), prefix(pin))).not.toThrow();
+  const sql = bytes(pin).toString().replace("SET search_path = pg_catalog", "SECURITY DEFINER SET search_path = pg_catalog");
+  expect(sql).not.toBe(bytes(pin).toString());
+  const changed = repin(pin, sql);
+  const definitions = batchedFunctionDefinitions(Buffer.from(sql));
+  for (const fn of changed.functions) fn.afterSha256 = definitions.get(fn.signature)!;
+  expect(() => assertBatchedForward(changed, Buffer.from(sql), prefix(pin)))
+    .toThrow(/^reviewed batch portable replacement attributes drifted$/u);
+});
+
 describe.each(pins)("refusal plants: $path", pin => {
   it.each(["missing definition", "duplicate definition", "extra definition"])("refuses actual SQL %s after file/statement repinning", attack => {
     const statements = sqlStatements(bytes(pin).toString());
