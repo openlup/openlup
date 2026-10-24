@@ -85,12 +85,14 @@ repair count carry on. Merging main
 requires fresh review of the resulting candidate. Stop optional edits when
 criteria, review and checks pass, then complete authorized delivery.
 
-The supervisor in the active task conversation launches fresh-context reviewers
-through the platform's native subagent tools, using the existing subscription.
-The maintainer does not copy prompts, move reports, open another conversation
-or read each diff. This is provider-neutral: Codex, Claude Code and future agents
-must satisfy the same review contract. No model API, backend, new host, account
-or transfer of subscription authentication is required.
+The supervisor launches independent fresh-context reviewers within the same
+logical task and evidence history, through native subagent tools or a supported
+local CLI using existing subscriptions. Provider/model selection does not assign
+coordination, implementation or delivery rights; the actual task grant does.
+The [execution contract](autonomous-reviewed-delivery.md#provider-neutral-execution)
+requires observed context identity, completion and exact-candidate results.
+The maintainer need not move prompts or reports between tools or read each diff.
+No model API, backend, new host, account or authentication transfer is required.
 
 The supervisor records observed native execution identities and complete results
 for the exact committed base (the candidate's fork point), head, tree, scope and criteria. Local verify and
