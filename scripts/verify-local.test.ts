@@ -124,7 +124,7 @@ describe('real Git and subprocess refusals', () => {
     const cwd = await mkdtemp(join(tmpdir(), 'verify-log-')); directories.push(cwd);
     const log = join(cwd, 'command.log');
     const source = `process.stderr.write("Local verification Vitest workers="); process.stderr.write(${JSON.stringify(`${workers}\n`)}); console.log("Local verification Vitest workers=4"); process.exitCode=7`;
-    const result = await runLogged(process.execPath, ['-e', source], cwd, processEnvironment, log);
+    const result = await runLogged(process.execPath, ['-e', source], cwd, { ...processEnvironment, CI: 'false' }, log);
     expect(result).toMatchObject({ code: 7, worker: `Local verification Vitest workers=${workers}` });
     expect(await readFile(log, 'utf8')).toContain('Local verification Vitest workers=4');
   });
