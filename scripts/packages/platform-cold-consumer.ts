@@ -132,7 +132,7 @@ export function assertExportInventory(consumer: string): void {
 export function proveInvoicingConsumer(consumer: string): void {
   consumerNode(consumer, `
 import assert from "node:assert/strict";
-import { readInvoiceCapabilities, createNativeUnsupportedInvoicePorts, runInvoiceAdapterConformance } from "@openlup/platform/invoicing";
+import { readInvoiceCapabilities, createNativeUnsupportedInvoicePorts, runInvoiceAdapterConformance, createPostgresInvoiceStore, INVOICING_MIGRATIONS, runNativeInvoiceIssueJob, collectInvoiceDuties, createIndependentInvoiceDutyBinding } from "@openlup/platform/invoicing";
 import * as contracts from "@openlup/platform/invoicing/contracts";
 assert.deepEqual(Object.keys(contracts), []);
 for (const entry of ["invoicing", "invoicing/contracts"]) assert(import.meta.resolve("@openlup/platform/" + entry).startsWith(new URL("./node_modules/", import.meta.url).href));
@@ -155,6 +155,34 @@ issue:[{input:{identity,facts:{},recoveryLookupRequired:false},expected:unsuppor
 correction:[{input:{identity:correction,before:{},after:{totalNetMinor:0,totalTaxMinor:0,totalGrossMinor:0},reason:"reason",recoveryLookupRequired:true},expected:unsupportedResult}],
 readback:[{input:identity,expected:unsupportedResult}],void:[{input:{...identity,operation:"remote_void"},expected:unsupportedResult}]}}]);
 assert(evidence.subjects[0].cases.includes("read:unsupported"));
+let calls=0;
+const store=createPostgresInvoiceStore({async query(sql,values){calls++;assert(sql.includes("invoicing_duty_readback"));assert.deepEqual(values,["order-a"]);return {rows:[{response:{orderId:"order-a",captureFaults:[],duties:[]}}]};}});
+const discoveredStore=createPostgresInvoiceStore({async query(sql,values){assert(sql.includes("NOT EXISTS (SELECT 1 FROM public.invoicing_fact_revisions"));assert.deepEqual(values,[7,"prior-a"]);assert(sql.includes("($2::uuid IS NULL OR d.id>$2::uuid)"));return {rows:[{dutyId:"owed-a",orderId:"order-a"}]};}});
+assert.deepEqual(await discoveredStore.discoverDuties(7,"prior-a"),[{dutyId:"owed-a",orderId:"order-a"}]);
+assert.equal((await store.installFacts({dutyId:"owed-a",facts:{}})).kind,"unsupported");assert.equal(calls,0);
+assert.deepEqual(await store.readDuties("order-a"),{orderId:"order-a",captureFaults:[],duties:[]});assert.equal(calls,1);
+const {readFileSync}=await import("node:fs"),{createHash}=await import("node:crypto");
+assert.equal(INVOICING_MIGRATIONS.native.correctionStorage,"child_document");assert.equal(INVOICING_MIGRATIONS.managed.correctionStorage,"base_row");
+for(const unit of INVOICING_MIGRATIONS.native.units)assert.equal(createHash("sha256").update(readFileSync(unit.url)).digest("hex"),unit.sha256);
+assert.deepEqual(await runNativeInvoiceIssueJob({store:native.store,provider:native.provider,money:native.host.money,
+  readLocalPayment:async()=>({kind:"unavailable",code:"money_unavailable"}),providerRef:"host-a"}),unsupportedResult);
+let remoteReads=0,nativeFailures=0;
+const recovered=await runNativeInvoiceIssueJob({providerRef:"fiscal-a",store:{
+  claim:async()=>[{dutyId:"duty-a",documentId:"doc-a",requestId:"req-a",token:"token-a",generation:3,leaseUntil:"2099-01-01",identity,facts:{},action:"readback",correction:null}],
+  preflight:async()=>{throw Error("unexpected payment preflight");},finish:async()=>{throw Error("unexpected acknowledgement");},
+  fail:async value=>{assert.equal(value.kind,"unknown");assert.equal(value.claim.attemptCount,3);nativeFailures++;return {kind:"recorded"};}},
+  provider:{...native.provider,read:async value=>{assert.deepEqual(value,identity);remoteReads++;return {kind:"unknown",identity,code:"unknown"};}},
+  money:{read:async()=>{throw Error("unexpected money read");}},readLocalPayment:async()=>{throw Error("unexpected local read");}});
+assert.deepEqual(recovered,{checked:1,updated:0,failures:1,ok:false});assert.equal(remoteReads,1);assert.equal(nativeFailures,1);
+assert.deepEqual(await collectInvoiceDuties({store:native.store}),unsupportedResult);
+let prepared=0,finished=0;
+const dutyBinding=createIndependentInvoiceDutyBinding({store:{
+  sweep:async()=>({collected:1,claims:[{dutyId:"duty-a",token:"token-a"}]}),
+  prepareFacts:async claim=>{assert.deepEqual(claim,{dutyId:"duty-a",token:"token-a"});prepared++;return {status:"ready",documentId:"document-a",requestId:"request-a"};},
+  finishFacts:async input=>{assert.equal(input.result.documentId,"document-a");finished++;return {dutyId:input.dutyId,status:"ready"};}
+}});
+assert.deepEqual(await dutyBinding.collect(),{kind:"collected",collected:1,prepared:1,failures:0});
+assert.equal(prepared,1);assert.equal(finished,1);
 console.log("invoicing consumer passed");
 `);
 }
@@ -301,7 +329,7 @@ export function compileConsumer(consumer: string, entries: readonly string[], co
     'export const invoiceSeam_requestReversal = {"requestKey": "p_key", "orderId": "p_order", "reason": "p_reason", "proof": "p_evidence"} satisfies Record<RequiredKeys<SeamInput<"requestReversal">>, string>;',
     'export const invoiceSeam_recordObservation = {"requestKey": "p_key", "documentId": "p_document", "eventRef": "p_observation", "eventKind": "p_observation", "identity": "p_observation", "providerDocumentRef": "p_observation", "providerDocumentNumber": "p_observation", "clearance": "p_observation", "artifacts": "p_observation", "observedAt": "p_observation", "payloadHash": "p_observation", "source": "p_observation"} satisfies Record<RequiredKeys<SeamInput<"recordObservation">>, string>;',
     'export const invoiceSeam_claimDeliveries = {"limit": "p_limit", "visibilitySeconds": "p_visibility", "requireClearance": "p_require_clearance"} satisfies Record<RequiredKeys<SeamInput<"claimDeliveries">>, string>;',
-    'export const invoiceSeam_settleDelivery = {"deliveryRef": "p_delivery", "token": "p_token", "generation": "p_generation", "providerDocumentRef": "local claimed document validation", "retrySeconds": "local managed backoff; native no-op", "result": "p_kind + p_receipt + p_evidence"} satisfies Record<RequiredKeys<SeamInput<"settleDelivery">>, string>;',
+    'export const invoiceSeam_settleDelivery = {"deliveryRef": "p_delivery", "token": "p_token", "generation": "p_generation", "providerDocumentRef": "local claimed document validation", "retrySeconds": "p_evidence (native); p_retry_seconds (managed)", "result": "p_kind + p_receipt (NULL when uncertain) + p_evidence (retryable and uncertain receipt hint)"} satisfies Record<RequiredKeys<SeamInput<"settleDelivery">>, string>;',
     'declare const invoiceIdentity: InvoiceIdentity;',
     'export const invoiceAbsent: InvoiceReadbackResult = { kind: "absent", identity: invoiceIdentity, evidence: { exact: true, complete: true, scope: invoiceIdentity, evidenceRef: "lookup-a", fingerprint: "fingerprint-a", observedAt: "2026-10-22T12:00:00Z" } };',
   ].join("\n"));

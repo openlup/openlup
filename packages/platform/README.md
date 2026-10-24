@@ -6,11 +6,11 @@ It holds the runnable server substrate an OpenLup application composes: the Node
 
 For the prepared `0.23.0` set, read the [adjacent-release migration and known
 limitations](CHANGELOG.md#0230) before selecting the opt-in parity seams.
-Install the complete native chain through position 76; follow the `0.22.0`
+Install `0.23.0` through position 76 (this unreleased source tree ends at 79); follow the `0.22.0`
 native-row migration notes. Native delivery alignment stays off or shadow until
 a host composes its automatic-renewal runner with G23 admission.
 M10 subscription renewal/retry (P1 exports, forward controls, P2 stores/executor,
-native N1 SQL landed) and M09 invoicing selection/type-only contracts (no SQL)
+native N1 SQL landed) and M09 invoicing contracts and independent duty collection
 are **EXPERIMENTAL, INCOMPLETE and DEFAULT-OFF**, not for adopter activation.
 No runner is activated; G23/N1 host obligations remain pending.
 M06 managed-host proof classes remain pending in the
@@ -54,7 +54,7 @@ timestamp used in the webhook's idempotency key.
 | `./payments` | Experimental prepared-attempt ordering with injected persistence, execution and failure policy; contracts at `./payments/contracts`. |
 | `./fulfillment`, `./fulfillment/contracts` | [Experimental fulfillment services, contracts and status canon](../../docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#fulfillment-contracts). |
 | `./subscriptions`, `./subscriptions/contracts` | Default-off, incomplete; [experimental subscription contracts and renewal port](../../docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#subscription-contracts). |
-| `./invoicing`, `./invoicing/contracts` | Default-off, incomplete invoicing selection and type-only contracts; no SQL or activation. |
+| `./invoicing`, `./invoicing/contracts` | Default-off invoicing contracts and independent duty collection; no provider activation. |
 | `./inventory` | Experimental schemas/ports, handlers, native stores, projection, injected forecast and SQL descriptor; `./inventory/contracts` DTOs. |
 | `./catalog` | Experimental neutral catalog schemas, drafts, reads, media source packs and publication ports |
 | `./catalog/contracts` | Dependency-free catalog DTOs, media resolver, authority and canonicalization helpers |
@@ -719,7 +719,7 @@ Experimental `@openlup/platform/invoicing` exposes `readInvoiceCapabilities`;
 Frozen facts, correction recovery, exact absence, owed duties and host-only fiscal,
 artifact, delivery, payout and owned-history seams are described in the
 [invoicing reference](../../docs/platform/PLATFORM_PACKAGE_REFERENCE.md#invoicing-contracts).
-No store, worker, adapter, route or activation is supplied by this contract step.
+The contract entry supplies no executor or activation.
 `createNativeUnsupportedInvoicePorts` supplies inert typed refusals for every
 host, store and provider seam. `runInvoiceAdapterConformance` checks adapter-owned
 offline fixtures; its sanitized evidence does not establish live fiscal readiness.
@@ -729,7 +729,7 @@ create/fenced-finalize order. Hosts bind compatibility payloads, seller/date/tax
 policy, captions, event descriptors and key scopes. Canonical and legacy line
 checks share the unchanged donor allocation; handoff helpers register no job or
 executor. Eight issue/line/payment/handoff cases join the existing package smoke
-selection. Native stores, continuity cutover and activation remain separate.
+selection. Continuity cutover and activation remain separate.
 
 Correction and reversal workers preserve durable identity, recovery and fenced
 outcomes through host callbacks. The reference host requires a conforming
@@ -740,3 +740,27 @@ See the [invoicing design](../../docs/platform/plans/oss-m09-invoicing.md#p3-cor
 for managed migration and reconciliation limits.
 
 See the [M09 forward owner](../../docs/platform/DATA_AND_MIGRATIONS.md#m09-invoicing-forward-design-and-control-approval) for the registered managed-correction limit and follow-up.
+
+`createPostgresInvoiceStore` uses a caller-owned structural executor for native
+owed duties, split fact leases, claims and fenced issue/correction results.
+Missing host facts refuse before writes; delivery/clearance projections remain
+host work. `INVOICING_MIGRATIONS` separates native child-document and managed
+base-row correction storage. Install the complete native catalogue, not its
+six sparse byte-identical SQL assets. The local-only Postgres adapter consumes
+this store without claiming fiscal parity or registering a worker. The
+[invoicing architecture owner](../../docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#invoicing-contracts)
+describes reversal recovery, capture faults and cutover fencing.
+`collectInvoiceDuties` and `createIndependentInvoiceDutyBinding` collect retained
+paid/handoff duties through separately committed store phases. Hosts invoke them
+outside payment and fulfillment work; missing facts remain owed. The pinned
+payment-decoupling SQL is a sparse catalogue projection, requiring the full P4
+native chain. See the architecture owner for continuity and activation limits.
+
+`runNativeInvoiceIssueJob` supplies the native create/readback binding over
+explicit local/fresh money and provider ports. Fresh non-ready results settle
+before returning; stale results write no failure. No scheduler or default
+composition is registered. Operator DDL/ACL limits of the unchanged M07 readback
+remain registered in the architecture owner.
+
+For bounded duty discovery before facts exist, including cursor continuation past
+unavailable facts, follow the [invoicing architecture owner](../../docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#invoicing-contracts).

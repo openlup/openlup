@@ -495,7 +495,9 @@
         "test/invoicing/issue.test.ts",
         "test/invoicing/canonicalLines.test.ts",
         "test/invoicing/paymentReadback.test.ts",
-        "test/invoicing/handoff.test.ts"
+        "test/invoicing/handoff.test.ts",
+        "test/invoicing/postgresStore.test.ts",
+        "test/invoicing/continuity.test.ts"
       ],
       "entrypoint": "dist/invoicing/index.d.ts",
       "snapshot": "api/invoicing.api.md"

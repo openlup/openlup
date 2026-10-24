@@ -34,11 +34,9 @@ import { createSupabaseAccountingInvoicePort } from "../../server/adapters/supab
 import {
   createOrderPaidShipmentSpinePort,
   resolveShipmentSpineBinding,
-  type CloseableOrderPaidFulfillmentPort,
 } from "../../server/runtime/fulfillment/shipmentSpineBinding.js";
 import {
-  createAccountingPaidOrderDocumentBinding,
-  type AccountingPaidOrderDocumentBinding,
+  type createAccountingPaidOrderDocumentBinding,
 } from "../../server/runtime/accounting/accountingRuntime.js";
 import { resolveBundleId } from "../../server/domains/platform-runtime/platformKernel.js";
 import { readAccountingRuntimeConfig } from "../../server/domains/accounting/accountingRuntimeConfig.js";
@@ -192,6 +190,8 @@ export function selectOrderPaidFulfillmentProvider(
 }
 
 // Composition root for the order-paid fulfillment port used by the outbox cron.
+// Native fulfillment is independent of accounting; the managed wrappers below
+// retain their existing fail-soft behavior.
 // In paid-trigger mode the accounting wrapper must be outside per-order routing
 // so every paid order requests the base invoice regardless of the selected
 // fulfillment provider. In handoff-trigger mode the default provider keeps the
@@ -210,22 +210,9 @@ export function composeOrderPaidFulfillmentPort(input: {
       requiredProviderType: "simulator",
     });
     if (!resolved.binding) return undefined;
-    const direct = createOrderPaidShipmentSpinePort(resolved.binding);
-    const accountingConfig = readAccountingRuntimeConfig(input.env);
-    if (!accountingConfig.requestEnabled) {
-      void direct.close();
-      return undefined;
-    }
-    const accounting = (input.resolveAccountingPaidOrderDocument
-      ?? createAccountingPaidOrderDocumentBinding)(input.env);
-    if (!accounting) {
-      void direct.close();
-      return undefined;
-    }
-    return withDirectPaidOrderAccounting(direct, accounting, {
-      issueTrigger: accountingConfig.issueTrigger,
-      providerKind: readAccountingLedgerProviderKind(input.env),
-    });
+    // D7: retained settlement/handoff facts feed the independent invoice sweep.
+    // Accounting readiness, locks and provider availability cannot gate a parcel.
+    return createOrderPaidShipmentSpinePort(resolved.binding);
   }
   const base = selectOrderPaidFulfillmentProvider(input.client, input.env).port ?? undefined;
   if (!base) return undefined;
@@ -244,32 +231,6 @@ export function composeOrderPaidFulfillmentPort(input: {
   return accountingConfig.requestEnabled && accountingConfig.issueTrigger === "paid"
     ? withAutoDispatchAccountingInvoiceTrigger(routed, { ...accountingOptions })
     : routed;
-}
-
-function withDirectPaidOrderAccounting(
-  fulfillment: CloseableOrderPaidFulfillmentPort,
-  accounting: AccountingPaidOrderDocumentBinding,
-  options: { issueTrigger: "handoff" | "paid"; providerKind: string },
-): CloseableOrderPaidFulfillmentPort {
-  const requestDocument = (orderId: string, phase: "paid" | "handoff") =>
-    accounting.requestInvoiceIssueFromPaidOrder({
-      idempotencyKey: `order-paid-dispatch:${orderId}:accounting-invoice-${phase}`,
-      orderId,
-      providerKind: options.providerKind,
-    });
-  return {
-    async ensureFulfilledFromPaidOrder(input) {
-      if (options.issueTrigger === "paid") await requestDocument(input.orderUuid, "paid");
-      const result = await fulfillment.ensureFulfilledFromPaidOrder(input);
-      if (options.issueTrigger === "handoff" && result.kind === "completed") {
-        await requestDocument(input.orderUuid, "handoff");
-      }
-      return result;
-    },
-    async close() {
-      await Promise.all([fulfillment.close(), accounting.close()]);
-    },
-  };
 }
 
 // Wraps the default port so orders whose customer chose an OmniPack delivery

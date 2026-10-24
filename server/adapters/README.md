@@ -204,3 +204,9 @@ separately owned conforming bridge. No live provider is used by these tests.
 Managed correction RPC arguments bind by parameter name; the adapter retains the donor object key order.
 
 See the [M09 forward owner](../../docs/platform/DATA_AND_MIGRATIONS.md#m09-invoicing-forward-design-and-control-approval) for the registered managed-correction limit, follow-up and finalization semantics.
+
+The native paid-order document facade delegates its unchanged local constructor
+SQL to `createPostgresInvoiceStore`, retaining explicit provider metadata,
+request key bytes and document reference/status/replay. The zero-tax positions
+belong only to this local path. Fiscal invoicing requires frozen host facts;
+missing facts never authorize a guessed invoice or consume an owed duty.
