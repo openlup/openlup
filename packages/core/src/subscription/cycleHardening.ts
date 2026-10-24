@@ -11,10 +11,11 @@
  *   - `ladderTerminatedByClass(failureClass, cadence?)` — whether the REASON for
  *     the refusal, rather than the rung reached, ends the ladder.
  *   - `isDunningLadderExhausted(cycle, cadence?)` — whether a refused cycle has
- *     run past the last rung, the only non-payment reason to pause.
+ *     run past the last rung; exhaustion leaves the subscription active.
  *
  * TERMINATING, not capping. An attempt past the end of the ladder answers
- * `null`, which is the pause signal; it does not answer "the last slot again".
+ * `null`, which ends automatic retries without pausing the subscription; it never
+ * answers "the last slot again".
  * Callers therefore never need a `attempt <= maxRetryAttempts()` guard of their
  * own — asking for the next slot IS the decision, and a second copy of the
  * budget check is exactly how two rails drift apart.

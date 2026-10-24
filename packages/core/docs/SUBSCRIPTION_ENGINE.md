@@ -137,9 +137,9 @@ there is none. `DEFAULT_CYCLE_RETRY_CADENCE` ships `backoffHours: [24, 72, 168]`
 ladder in place, and injectable so a deployment can publish its own.
 
 Asking for the next slot **is** the decision. `null` means only that no next
-retry is scheduled; it is a pause signal only after the rung budget is
-exhausted. Class termination before exhaustion leaves the subscription active
-and must not be treated as exhaustion. The function never answers "the last
+retry is scheduled; neither exhaustion nor class termination pauses the
+subscription. Class termination before exhaustion must not be treated as
+exhaustion. The function never answers "the last
 slot again". Callers must not add their own
 `attempt <= maxRetryAttempts()` guard — a second copy of the budget check is
 exactly how two rails drift apart.
@@ -189,7 +189,9 @@ Pass the same cadence to payment failure and dunning operations.
 `pauseSubscriptionForExpiredDunning` retains its compatibility name and inputs,
 but now returns an exhausted subscription unchanged with no event. It refuses
 non-exhausted cycles as `dunning_not_exhausted`. Exhaustion ends automatic
-retries; authorized recovery may still pay the same cycle.
+retries; authorized recovery may still pay the same cycle. Managed SQL still
+hard-codes exhaustion at rung 4 in its dunning, recovery and due-list guards;
+a custom core cadence does not configure those durable boundaries.
 
 `resumeSubscriptionFromExpiredDunning` is the customer's historical-pause recovery. It needs a
 paused subscription, the exhausted cycle and a payment method, stored or

@@ -2044,8 +2044,9 @@ export interface SubscriptionPaymentExpiredEmailVars {
      */
     cause?: PaymentFailureCustomerCause | null;
     /**
-     * Recovery-link URL for the case's `resume_subscription` token. When present
-     * the template renders the resume CTA; when absent it keeps the support-led
+     * Recovery-link URL for the case's payment-recovery token. Current exhaustion
+     * uses `repair_payment`; legacy expired cases may carry `resume_subscription`.
+     * When present the template renders the recovery CTA; otherwise it keeps the support-led
      * wording, because a button with no destination is worse than no button.
      */
     recoveryUrl?: string | null;

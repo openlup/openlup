@@ -291,7 +291,7 @@ export function pauseSubscriptionForExpiredDunning(input: {
 }
 
 /**
- * Customer-initiated recovery out of the non-payment pause.
+ * Customer-initiated recovery out of a historical non-payment pause.
  *
  * Mirrors the managed SQL `subscription_resume_after_expired_dunning`: the
  * subscription must be paused and the cycle it passes must be the refused cycle
@@ -522,8 +522,9 @@ function cycleOwnershipError(
  * sides. `cancelled` -> `active` is the owner's win-back.
  *
  * Which OPERATION may take an edge is narrower than the matrix: `active` ->
- * `paused` is the owner's pause or a historical non-payment pause,
- * and `cancelled` -> `active` is only {@link reactivateSubscription}.
+ * `paused` is now the owner's pause; historical non-payment pauses remain stored
+ * and use their separate recovery path. `cancelled` -> `active` is only
+ * {@link reactivateSubscription}.
  *
  * @beta
  */
