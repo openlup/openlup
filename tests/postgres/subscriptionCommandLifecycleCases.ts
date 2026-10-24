@@ -384,6 +384,67 @@ it('keeps native lifecycle callers unchanged, permits customer cancellation of o
  expect((await h.pool.query('SELECT status FROM public.subscription_dunning_cases WHERE subscription_id=$1',[g.subscription])).rows[0].status).toBe('open');
 });
 
+it.each(['previewed','direct'] as const)('accepts typed future-terms %s noops with an empty quote hash and preserves conflicts',async mode=>{
+ const f=await fixture(),product=randomUUID(),addon=randomUUID();
+ await h.pool.query("INSERT INTO public.catalog_products(id,slug,name) VALUES($1::uuid,$1::text,'Addon')",[product]);
+ await h.pool.query("INSERT INTO public.catalog_skus(id,product_id,sku,title,status,sellable_in_subscription) VALUES($1::uuid,$2,$1::text,'Addon','active',true)",[addon,product]);
+ await h.pool.query("INSERT INTO public.price_entries(price_list_id,variant_id,unit_price_minor,valid_from) VALUES($1,$2,70,'2026-01-01')",[f.list,addon]);
+ await h.pool.query(`INSERT INTO public.subscription_lines(subscription_id,variant_id,quantity,sort_order,is_addon,unit_price_minor,currency_code)
+  VALUES($1,$2,2,1,true,70,'XXX')`,[f.subscription,addon]);
+ await h.pool.query('UPDATE public.price_entries SET unit_price_minor=999 WHERE price_list_id=$1',[f.list]);
+ let hostCalls=0;
+ const commands=createPostgresSubscriptionCommands({
+  async withTransaction<T>(work:(db:SubscriptionQueryExecutor)=>Promise<T>) {
+   const db=await h.pool.connect();try{await db.query('BEGIN');const result=await work(db);await db.query('COMMIT');return result;}
+   catch(error){await db.query('ROLLBACK');throw error;}finally{db.release();}
+  },
+  async futureTerms(command) {
+   hostCalls++;
+   return {coreLines:command.coreLines.map(line=>({variantId:f.sku,qty:line.quantity})),
+    addonLines:command.addonLines.map(line=>({variantId:addon,qty:line.quantity})),compositionConstraint:{kind:'units',value:2}};
+  },
+ });
+ const command:Extract<SubscriptionCommand,{action:'edit_future_terms'}>={
+  actor:{kind:'operator',actorId:f.actor,clientId:f.client},subscriptionId:f.subscription,now:AT,
+  idempotencyKey:`typed-noop-${mode}`,action:'edit_future_terms',shippingAddressId:'host-verified-address',
+  planDays:28,cadenceDays:28,expectedTemplateVersion:1,acceptedQuoteHash:'',confirmedChargeTiming:true,
+  coreLines:[{sku:f.snapshot.lines[0].sku,quantity:2}],addonLines:[{sku:addon,quantity:2}],compositionConstraint:'host-units-two',
+ };
+ const before=await effects();
+ if(mode==='previewed') {
+  const preview=await commands.preview(command);
+  expect(preview).toMatchObject({status:'noop',templateVersion:1,eventId:null});
+  expect(preview).not.toHaveProperty('quoteHash');
+ }
+ const applied=await commands.apply(command) as SubscriptionCommandReceipt;
+ expect(applied).toMatchObject({outcome:mode==='previewed'?'replayed':'noop',subscriptionId:f.subscription,
+  actorId:f.actor,idempotencyKey:command.idempotencyKey,originalState:'active',revision:'1',eventId:null});
+ expect(applied.commandFingerprint).toMatch(/^[a-f0-9]{64}$/);
+ const after=await effects();
+ for(const name of Object.keys(before).filter(name=>name!=='subscription_command_receipts'))
+  expect(after[name],`${mode}: ${name} columns/xmin`).toEqual(before[name]);
+ type Receipts={count:number;rows:{row:Record<string,unknown>;xmin:string}[]};
+ const old=before.subscription_command_receipts as Receipts,current=after.subscription_command_receipts as Receipts;
+ const added=current.rows.filter(r=>r.row.actor_id===f.actor&&r.row.idempotency_key===command.idempotencyKey);
+ expect(current.count).toBe(old.count+1);expect(added).toHaveLength(1);
+ expect(added[0].row).toMatchObject({status:'noop',quote_hash:null,result:{status:'noop'}});
+ expect(current.rows.filter(r=>r!==added[0])).toEqual(old.rows);
+ const callsBeforeReplay=hostCalls;
+ for(let n=0;n<3;n++) {
+  expect(await commands.apply({...command,now:later(500)})).toEqual({...applied,outcome:'replayed'});
+  expect(await commands.preview({...command,now:later(500)})).toMatchObject({status:'noop'});
+ }
+ expect(await commands.apply({...command,cadenceDays:21})).toEqual({outcome:'refused',reason:'subscription_command_idempotency_conflict'});
+ expect(await commands.apply({...command,acceptedQuoteHash:'mismatched-nonempty-hash'}))
+  .toEqual({outcome:'refused',reason:'subscription_command_idempotency_conflict'});
+ expect(await commands.apply({...command,action:'cancel',reason:null}))
+  .toEqual({outcome:'refused',reason:'subscription_command_idempotency_conflict'});
+ expect(hostCalls).toBe(callsBeforeReplay);
+ expect(await effects()).toEqual(after);
+ expect(await commands.apply({...command,idempotencyKey:`typed-change-${mode}`,planDays:21,cadenceDays:21}))
+  .toEqual({outcome:'refused',reason:'subscription_edit_quote_required'});
+});
+
 it('binds the supported descriptor to real native command success, replay, rollback and unsupported refusal',async()=>{
  const f=await fixture();
  let hostCalls=0,hostAddress='host-verified-address';

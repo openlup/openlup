@@ -153,6 +153,8 @@ export function createPostgresSubscriptionCommands(binding: NativeSubscriptionCo
       delete payload.coreLines;
       delete payload.addonLines;
       delete payload.compositionConstraint;
+      // An empty typed hash means no quote; preserve native no-op replay/probing.
+      if (command.acceptedQuoteHash === "") delete payload.acceptedQuoteHash;
       nativeAction = "update_package_template";
     }
     return { actorId: actor.actorId, clientId: actor.clientId, subscriptionId, idempotencyKey, now, action: nativeAction, payload };

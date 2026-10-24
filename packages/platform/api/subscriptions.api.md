@@ -87,6 +87,7 @@ export type SubscriptionCommand = SubscriptionCommandContext & ({
     planDays: number;
     cadenceDays: number;
     expectedTemplateVersion: number;
+    /** Empty string means no quote (semantic no-op). */
     acceptedQuoteHash: string;
     confirmedChargeTiming: boolean;
     coreLines: readonly SubscriptionBundleLine[];

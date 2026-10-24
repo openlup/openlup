@@ -7,7 +7,9 @@ export type SubscriptionCommand = SubscriptionCommandContext & (
   | { action: "resume" | "skip" | "cancel"; reason: string | null; confirmedChargeTiming: boolean }
   | { action: "slide"; newNextCycleAt: string; confirmedChargeTiming: boolean }
   | { action: "edit_future_terms"; shippingAddressId: string; planDays: number; cadenceDays: number;
-      expectedTemplateVersion: number; acceptedQuoteHash: string; confirmedChargeTiming: boolean;
+      expectedTemplateVersion: number;
+      /** Empty string means no quote (semantic no-op). */
+      acceptedQuoteHash: string; confirmedChargeTiming: boolean;
       coreLines: readonly SubscriptionBundleLine[]; addonLines: readonly SubscriptionBundleLine[];
       compositionConstraint: string }
 );
