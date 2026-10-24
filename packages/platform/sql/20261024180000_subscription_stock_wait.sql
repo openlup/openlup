@@ -4,7 +4,8 @@
 -- Disable the wait driver before rollback and retain captured obligations.
 -- Donor: supabase/migrations/20261003123000_subscription_stock_wait.sql (87-126,
 -- 260-298, 628-650), 20261003142320_subscription_stock_wait_unpaid_discovery.sql
--- (20-23, 123-188). Native frozen recovery is pre-cycle only: operation snapshots
+-- (20-23, 116-195). Uncaptured selection rotates on operation.updated_at.
+-- Native frozen recovery is pre-cycle only: operation snapshots
 -- replace the managed unpaid cycle/order/payment graph; provider-owned graphs refuse.
 CREATE TABLE public.subscription_stock_wait_cases (
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -220,10 +221,16 @@ BEGIN
    AND ((op.state='refused' AND op.terminal_reason IN ('inventory_unavailable','reservation_expired')) OR (op.state='reserved' AND c.state='stock_secured'))
    AND (c.id IS NULL OR c.state IN ('waiting','stock_secured'))
    AND public.subscription_stock_wait_frozen(op.subscription_id,op.scheduled_at) IS NOT NULL
-  ORDER BY c.last_selected_at NULLS FIRST,op.scheduled_at,op.id LIMIT LEAST(GREATEST(p_limit,1),500)
+  ORDER BY CASE WHEN c.id IS NULL THEN op.updated_at ELSE c.last_selected_at END NULLS FIRST,op.scheduled_at,op.id LIMIT LEAST(GREATEST(p_limit,1),500)
  LOOP
   IF public.subscription_stock_wait_frozen(row.subscription_id,row.scheduled_at) IS NOT NULL THEN
-   UPDATE public.subscription_stock_wait_cases SET last_selected_at=p_now WHERE id=row.case_id;
+   IF row.case_id IS NOT NULL THEN
+    UPDATE public.subscription_stock_wait_cases SET last_selected_at=p_now WHERE id=row.case_id;
+   ELSE
+    PERFORM 1 FROM public.subscription_renewal_operations WHERE id=row.id FOR UPDATE SKIP LOCKED;
+    IF NOT FOUND THEN CONTINUE; END IF;
+    UPDATE public.subscription_renewal_operations SET updated_at=p_now WHERE id=row.id;
+   END IF;
    result:=result||jsonb_build_array(public.subscription_stock_wait_frozen(row.subscription_id,row.scheduled_at));
   END IF;
  END LOOP;

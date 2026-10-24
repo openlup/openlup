@@ -474,7 +474,7 @@
     },
     {
       "path": "db/platform/migrations/20261024180000_subscription_stock_wait.sql",
-      "sha256": "c38b4ab8630c4e375525120b99c12ceac9a895e259bd6b7e1d305b38d5a8d95e",
+      "sha256": "7e11901fd4f56e8247ad0fa76b03a8f1cf22e9356932c4147d7367e86330a0b3",
       "functions": [
         {
           "signature": "public.subscription_stock_wait_projection(public.subscription_stock_wait_cases)",
@@ -514,7 +514,7 @@
         {
           "signature": "public.subscription_stock_wait_candidates(integer,timestamptz)",
           "beforeSha256": null,
-          "afterSha256": "c3c3474e235da157f3f8b18f743a6af40f578023e15de5aacc191b4f1f4f0a0c"
+          "afterSha256": "8558bc380d3d81eed32d3fc5e71349b014bc8aed2645b07f4d1586c9f5a2a545"
         },
         {
           "signature": "public.subscription_stock_wait_normal_due(integer,timestamptz)",
@@ -572,7 +572,7 @@
           "sha256": "88f568ea334ed92df15f9149d2574fb06f5a56e82ee4d0c6740533ddfb882b4f"
         },
         {
-          "sha256": "c3c3474e235da157f3f8b18f743a6af40f578023e15de5aacc191b4f1f4f0a0c"
+          "sha256": "8558bc380d3d81eed32d3fc5e71349b014bc8aed2645b07f4d1586c9f5a2a545"
         },
         {
           "sha256": "de6b4cce14f2ca12e6fba0975d5bb50dc2cba6d2482f78accdf2e3ede4245c39"

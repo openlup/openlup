@@ -785,7 +785,10 @@ See the [M09 forward owner](#m09-invoicing-forward-design-and-control-approval) 
 The native installation prefix now includes the five approved N3/seam/allocator/
 X/Y pins at `20261024180000`, `183000`, `184000`, `184500` and `184600`, each with
 its byte-identical package SQL twin. N3 adds frozen waiting cases and stock-only
-refusal recovery; the seam subtracts hard commitments and fixed 14-day active
+refusal recovery. Uncaptured refusals rotate on the existing renewal operation
+`updated_at` selection stamp, so recovery failures before case creation cannot
+keep occupying a bounded page. Captured waits retain their case selection stamp.
+The seam subtracts hard commitments and fixed 14-day active
 subscription demand from new-purchase availability. Native safety and channel
 exposure remain zero. This is no advance reservation lifecycle or one-time
 checkout write contract. The allocator alone uses the renewal exemption.

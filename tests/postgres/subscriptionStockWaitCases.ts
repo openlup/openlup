@@ -127,6 +127,59 @@ export function registerStockWaitCases(h:{pool:Pool}) {
    expect((await call(db,'subscription_stock_wait_normal_due',[500,later(1)])).some((r:{subscription_id:string})=>r.subscription_id===normal.subscription)).toBe(true);
   } finally {await db.query('ROLLBACK');db.release();}
  });
+ it.each(['missing','stale'])('uncaptured %s stock recovery cannot starve a replenished refusal; old stamping mutant fails',async kind=>{
+  // Both operations are real allocator refusals, deliberately never admitted to N3.
+  const fixtures=[await renewal(h.pool,0),await renewal(h.pool,0)];
+  for(const f of fixtures) {
+   expect(await createPostgresRenewalReservationPort(h.pool).reserve({operationId:f.operation,claimToken:f.token,now:AT})).toMatchObject({reserved:false});
+   expect(await call(h.pool,'subscription_read_renewal',[f.identity])).toMatchObject({state:'refused',terminalReason:'inventory_unavailable'});
+  }
+  fixtures.sort((a,b)=>a.operation.localeCompare(b.operation));
+  const [failing,replenished]=fixtures;
+  if(kind==='missing')await h.pool.query('DELETE FROM public.fulfillment_stock_current WHERE source_key=$1',[failing.source]);
+  else await h.pool.query('UPDATE public.fulfillment_stock_current SET last_synced_at=$2,stale_after=$3 WHERE source_key=$1',[failing.source,later(-1),AT]);
+  await h.pool.query('UPDATE public.fulfillment_stock_current SET for_sale_quantity=10 WHERE source_key=$1',[replenished.source]);
+  const db=await h.pool.connect();try {
+   await db.query('BEGIN');
+   await db.query("UPDATE public.subscriptions SET status='cancelled' WHERE NOT(id=ANY($1::uuid[]))",[fixtures.map(f=>f.subscription)]);
+   expect((await db.query('SELECT id FROM public.subscription_stock_wait_cases WHERE renewal_operation_id=ANY($1::uuid[])',[fixtures.map(f=>f.operation)])).rows).toEqual([]);
+   const definition=(await db.query("SELECT pg_get_functiondef('public.subscription_stock_wait_candidates(integer,timestamptz)'::regprocedure) body")).rows[0].body as string;
+   const stamp=async(f:Renewal)=>(await db.query('SELECT updated_at FROM public.subscription_renewal_operations WHERE id=$1',[f.operation])).rows[0].updated_at.toISOString();
+   const witness=async()=>{
+    const originalStamp=await stamp(failing);
+    for(const [index,f] of [failing,replenished,failing].entries()) {
+     const now=later([1,2,2+1/60][index]),selected=await call(db,'subscription_stock_wait_candidates',[1,now]);
+     expect(selected).toHaveLength(1);expect(selected[0]).toMatchObject({operationId:f.operation,binding:{caseId:null}});
+     // Discovery stamps before recovery, even when recovery never creates a case.
+     expect(await stamp(f)).toBe(now);
+     await db.query('SAVEPOINT uncaptured_recovery');
+     if(f===failing) {
+      await expect(call(db,'subscription_stock_wait_recover_refusal',[f.operation,f.fingerprint,'rotation-fixture',now])).rejects.toThrow(`stock_wait_stock_${kind}`);
+      await db.query('ROLLBACK TO uncaptured_recovery');
+      expect((await db.query('SELECT id FROM public.subscription_stock_wait_cases WHERE renewal_operation_id=$1',[f.operation])).rows).toEqual([]);
+     } else {
+      expect(await call(db,'subscription_stock_wait_recover_refusal',[f.operation,f.fingerprint,'rotation-fixture',now])).toMatchObject({state:'reserved'});
+      expect((await db.query('SELECT state FROM public.subscription_stock_wait_cases WHERE renewal_operation_id=$1',[f.operation])).rows[0].state).toBe('stock_secured');
+     }
+     await db.query('RELEASE SAVEPOINT uncaptured_recovery');
+    }
+    expect(await stamp(failing)).not.toBe(originalStamp);
+   };
+   await db.query('SAVEPOINT rotation_witness');
+   await witness();
+   await db.query('ROLLBACK TO rotation_witness');await db.query('RELEASE SAVEPOINT rotation_witness');
+   const mutant=definition.replace('CASE WHEN c.id IS NULL THEN op.updated_at ELSE c.last_selected_at END','c.last_selected_at')
+    .replace(/IF row\.case_id IS NOT NULL THEN[\s\S]*?UPDATE public\.subscription_renewal_operations SET updated_at=p_now WHERE id=row\.id;\s*END IF;/u,
+     'UPDATE public.subscription_stock_wait_cases SET last_selected_at=p_now WHERE id=row.case_id;');
+   expect(mutant).not.toBe(definition);
+   expect(mutant).not.toContain('SET updated_at=p_now WHERE id=row.id');
+   await db.query('SAVEPOINT case_only_mutant');try {
+    await db.query(mutant);await expect(witness()).rejects.toThrow();
+   }finally{await db.query('ROLLBACK TO case_only_mutant');await db.query('RELEASE SAVEPOINT case_only_mutant');}
+   expect((await db.query("SELECT pg_get_functiondef('public.subscription_stock_wait_candidates(integer,timestamptz)'::regprocedure) body")).rows[0].body).toBe(definition);
+  }finally{await db.query('ROLLBACK');db.release();}
+  for(const f of fixtures)await unchangedIdentity(h.pool,f);
+ });
  it('protects soft future demand and hard holds in the native new-purchase read while the allocator uses the same seam',async()=>{
   const f=await renewal(h.pool,5),sku=f.snapshot.lines[0].sku,s=stock(f);
   expect(await s.availableToPromise(sku,AT)).toMatchObject({availableQuantity:3,hardHoldQuantity:0,softSubscriptionDemandQuantity:2});
