@@ -40,7 +40,7 @@ jobs:
           owner: ${{ github.repository_owner }}
           repositories: openlup
           permission-merge-queues: write
-          permission-contents: read
+          permission-contents: write
           permission-pull-requests: read
       - name: Enqueue the still-authorized exact head once
         env:

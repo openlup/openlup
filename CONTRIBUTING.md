@@ -2240,7 +2240,7 @@ records why these rules exist.
   `UNKNOWN` permits one fresh read, then stops for diagnosis if still unknown.
   Leave `BEHIND` to the queue when carry-over remains valid.
 - **Handoff identity.** Activation is a separate maintainer action. The dedicated
-  App is installed only on this repository, with merge-queue write, contents read
+  App is installed only on this repository, with merge-queue write, contents write
   and pull-request read permissions, and no bypass. Its private key is the
   `OPENLUP_QUEUE_APP_PRIVATE_KEY` secret in `openlup-merge-queue`, an environment
   restricted to the `main` branch with no per-run reviewer. It is never a
