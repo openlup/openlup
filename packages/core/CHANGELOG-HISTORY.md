@@ -2,6 +2,15 @@
 
 Releases moved verbatim out of the packed `CHANGELOG.md`, which keeps the current release and the two previous ones.
 
+## [0.21.0]
+
+- Publishable on the npm `latest` dist-tag as `0.21.0`, from tag
+  `openlup-core-v0.21.0`.
+
+- Republish unchanged APIs, runtime behavior and shipped SQL from `0.20.0` as part of the complete `0.21.0` package set.
+
+Migration: upgrade the complete set together; core introduces no API or schema migration in this release.
+
 ## [0.20.0]
 
 - Publishable on the npm `latest` dist-tag as `0.20.0`, from tag

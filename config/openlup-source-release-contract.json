@@ -5,17 +5,17 @@
     "npm": "11.19.0"
   },
   "inventory": {
-    "digest": "sha256-ddf72d691b212b54899feb88b5210645d86d1c2136c47ce714fba76b716529f4",
-    "classDigest": "sha256-a2cbffa74972937e093ea4ebd52db5ceb0c850e88f7c7cc2fdcd1a8523054ae0"
+    "digest": "sha256-18c2be0f5f8b19f5c435e06c4482b5c61b91621dedbe2129153acebc3d782a1e",
+    "classDigest": "sha256-d17e5f555968c91c85e8119cf20abdcd7dcffb0359899541e5993da38d58d958"
   },
   "packages": {
-    "manifestDigest": "sha256-4fd1f49ee6153984ca20dc8bfb6739dc6da8935822085262b6a9dc0762d08f58",
-    "rootLockDigest": "sha256-b054e4f2f1315c6ba46969192ba3b299c99f8f056805d778c781c16e6845fb20",
-    "coreLockDigest": "sha256-bbce3e790b4d4c0a9a61a84bfc71863b6d22aa4f8119f80506ecea6e1a901f01"
+    "manifestDigest": "sha256-5244ff3965707c9e47539d541895e54f25f5fcd30f10edc6b9771e828987fcbb",
+    "rootLockDigest": "sha256-a705f7fabbb54c40901bd05687b5dc1b6a499d502aaec3a90004f700299dcaf1",
+    "coreLockDigest": "sha256-8a56ee74c2cb2cebb1dbef3c9a61baf3c5e23aad9afb164e53471e634b105f61"
   },
   "platformMigrationManifest": {
     "path": "config/platform-migration-manifest.json",
-    "digest": "sha256-abaad6e8b68bcb071ad6c2911c47c580feaa122da5c7f9eb287ca3a15da03bad"
+    "digest": "sha256-73294292808706bdbf5741aff50f31acec8cbdaa9746fa74cec9ebf1b444b4ad"
   },
   "databaseSchema": {
     "path": "src/integrations/supabase/types.ts",
@@ -25,7 +25,7 @@
   },
   "policy": {
     "registryDigest": "sha256-19738c711bef792342483d6153060495dee23b69076e260a5a344c9089c0cc03",
-    "publicationCatalogDigest": "sha256-3dc41491b4335947d3aa90977653b1b7712d2f261be67ff2659f0382bc03604e"
+    "publicationCatalogDigest": "sha256-cbf68cf9304c3dc186a09f5018065b985b7ecfc831d1b9cb1063dab0fec64ed4"
   },
   "compatibility": {
     "typecheck": {
