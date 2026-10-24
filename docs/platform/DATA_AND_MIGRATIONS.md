@@ -326,17 +326,23 @@ feature. Once introduced, migration bytes remain immutable and repairs use a
 new forward. Stopping new co-located PRs must retain release support for histories
 already admitted this way; reverting to parent-only approval would reject them.
 
-The separate `batchedForwards` list approves the frozen M10/F17 packet: five
-native files and nine managed files. It adds no installation-chain SQL. Exact
+The separate `batchedForwards` list approves the frozen M10/F17 packet: seven
+native files and nine managed files (16 pins). It adds no installation-chain SQL. Exact
 future bytes live only in [inert fixtures](../../scripts/fixtures/reviewed-m10/).
 The [registry](../../config/reviewed-platform-forwards.json) records each full
 path, SHA-256, ordered statement hash and exact function identity with raw
 before/after CREATE hashes. Non-function statements additionally carry their
 exact SQL, including every grant target, recipient, absorption row and seed.
 The checker fixes the ordered path/signature inventory separately from that data.
+Current candidates require all 16 pins. Release-history comparison also reads
+the exact earlier 14-pin set (five native, then nine managed), preserving each
+unchanged approval's content and fixed shape position while pending pins move and native X/Y are added.
+Reordered, extra or unknown historical inventories refuse, and an approval added
+in the same commit as its SQL still cannot authorize that SQL.
 
 This batch covers four native creations (retry, commands, stock wait and the
-M06 ATP/new-purchase seam), one native allocator body replacement, managed seam,
+M06 ATP/new-purchase seam), three native body replacements (allocator, late-positive stock accounting
+and retry candidate payment filtering), managed seam,
 stock-wait and refund-evidence creations, and the six managed replacement files.
 The managed creation includes its one table, index, RLS enablement, service-only
 grants and blocking `client_absorption_policy` row. The only new existing-table
@@ -349,16 +355,30 @@ notification controls with `ON CONFLICT(slug) DO NOTHING`.
 Timestamp aliases share identity within this class (`timestamptz` and
 `timestamp with time zone`); raw definition hashes retain the original spelling.
 The due reader chains M2 → M4 and the payment applicator M1 → F17: each later
-before hash must equal the earlier after hash, and admission reads the actual
+before hash must equal the earlier after hash, and the native retry recovery and candidate readers chain N1 → X/Y. Command preview replay is folded into the uninstalled N2 fixture. Admission reads the actual
 preceding rail in filename order. Per rail, pins land as a prefix in version
-order: native P2 (160000) → P4 (170000) → P5 (180000, 183000, 184000),
-and managed P3b (155000, 160000) → P5 (175000–184000) → F17 (185000, 185100).
+order: native N1 (`20261022160000`) → N2 (`20261024170000`) → N3
+(`20261024180000`) → seam (`20261024183000`) → allocator (`20261024184000`)
+→ X (`20261024184500`) → Y (`20261024184600`); managed M1
+(`20261024155000`) → M2 (`20261024160000`) → seam (`20261024175000`) → M3
+(`20261024180000`) → M4 (`20261024181000`) → M5 (`20261024182000`) → M6
+(`20261024184000`) → F17 helper (`20261024185000`) → F17 parity (`20261024185100`).
+The pending pins follow the landed native `20261022195000` and managed
+`20261022195100` tails. N1 and the interleaved M08/M09 units keep their bytes,
+versions and ledger positions. X requires the allocator prefix.
 Every earlier same-rail pin must already exist at the candidate head with its
 whole-file pinned digest; a later landing cannot skip an absent pin.
 Missing, duplicate or extra signatures, preimage drift, reordered chains, unpinned private objects, extra/wider grants,
-changed bytes/paths and unexpected statements refuse. The native allocator
-admits exactly one replacement with an unchanged header and ACL, including its
-pre-existing PUBLIC EXECUTE default; this approval does not harden that default.
+changed bytes/paths and unexpected statements refuse. The native body replacements retain their headers and ACLs, including the
+allocator's pre-existing PUBLIC EXECUTE default; this approval does not harden
+that default. X restores a waiting obligation's released reservation to a
+committed ATP-counted hold after verified late payment, with replay leaving all
+tables and ATP unchanged. Y excludes paid cycles and settled intents before
+LIMIT, preserving due-time/UUID order so stale waiting rows cannot starve due
+unpaid work. In folded N2, a raw replay of the command preview returns the stored receipt.
+It preserves the apply definition, fresh preview output and all public-table
+counts, columns and xmin across replay. The gate compares all 43 fresh scenarios
+against the pre-fold preview body and folded N2. These pins do not install behavior or add managed parity.
 
 The lexer is only a pre-filter. The mandatory
 [real PostgreSQL/pgTAP catalog gate](../../tests/postgres/reviewedBatchForwards.test.ts)

@@ -1,14 +1,19 @@
+import { randomUUID } from "node:crypto";
 import { cpSync, existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { reviewedBatchBytes, reviewedBatchPaths } from "../../scripts/reviewed-batch-rail.js";
-import { Pool } from "pg";
+import { Pool, type PoolClient } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { assertBatchedForward, readReviewedForwardRegistry, sqlSha256, sqlStatements, type BatchedForwardBinding } from "../../scripts/reviewed-platform-forward.js";
 import { closePostgres, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, dockerAvailable, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
 import { imageIo, imageReference, pullWithRetry, readCiImage } from "../../scripts/ci-image-pull.mjs";
 import { readManagedMigrationChain } from "../../scripts/public-ci-pgtap.mjs";
 import { assertBatchCatalog, assertSameSnapshot, batchSnapshot } from "./reviewedBatchCatalog.js";
+
+import { AT, later, call, renewal, prepareOriginal, failure, positive, unchangedIdentity, type Renewal } from "./subscriptionNativeFixture.js";
+import { createNewPurchaseStockAvailabilityPort } from "@openlup/platform/inventory";
+import { deriveOfferAvailability } from "../../src/domains/commerce/offerAvailability.js";
 
 const registry = readReviewedForwardRegistry(readFileSync("config/reviewed-platform-forwards.json"));
 const fixture = (pin: BatchedForwardBinding) => reviewedBatchBytes(process.cwd(), process.cwd(), pin);
@@ -44,6 +49,7 @@ describe.each(["native", "managed"] as const)("exact batch catalog gate: %s", gr
   const pins = registry.batchedForwards!.filter(pin => pin.path.startsWith(directory));
   let container: PostgresContainer | undefined;
   let db: Pool;
+  let connection: PoolClient;
   const preceding: Buffer[] = [];
   let replayRoot: string;
   let paths: string[];
@@ -67,7 +73,7 @@ describe.each(["native", "managed"] as const)("exact batch catalog gate: %s", gr
     replayRoot = mkdtempSync(join(tmpdir(), "openlup-batch-pg-"));
     cpSync(directory, join(replayRoot, directory), { recursive: true });
     // Stay between the 18:00 pin and the next pin on either rail without replacing committed bytes.
-    const free = Array.from({ length: 60 }, (_, second) => `${directory}/202610221805${String(second).padStart(2, "0")}_unpinned_gate_probe.sql`)
+    const free = Array.from({ length: 60 }, (_, second) => `${directory}/202610241805${String(second).padStart(2, "0")}_unpinned_gate_probe.sql`)
       .find(path => !existsSync(join(replayRoot, path)));
     if (!free) throw new Error("Reviewed batch gate has no free interleaved probe filename");
     interleaved = free;
@@ -78,6 +84,9 @@ describe.each(["native", "managed"] as const)("exact batch catalog gate: %s", gr
     container = await runPostgresContainer({ name: `reviewed-batch-${graph}-${process.pid}`, password: "synthetic-conformance", image });
     if (!await waitForPostgresTcpReady(container.connectionString)) throw new Error("Reviewed batch PostgreSQL unavailable");
     db = new Pool({ connectionString: portable ? container.connectionString : container.connectionString.replace("postgres://postgres:", "postgres://supabase_admin:"), max: 1 });
+    // Keep transaction/savepoint proofs on one connection even after expected refusals.
+    connection = await db.connect();
+    db.query = connection.query.bind(connection) as typeof db.query;
     expect((await db.query("SHOW standard_conforming_strings")).rows).toEqual([{ standard_conforming_strings: "on" }]);
     if (!portable) {
       // Same prerequisites and default-ACL discipline as public-ci-pgtap.
@@ -102,7 +111,146 @@ describe.each(["native", "managed"] as const)("exact batch catalog gate: %s", gr
     // Reset dump session settings. Validate bodies of every new forward in PG.
     await db.query("SET check_function_bodies=on; SET search_path=public,extensions");
   }, postgresSetupTimeoutMs); // Includes a first managed PG17 image pull and the complete prefix.
-  afterAll(async () => { await closePostgres(container, db); if (replayRoot) rmSync(replayRoot, { recursive: true, force: true }); }, postgresTeardownTimeoutMs);
+  afterAll(async () => { connection?.release(); await closePostgres(container, db); if (replayRoot) rmSync(replayRoot, { recursive: true, force: true }); }, postgresTeardownTimeoutMs);
+
+const previewSignature = 'public.subscription_command_preview(uuid,uuid,text,uuid,text,jsonb,timestamptz)';
+const applySignature = 'public.subscription_command_apply(uuid,uuid,text,uuid,text,jsonb,timestamptz)';
+async function commandDefinition(signature=previewSignature):Promise<string> {
+ return (await db.query('SELECT pg_get_functiondef($1::regprocedure) definition',[signature])).rows[0].definition;
+}
+async function commandFixture() {
+ const f = await renewal(db);
+ await db.query('DELETE FROM public.subscription_renewal_operations WHERE id=$1', [f.operation]);
+ await db.query("UPDATE public.subscriptions SET next_cycle_at=$2,started_at='2026-01-01' WHERE id=$1", [f.subscription, later(200)]);
+ const list = (await db.query("INSERT INTO public.price_lists(name,region_code,currency) VALUES('N2 command fixture','ZZ','XXX') RETURNING id")).rows[0].id;
+ const sku = (await db.query('SELECT id FROM public.catalog_skus WHERE sku=$1', [f.snapshot.lines[0].sku])).rows[0].id;
+ await db.query("UPDATE public.subscriptions SET price_list_id=$2,currency_code='XXX' WHERE id=$1", [f.subscription, list]);
+ await db.query("UPDATE public.catalog_skus SET sellable_in_subscription=true,status='active' WHERE id=$1", [sku]);
+ await db.query("INSERT INTO public.price_entries(price_list_id,variant_id,unit_price_minor,valid_from) VALUES($1,$2,350,'2026-01-01')", [list, sku]);
+ await db.query("INSERT INTO public.subscription_lines(subscription_id,variant_id,quantity,sort_order,unit_price_minor,currency_code) VALUES($1,$2,2,0,100,'XXX')", [f.subscription, sku]);
+ await db.query("INSERT INTO public.subscription_method_states(subscription_id,health_state) VALUES($1,'healthy')", [f.subscription]);
+ const addon = randomUUID();
+ await db.query("INSERT INTO public.catalog_products(id,slug,name) VALUES($1::uuid,$1::text,'Addon')", [addon]);
+ await db.query("INSERT INTO public.catalog_skus(id,product_id,sku,title,status,sellable_in_subscription) VALUES($1::uuid,$1::uuid,$1::text,'Addon','active',true)", [addon]);
+ await db.query("INSERT INTO public.price_entries(price_list_id,variant_id,unit_price_minor,valid_from) VALUES($1,$2,70,'2026-01-01')", [list, addon]);
+ return {...f, actor:randomUUID(), sku, list, addon};
+}
+type Fixture = Awaited<ReturnType<typeof commandFixture>>;
+const bundle = (f:Fixture) => ({coreLines:[{variantId:f.sku, qty:2}], compositionConstraint:{kind:'units', value:2}, expectedTemplateVersion:1});
+async function raw(f:Fixture, key:string, action:string, payload:unknown={}, at=AT, apply=false) {
+ // Explicit native SQL only. No TypeScript command store or replay short circuit.
+ return (await db.query(`WITH receipt AS MATERIALIZED (SELECT public.subscription_command_${apply ? 'apply' : 'preview'}(
+ $1::uuid,$2::uuid,$3::text,$4::uuid,$5::text,$6::jsonb,$7::timestamptz) result)
+ SELECT result,result::text bytes FROM receipt`, [f.actor, f.client, key, f.subscription, action, JSON.stringify(payload), at])).rows[0] as {result:Record<string,unknown>;bytes:string};
+}
+async function effects(xmin=false) {
+ const tables = (await db.query("SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY tablename")).rows;
+ const result: Record<string,unknown> = {};
+ for (const {tablename} of tables) {
+  const name = String(tablename).replaceAll('"', '""');
+  result[tablename] = (await db.query(`SELECT count(*)::int count,COALESCE(jsonb_agg(
+   ${xmin ? "jsonb_build_object('columns',to_jsonb(t),'xmin',t.xmin::text)" : 'to_jsonb(t)'}
+   ORDER BY to_jsonb(t)::text),'[]'::jsonb) rows FROM public."${name}" t`)).rows[0];
+ }
+ return result;
+}
+type Scenario = {name:string; action?:string; payload?:(f:Fixture)=>unknown; setup?:(f:Fixture)=>Promise<unknown>; at?:string; status?:string; error?:string; apply?:boolean};
+const scenarios: Scenario[] = [
+ {name:'resize', action:'resize_bundle', payload:f=>({...bundle(f), coreLines:[{variantId:f.sku,qty:3}]})},
+ {name:'update-bundle', action:'update_bundle'},
+ {name:'update-package-template', action:'update_package_template', payload:f=>({...bundle(f),addonLines:[]})},
+ {name:'cadence', action:'update_plan_length', payload:()=>({planDays:21,expectedTemplateVersion:1})},
+ {name:'cadence-explicit', action:'update_plan_length', payload:()=>({cadenceDays:14,expectedTemplateVersion:1})},
+ {name:'add-addon', action:'add_addon', payload:f=>({variantId:f.addon,qty:1,expectedTemplateVersion:1})},
+ ...['remove_addon','update_addon_quantity'].map(action=>({name:action,action,payload:(f:Fixture)=>({variantId:f.addon,qty:2,expectedTemplateVersion:1}),setup:(f:Fixture)=>db.query("INSERT INTO public.subscription_lines(subscription_id,variant_id,quantity,sort_order,is_addon,unit_price_minor,currency_code) VALUES($1,$2,1,1,true,70,'XXX')",[f.subscription,f.addon])})),
+ ...['set_next_cycle_date','skip_next_cycle','slide_next_cycle','cancel','pause','resume','order_now','reactivate','multi_cycle_prepaid'].map(action=>({name:`preview-${action}`,action,status:'refused'})),
+ {name:'not-active',status:'refused',setup:f=>db.query("UPDATE public.subscriptions SET status='cancelled' WHERE id=$1",[f.subscription])},
+ {name:'locked',status:'refused',setup:f=>db.query("INSERT INTO public.subscription_cycles(subscription_id,scheduled_at,status) VALUES($1,$2,'payment_pending')",[f.subscription,later(200)])},
+ {name:'dunning',status:'refused',setup:f=>db.query("INSERT INTO public.subscription_dunning_cases(subscription_id,client_id,idempotency_key) VALUES($1,$2,'n2-dunning')",[f.subscription,f.client])},
+ {name:'expired-edit-window',status:'refused',at:later(500)},
+ {name:'edit-window-boundary',status:'refused',at:later(128)},
+ {name:'missing-payment-method',status:'refused',setup:f=>db.query('DELETE FROM public.subscription_method_states WHERE subscription_id=$1',[f.subscription])},
+ {name:'stale-template',status:'refused',setup:f=>db.query('UPDATE public.subscriptions SET template_version=2 WHERE id=$1',[f.subscription])},
+ {name:'missing-template',status:'refused',payload:f=>({...bundle(f),expectedTemplateVersion:undefined})},
+ {name:'invalid-cadence',status:'refused',payload:f=>({...bundle(f),cadenceDays:91})},
+ {name:'invalid-template-type',status:'refused',payload:f=>({...bundle(f),expectedTemplateVersion:'bad'})},
+ {name:'overflow-template',status:'refused',payload:f=>({...bundle(f),expectedTemplateVersion:'999999999999999999999'})},
+ {name:'missing-price-list',status:'refused',setup:f=>db.query('UPDATE public.subscriptions SET price_list_id=NULL,currency_code=NULL WHERE id=$1',[f.subscription])},
+ {name:'invalid-composition',status:'refused',payload:f=>({...bundle(f),compositionConstraint:{version:1,data:{}}})},
+ {name:'bundle-total-mismatch',action:'update_bundle',status:'refused',payload:f=>({...bundle(f),coreLines:[{variantId:f.sku,qty:3}]})},
+ {name:'addon-not-found',action:'remove_addon',status:'refused',payload:f=>({variantId:f.addon,expectedTemplateVersion:1})},
+ {name:'empty-lines',status:'refused',payload:f=>({...bundle(f),coreLines:[]})},
+ {name:'invalid-lines',status:'refused',payload:f=>({...bundle(f),coreLines:[{variantId:'bad',qty:0}]})},
+ {name:'duplicate-lines',status:'refused',payload:f=>({...bundle(f),coreLines:[{variantId:f.sku,qty:1},{variantId:f.sku,qty:1}]})},
+ {name:'catalog-unavailable',status:'refused',setup:f=>db.query('DELETE FROM public.price_entries WHERE price_list_id=$1',[f.list])},
+ {name:'invalid-preview-accepted-hash',error:'22023',payload:f=>({...bundle(f),acceptedQuoteHash:'a'.repeat(64)})},
+ {name:'invalid-preview-payload',error:'22023',payload:()=>[]},
+ {name:'forbidden',error:'22023',setup:async f=>{f.client=randomUUID();}},
+ // N2 preview has no quote-expired refusal: an expired apply quote and an expired edit window are distinct.
+ {name:'fresh-after-unrelated-expired-quote',setup:async f=>{await raw(f,'old-expired-n2-quote','resize_bundle',bundle(f));await db.query("UPDATE public.subscription_edit_quotes SET expires_at='2026-01-01' WHERE subscription_id=$1",[f.subscription]);}},
+ {name:'apply-expired-quote',apply:true,status:'refused',at:later(1)},
+ {name:'apply-stale-template',apply:true,status:'refused',setup:f=>db.query('UPDATE public.subscriptions SET template_version=2 WHERE id=$1',[f.subscription])},
+ {name:'apply-resize',apply:true},
+];
+async function proveFreshCommandDifferential() {
+ const n2Definition = await commandDefinition();
+ const n2Apply = await commandDefinition(applySignature);
+ const sql = sqlStatements(fixture(pins.find(pin => pin.path.includes("20261024170000"))!).toString())
+  .find(statement => statement.startsWith('CREATE FUNCTION public.subscription_command_preview('))!
+  .replace('CREATE FUNCTION', 'CREATE OR REPLACE FUNCTION');
+ const preFold = sql.replace("(r.command->'payload')-'acceptedQuoteHash'", "r.command->'payload'-'acceptedQuoteHash'");
+ expect(preFold).not.toBe(sql);
+ expect(scenarios).toHaveLength(43);
+ for (const scenario of scenarios) {
+  await db.query('BEGIN');
+  try {
+   const f = await commandFixture(), key = `fresh-${scenario.name}`;
+   let payload = scenario.payload ? scenario.payload(f) : bundle(f);
+   if (scenario.apply) {
+    const preview = await raw(f, key, 'resize_bundle', payload);
+    payload = {...payload as Record<string,unknown>, acceptedQuoteHash:preview.result.quoteHash};
+   }
+   await scenario.setup?.(f);
+   // Two UUID defaults are nondeterministic incidental receipt identities. Fix them in this
+   // rolled-back fixture only; no returned bytes or row columns are masked/normalized.
+   for (const table of ['subscription_edit_quotes','subscription_command_receipts']) {
+    const id = randomUUID();
+    await db.query(`ALTER TABLE public.${table} ALTER COLUMN id SET DEFAULT '${id}'::uuid`);
+   }
+   // Successful apply also inserts an event. Fix its incidental identity for the same reason.
+   if (scenario.apply) for (const table of ['subscription_events','subscription_lines']) await db.query(`ALTER TABLE public.${table} ALTER COLUMN id SET DEFAULT '${randomUUID()}'::uuid`);
+   const baseline = await effects();
+   await db.query('SAVEPOINT differential');
+   async function run() {
+    await db.query('SAVEPOINT expected_error');
+    let outcome: unknown;
+    try {
+     const response = await raw(f, key, scenario.action ?? 'resize_bundle', payload, scenario.at ?? AT, scenario.apply);
+     expect(scenario.error,scenario.name).toBeUndefined();
+     expect(response.result.status,scenario.name).toBe(scenario.status ?? (scenario.apply ? 'applied' : 'previewed'));
+     outcome = {bytes:response.bytes};
+    } catch (error) {
+     if (!scenario.error) throw error;
+     expect(error).toMatchObject({code:scenario.error});
+     outcome = {code:(error as {code:string}).code, message:(error as Error).message};
+     await db.query('ROLLBACK TO expected_error');
+    }
+    await db.query('RELEASE SAVEPOINT expected_error');
+    return {outcome,effects:await effects()};
+   }
+   await db.query(preFold);
+   const before = await run();
+   await db.query('ROLLBACK TO differential');
+   expect(await effects()).toEqual(baseline);
+   await db.query(sql);
+   const after = await run();
+   // Literal UTF-8 byte equality of JSONB text responses and complete ordered table snapshots.
+   expect(JSON.stringify(after), scenario.name).toBe(JSON.stringify(before));
+  } finally { await db.query('ROLLBACK'); }
+ }
+ expect(await commandDefinition()).toBe(n2Definition);
+ expect(await commandDefinition(applySignature)).toBe(n2Apply);
+}
 
   it.each(pins)("proves exact objects, ACLs and rows after the integrated prefix: $path", async pin => {
     await applyCommittedBefore(pin.path);
@@ -114,15 +262,17 @@ describe.each(["native", "managed"] as const)("exact batch catalog gate: %s", gr
     try {
       await db.query(bytes.toString());
       await assertBatchCatalog(db, pin, bytes, before, await batchSnapshot(db));
-      if (!portable && pin.path.endsWith("20261022185000_provider_refund_evidence.sql")) {
+      if (!portable && pin.path.endsWith("20261024185000_provider_refund_evidence.sql")) {
         await db.query(`GRANT EXECUTE ON FUNCTION ${pin.functions[0]!.signature} TO authenticated`);
         await expect(assertBatchCatalog(db, pin, bytes, before, await batchSnapshot(db))).rejects.toThrow();
       }
     } finally { await db.query("ROLLBACK"); }
     assertSameSnapshot(before, await batchSnapshot(db));
-    const attacks = portable && pin.path.includes("20261022184000")
+    const attacks = portable && pin.path.includes("20261024184000")
       ? [`REVOKE EXECUTE ON FUNCTION ${pin.functions[0]!.signature} FROM PUBLIC;`]
-      : !portable && pin.path.includes("20261022175000")
+      : portable && /20261024184[56]00/u.test(pin.path)
+        ? [`GRANT EXECUTE ON FUNCTION ${pin.functions[0]!.signature} TO authenticated;`]
+      : !portable && pin.path.includes("20261024175000")
         ? ["CREATE INDEX unpinned_existing_table_index ON public.subscriptions(id);"] : [];
     for (const attack of attacks) {
       const sql = bytes.toString() + "\n" + attack;
@@ -137,6 +287,8 @@ describe.each(["native", "managed"] as const)("exact batch catalog gate: %s", gr
     }
     await db.query(bytes.toString());
     preceding.push(bytes);
+    if (portable && pin.path.includes('20261024170000')) await proveFreshCommandDifferential();
+
     if (!portable) {
     const tap = (await db.query(`SELECT extensions.is(
       (SELECT count(*) FROM pg_proc WHERE oid=ANY(ARRAY(SELECT to_regprocedure(name) FROM unnest($1::text[]) name))),
@@ -145,8 +297,135 @@ describe.each(["native", "managed"] as const)("exact batch catalog gate: %s", gr
     }
   }, 120_000);
 
+  if (portable) {
+const scoped = async (fn:()=>Promise<void>) => { await db.query('BEGIN'); try { await fn(); } finally { await db.query('ROLLBACK'); } };
+async function decline(available=2, lines=1) {
+ const f = await renewal(db,available,lines), original = await prepareOriginal(db,f);
+ expect((await reservation(f)).status).toBe('committed');
+ const input = {...failure(),evidenceKey:`decline-${f.operation}`};
+ await call(db,'subscription_retry_apply_failure',[f.operation,`failure-${f.operation}`,input]);
+ expect((await call(db,'subscription_retry_read',[f.operation])).state).toBe('waiting');
+ expect((await reservation(f)).status).toBe('released');
+ return {...f,original};
+}
+async function atp(f:Renewal,at=later(25),renewalExemption=false) {
+ return call(db,'inventory_available_to_promise',[f.source,f.snapshot.lines[0].sku,at,renewalExemption]);
+}
+async function reservation(f:Renewal) {
+ return (await db.query('SELECT * FROM public.fulfillment_inventory_reservations WHERE renewal_operation_id=$1',[f.operation])).rows[0];
+}
+async function recover(f:Renewal) {
+ return call(db,'subscription_retry_record_recovery',[f.operation,`paid-${f.operation}`,positive(f)]);
+}
+async function outOfBand(f:Awaited<ReturnType<typeof decline>>) {
+ await call(db,'payment_truth_ingest_event',[`oob-${f.operation}`,'e'.repeat(64),`oob-key-${f.operation}`,f.original.settlementIntentId,'captured',f.snapshot.totalAmountMinor,'XXX',later(1),null,null,{externalRef:`oob-${f.operation}`},null,null,'recovered']);
+}
+async function cohort() {
+ const stale:Awaited<ReturnType<typeof decline>>[]=[];
+ for (let n=0;n<4;n++) { const f=await decline(); await outOfBand(f); stale.push(f); }
+ // Each guard is necessary independently, even when externally settled ledgers differ.
+ await db.query("UPDATE public.subscription_cycles SET status='payment_pending' WHERE renewal_operation_id=$1",[stale[0].operation]);
+ await db.query("UPDATE public.commerce_settlement_intents SET status='failed',settled_at=NULL WHERE id=$1",[stale[1].original.settlementIntentId]);
+ const genuine=[await decline(),await decline(),await decline()];
+ for (const [index,f] of genuine.entries()) await db.query('UPDATE public.subscription_retry_obligations SET next_retry_at=$2 WHERE renewal_operation_id=$1',[f.operation,later(index===2?24.5:25)]);
+ const records=(await db.query('SELECT id,renewal_operation_id FROM public.subscription_retry_obligations WHERE renewal_operation_id=ANY($1::uuid[]) ORDER BY next_retry_at,id',[genuine.map(f=>f.operation)])).rows;
+ return {stale,genuine,expected:records.map(r=>r.id)};
+}
+it('X restores paid lines to ATP, preserves future subscription stock, refuses a one-time offer and has zero-delta recovery replay',async()=>scoped(async()=>{
+ const f=await decline(2,2);
+ expect((await reservation(f)).status).toBe('released');
+ const before=await atp(f);expect(before).toMatchObject({available_quantity:0,hard_hold_quantity:0,soft_subscription_demand_quantity:2});
+ const result=await recover(f);
+ expect(result).toMatchObject({state:'recovered',next_retry_at:null});
+ expect((await reservation(f))).toMatchObject({status:'committed',expires_at:null,terminal_reason:null});
+ const paidAtp=await atp(f);expect(paidAtp).toMatchObject({available_quantity:0,hard_hold_quantity:2,soft_subscription_demand_quantity:0});
+ expect(await atp(f,later(25),true)).toMatchObject({available_quantity:0,hard_hold_quantity:2});
+ for(const line of f.snapshot.lines) expect(await call(db,'inventory_available_to_promise',[f.source,line.sku,later(25),false])).toMatchObject({available_quantity:0,hard_hold_quantity:2});
+ expect((await db.query('SELECT status FROM public.subscription_cycles WHERE renewal_operation_id=$1',[f.operation])).rows[0].status).toBe('paid');
+ // Move the observation clock into the next cycle's soft-priority horizon.
+ expect(await atp(f,later(25+15*24))).toMatchObject({available_quantity:0,hard_hold_quantity:2,soft_subscription_demand_quantity:2});
+ const sku=f.snapshot.lines[0].sku;
+ const readRows=await call(db,'inventory_new_purchase_stock_read',[f.source,JSON.stringify([sku]),later(25)]);
+ expect(readRows).toMatchObject([{sku,available:0,availableForNewPurchases:0,activeHolds:2}]);
+ const port=createNewPurchaseStockAvailabilityPort({readPort:{read:async()=>new Map(readRows.map(row=>[row.sku,row]))},functionMissingFallback:null,functionMissingError:'absent',defaultLowStockThreshold:1,defaultHorizonDays:14,deriveOfferAvailability,observe:console},{mode:'new_purchase'});
+ const offer=await port.getAvailability({items:[{sku,productSlug:'fixture',variantId:randomUUID(),requestedQuantity:1,checkoutMode:'one_time'}]});
+ expect(offer[0]).toMatchObject({status:'out_of_stock',sellableNow:0,visibleInConfigurator:false});
+ const snapshot=await batchSnapshot(db);
+ expect(await recover(f)).toEqual(result);assertSameSnapshot(snapshot,await batchSnapshot(db));expect(await atp(f)).toEqual(paidAtp);
+ await unchangedIdentity(db,f);
+ await db.query('SAVEPOINT replay_conflict');
+ await expect(call(db,'subscription_retry_record_recovery',[f.operation,`paid-${f.operation}`,{...positive(f),amountMinor:1}])).rejects.toMatchObject({code:'23505'});
+ await db.query('ROLLBACK TO replay_conflict');assertSameSnapshot(snapshot,await batchSnapshot(db));
+}));
+it('Y filters beyond LIMIT, keeps due ordering/ties, clamps and future rows, and makes no writes',async()=>scoped(async()=>{
+ const f=await cohort(),before=await batchSnapshot(db);
+ const rows=await call(db,'subscription_retry_candidates',[2,later(26)]);
+ expect(rows.map(row=>row.id)).toEqual(f.expected.slice(0,2));
+ expect(await call(db,'subscription_retry_candidates',[50,later(24)])).toEqual([]);
+ expect((await call(db,'subscription_retry_candidates',[0,later(26)])).map(row=>row.id)).toEqual(f.expected.slice(0,1));
+ expect((await call(db,'subscription_retry_candidates',[1000,later(26)])).map(row=>row.id)).toEqual(f.expected);
+ expect((await call(db,'subscription_retry_candidates',[null,later(26)])).map(row=>row.id)).toEqual(f.expected.slice(0,1));
+ assertSameSnapshot(before,await batchSnapshot(db));
+ for(const row of [...f.stale,...f.genuine]) await unchangedIdentity(db,row);
+}));
+
+it('returns stored raw receipts with zero counts/columns/xmin delta across committed replays interleaved with a later command', async () => {
+ const f = await commandFixture(), key = 'zero-delta-n2-preview', payload = bundle(f);
+ const original = await raw(f,key,'resize_bundle',payload);
+ expect(original.result).toMatchObject({status:'previewed',canApply:true});
+
+ async function replay(phase:string,expected:typeof original,count=3) {
+  for (let i=0;i<count;i++) {
+   const before = await effects(true);
+   const result = await raw(f,key,'resize_bundle',payload,later(500));
+   expect(result.bytes).toBe(expected.bytes);
+   const after = await effects(true);
+   expect(JSON.stringify(after)).toBe(JSON.stringify(before));
+   const receipt = (await db.query('SELECT result::text bytes,xmin::text xmin FROM public.subscription_command_receipts WHERE actor_id=$1 AND idempotency_key=$2',[f.actor,key])).rows[0];
+   expect(result.bytes).toBe(receipt.bytes);
+   expect(Object.keys(before).length,phase).toBeGreaterThan(100);
+   expect(receipt.xmin).toBeDefined();
+  }
+ }
+ await replay('before-later-command',original);
+ const laterCommand = await raw(f,'later-n2-slide-command','slide_next_cycle',{newNextCycleAt:later(300)},AT,true);
+ expect(laterCommand.result).toMatchObject({status:'applied'});
+ await replay('after-later-command',original);
+ const applied = await raw(f,key,'resize_bundle',{...payload,acceptedQuoteHash:original.result.quoteHash},AT,true);
+ expect(applied.result).toMatchObject({status:'applied'});
+ await replay('after-apply-stored-result',applied);
+ const before = await effects(true);
+ expect((await raw(f,key,'update_plan_length',payload)).result).toMatchObject({status:'refused',reason:'subscription_command_idempotency_conflict'});
+ expect((await raw(f,key,'resize_bundle',{...payload,expectedTemplateVersion:2})).result).toMatchObject({status:'refused',reason:'subscription_command_idempotency_conflict'});
+ for (let i=0;i<3;i++) expect((await raw(f,key,'resize_bundle',{...payload,acceptedQuoteHash:original.result.quoteHash},later(500),true)).result)
+  .toEqual({...applied.result,status:'replayed',originalStatus:'applied'});
+ expect(await effects(true)).toEqual(before);
+ // The witness must reject a same-value write (including one hidden from column comparisons).
+ const unchanged = await effects(true);
+ await db.query('UPDATE public.subscription_command_receipts SET result=result WHERE actor_id=$1 AND idempotency_key=$2',[f.actor,key]);
+ const mutated = await effects(true);
+ expect(mutated).not.toEqual(unchanged);
+ expect((mutated.subscription_command_receipts as {rows:unknown[]}).rows).not.toEqual((unchanged.subscription_command_receipts as {rows:unknown[]}).rows);
+},120_000);
+
+it('replays a stored refusal and an apply-created receipt directly, without public-table writes', async () => {
+ const f = await commandFixture();
+ const refusal = await raw(f,'fresh-n2-unsupported','cancel');
+ expect(refusal.result).toMatchObject({status:'refused',reason:'subscription_command_preview_unsupported'});
+ const cancelled = await raw(f,'fresh-n2-cancel-apply','cancel',{},AT,true);
+ expect(cancelled.result).toMatchObject({status:'applied',subscriptionStatus:'cancelled'});
+ const before = await effects(true);
+ for (let i=0;i<3;i++) {
+  expect((await raw(f,'fresh-n2-unsupported','cancel',{},later(500))).bytes).toBe(refusal.bytes);
+  expect((await raw(f,'fresh-n2-cancel-apply','cancel',{},later(500))).bytes).toBe(cancelled.bytes);
+ }
+ expect(await effects(true)).toEqual(before);
+},120_000);
+
+  }
+
   if (!portable) it("keeps the exact notification seeds idempotent and preserves disabled local controls", async () => {
-    const pin = pins.find(pin => pin.path.endsWith("20261022182000_subscription_lifecycle_message_scan.sql"))!;
+    const pin = pins.find(pin => pin.path.endsWith("20261024182000_subscription_lifecycle_message_scan.sql"))!;
     const seed = pin.statements.find(statement => statement.sql?.startsWith("INSERT INTO public.comms_notification_controls"))!.sql!;
     await db.query("BEGIN");
     try {
@@ -198,14 +477,16 @@ describe.each(["native", "managed"] as const)("exact batch catalog gate: %s", gr
 });
 
 it.each([
-  ["db/platform/migrations", "20261022184000", "20261022183000"],
-  ["supabase/migrations", "20261022184000", "20261022175000"],
-  ["supabase/migrations", "20261022185000", "20261022175000"],
+  ["db/platform/migrations", "20261024184000", "20261024183000"],
+  ["db/platform/migrations", "20261024184500", "20261024184000"],
+  ["db/platform/migrations", "20261024184600", "20261024184500"],
+  ["supabase/migrations", "20261024184000", "20261024175000"],
+  ["supabase/migrations", "20261024185000", "20261024175000"],
 ])("refuses a landed later pin over an absent predecessor: %s %s", (directory, later, missing) => {
   const root = mkdtempSync(join(tmpdir(), "openlup-batch-pg-hole-"));
   const pins = registry.batchedForwards!.filter(pin => pin.path.startsWith(directory));
   try {
-    for (const pin of pins.filter(pin => later.includes("185000") ? pin.path.includes(later) || pin.path < `${directory}/20261022170000` : pin.path <= pins.find(pin => pin.path.includes(later))!.path && !pin.path.includes(missing))) {
+    for (const pin of pins.filter(pin => later.includes("185000") ? pin.path.includes(later) || pin.path < `${directory}/20261024170000` : pin.path <= pins.find(pin => pin.path.includes(later))!.path && !pin.path.includes(missing))) {
       mkdirSync(dirname(join(root, pin.path)), { recursive: true });
       writeFileSync(join(root, pin.path), fixture(pin));
     }

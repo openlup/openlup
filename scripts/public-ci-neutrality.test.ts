@@ -88,7 +88,7 @@ function validBaseline() {
   return { schemaVersion: 2, sourceCommit: "a".repeat(40), scannerPins: Object.fromEntries(scannerPaths.map((path) => [path, "c".repeat(40)])), counts: { ["b".repeat(64)]: { brand: 1 } } };
 }
 const registryPath = "config/reviewed-platform-forwards.json";
-const refundRail = "supabase/migrations/20261022185000_provider_refund_evidence.sql";
+const refundRail = "supabase/migrations/20261024185000_provider_refund_evidence.sql";
 const refundFixture = `scripts/fixtures/reviewed-m10/${refundRail}`;
 function managedPinnedSources() {
   const registryBytes = readFileSync(join(sourceRoot, registryPath));
@@ -164,8 +164,8 @@ describe("tree-wide neutrality ratchet", () => {
   });
 
   it.each([
-    "db/platform/migrations/20261022185000_provider_refund_evidence.sql",
-    "packages/platform/sql/20261022185000_provider_refund_evidence.sql",
+    "db/platform/migrations/20261024185000_provider_refund_evidence.sql",
+    "packages/platform/sql/20261024185000_provider_refund_evidence.sql",
     "scripts/fixtures/reviewed-m10/db/platform/migrations/example.sql",
     "supabase/migrations/example.ts", "scripts/example.ts", "package.json", "docs/example.md",
     "config/another-registry.json", "supabase/migrations/../example.sql",
@@ -176,7 +176,7 @@ describe("tree-wide neutrality ratchet", () => {
   it("pins the exact registry COMMENT independently of unrelated registry edits", () => {
     const bytes = readFileSync(join(sourceRoot, registryPath));
     const registry = JSON.parse(bytes.toString());
-    const pin = registry.batchedForwards.find(pin => pin.path.endsWith("20261022185100_m07_refund_parity.sql"));
+    const pin = registry.batchedForwards.find(pin => pin.path.endsWith("20261024185100_m07_refund_parity.sql"));
     const statement = pin.statements.find(statement => statement.sql?.startsWith("COMMENT ON FUNCTION"));
     const row = { path: hash(registryPath), category: "ui-13", before: 0, after: 1 };
     const check = () => unreviewedPinnedIntroductionIncreases([row], new Map([[registryPath, Buffer.from(JSON.stringify(registry))]]));

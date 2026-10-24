@@ -4,6 +4,7 @@
 -- commands use the native edit-quote/catalogue contract, with command-bound
 -- acceptance and atomic future renewal terms. Prices lock until the next edit;
 -- proration is none. No operation/cycle/order/payment snapshot is rewritten.
+-- Raw preview replay extracts the stored payload before subtracting acceptedQuoteHash.
 -- Donor semantics: generic_bundle_actions (20260711151000), package no-op truth
 -- (20260711170020), slide no-op truth (20260713110000), locked renewal lane
 -- (20260826160000). Private introductory and address policy stay host-owned.
@@ -49,7 +50,7 @@ BEGIN
  IF NOT FOUND THEN RAISE EXCEPTION 'subscription_command_forbidden' USING ERRCODE='22023'; END IF;
  SELECT * INTO r FROM public.subscription_command_receipts WHERE actor_id=p_actor_id AND idempotency_key=p_key;
  IF FOUND THEN
-  IF jsonb_set(r.command,'{payload}',r.command->'payload'-'acceptedQuoteHash')<>command THEN
+  IF jsonb_set(r.command,'{payload}',(r.command->'payload')-'acceptedQuoteHash')<>command THEN
    RETURN jsonb_build_object('status','refused','reason','subscription_command_idempotency_conflict');
   END IF;
   RETURN r.result;
