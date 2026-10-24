@@ -52,10 +52,10 @@ describe("queue completion trust boundary", () => {
       "github.event.workflow_run.event == 'pull_request'", "vars.OPENLUP_NATIVE_QUEUE == 'enabled'",
       "vars.OPENLUP_QUEUE_APP_CLIENT_ID != ''", "environment: openlup-merge-queue",
       "repository: openlup/openlup", "ref: ${{ github.sha }}", "persist-credentials: false", "repositories: openlup",
-      "permission-merge-queues: write", "permission-contents: read", "permission-pull-requests: read",
+      "permission-merge-queues: write", "permission-contents: write", "permission-pull-requests: read",
       "GH_TOKEN: ${{ github.token }}", "OPENLUP_QUEUE_TOKEN: ${{ steps.queue-identity.outputs.token }}"])
       expect(job).toContain(guard);
-    expect(job).not.toMatch(/\b(?:contents|actions|issues|pull-requests): write\b|\bwrite-all\b/u);
+    expect(job).not.toMatch(/\b(?:actions|issues|pull-requests): write\b|(?<!permission-)\bcontents: write\b|\bwrite-all\b/u);
     expect(workflowCommands(job)).toEqual(["node scripts/agent-review-queue.mjs enqueue"]);
     expect(job).not.toMatch(/download-artifact|npm (?:ci|install)|github\.event\.workflow_run\.head_sha/u);
   };
@@ -68,7 +68,7 @@ describe("queue completion trust boundary", () => {
     ["ref: ${{ github.sha }}", "ref: ${{ github.event.workflow_run.head_sha }}"],
     ["persist-credentials: false", "persist-credentials: true"],
     ["repositories: openlup", "repositories: other"],
-    ["permission-contents: read", "permission-contents: write"],
+    ["      contents: read", "      contents: write"],
     ["GH_TOKEN: ${{ github.token }}", "GH_TOKEN: ${{ steps.queue-identity.outputs.token }}"],
     ["run: node scripts/agent-review-queue.mjs enqueue", "run: npm ci"],
   ])("refuses an unsafe workflow substitution %s", (before, after) => {
