@@ -2,10 +2,10 @@
 import { execFile, spawn } from 'node:child_process';
 import { accessSync, constants } from 'node:fs';
 import { mkdir, open, rename, rm, writeFile } from 'node:fs/promises';
-import { basename, delimiter, join, resolve } from 'node:path';
+import { delimiter, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { env as processEnvironment } from 'node:process';
 import { carryOver, continueOwner, demand, integrationReviewContext, prepareCandidate, receiptSummary, recordReport, RECEIPT_MARKER, verdict } from './agent-review-decide.mjs';
 
@@ -111,7 +111,11 @@ export async function verifyCandidateCommand({ cwd, session, command, args = [],
   if (resource) {
     demand(/^[a-z][a-z0-9:-]{0,127}$/u.test(resource), 'resource profile is invalid');
     const broker = (env.PATH ?? '').split(delimiter).map(path => join(path, 'ai-resource-gate')).find(path => { try { accessSync(path, constants.X_OK); return true; } catch { return false; } });
-    demand(broker, 'ai-resource-gate is unavailable'); args = ['run', '--wait', `${resource}:${basename(cwd)}`, '--', command, ...args]; command = broker;
+    demand(broker, 'ai-resource-gate is unavailable');
+    // The broker matches lane keywords in the full key: a worktree name must
+    // not introduce another keyword (even hexadecimal hashes can contain e2e).
+    const worktree = createHash('sha256').update(resolve(cwd)).digest().readBigUInt64BE().toString(10);
+    args = ['run', '--wait', `${resource}:wt${worktree}`, '--', command, ...args]; command = broker;
   }
   const code = await run(command, args, cwd, { ...env, OPENLUP_HEAVY_ACTIVE: cwd });
   const after = await snapshot(cwd, before.base, { env }); const final = verdict(session, after, Date.now()); demand(final.ok, final.reason, final.code);
