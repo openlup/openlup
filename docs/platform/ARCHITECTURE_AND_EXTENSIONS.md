@@ -975,6 +975,11 @@ invalid supplied timestamps are refused and counted. Compact offsets such as
 `+0200`, minute precision and timestamps without a zone retain base acceptance;
 original bytes still identify the webhook. The shared timestamp parser remains
 unchanged from PR2 for reconciliation, `createdAt` and stock movements.
+With Zod 4.6.6, the ingress explicitly admits minute precision as well as the
+default seconds/fractions precision. Both branches enforce calendar validity;
+compact offsets are expanded only in the validation copy, never in receipt-key
+input. The existing replay witness and invalid-calendar cases protect that
+compatibility boundary when the validation dependency changes.
 
 O3 deliberately retains a typed fact and an opaque raw-event pointer. The host
 must retain the referenced evidence under its own access and retention policy;

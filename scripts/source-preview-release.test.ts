@@ -267,10 +267,11 @@ const CORE_SCRIPTS = {
   "api:check": "node --experimental-strip-types ./scripts/api-contract.ts",
   "api:update": "npm run build && node --experimental-strip-types ./scripts/api-contract.ts --update",
   ci: "npm run test:coverage && npm run typecheck:smoke && npm run api:check && npm run docs:check && npm run release:check && npm run test:consumer",
-  "ci:required": "npm run test:coverage && npm run typecheck:smoke && npm run docs:check && npm run release:check && npm run test:consumer",
+  "ci:required": "npm run test:coverage && npm run typecheck:smoke && npm run docs:check && npm run release:admission && npm run test:consumer",
   "docs:check": "node --experimental-strip-types ./scripts/documentation-contract.ts",
   prepack: "npm run build",
   prepublishOnly: "node --experimental-strip-types ./scripts/refuse-publish.ts",
+  "release:admission": "npm run build && node --experimental-strip-types ./scripts/release-check.ts admission",
   "release:audit": "node --experimental-strip-types ./scripts/release-check.ts audit",
   "release:bundle": "node --experimental-strip-types ./scripts/release-bundle.ts",
   "release:check": "npm run build && node --experimental-strip-types ./scripts/release-check.ts all",
@@ -331,7 +332,7 @@ type Seal = { regenerate?: boolean; classes?: Record<string, string>; omitFromCa
 /** A synthetic previous preview as a root commit, plus a helper that commits and checks one descendant. */
 function syntheticRelease(options: { extraFiles?: Record<string, string | Buffer>; seed?: { repo: string; rootCommit: string } } = {}) {
   const repo = mkdtempSync(join(realpathSync(tmpdir()), "openlup-descendant-release-"));
-  const run = (args: string[]) => execFileSync("git", args, { cwd: repo, encoding: "utf8" }).trim();
+  const run = (args: string[]) => execFileSync("git", ["-c", "maintenance.auto=false", "-c", "gc.auto=0", ...args], { cwd: repo, encoding: "utf8" }).trim();
   const read = (path: string) => existsSync(join(repo, path)) ? readFileSync(join(repo, path)) : undefined;
   const apply = (change: TreeChange) => {
     if (typeof change === "function") return change(repo);
@@ -787,7 +788,7 @@ CREATE FUNCTION public.zz_body() RETURNS text LANGUAGE sql SET search_path=pg_ca
         for (const gate of gates(sample, head)) expect(gate).toThrow(/pre-existing or duplicate object/u);
       } finally { sample.cleanup(); }
     });
-    it.each(["simultaneous", "late", "changed"])("refuses %s portable creation approval", (timing) => {
+    it.each(["simultaneous", "late", "changed"])("checks introduction-time portable creation approval: %s", (timing) => {
       const sample = creationFixture();
       try {
         if (timing !== "changed") {
@@ -802,7 +803,14 @@ CREATE FUNCTION public.zz_body() RETURNS text LANGUAGE sql SET search_path=pg_ca
           sample.apply({ [REVIEWED_FORWARD_PATH]: json(sample.registry) });
           head = sample.commit("Creation approval after introduction");
         }
-        for (const gate of gates(sample, head)) expect(gate).toThrow(/approved separately/u);
+        const [ci, release] = gates(sample, head);
+        if (timing === "simultaneous") { expect(ci).not.toThrow(); expect(release).not.toThrow(); }
+        else if (timing === "late") {
+          // One PR range may bind its new SQL, but release cannot repair a bad mainline introduction.
+          expect(ci).not.toThrow(); expect(release).toThrow(/approved separately/u);
+        } else {
+          expect(ci).toThrow(/path or bytes/u); expect(release).toThrow(/approved separately/u);
+        }
       } finally { sample.cleanup(); }
     });
     it.each(["missing", "extra", "duplicate", "path", "hash", "fields", "replacement overlap"])("refuses malformed portable creation registry: %s", (probe) => {
@@ -988,17 +996,17 @@ $$;
         for (const gate of gates(sample, head)) expect(gate).toThrow(/definition drifted/u);
       } finally { sample.cleanup(); }
     });
-    it("refuses portable SQL and a registry change in the same feature diff", () => {
+    it("admits portable SQL and its repin with the matching manifest in the same feature", () => {
       const sample = portableFixture();
       try {
-        sample.append();
+        sample.append(exactSql + "\n");
         sample.registry.portableReplacementForwards![0]!.sha256 = sqlSha256(exactSql + "\n");
-        sample.apply({ [path]: exactSql + "\n", [REVIEWED_FORWARD_PATH]: json(sample.registry) });
-        const head = sample.commit("Self-approved portable feature");
-        for (const gate of gates(sample, head)) expect(gate).toThrow(/approved separately/u);
+        sample.apply({ [REVIEWED_FORWARD_PATH]: json(sample.registry) });
+        const head = sample.commit("Co-located portable feature");
+        for (const gate of gates(sample, head)) expect(gate).not.toThrow();
       } finally { sample.cleanup(); }
     });
-    it("refuses the first portable approval introduced with exact SQL", () => {
+    it("refuses adding unrelated future portable pins alongside one SQL introduction", () => {
       const sample = portableFixture((registry) => { delete registry.portableReplacementForwards; });
       try {
         sample.append();
@@ -1157,7 +1165,7 @@ END $$;
         for (const gate of gates(sample, head)) expect(gate).toThrow(/definition drifted/u);
       } finally { sample.cleanup(); }
     });
-    it.each(["new approval", "changed approval"])("refuses stock self-approval: %s", probe => {
+    it.each(["new approval", "changed approval"])("admits co-located stock approval under the existing class: %s", probe => {
       const sample = stockFixture(probe === "new approval" ? registry => { registry.portableReplacementForwards!.pop(); } : undefined);
       try {
         const sql = probe === "changed approval" ? exactSql + "\n" : exactSql;
@@ -1165,8 +1173,8 @@ END $$;
         sample.registry.portableReplacementForwards = structuredClone(approved.portableReplacementForwards!);
         sample.registry.portableReplacementForwards[2]!.sha256 = sqlSha256(sql);
         sample.apply({ [REVIEWED_FORWARD_PATH]: json(sample.registry) });
-        const head = sample.commit("Stock feature approves itself");
-        for (const gate of gates(sample, head)) expect(gate).toThrow(/approved separately/u);
+        const head = sample.commit("Stock feature carries its own exact pins");
+        for (const gate of gates(sample, head)) expect(gate).not.toThrow();
       } finally { sample.cleanup(); }
     });
     it.each(["M09", "M10"])("freezes existing %s controls in self-check while release binds the stock entry", programme => {
@@ -1192,6 +1200,22 @@ END $$;
         expect(() => assertDescendantSourceRelease(sample.repo, sample.rootCommit, head)).toThrow(/approved separately/u);
       } finally { sample.cleanup(); }
     });
+  });
+  it.each(["managed", "runtime", "identity"])("admits same-feature pins within the established %s class", kind => {
+    const sample = fixture(kind === "identity" ? addIdentity : undefined, null, kind !== "managed");
+    try {
+      if (kind === "identity") {
+        sample.run(["reset", "--hard", sample.rootCommit]);
+        const prior = { ...sample.registry, runtimeForwards: sample.registry.runtimeForwards!.slice(0, 1) };
+        sample.apply({ [REVIEWED_FORWARD_PATH]: json(prior) }); sample.approval = sample.commit("Established class before identity introduction");
+      } else {
+        const forward = kind === "managed" ? sample.registry.replacementForwards[0]! : sample.registry.runtimeForwards![0]!;
+        sample.change[forward.path] += "\n";
+        forward.sha256 = sqlSha256(sample.change[forward.path]!);
+      }
+      sample.apply({ ...sample.change, [REVIEWED_FORWARD_PATH]: json(sample.registry) }); const head = sample.commit("SQL and exact pins in one feature");
+      for (const gate of gates(sample, head)) expect(gate).not.toThrow();
+    } finally { sample.cleanup(); }
   });
   it("admits exact bytes after a separate control commit, including new signatures in the pinned file", () => {
     const sample = fixture();
@@ -1251,7 +1275,7 @@ END $$;
       expect(() => assertDescendantSourceRelease(sample.repo, sample.rootCommit, head)).toThrow(/approved separately/u);
     } finally { sample.cleanup(); }
   });
-  it.each(["one byte", "another path", "additional SQL", "old definition", "missing signature", "duplicate signature", "same feature approval"])("refuses %s in required CI and release prepare", (probe) => {
+  it.each(["one byte", "another path", "additional SQL", "old definition", "missing signature", "duplicate signature"])("refuses %s in required CI and release prepare", (probe) => {
     const sample = fixture((registry, bytes) => {
       if (probe === "old definition") registry.replacementForwards[0]!.functions[0]!.beforeSha256 = "0".repeat(64);
       if (probe === "missing signature" || probe === "duplicate signature") {
@@ -1263,11 +1287,6 @@ END $$;
       if (probe === "one byte") sample.change[paths[0]!] += "\n";
       if (probe === "additional SQL") sample.change[paths[0]!] += "\nDROP TABLE public.existing;";
       if (probe === "another path") { sample.change["supabase/migrations/20261001000004_other.sql"] = sample.change[paths[0]!]!; delete sample.change[paths[0]!]; }
-      if (probe === "same feature approval") {
-        sample.registry.replacementForwards[0]!.sha256 = sqlSha256(sample.change[paths[0]!]! + "\n");
-        sample.change[paths[0]!] += "\n";
-        sample.change[REVIEWED_FORWARD_PATH] = json(sample.registry);
-      }
       sample.apply(sample.change); const head = sample.commit("Refused feature");
       for (const gate of gates(sample, head)) expect(gate).toThrow(/reviewed replacement/u);
     } finally { sample.cleanup(); }
@@ -1432,7 +1451,7 @@ END $$;
     "DROP POLICY admin_all_pets ON public.pets;",
     "REVOKE INSERT (email) ON public.clients FROM service_role;",
     "SELECT 1;",
-    "duplicate statement", "duplicate capability", "duplicate column", "missing privilege pin", "empty privileges", "non-empty functions", "present retiredPolicies", "third runtime forward", "duplicate path", "invalid path", "privilege order", "same feature approval",
+    "duplicate statement", "duplicate capability", "duplicate column", "missing privilege pin", "empty privileges", "non-empty functions", "present retiredPolicies", "third runtime forward", "duplicate path", "invalid path", "privilege order",
   ])("refuses identity admission %s in both gates even when independently repinned", (probe) => {
     const sample = fixture((registry, bytes) => {
       addIdentity(registry, bytes);
@@ -1453,12 +1472,6 @@ END $$;
       forward.sha256 = sqlSha256(bytes[4]!);
     }, null, true);
     try {
-      if (probe === "same feature approval") {
-        sample.run(["reset", "--hard", sample.rootCommit]);
-        const prior = { ...sample.registry, runtimeForwards: sample.registry.runtimeForwards!.slice(0, 1) };
-        sample.apply({ [REVIEWED_FORWARD_PATH]: json(prior) }); sample.approval = sample.commit("Separate runtime control before identity feature");
-        sample.change[REVIEWED_FORWARD_PATH] = json(sample.registry);
-      }
       sample.apply(sample.change); const head = sample.commit("Refused identity feature");
       for (const gate of gates(sample, head)) expect(gate).toThrow(/reviewed replacement/u);
     } finally { sample.cleanup(); }
@@ -1506,11 +1519,11 @@ END $$;
       expect(() => assertDescendantSourceRelease(sample.repo, sample.rootCommit, head)).toThrow(/approved separately/u);
     } finally { sample.cleanup(); }
   }, 30_000);
-  it("refuses any registry byte change in the feature comparison range even when release approval content is unchanged", () => {
+  it("accepts registry formatting changes while preserving every semantic binding", () => {
     const sample = fixture(addIdentity, null, true);
     try {
       sample.apply({ ...sample.change, [REVIEWED_FORWARD_PATH]: json(sample.registry) + "\n" }); const head = sample.commit("Feature with registry whitespace");
-      expect(() => assertAppendOnlyMigrationHistory(sample.repo, sample.approval, head)).toThrow(/approved separately/u);
+      expect(() => assertAppendOnlyMigrationHistory(sample.repo, sample.approval, head)).not.toThrow();
       expect(() => assertDescendantSourceRelease(sample.repo, sample.rootCommit, head)).not.toThrow();
     } finally { sample.cleanup(); }
   }, 30_000);
@@ -1521,7 +1534,7 @@ END $$;
       for (const gate of gates(sample, head)) expect(gate).not.toThrow();
     } finally { sample.cleanup(); }
   });
-  it.each(["wrong table", "wrong name", "wrong preimage", "missing binding", "duplicate binding", "extra binding", "missing statement", "duplicate statement", "unlisted statement", "alter policy", "create policy", "if exists", "after grant", "prior policy drift", "same feature approval"])("refuses independently repinned policy retirement: %s", (probe) => {
+  it.each(["wrong table", "wrong name", "wrong preimage", "missing binding", "duplicate binding", "extra binding", "missing statement", "duplicate statement", "unlisted statement", "alter policy", "create policy", "if exists", "after grant", "prior policy drift"])("refuses independently repinned policy retirement: %s", (probe) => {
     const sample = fixture(undefined, null, true, true);
     try {
       const forward = sample.registry.runtimeForwards![0]!;
@@ -1577,7 +1590,7 @@ END $$;
     } finally { sample.cleanup(); }
   });
   it.each([
-    "same feature approval", "byte drift", "prior function drift", "header drift", "trailing SECURITY DEFINER", "trailing SET search_path", "trailing STABLE", "tagged trailing SECURITY DEFINER", "duplicate runtime forward", "duplicate privilege", "duplicate update capability", "wrong runtime function", "unknown column", "missing privilege pin", "null prior definition", "duplicate runtime signature",
+    "byte drift", "prior function drift", "header drift", "trailing SECURITY DEFINER", "trailing SET search_path", "trailing STABLE", "tagged trailing SECURITY DEFINER", "duplicate runtime forward", "duplicate privilege", "duplicate update capability", "wrong runtime function", "unknown column", "missing privilege pin", "null prior definition", "duplicate runtime signature",
     "GRANT SELECT (id) ON public.unrelated TO service_role;",
     "GRANT SELECT ON public.admin_users TO service_role;",
     "GRANT SELECT (membership_provenance) ON public.admin_users TO authenticated;",
@@ -1652,11 +1665,6 @@ END $$;
     try {
       const path = sample.registry.runtimeForwards![0]!.path;
       if (probe === "byte drift") sample.change[path] += "\n";
-      if (probe === "same feature approval") {
-        sample.change[path] += "\n";
-        sample.registry.runtimeForwards![0]!.sha256 = sqlSha256(sample.change[path]!);
-        sample.change[REVIEWED_FORWARD_PATH] = json(sample.registry);
-      }
       sample.apply(sample.change); const head = sample.commit("Refused runtime feature");
       for (const gate of gates(sample, head)) expect(gate).toThrow(/reviewed replacement/u);
     } finally { sample.cleanup(); }

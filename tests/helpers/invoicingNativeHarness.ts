@@ -8,7 +8,7 @@ import type { PaymentTruthEvent } from "@openlup/platform/payments/contracts";
 import { createPostgresMigrationRunner } from "../../server/adapters/postgres/migrationRunner.js";
 import { readSelectedCatalogProjection, selectedCatalogProjectionPayload } from "../../server/adapters/postgres/selectedCatalogProjection.js";
 import type { PlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
-import { dockerAvailable, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "./postgresContainer.js";
+import { closePostgres, dockerAvailable, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "./postgresContainer.js";
 import { fixture } from "./fulfillmentNative.js";
 
 export const manifest: PlatformMigrationManifest = JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8"));
@@ -119,6 +119,9 @@ export function invoicingNativeHarness() {
       replay = { ...(await this.runner().apply()), pending: (await this.runner().status()).pending };
       console.log(`M09 setup fresh+prefix-upgrade ms=${Math.round(performance.now()-at)}`);
     },
-    async stop() { await pool?.end(); await container?.remove(); if (prefixRoot) rmSync(prefixRoot, { recursive: true, force: true }); },
+    async stop() {
+      try { await closePostgres(container, pool); }
+      finally { if (prefixRoot) rmSync(prefixRoot, { recursive: true, force: true }); }
+    },
   };
 }

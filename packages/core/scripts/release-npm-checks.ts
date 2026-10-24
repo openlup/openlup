@@ -1,8 +1,9 @@
 import { spawnSync } from "node:child_process";
 import type { SpawnSyncReturns } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { basename, join } from "node:path";
+import { basename, dirname, join } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { gzipSync } from "node:zlib";
 import { assertReleaseSbomIdentity } from "./release-bundle.ts";
 
@@ -71,6 +72,78 @@ export type PackReport = {
   files?: Array<{ path: string }>;
 };
 
+/** Audit only the committed lock; callers select existing workspaces without installing or resolving. */
+export function auditProductionDependencies(input: {
+  packageRoot: string;
+  maximumVulnerabilities: Record<string, number>;
+  workspaces?: readonly string[];
+  run?: NpmRunner;
+  sleep?: (milliseconds: number) => void;
+}): void {
+  const { packageRoot, maximumVulnerabilities, workspaces } = input;
+  if (workspaces !== undefined && workspaces.length === 0) throw new Error("production audit needs a nonempty workspace selection");
+  const run = input.run ?? runNpm;
+  const sleep = input.sleep ?? sleepSync;
+  // Both retryable shapes log and back off identically; only the reason differs.
+  const retryAudit = (attempt: number, reason: string): void => {
+    const retrying = attempt < AUDIT_ATTEMPTS;
+    console.log(
+      `npm audit ${reason} (attempt ${attempt} of ${AUDIT_ATTEMPTS})${retrying ? "; retrying" : ""}`,
+    );
+    if (retrying) sleep(AUDIT_RETRY_DELAYS_MS[attempt - 1] ?? 0);
+  };
+  const auditArgs = [
+    "audit",
+    "--omit=dev",
+    "--package-lock-only",
+    "--json",
+    ...(workspaces === undefined ? ["--workspaces=false"] : ["--include-workspace-root=false", ...workspaces.map((workspace) => `--workspace=${workspace}`)]),
+  ];
+  let lastReport = "";
+  let lastAttemptTimedOut = false;
+  for (let attempt = 1; attempt <= AUDIT_ATTEMPTS; attempt += 1) {
+    const result = run(packageRoot, auditArgs, AUDIT_ATTEMPT_TIMEOUT_MS);
+    // `spawnSync` reports a timeout as ETIMEDOUT and its own kill as a
+    // signal. Checked before parsing, because a killed child's empty stdout
+    // would otherwise be reported as "no JSON output" - the wrong fault.
+    lastAttemptTimedOut =
+      result.error?.code === "ETIMEDOUT" || Boolean(result.signal);
+    if (lastAttemptTimedOut) {
+      retryAudit(attempt, AUDIT_TIMED_OUT);
+      continue;
+    }
+    lastReport = result.stdout ?? "";
+    const report = parseCommandJson<AuditReport>(result, "npm audit");
+    const actual = report.metadata?.vulnerabilities;
+    if (!actual) {
+      retryAudit(attempt, AUDIT_NO_TOTALS);
+      continue;
+    }
+    const violations = [];
+    for (const [severity, maximum] of Object.entries(
+      maximumVulnerabilities,
+    )) {
+      const count = actual[severity] ?? 0;
+      if (count > maximum)
+        violations.push(`${severity}: ${count} > ${maximum}`);
+    }
+    assert(
+      violations.length === 0,
+      `production audit budget exceeded:\n${violations.join("\n")}`,
+    );
+    console.log("production dependency audit ok");
+    return;
+  }
+  // The empty-report wording is #3455's, kept verbatim.
+  if (lastAttemptTimedOut)
+    throw new Error(
+      `npm audit ${AUDIT_TIMED_OUT} on the last of ${AUDIT_ATTEMPTS} attempts`,
+    );
+  throw new Error(
+    `npm audit report is missing vulnerability totals after ${AUDIT_ATTEMPTS} attempts; first ${AUDIT_REPORT_HEAD_CHARACTERS} characters of the last report:\n${lastReport.slice(0, AUDIT_REPORT_HEAD_CHARACTERS)}`,
+  );
+}
+
 export function createNpmReleaseChecks(input: {
   packageRoot: string;
   manifest: Manifest;
@@ -85,14 +158,6 @@ export function createNpmReleaseChecks(input: {
   const sleep = input.sleep ?? sleepSync;
   const readPackedFile =
     input.readPackedFile ?? ((path: string) => readFileSync(join(packageRoot, path)));
-  // Both retryable shapes log and back off identically; only the reason differs.
-  const retryAudit = (attempt: number, reason: string): void => {
-    const retrying = attempt < AUDIT_ATTEMPTS;
-    console.log(
-      `npm audit ${reason} (attempt ${attempt} of ${AUDIT_ATTEMPTS})${retrying ? "; retrying" : ""}`,
-    );
-    if (retrying) sleep(AUDIT_RETRY_DELAYS_MS[attempt - 1] ?? 0);
-  };
 
   return {
     sbom: () => {
@@ -137,58 +202,7 @@ export function createNpmReleaseChecks(input: {
         `production CycloneDX SBOM ok (${componentNames.size} components)`,
       );
     },
-    audit: () => {
-      const auditArgs = [
-        "audit",
-        "--omit=dev",
-        "--package-lock-only",
-        "--json",
-        "--workspaces=false",
-      ];
-      let lastReport = "";
-      let lastAttemptTimedOut = false;
-      for (let attempt = 1; attempt <= AUDIT_ATTEMPTS; attempt += 1) {
-        const result = run(packageRoot, auditArgs, AUDIT_ATTEMPT_TIMEOUT_MS);
-        // `spawnSync` reports a timeout as ETIMEDOUT and its own kill as a
-        // signal. Checked before parsing, because a killed child's empty stdout
-        // would otherwise be reported as "no JSON output" - the wrong fault.
-        lastAttemptTimedOut =
-          result.error?.code === "ETIMEDOUT" || Boolean(result.signal);
-        if (lastAttemptTimedOut) {
-          retryAudit(attempt, AUDIT_TIMED_OUT);
-          continue;
-        }
-        lastReport = result.stdout ?? "";
-        const report = parseCommandJson<AuditReport>(result, "npm audit");
-        const actual = report.metadata?.vulnerabilities;
-        if (!actual) {
-          retryAudit(attempt, AUDIT_NO_TOTALS);
-          continue;
-        }
-        const violations = [];
-        for (const [severity, maximum] of Object.entries(
-          gates.audit.maximumVulnerabilities,
-        )) {
-          const count = actual[severity] ?? 0;
-          if (count > maximum)
-            violations.push(`${severity}: ${count} > ${maximum}`);
-        }
-        assert(
-          violations.length === 0,
-          `production audit budget exceeded:\n${violations.join("\n")}`,
-        );
-        console.log("production dependency audit ok");
-        return;
-      }
-      // The empty-report wording is #3455's, kept verbatim.
-      if (lastAttemptTimedOut)
-        throw new Error(
-          `npm audit ${AUDIT_TIMED_OUT} on the last of ${AUDIT_ATTEMPTS} attempts`,
-        );
-      throw new Error(
-        `npm audit report is missing vulnerability totals after ${AUDIT_ATTEMPTS} attempts; first ${AUDIT_REPORT_HEAD_CHARACTERS} characters of the last report:\n${lastReport.slice(0, AUDIT_REPORT_HEAD_CHARACTERS)}`,
-      );
-    },
+    audit: () => auditProductionDependencies({ packageRoot, maximumVulnerabilities: gates.audit.maximumVulnerabilities, run, sleep }),
     pack: () => {
       const report = packDryRun(packageRoot, run);
       const paths = (report.files ?? []).map((file) => file.path).sort();
@@ -331,4 +345,13 @@ function parseCommandJson<Parsed>(
 
 function assert(condition: unknown, message: string): asserts condition {
   if (!condition) throw new Error(message);
+}
+
+// Repository publication invokes this existing owner tooling as a process, without importing package internals.
+if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href) {
+  const [phase, ...workspaces] = process.argv.slice(2);
+  assert(phase === "audit" && workspaces.every((workspace) => /^\.\/packages\/[a-z0-9][a-z0-9-]*$/u.test(workspace)), "use audit [./packages/<workspace> ...]");
+  const gates = JSON.parse(readFileSync(join(dirname(fileURLToPath(import.meta.url)), "../release-gates.json"), "utf8")) as Gates;
+  assert(JSON.stringify(Object.entries(gates.audit.maximumVulnerabilities).sort()) === JSON.stringify(Object.entries({ critical: 0, high: 0, moderate: 0, low: 0, info: 0 }).sort()), "publication audit requires the existing zero-vulnerability release budget");
+  auditProductionDependencies({ packageRoot: process.cwd(), maximumVulnerabilities: gates.audit.maximumVulnerabilities, ...(workspaces.length ? { workspaces } : {}) });
 }

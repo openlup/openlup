@@ -1,3 +1,4 @@
+import { postgresSetupTimeoutMs, postgresTeardownTimeoutMs } from '../helpers/postgresContainer.js';
 import { randomUUID } from 'node:crypto';
 import { readFileSync,readdirSync } from 'node:fs';
 import { join } from 'node:path';
@@ -6,7 +7,7 @@ import { createPostgresDeliveryAlignmentPort,createPostgresFulfillmentDispatchSt
 import { createPostgresRenewalSettlementPort } from '../../server/adapters/postgres/commerce/renewalSettlement.js';
 import { executor,fixture,nativeHarness,openCase,replacement,schedule } from '../helpers/fulfillmentNative.js';
 const h=nativeHarness('alignment');
-beforeAll(()=>h.start(),120_000);afterAll(()=>h.stop());
+beforeAll(()=>h.start(),postgresSetupTimeoutMs);afterAll(()=>h.stop(), postgresTeardownTimeoutMs);
 const arrival=(shipment:string,at='2026-09-04T12:00:00.000Z',key=`arrival-${shipment}`) => createPostgresDeliveryAlignmentPort(executor(h.pool)).recordArrival({requestKey:key,parcelRef:shipment,deliveredAt:at,evidenceRef:`evidence:${shipment}`});
 const cases=async(order:string)=>(await h.pool.query('SELECT * FROM public.subscription_delivery_alignment_cases WHERE predecessor_order_id=$1 ORDER BY created_at,id',[order])).rows;
 const admit=async(subscription:string,at='2026-08-29T12:00:00.000Z')=>(await h.pool.query('SELECT public.subscription_delivery_alignment_admit_renewal($1,$2,$3) AS response',[subscription,at,'2026-10-21T12:00:00Z'])).rows[0].response;

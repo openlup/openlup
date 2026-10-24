@@ -1,9 +1,9 @@
 import { execFileSync, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import { allowedFulfillmentAdapterWords, reviewedPinnedIntroductions, neutralityIncreases, scanSnapshots, unreviewedPinnedIntroductionIncreases, validateBaseline, validateReviewedPinnedIntroductions } from "./public-ci-neutrality.mjs";
 
 vi.mock("node:child_process", async importOriginal => {
@@ -60,15 +60,29 @@ function fixture(files: Record<string, string | Buffer> = {}) {
   const base = commit(root);
   return { root, base };
 }
+let installedSeed: { root: string; base: string } | undefined;
 function installed(files: Record<string, string | Buffer> = {}) {
+  const empty = Object.keys(files).length === 0;
+  if (empty && installedSeed) {
+    const root = mkdtempSync(join(scratch, "repo-"));
+    fixtures.push(root);
+    cpSync(installedSeed.root, root, { recursive: true });
+    return { root, base: installedSeed.base };
+  }
   const { root, base } = fixture(files);
   const bootstrap = cli(root, base, "--write-baseline");
   expect(bootstrap.status, bootstrap.output).toBe(0);
   const installedBase = commit(root);
   expect(cli(root, installedBase).status).toBe(0);
+  if (empty) {
+    // Reuse only verified setup bytes; each case owns a full copy, including .git.
+    installedSeed = { root: mkdtempSync(join(scratch, "seed-")), base: installedBase };
+    cpSync(root, installedSeed.root, { recursive: true });
+  }
   return { root, base: installedBase };
 }
 afterEach(() => { for (const root of fixtures.splice(0)) rmSync(root, { recursive: true, force: true }); });
+afterAll(() => { if (installedSeed) rmSync(installedSeed.root, { recursive: true, force: true }); });
 
 function validBaseline() {
   return { schemaVersion: 2, sourceCommit: "a".repeat(40), scannerPins: Object.fromEntries(scannerPaths.map((path) => [path, "c".repeat(40)])), counts: { ["b".repeat(64)]: { brand: 1 } } };

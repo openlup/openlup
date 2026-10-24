@@ -3,10 +3,12 @@ import { afterAll, beforeAll, expect, it } from "vitest";
 import { createPostgresInvoiceStore, runInvoiceDeliveryJob } from "@openlup/platform/invoicing";
 import type { InvoiceHostPorts, InvoiceStorePort } from "@openlup/platform/invoicing/contracts";
 import { executor, fixture, nativeHarness } from "../helpers/fulfillmentNative.js";
+import { postgresSetupTimeoutMs, postgresTeardownTimeoutMs } from "../helpers/postgresContainer.js";
 
 const h = nativeHarness("invoicing-delivery");
-beforeAll(() => h.start(), 120_000);
-afterAll(() => h.stop());
+let started: number;
+beforeAll(async () => { await h.start(); started = performance.now(); }, postgresSetupTimeoutMs);
+afterAll(async () => { await h.stop(); console.log(`M09 delivery whole-file ms=${Math.round(performance.now() - started)}`); }, postgresTeardownTimeoutMs);
 type Claim = Exclude<Awaited<ReturnType<InvoiceStorePort["claimDeliveries"]>>, { kind: "unsupported" }>[number];
 type Result = Parameters<InvoiceStorePort["settleDelivery"]>[0]["result"];
 const proof = { evidenceRef: "transport-proof", fingerprint: "d".repeat(64), observedAt: "2026-10-23T12:34:56Z" };

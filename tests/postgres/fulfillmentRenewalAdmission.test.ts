@@ -1,3 +1,4 @@
+import { postgresSetupTimeoutMs, postgresTeardownTimeoutMs } from '../helpers/postgresContainer.js';
 import { randomUUID } from 'node:crypto';
 import type { PoolClient } from 'pg';
 import type { PaymentExecutionInput } from '../../src/domains/payment/types.js';
@@ -14,8 +15,8 @@ import { executor, fixture, nativeHarness, openCase, schedule } from '../helpers
 const h = nativeHarness('g23');
 const NOW = '2026-10-21T12:00:00.000Z';
 const AT = '2026-08-29T12:00:00.000Z';
-beforeAll(() => h.start(), 120_000);
-afterAll(() => h.stop());
+beforeAll(() => h.start(), postgresSetupTimeoutMs);
+afterAll(() => h.stop(), postgresTeardownTimeoutMs);
 
 async function seed() {
   await h.pool.query("SELECT public.subscription_delivery_alignment_set_mode('off')");

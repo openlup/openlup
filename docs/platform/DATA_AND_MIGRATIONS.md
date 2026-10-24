@@ -290,6 +290,42 @@ separately from historical grant spellings or inherited CLI defaults.
 
 ## Exact reviewed function forwards
 
+### Co-located SQL and approval pins
+
+A PR introducing SQL in a class already admitted by its trusted comparison-base
+policy may also carry that SQL's pins. Only bindings for files introduced by
+that PR may change. Other entries and their list positions, shared fields,
+registry schema and immutable baselines stay unchanged. The fixed path/signature
+inventory, whole-file and function hashes, preimages, statement/grant limits,
+ordered prefixes and fixture/package equality still apply. A hash binds bytes;
+independent native review approves the complete candidate under the
+[existing review procedure](../../CONTRIBUTING.md#native-review-and-accountability).
+SQL risk assessment belongs in that required review, without a mandatory third
+review or a new report format. Applicable maintainer/delegate reads remain required.
+
+Changes to a class, validator, its dependencies, review/admission or release
+machinery need a separate control change before using the new rule. The existing
+native admission, invoked from trusted main, validates co-located data with its
+own checker and refuses simultaneous machinery changes or machinery drift since
+the reviewed base. Production tooling in `scripts/agent-review-*`, `scripts/oss-*`,
+`scripts/source-*` and `scripts/packages/` stays unchanged for this route, including
+release entry points and preparation; test-only coverage changes remain allowed.
+The checker and its direct dependency closure, root manifests/lockfile and
+`.github/` files also stay unchanged. Admission reads candidate Git objects
+without running candidate code.
+The [documented workflow invocation limitation](DEVELOPMENT_AND_RELEASE.md#reading-results-and-recovering)
+remains: candidate YAML can omit the job, so sensitive review and the applicable
+maintainer/delegate read of workflow edits remain the control for that case.
+
+Release binds each forward to its unique first-parent mainline introduction.
+Its pin must be valid at that introduction and unchanged afterwards; a later
+repin cannot legalize an earlier invalid installation. Existing separate
+control → feature histories remain valid. Pin-only preparation of future SQL
+retains its existing control decision; it is not an unrelated companion of a
+feature. Once introduced, migration bytes remain immutable and repairs use a
+new forward. Stopping new co-located PRs must retain release support for histories
+already admitted this way; reverting to parent-only approval would reject them.
+
 The separate `batchedForwards` list approves the frozen M10/F17 packet: five
 native files and nine managed files. It adds no installation-chain SQL. Exact
 future bytes live only in [inert fixtures](../../scripts/fixtures/reviewed-m10/).
@@ -384,9 +420,9 @@ Policy retirement is pinned to exact statements and preceding policy hashes; it
 is not general permission to alter RLS.
 The checker binds the fixed policy names, tables, preceding statement hashes
 and ordered DROP statements separately from the function and privilege pins.
-Other policy operations refuse. Approval must precede the corrected SQL
-comparison base and introduction parent; control approval alone grants no
-runtime permission or actual-role proof.
+Other policy operations refuse. The original capability forward used prior
+control approval; eligible later introductions may use the co-located route
+above. Approval alone grants no runtime permission or actual-role proof.
 
 Reviewed replacement is a separate admission class, not expand-only. The fixed
 [allowlist](../../config/reviewed-platform-forwards.json) pins three managed
@@ -414,8 +450,8 @@ from the portable baseline and earlier portable forwards in strict filename
 order, as required by the manifest. Exact path, file and before/after definition
 hashes must match; arguments, return, volatility, security and settings remain
 unchanged. Only comments and that single `CREATE OR REPLACE FUNCTION` are
-admitted, with approval preceding introduction; no privileges or other statements
-are allowed. This control approval adds no SQL file or runtime behavior.
+admitted under the co-located SQL/pin rule above; no privileges or other statements
+are allowed. The original class-control approval added no SQL file or runtime behavior.
 
 The separate `portableCreationForwards` class binds these portable paths and
 whole-file SHA-256 digests in the same allowlist:
@@ -472,9 +508,9 @@ otherwise admitted. Revocation targets must also be created in that file.
 Unpinned paths, changed bytes, `CREATE OR REPLACE`, `ALTER`, `DROP`,
 `SECURITY DEFINER`, grants to any role (including `PUBLIC`, `anon` and
 `authenticated`), references to pre-existing objects in comments or revocations,
-and all other statement forms refuse. Approval must precede both the feature
-comparison base and the SQL introduction parent. This class does not change
-the managed or portable replacement classes or install runtime permissions.
+and all other statement forms refuse. The co-located approval rule above also
+applies to this existing class; it does not broaden the managed or portable
+replacement classes or install runtime permissions.
 The exact future file bytes are also kept as
 [command-ledger](../../scripts/fixtures/20261022080000_fulfillment_command_ledger.sql)
 and [delivery-alignment](../../scripts/fixtures/20261022090000_fulfillment_delivery_alignment.sql)
@@ -535,18 +571,14 @@ Operator activation consumes INSERT on `admin_users` columns `id`, `email`,
 SELECT on `admin_users.email` alongside the first entry's membership reads.
 Browser roles gain nothing; the approved identity forward now ships in the managed chain.
 
-Required PR/merge-group self-check requires the whole allowlist to remain unchanged
-from the feature comparison base. Release prepare compares each forward's own
-entry and list position, and every registry field outside the forward lists
-(schema version, baseline hash and any other key), with the first parent of the
-mainline commit, squash or merge, that introduces it; a feature branch's own
-earlier commits do not count. Only other forwards' entries may differ, so a later
-control may append approvals without stranding an unreleased forward. A feature still cannot approve itself. Missing history refuses. Existing
-history, version and manifest rules still apply. The expand-only predicate also
-refuses `INHERITS`, preventing a new table from inheriting an existing one.
-Admission is process evidence of exact reviewed bytes, not proof of live schema
-compatibility or authorization to release. Independent control review and the
-affected database behavior tests remain required.
+PR/merge-group self-check and release prepare follow the canonical
+[co-located SQL/pin rule](#co-located-sql-and-approval-pins), including existing
+separate control histories and refusal of later retroactive pins. Missing history
+refuses; existing history, version and manifest rules still apply. The expand-only
+predicate also refuses `INHERITS`, preventing a new table from inheriting an
+existing one. Admission is process evidence of exact reviewed bytes, not proof
+of live schema compatibility or authorization to release. Applicable control
+review and affected database behavior tests remain required.
 
 An adopter's hosted chain may already carry a managed forward under its own
 migration name. Such a file is a platform companion: its leading comment block
@@ -989,9 +1021,10 @@ owners; no provider mapping or new schema enters the package.
 Status: `20261022193000` and `20261022193100` introduce the two managed
 correction forwards. P4 introduces native durable duties, document effects and
 payment decoupling at positions 77–79; the remaining forwards stay fixture-only.
-Introduction must use exactly the approved bytes. A changed byte requires a separate reviewed
-control before introduction; the self-approval refusal remains binding in both
-CI and release preparation.
+Introduction must use exactly the pinned bytes. An unintroduced forward may carry its changed
+pins in the feature under the co-located rule above. The introduced forwards
+are immutable; their repair requires a new authorized forward. Existing control
+approvals and their review history remain valid.
 
 Three additional native creation pins cover durable duties, document effects and
 seller revisions. New functions are invokers with `search_path = pg_catalog`;
@@ -1239,13 +1272,11 @@ provider, deployment or fiscal-readiness evidence.
 
 `INVOICING_MIGRATIONS.native.units` projects unchanged accounting rails at
 positions 7, 13 and 15 and the three pinned M09 forwards at 77, 78 and 79.
-Every packaged asset is byte-identical to its canonical file; all three new files
-also equal the reviewed fixture/hash. The
+Every packaged asset is byte-identical to its canonical file. The
 [M09 migration owner](#m09-invoicing-forward-design-and-control-approval) defines
 installation order and prefix preservation.
 The native descriptor declares child-document corrections and explicit host
 fiscal facts. The separate managed descriptor names P3's base-row correction
 forwards; neither descriptor claims storage or fiscal parity.
 
-Seller-revision forwards and default service activation remain later work. Immutable SQL position comments describe historical staging order; use
-versioned filenames and manifest positions for the installation identity.
+Seller-revision forwards and default service activation remain later work.

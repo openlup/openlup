@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { MIRROR_REGISTRY, ownedImages } from "./ci-image-mirror.mjs";
-import { IMAGE_PULL_BUDGET_MS, imageIo, imageReference, mirrorUnavailable, pullWithRetry, readCiImage, resolvePinnedImage } from "./ci-image-pull.mjs";
-import { prePullCliImages } from "./public-ci-pgtap.mjs";
+import { IMAGE_PULL_BUDGET_MS, IMAGE_PULL_FALLBACK_RESERVE_MS, imageIo, imageReference, mirrorUnavailable, pullWithRetry, readCiImage, resolvePinnedImage } from "./ci-image-pull.mjs";
+import { CLI_IMAGE_PULL_BUDGET_MS, prePullCliImages } from "./public-ci-pgtap.mjs";
 import { readFileSync } from "node:fs";
 
 const pin = readCiImage("test-postgres");
@@ -114,11 +114,11 @@ describe.each(["test-postgres", "managed-batch-postgres"])("mirror-first CI imag
   it("calculates the Retry-After share from the remaining budget", async () => {
     const { io, waits, pulls } = witness();
     io.pull.mockImplementationOnce(async () => {
-      await io.sleep(IMAGE_PULL_BUDGET_MS - 10_000);
+      await io.sleep(IMAGE_PULL_BUDGET_MS - IMAGE_PULL_FALLBACK_RESERVE_MS - 10_000);
       throw new Error("429 retry-after: 6");
     });
     expect(await pullWithRetry(pin, io)).toBe(imageReference(pin, pin.sources[1]));
-    expect(waits).toEqual([IMAGE_PULL_BUDGET_MS - 10_000]);
+    expect(waits).toEqual([IMAGE_PULL_BUDGET_MS - IMAGE_PULL_FALLBACK_RESERVE_MS - 10_000]);
     expect(pulls()).toHaveLength(2);
   });
   it.each([500, 502, 503, 504, "context deadline exceeded"])("retries a transient registry error: %s", async status => {
@@ -143,23 +143,47 @@ describe.each(["test-postgres", "managed-batch-postgres"])("mirror-first CI imag
     ]);
     expect(waits).toEqual(pin.sources.slice(0, -1).flatMap(() => [1_000, 2_000]));
   });
-  it("gives a cold attempt the remaining global budget and fails loudly on expiry", async () => {
+  it("preserves a multi-minute healthy cold pull before using any fallback", async () => {
+    const { io, pulls } = witness();
+    io.pull.mockImplementationOnce(async (_reference, timeout) => {
+      expect(timeout).toBe(IMAGE_PULL_BUDGET_MS - IMAGE_PULL_FALLBACK_RESERVE_MS);
+      await io.sleep(timeout! - 1_000);
+      return "";
+    });
+    expect(await pullWithRetry(pin, io)).toBe(imageReference(pin));
+    expect(pulls()).toHaveLength(1);
+    expect(io.now()).toBe(239_000);
+  });
+  it("gives a stalled first source a shared deadline and reaches fallback", async () => {
+    const { io, pulls } = witness();
+    io.pull.mockImplementationOnce(async (_reference, timeout) => {
+      await io.sleep(timeout!);
+      throw Object.assign(new Error("Command failed: docker pull X"), { killed: true });
+    });
+    expect(await pullWithRetry(pin, io)).toBe(imageReference(pin, pin.sources[1]));
+    expect(pulls()).toEqual(pin.sources.slice(0, 2).map(source => imageReference(pin, source)));
+    expect(io.now()).toBe(240_000);
+    expect(io.pull.mock.calls[1][1]).toBe(IMAGE_PULL_FALLBACK_RESERVE_MS / (pin.sources.length - 1));
+  });
+  it("exhausts all source deadlines within one global pull budget", async () => {
     const { io, pulls } = witness();
     io.pull.mockImplementation(async (_reference, timeout) => {
-      expect(timeout).toBe(IMAGE_PULL_BUDGET_MS);
       await io.sleep(timeout!);
-      throw Object.assign(new Error('Command failed: docker pull X\n'), { killed: true, signal: 'SIGTERM' });
+      throw Object.assign(new Error("Command failed: docker pull X"), { killed: true });
     });
     await expect(pullWithRetry(pin, io)).rejects.toThrow(`within ${IMAGE_PULL_BUDGET_MS / 1_000}s; no source succeeded`);
     expect(io.now()).toBe(IMAGE_PULL_BUDGET_MS);
-    expect(pulls()).toHaveLength(1);
+    expect(pulls()).toEqual(pin.sources.map(source => imageReference(pin, source)));
   });
-  it("reads remaining time once per attempt and clamps a fractional millisecond to one", async () => {
+  it("keeps the full cold pull budget for a single source", async () => {
     const { io } = witness();
-    const now = vi.fn().mockReturnValueOnce(0).mockReturnValueOnce(IMAGE_PULL_BUDGET_MS - 0.25).mockReturnValue(IMAGE_PULL_BUDGET_MS);
-    expect(await pullWithRetry(pin, { ...io, now })).toBe(imageReference(pin));
+    expect(await pullWithRetry({ ...pin, sources: pin.sources.slice(0, 1) }, io)).toBe(imageReference(pin));
+    expect(io.pull).toHaveBeenCalledExactlyOnceWith(imageReference(pin), IMAGE_PULL_BUDGET_MS);
+  });
+  it("clamps a fractional millisecond to one", async () => {
+    const { io } = witness();
+    expect(await pullWithRetry({ ...pin, sources: pin.sources.slice(0, 1) }, io, 0.25)).toBe(imageReference(pin));
     expect(io.pull).toHaveBeenCalledExactlyOnceWith(imageReference(pin), 1);
-    expect(now).toHaveBeenCalledTimes(2);
   });
   it("caps a retry wait at the remaining global budget without another pull", async () => {
     const { io, pulls, waits } = witness();
@@ -167,7 +191,7 @@ describe.each(["test-postgres", "managed-batch-postgres"])("mirror-first CI imag
       await io.sleep(IMAGE_PULL_BUDGET_MS - 500);
       throw new Error("connection timed out");
     });
-    await expect(pullWithRetry(pin, io)).rejects.toThrow("no source succeeded");
+    await expect(pullWithRetry({ ...pin, sources: pin.sources.slice(0, 1) }, io)).rejects.toThrow("no source succeeded");
     expect(waits).toEqual([IMAGE_PULL_BUDGET_MS - 500, 500]);
     expect(io.now()).toBe(IMAGE_PULL_BUDGET_MS);
     expect(pulls()).toHaveLength(1);
@@ -255,6 +279,31 @@ it("uses performance.now for the production monotonic clock", () => {
 
 describe("pgTAP pre-pull registry selection (offline)", () => {
   const images = ["postgres", "gotrue", "realtime", "storage-api", "pg_prove"].map(name => ({ repository: `supabase/${name}`, tag: "1.2.3" }));
+  it("bounds the whole pre-pull stage and refuses another image on expiry", async () => {
+    const { io, pulls } = witness();
+    // Two slow successful cold images consume 480s of the stage budget.
+    let cold = 0;
+    io.pull.mockImplementation(async (_reference, timeout) => {
+      cold += 1;
+      if (cold <= 2) { await io.sleep(240_000); return ""; }
+      await io.sleep(timeout!);
+      throw Object.assign(new Error("registry pull timed out"), { killed: true });
+    });
+    await expect(prePullCliImages(images, io)).rejects.toThrow("no source succeeded");
+    expect(io.now()).toBe(CLI_IMAGE_PULL_BUDGET_MS);
+    expect(pulls().some(reference => reference.includes("storage-api"))).toBe(false);
+  });
+  it("includes aliasing and final local inspection in the aggregate budget", async () => {
+    const { io } = witness();
+    const execute = io.exec.getMockImplementation()!;
+    io.exec.mockImplementation(async (args, timeout) => {
+      if (args[0] === "pull") await io.sleep(239_000);
+      if (args[1] === "tag") await io.sleep(361_000);
+      return execute(args, timeout);
+    });
+    await expect(prePullCliImages([{ ...images[0], digest: pin.digest }], io)).rejects.toThrow("600s aggregate budget");
+    expect(io.exec.mock.calls.filter(([args]) => args[1] === "inspect")).toHaveLength(5);
+  });
   it("reaches ECR after long-hint 429s from each GHCR source per image, preserving supplied pins", async () => {
     const { io, pulls, waits } = witness();
     io.pull.mockImplementation(async reference => {
@@ -306,13 +355,13 @@ describe("pgTAP pre-pull registry selection (offline)", () => {
     });
     expect(await prePullCliImages(images, io)).toBe(MIRROR_REGISTRY);
     expect(pulls()).toHaveLength(6);
-    expect(io.exec).toHaveBeenCalledWith(["image", "tag", "ghcr.io/supabase/realtime:1.2.3", `${MIRROR_REGISTRY}/supabase/realtime:1.2.3`]);
+    expect(io.exec).toHaveBeenCalledWith(["image", "tag", "ghcr.io/supabase/realtime:1.2.3", `${MIRROR_REGISTRY}/supabase/realtime:1.2.3`], 5_000);
     expect(io.exec.mock.calls.slice(-5).map(([args]) => args)).toEqual(images.map(image => ["image", "inspect", `${MIRROR_REGISTRY}/${image.repository}:${image.tag}`]));
   });
   it("aliases a verified digest pull to the CLI tag even in the same registry", async () => {
     const { io } = witness();
     expect(await prePullCliImages([{ ...images[0], digest: pin.digest }], io)).toBe(MIRROR_REGISTRY);
-    expect(io.exec).toHaveBeenCalledWith(["image", "tag", `${MIRROR_REGISTRY}/supabase/postgres:1.2.3@${pin.digest}`, `${MIRROR_REGISTRY}/supabase/postgres:1.2.3`]);
+    expect(io.exec).toHaveBeenCalledWith(["image", "tag", `${MIRROR_REGISTRY}/supabase/postgres:1.2.3@${pin.digest}`, `${MIRROR_REGISTRY}/supabase/postgres:1.2.3`], 5_000);
   });
   it("verifies a digest when supplied by derivation", async () => {
     const { io } = witness();

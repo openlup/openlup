@@ -4,7 +4,12 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { reviewedBatchBytes, reviewedBatchPaths } from "./reviewed-batch-rail.ts";
 import { describe, expect, it } from "vitest";
-import { assertBatchedForward, assertReviewedPlatformForward, batchedFunctionDefinitions, readReviewedForwardRegistry, sqlSha256, sqlStatements, type BatchedForwardBinding } from "./reviewed-platform-forward.ts";
+import { assertBatchedForward, assertCoLocatedForwardApproval, assertForwardApproval, assertReviewedPlatformForward, batchedFunctionDefinitions, changedForwardApprovals, readReviewedForwardRegistry, reviewedFunctionDefinitions, sqlSha256, sqlStatements, type BatchedForwardBinding } from "./reviewed-platform-forward.ts";
+import { assertAppendOnlyMigrationHistory } from "./oss-published-tree-check.ts";
+import { resolveDocumentationBase } from "./documentation-git.ts";
+import { waitNativeAdmission } from "./agent-review-queue.mjs";
+import { captureCommittedReviewCandidate, git as reviewGit } from "./agent-review-session.mjs";
+import { prepareCandidate, receiptSummary, recordReport, RECEIPT_MARKER } from "./agent-review-decide.mjs";
 
 const registryBytes = readFileSync("config/reviewed-platform-forwards.json");
 const registry = readReviewedForwardRegistry(registryBytes);
@@ -88,7 +93,7 @@ it.each([
 });
 
 // Measured alone at 74.99 s (2026-10-23); about 3x keeps shared-machine load from timing it out.
-it("uses separate prior approval in CI and release, and refuses self-approval", () => {
+it("retains separate prior approval in CI and release, and refuses incorrect pins", () => {
   const folder = mkdtempSync(join(tmpdir(), "openlup-batch-control-"));
   const git = (...args: string[]) => execFileSync("git", ["-C", folder, ...args], { encoding: "utf8" }).trim();
   const put = (path: string, value: Buffer | string) => { mkdirSync(dirname(join(folder, path)), { recursive: true }); writeFileSync(join(folder, path), value); };
@@ -135,7 +140,7 @@ it("uses separate prior approval in CI and release, and refuses self-approval", 
     const changed = structuredClone(registry); changed.batchedForwards![0]!.sha256 = "0".repeat(64);
     put("config/reviewed-platform-forwards.json", JSON.stringify(changed));
     const self = commit("Feature attempts to change its own approval");
-    expect(() => assertReviewedPlatformForward(folder, approval, self, pins[0]!.path, bytes(pins[0]!))).toThrow(/approved separately/u);
+    expect(() => assertReviewedPlatformForward(folder, approval, self, pins[0]!.path, bytes(pins[0]!))).toThrow(/path or bytes/u);
   } finally { rmSync(folder, { recursive: true, force: true }); }
 }, 240_000);
 
@@ -178,4 +183,180 @@ it.each([0, 1, "all"] as const)("replays each rail once with %s landed pins and 
       expect(() => reviewedBatchBytes(root, process.cwd(), pin)).toThrow("landed bytes drifted");
     }
   } finally { rmSync(root, { recursive: true, force: true }); }
+});
+
+// Real M09 SQL and the actual installed prefix, with only the pending pins changed.
+const correctionPaths = registry.managedInvoicingForwards!.slice(0, 2).map(({ path }) => path);
+function correctionFixture() {
+  const root = mkdtempSync(join(tmpdir(), "openlup-co-located-"));
+  const git = (...args: string[]) => execFileSync("git", ["-C", root, "-c", "user.name=Fixture", "-c", "user.email=fixture@example.invalid", "-c", "commit.gpgsign=false", "-c", "core.hooksPath=/dev/null", ...args], { encoding: "utf8" }).trim();
+  const put = (path: string, value: Buffer | string) => { mkdirSync(dirname(join(root, path)), { recursive: true }); writeFileSync(join(root, path), value); };
+  const commit = () => { git("add", "."); git("commit", "-qm", "SQL approval fixture"); return git("rev-parse", "HEAD"); };
+  git("init", "-q", "-b", "main");
+  for (const directory of ["db/platform/migrations", "supabase/migrations"]) for (const file of readdirSync(directory)) {
+    const path = `${directory}/${file}`;
+    if (!correctionPaths.includes(path)) put(path, readFileSync(path));
+  }
+  put("config/platform-migration-manifest.json", readFileSync("config/platform-migration-manifest.json"));
+  const previous = structuredClone(registry);
+  for (const entry of previous.managedInvoicingForwards!.slice(0, 2)) entry.sha256 = "0".repeat(64);
+  put("config/reviewed-platform-forwards.json", JSON.stringify(previous));
+  const base = commit();
+  const install = (next = registry) => {
+    put("config/reviewed-platform-forwards.json", JSON.stringify(next));
+    for (const path of correctionPaths) put(path, readFileSync(path));
+  };
+  return { root, git, put, commit, base, previous, install, cleanup: () => rmSync(root, { recursive: true, force: true }) };
+}
+
+describe("co-located SQL and pins under an existing policy", () => {
+  it("releases co-located forwards introduced by successive mainline merge commits", () => {
+    const f = correctionFixture();
+    try {
+      for (const [index, path] of correctionPaths.entries()) {
+        f.git("checkout", "-b", `feature-${index}`);
+        const next = structuredClone(registry);
+        if (index === 0) next.managedInvoicingForwards![1]!.sha256 = "0".repeat(64);
+        f.put("config/reviewed-platform-forwards.json", JSON.stringify(next));
+        f.put(path, readFileSync(path)); f.commit();
+        f.git("checkout", "main"); f.git("merge", "--no-ff", "--no-commit", `feature-${index}`); f.commit();
+      }
+      const head = f.git("rev-parse", "HEAD");
+      for (const path of correctionPaths) expect(() => assertReviewedPlatformForward(f.root, f.base, head, path, readFileSync(path), true)).not.toThrow();
+    } finally { f.cleanup(); }
+  });
+
+  it("accepts the actual M09 packet in admission, migration and release checks", () => {
+    const f = correctionFixture();
+    try {
+      f.install(); const head = f.commit();
+      expect(() => assertCoLocatedForwardApproval(f.root, f.base, head)).not.toThrow();
+      expect(() => assertAppendOnlyMigrationHistory(f.root, f.base, head)).not.toThrow();
+      for (const path of correctionPaths) expect(() => assertReviewedPlatformForward(f.root, f.base, head, path, readFileSync(path), true)).not.toThrow();
+    } finally { f.cleanup(); }
+  });
+
+  it("preserves co-located bindings through later unrelated release approvals", () => {
+    const f = correctionFixture();
+    try {
+      f.install(); f.commit();
+      const later = structuredClone(registry); later.managedInvoicingForwards![2]!.sha256 = "f".repeat(64);
+      f.put("config/reviewed-platform-forwards.json", JSON.stringify(later)); const release = f.commit();
+      for (const path of correctionPaths) expect(() => assertReviewedPlatformForward(f.root, f.base, release, path, readFileSync(path), true)).not.toThrow();
+    } finally { f.cleanup(); }
+  });
+
+  it("retains the actual M09 legacy two-PR control and feature history", () => {
+    const f = correctionFixture();
+    try {
+      f.put("config/reviewed-platform-forwards.json", registryBytes); const control = f.commit();
+      f.install(); const feature = f.commit();
+      expect(() => assertAppendOnlyMigrationHistory(f.root, control, feature)).not.toThrow();
+      for (const path of correctionPaths) expect(() => assertReviewedPlatformForward(f.root, f.base, feature, path, readFileSync(path), true)).not.toThrow();
+    } finally { f.cleanup(); }
+  });
+
+  it.each(["future entry", "installed entry", "shared field", "position", "unknown class"])("refuses a co-located %s delta", probe => {
+    const f = correctionFixture();
+    try {
+      const changed = structuredClone(registry);
+      if (probe === "future entry") changed.managedInvoicingForwards![2]!.sha256 = "f".repeat(64);
+      if (probe === "installed entry") changed.replacementForwards[0]!.sha256 = "f".repeat(64);
+      if (probe === "shared field") changed.baselineSha256 = "f".repeat(64);
+      if (probe === "position") changed.replacementForwards.reverse();
+      if (probe === "unknown class") changed.managedInvoicingForwards![0]!.path += ".other";
+      f.install(changed); const head = f.commit();
+      expect(() => assertCoLocatedForwardApproval(f.root, f.base, head)).toThrow(/reviewed/u);
+      expect(() => assertForwardApproval(f.root, f.base, head)).toThrow(/reviewed/u);
+    } finally { f.cleanup(); }
+  });
+
+  it.each(["scripts/reviewed-platform-forward.ts", "scripts/platform-migration-manifest.ts", "scripts/documentation-git.ts", "scripts/documentation-routing.ts", "scripts/oss-source-release-contract.ts", "scripts/oss-published-tree-check.ts", "scripts/source-preview-release.ts", "scripts/source-release-preparation.ts", "scripts/oss-publication-policy.ts", "scripts/packages/release-gate.ts", "scripts/agent-review-queue.mjs", "package.json", "package-lock.json", ".github/workflows/published-tree-ci.yml"])("trusted invocation refuses co-changing %s", path => {
+    const f = correctionFixture();
+    try {
+      f.install(); f.put(path, "candidate-controlled machinery"); const head = f.commit();
+      expect(() => assertCoLocatedForwardApproval(f.root, f.base, head)).toThrow(/machinery must be approved separately/u);
+    } finally { f.cleanup(); }
+  });
+
+  it("allows test-only coverage changes alongside the co-located SQL/pins", () => {
+    const f = correctionFixture();
+    try {
+      f.install(); f.put("scripts/source-preview-release.test.ts", "// Additional SQL regression coverage\n");
+      const head = f.commit();
+      expect(() => assertCoLocatedForwardApproval(f.root, f.base, head)).not.toThrow();
+    } finally { f.cleanup(); }
+  });
+
+  it("refuses a policy move since the reviewed base and preserves the control-only route", () => {
+    const f = correctionFixture();
+    try {
+      f.put("config/reviewed-platform-forwards.json", registryBytes); const control = f.commit();
+      expect(() => assertCoLocatedForwardApproval(f.root, f.base, control)).not.toThrow();
+      f.git("reset", "--hard", f.base); f.install(); const head = f.commit();
+      f.git("checkout", "--detach", f.base); f.put("scripts/reviewed-platform-forward.ts", "new main policy"); const main = f.commit();
+      expect(() => assertCoLocatedForwardApproval(f.root, f.base, head, main)).toThrow(/machinery must be approved separately/u);
+    } finally { f.cleanup(); }
+  });
+
+  it.each(["bytes", "repinned grant", "late pin", "applied edit"])("refuses %s through the affected production gates", probe => {
+    const f = correctionFixture(); const path = correctionPaths[0]!;
+    try {
+      const changed = structuredClone(registry);
+      f.install(probe === "late pin" ? f.previous : changed);
+      if (probe === "bytes") f.put(path, readFileSync(path, "utf8") + "\n");
+      if (probe === "repinned grant") {
+        const sql = readFileSync(path, "utf8").replace(/ TO service_role;/gu, " TO authenticated;");
+        expect(sql).not.toBe(readFileSync(path, "utf8"));
+        const entry = changed.managedInvoicingForwards![0]!;
+        entry.sha256 = sqlSha256(sql);
+        const definitions = reviewedFunctionDefinitions(Buffer.from(sql));
+        for (const fn of entry.functions) fn.afterSha256 = definitions.get(fn.signature)!;
+        f.put("config/reviewed-platform-forwards.json", JSON.stringify(changed)); f.put(path, sql);
+      }
+      const introduction = f.commit();
+      if (probe === "applied edit") {
+        f.put(path, readFileSync(path, "utf8") + "\n"); const head = f.commit();
+        expect(() => assertAppendOnlyMigrationHistory(f.root, introduction, head)).toThrow(/edit, deletion/u);
+      } else if (probe === "late pin") {
+        f.put("config/reviewed-platform-forwards.json", registryBytes); const head = f.commit();
+        expect(() => assertReviewedPlatformForward(f.root, f.base, head, path, readFileSync(path), true)).toThrow(/approved separately/u);
+      } else {
+        expect(() => assertCoLocatedForwardApproval(f.root, f.base, introduction)).toThrow(/reviewed/u);
+        expect(() => assertAppendOnlyMigrationHistory(f.root, f.base, introduction)).toThrow(/reviewed|non-expand/u);
+        expect(() => assertReviewedPlatformForward(f.root, f.base, introduction, path, readFileSync(join(f.root, path)), true)).toThrow(/reviewed/u);
+      }
+    } finally { f.cleanup(); }
+  });
+
+  it.each(["pull_request", "merge_group"])("runs actual migration and native admission entry points for %s", async eventName => {
+    const f = correctionFixture();
+    try {
+      f.install(); const head = f.commit();
+      f.git("update-ref", "refs/remotes/origin/main", f.base);
+      const candidate = await captureCommittedReviewCandidate(f.root, f.base, head);
+      let session = prepareCandidate(null, { ...candidate, intent: { risk: "behavior", criteria: "Exact co-located SQL/pins" }, authorSessionId: "fixture-author" }, 1000);
+      for (const reviewer of ["fixture-a", "fixture-b"]) session = recordReport(session, { reviewer, cold: true, tree: candidate.tree, verdict: "PASS", findings: [], closes: [] }, 1000);
+      const receipt = receiptSummary(session, 12, 1000);
+      const merged = f.git("commit-tree", candidate.tree, "-p", f.base, "-p", head, "-m", "Event merge");
+      f.git("checkout", "--detach", merged);
+      const ref = `refs/heads/gh-readonly-queue/main/pr-12-${f.base}`;
+      const event = { number: 12, repository: { full_name: "openlup/openlup", private: false }, action: "checks_requested", pull_request: { base: { sha: f.base }, head: { sha: head } }, merge_group: { base_ref: "refs/heads/main", head_ref: ref, base_sha: f.base, head_sha: merged, head_commit: { id: merged, tree_id: candidate.tree } } };
+      const eventPath = join(f.root, "event.json"); writeFileSync(eventPath, JSON.stringify(event));
+      const env = { GITHUB_ACTIONS: "true", GITHUB_REPOSITORY: "openlup/openlup", GITHUB_EVENT_NAME: eventName, GITHUB_EVENT_PATH: eventPath, GITHUB_SHA: merged, GITHUB_REF: ref };
+      const comparison = resolveDocumentationBase(f.root, { env });
+      expect(comparison.provenance).toBe(eventName === "pull_request" ? "pull-request" : "merge-group");
+      expect(() => assertAppendOnlyMigrationHistory(f.root, comparison.base, comparison.head)).not.toThrow();
+      const api = { get: async (path: string) => path.includes("/pulls/") ? { number: 12, state: "open", draft: false, base: { ref: "main" }, head: { sha: head } } : path.includes("/issues/") ? [{ id: 1, user: { login: "fixture-owner", type: "User" }, body: `${RECEIPT_MARKER}\n\`\`\`json\n${JSON.stringify(receipt)}\n\`\`\`` }] : path.includes("/collaborators/") ? { permission: "write" } : { object: { sha: f.base } } };
+      const runGit = (cwd: string, ...args: string[]) => args.includes("fetch") ? Promise.resolve("") : reviewGit(cwd, ...args);
+      await expect(waitNativeAdmission({ cwd: f.root, event, env, api, runGit, now: () => 1000, deadlineMs: 1 })).resolves.toBeUndefined();
+    } finally { f.cleanup(); }
+  });
+
+  it("keeps unchanged bindings and their positions while recognizing the pending M09 repins", () => {
+    const previous = structuredClone(registry);
+    previous.managedInvoicingForwards![0]!.sha256 = "0".repeat(64);
+    expect(changedForwardApprovals(Buffer.from(JSON.stringify(previous)), registryBytes)).toEqual([correctionPaths[0]]);
+    expect(changedForwardApprovals(registryBytes, registryBytes)).toEqual([]);
+  });
 });

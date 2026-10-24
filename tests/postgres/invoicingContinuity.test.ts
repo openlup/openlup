@@ -8,7 +8,7 @@ import { createInvoicingDutyBinding } from "../../server/runtime/accounting/invo
 import { composeOrderPaidFulfillmentPort } from "../../api/_cron/outboxFulfillmentProvider.js";
 import { closeOrderPaidShipmentSpinePort } from "../../server/runtime/fulfillment/shipmentSpineBinding.js";
 import { readSelectedCatalogProjection, selectedCatalogProjectionPayload } from "../../server/adapters/postgres/selectedCatalogProjection.js";
-import { dockerAvailable, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
+import { closePostgres, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, dockerAvailable, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
 
 let container: PostgresContainer | undefined, pool: Pool;
 const env = () => ({ PLATFORM_BUNDLE: "node-postgres", DATABASE_URL: container!.connectionString, FULFILLMENT_PORT_KEY: "simulator", ACCOUNTING_REQUEST_ENABLED: "false" });
@@ -33,8 +33,8 @@ beforeAll(async () => {
   const db = await pool.connect();
   try { expect(createHash("sha256").update(selectedCatalogProjectionPayload(await readSelectedCatalogProjection(db))).digest("hex")).toBe(manifest.objectInventorySha256); }
   finally { db.release(); }
-}, 120_000);
-afterAll(async () => { await pool?.end(); await container?.remove(); });
+}, postgresSetupTimeoutMs);
+afterAll(async () => { await closePostgres(container, pool); }, postgresTeardownTimeoutMs);
 
 async function fixture(subscriptionDate?: string) {
   const client = randomUUID(), order = randomUUID(), intent = randomUUID();
@@ -79,7 +79,7 @@ async function installAndIssue(orderId: string) {
   await call("invoicing_install_facts", [dutyId, saved, "revision-a"]);
   const binding = createInvoicingDutyBinding(env())!;
   try { expect(await binding.collect()).toMatchObject({ kind: "collected", failures: 0 }); }
-  finally { await binding.close(); }
+  finally { await closePostgres(undefined, undefined, [() => binding.close()]); }
   const [claim] = await call("invoicing_claim_duties", [10, 300, "fiscal-a", orderId]);
   expect(claim.id).toBe(dutyId);
   expect(await call("invoicing_preflight_duty", [dutyId, claim.claim_token, claim.generation, { kind: "observed", outcome: "captured", amountMinor: 900, currency: "XXX" }])).toEqual({ kind: "ready" });
@@ -104,10 +104,10 @@ it("W7: locked accounting never gates renewal capture, recovery, parcel handoff 
     await expect(port!.ensureFulfilledFromPaidOrder({ orderUuid: f.order, outboxEventId: randomUUID(), signal: new AbortController().signal })).resolves.toMatchObject({ kind: "completed" });
     expect((await pool.query("SELECT status FROM public.subscription_dunning_cases WHERE subscription_id=$1", [f.subscription])).rows).toEqual([{ status: "recovered" }]);
     expect((await pool.query("SELECT next_cycle_at FROM public.subscriptions WHERE id=$1", [f.subscription])).rows[0].next_cycle_at.toISOString()).toBe("2026-09-09T12:00:00.000Z");
-  } finally { await lock.query("ROLLBACK"); lock.release(); await closeOrderPaidShipmentSpinePort(port); }
+  } finally { await lock.query("ROLLBACK"); lock.release(); await closePostgres(undefined, undefined, [() => closeOrderPaidShipmentSpinePort(port)]); }
   // Paid + handoff aliases converge, no duplicate duty/document on repeated sweep.
   const binding = createInvoicingDutyBinding(env())!;
-  try { await binding.collect(); await binding.collect(); } finally { await binding.close(); }
+  try { await binding.collect(); await binding.collect(); } finally { await closePostgres(undefined, undefined, [() => binding.close()]); }
   await installAndIssue(f.order);
 }, 20_000);
 
@@ -125,7 +125,7 @@ it("F13: capture conflicts, cancellation and permission errors cannot roll back 
     } finally { await pool.query("DROP TRIGGER p4b_fault ON public.invoicing_duties"); await pool.query("DROP FUNCTION public.p4b_fault()"); }
     const binding = createInvoicingDutyBinding(env())!;
     try { expect(await binding.collect()).toMatchObject({ kind: "collected", failures: 0 }); }
-    finally { await binding.close(); }
+    finally { await closePostgres(undefined, undefined, [() => binding.close()]); }
     await installAndIssue(f.order);
     expect(await truth().ingestEvent(input)).toMatchObject({ event: { replayed: true } });
   }
@@ -141,6 +141,6 @@ it("F13: capture and fault-marker locks still commit money; retained settlement 
   } finally { await lock.query("ROLLBACK"); lock.release(); }
   const binding = createInvoicingDutyBinding(env())!;
   try { expect(await binding.collect()).toMatchObject({ kind: "collected", failures: 0 }); }
-  finally { await binding.close(); }
+  finally { await closePostgres(undefined, undefined, [() => binding.close()]); }
   await installAndIssue(f.order);
 }, 20_000);

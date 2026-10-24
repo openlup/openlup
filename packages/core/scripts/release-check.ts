@@ -37,11 +37,13 @@ const checks = {
   "repository-policy": () => verifyRepositoryPolicy({ packageRoot, manifest }),
 };
 
-assert(mode === "all" || checks[mode], `unknown release check: ${mode}`);
+assert(mode === "all" || mode === "admission" || checks[mode], `unknown release check: ${mode}`);
 
-if (mode === "all") {
+if (mode === "all" || mode === "admission") {
   assertPackageSurfaceConfig({ manifest, gates, packageRoot });
-  for (const check of Object.values(checks)) check();
+  for (const [name, check] of Object.entries(checks)) {
+    if (mode !== "admission" || name !== "audit") check();
+  }
 } else {
   checks[mode]();
 }
