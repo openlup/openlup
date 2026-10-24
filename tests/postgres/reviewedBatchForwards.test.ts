@@ -738,6 +738,8 @@ const changeRows = [
   payload:(f:Fixture)=>({...bundle(f),coreLines:[{variantId:f.addon,qty:2}],planDays:28})},
  {name:'native cadence-only expansion',action:'update_plan_length',coreQty:2,addonQty:0,cadence:21,
   payload:()=>({planDays:21,expectedTemplateVersion:1})},
+ ...[null,[]].map(coreLines=>({name:`plan invalid core ${coreLines===null?'null':'empty'}`,action:'update_plan_length',
+  reason:'subscription_edit_invalid_lines',payload:()=>({coreLines,planDays:21,expectedTemplateVersion:1})})),
  {name:'bundle all fields',action:'update_bundle',addon:1,coreQty:3,addonQty:2,cadence:21,
   payload:(f:Fixture)=>({...bundle(f),coreLines:[{variantId:f.sku,qty:3}],addonLines:[{variantId:f.addon,qty:2}],cadenceDays:21})},
  {name:'resize preserves addons',action:'resize_bundle',addon:1,coreQty:3,addonQty:1,cadence:21,
@@ -764,7 +766,25 @@ async function changeWitness(row:ChangeRow,key:string) {
  // Version/payment/window refusals keep their native codes; drift cannot consume the quote.
  expect((await raw(f,`${key}-stale`,row.action,{...payload,expectedTemplateVersion:99})).result)
   .toMatchObject({status:'refused',reason:'subscription_edit_stale_template'});
+ const before='reason' in row?await effects(true):undefined;
  const preview=await raw(f,key,row.action,payload);
+ if('reason' in row) {
+  expect(preview.result,`${key}: invalid core refusal`).toMatchObject({status:'refused',reason:row.reason});
+  const after=await effects(true);
+  for(const name of Object.keys(before!).filter(name=>name!=='subscription_command_receipts'))
+   expect(after[name],`${key}: receipt-only ${name}`).toEqual(before![name]);
+  type ReceiptSnapshot={count:number;rows:{columns:Record<string,unknown>;xmin:string}[]};
+  const previous=before!.subscription_command_receipts as ReceiptSnapshot;
+  const stored=after.subscription_command_receipts as ReceiptSnapshot;
+  expect(stored.count).toBe(previous.count+1);
+  const inserted=stored.rows.filter(r=>r.columns.actor_id===f.actor && r.columns.idempotency_key===key);
+  expect(inserted).toHaveLength(1);
+  expect(inserted[0].columns).toMatchObject({status:'refused',quote_hash:null,result:preview.result});
+  expect(stored.rows.filter(r=>r!==inserted[0])).toEqual(previous.rows);
+  expect(await raw(f,key,row.action,payload,later(500))).toEqual(preview);
+  expect(await effects(true)).toEqual(after);
+  return;
+ }
  expect(preview.result.status,`${key}: change preview`).toBe('previewed');
  const expected=[{variantId:'coreVariant' in row && row.coreVariant?f.addon:f.sku,quantity:row.coreQty,
   isAddon:false,sortOrder:0,unitPriceMinor:'coreVariant' in row && row.coreVariant?70:350,currency:'XXX'},
@@ -805,6 +825,9 @@ async function changeWitness(row:ChangeRow,key:string) {
 it.each(changeRows)('N2 change/apply/noop/refusal: $name',async row=>scoped(()=>changeWitness(row,`change-${row.name}`)),120_000);
 it.each([
  {name:'plan assignment',row:'plan core quantity and cadence',from:"core:=COALESCE(p_payload->'coreLines',core);",to:'NULL;'},
+ ...['null','empty'].map(kind=>({name:`plan invalid core fallback ${kind}`,row:`plan invalid core ${kind}`,
+  from:"core:=COALESCE(p_payload->'coreLines',core);",
+  to:"IF p_payload->'coreLines' IN ('null'::jsonb,'[]'::jsonb) THEN NULL; ELSE core:=COALESCE(p_payload->'coreLines',core); END IF;"})),
  {name:'add quantity normalization',row:'add normalized undefined',
   from:"'qty',GREATEST(1,COALESCE((p_payload->>'qty')::integer,1))));",to:"'qty',p_payload->'qty'));"},
  ...['add_addon','remove_addon','update_addon_quantity'].map(action=>({name:`cadence scope ${action}`,row:`${action} ignores cadence`,
