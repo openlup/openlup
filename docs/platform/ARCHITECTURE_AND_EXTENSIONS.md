@@ -328,6 +328,12 @@ its application-owned allowlist does not extend the direct operator-token lane.
 
 The reference outbox worker delegates to `@openlup/outbox`; application handlers and the explicit known event vocabulary remain in composition. Shared envelope, execution-context, descriptor and readiness contracts live in `@openlup/core`. The rail provides one bare worker for immediate work and lease-bound schedules for dispatched work. Its PostgreSQL executor commits each claim or settlement before resolving, with no encompassing transaction across effects.
 
+The reference invoice panel reads the authenticated host summary route through
+`referenceInvoicingClient`. It retains session gating and query/retry behavior,
+while displaying closed diagnostic codes without raw provider text or URLs. The
+browser does not import the invoicing server entry at runtime; runbooks and
+mutation routes remain host-owned.
+
 ## Extension seams
 
 Extensions belong at explicit seams:
@@ -1484,8 +1490,9 @@ remain failed/owed recovery work, never evidence of absence or success.
 RPCs through an injected executor. Each call commits independently; never bind a
 client in a transaction spanning fiscal/provider I/O. Missing or unsafe host
 facts return typed unsupported without installing facts or consuming the owed
-duty. Delivery, clearance and observation host projections remain unsupported
-in this store; the SQL primitives alone do not establish a complete host envelope.
+duty. Clearance and observation host projections remain unsupported in this store.
+Delivery is supported only with the host's explicit M04 envelope projection;
+SQL primitives alone do not establish that envelope.
 The incumbent local-only constructor is preserved for the reference Postgres
 adapter. Its zero-tax order positions do not establish fiscal parity.
 `INVOICING_MIGRATIONS` separates native child-document corrections and explicit
@@ -1533,3 +1540,37 @@ before the split preparation sweep; discovery therefore needs no fiscal snapshot
 Pass the last returned duty ID as the next cursor, even when its facts are
 unavailable. UUID ordering reaches later targets without changing owed rows;
 restart without a cursor after exhaustion to include concurrent captures.
+
+The read side exposes delivery, PDF validation/filename, accepted-document sync,
+payout item sync, document history and `createInvoiceReadModel`. Host facades keep
+SDK/HTTP imports, original keys, legacy columns, storage and M04 presentation.
+Callback mode requires an explicit `terminalFailure` binding before claim.
+With CTL-M09-3's 191000 pin, a native host binds `failedBeforeSend` by settling
+`failed_before_send` with evidence `{phase:'before_send', retrySeconds}` for bounded
+backoff, and `terminalFailure` with `{phase:'before_send', retryable:false}` for
+terminal no-reclaim. The optional `createPostgresInvoiceStore` delivery projection
+supplies the host envelope; `runInvoiceDeliveryJob` store mode supplies fenced
+finalizers. Missing projection refuses before leasing. Per-row projection or
+document-read exceptions settle retryable `failed_before_send` with generation-based
+backoff; envelope mismatches settle non-retryable and park. Other valid leased rows
+continue, with no uncertain receipt for these unsent failures. Uncertain transport
+or lost local acknowledgement cannot become another send.
+
+The account-history host projection verifies owner/order before its query and
+keeps correction parent, signed total, currency and download availability. Missing
+native parity is typed unsupported with `host_binding_required`. Operator auth
+precedes query and customer ticket ownership precedes PDF fetch/validation. The
+reference browser client consumes the host route without importing the server
+entry and filters diagnostics to closed codes. Runbooks, correction intent and
+all mutation writers stay host-owned. Inspect the [read-model witness](../../packages/platform/test/invoicing/readModel.test.ts)
+and [delivery/seam witness](../../packages/platform/test/invoicing/delivery.test.ts).
+
+The managed payout facade preserves legacy batch/payment calls and aggregate
+counts. The package reports reused receipts across item scopes as identity
+conflicts and continues without an extra write. Item-level recorded evidence
+requires the host's item-capable settlement port; legacy aggregate counts do not
+prove that granularity. The [native delivery contract](../../tests/postgres/invoicingDelivery.test.ts)
+exercises the package adapter/job against pinned 191000, checking returned results
+and delivery, receipt and attempt rows for claim, send, uncertainty, retry/default
+delays, terminal parking and stale fences. The host must still supply authorized
+envelope facts and conforming M04 transport; no default activation is installed.

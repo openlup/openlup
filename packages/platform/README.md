@@ -743,8 +743,8 @@ See the [M09 forward owner](../../docs/platform/DATA_AND_MIGRATIONS.md#m09-invoi
 
 `createPostgresInvoiceStore` uses a caller-owned structural executor for native
 owed duties, split fact leases, claims and fenced issue/correction results.
-Missing host facts refuse before writes; delivery/clearance projections remain
-host work. `INVOICING_MIGRATIONS` separates native child-document and managed
+Missing host facts refuse before writes; clearance remains host work. Delivery
+requires an explicit host envelope projection and M04 transport. `INVOICING_MIGRATIONS` separates native child-document and managed
 base-row correction storage. Install the complete native catalogue, not its
 six sparse byte-identical SQL assets. The local-only Postgres adapter consumes
 this store without claiming fiscal parity or registering a worker. The
@@ -764,3 +764,10 @@ remain registered in the architecture owner.
 
 For bounded duty discovery before facts exist, including cursor continuation past
 unavailable facts, follow the [invoicing architecture owner](../../docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#invoicing-contracts).
+
+The invoicing read side adds `runInvoiceDeliveryJob`, `assertInvoicePdf`,
+`invoicePdfFilename`, `syncAcceptedInvoiceDocuments`,
+`syncInvoicePayoutSettlements`, `resolveInvoiceDocumentHistory` and
+`createInvoiceReadModel`. Hosts supply authorization, storage, M04 transport,
+terminal/backoff callbacks or the native store, and safe native history projection. See the
+[read-helper recipe](../../docs/platform/PLATFORM_PACKAGE_REFERENCE.md#invoicing-read-helpers).

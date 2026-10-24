@@ -7,7 +7,7 @@ import type { AccountingJobResult } from "./accountingJobService.js";
 import { sanitizeAccountingError } from "./accountingProviderSnapshot.js";
 import type { AccountingRuntimeConfig } from "./accountingRuntimeConfig.js";
 
-const MAX_INVOICE_PDF_BYTES = 25 * 1024 * 1024;
+import { runInvoiceDeliveryJob, assertInvoicePdf as assertPdf, invoicePdfFilename as pdfFilename } from "@openlup/platform/invoicing";
 
 export async function runAccountingInvoiceDeliveryJob({
   port,
@@ -26,78 +26,48 @@ export async function runAccountingInvoiceDeliveryJob({
   limit?: number;
   orderId?: string | null;
 }): Promise<AccountingJobResult> {
-  if (!config.providerEmailEnabled) return skipped("provider_email_disabled");
-  if (!provider) return skipped("provider_disabled");
-  if (!deliveryPort) return skipped("email_delivery_provider_disabled");
-
-  const claims = await port.claimInvoiceDeliveries(limit, {
-    requireKsefAcceptanceForB2b: config.b2bEmailRequiresKsefAcceptance,
-    orderId,
-  });
-  let updated = 0;
-  let failures = 0;
-
-  for (const claim of claims) {
-    let deliveryResult;
-    try {
-      assertDeliveryClaim(claim, expectedProviderKind);
-      const pdf = await provider.downloadInvoicePdf(claim.providerInvoiceId);
+  return runInvoiceDeliveryJob({
+    enabled: config.providerEmailEnabled,
+    providerEnabled: Boolean(provider),
+    deliveryEnabled: Boolean(deliveryPort),
+    claim: () => port.claimInvoiceDeliveries(limit, {
+      requireKsefAcceptanceForB2b: config.b2bEmailRequiresKsefAcceptance, orderId,
+    }),
+    attemptCount: claim => claim.attemptCount,
+    validate: claim => assertDeliveryClaim(claim, expectedProviderKind),
+    download: async claim => {
+      const pdf = await provider!.downloadInvoicePdf(claim.providerInvoiceId);
       assertInvoicePdf(pdf);
-      deliveryResult = await deliveryPort.sendInvoiceDocument({
-        ...claim,
-        document: {
-          filename: invoicePdfFilename(claim.providerInvoiceNumber ?? claim.invoiceRef),
-          content: pdf.content,
-        },
-      });
-    } catch (error) {
-      failures += 1;
-      await port.markInvoiceDeliveryFailed({
-        outboxId: claim.outboxId,
-        claimAttemptCount: claim.attemptCount,
-        providerInvoiceId: claim.providerInvoiceId,
-        error: sanitizeAccountingError(error),
-        retrySeconds: retrySeconds(claim.attemptCount),
-      });
-      continue;
-    }
-
-    if (deliveryResult.status === "uncertain") {
-      failures += 1;
-      await port.markInvoiceDeliveryUncertain({
-        outboxId: claim.outboxId,
-        claimAttemptCount: claim.attemptCount,
-        providerInvoiceId: claim.providerInvoiceId,
-        providerMessageId: null,
-        error: deliveryResult.error,
-      });
-      continue;
-    }
-
-    try {
-      await port.markInvoiceDeliverySucceeded({
-        outboxId: claim.outboxId,
-        claimAttemptCount: claim.attemptCount,
-        providerInvoiceId: claim.providerInvoiceId,
-        providerMessageId: deliveryResult.providerMessageId,
-      });
-      updated += 1;
-    } catch {
-      failures += 1;
-      // Provider acceptance followed by a missing local acknowledgement must
-      // never become a retryable failure. The fenced uncertain transition is
-      // safe even when the success transaction committed but its response was lost.
-      await port.markInvoiceDeliveryUncertain({
-        outboxId: claim.outboxId,
-        claimAttemptCount: claim.attemptCount,
-        providerInvoiceId: claim.providerInvoiceId,
-        providerMessageId: deliveryResult.providerMessageId,
-        error: { code: "invoice_email_local_finalize_uncertain" },
-      }).catch(() => undefined);
-    }
-  }
-
-  return { ok: failures === 0, checked: claims.length, updated, skipped: false, failures };
+      return pdf;
+    },
+    filename: claim => invoicePdfFilename(claim.providerInvoiceNumber ?? claim.invoiceRef),
+    send: async (claim, document) => {
+      const result = await deliveryPort!.sendInvoiceDocument({ ...claim, document: { filename: document.filename, content: document.content } });
+      return result.status === "uncertain"
+        ? { kind: "uncertain" as const, code: "uncertain_delivery" as const, receiptRef: null, error: result.error }
+        : { kind: "provider_accepted" as const, receiptRef: result.providerMessageId };
+    },
+    failedBeforeSend: (claim, error, retrySeconds) => port.markInvoiceDeliveryFailed({
+      outboxId: claim.outboxId, claimAttemptCount: claim.attemptCount,
+      providerInvoiceId: claim.providerInvoiceId, error: sanitizeAccountingError(error), retrySeconds,
+    }),
+    // This legacy M04 adapter returns sent/uncertain only. Native bindings must
+    // supply a durable stop/backoff callback for their non-retryable refusals.
+    terminalFailure: async () => { throw new Error("accounting_delivery_result_unsupported"); },
+    uncertain: (claim, result) => port.markInvoiceDeliveryUncertain({
+      outboxId: claim.outboxId, claimAttemptCount: claim.attemptCount,
+      providerInvoiceId: claim.providerInvoiceId, providerMessageId: null, error: result.error,
+    }),
+    accepted: (claim, result) => port.markInvoiceDeliverySucceeded({
+      outboxId: claim.outboxId, claimAttemptCount: claim.attemptCount,
+      providerInvoiceId: claim.providerInvoiceId, providerMessageId: result.receiptRef,
+    }),
+    finalizeUncertain: (claim, receiptRef) => port.markInvoiceDeliveryUncertain({
+      outboxId: claim.outboxId, claimAttemptCount: claim.attemptCount,
+      providerInvoiceId: claim.providerInvoiceId, providerMessageId: receiptRef,
+      error: { code: "invoice_email_local_finalize_uncertain" },
+    }),
+  });
 }
 
 function assertDeliveryClaim(claim: {
@@ -119,29 +89,12 @@ function assertDeliveryClaim(claim: {
   }
 }
 
-export function assertInvoicePdf(pdf: { content: Uint8Array; contentType: string }): void {
-  const contentType = pdf.contentType.split(";", 1)[0]?.trim().toLowerCase();
-  if (contentType !== "application/pdf") throw new Error("accounting_invoice_pdf_content_type_invalid");
-  if (!pdf.content || pdf.content.byteLength === 0) throw new Error("accounting_invoice_pdf_empty");
-  if (pdf.content.byteLength > MAX_INVOICE_PDF_BYTES) throw new Error("accounting_invoice_pdf_too_large");
-  if (Buffer.from(pdf.content.subarray(0, 5)).toString("ascii") !== "%PDF-") {
-    throw new Error("accounting_invoice_pdf_signature_invalid");
+
+/** Preserve existing host diagnostic bytes and locale caption. */
+export function assertInvoicePdf(pdf: Parameters<typeof assertPdf>[0]): void {
+  try { assertPdf(pdf); } catch (error) {
+    if (error instanceof Error && error.message.startsWith("invoice_pdf_")) throw new Error(`accounting_${error.message}`);
+    throw error;
   }
 }
-
-export function invoicePdfFilename(reference: string): string {
-  const safeReference = reference
-    .normalize("NFKD")
-    .replace(/[^A-Za-z0-9_-]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 100);
-  return `${safeReference || "faktura"}.pdf`;
-}
-
-function retrySeconds(attemptCount: number): number {
-  return Math.min(3600, 300 * Math.max(1, attemptCount));
-}
-
-function skipped(reason: string): AccountingJobResult {
-  return { ok: true, checked: 0, updated: 0, skipped: true, reason, failures: 0 };
-}
+export function invoicePdfFilename(reference: string): string { return pdfFilename(reference, "faktura"); }

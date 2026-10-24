@@ -688,7 +688,7 @@ nullable client/source facts and any known receipt after a lost local acknowledg
 Settlement retains the provider document reference and retry delay for managed
 pre-send backoff. Native takes `p_evidence.retrySeconds`: a whole number of seconds
 clamped to 60..86400, otherwise 900; `retryable:false` parks at infinity.
-P4's structural store leaves delivery unsupported until the host envelope is bound.
+The structural store leaves delivery unsupported unless its optional host envelope projection is bound.
 For uncertain sends, native passes
 `p_receipt` NULL and retains a non-null receipt hint in `p_evidence`; managed
 passes the hint as the provider message ID.
@@ -746,3 +746,61 @@ contains only subject/provider references and case names, never result payloads.
 Use [the conformance witnesses](../../packages/platform/test/invoicing/adapterConformance.test.ts)
 for offline examples. Fixtures and counters are adapter-owned assertions, not
 remote attestation, PostgreSQL atomicity proof or fiscal certification.
+
+### Invoicing read helpers
+
+`runInvoiceDeliveryJob` takes explicit claim, validation, PDF, filename, M04 send
+and fenced settlement callbacks. Bind the mandatory `terminalFailure` callback
+before leasing native work; its absence refuses before claim. With CTL-M09-3's
+191000 pin, `failedBeforeSend` settles `failed_before_send` with evidence
+`{phase:'before_send', retrySeconds}`: `available_at` is `now()` plus validated
+whole-number seconds clamped to 60..86400; absent/invalid seconds use 900.
+`terminalFailure` settles that same branch with
+`{phase:'before_send', retryable:false}`: `available_at='infinity'` prevents reclaim,
+with status `failed` and `last_error` visible.
+Alternatively pass `store` and `claimOptions` to `runInvoiceDeliveryJob` with the
+host download, filename and send callbacks: store mode supplies those finalizers.
+Construct that store with `createPostgresInvoiceStore(executor, {projectDelivery})`.
+The projector resolves host M04 keys, recipient and presentation facts after lease;
+the store checks document/order/provider identity and the projected attempt count
+before returning the claim.
+An absent projector refuses before leasing. A projection or document-read exception
+settles only that row as retryable `failed_before_send`, with the same generation-based
+backoff as the job (300 seconds per attempt, capped at 3600). A mismatched envelope
+settles as non-retryable `failed_before_send` and parks the row. Neither sends or
+creates an uncertain receipt; other valid rows in the leased batch continue.
+Job counters cover only the valid claims returned by the store.
+A thrown M04 send is permitted only
+before entering transport; after entry, return uncertain. The managed facade
+retains its existing key and diagnostic bytes. `assertInvoicePdf` checks MIME,
+size and signature; `invoicePdfFilename` accepts a host fallback caption.
+
+`syncAcceptedInvoiceDocuments` downloads host-selected attachments concurrently
+and records their metadata/provider references through the host. Its observation
+mode lists targets, observes and records every status, then syncs accepted targets,
+counting per-target failures. It neither stores blobs nor submits clearance.
+`syncInvoicePayoutSettlements` records every projected item independently through
+the host settlement port; projection owns optional link resolution. Unknown,
+conflict or unsupported recording never counts as success or payment truth.
+
+`resolveInvoiceDocumentHistory` retains the donor's chronological original,
+correction and replacement decisions over neutral projected columns; the reference
+shim translates legacy columns without changing its public DTO. Native account
+history instead uses the safe P1 host projection, preserving signed correction
+totals and explicit parent identity. `createInvoiceReadModel` whitelists its fields,
+checks account/order identity, resolves ownership before PDF, validates bytes and
+keeps four-way provider readback distinct. Operator and legacy ticket callbacks
+keep HTTP/auth/SDK code in the host. Missing native bindings return unsupported;
+no default query or storage is fabricated. Reference operator HTTP/UI diagnostics use closed
+codes and omit provider free text; runbook URLs remain host inputs.
+
+The reference payout facade uses the injected item-capable port when supplied;
+otherwise its accounting control port preserves donor calls and aggregate counts.
+The package returns an `items` receipt list: a legacy batch/payment receipt reused
+across item scopes becomes `conflict` / `identity_mismatch`; processing continues
+with no extra write. Package counts accept only item-level receipts, so they may
+differ from legacy host counts. An item-capable recorder/resolver produces distinct
+`recorded` receipts. Neither count establishes payment success. The
+[native delivery contract](../../tests/postgres/invoicingDelivery.test.ts) exercises
+store/job results and durable state against the pinned SQL, including retry and
+terminal outcomes; it makes no live transport or inbox-delivery claim.

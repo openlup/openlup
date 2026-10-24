@@ -6,13 +6,20 @@ type NativeStore = InvoiceStorePort & {
   /** Read-only discovery before a host can install facts. Replays may repeat targets. */
   discoverDuties(limit: number, afterDutyId?: string | null): Promise<readonly { readonly dutyId: string; readonly orderId: string }[]>;
 };
+type DeliveryClaim = Exclude<Awaited<ReturnType<InvoiceStorePort["claimDeliveries"]>>, { kind: "unsupported" }>[number];
+type DeliveryProjection = {
+  /** Host-owned M04 keys, presentation and recipient resolution, after leasing.
+   * Return only the envelope for this document; a failed projection never sends.
+   */
+  projectDelivery(input: { readonly deliveryRef: string; readonly documentId: string; readonly channel: string; readonly recipientRef: string; readonly attemptCount: number }): Promise<Pick<DeliveryClaim, "identity" | "delivery">>;
+};
 type Executor = { query(text: string, values?: unknown[]): Promise<{ rows: Record<string, unknown>[] }> };
 const unsupported = { kind: "unsupported", code: "host_binding_required", retryable: false, effectMayHaveSucceeded: false } as const;
 
 /** Bind an autocommit executor. Never pass a transaction spanning host/provider I/O.
- * Missing fiscal/delivery projections refuse before writes; no scheduler is installed.
+ * Missing fiscal facts or delivery binding refuse before writes; no scheduler is installed.
  */
-export function createPostgresInvoiceStore(db: Executor): NativeStore {
+export function createPostgresInvoiceStore(db: Executor, deliveryProjection?: DeliveryProjection): NativeStore {
   async function call<T>(name: string, values: unknown[]): Promise<T> {
     const result = await db.query(`SELECT public.${name}(${values.map((_, i) => `$${i + 1}`).join(",")}) AS response`, values);
     if (result.rows[0]?.response === undefined) throw new Error("invoicing_native_response_missing");
@@ -105,8 +112,54 @@ export function createPostgresInvoiceStore(db: Executor): NativeStore {
       if (typeof document?.document_ref !== "string") throw new Error("accounting_paid_order_document_reference_missing");
       return { kind: "requested", documentId: response.document.id, invoiceRef: document.document_ref, replayed: response.replayed, status: response.document.status };
     },
-    // Native delivery rows do not carry the host's M04 request/client/source
-    // envelope. Keep the P1 typed refusal until that projection is bound.
+    async claimDeliveries(v) {
+      if (typeof deliveryProjection?.projectDelivery !== "function") return unsupported;
+      const rows = await call<{ delivery_id: string; document_id: string; channel: string; recipient_reference: string; claim_token: string; generation: number }[]>(
+        "invoicing_claim_deliveries", [v.limit, v.visibilitySeconds, v.requireClearance, v.orderId ?? null]);
+      const claims: DeliveryClaim[] = [];
+      for (const row of rows) {
+        let retryable = true;
+        try {
+          const projected = await deliveryProjection.projectDelivery({ deliveryRef: row.delivery_id, documentId: row.document_id,
+            channel: row.channel, recipientRef: row.recipient_reference, attemptCount: row.generation });
+          const doc = (await db.query("SELECT order_id, provider_reference FROM public.accounting_documents WHERE id=$1::uuid", [row.document_id])).rows[0];
+          const { identity, delivery } = projected;
+          if (!doc || !nonempty(doc.provider_reference) || identity.documentRef !== row.document_id
+            || identity.providerDocumentRef !== doc.provider_reference || delivery.documentRef !== row.document_id
+            || delivery.deliveryRef !== row.delivery_id || delivery.orderId !== doc.order_id
+            || delivery.providerDocumentRef !== doc.provider_reference || delivery.attemptCount !== row.generation
+            || delivery.orderRef !== identity.orderRef || delivery.invoiceRef !== identity.invoiceRef
+            || !nonempty(delivery.requestKey) || !nonempty(delivery.recipient)) {
+            retryable = false;
+            throw new Error("invoicing_delivery_projection_invalid");
+          }
+          claims.push({ ...projected, token: row.claim_token, generation: row.generation, providerDocumentRef: doc.provider_reference });
+        } catch {
+          const settled = await call<{ kind: string }>("invoicing_settle_delivery", [
+            row.delivery_id, row.claim_token, row.generation, "failed_before_send", null,
+            { phase: "before_send", retryable, retrySeconds: Math.min(3600, 300 * Math.max(1, row.generation)),
+              code: retryable ? "retryable" : "identity_mismatch" },
+          ]);
+          if (settled.kind !== "failed_before_send") throw new Error("invoicing_delivery_fence");
+        }
+      }
+      return claims;
+    },
+    async settleDelivery(v) {
+      if (typeof deliveryProjection?.projectDelivery !== "function") return unsupported;
+      const doc = (await db.query(`SELECT doc.provider_reference FROM public.accounting_document_deliveries d
+        JOIN public.accounting_documents doc ON doc.id=d.document_id WHERE d.id=$1::uuid`, [v.deliveryRef])).rows[0];
+      if (!doc || doc.provider_reference !== v.providerDocumentRef) return unsupported;
+      const result = v.result;
+      const kind = result.kind === "provider_accepted" ? "sent" : result.kind;
+      const receipt = result.kind === "provider_accepted" ? result.receiptRef : null;
+      const evidence = result.kind === "failed_before_send"
+        ? { phase: "before_send", retryable: result.retryable, retrySeconds: v.retrySeconds, code: result.code }
+        : result.kind === "uncertain" ? { code: result.code, receiptHint: result.receiptRef } : { proof: result.proof };
+      const settled = await call<{ kind: string; replayed?: boolean }>("invoicing_settle_delivery",
+        [v.deliveryRef, v.token, v.generation, kind, receipt, evidence]);
+      return { kind: settled.kind === "stale" ? "stale" : "recorded", replayed: settled.replayed ?? false };
+    },
   };
 }
 

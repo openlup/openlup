@@ -1011,8 +1011,10 @@ export interface InvoiceStorePort {
     }[] | InvoiceUnsupported>;
     /** Native uncertain settlement passes p_receipt NULL and retains a non-null
      * receiptRef hint in p_evidence; managed uses it as the provider message id.
-     * Managed failed_before_send uses the retrySeconds RPC argument; native host
-     * bindings copy retryable and retrySeconds into p_evidence for retry policy.
+     * Managed failed_before_send uses the retrySeconds RPC argument. Native
+     * failed_before_send carries { phase: 'before_send', retryable, retrySeconds }
+     * in p_evidence: whole seconds clamp to 60..86400, absent/invalid uses 900.
+     * retryable:false parks at infinity, with failed status and last_error visible.
      */
     settleDelivery(input: {
         readonly deliveryRef: string;
