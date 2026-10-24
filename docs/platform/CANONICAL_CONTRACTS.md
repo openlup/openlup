@@ -568,7 +568,7 @@ snapshots only. The batch has 16 pins: seven native and nine managed. Pending pi
 `20261022160000`. Native order is N1 → N2 → N3 → seam → allocator → X → Y;
 managed order is M1 → M2 → seam → M3 → M4 → M5 → M6 → F17 helper → F17 parity.
 X (`20261024184500`) restores ATP-counted late-positive recovery after the
-allocator; Y (`20261024184600`) filters paid retry candidates before LIMIT.
+allocator; Y (`20261024184600`) filters paid retry candidates before LIMIT. N3 (`20261024180000`) excludes waiting/stock_secured cases before normal_due pagination while preserving the base reader's eligibility, shape and due-time/UUID order.
 The uninstalled N2 (`20261024170000`) fixture includes raw command-preview
 receipt replay with no public-table counts/columns/xmin delta. The apply
 function is unchanged. Historical N1 approval still uses the exact old 14-pin

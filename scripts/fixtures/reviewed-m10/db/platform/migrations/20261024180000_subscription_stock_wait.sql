@@ -231,8 +231,23 @@ END;
 $$;
 CREATE FUNCTION public.subscription_stock_wait_normal_due(p_limit integer DEFAULT 50,p_now timestamptz DEFAULT now())
 RETURNS jsonb LANGUAGE sql STABLE SET search_path = pg_catalog AS $$
- SELECT COALESCE(jsonb_agg(to_jsonb(d)),'[]'::jsonb) FROM public.subscription_list_due_renewals(p_now,p_limit) d
- WHERE NOT EXISTS(SELECT 1 FROM public.subscription_stock_wait_cases c WHERE c.subscription_id=d.subscription_id AND c.scheduled_at=d.scheduled_at AND c.state IN ('waiting','stock_secured'));
+ SELECT COALESCE(jsonb_agg(to_jsonb(d) ORDER BY d.scheduled_at,d.subscription_id),'[]'::jsonb) FROM (
+  SELECT subscription.id AS subscription_id, subscription.client_id, subscription.next_cycle_at AS scheduled_at,
+         subscription.cadence_days, terms.next_cycle_number AS cycle_number, terms.currency_code,
+         terms.stock_source_key, terms.settlement_channel_key, terms.authorization_ref,
+         terms.payer_account_ref, terms.unattended_charge_authorized_at, terms.delivery_admission,
+         terms.delivery_block_reason
+    FROM public.subscriptions subscription
+    JOIN public.subscription_renewal_terms terms ON terms.subscription_id=subscription.id
+   WHERE subscription.status='active' AND subscription.next_cycle_at IS NOT NULL
+     AND subscription.next_cycle_at<=COALESCE(p_now,now())
+     AND NOT EXISTS(SELECT 1 FROM public.subscription_renewal_operations operation
+      WHERE operation.subscription_id=subscription.id AND operation.scheduled_at=subscription.next_cycle_at
+       AND (operation.state IN ('succeeded','refused') OR operation.lease_expires_at>COALESCE(p_now,now())))
+     AND NOT EXISTS(SELECT 1 FROM public.subscription_stock_wait_cases c
+      WHERE c.subscription_id=subscription.id AND c.scheduled_at=subscription.next_cycle_at AND c.state IN ('waiting','stock_secured'))
+   ORDER BY subscription.next_cycle_at,subscription.id LIMIT LEAST(GREATEST(COALESCE(p_limit,50),1),500)
+ ) d;
 $$;
 CREATE FUNCTION public.subscription_stock_wait_mark_resumed(p_order_id uuid)
 RETURNS jsonb LANGUAGE plpgsql SET search_path = pg_catalog AS $$

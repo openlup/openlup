@@ -299,6 +299,40 @@ async function proveFreshCommandDifferential() {
 
   if (portable) {
 const scoped = async (fn:()=>Promise<void>) => { await db.query('BEGIN'); try { await fn(); } finally { await db.query('ROLLBACK'); } };
+// These rows use the same committed native prefix and pinned N3 fixture as the catalog gate above.
+it.each([
+ { name: '(i) backlog larger than limit', limit: 2, states: ['waiting','stock_secured','waiting',null,null,null] },
+ { name: '(ii) backlog exactly at limit', limit: 2, states: ['waiting','waiting',null,null,null] },
+ { name: '(iii) interleaved normal rows', limit: 3, states: [null,'waiting',null,'stock_secured',null,null] },
+ { name: '(iv) no waiting rows', limit: 2, states: [null,null,null] },
+] as const)('N3 normal_due $name', async ({limit,states}) => scoped(async () => {
+ // Isolate this page from other gate witnesses; all changes roll back.
+ await db.query("UPDATE public.subscriptions SET status='paused' WHERE status='active'");
+ const normal: string[] = [];
+ for (const [index,state] of states.entries()) {
+  const f = await renewal(db);
+  // Adjacent rows share a due time, exercising the base reader's UUID tie-break.
+  const scheduled = later(-24 + Math.floor(index / 2));
+  await db.query('UPDATE public.subscriptions SET next_cycle_at=$2 WHERE id=$1',[f.subscription,scheduled]);
+  await db.query('UPDATE public.subscription_renewal_operations SET scheduled_at=$2 WHERE id=$1',[f.operation,scheduled]);
+  if (state) await db.query(`INSERT INTO public.subscription_stock_wait_cases(
+   subscription_id,client_id,renewal_operation_id,scheduled_at,cycle_number,state,
+   due_snapshot,cycle_snapshot,fingerprint,identity_key,deficits)
+   VALUES($1,$2,$3,$4,2,$5,'{}',$6,$7,$8,'[]')`,
+   [f.subscription,f.client,f.operation,scheduled,state,f.snapshot,f.fingerprint,f.identity]);
+  else normal.push(f.subscription);
+ }
+ // At this clock the claim leases have expired: waits also occupy the base page.
+ const base = (await db.query(`SELECT to_jsonb(d) AS row FROM public.subscription_list_due_renewals($1,500) d`,[later(1)])).rows.map(r=>r.row);
+ expect(base).toHaveLength(states.length);
+ const expected = base.filter(row=>normal.includes(row.subscription_id)).slice(0,limit);
+ expect(expected).toHaveLength(limit);
+ expect(await call(db,'subscription_stock_wait_normal_due',[limit,later(1)])).toEqual(expected);
+ if (states.every(state=>state===null)) {
+  const page = (await db.query('SELECT to_jsonb(d) AS row FROM public.subscription_list_due_renewals($1,$2) d',[later(1),limit])).rows.map(r=>r.row);
+  expect(expected).toEqual(page);
+ }
+}));
 async function decline(available=2, lines=1) {
  const f = await renewal(db,available,lines), original = await prepareOriginal(db,f);
  expect((await reservation(f)).status).toBe('committed');

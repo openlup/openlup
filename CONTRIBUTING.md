@@ -205,7 +205,7 @@ Preview replay is folded into N2. Managed order is M1 (`20261024155000`)
 → M4 (`20261024181000`) → M5 (`20261024182000`) → M6 (`20261024184000`)
 → F17 helper (`20261024185000`) → F17 parity (`20261024185100`).
 The native gate also proves paid-line ATP protection, zero-delta late-payment
-replay, one-time offer refusal and stale-settlement filtering before LIMIT.
+replay, one-time offer refusal and stale-settlement filtering before LIMIT. N3's normal_due witness covers greater-than-limit and exactly-limit stock waits, interleaved due ordering and no-wait equality with the base reader; waiting/stock_secured cases are excluded before LIMIT.
 In folded N2, a raw replay of the command preview returns the stored receipt. All 43
 fresh scenarios compare output bytes and public-table columns against the pre-fold preview body and folded N2;
 committed replays compare counts, all columns and xmin across a later command,
