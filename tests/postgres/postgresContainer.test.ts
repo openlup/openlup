@@ -179,7 +179,7 @@ describe("PostgreSQL lifecycle deadlines and cleanup failures", () => {
       message: "PostgreSQL cleanup failed",
       errors: [expect.objectContaining({ message: "pool failed" }), expect.objectContaining({ cause: expect.objectContaining({ message: "removal failed" }) })],
     });
-    expect(mocks.exec.mock.calls.at(-1)![1]).toEqual(["rm", "-f", spec.name]);
+    expect(mocks.exec.mock.calls.at(-1)![1]).toEqual(["rm", "-f", "-v", spec.name]);
   });
 
   it("removes the container when pool shutdown never settles, within the teardown hook", async () => {
@@ -192,7 +192,7 @@ describe("PostgreSQL lifecycle deadlines and cleanup failures", () => {
     });
     await vi.advanceTimersByTimeAsync(5_000);
     await result;
-    expect(mocks.exec.mock.calls.at(-1)![1]).toEqual(["rm", "-f", spec.name]);
+    expect(mocks.exec.mock.calls.at(-1)![1]).toEqual(["rm", "-f", "-v", spec.name]);
     expect(postgresTeardownTimeoutMs).toBeGreaterThan(5_000 + 30_000);
   });
 
@@ -207,7 +207,7 @@ describe("PostgreSQL lifecycle deadlines and cleanup failures", () => {
     });
     expect(end).toHaveBeenCalledTimes(1);
     expect(adapter).toHaveBeenCalledTimes(1);
-    expect(mocks.exec.mock.calls.slice(-2).map(([, args]) => args)).toEqual([["rm", "-f", spec.name], ["rm", "-f", "sibling"]]);
+    expect(mocks.exec.mock.calls.slice(-2).map(([, args]) => args)).toEqual([["rm", "-f", "-v", spec.name], ["rm", "-f", "-v", "sibling"]]);
   });
 
   it("bounds all adapter and fixture pool closes together and waits for every removal", async () => {
@@ -219,7 +219,7 @@ describe("PostgreSQL lifecycle deadlines and cleanup failures", () => {
     const end = vi.fn().mockResolvedValue(undefined);
     // The first removal fails quickly; the sibling still has to finish removal.
     mocks.exec.mockImplementation(async (_command, args) => {
-      if (args[2] === spec.name) throw new Error("first removal failed");
+      if (args.at(-1) === spec.name) throw new Error("first removal failed");
       await new Promise(resolve => setTimeout(resolve, 1_000));
       return { stdout: "" };
     });
@@ -247,7 +247,7 @@ describe("PostgreSQL lifecycle deadlines and cleanup failures", () => {
     const ended = { ended: true, end: vi.fn() };
     await expect(closePostgres([undefined, container], [undefined, ended])).resolves.toBeUndefined();
     expect(ended.end).not.toHaveBeenCalled();
-    expect(mocks.exec.mock.calls.at(-1)![1]).toEqual(["rm", "-f", spec.name]);
+    expect(mocks.exec.mock.calls.at(-1)![1]).toEqual(["rm", "-f", "-v", spec.name]);
   });
 
   it("uses a wall-clock readiness deadline even when each connection stalls", async () => {

@@ -62,7 +62,9 @@ async function docker(args: string[], operation: string, timeout = dockerTimeout
 
 async function removeContainer(name: string, timeout = dockerTimeoutMs) {
   try {
-    await docker(["rm", "-f", name], `remove ${name}`, timeout);
+    // PostgreSQL declares an anonymous data volume; remove it with its owned
+    // disposable container on every cleanup path. Named volumes are retained.
+    await docker(["rm", "-f", "-v", name], `remove ${name}`, timeout);
   } catch (error) {
     // Removing a container that never started (or was already removed) is safe.
     const cause = (error as Error & { cause?: unknown }).cause as { stderr?: string } | undefined;
