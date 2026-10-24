@@ -8,12 +8,13 @@ application" section, which `docs:check` requires, tells an application's agent
 not to edit or patch the installed package and to upgrade every `@openlup/*`
 package together.
 
-The prepared `0.23.0` set republishes core unchanged from `0.22.0`.
-Upgrade all packages together and read [the migration and label limitation](CHANGELOG.md#0230).
-The size baseline is the published `0.22.0` artifact; older releases remain in
+The prepared `0.24.0` set carries the Zod validation floor below; remaining APIs,
+runtime behavior and shipped SQL are unchanged from `0.23.0`.
+Upgrade all packages together and read [the migration and label limitation](CHANGELOG.md#0240).
+The size baseline is the published `0.23.0` artifact; older releases remain in
 the source-only `CHANGELOG-HISTORY.md`. Preparation establishes no npm publication.
 
-The unreleased workspace requires Zod `^4.6.6` for GHSA-mrhx-c7xc-m3w5.
+The prepared set requires Zod `^4.6.6` for GHSA-mrhx-c7xc-m3w5.
 Oversized constrained collections fail before per-element errors accumulate;
 bounded valid inputs and public exports are preserved. Both dependency locks
 select the fixed runtime. The build uses the existing development-only Node

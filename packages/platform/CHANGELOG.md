@@ -10,10 +10,223 @@ in the source repository.
 
 ## [Unreleased]
 
+## [0.24.0]
+
+- Publishable on the npm `latest` dist-tag as `0.24.0`, from tag
+  `openlup-platform-v0.24.0`.
+
 - Require Zod `^4.6.6` to fix GHSA-mrhx-c7xc-m3w5; oversized constrained
   request collections fail before element validation accumulates errors.
 - Preserve the observation adapter's accepted minute-precision occurrence timestamps and raw
   idempotency-key bytes with the updated validator; impossible dates still fail.
+
+- Add the optional `runFulfillmentDispatchWorker.shadowCommandFingerprint` callback for a pure, local adopter command hash in shadow mode. Without it, shadow evidence still hashes the same `JSON.stringify(request)` bytes with SHA-256. The callback must return a lowercase 64-hex SHA-256 digest of the adopter's canonical command bytes, never command contents, credentials or contact data. The package accepts only strings matching `/^[a-f0-9]{64}$/`; invalid output or a throw returns a typed refusal with closed cause `adopter_fingerprint_invalid` or `adopter_fingerprint_failed`, without raw output, exception text or claim/attempt/evidence writes. Stage/live never invoke the callback. The fingerprint is used across shadow claim/readback/attempt, including mapped-attempt replay; shadow never begins, and live preparation must produce the same identity; shadow still performs no provider preparation, credentials lookup or POST.
+- Preserve optional boolean `submissionAttempted` and `responseBodyRead` facts on typed dispatch errors and finalize evidence. `submissionAttempted: false` proves no provider submission was attempted; absence is unknown. `responseBodyRead: true` means the response body was read, including empty or malformed JSON; `false` means reading failed, and absence means there is no body-read evidence. Credential/request-construction failures include explicit non-submission proof; command validation/rebuild retains its closed `not_dispatchable` refusal. No raw body, exception prose or credentials enter these facts; durable projections admit only actual booleans.
+
+Migration: existing callers need no changes. `shadowDispatchEvidence(request)` becomes `shadowDispatchEvidence(request, commandFingerprint?)`; omitting the new optional argument keeps the same evidence bytes and hash. These facts allow adopter classification without inferring uncertainty from retryability. Package classification remains unchanged: definitive rejections (including an unreadable HTTP 400 body) are `not_dispatched`; ambiguous submission and unreadable successful acknowledgements are `unknown`. No release, default binding, route, schedule or activation is added.
+
+- Add inert native unsupported invoicing ports and runner-independent offline adapter conformance for exact recovery, parent identity, scoped absence, declared host capabilities and safe evidence.
+- Document the invoicing design and host boundaries without installing workers, stores, fiscal providers, routes or activation.
+
+- Extract invoice issue sequencing, snapshot/canonical line verification, unchanged allocation, payment evidence and handoff helpers into the existing invoicing entry; retain host payloads, keys, seller/tax policy and routing.
+- Migration: compatibility callbacks preserve existing RPC/provider request bytes, issue fences and handoff descriptors. No native store, D7/O2 behavior, default provider, executor registration or activation is added.
+
+- Add correction and reversal workers to the experimental invoicing entry, preserving durable correction identity, recovery, host event/key semantics and fenced outcomes. The reference host requires an explicit conforming correction bridge; its legacy vendor copy stays unchanged and unselected.
+- Migration: introduce the two pinned managed v2/compatibility forwards with versioned adapter and pgTAP callers. Unkeyed attempted legacy corrections remain visibly unresolved for provider reconciliation. Preview correction references use correctionRef. Native forwards and runtime activation remain separate.
+- See the [M09 forward owner](../../docs/platform/DATA_AND_MIGRATIONS.md#m09-invoicing-forward-design-and-control-approval) for sync-first settlement and permanent-failure parking.
+- Registered limit: multi-reason / late-issue compensation can yield more than one full correction per invoice, as the incumbent does today.
+
+- Add an experimental structural-executor native invoice store, a create/readback issue binding, separate native/managed migration descriptors, and six byte-identical sparse SQL assets. Read-only bounded discovery exposes duty/order IDs before facts are installed. Missing host fiscal facts refuse before writes; local-only document construction retains its previous behavior. Native fresh non-ready preflights settle before dispatch; stale preflight/finalizer results write no failure.
+- Migration: append the three reviewed native duty/effect/payment forwards at positions 77–79 after the unchanged 160000/165000 prefix. Install the complete catalogue. Native child-document and managed base-row corrections have distinct descriptors. Seller revision and activation remain separate.
+
+### Independent native invoicing duties
+
+Experimental invoicing adds `collectInvoiceDuties` and
+`createIndependentInvoiceDutyBinding` for explicitly invoked, separately committed
+duty collection. Native fulfillment no longer waits for accounting readiness or
+invoice requests. Managed dispatch behavior stays unchanged.
+
+Install the full native catalogue, including 190000/191000 before the exact
+reviewed 192000 payment-decoupling forward. Captured settlement and dunning
+recovery survive invoice capture failure; retained paid/handoff facts support
+later repair. New unlinked payment events retain `accountingRequested=false`,
+including after independent issue; historical linked events retain their readback.
+Use owed-duty readback for invoice progress. No payment
+export, provider activation, scheduler registration or fiscal default is added.
+
+- Extract invoice delivery, PDF validation, accepted-document synchronization, payout item recording and document-history/read helpers into the existing invoicing entry; bind the reference host facades through explicit callbacks.
+- Migration: F8 retains A2 payout transport and exact settlement keys; the legacy batch/payment importer preserves donor calls and aggregate results, while package receipt reuse across item scopes is an identity conflict with continued processing and no extra write; distinct recorded receipts require an item-capable host recorder/resolver. F11 retains M04 content, recipient, locale, transport and uncertainty. F9 bounds reference consumers; F12 leaves runbooks and customer correction intent host-owned. Native delivery uses an optional host envelope projection over P4’s store; job store mode binds fenced terminal/backoff outcomes (whole seconds clamp 60..86400, absent/invalid 900, retryable:false parks); callback mode requires terminalFailure before claim; native history requires a safe owned projection. PDF downloads now refuse invalid bytes; the reference panel displays closed diagnostic codes without free-text provider errors. No SQL, activation, executor or fiscal-policy change.
+
+Explicit invoicing composition and first-claim seller revision
+
+PART A: `createInvoiceServices`, `InvoiceServices` and `createInvoiceContribution`
+use the existing `/invoicing` entry. Host selection is default-off; readiness
+precedes factories and claim. Native helpers compose the real P4/P5 store,
+collection, delivery, sync and read-model implementations. Host-specific factories
+retain auth, configuration, transport/query projection and the existing executor,
+registry and lease. Targeted module runs refuse before leasing.
+
+PART B — Migration: native 195000 and managed 195100 are forward-only,
+byte-identical introductions of the approved CTL-M09-4 fixtures. Eligible
+obligations freeze the seller at their first-ever durable claim, independently
+for corrections; retries retain it. Previously claimed legacy obligations keep
+execution-time fallback. Issued documents and installed buyer/line facts are
+unchanged. Native reversals use the correction request branch; managed order
+reversals preserve incumbent results through the seller request wrapper.
+Unknown/unsupported seller reads and order-scoped managed corrections refuse
+before claim. SQL replay conflicts surface as typed identity conflicts.
+
+### Selection and installation boundary
+
+Invoicing remains EXPERIMENTAL and DEFAULT-OFF. The issue/correction/reversal,
+durable duty collection, native store, delivery/document/payout sync, safe history
+and first-claim seller revision helpers are available for explicit host composition.
+Select a provider and capability, bind host ports and establish readiness before
+factories or claim; the structural contribution registers nothing itself. Fiscal
+policy, ownership/authentication, M04 transport, artifact/history projections,
+execution leases and route/job registration remain host responsibilities. No live
+provider, fiscal acceptance or inbox-delivery evidence is established. Adopters
+must not activate unselected or unready invoicing, or infer activation from SQL.
+
+M10 subscription renewal/retry stages remain EXPERIMENTAL, INCOMPLETE and
+DEFAULT-OFF, not for adopter activation: contracts, native stores/executor and
+N1 SQL are present, but runner activation and the G23/N1 host composition,
+correlation, authorization and replay obligations remain pending. Native delivery
+alignment must remain off or shadow until the host composes the renewal runner
+with its G23 admission decorator.
+
+Migration: upgrade core, outbox and platform together from `0.23.0` to `0.24.0`
+for exact internal peers. Install the complete canonical native migration chain
+through position 80 (`20261022195000_invoicing_seller_revision.sql`), including
+invoicing positions 77/78/79 (`190000`/`191000`/`192000`); P5 adds no SQL and P7
+adds position 80. Sparse package projections are not an installation chain.
+Managed installations use their own ordered forwards, including correction
+`193000`/`193100` and seller `195100`; managed descriptor paths are catalogue
+references, not files installed by the npm tarball. Preserve first-claim seller
+snapshots and legacy fallback; there is no retroactive backfill or reversal of
+forward SQL on application rollback. Retain the `0.23.0` shadow/observation retry
+and legacy stock-fingerprint migration precautions when upgrading older rows.
+
+### Limits closed by this set
+
+- The earlier invoicing contract-only/no-SQL/no-worker surface limit is closed:
+  P1b–P7 introduce explicit services, native store and helpers, with CTL-M09-1–4
+  reviewed forwards at native positions 77–80 and the managed correction/seller
+  forwards; see the [design boundary](../../docs/platform/plans/oss-m09-invoicing.md#p7-composition-and-seller-revision).
+  Default activation and live fiscal/provider acceptance remain unclaimed.
+- M08 stock-evidence replay/reopen was already closed in `0.23.0` by position 76;
+  this set does not close its legacy fingerprint conflict or other M08 gaps.
+
+### Known limitations
+
+- Managed dunning exhaustion still pauses active subscriptions; retaining active status needs a managed forward. Native N1 lands the bounded retry/failure repair, with the host obligations below still pending.
+- D8-1: native advisory v2 promo-code candidates/rejection details unavailable.
+- D8-2: native mounted v2 issue/honor/fallback unavailable.
+- D8-3: native acquisition-only mounted issuance/honor unavailable.
+- D8-4: full native/managed eligibility equivalence unavailable.
+- Bundle-1: independent DB human-only actor-kind enforcement absent natively; first in the native-backend parity round.
+- Bundle-2: managed-equivalent actor-kind/email history absent natively.
+- Bundle-3 closes injected-reader M05 mounted admin/feed readback only. Native new-purchase stock read absent despite P5a installed-store proof; deferred second after bundle-1 (owner 2026-10-21); readiness refuses.
+- Bundle-4: incumbent real-PostgreSQL contention only; no exactly-once guarantee.
+- Managed schema/pgTAP retain `44.404`; removal needs owner decision/forward; reference composition supplies it to app code.
+- A1 offline only; account/hosted-time/owner TEST evidence unclaimed; `communications/klaviyo` verification-pending.
+- M05 omitted opt-ins preserve defaults/outputs/read order/schedules/refusals/acceptance-token bytes/SQL.
+- Native inventory adjustment unavailable; address writes refuse readiness. Flat-rate save needs selected port/Core readiness/applied-seed observation.
+- Native shipping audit unavailable; handler swallows best-effort audit failure.
+- Native flat-rate integer bounds (0 through host maximum; reference 100,000 minor units) use request schema, not DB CHECK.
+- Managed ATP/forecast/dated-supply/pagination readback unproved/pending M06.
+- Managed two-session locks/concurrency/uncovered compensation unproved/pending M06.
+- Managed exact-prefix upgrade/ledger unproved/pending M06.
+- Managed address idempotency/conflict/readback unproved/pending M06.
+- Managed successful flat-rate read/save unproved/pending host authority.
+- M06 stock-wait lifecycle/durable timing/staging controls retain C5/C6; busy/try-gate, continuity/flag/TTL transfers are dispositions, not PASS.
+- Shipping national-registry fields/locale-specific `canonicalAddressKey` fold await M16 host market pack/key migration; reference shipping copy stays locale-specific until M16.
+- Native durable prepared storage, method setup, absence reopen and cumulative refunds unavailable; no production installation parity claimed.
+- Typed refusal-envelope forwarding unavailable (`failureReason` only); reusable registration needs host ownership resolution.
+- Incomplete chargebacks stay refunds/unapplied: reclassification bypasses evidence validation into dispute apply; limited operator recovery.
+- Audit compatibility still detects `chargeId`; refund operation identity/original money supply no typed charge identity.
+- M07 follow-up: repair poll can clear host redirect; post-timeout verify never restarts polling; unlocalized poller; fixture builds/never calls handler.
+- M07 follow-up: reference status route wrong-rail witness.
+- M07 follow-up: explicit reference-route refusal for unsupported method setup.
+- M07 follow-up: deployment-neutral disabled-verify reason.
+- M07 follow-up: reference card normalizer missing-amount path; package settling evidence already requires positive money.
+
+- Native delivery alignment stays off or shadow until a host composes the native automatic-renewal runner with the G23 renewal admission decorator. The decorator alone neither composes nor activates the runner.
+- The core fulfillment status map carries localized adopter labels; replace them with host-injected labels or internationalization keys at the host presentation boundary.
+- The warehouse adapter example is opt-in and has offline conformance only; no provider-account proof or activation is established. Exact absence, label create/void and cancellation remain unsupported.
+- After an alignment extension, a deferred renewal operation at the old schedule remains claimed with no reader or reservation effect. Changed terms snapshots conflict under the existing snapshot-conflict rules.
+
+Native parity remains host-owned at these seams. Missing native bindings use the shared `FULFILLMENT_NATIVE_UNSUPPORTED` refusal; no partial write or parity claim is implied.
+
+| Amendment | Host-owned seam and native boundary |
+| --- | --- |
+| G18 | Replacement creation and atomic eligibility/replay receipts; native replacement callback refuses. |
+| G19 | Operator mutations, actor attribution and replay receipts; native mutation callbacks refuse. |
+| G20 | Customer alignment rows; native reader refuses, while the pure delay projection remains callable. |
+| G21 | Commerce list/detail and shipments overview; native read callbacks refuse. |
+| G22 | Authoritative preparation edits, authorization and replay receipts; missing preparation binding refuses before dispatch, after disabled/selection/readiness checks. |
+
+- M08 parity D2 KEEP-GAP: native dispatch finish still loses rejected/unknown error detail.
+- M08 parity KEEP-GAP: immutable stock snapshot/alert evidence storage is absent; cursor JSON is overwritten. Hosts retain referenced evidence.
+- Stock-evidence replay/reopen is CLOSED by native position 76; legacy `0.22.0` alert fingerprints still conflict with `23505`, including after resolution.
+
+### Invoicing registered limitations
+
+These are notes carried from the landed design, not fixes in this preparation.
+
+- M07 `payment_truth_readback` still joins `accounting_documents`: operator
+  ACCESS EXCLUSIVE DDL or denied ACL can block/refuse the call. New unlinked
+  payment events remain `accountingRequested=false` after independent issue;
+  use owed-duty readback for invoice progress (PR #334).
+- Managed multi-reason and late-issue compensation can create more than one full
+  correction per invoice. A later finalizer can be fenced `claim_inactive`, leaving
+  its row `processing`; failed/pending rows on already-corrected parents may never
+  be reclaimed. Reconcile provider identity/evidence, including unresolved attempted
+  legacy corrections. Broader reversal/manual arbitration needs a separately
+  designed replacement forward (PR #329, #330, #348).
+- An in-flight issue can still compensate outside the seller wrapper with
+  `legacy_fallback`; latest-parent reselection retains incumbent behavior.
+  Managed keys are scoped to invoice/provider/reason, and delegated void stores
+  no key; native cross-order reuse refuses. Pre-wrapper native reversal-key
+  retries can conflict after wrapper evidence is added (PR #346, #348).
+- Managed paid/handoff contention (`55P03`) is a visible retryable no-effect
+  refusal with no automatic adapter retry. Fail-soft dispatch can finish without
+  an invoice request; durable recreation can require operator recovery and delayed
+  shipped-without-invoice monitoring (PR #348).
+- A bad host fiscal revision can refuse an entire scoped/provider batch. A null
+  payment `providerRef` falls back to the fiscal provider: hosts must supply explicit
+  payment identity. A failing `store.fail` aborts remaining leased work; retain
+  lease recovery and host retry handling (PR #334).
+- Reversed-duty fact installation can still report owed: read authoritative
+  reversal/duty evidence, never treat that answer as permission to issue.
+  Unsupported reversal and parked document/request residues remain visible and
+  unclaimable; later fact installation/reversal retry can change their diagnostics
+  (PR #332, #334; design phase obligations).
+- Native corrections ride the issue batch; a separate correction operation without
+  a host factory refuses `host_binding_required`. Unknown native seller selection
+  currently maps to non-retryable unsupported; hosts must handle recovery explicitly
+  (PR #348).
+- Delivery visibility must exceed transport timeout. Fenced settlement, database
+  failure or lease expiry can abort a batch and leave unsent leased rows uncertain.
+  Retryable/unsupported transport diagnostics may project as `retryable`; counters
+  omit projection failures/parked mismatches, so inspect durable status/error
+  evidence. Malformed projections and permanently invalid PDFs can retry without
+  an attempt cap (PR #332, #344).
+- Reused settlement-receipt detection continues within one call only; it does not
+  detect another item's reuse in a later run. Legacy host aggregates expose item
+  conflicts through count differences; distinct receipts require an item-capable
+  recorder/resolver (PR #344).
+- Hosts retain accepted-document observation polling and safe history composition.
+  `resolveDownload` must bind the document to the authorized order; the package
+  ticket check compares `documentRef`. Opaque-reference filtering covers its listed
+  schemes only (PR #344).
+- Closed diagnostic policy reduces managed message-only/non-allowlisted errors to
+  `unknown`; an empty/non-string earlier `code` can hide a later closed code. The
+  separate OMS projection retains redacted free text. Missing-order cleanup can
+  log error rather than warn with the same refused/discarded outcome (PR #344, #348).
+- PDF content-type normalization retains OpenLup behavior; signature checks are
+  stricter than donor ASCII decoding. `invoicePdfFilename` falls back to English
+  `invoice`; supply host captions (PR #344).
 
 ## [0.23.0]
 
@@ -446,62 +659,3 @@ Native parity remains host-owned at these seams. Missing native bindings use the
 | G20 | Customer alignment rows; native reader refuses, while the pure delay projection remains callable. |
 | G21 | Commerce list/detail and shipments overview; native read callbacks refuse. |
 | G22 | Authoritative preparation edits, authorization and replay receipts; missing preparation binding refuses before dispatch, after disabled/selection/readiness checks. |
-
-## [0.21.0]
-
-- Publishable on the npm `latest` dist-tag as `0.21.0`, from tag
-  `openlup-platform-v0.21.0`.
-- Preview set: core/outbox unchanged, UI private `0.0.0`; published `0.20.0` size baselines, unchanged caps.
-
-### Cumulative M07 status: payment truth and repair surfaces complete for this wave
-
-- Experimental payments/contracts/runtime: unchanged prepared ordering; neutral execution/evidence/readback/conformance, verified truth, first-receipt ingress, method lifecycle/reconciliation; host-owned persistence, translation/failure policy.
-- Native PostgreSQL truth/settlement/later-only alignment; three unchanged sparse SQL projections, not an install chain. Refunds never cancel subscriptions.
-- Repair/recovery/buyer verify inject rail capabilities; unknown rails refuse. Reference BFF retains mapping/schemas/ownership/auth order/transient callbacks. Browser/verify outcomes never prove payment success.
-- Reference-application source (no new export), opt-in repair view: `commerce/paymentStatusClient`, `commerce/paymentVerifyClient`, `payment/components/PaymentStatusPoller`; stored paid alone confirms, redirects require HTTPS, collection/confirmation stay injected, unsupported setup is visible. Exact file/specifier guards refuse broad commerce/operator clients; source-import proof keeps default view unmounted.
-- Truth services/one optional named binder use the host executor, no new schedule/executor. Selectors default-off: nothing activates by default. First-insert adapter fingerprint excludes receipt time/audit.
-- Two experimental example adapter subpaths under `./payments/`, named in the README. Card-processor example: three frozen exports, injected host client/neutral ports; refund creation, split authorization/capture and exact absence unavailable; cancellation needs host support.
-- Regional-processor example: host I/O, Model O aliases, verified observations, purpose-sensitive readback; check certificate validity/notification freshness. Both examples have no import I/O/default binding and await account TEST evidence.
-- Example adapter advisory: mismatched nonzero refusal money stays unknown/manual; trusted document refusals mean customer data correction; configuration mismatches throw before I/O. Unpaid/transient no-dispatch classifications unchanged.
-- Settling money missing/invalid/non-positive or blank currency refuses as amount mismatch; conformance requires positive money. Empty optional transients stop false leak refusals; JSON-escaped transients in diagnostics/readbacks/stored payloads and payer contact in execution results now refuse.
-- Private types reuse canonical money/attempts; unused imports removed, runtime/API unchanged.
-
-Migration: upgrade all `@openlup/*` `0.20.0` → `0.21.0` for exact pins. No schema migration; install the canonical catalogue, not sparse projections. Attempts add optional method selection/transient payer contact; contact is dispatch-only, never persisted/audited/logged/diagnosed. Missing adapter-required input requires exact before-dispatch `notDispatched`. Registration refs/kind/status require host `resolveMethodOwner` client/subscription ownership or are omitted. Lifecycle/normalized nested audit copies typed fields only; conformance scans all for secrets/contact. Adapter-filtered redacted audit never stores raw bodies; typed evidence overrides reader facts, audit bag fills untyped facts; identity/fingerprint exclude bag/receipt time. Other changes need no migration, and nothing rewires a host automatically.
-
-Migration: F2 replaces assumed full refund with `require-evidence`: missing/null kind/amount/operation identity is durably recorded/acknowledged, not applied. Supply original money, stable operation identity and cumulative snapshot, event delta or explicit full reversal (`refund`/`chargeback`); full evidence stays valid. Former default needs `refundEvidencePolicy: "legacy-assume-full"`, also in the reference handler; no native parity implied.
-
-Migration: D11 changes every caller of the reference payment control port (the selected verified ingress, the existing provider webhook handler and the captured reference checkout): apply/post-process redelivery using the first stored receipt instant, not redelivery time, so it cannot shift the cycle again. Replay reads winning receipt evidence and refuses (503) when that instant is unavailable. A legacy pre-fingerprint row takes the later clock once. Retain receipt evidence on upgrade; provider routes are not switched to opt-in ingress.
-
-### Known limitations
-
-- Portable dunning repair has no managed twin: exhaustion still pauses active subscriptions there; retaining active status needs a managed forward.
-- D8-1: native advisory v2 promo-code candidates/rejection details unavailable.
-- D8-2: native mounted v2 issue/honor/fallback unavailable.
-- D8-3: native acquisition-only mounted issuance/honor unavailable.
-- D8-4: full native/managed eligibility equivalence unavailable.
-- Bundle-1: independent DB human-only actor-kind enforcement absent natively; first in the native-backend parity round.
-- Bundle-2: managed-equivalent actor-kind/email history absent natively.
-- Bundle-3 closes injected-reader M05 mounted admin/feed readback only. Native new-purchase stock read absent despite P5a installed-store proof; deferred second after bundle-1 (owner 2026-10-21); readiness refuses.
-- Bundle-4: incumbent real-PostgreSQL contention only; no exactly-once guarantee.
-- Managed schema/pgTAP retain `44.404`; removal needs owner decision/forward; reference composition supplies it to app code.
-- A1 offline only; account/hosted-time/owner TEST evidence unclaimed; `communications/klaviyo` verification-pending.
-- M05 omitted opt-ins preserve defaults/outputs/read order/schedules/refusals/acceptance-token bytes/SQL.
-- Native inventory adjustment unavailable; address writes refuse readiness. Flat-rate save needs selected port/Core readiness/applied-seed observation.
-- Native shipping audit unavailable; handler swallows best-effort audit failure.
-- Native flat-rate integer bounds (0 through host maximum; reference 100,000 minor units) use request schema, not DB CHECK.
-- Managed ATP/forecast/dated-supply/pagination readback unproved/pending M06.
-- Managed two-session locks/concurrency/uncovered compensation unproved/pending M06.
-- Managed exact-prefix upgrade/ledger unproved/pending M06.
-- Managed address idempotency/conflict/readback unproved/pending M06.
-- Managed successful flat-rate read/save unproved/pending host authority.
-- M06 stock-wait lifecycle/durable timing/staging controls retain C5/C6; busy/try-gate, continuity/flag/TTL transfers are dispositions, not PASS.
-- Shipping national-registry fields/locale-specific `canonicalAddressKey` fold await M16 host market pack/key migration; reference shipping copy stays locale-specific until M16.
-- Native durable prepared storage, method setup, absence reopen and cumulative refunds unavailable; no production installation parity claimed.
-- Typed refusal-envelope forwarding unavailable (`failureReason` only); reusable registration needs host ownership resolution.
-- Incomplete chargebacks stay refunds/unapplied: reclassification bypasses evidence validation into dispute apply; limited operator recovery.
-- Audit compatibility still detects `chargeId`; refund operation identity/original money supply no typed charge identity.
-- M07 follow-up: repair poll can clear host redirect; post-timeout verify never restarts polling; unlocalized poller; fixture builds/never calls handler.
-- M07 follow-up: reference status route wrong-rail witness.
-- M07 follow-up: explicit reference-route refusal for unsupported method setup.
-- M07 follow-up: deployment-neutral disabled-verify reason.
-- M07 follow-up: reference card normalizer missing-amount path; package settling evidence already requires positive money.
