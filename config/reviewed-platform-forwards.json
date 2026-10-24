@@ -433,13 +433,13 @@
       ]
     },
     {
-      "path": "db/platform/migrations/20261022170000_subscription_command_lifecycle.sql",
-      "sha256": "a58ead7a9f52fc7ffd74acf281729fcee94c7706ee59ec6471c865bd4865c014",
+      "path": "db/platform/migrations/20261024170000_subscription_command_lifecycle.sql",
+      "sha256": "cce13b2564c34edc5f680f8fd85470de06293c8f8af0674b4a0f99fc47547d37",
       "functions": [
         {
           "signature": "public.subscription_command_preview(uuid,uuid,text,uuid,text,jsonb,timestamptz)",
           "beforeSha256": null,
-          "afterSha256": "bfb65976bce09f7fcba3b4177a2d3734c9e5f2f31630975d2b4257988a6d62cd"
+          "afterSha256": "fe9da2f7991ec058ead371f18543baed13fb4474f262cdae4645aebb60e3eddc"
         },
         {
           "signature": "public.subscription_command_apply(uuid,uuid,text,uuid,text,jsonb,timestamptz)",
@@ -453,7 +453,7 @@
           "sql": "CREATE TABLE public.subscription_command_receipts (\n id uuid PRIMARY KEY DEFAULT gen_random_uuid(),\n actor_id uuid NOT NULL,\n idempotency_key text NOT NULL CHECK (char_length(btrim(idempotency_key)) BETWEEN 8 AND 180),\n subscription_id uuid NOT NULL REFERENCES public.subscriptions(id),\n client_id uuid NOT NULL REFERENCES public.clients(id),\n command_fingerprint text NOT NULL CHECK (command_fingerprint ~ '^[0-9a-f]{64}$'),\n command jsonb NOT NULL CHECK (jsonb_typeof(command) = 'object'),\n quote_hash text,\n result jsonb NOT NULL,\n status text NOT NULL CHECK (status IN ('previewed','applied','noop','refused')),\n created_at timestamptz NOT NULL DEFAULT now(),\n CONSTRAINT subscription_command_actor_key UNIQUE (actor_id,idempotency_key)\n);"
         },
         {
-          "sha256": "bfb65976bce09f7fcba3b4177a2d3734c9e5f2f31630975d2b4257988a6d62cd"
+          "sha256": "fe9da2f7991ec058ead371f18543baed13fb4474f262cdae4645aebb60e3eddc"
         },
         {
           "sha256": "46cc96287603231687d1fa54f413087e1b6596e9ec8c2c1e5700e4a0951789be"
@@ -473,7 +473,7 @@
       ]
     },
     {
-      "path": "db/platform/migrations/20261022180000_subscription_stock_wait.sql",
+      "path": "db/platform/migrations/20261024180000_subscription_stock_wait.sql",
       "sha256": "d5dfc766f15cdd9ec8eb5c959b023f162a4a00c3a93d450d98c0473a4b17cd10",
       "functions": [
         {
@@ -637,7 +637,7 @@
       ]
     },
     {
-      "path": "db/platform/migrations/20261022183000_inventory_available_to_promise.sql",
+      "path": "db/platform/migrations/20261024183000_inventory_available_to_promise.sql",
       "sha256": "96ec5e6007932fa4226c0cdf9d71a14137fdfcbd36858e81de6fb857ec5873f1",
       "functions": [
         {
@@ -681,7 +681,7 @@
       ]
     },
     {
-      "path": "db/platform/migrations/20261022184000_subscription_renewal_reserve_uses_seam.sql",
+      "path": "db/platform/migrations/20261024184000_subscription_renewal_reserve_uses_seam.sql",
       "sha256": "06fa67de97404a671a35cbe4244012dd83d202a67d42989e029a835110b73f0c",
       "functions": [
         {
@@ -697,7 +697,39 @@
       ]
     },
     {
-      "path": "supabase/migrations/20261022155000_refunds_preserve_subscription_lifecycle.sql",
+      "path": "db/platform/migrations/20261024184500_subscription_retry_late_positive_stock.sql",
+      "sha256": "d860b7eaecdc3a3e3807cb72eb451e474afd203c0bfd6170a6956b9e72becee5",
+      "functions": [
+        {
+          "signature": "public.subscription_retry_record_recovery(uuid,text,jsonb)",
+          "beforeSha256": "f06f32de90372843d339e8675084011b1ca6c805022c1971b21c599a777da376",
+          "afterSha256": "a2f9cc370f53e23abe4e0e5d4b47924a0cad238f36c8e00a015bef437ee26eaa"
+        }
+      ],
+      "statements": [
+        {
+          "sha256": "a2f9cc370f53e23abe4e0e5d4b47924a0cad238f36c8e00a015bef437ee26eaa"
+        }
+      ]
+    },
+    {
+      "path": "db/platform/migrations/20261024184600_subscription_retry_candidate_payment_filter.sql",
+      "sha256": "33382efd31039e997c47c77f56dc8a3bca41870c0d158ee4254f80d04644e4d9",
+      "functions": [
+        {
+          "signature": "public.subscription_retry_candidates(integer,timestamptz)",
+          "beforeSha256": "173f8417686e3ee6d9a81b4932e5fc2fb04d0d846339dace513e8c3e61c5a412",
+          "afterSha256": "8d9d231eee35343c7b0cd391b5dbf83259b07d4094492437cc6badb6fb8fe8e6"
+        }
+      ],
+      "statements": [
+        {
+          "sha256": "8d9d231eee35343c7b0cd391b5dbf83259b07d4094492437cc6badb6fb8fe8e6"
+        }
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261024155000_refunds_preserve_subscription_lifecycle.sql",
       "sha256": "8029afbcaf1dceb5b6b35475ee5345c4e047f82bee9d8bd778ca256159666055",
       "functions": [
         {
@@ -713,7 +745,7 @@
       ]
     },
     {
-      "path": "supabase/migrations/20261022160000_subscription_dunning_continuity.sql",
+      "path": "supabase/migrations/20261024160000_subscription_dunning_continuity.sql",
       "sha256": "327ce8e60d69213b47777f993fab76d23e754a27df1159580a2d22d854eecc74",
       "functions": [
         {
@@ -765,7 +797,7 @@
       ]
     },
     {
-      "path": "supabase/migrations/20261022175000_inventory_available_to_promise.sql",
+      "path": "supabase/migrations/20261024175000_inventory_available_to_promise.sql",
       "sha256": "70706de1ea07c3ba8a17a7099da4931a51e01c5cfd60caa5266674e16428ccb0",
       "functions": [
         {
@@ -805,7 +837,7 @@
       ]
     },
     {
-      "path": "supabase/migrations/20261022180000_subscription_stock_wait.sql",
+      "path": "supabase/migrations/20261024180000_subscription_stock_wait.sql",
       "sha256": "b13b602c33e725f9f2ed94ed91d27fa62793d8322a5fbe4ea92be19838fd8963",
       "functions": [
         {
@@ -1017,7 +1049,7 @@
       ]
     },
     {
-      "path": "supabase/migrations/20261022181000_subscription_stock_wait_due.sql",
+      "path": "supabase/migrations/20261024181000_subscription_stock_wait_due.sql",
       "sha256": "9b01708d31842c7ebd9e858351fb4f23560ea1c26f32e2b63379f93238a72b84",
       "functions": [
         {
@@ -1033,7 +1065,7 @@
       ]
     },
     {
-      "path": "supabase/migrations/20261022182000_subscription_lifecycle_message_scan.sql",
+      "path": "supabase/migrations/20261024182000_subscription_lifecycle_message_scan.sql",
       "sha256": "a72e72e87dda050df41f1edd135980bb2e03cf413a972ea58125ada54e22145e",
       "functions": [
         {
@@ -1069,7 +1101,7 @@
       ]
     },
     {
-      "path": "supabase/migrations/20261022184000_inventory_reserve_order_uses_seam.sql",
+      "path": "supabase/migrations/20261024184000_inventory_reserve_order_uses_seam.sql",
       "sha256": "41a99e7306f33bbb85ad504b9158aaf8074bd4c577d284ab6fb82af748514993",
       "functions": [
         {
@@ -1085,7 +1117,7 @@
       ]
     },
     {
-      "path": "supabase/migrations/20261022185000_provider_refund_evidence.sql",
+      "path": "supabase/migrations/20261024185000_provider_refund_evidence.sql",
       "sha256": "1c5960eb1aced19f91b4a20a8333503a7978f7d5ab60c95fe7515d4da866d215",
       "functions": [
         {
@@ -1109,7 +1141,7 @@
       ]
     },
     {
-      "path": "supabase/migrations/20261022185100_m07_refund_parity.sql",
+      "path": "supabase/migrations/20261024185100_m07_refund_parity.sql",
       "sha256": "a4e2fb59eed52f5f16313a465a7a1884fde44ab2f0f84271b11886998685f1ee",
       "functions": [
         {

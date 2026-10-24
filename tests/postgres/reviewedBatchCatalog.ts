@@ -85,7 +85,7 @@ export async function assertBatchCatalog(db: Pool, pin: BatchedForwardBinding, s
   const currentRelations = new Map(after.relations.map(row => [row.oid, row]));
   for (const row of before.relations) {
     const current = structuredClone(currentRelations.get(row.oid));
-    if (pin.path.endsWith("20261022160000_subscription_dunning_continuity.sql") && row.name === "public.subscription_cycles") {
+    if (pin.path.endsWith("20261024160000_subscription_dunning_continuity.sql") && row.name === "public.subscription_cycles") {
       for (const column of current.columns) {
         const old = row.columns.find((item: { attnum: number }) => item.attnum === column.attnum);
         if (["id", "retry_attempt"].includes(column.attname)) {
@@ -120,7 +120,7 @@ export async function assertBatchCatalog(db: Pool, pin: BatchedForwardBinding, s
     expect(row.columns.filter((column: { attacl: unknown }) => column.attacl !== null)).toEqual([]);
   }
   const changedTables = Object.keys(before.data).filter(name => !same(before.data[name], after.data[name]));
-  const expectedChanged = pin.path.endsWith("20261022180000_subscription_stock_wait.sql") && pin.path.startsWith("supabase/") ? ["public.client_absorption_policy"] : pin.path.endsWith("20261022182000_subscription_lifecycle_message_scan.sql") ? ["public.comms_notification_controls"] : [];
+  const expectedChanged = pin.path.endsWith("20261024180000_subscription_stock_wait.sql") && pin.path.startsWith("supabase/") ? ["public.client_absorption_policy"] : pin.path.endsWith("20261024182000_subscription_lifecycle_message_scan.sql") ? ["public.comms_notification_controls"] : [];
   expect(changedTables.sort()).toEqual(expectedChanged.sort());
   for (const name of expectedChanged) {
     expect(removed(before.data[name]!, after.data[name]!)).toEqual([]);

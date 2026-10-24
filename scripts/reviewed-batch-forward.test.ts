@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { reviewedBatchBytes, reviewedBatchPaths } from "./reviewed-batch-rail.ts";
 import { describe, expect, it } from "vitest";
-import { assertBatchedForward, assertCoLocatedForwardApproval, assertForwardApproval, assertReviewedPlatformForward, batchedFunctionDefinitions, changedForwardApprovals, readReviewedForwardRegistry, reviewedFunctionDefinitions, sqlSha256, sqlStatements, type BatchedForwardBinding } from "./reviewed-platform-forward.ts";
+import { assertBatchedForward, assertCoLocatedForwardApproval, assertForwardApproval, assertReviewedPlatformForward, assertUnchangedForwardApproval, batchedFunctionDefinitions, changedForwardApprovals, readReviewedForwardRegistry, reviewedFunctionDefinitions, sqlSha256, sqlStatements, type BatchedForwardBinding } from "./reviewed-platform-forward.ts";
 import { assertAppendOnlyMigrationHistory } from "./oss-published-tree-check.ts";
 import { resolveDocumentationBase } from "./documentation-git.ts";
 import { waitNativeAdmission } from "./agent-review-queue.mjs";
@@ -42,7 +42,7 @@ describe.each(pins)("refusal plants: $path", pin => {
     const changed = structuredClone(pin);
     let sql = bytes(pin).toString("utf8");
     if (attack === "changed byte") sql += " ";
-    if (attack === "another path") changed.path = changed.path.replace("20261022", "20261023");
+    if (attack === "another path") changed.path = changed.path.replace("20261024", "20261023").replace("20261022", "20261023");
     if (attack === "missing signature") changed.functions.pop();
     if (attack === "duplicate signature") changed.functions.push(changed.functions[0]!);
     if (attack === "extra signature") changed.functions.push({ ...changed.functions[0]!, signature: "public.unpinned()" });
@@ -62,7 +62,7 @@ it.each(["order", "chain", "path", "private signature", "portable replacement co
   const changed = structuredClone(registry);
   const batch = changed.batchedForwards!;
   if (attack === "order") [batch[6], batch[9]] = [batch[9]!, batch[6]!];
-  if (attack === "chain") batch[9]!.functions[0]!.beforeSha256 = "0".repeat(64);
+  if (attack === "chain") batch.find(pin => pin.path === "supabase/migrations/20261024181000_subscription_stock_wait_due.sql")!.functions[0]!.beforeSha256 = "0".repeat(64);
   if (attack === "path") batch[0]!.path += ".sql";
   if (attack === "private signature") batch[10]!.functions[0]!.signature = "private.unpinned()";
   if (attack === "portable replacement collision") changed.portableReplacementForwards![0]!.path = batch[0]!.path;
@@ -87,10 +87,69 @@ it.each([
   "ALTER TABLE public.subscriptions DISABLE ROW LEVEL SECURITY;",
   "CREATE FUNCTION private.unpinned() RETURNS text LANGUAGE sql AS $$ SELECT 'attack'; $$;",
 ])("refuses an independently repinned statement-kind/target attack: %s", statement => {
-  const pin = pins[6]!;
+  const pin = pins.find(pin => pin.path === "supabase/migrations/20261024160000_subscription_dunning_continuity.sql")!;
   const sql = bytes(pin).toString() + "\n" + statement;
   expect(() => assertBatchedForward(repin(pin, sql), Buffer.from(sql), prefix(pin))).toThrow(/reviewed batch|reviewed portable creation/u);
 });
+
+it("preserves N1 historical 14-pin approval through the re-pin and separately approves X", () => {
+  const folder = mkdtempSync(join(tmpdir(), "openlup-batch-history-"));
+  const git = (...args: string[]) => execFileSync("git", ["-C", folder, ...args], { encoding: "utf8" }).trim();
+  const put = (path: string, value: Buffer | string) => { mkdirSync(dirname(join(folder, path)), { recursive: true }); writeFileSync(join(folder, path), value); };
+  const commit = (message: string) => { git("add", "."); git("-c", "user.name=Control Test", "-c", "user.email=control@example.invalid", "-c", "commit.gpgsign=false", "commit", "-qm", message); return git("rev-parse", "HEAD"); };
+  const historical = structuredClone(registry);
+  historical.batchedForwards = pins.filter(pin => !/20261024184[56]00/u.test(pin.path))
+    .map(pin => ({ ...structuredClone(pin), path: pin.path.replace("20261024", "20261022") }));
+  const historicalN2 = historical.batchedForwards[1]!;
+  const oldN2 = bytes(pins[1]!).toString().replace("(r.command->'payload')-'acceptedQuoteHash'", "r.command->'payload'-'acceptedQuoteHash'")
+    .replace('-- Raw preview replay extracts the stored payload before subtracting acceptedQuoteHash.\n', '');
+  historicalN2.sha256 = sqlSha256(oldN2);
+  historicalN2.statements = repin(historicalN2, oldN2).statements;
+  historicalN2.functions[0]!.afterSha256 = batchedFunctionDefinitions(Buffer.from(oldN2)).get(historicalN2.functions[0]!.signature)!;
+  const n1 = pins[0]!;
+  const x = pins.find(pin => pin.path.includes("20261024184500"))!;
+  const registryPath = "config/reviewed-platform-forwards.json";
+  try {
+    git("init", "--quiet");
+    for (const directory of ["db/platform/migrations", "supabase/migrations"]) for (const file of readdirSync(directory)) {
+      const path = `${directory}/${file}`;
+      if (!pins.some(pin => pin.path === path)) put(path, readFileSync(path));
+    }
+    expect(historical.batchedForwards).toHaveLength(14);
+    // A historical set must never become a valid current-candidate inventory.
+    expect(() => readReviewedForwardRegistry(Buffer.from(JSON.stringify(historical)))).toThrow("reviewed batch requires exactly the approved forwards");
+    put(registryPath, JSON.stringify(historical));
+    const approval14 = commit("Earlier 14-pin control");
+    put(n1.path, bytes(n1));
+    const feature = commit("Separately approved N1 feature");
+    put(registryPath, registryBytes);
+    const approval16 = commit("CTL-2 adds only native approvals");
+    for (const pin of [n1]) expect(() => assertReviewedPlatformForward(folder, approval14, approval16, pin.path, bytes(pin), true)).not.toThrow();
+    for (const pin of pins.filter(pin => pin.path.startsWith("db/") && pin.path <= x.path)) put(pin.path, bytes(pin));
+    const landedX = commit("X lands after separate 16-pin approval");
+    for (const pin of [n1, x]) expect(() => assertReviewedPlatformForward(folder, approval14, landedX, pin.path, bytes(pin), true)).not.toThrow();
+
+    for (const attack of ["digest drift", "signature drift", "chain drift", "reordered", "extra", "unknown size", "current prefix"]) {
+      git("reset", "--hard", approval14);
+      const changed = structuredClone(historical), batch = changed.batchedForwards!;
+      if (attack === "digest drift") batch[0]!.sha256 = "0".repeat(64);
+      if (attack === "signature drift") batch[0]!.functions[0]!.signature = "public.unpinned()";
+      if (attack === "chain drift") batch.find(pin => pin.path.includes("181000"))!.functions[0]!.beforeSha256 = "0".repeat(64);
+      if (attack === "reordered") [batch[0], batch[1]] = [batch[1]!, batch[0]!];
+      if (attack === "extra") batch.push(batch[0]!);
+      if (attack === "unknown size") batch.pop();
+      if (attack === "current prefix") changed.batchedForwards = pins.slice(0, 14);
+      put(registryPath, JSON.stringify(changed));
+      const invalid = commit(`Historical approval plant: ${attack}`);
+      expect(() => assertUnchangedForwardApproval(folder, invalid, approval16, n1.path), attack).toThrow(/approved separately/u);
+    }
+    git("reset", "--hard", feature);
+    put(registryPath, registryBytes);
+    for (const pin of pins.filter(pin => pin.path.startsWith("db/") && pin.path <= x.path)) put(pin.path, bytes(pin));
+    const self = commit("X attempts approval and SQL in the same commit");
+    expect(() => assertReviewedPlatformForward(folder, approval14, self, x.path, bytes(x), true)).toThrow(/approved separately|exactly the approved forwards/u);
+  } finally { rmSync(folder, { recursive: true, force: true }); }
+}, 60_000);
 
 // Measured alone at 74.99 s (2026-10-23); about 3x keeps shared-machine load from timing it out.
 it("retains separate prior approval in CI and release, and refuses incorrect pins", () => {
@@ -108,6 +167,14 @@ it("retains separate prior approval in CI and release, and refuses incorrect pin
     }
     put("config/reviewed-platform-forwards.json", registryBytes);
     const approval = commit("Exact control approval");
+    for (const pin of [pins[0]!, ...registry.portableReplacementForwards!, ...registry.portableCreationForwards!, ...registry.managedInvoicingForwards!]
+      .filter(pin => pin.path === pins[0]!.path || /202610221(?:65000|9[0-9]{4})_/u.test(pin.path))) {
+      put(pin.path, pin.path === pins[0]!.path ? bytes(pins[0]!) : readFileSync(pin.path));
+      put("classification.txt", pin.path);
+      const head = commit(`Preserve landed classification: ${pin.path}`);
+      expect(() => assertReviewedPlatformForward(folder, approval, head, pin.path, readFileSync(join(folder, pin.path)))).not.toThrow();
+      git("reset", "--hard", approval);
+    }
     // Every same-rail prefix is admissible; a hole is never filled by a fixture.
     for (const directory of ["db/platform/migrations", "supabase/migrations"]) {
       const railPins = pins.filter(pin => rail(pin) === directory);
@@ -120,15 +187,17 @@ it("retains separate prior approval in CI and release, and refuses incorrect pin
       git("reset", "--hard", approval);
     }
     for (const [suffix, earlier] of [
-      ["20261022184000_subscription_renewal_reserve_uses_seam.sql", "20261022183000_inventory_available_to_promise.sql"],
-      ["20261022184000_inventory_reserve_order_uses_seam.sql", "20261022175000_inventory_available_to_promise.sql"],
-      ["20261022185000_provider_refund_evidence.sql", "20261022175000_inventory_available_to_promise.sql"],
+      ["20261024184500_subscription_retry_late_positive_stock.sql", "20261024184000_subscription_renewal_reserve_uses_seam.sql"],
+      ["20261024184600_subscription_retry_candidate_payment_filter.sql", "20261024184500_subscription_retry_late_positive_stock.sql"],
+      ["20261024184000_subscription_renewal_reserve_uses_seam.sql", "20261024183000_inventory_available_to_promise.sql"],
+      ["20261024184000_inventory_reserve_order_uses_seam.sql", "20261024175000_inventory_available_to_promise.sql"],
+      ["20261024185000_provider_refund_evidence.sql", "20261024175000_inventory_available_to_promise.sql"],
     ]) {
       const pin = pins.find(pin => pin.path.endsWith(suffix!))!;
       const railPins = pins.filter(prior => rail(prior) === rail(pin));
       for (const prior of railPins.filter(prior => prior.path <= pin.path && !prior.path.endsWith(earlier!))) put(prior.path, bytes(prior));
       // F17 after P3b, with the entire P5 suffix absent.
-      if (suffix!.includes("185000")) for (const prior of railPins.filter(prior => /202610221[78]/u.test(prior.path) && prior.path < pin.path)) rmSync(join(folder, prior.path), { force: true });
+      if (suffix!.includes("185000")) for (const prior of railPins.filter(prior => /202610241[78]/u.test(prior.path) && prior.path < pin.path)) rmSync(join(folder, prior.path), { force: true });
       const head = commit("Hole in landed rail");
       expect(() => assertReviewedPlatformForward(folder, approval, head, pin.path, bytes(pin))).toThrow("reviewed batch requires every earlier same-rail pin landed first");
       expect(() => reviewedBatchPaths(folder, rail(pin), railPins)).toThrow("reviewed batch requires every earlier same-rail pin landed first");
@@ -146,7 +215,7 @@ it("retains separate prior approval in CI and release, and refuses incorrect pin
 
 // Repin the changed statement so refusal reaches the grantee predicate.
 it.each(["authenticated", "service_role, authenticated"])("refuses a repinned managed creation grantee: %s", grantee => {
-  const pin = pins.find(item => item.path.endsWith("20261022185000_provider_refund_evidence.sql"))!;
+  const pin = pins.find(item => item.path.endsWith("20261024185000_provider_refund_evidence.sql"))!;
   const sql = bytes(pin).toString().replace(/ TO service_role;/gu, ` TO ${grantee};`);
   expect(sql).not.toBe(bytes(pin).toString());
   expect(() => assertBatchedForward(repin(pin, sql), Buffer.from(sql), prefix(pin)))
@@ -164,7 +233,7 @@ it.each([0, 1, "all"] as const)("replays each rail once with %s landed pins and 
       for (const pin of railPins.slice(0, landed === "all" ? undefined : landed)) put(pin.path, bytes(pin));
       // A later unpinned file must not enter the pre-pin replay either.
       put(`${directory}/99999999999999_unrelated.sql`, "SELECT 1;");
-      const interleaved = Array.from({ length: 60 }, (_, second) => `${directory}/202610221805${String(second).padStart(2, "0")}_unpinned.sql`)
+      const interleaved = Array.from({ length: 60 }, (_, second) => `${directory}/202610241805${String(second).padStart(2, "0")}_unpinned.sql`)
         .find(path => !existsSync(join(root, path)));
       if (!interleaved) throw new Error("Reviewed batch test has no free interleaved probe filename");
       writeFileSync(join(root, interleaved), "SELECT 1;", { flag: "wx" });
@@ -359,4 +428,77 @@ describe("co-located SQL and pins under an existing policy", () => {
     expect(changedForwardApprovals(Buffer.from(JSON.stringify(previous)), registryBytes)).toEqual([correctionPaths[0]]);
     expect(changedForwardApprovals(registryBytes, registryBytes)).toEqual([]);
   });
+});
+
+// Each CTL-2 plant identifies the exact predicate; repinning bypasses earlier byte/count guards where required.
+describe.each(pins.filter(pin => /20261024184[56]00/u.test(pin.path)))("CTL-2 predicates: $path", pin => {
+  it("refuses byte drift at the whole-file digest", () => {
+    expect(() => assertBatchedForward(pin, Buffer.concat([bytes(pin), Buffer.from(" ")]), prefix(pin)))
+      .toThrow("reviewed batch path or bytes drifted");
+  });
+  it("refuses a wrong before-hash at actual preceding definitions and registry continuity", () => {
+    const changed = { ...structuredClone(pin), functions: pin.functions.map(fn => ({ ...fn, beforeSha256: "0".repeat(64) })) };
+    expect(() => assertBatchedForward(changed, bytes(pin), prefix(pin))).toThrow("reviewed batch definition drifted");
+    const changedRegistry = structuredClone(registry);
+    changedRegistry.batchedForwards![pins.indexOf(pin)] = changed;
+    expect(() => readReviewedForwardRegistry(Buffer.from(JSON.stringify(changedRegistry))))
+      .toThrow("reviewed batch replacement chain is reordered or discontinuous");
+  });
+  it.each(["service_role", "service_role, authenticated"])("refuses a fully repinned extra/wider function grant to %s at the privilege predicate", grantee => {
+    const sql = bytes(pin).toString() + `\nGRANT EXECUTE ON FUNCTION ${pin.functions[0]!.signature} TO ${grantee};`;
+    expect(() => assertBatchedForward(repin(pin, sql), Buffer.from(sql), prefix(pin)))
+      .toThrow("reviewed batch function privilege target or grantee drifted");
+  });
+  it("refuses an extra statement at ordered statement count after file repinning", () => {
+    const sql = bytes(pin).toString() + "\nCREATE SCHEMA unpinned;";
+    expect(() => assertBatchedForward({ ...pin, sha256: sqlSha256(sql) }, Buffer.from(sql), prefix(pin)))
+      .toThrow("reviewed batch missing or extra statements");
+  });
+  it.each(["path", "version"])("refuses a %s move at the fixed registry inventory", move => {
+    const changed = structuredClone(registry);
+    changed.batchedForwards![pins.indexOf(pin)]!.path = move === "path" ? pin.path.replace("_subscription", "_moved_subscription") : pin.path.replace("20261024", "20261023").replace("20261022", "20261023");
+    expect(() => readReviewedForwardRegistry(Buffer.from(JSON.stringify(changed))))
+      .toThrow("reviewed batch has an invalid path, order or signature inventory");
+  });
+});
+
+
+it.each(pins.filter(pin => pin.path.includes("20261024")))("refuses the old pending identity: $path", pin => {
+  const old = { ...pin, path: pin.path.replace("20261024", "20261022") };
+  expect(() => assertBatchedForward(old, bytes(pin), prefix(pin))).toThrow("reviewed batch path or bytes drifted");
+  const changed = structuredClone(registry);
+  changed.batchedForwards![pins.indexOf(pin)] = old;
+  expect(() => readReviewedForwardRegistry(Buffer.from(JSON.stringify(changed)))).toThrow("invalid path, order or signature inventory");
+});
+
+it("refuses the deleted Z identity and the pre-fold N2 bytes even after file/statement repinning", () => {
+  const pin = pins[1]!;
+  const old = bytes(pin).toString().replace("(r.command->'payload')-'acceptedQuoteHash'", "r.command->'payload'-'acceptedQuoteHash'");
+  expect(old).not.toBe(bytes(pin).toString());
+  expect(() => assertBatchedForward(pin, Buffer.from(old), prefix(pin))).toThrow("path or bytes drifted");
+  expect(() => assertBatchedForward(repin(pin, old), Buffer.from(old), prefix(pin))).toThrow("definition drifted");
+  for (const date of ["20261022", "20261024"]) {
+    const z = { ...pin, path: `db/platform/migrations/${date}184700_subscription_command_preview_replay.sql` };
+    expect(() => assertBatchedForward(z, bytes(pin), prefix(pin))).toThrow("path or bytes drifted");
+    const changed = structuredClone(registry); changed.batchedForwards!.push(z);
+    expect(() => readReviewedForwardRegistry(Buffer.from(JSON.stringify(changed)))).toThrow("exactly the approved forwards");
+  }
+});
+
+it.each([
+  ["db/platform/migrations", "20261022195000"],
+  ["db/platform/migrations", "20261022194999"],
+  ["supabase/migrations", "20261022195100"],
+  ["supabase/migrations", "20261022195099"],
+])("refuses a new version at or below the current rail tail: %s %s", (directory, version) => {
+  const f = correctionFixture();
+  try {
+    // Preserve the actual complete landed rails; harmless expand-only SQL reaches
+    // the version gate independently of the fixed M10 registry-path refusal.
+    for (const rail of ["db/platform/migrations", "supabase/migrations"]) for (const file of readdirSync(rail)) f.put(`${rail}/${file}`, readFileSync(`${rail}/${file}`));
+    const base = f.commit();
+    f.put(`${directory}/${version}_tail_refusal_probe.sql`, "CREATE TABLE public.tail_refusal_probe(id uuid);\n");
+    const head = f.commit();
+    expect(() => assertAppendOnlyMigrationHistory(f.root, base, head)).toThrow("non-increasing version");
+  } finally { f.cleanup(); }
 });
