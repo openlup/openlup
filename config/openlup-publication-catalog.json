@@ -90,6 +90,10 @@
       "class": "public-output"
     },
     {
+      "path": ".github/workflows/queue-handoff.yml",
+      "class": "public-output"
+    },
+    {
       "path": ".gitignore",
       "class": "public-output"
     },

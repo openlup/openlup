@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { admit, carryOver, exportAdditions, RECEIPT_MARKER } from './agent-review-decide.mjs';
-import { carryOverSourceReview, parseReceipt, readReceipts, waitNativeAdmission } from './agent-review-queue.mjs';
+import { carryOverSourceReview, enqueueAfterChecks, parseReceipt, readReceipts, waitNativeAdmission } from './agent-review-queue.mjs';
+import { REQUIRED_CONTEXTS } from './packages/release-gate.ts';
 
 const time = 1000;
 const receipt = { pr: 12, base: 'a'.repeat(40), head: 'b'.repeat(40), tree: 'c'.repeat(40), risk: 'routine', reviewers: ['reviewer'], verdict: 'PASS', expires: time + 86400000, sessionDigest: 'd'.repeat(64) };
@@ -12,6 +13,173 @@ const manifest = { name: '@openlup/p', version: '0.1.0', exports: { '.': './inde
 const queueManifest = { ...manifest, exports: { ...manifest.exports, './a': './a.js' } };
 const headManifest = { ...manifest, exports: { ...manifest.exports, './b': './b.js' } };
 const groupManifest = { ...manifest, exports: { ...queueManifest.exports, ...headManifest.exports } };
+
+function handoffFixture() {
+  const repository = { id: 1376035358, full_name: 'openlup/openlup', private: false, owner: { login: 'openlup' } };
+  const run = { id: 100, workflow_id: 42, run_attempt: 1, event: 'pull_request', path: '.github/workflows/published-tree-ci.yml', repository,
+    head_repository: structuredClone(repository), head_sha: receipt.head, head_branch: 'task/queue', status: 'completed', conclusion: 'success', pull_requests: [] };
+  const pr = { number: receipt.pr, state: 'open', draft: false, merged: false, base: { ref: 'main', repo: repository },
+    head: { sha: receipt.head, ref: run.head_branch, repo: structuredClone(repository) } };
+  const queuePr = { id: 'PR_12', number: receipt.pr, state: 'OPEN', isDraft: false, merged: false, baseRefName: 'main', headRefOid: receipt.head,
+    mergeable: 'MERGEABLE', autoMergeRequest: { enabledAt: '2026-10-24T12:00:00Z', enabledBy: { login: 'merge-owner' } }, mergeQueueEntry: null as null | { id: string },
+    timelineItems: { nodes: [] as { createdAt: string }[] } };
+  const jobs = [...REQUIRED_CONTEXTS, 'native-review'].map((name, index) => ({ id: index + 1, name, run_id: run.id, run_attempt: 1, head_sha: receipt.head, status: 'completed', conclusion: 'success' }));
+  const f = { event: { action: 'completed', repository, workflow_run: structuredClone(run) },
+    env: { GITHUB_EVENT_NAME: 'workflow_run', GITHUB_REPOSITORY: 'openlup/openlup', GITHUB_REF: 'refs/heads/main' }, run, pr, queuePr,
+    pulls: [pr], listing: { total_count: 1, workflow_runs: [run] }, result: { total_count: jobs.length, jobs }, comments: [comment()],
+    permission: 'write', clock: time, getHook: (_path: string) => {} };
+  const api = { get: vi.fn(async (path: string) => {
+    f.getHook(path);
+    if (path.startsWith('/graphql?')) return { data: { repository: { pullRequest: structuredClone(f.queuePr) } } };
+    if (path.includes('/collaborators/')) return { permission: f.permission };
+    if (path.includes('/jobs?')) {
+      const page = Number(new URL(path, 'https://example.invalid').searchParams.get('page'));
+      return { total_count: f.result.total_count, jobs: structuredClone(f.result.jobs.slice((page - 1) * 100, page * 100)) };
+    }
+    if (path.includes('/actions/workflows/')) return structuredClone(f.listing);
+    if (path.includes('/actions/runs/')) return structuredClone(f.run);
+    if (path.includes('/pulls?')) return structuredClone(f.pulls);
+    if (path.includes('/pulls/')) return structuredClone(f.pr);
+    if (path.includes('/issues/')) return structuredClone(f.comments);
+    if (path.includes('/git/ref/')) return { object: { sha: receipt.base } };
+    throw new Error(`unexpected read ${path}`);
+  }) };
+  const runGit = vi.fn(async (_cwd: string, ...args: string[]) => {
+    if (args[0] === 'rev-parse') return receipt.tree;
+    if (args[0] === 'merge-base' && args[1] === '--all') return receipt.base;
+    if (args[0] === 'diff') return `:100644 100644 ${'a'.repeat(40)} ${'b'.repeat(40)} M\0source.txt\0`;
+    return '';
+  });
+  const enqueue = vi.fn(async () => { f.queuePr.mergeQueueEntry = { id: 'QUEUE_1' }; return { id: 'QUEUE_1' }; });
+  return { ...f, api, runGit, enqueue, execute: () => enqueueAfterChecks({ event: f.event, env: f.env, api, runGit, enqueue, now: () => f.clock }), state: f };
+}
+
+describe('CI completion queue handoff', () => {
+  it.each([false, true])('enqueues one armed reviewed source head, including fork=%s and empty run pull_requests', async fork => {
+    const f = handoffFixture();
+    if (fork) {
+      f.run.head_repository.id = 123; f.run.head_repository.owner.login = 'contributor';
+      f.pr.head.repo.id = 123; f.pr.head.repo.owner.login = 'contributor'; f.event.workflow_run = structuredClone(f.run);
+    }
+    await expect(f.execute()).resolves.toEqual({ status: 'enqueued', pr: 12, head: receipt.head, entry: 'QUEUE_1' });
+    expect(f.enqueue).toHaveBeenCalledExactlyOnceWith({ pullRequestId: 'PR_12', expectedHeadOid: receipt.head, jump: false });
+    expect(f.api.get).toHaveBeenCalledWith(expect.stringContaining(`head=${encodeURIComponent(`${fork ? 'contributor' : 'openlup'}:task/queue`)}`));
+    expect(f.runGit).toHaveBeenCalledWith(expect.any(String), 'diff', '--raw', '--no-abbrev', '--no-renames', '-z', receipt.base, receipt.head);
+    expect(f.api.get.mock.calls.filter(([path]) => path.includes('/issues/'))).toHaveLength(1);
+  });
+  it.each([
+    ['wrong repository', (f: ReturnType<typeof handoffFixture>) => { f.event.repository.id = 2; }],
+    ['private repository', (f: ReturnType<typeof handoffFixture>) => { f.event.repository.private = true; }],
+    ['untrusted event', (f: ReturnType<typeof handoffFixture>) => { f.env.GITHUB_EVENT_NAME = 'pull_request'; }],
+    ['non-main checkout', (f: ReturnType<typeof handoffFixture>) => { f.env.GITHUB_REF = 'refs/pull/12/merge'; }],
+    ['wrong workflow', (f: ReturnType<typeof handoffFixture>) => { f.event.workflow_run.path = '.github/workflows/forged.yml'; }],
+    ['merge-group source', (f: ReturnType<typeof handoffFixture>) => { f.event.workflow_run.event = 'merge_group'; }],
+    ['cancelled source', (f: ReturnType<typeof handoffFixture>) => { f.event.workflow_run.conclusion = 'cancelled'; }],
+    ['rerun', (f: ReturnType<typeof handoffFixture>) => { f.run.run_attempt++; }],
+    ['newer source run', (f: ReturnType<typeof handoffFixture>) => { f.listing.workflow_runs.push({ ...f.run, id: 101 }); f.listing.total_count++; }],
+    ['truncated listing', (f: ReturnType<typeof handoffFixture>) => { f.listing.total_count++; }],
+    ['ambiguous PR', (f: ReturnType<typeof handoffFixture>) => { f.pulls.push({ ...f.pr, number: 13 }); }],
+    ['conflict', (f: ReturnType<typeof handoffFixture>) => { f.queuePr.mergeable = 'CONFLICTING'; }],
+    ['unknown mergeability', (f: ReturnType<typeof handoffFixture>) => { f.queuePr.mergeable = 'UNKNOWN'; }],
+    ['lost merge authority', (f: ReturnType<typeof handoffFixture>) => { f.state.permission = 'read'; }],
+    ['missing native receipt', (f: ReturnType<typeof handoffFixture>) => { f.state.comments = []; }],
+    ['expired native receipt', (f: ReturnType<typeof handoffFixture>) => { f.state.clock = receipt.expires; }],
+    ['insufficient review floor', (f: ReturnType<typeof handoffFixture>) => { f.runGit.mockImplementation(async (_cwd, ...args) => args[0] === 'diff' ? `:100644 100644 ${'a'.repeat(40)} ${'b'.repeat(40)} M\0AGENTS.md\0` : args[0] === 'rev-parse' ? receipt.tree : args[0] === 'merge-base' ? receipt.base : ''); }],
+    ['missing check', (f: ReturnType<typeof handoffFixture>) => { f.result.jobs.pop(); f.result.total_count--; }],
+    ['skipped check', (f: ReturnType<typeof handoffFixture>) => { f.result.jobs[0]!.conclusion = 'skipped'; }],
+    ['failed required check', (f: ReturnType<typeof handoffFixture>) => { f.result.jobs[0]!.conclusion = 'failure'; }],
+    ['duplicate check', (f: ReturnType<typeof handoffFixture>) => { f.result.jobs.push({ ...f.result.jobs[0]!, id: 88 }); f.result.total_count++; }],
+    ['wrong check SHA', (f: ReturnType<typeof handoffFixture>) => { f.result.jobs[0]!.head_sha = receipt.base; }],
+    ['wrong check run', (f: ReturnType<typeof handoffFixture>) => { f.result.jobs[0]!.run_id++; }],
+    ['future check attempt', (f: ReturnType<typeof handoffFixture>) => { f.result.jobs[0]!.run_attempt++; }],
+    ['truncated jobs', (f: ReturnType<typeof handoffFixture>) => { f.result.total_count++; }],
+  ])('refuses %s without a mutation or polling', async (_name, change) => {
+    const f = handoffFixture(); change(f);
+    await expect(f.execute()).rejects.toThrow(); expect(f.enqueue).not.toHaveBeenCalled();
+    expect(f.api.get.mock.calls.filter(([path]) => path.includes('/issues/')).length).toBeLessThanOrEqual(1);
+  });
+  it.each(['unarmed', 'already queued', 'head moved', 'draft'])('skips %s without a mutation', async scenario => {
+    const f = handoffFixture();
+    if (scenario === 'unarmed') Object.assign(f.queuePr, { autoMergeRequest: null });
+    if (scenario === 'already queued') f.queuePr.mergeQueueEntry = { id: 'EXISTING' };
+    if (scenario === 'head moved') f.pr.head.sha = receipt.base;
+    if (scenario === 'draft') f.queuePr.isDraft = true;
+    await expect(f.execute()).resolves.toMatchObject({ status: 'skipped' }); expect(f.enqueue).not.toHaveBeenCalled();
+  });
+  it.each(['head', 'disarmed', 'queued', 'attempt', 'intent', 'permission', 'expiry'])('revalidates a late %s change before enqueue', async change => {
+    const f = handoffFixture(); let reads = 0;
+    f.state.getHook = path => {
+      if (!path.includes('/actions/runs/100') || path.includes('/jobs?')) return;
+      if (++reads !== 2) return;
+      if (change === 'head') f.queuePr.headRefOid = receipt.base;
+      if (change === 'disarmed') Object.assign(f.queuePr, { autoMergeRequest: null });
+      if (change === 'queued') f.queuePr.mergeQueueEntry = { id: 'OTHER' };
+      if (change === 'attempt') f.run.run_attempt++;
+      if (change === 'intent') f.queuePr.autoMergeRequest.enabledAt = '2026-10-24T12:01:00Z';
+      if (change === 'permission') f.state.permission = 'read';
+      if (change === 'expiry') f.state.clock = receipt.expires;
+    };
+    if (['head', 'disarmed', 'queued'].includes(change)) await expect(f.execute()).resolves.toMatchObject({ status: 'skipped' });
+    else await expect(f.execute()).rejects.toThrow();
+    expect(f.enqueue).not.toHaveBeenCalled();
+  });
+  it('does not retry a GitHub enqueue refusal', async () => {
+    const f = handoffFixture(); f.enqueue.mockRejectedValue(new Error('required conversation unresolved'));
+    await expect(f.execute()).rejects.toThrow('required conversation unresolved'); expect(f.enqueue).toHaveBeenCalledTimes(1);
+  });
+  it('does not claim queue success for a different head observed after its single enqueue', async () => {
+    const f = handoffFixture();
+    f.enqueue.mockImplementation(async () => { f.queuePr.mergeQueueEntry = { id: 'QUEUE_1' }; f.queuePr.headRefOid = receipt.base; return { id: 'QUEUE_1' }; });
+    await expect(f.execute()).rejects.toThrow('exact head'); expect(f.enqueue).toHaveBeenCalledTimes(1);
+  });
+  it('allows aggregate failure when only a non-required diagnostic failed and all seven required checks passed', async () => {
+    const f = handoffFixture(); f.run.conclusion = 'failure'; f.event.workflow_run.conclusion = 'failure';
+    f.result.jobs.push({ ...f.result.jobs[0]!, id: 88, name: 'pgtap', conclusion: 'failure' }); f.result.total_count++;
+    await expect(f.execute()).resolves.toMatchObject({ status: 'enqueued' }); expect(f.enqueue).toHaveBeenCalledTimes(1);
+  });
+  it('uses six untouched first-attempt successes and the successful native-only partial rerun', async () => {
+    const f = handoffFixture(); f.run.run_attempt = 2; f.event.workflow_run = structuredClone(f.run);
+    const native = f.result.jobs.find(job => job.name === 'native-review')!;
+    f.result.jobs.push({ ...native, id: 88, run_attempt: 2 }); f.result.total_count++;
+    native.conclusion = 'failure';
+    await expect(f.execute()).resolves.toMatchObject({ status: 'enqueued' });
+    expect(f.api.get).toHaveBeenCalledWith('/repos/openlup/openlup/actions/runs/100/jobs?filter=all&per_page=100&page=1');
+    expect(f.enqueue).toHaveBeenCalledExactlyOnceWith({ pullRequestId: 'PR_12', expectedHeadOid: receipt.head, jump: false });
+  });
+  it.each(['failure', 'skipped', 'pending', 'ambiguous latest'])('never recovers an earlier success over a later %s required job', async outcome => {
+    const f = handoffFixture(); f.run.run_attempt = 2; f.event.workflow_run = structuredClone(f.run);
+    const later = { ...f.result.jobs[0]!, id: 88, run_attempt: 2, conclusion: outcome === 'pending' ? 'success' : outcome === 'ambiguous latest' ? 'success' : outcome,
+      status: outcome === 'pending' ? 'in_progress' : 'completed' };
+    f.result.jobs.push(later); f.result.total_count++;
+    if (outcome === 'ambiguous latest') { f.result.jobs.push({ ...later, id: 89 }); f.result.total_count++; }
+    await expect(f.execute()).rejects.toThrow('latest dco'); expect(f.enqueue).not.toHaveBeenCalled();
+  });
+  it.each(['complete', 'count changed', 'duplicate across pages', 'missing page'])('requires complete same-run job history pagination: %s', async scenario => {
+    const f = handoffFixture();
+    const filler = Array.from({ length: 100 }, (_, index) => ({ ...f.result.jobs[0]!, id: 100 + index, name: `diagnostic ${index}` }));
+    f.result.jobs.push(...filler); f.result.total_count += filler.length;
+    if (scenario === 'duplicate across pages') f.result.jobs[100]!.id = f.result.jobs[0]!.id;
+    f.state.getHook = path => {
+      if (!path.endsWith('page=2')) return;
+      if (scenario === 'count changed') f.result.total_count++;
+      if (scenario === 'missing page') f.result.jobs.splice(100);
+    };
+    if (scenario === 'complete') await expect(f.execute()).resolves.toMatchObject({ status: 'enqueued' });
+    else { await expect(f.execute()).rejects.toThrow(); expect(f.enqueue).not.toHaveBeenCalled(); }
+    expect(f.api.get).toHaveBeenCalledWith('/repos/openlup/openlup/actions/runs/100/jobs?filter=all&per_page=100&page=2');
+  });
+  it.each(['before', 'equal', 'after'])('bounds queue attempts to the current merge intent: prior event %s arming', async boundary => {
+    const f = handoffFixture();
+    f.queuePr.timelineItems.nodes = [{ createdAt: boundary === 'before' ? '2026-10-24T11:59:59Z' : boundary === 'equal' ? f.queuePr.autoMergeRequest.enabledAt : '2026-10-24T12:00:01Z' }];
+    await expect(f.execute()).resolves.toMatchObject({ status: boundary === 'before' ? 'enqueued' : 'skipped' });
+    expect(f.enqueue).toHaveBeenCalledTimes(boundary === 'before' ? 1 : 0);
+  });
+  it('does not requeue when another actor queued and removed this intent during admission', async () => {
+    const f = handoffFixture();
+    f.state.getHook = path => { if (path.includes('/issues/')) f.queuePr.timelineItems.nodes = [{ createdAt: f.queuePr.autoMergeRequest.enabledAt }]; };
+    await expect(f.execute()).resolves.toMatchObject({ status: 'skipped' }); expect(f.enqueue).not.toHaveBeenCalled();
+  });
+});
 
 describe('pure export additions', () => {
   it.each([
@@ -200,7 +368,7 @@ describe('hosted review decisions', () => {
       else if (scenario === 'expiry during admission') await expect(wait).rejects.toThrow('expired');
       else if (scenario === 'main moved') await expect(wait).rejects.toThrow('main moved');
       else {
-        await expect(wait).resolves.toBeUndefined(); expect(log).toHaveBeenLastCalledWith(expect.stringContaining(group ? 'unchanged tree' : 'reviewed PR head'));
+        await expect(wait).resolves.toEqual(receipt); expect(log).toHaveBeenLastCalledWith(expect.stringContaining(group ? 'unchanged tree' : 'reviewed PR head'));
         expect(runGit.mock.calls).toContainEqual([expect.any(String), '-c', 'transfer.fsckObjects=true', 'fetch', '--no-tags', '--no-write-fetch-head', 'origin', receipt.base, receipt.head, ...(group ? [groupHead] : [])]);
       }
     } finally { log.mockRestore(); }

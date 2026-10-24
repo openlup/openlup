@@ -1015,6 +1015,13 @@ remains a separate settings action. A skipped job is not evidence of admission.
 The job runs after all six actual mechanical successes and waits at most twenty
 minutes for a receipt.
 
+The optional `Queue Handoff` workflow is a completion action, not another
+required check. It reuses this admission reader once, after the seven source
+contexts succeeded, and inserts only a still-armed exact head. Its trusted
+default-branch execution, isolated App identity and refusal of automatic requeue
+are described under [Merge queue](#merge-queue); it does not change the source
+or group command set, reviewer floor, receipt expiry or recovery budget.
+
 **Receipt admission.** A pull-request run accepts a summary receipt for its PR
 number and exact reviewed head and tree. One receipt covers every run and
 attempt of that head while the review is current. A merge-group run accepts it
@@ -2102,6 +2109,10 @@ terminal self-retro carry the lesson until it lands. No other tracker is kept.
   [native review](#native-review-and-accountability), retaining fresh interaction
   review and full remote gates; [request auto-merge](#merge-queue) once after
   local prerequisites and the receipt, letting GitHub wait for pending CI.
+- 2026-10-24, auto-merge handoff rethink: an enabled request remained outside
+  the queue after all required checks passed → the [queue completion
+  handoff](#merge-queue) rechecks existing authority and proof on the CI event,
+  then inserts that exact head once; no watcher or new required check.
 - 2026-10-23, execution-process rethink: repeated uninformative mutants and stale
   instruction copies → use [required behavior-class proof](#sufficient-evidence-and-material-test-gaps),
   [early regroup](#regroup-when-work-stops-converging) and
@@ -2207,6 +2218,21 @@ records why these rules exist.
   `mergeQueueEntry` confirms actual queue entry. Neither is a completed merge.
   Observe an existing request instead of repeatedly arming it. If neither is
   present, confirmation is missing: read once again, then diagnose.
+  Where activated, the trusted `Queue Handoff` completion workflow performs
+  one `enqueuePullRequest` if GitHub has not queued the still-armed PR. It
+  accepts only the latest completed source run and attempt, all seven actual
+  required successes, current write-authorized intent and a valid native receipt.
+  Each required job uses its latest result within that same run and head, including
+  unchanged successes from an earlier partial attempt. A later failed, skipped or
+  pending result cannot reuse an older success.
+  It rechecks those identities before writing `expectedHeadOid`, with `jump:false`.
+  It neither enables auto-merge nor authorizes an unarmed PR, retries a refusal,
+  polls for checks or adds a required status. Group checks and admission still run.
+  An aggregate failure from an optional diagnostic does not add another required
+  check; each of the existing seven must itself have succeeded. A queue-entry
+  event since the current arming request prevents automatic requeue, including
+  after eviction or a repeated completion event; authorized recovery keeps its
+  existing two-retry budget.
   Before requesting, revalidate the live head, mergeability, checks and applicable
   review/receipt identity and expiry. A known failed required check needs diagnosis;
   a pending check is left to GitHub. `--admin` is never this route.
@@ -2214,9 +2240,19 @@ records why these rules exist.
   changes and the conflict is resolved; do not spend queue retries polling the
   same refusal.
   `UNKNOWN` permits one fresh read, then stops for diagnosis if still unknown.
-  Leave `BEHIND` to the queue when carry-over remains valid. A watcher follows
-  these same rules and resumes only after a relevant head or mergeability change;
-  it does not repeatedly arm an unchanged blocked PR.
+  Leave `BEHIND` to the queue when carry-over remains valid.
+- **Handoff identity.** Activation is a separate maintainer action. The dedicated
+  App is installed only on this repository, with merge-queue write, contents read
+  and pull-request read permissions, and no bypass. Its private key is the
+  `OPENLUP_QUEUE_APP_PRIVATE_KEY` secret in `openlup-merge-queue`, an environment
+  restricted to the `main` branch with no per-run reviewer. It is never a
+  repository secret or a reused release credential. The public
+  `OPENLUP_QUEUE_APP_CLIENT_ID` variable enables the workflow only after that
+  restriction and the App's actual permissions are verified. The built-in
+  workflow token stays read-only; the short-lived App token is used only for the
+  single queue mutation. The workflow runs default-branch code, without checking
+  out PR code or downloading its artifacts. Missing activation is not an
+  autonomous-handoff claim.
 - **Receipts.** While native admission is active, a supervisor with delivery
   authority posts one source receipt per reviewed PR head as soon as the pull
   request is open and ready, using step 7. A group that cannot carry over is

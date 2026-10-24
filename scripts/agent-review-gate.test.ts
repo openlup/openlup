@@ -73,7 +73,7 @@ describe('six real Git witnesses', () => {
     const api = { get: vi.fn(async path => path.includes('/pulls/') ? pr : path.includes('/issues/') ? [{ id: 1, user: { login: 'review-owner', type: 'User' }, author_association: 'CONTRIBUTOR', body: `${RECEIPT_MARKER}\n\`\`\`json\n${JSON.stringify(receipt)}\n\`\`\`` }] : path.includes('/collaborators/') ? { permission: 'admin' } : { object: { sha: main } }) };
     const runGit = vi.fn(async (cwd, ...args) => args.includes('fetch') ? '' : reviewGit(cwd, ...args));
     const wait = waitNativeAdmission({ cwd: f.cwd, event: { number: 12, repository: { private: false }, pull_request: { head: { sha: candidate.head } } }, env: { GITHUB_REPOSITORY: 'openlup/openlup', GITHUB_EVENT_NAME: 'pull_request' }, api, runGit, now: () => clock, sleep: async ms => { clock += ms; }, deadlineMs: 1 });
-    if (scenario === 'landed predecessor') await expect(wait).resolves.toBeUndefined();
+    if (scenario === 'landed predecessor') await expect(wait).resolves.toEqual(receipt);
     else await expect(wait).rejects.toThrow('review base must be the exact fork point on main');
   });
   it('prepare / record / verify and receipt PASS, with scratch ignored', async () => {
