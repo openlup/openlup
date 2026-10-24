@@ -185,7 +185,7 @@ it.each([0, 1, "all"] as const)("replays each rail once with %s landed pins and 
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-// Real M09 SQL and the actual installed prefix, with only the pending pins changed.
+// Historical M09 correction pair and its managed prefix, with only the pair's pins changed.
 const correctionPaths = registry.managedInvoicingForwards!.slice(0, 2).map(({ path }) => path);
 function correctionFixture() {
   const root = mkdtempSync(join(tmpdir(), "openlup-co-located-"));
@@ -195,7 +195,7 @@ function correctionFixture() {
   git("init", "-q", "-b", "main");
   for (const directory of ["db/platform/migrations", "supabase/migrations"]) for (const file of readdirSync(directory)) {
     const path = `${directory}/${file}`;
-    if (!correctionPaths.includes(path)) put(path, readFileSync(path));
+    if (directory !== "supabase/migrations" || path < correctionPaths[0]!) put(path, readFileSync(path));
   }
   put("config/platform-migration-manifest.json", readFileSync("config/platform-migration-manifest.json"));
   const previous = structuredClone(registry);
@@ -226,7 +226,7 @@ describe("co-located SQL and pins under an existing policy", () => {
     } finally { f.cleanup(); }
   });
 
-  it("accepts the actual M09 packet in admission, migration and release checks", () => {
+  it("accepts the historical M09 correction pair in admission, migration and release checks", () => {
     const f = correctionFixture();
     try {
       f.install(); const head = f.commit();
