@@ -434,12 +434,12 @@
     },
     {
       "path": "db/platform/migrations/20261024170000_subscription_command_lifecycle.sql",
-      "sha256": "1ffe8e80baef902e0a314ed92603e791c01f9172ce7170b369f315a073b97439",
+      "sha256": "6508db9fbd5f466f013b167ebb0f03063134e8be03fd7f1324d107f7cc43901b",
       "functions": [
         {
           "signature": "public.subscription_command_preview(uuid,uuid,text,uuid,text,jsonb,timestamptz)",
           "beforeSha256": null,
-          "afterSha256": "8efcca293111089af238e66491b208a9d87f2bf49050e80f79d12ab3be8081ef"
+          "afterSha256": "532bf628b3d59feb9a2154153519877faedfc6e38b5cea114992a8ed8e6b7aa9"
         },
         {
           "signature": "public.subscription_command_apply(uuid,uuid,text,uuid,text,jsonb,timestamptz)",
@@ -453,7 +453,7 @@
           "sql": "CREATE TABLE public.subscription_command_receipts (\n id uuid PRIMARY KEY DEFAULT gen_random_uuid(),\n actor_id uuid NOT NULL,\n idempotency_key text NOT NULL CHECK (char_length(btrim(idempotency_key)) BETWEEN 8 AND 180),\n subscription_id uuid NOT NULL REFERENCES public.subscriptions(id),\n client_id uuid NOT NULL REFERENCES public.clients(id),\n command_fingerprint text NOT NULL CHECK (command_fingerprint ~ '^[0-9a-f]{64}$'),\n command jsonb NOT NULL CHECK (jsonb_typeof(command) = 'object'),\n quote_hash text,\n result jsonb NOT NULL,\n status text NOT NULL CHECK (status IN ('previewed','applied','noop','refused')),\n created_at timestamptz NOT NULL DEFAULT now(),\n CONSTRAINT subscription_command_actor_key UNIQUE (actor_id,idempotency_key)\n);"
         },
         {
-          "sha256": "8efcca293111089af238e66491b208a9d87f2bf49050e80f79d12ab3be8081ef"
+          "sha256": "532bf628b3d59feb9a2154153519877faedfc6e38b5cea114992a8ed8e6b7aa9"
         },
         {
           "sha256": "46cc96287603231687d1fa54f413087e1b6596e9ec8c2c1e5700e4a0951789be"
@@ -474,7 +474,7 @@
     },
     {
       "path": "db/platform/migrations/20261024180000_subscription_stock_wait.sql",
-      "sha256": "0aed8b4a15076296e8c8281051a5d6f38649dabced37c967c7bb8cfc1d2170fd",
+      "sha256": "c38b4ab8630c4e375525120b99c12ceac9a895e259bd6b7e1d305b38d5a8d95e",
       "functions": [
         {
           "signature": "public.subscription_stock_wait_projection(public.subscription_stock_wait_cases)",
@@ -489,12 +489,12 @@
         {
           "signature": "public.subscription_stock_wait_frozen(uuid,timestamptz)",
           "beforeSha256": null,
-          "afterSha256": "cc53c971c8e8b94952563a07067ce4898805394ea3524d31f9d47cef71f66c6d"
+          "afterSha256": "7cf6f23910a0df778d818d62fa1e49b12d98242d32ae1fe5d4ea5f3d6f749950"
         },
         {
           "signature": "public.subscription_stock_wait_deficits(jsonb,uuid,timestamptz)",
           "beforeSha256": null,
-          "afterSha256": "baae19a3831dc8d635e9ba39875582c95e24448fbfc3a9fcc4be44977c9b1c61"
+          "afterSha256": "77e0cfbdfc87bf15b09b91e68a32229ef8db2db8c9ebd04b27ce9a2666211661"
         },
         {
           "signature": "public.subscription_stock_wait_enqueue(public.subscription_stock_wait_cases,text)",
@@ -514,7 +514,7 @@
         {
           "signature": "public.subscription_stock_wait_candidates(integer,timestamptz)",
           "beforeSha256": null,
-          "afterSha256": "1f3157b88a48b01564bc449697cc5a139919971e3f9bcf31cc44489a9bdd29c6"
+          "afterSha256": "c3c3474e235da157f3f8b18f743a6af40f578023e15de5aacc191b4f1f4f0a0c"
         },
         {
           "signature": "public.subscription_stock_wait_normal_due(integer,timestamptz)",
@@ -524,7 +524,7 @@
         {
           "signature": "public.subscription_stock_wait_mark_resumed(uuid)",
           "beforeSha256": null,
-          "afterSha256": "2e7fb0b314802e115187b3714ac71f60b821fcd220859e9105f44634627f3494"
+          "afterSha256": "016a8d80c90ce810556be8ff8514a296e45cba1cf9b25519a5e45554da091298"
         },
         {
           "signature": "public.subscription_stock_wait_summary(text)",
@@ -557,10 +557,10 @@
           "sha256": "367b4e7c4631c4c80b610943b1ae4006ccbc5453f379473ccfad54bedaa5229f"
         },
         {
-          "sha256": "cc53c971c8e8b94952563a07067ce4898805394ea3524d31f9d47cef71f66c6d"
+          "sha256": "7cf6f23910a0df778d818d62fa1e49b12d98242d32ae1fe5d4ea5f3d6f749950"
         },
         {
-          "sha256": "baae19a3831dc8d635e9ba39875582c95e24448fbfc3a9fcc4be44977c9b1c61"
+          "sha256": "77e0cfbdfc87bf15b09b91e68a32229ef8db2db8c9ebd04b27ce9a2666211661"
         },
         {
           "sha256": "6536170e5d46f82aa0890b138a8f5e5f52844dde656ea6f99d89248e5f675581"
@@ -572,13 +572,13 @@
           "sha256": "88f568ea334ed92df15f9149d2574fb06f5a56e82ee4d0c6740533ddfb882b4f"
         },
         {
-          "sha256": "1f3157b88a48b01564bc449697cc5a139919971e3f9bcf31cc44489a9bdd29c6"
+          "sha256": "c3c3474e235da157f3f8b18f743a6af40f578023e15de5aacc191b4f1f4f0a0c"
         },
         {
           "sha256": "de6b4cce14f2ca12e6fba0975d5bb50dc2cba6d2482f78accdf2e3ede4245c39"
         },
         {
-          "sha256": "2e7fb0b314802e115187b3714ac71f60b821fcd220859e9105f44634627f3494"
+          "sha256": "016a8d80c90ce810556be8ff8514a296e45cba1cf9b25519a5e45554da091298"
         },
         {
           "sha256": "9f076e02f8fb83afa0d8137bbe61d0d123e9a5d179eb96c65409c32c5a4bc3bb"
@@ -638,7 +638,7 @@
     },
     {
       "path": "db/platform/migrations/20261024183000_inventory_available_to_promise.sql",
-      "sha256": "96ec5e6007932fa4226c0cdf9d71a14137fdfcbd36858e81de6fb857ec5873f1",
+      "sha256": "b79eae034cdff2a2d72eb013c2472dcd60284e3a530a81c058428e2a593dd5ff",
       "functions": [
         {
           "signature": "public.inventory_channel_exposure_quantity(text,text)",
@@ -682,7 +682,7 @@
     },
     {
       "path": "db/platform/migrations/20261024184000_subscription_renewal_reserve_uses_seam.sql",
-      "sha256": "06fa67de97404a671a35cbe4244012dd83d202a67d42989e029a835110b73f0c",
+      "sha256": "ea3a8d48167a584c6aa0b6470dfb42175fd1f51ad18fc4dd0896b43f25e2280e",
       "functions": [
         {
           "signature": "public.fulfillment_reserve_subscription_renewal(uuid,uuid,integer,timestamptz)",
@@ -698,7 +698,7 @@
     },
     {
       "path": "db/platform/migrations/20261024184500_subscription_retry_late_positive_stock.sql",
-      "sha256": "d860b7eaecdc3a3e3807cb72eb451e474afd203c0bfd6170a6956b9e72becee5",
+      "sha256": "a742350ca4e1baba514c0eff3279b68ae6fc6f8fec1889f0e5fb1cc2d586c11e",
       "functions": [
         {
           "signature": "public.subscription_retry_record_recovery(uuid,text,jsonb)",
@@ -714,7 +714,7 @@
     },
     {
       "path": "db/platform/migrations/20261024184600_subscription_retry_candidate_payment_filter.sql",
-      "sha256": "33382efd31039e997c47c77f56dc8a3bca41870c0d158ee4254f80d04644e4d9",
+      "sha256": "062171a74b688c31f638c3f211e53e91266b839af8d7b797ef3a4aa236a65c9c",
       "functions": [
         {
           "signature": "public.subscription_retry_candidates(integer,timestamptz)",
@@ -1050,7 +1050,7 @@
     },
     {
       "path": "supabase/migrations/20261024181000_subscription_stock_wait_due.sql",
-      "sha256": "9b01708d31842c7ebd9e858351fb4f23560ea1c26f32e2b63379f93238a72b84",
+      "sha256": "1a6d3e37a158bc9ba00cbc2d18442e6d2de1ae9e1c71c9abe453e3e6886930e0",
       "functions": [
         {
           "signature": "public.subscription_list_due_for_renewal(integer,timestamptz)",
@@ -1066,7 +1066,7 @@
     },
     {
       "path": "supabase/migrations/20261024182000_subscription_lifecycle_message_scan.sql",
-      "sha256": "a72e72e87dda050df41f1edd135980bb2e03cf413a972ea58125ada54e22145e",
+      "sha256": "219e9601cc716b59b104a731cd990d1cc176c5782e4930a707acac19dfcbb2ca",
       "functions": [
         {
           "signature": "private.outbox_resend_event_types()",

@@ -333,6 +333,169 @@ it.each([
   expect(expected).toEqual(page);
  }
 }));
+const n3Candidates='public.subscription_stock_wait_candidates(integer,timestamptz)';
+const n3Frozen='public.subscription_stock_wait_frozen(uuid,timestamptz)';
+const n3Deficits='public.subscription_stock_wait_deficits(jsonb,uuid,timestamptz)';
+async function waitingCase(f:Renewal) {
+ await call(db,'subscription_refuse_renewal_preflight',[f.operation,f.token,'inventory_unavailable',AT]);
+ return (await db.query(`INSERT INTO public.subscription_stock_wait_cases(subscription_id,client_id,renewal_operation_id,
+  scheduled_at,cycle_number,state,due_snapshot,cycle_snapshot,fingerprint,identity_key,deficits)
+  VALUES($1,$2,$3,$4,2,'waiting','{}',$5,$6,$7,'[]') RETURNING id`,
+  [f.subscription,f.client,f.operation,AT,f.snapshot,f.fingerprint,f.identity])).rows[0].id as string;
+}
+async function frozenWitness() {
+ const f=await renewal(db);await waitingCase(f);
+ const frozen=await call(db,'subscription_stock_wait_frozen',[f.subscription,AT]);
+ expect(frozen).toMatchObject({operationId:f.operation,snapshot:f.snapshot});
+ const before=await effects(true);
+ expect(await call(db,'subscription_stock_wait_frozen',[f.subscription,AT])).toEqual(frozen);
+ expect(await effects(true)).toEqual(before);
+ for(const [name,sql] of [
+  ['paused',"UPDATE public.subscriptions SET status='paused' WHERE id=$1"],
+  ['superseded',"UPDATE public.subscriptions SET next_cycle_at=next_cycle_at+interval '1 day' WHERE id=$1"],
+ ] as const) {
+  await db.query('SAVEPOINT frozen_state');
+  try {
+   await db.query(sql,[f.subscription]);
+   const snapshot=await effects(true);
+   expect(await call(db,'subscription_stock_wait_frozen',[f.subscription,AT]),name).toBeNull();
+   expect(await effects(true)).toEqual(snapshot);
+  }finally{await db.query('ROLLBACK TO frozen_state');await db.query('RELEASE SAVEPOINT frozen_state');}
+ }
+}
+async function pausedWaitWitness() {
+ const f=await renewal(db),id=await waitingCase(f);
+ await db.query("UPDATE public.subscriptions SET status='paused' WHERE id=$1",[f.subscription]);
+ const before=await effects(true);
+ await call(db,'subscription_stock_wait_candidates',[500,later(1)]);
+ expect((await db.query('SELECT state FROM public.subscription_stock_wait_cases WHERE id=$1',[id])).rows)
+  .toEqual([{state:'waiting'}]);
+ expect(await effects(true)).toEqual(before);
+ await db.query("UPDATE public.subscriptions SET status='cancelled' WHERE id=$1",[f.subscription]);
+ await call(db,'subscription_stock_wait_candidates',[500,later(1)]);
+ expect((await db.query('SELECT state,block_reason FROM public.subscription_stock_wait_cases WHERE id=$1',[id])).rows)
+  .toEqual([{state:'closed',block_reason:'schedule_superseded'}]);
+ const closed=await effects(true);
+ await call(db,'subscription_stock_wait_candidates',[500,later(1)]);
+ expect(await effects(true)).toEqual(closed);
+}
+async function deficitWitness() {
+ const f=await renewal(db,2);
+ await call(db,'fulfillment_reserve_subscription_renewal',[f.operation,f.token,900,AT]);
+ await db.query(`UPDATE public.fulfillment_inventory_reservation_lines SET quantity=1 WHERE reservation_id IN
+  (SELECT id FROM public.fulfillment_inventory_reservations WHERE renewal_operation_id=$1)`,[f.operation]);
+ const snapshot={...f.snapshot,lines:f.snapshot.lines.map(line=>({...line,quantity:3}))};
+ const input=[JSON.stringify(snapshot),f.operation,AT];
+ const before=await effects(true);
+ expect(await call(db,'subscription_stock_wait_deficits',input)).toEqual([
+  {sku:f.snapshot.lines[0].sku,requiredUnits:3,reservedUnits:1,availableUnits:1,missingUnits:1}]);
+ expect(await effects(true)).toEqual(before);
+ await db.query('UPDATE public.fulfillment_stock_current SET for_sale_quantity=3,total_quantity=3 WHERE source_key=$1',[f.source]);
+ const stocked=await effects(true);
+ expect(await call(db,'subscription_stock_wait_deficits',input)).toEqual([]);
+ expect(await effects(true)).toEqual(stocked);
+ await db.query('SAVEPOINT deficit_refusal');
+ await db.query("UPDATE public.fulfillment_stock_current SET stale_after=$2 WHERE source_key=$1",[f.source,later(0.5)]);
+ await expect(call(db,'subscription_stock_wait_deficits',[input[0],f.operation,later(1)])).rejects.toMatchObject({message:'stock_wait_stock_stale',code:'P0001'});
+ await db.query('ROLLBACK TO deficit_refusal');await db.query('RELEASE SAVEPOINT deficit_refusal');
+ expect(await effects(true)).toEqual(stocked);
+}
+async function resumedWitness() {
+ const f=await renewal(db),original=await prepareOriginal(db,f);
+ const id=(await db.query(`INSERT INTO public.subscription_stock_wait_cases(subscription_id,client_id,renewal_operation_id,
+  scheduled_at,cycle_number,state,due_snapshot,cycle_snapshot,fingerprint,identity_key,deficits)
+  VALUES($1,$2,$3,$4,2,'stock_secured','{}',$5,$6,$7,'[]') RETURNING id`,
+  [f.subscription,f.client,f.operation,AT,f.snapshot,f.fingerprint,f.identity])).rows[0].id;
+ for(const state of ['stock_secured','closed']) {
+  await db.query('UPDATE public.subscription_stock_wait_cases SET state=$2 WHERE id=$1',[id,state]);
+  const before=await effects(true);
+  expect(await call(db,'subscription_stock_wait_mark_resumed',[original.orderId]),state).toBeNull();
+  expect(await effects(true)).toEqual(before);
+ }
+ await db.query("UPDATE public.subscription_stock_wait_cases SET state='stock_secured' WHERE id=$1",[id]);
+ await call(db,'payment_truth_ingest_event',[`resume-${f.operation}`,'e'.repeat(64),`resume-key-${f.operation}`,
+  original.settlementIntentId,'captured',f.snapshot.totalAmountMinor,'XXX',later(1),null,null,
+  {externalRef:`resume-${f.operation}`},null,null,'recovered']);
+ // Closed callbacks must also be no-ops after payment; the unpaid predicate cannot mask this arm.
+ await db.query("UPDATE public.subscription_stock_wait_cases SET state='closed' WHERE id=$1",[id]);
+ const paidClosed=await effects(true);
+ expect(await call(db,'subscription_stock_wait_mark_resumed',[original.orderId])).toBeNull();
+ expect(await effects(true)).toEqual(paidClosed);
+ await db.query("UPDATE public.subscription_stock_wait_cases SET state='stock_secured' WHERE id=$1",[id]);
+ // Native fulfillment proof is a consumed original reservation and a recorded shipment.
+ await db.query("UPDATE public.fulfillment_inventory_reservations SET status='consumed' WHERE renewal_operation_id=$1",[f.operation]);
+ await db.query("INSERT INTO public.fulfillment_ports(port_key,provider_type,routable) VALUES('ctl5-port','3pl',true) ON CONFLICT DO NOTHING");
+ const shipment=(await db.query(`INSERT INTO public.fulfillment_shipments(order_id,port_key,provider_type,create_idempotency_key)
+  VALUES($1,'ctl5-port','3pl',$2) RETURNING id`,[original.orderId,`create-${f.operation}`])).rows[0].id;
+ await db.query('SAVEPOINT resumed_refusal');
+ await db.query("INSERT INTO public.commerce_order_holds(order_id,reason,status,idempotency_key) VALUES($1,'manual_support','active',$2)",[original.orderId,`hold-${f.operation}`]);
+ await expect(call(db,'subscription_stock_wait_mark_resumed',[original.orderId])).rejects.toMatchObject({code:'22023',message:'stock_wait_realization_admission_missing'});
+ await db.query('ROLLBACK TO resumed_refusal');await db.query('RELEASE SAVEPOINT resumed_refusal');
+ for(const status of ['paid','fulfillment_pending','fulfilled']) {
+  await db.query('SAVEPOINT paid_realization');
+  try {
+   await db.query('UPDATE public.commerce_orders SET status=$2 WHERE id=$1',[original.orderId,status]);
+   const result=await call(db,'subscription_stock_wait_mark_resumed',[original.orderId]);
+   expect(result,status).toMatchObject({state:'resumed',order_id:original.orderId,fulfillment_id:shipment});
+   expect((await db.query("SELECT count(*)::integer count FROM public.outbox_events WHERE aggregate_id=$1 AND event_type='subscription_stock_wait.resumed'",[id])).rows)
+    .toEqual([{count:1}]);
+   const resumed=await effects(true);
+   expect(await call(db,'subscription_stock_wait_mark_resumed',[original.orderId])).toEqual(result);
+   expect(await effects(true)).toEqual(resumed);
+  }finally{await db.query('ROLLBACK TO paid_realization');await db.query('RELEASE SAVEPOINT paid_realization');}
+ }
+}
+async function eligiblePageWitness() {
+ // Stock-only refusals carrying a provider observation must not fill the page before filtering.
+ await db.query("UPDATE public.subscriptions SET status='paused' WHERE status='active'");
+ const invalid=await renewal(db),valid=await renewal(db);
+ await waitingCase(invalid);await waitingCase(valid);
+ await db.query('UPDATE public.subscription_renewal_operations SET scheduled_at=$2 WHERE id=$1',[invalid.operation,later(-1)]);
+ await db.query('UPDATE public.subscriptions SET next_cycle_at=$2 WHERE id=$1',[invalid.subscription,later(-1)]);
+ await db.query('UPDATE public.subscription_stock_wait_cases SET scheduled_at=$2 WHERE renewal_operation_id=$1',[invalid.operation,later(-1)]);
+ await db.query(`INSERT INTO public.subscription_renewal_outcomes(renewal_operation_id,operation_fingerprint,event_key,outcome,reason,external_ref,occurred_at)
+  VALUES($1,$2,'provider-stock-observation','refused','inventory_unavailable','provider-owned',$3)`,[invalid.operation,invalid.fingerprint,AT]);
+ expect(await call(db,'subscription_stock_wait_frozen',[invalid.subscription,later(-1)])).toBeNull();
+ const result=await call(db,'subscription_stock_wait_candidates',[1,later(1)]);
+ expect(result.map((row:{operationId:string})=>row.operationId)).toEqual([valid.operation]);
+}
+it.each([
+ {name:'frozen active/current and read-only replay',witness:frozenWitness},
+ {name:'paused wait survives; cancellation closes once',witness:pausedWaitWitness},
+ {name:'own/available deficit split and stale refusal',witness:deficitWitness},
+ {name:'eligible recovery filtered before page limit',witness:eligiblePageWitness},
+ {name:'unpaid/closed noop and paid realization replay',witness:resumedWitness},
+])('N3 donor state/noop/refusal: $name',async row=>scoped(row.witness),120_000);
+it.each([
+ {name:'frozen active obligation predicate',signature:n3Frozen,witness:frozenWitness,
+  from:"s.status='active' AND s.next_cycle_at=p_scheduled_at",to:'s.next_cycle_at=p_scheduled_at'},
+ {name:'frozen current schedule predicate',signature:n3Frozen,witness:frozenWitness,
+  from:"s.status='active' AND s.next_cycle_at=p_scheduled_at",to:"s.status='active'"},
+ {name:'paused close predicate',signature:n3Candidates,witness:pausedWaitWitness,from:"s.status='cancelled' OR",to:"s.status<>'active' OR"},
+ {name:'available excludes own hold',signature:n3Deficits,witness:deficitWitness,
+  from:"THEN (promise->>'available_quantity')::bigint ELSE",to:"THEN (promise->>'available_quantity')::bigint+own_qty ELSE"},
+ {name:'deficit predicate credits own hold',signature:n3Deficits,witness:deficitWitness,
+  from:'IF own_qty+available<required THEN',to:'IF own_qty<required AND available<required THEN'},
+ {name:'missing units credit both components',signature:n3Deficits,witness:deficitWitness,
+  from:"'missingUnits',required-own_qty-available",to:"'missingUnits',required-GREATEST(available,own_qty)"},
+ {name:'paid fulfillment-pending realization',signature:'public.subscription_stock_wait_mark_resumed(uuid)',witness:resumedWitness,
+  from:"status IN ('paid','fulfillment_pending','fulfilled')",to:"status IN ('paid','fulfilled')"},
+ {name:'closed paid realization noop',signature:'public.subscription_stock_wait_mark_resumed(uuid)',witness:resumedWitness,
+  from:"IF c.state='closed' OR EXISTS",to:'IF false OR EXISTS'},
+ {name:'unpaid realization noop',signature:'public.subscription_stock_wait_mark_resumed(uuid)',witness:resumedWitness,
+  from:"OR EXISTS(SELECT 1 FROM public.commerce_orders WHERE id=p_order_id AND status='pending_payment') THEN RETURN NULL;",to:'OR false THEN RETURN NULL;'},
+ {name:'eligibility before LIMIT',signature:n3Candidates,witness:eligiblePageWitness,
+  from:'AND public.subscription_stock_wait_frozen(op.subscription_id,op.scheduled_at) IS NOT NULL',to:''},
+])('N3 predicate/assignment mutant fails: $name',async mutant=>scoped(async()=>{
+ const definition=await commandDefinition(mutant.signature),body=definition.replace(mutant.from,mutant.to);
+ expect(body).not.toBe(definition);
+ await db.query('SAVEPOINT n3_mutant');
+ try {
+  await db.query(body);
+  await expect(mutant.witness()).rejects.toThrow();
+ }finally{await db.query('ROLLBACK TO n3_mutant');await db.query('RELEASE SAVEPOINT n3_mutant');}
+ expect(await commandDefinition(mutant.signature)).toBe(definition);
+}),120_000);
 async function decline(available=2, lines=1) {
  const f = await renewal(db,available,lines), original = await prepareOriginal(db,f);
  expect((await reservation(f)).status).toBe('committed');
@@ -446,7 +609,7 @@ it('preserves the donor existing-addon noop without repricing and rejects both e
   .toMatchObject({status:'refused',reason:'subscription_edit_invalid_lines'});
  const definition=await commandDefinition();
  const predicate="p_action IN ('add_addon','update_addon_quantity')";
- const append="   addons:=addons||jsonb_build_array(jsonb_build_object('variantId',p_payload->>'variantId','qty',p_payload->'qty'));";
+ const append="   addons:=addons||jsonb_build_array(jsonb_build_object('variantId',p_payload->>'variantId','qty',GREATEST(1,COALESCE((p_payload->>'qty')::integer,1))));";
  const guard=`   IF NOT EXISTS(SELECT 1 FROM public.subscription_lines WHERE subscription_id=s.id
     AND variant_id=(p_payload->>'variantId')::uuid AND is_addon
     AND quantity=GREATEST(1,COALESCE((p_payload->>'qty')::integer,1))) THEN
@@ -564,6 +727,102 @@ it.each(noopRows)('N2 donor $donor: price-drift noop, changed-state boundary and
   const key=`table-mutant-${row.action}`;
   await expect(witness(key)).rejects.toThrow(`${key}: semantic noop`);
  }finally{await db.query('ROLLBACK TO truth_table_mutant');await db.query('RELEASE SAVEPOINT truth_table_mutant');}
+ expect(await commandDefinition()).toBe(definition);
+}),120_000);
+
+// CTL-5: assert requested state and quoted prices, rather than only preview status.
+const changeRows = [
+ {name:'plan core quantity and cadence',action:'update_plan_length',addon:1,coreQty:3,addonQty:1,cadence:21,
+  payload:(f:Fixture)=>({...bundle(f),coreLines:[{variantId:f.sku,qty:3}],planDays:21})},
+ {name:'plan core variant at unchanged cadence',action:'update_plan_length',coreVariant:true,coreQty:2,addonQty:0,cadence:28,
+  payload:(f:Fixture)=>({...bundle(f),coreLines:[{variantId:f.addon,qty:2}],planDays:28})},
+ {name:'native cadence-only expansion',action:'update_plan_length',coreQty:2,addonQty:0,cadence:21,
+  payload:()=>({planDays:21,expectedTemplateVersion:1})},
+ {name:'bundle all fields',action:'update_bundle',addon:1,coreQty:3,addonQty:2,cadence:21,
+  payload:(f:Fixture)=>({...bundle(f),coreLines:[{variantId:f.sku,qty:3}],addonLines:[{variantId:f.addon,qty:2}],cadenceDays:21})},
+ {name:'resize preserves addons',action:'resize_bundle',addon:1,coreQty:3,addonQty:1,cadence:21,
+  payload:(f:Fixture)=>({...bundle(f),coreLines:[{variantId:f.sku,qty:3}],addonLines:[],cadenceDays:21})},
+ {name:'package replaces addons',action:'update_package_template',addon:1,coreQty:3,addonQty:0,cadence:21,
+  payload:(f:Fixture)=>({...bundle(f),coreLines:[{variantId:f.sku,qty:3}],addonLines:[],planDays:21})},
+ ...[undefined,null,0,-1].map(qty=>({name:`add normalized ${String(qty)}`,action:'add_addon',coreQty:2,addonQty:1,cadence:28,
+  payload:(f:Fixture)=>({variantId:f.addon,qty,expectedTemplateVersion:1})})),
+ ...['add_addon','remove_addon','update_addon_quantity'].map(action=>({name:`${action} ignores cadence`,action,
+  addon:action==='add_addon'?0:1,coreQty:2,addonQty:action==='remove_addon'?0:3,cadence:28,
+  payload:(f:Fixture)=>({variantId:f.addon,qty:3,cadenceDays:21,planDays:14,expectedTemplateVersion:1})})),
+ ...['remove_addon','update_addon_quantity'].map(action=>({name:`${action} UUID equality`,action,addon:1,
+  coreQty:2,addonQty:action==='remove_addon'?0:3,cadence:28,
+  payload:(f:Fixture)=>({variantId:f.addon.toUpperCase(),qty:3,expectedTemplateVersion:1})})),
+];
+type ChangeRow=typeof changeRows[number];
+async function changeWitness(row:ChangeRow,key:string) {
+ const f=await commandFixture();
+ if('addon' in row && row.addon) await db.query(`INSERT INTO public.subscription_lines(subscription_id,variant_id,quantity,sort_order,is_addon,unit_price_minor,currency_code)
+  VALUES($1,$2,$3,1,true,70,'XXX')`,[f.subscription,f.addon,row.addon]);
+ const payload=row.payload(f);
+ if(row.action==='remove_addon') expect((await raw(f,`${key}-invalid`,'remove_addon',
+  {...payload,variantId:'bad'})).result).toMatchObject({status:'refused',reason:'subscription_command_addon_not_found'});
+ // Version/payment/window refusals keep their native codes; drift cannot consume the quote.
+ expect((await raw(f,`${key}-stale`,row.action,{...payload,expectedTemplateVersion:99})).result)
+  .toMatchObject({status:'refused',reason:'subscription_edit_stale_template'});
+ const preview=await raw(f,key,row.action,payload);
+ expect(preview.result.status,`${key}: change preview`).toBe('previewed');
+ const expected=[{variantId:'coreVariant' in row && row.coreVariant?f.addon:f.sku,quantity:row.coreQty,
+  isAddon:false,sortOrder:0,unitPriceMinor:'coreVariant' in row && row.coreVariant?70:350,currency:'XXX'},
+  ...(row.addonQty?[{variantId:f.addon,quantity:row.addonQty,isAddon:true,sortOrder:1,unitPriceMinor:70,currency:'XXX'}]:[])];
+ expect(preview.result.lines,`${key}: requested quote lines`).toEqual(expected);
+ const accepted={...payload,acceptedQuoteHash:preview.result.quoteHash};
+ const quoted=await effects(true);
+ expect((await raw(f,key,row.action,{...accepted,auditDrift:true},AT,true)).result)
+  .toMatchObject({status:'refused',reason:'subscription_command_idempotency_conflict'});
+ expect(await effects(true)).toEqual(quoted);
+ expect((await raw(f,key,row.action,accepted,AT,true)).result).toMatchObject({status:'applied',templateVersion:2});
+ expect((await db.query(`SELECT variant_id AS "variantId",quantity,is_addon AS "isAddon",sort_order AS "sortOrder",
+  unit_price_minor::integer AS "unitPriceMinor",currency_code AS currency FROM public.subscription_lines
+  WHERE subscription_id=$1 ORDER BY sort_order`,[f.subscription])).rows,`${key}: applied quote lines`).toEqual(expected);
+ expect((await db.query('SELECT cadence_days,template_version FROM public.subscriptions WHERE id=$1',[f.subscription])).rows)
+  .toEqual([{cadence_days:row.cadence,template_version:2}]);
+ expect((await db.query(`SELECT l.line_ordinal,l.sku,l.quantity,l.unit_amount_minor::integer AS amount
+  FROM public.subscription_renewal_term_lines l WHERE subscription_id=$1 ORDER BY line_ordinal`,[f.subscription])).rows)
+  .toEqual(await Promise.all(expected.map(async(line,index)=>({line_ordinal:index+1,
+   sku:(await db.query('SELECT sku FROM public.catalog_skus WHERE id=$1',[line.variantId])).rows[0].sku,
+   quantity:line.quantity,amount:line.unitPriceMinor}))));
+ const applied=await effects(true);
+ for(let n=0;n<2;n++) expect((await raw(f,key,row.action,accepted,later(500),true)).result)
+  .toMatchObject({status:'replayed',originalStatus:'applied',templateVersion:2});
+ expect(await effects(true)).toEqual(applied);
+ const noopPayload={...payload,expectedTemplateVersion:2,...(row.action==='update_plan_length'
+  ?{coreLines:expected.filter(line=>!line.isAddon).map(line=>({variantId:line.variantId,qty:line.quantity}))}:{})};
+ const noop=await raw(f,`${key}-noop`,row.action,noopPayload);
+ // The donor has no remove-missing no-op: its receipt records the existing refusal.
+ expect(noop.result,row.name).toMatchObject(row.action==='remove_addon'
+  ?{status:'refused',reason:'subscription_command_addon_not_found'}:{status:'noop'});
+ const after=await effects(true);
+ for(const name of Object.keys(applied).filter(name=>name!=='subscription_command_receipts'))
+  expect(after[name],`${key}: receipt-only ${name}`).toEqual(applied[name]);
+ expect(await raw(f,`${key}-noop`,row.action,noopPayload,later(500))).toEqual(noop);
+ expect(await effects(true)).toEqual(after);
+}
+it.each(changeRows)('N2 change/apply/noop/refusal: $name',async row=>scoped(()=>changeWitness(row,`change-${row.name}`)),120_000);
+it.each([
+ {name:'plan assignment',row:'plan core quantity and cadence',from:"core:=COALESCE(p_payload->'coreLines',core);",to:'NULL;'},
+ {name:'add quantity normalization',row:'add normalized undefined',
+  from:"'qty',GREATEST(1,COALESCE((p_payload->>'qty')::integer,1))));",to:"'qty',p_payload->'qty'));"},
+ ...['add_addon','remove_addon','update_addon_quantity'].map(action=>({name:`cadence scope ${action}`,row:`${action} ignores cadence`,
+  from:"CASE WHEN p_action IN ('update_bundle','resize_bundle','update_package_template','update_plan_length')",to:'CASE WHEN true'})),
+ {name:'addon existence UUID',row:'remove_addon UUID equality',
+  from:"WHERE v->>'variantId'=lower(p_payload->>'variantId'))",to:"WHERE v->>'variantId'=p_payload->>'variantId')"},
+ {name:'addon update UUID',row:'update_addon_quantity UUID equality',
+  from:"CASE WHEN v->>'variantId'=lower(p_payload->>'variantId') THEN",to:"CASE WHEN v->>'variantId'=p_payload->>'variantId' THEN"},
+ {name:'addon remove UUID',row:'remove_addon UUID equality',
+  from:"OR v->>'variantId'<>lower(p_payload->>'variantId');",to:"OR v->>'variantId'<>p_payload->>'variantId';"},
+])('N2 change assignment mutant fails: $name',async mutant=>scoped(async()=>{
+ const definition=await commandDefinition(),body=definition.replace(mutant.from,mutant.to);
+ expect(body).not.toBe(definition);
+ await db.query('SAVEPOINT change_mutant');
+ try {
+  await db.query(body);
+  await expect(changeWitness(changeRows.find(row=>row.name===mutant.row)!,`mutant-${mutant.name}`)).rejects.toThrow();
+ }finally{await db.query('ROLLBACK TO change_mutant');await db.query('RELEASE SAVEPOINT change_mutant');}
  expect(await commandDefinition()).toBe(definition);
 }),120_000);
 

@@ -380,6 +380,37 @@ It preserves the apply definition, fresh preview output and all public-table
 counts, columns and xmin across replay. The gate compares all 43 fresh scenarios
 against the pre-fold preview body and folded N2. These pins do not install behavior or add managed parity.
 
+The pending N2 change path quotes and applies supplied `coreLines` for plan
+changes (omission retains native cadence-only expansion), normalizes a new
+add-on's missing/nonpositive quantity to one, preserves cadence for add-on
+commands, and compares add-on UUIDs by value. Its apply definition remains
+unchanged: accepted hashes bind the complete request and the stored priced
+lines become both subscription lines and future renewal terms. Portion/mode
+and composition metadata have no native storage; preview no-op parity does
+not replace native direct-apply lifecycle guards or receipt contracts.
+N3 keeps paused current waits open, filters eligible recovery before LIMIT,
+refuses inactive/superseded frozen reads, reports free availability separately
+from its own reservation, and returns null without writes for closed or still
+unpaid realization notifications. Paid realization still requires the existing
+settlement, inventory, shipment and hold proof; it records no parcel arrival.
+
+The donor audit references `supabase/migrations/` files
+`20260711151000_subscription_generic_bundle_actions.sql`,
+`20260711170020_subscription_package_changed_noop_truth.sql` and
+`20260713110000_subscription_slide_next_cycle_noop_truth.sql` for N2;
+`20261003123000_subscription_stock_wait.sql` and
+`20261003142320_subscription_stock_wait_unpaid_discovery.sql` for N3/M3;
+`20260928170000_new_purchase_stock_availability.sql` and
+`20260710131002_no_cron_inventory_reservation_leases.sql` for the stock seams
+and allocators; `20261009110000_subscription_dunning_active_repair.sql` for
+X/Y and M4; `20260802120000_subscription_winback_positive_customer_marker.sql`
+and the stock-wait donor for M5; and
+`20261009111000_stripe_refund_cumulative_snapshot.sql` plus
+`20261021130000_refunds_preserve_subscription_lifecycle.sql` for F17.
+The later donor `20261013173001_channel_exposure_inventory_admission.sql`
+adds channel exposure and shared admission machinery outside these frozen
+stock-seam claims. The zero-valued exposure hooks do not establish that parity.
+
 The lexer is only a pre-filter. The mandatory
 [real PostgreSQL/pgTAP catalog gate](../../tests/postgres/reviewedBatchForwards.test.ts)
 uses native PostgreSQL 16 and managed PostgreSQL 17/pgTAP. Per rail it applies

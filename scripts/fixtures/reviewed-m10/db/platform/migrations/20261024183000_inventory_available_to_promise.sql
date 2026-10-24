@@ -1,3 +1,5 @@
+-- Donor: supabase/migrations/20260928170000_new_purchase_stock_availability.sql (26-76).
+-- Native provider-stock subset: no lots/safety/excluded order; channel exposure is deferred.
 -- M06 observed-stock ATP. Native stock has no separate safety balance.
 -- Admission callers keep their stock-row locks; this is a read, not a hold.
 -- Only actual native renewal allocation skips the fixed 14-day soft priority.

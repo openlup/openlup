@@ -1,3 +1,5 @@
+-- Donor: supabase/migrations/20261009110000_subscription_dunning_active_repair.sql
+-- (payment-result recovery). Native released-to-committed ATP accounting has no managed row-state twin.
 -- Native CTL-2 X: verified waiting-state late payment restores the original
 -- released reservation as an ATP-counted committed hold, without a new charge.
 -- Requires the native N1/N2/N3, 20261024183000 ATP seam and 20261024184000 allocator prefix.

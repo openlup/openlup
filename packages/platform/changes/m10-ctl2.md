@@ -14,3 +14,12 @@ introduced. The development-preview boundary remains.
 - Fix uninstalled N3 normal_due pagination to exclude waiting/stock_secured cases before LIMIT, preventing normal-renewal starvation.
 
 - Repair uninstalled N2 donor no-op truth for native bundle/resize, plan, package, add-on and same-UTC-day slide commands before repricing: preserve locked prices after catalogue changes, writing only the command receipt, with no quote, event or version increment. Native resize compares lines/cadence; portion mode/factor remain host-owned without native storage. Predicate-removal mutants cover every mapped donor action; apply stays unchanged.
+
+- Audit pending M10 donor change and no-op semantics together. N2 plan edits
+apply requested core lines; new add-ons normalize quantity, preserve cadence
+and compare UUIDs by value. N3 preserves paused waits, filters eligible recovery
+before LIMIT, binds frozen reads to the current active schedule, reports free
+stock separately from own holds, and ignores closed/unpaid realization notices.
+Real PostgreSQL tables cover applied state, no-op/refusal/replay and rolled-back
+assignment mutants. Installed rails and N2 apply remain unchanged; channel
+exposure/admission parity stays outside the frozen stock-seam claim.

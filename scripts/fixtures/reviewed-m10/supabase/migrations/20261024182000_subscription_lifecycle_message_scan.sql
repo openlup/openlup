@@ -1,3 +1,5 @@
+-- Donor: supabase/migrations/20261003123000_subscription_stock_wait.sql (301-384)
+-- and 20260802120000_subscription_winback_positive_customer_marker.sql (34-83).
 -- Migration: customer-cancelled subscriptions become winback-eligible immediately,
 -- within the existing 120-day window and current-cancellation-episode dedupe.
 -- Add stock-wait lifecycle message mappings; no scheduler is activated.

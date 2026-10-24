@@ -1,3 +1,5 @@
+-- Donor: supabase/migrations/20260710131002_no_cron_inventory_reservation_leases.sql
+-- (inventory_reserve_order provider branch); native operation/claim receipts replace managed order holds.
 CREATE OR REPLACE FUNCTION public.fulfillment_reserve_subscription_renewal(
   p_operation_id uuid,
   p_claim_token uuid,
