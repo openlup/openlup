@@ -442,7 +442,7 @@ describe("co-located SQL and pins under an existing policy", () => {
       expect(() => assertAppendOnlyMigrationHistory(f.root, comparison.base, comparison.head)).not.toThrow();
       const api = { get: async (path: string) => path.includes("/pulls/") ? { number: 12, state: "open", draft: false, base: { ref: "main" }, head: { sha: head } } : path.includes("/issues/") ? [{ id: 1, user: { login: "fixture-owner", type: "User" }, body: `${RECEIPT_MARKER}\n\`\`\`json\n${JSON.stringify(receipt)}\n\`\`\`` }] : path.includes("/collaborators/") ? { permission: "write" } : { object: { sha: f.base } } };
       const runGit = (cwd: string, ...args: string[]) => args.includes("fetch") ? Promise.resolve("") : reviewGit(cwd, ...args);
-      await expect(waitNativeAdmission({ cwd: f.root, event, env, api, runGit, now: () => 1000, deadlineMs: 1 })).resolves.toBeUndefined();
+      await expect(waitNativeAdmission({ cwd: f.root, event, env, api, runGit, now: () => 1000, deadlineMs: 1 })).resolves.toEqual(receipt);
     } finally { f.cleanup(); }
   });
 
