@@ -209,7 +209,11 @@ replay, one-time offer refusal and stale-settlement filtering before LIMIT. N3's
 In folded N2, a raw replay of the command preview returns the stored receipt. All 43
 fresh scenarios compare output bytes and public-table columns against the pre-fold preview body and folded N2;
 committed replays compare counts, all columns and xmin across a later command,
-and the apply definition remains unchanged. Root test discovery
+and the apply definition remains unchanged. A separate existing-add-on witness
+checks identical same-quantity preview lines and a no-event/no-version `noop`,
+retains the different-quantity duplicate refusal and new-add-on behavior, and
+rejects an unconditional-append function body within a rolled-back savepoint.
+Root test discovery
 already includes both suites; no extra runner or optional skip is introduced.
 The M10 gate reads its native PG16 and managed Supabase PG17 pins from
 [the CI image inventory](config/ci-images.json), with mirror-first fallback as

@@ -403,6 +403,50 @@ it('Y filters beyond LIMIT, keeps due ordering/ties, clamps and future rows, and
  for(const row of [...f.stale,...f.genuine]) await unchangedIdentity(db,row);
 }));
 
+it('preserves the donor existing-addon noop and rejects the unconditional-append mutant',async()=>scoped(async()=>{
+ const f=await commandFixture();
+ // A new add-on follows the existing path and aligns the future price lines.
+ const initial={variantId:f.addon,qty:2,expectedTemplateVersion:1};
+ const added=await raw(f,'addon-first','add_addon',initial);
+ expect(added.result).toMatchObject({status:'previewed'});
+ expect((await raw(f,'addon-first','add_addon',{...initial,acceptedQuoteHash:added.result.quoteHash},AT,true)).result)
+  .toMatchObject({status:'applied',templateVersion:2});
+ const payload={...initial,expectedTemplateVersion:2};
+ const lines=(await db.query(`SELECT jsonb_agg(jsonb_build_object('variantId',variant_id,'quantity',quantity,
+  'isAddon',is_addon,'sortOrder',sort_order,'unitPriceMinor',unit_price_minor,'currency',currency_code)
+  ORDER BY sort_order,id) lines FROM public.subscription_lines WHERE subscription_id=$1`,[f.subscription])).rows[0].lines;
+ async function witness(key:string) {
+  const before=await effects(true);
+  const preview=await raw(f,key,'add_addon',payload);
+  expect(preview.result).toMatchObject({status:'previewed',canApply:true,templateVersion:2,lines});
+  expect(await raw(f,key,'add_addon',payload)).toEqual(preview);
+  const applied=await raw(f,key,'add_addon',{...payload,acceptedQuoteHash:preview.result.quoteHash},AT,true);
+  expect(applied.result).toMatchObject({status:'noop',templateVersion:2,eventId:null});
+  const after=await effects(true);
+  for(const name of Object.keys(before).filter(name=>!['subscription_command_receipts','subscription_edit_quotes'].includes(name)))
+   expect(after[name],name).toEqual(before[name]);
+  return preview;
+ }
+ await witness('same-addon-noop');
+ // A different quantity still attempts an append and hits the existing duplicate refusal.
+ expect((await raw(f,'different-addon-qty','add_addon',{...payload,qty:3})).result)
+  .toMatchObject({status:'refused',reason:'subscription_edit_invalid_lines'});
+ const definition=await commandDefinition();
+ const guard=`   IF NOT EXISTS(SELECT 1 FROM public.subscription_lines WHERE subscription_id=s.id
+    AND variant_id=(p_payload->>'variantId')::uuid AND is_addon
+    AND quantity=GREATEST(1,COALESCE((p_payload->>'qty')::integer,1))) THEN
+    addons:=addons||jsonb_build_array(jsonb_build_object('variantId',p_payload->>'variantId','qty',p_payload->'qty'));
+   END IF;`;
+ const mutant=definition.replace(guard,"   addons:=addons||jsonb_build_array(jsonb_build_object('variantId',p_payload->>'variantId','qty',p_payload->'qty'));");
+ expect(mutant).not.toBe(definition);
+ await db.query('SAVEPOINT addon_mutant');
+ try {
+  await db.query(mutant);
+  await expect(witness('mutant-addon-noop')).rejects.toThrow();
+ }finally{await db.query('ROLLBACK TO addon_mutant');await db.query('RELEASE SAVEPOINT addon_mutant');}
+ expect(await commandDefinition()).toBe(definition);
+}),120_000);
+
 it('returns stored raw receipts with zero counts/columns/xmin delta across committed replays interleaved with a later command', async () => {
  const f = await commandFixture(), key = 'zero-delta-n2-preview', payload = bundle(f);
  const original = await raw(f,key,'resize_bundle',payload);
