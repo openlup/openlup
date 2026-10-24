@@ -17,7 +17,37 @@ export interface SubscriptionCommandReceipt {
   outcome: "applied" | "replayed" | "noop"; subscriptionId: string;
   originalState: string; nextCycleAt: string | null; revision: string; eventId: string | null;
 }
-export interface SubscriptionCommandRefusal { outcome: "refused"; reason: string }
+export interface SubscriptionCommandRefusal {
+  outcome: "refused";
+  /** Stable machine code; never provider, PostgreSQL diagnostic or customer text.
+   * Unrecognized native or host diagnostics map to subscription_command_invalid_input. */
+  reason:
+    | "multi_cycle_prepaid_unsupported"
+    | "subscription_command_addon_not_found"
+    | "subscription_command_bundle_total_mismatch"
+    | "subscription_command_charge_timing_not_confirmed"
+    | "subscription_command_idempotency_conflict"
+    | "subscription_command_invalid_composition_constraint"
+    | "subscription_command_invalid_input"
+    | "subscription_command_not_active"
+    | "subscription_command_operation_busy"
+    | "subscription_command_pause_forbidden"
+    | "subscription_command_payment_blocked"
+    | "subscription_command_preview_unsupported"
+    | "subscription_command_renewal_terms_missing"
+    | "subscription_command_unsupported_action"
+    | "subscription_edit_catalog_unavailable"
+    | "subscription_edit_invalid_lines"
+    | "subscription_edit_invalid_request"
+    | "subscription_edit_quote_expired"
+    | "subscription_edit_quote_required"
+    | "subscription_edit_stale_template"
+    | "subscription_edit_window_closed"
+    | "subscription_lifecycle_invalid_transition"
+    | "subscription_lifecycle_invalid_skip"
+    | "subscription_lifecycle_invalid_slide"
+    | "subscription_lifecycle_payment_blocked";
+}
 export type SubscriptionUnsupportedCode = "multi_cycle_prepaid_unsupported" | "native_generic_bundle_commands_unsupported" | "native_command_bound_receipts_unsupported" | "native_prepared_attempt_store_unsupported";
 export interface SubscriptionUnsupported { supported: false; refusalCode: SubscriptionUnsupportedCode }
 /** Readiness must be selected explicitly; a port declaration does not install a store. */

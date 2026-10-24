@@ -327,8 +327,8 @@
     },
     {
       "file": "db/platform/migrations/20261024170000_subscription_command_lifecycle.sql",
-      "sha256": "cce13b2564c34edc5f680f8fd85470de06293c8f8af0674b4a0f99fc47547d37"
+      "sha256": "1ffe8e80baef902e0a314ed92603e791c01f9172ce7170b369f315a073b97439"
     }
   ],
-  "objectInventorySha256": "2383b6615ad8bfcfc759a2f0953e68be22aaae3d7326470e07c15836f0be9bd4"
+  "objectInventorySha256": "0628bb05f43af4840b3a3543ad4079633ac11023d72704d95541d2793163b361"
 }

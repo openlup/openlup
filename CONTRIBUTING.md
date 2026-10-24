@@ -285,7 +285,10 @@ consumer classifies both exact subscription entries as having no optional peer
 requirement and exercises their installed declarations and runtime refusals.
 Native command cases run in the shared N1/N2 lifecycle harness: they bind the
 supported descriptor to real future-term/replay behavior and prove prepaid
-refusal and full transaction rollback without replacing SQL with doubles.
+refusal and full transaction rollback without replacing SQL with doubles. Raw PostgreSQL cast/overflow messages are
+normalized to a closed refusal code, including when read from stored receipts.
+Adapter replay returns before mutable host future-term validation; changing the
+host address policy after commit cannot replace the original receipt.
 Preview and apply replay compare counts, all columns and `xmin` across every
 public table, with three replays before and after a later different command.
 `tests/postgres/subscriptionContinuityBaseline.test.ts` uses the full current

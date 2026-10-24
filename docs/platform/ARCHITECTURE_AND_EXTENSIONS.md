@@ -1440,9 +1440,20 @@ Native N2 supports generic bundle commands and command-bound receipts through
 connection, trusted actor/client authorization and future-term SKU/composition
 translation with address validation; address mutation remains unsupported. Preview
 persists a quote separately; apply commits future terms, events and the receipt
-together. `originalState` is the subscription state stored by the original
+together. Equal bundle fields, add-on quantities, plan length, native resize
+lines/cadence, package templates and same-UTC-day slides return a terminal `noop`
+preview before repricing, without a quote. For an unquoted direct apply, the native store probes
+preview in a savepoint and keeps only a noop receipt; other probes roll back
+before ordinary apply, preserving quote-required refusals without extra writes.
+`originalState` is the subscription state stored by the original
 execution, preserved on replay. Native refusals return `outcome: "refused"` and
-`reason`; the adapter refuses pause without writing. Existing native lifecycle
+a closed machine-code `reason`. Unrecognized PostgreSQL diagnostics and host
+refusal text map to `subscription_command_invalid_input`; provider and customer
+text never pass through. Under the actor/key lock, preview and apply compare
+the original host request before calling `futureTerms`: a stored terminal receipt
+returns immediately, and a matching stored preview supplies its already-bound
+translation to apply. Later host address/catalogue changes cannot preempt replay;
+changed requests still refuse as idempotency conflicts. The adapter refuses pause without writing. Existing native lifecycle
 callers remain unchanged. Native multi-cycle prepaid and the M07 prepared-attempt
 store retain named unsupported declarations. Stock recovery remains unavailable;
 N1 retry recovery is selected after its store proofs. The

@@ -21,6 +21,40 @@ type F=Awaited<ReturnType<typeof fixture>>;
 const invoke=(f:F,key:string,action:string,payload:unknown={},preview=false,db:Pool|PoolClient=h.pool,at=AT)=>
  call(db,preview?'subscription_command_preview':'subscription_command_apply',[f.actor,f.client,key,f.subscription,action,payload,at]);
 const bundle=(f:F)=>({coreLines:[{variantId:f.sku,qty:2}],compositionConstraint:{kind:'units',value:2},expectedTemplateVersion:1});
+ async function effects() {
+ const tables=(await h.pool.query("SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY tablename")).rows;
+ expect(tables.map(t=>t.tablename)).toEqual(expect.arrayContaining(['subscriptions','subscription_command_receipts',
+  'subscription_edit_quotes','subscription_events','subscription_renewal_terms','subscription_renewal_term_lines']));
+  const result:Record<string,unknown>={};
+  for(const {tablename} of tables) {
+   const name=String(tablename).replaceAll('"','""');
+   result[name]=(await h.pool.query(`SELECT count(*)::int AS count,COALESCE(jsonb_agg(
+    jsonb_build_object('row',to_jsonb(t),'xmin',t.xmin::text) ORDER BY to_jsonb(t)::text),'[]'::jsonb) AS rows
+    FROM public."${name}" t`)).rows[0];
+  }
+  return result;
+ }
+it('maps PostgreSQL cast and overflow messages to a closed code on fresh and stored refusals',async()=>{
+ const f=await fixture();
+ const binding={async withTransaction<T>(work:(db:SubscriptionQueryExecutor)=>Promise<T>) {
+  const db=await h.pool.connect();try{await db.query('BEGIN');const result=await work(db);await db.query('COMMIT');return result;}
+  catch(error){await db.query('ROLLBACK');throw error;}finally{db.release();}
+ }};
+ const store=createPostgresSubscriptionCommandStore(binding);
+ for(const [suffix,extra] of [['integer',{expectedTemplateVersion:'bad'}],['overflow',{expectedTemplateVersion:'999999999999999999999'}],
+  ['uuid',{variantId:'bad',qty:1}],['qty',{variantId:f.sku,qty:'bad'}]] as const) {
+  const input={actorId:f.actor,clientId:f.client,subscriptionId:f.subscription,idempotencyKey:`diagnostic-${suffix}`,
+   action:suffix==='uuid'||suffix==='qty'?'add_addon':'resize_bundle',payload:{...bundle(f),...extra},now:AT};
+  expect(await store.preview(input)).toMatchObject({status:'refused',reason:'subscription_command_invalid_input'});
+  const raw=(await h.pool.query('SELECT result FROM public.subscription_command_receipts WHERE actor_id=$1 AND idempotency_key=$2',
+   [f.actor,input.idempotencyKey])).rows[0].result;
+  expect(raw.reason).toMatch(/invalid input syntax|out of range/);
+  expect(await store.preview(input)).toEqual({...raw,reason:'subscription_command_invalid_input'});
+  expect(await store.apply(input)).toEqual({...raw,reason:'subscription_command_invalid_input'});
+  expect(await store.apply({...input,idempotencyKey:`apply-${suffix}`,action:'slide_next_cycle',payload:{newNextCycleAt:AT}}))
+   .toMatchObject({status:'refused',reason:'subscription_lifecycle_invalid_slide'});
+ }
+});
 it('command preview and apply replay have zero public-table delta after a later command',async()=>{
  const f=await fixture();
  const calls:string[]=[];
@@ -35,19 +69,6 @@ it('command preview and apply replay have zero public-table delta after a later 
  const input={actorId:f.actor,clientId:f.client,subscriptionId:f.subscription,idempotencyKey:'zero-delta-command',
   action:'resize_bundle',payload:{...bundle(f),coreLines:[{variantId:f.sku,qty:3}],compositionConstraint:{kind:'units',value:3}},now:AT};
  const preview=await store.preview(input);expect(preview).toMatchObject({status:'previewed',canApply:true});
- const tables=(await h.pool.query("SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY tablename")).rows;
- expect(tables.map(t=>t.tablename)).toEqual(expect.arrayContaining(['subscriptions','subscription_command_receipts',
-  'subscription_edit_quotes','subscription_events','subscription_renewal_terms','subscription_renewal_term_lines']));
- async function effects() {
-  const result:Record<string,unknown>={};
-  for(const {tablename} of tables) {
-   const name=String(tablename).replaceAll('"','""');
-   result[name]=(await h.pool.query(`SELECT count(*)::int AS count,COALESCE(jsonb_agg(
-    jsonb_build_object('row',to_jsonb(t),'xmin',t.xmin::text) ORDER BY to_jsonb(t)::text),'[]'::jsonb) AS rows
-    FROM public."${name}" t`)).rows[0];
-  }
-  return result;
- }
  const previewReplay=async()=>{
   const before=await effects();calls.length=0;
   for(let n=0;n<3;n++) {
@@ -85,7 +106,7 @@ it('command preview and apply replay have zero public-table delta after a later 
  expect(calls.filter(sql=>sql.includes('SELECT public.subscription_command_'))).toEqual([]);
  await applyReplay();
 });
-async function quote(f:F,key:string,action='update_bundle',payload:Record<string,unknown>=bundle(f)) {
+async function quote(f:F,key:string,action='update_bundle',payload:Record<string,unknown>={...bundle(f),cadenceDays:21}) {
  const p=await invoke(f,key,action,payload,true);expect(p).toMatchObject({status:'previewed',canApply:true});
  return {...payload,acceptedQuoteHash:p.quoteHash};
 }
@@ -194,11 +215,143 @@ it('supports generic resize/cadence and addon commands, while repeated equal bun
   const input=await quote(f,key,action,{variantId:addon,qty,expectedTemplateVersion:version});
   expect(await invoke(f,key,action,input)).toMatchObject({status:'applied'});
  }
- const version=(await state(f)).template_version,input=await quote(f,'equal-bundle','update_bundle',{
-  ...bundle(f),coreLines:[{variantId:f.sku,qty:3}],expectedTemplateVersion:version});
+ const version=(await state(f)).template_version,payload={
+  ...bundle(f),coreLines:[{variantId:f.sku,qty:3}],expectedTemplateVersion:version};
+ expect(await invoke(f,'equal-bundle','update_bundle',payload,true)).toMatchObject({status:'noop',templateVersion:version});
  const before=(await h.pool.query('SELECT * FROM public.subscription_events WHERE subscription_id=$1',[f.subscription])).rows;
- expect(await invoke(f,'equal-bundle','update_bundle',input)).toMatchObject({status:'noop',templateVersion:version});
+ expect(await invoke(f,'equal-bundle','update_bundle',payload)).toMatchObject({status:'replayed',originalStatus:'noop',templateVersion:version});
  expect((await h.pool.query('SELECT * FROM public.subscription_events WHERE subscription_id=$1',[f.subscription])).rows).toEqual(before);
+});
+it.each(['update_bundle','add_addon','update_addon_quantity','update_plan_length',
+ 'resize_bundle','update_package_template','slide_next_cycle'] as const)(
+ 'returns %s noop through the TS store after price drift with only a receipt written',async action=>{
+ const f=await fixture(),product=randomUUID(),addon=randomUUID();
+ await h.pool.query("INSERT INTO public.catalog_products(id,slug,name) VALUES($1::uuid,$1::text,'Addon')",[product]);
+ await h.pool.query("INSERT INTO public.catalog_skus(id,product_id,sku,title,status,sellable_in_subscription) VALUES($1::uuid,$2,$1::text,'Addon','active',true)",[addon,product]);
+ await h.pool.query("INSERT INTO public.price_entries(price_list_id,variant_id,unit_price_minor,valid_from) VALUES($1,$2,70,'2026-01-01')",[f.list,addon]);
+ await h.pool.query(`INSERT INTO public.subscription_lines(subscription_id,variant_id,quantity,sort_order,is_addon,unit_price_minor,currency_code)
+  VALUES($1,$2,2,1,true,70,'XXX')`,[f.subscription,addon]);
+ await h.pool.query('UPDATE public.price_entries SET unit_price_minor=999 WHERE price_list_id=$1',[f.list]);
+ const store=createPostgresSubscriptionCommandStore({
+  async withTransaction<T>(work:(db:SubscriptionQueryExecutor)=>Promise<T>) {
+   const db=await h.pool.connect();try{await db.query('BEGIN');const result=await work(db);await db.query('COMMIT');return result;}
+   catch(error){await db.query('ROLLBACK');throw error;}finally{db.release();}
+  },
+ });
+ const payload:Record<string,unknown>=action==='slide_next_cycle'?{newNextCycleAt:later(201)}
+  :action==='add_addon'||action==='update_addon_quantity'?{variantId:addon,qty:2,expectedTemplateVersion:1}
+  :{...bundle(f),planDays:28,addonLines:[{variantId:addon,qty:2}]};
+ const input={actorId:f.actor,clientId:f.client,subscriptionId:f.subscription,idempotencyKey:`store-noop-${action}`,
+  action,payload,now:AT};
+ const before=await effects(),preview=await store.preview(input);
+ expect(preview).toMatchObject({status:'noop',subscriptionId:f.subscription,action,templateVersion:1,eventId:null});
+ expect(preview).not.toHaveProperty('quoteHash');
+ async function onlyReceipt(previous:Record<string,unknown>,key:string,result:Record<string,unknown>) {
+  const after=await effects();
+  for(const name of Object.keys(previous).filter(name=>name!=='subscription_command_receipts'))
+   expect(after[name],`${action}: ${name} columns/xmin`).toEqual(previous[name]);
+  type Receipts={count:number;rows:{row:Record<string,unknown>;xmin:string}[]};
+  const old=previous.subscription_command_receipts as Receipts,current=after.subscription_command_receipts as Receipts;
+  const added=current.rows.filter(r=>r.row.actor_id===f.actor&&r.row.idempotency_key===key);
+  expect(current.count).toBe(old.count+1);expect(added).toHaveLength(1);
+  expect(added[0].row).toMatchObject({status:'noop',quote_hash:null,result});
+  expect(current.rows.filter(r=>r!==added[0])).toEqual(old.rows);
+  return after;
+ }
+ const previewStored=await onlyReceipt(before,input.idempotencyKey,preview);
+ const replay=await store.apply(input);
+ expect(replay).toMatchObject({...preview,status:'replayed',originalStatus:'noop'});
+ expect(replay.commandFingerprint).toMatch(/^[a-f0-9]{64}$/);
+ for(let n=0;n<3;n++) {
+  expect(await store.preview({...input,now:later(500)})).toEqual(preview);
+  expect(await store.apply({...input,now:later(500)})).toEqual(replay);
+ }
+ expect(await effects()).toEqual(previewStored);
+ const direct={...input,idempotencyKey:`store-direct-noop-${action}`},applied=await store.apply(direct);
+ expect(applied).toMatchObject(preview);expect(applied.commandFingerprint).toMatch(/^[a-f0-9]{64}$/);
+ const directStored=await onlyReceipt(previewStored,direct.idempotencyKey,preview);
+ for(let n=0;n<3;n++) {
+  expect(await store.preview({...direct,now:later(500)})).toEqual(preview);
+  expect(await store.apply({...direct,now:later(500)})).toEqual({...applied,status:'replayed',originalStatus:'noop'});
+ }
+ expect(await effects()).toEqual(directStored);
+ const delta=action==='slide_next_cycle'?{newNextCycleAt:later(224)}
+  :action==='add_addon'||action==='update_addon_quantity'?{qty:3}
+  :action==='resize_bundle'?{coreLines:[{variantId:f.sku,qty:3}],compositionConstraint:{kind:'units',value:3}}
+  :action==='update_package_template'?{addonLines:[{variantId:addon,qty:3}]}:{planDays:21};
+ const changed={...input,idempotencyKey:`store-changed-preview-${action}`,payload:{...payload,...delta}};
+ const quoted=await store.preview(changed);
+ expect(quoted).toMatchObject(action==='slide_next_cycle'
+  ?{status:'refused',reason:'subscription_command_preview_unsupported'}:action==='add_addon'
+   ?{status:'refused',reason:'subscription_edit_invalid_lines'}:{status:'previewed',canApply:true});
+ const directChanged=await store.apply({...changed,idempotencyKey:`store-changed-direct-${action}`});
+ expect(directChanged).toMatchObject(action==='slide_next_cycle'?{status:'applied'}
+  :{status:'refused',reason:'subscription_edit_quote_required'});
+ if(quoted.status==='previewed') {
+  expect(await store.apply({...changed,payload:{...changed.payload,acceptedQuoteHash:String(quoted.quoteHash)}}))
+   .toMatchObject({status:'applied',templateVersion:2});
+ }
+});
+it('returns the existing-addon noop through the TS store without quotes or replay writes',async()=>{
+ const f=await fixture(),product=randomUUID(),addon=randomUUID();
+ await h.pool.query("INSERT INTO public.catalog_products(id,slug,name) VALUES($1::uuid,$1::text,'Addon')",[product]);
+ await h.pool.query("INSERT INTO public.catalog_skus(id,product_id,sku,title,status,sellable_in_subscription) VALUES($1::uuid,$2,$1::text,'Addon','active',true)",[addon,product]);
+ await h.pool.query("INSERT INTO public.price_entries(price_list_id,variant_id,unit_price_minor,valid_from) VALUES($1,$2,70,'2026-01-01')",[f.list,addon]);
+ const store=createPostgresSubscriptionCommandStore({
+  async withTransaction<T>(work:(db:SubscriptionQueryExecutor)=>Promise<T>) {
+   const db=await h.pool.connect();try{await db.query('BEGIN');const result=await work(db);await db.query('COMMIT');return result;}
+   catch(error){await db.query('ROLLBACK');throw error;}finally{db.release();}
+  },
+ });
+ const first={actorId:f.actor,clientId:f.client,subscriptionId:f.subscription,idempotencyKey:'store-addon-first',
+  action:'add_addon',payload:{variantId:addon,qty:2,expectedTemplateVersion:1},now:AT};
+ const quoted=await store.preview(first);expect(quoted).toMatchObject({status:'previewed'});
+ expect(await store.apply({...first,payload:{...first.payload,acceptedQuoteHash:String(quoted.quoteHash)}}))
+  .toMatchObject({status:'applied',templateVersion:2});
+ // Catalogue drift cannot reprice an already present add-on or its core lines.
+ await h.pool.query('UPDATE public.price_entries SET unit_price_minor=999 WHERE price_list_id=$1',[f.list]);
+ const input={...first,idempotencyKey:'store-addon-noop',payload:{...first.payload,expectedTemplateVersion:2}};
+ const before=await effects(),preview=await store.preview(input);
+ expect(preview).toMatchObject({status:'noop',subscriptionId:f.subscription,templateVersion:2,eventId:null});
+ expect(preview).not.toHaveProperty('quoteHash');
+ const stored=await effects();
+ for(const name of Object.keys(before).filter(name=>name!=='subscription_command_receipts'))
+  expect(stored[name],name).toEqual(before[name]);
+ expect((await h.pool.query('SELECT status,quote_hash,result FROM public.subscription_command_receipts WHERE actor_id=$1 AND idempotency_key=$2',
+  [f.actor,input.idempotencyKey])).rows).toEqual([{status:'noop',quote_hash:null,result:preview}]);
+ const applied=await store.apply(input);
+ expect(applied).toMatchObject({...preview,status:'replayed',originalStatus:'noop'});
+ expect(applied.commandFingerprint).toMatch(/^[a-f0-9]{64}$/);
+ for(let n=0;n<3;n++) {
+  expect(await store.preview({...input,now:later(500)})).toEqual(preview);
+  expect(await store.apply({...input,now:later(500)})).toEqual(applied);
+ }
+ expect(await effects()).toEqual(stored);
+ const direct={...input,idempotencyKey:'store-addon-direct-noop'};
+ const directResult=await store.apply(direct);
+ expect(directResult).toMatchObject({...preview,status:'noop'});
+ expect(directResult.commandFingerprint).toMatch(/^[a-f0-9]{64}$/);
+ const directStored=await effects();
+ for(const name of Object.keys(stored).filter(name=>name!=='subscription_command_receipts'))
+  expect(directStored[name],name).toEqual(stored[name]);
+ for(let n=0;n<3;n++) {
+  expect(await store.apply({...direct,now:later(500)})).toEqual({...directResult,status:'replayed',originalStatus:'noop'});
+ }
+ expect(await effects()).toEqual(directStored);
+ const invalid={...direct,idempotencyKey:'store-addon-direct-different',payload:{...direct.payload,qty:3}};
+ expect(await store.apply(invalid)).toMatchObject({status:'refused',reason:'subscription_edit_quote_required'});
+ const refusedStored=await effects();
+ for(const name of Object.keys(directStored).filter(name=>name!=='subscription_command_receipts'))
+  expect(refusedStored[name],name).toEqual(directStored[name]);
+ const freshAddon=randomUUID();
+ await h.pool.query("INSERT INTO public.catalog_skus(id,product_id,sku,title,status,sellable_in_subscription) VALUES($1::uuid,$2,$1::text,'New addon','active',true)",[freshAddon,product]);
+ await h.pool.query("INSERT INTO public.price_entries(price_list_id,variant_id,unit_price_minor,valid_from) VALUES($1,$2,70,'2026-01-01')",[f.list,freshAddon]);
+ const beforeFresh=await effects();
+ expect(await store.apply({...direct,idempotencyKey:'store-addon-direct-new',payload:{...direct.payload,variantId:freshAddon}}))
+  .toMatchObject({status:'refused',reason:'subscription_edit_quote_required'});
+ const afterFresh=await effects();
+ for(const name of Object.keys(beforeFresh).filter(name=>name!=='subscription_command_receipts'))
+  expect(afterFresh[name],name).toEqual(beforeFresh[name]);
 });
 it('keeps native lifecycle callers unchanged, permits customer cancellation of open dunning, and refuses in-flight cancellation',async()=>{
  const f=await fixture();
@@ -233,13 +386,15 @@ it('keeps native lifecycle callers unchanged, permits customer cancellation of o
 
 it('binds the supported descriptor to real native command success, replay, rollback and unsupported refusal',async()=>{
  const f=await fixture();
+ let hostCalls=0,hostAddress='host-verified-address';
  const binding={
   async withTransaction<T>(work:(db:SubscriptionQueryExecutor)=>Promise<T>) {
    const db=await h.pool.connect();try{await db.query('BEGIN');const result=await work(db);await db.query('COMMIT');return result;}
    catch(error){await db.query('ROLLBACK');throw error;}finally{db.release();}
   },
   async futureTerms(command:Extract<SubscriptionCommand,{action:'edit_future_terms'}>) {
-   expect(command.shippingAddressId).toBe('host-verified-address');
+   hostCalls++;
+   if(command.shippingAddressId!==hostAddress) return {outcome:'refused' as const,reason:'subscription_command_invalid_input' as const};
    return {coreLines:command.coreLines.map(line=>({variantId:f.sku,qty:line.quantity})),addonLines:[],compositionConstraint:{kind:'units',value:3}};
   },
  };
@@ -255,8 +410,20 @@ it('binds the supported descriptor to real native command success, replay, rollb
  const applied=await commands.apply(command) as SubscriptionCommandReceipt;
  expect(applied).toMatchObject({outcome:'applied',actorId:f.actor,idempotencyKey:command.idempotencyKey,originalState:'active',revision:'2'});
  expect(applied.commandFingerprint).toMatch(/^[a-f0-9]{64}$/);
- expect(await commands.apply({...command,now:later(500)})).toEqual({...applied,outcome:'replayed'});
+ hostAddress='later-host-address';
+ const beforeReplay=await effects(),callsBeforeReplay=hostCalls;
+ for(let n=0;n<3;n++) {
+  expect(await commands.apply({...command,now:later(500)})).toEqual({...applied,outcome:'replayed'});
+  expect(await commands.preview({...command,now:later(500)})).toMatchObject({status:'applied',templateVersion:2});
+ }
+ expect(hostCalls).toBe(callsBeforeReplay);
+ expect(await effects()).toEqual(beforeReplay);
  expect(await commands.apply({...command,cadenceDays:28})).toEqual({outcome:'refused',reason:'subscription_command_idempotency_conflict'});
+ expect(await commands.preview({...command,shippingAddressId:hostAddress}))
+  .toMatchObject({status:'refused',reason:'subscription_command_idempotency_conflict'});
+ expect(await commands.apply({...command,actor:{...command.actor,clientId:randomUUID()}}))
+  .toEqual({outcome:'refused',reason:'subscription_command_invalid_input'});
+ expect(hostCalls).toBe(callsBeforeReplay+1);
  expect((await h.pool.query('SELECT cadence_days FROM public.subscriptions WHERE id=$1',[f.subscription])).rows[0].cadence_days).toBe(21);
  expect(await commands.apply({...context,idempotencyKey:'adapter-pause',action:'pause',pausePreset:'host',reason:null,survey:null,saveOffer:null}))
   .toEqual({outcome:'refused',reason:'subscription_command_pause_forbidden'});

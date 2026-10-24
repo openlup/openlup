@@ -789,6 +789,20 @@ with browser execution denied. Canonical and package bytes are identical.
 Install the complete ordered manifest before selecting the adapter. Stop command
 writers on rollback and retain receipts and accepted quotes; never rewrite
 current payment/cycle/order snapshots. Existing native callers are unchanged.
+N2 preview returns `noop` before catalogue repricing for equal supplied bundle
+fields, existing add-on quantities (`add_addon` and `update_addon_quantity`), plan
+length, native resize lines/cadence, package templates and same-UTC-day slides.
+It persists only its actor/key receipt and creates
+no quote, line/price write, event or template-version increment. Applying that
+same command replays the stored noop receipt without writes. The TS store also
+uses native preview for an unquoted direct apply, retaining only a noop
+receipt; a non-noop probe rolls back before ordinary apply, preserving each
+changed-state command's quote requirement or lifecycle behavior.
+Raw SQL bundle apply still requires either that receipt or a quote. Other add-on requests retain the existing
+normalization and duplicate-line refusal behavior. The
+[TS store witness](../../tests/postgres/subscriptionCommandLifecycleCases.ts)
+checks catalogue drift and compares every public table, including row versions,
+across preview and apply replay.
 
 Migration note (C73, temporary limitation): managed provisional creation
 (`subscription_create_provisional_for_checkout`) stamps an explicit timezone
