@@ -172,7 +172,11 @@ npm run ci
 Focused proofs are `npm run api:check`, `npm run release:check`, and
 `npm run test:consumer`. The root test script skips this suite.
 The shared repository gate runs this package's API check before expensive
-proofs, then `ci:required` retains the other complete-CI obligations once.
+proofs, then `ci:required` retains the mechanical obligations once through
+`release:admission`. That mode skips only the absolute live dependency audit;
+repository admission checks newly selected vulnerable production dependencies
+against the base instead. Unchanged inherited advisories remain alerts.
+`release:check`, standalone `ci` and publication packs retain the full audit.
 The standalone `ci` command keeps its API check for manual package verification.
 In the monorepo, required CI supplies `OPENLUP_PACK_MANIFEST` and
 `OPENLUP_PACK_COMMIT` together to the same consumer. It verifies the complete

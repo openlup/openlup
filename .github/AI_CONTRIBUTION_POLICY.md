@@ -125,13 +125,19 @@ hosted source and group admission require the reviewed base on current main,
 including for equal trees. Landing that predecessor
 alone preserves the exact review without refreshing its expiry or resetting
 history. No pin is needed for an independent PR, whose existing rules remain.
-An ancestor-preserving base integration, such as
-merging `main` to resolve a textual conflict, requires fresh full-scope review
-within the same budget. `prepare --new` records a changed intent or a rebase
+An exact two-parent integration of the prior reviewed head and the new main
+base may use focused integration inspection when `prepare` proves valid prior
+coverage in the same session with unchanged intent and author. Two fresh
+reviewers approve the current tree after examining the complete integration and
+base deltas, conflict resolution and interactions, including changed control
+machinery. Source coverage keeps its earliest expiry. Missing or expired
+coverage and uncertain interactions require full inspection; findings and the
+same repair budget remain binding. See
+[review after integration](../CONTRIBUTING.md#native-review-and-accountability). `prepare --new` records a changed intent or a rebase
 in the same append-only session history; findings, reviewers and the repair
 count carry on. Only an authorized `continue` adds cycles.
-This nonqueue route admits no cross-base reuse; the
-merge-queue carry-over below is the only one. Once criteria, required review and
+This focused inspection does not copy reports across trees or create another
+receipt route; the merge-group carry-over rule below is unchanged. Once criteria, required review and
 checks pass, stop optional edits and continue only authorized delivery steps.
 
 Planning and review ask whether a simpler solution delivers the outcome faster,
@@ -161,8 +167,8 @@ The source review carries over to a merge group when either:
 Admission checks these conditions itself; the author declares nothing. The
 mechanical checks on the group tree are then relied on for behavioural
 interaction. Otherwise the group is rejected: merge `main` and re-review, then
-post the new source receipt. Nonqueue base integration still requires fresh
-full-scope review under the existing protocol.
+post the new source receipt. Base integration still requires fresh current-tree
+review, using the proved focused scope described above when eligible.
 
 Activation requires separate explicit maintainer approval of the exact settings
 and live refusal proof. A disabled or skipped admission job is not that proof.

@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { randomUUID } from 'node:crypto';
 import { env as processEnvironment } from 'node:process';
-import { continueOwner, demand, prepareCandidate, receiptSummary, recordReport, RECEIPT_MARKER, verdict } from './agent-review-decide.mjs';
+import { carryOver, continueOwner, demand, integrationReviewContext, prepareCandidate, receiptSummary, recordReport, RECEIPT_MARKER, verdict } from './agent-review-decide.mjs';
 
 const execute = promisify(execFile);
 const SHA = /^[a-f0-9]{40}$/u;
@@ -43,6 +43,43 @@ export async function captureSessionCandidate(cwd, base, { runGit = git, env = p
   candidate.clean = !(await runGit(cwd, 'status', '--porcelain=v1', '-z', '--untracked-files=all', '--', '.', ':(exclude).context/scratch')).length;
   return candidate;
 }
+async function ancestor(runGit, cwd, base, head) {
+  try { await runGit(cwd, 'merge-base', '--is-ancestor', base, head); return true; } catch { return false; }
+}
+export async function carryOverSourceReview(cwd, candidate, group, runGit = git) {
+  const baseAncestor = await ancestor(runGit, cwd, candidate.base, group.base);
+  let predictedTree; let movedPaths = []; const manifests = {};
+  if (baseAncestor && candidate.tree !== group.tree) {
+    try { predictedTree = (await runGit(cwd, 'merge-tree', '--write-tree', `--merge-base=${candidate.base}`, group.base, candidate.head)).trim(); } catch { predictedTree = null; }
+    movedPaths = (await runGit(cwd, 'diff', '--name-only', '--no-renames', '-z', candidate.base, group.base)).split('\0').filter(Boolean);
+    for (const path of movedPaths.filter(path => /^packages\/[\w.-]+\/package\.json$/u.test(path))) {
+      const [base, queueBase, head, merged] = await Promise.all([candidate.base, group.base, candidate.head, group.tree].map(async sha => {
+        try {
+          const blob = await runGit(cwd, 'show', `${sha}:${path}`);
+          return Buffer.byteLength(blob, 'utf8') <= 1024 * 1024 ? JSON.parse(blob) : undefined;
+        } catch { return undefined; }
+      }));
+      manifests[path] = { base, queueBase, head, group: merged };
+    }
+  }
+  return carryOver({ reviewedTree: candidate.tree, groupTree: group.tree, baseAncestor, predictedTree, changedPaths: candidate.changedPaths, movedPaths, manifests });
+}
+export async function assertMergePreflight(cwd, candidate, { runGit = git, env = processEnvironment } = {}) {
+  const main = (await runGit(cwd, 'rev-parse', '--verify', 'origin/main^{commit}')).trim();
+  demand(SHA.test(main), 'origin/main commit identity is invalid');
+  // A stacked candidate may be reviewed before its prerequisite lands. Hosted
+  // admission still requires its exact pin on main before it can enter the queue.
+  if (env.OPENLUP_STACK_BASE === candidate.base && !await ancestor(runGit, cwd, candidate.base, main)) return;
+  let tree;
+  try { tree = (await runGit(cwd, 'merge-tree', '--write-tree', main, candidate.head)).trim(); }
+  catch (error) {
+    if (error.code === 1) throw new Error('merge_preflight: candidate conflicts with origin/main; merge main and resolve before review or verification');
+    throw new Error(`merge_preflight: cannot compute merge with origin/main: ${error.message}`);
+  }
+  demand(SHA.test(tree), 'merge preflight did not produce a tree', 'merge_preflight');
+  const decision = await carryOverSourceReview(cwd, candidate, { base: main, tree }, runGit);
+  demand(decision.ok, `clean merge cannot carry over source review: ${decision.reason}`, 'merge_preflight');
+}
 async function boundedJson(path, limit = 1024 * 1024) {
   const handle = await open(path, 'r');
   try {
@@ -69,14 +106,15 @@ export function runReviewCommand(command, args, cwd, env) {
 }
 export async function verifyCandidateCommand({ cwd, session, command, args = [], resource, env = processEnvironment, snapshot = captureSessionCandidate, run = runReviewCommand }) {
   demand(env.AI_RESOURCE_GATE_ACTIVE !== '1' && !env.OPENLUP_HEAVY_ACTIVE, 'nested verification inside the resource broker is refused');
-  const before = await snapshot(cwd, session.candidate.base); const decision = verdict(session, before, Date.now()); demand(decision.ok, decision.reason, decision.code);
+  const before = await snapshot(cwd, session.candidate.base, { env }); const decision = verdict(session, before, Date.now()); demand(decision.ok, decision.reason, decision.code);
+  await assertMergePreflight(cwd, before, { env });
   if (resource) {
     demand(/^[a-z][a-z0-9:-]{0,127}$/u.test(resource), 'resource profile is invalid');
     const broker = (env.PATH ?? '').split(delimiter).map(path => join(path, 'ai-resource-gate')).find(path => { try { accessSync(path, constants.X_OK); return true; } catch { return false; } });
     demand(broker, 'ai-resource-gate is unavailable'); args = ['run', '--wait', `${resource}:${basename(cwd)}`, '--', command, ...args]; command = broker;
   }
   const code = await run(command, args, cwd, { ...env, OPENLUP_HEAVY_ACTIVE: cwd });
-  const after = await snapshot(cwd, before.base); const final = verdict(session, after, Date.now()); demand(final.ok, final.reason, final.code);
+  const after = await snapshot(cwd, before.base, { env }); const final = verdict(session, after, Date.now()); demand(final.ok, final.reason, final.code);
   return code;
 }
 export async function sessionMain(argv = process.argv.slice(2), { cwd = process.cwd(), env = processEnvironment } = {}) {
@@ -98,7 +136,16 @@ export async function sessionMain(argv = process.argv.slice(2), { cwd = process.
         try { await git(cwd, 'merge-base', '--is-ancestor', session.candidate.head, observed.head); }
         catch { throw new Error('invalid: rebased history; use prepare --new'); }
       }
-      const next = prepareCandidate(session, observed, Date.now(), fresh);
+      await assertMergePreflight(cwd, observed, { env });
+      const now = Date.now();
+      if (!fresh && session?.candidate && session.candidate.head !== observed.head) {
+        const parents = (await git(cwd, 'show', '-s', '--format=%P', observed.head)).trim().split(' ');
+        const baseAncestor = await ancestor(git, cwd, session.candidate.base, observed.base) &&
+          await ancestor(git, cwd, observed.base, 'origin/main');
+        const integration = integrationReviewContext(session, observed, { parents, baseAncestor }, now);
+        if (integration) observed.integration = integration;
+      }
+      const next = prepareCandidate(session, observed, now, fresh);
       await saveState(path, next);
       demand(next.cycle <= next.allowedCycles, 'record an owner continuation with continue "<note>"', 'needs_owner');
       console.log(JSON.stringify(next, null, 2)); return 0;
@@ -116,6 +163,7 @@ export async function sessionMain(argv = process.argv.slice(2), { cwd = process.
     demand(['base', 'head', 'tree'].every(key => observed[key] === session.candidate[key]), 'candidate changed; prepare again', 'stale');
     if (verb === 'record') { session = recordReport(session, await boundedJson(args[0]), Date.now()); await saveState(path, session); return 0; }
     const decision = verdict(session, observed, Date.now()); demand(decision.ok, decision.reason, decision.code);
+    if (verb === 'receipt') await assertMergePreflight(cwd, observed, { env });
     if (verb === 'receipt') console.log(`${RECEIPT_MARKER}\n\`\`\`json\n${JSON.stringify(receiptSummary(session, Number(args[0]), Date.now()))}\n\`\`\``);
     else console.log('reviewed');
     return 0;

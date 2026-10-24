@@ -542,8 +542,10 @@ directly. It refuses invocation inside an active resource broker or another
 verification wrapper, so wrap the underlying command once.
 
 Freeze tracked inputs and serialize commands sharing mutable output. The wrapper
-adds no output lease, policy/inventory check or predicted-merge preflight, and
-performs no intermediate candidate check after a broker wait. It passes the
+adds no output lease or policy/inventory check. Its cheap predicted-merge
+preflight reuses queue carry-over against locally fetched `origin/main` before
+the command starts; refresh that ref before final verification. It performs no
+intermediate candidate check after a broker wait. It passes the
 existing environment, including any `OPENLUP_STACK_BASE`, to the child command.
 Run the separately required checks yourself; existing maintainer-local stamps
 and hooks remain required where installed. This wrapper is local verification,
@@ -773,6 +775,32 @@ See [Test scope and diagnostics](#test-scope-and-diagnostics) for selection,
 sharding, discovery and test-author guidance.
 
 The required `install-proof` job runs the shared package gate after both reference-profile builds, independently of the required `test` job in a separate checkout and installation. It discovers every publishable package from `config/openlup-packages.json` and its actual npm workspace, and refuses missing `api:check`, `ci:required` or `test:consumer` scripts before packing. The existing cold producer emits one current-set manifest. All API checks run before any package's `ci:required`, which receives the same verified manifest and exact checkout commit through `OPENLUP_PACK_MANIFEST` and `OPENLUP_PACK_COMMIT`. Cold preparation clears each workspace per target, so the API phase restores each package's built declarations and prerequisites through the existing build helper; it leaves the retained tarballs untouched and includes that cost in its timing. There is no missing-script skip or package-name routing table. A new module must supply installed-artifact consumer coverage, meaningful failure cases and its owning required batch; script declarations alone do not prove that those assertions are sound. Review checks that the batch actually invokes its consumer and preserves its required tests. Keep API checks out of that batch because the shared phase already runs them.
+
+Dependency security has two boundaries. PR/merge-group admission refuses newly
+selected vulnerable production dependencies against the exact comparison base;
+an advisory affecting an unchanged dependency inherited from that base remains a
+Dependabot alert, not a repository-wide merge freeze. Unknown dependency scope
+is treated as production. Unavailable or incomplete audit data does not establish
+PASS when dependency security inputs changed. This uses the existing
+`install-proof` status; tests, API, lock, license, SBOM, pack and publish controls
+remain required. Core's `ci:required` runs `release:admission`, which preserves
+those controls without repeating the absolute live audit. Standalone `ci` and
+`release:check` retain the absolute audit.
+
+Publication is stricter: `packages:check --release-tag` / `--release-set` packing
+runs a fresh full audit of the selected committed workspace dependency graph,
+including internal prerequisites and their standalone locks, under the existing
+zero-vulnerability budget. npm's production flags may conservatively include
+shared dependencies also used by development tooling; optional peers absent
+from the lock are not newly resolved. An audit failure retains no publication
+artifacts. Manifest-only checks remain installation-free and do not audit.
+The existing release gate also refuses a target with different pack/audit/publisher
+control blobs from fetched main, before target code runs; older source is allowed
+when these controls are unchanged. Historical release workflow definitions remain
+pinned to their own commits.
+The publishing workflow requires packing/audit from its current attempt; retry
+all jobs after publication failure so the full audit runs again. Existing release
+approvals, immutable version rules and protected credentials remain unchanged.
 
 A module added to an existing distribution extends that package's consumer and
 required batch; it does not need another npm workspace, runner or CI job.
@@ -1746,7 +1774,13 @@ reading, exact merge scope and protected release approval still apply.
        two for `behavior` or `unknown`.
      - Codex may omit `authorSessionId`, which is then taken from
        `CODEX_THREAD_ID`. Every other supervisor sets it to its own session ID.
-   - run `node scripts/agent-review-session.mjs prepare .context/scratch/agent-review/intent.json`;
+   - refresh `origin/main` with `git fetch origin main`, then run
+     `node scripts/agent-review-session.mjs prepare .context/scratch/agent-review/intent.json`.
+     Its cheap merge preflight refuses a known conflict or failed carry-over before
+     reviewers start. `verify-command` repeats it before expensive verification,
+     and `receipt` before submission, against the locally fetched main. It does
+     not fetch or promise that main will remain unchanged. An unlanded stack pin
+     may still be reviewed locally; hosted admission waits for its prerequisite;
    - launch fresh reviewers and `record` each report;
    - repeat until `verify` reports `reviewed`. Three repair cycles are automatic;
      after `needs_owner`, only an owner decision recorded with
@@ -1776,6 +1810,9 @@ reading, exact merge scope and protected release approval still apply.
      the clean committed tree. It must report `REQUIRED PASS`, and it writes the
      stamp that the pre-push hook requires.
    - Elsewhere, run the [required check commands](#required-and-raw-checks).
+     When native review evidence is available, the existing `verify-command`
+     wrapper performs the merge preflight before the command. Refresh
+     `origin/main` before the final run so it sees current main.
 5. **Push** with `git push -u origin HEAD`. A push is publication, within your
    delivery authority. If `main` has moved since the review, push as is: verify
    and pre-push accept the review while its fork point is unchanged. Do not
@@ -1846,6 +1883,27 @@ on. Only `continue` adds cycles. A version-1 session file from before
 2026-10-19 cannot be converted: delete `.context/scratch/agent-review/session.json`
 and prepare again. A conflict or
 failed queue carry-over is resolved by merging `main` and re-reviewing.
+
+**Review after integrating main.** `prepare` can supply `candidate.integration`
+with the preceding reviewed base/head/tree and its expiry. This requires a valid
+PASS in the same append-only session, unchanged intent and author, and exactly
+two merge parents: the prior head and the new review base on main. Two fresh
+reviewers still approve the complete current tree against the approved criteria.
+Their inspection may focus on the complete old-head-to-new-head delta, the
+old-base-to-new-base delta, both versions of the task's own diff, conflict
+resolution and interactions with the existing implementation. Read changed
+admission, dependency, migration and other control machinery even when it is
+outside the task's own paths. A merge commit can contain additional edits;
+parent identity alone does not prove unchanged implementation. Supply these
+pinned source identities, not old verdict text or author discussion. Uncertainty
+requires full inspection within those reviews, not an automatic extra round.
+
+Focused integration review inherits the earliest source-coverage expiry; fresh
+reports do not renew it. Reports are never copied to another tree. Findings,
+reviewer uniqueness and repair cycles remain in the same history. Missing,
+expired or unproven prior coverage, a rebase or `prepare --new` uses full review
+under the normal reviewer floor. An unchanged prepare preserves existing evidence.
+The receipt format and all mechanical checks are unchanged.
 
 Handle `needs_agent_review` in the active task without asking the owner to repeat
 approved behaviour. After criteria, review and checks pass, stop optional edits
@@ -1926,6 +1984,10 @@ own: a lessons change is an ordinary delivery under existing authority, and a
 promotion stays within its approved scope. The rethink record and the task's
 terminal self-retro carry the lesson until it lands. No other tracker is kept.
 
+- 2026-10-23, queue integration rethink: repeated full reading after a base
+  merge and enqueue polling on an unchanged conflict waste work → check the
+  existing carry-over predicate before expensive phases; reuse valid source
+  coverage to focus fresh current-tree review on the complete integration delta.
 - 2026-10-23, execution-process rethink: repeated uninformative mutants and stale
   instruction copies → use [required behavior-class proof](#sufficient-evidence-and-material-test-gaps),
   [early regroup](#regroup-when-work-stops-converging) and
@@ -2018,14 +2080,21 @@ records why these rules exist.
 - **No rebasing for freshness.** Do not rebase a pull request, or merge `main`
   into it, only because it is behind. A review is bound to the branch's fork
   point, so verify and pre-push keep accepting it while the branch is behind.
-  Integrate `main` only for a textual conflict, by merging it, and then obtain a
-  fresh full review.
+  Integrate `main` only for a textual conflict or failed carry-over/preflight,
+  by merging it, and then obtain a fresh review, using the integration scope above when `prepare` proves coverage.
 - **Arming.** Arm auto-merge only under actual merge authority, and only after
   the required checks, the native review and any required maintainer read:
   `gh pr merge <PR> --auto --author-email <address>`; the queue sets the merge
   method. Use the maintainer's configured author address. Confirm arming only
   by a non-null GraphQL `mergeQueueEntry` on the pull request, never by
-  `autoMergeRequest`.
+  `autoMergeRequest`. Before arming, read the live head and mergeability.
+  `DIRTY`/`CONFLICTING` stops enqueue attempts until the head or mergeability
+  changes and the conflict is resolved; do not spend queue retries polling the
+  same refusal.
+  `UNKNOWN` permits one fresh read, then stops for diagnosis if still unknown.
+  Leave `BEHIND` to the queue when carry-over remains valid. A watcher follows
+  these same rules and resumes only after a relevant head or mergeability change;
+  it does not repeatedly arm an unchanged blocked PR.
 - **Receipts.** While native admission is active, a supervisor with delivery
   authority posts one source receipt per reviewed PR head as soon as the pull
   request is open and ready, using step 7. A group that cannot carry over is
@@ -2083,8 +2152,8 @@ other or touch the same shared files:
   exactly both additions; root manifests and lockfiles still block.
   Other base changes are rejected: merge `main` and re-review.
 - If another change on `main` conflicts with it, merge `main` into it once (do
-  not rebase), regenerate its shared records and get a fresh full review, as
-  for a textual conflict.
+  not rebase), regenerate its shared records and get fresh review, using the
+  integration scope above when `prepare` proves coverage.
 - If a predecessor changes, merge its new head into each stacked pull request
   above it (do not rebase); each result is reviewed again under the usual repair
   rules and budget.

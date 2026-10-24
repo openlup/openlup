@@ -749,6 +749,23 @@ a cap refuses with the package, entry, measured bytes, cap and reviewed-PR remed
 
 ### Release steps
 
+PR/queue dependency admission blocks newly selected vulnerable production
+dependencies, while unchanged inherited advisories remain alerts. It does not
+establish publication readiness. Release-tag/set packing in both the dispatch
+preflight and publication workflow runs a fresh absolute audit of the selected
+committed workspace graph, internal prerequisites and their standalone locks,
+with the existing zero-vulnerability budget. Before target code runs, the
+existing fresh-main gate requires the target's pack checker, audit helper and
+publisher workflow to match those on fetched main. Older source targets remain
+eligible when these controls are unchanged; otherwise prepare a reviewed forward
+candidate with the current publication controls. This does not rewrite already
+created historical releases or their pinned workflow definitions. No new pins
+are resolved. Failed audits retain no publishable artifacts. The publish job accepts an audit only
+from the same workflow attempt: use **Re-run all jobs** for a failed publication,
+including partial-set recovery. It receives only the checked tarball and digest;
+no checkout, install or package code enters the OIDC job. This binds freshness to
+the attempt, not a guarantee against advisories published later in that attempt.
+
 A release takes three steps:
 
 1. **Release preparation.** An ordinary reviewed pull request, either a separate

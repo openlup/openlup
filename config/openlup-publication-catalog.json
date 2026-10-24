@@ -6854,6 +6854,14 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/public-ci-dependencies.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/public-ci-dependencies.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/public-ci-neutrality.mjs",
       "class": "public-output"
     },
@@ -23439,7 +23447,7 @@
     },
     {
       "path": "packages/core/package.json",
-      "digest": "sha256-4930c4c02466566fb26cf2c791d78716280d823bf9fd3eebf3d16d3fad0792f1"
+      "digest": "sha256-2880595670a09c961ad3366588800d97e303f2fff4f111ec2ac18a1defd86c02"
     },
     {
       "path": "packages/outbox/package.json",

@@ -190,7 +190,14 @@ A stacked task may export `OPENLUP_STACK_BASE` with the exact predecessor betwee
 that fork point and HEAD. Documentation and local native review use this same
 pin; admission requires it on actual main. A predecessor-only landing preserves
 the candidate and its expiry. Do not rebase or merge `main` only to catch up.
-For a conflict or failed carry-over, merge `main` and re-review. `prepare --new`
+For a conflict or failed carry-over, merge `main` and re-review.
+When `prepare` proves valid prior coverage and exact merge lineage in the same
+session, two fresh reviewers may focus on the full integration delta and its
+interactions, following [review after integration](CONTRIBUTING.md#native-review-and-accountability).
+Inherited source expiry, findings and repair cycles remain binding. Otherwise
+use full review. Refresh `origin/main` before prepare and final verification;
+the existing prepare, verify-command and receipt preflight refuse known conflicts
+or failed carry-over before expensive work. `prepare --new`
 records a changed intent or a rebase in the same append-only session history; findings, reviewers and the repair count carry on. Only
 `continue` adds cycles.
 

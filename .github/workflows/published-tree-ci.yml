@@ -171,6 +171,11 @@ jobs:
           test "$(npm --version)" = "11.19.0"
           test "$(node -p 'require("./package.json").engines.node')" = "24.x"
           test "$(node -p 'require("./package.json").packageManager')" = "npm@11.19.0"
+      - name: Refuse newly introduced vulnerable dependencies
+        if: steps.reused.outputs.reuse != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/public-ci-dependencies.mjs
       - run: npm ci --prefer-offline --no-audit --fund=false
         if: steps.reused.outputs.reuse != 'true'
       - run: npm run build
