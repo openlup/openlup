@@ -2220,6 +2220,9 @@ records why these rules exist.
   one `enqueuePullRequest` if GitHub has not queued the still-armed PR. It
   accepts only the latest completed source run and attempt, all seven actual
   required successes, current write-authorized intent and a valid native receipt.
+  Each required job uses its latest result within that same run and head, including
+  unchanged successes from an earlier partial attempt. A later failed, skipped or
+  pending result cannot reuse an older success.
   It rechecks those identities before writing `expectedHeadOid`, with `jump:false`.
   It neither enables auto-merge nor authorizes an unarmed PR, retries a refusal,
   polls for checks or adds a required status. Group checks and admission still run.

@@ -141,12 +141,24 @@ export async function enqueueAfterChecks({ event, env, api, enqueue, cwd = proce
   if (attempted(pr)) return { status: 'skipped', reason: 'this merge intent already entered the queue; no automatic requeue' };
   const access = await api.get(`${root}/collaborators/${encodeURIComponent(login)}/permission`);
   demand(['write', 'maintain', 'admin'].includes(access?.permission ?? access?.role_name), 'auto-merge author no longer has repository write permission');
-  const result = await api.get(`${root}/actions/runs/${source.id}/attempts/${source.run_attempt}/jobs?per_page=100`);
-  demand(Array.isArray(result.jobs) && result.jobs.length <= 100 && result.total_count === result.jobs.length
-    && result.jobs.every(job => positive(job?.id)) && new Set(result.jobs.map(job => job.id)).size === result.jobs.length, 'source jobs response is incomplete or invalid');
+  // Partial reruns replace only selected jobs. Read every attempt, then select
+  // each required job's latest attempt without recovering an older success.
+  const jobs = []; let total;
+  for (let page = 1; total === undefined || jobs.length < total; page += 1) {
+    const result = await api.get(`${root}/actions/runs/${source.id}/jobs?filter=all&per_page=100&page=${page}`);
+    demand(Array.isArray(result.jobs) && result.jobs.length <= 100 && Number.isSafeInteger(result.total_count) && result.total_count >= 0
+      && (total === undefined || total === result.total_count), 'source jobs response is incomplete or invalid');
+    total = result.total_count;
+    demand(result.jobs.length === Math.min(100, total - jobs.length), 'source jobs pagination is incomplete');
+    jobs.push(...result.jobs);
+  }
+  demand(jobs.every(job => positive(job?.id) && job.run_id === source.id && job.head_sha === source.head_sha
+    && positive(job.run_attempt) && job.run_attempt <= source.run_attempt) && new Set(jobs.map(job => job.id)).size === jobs.length, 'source jobs identity is invalid or duplicated');
   for (const name of [...REQUIRED_CONTEXTS, 'native-review']) {
-    const matches = result.jobs.filter(job => job.name === name);
-    demand(matches.length === 1 && matches[0].head_sha === source.head_sha && matches[0].status === 'completed' && matches[0].conclusion === 'success', `source requires one actual successful ${name} check`);
+    const matches = jobs.filter(job => job.name === name);
+    const latest = matches.reduce((attempt, job) => Math.max(attempt, job.run_attempt), 0);
+    const selected = matches.filter(job => job.run_attempt === latest);
+    demand(selected.length === 1 && selected[0].status === 'completed' && selected[0].conclusion === 'success', `source requires one actual successful latest ${name} check`);
   }
   const admitted = await waitNativeAdmission({ event: { repository: event.repository, number, pull_request: { head: { sha: source.head_sha } } },
     env: { GITHUB_REPOSITORY: env.GITHUB_REPOSITORY, GITHUB_EVENT_NAME: 'pull_request' }, api, cwd, now, runGit,

@@ -23,7 +23,7 @@ function handoffFixture() {
   const queuePr = { id: 'PR_12', number: receipt.pr, state: 'OPEN', isDraft: false, merged: false, baseRefName: 'main', headRefOid: receipt.head,
     mergeable: 'MERGEABLE', autoMergeRequest: { enabledAt: '2026-10-24T12:00:00Z', enabledBy: { login: 'merge-owner' } }, mergeQueueEntry: null as null | { id: string },
     timelineItems: { nodes: [] as { createdAt: string }[] } };
-  const jobs = [...REQUIRED_CONTEXTS, 'native-review'].map((name, index) => ({ id: index + 1, name, head_sha: receipt.head, status: 'completed', conclusion: 'success' }));
+  const jobs = [...REQUIRED_CONTEXTS, 'native-review'].map((name, index) => ({ id: index + 1, name, run_id: run.id, run_attempt: 1, head_sha: receipt.head, status: 'completed', conclusion: 'success' }));
   const f = { event: { action: 'completed', repository, workflow_run: structuredClone(run) },
     env: { GITHUB_EVENT_NAME: 'workflow_run', GITHUB_REPOSITORY: 'openlup/openlup', GITHUB_REF: 'refs/heads/main' }, run, pr, queuePr,
     pulls: [pr], listing: { total_count: 1, workflow_runs: [run] }, result: { total_count: jobs.length, jobs }, comments: [comment()],
@@ -32,7 +32,10 @@ function handoffFixture() {
     f.getHook(path);
     if (path.startsWith('/graphql?')) return { data: { repository: { pullRequest: structuredClone(f.queuePr) } } };
     if (path.includes('/collaborators/')) return { permission: f.permission };
-    if (path.includes('/attempts/')) return structuredClone(f.result);
+    if (path.includes('/jobs?')) {
+      const page = Number(new URL(path, 'https://example.invalid').searchParams.get('page'));
+      return { total_count: f.result.total_count, jobs: structuredClone(f.result.jobs.slice((page - 1) * 100, page * 100)) };
+    }
     if (path.includes('/actions/workflows/')) return structuredClone(f.listing);
     if (path.includes('/actions/runs/')) return structuredClone(f.run);
     if (path.includes('/pulls?')) return structuredClone(f.pulls);
@@ -87,6 +90,8 @@ describe('CI completion queue handoff', () => {
     ['failed required check', (f: ReturnType<typeof handoffFixture>) => { f.result.jobs[0]!.conclusion = 'failure'; }],
     ['duplicate check', (f: ReturnType<typeof handoffFixture>) => { f.result.jobs.push({ ...f.result.jobs[0]!, id: 88 }); f.result.total_count++; }],
     ['wrong check SHA', (f: ReturnType<typeof handoffFixture>) => { f.result.jobs[0]!.head_sha = receipt.base; }],
+    ['wrong check run', (f: ReturnType<typeof handoffFixture>) => { f.result.jobs[0]!.run_id++; }],
+    ['future check attempt', (f: ReturnType<typeof handoffFixture>) => { f.result.jobs[0]!.run_attempt++; }],
     ['truncated jobs', (f: ReturnType<typeof handoffFixture>) => { f.result.total_count++; }],
   ])('refuses %s without a mutation or polling', async (_name, change) => {
     const f = handoffFixture(); change(f);
@@ -104,7 +109,7 @@ describe('CI completion queue handoff', () => {
   it.each(['head', 'disarmed', 'queued', 'attempt', 'intent', 'permission', 'expiry'])('revalidates a late %s change before enqueue', async change => {
     const f = handoffFixture(); let reads = 0;
     f.state.getHook = path => {
-      if (!path.includes('/actions/runs/100') || path.includes('/attempts/')) return;
+      if (!path.includes('/actions/runs/100') || path.includes('/jobs?')) return;
       if (++reads !== 2) return;
       if (change === 'head') f.queuePr.headRefOid = receipt.base;
       if (change === 'disarmed') Object.assign(f.queuePr, { autoMergeRequest: null });
@@ -129,8 +134,39 @@ describe('CI completion queue handoff', () => {
   });
   it('allows aggregate failure when only a non-required diagnostic failed and all seven required checks passed', async () => {
     const f = handoffFixture(); f.run.conclusion = 'failure'; f.event.workflow_run.conclusion = 'failure';
-    f.result.jobs.push({ id: 88, name: 'pgtap', head_sha: receipt.head, status: 'completed', conclusion: 'failure' }); f.result.total_count++;
+    f.result.jobs.push({ ...f.result.jobs[0]!, id: 88, name: 'pgtap', conclusion: 'failure' }); f.result.total_count++;
     await expect(f.execute()).resolves.toMatchObject({ status: 'enqueued' }); expect(f.enqueue).toHaveBeenCalledTimes(1);
+  });
+  it('uses six untouched first-attempt successes and the successful native-only partial rerun', async () => {
+    const f = handoffFixture(); f.run.run_attempt = 2; f.event.workflow_run = structuredClone(f.run);
+    const native = f.result.jobs.find(job => job.name === 'native-review')!;
+    f.result.jobs.push({ ...native, id: 88, run_attempt: 2 }); f.result.total_count++;
+    native.conclusion = 'failure';
+    await expect(f.execute()).resolves.toMatchObject({ status: 'enqueued' });
+    expect(f.api.get).toHaveBeenCalledWith('/repos/openlup/openlup/actions/runs/100/jobs?filter=all&per_page=100&page=1');
+    expect(f.enqueue).toHaveBeenCalledExactlyOnceWith({ pullRequestId: 'PR_12', expectedHeadOid: receipt.head, jump: false });
+  });
+  it.each(['failure', 'skipped', 'pending', 'ambiguous latest'])('never recovers an earlier success over a later %s required job', async outcome => {
+    const f = handoffFixture(); f.run.run_attempt = 2; f.event.workflow_run = structuredClone(f.run);
+    const later = { ...f.result.jobs[0]!, id: 88, run_attempt: 2, conclusion: outcome === 'pending' ? 'success' : outcome === 'ambiguous latest' ? 'success' : outcome,
+      status: outcome === 'pending' ? 'in_progress' : 'completed' };
+    f.result.jobs.push(later); f.result.total_count++;
+    if (outcome === 'ambiguous latest') { f.result.jobs.push({ ...later, id: 89 }); f.result.total_count++; }
+    await expect(f.execute()).rejects.toThrow('latest dco'); expect(f.enqueue).not.toHaveBeenCalled();
+  });
+  it.each(['complete', 'count changed', 'duplicate across pages', 'missing page'])('requires complete same-run job history pagination: %s', async scenario => {
+    const f = handoffFixture();
+    const filler = Array.from({ length: 100 }, (_, index) => ({ ...f.result.jobs[0]!, id: 100 + index, name: `diagnostic ${index}` }));
+    f.result.jobs.push(...filler); f.result.total_count += filler.length;
+    if (scenario === 'duplicate across pages') f.result.jobs[100]!.id = f.result.jobs[0]!.id;
+    f.state.getHook = path => {
+      if (!path.endsWith('page=2')) return;
+      if (scenario === 'count changed') f.result.total_count++;
+      if (scenario === 'missing page') f.result.jobs.splice(100);
+    };
+    if (scenario === 'complete') await expect(f.execute()).resolves.toMatchObject({ status: 'enqueued' });
+    else { await expect(f.execute()).rejects.toThrow(); expect(f.enqueue).not.toHaveBeenCalled(); }
+    expect(f.api.get).toHaveBeenCalledWith('/repos/openlup/openlup/actions/runs/100/jobs?filter=all&per_page=100&page=2');
   });
   it.each(['before', 'equal', 'after'])('bounds queue attempts to the current merge intent: prior event %s arming', async boundary => {
     const f = handoffFixture();
