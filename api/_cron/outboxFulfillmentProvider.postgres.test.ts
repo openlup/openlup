@@ -57,9 +57,9 @@ describe("direct PostgreSQL outbox fulfillment composition", () => {
   });
 
   it.each(["paid", "handoff"] as const)(
-    "preserves the %s accounting request in the direct composition",
+    "W7 D7: completes %s fulfillment without constructing or waiting for accounting",
     async (issueTrigger) => {
-      const requestInvoiceIssueFromPaidOrder = vi.fn(async () => ({ replayed: false }));
+      const requestInvoiceIssueFromPaidOrder = vi.fn(async () => { throw new Error("accounting_locked"); });
       const accountingClose = vi.fn(async () => {});
       const fulfillmentClose = vi.fn(async () => {});
       const resolveShipmentSpine = vi.fn(() => ({ binding: {
@@ -88,21 +88,19 @@ describe("direct PostgreSQL outbox fulfillment composition", () => {
         outboxEventId: "61111111-1111-4111-8111-111111111111",
         signal: new AbortController().signal,
       });
-      expect(requestInvoiceIssueFromPaidOrder).toHaveBeenCalledWith(expect.objectContaining({
-        orderId: ORDER_ID,
-        idempotencyKey: `order-paid-dispatch:${ORDER_ID}:accounting-invoice-${issueTrigger}`,
-      }));
+      expect(port).toBeDefined();
+      expect(requestInvoiceIssueFromPaidOrder).not.toHaveBeenCalled();
       await closeOrderPaidShipmentSpinePort(port);
       expect(fulfillmentClose).toHaveBeenCalledOnce();
-      expect(accountingClose).toHaveBeenCalledOnce();
+      expect(accountingClose).not.toHaveBeenCalled();
     },
   );
 
-  it("fails closed when accounting is required but its direct binding is unavailable", () => {
+  it("W7 D7: accounting disabled or unavailable cannot gate native fulfillment", () => {
     const close = vi.fn(async () => {});
     const port = composeOrderPaidFulfillmentPort({
       client: {} as never,
-      env: { PLATFORM_BUNDLE: "node-postgres", ACCOUNTING_REQUEST_ENABLED: "true" },
+      env: { PLATFORM_BUNDLE: "node-postgres", ACCOUNTING_REQUEST_ENABLED: "false" },
       fulfillmentReady: true,
       resolveShipmentSpine: vi.fn(() => ({ binding: {
         createShipment: vi.fn(), recordLabel: vi.fn(), handOff: vi.fn(), recordTracking: vi.fn(),
@@ -111,7 +109,7 @@ describe("direct PostgreSQL outbox fulfillment composition", () => {
       resolveAccountingPaidOrderDocument: vi.fn(() => null),
     });
 
-    expect(port).toBeUndefined();
-    expect(close).toHaveBeenCalledOnce();
+    expect(port).toBeDefined();
+    expect(close).not.toHaveBeenCalled();
   });
 });

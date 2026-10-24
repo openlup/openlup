@@ -1,3 +1,4 @@
+import { createInvoicingDutyBinding } from "./invoicingDutyBinding.js";
 import { createSupabaseDataGateway } from "../../adapters/supabase/dataGateway.js";
 import { readSupabaseDataGatewayEnv, type SupabaseDataGatewayEnv } from "../../adapters/supabase/dataGatewayClientFactory.js";
 import { createSupabaseAccountingInvoicePort } from "../../adapters/supabase/accountingInvoicePort.js";
@@ -242,4 +243,12 @@ function createInvoiceDeliveryPort({
 
 function safeMessage(error: unknown): string {
   return (error instanceof Error ? error.message : String(error)).slice(0, 180);
+}
+
+/** Host-invoked independent native collection; P7 owns scheduler activation. */
+export async function collectAccountingInvoiceDuties(env: AccountingRuntimeEnv) {
+  const binding = createInvoicingDutyBinding(env);
+  if (!binding) return { kind: "unsupported", code: "host_binding_required" } as const;
+  try { return await binding.collect(); }
+  finally { await binding.close(); }
 }

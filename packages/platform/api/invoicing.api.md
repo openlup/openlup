@@ -114,6 +114,22 @@ export interface ChannelInvoiceDecision {
 export declare function decideChannelInvoice(reader: OrderInvoicePolicyReader | undefined, lookup: InvoicePolicyLookup): Promise<ChannelInvoiceDecision>;
 export {};
 ```
+## dist/invoicing/continuity.d.ts
+
+```ts
+import { collectInvoiceDuties } from "./dutyCollector.js";
+/** Explicit independent host invocation, never an inline fulfillment/payment hook.
+ * Durable source receipts and fact leases own replay, backoff and fault ceilings.
+ * A collector outage remains visible and can be retried by the host later.
+ * @consumer Reference native accounting runtime and installed cold consumer.
+ */
+export declare function createIndependentInvoiceDutyBinding(input: Parameters<typeof collectInvoiceDuties>[0]): {
+    collect(): Promise<Awaited<ReturnType<typeof collectInvoiceDuties>> | {
+        kind: "unavailable";
+        code: "retryable";
+    }>;
+};
+```
 ## dist/invoicing/contracts/capabilities.d.ts
 
 ```ts
@@ -921,7 +937,8 @@ export interface InvoiceDutyReadback {
 }
 /** Every operation is one local transaction; commit before external I/O. Native
  * success atomically saves late identity and compensation; stale catch writes nothing.
- * Managed and native stores are bound to the selected provider at construction.
+ * Compatibility stores bind provider selection at construction; the structural
+ * native store accepts it per claim and persists the first provider on the duty.
  * No implementation, executor or migration is installed by these declarations.
  */
 export interface InvoiceStorePort {
@@ -986,7 +1003,7 @@ export interface InvoiceStorePort {
     } | InvoiceUnsupported>;
     readDuties(orderId: string): Promise<InvoiceDutyReadback | InvoiceUnsupported>;
     /** Filter order before locking/limit; never lease unrelated orders then filter.
-     * P8 reads the injected host seller before calling the first-claim SQL wrapper;
+     * P7 host composition reads the injected seller before the separate first-claim SQL wrapper;
      * its revisionRef supplies p_revision, without requiring a duty from the caller.
      */
     claim(input: {
@@ -1118,7 +1135,8 @@ export interface InvoiceStorePort {
     }[] | InvoiceUnsupported>;
     /** Native uncertain settlement passes p_receipt NULL and retains a non-null
      * receiptRef hint in p_evidence; managed uses it as the provider message id.
-     * Managed failed_before_send uses retrySeconds for backoff; native ignores it.
+     * Managed failed_before_send uses the retrySeconds RPC argument; native host
+     * bindings copy retryable and retrySeconds into p_evidence for retry policy.
      */
     settleDelivery(input: {
         readonly deliveryRef: string;
@@ -1179,6 +1197,25 @@ export declare function runInvoiceCorrectionJob<Claim extends {
     skipped: boolean;
     failures: number;
 }>;
+```
+## dist/invoicing/dutyCollector.d.ts
+
+```ts
+import type { InvoiceStorePort, InvoiceUnsupported } from "./contracts/index.js";
+/** Collect retained sources, then prepare each leased duty in separate transactions.
+ * The host commits every store call; no money/parcel callback or provider I/O is
+ * accepted here. Missing facts stay owed until the host installs their revision.
+ * @consumer Independent invoice duty binding.
+ */
+export declare function collectInvoiceDuties(input: {
+    store: Pick<InvoiceStorePort, "sweep" | "prepareFacts" | "finishFacts">;
+    limit?: number;
+}): Promise<{
+    kind: "collected";
+    collected: number;
+    prepared: number;
+    failures: number;
+} | InvoiceUnsupported>;
 ```
 ## dist/invoicing/fulfillmentTrigger.d.ts
 
@@ -1306,6 +1343,12 @@ export { withAccountingInvoiceShadowTrigger } from "./fulfillmentTrigger.js";
 export { withAutoDispatchAccountingInvoiceTrigger } from "./fulfillmentTrigger.js";
 export { runInvoiceCorrectionJob } from "./correction.js";
 export { createInvoiceReversalHandlers } from "./reversal.js";
+/** @consumer Reference native accounting adapter/runtime and installed-consumer conformance. */
+export { createPostgresInvoiceStore, runNativeInvoiceIssueJob } from "./postgresInvoiceStore.js";
+/** @consumer Native migration conformance and installed-consumer asset verification. */
+export { INVOICING_MIGRATIONS } from "./migrations.js";
+export { collectInvoiceDuties } from "./dutyCollector.js";
+export { createIndependentInvoiceDutyBinding } from "./continuity.js";
 ```
 ## dist/invoicing/issue.d.ts
 
@@ -1350,6 +1393,53 @@ export declare function runInvoiceIssueJob<Claim extends {
     failures: number;
 }>;
 ```
+## dist/invoicing/migrations.d.ts
+
+```ts
+/** Sparse native projections, not an installation chain. Install the full catalogue. */
+export declare const INVOICING_MIGRATIONS: {
+    readonly native: {
+        readonly correctionStorage: "child_document";
+        readonly fiscalScope: "explicit_host_facts";
+        readonly units: readonly [{
+            readonly position: 7;
+            readonly catalogPath: "db/platform/migrations/20260809210000_accounting_document_rail.sql";
+            readonly sha256: "f5c6c4b3d5ccdd7c7137669edba7d45c63685edc57fe982e3e8fd559214ccc8e";
+            readonly url: URL;
+        }, {
+            readonly position: 13;
+            readonly catalogPath: "db/platform/migrations/20260811150000_accounting_payout_rail.sql";
+            readonly sha256: "b127631196362d59ceb94700426766659589601c69a5adfb1b5d6bbeadf5b0db";
+            readonly url: URL;
+        }, {
+            readonly position: 15;
+            readonly catalogPath: "db/platform/migrations/20260812130000_accounting_document_lifecycle_rail.sql";
+            readonly sha256: "450ae24b8ba9438ea267cfbf52f9c78a790b1803f369c216577566952fa43b5f";
+            readonly url: URL;
+        }, {
+            readonly position: 77;
+            readonly catalogPath: "db/platform/migrations/20261022190000_invoicing_durable_duties.sql";
+            readonly sha256: "2d7bf98924b4ef29b3e8f902d768e45dd9c850242f4358a0193a0c00d0f3d081";
+            readonly url: URL;
+        }, {
+            readonly position: 78;
+            readonly catalogPath: "db/platform/migrations/20261022191000_invoicing_document_effects.sql";
+            readonly sha256: "0eac3453e2b82c43e4fff9e35bcd6daefdd0bb5f992937f7f411d690550428cf";
+            readonly url: URL;
+        }, {
+            readonly position: 79;
+            readonly catalogPath: "db/platform/migrations/20261022192000_invoicing_payment_decoupling.sql";
+            readonly sha256: "f4af30ee4c9365ea51bd0e95e5cc7ae869cf15dce5867fdd640f679438b36058";
+            readonly url: URL;
+        }];
+    };
+    readonly managed: {
+        readonly correctionStorage: "base_row";
+        readonly fiscalScope: "host_managed_projection";
+        readonly units: readonly ["supabase/migrations/20261022193000_invoicing_correction_claims.sql", "supabase/migrations/20261022193100_invoicing_correction_compatibility.sql"];
+    };
+};
+```
 ## dist/invoicing/nativeUnsupported.d.ts
 
 ```ts
@@ -1385,6 +1475,48 @@ export declare function readInvoicePaymentEvidence(payment: {
         currency: string | null;
     }>;
 } | undefined): Promise<PaymentEvidence>;
+export {};
+```
+## dist/invoicing/postgresInvoiceStore.d.ts
+
+```ts
+import type { InvoiceStorePort, InvoiceHostPorts, InvoiceProviderPort } from "./contracts/index.js";
+type InvoiceClaim = Parameters<InvoiceStorePort["preflight"]>[0]["claim"];
+type NativeStore = InvoiceStorePort & {
+    /** Read-only discovery before a host can install facts. Replays may repeat targets. */
+    discoverDuties(limit: number, afterDutyId?: string | null): Promise<readonly {
+        readonly dutyId: string;
+        readonly orderId: string;
+    }[]>;
+};
+type Executor = {
+    query(text: string, values?: unknown[]): Promise<{
+        rows: Record<string, unknown>[];
+    }>;
+};
+/** Bind an autocommit executor. Never pass a transaction spanning host/provider I/O.
+ * Missing fiscal/delivery projections refuse before writes; no scheduler is installed.
+ */
+export declare function createPostgresInvoiceStore(db: Executor): NativeStore;
+type MoneyEvidence = Awaited<ReturnType<InvoiceHostPorts["money"]["read"]>>;
+/** Native issue/readback binding; every store operation commits before host I/O.
+ * @consumer Explicit native host issue binding and installed-consumer conformance.
+ */
+export declare function runNativeInvoiceIssueJob(input: {
+    store: Pick<InvoiceStorePort, "claim" | "preflight" | "finish" | "fail">;
+    provider: Pick<InvoiceProviderPort, "issue" | "correct" | "read">;
+    money: InvoiceHostPorts["money"];
+    readLocalPayment(claim: InvoiceClaim): Promise<MoneyEvidence>;
+    providerRef: string;
+    orderId?: string | null;
+    limit?: number;
+    visibilitySeconds?: number;
+}): Promise<import("./contracts/provider.js").InvoiceUnsupported | {
+    checked: number;
+    updated: number;
+    failures: number;
+    ok: boolean;
+}>;
 export {};
 ```
 ## dist/invoicing/reversal.d.ts

@@ -30,6 +30,11 @@ state writer is not an extension seam.
 
 ## Runtime boundaries
 
+Native accounting duty collection has an explicit independent runtime binding;
+fulfillment composition no longer constructs or awaits an accounting binding.
+The collector is host-invoked and does not register another executor or scheduler.
+
+
 The host status-map, normalized-fact and current-parcel facades delegate to
 `@openlup/core/fulfillment`, retaining host names and private provider trace
 metadata. Browser import inventories declare only the core fulfillment modules;
@@ -1432,20 +1437,23 @@ package's exact `invoicing` and type-only `invoicing/contracts` entries. The mod
 has no graph edges, provider dependencies or environment discovery. The host owns
 fiscal/identifier/rounding policy, frozen facts, seller, M07 reads, storage, registry,
 M04 delivery and authorized M12 history. Missing parity returns typed unsupported
-before writes; no native store or executor is supplied. Seller reads select the current
+before writes. A structural-executor native store is supplied; the host owns the driver and independent transaction lane. Seller reads select the current
 host configuration before the next claim, scoped by order or null for unscoped
 claims, never by duty. P8 freezes the seller at first claim, using revisionRef as
-the claim wrapper revision. Stores bind the selected provider at construction.
+the claim wrapper revision. Compatibility stores bind the selected provider at
+construction. The structural native store accepts it per claim and persists the
+first provider on the duty.
 Delivery settlement
 retains provider identity, retry delay and uncertain receipt hints. Native takes
 `p_evidence.retrySeconds`: a whole number of seconds clamped to 60..86400,
 otherwise 900; `retryable:false` parks at infinity. Local document requests
 retain provider selection, invoice reference, status and replay. The
 [invoicing reference](PLATFORM_PACKAGE_REFERENCE.md#invoicing-contracts) describes
-correction, payout item and account-lineage seams and their source witnesses.
+delivery retry evidence, correction, payout item and account-lineage seams and
+their source witnesses.
 
-The [invoicing design](plans/oss-m09-invoicing.md) separates the available issue helpers from
-later native persistence and service composition. The native refusal factory has no
+The [invoicing design](plans/oss-m09-invoicing.md) separates the available issue helpers and
+native persistence from later service composition. The native refusal factory has no
 executor and never inspects inputs. The conformance helper consumes offline
 adapter fixtures and returns filtered case evidence; it installs no provider or
 runtime route. Its [contract tests](../../packages/platform/test/invoicing/adapterConformance.test.ts)
@@ -1470,3 +1478,58 @@ host selects only an explicit `correctionRecovery` bridge. The legacy provider
 method alone is unsupported before claim; a conforming bridge owns exact lookup,
 parent validation and positive BEFORE/zero AFTER translation. Unknown outcomes
 remain failed/owed recovery work, never evidence of absence or success.
+
+
+`createPostgresInvoiceStore` binds the reviewed native duty/fact/claim/reversal
+RPCs through an injected executor. Each call commits independently; never bind a
+client in a transaction spanning fiscal/provider I/O. Missing or unsafe host
+facts return typed unsupported without installing facts or consuming the owed
+duty. Delivery, clearance and observation host projections remain unsupported
+in this store; the SQL primitives alone do not establish a complete host envelope.
+The incumbent local-only constructor is preserved for the reference Postgres
+adapter. Its zero-tax order positions do not establish fiscal parity.
+`INVOICING_MIGRATIONS` separates native child-document corrections and explicit
+host fiscal facts from managed base-row corrections and managed projections.
+The approved durable-duty re-pin voids a stored reversal after a proven
+before-send create failure or authoritative absence; retryable readback stays
+unknown. Readback selects the latest capture fault per source kind and ID,
+including terminal faults and resolved receipts. Cutover source seeding precedes
+FK-bearing invoicing tables, so its scan does not hold order/accounting FK locks.
+The six-case native conformance witness covers these boundaries within its
+existing whole-file budget.
+Native paid fulfillment constructs only the shipment spine: accounting disabled, unavailable or locked cannot delay a renewal parcel.
+Managed wrappers retain their existing behavior.
+
+`collectInvoiceDuties` consumes sweep/prepare/finish ports; the independent binding
+reports an unavailable sweep without exposing raw database errors. Each call
+commits separately. Missing facts remain owed, stale claims cannot finalize, and
+an interrupted preparation remains recoverable through the persisted lease.
+The [native host binding](../../server/runtime/accounting/invoicingDutyBinding.ts)
+uses one autocommit query per phase and is invoked explicitly through accounting
+runtime collection. No scheduler or provider activation is installed. The
+[continuity proof](../../tests/postgres/invoicingContinuity.test.ts) exercises
+locked accounting, capture errors, lost capture markers and late issue/replay.
+The pinned 192000 replacement isolates duty capture from captured settlement
+and dunning recovery; paid/handoff facts remain the sweep's recovery source.
+
+`runNativeInvoiceIssueJob` binds native claims to local and fresh M07 evidence
+and explicit provider ports. Only create claims dispatch; their attempt count
+is the native generation. Non-observed local evidence remains unavailable and
+continues to the fresh read; a local observed mismatch/blocked result settles blocked before that read. A fresh mismatch/blocked result is durably blocked;
+unavailable is retryable before send. Readback claims only read the provider and
+finish found or record absent/unknown. A stale preflight or finish is a claim
+fence: no failure write and zero updates. The host invokes this helper explicitly;
+P7 still owns seller freezing, policy admission and service composition.
+
+Registered M07 limit: `payment_truth_readback` still joins accounting documents.
+Operator ACCESS EXCLUSIVE schema DDL or a denied readback ACL can block/refuse
+the overall call. This pre-existing limit is not repaired by M09; the continuity
+witness covers ordinary accounting locks and isolated capture/marker failures.
+
+The native store's bounded `discoverDuties(limit, afterDutyId?)` read returns duty/order IDs
+that have no installed fact revision. It neither leases nor changes rows and
+excludes stored reversals. Hosts can read their facts and call `installFacts`
+before the split preparation sweep; discovery therefore needs no fiscal snapshot.
+Pass the last returned duty ID as the next cursor, even when its facts are
+unavailable. UUID ordering reaches later targets without changing owed rows;
+restart without a cursor after exhaustion to include concurrent captures.

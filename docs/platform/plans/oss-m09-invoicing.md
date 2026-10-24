@@ -1,9 +1,9 @@
 # Invoicing module design
 
-Status: development-preview design. The contract and offline conformance surface
-and issue, correction and reversal helpers are available for explicit host
-composition, alongside the managed correction forwards. Native stores, SQL
-projection, reference routes and release activation are separate implementation steps.
+Status: development-preview design. The contract and offline conformance surface,
+the issue, correction and reversal helpers, the managed correction forwards, and
+the native store with its SQL projections are available for explicit host composition.
+Reference routes, service composition and release activation remain later steps.
 
 ## Placement and ownership
 
@@ -96,25 +96,22 @@ remains the result-meaning owner.
 ## Phase obligations
 
 - P4 must discover captured duties without installed facts; fact preparation
-  cannot depend on already having a claimable fiscal snapshot.
+  cannot depend on already having a claimable fiscal snapshot. The native
+  `discoverDuties` read supplies IDs before installation, with a UUID cursor to
+  advance past unavailable facts; P7 binds host facts and scan continuation.
 - P4 native issue binding must treat non-observed local evidence as unavailable
   without stopping the duty (pinned `invoicing_preflight_duty`). Only `action: "create"`
   claims may issue, with `attemptCount = generation`. Route `action: "readback"`
   claims to provider read, then finish on `found` or fail on `absent`/`unknown`.
   Convert a native `{ kind: "stale" }` preflight or finish result into the claim-fence
-  error: write no failure and count zero updates.
+  error: write no failure and count zero updates. A fresh non-ready preflight
+  settles through fail before returning (a local observed mismatch/blocked also settles blocked before the fresh read): blocked for mismatch/blocked; retryable
+  with before_send for unavailable. P4 supplies these bindings in
+  `runNativeInvoiceIssueJob`; P7 owns their policy/seller/service composition.
 - P5 must pass `retryable` and `retrySeconds` evidence for native delivery
   `failed_before_send`: the kind asserts failure before send; no `phase` is required.
   Boolean false parks the failure; otherwise a whole JSON number delays retry
   by 60..86400 seconds (clamped); absent or invalid delay uses 900 seconds.
-  This pin supersedes the frozen "native ignores it" sentence in
-  `packages/platform/src/invoicing/contracts/store.ts:95`, its copies in
-  `packages/platform/api/invoicing-contracts.api.md` and `invoicing.api.md`, and
-  the "Native ignores backoff" mapping reason in
-  `packages/platform/test/invoicing/portFit.test.ts`, plus the "native no-op"
-  mapping in `scripts/packages/platform-cold-consumer.ts:304`. The PR that next
-  touches those files must update the claims and map `p_evidence` to the result plus
-  `retrySeconds`; those files stay frozen here.
 - P7 must route native reversals through the correction branch of
   `invoicing_request_with_seller_policy`, retain the wrapper-returned seller and
   revision in claim facts, and define claim behavior for unknown/unsupported
@@ -154,15 +151,16 @@ F6 event type/timeout, event and direct-dispatch keys, and executor selection st
 host-owned with unchanged output. F9 imports only the named accounting slices.
 Channel policy resolution and correction projection stay in the host. No native
 D7/O2 expectation, SQL, money/dunning writer, subscription alignment or dispatch
-registration changes. P8 still owns first-claim seller freezing. Eight semantic
+registration changes. P8 owns the seller-freezing SQL forwards; P7 owns their
+host composition. Eight semantic
 cases extend the existing required selection; incumbent host arithmetic tests
 remain the donor witness rather than a second copied suite.
 
 The compatibility callbacks retain the reviewed managed issue result distinctions:
 unknown is never exact absence or an accepted document. The port-fit witness
 checks typed seam inputs against pinned SQL parameter order, including managed
-seller/claim wrappers. This is parameter-order proof only; it does not bind
-`runInvoiceIssueJob` to native ports. Native issue binding remains a P4 obligation;
+seller/claim wrappers. The native `runNativeInvoiceIssueJob` additionally binds
+create/readback actions, both preflights and fenced outcomes;
 seller pre-claim reads, document-scoped post-issue operations and delivery
 settlement remain with their phase owners above.
 
@@ -191,3 +189,31 @@ incumbent RPC outcomes and late-document compensation; it does not implement
 the native store port.
 
 See the [M09 forward owner](../DATA_AND_MIGRATIONS.md#m09-invoicing-forward-design-and-control-approval) for the registered managed-correction limit, follow-up and finalization semantics.
+
+## P4 native continuity and issue binding
+
+D7 translates the native composition instead of copying the donor unchanged:
+remove the inline accounting wrapper and its readiness gate, retaining shipment
+creation, label and handoff behavior. W7 changes only those native accounting
+expectations; managed fail-soft wrappers remain unchanged. The independent
+collector reuses durable sweep, split prepare and fenced finish calls. It neither
+reads providers nor controls renewal, payment or delivery. Fiscal fact installation
+and eventual scheduler selection remain explicit host/service composition work.
+
+F13 introduces the exact reviewed 20261022192000 replacement after native 160000,
+165000, 190000 and 191000 (positions 75–79). Capture failures are isolated from
+settlement and dunning recovery. The retry source is retained succeeded settlement
+or handoff evidence, even when the fault marker fails. The two M07 conformance
+expectations that change are captured replay and captured recovery:
+`accountingRequested=true` becomes false because no accounting document is linked
+inside payment finalization. Money, refusal, recovery and cycle assertions stay.
+
+The combined P4 supplies canonical 190000/191000/192000 bytes matching their
+pins, with descriptor positions 77–79. No M10 runtime or future migration is
+required. Source and synthetic PostgreSQL proof establish neither fiscal
+provider activation nor a release or supported installation.
+
+Registered follow-up limit (coordinator ruling): unchanged M07
+`payment_truth_readback` joins accounting_documents, so ACCESS EXCLUSIVE DDL
+or denied readback ACL can block/refuse the overall call. Practical exposure is
+operator DDL windows/misconfiguration; M09 does not widen or repair this boundary.
