@@ -66,7 +66,7 @@ unresolved material evidence for the exact committed candidate. Their
 `needs_agent_review` response is handled by the supervisor, not by asking the
 maintainer to repeat an approved task. Each installation must demonstrate its actual refusal paths before claiming
 live enforcement; fixture results are not activation proof.
-Existing mechanical checks and publication authority remain unchanged.
+Required source and merge-group mechanical checks and publication authority remain unchanged.
 
 Native execution observations and receipts enforce the process; they do not
 cryptographically attest remote agent execution or establish hard OS separation
@@ -132,13 +132,22 @@ reviewers approve the current tree after examining the complete integration and
 base deltas, conflict resolution and interactions, including changed control
 machinery. Source coverage keeps its earliest expiry. Missing or expired
 coverage and uncertain interactions require full inspection; findings and the
-same repair budget remain binding. See
+same repair budget remain binding. Only `candidate.integration.mechanical: true`,
+proved by an exact successful `git merge-tree` result for those two parents,
+avoids charging a repair cycle. Manual conflict resolution or additional edits
+use the ordinary repair and full local verification route. History, findings,
+fresh reviewer requirements and earliest expiry are preserved. See
 [review after integration](../CONTRIBUTING.md#native-review-and-accountability). `prepare --new` records a changed intent or a rebase
 in the same append-only session history; findings, reviewers and the repair
 count carry on. Only an authorized `continue` adds cycles.
 This focused inspection does not copy reports across trees or create another
 receipt route; the merge-group carry-over rule below is unchanged. Once criteria, required review and
 checks pass, stop optional edits and continue only authorized delivery steps.
+
+The [bounded local integration alternative](../CONTRIBUTING.md#native-review-and-accountability)
+alone permits selective local proof, subject to its full-anchor, chain and check-selection conditions.
+Unsupported installed verifiers retain full-run stamp requirements; `verify-command` does not attest completeness.
+All required source and merge-group CI commands still run.
 
 Planning and review ask whether a simpler solution delivers the outcome faster,
 with less maintenance and stronger evidence. New abstractions, dependencies,
@@ -155,6 +164,13 @@ active supervisor retains actual native source-review observations and posts
 `gh pr comment <PR> --body-file -`, within delivery authority, as soon as the
 pull request is open and ready, then waits for actual admission. Admission
 checks the live PR head, tree, reviewer floor and expiry.
+Under actual merge authority, after local proof, review, required maintainer
+reads and the ready-main-PR source receipt, the supervisor may enable auto-merge
+once while source checks are pending, following
+[Merge queue](../CONTRIBUTING.md#merge-queue). Known failed checks, conflicts and
+unresolved mergeability keep their existing stops. A pending `autoMergeRequest`
+confirms auto-merge is enabled; only `mergeQueueEntry` confirms queue entry.
+Actual required source and group success still precedes merge.
 
 The source review carries over to a merge group when either:
 - the group tree is the reviewed tree; or

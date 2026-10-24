@@ -46,13 +46,13 @@ const reviewExpiry = session => Math.min(
   ...currentReports(session).filter(report => report.verdict === 'PASS').map(report => report.at + 86400000),
   session.candidate.integration?.expires ?? Infinity,
 );
-export function integrationReviewContext(session, observed, { parents, baseAncestor }, now) {
+export function integrationReviewContext(session, observed, { parents, baseAncestor, mechanical = false }, now) {
   if (!session || !verdict(session, session.candidate, now).ok || !baseAncestor ||
     digest(latestIntent(session)) !== digest(observed.intent) ||
     latestPrepare(session).authorSessionId !== observed.authorSessionId ||
     !Array.isArray(parents) || parents.length !== 2 || parents[0] !== session.candidate.head || parents[1] !== observed.base ||
     observed.base === session.candidate.base) return undefined;
-  return { base: session.candidate.base, head: session.candidate.head, tree: session.candidate.tree, expires: reviewExpiry(session) };
+  return { base: session.candidate.base, head: session.candidate.head, tree: session.candidate.tree, expires: reviewExpiry(session), mechanical };
 }
 export function prepareCandidate(session, observed, now, fresh = false) {
   candidateValid(observed); demand(Number.isFinite(now), 'prepare time is invalid'); demand(observed.clean, 'commit source changes before prepare', 'dirty');
@@ -68,12 +68,12 @@ export function prepareCandidate(session, observed, now, fresh = false) {
     }
   }
   if (observed.integration) {
-    const expected = integrationReviewContext(session, observed, { parents: [session?.candidate.head, observed.base], baseAncestor: true }, now);
+    const expected = integrationReviewContext(session, observed, { parents: [session?.candidate.head, observed.base], baseAncestor: true, mechanical: observed.integration.mechanical === true }, now);
     demand(!fresh && expected && digest(expected) === digest(observed.integration), 'integration coverage is invalid');
   }
   const { authorSessionId, intent: ignored, ...candidate } = observed;
   const next = session ? structuredClone(session) : { version: 2, authorSessionId, intent, cycle: -1, allowedCycles: 3, history: [] };
-  next.cycle += session?.candidate?.tree === candidate.tree ? 0 : 1; next.candidate = candidate; next.preparedAt = now;
+  next.cycle += session?.candidate?.tree === candidate.tree || candidate.integration?.mechanical === true ? 0 : 1; next.candidate = candidate; next.preparedAt = now;
   next.history.push({ type: 'prepare', intent, candidate, authorSessionId, at: now, cycle: next.cycle });
   return next;
 }

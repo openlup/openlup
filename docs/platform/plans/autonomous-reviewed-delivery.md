@@ -153,6 +153,9 @@ run, a dashboard, service framework or permanent third reviewer.
    integration may focus inspection using prior source coverage, under
    [review after integration](../../../CONTRIBUTING.md#native-review-and-accountability);
    two fresh reviewers and inherited source expiry remain required.
+   A proved exact clean mechanical integration does not charge a repair cycle;
+   manual conflict resolution or extra edits use the ordinary repair and full
+   local verification route. History and findings remain intact.
 6. Record bounded session evidence and retry the installed gate. Verify and
    pre-push refuse missing, stale, dirty, mismatched, incomplete or unresolved
    review. Unchanged prepare retains current evidence. Handle
@@ -273,8 +276,11 @@ predecessor-only landing preserves the candidate and expiry. An unpinned review
 remains valid while main moves ahead without changing the fork point.
 
 Unchanged prepare preserves evidence. Preparing a new tree after an earlier
-candidate increments `cycle`; three repairs are automatic. Beyond the allowed
-cycles, `needs_owner` refuses until the owner authorizes continuation:
+candidate increments `cycle`, except when `candidate.integration.mechanical`
+proves the exact successful `git merge-tree` result of the prior reviewed head
+and new main base. That exception preserves the existing counter and allowance;
+it does not renew expiry or reuse reports. Three repairs are automatic. Beyond
+the allowed cycles, `needs_owner` refuses until the owner authorizes continuation:
 
 ```bash
 node scripts/agent-review-session.mjs continue "<owner decision and reason>"
@@ -315,6 +321,11 @@ unchanged intent/author and an exact two-parent merge of prior head and new base
 It binds the prior base/head/tree and expiry. Two fresh current-tree reports
 remain required; unavailable coverage uses full review. See the canonical
 [inspection scope](../../../CONTRIBUTING.md#native-review-and-accountability).
+`candidate.integration.mechanical: true` additionally proves that the clean
+candidate tree equals the successful `git merge-tree` result for those exact
+parents. Two-parent lineage alone permits additional edits and cannot establish
+this mechanical exception. Manual resolution or extra edits retain ordinary
+repair accounting and full local verification.
 Failures use `needs_agent_review`, `needs_owner`, `stale`, `expired`, `dirty` or
 `invalid` with an actionable reason; `status` prints JSON.
 
@@ -333,6 +344,12 @@ profile it invokes the existing `ai-resource-gate` broker; nested broker use
 refuses. The merge preflight reuses the existing queue predicate; proof leases
 and policy/inventory runs remain outside this wrapper. Exclusive locking and atomic rename protect state writes;
 input/state bounds remain 1 MiB/8 MiB.
+The wrapper does not attest that selected commands form complete verification.
+The existing raw-command route may use the
+[bounded local integration alternative](../../../CONTRIBUTING.md#native-review-and-accountability)
+only under its full-anchor, mechanical-chain and check-selection conditions.
+Unsupported installed verifiers keep full-run stamp requirements. No flag, history
+event, copied stamp or cache is introduced; all required source and merge-group CI commands still run.
 
 The report schema in `scripts/agent-review-session.mjs` is the implementation
 contract. Receipts are process evidence, not cryptographic remote attestation
@@ -388,6 +405,12 @@ condition only after separate activation.
 
 The supervisor reviews the committed source in the active conversation and posts
 its summary as soon as the PR is open and ready. A new head needs new evidence.
+After local proof, current review, required maintainer reads and the ready-main-PR
+source receipt, actual merge authority permits enabling auto-merge once while
+source checks are pending, following [Merge queue](../../../CONTRIBUTING.md#merge-queue).
+Known failed checks, conflicts and unresolved mergeability retain their existing
+stops. Pending `autoMergeRequest` confirms enabled auto-merge; `mergeQueueEntry`
+alone confirms queue entry. Required source and group success still precedes merge.
 For a merge group, admission uses the PR number from
 `gh-readonly-queue/main/pr-<N>-<sha>` and actual event base/head identities.
 
