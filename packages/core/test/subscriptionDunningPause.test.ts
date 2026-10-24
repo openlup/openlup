@@ -26,13 +26,7 @@ import {
   unwrap,
 } from "./subscriptionFixtures.js";
 
-// The sanctioned non-payment rule: a renewal whose refusals ran PAST the last
-// rung of the retry ladder pauses an active subscription, and the customer's
-// recovery resumes it. Nothing else in the engine suspends a live subscription
-// for a reason the owner did not choose. The managed SQL side of the same rule
-// is pinned by the platform's pgTAP test of a dunning case opened without a
-// retry schedule (attempt 1 stays open and active; attempt 4 expires and
-// pauses).
+// Exhaustion leaves active service unchanged; legacy paused rows retain recovery.
 
 const failedAt = "2026-06-10T11:00:00.000Z";
 
@@ -97,7 +91,7 @@ describe("isDunningLadderExhausted", () => {
       cycle,
       now: failedAt,
       cadence: shortLadder,
-    })).subscription.status).toBe("paused");
+    })).subscription.status).toBe("active");
   });
 
   it("is false for a cycle that is not refused, or still has a schedule", () => {
@@ -107,20 +101,14 @@ describe("isDunningLadderExhausted", () => {
 });
 
 describe("pauseSubscriptionForExpiredDunning", () => {
-  it("pauses an active subscription once the ladder is exhausted, without moving the schedule", () => {
+  it("keeps an exhausted subscription active with no event, including replay", () => {
     const subscription = makeSubscription();
     const cycle = refusedCycle(4);
-    const paused = unwrap(pauseSubscriptionForExpiredDunning({ subscription, cycle, now: failedAt }));
-
-    expect(paused.subscription).toMatchObject({ status: "paused", nextCycleAt: subscription.nextCycleAt });
-    expect(paused.events).toEqual([
-      expect.objectContaining({
-        eventType: "subscription.paused",
-        cycleNumber: 2,
-        idempotencyKey: "dunning-example:subscription_paused",
-        payload: { reason: "payment_failed_expired", retryAttempt: 4, failureReason: "provider_declined" },
-      }),
-    ]);
+    const result = unwrap(pauseSubscriptionForExpiredDunning({ subscription, cycle, now: failedAt }));
+    expect(result.subscription).toEqual(subscription);
+    expect(result.events).toEqual([]);
+    expect(unwrap(pauseSubscriptionForExpiredDunning({ subscription: result.subscription, cycle, now: failedAt })))
+      .toEqual(result);
   });
 
   it("refuses below exhaustion and leaves the subscription active", () => {
@@ -157,11 +145,8 @@ describe("resumeSubscriptionFromExpiredDunning", () => {
 
   function dunningPaused() {
     const cycle = refusedCycle(4);
-    const { subscription } = unwrap(pauseSubscriptionForExpiredDunning({
-      subscription: makeSubscription(),
-      cycle,
-      now: failedAt,
-    }));
+    // Existing paused rows are historical facts, no longer created by exhaustion.
+    const subscription = makeSubscription({ status: "paused" });
     return { subscription, cycle };
   }
 
@@ -257,7 +242,7 @@ describe("resumeSubscriptionFromExpiredDunning", () => {
   });
 });
 
-describe("invariant: only the exhausted ladder suspends a live subscription", () => {
+describe("invariant: payment failure never suspends a live subscription", () => {
   it("leaves an active subscription active through every engine step the owner did not ask for", () => {
     const subscription = makeSubscription({ nextCycleAt: firstCycleAt });
     const steps: EngineSubscription[] = [

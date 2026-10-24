@@ -87,15 +87,11 @@ export declare function maxRetryAttempts(cadence?: CycleRetryCadence): number;
  * Whether a refused cycle has EXHAUSTED the ladder: it failed, nothing is
  * scheduled after it, and the attempt that failed sits past the last rung.
  *
- * This is the one condition under which the platform may pause a live
- * subscription for non-payment. Both halves are required. An absent schedule on
- * its own is not exhaustion: a class-terminated refusal on rung one also leaves
- * nothing scheduled, and treating it as exhaustion would pause a subscription on
- * the day of its first refusal. The rung is derived from the cadence, so pass
- * the same cadence here and to `recordPaymentFailure`. The managed SQL dunning
- * boundary spells the shipped ladder's rung as a fixed constant
- * (`v_ladder_exhausted_from`, 4); a deployment that publishes a different
- * ladder must move that constant with it.
+ * Exhaustion stops automatic retries; it never pauses the subscription.
+ * An absent schedule alone is not exhaustion: a terminating refusal class can
+ * leave no retry on the first rung. Pass the same cadence here and to
+ * `recordPaymentFailure`. Legacy expired-dunning recovery also uses this
+ * predicate to distinguish an exhausted cycle from an early refusal.
  *
  * @beta
  */
@@ -217,19 +213,11 @@ export declare function reactivateSubscription(input: {
     reason?: string;
 }): SubscriptionEngineResult<SubscriptionMutationResult>;
 /**
- * The sanctioned non-payment rule: a cycle that exhausted the retry ladder
- * pauses an ACTIVE subscription.
- *
- * This is the only path in the engine that suspends a live subscription for a
- * reason the owner did not choose, and it fires only when
- * {@link isDunningLadderExhausted} holds for the refused cycle. A ladder cut
- * short by a terminating refusal class, or a failure on any rung that still has
- * a retry after it, is refused as `dunning_not_exhausted` and leaves the
- * subscription untouched. A subscription that is not active (already paused,
- * cancelled or completed) is returned unchanged with no event, which is what
- * the managed SQL dunning boundary does and what makes a replay harmless.
- *
- * The schedule is not touched: pausing never moves `nextCycleAt`.
+ * Compatibility entry point for an exhausted retry ladder. Exhaustion leaves
+ * the subscription unchanged and emits no pause event. The unpaid cycle stays
+ * available for authorized recovery; it never starts a new cycle implicitly.
+ * Below exhaustion the call still refuses as `dunning_not_exhausted`.
+ * Explicit owner pauses and legacy expired-dunning recovery remain separate.
  *
  * @beta
  */
@@ -285,7 +273,7 @@ export declare const RESTART_LEAD_DAYS = 2;
  * sides. `cancelled` -> `active` is the owner's win-back.
  *
  * Which OPERATION may take an edge is narrower than the matrix: `active` ->
- * `paused` is the owner's pause or {@link pauseSubscriptionForExpiredDunning},
+ * `paused` is the owner's pause or a historical non-payment pause,
  * and `cancelled` -> `active` is only {@link reactivateSubscription}.
  *
  * @beta

@@ -158,7 +158,7 @@ listed, recognised class that the decision table already refuses can shorten
 the ladder. The SQL retry rail publishes the same singleton, and the parity test
 fails if those two spellings drift.
 
-## The status matrix, and the one non-payment pause
+## The status matrix and dunning continuity
 
 `SUBSCRIPTION_STATUS_TRANSITIONS` is the whole status matrix, frozen:
 
@@ -182,26 +182,21 @@ the end instant and cancellation reason, requires the customer's confirmation of
 the charge timing, refuses while a cycle is locked and bumps the template
 version. Those durable duties stay with the host.
 
-**The sanctioned non-payment rule.** Nothing in this engine suspends an active
-subscription for a reason its owner did not choose, except a renewal that
-exhausted the retry ladder. `isDunningLadderExhausted(cycle, cadence?)` holds
-only when the cycle is `payment_failed`, has no `nextRetryAt`, and its
-`retryAttempt` is past `maxRetryAttempts(cadence)`. A deployment with its own
-ladder passes the same cadence to `recordPaymentFailure` and to both dunning
-functions, or they disagree about exhaustion. Both halves are required: a
-class-terminated refusal on rung one also leaves nothing scheduled, and it must
-leave the subscription active. `pauseSubscriptionForExpiredDunning` pauses an
-active subscription when that predicate holds. It records `subscription.paused`
-with reason `payment_failed_expired` and never touches `nextCycleAt`. It refuses
-every other cycle as `dunning_not_exhausted`, and returns a subscription that is
-not active unchanged with no event, so a replay is harmless.
+**The sanctioned non-payment rule.** Payment failure never pauses an active
+subscription. `isDunningLadderExhausted(cycle, cadence?)` means the cycle is
+`payment_failed`, has no `nextRetryAt`, and is past the last retry rung.
+Pass the same cadence to payment failure and dunning operations.
+`pauseSubscriptionForExpiredDunning` retains its compatibility name and inputs,
+but now returns an exhausted subscription unchanged with no event. It refuses
+non-exhausted cycles as `dunning_not_exhausted`. Exhaustion ends automatic
+retries; authorized recovery may still pay the same cycle.
 
-`resumeSubscriptionFromExpiredDunning` is the customer's recovery. It needs a
+`resumeSubscriptionFromExpiredDunning` is the customer's historical-pause recovery. It needs a
 paused subscription, the exhausted cycle and a payment method, stored or
 supplied. The given cycle becomes `skipped` rather than being charged late.
 Whether the method is chargeable unattended is the host's check, and so is
 skipping any other uncollected cycle the host holds; the SQL boundary does both.
-A subscription this rule paused must not go through plain `resumeSubscription`,
+A subscription the historical rule paused must not go through plain `resumeSubscription`,
 which neither skips the cycle nor moves a stale `nextCycleAt`.
 
 Both restarts put `nextCycleAt` `RESTART_LEAD_DAYS` (two) days out, but never

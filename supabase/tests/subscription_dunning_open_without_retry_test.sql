@@ -1,33 +1,7 @@
--- pgTAP: a dunning case with no next retry is EXPIRED only when the ladder was
--- exhausted. Below the ladder's last rung the same absent schedule means the
--- attempt sequence was cut short, and a case cut short stays OPEN.
---
--- Why this distinction is worth a suite of its own: `expired` is not a label. In
--- subscription_handle_payment_failure_dunning_before_cancel_fence it selects the
--- customer's email, the recovery token's purpose and lifetime, and — for an
--- `active` subscription — a write that PAUSES it. Deriving it from the absence of
--- a schedule alone meant that any future reason to stop retrying early would
--- pause a live subscription on the day of its first refusal, which this product
--- may not do. The predicate now also asks how far up the ladder the attempt got.
---
--- Both arms are proved here, in one file and against one boundary, so neither can
--- pass vacuously:
---
---   * TERMINATED EARLY (attempt 1, no schedule): case `open`, no `expired_at`,
---     subscription untouched and still active, no `subscription.paused` event, a
---     `repair_payment` token expiring 14 days after the refusal, no
---     `resume_subscription` token, and the attempt-numbered failed slug.
---   * EXHAUSTED (attempt 4, no schedule): the unchanged terminal — case
---     `expired`, subscription paused with its event, and the 30-day
---     `resume_subscription` token.
---
--- Attempt 4 is the exhaustion rung because the schedule feeding this boundary
--- (commerce_payment_control_apply_before_sub_lock) hands out +24h/+72h/+168h for
--- attempts 1..3 and NULL from 4 on. The ladder WALK itself is pinned in
--- subscription_renewal_preflight_ladder_test.sql; this suite pins what the
--- dunning boundary makes of each end of it.
---
--- Run via: supabase test db
+-- pgTAP: early termination and exhaustion both preserve active/open repair.
+-- Exhaustion retains the final notice and 30-day token window; an early
+-- termination retains its rung-specific failed notice and 14-day repair window.
+-- Neither state pauses a subscription or invents another retry slot.
 
 BEGIN;
 SELECT plan(25);
@@ -214,7 +188,7 @@ SELECT is(
   'operations are told a payment failed, not that a journey expired');
 
 -- ===========================================================================
--- ARM TWO: the ladder was exhausted at attempt 4 (the unchanged control)
+-- ARM TWO: the ladder was exhausted at attempt 4 (the final-notice arm)
 -- ===========================================================================
 INSERT INTO auth.users (id) VALUES ('c1000000-0000-4000-8000-000000000002');
 INSERT INTO public.clients (id, email, auth_user_id)
@@ -274,38 +248,38 @@ SELECT public.subscription_handle_payment_failure_dunning(
 SELECT is(
   (SELECT status FROM public.subscription_dunning_cases
     WHERE cycle_id = 'c1300000-0000-4000-8000-000000000002'),
-  'expired',
-  'an exhausted ladder still expires the case');
+  'open',
+  'an exhausted ladder leaves its case open for explicit repair');
 
 SELECT is(
   (SELECT expired_at FROM public.subscription_dunning_cases
     WHERE cycle_id = 'c1300000-0000-4000-8000-000000000002'),
-  '2026-06-22T09:00:00Z'::timestamptz,
-  'the expired case is stamped at the refusal that exhausted the ladder');
+  NULL::timestamptz,
+  'exhaustion no longer stamps an expiry instant');
 
 SELECT is(
   (SELECT status FROM public.subscriptions WHERE id = 'c1200000-0000-4000-8000-000000000002'),
-  'paused',
-  'an exhausted ladder still pauses the subscription');
+  'active',
+  'an exhausted ladder keeps the subscription active');
 
 SELECT is(
   (SELECT count(*)::integer FROM public.subscription_events
     WHERE subscription_id = 'c1200000-0000-4000-8000-000000000002'
       AND event_type = 'subscription.paused'),
-  1,
-  'the pause is still recorded exactly once');
+  0,
+  'exhaustion emits no pause event');
 
 SELECT is(
   (SELECT purpose FROM public.subscription_payment_recovery_tokens
     WHERE cycle_id = 'c1300000-0000-4000-8000-000000000002'),
-  'resume_subscription',
-  'the exhausted journey still mints a resume token');
+  'repair_payment',
+  'exhaustion mints a repair token for the existing cycle');
 
 SELECT is(
   (SELECT expires_at FROM public.subscription_payment_recovery_tokens
     WHERE cycle_id = 'c1300000-0000-4000-8000-000000000002'),
   '2026-07-22T09:00:00Z'::timestamptz,
-  'the resume window is still 30 days');
+  'the exhausted repair window stays 30 days');
 
 SELECT is(
   (SELECT template_slug FROM public.subscription_dunning_notifications
@@ -329,14 +303,13 @@ SELECT is(
   1,
   'operations still hear that the journey expired');
 
--- ---- The two arms are genuinely different -----------------------------------
--- Without this the pair could both pass on one accidental verdict.
-SELECT isnt(
+-- Both arms now preserve open repair; their notice/window distinction remains.
+SELECT is(
   (SELECT status FROM public.subscription_dunning_cases
     WHERE cycle_id = 'c1300000-0000-4000-8000-000000000001'),
   (SELECT status FROM public.subscription_dunning_cases
     WHERE cycle_id = 'c1300000-0000-4000-8000-000000000002'),
-  'the same absent schedule produces two different verdicts, by rung alone');
+  'both absent schedules keep the case open without erasing their distinct notice windows');
 
 SELECT * FROM finish();
 ROLLBACK;

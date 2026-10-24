@@ -146,15 +146,11 @@ export function maxRetryAttempts(
  * Whether a refused cycle has EXHAUSTED the ladder: it failed, nothing is
  * scheduled after it, and the attempt that failed sits past the last rung.
  *
- * This is the one condition under which the platform may pause a live
- * subscription for non-payment. Both halves are required. An absent schedule on
- * its own is not exhaustion: a class-terminated refusal on rung one also leaves
- * nothing scheduled, and treating it as exhaustion would pause a subscription on
- * the day of its first refusal. The rung is derived from the cadence, so pass
- * the same cadence here and to `recordPaymentFailure`. The managed SQL dunning
- * boundary spells the shipped ladder's rung as a fixed constant
- * (`v_ladder_exhausted_from`, 4); a deployment that publishes a different
- * ladder must move that constant with it.
+ * Exhaustion stops automatic retries; it never pauses the subscription.
+ * An absent schedule alone is not exhaustion: a terminating refusal class can
+ * leave no retry on the first rung. Pass the same cadence here and to
+ * `recordPaymentFailure`. Legacy expired-dunning recovery also uses this
+ * predicate to distinguish an exhausted cycle from an early refusal.
  *
  * @beta
  */

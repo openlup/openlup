@@ -244,6 +244,20 @@ it("retains separate prior approval in CI and release, and refuses incorrect pin
       expect(() => reviewedBatchPaths(folder, rail(pin), railPins)).toThrow("reviewed batch requires every earlier same-rail pin landed first");
       git("reset", "--hard", approval);
     }
+    // D-earlier-pin-digest-unplanted: unchanged SQL semantics, changed whole-file digest.
+    const managed = pins.filter(pin => rail(pin) === "supabase/migrations");
+    const earlier = managed[0]!;
+    const later = managed[1]!;
+    expect(earlier.path).toContain("20261024155000");
+    expect(later.path).toContain("20261024160000");
+    put(earlier.path, Buffer.concat([bytes(earlier), Buffer.from(" ")]));
+    put(later.path, bytes(later));
+    const drifted = commit("Earlier same-rail pin has changed bytes");
+    for (const release of [false, true]) {
+      expect(() => assertReviewedPlatformForward(folder, approval, drifted, later.path, bytes(later), release))
+        .toThrow("reviewed batch requires every earlier same-rail pin landed first");
+    }
+    git("reset", "--hard", approval);
     for (const pin of pins) put(pin.path, bytes(pin));
     const head = commit("Pinned feature bytes");
     for (const pin of pins) for (const release of [false, true]) expect(() => assertReviewedPlatformForward(folder, approval, head, pin.path, bytes(pin), release)).not.toThrow();
@@ -263,7 +277,7 @@ it.each(["authenticated", "service_role, authenticated"])("refuses a repinned ma
     .toThrow("reviewed batch function privilege target or grantee drifted");
 });
 
-it.each([0, 1, "all"] as const)("replays each rail once with %s landed pins and refuses landed drift", landed => {
+it.each([0, 1, "P3b", "all"] as const)("replays each rail once with %s landed pins and refuses landed drift", landed => {
   const root = mkdtempSync(join(tmpdir(), "openlup-batch-landing-"));
   const put = (path: string, value: Buffer | string) => { mkdirSync(dirname(join(root, path)), { recursive: true }); writeFileSync(join(root, path), value); };
   try {
@@ -271,7 +285,7 @@ it.each([0, 1, "all"] as const)("replays each rail once with %s landed pins and 
       const railPins = pins.filter(pin => rail(pin) === directory);
       const originalPrefix = reviewedBatchPaths(process.cwd(), directory, railPins).filter(path => !railPins.some(pin => pin.path === path));
       for (const path of originalPrefix) put(path, readFileSync(path));
-      for (const pin of railPins.slice(0, landed === "all" ? undefined : landed)) put(pin.path, bytes(pin));
+      for (const pin of railPins.slice(0, landed === "all" ? undefined : landed === "P3b" ? directory.startsWith("db/") ? 1 : 2 : landed)) put(pin.path, bytes(pin));
       // A later unpinned file must not enter the pre-pin replay either.
       put(`${directory}/99999999999999_unrelated.sql`, "SELECT 1;");
       const interleaved = Array.from({ length: 60 }, (_, second) => `${directory}/202610241805${String(second).padStart(2, "0")}_unpinned.sql`)

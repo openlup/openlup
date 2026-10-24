@@ -52,9 +52,9 @@ exports[`P3 public donor whole-output parity > subscriptionPauseReminderEmailCon
 
 exports[`P3 public donor whole-output parity > subscriptionPausedEmailContent: complete content and rendered bytes 1`] = `"fe6c6bb84b320b1af6fc301f22d2229ddf43d0d7181c282d06da1288539af6d1"`;
 
-exports[`P3 public donor whole-output parity > subscriptionPaymentExpiredEmailContent: complete content and rendered bytes 1`] = `"50bf6af11f18ff59d42fc31e00eafba59e2cb85d74f3d7da5a7f5ef92961b9bb"`;
+exports[`P3 public donor whole-output parity > subscriptionPaymentExpiredEmailContent: complete content and rendered bytes 1`] = `"cbe65ef6e81b3f0f8f5a786cce27f3916f4c7bbc03d71c8f29ed5a2aa6ba83f5"`;
 
-exports[`P3 public donor whole-output parity > subscriptionPaymentFailedEmailContent: complete content and rendered bytes 1`] = `"f5e8dd75d4efec0657c5f966faec62de02cc4b8e3eb6d1ea9365f6a5521f4381"`;
+exports[`P3 public donor whole-output parity > subscriptionPaymentFailedEmailContent: complete content and rendered bytes 1`] = `"f6c901643b62e14843281cc4b1be3f2c9b663c7c7430a08fb3a70f497dcaecd5"`;
 
 exports[`P3 public donor whole-output parity > subscriptionPaymentRecoveredEmailContent: complete content and rendered bytes 1`] = `"510dcf45a22e98989ab9b7b291f90a8c9722ef803463bee02732e83b19d2a84f"`;
 

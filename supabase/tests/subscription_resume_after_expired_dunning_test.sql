@@ -128,11 +128,8 @@ SELECT (public.commerce_payment_control_create_intent(
   'ed200000-0000-4000-8000-000000000001', 'ed300000-0000-4000-8000-000000000001',
   12999, 'XTS', '{}'::jsonb) -> 'paymentIntent' ->> 'id')::uuid AS intent_id;
 
--- A NULL next_retry_at AT THE LADDER'S LAST RUNG is its exhaustion: the case
--- expires and the cycle is left terminal. Rung 4 is that rung -- attempts 1..3
--- are always handed a schedule -- so the fixture states attempt 4 here and on the
--- cycle above. Below rung 4 the same NULL means the sequence was cut short, which
--- is an OPEN case and a different fixture (subscription_dunning_open_without_retry_test.sql).
+-- Build a historical expired case: new exhaustion remains open after M2.
+-- Stored expired episodes retain the existing snapshot-aware resume behavior.
 CREATE TEMP TABLE _ed_case AS
 SELECT (public.subscription_handle_payment_failure_dunning(
   'expired-resume-dunning', 'ed300000-0000-4000-8000-000000000001',
@@ -141,6 +138,10 @@ SELECT (public.subscription_handle_payment_failure_dunning(
   4, NULL, 'payment_expired', '2026-06-12T12:00:00Z'::timestamptz
 ) -> 'subscriptionDunning' ->> 'caseId')::uuid AS case_id;
 
+UPDATE public.subscription_dunning_cases
+   SET status='expired', expired_at='2026-06-12T12:00:00Z'
+ WHERE id=(SELECT case_id FROM _ed_case);
+
 UPDATE public.subscriptions
    SET status = 'paused'
  WHERE id = 'ed200000-0000-4000-8000-000000000001';
@@ -148,7 +149,7 @@ UPDATE public.subscriptions
 -- ---- The trap, restated as its preconditions -----------------------------
 SELECT is(
   (SELECT status FROM public.subscription_dunning_cases WHERE id = (SELECT case_id FROM _ed_case)),
-  'expired', 'the ladder left a terminal expired case');
+  'expired', 'historical fixture preserves a terminal expired case');
 
 SELECT is(
   (SELECT status FROM public.subscription_cycles WHERE id = 'ed300000-0000-4000-8000-000000000001'),

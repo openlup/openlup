@@ -4,7 +4,7 @@
 --      activation_failed event — and a fresh attempt then settles the order to paid.
 --   A2b EXPIRED first charge stays TERMINAL: fails the order, releases inventory,
 --      sweeps the sub -> activation_failed, emits the activation_failed event.
---   A3 refund of cycle #1: reverses activation (cycle + subscription cancelled, inventory released).
+--   A3 refund of cycle #1: preserves active subscription and paid history, releases stock.
 --   Regression: an active renewal (cycle #2) failure still schedules dunning (byte-identical).
 --   CJ01-P: a cron-recovered renewal cycle closes its OPEN dunning case (recovered +
 --      recovered_at, next_retry_at cleared) and skips the queued payment_failed
@@ -149,7 +149,7 @@ SELECT is((SELECT count(*)::int FROM public.subscription_events
   1, 'A2b: activation_failed event emitted on expiry');
 
 -- ===========================================================================
--- A3 — refund of cycle #1 reverses activation
+-- A3 — refund of cycle #1 preserves the subscription lifecycle
 -- ===========================================================================
 INSERT INTO public.commerce_orders (id, client_id, currency, region_code, size_constraint, status, total_cents, subtotal_cents)
 VALUES ('a0000000-0000-0000-0000-0000000000a3', '11111111-1111-1111-1111-111111111111', 'PLN', 'PL', '{"kind":"feeding_days","value":21}'::jsonb, 'draft', 2680, 2680);
@@ -195,13 +195,13 @@ SELECT public.commerce_payment_control_apply_result(
   'a3-apply-refund-0001', (SELECT intent_id FROM _a3i), NULL, 'refunded', '2026-06-11T12:00:00Z'::timestamptz, NULL);
 
 SELECT is((SELECT status FROM public.subscriptions WHERE id=(SELECT subscription_id FROM _a3)),
-  'cancelled', 'A3: refund reverses activation (subscription cancelled)');
+  'active', 'A3: refund preserves active subscription');
 SELECT is((SELECT status FROM public.subscription_cycles WHERE id=(SELECT cycle_id FROM _a3)),
-  'cancelled', 'A3: activating cycle cancelled');
+  'paid', 'A3: activating cycle retains paid history');
 SELECT is((SELECT paid_at FROM public.subscription_cycles WHERE id=(SELECT cycle_id FROM _a3)),
-  NULL, 'A3: cancelled cycle paid_at cleared (constraint-safe)');
+  '2026-06-10T12:00:00Z'::timestamptz, 'A3: refund preserves original paid_at');
 SELECT is((SELECT status FROM public.inventory_reservations WHERE id='a3e50000-0000-0000-0000-0000000000a3'),
-  'released', 'A3: inventory released on reversal');
+  'released', 'A3: first-cycle refund retains existing stock release');
 
 -- ===========================================================================
 -- A4 — re-delivered initial-cycle succeeded apply is idempotent (webhook re-delivery)
@@ -348,17 +348,17 @@ SELECT public.subscription_handle_payment_failure_dunning(
   'card_declined', '2026-06-08T12:00:00Z'::timestamptz);
 
 SELECT is((SELECT status FROM public.subscription_dunning_cases WHERE cycle_id='5c000000-0000-0000-0000-0000000000d4'),
-  'expired', 'R6: final dunning case is expired');
+  'open', 'R6: final dunning case stays open for repair');
 SELECT is((SELECT next_retry_at FROM public.subscription_dunning_cases WHERE cycle_id='5c000000-0000-0000-0000-0000000000d4'),
-  NULL, 'R6: expired dunning has no next retry timestamp');
-SELECT isnt((SELECT expired_at FROM public.subscription_dunning_cases WHERE cycle_id='5c000000-0000-0000-0000-0000000000d4'),
-  NULL, 'R6: expired dunning stamps expired_at');
+  NULL, 'R6: exhausted dunning has no next retry timestamp');
+SELECT is((SELECT expired_at FROM public.subscription_dunning_cases WHERE cycle_id='5c000000-0000-0000-0000-0000000000d4'),
+  NULL, 'R6: exhausted open dunning has no expired_at');
 SELECT is((SELECT status FROM public.subscriptions WHERE id='5b000000-0000-0000-0000-0000000000d4'),
-  'paused', 'R6: expired dunning pauses the subscription');
+  'active', 'R6: exhausted dunning keeps the subscription active');
 SELECT is((SELECT count(*)::int FROM public.subscription_events
             WHERE cycle_id='5c000000-0000-0000-0000-0000000000d4'
               AND event_type='subscription.paused'),
-  1, 'R6: expired dunning emits subscription.paused');
+  0, 'R6: exhausted dunning emits no subscription.paused');
 SELECT is((SELECT notification_kind || '|' || template_slug || '|' || status
              FROM public.subscription_dunning_notifications
             WHERE cycle_id='5c000000-0000-0000-0000-0000000000d4'
@@ -367,10 +367,10 @@ SELECT is((SELECT notification_kind || '|' || template_slug || '|' || status
   'R6: customer gets the final expired-payment communication, not another retry mail');
 SELECT is((SELECT purpose FROM public.subscription_payment_recovery_tokens
             WHERE cycle_id='5c000000-0000-0000-0000-0000000000d4'),
-  'resume_subscription', 'R6: expired dunning recovery token resumes subscription after customer action');
+  'repair_payment', 'R6: exhausted dunning token authorizes same-cycle repair');
 SELECT is((SELECT count(*)::int FROM public.subscription_list_due_for_renewal(50)
             WHERE subscription_id='5b000000-0000-0000-0000-0000000000d4'),
-  0, 'R6: paused expired subscription stays out of due renewal');
+  0, 'R6: exhausted open repair stays out of automatic due renewal');
 
 -- Keep this fixture from being claimed by the legacy global claim_batch
 -- assertion below; the R6 test already proved the final notification shape.
@@ -754,7 +754,7 @@ SELECT is(
 -- ===========================================================================
 -- W0-A/4 — fourth decline: ladder exhausted -> next_retry_at NULL, terminal
 --   (R6 in subscription_apply_result_guards_test.sql:296-373 pins the dunning
---   case + subscription-pause side of this transition; here it closes the
+--   case + active-subscription side of this transition; here it closes the
 --   ladder-value sequence so the whole 24/72/168/NULL shape is one proof.)
 -- ===========================================================================
 SELECT public.commerce_payment_control_record_attempt(

@@ -22150,6 +22150,14 @@
       "class": "public-output"
     },
     {
+      "path": "supabase/migrations/20261024155000_refunds_preserve_subscription_lifecycle.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "supabase/migrations/20261024160000_subscription_dunning_continuity.sql",
+      "class": "public-output"
+    },
+    {
       "path": "supabase/tests/abandoned_cart_tier_bounds_test.sql",
       "class": "public-output"
     },
@@ -22686,6 +22694,10 @@
       "class": "public-output"
     },
     {
+      "path": "supabase/tests/refunds_preserve_subscription_lifecycle_test.sql",
+      "class": "public-output"
+    },
+    {
       "path": "supabase/tests/reorder_reminder_delivery_provenance_test.sql",
       "class": "public-output"
     },
@@ -22774,6 +22786,10 @@
       "class": "public-output"
     },
     {
+      "path": "supabase/tests/subscription_continuity_delivery_alignment_test.sql",
+      "class": "public-output"
+    },
+    {
       "path": "supabase/tests/subscription_created_outbox_event_test.sql",
       "class": "public-output"
     },
@@ -22803,6 +22819,10 @@
     },
     {
       "path": "supabase/tests/subscription_dunning_claim_case_status_test.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "supabase/tests/subscription_dunning_continuity_test.sql",
       "class": "public-output"
     },
     {

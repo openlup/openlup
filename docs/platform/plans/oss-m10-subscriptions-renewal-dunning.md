@@ -147,3 +147,71 @@ Subsequent retry failures retain apply-before-case order. A synthetic failure
 between terminal recording and bookkeeping must roll back both; replay after
 recovery must remain idempotent. This resolves N1's wrapper precondition without
 changing its pin, introducing another case store, or executing payment in SQL.
+
+
+## P3b managed continuity and declared expectation changes
+
+P3b lands only reviewed managed M1 `20261024155000` and M2 `20261024160000`
+on native N1. The SQL bytes match the CTL fixtures. M1 is the approved minimal
+lifecycle-only adaptation: refund settlement preserves subscription status,
+cycle payment history and activation facts while retaining the existing
+first-cycle stock-release guard. M2 preserves active service and an open case
+with deliberate NULL retry at exhaustion. Token consumption, durable payment
+method and current cycle/rung must converge before same-cycle recovery; replay
+cannot grant another retry or charge. The core compatibility function retains
+its signature but no longer pauses or emits an event on exhaustion.
+
+The managed proofs are
+[refund independence](../../../supabase/tests/refunds_preserve_subscription_lifecycle_test.sql),
+[dunning continuity](../../../supabase/tests/subscription_dunning_continuity_test.sql)
+and [delivery alignment](../../../supabase/tests/subscription_continuity_delivery_alignment_test.sql).
+Their currency, region, city and payment-provider fixtures are synthetic; the
+refund proof uses the existing generic settlement boundary without F17 evidence.
+They exercise only M1/M2: runtime-role calls, exhausted repair, token/method/rung
+arrival order, stale authority, replay, failed/successful same-cycle settlement,
+refund independence and late-arrival maximum without stacking. Core lifecycle
+witnesses describe active service after new exhaustion. Example expired-payment
+copy also serves preserved legacy paused/expired episodes, so it describes payment
+completion and subscription continuation without asserting service status or which
+cycle the recovery link pays.
+
+Every changed incumbent or characterization expectation is enumerated below.
+Paths are repository-relative; the table is also the pull-request body ledger.
+
+| Incumbent witness | Changed expectation or setup | Why the new value is correct |
+| --- | --- | --- |
+| `packages/core/test/subscriptionDunningPause.test.ts` | Custom-ladder exhaustion returns `active`; exhausted transition preserves the entire subscription and emits `[]`, including replay. Historical resume fixtures seed `paused` explicitly. | Exhaustion never suspends service; existing paused records retain their separate recovery path. |
+| `supabase/tests/subscription_apply_result_guards_test.sql` A3 | First-cycle refund leaves subscription `active`, cycle `paid` and original `paid_at`; inventory remains `released`. | M1 removes lifecycle reversal while retaining the existing stock-release effect and paid history. |
+| `supabase/tests/subscription_apply_result_guards_test.sql` R6 | Final case `open`, `expired_at` NULL, subscription `active`, pause events `0`, token `repair_payment`; NULL retry, final notice and due-list count `0` remain. | M2 stops automatic retries without expiring or pausing service; explicit repair authorizes the original obligation. |
+| `supabase/tests/subscription_dunning_open_without_retry_test.sql` | Exhausted arm becomes `open`/NULL expiry/`active`/`0` pause events/`repair_payment`; both arms now have equal open status. Final notice and 30-day exhausted window remain distinct from the early 14-day arm. | An absent retry never pauses service, regardless of rung; rung-specific communication and token windows remain. |
+| `supabase/tests/subscription_hard_do_not_retry_terminates_test.sql` arm D | Exhaustion becomes `open`/`active`/`0` pause events and a 30-day `repair_payment` token. | M2 changes exhaustion only; early hard-stop and ordinary retry arms keep their assertions. |
+| `supabase/tests/subscription_renewal_preflight_ladder_test.sql` | Final case `open`, subscription `active`, one unrevoked `repair_payment` token instead of one resume token. | Current-rung repair replaces automatic pause/resume; earlier rung tokens are revoked and the final notice remains. |
+| `supabase/tests/payment_recovery_sha256_test.sql` | Both historical exhausted fixtures explicitly seed `expired`, `expired_at` and `paused`; recovery assertions remain unchanged. | New exhaustion cannot manufacture a historical episode; M2 leaves stored history and its recovery compatibility intact. |
+| `supabase/tests/subscription_resume_after_expired_dunning_test.sql` | Explicitly seed historical `expired`/`expired_at` before the existing paused fixture; retain the expired precondition and resume assertions. | The historical resume contract still applies, but current exhaustion no longer creates its preconditions. |
+| `src/domains/subscription/emails/subscriptionEmailContent.test.ts` | English/Polish expired-payment renders cover legacy `resume_subscription` and current `repair_payment` links, with/without amounts or a link, and assert no service-status or cycle claim. Failed-payment retry/no-retry renders retain their own assertions, including absent/future dates. | P3B-R2-1: the expired notice serves both preserved paused/expired episodes (resume starts a fresh cycle) and new open exhaustion (same-cycle repair); shared copy cannot assume either state or cycle. Non-expired failed notices retain their scheduled-retry or explicit no-retry meaning. |
+| `scripts/reviewed-batch-forward.test.ts` | Add the N1+M1+M2 landed replay case using the existing rail iteration. Plant changed M1 bytes beneath landed M2 and require CI/release refusal. | Folded E retains M10-2's interleaving-aware replay and adds the landed-prefix witness; folded D exercises earlier same-rail digest refusal without altering admission policy. |
+| `src/lib/subscriptionDunningBoundary.test.ts` | Effective failure body keeps exhausted dunning `open`, issues `repair_payment` and contains no pause or `payment_failed_expired` write; payment-table and provider-name refusals remain. | M2 replaces automatic pause with open exhaustion and original-cycle repair authority; the witness must inspect the newest function contract. |
+| `src/domains/communications/email/__snapshots__/templateParity.test.ts.snap` — `subscriptionPaymentExpiredEmailContent` | Whole-content/render digest changes from `50bf6af1…` to `cbe65ef6…` (repair 2 replaces `a5c8a46e…`); repair 2 changes only this golden. | P3B-R2-1: bilingual expired-payment copy now describes unsuccessful payment and a link to complete payment/continue the subscription, truthfully covering both legacy resume and current repair without a service-status or cycle claim. |
+| `src/domains/communications/email/__snapshots__/templateParity.test.ts.snap` — `subscriptionPaymentFailedEmailContent` | Whole-content/render digest changes from `f5e8dd75…` to `f6c90164…`; other template digests remain unchanged. | The non-expired failed-payment template announces a scheduled final retry and active service if it fails under M2. Its separate retry/no-retry branches remain truthful; repair 2 leaves this copy and golden unchanged. |
+| `tests/postgres/reviewedBatchForwards.test.ts` | Unchanged from M10-2: the existing inline replay partition handles interleaved files. | No P3b helper extraction or catalog-gate change is needed to land M1/M2. |
+
+Folded scope: **E-gate-replay-loop-landed-untested** retains M10-2's existing
+interleaving-aware replay and adds the Docker-free landed N1/M1/M2 case.
+The rail helper and PostgreSQL gate remain unchanged from M10-2.
+**D-earlier-pin-digest-unplanted** adds only the changed-earlier-M1 refusal plant.
+Neither changes registry pins, fixture bytes or permitted catalog effects.
+
+Cuts register honored: C2 and C93 retain refund/lifecycle independence with
+explicit cancellation separate; C3–C8 leave refund-evidence parity to F17;
+C9–C13 retain the minimal M2 adaptation, explicit projections and later M4
+stock-wait exclusion; C49 leaves historical paused/expired/refund-cancelled
+records untouched. No history repair, stock-wait, winback-floor, native refund
+capability or adopter characterization change is included. The staged ATP,
+stock-wait and lifecycle-message/winback tests remain with P5/P6; policy-data
+seed tests belong to that later prefix. No F17-only proof is imported.
+
+Migration notes: apply M1 then M2 through the managed chain. Existing exhausted
+rows are not rewritten or reactivated. New exhaustion keeps service active,
+with no scheduled retry until authorized same-cycle repair. Refunds no longer
+cancel the subscription or erase paid-cycle history. Explicit lifecycle commands
+remain separate. No executor, scheduler, release or adopter activation is granted.

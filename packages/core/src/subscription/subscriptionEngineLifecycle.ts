@@ -193,7 +193,7 @@ export function resumeSubscription(input: {
 }): SubscriptionEngineResult<SubscriptionMutationResult> {
   // Resume leaves `paused` only. Leaving `cancelled` is a win-back and goes
   // through reactivateSubscription, which re-arms the schedule. A subscription
-  // the exhausted ladder paused must resume through
+  // a legacy exhausted ladder paused must resume through
   // resumeSubscriptionFromExpiredDunning, which skips the uncollected cycle.
   return changeSubscriptionStatus(input.subscription, "active", input.now, "subscription.resumed", {}, ["paused"]);
 }
@@ -263,19 +263,11 @@ export function reactivateSubscription(input: {
 }
 
 /**
- * The sanctioned non-payment rule: a cycle that exhausted the retry ladder
- * pauses an ACTIVE subscription.
- *
- * This is the only path in the engine that suspends a live subscription for a
- * reason the owner did not choose, and it fires only when
- * {@link isDunningLadderExhausted} holds for the refused cycle. A ladder cut
- * short by a terminating refusal class, or a failure on any rung that still has
- * a retry after it, is refused as `dunning_not_exhausted` and leaves the
- * subscription untouched. A subscription that is not active (already paused,
- * cancelled or completed) is returned unchanged with no event, which is what
- * the managed SQL dunning boundary does and what makes a replay harmless.
- *
- * The schedule is not touched: pausing never moves `nextCycleAt`.
+ * Compatibility entry point for an exhausted retry ladder. Exhaustion leaves
+ * the subscription unchanged and emits no pause event. The unpaid cycle stays
+ * available for authorized recovery; it never starts a new cycle implicitly.
+ * Below exhaustion the call still refuses as `dunning_not_exhausted`.
+ * Explicit owner pauses and legacy expired-dunning recovery remain separate.
  *
  * @beta
  */
@@ -292,31 +284,10 @@ export function pauseSubscriptionForExpiredDunning(input: {
   if (!isDunningLadderExhausted(input.cycle, input.cadence ?? DEFAULT_CYCLE_RETRY_CADENCE)) {
     return failure(
       "dunning_not_exhausted",
-      "only a cycle that exhausted the retry ladder may pause a subscription for non-payment",
+      "the cycle did not exhaust the retry ladder",
     );
   }
-  if (input.subscription.status !== "active") {
-    return success({ subscription: touchSubscription(input.subscription, input.subscription.updatedAt, {}), events: [] });
-  }
-
-  const subscription = touchSubscription(input.subscription, now.toISOString(), statusPatch("paused"));
-  return success({
-    subscription,
-    events: [
-      makeEvent({
-        eventType: "subscription.paused",
-        subscription,
-        cycleNumber: input.cycle.cycleNumber,
-        idempotencyKey: `${input.cycle.engineIdempotencyKey}:subscription_paused`,
-        occurredAt: now.toISOString(),
-        payload: {
-          reason: "payment_failed_expired",
-          retryAttempt: input.cycle.retryAttempt,
-          failureReason: input.cycle.failureReason,
-        },
-      }),
-    ],
-  });
+  return success({ subscription: touchSubscription(input.subscription, input.subscription.updatedAt, {}), events: [] });
 }
 
 /**
@@ -551,7 +522,7 @@ function cycleOwnershipError(
  * sides. `cancelled` -> `active` is the owner's win-back.
  *
  * Which OPERATION may take an edge is narrower than the matrix: `active` ->
- * `paused` is the owner's pause or {@link pauseSubscriptionForExpiredDunning},
+ * `paused` is the owner's pause or a historical non-payment pause,
  * and `cancelled` -> `active` is only {@link reactivateSubscription}.
  *
  * @beta
