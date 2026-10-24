@@ -136,23 +136,29 @@ describe('six real Git witnesses', () => {
       expect(run).not.toHaveBeenCalled();
     }
   });
-  it.each([false, true])('preserves exact integration coverage without admitting a later repair as a merge (repair: %s)', async repair => {
+  it.each(['mechanical', 'extra merge edits', 'manual resolution', 'later repair'])('preserves integration coverage and charges actual repairs: %s', async scenario => {
     const f = await fixture(); const prior = await f.review();
     f.git('checkout', '-q', '--detach', f.base);
     await mkdir(join(f.cwd, 'scripts'), { recursive: true });
     await writeFile(join(f.cwd, 'scripts/agent-review-extra.mjs'), 'main admission change\n');
-    f.git('add', 'scripts/agent-review-extra.mjs'); f.git('commit', '-qm', 'main machinery change');
+    if (scenario === 'manual resolution') await writeFile(join(f.cwd, 'source.txt'), 'main conflicts\n');
+    f.git('add', 'scripts/agent-review-extra.mjs', 'source.txt'); f.git('commit', '-qm', 'main machinery change');
     const main = f.git('rev-parse', 'HEAD'); f.git('update-ref', 'refs/remotes/origin/main', main);
-    f.git('checkout', '-q', '--detach', f.head); f.git('merge', '--no-ff', '-qm', 'integrate main', main);
-    if (repair) { await writeFile(join(f.cwd, 'source.txt'), 'new implementation\n'); f.commit(); }
+    f.git('checkout', '-q', '--detach', f.head);
+    const merge = () => f.git('merge', '--no-ff', '--no-commit', main);
+    if (scenario === 'manual resolution') expect(merge).toThrow();
+    else merge();
+    if (['extra merge edits', 'manual resolution'].includes(scenario)) await writeFile(join(f.cwd, 'source.txt'), 'new implementation\n');
+    f.git('add', 'source.txt'); f.git('commit', '-qm', 'integrate main');
+    if (scenario === 'later repair') { await writeFile(join(f.cwd, 'source.txt'), 'later implementation\n'); f.commit(); }
     await f.cli('prepare', join(f.scratch, 'intent.json'));
     const next = JSON.parse(await readFile(f.statePath, 'utf8'));
-    expect(next.cycle).toBe(prior.cycle + 1);
+    expect(next.cycle).toBe(prior.cycle + (scenario === 'mechanical' ? 0 : 1));
     expect(next.candidate.base).toBe(main);
     expect(next.history.slice(0, -1)).toEqual(prior.history);
-    if (repair) expect(next.candidate).not.toHaveProperty('integration');
+    if (scenario === 'later repair') expect(next.candidate).not.toHaveProperty('integration');
     else {
-      expect(next.candidate.integration).toEqual({ base: f.base, head: f.head, tree: prior.candidate.tree, expires: prior.history.at(-1).at + 86400000 });
+      expect(next.candidate.integration).toEqual({ base: f.base, head: f.head, tree: prior.candidate.tree, expires: prior.history.at(-1).at + 86400000, mechanical: scenario === 'mechanical' });
       await f.cli('prepare', join(f.scratch, 'intent.json'));
       expect(JSON.parse(await readFile(f.statePath, 'utf8'))).toEqual(next);
       const path = join(f.scratch, 'integration-report.json');
