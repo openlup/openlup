@@ -146,6 +146,12 @@ function identityPrivilegeKeys(statement: string): string[] {
 const hash = (value: unknown) => typeof value === "string" && /^[a-f0-9]{64}$/u.test(value);
 
 export function readReviewedForwardRegistry(bytes: Buffer): ReviewedForwardRegistry {
+  return readForwardRegistry(bytes, false);
+}
+
+// Only approval-history comparison may read the exact pre-CTL-2 inventory.
+// Candidate admission always uses the strict public reader above.
+function readForwardRegistry(bytes: Buffer, historical: boolean): ReviewedForwardRegistry {
   const raw = JSON.parse(bytes.toString("utf8")) as ReviewedForwardRegistry;
   if (raw.schemaVersion !== 1 || !hash(raw.baselineSha256) || !Array.isArray(raw.replacementForwards) || raw.replacementForwards.length !== 2 || !Array.isArray(raw.creationForwards) || raw.creationForwards.length !== 1) throw new Error("reviewed replacement registry requires one baseline, two replacement forwards and one creation forward");
   const paths = new Set<string>(), signatures = new Set<string>(), replaced = new Set<string>();
@@ -211,7 +217,7 @@ export function readReviewedForwardRegistry(bytes: Buffer): ReviewedForwardRegis
       paths.add(forward.path);
     }
   }
-  if (raw.batchedForwards !== undefined) validateBatchedForwards(raw.batchedForwards, paths);
+  if (raw.batchedForwards !== undefined) validateBatchedForwards(raw.batchedForwards, paths, historical);
   return raw;
 }
 
@@ -743,7 +749,7 @@ export function assertUnchangedForwardApproval(root: string, base: string, head:
     // Release pins each approval's content and position so later controls may append unrelated approvals.
     if (path !== undefined) {
       try {
-        const prior = readReviewedForwardRegistry(before), current = readReviewedForwardRegistry(after);
+        const prior = readForwardRegistry(before, true), current = readForwardRegistry(after, true);
         const previous = approvalBinding(prior, path), next = approvalBinding(current, path);
         if (canonical(sharedApproval(prior)) === canonical(sharedApproval(current)) && previous && next && canonical(previous) === canonical(next)) return;
       } catch { /* Invalid historical approvals cannot authorize a release. */ }
@@ -906,19 +912,21 @@ export function assertReviewedPlatformForward(root: string, base: string, head: 
 // widening reaches #267/#295/#300. Per rail, pins must land as a prefix in version order.
 const batchedShapes = new Map<string, readonly string[]>([
   ["db/platform/migrations/20261022160000_subscription_retry_lifecycle.sql", ["public.subscription_retry_read(uuid)","public.subscription_retry_candidates(integer,timestamptz)","public.subscription_retry_apply_failure(uuid,text,jsonb)","public.subscription_retry_open_case(uuid,text,text)","public.subscription_retry_authorize_recovery(uuid,uuid,text,text,timestamptz)","public.subscription_retry_schedule_recovery(uuid,text,uuid,timestamptz)","public.subscription_retry_prepare(uuid,text,jsonb,timestamptz)","public.subscription_retry_record_recovery(uuid,text,jsonb)","public.subscription_retry_note_row_outcome(uuid,text,jsonb)"]],
-  ["db/platform/migrations/20261022170000_subscription_command_lifecycle.sql", ["public.subscription_command_preview(uuid,uuid,text,uuid,text,jsonb,timestamptz)","public.subscription_command_apply(uuid,uuid,text,uuid,text,jsonb,timestamptz)"]],
-  ["db/platform/migrations/20261022180000_subscription_stock_wait.sql", ["public.subscription_stock_wait_projection(public.subscription_stock_wait_cases)","public.subscription_stock_wait_read(uuid)","public.subscription_stock_wait_frozen(uuid,timestamptz)","public.subscription_stock_wait_deficits(jsonb,uuid,timestamptz)","public.subscription_stock_wait_enqueue(public.subscription_stock_wait_cases,text)","public.subscription_stock_wait_recover_refusal(uuid,text,text,timestamptz)","public.subscription_stock_wait_admit(jsonb,jsonb,timestamptz)","public.subscription_stock_wait_candidates(integer,timestamptz)","public.subscription_stock_wait_normal_due(integer,timestamptz)","public.subscription_stock_wait_mark_resumed(uuid)","public.subscription_stock_wait_summary(text)","public.subscription_stock_wait_bind_notice(uuid,uuid,jsonb)"]],
-  ["db/platform/migrations/20261022183000_inventory_available_to_promise.sql", ["public.inventory_channel_exposure_quantity(text,text)","public.inventory_available_to_promise(text,text,timestamptz,boolean)","public.inventory_new_purchase_stock_read(text,jsonb,timestamptz)"]],
-  ["db/platform/migrations/20261022184000_subscription_renewal_reserve_uses_seam.sql", ["public.fulfillment_reserve_subscription_renewal(uuid,uuid,integer,timestamptz)"]],
-  ["supabase/migrations/20261022155000_refunds_preserve_subscription_lifecycle.sql", ["public.commerce_payment_control_apply_before_sub_lock(text,uuid,uuid,text,timestamptz,text,text)"]],
-  ["supabase/migrations/20261022160000_subscription_dunning_continuity.sql", ["public.subscription_handle_payment_failure_dunning_before_cancel_fence(text,uuid,uuid,uuid,uuid,integer,timestamptz,text,timestamptz)","public.subscription_record_payment_recovery_before_expired_resume(text,text,text,text,timestamptz)","public.subscription_try_schedule_recovery_retry(uuid,text,timestamptz,text)","public.subscription_list_due_for_renewal(integer,timestamptz)","public.commerce_payment_control_prepare_provider_attempt(text,uuid,text,text,text,text,text,jsonb)"]],
-  ["supabase/migrations/20261022175000_inventory_available_to_promise.sql", ["public.inventory_channel_exposure_quantity(uuid)","public.inventory_available_to_promise(uuid,timestamptz,boolean)"]],
-  ["supabase/migrations/20261022180000_subscription_stock_wait.sql", ["public.subscription_stock_wait_projection(public.subscription_stock_wait_cases)","public.subscription_stock_wait_read(uuid)","public.subscription_stock_wait_frozen(uuid,timestamptz)","public.subscription_stock_wait_deficits(jsonb,uuid,timestamptz)","public.subscription_stock_wait_enqueue(public.subscription_stock_wait_cases,text)","public.subscription_stock_wait_admit(jsonb,jsonb,timestamptz)","public.subscription_stock_wait_candidates(integer,timestamptz)","public.subscription_stock_wait_mark_resumed(uuid)","public.subscription_stock_wait_normal_due(integer,timestamptz)","public.subscription_stock_wait_summary(text)","public.subscription_stock_wait_bind_notice(uuid,uuid,jsonb)"]],
-  ["supabase/migrations/20261022181000_subscription_stock_wait_due.sql", ["public.subscription_list_due_for_renewal(integer,timestamptz)"]],
-  ["supabase/migrations/20261022182000_subscription_lifecycle_message_scan.sql", ["private.outbox_resend_event_types()","public.communication_email_delivery_template_for_event(text)","public.subscription_list_due_for_winback(integer)"]],
-  ["supabase/migrations/20261022184000_inventory_reserve_order_uses_seam.sql", ["public.inventory_reserve_order(text,uuid,uuid,uuid,uuid,integer,text,text,timestamptz,jsonb,text)"]],
-  ["supabase/migrations/20261022185000_provider_refund_evidence.sql", ["public.commerce_order_provider_refund_evidence(uuid)"]],
-  ["supabase/migrations/20261022185100_m07_refund_parity.sql", ["public.commerce_emit_order_refunded_outbox()","public.commerce_payment_control_apply_before_sub_lock(text,uuid,uuid,text,timestamptz,text,text)"]],
+  ["db/platform/migrations/20261024170000_subscription_command_lifecycle.sql", ["public.subscription_command_preview(uuid,uuid,text,uuid,text,jsonb,timestamptz)","public.subscription_command_apply(uuid,uuid,text,uuid,text,jsonb,timestamptz)"]],
+  ["db/platform/migrations/20261024180000_subscription_stock_wait.sql", ["public.subscription_stock_wait_projection(public.subscription_stock_wait_cases)","public.subscription_stock_wait_read(uuid)","public.subscription_stock_wait_frozen(uuid,timestamptz)","public.subscription_stock_wait_deficits(jsonb,uuid,timestamptz)","public.subscription_stock_wait_enqueue(public.subscription_stock_wait_cases,text)","public.subscription_stock_wait_recover_refusal(uuid,text,text,timestamptz)","public.subscription_stock_wait_admit(jsonb,jsonb,timestamptz)","public.subscription_stock_wait_candidates(integer,timestamptz)","public.subscription_stock_wait_normal_due(integer,timestamptz)","public.subscription_stock_wait_mark_resumed(uuid)","public.subscription_stock_wait_summary(text)","public.subscription_stock_wait_bind_notice(uuid,uuid,jsonb)"]],
+  ["db/platform/migrations/20261024183000_inventory_available_to_promise.sql", ["public.inventory_channel_exposure_quantity(text,text)","public.inventory_available_to_promise(text,text,timestamptz,boolean)","public.inventory_new_purchase_stock_read(text,jsonb,timestamptz)"]],
+  ["db/platform/migrations/20261024184000_subscription_renewal_reserve_uses_seam.sql", ["public.fulfillment_reserve_subscription_renewal(uuid,uuid,integer,timestamptz)"]],
+  ["db/platform/migrations/20261024184500_subscription_retry_late_positive_stock.sql", ["public.subscription_retry_record_recovery(uuid,text,jsonb)"]],
+  ["db/platform/migrations/20261024184600_subscription_retry_candidate_payment_filter.sql", ["public.subscription_retry_candidates(integer,timestamptz)"]],
+  ["supabase/migrations/20261024155000_refunds_preserve_subscription_lifecycle.sql", ["public.commerce_payment_control_apply_before_sub_lock(text,uuid,uuid,text,timestamptz,text,text)"]],
+  ["supabase/migrations/20261024160000_subscription_dunning_continuity.sql", ["public.subscription_handle_payment_failure_dunning_before_cancel_fence(text,uuid,uuid,uuid,uuid,integer,timestamptz,text,timestamptz)","public.subscription_record_payment_recovery_before_expired_resume(text,text,text,text,timestamptz)","public.subscription_try_schedule_recovery_retry(uuid,text,timestamptz,text)","public.subscription_list_due_for_renewal(integer,timestamptz)","public.commerce_payment_control_prepare_provider_attempt(text,uuid,text,text,text,text,text,jsonb)"]],
+  ["supabase/migrations/20261024175000_inventory_available_to_promise.sql", ["public.inventory_channel_exposure_quantity(uuid)","public.inventory_available_to_promise(uuid,timestamptz,boolean)"]],
+  ["supabase/migrations/20261024180000_subscription_stock_wait.sql", ["public.subscription_stock_wait_projection(public.subscription_stock_wait_cases)","public.subscription_stock_wait_read(uuid)","public.subscription_stock_wait_frozen(uuid,timestamptz)","public.subscription_stock_wait_deficits(jsonb,uuid,timestamptz)","public.subscription_stock_wait_enqueue(public.subscription_stock_wait_cases,text)","public.subscription_stock_wait_admit(jsonb,jsonb,timestamptz)","public.subscription_stock_wait_candidates(integer,timestamptz)","public.subscription_stock_wait_mark_resumed(uuid)","public.subscription_stock_wait_normal_due(integer,timestamptz)","public.subscription_stock_wait_summary(text)","public.subscription_stock_wait_bind_notice(uuid,uuid,jsonb)"]],
+  ["supabase/migrations/20261024181000_subscription_stock_wait_due.sql", ["public.subscription_list_due_for_renewal(integer,timestamptz)"]],
+  ["supabase/migrations/20261024182000_subscription_lifecycle_message_scan.sql", ["private.outbox_resend_event_types()","public.communication_email_delivery_template_for_event(text)","public.subscription_list_due_for_winback(integer)"]],
+  ["supabase/migrations/20261024184000_inventory_reserve_order_uses_seam.sql", ["public.inventory_reserve_order(text,uuid,uuid,uuid,uuid,integer,text,text,timestamptz,jsonb,text)"]],
+  ["supabase/migrations/20261024185000_provider_refund_evidence.sql", ["public.commerce_order_provider_refund_evidence(uuid)"]],
+  ["supabase/migrations/20261024185100_m07_refund_parity.sql", ["public.commerce_emit_order_refunded_outbox()","public.commerce_payment_control_apply_before_sub_lock(text,uuid,uuid,text,timestamptz,text,text)"]],
 ]);
 const batchIdentity = (name: string, args: string): string => {
   const types = args.trim() ? args.split(",").map(argument => {
@@ -947,11 +955,17 @@ export function batchedFunctionDefinitions(bytes: Buffer, names?: Set<string>): 
   return result;
 }
 
-function validateBatchedForwards(forwards: BatchedForwardBinding[], paths: Set<string>): void {
-  if (!Array.isArray(forwards) || forwards.length !== batchedShapes.size) throw new Error("reviewed batch requires exactly the approved forwards");
+function validateBatchedForwards(forwards: BatchedForwardBinding[], paths: Set<string>, historical: boolean): void {
+  // Only the exact old identities and ordering used at N1's introduction are
+  // accepted for history. Current candidates always require the new 16-pin set.
+  const shapes = historical && forwards?.length === 14
+    ? [...batchedShapes].filter(([path]) => !/20261024184[56]00_/u.test(path))
+      .map(([path, signatures]) => [path.includes("20261022160000_subscription_retry_lifecycle") ? path : path.replace("20261024", "20261022"), signatures] as const)
+    : [...batchedShapes];
+  if (!Array.isArray(forwards) || forwards.length !== shapes.length) throw new Error("reviewed batch requires exactly the approved forwards");
   const last = new Map<string, string>();
   for (const [index, forward] of forwards.entries()) {
-    const shape = [...batchedShapes][index]!;
+    const shape = shapes[index]!;
     if (!forward || Object.keys(forward).sort().join(",") !== "functions,path,sha256,statements" || forward.path !== shape[0] || paths.has(forward.path) || !hash(forward.sha256) || !Array.isArray(forward.functions) || JSON.stringify(forward.functions.map(fn => fn.signature)) !== JSON.stringify(shape[1]) || !Array.isArray(forward.statements) || !forward.statements.length) throw new Error("reviewed batch has an invalid path, order or signature inventory");
     paths.add(forward.path);
     for (const fn of forward.functions) {
@@ -979,9 +993,14 @@ export function assertBatchedForward(forward: BatchedForwardBinding, bytes: Buff
     if (definitions.get(fn.signature) !== fn.afterSha256 || (prior.get(fn.signature) ?? null) !== fn.beforeSha256) throw new Error(`reviewed batch definition drifted: ${fn.signature}`);
   }
   const statements = sqlStatements(bytes.toString("utf8"));
-  // Only the 184000 body-only replacement skips the native creation classifier;
-  // its header, exact bytes and statements are checked separately.
-  if (forward.path.startsWith("db/") && forward.path < "db/platform/migrations/20261022184000") assertPortableCreationStatements(bytes, preceding);
+  // Fixed native body replacements retain their prior headers and ACLs. Dates
+  // cannot classify N1 or the interleaved, already-landed M08/M09 forwards.
+  const nativeReplacement = [
+    "db/platform/migrations/20261024184000_subscription_renewal_reserve_uses_seam.sql",
+    "db/platform/migrations/20261024184500_subscription_retry_late_positive_stock.sql",
+    "db/platform/migrations/20261024184600_subscription_retry_candidate_payment_filter.sql",
+  ].includes(forward.path);
+  if (forward.path.startsWith("db/") && !nativeReplacement) assertPortableCreationStatements(bytes, preceding);
   if (statements.length !== forward.statements.length) throw new Error("reviewed batch missing or extra statements");
   for (const [index, statement] of statements.entries()) {
     const pin = forward.statements[index]!;
@@ -998,8 +1017,8 @@ export function assertBatchedForward(forward: BatchedForwardBinding, bytes: Buff
       if (target && definitions.has(batchIdentity(target[2]!, target[3]!)) && (target[1]!.toUpperCase() !== "GRANT EXECUTE" || (forward.path.startsWith("supabase/") && forward.functions.some(fn => fn.signature === batchIdentity(target[2]!, target[3]!) && fn.beforeSha256 === null))) && (target[1]!.toUpperCase() === "GRANT EXECUTE" ? target[4]!.toUpperCase() === "TO" && target[5] === "service_role" : target[4]!.toUpperCase() === "FROM" && target[5]!.split(",").every(role => ["public", "anon", "authenticated", "openlup_mcp_reader"].includes(role.trim().toLowerCase())))) continue;
       throw new Error("reviewed batch function privilege target or grantee drifted");
     }
-    if (forward.path.endsWith("20261022160000_subscription_dunning_continuity.sql") && statement === "GRANT SELECT (id, retry_attempt) ON public.subscription_cycles TO service_role;") continue;
-    if (forward.path === "supabase/migrations/20261022180000_subscription_stock_wait.sql" && statement === "GRANT SELECT, INSERT, UPDATE, DELETE ON public.subscription_stock_wait_cases TO service_role;") continue;
+    if (forward.path.endsWith("20261024160000_subscription_dunning_continuity.sql") && statement === "GRANT SELECT (id, retry_attempt) ON public.subscription_cycles TO service_role;") continue;
+    if (forward.path === "supabase/migrations/20261024180000_subscription_stock_wait.sql" && statement === "GRANT SELECT, INSERT, UPDATE, DELETE ON public.subscription_stock_wait_cases TO service_role;") continue;
     if (/^ALTER TABLE public\.subscription_stock_wait_cases ENABLE ROW LEVEL SECURITY;$/u.test(statement)) continue;
     if (/^INSERT INTO public\.comms_notification_controls\(slug,enabled\) VALUES\s+\('subscription-stock-wait-started',true\),\('subscription-stock-wait-resumed',true\) ON CONFLICT\(slug\) DO NOTHING;$/u.test(statement)) continue;
     if (/^INSERT INTO public\.client_absorption_policy \(table_name, disposition, note\) VALUES\s+\('subscription_stock_wait_cases', 'block',\s+'A frozen subscription delivery is a commercial obligation bound to its original client; never carry or rebind it when absorbing a lead\.'\);$/u.test(statement)) continue;
@@ -1018,7 +1037,7 @@ export function assertBatchedForward(forward: BatchedForwardBinding, bytes: Buff
     }
     throw new Error(`reviewed batch unexpected statement kind: ${statement.slice(0,100)}`);
   }
-  if (forward.path === "db/platform/migrations/20261022184000_subscription_renewal_reserve_uses_seam.sql") {
+  if (nativeReplacement) {
     const statement = statements[0]!;
     const name = forward.functions[0]!.signature;
     const previous = preceding.flatMap(source => sqlStatements(source.toString("utf8"), true)).filter(sql => batchedFunctionDefinitions(Buffer.from(sql), names).has(name)).at(-1);

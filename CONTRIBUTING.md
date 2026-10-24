@@ -196,7 +196,20 @@ mandatory PostgreSQL/pgTAP catalog gate. The latter runs both complete prefixes,
 checks exact catalog/ACL/row changes and rollback, and falsifies its observer
 with committed attacks. Missing Docker, PostgreSQL or pgTAP fails; the lexer is
 only a pre-filter. Fixtures under `scripts/fixtures/reviewed-m10/` are inert
-approval snapshots and do not join an installation manifest. Root test discovery
+approval snapshots and do not join an installation manifest. The 16-pin batch
+has seven native and nine managed entries. Native order is N1 (`20261022160000`)
+→ N2 (`20261024170000`) → N3 (`20261024180000`) → seam (`20261024183000`)
+→ allocator (`20261024184000`) → X (`20261024184500`) → Y (`20261024184600`).
+Preview replay is folded into N2. Managed order is M1 (`20261024155000`)
+→ M2 (`20261024160000`) → seam (`20261024175000`) → M3 (`20261024180000`)
+→ M4 (`20261024181000`) → M5 (`20261024182000`) → M6 (`20261024184000`)
+→ F17 helper (`20261024185000`) → F17 parity (`20261024185100`).
+The native gate also proves paid-line ATP protection, zero-delta late-payment
+replay, one-time offer refusal and stale-settlement filtering before LIMIT.
+In folded N2, a raw replay of the command preview returns the stored receipt. All 43
+fresh scenarios compare output bytes and public-table columns against the pre-fold preview body and folded N2;
+committed replays compare counts, all columns and xmin across a later command,
+and the apply definition remains unchanged. Root test discovery
 already includes both suites; no extra runner or optional skip is introduced.
 The M10 gate reads its native PG16 and managed Supabase PG17 pins from
 [the CI image inventory](config/ci-images.json), with mirror-first fallback as

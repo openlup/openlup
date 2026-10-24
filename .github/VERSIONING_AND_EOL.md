@@ -491,11 +491,12 @@ replacement, with unchanged header attributes and no privilege statements.
 Priors come only from the portable baseline and earlier portable forwards.
 The managed counts remain two replacement files, one creation file and one or
 two runtime files when the runtime list is present.
-A separate exact `batchedForwards` list binds the M10/F17 packet (five native,
+A separate exact `batchedForwards` list binds the M10/F17 packet (seven native,
 nine managed paths), ordered statements, exact grants/seeds and every function
 preimage/postimage. Timestamp aliases normalize only identity; repeated managed
-signatures must form an ordered hash chain. The native allocator is a single
-body-only replacement with its existing ACL preserved. Legacy class counts and
+signatures must form an ordered hash chain. The native allocator, late-positive
+stock accounting and retry candidate payment filtering are three body-only
+replacements with unchanged headers and existing ACLs preserved. Legacy class counts and
 predicates above remain unchanged. Batch admission requires the committed
 [real-PG/pgTAP catalog gate](../tests/postgres/reviewedBatchForwards.test.ts) in
 the required test aggregate; unavailable PostgreSQL fails, and the lexer only

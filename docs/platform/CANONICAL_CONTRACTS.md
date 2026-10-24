@@ -563,7 +563,18 @@ PR1 identities and are not migrated. See [data compatibility](DATA_AND_MIGRATION
 for the exact upgrade and replay boundary.
 
 The M10/F17 `batchedForwards` registry adds exact approval data and inert
-snapshots only. Its ordered paths, raw statement/definition hashes, signature
+snapshots only. The batch has 16 pins: seven native and nine managed. Pending pins use
+`20261024` identities after the landed M08/M09 rail tails; N1 keeps
+`20261022160000`. Native order is N1 → N2 → N3 → seam → allocator → X → Y;
+managed order is M1 → M2 → seam → M3 → M4 → M5 → M6 → F17 helper → F17 parity.
+X (`20261024184500`) restores ATP-counted late-positive recovery after the
+allocator; Y (`20261024184600`) filters paid retry candidates before LIMIT.
+The uninstalled N2 (`20261024170000`) fixture includes raw command-preview
+receipt replay with no public-table counts/columns/xmin delta. The apply
+function is unchanged. Historical N1 approval still uses the exact old 14-pin
+inventory at its first-parent introduction.
+The three native body replacements retain their function
+headers and ACLs and remain outside installation manifests. Its ordered paths, raw statement/definition hashes, signature
 chains and exact grants/seeds do not install SQL, change a baseline, activate a
 runtime or establish upgrade compatibility. The
 [reviewed-forward boundary](DATA_AND_MIGRATIONS.md#exact-reviewed-function-forwards)

@@ -6622,55 +6622,63 @@
       "class": "public-output"
     },
     {
-      "path": "scripts/fixtures/reviewed-m10/db/platform/migrations/20261022170000_subscription_command_lifecycle.sql",
+      "path": "scripts/fixtures/reviewed-m10/db/platform/migrations/20261024170000_subscription_command_lifecycle.sql",
       "class": "public-output"
     },
     {
-      "path": "scripts/fixtures/reviewed-m10/db/platform/migrations/20261022180000_subscription_stock_wait.sql",
+      "path": "scripts/fixtures/reviewed-m10/db/platform/migrations/20261024180000_subscription_stock_wait.sql",
       "class": "public-output"
     },
     {
-      "path": "scripts/fixtures/reviewed-m10/db/platform/migrations/20261022183000_inventory_available_to_promise.sql",
+      "path": "scripts/fixtures/reviewed-m10/db/platform/migrations/20261024183000_inventory_available_to_promise.sql",
       "class": "public-output"
     },
     {
-      "path": "scripts/fixtures/reviewed-m10/db/platform/migrations/20261022184000_subscription_renewal_reserve_uses_seam.sql",
+      "path": "scripts/fixtures/reviewed-m10/db/platform/migrations/20261024184000_subscription_renewal_reserve_uses_seam.sql",
       "class": "public-output"
     },
     {
-      "path": "scripts/fixtures/reviewed-m10/supabase/migrations/20261022155000_refunds_preserve_subscription_lifecycle.sql",
+      "path": "scripts/fixtures/reviewed-m10/db/platform/migrations/20261024184500_subscription_retry_late_positive_stock.sql",
       "class": "public-output"
     },
     {
-      "path": "scripts/fixtures/reviewed-m10/supabase/migrations/20261022160000_subscription_dunning_continuity.sql",
+      "path": "scripts/fixtures/reviewed-m10/db/platform/migrations/20261024184600_subscription_retry_candidate_payment_filter.sql",
       "class": "public-output"
     },
     {
-      "path": "scripts/fixtures/reviewed-m10/supabase/migrations/20261022175000_inventory_available_to_promise.sql",
+      "path": "scripts/fixtures/reviewed-m10/supabase/migrations/20261024155000_refunds_preserve_subscription_lifecycle.sql",
       "class": "public-output"
     },
     {
-      "path": "scripts/fixtures/reviewed-m10/supabase/migrations/20261022180000_subscription_stock_wait.sql",
+      "path": "scripts/fixtures/reviewed-m10/supabase/migrations/20261024160000_subscription_dunning_continuity.sql",
       "class": "public-output"
     },
     {
-      "path": "scripts/fixtures/reviewed-m10/supabase/migrations/20261022181000_subscription_stock_wait_due.sql",
+      "path": "scripts/fixtures/reviewed-m10/supabase/migrations/20261024175000_inventory_available_to_promise.sql",
       "class": "public-output"
     },
     {
-      "path": "scripts/fixtures/reviewed-m10/supabase/migrations/20261022182000_subscription_lifecycle_message_scan.sql",
+      "path": "scripts/fixtures/reviewed-m10/supabase/migrations/20261024180000_subscription_stock_wait.sql",
       "class": "public-output"
     },
     {
-      "path": "scripts/fixtures/reviewed-m10/supabase/migrations/20261022184000_inventory_reserve_order_uses_seam.sql",
+      "path": "scripts/fixtures/reviewed-m10/supabase/migrations/20261024181000_subscription_stock_wait_due.sql",
       "class": "public-output"
     },
     {
-      "path": "scripts/fixtures/reviewed-m10/supabase/migrations/20261022185000_provider_refund_evidence.sql",
+      "path": "scripts/fixtures/reviewed-m10/supabase/migrations/20261024182000_subscription_lifecycle_message_scan.sql",
       "class": "public-output"
     },
     {
-      "path": "scripts/fixtures/reviewed-m10/supabase/migrations/20261022185100_m07_refund_parity.sql",
+      "path": "scripts/fixtures/reviewed-m10/supabase/migrations/20261024184000_inventory_reserve_order_uses_seam.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/fixtures/reviewed-m10/supabase/migrations/20261024185000_provider_refund_evidence.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/fixtures/reviewed-m10/supabase/migrations/20261024185100_m07_refund_parity.sql",
       "class": "public-output"
     },
     {
