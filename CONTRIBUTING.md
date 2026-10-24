@@ -1326,6 +1326,16 @@ Reuse [root setup](src/test/setup.ts), [Git environment scrub](tests/setup/scrub
 
 Prefer table-driven pure cases and the minimum real boundary witnesses that prove the requirement. Retain real Git/process/DB witnesses where the requirement depends on actual process behavior, SQL permissions, transactions or concurrency. Do not replace those witnesses with mocks. Use temporary repositories with explicit identity, bounded child processes and owned cleanup; never mutate the contributor's repository or use ambient/live services. Follow [database fixture rules](docs/platform/DATA_AND_MIGRATIONS.md#database-test-fixtures-and-witnesses).
 
+The [disposable PostgreSQL helper](tests/helpers/postgresContainer.ts) removes its
+explicitly named test container together with its anonymous data volumes on
+pre-start cleanup, failed startup and final removal. PostgreSQL images declare
+those volumes even without an explicit mount; removing only the container leaves
+them behind. Docker retains named volumes with this operation. The
+[cleanup regression](tests/postgres/postgresContainerCleanup.test.ts) uses its own
+unique containers and volumes against a real Docker daemon, checks bind-conflict
+retry and other startup errors, and preserves a named volume and another
+container. This lifecycle does not authorize pruning other test runs' resources.
+
 Root test/hook defaults are 10 seconds, or 30 with coverage; externally supplied duration pins may raise them. These are deadlines, not expected runtimes or whole-file budgets. Process spawning, repeated tree copies, compilers, npm packs/installs, containers and intentional deadline waits are likely costs. Measure expensive additions and record command, revision, environment, workers and observed duration in existing task evidence. Simplify repeated setup or decision matrices before raising a timeout; give necessary integration work an explicit bounded deadline sized for hosted runners. Preserve `retry: 0` and required proof.
 
 To find optimisation targets, read the per-file durations Vitest prints in a hosted shard log (`✓ <file> (<n> tests) <ms>`) or locally with `npm test -- <path>`, and rank by file time. On 2026-10-19 the slowest root files were repository-tooling tests (`scripts/packages/outbox-consumer-proof.test.ts`, `scripts/source-preview-release.test.ts`, `scripts/public-ci-neutrality.test.ts`), each 40–80 s; slim one by moving decisions into table-driven cases and keeping only the real-process witnesses its requirement needs.
