@@ -28,6 +28,24 @@ it.each(pins)("accepts the exact packet after its current prefix: $path", pin =>
   expect(() => assertBatchedForward(pin, bytes(pin), prefix(pin))).not.toThrow();
 });
 
+describe.each([
+  "db/platform/migrations/20261022160000_subscription_retry_lifecycle.sql",
+  "db/platform/migrations/20261024170000_subscription_command_lifecycle.sql",
+  "db/platform/migrations/20261024180000_subscription_stock_wait.sql",
+  "db/platform/migrations/20261024183000_inventory_available_to_promise.sql",
+])("native creation classifier: %s", path => {
+  it.each(["SECURITY DEFINER", "non-pg_catalog search_path"])("refuses fully repinned %s", attack => {
+    const pin = pins.find(pin => pin.path === path)!;
+    const sql = bytes(pin).toString().replace("SET search_path = pg_catalog", attack === "SECURITY DEFINER"
+      ? "SECURITY DEFINER SET search_path = pg_catalog" : "SET search_path = public");
+    expect(sql).not.toBe(bytes(pin).toString());
+    const changed = repin(pin, sql);
+    const definitions = batchedFunctionDefinitions(Buffer.from(sql));
+    for (const fn of changed.functions) fn.afterSha256 = definitions.get(fn.signature)!;
+    expect(() => assertBatchedForward(changed, Buffer.from(sql), prefix(pin))).toThrow(/reviewed portable creation/u);
+  });
+});
+
 describe.each(pins)("refusal plants: $path", pin => {
   it.each(["missing definition", "duplicate definition", "extra definition"])("refuses actual SQL %s after file/statement repinning", attack => {
     const statements = sqlStatements(bytes(pin).toString());
@@ -61,10 +79,14 @@ describe.each(pins)("refusal plants: $path", pin => {
 it.each(["order", "chain", "path", "private signature", "portable replacement collision", "missing", "duplicate", "extra"])("refuses malformed registry %s", attack => {
   const changed = structuredClone(registry);
   const batch = changed.batchedForwards!;
-  if (attack === "order") [batch[6], batch[9]] = [batch[9]!, batch[6]!];
+  if (attack === "order") {
+    const m2 = batch.findIndex(pin => pin.path === "supabase/migrations/20261024160000_subscription_dunning_continuity.sql");
+    const m4 = batch.findIndex(pin => pin.path === "supabase/migrations/20261024181000_subscription_stock_wait_due.sql");
+    [batch[m2], batch[m4]] = [batch[m4]!, batch[m2]!];
+  }
   if (attack === "chain") batch.find(pin => pin.path === "supabase/migrations/20261024181000_subscription_stock_wait_due.sql")!.functions[0]!.beforeSha256 = "0".repeat(64);
   if (attack === "path") batch[0]!.path += ".sql";
-  if (attack === "private signature") batch[10]!.functions[0]!.signature = "private.unpinned()";
+  if (attack === "private signature") batch.find(pin => pin.path === "supabase/migrations/20261024182000_subscription_lifecycle_message_scan.sql")!.functions[0]!.signature = "private.unpinned()";
   if (attack === "portable replacement collision") changed.portableReplacementForwards![0]!.path = batch[0]!.path;
   if (attack === "missing") batch[0]!.functions.pop();
   if (attack === "duplicate") batch[0]!.functions.push(batch[0]!.functions[0]!);
@@ -129,13 +151,15 @@ it("preserves N1 historical 14-pin approval through the re-pin and separately ap
     const landedX = commit("X lands after separate 16-pin approval");
     for (const pin of [n1, x]) expect(() => assertReviewedPlatformForward(folder, approval14, landedX, pin.path, bytes(pin), true)).not.toThrow();
 
-    for (const attack of ["digest drift", "signature drift", "chain drift", "reordered", "extra", "unknown size", "current prefix"]) {
+    for (const attack of ["digest drift", "signature drift", "non-N1 signature drift", "chain drift", "reordered", "non-N1 reordered", "extra", "unknown size", "current prefix"]) {
       git("reset", "--hard", approval14);
       const changed = structuredClone(historical), batch = changed.batchedForwards!;
       if (attack === "digest drift") batch[0]!.sha256 = "0".repeat(64);
       if (attack === "signature drift") batch[0]!.functions[0]!.signature = "public.unpinned()";
+      if (attack === "non-N1 signature drift") batch[1]!.functions[0]!.signature = "public.unpinned()";
       if (attack === "chain drift") batch.find(pin => pin.path.includes("181000"))!.functions[0]!.beforeSha256 = "0".repeat(64);
       if (attack === "reordered") [batch[0], batch[1]] = [batch[1]!, batch[0]!];
+      if (attack === "non-N1 reordered") [batch[1], batch[2]] = [batch[2]!, batch[1]!];
       if (attack === "extra") batch.push(batch[0]!);
       if (attack === "unknown size") batch.pop();
       if (attack === "current prefix") changed.batchedForwards = pins.slice(0, 14);
