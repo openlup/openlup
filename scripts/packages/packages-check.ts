@@ -31,6 +31,7 @@ import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { join, posix, relative, resolve, sep } from "node:path";
 import { pathToFileURL } from "node:url";
+import { isDeepStrictEqual } from "node:util";
 import { PACKAGES_CONFIG_PATH, SET_VERSION, checkPackageDirectories, checkPackageManifest, checkSetVersions, checkUnreleasedManifest, releaseVersionAbove, parsePackageReleaseTag, parsePackagesConfig, type Finding, type PackageEntry } from "./package-manifest-policy.ts";
 import { checkTarballEntries, type TarballEntry } from "./package-tarball-gate.ts";
 import { browserEntryBytes, checkBrowserEntry, checkPackBudget, measurePack, readPackBudget } from "./package-size-policy.ts";
@@ -255,9 +256,68 @@ export function assertMigrationBlocks(root: string, base: string, head: string):
   if (refusals.length > 0) throw new Error(refusals.join("\n"));
 }
 
+/** Publication audits the selected runtime graph, including internal peers, without resolving new pins. */
+function auditReleasePackages(root: string, commit: string, selected: readonly PackageEntry[], packages: readonly PackageEntry[]): void {
+  type Metadata = { name?: string; version?: string; workspaces?: string[] | { packages?: string[] }; dependencies?: Record<string, string>; peerDependencies?: Record<string, string>; optionalDependencies?: Record<string, string>; devDependencies?: Record<string, string>; lockfileVersion?: number; packages?: Record<string, Metadata> };
+  const inputs = new Map<string, string>();
+  const assertInput = (path: string, bytes: string): void => {
+    if (!existsSync(join(root, path)) || readFileSync(join(root, path), "utf8") !== bytes) throw new Error(`publication audit: ${path} differs from the packed commit`);
+  };
+  const readCommitted = (path: string): string => {
+    const bytes = capture(root, "git", ["show", `${commit}:${path}`]);
+    assertInput(path, bytes);
+    inputs.set(path, bytes);
+    return bytes;
+  };
+  const readJson = (path: string): Metadata => JSON.parse(readCommitted(path));
+  readCommitted(PACKAGES_CONFIG_PATH);
+  readCommitted("packages/core/release-gates.json");
+  const fields = ["dependencies", "peerDependencies", "optionalDependencies"] as const;
+  const entries = new Map(packages.map((entry) => [entry.name, entry]));
+  const closure = new Map<string, PackageEntry>();
+  const visit = (entry: PackageEntry): void => {
+    if (closure.has(entry.name)) return;
+    closure.set(entry.name, entry);
+    const metadata = readJson(`${entry.directory}/package.json`);
+    for (const field of fields) for (const name of Object.keys(metadata[field] ?? {})) {
+      if (!name.startsWith("@openlup/")) continue;
+      const dependency = entries.get(name);
+      if (!dependency || !dependency.publish) throw new Error(`publication audit: unavailable prerequisite ${name}`);
+      visit(dependency);
+    }
+  };
+  for (const entry of selected) visit(entry);
+  const rootManifest = readJson("package.json"), rootLock = readJson("package-lock.json");
+  const workspaces = Array.isArray(rootManifest.workspaces) ? rootManifest.workspaces : rootManifest.workspaces?.packages;
+  const standalone: PackageEntry[] = [];
+  const assertCarrier = (lock: Metadata, path: string, metadata: Metadata): void => {
+    const carrier = lock.packages?.[path];
+    if (lock.lockfileVersion !== 3 || !carrier || carrier.version !== metadata.version || (path === "" && (lock.name !== metadata.name || lock.version !== metadata.version))) throw new Error(`publication audit: missing or mismatched committed lock for ${metadata.name}`);
+    for (const field of [...fields, "devDependencies"] as const) if (!isDeepStrictEqual(carrier[field] ?? {}, metadata[field] ?? {})) throw new Error(`publication audit: lock ${field} differs for ${metadata.name}`);
+  };
+  for (const entry of closure.values()) {
+    if (!Array.isArray(workspaces) || !workspaces.includes(entry.directory)) throw new Error(`publication audit: ${entry.directory} is not an actual workspace`);
+    const metadata = readJson(`${entry.directory}/package.json`);
+    if (metadata.name !== entry.name) throw new Error(`publication audit: workspace identity differs for ${entry.name}`);
+    assertCarrier(rootLock, entry.directory, metadata);
+    const standalonePath = `${entry.directory}/package-lock.json`;
+    if (capture(root, "git", ["ls-tree", commit, "--", standalonePath]).trim() || existsSync(join(root, standalonePath))) {
+      assertCarrier(readJson(standalonePath), "", metadata);
+      standalone.push(entry);
+    }
+  }
+  const helper = join(root, "packages/core/scripts/release-npm-checks.ts");
+  const audit = (cwd: string, workspaces: string[] = []): void => { execFileSync(process.execPath, ["--experimental-strip-types", helper, "audit", ...workspaces], { cwd, stdio: "inherit" }); };
+  audit(root, [...closure.values()].map(({ directory }) => `./${directory}`));
+  for (const entry of standalone) audit(join(root, entry.directory));
+  for (const [path, bytes] of inputs) assertInput(path, bytes);
+  if (capture(root, "git", ["rev-parse", "HEAD"]).trim() !== commit) throw new Error("publication audit: HEAD changed while packing or auditing");
+}
+
 export function runPackagesCheck(root: string, args: readonly string[]): number {
   const options = parseOptions(args);
   if (typeof options === "string") { console.error(`packages:check: ${options}`); return 2; }
+  const commit = capture(root, "git", ["rev-parse", "HEAD"]).trim();
   const tracked = new Set(capture(root, "git", ["ls-files", "-z"]).split("\0").filter(Boolean));
   const readTracked = (path: string): Uint8Array | undefined => (tracked.has(path) ? readFileSync(join(root, path)) : undefined);
   const manifest = (directory: string): unknown => { const bytes = readTracked(`${directory}/package.json`); return bytes ? JSON.parse(new TextDecoder().decode(bytes)) : undefined; };
@@ -285,11 +345,11 @@ export function runPackagesCheck(root: string, args: readonly string[]): number 
         if (entry.publish) packed.push({ name: entry.name, version, ...result });
       }
     }
+    if (options.pack && findings.length === 0 && (options.releaseTag !== undefined || options.releaseSet !== undefined)) auditReleasePackages(root, commit, selected, config.packages);
     for (const { subject, rule, detail } of findings) console.error(`${rule} ${subject}: ${detail}`);
     if (outDir && keepDir && findings.length === 0) {
       mkdirSync(outDir, { recursive: true });
       for (const { filename } of packed) copyFileSync(join(keepDir, filename), join(outDir, filename));
-      const commit = capture(root, "git", ["rev-parse", "HEAD"]).trim();
       const packages = packed.map(({ name, version, filename, sha256, integrity }) => ({ name, version, filename, sha256, integrity }));
       writeFileSync(join(outDir, PACKAGES_MANIFEST_FILE), `${JSON.stringify({ schemaVersion: 2, commit, packages }, null, 2)}\n`);
       console.log(`packages:check: ${packages.length} publishable tarball(s) kept in ${options.outDir}`);

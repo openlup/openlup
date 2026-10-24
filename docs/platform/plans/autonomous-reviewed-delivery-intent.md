@@ -64,13 +64,16 @@ Commit repairs and give fresh reviewers the open finding cards, actual repair
 and interaction context, without old verdicts or author history. The new tree
 needs passing review by the required reviewer count, with every material finding
 closed. Evidence expires 24 hours after the earliest counted PASS report for the
-current candidate. There is no closure-lineage or inherited-expiry route.
+current candidate. A proved exact main integration may focus fresh inspection
+using prior source coverage and its earliest expiry, following
+[review after integration](../../../CONTRIBUTING.md#native-review-and-accountability).
+This adds no reduced reviewer count or copied reports.
 
 Unchanged prepare preserves evidence. Three repair cycles are automatic;
 `needs_owner` then requires the owner to continue, narrow or stop. Record an
 authorized continuation with `continue "<note>"`, which adds three cycles.
-A rethink of criteria, tools and simpler alternatives remains recommended
-practice, not an encoded gate. `prepare --new` records a changed intent or a
+Follow the mandatory supervisor [regroup procedure](../../../CONTRIBUTING.md#regroup-when-work-stops-converging),
+without adding an encoded gate or repair budget. `prepare --new` records a changed intent or a
 rebase in the same append-only session history; findings, reviewers and the
 repair count carry on. Merging main
 requires fresh review of the resulting candidate. Stop optional edits when

@@ -185,7 +185,7 @@ it("counts rejected tracking and blank entries, retains trimmed refs and dedupli
     trackingRefs: [{ trackingNumber: "TRACK A", carrierRef: "first" }, { trackingNumber: "TRACK/B" }], diagnostics: { admission: { rejectedTrackingRefs: 7 } } } });
 });
 
-it.each(["2026-10-21T10:00:00+0200", "2026-10-21T10:00+0200", "2026-10-21T10:00:00"])("admits the base webhook occurrence format %s without changing key bytes (O6)", async occurredAt => {
+it.each(["2026-10-21T10:00:00+0200", "2026-10-21T10:00+0200", "2026-10-21T10:00:00", "2026-10-21T10:00Z", "2026-10-21T10:00"])("admits the base webhook occurrence format %s without changing key bytes (O6)", async occurredAt => {
   const f = fixture({ ...payload(), occurredAt });
   expect(await run(f.input)).toMatchObject({ kind: "processed", receiptId: `order.shipped:external-a:parcel-a:${occurredAt}`,
     counts: { invalidTimestamps: 0 }, observation: { fact: { occurredAt: new Date(occurredAt).toISOString() } } });
@@ -193,7 +193,7 @@ it.each(["2026-10-21T10:00:00+0200", "2026-10-21T10:00+0200", "2026-10-21T10:00:
 });
 
 it("refuses invalid occurrence early with a counted visible diagnostic and no persistence/effects (O6)", async () => {
-  for (const occurredAt of [12345, {}, "", "not-time", "2026-99-99T99:99:99Z", "2026-02-30T12:00:00Z", "2026-02-30T12:00:00+0200"]) {
+  for (const occurredAt of [12345, {}, "", "not-time", "2026-99-99T99:99:99Z", "2026-02-30T12:00:00Z", "2026-02-30T12:00:00+0200", "2026-02-30T12:00Z", "2026-02-30T12:00+0200"]) {
     const f = fixture({ ...payload(), occurredAt });
     const result = await run(f.input);
     expect(result).toEqual({ kind: "refused", receiptId: null, refusal: { reason: "malformed", phase: "normalize", retryable: false },

@@ -6,10 +6,12 @@ import { MIRROR_REGISTRY, ownedImages } from "./ci-image-mirror.mjs";
 
 const execFileAsync = promisify(execFile);
 // A cold PG17 pull includes a ~358 MB layer that classic Docker cannot resume.
-// Leave half the gate's 600s hook for container startup and the migration prefix;
-// each attempt gets the remaining pull budget rather than a separate short cap.
+// Leave half the gate's 600s hook for startup/migrations. Keep a multi-minute
+// cold pull opportunity, reserving 60s across fallback sources; this execution
+// budget is not a throughput SLA. Retries share their source's deadline.
 export const IMAGE_PULL_BUDGET_MS = 300_000;
 export const IMAGE_PULL_ATTEMPTS = 3;
+export const IMAGE_PULL_FALLBACK_RESERVE_MS = 60_000;
 const MAX_RETRY_WAIT_MS = 5_000;
 const localFailure = /ENOENT|cannot connect to the docker daemon|is the docker daemon running|error during connect|docker\.sock|no space left|disk quota|read-only file system|invalid reference|invalid tag|unsupported protocol/iu;
 export const imageIo = {
@@ -64,7 +66,15 @@ export async function resolvePinnedImage(image, reference, io = imageIo) {
   }
 }
 
-export async function pullWithRetry(image, io = imageIo) {
+export async function pullWithRetry(image, io = imageIo, budgetMs = IMAGE_PULL_BUDGET_MS) {
+  if (!Number.isFinite(budgetMs) || budgetMs <= 0 || budgetMs > IMAGE_PULL_BUDGET_MS) throw new Error("invalid image pull budget");
+  const deadline = io.now() + budgetMs;
+  // Include local probes and final pin verification in the caller's budget.
+  const boundedIo = { ...io, exec: (args, timeout = 5_000) => {
+    const remaining = deadline - io.now();
+    if (remaining <= 0) throw new Error(`Image pull budget exhausted for ${image.repository}`);
+    return io.exec(args, Math.max(1, Math.ceil(Math.min(timeout, remaining))));
+  } };
   // Missing digests are permitted only for CLI-derived tags, whose exact tag is
   // obtained from the installed version-checked CLI, just as in mirror planning.
   if (!/^[a-z0-9]+(?:[._/-][a-z0-9]+)+$/u.test(image.repository)
@@ -80,7 +90,7 @@ export async function pullWithRetry(image, io = imageIo) {
   for (const source of image.sources) {
     const reference = imageReference(image, source);
     let result;
-    try { result = await inspect(reference, io); } catch (error) {
+    try { result = await inspect(reference, boundedIo); } catch (error) {
       const message = [error?.message, error?.stderr].filter(Boolean).join("\n");
       if (!localFailure.test(message) && /no such image/iu.test(message)) continue;
       throw error;
@@ -89,15 +99,17 @@ export async function pullWithRetry(image, io = imageIo) {
     // nearby tag or an unrelated RepoDigest. Pinned inputs require index equality.
     if (!image.digest || matchesPin(JSON.parse(result), reference, image.digest)) return reference;
   }
-  const deadline = io.now() + IMAGE_PULL_BUDGET_MS;
   const failures = [];
+  const reserve = Math.min(IMAGE_PULL_FALLBACK_RESERVE_MS, budgetMs / 5);
   for (const [sourceIndex, source] of image.sources.entries()) {
     const reference = imageReference(image, source);
+    const sourceDeadline = deadline - (image.sources.length === 1 ? 0
+      : reserve * (image.sources.length - sourceIndex - 1) / (image.sources.length - 1));
     for (let attempt = 0; attempt < IMAGE_PULL_ATTEMPTS; attempt += 1) {
-      const remaining = deadline - io.now();
+      const remaining = sourceDeadline - io.now();
       if (remaining <= 0) break;
       try {
-        await io.exec(["pull", reference], Math.max(1, Math.ceil(remaining)));
+        await boundedIo.exec(["pull", reference], Math.max(1, Math.ceil(remaining)));
       } catch (error) {
         const message = [error instanceof Error ? error.message : String(error), error?.stderr, error?.stdout].filter(Boolean).join("\n");
         // These are local failures even if Docker also says "connection"/"denied".
@@ -111,7 +123,7 @@ export async function pullWithRetry(image, io = imageIo) {
           const unit = retryAfter?.[2]?.toLowerCase();
           const retryMs = retryAfter ? Number(retryAfter[1]) * (unit === "ns" ? 0.000001
             : unit && ["µs", "μs", "us"].includes(unit) ? 0.001 : unit === "ms" ? 1 : 1_000) : 0;
-          const remainingWait = deadline - io.now();
+          const remainingWait = sourceDeadline - io.now();
           // A registry asking for more than its share should not starve the
           // next source. Shorter hints retain the existing five-second cap.
           if (remainingWait <= 0 || retryMs > remainingWait / (image.sources.length - sourceIndex)) break;
@@ -121,10 +133,10 @@ export async function pullWithRetry(image, io = imageIo) {
       }
       // Inspection is deliberately outside retries, including its transport errors.
       if (image.digest) {
-        await verifyPinnedImage(reference, image.digest, io);
+        await verifyPinnedImage(reference, image.digest, boundedIo);
       }
       return reference;
     }
   }
-  throw new Error(`Could not pull ${image.repository} within ${IMAGE_PULL_BUDGET_MS / 1_000}s; no source succeeded:\n${failures.join("\n")}`);
+  throw new Error(`Could not pull ${image.repository} within ${budgetMs / 1_000}s; no source succeeded:\n${failures.join("\n")}`);
 }

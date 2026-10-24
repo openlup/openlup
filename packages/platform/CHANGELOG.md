@@ -10,6 +10,11 @@ in the source repository.
 
 ## [Unreleased]
 
+- Require Zod `^4.6.6` to fix GHSA-mrhx-c7xc-m3w5; oversized constrained
+  request collections fail before element validation accumulates errors.
+- Preserve the observation adapter's accepted minute-precision occurrence timestamps and raw
+  idempotency-key bytes with the updated validator; impossible dates still fail.
+
 ## [0.23.0]
 
 - Publishable on the npm `latest` dist-tag as `0.23.0`, from tag

@@ -58,10 +58,10 @@ remain in [Test scope and diagnostics](../../CONTRIBUTING.md#test-scope-and-diag
 | `npm run lint` | File-wide suppression hygiene, ast-grep scans/rule tests, ESLint and import boundaries; local and CI `typecheck`. | Required. npm prelint builds Core, Outbox and Platform first; it is not just formatting. |
 | `npm run oss:published-tree -- --typecheck` | TypeScript projects checked against tracked preview compatibility debt; local and CI `typecheck`. | Required. Not equivalent to claiming zero compiler diagnostics. Run `npm run pretest` before invoking directly after package-source edits. |
 | `npm run oss:published-tree -- --policy` and `--inventory` | Publication classification, documentation ownership/impact/navigation and tree inventory; local and CI `self-check`. | Required. These check structure and recorded obligations, not the truth of arbitrary prose or runtime behavior. |
-| `node scripts/agent-review-session.mjs verify-command -- <heavy required command>` | Native review verification before and after the command, with unchanged HEAD tree and clean worktree; optional installed host resource broker. | Command wrapper; preserves every underlying required command and installed stamp. It runs no merge preview, proof lease or policy/inventory preflight. Independent PRs use their normal base; stacked PRs export the exact `OPENLUP_STACK_BASE`. No cache, hosted receipt, settings change or merge authority. |
+| `node scripts/agent-review-session.mjs verify-command -- <heavy required command>` | Native review verification before and after the command, with unchanged HEAD tree and clean worktree; optional installed host resource broker. | Command wrapper; preserves every underlying required command and installed stamp. Before starting, it predicts merge/carry-over against locally fetched `origin/main`; refresh that ref first. The [canonical wrapper limits](../../CONTRIBUTING.md#local-stack-bases-and-heavy-verification) include local review of unlanded stacks. It adds no proof lease or policy/inventory check. Independent PRs use their normal base; stacked PRs export the exact `OPENLUP_STACK_BASE`. No cache, hosted receipt, settings change or merge authority. |
 | `node scripts/public-ci-neutrality.mjs --base-commit <full-base-sha>` and UI neutrality smoke | Tree-wide shrink-only neutrality and portable UI boundary; local and CI `self-check`. | Required. Use the exact event/comparison base, not a guessed latest main. |
-| Shared `scripts/packages/required-package-gates.ts` in [required checks](../../CONTRIBUTING.md#required-and-raw-checks) | Discover each publishable workspace and its required scripts; cold-pack the current set, check all APIs, then run each owning required batch with the same artifacts. Core retains complete CI obligations; Outbox owns schema/SQL/replay. | Required `install-proof` follows both builds in its own checkout, independently of root tests. Local package preparation and tests remain serial because they share build outputs. Missing routes, artifacts or runtimes refuse. Future modules use the same semantic consumer proof; only SQL modules require a database. |
-| `npm --workspace @openlup/core run ci` | Package coverage, runtime imports, type smoke, API snapshots, docs, release checks and packed-consumer smoke; local and CI `install-proof`. | Required through the shared API phase plus `ci:required`, with manifest/commit inputs. Manual mode still builds/packs; supplied mode executes the same assertions without repacking. Separate from root Vitest discovery. |
+| Shared `scripts/packages/required-package-gates.ts` in [required checks](../../CONTRIBUTING.md#required-and-raw-checks) | Discover each publishable workspace and its required scripts; cold-pack the current set, check all APIs, then run each owning required batch with the same artifacts. Core retains mechanical CI obligations and uses dependency-regression admission instead of the absolute release audit; Outbox owns schema/SQL/replay. | Required `install-proof` follows both builds in its own checkout, independently of root tests. Local package preparation and tests remain serial because they share build outputs. Missing routes, artifacts or runtimes refuse. Future modules use the same semantic consumer proof; only SQL modules require a database. |
+| `npm --workspace @openlup/core run ci` | Package coverage, runtime imports, type smoke, API snapshots, docs, release checks and packed-consumer smoke; local and CI `install-proof`. | Standalone `ci` includes the full live audit. Required PR/queue proof uses the shared API phase plus `ci:required` and dependency-regression admission, with manifest/commit inputs. Manual mode still builds/packs; supplied mode executes the same assertions without repacking. Separate from root Vitest discovery. |
 | `npm run test:scoped` locally; `npm test -- --shard=N/4` in CI | Root Vitest; see [testing](../../CONTRIBUTING.md#test-scope-and-diagnostics) for discovery, selection and sharding. | Required `test` refuses failure, cancellation or skipped shard jobs. Individually skipped cases remain missing proof. Package gates and raw pgTAP are separate. |
 | `node scripts/public-ci-pgtap.mjs` | Shipped SQL tests against a disposable managed baseline; local and CI `pgtap`. Requires Docker and the pinned Supabase CLI. | Raw diagnostic. Start, replay, cleanup failures and unexplained new failures block delivery under contribution rules. |
 | `npm run build` and subscription-profile build | Install/build proof for reference profiles; local and CI `install-proof`. | Required. A build does not prove a browser journey, live provider or production deployment. |
@@ -70,7 +70,7 @@ remain in [Test scope and diagnostics](../../CONTRIBUTING.md#test-scope-and-diag
 | Native session review and `native-review` | Independent semantic review bound to candidate, scope and criteria; hosted receipt admission after mechanical success. | Required for registered agent tasks; hosted status depends on explicit activation. Review does not grant publication or release authority. |
 | SonarQube Cloud automatic analysis | Additional security/reliability findings on PR pushes and main, using configured source/test scope. Runs in Sonar Cloud, not a local scanner or Actions job. | Advisory pilot; no required status, coverage import or per-PR token/login. A hotspot needs contextual review, not automatic classification as a vulnerability. |
 | Dependabot | Scheduled dependency/Actions update proposals; security-update activation is a separate repository setting. | Triage signal, not test evidence or automatic approval. |
-| `npm run packages:check -- --cold --out <outside-checkout-directory> --release-tag openlup-<package>-v<version>` | Inventory-based prerequisite builds and selected-package pack from cold generated output; local release proof and hosted pack/preflight. Use `--release-set <version>` for the whole set. | Release prerequisite. Does not publish. Requires a clean committed candidate; a working-tree preview is separate evidence. |
+| `npm run packages:check -- --cold --out <outside-checkout-directory> --release-tag openlup-<package>-v<version>` | Inventory-based prerequisite builds and selected-package pack from cold generated output; local release proof and hosted pack/preflight. Use `--release-set <version>` for the whole set. | Release prerequisite, including a fresh full production audit before retaining artifacts. Does not publish. Requires a clean committed candidate; a working-tree preview is separate evidence. |
 | `gh release verify <tag> --repo openlup/openlup` | GitHub attestation of the immutable release/tag; maintainer preparation and hosted release/package workflows. | Release evidence. It does not establish npm publication or an adopter installation. |
 
 Core's `ci` includes license allowlisting, production-dependency SBOM and audit,
@@ -78,7 +78,25 @@ pack budgets, declaration snapshots and publish-control checks. See its
 [command manifest](../../packages/core/package.json),
 [release gates](../../packages/core/release-gates.json) and
 [contribution guide](../../packages/core/CONTRIBUTING.md).
-Root dependency updates and core's production audit are different scopes.
+Admission compares dependency changes with the exact base; a new advisory for
+an unchanged inherited dependency does not freeze unrelated merges. Publication
+packs run the full selected dependency audit again, including standalone locks,
+and a publish-only retry cannot reuse an earlier attempt's audit. See
+[dependency security and required checks](../../CONTRIBUTING.md#required-and-raw-checks).
+Root dependency updates and core's standalone production audit remain distinct scopes.
+The reference root, Core and Platform require Zod `^4.6.6` to reject oversized
+constrained collections before parsing each element (GHSA-mrhx-c7xc-m3w5).
+Keep both the workspace lock and Core's standalone lock at a fixed version.
+The root's scoped `@vercel/cli-config` override removes its older production
+Zod 4 copy; upstream still pins that copy, so changing only the direct dependency
+would leave the advisory reachable. This override does not change development
+tools that require Zod 3. Existing API and consumer gates remain required; the full production audit
+is required for publication as described above. No audit allowance or test
+retry is added.
+Core's build explicitly loads its existing development-only Node declarations
+for the standard `URL` type referenced by Zod's declarations. This adds no
+runtime import or dependency; declaration checking remains enabled, and the
+installed NodeNext and browser/Bundler consumer proofs still apply.
 Playwright specifications and explicit database/browser reference evaluation do
 not become mandatory per-PR execution just because their files exist; follow
 [execution ownership](../../CONTRIBUTING.md#development-preview-checks) and the
@@ -196,8 +214,13 @@ retain finding cards and the repair counter. Three repair cycles are automatic;
 A rebase or changed intent uses `prepare --new`, which references the old session.
 Optional review advice does not add acceptance obligations. A `native-review` timeout is a missing or late
 PR comment receipt. A merge group that cannot carry over is rejected with
-"merge main and re-review"; it has no integration-review receipt route. For
-recovery, see the receipt-timeout rule in
+"merge main and re-review". The existing session can prove prior coverage for
+focused integration inspection by two fresh reviewers; inherited expiry and all
+mechanical checks remain binding. It has no separate integration receipt route.
+Refresh local main before prepare/final verify so their preflight rejects known
+conflicts or failed carry-over early. A DIRTY PR stops enqueue attempts until its
+head or mergeability changes; see [review after integration](../../CONTRIBUTING.md#native-review-and-accountability).
+For recovery, see the receipt-timeout rule in
 [Merge queue](../../CONTRIBUTING.md#merge-queue). See [review policy](../../.github/AI_CONTRIBUTION_POLICY.md#admission-native-review-and-dco)
 for the complete protocol.
 

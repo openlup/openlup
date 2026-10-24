@@ -14,11 +14,14 @@
 # - no release or publication of any package is in flight, so this dispatch never waits in a
 #   concurrency group where it could cancel a queued publication;
 # - the target is on main and the six required contexts passed there;
+# - its pack checker, audit helper and publisher workflow match fetched main, so an old
+#   target cannot omit the fresh audit by running an earlier publication implementation;
 # - packages/<package>/package.json carries the requested version and passes the manifest policy;
 #   for the set, every publishable package carries the set version, and a patch set leaves each
 #   API snapshot as the previous set left it;
 # - the tag is absent, and npm never held that version and holds none above it;
 # - `npm run packages:check -- --cold --out` packs that one package, or every publishable package;
+# - the selected locked dependency graph passes the full production audit;
 # - gitleaks finds nothing in the unpacked tarball;
 # - each package's tag, release and npm state decides what happens to it. One package is released
 #   only from nothing. The set skips a package npm already holds with the same tarball, leaves a
