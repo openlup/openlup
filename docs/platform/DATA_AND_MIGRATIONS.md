@@ -375,7 +375,7 @@ that default. X restores a waiting obligation's released reservation to a
 committed ATP-counted hold after verified late payment, with replay leaving all
 tables and ATP unchanged. Y excludes paid cycles and settled intents before
 LIMIT, preserving due-time/UUID order so stale waiting rows cannot starve due
-unpaid work. In folded N2, a raw replay of the command preview returns the stored receipt.
+unpaid work. N3 excludes waiting/stock_secured cases before LIMIT, retaining the base reader's eligibility, return shape and due-time/UUID ordering so stock waits cannot starve normal renewals. In folded N2, a raw replay of the command preview returns the stored receipt.
 It preserves the apply definition, fresh preview output and all public-table
 counts, columns and xmin across replay. The gate compares all 43 fresh scenarios
 against the pre-fold preview body and folded N2. These pins do not install behavior or add managed parity.

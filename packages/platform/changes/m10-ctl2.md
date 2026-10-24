@@ -10,3 +10,5 @@ replay with no counts/columns/xmin delta.
 
 No package SQL asset, export, runtime activation or external CI dependency is
 introduced. The development-preview boundary remains.
+
+- Fix uninstalled N3 normal_due pagination to exclude waiting/stock_secured cases before LIMIT, preventing normal-renewal starvation.

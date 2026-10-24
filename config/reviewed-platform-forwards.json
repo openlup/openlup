@@ -474,7 +474,7 @@
     },
     {
       "path": "db/platform/migrations/20261024180000_subscription_stock_wait.sql",
-      "sha256": "d5dfc766f15cdd9ec8eb5c959b023f162a4a00c3a93d450d98c0473a4b17cd10",
+      "sha256": "0aed8b4a15076296e8c8281051a5d6f38649dabced37c967c7bb8cfc1d2170fd",
       "functions": [
         {
           "signature": "public.subscription_stock_wait_projection(public.subscription_stock_wait_cases)",
@@ -519,7 +519,7 @@
         {
           "signature": "public.subscription_stock_wait_normal_due(integer,timestamptz)",
           "beforeSha256": null,
-          "afterSha256": "7a0de528bbc280f896ef25e8d9ba66220c78b5280dcb8af85b9ca5f30c916ca7"
+          "afterSha256": "de6b4cce14f2ca12e6fba0975d5bb50dc2cba6d2482f78accdf2e3ede4245c39"
         },
         {
           "signature": "public.subscription_stock_wait_mark_resumed(uuid)",
@@ -575,7 +575,7 @@
           "sha256": "1f3157b88a48b01564bc449697cc5a139919971e3f9bcf31cc44489a9bdd29c6"
         },
         {
-          "sha256": "7a0de528bbc280f896ef25e8d9ba66220c78b5280dcb8af85b9ca5f30c916ca7"
+          "sha256": "de6b4cce14f2ca12e6fba0975d5bb50dc2cba6d2482f78accdf2e3ede4245c39"
         },
         {
           "sha256": "2e7fb0b314802e115187b3714ac71f60b821fcd220859e9105f44634627f3494"
