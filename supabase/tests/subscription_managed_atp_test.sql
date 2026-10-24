@@ -16,7 +16,8 @@ VALUES((SELECT location FROM managed_stock_fixture),'Synthetic provider stock','
 ON CONFLICT(code) DO NOTHING;
 CREATE TEMP TABLE atp_cases(label text, qty integer, for_sale integer, days integer,
  client_id uuid DEFAULT gen_random_uuid(), subscription_id uuid DEFAULT gen_random_uuid(),
- product_id uuid DEFAULT gen_random_uuid(), sku_id uuid DEFAULT gen_random_uuid(), order_id uuid DEFAULT gen_random_uuid());
+ product_id uuid DEFAULT gen_random_uuid(), sku_id uuid DEFAULT gen_random_uuid(), order_id uuid DEFAULT gen_random_uuid(),
+ cycle_id uuid DEFAULT gen_random_uuid(), renewal_order_id uuid DEFAULT gen_random_uuid());
 INSERT INTO atp_cases(label,qty,for_sale,days) VALUES ('inside-horizon',3,3,7),('outside-horizon',3,3,15);
 INSERT INTO public.clients(id,email) SELECT client_id,label||'@example.invalid' FROM atp_cases;
 INSERT INTO public.catalog_products(id,slug,name,status) SELECT product_id,label,'Synthetic ATP','active' FROM atp_cases;
@@ -40,6 +41,26 @@ SELECT throws_ok(format($q$SELECT public.inventory_reserve_order(%L,%L,NULL,NULL
  label||': forged hold kind/metadata cannot spend subscription demand') FROM atp_cases WHERE days<=14;
 SELECT is((SELECT count(*)::integer FROM public.inventory_reservations r WHERE r.order_id=f.order_id),0,
  label||': refused allocation writes no hold') FROM atp_cases f WHERE days<=14;
+-- Exact physical cover: the real renewal can spend the same three units that
+-- the one-time order above could not spend, through M6's order/cycle binding.
+INSERT INTO public.subscription_cycles(id,subscription_id,cycle_number,scheduled_at,status,engine_idempotency_key)
+SELECT cycle_id,subscription_id,2,now()+days*interval '1 day','planned','atp-renewal-'||label
+FROM atp_cases WHERE days<=14;
+INSERT INTO public.commerce_orders(id,client_id,status,mode,subscription_id,subscription_cycle_id,currency,total_cents,subtotal_cents)
+SELECT renewal_order_id,client_id,'draft','subscription_cycle',subscription_id,cycle_id,'XTS',100,100
+FROM atp_cases WHERE days<=14;
+UPDATE public.subscription_cycles c SET order_id=f.renewal_order_id FROM atp_cases f WHERE c.id=f.cycle_id;
+SELECT is((SELECT for_sale_quantity FROM public.inventory_available_to_promise(sku_id,now(),false)),qty::bigint,
+ label||': renewal physical stock exactly covers protected demand') FROM atp_cases WHERE days<=14;
+SELECT is((SELECT soft_subscription_demand_quantity FROM public.inventory_available_to_promise(sku_id,now(),false)),qty::bigint,
+ label||': full renewal quantity is protected soft demand before allocation') FROM atp_cases WHERE days<=14;
+SELECT lives_ok(format($q$SELECT public.inventory_reserve_order(%L,%L,NULL,%L,%L,%L,
+ 'subscription_retry_window','created',now()+interval '1 hour','{}',(SELECT provider FROM managed_stock_fixture))$q$,
+ 'atp-renewal-'||label,renewal_order_id,cycle_id,sku_id,qty),
+ label||': exact-cover renewal reserves its full protected quantity') FROM atp_cases WHERE days<=14;
+SELECT is((SELECT sum(r.quantity) FROM public.inventory_reservations r
+ WHERE r.order_id=f.renewal_order_id AND r.subscription_cycle_id=f.cycle_id AND r.sku_id=f.sku_id AND r.status='reserved'),
+ qty::bigint,label||': linked renewal holds the full quantity') FROM atp_cases f WHERE days<=14;
 SELECT lives_ok(format($q$SELECT public.inventory_reserve_order(%L,%L,NULL,NULL,%L,1,'checkout_payment_window','created',
  now()+interval '1 hour','{}',(SELECT provider FROM managed_stock_fixture))$q$,'atp-one-time-'||label,order_id,sku_id),
  label||': stock outside the protected horizon remains available') FROM atp_cases WHERE days>14;

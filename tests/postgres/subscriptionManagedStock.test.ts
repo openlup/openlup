@@ -61,9 +61,7 @@ afterAll(async () => { db?.release(); await closePostgres(container, pool); }, p
 it.each(probes)("managed %s behavior: %s", async (_version, file) => {
   try {
     const result = await db.query(readFileSync(`supabase/tests/${file}`, "utf8"));
-    const results: QueryResult[] = Array.isArray(result) ? result : [result];
-    const tap = results.flatMap(part => part.rows.flatMap(row => Object.values(row)))
-      .filter((value): value is string => typeof value === "string" && /^(?:ok |not ok |1\.\.|#)/u.test(value));
+    const tap = tapLines(result);
     expect(tap.length, `${file}: no pgTAP assertions`).toBeGreaterThan(1);
     expect(tap.filter(line => /^not ok |^# (?:Looks like|Failed)/u.test(line)), tap.join("\n")).toEqual([]);
     const assertions = tap.filter(line => /^ok /u.test(line));
@@ -72,4 +70,34 @@ it.each(probes)("managed %s behavior: %s", async (_version, file) => {
   } finally {
     await db.query("ROLLBACK; RESET ROLE; SET ROLE postgres; SET search_path=public,extensions");
   }
+}, 120_000);
+
+function tapLines(result: QueryResult | QueryResult[]): string[] {
+  const results = Array.isArray(result) ? result : [result];
+  return results.flatMap(part => part.rows.flatMap(row => Object.values(row)))
+    .filter((value): value is string => typeof value === "string" && /^(?:ok |not ok |1\.\.|#)/u.test(value));
+}
+
+it("exact-cover managed renewal witness rejects unconditional soft-demand subtraction", async () => {
+  const signature = "public.inventory_available_to_promise(uuid,timestamptz,boolean)";
+  const original = (await db.query<{ body: string }>("SELECT pg_get_functiondef($1::regprocedure) AS body", [signature])).rows[0].body;
+  const exemption = "CASE WHEN p_for_subscription_renewal IS TRUE THEN 0 ELSE soft_demand END";
+  expect(original.split(exemption)).toHaveLength(2);
+  await db.query("BEGIN");
+  try {
+    await db.query(original.replace(exemption, "soft_demand"));
+    // Run the very same positive allocator witness, with the transaction owned
+    // here so both its fixture rows and the altered function roll back together.
+    const probe = readFileSync("supabase/tests/subscription_managed_atp_test.sql", "utf8")
+      .replace(/^BEGIN;$/mu, "").replace(/^ROLLBACK;$/mu, "");
+    const tap = tapLines(await db.query(probe));
+    const failure = tap.find(line => /^not ok /u.test(line)
+      && line.includes("inside-horizon: exact-cover renewal reserves its full protected quantity"));
+    expect(failure, tap.join("\n")).toBeDefined();
+    expect(tap.join("\n")).toContain("23514: inventory_external_provider_insufficient_available_stock");
+    process.stdout.write(`Renewal-exemption mutant rejected: ${failure}\n23514: inventory_external_provider_insufficient_available_stock\n`);
+  } finally {
+    await db.query("ROLLBACK; RESET ROLE; SET ROLE postgres; SET search_path=public,extensions");
+  }
+  expect((await db.query<{ body: string }>("SELECT pg_get_functiondef($1::regprocedure) AS body", [signature])).rows[0].body).toBe(original);
 }, 120_000);
