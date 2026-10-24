@@ -2,8 +2,8 @@ export { renewalIdentity } from "./renewalIdentity.js";
 export const NATIVE_SUBSCRIPTION_CAPABILITIES = Object.freeze({
   graph: "native",
   multiCyclePrepaid: Object.freeze({ supported: false, refusalCode: "multi_cycle_prepaid_unsupported" }),
-  genericBundleCommands: Object.freeze({ supported: false, refusalCode: "native_generic_bundle_commands_unsupported" }),
-  commandBoundReceipts: Object.freeze({ supported: false, refusalCode: "native_command_bound_receipts_unsupported" }),
+  genericBundleCommands: Object.freeze({ supported: true }),
+  commandBoundReceipts: Object.freeze({ supported: true }),
   preparedAttemptStore: Object.freeze({ supported: false, refusalCode: "native_prepared_attempt_store_unsupported" }),
   retryRecovery: "selected", stockRecovery: "unavailable",
   deliveryAdmission: "required", executorCount: 1, defaultEnabled: false,
@@ -22,3 +22,6 @@ export { createPostgresRetryStore } from "./postgresRetryStore.js";
 export type { NativeRetryFailure, NativeRetryRequest, NativeRetryPositive, NativeRetryPreparation, NativeRetryRow } from "./postgresRetryStore.js";
 export { createPostgresRetryLifecycleBinding } from "./postgresRetryStore.js";
 export type { NativeRetryLifecycleBinding } from "./postgresRetryStore.js";
+
+export { createPostgresSubscriptionCommandStore, createPostgresSubscriptionCommands } from "./postgresCommandStore.js";
+export type { NativeSubscriptionCommand, NativeSubscriptionCommandBinding } from "./postgresCommandStore.js";

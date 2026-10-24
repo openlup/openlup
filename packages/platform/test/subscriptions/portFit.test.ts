@@ -49,10 +49,10 @@ it("H7: ambiguous activation correlation never fabricates a logical number", () 
   const ambiguous: RenewalCycleCorrelation = { status: "ambiguous", logicalCycleNumber: null, nativeRenewalCounter: 8, activationCycleId: null, reason: "legacy_correlation_missing" };
   expect(ambiguous.logicalCycleNumber).toBeNull(); expect(cycle.logicalCycleNumber).not.toBe(cycle.nativeRenewalCounter);
 });
-it("H8: actor and actual command fingerprint bind receipts; native parity is refused", () => {
+it("H8: actor and actual command fingerprint bind receipts; native parity is selected", () => {
   const command: SubscriptionCommand = { actor: { kind: "customer", actorId: "actor", clientId: "client" }, subscriptionId: "s", idempotencyKey: "command-key", now: schedule.scheduledAt, action: "slide", newNextCycleAt: "2026-11-01T12:00:00Z", confirmedChargeTiming: true };
   const receipt: SubscriptionCommandReceipt = { actorId: command.actor.actorId, idempotencyKey: command.idempotencyKey, commandFingerprint: "actual-command-hash", outcome: "applied", subscriptionId: "s", originalState: "active", nextCycleAt: command.newNextCycleAt, revision: "revision", eventId: "event" };
-  expect(receipt.actorId).toBe("actor"); expect(NATIVE_SUBSCRIPTION_CAPABILITIES.commandBoundReceipts.supported).toBe(false);
+  expect(receipt.actorId).toBe("actor"); expect(NATIVE_SUBSCRIPTION_CAPABILITIES.commandBoundReceipts.supported).toBe(true);
 });
 it("H9: stock case retains frozen binding, deficits, timestamps and immutable notice keys", () => {
   const wait: StockWaitCase = { ...schedule, caseId: "case", clientId: "client", state: "waiting", frozenSnapshot: snapshot, frozenFingerprint: snapshot.frozenFingerprint,
@@ -67,10 +67,10 @@ it("H10: stock recovery has a typed refusal for external ownership", async () =>
 it("H11: selected native composition requires admission with one default-off executor", () => {
   expect(NATIVE_SUBSCRIPTION_CAPABILITIES).toMatchObject({ deliveryAdmission: "required", executorCount: 1, defaultEnabled: false });
 });
-it("H12: lifecycle facts bind M04 descriptors and prepaid/native commands refuse explicitly", () => {
+it("H12: lifecycle facts bind M04 descriptors and prepaid refuses explicitly", () => {
   const descriptor: SubscriptionLifecycleMessageDescriptor = { fact: { factId: "fact", idempotencyKey: "fact-key", subscriptionId: "s", clientId: "client", cycleId: null, caseId: "case", orderId: null,
     occurredAt: schedule.scheduledAt, firstRecordedAt: schedule.scheduledAt, kind: "payment_expired", retryAttempt: 4, nextRetryAt: null, failureClass: "temporary", amountMinor: null, currency: null }, messageKey: "M04:fact", templateSlug: "host-copy", recipientRef: "recipient", locale: "en", recoveryUrlPath: "/recovery" };
   expect(descriptor.fact.kind).toBe("payment_expired");
   expect(NATIVE_SUBSCRIPTION_CAPABILITIES.multiCyclePrepaid.refusalCode).toBe("multi_cycle_prepaid_unsupported");
-  expect(NATIVE_SUBSCRIPTION_CAPABILITIES.genericBundleCommands.refusalCode).toBe("native_generic_bundle_commands_unsupported");
+  expect(NATIVE_SUBSCRIPTION_CAPABILITIES.genericBundleCommands.supported).toBe(true);
 });

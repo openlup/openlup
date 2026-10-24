@@ -36,8 +36,9 @@ candidate scan. All-line reacquisition shares the wait transition transaction;
 stock-only reset refuses prepared, acknowledged, ambiguous or money-owned work.
 Future-term commands preserve the frozen current obligation and require actor,
 key and actual-command receipts committed with their events and term writes.
-Native generic bundle commands and command-bound receipts arrive with a later native command lifecycle;
-until then, the descriptor refuses them. Multi-cycle
+N2 is designed to bind generic bundle commands and command-bound receipts in
+one native transaction after N1, with a separately persisted preview quote.
+Future prices lock until edit without proration; existing claims remain frozen. Multi-cycle
 prepaid is unsupported with a named refusal. Existing native lifecycle commands remain.
 M04 owns delivery of host-described lifecycle facts; providers, account
 aggregation, private pricing/copy and scheduling hosts remain outside the module.

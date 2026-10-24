@@ -1,6 +1,13 @@
 import { expect,it } from 'vitest';
 import { readAndApplyProviderOutcome } from '../../src/subscriptions/paymentOutcomes.js';
 import { effectsFixture } from './renewalEffectsFixture.js';
+it('an out-of-contract status with complete money and matching evidence never settles',async()=>{
+ const f=effectsFixture();Object.assign(f.evidence,{status:'unrecognized_provider_status'});
+ expect(f.evidence).toMatchObject({amountMinor:100,currency:'XXX',occurredAt:f.at});
+ expect(await readAndApplyProviderOutcome(f.deps,f.op,{cycleId:'cycle',orderId:'order',settlementIntentId:'intent'},f.rail,'ack',f.at)).toMatchObject({status:'awaiting_provider'});
+ expect(f.deps.settlement.recordTerminalOutcome).not.toHaveBeenCalled();expect(f.deps.failureHandoff.handoffFailure).not.toHaveBeenCalled();
+ expect(f.rail.execute).not.toHaveBeenCalled();
+});
 it.each(['pending','unknown'] as const)('%s M07 truth remains awaiting provider',async status=>{
  const f=effectsFixture();f.evidence.status=status;
  expect(await readAndApplyProviderOutcome(f.deps,f.op,{cycleId:'cycle',orderId:'order',settlementIntentId:'intent'},f.rail,'ack',f.at)).toMatchObject({status:'awaiting_provider'});

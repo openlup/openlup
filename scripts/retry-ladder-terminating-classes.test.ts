@@ -48,6 +48,28 @@ function parseArrayLiteral(literal: string): string[] {
 const sqlSide = declaringMigration();
 const kernelSide = [...(DEFAULT_CYCLE_RETRY_CADENCE.terminatingFailureClasses ?? [])];
 
+const nativeRetrySql = readFileSync("db/platform/migrations/20261022160000_subscription_retry_lifecycle.sql", "utf8");
+function assertNativeRetryLadder(sql: string): void {
+  const ladder = sql.match(/next_time\s*:=\s*CASE\s+WHEN\s+p_input->>'failureClass'='([^']+)'\s+THEN\s+NULL([\s\S]*?)ELSE\s+NULL\s+END;/);
+  expect(ladder, "N1 failure-class and retry ladder declaration").not.toBeNull();
+  expect([ladder![1]]).toEqual(kernelSide);
+  const rungs = [...ladder![2].matchAll(/WHEN\s+o\.retry_attempt=(\d+)\s+THEN\s+at_time\+interval\s+'(\d+) hours'/g)];
+  expect(rungs.map((rung) => Number(rung[1]))).toEqual(DEFAULT_CYCLE_RETRY_CADENCE.backoffHours.map((_, index) => index));
+  expect(rungs.map((rung) => Number(rung[2]))).toEqual(DEFAULT_CYCLE_RETRY_CADENCE.backoffHours);
+}
+
+describe("landed N1 agrees with the kernel retry ladder", () => {
+  it("reads the terminating class and every backoff literal from N1", () => {
+    assertNativeRetryLadder(nativeRetrySql);
+  });
+  it.each(["hard_do_not_retry", "24 hours", "72 hours", "168 hours"])("rejects a planted disagreement in %s", (literal) => {
+    assertNativeRetryLadder(nativeRetrySql);
+    const planted = nativeRetrySql.replace(literal, literal === "hard_do_not_retry" ? "soft_retryable" : "25 hours");
+    expect(planted).not.toBe(nativeRetrySql);
+    expect(() => assertNativeRetryLadder(planted)).toThrow();
+  });
+});
+
 // npm keeps the same source tree in both a workspace symlink and an install.
 const CORE_REAL = realpathSync("node_modules/@openlup/core").replaceAll("\\", "/");
 const CORE = relative(".", CORE_REAL).replaceAll("\\", "/");

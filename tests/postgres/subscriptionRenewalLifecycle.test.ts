@@ -6,11 +6,15 @@ import { createPostgresMigrationRunner } from '../../server/adapters/postgres/mi
 import { assertPortableCreationStatements } from '../../scripts/reviewed-platform-forward.js';
 import { closePostgres, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, dockerAvailable,runPostgresContainer,waitForPostgresTcpReady,type PostgresContainer } from '../helpers/postgresContainer.js';
 import { registerAdapterCases } from './subscriptionRenewalAdapterCases.js';
+import { registerCommandCases } from './subscriptionCommandLifecycleCases.js';
 import { registerRetryCases } from './subscriptionRetryLifecycleCases.js';
 import { registerAlignmentRollbackCases } from './subscriptionAlignmentRollbackCases.js';
 const manifest=JSON.parse(readFileSync('config/platform-migration-manifest.json','utf8'));
 const units:{file:string;sha256:string}[]=[manifest.baseline,...manifest.forward];
-const index=units.findIndex(u=>u.file.endsWith('20261022160000_subscription_retry_lifecycle.sql'));
+const probeFiles=['db/platform/migrations/20261022160000_subscription_retry_lifecycle.sql',
+ 'db/platform/migrations/20261024170000_subscription_command_lifecycle.sql'];
+const probeIndexes=probeFiles.map(file=>units.findIndex(u=>u.file===file));
+const index=probeIndexes[0];
 const sha=(s:string|Buffer)=>createHash('sha256').update(s).digest('hex');
 async function snapshot(db:Pool|PoolClient) {
  // PostgreSQL records SQL-file byte offsets in default-expression ASTs.
@@ -26,8 +30,8 @@ async function snapshot(db:Pool|PoolClient) {
  return {procs,relations,types,triggers};
 }
 const names=[['subscription_retry_read','subscription_retry_candidates','subscription_retry_apply_failure','subscription_retry_open_case',
- 'subscription_retry_authorize_recovery','subscription_retry_schedule_recovery','subscription_retry_prepare','subscription_retry_record_recovery','subscription_retry_note_row_outcome']];
-const tables=[['subscription_retry_obligations','subscription_retry_receipts','subscription_retry_recovery_authorizations']];
+ 'subscription_retry_authorize_recovery','subscription_retry_schedule_recovery','subscription_retry_prepare','subscription_retry_record_recovery','subscription_retry_note_row_outcome'],['subscription_command_preview','subscription_command_apply']];
+const tables=[['subscription_retry_obligations','subscription_retry_receipts','subscription_retry_recovery_authorizations'],['subscription_command_receipts']];
 let container:PostgresContainer|undefined,pool:Pool;
 const h={get pool(){return pool;}};
 const checked:string[]=[];
@@ -40,22 +44,22 @@ beforeAll(async()=>{
  pool=new Pool({connectionString:container.connectionString});
  const db=await pool.connect(),query=db.query.bind(db);
  // Observe the runner's actual SQL boundary. A savepoint exercises rollback of
- // the M10 P2 forward; later units run without probing. The full baseline/prefix
+ // each M10 forward; interleaved and later units run without probing. The full baseline/prefix
  // is installed only once. Restore
  // the connection before any behavior/concurrency fixture uses the pool.
  db.query=(async(sql:string,values?:unknown[])=>{
-  const n=units.slice(index,index+1).findIndex(u=>readFileSync(u.file,'utf8')===sql);
+  const n=probeIndexes.findIndex(i=>i>=0 && readFileSync(units[i].file,'utf8')===sql);
   if(n<0) return query(sql,values);
-  const u=units[index+n],bytes=readFileSync(u.file);
+  const unitIndex=probeIndexes[n],u=units[unitIndex],bytes=readFileSync(u.file);
   if(n===0 && prefixLedger.length===0) {
    prefixLedger=(await query('SELECT * FROM public.platform_schema_migrations ORDER BY position')).rows;
    // Stop before new DDL, leaving an installed exact prefix. The second
-   // invocation must validate that ledger and upgrade only N1.
+   // invocation must validate that ledger and upgrade N1 and N2.
    throw Error('m10_exact_prefix_boundary');
   }
   expect(sha(bytes)).toBe(u.sha256);
   expect(readFileSync(`packages/platform/sql/${u.file.split('/').at(-1)}`)).toEqual(bytes);
-  assertPortableCreationStatements(bytes,units.slice(0,index+n).map(p=>readFileSync(p.file)));
+  assertPortableCreationStatements(bytes,units.slice(0,unitIndex).map(p=>readFileSync(p.file)));
   const before=await snapshot(db);
   await query('SAVEPOINT creation_probe');
   await query(sql);
@@ -89,7 +93,8 @@ beforeAll(async()=>{
  db.release();
  try {
   expect(index).toBeGreaterThan(0);
-  expect(units[index].file).toMatch(/20261022160000_subscription_retry_lifecycle\.sql$/);
+  expect(probeIndexes[1]).toBeGreaterThan(index);
+  expect(probeIndexes.map(i=>units[i].file)).toEqual(probeFiles);
   await expect(runner().apply()).rejects.toThrow('m10_exact_prefix_boundary');
   expect(prefixLedger).toHaveLength(index);
   expect((await runner().apply()).applied).toEqual(units.slice(index).map(u=>u.file));
@@ -97,11 +102,13 @@ beforeAll(async()=>{
  finally{db.query=query;}
 },postgresSetupTimeoutMs);
 afterAll(async()=>{await closePostgres(container, pool);}, postgresTeardownTimeoutMs);
-it('upgrades the exact prefix, preserves old catalogs, closes N1 ACLs, rolls back and replays the runner',async()=>{
- expect(checked).toEqual(units.slice(index,index+1).map(u=>u.file));
+it('upgrades the exact prefix, preserves old catalogs, closes N1/N2 ACLs, rolls back and replays the runner',async()=>{
+ expect(checked).toEqual(probeFiles);
  expect((await pool.query('SELECT * FROM public.platform_schema_migrations ORDER BY position')).rows.slice(0,index)).toEqual(prefixLedger);
  expect(await runner().apply()).toEqual({applied:[]});expect((await runner().status()).pending).toEqual([]);
 });
 describe('N1 retry lifecycle',()=>registerRetryCases(h));
 describe('P1 rollback branches',()=>registerAlignmentRollbackCases(h));
 describe('selected P2 adapters',()=>registerAdapterCases(h));
+
+describe('N2 command lifecycle',()=>registerCommandCases(h));

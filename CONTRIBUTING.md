@@ -157,8 +157,10 @@ its users or operators can observe.
 The native subscription renewal selection is
 `npm test -- tests/postgres/subscriptionRenewalLifecycle.test.ts --maxWorkers=1`.
 It uses one disposable PostgreSQL container for N1 exact-prefix restart,
-rollback/replay and complete old-catalog comparison, plus retry and captured
-alignment behavior. Initial handoff is tested separately from subsequent retry
+rollback/replay and old-catalog comparison of routines, relations and attributes,
+types, and non-internal triggers, plus retry and captured alignment behavior.
+The CTL catalog gate in `tests/postgres/reviewedBatchForwards.test.ts` owns
+complete catalog preservation. Initial handoff is tested separately from subsequent retry
 failure: the case precedes terminal recording, bookkeeping rolls back with that
 terminal transaction, and an immutable receipt ends initial terminal replay
 before settlement, rebinding or case propagation. The real-PG witness compares
@@ -178,6 +180,8 @@ The retry-class threading guard in `scripts/retry-ladder-terminating-classes.tes
 resolves every production retry call across the core, package and host sources.
 Its mutation witness removes the refusal class from each discovered call in
 memory and requires the same guard to reject each omission.
+It also reads the landed N1 terminating class and all three retry delays and
+rejects planted disagreements with the kernel without changing migration bytes.
 
 The native stock-evidence forward uses
 `npm test -- tests/postgres/fulfillmentStockEvidenceReplay.test.ts` for six real
@@ -279,6 +283,17 @@ Subscription package contract changes use package-local contract, identity and
 port-fit witnesses alongside the generated package boundary census. The cold
 consumer classifies both exact subscription entries as having no optional peer
 requirement and exercises their installed declarations and runtime refusals.
+Native command cases run in the shared N1/N2 lifecycle harness: they bind the
+supported descriptor to real future-term/replay behavior and prove prepaid
+refusal and full transaction rollback without replacing SQL with doubles. Plan-length store rows check supplied core quantity and variant changes in quotes,
+persisted lines and future renewal terms, with unchanged-line/day no-ops and receipt replay.
+Typed future-term rows cover the same quantity and variant changes through
+`createPostgresSubscriptionCommands` and its package-template translation. Raw PostgreSQL cast/overflow messages are
+normalized to a closed refusal code, including when read from stored receipts.
+Adapter replay returns before mutable host future-term validation; changing the
+host address policy after commit cannot replace the original receipt.
+Preview and apply replay compare counts, all columns and `xmin` across every
+public table, with three replays before and after a later different command.
 `tests/postgres/subscriptionContinuityBaseline.test.ts` uses the full current
 native manifest and disposable Docker harness for arrival maximum, exhaustion
 and captured-case rollback behavior; it must not replace a failed invariant

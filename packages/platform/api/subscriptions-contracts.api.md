@@ -39,6 +39,7 @@ export type SubscriptionCommand = SubscriptionCommandContext & ({
     planDays: number;
     cadenceDays: number;
     expectedTemplateVersion: number;
+    /** Empty string means no quote (semantic no-op). */
     acceptedQuoteHash: string;
     confirmedChargeTiming: boolean;
     coreLines: readonly SubscriptionBundleLine[];
@@ -59,6 +60,12 @@ export interface SubscriptionCommandReceipt {
     nextCycleAt: string | null;
     revision: string;
     eventId: string | null;
+}
+export interface SubscriptionCommandRefusal {
+    outcome: "refused";
+    /** Stable machine code; never provider, PostgreSQL diagnostic or customer text.
+     * Unrecognized native or host diagnostics map to subscription_command_invalid_input. */
+    reason: "multi_cycle_prepaid_unsupported" | "subscription_command_addon_not_found" | "subscription_command_bundle_total_mismatch" | "subscription_command_charge_timing_not_confirmed" | "subscription_command_idempotency_conflict" | "subscription_command_invalid_composition_constraint" | "subscription_command_invalid_input" | "subscription_command_not_active" | "subscription_command_operation_busy" | "subscription_command_pause_forbidden" | "subscription_command_payment_blocked" | "subscription_command_preview_unsupported" | "subscription_command_renewal_terms_missing" | "subscription_command_unsupported_action" | "subscription_edit_catalog_unavailable" | "subscription_edit_invalid_lines" | "subscription_edit_invalid_request" | "subscription_edit_quote_expired" | "subscription_edit_quote_required" | "subscription_edit_stale_template" | "subscription_edit_window_closed" | "subscription_lifecycle_invalid_transition" | "subscription_lifecycle_invalid_skip" | "subscription_lifecycle_invalid_slide" | "subscription_lifecycle_payment_blocked";
 }
 export type SubscriptionUnsupportedCode = "multi_cycle_prepaid_unsupported" | "native_generic_bundle_commands_unsupported" | "native_command_bound_receipts_unsupported" | "native_prepared_attempt_store_unsupported";
 export interface SubscriptionUnsupported {
@@ -99,7 +106,7 @@ export interface SubscriptionCapabilities {
 export interface SubscriptionCommandPort {
     readonly capabilities: SubscriptionCapabilities;
     /** Future term writes, actor/command receipt and events must commit atomically. */
-    apply(command: SubscriptionCommand): Promise<SubscriptionCommandReceipt | SubscriptionUnsupported>;
+    apply(command: SubscriptionCommand): Promise<SubscriptionCommandReceipt | SubscriptionCommandRefusal | SubscriptionUnsupported>;
 }
 export interface SubscriptionActivationPort {
     activate(input: {
@@ -268,7 +275,7 @@ export interface RenewalFailureHandoffPort {
 export type { RenewalSchedule, RenewalIdentity, RenewalAdmission, RenewalLine, RenewalCycleCorrelation, RenewalTemplateSnapshot, RenewalPricingSnapshot, RenewalOrderSnapshot, RenewalFrozenSnapshot, RenewalDue, RenewalOperationState, RenewalReadback, RenewalPaymentEvidence, RenewalTransactionUnits, RenewalReservationResult, RenewalPreparedSettlement, RenewalStorePort, RenewalSettlementPort, RenewalExecutionRequest, RenewalPaymentRail, RenewalResult } from "./renewal.js";
 export type { DunningCaseOpenInput, DunningCaseOpened, DunningCaseAdvanced, DunningRefusalCode, DunningCaseLifecyclePort, RenewalRetryState, RenewalRetryObligation, RenewalRecoveryAuthorization, RenewalFailureHandoffPort } from "./dunning.js";
 export type { StockWaitRecoveryBinding, StockWaitDeficit, StockWaitCase, StockWaitStorePort } from "./stockWait.js";
-export type { SubscriptionCommandContext, SubscriptionCommand, SubscriptionBundleLine, SubscriptionCommandReceipt, SubscriptionUnsupportedCode, SubscriptionUnsupported, SubscriptionCapabilities, SubscriptionCommandPort, SubscriptionActivationPort } from "./commands.js";
+export type { SubscriptionCommandContext, SubscriptionCommand, SubscriptionBundleLine, SubscriptionCommandReceipt, SubscriptionCommandRefusal, SubscriptionUnsupportedCode, SubscriptionUnsupported, SubscriptionCapabilities, SubscriptionCommandPort, SubscriptionActivationPort } from "./commands.js";
 export type { SubscriptionLifecycleFact, SubscriptionLifecycleMessageDescriptor, SubscriptionLifecycleMessagePort } from "./messages.js";
 export type { SubscriptionRenewalOutcome, HostedRenewalDue, SubscriptionRenewalChargeResult, SubscriptionCycleSnapshotResult, SubscriptionCycleOrderInput, SubscriptionCycleOrderResult, SubscriptionReservationPreflightResult, SubscriptionRenewalPersistencePort, FailurePropagationKind, FailurePropagationContext, CycleRetryState, DunningCaseOpenOutcome, CycleChargeFailurePropagationPort, FailurePropagationResult, RenewalPrepareInput, RenewalAttemptResult, RenewalIntentResult, RenewalPaymentPort, RenewalExecutionPort, RenewalDeliveryAdmission, RenewalAllowedAdmission, RenewalDeliveryClient, RenewalFailureDeps, RenewalPreflightDeps, RenewalCycleDeps, RenewalExecutionContext, RenewalOutcomeContext, RenewalReplayContext, RenewalPreparedAttemptPrepareInput, RenewalPreparedAttemptPersistenceResult, RenewalPreparedAttemptFinalizeInput, RenewalPreparedAttemptPersistencePort } from "./renewal.js";
 ```

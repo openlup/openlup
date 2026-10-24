@@ -1162,6 +1162,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261024170000_subscription_command_lifecycle.sql",
+      "class": "public-output"
+    },
+    {
       "path": "deploy/oci/public-reference-compose.yml",
       "class": "public-output"
     },
@@ -2639,6 +2643,10 @@
     },
     {
       "path": "packages/platform/sql/20261022195000_invoicing_seller_revision.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261024170000_subscription_command_lifecycle.sql",
       "class": "public-output"
     },
     {
@@ -4975,6 +4983,10 @@
     },
     {
       "path": "packages/platform/src/subscriptions/paymentOutcomes.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/subscriptions/postgresCommandStore.ts",
       "class": "public-output"
     },
     {
@@ -23399,6 +23411,10 @@
     },
     {
       "path": "tests/postgres/subscriptionAlignmentRollbackCases.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/subscriptionCommandLifecycleCases.ts",
       "class": "public-output"
     },
     {
