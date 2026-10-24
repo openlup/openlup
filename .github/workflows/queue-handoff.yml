@@ -1,0 +1,48 @@
+name: Queue Handoff
+
+on:
+  workflow_run:
+    workflows: [Published Tree CI]
+    types: [completed]
+
+permissions: {}
+
+jobs:
+  enqueue:
+    if: ${{ github.repository == 'openlup/openlup' && github.ref == 'refs/heads/main' && github.event.workflow_run.event == 'pull_request' && (github.event.workflow_run.conclusion == 'success' || github.event.workflow_run.conclusion == 'failure') && vars.OPENLUP_NATIVE_QUEUE == 'enabled' && vars.OPENLUP_QUEUE_APP_CLIENT_ID != '' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: openlup-merge-queue
+    permissions:
+      actions: read
+      contents: read
+      issues: read
+      pull-requests: read
+    steps:
+      # workflow_run uses the default branch; never execute the PR's checkout.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24.21.0
+          package-manager-cache: false
+      # Only a main-restricted environment holds this dedicated queue key.
+      - name: Obtain the queue identity
+        id: queue-identity
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
+        with:
+          client-id: ${{ vars.OPENLUP_QUEUE_APP_CLIENT_ID }}
+          private-key: ${{ secrets.OPENLUP_QUEUE_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: openlup
+          permission-merge-queues: write
+          permission-contents: read
+          permission-pull-requests: read
+      - name: Enqueue the still-authorized exact head once
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OPENLUP_QUEUE_TOKEN: ${{ steps.queue-identity.outputs.token }}
+        run: node scripts/agent-review-queue.mjs enqueue
