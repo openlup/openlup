@@ -7,6 +7,7 @@ import { promisify } from 'node:util';
 import { admit, demand, RECEIPT_MARKER } from './agent-review-decide.mjs';
 import { captureCommittedReviewCandidate, carryOverSourceReview, git } from './agent-review-session.mjs';
 import { assertCoLocatedForwardApproval, REVIEWED_FORWARD_PATH } from './reviewed-platform-forward.ts';
+import { REQUIRED_CONTEXTS } from './packages/release-gate.ts';
 
 export { carryOverSourceReview } from './agent-review-session.mjs';
 
@@ -80,15 +81,121 @@ export async function waitNativeAdmission({ event, env = process.env, api, cwd =
       demand(live.head?.sha === pr.head.sha && live.state === 'open' && live.draft === false && !live.merged && live.base?.ref === 'main', 'PR changed during admission; rerun CI', 'stale');
       demand((await api.get(`${root}/git/ref/heads/main`)).object?.sha === main, 'main moved during admission; rerun CI', 'stale');
       const final = admit({ receipt, observed: { ...candidate, pr: prNumber, baseValid }, now: now() }); demand(final.ok, final.reason, final.code);
-      console.log(`Native review admission verified: ${group ? decision.reason : 'reviewed PR head'}.`); return;
+      console.log(`Native review admission verified: ${group ? decision.reason : 'reviewed PR head'}.`); return receipt;
     }
     console.log(`needs_agent_review: ${reason}`); await sleep(Math.min(15000, Math.max(0, deadlineMs - (now() - start))));
   }
   throw new Error(`needs_agent_review: bounded 20-minute receipt wait expired; ${reason}`);
 }
+// A completed source run hands an existing merge request to GitHub's queue once.
+// This code runs only from trusted main; source objects are never checked out.
+export async function enqueueAfterChecks({ event, env, api, enqueue, cwd = process.cwd(), now = Date.now, runGit = git }) {
+  const repository = value => value?.id === 1376035358 && value.full_name === env.GITHUB_REPOSITORY && value.private === false;
+  const positive = value => Number.isSafeInteger(value) && value > 0;
+  demand(env.GITHUB_EVENT_NAME === 'workflow_run' && /^[\w.-]+\/[\w.-]+$/u.test(env.GITHUB_REPOSITORY ?? '') && env.GITHUB_REF === 'refs/heads/main'
+    && event.action === 'completed' && repository(event.repository), 'enqueue requires the public repository main workflow_run event');
+  const source = event.workflow_run; const root = `/repos/${env.GITHUB_REPOSITORY}`;
+  const [owner, name] = env.GITHUB_REPOSITORY.split('/');
+  const identity = run => positive(run?.id) && positive(run.workflow_id) && positive(run.run_attempt) && run.event === 'pull_request'
+    && run.path === '.github/workflows/published-tree-ci.yml' && repository(run.repository) && SHA.test(run.head_sha)
+    && positive(run.head_repository?.id) && /^[\w.-]+$/u.test(run.head_repository?.owner?.login ?? '') && typeof run.head_branch === 'string' && run.head_branch.length > 0;
+  demand(identity(source) && source.status === 'completed' && ['success', 'failure'].includes(source.conclusion), 'source must be a completed Published Tree CI pull-request run');
+  const sameRun = run => identity(run) && run.id === source.id && run.workflow_id === source.workflow_id && run.run_attempt === source.run_attempt
+    && run.head_sha === source.head_sha && run.head_branch === source.head_branch && run.head_repository.id === source.head_repository.id
+    && run.head_repository.owner.login === source.head_repository.owner.login && run.status === 'completed' && run.conclusion === source.conclusion;
+  const sourceCurrent = async () => {
+    demand(sameRun(await api.get(`${root}/actions/runs/${source.id}`)), 'source run or attempt changed');
+    const listing = await api.get(`${root}/actions/workflows/published-tree-ci.yml/runs?event=pull_request&head_sha=${source.head_sha}&per_page=100`);
+    demand(Array.isArray(listing.workflow_runs) && listing.workflow_runs.length > 0 && listing.workflow_runs.length <= 100
+      && listing.total_count === listing.workflow_runs.length && listing.workflow_runs.every(identity)
+      && new Set(listing.workflow_runs.map(run => run.id)).size === listing.workflow_runs.length, 'source run listing is incomplete or invalid');
+    const matching = listing.workflow_runs.filter(run => run.head_sha === source.head_sha && run.head_branch === source.head_branch && run.head_repository.id === source.head_repository.id);
+    demand(matching.length > 0 && sameRun(matching.reduce((a, b) => a.id > b.id ? a : b)), 'a newer source run or attempt supersedes this completion');
+  };
+  await sourceCurrent();
+  const head = encodeURIComponent(`${source.head_repository.owner.login}:${source.head_branch}`);
+  const pulls = await api.get(`${root}/pulls?state=open&base=main&head=${head}&per_page=100`);
+  demand(Array.isArray(pulls) && pulls.length < 100, 'live PR lookup is incomplete or invalid');
+  const candidates = pulls.filter(pr => pr.state === 'open' && !pr.merged && pr.base?.ref === 'main' && pr.base.repo?.id === event.repository.id
+    && pr.head?.sha === source.head_sha && pr.head.repo?.id === source.head_repository.id && pr.head.ref === source.head_branch);
+  if (candidates.length === 0) return { status: 'skipped', reason: 'source head is no longer a live main PR' };
+  demand(candidates.length === 1 && positive(candidates[0].number), 'source head must identify exactly one live main PR');
+  const number = candidates[0].number;
+  const query = `query { repository(owner:${JSON.stringify(owner)},name:${JSON.stringify(name)}) { pullRequest(number:${number}) { id number state isDraft merged baseRefName headRefOid mergeable autoMergeRequest { enabledAt enabledBy { login } } mergeQueueEntry { id } timelineItems(last:1,itemTypes:[ADDED_TO_MERGE_QUEUE_EVENT]) { nodes { ... on AddedToMergeQueueEvent { createdAt } } } } } }`;
+  const live = async () => {
+    const response = await api.get(`/graphql?query=${encodeURIComponent(query)}`);
+    demand(!response.errors && response.data?.repository?.pullRequest?.number === number, 'live queue response is invalid');
+    return response.data.repository.pullRequest;
+  };
+  const eligible = pr => pr.state === 'OPEN' && pr.isDraft === false && pr.merged === false && pr.baseRefName === 'main' && pr.headRefOid === source.head_sha;
+  const attempted = pr => {
+    demand(Array.isArray(pr.timelineItems?.nodes) && pr.timelineItems.nodes.length <= 1
+      && pr.timelineItems.nodes.every(node => Number.isFinite(Date.parse(node?.createdAt))), 'queue attempt history is invalid');
+    return pr.timelineItems.nodes.some(node => Date.parse(node.createdAt) >= Date.parse(pr.autoMergeRequest.enabledAt));
+  };
+  let pr = await live();
+  if (!eligible(pr) || !pr.autoMergeRequest || pr.mergeQueueEntry) return { status: 'skipped', reason: 'PR changed, is unarmed, or is already queued' };
+  demand(pr.mergeable === 'MERGEABLE', 'PR mergeability is conflicting or unknown; diagnose without retrying enqueue');
+  const intent = pr.autoMergeRequest; const login = intent.enabledBy?.login;
+  demand(typeof login === 'string' && /^[\w[\].-]+$/u.test(login) && Number.isFinite(Date.parse(intent.enabledAt)), 'auto-merge author identity is invalid');
+  if (attempted(pr)) return { status: 'skipped', reason: 'this merge intent already entered the queue; no automatic requeue' };
+  const access = await api.get(`${root}/collaborators/${encodeURIComponent(login)}/permission`);
+  demand(['write', 'maintain', 'admin'].includes(access?.permission ?? access?.role_name), 'auto-merge author no longer has repository write permission');
+  // Partial reruns replace only selected jobs. Read every attempt, then select
+  // each required job's latest attempt without recovering an older success.
+  const jobs = []; let total;
+  for (let page = 1; total === undefined || jobs.length < total; page += 1) {
+    const result = await api.get(`${root}/actions/runs/${source.id}/jobs?filter=all&per_page=100&page=${page}`);
+    demand(Array.isArray(result.jobs) && result.jobs.length <= 100 && Number.isSafeInteger(result.total_count) && result.total_count >= 0
+      && (total === undefined || total === result.total_count), 'source jobs response is incomplete or invalid');
+    total = result.total_count;
+    demand(result.jobs.length === Math.min(100, total - jobs.length), 'source jobs pagination is incomplete');
+    jobs.push(...result.jobs);
+  }
+  demand(jobs.every(job => positive(job?.id) && job.run_id === source.id && job.head_sha === source.head_sha
+    && positive(job.run_attempt) && job.run_attempt <= source.run_attempt) && new Set(jobs.map(job => job.id)).size === jobs.length, 'source jobs identity is invalid or duplicated');
+  for (const name of [...REQUIRED_CONTEXTS, 'native-review']) {
+    const matches = jobs.filter(job => job.name === name);
+    const latest = matches.reduce((attempt, job) => Math.max(attempt, job.run_attempt), 0);
+    const selected = matches.filter(job => job.run_attempt === latest);
+    demand(selected.length === 1 && selected[0].status === 'completed' && selected[0].conclusion === 'success', `source requires one actual successful latest ${name} check`);
+  }
+  const admitted = await waitNativeAdmission({ event: { repository: event.repository, number, pull_request: { head: { sha: source.head_sha } } },
+    env: { GITHUB_REPOSITORY: env.GITHUB_REPOSITORY, GITHUB_EVENT_NAME: 'pull_request' }, api, cwd, now, runGit,
+    sleep: () => { throw new Error('Current native review is unavailable at CI completion; no enqueue retry'); } });
+  await sourceCurrent();
+  pr = await live();
+  if (!eligible(pr) || !pr.autoMergeRequest || pr.mergeQueueEntry) return { status: 'skipped', reason: 'PR changed, is unarmed, or is already queued' };
+  demand(pr.mergeable === 'MERGEABLE' && pr.autoMergeRequest.enabledAt === intent.enabledAt && pr.autoMergeRequest.enabledBy?.login === login,
+    'mergeability or auto-merge authority changed before enqueue');
+  if (attempted(pr)) return { status: 'skipped', reason: 'this merge intent already entered the queue; no automatic requeue' };
+  const finalAccess = await api.get(`${root}/collaborators/${encodeURIComponent(login)}/permission`);
+  demand(['write', 'maintain', 'admin'].includes(finalAccess?.permission ?? finalAccess?.role_name), 'auto-merge authority changed before enqueue');
+  demand(now() < admitted.expires, 'native review expired before enqueue');
+  const queued = await enqueue({ pullRequestId: pr.id, expectedHeadOid: source.head_sha, jump: false });
+  demand(typeof queued?.id === 'string' && queued.id.length > 0, 'enqueue did not confirm a queue entry');
+  const after = await live();
+  demand(after.headRefOid === source.head_sha && (after.mergeQueueEntry?.id === queued.id || after.merged === true), 'enqueue read-back did not confirm the exact head queue entry or completed merge');
+  return { status: 'enqueued', pr: number, head: source.head_sha, entry: queued.id };
+}
 async function main() {
-  demand(process.argv[2] === 'wait' && process.argv.length === 3, 'use wait');
-  const api = { get: async path => JSON.parse((await execute('gh', ['api', path], { encoding: 'utf8', timeout: 30000, maxBuffer: 2 * 1024 * 1024 })).stdout) };
-  await waitNativeAdmission({ event: JSON.parse(await readFile(process.env.GITHUB_EVENT_PATH, 'utf8')), api });
+  demand(['wait', 'enqueue'].includes(process.argv[2]) && process.argv.length === 3, 'use wait or enqueue');
+  const env = process.env;
+  const api = { get: async path => {
+    const args = path.startsWith('/graphql?query=') ? ['api', 'graphql', '-f', `query=${decodeURIComponent(path.slice('/graphql?query='.length))}`] : ['api', path];
+    return JSON.parse((await execute('gh', args, { encoding: 'utf8', timeout: 30000, maxBuffer: 2 * 1024 * 1024 })).stdout);
+  } };
+  const event = JSON.parse(await readFile(env.GITHUB_EVENT_PATH, 'utf8'));
+  if (process.argv[2] === 'wait') await waitNativeAdmission({ event, env, api });
+  else {
+    demand(typeof env.OPENLUP_QUEUE_TOKEN === 'string' && env.OPENLUP_QUEUE_TOKEN.length > 0, 'enqueue requires the dedicated queue App token');
+    const enqueue = async input => {
+      const query = 'mutation($id:ID!,$head:GitObjectID!){enqueuePullRequest(input:{pullRequestId:$id,expectedHeadOid:$head,jump:false}){mergeQueueEntry{id}}}';
+      const response = JSON.parse((await execute('gh', ['api', 'graphql', '-f', `query=${query}`, '-f', `id=${input.pullRequestId}`, '-f', `head=${input.expectedHeadOid}`],
+        { encoding: 'utf8', timeout: 30000, maxBuffer: 2 * 1024 * 1024, env: { ...env, GH_TOKEN: env.OPENLUP_QUEUE_TOKEN } })).stdout);
+      demand(!response.errors, 'GitHub refused queue admission'); return response.data?.enqueuePullRequest?.mergeQueueEntry;
+    };
+    console.log(JSON.stringify(await enqueueAfterChecks({ event, env, api, enqueue })));
+  }
 }
 if (process.argv[1] && fileURLToPath(import.meta.url) === resolve(process.argv[1])) main().catch(error => { console.error(error.message); process.exitCode = 1; });

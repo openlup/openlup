@@ -244,6 +244,11 @@ proof, current review, required maintainer reads and a ready-main-PR source
 receipt precede the one-shot request under actual merge authority. Known failed
 checks, conflicts and unresolved mergeability retain their existing stops;
 pending auto-merge is not queue admission or merge confirmation.
+Where separately activated, the trusted `Queue Handoff` completion workflow
+inserts a still-armed exact head once after the existing seven required successes
+and current native proof. It covers a missing native auto-merge transition without
+a watcher, new required status or automatic requeue. Its isolated App identity
+and activation boundary are owned by [Merge queue](../../CONTRIBUTING.md#merge-queue).
 For recovery, see the receipt-timeout rule in
 [Merge queue](../../CONTRIBUTING.md#merge-queue). See [review policy](../../.github/AI_CONTRIBUTION_POLICY.md#admission-native-review-and-dco)
 for the complete protocol.
