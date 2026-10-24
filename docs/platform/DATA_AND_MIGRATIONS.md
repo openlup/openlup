@@ -405,7 +405,7 @@ measured-base increases and parent-baseline raises, including regeneration;
 candidate counts must still fit the baseline. Changed bytes, another path even
 with the same digest, another category or count, and unrelated increases refuse.
 No native rail, TypeScript, package or documentation path can enter this list.
-Adding any further entry is a control change needing two fresh Opus reviews plus
+Adding any further entry is a control change needing two independent fresh full reviews under the native review contract plus
 the coordinator's control read. The six rail-path entries can be retired after
 the F17 PR lands and the base carries the counts.
 

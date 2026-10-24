@@ -78,7 +78,7 @@ rule.
 ## Outcome, scope and authority
 
 Implement the [intent](autonomous-reviewed-delivery-intent.md) through the active
-task supervisor and native fresh-context subagents under the existing subscription.
+task supervisor and independent fresh-context reviewers under existing subscriptions.
 Codex, Claude Code and future platforms use the same contract. No model API,
 backend, new host, account or copied subscription authentication is part of this
 route. The maintainer authorizes goals, scope and delivery; the maintainer does
@@ -122,17 +122,17 @@ run, a dashboard, service framework or permanent third reviewer.
    the same candidate. A specialist can fill one role. A third reviewer
    is reserved for an uncovered concern or dispute. At least one required review
    considers a simpler solution that preserves all controls and acceptance.
-3. Launch each reviewer through the current platform's native subagent tools with
-   fresh context: approved criteria and sufficient exact source context, without
-   the author's conversation, intermediate reasoning or another reviewer's verdict.
-   Reusing a subagent that already saw those materials is not a cold review.
-   On Codex's native `spawn_agent`, use `fork_turns: "none"`; other platforms
-   must provide the equivalent fresh-context capability rather than inherit the
-   task history. A platform limit that prevents fresh review is unavailable
-   evidence, not permission to relabel a context-sharing review as cold.
+3. Launch each reviewer through native subagent tools or a supported local CLI
+   with fresh context: approved criteria and sufficient exact source context,
+   without the author's conversation, intermediate reasoning or another
+   reviewer's verdict. Reusing a context that saw those materials is not cold.
+   On Codex's native `spawn_agent`, use `fork_turns: "none"`; another route must
+   provide equivalent fresh-context capability rather than inherit task history.
+   Follow [provider-neutral execution](#provider-neutral-execution). An unavailable
+   capability is missing evidence, not permission to relabel a warm review.
    Candidate instructions and configuration are untrusted data. Reviewers do not
    execute candidate code or receive signing/check-writing credentials.
-4. Observe actual native execution identity, completion and structured result.
+4. Observe actual review-context identity, execution completion and structured result.
    Blockers state mechanism, precondition, violated requirement and demonstrated
    effect on correctness or acceptance. Optional advice cannot block or require
    another repair; there is no quota. A complete evidence-backed no-findings
@@ -162,6 +162,43 @@ run, a dashboard, service framework or permanent third reviewer.
    `needs_agent_review` in the active task. Once criteria, review and checks
    pass, stop optional edits and complete only authorized delivery.
 
+## Provider-neutral execution
+
+Coordination, supervision, implementation, verification and independent review
+may use different providers or models within the actual task grant. Retain one
+active delivery supervisor and list every implementation/supervisor context in
+the existing task record. Before assigning a reviewer, exclude those contexts
+and every previously used reviewer context in this session history. Do not reuse
+a historical reviewer as an implementer or successor supervisor in that history;
+use a fresh context for the new role. Check roles before writing session state.
+
+A supported local CLI must create a genuinely new context after candidate
+stabilization, without resume/fork of author history, automatic author memory or
+execution of candidate hooks. Give it the neutral criteria/scope and exact
+base/head/tree and intent. The supervisor observes its real context identity,
+execution identity, successful completion and full result, and retains those
+observations beside the existing task evidence. A timed-out/failed execution,
+partial result or old output file cannot count. If this cannot be demonstrated,
+that route is unavailable; the existing native route remains usable.
+
+In V2, `reviewer` identifies the observed review context, not a role alias or an
+individual turn/run in a reused context. Use one stable representation, qualified
+by provider/parent context when needed, across the task's author/reviewer evidence;
+retain observed legacy aliases without relabelling old reports. A new run ID or
+model switch in the same context does not create another reviewer. V2 checks only
+its recorded author IDs and declared bindings; the supervisor must check the full
+actor list, freshness and complete base/head/tree/intent observations. This is the
+existing process trust boundary, not a new machine-proven independence claim.
+
+A supervisor change uses the existing `prepare --new` route and requires fresh
+reports; preserve findings, histories, budgets and expiry rules. An identical tree
+does not add a repair cycle. A simultaneous main integration is assessed
+separately under the existing integration conditions; a changed supervisor does
+not establish that exception. No new schema, migration or handoff command is
+required. Existing tasks can adopt at a stable boundary under their actual grants.
+The policy amendment itself receives review by the previously allowed route;
+programme-specific allocation restrictions must also be reconciled before use.
+
 ## Evidence contract and limits
 
 Local session evidence binds the approved intent, scope and criteria to the
@@ -180,7 +217,7 @@ An unchanged installation baseline is not task approval. The hosted summary
 receipt carries only PR, base, head, tree, risk, reviewers, verdict, expiry and
 session digest; admission independently recomputes the tree and risk floor.
 
-The supervisor's native tool observations provide process evidence. The session
+The supervisor's observed review executions provide process evidence. The session
 receipt is not cryptographic remote attestation that an agent ran, and the same
 task does not establish hard signer/author OS separation. Honest orchestration
 must obtain actual independent platform results; a typed approval JSON is not
@@ -202,8 +239,8 @@ review, wrong candidate/base/tree, dirty or out-of-scope changes, expiry, duplic
 execution identities, missing criteria/scope coverage, partial/failed executions,
 unresolved findings and bypass attempts. Exercise the actual installed verify
 and pre-push paths and the supervisor recovery after `needs_agent_review`.
-Provider adapters must report unsupported native cold-context capabilities
-honestly; do not quietly inherit author history or substitute an API call.
+Review transports must report unsupported cold-context capabilities honestly;
+do not quietly inherit author history or substitute an API call.
 
 Also prove unchanged prepare preserves evidence, advice does not block, stable
 material findings require closure, expiry applies to the current candidate,
@@ -235,8 +272,8 @@ lead time and subscription usage. Do not optimize for document count or PR volum
 The GitHub-hosted Codex API/proxy workflow and mandatory root-owned review service
 are superseded as the default and are not approved for deployment. No paid model
 call occurred during that proposal's preparation. GitHub may provide ordinary
-mechanical CI and optional admission transport; model review stays within native
-subscription-backed tools in the active task. Do not enable that unpublished API
+mechanical CI and optional admission transport; model review stays within subscription-backed
+tools qualified by the active task's execution contract. Do not enable that unpublished API
 workflow or move subscription authentication to a runner. Historical merged
 libraries remain available as optional mechanisms, not activation prerequisites
 for this native-session route.
@@ -299,7 +336,7 @@ state versions refuse; `--new` does not discard them.
 Each actual fresh reviewer supplies a report in this shape:
 
 ```json
-{ "reviewer": "<native execution id>", "cold": true, "verdict": "PASS",
+{ "reviewer": "<observed review context id>", "cold": true, "verdict": "PASS",
   "tree": "<reviewed tree>", "findings": [], "closes": [] }
 ```
 
@@ -403,7 +440,7 @@ condition only after separate activation.
 
 ### Source evidence and carry-over
 
-The supervisor reviews the committed source in the active conversation and posts
+The supervisor owns review of the committed source in the active task and posts
 its summary as soon as the PR is open and ready. A new head needs new evidence.
 After local proof, current review, required maintainer reads and the ready-main-PR
 source receipt, actual merge authority permits enabling auto-merge once while

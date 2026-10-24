@@ -164,8 +164,10 @@ no separate learning PR and opens no automatic successor or review loop.
 Follow the [AI contribution policy](../../.github/AI_CONTRIBUTION_POLICY.md) for accountability,
 DCO and delivery authority. The [autonomous delivery intent](plans/autonomous-reviewed-delivery-intent.md)
 and [plan](plans/autonomous-reviewed-delivery.md) require the active supervisor to launch independent
-fresh-context native subagents in the same conversation under the existing
-subscription. Supply approved criteria and exact source without author history
+fresh-context reviewers in the same logical task and evidence history, through
+native subagents or a supported local CLI under existing subscriptions. Provider
+and model do not assign coordination, implementation or delivery rights; record
+the actual roles and grants. Supply approved criteria and exact source without author history
 or other reviewers' verdicts. The initial candidate needs one bounded review for
 ordinary prose or narrow routine code, and two independent parallel reviews for
 sensitive or material behaviour, executable instructions, contracts, controls
