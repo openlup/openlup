@@ -37,12 +37,13 @@ export async function syncStripePayoutSettlements(input: {
     kind: "unsupported", code: "host_binding_required", retryable: false, effectMayHaveSucceeded: false,
     checked: 0, recorded: 0, replayed: 0, skipped: true,
   };
+  const providerRef = "stripe";
   const legacy = { recorded: 0, replayed: 0 };
   const accountingPort = input.accountingPort;
   const settlement: Pick<InvoiceSettlementPort, "record"> = input.itemSettlement ?? {
     record: async item => {
       const write = await accountingPort!.recordPaymentSettlement({
-        idempotencyKey: item.requestKey, providerKind: "stripe",
+        idempotencyKey: item.requestKey, providerKind: providerRef,
         providerBatchId: item.batchRef, providerPaymentId: item.providerPaymentRef,
         paymentIntentId: null, paymentId: null, invoiceId: null,
         grossMinor: item.grossMinor, feeMinor: item.feeMinor, netMinor: item.netMinor,
@@ -60,7 +61,7 @@ export async function syncStripePayoutSettlements(input: {
     limit: input.payoutLimit,
     project: item => ({
       requestKey: `stripe-settlement:${item.balanceTransactionId}`,
-      providerRef: "stripe", batchRef: item.payoutId, itemRef: item.balanceTransactionId,
+      providerRef, batchRef: item.payoutId, itemRef: item.balanceTransactionId,
       providerPaymentRef: item.providerPaymentId, paymentIntentRef: null, paymentRef: null, invoiceRef: null,
       grossMinor: item.grossMinor, feeMinor: item.feeMinor, netMinor: item.netMinor,
       currency: item.currency, status: "matched", bankReceivedAt: item.bankReceivedAt,

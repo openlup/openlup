@@ -245,7 +245,7 @@ reference client consumes that host route; HTTP/UI projections show closed diagn
 
 Migration: F8 retains the host payout reader and original item keys; the host
 recorder/resolver owns richer item evidence and nullable links (KEEP #12). F11
-retains M04 content, locale, transport and uncertain no-resend behavior. F9/F12
+retains M04 content, locale, transport and uncertain behavior that forbids sending again. F9/F12
 keep bounded reference clients, runbook URLs and correction-request intent in the
 host; intent creates no fiscal correction. Accepted artifact references remain
 provider references, with transient downloads distinct from storage receipts.

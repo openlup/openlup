@@ -19,7 +19,7 @@ const rows = [
   { name: "malformed JavaScript binding refuses before claim", mode: "malformed" },
   { name: "claim projects distinct envelope fields and the native fence", mode: "claim" },
   { name: "sent records transport acceptance", mode: "job", outcome: "sent" },
-  { name: "uncertain retains the hint and cannot resend", mode: "job", outcome: "uncertain" },
+  { name: "uncertain retains the hint and cannot send again", mode: "job", outcome: "uncertain" },
   { name: "retryable job carries bounded backoff", mode: "job", outcome: "retry", delay: 300 },
   { name: "invalid PDF retries before transport entry", mode: "job", outcome: "bad_pdf", delay: 300 },
   { name: "non-retryable job parks visibly", mode: "job", outcome: "terminal" },

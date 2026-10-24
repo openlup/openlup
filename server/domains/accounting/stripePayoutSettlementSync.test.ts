@@ -2,6 +2,9 @@ import { describe, expect, it, vi } from "vitest";
 import type { InvoiceSettlementItem, InvoiceSettlementPort } from "@openlup/platform/invoicing/contracts";
 import { syncStripePayoutSettlements } from "./stripePayoutSettlementSync.js";
 
+const expectedProvider = "stripe";
+const expectedKeyPrefix = "stripe-settlement:";
+
 describe("Stripe payout settlement sync", () => {
   it("records distinct balance items for the same payout/payment through an item-capable host port with exact original keys and nullable links", async () => {
     const stored = new Map<string, string>();
@@ -18,12 +21,12 @@ describe("Stripe payout settlement sync", () => {
     expect(result).toEqual({ checked: 3, recorded: 2, replayed: 1 });
     expect(stored.size).toBe(2);
     expect(record).toHaveBeenNthCalledWith(1, expect.objectContaining({
-      requestKey: "stripe-settlement:txn-1", itemRef: "txn-1", providerRef: "stripe",
+      requestKey: `${expectedKeyPrefix}txn-1`, itemRef: "txn-1", providerRef: expectedProvider,
       batchRef: "po-1", providerPaymentRef: "pi-1", paymentIntentRef: null, paymentRef: null, invoiceRef: null,
-      grossMinor: 10_000, feeMinor: 290, netMinor: 9_710, currency: "PLN", status: "matched", bankReceivedAt: "2026-07-16T10:00:00.000Z",
+      grossMinor: 10_000, feeMinor: 290, netMinor: 9_710, currency: settlement("txn-1", "pi-1").currency, status: "matched", bankReceivedAt: "2026-07-16T10:00:00.000Z",
       proof: expect.objectContaining({ evidenceRef: "txn-1", fingerprint: expect.stringMatching(/^sha256:/) }),
     } satisfies Partial<InvoiceSettlementItem>));
-    expect(record).toHaveBeenNthCalledWith(2, expect.objectContaining({ requestKey: "stripe-settlement:txn-2", itemRef: "txn-2", batchRef: "po-1", providerPaymentRef: "pi-1" }));
+    expect(record).toHaveBeenNthCalledWith(2, expect.objectContaining({ requestKey: `${expectedKeyPrefix}txn-2`, itemRef: "txn-2", batchRef: "po-1", providerPaymentRef: "pi-1" }));
   });
 
 
@@ -48,8 +51,8 @@ describe("Stripe payout settlement sync", () => {
 
     expect(result).toEqual({ checked: 2, recorded: 1, replayed: 1 });
     expect(recordPaymentSettlement).toHaveBeenNthCalledWith(1, {
-      idempotencyKey: "stripe-settlement:txn-1",
-      providerKind: "stripe",
+      idempotencyKey: `${expectedKeyPrefix}txn-1`,
+      providerKind: expectedProvider,
       providerBatchId: "po-1",
       providerPaymentId: "pi-1",
       paymentIntentId: null,
@@ -79,7 +82,7 @@ describe("Stripe payout settlement sync", () => {
       requestInvoiceIssue: vi.fn(), recordProviderSyncEvent: vi.fn(), recordPaymentSettlement,
     }, payoutLimit: 7 })).toEqual({ checked: 3, recorded: 2, replayed: 1 });
     expect(listRecentSettledPayoutItems).toHaveBeenCalledWith(7);
-    expect(recordPaymentSettlement.mock.calls.map(([row]) => row.idempotencyKey)).toEqual(["stripe-settlement:txn-1", "stripe-settlement:txn-2", "stripe-settlement:txn-3"]);
+    expect(recordPaymentSettlement.mock.calls.map(([row]) => row.idempotencyKey)).toEqual([`${expectedKeyPrefix}txn-1`, `${expectedKeyPrefix}txn-2`, `${expectedKeyPrefix}txn-3`]);
     expect(recordPaymentSettlement).toHaveBeenCalledTimes(3);
   });
 
