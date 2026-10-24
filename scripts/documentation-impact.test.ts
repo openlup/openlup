@@ -1,8 +1,8 @@
 import { execFileSync, type ExecFileSyncOptions } from "node:child_process";
-import { existsSync, chmodSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, chmodSync, cpSync, mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import {
   assertDocumentationNavigation, documentationSection, markdownHeadings, normalizeDocumentation,
   readDocumentationState, resolveDocumentationOwner, type DocumentationSurface,
@@ -25,10 +25,12 @@ vi.mock("node:child_process", async (original) => {
 });
 
 const directories: string[] = [];
+let fixtureSeed: { root: string; base: string } | undefined;
 afterEach(() => { vi.unstubAllEnvs(); for (const root of directories.splice(0)) rmSync(root, { recursive: true, force: true }); fetchMock.source = ""; fetchMock.calls.length = 0; });
+afterAll(() => { if (fixtureSeed) rmSync(fixtureSeed.root, { recursive: true, force: true }); });
 function temporary(): string { const path = mkdtempSync(join(tmpdir(), "documentation-guard-")); directories.push(path); return path; }
 function git(root: string, ...args: string[]): string {
-  return execFileSync("git", args, { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
+  return execFileSync("git", ["-c", "maintenance.auto=false", "-c", "gc.auto=0", ...args], { cwd: root, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
 }
 function write(root: string, path: string, text: string): void { mkdirSync(dirname(join(root, path)), { recursive: true }); writeFileSync(join(root, path), text); }
 function commit(root: string): string {
@@ -38,17 +40,25 @@ const OWNER = "docs/owner.md";
 const SOURCE = "src/domains/demo/main.ts";
 const ownerText = "# Owner\n\n## Canonical\n\nThe contract preserves replay safety.\n\nUpdated: 2026-09-26\n\n## Other\n\nSeparate guidance.\n";
 function fixture(): { root: string; base: string; surfaces: DocumentationSurface[] } {
-  const root = temporary(); git(root, "init", "-q");
+  const root = temporary();
   const surfaces: DocumentationSurface[] = [
     { id: "repository", when: "Repository contracts and configuration", paths: ["*", "config/**", "src/lib/**"], doc: OWNER, anchor: "#canonical" },
     { id: "domain-demo", when: "The demo domain contract", paths: ["src/domains/demo/**"], doc: OWNER, anchor: "#canonical" },
     { id: "documentation", when: "Public documentation authoring", paths: ["docs/**"], doc: OWNER, anchor: "" },
   ];
+  if (fixtureSeed) {
+    // Reuse only immutable setup bytes; every case owns its complete tree and .git.
+    cpSync(fixtureSeed.root, root, { recursive: true });
+    return { root, base: fixtureSeed.base, surfaces };
+  }
+  git(root, "init", "-q");
   write(root, "README.md", `[Owner](${OWNER})\n`); write(root, OWNER, ownerText);
   write(root, "src/lib/coreDomains.ts", 'export const CORE_DOMAINS = Object.freeze(["demo"] as const);\n');
   write(root, SOURCE, "export const value = 1;\n"); write(root, "src/domains/demo/other.ts", "export const other = 1;\n");
   write(root, "config/doc-routing.json", JSON.stringify({ version: 2, surfaces }));
   const base = commit(root); git(root, "update-ref", "refs/remotes/origin/main", base);
+  fixtureSeed = { root: mkdtempSync(join(tmpdir(), "documentation-guard-seed-")), base };
+  cpSync(root, fixtureSeed.root, { recursive: true });
   return { root, base, surfaces };
 }
 function impact(root: string, base: string) { return checkDocumentationImpact(root, readDocumentationState(root), base); }
