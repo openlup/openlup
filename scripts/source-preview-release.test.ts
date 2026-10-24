@@ -332,7 +332,7 @@ type Seal = { regenerate?: boolean; classes?: Record<string, string>; omitFromCa
 /** A synthetic previous preview as a root commit, plus a helper that commits and checks one descendant. */
 function syntheticRelease(options: { extraFiles?: Record<string, string | Buffer>; seed?: { repo: string; rootCommit: string } } = {}) {
   const repo = mkdtempSync(join(realpathSync(tmpdir()), "openlup-descendant-release-"));
-  const run = (args: string[]) => execFileSync("git", args, { cwd: repo, encoding: "utf8" }).trim();
+  const run = (args: string[]) => execFileSync("git", ["-c", "maintenance.auto=false", "-c", "gc.auto=0", ...args], { cwd: repo, encoding: "utf8" }).trim();
   const read = (path: string) => existsSync(join(repo, path)) ? readFileSync(join(repo, path)) : undefined;
   const apply = (change: TreeChange) => {
     if (typeof change === "function") return change(repo);

@@ -1188,6 +1188,12 @@ npx --no -- vitest list --filesOnly --project=node server/domains/subscription
 # Native review changes: pure session/hosted tables plus real Git witnesses.
 npm test -- scripts/agent-review-session.test.ts scripts/agent-review-queue.test.ts scripts/agent-review-gate.test.ts
 
+# Package command changes: detect stale synthetic command expectations first.
+npm test -- scripts/source-preview-release.test.ts -t "builds its synthetic workspace manifests with the pinned public execution surfaces"
+
+# Packing/release changes: exercise the affected fixture and refusal boundaries.
+npm test -- scripts/packages/required-package-gates.test.ts scripts/packages/set-release.test.ts
+
 # Separate Core suite; includes coverage, API/docs/release and packed consumer.
 npm --workspace @openlup/core run ci
 ```
@@ -1740,7 +1746,10 @@ reading, exact merge scope and protected release approval still apply.
    [AGENTS.md](AGENTS.md).
 2. **Stabilize and commit.** Start with the useful vertical slice and a
    before/after witness that rejects the incompatible predecessor when preserving
-   behavior. Run focused contract/API/platform probes and existing native artifact
+   behavior. Run applicable existing policy, inventory and neutrality checks
+   before broad tests, and use the [focused test examples](#test-scope-and-diagnostics)
+   for the changed boundary to catch stale fixture inputs before counted review.
+   Run focused contract/API/platform probes and existing native artifact
    checks before coverage or the broad root gate. For core, after its build,
    `npm --workspace @openlup/core run release:pack` checks native class/file and
    aggregate byte limits without substituting for final committed cold proof.
@@ -2018,9 +2027,9 @@ terminal self-retro carry the lesson until it lands. No other tracker is kept.
   merge base becomes the predecessor's head.
 - 2026-10-17, module package pull requests: stacked pull requests that each
   regenerate one shared record (a doc-impact marker, a contract digest)
-  conflict once the lower one squash-lands → stack only pull requests without
-  single-instance records, merge `main` once before each turn otherwise, and
-  check `git merge-tree` against the queue base before relying on carry-over.
+  conflict once the lower one squash-lands → the merge-commit and exact-predecessor
+  guidance in [Merge queue](#merge-queue) supersedes that recovery. Follow its
+  carry-over rule; integrate `main` for a conflict or refusal, not merely freshness.
 - 2026-10-17, parallel module work: parallel heavy local test runs cause load
   timeouts → parallelize writing and serialize heavy test runs; after a load
   timeout the complete gate is rerun without the concurrent load, and the
