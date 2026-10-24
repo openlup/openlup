@@ -750,6 +750,8 @@ Browser graphs declare only core fulfillment modules and exclude platform
 fulfillment, the reference preparation binding and the account order screens.
 The order-management status ladder/queue pair remains host-owned.
 
+Adopters may supply the optional local, opaque, shadow-only command fingerprint through `runFulfillmentDispatchWorker.shadowCommandFingerprint` (validated as lowercase 64-hex) and read the optional `submissionAttempted` / `responseBodyRead` dispatch facts, while the package's D6 classification remains the default.
+
 The deeply frozen, readonly default-off descriptor remains unselected and unready
 after host construction. Numeric HTTP settings refuse invalid values at construction.
 Every fetch refuses redirects so a 307/308 cannot repeat a POST body.

@@ -294,3 +294,30 @@ wrapper with source kind `order_status_reversal` and preserve incumbent results.
 Issued documents are unchanged. Replay conflicts return typed identity conflicts.
 The native descriptor appends 195000 at position 80, after 192000; install the
 complete ordered catalogue. PART A and PART B remain separately reviewable.
+
+## C2 wave and next set preparation
+
+Status: design boundary for the prepared `0.24.0` set; no activation authority.
+P1b–P7 provide native refusals and offline conformance, issue and correction
+helpers, independent durable-duty collection and native issue binding, read-side
+helpers, explicit service composition and first-claim seller revision.
+CTL-M09-1–4 admit the native duty/effect/payment and seller forwards and the
+managed correction/seller forwards before their byte-identical introductions.
+Installation requires the complete ordered catalogue; sparse package projections
+and managed catalogue references do not install an application.
+
+Invoicing remains experimental and default-off, with provider/capability selection,
+host readiness, fiscal policy, ownership, M04 transport, projections and existing
+executor registration supplied explicitly by the host. SQL installation does not
+activate services. Provider/fiscal acceptance and inbox delivery remain separate
+host evidence. Adopters must not activate unselected or unready invoicing; M10
+renewal/retry stages remain incomplete and default-off, not for adopter activation.
+Managed correction arbitration/reconciliation, first-claim legacy fallback,
+contention recovery and the M07 accounting-readback DDL/ACL limit remain in the
+[candidate limitations](../../../packages/platform/CHANGELOG.md#0240).
+
+Set preparation carries the Zod validation floor, the optional fulfillment shadow
+fingerprint and dispatch facts, exact internal peer pins, rolling changelogs and
+released-artifact baselines. Existing artifact budgets, refreshed source bindings,
+policy/navigation and committed cold-consumer gates remain required. No cap,
+runtime default, release or adopter activation permission changes here.

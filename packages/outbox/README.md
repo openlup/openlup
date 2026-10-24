@@ -4,11 +4,11 @@ Development preview, kind `rail`. One at-least-once dispatch engine, lease-bound
 
 The publication catalogue admits this complete rail to the release set. Catalogue admission does not publish it: direct directory publishing still refuses, and the reviewed release workflow owns provenance-backed publication. New API and shipped SQL require the next minor set.
 
-The prepared `0.23.0` set republishes this rail unchanged with an exact
-`@openlup/core@0.23.0` peer. Upgrade the complete set together; no outbox schema
-migration is introduced. Read [0.23.0 notes](CHANGELOG.md#0230); releases older
-than `0.21.0` are retained in the source-only `CHANGELOG-HISTORY.md`.
-Size comparison uses the published `0.22.0` tarball; preparation grants no
+The prepared `0.24.0` set republishes this rail unchanged with an exact
+`@openlup/core@0.24.0` peer. Upgrade the complete set together; no outbox schema
+migration is introduced. Read [0.24.0 notes](CHANGELOG.md#0240); releases older
+than `0.22.0` are retained in the source-only `CHANGELOG-HISTORY.md`.
+Size comparison uses the published `0.23.0` tarball; preparation grants no
 publication or installation proof.
 
 ## Package Surface Maturity
