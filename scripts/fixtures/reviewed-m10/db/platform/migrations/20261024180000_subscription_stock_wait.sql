@@ -2,6 +2,10 @@
 -- paid realization admitted, never parcel arrival. No background consumer,
 -- payment executor, pause, replacement confirmation or automatic delivery fact.
 -- Disable the wait driver before rollback and retain captured obligations.
+-- Donor: supabase/migrations/20261003123000_subscription_stock_wait.sql (87-126,
+-- 260-298, 628-650), 20261003142320_subscription_stock_wait_unpaid_discovery.sql
+-- (20-23, 123-188). Native frozen recovery is pre-cycle only: operation snapshots
+-- replace the managed unpaid cycle/order/payment graph; provider-owned graphs refuse.
 CREATE TABLE public.subscription_stock_wait_cases (
  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
  subscription_id uuid NOT NULL REFERENCES public.subscriptions(id),
@@ -52,6 +56,8 @@ RETURNS jsonb LANGUAGE sql STABLE SET search_path = pg_catalog AS $$
  LEFT JOIN public.commerce_orders ord ON ord.renewal_operation_id=op.id
  LEFT JOIN public.commerce_settlement_intents intent ON intent.renewal_operation_id=op.id
  WHERE op.subscription_id=p_subscription_id AND op.scheduled_at=p_scheduled_at
+ AND EXISTS(SELECT 1 FROM public.subscriptions s WHERE s.id=op.subscription_id
+  AND s.status='active' AND s.next_cycle_at=p_scheduled_at)
  AND op.attempt_prepared_at IS NULL AND op.external_attempt_ref IS NULL
  AND cycle.id IS NULL AND ord.id IS NULL AND intent.id IS NULL
  AND (c.id IS NULL OR c.state IN ('waiting','stock_secured'))
@@ -81,10 +87,10 @@ BEGIN
    WHERE r.source_key=source AND l.sku=line.sku AND r.renewal_operation_id=p_operation_id
     AND (r.status='committed' OR (r.status='held' AND r.expires_at>p_now));
   promise:=public.inventory_available_to_promise(source,line.sku,p_now,true);
-  available:=CASE WHEN stock.inventory_class='sellable' THEN (promise->>'available_quantity')::bigint+own_qty ELSE 0 END;
-  IF own_qty<required AND available<required THEN
+  available:=CASE WHEN stock.inventory_class='sellable' THEN (promise->>'available_quantity')::bigint ELSE 0 END;
+  IF own_qty+available<required THEN
    result:=result||jsonb_build_array(jsonb_build_object('sku',line.sku,'requiredUnits',required,'reservedUnits',own_qty,
-    'availableUnits',available,'missingUnits',required-GREATEST(available,own_qty)));
+    'availableUnits',available,'missingUnits',required-own_qty-available));
   END IF;
  END LOOP;
  RETURN result;
@@ -213,6 +219,7 @@ BEGIN
   WHERE s.status='active' AND s.next_cycle_at=op.scheduled_at AND op.lease_expires_at<=p_now
    AND ((op.state='refused' AND op.terminal_reason IN ('inventory_unavailable','reservation_expired')) OR (op.state='reserved' AND c.state='stock_secured'))
    AND (c.id IS NULL OR c.state IN ('waiting','stock_secured'))
+   AND public.subscription_stock_wait_frozen(op.subscription_id,op.scheduled_at) IS NOT NULL
   ORDER BY c.last_selected_at NULLS FIRST,op.scheduled_at,op.id LIMIT LEAST(GREATEST(p_limit,1),500)
  LOOP
   IF public.subscription_stock_wait_frozen(row.subscription_id,row.scheduled_at) IS NOT NULL THEN
@@ -223,7 +230,7 @@ BEGIN
  -- Superseded/cancelled unpaid waits close; provider-owned/paid cases never do.
  UPDATE public.subscription_stock_wait_cases c SET state='closed',closed_at=p_now,block_reason='schedule_superseded'
  FROM public.subscriptions s,public.subscription_renewal_operations op WHERE s.id=c.subscription_id AND op.id=c.renewal_operation_id
-  AND c.state IN ('waiting','stock_secured') AND (s.status<>'active' OR s.next_cycle_at IS DISTINCT FROM c.scheduled_at)
+  AND c.state IN ('waiting','stock_secured') AND (s.status='cancelled' OR s.next_cycle_at IS DISTINCT FROM c.scheduled_at)
   AND op.attempt_prepared_at IS NULL AND op.external_attempt_ref IS NULL
   AND NOT EXISTS(SELECT 1 FROM public.subscription_cycles WHERE renewal_operation_id=op.id);
  RETURN result;
@@ -257,7 +264,8 @@ BEGIN
  SELECT * INTO c FROM public.subscription_stock_wait_cases WHERE renewal_operation_id=(SELECT renewal_operation_id FROM public.commerce_orders WHERE id=p_order_id) FOR UPDATE;
  IF c.id IS NULL THEN RETURN NULL; END IF;
  SELECT * INTO shipment FROM public.fulfillment_shipments WHERE order_id=p_order_id AND replaces_shipment_id IS NULL ORDER BY id LIMIT 1 FOR UPDATE;
- IF c.state='closed' OR NOT EXISTS(SELECT 1 FROM public.commerce_orders WHERE id=p_order_id AND status IN ('paid','fulfilled')) OR
+ IF c.state='closed' OR EXISTS(SELECT 1 FROM public.commerce_orders WHERE id=p_order_id AND status='pending_payment') THEN RETURN NULL; END IF;
+ IF NOT EXISTS(SELECT 1 FROM public.commerce_orders WHERE id=p_order_id AND status IN ('paid','fulfillment_pending','fulfilled')) OR
   NOT EXISTS(SELECT 1 FROM public.commerce_settlement_intents WHERE order_id=p_order_id AND status='settled') OR
   NOT EXISTS(SELECT 1 FROM public.subscription_cycles WHERE renewal_operation_id=c.renewal_operation_id AND status='paid') OR
   NOT EXISTS(SELECT 1 FROM public.fulfillment_inventory_reservations WHERE renewal_operation_id=c.renewal_operation_id AND status='consumed') OR

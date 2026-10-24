@@ -218,6 +218,15 @@ Each row checks the changed-state preview/refusal and rejects its predicate-remo
 mutant in a rolled-back savepoint. The existing add-on rows retain actor/key replay,
 different-quantity duplicate refusal, new-add-on behavior and rejection of both
 unconditional-append and guard-only bodies.
+The change-semantics table also applies each bundle, resize, plan, package and
+add-on quote and compares every requested line, price, cadence and future term.
+Plan changes use supplied core lines; new add-ons default/clamp quantity to one;
+add-on actions preserve cadence and compare variant UUIDs by value. Drift and
+stale-template refusals, receipt-only no-ops and replay remain covered. N3 rows
+check current-obligation frozen reads, paused-wait preservation, eligibility
+before LIMIT, separate own/available deficit quantities, and closed/unpaid
+realization null no-ops followed by paid realization and zero-delta replay.
+Assignment/predicate mutants must fail the same witnesses inside rollback savepoints.
 Root test discovery
 already includes both suites; no extra runner or optional skip is introduced.
 The M10 gate reads its native PG16 and managed Supabase PG17 pins from

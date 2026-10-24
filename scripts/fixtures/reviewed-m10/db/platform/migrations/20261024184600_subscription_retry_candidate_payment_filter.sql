@@ -1,3 +1,6 @@
+-- Donor: supabase/migrations/20261009110000_subscription_dunning_active_repair.sql
+-- (due-reader paid exclusion); 20260912164500_retry_admission_observed_provider_success.sql.
+-- Native waiting-obligation selection translates managed unpaid-cycle/intent admission.
 -- Native CTL-2 Y: omit paid cycles and settled intents before retry LIMIT so
 -- stale waiting obligations cannot starve genuinely due declines.
 -- Requires the native prefix through CTL-2 X (20261024184500). This read-only body

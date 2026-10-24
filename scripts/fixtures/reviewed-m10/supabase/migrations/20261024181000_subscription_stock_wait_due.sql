@@ -1,3 +1,5 @@
+-- Donor: supabase/migrations/20261009110000_subscription_dunning_active_repair.sql
+-- (744-930), retaining the stock-wait exclusion from 20261003123000_subscription_stock_wait.sql.
 -- Add stock-wait exclusion to the post-continuity reader; requires M3.
 
 CREATE OR REPLACE FUNCTION public.subscription_list_due_for_renewal(p_limit integer DEFAULT 50, p_as_of timestamp with time zone DEFAULT now()) RETURNS TABLE(subscription_id uuid, client_id uuid, next_cycle_at timestamp with time zone, cadence_days integer, template_version integer, currency text, region_code text, provider_kind text, provider_customer_ref text, provider_method_ref text, method_kind text, status text, payer_email text, payer_name text, method_status text, method_active boolean, method_expires_at timestamp with time zone, method_client_id uuid)
