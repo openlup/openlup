@@ -1109,10 +1109,11 @@ down migration is not a rollback plan. Each stage needs a clear readback and
 failure boundary; a backfill that cannot be safely retried is incomplete.
 
 The managed forward `20261003110000_required_platform_policy_data.sql` supplies
-configuration omitted by the schema-only baseline. It classifies all 27 current
+configuration omitted by the schema-only baseline. It initially classifies 27
 relations referencing clients: four marketing relations carry, account-event
 history stays on the archived lead, and the other 22 block absorption. Unknown
-future relations still refuse. Existing classifications survive replay.
+future relations still refuse. M3 adds a blocking stock-wait classification,
+bringing the current inventory to 28. Existing classifications survive replay.
 
 The same forward installs seven disabled job controls, the four exact declared
 dormant command identities and four message controls. Message controls begin
