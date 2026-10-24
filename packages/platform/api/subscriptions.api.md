@@ -54,6 +54,129 @@ export declare function runOneAutomaticSubscriptionRenewal(deps: AutomaticRenewa
 /** No implicit +1: ambiguous history must be resolved by the host before opening a repair case. */
 export declare function correlatedLogicalCycle(snapshot: RenewalFrozenSnapshot): number;
 ```
+## dist/subscriptions/contracts/commands.d.ts
+
+```ts
+export interface SubscriptionCommandContext {
+    actor: {
+        kind: "customer" | "operator";
+        actorId: string;
+        clientId: string;
+    };
+    subscriptionId: string;
+    idempotencyKey: string;
+    now: string;
+}
+export type SubscriptionCommand = SubscriptionCommandContext & ({
+    action: "pause";
+    pausePreset: string;
+    reason: string | null;
+    survey: string | null;
+    saveOffer: string | null;
+} | {
+    action: "resume" | "skip" | "cancel";
+    reason: string | null;
+    confirmedChargeTiming: boolean;
+} | {
+    action: "slide";
+    newNextCycleAt: string;
+    confirmedChargeTiming: boolean;
+} | {
+    action: "edit_future_terms";
+    shippingAddressId: string;
+    planDays: number;
+    cadenceDays: number;
+    expectedTemplateVersion: number;
+    acceptedQuoteHash: string;
+    confirmedChargeTiming: boolean;
+    coreLines: readonly SubscriptionBundleLine[];
+    addonLines: readonly SubscriptionBundleLine[];
+    compositionConstraint: string;
+});
+export interface SubscriptionBundleLine {
+    sku: string;
+    quantity: number;
+}
+export interface SubscriptionCommandReceipt {
+    actorId: string;
+    idempotencyKey: string;
+    commandFingerprint: string;
+    outcome: "applied" | "replayed" | "noop";
+    subscriptionId: string;
+    originalState: string;
+    nextCycleAt: string | null;
+    revision: string;
+    eventId: string | null;
+}
+export interface SubscriptionCommandRefusal {
+    outcome: "refused";
+    reason: string;
+}
+export type SubscriptionUnsupportedCode = "multi_cycle_prepaid_unsupported" | "native_generic_bundle_commands_unsupported" | "native_command_bound_receipts_unsupported" | "native_prepared_attempt_store_unsupported";
+export interface SubscriptionUnsupported {
+    supported: false;
+    refusalCode: SubscriptionUnsupportedCode;
+}
+/** Readiness must be selected explicitly; a port declaration does not install a store. */
+export interface SubscriptionCapabilities {
+    graph: "managed" | "native";
+    multiCyclePrepaid: {
+        supported: false;
+        refusalCode: "multi_cycle_prepaid_unsupported";
+    };
+    genericBundleCommands: {
+        supported: true;
+    } | {
+        supported: false;
+        refusalCode: "native_generic_bundle_commands_unsupported";
+    };
+    commandBoundReceipts: {
+        supported: true;
+    } | {
+        supported: false;
+        refusalCode: "native_command_bound_receipts_unsupported";
+    };
+    preparedAttemptStore: {
+        supported: true;
+    } | {
+        supported: false;
+        refusalCode: "native_prepared_attempt_store_unsupported";
+    };
+    retryRecovery: "unavailable" | "selected";
+    stockRecovery: "unavailable" | "selected";
+    deliveryAdmission: "required";
+    executorCount: 1;
+    defaultEnabled: false;
+}
+export interface SubscriptionCommandPort {
+    readonly capabilities: SubscriptionCapabilities;
+    /** Future term writes, actor/command receipt and events must commit atomically. */
+    apply(command: SubscriptionCommand): Promise<SubscriptionCommandReceipt | SubscriptionCommandRefusal | SubscriptionUnsupported>;
+}
+export interface SubscriptionActivationPort {
+    activate(input: {
+        idempotencyKey: string;
+        orderId: string;
+        paymentIntentId: string;
+        paidEvidenceRef: string;
+        paidAt: string;
+        paymentMethodRef: string;
+        paymentMethodKind: string;
+        checkoutKind: string;
+    }): Promise<{
+        outcome: "noop" | "blocked";
+        reason: string;
+    } | {
+        outcome: "active";
+        subscriptionId: string;
+        orderId: string;
+        paymentIntentId: string;
+        nextCycleAt: string;
+        cadenceDays: number;
+        replayed: boolean;
+    }>;
+}
+```
 ## dist/subscriptions/contracts/dunning.d.ts
 
 ```ts
@@ -739,12 +862,10 @@ export declare const NATIVE_SUBSCRIPTION_CAPABILITIES: Readonly<{
         refusalCode: "multi_cycle_prepaid_unsupported";
     }>;
     readonly genericBundleCommands: Readonly<{
-        supported: false;
-        refusalCode: "native_generic_bundle_commands_unsupported";
+        supported: true;
     }>;
     readonly commandBoundReceipts: Readonly<{
-        supported: false;
-        refusalCode: "native_command_bound_receipts_unsupported";
+        supported: true;
     }>;
     readonly preparedAttemptStore: Readonly<{
         supported: false;
@@ -770,6 +891,56 @@ export { createPostgresRetryStore } from "./postgresRetryStore.js";
 export type { NativeRetryFailure, NativeRetryRequest, NativeRetryPositive, NativeRetryPreparation, NativeRetryRow } from "./postgresRetryStore.js";
 export { createPostgresRetryLifecycleBinding } from "./postgresRetryStore.js";
 export type { NativeRetryLifecycleBinding } from "./postgresRetryStore.js";
+export { createPostgresSubscriptionCommandStore, createPostgresSubscriptionCommands } from "./postgresCommandStore.js";
+export type { NativeSubscriptionCommand, NativeSubscriptionCommandBinding } from "./postgresCommandStore.js";
+```
+## dist/subscriptions/postgresCommandStore.d.ts
+
+```ts
+import type { SubscriptionCommand, SubscriptionCommandPort, SubscriptionCommandRefusal } from "./contracts/commands.js";
+import { type SubscriptionQueryExecutor } from "./postgresRenewalStore.js";
+export interface NativeSubscriptionCommand {
+    actorId: string;
+    clientId: string;
+    idempotencyKey: string;
+    subscriptionId: string;
+    action: string;
+    payload: Record<string, unknown>;
+    now: string;
+}
+export interface NativeSubscriptionCommandBinding {
+    /** The callback must use one connection and commit/rollback the complete unit. */
+    withTransaction<T>(work: (executor: SubscriptionQueryExecutor) => Promise<T>): Promise<T>;
+    /** Validate address ownership and refuse address mutation; resolve SKUs and
+     * composition policy using trusted host evidence. No current-cycle write. */
+    futureTerms(command: Extract<SubscriptionCommand, {
+        action: "edit_future_terms";
+    }>): Promise<{
+        coreLines: readonly {
+            variantId: string;
+            qty: number;
+        }[];
+        addonLines: readonly {
+            variantId: string;
+            qty: number;
+        }[];
+        compositionConstraint: Record<string, unknown>;
+    } | SubscriptionCommandRefusal>;
+}
+/** N2 owns normalization, locking, quote acceptance, receipts and all writes.
+ * Preview is a separate persisted transaction; apply never executes payment. */
+export declare function createPostgresSubscriptionCommandStore(binding: Pick<NativeSubscriptionCommandBinding, "withTransaction">): {
+    preview(input: NativeSubscriptionCommand): Promise<Record<string, unknown>>;
+    apply(input: NativeSubscriptionCommand): Promise<Record<string, unknown>>;
+};
+/** Trusted customer/operator authorization precedes this adapter. The native
+ * result's subscriptionStatus is the state recorded by the original execution,
+ * including on replay; it is not a fresh read of mutable subscription state. */
+export declare function createPostgresSubscriptionCommands(binding: NativeSubscriptionCommandBinding): SubscriptionCommandPort & {
+    preview(command: Extract<SubscriptionCommand, {
+        action: "edit_future_terms";
+    }>): Promise<Record<string, unknown> | SubscriptionCommandRefusal>;
+};
 ```
 ## dist/subscriptions/postgresRenewalStore.d.ts
 

@@ -60,6 +60,10 @@ export interface SubscriptionCommandReceipt {
     revision: string;
     eventId: string | null;
 }
+export interface SubscriptionCommandRefusal {
+    outcome: "refused";
+    reason: string;
+}
 export type SubscriptionUnsupportedCode = "multi_cycle_prepaid_unsupported" | "native_generic_bundle_commands_unsupported" | "native_command_bound_receipts_unsupported" | "native_prepared_attempt_store_unsupported";
 export interface SubscriptionUnsupported {
     supported: false;
@@ -99,7 +103,7 @@ export interface SubscriptionCapabilities {
 export interface SubscriptionCommandPort {
     readonly capabilities: SubscriptionCapabilities;
     /** Future term writes, actor/command receipt and events must commit atomically. */
-    apply(command: SubscriptionCommand): Promise<SubscriptionCommandReceipt | SubscriptionUnsupported>;
+    apply(command: SubscriptionCommand): Promise<SubscriptionCommandReceipt | SubscriptionCommandRefusal | SubscriptionUnsupported>;
 }
 export interface SubscriptionActivationPort {
     activate(input: {
@@ -268,7 +272,7 @@ export interface RenewalFailureHandoffPort {
 export type { RenewalSchedule, RenewalIdentity, RenewalAdmission, RenewalLine, RenewalCycleCorrelation, RenewalTemplateSnapshot, RenewalPricingSnapshot, RenewalOrderSnapshot, RenewalFrozenSnapshot, RenewalDue, RenewalOperationState, RenewalReadback, RenewalPaymentEvidence, RenewalTransactionUnits, RenewalReservationResult, RenewalPreparedSettlement, RenewalStorePort, RenewalSettlementPort, RenewalExecutionRequest, RenewalPaymentRail, RenewalResult } from "./renewal.js";
 export type { DunningCaseOpenInput, DunningCaseOpened, DunningCaseAdvanced, DunningRefusalCode, DunningCaseLifecyclePort, RenewalRetryState, RenewalRetryObligation, RenewalRecoveryAuthorization, RenewalFailureHandoffPort } from "./dunning.js";
 export type { StockWaitRecoveryBinding, StockWaitDeficit, StockWaitCase, StockWaitStorePort } from "./stockWait.js";
-export type { SubscriptionCommandContext, SubscriptionCommand, SubscriptionBundleLine, SubscriptionCommandReceipt, SubscriptionUnsupportedCode, SubscriptionUnsupported, SubscriptionCapabilities, SubscriptionCommandPort, SubscriptionActivationPort } from "./commands.js";
+export type { SubscriptionCommandContext, SubscriptionCommand, SubscriptionBundleLine, SubscriptionCommandReceipt, SubscriptionCommandRefusal, SubscriptionUnsupportedCode, SubscriptionUnsupported, SubscriptionCapabilities, SubscriptionCommandPort, SubscriptionActivationPort } from "./commands.js";
 export type { SubscriptionLifecycleFact, SubscriptionLifecycleMessageDescriptor, SubscriptionLifecycleMessagePort } from "./messages.js";
 export type { SubscriptionRenewalOutcome, HostedRenewalDue, SubscriptionRenewalChargeResult, SubscriptionCycleSnapshotResult, SubscriptionCycleOrderInput, SubscriptionCycleOrderResult, SubscriptionReservationPreflightResult, SubscriptionRenewalPersistencePort, FailurePropagationKind, FailurePropagationContext, CycleRetryState, DunningCaseOpenOutcome, CycleChargeFailurePropagationPort, FailurePropagationResult, RenewalPrepareInput, RenewalAttemptResult, RenewalIntentResult, RenewalPaymentPort, RenewalExecutionPort, RenewalDeliveryAdmission, RenewalAllowedAdmission, RenewalDeliveryClient, RenewalFailureDeps, RenewalPreflightDeps, RenewalCycleDeps, RenewalExecutionContext, RenewalOutcomeContext, RenewalReplayContext, RenewalPreparedAttemptPrepareInput, RenewalPreparedAttemptPersistenceResult, RenewalPreparedAttemptFinalizeInput, RenewalPreparedAttemptPersistencePort } from "./renewal.js";
 ```

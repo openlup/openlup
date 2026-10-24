@@ -324,7 +324,11 @@
     {
       "file": "db/platform/migrations/20261022195000_invoicing_seller_revision.sql",
       "sha256": "5a6348d9af296cfc6383894e3489f70af1f3bb5026c0cc329daa9f3f95802b22"
+    },
+    {
+      "file": "db/platform/migrations/20261024170000_subscription_command_lifecycle.sql",
+      "sha256": "cce13b2564c34edc5f680f8fd85470de06293c8f8af0674b4a0f99fc47547d37"
     }
   ],
-  "objectInventorySha256": "39027e0cb02bf9ff2cd3b93be19d1d2dd480f3e7aed5fe5253e36257bd575e8f"
+  "objectInventorySha256": "2383b6615ad8bfcfc759a2f0953e68be22aaae3d7326470e07c15836f0be9bd4"
 }

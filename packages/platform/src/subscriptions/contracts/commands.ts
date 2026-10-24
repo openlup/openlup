@@ -17,6 +17,7 @@ export interface SubscriptionCommandReceipt {
   outcome: "applied" | "replayed" | "noop"; subscriptionId: string;
   originalState: string; nextCycleAt: string | null; revision: string; eventId: string | null;
 }
+export interface SubscriptionCommandRefusal { outcome: "refused"; reason: string }
 export type SubscriptionUnsupportedCode = "multi_cycle_prepaid_unsupported" | "native_generic_bundle_commands_unsupported" | "native_command_bound_receipts_unsupported" | "native_prepared_attempt_store_unsupported";
 export interface SubscriptionUnsupported { supported: false; refusalCode: SubscriptionUnsupportedCode }
 /** Readiness must be selected explicitly; a port declaration does not install a store. */
@@ -35,7 +36,7 @@ export interface SubscriptionCapabilities {
 export interface SubscriptionCommandPort {
   readonly capabilities: SubscriptionCapabilities;
   /** Future term writes, actor/command receipt and events must commit atomically. */
-  apply(command: SubscriptionCommand): Promise<SubscriptionCommandReceipt | SubscriptionUnsupported>;
+  apply(command: SubscriptionCommand): Promise<SubscriptionCommandReceipt | SubscriptionCommandRefusal | SubscriptionUnsupported>;
 }
 export interface SubscriptionActivationPort {
   activate(input: { idempotencyKey: string; orderId: string; paymentIntentId: string;

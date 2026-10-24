@@ -1434,12 +1434,18 @@ protected cases whose arrival meets open dunning or a successor cycle, keep
 deferring until resolved. A deferred result preserves the schedule and may carry a
 durable case.
 
-Native multi-cycle prepaid, generic bundle commands, command-bound receipts and
-the M07 prepared-attempt store have typed unsupported refusals. Stock recovery
-remains unavailable; N1 retry recovery is selected after its store proofs. Native generic
-bundle commands and command-bound receipts arrive with a later native command lifecycle;
-until then, the descriptor refuses them. Existing native pause/resume/skip/cancel
-operations keep their own contracts. The
+Native N2 supports generic bundle commands and command-bound receipts through
+`createPostgresSubscriptionCommandStore` and the P1-shaped
+`createPostgresSubscriptionCommands` adapter. The host supplies one transaction
+connection, trusted actor/client authorization and future-term SKU/composition
+translation with address validation; address mutation remains unsupported. Preview
+persists a quote separately; apply commits future terms, events and the receipt
+together. `originalState` is the subscription state stored by the original
+execution, preserved on replay. Native refusals return `outcome: "refused"` and
+`reason`; the adapter refuses pause without writing. Existing native lifecycle
+callers remain unchanged. Native multi-cycle prepaid and the M07 prepared-attempt
+store retain named unsupported declarations. Stock recovery remains unavailable;
+N1 retry recovery is selected after its store proofs. The
 [Subscription port witnesses](../../packages/platform/test/subscriptions/portFit.test.ts) test
 each port amendment, and the [native baseline](../../tests/postgres/subscriptionContinuityBaseline.test.ts)
 exercises the complete current prefix without subscription SQL additions.

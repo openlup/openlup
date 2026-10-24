@@ -780,6 +780,23 @@ and bounded concurrent row locking.
 
 See the [M09 forward owner](#m09-invoicing-forward-design-and-control-approval) for managed correction v2 installation, cutover and reconciliation.
 
+### Native subscription commands (N2)
+
+Migration: `20261024170000_subscription_command_lifecycle.sql` is the second
+native subscription prefix, after N1 and the interleaved M08/M09 units. It adds the actor/key receipt table and
+`subscription_command_preview` / `subscription_command_apply`, all invoker-only
+with browser execution denied. Canonical and package bytes are identical.
+Install the complete ordered manifest before selecting the adapter. Stop command
+writers on rollback and retain receipts and accepted quotes; never rewrite
+current payment/cycle/order snapshots. Existing native callers are unchanged.
+
+Migration note (C73, temporary limitation): managed provisional creation
+(`subscription_create_provisional_for_checkout`) stamps an explicit timezone
+literal equal to today's `subscriptions.timezone` column DEFAULT. An adopter who
+changes that DEFAULT must also replace the function until the scheduled follow-up
+forward makes it follow the DEFAULT. This change alters no managed SQL.
+
+
 Fulfillment expands the native graph with new command and
 alignment objects at positions 73/74. It preserves all position-0–72 identities,
 existing rows and the managed graph. Upgrade the complete prefix before enabling

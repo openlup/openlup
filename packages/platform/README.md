@@ -724,6 +724,13 @@ The initial binding preserves case-before-outcome ordering with atomic bookkeepi
 N1's same-obligation recovery repairs the native decline stall (F16); it does not
 supply M07 prepared-store parity or activate a runner.
 
+With N1 then N2 installed, `createPostgresSubscriptionCommandStore` and
+`createPostgresSubscriptionCommands` support native generic bundle commands and
+command-bound receipts. Preview persists a quote; apply atomically updates future
+terms, event and receipt with no proration or current-cycle repricing. Hosts own
+authorization, address validation, SKU/composition translation and the transaction
+connection. Prepaid remains unsupported; the serving adapter refuses pause.
+
 ## Invoicing contracts
 
 Experimental `@openlup/platform/invoicing` exposes `readInvoiceCapabilities`;

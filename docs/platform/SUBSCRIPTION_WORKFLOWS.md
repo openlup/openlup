@@ -154,3 +154,18 @@ builds both reference profiles.
 Some source tests depend on material absent from a selected preview. Record the
 actual command, revision, outcome and skipped prerequisites; do not widen a
 claim from a mocked service test to a database, provider or browser journey.
+
+## Native future-term commands
+
+Use the [native command adapter](../../packages/platform/src/subscriptions/postgresCommandStore.ts)
+only after trusted customer/operator authorization. The host resolves SKU,
+composition and unchanged address evidence. Preview stores the quoted next
+agreement; send its accepted hash with the same actor/key and command to apply.
+N2 commits future lines, cadence, event and actual-command receipt together,
+without proration or repricing the current obligation. Applied/noop replay keeps
+its original state, revision and event; conflicts, expired/stale quotes, locked
+cycles and dunning refuse. The serving adapter refuses pause without writes.
+The existing native activation spine still requires captured-payment evidence;
+commands cannot synthesize activation or execute a charge.
+[Real-PG cases](../../tests/postgres/subscriptionCommandLifecycleCases.ts) cover
+contention, rollback, locked prices, frozen claims and descriptor behavior.

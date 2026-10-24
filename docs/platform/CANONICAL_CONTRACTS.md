@@ -562,8 +562,14 @@ bytes, without granting activation or a broader compatibility promise.
 Native subscription retry N1 extends the existing migration prefix without
 changing earlier rows. Its manifest inventory is recomputed by the repository
 runner on the complete prefix plus N1, and its package SQL copy retains the CTL
-creation pin. Command/stock-wait forwards remain later additions; installing this
+creation pin. Stock-wait forwards remain later additions; installing this
 unit does not activate a runner or grant M07 native prepared-store capability.
+
+Native N2 now appends the next manifest row after N1 with its exact CTL command
+creation pin and byte-identical package projection. The refreshed object digest
+describes the complete N1+N2 prefix; all preceding file/hash rows stay unchanged.
+Install that full prefix before selecting the supported command descriptor.
+Configuration alone does not activate command writers or a runner.
 
 
 The native stock-evidence replay forward `20261022165000` appends a file/hash
@@ -1187,6 +1193,8 @@ text independently of its comparison instant, frozen revisions and complete
 claim readback. Verified M07 evidence carries original occurrence, observation
 and first-recorded clocks with nullable money and explicit ambiguity/late-positive
 disposition. A late positive settles the same obligation, never a new charge.
+Only an explicit `succeeded` provider readback may settle success; an unrecognized
+status remains awaiting provider evidence even when it carries matching money.
 A waiting retry row with disposition `payment_failed` and null `nextRetryAt`
 is intentional exhaustion or a class stop. An in-flight prepared retry retains
 `retry_scheduled` with a null date; it awaits evidence rather than another
@@ -1212,8 +1220,10 @@ initial handoff key. Hosts supply its transaction/correlation/M07 ports; payment
 execution stays outside every local transaction. Initial terminal replay checks
 the immutable receipt and returns before settlement, case rebinding or case
 propagation; it preserves later retry state, notifications and events.
-A host or driver must never call `openCase` after a replayed `applyFailure`
-receipt, and the P8 retry driver must add a zero-delta replay witness.
+A host or driver skips `openCase` after a replayed `applyFailure` receipt only
+when that rung's case propagation already committed. If propagation did not
+commit, recovery must complete it. The P8 retry driver must add a replay/case-advanced
+signal and a zero-delta witness for replay after committed propagation.
 
 The host must establish explicit logical-cycle correlation before invoking the
 automatic runner, including its prepare/execute path; the terminal binding
@@ -1234,11 +1244,21 @@ with the outer maximum, never earlier or stacked. `manual_review` cases, includi
 protected cases whose arrival meets open dunning or a successor cycle, keep
 deferring until resolved.
 
-The native descriptor refuses multi-cycle prepaid, generic bundle commands,
-command-bound receipts and M07 prepared-store parity by name, and selects the N1 retry recovery adapter while stock recovery remains unavailable. Native generic bundle commands and command-bound
-receipts arrive with a later native command lifecycle; until then, the
-descriptor refuses them. It selects one executor, default off, with
-mandatory delivery admission. Host-selected M04 descriptors carry recorded
+The native descriptor supports generic bundle commands and command-bound receipts
+with N2 installed after N1. Actor/key uniqueness binds the actual action and all
+payload fields, including accepted quote, subscription and client. A changed
+command refuses; a successful replay returns the original receipt even after
+quote expiry. Refused commands persist their reason without business writes.
+The native command store checks the stored receipt under N2's actor/key lock
+and returns replay before invoking the SQL lifecycle function.
+Accepted prices lock until edit with no proration; only future agreement changes.
+An existing claim, cycle or order keeps its frozen snapshot and money. Preview
+and apply are separate transactions; apply commits terms, event and receipt
+atomically. Private introductory cadence and acquisition policy remain host-owned.
+Multi-cycle prepaid and M07 prepared-store parity retain named unsupported
+capabilities; N1 retry recovery is selected while stock recovery remains
+unavailable. One executor stays default off with mandatory delivery admission.
+Host-selected M04 descriptors carry recorded
 lifecycle facts; copy, recipient, consent and delivery remain host/M04-owned.
 See the [architecture boundary](ARCHITECTURE_AND_EXTENSIONS.md#subscription-contracts).
 

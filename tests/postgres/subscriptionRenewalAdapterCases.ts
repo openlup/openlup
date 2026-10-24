@@ -83,6 +83,11 @@ export function registerAdapterCases(h:{pool:Pool}) {
   expect((await h.pool.query('SELECT count(*)::int n FROM public.subscription_dunning_cases WHERE cycle_id=$1',[original.cycleId])).rows).toEqual([{n:1}]);
   expect((await h.pool.query('SELECT count(*)::int n FROM public.subscription_renewal_outcomes WHERE renewal_operation_id=$1',[f.operation])).rows).toEqual([{n:1}]);
   expect((await store.candidates(500,later(24))).some(r=>r.operationId===f.operation)).toBe(false);
+  expect((await h.pool.query(`SELECT notification_kind,retry_attempt FROM public.subscription_dunning_notifications
+   WHERE case_id=$1 AND notification_kind='payment_expired'`,[first.caseId])).rows).toEqual([{notification_kind:'payment_expired',retry_attempt:0}]);
+  expect((await h.pool.query(`SELECT event_type,payload FROM public.subscription_events
+   WHERE subscription_id=$1 AND event_type='dunning_ladder_exhausted'`,[f.subscription])).rows)
+   .toEqual([{event_type:'dunning_ladder_exhausted',payload:{caseId:first.caseId,retryAttempt:1}}]);
   await store.recordRecovery(f.operation,`recovered-${f.operation}`,positive(f));
   await binding.settlement.recordTerminalOutcome(terminal);
   expect(await store.read(f.operation)).toMatchObject({state:'recovered',caseId:first.caseId,retryAttempt:1});

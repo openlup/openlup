@@ -238,10 +238,9 @@ assert.equal(NATIVE_SUBSCRIPTION_CAPABILITIES.defaultEnabled, false);
 assert.equal(NATIVE_SUBSCRIPTION_CAPABILITIES.executorCount, 1);
 for (const [capability, refusalCode] of [
   ["multiCyclePrepaid", "multi_cycle_prepaid_unsupported"],
-  ["genericBundleCommands", "native_generic_bundle_commands_unsupported"],
-  ["commandBoundReceipts", "native_command_bound_receipts_unsupported"],
   ["preparedAttemptStore", "native_prepared_attempt_store_unsupported"],
 ]) assert.deepEqual(NATIVE_SUBSCRIPTION_CAPABILITIES[capability], {supported:false,refusalCode});
+for (const capability of ["genericBundleCommands", "commandBoundReceipts"]) assert.deepEqual(NATIVE_SUBSCRIPTION_CAPABILITIES[capability], {supported:true});
 const input = {subscriptionId:"subscription",scheduledAt:"2026-10-21T14:00:00+02:00",scheduledInstant:1792584000000};
 const identity = {cycleIdempotencyKey:"original:cycle",executionIdempotencyKey:"original:execute",externalIdempotencyKey:"original:external",requestFingerprint:"original:fingerprint"};
 assert.equal(renewalIdentity(input, value => { assert.equal(value,input); return identity; }), identity);

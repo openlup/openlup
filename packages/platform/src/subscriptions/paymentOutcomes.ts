@@ -7,7 +7,7 @@ export async function readAndApplyProviderOutcome(deps: AutomaticRenewalRunDeps,
   const observed = await rail.readOutcome({ externalAttemptRef, settlementIntentId: prepared.settlementIntentId, orderId: prepared.orderId, subscriptionId: operation.subscriptionId, amountMinor: money.totalAmountMinor, currency: money.currency });
   if (observed.amountMinor !== null && observed.amountMinor !== money.totalAmountMinor) throw new Error("subscription_renewal_provider_amount_mismatch");
   if (observed.currency !== null && observed.currency.toUpperCase() !== money.currency.toUpperCase()) throw new Error("subscription_renewal_provider_currency_mismatch");
-  if (observed.status === "pending" || observed.status === "unknown") return automaticRenewalResult(operation, "awaiting_provider", `provider_${observed.status}`);
+  if (observed.status !== "succeeded" && observed.status !== "failed") return automaticRenewalResult(operation, "awaiting_provider", `provider_${observed.status}`);
   if (observed.operationId !== operation.operationId || observed.requestFingerprint !== operation.operationFingerprint
     || observed.externalAttemptRef !== externalAttemptRef || !observed.verifiedEvidenceRef || !observed.eventKey
     || !observed.firstRecordedAt || !observed.observedAt) throw new Error("subscription_renewal_verified_evidence_required");
