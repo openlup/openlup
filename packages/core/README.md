@@ -8,6 +8,17 @@ application" section, which `docs:check` requires, tells an application's agent
 not to edit or patch the installed package and to upgrade every `@openlup/*`
 package together.
 
+The prepared `0.23.0` set republishes core unchanged from `0.22.0`.
+Upgrade all packages together and read [the migration and label limitation](CHANGELOG.md#0230).
+The size baseline is the published `0.22.0` artifact; older releases remain in
+the source-only `CHANGELOG-HISTORY.md`. Preparation establishes no npm publication.
+
+The unreleased workspace requires Zod `^4.6.6` for GHSA-mrhx-c7xc-m3w5.
+Oversized constrained collections fail before per-element errors accumulate;
+bounded valid inputs and public exports are preserved. Both dependency locks
+select the fixed runtime. The build uses the existing development-only Node
+types for Zod's standard `URL` declaration; Core adds no runtime Node import.
+
 ## Channel and stability
 
 - **Channel:** npm, on the `latest` dist-tag. Each version is published with
@@ -80,6 +91,8 @@ ceilings. Its aggregate budgets in `release-gates.json` follow the measured
 decision its `$budgetReason` records; later growth still needs its own
 measured budget decision. Passing a local pack does not authorize publication.
 
+`./fulfillment` owns pure status, tracking-progress, current-parcel and canonical fact-parser helpers.
+
 ## Package Surface Maturity
 
 Every current export is an internal candidate, experimental kernel, or testing
@@ -91,7 +104,7 @@ promise.
 | `./bundle` | kernel | candidate | `smoke/subscriptionBundleStandalone.test.ts` |
 | `./catalog` | kernel | candidate | `smoke/catalogStandalone.test.ts` |
 | `./company-identity` | kernel | experimental | `smoke/companyIdentityStandalone.test.ts` |
-| `./fulfillment` | kernel | experimental | `smoke/fulfillmentStandalone.test.ts` |
+| `./fulfillment` | kernel | experimental | `smoke/fulfillmentStandalone.test.ts`<br>`test/fulfillmentStatusMap.test.ts`<br>`test/fulfillmentTrackingProgress.test.ts`<br>`test/fulfillmentCurrentParcel.test.ts`<br>`test/fulfillmentNormalizedFacts.test.ts` |
 | `./inventory` | kernel | candidate | `smoke/inventoryStandalone.test.ts` |
 | `./marketing/research` | kernel | experimental | `smoke/marketingResearchStandalone.test.ts` |
 | `./partners` | kernel | experimental | `smoke/partnersStandalone.test.ts` |
@@ -159,7 +172,11 @@ npm run ci
 Focused proofs are `npm run api:check`, `npm run release:check`, and
 `npm run test:consumer`. The root test script skips this suite.
 The shared repository gate runs this package's API check before expensive
-proofs, then `ci:required` retains the other complete-CI obligations once.
+proofs, then `ci:required` retains the mechanical obligations once through
+`release:admission`. That mode skips only the absolute live dependency audit;
+repository admission checks newly selected vulnerable production dependencies
+against the base instead. Unchanged inherited advisories remain alerts.
+`release:check`, standalone `ci` and publication packs retain the full audit.
 The standalone `ci` command keeps its API check for manual package verification.
 In the monorepo, required CI supplies `OPENLUP_PACK_MANIFEST` and
 `OPENLUP_PACK_COMMIT` together to the same consumer. It verifies the complete

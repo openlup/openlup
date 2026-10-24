@@ -3,7 +3,6 @@ import { resolveCronEmailBaseUrl, type EmailBaseUrlResult } from "./emailBaseUrl
 import { readOrderPaidFulfillmentReadiness } from "./outboxFulfillmentProvider.js";
 import { readOutboxMarketingReadiness } from "./outboxMarketingReadiness.js";
 import { resolveBundleId } from "../../server/domains/platform-runtime/platformKernel.js";
-import { readAccountingRuntimeConfig } from "../../server/domains/accounting/accountingRuntimeConfig.js";
 import type { UnsubscribeTarget } from "./unsubscribeFunctionsBaseUrl.js";
 
 type Env = Record<string, string | undefined>;
@@ -77,11 +76,9 @@ export function readOutboxHandlerGroupReadiness(env: Env): OutboxHandlerGroupRea
   const fulfillmentEnabled = env.COMMERCE_FULFILLMENT_AUTO_DISPATCH_ENABLED === "true";
   if (fulfillmentEnabled) {
     const direct = resolveBundleId(env) === "node-postgres";
-    const fulfillmentReadiness = direct && !readAccountingRuntimeConfig(env).requestEnabled
-      ? { ok: false as const, error: "accounting_request_required" }
-      : direct && !env.FULFILLMENT_PORT_KEY?.trim()
-        ? { ok: false as const, error: "fulfillment_port_key_required" }
-        : readOrderPaidFulfillmentReadiness(env);
+    const fulfillmentReadiness = direct && !env.FULFILLMENT_PORT_KEY?.trim()
+      ? { ok: false as const, error: "fulfillment_port_key_required" }
+      : readOrderPaidFulfillmentReadiness(env);
     if (fulfillmentReadiness.ok) {
       readyGroups.push("fulfillment");
     } else if ("error" in fulfillmentReadiness) {

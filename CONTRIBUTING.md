@@ -91,6 +91,29 @@ in commits, issue reports, test fixtures, screenshots, or logs. Follow
 [SECURITY.md](SECURITY.md) for responsible disclosure and sensitive-material
 handling.
 
+### Instruction freshness and handoffs
+
+At task start, resume after compaction, and handoff, recover the approved scope,
+open findings, failed attempts and consumed budgets from the existing task record.
+Check the applicable instructions against a freshly fetched policy revision and
+retain its full main commit in that record, separately from the code review base.
+At the next boundary, compare the relevant instruction paths since that pin and
+read their changed owners; do not fetch before every command. Offline, retain the
+last verified pin and identify freshness as unverified. New task isolation follows
+the approved base or stack dependency; an active branch needs no rebase, reset or
+main merge solely to read current instructions. If a required tool is absent on
+that code base, report the incompatibility rather than simulate its check.
+
+Project memory and handoff notes link to canonical instructions instead of
+maintaining competing rule copies; preserve useful lessons and existing evidence.
+Keep backups outside automatically loaded memory. Verify what the actual agent
+host loads, including relevant local or parent instructions: a file's presence in
+context does not prove the correct policy revision was read. A tool-specific
+import or existing start/compaction hook may restore a short task/pin reminder;
+avoid another full rule copy. A template is not proof of installation, and a
+loaded instruction is not enforced configuration. Host settings and memory edits
+still require their actual scope; this procedure installs no hook or global rule.
+
 ### Contribute existing adopter code, then refactor
 
 Code that already runs in an adopter's application reaches OpenLup in a fixed
@@ -130,6 +153,127 @@ its users or operators can observe.
    package's neutral names in its adapter.
 
 ## Development-preview checks
+
+The native subscription renewal selection is
+`npm test -- tests/postgres/subscriptionRenewalLifecycle.test.ts --maxWorkers=1`.
+It uses one disposable PostgreSQL container for N1 exact-prefix restart,
+rollback/replay and complete old-catalog comparison, plus retry and captured
+alignment behavior. Initial handoff is tested separately from subsequent retry
+failure: the case precedes terminal recording, bookkeeping rolls back with that
+terminal transaction, and an immutable receipt ends initial terminal replay
+before settlement, rebinding or case propagation. The real-PG witness compares
+counts, complete rows and row versions across every public table before and
+after three replays per state, including an in-flight prepared retry, later
+failure and a re-offered exhausted ladder; it detects notifications, events and
+even same-value re-link writes. Fixture-local late database faults separately prove
+rollback after the original graph and retry prepare writes; the stock-shortage
+case proves admission refusal.
+The same selection covers shadow/off admission, protect release after arrival
+and lease expiry, manual resolution, open/expired dunning and supersession by a
+later paid cycle. Keep the shared harness when extending these witnesses; report
+case counts and whole-selection wall time, including startup and cleanup.
+
+
+The retry-class threading guard in `scripts/retry-ladder-terminating-classes.test.ts`
+resolves every production retry call across the core, package and host sources.
+Its mutation witness removes the refusal class from each discovered call in
+memory and requires the same guard to reject each omission.
+
+The native stock-evidence forward uses
+`npm test -- tests/postgres/fulfillmentStockEvidenceReplay.test.ts` for six real
+PostgreSQL cases: package-port refresh/resolve/reopen, acknowledged and nullable
+replay, identity conflicts, legacy fingerprints, row-lock/resolver races and
+fresh/exact-predecessor catalogue replay with package/inventory/ACL proof.
+`fulfillmentNativeConformance.test.ts` also binds the added sparse descriptor.
+The suite needs local Docker and uses the shared container helper's pinned
+PostgreSQL 16 image. Run build-producing package checks serially because they
+share generated package directories.
+
+The M10/F17 exact-forward controls use
+`scripts/reviewed-batch-forward.test.ts` for per-file refusal plants and separate
+and co-located CI/release approval, and `tests/postgres/reviewedBatchForwards.test.ts` for the
+mandatory PostgreSQL/pgTAP catalog gate. The latter runs both complete prefixes,
+checks exact catalog/ACL/row changes and rollback, and falsifies its observer
+with committed attacks. Missing Docker, PostgreSQL or pgTAP fails; the lexer is
+only a pre-filter. Fixtures under `scripts/fixtures/reviewed-m10/` are inert
+approval snapshots and do not join an installation manifest. Root test discovery
+already includes both suites; no extra runner or optional skip is introduced.
+The M10 gate reads its native PG16 and managed Supabase PG17 pins from
+[the CI image inventory](config/ci-images.json), with mirror-first fallback as
+specified in [CI image mirror](#ci-image-mirror). The gate
+uses the shared pull module to reuse an exact local pin or verify the pulled
+RepoDigest. Transient pulls retry at most three attempts per source within a
+300-second pull budget; retries share each source's deadline and reserve time for fallback as described below. Retry-After
+above the source's share of remaining time advances to the next source;
+otherwise waits are capped at five seconds. An unavailable mirror advances
+immediately. Inspection, container-start (except the shared helper's existing
+port-rebind retry) and SQL failures are outside the pull retry; exhausting
+sources fails without a skip.
+
+
+M09 native invoicing uses six real-Postgres conformance cases and the package
+store/binding witnesses in `packages/platform/test/invoicing/postgresStore.test.ts`. The native harness includes fresh complete installation, preserved
+prefix upgrade, exact catalogue hashes, invoker/browser ACL refusals, keys and
+leases, scoped claims, incumbent fencing, scale and same-order dispatch under
+accounting contention. Its whole-file budget is 28 seconds excluding container/harness setup (report setup
+and per-case time separately), with additional M09 evidence in
+`tests/postgres/invoicingStoreContract.test.ts` (72 rows) and
+`tests/postgres/invoicingContinuity.test.ts` (3 cases). The required package selection includes the store
+cases, and the existing packed consumer verifies the store, issue binding, migration
+descriptor and independent collector exports, plus all six SQL asset hashes
+without a driver installed. These
+checks establish the native persistence/continuity slice and offline issue binding,
+without fiscal provider readiness. The approved re-pin regressions share those six native
+cases: stored-reversal before-send/absence handling, retryable readback remaining
+unknown, latest terminal/resolved capture fault per source kind/ID, and exact
+cutover seeding before FK tables with a concurrent order writer. Keep the
+28-second whole-file ceiling when extending these cases.
+
+For managed correction changes, run the real PostgreSQL
+`tests/postgres/invoicingManagedCorrection.test.ts` and shipped
+`supabase/tests/accounting_correction_recovery_test.sql` through the managed
+pgTAP runner. The former exercises the actual v2 adapter, identity/reclaim,
+fences and roles; the latter retains committed-ACK, delivery and audit replay
+witnesses. The invoicing contract test also covers correction and reversal outcomes without
+another setup. Required package selection includes this file and the existing
+packed consumer. These checks do not establish provider wire or fiscal proof.
+
+Subscription package contract changes use package-local contract, identity and
+port-fit witnesses alongside the generated package boundary census. The cold
+consumer classifies both exact subscription entries as having no optional peer
+requirement and exercises their installed declarations and runtime refusals.
+`tests/postgres/subscriptionContinuityBaseline.test.ts` uses the full current
+native manifest and disposable Docker harness for arrival maximum, exhaustion
+and captured-case rollback behavior; it must not replace a failed invariant
+with a mock, skip or admission bypass. These focused witnesses complement the
+existing complete contribution gate and establish no runner activation. Declare
+the subscription module in the ESLint graph with a browser contracts subtree
+and no cross-module edge; existing provider and package isolation rules apply.
+
+Fulfillment preparation conformance runs the production reference writer under
+its advisory and shipment row locks in
+`tests/postgres/fulfillmentPreparationBinding.test.ts`; the packed
+`scripts/packages/platform-cold-consumer.test.ts` scenario also covers the
+fulfillment services and contribution from installed bytes.
+
+Native fulfillment conformance uses the existing Node collector and disposable
+PostgreSQL harness in `tests/postgres/fulfillmentNativeConformance.test.ts` and
+`tests/postgres/fulfillmentDeliveryAlignment.test.ts`. It covers complete install and
+prefix upgrade/replay, fences/ACK recovery, arrival/replacement invariants,
+locks/rollback and actual denied browser privileges. Retry/admission
+cases distinguish existing-cycle recovery without receipt changes from guarded
+new-cycle inserts. Docker unavailability fails these required proofs; report
+container setup separately from case runtime. This adds no collector, profile,
+coverage budget or live provider dependency.
+
+The payment reference-support rebinding reuses existing host and producer cases:
+localized callback/query and simulator-return parity, nominal no-charge retry,
+customer/setup metadata and inert default-off construction are assertions inside
+existing cases. Duplicate root suites retire while their package witnesses stay.
+The packed consumer checks the eleven additional experimental vendor exports,
+no leakage into neutral payment entries and no SDK or import-time I/O. Its local
+pack/extract fixture needs no package installation; provider-account verification
+and hosted time-budget evidence remain separate obligations.
 
 The opt-in payment example retains donor execution, decline, refund, lifecycle
 and purpose-sensitive readback witnesses in the existing Platform/root Node
@@ -315,16 +459,51 @@ The runtime-forward checker also binds eight exact legacy policy retirements
 by table, name and preceding CREATE POLICY statement hash. It requires their
 ordered DROP statements before the fixed grants and rejects missing, duplicate
 or additional policy operations. Both PR and release-history tests check these
-refusals and require approval before the forward's introducing commit. These
-checks admit one reviewed contraction; they do not grant general policy edits.
+refusals and the canonical
+[co-located SQL/pin rule](docs/platform/DATA_AND_MIGRATIONS.md#co-located-sql-and-approval-pins).
+These checks admit one reviewed contraction; they do not grant general policy edits.
+
+M09 control preparation adds seven final SQL fixtures without installing them.
+M09 lands before M10 and keeps its versions; see the
+[M09 forward owner](docs/platform/DATA_AND_MIGRATIONS.md#m09-invoicing-forward-design-and-control-approval).
+Its only data-reading install seed is the exact keyed cutover `INSERT ... SELECT`
+from settlement transitions and shipment operations, admitted once into the newly
+created cutover table. The re-pinned duty fixture seeds that table before
+FK-bearing tables acquire order/accounting locks; its whole-file pin binds this
+installation order as well as the stored-reversal void and latest-fault readback
+bodies. The admission classifier and exact seed literal stay unchanged.
+The class also admits the invoker-rights view form;
+arbitrary seed SELECTs and data-reading defaults gain no new admission.
+Checker plants use landed invoicing bytes when present, requiring exact equality
+with the reviewed fixtures, and use fixtures before introduction. They exercise
+PR and release admission, then refuse byte drift, browser grants, donor attribute drift and unpinned
+replacements. Separate structural plants refuse replacement syntax in managed
+creation files, missing function grants/revokes, changed managed search paths and
+unsupported view options. The release suite repins the managed search-path
+mutation and the `security_invoker=false` view-option mutation so semantic
+refusals run after the hashes pass. A view without a WITH clause stays structurally
+admitted; for M09, the whole-file pin and the catalog proof's
+`security_invoker=true` reloptions check refuse it.
+Native trigger plants distinguish a missing in-file
+function from a defined trigger function: the latter passes structural
+classification but fails the M09 whole-file pin in PR and release admission.
+The existing real-PostgreSQL catalog suite applies all fixtures in
+one owned container: native additions preserve prior objects and close browser
+ACLs, the payment-terminal replacement preserves incumbent attributes, and managed
+additions retain the donor's fixed-path, service-only definer authority. The
+[M09 design and retry contract](docs/platform/DATA_AND_MIGRATIONS.md#m09-invoicing-forward-design-and-control-approval)
+owns the duty sweep and feature introduction boundary. These checks do not
+introduce canonical migrations, broaden the fixed SQL class or replace
+feature-level settlement, dispatch, correction, seller and delivery invariants.
 
 The reviewed runtime-forward checker admits an exact pinned five-function SQL
 file and an optional identity capabilities file with fixed service-only client
 writes, operator activation inserts and invitation email reads. Tests exercise both PR history and release
 history admission, including independently repinned forbidden columns, roles,
-writes, functions and changed execution attributes. The control must already
-exist before the SQL feature's base and introducing commit. Passing these tests
-is admission evidence, not proof that a draft overlay is the shipped chain.
+writes, functions and changed execution attributes. Approval follows the
+canonical co-located rule above, including its separate prior machinery-control
+boundary. Passing these tests is admission evidence, not proof that a draft
+overlay is the shipped chain.
 
 
 <!-- openlup-doc-impact {"unit":"tooling","digest":"sha256-7754f9a24ad3a5e6f570d6599e69a966ef6655741c48b1bb48f041236192b975","reason":"The shared admission function and predicate refuse control characters other than tab and line feed in migration SQL (parser parity with PostgreSQL), with focused and tracked-rail regression tests. The Additive forward release path in DATA_AND_MIGRATIONS documents this refusal. Contributor commands, required test selection and gate order in this section remain unchanged."} -->
@@ -365,32 +544,30 @@ node scripts/agent-review-session.mjs verify-command --resource openlup:coverage
 ```
 
 Keep every required command below, including package gates and coverage; this
-wrapper adds no test selection, cache, stamp or authority. It first checks the
-clean committed candidate, policy, inventory, predicted merge and native review.
-When the predicted tree differs from HEAD, the existing policy/inventory checks
-run on that combined tree in a disposable checkout. A conflict or stale aggregate
-stops before expensive work; resolve by merging main and regenerate, never rebase
-the reviewed lineage merely for freshness. This is local early feedback, not
-hosted admission or a claim of deployment readiness.
+wrapper adds no test selection, cache, stamp or authority. Before starting the
+command, it checks the clean committed candidate and its native review. After
+the command exits, it checks candidate identity, cleanliness and review validity
+again. A changed candidate or expired review refuses final evidence; a valid
+candidate preserves the underlying command's exit code.
 
-Output exclusion is scoped to the real worktree, so separate projects and task
-worktrees do not wait for unrelated output directories. When `ai-resource-gate`
-is installed on PATH, the wrapper additionally uses its bounded host CPU/RAM
-admission; CI and an already brokered process keep their existing scheduler.
-Its resource key is per worktree; host capacity alone coordinates independent
-projects. Select the existing broker profile for the actual command with
-`--resource` (for example `openlup:coverage`, `openlup:build` or
-`openlup:typecheck`). An installed broker requires this explicit selection;
-the wrapper supplies no CPU, memory, worker-count or timeout policy of its own.
-The broker's configured admission policy and refusal remain binding. A busy
-worktree output lease refuses immediately. The lease is released only by its owner;
-inspect a stranded owner before cleanup. Nested wrappers refuse immediately:
-wrap the underlying required command once. The stack pin is removed from heavy
-child environments so independent test repositories resolve their own bases.
-Preflight is repeated after waiting, source identity is checked after execution,
-and native review is checked again after success. A changed source or expired
-review supplies no final evidence. Existing maintainer-local stamps and hooks
-remain required where installed.
+With `--resource`, the wrapper requires `ai-resource-gate` on PATH and runs the
+command through its waiting admission route. Select the existing profile for
+the actual command, such as `openlup:coverage`, `openlup:build` or
+`openlup:typecheck`; the resource key includes the worktree's directory name.
+The broker's configured CPU/RAM, timeout and refusal policies remain binding;
+the wrapper defines none of them. Without `--resource`, it runs the command
+directly. It refuses invocation inside an active resource broker or another
+verification wrapper, so wrap the underlying command once.
+
+Freeze tracked inputs and serialize commands sharing mutable output. The wrapper
+adds no output lease or policy/inventory check. Its cheap predicted-merge
+preflight reuses queue carry-over against locally fetched `origin/main` before
+the command starts; refresh that ref before final verification. It performs no
+intermediate candidate check after a broker wait. It passes the
+existing environment, including any `OPENLUP_STACK_BASE`, to the child command.
+Run the separately required checks yourself; existing maintainer-local stamps
+and hooks remain required where installed. This wrapper is local verification,
+not hosted admission or evidence of deployment readiness.
 
 ### Optional SonarQube Cloud diagnostics
 
@@ -441,6 +618,133 @@ Configuration references: [automatic analysis](https://docs.sonarsource.com/sona
 [quality profiles](https://docs.sonarsource.com/sonarqube-cloud/standards/managing-quality-profiles/understanding-quality-profiles),
 and [PR analysis](https://docs.sonarsource.com/sonarqube-cloud/analyzing-source-code/pull-request-analysis).
 
+### CI image mirror
+
+The separate [CI image mirror](.github/workflows/mirror-ci-images.yml) runs in
+`openlup/openlup` on pushes to `main` that change a derivation input, and on manual
+dispatch from `main`. The workflow lists the six derivation input paths explicitly.
+Its read-only plan job derives only repository/tag pairs and validates the four Supabase
+bootstrap service tags with the pgTAP job's
+single pinned CLI and rendered reference Supabase config, then checks the exclusion list read directly from `scripts/public-ci-pgtap.mjs`
+for uncovered runtime images. Exclusions remove long-running services, but not
+the enabled GoTrue, Realtime and Storage API schema-init jobs. Those three images,
+the database image and `pg_prove` from that CLI binary are mirrored.
+Missing or ambiguous exclusions, service tags, CLI pins or binary tags refuse
+derivation. [The non-CLI pins](config/ci-images.json) cover install-proof
+PostgreSQL, the test harness default and the managed-batch gate database.
+The reviewed-batch gate and shared PostgreSQL test helper read these JSON pins
+through [the shared reader and pull loop](scripts/ci-image-pull.mjs). The reader
+imports the JSON module directly so the same pins load in plain Node and both
+Vitest projects, including jsdom. They try
+the organization mirror first, then the existing upstream order with the same
+digest: managed uses GHCR, Docker Hub, ECR; native uses Docker Hub, ECR.
+Disposable PostgreSQL suites use `postgresSetupTimeoutMs` (600 seconds), including
+the existing 300-second cold image pull and schema installation, and
+`postgresTeardownTimeoutMs` (45 seconds). These are explicit integration-hook
+budgets; ordinary test deadlines remain unchanged. The shared helper bounds
+Docker availability to five seconds, each start/removal command to 30 seconds,
+and TCP readiness to 60 seconds of wall-clock time, including connect/query
+attempts and waits. After image resolution, port-conflict retries share a
+60-second startup budget; failed-start cleanup still gets its 30-second removal
+budget before reporting failure. Readiness destroys its throwaway client after each probe.
+`closePostgres` gives all fixture pools and adapter/store close callbacks one
+shared five-second close phase, then attempts every owned container removal even
+if a close failed or stalled. Suite teardowns pass opaque adapter closers into
+that phase instead of awaiting them first. All removals finish before cleanup
+reports its collected failures. Separate elapsed timings identify the slow phase;
+an already absent container is the only ignored removal error. Secondary upgrade containers are acquired by the owned `beforeAll` fixture,
+registered immediately, and ready before the 60-second test bodies begin.
+A body that times out before its local `finally` therefore cannot leave a pending
+acquisition that returns after suite teardown. Local `finally` blocks reuse the
+same bounded cleanup.
+
+The helper's default is the pinned test PostgreSQL image; explicit images retain
+their behavior unless they exactly match an inventory pin. Shared acquisition
+first inspects every source locally and reuses only an exact pinned index digest;
+absent or nonmatching pins require pulling, while daemon/inspection errors refuse.
+It resolves once per process per exact input reference before port retries, then
+runs the successful
+reference with `--pull=never`. Explicit pinned overrides first verify the exact
+local RepoDigest, avoiding a second pull phase after the gate resolves its image. Failed
+resolutions are evicted from that process cache.
+The gate, helper and pgTAP runner use the same pull implementation. It tries at
+most three times per source within a 300-second pull budget measured with a
+monotonic clock, including local inspections and final digest verification.
+Retries share a source deadline. With multiple sources, 60 seconds of the
+300-second budget is reserved across the remaining sources: a first cold pull
+can use up to 240 seconds, while a stalled first mirror cannot consume every
+fallback's opportunity. Fast refusals leave their unused time available. A
+single source retains the full 300 seconds. A shorter caller budget scales the
+reserve to 20%. Pulls receive their remaining source time, clamped to at least
+one millisecond. These are execution limits, not a throughput guarantee for a
+large cold layer; calibrate them against hosted cold-pull measurements. The
+300-second total still leaves half the gate's 600-second hook for startup and
+the migration prefix.
+Retry-After seconds and Go subsecond units above the current source's equal
+share of the remaining budget immediately advance to the next source.
+Otherwise 1s/2s minimum waits are capped at five seconds and the remaining budget;
+expiry prevents another pull. Backoff adds at most 10 seconds per failed source
+(30s native or 40s managed/pgTAP per image), all inside the pull budget. There
+are at most nine native or twelve managed/pgTAP pulls per image.
+The shared loop retries transport, context-deadline, killed process timeout,
+registry 5xx and 429 failures. Mirror not-found,
+denied or unauthorized errors immediately fall through without retry. An empty
+or private mirror therefore needs no login and does not by itself fail CI.
+Local daemon/disk/malformed failures, upstream non-transient errors and pinned
+RepoDigest mismatches refuse rather than silently selecting another image.
+The gate's offline guard rejects literal digest pins or registry source lists.
+
+The pgTAP runner reuses mirror CLI derivation for Postgres, GoTrue, Realtime, Storage API and `pg_prove`, pulls
+before `supabase start`, and tries mirror, GHCR, ECR, then Docker Hub by derived tag.
+The whole pre-pull phase, including aliases and inspections, shares a 600-second
+budget. Each image receives at most 300 seconds and never more than the phase's
+remaining time. This leaves half the hosted job's 20-minute limit for startup,
+migrations, tests and cleanup; phase exhaustion refuses before starting a stack.
+CLI tags
+have no inventory digest; local reuse requires the exact tag that the CLI will
+request, while any available derived digest requires exact index equality. The
+selected registry is passed explicitly to start/test/stop with
+`SUPABASE_INTERNAL_IMAGE_REGISTRY`, overriding setup-cli's GHCR default. When
+images succeed at different registries, the first image's successful registry
+wins; local tag aliases make every exact CLI-requested name available without
+additional pulls. Docker Hub retains the original `supabase/<name>:<tag>`;
+other registries request `<registry>/supabase/<name>:<tag>`, matching CLI 2.98.2.
+After aliasing, the runner inspects every exact requested name from the same
+five-image derivation. Any missing names refuse before `supabase start` and are
+reported together; only `No such image` counts as absence, while other inspect
+errors refuse directly. Offline lifecycle tests cover present, missing and
+mixed-registry names, so the CLI never needs to pull. No upstream push or registry
+write occurs. Other launchers and the
+install-proof service retain their existing acquisition behavior.
+An upstream source may retain an explicit tag only when it matches its JSON tag;
+resolution preserves that spelling and always verifies the pinned digest.
+The script resolves upstream tags to digests, copies complete indexes to
+`ghcr.io/openlup/<upstream-repository>:<tag>` (slashes retained), skips identical
+target tags, refuses conflicting tags and verifies the digest after copying.
+Only the mirror job receives `packages: write`: it validates the untrusted pairs against
+a closed repository allowlist, reads owned pins from its own checkout, and runs only
+SHA-pinned first-party actions plus the dependency-free repository script; CLI tags are
+trust-on-first-use and a moved tag is refused.
+The token reaches login through environment and stdin after validation and resolution,
+immediately before copying; a `finally` block removes the temporary registry
+credentials.
+The mirror never re-points an existing tag, so an owned pin's digest bump must use a
+new, more specific upstream tag; the old target tag stays as it is.
+Offline derivation, skip/refuse and verification tests accompany exact workflow
+trigger, permission, checkout and credential-transport assertions.
+
+One-time owner setup is required: organization **Settings → Packages → Package
+Creation** must allow Public packages (and initial private creation, because
+GHCR creates packages private). After the first authorized run, for each package
+under **openlup → Packages**, use **Connect repository → openlup/openlup**; in
+**Package settings → Manage Actions access**, add that repository with **Write**
+access if inheritance does not already grant it. Under **Danger Zone → Change
+visibility**, select **Public** and confirm. Check anonymous mirror pulls after making packages public; consumers already
+fall back while packages are absent or private. `GITHUB_TOKEN` cannot make a package public; linking a public
+repository does not change package visibility. See GitHub's
+[package access and visibility procedure](https://docs.github.com/en/packages/learn-github-packages/configuring-a-packages-access-control-and-visibility)
+and [repository linking procedure](https://docs.github.com/en/packages/learn-github-packages/connecting-a-repository-to-a-package).
+
 ### Required and raw checks
 
 Use the Node version recorded in [.nvmrc](.nvmrc), npm 11.19.0 (the
@@ -481,10 +785,40 @@ local listener; they never establish provider-account readiness.
 Required root `test` accepts only success from all four `test-full-shard` jobs;
 failed, cancelled or skipped shard jobs refuse it. Main-push reuse requires a
 complete successful exact-commit merge-group run, including raw pgTAP.
+The `test-full-shard` and `pgtap` jobs authenticate ghcr.io pulls with the
+job's `GITHUB_TOKEN` and `packages: read` before non-reused tests; login failure
+fails the job. The pinned Supabase setup action selects ghcr.io for CLI 2.98.2;
+`install-proof` retains its Docker Hub service, which is pulled before steps run.
 See [Test scope and diagnostics](#test-scope-and-diagnostics) for selection,
 sharding, discovery and test-author guidance.
 
 The required `install-proof` job runs the shared package gate after both reference-profile builds, independently of the required `test` job in a separate checkout and installation. It discovers every publishable package from `config/openlup-packages.json` and its actual npm workspace, and refuses missing `api:check`, `ci:required` or `test:consumer` scripts before packing. The existing cold producer emits one current-set manifest. All API checks run before any package's `ci:required`, which receives the same verified manifest and exact checkout commit through `OPENLUP_PACK_MANIFEST` and `OPENLUP_PACK_COMMIT`. Cold preparation clears each workspace per target, so the API phase restores each package's built declarations and prerequisites through the existing build helper; it leaves the retained tarballs untouched and includes that cost in its timing. There is no missing-script skip or package-name routing table. A new module must supply installed-artifact consumer coverage, meaningful failure cases and its owning required batch; script declarations alone do not prove that those assertions are sound. Review checks that the batch actually invokes its consumer and preserves its required tests. Keep API checks out of that batch because the shared phase already runs them.
+
+Dependency security has two boundaries. PR/merge-group admission refuses newly
+selected vulnerable production dependencies against the exact comparison base;
+an advisory affecting an unchanged dependency inherited from that base remains a
+Dependabot alert, not a repository-wide merge freeze. Unknown dependency scope
+is treated as production. Unavailable or incomplete audit data does not establish
+PASS when dependency security inputs changed. This uses the existing
+`install-proof` status; tests, API, lock, license, SBOM, pack and publish controls
+remain required. Core's `ci:required` runs `release:admission`, which preserves
+those controls without repeating the absolute live audit. Standalone `ci` and
+`release:check` retain the absolute audit.
+
+Publication is stricter: `packages:check --release-tag` / `--release-set` packing
+runs a fresh full audit of the selected committed workspace dependency graph,
+including internal prerequisites and their standalone locks, under the existing
+zero-vulnerability budget. npm's production flags may conservatively include
+shared dependencies also used by development tooling; optional peers absent
+from the lock are not newly resolved. An audit failure retains no publication
+artifacts. Manifest-only checks remain installation-free and do not audit.
+The existing release gate also refuses a target with different pack/audit/publisher
+control blobs from fetched main, before target code runs; older source is allowed
+when these controls are unchanged. Historical release workflow definitions remain
+pinned to their own commits.
+The publishing workflow requires packing/audit from its current attempt; retry
+all jobs after publication failure so the full audit runs again. Existing release
+approvals, immutable version rules and protected credentials remain unchanged.
 
 A module added to an existing distribution extends that package's consumer and
 required batch; it does not need another npm workspace, runner or CI job.
@@ -569,6 +903,9 @@ The `prelint` and `pretest` scripts build Core, Outbox and Platform in dependenc
 order. Before direct typecheck or Vitest commands after install or package-source
 edits, run `npm run pretest`; otherwise consumers may read stale `dist/` exports.
 
+The [reviewed-forward PostgreSQL proof](tests/postgres/reviewedPortableCreation.test.ts) rejects landed pin drift before replay and tests byte selection for full and partial landings; [data and migrations](docs/platform/DATA_AND_MIGRATIONS.md#exact-reviewed-function-forwards) describes its catalog boundary.
+See the [M09 forward owner](docs/platform/DATA_AND_MIGRATIONS.md#m09-invoicing-forward-design-and-control-approval) for managed correction finalization and parking. The fixture and registry do not install SQL.
+
 For the managed pgTAP runner, prerequisites and proof limits, follow
 [Test scope and diagnostics](#separate-db-package-and-coverage-proof).
 
@@ -596,7 +933,8 @@ material finding IDs require closure; evidence expires 24 hours after the
 earliest counted PASS report for the current candidate. Unchanged prepare
 preserves evidence. Three repair cycles are automatic; `needs_owner` then
 requires an owner decision recorded with `continue "<note>"`, adding three.
-A rethink remains recommended practice. `prepare --new` records a changed
+Follow [Regroup when work stops converging](#regroup-when-work-stops-converging).
+`prepare --new` records a changed
 intent or a rebase in the same append-only session history; findings, reviewers
 and the repair count carry on. Only `continue` adds cycles. Put the
 simplicity pre-check in the first review request as prose. See the
@@ -702,6 +1040,20 @@ does not move prompts or reports. A receipt timeout needs submission or expiry
 recovery, as [Merge queue](#merge-queue) describes. Freshness is checked at
 admission, not guaranteed at the later merge; same-name checks from a malicious
 writer remain outside this process-evidence boundary.
+
+The experimental invoicing module adds an isolated row to the existing platform
+module graph, with a type-only browser contracts entry and no module edges.
+Its installed cold-consumer producer exercises default-off and explicit provider
+selection from the packed artifact and exercises typed native host/store refusals
+and offline adapter conformance. Declaration compilation covers the native-port
+factory and conformance helper in both NodeNext and Bundler modes. Per-seam
+`Record<RequiredKeys, string>` checks cover all 14 pinned-SQL store seams, including
+union-arm evidence and explicitly local handling. A CI-run falsifier adds a required
+field to a packed declaration and requires both the NodeNext and Bundler compiles
+to reject it. The existing
+package selection, boundary tests, API reports,
+AST rules and required verification routes remain binding; this contract step
+adds no separate runner or provider-access requirement.
 
 ### Commands and lint rules
 
@@ -854,6 +1206,12 @@ npx --no -- vitest list --filesOnly --project=node server/domains/subscription
 # Native review changes: pure session/hosted tables plus real Git witnesses.
 npm test -- scripts/agent-review-session.test.ts scripts/agent-review-queue.test.ts scripts/agent-review-gate.test.ts
 
+# Package command changes: detect stale synthetic command expectations first.
+npm test -- scripts/source-preview-release.test.ts -t "builds its synthetic workspace manifests with the pinned public execution surfaces"
+
+# Packing/release changes: exercise the affected fixture and refusal boundaries.
+npm test -- scripts/packages/required-package-gates.test.ts scripts/packages/set-release.test.ts
+
 # Separate Core suite; includes coverage, API/docs/release and packed consumer.
 npm --workspace @openlup/core run ci
 ```
@@ -888,6 +1246,38 @@ Use the smallest proof that can detect the failure:
 | Browser journey | Broken interaction in the selected mounted application. |
 
 Extend an existing meaningful case first; add a test for changed behavior, a discovered defect, or a required contract/refusal/replay boundary. Migrations, status mappings and idempotency rules require failure/replay regressions. Demonstrate adapter capabilities and refusals without live providers. Preserve the unchanged [adopter characterization witness](#contribute-existing-adopter-code-then-refactor) during refactoring. Do not test private implementation shape or add a harness solely to test the harness.
+
+#### Sufficient evidence and material test gaps
+
+Before counted review, clarify the approved behavior, its failure boundary and
+the smallest discriminating executed proof in the existing task record. A few
+sentences or a small table suffice; this is not an inventory of every branch or
+another audit. The review brief links to that record and states scope/exclusions.
+
+An actual reachable defect violating the accepted contract blocks regardless of
+test presence. A material proof gap identifies a required, unproved behavior class
+or boundary, a credible mistake mechanism at the changed boundary, and why all
+relevant executed proofs fail to distinguish it. Include scenarios requiring
+refusal. A test's existence, name or coverage percentage alone proves none of this.
+The map does not waive a newly discovered required boundary or a mandatory gate.
+
+Mutation is a bounded way to challenge that proof, not a completeness target.
+Reachability and nonequivalence are necessary but insufficient for a blocking
+mutation finding. Additional variants within an already discriminated class are
+advice unless they expose such a mechanism or a separate obligation. For example,
+equal document/predecessor IDs in every fixture can hide an argument swap when the
+contract permits different IDs; one distinct case may resolve it. A swap where
+the contract requires equality, or arbitrary new amount-specific corruption, does
+not itself justify an endless series of cases. Missing required replay proof
+remains material if removing its protection could create a second fiscal effect.
+
+Choose proof by the boundary: a real-DB table can test translation and durable
+effects, but a superuser does not prove role restrictions, sequential rows do not
+prove concurrency, and final DB state may miss duplicate external effects. Keep
+required role, transaction, concurrency, installed-artifact and fault witnesses.
+Changing proof technique within the approved requirement is autonomous; weakening
+that requirement or changing a characterization witness's meaning needs its
+applicable owner decision. Never rewrite acceptance merely to obtain PASS.
 
 Keep executable tests tied to a current offered contract, installed safety
 boundary or selected reference behaviour. Historical migration spellings,
@@ -924,13 +1314,34 @@ Root test/hook defaults are 10 seconds, or 30 with coverage; externally supplied
 
 To find optimisation targets, read the per-file durations Vitest prints in a hosted shard log (`✓ <file> (<n> tests) <ms>`) or locally with `npm test -- <path>`, and rank by file time. On 2026-10-19 the slowest root files were repository-tooling tests (`scripts/packages/outbox-consumer-proof.test.ts`, `scripts/source-preview-release.test.ts`, `scripts/public-ci-neutrality.test.ts`), each 40–80 s; slim one by moving decisions into table-driven cases and keeping only the real-process witnesses its requirement needs.
 
-Local worker defaults are 75%, coverage 50%; the wrapper lowers them under contention. Use `VITEST_MAX_WORKERS` for ordinary local reproduction; CI coverage and explicit serial mode have their own config. Do not change global limits, skip assertions or invent a new speed gate to make one test green.
+Ordinary local worker defaults are 75%, coverage 50%; the wrapper lowers them
+under contention. Plain local runs inside `verify-command` or an active resource
+broker instead default to at most four workers and the host's core count. A
+positive broker CPU-token count further caps workers at one less than that
+count, with a minimum of one, leaving capacity for the main process and child
+compilers. Explicit `VITEST_MAX_WORKERS` or `OPENLUP_VITEST_MAX_WORKERS` pins take
+precedence. The wrapper logs this verification default. CI scheduling and
+coverage retain their existing policies. Use `VITEST_MAX_WORKERS` for focused
+reproduction; do not skip assertions or introduce a speed gate to make a test green.
+
+Real package-size witnesses run separately for each package (30 seconds) and
+browser entry (15 seconds), so adding modules does not multiply one case's
+work. Their Git, npm-pack and browser-bundler children are bounded at 5, 20 and
+10 seconds respectively. The two-bundle growth refusal has a 25-second case
+budget. The source-release stale/fresh/dirty/changed witness retains its real
+CLI state transitions in one 60-second case, with 10-second fixture Git and CLI
+bounds. These limits enclose the necessary child work; they do not alter size,
+release or refusal assertions or enable retries.
 
 #### Extend tooling selection conservatively
 
 [ci-test-scope.mjs](scripts/ci-test-scope.mjs) contains eligible bounded tooling rows. **New and unlisted tests always run. A new tooling test does not need a row.** Add one only when skipping untouched inputs saves useful work and its complete dependency closure is understood.
 
 Declare every actual nonshared repository input the test or imported code reads: source, configuration, manifests, documentation, inventory, package outputs and reference wiring. Use an exact path or a directory prefix ending in `/`; no globs. Fixture strings are not reads of the corresponding real repository files. Prefer a broader prefix to incomplete precision.
+
+The Outbox companion reads `config/ci-images.json` through its image helper;
+image-pin-only changes therefore retain its real interruption and refusal
+witnesses even when unrelated bounded tooling fixtures are excluded.
 
 All rows already share `scripts/`, `tests/setup/`, `src/test/` and `src/checkout/machine/commerceRequestCache.ts`. Every root file and every dot-prefixed segment anywhere also runs everything. Package rows conservatively include `packages/`. Repository-wide inventory/policy/neutrality/removal scans stay unlisted. When a row gains a new read, extend it; when its closure becomes uncertain or tree-wide, remove it.
 
@@ -1028,8 +1439,46 @@ The job also rejects baseline increases relative to the PR base/main push's
 previous commit. For a first baseline, or to regenerate from main without
 increasing debt, use `node scripts/public-ci-neutrality.mjs --write-baseline`.
 After removing debt, lower the affected counts; never raise them.
+
+The named **bounded debt C94 — M10 reviewed packet vocabulary** is the coordinator-approved
+bounded recalibration for immutable managed SQL and its pinned registry COMMENT,
+following the diagnostic-fixture debt treatment in #130. Its exact path/category
+counts are documented in [Data and migrations](docs/platform/DATA_AND_MIGRATIONS.md#exact-reviewed-function-forwards).
+This control change adds baseline keys only for the six existing managed fixtures
+and that registry carrier; existing counts stay unchanged. Each landing PR
+(P3b, P5, F17) adds only its own rail keys with the files and exact pinned counts.
+Every present baseline key for an allowance path must match all its pinned
+category counts exactly, including during regeneration; absent files cannot
+justify new keys. `reviewedPinnedIntroductions` in the wrapper is a closed
+list of exactly 13 paths: six inert managed SQL fixtures, their six future
+`supabase/migrations/` copies, and `config/reviewed-platform-forwards.json`.
+Each SQL entry pins the whole-file SHA-256 and exact category/before/after counts;
+the registry entry pins its exact SQL COMMENT text, so unrelated registry edits
+do not invalidate the pin. The filter applies on any base to measured-base
+increases and parent-baseline raises, including `--write-baseline`. Candidate
+counts must still fit the baseline. No wildcard, prefix or ceiling is admitted;
+changed bytes, paths, categories or counts refuse, as do native, TypeScript,
+package and docs entries. An unrelated increase remains a failure in the same run.
+Adding any further entry is a control change needing two fresh Opus reviews plus
+the coordinator's control read. Neutral replacements reduce the debt; rail-path
+entries can be retired after the F17 PR lands and the base carries their counts.
 After all allowances are subtracted, a negative count fails the ratchet with
 the category, quoted path and remainder; allowances never clamp counts to zero.
+
+The opt-in fulfillment example lane subtracts only ui-15 at its exact source,
+test, API-report and [A3 ledger](docs/platform/plans/oss-a3-fulfillment-adapter.md)
+paths. Fixed registration carriers and platform change fragments admit only the
+complete case-sensitive subpath token; the report filename is admitted only in
+release gates and the publication catalogue. Outside paths, bare vendor prose,
+lookalikes, casing changes and other categories still fail. The script's tests
+exercise these plants and negative subtraction without changing the baseline.
+Its installed-consumer proof imports the opt-in fulfillment entry
+with optional peers and SDK absent, blocks ambient network I/O, checks the exact
+runtime inventory and unselected/unready defaults, then exercises only injected
+HTTP with explicit host readiness. Missing or malformed evidence refuses before credential
+resolution; successful dispatch exposes closed evidence rather than command PII
+or response bags. The focused glue tests do not replace the actual M08 conformance
+runner or the supervisor's committed review and full gates.
 
 The named first-party adoption example has a narrow prose allowance: only the
 approved complete lines in the root README, the documentation owner's page and
@@ -1053,6 +1502,26 @@ edits, deletions and mode changes to existing managed or portable migrations,
 backdated versions, unbound portable forwards and non-expand-only new SQL.
 The portable manifest must preserve its prior baseline and forward prefix.
 The CLI returns a failing exit when this comparison refuses a candidate.
+Expand-only expression admission is covered by the predicate cases and the pinned
+portable-chain admitted set in `scripts/source-preview-release.test.ts`;
+`tests/postgres/expandOnlyExpressions.test.ts` separately executes refused forms
+on disposable PostgreSQL 16 and observes their effects before rollback. The
+classifier admits only listed expression calls and accounted structural
+parentheses at verified object, column/type and constraint positions. Keyword-shaped
+names do not skip expression checks. Seed INSERTs require VALUES immediately
+after the target and optional plain column list; schemas take no schema elements,
+and expand-only statements take no OWNED BY clause. These tests do not broaden
+the separately reviewed creation class. Seed literal checks preserve identifier
+quotes, and type-position parentheses require a listed built-in modifier type.
+All base checks remain required after the additional refusal checks. Empty `[]`
+suffixes are accepted only at verified type positions; array constructors and
+subscripts refuse before element splitting. PG16 witnesses include a quoted
+typed literal before a sequence call, an `if` column with a default call, and
+a domain check inside an array default evaluated by a seed INSERT.
+Expand-only token separators are ASCII space, tab and LF; non-ASCII outside
+single-quoted literals and comments refuses, including in quoted identifiers.
+The PG16 identifier-boundary witness observes a call after a name containing
+non-ASCII bytes is truncated to PostgreSQL's 63-byte identifier limit.
 This database-free comparison does not derive the live object inventory digest.
 The source contract continues to bind the manifest bytes, and the portable
 runner compares `objectInventorySha256` with the selected database catalogue
@@ -1120,15 +1589,23 @@ Reviewed function forwards use the same checker in required self-check and relea
 prepare. Their whole-file bytes, signatures, old/new definitions and runtime
 privileges are pinned in `config/reviewed-platform-forwards.json`. The runtime
 list admits the five-function capability forward and an optional service-only
-identity capabilities forward. The optional portable replacement list admits
-exactly one code-fixed function to keep active subscriptions active on dunning
-exhaustion (invariant repair). The same focused test file covers exact bytes,
-portable-chain priors, registry cardinality, header preservation, extra-statement
-refusal and approval before introduction in both gates; managed counts remain
-unchanged. Required self-check keeps the whole registry
-unchanged from the feature comparison base; release compares each forward's own
-entry, list position and shared registry fields with its introduction parent, so later
-controls may append approvals. A feature cannot approve itself. These forwards
+identity capabilities forward. The optional portable replacement list binds
+code-fixed functions for the dunning invariant repair, payment-terminal
+decoupling and stock-evidence replay reopening. The stock control embeds the
+candidate SQL in the existing synthetic gate tests without adding a migration.
+The same focused test file covers exact bytes, portable-chain priors, registry
+cardinality, header preservation, extra-statement
+refusal and introduction-time binding in both gates; managed counts remain
+unchanged. SQL and its pins may share a feature PR under the canonical
+[co-located SQL/pin rule](docs/platform/DATA_AND_MIGRATIONS.md#co-located-sql-and-approval-pins).
+Only bindings for that PR's new SQL may change; other entries and shared fields
+stay fixed. Trusted-main native admission refuses co-changing the machinery.
+Release preserves each binding from its actual mainline introduction; later
+repins cannot authorize earlier SQL. New classes and control changes still need
+prior separate approval. Batched pins land per rail as a prefix in version
+order: all earlier same-rail pins must be present with their pinned whole-file
+digests. The PG gate refuses landed holes and replays committed interleaved
+files through the last pin along with the absent fixture suffix. These forwards
 are not expand-only. See
 [the exact class](docs/platform/DATA_AND_MIGRATIONS.md#exact-reviewed-function-forwards)
 and its refusal tests in `scripts/source-preview-release.test.ts`.
@@ -1297,7 +1774,10 @@ reading, exact merge scope and protected release approval still apply.
    [AGENTS.md](AGENTS.md).
 2. **Stabilize and commit.** Start with the useful vertical slice and a
    before/after witness that rejects the incompatible predecessor when preserving
-   behavior. Run focused contract/API/platform probes and existing native artifact
+   behavior. Run applicable existing policy, inventory and neutrality checks
+   before broad tests, and use the [focused test examples](#test-scope-and-diagnostics)
+   for the changed boundary to catch stale fixture inputs before counted review.
+   Run focused contract/API/platform probes and existing native artifact
    checks before coverage or the broad root gate. For core, after its build,
    `npm --workspace @openlup/core run release:pack` checks native class/file and
    aggregate byte limits without substituting for final committed cold proof.
@@ -1331,12 +1811,19 @@ reading, exact merge scope and protected release approval still apply.
        two for `behavior` or `unknown`.
      - Codex may omit `authorSessionId`, which is then taken from
        `CODEX_THREAD_ID`. Every other supervisor sets it to its own session ID.
-   - run `node scripts/agent-review-session.mjs prepare .context/scratch/agent-review/intent.json`;
+   - refresh `origin/main` with `git fetch origin main`, then run
+     `node scripts/agent-review-session.mjs prepare .context/scratch/agent-review/intent.json`.
+     Its cheap merge preflight refuses a known conflict or failed carry-over before
+     reviewers start. `verify-command` repeats it before expensive verification,
+     and `receipt` before submission, against the locally fetched main. It does
+     not fetch or promise that main will remain unchanged. An unlanded stack pin
+     may still be reviewed locally; hosted admission waits for its prerequisite;
    - launch fresh reviewers and `record` each report;
    - repeat until `verify` reports `reviewed`. Three repair cycles are automatic;
      after `needs_owner`, only an owner decision recorded with
      `node scripts/agent-review-session.mjs continue "<note>"` adds three more.
-     A rethink remains recommended practice.
+     Follow [Regroup when work stops converging](#regroup-when-work-stops-converging)
+     before further repairs when its condition is met.
 
    Preliminary local semantic snapshots help prepare the owner packet but are
    not this committed native admission. Preserve their findings and any real
@@ -1360,6 +1847,9 @@ reading, exact merge scope and protected release approval still apply.
      the clean committed tree. It must report `REQUIRED PASS`, and it writes the
      stamp that the pre-push hook requires.
    - Elsewhere, run the [required check commands](#required-and-raw-checks).
+     When native review evidence is available, the existing `verify-command`
+     wrapper performs the merge preflight before the command. Refresh
+     `origin/main` before the final run so it sees current main.
 5. **Push** with `git push -u origin HEAD`. A push is publication, within your
    delivery authority. If `main` has moved since the review, push as is: verify
    and pre-push accept the review while its fork point is unchanged. Do not
@@ -1422,15 +1912,35 @@ recorded in the session history and each other, and not reused from earlier cand
 
 Three repair cycles are automatic. `needs_owner` then requires the owner to
 continue, narrow or stop; `continue "<note>"` records an authorized continuation
-and adds three cycles. A rethink remains recommended practice: question the
-criteria and checking tool, group findings by root cause, consider simpler
-alternatives and record `pattern → simpler path`. This grants no delivery or
-settings authority. `prepare --new` records a changed intent or a rebase in the
+and adds three cycles. Follow the mandatory supervisor procedure in
+[Regroup when work stops converging](#regroup-when-work-stops-converging);
+it is not another native state gate. `prepare --new` records a changed intent or a rebase in the
 same append-only session history; findings, reviewers and the repair count carry
 on. Only `continue` adds cycles. A version-1 session file from before
 2026-10-19 cannot be converted: delete `.context/scratch/agent-review/session.json`
 and prepare again. A conflict or
 failed queue carry-over is resolved by merging `main` and re-reviewing.
+
+**Review after integrating main.** `prepare` can supply `candidate.integration`
+with the preceding reviewed base/head/tree and its expiry. This requires a valid
+PASS in the same append-only session, unchanged intent and author, and exactly
+two merge parents: the prior head and the new review base on main. Two fresh
+reviewers still approve the complete current tree against the approved criteria.
+Their inspection may focus on the complete old-head-to-new-head delta, the
+old-base-to-new-base delta, both versions of the task's own diff, conflict
+resolution and interactions with the existing implementation. Read changed
+admission, dependency, migration and other control machinery even when it is
+outside the task's own paths. A merge commit can contain additional edits;
+parent identity alone does not prove unchanged implementation. Supply these
+pinned source identities, not old verdict text or author discussion. Uncertainty
+requires full inspection within those reviews, not an automatic extra round.
+
+Focused integration review inherits the earliest source-coverage expiry; fresh
+reports do not renew it. Reports are never copied to another tree. Findings,
+reviewer uniqueness and repair cycles remain in the same history. Missing,
+expired or unproven prior coverage, a rebase or `prepare --new` uses full review
+under the normal reviewer floor. An unchanged prepare preserves existing evidence.
+The receipt format and all mechanical checks are unchanged.
 
 Handle `needs_agent_review` in the active task without asking the owner to repeat
 approved behaviour. After criteria, review and checks pass, stop optional edits
@@ -1463,6 +1973,36 @@ Read the [AI contribution policy](.github/AI_CONTRIBUTION_POLICY.md) before
 submitting material AI-assisted work. Human accountability and DCO, independent
 native review, and actual task publication authority remain required.
 
+#### Regroup when work stops converging
+
+After two consecutive completed candidate evaluations that leave a material
+obstacle to the same approved outcome, the supervisor must rethink the approach
+before the next batch of repairs and proof. The initial candidate counts; the
+required reviewers of one candidate constitute one evaluation, not two. Waiting
+for another report, a test or infrastructure is not a completed failed attempt.
+A PASS with an open material finding does not close the obstacle. Outside native
+review, apply the same intervention after two executed attempts to resolve the
+same acceptance gap without resolving it; repetition without new information can
+trigger it earlier. Judge progress from existing results, without a second CI
+counter. Stricter existing retry limits remain binding from the start.
+
+In the existing task note, identify the two attempts and record briefly: the
+remaining gap and its contract/owner; the cause and a simpler alternative; one
+next discriminating step and its expected observable result. Question criteria,
+test level and data, group findings by cause, and consider removing the cause
+before adding cases or mechanisms. The same method may continue when new
+information justifies it. End with the lesson `pattern → simpler path`.
+
+Continue autonomously within approved scope, change technique, regroup within
+that boundary or identify the actual missing owner decision. No extra reviewer,
+challenge round or human read is required. A method, agent, context or PR change
+does not erase the unresolved issue or its history. Do not repeat a rethink of
+the same issue without decision-changing information. Existing `needs_owner`,
+exhausted budgets and material contract changes keep their actual owner route.
+Rethink grants no authority, cycles, finding closure, PASS renewal or extra expiry;
+it does not run `continue`. The native `cycle` counts changed candidates, not
+completed evaluations. No new CLI event, receipt, job or counter is introduced.
+
 ### Review lessons
 
 Each rethink ends with a one-line lesson. Before cycle 1 of a review, the author
@@ -1481,6 +2021,20 @@ own: a lessons change is an ordinary delivery under existing authority, and a
 promotion stays within its approved scope. The rethink record and the task's
 terminal self-retro carry the lesson until it lands. No other tracker is kept.
 
+- 2026-10-23, queue integration rethink: repeated full reading after a base
+  merge and enqueue polling on an unchanged conflict waste work → check the
+  existing carry-over predicate before expensive phases; reuse valid source
+  coverage to focus fresh current-tree review on the complete integration delta.
+- 2026-10-23, execution-process rethink: repeated uninformative mutants and stale
+  instruction copies → use [required behavior-class proof](#sufficient-evidence-and-material-test-gaps),
+  [early regroup](#regroup-when-work-stops-converging) and
+  [canonical instruction readback](#instruction-freshness-and-handoffs).
+- 2026-10-23, co-located SQL/pins: a trusted script cannot enforce its own
+  invocation → keep the documented workflow trust boundary explicit; reuse
+  existing sensitive review rather than claiming status-name isolation.
+- 2026-10-23, PostgreSQL teardown rethink: bounding only the fixture pool
+  misses pools behind adapter/store `close()` → include every owned closer in
+  the shared bounded close phase before attempting every container removal.
 - 2026-10-19, native review simplification rethink: Resetting state and
   hand-copying fields across a session boundary drops whichever control was
   forgotten → never discard state: append a new intent and candidate to the
@@ -1501,9 +2055,9 @@ terminal self-retro carry the lesson until it lands. No other tracker is kept.
   merge base becomes the predecessor's head.
 - 2026-10-17, module package pull requests: stacked pull requests that each
   regenerate one shared record (a doc-impact marker, a contract digest)
-  conflict once the lower one squash-lands → stack only pull requests without
-  single-instance records, merge `main` once before each turn otherwise, and
-  check `git merge-tree` against the queue base before relying on carry-over.
+  conflict once the lower one squash-lands → the merge-commit and exact-predecessor
+  guidance in [Merge queue](#merge-queue) supersedes that recovery. Follow its
+  carry-over rule; integrate `main` for a conflict or refusal, not merely freshness.
 - 2026-10-17, parallel module work: parallel heavy local test runs cause load
   timeouts → parallelize writing and serialize heavy test runs; after a load
   timeout the complete gate is rerun without the concurrent load, and the
@@ -1563,14 +2117,21 @@ records why these rules exist.
 - **No rebasing for freshness.** Do not rebase a pull request, or merge `main`
   into it, only because it is behind. A review is bound to the branch's fork
   point, so verify and pre-push keep accepting it while the branch is behind.
-  Integrate `main` only for a textual conflict, by merging it, and then obtain a
-  fresh full review.
+  Integrate `main` only for a textual conflict or failed carry-over/preflight,
+  by merging it, and then obtain a fresh review, using the integration scope above when `prepare` proves coverage.
 - **Arming.** Arm auto-merge only under actual merge authority, and only after
   the required checks, the native review and any required maintainer read:
   `gh pr merge <PR> --auto --author-email <address>`; the queue sets the merge
   method. Use the maintainer's configured author address. Confirm arming only
   by a non-null GraphQL `mergeQueueEntry` on the pull request, never by
-  `autoMergeRequest`.
+  `autoMergeRequest`. Before arming, read the live head and mergeability.
+  `DIRTY`/`CONFLICTING` stops enqueue attempts until the head or mergeability
+  changes and the conflict is resolved; do not spend queue retries polling the
+  same refusal.
+  `UNKNOWN` permits one fresh read, then stops for diagnosis if still unknown.
+  Leave `BEHIND` to the queue when carry-over remains valid. A watcher follows
+  these same rules and resumes only after a relevant head or mergeability change;
+  it does not repeatedly arm an unchanged blocked PR.
 - **Receipts.** While native admission is active, a supervisor with delivery
   authority posts one source receipt per reviewed PR head as soon as the pull
   request is open and ready, using step 7. A group that cannot carry over is
@@ -1628,8 +2189,8 @@ other or touch the same shared files:
   exactly both additions; root manifests and lockfiles still block.
   Other base changes are rejected: merge `main` and re-review.
 - If another change on `main` conflicts with it, merge `main` into it once (do
-  not rebase), regenerate its shared records and get a fresh full review, as
-  for a textual conflict.
+  not rebase), regenerate its shared records and get fresh review, using the
+  integration scope above when `prepare` proves coverage.
 - If a predecessor changes, merge its new head into each stacked pull request
   above it (do not rebase); each result is reviewed again under the usual repair
   rules and budget.

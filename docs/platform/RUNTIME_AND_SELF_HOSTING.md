@@ -4,6 +4,31 @@ Status: development-preview contract. No recipe in this document is a supported 
 
 ## Runtime model
 
+The accounting reversal host delegates outcome handling to the invoicing helper
+while retaining its three event adapters, provider selection and exact business
+keys. The package helper hardcodes the donor's 10 s timeout. Disabled selection creates no handler. Invalid payloads discard;
+persistence failures retry with the existing bounded reason. A processed reversal
+may mean local pre-issue void, no invoice or a queued correction; it never proves
+remote deletion, money reversal or document delivery. Correction execution needs
+an explicit conforming recovery bridge; the old vendor method alone stays
+unsupported before claim. No new job registration or default activation follows.
+
+The Postgres local-document adapter now consumes `createPostgresInvoiceStore`
+with the caller's structural executor and explicit local provider metadata.
+Its request key, local document reference, status and replay remain intact;
+this path supplies no fiscal facts and registers no invoicing worker.
+For the native store, use separate autocommit sweep, prepare and finish calls.
+The six [native witnesses](../../tests/postgres/invoicingNativeConformance.test.ts)
+cover row/lease fences, scope, locked accounting and unchanged renewal state.
+The combined P4 chain also installs the pinned payment-decoupling replacement;
+independent collection never joins a payment or parcel transaction.
+
+The reference payment-channel BFF retains its feature and mode admission gates,
+and now supplies the package HTTP client to the same domain handler. Its local
+simulator branch and disabled empty-channel response remain unchanged. Customer
+setup routes continue through the host SDK builder, whose mappings now come
+from the vendor subpath; this adds no route or browser exposure.
+
 The [M06 shipping binding](../../server/runtime/public-reference/m06ShippingBinding.ts)
 composes selected selection, address and flat-rate ports with host schemas and
 authority. Native address writes remain refused. Native flat-rate save requires a
@@ -57,7 +82,7 @@ The native watchdog requires a selected readback function and reports unavailabl
 when that function or storage cannot be used. Managed thresholds and branches
 remain unchanged. No default timer or deployment cadence is installed. Consent excludes managed frequency caps and
 legacy contact-touching and is not a send-time fence. See the
-[package recipe](../../packages/platform/README.md#native-communications-operations-development-preview).
+[package recipe](PLATFORM_PACKAGE_REFERENCE.md#native-communications-operations-development-preview).
 
 The reference BFF mounts `POST /api/bff/admin/identity/privacy/export` and
 `POST /api/bff/admin/identity/privacy/erase` in the shipped entrypoint, including
@@ -209,6 +234,46 @@ It must fail safely when a required dependency is absent rather than silently
 substituting a different business behaviour.
 
 ## Opt-in disposable subscription reference
+
+The inert [M08 fulfillment binding](../../server/runtime/public-reference/m08FulfillmentBinding.ts)
+selects one transaction lane, dispatch store, provider and readiness observer.
+Activation is default-off and checked before worker invocation, including the
+worker's stale-submission writes. The host supplies an authoritative reader
+using the locked transaction and routes every contact, selection or withholding
+edit through `editAuthoritative`, with actor and idempotency attribution and
+host-owned authorization/replay receipts. The writer locks the native dispatch
+identity and shipment, then synchronizes only revision, provider and withholding.
+Disabled, capability-selection/readiness and unsupported-dispatch refusals take
+precedence over the shared typed native refusal for missing preparation;
+all precede worker invocation. Source edits
+and context updates commit together; an error rolls both back. Credentials remain
+host closures. Construction adds no route, schedule or automatic dispatch, and
+the public reference server does not select this binding by default. Renewal
+admission uses the [host store decorator](../../server/runtime/subscription/deliveryAlignmentRenewalStore.ts)
+around the automatic runner's existing hook. A host that composes the native
+automatic-renewal runner must wrap its store port with this decorator; until it
+does, native delivery-alignment mode stays off or shadow. This boundary stops at
+the decorator and supplies no runner composer, factory or production entrypoint.
+Construction installs no route or schedule. It preserves the
+static terms gate, skips admission for off with no non-terminal captured case,
+and processes captured cases through native admission even after rollback to off.
+Prepared attempts, existing cycles and dunning retries bypass new-cycle admission.
+Native admission denials carry a typed deferral: the runner and batch report
+`deferred`, leaving the operation claimed without a terminal refusal write. The
+same schedule is offered again only after lease expiry, including after protect
+release, manual-review resolution or auto alignment without an extension. Static
+terms refusals retain their terminal behavior. The hook uses the runner’s
+`occurredAt`; direct callers may omit it and use the decorator’s clock. Previously
+refused operations and reservation-expiry recovery are unchanged. Enforcing
+new-cycle inserts require the successful exact-schedule admission and consume
+its receipt once.
+Host status-map, normalized-fact and current-parcel facades delegate to
+`@openlup/core/fulfillment` with their existing names; the status facade retains
+private provider trace metadata. Account order UI imports core progress helpers
+and types. The subscription browser inventory declares only the parsed core
+fulfillment modules. The default and subscription client and SSR graphs, identity
+clients for both auth providers, and installed core browser consumer exclude
+platform fulfillment modules, the preparation binding and the account order screens.
 
 The inert [payments binding](../../server/runtime/public-reference/m07PaymentBinding.ts)
 selects injected truth services or verified ingress only by explicit host choice.
@@ -501,6 +566,36 @@ falsifiers; follow [testing](../../CONTRIBUTING.md#test-scope-and-diagnostics) f
 execution. Second-runtime and deployed conformance remain separate adoption proof.
 
 ## Provider and host boundaries
+
+[ReferenceFulfillmentPage](../../src/pages/ReferenceFulfillmentPage.tsx) is an
+opt-in operator read example with no default runtime importer or route. Mounting
+requires a host-owned operator session and order identity; the existing detail
+endpoint remains responsible for authorization. The page reads only on explicit
+interaction and reports unavailable reads without claiming delivery. Its neutral
+client projects status and tracking text only; it exposes no address, raw operation
+payload, signed-label link or mutation. Commerce list/detail and overview require
+host read callbacks; [native parity boundaries](ARCHITECTURE_AND_EXTENSIONS.md#native-parity-boundaries)
+describe their shared typed refusal.
+
+Reference payment composition now calls the experimental vendor-subpath
+execution, reconciliation, HTTP, mapping and evidence helpers documented in the
+[package reference-support surface](../../packages/platform/README.md#reference-support-surface).
+Checkout, renewal, recovery/setup, channels, accounting payout SDK calls and
+activation keep their host wiring and flags. The bank/code binding translates `petId` to the
+package subject input and translates the outgoing account path/query and
+simulator return path back at its injected transaction client. The fallback
+payer label remains host-owned. Package no-charge errors reach prepared-attempt
+retry/release as the same class; arbitrary transport failures stay ambiguous.
+Default-off construction does no SDK/fetch/certificate work. This rebinding
+adds no route, schedule, activation or environment setting.
+
+Unused root payment webhook verifiers, notification normalization and test-only
+draft mappers have retired after production-importer checks. The shared HTTP
+helpers and unrelated mapper/readiness tests remain. Opt-in package payment
+adapters retain their implementations and witnesses; no host composition or
+provider activation changes. The [retirement ledger](plans/oss-a2-payment-adapters.md#o-p3b-1-unused-root-retirement-2026-10-22)
+records the exact root cases and remaining adopter leg.
+
 
 
 Communications server algorithms now delegate through the platform package. The

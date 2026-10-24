@@ -148,6 +148,18 @@ describe("accounting handlers", () => {
     expect(res.status).toHaveBeenCalledWith(200);
     expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ ok: true }));
   });
+  it("denies an operator before the real order-summary query", async () => {
+    const getOrderSummary = vi.fn();
+    const handler = createAccountingOrderSummaryHandler({
+      authorizeAdmin: async () => ({ ok: false, code: "FORBIDDEN", message: "Operator required" }),
+      accountingPort: { getOrderSummary },
+    });
+    const res = response();
+    await handler({ method: "GET", query: { orderId: "22222222-2222-4222-8222-222222222222" }, headers: {} } as unknown as VercelRequest, res);
+    expect(res.status).toHaveBeenCalledWith(403);
+    expect(getOrderSummary).not.toHaveBeenCalled();
+  });
+
 });
 
 function request(body: Record<string, unknown>, method = "POST"): VercelRequest {

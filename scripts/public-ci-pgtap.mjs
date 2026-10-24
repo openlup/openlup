@@ -6,11 +6,17 @@ import { cpSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, w
 import { createServer } from "node:net";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { env as processEnvironment } from "node:process";
+
+import { deriveCliImages, MIRROR_REGISTRY } from "./ci-image-mirror.mjs";
+import { IMAGE_PULL_BUDGET_MS, imageIo, pullWithRetry } from "./ci-image-pull.mjs";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const scratch = join(root, ".context/scratch/pgtap");
 const projectId = `openlup-ci-${randomBytes(8).toString("hex")}`;
 const cliVersion = "2.98.2";
+// The hosted job has 20 minutes: reserve half for startup, replay, tests and stop.
+export const CLI_IMAGE_PULL_BUDGET_MS = 600_000;
 
 // Bind replay to committed bytes before starting any disposable service.
 export function readManagedMigrationChain(checkout) {
@@ -62,6 +68,52 @@ async function selectPorts() {
   throw new Error("no free port block for the owned managed baseline");
 }
 
+// CLI 2.98.2 internal/utils/docker.go GetRegistryImageUrl: Docker Hub keeps
+// the original repository; every other registry uses supabase/<basename>.
+function cliImageReference(image, registry) {
+  const repository = registry === "docker.io" ? image.repository : `${registry}/supabase/${image.repository.split("/").at(-1)}`;
+  return `${repository}:${image.tag}`;
+}
+
+export async function prePullCliImages(images, io = imageIo) {
+  const deadline = io.now() + CLI_IMAGE_PULL_BUDGET_MS;
+  const remaining = () => {
+    const budget = deadline - io.now();
+    if (budget <= 0) throw new Error("CLI image pre-pull exceeded its 600s aggregate budget");
+    return budget;
+  };
+  const boundedIo = { ...io, exec: (args, timeout = 5_000) => io.exec(args, Math.max(1, Math.ceil(Math.min(timeout, remaining())))) };
+  const pulled = [];
+  for (const image of images) {
+    const sources = [MIRROR_REGISTRY, "ghcr.io", "public.ecr.aws", "docker.io"].map(registry => `${registry}/${image.repository}`);
+    pulled.push(await pullWithRetry({ ...image, sources }, boundedIo, Math.min(IMAGE_PULL_BUDGET_MS, remaining())));
+    console.log(`CLI image ${image.repository}:${image.tag}: ${pulled.at(-1)}`);
+  }
+  if (pulled.length === 0) throw new Error("no derived CLI images");
+  // Choose the first image's successful registry. If sources differ, alias the
+  // others locally so CLI PullPolicyMissing/inspect finds every requested name.
+  // This never re-pulls or retags an image to a different digest-qualified ref.
+  const registry = pulled[0].slice(0, pulled[0].indexOf("/supabase/"));
+  for (const [index, image] of images.entries()) {
+    const target = cliImageReference(image, registry);
+    if (pulled[index] !== target) await boundedIo.exec(["image", "tag", pulled[index], target]);
+  }
+  // The CLI must never need a pull. Check the whole derived start/schema-init/
+  // test-db set after aliasing, under the exact names it will request, before
+  // allowing supabase start. Only explicit absence is a missing image.
+  const missing = [];
+  for (const image of images) {
+    const reference = cliImageReference(image, registry);
+    try { await boundedIo.exec(["image", "inspect", reference]); } catch (error) {
+      if (!/no such image/iu.test([error?.message, error?.stderr].join("\n"))) throw error;
+      missing.push(reference);
+    }
+  }
+  if (missing.length) throw new Error(`CLI must never pull; missing local images before supabase start: ${missing.join(", ")}`);
+  remaining();
+  return registry;
+}
+
 async function main() {
   const migrations = readManagedMigrationChain(root);
   mkdirSync(scratch, { recursive: true });
@@ -76,13 +128,15 @@ async function main() {
   mkdirSync(join(directory, "supabase"));
   writeFileSync(join(directory, "supabase/config.toml"), config);
   cpSync(join(root, "supabase/tests"), join(directory, "supabase/tests"), { recursive: true });
-  // Only the local database is needed. CLI still owns its initialization and test transport.
+  // Exclude long-running services; their enabled schema-init jobs still need images.
   const excluded = "gotrue,realtime,storage-api,imgproxy,kong,mailpit,postgrest,postgres-meta,studio,edge-runtime,logflare,vector,supavisor";
+  const registry = await prePullCliImages(deriveCliImages(root, directory));
+  const cliOptions = { env: { ...processEnvironment, SUPABASE_INTERNAL_IMAGE_REGISTRY: registry } };
   let cleanupFailed = false;
   let testStatus = 1;
   try {
     console.log(`Starting owned managed baseline ${projectId} with Supabase CLI ${cliVersion}`);
-    must("supabase", ["start", "--workdir", directory, "--exclude", excluded]);
+    must("supabase", ["start", "--workdir", directory, "--exclude", excluded], cliOptions);
     // supabase/supautils#214: enhanced denial hints crash this pinned image.
     // Disable only hint formatting in this disposable database. Role identities,
     // grants, RLS and the actual 42501 refusal remain unchanged and are tested.
@@ -137,13 +191,13 @@ async function main() {
     console.log("Managed baseline replayed transactionally; running every shipped pgTAP test");
     // Explicit SET ROLE assertions still test the baseline's browser/runtime ACLs.
     const databaseUrl = `postgresql://postgres:postgres@127.0.0.1:${base + 2}/postgres`;
-    const result = run("supabase", ["test", "db", "--workdir", directory, "--db-url", databaseUrl]);
+    const result = run("supabase", ["test", "db", "--workdir", directory, "--db-url", databaseUrl], cliOptions);
     writeFileSync(join(scratch, "latest.log"), `${result.stdout}\n${result.stderr}`);
     process.stdout.write(result.stdout);
     process.stderr.write(result.stderr);
     testStatus = result.status ?? 1;
   } finally {
-    const cleanup = run("supabase", ["stop", "--workdir", directory, "--no-backup"]);
+    const cleanup = run("supabase", ["stop", "--workdir", directory, "--no-backup"], cliOptions);
     if (cleanup.status !== 0) { cleanupFailed = true; console.error(`Owned stack cleanup failed: ${cleanup.stderr}`); }
   }
   process.exitCode = cleanupFailed ? 1 : testStatus;

@@ -22,6 +22,7 @@ import {
 export type AutomaticRenewalRunStatus =
   | "succeeded"
   | "refused"
+  | "deferred"
   | "awaiting_provider"
   | "error"
   | "lease_active"
@@ -87,8 +88,10 @@ export async function runOneAutomaticSubscriptionRenewal(
   const delivery = await deps.store.admitDeliveryAlignment({
     subscriptionId: due.subscriptionId,
     scheduledAt: due.scheduledAt,
+    occurredAt,
   });
   if (!delivery.allowed) {
+    if (delivery.deferred) return automaticRenewalResult(claim, "deferred", delivery.reason);
     return refuseRenewalBeforePayment({
       store: deps.store, operation: claim,
       reason: delivery.reason ?? "delivery_alignment_blocked", occurredAt,

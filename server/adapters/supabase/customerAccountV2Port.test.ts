@@ -1,3 +1,7 @@
+import { createCustomerInvoiceHistoryReadModel } from "./customerInvoiceSummaryReadModel.js";
+import { createCustomerInvoiceDownloadHandler } from "../../domains/customers/customerInvoiceDownloadHandler.js";
+import type { VercelRequest, VercelResponse } from "../../_lib/types/vercel.js";
+import { vi } from "vitest";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import type { SupabaseClient } from "@supabase/supabase-js";
@@ -137,4 +141,21 @@ describe("getInvoiceDownloadTicket", () => {
       .getInvoiceDownloadTicket("u1", "inv-1", "correction");
     expect(ticket).toBeNull();
   });
+});
+
+it("real ticket resolver denies a foreign order before PDF; native history ownership precedes safe query or unsupported evidence", async () => {
+  const port = makePort(invoiceRow(), { ownedOrder: null });
+  const downloadInvoicePdf = vi.fn();
+  const handler = createCustomerInvoiceDownloadHandler({ invoiceDownloadPort: port, invoicePdfProvider: { downloadInvoicePdf }, authenticateUser: async () => ({ ok: true, userId: "user-a" }) });
+  const res = { status: vi.fn(), json: vi.fn(), setHeader: vi.fn(), send: vi.fn() };
+  res.status.mockReturnValue(res); res.json.mockReturnValue(res);
+  await handler({ method: "GET", query: { invoiceId: "99999999-9999-4999-8999-999999999999" } } as unknown as VercelRequest, res as unknown as VercelResponse);
+  expect(res.status).toHaveBeenCalledWith(404);
+  expect(downloadInvoicePdf).not.toHaveBeenCalled();
+  const readDocuments = vi.fn(async () => []);
+  const input = { accountRef: "owner-a", orderId: "order-a" };
+  expect(await createCustomerInvoiceHistoryReadModel({ ownsOrder: async () => false, readDocuments }).history(input)).toEqual({ kind: "denied" });
+  expect(readDocuments).not.toHaveBeenCalled();
+  expect(await createCustomerInvoiceHistoryReadModel({ ownsOrder: async () => true }).history(input)).toMatchObject({ kind: "unsupported", code: "host_binding_required" });
+  expect(await createCustomerInvoiceHistoryReadModel({ ownsOrder: async () => true, readDocuments }).history(input)).toEqual({ kind: "found", ...input, documents: [] });
 });

@@ -1,3 +1,4 @@
+import { createInvoiceReadModel } from "@openlup/platform/invoicing";
 import type { VercelRequest, VercelResponse } from "../../_lib/types/vercel.js";
 import {
   sendBffError,
@@ -50,13 +51,14 @@ export function createCustomerInvoiceDownloadHandler({
     }
 
     try {
-      const ticket = await invoiceDownloadPort.getInvoiceDownloadTicket(
-        authentication.userId,
-        parsed.data.invoiceId,
-        parsed.data.artifact,
-      );
-      if (!ticket) return sendBffError(res, "NOT_FOUND", "Customer invoice was not found");
-      const pdf = await invoicePdfProvider.downloadInvoicePdf(ticket);
+      const result = await createInvoiceReadModel().ownedPdf({
+        resolve: () => invoiceDownloadPort.getInvoiceDownloadTicket(
+          authentication.userId, parsed.data.invoiceId, parsed.data.artifact,
+        ),
+        download: ticket => invoicePdfProvider.downloadInvoicePdf(ticket),
+      });
+      if (result.kind === "denied") return sendBffError(res, "NOT_FOUND", "Customer invoice was not found");
+      const { ticket, pdf } = result;
       res.setHeader("Content-Type", pdf.contentType || "application/pdf");
       res.setHeader("Cache-Control", "no-store");
       res.setHeader("Content-Disposition", `attachment; filename="${ticket.fileName}"`);

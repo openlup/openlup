@@ -5,7 +5,7 @@ import type { Pool, PoolClient } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { effectiveFunctionBody } from "../../src/test/effectiveMigration";
 import { functionAclStatements } from "../../src/test/historicalBoundarySchema";
-import { dockerAvailable, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
+import { closePostgres, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, dockerAvailable, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
 
 const TESTER = "f5100000-0000-0000-0000-000000000001";
 const OTHER = "f5100000-0000-0000-0000-000000000002";
@@ -43,12 +43,11 @@ beforeAll(async () => {
     await pool.query(effectiveFunctionBody(name));
     await pool.query(functionAclStatements(name).join("\n"));
   }
-}, 120_000);
+}, postgresSetupTimeoutMs);
 
 afterAll(async () => {
-  await pool?.end();
-  await container?.remove();
-});
+  await closePostgres(container, pool);
+}, postgresTeardownTimeoutMs);
 
 async function withRole<T>(role: "anon" | "authenticated" | "service_role", run: (client: PoolClient) => Promise<T>): Promise<T> {
   const client = await pool!.connect();

@@ -292,7 +292,35 @@
     {
       "file": "db/platform/migrations/20261021200000_shipping_flat_rate_seed.sql",
       "sha256": "34f8696f515a2cc072395db5a3de2d9b09643d13236ee3851d0d78123f907eae"
+    },
+    {
+      "file": "db/platform/migrations/20261022080000_fulfillment_command_ledger.sql",
+      "sha256": "c6806906cdb0b6931b29f7a5c7c800016e98d04e6ea956f3c1e219a6cdb7e9d1"
+    },
+    {
+      "file": "db/platform/migrations/20261022090000_fulfillment_delivery_alignment.sql",
+      "sha256": "d9966ae79fe77a0feae8317dc5b46ef2d8196dd0790b1cd0ee1b06ab58061499"
+    },
+    {
+      "file": "db/platform/migrations/20261022160000_subscription_retry_lifecycle.sql",
+      "sha256": "c9571f669ba9d6af5b279e80630dcfffe9b2da63513542c21e540448d614144a"
+    },
+    {
+      "file": "db/platform/migrations/20261022165000_fulfillment_stock_evidence_replay_reopen.sql",
+      "sha256": "6d132dec2820047f4e337bcf752b3d884600ccc12de03887fe6d6aa5575bc1db"
+    },
+    {
+      "file": "db/platform/migrations/20261022190000_invoicing_durable_duties.sql",
+      "sha256": "2d7bf98924b4ef29b3e8f902d768e45dd9c850242f4358a0193a0c00d0f3d081"
+    },
+    {
+      "file": "db/platform/migrations/20261022191000_invoicing_document_effects.sql",
+      "sha256": "0eac3453e2b82c43e4fff9e35bcd6daefdd0bb5f992937f7f411d690550428cf"
+    },
+    {
+      "file": "db/platform/migrations/20261022192000_invoicing_payment_decoupling.sql",
+      "sha256": "f4af30ee4c9365ea51bd0e95e5cc7ae869cf15dce5867fdd640f679438b36058"
     }
   ],
-  "objectInventorySha256": "59f08ac97163fe310fab0928027996a5dbb885d5161ddc7a709e82c2947fdded"
+  "objectInventorySha256": "0c65b1c81a534e561d92137f3e3cb089500795acb99d5e0f52cc2f15b399ae08"
 }

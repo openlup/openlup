@@ -70,6 +70,10 @@
       "class": "public-output"
     },
     {
+      "path": ".github/workflows/mirror-ci-images.yml",
+      "class": "public-output"
+    },
+    {
       "path": ".github/workflows/publish-package.yml",
       "class": "public-output"
     },
@@ -622,6 +626,10 @@
       "class": "public-output"
     },
     {
+      "path": "config/ci-images.json",
+      "class": "public-output"
+    },
+    {
       "path": "config/customer-360-parity-expectation.json",
       "class": "public-output"
     },
@@ -1118,6 +1126,34 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261022080000_fulfillment_command_ledger.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/20261022090000_fulfillment_delivery_alignment.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/20261022160000_subscription_retry_lifecycle.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/20261022165000_fulfillment_stock_evidence_replay_reopen.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/20261022190000_invoicing_durable_duties.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/20261022191000_invoicing_document_effects.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "db/platform/migrations/20261022192000_invoicing_payment_decoupling.sql",
+      "class": "public-output"
+    },
+    {
       "path": "deploy/oci/public-reference-compose.yml",
       "class": "public-output"
     },
@@ -1163,6 +1199,10 @@
     },
     {
       "path": "docs/platform/IDENTITY_BROWSER_REFERENCE.md",
+      "class": "public-output"
+    },
+    {
+      "path": "docs/platform/PLATFORM_PACKAGE_REFERENCE.md",
       "class": "public-output"
     },
     {
@@ -1242,6 +1282,10 @@
       "class": "public-output"
     },
     {
+      "path": "docs/platform/plans/oss-a3-fulfillment-adapter.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/oss-m04-communications-triggers.md",
       "class": "platform-documentation"
     },
@@ -1255,6 +1299,18 @@
     },
     {
       "path": "docs/platform/plans/oss-m07-payments-money-truth.md",
+      "class": "public-output"
+    },
+    {
+      "path": "docs/platform/plans/oss-m08-fulfillment-physical-delivery.md",
+      "class": "public-output"
+    },
+    {
+      "path": "docs/platform/plans/oss-m09-invoicing.md",
+      "class": "public-output"
+    },
+    {
+      "path": "docs/platform/plans/oss-m10-subscriptions-renewal-dunning.md",
       "class": "public-output"
     },
     {
@@ -1395,6 +1451,10 @@
     },
     {
       "path": "packages/core/AGENTS.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/core/CHANGELOG-HISTORY.md",
       "class": "public-output"
     },
     {
@@ -1710,11 +1770,31 @@
       "class": "public-output"
     },
     {
+      "path": "packages/core/src/fulfillment/currentFulfillmentParcel.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/core/src/fulfillment/facts.ts",
       "class": "public-output"
     },
     {
       "path": "packages/core/src/fulfillment/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/core/src/fulfillment/normalizedFulfillmentFacts.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/core/src/fulfillment/statusMap.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/core/src/fulfillment/trackingProgress.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/core/src/fulfillment/types.ts",
       "class": "public-output"
     },
     {
@@ -1966,7 +2046,23 @@
       "class": "public-output"
     },
     {
+      "path": "packages/core/test/fulfillmentCurrentParcel.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/core/test/fulfillmentFacts.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/core/test/fulfillmentNormalizedFacts.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/core/test/fulfillmentStatusMap.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/core/test/fulfillmentTrackingProgress.test.ts",
       "class": "public-output"
     },
     {
@@ -2063,6 +2159,10 @@
     },
     {
       "path": "packages/outbox/AGENTS.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/outbox/CHANGELOG-HISTORY.md",
       "class": "public-output"
     },
     {
@@ -2194,6 +2294,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/CHANGELOG-HISTORY.md",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/CHANGELOG.md",
       "class": "public-output"
     },
@@ -2246,6 +2350,18 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/api/fulfillment-contracts.api.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/api/fulfillment-omnipack.api.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/api/fulfillment.api.md",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/api/http.api.md",
       "class": "public-output"
     },
@@ -2263,6 +2379,14 @@
     },
     {
       "path": "packages/platform/api/inventory.api.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/api/invoicing-contracts.api.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/api/invoicing.api.md",
       "class": "public-output"
     },
     {
@@ -2322,6 +2446,14 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/api/subscriptions-contracts.api.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/api/subscriptions.api.md",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/package.json",
       "class": "public-output"
     },
@@ -2346,11 +2478,19 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20260808210000_fulfillment_shipment_rail.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/sql/20260809150000_job_run_ledger.sql",
       "class": "public-output"
     },
     {
       "path": "packages/platform/sql/20260809150001_job_run_ledger_v3.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20260809210000_accounting_document_rail.sql",
       "class": "public-output"
     },
     {
@@ -2371,6 +2511,14 @@
     },
     {
       "path": "packages/platform/sql/20260810204057_customer_identity_read.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20260811150000_accounting_payout_rail.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20260812130000_accounting_document_lifecycle_rail.sql",
       "class": "public-output"
     },
     {
@@ -2407,6 +2555,10 @@
     },
     {
       "path": "packages/platform/sql/20260817180100_promotion_claim_lifecycle_validation.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20260819150000_fulfillment_shipment_sequence.sql",
       "class": "public-output"
     },
     {
@@ -2447,6 +2599,34 @@
     },
     {
       "path": "packages/platform/sql/20261021200000_shipping_flat_rate_seed.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261022080000_fulfillment_command_ledger.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261022090000_fulfillment_delivery_alignment.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261022160000_subscription_retry_lifecycle.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261022165000_fulfillment_stock_evidence_replay_reopen.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261022190000_invoicing_durable_duties.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261022191000_invoicing_document_effects.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20261022192000_invoicing_payment_decoupling.sql",
       "class": "public-output"
     },
     {
@@ -3090,6 +3270,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/composition/fulfillmentContribution.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/composition/httpBinding.ts",
       "class": "public-output"
     },
@@ -3135,6 +3319,330 @@
     },
     {
       "path": "packages/platform/src/data/supabaseGateway.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/adapterConformance.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/bindings.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/commerceFulfillmentHandlers.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/commerceFulfillmentReadModel.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/contracts/alignment.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/contracts/bindings.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/contracts/capabilities.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/contracts/conformance.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/contracts/customerAlignment.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/contracts/dispatch.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/contracts/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/contracts/label.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/contracts/nativeUnsupported.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/contracts/observation.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/contracts/operator.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/contracts/read.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/contracts/readback.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/contracts/replacement.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/contracts/store.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/contracts/sync.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/currentFulfillmentParcel.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/delayReadModel.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/deliveryAlignmentReadModel.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/dispatchProjection.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/fulfillmentObservationEffects.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/handlerSchemas.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/handlerSupport.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/labelLifecycle.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/lowStockEvidenceHandler.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/migrations.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/nativeUnsupported.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/normalizedFulfillmentFacts.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/observationProjection.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/omnipack/capabilities.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/omnipack/client.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/omnipack/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/omnipack/mappers.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/omnipack/observation.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/omnipack/omnipackDispatchPayload.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/omnipack/omnipackOutboundOrderPayload.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/omnipack/omnipackProductPackPayload.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/omnipack/omnipackProductPayload.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/omnipack/omnipackReconciliationPayload.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/omnipack/omnipackStatusVocabulary.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/omnipack/omnipackWebhookPayload.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/omnipack/productSyncMappers.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/omnipack/providerError.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/omnipack/reconciliation.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/omnipack/trackingReferences.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/paidFulfillmentRecovery.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/paidHandoff.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/paidHandoffPorts.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/postgresDeliveryAlignment.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/postgresDispatchStore.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/postgresEvidenceReadPort.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/postgresPaidFulfillmentRecovery.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/postgresPaidHandoffStore.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/postgresShipmentSpine.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/postgresStockSyncPort.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/productReconciliationEvidenceHandler.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/providerCapabilities.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/providerCommandLedger.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/providerDispatchAcceptance.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/providerDispatchError.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/providerDispatchWorker.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/providerProductSyncWorker.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/providerReconciliationError.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/providerReconciliationTerminalSkip.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/providerReconciliationTimestamp.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/providerReconciliationWorker.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/providerStockAvailability.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/providerStockSyncWorker.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/providerTrackingReferences.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/replacementRefusals.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/replacementShipmentHandler.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/schemaCapabilities.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/shipmentsOverviewHandler.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/statusMap.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/trackingProgress.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/fulfillment/verifiedIngress.ts",
       "class": "public-output"
     },
     {
@@ -3539,6 +4047,142 @@
     },
     {
       "path": "packages/platform/src/inventory/subscriptionForecastCalculation.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/invoicing/accountingCanonicalProviderLines.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/invoicing/accountingLineAllocation.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/invoicing/adapterConformance.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/invoicing/artifacts.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/invoicing/capabilities.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/invoicing/channelPolicy.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/invoicing/continuity.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/invoicing/contracts/capabilities.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/invoicing/contracts/companyLookup.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/invoicing/contracts/delivery.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/invoicing/contracts/facts.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/invoicing/contracts/host.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/invoicing/contracts/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/invoicing/contracts/provider.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/invoicing/contracts/settlement.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/invoicing/contracts/store.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/invoicing/correction.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/invoicing/delivery.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/invoicing/documentHistory.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/invoicing/documentSync.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/invoicing/dutyCollector.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/invoicing/fulfillmentTrigger.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/invoicing/handoff.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/invoicing/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/invoicing/issue.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/invoicing/migrations.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/invoicing/nativeUnsupported.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/invoicing/paymentReadback.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/invoicing/postgresInvoiceStore.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/invoicing/readModel.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/invoicing/readback.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/invoicing/reversal.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/invoicing/settlementSync.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/invoicing/snapshot.ts",
       "class": "public-output"
     },
     {
@@ -4270,6 +4914,70 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/subscriptions/automaticRenewal.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/subscriptions/automaticRenewalExecution.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/subscriptions/contracts/commands.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/subscriptions/contracts/dunning.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/subscriptions/contracts/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/subscriptions/contracts/messages.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/subscriptions/contracts/renewal.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/subscriptions/contracts/stockWait.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/subscriptions/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/subscriptions/paymentOutcomes.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/subscriptions/postgresRenewalStore.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/subscriptions/postgresRetryStore.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/subscriptions/renewalCycleFailureMechanism.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/subscriptions/renewalCycleMechanism.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/subscriptions/renewalCycleRefusalMechanism.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/subscriptions/renewalIdentity.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/bff/dispatch.test.ts",
       "class": "public-output"
     },
@@ -4542,6 +5250,134 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/fulfillment/adapterConformance.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/fulfillment/bindings.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/fulfillment/contracts.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/fulfillment/dispatchRecovery.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/fulfillment/fixtures.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/fulfillment/labelTracking.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/fulfillment/lifecycleHandlers.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/fulfillment/lifecycleHostFixture.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/fulfillment/observationEffects.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/fulfillment/omnipack/a3OmnipackDispatchCharacterization.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/fulfillment/omnipack/a3OmnipackObservationCharacterization.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/fulfillment/omnipack/a3OmnipackProductCharacterization.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/fulfillment/omnipack/a3OmnipackReadbackCharacterization.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/fulfillment/omnipack/a3OmnipackStockCharacterization.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/fulfillment/omnipack/a3OmnipackWireCharacterization.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/fulfillment/omnipack/conformance.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/fulfillment/omnipack/dispatchReconciliationParity.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/fulfillment/omnipack/factory.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/fulfillment/omnipack/fixtures.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/fulfillment/omnipack/observationIngressParity.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/fulfillment/omnipack/transportAdaptation.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/fulfillment/paidHandoff.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/fulfillment/portFit.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/fulfillment/postgresStore.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/fulfillment/productSync.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/fulfillment/providerCommandLedger.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/fulfillment/readModel.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/fulfillment/reconciliation.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/fulfillment/reconciliationEvidence.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/fulfillment/replacementDelay.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/fulfillment/stockSync.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/fulfillment/verifiedIngress.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/http/deadline.test.ts",
       "class": "public-output"
     },
@@ -4755,6 +5591,66 @@
     },
     {
       "path": "packages/platform/test/inventory/subscriptionForecastCalculation.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/invoicing/adapterConformance.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/invoicing/artifacts.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/invoicing/canonicalLines.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/invoicing/continuity.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/invoicing/contracts.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/invoicing/delivery.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/invoicing/handoff.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/invoicing/issue.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/invoicing/paymentReadback.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/invoicing/portFit.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/invoicing/portFitFixtures.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/invoicing/postgresStore.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/invoicing/readModel.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/invoicing/readback.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/invoicing/settlementSync.test.ts",
       "class": "public-output"
     },
     {
@@ -5250,6 +6146,34 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/subscriptions/contracts.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/subscriptions/paymentOutcomes.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/subscriptions/portFit.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/subscriptions/renewalCycleMechanism.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/subscriptions/renewalEffects.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/subscriptions/renewalEffectsFixture.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/subscriptions/renewalKeys.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/tsconfig.build.json",
       "class": "public-output"
     },
@@ -5490,6 +6414,30 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/ci-image-mirror.d.mts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/ci-image-mirror.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/ci-image-mirror.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/ci-image-pull.d.mts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/ci-image-pull.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/ci-image-pull.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/ci-test-scope.mjs",
       "class": "public-output"
     },
@@ -5599,6 +6547,98 @@
     },
     {
       "path": "scripts/fixtures/20260824074601_marketing_lead_backfill_residual_boundary.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/fixtures/20261022080000_fulfillment_command_ledger.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/fixtures/20261022090000_fulfillment_delivery_alignment.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/fixtures/20261022190000_invoicing_durable_duties.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/fixtures/20261022191000_invoicing_document_effects.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/fixtures/20261022192000_invoicing_payment_decoupling.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/fixtures/20261022193000_invoicing_correction_claims.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/fixtures/20261022193100_invoicing_correction_compatibility.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/fixtures/20261022195000_invoicing_seller_revision.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/fixtures/20261022195100_invoicing_seller_revision.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/fixtures/reviewed-m10/db/platform/migrations/20261022160000_subscription_retry_lifecycle.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/fixtures/reviewed-m10/db/platform/migrations/20261022170000_subscription_command_lifecycle.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/fixtures/reviewed-m10/db/platform/migrations/20261022180000_subscription_stock_wait.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/fixtures/reviewed-m10/db/platform/migrations/20261022183000_inventory_available_to_promise.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/fixtures/reviewed-m10/db/platform/migrations/20261022184000_subscription_renewal_reserve_uses_seam.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/fixtures/reviewed-m10/supabase/migrations/20261022155000_refunds_preserve_subscription_lifecycle.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/fixtures/reviewed-m10/supabase/migrations/20261022160000_subscription_dunning_continuity.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/fixtures/reviewed-m10/supabase/migrations/20261022175000_inventory_available_to_promise.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/fixtures/reviewed-m10/supabase/migrations/20261022180000_subscription_stock_wait.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/fixtures/reviewed-m10/supabase/migrations/20261022181000_subscription_stock_wait_due.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/fixtures/reviewed-m10/supabase/migrations/20261022182000_subscription_lifecycle_message_scan.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/fixtures/reviewed-m10/supabase/migrations/20261022184000_inventory_reserve_order_uses_seam.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/fixtures/reviewed-m10/supabase/migrations/20261022185000_provider_refund_evidence.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/fixtures/reviewed-m10/supabase/migrations/20261022185100_m07_refund_parity.sql",
       "class": "public-output"
     },
     {
@@ -5922,6 +6962,14 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/public-ci-dependencies.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/public-ci-dependencies.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/public-ci-neutrality.mjs",
       "class": "public-output"
     },
@@ -5990,6 +7038,14 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/reviewed-batch-forward.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/reviewed-batch-rail.ts",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/reviewed-platform-forward.ts",
       "class": "public-output"
     },
@@ -5999,6 +7055,10 @@
     },
     {
       "path": "scripts/run-vitest.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/run-vitest.test.ts",
       "class": "public-output"
     },
     {
@@ -7418,63 +8478,11 @@
       "class": "public-output"
     },
     {
-      "path": "server/adapters/stripe/declineFailureHints.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/adapters/stripe/declineFailureHints.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/adapters/stripe/executionDecline.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/adapters/stripe/executionDecline.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/adapters/stripe/stripeAdapterFactory.test.ts",
       "class": "public-output"
     },
     {
       "path": "server/adapters/stripe/stripeAdapterFactory.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/adapters/stripe/stripeFailureEvidence.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/adapters/stripe/stripeFailureEvidence.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/adapters/stripe/stripeIntentConfirmationEvidence.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/adapters/stripe/stripeIntentConfirmationEvidence.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/adapters/stripe/stripePaymentReconciliationProvider.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/adapters/stripe/stripePaymentReconciliationProvider.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/adapters/stripe/stripeSandboxPaymentExecutionAdapter.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/adapters/stripe/stripeWebhookNormalizer.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/adapters/stripe/stripeWebhookNormalizer.ts",
       "class": "public-output"
     },
     {
@@ -9134,47 +10142,7 @@
       "class": "public-output"
     },
     {
-      "path": "server/adapters/tpay/declineFailureHints.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/adapters/tpay/declineFailureHints.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/adapters/tpay/tpayAdapterFactory.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/adapters/tpay/tpayCreateTransactionInput.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/adapters/tpay/tpayDeclineEvidence.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/adapters/tpay/tpayDeclineEvidence.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/adapters/tpay/tpayFailureEvidence.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/adapters/tpay/tpayFailureEvidence.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/adapters/tpay/tpayPaymentExecutionAdapter.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/adapters/tpay/tpayPaymentReconciliationProvider.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/adapters/tpay/tpayPaymentReconciliationProvider.ts",
       "class": "public-output"
     },
     {
@@ -13874,10 +14842,6 @@
       "class": "public-output"
     },
     {
-      "path": "server/infra/providerWebhookVerifier.test.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/infra/resend/emailOriginMetadata.ts",
       "class": "public-output"
     },
@@ -13926,31 +14890,11 @@
       "class": "public-output"
     },
     {
-      "path": "server/infra/stripe/paymentIntentMapper.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/infra/stripe/stripeApiClient.test.ts",
       "class": "public-output"
     },
     {
       "path": "server/infra/stripe/stripeApiClient.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/infra/stripe/webhookVerifier.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/infra/tpay/blikRecurringMapper.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/infra/tpay/tpayDispatchFailure.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/infra/tpay/tpayDispatchFailure.ts",
       "class": "public-output"
     },
     {
@@ -13962,39 +14906,7 @@
       "class": "public-output"
     },
     {
-      "path": "server/infra/tpay/tpayHttpClient.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/infra/tpay/tpayHttpFailure.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/infra/tpay/tpayHttpFailure.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/infra/tpay/tpaySimulatorClient.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/infra/tpay/tpayTransactionPayload.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/infra/tpay/webhookJwsVerifier.test.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/infra/tpay/webhookJwsVerifier.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/infra/tpay/webhookNormalizer.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/infra/tpay/webhookVerifier.ts",
       "class": "public-output"
     },
     {
@@ -14039,6 +14951,10 @@
     },
     {
       "path": "server/runtime/accounting/accountingRuntime.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/runtime/accounting/invoicingDutyBinding.ts",
       "class": "public-output"
     },
     {
@@ -14530,6 +15446,14 @@
       "class": "public-output"
     },
     {
+      "path": "server/runtime/public-reference/m08FulfillmentBinding.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/runtime/public-reference/m08FulfillmentBinding.ts",
+      "class": "public-output"
+    },
+    {
       "path": "server/runtime/public-reference/serve.test.ts",
       "class": "public-output"
     },
@@ -14579,6 +15503,10 @@
     },
     {
       "path": "server/runtime/subscription/automaticRenewalPaymentRails.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/runtime/subscription/deliveryAlignmentRenewalStore.ts",
       "class": "public-output"
     },
     {
@@ -15287,6 +16215,14 @@
     },
     {
       "path": "src/components/FlavorMegaMenu.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/components/FulfillmentDeliveryStatus.test.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/components/FulfillmentDeliveryStatus.tsx",
       "class": "public-output"
     },
     {
@@ -16215,6 +17151,10 @@
     },
     {
       "path": "src/domains/accounting/providerPorts.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "src/domains/accounting/referenceInvoicingClient.ts",
       "class": "public-output"
     },
     {
@@ -17979,6 +18919,10 @@
     },
     {
       "path": "src/domains/fulfillment/providerFulfillment.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "src/domains/fulfillment/referenceFulfillmentClient.ts",
       "class": "public-output"
     },
     {
@@ -20154,6 +21098,14 @@
       "class": "public-output"
     },
     {
+      "path": "src/pages/ReferenceFulfillmentPage.test.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/pages/ReferenceFulfillmentPage.tsx",
+      "class": "public-output"
+    },
+    {
       "path": "src/pages/ReferencePaymentRepairPage.test.tsx",
       "class": "public-output"
     },
@@ -20398,6 +21350,10 @@
       "class": "public-output"
     },
     {
+      "path": "src/pages/account/v2/orders/OrdersScreen.test.tsx",
+      "class": "public-output"
+    },
+    {
       "path": "src/pages/account/v2/orders/OrdersScreen.tsx",
       "class": "public-output"
     },
@@ -20611,6 +21567,10 @@
     },
     {
       "path": "src/pages/admin/LoginPage.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/pages/admin/OrderDetailAccountingPanel.test.tsx",
       "class": "public-output"
     },
     {
@@ -21118,6 +22078,14 @@
       "class": "public-output"
     },
     {
+      "path": "supabase/migrations/20261022193000_invoicing_correction_claims.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "supabase/migrations/20261022193100_invoicing_correction_compatibility.sql",
+      "class": "public-output"
+    },
+    {
       "path": "supabase/tests/abandoned_cart_tier_bounds_test.sql",
       "class": "public-output"
     },
@@ -21127,6 +22095,10 @@
     },
     {
       "path": "supabase/tests/accounting_billing_source_test.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "supabase/tests/accounting_correction_recovery_test.sql",
       "class": "public-output"
     },
     {
@@ -21986,6 +22958,18 @@
       "class": "public-output"
     },
     {
+      "path": "tests/helpers/fulfillmentComposition.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/helpers/fulfillmentNative.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/helpers/invoicingNativeHarness.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/helpers/postgresContainer.ts",
       "class": "public-output"
     },
@@ -22174,7 +23158,35 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/expandOnlyExpressions.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/feedbackMediaAuthority.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/fulfillmentDeliveryAlignment.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/fulfillmentHostSeamRefusals.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/fulfillmentNativeConformance.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/fulfillmentPreparationBinding.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/fulfillmentRenewalAdmission.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/fulfillmentStockEvidenceReplay.test.ts",
       "class": "public-output"
     },
     {
@@ -22199,6 +23211,26 @@
     },
     {
       "path": "tests/postgres/inventoryNative.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/invoicingContinuity.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/invoicingDelivery.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/invoicingManagedCorrection.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/invoicingNativeConformance.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/invoicingStoreContract.test.ts",
       "class": "public-output"
     },
     {
@@ -22246,11 +23278,27 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/postgresContainer.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/postgresContainerCleanup.test.ts",
       "class": "public-output"
     },
     {
       "path": "tests/postgres/promotionsNative.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/reviewedBatchCatalog.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/reviewedBatchForwards.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/reviewedPortableCreation.test.ts",
       "class": "public-output"
     },
     {
@@ -22263,6 +23311,30 @@
     },
     {
       "path": "tests/postgres/shippingNative.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/subscriptionAlignmentRollbackCases.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/subscriptionContinuityBaseline.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/subscriptionNativeFixture.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/subscriptionRenewalAdapterCases.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/subscriptionRenewalLifecycle.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/subscriptionRetryLifecycleCases.ts",
       "class": "public-output"
     },
     {
@@ -22519,7 +23591,7 @@
     },
     {
       "path": "packages/core/package.json",
-      "digest": "sha256-4930c4c02466566fb26cf2c791d78716280d823bf9fd3eebf3d16d3fad0792f1"
+      "digest": "sha256-2880595670a09c961ad3366588800d97e303f2fff4f111ec2ac18a1defd86c02"
     },
     {
       "path": "packages/outbox/package.json",

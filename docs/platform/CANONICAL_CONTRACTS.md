@@ -33,8 +33,9 @@ names the offline falsifiers and their limits.
 
 ## Opt-in payment example
 
-The experimental Node `payments/stripe` subpath exposes only its factory,
-configuration type and observed capability descriptor. The host owns SDK and
+The experimental Node `payments/stripe` subpath exposes its M07 factory,
+configuration type and observed capability descriptor, plus the bounded
+[reference-support surface](../../packages/platform/README.md#reference-support-surface). The host owns SDK and
 transport construction, customer association, mode policy and explicit activation.
 No import installs a route, binding or schedule. Attempt identity, fingerprint
 and provider idempotency key pass through to the donor execution seam. A
@@ -95,6 +96,141 @@ missing failure provenance stays absent. Payer, authorization, certificates and
 raw bodies are excluded. Audit fields do not participate in event identity or
 fingerprints. Offline multi-subject M07 P2 conformance covers replay, chargeback,
 exact readback and verification refusals without establishing account activation.
+
+The reference-support execution and readback factories retain their contributed
+rich host contracts: setup/customer association, provider audit facts and
+purpose-sensitive recovery actions. They are separate from the M07 factory's
+neutral envelopes. The reference host translates its subject key and localized
+return paths at the bank/code adapter's injected transaction client, preserving callback origin,
+query values and simulator return context. It uses the package's real
+`ProviderAttemptPreDispatchError` class for nominal no-charge retry/release
+checks; matching fields alone never establish trusted no-charge evidence.
+The neutral `payments` and `payments/contracts` exports are unchanged.
+
+## Opt-in fulfillment example
+
+The experimental Node `@openlup/platform/fulfillment/omnipack` entry exposes only
+its factory, configuration type and capability descriptor. Construction installs
+no route, schedule or default binding. The host explicitly selects the adapter,
+attests account readiness and supplies HTTP, credentials and notification tokens
+per call, product metadata, clock, evidence references and tracking URL approval.
+Credentials never establish readiness. The descriptor is deeply frozen and readonly; it stays unselected and not ready
+after a host constructs a selected, ready adapter.
+
+Preparation is stateless: it resolves host metadata, serializes the command once,
+returns only the fingerprint over those exact bytes, full contact revision and
+separate provider/carrier/service references, then discards the body. Dispatch
+first validates closed evidence and request contact/selection values and computes
+the command digest, without host callbacks, credentials or HTTP on failure.
+The single per-instance submission record retains one in-flight or
+completed result per command fingerprint, including accepted, unknown and refused
+outcomes, bound to the evidence key and canonical command digest used for submission.
+The same evidence key and command digest replay that result without I/O; a changed
+command or different evidence for an already submitted
+fingerprint refuses as `not_dispatchable`, phase `dispatch`, `retryable:false`.
+While retained, it permits no second POST. Recorded replay depends only on the
+fingerprint's submission record, complete evidence key and SHA-256 command digest,
+joining the in-flight result when necessary; later preparations cannot affect it.
+The digest covers request/order/fulfillment/parcel identity,
+contact revision, wire recipient fields, ordered line SKU/product/pack references
+and quantities, and provider/carrier/service/delivery-kind/point-ID selection.
+It excludes line titles, recipient line 2 and instructions, and pickup-point
+provider/name/address: the outbound codec forwards none of them to wire or evidence.
+Only the hash is retained in the in-memory submission record. Equivalent
+description changes remain irrelevant.
+For an unrecorded fingerprint, dispatch reserves the in-flight entry before any
+host callback, then rebuilds the body through the same computation as prepare.
+Host resolution callbacks run in prepare and again in a new dispatch and must
+return the same values for the same request. A changed fingerprint or failed
+resolution releases the reservation and refuses `not_dispatchable / dispatch /
+retryable:false` before credentials or provider I/O; the host must re-prepare.
+Otherwise dispatch resolves credentials and POSTs exactly the rebuilt bytes.
+Valid evidence can therefore dispatch without a prior prepare on this instance.
+Changed command evidence may submit once under its new fingerprint.
+The replay record is in-memory and per adapter instance, not the durable
+double-dispatch guard. Durable protection comes from M08's host ledger through
+`claim`, `begin`, `recordProviderAttempt` and `finalize`, plus any idempotency
+the provider honours. The donor evidence does not establish provider-side
+idempotency, so this example claims none.
+`OmnipackFulfillmentAdapterConfig.maxRetainedSubmissions` defaults to 10,000 and
+must be a positive safe integer at construction. It bounds completed submission
+retention with oldest-first eviction by admission order. Preparation retains no
+state and consumes no capacity. A new fingerprint is
+always admitted for submission capacity: in-flight entries are never evicted,
+so the submission map may temporarily exceed the target when all entries are in
+flight. Admission and each completion evict the oldest completed entries until
+the target is met or only in-flight entries remain. Matching retained replays
+keep their identical results; replay does not refresh an entry's age.
+Eviction ≡ restart for that fingerprint: there is no recorded result, so dispatch
+rebuilds and POSTs if the supplied evidence still matches current resolution.
+The host ledger is the durable guard, preserving its claim/begin/attempt/finalize state across eviction or restart.
+Credential, validation and request-construction
+failures before submission and definitive rejection are `not_dispatched`;
+an unreadable rejection body preserves the status-derived rejection. An unreadable
+successful acknowledgement, lost/malformed acknowledgement and ambiguous submission
+are `unknown`. Accepted
+results carry nonempty opaque proof keys derived from provider reference and
+command fingerprint; the host worker assigns its own authoritative keys. No adapter key
+is an acceptance authority. The donor wire uses service in both carrier/service
+fields; durable evidence keeps the selected references separate. The donor
+codec does not transmit line2 or delivery/courier instructions.
+
+Token verification precedes parsing. Trusted route configuration supplies a
+missing event kind and rejects malformed explicit values and mismatches. Event identity includes event,
+provider/order identity, fulfillment and nullable occurrence, independently of
+receipt time. Token auth proves no freshness; missing occurrence stays null.
+Readback accepts only a unique positive identity match from an explicitly complete
+single-page collection of at most 100 rows (page 0, size 100); missing totals,
+pagination, truncation, empty, unmatched
+or unknown-status collections stay unknown. Exact absence, label create/void,
+cancellation and courier pickup remain unsupported; label reads belong to host
+storage. The required label port returns explicit unsupported refusals without I/O
+for create, void and read. Configured product paths accept only single-leading-slash
+path segments; request URLs must retain the configured HTTPS origin and have no
+credentials. Raw bags, raw provider errors, command PII and secrets never enter durable
+outputs. Correlation, tracking-number and service references default to 1–128
+ASCII opaque-ID characters (letters/digits, `._:-`, starting with a letter/digit).
+`observationCodecs.approveReference` lets an adopter explicitly allow its wider
+incumbent identifier grammar, with privacy owned by that adopter; controls,
+blank/overlong values, email addresses and URLs still refuse. Correlation refusal
+is counted and reported before keys or durable observations are constructed;
+tracking-number/service refusals are counted in admission diagnostics and results.
+Supplied service/URL values are counted before extraction and deduplication,
+including malformed values and discarded duplicates; retained tracking data stays
+first-wins. A refused service cannot supply a derived carrier, and the shared
+durable sink also suppresses carriers paired with refused service evidence.
+Tracking URLs default to query-free, fragment-free HTTPS without credentials
+and explicit host approval. An optional adapter `observationCodecs.trackingUrl`
+can retain required query data under adopter policy; HTTPS, no credentials and
+host approval still apply at every projection. Forward that same reference/URL
+policy through ingress and native-store `observationCodecs`, conformance-subject
+`observationCodecs`, and reconciliation `trackingCodecs`; an omitted policy keeps
+the strict default. The optional `normalizeCarrier` codec maps raw carrier/
+service evidence to a normalized kind; raw carrier is never forwarded as the kind. Stock collections carry a run ID/time and nullable source revision;
+collection time is no provider ordering. Product reads are pull-only in scheduled
+composition; writes require explicit host invocation and metadata.
+Sync failures/refusals throw Error subclasses with safe messages and typed
+`reason`, `phase` and `retryable`; provider failures additionally carry
+`providerFailure:true`, status and bounded code for host HTTP 502 mapping.
+Product reads preserve the donor's nonempty string EANs and finite quantities
+(other values become zero), leaving pack validation/reconciliation to the host.
+Stocked product SKUs admit every nonblank string with percent-encoded path segments,
+retaining the original identity and deduplicating reads. Literal `.`/`..` and lone
+surrogates refuse visibly as `malformed / sync` before HTTP; the product worker
+counts per-SKU failures instead of silently dropping them. `pulledSkus`
+counts unique completed product reads; `providerCalls` adds the stock listing,
+excluding retry attempts.
+
+
+The example passes M08's offline `runFulfillmentAdapterConformance` with injected
+fake HTTP and synthetic sensitive-value plants in the
+[conformance witness](../../packages/platform/test/fulfillment/omnipack/conformance.test.ts).
+It covers dispatch/replay and pre-I/O mismatch refusal, unsupported label
+create/void, observation, positive and empty readback, stock and product sync.
+The real M08 worker also refuses fresh-instance and evicted-fingerprint replays
+against an already-begun host ledger without provider I/O. These offline checks
+provide no provider-account proof; account readbacks remain owner acts.
+See the [A3 ledger](plans/oss-a3-fulfillment-adapter.md).
 
 ## Canonical status
 
@@ -159,7 +295,7 @@ Marketing types come from `./communications/contracts`: `MarketingSyncProvider`
 covers profile sync, consent readback and erasure, and `ConsentPushPort` covers
 consent push. The marketing example also implements
 `MarketingAutomationProviderPort` and a refusal-only `NewsletterSyncProviderPort`.
-See the [communications import](../../packages/platform/README.md#communications-import)
+See the [communications import](PLATFORM_PACKAGE_REFERENCE.md#communications-import)
 and the [marketing adapter](#opt-in-singleton-marketing-adapter).
 
 A payments (M07) adapter implements `PaymentAdapter` and declares
@@ -168,14 +304,26 @@ A payments (M07) adapter implements `PaymentAdapter` and declares
 `PaymentAdapterConformanceSubject` from `./payments/contracts` and verification
 fixtures. See the [opt-in payment example](#opt-in-payment-example).
 
-Fulfillment neutral ports are planned (M08); there is no API to implement yet. A
-fulfillment example adapter is planned for round A3. An adapter for another 3PL,
-marketplace fulfillment service or parcel network would then follow that example.
+A fulfillment (M08) adapter declares `FulfillmentCapabilityDescriptor` and
+implements the experimental dispatch, label, observation, readback and sync ports
+from `@openlup/platform/fulfillment/contracts` (`FulfillmentDispatchPort`,
+`FulfillmentObservationPort`, `FulfillmentReadbackPort`; optional
+`FulfillmentStockSyncProvider` and `FulfillmentProductSyncProvider`). See the
+[fulfillment owner](ARCHITECTURE_AND_EXTENSIONS.md#fulfillment-contracts) for
+command preparation, host keys, replay, paid handoff and proof/storage boundaries.
+The offline `runFulfillmentAdapterConformance` checks adapter-owned fixtures and
+returns sanitized evidence. Native stores and real PostgreSQL conformance cover
+durable storage and arrival alignment. The [opt-in fulfillment example](#opt-in-fulfillment-example)
+is the template for another warehouse, marketplace fulfillment service or parcel
+adapter and passes M08's offline runner with adapter-owned fixtures.
+Provider-account proof remains separate; account readbacks remain owner acts.
+This surface activates no provider or reference route.
 
 | Class | Shipped example subpaths |
 | --- | --- |
 | Communications | `@openlup/platform/communications/resend`, `@openlup/platform/communications/klaviyo` |
 | Payments | `@openlup/platform/payments/stripe`, `@openlup/platform/payments/tpay` |
+| Fulfillment | `@openlup/platform/fulfillment/omnipack` |
 
 The examples are default-off and opt-in: the host selects an adapter for each
 port it needs, and default wiring includes none. To write another vendor's
@@ -378,16 +526,120 @@ the protected case and schedule unchanged.
 These are source and persistence contracts, not evidence that any hosted
 deployment, provider adapter, or public release has activated the rail.
 
+The native fulfillment translation uses `fulfillment_shipments.replaces_shipment_id` and
+order → cycle → subscription correlation, with cycle number on the renewal
+operation. Its admission guard applies only to NEW cycle admission/insert;
+existing-cycle retries in renewal operations and dunning bypass admission and
+neither mint nor consume receipts. The native graph gains no `retry_scheduled`
+state and the payments lifecycle is unchanged. Automatic alignment still requires an
+actual arrival; missing correlation remains manual review. Native invoker
+privileges and complete catalogue installation are described in
+[Data and migrations](DATA_AND_MIGRATIONS.md#module-catalogues-and-installed-histories).
+
 ## Compatibility posture
 
-The reviewed-forward registry additionally pins one portable function replacement
-to keep active subscriptions active on dunning exhaustion (invariant repair).
-The signature is fixed in code; its before hash binds the portable chain, while
+`20261022193000`/`20261022193100` introduce managed correction v2; its sync-first settlement and permanent-failure parking are owned by [M09 forward design](DATA_AND_MIGRATIONS.md#m09-invoicing-forward-design-and-control-approval).
+
+Native subscription retry N1 extends the existing migration prefix without
+changing earlier rows. Its manifest inventory is recomputed by the repository
+runner on the complete prefix plus N1, and its package SQL copy retains the CTL
+creation pin. Command/stock-wait forwards remain later additions; installing this
+unit does not activate a runner or grant M07 native prepared-store capability.
+
+
+The native stock-evidence replay forward `20261022165000` appends a file/hash
+row to the existing platform manifest without changing its immutable prefix or
+format. Its live object-inventory digest changes with the replacement function.
+Install the complete catalogue: the fulfillment package descriptor is a sparse
+byte-identical projection, not an alternative history. Matching fingerprints
+reopen and refresh evidence; legacy whole-input fingerprints still conflict with
+PR1 identities and are not migrated. See [data compatibility](DATA_AND_MIGRATIONS.md#compatibility-lifecycle)
+for the exact upgrade and replay boundary.
+
+The M10/F17 `batchedForwards` registry adds exact approval data and inert
+snapshots only. Its ordered paths, raw statement/definition hashes, signature
+chains and exact grants/seeds do not install SQL, change a baseline, activate a
+runtime or establish upgrade compatibility. The
+[reviewed-forward boundary](DATA_AND_MIGRATIONS.md#exact-reviewed-function-forwards)
+requires a separate feature introduction and mandatory real-PG/pgTAP catalog
+evidence; existing admission classes keep their prior behavior.
+
+The CI-only [image inventory](../../config/ci-images.json) owns logical names,
+upstream repositories, tags, index digests and ordered public-registry sources
+for the non-CLI mirror inputs. It records the install-proof database, disposable
+test default and managed-batch database pins; Supabase CLI images remain derived
+as repository/tag pairs by a read-only plan job from the workflow's CLI pin and
+reference config. The pgTAP runner's exclusions constrain long-running services;
+they never remove enabled GoTrue, Realtime or Storage API schema-init images.
+The derived set contains those three images, Postgres and the binary's `pg_prove`.
+An exclusion change leaving an uncovered runtime image refuses derivation.
+The write job validates those untrusted pairs against a closed repository allowlist
+before any exec or registry call, reads typed owned pins from its own checkout,
+and builds upstream sources and mirror targets itself. It runs only pinned
+first-party actions plus the repository script, re-resolves source digests, skips
+identical targets, refuses moved tags and verifies every copy. CLI images are
+trust-on-first-use. The shared reader prepends the single mirror
+registry to inventory sources for consumers; mirror copying still uses only
+upstreams. The reviewed-batch gate and shared disposable PostgreSQL helper use
+these pins, preserving the exact digest on every fallback. Their source order
+is mirror, then GHCR/Docker Hub/ECR for managed, or Docker Hub/ECR for native.
+The default helper uses the test pin, resolves once per exact ref per process and
+runs the successful digest-qualified source with `--pull=never`; explicit
+non-inventory overrides keep their existing behavior. Before any shared pull,
+exact local index digests (or exact CLI tags when unpinned) bypass network access;
+inspection errors refuse. The gate, helper and pgTAP runner share one pull retry
+implementation; long Retry-After hints advance by the remaining per-source
+share, while shorter waits are capped to preserve non-GHCR fallback.
+A Docker-free guard rejects literal digests or registry source lists in the gate test.
+An explicit source tag must match the entry's tag and is preserved during
+resolution. Mirror absence/private access immediately advances to upstream;
+it does not require credentials or make CI depend on mirror publication.
+The pgTAP runner uses the same CLI derivation as mirror planning and pre-pulls
+all five derived tags with mirror/GHCR/ECR/Docker Hub fallback before start. Those CLI tags have
+no pinned inventory digest; a derived digest, when present, is verified. Local
+aliases reconcile mixed successful registries with the CLI's requested names.
+Other launchers and the install-proof service remain unchanged. These changes
+establish no public package visibility or runtime/application default.
+[CI image mirror guidance](../../CONTRIBUTING.md#ci-image-mirror) owns retry
+budgets, refusal boundaries, mirror execution and the owner's GHCR setup.
+
+The native catalogue now appends the three reviewed M09 duty/effect/payment
+forwards after its preserved prefix. The manifest inventory digest and sparse
+package descriptor bind that complete selected tree; they do not declare
+native/managed correction storage or fiscal support equivalent. The approved
+pre-install duty re-pin is reflected in both native SQL projections, the file
+hash and the live object-inventory hash; these bindings must move together.
+It does not authorize rewriting a migration already recorded by an installation.
+
+Fulfillment appends command/alignment units 73/74 and binds
+their byte-identical package projections through `FULFILLMENT_MIGRATIONS`.
+The canonical manifest retains its baseline and full prior prefix; its refreshed
+object-inventory digest describes the complete selected graph. No managed
+forward, old hash, role or payments lifecycle is changed. Native continuity is checked by
+full-catalogue fresh/prefix/replay tests; a package descriptor alone establishes
+no installation readiness.
+
+The reviewed-forward registry additionally pins portable function replacements
+to keep active subscriptions active on dunning exhaustion (invariant repair)
+and to reopen and refresh stock evidence on matching-fingerprint replay.
+The stock replacement keeps the supplied opaque fingerprint comparison and
+`23505` mismatch refusal; it does not rewrite legacy fingerprints.
+Each signature is fixed in code; its before hash binds the portable chain, while
 its after and whole-file hashes bind the proposed forward. This separate control
 approval supplies no migration or runtime activation. The
 [exact reviewed function rules](DATA_AND_MIGRATIONS.md#exact-reviewed-function-forwards)
-require unchanged headers, a single function statement and approval before SQL
-introduction; managed admission counts remain unchanged.
+require unchanged headers and a single function statement, with introduction
+following the [co-located SQL/pin rule](DATA_AND_MIGRATIONS.md#co-located-sql-and-approval-pins). Existing managed classes retain their fixed counts; the separate
+[M09 forward admission](DATA_AND_MIGRATIONS.md#m09-invoicing-forward-design-and-control-approval)
+binds three managed forwards and the additional exact native payment-terminal
+replacement. New native routines stay invokers; managed wrappers retain donor
+service-only definer attributes. These approvals install no SQL or activation.
+When introduced, new F13 captures intentionally read `accountingRequested=false`
+on payment readback: they record an owed obligation without linking a document
+into payment truth. This is a declared readback change. The trusted-host
+`invoicing_duty_readback(uuid)` is the owed-invoice view (KEPT #5), including
+subsequent issue state and only the latest capture fault per source kind/ID;
+historical linked payment events keep their readback.
 
 The portable dunning invariant repair appends exactly one manifest row at
 position 71 and refreshes `objectInventorySha256` from the complete live
@@ -485,8 +737,8 @@ the direct catalogue identity and the managed pending-lifecycle compatibility ga
 The runtime forward registry may pin exactly eight legacy browser-policy
 retirements alongside its fixed function and privilege bindings. Retirement
 checks exact names, tables, preceding statement hashes and ordered DROP
-statements; it does not admit arbitrary RLS changes. The approval must exist
-unchanged at the feature comparison base and the forward introduction parent.
+statements; it does not admit arbitrary RLS changes. Introduction follows the
+[co-located SQL/pin rule](DATA_AND_MIGRATIONS.md#co-located-sql-and-approval-pins).
 Control approval installs no database permission and cannot stand in for the
 corrected forward's actual-role tests.
 
@@ -506,9 +758,9 @@ UPDATE on `auth_user_id`, INSERT on `admin_users.id`, `email`, `role`,
 `membership_state`, `membership_provenance` and `membership_accepted_at` for
 operator activation (`is_machine_actor` keeps its false default), and SELECT on `admin_users.email`
 for invitation eligibility and conflict checks.
-It does not authorize arbitrary runtime grants. Approval must precede the SQL
-feature's comparison base and introducing commit; registry installation alone
-does not change database permissions.
+It does not authorize arbitrary runtime grants. Introduction follows the same
+co-located SQL/pin rule; registry installation alone does not change database
+permissions.
 
 Stable status, idempotency, and provider-extension commitments wait for the stable-framework requirements.
 Before then, changes must still preserve the contracts above and state their
@@ -519,10 +771,14 @@ binds exact managed SQL files and old/new function definitions. Its replacement
 list contains exactly three existing signatures in two files; a distinct creation
 list requires the two price-setup signatures to be absent before their forward.
 The optional runtime list pins the capability and identity forwards described above.
-Required self-check keeps the whole registry unchanged from the feature comparison
-base. Release compares each forward's own entry, list position and shared registry
-fields with its introduction parent, allowing later controls to append approvals.
-A feature cannot approve itself. Both gates share the same admission checker.
+The separate `portableCreationForwards` list pins two fulfillment and three
+invoicing creation forwards by path and whole-file hash, requiring new objects
+and invoker functions. The portable replacement list pins the dunning function
+and the invoicing payment-terminal accounting block.
+Managed correction recovery, lock coupling, trigger admission, seller eligibility and migration ordering are owned by [M09 forward design](DATA_AND_MIGRATIONS.md#m09-invoicing-forward-design-and-control-approval).
+Self-check and release share the admission checker and the canonical
+[co-located SQL/pin rule](DATA_AND_MIGRATIONS.md#co-located-sql-and-approval-pins).
+Existing control histories remain valid; later repins cannot authorize earlier SQL.
 This is a separately reviewed preview admission class, not expand-only or a live
 database compatibility proof; see
 [Data and migrations](DATA_AND_MIGRATIONS.md#exact-reviewed-function-forwards).
@@ -578,7 +834,8 @@ inside their two declared source/test directories, their exact API reports and
 exact cold-consumer proof lines. The exact path-segment tokens
 `communications/resend` and `communications/klaviyo` are additionally allowed in
 the platform manifest, release gates, package boundary test, publication
-catalogue, platform CHANGELOG and validated platform `changes/*.md` fragments,
+catalogue, platform CHANGELOG, its non-packed `CHANGELOG-HISTORY.md` and validated
+platform `changes/*.md` fragments,
 this page, the architecture page and the A1 ledger.
 Those same two subpath tokens are allowed in only the A1 reference binding and
 its adjacent test under `server/runtime/communications`; bare adapter words
@@ -855,3 +1112,125 @@ The incumbent authority and PostgreSQL factory retain their sequential schedulin
 and observed-base identity. The native effective-bundle witness is
 `tests/postgres/bundleEffectiveParity.test.ts`; all parity additions use existing
 collectors and synthetic host data.
+
+## Fulfillment observation and sync execution
+
+The [fulfillment contract owner](ARCHITECTURE_AND_EXTENSIONS.md#fulfillment-contracts)
+explains G15–G17: consecutive-success coverage confirmation, timed local stock
+lines and inline host persistence. Ingress persists eventKey receipts before
+lifecycle writes. For correlated ingress, a trimmed observation or dispatch
+external reference is required before acceptance/status/effects/processed mark;
+a missing/blank pair leaves the receipt unprocessed. Hosts own idempotent replay; a superseding conflict returns
+superseded and persists/returns its safe `supersededCause`. Ingress returns the
+host receipt ID (or durable event key), counters for rejected correlation fields,
+tracking numbers/services/URLs and invalid timestamps, and diagnostics on early
+refusal. Original supplied occurrence is validated before mapping: numbers,
+objects, empty strings and invalid timestamp strings refuse and count; absent/null
+occurrence remains unknown without a refusal count.
+The host applies `fulfillmentIngressHttpResult` for status and safe message class;
+no route is installed. The webhook colon key retains original occurrence bytes;
+host-injected persistence/effect keys must keep the donor namespace for replay.
+Native 0.22.0 digest receipts/effects and superseded outcomes are outside that
+compatibility: retries can repeat tracking or fail with
+`fulfillment_observation_outcome_conflict`. Drain in-flight observation retries
+before upgrading; the [Unreleased migration note](../../packages/platform/CHANGELOG.md#unreleased)
+records these limitations without a bridge or alias migration.
+The normalized fact uses a separate opaque identity. Hosts must retain the raw
+evidence referenced by its opaque pointer, with access/retention policy of their own.
+
+Reconciliation reads local chronology independently of provider readback.
+Non-stale found observations for locally cancelled/exception rows write status
+evidence only. Older known occurrences skip status/effects; only on-track rows
+with handedOverAt may retry an invoice on that path. Unknown readback is row-local:
+it counts a run failure while recognized rows still process. Unmapped evidence
+is projected before host calls;
+correlated off-track rows skip acceptance/quarantine. These workers call no
+alignment or replacement-confirmation operation; native late-arrival alignment
+must preserve the later-only monotonic rule.
+
+## Subscription port boundary
+
+The experimental [subscription declarations](../../packages/platform/src/subscriptions/contracts/index.ts)
+carry deferred admission independently of terminal refusal, original schedule
+text independently of its comparison instant, frozen revisions and complete
+claim readback. Verified M07 evidence carries original occurrence, observation
+and first-recorded clocks with nullable money and explicit ambiguity/late-positive
+disposition. A late positive settles the same obligation, never a new charge.
+A waiting retry row with disposition `payment_failed` and null `nextRetryAt`
+is intentional exhaustion or a class stop. An in-flight prepared retry retains
+`retry_scheduled` with a null date; it awaits evidence rather than another
+dispatch. Fallback cadence is allowed only when the row is absent.
+
+Native N1 records retries against the original refused renewal without resetting
+that terminal operation or minting another cycle. Each failure receipt advances
+the rung once, separately from case propagation; a prepared receipt permits only
+its first caller to dispatch. Unknown observations and missing acknowledgements
+require reconciliation. Recovery consumes M07's verified matching positive
+payment evidence and commits settlement, receipt, case, cycle and native counter
+effects together. It never guesses a logical number from the native counter,
+pauses the subscription, or moves `next_cycle_at` earlier. Exhaustion keeps the
+case open with a null retry. Reopening a class stop or exhausted ladder requires
+a same-case token and durable healthy-method evidence before scheduling.
+
+The initial runner handoff must open the case before the terminal outcome;
+subsequent retry failures apply settlement and rung once before advancing that
+case. N1's case wrapper requires an already recorded failure, so it is not by
+itself the initial handoff. The package binding opens the existing case first and atomically attaches N1
+bookkeeping during terminal recording, using the same case and preserving the
+initial handoff key. Hosts supply its transaction/correlation/M07 ports; payment
+execution stays outside every local transaction. Initial terminal replay checks
+the immutable receipt and returns before settlement, case rebinding or case
+propagation; it preserves later retry state, notifications and events.
+A host or driver must never call `openCase` after a replayed `applyFailure`
+receipt, and the P8 retry driver must add a zero-delta replay witness.
+
+The host must establish explicit logical-cycle correlation before invoking the
+automatic runner, including its prepare/execute path; the terminal binding
+cannot repair missing correlation after charging. Ordinary retries must use the
+frozen mandate/authorization. N1 does not bind an ordinary retry method to it:
+the P8 retry driver or host must enforce that binding, and P8 composition must
+add the matching witness.
+
+Nothing in automatic renewal pauses an active subscription. Arrival alignment
+uses the outer schedule maximum and actual latest arrival plus cadence; no
+cycle moves earlier or stacks. A superseded predecessor is no longer outstanding,
+but an undelivered replacement still is. Never call
+`subscription_delivery_alignment_confirm_replacement` until that replacement
+arrives. After rollback to `off`, shadow cases are admitted. Captured protected cases
+still go through admission and defer until actual arrival: `protect` releases
+the case; `auto_align` settles as `aligned` using the latest arrival plus cadence
+with the outer maximum, never earlier or stacked. `manual_review` cases, including
+protected cases whose arrival meets open dunning or a successor cycle, keep
+deferring until resolved.
+
+The native descriptor refuses multi-cycle prepaid, generic bundle commands,
+command-bound receipts and M07 prepared-store parity by name, and selects the N1 retry recovery adapter while stock recovery remains unavailable. Native generic bundle commands and command-bound
+receipts arrive with a later native command lifecycle; until then, the
+descriptor refuses them. It selects one executor, default off, with
+mandatory delivery admission. Host-selected M04 descriptors carry recorded
+lifecycle facts; copy, recipient, consent and delivery remain host/M04-owned.
+See the [architecture boundary](ARCHITECTURE_AND_EXTENSIONS.md#subscription-contracts).
+
+## Invoicing evidence
+
+Invoicing keeps issued proof, exact scoped absence, unknown and unsupported
+separate. Unknown never authorizes another create; correction recovery binds
+stable correction identity and parent. Local void cannot erase an issued
+invoice. An owed-duty readback retains unsupported duties and capture faults;
+`accountingRequested=false` does not prove absence. Distinct payout items stay
+distinct, and account projections preserve owner and document lineage. Host
+artifact persistence, clearance observation and M04 acceptance are separate proofs.
+See the [invoicing contract reference](PLATFORM_PACKAGE_REFERENCE.md#invoicing-contracts).
+
+See the [M09 forward owner](DATA_AND_MIGRATIONS.md#m09-invoicing-forward-design-and-control-approval) for the registered managed-correction limit and follow-up.
+
+The invoicing refusal factory cannot clear a previously unknown effect: its
+unsupported result describes this call only. Offline conformance checks stable
+identity, recovery without a second write and parent mismatch before another
+write. Adapter-owned fixtures establish this contract boundary; live fiscal
+readiness and inbox delivery require their own evidence. Native P4a fencing is
+covered by the real-Postgres conformance witness, with no provider access. The
+store refuses absent host facts before writes; the duty stays owed. Native
+child-document corrections and managed base-row corrections have separate
+migration descriptors. An unknown claim always recovers by exact readback;
+only authoritative scoped absence can authorize a fresh create.

@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { prepareCandidate, receiptSummary, recordReport, RECEIPT_MARKER } from './agent-review-decide.mjs';
-import { captureSessionCandidate, git as reviewGit, sessionMain, verifyCandidateCommand } from './agent-review-session.mjs';
+import { assertMergePreflight, captureSessionCandidate, git as reviewGit, sessionMain, verifyCandidateCommand } from './agent-review-session.mjs';
 import { carryOverSourceReview, waitNativeAdmission } from './agent-review-queue.mjs';
 
 const directories: string[] = [];
@@ -105,6 +105,103 @@ describe('six real Git witnesses', () => {
       expect(next).not.toHaveProperty('previousSessionDigest');
       expect((await readdir(join(f.scratch, 'agent-review'))).some(name => /^session-.*\.json$/.test(name))).toBe(false);
     }
+  });
+  it.each(['text conflict', 'clean overlap', 'admission machinery', 'disjoint'])('preflight refuses known integration failure before review or costly verification: %s', async scenario => {
+    const f = await fixture(); const session = await f.review();
+    f.git('checkout', '-q', '--detach', f.base);
+    if (scenario === 'text conflict') await writeFile(join(f.cwd, 'source.txt'), 'main conflicts\n');
+    else if (scenario === 'clean overlap') await chmod(join(f.cwd, 'source.txt'), 0o755);
+    else {
+      const path = scenario === 'admission machinery' ? 'scripts/agent-review-admission.mjs' : 'other.txt';
+      await mkdir(join(f.cwd, 'scripts'), { recursive: true });
+      await writeFile(join(f.cwd, path), 'main addition\n'); f.git('add', path);
+    }
+    f.git('add', 'source.txt');
+    f.git('commit', '-qm', 'main move');
+    f.git('update-ref', 'refs/remotes/origin/main', f.git('rev-parse', 'HEAD'));
+    f.git('checkout', '-q', '--detach', f.head);
+    const run = vi.fn(async () => 0);
+    const prepared = await readFile(f.statePath, 'utf8');
+    const request = join(f.scratch, 'intent.json');
+    if (scenario === 'disjoint') {
+      await expect(f.cli('prepare', request)).resolves.toBe(0);
+      await expect(verifyCandidateCommand({ cwd: f.cwd, session, command: 'costly-check', run, env: {} })).resolves.toBe(0);
+      await expect(f.cli('receipt', '12')).resolves.toBe(0);
+      expect(run).toHaveBeenCalledTimes(1);
+    } else {
+      await expect(f.cli('prepare', request)).rejects.toThrow('merge_preflight');
+      expect(await readFile(f.statePath, 'utf8')).toBe(prepared);
+      await expect(verifyCandidateCommand({ cwd: f.cwd, session, command: 'costly-check', run, env: {} })).rejects.toThrow('merge_preflight');
+      await expect(f.cli('receipt', '12')).rejects.toThrow('merge_preflight');
+      expect(run).not.toHaveBeenCalled();
+    }
+  });
+  it.each([false, true])('preserves exact integration coverage without admitting a later repair as a merge (repair: %s)', async repair => {
+    const f = await fixture(); const prior = await f.review();
+    f.git('checkout', '-q', '--detach', f.base);
+    await mkdir(join(f.cwd, 'scripts'), { recursive: true });
+    await writeFile(join(f.cwd, 'scripts/agent-review-extra.mjs'), 'main admission change\n');
+    f.git('add', 'scripts/agent-review-extra.mjs'); f.git('commit', '-qm', 'main machinery change');
+    const main = f.git('rev-parse', 'HEAD'); f.git('update-ref', 'refs/remotes/origin/main', main);
+    f.git('checkout', '-q', '--detach', f.head); f.git('merge', '--no-ff', '-qm', 'integrate main', main);
+    if (repair) { await writeFile(join(f.cwd, 'source.txt'), 'new implementation\n'); f.commit(); }
+    await f.cli('prepare', join(f.scratch, 'intent.json'));
+    const next = JSON.parse(await readFile(f.statePath, 'utf8'));
+    expect(next.cycle).toBe(prior.cycle + 1);
+    expect(next.candidate.base).toBe(main);
+    expect(next.history.slice(0, -1)).toEqual(prior.history);
+    if (repair) expect(next.candidate).not.toHaveProperty('integration');
+    else {
+      expect(next.candidate.integration).toEqual({ base: f.base, head: f.head, tree: prior.candidate.tree, expires: prior.history.at(-1).at + 86400000 });
+      await f.cli('prepare', join(f.scratch, 'intent.json'));
+      expect(JSON.parse(await readFile(f.statePath, 'utf8'))).toEqual(next);
+      const path = join(f.scratch, 'integration-report.json');
+      await writeFile(path, JSON.stringify({ reviewer: 'fresh-integration-1', cold: true, verdict: 'PASS', tree: next.candidate.tree, findings: [], closes: [] }));
+      await f.cli('record', path);
+      await expect(f.cli('verify')).rejects.toThrow('2 independent PASS');
+      await writeFile(path, JSON.stringify({ reviewer: 'fresh-integration-2', cold: true, verdict: 'PASS', tree: next.candidate.tree, findings: [], closes: [] }));
+      await f.cli('record', path);
+      await expect(f.cli('verify')).resolves.toBe(0);
+    }
+  });
+  it('requires full local review for an exact merge of an unlanded stacked predecessor', async () => {
+    const f = await fixture(); await f.review();
+    f.git('checkout', '-q', '--detach', f.base);
+    await writeFile(join(f.cwd, 'predecessor.txt'), 'unlanded predecessor\n');
+    f.git('add', 'predecessor.txt'); f.git('commit', '-qm', 'predecessor');
+    const predecessor = f.git('rev-parse', 'HEAD');
+    f.git('checkout', '-q', '--detach', f.head); f.git('merge', '--no-ff', '-qm', 'integrate predecessor', predecessor);
+    const env = { CODEX_THREAD_ID: 'author', OPENLUP_STACK_BASE: predecessor };
+    await sessionMain(['prepare', join(f.scratch, 'intent.json')], { cwd: f.cwd, env });
+    const session = JSON.parse(await readFile(f.statePath, 'utf8'));
+    expect(session.candidate.base).toBe(predecessor);
+    expect(session.candidate).not.toHaveProperty('integration');
+    await expect(sessionMain(['verify'], { cwd: f.cwd, env })).rejects.toThrow('independent PASS');
+    const path = join(f.scratch, 'full-stack-report.json');
+    await writeFile(path, JSON.stringify({ reviewer: 'full-stack-reviewer', cold: true, verdict: 'PASS', tree: session.candidate.tree, findings: [], closes: [] }));
+    await sessionMain(['record', path], { cwd: f.cwd, env });
+    await expect(sessionMain(['verify'], { cwd: f.cwd, env })).resolves.toBe(0);
+  });
+  it('keeps local stack review available before its pinned predecessor lands', async () => {
+    const f = await fixture();
+    await writeFile(join(f.cwd, 'source.txt'), 'upper change\n'); f.commit();
+    const head = f.git('rev-parse', 'HEAD');
+    f.git('checkout', '-q', '--detach', f.base);
+    await writeFile(join(f.cwd, 'source.txt'), 'conflicting main\n'); f.commit();
+    f.git('update-ref', 'refs/remotes/origin/main', f.git('rev-parse', 'HEAD'));
+    f.git('checkout', '-q', '--detach', head);
+    const env = { OPENLUP_STACK_BASE: f.head };
+    const candidate = await captureSessionCandidate(f.cwd, undefined, { env });
+    await expect(assertMergePreflight(f.cwd, candidate, { env })).resolves.toBeUndefined();
+    await expect(assertMergePreflight(f.cwd, candidate, { env: {} })).rejects.toThrow('merge_preflight');
+    const request = join(f.scratch, 'stack-intent.json');
+    await writeFile(request, JSON.stringify({ authorSessionId: 'author', intent }));
+    await expect(sessionMain(['prepare', request], { cwd: f.cwd, env })).resolves.toBe(0);
+    let session = JSON.parse(await readFile(f.statePath, 'utf8'));
+    session = recordReport(session, { reviewer: 'stack-reviewer', cold: true, verdict: 'PASS', tree: session.candidate.tree, findings: [], closes: [] }, Date.now());
+    const run = vi.fn(async () => 0);
+    await expect(verifyCandidateCommand({ cwd: f.cwd, session, env, command: 'stack-check', run })).resolves.toBe(0);
+    expect(run).toHaveBeenCalledTimes(1);
   });
   it('carries over disjoint export additions to the same package manifest with real Git', async () => {
     const f = await fixture(); const path = 'packages/p/package.json';

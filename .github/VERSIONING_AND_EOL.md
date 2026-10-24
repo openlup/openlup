@@ -474,6 +474,9 @@ binds every forward's bytes and mode through its commit.
 The admission predicate accepts a bounded SQL subset: additive `CREATE TABLE`,
 `INDEX`, `TYPE`, `SEQUENCE` or `SCHEMA`, `ALTER TABLE ... ADD`, transaction
 boundaries, and literal `INSERT ... VALUES ... ON CONFLICT ... DO NOTHING` seeds.
+Seed INSERTs take a single literal VALUES list immediately after the target name
+and optional plain column list. `CREATE SCHEMA [IF NOT EXISTS] name` takes no
+schema elements; expand-only statements take no `OWNED BY` clause.
 It refuses other statements, procedural/dynamic SQL, ambiguous escapes and
 unterminated comments or quotations. A new form needs its own reviewed predicate
 and regression coverage. A separate
@@ -481,19 +484,34 @@ and regression coverage. A separate
 pins three managed function forwards, exactly three existing-function replacements
 and two new price-setup functions, plus an optional runtime list with the
 five-function capability forward and a second service-only identity capabilities
-forward. An optional portable replacement list admits exactly one file and one
-code-fixed existing signature to keep active subscriptions active on dunning
-exhaustion (invariant repair). Its priors come only from the portable baseline and
-earlier portable forwards; only comments and that single function replacement
-are admitted. The managed counts remain two replacement files, one creation file
-and one or two runtime files when the runtime list is present.
+forward. The optional portable replacement list binds code-fixed signatures for
+the dunning invariant repair, payment-terminal decoupling and stock-evidence
+replay reopening. Each file admits only comments and its single function
+replacement, with unchanged header attributes and no privilege statements.
+Priors come only from the portable baseline and earlier portable forwards.
+The managed counts remain two replacement files, one creation file and one or
+two runtime files when the runtime list is present.
+A separate exact `batchedForwards` list binds the M10/F17 packet (five native,
+nine managed paths), ordered statements, exact grants/seeds and every function
+preimage/postimage. Timestamp aliases normalize only identity; repeated managed
+signatures must form an ordered hash chain. The native allocator is a single
+body-only replacement with its existing ACL preserved. Legacy class counts and
+predicates above remain unchanged. Batch admission requires the committed
+[real-PG/pgTAP catalog gate](../tests/postgres/reviewedBatchForwards.test.ts) in
+the required test aggregate; unavailable PostgreSQL fails, and the lexer only
+pre-filters. This approval adds inert fixtures, never executable forward files.
 Both required self-check and release prepare call the same checker; replacement
 remains outside the expand-only predicate.
-Required self-check keeps the whole registry unchanged from the feature comparison
-base. Release compares each forward's own entry, list position and shared registry
-fields with its introduction parent; later controls may append approvals. A feature
-cannot approve itself. Exact path, whole-file bytes, old/new definition hashes and
-signature cardinality must match. Admission checks syntax and pinned evidence,
+Required self-check permits only approval changes for SQL introduced by the same
+PR under an existing trusted policy class. Other entries, list positions and
+shared fields stay unchanged. Native admission from main validates this narrow
+route and refuses co-changing admission machinery. Release binds each forward to
+its unique mainline introduction and preserves that binding through later controls;
+a later pin cannot authorize an earlier installation. Existing separate control
+histories remain valid. See the canonical
+[co-located SQL/pin rule](../docs/platform/DATA_AND_MIGRATIONS.md#co-located-sql-and-approval-pins),
+including its control-change and workflow-invocation boundaries. Exact path,
+whole-file bytes, old/new definition hashes and signature cardinality must match. Admission checks syntax and pinned evidence,
 not live database compatibility;
 review constraints, defaults and replay behaviour on the selected installation.
 Rows required by platform behaviour belong in idempotent forward statements.
@@ -652,7 +670,7 @@ the platform row's raised caps use the projection in the note below the table.
 | --- | --- | --- | --- | --- | --- | --- |
 | `@openlup/core` | 132,250 / 198 | 270 / 400 | 161,371 / 209 | 320 / 420 | 48 / 20 | 1,360 |
 | `@openlup/outbox` | 20,930 / 33 | 42 / 70 | 38,718 / 41 | 80 / 90 | 26 / 12 | 260 |
-| `@openlup/platform` | 215,464 / 381 | 1,100 / 2,000 | 256,973 / 395 | 1,320 / 2,100 | 40 / 10 | 5,600 |
+| `@openlup/platform` | 215,464 / 381 | 1,100 / 2,000 | 256,973 / 395 | 1,320 / 2,100 | 48 / 10 | 6,400 |
 
 The `@openlup/platform` code, tarball, file and unpacked caps were raised on
 2026-10-20 with the maintainer's read of the M05 budget packet. Each is about
@@ -663,6 +681,10 @@ pricing parts (789 files, 771 code files, 480,886 tarball bytes, 2,038,883
 unpacked bytes, 406,639 compressed code bytes) plus the estimated growth of the
 remaining M05 parts. The docs, browser-entry and baseline values and the growth
 tripwire are unchanged.
+
+The `@openlup/platform` unpacked cap was raised to 6,400 KiB (6,553,600 B) on
+2026-10-22 with the maintainer's read of the M09 and M10 wave budget. Its
+packed, code-gzip, docs-gzip and file caps stay unchanged.
 
 **Release growth tripwire.** Each `pack.baseline` records the last released
 version and its total compressed tarball bytes, initially `0.16.0` and the
@@ -726,6 +748,23 @@ The policy test requires caps for every declared browser-safe entry. Growth abov
 a cap refuses with the package, entry, measured bytes, cap and reviewed-PR remedy.
 
 ### Release steps
+
+PR/queue dependency admission blocks newly selected vulnerable production
+dependencies, while unchanged inherited advisories remain alerts. It does not
+establish publication readiness. Release-tag/set packing in both the dispatch
+preflight and publication workflow runs a fresh absolute audit of the selected
+committed workspace graph, internal prerequisites and their standalone locks,
+with the existing zero-vulnerability budget. Before target code runs, the
+existing fresh-main gate requires the target's pack checker, audit helper and
+publisher workflow to match those on fetched main. Older source targets remain
+eligible when these controls are unchanged; otherwise prepare a reviewed forward
+candidate with the current publication controls. This does not rewrite already
+created historical releases or their pinned workflow definitions. No new pins
+are resolved. Failed audits retain no publishable artifacts. The publish job accepts an audit only
+from the same workflow attempt: use **Re-run all jobs** for a failed publication,
+including partial-set recovery. It receives only the checked tarball and digest;
+no checkout, install or package code enters the OIDC job. This binds freshness to
+the attempt, not a guarantee against advisories published later in that attempt.
 
 A release takes three steps:
 

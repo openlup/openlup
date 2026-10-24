@@ -222,20 +222,21 @@ vi.mock("node:fs", async original => {
   return { ...fs, readFileSync: vi.fn(fs.readFileSync) };
 });
 it.each([
-  ["", "postgres"], ["subscription", "postgres"], ["unrecognized", "postgres"],
-  ["identity", "postgres"], ["identity", "supabase"],
-])("builds a separate closed profile only by explicit selection (profile=%s, provider=%s)", async (profile, provider) => {
-  vi.resetModules(); vi.stubEnv("OPENLUP_REFERENCE_PROFILE", profile); vi.stubEnv("OPENLUP_BUILD_TARGET", "public-reference");
+  ["", "postgres", false], ["subscription", "postgres", false], ["unrecognized", "postgres", false],
+  ["identity", "postgres", false], ["identity", "supabase", false],
+  ["", "postgres", true], ["subscription", "postgres", true],
+])("builds a separate closed profile only by explicit selection (profile=%s, provider=%s, ssr=%s)", async (profile, provider, ssr) => {
+  vi.resetModules(); vi.stubEnv("OPENLUP_REFERENCE_PROFILE", profile); vi.stubEnv("OPENLUP_BUILD_TARGET", ssr ? "public-reference-ssr" : "public-reference");
   vi.stubEnv("VITE_COMMERCE_AUTH_PROVIDER_KIND", provider);
   vi.mocked(readFileSync).mockClear();
   const { publicReferenceViteConfig } = await import("../../../vite.public-reference.config.ts");
   const config = publicReferenceViteConfig();
   const configurationInputs = vi.mocked(readFileSync).mock.calls.map(([file]) => relative(process.cwd(), resolve(String(file))));
   const identity = profile === "identity", subscription = profile === "subscription";
-  const entry = `src/public-reference/${identity ? "identity-main" : subscription ? "subscription-main" : "main"}.tsx`;
-  const document = (config.plugins as Plugin[]).find(plugin => plugin.name === "public-reference-document")!.transformIndexHtml as { handler: () => string };
-  expect(document.handler()).toContain(`src="/${entry}"`);
-  expect(document.handler().includes('data-openlup-profile="identity"')).toBe(identity);
+  const entry = ssr ? "src/public-reference/entry-server.tsx" : `src/public-reference/${identity ? "identity-main" : subscription ? "subscription-main" : "main"}.tsx`;
+  const document = (config.plugins as Plugin[]).find(plugin => plugin.name === "public-reference-document")?.transformIndexHtml as { handler: () => string };
+  if (!ssr) expect(document.handler()).toContain(`src="/${entry}"`);
+  if (!ssr) expect(document.handler().includes('data-openlup-profile="identity"')).toBe(identity);
   const modules = new Set<string>();
   const collect: Plugin = {
     name: "identity-test-modules",
@@ -250,13 +251,19 @@ it.each([
   await build({ ...config, configFile: false, logLevel: "silent", plugins: [...(config.plugins ?? []), collect], build: { ...config.build, write: false } });
   const inputs = new Set(["index.html", ...configurationInputs, ...[...modules].map(id => id.replace(/\?.*$/, "")).filter(isAbsolute).map(id => relative(process.cwd(), id))]);
   expect(inputs.has(entry)).toBe(true);
+  expect(inputs.has("server/runtime/public-reference/m08FulfillmentBinding.ts")).toBe(false);
+  expect([...inputs].filter(file => file.startsWith("packages/platform/dist/fulfillment/"))).toEqual([]);
+  expect([...inputs].filter(file => [
+    "src/pages/account/v2/orders/OrdersScreen.tsx",
+    "src/pages/account/v2/orders/OrderTrackingStepper.tsx",
+  ].includes(file))).toEqual([]);
   expect([...modules].some(id => id.endsWith("/identity-main.tsx"))).toBe(identity);
-  expect([...modules].some(id => id.endsWith("/subscription-main.tsx"))).toBe(subscription);
+  expect([...modules].some(id => id.endsWith("/subscription-main.tsx"))).toBe(subscription && !ssr);
   if (!identity) {
     const identityFiles = ["src/public-reference/identity-main.tsx", "src/public-reference/IdentityAccount.tsx", "src/public-reference/IdentityAdmin.tsx", "config/public-reference-identity-imports.json", "server/runtime/auth/referenceIdentityPolicy.ts"];
     expect([...inputs].filter(file => identityFiles.includes(file))).toEqual([]);
-    expect(configurationInputs).toEqual(subscription ? ["config/public-reference-subscription-imports.json"] : []);
-    if (subscription) {
+    expect(configurationInputs).toEqual(subscription && !ssr ? ["config/public-reference-subscription-imports.json"] : []);
+    if (subscription && !ssr) {
       const inventory = JSON.parse(readFileSync("config/public-reference-subscription-imports.json", "utf8")).files as string[];
       expect(inventory.length).toBeGreaterThan(0);
       expect([...inventory, "index.html"].filter(file => identityFiles.includes(file))).toEqual([]);

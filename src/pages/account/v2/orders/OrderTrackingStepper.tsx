@@ -3,28 +3,27 @@ import { Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { CUSTOMER_STEP_SEQUENCE } from "@/domains/fulfillment/statusMap";
 
+import type { FulfillmentProgressPresentation } from "@openlup/core/fulfillment";
+
 const STEPS = CUSTOMER_STEP_SEQUENCE;
 
-/**
- * 5-phase fulfillment stepper (Opłacone → Przyjęte → Przygotowanie → W drodze →
- * Dostarczone). `phaseIndex` is derived from the order's real fulfilment/tracking
- * state (config/fulfillment-status-map.json) — steps up to and including it are
- * marked done, no fabricated progress. Labels come from `ordersV2.steps.*`.
- */
-export function OrderTrackingStepper({ phaseIndex }: { phaseIndex: number }) {
+/** Canonical milestones, checked only when existing record evidence supports them. */
+export function OrderTrackingStepper({ progress }: { progress: FulfillmentProgressPresentation }) {
   const { t } = useTranslation("account");
   return (
     <div className="relative">
       <div className="absolute left-4 right-4 top-3 h-px bg-teal-dark/12" aria-hidden />
       <ol className="relative flex justify-between">
-        {STEPS.map((step, index) => {
-          const done = index <= phaseIndex;
-          const current = index === phaseIndex;
+        {STEPS.map((step) => {
+          const done = progress.completedSteps.includes(step);
+          const current = step === progress.currentStep;
           // State labels are announced to AT only; visual state stays color-driven.
-          const stateLabel = current ? "w toku" : index < phaseIndex ? "ukończone" : "oczekuje";
+          const stateLabel = current ? "w toku" : done ? "ukończone" : "oczekuje";
           return (
             <li
               key={step}
+              data-step={step}
+              data-complete={done}
               aria-current={current ? "step" : undefined}
               className="flex flex-1 flex-col items-center gap-2 text-center"
             >

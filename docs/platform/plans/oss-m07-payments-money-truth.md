@@ -319,3 +319,68 @@ None is a correctness or security defect in the shipped package after P4d and P4
 - The reference card evidence normalizer's missing-amount path (the package already
   refuses settling evidence without positive money).
 
+
+## S1 record: 0.21.0 package set
+
+Outcome (2026-10-21, main `b394df2d`): prepare core/outbox/platform `0.21.0`
+with exact pins and locks; core/outbox are unchanged republications, UI stays
+private `0.0.0`. Consume all 13 fragments: `m07-p1`, `m07-p2`, `m07-p3`,
+`m07-p4`, `m07-p4b`, `m07-p4c`, `m07-p4d`, `m07-p4e`, `m07-p5`, `m07-p6`,
+`a2-op1`, `a2-op2`, `a2-op3a`. C2 code-complete; selectors remain default-off.
+
+Published `0.20.0` baselines (downloaded bytes match registry shasum/integrity):
+
+| Package | Packed B | Registry shasum |
+| --- | ---: | --- |
+| @openlup/core | 161,695 | `045eafe05a686616fef921adedb3a7156ca0b086` |
+| @openlup/outbox | 39,459 | `aee786aded37acb7cee9f55e1d9d957b4a1d96ab` |
+| @openlup/platform | 809,376 | `604e96ed6413e161b69d8a452cd1a529e1a55fd8` |
+
+Only `pack.baseline` changes; all caps remain unchanged. M06 C4 records `0.20.0`
+published and C4-checked at #271 merge `3e0f1784`; `0.21.0` follows this merge
+and required supervisor review/final verification. The standalone
+[0.21.0 limitations](../../../packages/platform/CHANGELOG.md#0210) retain M06
+pending proof and the five M07 follow-ups.
+
+Docs cap (coordinator ruling for the owner, 2026-10-21; no cap change): the
+packed CHANGELOG keeps the current release and the two previous ones, so
+`[0.18.0]` and older move byte-identical to the non-packed
+[CHANGELOG-HISTORY.md](../../../packages/platform/CHANGELOG-HISTORY.md), and the
+[release guide](../DEVELOPMENT_AND_RELEASE.md) states the rule. The packed docs
+class measures 45,646 of 49,152 B. The release notes describe the example
+payment adapter subpaths neutrally and the README names them; the neutrality
+script's exact-file A1 subpath allowance adds only the history file, so the
+verbatim move adds no count.
+
+Self-retro: the bump CLI stages deletions → hold fragments outside the checkout
+during the version bump, then assemble notes without Git writes; no tooling change.
+
+## C4 record: 0.21.0 publication readback
+
+S1 merged as `a1bdf8eeadf5706cc24b4a14747588f57c7ab138` (#288); its tree equals
+the reviewed and witnessed head `b722d9f8`. One authorized dispatch of
+`publish-package.yml` (package `all`, version `0.21.0`, target that commit, the
+reviewed `[0.21.0]` body, sha256 `cb918d08…545aed`) ran as run 39686596477; the
+owner approved the protected `release` environment, and the three
+`publish-packages.yml` runs completed on 2026-10-21. npm `latest` is `0.21.0`
+for all three packages.
+
+C4 readback on 2026-10-21, against the published packages: **PASS, 4/4**.
+
+- Registry integrity: each downloaded tarball matches its `dist.integrity` and
+  `dist.shasum` — core `ac58095053ee349a85e151f565dbec6d99ba2b4c`, outbox
+  `3c84fe085237831c2bebdd88634b282b6bd1c89e`, platform
+  `ba508c97229e4fac836de54ac69a8b15bddb18b0`.
+- Content equivalence: the extracted published trees are identical to the
+  tarballs witnessed from the reviewed tree (core 209, outbox 41, platform
+  1,398 files); compressed bytes differ after the workflow's repack.
+- Provenance: SLSA v1 statements bind each tarball to `publish-packages.yml`,
+  the tag `openlup-{core,outbox,platform}-v0.21.0` and `gitCommit`
+  `a1bdf8eeadf5706cc24b4a14747588f57c7ab138`; each remote tag dereferences to
+  that commit.
+- `npm audit signatures`: 4 verified registry signatures and 4 verified
+  attestations; `npm audit` reports 0 vulnerabilities.
+
+The M07 and A2 release set is published; adopter adoption starts from these
+versions. The known limitations and the five M07 follow-ups in the `[0.21.0]`
+notes are unchanged.

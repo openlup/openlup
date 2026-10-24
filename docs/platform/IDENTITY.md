@@ -403,7 +403,7 @@ It proves immediate activation, repeat/concurrent recovery and revoked-member
 refusal under the shipped grants. It does not establish managed/direct lifecycle
 parity.
 See [data compatibility](DATA_AND_MIGRATIONS.md#compatibility-lifecycle) and the
-[package invocation](../../packages/platform/README.md#operator-invitations).
+[package invocation](PLATFORM_PACKAGE_REFERENCE.md#operator-invitations).
 
 ## Schema continuity and readiness
 
@@ -900,7 +900,7 @@ recent rate-limit history and introduces no scheduler.
 These are visible outstanding obligations, not successful erasure contributors.
 Identity completion never means all platform data was erased. See
 [data compatibility](DATA_AND_MIGRATIONS.md#compatibility-lifecycle) for installation
-requirements and [the package guide](../../packages/platform/README.md#personal-data)
+requirements and [the package guide](PLATFORM_PACKAGE_REFERENCE.md#personal-data)
 for composition. Disposable database proof is selected through
 `tests/postgres/operatorIdentityUpgrade.test.ts`; the local managed proof is
 `tests/postgres/identityPrivacyManaged.conformance.ts`. It loads the committed

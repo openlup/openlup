@@ -9,6 +9,7 @@ This is the public documentation set for the OpenLup platform. It describes the 
 - [Development, diagnostics and preview releases](DEVELOPMENT_AND_RELEASE.md) — local checks, PR/queue/main execution, result interpretation and the source/npm release sequence.
 
 - [Testing — run, place, add and keep tests fast](../../CONTRIBUTING.md#test-scope-and-diagnostics).
+- [Platform package reference](PLATFORM_PACKAGE_REFERENCE.md) — longer identity and communications module recipes linked from the package README.
 - [Source map](SOURCE_MAP.md) — every platform domain and source responsibility, with canonical owners and source links.
 - [Subscription workflows](SUBSCRIPTION_WORKFLOWS.md) — meaningful internal steps, refusal boundaries and the tests to inspect.
 - [Documentation maintenance](DOCUMENTATION.md) — authoring, same-change impact, generated navigation and checked bundle export.
@@ -19,6 +20,8 @@ This is the public documentation set for the OpenLup platform. It describes the 
 - [Canonical contracts](CANONICAL_CONTRACTS.md) — status, idempotency, and provider-boundary rules.
 
 ## Implementation plans
+
+- [Subscription renewal and dunning](plans/oss-m10-subscriptions-renewal-dunning.md) — frozen obligation ports, graph transaction units, continuity and explicit capability limits.
 
 - [Payments and money truth](plans/oss-m07-payments-money-truth.md) — prepared attempts and neutral adapter contracts; later truth/store/repair work remains pending.
 

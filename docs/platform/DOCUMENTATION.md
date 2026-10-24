@@ -69,6 +69,69 @@ immutable release; see the [install support policy](../../.github/INSTALL_SUPPOR
 
 ## Ownership
 
+The plain Vitest worker-policy witness is a public tooling source in the
+publication catalogue; its embedded child CLI is also a declared execution
+entrypoint, like the existing process witnesses. Register new tracked test paths there before final
+policy/inventory checks; those checks compare Git's tracked paths, so an
+untracked test alone cannot establish complete publication evidence.
+
+The CI image mirror workflow, dependency-free script and offline witnesses are
+public source outputs in the publication catalogue. Contributor checks own its
+default-branch execution and one-time package visibility/access setup; canonical
+contracts own the non-CLI pin inventory and mirror-first consumer selection.
+The shared pull module, PostgreSQL helper and pgTAP pre-pull witnesses are public
+source outputs. Contributor checks own their bounded retry/fallback and CLI
+local-name reconciliation, including exact local reuse, the gate's shared pull path and remaining-budget
+Retry-After fall-through before non-GHCR fallback; generated bindings establish no registry publication.
+
+Invoicing source, contract witnesses and both API reports route to the
+[invoicing architecture owner](ARCHITECTURE_AND_EXTENSIONS.md#invoicing-contracts).
+The package README keeps a short export summary; the package reference owns the
+longer host-seam recipe outside the npm tarball. Canonical contracts distinguish
+unknown, exact absence and unsupported duties. The design plan and offline conformance
+witnesses describe their limited proof without making a store or activation claim;
+navigation adds no runtime authority.
+
+The platform package README remains its API entry point, with brief module
+summaries and preserved top-level anchors. Longer identity and communications
+recipes live verbatim in the [platform package reference](PLATFORM_PACKAGE_REFERENCE.md),
+which the publication catalogue includes in the public source tree rather than
+the npm artifact. Detailed recipe links point there directly; existing identity,
+runtime and package ownership routes remain unchanged.
+
+Subscription source, contract witnesses and generated subscription API reports
+route to the [subscription architecture owner](ARCHITECTURE_AND_EXTENSIONS.md#subscription-contracts).
+The package README links the exact export and refusal surface in that owner;
+canonical contracts own continuity and payment-evidence meaning. Navigation describes this
+contract step without implying that later stores or a runner are installed.
+
+Release preparation inventories core, outbox and platform changelog histories as
+public source documentation. These verbatim archives remain outside the npm
+artifacts; each packed changelog retains the current and two previous releases.
+The release guide owns the rolling rule and package READMEs retain API ownership.
+
+Fulfillment routing covers the complete `fulfillment*.api.md` report family,
+including the opt-in example report, under the existing architecture owner.
+The generated source map lists that family alongside its source and witnesses;
+this changes navigation coverage without adding an export or claiming conformance.
+
+O-P3b-2 removes the 27 duplicate root payment implementation/test paths from the
+publication catalogue. The package README owns the eleven experimental
+reference-support exports; payment contracts own nominal error trust and
+host-return translation, architecture owns package/host placement, and runtime
+owns inert composition. Root adapter and payment owners describe retained host
+policy and unchanged domain contracts. Package donor witnesses stay in place;
+the [A2 ledger](plans/oss-a2-payment-adapters.md#o-p3b-2-reference-support-and-root-rebinding-2026-10-22)
+records root retirement separately from C5 adopter retirement.
+
+The bounded unused-root payment retirement removes only the ten deleted paths
+from the authored publication catalogue. Generic HTTP helpers, package adapter
+sources and their witnesses keep their existing inventory and owners. Generated
+source bindings and navigation describe that smaller tree; they establish no
+new export, activation or release. The [case ledger](plans/oss-a2-payment-adapters.md#o-p3b-1-unused-root-retirement-2026-10-22)
+distinguishes root retirement from the remaining adopter obligation.
+
+
 The opt-in payment example's private capability descriptor is catalogued with
 its adapter sources; the existing public re-export is unchanged. The
 [payment contract](CANONICAL_CONTRACTS.md#opt-in-payment-example) owns the

@@ -3,6 +3,12 @@
   "files": [
     "packages/core/dist/catalog/identifiers.js",
     "packages/core/dist/catalog/index.js",
+    "packages/core/dist/fulfillment/currentFulfillmentParcel.js",
+    "packages/core/dist/fulfillment/facts.js",
+    "packages/core/dist/fulfillment/index.js",
+    "packages/core/dist/fulfillment/normalizedFulfillmentFacts.js",
+    "packages/core/dist/fulfillment/statusMap.js",
+    "packages/core/dist/fulfillment/trackingProgress.js",
     "packages/core/dist/payment/executionBaseContracts.js",
     "packages/core/dist/payment/index.js",
     "packages/core/dist/payment/methodLifecycle.js",

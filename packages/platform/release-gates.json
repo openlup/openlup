@@ -415,23 +415,126 @@
       ],
       "entrypoint": "dist/payments/tpay/index.d.ts",
       "snapshot": "api/payments-tpay.api.md"
+    },
+    "./fulfillment": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/packageBoundary.test.ts",
+        "test/fulfillment/contracts.test.ts",
+        "test/fulfillment/portFit.test.ts",
+        "test/fulfillment/dispatchRecovery.test.ts",
+        "test/fulfillment/paidHandoff.test.ts",
+        "test/fulfillment/providerCommandLedger.test.ts",
+        "test/fulfillment/postgresStore.test.ts"
+      ],
+      "entrypoint": "dist/fulfillment/index.d.ts",
+      "snapshot": "api/fulfillment.api.md"
+    },
+    "./fulfillment/contracts": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/packageBoundary.test.ts",
+        "test/fulfillment/contracts.test.ts",
+        "test/fulfillment/portFit.test.ts"
+      ],
+      "entrypoint": "dist/fulfillment/contracts/index.d.ts",
+      "snapshot": "api/fulfillment-contracts.api.md"
+    },
+    "./fulfillment/omnipack": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/fulfillment/omnipack/conformance.test.ts",
+        "test/fulfillment/omnipack/factory.test.ts",
+        "test/fulfillment/omnipack/transportAdaptation.test.ts"
+      ],
+      "entrypoint": "dist/fulfillment/omnipack/index.d.ts",
+      "snapshot": "api/fulfillment-omnipack.api.md"
+    },
+    "./subscriptions": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/packageBoundary.test.ts",
+        "test/subscriptions/contracts.test.ts",
+        "test/subscriptions/portFit.test.ts",
+        "test/subscriptions/renewalKeys.test.ts",
+        "test/subscriptions/renewalCycleMechanism.test.ts"
+      ],
+      "entrypoint": "dist/subscriptions/index.d.ts",
+      "snapshot": "api/subscriptions.api.md"
+    },
+    "./subscriptions/contracts": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/packageBoundary.test.ts",
+        "test/subscriptions/contracts.test.ts",
+        "test/subscriptions/portFit.test.ts",
+        "test/subscriptions/renewalKeys.test.ts"
+      ],
+      "entrypoint": "dist/subscriptions/contracts/index.d.ts",
+      "snapshot": "api/subscriptions-contracts.api.md"
+    },
+    "./invoicing": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/packageBoundary.test.ts",
+        "test/invoicing/contracts.test.ts",
+        "test/invoicing/portFit.test.ts",
+        "test/invoicing/adapterConformance.test.ts",
+        "test/invoicing/issue.test.ts",
+        "test/invoicing/canonicalLines.test.ts",
+        "test/invoicing/paymentReadback.test.ts",
+        "test/invoicing/handoff.test.ts",
+        "test/invoicing/postgresStore.test.ts",
+        "test/invoicing/continuity.test.ts",
+        "test/invoicing/artifacts.test.ts",
+        "test/invoicing/delivery.test.ts",
+        "test/invoicing/readback.test.ts",
+        "test/invoicing/settlementSync.test.ts",
+        "test/invoicing/readModel.test.ts"
+      ],
+      "entrypoint": "dist/invoicing/index.d.ts",
+      "snapshot": "api/invoicing.api.md"
+    },
+    "./invoicing/contracts": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/packageBoundary.test.ts",
+        "test/invoicing/contracts.test.ts",
+        "test/invoicing/portFit.test.ts"
+      ],
+      "entrypoint": "dist/invoicing/contracts/index.d.ts",
+      "snapshot": "api/invoicing-contracts.api.md"
     }
   },
   "pack": {
     "code": {
-      "maxPackedBytes": 1126400,
+      "maxPackedBytes": 1228800,
       "maxFiles": 2000
     },
     "docs": {
-      "maxPackedBytes": 49152,
+      "maxPackedBytes": 57344,
       "maxFiles": 10
     },
-    "maxPackedBytes": 1351680,
-    "maxUnpackedBytes": 5734400,
+    "maxPackedBytes": 1474560,
+    "maxUnpackedBytes": 6553600,
     "maxFiles": 2100,
     "baseline": {
-      "version": "0.19.0",
-      "packedBytes": 805872
+      "version": "0.22.0",
+      "packedBytes": 1185082
     },
     "browserEntries": {
       "./catalog/contracts": 4096,
@@ -441,7 +544,10 @@
       "./pricing/contracts": 416,
       "./promotions/contracts": 32,
       "./shipping/contracts": 32,
-      "./payments/contracts": 32
+      "./payments/contracts": 32,
+      "./fulfillment/contracts": 32,
+      "./subscriptions/contracts": 32,
+      "./invoicing/contracts": 32
     }
   }
 }

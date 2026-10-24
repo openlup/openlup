@@ -42,6 +42,14 @@ challenge the package boundary; delivery protection belongs to the durable rail.
 
 ## Renew one cycle
 
+The hosted charge and failure files are application policy facades over the
+contributed P1 package mechanisms. The package receives the same M07 ports and
+existing key/identity builders; it does not select a provider or regenerate keys.
+Native renewal/retry stores are separate graph bindings. N1 never turns an
+unknown provider result into a retry. The initial binding opens the existing
+case before terminal recording and links N1 bookkeeping within that terminal
+transaction; subsequent retry failure and case advance retain separate units.
+
 The [local operator tick composition](../../server/bff/subscriptions/renewal-ticks.ts)
 shows an injected clock, runtime ports and an outer platform-job lease. It calls
 `runSubscriptionRenewalBatch` in
@@ -126,7 +134,7 @@ Two additional services are useful entrypoints for reading the domain:
 | Service | Meaning and falsifier |
 | --- | --- |
 | [checkoutActivationBridge.ts](../../server/domains/subscription/checkoutActivationBridge.ts) | Distinguishes one-time payment from initial subscription activation, refuses missing reusable-method evidence and derives a stable activation key. [Bridge tests](../../server/domains/subscription/checkoutActivationBridge.test.ts) inspect those branches. |
-| [runAutomaticSubscriptionRenewal.ts](../../server/domains/subscription/runAutomaticSubscriptionRenewal.ts) with [automaticRenewalPorts.ts](../../server/domains/subscription/automaticRenewalPorts.ts) | Orchestrates snapshot/claim, mandate, delivery admission, reservation, preparation and provider readback through injected ports. [Service tests](../../server/domains/subscription/runAutomaticSubscriptionRenewal.test.ts) challenge replay and refusal boundaries. |
+| [runAutomaticSubscriptionRenewal.ts](../../server/domains/subscription/runAutomaticSubscriptionRenewal.ts) with [automaticRenewalPorts.ts](../../server/domains/subscription/automaticRenewalPorts.ts) | Orchestrates snapshot/claim, mandate, delivery admission, reservation, preparation and provider readback through injected ports. Typed native delivery-alignment denials return `deferred` in both single and batch results without terminalizing the claim; the same schedule is offered again only after lease expiry. Static gate refusals stay terminal. Admission receives the runner’s observation time. [Service tests](../../server/domains/subscription/runAutomaticSubscriptionRenewal.test.ts) challenge replay and refusal boundaries; [PostgreSQL admission tests](../../tests/postgres/fulfillmentRenewalAdmission.test.ts) exercise persisted deferral, actual arrival, unchanged schedules and lease-expiry recovery. |
 
 These are available source services, not evidence of mounting or profile
 activation. Trace an actual caller and capability declaration before describing

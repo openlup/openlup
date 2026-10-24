@@ -1,7 +1,7 @@
 import { isChangelogFragment } from "./packages/changelog-fragments.ts";
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { chmodSync, cpSync, existsSync, lstatSync, mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, cpSync, existsSync, lstatSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -12,7 +12,7 @@ import { CANONICAL_ACTIVATION_REPOSITORY, CANONICAL_ACTIVATION_SECURITY_ROUTE, a
 import { annotatedTag, assertDraft, assertNextPreview, checkDraft, preparePreview, previewInputs, previousPreview, verifyPublished, type GithubFetch } from "./source-preview-release.ts";
 import { MANAGED_ALIGNMENT_FORWARD, readManagedForward } from "./public-reference/subscription-alignment.mjs";
 import { assertAppendOnlyMigrationHistory } from "./oss-published-tree-check.ts";
-import { MANAGED_BASELINE, REVIEWED_FORWARD_PATH, readReviewedForwardRegistry, reviewedFunctionDefinitions, reviewedPolicyDefinitions, sqlSha256, type ReviewedForwardRegistry } from "./reviewed-platform-forward.ts";
+import { assertManagedInvoicingStatements, assertPortableCreationStatements, MANAGED_BASELINE, REVIEWED_FORWARD_PATH, readReviewedForwardRegistry, reviewedFunctionDefinitions, reviewedPolicyDefinitions, sqlSha256, type ReviewedForwardRegistry } from "./reviewed-platform-forward.ts";
 
 const target = "a".repeat(40), previousCommit = "d".repeat(40), tag = "openlup-source-preview/2", oldTag = "openlup-source-preview/1", root = "https://api.github.com/repos/openlup/openlup";
 const previousTagObject = "6".repeat(40), targetTagObject = "c".repeat(40);
@@ -267,10 +267,11 @@ const CORE_SCRIPTS = {
   "api:check": "node --experimental-strip-types ./scripts/api-contract.ts",
   "api:update": "npm run build && node --experimental-strip-types ./scripts/api-contract.ts --update",
   ci: "npm run test:coverage && npm run typecheck:smoke && npm run api:check && npm run docs:check && npm run release:check && npm run test:consumer",
-  "ci:required": "npm run test:coverage && npm run typecheck:smoke && npm run docs:check && npm run release:check && npm run test:consumer",
+  "ci:required": "npm run test:coverage && npm run typecheck:smoke && npm run docs:check && npm run release:admission && npm run test:consumer",
   "docs:check": "node --experimental-strip-types ./scripts/documentation-contract.ts",
   prepack: "npm run build",
   prepublishOnly: "node --experimental-strip-types ./scripts/refuse-publish.ts",
+  "release:admission": "npm run build && node --experimental-strip-types ./scripts/release-check.ts admission",
   "release:audit": "node --experimental-strip-types ./scripts/release-check.ts audit",
   "release:bundle": "node --experimental-strip-types ./scripts/release-bundle.ts",
   "release:check": "npm run build && node --experimental-strip-types ./scripts/release-check.ts all",
@@ -331,7 +332,7 @@ type Seal = { regenerate?: boolean; classes?: Record<string, string>; omitFromCa
 /** A synthetic previous preview as a root commit, plus a helper that commits and checks one descendant. */
 function syntheticRelease(options: { extraFiles?: Record<string, string | Buffer>; seed?: { repo: string; rootCommit: string } } = {}) {
   const repo = mkdtempSync(join(realpathSync(tmpdir()), "openlup-descendant-release-"));
-  const run = (args: string[]) => execFileSync("git", args, { cwd: repo, encoding: "utf8" }).trim();
+  const run = (args: string[]) => execFileSync("git", ["-c", "maintenance.auto=false", "-c", "gc.auto=0", ...args], { cwd: repo, encoding: "utf8" }).trim();
   const read = (path: string) => existsSync(join(repo, path)) ? readFileSync(join(repo, path)) : undefined;
   const apply = (change: TreeChange) => {
     if (typeof change === "function") return change(repo);
@@ -429,6 +430,401 @@ ${identityPrivileges[3]}
     () => assertAppendOnlyMigrationHistory(sample.repo, sample.approval, head),
     () => assertDescendantSourceRelease(sample.repo, sample.rootCommit, head),
   ];
+  describe("M09 exact seven-forward admission", () => {
+    const approved = readReviewedForwardRegistry(readFileSync(new URL(`../${REVIEWED_FORWARD_PATH}`, import.meta.url)));
+    const entries = [...approved.portableCreationForwards!.filter(entry => entry.path.includes("invoicing")),
+      ...approved.portableReplacementForwards!.filter(entry => entry.path.includes("invoicing")), ...approved.managedInvoicingForwards!];
+    function readActual(root: string) {
+      return entries.map(entry => {
+        const fixture = join(root, "scripts/fixtures", entry.path.split("/").at(-1)!);
+        const landed = join(root, entry.path);
+        const source = existsSync(landed) ? landed : fixture;
+        const bytes = readFileSync(source);
+        expect(bytes.equals(readFileSync(fixture)), `Reviewed forward release bytes differ from fixture: ${entry.path}`).toBe(true);
+        return { ...entry, source, bytes: bytes.toString("utf8") };
+      });
+    }
+    const actual = readActual(fileURLToPath(new URL("../", import.meta.url)));
+    it("selects landed bytes, falls back before introduction and refuses landed byte drift", () => {
+      const root = mkdtempSync(join(tmpdir(), "openlup-m09-release-bytes-"));
+      try {
+        mkdirSync(join(root, "scripts/fixtures"), { recursive: true });
+        for (const entry of entries) {
+          const name = entry.path.split("/").at(-1)!;
+          cpSync(new URL(`./fixtures/${name}`, import.meta.url), join(root, "scripts/fixtures", name));
+        }
+        const entry = entries[0]!;
+        expect(readActual(root)[0]!.source).toBe(join(root, "scripts/fixtures", entry.path.split("/").at(-1)!));
+        const landed = join(root, entry.path);
+        mkdirSync(dirname(landed), { recursive: true });
+        cpSync(join(root, "scripts/fixtures", entry.path.split("/").at(-1)!), landed);
+        expect(readActual(root)[0]!.source).toBe(landed);
+        writeFileSync(landed, Buffer.concat([readFileSync(landed), Buffer.from(" ")]));
+        expect(() => readActual(root)).toThrow(`Reviewed forward release bytes differ from fixture: ${entry.path}`);
+      } finally { rmSync(root, { recursive: true, force: true }); }
+    });
+    it("admits every final file through both gates and refuses byte, browser grant, definer and unpinned replacement plants", () => {
+      // Keep exact preimages, rather than replaying an unrelated multi-megabyte
+      // managed graph in every process plant. Real PostgreSQL owns graph proof.
+      const managedSource = readFileSync(new URL(`../${MANAGED_BASELINE}`, import.meta.url), "utf8");
+      const extract = (source:string,name:string) => { const start=source.indexOf(`CREATE FUNCTION public.${name}(`); const end=source.indexOf("\n$$;",start); if(start<0||end<0)throw new Error("Missing exact preimage");return source.slice(start,end+4); };
+      const managedBaseline = ["accounting_invoice_correction_outbox_claim","accounting_invoice_correction_outbox_fail","accounting_invoice_correction_outbox_succeed"].map(name=>extract(managedSource,name)).join("\n");
+      const nativeBaseline = extract(readFileSync(new URL("../db/platform/migrations/20260815150000_payment_truth_reconciliation.sql",import.meta.url),"utf8"),"payment_truth_apply_terminal");
+      const replacement=actual.find(entry=>entry.path.includes("payment_decoupling"))!.bytes;
+      const oldStart=nativeBaseline.indexOf("    SELECT COALESCE(jsonb_agg(");
+      const oldEnd=nativeBaseline.indexOf("    IF v_order.subscription_cycle_id",oldStart);
+      const newStart=replacement.indexOf("    -- Capture owed work only;");
+      const newEnd=replacement.indexOf("    IF v_order.subscription_cycle_id",newStart);
+      expect(replacement.slice(0,newStart)).toBe(nativeBaseline.slice(0,oldStart).replace("CREATE FUNCTION","CREATE OR REPLACE FUNCTION"));
+      expect(replacement.slice(newEnd)).toBe(nativeBaseline.slice(oldEnd)+"\n");
+      const native = { ...JSON.parse(SYNTHETIC_TREE["config/platform-migration-manifest.json"]!), forward:[] };
+      native.baseline.sha256=sqlSha256(nativeBaseline);
+      const extra:Record<string,string> = { [MANAGED_BASELINE]:managedBaseline, [native.baseline.file]:nativeBaseline, "config/platform-migration-manifest.json":json(native) };
+      const sample = fixture(registry => {
+        registry.baselineSha256 = sqlSha256(managedBaseline);
+        registry.portableCreationForwards = structuredClone(approved.portableCreationForwards);
+        registry.portableReplacementForwards = structuredClone(approved.portableReplacementForwards);
+        registry.managedInvoicingForwards = structuredClone(approved.managedInvoicingForwards);
+      }, null, false, false, extra);
+      const append = (plant?: { path:string; bytes:string }) => {
+        const manifest = structuredClone(native);
+        const change: Record<string,string> = {};
+        for (const entry of actual) {
+          const bytes = plant?.path === entry.path ? plant.bytes : entry.bytes;
+          change[entry.path] = bytes;
+          if (entry.path.startsWith("db/")) manifest.forward.push({ file:entry.path, sha256:sqlSha256(bytes) });
+        }
+        manifest.forward.sort((a: {file:string},b: {file:string}) => a.file.localeCompare(b.file));
+        change["config/platform-migration-manifest.json"] = json(manifest);
+        sample.apply(change);
+      };
+      try {
+        append();
+        const head = sample.commit("Exact M09 final files");
+        for (const gate of gates(sample, head)) expect(gate).not.toThrow();
+        for (const entry of actual) {
+          expect(entry.path.split("/").at(-1)!.slice(0,14) > "20261022185100").toBe(true);
+          expect(sqlSha256(entry.bytes)).toBe(entry.sha256);
+          const nativeTriggerPlants: string[] = [];
+          if (approved.portableCreationForwards!.some(item => item.path === entry.path)) {
+            const table = /^CREATE TABLE (public\.[a-z_]+)/mu.exec(entry.bytes)![1]!;
+            const bytes = entry.bytes + `\nCREATE FUNCTION public.zz_trigger() RETURNS trigger LANGUAGE plpgsql SET search_path=pg_catalog AS $$ BEGIN RETURN NEW; END; $$;\nCREATE TRIGGER injected AFTER INSERT ON ${table} FOR EACH ROW EXECUTE FUNCTION public.zz_trigger();`;
+            // An in-file trigger function passes structural classification;
+            // M09's whole-file pin, rather than that classifier, excludes it.
+            expect(() => assertPortableCreationStatements(Buffer.from(bytes), [])).not.toThrow();
+            nativeTriggerPlants.push(bytes);
+          }
+          for (const bytes of [entry.bytes + " ", entry.bytes + "\nGRANT EXECUTE ON FUNCTION public.existing() TO anon;\n",
+            entry.bytes.replace(/LANGUAGE (?:plpgsql|sql)/u, "LANGUAGE plpgsql SECURITY DEFINER"),
+            entry.bytes + "\nCREATE OR REPLACE FUNCTION public.unpinned() RETURNS jsonb LANGUAGE sql AS $$ SELECT '{}'::jsonb $$;\n", ...nativeTriggerPlants]) {
+            expect(() => assertAdmittedPlatformForward(sample.repo,sample.approval,head,entry.path,Buffer.from(bytes))).toThrow(`non-expand-only forward differs from reviewed replacement path or bytes: ${entry.path}`);
+            expect(() => assertAdmittedPlatformForward(sample.repo,sample.rootCommit,head,entry.path,Buffer.from(bytes),true)).toThrow(`non-expand-only forward differs from reviewed replacement path or bytes: ${entry.path}`);
+          }
+        }
+        sample.run(["checkout","--detach",sample.rootCommit]);
+        sample.apply({[REVIEWED_FORWARD_PATH]:json(sample.registry)});
+        append();
+        const selfApproved=sample.commit("M09 SQL and its own approval together");
+        for(const entry of actual) {
+          expect(()=>assertAdmittedPlatformForward(sample.repo,sample.rootCommit,selfApproved,entry.path,Buffer.from(entry.bytes))).toThrow(/approved separately/u);
+          expect(()=>assertAdmittedPlatformForward(sample.repo,sample.rootCommit,selfApproved,entry.path,Buffer.from(entry.bytes),true)).toThrow(/approved separately/u);
+        }
+        // These approval commits deliberately repin malicious bytes: semantic
+        // refusals must run after the whole-file and function hashes pass.
+        for (const entry of actual) {
+          for (const kind of ["attributes","statement", ...(entry.path.startsWith("supabase/") ? ["search-path"] : []), ...(entry.path.includes("durable_duties") ? ["view-options"] : [])]) {
+            sample.run(["checkout","--detach",sample.approval]);
+            const bytes=kind === "attributes"
+              ? entry.path.includes("payment_decoupling") ? entry.bytes.replace("LANGUAGE plpgsql\nSET", "LANGUAGE plpgsql\nSECURITY DEFINER\nSET") : entry.bytes.replace(/SECURITY (?:INVOKER|DEFINER)/u,entry.path.startsWith("supabase/") ? "SECURITY INVOKER" : "SECURITY DEFINER")
+              : kind === "search-path" ? entry.bytes.replace(/SET search_path = public, pg_catalog/gu, "SET search_path = public")
+              : kind === "view-options" ? entry.bytes.replace("WITH (security_invoker=true)", "WITH (security_invoker=false)")
+              : entry.bytes+"\nGRANT SELECT ON public.invoicing_duties TO anon;\n";
+            expect(bytes, `${entry.path}: ${kind} plant must change actual bytes`).not.toBe(entry.bytes);
+            const repinned=structuredClone(sample.registry);
+            const binding=[...repinned.portableCreationForwards!,...repinned.portableReplacementForwards!,...repinned.managedInvoicingForwards!].find(item=>item.path===entry.path)!;
+            binding.sha256=sqlSha256(bytes);
+            if ("functions" in binding) {
+              const definitions=reviewedFunctionDefinitions(Buffer.from(bytes));
+              for (const fn of binding.functions) fn.afterSha256=definitions.get(fn.signature)!;
+            }
+            sample.apply({[REVIEWED_FORWARD_PATH]:json(repinned)});
+            const control=sample.commit("Repinned semantic plant control");
+            append({path:entry.path,bytes});
+            const planted=sample.commit("Repinned semantic plant feature");
+            expect(() => assertAdmittedPlatformForward(sample.repo,control,planted,entry.path,Buffer.from(bytes)),`${entry.path}: ${kind}`).toThrow(/attributes|statement|privilege|unsupported|only one/u);
+            expect(() => assertAdmittedPlatformForward(sample.repo,sample.rootCommit,planted,entry.path,Buffer.from(bytes),true)).toThrow(/attributes|statement|privilege|unsupported|only one/u);
+          }
+        }
+        sample.run(["checkout","--detach",sample.approval]);
+        append(); sample.commit("Managed entries introduced");
+        const modified=structuredClone(sample.registry);modified.managedInvoicingForwards![2]!.sha256="a".repeat(64);
+        sample.apply({[REVIEWED_FORWARD_PATH]:json(modified)});
+        const changed=sample.commit("Managed approval modified after introduction");
+        expect(() => assertAdmittedPlatformForward(sample.repo,sample.rootCommit,changed,actual.at(-1)!.path,Buffer.from(actual.at(-1)!.bytes),true)).toThrow(/approved separately/u);
+      } finally { sample.cleanup(); }
+    }, 120_000);
+    it("keeps structural managed and native refusals even with otherwise repinned malicious bytes", () => {
+      for (const entry of actual) {
+        const creation = approved.portableCreationForwards!.some(item => item.path === entry.path);
+        const managed = entry.path.startsWith("supabase/");
+        if (!creation && !managed) continue;
+        const check = (bytes:string) => managed ? assertManagedInvoicingStatements(Buffer.from(bytes),entry.path) : assertPortableCreationStatements(Buffer.from(bytes),[]);
+        expect(() => check(entry.bytes)).not.toThrow();
+        const plants: [string, string, RegExp][] = [
+          ["browser grant", entry.bytes + "\nGRANT SELECT ON public.invoicing_duties TO anon;", /reviewed/u],
+          ["unpinned replacement", entry.bytes + "\nCREATE OR REPLACE FUNCTION public.unpinned() RETURNS jsonb LANGUAGE sql AS $$ SELECT '{}'::jsonb $$;", /reviewed/u],
+          ["security attribute", managed ? entry.bytes.replace("SECURITY DEFINER", "SECURITY INVOKER") : entry.bytes.replace("SECURITY INVOKER", "SECURITY DEFINER"), /reviewed/u],
+          ["escape string", entry.bytes + "\nCREATE VIEW public.zz AS SELECT E'escape';", /reviewed/u],
+        ];
+        if (managed) {
+          plants.push(
+            ["browser execute grant", entry.bytes.replace("TO service_role", "TO authenticated"), /^reviewed managed invoicing refuses statement or donor attribute drift$/u],
+            ["missing GRANT", entry.bytes.replace(/^GRANT EXECUTE[^\n]*\n/mu, ""), /^reviewed managed invoicing has missing definitions or service-only ACLs$/u],
+            ["missing REVOKE", entry.bytes.replace(/^REVOKE ALL ON FUNCTION[^\n]*\n/mu, ""), /^reviewed managed invoicing has missing definitions or service-only ACLs$/u],
+            ...["public, pg_temp", "pg_catalog, public"].map((path): [string, string, RegExp] =>
+              [`search_path = ${path}`, entry.bytes.replace("SET search_path = public, pg_catalog", `SET search_path = ${path}`), /^reviewed managed invoicing refuses statement or donor attribute drift$/u]),
+          );
+          if (!entry.path.includes("compatibility")) plants.push(
+            ["CREATE OR REPLACE in creation file", entry.bytes.replace("CREATE FUNCTION", "CREATE OR REPLACE FUNCTION"), /^reviewed managed invoicing definition or attributes drifted$/u],
+          );
+        } else {
+          // The target is created in this file: the missing in-file trigger
+          // function, rather than an unknown table, causes this refusal.
+          const table = /^CREATE TABLE (public\.[a-z_]+)/mu.exec(entry.bytes)![1]!;
+          plants.push(
+            ["trigger function not defined in file", entry.bytes + `\nCREATE TRIGGER injected AFTER INSERT ON ${table} FOR EACH ROW EXECUTE FUNCTION public.existing();`, /^reviewed portable creation refuses an unsupported statement, pre-existing target or function attributes: CREATE TRIGGER injected /u],
+            ["unsupported view WITH option", entry.bytes + "\nCREATE VIEW public.zz WITH (security_barrier=true) AS SELECT 1;", /^reviewed portable creation refuses an unsupported statement, pre-existing target or function attributes: CREATE VIEW public\.zz WITH \(security_barrier=true\) AS SELECT 1;$/u],
+          );
+        }
+        for (const [name, bytes, refusal] of plants) {
+          expect(bytes, `${entry.path}: ${name} must change the source`).not.toBe(entry.bytes);
+          expect(() => check(bytes), `${entry.path}: ${name}`).toThrow(refusal);
+        }
+      }
+      const cutover=actual.find(entry=>entry.path.includes("durable_duties"))!.bytes;
+      const cutoverSeed = /^INSERT INTO public\.invoicing_cutover\([\s\S]*?;/mu.exec(cutover)![0];
+      for(const bytes of [cutover.replace("SELECT 'paid',id", "SELECT 'paid',gen_random_uuid()"),
+        cutover.replace("FROM public.commerce_settlement_transitions\n  UNION", "FROM public.commerce_orders\n  UNION"),
+        cutover.replace("ON CONFLICT DO NOTHING;", "ON CONFLICT DO UPDATE SET source_kind='paid';"),
+        cutover+"\n"+cutoverSeed]) {
+        expect(()=>assertPortableCreationStatements(Buffer.from(bytes),[])).toThrow(/^reviewed portable creation refuses an unsupported statement, pre-existing target or function attributes: INSERT INTO public\.invoicing_cutover/u);
+      }
+      for (const index of [0,1,2]) for (const probe of ["path","missing","replacement class","extra signature","extra key","swapped"] as const) {
+        const registry = structuredClone(approved);
+        const entry = registry.managedInvoicingForwards![index]!;
+        if (probe === "path") entry.path += ".extra";
+        if (probe === "missing") registry.managedInvoicingForwards!.pop();
+        if (probe === "replacement class") entry.functions[0]!.beforeSha256 = index===1 ? null : "0".repeat(64);
+        if (probe === "extra signature") entry.functions[0]!.signature = "public.unpinned()";
+        if (probe === "extra key") Object.assign(entry,{extra:true});
+        if (probe === "swapped") [registry.managedInvoicingForwards![0],registry.managedInvoicingForwards![1]]=[registry.managedInvoicingForwards![1]!,registry.managedInvoicingForwards![0]!];
+        expect(() => readReviewedForwardRegistry(Buffer.from(json(registry)))).toThrow(/managed invoicing/u);
+      }
+      for (const probe of ["path","signature","timestamp","dunning","null hash","swapped","duplicate","extra key","binding key"] as const) {
+        const registry=structuredClone(approved), entry=registry.portableReplacementForwards![1]!;
+        if(probe==="extra key")Object.assign(entry,{extra:true});
+        if(probe==="binding key")Object.assign(entry.functions[0]!,{extra:true});
+        if(probe==="path")entry.path=entry.path.replace("192000","192001");
+        if(probe==="signature")entry.functions[0]!.signature="public.unpinned()";
+        if(probe==="timestamp")entry.functions[0]!.signature=entry.functions[0]!.signature.replace("timestamptz","timestamp with time zone");
+        if(probe==="dunning")entry.functions[0]!.signature=registry.portableReplacementForwards![0]!.functions[0]!.signature;
+        if(probe==="null hash")Object.assign(entry.functions[0]!,{beforeSha256:null});
+        if(probe==="swapped")registry.portableReplacementForwards!.reverse();
+        if(probe==="duplicate")entry.path=registry.portableReplacementForwards![0]!.path;
+        expect(()=>readReviewedForwardRegistry(Buffer.from(json(registry)))).toThrow(/portable replacement/u);
+      }
+      for(const length of [3,4,6]) {
+        const registry=structuredClone(approved);
+        registry.portableCreationForwards=Array.from({length},(_,i)=>structuredClone(approved.portableCreationForwards![i%5]!));
+        expect(()=>readReviewedForwardRegistry(Buffer.from(json(registry)))).toThrow(/portable creation/u);
+      }
+    });
+  });
+  describe("portable reviewed creation", () => {
+    const manifestPath = "config/platform-migration-manifest.json";
+    const portableBaseline = "db/platform/migrations/00000000000000_platform_baseline.sql";
+    const approved = readReviewedForwardRegistry(readFileSync(new URL(`../${REVIEWED_FORWARD_PATH}`, import.meta.url)));
+    const bindings = approved.portableCreationForwards!.slice(0, 2);
+    // Immutable snapshots let the control PR test the exact future SQL without
+    // introducing it into either installation chain or depending on Git history.
+    const exact = bindings.map(({ path }) => readFileSync(new URL(`./fixtures/${path.split("/").at(-1)}`, import.meta.url), "utf8"));
+    const prior = "CREATE TABLE public.fulfillment_shipments (id uuid);\nCREATE TABLE public.commerce_order_holds (id uuid);\nCREATE TABLE public.subscription_cycles (id uuid);";
+    function creationFixture(contents = exact, repin = false, history = "", historyInForward = false) {
+      const manifest = JSON.parse(SYNTHETIC_TREE[manifestPath]!);
+      const baseline = prior + (historyInForward ? "" : history);
+      manifest.baseline.sha256 = sqlSha256(baseline);
+      const priorPath = "db/platform/migrations/20261022070000_existing.sql";
+      if (historyInForward) manifest.forward.push({ file: priorPath, sha256: sqlSha256(history) });
+      const sample = fixture(undefined, null, false, false, { [portableBaseline]: baseline, [manifestPath]: json(manifest), ...(historyInForward ? { [priorPath]: history } : {}) });
+      sample.registry.portableCreationForwards = structuredClone(bindings);
+      if (repin) sample.registry.portableCreationForwards.forEach((entry, index) => { entry.sha256 = sqlSha256(contents[index]!); });
+      sample.apply({ [REVIEWED_FORWARD_PATH]: json(sample.registry) });
+      sample.approval = sample.commit("Separate portable creation approval");
+      const append = (paths = bindings.map(({ path }) => path)) => {
+        const next = structuredClone(manifest);
+        paths.forEach((path, index) => { next.forward.push({ file: path, sha256: sqlSha256(contents[index]!) }); });
+        sample.apply({ ...Object.fromEntries(paths.map((path, index) => [path, contents[index]!])), [manifestPath]: json(next) });
+      };
+      return { ...sample, append };
+    }
+    it("admits both exact P4 files through CI and release admission, with their actual hashes", () => {
+      const sample = creationFixture();
+      try {
+        exact.forEach((sql, index) => { expect(sqlSha256(sql)).toBe(bindings[index]!.sha256); expect(isExpandOnlyPlatformForward(sql)).toBe(false); });
+        sample.append(); const head = sample.commit("Exact portable creations");
+        for (const gate of gates(sample, head)) expect(gate).not.toThrow();
+      } finally { sample.cleanup(); }
+    });
+    it("admits transaction boundaries and comments only on newly created objects", () => {
+      const contents = [exact[0]! + `
+BEGIN;
+COMMENT ON FUNCTION public.commerce_fulfillment_provider_command_guard() IS 'Guard';
+COMMENT ON INDEX public.idx_fulfillment_provider_commands_claim IS 'Claim index';
+COMMENT ON TRIGGER commerce_fulfillment_provider_command_guard ON public.commerce_fulfillment_provider_commands IS 'Guard trigger';
+COMMIT;
+`, exact[1]!];
+      const sample = creationFixture(contents, true);
+      try {
+        sample.append([bindings[0]!.path]); const head = sample.commit("Creation comments and transaction");
+        for (const gate of gates(sample, head)) expect(gate).not.toThrow();
+      } finally { sample.cleanup(); }
+    });
+    it.each(["byte", "path", "version"])("refuses an unpinned portable creation %s in both gates", (probe) => {
+      const contents = [...exact];
+      if (probe === "byte") contents[0] += " ";
+      const sample = creationFixture(contents);
+      try {
+        const paths = bindings.map(({ path }) => path);
+        if (probe !== "byte") paths[0] = paths[0]!.replace(probe === "path" ? "fulfillment_command_ledger" : "20261022080000", probe === "path" ? "unlisted" : "20261022080001");
+        sample.append(paths); const head = sample.commit("Unpinned portable creation");
+        for (const gate of gates(sample, head)) expect(gate).toThrow(/reviewed replacement path or bytes/u);
+      } finally { sample.cleanup(); }
+    });
+    it("admits doubled standard quotes and backslashes or escape strings inside a dollar body", () => {
+      const contents = [exact[0]! + `
+CREATE TABLE public.zz_quotes (c text DEFAULT 'it''s', "double""quote" text);
+CREATE VIEW public.zz_quotes_view AS SELECT 'it''s';
+CREATE FUNCTION public.zz_body() RETURNS text LANGUAGE sql SET search_path=pg_catalog AS $$ SELECT E'a\\b'; $$;
+`, exact[1]!];
+      const sample = creationFixture(contents, true);
+      try {
+        sample.append(); const head = sample.commit("Standard creation quotes and dollar body");
+        for (const gate of gates(sample, head)) expect(gate).not.toThrow();
+      } finally { sample.cleanup(); }
+    });
+    it.each([
+      ...["PUBLIC", "anon", "authenticated", "service_role"].map((role) => `GRANT SELECT ON public.fulfillment_provider_attempts TO ${role};`),
+      "CREATE OR REPLACE FUNCTION public.existing() RETURNS text LANGUAGE sql AS $$ SELECT 'changed'; $$;",
+      "CREATE OR REPLACE VIEW public.existing AS SELECT 1;",
+      "CREATE OR REPLACE TRIGGER existing BEFORE INSERT ON public.subscription_cycles FOR EACH ROW EXECUTE FUNCTION public.commerce_fulfillment_provider_command_guard();",
+      "ALTER TABLE public.subscription_cycles ADD COLUMN extra text;",
+      "DROP TABLE public.subscription_cycles;",
+      "CREATE TABLE public.zz_t (c text DEFAULT 'a\\'); DROP TABLE public.subscriptions; -- '\nCREATE TABLE public.zz_following (id text);",
+      "CREATE VIEW public.zz_v AS SELECT 'a\\'; GRANT SELECT ON public.subscriptions TO anon; -- '\nCREATE TABLE public.zz_following (id text);",
+      'CREATE VIEW public.zz_v AS SELECT 1 AS "a\\"; GRANT SELECT ON public.subscriptions TO anon; -- "\nCREATE TABLE public.zz_following (id text);',
+      "CREATE VIEW public.zz_v AS SELECT E'one';",
+      "/* outer /* inner */ CREATE VIEW public.zz_v AS SELECT 1; */ GRANT SELECT ON public.subscriptions TO anon;",
+      "CREATE VIEW public.zz_v AS SELECT U&'plain';",
+      'CREATE VIEW public.zz_v AS SELECT 1 AS U&"plain";',
+      'CREATE VIEW public.zz_v AS SELECT 1 AS "a;b";',
+      'CREATE VIEW public.zz_v AS SELECT 1 AS "a$b";',
+      "CREATE VIEW public.zz_v AS SELECT 1 AS x$$; GRANT SELECT ON public.subscriptions TO anon; SELECT 1 AS y$$;",
+      "CREATE VIEW public.zz_v AS SELECT 1 AS x$$; DROP TABLE public.subscriptions; CREATE VIEW public.zz_w AS SELECT 1 AS y$$;",
+      ...["x$1", "x$$", "_$$", "x0$$", "é$$", "é", '"é"', "1\u00a0", "1\ufeff"].map((alias) => `CREATE VIEW public.zz_v AS SELECT 1 AS ${alias};`),
+      "CREATE VIEW public.zz_v AS SELECT $$one$$;",
+      "CREATE VIEW public.zz_v AS SELECT $1;",
+      "CREATE VIEW public.zz_v AS SELECT 'unterminated;",
+      'CREATE VIEW public.zz_v AS SELECT 1 AS "unterminated;',
+      "CREATE VIEW public.zz_v AS SELECT 1",
+      "CREATE VIEW public.zz_v AS SELECT 1; GRANT SELECT ON public.subscriptions TO anon;",
+      "CREATE FUNCTION public.zz_named() RETURNS text LANGUAGE sql SET search_path=pg_catalog AS $fn$ SELECT 'one'; $fn$;",
+      "CREATE FUNCTION public.zz_different() RETURNS text LANGUAGE sql SET search_path=pg_catalog AS $fn$ SELECT $$one$$; $fn$; GRANT SELECT ON public.subscriptions TO anon;",
+      "CREATE VIEW public.zz_v AS SELECT -- 'misleading opening\n'line one\nline two'; GRANT SELECT ON public.subscriptions TO anon;",
+      'CREATE VIEW public.zz_v AS SELECT 1 AS -- "misleading opening\n"line one\nline two"; GRANT SELECT ON public.subscriptions TO anon;',
+      "CREATE TABLE public.zz_t (id text) INHERITS (public.commerce_settings);",
+      "CREATE TABLE public.zz_t (id integer DEFAULT (SELECT 1));",
+      "CREATE TABLE public.zz_t (id integer); DELETE FROM public.subscriptions;",
+      "CREATE INDEX zz_idx ON public.fulfillment_provider_attempts (id) INCLUDE (id) TABLESPACE app;",
+      "CREATE FUNCTION public.bad() RETURNS text LANGUAGE sql SECURITY DEFINER SET search_path=pg_catalog AS $$ SELECT 'bad'; $$;",
+      "CREATE FUNCTION public.bad() RETURNS text LANGUAGE sql SET search_path=pg_catalog AS $$ SELECT 'bad'; $$ SECURITY DEFINER;",
+      "CREATE FUNCTION public.bad() RETURNS text LANGUAGE sql SET search_path=pg_catalog AS $$ select 1 $$ SECURITY DEFINER SET statement_timeout = $$0$$;",
+      "CREATE FUNCTION public.bad() RETURNS text LANGUAGE sql SET search_path=pg_catalog AS $body$ select 1 $body$ SECURITY DEFINER SET statement_timeout = $body$0$body$;",
+      "CREATE TRIGGER bad BEFORE INSERT ON public.subscription_cycles FOR EACH ROW EXECUTE FUNCTION public.existing();",
+      "CREATE TRIGGER bad BEFORE INSERT ON app.existing FOR EACH ROW EXECUTE FUNCTION public.commerce_fulfillment_provider_command_guard();",
+      "CREATE INDEX bad ON public.subscription_cycles (id);",
+      "CREATE TABLE app.bad (id uuid);",
+      "CREATE TABLE public.subscription_cycles (id uuid);",
+      "REVOKE ALL ON public.subscription_cycles FROM PUBLIC, anon, authenticated;",
+      "REVOKE ALL ON FUNCTION public.existing() FROM PUBLIC;",
+      "REVOKE ALL ON public.fulfillment_provider_attempts FROM service_role;",
+      "COMMENT ON TABLE public.subscription_cycles IS 'unrelated';",
+      "COMMENT ON FUNCTION public.existing() IS 'unrelated';",
+      "INSERT INTO public.subscription_cycles (id) VALUES ('existing') ON CONFLICT DO NOTHING;",
+      "INSERT INTO public.fulfillment_provider_attempts (id) SELECT id FROM public.subscription_cycles ON CONFLICT DO NOTHING;",
+      "INSERT INTO public.fulfillment_provider_attempts (id) VALUES ('new') ON CONFLICT (id) DO UPDATE SET id = 'changed';",
+      "DELETE FROM public.fulfillment_provider_attempts;",
+      "DO $$ BEGIN NULL; END $$;",
+      "CREATE SCHEMA extra;",
+      "BEGIN;\r\nCOMMIT;",
+      "-- control\u0001\n",
+      "/* unterminated",
+      "CREATE FUNCTION public.bad() RETURNS text LANGUAGE sql AS $$ unterminated",
+    ])("refuses independently repinned creation statements in both gates: %s", (addition) => {
+      const contents = [exact[0]! + "\n" + addition, exact[1]!];
+      const sample = creationFixture(contents, true);
+      try {
+        sample.append(); const head = sample.commit("Repinned unsupported creation");
+        for (const gate of gates(sample, head)) expect(gate).toThrow(/reviewed portable creation|reviewed replacement|control characters/u);
+      } finally { sample.cleanup(); }
+    });
+    it.each([false, true].flatMap((inForward) => [
+      "CREATE FUNCTION public.commerce_fulfillment_provider_command_guard() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN RETURN NEW; END $$;",
+      "CREATE TABLE public.fulfillment_provider_attempts (id uuid);",
+      "CREATE TRIGGER commerce_fulfillment_provider_command_guard BEFORE UPDATE ON public.fulfillment_shipments FOR EACH ROW EXECUTE FUNCTION public.existing();",
+    ].map((history) => [inForward, "\n" + history] as const)))("refuses existing objects from the preceding chain (forward: %s): %s", (inForward, history) => {
+      const sample = creationFixture(exact, false, history, inForward);
+      try {
+        sample.append(); const head = sample.commit("Existing portable function name");
+        for (const gate of gates(sample, head)) expect(gate).toThrow(/pre-existing or duplicate object/u);
+      } finally { sample.cleanup(); }
+    });
+    it.each(["simultaneous", "late", "changed"])("checks introduction-time portable creation approval: %s", (timing) => {
+      const sample = creationFixture();
+      try {
+        if (timing !== "changed") {
+          sample.apply({ [REVIEWED_FORWARD_PATH]: json({ ...sample.registry, portableCreationForwards: undefined }) });
+          sample.approval = sample.commit("Before creation approval");
+        }
+        sample.append();
+        if (timing === "simultaneous") sample.apply({ [REVIEWED_FORWARD_PATH]: json(sample.registry) });
+        let head = sample.commit("Creation introduction");
+        if (timing !== "simultaneous") {
+          if (timing === "changed") sample.registry.portableCreationForwards![0]!.sha256 = "1".repeat(64);
+          sample.apply({ [REVIEWED_FORWARD_PATH]: json(sample.registry) });
+          head = sample.commit("Creation approval after introduction");
+        }
+        const [ci, release] = gates(sample, head);
+        if (timing === "simultaneous") { expect(ci).not.toThrow(); expect(release).not.toThrow(); }
+        else if (timing === "late") {
+          // One PR range may bind its new SQL, but release cannot repair a bad mainline introduction.
+          expect(ci).not.toThrow(); expect(release).toThrow(/approved separately/u);
+        } else {
+          expect(ci).toThrow(/path or bytes/u); expect(release).toThrow(/approved separately/u);
+        }
+      } finally { sample.cleanup(); }
+    });
+    it.each(["missing", "extra", "duplicate", "path", "hash", "fields", "replacement overlap"])("refuses malformed portable creation registry: %s", (probe) => {
+      const registry = structuredClone(approved), entries = registry.portableCreationForwards!;
+      if (probe === "missing") entries.pop();
+      else if (probe === "extra") entries.push(structuredClone(entries[0]!));
+      else if (probe === "duplicate") entries[1] = structuredClone(entries[0]!);
+      else if (probe === "path") entries[0]!.path = "db/platform/migrations/20261022080000_unlisted.sql";
+      else if (probe === "hash") entries[0]!.sha256 = "invalid";
+      else if (probe === "fields") Object.assign(entries[0]!, { functions: [] });
+      else registry.portableReplacementForwards![0]!.path = entries[0]!.path;
+      expect(() => readReviewedForwardRegistry(Buffer.from(json(registry)))).toThrow(/reviewed portable creation/u);
+    });
+  });
   describe("portable reviewed replacement", () => {
     const path = "db/platform/migrations/20261021120000_dunning_lifecycle_active_repair.sql";
     const priorPath = "db/platform/migrations/20260815090000_dunning_lifecycle_state.sql";
@@ -600,17 +996,17 @@ $$;
         for (const gate of gates(sample, head)) expect(gate).toThrow(/definition drifted/u);
       } finally { sample.cleanup(); }
     });
-    it("refuses portable SQL and a registry change in the same feature diff", () => {
+    it("admits portable SQL and its repin with the matching manifest in the same feature", () => {
       const sample = portableFixture();
       try {
-        sample.append();
+        sample.append(exactSql + "\n");
         sample.registry.portableReplacementForwards![0]!.sha256 = sqlSha256(exactSql + "\n");
-        sample.apply({ [path]: exactSql + "\n", [REVIEWED_FORWARD_PATH]: json(sample.registry) });
-        const head = sample.commit("Self-approved portable feature");
-        for (const gate of gates(sample, head)) expect(gate).toThrow(/approved separately/u);
+        sample.apply({ [REVIEWED_FORWARD_PATH]: json(sample.registry) });
+        const head = sample.commit("Co-located portable feature");
+        for (const gate of gates(sample, head)) expect(gate).not.toThrow();
       } finally { sample.cleanup(); }
     });
-    it("refuses the first portable approval introduced with exact SQL", () => {
+    it("refuses adding unrelated future portable pins alongside one SQL introduction", () => {
       const sample = portableFixture((registry) => { delete registry.portableReplacementForwards; });
       try {
         sample.append();
@@ -637,6 +1033,189 @@ $$;
         expect(() => assertDescendantSourceRelease(sample.repo, sample.rootCommit, head)).toThrow(/approved separately/u);
       } finally { sample.cleanup(); }
     });
+  });
+  describe("M08 stock-evidence replacement admission", () => {
+    const path = "db/platform/migrations/20261022165000_fulfillment_stock_evidence_replay_reopen.sql";
+    const priorPath = "db/platform/migrations/20260814000000_fulfillment_stock_evidence.sql";
+    const portableBaseline = "db/platform/migrations/00000000000000_platform_baseline.sql";
+    const manifestPath = "config/platform-migration-manifest.json";
+    const signature = "public.fulfillment_record_stock_evidence(text,text,text,text,text,text,integer,integer)";
+    // Exact future forward, including its single trailing LF; this control adds no SQL file.
+    const exactSql = `CREATE OR REPLACE FUNCTION public.fulfillment_record_stock_evidence(
+  p_source_key text, p_idempotency_key text, p_fingerprint text, p_sku text,
+  p_threshold_kind text, p_severity text, p_provider_for_sale integer,
+  p_local_available integer
+) RETURNS jsonb LANGUAGE plpgsql SET search_path = pg_catalog, public AS $$
+DECLARE v_existing public.fulfillment_stock_evidence%ROWTYPE;
+BEGIN
+  SELECT * INTO v_existing FROM public.fulfillment_stock_evidence
+   WHERE idempotency_key = p_idempotency_key FOR UPDATE;
+  IF FOUND THEN
+    IF v_existing.operation_fingerprint <> p_fingerprint THEN
+      RAISE EXCEPTION 'fulfillment_stock_evidence_idempotency_conflict' USING ERRCODE = '23505';
+    END IF;
+    UPDATE public.fulfillment_stock_evidence SET
+      status = 'open', severity = p_severity,
+      provider_for_sale_quantity = p_provider_for_sale,
+      local_available_quantity = p_local_available,
+      last_seen_at = clock_timestamp(), resolved_at = NULL
+     WHERE idempotency_key = p_idempotency_key;
+    RETURN jsonb_build_object('replayed', true);
+  END IF;
+  INSERT INTO public.fulfillment_stock_evidence(
+    idempotency_key, operation_fingerprint, source_key, sku, threshold_kind,
+    severity, provider_for_sale_quantity, local_available_quantity
+  ) VALUES (
+    p_idempotency_key, p_fingerprint, p_source_key, p_sku, p_threshold_kind,
+    p_severity, p_provider_for_sale, p_local_available
+  );
+  RETURN jsonb_build_object('replayed', false);
+END $$;
+`;
+    const approved = readReviewedForwardRegistry(readFileSync(new URL("../config/reviewed-platform-forwards.json", import.meta.url)));
+    const migration = readFileSync(new URL(`../${priorPath}`, import.meta.url), "utf8");
+    const start = migration.indexOf("CREATE FUNCTION public.fulfillment_record_stock_evidence(");
+    const priorSql = migration.slice(start, migration.indexOf("$$;", start) + 3);
+    function stockFixture(edit?: (registry: ReviewedForwardRegistry) => void, prior = priorSql, inBaseline = false) {
+      const manifest = JSON.parse(SYNTHETIC_TREE[manifestPath]!);
+      const history = inBaseline ? { [portableBaseline]: prior } : { [priorPath]: prior };
+      if (inBaseline) manifest.baseline.sha256 = sqlSha256(prior);
+      else manifest.forward.push({ file: priorPath, sha256: sqlSha256(prior) });
+      const sample = fixture(undefined, null, false, false, { ...history, [manifestPath]: json(manifest) });
+      // Carry existing M09 and M10 approvals unchanged, including absent future SQL.
+      for (const key of ["portableReplacementForwards", "portableCreationForwards", "managedInvoicingForwards", "batchedForwards"] as const) {
+        Object.assign(sample.registry, { [key]: structuredClone(approved[key]) });
+      }
+      edit?.(sample.registry);
+      sample.apply({ [REVIEWED_FORWARD_PATH]: json(sample.registry) });
+      sample.approval = sample.commit("Separate stock-evidence control approval");
+      const append = (sql = exactSql, targetPath = path) => {
+        const next = structuredClone(manifest);
+        next.forward.push({ file: targetPath, sha256: sqlSha256(sql) });
+        sample.apply({ [targetPath]: sql, [manifestPath]: json(next) });
+      };
+      return { ...sample, append };
+    }
+    it.each([false, true])("admits exact stock bytes with portable prior in baseline: %s", inBaseline => {
+      const sample = stockFixture(undefined, priorSql, inBaseline);
+      try {
+        const pin = sample.registry.portableReplacementForwards![2]!;
+        expect(pin.path).toBe(path);
+        expect(pin.sha256).toBe(sqlSha256(exactSql));
+        expect(pin.functions).toEqual([{ signature,
+          beforeSha256: reviewedFunctionDefinitions(Buffer.from(priorSql)).get(signature),
+          afterSha256: reviewedFunctionDefinitions(Buffer.from(exactSql)).get(signature),
+        }]);
+        expect(isExpandOnlyPlatformForward(exactSql)).toBe(false);
+        sample.append(); const head = sample.commit("Exact stock-evidence feature");
+        for (const gate of gates(sample, head)) expect(gate).not.toThrow();
+      } finally { sample.cleanup(); }
+    });
+    it.each(["body", "file repin", "definition repin", "file byte", "other function", "other version", "other path"])("refuses stock %s in both gates", probe => {
+      const changed = exactSql.replace("status = 'open'", "status = 'resolved'");
+      const sample = stockFixture(registry => {
+        const pin = registry.portableReplacementForwards![2]!;
+        if (probe === "file repin") pin.sha256 = sqlSha256(changed);
+        if (probe === "definition repin") pin.functions[0]!.afterSha256 = reviewedFunctionDefinitions(Buffer.from(changed)).get(signature)!;
+      });
+      try {
+        const sql = probe === "other function" ? exactSql.replace("public.fulfillment_record_stock_evidence(", "public.unrelated(")
+          : probe === "file byte" ? exactSql + "\n" : probe.endsWith("repin") || probe === "body" ? changed : exactSql;
+        const targetPath = probe === "other version" ? path.replace("20261022165000", "20261022165001")
+          : probe === "other path" ? path.replace("replay_reopen", "unlisted") : path;
+        sample.append(sql, targetPath); const head = sample.commit("Refused stock-evidence feature");
+        for (const gate of gates(sample, head)) expect(gate).toThrow(/reviewed replacement|reviewed portable/u);
+      } finally { sample.cleanup(); }
+    });
+    it.each(["path repin", "signature repin", "duplicate entry", "fourth entry", "wrong index", "missing function", "duplicate function", "null preimage"])("refuses stock registry %s", probe => {
+      const registry = structuredClone(approved);
+      const pins = registry.portableReplacementForwards!, pin = pins[2]!;
+      if (probe === "path repin") pin.path = path.replace("20261022165000", "20261022165001");
+      if (probe === "signature repin") pin.functions[0]!.signature = "public.unrelated(text,text,text,text,text,text,integer,integer)";
+      if (probe === "duplicate entry") pins[2] = structuredClone(pins[1]!);
+      if (probe === "fourth entry") pins.push(structuredClone(pin));
+      if (probe === "wrong index") [pins[1], pins[2]] = [pins[2]!, pins[1]!];
+      if (probe === "missing function") pin.functions = [];
+      if (probe === "duplicate function") pin.functions.push(structuredClone(pin.functions[0]!));
+      if (probe === "null preimage") pin.functions[0]!.beforeSha256 = null;
+      expect(() => readReviewedForwardRegistry(Buffer.from(json(registry)))).toThrow(/reviewed portable replacement/u);
+    });
+    it.each(["header", "trailing attribute", "grant", "revoke", "transaction", "extra statement", "extra function", "duplicate function"])("refuses independently repinned stock %s in both gates", probe => {
+      const sql = probe === "header" ? exactSql.replace("LANGUAGE plpgsql", "LANGUAGE plpgsql SECURITY DEFINER")
+        : probe === "trailing attribute" ? exactSql.replace("$$;", () => "$$ SECURITY DEFINER;")
+        : probe === "grant" ? exactSql + `GRANT EXECUTE ON FUNCTION ${signature} TO service_role;`
+        : probe === "revoke" ? exactSql + `REVOKE ALL ON FUNCTION ${signature} FROM PUBLIC;`
+        : probe === "transaction" ? exactSql + "BEGIN;"
+        : probe === "extra statement" ? exactSql + "SELECT 1;"
+        : probe === "extra function" ? exactSql + definition("public.unpinned()", 1, true) : exactSql + exactSql;
+      const sample = stockFixture(registry => {
+        const pin = registry.portableReplacementForwards![2]!;
+        pin.sha256 = sqlSha256(sql);
+        if (probe !== "duplicate function") pin.functions[0]!.afterSha256 = reviewedFunctionDefinitions(Buffer.from(sql)).get(signature)!;
+      });
+      try {
+        sample.append(sql); const head = sample.commit("Repinned unsupported stock SQL");
+        for (const gate of gates(sample, head)) expect(gate).toThrow(/reviewed replacement|reviewed portable/u);
+      } finally { sample.cleanup(); }
+    });
+    it.each([false, true])("refuses stock preimage drift with prior in baseline: %s", inBaseline => {
+      const sample = stockFixture(undefined, priorSql.replace("RETURN jsonb_build_object('replayed', true)", "RETURN jsonb_build_object('replayed', false)"), inBaseline);
+      try {
+        sample.append(); const head = sample.commit("Stock preimage drift");
+        for (const gate of gates(sample, head)) expect(gate).toThrow(/definition drifted/u);
+      } finally { sample.cleanup(); }
+    });
+    it.each(["new approval", "changed approval"])("admits co-located stock approval under the existing class: %s", probe => {
+      const sample = stockFixture(probe === "new approval" ? registry => { registry.portableReplacementForwards!.pop(); } : undefined);
+      try {
+        const sql = probe === "changed approval" ? exactSql + "\n" : exactSql;
+        sample.append(sql);
+        sample.registry.portableReplacementForwards = structuredClone(approved.portableReplacementForwards!);
+        sample.registry.portableReplacementForwards[2]!.sha256 = sqlSha256(sql);
+        sample.apply({ [REVIEWED_FORWARD_PATH]: json(sample.registry) });
+        const head = sample.commit("Stock feature carries its own exact pins");
+        for (const gate of gates(sample, head)) expect(gate).not.toThrow();
+      } finally { sample.cleanup(); }
+    });
+    it.each(["M09", "M10"])("freezes existing %s controls in self-check while release binds the stock entry", programme => {
+      const sample = stockFixture();
+      try {
+        sample.append();
+        const pin = programme === "M09" ? sample.registry.portableReplacementForwards![1]! : sample.registry.batchedForwards![0]!;
+        pin.sha256 = "f".repeat(64);
+        sample.apply({ [REVIEWED_FORWARD_PATH]: json(sample.registry) });
+        const head = sample.commit("Feature changes existing control");
+        // Self-check freezes the whole registry; release binds the introduced forward's entry.
+        expect(gates(sample, head)[0]).toThrow(/approved separately/u);
+        expect(gates(sample, head)[1]).not.toThrow();
+      } finally { sample.cleanup(); }
+    });
+    it("binds the stock approval through later release controls", () => {
+      const sample = stockFixture();
+      try {
+        sample.append(); sample.commit("Stock feature before altered approval");
+        sample.registry.portableReplacementForwards![2]!.functions[0]!.afterSha256 = "f".repeat(64);
+        sample.apply({ [REVIEWED_FORWARD_PATH]: json(sample.registry) });
+        const head = sample.commit("Altered stock control");
+        expect(() => assertDescendantSourceRelease(sample.repo, sample.rootCommit, head)).toThrow(/approved separately/u);
+      } finally { sample.cleanup(); }
+    });
+  });
+  it.each(["managed", "runtime", "identity"])("admits same-feature pins within the established %s class", kind => {
+    const sample = fixture(kind === "identity" ? addIdentity : undefined, null, kind !== "managed");
+    try {
+      if (kind === "identity") {
+        sample.run(["reset", "--hard", sample.rootCommit]);
+        const prior = { ...sample.registry, runtimeForwards: sample.registry.runtimeForwards!.slice(0, 1) };
+        sample.apply({ [REVIEWED_FORWARD_PATH]: json(prior) }); sample.approval = sample.commit("Established class before identity introduction");
+      } else {
+        const forward = kind === "managed" ? sample.registry.replacementForwards[0]! : sample.registry.runtimeForwards![0]!;
+        sample.change[forward.path] += "\n";
+        forward.sha256 = sqlSha256(sample.change[forward.path]!);
+      }
+      sample.apply({ ...sample.change, [REVIEWED_FORWARD_PATH]: json(sample.registry) }); const head = sample.commit("SQL and exact pins in one feature");
+      for (const gate of gates(sample, head)) expect(gate).not.toThrow();
+    } finally { sample.cleanup(); }
   });
   it("admits exact bytes after a separate control commit, including new signatures in the pinned file", () => {
     const sample = fixture();
@@ -696,7 +1275,7 @@ $$;
       expect(() => assertDescendantSourceRelease(sample.repo, sample.rootCommit, head)).toThrow(/approved separately/u);
     } finally { sample.cleanup(); }
   });
-  it.each(["one byte", "another path", "additional SQL", "old definition", "missing signature", "duplicate signature", "same feature approval"])("refuses %s in required CI and release prepare", (probe) => {
+  it.each(["one byte", "another path", "additional SQL", "old definition", "missing signature", "duplicate signature"])("refuses %s in required CI and release prepare", (probe) => {
     const sample = fixture((registry, bytes) => {
       if (probe === "old definition") registry.replacementForwards[0]!.functions[0]!.beforeSha256 = "0".repeat(64);
       if (probe === "missing signature" || probe === "duplicate signature") {
@@ -708,11 +1287,6 @@ $$;
       if (probe === "one byte") sample.change[paths[0]!] += "\n";
       if (probe === "additional SQL") sample.change[paths[0]!] += "\nDROP TABLE public.existing;";
       if (probe === "another path") { sample.change["supabase/migrations/20261001000004_other.sql"] = sample.change[paths[0]!]!; delete sample.change[paths[0]!]; }
-      if (probe === "same feature approval") {
-        sample.registry.replacementForwards[0]!.sha256 = sqlSha256(sample.change[paths[0]!]! + "\n");
-        sample.change[paths[0]!] += "\n";
-        sample.change[REVIEWED_FORWARD_PATH] = json(sample.registry);
-      }
       sample.apply(sample.change); const head = sample.commit("Refused feature");
       for (const gate of gates(sample, head)) expect(gate).toThrow(/reviewed replacement/u);
     } finally { sample.cleanup(); }
@@ -877,7 +1451,7 @@ $$;
     "DROP POLICY admin_all_pets ON public.pets;",
     "REVOKE INSERT (email) ON public.clients FROM service_role;",
     "SELECT 1;",
-    "duplicate statement", "duplicate capability", "duplicate column", "missing privilege pin", "empty privileges", "non-empty functions", "present retiredPolicies", "third runtime forward", "duplicate path", "invalid path", "privilege order", "same feature approval",
+    "duplicate statement", "duplicate capability", "duplicate column", "missing privilege pin", "empty privileges", "non-empty functions", "present retiredPolicies", "third runtime forward", "duplicate path", "invalid path", "privilege order",
   ])("refuses identity admission %s in both gates even when independently repinned", (probe) => {
     const sample = fixture((registry, bytes) => {
       addIdentity(registry, bytes);
@@ -898,12 +1472,6 @@ $$;
       forward.sha256 = sqlSha256(bytes[4]!);
     }, null, true);
     try {
-      if (probe === "same feature approval") {
-        sample.run(["reset", "--hard", sample.rootCommit]);
-        const prior = { ...sample.registry, runtimeForwards: sample.registry.runtimeForwards!.slice(0, 1) };
-        sample.apply({ [REVIEWED_FORWARD_PATH]: json(prior) }); sample.approval = sample.commit("Separate runtime control before identity feature");
-        sample.change[REVIEWED_FORWARD_PATH] = json(sample.registry);
-      }
       sample.apply(sample.change); const head = sample.commit("Refused identity feature");
       for (const gate of gates(sample, head)) expect(gate).toThrow(/reviewed replacement/u);
     } finally { sample.cleanup(); }
@@ -951,11 +1519,11 @@ $$;
       expect(() => assertDescendantSourceRelease(sample.repo, sample.rootCommit, head)).toThrow(/approved separately/u);
     } finally { sample.cleanup(); }
   }, 30_000);
-  it("refuses any registry byte change in the feature comparison range even when release approval content is unchanged", () => {
+  it("accepts registry formatting changes while preserving every semantic binding", () => {
     const sample = fixture(addIdentity, null, true);
     try {
       sample.apply({ ...sample.change, [REVIEWED_FORWARD_PATH]: json(sample.registry) + "\n" }); const head = sample.commit("Feature with registry whitespace");
-      expect(() => assertAppendOnlyMigrationHistory(sample.repo, sample.approval, head)).toThrow(/approved separately/u);
+      expect(() => assertAppendOnlyMigrationHistory(sample.repo, sample.approval, head)).not.toThrow();
       expect(() => assertDescendantSourceRelease(sample.repo, sample.rootCommit, head)).not.toThrow();
     } finally { sample.cleanup(); }
   }, 30_000);
@@ -966,7 +1534,7 @@ $$;
       for (const gate of gates(sample, head)) expect(gate).not.toThrow();
     } finally { sample.cleanup(); }
   });
-  it.each(["wrong table", "wrong name", "wrong preimage", "missing binding", "duplicate binding", "extra binding", "missing statement", "duplicate statement", "unlisted statement", "alter policy", "create policy", "if exists", "after grant", "prior policy drift", "same feature approval"])("refuses independently repinned policy retirement: %s", (probe) => {
+  it.each(["wrong table", "wrong name", "wrong preimage", "missing binding", "duplicate binding", "extra binding", "missing statement", "duplicate statement", "unlisted statement", "alter policy", "create policy", "if exists", "after grant", "prior policy drift"])("refuses independently repinned policy retirement: %s", (probe) => {
     const sample = fixture(undefined, null, true, true);
     try {
       const forward = sample.registry.runtimeForwards![0]!;
@@ -1022,7 +1590,7 @@ $$;
     } finally { sample.cleanup(); }
   });
   it.each([
-    "same feature approval", "byte drift", "prior function drift", "header drift", "trailing SECURITY DEFINER", "trailing SET search_path", "trailing STABLE", "tagged trailing SECURITY DEFINER", "duplicate runtime forward", "duplicate privilege", "duplicate update capability", "wrong runtime function", "unknown column", "missing privilege pin", "null prior definition", "duplicate runtime signature",
+    "byte drift", "prior function drift", "header drift", "trailing SECURITY DEFINER", "trailing SET search_path", "trailing STABLE", "tagged trailing SECURITY DEFINER", "duplicate runtime forward", "duplicate privilege", "duplicate update capability", "wrong runtime function", "unknown column", "missing privilege pin", "null prior definition", "duplicate runtime signature",
     "GRANT SELECT (id) ON public.unrelated TO service_role;",
     "GRANT SELECT ON public.admin_users TO service_role;",
     "GRANT SELECT (membership_provenance) ON public.admin_users TO authenticated;",
@@ -1097,11 +1665,6 @@ $$;
     try {
       const path = sample.registry.runtimeForwards![0]!.path;
       if (probe === "byte drift") sample.change[path] += "\n";
-      if (probe === "same feature approval") {
-        sample.change[path] += "\n";
-        sample.registry.runtimeForwards![0]!.sha256 = sqlSha256(sample.change[path]!);
-        sample.change[REVIEWED_FORWARD_PATH] = json(sample.registry);
-      }
       sample.apply(sample.change); const head = sample.commit("Refused runtime feature");
       for (const gate of gates(sample, head)) expect(gate).toThrow(/reviewed replacement/u);
     } finally { sample.cleanup(); }
@@ -1300,6 +1863,164 @@ describe("descendant source release check", () => {
 });
 
 describe("expand-only platform SQL admission", () => {
+  it("preserves the admitted set over every real portable forward", () => {
+    const directory = fileURLToPath(new URL("../db/platform/migrations/", import.meta.url));
+    expect(readdirSync(directory).sort().filter((file) => isExpandOnlyPlatformForward(readFileSync(join(directory, file), "utf8")))).toEqual([
+      "20261018120000_identity_operator_invitations.sql",
+      "20261018180000_identity_operator_challenges.sql",
+      "20261018190000_identity_privacy_erasures.sql",
+      "20261019200000_communications_native_operations.sql",
+      "20261021200000_shipping_flat_rate_seed.sql",
+    ]);
+  });
+  it.each([
+    ["DEFAULT identifier boundary at 63 bytes with NBSP", `CREATE TABLE public.example (id int, value text DEFAULT ${"a".repeat(63)}\u00a0now()); INSERT INTO public.example (id) VALUES (1) ON CONFLICT DO NOTHING;`],
+    ["NBSP separator", "CREATE\u00a0TABLE public.example (id int);"],
+    ["non-ASCII unquoted identifier", "CREATE TABLE public.examplé (id int);"],
+    ["non-ASCII quoted identifier", 'CREATE TYPE public."examplé" AS ENUM (\'x\');'],
+    ["INSERT TABLE union before VALUES", "INSERT INTO public.example (value) TABLE public.existing UNION ALL VALUES ('next') ON CONFLICT DO NOTHING;"],
+    ["INSERT parenthesized TABLE with LIMIT call", "INSERT INTO public.example (value) (TABLE public.existing LIMIT pg_catalog.setval('public.app_sequence', 42)) UNION VALUES ('next') ON CONFLICT DO NOTHING;"],
+    ["INSERT overriding clause", "INSERT INTO public.example (value) OVERRIDING SYSTEM VALUE VALUES (1) ON CONFLICT DO NOTHING;"],
+    ["INSERT default values", "INSERT INTO public.example (value) DEFAULT VALUES ON CONFLICT DO NOTHING;"],
+    ["INSERT column expression", "INSERT INTO public.example (value + 1) VALUES (1) ON CONFLICT DO NOTHING;"],
+    ["INSERT quoted on typed literal", 'INSERT INTO public.example VALUES ("on" \'x\', pg_catalog.setval(\'public.app_sequence\', 42)) ON CONFLICT DO NOTHING;'],
+    ["INSERT quoted true call", 'INSERT INTO public.example VALUES ("true"(1)) ON CONFLICT DO NOTHING;'],
+    ["INSERT quoted null", 'INSERT INTO public.example VALUES ("null") ON CONFLICT DO NOTHING;'],
+    ["INSERT quoted values column", 'INSERT INTO public.example ("values") VALUES (1) ON CONFLICT DO NOTHING;'],
+    ["INSERT quoted values target", 'INSERT INTO public."values" VALUES (1) ON CONFLICT DO NOTHING;'],
+    ["quoted statement delimiter column", 'CREATE TABLE public.example (";" int);'],
+    ["schema named alter", "CREATE SCHEMA alter;"],
+    ["schema IF NOT EXISTS alter", "CREATE SCHEMA IF NOT EXISTS alter;"],
+    ["schema quoted create", 'CREATE SCHEMA "create";'],
+    ["INSERT quoted conflict keywords", 'INSERT INTO t VALUES (1) ON CONFLICT "do" "nothing";'],
+    ["INSERT quoted constraint keyword", 'INSERT INTO t VALUES (1) ON CONFLICT ON "constraint" c DO NOTHING;'],
+    ["INSERT quoted column punctuation", 'INSERT INTO t "(" a ")" VALUES (1) ON CONFLICT DO NOTHING;'],
+    ["ARRAY domain call with seed", "CREATE TABLE public.example (id int, a boolean[] DEFAULT ARRAY[true, NOT public.app_domain 't']); INSERT INTO public.example (id) VALUES (1) ON CONFLICT DO NOTHING;"],
+    ["ARRAY CASE typed literal", "CREATE TABLE public.example (id int, a text[] DEFAULT ARRAY['x', CASE public.app_text 'x' WHEN 'x' THEN 'y' END]);"],
+    ...["varchar(1)", "pg_catalog.varchar(1)"].map((call) => [`ARRAY CASE ${call}`, `CREATE TABLE public.example (a text[] DEFAULT ARRAY['x', CASE ${call} WHEN 'x' THEN 'y' END]);`]),
+    ...[
+      "CREATE INDEX example_value ON public.existing ((ARRAY[1, 2]));",
+      "ALTER TABLE public.existing ADD a boolean[] DEFAULT ARRAY[true, NOT public.app_domain 't'];",
+      "CREATE TABLE public.example AS VALUES (ARRAY[1, 2]);",
+      "CREATE TABLE public.example (a numeric(ARRAY[1, 2]));",
+      "CREATE TABLE public.example (a text DEFAULT CAST(ARRAY['x', 'y'] AS text[]));",
+      "CREATE TABLE public.example (a int DEFAULT value[]);",
+      "CREATE SEQUENCE public.example START WITH ARRAY[1, 2];",
+      "CREATE TYPE public.example AS (a int[]);",
+      "CREATE TABLE public.example (a int[);",
+      "CREATE TABLE public.example (a int]);",
+      "CREATE TABLE public.example (a int DEFAULT ARRAY[(1, 2)]);",
+      "CREATE INDEX example_value ON public.existing (a) WITH (fillfactor = ARRAY[1, 2]);",
+    ].map((sql) => ["brackets outside empty type suffix", sql]),
+    ["CREATE SCHEMA GRANT element", "CREATE SCHEMA example GRANT ALL ON public.existing TO PUBLIC;"],
+    ["CREATE SCHEMA TABLE element", "CREATE SCHEMA example CREATE TABLE added (id int);"],
+    ["sequence column ownership", "CREATE SEQUENCE public.example OWNED BY public.existing.value;"],
+    ["ownership outside sequence", "CREATE TABLE public.example (value int) OWNED BY public.existing.value;"],
+    ...["if", "add"].flatMap((column) => ["public.now()", "extensions.gen_random_uuid()", "public.app_num '1'", "- public.now()"].flatMap((expression) => [
+      [`CREATE ${column} column DEFAULT ${expression}`, `CREATE TABLE public.example (id int, ${column} double precision DEFAULT ${expression});`],
+      [`ALTER ${column} column DEFAULT ${expression}`, `ALTER TABLE public.existing ADD COLUMN ${column} double precision DEFAULT ${expression};`],
+      [`ALTER ${column} without COLUMN DEFAULT ${expression}`, `ALTER TABLE public.existing ADD ${column} double precision DEFAULT ${expression};`],
+    ])),
+    ["CREATE if integer column DEFAULT", "CREATE TABLE public.example (if int DEFAULT - public.now());"],
+    ["index named if unqualified target expression", "CREATE INDEX if ON existing (public.now());"],
+    ["index named if expression", "CREATE INDEX if ON public.existing (public.now());"],
+    ["table named if expression", "CREATE TABLE if (value double precision DEFAULT public.now());"],
+    ["ALTER table named add expression", "ALTER TABLE add ADD if double precision DEFAULT public.now();"],
+    ["ALTER table named add", "ALTER TABLE add ADD if numeric(10, 2);"],
+    ["ALTER quoted table named add", 'ALTER TABLE "add" ADD COLUMN x int;'],
+    ["ALTER quoted closing parenthesis column", 'ALTER TABLE public.existing ADD COLUMN ")" int;'],
+    ["ALTER quoted comma column", 'ALTER TABLE public.existing ADD COLUMN "," int;'],
+    ["DEFAULT call with seed INSERT", "CREATE TABLE public.example (id int, value text DEFAULT public.app_record_call()); INSERT INTO public.example (id) VALUES (1) ON CONFLICT DO NOTHING;"],
+    ["CHECK call with seed INSERT", "CREATE TABLE public.example (value text CHECK (public.app_record_call() = 'recorded')); INSERT INTO public.example (value) VALUES ('recorded') ON CONFLICT DO NOTHING;"],
+    ["CTAS VALUES call", "CREATE TABLE public.example AS VALUES (public.app_record_call());"],
+    ["CTAS VALUES sequence call", "CREATE TABLE public.example AS VALUES (pg_catalog.setval('public.app_sequence', 42));"],
+    ["CTAS VALUES setting call", "CREATE TABLE public.example AS VALUES (pg_catalog.set_config('app.admission', 'changed', true));"],
+    ["CTAS parenthesized VALUES", "CREATE TABLE public.example AS (VALUES (1));"],
+    ["CTAS TABLE copy", "CREATE TABLE public.example AS TABLE public.existing;"],
+    ["CTAS parenthesized TABLE copy", "CREATE TABLE public.example AS (TABLE public.existing);"],
+    ["CTAS SELECT", "CREATE TABLE public.example AS SELECT 1;"],
+    ["CTAS named columns with unqualified TABLE", "CREATE TABLE public.example (value) AS TABLE existing;"],
+    ["CTAS named columns", "CREATE TABLE public.example (value) AS VALUES (1);"],
+    ["index key expression call", "CREATE INDEX example_value ON public.existing (public.app_record_call());"],
+    ["parenthesized index expression call", "CREATE INDEX example_value ON public.existing ((public.app_record_call()));"],
+    ["index WHERE call", "CREATE INDEX example_value ON public.existing (value) WHERE public.app_record_call() = 'recorded';"],
+    ["generated column call", "CREATE TABLE public.example (value text GENERATED ALWAYS AS (public.app_record_call()) STORED);"],
+    ["ALTER ADD COLUMN DEFAULT call", "ALTER TABLE public.existing ADD COLUMN value text DEFAULT public.app_record_call();"],
+    ["ALTER ADD DEFAULT call without COLUMN", "ALTER TABLE public.existing ADD value text DEFAULT public.app_record_call();"],
+    ["ALTER ADD CONSTRAINT CHECK call", "ALTER TABLE public.existing ADD CONSTRAINT example_check CHECK (public.app_record_call() = 'recorded');"],
+    ["ALTER ADD CHECK call", "ALTER TABLE public.existing ADD CHECK (public.app_record_call() = 'recorded');"],
+    ["ALTER SET DEFAULT", "ALTER TABLE public.existing ALTER COLUMN value SET DEFAULT now();"],
+    ["PARTITION OF", "CREATE TABLE public.example PARTITION OF public.existing FOR VALUES IN (1);"],
+    ["LIKE element", "CREATE TABLE public.example (LIKE public.existing INCLUDING ALL);"],
+    ["LIKE operator", "CREATE TABLE public.example (value text CHECK (value LIKE 'a%'));"],
+    ["OPERATOR reference", "CREATE TABLE public.example (value integer CHECK (value OPERATOR(public.+) 1 = 2));"],
+    ["OPERATOR outside table expressions", "CREATE SEQUENCE public.example OPERATOR;"],
+    ["CAST to public type", "CREATE TABLE public.example (value text DEFAULT CAST('x' AS public.app_text));"],
+    ["CAST to three-part type", "CREATE TABLE public.example (value text DEFAULT CAST('x' AS db.pg_catalog.text));"],
+    ["quoted call name", 'CREATE TABLE public.example (value text DEFAULT "now"());'],
+    ["public-qualified allowlisted name", "CREATE TABLE public.example (value text DEFAULT public.now());"],
+    ["three-part call name", "CREATE TABLE public.example (value text DEFAULT db.pg_catalog.now());"],
+    ["quoted qualifier", 'CREATE TABLE public.example (value text DEFAULT "pg_catalog".now());'],
+    ["qualified quoted call name", 'CREATE TABLE public.example (value text DEFAULT pg_catalog."now"());'],
+    ["non-pg_catalog operator class", "CREATE INDEX example_value ON public.existing (value public.text_ops);"],
+    ["unqualified operator class", "CREATE INDEX example_value ON public.existing (value text_ops);"],
+    ["index collation", 'CREATE INDEX example_value ON public.existing (value COLLATE public."C");'],
+    ["typed literal of a public type", "CREATE TABLE public.example (value text DEFAULT public.app_text 'x');"],
+    ["qualified column in CHECK", "CREATE TABLE public.example (value text CHECK (public.value = 'x'));"],
+    ["keyword contents call", "CREATE TABLE public.example (value text DEFAULT COALESCE(app_record_call(), 'x'));"],
+    ["nested unlisted call", "CREATE TABLE public.example (value text DEFAULT lower(app_record_call()));"],
+    ["nonliteral type modifier", "CREATE TABLE public.example (value numeric(length('x')));"],
+    ["unbalanced expression", "CREATE TABLE public.example (value text DEFAULT lower('x');"],
+    ["unaccounted parenthesis in type position", "CREATE TABLE public.example (value custom_type(1));"],
+    ["qualified call in type position", "CREATE TABLE public.t (a public.lower(1));"],
+    ["allowlisted call in type position", "CREATE TABLE public.t (a lower(1));"],
+    ["type modifier name in expression position", "CREATE TABLE public.example (value text DEFAULT varchar(1));"],
+  ])("refuses expression form: %s", (_label, sql) => { expect(isExpandOnlyPlatformForward(sql)).toBe(false); });
+  it.each([
+    ...["btrim", "gen_random_uuid", "jsonb_typeof", "length", "lower", "now", "translate", "char_length", "clock_timestamp", "octet_length"].flatMap((name) => [name, `pg_catalog.${name}`].flatMap((call) => [
+      [call + " DEFAULT", `CREATE TABLE public.example (value text DEFAULT ${call}());`],
+      [call + " CHECK", `CREATE TABLE public.example (value text CHECK (${call}(value) = value));`],
+      [call + " index key", `CREATE INDEX example_value ON public.existing (${call}(value));`],
+      [call + " index WHERE", `CREATE INDEX example_value ON public.existing (value) WHERE ${call}(value) = value;`],
+    ])),
+    ...["example", "public.example"].flatMap((target) => ["", " (id, value)"].flatMap((columns) => ["", " (id)", " ON CONSTRAINT example_key"].map((conflict) => [
+      `literal seed ${target}${columns}${conflict}`, `INSERT INTO ${target}${columns} VALUES (1, 'first'), (2, 'next') ON CONFLICT${conflict} DO NOTHING;`,
+    ]))),
+    ["schema name", "CREATE SCHEMA example;"],
+    ["schema IF NOT EXISTS", "CREATE SCHEMA IF NOT EXISTS example;"],
+    ["schema named if", "CREATE SCHEMA if;"],
+    ["sequence without ownership", "CREATE SEQUENCE public.example START WITH 1;"],
+    ["non-ASCII literal", "CREATE TABLE public.example (value text DEFAULT 'café\u00a0text');"],
+    ["non-ASCII line comment", "-- café\u00a0text\nCREATE TABLE public.example (id int);"],
+    ["non-ASCII block comment", "CREATE /* café\u00a0text */ TABLE public.example (id int);"],
+    ["ownership words in a literal", "INSERT INTO public.example VALUES ('owned by') ON CONFLICT DO NOTHING;"],
+    ...["if", "add", "key", "identity", "include", "nulls", "first", "last", '"asc"', '"desc"', '"using"', "generated"].flatMap((column) => [
+      [`CREATE keyword column ${column}`, `CREATE TABLE public.example (${column} numeric(10, 2) DEFAULT pg_catalog.now());`],
+      [`ALTER keyword column ${column}`, `ALTER TABLE public.existing ADD COLUMN ${column} numeric(10, 2) DEFAULT pg_catalog.now();`],
+    ]),
+    ["index named if", "CREATE INDEX if ON public.existing (value);"],
+    ["index named if unqualified target", "CREATE INDEX if ON existing (value);"],
+    ["index IF NOT EXISTS", "CREATE INDEX IF NOT EXISTS example_value ON public.existing (value);"],
+    ["table named if", "CREATE TABLE if (value numeric(10, 2));"],
+    ["table IF NOT EXISTS", "CREATE TABLE IF NOT EXISTS public.example (value numeric(10, 2));"],
+    ["ALTER column IF NOT EXISTS", "ALTER TABLE public.existing ADD COLUMN IF NOT EXISTS value numeric(10, 2);"],
+    ["ALTER if column IF NOT EXISTS", "ALTER TABLE public.existing ADD IF NOT EXISTS if numeric(10, 2);"],
+    ["nested calls", "CREATE UNIQUE INDEX example_value ON public.existing (lower(btrim(email)));"],
+    ["keyword constructs", "CREATE TABLE public.example (value text CHECK (NOT (value IN ('a', 'b')) OR (COALESCE(NULLIF(value, ''), 'x') = 'x') AND (value IS NOT NULL)));"],
+    ["builtin casts", "CREATE TABLE public.example (value text DEFAULT CAST('x' AS pg_catalog.text), amount numeric(10, 2) DEFAULT CAST(1 AS numeric(10, 2)));"],
+    ["generated expression", "CREATE TABLE public.example (value text, normalized text GENERATED ALWAYS AS (lower(value)) STORED);"],
+    ["generated identity", "CREATE TABLE public.example (id bigint GENERATED ALWAYS AS IDENTITY);"],
+    ["identity options", "CREATE TABLE public.example (id bigint GENERATED BY DEFAULT AS IDENTITY (START WITH 1));"],
+    ["ALTER DEFAULT", "ALTER TABLE public.existing ADD COLUMN value text DEFAULT lower('x'), ADD extra varchar(20);"],
+    ["ALTER CHECK", "ALTER TABLE public.existing ADD CONSTRAINT example_check CHECK (length(value) = 1);"],
+    ["structural column lists", "CREATE TABLE public.example (id int, parent int REFERENCES public.existing(id), PRIMARY KEY (id), UNIQUE (parent), FOREIGN KEY (parent) REFERENCES public.existing(id));"],
+    ["index ordering", "CREATE INDEX example_value ON public.existing ((lower(value)) DESC NULLS LAST);"],
+    ["index method and INCLUDE", "CREATE INDEX example_value ON public.existing USING btree (value ASC NULLS FIRST) INCLUDE (id) WITH (fillfactor = 90);"],
+    ["qualified object names", "CREATE INDEX public.example_value ON public.existing (value);"],
+    ["empty array type suffixes", "CREATE TABLE public.example (a int[], b varchar(20)[][] DEFAULT CAST(NULL AS pg_catalog.text[]));"],
+    ["ALTER empty array type suffix", "ALTER TABLE public.example ADD a text[];"],
+    ["quoted column", 'CREATE TABLE public.example ("value" text DEFAULT now());'],
+  ])("admits expression form: %s", (_label, sql) => { expect(isExpandOnlyPlatformForward(sql)).toBe(true); });
   const controlCharacters = [
     ["NUL inside a comment", "CREATE TABLE public.first (id int);\n-- example\0\n"],
     ["VT 0x0B", "CREATE TABLE public.first (id int);\n-- example\x0b\n"],
@@ -1364,7 +2085,11 @@ describe("expand-only platform SQL admission", () => {
     "ALTER TABLE public.example DROP COLUMN extra;", "TRUNCATE public.example;",
     "ALTER TABLE public.example RENAME TO other;", "ALTER TABLE public.example SET SCHEMA other;",
     "ALTER TABLE public.example OWNER TO other;", "dRoP/**/TABLE public.example;",
+    'CREATE TABLE public."DO" (id int);', 'CREATE TABLE public."ALTER" (id int);',
     "CREATE TABLE app.example (id int);", 'CREATE TABLE "app".example (id int);',
+    "CREATE TABLE public.example (id int) INHERITS (public.commerce_settings);",
+    "CREATE TABLE public.example (id int CHECK (id > 0));",
+    "CREATE TABLE public.example (id uuid REFERENCES public.commerce_settings(id) ON DELETE SET NULL);",
     "DO $$ BEGIN EXECUTE 'DROP TABLE public.example'; END $$;",
     "CREATE OR REPLACE FUNCTION public.example() RETURNS void AS $$ DROP TABLE public.example; $$ LANGUAGE sql;",
     "INSERT INTO public.example (id) SELECT destructive_function() ON CONFLICT DO NOTHING;",

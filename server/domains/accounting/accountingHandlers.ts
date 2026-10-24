@@ -1,3 +1,4 @@
+import { createInvoiceReadModel } from "@openlup/platform/invoicing";
 import type { VercelRequest, VercelResponse } from "../../_lib/types/vercel.js";
 import {
   sendBffError,
@@ -42,35 +43,35 @@ export function createAccountingOrderSummaryHandler({
 }) {
   return async function handler(req: VercelRequest, res: VercelResponse): Promise<void> {
     if (req.method !== "GET") return sendMethodNotAllowed(res, ["GET"]);
+    let authorized = false;
     try {
-      const authorization = await authorizeAdmin(req);
-      if (authorization.ok === false) {
-        sendBffError(res, authorization.code, authorization.message);
-        return;
-      }
-    } catch {
-      sendBffError(res, "UPSTREAM_UNAVAILABLE", "Admin authorization failed");
-      return;
-    }
-
-    const request = adminAccountingOrderSummaryRequestSchema.safeParse(req.query);
-    if (!request.success) {
-      sendBffError(res, "BAD_REQUEST", "Invalid accounting order summary request", {
-        details: request.error.flatten(),
+      await createInvoiceReadModel().operator({
+        authorize: async () => {
+          const authorization = await authorizeAdmin(req);
+          if (authorization.ok === false) {
+            sendBffError(res, authorization.code, authorization.message);
+            return false;
+          }
+          authorized = true;
+          return true;
+        },
+        read: async () => {
+          const request = adminAccountingOrderSummaryRequestSchema.safeParse(req.query);
+          if (!request.success) {
+            sendBffError(res, "BAD_REQUEST", "Invalid accounting order summary request", { details: request.error.flatten() });
+            return;
+          }
+          const result = await accountingPort.getOrderSummary(request.data);
+          const response = adminAccountingOrderSummaryResponseSchema.safeParse(result);
+          if (!response.success) {
+            sendBffError(res, "INVALID_RESPONSE", "Accounting order summary returned invalid response");
+            return;
+          }
+          sendBffSuccess(res, response.data);
+        },
       });
-      return;
-    }
-
-    try {
-      const result = await accountingPort.getOrderSummary(request.data);
-      const response = adminAccountingOrderSummaryResponseSchema.safeParse(result);
-      if (!response.success) {
-        sendBffError(res, "INVALID_RESPONSE", "Accounting order summary returned invalid response");
-        return;
-      }
-      sendBffSuccess(res, response.data);
     } catch {
-      sendBffError(res, "UPSTREAM_UNAVAILABLE", "Accounting order summary failed");
+      sendBffError(res, "UPSTREAM_UNAVAILABLE", authorized ? "Accounting order summary failed" : "Admin authorization failed");
     }
   };
 }

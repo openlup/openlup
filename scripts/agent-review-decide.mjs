@@ -41,6 +41,19 @@ function openFindings(session) {
   }
   return open;
 }
+// Earlier source coverage narrows inspection, never the fresh reviewer floor.
+const reviewExpiry = session => Math.min(
+  ...currentReports(session).filter(report => report.verdict === 'PASS').map(report => report.at + 86400000),
+  session.candidate.integration?.expires ?? Infinity,
+);
+export function integrationReviewContext(session, observed, { parents, baseAncestor }, now) {
+  if (!session || !verdict(session, session.candidate, now).ok || !baseAncestor ||
+    digest(latestIntent(session)) !== digest(observed.intent) ||
+    latestPrepare(session).authorSessionId !== observed.authorSessionId ||
+    !Array.isArray(parents) || parents.length !== 2 || parents[0] !== session.candidate.head || parents[1] !== observed.base ||
+    observed.base === session.candidate.base) return undefined;
+  return { base: session.candidate.base, head: session.candidate.head, tree: session.candidate.tree, expires: reviewExpiry(session) };
+}
 export function prepareCandidate(session, observed, now, fresh = false) {
   candidateValid(observed); demand(Number.isFinite(now), 'prepare time is invalid'); demand(observed.clean, 'commit source changes before prepare', 'dirty');
   demand(identity(observed.authorSessionId) && identity(observed.intent?.criteria), 'author and intent.criteria are required');
@@ -53,6 +66,10 @@ export function prepareCandidate(session, observed, now, fresh = false) {
       demand((latestPrepare(session)?.authorSessionId ?? session.authorSessionId) === observed.authorSessionId && digest(latestIntent(session)) === digest(intent), 'author or intent changed; use prepare --new');
       if (session.candidate.tree === observed.tree && session.candidate.head === observed.head && session.candidate.base === observed.base) return structuredClone(session);
     }
+  }
+  if (observed.integration) {
+    const expected = integrationReviewContext(session, observed, { parents: [session?.candidate.head, observed.base], baseAncestor: true }, now);
+    demand(!fresh && expected && digest(expected) === digest(observed.integration), 'integration coverage is invalid');
   }
   const { authorSessionId, intent: ignored, ...candidate } = observed;
   const next = session ? structuredClone(session) : { version: 2, authorSessionId, intent, cycle: -1, allowedCycles: 3, history: [] };
@@ -88,10 +105,10 @@ export function verdict(session, observed, now) {
       demand(event.report.cold === true && identity(event.report.reviewer) && !identities.has(event.report.reviewer), 'reviewer must be cold, independent and unique'); identities.add(event.report.reviewer);
     }
     const reports = currentReports(session).filter(report => report.verdict === 'PASS');
-    const floor = requiredReviewers(classifyRisk(observed, latestIntent(session).risk));
+    const floor = Math.max(requiredReviewers(classifyRisk(observed, latestIntent(session).risk)), session.candidate.integration ? 2 : 0);
     if (reports.length < floor) return result(false, 'needs_agent_review', `${floor} independent PASS reports required`);
     if (reports.some(report => report.at > now)) return result(false, 'invalid', 'report is from the future');
-    if (now >= Math.min(...reports.map(report => report.at)) + 86400000) return result(false, 'expired', 'review expired; prepare --new and re-review');
+    if (now >= reviewExpiry(session)) return result(false, 'expired', 'review expired; prepare --new and re-review');
     if (openFindings(session).size) return result(false, 'needs_agent_review', 'close every material finding');
     return result(true, 'reviewed', 'reviewed');
   } catch (error) { return result(false, 'invalid', error.message); }
@@ -100,7 +117,7 @@ export function receiptSummary(session, pr, now) {
   const decision = verdict(session, session.candidate, now); demand(decision.ok, decision.reason, decision.code);
   demand(Number.isSafeInteger(pr) && pr > 0, 'PR number is invalid');
   const reports = currentReports(session).filter(report => report.verdict === 'PASS');
-  return { pr, base: session.candidate.base, head: session.candidate.head, tree: session.candidate.tree, risk: classifyRisk(session.candidate, latestIntent(session).risk), reviewers: reports.map(report => report.reviewer), verdict: 'PASS', expires: Math.min(...reports.map(report => report.at)) + 86400000, sessionDigest: digest(session) };
+  return { pr, base: session.candidate.base, head: session.candidate.head, tree: session.candidate.tree, risk: session.candidate.integration ? 'behavior' : classifyRisk(session.candidate, latestIntent(session).risk), reviewers: reports.map(report => report.reviewer), verdict: 'PASS', expires: reviewExpiry(session), sessionDigest: digest(session) };
 }
 export function admit({ receipt, observed, now }) {
   if (!Number.isFinite(now) || !receipt || !Number.isSafeInteger(receipt.pr) || receipt.pr <= 0 || !['base', 'head', 'tree'].every(key => SHA.test(receipt[key])) || !RISKS.includes(receipt.risk) || receipt.verdict !== 'PASS' || !/^[a-f0-9]{64}$/u.test(receipt.sessionDigest) || !Array.isArray(receipt.reviewers) || !receipt.reviewers.every(identity) || new Set(receipt.reviewers).size !== receipt.reviewers.length || !Number.isFinite(receipt.expires) || receipt.expires > now + 86400000) return result(false, 'invalid', 'receipt schema or expiry is invalid');

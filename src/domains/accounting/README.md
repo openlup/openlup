@@ -46,7 +46,11 @@ Start with
 An issue job refuses disabled configuration or a missing provider before
 claiming work. For each claim it performs local canonical-payment preflight,
 maps the claimed snapshot, obtains provider payment evidence, and performs the
-final preflight before document creation.
+final preflight before document creation. The issue, line allocation, snapshot,
+payment evidence and handoff facades delegate to `@openlup/platform/invoicing`.
+They retain environment reads, seller/date/tax routing, channel-policy resolution,
+event validation, exact request keys and provider compatibility payloads.
+Correction/delivery jobs and native continuity remain separate boundaries.
 
 The important internal boundaries are:
 
@@ -123,3 +127,44 @@ schema authority. Record the actual command and result at the revision tested;
 mocked jobs do not prove live provider, database or installation behavior.
 
 <!-- openlup-doc-impact {"unit":"domain-accounting","digest":"sha256-bb8a6b880a81ef63e75dddab9e08923c9d1f1a5b476e2044a5d31d1375b64e39","reason":"The invoice-contract test supplies explicit synthetic jurisdiction routing instead of expecting the neutral default to accept an identifier. Default refusal, contract validation and accounting implementation described here are unchanged."} -->
+
+## Correction recovery
+
+The [correction facade](../../../server/domains/accounting/accountingJobService.ts)
+binds `runInvoiceCorrectionJob` to a deliberately selected `correctionRecovery`
+provider bridge. The old vendor method remains unchanged and cannot select itself.
+The bridge must recover the stable correction reference and validate its parent
+before retrying a create; vendor wire proof belongs to that bridge's owner.
+The managed [adapter](../../../server/adapters/supabase/accountingInvoicePort.ts)
+uses `accounting.correction.v2` and passes the attempt count on both finalizers;
+`ok:false` throws its durable refusal code. Stale catches cannot fail newer work.
+
+Operators identify stranded legacy corrections by `attempt_count > 0`, absent
+`payload.providerCreateIdentity` and outbox status in (`processing`, `failed`),
+whatever the invoice status. See the
+[M09 forward owner](../../../docs/platform/DATA_AND_MIGRATIONS.md#m09-invoicing-forward-design-and-control-approval)
+for reconciliation and cutover requirements. Inspect the [managed proof](../../../tests/postgres/invoicingManagedCorrection.test.ts)
+and [pgTAP recovery witness](../../../supabase/tests/accounting_correction_recovery_test.sql)
+for recovery, lost ACK, exact replay, stale attempts and preserved history.
+
+See the [M09 forward owner](../../../docs/platform/DATA_AND_MIGRATIONS.md#m09-invoicing-forward-design-and-control-approval) for the registered managed-correction limit, follow-up and finalization semantics.
+
+The reference host now consumes the seven invoicing read helpers through explicit
+host callbacks. Delivery keeps the managed claim/key/receipt/uncertainty behavior;
+PDF validation and the existing filename fallback are bound by the host facade.
+Accepted-document synchronization keeps host attachment kinds, event keys, hash
+and provider references. Payout transport stays A2-owned and each balance item
+keeps its own key, including multiple items for one payout/payment.
+
+The document-history shim projects legacy columns into the package's neutral
+lineage resolver and returns its existing DTO. Operator authorization precedes
+summary queries. The reference browser client consumes the host route, filters
+errors to closed diagnostic codes and omits provider free text; runbook URLs and
+correction intent remain host responsibilities. No customer or package mutation
+authority is added.
+
+The managed payout importer preserves its existing legacy recorder calls and
+aggregate results. Package per-item receipts report a reused batch/payment row
+as an identity conflict, continue with remaining items and make no extra write.
+Distinct recorded item receipts require the richer host recorder/resolver; legacy
+aggregate results do not establish item granularity or payment success.

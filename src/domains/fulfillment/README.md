@@ -41,9 +41,12 @@ is not part of the published tree.
   status/operation timelines without migrating direct-carrier data.
   `providerCapabilities` exposes browser-safe plugin metadata for each registered
   provider kind; it is descriptive and does not authorize provider mutations.
-- Normalized evidence: `normalizedFulfillmentFacts.ts` binds the generic
-  `@openlup/core/fulfillment` fact schema to the single Layer B vocabulary
-  derived from `statusMap.ts`. Its public unknown-input parser validates the
+- Host status-map, normalized-fact and current-parcel facades delegate to
+  `@openlup/core/fulfillment`, preserving existing host names. The status facade
+  adds only private provider trace metadata. Order UI imports core progress
+  values and types; browser graphs declare only core fulfillment modules.
+- Normalized evidence: `normalizedFulfillmentFacts.ts` aliases the canonical
+  `@openlup/core/fulfillment` parsers and types for the single Layer B vocabulary. Its public unknown-input parser validates the
   existing canon; the application that eventually writes facts must mint the
   `evidence:<uuid>` reference and keep provider/customer payloads behind that
   governed evidence boundary. It defines no mapper, reducer, persistence, or
@@ -62,3 +65,23 @@ is not part of the published tree.
 
 Domain-boundary rules live in the maintainer canon `DOMAIN_ARCHITECTURE.md`,
 which belongs to the private overlay and is not part of the published tree.
+
+## Opt-in read presentation
+
+The package [commerce read models](../../../packages/platform/src/fulfillment/commerceFulfillmentReadModel.ts)
+assemble host-owned projections; payment status passes through from the existing
+payments projection and eligibility uses host commerce policy. The list/detail
+and overview ports return the shared typed unsupported refusal when native
+projections are unavailable; see the [native parity boundaries](../../../docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#native-parity-boundaries).
+The legacy shipment-status DTOs in `contracts.ts` and `FulfillmentReadPort` in
+`ports.ts` remain public and unchanged. Removing them requires a consumer census,
+deprecation and an explicit ownership decision.
+
+[referenceFulfillmentClient](referenceFulfillmentClient.ts) wraps the existing
+operator detail client and exposes only order identity, parcel status and a
+tracking reference as text. It drops addresses and raw operation payloads from
+presentation. [ReferenceFulfillmentPage](../../pages/ReferenceFulfillmentPage.tsx)
+is an unmounted opt-in example: the host supplies the session and order, owns
+access and mounting, and an explicit button triggers the read. It neither
+polls nor performs a mutation. [FulfillmentDeliveryStatus](../../components/FulfillmentDeliveryStatus.tsx)
+renders status and tracking reference as inert text.

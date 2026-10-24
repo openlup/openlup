@@ -12,6 +12,16 @@ current adapter only as an implementation detail. The neutral surface map lives
 in [Architecture and extension boundaries](../../docs/platform/ARCHITECTURE_AND_EXTENSIONS.md).
 
 ## Owns
+The unused root payment webhook normalizer and its 26-case witness have
+retired after production-importer checks. The opt-in package implementation and
+witness remain. Root payment execution, reconciliation and failure algorithms
+also retire in O-P3b-2: existing host factories now use the eleven experimental
+vendor-subpath helpers. The factories retain flags, repair capability projection,
+payer fallback and localized return translation; SDK construction and simulator
+behavior remain host-owned. Existing root diagnostic/producer cases now consume
+package factories, mappings and explicit persisted evidence fixtures. The [payment retirement ledger](../../docs/platform/plans/oss-a2-payment-adapters.md#o-p3b-1-unused-root-retirement-2026-10-22)
+records the separate root and adopter legs.
+
 The native SKU envelope reader, its mapper and the isolated draft store now
 have their package implementation under `packages/platform/src/catalog/`.
 The old store paths preserve factory identity through named package exports;
@@ -160,7 +170,7 @@ host-injected; no managed/vendor path is replaced. The
 [callable native composition](../runtime/communications/communicationsLifecycleBinding.ts)
 adds no process or route activation. [Real-PG proof](../../tests/postgres/communicationsNative.test.ts)
 covers durable effects, concurrency, token/ACL refusals and rollback; the
-[package guide](../../packages/platform/README.md#native-communications-operations-development-preview)
+[package guide](../../docs/platform/PLATFORM_PACKAGE_REFERENCE.md#native-communications-operations-development-preview)
 defines the bounded consent guarantee and schema prerequisite.
 
 The C-compose [native preference adapter](postgres/communicationPreferences.ts)
@@ -178,3 +188,37 @@ The package does not add a reservation or claim writer; managed promotion
 adapters remain here with their existing read-only/mirror fences. Native query
 characterization moves with the store, while real PostgreSQL evidence lives in
 `tests/postgres/promotionsNative.test.ts` and uses the complete canonical chain.
+
+## Managed correction recovery
+
+The accounting invoice adapter calls the versioned correction claim and passes
+its claimed attempt to both finalizers; a returned refusal is a persistence
+error, including a stale or inactive lease. Legacy attempted rows without a
+persisted create identity remain visibly unresolved for provider reconciliation.
+The test provider's explicit recovery bridge derives correction IDs and numbers
+from correctionRef; repeated recovery returns the same receipt and independent
+corrections of one order remain distinct. The unchanged legacy vendor method is
+not a supported recovery binding. Vendor wire/parent/absence proof belongs to the
+separately owned conforming bridge. No live provider is used by these tests.
+
+Managed correction RPC arguments bind by parameter name; the adapter retains the donor object key order.
+
+See the [M09 forward owner](../../docs/platform/DATA_AND_MIGRATIONS.md#m09-invoicing-forward-design-and-control-approval) for the registered managed-correction limit, follow-up and finalization semantics.
+
+The native paid-order document facade delegates its unchanged local constructor
+SQL to `createPostgresInvoiceStore`, retaining explicit provider metadata,
+request key bytes and document reference/status/replay. The zero-tax positions
+belong only to this local path. Fiscal invoicing requires frozen host facts;
+missing facts never authorize a guessed invoice or consume an owed duty.
+
+The invoice read adapters retain legacy database columns and HTTP/SDK queries.
+Their compatibility shim calls the package lineage resolver. The optional native
+customer-history projection checks owner/order before its host query and returns
+only safe P1 history fields, preserving correction parents, signed totals and
+currency. An unavailable native projection returns typed `host_binding_required`;
+no raw metadata, signed URL, storage receipt or fiscal parity is inferred.
+
+The operator invoice summary maps persisted failures to the closed invoice
+allowlist and omits free-text provider messages, including URLs and credentials.
+Unknown historical codes become `unknown`; attempts, retryability and recovery
+guidance remain visible.

@@ -1,3 +1,4 @@
+import { createTpayHttpClient, createTpayPaymentExecutionAdapter, ProviderAttemptPreDispatchError as PackagePreDispatchError } from "@openlup/platform/payments/tpay";
 import { describe, expect, it, vi } from "vitest";
 import type {
   PaymentControlRuntimePort,
@@ -211,7 +212,7 @@ describe("prepared provider attempt helpers", () => {
     executionPort.execute
       .mockRejectedValueOnce(preDispatchFailure())
       .mockResolvedValueOnce({
-        provider: "tpay",
+        provider: preparedInput(paymentPort, executionPort).provider,
         providerAttemptId: "provider-attempt-1",
         providerSessionId: "provider-session-1",
         attemptStatus: "processing",
@@ -238,7 +239,18 @@ describe("prepared provider attempt helpers", () => {
   it("returns a typed pre-dispatch error after its one same-attempt retry", async () => {
     const paymentPort = makePreparedPaymentPort();
     const executionPort = makeExecutionPort();
-    executionPort.execute.mockRejectedValueOnce(preDispatchFailure()).mockRejectedValueOnce(preDispatchFailure());
+    expect(ProviderAttemptPreDispatchError).toBe(PackagePreDispatchError);
+    const fetchImpl = vi.fn(async (_url: string) => ({ ok: false, status: 401,
+      json: async () => ({}), text: async () => "" }));
+    const bound = createTpayPaymentExecutionAdapter({
+      client: createTpayHttpClient({ baseUrl: "https://example.test", clientId: "fixture", clientSecret: "fixture", fetchImpl }),
+      notificationUrl: "https://example.test/notify", successUrl: "https://example.test/success", errorUrl: "https://example.test/error",
+    });
+    executionPort.execute.mockImplementation(async input => {
+      const result = await bound.execute({ ...input, payer: { email: "fixture@example.test", name: "Customer" },
+        transientProviderInput: { provider: preparedInput(paymentPort, executionPort).provider, flow: "pbl_one_time", channelId: "1" } });
+      return { ...result, provider: preparedInput(paymentPort, executionPort).provider };
+    });
 
     await expect(executePreparedProviderAttempt(preparedInput(paymentPort, executionPort))).rejects.toMatchObject({
       name: "ProviderAttemptPreDispatchError",
@@ -248,6 +260,8 @@ describe("prepared provider attempt helpers", () => {
       dispatchState: "not_dispatched",
       retryCount: 1,
     });
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    expect(fetchImpl.mock.calls.every(([url]) => url.endsWith("/oauth/auth"))).toBe(true);
     expect(executionPort.execute).toHaveBeenCalledTimes(2);
     expect(paymentPort.finalizeProviderAttempt).not.toHaveBeenCalled();
   });

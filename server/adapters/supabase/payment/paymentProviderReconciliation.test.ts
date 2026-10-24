@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
-import { normalizeTpayTransaction } from "../../tpay/tpayPaymentReconciliationProvider.js";
+import { createTpayPaymentReconciliationProvider } from "@openlup/platform/payments/tpay";
+const normalizeTpayTransaction = (transaction: Record<string, unknown>) =>
+  createTpayPaymentReconciliationProvider({ getTransaction: async () => ({ transactionId: "01HX", title: null,
+    status: "pending", transactionPaymentUrl: null, amount: null, currency: null, requestId: null, payments: {}, ...transaction }) })
+    .readPayment({ providerPaymentId: String(transaction.transactionId) });
 import { classificationOf } from "../../../domains/payment/paymentProviderReconciliationEvidence.js";
 // Aliased at the import site: the factory is constructed in a dozen cases, and
 // the adapter's vendor name is a fact about the import, not about each case.
@@ -547,7 +551,7 @@ it("carries diagnostics to the existing atomic persistence input without changin
     replayed: true, correctionStatus: "ignored", paymentResult: { paymentIntentId: "intent", paymentAttemptId: "attempt",
       paymentId: "payment", orderId: "order", status: "failed", kind: "ignored_duplicate_terminal_failure", replayed: true },
   } } }));
-  const normalized = normalizeTpayTransaction({ transactionId: "01HX", status: "pending", payments: { attempts: [{ paymentErrorCode: "105" }] } });
+  const normalized = await normalizeTpayTransaction({ transactionId: "01HX", status: "pending", payments: { attempts: [{ paymentErrorCode: "105" }] } });
   const result = await createPort({ rpc }).applyTerminalResult({
     idempotencyKey: "reconcile:attempt", expectedOrderId: "order", expectedPaymentIntentId: "intent",
     expectedPaymentAttemptId: "attempt", expectedPaymentId: "payment", provider: "tpay", providerPaymentId: "01HX",

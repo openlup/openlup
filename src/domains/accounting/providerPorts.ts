@@ -64,6 +64,14 @@ export interface AccountingDocumentProviderPort {
       recoveryLookupRequired: boolean;
     },
   ): Promise<AccountingDocumentProviderResult>;
+  /** Explicit conforming bridge; the legacy vendor method alone is not selected.
+   * Implements stable identity, exact recovery/absence and parent validation. */
+  correctionRecovery?: {
+    createFullCorrection(
+      snapshot: AccountingDocumentProviderInvoiceSnapshot,
+      options: { correctionReason: string; correctedProviderInvoiceId: string; correctionRef: string; recoveryLookupRequired: boolean },
+    ): Promise<AccountingDocumentProviderResult>;
+  };
   createFullCorrection(
     snapshot: AccountingDocumentProviderInvoiceSnapshot,
     options: {

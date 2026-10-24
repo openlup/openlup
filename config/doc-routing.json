@@ -611,6 +611,39 @@
       ],
       "doc": "docs/platform/IDENTITY_BROWSER_REFERENCE.md",
       "anchor": ""
+    },
+    {
+      "id": "fulfillment-package",
+      "when": "Neutral fulfillment contracts, status canon, explicit capability selection and arrival discipline",
+      "paths": [
+        "packages/platform/src/fulfillment/**",
+        "packages/platform/test/fulfillment/**",
+        "packages/platform/api/fulfillment*.api.md"
+      ],
+      "doc": "docs/platform/ARCHITECTURE_AND_EXTENSIONS.md",
+      "anchor": "#fulfillment-contracts"
+    },
+    {
+      "id": "subscriptions-package",
+      "when": "Subscription renewal ports, frozen obligations, graph transaction units and explicit capability refusals",
+      "paths": [
+        "packages/platform/src/subscriptions/**",
+        "packages/platform/test/subscriptions/**",
+        "packages/platform/api/subscriptions*.api.md"
+      ],
+      "doc": "docs/platform/ARCHITECTURE_AND_EXTENSIONS.md",
+      "anchor": "#subscription-contracts"
+    },
+    {
+      "id": "invoicing-package",
+      "when": "Neutral invoicing contracts, owed duties, explicit host seams and offline conformance",
+      "paths": [
+        "packages/platform/src/invoicing/**",
+        "packages/platform/test/invoicing/**",
+        "packages/platform/api/invoicing*.api.md"
+      ],
+      "doc": "docs/platform/ARCHITECTURE_AND_EXTENSIONS.md",
+      "anchor": "#invoicing-contracts"
     }
   ]
 }

@@ -72,6 +72,11 @@ handoffs inherit the approved programme boundary. Execution notes may evolve;
 discoveries, review advice and new waves cannot silently add goals, acceptance
 obligations or authority. Material changes use the applicable owner decision.
 
+At task start, resume and handoff, recover the approved task state and read the
+applicable current instructions under [Instruction freshness and handoffs](../../CONTRIBUTING.md#instruction-freshness-and-handoffs).
+Keep the policy revision separate from the code review base; project memory links
+to canonical rules instead of maintaining competing copies.
+
 A new explicitly approved bounded module programme may combine implementation
 and set-version preparation in one pull request, following
 [package release policy](../../.github/VERSIONING_AND_EOL.md#package-releases).
@@ -176,17 +181,23 @@ expires 24 hours after the earliest counted PASS report for the current candidat
 Handle `needs_agent_review` within the active task. Unchanged prepare preserves
 evidence. Three repair cycles are automatic; after that `needs_owner` requires
 the owner to decide whether to continue, narrow or stop. Record an authorized
-continuation with `continue "<note>"`, which adds three cycles. A rethink of the
-approach remains recommended practice: question the criteria and tool, group
-findings by root cause, consider removing the cause or narrowing the change,
-and record the lesson `pattern → simpler path`.
+continuation with `continue "<note>"`, which adds three cycles. Follow the mandatory
+supervisor [regroup procedure](../../CONTRIBUTING.md#regroup-when-work-stops-converging)
+before further repairs when its condition is met; it adds no native gate or budget.
 
 The review base is the candidate's fork point (`git merge-base HEAD origin/main`).
 A stacked task may export `OPENLUP_STACK_BASE` with the exact predecessor between
 that fork point and HEAD. Documentation and local native review use this same
 pin; admission requires it on actual main. A predecessor-only landing preserves
 the candidate and its expiry. Do not rebase or merge `main` only to catch up.
-For a conflict or failed carry-over, merge `main` and re-review. `prepare --new`
+For a conflict or failed carry-over, merge `main` and re-review.
+When `prepare` proves valid prior coverage and exact merge lineage in the same
+session, two fresh reviewers may focus on the full integration delta and its
+interactions, following [review after integration](../../CONTRIBUTING.md#native-review-and-accountability).
+Inherited source expiry, findings and repair cycles remain binding. Otherwise
+use full review. Refresh `origin/main` before prepare and final verification;
+the existing prepare, verify-command and receipt preflight refuse known conflicts
+or failed carry-over before expensive work. `prepare --new`
 records a changed intent or a rebase in the same append-only session history; findings, reviewers and the repair count carry on. Only
 `continue` adds cycles.
 
@@ -243,6 +254,8 @@ reviewers must check the explanation's meaning. The checker runs on Node without
 an agent-specific hook or private repository.
 
 For running, placing and adding tests, follow [Test scope and diagnostics](../../CONTRIBUTING.md#test-scope-and-diagnostics).
+Use its [sufficient-evidence rule](../../CONTRIBUTING.md#sufficient-evidence-and-material-test-gaps)
+for material proof gaps; test presence or an arbitrary surviving mutant alone is insufficient.
 
 Keep changes small, test the affected public contract, and make failures actionable. An adapter must demonstrate its declared capabilities and refusal behaviour without relying on live provider access.
 A migration, status mapping, or idempotency rule needs a regression test for its failure or replay boundary.

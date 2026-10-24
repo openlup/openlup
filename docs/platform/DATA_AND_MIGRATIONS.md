@@ -46,16 +46,114 @@ The release producer refuses destructive DDL (`DROP TABLE`, `SCHEMA`, `VIEW`,
 `TYPE` or `COLUMN`, and `TRUNCATE`), renames, schema moves, ownership transfers
 and writes to adopter-owned `app`. Its bounded SQL predicate accepts additive
 object creation, `ALTER TABLE ... ADD`, transaction boundaries and literal
-`INSERT ... VALUES ... ON CONFLICT ... DO NOTHING`. Procedural or dynamic SQL
+`INSERT ... VALUES ... ON CONFLICT ... DO NOTHING` seeds with a single literal
+VALUES list immediately after the target name and optional plain column list.
+`CREATE SCHEMA [IF NOT EXISTS] name` takes no schema elements; expand-only
+statements take no `OWNED BY` clause. Quoted identifiers are not seed literals
+or conflict keywords. The original `ALTER TABLE ... ADD` checks remain required
+alongside expression checks. New checks only add refusals before base admission.
+Type parentheses require a listed built-in modifier type; square brackets are
+limited to empty `[]` suffixes at verified type positions. Array constructors
+and subscripts refuse before element splitting. Procedural or dynamic SQL
 and unsupported forms refuse; see [Versioning and EOL](../../.github/VERSIONING_AND_EOL.md#publish-refuse-and-recover)
 for the exact admission boundary. Passing admission does not prove N-1 or live
 schema compatibility. Test the actual selected chain, constraints and replay.
+Expand-only admission refuses query-bearing `CREATE TABLE`, `PARTITION OF` and
+`LIKE`, operator references and function calls in default, check,
+generated and index expressions other than a short allowlist of side-effect-free
+built-ins; it is a bounded classifier, not a general SQL analyser.
 
 Rows that platform behaviour depends on must ship as idempotent statements in a
 forward, rather than relying on a reference fixture or process startup. A missing
 twin in the other chain is a documented compatibility gap, not implicit parity.
 
 ## Module catalogues and installed histories
+
+Fulfillment appends native command and alignment units,
+`20261022080000_fulfillment_command_ledger.sql` and
+`20261022090000_fulfillment_delivery_alignment.sql`, after the shipping seed.
+`FULFILLMENT_MIGRATIONS` projects units 5, 27, 51, 73, 74 and 76 with canonical identities and byte-identical package assets. Install the
+complete catalogue, preserve the full installed prefix and verify its live
+object inventory; the sparse projections are not an install chain. Existing
+native and managed migration bytes remain unchanged.
+
+For a fresh native install, the invariant "a late delivery extends the next cycle"
+is enforced automatically only when delivery-alignment control mode is
+`auto_align`. `public.subscription_delivery_alignment_control.mode` defaults to
+`off` for rollout safety, so installation alone does not enforce the invariant.
+The complete mode set is `off`, `shadow`, `protect` and `auto_align`, selected
+through `public.subscription_delivery_alignment_set_mode`. Existing cases retain
+their captured mode and protection after a control change.
+
+Enforcing modes (`protect`, `auto_align`) require the host's renewal path to call
+`subscription_delivery_alignment_admit_renewal` before inserting the cycle.
+The [native renewal store](../../server/adapters/postgres/subscription/automaticRenewal.ts)
+retains its static terms gate. A host that composes the native automatic-renewal
+runner must wrap its store port with the
+[admission decorator](../../server/runtime/subscription/deliveryAlignmentRenewalStore.ts)
+before selecting an enforcing mode; an uncomposed
+new-cycle insertion refuses with `subscription_delivery_alignment_admission_required`.
+Until the host wraps that port, native delivery-alignment mode stays `off` or
+`shadow`. The supplied boundary stops at the decorator, with no runner composer,
+factory or production entrypoint. Captured protection survives rollback to `off`.
+
+In enforcing modes, a subscription whose paid history has no activation or
+renewal link, such as imported data, holds every due renewal for manual review.
+Operators should check for such cycles before switching modes.
+
+The command forward adds durable dispatch/attempt/paid-handoff and observation
+receipts. Atomic ACK records the native `dispatch` external reference: the `3pl`
+archetype does not create an owned label, and acceptance cannot imply physical
+packing. That receipt also retains the native local-cancellation refusal.
+Observation persistence distinguishes received observations from recorded status
+evidence; only the latter supplies local occurrence chronology. Stock movements retain opaque
+keys and replay fingerprints, while sync cursor state retains coverage gaps.
+Host inventory lines and authoritative contact preparation remain injected.
+
+The alignment forward translates managed fulfillment rows to native shipments,
+replacement links to `replaces_shipment_id`, and subscription identity through
+order → cycle → subscription. The effective cycle ordinal
+comes from renewal operation numbering or the explicit activation-order link.
+
+[The native translation decision](plans/oss-m08-fulfillment-physical-delivery.md#native-admission-and-delivery-alignment) maps donor activation cycle 1 ↔ native activation ordinal 0, and donor
+renewal n+1 ↔ native renewal n. The activation ordinal requires a cycle with no
+renewal operation whose linked order is the active `subscription_activations`
+row's order for the same subscription. Renewal operation numbers remain ≥1.
+Admission selects the highest known paid ordinal, so activation protects the
+first renewal and each later paid renewal outranks activation. Successor
+artifacts have a greater effective ordinal. Other unnumbered cycles remain
+unordered: paid ones require manual review at due admission without minting a
+receipt; other unordered cycles prevent automatic arrival alignment regardless
+of scheduled date. They neither outrank known predecessors nor silently permit
+an autonomous renewal. Shadow mode observes this ambiguity without blocking.
+
+Local pre-dispatch cancellation changes only the shipment locally: alignment
+creates no hold or shipment-exception event and does not block other shipments
+of the order. An undelivered, unsuperseded cancelled parcel still counts as
+outstanding at renewal admission in `protect` and `auto_align`. An explicit
+provider exception uses the existing fulfillment-exception hold and notification
+rules; alignment observes that active hold to open a case only when control is not
+`off`, the order belongs to a paid subscription cycle and the subscription is
+active. One-time orders do not open alignment cases. Exception cases never
+pause subscriptions.
+
+Existing-cycle renewal and dunning
+retries bypass new-cycle admission and receipts. The new-cycle INSERT guard
+retains exact schedule-bound, one-use receipt consumption. Default-off control
+does not erase captured protected cases. Only durable arrival can settle the
+automatic route, using the latest arrival plus cadence with the outer maximum.
+
+All new routines are invokers with PUBLIC/anon/authenticated access revoked,
+including helpers and trigger routines. The initial native executor is the
+existing deployment owner; no role, SECURITY DEFINER, default grant or browser
+capability is added. A separate service principal requires the maintainer's
+explicit least-privilege grants on routines and underlying objects; owner
+execution does not establish a non-owner grant set. Receipt pruning needs DELETE
+on that receipt table if such an invoker is configured. Replacement confirmation remains a note-only operator
+attestation with no automatic caller or new arrival predicate. The
+[arrival-only discipline](plans/oss-m08-fulfillment-physical-delivery.md#native-admission-and-delivery-alignment)
+remains binding.
+
 Payments publishes `PAYMENT_MIGRATIONS` as byte-identical projections of canonical
 positions 10 (settlement), 35 (truth/reconciliation) and 56 (later-only cycle).
 Each retains its canonical path, SHA-256 and package asset URL. These three assets
@@ -192,6 +290,125 @@ separately from historical grant spellings or inherited CLI defaults.
 
 ## Exact reviewed function forwards
 
+### Co-located SQL and approval pins
+
+A PR introducing SQL in a class already admitted by its trusted comparison-base
+policy may also carry that SQL's pins. Only bindings for files introduced by
+that PR may change. Other entries and their list positions, shared fields,
+registry schema and immutable baselines stay unchanged. The fixed path/signature
+inventory, whole-file and function hashes, preimages, statement/grant limits,
+ordered prefixes and fixture/package equality still apply. A hash binds bytes;
+independent native review approves the complete candidate under the
+[existing review procedure](../../CONTRIBUTING.md#native-review-and-accountability).
+SQL risk assessment belongs in that required review, without a mandatory third
+review or a new report format. Applicable maintainer/delegate reads remain required.
+
+Changes to a class, validator, its dependencies, review/admission or release
+machinery need a separate control change before using the new rule. The existing
+native admission, invoked from trusted main, validates co-located data with its
+own checker and refuses simultaneous machinery changes or machinery drift since
+the reviewed base. Production tooling in `scripts/agent-review-*`, `scripts/oss-*`,
+`scripts/source-*` and `scripts/packages/` stays unchanged for this route, including
+release entry points and preparation; test-only coverage changes remain allowed.
+The checker and its direct dependency closure, root manifests/lockfile and
+`.github/` files also stay unchanged. Admission reads candidate Git objects
+without running candidate code.
+The [documented workflow invocation limitation](DEVELOPMENT_AND_RELEASE.md#reading-results-and-recovering)
+remains: candidate YAML can omit the job, so sensitive review and the applicable
+maintainer/delegate read of workflow edits remain the control for that case.
+
+Release binds each forward to its unique first-parent mainline introduction.
+Its pin must be valid at that introduction and unchanged afterwards; a later
+repin cannot legalize an earlier invalid installation. Existing separate
+control → feature histories remain valid. Pin-only preparation of future SQL
+retains its existing control decision; it is not an unrelated companion of a
+feature. Once introduced, migration bytes remain immutable and repairs use a
+new forward. Stopping new co-located PRs must retain release support for histories
+already admitted this way; reverting to parent-only approval would reject them.
+
+The separate `batchedForwards` list approves the frozen M10/F17 packet: five
+native files and nine managed files. It adds no installation-chain SQL. Exact
+future bytes live only in [inert fixtures](../../scripts/fixtures/reviewed-m10/).
+The [registry](../../config/reviewed-platform-forwards.json) records each full
+path, SHA-256, ordered statement hash and exact function identity with raw
+before/after CREATE hashes. Non-function statements additionally carry their
+exact SQL, including every grant target, recipient, absorption row and seed.
+The checker fixes the ordered path/signature inventory separately from that data.
+
+This batch covers four native creations (retry, commands, stock wait and the
+M06 ATP/new-purchase seam), one native allocator body replacement, managed seam,
+stock-wait and refund-evidence creations, and the six managed replacement files.
+The managed creation includes its one table, index, RLS enablement, service-only
+grants and blocking `client_absorption_policy` row. The only new existing-table
+column grant is `SELECT (id, retry_attempt)` on `subscription_cycles` to
+`service_role`. The lifecycle-message forward replaces exactly
+`private.outbox_resend_event_types()` and its two public companions, and seeds
+only the enabled `subscription-stock-wait-started` / `subscription-stock-wait-resumed`
+notification controls with `ON CONFLICT(slug) DO NOTHING`.
+
+Timestamp aliases share identity within this class (`timestamptz` and
+`timestamp with time zone`); raw definition hashes retain the original spelling.
+The due reader chains M2 → M4 and the payment applicator M1 → F17: each later
+before hash must equal the earlier after hash, and admission reads the actual
+preceding rail in filename order. Per rail, pins land as a prefix in version
+order: native P2 (160000) → P4 (170000) → P5 (180000, 183000, 184000),
+and managed P3b (155000, 160000) → P5 (175000–184000) → F17 (185000, 185100).
+Every earlier same-rail pin must already exist at the candidate head with its
+whole-file pinned digest; a later landing cannot skip an absent pin.
+Missing, duplicate or extra signatures, preimage drift, reordered chains, unpinned private objects, extra/wider grants,
+changed bytes/paths and unexpected statements refuse. The native allocator
+admits exactly one replacement with an unchanged header and ACL, including its
+pre-existing PUBLIC EXECUTE default; this approval does not harden that default.
+
+The lexer is only a pre-filter. The mandatory
+[real PostgreSQL/pgTAP catalog gate](../../tests/postgres/reviewedBatchForwards.test.ts)
+uses native PostgreSQL 16 and managed PostgreSQL 17/pgTAP. Per rail it applies
+all committed rail files in filename order through the last pin, including
+unpinned files interleaved between pins. Pins use landed or fixture bytes exactly
+once; landed pins must form a prefix before the absent fixture suffix. A landed
+rail file must be byte-equal to its inert fixture; an absent file uses the fixture. Each forward runs once, before and after feature landing.
+It compares `pg_proc` metadata and bodies, `pg_class` and `pg_attribute` relation
+and column ACLs and RLS; snapshots also compare `pg_namespace`, `pg_type`,
+`pg_trigger`, `pg_policy`, `pg_default_acl`, `pg_roles`, `pg_auth_members`,
+`pg_constraint`, `pg_index`, `pg_rewrite`, `pg_foreign_server`, `pg_event_trigger`,
+`pg_extension` and `pg_description`, plus all public/private ordinary-table rows.
+Only the pinned creations, replacements, column grant, absorption row,
+notification rows and refund-function comment may change. Rollback must restore
+the complete prefix. Committed plants falsify both admission and the catalog
+observer, including authenticated EXECUTE on a pinned new function, an altered
+native allocator ACL, and a repinned managed index on an existing table. Missing
+Docker, PostgreSQL or pgTAP fails the required `test` aggregate; a lexical PASS
+cannot replace this gate. The managed setup budget includes its first image pull.
+These batch rules do not broaden the earlier #267, #295 or #300 classes.
+Coordinator control review and two fresh reviews remain separate delivery gates.
+
+**Named bounded debt C94 — M10 reviewed packet vocabulary.** The frozen managed
+SQL retains provider nouns inherited from that rail. The neutrality baseline
+records the scanner's exact counts for the six existing managed fixtures and the
+registry's pinned refund COMMENT: dunning continuity (`ui-13`: 2, `ui-14`: 3),
+ATP (`ui-15`: 3), stock wait (`ui-15`: 6), allocator (`ui-15`: 2), refund evidence
+and refund parity (each `ui-13`: 7), and the registry (`ui-13`: 1).
+Each landing PR (P3b, P5, F17) adds only its own rail keys together with the files,
+using these exact pinned counts per category. Any present baseline key for an
+allowance path must contain exactly its pinned category counts, including during
+regeneration; adding a key without the file refuses. No native,
+TypeScript, package or documentation allowance is added. This is vocabulary
+debt for the frozen packet, not provider activation or portable-contract parity;
+future neutral replacements must lower it. The [neutrality owner](../../CONTRIBUTING.md#package-policy-and-release-checks)
+owns the ratchet. Its `reviewedPinnedIntroductions` allowance is a closed list of
+exactly 13 paths (six fixture/rail pairs and the registry), grouping the two
+dunning categories per path. Each SQL pin requires the complete file's SHA-256
+and exact category and before/after counts, on any base. The registry instead
+pins the exact refund COMMENT text because later approvals edit unrelated
+registry data; extra counted vocabulary still refuses. The allowance filters
+measured-base increases and parent-baseline raises, including regeneration;
+candidate counts must still fit the baseline. Changed bytes, another path even
+with the same digest, another category or count, and unrelated increases refuse.
+No native rail, TypeScript, package or documentation path can enter this list.
+Adding any further entry is a control change needing two fresh Opus reviews plus
+the coordinator's control read. The six rail-path entries can be retired after
+the F17 PR lands and the base carries the counts.
+
 The managed runtime capability forward is shipped after its separate control
 approval. It changes no baseline bytes or function signature. Required service
 and authenticated column/helper permissions are explicit in that ordered file;
@@ -203,9 +420,9 @@ Policy retirement is pinned to exact statements and preceding policy hashes; it
 is not general permission to alter RLS.
 The checker binds the fixed policy names, tables, preceding statement hashes
 and ordered DROP statements separately from the function and privilege pins.
-Other policy operations refuse. Approval must precede the corrected SQL
-comparison base and introduction parent; control approval alone grants no
-runtime permission or actual-role proof.
+Other policy operations refuse. The original capability forward used prior
+control approval; eligible later introductions may use the co-located route
+above. Approval alone grants no runtime permission or actual-role proof.
 
 Reviewed replacement is a separate admission class, not expand-only. The fixed
 [allowlist](../../config/reviewed-platform-forwards.json) pins three managed
@@ -218,17 +435,86 @@ setup forward also binds its two new function signatures, which must be absent
 from the preceding chain. This control change installs approval data only; it
 does not ship or execute those forwards.
 
-The optional `portableReplacementForwards` list admits exactly one forward to
+The optional `portableReplacementForwards` list includes the exact forward to
 keep active subscriptions active on dunning exhaustion (invariant repair).
 Its only function is
 `public.dunning_lifecycle_handle_failure(uuid,timestamptz,text,text,integer,timestamptz,text,text)`,
-fixed in checker code independently of the registry. Prior definitions come only
+fixed in checker code independently of the registry. The list also binds the native
+payment-terminal replacement and the stock-evidence replay replacement.
+The latter admits only
+`public.fulfillment_record_stock_evidence(text,text,text,text,text,text,integer,integer)`:
+matching-fingerprint replay reopens evidence and refreshes severity, quantities
+and last-seen time, clearing resolution time; a fingerprint mismatch still
+refuses with `23505`. Prior definitions come only
 from the portable baseline and earlier portable forwards in strict filename
 order, as required by the manifest. Exact path, file and before/after definition
 hashes must match; arguments, return, volatility, security and settings remain
 unchanged. Only comments and that single `CREATE OR REPLACE FUNCTION` are
-admitted, with approval preceding introduction; no privileges or other statements
-are allowed. This control approval adds no SQL file or runtime behavior.
+admitted under the co-located SQL/pin rule above; no privileges or other statements
+are allowed. The original class-control approval added no SQL file or runtime behavior.
+
+The separate `portableCreationForwards` class binds these portable paths and
+whole-file SHA-256 digests in the same allowlist:
+
+| Path | SHA-256 |
+| --- | --- |
+| [db/platform/migrations/20261022080000_fulfillment_command_ledger.sql](../../scripts/fixtures/20261022080000_fulfillment_command_ledger.sql) | `c6806906cdb0b6931b29f7a5c7c800016e98d04e6ea956f3c1e219a6cdb7e9d1` |
+| [db/platform/migrations/20261022090000_fulfillment_delivery_alignment.sql](../../scripts/fixtures/20261022090000_fulfillment_delivery_alignment.sql) | `d9966ae79fe77a0feae8317dc5b46ef2d8196dd0790b1cd0ee1b06ab58061499` |
+
+The three additional M09 creation pins are listed in the
+[M09 control preparation section](#m09-invoicing-forward-design-and-control-approval) and the registry.
+
+It admits new public tables, indexes on tables created in the file, invoker
+functions, views, and row triggers. Relation, function and trigger names must
+be absent from the portable baseline and preceding portable forwards; duplicate
+creations also refuse. Function row arguments and returns may use tables created
+in that file. Function bodies and expressions are bound by the whole-file hash;
+the statement classifier does not establish their behavioral correctness.
+Functions use SQL or `plpgsql` with `search_path = pg_catalog`, default or explicit
+invoker security and the admitted volatility attributes. Trigger functions must
+be created in the same file, accept no arguments and return `trigger`.
+Table and index statements must also pass the expand-only predicate. For these
+pinned new tables it accepts scalar comparison/regex operators, casts, and
+foreign-key `ON DELETE CASCADE` or `ON DELETE SET NULL` actions; inheritance and
+its other refused keywords remain excluded. Outside dollar-quoted bodies,
+backslashes, `E'...'` and `U&` escape strings/identifiers refuse. Standard strings
+and quoted identifiers use doubled quotes; multiline quoted sections and quoted
+identifiers containing `;` or `$` refuse. Nested block comments and named dollar
+tags also refuse: these forms are not needed by the pinned files. Any other `$`
+outside strings or comments refuses; a dollar body opens only as `AS` followed
+by whitespace and `$$`. Non-ASCII outside strings, comments and dollar bodies
+also refuses, including in quoted identifiers. Line comments
+end at the next line feed regardless of quotes inside the comment. A function
+body uses `$$` and ends at its first closing `$$`; only whitespace and the
+terminating semicolon may follow.
+New triggers may attach to existing public tables, including
+`commerce_order_holds`, `fulfillment_shipments` and `subscription_cycles`;
+this admits a new trigger attachment, never replacement of an existing trigger.
+The [disposable catalog proof](../../tests/postgres/reviewedPortableCreation.test.ts)
+applies each pinned target exactly once after its portable prefix, using
+landed bytes when present (they must equal the fixture and registry SHA-256, else
+the proof fails naming the path); the fixture when absent. It checks invoker security,
+new-object ACL entries, unchanged earlier relation/function definitions and the
+exact explicit trigger attachments with functions created by that file.
+
+Seed `INSERT` is admitted only into a table created in the same pinned file,
+using the existing expand-only predicate: literal-only `VALUES` with
+`ON CONFLICT ... DO NOTHING`, without subqueries, functions or procedural `DO`.
+Inserts into pre-existing tables, `INSERT ... SELECT` and
+`ON CONFLICT ... DO UPDATE` refuse.
+Only `REVOKE ALL ... FROM PUBLIC, anon, authenticated` (or subsets of those
+recipients), comments on objects created in the file, and `BEGIN`/`COMMIT` are
+otherwise admitted. Revocation targets must also be created in that file.
+Unpinned paths, changed bytes, `CREATE OR REPLACE`, `ALTER`, `DROP`,
+`SECURITY DEFINER`, grants to any role (including `PUBLIC`, `anon` and
+`authenticated`), references to pre-existing objects in comments or revocations,
+and all other statement forms refuse. The co-located approval rule above also
+applies to this existing class; it does not broaden the managed or portable
+replacement classes or install runtime permissions.
+The exact future file bytes are also kept as
+[command-ledger](../../scripts/fixtures/20261022080000_fulfillment_command_ledger.sql)
+and [delivery-alignment](../../scripts/fixtures/20261022090000_fulfillment_delivery_alignment.sql)
+test snapshots; snapshots are not installation-chain entries.
 
 [The shared checker](../../scripts/reviewed-platform-forward.ts) verifies the
 immutable managed baseline hash, each old definition and each new definition.
@@ -285,18 +571,14 @@ Operator activation consumes INSERT on `admin_users` columns `id`, `email`,
 SELECT on `admin_users.email` alongside the first entry's membership reads.
 Browser roles gain nothing; the approved identity forward now ships in the managed chain.
 
-Required PR/merge-group self-check requires the whole allowlist to remain unchanged
-from the feature comparison base. Release prepare compares each forward's own
-entry and list position, and every registry field outside the forward lists
-(schema version, baseline hash and any other key), with the first parent of the
-mainline commit, squash or merge, that introduces it; a feature branch's own
-earlier commits do not count. Only other forwards' entries may differ, so a later
-control may append approvals without stranding an unreleased forward. A feature still cannot approve itself. Missing history refuses. Existing
-history, version and manifest rules still apply, and the expand-only predicate
-is unchanged.
-Admission is process evidence of exact reviewed bytes, not proof of live schema
-compatibility or authorization to release. Independent control review and the
-affected database behavior tests remain required.
+PR/merge-group self-check and release prepare follow the canonical
+[co-located SQL/pin rule](#co-located-sql-and-approval-pins), including existing
+separate control histories and refusal of later retroactive pins. Missing history
+refuses; existing history, version and manifest rules still apply. The expand-only
+predicate also refuses `INHERITS`, preventing a new table from inheriting an
+existing one. Admission is process evidence of exact reviewed bytes, not proof
+of live schema compatibility or authorization to release. Applicable control
+review and affected database behavior tests remain required.
 
 An adopter's hosted chain may already carry a managed forward under its own
 migration name. Such a file is a platform companion: its leading comment block
@@ -355,12 +637,78 @@ mode other than `auto_align` before either a new journey or restart proof. This
 mode is the prerequisite for the monotonic late-delivery rule in
 [Canonical contracts](CANONICAL_CONTRACTS.md#subscription-delivery-alignment).
 
-There is no portable twin: the delivery-alignment rail is managed-only. The
-portable installation's lack of this capability remains a known gap; this
-forward establishes neither installation-path parity nor the complete
-late-delivery journey or a stable upgrade guarantee.
+The managed singleton seed has no portable twin. The native chain carries
+delivery alignment in its own
+[`fulfillment_delivery_alignment` forward](../../db/platform/migrations/20261022090000_fulfillment_delivery_alignment.sql),
+which creates the control row with mode `off`; `auto_align` enables the
+late-delivery invariant. Native store and real PostgreSQL conformance tests
+cover admission and arrival alignment. These checks do not establish
+installation-path parity, a complete installed late-delivery journey or a
+stable upgrade guarantee.
 
 ## Compatibility lifecycle
+
+The [M09 migration owner](#m09-invoicing-forward-design-and-control-approval)
+records the reviewed payment-decoupling forward and its installation boundary.
+For new unlinked P4 settlements, `accountingRequested` remains false even after
+independent invoicing; P4 supplies no payment-event linkback writer. Historical
+linked events retain their readback. Use `invoicing_duty_readback` for invoice
+progress and retained settlements for late recovery.
+
+
+The native `20261022160000_subscription_retry_lifecycle` forward adds three
+subscription retry ledgers and nine invoker functions. Install it through the
+complete ordered native manifest; its package SQL projection is byte-identical.
+This is N1, the F16 repair for terminal renewal declines that previously removed
+an active subscription from the due list indefinitely. It adds neither N2
+commands nor N3 stock wait. Disable the retry driver before rollback and retain
+the ledgers for reconciliation; do not delete refusal or payment history.
+
+The retry ledger keeps the original operation, cycle, order, settlement, schedule
+and snapshot. Retry zero is the original attempt. Failures one, two and three
+schedule +24, +72 and +168 hours from each failure; four exhausts the ladder.
+A terminating class can clear the retry earlier. Exhaustion leaves an open case,
+null retry and active subscription. An authorized same-case token and durable
+healthy-method evidence can re-offer the original obligation. Verified M07
+positive evidence settles that obligation and advances its native counter once,
+using the later-only schedule clamp. SQL performs no provider calls. Prepared
+receipts fence dispatch even when the acknowledgement was lost.
+
+Initial case-before-outcome handoff and subsequent retry failure are different
+transaction routes. N1's `subscription_retry_open_case` requires an existing
+failure row, while its initial `subscription_retry_apply_failure` can record the
+terminal outcome. The package binding opens the donor-keyed existing dunning case first, then
+attaches N1 bookkeeping inside the M07 terminal transaction, linking the same
+case. It never applies the initial money result twice; any bookkeeping failure
+rolls the terminal transaction back for safe replay. Hosts supply its
+transaction executor and evidence-bound correlation; no runner is activated.
+
+
+The stock-evidence replay forward `20261022165000` appends native position 76
+on this catalogue and joins the sparse fulfillment projection. It replaces only
+`fulfillment_record_stock_evidence`: matching-fingerprint replays reopen and refresh
+the alert, clear `resolved_at`, and retain its identity, first-seen time and
+historical resolver run. Mismatches still raise `23505`; legacy 0.22.0 whole-input
+fingerprints are not rewritten, even after resolution. The resolver itself is
+unchanged. Preserve every preceding manifest row and recompute the live
+selected-catalog-v2 digest after the full chain. No managed forward is needed:
+its baseline already refreshes/reopens corresponding evidence. The
+[replay proof](../../tests/postgres/fulfillmentStockEvidenceReplay.test.ts) covers
+fresh installation, the exact predecessor upgrade and runner replay, unchanged
+ledger prefix and function ACL/header, package byte equality, lifecycle/refusals
+and bounded concurrent row locking.
+
+See the [M09 forward owner](#m09-invoicing-forward-design-and-control-approval) for managed correction v2 installation, cutover and reconciliation.
+
+Fulfillment expands the native graph with new command and
+alignment objects at positions 73/74. It preserves all position-0–72 identities,
+existing rows and the managed graph. Upgrade the complete prefix before enabling
+the new stores; sparse package assets are projections only. Default-off alignment
+creates no cases during upgrade. Code rollback retains accepted dispatch proof
+and already extended dates; repair those facts forward. Invoker-only owner
+execution adds no browser privilege or service account. The
+[module catalogue notes](#module-catalogues-and-installed-histories) distinguish
+native dispatch commitment, missing correlation and future service grants.
 
 The portable forward
 `20261021120000_dunning_lifecycle_active_repair.sql` appends position 71 to keep
@@ -536,7 +884,7 @@ replays the complete committed managed chain into a fresh disposable local stack
 with ambient default ACLs removed and adds no grant. It proves immediate
 activation, repeat/concurrent recovery and revoked-member refusal under the
 shipped grants. It does not establish managed/direct lifecycle parity.
-The [package guide](../../packages/platform/README.md#operator-invitations) gives
+The [package guide](PLATFORM_PACKAGE_REFERENCE.md#operator-invitations) gives
 its local endpoints, controlled setup and exact invocation.
 
 Runtime capability regressions execute operator and support gates as
@@ -667,3 +1015,268 @@ operation and their accepted/failed replay boundaries.
 The narrowed import moves receipt stores and their ledger contracts. Reference
 mail-provider timeline/send-ledger implementations remain at their existing
 owners; no provider mapping or new schema enters the package.
+
+## M09 invoicing forward design and control approval
+
+Status: `20261022193000` and `20261022193100` introduce the two managed
+correction forwards. P4 introduces native durable duties, document effects and
+payment decoupling at positions 77–79; the remaining forwards stay fixture-only.
+Introduction must use exactly the pinned bytes. An unintroduced forward may carry its changed
+pins in the feature under the co-located rule above. The introduced forwards
+are immutable; their repair requires a new authorized forward. Existing control
+approvals and their review history remain valid.
+
+Three additional native creation pins cover durable duties, document effects and
+seller revisions. New functions are invokers with `search_path = pg_catalog`;
+new tables, views and functions revoke PUBLIC, anon and authenticated access.
+There are no new native triggers, definers or grants. The host must explicitly
+bootstrap its executor's least privileges; these fixtures grant no browser or
+service principal access. Native versions are `20261022190000`,
+`20261022191000`, `20261022192000` and `20261022195000`; managed versions are
+`20261022193000`, `20261022193100` and `20261022195100`. M09 lands before M10
+and keeps these assigned versions; verify against the landed managed prefix,
+not an assumed M10 predecessor. The native P4 units occupy positions 77–79 after the installed subscription
+160000 and fulfillment 165000 tail at 75/76; seller revision follows separately at 80.
+Install the complete native catalogue with its preserved ledger prefix and exact
+replacement preimage; sparse package projections are not an install chain.
+Positional unit comments inside immutable SQL refer to its historical staging order;
+use versioned filenames for identity, not those ordinals.
+Canonical and packaged P4 assets equal their reviewed fixtures and pins, and the
+manifest binds the full selected object inventory. No pending M10 forward or
+runtime is required.
+
+The fourth native pin is the single exact replacement of
+`payment_truth_apply_terminal(uuid,text,text,timestamptz,text,text,jsonb,text,text,text)`.
+Its declaration/settings and every statement outside the former accounting block
+remain unchanged. That block captures an `invoicing_duties` obligation and exact
+source/key receipts in the money transaction without consulting accounting
+objects. Captured settlement and dunning recovery therefore survive accounting
+failure. Capture uses a nonblocking advisory lock and a 100 ms lock timeout;
+its subtransaction catches conflicts, permission failures and cancellation without
+rolling back settlement or dunning. An append-only capture-fault marker is visible
+in readback. If the payment principal lacks marker privileges, the retained paid
+transition itself remains durable rediscovery evidence. Bootstrap capture and
+fault-table privileges explicitly.
+
+`public.invoicing_sweep_duties(integer)` collects retained settlement and handoff
+sources and returns fact-installation leases. The host commits that short claim
+transaction before calling `invoicing_prepare_facts(uuid,uuid)` for each lease,
+commits its accounting transaction, then records the result with
+`invoicing_finish_facts(uuid,uuid,jsonb)` in a separate short transaction. Do not
+wrap these calls in a shared transaction. `invoicing_install_facts(uuid,jsonb,text)`
+stages immutable facts only. This reuses the outbox claim/token/visibility pattern:
+SKIP LOCKED claims, five-minute leases, eight attempts, exponential backoff from
+60 seconds capped at one hour, and a visible `faulted` terminal state. Expired
+claims recover without retaining order/duty locks across accounting work. Prepare
+holds no explicit order row lock, bounds unavoidable database waits to 100 ms,
+and preserves the incumbent deterministic document reference. Its final NOWAIT
+duty lock rechecks the live fact token, wall-clock lease, unlinked request,
+owed/blocked state and absent reversal; a failed recheck rolls back preparation. Host keys remain
+exact in duty/receipt/metadata; the internal document operation uses the stable
+duty identity so two intents may legitimately reuse a host key.
+Accounting errors keep the fact revision and owed duty durable; missing host facts block
+document work. The host supplies buyer, lines, money, tax, dates, references and
+policy version rather than interpreting legacy zero-tax positions as fiscal
+facts. Payment readback keeps `accountingRequested=false` for new unlinked
+settlements; historic linked IDs and settled-event replay remain unchanged.
+M09 does not write invoice evidence back into payment truth.
+
+`public.invoicing_duty_readback(uuid)` reads an order's base and correction duties
+without reading accounting tables or changing payment truth. It returns duty,
+parent and document IDs, state, attempts, creation/availability/lease timestamps
+and a nullable diagnostic code. Ready work reads as `owed`; processing reads as
+`claimed`. Other persisted states (`owed`, `blocked`, `unknown`, `issued`,
+`voided`, `unsupported`, `faulted`) remain visible. The closed diagnostic allowlist is
+`missing_facts`, `legacy_facts_unproved`, `retryable`, `blocked`, `unsupported`,
+`unknown`, `absent`, `faulted`; other kinds return null. Raw SQLSTATE, provider evidence and
+claim tokens never enter this readback. Fact-install attempts are separate from
+provider generations. `captureFaults` exposes only the latest fault row per
+`(source_kind,source_id)`, with source ID, retry/fault state, attempt
+count and next availability; a retained source receipt changes its readback state to
+`resolved`. Raw errors remain excluded. Source capture failures
+have their own eight-attempt/backoff ceiling, so one poisoned source cannot starve
+later sources or fact retries. Empty orders return an empty duty list.
+Execution remains restricted to the explicitly bootstrapped trusted host.
+
+Duty and delivery claims accept a trailing optional order UUID, as does the
+seller claim wrapper. The predicate runs before row locks and LIMIT, except
+for the unscoped expiry of already-expired delivery receipts; targeted recovery
+never leases unrelated orders. Omitting it retains batch behavior.
+Clearance observations already record `not_submitted`, `pending`, `accepted`,
+`rejected`, `not_required` and explicit unsupported observations; polling targets,
+per-target orchestration and national mappings remain host/package work.
+
+Policy suppression and operator skip outcomes can be retained in the existing
+native effect-receipt ledger by the trusted host transaction. Source receipts
+stop rediscovery; withheld fact installation keeps suppressed work unclaimable.
+The host owns policy decisions, terminal outcome vocabulary and replay checks;
+this SQL does not infer permission to issue from a source alone. No additional
+native object or payment-truth mutation is needed for these receipts. Account
+invoice history likewise uses a host query over existing order ownership,
+documents, correction parent links and immutable facts; the host must authorize
+the account before projection and refuse missing fiscal facts. No browser grant
+or SQL history endpoint is added.
+
+The existing `accounting_document_request_from_paid_order` and its reference
+PostgreSQL adapter retain their local scope, response, document reference and
+replay. Generic descriptions and zero-tax positions remain usable locally;
+fiscal execution still requires proven facts and must refuse to adopt an
+unproved local document rather than create a competing invoice. Fact completion
+checks neutral facts and totals before adopting an unowned document. An
+unsupported result requires existing document evidence and remains visible with
+its diagnostic reason. At request time, reversal refuses to void an unlinked live
+base document. An attempt in flight or a possibly sent or unknown request returns
+`pending_readback`. After a create attempt ended `retryable`/`before_send` or was
+authoritatively absent, reversal immediately voids the document, discards its
+request and voids the duty if no claim or lease is in flight. A reversal stored
+during processing voids the document, discards its request and voids the duty
+when a create claim fails with `retryable`/`before_send`, or when authoritative
+`absent` evidence confirms no remote document. A retryable readback still stays
+unknown; a confirmed issue still requests one correction. Blocked duties return
+terminal `unsupported`.
+Initial legacy-child adoption hides only ready, pending, unattempted correction
+requests. Once M09 owns a request, the [incumbent queue fence](#m09-incumbent-queue-fence)
+continues through processing, expiry and failure.
+
+Before installing, retire the incumbent issue/correction executor. Drain the
+legacy managed correction worker first; reconcile any attempted or processing
+legacy correction against provider evidence, recording its actual outcome before
+cutover. The reference `accountingInvoicePort`, `accounting_paid_reversal_test`
+and correction recovery pgTAP use v2 (`p_contract_version`,
+`p_claim_attempt_count`); the adapter throws on `ok:false`. Attempted legacy
+rows lacking a durable identity stay processing/failed with their original
+error/payload retained, regardless of the invoice's current status.
+They require provider reconciliation; an empty claim is not completion.
+This adapter migration and its refusal/recovery proof are prerequisites for introducing `20261022193100`; it is not part
+of fixture-only control preparation. The managed `ksefRequired` key is retained
+for donor parity as a country-specific key, not a neutral native requirement.
+
+Native correction finalization locks the parent request, child request, parent
+duty and child duty before advancing the child and base accounting documents.
+The native document transition updates accounting records, and its operation insert
+takes a key-share lock on the order row through its foreign key; that lock order does
+not remove the coupling. P4's native continuity
+witness exercises dispatch while accounting work is blocked.
+Managed v2 correction claim locks both joined invoice and outbox rows; its
+finalizers lock invoice before outbox. Fenced finalizers also accept a parent
+already `corrected` by an earlier acceptance sync when its `correctionOutboxId`
+is absent or matches the claim; success still records `correction_issued` and
+the delivery outbox. `correctionOutboxId` is written only on successful finalization.
+For classifying hosts only, blocked, unsupported or explicitly non-retryable
+`p_error` values retain `failed` with `next_attempt_at=infinity`; ordinary failures
+keep their retry delay. The reference host sends `{message}`, so its failures
+keep ordinary retry timing.
+
+Registered managed-correction limit: multi-reason / late-issue compensation can
+yield more than one full correction per invoice, as the incumbent does today.
+The follow-up is a separately designed control change enumerating
+`order_status_reversal`, `provider_issue_after_order_status_reversal` and
+manual/scaffold interplay. After the `20261022193000` forward lands it must be a replacement forward;
+this follow-up is outside M09.
+No transaction spans provider I/O. The
+existing managed order-reversal transaction still couples order and accounting
+locks; these forwards do not prove the later native money/parcel isolation.
+[Recovery proof](../../tests/postgres/invoicingManagedCorrection.test.ts) exercises
+the real v2 adapter, rollback/reclaim, stale outcomes and browser refusal.
+The shipped [pgTAP](../../supabase/tests/accounting_correction_recovery_test.sql)
+adds committed-ACK loss and unchanged delivery/audit witnesses.
+
+### M09 incumbent queue fence
+
+M09 request rows use `available_at='infinity'` at prepare, claim and fail,
+including corrections, so the incumbent queue cannot lease them. M09 also checks
+request attempts/token against duty generation/token and marks drift unsupported.
+Seller requests run in their own short transaction: a nonblocking per-order
+advisory lock precedes the order row lock. The 100 ms lock timeout remains in
+effect through duty capture and seller insertion, then the wrapper restores the
+caller's timeout before returning.
+The payment capture block absorbs `query_canceled` (including a client or statement
+timeout arriving inside capture) so settlement/recovery can commit. Its fallback
+marker insertion has its own 100 ms lock bound; host cancellation outside this
+block retains PostgreSQL's ordinary behavior. Successful sweep restores the
+caller's lock timeout.
+
+The install cutover records existing settlement/handoff identities once because
+these rails have no insertion timestamp and host occurrence times may arrive late.
+The keyed `(source_kind,source_id)` primary-key table is filled once by the
+single exactly admitted `INSERT ... SELECT ... UNION ALL ... ON CONFLICT DO NOTHING`.
+No data-reading column default is admitted. Creation and seeding of this table
+precede every FK-bearing invoicing table, so the history scan holds no locks on
+orders or accounting tables and permits order, settlement and dispatch writes.
+The subsequent FK installation still takes table locks until the install
+transaction commits; schedule that shorter write pause. Sweeps use indexed `NOT EXISTS` against that set, with source/order
+fault lookup and duty status/availability indexes. The automatic sweep excludes
+those historical identities, whether previously
+invoiced or uninvoiced, and orders with any non-void accounting document. It never
+automatically backfills history. A post-install source remains collectable even
+when its host occurrence timestamp predates install. Alias keys include source
+kind and settlement intent (or handoff source), avoiding cross-intent key clashes.
+
+A pre-existing limit remains: payment ingest's event readback joins
+`accounting_documents`; an ACCESS EXCLUSIVE relation lock can therefore block
+money readback. The new capture path removes accounting row-lock/construction
+failures, not that older relation-level read dependency.
+
+Source identities and original host keys alias one physical issue duty per order;
+a correction aliases one child per parent. Facts and receipts refuse conflicting
+replay. Claim locks both native request and duty in its candidate scan, persists provider identity and a
+shared token/generation, and joins immutable facts. Expired or unknown creates
+become readback work; only authoritative absence permits a new create. Success
+settles request/document/receipt together. Late issue first persists external
+identity then compensates a pending reversal atomically. Correction BEFORE facts
+remain positive history while native positions carry the negative delta. No
+fiscal numbering, provider transport, market policy or money writer is added.
+Clearance and uncertain delivery affect document work only; unknown delivery
+acceptance cannot re-enter send after lease expiry. Native delivery claims hide
+claimed deliveries from the incumbent claimer with `lease_until='infinity'`,
+and expired processing receipts become `uncertain` with `lease_expired`, never
+eligible for repeat send. Settlement checks exact sent replay first, then refuses expired or
+null leases; `failed_before_send` with `retryable:false` parks at infinity,
+otherwise it backs off by a whole `retrySeconds` clamped to 60..86400 seconds
+(or 900 for absent or invalid values). Source retention is a host
+lifecycle obligation until capture or an explicit terminal policy receipt.
+
+Native capture marks genuinely new base duties, including sweep capture, and
+the document-effects forward marks genuinely new correction children only when
+the seller request wrapper supplies `sellerPolicyVersion=invoicing.seller.v1`.
+The later seller
+wrappers materialize eligible seller rows; they do not make legacy work new.
+First claim captures the selected host seller and revision in the same transaction. Retry preserves that
+seller; new corrections have independent eligibility. A new sidecar around an
+old document/request is legacy and returns the execution-supplied fallback.
+Issued documents and historical seller/buyer/line facts are never rewritten.
+
+`managedInvoicingForwards` is a separate bounded admission, with three fixed
+paths and ordered signature sets in the checker: new correction v2 overloads,
+legacy fail-closed compatibility replacements, and new seller wrappers plus one
+seller table with RLS enabled. Whole-file and function before/after hashes bind their definitions.
+It preserves the donor's `SECURITY DEFINER`, `search_path = public, pg_catalog`
+and EXECUTE only to service_role, with PUBLIC/anon/authenticated revokes. The
+native creation class additionally admits the exact cutover seed and the
+`WITH (security_invoker=true)` view form; existing managed classes are unchanged.
+The managed class refuses unexpected signatures, attributes, triggers, tables,
+grants or lexical forms. Native structural classification permits a new trigger
+with an in-file trigger function. M09's whole-file pins exclude native triggers;
+the catalog proof also verifies that these forwards add no explicit trigger
+attachments to pre-existing tables.
+
+The [registry](../../config/reviewed-platform-forwards.json) binds all seven final
+fixture paths and hashes. The [catalog proof](../../tests/postgres/reviewedPortableCreation.test.ts)
+applies every fixture to real PostgreSQL, preserving existing object/ACL
+boundaries except the exact pinned replacements and checking native invoker
+versus managed service-only attributes. Positive and refusal plants exercise
+both CI and release admission. Control approval alone provides no runtime,
+provider, deployment or fiscal-readiness evidence.
+
+### P4a native store projections
+
+`INVOICING_MIGRATIONS.native.units` projects unchanged accounting rails at
+positions 7, 13 and 15 and the three pinned M09 forwards at 77, 78 and 79.
+Every packaged asset is byte-identical to its canonical file. The
+[M09 migration owner](#m09-invoicing-forward-design-and-control-approval) defines
+installation order and prefix preservation.
+The native descriptor declares child-document corrections and explicit host
+fiscal facts. The separate managed descriptor names P3's base-row correction
+forwards; neither descriptor claims storage or fiscal parity.
+
+Seller-revision forwards and default service activation remain later work.

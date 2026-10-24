@@ -9,7 +9,7 @@ import { createPostgresMigrationRunner } from "../../server/adapters/postgres/mi
 import { readSelectedCatalogProjection, selectedCatalogProjectionPayload } from "../../server/adapters/postgres/selectedCatalogProjection.js";
 import { SHIPPING_MIGRATIONS } from "@openlup/platform/shipping";
 import { createM06ShippingReferenceBinding } from "../../server/runtime/public-reference/m06ShippingBinding.js";
-import { dockerAvailable, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
+import { closePostgres, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, dockerAvailable, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
 
 const file = "db/platform/migrations/20261021200000_shipping_flat_rate_seed.sql";
 const version = "20261021200000_shipping_flat_rate_seed";
@@ -19,7 +19,7 @@ const seed = SHIPPING_MIGRATIONS.find(entry => entry.id === version)!;
 const containers: PostgresContainer[] = [], pools: Pool[] = [];
 const bindings: ReturnType<typeof createM06ShippingReferenceBinding>[] = [];
 type NativeReadiness = { nativeRateReadiness: ReadinessReport; nativeRateSchema: SchemaObservation };
-let prefix: string, beforeAcl: unknown, oldReadiness: NativeReadiness;
+let prefix: string, beforeAcl: unknown, afterSeedAcl: unknown, oldReadiness: NativeReadiness;
 const runner = (pool: Pool, root = process.cwd()) => createPostgresMigrationRunner({ connectionString: "injected" }, { root, poolFactory: () => pool });
 function binding(index: number, readiness?: NativeReadiness) {
   const result = createM06ShippingReferenceBinding({
@@ -78,11 +78,13 @@ beforeAll(async () => {
   await runner(pools[0]).apply(); await runner(pools[1], prefix).apply();
   await pools[1].query("INSERT INTO public.commerce_settings(key,value_minor) VALUES ('shipping_flat_minor',1234)");
   beforeAcl = await acl(pools[1]); oldReadiness = await readiness(1);
-}, 120_000);
+  // Compare the seed's own before/after pair, even when later forwards change ACLs.
+  await pools[1].query(readFileSync(file, "utf8"));
+  afterSeedAcl = await acl(pools[1]);
+}, postgresSetupTimeoutMs);
 afterAll(async () => {
-  await Promise.all(bindings.map(value => value.close())); await Promise.all(pools.map(pool => pool.end()));
-  await Promise.all(containers.map(container => container.remove())); if (prefix) rmSync(prefix, { recursive: true, force: true });
-});
+  await closePostgres(containers, pools, bindings.map(value => () => value.close())); if (prefix) rmSync(prefix, { recursive: true, force: true });
+}, postgresTeardownTimeoutMs);
 it("fresh full portable installation seeds and saves through the reference binding", async () => {
   expect((await pools[0].query("SELECT value_minor FROM public.commerce_settings WHERE key='shipping_flat_minor'")).rows).toEqual([{ value_minor: 0 }]);
   expect({ file: seed.catalogPath, sha256: seed.sha256 }).toEqual(manifest.forward[seedIndex]);
@@ -143,7 +145,7 @@ it("denies commerce settings reads and updates to anon, authenticated and a PUBL
   } finally { await client.query("RESET ROLE"); client.release(); await pools[0].query("DROP ROLE shipping_public_only"); }
 });
 it("leaves whole-catalog ACLs, default privileges and role memberships byte-identical across the seed forward", async () => {
-  expect(await acl(pools[1])).toEqual(beforeAcl);
+  expect(afterSeedAcl).toEqual(beforeAcl);
 });
 it("refuses a missing row by name and keeps unsupported audit failure nonblocking after a real save", async () => {
   const selected = binding(0, await readiness(0));

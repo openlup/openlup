@@ -8,7 +8,7 @@
  *   dispatch could otherwise cancel a queued publication.
  * - `commit <sha>` refuses unless `<sha>` is on the first-parent line of `main` as fetched from origin now, and
  *   each required context passed there: GitHub Actions ran it at `<sha>` and every latest run of it
- *   succeeded. The target need not be checked out.
+ *   succeeded. Its publication audit owners must match that fresh main. The target need not be checked out.
  * - `tag <sha> <package> <version>` repeats that main check, then creates the annotated tag
  *   `openlup-<package>-v<version>` on `<sha>` itself, never on another commit, and refuses unless
  *   GitHub answers with a tag object of that name and exact message on that commit and a
@@ -64,6 +64,15 @@ export function assertOnFreshMain(root: string, commit: string): string {
   git("fetch", "--no-tags", "--quiet", "origin", `+refs/heads/main:${FRESH_MAIN}`);
   const mainTip = git("rev-parse", "--verify", `${FRESH_MAIN}^{commit}`);
   if (!git("rev-list", "--first-parent", mainTip).split("\n").includes(commit)) throw new Error(`release gate: ${commit} is not on main, whose tip is ${mainTip}`);
+  for (const path of [
+    "scripts/packages/packages-check.ts",
+    "packages/core/scripts/release-npm-checks.ts",
+    ".github/workflows/publish-packages.yml",
+  ]) {
+    const blob = (revision: string) => /^[0-7]{6} blob ([a-f0-9]{40})\t/u.exec(git("ls-tree", revision, "--", path))?.[1];
+    const mainBlob = blob(mainTip);
+    if (!mainBlob || blob(commit) !== mainBlob) throw new Error(`release gate: ${path} at ${commit} does not match the publication audit on fresh main ${mainTip}; choose a reviewed forward candidate`);
+  }
   return mainTip;
 }
 

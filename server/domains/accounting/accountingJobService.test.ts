@@ -1,11 +1,15 @@
+import { createTestAccountingProvider } from "../../adapters/accounting/testAccountingProvider.js";
 import { describe, expect, it, vi } from "vitest";
 import {
   runAccountingInvoiceDeliveryJob,
   runAccountingInvoiceIssueJob,
+  runAccountingInvoiceCorrectionJob,
   runAccountingKsefStatusJob,
 } from "./accountingJobService.js";
+import { createFulfillmentHandoffInvoiceHandler } from "./fulfillmentHandoffInvoiceHandler.js";
+import { COMMERCE_FULFILLMENT_HANDED_OVER_EVENT_TYPE } from "../../../src/lib/fulfillmentHandoffOutboxContract.js";
 import type { AccountingRuntimeConfig } from "./accountingRuntimeConfig.js";
-import type { ClaimedAccountingInvoiceIssue } from "../../../src/domains/accounting/ports.js";
+import type { AccountingCorrectionOutboxTarget, ClaimedAccountingInvoiceIssue } from "../../../src/domains/accounting/ports.js";
 import { AccountingInvoicePersistenceError } from "../../../src/domains/accounting/ports.js";
 
 const claim: ClaimedAccountingInvoiceIssue = {
@@ -42,6 +46,15 @@ const claim: ClaimedAccountingInvoiceIssue = {
 };
 
 describe("accounting job service", () => {
+  it("retains the host handoff event descriptor", () => {
+    const handler = createFulfillmentHandoffInvoiceHandler({
+      accountingPort: { requestInvoiceIssueFromPaidOrder: vi.fn(), requestInvoiceIssueFromFulfillmentHandoff: vi.fn() },
+      providerKind: "host-fiscal", issueTrigger: "handoff",
+    });
+    expect(handler.eventType).toBe(COMMERCE_FULFILLMENT_HANDED_OVER_EVENT_TYPE);
+    expect(handler.timeoutMs).toBe(10_000);
+  });
+
   it("does not claim work or call provider when create flag is disabled", async () => {
     const port = portStub();
     const provider = providerStub();
@@ -75,12 +88,23 @@ describe("accounting job service", () => {
       recoveryLookupRequired: false,
     });
     expect(port.preflightInvoiceIssuePayment).toHaveBeenCalledTimes(2);
-    expect(port.preflightInvoiceIssuePayment).toHaveBeenNthCalledWith(1, expect.objectContaining({
+    expect(port.preflightInvoiceIssuePayment.mock.invocationCallOrder[0]).toBeLessThan(port.preflightInvoiceIssuePayment.mock.invocationCallOrder[1]);
+    expect(port.preflightInvoiceIssuePayment.mock.invocationCallOrder[1]).toBeLessThan(provider.createInvoice.mock.invocationCallOrder[0]);
+    expect(provider.createInvoice.mock.invocationCallOrder[0]).toBeLessThan(port.markInvoiceIssueSucceeded.mock.invocationCallOrder[0]);
+    expect(port.markInvoiceIssueSucceeded).toHaveBeenCalledWith({
+      outboxId: "outbox-1", claimAttemptCount: 1,
+      providerInvoiceId: "provider-123", providerInvoiceNumber: "FV/1/2026", providerRaw: { id: 123, number: "FV/1/2026" },
+    });
+    expect(port.preflightInvoiceIssuePayment).toHaveBeenNthCalledWith(1, {
+      invoiceId: "invoice-1", outboxId: "outbox-1", claimAttemptCount: 1,
+      providerStatus: "unavailable", providerAmountCents: null, providerCurrency: null,
       providerEvidence: { source: "local_canonical_snapshot" },
-    }));
-    expect(port.preflightInvoiceIssuePayment).toHaveBeenNthCalledWith(2, expect.objectContaining({
-      providerEvidence: expect.objectContaining({ unavailableReason: "provider_not_configured" }),
-    }));
+    });
+    expect(port.preflightInvoiceIssuePayment).toHaveBeenNthCalledWith(2, {
+      invoiceId: "invoice-1", outboxId: "outbox-1", claimAttemptCount: 1,
+      providerStatus: "unavailable", providerAmountCents: null, providerCurrency: null,
+      providerEvidence: { source: "provider_api", provider: claim.payment.provider, providerPaymentId: claim.payment.providerPaymentId, unavailableReason: "provider_not_configured" },
+    });
   });
 
   it("requires provider recovery lookup after an invoice issue is re-claimed", async () => {
@@ -454,7 +478,7 @@ function portStub({
     }))),
     recordKsefStatus: vi.fn(async () => undefined),
     recordProviderDocumentSync: vi.fn(async () => undefined),
-    claimInvoiceCorrections: vi.fn(async () => []),
+    claimInvoiceCorrections: vi.fn(async (): Promise<AccountingCorrectionOutboxTarget[]> => []),
     markInvoiceCorrectionSucceeded: vi.fn(async () => undefined),
     markInvoiceCorrectionFailed: vi.fn(async () => undefined),
   };
@@ -476,3 +500,47 @@ function config(overrides: Partial<AccountingRuntimeConfig> = {}): AccountingRun
     ...overrides,
   };
 }
+
+it("selects only an explicit correction recovery bridge and preserves its exact request and fenced receipt", async () => {
+  const port = portStub();
+  const provider = providerStub();
+  const input = { port, provider, config: config({ createEnabled: true }), env: {} };
+  expect(await runAccountingInvoiceCorrectionJob(input)).toMatchObject({ skipped: true, reason: "correction_recovery_unsupported" });
+  expect(port.claimInvoiceCorrections).not.toHaveBeenCalled();
+  expect(provider.createFullCorrection).not.toHaveBeenCalled();
+  const correction = { outboxId: "correction-one", attemptCount: 2, providerKind: claim.providerKind, invoiceId: claim.invoice.id, providerInvoiceId: "parent", correctionReason: "full refund", payload: { providerCreateIdentity: "accounting-correction:correction-one" }, invoice: { ...claim.invoice, providerInvoiceId: "parent", providerInvoiceNumber: null } };
+  port.claimInvoiceCorrections.mockResolvedValueOnce([correction]);
+  const createFullCorrection = vi.fn(async () => ({ providerInvoiceId: "correction", providerInvoiceNumber: null, raw: {} }));
+  expect(await runAccountingInvoiceCorrectionJob({ ...input, provider: { ...provider, correctionRecovery: { createFullCorrection } } })).toMatchObject({ checked: 1, updated: 1 });
+  expect(createFullCorrection).toHaveBeenCalledWith(expect.objectContaining({ lines: expect.arrayContaining([expect.objectContaining({ totalGrossMinor: 1080 })]) }), {
+    correctionReason: "full refund", correctedProviderInvoiceId: "parent", correctionRef: "accounting-correction:correction-one", recoveryLookupRequired: true,
+  });
+  expect(port.markInvoiceCorrectionSucceeded).toHaveBeenCalledWith({ outboxId: "correction-one", claimAttemptCount: 2, providerInvoiceId: "correction", providerInvoiceNumber: null, providerRaw: {} });
+  expect(provider.createFullCorrection).not.toHaveBeenCalled();
+});
+
+it("keeps unknown recovery and parent mismatch visible without acknowledging or calling the legacy correction method", async () => {
+  for (const code of ["accounting_correction_recovery_unknown", "accounting_correction_parent_mismatch"]) {
+    const port = portStub(); const provider = providerStub();
+    port.claimInvoiceCorrections.mockResolvedValueOnce([{ outboxId: "saved", attemptCount: 2, providerKind: claim.providerKind, invoiceId: claim.invoice.id, providerInvoiceId: "parent", correctionReason: "full refund", payload: { providerCreateIdentity: "accounting-correction:saved" }, invoice: { ...claim.invoice, providerInvoiceId: "parent", providerInvoiceNumber: null } }]);
+    const createFullCorrection = vi.fn(async () => { throw new Error(code); });
+    expect(await runAccountingInvoiceCorrectionJob({ port, provider: { ...provider, correctionRecovery: { createFullCorrection } }, config: config({ createEnabled: true }), env: {} })).toMatchObject({ failures: 1, updated: 0 });
+    expect(port.markInvoiceCorrectionSucceeded).not.toHaveBeenCalled();
+    expect(port.markInvoiceCorrectionFailed).toHaveBeenCalledWith(expect.objectContaining({ outboxId: "saved", claimAttemptCount: 2, retrySeconds: 600, error: expect.objectContaining({ message: code }) }));
+    expect(provider.createFullCorrection).not.toHaveBeenCalled();
+  }
+});
+
+it("keys preview correction identities and numbers by correctionRef independently of the order", async () => {
+  const provider = createTestAccountingProvider();
+  const snapshot = { orderRef: "same-order", issueDate: "2026-10-22", currency: "XTS", buyer: { name: "Saved buyer", email: null, taxId: null }, lines: [] };
+  const correct = provider.correctionRecovery!.createFullCorrection;
+  const options = { correctedProviderInvoiceId: "parent", correctionReason: "full refund", correctionRef: "correction-one", recoveryLookupRequired: false };
+  const first = await correct(snapshot, options);
+  expect(await correct(snapshot, { ...options, recoveryLookupRequired: true })).toEqual(first);
+  const second = await correct(snapshot, { ...options, correctionRef: "correction-two" });
+  expect(second.providerInvoiceId).not.toBe(first.providerInvoiceId);
+  expect(second.providerInvoiceNumber).not.toBe(first.providerInvoiceNumber);
+  expect(first.providerInvoiceId).toContain(options.correctionRef);
+  expect(first.providerInvoiceNumber).toContain(options.correctionRef);
+});

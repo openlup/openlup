@@ -41,6 +41,7 @@ const adapterSubpathFiles = new Set([
   "packages/platform/test/packageBoundary.test.ts",
   "config/openlup-publication-catalog.json",
   "packages/platform/CHANGELOG.md",
+  "packages/platform/CHANGELOG-HISTORY.md",
   "docs/platform/CANONICAL_CONTRACTS.md",
   "docs/platform/ARCHITECTURE_AND_EXTENSIONS.md",
   adapterLedger,
@@ -140,7 +141,12 @@ export function allowedPaymentAdapterWords(path, contents, category = "ui-13") {
   }
   if (category === "ui-5") {
     const ownPath = new RegExp(`^packages/platform/(?:src|test)/payments/${paymentAdapterNames[1]}/`);
-    return ownPath.test(path) ? [...contents.matchAll(new RegExp(`\\b${String.fromCharCode(80, 76, 78)}\\b`, "g"))].length : 0;
+    const currency = String.fromCharCode(80, 76, 78);
+    if (path === `packages/platform/api/payments-${paymentAdapterNames[1]}.api.md`) {
+      const declaration = `    currency: "${currency}";`;
+      return contents.split("\n").filter(line => line === declaration).length;
+    }
+    return ownPath.test(path) ? [...contents.matchAll(new RegExp(`\\b${currency}\\b`, "g"))].length : 0;
   }
   const name = paymentAdapterNames[category === "ui-13" ? 0 : category === "ui-14" ? 1 : -1];
   if (!name) return 0;
@@ -160,6 +166,23 @@ export function allowedPaymentAdapterWords(path, contents, category = "ui-13") {
   return tokens.reduce((count, [token]) => count + [...token.matchAll(word)].length, 0);
 }
 
+// One vendor category, with exact paths and complete, case-sensitive carrier tokens.
+const fulfillmentAdapterName = "omni" + "pack";
+const fulfillmentAdapterWord = new RegExp(`\\b${fulfillmentAdapterName}\\b`, "gi");
+const fulfillmentAdapterPaths = new RegExp(`^packages/platform/(?:src|test)/fulfillment/${fulfillmentAdapterName}/`);
+const fulfillmentAdapterSubpath = new RegExp(`(?<![\\w-])fulfillment/${fulfillmentAdapterName}(?![\\w-])`, "g");
+const fulfillmentAdapterReport = new RegExp(`(?<![\\w.-])fulfillment-${fulfillmentAdapterName}\\.api\\.md(?![\\w./-])`, "g");
+export function allowedFulfillmentAdapterWords(path, contents) {
+  if (fulfillmentAdapterPaths.test(path) || path === `packages/platform/api/fulfillment-${fulfillmentAdapterName}.api.md`
+    || path === "docs/platform/plans/oss-a3-fulfillment-adapter.md") return [...contents.matchAll(fulfillmentAdapterWord)].length;
+  if (!paymentAdapterCarriers.has(path) && !/^packages\/platform\/changes\/[^/]+\.md$/.test(path)) return 0;
+  const tokens = [...contents.matchAll(fulfillmentAdapterSubpath)];
+  if (["packages/platform/release-gates.json", "config/openlup-publication-catalog.json"].includes(path)) {
+    tokens.push(...contents.matchAll(fulfillmentAdapterReport));
+  }
+  return tokens.reduce((count, [token]) => count + [...token.matchAll(fulfillmentAdapterWord)].length, 0);
+}
+
 export function neutralityIncreases(baseline, current) {
   const increases = [];
   for (const [path, counts] of Object.entries(current)) for (const [category, count] of Object.entries(counts)) {
@@ -168,6 +191,56 @@ export function neutralityIncreases(baseline, current) {
   }
   return increases;
 }
+// Bounded debt C94: a closed list of 13 paths, with exact category/before/after
+// tuples grouped per path (two categories on each dunning copy). Whole-file pins
+// apply on any base so separately landed rail copies need no new allowance.
+// Adding an entry is a control change: two fresh Opus reviews and coordinator read.
+export const reviewedPinnedIntroductions = [
+  ["config/reviewed-platform-forwards.json", "f036750c10aae1e9600d98c737d573e5e4672ad817e83bd63aafe860e0685957", [["ui-13", 0, 1]]],
+  ["scripts/fixtures/reviewed-m10/supabase/migrations/20261022160000_subscription_dunning_continuity.sql", "327ce8e60d69213b47777f993fab76d23e754a27df1159580a2d22d854eecc74", [["ui-13", 0, 2], ["ui-14", 0, 3]]],
+  ["scripts/fixtures/reviewed-m10/supabase/migrations/20261022175000_inventory_available_to_promise.sql", "70706de1ea07c3ba8a17a7099da4931a51e01c5cfd60caa5266674e16428ccb0", [["ui-15", 0, 3]]],
+  ["scripts/fixtures/reviewed-m10/supabase/migrations/20261022180000_subscription_stock_wait.sql", "b13b602c33e725f9f2ed94ed91d27fa62793d8322a5fbe4ea92be19838fd8963", [["ui-15", 0, 6]]],
+  ["scripts/fixtures/reviewed-m10/supabase/migrations/20261022184000_inventory_reserve_order_uses_seam.sql", "41a99e7306f33bbb85ad504b9158aaf8074bd4c577d284ab6fb82af748514993", [["ui-15", 0, 2]]],
+  ["scripts/fixtures/reviewed-m10/supabase/migrations/20261022185000_provider_refund_evidence.sql", "1c5960eb1aced19f91b4a20a8333503a7978f7d5ab60c95fe7515d4da866d215", [["ui-13", 0, 7]]],
+  ["scripts/fixtures/reviewed-m10/supabase/migrations/20261022185100_m07_refund_parity.sql", "a4e2fb59eed52f5f16313a465a7a1884fde44ab2f0f84271b11886998685f1ee", [["ui-13", 0, 7]]],
+  ["supabase/migrations/20261022160000_subscription_dunning_continuity.sql", "327ce8e60d69213b47777f993fab76d23e754a27df1159580a2d22d854eecc74", [["ui-13", 0, 2], ["ui-14", 0, 3]]],
+  ["supabase/migrations/20261022175000_inventory_available_to_promise.sql", "70706de1ea07c3ba8a17a7099da4931a51e01c5cfd60caa5266674e16428ccb0", [["ui-15", 0, 3]]],
+  ["supabase/migrations/20261022180000_subscription_stock_wait.sql", "b13b602c33e725f9f2ed94ed91d27fa62793d8322a5fbe4ea92be19838fd8963", [["ui-15", 0, 6]]],
+  ["supabase/migrations/20261022184000_inventory_reserve_order_uses_seam.sql", "41a99e7306f33bbb85ad504b9158aaf8074bd4c577d284ab6fb82af748514993", [["ui-15", 0, 2]]],
+  ["supabase/migrations/20261022185000_provider_refund_evidence.sql", "1c5960eb1aced19f91b4a20a8333503a7978f7d5ab60c95fe7515d4da866d215", [["ui-13", 0, 7]]],
+  ["supabase/migrations/20261022185100_m07_refund_parity.sql", "a4e2fb59eed52f5f16313a465a7a1884fde44ab2f0f84271b11886998685f1ee", [["ui-13", 0, 7]]],
+];
+// Defense against extending this allowance into native rails or executable code.
+// This path-class guard does not admit entries: the closed list above still owns
+// every exact path, digest and count tuple.
+export function validateReviewedPinnedIntroductions(entries) {
+  for (const [path] of entries) {
+    validPath(path);
+    if (path !== "config/reviewed-platform-forwards.json"
+      && !/^(?:scripts\/fixtures\/reviewed-m10\/supabase\/migrations\/|supabase\/migrations\/)[^/]+\.sql$/.test(path)) {
+      throw new Error(`unsupported pinned introduction path: ${label(path)}`);
+    }
+  }
+}
+validateReviewedPinnedIntroductions(reviewedPinnedIntroductions);
+function pinnedIntroductionMatches(path, bytes, digest) {
+  if (path !== "config/reviewed-platform-forwards.json") return hash(bytes) === digest;
+  // The registry is edited by later approvals: pin only the exact SQL COMMENT
+  // text, not its JSON escaping or unrelated registry entries. The scanner's
+  // exact total still refuses any additional counted vocabulary in this file.
+  try {
+    const pin = JSON.parse(bytes.toString("utf8")).batchedForwards.find(entry =>
+      entry.path === "supabase/migrations/20261022185100_m07_refund_parity.sql");
+    return pin.statements.filter(statement => typeof statement.sql === "string" && hash(statement.sql) === digest).length === 1;
+  } catch { return false; }
+}
+export function unreviewedPinnedIntroductionIncreases(increases, snapshots) {
+  return increases.filter(row => !reviewedPinnedIntroductions.some(([path, digest, counts]) =>
+    row.path === hash(path) && counts.some(([category, before, after]) =>
+      row.category === category && row.before === before && row.after === after)
+      && snapshots.has(path) && pinnedIntroductionMatches(path, snapshots.get(path), digest)));
+}
+
 export function validateBaseline(baseline) {
   if (!record(baseline) || baseline.schemaVersion !== 2 || !/^[a-f0-9]{40}$/.test(baseline.sourceCommit) || !record(baseline.counts)) throw new Error("invalid neutrality baseline");
   if (!record(baseline.scannerPins) || JSON.stringify(Object.keys(baseline.scannerPins).sort()) !== JSON.stringify([...scannerPaths].sort())) throw new Error("invalid neutrality scanner pins");
@@ -175,6 +248,13 @@ export function validateBaseline(baseline) {
   for (const [path, counts] of Object.entries(baseline.counts)) {
     if (!/^[a-f0-9]{64}$/.test(path) || !record(counts)) throw new Error("invalid neutrality baseline path");
     for (const [category, count] of Object.entries(counts)) if (!categoryPattern.test(category) || !Number.isSafeInteger(count) || count < 0) throw new Error("invalid neutrality baseline count");
+  }
+  for (const [path, , counts] of reviewedPinnedIntroductions) {
+    const accepted = baseline.counts[hash(path)];
+    if (accepted && (Object.keys(accepted).length !== counts.length
+      || counts.some(([category, , after]) => accepted[category] !== after))) {
+      throw new Error(`pinned introduction baseline count mismatch: ${label(path)}`);
+    }
   }
 }
 function git(args, options = {}) {
@@ -305,6 +385,10 @@ export function scanSnapshots(snapshots) {
   if (typeof adoptionBrand !== "string" || !/^[a-z]+$/.test(adoptionBrand)) throw new Error("invalid adoption brand policy");
   const sourceContents = new Map(sources.map(({ path, contents }) => [path, contents]));
   for (const row of ui.counts) {
+    if (row.counts?.["ui-15"]) {
+      row.counts["ui-15"] -= allowedFulfillmentAdapterWords(row.path, sourceContents.get(row.path) ?? "");
+      if (row.counts["ui-15"] === 0) delete row.counts["ui-15"];
+    }
     for (const category of ["ui-13", "ui-14", "ui-5", "ui-8"]) {
       if (row.counts?.[category]) {
         row.counts[category] -= allowedPaymentAdapterWords(row.path, sourceContents.get(row.path) ?? "", category);
@@ -371,23 +455,25 @@ function main() {
     && [...baseBytes].every(([path, bytes]) => currentBytes.get(path)?.equals(bytes));
   const current = identicalSnapshots ? measuredBase : scanSnapshots(currentBytes);
   for (const path of current.binary) if (Object.keys(measuredBase.rows[hash(path)] ?? {}).length) throw new Error(`contaminated text became binary: ${label(path)}`);
-  const baseIncreases = neutralityIncreases(measuredBase.rows, current.rows);
+  const baseIncreases = unreviewedPinnedIntroductionIncreases(neutralityIncreases(measuredBase.rows, current.rows), currentBytes);
   if (options[0] === "--write-baseline") {
     const counts = parent ? current.rows : measuredBase.rows;
-    const raised = parent ? neutralityIncreases(parent.counts, counts) : [];
+    const raised = parent ? unreviewedPinnedIntroductionIncreases(neutralityIncreases(parent.counts, counts), currentBytes) : [];
     if (baseIncreases.length || raised.length) {
       report([...baseIncreases, ...raised], { ...measuredBase.paths, ...current.paths });
       throw new Error("baseline regeneration would increase accepted debt");
     }
     readLocal(baselinePath, true); // Refuse a symlink or nonregular target.
-    try { writeFileSync(join(root, baselinePath), `${JSON.stringify({ schemaVersion: 2, sourceCommit: base, scannerPins, counts }, null, 2)}\n`); }
+    const baseline = { schemaVersion: 2, sourceCommit: base, scannerPins, counts };
+    validateBaseline(baseline);
+    try { writeFileSync(join(root, baselinePath), `${JSON.stringify(baseline, null, 2)}\n`); }
     catch { throw new Error(`unable to write neutrality baseline: ${label(baselinePath)}`); }
   } else {
     if (!currentBytes.has(baselinePath)) throw new Error("neutrality baseline missing or removed");
     const baseline = parseBaseline(currentBytes.get(baselinePath));
     for (const path of scannerPaths) if (baseline.scannerPins[path] !== scannerPins[path]) throw new Error(`baseline scanner pin drift: ${label(path)}`);
     if (!parent && (baseline.sourceCommit !== base || JSON.stringify(baseline.counts) !== JSON.stringify(measuredBase.rows))) throw new Error("initial neutrality baseline must equal the measured base tree");
-    const raised = parent ? neutralityIncreases(parent.counts, baseline.counts) : [];
+    const raised = parent ? unreviewedPinnedIntroductionIncreases(neutralityIncreases(parent.counts, baseline.counts), currentBytes) : [];
     // The candidate must fit the explicitly recalibrated baseline, even at introduction.
     const increases = neutralityIncreases(baseline.counts, current.rows);
     report([...baseIncreases, ...raised, ...increases], { ...measuredBase.paths, ...current.paths });

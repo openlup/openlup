@@ -1,6 +1,6 @@
 {
   "name": "@openlup/platform",
-  "version": "0.20.0",
+  "version": "0.23.0",
   "private": false,
   "description": "Runnable server substrate: Node HTTP runtime, BFF dispatch, scheduler, storage, data gateways and bundle composition; development preview.",
   "license": "Apache-2.0",
@@ -31,7 +31,7 @@
     "api:update": "npm run build && node --experimental-strip-types ./scripts/api-contract.ts --update"
   },
   "peerDependencies": {
-    "@openlup/core": "0.20.0",
+    "@openlup/core": "0.23.0",
     "pg": "^8.22.0",
     "@aws-sdk/client-s3": "^3.1144.0",
     "@types/pg": "^8.20.0"
@@ -48,7 +48,7 @@
     }
   },
   "dependencies": {
-    "zod": "^4.4.3"
+    "zod": "^4.6.6"
   },
   "exports": {
     "./http": {
@@ -195,6 +195,41 @@
       "types": "./dist/payments/tpay/index.d.ts",
       "import": "./dist/payments/tpay/index.js",
       "default": "./dist/payments/tpay/index.js"
+    },
+    "./fulfillment": {
+      "types": "./dist/fulfillment/index.d.ts",
+      "import": "./dist/fulfillment/index.js",
+      "default": "./dist/fulfillment/index.js"
+    },
+    "./fulfillment/contracts": {
+      "types": "./dist/fulfillment/contracts/index.d.ts",
+      "import": "./dist/fulfillment/contracts/index.js",
+      "default": "./dist/fulfillment/contracts/index.js"
+    },
+    "./fulfillment/omnipack": {
+      "types": "./dist/fulfillment/omnipack/index.d.ts",
+      "import": "./dist/fulfillment/omnipack/index.js",
+      "default": "./dist/fulfillment/omnipack/index.js"
+    },
+    "./subscriptions": {
+      "types": "./dist/subscriptions/index.d.ts",
+      "import": "./dist/subscriptions/index.js",
+      "default": "./dist/subscriptions/index.js"
+    },
+    "./subscriptions/contracts": {
+      "types": "./dist/subscriptions/contracts/index.d.ts",
+      "import": "./dist/subscriptions/contracts/index.js",
+      "default": "./dist/subscriptions/contracts/index.js"
+    },
+    "./invoicing": {
+      "types": "./dist/invoicing/index.d.ts",
+      "import": "./dist/invoicing/index.js",
+      "default": "./dist/invoicing/index.js"
+    },
+    "./invoicing/contracts": {
+      "types": "./dist/invoicing/contracts/index.d.ts",
+      "import": "./dist/invoicing/contracts/index.js",
+      "default": "./dist/invoicing/contracts/index.js"
     }
   },
   "repository": {

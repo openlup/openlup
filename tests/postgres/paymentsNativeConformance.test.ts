@@ -8,12 +8,13 @@ import { afterAll, beforeAll, expect, it } from "vitest";
 import { PAYMENT_MIGRATIONS, createPostgresPaymentTruthPort } from "@openlup/platform/payments";
 import { createPostgresMigrationRunner } from "../../server/adapters/postgres/migrationRunner.js";
 import { readSelectedCatalogProjection, selectedCatalogProjectionPayload } from "../../server/adapters/postgres/selectedCatalogProjection.js";
-import { dockerAvailable, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
+import { closePostgres, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, dockerAvailable, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
 
 const AT = "2026-10-20T12:00:00.000Z";
 const manifest = JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8"));
 const units: { file: string; sha256: string }[] = [manifest.baseline, ...manifest.forward];
 let container: PostgresContainer | undefined, pool: Pool;
+const prefixContainers: PostgresContainer[] = [], prefixPools: Pool[] = [];
 const executor = (db: Pool | PoolClient) => ({ query: (text: string, values?: unknown[]) => db.query(text, values) });
 const truth = (db: Pool | PoolClient = pool) => createPostgresPaymentTruthPort(executor(db), {
   dunningTemplateSlug: "payment_failed", recoveryUrlPath: "/recover", recoveryTemplateSlug: "payment_recovered",
@@ -25,9 +26,14 @@ beforeAll(async () => {
   container = await runPostgresContainer({ name: `payments-native-${process.pid}`, password: "synthetic-conformance" });
   if (!await waitForPostgresTcpReady(container.connectionString)) throw new Error("Payments PostgreSQL unavailable");
   pool = new Pool({ connectionString: container.connectionString });
+  // Acquire the secondary fixture before any test's 60s body can begin.
+  const prefix = await runPostgresContainer({ name: `payments-native-upgrade-${process.pid}`, password: "synthetic-conformance" });
+  prefixContainers.push(prefix);
+  if (!await waitForPostgresTcpReady(prefix.connectionString)) throw new Error("Prefix PostgreSQL unavailable");
+  prefixPools.push(new Pool({ connectionString: prefix.connectionString }));
   await runner().apply();
-}, 120_000);
-afterAll(async () => { await pool?.end(); await container?.remove(); });
+}, postgresSetupTimeoutMs);
+afterAll(async () => { await closePostgres([container, ...prefixContainers], [pool, ...prefixPools]); }, postgresTeardownTimeoutMs);
 
 it("installs the full catalogue, binds projections 10/35/56 and replays the canonical ledger/object inventory", async () => {
   expect(PAYMENT_MIGRATIONS.map(unit => unit.position)).toEqual([10, 35, 56]);
@@ -44,15 +50,12 @@ it("installs the full catalogue, binds projections 10/35/56 and replays the cano
   expect((await pool.query("SELECT * FROM public.platform_schema_migrations ORDER BY position")).rows).toEqual(history);
 });
 it("upgrades the exact complete prefix before unit 56 without rewriting installed history", async () => {
-  let resource: PostgresContainer | undefined, upgrade: Pool | undefined;
+  const resource = prefixContainers[0], upgrade = prefixPools[0];
   const root = mkdtempSync(join(tmpdir(), "payments-prefix-"));
   try {
     // The full-install cluster owns global roles. This clean prefix cluster is
     // separate, but its raw inventory probe can roll back roles and schema before
     // the real runner installs the same immutable prefix, avoiding a third boot.
-    resource = await runPostgresContainer({ name: `payments-native-upgrade-${process.pid}`, password: "synthetic-conformance" });
-    if (!await waitForPostgresTcpReady(resource.connectionString)) throw new Error("Payments prefix PostgreSQL unavailable");
-    upgrade = new Pool({ connectionString: resource.connectionString });
     const db = await upgrade.connect();
     let payload: string;
     try {
@@ -70,7 +73,7 @@ it("upgrades the exact complete prefix before unit 56 without rewriting installe
     expect((await upgrade.query("SELECT * FROM public.platform_schema_migrations WHERE position<56 ORDER BY position")).rows).toEqual(before);
     expect((await runner(upgrade).status()).pending).toEqual([]);
     expect(await runner(upgrade).apply()).toEqual({ applied: [] });
-  } finally { await upgrade?.end(); await resource?.remove(); rmSync(root, { recursive: true, force: true }); }
+  } finally { await closePostgres(resource, upgrade); rmSync(root, { recursive: true, force: true }); }
 }, 60_000);
 
 async function fixture(subscriptionDate?: string) {
@@ -98,6 +101,11 @@ async function fixture(subscriptionDate?: string) {
   return { input, order, subscription, cycle };
 }
 
+// P4b enumerated public expectation changes (no payment export change):
+// 1. captured-event replay: accountingRequested true -> false.
+// 2. captured dunning recovery: accountingRequested true -> false.
+// 192000 records an independent owed duty, not an accounting document link.
+// All money, recovery, replay, refusal and monotonic-cycle expectations remain.
 it("commits accepted truth before acknowledgement, replays once and refuses fingerprint conflict", async () => {
   const f = await fixture();
   // Simulate lost transport acknowledgement after the real committed SQL call.
@@ -105,7 +113,7 @@ it("commits accepted truth before acknowledgement, replays once and refuses fing
   await expect(lostAck()).rejects.toThrow("ack_lost");
   const replay = await truth().ingestEvent(f.input);
   expect(replay).toMatchObject({ event: { replayed: true, state: "settled", outcome: "captured" },
-    effects: { paymentResultRecorded: true, accountingRequested: true }, financial: { orderStatus: "paid" } });
+    effects: { paymentResultRecorded: true, accountingRequested: false }, financial: { orderStatus: "paid" } });
   await expect(truth().ingestEvent({ ...f.input, amountMinor: 901 })).rejects.toMatchObject({ code: "23505" });
   expect((await pool.query("SELECT * FROM public.commerce_settlement_transitions WHERE intent_id=$1", [f.input.settlementIntentId])).rows).toHaveLength(1);
   expect(await truth().readEvent(replay.event.id)).toMatchObject({ event: { replayed: false, state: "settled" } });
@@ -142,7 +150,7 @@ it("refuses an unprivileged actor and applies refused settlement without paying 
   expect((await pool.query("SELECT * FROM public.subscription_dunning_cases WHERE subscription_id=$1", [f.subscription])).rows).toHaveLength(1);
   expect((await pool.query("SELECT * FROM public.subscription_dunning_notifications WHERE case_id=(SELECT id FROM public.subscription_dunning_cases WHERE subscription_id=$1)", [f.subscription])).rows).toHaveLength(1);
   const recovered = await truth().ingestEvent({ ...f.input, sourceEventId: `${f.input.sourceEventId}:recovery`, idempotencyKey: `${f.input.idempotencyKey}:recovery` });
-  expect(recovered.effects.accountingRequested).toBe(true);
+  expect(recovered.effects.accountingRequested).toBe(false);
   expect((await pool.query("SELECT status FROM public.subscription_dunning_cases WHERE subscription_id=$1", [f.subscription])).rows).toEqual([{ status: "recovered" }]);
 });
 it("serializes simultaneous identical events behind a row lock with exactly one financial effect", async () => {

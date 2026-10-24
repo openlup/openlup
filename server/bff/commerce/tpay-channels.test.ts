@@ -5,7 +5,7 @@ const { mockCreateTpayHttpClient } = vi.hoisted(() => ({
   mockCreateTpayHttpClient: vi.fn(() => ({ listPaymentChannels: vi.fn(async () => []) })),
 }));
 
-vi.mock("../../infra/tpay/tpayHttpClient.js", () => ({
+vi.mock("@openlup/platform/payments/tpay", () => ({
   createTpayHttpClient: mockCreateTpayHttpClient,
 }));
 

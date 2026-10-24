@@ -11,6 +11,12 @@ import { assertInstalledPackages, isolatedConsumerEnv, readCurrentPackManifest }
 import { POSTGRES_PROOF_IMAGE } from "./outbox-disposable-postgres.ts";
 
 export const NON_ADAPTER_ENTRIES = [
+  "invoicing",
+  "invoicing/contracts",
+  "subscriptions",
+  "subscriptions/contracts",
+  "fulfillment",
+  "fulfillment/contracts",
   "payments",
   "payments/contracts",
   "bff",
@@ -39,6 +45,7 @@ export const ADAPTER_ENTRIES = [
   "communications/resend",
   "payments/stripe",
   "payments/tpay",
+  "fulfillment/omnipack",
   "data",
   "identity",
   "job-ledger",
@@ -121,6 +128,122 @@ export function assertExportInventory(consumer: string): void {
 }
 
 
+/** Actual installed P1 descriptor and browser import; no live provider or worker. */
+export function proveInvoicingConsumer(consumer: string): void {
+  consumerNode(consumer, `
+import assert from "node:assert/strict";
+import { readInvoiceCapabilities, createNativeUnsupportedInvoicePorts, runInvoiceAdapterConformance, createPostgresInvoiceStore, INVOICING_MIGRATIONS, runNativeInvoiceIssueJob, collectInvoiceDuties, createIndependentInvoiceDutyBinding } from "@openlup/platform/invoicing";
+import * as contracts from "@openlup/platform/invoicing/contracts";
+assert.deepEqual(Object.keys(contracts), []);
+for (const entry of ["invoicing", "invoicing/contracts"]) assert(import.meta.resolve("@openlup/platform/" + entry).startsWith(new URL("./node_modules/", import.meta.url).href));
+const supported = {supported:true}, unsupported = {supported:false,reason:"host_required"};
+const capability = {version:"invoicing.capabilities.v1",providerRef:"fiscal-a",fiscalScope:{scopeRef:"host-scope",version:"v1"},policies:{identifierRef:"id-v1",taxRef:"tax-v1",roundingRef:"round-v1"},documentKinds:["host-document"],correctionKinds:["full_reversal"],numberingOwner:"provider",sellerTiming:"execution",defaultOff:true,
+operations:Object.fromEntries(["issue","correction","recovery","readback","exactAbsence","remoteVoid","artifact","clearance","settlement","companyLookup"].map(key=>[key,key==="issue"?supported:key==="remoteVoid"?{supported:false,reason:"not_implemented"}:unsupported]))};
+assert.equal(readInvoiceCapabilities({selection:{providerRef:"fiscal-a"},capability}).code,"disabled");
+assert.equal(readInvoiceCapabilities({enabled:true,selection:null,capability}).code,"selection_required");
+assert.equal(readInvoiceCapabilities({enabled:true,selection:{providerRef:"other"},capability}).code,"selection_required");
+assert.equal(readInvoiceCapabilities({enabled:true,selection:{providerRef:"fiscal-a"},capability}).capability,capability);
+const native=createNativeUnsupportedInvoicePorts();
+const unsupportedResult={kind:"unsupported",code:"host_binding_required",retryable:false,effectMayHaveSucceeded:false};
+assert.deepEqual(await native.host.facts.read("order-a"),unsupportedResult);
+assert.deepEqual(await native.host.settlement.record({}),unsupportedResult);
+assert.deepEqual(await native.store.requestLocalDocument({}),unsupportedResult);
+const identity={providerRef:"fiscal-a",requestKey:"key-a",providerCreateIdentity:"create-a",factRevision:"revision-a",orderRef:"order-a",invoiceRef:"invoice-a",operation:"issue",correctionRef:null,parentProviderDocumentRef:null};
+const correction={...identity,operation:"full_reversal",correctionRef:"correction-a",parentProviderDocumentRef:"external-a"};
+const evidence=await runInvoiceAdapterConformance([{subjectId:"native",capability:{...capability,operations:{...Object.fromEntries(Object.keys(capability.operations).map(key=>[key,unsupported])),remoteVoid:capability.operations.remoteVoid}},provider:native.provider,readWriteCount:()=>0,sensitiveValues:[],fixtures:{
+issue:[{input:{identity,facts:{},recoveryLookupRequired:false},expected:unsupportedResult}],
+correction:[{input:{identity:correction,before:{},after:{totalNetMinor:0,totalTaxMinor:0,totalGrossMinor:0},reason:"reason",recoveryLookupRequired:true},expected:unsupportedResult}],
+readback:[{input:identity,expected:unsupportedResult}],void:[{input:{...identity,operation:"remote_void"},expected:unsupportedResult}]}}]);
+assert(evidence.subjects[0].cases.includes("read:unsupported"));
+let calls=0;
+const store=createPostgresInvoiceStore({async query(sql,values){calls++;assert(sql.includes("invoicing_duty_readback"));assert.deepEqual(values,["order-a"]);return {rows:[{response:{orderId:"order-a",captureFaults:[],duties:[]}}]};}});
+const discoveredStore=createPostgresInvoiceStore({async query(sql,values){assert(sql.includes("NOT EXISTS (SELECT 1 FROM public.invoicing_fact_revisions"));assert.deepEqual(values,[7,"prior-a"]);assert(sql.includes("($2::uuid IS NULL OR d.id>$2::uuid)"));return {rows:[{dutyId:"owed-a",orderId:"order-a"}]};}});
+assert.deepEqual(await discoveredStore.discoverDuties(7,"prior-a"),[{dutyId:"owed-a",orderId:"order-a"}]);
+assert.equal((await store.installFacts({dutyId:"owed-a",facts:{}})).kind,"unsupported");assert.equal(calls,0);
+assert.deepEqual(await store.readDuties("order-a"),{orderId:"order-a",captureFaults:[],duties:[]});assert.equal(calls,1);
+const {readFileSync}=await import("node:fs"),{createHash}=await import("node:crypto");
+assert.equal(INVOICING_MIGRATIONS.native.correctionStorage,"child_document");assert.equal(INVOICING_MIGRATIONS.managed.correctionStorage,"base_row");
+for(const unit of INVOICING_MIGRATIONS.native.units)assert.equal(createHash("sha256").update(readFileSync(unit.url)).digest("hex"),unit.sha256);
+assert.deepEqual(await runNativeInvoiceIssueJob({store:native.store,provider:native.provider,money:native.host.money,
+  readLocalPayment:async()=>({kind:"unavailable",code:"money_unavailable"}),providerRef:"host-a"}),unsupportedResult);
+let remoteReads=0,nativeFailures=0;
+const recovered=await runNativeInvoiceIssueJob({providerRef:"fiscal-a",store:{
+  claim:async()=>[{dutyId:"duty-a",documentId:"doc-a",requestId:"req-a",token:"token-a",generation:3,leaseUntil:"2099-01-01",identity,facts:{},action:"readback",correction:null}],
+  preflight:async()=>{throw Error("unexpected payment preflight");},finish:async()=>{throw Error("unexpected acknowledgement");},
+  fail:async value=>{assert.equal(value.kind,"unknown");assert.equal(value.claim.attemptCount,3);nativeFailures++;return {kind:"recorded"};}},
+  provider:{...native.provider,read:async value=>{assert.deepEqual(value,identity);remoteReads++;return {kind:"unknown",identity,code:"unknown"};}},
+  money:{read:async()=>{throw Error("unexpected money read");}},readLocalPayment:async()=>{throw Error("unexpected local read");}});
+assert.deepEqual(recovered,{checked:1,updated:0,failures:1,ok:false});assert.equal(remoteReads,1);assert.equal(nativeFailures,1);
+assert.deepEqual(await collectInvoiceDuties({store:native.store}),unsupportedResult);
+let prepared=0,finished=0;
+const dutyBinding=createIndependentInvoiceDutyBinding({store:{
+  sweep:async()=>({collected:1,claims:[{dutyId:"duty-a",token:"token-a"}]}),
+  prepareFacts:async claim=>{assert.deepEqual(claim,{dutyId:"duty-a",token:"token-a"});prepared++;return {status:"ready",documentId:"document-a",requestId:"request-a"};},
+  finishFacts:async input=>{assert.equal(input.result.documentId,"document-a");finished++;return {dutyId:input.dutyId,status:"ready"};}
+}});
+assert.deepEqual(await dutyBinding.collect(),{kind:"collected",collected:1,prepared:1,failures:0});
+assert.equal(prepared,1);assert.equal(finished,1);
+console.log("invoicing consumer passed");
+`);
+}
+
+/** Offline fulfillment contract and explicit-selection proof from installed bytes. */
+export function proveFulfillmentConsumer(consumer: string): void {
+  consumerNode(consumer, `
+import assert from "node:assert/strict";
+import { customerStepFromSignals, readFulfillmentCapabilities, createFulfillmentServices, FULFILLMENT_NATIVE_UNSUPPORTED } from "@openlup/platform/fulfillment";
+import { createBundleComposer, createFulfillmentContribution } from "@openlup/platform/composition";
+import * as contracts from "@openlup/platform/fulfillment/contracts";
+assert.deepEqual(Object.keys(contracts), []);
+for (const entry of ["fulfillment", "fulfillment/contracts", "composition"]) assert(import.meta.resolve("@openlup/platform/" + entry).startsWith(new URL("./node_modules/", import.meta.url).href));
+let writes = 0, reads = 0;
+const support = {supported:true}, no = {supported:false,reason:"not_exposed"};
+const capability = {providerRef:"warehouse-a",role:"warehouse",defaultOff:true,selected:true,readiness:{ready:true},
+  operations:Object.fromEntries(["dispatch","readback","exactAbsence","verifyObservation","syncStock","syncProducts","labelCreate","labelRead","labelVoid","cancel","pickupPoint","courierPickup"].map(key=>[key,key==="dispatch"?support:no])),
+  authentication:"none",freshness:"not_available",ownsDeliveredNotification:false,stockAuthority:"local_atp",labelReadOwner:"none",actionPolicy:{providerSpecificAdminActions:false,genericAdminActions:false,mutationSurface:"none"}};
+const options = {selection:{providerRef:"warehouse-a",carrierRef:"carrier-a",serviceRef:"service-a",deliveryKind:"courier",pickupPoint:null},capability,
+  store:{async markStaleSubmissionsUncertain(){writes++;return 0;}},provider:{},readiness:async()=>({ready:true}),listCandidates:async()=>{reads++;return [];},
+  keys:{request:v=>v.requestKey,mappedAttempt:key=>key,acceptance:ref=>({providerAttemptKey:ref,labelKey:ref})},config:{mode:"live",batchLimit:1}};
+const off = createFulfillmentServices(options);
+assert.equal((await off.runDispatch()).refusal.reason,"disabled");assert.equal(writes,0);assert.equal(reads,0);
+const refused = createFulfillmentServices({...options,enabled:true,store:null});
+assert.equal(await refused.runDispatch(),FULFILLMENT_NATIVE_UNSUPPORTED);
+const ready = createFulfillmentServices({...options,enabled:true});
+assert.equal(createBundleComposer({blob:()=>null,fulfillment:()=>ready})({}).ports.fulfillment,ready);
+const contribution=createFulfillmentContribution({version:"0.21.0",requiredSchema:{version:"fixture",migration:"fixture",objects:[]},fulfillment:{dispatch:ready.runDispatch},handlers:[],schedules:[],routes:[]});
+assert.equal(contribution.ports["@openlup/platform/fulfillment:dispatch"],ready.runDispatch);
+assert.equal((await ready.runDispatch()).checked,0);assert.equal(writes,1);assert.equal(reads,1);
+
+assert.equal(customerStepFromSignals(["label_created", "picking"]), "packing");
+assert.deepEqual(readFulfillmentCapabilities([], null), {kind:"refused",refusal:{reason:"selection_required",phase:"selection",retryable:false}});
+`);
+}
+
+/** Offline installed subscription trial with host-owned policies and refusal declarations. */
+export function proveSubscriptionsConsumer(consumer: string): void {
+  consumerNode(consumer, `
+import assert from "node:assert/strict";
+import { renewalIdentity, NATIVE_SUBSCRIPTION_CAPABILITIES, executeRenewalCycle, prepareRenewalAttempt, checkRenewalDeliveryAdmission, propagateRenewalFailure } from "@openlup/platform/subscriptions";
+import * as contracts from "@openlup/platform/subscriptions/contracts";
+assert.deepEqual(Object.keys(contracts), []);
+assert.equal(NATIVE_SUBSCRIPTION_CAPABILITIES.defaultEnabled, false);
+assert.equal(NATIVE_SUBSCRIPTION_CAPABILITIES.executorCount, 1);
+for (const [capability, refusalCode] of [
+  ["multiCyclePrepaid", "multi_cycle_prepaid_unsupported"],
+  ["genericBundleCommands", "native_generic_bundle_commands_unsupported"],
+  ["commandBoundReceipts", "native_command_bound_receipts_unsupported"],
+  ["preparedAttemptStore", "native_prepared_attempt_store_unsupported"],
+]) assert.deepEqual(NATIVE_SUBSCRIPTION_CAPABILITIES[capability], {supported:false,refusalCode});
+const input = {subscriptionId:"subscription",scheduledAt:"2026-10-21T14:00:00+02:00",scheduledInstant:1792584000000};
+const identity = {cycleIdempotencyKey:"original:cycle",executionIdempotencyKey:"original:execute",externalIdempotencyKey:"original:external",requestFingerprint:"original:fingerprint"};
+assert.equal(renewalIdentity(input, value => { assert.equal(value,input); return identity; }), identity);
+for (const mechanism of [executeRenewalCycle, prepareRenewalAttempt, propagateRenewalFailure]) assert.equal(typeof mechanism,"function");
+const allowed={allowed:true,state:"clear",reason:"synthetic"};
+assert.equal((await checkRenewalDeliveryAdmission({admitDeliveryAlignment:async value=>{assert.equal(value.scheduledAt,input.scheduledAt);return allowed;}},{subscriptionId:input.subscriptionId,nextCycleAt:input.scheduledAt},"now")).admitted,allowed);
+console.log("subscriptions consumer passed");
+`);
+}
+
 /** Offline installed payments trial with host-owned persistence and refusal policy. */
 export function provePaymentsConsumer(consumer: string): void {
   consumerNode(consumer, `
@@ -171,6 +294,44 @@ export function compileConsumer(consumer: string, entries: readonly string[], co
     'import type { createPaymentServices } from "@openlup/platform/payments";',
     "declare const services: NonNullable<ReturnType<typeof createPaymentServices>>;",
     "export const composedWithPayments = createBundleComposer({ blob: () => null, payments: () => services });",
+  ].join("\n"));
+  if (entries.includes("fulfillment") && entries.includes("fulfillment/contracts") && entries.includes("composition")) surfaces.push([
+    'import { createFulfillmentServices } from "@openlup/platform/fulfillment";',
+    'import { createFulfillmentContribution, createBundleComposer as composeFulfillment } from "@openlup/platform/composition";',
+    'import type { FulfillmentServicesOptions, FulfillmentServices } from "@openlup/platform/fulfillment/contracts";',
+    'declare const fulfillmentOptions: FulfillmentServicesOptions;',
+    'const fulfillment: FulfillmentServices = createFulfillmentServices(fulfillmentOptions);',
+    'export const composedFulfillment = composeFulfillment({blob:()=>null,fulfillment:()=>fulfillment});',
+    'export const fulfillmentContribution = createFulfillmentContribution({version:"0.21.0",requiredSchema:{version:"fixture",migration:"fixture",objects:[]},fulfillment:{dispatch:fulfillment.runDispatch},handlers:[],schedules:[],routes:[]});',
+  ].join("\n"));
+  if (entries.includes("invoicing") && entries.includes("invoicing/contracts")) surfaces.push([
+    'import { readInvoiceCapabilities, createNativeUnsupportedInvoicePorts, runInvoiceAdapterConformance } from "@openlup/platform/invoicing";',
+    'import type { InvoiceFacts, InvoiceLine, InvoiceSeller, InvoiceBuyer, InvoiceIdentity, InvoiceWriteResult, InvoiceReadbackResult, InvoiceArtifactResult, InvoiceSettlementResult, InvoiceCapabilities, InvoiceCompanyLookupPort, InvoiceStorePort, InvoiceHostPorts, InvoiceServicesOptions, InvoiceDocumentIdentity, InvoiceProviderPort, InvoiceSettlementPort, InvoiceSettlementItem, InvoiceDutyReadback, InvoiceUnsupported, InvoiceDiagnosticCode, InvoiceProof, InvoiceClearanceObservation } from "@openlup/platform/invoicing/contracts";',
+    'declare const invoiceCapability: InvoiceCapabilities;',
+    'export const unsupportedInvoices = createNativeUnsupportedInvoicePorts();',
+    'export type InvoiceConformanceSubject = Parameters<typeof runInvoiceAdapterConformance>[0][number];',
+    'export const invoiceSelection = readInvoiceCapabilities({ enabled: true, selection: { providerRef: invoiceCapability.providerRef }, capability: invoiceCapability });',
+    'export type InvoiceConsumer = [InvoiceFacts, InvoiceLine, InvoiceSeller, InvoiceBuyer, InvoiceIdentity, InvoiceWriteResult, InvoiceReadbackResult, InvoiceArtifactResult, InvoiceSettlementResult, InvoiceCompanyLookupPort, InvoiceStorePort, InvoiceHostPorts, InvoiceServicesOptions, InvoiceDocumentIdentity, InvoiceProviderPort, InvoiceSettlementPort, InvoiceSettlementItem, InvoiceDutyReadback, InvoiceUnsupported, InvoiceDiagnosticCode, InvoiceProof, InvoiceClearanceObservation];',
+    // CI compiles the 14 pinned SQL seam mappings from portFit.test.ts against installed types.
+    // Distribute over union arms so absent evidence and before_send phase cannot disappear.
+    'type RequiredKeys<T> = T extends object ? { [K in keyof T]-?: object extends Pick<T, K> ? never : K }[keyof T] : "$value";',
+    'type SeamInput<M extends keyof InvoiceStorePort> = Parameters<InvoiceStorePort[M]>[0];',
+    'export const invoiceSeam_captureDuty = {"requestKey": "p_key", "sourceKind": "p_source_kind", "sourceId": "p_source_id", "orderId": "p_order_id", "occurredAt": "p_occurred_at", "evidence": "p_evidence"} satisfies Record<RequiredKeys<SeamInput<"captureDuty">>, string>;',
+    'export const invoiceSeam_installFacts = {"dutyId": "p_duty", "facts": "p_facts + p_revision"} satisfies Record<RequiredKeys<SeamInput<"installFacts">>, string>;',
+    'export const invoiceSeam_sweep = {"$value": "p_limit"} satisfies Record<RequiredKeys<SeamInput<"sweep">>, string>;',
+    'export const invoiceSeam_prepareFacts = {"dutyId": "p_duty", "token": "p_token"} satisfies Record<RequiredKeys<SeamInput<"prepareFacts">>, string>;',
+    'export const invoiceSeam_finishFacts = {"dutyId": "p_duty", "token": "p_token", "result": "p_result"} satisfies Record<RequiredKeys<SeamInput<"finishFacts">>, string>;',
+    'export const invoiceSeam_readDuties = {"$value": "p_order_id"} satisfies Record<RequiredKeys<SeamInput<"readDuties">>, string>;',
+    'export const invoiceSeam_claim = {"limit": "p_limit", "visibilitySeconds": "p_visibility / managed local lease", "providerRef": "p_provider / managed binding validation"} satisfies Record<RequiredKeys<SeamInput<"claim">>, string>;',
+    'export const invoiceSeam_preflight = {"claim": "p_duty + p_token + p_generation", "amountMinor": "p_evidence", "currency": "p_evidence", "status": "p_evidence", "proof": "p_evidence (observed arm)", "evidence": "p_evidence (absent arm)"} satisfies Record<RequiredKeys<SeamInput<"preflight">>, string>;',
+    'export const invoiceSeam_finish = {"claim": "p_duty + p_token + p_generation", "result": "p_external + p_number + p_proof"} satisfies Record<RequiredKeys<SeamInput<"finish">>, string>;',
+    'export const invoiceSeam_fail = {"claim": "p_duty + p_token + p_generation", "retrySeconds": "p_delay", "kind": "p_kind", "phase": "p_evidence (retryable arm)", "proof": "p_evidence", "evidence": "p_evidence (absent arm)"} satisfies Record<RequiredKeys<SeamInput<"fail">>, string>;',
+    'export const invoiceSeam_requestReversal = {"requestKey": "p_key", "orderId": "p_order", "reason": "p_reason", "proof": "p_evidence"} satisfies Record<RequiredKeys<SeamInput<"requestReversal">>, string>;',
+    'export const invoiceSeam_recordObservation = {"requestKey": "p_key", "documentId": "p_document", "eventRef": "p_observation", "eventKind": "p_observation", "identity": "p_observation", "providerDocumentRef": "p_observation", "providerDocumentNumber": "p_observation", "clearance": "p_observation", "artifacts": "p_observation", "observedAt": "p_observation", "payloadHash": "p_observation", "source": "p_observation"} satisfies Record<RequiredKeys<SeamInput<"recordObservation">>, string>;',
+    'export const invoiceSeam_claimDeliveries = {"limit": "p_limit", "visibilitySeconds": "p_visibility", "requireClearance": "p_require_clearance"} satisfies Record<RequiredKeys<SeamInput<"claimDeliveries">>, string>;',
+    'export const invoiceSeam_settleDelivery = {"deliveryRef": "p_delivery", "token": "p_token", "generation": "p_generation", "providerDocumentRef": "local claimed document validation", "retrySeconds": "p_evidence (native); p_retry_seconds (managed)", "result": "p_kind + p_receipt (NULL when uncertain) + p_evidence (retryable and uncertain receipt hint)"} satisfies Record<RequiredKeys<SeamInput<"settleDelivery">>, string>;',
+    'declare const invoiceIdentity: InvoiceIdentity;',
+    'export const invoiceAbsent: InvoiceReadbackResult = { kind: "absent", identity: invoiceIdentity, evidence: { exact: true, complete: true, scope: invoiceIdentity, evidenceRef: "lookup-a", fingerprint: "fingerprint-a", observedAt: "2026-10-22T12:00:00Z" } };',
   ].join("\n"));
   writeFileSync(file, surfaces.join("\n"));
   for (const mode of ["NodeNext", "Bundler"]) {
@@ -355,7 +516,7 @@ globalThis.fetch = forbidden; http.request = forbidden; https.request = forbidde
 for (const operation of ["writeFile", "writeFileSync"]) fs[operation] = forbidden;
 syncBuiltinESMExports();
 const adapter = await import("@openlup/platform/payments/stripe");
-assert.deepEqual(Object.keys(adapter).sort(), ["createStripePaymentAdapter", "stripePaymentCapabilities"]);
+assert.deepEqual(Object.keys(adapter).sort(), ["createStripePaymentAdapter", "stripePaymentCapabilities", "createStripeSandboxPaymentExecutionAdapter", "createStripePaymentReconciliationProvider", "mapStripeIntent", "mapSetupIntent", "normalizeStripeFailureEvidence"].sort());
 let calls = 0;
 const configured = adapter.createStripePaymentAdapter({ mode: "test", supportedCurrencies: ["EUR"], webhookSigningSecrets: ["fixture"], client: {
  createPaymentIntent: async (input, options) => { calls++; assert.equal(options.idempotencyKey,"host-key");
@@ -374,7 +535,11 @@ assert.equal(calls,1); assert.equal(configured.absencePort,undefined);
 const second = await import("@openlup/platform/payments/tpay");
 const secondFactory = "create" + "T" + "payPaymentAdapter";
 const secondCapabilities = "t" + "payPaymentCapabilities";
-assert.deepEqual(Object.keys(second).sort(), [secondFactory, secondCapabilities].sort());
+assert.deepEqual(Object.keys(second).sort(), [secondFactory, secondCapabilities, "createTpayPaymentExecutionAdapter", "createTpayPaymentReconciliationProvider", "createTpayHttpClient", "normalizeTpayFailureEvidence", "aliasValue", "ProviderAttemptPreDispatchError"].sort());
+for (const entry of ["payments", "payments/contracts"]) {
+ const neutral = await import("@openlup/platform/" + entry);
+ for (const name of [...Object.keys(adapter), ...Object.keys(second)]) assert(!Object.hasOwn(neutral, name), "vendor leaked to neutral entry");
+}
 assert.equal(second[secondCapabilities].exactAbsence,"unsupported");
 assert.equal(second[secondCapabilities].refundCreate,"unsupported");
 assert.equal(second[secondCapabilities].authorizationCaptureSplit,"unsupported");
@@ -382,6 +547,52 @@ assert.deepEqual(second[secondCapabilities].supportedCurrencies,[String.fromChar
 assert.throws(() => second[secondFactory]({ notification: {} }));
 assert.equal(configured.capabilities.refundCreate,"unsupported");
 assert.deepEqual(await configured.verifyPort.verifyAndNormalize({rawBody:Buffer.from("{}"),headers:{},receivedAt:"2026-10-21T00:00:00Z"}),{kind:"refusal",reason:"signature"});
+`);
+}
+
+/** Opt-in warehouse proof with absent SDK/peers and exclusively injected I/O. */
+export function proveWarehouseAdapterConsumer(consumer: string): void {
+  consumerNode(consumer, `
+import assert from "node:assert/strict";
+import { createRequire, syncBuiltinESMExports } from "node:module";
+import http from "node:http";
+import https from "node:https";
+import net from "node:net";
+const subpath = "fulfillment/omnipack";
+const provider = subpath.split("/")[1];
+assert.throws(() => createRequire(import.meta.url).resolve(provider), error => ["MODULE_NOT_FOUND", "ERR_MODULE_NOT_FOUND"].includes(error.code));
+const forbidden = () => { throw Error("ambient I/O forbidden"); };
+globalThis.fetch = forbidden; http.request = forbidden; https.request = forbidden; net.connect = forbidden;
+syncBuiltinESMExports();
+const entry = await import("@openlup/platform/" + subpath);
+const factory = "create" + provider[0].toUpperCase() + provider.slice(1) + "FulfillmentAdapter";
+const descriptor = provider + "FulfillmentCapabilities";
+assert.deepEqual(Object.keys(entry).sort(), [factory, descriptor].sort());
+assert.equal(entry[descriptor].defaultOff, true); assert.equal(entry[descriptor].selected, false);
+assert.equal(entry[descriptor].readiness.ready, false);
+let calls = 0, credentials = 0;
+const config = {http:{baseUrl:"https://warehouse.example.test", timeoutMs:1000, safeReadRetries:0, productPath:"/products",
+ credentials:()=>{credentials++;return {username:"example",password:"transient-placeholder"};},
+ fetchImpl:async(_,input)=>{calls++; assert.equal(input.method,"POST"); return new Response(JSON.stringify({orderId:"external-a",apiKey:"transient-placeholder"}));}},
+ resolveProduct:async()=>({}),notification:{token:()=>"transient-placeholder",expectedEvent:"order.delivered"},
+ clock:()=>"2026-10-21T10:00:00Z",mintSyncRunId:()=>"sync-a",mintEvidenceReference:()=>"evidence:00000000-0000-4000-8000-000000000001",approveTrackingUrl:()=>false};
+const dormant = entry[factory](config);
+const request = {requestKey:"request-a",fulfillmentRef:"fulfillment-a",orderRef:"order-a",orderNumber:"ORDER-A",parcelRef:null,
+ contactRevision:{schemaVersion:1,source:"checkout",revision:1},
+ recipient:{name:"Example Recipient",email:"recipient@example.test",phone:"+12025550123",line1:"123 Example Street",line2:null,city:"Example City",postalCode:"10001",country:"US",deliveryInstructions:null,courierInstructions:null},
+ lines:[{skuRef:"SKU-A",title:null,quantity:1,productRef:null,packRef:null}],
+ selection:{providerRef:provider,carrierRef:"carrier-a",serviceRef:"service-a",deliveryKind:"courier",pickupPoint:null}};
+assert.equal((await dormant.dispatch.prepare(request)).refusal.reason,"disabled");
+const adapter = entry[factory]({...config,selected:true,readiness:{ready:true}});
+const missing = await adapter.dispatch.dispatch(request,{});
+assert.equal(missing.kind,"not_dispatched"); assert.equal(missing.refusal.reason,"not_dispatchable");
+assert.equal(calls,0); assert.equal(credentials,0);
+const prepared = await adapter.dispatch.prepare(request); assert.equal(prepared.kind,"prepared");
+const result = await adapter.dispatch.dispatch(request,prepared.evidence); assert.equal(result.kind,"accepted");
+assert.equal(calls,1);assert.equal(credentials,1);
+assert(!JSON.stringify(result).includes("transient-placeholder"));assert(!JSON.stringify(result).includes("recipient@example.test"));
+assert.equal((await adapter.readback.read({providerRef:provider,requestKey:"request-a",fulfillmentRef:"fulfillment-a",externalRef:null,mode:"command"})).kind,"unsupported");
+assert.equal(calls,1);
 `);
 }
 
@@ -956,8 +1167,12 @@ assert.throws(() => promotions.resolvePromotionBenefitDefinition({ discount_type
     proveCommunicationsConsumer(consumer);
     proveResendConsumer(consumer);
     provePaymentAdapterConsumer(consumer);
+    proveWarehouseAdapterConsumer(consumer);
     proveMarketingSyncConsumer(consumer);
+    proveInvoicingConsumer(consumer);
+    proveSubscriptionsConsumer(consumer);
     provePaymentsConsumer(consumer);
+    proveFulfillmentConsumer(consumer);
     installA1HostBinding(consumer, checkout);
     proveA1ReferenceBindingConsumer(consumer, "imports");
     proveA1ReferenceBindingConsumer(consumer, "selection");

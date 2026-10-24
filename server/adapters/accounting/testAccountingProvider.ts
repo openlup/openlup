@@ -21,17 +21,10 @@ export function createTestAccountingProvider(): AccountingDocumentProviderPort {
         },
       };
     },
-    async createFullCorrection(
-      snapshot: AccountingDocumentProviderInvoiceSnapshot,
-      _options: { correctedProviderInvoiceId: string; correctionReason: string },
-    ) {
-      const invoiceNumber = `TEST/KOR/${stableRef(snapshot.orderRef)}`;
-      return {
-        providerInvoiceId: `test_inv_correction_${stableRef(snapshot.orderRef)}`,
-        providerInvoiceNumber: invoiceNumber,
-        raw: { provider: "fakturownia_test", mode: "test", invoiceNumber, correction: true },
-      };
+    async createFullCorrection() {
+      throw new Error("accounting_correction_recovery_unsupported");
     },
+    correctionRecovery: { createFullCorrection: createTestCorrection },
     async downloadInvoicePdf(providerInvoiceId: string) {
       if (!providerInvoiceId.startsWith("test_inv_")) throw new Error("test_invoice_provider_ref_invalid");
       return {
@@ -70,4 +63,16 @@ function testInvoiceNumber(snapshot: AccountingDocumentProviderInvoiceSnapshot):
 
 function stableRef(value: string): string {
   return value.replace(/[^A-Za-z0-9_-]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 64) || "invoice";
+}
+
+async function createTestCorrection(
+  _snapshot: AccountingDocumentProviderInvoiceSnapshot,
+  options: { correctedProviderInvoiceId: string; correctionReason: string; correctionRef: string; recoveryLookupRequired: boolean },
+) {
+  const invoiceNumber = `TEST/KOR/${stableRef(options.correctionRef)}`;
+  return {
+    providerInvoiceId: `test_inv_correction_${stableRef(options.correctionRef)}`,
+    providerInvoiceNumber: invoiceNumber,
+    raw: { provider: "fakturownia_test", mode: "test", invoiceNumber, correction: true },
+  };
 }
