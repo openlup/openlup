@@ -2,6 +2,227 @@
 
 Releases moved verbatim out of the packed `CHANGELOG.md`, which keeps the current release and the two previous ones.
 
+## [0.23.0]
+
+- Publishable on the npm `latest` dist-tag as `0.23.0`, from tag
+  `openlup-platform-v0.23.0`.
+
+- Add `approveTrackingUrl` inputs to `verifyAndNormalizeFulfillmentObservation`,
+  `PostgresFulfillmentShipmentSpineOptions`, `FulfillmentAdapterConformanceSubject`
+  and reconciliation `trackingCodecs`. Under the strict default, provider tracking
+  URLs persist only with host approval and must be query-free and credential-free
+  HTTPS; host-built tracking URLs pass unchanged, including query strings.
+- Existing `reconcileFulfillmentObservations` callers now receive row-local unknown
+  readback failures (`ok: false` with `failures`) while recognized rows still
+  process.
+- Observation ingest (`verifyAndNormalizeFulfillmentObservation`, the native
+  `recordObservation`, `reconcileFulfillmentObservations` and
+  `runFulfillmentReconciliationPage`) now applies the durable-sink sanitizer: provider-derived
+  references outside the opaque reference rule (for example `#1001` or
+  `ORD/2026/1`) are stored as null or redacted and counted instead of verbatim,
+  and `firstReceivedAt` must be an RFC 3339 timestamp with an offset; other
+  values fail ingest or the reconciliation row. A correlation refused to null can
+  be quarantined as `missing_correlation` in reconciliation.
+- Fulfillment reconciliation inputs replace `readLocalFulfillmentState` with
+  `readLocalFulfillmentStatus`, `latestStatusOccurredAt` and `readHandedOverAt`;
+  migrate host persistence implementations to these three reads.
+- Add exported page observation contracts and `runFulfillmentReconciliationPage`
+  for host-owned scheduling, checkpoint resume and HTTP/ledger result projection;
+  exact lookup remains separate. `providerCalls` counts logical page-port reads,
+  including failures and exhaustion, separately from transport retries.
+- Add redacted dispatch transcript/mapping fields, typed operation errors,
+  acceptance recovery evidence and provider-status occurrence evidence. Existing
+  unchanged stage/live dispatch identities retain their stored evidence for native replay.
+- Migration: shadow drafts/attempts recorded by `0.22.0`'s native dispatch store
+  do not replay after this change: shadow now hashes the local candidate rather
+  than the provider-prepared command. Claim may consume a remap or raise
+  `fulfillment_dispatch_remap_exhausted`; an existing attempt may raise
+  `fulfillment_attempt_key_conflict`. Complete or abandon such drafts before
+  upgrading. The `0.22.0` native dispatch store has no adopter; no compatibility
+  transition is supplied.
+- D2 KEEP-GAP: native `fulfillment_dispatch_finish` drops rejected/unknown error
+  detail; durable retention is a scheduled SQL follow-up.
+
+- Compatibility: `getStock()` and `getStockMovements()` now return a row union;
+  consumers must discriminate rejections with
+  `"kind" in row && row.kind === "rejected"` before reading observation fields.
+  Provider read failures now return failed worker results (`ok: false`) with
+  persisted `providerError` diagnostics when the provider supplies a typed failure,
+  instead of throwing. Hosts can map those
+  failures to HTTP 502; terminal cursor-write failures still reject.
+  Cursor reads, running-cursor writes, local stock/class/reservation reads and
+  stock/evidence writes or SKU evidence resolution now also resolve `ok: false`
+  instead of rejecting when a terminal failed cursor can be persisted.
+- `SyncCursor` adds optional `syncRunId`, `counts`, `items`, `alerts`, `staleSync`
+  and `error`, worker results add `rejected`, `items`, `providerError` and `refusal`,
+  and `fulfillment_stock_sync_cursors.error_code` now stores safe operation reasons
+  (including `operation:SQLSTATE`) or typed provider/admission reasons instead of
+  the generic `io_failure`.
+- Mixed valid/rejected batches with valid stock rows succeed, retain rejection
+  counts and diagnostics, evaluate/resolve alerts for valid SKUs and advance
+  `lastStockSyncedAt`; an empty stock response is also valid, but a nonempty stock
+  response with no valid stock rows is malformed and non-retryable even with valid
+  movements, preserves prior coverage gaps and cannot resolve stale alerts.
+  Typed disabled, not-ready and bad-identity refusals retain their original reason
+  and retryability in the worker result and cursor.
+  Blank stock SKU references are skipped before persistence; stale-sync recovery
+  resolves after the terminal cursor, with cleanup failure preserving success.
+  Stock and movement rejection diagnostics carry a `kind` discriminator.
+  Stock-sync redirects are non-retryable, report `redirect_refused` and make only
+  one GET attempt; exhausted stock network reads remain retryable through the stock
+  failure projection. Product-sync retains the base client diagnostics and retry
+  behavior, including `retryable: false` after exhausted network reads.
+- Stock-sync alert fingerprints now contain only `requestKey`, `skuRef` and
+  `thresholdKind`: changing quantities, severity or run evidence under the same
+  key returns `replayed: true`. Different SKUs or thresholds use different keys;
+  a changed identity under a reused key still conflicts.
+- Closed the scheduled KEEP-GAP for stock alert refresh/reopen with native forward
+  `20261022165000_fulfillment_stock_evidence_replay_reopen.sql`. Matching-identity
+  replay reopens the alert, refreshes severity/quantities and clears `resolved_at`;
+  identity mismatches retain SQLSTATE `23505`.
+
+Migration: install the complete native catalogue through `20261022165000` before
+stock adoption. The package descriptor and SQL asset project that same forward;
+replay preserves the row identity, first-seen time and historical resolver run.
+There is no managed forward or legacy fingerprint rewrite.
+
+Migration: alert rows written by 0.22.0's native port carry the earlier whole-input fingerprint; subsequent writes under those keys conflict with SQLSTATE `23505`, and resolve only marks the row resolved while retaining its key and fingerprint, so it does not clear the conflict. Legacy fingerprints are documented only; this change does not rewrite them.
+
+- Fulfillment ingress exposes receipt IDs, a host-neutral HTTP result mapping,
+  counted correlation/timestamp/tracking refusals and persisted safe superseded
+  causes. The opt-in adapter preserves donor webhook key bytes and defaults to
+  strict opaque references. Adopters can explicitly allow wider reference shapes
+  through `observationCodecs.approveReference`; tracking URLs retain their strict
+  default policy. `carrierRef` now stores the service-derived lowercase carrier
+  prefix by default, or the safe kind returned by `normalizeCarrier`, and effects
+  receive that same value as `carrierKind`. Both are null when no kind is available
+  or service evidence is refused; raw provider carrier codes have no fallback,
+  matching donor deduplication. Strict timestamp validation applies only at
+  webhook ingress, accepting compact offsets and local timestamps as before;
+  reconciliation and stock-movement timestamp parsing retain PR2 behavior.
+  Hosts retain referenced raw evidence.
+
+Migration (observation ingress): donor-format colon identities remain the
+compatibility target. Observation receipts/effects recorded by 0.22.0's native
+stores under package digest keys are not recognized under the incumbent colon
+keys, so retrying such an event can apply tracking again. Replaying a superseded
+receipt processed by 0.22.0 fails with `fulfillment_observation_outcome_conflict`.
+Drain in-flight observation retries before upgrading. No bridges or aliases are
+provided for these native rows. Wider incumbent correlation/tracking references
+require an explicit adopter allowlist; the default refuses and reports them.
+
+Close the scheduled native stock-evidence refresh/reopen gap with forward
+`20261022165000_fulfillment_stock_evidence_replay_reopen.sql` and its byte-identical
+fulfillment package projection. Matching fingerprints refresh severity and nullable
+quantities, reopen status, and clear `resolved_at`; identity, first-seen time and
+historical resolver metadata survive. Existing-row replays and resolution serialize
+on the row lock. Fingerprint mismatches still raise `23505`.
+
+Migration: install the complete canonical native catalogue through `20261022165000`
+before stock adoption, preserving its immutable ledger prefix. Sparse package SQL
+is not a standalone install chain. The managed baseline already has this behavior.
+Legacy 0.22.0 whole-input fingerprints are not rewritten and still conflict with
+PR1 identity fingerprints, including after resolution.
+
+- Add experimental invoicing declarations and explicit default-off capability selection, preserving exact absence, uncertain effects, correction identity and owed-duty visibility.
+- Freeze host fiscal/facts/seller/money, registry, artifact, delivery, payout-item and safe account-history seams without installing a worker, store, provider or route.
+
+Approve only the exact frozen M10/F17 native and managed SQL packet through a separate forward-control class, with inert fixtures, refusal plants and a required real PostgreSQL/pgTAP catalog gate. This control adds no migration, runtime activation or new permission to an installation.
+
+- Add experimental subscription contracts and exact server/browser subpaths, preserving schedule identity, graph transaction boundaries, deferred admission and explicit native capability refusals.
+- Contribute the unchanged hosted cycle, refusal and durable failure mechanisms with injected policy and their characterization; preserve native captured-case protection through rollback until actual arrival.
+
+- Add injected native renewal and retry stores and a native executor using the subscription ports; bind hosted charge/failure facades to the contributed mechanism and existing M07 policies.
+- Type-level change visible to dev-preview consumers: `capabilities.retryRecovery` changes from `"unavailable"` to `"selected"` (asserted in packages/platform/test/subscriptions/portFit.test.ts).
+
+Migration: Install native N1 through the full ordered manifest before composing the retry driver. Native declines can retry or recover the original obligation instead of stalling indefinitely (F16); exhaustion leaves an active subscription and open case with no next retry. Preserve ledgers on rollback. The initial binding preserves case-before-outcome order and atomic terminal/bookkeeping writes. An existing immutable receipt short-circuits initial terminal replay before settlement, rebinding or case propagation, preserving all later retry effects; no runner is activated and M07 native prepared-store parity remains unavailable.
+
+Host obligations: establish explicit logical-cycle correlation before invoking the runner (including prepare/execute). Ordinary retries must use the frozen mandate/authorization; N1 does not bind an ordinary retry method, so the P8 retry driver or host must enforce this, with a composition witness added in P8. Prepared retries retain the existing non-terminal `retry_scheduled` disposition with no next dispatch date. Bare `failed` execution status without explicit failure evidence requires verified readback (or remains awaiting an ACK).
+
+A host or driver must never call `openCase` after a replayed `applyFailure` receipt, and the P8 retry driver must add a zero-delta replay witness.
+
+### Warehouse product-sync parity
+
+A3 #311 restores product-sync parity and safe diagnostics in the opt-in warehouse
+adapter, including product/pack projection and injected transport behavior.
+It remains default-off with offline evidence only and no provider-account proof.
+
+Migration: upgrade the complete core/outbox/platform set from `0.22.0` to
+`0.23.0` for exact peers. Install the complete canonical native chain through
+position 76 (`20261022165000_fulfillment_stock_evidence_replay_reopen.sql`),
+including native N1, before selecting native stores. Sparse package SQL is not
+an installation chain. Follow the shadow-draft, observation-retry and legacy
+alert-fingerprint migration notes above; rollback preserves the forward ledger.
+
+### Experimental stages: no adopter activation
+
+M10 subscription renewal/retry is **EXPERIMENTAL, INCOMPLETE and DEFAULT-OFF**,
+not for adopter activation. This set includes P1 exports, the forward controls,
+and P2 native renewal/retry stores and executor with native N1 SQL landed.
+No runner is activated. G23 composition and N1 correlation, frozen authorization
+and replay obligations remain pending: compose admission before any new cycle,
+bind a logical cycle before prepare/execute, enforce frozen authorization on
+ordinary retries, and never open a case after a replayed failure receipt.
+The later retry driver still owes its zero-delta replay witness.
+
+M09 invoicing capability selection and type-only contracts are
+**EXPERIMENTAL, INCOMPLETE and DEFAULT-OFF**, not for adopter activation.
+There is no invoicing SQL, store, worker, provider or route in this stage.
+Installing the set does not register subscription or invoicing routes, workers
+or a renewal runner; host composition remains explicit.
+
+### Known limitations
+
+- Managed dunning exhaustion still pauses active subscriptions; retaining active status needs a managed forward. Native N1 lands the bounded retry/failure repair, with the host obligations below still pending.
+- D8-1: native advisory v2 promo-code candidates/rejection details unavailable.
+- D8-2: native mounted v2 issue/honor/fallback unavailable.
+- D8-3: native acquisition-only mounted issuance/honor unavailable.
+- D8-4: full native/managed eligibility equivalence unavailable.
+- Bundle-1: independent DB human-only actor-kind enforcement absent natively; first in the native-backend parity round.
+- Bundle-2: managed-equivalent actor-kind/email history absent natively.
+- Bundle-3 closes injected-reader M05 mounted admin/feed readback only. Native new-purchase stock read absent despite P5a installed-store proof; deferred second after bundle-1 (owner 2026-10-21); readiness refuses.
+- Bundle-4: incumbent real-PostgreSQL contention only; no exactly-once guarantee.
+- Managed schema/pgTAP retain `44.404`; removal needs owner decision/forward; reference composition supplies it to app code.
+- A1 offline only; account/hosted-time/owner TEST evidence unclaimed; `communications/klaviyo` verification-pending.
+- M05 omitted opt-ins preserve defaults/outputs/read order/schedules/refusals/acceptance-token bytes/SQL.
+- Native inventory adjustment unavailable; address writes refuse readiness. Flat-rate save needs selected port/Core readiness/applied-seed observation.
+- Native shipping audit unavailable; handler swallows best-effort audit failure.
+- Native flat-rate integer bounds (0 through host maximum; reference 100,000 minor units) use request schema, not DB CHECK.
+- Managed ATP/forecast/dated-supply/pagination readback unproved/pending M06.
+- Managed two-session locks/concurrency/uncovered compensation unproved/pending M06.
+- Managed exact-prefix upgrade/ledger unproved/pending M06.
+- Managed address idempotency/conflict/readback unproved/pending M06.
+- Managed successful flat-rate read/save unproved/pending host authority.
+- M06 stock-wait lifecycle/durable timing/staging controls retain C5/C6; busy/try-gate, continuity/flag/TTL transfers are dispositions, not PASS.
+- Shipping national-registry fields/locale-specific `canonicalAddressKey` fold await M16 host market pack/key migration; reference shipping copy stays locale-specific until M16.
+- Native durable prepared storage, method setup, absence reopen and cumulative refunds unavailable; no production installation parity claimed.
+- Typed refusal-envelope forwarding unavailable (`failureReason` only); reusable registration needs host ownership resolution.
+- Incomplete chargebacks stay refunds/unapplied: reclassification bypasses evidence validation into dispute apply; limited operator recovery.
+- Audit compatibility still detects `chargeId`; refund operation identity/original money supply no typed charge identity.
+- M07 follow-up: repair poll can clear host redirect; post-timeout verify never restarts polling; unlocalized poller; fixture builds/never calls handler.
+- M07 follow-up: reference status route wrong-rail witness.
+- M07 follow-up: explicit reference-route refusal for unsupported method setup.
+- M07 follow-up: deployment-neutral disabled-verify reason.
+- M07 follow-up: reference card normalizer missing-amount path; package settling evidence already requires positive money.
+
+- Native delivery alignment stays off or shadow until a host composes the native automatic-renewal runner with the G23 renewal admission decorator. The decorator alone neither composes nor activates the runner.
+- The core fulfillment status map carries localized adopter labels; replace them with host-injected labels or internationalization keys at the host presentation boundary.
+- The warehouse adapter example is opt-in and has offline conformance only; no provider-account proof or activation is established. Exact absence, label create/void and cancellation remain unsupported.
+- After an alignment extension, a deferred renewal operation at the old schedule remains claimed with no reader or reservation effect. Changed terms snapshots conflict under the existing snapshot-conflict rules.
+
+Native parity remains host-owned at these seams. Missing native bindings use the shared `FULFILLMENT_NATIVE_UNSUPPORTED` refusal; no partial write or parity claim is implied.
+
+| Amendment | Host-owned seam and native boundary |
+| --- | --- |
+| G18 | Replacement creation and atomic eligibility/replay receipts; native replacement callback refuses. |
+| G19 | Operator mutations, actor attribution and replay receipts; native mutation callbacks refuse. |
+| G20 | Customer alignment rows; native reader refuses, while the pure delay projection remains callable. |
+| G21 | Commerce list/detail and shipments overview; native read callbacks refuse. |
+| G22 | Authoritative preparation edits, authorization and replay receipts; missing preparation binding refuses before dispatch, after disabled/selection/readiness checks. |
+
+- M08 parity D2 KEEP-GAP: native dispatch finish still loses rejected/unknown error detail.
+- M08 parity KEEP-GAP: immutable stock snapshot/alert evidence storage is absent; cursor JSON is overwritten. Hosts retain referenced evidence.
+- Stock-evidence replay/reopen is CLOSED by native position 76; legacy `0.22.0` alert fingerprints still conflict with `23505`, including after resolution.
 ## [0.22.0]
 
 - Publishable on the npm `latest` dist-tag as `0.22.0`, from tag

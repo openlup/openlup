@@ -535,8 +535,8 @@
     "maxUnpackedBytes": 6553600,
     "maxFiles": 2100,
     "baseline": {
-      "version": "0.24.0",
-      "packedBytes": 1355949
+      "version": "0.25.0",
+      "packedBytes": 1392132
     },
     "browserEntries": {
       "./catalog/contracts": 4096,
