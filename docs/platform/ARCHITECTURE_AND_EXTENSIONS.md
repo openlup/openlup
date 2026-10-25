@@ -595,6 +595,13 @@ composition is an injected `uniqueRegistry` function, bound by the reference
 host to `@openlup/outbox`; the platform adds no rail dependency or copied
 composition algorithm.
 
+The Node-only commerce server entry also exports `tryCompensate` with an injected
+`CheckoutCompensationPort`; the reference compensation file re-exports the same
+function. Reservation release, promotion cancellation and conditional
+abandoned-order cancellation retain their ordering, keys, reasons and best-effort
+warnings. Persistence and payment execution stay host-bound. The cold consumer
+exercises installed compensation.
+
 Effective bundle selection reuses pricing's half-open authority through its
 public server entry, adding the catalog → pricing value edge. The dependency is
 acyclic; pricing owns no runtime catalog edge. The opt-in adapter keeps effective

@@ -82,7 +82,7 @@ timestamp used in the webhook's idempotency key.
 | `./catalog` | Experimental neutral catalog schemas, drafts, reads, media source packs and publication ports |
 | `./catalog/contracts` | Dependency-free catalog DTOs, media resolver, authority and canonicalization helpers |
 | `./commerce`, `./commerce/contracts` | Browser-safe neutral commerce schema cores, generic ports and pure contract helpers |
-| `./commerce/server` | Node-only OMS, returns, native reviews/media and hosted-feedback handlers/adapters and order-detail composition, email consumers, dispatch registry and paid-fulfillment binding |
+| `./commerce/server` | Node-only OMS, returns, native reviews/media and hosted-feedback handlers/adapters and order-detail composition, email consumers, dispatch registry, paid-fulfillment binding and checkout compensation |
 | `./pricing` | Experimental price authority, quote computation/handlers, offer projection/cache, readiness and policy tokens |
 | `./pricing/browser` | Existing quote primitive factory and acquisition capability/expectation schemas, browser-safe |
 | `./pricing/contracts` | Dependency-free authority, money, quote and offer DTOs and version constants |
@@ -92,6 +92,16 @@ timestamp used in the webhook's idempotency key.
 | `./shipping/contracts` | Type-only delivery, pickup-point, summary and evidence DTOs |
 
 ## Commerce contracts
+
+`./commerce` stays browser-safe. `./commerce/server` is the separate Node-only
+entry for checkout engines, handlers, stores and adapters. It exports
+`tryCompensate` and `CheckoutCompensationPort`: release the selected order's
+reservations, attempt unstarted-promotion cancellation, then cancel the abandoned
+order only when promotion cleanup did not succeed. Existing keys, reasons,
+warning messages and swallowed cleanup failures are preserved. The reference
+facade delegates to the same function; composition still owns the cleanup ports.
+The package boundary test bundles the browser entry without Node built-ins or
+the server subtree, and the cold consumer exercises installed compensation.
 
 `./commerce/contracts` is a type-only, browser-safe entry for commerce-owned
 records and generic persistence, checkout/runtime, availability, recovery and
@@ -124,7 +134,7 @@ reference-owned and deferred to K2a. These entries install no store, route,
 migration or provider.
 
 Required root discovery includes `test/commerce/`: schema refusal/replay and
-port-fit tests join recovery/error/helper witnesses and neutral W4 composition.
+port-fit tests join recovery/error/helper witnesses, compensation and neutral W4 composition.
 The unchanged reference suites and a pre-extraction parse transcript protect
 host bindings. The cold consumer imports both installed entries and checks
 availability projection/refusal, opaque offers, injected minimums and snapshot

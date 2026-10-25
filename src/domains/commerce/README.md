@@ -17,6 +17,17 @@ one-time/subscription-initial checkout lives here.
 
 ## Commerce contracts package boundary
 
+`@openlup/platform/commerce` remains browser-safe. The separate experimental
+`@openlup/platform/commerce/server` entry owns the unchanged checkout compensation
+helper and its cleanup port. The reference compensation path re-exports the same
+function, so existing orchestration and adapter imports keep their identity.
+Cleanup releases the order's reservations before promotion cancellation and,
+when needed, abandoned-order cancellation; keys, reasons and warning/failure
+behavior remain unchanged. Runtime, payment execution and persistence bindings
+retain their reference owners. Lint refuses browser commerce imports of the
+server subtree, and package tests bundle the browser entry and exercise the
+installed server helper.
+
 Neutral commerce schemas and ports come from `@openlup/platform/commerce`
 and its type-only `/contracts` entry. Their runtime graph is browser-safe;
 `@openlup/platform/commerce/server` supplies Node-only OMS handlers, managed

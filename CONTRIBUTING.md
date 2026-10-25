@@ -221,6 +221,11 @@ consumer's no-optional-peer inventory. These checks add no execution profile,
 verification command, budget or provider requirement.
 
 
+The commerce server compensation witness preserves release, promotion-cancel
+and conditional abandoned-order-cancel ordering. Its installed consumer checks
+the exact keys and reasons and compiles the cleanup port in both declaration
+resolution modes; the reference facade proves function and type identity.
+
 The native subscription renewal selection is
 `npm test -- tests/postgres/subscriptionRenewalLifecycle.test.ts --maxWorkers=1`.
 It uses one disposable PostgreSQL container for N1 exact-prefix restart,

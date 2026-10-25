@@ -24,6 +24,11 @@ it("exposes OMS handlers only through the server entry", () => {
   expect(commerce).not.toHaveProperty("createAdminCommerceOrdersListHandler");
 });
 
+it("exposes checkout compensation only through the server entry", () => {
+  expect(server.tryCompensate).toBeTypeOf("function");
+  expect(commerce).not.toHaveProperty("tryCompensate");
+});
+
 it("exposes exactly the three existing pricing browser symbols with their original identity", async () => {
   const browser = await import("../../src/pricing/browser/index.js");
   const primitives = await import("../../src/pricing/quotePrimitives.js");

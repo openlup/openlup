@@ -59,3 +59,8 @@ export * from "./outboxReturnEmailHandlers.js";
 export * from "./outboxShipmentDeliveredEmailHandler.js";
 export * from "./outboxShipmentDispatchedEmailHandler.js";
 export * from "./outboxShipmentExceptionEmailHandler.js";
+
+/** @consumer server/domains/commerce/commerceCheckoutCompensation.ts */
+export { tryCompensate } from "./commerceCheckoutCompensation.js";
+/** @consumer Reference compensation facade; server/adapters/supabase/commerce/checkoutCompensation.ts and server/adapters/managed/commerce/inventoryReservationPort.ts implement this port. */
+export type { CheckoutCompensationPort } from "./commerceCheckoutCompensation.js";

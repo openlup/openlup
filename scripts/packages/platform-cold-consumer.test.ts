@@ -5,7 +5,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { isolatedConsumerEnv } from "./pack-manifest-input.ts";
 import { afterAll, afterEach, beforeAll, expect, it } from "vitest";
-import { proveCommerceConsumer, proveInvoicingConsumer, proveSubscriptionsConsumer, proveWarehouseAdapterConsumer, proveFulfillmentConsumer, provePaymentAdapterConsumer, provePaymentsConsumer, installA1HostBinding, proveA1ReferenceBindingConsumer, ADAPTER_ENTRIES, assertConsumerIsolation, assertExportInventory, compileConsumer, consumerNode, NON_ADAPTER_ENTRIES, OPTIONAL_PEERS, proveAdapterRefusals, proveOidcRefusals, provePostgresOperations, proveNativeCommunicationsOperations, proveResendConsumer, proveMarketingSyncConsumer, runPlatformColdConsumer } from "./platform-cold-consumer.ts";
+import { proveCommerceServerConsumer, proveCommerceConsumer, proveInvoicingConsumer, proveSubscriptionsConsumer, proveWarehouseAdapterConsumer, proveFulfillmentConsumer, provePaymentAdapterConsumer, provePaymentsConsumer, installA1HostBinding, proveA1ReferenceBindingConsumer, ADAPTER_ENTRIES, assertConsumerIsolation, assertExportInventory, compileConsumer, consumerNode, NON_ADAPTER_ENTRIES, OPTIONAL_PEERS, proveAdapterRefusals, proveOidcRefusals, provePostgresOperations, proveNativeCommunicationsOperations, proveResendConsumer, proveMarketingSyncConsumer, runPlatformColdConsumer } from "./platform-cold-consumer.ts";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const temporary: string[] = [];
@@ -26,6 +26,7 @@ function fixture() {
   // The typed consumer registers the payments factory with the composer.
   writeFileSync(join(consumer, "node_modules/@openlup/platform/index.d.ts"), [
     "export interface Synthetic { value: string }",
+    'export { tryCompensate, type CheckoutCompensationPort } from "./commerceCheckoutCompensation.js";',
     "export interface CommerceOfferAvailabilityRequestItem { sku: string; productSlug: string; variantId: string; requestedQuantity: number; checkoutMode: \"one_time\" | \"subscription\" }",
     "export interface CommerceOfferAvailabilityPort { getAvailability(input: { items: readonly CommerceOfferAvailabilityRequestItem[] }): Promise<unknown[]> }",
     "export declare function offerAvailabilityRequestItems(variants: readonly { sku: string; slug: string; variantId: string }[], checkoutMode: \"one_time\" | \"subscription\"): CommerceOfferAvailabilityRequestItem[];",
@@ -43,6 +44,7 @@ function fixture() {
     "export declare function createPaymentServices(): { run<T>(work: (port: { kind: \"truth\" }) => Promise<T>): Promise<T> } | null;",
     "export declare function createBundleComposer(binders: { blob: () => null; fulfillment?: () => FulfillmentServices | null; payments?: () => { run<T>(work: (port: unknown) => Promise<T>): Promise<T> } | null }): unknown;",
   ].join("\n") + "\n");
+  copyFileSync(join(root, "packages/platform/dist/commerce/server/commerceCheckoutCompensation.d.ts"), join(consumer, "node_modules/@openlup/platform/commerceCheckoutCompensation.d.ts"));
   cpSync(join(root, "packages/platform/src/invoicing/contracts"), join(consumer, "node_modules/@openlup/platform/invoicing-contracts"), { recursive: true });
   packageFixture(consumer, "zod", { ".": "./index.js" });
   return consumer;
@@ -543,9 +545,16 @@ process.stdout.write(JSON.stringify(Object.fromEntries(Object.entries(entry).map
     readShipmentRefsByOrderId: "function",
     readShipmentRefsByOrderIds: "function",
     sendOmsMutationResponse: "function",
+    tryCompensate: "function",
     unprojectedOmsReadGate: "object",
     updateCommerceOmsShippingAddress: "function",
   });
+});
+
+it("M11 K2 exercises installed commerce compensation without optional peers", () => {
+  const consumer = pristinePackedA1Fixture();
+  assertConsumerIsolation(consumer, root);
+  proveCommerceServerConsumer(consumer);
 });
 
 it("payments and fulfillment: installed packed consumer proves injected execution, truth scope, fulfillment services, default-off and contribution", () => {

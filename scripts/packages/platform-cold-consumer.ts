@@ -315,6 +315,8 @@ import * as contracts from "@openlup/platform/commerce/contracts";
 import * as server from "@openlup/platform/commerce/server";
 assert.equal(typeof server.createAdminCommerceOrdersListHandler, "function");
 assert.equal("createAdminCommerceOrdersListHandler" in commerce, false);
+assert.equal(typeof server.tryCompensate, "function");
+assert.equal("tryCompensate" in commerce, false);
 await assert.rejects(import("@openlup/platform/commerce/server/internal"), { code: "ERR_PACKAGE_PATH_NOT_EXPORTED" });
 assert.deepEqual(Object.keys(contracts), []);
 const items = commerce.offerAvailabilityRequestItems([{sku:"ITEM-A",slug:"item-a",variantId:"variant-a"}],"subscription");
@@ -335,9 +337,35 @@ assert.throws(()=>{throw new commerce.CommerceOrderDraftUnsupportedMoneyError("z
 `);
 }
 
+/** M11 K2: exercise the installed Node-only compensation helper without optional peers. */
+export function proveCommerceServerConsumer(consumer: string): void {
+  consumerNode(consumer, `
+import assert from "node:assert/strict";
+import * as server from "@openlup/platform/commerce/server";
+assert.equal(typeof server.tryCompensate, "function");
+const calls = [];
+await server.tryCompensate({
+  async releaseOrderReservations(input) { calls.push(["release", input]); return { releasedCount: 1 }; },
+  async cancelUnstartedPromotionOrder(input) { calls.push(["promotion", input]); return { cancelled: false }; },
+  async cancelAbandonedOrder(input) { calls.push(["abandon", input]); return { cancelled: true }; },
+}, "intent-key", "order-1");
+assert.deepEqual(calls, [
+  ["release", { idempotencyKey: "intent-key:checkout-compensation", orderId: "order-1", reason: "checkout_orchestration_failed" }],
+  ["promotion", { idempotencyKey: "intent-key", orderId: "order-1", reason: "checkout_orchestration_failed_before_runtime" }],
+  ["abandon", { idempotencyKey: "intent-key", orderId: "order-1", reason: "checkout_orchestration_failed_before_provider_dispatch" }],
+]);
+`);
+}
+
 export function compileConsumer(consumer: string, entries: readonly string[], compiler: string): void {
   const file = join(consumer, "consumer.ts");
   const surfaces = entries.map((name, index) => `import type * as Entry${index} from "@openlup/platform/${name}";\nexport type Surface${index} = typeof Entry${index};`);
+  if (entries.includes("commerce/server")) surfaces.push([
+    'import { tryCompensate } from "@openlup/platform/commerce/server";',
+    'import type { CheckoutCompensationPort } from "@openlup/platform/commerce/server";',
+    'declare const compensationPort: CheckoutCompensationPort;',
+    'export const compensationResult: Promise<void> = tryCompensate(compensationPort, "intent-key", "order-1");',
+  ].join("\n"));
   if (entries.includes("commerce") && entries.includes("commerce/contracts")) surfaces.push([
     'import { offerAvailabilityRequestItems } from "@openlup/platform/commerce";',
     'import type { CommerceOfferAvailabilityPort } from "@openlup/platform/commerce/contracts";',
@@ -1227,6 +1255,7 @@ assert.throws(() => promotions.resolvePromotionBenefitDefinition({ discount_type
     compileConsumer(consumer, NON_ADAPTER_ENTRIES, compiler);
     assertConsumerIsolation(consumer, checkout); // Compilation must not have supplied a peer.
     proveCommerceConsumer(consumer);
+    proveCommerceServerConsumer(consumer);
     proveCatalogCompositionConsumer(consumer);
     proveAdapterRefusals(consumer);
     proveOidcRefusals(consumer);

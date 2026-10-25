@@ -3274,6 +3274,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/commerce/server/commerceCheckoutCompensation.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/commerce/server/commerceOmsCancelOrderHandler.ts",
       "class": "public-output"
     },
@@ -5675,6 +5679,10 @@
     },
     {
       "path": "packages/platform/test/commerce/browserSafety.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/commerceCheckoutCompensation.test.ts",
       "class": "public-output"
     },
     {

@@ -106,6 +106,7 @@ const serverExports = [
   "readShipmentRefsByOrderId",
   "readShipmentRefsByOrderIds",
   "sendOmsMutationResponse",
+  "tryCompensate",
   "unprojectedOmsReadGate",
   "updateCommerceOmsShippingAddress",
 ].sort();
