@@ -1,3 +1,4 @@
+import { formatMoney } from "./orderEmailLines.js";
 import { registerEmailProviderOutcomeCases, registerEmailRecipientCases } from "../../shared/__tests__/outboxEmailHandler.testFixtures.js";
 import { describe, expect, it } from "vitest";
 import { COMMERCE_ORDER_REFUNDED_EVENT_TYPE } from "../../../src/domains/commerce/outboxEventContracts.js";
@@ -69,7 +70,7 @@ function makeDeps(options?: {
   } as unknown as TransactionalEmailPort;
   const recipientPort: OrderRecipientPort = {
     resolve: async () =>
-      options?.recipient === undefined ? { email: "k@example.com", firstName: "Ola" } : options.recipient,
+      options?.recipient === undefined ? { email: "k@example.com", firstName: "Buyer" } : options.recipient,
   };
   const handler = createOutboxOrderRefundedEmailHandler({ emailPort, recipientPort });
   return { handler, sendCalls };
@@ -120,6 +121,6 @@ describe("outboxOrderRefundedEmailHandler", () => {
   it("retains the proven new provider additive amount despite the legacy source label", async () => {
     const provider = makeDeps();
     await provider.handler.handle(makeRow({ ...payload, amountSource: "inbound_provider_events.amount_cents_sum_same_currency" }), signal());
-    expect(provider.sendCalls[0].amountLabel).toBe("77,77\u00a0zł");
+    expect(provider.sendCalls[0].amountLabel).toBe(formatMoney(7777, payload.currency));
   });
 });

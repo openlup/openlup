@@ -67,7 +67,7 @@ function makeDeps(options?: {
   const recipientPort: OrderRecipientPort = {
     resolve: async () =>
       options?.recipient === undefined
-        ? { email: "k@example.com", firstName: "Ola", petName: "Fistaszek" }
+        ? { email: "k@example.com", firstName: "Buyer", petName: "Context A" }
         : options.recipient,
   };
   const handler = createOutboxShipmentDispatchedEmailHandler({ emailPort, recipientPort });
@@ -96,7 +96,7 @@ describe("outboxShipmentDispatchedEmailHandler", () => {
     const outcome = await sent.handler.handle(makeRow(payload), signal());
     expect(outcome).toEqual({ kind: "processed", detail: { resendId: "re_sd_1" } });
     expect(sent.sendCalls[0].trackingNumber).toBe("JD0123456789");
-    expect(sent.sendCalls[0].petName).toBe("Fistaszek");
+    expect(sent.sendCalls[0].petName).toBe("Context A");
     expect(sent.sendCalls[0].trackingUrl).toContain("tracking-id=JD0123456789");
   });
 

@@ -1,3 +1,4 @@
+import { PLATFORM_DEFAULT_CURRENCY } from "../../../src/lib/currency/platformCurrency.js";
 import { describe, expect, it } from "vitest";
 import { DEFAULT_MONEY_LANG, formatCurrencyMinor } from "../../../src/lib/currency/formatMinor.js";
 import { buildItems, formatMoney, type RawLine } from "./orderEmailLines.js";
@@ -84,11 +85,11 @@ describe("buildItems", () => {
 
   it("uses a frozen snapshot label and formats the line total", () => {
     const items = buildItems(
-      [line({ label: "Karma sucha Jagnięcina", quantity: 2, lineSubtotalMinor: 10000, currency: "PLN" })],
+      [line({ label: "Item A", quantity: 2, lineSubtotalMinor: 10000, currency: PLATFORM_DEFAULT_CURRENCY })],
       "pl",
     );
     expect(items).toEqual([
-      { name: "Karma sucha Jagnięcina", quantity: 2, lineTotalLabel: `100,00${NBSP}z\u0142` },
+      { name: "Item A", quantity: 2, lineTotalLabel: formatMoney(10000, PLATFORM_DEFAULT_CURRENCY) },
     ]);
   });
 
@@ -105,7 +106,7 @@ describe("buildItems", () => {
   });
 
   it("leaves the line total blank when amount/currency are unknown", () => {
-    const items = buildItems([line({ label: "Jagnięcina" })], "pl");
+    const items = buildItems([line({ label: "Item A" })], "pl");
     expect(items[0].lineTotalLabel).toBe("");
   });
 });

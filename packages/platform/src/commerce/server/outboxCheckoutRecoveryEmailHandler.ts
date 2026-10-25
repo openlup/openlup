@@ -100,11 +100,10 @@ export function createOutboxCheckoutRecoveryEmailHandler<Locale extends string>(
           ? shouldSkipOperatorCheckoutRecovery(lifecycle)
           : shouldSkipCheckoutRecovery(lifecycle);
       if (skipReason === PAYMENT_SESSION_ACTIVE) {
-        // Transient, not terminal. The emit key is `checkout_recovery:1h:<order>`
-        // (or `checkout_recovery:operator:<token row>`), once per event forever,
-        // so returning `processed` here would destroy the only send this buyer
-        // will ever get from this row — the failure mode that silenced the decline
-        // notice on 2026-08-20. Defer instead and let the session settle.
+        // A live payment session is temporary. The producer key is unique per
+        // event, so settling it as processed would consume the only reminder
+        // without sending. Defer until the session settles, subject to the
+        // retry ceiling below.
         //
         // Read `attempts` defensively: `undefined < n` is false, which would
         // retire the nudge on its FIRST deferral — the precise opposite of the

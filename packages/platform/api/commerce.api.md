@@ -6781,29 +6781,15 @@ export declare function shouldSkipCheckoutRecovery(state: OrderPaymentLifecycleS
  */
 export declare function shouldSkipOperatorCheckoutRecovery(state: OrderPaymentLifecycleState | null): string | null;
 /**
- * Eligibility for the RECOVERABLE-DECLINE notice.
+ * Eligibility for a recoverable payment-decline notice.
  *
- * Deliberately not `shouldSkipCheckoutRecovery`, though the two once shared it.
- * That gate answers "should we nudge someone who has not paid yet", and it is
- * right for a nudge to stay quiet while the payer is inside a live session —
- * nobody needs a reminder to do the thing they are doing.
+ * Unlike a checkout reminder, a decline notice must not be suppressed by a live
+ * retry. Its producer key is once per order, so a later failed attempt cannot
+ * replace a notice that was consumed without sending.
  *
- * A decline notice answers a different question: something already failed, and
- * the payer is entitled to know. Suppressing it because a SECOND attempt is
- * in flight lost a real buyer on 2026-08-20: her first refusal was swallowed
- * as `payment_session_active` because she had opened a second attempt 17 s
- * earlier, that attempt then declined too, and the emit key
- * `payment_failed:<order_id>` is once-per-order — so the second failure could
- * never produce a second event. She was never told anything.
- *
- * What still suppresses: the order is gone, already paid, or has left
- * `pending_payment`. A successful retry produces exactly those states, so the
- * ordinary "declined then paid" sequence stays quiet on its own — but only
- * because the EMIT holds the row back three minutes (`available_at`, see
- * `20260821160000_payment_failed_notice_claim_delay`). That delay is what buys
- * this gate the time to be true; without it the dispatch cron claims within
- * ~60 s and the read below runs before the buyer can finish retrying.
- * ⛔ Shortening it re-opens the race silently: nothing here would fail.
+ * Suppress only when the order is unavailable, already paid, or no longer
+ * pending payment. The producer's claim delay lets successful retries settle
+ * before this lifecycle read; scheduling remains the producer/runtime's duty.
  */
 export declare function shouldSkipPaymentFailedNotice(state: OrderPaymentLifecycleState | null): string | null;
 export declare function shouldSkipCheckoutExpired(state: OrderPaymentLifecycleState | null): string | null;

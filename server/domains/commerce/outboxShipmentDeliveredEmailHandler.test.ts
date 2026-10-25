@@ -76,7 +76,7 @@ function makeDeps(options?: {
   const recipientPort: OrderRecipientPort = {
     resolve: async () =>
       options?.recipient === undefined
-        ? { email: "k@example.com", firstName: "Ola", petName: "Fistaszek" }
+        ? { email: "k@example.com", firstName: "Buyer", petName: "Context A" }
         : options.recipient,
   };
   const providerKindReader =
@@ -109,10 +109,10 @@ describe("outboxShipmentDeliveredEmailHandler", () => {
     const outcome = await sent.handler.handle(makeRow(payload), signal());
     expect(outcome).toEqual({ kind: "processed", detail: { resendId: "re_dl_1" } });
     expect(sent.sendCalls[0].orderId).toBe(`order_${ORDER_UUID}`);
-    expect(sent.sendCalls[0].petName).toBe("Fistaszek");
+    expect(sent.sendCalls[0].petName).toBe("Context A");
   });
 
-  it("sends OUR delivered email for OmniPack too: the carrier notice is not a substitute (owner decision 2026-09-14)", async () => {
+  it("sends the platform delivery email when the fulfillment provider does not own buyer notices", async () => {
     const omnipack = makeDeps({ providerKind: "omnipack" });
     expect(await omnipack.handler.handle(makeRow(payload), signal())).toEqual({
       kind: "processed",

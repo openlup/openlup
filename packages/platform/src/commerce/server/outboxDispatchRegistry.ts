@@ -41,13 +41,13 @@ import {
 } from "../salesChannelEnvelope.js";
 
 /**
- * Reads the sales-source buyer-comms policy for one order (wave B6). `null` is
+ * Reads the sales-source buyer-comms policy for one order. `null` is
  * the answer for an order that names no channel — a storefront order, or one
  * that predates the source axis.
  *
- * The read is LIVE on every event, deliberately uncached: an operator who flips
- * `sales_channels.buyer_comms_owner` is answering a live complaint, and a cached
- * policy would keep sending for the rest of the process lifetime.
+ * Read on every event so changes to `sales_channels.buyer_comms_owner` take
+ * effect on the next dispatch. A cached policy could keep sending after
+ * ownership has changed.
  */
 export interface OrderBuyerCommsPolicyReader {
   readOrderBuyerCommsPolicy(orderUuid: string): Promise<OrderBuyerCommsPolicy | null>;

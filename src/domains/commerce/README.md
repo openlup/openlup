@@ -210,8 +210,8 @@ needing an owner decision in the
   columns and `deriveOrderMoney()`. It validates persisted catalog, allocated,
   effective, VAT, delivery, and total equations but never allocates a discount
   or reads quote metadata as completed-order truth.
-- Public acquisition prices use the versioned, published-dog-product-only
-  offer-pricing projection. When the v2 capability flag is enabled, the hook
+- Public acquisition prices use the versioned offer-pricing projection for
+  eligible published products. When the v2 capability flag is enabled, the hook
   binds the request to the app-level first-party visitor id; without that id it
   stays amount-free and fail-closed. Transactional totals still come only from
   the quote contract, and historical receipt totals only from canonical order recap.
@@ -219,13 +219,12 @@ needing an owner decision in the
 - Pure policy helpers: pricing breakdown, recommendation engine/variant
   selection, recommendation policy contracts, offer availability derivation, and OMS fulfillment
   eligibility/summary (`pricingBreakdown.ts`, `omsFulfillment*`).
-- Petfood policy implementations live downstream in a deployment-owned module,
+- Adopter-specific product policies live downstream in a deployment-owned module,
   which is withheld by the deployment overlay and is not part of the published
   tree. `energyPolicy.ts` keeps only compatibility type exports and
   `packageQuantityPolicy.ts` keeps the package policy contract/version exports;
   a published tree binds its own implementation of those contracts at the
-  composition root, which is where this deployment injects the openlup petfood
-  policies.
+  composition root.
 - Transactional email *content* (commerce owns the copy; chrome/transport live
   in `communications` + `server/infra/resend`): `emails/*` — e.g.
   `emails/orderDraft.ts` builds the localized order-draft resume nudge as

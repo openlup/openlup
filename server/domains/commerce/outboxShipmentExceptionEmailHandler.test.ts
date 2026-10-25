@@ -66,7 +66,7 @@ function makeDeps(options?: {
   } as unknown as TransactionalEmailPort;
   const recipientPort: OrderRecipientPort = {
     resolve: async () =>
-      options?.recipient === undefined ? { email: "k@example.com", firstName: "Ola" } : options.recipient,
+      options?.recipient === undefined ? { email: "k@example.com", firstName: "Buyer" } : options.recipient,
   };
   const handler = createOutboxShipmentExceptionEmailHandler({ emailPort, recipientPort });
   return { handler, sendCalls };

@@ -73,7 +73,7 @@ function makeDeps(options?: {
   } as unknown as TransactionalEmailPort;
   const recipientPort: OrderRecipientPort = {
     resolve: async () =>
-      options?.recipient === undefined ? { email: "k@example.com", firstName: "Ola" } : options.recipient,
+      options?.recipient === undefined ? { email: "k@example.com", firstName: "Buyer" } : options.recipient,
   };
   const lifecyclePort: OrderPaymentLifecyclePort = {
     read: async () => ({
@@ -128,12 +128,8 @@ describe("outboxPaymentFailedEmailHandler", () => {
     expect(paid.sendCalls).toHaveLength(0);
   });
 
-  // Regression for the 2026-08-20 production silence. The buyer's first attempt
-  // refused, she immediately opened a second, and the dispatcher — reusing the
-  // NUDGE's gate — settled her decline notice as `payment_session_active`
-  // without sending. The card attempt then declined too, and the emit key
-  // `payment_failed:<order_id>` is once per order, so no second event could
-  // exist. She learned nothing about either failure.
+  // A live retry must not consume the earlier decline notice without sending:
+  // the once-per-order producer key cannot emit a replacement notice.
   it("sends the decline notice while a second attempt is in flight", async () => {
     const { handler, sendCalls } = makeDeps({
       paymentStatus: "pending",

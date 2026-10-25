@@ -2,6 +2,19 @@ import { build, type Metafile } from "esbuild";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
+const sharedTemplateExports = [
+  "OUTBOX_CHECKOUT_EXPIRED_TEMPLATE_SLUG",
+  "OUTBOX_ORDER_CONFIRMATION_TEMPLATE_SLUG",
+  "OUTBOX_ORDER_PAID_TEMPLATE_SLUG",
+  "OUTBOX_ORDER_REFUNDED_TEMPLATE_SLUG",
+  "OUTBOX_PAYMENT_FAILED_TEMPLATE_SLUG",
+  "OUTBOX_RETURN_APPROVED_TEMPLATE_SLUG",
+  "OUTBOX_RETURN_REJECTED_TEMPLATE_SLUG",
+  "OUTBOX_SHIPMENT_DELIVERED_TEMPLATE_SLUG",
+  "OUTBOX_SHIPMENT_DISPATCHED_TEMPLATE_SLUG",
+  "OUTBOX_SHIPMENT_EXCEPTION_TEMPLATE_SLUG",
+];
+
 const serverExports = [
   "addCommerceOmsNote",
   "assertOutboxRegistryDescriptors",
@@ -116,7 +129,7 @@ describe("commerce runtime placement", () => {
 
   it("bundles the complete server entry for Node with only the public server exports", async () => {
     const result = await bundle(new URL("../../dist/commerce/server/index.js", import.meta.url), "node");
-    expect(Object.values(result.metafile.outputs).flatMap(({ exports }) => exports).sort()).toEqual(serverExports);
+    expect(Object.values(result.metafile.outputs).flatMap(({ exports }) => exports).sort()).toEqual([...serverExports, ...sharedTemplateExports].sort());
   });
 
   it("refuses raw upload in a browser as a live negative control", async () => {
