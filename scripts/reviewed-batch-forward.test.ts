@@ -602,9 +602,34 @@ describe("admitted M11 commerce live registry", () => {
   };
   const assert = (pin: ManagedCommerceForwardBinding, sql = commerceBytes(pin), candidate = registry, prior = preceding(pin)) =>
     assertManagedCommerceForward(candidate, pin.path, sql, prior);
+  const coherentlyRepinned = (pin: ManagedCommerceForwardBinding, statements: string[], functions: ManagedCommerceForwardBinding["functions"]) => {
+    const sql = Buffer.from(statements.join("\n"));
+    const candidate = repinned(pin, sql.toString());
+    const changed = candidate.managedCommerceForwards![commerce.indexOf(pin)]!;
+    changed.functions = structuredClone(functions);
+    const definitions = batchedFunctionDefinitions(sql);
+    const names = new Set(functions.map(fn => fn.signature.split("(")[0]!));
+    const prior = new Map<string, string>();
+    for (const source of preceding(pin)) for (const statement of sqlStatements(source.bytes.toString(), true)) {
+      for (const [signature, digest] of batchedFunctionDefinitions(Buffer.from(statement), names)) prior.set(signature, digest);
+    }
+    expect(changed.sha256).toBe(sqlSha256(sql));
+    expect(changed.statements).toEqual(statements.map(statement => ({
+      sha256: sqlSha256(statement), ...(!/^CREATE(?: OR REPLACE)? FUNCTION /u.test(statement) ? { sql: statement } : {}),
+    })));
+    expect([...definitions]).toEqual(functions.map(fn => [fn.signature, fn.afterSha256]));
+    for (const fn of functions) expect(fn.beforeSha256, fn.signature).toBe(prior.get(fn.signature) ?? null);
+    const acl = functions.flatMap(fn => [
+      `REVOKE ALL ON FUNCTION ${fn.signature} FROM PUBLIC,anon,authenticated${fn.signature.startsWith("private.") ? ",service_role" : fn.signature === "public.inventory_new_purchase_stock_read(jsonb,timestamptz)" ? ",openlup_mcp_reader" : ""};`,
+      ...fn.signature.startsWith("private.") ? [] : [`GRANT EXECUTE ON FUNCTION ${fn.signature} TO service_role;`],
+    ]);
+    expect(changed.statements.flatMap(statement => statement.sql && /^(?:REVOKE|GRANT) /u.test(statement.sql)
+      ? [statement.sql.replace(/\s+/gu, " ").replace(/, /gu, ",")] : [])).toEqual(acl);
+    return { sql, candidate };
+  };
 
   it("retains all 18 M10 pins and uses the real prefix plus the absent fixture suffix exactly once", () => {
-    expect(commerce).toHaveLength(8);
+    expect(commerce).toHaveLength(9);
     expect(pins).toHaveLength(18);
     expect(managedM10).toHaveLength(11);
     for (const pin of pins) {
@@ -630,10 +655,10 @@ describe("admitted M11 commerce live registry", () => {
     expect(() => assert(pin, Buffer.concat([commerceBytes(pin), Buffer.from(" ")]))).toThrow("reviewed M11 commerce path or bytes drifted");
   });
 
-  it("preserves seven-pin approval history across the eighth control without admitting it as a current candidate", () => {
+  it.each([7, 8])("preserves %i-pin approval history without admitting it as a current candidate", count => {
     const seven = structuredClone(registry);
-    seven.managedCommerceForwards!.pop();
-    expect(() => readReviewedForwardRegistry(Buffer.from(JSON.stringify(seven)))).toThrow("reviewed M11 commerce requires exactly eight forwards");
+    seven.managedCommerceForwards!.splice(count);
+    expect(() => readReviewedForwardRegistry(Buffer.from(JSON.stringify(seven)))).toThrow("reviewed M11 commerce requires exactly nine forwards");
     const f = correctionFixture();
     try {
       for (const source of preceding(commerce[0]!)) f.put(source.path, source.bytes);
@@ -652,7 +677,7 @@ describe("admitted M11 commerce live registry", () => {
       for (const attack of ["missing", "order", "signature", "digest"]) {
         const changed = structuredClone(seven);
         const forwards = changed.managedCommerceForwards!;
-        if (attack === "missing") forwards.pop();
+        if (attack === "missing") forwards.splice(0, 1);
         if (attack === "order") [forwards[0], forwards[1]] = [forwards[1]!, forwards[0]!];
         if (attack === "signature") forwards[0]!.functions[0]!.signature += "extra";
         if (attack === "digest") forwards[0]!.sha256 = "0".repeat(64);
@@ -673,7 +698,7 @@ describe("admitted M11 commerce live registry", () => {
       const live = f.commit();
       f.put("config/reviewed-platform-forwards.json", registryBytes);
       const approval = f.commit();
-      // Control-only admission precedes all eight SQL files, as for M10.
+      // Control-only admission precedes all nine SQL files, as for M10.
       expect(() => assertAppendOnlyMigrationHistory(f.root, live, approval)).not.toThrow();
       for (const pin of commerce) {
         expect(existsSync(join(f.root, pin.path))).toBe(false);
@@ -722,6 +747,46 @@ describe("admitted M11 commerce live registry", () => {
     } finally { f.cleanup(); }
   }, 60_000);
 
+  it.each(commerce.flatMap((pin, index) => ["CREATE OR REPLACE", ...pin.functions[0]!.beforeSha256 === null ? ["CREATE"] : []]
+    .map(ddl => ({ pin, slot: index + 1, ddl }))))("refuses a coherent extra $ddl function in slot $slot", ({ pin, ddl }) => {
+    expect(() => readReviewedForwardRegistry(registryBytes)).not.toThrow();
+    expect(() => assert(pin)).not.toThrow();
+    const signature = ddl === "CREATE" ? "public.reviewed_inventory_probe()" : "public.commerce_offer_policy_v2_readiness()";
+    const names = new Set([signature.split("(")[0]!]);
+    const before = preceding(pin).flatMap(source => sqlStatements(source.bytes.toString(), true))
+      .filter(statement => batchedFunctionDefinitions(Buffer.from(statement), names).has(signature)).at(-1);
+    const routine = ddl === "CREATE"
+      ? "CREATE FUNCTION public.reviewed_inventory_probe() RETURNS integer LANGUAGE sql SECURITY DEFINER SET search_path = pg_catalog, public AS $$ SELECT 1; $$;"
+      : before!.replace(/^CREATE(?: OR REPLACE)? FUNCTION /u, "CREATE OR REPLACE FUNCTION ");
+    expect(pin.functions.some(fn => fn.signature === signature)).toBe(false);
+    expect(ddl === "CREATE" ? before === undefined : before !== undefined).toBe(true);
+    const statements = [...sqlStatements(commerceBytes(pin).toString()), routine,
+      `REVOKE ALL ON FUNCTION ${signature} FROM PUBLIC, anon, authenticated;`,
+      `GRANT EXECUTE ON FUNCTION ${signature} TO service_role;`];
+    const functions = [...pin.functions, { signature, beforeSha256: before ? sqlSha256(before) : null, afterSha256: sqlSha256(routine) }];
+    expect(functions).toHaveLength(pin.functions.length + 1);
+    const { sql, candidate } = coherentlyRepinned(pin, statements, functions);
+    const refusal = "reviewed M11 commerce path, order or function inventory drifted";
+    expect(() => readReviewedForwardRegistry(Buffer.from(JSON.stringify(candidate)))).toThrow(new Error(refusal));
+    expect(() => assert(pin, sql, candidate)).toThrow(new Error(refusal));
+    const restored = coherentlyRepinned(pin, statements.slice(0, -3), functions.slice(0, -1));
+    expect(() => readReviewedForwardRegistry(Buffer.from(JSON.stringify(restored.candidate)))).not.toThrow();
+    expect(() => assert(pin, restored.sql, restored.candidate)).not.toThrow();
+  });
+
+  it("refuses the coherently swapped two-function inventory in slot 9", () => {
+    const pin = commerce[8]!;
+    expect(pin.functions).toHaveLength(2);
+    const statements = sqlStatements(commerceBytes(pin).toString());
+    const swapped = coherentlyRepinned(pin, [...statements.slice(3), ...statements.slice(0, 3)], [...pin.functions].reverse());
+    const refusal = "reviewed M11 commerce signature or creation/replacement class drifted";
+    expect(() => readReviewedForwardRegistry(Buffer.from(JSON.stringify(swapped.candidate)))).toThrow(new Error(refusal));
+    expect(() => assert(pin, swapped.sql, swapped.candidate)).toThrow(new Error(refusal));
+    const restored = coherentlyRepinned(pin, statements, pin.functions);
+    expect(() => readReviewedForwardRegistry(Buffer.from(JSON.stringify(restored.candidate)))).not.toThrow();
+    expect(() => assert(pin, restored.sql, restored.candidate)).not.toThrow();
+  });
+
   describe.each(commerce)("independently repinned refusal: $path", pin => {
     it.each(["extra function", "missing function", "extra statement", "missing statement", "reordered statements", "GRANT/REVOKE", "security", "search_path"])("refuses %s", attack => {
       const statements = sqlStatements(commerceBytes(pin).toString());
@@ -734,7 +799,7 @@ describe("admitted M11 commerce live registry", () => {
       if (attack === "GRANT/REVOKE") statements[routine + 1] = statements[routine + 1]!.replace("authenticated", "service_role");
       if (attack === "security") statements[routine] = statements[routine]!.includes("SECURITY DEFINER")
         ? statements[routine]!.replace("SECURITY DEFINER", "") : statements[routine]!.replace("LANGUAGE plpgsql", "LANGUAGE plpgsql SECURITY DEFINER");
-      if (attack === "search_path") statements[routine] = statements[routine]!.replace(/SET search_path = [a-z_, ]+/u, "SET search_path = public ");
+      if (attack === "search_path") statements[routine] = statements[routine]!.replace(/SET search_path (?:= [a-z_, ]+|TO [^\n]+)/u, "SET search_path = public ");
       const sql = statements.join("\n");
       expect(sql, attack).not.toBe(sqlStatements(commerceBytes(pin).toString()).join("\n"));
       expect(() => assert(pin, Buffer.from(sql), repinned(pin, sql)), attack).toThrow(/reviewed M11 commerce|reviewed replacement runtime/u);
@@ -774,7 +839,7 @@ describe("admitted M11 commerce live registry", () => {
   });
 
   it("refuses a fully repinned omission of the stock reader revocation", () => {
-    const pin = commerce.at(-1)!;
+    const pin = commerce.find(pin => pin.functions[0]!.signature === "public.inventory_new_purchase_stock_read(jsonb,timestamptz)")!;
     const sql = commerceBytes(pin).toString().replace(", openlup_mcp_reader", "");
     expect(() => assert(pin, Buffer.from(sql), repinned(pin, sql))).toThrow("reviewed M11 commerce function ACL drifted");
   });
@@ -851,6 +916,57 @@ describe("admitted M11 commerce live registry", () => {
     const candidate = structuredClone(registry);
     candidate.baselineSha256 = sqlSha256(prior[0]!.bytes);
     expect(() => assert(pin, commerceBytes(pin), candidate, prior)).toThrow("reviewed M11 commerce audit CHECK preimage drifted");
+  });
+
+  const ninth = commerce.at(-1)!;
+  it("binds exactly two independent replacements in the ninth entry", () => {
+    expect(ninth.functions).toHaveLength(2);
+    expect(ninth.functions.every(fn => fn.beforeSha256 !== null)).toBe(true);
+    expect(ninth.statements).toHaveLength(6);
+  });
+
+  describe.each(ninth.functions.map((fn, index) => ({ ...fn, index })))("ninth replacement: $signature", fn => {
+    it("refuses drift in either independently bound preimage", () => {
+      const names = new Set([fn.signature.split("(")[0]!]);
+      const old = preceding(ninth).flatMap(source => sqlStatements(source.bytes.toString(), true))
+        .findLast(statement => batchedFunctionDefinitions(Buffer.from(statement), names).has(fn.signature))!;
+      const plant = old.replace("BEGIN", "BEGIN\n  NULL;");
+      const prior = [...preceding(ninth), { path: "supabase/migrations/20261024235959_ninth_preimage_probe.sql", bytes: Buffer.from(plant) }].sort((a,b) => a.path.localeCompare(b.path));
+      expect(() => assert(ninth, commerceBytes(ninth), registry, prior)).toThrow("reviewed M11 commerce function preimage or definition drifted");
+    });
+
+    it.each(["extra body edit", "cadence 30"])("refuses %s against live function pins after file repinning", attack => {
+      const statements = sqlStatements(commerceBytes(ninth).toString());
+      const position = fn.index * 3;
+      const old = statements[position]!;
+      statements[position] = attack === "cadence 30" ? old.replaceAll("NOT IN (14, 21, 28)", "NOT IN (14, 21, 28, 30)") : old.replace("BEGIN", "BEGIN\n  NULL;");
+      expect(statements[position]).not.toBe(old);
+      const sql = Buffer.from(statements.join("\n"));
+      const candidate = structuredClone(registry);
+      candidate.managedCommerceForwards!.at(-1)!.sha256 = sqlSha256(sql);
+      expect(() => assert(ninth, sql, candidate)).toThrow("reviewed M11 commerce function preimage or definition drifted");
+    });
+
+    it.each(["omit", "swap", "preimage"])("refuses registry %s of either function", attack => {
+      const candidate = structuredClone(registry);
+      const changed = candidate.managedCommerceForwards!.at(-1)!;
+      if (attack === "omit") changed.functions.splice(fn.index, 1);
+      if (attack === "swap") changed.functions.reverse();
+      if (attack === "preimage") changed.functions[fn.index]!.beforeSha256 = "0".repeat(64);
+      expect(() => assert(ninth, commerceBytes(ninth), candidate)).toThrow(/reviewed M11 commerce/u);
+    });
+
+    it.each(["omit", "swap", "reorder ACL", "ACL widening", "header"])("refuses independently repinned %s of either routine", attack => {
+      const statements = sqlStatements(commerceBytes(ninth).toString());
+      const position = fn.index * 3;
+      if (attack === "omit") statements.splice(position, 3);
+      if (attack === "swap") [statements[0], statements[3]] = [statements[3]!, statements[0]!];
+      if (attack === "reorder ACL") [statements[position + 1], statements[position + 2]] = [statements[position + 2]!, statements[position + 1]!];
+      if (attack === "ACL widening") statements[position + 2] = statements[position + 2]!.replace("TO service_role", "TO authenticated");
+      if (attack === "header") statements[position] = statements[position]!.replace("SECURITY DEFINER", "SECURITY INVOKER");
+      const sql = statements.join("\n");
+      expect(() => assert(ninth, Buffer.from(sql), repinned(ninth, sql))).toThrow(/reviewed M11 commerce/u);
+    });
   });
 
   it("tracks M11 data approvals without changing existing M09/M10 bindings", () => {

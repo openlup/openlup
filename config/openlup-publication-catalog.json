@@ -7362,6 +7362,10 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/fixtures/reviewed-m11/supabase/migrations/20261025110000_starter_graduation_cadence.sql",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/fulfillment-stock-evidence-proof.ts",
       "class": "public-output"
     },
@@ -24211,6 +24215,10 @@
     },
     {
       "path": "tests/postgres/shippingNative.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/starterGraduationCadence.test.ts",
       "class": "public-output"
     },
     {

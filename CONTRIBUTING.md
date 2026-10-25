@@ -237,21 +237,29 @@ preference scope, return ownership, checkout audit receipts and the minimal
 acquisition-reader/admission/finalize closure, without policy seeds or setup
 writers. Legacy omitted-country fallback uses the configured platform region
 and refuses missing configuration; adopters set their own default.
-The class fixes eight slots: its seven checkout, return and acquisition entries
+The class fixes nine slots: slots 1–8 each retain one function exactly as pinned;
+slot 9 is the starter pair. The seven checkout, return and acquisition entries
 retain their pinned slots, and the eighth is a single new-purchase stock reader
 (`public.inventory_new_purchase_stock_read(jsonb,timestamptz)`). It composes ATP
 with renewal exemption fixed false, caps requests at 200 array items and refuses
 a NULL as-of timestamp as `inventory_stock_as_of_invalid` (SQLSTATE `22023`).
 Its service-only ACL additionally revokes `openlup_mcp_reader`; its conservative
 stale flag covers any stale provider row for the SKU, while the allocator retains
-its own stale refusal.
+its own stale refusal. The ninth slot replaces
+`subscription_create_provisional_for_checkout(uuid,uuid,uuid,uuid,jsonb)` and
+`subscription_apply_starter_graduation(uuid,text,text)` with independent preimages
+and ordered ACL pairs.
 The pins bind exact file/function/preimage/ordered statements, headers, ACLs and
 the audit CHECK preimage. The registry and real migration rails are authoritative.
 M11 versions follow every earlier same-rail pin; each pin requires all earlier
 same-rail pins present with exact bytes. Later feature changes may introduce those
 bytes on the managed rail. Tests use the registry and complete real managed prefix,
 include each earlier same-rail pin once, and append only absent M11 fixtures.
-They prove admission/refusals and catalog/ACL/CHECK changes with rollback. The real
+They prove admission/refusals and catalog/ACL/CHECK changes with rollback. The
+`tests/postgres/starterGraduationCadence.test.ts` witness proves 21-day refusal
+without the ninth fixture, 14/21/28 admission with it in creation and both
+graduation modes, invalid-input refusal, replay and the subscription timezone
+default. The real
 PostgreSQL acquisition witness executes finalize with no policy and with configured
 policy: exact retained terms admit, missing/stale/engine-mismatched terms refuse
 without durable row changes, and a policy change refuses fresh acquisition while

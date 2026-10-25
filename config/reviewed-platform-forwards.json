@@ -1517,6 +1517,46 @@
           "sql": "GRANT EXECUTE ON FUNCTION public.inventory_new_purchase_stock_read(jsonb,timestamptz) TO service_role;"
         }
       ]
+    },
+    {
+      "path": "supabase/migrations/20261025110000_starter_graduation_cadence.sql",
+      "sha256": "8eec7b7c57ca7ea9fdf10b427b05de4bd59fa156f6b687ccab8ee9b1aa231981",
+      "functions": [
+        {
+          "signature": "public.subscription_create_provisional_for_checkout(uuid,uuid,uuid,uuid,jsonb)",
+          "beforeSha256": "6cddedb4d0baadcff8535980742f477060eff1f8e312b63b3cf985bdb332485f",
+          "afterSha256": "1bc5a61f8dabb13d1069b9f8657b82d73968a8ae834e6f66e95ac1c213671b6b"
+        },
+        {
+          "signature": "public.subscription_apply_starter_graduation(uuid,text,text)",
+          "beforeSha256": "f393de104e8e169e82fa047f0f867192d8355a5c404c56ca57096395bdcfb089",
+          "afterSha256": "29071e7f531c1eb16f7f2b948eac9a69c3c94b0d4514a985e3fe90fb1cc9d7c1"
+        }
+      ],
+      "statements": [
+        {
+          "sha256": "1bc5a61f8dabb13d1069b9f8657b82d73968a8ae834e6f66e95ac1c213671b6b"
+        },
+        {
+          "sha256": "192745d5957db9b57d94e86b37051aaf3088797ca1ce868ff4935a262337c1ba",
+          "sql": "REVOKE ALL ON FUNCTION public.subscription_create_provisional_for_checkout(uuid,uuid,uuid,uuid,jsonb) FROM PUBLIC, anon, authenticated;"
+        },
+        {
+          "sha256": "082156602d97551fcab1a8e2c7e67ea538e55f0d21b25df2d313ee941e388818",
+          "sql": "GRANT EXECUTE ON FUNCTION public.subscription_create_provisional_for_checkout(uuid,uuid,uuid,uuid,jsonb) TO service_role;"
+        },
+        {
+          "sha256": "29071e7f531c1eb16f7f2b948eac9a69c3c94b0d4514a985e3fe90fb1cc9d7c1"
+        },
+        {
+          "sha256": "37d8783d5c198f3358529532676215ba71d4268bf97e0a657ecec80733c7762b",
+          "sql": "REVOKE ALL ON FUNCTION public.subscription_apply_starter_graduation(uuid,text,text) FROM PUBLIC, anon, authenticated;"
+        },
+        {
+          "sha256": "77418523a421168eaaf0c73e9bc9d9b6c834eec75c0decb9b2997c7c4dfad70f",
+          "sql": "GRANT EXECUTE ON FUNCTION public.subscription_apply_starter_graduation(uuid,text,text) TO service_role;"
+        }
+      ]
     }
   ]
 }
