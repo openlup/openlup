@@ -30,6 +30,9 @@ The checkout-engine contribution adds exactly `commerce/checkoutCommandSchemas.j
 `commerce/offerEvidenceSchemas.js` and `commerce/paymentContinuation.js` to the
 identity inventory. They supply browser-safe validation and lifetime constants;
 checkout execution remains outside this profile in `commerce/server`.
+The subscription profile also lists the pure commerce checkout-command, offer-
+evidence and payment-continuation helpers by exact built file. Its starter
+expectation validator binds the existing `pricing/browser` export by identity.
 
 ## Routes and readiness
 

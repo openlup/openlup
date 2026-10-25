@@ -51,6 +51,10 @@ transcript checks those refusals and the other composed schemas; type assertions
 keep SKU, currency and product-slug inputs as strings across the exported
 reference schemas. The repair regression also compares generated multi-error
 transcripts against BASE goldens for every exported schema in these bindings.
+For the approved 21-day starter graduation cadence, 17 enumerated transcript
+goldens include the literal-21 issue alternative. Fixture seeds, case counts
+and all other issue ordering remain unchanged; the change fragment lists each
+affected schema and its cadence path.
 
 Availability projection requests one unit per variant in order. Recovery,
 nominal errors, delivery-contact projection, reference stripping, diagnostic

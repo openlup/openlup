@@ -4489,8 +4489,8 @@ export declare function createAdminPromotionSchemas({ currencySchema: platformCu
         code: z.ZodNullable<z.ZodString>;
         name: z.ZodString;
         triggerType: z.ZodEnum<{
-            automatic: "automatic";
             coupon_code: "coupon_code";
+            automatic: "automatic";
             referral: "referral";
         }>;
         discountType: z.ZodEnum<{
@@ -4563,8 +4563,8 @@ export declare function createAdminPromotionSchemas({ currencySchema: platformCu
             code: z.ZodNullable<z.ZodString>;
             name: z.ZodString;
             triggerType: z.ZodEnum<{
-                automatic: "automatic";
                 coupon_code: "coupon_code";
+                automatic: "automatic";
                 referral: "referral";
             }>;
             discountType: z.ZodEnum<{

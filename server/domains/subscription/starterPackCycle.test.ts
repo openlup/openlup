@@ -65,13 +65,20 @@ describe("starterPackMarkerSchema", () => {
     expect(
       starterPackMarkerSchema.safeParse({
         ...base,
-        graduation: { ...base.graduation, cadenceDays: 21 },
+        graduation: { ...base.graduation, cadenceDays: 30 },
       }).success,
     ).toBe(false);
     expect(
       starterPackMarkerSchema.safeParse({ ...base, graduation: { ...base.graduation, lines: [] } })
         .success,
     ).toBe(false);
+  });
+
+  it.each([14, 21, 28])("accepts a stored %i-day graduation cadence", (cadenceDays) => {
+    const base = marker();
+    expect(
+      starterPackMarkerSchema.safeParse({ ...base, graduation: { ...base.graduation, cadenceDays } }).success,
+    ).toBe(true);
   });
 
   it("rejects a graduation line missing its frozen quoteLine", () => {
