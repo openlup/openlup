@@ -1143,7 +1143,7 @@ it('replays a stored refusal and an apply-created receipt directly, without publ
 
   if (!portable) it("proves the M11 catalog, CHECK delta and acquisition behavior after the full real managed chain", async () => {
     const commerce = registry.managedCommerceForwards!;
-    expect(commerce).toHaveLength(8);
+    expect(commerce).toHaveLength(9);
     await applyCommittedBefore(commerce[0]!.path);
     const rail = reviewedBatchPaths(replayRoot, directory, [...pins, ...commerce]); // Refuse gaps in either real-rail suffix.
     const prior = rail.filter(path => path < commerce[0]!.path).map(path => {
@@ -1205,10 +1205,9 @@ it('replays a stored refusal and an apply-created receipt directly, without publ
         // raw function bodies while joining whitespace only in ACL statements.
         const observedSql = sqlStatements(bytes.toString()).map(statement => /^(?:GRANT|REVOKE) /u.test(statement) ? statement.replace(/\s+/gu, " ") : statement).join("\n");
         await assertBatchCatalog(db, pin, Buffer.from(observedSql), before, after);
-        if (pin.path.endsWith("20261025109000_inventory_new_purchase_stock_read.sql")) {
-          const signature = pin.functions[0]!.signature;
+        for (const fn of pin.functions.filter(fn => pin === commerce.at(-1) || fn.signature === "public.inventory_new_purchase_stock_read(jsonb,timestamptz)")) {
           for (const role of ["anon", "authenticated", "openlup_mcp_reader", "service_role"]) {
-            expect((await db.query("SELECT has_function_privilege($1,$2,'EXECUTE') AS allowed", [role, signature])).rows[0].allowed).toBe(role === "service_role");
+            expect((await db.query("SELECT has_function_privilege($1,$2,'EXECUTE') AS allowed", [role, fn.signature])).rows[0].allowed).toBe(role === "service_role");
           }
         }
         prior.push({ path: pin.path, bytes });

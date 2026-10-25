@@ -1086,7 +1086,7 @@ export function assertBatchedForward(forward: BatchedForwardBinding, bytes: Buff
 // The registry and real migration rails are authoritative; keep M09/M10 shapes separate.
 // Header pins include argument names/defaults, return, language, security and path;
 // only whitespace is normalized. Raw CREATE and whole-file pins bind bytes.
-const managedCommerceShapes = [
+const managedCommerceSingleShapes = [
   ["20261025100000_checkout_preference_write_scope.sql", "public.commerce_configurator_persist_intent(jsonb)", false, "8bbc2d529811c4bf065460dcc2ac5306ad3692cec3c73f8146256f3d59b2e328"],
   ["20261025103000_return_request_owner_binding.sql", "public.commerce_return_request_create(text,uuid,jsonb,text,text,uuid)", false, "56e41099b294eaca73007fb00af584b343fb711618a826e60589daff8816522b"],
   ["20261025104000_checkout_operator_receipt.sql", "public.admin_checkout_payment_link_record_receipt(uuid,uuid,uuid,text,text,boolean,uuid)", true, "08d52ebc4f681fe228685f61fd303de1562c647330592e8da9496b52f2ce0171"],
@@ -1096,6 +1096,16 @@ const managedCommerceShapes = [
   ["20261025108000_checkout_finalize_acquisition_admission.sql", "public.commerce_finalize_order_for_checkout(text,uuid,text,uuid,uuid,uuid,jsonb,jsonb,jsonb)", false, "ba2caf9f34d1a81fb364ef5a8802569b389e09cec0df882ead91acc4a5759a85"],
   ["20261025109000_inventory_new_purchase_stock_read.sql", "public.inventory_new_purchase_stock_read(jsonb,timestamptz)", true, "5e4747468d7d38dd9e35544bf793650175431fd44e3532d2de3dd30fde6fc5ed"],
 ] as const;
+const managedCommerceShapes = [
+  ...managedCommerceSingleShapes.map(([file, signature, creation, header]) => ({ file, functions: [{ signature, creation, header }] })),
+  {
+    file: "20261025110000_starter_graduation_cadence.sql",
+    functions: [
+      { signature: "public.subscription_create_provisional_for_checkout(uuid,uuid,uuid,uuid,jsonb)", creation: false, header: "0b6abf8e2ee6d360fa929a28fd73197424d246f15780e6d0778c22c94cc3bf74" },
+      { signature: "public.subscription_apply_starter_graduation(uuid,text,text)", creation: false, header: "6383689a88940a2db69b41339162d896a258a43530edd450160b4d2f3510973c" },
+    ],
+  },
+];
 const commerceAuditTable = "public.admin_audit_events";
 const commerceAuditConstraint = "admin_audit_events_action_check";
 const commerceAuditBefore = "455c350e221aead32209302842a733e3bd39fd171c20fefb5b03d2224b4167b5";
@@ -1105,17 +1115,20 @@ const commerceAuditStatements = [
   "9c3f2af2de818ea355fc76d3eccef1640eac0f29924f5b731d5768d22d93c41d", // exact ADD, NOT VALID
 ];
 function validateManagedCommerceForwards(forwards: ManagedCommerceForwardBinding[], paths: Set<string>, historical = false): void {
-  // The promoted seven-pin class remains readable only for approval history.
-  const shapes = historical && forwards?.length === 7 ? managedCommerceShapes.slice(0, -1) : managedCommerceShapes;
-  if (!Array.isArray(forwards) || forwards.length !== shapes.length) throw new Error("reviewed M11 commerce requires exactly eight forwards");
+  // The prior seven/eight-pin classes remain readable only for approval history.
+  const shapes = historical && [7, 8].includes(forwards?.length) ? managedCommerceShapes.slice(0, forwards.length) : managedCommerceShapes;
+  if (!Array.isArray(forwards) || forwards.length !== shapes.length) throw new Error("reviewed M11 commerce requires exactly nine forwards");
   for (const [index, forward] of forwards.entries()) {
-    const [file, signature, creation] = shapes[index]!;
+    const { file, functions } = shapes[index]!;
     const audit = index === 2;
-    if (!forward || Object.keys(forward).sort().join(",") !== (audit ? "constraints,functions,path,sha256,statements" : "functions,path,sha256,statements") || forward.path !== `supabase/migrations/${file}` || paths.has(forward.path) || !hash(forward.sha256) || !Array.isArray(forward.functions) || forward.functions.length !== 1) throw new Error("reviewed M11 commerce path, order or function inventory drifted");
+    if (!forward || Object.keys(forward).sort().join(",") !== (audit ? "constraints,functions,path,sha256,statements" : "functions,path,sha256,statements") || forward.path !== `supabase/migrations/${file}` || paths.has(forward.path) || !hash(forward.sha256) || !Array.isArray(forward.functions) || forward.functions.length !== functions.length) throw new Error("reviewed M11 commerce path, order or function inventory drifted");
     paths.add(forward.path);
-    const fn = forward.functions[0]!;
-    if (!fn || Object.keys(fn).sort().join(",") !== "afterSha256,beforeSha256,signature" || fn.signature !== signature || !hash(fn.afterSha256) || (creation ? fn.beforeSha256 !== null : !hash(fn.beforeSha256))) throw new Error("reviewed M11 commerce signature or creation/replacement class drifted");
-    if (!Array.isArray(forward.statements) || forward.statements.length !== (audit ? 6 : signature.startsWith("private.") ? 2 : 3)) throw new Error("reviewed M11 commerce statement inventory drifted");
+    for (const [position, fn] of forward.functions.entries()) {
+      const { signature, creation } = functions[position]!;
+      if (!fn || Object.keys(fn).sort().join(",") !== "afterSha256,beforeSha256,signature" || fn.signature !== signature || !hash(fn.afterSha256) || (creation ? fn.beforeSha256 !== null : !hash(fn.beforeSha256))) throw new Error("reviewed M11 commerce signature or creation/replacement class drifted");
+    }
+    const statementCount = (audit ? 3 : 0) + functions.reduce((count, fn) => count + (fn.signature.startsWith("private.") ? 2 : 3), 0);
+    if (!Array.isArray(forward.statements) || forward.statements.length !== statementCount) throw new Error("reviewed M11 commerce statement inventory drifted");
     for (const pin of forward.statements) {
       if (!pin || !hash(pin.sha256) || !["sha256", "sha256,sql"].includes(Object.keys(pin).sort().join(",")) || (pin.sql !== undefined && (typeof pin.sql !== "string" || sqlSha256(pin.sql) !== pin.sha256))) throw new Error("reviewed M11 commerce invalid statement pin");
     }
@@ -1145,8 +1158,7 @@ export function assertManagedCommerceForward(registry: ReviewedForwardRegistry, 
   }
   const statements = sqlStatements(bytes.toString("utf8"));
   const definitions = batchedFunctionDefinitions(bytes);
-  const fn = forward.functions[0]!;
-  const names = new Set([fn.signature.split("(")[0]!]);
+  const names = new Set(forward.functions.map(fn => fn.signature.split("(")[0]!));
   const prior = new Map<string, string>();
   for (const source of preceding) {
     for (const statement of sqlStatements(source.bytes.toString("utf8"), true)) {
@@ -1157,31 +1169,32 @@ export function assertManagedCommerceForward(registry: ReviewedForwardRegistry, 
       for (const [signature, digest] of batchedFunctionDefinitions(Buffer.from(statement), names)) prior.set(signature, digest);
     }
   }
-  if (definitions.size !== 1 || definitions.get(fn.signature) !== fn.afterSha256 || (prior.get(fn.signature) ?? null) !== fn.beforeSha256) throw new Error("reviewed M11 commerce function preimage or definition drifted");
+  if (definitions.size !== forward.functions.length || forward.functions.some(fn => definitions.get(fn.signature) !== fn.afterSha256 || (prior.get(fn.signature) ?? null) !== fn.beforeSha256)) throw new Error("reviewed M11 commerce function preimage or definition drifted");
   if (statements.length !== forward.statements.length) throw new Error("reviewed M11 commerce missing or extra statements");
   const audit = index === 2;
-  const routineIndex = audit ? 3 : 0;
-  const routine = statements[routineIndex]!;
-  // Remove only CREATE OR REPLACE in the same manner as the existing checker.
-  // The shape separately pins creation versus replacement below.
-  const header = headerAttributes(routine).replace(/\s+/gu, " ").trim();
-  if (sqlSha256(header) !== managedCommerceShapes[index]![3] || routine.startsWith("CREATE OR REPLACE FUNCTION ") !== !managedCommerceShapes[index]![2]) throw new Error("reviewed M11 commerce function header drifted");
   for (const [position, statement] of statements.entries()) {
     const pin = forward.statements[position]!;
     if (sqlSha256(statement) !== pin.sha256 || (pin.sql !== undefined && statement !== pin.sql)) throw new Error("reviewed M11 commerce ordered statement pin drifted");
-    if (position === routineIndex) continue;
-    if (pin.sql !== statement) throw new Error("reviewed M11 commerce requires exact non-function statements");
-    if (audit && position < 3) {
-      if (sqlSha256(statement) !== commerceAuditStatements[position]) throw new Error("reviewed M11 commerce audit CHECK replacement drifted");
-      continue;
-    }
-    const compact = statement.replace(/\s+/gu, " ").replace(/, /gu, ",");
+  }
+  if (audit && statements.slice(0, 3).some((statement, position) => sqlSha256(statement) !== commerceAuditStatements[position] || forward.statements[position]!.sql !== statement)) throw new Error("reviewed M11 commerce audit CHECK replacement drifted");
+  let routineIndex = audit ? 3 : 0;
+  for (const [position, fn] of forward.functions.entries()) {
+    const shape = managedCommerceShapes[index]!.functions[position]!;
+    const routine = statements[routineIndex]!;
+    // Preserve the existing header normalization; body and file pins bind bytes.
+    const header = headerAttributes(routine).replace(/\s+/gu, " ").trim();
+    if (sqlSha256(header) !== shape.header || routine.startsWith("CREATE OR REPLACE FUNCTION ") !== !shape.creation || batchedFunctionDefinitions(Buffer.from(routine)).get(fn.signature) !== fn.afterSha256) throw new Error("reviewed M11 commerce function header or order drifted");
     const privateFunction = fn.signature.startsWith("private.");
     const stockReader = fn.signature === "public.inventory_new_purchase_stock_read(jsonb,timestamptz)";
-    const expected = position === routineIndex + 1
-      ? `REVOKE ALL ON FUNCTION ${fn.signature} FROM PUBLIC,anon,authenticated${privateFunction ? ",service_role" : stockReader ? ",openlup_mcp_reader" : ""};`
-      : `GRANT EXECUTE ON FUNCTION ${fn.signature} TO service_role;`;
-    if (compact !== expected) throw new Error("reviewed M11 commerce function ACL drifted");
+    const acl = [
+      `REVOKE ALL ON FUNCTION ${fn.signature} FROM PUBLIC,anon,authenticated${privateFunction ? ",service_role" : stockReader ? ",openlup_mcp_reader" : ""};`,
+      ...privateFunction ? [] : [`GRANT EXECUTE ON FUNCTION ${fn.signature} TO service_role;`],
+    ];
+    for (const [offset, expected] of acl.entries()) {
+      const statement = statements[routineIndex + offset + 1]!;
+      if (forward.statements[routineIndex + offset + 1]!.sql !== statement || statement.replace(/\s+/gu, " ").replace(/, /gu, ",") !== expected) throw new Error("reviewed M11 commerce function ACL drifted");
+    }
+    routineIndex += 1 + acl.length;
   }
   if (audit) {
     let beforeSql: string | undefined;

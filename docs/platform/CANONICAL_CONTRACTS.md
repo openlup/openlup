@@ -852,7 +852,8 @@ Managed correction recovery, lock coupling, trigger admission, seller eligibilit
 Self-check and release share the admission checker and the canonical
 [co-located SQL/pin rule](DATA_AND_MIGRATIONS.md#co-located-sql-and-approval-pins).
 The separate `managedCommerceForwards` list in
-`config/reviewed-platform-forwards.json` pins the eight M11 managed SQL fixtures;
+`config/reviewed-platform-forwards.json` pins nine M11 managed SQL fixtures: slots 1–8 each retain
+one function exactly as pinned, and slot 9 is the starter pair;
 [its data contract](DATA_AND_MIGRATIONS.md#exact-reviewed-function-forwards)
 owns headers, ACLs, preimages and ordered statements. The registry and real
 migration rails are authoritative. M11 versions follow every earlier same-rail
