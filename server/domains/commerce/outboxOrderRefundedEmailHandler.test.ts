@@ -1,3 +1,4 @@
+import { registerEmailProviderOutcomeCases, registerEmailRecipientCases } from "../../shared/__tests__/outboxEmailHandler.testFixtures.js";
 import { describe, expect, it } from "vitest";
 import { COMMERCE_ORDER_REFUNDED_EVENT_TYPE } from "../../../src/domains/commerce/outboxEventContracts.js";
 import type { OutboxEventRow } from "./outboxDispatchContracts.js";
@@ -38,6 +39,7 @@ const payload = {
   orderUuid: ORDER_UUID,
   orderId: `order_${ORDER_UUID}`,
   refundCents: 7777,
+  refundEvidenceVersion: "provider-refund.v2",
   totalCents: 12999,
   currency: "PLN",
 };
@@ -88,20 +90,7 @@ describe("outboxOrderRefundedEmailHandler", () => {
     expect((await handler.handle(makeRow({ orderUuid: "nope" }), signal())).kind).toBe("discard");
   });
 
-  it("skips an unresolved recipient and dedupes an already-sent notice", async () => {
-    const skip = makeDeps({ recipient: null });
-    expect(await skip.handler.handle(makeRow(payload), signal())).toEqual({
-      kind: "processed",
-      detail: { skipped: "recipient_unresolved" },
-    });
-
-    const dup = makeDeps({ existing: true });
-    expect(await dup.handler.handle(makeRow(payload), signal())).toEqual({
-      kind: "processed",
-      detail: { dedupe: "email_already_sent" },
-    });
-    expect(dup.sendCalls).toHaveLength(0);
-  });
+  registerEmailRecipientCases(makeDeps, () => makeRow(payload));
 
   it("sends with the provider refund amount label, null when amount absent", async () => {
     const withAmount = makeDeps();
@@ -113,20 +102,24 @@ describe("outboxOrderRefundedEmailHandler", () => {
     const noAmount = makeDeps();
     await noAmount.handler.handle(makeRow({ orderUuid: ORDER_UUID, orderId: `order_${ORDER_UUID}` }), signal());
     expect(noAmount.sendCalls[0].amountLabel).toBeNull();
+
+    const historicalTotal = makeDeps();
+    await historicalTotal.handler.handle(makeRow({ orderUuid: ORDER_UUID, orderId: `order_${ORDER_UUID}`, totalCents: 12999, currency: payload.currency }), signal());
+    expect(historicalTotal.sendCalls[0].amountLabel).toBeNull();
   });
 
-  it("snoozes on a 503 and discards on a 422", async () => {
-    const snooze = makeDeps({
-      outcome: { ok: false, resendId: null, httpStatus: 503, providerError: "down", aborted: false },
-    });
-    expect(await snooze.handler.handle(makeRow(payload), signal())).toEqual({ kind: "snooze", reason: "down" });
+  registerEmailProviderOutcomeCases(makeDeps, () => makeRow(payload));
 
-    const discard = makeDeps({
-      outcome: { ok: false, resendId: null, httpStatus: 422, providerError: null, aborted: false },
-    });
-    expect(await discard.handler.handle(makeRow(payload), signal())).toEqual({
-      kind: "discard",
-      reason: "resend_rejected",
-    });
+  it.each([undefined, "provider-refund.v1"])("keeps an unproven queued legacy amount unknown (%s)", async (version) => {
+    const legacy = makeDeps();
+    await legacy.handler.handle(makeRow({ ...payload, refundEvidenceVersion: version, refundCents: 20000,
+      amountSource: "inbound_provider_events.amount_cents_sum_same_currency" }), signal());
+    expect(legacy.sendCalls[0].amountLabel).toBeNull();
+  });
+
+  it("retains the proven new provider additive amount despite the legacy source label", async () => {
+    const provider = makeDeps();
+    await provider.handler.handle(makeRow({ ...payload, amountSource: "inbound_provider_events.amount_cents_sum_same_currency" }), signal());
+    expect(provider.sendCalls[0].amountLabel).toBe("77,77\u00a0zł");
   });
 });

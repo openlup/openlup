@@ -82,7 +82,7 @@ timestamp used in the webhook's idempotency key.
 | `./catalog` | Experimental neutral catalog schemas, drafts, reads, media source packs and publication ports |
 | `./catalog/contracts` | Dependency-free catalog DTOs, media resolver, authority and canonicalization helpers |
 | `./commerce`, `./commerce/contracts` | Browser-safe neutral commerce schema cores, generic ports and pure contract helpers |
-| `./commerce/server` | Node-only OMS, returns, native reviews/media and hosted-feedback handlers/adapters and order-detail composition |
+| `./commerce/server` | Node-only OMS, returns, native reviews/media and hosted-feedback handlers/adapters and order-detail composition, email consumers, dispatch registry and paid-fulfillment binding |
 | `./pricing` | Experimental price authority, quote computation/handlers, offer projection/cache, readiness and policy tokens |
 | `./pricing/browser` | Existing quote primitive factory and acquisition capability/expectation schemas, browser-safe |
 | `./pricing/contracts` | Dependency-free authority, money, quote and offer DTOs and version constants |
@@ -182,6 +182,41 @@ The package contracts add no global Zod configuration side effect. Browser
 conformance bundles the complete commerce entry and both reference facades
 without externals; the raw-upload source is a failing browser control, while
 the complete server entry bundles for Node.
+
+Neutral producer event contracts are exported from `./commerce`;
+`createCommerceOutboxEventSchemas` binds the host's exact quote/draft snapshots.
+Event-type literals and host payload behavior are preserved.
+
+## Commerce domain effects
+
+The experimental Node-only `./commerce/server` entry provides the transactional email
+consumer factories, their descriptors and dispatch registry. Compose explicit
+`uniqueRegistry` composition from `@openlup/outbox` and
+`CommerceEmailRuntime` bindings for the fulfillment payload parser, communications
+transactional scaffold and send-outcome mapping, plus locale, money, generic
+line labels, paid-order presentation and tracking/notification policy. The
+package selects no provider, country, commercial offer or environment policy.
+Neutral email ports take the host locale as a type parameter and carry `contextName` and
+`messageId`; the reference maps its existing extension/provider field names.
+
+Draft, paid-email and paid-fulfillment consumers register by separate flags.
+Fulfillment reuses M08's existing handoff and risk seam. This registry adds no
+emitter, dispatcher, invoice executor, schedule, migration or subscription
+mutation. Cancellation email stays unregistered; `extraHandlers` can bind the
+independent accounting consumer. The refund consumer trusts amounts only with
+`provider-refund.v2` evidence. Return approved/rejected are separate notices.
+The live channel-comms policy suppresses the same buyer-facing handlers at
+handle time, settling them as processed with `channel_owns_buyer_comms`.
+
+The browser-safe `./commerce` entry provides event contracts, email DTOs and pure
+projections; it never imports `./commerce/server`.
+`projectCommerceSalesChannelEnvelope` retains opaque source identity without
+normalization. `CommerceChannelExposureReadPort` is only a host-injected read;
+no inventory exposure SQL or default implementation is supplied. Producer event
+schemas bind exact host quote/draft snapshots through a factory; email consumers
+retain frozen minimal subsets for in-flight compatibility. W8/W9 package
+conformance and the rebound reference suites cover this boundary. UI extraction
+and any artifact-cap change require their own approved scope.
 
 ## Shipping
 

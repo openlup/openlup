@@ -187,7 +187,7 @@ describe("package source boundary", () => {
     expect(ts.getPreEmitDiagnostics(program).map((diagnostic) => ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n"))).toEqual([]);
   }, 30_000);
 
-  it("typechecks the composition declarations without pg and references no data-module declarations", () => {
+  it.each(["composition", "commerce"])("typechecks the %s declarations without pg and references no data-module declarations", (entry) => {
     const options: ts.CompilerOptions = {
       module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext,
       strict: true, noEmit: true, types: ["node"], target: ts.ScriptTarget.ES2022,
@@ -198,7 +198,7 @@ describe("package source boundary", () => {
     const blocked = (path: string) => /\/node_modules\/(?:pg|@types\/pg)\//.test(path.replaceAll("\\", "/"));
     host.fileExists = (path) => !blocked(path) && fileExists(path);
     host.readFile = (path) => blocked(path) ? undefined : readFile(path);
-    const program = ts.createProgram([join(SOURCE_ROOT, "../dist/composition/index.d.ts")], options, host);
+    const program = ts.createProgram([join(SOURCE_ROOT, `../dist/${entry}/index.d.ts`)], options, host);
     expect(ts.getPreEmitDiagnostics(program).map((diagnostic) => ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n"))).toEqual([]);
     const declarations = program.getSourceFiles().map((file) => file.fileName.replaceAll("\\", "/"));
     expect(declarations.filter((name) => name.includes("/dist/data/"))).toEqual([]);

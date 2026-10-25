@@ -202,6 +202,25 @@ commerce declarations compile without the optional database peer. Receipt/RPC
 fakes prove wire mapping and refusal, while database ownership, concurrency and
 replay require their separate native/managed PostgreSQL integration witnesses.
 
+The `@openlup/platform/commerce/server` Node-only entry owns commerce handlers
+and adapters. Package-boundary,
+module-graph and installed-consumer witnesses inventory it independently, retain
+the existing top-level import restrictions and contracts rules, and import its
+actual packed entry without changing verification commands, deadlines or artifact
+budgets.
+
+
+M11 commerce keeps browser-safe schemas, pure projections and ports at
+`@openlup/platform/commerce`; handler factories and registry composition use
+`@openlup/platform/commerce/server`. `commerceBrowserBoundary.test.ts` bundles
+that published browser entry with esbuild and checks that source imports,
+including erased types, never reach the server entry. The module lint graph
+admits fulfillment only from `commerce/server/`; import-map tests exercise both
+allowed and refused directions. The new server entry joins the existing cold
+consumer's no-optional-peer inventory. These checks add no execution profile,
+verification command, budget or provider requirement.
+
+
 The native subscription renewal selection is
 `npm test -- tests/postgres/subscriptionRenewalLifecycle.test.ts --maxWorkers=1`.
 It uses one disposable PostgreSQL container for N1 exact-prefix restart,

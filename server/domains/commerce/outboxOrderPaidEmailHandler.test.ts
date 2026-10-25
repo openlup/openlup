@@ -249,6 +249,16 @@ describe("outboxOrderPaidEmailHandler", () => {
     });
   });
 
+  it("carries the proved offer percent percent and paid shipping to the existing receipt formatter", async () => {
+    const { handler, sendCalls } = makeDeps({ data: { ...sampleData, subtotalMinor: 123, discountMinor: 27,
+      totalMinor: 1096, firstSubscriptionPricePresentation: { catalogProductsMinor: 137, productDiscountMinor: 41,
+        productPayableMinor: 96, shippingGrossMinor: 1000, shippingDiscountMinor: 0, shippingEffectiveMinor: 1000,
+        totalMinor: 1096, discountPercent: 30 } } });
+    await handler.handle(makeRow(paidPayload), signal());
+    expect(sendCalls[0]).toMatchObject({ totals: { totalLabel: "10,96\u00a0zł",
+      firstSubscription: { discountPercent: 30, productPayableLabel: "0,96\u00a0zł", shippingLabel: "10,00\u00a0zł", shippingFree: false } } });
+  });
+
   it("retries (does NOT send a contentless receipt) when the order data is not yet readable", async () => {
     const { handler, sendCalls } = makeDeps({ data: null });
     const outcome = await handler.handle(makeRow(paidPayload), signal());

@@ -96,6 +96,34 @@ Browser bundles resolve the complete commerce entry and both facades without
 externals or Node/database imports. The server entry bundles for Node; raw
 uploads deliberately fail the browser negative control.
 
+## Commerce domain effects package boundary
+
+The reference transactional email handlers and dispatch registry bind the single
+implementation at `@openlup/platform/commerce/server`. Pure projections and ports
+remain at the browser-safe `@openlup/platform/commerce` entry. The package consumes durable
+outbox facts; existing database triggers, the outbox worker and the independent
+accounting invoice duty retain their owners. Paid email and paid fulfillment
+register independently. Fulfillment delegates to M08, including its optional
+risk gate. Cancellation email remains unregistered; accounting may claim its
+fact through `extraHandlers`. Return approval and rejection notify only their
+own facts, without performing goods receipt, refunds or subscription changes.
+
+`commerceEmailBinding.ts` retains locale, money/line labels, first-subscription
+presentation, legacy tracking and provider notification policy. It binds the
+existing fulfillment payload parser, communications transactional scaffold and outcome mapper
+without moving those algorithms into commerce. Reference field names and send
+ordering are preserved; neutral ports use `contextName` and `messageId`.
+Refund emails show an amount only for `provider-refund.v2` evidence. Paid receipt
+presentation forwards its proved discount percentage. Registry descriptors are
+checked against actual registration before claim.
+
+The neutral sales-channel projection retains source kind, channel slug and
+external order reference byte-exact. OMS keeps its existing richer projection, where an unread source axis stays undefined. Inventory
+exposure is a type-only injected read port, with no SQL or default binding.
+W8/W9 conformance lives in `packages/platform/test/commerce/effects`; rebound
+reference suites and the captured event-schema transcript check host behavior.
+Admin order UI and marketing/review handlers remain reference-owned.
+
 ## Pricing policy package boundary
 
 The existing pricing-policy token and neutral error/safe-reason block are owned

@@ -1,0 +1,1352 @@
+[
+  {
+    "schema": "commerceOrderDraftCreatedOutboxRecordSchema",
+    "input": {
+      "id": "550e8400-e29b-41d4-a716-446655440001",
+      "created_at": "2026-06-01T20:00:00.000Z",
+      "available_at": "2026-06-01T20:00:00.000Z",
+      "processed_at": null,
+      "aggregate_type": "commerce_order",
+      "aggregate_id": "550e8400-e29b-41d4-a716-446655440000",
+      "event_type": "commerce.order_draft.created",
+      "idempotency_key": "quote-2026-06-01-item-a",
+      "status": "pending",
+      "attempts": 0,
+      "payload": {
+        "orderId": "order_550e8400-e29b-41d4-a716-446655440000",
+        "orderUuid": "550e8400-e29b-41d4-a716-446655440000",
+        "quoteSnapshot": {
+          "contractVersion": "commerce.v0",
+          "quote": {
+            "currency": "__HOST_CURRENCY__",
+            "taxIncluded": true,
+            "lines": [
+              {
+                "sku": "ITEM-A",
+                "productSlug": "item-a",
+                "quantity": 1,
+                "unitPriceGross": {
+                  "amountMinor": 1490,
+                  "currency": "__HOST_CURRENCY__"
+                },
+                "lineSubtotalGross": {
+                  "amountMinor": 1490,
+                  "currency": "__HOST_CURRENCY__"
+                },
+                "tax": {
+                  "included": true,
+                  "country": "__HOST_COUNTRY__",
+                  "category": "pet_food",
+                  "vatRateBps": 800,
+                  "legalBasis": "__HOST_COUNTRY__ VAT Annex 3 item 10c",
+                  "netAmount": {
+                    "amountMinor": 1380,
+                    "currency": "__HOST_CURRENCY__"
+                  },
+                  "vatAmount": {
+                    "amountMinor": 110,
+                    "currency": "__HOST_CURRENCY__"
+                  },
+                  "grossAmount": {
+                    "amountMinor": 1490,
+                    "currency": "__HOST_CURRENCY__"
+                  }
+                }
+              }
+            ],
+            "discounts": [],
+            "subtotalGross": {
+              "amountMinor": 1490,
+              "currency": "__HOST_CURRENCY__"
+            },
+            "discountTotalGross": {
+              "amountMinor": 0,
+              "currency": "__HOST_CURRENCY__"
+            },
+            "totalGross": {
+              "amountMinor": 1490,
+              "currency": "__HOST_CURRENCY__"
+            },
+            "netTotal": {
+              "amountMinor": 1380,
+              "currency": "__HOST_CURRENCY__"
+            },
+            "taxTotal": {
+              "amountMinor": 110,
+              "currency": "__HOST_CURRENCY__"
+            },
+            "context": {
+              "petId": "subject-example"
+            }
+          }
+        },
+        "orderDraftSnapshot": {
+          "contractVersion": "commerce.v0",
+          "source": "commerce.order_draft.bff.v0",
+          "status": "draft",
+          "paymentStatus": "not_started",
+          "currency": "__HOST_CURRENCY__",
+          "taxIncluded": true,
+          "lines": [
+            {
+              "sku": "ITEM-A",
+              "productSlug": "item-a",
+              "quantity": 1,
+              "unitPriceGross": {
+                "amountMinor": 1490,
+                "currency": "__HOST_CURRENCY__"
+              },
+              "lineSubtotalGross": {
+                "amountMinor": 1490,
+                "currency": "__HOST_CURRENCY__"
+              },
+              "tax": {
+                "included": true,
+                "country": "__HOST_COUNTRY__",
+                "category": "pet_food",
+                "vatRateBps": 800,
+                "legalBasis": "__HOST_COUNTRY__ VAT Annex 3 item 10c",
+                "netAmount": {
+                  "amountMinor": 1380,
+                  "currency": "__HOST_CURRENCY__"
+                },
+                "vatAmount": {
+                  "amountMinor": 110,
+                  "currency": "__HOST_CURRENCY__"
+                },
+                "grossAmount": {
+                  "amountMinor": 1490,
+                  "currency": "__HOST_CURRENCY__"
+                }
+              }
+            }
+          ],
+          "discounts": [],
+          "context": {
+            "petId": "subject-example"
+          },
+          "totals": {
+            "subtotalGross": {
+              "amountMinor": 1490,
+              "currency": "__HOST_CURRENCY__"
+            },
+            "discountTotalGross": {
+              "amountMinor": 0,
+              "currency": "__HOST_CURRENCY__"
+            },
+            "totalGross": {
+              "amountMinor": 1490,
+              "currency": "__HOST_CURRENCY__"
+            },
+            "netTotal": {
+              "amountMinor": 1380,
+              "currency": "__HOST_CURRENCY__"
+            },
+            "taxTotal": {
+              "amountMinor": 110,
+              "currency": "__HOST_CURRENCY__"
+            }
+          }
+        }
+      },
+      "error": null,
+      "metadata": {
+        "boundary": "commerce_create_order_draft_with_outbox"
+      }
+    },
+    "expected": {
+      "success": false,
+      "issues": [
+        {
+          "code": "invalid_value",
+          "values": [
+            "one_time",
+            "subscription"
+          ],
+          "path": [
+            "payload",
+            "quoteSnapshot",
+            "quote",
+            "context",
+            "mode"
+          ],
+          "message": "Invalid option: expected one of \"one_time\"|\"subscription\""
+        },
+        {
+          "code": "invalid_value",
+          "values": [
+            "one_time",
+            "subscription"
+          ],
+          "path": [
+            "payload",
+            "orderDraftSnapshot",
+            "context",
+            "mode"
+          ],
+          "message": "Invalid option: expected one of \"one_time\"|\"subscription\""
+        }
+      ]
+    }
+  },
+  {
+    "schema": "commerceOrderDraftCreatedPayloadSchema",
+    "input": {
+      "orderId": "order_550e8400-e29b-41d4-a716-446655440000",
+      "orderUuid": "550e8400-e29b-41d4-a716-446655440000",
+      "quoteSnapshot": {
+        "contractVersion": "commerce.v0",
+        "quote": {
+          "currency": "__HOST_CURRENCY__",
+          "taxIncluded": true,
+          "lines": [
+            {
+              "sku": "ITEM-A",
+              "productSlug": "item-a",
+              "quantity": 1,
+              "unitPriceGross": {
+                "amountMinor": 1490,
+                "currency": "__HOST_CURRENCY__"
+              },
+              "lineSubtotalGross": {
+                "amountMinor": 1490,
+                "currency": "__HOST_CURRENCY__"
+              },
+              "tax": {
+                "included": true,
+                "country": "__HOST_COUNTRY__",
+                "category": "pet_food",
+                "vatRateBps": 800,
+                "legalBasis": "__HOST_COUNTRY__ VAT Annex 3 item 10c",
+                "netAmount": {
+                  "amountMinor": 1380,
+                  "currency": "__HOST_CURRENCY__"
+                },
+                "vatAmount": {
+                  "amountMinor": 110,
+                  "currency": "__HOST_CURRENCY__"
+                },
+                "grossAmount": {
+                  "amountMinor": 1490,
+                  "currency": "__HOST_CURRENCY__"
+                }
+              }
+            }
+          ],
+          "discounts": [],
+          "subtotalGross": {
+            "amountMinor": 1490,
+            "currency": "__HOST_CURRENCY__"
+          },
+          "discountTotalGross": {
+            "amountMinor": 0,
+            "currency": "__HOST_CURRENCY__"
+          },
+          "totalGross": {
+            "amountMinor": 1490,
+            "currency": "__HOST_CURRENCY__"
+          },
+          "netTotal": {
+            "amountMinor": 1380,
+            "currency": "__HOST_CURRENCY__"
+          },
+          "taxTotal": {
+            "amountMinor": 110,
+            "currency": "__HOST_CURRENCY__"
+          },
+          "context": {
+            "petId": "subject-example"
+          }
+        }
+      },
+      "orderDraftSnapshot": {
+        "contractVersion": "commerce.v0",
+        "source": "commerce.order_draft.bff.v0",
+        "status": "draft",
+        "paymentStatus": "not_started",
+        "currency": "__HOST_CURRENCY__",
+        "taxIncluded": true,
+        "lines": [
+          {
+            "sku": "ITEM-A",
+            "productSlug": "item-a",
+            "quantity": 1,
+            "unitPriceGross": {
+              "amountMinor": 1490,
+              "currency": "__HOST_CURRENCY__"
+            },
+            "lineSubtotalGross": {
+              "amountMinor": 1490,
+              "currency": "__HOST_CURRENCY__"
+            },
+            "tax": {
+              "included": true,
+              "country": "__HOST_COUNTRY__",
+              "category": "pet_food",
+              "vatRateBps": 800,
+              "legalBasis": "__HOST_COUNTRY__ VAT Annex 3 item 10c",
+              "netAmount": {
+                "amountMinor": 1380,
+                "currency": "__HOST_CURRENCY__"
+              },
+              "vatAmount": {
+                "amountMinor": 110,
+                "currency": "__HOST_CURRENCY__"
+              },
+              "grossAmount": {
+                "amountMinor": 1490,
+                "currency": "__HOST_CURRENCY__"
+              }
+            }
+          }
+        ],
+        "discounts": [],
+        "context": {
+          "petId": "subject-example"
+        },
+        "totals": {
+          "subtotalGross": {
+            "amountMinor": 1490,
+            "currency": "__HOST_CURRENCY__"
+          },
+          "discountTotalGross": {
+            "amountMinor": 0,
+            "currency": "__HOST_CURRENCY__"
+          },
+          "totalGross": {
+            "amountMinor": 1490,
+            "currency": "__HOST_CURRENCY__"
+          },
+          "netTotal": {
+            "amountMinor": 1380,
+            "currency": "__HOST_CURRENCY__"
+          },
+          "taxTotal": {
+            "amountMinor": 110,
+            "currency": "__HOST_CURRENCY__"
+          }
+        }
+      }
+    },
+    "expected": {
+      "success": false,
+      "issues": [
+        {
+          "code": "invalid_value",
+          "values": [
+            "one_time",
+            "subscription"
+          ],
+          "path": [
+            "quoteSnapshot",
+            "quote",
+            "context",
+            "mode"
+          ],
+          "message": "Invalid option: expected one of \"one_time\"|\"subscription\""
+        },
+        {
+          "code": "invalid_value",
+          "values": [
+            "one_time",
+            "subscription"
+          ],
+          "path": [
+            "orderDraftSnapshot",
+            "context",
+            "mode"
+          ],
+          "message": "Invalid option: expected one of \"one_time\"|\"subscription\""
+        }
+      ]
+    }
+  },
+  {
+    "schema": "commerceOrderDraftCreatedPayloadSchema",
+    "input": {
+      "orderId": "order_550e8400-e29b-41d4-a716-446655440000",
+      "orderUuid": "550e8400-e29b-41d4-a716-446655440000",
+      "quoteSnapshot": {
+        "contractVersion": "commerce.v0",
+        "quote": {
+          "currency": "__HOST_CURRENCY__",
+          "taxIncluded": true,
+          "lines": [
+            {
+              "sku": "ITEM-A",
+              "productSlug": "item-a",
+              "quantity": 1,
+              "unitPriceGross": {
+                "amountMinor": 1490,
+                "currency": "__HOST_CURRENCY__"
+              },
+              "lineSubtotalGross": {
+                "amountMinor": 1490,
+                "currency": "__HOST_CURRENCY__"
+              },
+              "tax": {
+                "included": true,
+                "country": "__HOST_COUNTRY__",
+                "category": "pet_food",
+                "vatRateBps": 800,
+                "legalBasis": "__HOST_COUNTRY__ VAT Annex 3 item 10c",
+                "netAmount": {
+                  "amountMinor": 1380,
+                  "currency": "__HOST_CURRENCY__"
+                },
+                "vatAmount": {
+                  "amountMinor": 110,
+                  "currency": "__HOST_CURRENCY__"
+                },
+                "grossAmount": {
+                  "amountMinor": 1490,
+                  "currency": "__HOST_CURRENCY__"
+                }
+              }
+            }
+          ],
+          "discounts": [],
+          "subtotalGross": {
+            "amountMinor": 1490,
+            "currency": "__HOST_CURRENCY__"
+          },
+          "discountTotalGross": {
+            "amountMinor": 0,
+            "currency": "__HOST_CURRENCY__"
+          },
+          "totalGross": {
+            "amountMinor": 1490,
+            "currency": "__HOST_CURRENCY__"
+          },
+          "netTotal": {
+            "amountMinor": 1380,
+            "currency": "__HOST_CURRENCY__"
+          },
+          "taxTotal": {
+            "amountMinor": 110,
+            "currency": "__HOST_CURRENCY__"
+          },
+          "context": {
+            "petId": "subject-example"
+          }
+        }
+      },
+      "orderDraftSnapshot": {
+        "contractVersion": "commerce.v0",
+        "source": "commerce.order_draft.bff.v0",
+        "status": "draft",
+        "paymentStatus": "not_started",
+        "currency": "__HOST_CURRENCY__",
+        "taxIncluded": true,
+        "lines": [
+          {
+            "sku": "ITEM-A",
+            "productSlug": "item-a",
+            "quantity": 1,
+            "unitPriceGross": {
+              "amountMinor": 1490,
+              "currency": "__HOST_CURRENCY__"
+            },
+            "lineSubtotalGross": {
+              "amountMinor": 1490,
+              "currency": "__HOST_CURRENCY__"
+            },
+            "tax": {
+              "included": true,
+              "country": "__HOST_COUNTRY__",
+              "category": "pet_food",
+              "vatRateBps": 800,
+              "legalBasis": "__HOST_COUNTRY__ VAT Annex 3 item 10c",
+              "netAmount": {
+                "amountMinor": 1380,
+                "currency": "__HOST_CURRENCY__"
+              },
+              "vatAmount": {
+                "amountMinor": 110,
+                "currency": "__HOST_CURRENCY__"
+              },
+              "grossAmount": {
+                "amountMinor": 1490,
+                "currency": "__HOST_CURRENCY__"
+              }
+            }
+          }
+        ],
+        "discounts": [],
+        "context": {
+          "petId": "subject-example"
+        },
+        "totals": {
+          "subtotalGross": {
+            "amountMinor": 1490,
+            "currency": "__HOST_CURRENCY__"
+          },
+          "discountTotalGross": {
+            "amountMinor": 0,
+            "currency": "__HOST_CURRENCY__"
+          },
+          "totalGross": {
+            "amountMinor": 1490,
+            "currency": "__HOST_CURRENCY__"
+          },
+          "netTotal": {
+            "amountMinor": 1380,
+            "currency": "__HOST_CURRENCY__"
+          },
+          "taxTotal": {
+            "amountMinor": 110,
+            "currency": "__HOST_CURRENCY__"
+          }
+        }
+      },
+      "extra": true
+    },
+    "expected": {
+      "success": false,
+      "issues": [
+        {
+          "code": "invalid_value",
+          "values": [
+            "one_time",
+            "subscription"
+          ],
+          "path": [
+            "quoteSnapshot",
+            "quote",
+            "context",
+            "mode"
+          ],
+          "message": "Invalid option: expected one of \"one_time\"|\"subscription\""
+        },
+        {
+          "code": "invalid_value",
+          "values": [
+            "one_time",
+            "subscription"
+          ],
+          "path": [
+            "orderDraftSnapshot",
+            "context",
+            "mode"
+          ],
+          "message": "Invalid option: expected one of \"one_time\"|\"subscription\""
+        },
+        {
+          "code": "unrecognized_keys",
+          "keys": [
+            "extra"
+          ],
+          "path": [],
+          "message": "Unrecognized key: \"extra\""
+        }
+      ]
+    }
+  },
+  {
+    "schema": "commerceOrderDraftCreatedPayloadSchema",
+    "input": {
+      "orderId": "order_550e8400-e29b-41d4-a716-446655449999",
+      "orderUuid": "550e8400-e29b-41d4-a716-446655440000",
+      "quoteSnapshot": {
+        "contractVersion": "commerce.v0",
+        "quote": {
+          "currency": "__HOST_CURRENCY__",
+          "taxIncluded": true,
+          "lines": [
+            {
+              "sku": "ITEM-A",
+              "productSlug": "item-a",
+              "quantity": 1,
+              "unitPriceGross": {
+                "amountMinor": 1490,
+                "currency": "__HOST_CURRENCY__"
+              },
+              "lineSubtotalGross": {
+                "amountMinor": 1490,
+                "currency": "__HOST_CURRENCY__"
+              },
+              "tax": {
+                "included": true,
+                "country": "__HOST_COUNTRY__",
+                "category": "pet_food",
+                "vatRateBps": 800,
+                "legalBasis": "__HOST_COUNTRY__ VAT Annex 3 item 10c",
+                "netAmount": {
+                  "amountMinor": 1380,
+                  "currency": "__HOST_CURRENCY__"
+                },
+                "vatAmount": {
+                  "amountMinor": 110,
+                  "currency": "__HOST_CURRENCY__"
+                },
+                "grossAmount": {
+                  "amountMinor": 1490,
+                  "currency": "__HOST_CURRENCY__"
+                }
+              }
+            }
+          ],
+          "discounts": [],
+          "subtotalGross": {
+            "amountMinor": 1490,
+            "currency": "__HOST_CURRENCY__"
+          },
+          "discountTotalGross": {
+            "amountMinor": 0,
+            "currency": "__HOST_CURRENCY__"
+          },
+          "totalGross": {
+            "amountMinor": 1490,
+            "currency": "__HOST_CURRENCY__"
+          },
+          "netTotal": {
+            "amountMinor": 1380,
+            "currency": "__HOST_CURRENCY__"
+          },
+          "taxTotal": {
+            "amountMinor": 110,
+            "currency": "__HOST_CURRENCY__"
+          },
+          "context": {
+            "petId": "subject-example"
+          }
+        }
+      },
+      "orderDraftSnapshot": {
+        "contractVersion": "commerce.v0",
+        "source": "commerce.order_draft.bff.v0",
+        "status": "draft",
+        "paymentStatus": "not_started",
+        "currency": "__HOST_CURRENCY__",
+        "taxIncluded": true,
+        "lines": [
+          {
+            "sku": "ITEM-A",
+            "productSlug": "item-a",
+            "quantity": 1,
+            "unitPriceGross": {
+              "amountMinor": 1490,
+              "currency": "__HOST_CURRENCY__"
+            },
+            "lineSubtotalGross": {
+              "amountMinor": 1490,
+              "currency": "__HOST_CURRENCY__"
+            },
+            "tax": {
+              "included": true,
+              "country": "__HOST_COUNTRY__",
+              "category": "pet_food",
+              "vatRateBps": 800,
+              "legalBasis": "__HOST_COUNTRY__ VAT Annex 3 item 10c",
+              "netAmount": {
+                "amountMinor": 1380,
+                "currency": "__HOST_CURRENCY__"
+              },
+              "vatAmount": {
+                "amountMinor": 110,
+                "currency": "__HOST_CURRENCY__"
+              },
+              "grossAmount": {
+                "amountMinor": 1490,
+                "currency": "__HOST_CURRENCY__"
+              }
+            }
+          }
+        ],
+        "discounts": [],
+        "context": {
+          "petId": "subject-example"
+        },
+        "totals": {
+          "subtotalGross": {
+            "amountMinor": 1490,
+            "currency": "__HOST_CURRENCY__"
+          },
+          "discountTotalGross": {
+            "amountMinor": 0,
+            "currency": "__HOST_CURRENCY__"
+          },
+          "totalGross": {
+            "amountMinor": 1490,
+            "currency": "__HOST_CURRENCY__"
+          },
+          "netTotal": {
+            "amountMinor": 1380,
+            "currency": "__HOST_CURRENCY__"
+          },
+          "taxTotal": {
+            "amountMinor": 110,
+            "currency": "__HOST_CURRENCY__"
+          }
+        }
+      }
+    },
+    "expected": {
+      "success": false,
+      "issues": [
+        {
+          "code": "invalid_value",
+          "values": [
+            "one_time",
+            "subscription"
+          ],
+          "path": [
+            "quoteSnapshot",
+            "quote",
+            "context",
+            "mode"
+          ],
+          "message": "Invalid option: expected one of \"one_time\"|\"subscription\""
+        },
+        {
+          "code": "invalid_value",
+          "values": [
+            "one_time",
+            "subscription"
+          ],
+          "path": [
+            "orderDraftSnapshot",
+            "context",
+            "mode"
+          ],
+          "message": "Invalid option: expected one of \"one_time\"|\"subscription\""
+        }
+      ]
+    }
+  },
+  {
+    "schema": "commerceOrderDraftCreatedPayloadSchema",
+    "input": {
+      "orderId": "order_550e8400-e29b-41d4-a716-446655440000",
+      "orderUuid": "550e8400-e29b-41d4-a716-446655440000",
+      "quoteSnapshot": {
+        "contractVersion": "commerce.v0",
+        "quote": {
+          "currency": "__HOST_CURRENCY__",
+          "taxIncluded": true,
+          "lines": [
+            {
+              "sku": "ITEM-A",
+              "productSlug": "item-a",
+              "quantity": 1,
+              "unitPriceGross": {
+                "amountMinor": 1490,
+                "currency": "__HOST_CURRENCY__"
+              },
+              "lineSubtotalGross": {
+                "amountMinor": 1490,
+                "currency": "__HOST_CURRENCY__"
+              },
+              "tax": {
+                "included": true,
+                "country": "__HOST_COUNTRY__",
+                "category": "pet_food",
+                "vatRateBps": 800,
+                "legalBasis": "__HOST_COUNTRY__ VAT Annex 3 item 10c",
+                "netAmount": {
+                  "amountMinor": 1380,
+                  "currency": "__HOST_CURRENCY__"
+                },
+                "vatAmount": {
+                  "amountMinor": 110,
+                  "currency": "__HOST_CURRENCY__"
+                },
+                "grossAmount": {
+                  "amountMinor": 1490,
+                  "currency": "__HOST_CURRENCY__"
+                }
+              }
+            }
+          ],
+          "discounts": [],
+          "subtotalGross": {
+            "amountMinor": 1490,
+            "currency": "__HOST_CURRENCY__"
+          },
+          "discountTotalGross": {
+            "amountMinor": 0,
+            "currency": "__HOST_CURRENCY__"
+          },
+          "totalGross": {
+            "amountMinor": 1490,
+            "currency": "__HOST_CURRENCY__"
+          },
+          "netTotal": {
+            "amountMinor": 1380,
+            "currency": "__HOST_CURRENCY__"
+          },
+          "taxTotal": {
+            "amountMinor": 110,
+            "currency": "__HOST_CURRENCY__"
+          },
+          "context": {
+            "petId": "subject-example"
+          }
+        },
+        "extra": true
+      },
+      "orderDraftSnapshot": {
+        "contractVersion": "commerce.v0",
+        "source": "commerce.order_draft.bff.v0",
+        "status": "draft",
+        "paymentStatus": "not_started",
+        "currency": "__HOST_CURRENCY__",
+        "taxIncluded": true,
+        "lines": [
+          {
+            "sku": "ITEM-A",
+            "productSlug": "item-a",
+            "quantity": 1,
+            "unitPriceGross": {
+              "amountMinor": 1490,
+              "currency": "__HOST_CURRENCY__"
+            },
+            "lineSubtotalGross": {
+              "amountMinor": 1490,
+              "currency": "__HOST_CURRENCY__"
+            },
+            "tax": {
+              "included": true,
+              "country": "__HOST_COUNTRY__",
+              "category": "pet_food",
+              "vatRateBps": 800,
+              "legalBasis": "__HOST_COUNTRY__ VAT Annex 3 item 10c",
+              "netAmount": {
+                "amountMinor": 1380,
+                "currency": "__HOST_CURRENCY__"
+              },
+              "vatAmount": {
+                "amountMinor": 110,
+                "currency": "__HOST_CURRENCY__"
+              },
+              "grossAmount": {
+                "amountMinor": 1490,
+                "currency": "__HOST_CURRENCY__"
+              }
+            }
+          }
+        ],
+        "discounts": [],
+        "context": {
+          "petId": "subject-example"
+        },
+        "totals": {
+          "subtotalGross": {
+            "amountMinor": 1490,
+            "currency": "__HOST_CURRENCY__"
+          },
+          "discountTotalGross": {
+            "amountMinor": 0,
+            "currency": "__HOST_CURRENCY__"
+          },
+          "totalGross": {
+            "amountMinor": 1490,
+            "currency": "__HOST_CURRENCY__"
+          },
+          "netTotal": {
+            "amountMinor": 1380,
+            "currency": "__HOST_CURRENCY__"
+          },
+          "taxTotal": {
+            "amountMinor": 110,
+            "currency": "__HOST_CURRENCY__"
+          }
+        }
+      }
+    },
+    "expected": {
+      "success": false,
+      "issues": [
+        {
+          "code": "invalid_value",
+          "values": [
+            "one_time",
+            "subscription"
+          ],
+          "path": [
+            "quoteSnapshot",
+            "quote",
+            "context",
+            "mode"
+          ],
+          "message": "Invalid option: expected one of \"one_time\"|\"subscription\""
+        },
+        {
+          "code": "unrecognized_keys",
+          "keys": [
+            "extra"
+          ],
+          "path": [
+            "quoteSnapshot"
+          ],
+          "message": "Unrecognized key: \"extra\""
+        },
+        {
+          "code": "invalid_value",
+          "values": [
+            "one_time",
+            "subscription"
+          ],
+          "path": [
+            "orderDraftSnapshot",
+            "context",
+            "mode"
+          ],
+          "message": "Invalid option: expected one of \"one_time\"|\"subscription\""
+        }
+      ]
+    }
+  },
+  {
+    "schema": "commerceOrderDraftCreatedOutboxRecordSchema",
+    "input": {
+      "id": "550e8400-e29b-41d4-a716-446655440001",
+      "created_at": "2026-06-01T20:00:00.000Z",
+      "available_at": "2026-06-01T20:00:00.000Z",
+      "processed_at": null,
+      "aggregate_type": "commerce_order",
+      "aggregate_id": "550e8400-e29b-41d4-a716-446655449999",
+      "event_type": "commerce.order_draft.created",
+      "idempotency_key": "quote-2026-06-01-item-a",
+      "status": "pending",
+      "attempts": 0,
+      "payload": {
+        "orderId": "order_550e8400-e29b-41d4-a716-446655440000",
+        "orderUuid": "550e8400-e29b-41d4-a716-446655440000",
+        "quoteSnapshot": {
+          "contractVersion": "commerce.v0",
+          "quote": {
+            "currency": "__HOST_CURRENCY__",
+            "taxIncluded": true,
+            "lines": [
+              {
+                "sku": "ITEM-A",
+                "productSlug": "item-a",
+                "quantity": 1,
+                "unitPriceGross": {
+                  "amountMinor": 1490,
+                  "currency": "__HOST_CURRENCY__"
+                },
+                "lineSubtotalGross": {
+                  "amountMinor": 1490,
+                  "currency": "__HOST_CURRENCY__"
+                },
+                "tax": {
+                  "included": true,
+                  "country": "__HOST_COUNTRY__",
+                  "category": "pet_food",
+                  "vatRateBps": 800,
+                  "legalBasis": "__HOST_COUNTRY__ VAT Annex 3 item 10c",
+                  "netAmount": {
+                    "amountMinor": 1380,
+                    "currency": "__HOST_CURRENCY__"
+                  },
+                  "vatAmount": {
+                    "amountMinor": 110,
+                    "currency": "__HOST_CURRENCY__"
+                  },
+                  "grossAmount": {
+                    "amountMinor": 1490,
+                    "currency": "__HOST_CURRENCY__"
+                  }
+                }
+              }
+            ],
+            "discounts": [],
+            "subtotalGross": {
+              "amountMinor": 1490,
+              "currency": "__HOST_CURRENCY__"
+            },
+            "discountTotalGross": {
+              "amountMinor": 0,
+              "currency": "__HOST_CURRENCY__"
+            },
+            "totalGross": {
+              "amountMinor": 1490,
+              "currency": "__HOST_CURRENCY__"
+            },
+            "netTotal": {
+              "amountMinor": 1380,
+              "currency": "__HOST_CURRENCY__"
+            },
+            "taxTotal": {
+              "amountMinor": 110,
+              "currency": "__HOST_CURRENCY__"
+            },
+            "context": {
+              "petId": "subject-example"
+            }
+          }
+        },
+        "orderDraftSnapshot": {
+          "contractVersion": "commerce.v0",
+          "source": "commerce.order_draft.bff.v0",
+          "status": "draft",
+          "paymentStatus": "not_started",
+          "currency": "__HOST_CURRENCY__",
+          "taxIncluded": true,
+          "lines": [
+            {
+              "sku": "ITEM-A",
+              "productSlug": "item-a",
+              "quantity": 1,
+              "unitPriceGross": {
+                "amountMinor": 1490,
+                "currency": "__HOST_CURRENCY__"
+              },
+              "lineSubtotalGross": {
+                "amountMinor": 1490,
+                "currency": "__HOST_CURRENCY__"
+              },
+              "tax": {
+                "included": true,
+                "country": "__HOST_COUNTRY__",
+                "category": "pet_food",
+                "vatRateBps": 800,
+                "legalBasis": "__HOST_COUNTRY__ VAT Annex 3 item 10c",
+                "netAmount": {
+                  "amountMinor": 1380,
+                  "currency": "__HOST_CURRENCY__"
+                },
+                "vatAmount": {
+                  "amountMinor": 110,
+                  "currency": "__HOST_CURRENCY__"
+                },
+                "grossAmount": {
+                  "amountMinor": 1490,
+                  "currency": "__HOST_CURRENCY__"
+                }
+              }
+            }
+          ],
+          "discounts": [],
+          "context": {
+            "petId": "subject-example"
+          },
+          "totals": {
+            "subtotalGross": {
+              "amountMinor": 1490,
+              "currency": "__HOST_CURRENCY__"
+            },
+            "discountTotalGross": {
+              "amountMinor": 0,
+              "currency": "__HOST_CURRENCY__"
+            },
+            "totalGross": {
+              "amountMinor": 1490,
+              "currency": "__HOST_CURRENCY__"
+            },
+            "netTotal": {
+              "amountMinor": 1380,
+              "currency": "__HOST_CURRENCY__"
+            },
+            "taxTotal": {
+              "amountMinor": 110,
+              "currency": "__HOST_CURRENCY__"
+            }
+          }
+        }
+      },
+      "error": null,
+      "metadata": {
+        "boundary": "commerce_create_order_draft_with_outbox"
+      }
+    },
+    "expected": {
+      "success": false,
+      "issues": [
+        {
+          "code": "invalid_value",
+          "values": [
+            "one_time",
+            "subscription"
+          ],
+          "path": [
+            "payload",
+            "quoteSnapshot",
+            "quote",
+            "context",
+            "mode"
+          ],
+          "message": "Invalid option: expected one of \"one_time\"|\"subscription\""
+        },
+        {
+          "code": "invalid_value",
+          "values": [
+            "one_time",
+            "subscription"
+          ],
+          "path": [
+            "payload",
+            "orderDraftSnapshot",
+            "context",
+            "mode"
+          ],
+          "message": "Invalid option: expected one of \"one_time\"|\"subscription\""
+        }
+      ]
+    }
+  },
+  {
+    "schema": "commerceOrderPaidOutboxRecordSchema",
+    "input": {
+      "id": "550e8400-e29b-41d4-a716-446655440002",
+      "created_at": "2026-06-13T20:00:00.000Z",
+      "available_at": "2026-06-13T20:00:00.000Z",
+      "processed_at": null,
+      "aggregate_type": "commerce_order",
+      "aggregate_id": "550e8400-e29b-41d4-a716-446655440000",
+      "event_type": "commerce.order.paid",
+      "idempotency_key": "order_paid:550e8400-e29b-41d4-a716-446655440000",
+      "status": "pending",
+      "attempts": 0,
+      "payload": {
+        "orderId": "order_550e8400-e29b-41d4-a716-446655440000",
+        "orderUuid": "550e8400-e29b-41d4-a716-446655440000",
+        "mode": "future_mode",
+        "occurredAt": "2026-06-13T20:00:00.000Z"
+      },
+      "error": null,
+      "metadata": {
+        "source": "commerce_emit_order_paid_outbox"
+      }
+    },
+    "expected": {
+      "success": true,
+      "data": {
+        "id": "550e8400-e29b-41d4-a716-446655440002",
+        "created_at": "2026-06-13T20:00:00.000Z",
+        "available_at": "2026-06-13T20:00:00.000Z",
+        "processed_at": null,
+        "aggregate_type": "commerce_order",
+        "aggregate_id": "550e8400-e29b-41d4-a716-446655440000",
+        "event_type": "commerce.order.paid",
+        "idempotency_key": "order_paid:550e8400-e29b-41d4-a716-446655440000",
+        "status": "pending",
+        "attempts": 0,
+        "payload": {
+          "orderId": "order_550e8400-e29b-41d4-a716-446655440000",
+          "orderUuid": "550e8400-e29b-41d4-a716-446655440000",
+          "mode": "future_mode",
+          "occurredAt": "2026-06-13T20:00:00.000Z"
+        },
+        "error": null,
+        "metadata": {
+          "source": "commerce_emit_order_paid_outbox"
+        }
+      }
+    }
+  },
+  {
+    "schema": "commerceOrderPaidOutboxRecordSchema",
+    "input": {
+      "id": "550e8400-e29b-41d4-a716-446655440002",
+      "created_at": "2026-06-13T20:00:00.000Z",
+      "available_at": "2026-06-13T20:00:00.000Z",
+      "processed_at": null,
+      "aggregate_type": "commerce_order",
+      "aggregate_id": "550e8400-e29b-41d4-a716-446655440000",
+      "event_type": "future.event",
+      "idempotency_key": "order_paid:550e8400-e29b-41d4-a716-446655440000",
+      "status": "pending",
+      "attempts": 0,
+      "payload": {
+        "orderId": "order_550e8400-e29b-41d4-a716-446655440000",
+        "orderUuid": "550e8400-e29b-41d4-a716-446655440000",
+        "mode": "one_time",
+        "occurredAt": "2026-06-13T20:00:00.000Z"
+      },
+      "error": null,
+      "metadata": {
+        "source": "commerce_emit_order_paid_outbox"
+      }
+    },
+    "expected": {
+      "success": false,
+      "issues": [
+        {
+          "code": "invalid_value",
+          "values": [
+            "commerce.order.paid"
+          ],
+          "path": [
+            "event_type"
+          ],
+          "message": "Invalid input: expected \"commerce.order.paid\""
+        }
+      ]
+    }
+  },
+  {
+    "schema": "commerceOrderDraftCreatedPayloadSchema",
+    "input": {
+      "orderId": "order_550e8400-e29b-41d4-a716-446655440000",
+      "orderUuid": "550e8400-e29b-41d4-a716-446655440000",
+      "quoteSnapshot": {
+        "contractVersion": "commerce.v0",
+        "quote": {
+          "currency": "__HOST_CURRENCY__",
+          "taxIncluded": true,
+          "lines": [
+            {
+              "sku": "ITEM-A",
+              "productSlug": "item-a",
+              "quantity": 1,
+              "unitPriceGross": {
+                "amountMinor": 1490,
+                "currency": "__HOST_CURRENCY__"
+              },
+              "lineSubtotalGross": {
+                "amountMinor": 1490,
+                "currency": "__HOST_CURRENCY__"
+              },
+              "tax": {
+                "included": true,
+                "country": "__HOST_COUNTRY__",
+                "category": "pet_food",
+                "vatRateBps": 800,
+                "legalBasis": "__HOST_COUNTRY__ VAT Annex 3 item 10c",
+                "netAmount": {
+                  "amountMinor": 1380,
+                  "currency": "__HOST_CURRENCY__"
+                },
+                "vatAmount": {
+                  "amountMinor": 110,
+                  "currency": "__HOST_CURRENCY__"
+                },
+                "grossAmount": {
+                  "amountMinor": 1490,
+                  "currency": "__HOST_CURRENCY__"
+                }
+              }
+            }
+          ],
+          "discounts": [],
+          "subtotalGross": {
+            "amountMinor": 1490,
+            "currency": "__HOST_CURRENCY__"
+          },
+          "discountTotalGross": {
+            "amountMinor": 0,
+            "currency": "__HOST_CURRENCY__"
+          },
+          "totalGross": {
+            "amountMinor": 1490,
+            "currency": "__HOST_CURRENCY__"
+          },
+          "netTotal": {
+            "amountMinor": 1380,
+            "currency": "__HOST_CURRENCY__"
+          },
+          "taxTotal": {
+            "amountMinor": 110,
+            "currency": "__HOST_CURRENCY__"
+          },
+          "context": {
+            "petId": "subject-example"
+          }
+        }
+      },
+      "orderDraftSnapshot": {
+        "contractVersion": "commerce.v0",
+        "source": "commerce.order_draft.bff.v0",
+        "status": "draft",
+        "paymentStatus": "not_started",
+        "currency": "__HOST_CURRENCY__",
+        "taxIncluded": true,
+        "lines": [
+          {
+            "sku": "ITEM-A",
+            "productSlug": "item-a",
+            "quantity": 1,
+            "unitPriceGross": {
+              "amountMinor": 1490,
+              "currency": "__HOST_CURRENCY__"
+            },
+            "lineSubtotalGross": {
+              "amountMinor": 1490,
+              "currency": "__HOST_CURRENCY__"
+            },
+            "tax": {
+              "included": true,
+              "country": "__HOST_COUNTRY__",
+              "category": "pet_food",
+              "vatRateBps": 800,
+              "legalBasis": "__HOST_COUNTRY__ VAT Annex 3 item 10c",
+              "netAmount": {
+                "amountMinor": 1380,
+                "currency": "__HOST_CURRENCY__"
+              },
+              "vatAmount": {
+                "amountMinor": 110,
+                "currency": "__HOST_CURRENCY__"
+              },
+              "grossAmount": {
+                "amountMinor": 1490,
+                "currency": "__HOST_CURRENCY__"
+              }
+            }
+          }
+        ],
+        "discounts": [],
+        "context": {
+          "petId": "subject-example"
+        },
+        "totals": {
+          "subtotalGross": {
+            "amountMinor": 1490,
+            "currency": "__HOST_CURRENCY__"
+          },
+          "discountTotalGross": {
+            "amountMinor": 0,
+            "currency": "__HOST_CURRENCY__"
+          },
+          "totalGross": {
+            "amountMinor": 1,
+            "currency": "__HOST_CURRENCY__"
+          },
+          "netTotal": {
+            "amountMinor": 1380,
+            "currency": "__HOST_CURRENCY__"
+          },
+          "taxTotal": {
+            "amountMinor": 110,
+            "currency": "__HOST_CURRENCY__"
+          }
+        }
+      }
+    },
+    "expected": {
+      "success": false,
+      "issues": [
+        {
+          "code": "invalid_value",
+          "values": [
+            "one_time",
+            "subscription"
+          ],
+          "path": [
+            "quoteSnapshot",
+            "quote",
+            "context",
+            "mode"
+          ],
+          "message": "Invalid option: expected one of \"one_time\"|\"subscription\""
+        },
+        {
+          "code": "invalid_value",
+          "values": [
+            "one_time",
+            "subscription"
+          ],
+          "path": [
+            "orderDraftSnapshot",
+            "context",
+            "mode"
+          ],
+          "message": "Invalid option: expected one of \"one_time\"|\"subscription\""
+        }
+      ]
+    }
+  }
+]

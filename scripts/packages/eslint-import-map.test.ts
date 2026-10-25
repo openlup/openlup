@@ -590,7 +590,7 @@ describe("eslint platform module boundaries", { timeout: 60_000 }, () => {
   it("admits only declared Node-entry edges and refuses reverse commerce imports", async () => {
     const config = await loadConfig();
     const { PLATFORM_MODULE_GRAPH: graph } = await import("../../eslint.config.js");
-    expect(graph["commerce/server"]).toEqual({ values: ["commerce"], types: ["http", "bff"] });
+    expect(graph["commerce/server"]).toEqual({ values: ["commerce", "fulfillment"], types: ["http", "bff"] });
     expect(graph.commerce.values).not.toContain("commerce/server");
     for (const depth of [0, 1]) {
       const up = "../".repeat(depth);
@@ -614,6 +614,27 @@ describe("eslint platform module boundaries", { timeout: 60_000 }, () => {
       const browserFile = `packages/platform/src/commerce/${"nested/".repeat(depth)}probe.ts`;
       for (const specifier of [depth ? "../server/index.js" : "./server/index.js", `${up}../commerce/server/index.js`]) {
         expect(await moduleMessages(config, source(specifier), browserFile), specifier).toContainEqual(expect.stringContaining('packages/platform module "commerce"'));
+      }
+    }
+  });
+
+  it.each(sourceExtensions)("limits the commerce fulfillment edge to its server entry in %s", async (extension) => {
+    const config = await loadConfig();
+    for (const depth of [0, 2]) {
+      const directory = "nested/".repeat(depth);
+      const up = "../".repeat(depth + 1);
+      const browser = `packages/platform/src/commerce/${directory}usesModule.${extension}`;
+      const server = `packages/platform/src/commerce/server/${directory}usesModule.${extension}`;
+      for (const source of loadSources(`${up}fulfillment/index.js`, extension)) {
+        expect(await moduleMessages(config, source, browser)).toContainEqual(expect.stringContaining('module "commerce"'));
+      }
+      for (const source of loadSources(`../${up}fulfillment/index.js`, extension)) {
+        expect(await moduleMessages(config, source, server)).toEqual([]);
+      }
+      for (const specifier of [`../${up}fulfillment/paidHandoff.js`, `../${up}data/index.js`]) {
+        for (const source of loadSources(specifier, extension)) {
+          expect(await moduleMessages(config, source, server)).toContainEqual(expect.stringContaining('module "commerce/server"'));
+        }
       }
     }
   });

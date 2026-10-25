@@ -148,7 +148,7 @@ const sourceFiles = (prefix = "") => [`${prefix}**/*.${SOURCE_EXTENSIONS}`];
 // <module>/contracts/index.ts; it has no module edges, including to its server entry.
 export const PLATFORM_MODULE_GRAPH = {
   commerce: { contracts: true, values: ["pricing/contracts", "shipping"], types: [] },
-  "commerce/server": { values: ["commerce"], types: ["http", "bff"] },
+  "commerce/server": { values: ["commerce", "fulfillment"], types: ["http", "bff"] },
   invoicing: { contracts: true, values: [], types: [] },
   fulfillment: { contracts: true, values: [], types: [] },
   subscriptions: { contracts: true, values: [], types: [] },

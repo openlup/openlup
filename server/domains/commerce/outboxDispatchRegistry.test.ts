@@ -25,7 +25,9 @@ import type {
 } from "./outboxOrderDraftEmailPorts.js";
 import type { OrderPaidFulfillmentPort } from "./outboxOrderPaidFulfillmentPorts.js";
 import type { OrderPaidParcelNoteReader } from "./outboxOrderPaidEmailHandler.js";
-import { claimAllowlist, createOutboxDispatchRegistry } from "./outboxDispatchRegistry.js";
+import type { OutboxHandler, OutboxHandlerOutcome } from "./outboxDispatchContracts.js";
+import { claimAllowlist } from "@openlup/outbox";
+import { createOutboxDispatchRegistry } from "./outboxDispatchRegistry.js";
 
 const fulfillmentPort: OrderPaidFulfillmentPort = {
   ensureFulfilledFromPaidOrder: async () => ({ kind: "completed" }),
@@ -220,6 +222,132 @@ describe("outboxDispatchRegistry", () => {
         second: { invoiceStatus: "no_invoice", accountingReversalAction: "no_invoice" },
       },
     });
+  });
+});
+
+// Golden masters for the @openlup/outbox swap-in (docs/plan/openlup-lane.md §4):
+// how two or more handlers on one event type compose. ⛔ A change here is a
+// behaviour change and must be enumerated as one.
+describe("outboxDispatchRegistry composed-handler golden masters", () => {
+  const composedRow = {
+    id: "evt-compose",
+    created_at: "2026-10-02T07:00:00.000Z",
+    available_at: "2026-10-02T07:00:00.000Z",
+    processed_at: null,
+    aggregate_type: "commerce_order",
+    aggregate_id: "order-1",
+    event_type: COMMERCE_ORDER_DRAFT_CREATED_EVENT_TYPE,
+    idempotency_key: "key-compose",
+    status: "processing",
+    attempts: 1,
+    payload: {},
+    error: null,
+    metadata: {},
+  };
+  const handlerOf = (timeoutMs: number, outcome: () => Promise<OutboxHandlerOutcome>) => ({
+    eventType: COMMERCE_ORDER_DRAFT_CREATED_EVENT_TYPE,
+    timeoutMs,
+    handle: vi.fn(outcome),
+  });
+  const compose = (...handlers: OutboxHandler[]) =>
+    createOutboxDispatchRegistry({ fulfillmentEnabled: false, extraHandlers: handlers });
+
+  it("keeps one key per type, sums the timeouts and nests first and second in registration order", async () => {
+    const a = handlerOf(1000, async () => ({ kind: "processed", detail: { a: 1 } }));
+    const b = handlerOf(2000, async () => ({ kind: "processed", detail: { b: 2 } }));
+    const c = handlerOf(4000, async () => ({ kind: "processed", detail: { c: 3 } }));
+    const registry = compose(a, b, c);
+    const composed = registry.get(COMMERCE_ORDER_DRAFT_CREATED_EVENT_TYPE);
+
+    expect([...registry.keys()]).toEqual([COMMERCE_ORDER_DRAFT_CREATED_EVENT_TYPE]);
+    expect(composed?.eventType).toBe(COMMERCE_ORDER_DRAFT_CREATED_EVENT_TYPE);
+    expect(composed?.timeoutMs).toBe(7000);
+    // A third handler wraps the composition of the first two: compose(compose(a, b), c).
+    await expect(composed?.handle(composedRow, new AbortController().signal)).resolves.toEqual({
+      kind: "processed",
+      detail: { first: { first: { a: 1 }, second: { b: 2 } }, second: { c: 3 } },
+    });
+    expect(a.handle.mock.invocationCallOrder[0]).toBeLessThan(b.handle.mock.invocationCallOrder[0] ?? 0);
+    expect(b.handle.mock.invocationCallOrder[0]).toBeLessThan(c.handle.mock.invocationCallOrder[0] ?? 0);
+  });
+
+  it("hoists the four lifecycle keys, the first handler winning, ahead of first and second", async () => {
+    const registry = compose(
+      handlerOf(1000, async () => ({
+        kind: "processed",
+        detail: { resendId: "re_first", skipped: "first_skip", other: "kept-nested" },
+      })),
+      handlerOf(1000, async () => ({
+        kind: "processed",
+        detail: { resendId: "re_second", providerMessageId: "pm_second", dedupe: "second_dedupe" },
+      })),
+    );
+
+    const outcome = await registry.get(COMMERCE_ORDER_DRAFT_CREATED_EVENT_TYPE)?.handle(
+      composedRow,
+      new AbortController().signal,
+    );
+
+    expect(outcome).toEqual({
+      kind: "processed",
+      detail: {
+        resendId: "re_first",
+        providerMessageId: "pm_second",
+        dedupe: "second_dedupe",
+        skipped: "first_skip",
+        first: { resendId: "re_first", skipped: "first_skip", other: "kept-nested" },
+        second: { resendId: "re_second", providerMessageId: "pm_second", dedupe: "second_dedupe" },
+      },
+    });
+    expect(Object.keys((outcome as { detail: Record<string, unknown> }).detail)).toEqual([
+      "resendId", "providerMessageId", "dedupe", "skipped", "first", "second",
+    ]);
+  });
+
+  it("records an absent detail as an empty object under first and second", async () => {
+    const registry = compose(
+      handlerOf(1000, async () => ({ kind: "processed" })),
+      handlerOf(1000, async () => ({ kind: "processed" })),
+    );
+
+    await expect(registry.get(COMMERCE_ORDER_DRAFT_CREATED_EVENT_TYPE)?.handle(
+      composedRow,
+      new AbortController().signal,
+    )).resolves.toEqual({ kind: "processed", detail: { first: {}, second: {} } });
+  });
+
+  it("returns the first non-processed outcome as is, and a second failure drops the first's detail", async () => {
+    const neverRun = handlerOf(1000, async () => ({ kind: "processed", detail: { never: true } }));
+    const firstFails = compose(handlerOf(1000, async () => ({ kind: "retry", reason: "first_failed" })), neverRun);
+    await expect(firstFails.get(COMMERCE_ORDER_DRAFT_CREATED_EVENT_TYPE)?.handle(
+      composedRow,
+      new AbortController().signal,
+    )).resolves.toEqual({ kind: "retry", reason: "first_failed" });
+    expect(neverRun.handle).not.toHaveBeenCalled();
+
+    const secondFails = compose(
+      handlerOf(1000, async () => ({ kind: "processed", detail: { resendId: "re_sent" } })),
+      handlerOf(1000, async () => ({ kind: "discard", reason: "second_discarded", benign: true })),
+    );
+    await expect(secondFails.get(COMMERCE_ORDER_DRAFT_CREATED_EVENT_TYPE)?.handle(
+      composedRow,
+      new AbortController().signal,
+    )).resolves.toEqual({ kind: "discard", reason: "second_discarded", benign: true });
+  });
+
+  it("does not hand the execution context to composed parts (today's phase loss, pinned not fixed)", async () => {
+    const first = vi.fn(async (..._args: unknown[]) => ({ kind: "processed" as const }));
+    const second = vi.fn(async (..._args: unknown[]) => ({ kind: "processed" as const }));
+    const registry = compose(
+      { eventType: COMMERCE_ORDER_DRAFT_CREATED_EVENT_TYPE, timeoutMs: 1000, handle: first },
+      { eventType: COMMERCE_ORDER_DRAFT_CREATED_EVENT_TYPE, timeoutMs: 1000, handle: second },
+    );
+    const signal = new AbortController().signal;
+
+    await registry.get(COMMERCE_ORDER_DRAFT_CREATED_EVENT_TYPE)?.handle(composedRow, signal, { setPhase: vi.fn() });
+
+    expect(first.mock.calls).toEqual([[composedRow, signal]]);
+    expect(second.mock.calls).toEqual([[composedRow, signal]]);
   });
 });
 

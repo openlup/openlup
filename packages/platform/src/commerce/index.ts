@@ -58,3 +58,10 @@ export * from "./commerceReturnsPort.js";
 export * from "./orderReviewContracts.js";
 export type * from "./orderReviewPorts.js";
 export * from "./orderFeedbackContracts.js";
+
+// Experimental browser-safe event contracts, projections and ports.
+export * from "./salesChannelEnvelope.js";
+export * from "./orderEmailEligibility.js";
+export * from "./orderEmailLines.js";
+export * from "./outboxDispatchContracts.js";
+export * from "./outboxOrderDraftEmailPorts.js";
