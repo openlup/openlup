@@ -220,8 +220,12 @@ The pins bind exact file/function/preimage/ordered statements, headers, ACLs and
 the audit CHECK preimage. M11 feature PRs (the K1 stack) introduce the SQL bytes
 on the managed rail in order; each requires every earlier same-rail M10/M11 pin
 landed with exact bytes. This control adds no migration to either real rail.
-Tests use the live registry and complete committed managed prefix, including all
-nine M10 pins once, then the seven M11 fixtures. They prove admission/refusals,
+Tests use the live registry and complete committed managed prefix, filling only
+the absent reviewed suffix: all eleven M10 managed pins once, then the seven M11
+fixtures. M11 versions `20261025100000` through `20261025108000` follow the
+reviewed managed tail `20261025090100`; its two M10 forwards remain inert
+fixtures until their feature landings (the real rail currently ends at
+`20261024185100`). They prove admission/refusals,
 catalog/ACL/CHECK changes and rollback. Local acquisition proof covers both
 policy states; handler integration remains feature-owned. Native return
 semantics and M09/M10 approvals remain unchanged. Coordinator control review and
@@ -234,14 +238,31 @@ mandatory PostgreSQL/pgTAP catalog gate. The latter runs both complete prefixes,
 checks exact catalog/ACL/row changes and rollback, and falsifies its observer
 with committed attacks. Missing Docker, PostgreSQL or pgTAP fails; the lexer is
 only a pre-filter. Fixtures under `scripts/fixtures/reviewed-m10/` are inert
-approval snapshots and do not join an installation manifest. The 16-pin batch
-has seven native and nine managed entries. Native order is N1 (`20261022160000`)
+approval snapshots and do not join an installation manifest. The 18-pin batch
+has seven native and eleven managed entries; exact 14- and 16-pin histories remain readable. Native order is N1 (`20261022160000`)
 → N2 (`20261024170000`) → N3 (`20261024180000`) → seam (`20261024183000`)
 → allocator (`20261024184000`) → X (`20261024184500`) → Y (`20261024184600`).
 Preview replay is folded into N2. Managed order is M1 (`20261024155000`)
 → M2 (`20261024160000`) → seam (`20261024175000`) → M3 (`20261024180000`)
 → M4 (`20261024181000`) → M5 (`20261024182000`) → M6 (`20261024184000`)
-→ F17 helper (`20261024185000`) → F17 parity (`20261024185100`).
+→ F17 helper (`20261024185000`) → F17 parity (`20261024185100`)
+→ attempt replay (`20261025090000`) → attributed advancement (`20261025090100`).
+The M10-9 control fixtures preserve the donor adopter's nine current raw CREATE
+hashes through eleven ordered replacement/creation edges. The checker admits
+only the first port's exact nullable-column addition, NOT VALID attempt FK,
+two deterministic attribution backfills and six exact service/helper ACL
+statements. Fully repinned DDL, backfill and privilege mutants refuse. The
+managed catalog witness independently derives expected backfill rows from the
+pre-forward snapshot and checks column/FK/trigger metadata and unchanged tables;
+its plants alter attribution, receipt metadata, helper access, FK validation and
+column defaults. A separate transactional subset install removes the historical
+baseline's reader grants/policies and role, then installs M1/F17, M2 plus both
+ports and M5. It proves service entrypoint execution, browser/host-reader denial,
+sealed helpers, fresh legacy NULL refusal (55000) without mutation and an exact
+excluded-seam REVOKE negative control (42704). This is subset proof, not a claim
+that the whole historical managed baseline installs without its reader role.
+The fixtures introduce no counted vocabulary and require no C94 allowance change.
+
 The native gate also proves paid-line ATP protection, zero-delta late-payment
 replay, one-time offer refusal and stale-settlement filtering before LIMIT. N3's normal_due witness covers greater-than-limit and exactly-limit stock waits, interleaved due ordering and no-wait equality with the base reader; waiting/stock_secured cases are excluded before LIMIT.
 In folded N2, a raw replay of the command preview returns the stored receipt. All 43

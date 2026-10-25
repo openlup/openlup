@@ -13,12 +13,14 @@ bigint offset, review delay (14 versus 21 days), fixture cleanup fence, and
 retained source-ledger differences. Channel control is M17, out of scope, as
 recorded in the compact inventory groups.
 The live `config/reviewed-platform-forwards.json` admits exactly seven managed
-SQL files under `managedCommerceForwards`, in order: `20261025000000`,
-`20261025003000`, `20261025004000`, `20261025005000`, `20261025006000`,
-`20261025007000` and `20261025008000`. The metadata decoder and terms reader
+SQL files under `managedCommerceForwards`, in order: `20261025100000`,
+`20261025103000`, `20261025104000`, `20261025105000`, `20261025106000`,
+`20261025107000` and `20261025108000`. The metadata decoder and terms reader
 precede the admission helper and finalize replacement. M11 feature PRs (the K1
 stack) introduce the bytes on the managed rail in order; each requires all earlier
-same-rail M10/M11 pins landed with exact bytes. This control adds no migration to
-either real rail. Proof applies the complete real managed chain, including all
-nine M10 managed pins once, then the seven unchanged M11 fixtures. This directory
+same-rail M10/M11 pins landed with exact bytes, including both M10-9 pins
+`20261025090000` and `20261025090100` before the first M11 file. This control adds no migration to
+either real rail. Proof applies the complete real managed chain (currently through
+`20261024185100`), filling only the absent reviewed suffix: all eleven M10
+managed pins once, then the seven unchanged M11 fixtures. This directory
 records native disposition; it is not an install chain.

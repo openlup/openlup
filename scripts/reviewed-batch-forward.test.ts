@@ -89,7 +89,7 @@ describe.each(pins)("refusal plants: $path", pin => {
     const changed = structuredClone(pin);
     let sql = bytes(pin).toString("utf8");
     if (attack === "changed byte") sql += " ";
-    if (attack === "another path") changed.path = changed.path.replace("20261024", "20261023").replace("20261022", "20261023");
+    if (attack === "another path") changed.path = changed.path.replace(/202610(?:22|24|25)/u, "20261023");
     if (attack === "missing signature") changed.functions.pop();
     if (attack === "duplicate signature") changed.functions.push(changed.functions[0]!);
     if (attack === "extra signature") changed.functions.push({ ...changed.functions[0]!, signature: "public.unpinned()" });
@@ -149,7 +149,7 @@ it("preserves N1 historical 14-pin approval through the re-pin and separately ap
   const put = (path: string, value: Buffer | string) => { mkdirSync(dirname(join(folder, path)), { recursive: true }); writeFileSync(join(folder, path), value); };
   const commit = (message: string) => { git("add", "."); git("-c", "user.name=Control Test", "-c", "user.email=control@example.invalid", "-c", "commit.gpgsign=false", "commit", "-qm", message); return git("rev-parse", "HEAD"); };
   const historical = structuredClone(registry);
-  historical.batchedForwards = pins.filter(pin => !/20261024184[56]00/u.test(pin.path))
+  historical.batchedForwards = pins.slice(0, 16).filter(pin => !/20261024184[56]00/u.test(pin.path))
     .map(pin => ({ ...structuredClone(pin), path: pin.path.replace("20261024", "20261022") }));
   const historicalN2 = historical.batchedForwards[1]!;
   const oldN2 = bytes(pins[1]!).toString().replace("(r.command->'payload')-'acceptedQuoteHash'", "r.command->'payload'-'acceptedQuoteHash'")
@@ -582,13 +582,14 @@ describe("admitted M11 commerce live registry", () => {
   };
   const managedM10 = pins.filter(pin => pin.path.startsWith("supabase/"));
   const allPins = [...managedM10, ...commerce];
-  // M10 is installed: use the complete real rail, never a pending-fixture fill.
+  // Retain the complete real rail and fill only the absent M10/M11 suffix.
   const committed = readdirSync("supabase/migrations").filter(name => name.endsWith(".sql")).sort()
     .map(name => ({ path: `supabase/migrations/${name}`, bytes: readFileSync(`supabase/migrations/${name}`) }))
     .filter(source => source.path < commerce[0]!.path);
-  const sources = reviewedBatchPaths(process.cwd(), "supabase/migrations", commerce).map(path => {
+  const sources = reviewedBatchPaths(process.cwd(), "supabase/migrations", allPins).map(path => {
     const pin = commerce.find(pin => pin.path === path);
-    return { path, bytes: pin ? commerceBytes(pin) : readFileSync(path) };
+    const m10 = managedM10.find(pin => pin.path === path);
+    return { path, bytes: pin ? commerceBytes(pin) : m10 ? reviewedBatchBytes(process.cwd(), process.cwd(), m10) : readFileSync(path) };
   });
   const preceding = (pin: ManagedCommerceForwardBinding) => sources.filter(source => source.path < pin.path);
   const repinned = (pin: ManagedCommerceForwardBinding, sql: string) => {
@@ -602,16 +603,18 @@ describe("admitted M11 commerce live registry", () => {
   const assert = (pin: ManagedCommerceForwardBinding, sql = commerceBytes(pin), candidate = registry, prior = preceding(pin)) =>
     assertManagedCommerceForward(candidate, pin.path, sql, prior);
 
-  it("retains all 16 landed M10 pins and uses the complete real managed prefix exactly once", () => {
+  it("retains all 18 M10 pins and uses the real prefix plus the absent fixture suffix exactly once", () => {
     expect(commerce).toHaveLength(7);
-    expect(pins).toHaveLength(16);
-    expect(managedM10).toHaveLength(9);
+    expect(pins).toHaveLength(18);
+    expect(managedM10).toHaveLength(11);
     for (const pin of pins) {
-      expect(readFileSync(pin.path), pin.path).toEqual(bytes(pin));
-      expect(sqlSha256(readFileSync(pin.path)), pin.path).toBe(pin.sha256);
-      expect(() => assertBatchedForward(pin, readFileSync(pin.path), prefix(pin)), pin.path).not.toThrow();
+      const actual = reviewedBatchBytes(process.cwd(), process.cwd(), pin);
+      expect(actual, pin.path).toEqual(bytes(pin));
+      expect(sqlSha256(actual), pin.path).toBe(pin.sha256);
+      expect(() => assertBatchedForward(pin, actual, prefix(pin)), pin.path).not.toThrow();
     }
-    expect(preceding(commerce[0]!)).toEqual(committed);
+    expect(preceding(commerce[0]!).filter(source => existsSync(source.path))).toEqual(committed);
+    expect(preceding(commerce[0]!)).toHaveLength(committed.length + managedM10.filter(pin => !existsSync(pin.path)).length);
     expect(new Set(sources.map(source => source.path)).size).toBe(sources.length);
     expect(committed.at(-1)!.path < commerce[0]!.path).toBe(true);
     for (const pin of managedM10) expect(preceding(commerce[0]!).find(source => source.path === pin.path)?.bytes).toEqual(bytes(pin));
@@ -675,7 +678,7 @@ describe("admitted M11 commerce live registry", () => {
             .toThrow("non-expand-only forward differs from reviewed replacement path or bytes");
         }
       }
-      for (const missing of [managedM10[0]!, commerce[0]!]) {
+      for (const missing of [...managedM10.filter(pin => /20261025090[01]00/u.test(pin.path)), managedM10[0]!, commerce[0]!]) {
         f.git("rm", "--", missing.path);
         const hole = f.commit();
         expect(() => assertReviewedPlatformForward(f.root, approval, hole, commerce.at(-1)!.path, commerceBytes(commerce.at(-1)!)))
@@ -741,7 +744,7 @@ describe("admitted M11 commerce live registry", () => {
     const changed = structuredClone(registry);
     const forwards = changed.managedCommerceForwards!;
     if (attack === "path") forwards[0]!.path = forwards[0]!.path.replace("supabase/", "db/platform/");
-    if (attack === "version") forwards[0]!.path = forwards[0]!.path.replace("20261025000000", "20261025000001");
+    if (attack === "version") forwards[0]!.path = forwards[0]!.path.replace("20261025100000", "20261025100001");
     if (attack === "order") [forwards[0], forwards[1]] = [forwards[1]!, forwards[0]!];
     if (attack === "signature") forwards[0]!.functions[0]!.signature += "extra";
     if (attack === "creation") forwards[0]!.functions[0]!.beforeSha256 = null;
@@ -770,7 +773,7 @@ describe("admitted M11 commerce live registry", () => {
     for (const changed of [prior.filter(source => source.path !== commerce[0]!.path), [...prior].reverse(), [...prior, prior.at(-1)!], sources]) {
       expect(() => assert(pin, commerceBytes(pin), registry, changed)).toThrow(/reviewed M11 commerce requires/u);
     }
-    expect(() => assertManagedCommerceForward(registry, pin.path.replace("20261025003000", "20261024183001"), commerceBytes(pin), prior)).toThrow("reviewed M11 commerce path or bytes drifted");
+    expect(() => assertManagedCommerceForward(registry, pin.path.replace("20261025103000", "20261024183001"), commerceBytes(pin), prior)).toThrow("reviewed M11 commerce path or bytes drifted");
   });
 
   it.each(["changed vocabulary", "dropped CHECK", "repinned replacement", "repinned lock timeout"])("refuses audit CHECK %s", attack => {
@@ -780,7 +783,7 @@ describe("admitted M11 commerce live registry", () => {
       expect(() => assert(pin, Buffer.from(sql), repinned(pin, sql))).toThrow("reviewed M11 commerce audit CHECK replacement drifted");
     } else {
       const sql = `ALTER TABLE public.admin_audit_events DROP CONSTRAINT admin_audit_events_action_check;${attack === "changed vocabulary" ? "\nALTER TABLE public.admin_audit_events ADD CONSTRAINT admin_audit_events_action_check CHECK (action IN ('changed'));" : ""}`;
-      const prior = [...preceding(pin), { path: "supabase/migrations/20261025003500_audit_probe.sql", bytes: Buffer.from(sql) }];
+      const prior = [...preceding(pin), { path: "supabase/migrations/20261025103500_audit_probe.sql", bytes: Buffer.from(sql) }];
       expect(() => assert(pin, commerceBytes(pin), registry, prior)).toThrow("reviewed M11 commerce audit CHECK preimage changed in the preceding rail");
     }
   });
@@ -791,7 +794,7 @@ describe("admitted M11 commerce live registry", () => {
     'DROP /* preceding comment */ TABLE public.admin_audit_events;',
   ])("refuses comment-separated or quoted audit-table mutations: %s", sql => {
     const pin = commerce[2]!;
-    const prior = [...preceding(pin), { path: "supabase/migrations/20261025003500_audit_probe.sql", bytes: Buffer.from(sql) }];
+    const prior = [...preceding(pin), { path: "supabase/migrations/20261025103500_audit_probe.sql", bytes: Buffer.from(sql) }];
     expect(() => assert(pin, commerceBytes(pin), registry, prior)).toThrow("reviewed M11 commerce audit CHECK preimage changed in the preceding rail");
   });
 
@@ -816,4 +819,85 @@ describe("admitted M11 commerce live registry", () => {
     expect(beforeAdmission.batchedForwards).toEqual(registry.batchedForwards);
     expect(beforeAdmission.managedInvoicingForwards).toEqual(registry.managedInvoicingForwards);
   });
+});
+
+const replayPin = pins.find(pin => pin.path.includes("20261025090000"))!;
+it.each([
+  ["nullable column", "failed_payment_attempt_id uuid,", "failed_payment_attempt_id uuid NOT NULL,"],
+  ["validated FK", " NOT VALID;", ";"],
+  ["FK target", "REFERENCES public.commerce_payment_attempts(id)", "REFERENCES public.commerce_orders(id)"],
+  ["backfill attribution", "HAVING count(DISTINCT attempt.id) = 1", "HAVING count(DISTINCT attempt.id) >= 1"],
+  ["backfill scope", "WHERE d.status = 'open'", "WHERE d.status <> 'open'"],
+  ["private grant", "FROM PUBLIC, anon, authenticated, service_role;", "FROM PUBLIC, anon, authenticated;\nGRANT EXECUTE ON FUNCTION public.subscription_open_dunning_before_sub_lock(text,uuid,text,text,timestamptz,text,uuid) TO service_role;"],
+])("refuses fully repinned M10-9 %s drift", (_name, old, replacement) => {
+  const sql = bytes(replayPin).toString().replace(old, replacement);
+  expect(sql).not.toBe(bytes(replayPin).toString());
+  expect(() => assertBatchedForward(repin(replayPin, sql), Buffer.from(sql), prefix(replayPin))).toThrow(/reviewed batch/u);
+});
+it.each([
+  "UPDATE public.subscriptions SET next_cycle_at=now();",
+  "ALTER TABLE public.subscription_dunning_cases ADD COLUMN unadmitted uuid;",
+  "ALTER TABLE public.subscription_dunning_cases VALIDATE CONSTRAINT subscription_dunning_cases_failed_attempt_fkey;",
+  "REVOKE ALL ON FUNCTION public.subscription_open_dunning_before_sub_lock(text,uuid,text,text,timestamptz,text) FROM service_role;",
+])("refuses a repinned unadmitted M10-9 statement: %s", statement => {
+  const sql = bytes(replayPin).toString() + "\n" + statement;
+  expect(() => assertBatchedForward(repin(replayPin, sql), Buffer.from(sql), prefix(replayPin))).toThrow(/reviewed batch/u);
+});
+
+it("preserves exact 16-pin release history before the separate 18-pin control", () => {
+  const folder = mkdtempSync(join(tmpdir(), "openlup-m10-9-history-"));
+  const git = (...args: string[]) => execFileSync("git", ["-C", folder, ...args], { encoding: "utf8" }).trim();
+  const put = (path: string, value: Buffer | string) => { mkdirSync(dirname(join(folder, path)), { recursive: true }); writeFileSync(join(folder, path), value); };
+  const commit = () => { git("add", "."); git("-c", "user.name=Control Test", "-c", "user.email=control@example.invalid", "-c", "commit.gpgsign=false", "commit", "-qm", "Synthetic control"); return git("rev-parse", "HEAD"); };
+  try {
+    git("init", "--quiet");
+    const old = { ...registry, batchedForwards: pins.slice(0, 16) };
+    expect(() => readReviewedForwardRegistry(Buffer.from(JSON.stringify(old)))).toThrow(/exactly the approved forwards/u);
+    put("config/reviewed-platform-forwards.json", JSON.stringify(old));
+    const approval16 = commit();
+    put("config/reviewed-platform-forwards.json", registryBytes);
+    const approval18 = commit();
+    for (const pin of old.batchedForwards) expect(() => assertUnchangedForwardApproval(folder, approval16, approval18, pin.path)).not.toThrow();
+    // Removing/reordering old approvals or injecting an 18-pin prefix cannot
+    // reinterpret historical approval as a current or recognized old shape.
+    for (const attack of ["reorder", "truncate", "changed pin"] as const) {
+      git("reset", "--hard", approval16);
+      const mutated = structuredClone(old);
+      if (attack === "reorder") mutated.batchedForwards.reverse();
+      if (attack === "truncate") mutated.batchedForwards.pop();
+      if (attack === "changed pin") mutated.batchedForwards[0]!.sha256 = "0".repeat(64);
+      put("config/reviewed-platform-forwards.json", JSON.stringify(mutated));
+      const invalid = commit();
+      expect(() => assertUnchangedForwardApproval(folder, invalid, approval18, pins[0]!.path)).toThrow(/approved separately/u);
+    }
+  } finally { rmSync(folder, { recursive: true, force: true }); }
+});
+
+it("refuses co-location of the new M10-9 class with its admitting checker", () => {
+  const folder = mkdtempSync(join(tmpdir(), "openlup-m10-9-colocation-"));
+  const git = (...args: string[]) => execFileSync("git", ["-C", folder, ...args], { encoding: "utf8" }).trim();
+  const put = (path: string, value: Buffer | string) => { mkdirSync(dirname(join(folder, path)), { recursive: true }); writeFileSync(join(folder, path), value); };
+  const commit = () => { git("add", "."); git("-c", "user.name=Control Test", "-c", "user.email=control@example.invalid", "-c", "commit.gpgsign=false", "commit", "-qm", "Synthetic control"); return git("rev-parse", "HEAD"); };
+  try {
+    git("init", "--quiet");
+    put("config/reviewed-platform-forwards.json", JSON.stringify({ ...registry, batchedForwards: pins.slice(0,16) }));
+    put("scripts/reviewed-platform-forward.ts", "Prior trusted checker");
+    const base = commit();
+    put("config/reviewed-platform-forwards.json", registryBytes);
+    put("scripts/reviewed-platform-forward.ts", readFileSync("scripts/reviewed-platform-forward.ts"));
+    const control = commit();
+    expect(() => assertCoLocatedForwardApproval(folder,base,control)).not.toThrow();
+    for (const pin of pins.slice(16)) put(pin.path,bytes(pin));
+    const coLocated = commit();
+    expect(() => assertCoLocatedForwardApproval(folder,base,coLocated)).toThrow("reviewed replacement admission machinery must be approved separately before co-located SQL/pins");
+  } finally { rmSync(folder, { recursive: true, force: true }); }
+});
+
+it.each(["missing", "duplicate", "reordered"])("refuses a repinned %s M10-9 prerequisite inventory", attack => {
+  const statements = sqlStatements(bytes(replayPin).toString());
+  if (attack === "missing") statements.splice(2,1);
+  if (attack === "duplicate") statements.splice(2,0,statements[2]!);
+  if (attack === "reordered") [statements[2],statements[3]] = [statements[3]!,statements[2]!];
+  const sql = statements.join("\n");
+  expect(() => assertBatchedForward(repin(replayPin,sql),Buffer.from(sql),prefix(replayPin))).toThrow(/ordered prerequisite\/ACL inventory drifted/u);
 });
