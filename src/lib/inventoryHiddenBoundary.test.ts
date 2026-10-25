@@ -18,7 +18,7 @@ describe("inventory hidden boundary", () => {
       "CREATE TABLE public.inventory_stock_movements",
       "CREATE TABLE public.inventory_reservations",
       "CREATE TABLE public.inventory_supply_plans",
-      "CREATE FUNCTION public.inventory_reserve_order",
+      "CREATE OR REPLACE FUNCTION public.inventory_reserve_order",
       "CREATE FUNCTION public.inventory_consume_reservation_for_fulfillment",
     ]) {
       expect(migration).toContain(required);
@@ -27,8 +27,7 @@ describe("inventory hidden boundary", () => {
 
   it("keeps inventory RPCs service-role-only and hidden from providers", () => {
     for (const name of functions) for (const roles of explicitFunctionExecuteRoles(name).values()) {
-      expect(roles.has("service_role")).toBe(true);
-      for (const role of ["PUBLIC", "anon", "authenticated"]) expect(roles.has(role)).toBe(false);
+      expect([...roles]).toEqual(["service_role"]);
     }
     for (const table of tables) {
       expect(currentTableStatements(table)).toContain("ENABLE ROW LEVEL SECURITY");
