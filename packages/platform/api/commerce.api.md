@@ -527,6 +527,35 @@ export interface CommerceOfferAvailabilityPort {
     }): Promise<CommerceOfferAvailability[]>;
 }
 ```
+## dist/commerce/contracts/fulfillmentRecovery.d.ts
+
+```ts
+export type TimedFulfillmentSignal = {
+    id?: undefined | null | string;
+    token: undefined | null | string;
+    occurredAt: undefined | null | string;
+};
+export type ReleasedProviderExceptionHold = {
+    orderId: undefined | null | string;
+    status: undefined | null | string;
+    reason: undefined | null | string;
+    createdBy: undefined | null | string;
+    releasedBy: undefined | null | string;
+    metadata: unknown;
+};
+export type ProviderStatusEvidence = {
+    fulfillmentOrderId: undefined | null | string;
+    providerStatus: undefined | null | string;
+    localStatus: undefined | null | string;
+    id?: undefined | null | string;
+    token: undefined | null | string;
+    occurredAt: undefined | null | string;
+};
+export type ResolvedProviderExceptionRecovery = {
+    clearedExceptionEvidenceIds: ReadonlySet<string>;
+    recoveryEvidenceIds: ReadonlySet<string>;
+};
+```
 ## dist/commerce/contracts/index.d.ts
 
 ```ts
@@ -541,6 +570,8 @@ export type * from "./runtimePorts.js";
 export type { ConfiguratorIntent, ConfiguratorIntentPersistenceResponse, CheckoutResumeDraftState, CheckoutResumeDraft, CommerceCustomerDefaultsSnapshot } from "./intent.js";
 export type * from "./orderMoney.js";
 export type { OmsPaymentStatus } from "./state.js";
+export type * from "./fulfillmentRecovery.js";
+export type * from "./omsTypes.js";
 ```
 ## dist/commerce/contracts/intent.d.ts
 
@@ -631,6 +662,1226 @@ export interface CommerceCustomerDefaultsSnapshot<Scope, Method> {
     };
     redactedFields: Array<"contact" | "orderer_profile" | "shipping_address" | "billing_address" | "delivery_notes" | "courier_instructions" | "payment_provider" | "payment_secret">;
 }
+```
+## dist/commerce/contracts/omsTypes.d.ts
+
+```ts
+import type { PaymentIntentStatus } from "@openlup/core/payment";
+import type { OmsPaymentStatus } from "./state.js";
+import type { CanonicalOrderMoney } from "./orderMoney.js";
+export type { OrderMoneyIssueCode, OrderMoneyHeaderRow, OrderMoneyItemRow, CanonicalOrderMoneyLine, CanonicalOrderMoney, OrderMoneyDiagnostic } from "./orderMoney.js";
+import type { OmsInventoryStatus } from "./state.js";
+export type { OmsFulfillmentBlockReason, OmsInventoryStatus } from "./state.js";
+export type { TimedFulfillmentSignal, ReleasedProviderExceptionHold, ProviderStatusEvidence, ResolvedProviderExceptionRecovery } from "./fulfillmentRecovery.js";
+type ActionEligibility = {
+    allowed: false | true;
+    reason: null | string;
+};
+type OmsPricingSummary = {
+    subtotal: CommerceMoney;
+    productDiscount: CommerceMoney;
+    shipping: CommerceMoney;
+    shippingDiscount: CommerceMoney;
+    discountTotal: CommerceMoney;
+    finalTotal: CommerceMoney;
+    source: "order_columns";
+};
+type OmsCommunicationDelivery = {
+    id: string;
+    purpose: string;
+    templateSlug: string;
+    triggerSource: string;
+    triggerEvent: string;
+    aggregateType: null | string;
+    aggregateId: null | string;
+    dedupeKey: string;
+    status: "failed" | "processing" | "delivered" | "planned" | "skipped" | "blocked" | "queued" | "sent" | "delivery_delayed" | "bounced" | "complained" | "missed" | "legacy_unlinked";
+    providerKind: null | string;
+    providerMessageId: null | string;
+    scheduledDueAt: null | string;
+    expectedSendAt: null | string;
+    queuedAt: null | string;
+    firstAttemptAt: null | string;
+    sentAt: null | string;
+    deliveredAt: null | string;
+    terminalAt: null | string;
+    lastErrorCode: null | string;
+    outboxEventId: null | string;
+    platformJobRunId: null | string;
+    emailSendId: null | string;
+    metadata: {
+        [key: string]: unknown;
+    };
+    createdAt: string;
+    updatedAt: string;
+};
+type OmsDeliverySelection = {
+    deliveryKind: "courier" | "parcel-locker";
+    providerKind: null | string;
+    carrierKind: null | string;
+    carrierCode: null | string;
+    serviceCode: null | string;
+    pickupPoint: null | {
+        id: string;
+        name: string;
+        address: null | {
+            line1: string;
+            postalCode: string;
+            city: string;
+            country: string;
+        };
+    };
+    source: null | string;
+};
+type OmsDeliveryContact = {
+    schemaVersion: 1;
+    source: string;
+    revision: number;
+    recipientName: null | string;
+    contactEmail: null | string;
+    contactPhone: null | string;
+    line1: null | string;
+    line2: null | string;
+    city: null | string;
+    postalCode: null | string;
+    country: null | string;
+    selectedDelivery: null | {
+        [key: string]: unknown;
+    };
+    deliveryInstructions: null | string;
+    courierInstructions: null | string;
+};
+type OmsDeliveryContactProjection = {
+    baseline: null | OmsDeliveryContact;
+    effective: null | OmsDeliveryContact;
+    scope: "missing" | "baseline" | "order_override" | "parcel" | "legacy_inferred";
+    source: null | string;
+    revision: null | number;
+    digest: null | string;
+    frozen: false | true;
+    providerSubmissionState: "draft" | "failed" | "cancelled" | "not_started" | "created" | "unknown" | "not_materialized" | "submitting" | "uncertain" | "cancel_requested";
+    correctionAllowed: false | true;
+};
+type OmsCustomerSummary = {
+    id: string;
+    email: string;
+    firstName: null | string;
+    lastName: null | string;
+    phone: null | string;
+    lifecycleStage: null | string;
+};
+type OmsAddressSummary = {
+    id: string;
+    label: null | string;
+    line1: null | string;
+    line2: null | string;
+    city: null | string;
+    postalCode: null | string;
+    country: null | string;
+    recipientName: null | string;
+    contactPhone: null | string;
+    companyName: null | string;
+    taxId: null | string;
+    deliveryNotes: null | string;
+    courierInstructions: null | string;
+};
+type OmsOrderLine = {
+    id: string;
+    skuId: null | string;
+    sku: null | string;
+    title: null | string;
+    quantity: number;
+    unitPrice: CommerceMoney;
+    total: CommerceMoney;
+    discountAllocated: CommerceMoney;
+    effectiveTotal: CommerceMoney;
+    effectiveNet: CommerceMoney;
+    vatRateBps: null | number;
+    productSnapshot: {
+        [key: string]: unknown;
+    };
+    variantSnapshot: null | {
+        [key: string]: unknown;
+    };
+};
+type OmsAccountingSummary = {
+    status: string;
+    invoiceId: null | string;
+    invoiceRef: null | string;
+    providerKind: null | string;
+    providerInvoiceNumber: null | string;
+    outboxStatus: null | string;
+    outboxAttemptCount: null | number;
+    outboxNextAttemptAt: null | string;
+    outboxLastError: null | {
+        code: null | string;
+        message: null | string;
+        retryable: null | false | true;
+    };
+    recoveryGuidance: "none" | "not_requested" | "wait_for_retry" | "review_and_retry";
+    updatedAt: null | string;
+    fiscalStatus?: undefined | null | string;
+};
+type OmsOrderActionEligibility = {
+    addNote: ActionEligibility;
+    createHold: ActionEligibility;
+    releaseHold: ActionEligibility;
+    createFulfillment: ActionEligibility;
+    updateShippingAddress: ActionEligibility;
+    recordLabel: ActionEligibility;
+    handOff: ActionEligibility;
+    recordTrackingEvent: ActionEligibility;
+    cancelFulfillment: ActionEligibility;
+    cancelOrder: ActionEligibility;
+    markRefunded: ActionEligibility;
+};
+type OmsOrderOperation = {
+    id: string;
+    orderId: string;
+    type: "hold_created" | "hold_released" | "fulfillment_reviewed" | "support_note" | "shipping_address_updated" | "order_marked_refunded" | "order_cancelled_manual" | "replacement_shipment_requested";
+    holdId: null | string;
+    actorUserId: null | string;
+    occurredAt: string;
+    payload: {
+        [key: string]: unknown;
+    };
+};
+type OmsPaymentSummary = {
+    intentId: null | string;
+    paymentId: null | string;
+    status: OmsOrderPaymentStatus;
+    activeAttemptId: null | string;
+    providerPaymentId: null | string;
+    updatedAt: null | string;
+};
+type OmsPaymentAttempt = {
+    id: string;
+    status: "failed" | "expired" | "cancelled" | "created" | "requires_action" | "processing" | "succeeded" | "blocked_preflight" | "sent_to_provider";
+    provider: string;
+    providerAttemptId: null | string;
+    nextActionKind: null | string;
+    updatedAt: string;
+};
+type OmsPaymentTransition = {
+    id: string;
+    transitionKind: string;
+    fromStatus: null | string;
+    toStatus: string;
+    reason: string;
+    occurredAt: string;
+};
+type OmsFulfillmentEligibility = {
+    allowed: false | true;
+    reason: null | "active_hold" | "missing_shipping_address" | "payment_not_succeeded" | "inventory_review" | "risk_review" | "order_not_paid" | "subscription_cycle_not_paid";
+};
+type AdminCommerceOrderShippingAddressInput = {
+    recipientName: string;
+    contactEmail: string;
+    line1: string;
+    city: string;
+    postalCode: string;
+    country: string;
+    contactPhone: string;
+    line2?: undefined | null | string;
+    deliveryInstructions?: undefined | null | string;
+    courierInstructions?: undefined | null | string;
+};
+type OmsControlPlaneHold = {
+    id: string;
+    status: "released" | "active";
+    reason: "fulfillment_exception" | "payment_not_succeeded" | "inventory_review" | "risk_review" | "address_review" | "manual_support";
+    note: null | string;
+    createdAt: string;
+    releasedAt: null | string;
+};
+type OmsControlPlaneOperation = {
+    id: string;
+    action: "hold_created" | "hold_released" | "order_cancelled" | "order_refunded";
+    holdId: null | string;
+    actorId: null | string;
+    occurredAt: string;
+};
+type OmsProviderOpsSla = {
+    status: "ok" | "watch" | "breached" | "paused_non_shipping_day";
+    dispatchedAt: null | string;
+    deadlineAt: null | string;
+    remainingOperationalMinutes: null | number;
+};
+type OmsFulfillmentTrackingReference = {
+    providerKind: string;
+    trackingNumber: string;
+    trackingUrl: null | string;
+    carrierKind: null | string;
+    service: null | string;
+    updatedAt: null | string;
+};
+type OmsFulfillmentTimelineEvent = {
+    eventType: string;
+    label: string;
+    occurredAt: null | string;
+    source: "webhook" | "reconciliation" | "manual" | "simulator" | "fulfillment" | "dispatch" | "provider";
+};
+type OmsSubscriptionContext = {
+    subscriptionId: null | string;
+    subscriptionCycleId: null | string;
+    subscriptionCycleStatus: null | "paid" | "cancelled" | "planned" | "payment_pending" | "payment_failed" | "retry_scheduled" | "skipped";
+    nextCycleAt: null | string;
+    cyclePaidAt: null | string;
+};
+type OmsInventorySummary = {
+    status: OmsInventoryStatus;
+    reservationId: null | string;
+    reservationStatus: null | "expired" | "reserved" | "released" | "consumed";
+    expiresAt: null | string;
+    locationId: null | string;
+    locationCode: null | string;
+};
+type OmsFulfillmentSummary = {
+    fulfillmentOrderId: null | string;
+    status: null | "cancelled" | "created" | "packed" | "label_pending" | "label_created" | "handed_over" | "in_transit" | "delivered" | "exception";
+    providerKind: null | string;
+    latestOperationType: null | string;
+    latestOperationAt: null | string;
+    providerTrackingId: null | string;
+    trackingUrl: null | string;
+    carrierKind: null | string;
+    service: null | string;
+    trackingReferences: Array<OmsFulfillmentTrackingReference>;
+    trackingTimeline: Array<OmsFulfillmentTimelineEvent>;
+    providerEvidence: Array<OmsProviderEvidence>;
+};
+type OmsSupersededParcel = {
+    fulfillmentOrderId: string;
+    sequenceNo: number;
+    status: null | "cancelled" | "created" | "packed" | "label_pending" | "label_created" | "handed_over" | "in_transit" | "delivered" | "exception";
+    replacementReason: null | string;
+    handedOverAt: null | string;
+    deliveredAt: null | string;
+    trackingReferences: Array<OmsFulfillmentTrackingReference>;
+};
+type OmsFulfillmentDebugStep = {
+    key: "fulfillment" | "dispatch" | "provider" | "payment" | "stock" | "provider_stock" | "tracking" | "communication";
+    status: "missing" | "ok" | "pending" | "warning" | "blocked";
+    label: string;
+    value: null | string;
+    evidenceAt: null | string;
+    details: Array<string>;
+};
+type OmsFulfillmentHealth = {
+    healthStatus: "ok" | "needs_attention" | "blocked_uncertain" | "local_ahead" | "provider_ahead" | "missing_local_commitment";
+    attentionReasons: Array<"paid_order_missing_fulfillment" | "paid_order_missing_dispatch_ref" | "dispatch_submission_stale" | "dispatch_outcome_uncertain" | "dispatch_failed" | "dispatch_created_without_provider_order_id" | "dispatch_terminal_without_progress" | "dispatch_status_unknown" | "provider_exception_after_delivery" | "provider_exception_after_handover" | "provider_exception_before_handover" | "local_status_ahead_of_provider" | "provider_accepted_local_label_ack_missing" | "order_paid_outbox_discarded" | "order_paid_outbox_processed_without_fulfillment" | "order_paid_outbox_missing">;
+    oldestAgeSeconds: null | number;
+    opaqueIds: {
+        orderId: string;
+        fulfillmentOrderId: null | string;
+        outboxEventId: null | string;
+        dispatchRefFulfillmentOrderId: null | string;
+        latestEvidenceFulfillmentOrderId: null | string;
+    };
+    dispatchRefId?: undefined | null | string;
+    dispatchStatus?: undefined | null | string;
+};
+type OmsFulfillmentHealthDigest = {
+    healthStatus: "ok" | "needs_attention" | "blocked_uncertain" | "local_ahead" | "provider_ahead" | "missing_local_commitment";
+    attentionReasons: Array<"paid_order_missing_fulfillment" | "paid_order_missing_dispatch_ref" | "dispatch_submission_stale" | "dispatch_outcome_uncertain" | "dispatch_failed" | "dispatch_created_without_provider_order_id" | "dispatch_terminal_without_progress" | "dispatch_status_unknown" | "provider_exception_after_delivery" | "provider_exception_after_handover" | "provider_exception_before_handover" | "local_status_ahead_of_provider" | "provider_accepted_local_label_ack_missing" | "order_paid_outbox_discarded" | "order_paid_outbox_processed_without_fulfillment" | "order_paid_outbox_missing">;
+};
+type CommerceMoney = {
+    amountMinor: number;
+    currency: string;
+};
+type OmsProviderEvidence = {
+    evidenceType: "dispatch_ref" | "provider_attempt" | "status_evidence";
+    status: null | string;
+    providerStatus: null | string;
+    providerOrderId: null | string;
+    evidenceKind: null | string;
+    occurredAt: null | string;
+    updatedAt: null | string;
+    summary: null | string;
+};
+export type QueueSelection = {
+    orderIds: Array<string>;
+    totalCount: number;
+    matches: {
+        [key: string]: AdminOmsOrderSearchMatch;
+    };
+    summaryCounts: AdminOmsOrderListSummaryCounts;
+    summaryTotals: AdminOmsOrderListSummaryTotals;
+};
+export type OmsManagedReadProjections = {
+    queueMatchSchema?: {
+        safeParse(input: unknown): {
+            success: true;
+            data: AdminOmsOrderSearchMatch;
+        } | {
+            success: false;
+        };
+    };
+    model?: undefined | OmsReadModelProjections;
+    orderColumns?: undefined | string;
+    invoiceColumns?: undefined | string;
+    mapInvoice?: undefined | ((value: unknown) => OmsAccountingInvoiceRow);
+    projectQueue?: undefined | ((data: unknown) => unknown);
+    readIdentity?: undefined | ((store: CommerceOmsStore, orders: Array<OmsOrderRow>, view: "list" | "detail") => Promise<{
+        [key: string]: {
+            [key: string]: unknown;
+        };
+    }>);
+    readFulfillmentOperations?: undefined | ((store: CommerceOmsStore, ids: Array<string>) => Promise<Array<OmsFulfillmentOperationRow>>);
+    readProviderDispatchRefs?: undefined | ((store: CommerceOmsStore, ids: Array<string>) => Promise<Array<OmsProviderDispatchRefRow>>);
+    readProviderStatusEvidence?: undefined | ((store: CommerceOmsStore, ids: Array<string>) => Promise<Array<OmsProviderStatusEvidenceRow>>);
+    readProviderAttempts?: undefined | ((store: CommerceOmsStore, ids: Array<string>) => Promise<Array<OmsProviderAttemptRow>>);
+    readReleasedProviderExceptionHolds?: undefined | ((store: CommerceOmsStore, ids: Array<string>) => Promise<Array<OmsReleasedProviderExceptionHoldRow>>);
+    readProviderStockCurrent?: undefined | ((store: CommerceOmsStore, items: Array<OmsOrderItemRow>) => Promise<Array<OmsFulfillmentProviderStockCurrentRow>>);
+    readInboundEvents?: undefined | ((store: CommerceOmsStore, input: {
+        order: OmsOrderRow;
+        dispatchRefs: Array<OmsProviderDispatchRefRow>;
+    }) => Promise<Array<OmsInboundProviderEventRow>>);
+    buildHealth?: undefined | ((input: {
+        order: OmsOrderRow;
+        paymentStatus: string;
+        fulfillmentOrders: Array<OmsFulfillmentOrderRow>;
+        dispatchRefs: Array<OmsProviderDispatchRefRow>;
+        statusEvidence: Array<OmsProviderStatusEvidenceRow>;
+        orderPaidOutboxEvents: Array<unknown>;
+    }) => OmsFulfillmentHealth);
+    buildHealthDigests?: undefined | ((input: {
+        orders: Array<OmsOrderRow>;
+        paymentIntents: Array<OmsPaymentIntentRow>;
+        fulfillmentOrders: Array<OmsFulfillmentOrderRow>;
+        dispatchRefs: Array<OmsProviderDispatchRefRow>;
+        statusEvidence: Array<OmsProviderStatusEvidenceRow>;
+    }) => {
+        [key: string]: OmsFulfillmentHealthDigest;
+    });
+};
+export type CommerceOmsRpcClient = {
+    rpc: (functionName: string, args: {
+        [key: string]: unknown;
+    }) => PromiseLike<{
+        data: unknown;
+        error: null | RpcError;
+    }>;
+};
+export type CommerceOmsStore = {
+    query: (table: string) => ManagedQueryBuilder;
+    rpc: (functionName: string, args: {
+        [key: string]: unknown;
+    }) => PromiseLike<{
+        data: unknown;
+        error: null | RpcError;
+    }>;
+};
+export interface ManagedQueryBuilder extends PromiseLike<ManagedQueryResult> {
+    select(columns: string, options?: Record<string, unknown>): ManagedQueryBuilder;
+    order(column: string, options?: Record<string, unknown>): ManagedQueryBuilder;
+    eq(column: string, value: unknown): ManagedQueryBuilder;
+    is(column: string, value: unknown): ManagedQueryBuilder;
+    in(column: string, values: unknown[]): ManagedQueryBuilder;
+    gte(column: string, value: unknown): ManagedQueryBuilder;
+    lte(column: string, value: unknown): ManagedQueryBuilder;
+    ilike(column: string, value: string): ManagedQueryBuilder;
+    insert(values: Record<string, unknown> | Array<Record<string, unknown>>): ManagedQueryBuilder;
+    update(values: Record<string, unknown>): ManagedQueryBuilder;
+    range(from: number, to: number): PromiseLike<ManagedQueryResult>;
+    maybeSingle(): PromiseLike<ManagedQueryResult>;
+}
+export type ManagedQueryResult = {
+    data: unknown;
+    error: null | RpcError;
+    count?: undefined | null | number;
+};
+export type RpcError = {
+    code?: undefined | string;
+    message?: undefined | string;
+    details?: undefined | string;
+    hint?: undefined | string;
+};
+export type OmsAccountingRecoveryGuidance = "none" | "not_requested" | "wait_for_retry" | "review_and_retry";
+export type OmsCurrencyPolicy = {
+    defaultCurrency: string;
+    accepts: (currency: string) => false | true;
+};
+export type OmsInboundProviderEventRow = {
+    id: string;
+    provider: string;
+    provider_event_id: string;
+    event_type: string;
+    processing_status: string;
+    payload?: unknown;
+    error?: unknown;
+    created_at: string;
+    processed_at?: undefined | null | string;
+};
+export type OmsFulfillmentProviderStockCurrentRow = {
+    provider_kind: string;
+    sku: string;
+    provider_for_sale_quantity: number;
+    provider_total_quantity: number;
+    last_synced_at: string;
+    stale_after: string;
+};
+export type OmsFulfillmentOrderRow = {
+    id: string;
+    order_id: string;
+    status: null | "cancelled" | "created" | "packed" | "label_pending" | "label_created" | "handed_over" | "in_transit" | "delivered" | "exception";
+    provider_kind?: undefined | null | string;
+    handed_over_at?: undefined | null | string;
+    delivered_at?: undefined | null | string;
+    created_at?: undefined | null | string;
+    updated_at?: undefined | null | string;
+    sequence_no?: undefined | null | number;
+    replaces_fulfillment_order_id?: undefined | null | string;
+    replacement_reason?: undefined | null | string;
+    shipping_address_snapshot?: undefined | null | {
+        [key: string]: unknown;
+    };
+};
+export type OmsFulfillmentOperationRow = {
+    fulfillment_order_id: string;
+    operation_type: string;
+    occurred_at: string;
+};
+export type OmsProviderAttemptRow = {
+    fulfillment_order_id: string;
+    provider_kind?: undefined | null | string;
+    status?: undefined | null | string;
+    provider_tracking_id?: undefined | null | string;
+    error?: unknown;
+    created_at?: undefined | null | string;
+};
+export type OmsProviderDispatchRefRow = {
+    id?: undefined | null | string;
+    fulfillment_order_id: string;
+    provider_order_id?: undefined | null | string;
+    dispatch_mode?: undefined | null | string;
+    status?: undefined | null | string;
+    error?: unknown;
+    created_at?: undefined | null | string;
+    updated_at?: undefined | null | string;
+};
+export type OmsProviderStatusEvidenceRow = {
+    id?: undefined | null | string;
+    fulfillment_order_id: string;
+    provider_status?: undefined | null | string;
+    provider_sub_status?: undefined | null | string;
+    local_status?: undefined | null | string;
+    customer_status?: undefined | null | string;
+    evidence_kind?: undefined | null | string;
+    occurred_at?: undefined | null | string;
+    created_at?: undefined | null | string;
+};
+export type OmsReleasedProviderExceptionHoldRow = {
+    order_id: string;
+    status?: undefined | null | string;
+    reason?: undefined | null | string;
+    created_by?: undefined | null | string;
+    released_by?: undefined | null | string;
+    metadata?: unknown;
+};
+export type OmsShipmentExternalRefRow = {
+    order_id: string;
+    fulfillment_order_id?: undefined | null | string;
+    provider_tracking_id: string;
+    active: false | true;
+    provider_kind?: undefined | null | string;
+    tracking_url?: undefined | null | string;
+    carrier_kind?: undefined | null | string;
+    service?: undefined | null | string;
+    updated_at?: undefined | null | string;
+    created_at?: undefined | null | string;
+};
+export type OmsOperationalLadderInput = {
+    orderStatus: "draft" | "pending_payment" | "paid" | "failed" | "expired" | "fulfillment_pending" | "cancelled" | "fulfilled" | "refunded";
+    activeHoldCount: number;
+    paymentStatus: OmsOrderPaymentStatus;
+    hasShippingAddress: false | true;
+    inventoryStatus: OmsInventoryStatus;
+    fulfillmentStatus: null | "cancelled" | "created" | "packed" | "label_pending" | "label_created" | "handed_over" | "in_transit" | "delivered" | "exception";
+    fulfillmentAllowed: false | true;
+    accountingStatus: string;
+};
+export type OmsOperationalRung = {
+    readonly id: string;
+    readonly sqlPredicate: string;
+    readonly attentionReason: AdminOmsAttentionReason;
+    readonly nextAction: AdminOmsNextAction;
+    readonly matches: (input: OmsOperationalLadderInput) => false | true;
+};
+export type OmsPaymentMethodSummary = {
+    provider: null | string;
+    label: null | string;
+};
+export type OmsOrderIdentity = ({
+    customer: null | OmsCustomerSummary;
+}) & ({
+    [key: string]: unknown;
+});
+export type OmsActionAvailabilityFlags = {
+    holdMutationsEnabled?: undefined | false | true;
+    supportMutationsEnabled?: undefined | false | true;
+    fulfillmentMutationsEnabled?: undefined | false | true;
+    refundMutationsEnabled?: undefined | false | true;
+    orderCancellationEnabled?: undefined | false | true;
+};
+export type OmsReadModelProjections = {
+    currency?: undefined | OmsCurrencyPolicy;
+    detailFields?: undefined | ((input: {
+        order: OmsOrderRow;
+        orderItems?: undefined | Array<OmsOrderItemRow>;
+        orderMoney: CanonicalOrderMoney;
+    }) => {
+        [key: string]: unknown;
+    });
+    providerOps?: undefined | ((input: {
+        fulfillmentOrders: Array<OmsFulfillmentOrderRow>;
+        dispatchRefs?: undefined | Array<OmsProviderDispatchRefRow>;
+        statusEvidence?: undefined | Array<OmsProviderStatusEvidenceRow>;
+    }) => {
+        status: string;
+        sla: null | OmsProviderOpsSla;
+        providerOrderId: null | string;
+    });
+    paymentMethodLabel?: undefined | ((attempt: OmsPaymentAttemptRow) => string);
+    usesExternalStock?: undefined | ((providerKind: null | string) => false | true);
+    timelineLabel?: undefined | ((step: null | "paid" | "cancelled" | "delivered" | "exception" | "accepted" | "packing" | "transit") => string);
+    dispatchLabel?: undefined | ((status: undefined | null | string) => string);
+    debugSummary?: undefined | ((action: "review_payment" | "create_fulfillment" | "wait" | "retry_dispatch" | "reconcile" | "review_stock" | "review_provider" | "contact_support") => string);
+    dispatchStepLabel?: undefined | string;
+    automaticExceptionHoldSource?: undefined | string;
+    automaticExceptionReleaseSource?: undefined | string;
+    additionalAccountingStatuses?: undefined | Array<string>;
+    dispatchedNotPickedStatus?: undefined | string;
+    parseList?: undefined | ((value: unknown) => AdminCommerceOrdersListResponse);
+    parseDetail?: undefined | ((value: unknown) => AdminCommerceOrderDetailResponse);
+};
+export type OmsOrderRow = {
+    id: string;
+    order_number: null | string;
+    client_id: null | string;
+    status: "draft" | "pending_payment" | "paid" | "failed" | "expired" | "fulfillment_pending" | "cancelled" | "fulfilled" | "refunded";
+    mode: "one_time" | "subscription_cycle";
+    currency: string;
+    subtotal_cents: null | number;
+    discount_cents: null | number;
+    shipping_cents: null | number;
+    shipping_discount_cents: null | number;
+    tax_cents: null | number;
+    total_cents: number;
+    metadata: null | {
+        [key: string]: unknown;
+    };
+    created_at: string;
+    updated_at: string;
+    subscription_id: null | string;
+    subscription_cycle_id: null | string;
+    shipping_address_id?: undefined | null | string;
+    source_kind?: undefined | null | string;
+    source_order_ref?: undefined | null | string;
+    sales_channels?: undefined | null | {
+        slug?: undefined | null | string;
+    };
+};
+export type OmsPaymentIntentRow = {
+    id: string;
+    order_id: string;
+    payment_id: string;
+    status: "failed" | "expired" | "cancelled" | "refunded" | "created" | "requires_action" | "processing" | "succeeded" | "partially_refunded" | "disputed";
+    active_attempt_id: null | string;
+    provider_payment_id: null | string;
+    updated_at: string;
+};
+export type OmsPaymentAttemptRow = {
+    id: string;
+    payment_intent_id?: undefined | null | string;
+    status: "failed" | "expired" | "cancelled" | "created" | "requires_action" | "processing" | "succeeded" | "blocked_preflight" | "sent_to_provider";
+    provider: string;
+    provider_attempt_id: null | string;
+    next_action_kind: null | string;
+    updated_at: string;
+};
+export type OmsHoldRow = {
+    id: string;
+    order_id: string;
+    status: "released" | "active";
+    reason: "fulfillment_exception" | "payment_not_succeeded" | "inventory_review" | "risk_review" | "address_review" | "manual_support";
+    note: null | string;
+    created_at: string;
+    released_at: null | string;
+};
+export type OmsOperationRow = {
+    id: string;
+    order_id: string;
+    operation_type: "hold_created" | "hold_released" | "fulfillment_reviewed" | "support_note" | "shipping_address_updated" | "order_marked_refunded" | "order_cancelled_manual" | "replacement_shipment_requested";
+    hold_id: null | string;
+    actor_user_id: null | string;
+    occurred_at: string;
+    payload: {
+        [key: string]: unknown;
+    };
+};
+export type OmsPaymentTransitionRow = {
+    id: string;
+    transition_kind: string;
+    from_status: null | string;
+    to_status: string;
+    reason: string;
+    occurred_at: string;
+};
+export type OmsInventoryReservationRow = {
+    id: string;
+    order_id: string;
+    order_item_id: null | string;
+    quantity: number;
+    status: "expired" | "reserved" | "released" | "consumed";
+    expires_at: null | string;
+    location_id: null | string;
+    inventory_locations?: undefined | null | {
+        code?: undefined | null | string;
+    };
+};
+export type OmsOrderItemRow = {
+    id: string;
+    order_id?: undefined | string;
+    sku_id?: undefined | null | string;
+    sku?: undefined | null | string;
+    title?: undefined | null | string;
+    quantity: number;
+    unit_price_cents?: undefined | null | number;
+    total_cents?: undefined | null | number;
+    discount_allocated_cents?: undefined | null | number;
+    effective_total_cents?: undefined | null | number;
+    effective_net_cents?: undefined | null | number;
+    vat_rate_bps?: undefined | null | number;
+    product_snapshot?: undefined | null | {
+        [key: string]: unknown;
+    };
+    variant_snapshot?: undefined | null | {
+        [key: string]: unknown;
+    };
+};
+export type OmsCustomerRow = {
+    id: string;
+    email: string;
+    first_name: null | string;
+    last_name: null | string;
+    phone: null | string;
+    lifecycle_stage: null | string;
+};
+export type OmsAddressRow = {
+    id: string;
+    label?: undefined | null | string;
+    line1?: undefined | null | string;
+    line2?: undefined | null | string;
+    city?: undefined | null | string;
+    postal_code?: undefined | null | string;
+    country?: undefined | null | string;
+    recipient_name?: undefined | null | string;
+    contact_phone?: undefined | null | string;
+    company_name?: undefined | null | string;
+    tax_id?: undefined | null | string;
+    delivery_notes?: undefined | null | string;
+    courier_instructions?: undefined | null | string;
+};
+export type OmsAccountingInvoiceRow = {
+    id: string;
+    order_id: string;
+    invoice_ref: string;
+    status: string;
+    provider_kind: null | string;
+    provider_invoice_number: null | string;
+    fiscal_status?: undefined | null | string;
+    total_gross_cents: number;
+    currency: string;
+    blocked_reason?: undefined | null | string;
+    updated_at: string;
+};
+export type OmsAccountingOutboxRow = {
+    invoice_id: string;
+    status: string;
+    attempt_count?: undefined | null | number;
+    next_attempt_at?: undefined | null | string;
+    last_error?: unknown;
+    created_at?: undefined | null | string;
+};
+export type OmsCommunicationDeliveryRow = {
+    id: string;
+    purpose: string;
+    template_slug: string;
+    trigger_source: string;
+    trigger_event: string;
+    aggregate_type: null | string;
+    aggregate_id: null | string;
+    dedupe_key: string;
+    status: "failed" | "processing" | "delivered" | "planned" | "skipped" | "blocked" | "queued" | "sent" | "delivery_delayed" | "bounced" | "complained" | "missed" | "legacy_unlinked";
+    provider_kind: null | string;
+    provider_message_id: null | string;
+    scheduled_due_at: null | string;
+    expected_send_at: null | string;
+    queued_at: null | string;
+    first_attempt_at: null | string;
+    sent_at: null | string;
+    delivered_at: null | string;
+    terminal_at: null | string;
+    last_error_code: null | string;
+    outbox_event_id: null | string;
+    platform_job_run_id: null | string;
+    email_send_id: null | string;
+    metadata: null | {
+        [key: string]: unknown;
+    };
+    created_at: string;
+    updated_at: string;
+};
+export type OmsOrderRowCoreInput = {
+    projections?: undefined | OmsReadModelProjections;
+    order: OmsOrderRow;
+    activeHoldCount: number;
+    paymentIntents: Array<OmsPaymentIntentRow>;
+    paymentAttempts: Array<OmsPaymentAttemptRow>;
+    identity: OmsOrderIdentity;
+    orderItems?: undefined | Array<OmsOrderItemRow>;
+    inventoryReservations: Array<OmsInventoryReservationRow>;
+    fulfillmentOrders: Array<OmsFulfillmentOrderRow>;
+    fulfillmentOperations: Array<OmsFulfillmentOperationRow>;
+    shipmentExternalRefs: Array<OmsShipmentExternalRefRow>;
+    providerAttempts?: undefined | Array<OmsProviderAttemptRow>;
+    dispatchRefs?: undefined | Array<OmsProviderDispatchRefRow>;
+    statusEvidence?: undefined | Array<OmsProviderStatusEvidenceRow>;
+    releasedProviderExceptionHolds?: undefined | Array<OmsReleasedProviderExceptionHoldRow>;
+    accountingInvoice: null | OmsAccountingInvoiceRow;
+    accountingOutbox: Array<OmsAccountingOutboxRow>;
+    subscriptionCycleStatus: null | "paid" | "cancelled" | "planned" | "payment_pending" | "payment_failed" | "retry_scheduled" | "skipped";
+    orderMoney?: undefined | CanonicalOrderMoney;
+};
+export type OmsOrderRowCore = {
+    row: {
+        status: "draft" | "pending_payment" | "paid" | "failed" | "expired" | "fulfillment_pending" | "cancelled" | "fulfilled" | "refunded";
+        mode: "one_time" | "subscription_cycle";
+        sourceKind: undefined | string;
+        sourceChannelSlug: undefined | string;
+        sourceOrderRef: undefined | string;
+        paymentMethodLabel: null | string;
+        paymentProvider: null | string;
+        paymentStatus: OmsOrderPaymentStatus;
+        fulfillmentStatus: null | "cancelled" | "created" | "packed" | "label_pending" | "label_created" | "handed_over" | "in_transit" | "delivered" | "exception";
+        customerFulfillmentStep: "paid" | "cancelled" | "delivered" | "exception" | "accepted" | "packing" | "transit";
+        inventoryStatus: OmsInventoryStatus;
+        accountingStatus: string;
+        providerOpsStatus: string;
+        providerOpsSla: null | OmsProviderOpsSla;
+        providerOrderId: null | string;
+        attentionReason: AdminOmsAttentionReason;
+        nextAction: AdminOmsNextAction;
+        activeHoldCount: number;
+        total: CommerceMoney;
+        pricingSummary: OmsPricingSummary;
+        createdAt: string;
+        updatedAt: string;
+        customer: null | OmsCustomerSummary;
+        orderId: string;
+        orderNumber: null | string;
+        clientId: null | string;
+    };
+    paymentStatus: OmsOrderPaymentStatus;
+    inventory: OmsInventorySummary;
+    fulfillment: OmsFulfillmentSummary;
+    accounting: OmsAccountingSummary;
+    fulfillmentEligibility: {
+        allowed: false | true;
+        reason: null | "active_hold" | "missing_shipping_address" | "payment_not_succeeded" | "inventory_review" | "risk_review" | "order_not_paid" | "subscription_cycle_not_paid";
+    };
+};
+export type AdminCommerceOrderPaymentLinkRefusal = "order_not_found" | "order_paid" | "order_cancelled" | "order_not_recoverable" | "order_changed";
+export type AdminCommerceOrdersListRequest = {
+    page: number;
+    pageSize: number;
+    sort: "created_desc" | "created_asc" | "updated_desc" | "updated_asc" | "attention_priority_desc";
+    search?: undefined | string;
+    status?: undefined | "draft" | "pending_payment" | "paid" | "failed" | "expired" | "fulfillment_pending" | "cancelled" | "fulfilled" | "refunded";
+    mode?: undefined | "one_time" | "subscription_cycle";
+    paymentStatus?: undefined | "failed" | "expired" | "cancelled" | "refunded" | "not_started" | "created" | "requires_action" | "processing" | "succeeded" | "partially_refunded" | "disputed";
+    fulfillmentStatus?: undefined | "cancelled" | "created" | "packed" | "label_pending" | "label_created" | "handed_over" | "in_transit" | "delivered" | "exception";
+    inventoryStatus?: undefined | "expired" | "not_checked" | "reserved" | "missing" | "released" | "consumed" | "review_required";
+    accountingStatus?: undefined | string;
+    providerOpsStatus?: undefined | string;
+    attentionReason?: undefined | "none" | "fulfillment_pending" | "payment_required" | "active_hold" | "missing_shipping_address" | "inventory_missing" | "fulfillment_blocked" | "fulfillment_exception" | "invoice_missing" | "invoice_issue_failed" | "invoice_buyer_data_invalid";
+    attentionOnly?: undefined | false | true;
+    nextAction?: undefined | "none" | "review_payment" | "release_hold" | "review_address" | "review_inventory" | "review_fulfillment" | "create_fulfillment" | "record_label" | "hand_off" | "review_tracking" | "review_invoice";
+    from?: undefined | string;
+    to?: undefined | string;
+    includeWithdrawn?: undefined | false | true;
+};
+export type AdminCommerceOrdersListRequestInput = {
+    page?: unknown;
+    pageSize?: unknown;
+    search?: undefined | string;
+    status?: undefined | "draft" | "pending_payment" | "paid" | "failed" | "expired" | "fulfillment_pending" | "cancelled" | "fulfilled" | "refunded";
+    mode?: undefined | "one_time" | "subscription_cycle";
+    paymentStatus?: undefined | "failed" | "expired" | "cancelled" | "refunded" | "not_started" | "created" | "requires_action" | "processing" | "succeeded" | "partially_refunded" | "disputed";
+    fulfillmentStatus?: undefined | "cancelled" | "created" | "packed" | "label_pending" | "label_created" | "handed_over" | "in_transit" | "delivered" | "exception";
+    inventoryStatus?: undefined | "expired" | "not_checked" | "reserved" | "missing" | "released" | "consumed" | "review_required";
+    accountingStatus?: undefined | string;
+    providerOpsStatus?: undefined | string;
+    attentionReason?: undefined | "none" | "fulfillment_pending" | "payment_required" | "active_hold" | "missing_shipping_address" | "inventory_missing" | "fulfillment_blocked" | "fulfillment_exception" | "invoice_missing" | "invoice_issue_failed" | "invoice_buyer_data_invalid";
+    attentionOnly?: undefined | false | true | "true" | "false";
+    nextAction?: undefined | "none" | "review_payment" | "release_hold" | "review_address" | "review_inventory" | "review_fulfillment" | "create_fulfillment" | "record_label" | "hand_off" | "review_tracking" | "review_invoice";
+    from?: undefined | string;
+    to?: undefined | string;
+    sort?: undefined | "created_desc" | "created_asc" | "updated_desc" | "updated_asc" | "attention_priority_desc";
+    includeWithdrawn?: undefined | false | true | "true" | "false";
+};
+export type AdminCommerceOrderDetailRequest = {
+    orderId: string;
+};
+export type AdminCommerceOrderHoldRequest = {
+    idempotencyKey: string;
+    orderId: string;
+    reason: "fulfillment_exception" | "payment_not_succeeded" | "inventory_review" | "risk_review" | "address_review" | "manual_support";
+    note?: undefined | string;
+    metadata?: undefined | {
+        [key: string]: unknown;
+    };
+};
+export type AdminCommerceOrderReleaseHoldRequest = {
+    idempotencyKey: string;
+    holdId: string;
+    note?: undefined | string;
+    metadata?: undefined | {
+        [key: string]: unknown;
+    };
+};
+export type AdminCommerceOrderNoteRequest = {
+    idempotencyKey: string;
+    orderId: string;
+    note: string;
+    metadata?: undefined | {
+        [key: string]: unknown;
+    };
+};
+export type AdminCommerceOrderMarkRefundedRequest = {
+    idempotencyKey: string;
+    orderId: string;
+    reason: string;
+    metadata?: undefined | {
+        [key: string]: unknown;
+    };
+};
+export type AdminCommerceOrderCancelRequest = {
+    idempotencyKey: string;
+    orderId: string;
+    reason: string;
+    metadata?: undefined | {
+        [key: string]: unknown;
+    };
+};
+export type AdminCommerceOrderPaymentLinkRequest = {
+    orderId: string;
+    delivery?: undefined | "email" | "copy";
+};
+export type AdminCommerceOrderRequestReplacementShipmentRequest = {
+    idempotencyKey: string;
+    orderId: string;
+    reason: "damaged" | "lost" | "returned_undelivered" | "other";
+    metadata?: undefined | {
+        [key: string]: unknown;
+    };
+};
+export type AdminCommerceOrderUpdateShippingAddressRequest = {
+    idempotencyKey: string;
+    orderId: string;
+    expectedRevision: number;
+    expectedContactDigest: string;
+    address: AdminCommerceOrderShippingAddressInput;
+    metadata?: undefined | {
+        [key: string]: unknown;
+    };
+};
+export type AdminCommerceOrdersListResponse = {
+    contractVersion: "commerce.v0";
+    orders: Array<AdminOmsOrderListItem>;
+    summaryCounts: AdminOmsOrderListSummaryCounts;
+    summaryTotals: AdminOmsOrderListSummaryTotals;
+    totalCount: number;
+    page: number;
+    pageSize: number;
+};
+export type AdminCommerceOrderDetailResponse = {
+    contractVersion: "commerce.v0";
+    order: OmsOrderDetail;
+};
+export type AdminCommerceOrderHoldResponse = {
+    contractVersion: "commerce.v0";
+    hold: OmsOrderHold;
+    operationId: string;
+    replayed: false | true;
+};
+export type AdminCommerceOrderNoteResponse = {
+    contractVersion: "commerce.v0";
+    operation: OmsOrderOperation;
+    replayed: false | true;
+};
+export type AdminCommerceOrderMarkRefundedResponse = {
+    contractVersion: "commerce.v0";
+    orderId: string;
+    status: "draft" | "pending_payment" | "paid" | "failed" | "expired" | "fulfillment_pending" | "cancelled" | "fulfilled" | "refunded";
+    replayed: false | true;
+};
+export type AdminCommerceOrderPaymentLinkResponse = {
+    token: string;
+    expiresAt: string;
+    orderRef: string;
+    emailQueued: false | true;
+};
+export type AdminCommerceOrderRequestReplacementShipmentResponse = {
+    contractVersion: "commerce.v0";
+    operation: OmsOrderOperation;
+    replacement: {
+        fulfillmentOrderId: string;
+        orderId: string;
+        sequenceNo: number;
+        replacesFulfillmentOrderId: string;
+        reason: "damaged" | "lost" | "returned_undelivered" | "other";
+        status: string;
+    };
+    releasedHoldIds: Array<string>;
+    replayed: false | true;
+};
+export type AdminCommerceOrderUpdateShippingAddressResponse = {
+    contractVersion: "commerce.v0";
+    result: "replayed" | "applied";
+    scope: "parcel" | "order";
+    deliveryContact: OmsDeliveryContact;
+    operation: OmsOrderOperation;
+    address: {
+        recipientName: null | string;
+        contactEmail: null | string;
+        contactPhone: null | string;
+        line1: null | string;
+        line2: null | string;
+        city: null | string;
+        postalCode: null | string;
+        country: null | string;
+    };
+    replayed: false | true;
+};
+export type AdminOmsOrderListItem = {
+    orderId: string;
+    orderNumber: null | string;
+    clientId: null | string;
+    customer: null | OmsCustomerSummary;
+    status: "draft" | "pending_payment" | "paid" | "failed" | "expired" | "fulfillment_pending" | "cancelled" | "fulfilled" | "refunded";
+    mode: "one_time" | "subscription_cycle";
+    paymentMethodLabel: null | string;
+    paymentProvider: null | string;
+    paymentStatus: OmsOrderPaymentStatus;
+    fulfillmentStatus: null | "cancelled" | "created" | "packed" | "label_pending" | "label_created" | "handed_over" | "in_transit" | "delivered" | "exception";
+    customerFulfillmentStep: "paid" | "cancelled" | "delivered" | "exception" | "accepted" | "packing" | "transit";
+    inventoryStatus: OmsInventoryStatus;
+    accountingStatus: string;
+    providerOpsStatus: string;
+    providerOpsSla: null | OmsProviderOpsSla;
+    providerOrderId: null | string;
+    attentionReason: AdminOmsAttentionReason;
+    nextAction: AdminOmsNextAction;
+    activeHoldCount: number;
+    activeHoldReasons: Array<"fulfillment_exception" | "payment_not_succeeded" | "inventory_review" | "risk_review" | "address_review" | "manual_support">;
+    fulfillmentHealthDigest: OmsFulfillmentHealthDigest;
+    total: CommerceMoney;
+    pricingSummary: OmsPricingSummary;
+    createdAt: string;
+    updatedAt: string;
+    sourceKind?: undefined | string;
+    sourceChannelSlug?: undefined | string;
+    sourceOrderRef?: undefined | string;
+    match?: undefined | AdminOmsOrderSearchMatch;
+};
+export type AdminOmsOrderSearchMatch = {
+    field: string;
+    label: string;
+    valuePreview: null | string;
+};
+export type AdminOmsOrderListSummaryCounts = {
+    needsAttention: number;
+    activeHold: number;
+    readyForFulfillment: number;
+    paymentIssues: number;
+    inventoryRisk: number;
+    fulfillmentBlocked: number;
+    fulfillmentExceptions: number;
+    invoiceIssues: number;
+    providerDispatchedNotPicked?: undefined | number;
+};
+export type AdminOmsOrderListSummaryTotals = {
+    gmv: CommerceMoney;
+    aov: CommerceMoney;
+    orderCount: number;
+    paidSubscriptionCycleCount: number;
+};
+export type AdminOmsAttentionReason = "none" | "fulfillment_pending" | "payment_required" | "active_hold" | "missing_shipping_address" | "inventory_missing" | "fulfillment_blocked" | "fulfillment_exception" | "invoice_missing" | "invoice_issue_failed" | "invoice_buyer_data_invalid";
+export type AdminOmsNextAction = "none" | "review_payment" | "release_hold" | "review_address" | "review_inventory" | "review_fulfillment" | "create_fulfillment" | "record_label" | "hand_off" | "review_tracking" | "review_invoice";
+export type OmsOrderDetail = {
+    orderId: string;
+    orderNumber: null | string;
+    clientId: null | string;
+    customer: null | OmsCustomerSummary;
+    status: "draft" | "pending_payment" | "paid" | "failed" | "expired" | "fulfillment_pending" | "cancelled" | "fulfilled" | "refunded";
+    mode: "one_time" | "subscription_cycle";
+    paymentMethodLabel: null | string;
+    paymentProvider: null | string;
+    paymentStatus: OmsOrderPaymentStatus;
+    fulfillmentStatus: null | "cancelled" | "created" | "packed" | "label_pending" | "label_created" | "handed_over" | "in_transit" | "delivered" | "exception";
+    customerFulfillmentStep: "paid" | "cancelled" | "delivered" | "exception" | "accepted" | "packing" | "transit";
+    inventoryStatus: OmsInventoryStatus;
+    accountingStatus: string;
+    providerOpsStatus: string;
+    providerOpsSla: null | OmsProviderOpsSla;
+    providerOrderId: null | string;
+    attentionReason: AdminOmsAttentionReason;
+    nextAction: AdminOmsNextAction;
+    activeHoldCount: number;
+    activeHoldReasons: Array<"fulfillment_exception" | "payment_not_succeeded" | "inventory_review" | "risk_review" | "address_review" | "manual_support">;
+    fulfillmentHealthDigest: OmsFulfillmentHealthDigest;
+    total: CommerceMoney;
+    pricingSummary: OmsPricingSummary;
+    createdAt: string;
+    updatedAt: string;
+    shippingAddress: null | OmsAddressSummary;
+    billingAddress: null | OmsAddressSummary;
+    deliverySelection: null | OmsDeliverySelection;
+    lines: Array<OmsOrderLine>;
+    subscription: OmsSubscriptionContext;
+    fulfillmentEligibility: OmsFulfillmentEligibility;
+    inventory: OmsInventorySummary;
+    fulfillment: OmsFulfillmentSummary;
+    replacementChain: OmsReplacementChain;
+    fulfillmentHealth: OmsFulfillmentHealth;
+    fulfillmentDebug: OmsFulfillmentDebug;
+    accounting: OmsAccountingSummary;
+    actionEligibility: OmsOrderActionEligibility;
+    holds: Array<OmsOrderHold>;
+    operations: Array<OmsOrderOperation>;
+    payment: OmsPaymentSummary;
+    paymentAttempts: Array<OmsPaymentAttempt>;
+    paymentTransitions: Array<OmsPaymentTransition>;
+    communicationDeliveries: Array<OmsCommunicationDelivery>;
+    sourceKind?: undefined | string;
+    sourceChannelSlug?: undefined | string;
+    sourceOrderRef?: undefined | string;
+    match?: undefined | AdminOmsOrderSearchMatch;
+    deliveryContact?: undefined | OmsDeliveryContactProjection;
+};
+export type OmsDeliveryContactResolution = {
+    resolutionVersion: 1;
+    scope: "missing" | "baseline" | "order_override" | "parcel" | "legacy_inferred";
+    baseline: null | OmsDeliveryContact;
+    contact: null | OmsDeliveryContact;
+    contactDigest: null | string;
+};
+export type OmsOrderHold = {
+    id: string;
+    orderId: string;
+    status: "released" | "active";
+    reason: "fulfillment_exception" | "payment_not_succeeded" | "inventory_review" | "risk_review" | "address_review" | "manual_support";
+    note: null | string;
+    createdAt: string;
+    releasedAt: null | string;
+};
+export type OmsOrderPaymentStatus = OmsPaymentStatus<PaymentIntentStatus>;
+export type OmsAccountingStatus = string;
+export type AdminOmsProviderOpsStatus = string;
+export type OmsControlPlaneListRequest = {
+    view: "control_plane_v1";
+    page: number;
+    pageSize: number;
+    status?: undefined | "draft" | "pending_payment" | "paid" | "failed" | "expired" | "fulfillment_pending" | "cancelled" | "fulfilled" | "refunded";
+};
+export type OmsControlPlaneDetailRequest = {
+    view: "control_plane_v1";
+    orderId: string;
+};
+export type OmsControlPlaneOrder = {
+    orderId: string;
+    status: "draft" | "pending_payment" | "paid" | "failed" | "expired" | "fulfillment_pending" | "cancelled" | "fulfilled" | "refunded";
+    sourceKind: string;
+    sourceOrderRef: null | string;
+    money: null | {
+        amountMinor: number;
+        currency: string;
+    };
+    shipmentStatus: null | "cancelled" | "created" | "packed" | "label_pending" | "label_created" | "handed_over" | "in_transit" | "delivered" | "exception";
+    activeHoldCount: number;
+    activeHoldReasons: Array<"fulfillment_exception" | "payment_not_succeeded" | "inventory_review" | "risk_review" | "address_review" | "manual_support">;
+    actions: {
+        createHold: ActionEligibility;
+        releaseHold: ActionEligibility;
+        cancelOrder: ActionEligibility;
+        markRefunded: ActionEligibility;
+    };
+    createdAt: string;
+    updatedAt: string;
+};
+export type OmsControlPlaneListResponse = {
+    contractVersion: "commerce.oms_control_plane.v1";
+    orders: Array<OmsControlPlaneOrder>;
+    totalCount: number;
+    page: number;
+    pageSize: number;
+};
+export type OmsControlPlaneDetailResponse = {
+    contractVersion: "commerce.oms_control_plane.v1";
+    order: OmsControlPlaneOrder;
+    holds: Array<OmsControlPlaneHold>;
+    operations: Array<OmsControlPlaneOperation>;
+};
+export type CommerceOmsControlPlanePort = {
+    listOrders: (request: OmsControlPlaneListRequest) => Promise<OmsControlPlaneListResponse>;
+    getOrderDetail: (request: OmsControlPlaneDetailRequest) => Promise<null | OmsControlPlaneDetailResponse>;
+};
+export type CommerceOmsOperatorResolver = {
+    resolveOperator: (principalId: string) => Promise<null | string>;
+};
+export type OmsReplacementChain = {
+    sequenceNo: number;
+    replacesFulfillmentOrderId: null | string;
+    replacementReason: null | string;
+    supersededParcels: Array<OmsSupersededParcel>;
+};
+export type OmsFulfillmentDebug = {
+    summary: string;
+    severity: "ok" | "watch" | "action_required";
+    nextAction: "review_payment" | "create_fulfillment" | "wait" | "retry_dispatch" | "reconcile" | "review_stock" | "review_provider" | "contact_support";
+    blockers: Array<string>;
+    steps: Array<OmsFulfillmentDebugStep>;
+};
+export type CommerceOmsReadPort = {
+    listOrders: (request: AdminCommerceOrdersListRequest) => Promise<AdminCommerceOrdersListResponse>;
+    getOrderDetail: (request: AdminCommerceOrderDetailRequest) => Promise<null | AdminCommerceOrderDetailResponse>;
+};
+export type CommerceOmsHoldPort = {
+    createHold: (request: (AdminCommerceOrderHoldRequest) & ({
+        actorUserId: string;
+    })) => Promise<AdminCommerceOrderHoldResponse>;
+    releaseHold: (request: (AdminCommerceOrderReleaseHoldRequest) & ({
+        actorUserId: string;
+    })) => Promise<AdminCommerceOrderHoldResponse>;
+    addNote: (request: (AdminCommerceOrderNoteRequest) & ({
+        actorUserId: string;
+    })) => Promise<AdminCommerceOrderNoteResponse>;
+    updateShippingAddress: (request: (AdminCommerceOrderUpdateShippingAddressRequest) & ({
+        actorUserId: string;
+    })) => Promise<AdminCommerceOrderUpdateShippingAddressResponse>;
+    markRefunded: (request: (AdminCommerceOrderMarkRefundedRequest) & ({
+        actorUserId: string;
+    })) => Promise<AdminCommerceOrderMarkRefundedResponse>;
+    cancelOrder: (request: (AdminCommerceOrderCancelRequest) & ({
+        actorUserId: string;
+    })) => Promise<AdminCommerceOrderMarkRefundedResponse>;
+    requestReplacementShipment: (request: (AdminCommerceOrderRequestReplacementShipmentRequest) & ({
+        actorUserId: string;
+    })) => Promise<AdminCommerceOrderRequestReplacementShipmentResponse>;
+};
+export type OmsReplacementRefusal = "missing_shipping_address" | "payment_not_succeeded" | "subscription_cycle_not_paid" | "order_not_found" | "invalid_input" | "idempotency_conflict" | "order_not_replaceable" | "missing_client" | "shipping_address_not_found" | "no_parcel_to_replace" | "undispatched_replacement_exists" | "missing_order_items" | "missing_catalog_sku" | "missing_inventory_reservation" | "blocked_by_payment_not_succeeded_hold" | "blocked_by_inventory_review_hold" | "blocked_by_risk_review_hold" | "blocked_by_address_review_hold" | "blocked_by_manual_support_hold" | "inventory_external_provider_insufficient_available_stock" | "inventory_external_provider_stock_stale" | "inventory_external_provider_stock_missing" | "inventory_external_provider_sku_not_found" | "inventory_external_provider_location_missing" | "inventory_reservation_insufficient_available_stock" | "inventory_reservation_allocation_incomplete" | "inventory_reservation_payment_status_not_reservable" | "inventory_reservation_invalid_quantity" | "unspecified_refusal";
 ```
 ## dist/commerce/contracts/order.d.ts
 
@@ -1203,6 +2454,537 @@ export * from "./runtimeErrors.js";
 export type { CreateQuoteOptions, CommerceQuotePort } from "./ports.js";
 export * from "./orderMoney.js";
 export * from "./outboxEventSchemas.js";
+export * from "./model/omsAccountingVisibility.js";
+export * from "./model/omsBillingInvoiceBuyer.js";
+export * from "./model/omsOrderLineMoney.js";
+export * from "./model/omsPaymentMethodSummary.js";
+export * from "./model/omsReadModelCommunication.js";
+export * from "./model/omsReadModelHelpers.js";
+export * from "./model/omsReadModelList.js";
+export * from "./model/omsReadModelListSummary.js";
+export * from "./model/omsReadModelPricing.js";
+export * from "./model/omsReadModelRows.js";
+export * from "./model/omsFulfillmentDebug.js";
+export * from "./model/omsOperationalLadder.js";
+export * from "./model/omsFulfillmentSummary.js";
+export * from "./model/omsListTotals.js";
+export * from "./model/omsReadModelRowCore.js";
+export * from "./model/fulfillmentCancellationEligibility.js";
+export * from "./oms/omsContractBase.js";
+export * from "./oms/omsContractReadAuxSchemas.js";
+export * from "./oms/omsContractReadSchemas.js";
+export * from "./oms/omsContractRequests.js";
+export * from "./oms/omsContracts.js";
+export * from "./oms/omsFulfillmentContractSchemas.js";
+export * from "./oms/omsFulfillmentDebugSchemas.js";
+export * from "./oms/omsFulfillmentHealthSchemas.js";
+export * from "./oms/omsProviderEvidenceSchemas.js";
+export * from "./oms/omsControlPlane.js";
+export * from "./oms/omsPorts.js";
+export * from "./model/omsReadModelProjections.js";
+export * from "./model/omsCurrency.js";
+export declare const COMMERCE_CONTRACT_VERSION = "commerce.v0";
+export * from "./model/customerFulfillmentRecovery.js";
+```
+## dist/commerce/model/customerFulfillmentRecovery.d.ts
+
+```ts
+import type { CustomerFulfillmentStep } from "@openlup/core/fulfillment";
+import type { ProviderStatusEvidence, ReleasedProviderExceptionHold, ResolvedProviderExceptionRecovery, TimedFulfillmentSignal } from "../contracts/fulfillmentRecovery.js";
+export { stepForToken } from "@openlup/core/fulfillment";
+export type { CustomerFulfillmentStep } from "@openlup/core/fulfillment";
+export type { ProviderStatusEvidence, ReleasedProviderExceptionHold, ResolvedProviderExceptionRecovery, TimedFulfillmentSignal } from "../contracts/fulfillmentRecovery.js";
+/** Server-only shape read from a released automatic provider-exception hold. */
+/**
+ * Finds only database-authored, trigger-created recovery links. The returned IDs
+ * stay server-side: the browser receives the resulting Layer C step, never hold
+ * metadata or provider evidence identifiers.
+ */
+export declare function resolveProviderExceptionRecovery(input: {
+    automaticHoldSource?: string;
+    automaticReleaseSource?: string;
+    fulfillmentOrderId: string | null | undefined;
+    releasedHolds: ReleasedProviderExceptionHold[];
+    statusEvidence: ProviderStatusEvidence[];
+}): ResolvedProviderExceptionRecovery;
+/**
+ * The customer step for an order that is terminal BY OUR OWN DECISION
+ * (`cancelled` / `refunded`), or `null` when normal rank resolution applies.
+ *
+ * Rank alone is not enough here: `delivered` (7) outranks `cancelled` (6), so a
+ * single provider `DELIVERED` evidence row on an order we cancelled would tell
+ * the customer "delivered". Carrier evidence is a fact and stays recorded, but
+ * it cannot un-cancel our own order, so the terminal order status wins.
+ *
+ * This is a ceiling, not a new opinion: `delivered` is the ONLY step ranking
+ * above `cancelled`, and the order's own status already contributes `cancelled`
+ * to the ranked signals, so every non-delivered outcome is unchanged. The canon's
+ * ranks stay untouched — they are shared with OMS health, observability and the
+ * admin timeline, where provider-versus-local divergence must remain visible.
+ * Single owner of this rule: the customer read model and the browser fallback
+ * resolver both call it instead of each keeping a copy.
+ */
+export declare function customerStepForTerminalOrder(orderStatus: string | null | undefined): CustomerFulfillmentStep | null;
+/** Resolve rank normally; only a uniquely newer canonical timed exception may cover delivered. */
+export declare function customerStepFromTimedSignals(baseTokens: Array<string | null | undefined>, evidence: TimedFulfillmentSignal[], recovery?: ResolvedProviderExceptionRecovery): CustomerFulfillmentStep;
+/** Keep legacy/provider-only Provider CANCELLED evidence customer-safe. */
+export declare function customerSafeEvidenceToken(localStatus: string | null | undefined, providerStatus: string | null | undefined): string | null;
+```
+## dist/commerce/model/fulfillmentCancellationEligibility.d.ts
+
+```ts
+import type { OmsOrderDetail } from "../oms/omsContracts.js";
+export declare function canCancelFulfillment(status: OmsOrderDetail["fulfillmentStatus"], providerCancellation: {
+    activeHoldCount: number;
+    orderMode: "one_time" | "subscription_cycle";
+    orderStatus: OmsOrderDetail["status"];
+    providerCancellationConfirmed: boolean;
+}): boolean;
+```
+## dist/commerce/model/omsAccountingVisibility.d.ts
+
+```ts
+import type { OmsAccountingRecoveryGuidance } from "../contracts/omsTypes.js";
+import type { OmsOrderDetail } from "../oms/omsContracts.js";
+import type { OmsReadModelProjections } from "./omsReadModelProjections.js";
+import type { OmsAccountingInvoiceRow, OmsAccountingOutboxRow } from "./omsReadModelRows.js";
+export type { OmsAccountingRecoveryGuidance } from "../contracts/omsTypes.js";
+export declare function accountingSummary(invoice: OmsAccountingInvoiceRow | null, outboxRows: OmsAccountingOutboxRow[], projections?: OmsReadModelProjections): OmsOrderDetail["accounting"];
+export declare function accountingRecoveryGuidance(outboxStatus: string | null, invoiceStatus?: string | null): OmsAccountingRecoveryGuidance;
+export declare function sanitizeAccountingLastError(value: unknown): {
+    code: string | null;
+    message: string | null;
+    retryable: boolean | null;
+} | null;
+```
+## dist/commerce/model/omsBillingInvoiceBuyer.d.ts
+
+```ts
+import type { OmsOrderDetail } from "../oms/omsContracts.js";
+export declare function enrichBillingWithInvoiceBuyer(billing: OmsOrderDetail["billingAddress"], orderMetadata: Record<string, unknown> | null): OmsOrderDetail["billingAddress"];
+```
+## dist/commerce/model/omsCurrency.d.ts
+
+```ts
+import type { OmsCurrencyPolicy } from "../contracts/omsTypes.js";
+export type { OmsCurrencyPolicy } from "../contracts/omsTypes.js";
+/** Settlement policy is supplied by the host; the neutral default checks format only. */
+export declare const neutralOmsCurrencyPolicy: OmsCurrencyPolicy;
+```
+## dist/commerce/model/omsFulfillmentDebug.d.ts
+
+```ts
+import type { OmsFulfillmentProviderStockCurrentRow, OmsInboundProviderEventRow } from "../contracts/omsTypes.js";
+import type { OmsOrderDetail } from "../oms/omsContracts.js";
+import { type OmsProviderAttemptRow, type OmsProviderDispatchRefRow, type OmsProviderStatusEvidenceRow } from "./omsFulfillmentSummary.js";
+import type { OmsReadModelProjections } from "./omsReadModelProjections.js";
+import type { OmsCommunicationDeliveryRow, OmsInventoryReservationRow } from "./omsReadModelRows.js";
+export type { OmsFulfillmentProviderStockCurrentRow, OmsInboundProviderEventRow } from "../contracts/omsTypes.js";
+type Debug = OmsOrderDetail["fulfillmentDebug"];
+export declare function buildOmsFulfillmentDebug(input: {
+    projections?: OmsReadModelProjections;
+    paymentStatus: OmsOrderDetail["paymentStatus"];
+    inventory: OmsOrderDetail["inventory"];
+    fulfillment: OmsOrderDetail["fulfillment"];
+    reservations: OmsInventoryReservationRow[];
+    communicationDeliveries: OmsCommunicationDeliveryRow[];
+    providerAttempts: OmsProviderAttemptRow[];
+    providerDispatchRefs: OmsProviderDispatchRefRow[];
+    providerStatusEvidence: OmsProviderStatusEvidenceRow[];
+    inboundProviderEvents: OmsInboundProviderEventRow[];
+    providerStockCurrent?: OmsFulfillmentProviderStockCurrentRow[];
+}): Debug;
+```
+## dist/commerce/model/omsFulfillmentSummary.d.ts
+
+```ts
+import type { OmsFulfillmentOperationRow, OmsFulfillmentOrderRow, OmsProviderAttemptRow, OmsProviderDispatchRefRow, OmsProviderStatusEvidenceRow, OmsReleasedProviderExceptionHoldRow, OmsShipmentExternalRefRow } from "../contracts/omsTypes.js";
+import type { OmsOrderDetail } from "../oms/omsContracts.js";
+import { type CustomerFulfillmentStep } from "./customerFulfillmentRecovery.js";
+import type { OmsReadModelProjections } from "./omsReadModelProjections.js";
+export type { OmsFulfillmentOperationRow, OmsFulfillmentOrderRow, OmsProviderAttemptRow, OmsProviderDispatchRefRow, OmsProviderStatusEvidenceRow, OmsReleasedProviderExceptionHoldRow, OmsShipmentExternalRefRow } from "../contracts/omsTypes.js";
+export declare function buildOmsFulfillmentSummary(input: {
+    projections?: OmsReadModelProjections;
+    fulfillmentOrders: OmsFulfillmentOrderRow[];
+    fulfillmentOperations: OmsFulfillmentOperationRow[];
+    shipmentExternalRefs: OmsShipmentExternalRefRow[];
+    providerAttempts?: OmsProviderAttemptRow[];
+    providerDispatchRefs?: OmsProviderDispatchRefRow[];
+    providerStatusEvidence?: OmsProviderStatusEvidenceRow[];
+}): OmsOrderDetail["fulfillment"];
+export declare function deriveOmsCustomerFulfillmentStep(orderStatus: string | null | undefined, fulfillment: OmsOrderDetail["fulfillment"], deliveredAt?: string | null, releasedProviderExceptionHolds?: OmsReleasedProviderExceptionHoldRow[], providerStatusEvidence?: OmsProviderStatusEvidenceRow[], activeHoldCount?: number, projections?: OmsReadModelProjections): CustomerFulfillmentStep;
+export declare function parseTimestampOrZero(value: string | null | undefined): number;
+```
+## dist/commerce/model/omsListTotals.d.ts
+
+```ts
+import type { AdminCommerceOrdersListResponse } from "../oms/omsContracts.js";
+import { type OmsCurrencyPolicy } from "./omsCurrency.js";
+/**
+ * A paid set that spans more than one currency has no single GMV and no single
+ * average order value. Adding the minor units across currencies produces a
+ * figure that is money in none of them, and labelling it with one of the codes
+ * makes it look actionable. The operator gets a named refusal instead.
+ */
+export declare class CommerceOmsMixedCurrencyTotalsError extends Error {
+    readonly currencies: readonly string[];
+    constructor(currencies: readonly string[]);
+}
+export declare function summarizeOmsListTotals(orders: AdminCommerceOrdersListResponse["orders"], policy?: OmsCurrencyPolicy): AdminCommerceOrdersListResponse["summaryTotals"];
+```
+## dist/commerce/model/omsOperationalLadder.d.ts
+
+```ts
+import type { OmsOperationalLadderInput, OmsOperationalRung } from "../contracts/omsTypes.js";
+import type { AdminOmsAttentionReason, AdminOmsNextAction } from "../oms/omsContracts.js";
+export type { OmsOperationalLadderInput, OmsOperationalRung } from "../contracts/omsTypes.js";
+/**
+ * The operator attention/next-action ladder, declared once.
+ *
+ * The same ladder is implemented a second time in SQL, inside the live queue
+ * RPC `public.commerce_oms_admin_list_queue`
+ * (the live queue migration `20260903190000_oms_queue_hides_withdrawn_checkout_rows`,
+ * the `operational` CTE and the `attention_priority_desc` rank arm). Both run on
+ * the same admin request: SQL decides which orders are selected, what the
+ * summary counters say and in what order the rows arrive; this module labels the
+ * rows that come back. Nothing in the type system makes them agree.
+ *
+ * So the agreement is written down instead: every rung carries the live SQL
+ * CASE-arm condition it mirrors, verbatim modulo whitespace, and
+ * `omsOperationalLadder.test.ts` parses those arms out of the migration and
+ * compares them rung for rung, in order. Editing one side without the other
+ * turns that test red, which is the only thing standing between the two
+ * implementations and a silent divergence.
+ *
+ * ⛔ Changing a rung here is a behaviour change to the OMS queue. It must be
+ * made on both sides in the same change, or not at all.
+ */
+/** The facts the ladder reads. Flat on purpose: it is the join between the row
+ * shapes this codebase carries and the columns the SQL `operational` CTE has. */
+export declare const OMS_OPERATIONAL_LADDER: readonly OmsOperationalRung[];
+/** The `ELSE` of both SQL CASE expressions, and the fall-through of the loop. */
+export declare const OMS_OPERATIONAL_LADDER_FALLBACK: {
+    readonly attentionReason: AdminOmsAttentionReason;
+    readonly nextAction: AdminOmsNextAction;
+};
+/**
+ * The `attention_priority_desc` sort ranks, in SQL arm order. Lower sorts first.
+ *
+ * Nothing in TypeScript consumes this today - the queue arrives pre-sorted from
+ * SQL, and the fixture bundle does not offer that sort. It is declared here
+ * because the ranking is part of the same ladder: an attention reason added
+ * above without a rank silently sorts to the bottom of the operator's queue.
+ * The parity test binds it to the live migration arm for arm.
+ */
+export declare const OMS_ATTENTION_PRIORITY_LADDER: readonly {
+    readonly attentionReason: AdminOmsAttentionReason;
+    readonly rank: number;
+}[];
+export declare const OMS_ATTENTION_PRIORITY_FALLBACK_RANK = 99;
+/** Walks the ladder once and returns the first rung that matches. */
+export declare function resolveOmsOperationalState(input: OmsOperationalLadderInput): {
+    attentionReason: AdminOmsAttentionReason;
+    nextAction: AdminOmsNextAction;
+};
+```
+## dist/commerce/model/omsOrderLineMoney.d.ts
+
+```ts
+import type { OmsOrderDetail } from "../oms/omsContracts.js";
+import type { OmsOrderItemRow } from "./omsReadModelRows.js";
+import type { CanonicalOrderMoneyLine } from "../orderMoney.js";
+export declare function mapOmsOrderLine(item: OmsOrderItemRow, currency: OmsOrderDetail["total"]["currency"], moneyLine: CanonicalOrderMoneyLine): OmsOrderDetail["lines"][number];
+```
+## dist/commerce/model/omsPaymentMethodSummary.d.ts
+
+```ts
+import type { OmsPaymentMethodSummary } from "../contracts/omsTypes.js";
+import type { OmsReadModelProjections } from "./omsReadModelProjections.js";
+import type { OmsPaymentAttemptRow, OmsPaymentIntentRow } from "./omsReadModelRows.js";
+export type { OmsPaymentMethodSummary } from "../contracts/omsTypes.js";
+export declare function paymentMethodForOrder(orderId: string, paymentIntents: OmsPaymentIntentRow[], paymentAttempts: OmsPaymentAttemptRow[], projections?: OmsReadModelProjections): OmsPaymentMethodSummary;
+```
+## dist/commerce/model/omsReadModelCommunication.d.ts
+
+```ts
+import type { OmsOrderDetail } from "../oms/omsContracts.js";
+import type { OmsCommunicationDeliveryRow } from "./omsReadModelRows.js";
+export declare function mapCommunicationDelivery(row: OmsCommunicationDeliveryRow): OmsOrderDetail["communicationDeliveries"][number];
+```
+## dist/commerce/model/omsReadModelHelpers.d.ts
+
+```ts
+import type { OmsActionAvailabilityFlags, OmsOrderIdentity } from "../contracts/omsTypes.js";
+import type { OmsAccountingStatus, OmsInventoryStatus, OmsOrderDetail, OmsOrderPaymentStatus } from "../oms/omsContracts.js";
+import type { OmsPaymentMethodSummary } from "./omsPaymentMethodSummary.js";
+import type { OmsAddressRow, OmsCustomerRow, OmsInventoryReservationRow, OmsOrderItemRow, OmsOrderRow, OmsPaymentIntentRow } from "./omsReadModelRows.js";
+import type { CanonicalOrderMoney } from "../orderMoney.js";
+export type { OmsActionAvailabilityFlags, OmsOrderIdentity } from "../contracts/omsTypes.js";
+export { buildOmsDeliveryContactProjection, deliveryContactAddress } from "./omsReadModelRowCore.js";
+export declare function findCustomer(order: OmsOrderRow, customers: OmsCustomerRow[]): OmsOrderDetail["customer"];
+export declare function mapCustomer(row: OmsCustomerRow | null): OmsOrderDetail["customer"];
+export declare function mapAddress(row: OmsAddressRow | null): OmsOrderDetail["shippingAddress"];
+export declare function evaluateOperationalState(input: {
+    order: OmsOrderRow;
+    paymentStatus: OmsOrderPaymentStatus;
+    activeHoldCount: number;
+    inventoryStatus: OmsInventoryStatus;
+    fulfillmentStatus: OmsOrderDetail["fulfillmentStatus"];
+    fulfillmentEligibility?: {
+        allowed: boolean;
+        reason: string | null;
+    };
+    accountingStatus: OmsAccountingStatus;
+}): Pick<OmsOrderDetail, "attentionReason" | "nextAction">;
+export declare function actionEligibility(input: {
+    fulfillmentEligibility: {
+        allowed: boolean;
+        reason: string | null;
+    };
+    activeHoldCount: number;
+    fulfillmentStatus: OmsOrderDetail["fulfillmentStatus"];
+    hasFulfillmentOrder: boolean;
+    hasShippingAddress: boolean;
+    deliveryContact?: NonNullable<OmsOrderDetail["deliveryContact"]>;
+    orderStatus: OmsOrderDetail["status"];
+    orderMode: "one_time" | "subscription_cycle";
+    providerCancellationConfirmed?: boolean;
+    flags?: OmsActionAvailabilityFlags;
+}): OmsOrderDetail["actionEligibility"];
+export declare function inventorySummary(reservations: OmsInventoryReservationRow[], orderItems: OmsOrderItemRow[]): OmsOrderDetail["inventory"];
+export declare function baseOrder(input: {
+    order: OmsOrderRow;
+    paymentStatus: OmsOrderPaymentStatus;
+    paymentMethod: OmsPaymentMethodSummary;
+    activeHoldCount: number;
+    identity: OmsOrderIdentity;
+    inventoryStatus: OmsInventoryStatus;
+    fulfillmentStatus: OmsOrderDetail["fulfillmentStatus"];
+    customerFulfillmentStep: OmsOrderDetail["customerFulfillmentStep"];
+    accountingStatus: OmsAccountingStatus;
+    providerOpsStatus: OmsOrderDetail["providerOpsStatus"];
+    providerOpsSla: OmsOrderDetail["providerOpsSla"];
+    providerOrderId: OmsOrderDetail["providerOrderId"];
+    attentionReason: OmsOrderDetail["attentionReason"];
+    nextAction: OmsOrderDetail["nextAction"];
+    orderItems?: OmsOrderItemRow[];
+    orderMoney?: CanonicalOrderMoney;
+}): {
+    status: "draft" | "expired" | "pending_payment" | "paid" | "failed" | "fulfillment_pending" | "cancelled" | "fulfilled" | "refunded";
+    mode: "one_time" | "subscription_cycle";
+    sourceKind: string | undefined;
+    sourceChannelSlug: string | undefined;
+    sourceOrderRef: string | undefined;
+    paymentMethodLabel: string | null;
+    paymentProvider: string | null;
+    paymentStatus: OmsOrderPaymentStatus;
+    fulfillmentStatus: "created" | "cancelled" | "delivered" | "packed" | "label_pending" | "label_created" | "handed_over" | "in_transit" | "exception" | null;
+    customerFulfillmentStep: "paid" | "cancelled" | "delivered" | "exception" | "accepted" | "packing" | "transit";
+    inventoryStatus: "expired" | "not_checked" | "reserved" | "missing" | "released" | "consumed" | "review_required";
+    accountingStatus: string;
+    providerOpsStatus: string;
+    providerOpsSla: {
+        status: "ok" | "watch" | "breached" | "paused_non_shipping_day";
+        dispatchedAt: null | string;
+        deadlineAt: null | string;
+        remainingOperationalMinutes: null | number;
+    } | null;
+    providerOrderId: string | null;
+    attentionReason: import("../contracts/omsTypes.js").AdminOmsAttentionReason;
+    nextAction: import("../contracts/omsTypes.js").AdminOmsNextAction;
+    activeHoldCount: number;
+    total: {
+        amountMinor: number;
+        currency: string;
+    };
+    pricingSummary: {
+        subtotal: {
+            amountMinor: number;
+            currency: string;
+        };
+        productDiscount: {
+            amountMinor: number;
+            currency: string;
+        };
+        shipping: {
+            amountMinor: number;
+            currency: string;
+        };
+        shippingDiscount: {
+            amountMinor: number;
+            currency: string;
+        };
+        discountTotal: {
+            amountMinor: number;
+            currency: string;
+        };
+        finalTotal: {
+            amountMinor: number;
+            currency: string;
+        };
+        source: "order_columns";
+    };
+    createdAt: string;
+    updatedAt: string;
+    customer: null | {
+        id: string;
+        email: string;
+        firstName: null | string;
+        lastName: null | string;
+        phone: null | string;
+        lifecycleStage: null | string;
+    };
+    orderId: string;
+    orderNumber: string | null;
+    clientId: string | null;
+};
+export declare function paymentStatusForOrder(orderId: string, paymentIntents: OmsPaymentIntentRow[]): OmsOrderPaymentStatus;
+```
+## dist/commerce/model/omsReadModelList.d.ts
+
+```ts
+import type { SubscriptionCycleStatus } from "@openlup/core/subscription";
+import { type AdminCommerceOrdersListResponse, type AdminOmsOrderSearchMatch, type AdminOmsOrderListItem as OmsOrderListItem } from "../oms/omsContracts.js";
+import type { OmsFulfillmentOperationRow, OmsFulfillmentOrderRow, OmsProviderDispatchRefRow, OmsProviderStatusEvidenceRow, OmsReleasedProviderExceptionHoldRow, OmsShipmentExternalRefRow } from "./omsFulfillmentSummary.js";
+import type { OmsReadModelProjections } from "./omsReadModelProjections.js";
+import type { OmsAccountingInvoiceRow, OmsAccountingOutboxRow, OmsCustomerRow, OmsInventoryReservationRow, OmsOrderItemRow, OmsOrderRow, OmsPaymentAttemptRow, OmsPaymentIntentRow } from "./omsReadModelRows.js";
+export declare function buildOmsOrderListResponse(input: {
+    orders: OmsOrderRow[];
+    identityExtras?: Record<string, Record<string, unknown>>;
+    projections?: OmsReadModelProjections;
+    paymentIntents: OmsPaymentIntentRow[];
+    paymentAttempts?: OmsPaymentAttemptRow[];
+    activeHoldCounts: Record<string, number>;
+    activeHoldReasons?: Record<string, OmsOrderListItem["activeHoldReasons"]>;
+    fulfillmentHealthDigests?: Record<string, OmsOrderListItem["fulfillmentHealthDigest"]>;
+    customers?: OmsCustomerRow[];
+    orderItems?: OmsOrderItemRow[];
+    inventoryReservations?: OmsInventoryReservationRow[];
+    fulfillmentOrders?: OmsFulfillmentOrderRow[];
+    fulfillmentOperations?: OmsFulfillmentOperationRow[];
+    shipmentExternalRefs?: OmsShipmentExternalRefRow[];
+    providerDispatchRefs?: OmsProviderDispatchRefRow[];
+    providerStatusEvidence?: OmsProviderStatusEvidenceRow[];
+    releasedProviderExceptionHolds?: OmsReleasedProviderExceptionHoldRow[];
+    accountingInvoices?: OmsAccountingInvoiceRow[];
+    accountingOutbox?: OmsAccountingOutboxRow[];
+    subscriptionCycleStatuses?: Record<string, SubscriptionCycleStatus | null>;
+    searchMatches?: Record<string, AdminOmsOrderSearchMatch>;
+    summaryCounts?: AdminCommerceOrdersListResponse["summaryCounts"];
+    summaryTotals?: AdminCommerceOrdersListResponse["summaryTotals"];
+    totalCount: number;
+    page: number;
+    pageSize: number;
+}): AdminCommerceOrdersListResponse;
+```
+## dist/commerce/model/omsReadModelListSummary.d.ts
+
+```ts
+import type { AdminCommerceOrdersListResponse } from "../oms/omsContracts.js";
+import type { OmsReadModelProjections } from "./omsReadModelProjections.js";
+export declare function summarizeOmsListOrders(orders: AdminCommerceOrdersListResponse["orders"], projections?: OmsReadModelProjections): AdminCommerceOrdersListResponse["summaryCounts"];
+```
+## dist/commerce/model/omsReadModelPricing.d.ts
+
+```ts
+import type { OmsOrderDetail } from "../oms/omsContracts.js";
+import type { OmsOrderItemRow, OmsOrderRow } from "./omsReadModelRows.js";
+import { type CanonicalOrderMoney } from "../orderMoney.js";
+export declare function deriveOmsOrderMoney(order: OmsOrderRow, items?: readonly OmsOrderItemRow[]): CanonicalOrderMoney;
+export declare function pricingSummaryForOrder(order: OmsOrderRow, items?: readonly OmsOrderItemRow[], orderMoney?: CanonicalOrderMoney): OmsOrderDetail["pricingSummary"];
+```
+## dist/commerce/model/omsReadModelProjections.d.ts
+
+```ts
+export type { OmsReadModelProjections } from "../contracts/omsTypes.js";
+```
+## dist/commerce/model/omsReadModelRowCore.d.ts
+
+```ts
+import type { OmsDeliveryContactResolution, OmsOrderDetail } from "../oms/omsContracts.js";
+import { type OmsProviderDispatchRefRow as OmsDispatchRefRow, type OmsFulfillmentOrderRow } from "./omsFulfillmentSummary.js";
+import type { OmsOrderRowCore, OmsOrderRowCoreInput } from "./omsReadModelRows.js";
+export declare function buildOmsOrderRowCore(input: OmsOrderRowCoreInput): OmsOrderRowCore;
+type DeliveryContact = NonNullable<NonNullable<OmsOrderDetail["deliveryContact"]>["effective"]>;
+export declare function buildOmsDeliveryContactProjection(input: {
+    resolution: OmsDeliveryContactResolution;
+    currentParcel: OmsFulfillmentOrderRow | null;
+    dispatchRefs: OmsDispatchRefRow[];
+}): NonNullable<OmsOrderDetail["deliveryContact"]>;
+export declare function deliveryContactAddress(contact: DeliveryContact | null, addressId: string | null | undefined): OmsOrderDetail["shippingAddress"];
+export declare function buildCurrentDeliveryContact(input: {
+    resolution: OmsDeliveryContactResolution;
+    shippingAddressId: string | null | undefined;
+    fulfillmentOrders: OmsFulfillmentOrderRow[];
+    dispatchRefs: OmsDispatchRefRow[];
+}): {
+    deliveryContact: {
+        baseline: null | {
+            schemaVersion: 1;
+            source: string;
+            revision: number;
+            recipientName: null | string;
+            contactEmail: null | string;
+            contactPhone: null | string;
+            line1: null | string;
+            line2: null | string;
+            city: null | string;
+            postalCode: null | string;
+            country: null | string;
+            selectedDelivery: null | {
+                [key: string]: unknown;
+            };
+            deliveryInstructions: null | string;
+            courierInstructions: null | string;
+        };
+        effective: null | {
+            schemaVersion: 1;
+            source: string;
+            revision: number;
+            recipientName: null | string;
+            contactEmail: null | string;
+            contactPhone: null | string;
+            line1: null | string;
+            line2: null | string;
+            city: null | string;
+            postalCode: null | string;
+            country: null | string;
+            selectedDelivery: null | {
+                [key: string]: unknown;
+            };
+            deliveryInstructions: null | string;
+            courierInstructions: null | string;
+        };
+        scope: "missing" | "baseline" | "order_override" | "parcel" | "legacy_inferred";
+        source: null | string;
+        revision: null | number;
+        digest: null | string;
+        frozen: false | true;
+        providerSubmissionState: "draft" | "failed" | "cancelled" | "not_started" | "created" | "unknown" | "not_materialized" | "submitting" | "uncertain" | "cancel_requested";
+        correctionAllowed: false | true;
+    };
+    effectiveShippingAddress: {
+        id: string;
+        label: null | string;
+        line1: null | string;
+        line2: null | string;
+        city: null | string;
+        postalCode: null | string;
+        country: null | string;
+        recipientName: null | string;
+        contactPhone: null | string;
+        companyName: null | string;
+        taxId: null | string;
+        deliveryNotes: null | string;
+        courierInstructions: null | string;
+    } | null;
+};
+export {};
+```
+## dist/commerce/model/omsReadModelRows.d.ts
+
+```ts
+export type { OmsAccountingInvoiceRow, OmsAccountingOutboxRow, OmsAddressRow, OmsCommunicationDeliveryRow, OmsCustomerRow, OmsHoldRow, OmsInventoryReservationRow, OmsOperationRow, OmsOrderItemRow, OmsOrderRow, OmsOrderRowCore, OmsOrderRowCoreInput, OmsPaymentAttemptRow, OmsPaymentIntentRow, OmsPaymentTransitionRow } from "../contracts/omsTypes.js";
 ```
 ## dist/commerce/offerAvailabilitySchemas.d.ts
 
@@ -1250,6 +3032,3582 @@ export declare function offerAvailabilityRequestItems(variants: readonly {
     slug: string;
     variantId: string;
 }[], checkoutMode: CommerceOfferAvailabilityRequestItem["checkoutMode"]): CommerceOfferAvailabilityRequestItem[];
+```
+## dist/commerce/oms/omsContractBase.d.ts
+
+```ts
+import { z } from "zod";
+export declare const commerceOrderModeSchema: z.ZodEnum<{
+    one_time: "one_time";
+    subscription_cycle: "subscription_cycle";
+}>;
+export declare const omsPaymentStatusSchema: z.ZodEnum<{
+    expired: "expired";
+    created: "created";
+    failed: "failed";
+    cancelled: "cancelled";
+    refunded: "refunded";
+    not_started: "not_started";
+    requires_action: "requires_action";
+    processing: "processing";
+    partially_refunded: "partially_refunded";
+    disputed: "disputed";
+    succeeded: "succeeded";
+}>;
+export declare const omsPaymentAttemptStatusSchema: z.ZodEnum<{
+    expired: "expired";
+    created: "created";
+    failed: "failed";
+    cancelled: "cancelled";
+    requires_action: "requires_action";
+    processing: "processing";
+    succeeded: "succeeded";
+    blocked_preflight: "blocked_preflight";
+    sent_to_provider: "sent_to_provider";
+}>;
+export declare const omsSubscriptionCycleStatusSchema: z.ZodEnum<{
+    paid: "paid";
+    cancelled: "cancelled";
+    planned: "planned";
+    skipped: "skipped";
+    payment_pending: "payment_pending";
+    payment_failed: "payment_failed";
+    retry_scheduled: "retry_scheduled";
+}>;
+export declare const omsHoldReasonSchema: z.ZodEnum<{
+    payment_not_succeeded: "payment_not_succeeded";
+    inventory_review: "inventory_review";
+    risk_review: "risk_review";
+    fulfillment_exception: "fulfillment_exception";
+    address_review: "address_review";
+    manual_support: "manual_support";
+}>;
+export declare const omsHoldStatusSchema: z.ZodEnum<{
+    active: "active";
+    released: "released";
+}>;
+export declare const omsOperationTypeSchema: z.ZodEnum<{
+    hold_created: "hold_created";
+    hold_released: "hold_released";
+    fulfillment_reviewed: "fulfillment_reviewed";
+    support_note: "support_note";
+    shipping_address_updated: "shipping_address_updated";
+    order_marked_refunded: "order_marked_refunded";
+    order_cancelled_manual: "order_cancelled_manual";
+    replacement_shipment_requested: "replacement_shipment_requested";
+}>;
+export declare const omsFulfillmentBlockReasonSchema: z.ZodEnum<{
+    order_not_paid: "order_not_paid";
+    payment_not_succeeded: "payment_not_succeeded";
+    subscription_cycle_not_paid: "subscription_cycle_not_paid";
+    active_hold: "active_hold";
+    missing_shipping_address: "missing_shipping_address";
+    inventory_review: "inventory_review";
+    risk_review: "risk_review";
+}>;
+export declare const omsInventoryStatusSchema: z.ZodEnum<{
+    expired: "expired";
+    not_checked: "not_checked";
+    reserved: "reserved";
+    missing: "missing";
+    released: "released";
+    consumed: "consumed";
+    review_required: "review_required";
+}>;
+export declare const omsFulfillmentStatusSchema: z.ZodEnum<{
+    created: "created";
+    cancelled: "cancelled";
+    delivered: "delivered";
+    packed: "packed";
+    label_pending: "label_pending";
+    label_created: "label_created";
+    handed_over: "handed_over";
+    in_transit: "in_transit";
+    exception: "exception";
+}>;
+export declare const omsAccountingStatusSchema: z.ZodString;
+export declare const omsAttentionReasonSchema: z.ZodEnum<{
+    fulfillment_pending: "fulfillment_pending";
+    active_hold: "active_hold";
+    missing_shipping_address: "missing_shipping_address";
+    none: "none";
+    fulfillment_exception: "fulfillment_exception";
+    payment_required: "payment_required";
+    inventory_missing: "inventory_missing";
+    fulfillment_blocked: "fulfillment_blocked";
+    invoice_missing: "invoice_missing";
+    invoice_issue_failed: "invoice_issue_failed";
+    invoice_buyer_data_invalid: "invoice_buyer_data_invalid";
+}>;
+export declare const omsNextActionSchema: z.ZodEnum<{
+    none: "none";
+    review_payment: "review_payment";
+    release_hold: "release_hold";
+    review_address: "review_address";
+    review_inventory: "review_inventory";
+    review_fulfillment: "review_fulfillment";
+    create_fulfillment: "create_fulfillment";
+    record_label: "record_label";
+    hand_off: "hand_off";
+    review_tracking: "review_tracking";
+    review_invoice: "review_invoice";
+}>;
+export declare const omsProviderOpsStatusSchema: z.ZodString;
+export declare const omsProviderOpsSlaStatusSchema: z.ZodEnum<{
+    ok: "ok";
+    watch: "watch";
+    breached: "breached";
+    paused_non_shipping_day: "paused_non_shipping_day";
+}>;
+export declare const uuidSchema: z.ZodGUID;
+export declare const datetimeSchema: z.ZodString;
+export declare const nullableTextSchema: z.ZodNullable<z.ZodString>;
+export declare const actionEligibilitySchema: z.ZodObject<{
+    allowed: z.ZodBoolean;
+    reason: z.ZodNullable<z.ZodString>;
+}, z.core.$strict>;
+```
+## dist/commerce/oms/omsContractReadAuxSchemas.d.ts
+
+```ts
+import { z } from "zod";
+export declare const omsPricingSummarySchema: z.ZodObject<{
+    subtotal: z.ZodObject<{
+        amountMinor: z.ZodNumber;
+        currency: z.ZodString;
+    }, z.core.$strict>;
+    productDiscount: z.ZodObject<{
+        amountMinor: z.ZodNumber;
+        currency: z.ZodString;
+    }, z.core.$strict>;
+    shipping: z.ZodObject<{
+        amountMinor: z.ZodNumber;
+        currency: z.ZodString;
+    }, z.core.$strict>;
+    shippingDiscount: z.ZodObject<{
+        amountMinor: z.ZodNumber;
+        currency: z.ZodString;
+    }, z.core.$strict>;
+    discountTotal: z.ZodObject<{
+        amountMinor: z.ZodNumber;
+        currency: z.ZodString;
+    }, z.core.$strict>;
+    finalTotal: z.ZodObject<{
+        amountMinor: z.ZodNumber;
+        currency: z.ZodString;
+    }, z.core.$strict>;
+    source: z.ZodLiteral<"order_columns">;
+}, z.core.$strict>;
+export declare const omsCommunicationDeliveryStatusSchema: z.ZodEnum<{
+    failed: "failed";
+    processing: "processing";
+    delivered: "delivered";
+    planned: "planned";
+    skipped: "skipped";
+    blocked: "blocked";
+    queued: "queued";
+    sent: "sent";
+    delivery_delayed: "delivery_delayed";
+    bounced: "bounced";
+    complained: "complained";
+    missed: "missed";
+    legacy_unlinked: "legacy_unlinked";
+}>;
+export declare const omsCommunicationDeliverySchema: z.ZodObject<{
+    id: z.ZodGUID;
+    purpose: z.ZodString;
+    templateSlug: z.ZodString;
+    triggerSource: z.ZodString;
+    triggerEvent: z.ZodString;
+    aggregateType: z.ZodNullable<z.ZodString>;
+    aggregateId: z.ZodNullable<z.ZodString>;
+    dedupeKey: z.ZodString;
+    status: z.ZodEnum<{
+        failed: "failed";
+        processing: "processing";
+        delivered: "delivered";
+        planned: "planned";
+        skipped: "skipped";
+        blocked: "blocked";
+        queued: "queued";
+        sent: "sent";
+        delivery_delayed: "delivery_delayed";
+        bounced: "bounced";
+        complained: "complained";
+        missed: "missed";
+        legacy_unlinked: "legacy_unlinked";
+    }>;
+    providerKind: z.ZodNullable<z.ZodString>;
+    providerMessageId: z.ZodNullable<z.ZodString>;
+    scheduledDueAt: z.ZodNullable<z.ZodString>;
+    expectedSendAt: z.ZodNullable<z.ZodString>;
+    queuedAt: z.ZodNullable<z.ZodString>;
+    firstAttemptAt: z.ZodNullable<z.ZodString>;
+    sentAt: z.ZodNullable<z.ZodString>;
+    deliveredAt: z.ZodNullable<z.ZodString>;
+    terminalAt: z.ZodNullable<z.ZodString>;
+    lastErrorCode: z.ZodNullable<z.ZodString>;
+    outboxEventId: z.ZodNullable<z.ZodGUID>;
+    platformJobRunId: z.ZodNullable<z.ZodGUID>;
+    emailSendId: z.ZodNullable<z.ZodGUID>;
+    metadata: z.ZodRecord<z.ZodString, z.ZodUnknown>;
+    createdAt: z.ZodString;
+    updatedAt: z.ZodString;
+}, z.core.$strict>;
+export declare const omsDeliverySelectionSchema: z.ZodObject<{
+    deliveryKind: z.ZodEnum<{
+        "parcel-locker": "parcel-locker";
+        courier: "courier";
+    }>;
+    providerKind: z.ZodNullable<z.ZodString>;
+    carrierKind: z.ZodNullable<z.ZodString>;
+    carrierCode: z.ZodNullable<z.ZodString>;
+    serviceCode: z.ZodNullable<z.ZodString>;
+    pickupPoint: z.ZodNullable<z.ZodObject<{
+        id: z.ZodString;
+        name: z.ZodString;
+        address: z.ZodNullable<z.ZodObject<{
+            line1: z.ZodString;
+            postalCode: z.ZodString;
+            city: z.ZodString;
+            country: z.ZodString;
+        }, z.core.$strict>>;
+    }, z.core.$strict>>;
+    source: z.ZodNullable<z.ZodString>;
+}, z.core.$strict>;
+export declare const omsDeliveryContactSchema: z.ZodObject<{
+    schemaVersion: z.ZodLiteral<1>;
+    source: z.ZodString;
+    revision: z.ZodNumber;
+    recipientName: z.ZodNullable<z.ZodString>;
+    contactEmail: z.ZodNullable<z.ZodString>;
+    contactPhone: z.ZodNullable<z.ZodString>;
+    line1: z.ZodNullable<z.ZodString>;
+    line2: z.ZodNullable<z.ZodString>;
+    city: z.ZodNullable<z.ZodString>;
+    postalCode: z.ZodNullable<z.ZodString>;
+    country: z.ZodNullable<z.ZodString>;
+    selectedDelivery: z.ZodNullable<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+    deliveryInstructions: z.ZodNullable<z.ZodString>;
+    courierInstructions: z.ZodNullable<z.ZodString>;
+}, z.core.$strict>;
+export declare const omsDeliveryContactResolutionSchema: z.ZodObject<{
+    resolutionVersion: z.ZodLiteral<1>;
+    scope: z.ZodEnum<{
+        missing: "missing";
+        baseline: "baseline";
+        order_override: "order_override";
+        parcel: "parcel";
+        legacy_inferred: "legacy_inferred";
+    }>;
+    baseline: z.ZodNullable<z.ZodObject<{
+        schemaVersion: z.ZodLiteral<1>;
+        source: z.ZodString;
+        revision: z.ZodNumber;
+        recipientName: z.ZodNullable<z.ZodString>;
+        contactEmail: z.ZodNullable<z.ZodString>;
+        contactPhone: z.ZodNullable<z.ZodString>;
+        line1: z.ZodNullable<z.ZodString>;
+        line2: z.ZodNullable<z.ZodString>;
+        city: z.ZodNullable<z.ZodString>;
+        postalCode: z.ZodNullable<z.ZodString>;
+        country: z.ZodNullable<z.ZodString>;
+        selectedDelivery: z.ZodNullable<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+        deliveryInstructions: z.ZodNullable<z.ZodString>;
+        courierInstructions: z.ZodNullable<z.ZodString>;
+    }, z.core.$strict>>;
+    contact: z.ZodNullable<z.ZodObject<{
+        schemaVersion: z.ZodLiteral<1>;
+        source: z.ZodString;
+        revision: z.ZodNumber;
+        recipientName: z.ZodNullable<z.ZodString>;
+        contactEmail: z.ZodNullable<z.ZodString>;
+        contactPhone: z.ZodNullable<z.ZodString>;
+        line1: z.ZodNullable<z.ZodString>;
+        line2: z.ZodNullable<z.ZodString>;
+        city: z.ZodNullable<z.ZodString>;
+        postalCode: z.ZodNullable<z.ZodString>;
+        country: z.ZodNullable<z.ZodString>;
+        selectedDelivery: z.ZodNullable<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+        deliveryInstructions: z.ZodNullable<z.ZodString>;
+        courierInstructions: z.ZodNullable<z.ZodString>;
+    }, z.core.$strict>>;
+    contactDigest: z.ZodNullable<z.ZodString>;
+}, z.core.$strict>;
+export declare const omsDeliveryContactProjectionSchema: z.ZodObject<{
+    baseline: z.ZodNullable<z.ZodObject<{
+        schemaVersion: z.ZodLiteral<1>;
+        source: z.ZodString;
+        revision: z.ZodNumber;
+        recipientName: z.ZodNullable<z.ZodString>;
+        contactEmail: z.ZodNullable<z.ZodString>;
+        contactPhone: z.ZodNullable<z.ZodString>;
+        line1: z.ZodNullable<z.ZodString>;
+        line2: z.ZodNullable<z.ZodString>;
+        city: z.ZodNullable<z.ZodString>;
+        postalCode: z.ZodNullable<z.ZodString>;
+        country: z.ZodNullable<z.ZodString>;
+        selectedDelivery: z.ZodNullable<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+        deliveryInstructions: z.ZodNullable<z.ZodString>;
+        courierInstructions: z.ZodNullable<z.ZodString>;
+    }, z.core.$strict>>;
+    effective: z.ZodNullable<z.ZodObject<{
+        schemaVersion: z.ZodLiteral<1>;
+        source: z.ZodString;
+        revision: z.ZodNumber;
+        recipientName: z.ZodNullable<z.ZodString>;
+        contactEmail: z.ZodNullable<z.ZodString>;
+        contactPhone: z.ZodNullable<z.ZodString>;
+        line1: z.ZodNullable<z.ZodString>;
+        line2: z.ZodNullable<z.ZodString>;
+        city: z.ZodNullable<z.ZodString>;
+        postalCode: z.ZodNullable<z.ZodString>;
+        country: z.ZodNullable<z.ZodString>;
+        selectedDelivery: z.ZodNullable<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+        deliveryInstructions: z.ZodNullable<z.ZodString>;
+        courierInstructions: z.ZodNullable<z.ZodString>;
+    }, z.core.$strict>>;
+    scope: z.ZodEnum<{
+        missing: "missing";
+        baseline: "baseline";
+        order_override: "order_override";
+        parcel: "parcel";
+        legacy_inferred: "legacy_inferred";
+    }>;
+    source: z.ZodNullable<z.ZodString>;
+    revision: z.ZodNullable<z.ZodNumber>;
+    digest: z.ZodNullable<z.ZodString>;
+    frozen: z.ZodBoolean;
+    providerSubmissionState: z.ZodEnum<{
+        unknown: "unknown";
+        draft: "draft";
+        created: "created";
+        failed: "failed";
+        cancelled: "cancelled";
+        not_started: "not_started";
+        not_materialized: "not_materialized";
+        submitting: "submitting";
+        uncertain: "uncertain";
+        cancel_requested: "cancel_requested";
+    }>;
+    correctionAllowed: z.ZodBoolean;
+}, z.core.$strict>;
+```
+## dist/commerce/oms/omsContractReadSchemas.d.ts
+
+```ts
+import { z } from "zod";
+import { type CustomerFulfillmentStep } from "@openlup/core/fulfillment";
+export { omsCommunicationDeliverySchema, omsCommunicationDeliveryStatusSchema, omsDeliveryContactProjectionSchema, omsDeliveryContactSchema, omsDeliverySelectionSchema, omsPricingSummarySchema } from "./omsContractReadAuxSchemas.js";
+export { omsFulfillmentSummarySchema, omsFulfillmentTimelineEventSchema, omsFulfillmentTrackingReferenceSchema, omsInventorySummarySchema, omsProviderOpsSlaSchema, omsReplacementChainSchema, omsSubscriptionContextSchema, omsSupersededParcelSchema } from "./omsFulfillmentContractSchemas.js";
+export { omsFulfillmentHealthDigestSchema, omsFulfillmentHealthSchema } from "./omsFulfillmentHealthSchemas.js";
+export declare const omsCustomerSummarySchema: z.ZodObject<{
+    id: z.ZodGUID;
+    email: z.ZodString;
+    firstName: z.ZodNullable<z.ZodString>;
+    lastName: z.ZodNullable<z.ZodString>;
+    phone: z.ZodNullable<z.ZodString>;
+    lifecycleStage: z.ZodNullable<z.ZodString>;
+}, z.core.$strict>;
+export declare const omsAddressSummarySchema: z.ZodObject<{
+    id: z.ZodGUID;
+    label: z.ZodNullable<z.ZodString>;
+    line1: z.ZodNullable<z.ZodString>;
+    line2: z.ZodNullable<z.ZodString>;
+    city: z.ZodNullable<z.ZodString>;
+    postalCode: z.ZodNullable<z.ZodString>;
+    country: z.ZodNullable<z.ZodString>;
+    recipientName: z.ZodNullable<z.ZodString>;
+    contactPhone: z.ZodNullable<z.ZodString>;
+    companyName: z.ZodNullable<z.ZodString>;
+    taxId: z.ZodNullable<z.ZodString>;
+    deliveryNotes: z.ZodNullable<z.ZodString>;
+    courierInstructions: z.ZodNullable<z.ZodString>;
+}, z.core.$strict>;
+export declare const omsOrderLineSchema: z.ZodObject<{
+    id: z.ZodGUID;
+    skuId: z.ZodNullable<z.ZodGUID>;
+    sku: z.ZodNullable<z.ZodString>;
+    title: z.ZodNullable<z.ZodString>;
+    quantity: z.ZodNumber;
+    unitPrice: z.ZodObject<{
+        amountMinor: z.ZodNumber;
+        currency: z.ZodString;
+    }, z.core.$strict>;
+    total: z.ZodObject<{
+        amountMinor: z.ZodNumber;
+        currency: z.ZodString;
+    }, z.core.$strict>;
+    discountAllocated: z.ZodObject<{
+        amountMinor: z.ZodNumber;
+        currency: z.ZodString;
+    }, z.core.$strict>;
+    effectiveTotal: z.ZodObject<{
+        amountMinor: z.ZodNumber;
+        currency: z.ZodString;
+    }, z.core.$strict>;
+    effectiveNet: z.ZodObject<{
+        amountMinor: z.ZodNumber;
+        currency: z.ZodString;
+    }, z.core.$strict>;
+    vatRateBps: z.ZodNullable<z.ZodNumber>;
+    productSnapshot: z.ZodRecord<z.ZodString, z.ZodUnknown>;
+    variantSnapshot: z.ZodNullable<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+}, z.core.$strict>;
+export declare const omsAccountingSummarySchema: z.ZodObject<{
+    status: z.ZodString;
+    invoiceId: z.ZodNullable<z.ZodGUID>;
+    invoiceRef: z.ZodNullable<z.ZodString>;
+    providerKind: z.ZodNullable<z.ZodString>;
+    providerInvoiceNumber: z.ZodNullable<z.ZodString>;
+    fiscalStatus: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    outboxStatus: z.ZodNullable<z.ZodString>;
+    outboxAttemptCount: z.ZodNullable<z.ZodNumber>;
+    outboxNextAttemptAt: z.ZodNullable<z.ZodString>;
+    outboxLastError: z.ZodNullable<z.ZodObject<{
+        code: z.ZodNullable<z.ZodString>;
+        message: z.ZodNullable<z.ZodString>;
+        retryable: z.ZodNullable<z.ZodBoolean>;
+    }, z.core.$strict>>;
+    recoveryGuidance: z.ZodEnum<{
+        none: "none";
+        not_requested: "not_requested";
+        wait_for_retry: "wait_for_retry";
+        review_and_retry: "review_and_retry";
+    }>;
+    updatedAt: z.ZodNullable<z.ZodString>;
+}, z.core.$strict>;
+export declare const omsOrderActionEligibilitySchema: z.ZodObject<{
+    addNote: z.ZodObject<{
+        allowed: z.ZodBoolean;
+        reason: z.ZodNullable<z.ZodString>;
+    }, z.core.$strict>;
+    createHold: z.ZodObject<{
+        allowed: z.ZodBoolean;
+        reason: z.ZodNullable<z.ZodString>;
+    }, z.core.$strict>;
+    releaseHold: z.ZodObject<{
+        allowed: z.ZodBoolean;
+        reason: z.ZodNullable<z.ZodString>;
+    }, z.core.$strict>;
+    createFulfillment: z.ZodObject<{
+        allowed: z.ZodBoolean;
+        reason: z.ZodNullable<z.ZodString>;
+    }, z.core.$strict>;
+    updateShippingAddress: z.ZodObject<{
+        allowed: z.ZodBoolean;
+        reason: z.ZodNullable<z.ZodString>;
+    }, z.core.$strict>;
+    recordLabel: z.ZodObject<{
+        allowed: z.ZodBoolean;
+        reason: z.ZodNullable<z.ZodString>;
+    }, z.core.$strict>;
+    handOff: z.ZodObject<{
+        allowed: z.ZodBoolean;
+        reason: z.ZodNullable<z.ZodString>;
+    }, z.core.$strict>;
+    recordTrackingEvent: z.ZodObject<{
+        allowed: z.ZodBoolean;
+        reason: z.ZodNullable<z.ZodString>;
+    }, z.core.$strict>;
+    cancelFulfillment: z.ZodObject<{
+        allowed: z.ZodBoolean;
+        reason: z.ZodNullable<z.ZodString>;
+    }, z.core.$strict>;
+    cancelOrder: z.ZodObject<{
+        allowed: z.ZodBoolean;
+        reason: z.ZodNullable<z.ZodString>;
+    }, z.core.$strict>;
+    markRefunded: z.ZodObject<{
+        allowed: z.ZodBoolean;
+        reason: z.ZodNullable<z.ZodString>;
+    }, z.core.$strict>;
+}, z.core.$strict>;
+export declare const omsOrderSearchMatchSchema: z.ZodObject<{
+    field: z.ZodString;
+    label: z.ZodString;
+    valuePreview: z.ZodNullable<z.ZodString>;
+}, z.core.$strict>;
+export declare const omsOrderListItemSchema: z.ZodObject<{
+    orderId: z.ZodGUID;
+    orderNumber: z.ZodNullable<z.ZodString>;
+    clientId: z.ZodNullable<z.ZodGUID>;
+    customer: z.ZodNullable<z.ZodObject<{
+        id: z.ZodGUID;
+        email: z.ZodString;
+        firstName: z.ZodNullable<z.ZodString>;
+        lastName: z.ZodNullable<z.ZodString>;
+        phone: z.ZodNullable<z.ZodString>;
+        lifecycleStage: z.ZodNullable<z.ZodString>;
+    }, z.core.$strict>>;
+    status: z.ZodEnum<{
+        draft: "draft";
+        expired: "expired";
+        pending_payment: "pending_payment";
+        paid: "paid";
+        failed: "failed";
+        fulfillment_pending: "fulfillment_pending";
+        cancelled: "cancelled";
+        fulfilled: "fulfilled";
+        refunded: "refunded";
+    }>;
+    mode: z.ZodEnum<{
+        one_time: "one_time";
+        subscription_cycle: "subscription_cycle";
+    }>;
+    sourceKind: z.ZodOptional<z.ZodString>;
+    sourceChannelSlug: z.ZodOptional<z.ZodString>;
+    sourceOrderRef: z.ZodOptional<z.ZodString>;
+    paymentMethodLabel: z.ZodNullable<z.ZodString>;
+    paymentProvider: z.ZodNullable<z.ZodString>;
+    paymentStatus: z.ZodEnum<{
+        expired: "expired";
+        created: "created";
+        failed: "failed";
+        cancelled: "cancelled";
+        refunded: "refunded";
+        not_started: "not_started";
+        requires_action: "requires_action";
+        processing: "processing";
+        partially_refunded: "partially_refunded";
+        disputed: "disputed";
+        succeeded: "succeeded";
+    }>;
+    fulfillmentStatus: z.ZodNullable<z.ZodEnum<{
+        created: "created";
+        cancelled: "cancelled";
+        delivered: "delivered";
+        packed: "packed";
+        label_pending: "label_pending";
+        label_created: "label_created";
+        handed_over: "handed_over";
+        in_transit: "in_transit";
+        exception: "exception";
+    }>>;
+    customerFulfillmentStep: z.ZodCustom<CustomerFulfillmentStep, CustomerFulfillmentStep>;
+    inventoryStatus: z.ZodEnum<{
+        expired: "expired";
+        not_checked: "not_checked";
+        reserved: "reserved";
+        missing: "missing";
+        released: "released";
+        consumed: "consumed";
+        review_required: "review_required";
+    }>;
+    accountingStatus: z.ZodString;
+    providerOpsStatus: z.ZodDefault<z.ZodString>;
+    providerOpsSla: z.ZodDefault<z.ZodNullable<z.ZodObject<{
+        status: z.ZodEnum<{
+            ok: "ok";
+            watch: "watch";
+            breached: "breached";
+            paused_non_shipping_day: "paused_non_shipping_day";
+        }>;
+        dispatchedAt: z.ZodNullable<z.ZodString>;
+        deadlineAt: z.ZodNullable<z.ZodString>;
+        remainingOperationalMinutes: z.ZodNullable<z.ZodNumber>;
+    }, z.core.$strict>>>;
+    providerOrderId: z.ZodDefault<z.ZodNullable<z.ZodString>>;
+    attentionReason: z.ZodEnum<{
+        fulfillment_pending: "fulfillment_pending";
+        active_hold: "active_hold";
+        missing_shipping_address: "missing_shipping_address";
+        none: "none";
+        fulfillment_exception: "fulfillment_exception";
+        payment_required: "payment_required";
+        inventory_missing: "inventory_missing";
+        fulfillment_blocked: "fulfillment_blocked";
+        invoice_missing: "invoice_missing";
+        invoice_issue_failed: "invoice_issue_failed";
+        invoice_buyer_data_invalid: "invoice_buyer_data_invalid";
+    }>;
+    nextAction: z.ZodEnum<{
+        none: "none";
+        review_payment: "review_payment";
+        release_hold: "release_hold";
+        review_address: "review_address";
+        review_inventory: "review_inventory";
+        review_fulfillment: "review_fulfillment";
+        create_fulfillment: "create_fulfillment";
+        record_label: "record_label";
+        hand_off: "hand_off";
+        review_tracking: "review_tracking";
+        review_invoice: "review_invoice";
+    }>;
+    activeHoldCount: z.ZodNumber;
+    activeHoldReasons: z.ZodArray<z.ZodEnum<{
+        payment_not_succeeded: "payment_not_succeeded";
+        inventory_review: "inventory_review";
+        risk_review: "risk_review";
+        fulfillment_exception: "fulfillment_exception";
+        address_review: "address_review";
+        manual_support: "manual_support";
+    }>>;
+    fulfillmentHealthDigest: z.ZodObject<{
+        healthStatus: z.ZodEnum<{
+            ok: "ok";
+            needs_attention: "needs_attention";
+            blocked_uncertain: "blocked_uncertain";
+            local_ahead: "local_ahead";
+            provider_ahead: "provider_ahead";
+            missing_local_commitment: "missing_local_commitment";
+        }>;
+        attentionReasons: z.ZodArray<z.ZodEnum<{
+            paid_order_missing_fulfillment: "paid_order_missing_fulfillment";
+            paid_order_missing_dispatch_ref: "paid_order_missing_dispatch_ref";
+            dispatch_submission_stale: "dispatch_submission_stale";
+            dispatch_outcome_uncertain: "dispatch_outcome_uncertain";
+            dispatch_failed: "dispatch_failed";
+            dispatch_created_without_provider_order_id: "dispatch_created_without_provider_order_id";
+            dispatch_terminal_without_progress: "dispatch_terminal_without_progress";
+            dispatch_status_unknown: "dispatch_status_unknown";
+            provider_exception_after_delivery: "provider_exception_after_delivery";
+            provider_exception_after_handover: "provider_exception_after_handover";
+            provider_exception_before_handover: "provider_exception_before_handover";
+            local_status_ahead_of_provider: "local_status_ahead_of_provider";
+            provider_accepted_local_label_ack_missing: "provider_accepted_local_label_ack_missing";
+            order_paid_outbox_discarded: "order_paid_outbox_discarded";
+            order_paid_outbox_processed_without_fulfillment: "order_paid_outbox_processed_without_fulfillment";
+            order_paid_outbox_missing: "order_paid_outbox_missing";
+        }>>;
+    }, z.core.$strict>;
+    total: z.ZodObject<{
+        amountMinor: z.ZodNumber;
+        currency: z.ZodString;
+    }, z.core.$strict>;
+    pricingSummary: z.ZodObject<{
+        subtotal: z.ZodObject<{
+            amountMinor: z.ZodNumber;
+            currency: z.ZodString;
+        }, z.core.$strict>;
+        productDiscount: z.ZodObject<{
+            amountMinor: z.ZodNumber;
+            currency: z.ZodString;
+        }, z.core.$strict>;
+        shipping: z.ZodObject<{
+            amountMinor: z.ZodNumber;
+            currency: z.ZodString;
+        }, z.core.$strict>;
+        shippingDiscount: z.ZodObject<{
+            amountMinor: z.ZodNumber;
+            currency: z.ZodString;
+        }, z.core.$strict>;
+        discountTotal: z.ZodObject<{
+            amountMinor: z.ZodNumber;
+            currency: z.ZodString;
+        }, z.core.$strict>;
+        finalTotal: z.ZodObject<{
+            amountMinor: z.ZodNumber;
+            currency: z.ZodString;
+        }, z.core.$strict>;
+        source: z.ZodLiteral<"order_columns">;
+    }, z.core.$strict>;
+    createdAt: z.ZodString;
+    updatedAt: z.ZodString;
+    match: z.ZodOptional<z.ZodObject<{
+        field: z.ZodString;
+        label: z.ZodString;
+        valuePreview: z.ZodNullable<z.ZodString>;
+    }, z.core.$strict>>;
+}, z.core.$strip>;
+export declare const omsOrderListSummaryCountsSchema: z.ZodObject<{
+    needsAttention: z.ZodNumber;
+    activeHold: z.ZodNumber;
+    readyForFulfillment: z.ZodNumber;
+    paymentIssues: z.ZodNumber;
+    inventoryRisk: z.ZodNumber;
+    fulfillmentBlocked: z.ZodNumber;
+    fulfillmentExceptions: z.ZodNumber;
+    invoiceIssues: z.ZodNumber;
+    providerDispatchedNotPicked: z.ZodOptional<z.ZodNumber>;
+}, z.core.$strict>;
+export declare const omsOrderListSummaryTotalsSchema: z.ZodObject<{
+    gmv: z.ZodObject<{
+        amountMinor: z.ZodNumber;
+        currency: z.ZodString;
+    }, z.core.$strict>;
+    aov: z.ZodObject<{
+        amountMinor: z.ZodNumber;
+        currency: z.ZodString;
+    }, z.core.$strict>;
+    orderCount: z.ZodNumber;
+    paidSubscriptionCycleCount: z.ZodNumber;
+}, z.core.$strict>;
+export declare const omsOrderHoldSchema: z.ZodObject<{
+    id: z.ZodGUID;
+    orderId: z.ZodGUID;
+    status: z.ZodEnum<{
+        active: "active";
+        released: "released";
+    }>;
+    reason: z.ZodEnum<{
+        payment_not_succeeded: "payment_not_succeeded";
+        inventory_review: "inventory_review";
+        risk_review: "risk_review";
+        fulfillment_exception: "fulfillment_exception";
+        address_review: "address_review";
+        manual_support: "manual_support";
+    }>;
+    note: z.ZodNullable<z.ZodString>;
+    createdAt: z.ZodString;
+    releasedAt: z.ZodNullable<z.ZodString>;
+}, z.core.$strip>;
+export declare const omsOrderOperationSchema: z.ZodObject<{
+    id: z.ZodGUID;
+    orderId: z.ZodGUID;
+    type: z.ZodEnum<{
+        hold_created: "hold_created";
+        hold_released: "hold_released";
+        fulfillment_reviewed: "fulfillment_reviewed";
+        support_note: "support_note";
+        shipping_address_updated: "shipping_address_updated";
+        order_marked_refunded: "order_marked_refunded";
+        order_cancelled_manual: "order_cancelled_manual";
+        replacement_shipment_requested: "replacement_shipment_requested";
+    }>;
+    holdId: z.ZodNullable<z.ZodGUID>;
+    actorUserId: z.ZodNullable<z.ZodGUID>;
+    occurredAt: z.ZodString;
+    payload: z.ZodRecord<z.ZodString, z.ZodUnknown>;
+}, z.core.$strip>;
+export declare const omsPaymentSummarySchema: z.ZodObject<{
+    intentId: z.ZodNullable<z.ZodGUID>;
+    paymentId: z.ZodNullable<z.ZodGUID>;
+    status: z.ZodEnum<{
+        expired: "expired";
+        created: "created";
+        failed: "failed";
+        cancelled: "cancelled";
+        refunded: "refunded";
+        not_started: "not_started";
+        requires_action: "requires_action";
+        processing: "processing";
+        partially_refunded: "partially_refunded";
+        disputed: "disputed";
+        succeeded: "succeeded";
+    }>;
+    activeAttemptId: z.ZodNullable<z.ZodGUID>;
+    providerPaymentId: z.ZodNullable<z.ZodString>;
+    updatedAt: z.ZodNullable<z.ZodString>;
+}, z.core.$strip>;
+export declare const omsPaymentAttemptSchema: z.ZodObject<{
+    id: z.ZodGUID;
+    status: z.ZodEnum<{
+        expired: "expired";
+        created: "created";
+        failed: "failed";
+        cancelled: "cancelled";
+        requires_action: "requires_action";
+        processing: "processing";
+        succeeded: "succeeded";
+        blocked_preflight: "blocked_preflight";
+        sent_to_provider: "sent_to_provider";
+    }>;
+    provider: z.ZodString;
+    providerAttemptId: z.ZodNullable<z.ZodString>;
+    nextActionKind: z.ZodNullable<z.ZodString>;
+    updatedAt: z.ZodString;
+}, z.core.$strip>;
+export declare const omsPaymentTransitionSchema: z.ZodObject<{
+    id: z.ZodGUID;
+    transitionKind: z.ZodString;
+    fromStatus: z.ZodNullable<z.ZodString>;
+    toStatus: z.ZodString;
+    reason: z.ZodString;
+    occurredAt: z.ZodString;
+}, z.core.$strip>;
+export declare const omsFulfillmentEligibilitySchema: z.ZodObject<{
+    allowed: z.ZodBoolean;
+    reason: z.ZodNullable<z.ZodEnum<{
+        order_not_paid: "order_not_paid";
+        payment_not_succeeded: "payment_not_succeeded";
+        subscription_cycle_not_paid: "subscription_cycle_not_paid";
+        active_hold: "active_hold";
+        missing_shipping_address: "missing_shipping_address";
+        inventory_review: "inventory_review";
+        risk_review: "risk_review";
+    }>>;
+}, z.core.$strip>;
+export declare const omsOrderDetailSchema: z.ZodObject<{
+    orderId: z.ZodGUID;
+    orderNumber: z.ZodNullable<z.ZodString>;
+    clientId: z.ZodNullable<z.ZodGUID>;
+    customer: z.ZodNullable<z.ZodObject<{
+        id: z.ZodGUID;
+        email: z.ZodString;
+        firstName: z.ZodNullable<z.ZodString>;
+        lastName: z.ZodNullable<z.ZodString>;
+        phone: z.ZodNullable<z.ZodString>;
+        lifecycleStage: z.ZodNullable<z.ZodString>;
+    }, z.core.$strict>>;
+    status: z.ZodEnum<{
+        draft: "draft";
+        expired: "expired";
+        pending_payment: "pending_payment";
+        paid: "paid";
+        failed: "failed";
+        fulfillment_pending: "fulfillment_pending";
+        cancelled: "cancelled";
+        fulfilled: "fulfilled";
+        refunded: "refunded";
+    }>;
+    mode: z.ZodEnum<{
+        one_time: "one_time";
+        subscription_cycle: "subscription_cycle";
+    }>;
+    sourceKind: z.ZodOptional<z.ZodString>;
+    sourceChannelSlug: z.ZodOptional<z.ZodString>;
+    sourceOrderRef: z.ZodOptional<z.ZodString>;
+    paymentMethodLabel: z.ZodNullable<z.ZodString>;
+    paymentProvider: z.ZodNullable<z.ZodString>;
+    paymentStatus: z.ZodEnum<{
+        expired: "expired";
+        created: "created";
+        failed: "failed";
+        cancelled: "cancelled";
+        refunded: "refunded";
+        not_started: "not_started";
+        requires_action: "requires_action";
+        processing: "processing";
+        partially_refunded: "partially_refunded";
+        disputed: "disputed";
+        succeeded: "succeeded";
+    }>;
+    fulfillmentStatus: z.ZodNullable<z.ZodEnum<{
+        created: "created";
+        cancelled: "cancelled";
+        delivered: "delivered";
+        packed: "packed";
+        label_pending: "label_pending";
+        label_created: "label_created";
+        handed_over: "handed_over";
+        in_transit: "in_transit";
+        exception: "exception";
+    }>>;
+    customerFulfillmentStep: z.ZodCustom<CustomerFulfillmentStep, CustomerFulfillmentStep>;
+    inventoryStatus: z.ZodEnum<{
+        expired: "expired";
+        not_checked: "not_checked";
+        reserved: "reserved";
+        missing: "missing";
+        released: "released";
+        consumed: "consumed";
+        review_required: "review_required";
+    }>;
+    accountingStatus: z.ZodString;
+    providerOpsStatus: z.ZodDefault<z.ZodString>;
+    providerOpsSla: z.ZodDefault<z.ZodNullable<z.ZodObject<{
+        status: z.ZodEnum<{
+            ok: "ok";
+            watch: "watch";
+            breached: "breached";
+            paused_non_shipping_day: "paused_non_shipping_day";
+        }>;
+        dispatchedAt: z.ZodNullable<z.ZodString>;
+        deadlineAt: z.ZodNullable<z.ZodString>;
+        remainingOperationalMinutes: z.ZodNullable<z.ZodNumber>;
+    }, z.core.$strict>>>;
+    providerOrderId: z.ZodDefault<z.ZodNullable<z.ZodString>>;
+    attentionReason: z.ZodEnum<{
+        fulfillment_pending: "fulfillment_pending";
+        active_hold: "active_hold";
+        missing_shipping_address: "missing_shipping_address";
+        none: "none";
+        fulfillment_exception: "fulfillment_exception";
+        payment_required: "payment_required";
+        inventory_missing: "inventory_missing";
+        fulfillment_blocked: "fulfillment_blocked";
+        invoice_missing: "invoice_missing";
+        invoice_issue_failed: "invoice_issue_failed";
+        invoice_buyer_data_invalid: "invoice_buyer_data_invalid";
+    }>;
+    nextAction: z.ZodEnum<{
+        none: "none";
+        review_payment: "review_payment";
+        release_hold: "release_hold";
+        review_address: "review_address";
+        review_inventory: "review_inventory";
+        review_fulfillment: "review_fulfillment";
+        create_fulfillment: "create_fulfillment";
+        record_label: "record_label";
+        hand_off: "hand_off";
+        review_tracking: "review_tracking";
+        review_invoice: "review_invoice";
+    }>;
+    activeHoldCount: z.ZodNumber;
+    activeHoldReasons: z.ZodArray<z.ZodEnum<{
+        payment_not_succeeded: "payment_not_succeeded";
+        inventory_review: "inventory_review";
+        risk_review: "risk_review";
+        fulfillment_exception: "fulfillment_exception";
+        address_review: "address_review";
+        manual_support: "manual_support";
+    }>>;
+    fulfillmentHealthDigest: z.ZodObject<{
+        healthStatus: z.ZodEnum<{
+            ok: "ok";
+            needs_attention: "needs_attention";
+            blocked_uncertain: "blocked_uncertain";
+            local_ahead: "local_ahead";
+            provider_ahead: "provider_ahead";
+            missing_local_commitment: "missing_local_commitment";
+        }>;
+        attentionReasons: z.ZodArray<z.ZodEnum<{
+            paid_order_missing_fulfillment: "paid_order_missing_fulfillment";
+            paid_order_missing_dispatch_ref: "paid_order_missing_dispatch_ref";
+            dispatch_submission_stale: "dispatch_submission_stale";
+            dispatch_outcome_uncertain: "dispatch_outcome_uncertain";
+            dispatch_failed: "dispatch_failed";
+            dispatch_created_without_provider_order_id: "dispatch_created_without_provider_order_id";
+            dispatch_terminal_without_progress: "dispatch_terminal_without_progress";
+            dispatch_status_unknown: "dispatch_status_unknown";
+            provider_exception_after_delivery: "provider_exception_after_delivery";
+            provider_exception_after_handover: "provider_exception_after_handover";
+            provider_exception_before_handover: "provider_exception_before_handover";
+            local_status_ahead_of_provider: "local_status_ahead_of_provider";
+            provider_accepted_local_label_ack_missing: "provider_accepted_local_label_ack_missing";
+            order_paid_outbox_discarded: "order_paid_outbox_discarded";
+            order_paid_outbox_processed_without_fulfillment: "order_paid_outbox_processed_without_fulfillment";
+            order_paid_outbox_missing: "order_paid_outbox_missing";
+        }>>;
+    }, z.core.$strict>;
+    total: z.ZodObject<{
+        amountMinor: z.ZodNumber;
+        currency: z.ZodString;
+    }, z.core.$strict>;
+    pricingSummary: z.ZodObject<{
+        subtotal: z.ZodObject<{
+            amountMinor: z.ZodNumber;
+            currency: z.ZodString;
+        }, z.core.$strict>;
+        productDiscount: z.ZodObject<{
+            amountMinor: z.ZodNumber;
+            currency: z.ZodString;
+        }, z.core.$strict>;
+        shipping: z.ZodObject<{
+            amountMinor: z.ZodNumber;
+            currency: z.ZodString;
+        }, z.core.$strict>;
+        shippingDiscount: z.ZodObject<{
+            amountMinor: z.ZodNumber;
+            currency: z.ZodString;
+        }, z.core.$strict>;
+        discountTotal: z.ZodObject<{
+            amountMinor: z.ZodNumber;
+            currency: z.ZodString;
+        }, z.core.$strict>;
+        finalTotal: z.ZodObject<{
+            amountMinor: z.ZodNumber;
+            currency: z.ZodString;
+        }, z.core.$strict>;
+        source: z.ZodLiteral<"order_columns">;
+    }, z.core.$strict>;
+    createdAt: z.ZodString;
+    updatedAt: z.ZodString;
+    match: z.ZodOptional<z.ZodObject<{
+        field: z.ZodString;
+        label: z.ZodString;
+        valuePreview: z.ZodNullable<z.ZodString>;
+    }, z.core.$strict>>;
+    shippingAddress: z.ZodNullable<z.ZodObject<{
+        id: z.ZodGUID;
+        label: z.ZodNullable<z.ZodString>;
+        line1: z.ZodNullable<z.ZodString>;
+        line2: z.ZodNullable<z.ZodString>;
+        city: z.ZodNullable<z.ZodString>;
+        postalCode: z.ZodNullable<z.ZodString>;
+        country: z.ZodNullable<z.ZodString>;
+        recipientName: z.ZodNullable<z.ZodString>;
+        contactPhone: z.ZodNullable<z.ZodString>;
+        companyName: z.ZodNullable<z.ZodString>;
+        taxId: z.ZodNullable<z.ZodString>;
+        deliveryNotes: z.ZodNullable<z.ZodString>;
+        courierInstructions: z.ZodNullable<z.ZodString>;
+    }, z.core.$strict>>;
+    deliveryContact: z.ZodOptional<z.ZodObject<{
+        baseline: z.ZodNullable<z.ZodObject<{
+            schemaVersion: z.ZodLiteral<1>;
+            source: z.ZodString;
+            revision: z.ZodNumber;
+            recipientName: z.ZodNullable<z.ZodString>;
+            contactEmail: z.ZodNullable<z.ZodString>;
+            contactPhone: z.ZodNullable<z.ZodString>;
+            line1: z.ZodNullable<z.ZodString>;
+            line2: z.ZodNullable<z.ZodString>;
+            city: z.ZodNullable<z.ZodString>;
+            postalCode: z.ZodNullable<z.ZodString>;
+            country: z.ZodNullable<z.ZodString>;
+            selectedDelivery: z.ZodNullable<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+            deliveryInstructions: z.ZodNullable<z.ZodString>;
+            courierInstructions: z.ZodNullable<z.ZodString>;
+        }, z.core.$strict>>;
+        effective: z.ZodNullable<z.ZodObject<{
+            schemaVersion: z.ZodLiteral<1>;
+            source: z.ZodString;
+            revision: z.ZodNumber;
+            recipientName: z.ZodNullable<z.ZodString>;
+            contactEmail: z.ZodNullable<z.ZodString>;
+            contactPhone: z.ZodNullable<z.ZodString>;
+            line1: z.ZodNullable<z.ZodString>;
+            line2: z.ZodNullable<z.ZodString>;
+            city: z.ZodNullable<z.ZodString>;
+            postalCode: z.ZodNullable<z.ZodString>;
+            country: z.ZodNullable<z.ZodString>;
+            selectedDelivery: z.ZodNullable<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+            deliveryInstructions: z.ZodNullable<z.ZodString>;
+            courierInstructions: z.ZodNullable<z.ZodString>;
+        }, z.core.$strict>>;
+        scope: z.ZodEnum<{
+            missing: "missing";
+            baseline: "baseline";
+            order_override: "order_override";
+            parcel: "parcel";
+            legacy_inferred: "legacy_inferred";
+        }>;
+        source: z.ZodNullable<z.ZodString>;
+        revision: z.ZodNullable<z.ZodNumber>;
+        digest: z.ZodNullable<z.ZodString>;
+        frozen: z.ZodBoolean;
+        providerSubmissionState: z.ZodEnum<{
+            unknown: "unknown";
+            draft: "draft";
+            created: "created";
+            failed: "failed";
+            cancelled: "cancelled";
+            not_started: "not_started";
+            not_materialized: "not_materialized";
+            submitting: "submitting";
+            uncertain: "uncertain";
+            cancel_requested: "cancel_requested";
+        }>;
+        correctionAllowed: z.ZodBoolean;
+    }, z.core.$strict>>;
+    billingAddress: z.ZodNullable<z.ZodObject<{
+        id: z.ZodGUID;
+        label: z.ZodNullable<z.ZodString>;
+        line1: z.ZodNullable<z.ZodString>;
+        line2: z.ZodNullable<z.ZodString>;
+        city: z.ZodNullable<z.ZodString>;
+        postalCode: z.ZodNullable<z.ZodString>;
+        country: z.ZodNullable<z.ZodString>;
+        recipientName: z.ZodNullable<z.ZodString>;
+        contactPhone: z.ZodNullable<z.ZodString>;
+        companyName: z.ZodNullable<z.ZodString>;
+        taxId: z.ZodNullable<z.ZodString>;
+        deliveryNotes: z.ZodNullable<z.ZodString>;
+        courierInstructions: z.ZodNullable<z.ZodString>;
+    }, z.core.$strict>>;
+    deliverySelection: z.ZodDefault<z.ZodNullable<z.ZodObject<{
+        deliveryKind: z.ZodEnum<{
+            "parcel-locker": "parcel-locker";
+            courier: "courier";
+        }>;
+        providerKind: z.ZodNullable<z.ZodString>;
+        carrierKind: z.ZodNullable<z.ZodString>;
+        carrierCode: z.ZodNullable<z.ZodString>;
+        serviceCode: z.ZodNullable<z.ZodString>;
+        pickupPoint: z.ZodNullable<z.ZodObject<{
+            id: z.ZodString;
+            name: z.ZodString;
+            address: z.ZodNullable<z.ZodObject<{
+                line1: z.ZodString;
+                postalCode: z.ZodString;
+                city: z.ZodString;
+                country: z.ZodString;
+            }, z.core.$strict>>;
+        }, z.core.$strict>>;
+        source: z.ZodNullable<z.ZodString>;
+    }, z.core.$strict>>>;
+    lines: z.ZodArray<z.ZodObject<{
+        id: z.ZodGUID;
+        skuId: z.ZodNullable<z.ZodGUID>;
+        sku: z.ZodNullable<z.ZodString>;
+        title: z.ZodNullable<z.ZodString>;
+        quantity: z.ZodNumber;
+        unitPrice: z.ZodObject<{
+            amountMinor: z.ZodNumber;
+            currency: z.ZodString;
+        }, z.core.$strict>;
+        total: z.ZodObject<{
+            amountMinor: z.ZodNumber;
+            currency: z.ZodString;
+        }, z.core.$strict>;
+        discountAllocated: z.ZodObject<{
+            amountMinor: z.ZodNumber;
+            currency: z.ZodString;
+        }, z.core.$strict>;
+        effectiveTotal: z.ZodObject<{
+            amountMinor: z.ZodNumber;
+            currency: z.ZodString;
+        }, z.core.$strict>;
+        effectiveNet: z.ZodObject<{
+            amountMinor: z.ZodNumber;
+            currency: z.ZodString;
+        }, z.core.$strict>;
+        vatRateBps: z.ZodNullable<z.ZodNumber>;
+        productSnapshot: z.ZodRecord<z.ZodString, z.ZodUnknown>;
+        variantSnapshot: z.ZodNullable<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+    }, z.core.$strict>>;
+    subscription: z.ZodObject<{
+        subscriptionId: z.ZodNullable<z.ZodGUID>;
+        subscriptionCycleId: z.ZodNullable<z.ZodGUID>;
+        subscriptionCycleStatus: z.ZodNullable<z.ZodEnum<{
+            paid: "paid";
+            cancelled: "cancelled";
+            planned: "planned";
+            skipped: "skipped";
+            payment_pending: "payment_pending";
+            payment_failed: "payment_failed";
+            retry_scheduled: "retry_scheduled";
+        }>>;
+        nextCycleAt: z.ZodNullable<z.ZodString>;
+        cyclePaidAt: z.ZodNullable<z.ZodString>;
+    }, z.core.$strip>;
+    fulfillmentEligibility: z.ZodObject<{
+        allowed: z.ZodBoolean;
+        reason: z.ZodNullable<z.ZodEnum<{
+            order_not_paid: "order_not_paid";
+            payment_not_succeeded: "payment_not_succeeded";
+            subscription_cycle_not_paid: "subscription_cycle_not_paid";
+            active_hold: "active_hold";
+            missing_shipping_address: "missing_shipping_address";
+            inventory_review: "inventory_review";
+            risk_review: "risk_review";
+        }>>;
+    }, z.core.$strip>;
+    inventory: z.ZodObject<{
+        status: z.ZodEnum<{
+            expired: "expired";
+            not_checked: "not_checked";
+            reserved: "reserved";
+            missing: "missing";
+            released: "released";
+            consumed: "consumed";
+            review_required: "review_required";
+        }>;
+        reservationId: z.ZodNullable<z.ZodGUID>;
+        reservationStatus: z.ZodNullable<z.ZodEnum<{
+            expired: "expired";
+            reserved: "reserved";
+            released: "released";
+            consumed: "consumed";
+        }>>;
+        expiresAt: z.ZodNullable<z.ZodString>;
+        locationId: z.ZodNullable<z.ZodGUID>;
+        locationCode: z.ZodNullable<z.ZodString>;
+    }, z.core.$strip>;
+    fulfillment: z.ZodObject<{
+        fulfillmentOrderId: z.ZodNullable<z.ZodGUID>;
+        status: z.ZodNullable<z.ZodEnum<{
+            created: "created";
+            cancelled: "cancelled";
+            delivered: "delivered";
+            packed: "packed";
+            label_pending: "label_pending";
+            label_created: "label_created";
+            handed_over: "handed_over";
+            in_transit: "in_transit";
+            exception: "exception";
+        }>>;
+        providerKind: z.ZodDefault<z.ZodNullable<z.ZodString>>;
+        latestOperationType: z.ZodNullable<z.ZodString>;
+        latestOperationAt: z.ZodNullable<z.ZodString>;
+        providerTrackingId: z.ZodNullable<z.ZodString>;
+        trackingUrl: z.ZodDefault<z.ZodNullable<z.ZodString>>;
+        carrierKind: z.ZodDefault<z.ZodNullable<z.ZodString>>;
+        service: z.ZodDefault<z.ZodNullable<z.ZodString>>;
+        trackingReferences: z.ZodDefault<z.ZodArray<z.ZodObject<{
+            providerKind: z.ZodString;
+            trackingNumber: z.ZodString;
+            trackingUrl: z.ZodNullable<z.ZodString>;
+            carrierKind: z.ZodNullable<z.ZodString>;
+            service: z.ZodNullable<z.ZodString>;
+            updatedAt: z.ZodNullable<z.ZodString>;
+        }, z.core.$strict>>>;
+        trackingTimeline: z.ZodDefault<z.ZodArray<z.ZodObject<{
+            eventType: z.ZodString;
+            label: z.ZodString;
+            occurredAt: z.ZodNullable<z.ZodString>;
+            source: z.ZodEnum<{
+                provider: "provider";
+                webhook: "webhook";
+                reconciliation: "reconciliation";
+                manual: "manual";
+                simulator: "simulator";
+                fulfillment: "fulfillment";
+                dispatch: "dispatch";
+            }>;
+        }, z.core.$strict>>>;
+        providerEvidence: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodObject<{
+            evidenceType: z.ZodEnum<{
+                dispatch_ref: "dispatch_ref";
+                provider_attempt: "provider_attempt";
+                status_evidence: "status_evidence";
+            }>;
+            status: z.ZodNullable<z.ZodString>;
+            providerStatus: z.ZodNullable<z.ZodString>;
+            providerOrderId: z.ZodNullable<z.ZodString>;
+            evidenceKind: z.ZodNullable<z.ZodString>;
+            occurredAt: z.ZodNullable<z.ZodString>;
+            updatedAt: z.ZodNullable<z.ZodString>;
+            summary: z.ZodNullable<z.ZodString>;
+        }, z.core.$strict>>>>;
+    }, z.core.$strip>;
+    replacementChain: z.ZodDefault<z.ZodOptional<z.ZodObject<{
+        sequenceNo: z.ZodNumber;
+        replacesFulfillmentOrderId: z.ZodNullable<z.ZodGUID>;
+        replacementReason: z.ZodDefault<z.ZodNullable<z.ZodString>>;
+        supersededParcels: z.ZodDefault<z.ZodArray<z.ZodObject<{
+            fulfillmentOrderId: z.ZodGUID;
+            sequenceNo: z.ZodNumber;
+            status: z.ZodNullable<z.ZodEnum<{
+                created: "created";
+                cancelled: "cancelled";
+                delivered: "delivered";
+                packed: "packed";
+                label_pending: "label_pending";
+                label_created: "label_created";
+                handed_over: "handed_over";
+                in_transit: "in_transit";
+                exception: "exception";
+            }>>;
+            replacementReason: z.ZodDefault<z.ZodNullable<z.ZodString>>;
+            handedOverAt: z.ZodNullable<z.ZodString>;
+            deliveredAt: z.ZodNullable<z.ZodString>;
+            trackingReferences: z.ZodDefault<z.ZodArray<z.ZodObject<{
+                providerKind: z.ZodString;
+                trackingNumber: z.ZodString;
+                trackingUrl: z.ZodNullable<z.ZodString>;
+                carrierKind: z.ZodNullable<z.ZodString>;
+                service: z.ZodNullable<z.ZodString>;
+                updatedAt: z.ZodNullable<z.ZodString>;
+            }, z.core.$strict>>>;
+        }, z.core.$strict>>>;
+    }, z.core.$strict>>>;
+    fulfillmentHealth: z.ZodObject<{
+        healthStatus: z.ZodEnum<{
+            ok: "ok";
+            needs_attention: "needs_attention";
+            blocked_uncertain: "blocked_uncertain";
+            local_ahead: "local_ahead";
+            provider_ahead: "provider_ahead";
+            missing_local_commitment: "missing_local_commitment";
+        }>;
+        attentionReasons: z.ZodArray<z.ZodEnum<{
+            paid_order_missing_fulfillment: "paid_order_missing_fulfillment";
+            paid_order_missing_dispatch_ref: "paid_order_missing_dispatch_ref";
+            dispatch_submission_stale: "dispatch_submission_stale";
+            dispatch_outcome_uncertain: "dispatch_outcome_uncertain";
+            dispatch_failed: "dispatch_failed";
+            dispatch_created_without_provider_order_id: "dispatch_created_without_provider_order_id";
+            dispatch_terminal_without_progress: "dispatch_terminal_without_progress";
+            dispatch_status_unknown: "dispatch_status_unknown";
+            provider_exception_after_delivery: "provider_exception_after_delivery";
+            provider_exception_after_handover: "provider_exception_after_handover";
+            provider_exception_before_handover: "provider_exception_before_handover";
+            local_status_ahead_of_provider: "local_status_ahead_of_provider";
+            provider_accepted_local_label_ack_missing: "provider_accepted_local_label_ack_missing";
+            order_paid_outbox_discarded: "order_paid_outbox_discarded";
+            order_paid_outbox_processed_without_fulfillment: "order_paid_outbox_processed_without_fulfillment";
+            order_paid_outbox_missing: "order_paid_outbox_missing";
+        }>>;
+        oldestAgeSeconds: z.ZodNullable<z.ZodNumber>;
+        dispatchRefId: z.ZodOptional<z.ZodNullable<z.ZodGUID>>;
+        dispatchStatus: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+        opaqueIds: z.ZodObject<{
+            orderId: z.ZodGUID;
+            fulfillmentOrderId: z.ZodNullable<z.ZodGUID>;
+            outboxEventId: z.ZodNullable<z.ZodGUID>;
+            dispatchRefFulfillmentOrderId: z.ZodNullable<z.ZodGUID>;
+            latestEvidenceFulfillmentOrderId: z.ZodNullable<z.ZodGUID>;
+        }, z.core.$strict>;
+    }, z.core.$strict>;
+    fulfillmentDebug: z.ZodDefault<z.ZodOptional<z.ZodObject<{
+        summary: z.ZodString;
+        severity: z.ZodEnum<{
+            ok: "ok";
+            action_required: "action_required";
+            watch: "watch";
+        }>;
+        nextAction: z.ZodEnum<{
+            review_payment: "review_payment";
+            create_fulfillment: "create_fulfillment";
+            wait: "wait";
+            retry_dispatch: "retry_dispatch";
+            reconcile: "reconcile";
+            review_stock: "review_stock";
+            review_provider: "review_provider";
+            contact_support: "contact_support";
+        }>;
+        blockers: z.ZodDefault<z.ZodArray<z.ZodString>>;
+        steps: z.ZodDefault<z.ZodArray<z.ZodObject<{
+            key: z.ZodEnum<{
+                stock: "stock";
+                payment: "payment";
+                provider: "provider";
+                fulfillment: "fulfillment";
+                dispatch: "dispatch";
+                provider_stock: "provider_stock";
+                tracking: "tracking";
+                communication: "communication";
+            }>;
+            status: z.ZodEnum<{
+                ok: "ok";
+                missing: "missing";
+                pending: "pending";
+                blocked: "blocked";
+                warning: "warning";
+            }>;
+            label: z.ZodString;
+            value: z.ZodNullable<z.ZodString>;
+            evidenceAt: z.ZodNullable<z.ZodString>;
+            details: z.ZodDefault<z.ZodArray<z.ZodString>>;
+        }, z.core.$strict>>>;
+    }, z.core.$strict>>>;
+    accounting: z.ZodObject<{
+        status: z.ZodString;
+        invoiceId: z.ZodNullable<z.ZodGUID>;
+        invoiceRef: z.ZodNullable<z.ZodString>;
+        providerKind: z.ZodNullable<z.ZodString>;
+        providerInvoiceNumber: z.ZodNullable<z.ZodString>;
+        fiscalStatus: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+        outboxStatus: z.ZodNullable<z.ZodString>;
+        outboxAttemptCount: z.ZodNullable<z.ZodNumber>;
+        outboxNextAttemptAt: z.ZodNullable<z.ZodString>;
+        outboxLastError: z.ZodNullable<z.ZodObject<{
+            code: z.ZodNullable<z.ZodString>;
+            message: z.ZodNullable<z.ZodString>;
+            retryable: z.ZodNullable<z.ZodBoolean>;
+        }, z.core.$strict>>;
+        recoveryGuidance: z.ZodEnum<{
+            none: "none";
+            not_requested: "not_requested";
+            wait_for_retry: "wait_for_retry";
+            review_and_retry: "review_and_retry";
+        }>;
+        updatedAt: z.ZodNullable<z.ZodString>;
+    }, z.core.$strict>;
+    actionEligibility: z.ZodObject<{
+        addNote: z.ZodObject<{
+            allowed: z.ZodBoolean;
+            reason: z.ZodNullable<z.ZodString>;
+        }, z.core.$strict>;
+        createHold: z.ZodObject<{
+            allowed: z.ZodBoolean;
+            reason: z.ZodNullable<z.ZodString>;
+        }, z.core.$strict>;
+        releaseHold: z.ZodObject<{
+            allowed: z.ZodBoolean;
+            reason: z.ZodNullable<z.ZodString>;
+        }, z.core.$strict>;
+        createFulfillment: z.ZodObject<{
+            allowed: z.ZodBoolean;
+            reason: z.ZodNullable<z.ZodString>;
+        }, z.core.$strict>;
+        updateShippingAddress: z.ZodObject<{
+            allowed: z.ZodBoolean;
+            reason: z.ZodNullable<z.ZodString>;
+        }, z.core.$strict>;
+        recordLabel: z.ZodObject<{
+            allowed: z.ZodBoolean;
+            reason: z.ZodNullable<z.ZodString>;
+        }, z.core.$strict>;
+        handOff: z.ZodObject<{
+            allowed: z.ZodBoolean;
+            reason: z.ZodNullable<z.ZodString>;
+        }, z.core.$strict>;
+        recordTrackingEvent: z.ZodObject<{
+            allowed: z.ZodBoolean;
+            reason: z.ZodNullable<z.ZodString>;
+        }, z.core.$strict>;
+        cancelFulfillment: z.ZodObject<{
+            allowed: z.ZodBoolean;
+            reason: z.ZodNullable<z.ZodString>;
+        }, z.core.$strict>;
+        cancelOrder: z.ZodObject<{
+            allowed: z.ZodBoolean;
+            reason: z.ZodNullable<z.ZodString>;
+        }, z.core.$strict>;
+        markRefunded: z.ZodObject<{
+            allowed: z.ZodBoolean;
+            reason: z.ZodNullable<z.ZodString>;
+        }, z.core.$strict>;
+    }, z.core.$strict>;
+    holds: z.ZodArray<z.ZodObject<{
+        id: z.ZodGUID;
+        orderId: z.ZodGUID;
+        status: z.ZodEnum<{
+            active: "active";
+            released: "released";
+        }>;
+        reason: z.ZodEnum<{
+            payment_not_succeeded: "payment_not_succeeded";
+            inventory_review: "inventory_review";
+            risk_review: "risk_review";
+            fulfillment_exception: "fulfillment_exception";
+            address_review: "address_review";
+            manual_support: "manual_support";
+        }>;
+        note: z.ZodNullable<z.ZodString>;
+        createdAt: z.ZodString;
+        releasedAt: z.ZodNullable<z.ZodString>;
+    }, z.core.$strip>>;
+    operations: z.ZodArray<z.ZodObject<{
+        id: z.ZodGUID;
+        orderId: z.ZodGUID;
+        type: z.ZodEnum<{
+            hold_created: "hold_created";
+            hold_released: "hold_released";
+            fulfillment_reviewed: "fulfillment_reviewed";
+            support_note: "support_note";
+            shipping_address_updated: "shipping_address_updated";
+            order_marked_refunded: "order_marked_refunded";
+            order_cancelled_manual: "order_cancelled_manual";
+            replacement_shipment_requested: "replacement_shipment_requested";
+        }>;
+        holdId: z.ZodNullable<z.ZodGUID>;
+        actorUserId: z.ZodNullable<z.ZodGUID>;
+        occurredAt: z.ZodString;
+        payload: z.ZodRecord<z.ZodString, z.ZodUnknown>;
+    }, z.core.$strip>>;
+    payment: z.ZodObject<{
+        intentId: z.ZodNullable<z.ZodGUID>;
+        paymentId: z.ZodNullable<z.ZodGUID>;
+        status: z.ZodEnum<{
+            expired: "expired";
+            created: "created";
+            failed: "failed";
+            cancelled: "cancelled";
+            refunded: "refunded";
+            not_started: "not_started";
+            requires_action: "requires_action";
+            processing: "processing";
+            partially_refunded: "partially_refunded";
+            disputed: "disputed";
+            succeeded: "succeeded";
+        }>;
+        activeAttemptId: z.ZodNullable<z.ZodGUID>;
+        providerPaymentId: z.ZodNullable<z.ZodString>;
+        updatedAt: z.ZodNullable<z.ZodString>;
+    }, z.core.$strip>;
+    paymentAttempts: z.ZodArray<z.ZodObject<{
+        id: z.ZodGUID;
+        status: z.ZodEnum<{
+            expired: "expired";
+            created: "created";
+            failed: "failed";
+            cancelled: "cancelled";
+            requires_action: "requires_action";
+            processing: "processing";
+            succeeded: "succeeded";
+            blocked_preflight: "blocked_preflight";
+            sent_to_provider: "sent_to_provider";
+        }>;
+        provider: z.ZodString;
+        providerAttemptId: z.ZodNullable<z.ZodString>;
+        nextActionKind: z.ZodNullable<z.ZodString>;
+        updatedAt: z.ZodString;
+    }, z.core.$strip>>;
+    paymentTransitions: z.ZodArray<z.ZodObject<{
+        id: z.ZodGUID;
+        transitionKind: z.ZodString;
+        fromStatus: z.ZodNullable<z.ZodString>;
+        toStatus: z.ZodString;
+        reason: z.ZodString;
+        occurredAt: z.ZodString;
+    }, z.core.$strip>>;
+    communicationDeliveries: z.ZodArray<z.ZodObject<{
+        id: z.ZodGUID;
+        purpose: z.ZodString;
+        templateSlug: z.ZodString;
+        triggerSource: z.ZodString;
+        triggerEvent: z.ZodString;
+        aggregateType: z.ZodNullable<z.ZodString>;
+        aggregateId: z.ZodNullable<z.ZodString>;
+        dedupeKey: z.ZodString;
+        status: z.ZodEnum<{
+            failed: "failed";
+            processing: "processing";
+            delivered: "delivered";
+            planned: "planned";
+            skipped: "skipped";
+            blocked: "blocked";
+            queued: "queued";
+            sent: "sent";
+            delivery_delayed: "delivery_delayed";
+            bounced: "bounced";
+            complained: "complained";
+            missed: "missed";
+            legacy_unlinked: "legacy_unlinked";
+        }>;
+        providerKind: z.ZodNullable<z.ZodString>;
+        providerMessageId: z.ZodNullable<z.ZodString>;
+        scheduledDueAt: z.ZodNullable<z.ZodString>;
+        expectedSendAt: z.ZodNullable<z.ZodString>;
+        queuedAt: z.ZodNullable<z.ZodString>;
+        firstAttemptAt: z.ZodNullable<z.ZodString>;
+        sentAt: z.ZodNullable<z.ZodString>;
+        deliveredAt: z.ZodNullable<z.ZodString>;
+        terminalAt: z.ZodNullable<z.ZodString>;
+        lastErrorCode: z.ZodNullable<z.ZodString>;
+        outboxEventId: z.ZodNullable<z.ZodGUID>;
+        platformJobRunId: z.ZodNullable<z.ZodGUID>;
+        emailSendId: z.ZodNullable<z.ZodGUID>;
+        metadata: z.ZodRecord<z.ZodString, z.ZodUnknown>;
+        createdAt: z.ZodString;
+        updatedAt: z.ZodString;
+    }, z.core.$strict>>;
+}, z.core.$strip>;
+export declare const adminCommerceOrdersListResponseSchema: z.ZodObject<{
+    contractVersion: z.ZodLiteral<"commerce.v0">;
+    orders: z.ZodArray<z.ZodObject<{
+        orderId: z.ZodGUID;
+        orderNumber: z.ZodNullable<z.ZodString>;
+        clientId: z.ZodNullable<z.ZodGUID>;
+        customer: z.ZodNullable<z.ZodObject<{
+            id: z.ZodGUID;
+            email: z.ZodString;
+            firstName: z.ZodNullable<z.ZodString>;
+            lastName: z.ZodNullable<z.ZodString>;
+            phone: z.ZodNullable<z.ZodString>;
+            lifecycleStage: z.ZodNullable<z.ZodString>;
+        }, z.core.$strict>>;
+        status: z.ZodEnum<{
+            draft: "draft";
+            expired: "expired";
+            pending_payment: "pending_payment";
+            paid: "paid";
+            failed: "failed";
+            fulfillment_pending: "fulfillment_pending";
+            cancelled: "cancelled";
+            fulfilled: "fulfilled";
+            refunded: "refunded";
+        }>;
+        mode: z.ZodEnum<{
+            one_time: "one_time";
+            subscription_cycle: "subscription_cycle";
+        }>;
+        sourceKind: z.ZodOptional<z.ZodString>;
+        sourceChannelSlug: z.ZodOptional<z.ZodString>;
+        sourceOrderRef: z.ZodOptional<z.ZodString>;
+        paymentMethodLabel: z.ZodNullable<z.ZodString>;
+        paymentProvider: z.ZodNullable<z.ZodString>;
+        paymentStatus: z.ZodEnum<{
+            expired: "expired";
+            created: "created";
+            failed: "failed";
+            cancelled: "cancelled";
+            refunded: "refunded";
+            not_started: "not_started";
+            requires_action: "requires_action";
+            processing: "processing";
+            partially_refunded: "partially_refunded";
+            disputed: "disputed";
+            succeeded: "succeeded";
+        }>;
+        fulfillmentStatus: z.ZodNullable<z.ZodEnum<{
+            created: "created";
+            cancelled: "cancelled";
+            delivered: "delivered";
+            packed: "packed";
+            label_pending: "label_pending";
+            label_created: "label_created";
+            handed_over: "handed_over";
+            in_transit: "in_transit";
+            exception: "exception";
+        }>>;
+        customerFulfillmentStep: z.ZodCustom<CustomerFulfillmentStep, CustomerFulfillmentStep>;
+        inventoryStatus: z.ZodEnum<{
+            expired: "expired";
+            not_checked: "not_checked";
+            reserved: "reserved";
+            missing: "missing";
+            released: "released";
+            consumed: "consumed";
+            review_required: "review_required";
+        }>;
+        accountingStatus: z.ZodString;
+        providerOpsStatus: z.ZodDefault<z.ZodString>;
+        providerOpsSla: z.ZodDefault<z.ZodNullable<z.ZodObject<{
+            status: z.ZodEnum<{
+                ok: "ok";
+                watch: "watch";
+                breached: "breached";
+                paused_non_shipping_day: "paused_non_shipping_day";
+            }>;
+            dispatchedAt: z.ZodNullable<z.ZodString>;
+            deadlineAt: z.ZodNullable<z.ZodString>;
+            remainingOperationalMinutes: z.ZodNullable<z.ZodNumber>;
+        }, z.core.$strict>>>;
+        providerOrderId: z.ZodDefault<z.ZodNullable<z.ZodString>>;
+        attentionReason: z.ZodEnum<{
+            fulfillment_pending: "fulfillment_pending";
+            active_hold: "active_hold";
+            missing_shipping_address: "missing_shipping_address";
+            none: "none";
+            fulfillment_exception: "fulfillment_exception";
+            payment_required: "payment_required";
+            inventory_missing: "inventory_missing";
+            fulfillment_blocked: "fulfillment_blocked";
+            invoice_missing: "invoice_missing";
+            invoice_issue_failed: "invoice_issue_failed";
+            invoice_buyer_data_invalid: "invoice_buyer_data_invalid";
+        }>;
+        nextAction: z.ZodEnum<{
+            none: "none";
+            review_payment: "review_payment";
+            release_hold: "release_hold";
+            review_address: "review_address";
+            review_inventory: "review_inventory";
+            review_fulfillment: "review_fulfillment";
+            create_fulfillment: "create_fulfillment";
+            record_label: "record_label";
+            hand_off: "hand_off";
+            review_tracking: "review_tracking";
+            review_invoice: "review_invoice";
+        }>;
+        activeHoldCount: z.ZodNumber;
+        activeHoldReasons: z.ZodArray<z.ZodEnum<{
+            payment_not_succeeded: "payment_not_succeeded";
+            inventory_review: "inventory_review";
+            risk_review: "risk_review";
+            fulfillment_exception: "fulfillment_exception";
+            address_review: "address_review";
+            manual_support: "manual_support";
+        }>>;
+        fulfillmentHealthDigest: z.ZodObject<{
+            healthStatus: z.ZodEnum<{
+                ok: "ok";
+                needs_attention: "needs_attention";
+                blocked_uncertain: "blocked_uncertain";
+                local_ahead: "local_ahead";
+                provider_ahead: "provider_ahead";
+                missing_local_commitment: "missing_local_commitment";
+            }>;
+            attentionReasons: z.ZodArray<z.ZodEnum<{
+                paid_order_missing_fulfillment: "paid_order_missing_fulfillment";
+                paid_order_missing_dispatch_ref: "paid_order_missing_dispatch_ref";
+                dispatch_submission_stale: "dispatch_submission_stale";
+                dispatch_outcome_uncertain: "dispatch_outcome_uncertain";
+                dispatch_failed: "dispatch_failed";
+                dispatch_created_without_provider_order_id: "dispatch_created_without_provider_order_id";
+                dispatch_terminal_without_progress: "dispatch_terminal_without_progress";
+                dispatch_status_unknown: "dispatch_status_unknown";
+                provider_exception_after_delivery: "provider_exception_after_delivery";
+                provider_exception_after_handover: "provider_exception_after_handover";
+                provider_exception_before_handover: "provider_exception_before_handover";
+                local_status_ahead_of_provider: "local_status_ahead_of_provider";
+                provider_accepted_local_label_ack_missing: "provider_accepted_local_label_ack_missing";
+                order_paid_outbox_discarded: "order_paid_outbox_discarded";
+                order_paid_outbox_processed_without_fulfillment: "order_paid_outbox_processed_without_fulfillment";
+                order_paid_outbox_missing: "order_paid_outbox_missing";
+            }>>;
+        }, z.core.$strict>;
+        total: z.ZodObject<{
+            amountMinor: z.ZodNumber;
+            currency: z.ZodString;
+        }, z.core.$strict>;
+        pricingSummary: z.ZodObject<{
+            subtotal: z.ZodObject<{
+                amountMinor: z.ZodNumber;
+                currency: z.ZodString;
+            }, z.core.$strict>;
+            productDiscount: z.ZodObject<{
+                amountMinor: z.ZodNumber;
+                currency: z.ZodString;
+            }, z.core.$strict>;
+            shipping: z.ZodObject<{
+                amountMinor: z.ZodNumber;
+                currency: z.ZodString;
+            }, z.core.$strict>;
+            shippingDiscount: z.ZodObject<{
+                amountMinor: z.ZodNumber;
+                currency: z.ZodString;
+            }, z.core.$strict>;
+            discountTotal: z.ZodObject<{
+                amountMinor: z.ZodNumber;
+                currency: z.ZodString;
+            }, z.core.$strict>;
+            finalTotal: z.ZodObject<{
+                amountMinor: z.ZodNumber;
+                currency: z.ZodString;
+            }, z.core.$strict>;
+            source: z.ZodLiteral<"order_columns">;
+        }, z.core.$strict>;
+        createdAt: z.ZodString;
+        updatedAt: z.ZodString;
+        match: z.ZodOptional<z.ZodObject<{
+            field: z.ZodString;
+            label: z.ZodString;
+            valuePreview: z.ZodNullable<z.ZodString>;
+        }, z.core.$strict>>;
+    }, z.core.$strip>>;
+    summaryCounts: z.ZodObject<{
+        needsAttention: z.ZodNumber;
+        activeHold: z.ZodNumber;
+        readyForFulfillment: z.ZodNumber;
+        paymentIssues: z.ZodNumber;
+        inventoryRisk: z.ZodNumber;
+        fulfillmentBlocked: z.ZodNumber;
+        fulfillmentExceptions: z.ZodNumber;
+        invoiceIssues: z.ZodNumber;
+        providerDispatchedNotPicked: z.ZodOptional<z.ZodNumber>;
+    }, z.core.$strict>;
+    summaryTotals: z.ZodObject<{
+        gmv: z.ZodObject<{
+            amountMinor: z.ZodNumber;
+            currency: z.ZodString;
+        }, z.core.$strict>;
+        aov: z.ZodObject<{
+            amountMinor: z.ZodNumber;
+            currency: z.ZodString;
+        }, z.core.$strict>;
+        orderCount: z.ZodNumber;
+        paidSubscriptionCycleCount: z.ZodNumber;
+    }, z.core.$strict>;
+    totalCount: z.ZodNumber;
+    page: z.ZodNumber;
+    pageSize: z.ZodNumber;
+}, z.core.$strict>;
+export declare const adminCommerceOrderDetailResponseSchema: z.ZodObject<{
+    contractVersion: z.ZodLiteral<"commerce.v0">;
+    order: z.ZodObject<{
+        orderId: z.ZodGUID;
+        orderNumber: z.ZodNullable<z.ZodString>;
+        clientId: z.ZodNullable<z.ZodGUID>;
+        customer: z.ZodNullable<z.ZodObject<{
+            id: z.ZodGUID;
+            email: z.ZodString;
+            firstName: z.ZodNullable<z.ZodString>;
+            lastName: z.ZodNullable<z.ZodString>;
+            phone: z.ZodNullable<z.ZodString>;
+            lifecycleStage: z.ZodNullable<z.ZodString>;
+        }, z.core.$strict>>;
+        status: z.ZodEnum<{
+            draft: "draft";
+            expired: "expired";
+            pending_payment: "pending_payment";
+            paid: "paid";
+            failed: "failed";
+            fulfillment_pending: "fulfillment_pending";
+            cancelled: "cancelled";
+            fulfilled: "fulfilled";
+            refunded: "refunded";
+        }>;
+        mode: z.ZodEnum<{
+            one_time: "one_time";
+            subscription_cycle: "subscription_cycle";
+        }>;
+        sourceKind: z.ZodOptional<z.ZodString>;
+        sourceChannelSlug: z.ZodOptional<z.ZodString>;
+        sourceOrderRef: z.ZodOptional<z.ZodString>;
+        paymentMethodLabel: z.ZodNullable<z.ZodString>;
+        paymentProvider: z.ZodNullable<z.ZodString>;
+        paymentStatus: z.ZodEnum<{
+            expired: "expired";
+            created: "created";
+            failed: "failed";
+            cancelled: "cancelled";
+            refunded: "refunded";
+            not_started: "not_started";
+            requires_action: "requires_action";
+            processing: "processing";
+            partially_refunded: "partially_refunded";
+            disputed: "disputed";
+            succeeded: "succeeded";
+        }>;
+        fulfillmentStatus: z.ZodNullable<z.ZodEnum<{
+            created: "created";
+            cancelled: "cancelled";
+            delivered: "delivered";
+            packed: "packed";
+            label_pending: "label_pending";
+            label_created: "label_created";
+            handed_over: "handed_over";
+            in_transit: "in_transit";
+            exception: "exception";
+        }>>;
+        customerFulfillmentStep: z.ZodCustom<CustomerFulfillmentStep, CustomerFulfillmentStep>;
+        inventoryStatus: z.ZodEnum<{
+            expired: "expired";
+            not_checked: "not_checked";
+            reserved: "reserved";
+            missing: "missing";
+            released: "released";
+            consumed: "consumed";
+            review_required: "review_required";
+        }>;
+        accountingStatus: z.ZodString;
+        providerOpsStatus: z.ZodDefault<z.ZodString>;
+        providerOpsSla: z.ZodDefault<z.ZodNullable<z.ZodObject<{
+            status: z.ZodEnum<{
+                ok: "ok";
+                watch: "watch";
+                breached: "breached";
+                paused_non_shipping_day: "paused_non_shipping_day";
+            }>;
+            dispatchedAt: z.ZodNullable<z.ZodString>;
+            deadlineAt: z.ZodNullable<z.ZodString>;
+            remainingOperationalMinutes: z.ZodNullable<z.ZodNumber>;
+        }, z.core.$strict>>>;
+        providerOrderId: z.ZodDefault<z.ZodNullable<z.ZodString>>;
+        attentionReason: z.ZodEnum<{
+            fulfillment_pending: "fulfillment_pending";
+            active_hold: "active_hold";
+            missing_shipping_address: "missing_shipping_address";
+            none: "none";
+            fulfillment_exception: "fulfillment_exception";
+            payment_required: "payment_required";
+            inventory_missing: "inventory_missing";
+            fulfillment_blocked: "fulfillment_blocked";
+            invoice_missing: "invoice_missing";
+            invoice_issue_failed: "invoice_issue_failed";
+            invoice_buyer_data_invalid: "invoice_buyer_data_invalid";
+        }>;
+        nextAction: z.ZodEnum<{
+            none: "none";
+            review_payment: "review_payment";
+            release_hold: "release_hold";
+            review_address: "review_address";
+            review_inventory: "review_inventory";
+            review_fulfillment: "review_fulfillment";
+            create_fulfillment: "create_fulfillment";
+            record_label: "record_label";
+            hand_off: "hand_off";
+            review_tracking: "review_tracking";
+            review_invoice: "review_invoice";
+        }>;
+        activeHoldCount: z.ZodNumber;
+        activeHoldReasons: z.ZodArray<z.ZodEnum<{
+            payment_not_succeeded: "payment_not_succeeded";
+            inventory_review: "inventory_review";
+            risk_review: "risk_review";
+            fulfillment_exception: "fulfillment_exception";
+            address_review: "address_review";
+            manual_support: "manual_support";
+        }>>;
+        fulfillmentHealthDigest: z.ZodObject<{
+            healthStatus: z.ZodEnum<{
+                ok: "ok";
+                needs_attention: "needs_attention";
+                blocked_uncertain: "blocked_uncertain";
+                local_ahead: "local_ahead";
+                provider_ahead: "provider_ahead";
+                missing_local_commitment: "missing_local_commitment";
+            }>;
+            attentionReasons: z.ZodArray<z.ZodEnum<{
+                paid_order_missing_fulfillment: "paid_order_missing_fulfillment";
+                paid_order_missing_dispatch_ref: "paid_order_missing_dispatch_ref";
+                dispatch_submission_stale: "dispatch_submission_stale";
+                dispatch_outcome_uncertain: "dispatch_outcome_uncertain";
+                dispatch_failed: "dispatch_failed";
+                dispatch_created_without_provider_order_id: "dispatch_created_without_provider_order_id";
+                dispatch_terminal_without_progress: "dispatch_terminal_without_progress";
+                dispatch_status_unknown: "dispatch_status_unknown";
+                provider_exception_after_delivery: "provider_exception_after_delivery";
+                provider_exception_after_handover: "provider_exception_after_handover";
+                provider_exception_before_handover: "provider_exception_before_handover";
+                local_status_ahead_of_provider: "local_status_ahead_of_provider";
+                provider_accepted_local_label_ack_missing: "provider_accepted_local_label_ack_missing";
+                order_paid_outbox_discarded: "order_paid_outbox_discarded";
+                order_paid_outbox_processed_without_fulfillment: "order_paid_outbox_processed_without_fulfillment";
+                order_paid_outbox_missing: "order_paid_outbox_missing";
+            }>>;
+        }, z.core.$strict>;
+        total: z.ZodObject<{
+            amountMinor: z.ZodNumber;
+            currency: z.ZodString;
+        }, z.core.$strict>;
+        pricingSummary: z.ZodObject<{
+            subtotal: z.ZodObject<{
+                amountMinor: z.ZodNumber;
+                currency: z.ZodString;
+            }, z.core.$strict>;
+            productDiscount: z.ZodObject<{
+                amountMinor: z.ZodNumber;
+                currency: z.ZodString;
+            }, z.core.$strict>;
+            shipping: z.ZodObject<{
+                amountMinor: z.ZodNumber;
+                currency: z.ZodString;
+            }, z.core.$strict>;
+            shippingDiscount: z.ZodObject<{
+                amountMinor: z.ZodNumber;
+                currency: z.ZodString;
+            }, z.core.$strict>;
+            discountTotal: z.ZodObject<{
+                amountMinor: z.ZodNumber;
+                currency: z.ZodString;
+            }, z.core.$strict>;
+            finalTotal: z.ZodObject<{
+                amountMinor: z.ZodNumber;
+                currency: z.ZodString;
+            }, z.core.$strict>;
+            source: z.ZodLiteral<"order_columns">;
+        }, z.core.$strict>;
+        createdAt: z.ZodString;
+        updatedAt: z.ZodString;
+        match: z.ZodOptional<z.ZodObject<{
+            field: z.ZodString;
+            label: z.ZodString;
+            valuePreview: z.ZodNullable<z.ZodString>;
+        }, z.core.$strict>>;
+        shippingAddress: z.ZodNullable<z.ZodObject<{
+            id: z.ZodGUID;
+            label: z.ZodNullable<z.ZodString>;
+            line1: z.ZodNullable<z.ZodString>;
+            line2: z.ZodNullable<z.ZodString>;
+            city: z.ZodNullable<z.ZodString>;
+            postalCode: z.ZodNullable<z.ZodString>;
+            country: z.ZodNullable<z.ZodString>;
+            recipientName: z.ZodNullable<z.ZodString>;
+            contactPhone: z.ZodNullable<z.ZodString>;
+            companyName: z.ZodNullable<z.ZodString>;
+            taxId: z.ZodNullable<z.ZodString>;
+            deliveryNotes: z.ZodNullable<z.ZodString>;
+            courierInstructions: z.ZodNullable<z.ZodString>;
+        }, z.core.$strict>>;
+        deliveryContact: z.ZodOptional<z.ZodObject<{
+            baseline: z.ZodNullable<z.ZodObject<{
+                schemaVersion: z.ZodLiteral<1>;
+                source: z.ZodString;
+                revision: z.ZodNumber;
+                recipientName: z.ZodNullable<z.ZodString>;
+                contactEmail: z.ZodNullable<z.ZodString>;
+                contactPhone: z.ZodNullable<z.ZodString>;
+                line1: z.ZodNullable<z.ZodString>;
+                line2: z.ZodNullable<z.ZodString>;
+                city: z.ZodNullable<z.ZodString>;
+                postalCode: z.ZodNullable<z.ZodString>;
+                country: z.ZodNullable<z.ZodString>;
+                selectedDelivery: z.ZodNullable<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+                deliveryInstructions: z.ZodNullable<z.ZodString>;
+                courierInstructions: z.ZodNullable<z.ZodString>;
+            }, z.core.$strict>>;
+            effective: z.ZodNullable<z.ZodObject<{
+                schemaVersion: z.ZodLiteral<1>;
+                source: z.ZodString;
+                revision: z.ZodNumber;
+                recipientName: z.ZodNullable<z.ZodString>;
+                contactEmail: z.ZodNullable<z.ZodString>;
+                contactPhone: z.ZodNullable<z.ZodString>;
+                line1: z.ZodNullable<z.ZodString>;
+                line2: z.ZodNullable<z.ZodString>;
+                city: z.ZodNullable<z.ZodString>;
+                postalCode: z.ZodNullable<z.ZodString>;
+                country: z.ZodNullable<z.ZodString>;
+                selectedDelivery: z.ZodNullable<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+                deliveryInstructions: z.ZodNullable<z.ZodString>;
+                courierInstructions: z.ZodNullable<z.ZodString>;
+            }, z.core.$strict>>;
+            scope: z.ZodEnum<{
+                missing: "missing";
+                baseline: "baseline";
+                order_override: "order_override";
+                parcel: "parcel";
+                legacy_inferred: "legacy_inferred";
+            }>;
+            source: z.ZodNullable<z.ZodString>;
+            revision: z.ZodNullable<z.ZodNumber>;
+            digest: z.ZodNullable<z.ZodString>;
+            frozen: z.ZodBoolean;
+            providerSubmissionState: z.ZodEnum<{
+                unknown: "unknown";
+                draft: "draft";
+                created: "created";
+                failed: "failed";
+                cancelled: "cancelled";
+                not_started: "not_started";
+                not_materialized: "not_materialized";
+                submitting: "submitting";
+                uncertain: "uncertain";
+                cancel_requested: "cancel_requested";
+            }>;
+            correctionAllowed: z.ZodBoolean;
+        }, z.core.$strict>>;
+        billingAddress: z.ZodNullable<z.ZodObject<{
+            id: z.ZodGUID;
+            label: z.ZodNullable<z.ZodString>;
+            line1: z.ZodNullable<z.ZodString>;
+            line2: z.ZodNullable<z.ZodString>;
+            city: z.ZodNullable<z.ZodString>;
+            postalCode: z.ZodNullable<z.ZodString>;
+            country: z.ZodNullable<z.ZodString>;
+            recipientName: z.ZodNullable<z.ZodString>;
+            contactPhone: z.ZodNullable<z.ZodString>;
+            companyName: z.ZodNullable<z.ZodString>;
+            taxId: z.ZodNullable<z.ZodString>;
+            deliveryNotes: z.ZodNullable<z.ZodString>;
+            courierInstructions: z.ZodNullable<z.ZodString>;
+        }, z.core.$strict>>;
+        deliverySelection: z.ZodDefault<z.ZodNullable<z.ZodObject<{
+            deliveryKind: z.ZodEnum<{
+                "parcel-locker": "parcel-locker";
+                courier: "courier";
+            }>;
+            providerKind: z.ZodNullable<z.ZodString>;
+            carrierKind: z.ZodNullable<z.ZodString>;
+            carrierCode: z.ZodNullable<z.ZodString>;
+            serviceCode: z.ZodNullable<z.ZodString>;
+            pickupPoint: z.ZodNullable<z.ZodObject<{
+                id: z.ZodString;
+                name: z.ZodString;
+                address: z.ZodNullable<z.ZodObject<{
+                    line1: z.ZodString;
+                    postalCode: z.ZodString;
+                    city: z.ZodString;
+                    country: z.ZodString;
+                }, z.core.$strict>>;
+            }, z.core.$strict>>;
+            source: z.ZodNullable<z.ZodString>;
+        }, z.core.$strict>>>;
+        lines: z.ZodArray<z.ZodObject<{
+            id: z.ZodGUID;
+            skuId: z.ZodNullable<z.ZodGUID>;
+            sku: z.ZodNullable<z.ZodString>;
+            title: z.ZodNullable<z.ZodString>;
+            quantity: z.ZodNumber;
+            unitPrice: z.ZodObject<{
+                amountMinor: z.ZodNumber;
+                currency: z.ZodString;
+            }, z.core.$strict>;
+            total: z.ZodObject<{
+                amountMinor: z.ZodNumber;
+                currency: z.ZodString;
+            }, z.core.$strict>;
+            discountAllocated: z.ZodObject<{
+                amountMinor: z.ZodNumber;
+                currency: z.ZodString;
+            }, z.core.$strict>;
+            effectiveTotal: z.ZodObject<{
+                amountMinor: z.ZodNumber;
+                currency: z.ZodString;
+            }, z.core.$strict>;
+            effectiveNet: z.ZodObject<{
+                amountMinor: z.ZodNumber;
+                currency: z.ZodString;
+            }, z.core.$strict>;
+            vatRateBps: z.ZodNullable<z.ZodNumber>;
+            productSnapshot: z.ZodRecord<z.ZodString, z.ZodUnknown>;
+            variantSnapshot: z.ZodNullable<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+        }, z.core.$strict>>;
+        subscription: z.ZodObject<{
+            subscriptionId: z.ZodNullable<z.ZodGUID>;
+            subscriptionCycleId: z.ZodNullable<z.ZodGUID>;
+            subscriptionCycleStatus: z.ZodNullable<z.ZodEnum<{
+                paid: "paid";
+                cancelled: "cancelled";
+                planned: "planned";
+                skipped: "skipped";
+                payment_pending: "payment_pending";
+                payment_failed: "payment_failed";
+                retry_scheduled: "retry_scheduled";
+            }>>;
+            nextCycleAt: z.ZodNullable<z.ZodString>;
+            cyclePaidAt: z.ZodNullable<z.ZodString>;
+        }, z.core.$strip>;
+        fulfillmentEligibility: z.ZodObject<{
+            allowed: z.ZodBoolean;
+            reason: z.ZodNullable<z.ZodEnum<{
+                order_not_paid: "order_not_paid";
+                payment_not_succeeded: "payment_not_succeeded";
+                subscription_cycle_not_paid: "subscription_cycle_not_paid";
+                active_hold: "active_hold";
+                missing_shipping_address: "missing_shipping_address";
+                inventory_review: "inventory_review";
+                risk_review: "risk_review";
+            }>>;
+        }, z.core.$strip>;
+        inventory: z.ZodObject<{
+            status: z.ZodEnum<{
+                expired: "expired";
+                not_checked: "not_checked";
+                reserved: "reserved";
+                missing: "missing";
+                released: "released";
+                consumed: "consumed";
+                review_required: "review_required";
+            }>;
+            reservationId: z.ZodNullable<z.ZodGUID>;
+            reservationStatus: z.ZodNullable<z.ZodEnum<{
+                expired: "expired";
+                reserved: "reserved";
+                released: "released";
+                consumed: "consumed";
+            }>>;
+            expiresAt: z.ZodNullable<z.ZodString>;
+            locationId: z.ZodNullable<z.ZodGUID>;
+            locationCode: z.ZodNullable<z.ZodString>;
+        }, z.core.$strip>;
+        fulfillment: z.ZodObject<{
+            fulfillmentOrderId: z.ZodNullable<z.ZodGUID>;
+            status: z.ZodNullable<z.ZodEnum<{
+                created: "created";
+                cancelled: "cancelled";
+                delivered: "delivered";
+                packed: "packed";
+                label_pending: "label_pending";
+                label_created: "label_created";
+                handed_over: "handed_over";
+                in_transit: "in_transit";
+                exception: "exception";
+            }>>;
+            providerKind: z.ZodDefault<z.ZodNullable<z.ZodString>>;
+            latestOperationType: z.ZodNullable<z.ZodString>;
+            latestOperationAt: z.ZodNullable<z.ZodString>;
+            providerTrackingId: z.ZodNullable<z.ZodString>;
+            trackingUrl: z.ZodDefault<z.ZodNullable<z.ZodString>>;
+            carrierKind: z.ZodDefault<z.ZodNullable<z.ZodString>>;
+            service: z.ZodDefault<z.ZodNullable<z.ZodString>>;
+            trackingReferences: z.ZodDefault<z.ZodArray<z.ZodObject<{
+                providerKind: z.ZodString;
+                trackingNumber: z.ZodString;
+                trackingUrl: z.ZodNullable<z.ZodString>;
+                carrierKind: z.ZodNullable<z.ZodString>;
+                service: z.ZodNullable<z.ZodString>;
+                updatedAt: z.ZodNullable<z.ZodString>;
+            }, z.core.$strict>>>;
+            trackingTimeline: z.ZodDefault<z.ZodArray<z.ZodObject<{
+                eventType: z.ZodString;
+                label: z.ZodString;
+                occurredAt: z.ZodNullable<z.ZodString>;
+                source: z.ZodEnum<{
+                    provider: "provider";
+                    webhook: "webhook";
+                    reconciliation: "reconciliation";
+                    manual: "manual";
+                    simulator: "simulator";
+                    fulfillment: "fulfillment";
+                    dispatch: "dispatch";
+                }>;
+            }, z.core.$strict>>>;
+            providerEvidence: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodObject<{
+                evidenceType: z.ZodEnum<{
+                    dispatch_ref: "dispatch_ref";
+                    provider_attempt: "provider_attempt";
+                    status_evidence: "status_evidence";
+                }>;
+                status: z.ZodNullable<z.ZodString>;
+                providerStatus: z.ZodNullable<z.ZodString>;
+                providerOrderId: z.ZodNullable<z.ZodString>;
+                evidenceKind: z.ZodNullable<z.ZodString>;
+                occurredAt: z.ZodNullable<z.ZodString>;
+                updatedAt: z.ZodNullable<z.ZodString>;
+                summary: z.ZodNullable<z.ZodString>;
+            }, z.core.$strict>>>>;
+        }, z.core.$strip>;
+        replacementChain: z.ZodDefault<z.ZodOptional<z.ZodObject<{
+            sequenceNo: z.ZodNumber;
+            replacesFulfillmentOrderId: z.ZodNullable<z.ZodGUID>;
+            replacementReason: z.ZodDefault<z.ZodNullable<z.ZodString>>;
+            supersededParcels: z.ZodDefault<z.ZodArray<z.ZodObject<{
+                fulfillmentOrderId: z.ZodGUID;
+                sequenceNo: z.ZodNumber;
+                status: z.ZodNullable<z.ZodEnum<{
+                    created: "created";
+                    cancelled: "cancelled";
+                    delivered: "delivered";
+                    packed: "packed";
+                    label_pending: "label_pending";
+                    label_created: "label_created";
+                    handed_over: "handed_over";
+                    in_transit: "in_transit";
+                    exception: "exception";
+                }>>;
+                replacementReason: z.ZodDefault<z.ZodNullable<z.ZodString>>;
+                handedOverAt: z.ZodNullable<z.ZodString>;
+                deliveredAt: z.ZodNullable<z.ZodString>;
+                trackingReferences: z.ZodDefault<z.ZodArray<z.ZodObject<{
+                    providerKind: z.ZodString;
+                    trackingNumber: z.ZodString;
+                    trackingUrl: z.ZodNullable<z.ZodString>;
+                    carrierKind: z.ZodNullable<z.ZodString>;
+                    service: z.ZodNullable<z.ZodString>;
+                    updatedAt: z.ZodNullable<z.ZodString>;
+                }, z.core.$strict>>>;
+            }, z.core.$strict>>>;
+        }, z.core.$strict>>>;
+        fulfillmentHealth: z.ZodObject<{
+            healthStatus: z.ZodEnum<{
+                ok: "ok";
+                needs_attention: "needs_attention";
+                blocked_uncertain: "blocked_uncertain";
+                local_ahead: "local_ahead";
+                provider_ahead: "provider_ahead";
+                missing_local_commitment: "missing_local_commitment";
+            }>;
+            attentionReasons: z.ZodArray<z.ZodEnum<{
+                paid_order_missing_fulfillment: "paid_order_missing_fulfillment";
+                paid_order_missing_dispatch_ref: "paid_order_missing_dispatch_ref";
+                dispatch_submission_stale: "dispatch_submission_stale";
+                dispatch_outcome_uncertain: "dispatch_outcome_uncertain";
+                dispatch_failed: "dispatch_failed";
+                dispatch_created_without_provider_order_id: "dispatch_created_without_provider_order_id";
+                dispatch_terminal_without_progress: "dispatch_terminal_without_progress";
+                dispatch_status_unknown: "dispatch_status_unknown";
+                provider_exception_after_delivery: "provider_exception_after_delivery";
+                provider_exception_after_handover: "provider_exception_after_handover";
+                provider_exception_before_handover: "provider_exception_before_handover";
+                local_status_ahead_of_provider: "local_status_ahead_of_provider";
+                provider_accepted_local_label_ack_missing: "provider_accepted_local_label_ack_missing";
+                order_paid_outbox_discarded: "order_paid_outbox_discarded";
+                order_paid_outbox_processed_without_fulfillment: "order_paid_outbox_processed_without_fulfillment";
+                order_paid_outbox_missing: "order_paid_outbox_missing";
+            }>>;
+            oldestAgeSeconds: z.ZodNullable<z.ZodNumber>;
+            dispatchRefId: z.ZodOptional<z.ZodNullable<z.ZodGUID>>;
+            dispatchStatus: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+            opaqueIds: z.ZodObject<{
+                orderId: z.ZodGUID;
+                fulfillmentOrderId: z.ZodNullable<z.ZodGUID>;
+                outboxEventId: z.ZodNullable<z.ZodGUID>;
+                dispatchRefFulfillmentOrderId: z.ZodNullable<z.ZodGUID>;
+                latestEvidenceFulfillmentOrderId: z.ZodNullable<z.ZodGUID>;
+            }, z.core.$strict>;
+        }, z.core.$strict>;
+        fulfillmentDebug: z.ZodDefault<z.ZodOptional<z.ZodObject<{
+            summary: z.ZodString;
+            severity: z.ZodEnum<{
+                ok: "ok";
+                action_required: "action_required";
+                watch: "watch";
+            }>;
+            nextAction: z.ZodEnum<{
+                review_payment: "review_payment";
+                create_fulfillment: "create_fulfillment";
+                wait: "wait";
+                retry_dispatch: "retry_dispatch";
+                reconcile: "reconcile";
+                review_stock: "review_stock";
+                review_provider: "review_provider";
+                contact_support: "contact_support";
+            }>;
+            blockers: z.ZodDefault<z.ZodArray<z.ZodString>>;
+            steps: z.ZodDefault<z.ZodArray<z.ZodObject<{
+                key: z.ZodEnum<{
+                    stock: "stock";
+                    payment: "payment";
+                    provider: "provider";
+                    fulfillment: "fulfillment";
+                    dispatch: "dispatch";
+                    provider_stock: "provider_stock";
+                    tracking: "tracking";
+                    communication: "communication";
+                }>;
+                status: z.ZodEnum<{
+                    ok: "ok";
+                    missing: "missing";
+                    pending: "pending";
+                    blocked: "blocked";
+                    warning: "warning";
+                }>;
+                label: z.ZodString;
+                value: z.ZodNullable<z.ZodString>;
+                evidenceAt: z.ZodNullable<z.ZodString>;
+                details: z.ZodDefault<z.ZodArray<z.ZodString>>;
+            }, z.core.$strict>>>;
+        }, z.core.$strict>>>;
+        accounting: z.ZodObject<{
+            status: z.ZodString;
+            invoiceId: z.ZodNullable<z.ZodGUID>;
+            invoiceRef: z.ZodNullable<z.ZodString>;
+            providerKind: z.ZodNullable<z.ZodString>;
+            providerInvoiceNumber: z.ZodNullable<z.ZodString>;
+            fiscalStatus: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+            outboxStatus: z.ZodNullable<z.ZodString>;
+            outboxAttemptCount: z.ZodNullable<z.ZodNumber>;
+            outboxNextAttemptAt: z.ZodNullable<z.ZodString>;
+            outboxLastError: z.ZodNullable<z.ZodObject<{
+                code: z.ZodNullable<z.ZodString>;
+                message: z.ZodNullable<z.ZodString>;
+                retryable: z.ZodNullable<z.ZodBoolean>;
+            }, z.core.$strict>>;
+            recoveryGuidance: z.ZodEnum<{
+                none: "none";
+                not_requested: "not_requested";
+                wait_for_retry: "wait_for_retry";
+                review_and_retry: "review_and_retry";
+            }>;
+            updatedAt: z.ZodNullable<z.ZodString>;
+        }, z.core.$strict>;
+        actionEligibility: z.ZodObject<{
+            addNote: z.ZodObject<{
+                allowed: z.ZodBoolean;
+                reason: z.ZodNullable<z.ZodString>;
+            }, z.core.$strict>;
+            createHold: z.ZodObject<{
+                allowed: z.ZodBoolean;
+                reason: z.ZodNullable<z.ZodString>;
+            }, z.core.$strict>;
+            releaseHold: z.ZodObject<{
+                allowed: z.ZodBoolean;
+                reason: z.ZodNullable<z.ZodString>;
+            }, z.core.$strict>;
+            createFulfillment: z.ZodObject<{
+                allowed: z.ZodBoolean;
+                reason: z.ZodNullable<z.ZodString>;
+            }, z.core.$strict>;
+            updateShippingAddress: z.ZodObject<{
+                allowed: z.ZodBoolean;
+                reason: z.ZodNullable<z.ZodString>;
+            }, z.core.$strict>;
+            recordLabel: z.ZodObject<{
+                allowed: z.ZodBoolean;
+                reason: z.ZodNullable<z.ZodString>;
+            }, z.core.$strict>;
+            handOff: z.ZodObject<{
+                allowed: z.ZodBoolean;
+                reason: z.ZodNullable<z.ZodString>;
+            }, z.core.$strict>;
+            recordTrackingEvent: z.ZodObject<{
+                allowed: z.ZodBoolean;
+                reason: z.ZodNullable<z.ZodString>;
+            }, z.core.$strict>;
+            cancelFulfillment: z.ZodObject<{
+                allowed: z.ZodBoolean;
+                reason: z.ZodNullable<z.ZodString>;
+            }, z.core.$strict>;
+            cancelOrder: z.ZodObject<{
+                allowed: z.ZodBoolean;
+                reason: z.ZodNullable<z.ZodString>;
+            }, z.core.$strict>;
+            markRefunded: z.ZodObject<{
+                allowed: z.ZodBoolean;
+                reason: z.ZodNullable<z.ZodString>;
+            }, z.core.$strict>;
+        }, z.core.$strict>;
+        holds: z.ZodArray<z.ZodObject<{
+            id: z.ZodGUID;
+            orderId: z.ZodGUID;
+            status: z.ZodEnum<{
+                active: "active";
+                released: "released";
+            }>;
+            reason: z.ZodEnum<{
+                payment_not_succeeded: "payment_not_succeeded";
+                inventory_review: "inventory_review";
+                risk_review: "risk_review";
+                fulfillment_exception: "fulfillment_exception";
+                address_review: "address_review";
+                manual_support: "manual_support";
+            }>;
+            note: z.ZodNullable<z.ZodString>;
+            createdAt: z.ZodString;
+            releasedAt: z.ZodNullable<z.ZodString>;
+        }, z.core.$strip>>;
+        operations: z.ZodArray<z.ZodObject<{
+            id: z.ZodGUID;
+            orderId: z.ZodGUID;
+            type: z.ZodEnum<{
+                hold_created: "hold_created";
+                hold_released: "hold_released";
+                fulfillment_reviewed: "fulfillment_reviewed";
+                support_note: "support_note";
+                shipping_address_updated: "shipping_address_updated";
+                order_marked_refunded: "order_marked_refunded";
+                order_cancelled_manual: "order_cancelled_manual";
+                replacement_shipment_requested: "replacement_shipment_requested";
+            }>;
+            holdId: z.ZodNullable<z.ZodGUID>;
+            actorUserId: z.ZodNullable<z.ZodGUID>;
+            occurredAt: z.ZodString;
+            payload: z.ZodRecord<z.ZodString, z.ZodUnknown>;
+        }, z.core.$strip>>;
+        payment: z.ZodObject<{
+            intentId: z.ZodNullable<z.ZodGUID>;
+            paymentId: z.ZodNullable<z.ZodGUID>;
+            status: z.ZodEnum<{
+                expired: "expired";
+                created: "created";
+                failed: "failed";
+                cancelled: "cancelled";
+                refunded: "refunded";
+                not_started: "not_started";
+                requires_action: "requires_action";
+                processing: "processing";
+                partially_refunded: "partially_refunded";
+                disputed: "disputed";
+                succeeded: "succeeded";
+            }>;
+            activeAttemptId: z.ZodNullable<z.ZodGUID>;
+            providerPaymentId: z.ZodNullable<z.ZodString>;
+            updatedAt: z.ZodNullable<z.ZodString>;
+        }, z.core.$strip>;
+        paymentAttempts: z.ZodArray<z.ZodObject<{
+            id: z.ZodGUID;
+            status: z.ZodEnum<{
+                expired: "expired";
+                created: "created";
+                failed: "failed";
+                cancelled: "cancelled";
+                requires_action: "requires_action";
+                processing: "processing";
+                succeeded: "succeeded";
+                blocked_preflight: "blocked_preflight";
+                sent_to_provider: "sent_to_provider";
+            }>;
+            provider: z.ZodString;
+            providerAttemptId: z.ZodNullable<z.ZodString>;
+            nextActionKind: z.ZodNullable<z.ZodString>;
+            updatedAt: z.ZodString;
+        }, z.core.$strip>>;
+        paymentTransitions: z.ZodArray<z.ZodObject<{
+            id: z.ZodGUID;
+            transitionKind: z.ZodString;
+            fromStatus: z.ZodNullable<z.ZodString>;
+            toStatus: z.ZodString;
+            reason: z.ZodString;
+            occurredAt: z.ZodString;
+        }, z.core.$strip>>;
+        communicationDeliveries: z.ZodArray<z.ZodObject<{
+            id: z.ZodGUID;
+            purpose: z.ZodString;
+            templateSlug: z.ZodString;
+            triggerSource: z.ZodString;
+            triggerEvent: z.ZodString;
+            aggregateType: z.ZodNullable<z.ZodString>;
+            aggregateId: z.ZodNullable<z.ZodString>;
+            dedupeKey: z.ZodString;
+            status: z.ZodEnum<{
+                failed: "failed";
+                processing: "processing";
+                delivered: "delivered";
+                planned: "planned";
+                skipped: "skipped";
+                blocked: "blocked";
+                queued: "queued";
+                sent: "sent";
+                delivery_delayed: "delivery_delayed";
+                bounced: "bounced";
+                complained: "complained";
+                missed: "missed";
+                legacy_unlinked: "legacy_unlinked";
+            }>;
+            providerKind: z.ZodNullable<z.ZodString>;
+            providerMessageId: z.ZodNullable<z.ZodString>;
+            scheduledDueAt: z.ZodNullable<z.ZodString>;
+            expectedSendAt: z.ZodNullable<z.ZodString>;
+            queuedAt: z.ZodNullable<z.ZodString>;
+            firstAttemptAt: z.ZodNullable<z.ZodString>;
+            sentAt: z.ZodNullable<z.ZodString>;
+            deliveredAt: z.ZodNullable<z.ZodString>;
+            terminalAt: z.ZodNullable<z.ZodString>;
+            lastErrorCode: z.ZodNullable<z.ZodString>;
+            outboxEventId: z.ZodNullable<z.ZodGUID>;
+            platformJobRunId: z.ZodNullable<z.ZodGUID>;
+            emailSendId: z.ZodNullable<z.ZodGUID>;
+            metadata: z.ZodRecord<z.ZodString, z.ZodUnknown>;
+            createdAt: z.ZodString;
+            updatedAt: z.ZodString;
+        }, z.core.$strict>>;
+    }, z.core.$strip>;
+}, z.core.$strip>;
+export declare const adminCommerceOrderHoldResponseSchema: z.ZodObject<{
+    contractVersion: z.ZodLiteral<"commerce.v0">;
+    hold: z.ZodObject<{
+        id: z.ZodGUID;
+        orderId: z.ZodGUID;
+        status: z.ZodEnum<{
+            active: "active";
+            released: "released";
+        }>;
+        reason: z.ZodEnum<{
+            payment_not_succeeded: "payment_not_succeeded";
+            inventory_review: "inventory_review";
+            risk_review: "risk_review";
+            fulfillment_exception: "fulfillment_exception";
+            address_review: "address_review";
+            manual_support: "manual_support";
+        }>;
+        note: z.ZodNullable<z.ZodString>;
+        createdAt: z.ZodString;
+        releasedAt: z.ZodNullable<z.ZodString>;
+    }, z.core.$strip>;
+    operationId: z.ZodGUID;
+    replayed: z.ZodBoolean;
+}, z.core.$strip>;
+export declare const adminCommerceOrderNoteResponseSchema: z.ZodObject<{
+    contractVersion: z.ZodLiteral<"commerce.v0">;
+    operation: z.ZodObject<{
+        id: z.ZodGUID;
+        orderId: z.ZodGUID;
+        type: z.ZodEnum<{
+            hold_created: "hold_created";
+            hold_released: "hold_released";
+            fulfillment_reviewed: "fulfillment_reviewed";
+            support_note: "support_note";
+            shipping_address_updated: "shipping_address_updated";
+            order_marked_refunded: "order_marked_refunded";
+            order_cancelled_manual: "order_cancelled_manual";
+            replacement_shipment_requested: "replacement_shipment_requested";
+        }>;
+        holdId: z.ZodNullable<z.ZodGUID>;
+        actorUserId: z.ZodNullable<z.ZodGUID>;
+        occurredAt: z.ZodString;
+        payload: z.ZodRecord<z.ZodString, z.ZodUnknown>;
+    }, z.core.$strip>;
+    replayed: z.ZodBoolean;
+}, z.core.$strip>;
+export declare const adminCommerceOrderUpdateShippingAddressResponseSchema: z.ZodObject<{
+    contractVersion: z.ZodLiteral<"commerce.v0">;
+    result: z.ZodEnum<{
+        replayed: "replayed";
+        applied: "applied";
+    }>;
+    scope: z.ZodEnum<{
+        order: "order";
+        parcel: "parcel";
+    }>;
+    deliveryContact: z.ZodObject<{
+        schemaVersion: z.ZodLiteral<1>;
+        source: z.ZodString;
+        revision: z.ZodNumber;
+        recipientName: z.ZodNullable<z.ZodString>;
+        contactEmail: z.ZodNullable<z.ZodString>;
+        contactPhone: z.ZodNullable<z.ZodString>;
+        line1: z.ZodNullable<z.ZodString>;
+        line2: z.ZodNullable<z.ZodString>;
+        city: z.ZodNullable<z.ZodString>;
+        postalCode: z.ZodNullable<z.ZodString>;
+        country: z.ZodNullable<z.ZodString>;
+        selectedDelivery: z.ZodNullable<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+        deliveryInstructions: z.ZodNullable<z.ZodString>;
+        courierInstructions: z.ZodNullable<z.ZodString>;
+    }, z.core.$strict>;
+    operation: z.ZodObject<{
+        id: z.ZodGUID;
+        orderId: z.ZodGUID;
+        type: z.ZodEnum<{
+            hold_created: "hold_created";
+            hold_released: "hold_released";
+            fulfillment_reviewed: "fulfillment_reviewed";
+            support_note: "support_note";
+            shipping_address_updated: "shipping_address_updated";
+            order_marked_refunded: "order_marked_refunded";
+            order_cancelled_manual: "order_cancelled_manual";
+            replacement_shipment_requested: "replacement_shipment_requested";
+        }>;
+        holdId: z.ZodNullable<z.ZodGUID>;
+        actorUserId: z.ZodNullable<z.ZodGUID>;
+        occurredAt: z.ZodString;
+        payload: z.ZodRecord<z.ZodString, z.ZodUnknown>;
+    }, z.core.$strip>;
+    address: z.ZodObject<{
+        recipientName: z.ZodNullable<z.ZodString>;
+        contactEmail: z.ZodNullable<z.ZodString>;
+        contactPhone: z.ZodNullable<z.ZodString>;
+        line1: z.ZodNullable<z.ZodString>;
+        line2: z.ZodNullable<z.ZodString>;
+        city: z.ZodNullable<z.ZodString>;
+        postalCode: z.ZodNullable<z.ZodString>;
+        country: z.ZodNullable<z.ZodString>;
+    }, z.core.$strict>;
+    replayed: z.ZodBoolean;
+}, z.core.$strict>;
+export declare const adminCommerceOrderRequestReplacementShipmentResponseSchema: z.ZodObject<{
+    contractVersion: z.ZodLiteral<"commerce.v0">;
+    operation: z.ZodObject<{
+        id: z.ZodGUID;
+        orderId: z.ZodGUID;
+        type: z.ZodEnum<{
+            hold_created: "hold_created";
+            hold_released: "hold_released";
+            fulfillment_reviewed: "fulfillment_reviewed";
+            support_note: "support_note";
+            shipping_address_updated: "shipping_address_updated";
+            order_marked_refunded: "order_marked_refunded";
+            order_cancelled_manual: "order_cancelled_manual";
+            replacement_shipment_requested: "replacement_shipment_requested";
+        }>;
+        holdId: z.ZodNullable<z.ZodGUID>;
+        actorUserId: z.ZodNullable<z.ZodGUID>;
+        occurredAt: z.ZodString;
+        payload: z.ZodRecord<z.ZodString, z.ZodUnknown>;
+    }, z.core.$strip>;
+    replacement: z.ZodObject<{
+        fulfillmentOrderId: z.ZodString;
+        orderId: z.ZodString;
+        sequenceNo: z.ZodNumber;
+        replacesFulfillmentOrderId: z.ZodString;
+        reason: z.ZodEnum<{
+            other: "other";
+            damaged: "damaged";
+            lost: "lost";
+            returned_undelivered: "returned_undelivered";
+        }>;
+        status: z.ZodString;
+    }, z.core.$strip>;
+    releasedHoldIds: z.ZodDefault<z.ZodArray<z.ZodString>>;
+    replayed: z.ZodBoolean;
+}, z.core.$strip>;
+export declare const adminCommerceOrderPaymentLinkResponseSchema: z.ZodObject<{
+    token: z.ZodString;
+    expiresAt: z.ZodString;
+    orderRef: z.ZodString;
+    emailQueued: z.ZodBoolean;
+}, z.core.$strict>;
+export declare const adminCommerceOrderMarkRefundedResponseSchema: z.ZodObject<{
+    contractVersion: z.ZodLiteral<"commerce.v0">;
+    orderId: z.ZodGUID;
+    status: z.ZodEnum<{
+        draft: "draft";
+        expired: "expired";
+        pending_payment: "pending_payment";
+        paid: "paid";
+        failed: "failed";
+        fulfillment_pending: "fulfillment_pending";
+        cancelled: "cancelled";
+        fulfilled: "fulfilled";
+        refunded: "refunded";
+    }>;
+    replayed: z.ZodBoolean;
+}, z.core.$strict>;
+```
+## dist/commerce/oms/omsContractRequests.d.ts
+
+```ts
+import { z } from "zod";
+export type { AdminCommerceOrderPaymentLinkRefusal } from "../contracts/omsTypes.js";
+export declare const adminCommerceOrdersListRequestSchema: z.ZodObject<{
+    page: z.ZodDefault<z.ZodCoercedNumber<unknown>>;
+    pageSize: z.ZodDefault<z.ZodCoercedNumber<unknown>>;
+    search: z.ZodOptional<z.ZodString>;
+    status: z.ZodOptional<z.ZodEnum<{
+        draft: "draft";
+        expired: "expired";
+        pending_payment: "pending_payment";
+        paid: "paid";
+        failed: "failed";
+        fulfillment_pending: "fulfillment_pending";
+        cancelled: "cancelled";
+        fulfilled: "fulfilled";
+        refunded: "refunded";
+    }>>;
+    mode: z.ZodOptional<z.ZodEnum<{
+        one_time: "one_time";
+        subscription_cycle: "subscription_cycle";
+    }>>;
+    paymentStatus: z.ZodOptional<z.ZodEnum<{
+        expired: "expired";
+        created: "created";
+        failed: "failed";
+        cancelled: "cancelled";
+        refunded: "refunded";
+        not_started: "not_started";
+        requires_action: "requires_action";
+        processing: "processing";
+        partially_refunded: "partially_refunded";
+        disputed: "disputed";
+        succeeded: "succeeded";
+    }>>;
+    fulfillmentStatus: z.ZodOptional<z.ZodEnum<{
+        created: "created";
+        cancelled: "cancelled";
+        delivered: "delivered";
+        packed: "packed";
+        label_pending: "label_pending";
+        label_created: "label_created";
+        handed_over: "handed_over";
+        in_transit: "in_transit";
+        exception: "exception";
+    }>>;
+    inventoryStatus: z.ZodOptional<z.ZodEnum<{
+        expired: "expired";
+        not_checked: "not_checked";
+        reserved: "reserved";
+        missing: "missing";
+        released: "released";
+        consumed: "consumed";
+        review_required: "review_required";
+    }>>;
+    accountingStatus: z.ZodOptional<z.ZodString>;
+    providerOpsStatus: z.ZodOptional<z.ZodString>;
+    attentionReason: z.ZodOptional<z.ZodEnum<{
+        fulfillment_pending: "fulfillment_pending";
+        active_hold: "active_hold";
+        missing_shipping_address: "missing_shipping_address";
+        none: "none";
+        fulfillment_exception: "fulfillment_exception";
+        payment_required: "payment_required";
+        inventory_missing: "inventory_missing";
+        fulfillment_blocked: "fulfillment_blocked";
+        invoice_missing: "invoice_missing";
+        invoice_issue_failed: "invoice_issue_failed";
+        invoice_buyer_data_invalid: "invoice_buyer_data_invalid";
+    }>>;
+    attentionOnly: z.ZodOptional<z.ZodUnion<readonly [z.ZodBoolean, z.ZodPipe<z.ZodEnum<{
+        true: "true";
+        false: "false";
+    }>, z.ZodTransform<boolean, "true" | "false">>]>>;
+    nextAction: z.ZodOptional<z.ZodEnum<{
+        none: "none";
+        review_payment: "review_payment";
+        release_hold: "release_hold";
+        review_address: "review_address";
+        review_inventory: "review_inventory";
+        review_fulfillment: "review_fulfillment";
+        create_fulfillment: "create_fulfillment";
+        record_label: "record_label";
+        hand_off: "hand_off";
+        review_tracking: "review_tracking";
+        review_invoice: "review_invoice";
+    }>>;
+    from: z.ZodOptional<z.ZodString>;
+    to: z.ZodOptional<z.ZodString>;
+    sort: z.ZodDefault<z.ZodEnum<{
+        created_desc: "created_desc";
+        created_asc: "created_asc";
+        updated_desc: "updated_desc";
+        updated_asc: "updated_asc";
+        attention_priority_desc: "attention_priority_desc";
+    }>>;
+    includeWithdrawn: z.ZodOptional<z.ZodUnion<readonly [z.ZodBoolean, z.ZodPipe<z.ZodEnum<{
+        true: "true";
+        false: "false";
+    }>, z.ZodTransform<boolean, "true" | "false">>]>>;
+}, z.core.$strict>;
+export declare const adminCommerceOrderDetailRequestSchema: z.ZodObject<{
+    orderId: z.ZodGUID;
+}, z.core.$strict>;
+export declare const adminCommerceOrderHoldRequestSchema: z.ZodObject<{
+    idempotencyKey: z.ZodString;
+    orderId: z.ZodGUID;
+    reason: z.ZodEnum<{
+        payment_not_succeeded: "payment_not_succeeded";
+        inventory_review: "inventory_review";
+        risk_review: "risk_review";
+        fulfillment_exception: "fulfillment_exception";
+        address_review: "address_review";
+        manual_support: "manual_support";
+    }>;
+    note: z.ZodOptional<z.ZodString>;
+    metadata: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+}, z.core.$strict>;
+export declare const adminCommerceOrderReleaseHoldRequestSchema: z.ZodObject<{
+    idempotencyKey: z.ZodString;
+    holdId: z.ZodGUID;
+    note: z.ZodOptional<z.ZodString>;
+    metadata: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+}, z.core.$strict>;
+export declare const adminCommerceOrderNoteRequestSchema: z.ZodObject<{
+    idempotencyKey: z.ZodString;
+    orderId: z.ZodGUID;
+    note: z.ZodString;
+    metadata: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+}, z.core.$strict>;
+export declare const adminCommerceOrderMarkRefundedRequestSchema: z.ZodObject<{
+    idempotencyKey: z.ZodString;
+    orderId: z.ZodGUID;
+    reason: z.ZodString;
+    metadata: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+}, z.core.$strict>;
+export declare const adminCommerceOrderCancelRequestSchema: z.ZodObject<{
+    idempotencyKey: z.ZodString;
+    orderId: z.ZodGUID;
+    reason: z.ZodString;
+    metadata: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+}, z.core.$strict>;
+export declare const adminCommerceOrderShippingAddressInputSchema: z.ZodObject<{
+    recipientName: z.ZodString;
+    contactEmail: z.ZodString;
+    line1: z.ZodString;
+    line2: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    city: z.ZodString;
+    postalCode: z.ZodString;
+    country: z.ZodString;
+    contactPhone: z.ZodString;
+    deliveryInstructions: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    courierInstructions: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+}, z.core.$strict>;
+export declare const adminCommerceOrderRequestReplacementShipmentRequestSchema: z.ZodObject<{
+    idempotencyKey: z.ZodString;
+    orderId: z.ZodGUID;
+    reason: z.ZodEnum<{
+        other: "other";
+        damaged: "damaged";
+        lost: "lost";
+        returned_undelivered: "returned_undelivered";
+    }>;
+    metadata: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+}, z.core.$strict>;
+/**
+ * Every way the payment-link command declines. Closed on purpose and shared by
+ * both ends: the handler may only send one of these, and the operator surface has
+ * a sentence for each, so no database text can ever reach a screen.
+ */
+export declare const ADMIN_COMMERCE_ORDER_PAYMENT_LINK_REFUSALS: readonly ["order_not_found", "order_paid", "order_cancelled", "order_not_recoverable", "order_changed"];
+export declare const adminCommerceOrderPaymentLinkRequestSchema: z.ZodObject<{
+    orderId: z.ZodGUID;
+    delivery: z.ZodOptional<z.ZodEnum<{
+        email: "email";
+        copy: "copy";
+    }>>;
+}, z.core.$strict>;
+export declare const adminCommerceOrderUpdateShippingAddressRequestSchema: z.ZodObject<{
+    idempotencyKey: z.ZodString;
+    orderId: z.ZodGUID;
+    expectedRevision: z.ZodNumber;
+    expectedContactDigest: z.ZodString;
+    address: z.ZodObject<{
+        recipientName: z.ZodString;
+        contactEmail: z.ZodString;
+        line1: z.ZodString;
+        line2: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+        city: z.ZodString;
+        postalCode: z.ZodString;
+        country: z.ZodString;
+        contactPhone: z.ZodString;
+        deliveryInstructions: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+        courierInstructions: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    }, z.core.$strict>;
+    metadata: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+}, z.core.$strict>;
+```
+## dist/commerce/oms/omsContracts.d.ts
+
+```ts
+export type { AdminCommerceOrderCancelRequest, AdminCommerceOrderDetailRequest, AdminCommerceOrderDetailResponse, AdminCommerceOrderHoldRequest, AdminCommerceOrderHoldResponse, AdminCommerceOrderMarkRefundedRequest, AdminCommerceOrderMarkRefundedResponse, AdminCommerceOrderNoteRequest, AdminCommerceOrderNoteResponse, AdminCommerceOrderPaymentLinkRequest, AdminCommerceOrderPaymentLinkResponse, AdminCommerceOrderReleaseHoldRequest, AdminCommerceOrderRequestReplacementShipmentRequest, AdminCommerceOrderRequestReplacementShipmentResponse, AdminCommerceOrdersListRequest, AdminCommerceOrdersListRequestInput, AdminCommerceOrdersListResponse, AdminCommerceOrderUpdateShippingAddressRequest, AdminCommerceOrderUpdateShippingAddressResponse, AdminOmsAttentionReason, AdminOmsNextAction, AdminOmsOrderListItem, AdminOmsOrderListSummaryCounts, AdminOmsOrderListSummaryTotals, AdminOmsOrderSearchMatch, AdminOmsProviderOpsStatus, OmsAccountingStatus, OmsDeliveryContactResolution, OmsFulfillmentBlockReason, OmsInventoryStatus, OmsOrderDetail, OmsOrderHold, OmsOrderPaymentStatus } from "../contracts/omsTypes.js";
+export * from "./omsContractBase.js";
+export { omsDeliveryContactResolutionSchema } from "./omsContractReadAuxSchemas.js";
+export * from "./omsContractReadSchemas.js";
+export * from "./omsContractRequests.js";
+```
+## dist/commerce/oms/omsControlPlane.d.ts
+
+```ts
+import { z } from "zod";
+import type { OmsControlPlaneOrder } from "../contracts/omsTypes.js";
+export type { CommerceOmsControlPlanePort, CommerceOmsOperatorResolver, OmsControlPlaneDetailRequest, OmsControlPlaneDetailResponse, OmsControlPlaneListRequest, OmsControlPlaneListResponse, OmsControlPlaneOrder } from "../contracts/omsTypes.js";
+export declare const OMS_CONTROL_PLANE_VERSION: "commerce.oms_control_plane.v1";
+export declare const OMS_CONTROL_PLANE_VIEW: "control_plane_v1";
+export declare const omsControlPlaneListRequestSchema: z.ZodObject<{
+    view: z.ZodLiteral<"control_plane_v1">;
+    page: z.ZodDefault<z.ZodCoercedNumber<unknown>>;
+    pageSize: z.ZodDefault<z.ZodCoercedNumber<unknown>>;
+    status: z.ZodOptional<z.ZodEnum<{
+        draft: "draft";
+        expired: "expired";
+        pending_payment: "pending_payment";
+        paid: "paid";
+        failed: "failed";
+        fulfillment_pending: "fulfillment_pending";
+        cancelled: "cancelled";
+        fulfilled: "fulfilled";
+        refunded: "refunded";
+    }>>;
+}, z.core.$strict>;
+export declare const omsControlPlaneDetailRequestSchema: z.ZodObject<{
+    view: z.ZodLiteral<"control_plane_v1">;
+    orderId: z.ZodGUID;
+}, z.core.$strict>;
+export declare const omsControlPlaneHoldSchema: z.ZodObject<{
+    id: z.ZodGUID;
+    status: z.ZodEnum<{
+        active: "active";
+        released: "released";
+    }>;
+    reason: z.ZodEnum<{
+        payment_not_succeeded: "payment_not_succeeded";
+        inventory_review: "inventory_review";
+        risk_review: "risk_review";
+        fulfillment_exception: "fulfillment_exception";
+        address_review: "address_review";
+        manual_support: "manual_support";
+    }>;
+    note: z.ZodNullable<z.ZodString>;
+    createdAt: z.ZodString;
+    releasedAt: z.ZodNullable<z.ZodString>;
+}, z.core.$strict>;
+export declare const omsControlPlaneOperationSchema: z.ZodObject<{
+    id: z.ZodGUID;
+    action: z.ZodEnum<{
+        hold_created: "hold_created";
+        hold_released: "hold_released";
+        order_cancelled: "order_cancelled";
+        order_refunded: "order_refunded";
+    }>;
+    holdId: z.ZodNullable<z.ZodGUID>;
+    actorId: z.ZodNullable<z.ZodGUID>;
+    occurredAt: z.ZodString;
+}, z.core.$strict>;
+export declare const omsControlPlaneOrderSchema: z.ZodObject<{
+    orderId: z.ZodGUID;
+    status: z.ZodEnum<{
+        draft: "draft";
+        expired: "expired";
+        pending_payment: "pending_payment";
+        paid: "paid";
+        failed: "failed";
+        fulfillment_pending: "fulfillment_pending";
+        cancelled: "cancelled";
+        fulfilled: "fulfilled";
+        refunded: "refunded";
+    }>;
+    sourceKind: z.ZodString;
+    sourceOrderRef: z.ZodNullable<z.ZodString>;
+    money: z.ZodNullable<z.ZodObject<{
+        amountMinor: z.ZodNumber;
+        currency: z.ZodString;
+    }, z.core.$strict>>;
+    shipmentStatus: z.ZodNullable<z.ZodEnum<{
+        created: "created";
+        cancelled: "cancelled";
+        delivered: "delivered";
+        packed: "packed";
+        label_pending: "label_pending";
+        label_created: "label_created";
+        handed_over: "handed_over";
+        in_transit: "in_transit";
+        exception: "exception";
+    }>>;
+    activeHoldCount: z.ZodNumber;
+    activeHoldReasons: z.ZodArray<z.ZodEnum<{
+        payment_not_succeeded: "payment_not_succeeded";
+        inventory_review: "inventory_review";
+        risk_review: "risk_review";
+        fulfillment_exception: "fulfillment_exception";
+        address_review: "address_review";
+        manual_support: "manual_support";
+    }>>;
+    actions: z.ZodObject<{
+        createHold: z.ZodObject<{
+            allowed: z.ZodBoolean;
+            reason: z.ZodNullable<z.ZodString>;
+        }, z.core.$strict>;
+        releaseHold: z.ZodObject<{
+            allowed: z.ZodBoolean;
+            reason: z.ZodNullable<z.ZodString>;
+        }, z.core.$strict>;
+        cancelOrder: z.ZodObject<{
+            allowed: z.ZodBoolean;
+            reason: z.ZodNullable<z.ZodString>;
+        }, z.core.$strict>;
+        markRefunded: z.ZodObject<{
+            allowed: z.ZodBoolean;
+            reason: z.ZodNullable<z.ZodString>;
+        }, z.core.$strict>;
+    }, z.core.$strict>;
+    createdAt: z.ZodString;
+    updatedAt: z.ZodString;
+}, z.core.$strict>;
+export declare const omsControlPlaneListResponseSchema: z.ZodObject<{
+    contractVersion: z.ZodLiteral<"commerce.oms_control_plane.v1">;
+    orders: z.ZodArray<z.ZodObject<{
+        orderId: z.ZodGUID;
+        status: z.ZodEnum<{
+            draft: "draft";
+            expired: "expired";
+            pending_payment: "pending_payment";
+            paid: "paid";
+            failed: "failed";
+            fulfillment_pending: "fulfillment_pending";
+            cancelled: "cancelled";
+            fulfilled: "fulfilled";
+            refunded: "refunded";
+        }>;
+        sourceKind: z.ZodString;
+        sourceOrderRef: z.ZodNullable<z.ZodString>;
+        money: z.ZodNullable<z.ZodObject<{
+            amountMinor: z.ZodNumber;
+            currency: z.ZodString;
+        }, z.core.$strict>>;
+        shipmentStatus: z.ZodNullable<z.ZodEnum<{
+            created: "created";
+            cancelled: "cancelled";
+            delivered: "delivered";
+            packed: "packed";
+            label_pending: "label_pending";
+            label_created: "label_created";
+            handed_over: "handed_over";
+            in_transit: "in_transit";
+            exception: "exception";
+        }>>;
+        activeHoldCount: z.ZodNumber;
+        activeHoldReasons: z.ZodArray<z.ZodEnum<{
+            payment_not_succeeded: "payment_not_succeeded";
+            inventory_review: "inventory_review";
+            risk_review: "risk_review";
+            fulfillment_exception: "fulfillment_exception";
+            address_review: "address_review";
+            manual_support: "manual_support";
+        }>>;
+        actions: z.ZodObject<{
+            createHold: z.ZodObject<{
+                allowed: z.ZodBoolean;
+                reason: z.ZodNullable<z.ZodString>;
+            }, z.core.$strict>;
+            releaseHold: z.ZodObject<{
+                allowed: z.ZodBoolean;
+                reason: z.ZodNullable<z.ZodString>;
+            }, z.core.$strict>;
+            cancelOrder: z.ZodObject<{
+                allowed: z.ZodBoolean;
+                reason: z.ZodNullable<z.ZodString>;
+            }, z.core.$strict>;
+            markRefunded: z.ZodObject<{
+                allowed: z.ZodBoolean;
+                reason: z.ZodNullable<z.ZodString>;
+            }, z.core.$strict>;
+        }, z.core.$strict>;
+        createdAt: z.ZodString;
+        updatedAt: z.ZodString;
+    }, z.core.$strict>>;
+    totalCount: z.ZodNumber;
+    page: z.ZodNumber;
+    pageSize: z.ZodNumber;
+}, z.core.$strict>;
+export declare const omsControlPlaneDetailResponseSchema: z.ZodObject<{
+    contractVersion: z.ZodLiteral<"commerce.oms_control_plane.v1">;
+    order: z.ZodObject<{
+        orderId: z.ZodGUID;
+        status: z.ZodEnum<{
+            draft: "draft";
+            expired: "expired";
+            pending_payment: "pending_payment";
+            paid: "paid";
+            failed: "failed";
+            fulfillment_pending: "fulfillment_pending";
+            cancelled: "cancelled";
+            fulfilled: "fulfilled";
+            refunded: "refunded";
+        }>;
+        sourceKind: z.ZodString;
+        sourceOrderRef: z.ZodNullable<z.ZodString>;
+        money: z.ZodNullable<z.ZodObject<{
+            amountMinor: z.ZodNumber;
+            currency: z.ZodString;
+        }, z.core.$strict>>;
+        shipmentStatus: z.ZodNullable<z.ZodEnum<{
+            created: "created";
+            cancelled: "cancelled";
+            delivered: "delivered";
+            packed: "packed";
+            label_pending: "label_pending";
+            label_created: "label_created";
+            handed_over: "handed_over";
+            in_transit: "in_transit";
+            exception: "exception";
+        }>>;
+        activeHoldCount: z.ZodNumber;
+        activeHoldReasons: z.ZodArray<z.ZodEnum<{
+            payment_not_succeeded: "payment_not_succeeded";
+            inventory_review: "inventory_review";
+            risk_review: "risk_review";
+            fulfillment_exception: "fulfillment_exception";
+            address_review: "address_review";
+            manual_support: "manual_support";
+        }>>;
+        actions: z.ZodObject<{
+            createHold: z.ZodObject<{
+                allowed: z.ZodBoolean;
+                reason: z.ZodNullable<z.ZodString>;
+            }, z.core.$strict>;
+            releaseHold: z.ZodObject<{
+                allowed: z.ZodBoolean;
+                reason: z.ZodNullable<z.ZodString>;
+            }, z.core.$strict>;
+            cancelOrder: z.ZodObject<{
+                allowed: z.ZodBoolean;
+                reason: z.ZodNullable<z.ZodString>;
+            }, z.core.$strict>;
+            markRefunded: z.ZodObject<{
+                allowed: z.ZodBoolean;
+                reason: z.ZodNullable<z.ZodString>;
+            }, z.core.$strict>;
+        }, z.core.$strict>;
+        createdAt: z.ZodString;
+        updatedAt: z.ZodString;
+    }, z.core.$strict>;
+    holds: z.ZodArray<z.ZodObject<{
+        id: z.ZodGUID;
+        status: z.ZodEnum<{
+            active: "active";
+            released: "released";
+        }>;
+        reason: z.ZodEnum<{
+            payment_not_succeeded: "payment_not_succeeded";
+            inventory_review: "inventory_review";
+            risk_review: "risk_review";
+            fulfillment_exception: "fulfillment_exception";
+            address_review: "address_review";
+            manual_support: "manual_support";
+        }>;
+        note: z.ZodNullable<z.ZodString>;
+        createdAt: z.ZodString;
+        releasedAt: z.ZodNullable<z.ZodString>;
+    }, z.core.$strict>>;
+    operations: z.ZodArray<z.ZodObject<{
+        id: z.ZodGUID;
+        action: z.ZodEnum<{
+            hold_created: "hold_created";
+            hold_released: "hold_released";
+            order_cancelled: "order_cancelled";
+            order_refunded: "order_refunded";
+        }>;
+        holdId: z.ZodNullable<z.ZodGUID>;
+        actorId: z.ZodNullable<z.ZodGUID>;
+        occurredAt: z.ZodString;
+    }, z.core.$strict>>;
+}, z.core.$strict>;
+export declare function omsControlPlaneActions(status: OmsControlPlaneOrder["status"], activeHoldCount: number): OmsControlPlaneOrder["actions"];
+```
+## dist/commerce/oms/omsFulfillmentContractSchemas.d.ts
+
+```ts
+import { z } from "zod";
+import type { OmsReplacementChain } from "../contracts/omsTypes.js";
+export type { OmsReplacementChain } from "../contracts/omsTypes.js";
+export declare const omsProviderOpsSlaSchema: z.ZodObject<{
+    status: z.ZodEnum<{
+        ok: "ok";
+        watch: "watch";
+        breached: "breached";
+        paused_non_shipping_day: "paused_non_shipping_day";
+    }>;
+    dispatchedAt: z.ZodNullable<z.ZodString>;
+    deadlineAt: z.ZodNullable<z.ZodString>;
+    remainingOperationalMinutes: z.ZodNullable<z.ZodNumber>;
+}, z.core.$strict>;
+export declare const omsFulfillmentTrackingReferenceSchema: z.ZodObject<{
+    providerKind: z.ZodString;
+    trackingNumber: z.ZodString;
+    trackingUrl: z.ZodNullable<z.ZodString>;
+    carrierKind: z.ZodNullable<z.ZodString>;
+    service: z.ZodNullable<z.ZodString>;
+    updatedAt: z.ZodNullable<z.ZodString>;
+}, z.core.$strict>;
+export declare const omsFulfillmentTimelineEventSchema: z.ZodObject<{
+    eventType: z.ZodString;
+    label: z.ZodString;
+    occurredAt: z.ZodNullable<z.ZodString>;
+    source: z.ZodEnum<{
+        provider: "provider";
+        webhook: "webhook";
+        reconciliation: "reconciliation";
+        manual: "manual";
+        simulator: "simulator";
+        fulfillment: "fulfillment";
+        dispatch: "dispatch";
+    }>;
+}, z.core.$strict>;
+export declare const omsSubscriptionContextSchema: z.ZodObject<{
+    subscriptionId: z.ZodNullable<z.ZodGUID>;
+    subscriptionCycleId: z.ZodNullable<z.ZodGUID>;
+    subscriptionCycleStatus: z.ZodNullable<z.ZodEnum<{
+        paid: "paid";
+        cancelled: "cancelled";
+        planned: "planned";
+        skipped: "skipped";
+        payment_pending: "payment_pending";
+        payment_failed: "payment_failed";
+        retry_scheduled: "retry_scheduled";
+    }>>;
+    nextCycleAt: z.ZodNullable<z.ZodString>;
+    cyclePaidAt: z.ZodNullable<z.ZodString>;
+}, z.core.$strip>;
+export declare const omsInventorySummarySchema: z.ZodObject<{
+    status: z.ZodEnum<{
+        expired: "expired";
+        not_checked: "not_checked";
+        reserved: "reserved";
+        missing: "missing";
+        released: "released";
+        consumed: "consumed";
+        review_required: "review_required";
+    }>;
+    reservationId: z.ZodNullable<z.ZodGUID>;
+    reservationStatus: z.ZodNullable<z.ZodEnum<{
+        expired: "expired";
+        reserved: "reserved";
+        released: "released";
+        consumed: "consumed";
+    }>>;
+    expiresAt: z.ZodNullable<z.ZodString>;
+    locationId: z.ZodNullable<z.ZodGUID>;
+    locationCode: z.ZodNullable<z.ZodString>;
+}, z.core.$strip>;
+export declare const omsFulfillmentSummarySchema: z.ZodObject<{
+    fulfillmentOrderId: z.ZodNullable<z.ZodGUID>;
+    status: z.ZodNullable<z.ZodEnum<{
+        created: "created";
+        cancelled: "cancelled";
+        delivered: "delivered";
+        packed: "packed";
+        label_pending: "label_pending";
+        label_created: "label_created";
+        handed_over: "handed_over";
+        in_transit: "in_transit";
+        exception: "exception";
+    }>>;
+    providerKind: z.ZodDefault<z.ZodNullable<z.ZodString>>;
+    latestOperationType: z.ZodNullable<z.ZodString>;
+    latestOperationAt: z.ZodNullable<z.ZodString>;
+    providerTrackingId: z.ZodNullable<z.ZodString>;
+    trackingUrl: z.ZodDefault<z.ZodNullable<z.ZodString>>;
+    carrierKind: z.ZodDefault<z.ZodNullable<z.ZodString>>;
+    service: z.ZodDefault<z.ZodNullable<z.ZodString>>;
+    trackingReferences: z.ZodDefault<z.ZodArray<z.ZodObject<{
+        providerKind: z.ZodString;
+        trackingNumber: z.ZodString;
+        trackingUrl: z.ZodNullable<z.ZodString>;
+        carrierKind: z.ZodNullable<z.ZodString>;
+        service: z.ZodNullable<z.ZodString>;
+        updatedAt: z.ZodNullable<z.ZodString>;
+    }, z.core.$strict>>>;
+    trackingTimeline: z.ZodDefault<z.ZodArray<z.ZodObject<{
+        eventType: z.ZodString;
+        label: z.ZodString;
+        occurredAt: z.ZodNullable<z.ZodString>;
+        source: z.ZodEnum<{
+            provider: "provider";
+            webhook: "webhook";
+            reconciliation: "reconciliation";
+            manual: "manual";
+            simulator: "simulator";
+            fulfillment: "fulfillment";
+            dispatch: "dispatch";
+        }>;
+    }, z.core.$strict>>>;
+    providerEvidence: z.ZodDefault<z.ZodOptional<z.ZodArray<z.ZodObject<{
+        evidenceType: z.ZodEnum<{
+            dispatch_ref: "dispatch_ref";
+            provider_attempt: "provider_attempt";
+            status_evidence: "status_evidence";
+        }>;
+        status: z.ZodNullable<z.ZodString>;
+        providerStatus: z.ZodNullable<z.ZodString>;
+        providerOrderId: z.ZodNullable<z.ZodString>;
+        evidenceKind: z.ZodNullable<z.ZodString>;
+        occurredAt: z.ZodNullable<z.ZodString>;
+        updatedAt: z.ZodNullable<z.ZodString>;
+        summary: z.ZodNullable<z.ZodString>;
+    }, z.core.$strict>>>>;
+}, z.core.$strip>;
+/**
+ * The order's replacement chain, detail-only.
+ *
+ * ⛔ This is NOT a second fulfilment summary. `fulfillment` stays exactly what W3 collapsed it
+ * to - one row, the parcel currently representing the order, with every companion narrowed to
+ * that parcel's id. Widening those companions was measured and rejected: the dispatch refs,
+ * provider attempts and status evidence of a superseded parcel would then be read by the
+ * fulfilment health classifier, the fulfilment debug panel and the customer-step derivation,
+ * each of which would answer for the wrong parcel - a dispatch status of `created` for a
+ * replacement that has never been dispatched, or a customer step of `delivered` for a parcel
+ * that is still `created`.
+ *
+ * So the superseded parcels carry their own, deliberately small payload: what a support agent
+ * needs to answer "where did the first one go?" and to file a carrier claim. Tracking number,
+ * carrier, service, the two handover instants, and the parcel's own status.
+ */
+export declare const omsSupersededParcelSchema: z.ZodObject<{
+    fulfillmentOrderId: z.ZodGUID;
+    sequenceNo: z.ZodNumber;
+    status: z.ZodNullable<z.ZodEnum<{
+        created: "created";
+        cancelled: "cancelled";
+        delivered: "delivered";
+        packed: "packed";
+        label_pending: "label_pending";
+        label_created: "label_created";
+        handed_over: "handed_over";
+        in_transit: "in_transit";
+        exception: "exception";
+    }>>;
+    replacementReason: z.ZodDefault<z.ZodNullable<z.ZodString>>;
+    handedOverAt: z.ZodNullable<z.ZodString>;
+    deliveredAt: z.ZodNullable<z.ZodString>;
+    trackingReferences: z.ZodDefault<z.ZodArray<z.ZodObject<{
+        providerKind: z.ZodString;
+        trackingNumber: z.ZodString;
+        trackingUrl: z.ZodNullable<z.ZodString>;
+        carrierKind: z.ZodNullable<z.ZodString>;
+        service: z.ZodNullable<z.ZodString>;
+        updatedAt: z.ZodNullable<z.ZodString>;
+    }, z.core.$strict>>>;
+}, z.core.$strict>;
+export declare const omsReplacementChainSchema: z.ZodObject<{
+    sequenceNo: z.ZodNumber;
+    replacesFulfillmentOrderId: z.ZodNullable<z.ZodGUID>;
+    replacementReason: z.ZodDefault<z.ZodNullable<z.ZodString>>;
+    supersededParcels: z.ZodDefault<z.ZodArray<z.ZodObject<{
+        fulfillmentOrderId: z.ZodGUID;
+        sequenceNo: z.ZodNumber;
+        status: z.ZodNullable<z.ZodEnum<{
+            created: "created";
+            cancelled: "cancelled";
+            delivered: "delivered";
+            packed: "packed";
+            label_pending: "label_pending";
+            label_created: "label_created";
+            handed_over: "handed_over";
+            in_transit: "in_transit";
+            exception: "exception";
+        }>>;
+        replacementReason: z.ZodDefault<z.ZodNullable<z.ZodString>>;
+        handedOverAt: z.ZodNullable<z.ZodString>;
+        deliveredAt: z.ZodNullable<z.ZodString>;
+        trackingReferences: z.ZodDefault<z.ZodArray<z.ZodObject<{
+            providerKind: z.ZodString;
+            trackingNumber: z.ZodString;
+            trackingUrl: z.ZodNullable<z.ZodString>;
+            carrierKind: z.ZodNullable<z.ZodString>;
+            service: z.ZodNullable<z.ZodString>;
+            updatedAt: z.ZodNullable<z.ZodString>;
+        }, z.core.$strict>>>;
+    }, z.core.$strict>>>;
+}, z.core.$strict>;
+export declare const defaultOmsReplacementChain: OmsReplacementChain;
+```
+## dist/commerce/oms/omsFulfillmentDebugSchemas.d.ts
+
+```ts
+import { z } from "zod";
+import type { OmsFulfillmentDebug } from "../contracts/omsTypes.js";
+export type { OmsFulfillmentDebug } from "../contracts/omsTypes.js";
+export declare const omsFulfillmentDebugStepSchema: z.ZodObject<{
+    key: z.ZodEnum<{
+        stock: "stock";
+        payment: "payment";
+        provider: "provider";
+        fulfillment: "fulfillment";
+        dispatch: "dispatch";
+        provider_stock: "provider_stock";
+        tracking: "tracking";
+        communication: "communication";
+    }>;
+    status: z.ZodEnum<{
+        ok: "ok";
+        missing: "missing";
+        pending: "pending";
+        blocked: "blocked";
+        warning: "warning";
+    }>;
+    label: z.ZodString;
+    value: z.ZodNullable<z.ZodString>;
+    evidenceAt: z.ZodNullable<z.ZodString>;
+    details: z.ZodDefault<z.ZodArray<z.ZodString>>;
+}, z.core.$strict>;
+export declare const omsFulfillmentDebugSchema: z.ZodObject<{
+    summary: z.ZodString;
+    severity: z.ZodEnum<{
+        ok: "ok";
+        action_required: "action_required";
+        watch: "watch";
+    }>;
+    nextAction: z.ZodEnum<{
+        review_payment: "review_payment";
+        create_fulfillment: "create_fulfillment";
+        wait: "wait";
+        retry_dispatch: "retry_dispatch";
+        reconcile: "reconcile";
+        review_stock: "review_stock";
+        review_provider: "review_provider";
+        contact_support: "contact_support";
+    }>;
+    blockers: z.ZodDefault<z.ZodArray<z.ZodString>>;
+    steps: z.ZodDefault<z.ZodArray<z.ZodObject<{
+        key: z.ZodEnum<{
+            stock: "stock";
+            payment: "payment";
+            provider: "provider";
+            fulfillment: "fulfillment";
+            dispatch: "dispatch";
+            provider_stock: "provider_stock";
+            tracking: "tracking";
+            communication: "communication";
+        }>;
+        status: z.ZodEnum<{
+            ok: "ok";
+            missing: "missing";
+            pending: "pending";
+            blocked: "blocked";
+            warning: "warning";
+        }>;
+        label: z.ZodString;
+        value: z.ZodNullable<z.ZodString>;
+        evidenceAt: z.ZodNullable<z.ZodString>;
+        details: z.ZodDefault<z.ZodArray<z.ZodString>>;
+    }, z.core.$strict>>>;
+}, z.core.$strict>;
+export declare const defaultOmsFulfillmentDebug: OmsFulfillmentDebug;
+```
+## dist/commerce/oms/omsFulfillmentHealthSchemas.d.ts
+
+```ts
+import { z } from "zod";
+export declare const omsFulfillmentHealthSchema: z.ZodObject<{
+    healthStatus: z.ZodEnum<{
+        ok: "ok";
+        needs_attention: "needs_attention";
+        blocked_uncertain: "blocked_uncertain";
+        local_ahead: "local_ahead";
+        provider_ahead: "provider_ahead";
+        missing_local_commitment: "missing_local_commitment";
+    }>;
+    attentionReasons: z.ZodArray<z.ZodEnum<{
+        paid_order_missing_fulfillment: "paid_order_missing_fulfillment";
+        paid_order_missing_dispatch_ref: "paid_order_missing_dispatch_ref";
+        dispatch_submission_stale: "dispatch_submission_stale";
+        dispatch_outcome_uncertain: "dispatch_outcome_uncertain";
+        dispatch_failed: "dispatch_failed";
+        dispatch_created_without_provider_order_id: "dispatch_created_without_provider_order_id";
+        dispatch_terminal_without_progress: "dispatch_terminal_without_progress";
+        dispatch_status_unknown: "dispatch_status_unknown";
+        provider_exception_after_delivery: "provider_exception_after_delivery";
+        provider_exception_after_handover: "provider_exception_after_handover";
+        provider_exception_before_handover: "provider_exception_before_handover";
+        local_status_ahead_of_provider: "local_status_ahead_of_provider";
+        provider_accepted_local_label_ack_missing: "provider_accepted_local_label_ack_missing";
+        order_paid_outbox_discarded: "order_paid_outbox_discarded";
+        order_paid_outbox_processed_without_fulfillment: "order_paid_outbox_processed_without_fulfillment";
+        order_paid_outbox_missing: "order_paid_outbox_missing";
+    }>>;
+    oldestAgeSeconds: z.ZodNullable<z.ZodNumber>;
+    dispatchRefId: z.ZodOptional<z.ZodNullable<z.ZodGUID>>;
+    dispatchStatus: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    opaqueIds: z.ZodObject<{
+        orderId: z.ZodGUID;
+        fulfillmentOrderId: z.ZodNullable<z.ZodGUID>;
+        outboxEventId: z.ZodNullable<z.ZodGUID>;
+        dispatchRefFulfillmentOrderId: z.ZodNullable<z.ZodGUID>;
+        latestEvidenceFulfillmentOrderId: z.ZodNullable<z.ZodGUID>;
+    }, z.core.$strict>;
+}, z.core.$strict>;
+export declare const omsFulfillmentHealthDigestSchema: z.ZodObject<{
+    healthStatus: z.ZodEnum<{
+        ok: "ok";
+        needs_attention: "needs_attention";
+        blocked_uncertain: "blocked_uncertain";
+        local_ahead: "local_ahead";
+        provider_ahead: "provider_ahead";
+        missing_local_commitment: "missing_local_commitment";
+    }>;
+    attentionReasons: z.ZodArray<z.ZodEnum<{
+        paid_order_missing_fulfillment: "paid_order_missing_fulfillment";
+        paid_order_missing_dispatch_ref: "paid_order_missing_dispatch_ref";
+        dispatch_submission_stale: "dispatch_submission_stale";
+        dispatch_outcome_uncertain: "dispatch_outcome_uncertain";
+        dispatch_failed: "dispatch_failed";
+        dispatch_created_without_provider_order_id: "dispatch_created_without_provider_order_id";
+        dispatch_terminal_without_progress: "dispatch_terminal_without_progress";
+        dispatch_status_unknown: "dispatch_status_unknown";
+        provider_exception_after_delivery: "provider_exception_after_delivery";
+        provider_exception_after_handover: "provider_exception_after_handover";
+        provider_exception_before_handover: "provider_exception_before_handover";
+        local_status_ahead_of_provider: "local_status_ahead_of_provider";
+        provider_accepted_local_label_ack_missing: "provider_accepted_local_label_ack_missing";
+        order_paid_outbox_discarded: "order_paid_outbox_discarded";
+        order_paid_outbox_processed_without_fulfillment: "order_paid_outbox_processed_without_fulfillment";
+        order_paid_outbox_missing: "order_paid_outbox_missing";
+    }>>;
+}, z.core.$strict>;
+```
+## dist/commerce/oms/omsPorts.d.ts
+
+```ts
+import type { OmsReplacementRefusal } from "../contracts/omsTypes.js";
+import { type OmsCurrencyPolicy } from "../model/omsCurrency.js";
+export type { CommerceOmsHoldPort, CommerceOmsReadPort, OmsReplacementRefusal } from "../contracts/omsTypes.js";
+/**
+ * Every refusal `commerce_oms_request_replacement_shipment` can reach an operator with,
+ * as one closed vocabulary shared by the adapter that classifies it and the admin surface
+ * that renders a sentence for it. Two lists would drift, and the failure mode of drift is
+ * the operator reading advice about a hold when the warehouse is simply out of stock.
+ *
+ * The first group is the command's own `commerce_oms_replacement_*` names. The second is
+ * the reservation vocabulary raised THROUGH it: the command mints a fresh generation via
+ * `inventory_reserve_order`, and on a stock authority outside this system that call is the
+ * most likely legitimate refusal there is. Those errors never carried the command's prefix,
+ * so before this list they matched nothing, degraded to an upstream failure, and the
+ * operator was told to check holds that were not there.
+ *
+ * It stays an allowlist, not a translation table: a reason absent from it degrades to
+ * `unspecified_refusal`, so no database text can travel to a response, a log or a screen.
+ *
+ * ⛔ The exported names deliberately omit the `CommerceOms` prefix every other symbol in
+ * this file carries. `src/lib/commerceOmsBoundary.test.ts` forbids that token in production
+ * UI files outside a small allowlist, and the admin surface imports these three symbols.
+ * Renaming them is the honest way to keep that boundary guard intact; widening its allowlist
+ * to admit one more file would weaken the control instead of respecting it.
+ */
+export declare const OMS_REPLACEMENT_COMMAND_REFUSALS: readonly ["invalid_input", "idempotency_conflict", "order_not_found", "order_not_replaceable", "missing_client", "missing_shipping_address", "shipping_address_not_found", "payment_not_succeeded", "subscription_cycle_not_paid", "no_parcel_to_replace", "undispatched_replacement_exists", "missing_order_items", "missing_catalog_sku", "missing_inventory_reservation", "blocked_by_payment_not_succeeded_hold", "blocked_by_inventory_review_hold", "blocked_by_risk_review_hold", "blocked_by_address_review_hold", "blocked_by_manual_support_hold"];
+export declare const OMS_REPLACEMENT_RESERVATION_REFUSALS: readonly ["inventory_external_provider_insufficient_available_stock", "inventory_external_provider_stock_stale", "inventory_external_provider_stock_missing", "inventory_external_provider_sku_not_found", "inventory_external_provider_location_missing", "inventory_reservation_insufficient_available_stock", "inventory_reservation_allocation_incomplete", "inventory_reservation_payment_status_not_reservable", "inventory_reservation_invalid_quantity"];
+export declare const UNSPECIFIED_REPLACEMENT_REFUSAL = "unspecified_refusal";
+export declare const OMS_REPLACEMENT_REFUSALS: readonly ["invalid_input", "idempotency_conflict", "order_not_found", "order_not_replaceable", "missing_client", "missing_shipping_address", "shipping_address_not_found", "payment_not_succeeded", "subscription_cycle_not_paid", "no_parcel_to_replace", "undispatched_replacement_exists", "missing_order_items", "missing_catalog_sku", "missing_inventory_reservation", "blocked_by_payment_not_succeeded_hold", "blocked_by_inventory_review_hold", "blocked_by_risk_review_hold", "blocked_by_address_review_hold", "blocked_by_manual_support_hold", "inventory_external_provider_insufficient_available_stock", "inventory_external_provider_stock_stale", "inventory_external_provider_stock_missing", "inventory_external_provider_sku_not_found", "inventory_external_provider_location_missing", "inventory_reservation_insufficient_available_stock", "inventory_reservation_allocation_incomplete", "inventory_reservation_payment_status_not_reservable", "inventory_reservation_invalid_quantity", "unspecified_refusal"];
+/**
+ * Reads the refusal a replacement error carries, from any of the shapes a BFF error can
+ * legitimately arrive in. Returns null when the text names no refusal this vocabulary
+ * knows, which is the honest answer: the operator gets the generic sentence plus the raw
+ * detail to hand to the team, never a guess dressed as advice.
+ */
+export declare function readOmsReplacementRefusal(text: string): OmsReplacementRefusal | null;
+export declare class CommerceOmsInvalidResponseError extends Error {
+    constructor();
+}
+export declare class CommerceOmsPersistenceError extends Error {
+    readonly details: Record<string, unknown>;
+    constructor(message?: string, details?: Record<string, unknown>);
+}
+/**
+ * An order row came back from the database in a currency this deployment does
+ * not accept. The channel ingest rail is deliberately multi-currency, so such a
+ * row can genuinely exist; what it cannot do is reach the read model, whose
+ * money nodes are pinned to the platform's accepted set.
+ *
+ * A subclass rather than a new error family, so it inherits the persistence
+ * error's HTTP mapping untouched: this is still an upstream read that could not
+ * be served, and the operator-facing status must not move. The gain is entirely
+ * diagnostic - the failure now names the orders and the codes instead of
+ * surfacing as an anonymous validation error fifteen frames later.
+ */
+export declare class CommerceOmsUnsupportedCurrencyError extends CommerceOmsPersistenceError {
+    readonly orderIds: readonly string[];
+    readonly currencies: readonly string[];
+    constructor(offenders: ReadonlyArray<{
+        orderId: string;
+        currency: string;
+    }>);
+}
+/**
+ * Guards the one field of an order row that can break the OMS read.
+ *
+ * This is deliberately not a schema for the whole row. Of that row's ~22
+ * columns exactly one - `currency` - is both able to fail the read model and
+ * something the platform holds an opinion about; the rest would cost a new
+ * contract surface parsed once per row per page, and would only be coherent if
+ * the other cast row kinds on this path were validated too.
+ *
+ * It also deliberately refuses rather than filtering. Dropping the offending
+ * row would keep the page rendering while hiding a real customer order from the
+ * operator handling it - a worse failure than a named refusal.
+ */
+export declare function assertOmsOrderRowCurrency(rows: ReadonlyArray<{
+    id: string;
+    currency: string;
+}>, currency?: OmsCurrencyPolicy): void;
+export declare class CommerceOmsConflictError extends Error {
+    readonly details: Record<string, unknown>;
+    constructor(message?: string, details?: Record<string, unknown>);
+}
+```
+## dist/commerce/oms/omsProviderEvidenceSchemas.d.ts
+
+```ts
+import { z } from "zod";
+export declare const omsProviderEvidenceSchema: z.ZodObject<{
+    evidenceType: z.ZodEnum<{
+        dispatch_ref: "dispatch_ref";
+        provider_attempt: "provider_attempt";
+        status_evidence: "status_evidence";
+    }>;
+    status: z.ZodNullable<z.ZodString>;
+    providerStatus: z.ZodNullable<z.ZodString>;
+    providerOrderId: z.ZodNullable<z.ZodString>;
+    evidenceKind: z.ZodNullable<z.ZodString>;
+    occurredAt: z.ZodNullable<z.ZodString>;
+    updatedAt: z.ZodNullable<z.ZodString>;
+    summary: z.ZodNullable<z.ZodString>;
+}, z.core.$strict>;
 ```
 ## dist/commerce/orderDraftErrors.d.ts
 

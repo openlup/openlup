@@ -485,7 +485,16 @@ describe("eslint platform module boundaries", { timeout: 60_000 }, () => {
     expect(entries.filter((entry) => !entry.isDirectory()).map(({ name }) => name)).toEqual([]);
     expect(Object.keys(graph).sort()).toEqual(entries.map(({ name }) => name).sort());
     for (const [module, { values, types }] of Object.entries(graph)) {
-      for (const target of [...values, ...types]) expect(Object.keys(graph)).toContain(target);
+      for (const target of [...values, ...types]) {
+        const [owner, ...entry] = target.split("/");
+        expect(Object.keys(graph)).toContain(owner);
+        expect(owner).not.toBe(module);
+        if (entry.length) {
+          expect(entry).toHaveLength(1);
+          expect(["contracts", "server"]).toContain(entry[0]);
+          expect(Reflect.get(graph[owner!]!, entry[0]!)).toBe(true);
+        }
+      }
       expect([...values, ...types]).not.toContain(module);
       expect(values.filter((target) => types.includes(target))).toEqual([]);
     }
@@ -591,8 +600,9 @@ describe("eslint platform module boundaries", { timeout: 60_000 }, () => {
       const source = ts.createSourceFile(path, readFileSync(path, "utf8"), ts.ScriptTarget.Latest, true);
       const edge = (specifier: string, typeOnly: boolean) => {
         if (!specifier.startsWith(".")) return;
-        const target = relative(platformSource, resolve(dirname(path), specifier)).split(sep)[0]!;
-        if (target !== module) actual.get(module)![typeOnly ? "types" : "values"].add(target);
+        const parts = relative(platformSource, resolve(dirname(path), specifier)).split(sep);
+        const target = parts.slice(0, -1).join("/");
+        if (parts[0] !== module) actual.get(module)![typeOnly ? "types" : "values"].add(target);
       };
       const visit = (node: import("typescript").Node): void => {
         if ((ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) && node.moduleSpecifier && ts.isStringLiteral(node.moduleSpecifier)) {

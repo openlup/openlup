@@ -564,7 +564,10 @@ owns their schema/backfill prerequisites and explicit mapping for adopters that
 already carry the donor history. The new fixtures add no C94 vocabulary counts.
 
 The selected reference browser profiles admit exact built commerce files,
-including the browser-safe schemas and pure helper closure. The list grants
+including the browser-safe schemas and pure helper closure. The subscription
+profile includes the 31 OMS schema/pure-model files reached when its commerce
+barrel is parsed; the Node-only detail builder and managed adapters stay outside
+that exact inventory. The identity profile needs no additional imports. The list grants
 no directory-wide admission: `commerce/server` and the Node-only pricing root
 remain outside it. `pricing/browser` admits only its four-file runtime closure
 for the existing primitive factory and acquisition capability/expectation schemas. A new reference import must have both browser-safe dependency

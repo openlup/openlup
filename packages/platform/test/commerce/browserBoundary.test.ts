@@ -5,6 +5,7 @@ import { relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { expect, it } from "vitest";
 import * as server from "../../src/commerce/server/index.js";
+import * as commerce from "@openlup/platform/commerce";
 
 it.each(["commerce", "commerce/contracts", "pricing/browser"])("bundles the complete %s entry for browsers without Node imports", async (entry) => {
   const result = await build({
@@ -18,8 +19,9 @@ it.each(["commerce", "commerce/contracts", "pricing/browser"])("bundles the comp
   expect(result.outputFiles).toHaveLength(1);
 });
 
-it("reserves an empty server entry without exposing handlers to the browser entry", () => {
-  expect(Object.keys(server)).toEqual([]);
+it("exposes OMS handlers only through the server entry", () => {
+  expect(server.createAdminCommerceOrdersListHandler).toBeTypeOf("function");
+  expect(commerce).not.toHaveProperty("createAdminCommerceOrdersListHandler");
 });
 
 it("exposes exactly the three existing pricing browser symbols with their original identity", async () => {
@@ -54,4 +56,16 @@ it("admits exactly the built pricing browser closure without its server root", a
     expect(files).not.toContain("packages/platform/dist/pricing/index.js");
     expect(files).not.toContain("packages/platform/dist/commerce/server/index.js");
   }
+});
+
+it("bundles the built commerce entry and its complete module graph for browsers", async () => {
+  const result = await build({ entryPoints: [fileURLToPath(new URL("../../dist/commerce/index.js", import.meta.url))], bundle: true, platform: "browser", format: "esm", treeShaking: false, write: false, metafile: true, logLevel: "silent" });
+  expect(result.outputFiles[0]!.text).not.toMatch(/(?:from|import\s*\(|require\s*\()\s*["']node:/);
+  expect(Object.keys(result.metafile!.inputs).filter(path => /commerce\/(?:server|adapters)\/|platform\/dist\/(?:pricing|shipping)\/index\.js$/.test(path))).toEqual([]);
+});
+
+it("keeps locale label helpers and tables out of the commerce runtime export list", () => {
+  const names = Object.keys(commerce);
+  expect(names).not.toContain("timelineLabelForStep");
+  expect(names).not.toContain("FULFILLMENT_STATUS_MAP");
 });

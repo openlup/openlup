@@ -147,3 +147,24 @@ describe("admin commerce replacement shipment handler", () => {
     expect(JSON.stringify(vi.mocked(res.json).mock.calls)).not.toContain("10.0.0.1");
   });
 });
+
+it("preserves replay receipts, metadata and the replacement transaction receiver", async () => {
+  const body = { ...replacementRequest(), metadata: { source: "original" } };
+  const req = request("POST", body);
+  req.headers.authorization = "admin-session";
+  const result = { ...replacementResponse(), contractVersion: "commerce.v0" as const, replayed: true };
+  const port = { async requestReplacementShipment(input: unknown) {
+    expect(this).toBe(port);
+    expect(input).toEqual({ ...body, actorUserId: "original-actor" });
+    return result;
+  } };
+  const res = response();
+  await createAdminCommerceOrderRequestReplacementShipmentHandler({ omsPort: port,
+    authorizeAdmin: async original => {
+      expect(original).toBe(req);
+      expect(original.headers.authorization).toBe("admin-session");
+      return { ok: true, userId: "original-actor" };
+    },
+  })(req, res);
+  expect(res.json).toHaveBeenCalledWith({ ok: true, data: result });
+});

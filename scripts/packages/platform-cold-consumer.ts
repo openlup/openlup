@@ -313,7 +313,8 @@ assert(!acquisitionTermsExpectationSchema.safeParse({ revision: "example", deliv
 await assert.rejects(import("@openlup/platform/pricing/browser/internal"), { code: "ERR_PACKAGE_PATH_NOT_EXPORTED" });
 import * as contracts from "@openlup/platform/commerce/contracts";
 import * as server from "@openlup/platform/commerce/server";
-assert.deepEqual(Object.keys(server), []);
+assert.equal(typeof server.createAdminCommerceOrdersListHandler, "function");
+assert.equal("createAdminCommerceOrdersListHandler" in commerce, false);
 await assert.rejects(import("@openlup/platform/commerce/server/internal"), { code: "ERR_PACKAGE_PATH_NOT_EXPORTED" });
 assert.deepEqual(Object.keys(contracts), []);
 const items = commerce.offerAvailabilityRequestItems([{sku:"ITEM-A",slug:"item-a",variantId:"variant-a"}],"subscription");

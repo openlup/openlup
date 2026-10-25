@@ -82,7 +82,7 @@ timestamp used in the webhook's idempotency key.
 | `./catalog` | Experimental neutral catalog schemas, drafts, reads, media source packs and publication ports |
 | `./catalog/contracts` | Dependency-free catalog DTOs, media resolver, authority and canonicalization helpers |
 | `./commerce`, `./commerce/contracts` | Browser-safe neutral commerce schema cores, generic ports and pure contract helpers |
-| `./commerce/server` | Reserved Node-only commerce handlers, stores, adapters and engine composition entry; currently empty |
+| `./commerce/server` | Node-only OMS handlers, managed stores/adapters and order-detail composition |
 | `./pricing` | Experimental price authority, quote computation/handlers, offer projection/cache, readiness and policy tokens |
 | `./pricing/browser` | Existing quote primitive factory and acquisition capability/expectation schemas, browser-safe |
 | `./pricing/contracts` | Dependency-free authority, money, quote and offer DTOs and version constants |
@@ -96,12 +96,13 @@ timestamp used in the webhook's idempotency key.
 `./commerce/contracts` is a type-only, browser-safe entry for commerce-owned
 records and generic persistence, checkout/runtime, availability, recovery and
 offer-policy ports. It imports no pricing module. Consume pricing DTOs from
-`./pricing/contracts` directly. Commerce does not re-export pricing DTOs or
-follow pricing declarations through its runtime entry. Quote ports take the
+`./pricing/contracts` directly. Commerce does not re-export pricing DTOs; its runtime
+reuses the version constant through `./pricing/contracts`. Quote ports take the
 host request, response and existing options as type parameters; the reference
 binds the existing pricing definitions, adding only the server-bound offer.
 
-`./commerce/server` reserves the Node-only composition boundary and currently exports nothing.
+`./commerce/server` supplies the Node-only OMS handlers, managed adapters and
+order-detail composition.
 `./commerce` remains browser-safe, including its full runtime import closure.
 It also owns canonical order-money validation and commerce event payload schemas.
 The latter reuse the core outbox envelope and inject host quote/draft validators,
@@ -128,6 +129,22 @@ The unchanged reference suites and a pre-extraction parse transcript protect
 host bindings. The cold consumer imports both installed entries and checks
 availability projection/refusal, opaque offers, injected minimums and snapshot
 refusal without optional peers. This establishes contract proof only.
+
+OMS schemas and pure operational builders export from browser-safe `./commerce`.
+Order-money derivation and paid-event constants reuse the existing commerce
+owners. `OmsOrderPaymentStatus` binds the existing generic
+`OmsPaymentStatus<PaymentIntentStatus>` to the core payment states; the generic
+K1 contract remains available unchanged.
+Node-only `./commerce/server` owns the generic handlers, managed RPC/query store
+and detail composition that uses the shipping runtime. DTOs and structural ports
+remain in the type-only contracts entry. Inject settlement,
+identity/presentation and provider read projections at composition. The managed
+client requires only `rpc`; table reads and note persistence receive a separate
+query capability, including the `is(column, value)` filter required by hydration.
+Unprojected timeline labels use canonical step keys; hosts supply localized copy
+through `timelineLabel`. Refund marking remains an operator mark. Replacement creation
+uses the existing fulfillment handler and never confirms arrival or interrupts
+an active subscription. W5/W6 tests pin replay tuples and forbidden effects.
 
 ## Shipping
 
@@ -873,3 +890,5 @@ transport or query projection is host-owned. No executor is installed.
 store seller binding and managed wrappers persist its first-ever claim revision;
 legacy fallback and forward-only migration limits are owned by the
 [M09 migration section](../../docs/platform/DATA_AND_MIGRATIONS.md#m09-invoicing-forward-design-and-control-approval).
+
+OMS read projections are optional. Omitting the host health classifier preserves the original unprojected empty health snapshot (`ok`, no reasons or evidence IDs); it does not evaluate provider health. The reference composition injects its existing classifier and evidence readers.

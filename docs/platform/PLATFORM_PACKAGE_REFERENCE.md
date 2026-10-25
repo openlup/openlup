@@ -804,3 +804,14 @@ differ from legacy host counts. An item-capable recorder/resolver produces disti
 [native delivery contract](../../tests/postgres/invoicingDelivery.test.ts) exercises
 store/job results and durable state against the pinned SQL, including retry and
 terminal outcomes; it makes no live transport or inbox-delivery claim.
+
+## OMS composition
+
+Use browser-safe commerce for OMS schemas and pure read builders. Use the
+Node-only commerce/server entry for handlers, managed translation/query hydration
+and the detail builder; import DTOs from commerce/contracts. Supply a
+responder, admin authorizer, settlement policy and reference projections. Keep
+provider evidence, identity extensions and presentation in the host and bind the
+host schema through the final response validation. A structural RPC client and
+separate query capability preserve one executor per order operation. Replacement
+creation delegates to fulfillment and leaves alignment pending actual arrival.
