@@ -332,8 +332,10 @@ availability. Missing keys leave the preview unbound with
 `inventory_stock_source_key_required`; `requireNewPurchaseStockRead` makes that
 a readiness refusal. The native preview protects all live holds, remaining due
 subscription demand inside 14 days and channel exposure, clamped at zero. It
-refuses own-order exclusions and other horizons. Managed composition retains its
-host-injected normalized reader. Native one-time and replacement allocation remain
+refuses own-order exclusions and other horizons. Managed composition uses an injected normalized reader first, then
+`store.stockRpc` for the service-role managed reader with the managed forward
+`20261025109000_inventory_new_purchase_stock_read.sql`; without either it reports `inventory_new_purchase_stock_reader_required`.
+Managed quantities retain ATP provider-tagged accounting and the same fixed priority. Native one-time and replacement allocation remain
 unavailable; this read supplies no allocation authority. Importing
 the binding mounts no route, schedule or provider. Admin composition retains its
 authorization and mutation flag; native adjustment remains refused.

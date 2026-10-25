@@ -1070,8 +1070,9 @@ export { createPostgresSubscriptionCommandStore, createPostgresSubscriptionComma
 export type { NativeSubscriptionCommand, NativeSubscriptionCommandBinding } from "./postgresCommandStore.js";
 export { createPostgresStockWaitStore } from "./postgresStockWaitStore.js";
 export type { NativeStockWaitBinding, NativeStockWaitAdmission } from "./postgresStockWaitStore.js";
-/** Managed SQL is exposed for service-role hosts; no StockWaitStorePort or
- * NewPurchaseStockReadPort TypeScript adapter is composed for this graph.
+/** Managed SQL is exposed for service-role hosts; no StockWaitStorePort
+ * TypeScript adapter is composed for this graph. A NewPurchaseStockReadPort
+ * adapter is available in ../inventory for managed service-role hosts.
  * SQL behavior is proved by the managed pgTAP/real-PostgreSQL witnesses.
  */
 export declare const MANAGED_SUBSCRIPTION_STOCK_CAPABILITIES: Readonly<{

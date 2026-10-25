@@ -109,3 +109,23 @@ it("leaves managed reader selection and its named refusal unchanged", () => {
   expect(createInventoryBindings({ ...deps, newPurchaseStockReadPort: supplied }).unsupported.newPurchaseStockRead).toBeNull();
   expect(createInventoryBindings(deps).unsupported.newPurchaseStockRead).toBe("inventory_new_purchase_stock_reader_required");
 });
+
+it("prefers an injected managed reader over stockRpc, and otherwise binds stockRpc through the reference", async () => {
+  const store = native();
+  const rpc = vi.fn(async () => ({ data: [], error: null }));
+  const supplied = { read: vi.fn() };
+  const deps = { dataKind: "supabase", provider, stockRpc: { rpc }, createManagedStore: () => ({ readPort: store.readPort!, mutationPort: store.mutationPort! }) };
+  expect(createInventoryBindings({ ...deps, newPurchaseStockReadPort: supplied }).newPurchaseStockReadPort).toBe(supplied);
+  expect(rpc).not.toHaveBeenCalled();
+  const now = () => new Date(0).toISOString();
+  const binding = createM06InventoryReferenceBinding({ store: { ...deps, now },
+    version: "0.25.0", requiredSchema: { version: "complete", migration: "complete", objects: [] }, bundleCatalogReadPort: {} as never,
+    stock: { functionMissingFallback: null, functionMissingError: "missing", defaultLowStockThreshold: 20, defaultHorizonDays: 14, observe: { warn: vi.fn() } },
+    options: { mode: "new_purchase" }, requireNewPurchaseStockRead: true });
+  expect(binding.readiness).toEqual({ ready: true, reason: null });
+  expect(binding.unsupported.newPurchaseStockRead).toBeNull();
+  expect(binding.ports["@openlup/platform/inventory:newPurchaseStockRead"]).toBe(binding.newPurchaseStockReadPort!.read);
+  await binding.stock!.getAvailability({ items: [{ sku: "SKU", productSlug: "example", variantId: "example", requestedQuantity: 1, checkoutMode: "one_time" }] });
+  expect(rpc).toHaveBeenCalledExactlyOnceWith("inventory_new_purchase_stock_read", { p_skus: ["SKU"], p_as_of: now() });
+  expect(supplied.read).not.toHaveBeenCalled();
+});

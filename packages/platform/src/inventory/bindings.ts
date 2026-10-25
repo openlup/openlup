@@ -1,3 +1,4 @@
+import { createManagedStockAvailability, type ManagedStockRpc } from "./managedStockAvailability.js";
 import type { z } from "zod";
 import { createPostgresAdminInventoryPort } from "./adminInventory.js";
 import type { InventoryMutationPort, InventoryReadPort } from "./ports.js";
@@ -14,6 +15,7 @@ export interface InventoryBindingDependencies {
   } | null;
   newPurchaseStockReadPort?: NewPurchaseStockReadPort | null;
   stockSourceKey?: string;
+  stockRpc?: ManagedStockRpc;
   now?: () => string;
 }
 
@@ -44,7 +46,8 @@ export function createInventoryBindings(deps: InventoryBindingDependencies): Inv
     const store = deps.createManagedStore?.(deps.provider);
     if (!store) return refused("inventory_managed_store_required");
     ({ readPort, mutationPort } = store);
-    stockRead = deps.newPurchaseStockReadPort;
+    stockRead = deps.newPurchaseStockReadPort ?? (deps.stockRpc
+      ? createManagedStockAvailability(deps.stockRpc, { now: deps.now ?? (() => new Date().toISOString()) }) : null);
   } else return refused("inventory_store_incompatible");
   if (![readPort?.listStock, readPort?.listReservations, readPort?.checkAtp, readPort?.forecastSubscriptions, mutationPort?.adjustStock].every(fn => typeof fn === "function")) return refused("inventory_store_incompatible");
   const responseSchema = createInventorySubscriptionForecastResponseSchema(deps.provider.providerSchema);

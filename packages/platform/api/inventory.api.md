@@ -26,6 +26,7 @@ export {};
 ## dist/inventory/bindings.d.ts
 
 ```ts
+import { type ManagedStockRpc } from "./managedStockAvailability.js";
 import type { z } from "zod";
 import type { InventoryMutationPort, InventoryReadPort } from "./ports.js";
 import type { NewPurchaseStockReadPort } from "./newPurchaseStockAvailability.js";
@@ -46,6 +47,7 @@ export interface InventoryBindingDependencies {
     } | null;
     newPurchaseStockReadPort?: NewPurchaseStockReadPort | null;
     stockSourceKey?: string;
+    stockRpc?: ManagedStockRpc;
     now?: () => string;
 }
 export interface InventoryBindings {
@@ -415,6 +417,7 @@ export { INVENTORY_MIGRATIONS } from "./sql.js";
 export { createInventoryBindings, type InventoryBindingDependencies, type InventoryBindings } from "./bindings.js";
 export { createPostgresStockAvailability } from "./postgresStockAvailability.js";
 export type { NativeStockPromise } from "./postgresStockAvailability.js";
+export { createManagedStockAvailability, type ManagedStockRpc } from "./managedStockAvailability.js";
 ```
 ## dist/inventory/inventoryHandlers.d.ts
 
@@ -472,6 +475,25 @@ export declare function createAdminInventoryStockAdjustmentHandler({ authorizeAd
     mutationsEnabled: () => boolean;
 }): (req: HttpRequest, res: HttpResponse) => Promise<void>;
 export {};
+```
+## dist/inventory/managedStockAvailability.d.ts
+
+```ts
+import type { NewPurchaseStockReadPort } from "./newPurchaseStockAvailability.js";
+/** Minimal service-role RPC seam; transport and credentials remain host-owned. */
+export interface ManagedStockRpc {
+    rpc(name: string, args: Record<string, unknown>): PromiseLike<{
+        data: unknown;
+        error: {
+            message: string;
+            code?: string;
+        } | null;
+    }>;
+}
+/** Read-only managed ATP preview with fixed subscription priority. */
+export declare function createManagedStockAvailability(client: ManagedStockRpc, options: {
+    now: () => string;
+}): NewPurchaseStockReadPort;
 ```
 ## dist/inventory/newPurchaseStockAvailability.d.ts
 
