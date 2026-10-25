@@ -513,9 +513,11 @@ service-only creations and two private invoker creations. The seven checkout, re
 acquisition entries retain their pinned slots; the eighth is the single
 new-purchase stock reader (`public.inventory_new_purchase_stock_read(jsonb,timestamptz)`).
 It runs with owner privileges through `SECURITY DEFINER` and pinned
-`search_path = pg_catalog, public`; only `service_role` may execute it, with
+`search_path = pg_catalog, pg_temp`; only `service_role` may execute it, with
 `PUBLIC`, `anon`, `authenticated` and `openlup_mcp_reader` revoked.
-Its real-PostgreSQL behaviour proof calls as `service_role` and checks function
+`SECURITY DEFINER` search paths list `pg_temp` last explicitly; application
+relations and routines are schema-qualified. Its real-PostgreSQL behaviour proof
+calls as `service_role` and checks function
 permission refusals as the denied roles; owner access serves setup and state
 inspection. It fixes ATP renewal exemption to false,
 bounds requests to 200 array items and refuses a NULL as-of timestamp as

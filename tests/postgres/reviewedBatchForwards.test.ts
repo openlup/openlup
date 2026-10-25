@@ -17,7 +17,7 @@ import { deriveOfferAvailability } from "../../src/domains/commerce/offerAvailab
 
 // Setup and catalog inspection use the owner; every reader call uses its caller role.
 async function assertManagedStockReader(db: Pool) {
-  const signature = "public.inventory_new_purchase_stock_read(jsonb,timestamptz)";
+  const signature = "public.inventory_new_purchase_stock_read(pg_catalog.jsonb,pg_catalog.timestamptz)";
   const at = "2032-01-01T12:00:00.000Z";
   const id = "f3f30000-0000-4000-8000-000000000001";
   const catalog = (await db.query(`SELECT p.prosecdef,p.proconfig,
@@ -25,7 +25,10 @@ async function assertManagedStockReader(db: Pool) {
       LEFT JOIN pg_roles r ON r.oid=a.grantee
       WHERE a.privilege_type='EXECUTE' AND a.grantee<>p.proowner ORDER BY 1) AS callers
     FROM pg_proc p WHERE p.oid=$1::regprocedure`, [signature])).rows[0];
-  expect(catalog).toEqual({ prosecdef: true, proconfig: ["search_path=pg_catalog, public"], callers: ["service_role"] });
+  expect(catalog).toEqual({ prosecdef: true, proconfig: ["search_path=pg_catalog, pg_temp"], callers: ["service_role"] });
+  const atpCatalog = (await db.query(`SELECT prosecdef,proconfig FROM pg_proc
+    WHERE oid='public.inventory_available_to_promise(uuid,timestamptz,boolean)'::regprocedure`)).rows[0];
+  expect(atpCatalog).toEqual({ prosecdef: false, proconfig: ["search_path=pg_catalog, public"] });
   expect((await db.query("SELECT has_column_privilege('service_role','public.subscriptions','is_test_fixture','SELECT') AS allowed")).rows[0].allowed).toBe(false);
   const provider = (await db.query(`SELECT (regexp_match(pg_get_functiondef(
     'public.inventory_available_to_promise(uuid,timestamptz,boolean)'::regprocedure),
@@ -57,7 +60,7 @@ async function assertManagedStockReader(db: Pool) {
     try {
       await db.query(`SET LOCAL ROLE ${role}`);
       expect((await db.query("SELECT current_user AS caller")).rows[0].caller).toBe(role);
-      return (await db.query("SELECT public.inventory_new_purchase_stock_read($1::jsonb,$2::timestamptz) AS result",
+      return (await db.query("SELECT public.inventory_new_purchase_stock_read($1::pg_catalog.jsonb,$2::pg_catalog.timestamptz) AS result",
         [JSON.stringify(skus), asOf])).rows[0].result;
     } finally { await db.query("ROLLBACK TO SAVEPOINT stock_reader_role; RELEASE SAVEPOINT stock_reader_role"); }
   };
@@ -90,6 +93,46 @@ async function assertManagedStockReader(db: Pool) {
     expect(await read("service_role")).toEqual([{ ...expected[0], stale: true, channelExposure: 4,
       available: 10, availableForNewPurchases: 10 }]);
   } finally { await db.query("ROLLBACK TO SAVEPOINT stock_reader_variants; RELEASE SAVEPOINT stock_reader_variants"); }
+  for (const attack of ["temporary type", "public overload"] as const) {
+    await db.query("SAVEPOINT stock_reader_hostile");
+    try {
+      // Model a caller with TEMP and public-schema CREATE; all objects/grants roll back.
+      await db.query("GRANT CREATE ON SCHEMA public TO service_role; SET LOCAL ROLE service_role");
+      if (attack === "temporary type") {
+        await db.query(`CREATE TEMP TABLE stock_reader_hostile_session(marker text);
+          CREATE FUNCTION pg_temp.stock_reader_type_check(value pg_catalog.jsonb)
+          RETURNS boolean LANGUAGE plpgsql AS $$ BEGIN
+            RAISE EXCEPTION 'stock_reader_hostile_temp_type:%', CURRENT_USER USING ERRCODE='P0001';
+          END; $$;
+          CREATE DOMAIN pg_temp.jsonb AS pg_catalog.jsonb
+            CHECK (pg_temp.stock_reader_type_check(VALUE))`);
+      } else {
+        await db.query(`CREATE FUNCTION public.stock_reader_aggregate_step(state pg_catalog.jsonb, value pg_catalog.jsonb)
+          RETURNS pg_catalog.jsonb LANGUAGE plpgsql AS $$ BEGIN
+            RAISE EXCEPTION 'stock_reader_hostile_public_aggregate:%', CURRENT_USER USING ERRCODE='P0001';
+          END; $$;
+          CREATE AGGREGATE public.jsonb_agg(pg_catalog.jsonb)
+            (SFUNC=public.stock_reader_aggregate_step, STYPE=pg_catalog.jsonb)`);
+      }
+      await db.query("RESET ROLE");
+      // Either hostile function raises if reached; unchanged results prove neither ran.
+      await success();
+      expect(await read("service_role", [])).toEqual([]);
+      const owner = (await db.query(`SELECT pg_get_userbyid(proowner) AS owner FROM pg_proc
+        WHERE oid=$1::regprocedure`, [signature])).rows[0].owner;
+      await db.query("SAVEPOINT stock_reader_path_mutant");
+      try {
+        const path = attack === "temporary type" ? "pg_catalog" : "pg_catalog, public";
+        await db.query(`ALTER FUNCTION ${signature} SET search_path = ${path}`);
+        await expect(read("service_role", attack === "temporary type" ? [] : ["M11-STOCK"])).rejects.toMatchObject({
+          code: "P0001", message: `${attack === "temporary type" ? "stock_reader_hostile_temp_type" : "stock_reader_hostile_public_aggregate"}:${owner}`,
+        });
+        process.stdout.write(`Stock reader ${attack} header mutant reached hostile code as ${owner}\n`);
+      } finally { await db.query("ROLLBACK TO SAVEPOINT stock_reader_path_mutant; RELEASE SAVEPOINT stock_reader_path_mutant"); }
+      await success();
+      expect(await read("service_role", [])).toEqual([]);
+    } finally { await db.query("ROLLBACK TO SAVEPOINT stock_reader_hostile; RELEASE SAVEPOINT stock_reader_hostile"); }
+  }
   const scratch = mkdtempSync(join(tmpdir(), "openlup-stock-reader-mutants-"));
   try {
     const sql = readFileSync("scripts/fixtures/reviewed-m11/supabase/migrations/20261025109000_inventory_new_purchase_stock_read.sql", "utf8")

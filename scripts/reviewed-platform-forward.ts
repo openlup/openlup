@@ -1094,7 +1094,7 @@ const managedCommerceSingleShapes = [
   ["20261025106000_subscription_acquisition_terms.sql", "public.commerce_subscription_acquisition_terms(timestamptz)", true, "563fbd0f8546b8927078c16de55493c243b655d80b1ff1b71329f0b16bcfc48e"],
   ["20261025107000_checkout_acquisition_admission.sql", "private.commerce_assert_acquisition_admission(jsonb,uuid)", true, "165cc113d3c1ec21199d5ab588e74db33208c7a34433a7e601031fb0dd0e064c"],
   ["20261025108000_checkout_finalize_acquisition_admission.sql", "public.commerce_finalize_order_for_checkout(text,uuid,text,uuid,uuid,uuid,jsonb,jsonb,jsonb)", false, "ba2caf9f34d1a81fb364ef5a8802569b389e09cec0df882ead91acc4a5759a85"],
-  ["20261025109000_inventory_new_purchase_stock_read.sql", "public.inventory_new_purchase_stock_read(jsonb,timestamptz)", true, "2edeeb8d218ea002551b2b3aa6de736c69ea0d56cc3acc8a2d3362e5d2704cb5"],
+  ["20261025109000_inventory_new_purchase_stock_read.sql", "public.inventory_new_purchase_stock_read(jsonb,timestamptz)", true, "6c37031e5226cecfe4c19149012a816e96c60783cc9e523fdd725a9aa8c569cb"],
 ] as const;
 const managedCommerceShapes = [
   ...managedCommerceSingleShapes.map(([file, signature, creation, header]) => ({ file, functions: [{ signature, creation, header }] })),
@@ -1139,10 +1139,16 @@ function validateManagedCommerceForwards(forwards: ManagedCommerceForwardBinding
     for (const pin of forward.statements) {
       if (!pin || !hash(pin.sha256) || !["sha256", "sha256,sql"].includes(Object.keys(pin).sort().join(",")) || (pin.sql !== undefined && (typeof pin.sql !== "string" || sqlSha256(pin.sql) !== pin.sha256))) throw new Error("reviewed M11 commerce invalid statement pin");
     }
-    if (index === 7 && forward.functions[0]!.afterSha256 === managedCommerceStockReaderHistory.afterSha256
-      && (!historical || forward.sha256 !== managedCommerceStockReaderHistory.sha256
-        || forward.statements[0]!.sha256 !== managedCommerceStockReaderHistory.afterSha256)) {
-      throw new Error(`reviewed M11 commerce header ${managedCommerceStockReaderHistory.header} requires exact approval history`);
+    if (index === 7) {
+      const legacy = managedCommerceStockReaderHistory;
+      const legacyPin = (pin: string) => pin === legacy.sha256 || pin === legacy.afterSha256;
+      // Every legacy identifier belongs to the complete history-only tuple.
+      if ([forward.sha256, forward.functions[0]!.afterSha256, ...forward.statements.map(pin => pin.sha256)].some(legacyPin)
+        && (!historical || ![8, 9].includes(forwards.length) || forward.sha256 !== legacy.sha256
+          || forward.functions[0]!.afterSha256 !== legacy.afterSha256 || forward.statements[0]!.sha256 !== legacy.afterSha256
+          || forward.statements.slice(1).some(pin => legacyPin(pin.sha256)))) {
+        throw new Error(`reviewed M11 commerce header ${legacy.header} requires exact approval history`);
+      }
     }
     if (audit) {
       const constraint = forward.constraints?.[0];
