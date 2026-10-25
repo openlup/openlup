@@ -6,12 +6,17 @@ The package [identity guide](IDENTITY.md) owns server identity contracts.
 
 The browser import inventory lists the exact built files reached through
 `@openlup/platform/commerce` and its type-only contracts entry. The complete
-commerce runtime is checked with a browser bundle. The reserved
+commerce runtime is checked with a browser bundle. The Node-only
 `@openlup/platform/commerce/server` entry remains outside the closed inventory;
 the profile build test explicitly proves that it is refused, alongside the
 Node-only pricing root. The additive `pricing/browser` entry contributes exactly
 its built entry, quote primitives, acquisition validators and acquisition
 contract constant. No directory wildcard or other pricing implementation is admitted.
+The commerce barrel also reaches pure OMS schemas and read-model helpers, plus
+their core fulfillment, payment and subscription runtime dependencies. Both
+identity and subscription inventories list each emitted module in that complete
+browser-safe closure as an exact built path. Commerce handlers and managed
+adapters remain outside the closure.
 
 ## Routes and readiness
 
