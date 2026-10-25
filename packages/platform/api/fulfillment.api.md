@@ -1383,13 +1383,13 @@ export declare const COMMERCE_FULFILLMENT_PROVIDER_ATTEMPT_STATUSES: readonly ["
 export declare const commerceFulfillmentStatusSchema: z.ZodEnum<{
     created: "created";
     cancelled: "cancelled";
-    exception: "exception";
     delivered: "delivered";
     packed: "packed";
-    in_transit: "in_transit";
     label_pending: "label_pending";
     label_created: "label_created";
     handed_over: "handed_over";
+    in_transit: "in_transit";
+    exception: "exception";
 }>;
 export declare const commerceFulfillmentOperationTypeSchema: z.ZodEnum<{
     created: "created";
@@ -1528,13 +1528,13 @@ export declare const commerceFulfillmentOrderSchema: z.ZodObject<{
     status: z.ZodEnum<{
         created: "created";
         cancelled: "cancelled";
-        exception: "exception";
         delivered: "delivered";
         packed: "packed";
-        in_transit: "in_transit";
         label_pending: "label_pending";
         label_created: "label_created";
         handed_over: "handed_over";
+        in_transit: "in_transit";
+        exception: "exception";
     }>;
     providerKind: z.ZodNullable<z.ZodString>;
     providerTrackingId: z.ZodNullable<z.ZodString>;
@@ -1632,13 +1632,13 @@ export declare const adminCommerceFulfillmentOrdersListRequestSchema: z.ZodObjec
     status: z.ZodOptional<z.ZodEnum<{
         created: "created";
         cancelled: "cancelled";
-        exception: "exception";
         delivered: "delivered";
         packed: "packed";
-        in_transit: "in_transit";
         label_pending: "label_pending";
         label_created: "label_created";
         handed_over: "handed_over";
+        in_transit: "in_transit";
+        exception: "exception";
     }>>;
 }, z.core.$strict>;
 export declare const adminCommerceFulfillmentOrderDetailRequestSchema: z.ZodObject<{
@@ -1683,9 +1683,9 @@ export declare const adminCommerceFulfillmentTrackingEventRequestSchema: z.ZodOb
     idempotencyKey: z.ZodString;
     fulfillmentOrderId: z.ZodGUID;
     status: z.ZodEnum<{
-        exception: "exception";
         delivered: "delivered";
         in_transit: "in_transit";
+        exception: "exception";
     }>;
     providerTrackingId: z.ZodOptional<z.ZodString>;
     rawEvent: z.ZodDefault<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
@@ -1706,13 +1706,13 @@ export declare const adminCommerceFulfillmentOrdersListResponseSchema: z.ZodObje
         status: z.ZodEnum<{
             created: "created";
             cancelled: "cancelled";
-            exception: "exception";
             delivered: "delivered";
             packed: "packed";
-            in_transit: "in_transit";
             label_pending: "label_pending";
             label_created: "label_created";
             handed_over: "handed_over";
+            in_transit: "in_transit";
+            exception: "exception";
         }>;
         providerKind: z.ZodNullable<z.ZodString>;
         providerTrackingId: z.ZodNullable<z.ZodString>;
@@ -1817,13 +1817,13 @@ export declare const adminCommerceFulfillmentOrderDetailResponseSchema: z.ZodObj
         status: z.ZodEnum<{
             created: "created";
             cancelled: "cancelled";
-            exception: "exception";
             delivered: "delivered";
             packed: "packed";
-            in_transit: "in_transit";
             label_pending: "label_pending";
             label_created: "label_created";
             handed_over: "handed_over";
+            in_transit: "in_transit";
+            exception: "exception";
         }>;
         providerKind: z.ZodNullable<z.ZodString>;
         providerTrackingId: z.ZodNullable<z.ZodString>;
@@ -1923,13 +1923,13 @@ export declare const adminCommerceFulfillmentMutationResponseSchema: z.ZodObject
     status: z.ZodEnum<{
         created: "created";
         cancelled: "cancelled";
-        exception: "exception";
         delivered: "delivered";
         packed: "packed";
-        in_transit: "in_transit";
         label_pending: "label_pending";
         label_created: "label_created";
         handed_over: "handed_over";
+        in_transit: "in_transit";
+        exception: "exception";
     }>;
     replayed: z.ZodBoolean;
 }, z.core.$strict>;
