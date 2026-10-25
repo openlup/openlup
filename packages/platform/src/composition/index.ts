@@ -20,3 +20,4 @@ export { createCatalogContribution, type CatalogContributionInput } from "./cata
 export { createInventoryContribution } from "./inventoryContribution.js";
 export { createShippingContribution } from "./shippingContribution.js";
 export { createFulfillmentContribution } from "./fulfillmentContribution.js";
+export { createSubscriptionContribution } from "./subscriptionContribution.js";

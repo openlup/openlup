@@ -1,17 +1,22 @@
 import type { PgQueryExecutor } from '../../adapters/postgres/queryBuilder.js';
 import { parseDeliveryAlignmentAdmissionResponse } from '../../domains/subscription/callSubscriptionDeliveryAlignmentAdmission.js';
+import type { RenewalStorePort } from '@openlup/platform/subscriptions/contracts';
 import type { AutomaticRenewalStorePort } from '../../domains/subscription/automaticRenewalPorts.js';
 
 /** Host decorator for the native runner's existing new-cycle admission hook. */
+export function withDeliveryAlignmentRenewalAdmission(store: RenewalStorePort, db: PgQueryExecutor, now?: () => string): RenewalStorePort;
+export function withDeliveryAlignmentRenewalAdmission(store: AutomaticRenewalStorePort, db: PgQueryExecutor, now?: () => string): AutomaticRenewalStorePort;
 export function withDeliveryAlignmentRenewalAdmission(
-  store: AutomaticRenewalStorePort,
+  store: AutomaticRenewalStorePort | RenewalStorePort,
   db: PgQueryExecutor,
   now: () => string = () => new Date().toISOString(),
-): AutomaticRenewalStorePort {
+) {
   return {
     ...store,
-    async admitDeliveryAlignment(input) {
-      const staticAdmission = await store.admitDeliveryAlignment(input);
+    async admitDeliveryAlignment(input: { subscriptionId: string; scheduledAt: string; scheduledInstant?: number; occurredAt?: string }) {
+      const staticAdmission = "transactions" in store
+        ? await store.admitDeliveryAlignment({ ...input, scheduledInstant: input.scheduledInstant ?? Date.parse(input.scheduledAt), occurredAt: input.occurredAt ?? now() })
+        : await store.admitDeliveryAlignment(input);
       if (!staticAdmission.allowed) return staticAdmission;
       const { rows } = await db.query(`SELECT
         EXISTS (SELECT 1 FROM public.subscription_cycles
@@ -37,8 +42,8 @@ export function withDeliveryAlignmentRenewalAdmission(
         $1::uuid,$2::timestamptz,$3::timestamptz) AS response`,
       [input.subscriptionId, input.scheduledAt, input.occurredAt ?? now()]);
       const response = parseDeliveryAlignmentAdmissionResponse(admitted.rows[0]?.response, null);
-      if (!response.allowed) return { allowed: false, reason: response.reason, deferred: true };
-      return { allowed: response.allowed, reason: response.reason };
+      if (!response.allowed) return { allowed: false, ...("transactions" in store ? { state: response.state } : {}), reason: response.reason, deferred: true as const };
+      return { allowed: true as const, ...("transactions" in store ? { state: response.state } : {}), reason: response.reason };
     },
   };
 }

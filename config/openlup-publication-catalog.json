@@ -3354,6 +3354,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/composition/subscriptionContribution.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/data/binding.ts",
       "class": "public-output"
     },
@@ -4998,6 +5002,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/subscriptions/commandExamples.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/subscriptions/contracts/commands.ts",
       "class": "public-output"
     },
@@ -5023,6 +5031,10 @@
     },
     {
       "path": "packages/platform/src/subscriptions/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/subscriptions/lifecycleMessages.ts",
       "class": "public-output"
     },
     {
@@ -5059,6 +5071,10 @@
     },
     {
       "path": "packages/platform/src/subscriptions/renewalIdentity.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/subscriptions/services.ts",
       "class": "public-output"
     },
     {
@@ -6243,6 +6259,10 @@
     },
     {
       "path": "packages/platform/test/subscriptions/contracts.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/subscriptions/facades.test.ts",
       "class": "public-output"
     },
     {
@@ -15578,6 +15598,18 @@
       "class": "public-output"
     },
     {
+      "path": "server/runtime/public-reference/m10RetryDriver.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/runtime/public-reference/m10SubscriptionBinding.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/runtime/public-reference/m10SubscriptionSchema.ts",
+      "class": "public-output"
+    },
+    {
       "path": "server/runtime/public-reference/readiness.ts",
       "class": "public-output"
     },
@@ -15599,6 +15631,14 @@
     },
     {
       "path": "server/runtime/public-reference/subscriptionAlignmentSetup.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/runtime/public-reference/subscriptionFacades.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/runtime/public-reference/subscriptionFacades.ts",
       "class": "public-output"
     },
     {
@@ -23515,6 +23555,10 @@
     },
     {
       "path": "tests/postgres/subscriptionCommandLifecycleCases.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/subscriptionComposition.test.ts",
       "class": "public-output"
     },
     {

@@ -1228,15 +1228,19 @@ the immutable receipt and returns before settlement, case rebinding or case
 propagation; it preserves later retry state, notifications and events.
 A host or driver skips `openCase` after a replayed `applyFailure` receipt only
 when that rung's case propagation already committed. If propagation did not
-commit, recovery must complete it. The P8 retry driver must add a replay/case-advanced
-signal and a zero-delta witness for replay after committed propagation.
+commit, recovery must complete it. The composed native retry driver uses
+`failureProgress` to distinguish those states under the subscription lock;
+its real-PostgreSQL witness compares every public row, including tuple versions,
+after replay of a committed subsequent-rung propagation.
 
 The host must establish explicit logical-cycle correlation before invoking the
 automatic runner, including its prepare/execute path; the terminal binding
 cannot repair missing correlation after charging. Ordinary retries must use the
 frozen mandate/authorization. N1 does not bind an ordinary retry method to it:
-the P8 retry driver or host must enforce that binding, and P8 composition must
-add the matching witness.
+the composed retry driver checks the frozen host mandate before preparing an
+ordinary retry. Its PostgreSQL refusal witness proves no durable delta and no
+second provider call for a different method. The binding checks logical-cycle
+correlation before the original prepare/execute path too.
 
 Nothing in automatic renewal pauses an active subscription. Arrival alignment
 uses the outer schedule maximum and actual latest arrival plus cadence; no

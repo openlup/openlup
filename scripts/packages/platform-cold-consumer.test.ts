@@ -493,3 +493,40 @@ it("proves the opt-in fulfillment/omnipack entry default-off without SDK, peers 
   assertConsumerIsolation(consumer, root);
   proveWarehouseAdapterConsumer(consumer);
 });
+
+it("M10 installed facades and composition prove positive selection, readiness refusal and lifecycle identity", () => {
+  const consumer = pristinePackedA1Fixture();
+  assertConsumerIsolation(consumer, root);
+  expect(consumerNode(consumer, `
+import assert from "node:assert/strict";
+import { createSubscriptionServices, createSubscriptionCommandExamples, createSubscriptionLifecycleMessages, subscriptionLifecycleTemplate, NATIVE_SUBSCRIPTION_CAPABILITIES } from "@openlup/platform/subscriptions";
+import { createSubscriptionContribution } from "@openlup/platform/composition";
+let effects=0;
+const options={capabilities:NATIVE_SUBSCRIPTION_CAPABILITIES,readiness:async()=>({kind:"ready"}),run:async()=>++effects};
+assert.deepEqual(await createSubscriptionServices(options).run(),{kind:"refused",code:"disabled"});
+assert.equal(effects,0);
+assert.deepEqual(await createSubscriptionServices({...options,enabled:true,readiness:async()=>({kind:"refused",code:"schema_unknown"})}).run(),{kind:"refused",code:"schema_unknown"});
+assert.equal(effects,0);
+const services=createSubscriptionServices({...options,enabled:true});
+const contribution=createSubscriptionContribution({version:"0.24.0",requiredSchema:{version:"host-catalogue",migration:"host",objects:[]},run:services.run,cadenceSeconds:60});
+assert.equal(contribution.contributions[0].schedules.length,1);
+assert.equal(contribution.triggers["@openlup/platform/subscriptions:subscriptions-renewal"],services.run);
+assert.equal(await contribution.contributions[0].schedules[0].run(),1);
+let received;
+const examples=createSubscriptionCommandExamples({capabilities:NATIVE_SUBSCRIPTION_CAPABILITIES,apply:async command=>{received=command;return {outcome:"refused",reason:"subscription_command_payment_blocked"};}});
+const context={actor:{kind:"customer",actorId:"actor",clientId:"client"},subscriptionId:"sub",idempotencyKey:"original-key",now:"at"};
+assert.equal((await examples.customerSkip(context)).outcome,"refused");
+assert.deepEqual(received,{...context,action:"skip",reason:null,confirmedChargeTiming:true});
+assert.throws(()=>examples.operatorSlide(context,"later"),/operator_required/);
+let descriptor;
+const messages=createSubscriptionLifecycleMessages({enqueue:async value=>{descriptor=value;return {notificationId:"m04",replayed:false};}});
+const fact={kind:"stock_wait_started",factId:"event",idempotencyKey:"wait:started",subscriptionId:"sub",clientId:"client",cycleId:null,caseId:"case",orderId:null,occurredAt:"at",firstRecordedAt:"at",frozenFingerprint:"frozen"};
+const input={fact,messageKey:fact.idempotencyKey,recipientRef:"recipient",locale:"en",recoveryUrlPath:null};
+assert.equal((await messages.deliver(input)).notificationId,"m04");
+assert.equal(descriptor.templateSlug,"subscription-stock-wait-started");
+assert.throws(()=>messages.deliver({...input,messageKey:"changed"}),/identity_mismatch/);
+assert.equal(subscriptionLifecycleTemplate("subscription_stock_wait.resumed"),"subscription-stock-wait-resumed");
+assert.equal(NATIVE_SUBSCRIPTION_CAPABILITIES.multiCyclePrepaid.supported,false);
+console.log("M10 installed positive/refusal passed");
+`)).toContain("M10 installed positive/refusal passed");
+});
