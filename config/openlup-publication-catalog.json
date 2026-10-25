@@ -7358,6 +7358,10 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/fixtures/reviewed-m11/supabase/migrations/20261025109000_inventory_new_purchase_stock_read.sql",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/fulfillment-stock-evidence-proof.ts",
       "class": "public-output"
     },
