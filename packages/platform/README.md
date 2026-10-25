@@ -10,16 +10,21 @@ Development preview. This package is part of the publishable set with core and o
 
 It holds the runnable server substrate an OpenLup application composes: the Node HTTP runtime, BFF dispatch, scheduling and job leases, blob storage, data gateways, the node-postgres migration runner and bundle composition. Ports and their contracts stay in `@openlup/core/platform-runtime`.
 
-For the prepared `0.24.0` set, read the [adjacent-release migration and known
-limitations](CHANGELOG.md#0240) before selecting optional services.
-Install the complete native chain through position 80, including invoicing
-positions 77–79 and the first-claim seller revision forward; sparse SQL projections
-are not an install chain. Keep the older native-row migration precautions in the
-release notes when upgrading `0.22.0` data. Native delivery alignment stays off or
-shadow until a host composes its automatic-renewal runner with G23 admission.
-M10 subscription renewal/retry (P1 exports, forward controls, P2 stores/executor,
-native N1 SQL) remains **EXPERIMENTAL, INCOMPLETE and DEFAULT-OFF**, not for
-adopter activation; G23/N1 host obligations remain pending.
+For the prepared `0.25.0` set, read the [adjacent-release migration and known
+limitations](CHANGELOG.md#0250) before selecting optional services.
+Install the complete native chain through position 86, including N2 commands,
+N3 stock wait, the ATP seam/allocator and late-payment/retry-selection forwards;
+sparse SQL projections are not an install chain. Native runtime roles need the
+ATP/exposure EXECUTE and underlying SELECT grants described in the release notes.
+Managed hosts apply the complete prefix through `20261024185100` for stock-wait
+and refund-evidence functions. Preserve captured obligations and receipts on rollback.
+M10 subscription services and contributions remain **EXPERIMENTAL and DEFAULT-OFF**.
+Hosts explicitly supply readiness, execution, commands, mandatory G23 admission,
+a population lease and M04 delivery. Factories activate no serving work. The inert
+native reference composes renewal, dunning and stock wait; managed TypeScript
+stock recovery, native multi-cycle prepaid and M07 prepared-attempt-store
+capabilities retain their named unsupported boundaries. Follow the older native-row
+migration precautions when upgrading `0.22.0` data.
 M09 invoicing remains **EXPERIMENTAL and DEFAULT-OFF**, available for explicit
 provider/capability selection and ready host composition, including issue,
 correction, independent duties, delivery/read-side and seller revision helpers.
@@ -27,7 +32,7 @@ Adopters must not activate unselected or unready invoicing; installation and
 inert contributions register no runner, worker, route or schedule.
 M06 managed-host proof classes remain pending in the
 [M06 parity ledger](../../docs/platform/plans/oss-m06-stock-reservations-delivery.md#parity-pending-rows).
-Size comparison uses the published `0.23.0` tarball. Preparation and offline
+Size comparison uses the published `0.24.0` tarball. Preparation and offline
 adapter evidence grant no publication or provider-account certification.
 
 Longer module recipes live in the [platform package reference](../../docs/platform/PLATFORM_PACKAGE_REFERENCE.md).

@@ -2,6 +2,215 @@
 
 Releases moved verbatim out of the packed `CHANGELOG.md`, which keeps the current release and the two previous ones.
 
+## [0.22.0]
+
+- Publishable on the npm `latest` dist-tag as `0.22.0`, from tag
+  `openlup-platform-v0.22.0`.
+
+- Add eleven experimental reference-application support exports on the existing payment vendor subpaths. Reuse contributed execution, readback, mapping and diagnostic helpers; preserve the no-charge error class identity. Neutral payment exports and default activation remain unchanged.
+
+Migration: none.
+
+### Opt-in warehouse fulfillment example
+
+Add the experimental, opt-in warehouse fulfillment entry described in the README behind the frozen neutral fulfillment ports: explicit injected I/O, prepared-byte binding, closed evidence, token observations and positive readback. Default-off; account readiness is host-owned. Exact absence, label create/void and cancellation remain unsupported.
+
+Missing or malformed evidence refuses before credential resolution or HTTP.
+
+Migration: none
+
+### Offline warehouse fulfillment conformance
+
+Prove the opt-in warehouse fulfillment entry described in the README with M08's offline conformance runner using injected
+HTTP and synthetic fixtures. Cover dispatch replay and refusals, observation,
+readback, stock and product sync, plus real-worker host-ledger fences after
+restart and retention eviction. No provider-account or activation proof is claimed.
+
+Migration: none
+
+### Fulfillment contracts and status canon
+
+Add experimental `fulfillment` and type-only `fulfillment/contracts` entries with
+contributed status decisions, strict core parser bindings, concrete provider/store
+ports and injected default-off capabilities. No adapter, executor, route or default
+profile is activated; existing reference integrations remain unchanged.
+
+Declared adaptation: empty or absent provider selection is a typed refusal in the
+new package, rather than the donor host's implicit simulator alias. The donor alias
+remains an open owner follow-up; this contribution does not change donor logic.
+Private provider trace columns and registry/environment values are excluded from
+the neutral package; persisted command fingerprints and opaque host keys are retained.
+
+Migration: none (new surface; no existing reference behavior changes).
+
+### Fulfillment paid handoff and fenced dispatch
+
+Add the paid outbox handler/recovery classifier, injected dispatch worker and
+separate durable command-ledger protocol through the new fulfillment entry.
+Preserve one contact remap, opaque host keys, actual-command fingerprints,
+readback/attempt/begin order and local accepted-proof repair without another POST.
+Provider/money/inventory authority remains injected; no SQL, route or activation.
+
+Approved port amendment G14 adds recordProviderAttempt to the new
+FulfillmentStorePort. It records only sanitized prepared DispatchEvidence plus
+mode/recorded status and opaque references, after authoritative claim readback;
+same-key replay writes no second attempt and contact remap retains its own key.
+No new named export or subpath is added by this method. Other contracts are unchanged.
+
+Correctable draft re-claim must refresh fingerprint and evidence atomically.
+Store conformance and native durability/fencing and SQL proofs remain later work.
+
+Migration: none (new surface; contracts and orchestration land in one release).
+
+### Fulfillment observation and sync workers
+
+Add neutral observation effects, verified ingress, observation reconciliation,
+tracking, stock/product sync, read-only evidence handlers and the offline
+runFulfillmentAdapterConformance at the existing fulfillment entry.
+
+Migration: approved G15 extends the unreleased SyncCursor with optional
+coverageGapSkus (legacy absence reads as []). Only consecutive succeeded runs
+confirm a reservation coverage gap; running/failed cursors clear the set.
+Migration: approved G16 changes readLocalInventoryStock(requestedAt) to typed
+unaggregated lines with skuRef, quantity balances, fulfillable, locationStatus,
+lotStatus and expiresAt. The worker filters/sums at the captured clock; expiry
+exactly then is excluded. Inventory authority and the provider stock-sync shape
+are unchanged.
+Migration: approved G17 adds inline localPersistence: ingress records eventKey
+receipts preserving firstReceivedAt and marks processing idempotently;
+reconciliation reads local status/latestStatusOccurredAt/handedOverAt. No named
+persistence type is exported. Durable replay and processing remain host obligations.
+A superseding conflict returns superseded but persists only processed status,
+without a dedicated superseded-reason field.
+
+Correlated ingress requires a nonblank observation or dispatch external reference
+before acceptance/status/effects/processed mark; failure leaves the receipt
+unprocessed. Stock-contention annotation is best-effort before the original stock
+failure is rethrown; recovered-picked receipt diagnostics remain typed. Effects
+retain stock → handover → tracking → invoice and callback/throw order.
+Reconciliation fails the run on unknown readback and projects unmapped correlation
+evidence before host calls. Product evidence reads retain safe authorization/read
+refusal detail. Private codecs, keys, carrier URLs and provider errors stay
+host-owned; typed evidence replaces raw payload pass-through. The conformance
+runner accepts adapter-owned offline subjects and returns sanitized evidence;
+fixture checks do not establish durable store atomicity or arrival alignment.
+
+### Fulfillment native persistence and delivery alignment
+
+Add native shipment, evidence, stock, recovery, dispatch, paid-handoff and
+alignment stores through the existing fulfillment entry. Sparse migration
+projections bind native units 5/27/51/73/74; install the complete catalogue.
+Coverage-gap cursor state and received/status/processed evidence are
+durable, while local inventory lines and contact preparation remain explicit
+host inputs. Native 3pl acceptance uses a dispatch evidence receipt and preserves
+the cancellation fence without inventing an owned label or physical packing.
+
+Native admission: overdue-delivery admission guards only NEW cycle
+admission/insert, matching the donor's guard_cycle_insert. Existing-cycle retries
+through renewal operations and dunning bypass admission and neither mint nor
+consume a one-use receipt. No retry_scheduled state or payments lifecycle change is
+introduced. Native continuity requires the complete canonical migration graph,
+real-PostgreSQL installation, replay and access-control checks.
+
+### Fulfillment operator lifecycle and customer delay projection
+
+Add host-owned operator and replacement handlers through the fulfillment entry.
+Mutation callbacks require actor attribution and idempotency keys; the host owns
+atomic replay receipts and replacement eligibility, reservation and hold effects.
+Native bindings return a shared typed unsupported refusal without writing.
+Customer delay projection keeps absent cases distinct, hides aligned history
+when the schedule advances and never presents manual review as protection.
+Label helpers preserve transient downloads and cleanup uncertainty. Current
+parcel helpers retain sequence selection and companion attribution. These
+exports mount no route, dispatch no parcel and attest no replacement arrival.
+
+### Fulfillment commerce reads and recorded progress
+
+Add host-owned commerce list/detail projections, a shipments overview handler and
+typed read callbacks. Projected payment status passes through unchanged and
+native reads return the shared unsupported refusal. Preserve opaque host overview
+buckets and the legacy shipment-status facade. Progress completion requires
+recorded milestones and uses the host-resolved customer step.
+
+### Fulfillment internal simplification
+
+Reuse the empty stock-balance constructor in aggregation and sync, and append to
+private recovery groups without copying each growing array. Fulfillment results,
+public contracts, key bytes and effect order remain unchanged.
+
+### Fulfillment service composition and preparation
+
+Add explicit default-off fulfillment services, a structural contribution and an
+inert reference preparation binding. Authoritative source edits and redacted
+context synchronization share the native dispatch and shipment locks. Missing
+preparation refuses readiness. No route, schedule, renewal wrapper or automatic
+dispatch is activated.
+
+### Fulfillment presentation ownership
+
+The status canon, actual-evidence tracking progress, current-parcel selection and
+canonical fact parsers belong to `@openlup/core/fulfillment`. Platform keeps thin
+compatibility re-exports and preserves its existing narrowed fact type names.
+Fulfillment contracts re-export the shared status and progress types from core.
+Server orchestration remains in platform. Browser code, including the host
+status, fact and current-parcel facades and the account order views, imports
+these helpers from core, so no browser graph loads the platform fulfillment
+runtime.
+
+Migration: existing platform imports remain valid; no application or schema
+migration is required. Core exposes narrowed fact aliases with a `Canonical`
+prefix while its generic fact exports retain their names.
+
+Migration: upgrade core, outbox and platform together from `0.21.0` to `0.22.0` for exact peer pins. Install the complete canonical native migration chain through units 73/74 (`20261022080000_fulfillment_command_ledger.sql` and `20261022090000_fulfillment_delivery_alignment.sql`), never the sparse package projections alone. Before, these fulfillment services were host-owned; after, explicitly compose selected ports and default-off services. Nothing mounts routes, schedules dispatch or composes the native renewal runner automatically. Keep native alignment off or shadow until the G23 decorator is composed. Arrival alignment remains once and later-only; undelivered replacements remain outstanding, and replacement confirmation must only record actual customer arrival. Preserve G15–G17 cursor, receipt and local-status persistence when implementing host stores. An application rollback does not reverse the forward migrations; older runners refuse the extended ledger.
+
+### Known limitations
+
+- Portable dunning repair has no managed twin: exhaustion still pauses active subscriptions there; retaining active status needs a managed forward.
+- D8-1: native advisory v2 promo-code candidates/rejection details unavailable.
+- D8-2: native mounted v2 issue/honor/fallback unavailable.
+- D8-3: native acquisition-only mounted issuance/honor unavailable.
+- D8-4: full native/managed eligibility equivalence unavailable.
+- Bundle-1: independent DB human-only actor-kind enforcement absent natively; first in the native-backend parity round.
+- Bundle-2: managed-equivalent actor-kind/email history absent natively.
+- Bundle-3 closes injected-reader M05 mounted admin/feed readback only. Native new-purchase stock read absent despite P5a installed-store proof; deferred second after bundle-1 (owner 2026-10-21); readiness refuses.
+- Bundle-4: incumbent real-PostgreSQL contention only; no exactly-once guarantee.
+- Managed schema/pgTAP retain `44.404`; removal needs owner decision/forward; reference composition supplies it to app code.
+- A1 offline only; account/hosted-time/owner TEST evidence unclaimed; `communications/klaviyo` verification-pending.
+- M05 omitted opt-ins preserve defaults/outputs/read order/schedules/refusals/acceptance-token bytes/SQL.
+- Native inventory adjustment unavailable; address writes refuse readiness. Flat-rate save needs selected port/Core readiness/applied-seed observation.
+- Native shipping audit unavailable; handler swallows best-effort audit failure.
+- Native flat-rate integer bounds (0 through host maximum; reference 100,000 minor units) use request schema, not DB CHECK.
+- Managed ATP/forecast/dated-supply/pagination readback unproved/pending M06.
+- Managed two-session locks/concurrency/uncovered compensation unproved/pending M06.
+- Managed exact-prefix upgrade/ledger unproved/pending M06.
+- Managed address idempotency/conflict/readback unproved/pending M06.
+- Managed successful flat-rate read/save unproved/pending host authority.
+- M06 stock-wait lifecycle/durable timing/staging controls retain C5/C6; busy/try-gate, continuity/flag/TTL transfers are dispositions, not PASS.
+- Shipping national-registry fields/locale-specific `canonicalAddressKey` fold await M16 host market pack/key migration; reference shipping copy stays locale-specific until M16.
+- Native durable prepared storage, method setup, absence reopen and cumulative refunds unavailable; no production installation parity claimed.
+- Typed refusal-envelope forwarding unavailable (`failureReason` only); reusable registration needs host ownership resolution.
+- Incomplete chargebacks stay refunds/unapplied: reclassification bypasses evidence validation into dispute apply; limited operator recovery.
+- Audit compatibility still detects `chargeId`; refund operation identity/original money supply no typed charge identity.
+- M07 follow-up: repair poll can clear host redirect; post-timeout verify never restarts polling; unlocalized poller; fixture builds/never calls handler.
+- M07 follow-up: reference status route wrong-rail witness.
+- M07 follow-up: explicit reference-route refusal for unsupported method setup.
+- M07 follow-up: deployment-neutral disabled-verify reason.
+- M07 follow-up: reference card normalizer missing-amount path; package settling evidence already requires positive money.
+
+- Native delivery alignment stays off or shadow until a host composes the native automatic-renewal runner with the G23 renewal admission decorator. The decorator alone neither composes nor activates the runner.
+- The core fulfillment status map carries localized adopter labels; replace them with host-injected labels or internationalization keys before any stable-framework claim.
+- The warehouse adapter example is opt-in and has offline conformance only; no provider-account proof or activation is established. Exact absence, label create/void and cancellation remain unsupported.
+- After an alignment extension, a deferred renewal operation at the old schedule remains claimed with no reader or reservation effect. Changed terms snapshots conflict under the existing snapshot-conflict rules.
+
+Native parity remains host-owned at these seams. Missing native bindings use the shared `FULFILLMENT_NATIVE_UNSUPPORTED` refusal; no partial write or parity claim is implied.
+
+| Amendment | Host-owned seam and native boundary |
+| --- | --- |
+| G18 | Replacement creation and atomic eligibility/replay receipts; native replacement callback refuses. |
+| G19 | Operator mutations, actor attribution and replay receipts; native mutation callbacks refuse. |
+| G20 | Customer alignment rows; native reader refuses, while the pure delay projection remains callable. |
+| G21 | Commerce list/detail and shipments overview; native read callbacks refuse. |
+| G22 | Authoritative preparation edits, authorization and replay receipts; missing preparation binding refuses before dispatch, after disabled/selection/readiness checks. |
 ## [0.21.0]
 
 - Publishable on the npm `latest` dist-tag as `0.21.0`, from tag
