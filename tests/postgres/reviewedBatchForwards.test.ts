@@ -1144,7 +1144,7 @@ it('replays a stored refusal and an apply-created receipt directly, without publ
   if (!portable) it("proves the admitted M11 catalog and CHECK delta after the full real managed chain", async () => {
     const commerce = registry.managedCommerceForwards!;
     await applyCommittedBefore(commerce[0]!.path);
-    reviewedBatchPaths(replayRoot, directory, [...pins, ...commerce]); // Refuse a hole in either landed suffix.
+    reviewedBatchPaths(replayRoot, directory, [...pins, ...commerce]); // Refuse gaps in either real-rail suffix.
     const prior = reviewedBatchPaths(replayRoot, directory, pins).map(path => {
       const pin = pins.find(pin => pin.path === path);
       return { path, bytes: pin ? reviewedBatchBytes(replayRoot, process.cwd(), pin) : readFileSync(join(replayRoot, path)) };

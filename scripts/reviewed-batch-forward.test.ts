@@ -582,7 +582,7 @@ describe("admitted M11 commerce live registry", () => {
   };
   const managedM10 = pins.filter(pin => pin.path.startsWith("supabase/"));
   const allPins = [...managedM10, ...commerce];
-  // Retain all eleven landed managed M10 pins; append only absent M11 fixtures.
+  // Include every earlier same-rail pin once; append only absent M11 fixtures.
   const committed = readdirSync("supabase/migrations").filter(name => name.endsWith(".sql")).sort()
     .map(name => ({ path: `supabase/migrations/${name}`, bytes: readFileSync(`supabase/migrations/${name}`) }))
     .filter(source => source.path < commerce[0]!.path);

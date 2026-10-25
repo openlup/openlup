@@ -1,10 +1,11 @@
--- CTL-M11 reviewed fixture: close the M05 metadata-decoding dependency of checkout
--- acquisition admission. Restate the donor definition and closed private ACL
--- unchanged; existing promotions JSONB is the storage, with no seed or activation.
--- Admitted pin: config/reviewed-platform-forwards.json managedCommerceForwards.
--- M11 feature PRs (the K1 stack) introduce these bytes in registry order.
--- This file requires every earlier same-rail M10/M11 pin to have landed.
--- Pin admission does not establish installation or runtime behavior.
+-- CTL-M11 reviewed fixture: decode acquisition metadata for checkout admission.
+-- Uses promotions JSONB as storage; creates no seed or activation mechanism.
+-- Preserve the private invoker header and closed ACL.
+-- Pinned by managedCommerceForwards in config/reviewed-platform-forwards.json.
+-- The registry and real migration rails are authoritative.
+-- M11 versions follow every earlier same-rail pin; each pin requires all earlier
+-- same-rail pins present with exact bytes.
+-- Fixture checks do not establish installation or handler behavior.
 
 CREATE FUNCTION private.commerce_acquisition_metadata(p_payload jsonb) RETURNS jsonb
 LANGUAGE plpgsql IMMUTABLE SET search_path = pg_catalog, public AS $$

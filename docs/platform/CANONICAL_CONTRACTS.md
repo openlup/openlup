@@ -851,14 +851,14 @@ and the invoicing payment-terminal accounting block.
 Managed correction recovery, lock coupling, trigger admission, seller eligibility and migration ordering are owned by [M09 forward design](DATA_AND_MIGRATIONS.md#m09-invoicing-forward-design-and-control-approval).
 Self-check and release share the admission checker and the canonical
 [co-located SQL/pin rule](DATA_AND_MIGRATIONS.md#co-located-sql-and-approval-pins).
-The separate `managedCommerceForwards` list admits seven exact M11 managed pins;
+The separate `managedCommerceForwards` list in
+`config/reviewed-platform-forwards.json` pins the M11 managed SQL fixtures;
 [its data contract](DATA_AND_MIGRATIONS.md#exact-reviewed-function-forwards)
-owns headers, ACLs, preimages and ordered statements. M11 feature PRs (the K1
-stack) introduce those bytes in order, requiring all earlier same-rail M10/M11
-pins landed first, including both M10-9 migrations now committed on the managed rail.
-The seven M11 working versions `20261025100000` through `20261025108000` remain
-fixture-only just above the landed M10 managed tail `20261025090100`;
-the native tail remains `20261024184600`. Control admission adds no real-rail migration.
+owns headers, ACLs, preimages and ordered statements. The registry and real
+migration rails are authoritative. M11 versions follow every earlier same-rail
+pin; each pin requires all earlier same-rail pins present with exact bytes.
+Later feature changes may introduce those bytes on the managed rail.
+Fixture proof does not establish handler behavior or authorize installation.
 Existing control histories remain valid; later repins cannot authorize earlier SQL.
 This is a separately reviewed preview admission class, not expand-only or a live
 database compatibility proof; see

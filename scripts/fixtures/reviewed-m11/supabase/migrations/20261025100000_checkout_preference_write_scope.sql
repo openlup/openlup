@@ -1,19 +1,17 @@
 -- CTL-M11 reviewed fixture: scope saved preference writes to a newly created client
 -- or a caller whose server-proved account matches the existing linked account.
--- Guests may supply an order destination without rewriting a saved address,
--- promoting it to default, or appending marketing permission. Agreement evidence
--- and the existing identity/idempotency response remain on their current rails.
--- Preserve the platform's existing legacy profile fields and command signatures.
--- Migration: legacy omitted/empty country now uses platform_region_code() in
--- address identity and insertion, replacing the incumbent fixed country default.
--- Missing settlement-region configuration now raises 55000 on that fallback.
--- Adopters must configure their own default region. Neutral commands continue
--- to require explicit country input.
--- Existing SECURITY DEFINER, fixed path and service-only execution are retained.
--- Admitted pin: config/reviewed-platform-forwards.json managedCommerceForwards.
--- M11 feature PRs (the K1 stack) introduce these bytes in registry order.
--- This file requires every earlier same-rail M10/M11 pin to have landed.
--- Pin admission does not establish installation or runtime behavior.
+-- Guests may supply an order destination without rewriting saved preferences.
+-- Preserve agreement evidence, identity/idempotency responses and profile fields.
+-- Migration: legacy omitted/empty country uses platform_region_code() in address
+-- identity and insertion, replacing the fixed country default. Missing
+-- settlement-region configuration raises 55000 on that fallback.
+-- Adopters must configure their own default region; neutral commands require
+-- explicit country input. Preserve SECURITY DEFINER, fixed path and service ACLs.
+-- Pinned by managedCommerceForwards in config/reviewed-platform-forwards.json.
+-- The registry and real migration rails are authoritative.
+-- M11 versions follow every earlier same-rail pin; each pin requires all earlier
+-- same-rail pins present with exact bytes.
+-- Fixture checks do not establish installation or handler behavior.
 CREATE OR REPLACE FUNCTION public.commerce_configurator_persist_intent(p_intent jsonb) RETURNS jsonb
     LANGUAGE plpgsql SECURITY DEFINER
     SET search_path = public, pg_catalog

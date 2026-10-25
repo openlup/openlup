@@ -1,12 +1,13 @@
--- CTL-M11 reviewed fixture: serialize checkout admission with the policy writer
--- and compare retained quote evidence with current terms before acquisition.
--- Restate the donor body unchanged after the metadata decoder and terms reader.
--- The transaction shared lock uses the same key as the donor exclusive writer;
--- private execution remains revoked even from service_role.
--- Admitted pin: config/reviewed-platform-forwards.json managedCommerceForwards.
--- M11 feature PRs (the K1 stack) introduce these bytes in registry order.
--- This file requires every earlier same-rail M10/M11 pin to have landed.
--- Pin admission does not establish installation or runtime behavior.
+-- CTL-M11 reviewed fixture: serialize checkout admission with policy writes and
+-- compare retained quote evidence with effective terms before acquisition.
+-- Requires the metadata decoder and terms reader. The transaction shared lock
+-- uses the policy writer's exclusive-lock key; private execution is revoked
+-- even from service_role.
+-- Pinned by managedCommerceForwards in config/reviewed-platform-forwards.json.
+-- The registry and real migration rails are authoritative.
+-- M11 versions follow every earlier same-rail pin; each pin requires all earlier
+-- same-rail pins present with exact bytes.
+-- Fixture checks do not establish installation or handler behavior.
 
 CREATE FUNCTION private.commerce_assert_acquisition_admission(p_quote jsonb, p_client_id uuid DEFAULT NULL) RETURNS void
 LANGUAGE plpgsql SET search_path = pg_catalog, public AS $$

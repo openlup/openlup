@@ -1082,9 +1082,10 @@ export function assertBatchedForward(forward: BatchedForwardBinding, bytes: Buff
   }
 }
 
-// D-CTL-1: the separately admitted M11 inventory. Never extend the M09/M10 shapes.
+// M11 inventory pinned by managedCommerceForwards in config/reviewed-platform-forwards.json.
+// The registry and real migration rails are authoritative; keep M09/M10 shapes separate.
 // Header pins include argument names/defaults, return, language, security and path;
-// only whitespace is normalized. Raw CREATE and whole-file pins still bind bytes.
+// only whitespace is normalized. Raw CREATE and whole-file pins bind bytes.
 const managedCommerceShapes = [
   ["20261025100000_checkout_preference_write_scope.sql", "public.commerce_configurator_persist_intent(jsonb)", false, "8bbc2d529811c4bf065460dcc2ac5306ad3692cec3c73f8146256f3d59b2e328"],
   ["20261025103000_return_request_owner_binding.sql", "public.commerce_return_request_create(text,uuid,jsonb,text,text,uuid)", false, "56e41099b294eaca73007fb00af584b343fb711618a826e60589daff8816522b"],
@@ -1123,7 +1124,9 @@ function validateManagedCommerceForwards(forwards: ManagedCommerceForwardBinding
 }
 
 /** The caller supplies the complete preceding managed rail, in filename order.
- * Production reads the live registry and rail from Git; tests supply live pins. */
+ * M11 versions follow every earlier same-rail pin; each pin requires all earlier
+ * same-rail pins present with exact bytes. Production reads the registry and rail
+ * from Git; tests supply registry pins. */
 export function assertManagedCommerceForward(registry: ReviewedForwardRegistry, path: string, bytes: Buffer, preceding: { path: string; bytes: Buffer }[]): void {
   if (!registry.managedCommerceForwards) throw new Error("reviewed M11 commerce has no registry approval");
   validateManagedCommerceForwards(registry.managedCommerceForwards, new Set());
@@ -1144,7 +1147,7 @@ export function assertManagedCommerceForward(registry: ReviewedForwardRegistry, 
   const prior = new Map<string, string>();
   for (const source of preceding) {
     for (const statement of sqlStatements(source.bytes.toString("utf8"), true)) {
-      // The immutable dump is already hashed. Later function DDL must use the
+      // The immutable dump is bound by its hash. Later function DDL must use the
       // existing reader's supported spelling, rather than silently hiding a
       // replacement behind comments, quoted names or keyword whitespace.
       if (source.path !== MANAGED_BASELINE && /^(?:CREATE|ALTER|DROP)\b/iu.test(statement) && /\bFUNCTION\b/iu.test(statement) && !/^CREATE(?: OR REPLACE)? FUNCTION (?:public|private)\.[a-z_][a-z0-9_]*\s*\(/iu.test(statement)) throw new Error("reviewed M11 commerce refuses unsupported preceding function DDL");

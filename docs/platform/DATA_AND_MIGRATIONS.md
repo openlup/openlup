@@ -503,28 +503,24 @@ and unused authority, equal-rung/missing-attribution refusal, reconciliation and
 concurrency evidence. Existing native atomic receipts prove only their own graph. Rollback uses a compensating forward preserving attribution and
 revocations; it never resurrects old recovery authority.
 
-The admitted `managedCommerceForwards` class binds exactly seven managed paths
-(`20261025100000`, `103000`, `104000`, `105000`, `106000`, `107000`, `108000`),
-one function per file, in the live [registry](../../config/reviewed-platform-forwards.json).
-These working versions remain fixture-only just above the landed M10 managed tail
-`20261025090100`. Both M10-9 migrations are committed on the managed rail;
-the native tail remains `20261024184600`.
-It includes three replacements, two public service-only creations and two private
-invoker creations. Exact file, CREATE and preimage hashes, header pins and ordered
+The `managedCommerceForwards` class in the
+[registry](../../config/reviewed-platform-forwards.json) pins the managed SQL fixtures
+under `scripts/fixtures/reviewed-m11/`, one function per file. It covers replacements,
+public service-only creations and private invoker creations.
+Exact file, CREATE and preimage hashes, header pins and ordered
 statement pins bind arguments/defaults, returns, language, security, search_path,
 same-file revocations and public service-only grants. The receipt file alone
 replaces the audit action CHECK after its exact preimage and pinned lock timeout,
-with exact DROP and NOT VALID ADD statements, retaining all 25 incumbent actions
+with exact DROP and NOT VALID ADD statements, retaining every preimage action
 and adding only `checkout_payment_link_mint`. Any intervening audit-table
 ALTER/DROP refuses this fixed CHECK preimage class. M09/M10 inventories stay closed.
-This control admits pins without adding SQL to either real rail. M11 feature PRs
-(the K1 stack) introduce the bytes in order; admission reads the complete preceding
-managed rail and requires every earlier same-rail M10/M11 pin landed with exact
-bytes, including M10-9 `20261025090000` and `20261025090100`. Tests read the live
-registry and real committed prefix, containing all eleven landed M10 managed pins
-once, then append only the absent M11 fixtures for
-admission/refusal and PostgreSQL catalog/ACL/CHECK proof with
-rollback. They do not establish handler behavior or authorize installation.
+The registry and real migration rails are authoritative. M11 versions follow every
+earlier same-rail pin; each pin requires all earlier same-rail pins present with
+exact bytes. Later feature changes may introduce those bytes on the managed rail.
+Tests read the registry and complete real managed prefix, include each earlier
+same-rail pin once, and append only absent M11 fixtures for admission/refusal and
+PostgreSQL catalog/ACL/CHECK proof with rollback. They do not establish handler
+behavior or authorize installation.
 
 **Named bounded debt C94 — M10 reviewed packet vocabulary.** The frozen managed
 SQL retains provider nouns inherited from that rail. The neutrality baseline

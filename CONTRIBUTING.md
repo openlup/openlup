@@ -231,27 +231,21 @@ The suite needs local Docker and uses the shared container helper's pinned
 PostgreSQL 16 image. Run build-producing package checks serially because they
 share generated package directories.
 
-M11 has seven admitted managed-commerce pins in the live
-`config/reviewed-platform-forwards.json` under `managedCommerceForwards`, with
-unchanged SQL fixtures under `scripts/fixtures/reviewed-m11/`. They cover checkout
+M11 managed-commerce fixtures under `scripts/fixtures/reviewed-m11/` are pinned by
+`managedCommerceForwards` in `config/reviewed-platform-forwards.json`. They cover checkout
 preference scope, return ownership, checkout audit receipts and the minimal
 acquisition-reader/admission/finalize closure, without policy seeds or setup
 writers. Legacy omitted-country fallback uses the configured platform region
 and refuses missing configuration; adopters set their own default.
 The pins bind exact file/function/preimage/ordered statements, headers, ACLs and
-the audit CHECK preimage. M11 feature PRs (the K1 stack) introduce the SQL bytes
-on the managed rail in order; each requires every earlier same-rail M10/M11 pin
-landed with exact bytes. This control adds no migration to either real rail.
-Tests use the live registry and complete committed managed prefix, containing
-all eleven landed M10 managed pins once, then append the seven M11 fixtures.
-M11 working versions `20261025100000` through `20261025108000` remain fixture-only
-just above the landed M10 managed tail `20261025090100`. Both M10-9 migrations
-are committed on that rail; the native tail remains `20261024184600`.
-These tests prove admission/refusals,
-catalog/ACL/CHECK changes and rollback. Local acquisition proof covers both
-policy states; handler integration remains feature-owned. Native return
-semantics and M09/M10 approvals remain unchanged. Coordinator control review and
-two fresh reviews remain separate delivery gates.
+the audit CHECK preimage. The registry and real migration rails are authoritative.
+M11 versions follow every earlier same-rail pin; each pin requires all earlier
+same-rail pins present with exact bytes. Later feature changes may introduce those
+bytes on the managed rail. Tests use the registry and complete real managed prefix,
+include each earlier same-rail pin once, and append only absent M11 fixtures.
+They prove admission/refusals, catalog/ACL/CHECK changes and rollback; acquisition
+witnesses cover both policy states. Fixture proof does not establish handler
+integration, native return semantics or installation authority.
 
 The M10/F17 exact-forward controls use
 `scripts/reviewed-batch-forward.test.ts` for per-file refusal plants and separate
@@ -2242,6 +2236,11 @@ own: a lessons change is an ordinary delivery under existing authority, and a
 promotion stays within its approved scope. The rethink record and the task's
 terminal self-retro carry the lesson until it lands. No other tracker is kept.
 
+- 2026-10-25, M11 CTL notes: two review cycles in a row found stale statements in
+  owner notes and pinned fixture comments (landed state, rail tails, admitted/draft
+  wording) after each main landing → state only invariants in pinned or frozen
+  text and point to the registry and real rails as the source of truth; verify
+  with a volatile-pattern grep over everything the change owns.
 - 2026-10-24, local verification rethink: replaying hosted shards and choosing
   resources from task names duplicated tests and silently selected one worker →
   use the [single local command set](#required-and-raw-checks), fixed phase

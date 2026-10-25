@@ -1,15 +1,14 @@
--- CTL-M11 reviewed fixture: resolve the server-supplied principal to its customer,
--- lock only that customer's order, and bind both fresh and replayed return keys
--- to the same principal, order and normalized command. Reconstruct old command
--- fingerprints without updating historical requests. Preserve duplicate lines,
--- eligibility, response shape and the incumbent reason/disposition vocabulary.
--- A nonblocking global-key gate refuses another in-flight customer uniformly;
--- a constraint-specific unique-violation handler covers direct-insert races.
+-- CTL-M11 reviewed fixture: bind fresh and replayed return requests to the
+-- server-supplied principal, owned order and normalized command. Reconstruct
+-- historical fingerprints without updating requests. Preserve duplicate lines,
+-- eligibility, response shape and reason/disposition vocabulary. A nonblocking
+-- global-key gate and constraint-specific handler cover concurrent key conflicts.
 -- Preserve SECURITY DEFINER, public/pg_catalog path and service-only execution.
--- Admitted pin: config/reviewed-platform-forwards.json managedCommerceForwards.
--- M11 feature PRs (the K1 stack) introduce these bytes in registry order.
--- This file requires every earlier same-rail M10/M11 pin to have landed.
--- Pin admission does not establish installation or runtime behavior.
+-- Pinned by managedCommerceForwards in config/reviewed-platform-forwards.json.
+-- The registry and real migration rails are authoritative.
+-- M11 versions follow every earlier same-rail pin; each pin requires all earlier
+-- same-rail pins present with exact bytes.
+-- Fixture checks do not establish installation or handler behavior.
 
 CREATE OR REPLACE FUNCTION public.commerce_return_request_create(p_idempotency_key text, p_order_id uuid, p_lines jsonb, p_reason_code text, p_customer_note text DEFAULT NULL::text, p_requested_by uuid DEFAULT NULL::uuid) RETURNS jsonb
 LANGUAGE plpgsql

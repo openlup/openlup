@@ -1,18 +1,16 @@
--- CTL-M11 reviewed fixture: retain operator attribution before recovery-token
--- revocation/minting, then append a bounded outcome to the existing audit ledger.
--- Require prior admission for a completed attempt and delegate actor validation
--- and audit replay to the incumbent audit primitive. This is checkout authority,
--- not a payment-truth or invoice-issue writer. Add only the checkout audit action
--- to the preceding action vocabulary, without copying the donor invoice action.
--- The CHECK replacement binds its preimage, retains every old value and adds
--- only checkout_payment_link_mint. NOT VALID avoids
--- scanning history while enforcing the new superset on future writes.
--- Preserve the donor-neutral SECURITY DEFINER/pg_catalog/public/service-only
--- boundary.
--- Admitted pin: config/reviewed-platform-forwards.json managedCommerceForwards.
--- M11 feature PRs (the K1 stack) introduce these bytes in registry order.
--- This file requires every earlier same-rail M10/M11 pin to have landed.
--- Pin admission does not establish installation or runtime behavior.
+-- CTL-M11 reviewed fixture: record operator attribution before recovery-token
+-- revocation/minting and append a bounded audit outcome. Require prior admission
+-- for a completed attempt; delegate actor validation and replay to the audit
+-- primitive. This is checkout authority, not payment truth or invoice issuance.
+-- The CHECK replacement binds its preimage, retains every preimage action and
+-- adds only checkout_payment_link_mint. NOT VALID avoids scanning history while
+-- enforcing the superset on future writes. Preserve SECURITY DEFINER,
+-- pg_catalog/public path and service-only execution.
+-- Pinned by managedCommerceForwards in config/reviewed-platform-forwards.json.
+-- The registry and real migration rails are authoritative.
+-- M11 versions follow every earlier same-rail pin; each pin requires all earlier
+-- same-rail pins present with exact bytes.
+-- Fixture checks do not establish installation or handler behavior.
 
 SET LOCAL lock_timeout = '2s';
 

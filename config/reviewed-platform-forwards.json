@@ -1316,7 +1316,7 @@
   "managedCommerceForwards": [
     {
       "path": "supabase/migrations/20261025100000_checkout_preference_write_scope.sql",
-      "sha256": "52dd77a78bacc26f3c2dee49ed4bb22dca1c79f1d89e115a5acfb83f1bbee7bf",
+      "sha256": "9cd1f8bfca22caf2438064979f914fbbab40c7aa81a3c90cf4adfe641a72a1ad",
       "functions": [
         {
           "signature": "public.commerce_configurator_persist_intent(jsonb)",
@@ -1340,7 +1340,7 @@
     },
     {
       "path": "supabase/migrations/20261025103000_return_request_owner_binding.sql",
-      "sha256": "c4cf4cbeea2cee049e3403832eb5f74088cdf75bf70be22e4ae78f7521ec205c",
+      "sha256": "9f3da6bcd830e2436f02408a71b42bdf7bcecf6bfba46121b8c37a3d834b2246",
       "functions": [
         {
           "signature": "public.commerce_return_request_create(text,uuid,jsonb,text,text,uuid)",
@@ -1364,7 +1364,7 @@
     },
     {
       "path": "supabase/migrations/20261025104000_checkout_operator_receipt.sql",
-      "sha256": "c54658ef2b67c85f454b73349587b98dcca7c9aa4cc06b2a415cad1a6b200778",
+      "sha256": "a274c22cf393b65654e6b3e650a0878fdf14337b08c8002c587921c3c69c91fd",
       "functions": [
         {
           "signature": "public.admin_checkout_payment_link_record_receipt(uuid,uuid,uuid,text,text,boolean,uuid)",
@@ -1408,7 +1408,7 @@
     },
     {
       "path": "supabase/migrations/20261025105000_acquisition_metadata.sql",
-      "sha256": "0b8a927f3ea62e52adfc14fadb16e0608d595bb4b74550ac567ddb011ad9618c",
+      "sha256": "f5bd6a4e5c86ea959961fbb20d3b735f6de5d7dec649df0ae6307ac2d052e995",
       "functions": [
         {
           "signature": "private.commerce_acquisition_metadata(jsonb)",
@@ -1428,7 +1428,7 @@
     },
     {
       "path": "supabase/migrations/20261025106000_subscription_acquisition_terms.sql",
-      "sha256": "3a34a175f0745a0af5fb6475e86cd93643d0cf4282e6a9c0ed3b89f1f4c6625b",
+      "sha256": "578d8c17b1817a81dcd6f0e5c32a2d8f7806e6beab6747f5eb9dd9e35f9ecc9d",
       "functions": [
         {
           "signature": "public.commerce_subscription_acquisition_terms(timestamptz)",
@@ -1452,7 +1452,7 @@
     },
     {
       "path": "supabase/migrations/20261025107000_checkout_acquisition_admission.sql",
-      "sha256": "109c049c42e01f9441127e40dacc5c50818c5f2c8ee22ba356a4361a0e3f5376",
+      "sha256": "4812f37dd55448956a3345691b24c66123a90cb610b6b87d619ef0e3d4e75fb5",
       "functions": [
         {
           "signature": "private.commerce_assert_acquisition_admission(jsonb,uuid)",
@@ -1472,7 +1472,7 @@
     },
     {
       "path": "supabase/migrations/20261025108000_checkout_finalize_acquisition_admission.sql",
-      "sha256": "33da9e7d57c5f209f1d13a9e16210f98b06ce6b2b14d7532dc07cb98ae0c65e8",
+      "sha256": "eb76f6f308f39653284ba5367ff3bcc683a46768af0faae99b93b5f893c49f3f",
       "functions": [
         {
           "signature": "public.commerce_finalize_order_for_checkout(text,uuid,text,uuid,uuid,uuid,jsonb,jsonb,jsonb)",
