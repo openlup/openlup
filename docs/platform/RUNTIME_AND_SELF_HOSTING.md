@@ -522,6 +522,42 @@ has not been installed or certified by this profile.
 
 The Node reference start function accepts an admitted outbox candidate and a host schedule binding. For a selected rail it binds dispatch/prune before opening the listener; a refused candidate or absent schedule binding opens no listener. Host composition supplies its driver, lease, effect handlers, known vocabulary and migration observation. Immediate and scheduled work share the packed rail engine, with candidate identity checked at every entrance. The default static CLI selects no outbox adapter and provides no deployed outbox proof.
 
+### Account and support read bindings
+
+The unmounted `createM12AccountReadSelection` and `createM12SupportReadBinding`
+reference factories require explicit host enablement and selection. Importing
+these factories or the `accountSupport` capability metadata registers no routes.
+The metadata remains default-off with an empty route list and preserves the
+static profile's refusal list. The existing R1 account facade is unchanged.
+
+Hosts supply trusted principal ownership before account reads and administrator
+or operator authorization through the Customer 360 facade before support reads.
+The facade calls the binding authorization once per request, before any scope
+opens; a refusal returns `{ kind: "denied" }` with no source IO. Native support search, counts
+and snapshots use the existing PostgreSQL support scope; its actor governance,
+redaction/audit behavior and guaranteed cleanup remain in force. Managed support
+needs a selected host scope. Native account aggregate, order history/detail and
+invoice history/PDF have no fabricated driver: missing selections report
+`host_binding_required`. A selected M09 lane retains denied, unknown and
+unsupported; an M08 unsupported alignment must never become an empty aligned
+history. Invoice downloads first check the requested document in the owned
+account/order history, before resolving its ticket or reading artifact bytes.
+An absent document or mismatched history returns `{ kind: "denied" }`. This adds
+one history read rather than equating invoice order references with order IDs.
+Diagnostic history remains a separate authorized read, not commerce truth.
+The selected diagnostic binding runs independently of any journey scope:
+`searchDiagnostics`, `history` and `overview` delegate to its existing search,
+segment and overview ports with their typed versions/cursors and the trusted
+operator identity. The same actor governance runs before diagnostic scope entry;
+the diagnostic transaction retains active-operator and atomic read-audit checks.
+Reference order presentation picks only title, variant name, product slug,
+display label and accent color, excluding private source fields at runtime.
+
+The account/support view components are host-fed, unmounted and read-only.
+They preserve last-known data during refresh and render absent enrichment as
+unknown. Inline expansion uses only the order summary. Existing reference routes
+still use their current source implementations; P7 owns any later route adoption.
+
 ## Customer diagnostic history preview
 
 Customer diagnostic history is a development-preview, default-off platform

@@ -2722,6 +2722,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/account-support/accountReadModels.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/account-support/contracts/account.ts",
       "class": "public-output"
     },
@@ -2750,11 +2754,23 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/account-support/customer360.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/account-support/customerAccountReadDiagnostics.ts",
       "class": "public-output"
     },
     {
       "path": "packages/platform/src/account-support/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/account-support/invoiceAccess.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/account-support/orderHistory.ts",
       "class": "public-output"
     },
     {
@@ -5802,11 +5818,27 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/account-support/accountReadModels.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/account-support/browserSafety.test.ts",
       "class": "public-output"
     },
     {
       "path": "packages/platform/test/account-support/contracts.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/account-support/customer360.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/account-support/invoiceAccess.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/account-support/orderHistory.test.ts",
       "class": "public-output"
     },
     {
@@ -17002,6 +17034,14 @@
       "class": "public-output"
     },
     {
+      "path": "server/runtime/public-reference/m12SupportReadBinding.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/runtime/public-reference/m12SupportReadBinding.ts",
+      "class": "public-output"
+    },
+    {
       "path": "server/runtime/public-reference/readiness.ts",
       "class": "public-output"
     },
@@ -23542,6 +23582,18 @@
       "class": "public-output"
     },
     {
+      "path": "src/public-reference/accountSupportAccount.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/public-reference/accountSupportCustomer360.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/public-reference/accountSupportReads.test.tsx",
+      "class": "public-output"
+    },
+    {
       "path": "src/public-reference/browserIdentity.test.tsx",
       "class": "public-output"
     },
@@ -24867,6 +24919,10 @@
     },
     {
       "path": "tests/platform/watchdogWorkload.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/accountSupportReads.test.ts",
       "class": "public-output"
     },
     {

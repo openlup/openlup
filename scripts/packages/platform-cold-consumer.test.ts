@@ -5,7 +5,36 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { isolatedConsumerEnv } from "./pack-manifest-input.ts";
 import { afterAll, afterEach, beforeAll, expect, it } from "vitest";
-import { proveCommerceServerConsumer, proveAccountSupportConsumer, proveCommerceConsumer, proveInvoicingConsumer, proveSubscriptionsConsumer, proveWarehouseAdapterConsumer, proveFulfillmentConsumer, provePaymentAdapterConsumer, provePaymentsConsumer, installA1HostBinding, proveA1ReferenceBindingConsumer, ADAPTER_ENTRIES, assertConsumerIsolation, assertExportInventory, compileConsumer, consumerNode, NON_ADAPTER_ENTRIES, OPTIONAL_PEERS, proveAdapterRefusals, proveOidcRefusals, provePostgresOperations, proveNativeCommunicationsOperations, proveResendConsumer, proveMarketingSyncConsumer, runPlatformColdConsumer } from "./platform-cold-consumer.ts";
+import {
+  proveCommerceServerConsumer,
+  proveAccountSupportReadsConsumer,
+  ACCOUNT_SUPPORT_READ_SCENARIOS,
+  type AccountSupportReadScenarioResult,
+  proveAccountSupportConsumer,
+  proveCommerceConsumer,
+  proveInvoicingConsumer,
+  proveSubscriptionsConsumer,
+  proveWarehouseAdapterConsumer,
+  proveFulfillmentConsumer,
+  provePaymentAdapterConsumer,
+  provePaymentsConsumer,
+  installA1HostBinding,
+  proveA1ReferenceBindingConsumer,
+  ADAPTER_ENTRIES,
+  assertConsumerIsolation,
+  assertExportInventory,
+  compileConsumer,
+  consumerNode,
+  NON_ADAPTER_ENTRIES,
+  OPTIONAL_PEERS,
+  proveAdapterRefusals,
+  proveOidcRefusals,
+  provePostgresOperations,
+  proveNativeCommunicationsOperations,
+  proveResendConsumer,
+  proveMarketingSyncConsumer,
+  runPlatformColdConsumer
+} from "./platform-cold-consumer.ts";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const temporary: string[] = [];
@@ -776,3 +805,98 @@ it("executes the account-support consumer and detects a swallowed owner refusal"
   ) + "\n" + diagnostics);
   expect(() => proveAccountSupportConsumer(consumer)).toThrow();
 });
+
+// R2 reuses the existing packed fixture and isolated consumer boundary.
+function r2Consumer(): string {
+  const consumer = pristinePackedA1Fixture();
+  mkdirSync(join(consumer, "node_modules/@types"), { recursive: true });
+  for (const name of ["@types/node", "undici-types"]) cpSync(
+    join(root, "node_modules", name),
+    join(consumer, "node_modules", name),
+    { recursive: true }
+  );
+  assertConsumerIsolation(consumer, root);
+  return consumer;
+}
+// The runtime scenarios execute identical JavaScript under either module mode, so they
+// run once; the compiler-mode cases below vary resolution.
+let r2Results: AccountSupportReadScenarioResult[] = [];
+beforeAll(() => {
+  r2Results = proveAccountSupportReadsConsumer(r2Consumer(), { throwOnFailure: false });
+}, 60_000);
+it.each(ACCOUNT_SUPPORT_READ_SCENARIOS)(
+  "R2 installed scenario: %s", name => {
+    const result = r2Results.find(result => result.name === name);
+    expect(result, JSON.stringify(result, null, 2)).toMatchObject({ name, pass: true });
+    expect(result?.comparisons.length).toBeGreaterThan(0);
+  }
+);
+it.each(["NodeNext", "Bundler"] as const)(
+  "R2 installed strict owner aliases: %s",
+  module => {
+    const consumer = pristinePackedA1Fixture();
+    writeFileSync(
+      join(consumer, "r2.ts"),
+      `
+import { readCustomerOrderSummaries } from "@openlup/platform/account-support";
+import type { InvoiceOwnerAccessPort, InvoiceArtifactDownloadPort } from "@openlup/platform/account-support";
+import type { InvoiceHostPorts } from "@openlup/platform/invoicing/contracts";
+import type { AccountReadPort, AccountInvoiceHistoryResult } from "@openlup/platform/account-support/contracts";
+type Equal<A,B>=(<T>()=>T extends A?1:2) extends (<T>()=>T extends B?1:2)?true:false;
+type Assert<T extends true>=T;
+type Owner=[Assert<Equal<InvoiceOwnerAccessPort,InvoiceHostPorts["accountHistory"]>>,Assert<Equal<InvoiceArtifactDownloadPort,Pick<InvoiceHostPorts["artifacts"],"download">>>];
+declare const account: AccountReadPort<unknown,unknown,unknown>;
+// @ts-expect-error history remains limit-only
+account.listOrders("a",{limit:20,cursor:"private"});
+// @ts-expect-error owner refusal is a discriminated union with a stable code
+const unsupported: Awaited<ReturnType<InvoiceOwnerAccessPort["read"]>> = {kind:"unsupported",code:"invented",retryable:false,effectMayHaveSucceeded:false};
+declare const result: Extract<AccountInvoiceHistoryResult,{kind:"found"}>;
+// @ts-expect-error owner documents remain readonly
+result.documents.push({});
+// @ts-expect-error provider payloads do not belong to browser document DTOs
+result.documents[0].providerPayload;
+// @ts-expect-error deep implementations are not public exports
+import {} from "@openlup/platform/account-support/orderHistory";
+void readCustomerOrderSummaries;
+`
+    );
+    execFileSync(
+      process.execPath,
+      [
+        join(root, "node_modules/typescript/bin/tsc"),
+        "--ignoreConfig",
+        "--noEmit",
+        "--strict",
+        "--skipLibCheck",
+        "--target",
+        "ES2022",
+        "--module",
+        module === "NodeNext" ? "NodeNext" : "ESNext",
+        "--moduleResolution",
+        module,
+        "r2.ts"
+      ],
+      { cwd: consumer, env: isolatedConsumerEnv(), stdio: "inherit" }
+    );
+  },
+  60_000
+);
+it.each(["missing export", "foreign order"] as const)(
+  "R2 installed witness rejects %s",
+  mutation => {
+    const consumer = r2Consumer(),
+      entry = join(consumer, "node_modules/@openlup/platform/dist/account-support/orderHistory.js"),
+      source = readFileSync(entry, "utf8");
+    try {
+      const changed = mutation === "missing export"
+        ? source.replace("export async function readCustomerOrderDetail", "async function readCustomerOrderDetail")
+        : source.replace("if (!row)\n        return null;", "if (!row) return { order: {} };");
+      expect(changed).not.toBe(source);
+      writeFileSync(entry, changed);
+      expect(() => proveAccountSupportReadsConsumer(consumer)).toThrow();
+    } finally {
+      writeFileSync(entry, source);
+    }
+  },
+  60_000
+);

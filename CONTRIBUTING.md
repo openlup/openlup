@@ -1337,7 +1337,7 @@ AST rules and required verification routes remain binding; this contract step
 adds no separate runner or provider-access requirement.
 
 The experimental account/support module appends an isolated module-graph row
-with type-only browser contracts and no cross-module edges. Its R1 package tests
+with type-only browser contracts. R1 introduces no cross-module edges. Its package tests
 cover unchanged account-read diagnostics, exact injected read delegation,
 null/thrown refusals and browser bundling. The port-fit witness executes TypeScript
 semantic checking of local owner-type equality and real-driver assignability;
@@ -1347,6 +1347,20 @@ refusal paths and rejects an invalid typed request. The reference binding test
 uses the existing customer owner ports. These checks do not claim account
 aggregate, command execution, managed/native parity or release acceptance; later
 work is tracked in the [M12 design](docs/platform/plans/oss-m12-account-support.md).
+
+R2's read extraction uses only the commerce, shipping and invoicing public server
+entries, plus commerce/invoicing type entries. Its compiler-backed equality proof
+lives in `accountReadModels.test.ts` for packaged owners and
+`m12SupportReadBinding.test.ts` for reference-source owners. Browser-safe subsets
+exclude private line/profile fields; method/provider vocabulary is host selected.
+Its cases include complete-catalogue PostgreSQL reads and installed-consumer proof
+using the existing packed fixture. Each independent installed scenario reports its
+own observed/expected result and executed case while sharing a script invocation
+per module mode; one scenario failure must not hide the others. The real PostgreSQL cases fail when Docker is
+unavailable; missing proof cannot be reported as a skip-pass.
+Retain the current owner tests for delivery alignment, renewal engines, PDF
+validation and control-snapshot translation rather than duplicating those engines.
+The source routes remain unchanged pending P7.
 
 ### Commands and lint rules
 

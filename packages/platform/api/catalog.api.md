@@ -2352,8 +2352,8 @@ export declare const catalogSkuIdentifierSchema: z.ZodObject<{
     issuer: z.ZodString;
     normalizedValue: z.ZodString;
     kind: z.ZodEnum<{
-        gtin: "gtin";
         other: "other";
+        gtin: "gtin";
     }>;
     packKind: z.ZodEnum<{
         unit: "unit";
@@ -2388,8 +2388,8 @@ export declare const neutralSkuEnvelopeV1Schema: z.ZodObject<{
         }, z.core.$strict>;
         sellability: z.ZodObject<{
             status: z.ZodEnum<{
-                draft: "draft";
                 active: "active";
+                draft: "draft";
                 archived: "archived";
             }>;
             oneTime: z.ZodBoolean;
@@ -2411,8 +2411,8 @@ export declare const neutralSkuEnvelopeV1Schema: z.ZodObject<{
         issuer: z.ZodString;
         normalizedValue: z.ZodString;
         kind: z.ZodEnum<{
-            gtin: "gtin";
             other: "other";
+            gtin: "gtin";
         }>;
         packKind: z.ZodEnum<{
             unit: "unit";
@@ -2725,8 +2725,8 @@ export declare const resolvedSkuProjectionSchema: z.ZodObject<{
             }, z.core.$strict>;
             sellability: z.ZodObject<{
                 status: z.ZodEnum<{
-                    draft: "draft";
                     active: "active";
+                    draft: "draft";
                     archived: "archived";
                 }>;
                 oneTime: z.ZodBoolean;
@@ -2748,8 +2748,8 @@ export declare const resolvedSkuProjectionSchema: z.ZodObject<{
             issuer: z.ZodString;
             normalizedValue: z.ZodString;
             kind: z.ZodEnum<{
-                gtin: "gtin";
                 other: "other";
+                gtin: "gtin";
             }>;
             packKind: z.ZodEnum<{
                 unit: "unit";
@@ -2851,8 +2851,8 @@ export declare const sellableCatalogItemSchema: z.ZodObject<{
         currency: z.ZodString;
     }, z.core.$strict>;
     permittedPurchaseModes: z.ZodArray<z.ZodEnum<{
-        subscription: "subscription";
         one_time: "one_time";
+        subscription: "subscription";
     }>>;
 }, z.core.$strict>;
 export declare const sellableCatalogProfileSchema: z.ZodObject<{
@@ -2881,8 +2881,8 @@ export declare const sellableCatalogListResponseSchema: z.ZodObject<{
             currency: z.ZodString;
         }, z.core.$strict>;
         permittedPurchaseModes: z.ZodArray<z.ZodEnum<{
-            subscription: "subscription";
             one_time: "one_time";
+            subscription: "subscription";
         }>>;
     }, z.core.$strict>>;
 }, z.core.$strict>;

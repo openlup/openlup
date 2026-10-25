@@ -742,7 +742,11 @@ describe("account-support module graph addition", () => {
   it("admits own contracts while refusing owner imports and ambient loaders in contracts", async () => {
     const config = await loadConfig();
     const { PLATFORM_MODULE_GRAPH: graph } = await import("../../eslint.config.js");
-    expect(graph["account-support"]).toEqual({ contracts: true, values: [], types: [] });
+    expect(graph["account-support"]).toEqual({
+      contracts: true,
+      values: ["commerce", "invoicing", "shipping"],
+      types: ["commerce/contracts", "invoicing/contracts"]
+    });
     const file = "packages/platform/src/account-support/contracts/fit.ts";
     expect(await boundaryMessages(config, 'import type { CustomerContext } from "./account.js"; export type Context = CustomerContext;', file)).toEqual([]);
     for (const source of [
@@ -751,6 +755,16 @@ describe("account-support module graph addition", () => {
       'export const loader = process;',
     ]) expect(await boundaryMessages(config, source, file)).toContainEqual(expect.stringContaining('module "account-support" contracts'));
     expect(await boundaryMessages(config, 'import type { InvoiceHostPorts } from "../invoicing/contracts/index.js"; export type Host = InvoiceHostPorts;',
-      "packages/platform/src/account-support/fit.ts")).toContainEqual(expect.stringContaining('module "account-support"'));
+      "packages/platform/src/account-support/fit.ts")).toEqual([]);
+    expect(await boundaryMessages(
+      config,
+      'export { createInvoiceReadModel } from "../invoicing/index.js";',
+      "packages/platform/src/account-support/fit.ts"
+    )).toEqual([]);
+    expect(await boundaryMessages(
+      config,
+      'export { assertInvoicePdf } from "../invoicing/artifacts.js";',
+      "packages/platform/src/account-support/fit.ts"
+    )).toContainEqual(expect.stringContaining('module "account-support"'));
   });
 });

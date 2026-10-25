@@ -1381,19 +1381,19 @@ export declare const COMMERCE_FULFILLMENT_STATUSES: readonly ["created", "packed
 export declare const COMMERCE_FULFILLMENT_OPERATION_TYPES: readonly ["created", "packed", "provider_attempt_recorded", "label_created", "handed_over", "tracking_event_recorded", "cancelled"];
 export declare const COMMERCE_FULFILLMENT_PROVIDER_ATTEMPT_STATUSES: readonly ["recorded", "succeeded", "failed"];
 export declare const commerceFulfillmentStatusSchema: z.ZodEnum<{
-    created: "created";
     cancelled: "cancelled";
     delivered: "delivered";
+    exception: "exception";
+    created: "created";
     packed: "packed";
     label_pending: "label_pending";
     label_created: "label_created";
     handed_over: "handed_over";
     in_transit: "in_transit";
-    exception: "exception";
 }>;
 export declare const commerceFulfillmentOperationTypeSchema: z.ZodEnum<{
-    created: "created";
     cancelled: "cancelled";
+    created: "created";
     packed: "packed";
     label_created: "label_created";
     handed_over: "handed_over";
@@ -1408,9 +1408,9 @@ export declare const commerceFulfillmentProviderAttemptStatusSchema: z.ZodEnum<{
 export declare const commerceFulfillmentPaymentStatusSchema: z.ZodEnum<{
     requires_action: "requires_action";
     failed: "failed";
-    expired: "expired";
-    created: "created";
     cancelled: "cancelled";
+    created: "created";
+    expired: "expired";
     refunded: "refunded";
     not_started: "not_started";
     processing: "processing";
@@ -1461,9 +1461,9 @@ export declare const commerceFulfillmentPaymentSummarySchema: z.ZodObject<{
     paymentStatus: z.ZodEnum<{
         requires_action: "requires_action";
         failed: "failed";
-        expired: "expired";
-        created: "created";
         cancelled: "cancelled";
+        created: "created";
+        expired: "expired";
         refunded: "refunded";
         not_started: "not_started";
         processing: "processing";
@@ -1509,8 +1509,8 @@ export declare const commerceFulfillmentOmsEligibilitySchema: z.ZodObject<{
 export declare const commerceFulfillmentOperationSchema: z.ZodObject<{
     id: z.ZodGUID;
     type: z.ZodEnum<{
-        created: "created";
         cancelled: "cancelled";
+        created: "created";
         packed: "packed";
         label_created: "label_created";
         handed_over: "handed_over";
@@ -1526,15 +1526,15 @@ export declare const commerceFulfillmentOrderSchema: z.ZodObject<{
     orderId: z.ZodGUID;
     clientId: z.ZodNullable<z.ZodGUID>;
     status: z.ZodEnum<{
-        created: "created";
         cancelled: "cancelled";
         delivered: "delivered";
+        exception: "exception";
+        created: "created";
         packed: "packed";
         label_pending: "label_pending";
         label_created: "label_created";
         handed_over: "handed_over";
         in_transit: "in_transit";
-        exception: "exception";
     }>;
     providerKind: z.ZodNullable<z.ZodString>;
     providerTrackingId: z.ZodNullable<z.ZodString>;
@@ -1563,9 +1563,9 @@ export declare const commerceFulfillmentOrderSchema: z.ZodObject<{
         paymentStatus: z.ZodEnum<{
             requires_action: "requires_action";
             failed: "failed";
-            expired: "expired";
-            created: "created";
             cancelled: "cancelled";
+            created: "created";
+            expired: "expired";
             refunded: "refunded";
             not_started: "not_started";
             processing: "processing";
@@ -1611,8 +1611,8 @@ export declare const commerceFulfillmentOrderSchema: z.ZodObject<{
     latestOperation: z.ZodNullable<z.ZodObject<{
         id: z.ZodGUID;
         type: z.ZodEnum<{
-            created: "created";
             cancelled: "cancelled";
+            created: "created";
             packed: "packed";
             label_created: "label_created";
             handed_over: "handed_over";
@@ -1630,15 +1630,15 @@ export declare const adminCommerceFulfillmentOrdersListRequestSchema: z.ZodObjec
     page: z.ZodDefault<z.ZodCoercedNumber<unknown>>;
     pageSize: z.ZodDefault<z.ZodCoercedNumber<unknown>>;
     status: z.ZodOptional<z.ZodEnum<{
-        created: "created";
         cancelled: "cancelled";
         delivered: "delivered";
+        exception: "exception";
+        created: "created";
         packed: "packed";
         label_pending: "label_pending";
         label_created: "label_created";
         handed_over: "handed_over";
         in_transit: "in_transit";
-        exception: "exception";
     }>>;
 }, z.core.$strict>;
 export declare const adminCommerceFulfillmentOrderDetailRequestSchema: z.ZodObject<{
@@ -1684,8 +1684,8 @@ export declare const adminCommerceFulfillmentTrackingEventRequestSchema: z.ZodOb
     fulfillmentOrderId: z.ZodGUID;
     status: z.ZodEnum<{
         delivered: "delivered";
-        in_transit: "in_transit";
         exception: "exception";
+        in_transit: "in_transit";
     }>;
     providerTrackingId: z.ZodOptional<z.ZodString>;
     rawEvent: z.ZodDefault<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
@@ -1704,15 +1704,15 @@ export declare const adminCommerceFulfillmentOrdersListResponseSchema: z.ZodObje
         orderId: z.ZodGUID;
         clientId: z.ZodNullable<z.ZodGUID>;
         status: z.ZodEnum<{
-            created: "created";
             cancelled: "cancelled";
             delivered: "delivered";
+            exception: "exception";
+            created: "created";
             packed: "packed";
             label_pending: "label_pending";
             label_created: "label_created";
             handed_over: "handed_over";
             in_transit: "in_transit";
-            exception: "exception";
         }>;
         providerKind: z.ZodNullable<z.ZodString>;
         providerTrackingId: z.ZodNullable<z.ZodString>;
@@ -1741,9 +1741,9 @@ export declare const adminCommerceFulfillmentOrdersListResponseSchema: z.ZodObje
             paymentStatus: z.ZodEnum<{
                 requires_action: "requires_action";
                 failed: "failed";
-                expired: "expired";
-                created: "created";
                 cancelled: "cancelled";
+                created: "created";
+                expired: "expired";
                 refunded: "refunded";
                 not_started: "not_started";
                 processing: "processing";
@@ -1789,8 +1789,8 @@ export declare const adminCommerceFulfillmentOrdersListResponseSchema: z.ZodObje
         latestOperation: z.ZodNullable<z.ZodObject<{
             id: z.ZodGUID;
             type: z.ZodEnum<{
-                created: "created";
                 cancelled: "cancelled";
+                created: "created";
                 packed: "packed";
                 label_created: "label_created";
                 handed_over: "handed_over";
@@ -1815,15 +1815,15 @@ export declare const adminCommerceFulfillmentOrderDetailResponseSchema: z.ZodObj
         orderId: z.ZodGUID;
         clientId: z.ZodNullable<z.ZodGUID>;
         status: z.ZodEnum<{
-            created: "created";
             cancelled: "cancelled";
             delivered: "delivered";
+            exception: "exception";
+            created: "created";
             packed: "packed";
             label_pending: "label_pending";
             label_created: "label_created";
             handed_over: "handed_over";
             in_transit: "in_transit";
-            exception: "exception";
         }>;
         providerKind: z.ZodNullable<z.ZodString>;
         providerTrackingId: z.ZodNullable<z.ZodString>;
@@ -1852,9 +1852,9 @@ export declare const adminCommerceFulfillmentOrderDetailResponseSchema: z.ZodObj
             paymentStatus: z.ZodEnum<{
                 requires_action: "requires_action";
                 failed: "failed";
-                expired: "expired";
-                created: "created";
                 cancelled: "cancelled";
+                created: "created";
+                expired: "expired";
                 refunded: "refunded";
                 not_started: "not_started";
                 processing: "processing";
@@ -1900,8 +1900,8 @@ export declare const adminCommerceFulfillmentOrderDetailResponseSchema: z.ZodObj
         latestOperation: z.ZodNullable<z.ZodObject<{
             id: z.ZodGUID;
             type: z.ZodEnum<{
-                created: "created";
                 cancelled: "cancelled";
+                created: "created";
                 packed: "packed";
                 label_created: "label_created";
                 handed_over: "handed_over";
@@ -1921,15 +1921,15 @@ export declare const adminCommerceFulfillmentMutationResponseSchema: z.ZodObject
     fulfillmentOrderId: z.ZodGUID;
     orderId: z.ZodGUID;
     status: z.ZodEnum<{
-        created: "created";
         cancelled: "cancelled";
         delivered: "delivered";
+        exception: "exception";
+        created: "created";
         packed: "packed";
         label_pending: "label_pending";
         label_created: "label_created";
         handed_over: "handed_over";
         in_transit: "in_transit";
-        exception: "exception";
     }>;
     replayed: z.ZodBoolean;
 }, z.core.$strict>;
@@ -1951,10 +1951,10 @@ export declare const adminCommerceOrderRequestReplacementShipmentRequestSchema: 
     idempotencyKey: z.ZodString;
     orderId: z.ZodGUID;
     reason: z.ZodEnum<{
-        other: "other";
         damaged: "damaged";
         lost: "lost";
         returned_undelivered: "returned_undelivered";
+        other: "other";
     }>;
     metadata: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
 }, z.core.$strict>;
@@ -2012,10 +2012,10 @@ export declare const adminCommerceOrderRequestReplacementShipmentResponseSchema:
         sequenceNo: z.ZodNumber;
         replacesFulfillmentOrderId: z.ZodString;
         reason: z.ZodEnum<{
-            other: "other";
             damaged: "damaged";
             lost: "lost";
             returned_undelivered: "returned_undelivered";
+            other: "other";
         }>;
         status: z.ZodString;
     }, z.core.$strip>;

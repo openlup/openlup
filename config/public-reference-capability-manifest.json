@@ -14,5 +14,6 @@
     }
   ],
   "invoicing": { "defaultEnabled": false, "registration": "explicit-host", "executor": "accountingRuntime", "routes": [] },
+  "accountSupport": { "defaultEnabled": false, "registration": "explicit-host", "routes": [] },
   "refuses": ["admin", "api", "bff", "checkout", "cron", "mutation", "subscription"]
 }

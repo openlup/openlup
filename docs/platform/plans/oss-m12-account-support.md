@@ -125,8 +125,155 @@ observable behavior. No durable data or SQL migration is introduced.
 
 ## R2: bounded reads and Customer 360
 
-TODO: current account/history/detail/invoice and bounded Customer 360 projections,
-with frozen owner money, unknown coverage and injected private enrichment.
+R2 contributes neutral aggregate, stored-money order-history/detail, Customer 360
+projection and M09 invoice delegates through the existing two package entries.
+R1's facade, signatures and diagnostic slice stay unchanged. R2 is stacked on R1
+commit `8a1875566480839c814a7bbb0b17fd35fda986c1`, its review base, and adds no
+SQL, migrations or route mounting.
+
+The aggregate retains two read stages, the 50-row subscription source bound before
+visibility filtering, a 20-order store request, subscription assembly fan-out,
+local-hour cutoff, eligibility precedence and capped action ordering. The order
+reader resolves ownership before line/companion reads and uses commerce stored
+money, parcel precedence, recovery evidence and shipping selection projections.
+The Customer 360 projection retains pending-order/client recovery authority,
+live-token evidence, optional/partial enrichment and bounded chronological audit.
+Generic subscription `paymentMethodKind` pointer enrichment retains value, null
+for a selected-empty source, and omission for an unread source; private pointers
+remain outside the neutral DTO.
+Private profile/catalogue presentation, lifecycle source mapping, next-charge
+pricing and fulfillment evidence interpretation remain typed host selections.
+Observed OpenLup/donor differences belong in the existing task register as
+adoption-time injections; R2 does not repair or silently equate them.
+
+Minimal production graph edges are values `commerce` (stored money and recovery),
+`invoicing` (history/PDF owner), `shipping` (delivery selection), and types
+`commerce/contracts` (money/recovery DTOs), `invoicing/contracts` (exact owner
+aliases). No direct fulfillment import is needed: the existing interpreter and
+alignment reader are injected. Core supplies parcel precedence through its public
+fulfillment entry. Contracts stay self-contained/type-only. Exact equality and
+real-driver fit are executed by TypeScript in the two allocated proof files;
+private fields use documented subsets and host method/provider vocabularies stay
+parameterized. The R1 graph/equality record above is historical to R1.
+
+The account selection calls the new aggregate/history/detail/invoice exports.
+The support binding calls the package read facade over the existing native scope
+or an explicit managed scope. Authorization runs first; real machine governance
+and scope cleanup are retained. Native account/history/invoice and managed
+support are unselected by default. Owner M09 denied/unknown/unsupported results
+and M08 native-unsupported remain distinct. The manifest is metadata only,
+default-off/explicit-host with no routes; static refusals remain unchanged.
+Host-fed read views use typed strings, preserve unknown/last-known evidence and
+expand summaries without detail API calls. Reference source implementations and
+all mounted routes remain unchanged; their package adoption is pending P7.
+The diagnostic selection is independent of the journey selection after the same
+actor governance, exposing existing typed search, segment history and v2 overview
+reads with trusted operator identity. Reference line display explicitly picks
+its five declared presentation keys before package projection.
+
+Acceptance case accounting follows coordinator CD-7: every independent input/state
+row is an executed case; only one behavior sequence shares a case. The measured
+per-file counts are in the table below. Existing import-map cases gain edge/refusal
+assertions without adding a new case. Existing owner witnesses retain pricing,
+renewal, delivery-alignment, PDF-validation and control-snapshot responsibility.
+The complete migration catalogue is required for PostgreSQL evidence; Docker
+absence is a missing proof. Only the coordinator-approved case budget changes;
+artifact and gate caps remain unchanged.
+
+The smallest adequate implementation is four cohesive read modules, local DTOs
+and typed injected owner/query/presentation seams. Pure facade delegation alone
+would omit aggregate/projection extraction. Copying private drivers or a pricing
+engine would add authority and maintenance cost without meeting neutrality.
+API snapshots are produced by the unchanged generator; the generated companion
+list below is part of the same R2 scope. Command/route/control work remains excluded.
+
+Final verification is the whole-suite `verify-local --pgtap` on the committed
+candidate; missing mandatory proof is a delivery blocker.
+
+### R2 API-freeze conditions
+
+The API-freeze read added two conditions: C1 binds every invoice download to the
+principal's own order before bytes, and C2 checks Customer 360 authorization
+inside the facade before any source read.
+
+C1 uses the owned-history variant: invoice identity `orderRef` is a stored
+business reference, while request `orderId` is the raw order ID. No normalization
+is invented. `createInvoiceAccess` adds one account-history read before ticket
+resolution; only a found history with matching accountRef/orderId containing the
+requested document allows M09 to read artifact bytes. Missing/foreign documents
+return `{ kind: "denied" }`. Download requires a bound owned-order history;
+an unbound history reports M09 unsupported (`host_binding_required`) instead of
+downloading. A history result of denied, unknown or unsupported keeps its distinct
+M09 outcome before ticket/artifact IO; a thrown history remains unknown.
+Existing own-order correction/PDF success remains covered, including differing orderRef/orderId values. The donor's real ownership
+chain remains a host responsibility; the added read establishes document binding.
+
+C2 adds required `authorize(): Promise<boolean>` to
+`createCustomer360ReadFacade({ authorize, journey, summary, diagnostics })`.
+Each method authorizes before any source call, returning `{ kind: "denied" }`
+on refusal and otherwise preserving forwarding/null/throw behavior. The binding
+creates a per-invocation facade: its authorization resolves the real actor once,
+applies the existing governance, then opens only the selected scope. Diagnostic
+search/history/overview stay independent of journey selection; disabled selection
+never authorizes or opens a scope. No new authorization policy is invented.
+
+Each condition has its own discriminating test, and the binding test checks the
+once-only authorization. The smallest adequate change is the local history guard
+and a shared facade authorization callback with lazy scope delegates; M09 and
+mounted routes remain unchanged.
+
+### R2 behaviour-class proof and measured cases
+
+A behaviour-class sweep over every branch of the extracted read functions retains
+the donor algorithms and adds independently executed witnesses for payment eligibility and aggregate status forwarding,
+action/hold precedence, null/absent evidence, projection defaults and document
+status ordering. Each newly closed behavior class has a targeted temporary
+branch-removal/reordering falsifier. No production read algorithm changed.
+
+The installed R2 witness runs its runtime scenarios once against the existing
+packed fixture (the JavaScript is identical under either module mode) and reports
+every independent scenario by name with observed/expected comparisons, so each
+scenario is its own executed case and one failure cannot hide another. The
+NodeNext and Bundler compiler checks and the missing-export/foreign-detail
+falsifiers stay separately executed.
+
+Measured R2 cases (coordinator CD-7: each independent input/state row is one
+executed case; the M12 ceiling is the measured total at S1):
+
+| R2 test file | Executed R2 cases | File duration |
+| --- | ---: | ---: |
+| `packages/platform/test/account-support/accountReadModels.test.ts` | 58 | 0.578 s |
+| `packages/platform/test/account-support/orderHistory.test.ts` | 34 | 0.012 s |
+| `packages/platform/test/account-support/customer360.test.ts` | 60 | 0.017 s |
+| `packages/platform/test/account-support/invoiceAccess.test.ts` | 38 | 0.006 s |
+| `server/runtime/public-reference/m12SupportReadBinding.test.ts` | 45 | 0.915 s |
+| `src/public-reference/accountSupportReads.test.tsx` | 1 | 0.060 s |
+| `scripts/packages/platform-cold-consumer.test.ts` (R2 rows) | 14 | 16.29 s |
+| `tests/postgres/accountSupportReads.test.ts` | 5 | 7.33 s |
+| **Total** | **255** | **25.21 s** |
+
+Durations are printed whole-file times, not hosted medians. The installed-consumer
+file is an existing file; its time includes 51 pre-existing cases and the real
+packed-consumer setup. The PostgreSQL time includes container start. A temporary
+branch-removal or reordering mutation fails exactly the selected row for each of
+the 143 branch classes added by the behaviour-class sweep.
+
+### R2 generated API companions
+
+The unchanged generator regenerates the following sibling reports, member order
+only, no declaration change. AST comparison permits only type union/type literal
+member order and preserves all other declaration structure. These nine paths
+are ID-3 generated companions, making the bounded total 35 + 9 = 44 paths.
+
+- `packages/platform/api/catalog.api.md`
+- `packages/platform/api/commerce-server.api.md`
+- `packages/platform/api/commerce.api.md`
+- `packages/platform/api/communications.api.md`
+- `packages/platform/api/fulfillment.api.md`
+- `packages/platform/api/identity.api.md`
+- `packages/platform/api/invoicing.api.md`
+- `packages/platform/api/pricing.api.md`
+- `packages/platform/api/promotions.api.md`
 
 ## R3: self-service composition
 

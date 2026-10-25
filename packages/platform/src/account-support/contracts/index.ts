@@ -1,6 +1,94 @@
-export type * from "./account.js";
-export type * from "./customer360.js";
-export type * from "./commands.js";
-export type * from "./operator.js";
-export type * from "./invoice.js";
-export type * from "./capabilities.js";
+export type {
+  CustomerContext,
+  AccountReadRefusal,
+  AccountReadPort,
+  AccountProfile,
+  AccountAddress,
+  AccountBillingProfile,
+  AccountPaymentPreference,
+  AccountPickupPoint,
+  AccountDeliverySelection,
+  AccountDeliveryPreference,
+  AccountEvent,
+  AccountSubscriptionLine,
+  AccountSubscription,
+  AccountTrackingReference,
+  AccountTrackingEvent,
+  AccountInvoiceSummary,
+  AccountInvoiceDocument,
+  AccountOrderSummary,
+  AccountOrderLine,
+  AccountFulfillmentSummary,
+  AccountOrderDetail,
+  AccountOrderList,
+  AccountOrderDetailResponse,
+  AccountActionRequired,
+  AccountActionMessage,
+  AccountSnapshot
+} from "./account.js";
+export type {
+  OperatorContext,
+  Customer360Lookup,
+  Customer360ReadPort,
+  Customer360LifecycleStage,
+  Customer360Subject,
+  Customer360Order,
+  Customer360Subscription,
+  Customer360PaymentTruth,
+  Customer360DunningCase,
+  Customer360Recovery,
+  Customer360ContactHealth,
+  Customer360Address,
+  Customer360AuditEvent,
+  Customer360LookupResult,
+  Customer360SearchResponse,
+  Customer360Snapshot,
+  Customer360SummaryReadPort,
+  DiagnosticHistoryReadPort
+} from "./customer360.js";
+export type {
+  SubscriptionCommandContext,
+  SubscriptionCommand,
+  SubscriptionBundleLine,
+  SubscriptionCommandReceipt,
+  SubscriptionCommandRefusal,
+  SubscriptionUnsupportedCode,
+  SubscriptionUnsupported,
+  SubscriptionCapabilities,
+  NativeSubscriptionCommand,
+  SelfServiceCommandFacade,
+  AccountSupportMoney,
+  SubscriptionPaymentMethodStatus,
+  SubscriptionRenewalBlockStatus,
+  EligibilityRefusal,
+  LegacySubscriptionPreviewResponse
+} from "./commands.js";
+export type {
+  OperatorSubscriptionAction,
+  OperatorNewShippingAddress,
+  OperatorShippingAddressPayload,
+  OperatorSubscriptionPayload,
+  OperatorSubscriptionRefusal,
+  RecoveryRefusal,
+  EmailCorrectionRefusal,
+  PhoneCorrectionRefusal,
+  LeadRefusal,
+  OperatorContactCommand,
+  OperatorLeadCommand,
+  OperatorRecoveryCommand,
+  OperatorRecoveryCommandEnvelope,
+  OperatorSubscriptionResult
+} from "./operator.js";
+export type {
+  InvoiceDocumentIdentity,
+  InvoiceUnsupported,
+  InvoiceClearanceState,
+  InvoiceAccessPort,
+  CustomerDocumentDeliveryStatus,
+  CustomerInvoiceDocumentRole,
+  CustomerInvoiceDownloadArtifact,
+  CustomerInvoiceDownloadRequest,
+  AccountInvoiceHistoryResult,
+  AccountInvoiceHistoryDocument
+} from "./invoice.js";
+export type { AccountSupportCapability, AccountSupportCapabilities } from "./capabilities.js";
