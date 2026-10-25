@@ -5958,10 +5958,6 @@
       "class": "public-output"
     },
     {
-      "path": "packages/platform/test/commerceBrowserBoundary.test.ts",
-      "class": "public-output"
-    },
-    {
       "path": "packages/platform/test/communications/adapterOptIn.test.ts",
       "class": "public-output"
     },

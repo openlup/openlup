@@ -592,6 +592,7 @@ describe("eslint platform module boundaries", { timeout: 60_000 }, () => {
     const { PLATFORM_MODULE_GRAPH: graph } = await import("../../eslint.config.js");
     expect(graph["commerce/server"]).toEqual({ values: ["commerce", "fulfillment"], types: ["http", "bff"] });
     expect(graph.commerce.values).not.toContain("commerce/server");
+    expect(graph.commerce.values).toEqual(["pricing/contracts", "shipping"]);
     for (const depth of [0, 1]) {
       const up = "../".repeat(depth);
       const file = `packages/platform/src/commerce/server/${"nested/".repeat(depth)}probe.ts`;

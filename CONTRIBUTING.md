@@ -212,7 +212,7 @@ budgets.
 
 M11 commerce keeps browser-safe schemas, pure projections and ports at
 `@openlup/platform/commerce`; handler factories and registry composition use
-`@openlup/platform/commerce/server`. `commerceBrowserBoundary.test.ts` bundles
+`@openlup/platform/commerce/server`. `packages/platform/test/commerce/browserSafety.test.ts` bundles
 that published browser entry with esbuild and checks that source imports,
 including erased types, never reach the server entry. The module lint graph
 admits fulfillment only from `commerce/server/`; import-map tests exercise both
