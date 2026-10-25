@@ -1,14 +1,18 @@
--- CTL-M11 working draft: retain operator attribution before recovery-token
+-- CTL-M11 reviewed fixture: retain operator attribution before recovery-token
 -- revocation/minting, then append a bounded outcome to the existing audit ledger.
 -- Require prior admission for a completed attempt and delegate actor validation
 -- and audit replay to the incumbent audit primitive. This is checkout authority,
 -- not a payment-truth or invoice-issue writer. Add only the checkout audit action
 -- to the preceding action vocabulary, without copying the donor invoice action.
--- The CHECK replacement is a new exact SQL class requirement: bind its preimage,
--- retain every old value and add only checkout_payment_link_mint. NOT VALID avoids
+-- The CHECK replacement binds its preimage, retains every old value and adds
+-- only checkout_payment_link_mint. NOT VALID avoids
 -- scanning history while enforcing the new superset on future writes.
 -- Preserve the donor-neutral SECURITY DEFINER/pg_catalog/public/service-only
--- boundary. Inert fixture only: requires separate constraint/class control review.
+-- boundary.
+-- Admitted pin: config/reviewed-platform-forwards.json managedCommerceForwards.
+-- M11 feature PRs (the K1 stack) introduce these bytes in registry order.
+-- This file requires every earlier same-rail M10/M11 pin to have landed.
+-- Pin admission does not establish installation or runtime behavior.
 
 SET LOCAL lock_timeout = '2s';
 

@@ -1,4 +1,4 @@
--- CTL-M11 working draft: close the M05 terms-reader dependency of checkout
+-- CTL-M11 reviewed fixture: close the M05 terms-reader dependency of checkout
 -- acquisition admission. Restate the donor body and service-only ACL unchanged.
 -- Uses existing promotions columns and the preceding private metadata decoder;
 -- creates no storage, seed, campaign or policy writer. No policy means admission
@@ -6,7 +6,10 @@
 -- Policy writers must hold the exclusive transaction advisory lock for
 -- hashtextextended('commerce.subscription_acquisition', 0) before reading/writing
 -- policy rows; finalize holds the shared lock through admission and creation.
--- Inert fixture only: the proposed managed commerce class is not admitted.
+-- Admitted pin: config/reviewed-platform-forwards.json managedCommerceForwards.
+-- M11 feature PRs (the K1 stack) introduce these bytes in registry order.
+-- This file requires every earlier same-rail M10/M11 pin to have landed.
+-- Pin admission does not establish installation or runtime behavior.
 
 CREATE FUNCTION public.commerce_subscription_acquisition_terms(p_at timestamptz DEFAULT clock_timestamp())
 RETURNS jsonb LANGUAGE plpgsql SECURITY DEFINER SET search_path = pg_catalog, public AS $$

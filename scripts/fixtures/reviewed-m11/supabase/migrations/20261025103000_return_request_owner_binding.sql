@@ -1,4 +1,4 @@
--- CTL-M11 working draft: resolve the server-supplied principal to its customer,
+-- CTL-M11 reviewed fixture: resolve the server-supplied principal to its customer,
 -- lock only that customer's order, and bind both fresh and replayed return keys
 -- to the same principal, order and normalized command. Reconstruct old command
 -- fingerprints without updating historical requests. Preserve duplicate lines,
@@ -6,7 +6,10 @@
 -- A nonblocking global-key gate refuses another in-flight customer uniformly;
 -- a constraint-specific unique-violation handler covers direct-insert races.
 -- Preserve SECURITY DEFINER, public/pg_catalog path and service-only execution.
--- Inert fixture only: requires an explicitly approved M11 replacement class.
+-- Admitted pin: config/reviewed-platform-forwards.json managedCommerceForwards.
+-- M11 feature PRs (the K1 stack) introduce these bytes in registry order.
+-- This file requires every earlier same-rail M10/M11 pin to have landed.
+-- Pin admission does not establish installation or runtime behavior.
 
 CREATE OR REPLACE FUNCTION public.commerce_return_request_create(p_idempotency_key text, p_order_id uuid, p_lines jsonb, p_reason_code text, p_customer_note text DEFAULT NULL::text, p_requested_by uuid DEFAULT NULL::uuid) RETURNS jsonb
 LANGUAGE plpgsql

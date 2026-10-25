@@ -1,9 +1,12 @@
--- CTL-M11 working draft: check retained acquisition evidence immediately before
+-- CTL-M11 reviewed fixture: check retained acquisition evidence immediately before
 -- first provisional subscription creation. Existing finalize replay, fingerprints,
 -- client/address ownership, money snapshots and one-time orders keep their paths.
 -- Requires the preceding private helper, terms reader and metadata decoder.
 -- Preserve existing SECURITY DEFINER, fixed path and service-only execution.
--- Inert fixture only: class admission is a separate later control round.
+-- Admitted pin: config/reviewed-platform-forwards.json managedCommerceForwards.
+-- M11 feature PRs (the K1 stack) introduce these bytes in registry order.
+-- This file requires every earlier same-rail M10/M11 pin to have landed.
+-- Pin admission does not establish installation or runtime behavior.
 CREATE OR REPLACE FUNCTION public.commerce_finalize_order_for_checkout(p_idempotency_key text, p_order_id uuid, p_mode text, p_client_id uuid, p_shipping_address_id uuid, p_pet_id uuid, p_quote_snapshot jsonb, p_order_draft_snapshot jsonb, p_metadata jsonb DEFAULT '{}'::jsonb) RETURNS jsonb
     LANGUAGE plpgsql SECURITY DEFINER
     SET search_path = public, pg_catalog

@@ -1,4 +1,4 @@
--- CTL-M11 working draft: scope saved preference writes to a newly created client
+-- CTL-M11 reviewed fixture: scope saved preference writes to a newly created client
 -- or a caller whose server-proved account matches the existing linked account.
 -- Guests may supply an order destination without rewriting a saved address,
 -- promoting it to default, or appending marketing permission. Agreement evidence
@@ -10,7 +10,10 @@
 -- Adopters must configure their own default region. Neutral commands continue
 -- to require explicit country input.
 -- Existing SECURITY DEFINER, fixed path and service-only execution are retained.
--- Inert fixture only: no admitted class, installation, or runtime proof claimed.
+-- Admitted pin: config/reviewed-platform-forwards.json managedCommerceForwards.
+-- M11 feature PRs (the K1 stack) introduce these bytes in registry order.
+-- This file requires every earlier same-rail M10/M11 pin to have landed.
+-- Pin admission does not establish installation or runtime behavior.
 CREATE OR REPLACE FUNCTION public.commerce_configurator_persist_intent(p_intent jsonb) RETURNS jsonb
     LANGUAGE plpgsql SECURITY DEFINER
     SET search_path = public, pg_catalog

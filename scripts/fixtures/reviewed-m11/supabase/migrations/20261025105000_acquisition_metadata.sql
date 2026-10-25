@@ -1,7 +1,10 @@
--- CTL-M11 working draft: close the M05 metadata-decoding dependency of checkout
+-- CTL-M11 reviewed fixture: close the M05 metadata-decoding dependency of checkout
 -- acquisition admission. Restate the donor definition and closed private ACL
 -- unchanged; existing promotions JSONB is the storage, with no seed or activation.
--- Inert fixture only: the proposed managed commerce class is not admitted.
+-- Admitted pin: config/reviewed-platform-forwards.json managedCommerceForwards.
+-- M11 feature PRs (the K1 stack) introduce these bytes in registry order.
+-- This file requires every earlier same-rail M10/M11 pin to have landed.
+-- Pin admission does not establish installation or runtime behavior.
 
 CREATE FUNCTION private.commerce_acquisition_metadata(p_payload jsonb) RETURNS jsonb
 LANGUAGE plpgsql IMMUTABLE SET search_path = pg_catalog, public AS $$
