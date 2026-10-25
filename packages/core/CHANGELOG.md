@@ -10,6 +10,15 @@ in the source repository.
 
 ## [Unreleased]
 
+## [0.25.0]
+
+- Publishable on the npm `latest` dist-tag as `0.25.0`, from tag
+  `openlup-core-v0.25.0`.
+
+- Keep active subscriptions unchanged when the retry ladder is exhausted; the compatibility function emits no pause event and retains historical paused-row recovery.
+
+Migration notes: Exhaustion no longer changes an active subscription to paused. Existing paused records are not rewritten; explicit customer lifecycle commands and historical recovery remain separate.
+
 ## [0.24.0]
 
 - Publishable on the npm `latest` dist-tag as `0.24.0`, from tag
@@ -39,20 +48,3 @@ Migration: upgrade the complete set together for exact internal peers; core intr
 ### Known limitations
 
 The fulfillment status map retains localized adopter labels; hosts still need injected labels or internationalization keys.
-
-## [0.22.0]
-
-- Publishable on the npm `latest` dist-tag as `0.22.0`, from tag
-  `openlup-core-v0.22.0`.
-
-- Add pure fulfillment status, tracking-progress, current-parcel and canonical
-  fact-parser helpers to the existing `./fulfillment` subpath. Generic fact types
-  retain their names; narrowed fact aliases use the `Canonical` prefix. New
-  fulfillment re-exports carry the same `@beta` annotation as existing facts.
-
-Migration: existing platform fulfillment imports remain compatible re-exports;
-no application import or schema migration is required.
-
-### Known limitations
-
-- `FULFILLMENT_STATUS_MAP` carries localized adopter labels. Replace them with host-injected labels or internationalization keys before any stable-framework claim.
