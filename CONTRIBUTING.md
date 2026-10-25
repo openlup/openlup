@@ -192,6 +192,16 @@ The runtime reuses the existing pricing/contracts version and,
 only through commerce/server, the shipping runtime entry through explicit module
 graph edges. No gate budget, provider requirement or activation is added.
 
+M11 K3b puts handlers/adapters in `@openlup/platform/commerce/server`, with
+explicit commerce values and HTTP/BFF type edges; the
+commerce contracts entry remains unchanged and imports no pricing. Run the moved
+returns/review/media/feedback suites under `packages/platform/test/commerce`,
+the reference facade tests, `packages/platform/test/packageBoundary.test.ts` and
+`scripts/packages/platform-cold-consumer.test.ts`. The latter also checks that
+commerce declarations compile without the optional database peer. Receipt/RPC
+fakes prove wire mapping and refusal, while database ownership, concurrency and
+replay require their separate native/managed PostgreSQL integration witnesses.
+
 The native subscription renewal selection is
 `npm test -- tests/postgres/subscriptionRenewalLifecycle.test.ts --maxWorkers=1`.
 It uses one disposable PostgreSQL container for N1 exact-prefix restart,

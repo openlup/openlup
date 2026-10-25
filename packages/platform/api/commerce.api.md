@@ -355,6 +355,107 @@ export declare function createCheckoutQuoteSchemas<Money extends z.ZodType, Poli
     }, z.core.$strict>;
 };
 ```
+## dist/commerce/commerceReturnsPort.d.ts
+
+```ts
+import { z } from "zod";
+/** Returns request/approve/reject only. Restock and refund fields record intent; no receive, restock or refund execution. */
+export declare const returnRequestLineSchema: z.ZodObject<{
+    orderItemId: z.ZodGUID;
+    sku: z.ZodOptional<z.ZodString>;
+    quantity: z.ZodNumber;
+    restockDisposition: z.ZodOptional<z.ZodEnum<{
+        restock: "restock";
+        quarantine: "quarantine";
+        scrap: "scrap";
+    }>>;
+}, z.core.$strip>;
+/** Bind host reason codes for request/approve/reject only; restock/refund fields record intent, without execution. */
+export declare function createCommerceReturnsSchemas<const Reasons extends readonly [string, ...string[]]>(reasonCodes: Reasons): {
+    returnRequestCreateSchema: z.ZodObject<{
+        idempotencyKey: z.ZodString;
+        orderId: z.ZodGUID;
+        reasonCode: z.ZodEnum<{ [k_1 in Reasons[number]]: k_1; } extends infer T ? { [k in keyof T]: T[k]; } : never>;
+        lines: z.ZodArray<z.ZodObject<{
+            orderItemId: z.ZodGUID;
+            sku: z.ZodOptional<z.ZodString>;
+            quantity: z.ZodNumber;
+            restockDisposition: z.ZodOptional<z.ZodEnum<{
+                restock: "restock";
+                quarantine: "quarantine";
+                scrap: "scrap";
+            }>>;
+        }, z.core.$strip>>;
+        customerNote: z.ZodOptional<z.ZodString>;
+    }, z.core.$strip>;
+};
+/** Neutral default reasons for request/approve/reject only; restock/refund fields record intent, without execution. */
+export declare const returnRequestCreateSchema: z.ZodObject<{
+    idempotencyKey: z.ZodString;
+    orderId: z.ZodGUID;
+    reasonCode: z.ZodEnum<{
+        other: "other";
+        damaged: "damaged";
+        wrong_item: "wrong_item";
+        not_as_described: "not_as_described";
+        changed_mind: "changed_mind";
+    }>;
+    lines: z.ZodArray<z.ZodObject<{
+        orderItemId: z.ZodGUID;
+        sku: z.ZodOptional<z.ZodString>;
+        quantity: z.ZodNumber;
+        restockDisposition: z.ZodOptional<z.ZodEnum<{
+            restock: "restock";
+            quarantine: "quarantine";
+            scrap: "scrap";
+        }>>;
+    }, z.core.$strip>>;
+    customerNote: z.ZodOptional<z.ZodString>;
+}, z.core.$strip>;
+/** Returns request/approve/reject only. Restock and refund fields record intent; no receive, restock or refund execution. */
+export declare const returnApproveSchema: z.ZodObject<{
+    idempotencyKey: z.ZodString;
+    returnRequestId: z.ZodGUID;
+    refundMode: z.ZodDefault<z.ZodEnum<{
+        partial: "partial";
+        full: "full";
+        none: "none";
+    }>>;
+    refundAmountCents: z.ZodOptional<z.ZodNumber>;
+    adminNote: z.ZodOptional<z.ZodString>;
+}, z.core.$strip>;
+/** Returns request/approve/reject only. Restock and refund fields record intent; no receive, restock or refund execution. */
+export declare const returnRejectSchema: z.ZodObject<{
+    idempotencyKey: z.ZodString;
+    returnRequestId: z.ZodGUID;
+    adminNote: z.ZodOptional<z.ZodString>;
+}, z.core.$strip>;
+/** Returns request/approve/reject only. Restock and refund fields record intent; no receive, restock or refund execution. */
+export type ReturnRequestCreateInput<Reason extends string = z.infer<typeof returnRequestCreateSchema>["reasonCode"]> = Omit<z.infer<typeof returnRequestCreateSchema>, "reasonCode"> & {
+    reasonCode: Reason;
+    requestedBy?: string | null;
+};
+/** Returns request/approve/reject only. Restock and refund fields record intent; no receive, restock or refund execution. */
+export type ReturnApproveInput = z.infer<typeof returnApproveSchema> & {
+    actorUserId?: string | null;
+};
+/** Returns request/approve/reject only. Restock and refund fields record intent; no receive, restock or refund execution. */
+export type ReturnRejectInput = z.infer<typeof returnRejectSchema> & {
+    actorUserId?: string | null;
+};
+/** Returns request/approve/reject only. Restock and refund fields record intent; no receive, restock or refund execution. */
+export interface ReturnLifecycleResult {
+    returnRequestId: string;
+    status: string;
+    replayed: boolean;
+}
+/** Returns request/approve/reject only. Restock and refund fields record intent; no receive, restock or refund execution. */
+export interface CommerceReturnsPort<Reason extends string = ReturnRequestCreateInput["reasonCode"]> {
+    createRequest(input: ReturnRequestCreateInput<Reason>): Promise<ReturnLifecycleResult>;
+    approve(input: ReturnApproveInput): Promise<ReturnLifecycleResult>;
+    reject(input: ReturnRejectInput): Promise<ReturnLifecycleResult>;
+}
+```
 ## dist/commerce/configuratorIntentPersistenceSchemas.d.ts
 
 ```ts
@@ -2485,6 +2586,10 @@ export * from "./model/omsReadModelProjections.js";
 export * from "./model/omsCurrency.js";
 export declare const COMMERCE_CONTRACT_VERSION = "commerce.v0";
 export * from "./model/customerFulfillmentRecovery.js";
+export * from "./commerceReturnsPort.js";
+export * from "./orderReviewContracts.js";
+export type * from "./orderReviewPorts.js";
+export * from "./orderFeedbackContracts.js";
 ```
 ## dist/commerce/model/customerFulfillmentRecovery.d.ts
 
@@ -6626,6 +6731,51 @@ export declare class CommerceOrderDraftUnsupportedMoneyError extends Error {
     constructor(reason: CommerceOrderDraftUnsupportedMoneyReason);
 }
 ```
+## dist/commerce/orderFeedbackContracts.d.ts
+
+```ts
+import { z } from "zod";
+export declare const ORDER_FEEDBACK_SUBMIT_RPC_NAME = "submit_order_feedback";
+export declare const ORDER_FEEDBACK_CHECK_RPC_NAME = "check_order_feedback_token";
+export declare const orderFeedbackTokenCheckRequestSchema: z.ZodObject<{
+    token: z.ZodString;
+}, z.core.$strict>;
+export type OrderFeedbackTokenCheckRequest = z.infer<typeof orderFeedbackTokenCheckRequestSchema>;
+export declare const orderFeedbackTokenCheckStatusSchema: z.ZodEnum<{
+    ready: "ready";
+    already_submitted: "already_submitted";
+    not_found: "not_found";
+}>;
+export type OrderFeedbackTokenCheckStatus = z.infer<typeof orderFeedbackTokenCheckStatusSchema>;
+export declare const orderFeedbackTokenCheckResponseSchema: z.ZodObject<{
+    status: z.ZodEnum<{
+        ready: "ready";
+        already_submitted: "already_submitted";
+        not_found: "not_found";
+    }>;
+}, z.core.$strict>;
+export type OrderFeedbackTokenCheckResponse = z.infer<typeof orderFeedbackTokenCheckResponseSchema>;
+export declare const orderFeedbackSubmitRequestSchema: z.ZodObject<{
+    token: z.ZodString;
+    rating: z.ZodNumber;
+    comment: z.ZodOptional<z.ZodString>;
+}, z.core.$strict>;
+export type OrderFeedbackSubmitRequest = z.infer<typeof orderFeedbackSubmitRequestSchema>;
+export declare const orderFeedbackSubmitStatusSchema: z.ZodEnum<{
+    already_submitted: "already_submitted";
+    not_found: "not_found";
+    submitted: "submitted";
+}>;
+export type OrderFeedbackSubmitStatus = z.infer<typeof orderFeedbackSubmitStatusSchema>;
+export declare const orderFeedbackSubmitResponseSchema: z.ZodObject<{
+    status: z.ZodEnum<{
+        already_submitted: "already_submitted";
+        not_found: "not_found";
+        submitted: "submitted";
+    }>;
+}, z.core.$strict>;
+export type OrderFeedbackSubmitResponse = z.infer<typeof orderFeedbackSubmitResponseSchema>;
+```
 ## dist/commerce/orderMoney.d.ts
 
 ```ts
@@ -6635,6 +6785,629 @@ export declare const ORDER_HEADER_MONEY_COLUMNS: string;
 export declare const ORDER_ITEM_MONEY_COLUMNS: string;
 export declare function deriveOrderMoney(order: OrderMoneyHeaderRow, items?: readonly OrderMoneyItemRow[], onDiagnostic?: (diagnostic: OrderMoneyDiagnostic) => void): CanonicalOrderMoney;
 export declare function emitOrderMoneyDiagnostic(diagnostic: OrderMoneyDiagnostic): void;
+```
+## dist/commerce/orderReviewContracts.d.ts
+
+```ts
+import { z } from "zod";
+export declare const ORDER_REVIEW_CONTRACT_VERSION: "commerce.order-review.v1";
+export declare const orderReviewGrantReferenceSchema: z.ZodString;
+export declare const orderReviewReferenceSchema: z.ZodString;
+export declare const orderReviewMediaReferenceSchema: z.ZodString;
+export declare const orderReviewUploadCapabilitySchema: z.ZodString;
+export declare const orderReviewCommandKeySchema: z.ZodString;
+export declare const orderReviewContentTypeSchema: z.ZodEnum<{
+    "image/png": "image/png";
+    "image/jpeg": "image/jpeg";
+    "image/webp": "image/webp";
+}>;
+export declare const orderReviewSchema: z.ZodObject<{
+    contractVersion: z.ZodLiteral<"commerce.order-review.v1">;
+    reviewRef: z.ZodString;
+    rating: z.ZodNumber;
+    comment: z.ZodNullable<z.ZodString>;
+    moderation: z.ZodEnum<{
+        pending: "pending";
+        visible: "visible";
+        hidden: "hidden";
+    }>;
+    createdAt: z.ZodString;
+}, z.core.$strict>;
+/** Pending intent records declarations only; an observed digest exists only after raw validation/store. */
+export declare const orderReviewMediaSchema: z.ZodDiscriminatedUnion<[z.ZodObject<{
+    state: z.ZodLiteral<"pending">;
+    observedContentType: z.ZodNull;
+    observedByteLength: z.ZodNull;
+    observedDigest: z.ZodNull;
+    mediaRef: z.ZodString;
+    declaredContentType: z.ZodEnum<{
+        "image/png": "image/png";
+        "image/jpeg": "image/jpeg";
+        "image/webp": "image/webp";
+    }>;
+    declaredByteLength: z.ZodNumber;
+}, z.core.$strict>, z.ZodObject<{
+    state: z.ZodEnum<{
+        stored: "stored";
+        confirmed: "confirmed";
+    }>;
+    observedContentType: z.ZodEnum<{
+        "image/png": "image/png";
+        "image/jpeg": "image/jpeg";
+        "image/webp": "image/webp";
+    }>;
+    observedByteLength: z.ZodNumber;
+    observedDigest: z.ZodString;
+    mediaRef: z.ZodString;
+    declaredContentType: z.ZodEnum<{
+        "image/png": "image/png";
+        "image/jpeg": "image/jpeg";
+        "image/webp": "image/webp";
+    }>;
+    declaredByteLength: z.ZodNumber;
+}, z.core.$strict>, z.ZodObject<{
+    state: z.ZodEnum<{
+        cleanup_pending: "cleanup_pending";
+        deleted: "deleted";
+    }>;
+    observedContentType: z.ZodNullable<z.ZodEnum<{
+        "image/png": "image/png";
+        "image/jpeg": "image/jpeg";
+        "image/webp": "image/webp";
+    }>>;
+    observedByteLength: z.ZodNullable<z.ZodNumber>;
+    observedDigest: z.ZodNullable<z.ZodString>;
+    mediaRef: z.ZodString;
+    declaredContentType: z.ZodEnum<{
+        "image/png": "image/png";
+        "image/jpeg": "image/jpeg";
+        "image/webp": "image/webp";
+    }>;
+    declaredByteLength: z.ZodNumber;
+}, z.core.$strict>], "state">;
+/** A valid grant may not have a review yet; invalid grants stay outside this envelope. */
+export declare const orderReviewReadResultSchema: z.ZodObject<{
+    review: z.ZodNullable<z.ZodObject<{
+        contractVersion: z.ZodLiteral<"commerce.order-review.v1">;
+        reviewRef: z.ZodString;
+        rating: z.ZodNumber;
+        comment: z.ZodNullable<z.ZodString>;
+        moderation: z.ZodEnum<{
+            pending: "pending";
+            visible: "visible";
+            hidden: "hidden";
+        }>;
+        createdAt: z.ZodString;
+    }, z.core.$strict>>;
+    media: z.ZodArray<z.ZodDiscriminatedUnion<[z.ZodObject<{
+        state: z.ZodLiteral<"pending">;
+        observedContentType: z.ZodNull;
+        observedByteLength: z.ZodNull;
+        observedDigest: z.ZodNull;
+        mediaRef: z.ZodString;
+        declaredContentType: z.ZodEnum<{
+            "image/png": "image/png";
+            "image/jpeg": "image/jpeg";
+            "image/webp": "image/webp";
+        }>;
+        declaredByteLength: z.ZodNumber;
+    }, z.core.$strict>, z.ZodObject<{
+        state: z.ZodEnum<{
+            stored: "stored";
+            confirmed: "confirmed";
+        }>;
+        observedContentType: z.ZodEnum<{
+            "image/png": "image/png";
+            "image/jpeg": "image/jpeg";
+            "image/webp": "image/webp";
+        }>;
+        observedByteLength: z.ZodNumber;
+        observedDigest: z.ZodString;
+        mediaRef: z.ZodString;
+        declaredContentType: z.ZodEnum<{
+            "image/png": "image/png";
+            "image/jpeg": "image/jpeg";
+            "image/webp": "image/webp";
+        }>;
+        declaredByteLength: z.ZodNumber;
+    }, z.core.$strict>, z.ZodObject<{
+        state: z.ZodEnum<{
+            cleanup_pending: "cleanup_pending";
+            deleted: "deleted";
+        }>;
+        observedContentType: z.ZodNullable<z.ZodEnum<{
+            "image/png": "image/png";
+            "image/jpeg": "image/jpeg";
+            "image/webp": "image/webp";
+        }>>;
+        observedByteLength: z.ZodNullable<z.ZodNumber>;
+        observedDigest: z.ZodNullable<z.ZodString>;
+        mediaRef: z.ZodString;
+        declaredContentType: z.ZodEnum<{
+            "image/png": "image/png";
+            "image/jpeg": "image/jpeg";
+            "image/webp": "image/webp";
+        }>;
+        declaredByteLength: z.ZodNumber;
+    }, z.core.$strict>], "state">>;
+}, z.core.$strict>;
+/** Bounded admin detail; physical storage locators remain server-only. */
+export declare const orderReviewAdminDetailSchema: z.ZodObject<{
+    review: z.ZodObject<{
+        contractVersion: z.ZodLiteral<"commerce.order-review.v1">;
+        reviewRef: z.ZodString;
+        rating: z.ZodNumber;
+        comment: z.ZodNullable<z.ZodString>;
+        moderation: z.ZodEnum<{
+            pending: "pending";
+            visible: "visible";
+            hidden: "hidden";
+        }>;
+        createdAt: z.ZodString;
+    }, z.core.$strict>;
+    media: z.ZodArray<z.ZodDiscriminatedUnion<[z.ZodObject<{
+        state: z.ZodLiteral<"pending">;
+        observedContentType: z.ZodNull;
+        observedByteLength: z.ZodNull;
+        observedDigest: z.ZodNull;
+        mediaRef: z.ZodString;
+        declaredContentType: z.ZodEnum<{
+            "image/png": "image/png";
+            "image/jpeg": "image/jpeg";
+            "image/webp": "image/webp";
+        }>;
+        declaredByteLength: z.ZodNumber;
+    }, z.core.$strict>, z.ZodObject<{
+        state: z.ZodEnum<{
+            stored: "stored";
+            confirmed: "confirmed";
+        }>;
+        observedContentType: z.ZodEnum<{
+            "image/png": "image/png";
+            "image/jpeg": "image/jpeg";
+            "image/webp": "image/webp";
+        }>;
+        observedByteLength: z.ZodNumber;
+        observedDigest: z.ZodString;
+        mediaRef: z.ZodString;
+        declaredContentType: z.ZodEnum<{
+            "image/png": "image/png";
+            "image/jpeg": "image/jpeg";
+            "image/webp": "image/webp";
+        }>;
+        declaredByteLength: z.ZodNumber;
+    }, z.core.$strict>, z.ZodObject<{
+        state: z.ZodEnum<{
+            cleanup_pending: "cleanup_pending";
+            deleted: "deleted";
+        }>;
+        observedContentType: z.ZodNullable<z.ZodEnum<{
+            "image/png": "image/png";
+            "image/jpeg": "image/jpeg";
+            "image/webp": "image/webp";
+        }>>;
+        observedByteLength: z.ZodNullable<z.ZodNumber>;
+        observedDigest: z.ZodNullable<z.ZodString>;
+        mediaRef: z.ZodString;
+        declaredContentType: z.ZodEnum<{
+            "image/png": "image/png";
+            "image/jpeg": "image/jpeg";
+            "image/webp": "image/webp";
+        }>;
+        declaredByteLength: z.ZodNumber;
+    }, z.core.$strict>], "state">>;
+}, z.core.$strict>;
+export declare const orderReviewSubmitSchema: z.ZodObject<{
+    grant: z.ZodString;
+    rating: z.ZodNumber;
+    comment: z.ZodOptional<z.ZodString>;
+    fingerprint: z.ZodString;
+}, z.core.$strict>;
+export declare const orderReviewMediaIntentSchema: z.ZodObject<{
+    grant: z.ZodString;
+    contentType: z.ZodEnum<{
+        "image/png": "image/png";
+        "image/jpeg": "image/jpeg";
+        "image/webp": "image/webp";
+    }>;
+    byteLength: z.ZodNumber;
+    capabilityDigest: z.ZodString;
+    commandKey: z.ZodString;
+}, z.core.$strict>;
+export declare const orderReviewMediaIntentResultSchema: z.ZodObject<{
+    media: z.ZodDiscriminatedUnion<[z.ZodObject<{
+        state: z.ZodLiteral<"pending">;
+        observedContentType: z.ZodNull;
+        observedByteLength: z.ZodNull;
+        observedDigest: z.ZodNull;
+        mediaRef: z.ZodString;
+        declaredContentType: z.ZodEnum<{
+            "image/png": "image/png";
+            "image/jpeg": "image/jpeg";
+            "image/webp": "image/webp";
+        }>;
+        declaredByteLength: z.ZodNumber;
+    }, z.core.$strict>, z.ZodObject<{
+        state: z.ZodEnum<{
+            stored: "stored";
+            confirmed: "confirmed";
+        }>;
+        observedContentType: z.ZodEnum<{
+            "image/png": "image/png";
+            "image/jpeg": "image/jpeg";
+            "image/webp": "image/webp";
+        }>;
+        observedByteLength: z.ZodNumber;
+        observedDigest: z.ZodString;
+        mediaRef: z.ZodString;
+        declaredContentType: z.ZodEnum<{
+            "image/png": "image/png";
+            "image/jpeg": "image/jpeg";
+            "image/webp": "image/webp";
+        }>;
+        declaredByteLength: z.ZodNumber;
+    }, z.core.$strict>, z.ZodObject<{
+        state: z.ZodEnum<{
+            cleanup_pending: "cleanup_pending";
+            deleted: "deleted";
+        }>;
+        observedContentType: z.ZodNullable<z.ZodEnum<{
+            "image/png": "image/png";
+            "image/jpeg": "image/jpeg";
+            "image/webp": "image/webp";
+        }>>;
+        observedByteLength: z.ZodNullable<z.ZodNumber>;
+        observedDigest: z.ZodNullable<z.ZodString>;
+        mediaRef: z.ZodString;
+        declaredContentType: z.ZodEnum<{
+            "image/png": "image/png";
+            "image/jpeg": "image/jpeg";
+            "image/webp": "image/webp";
+        }>;
+        declaredByteLength: z.ZodNumber;
+    }, z.core.$strict>], "state">;
+    uploadExpiresAt: z.ZodString;
+    replayed: z.ZodBoolean;
+}, z.core.$strict>;
+export declare const orderReviewMediaConfirmSchema: z.ZodObject<{
+    grant: z.ZodString;
+    mediaRef: z.ZodString;
+    digest: z.ZodString;
+    commandKey: z.ZodString;
+}, z.core.$strict>;
+export declare const orderReviewModerationSchema: z.ZodObject<{
+    reviewRef: z.ZodString;
+    action: z.ZodEnum<{
+        publish: "publish";
+        hide: "hide";
+    }>;
+    idempotencyKey: z.ZodString;
+}, z.core.$strict>;
+export declare const orderReviewCustomerCommandSchema: z.ZodDiscriminatedUnion<[z.ZodObject<{
+    kind: z.ZodLiteral<"submit">;
+    input: z.ZodObject<{
+        grant: z.ZodString;
+        rating: z.ZodNumber;
+        comment: z.ZodOptional<z.ZodString>;
+        fingerprint: z.ZodString;
+    }, z.core.$strict>;
+}, z.core.$strict>, z.ZodObject<{
+    kind: z.ZodLiteral<"media_intent">;
+    input: z.ZodObject<{
+        grant: z.ZodString;
+        contentType: z.ZodEnum<{
+            "image/png": "image/png";
+            "image/jpeg": "image/jpeg";
+            "image/webp": "image/webp";
+        }>;
+        byteLength: z.ZodNumber;
+        capabilityDigest: z.ZodString;
+        commandKey: z.ZodString;
+    }, z.core.$strict>;
+}, z.core.$strict>, z.ZodObject<{
+    kind: z.ZodLiteral<"media_confirm">;
+    input: z.ZodObject<{
+        grant: z.ZodString;
+        mediaRef: z.ZodString;
+        digest: z.ZodString;
+        commandKey: z.ZodString;
+    }, z.core.$strict>;
+}, z.core.$strict>], "kind">;
+export declare const orderReviewCustomerResultSchema: z.ZodDiscriminatedUnion<[z.ZodObject<{
+    kind: z.ZodLiteral<"review">;
+    review: z.ZodObject<{
+        contractVersion: z.ZodLiteral<"commerce.order-review.v1">;
+        reviewRef: z.ZodString;
+        rating: z.ZodNumber;
+        comment: z.ZodNullable<z.ZodString>;
+        moderation: z.ZodEnum<{
+            pending: "pending";
+            visible: "visible";
+            hidden: "hidden";
+        }>;
+        createdAt: z.ZodString;
+    }, z.core.$strict>;
+    replayed: z.ZodBoolean;
+}, z.core.$strict>, z.ZodObject<{
+    kind: z.ZodLiteral<"media_intent">;
+    result: z.ZodObject<{
+        media: z.ZodDiscriminatedUnion<[z.ZodObject<{
+            state: z.ZodLiteral<"pending">;
+            observedContentType: z.ZodNull;
+            observedByteLength: z.ZodNull;
+            observedDigest: z.ZodNull;
+            mediaRef: z.ZodString;
+            declaredContentType: z.ZodEnum<{
+                "image/png": "image/png";
+                "image/jpeg": "image/jpeg";
+                "image/webp": "image/webp";
+            }>;
+            declaredByteLength: z.ZodNumber;
+        }, z.core.$strict>, z.ZodObject<{
+            state: z.ZodEnum<{
+                stored: "stored";
+                confirmed: "confirmed";
+            }>;
+            observedContentType: z.ZodEnum<{
+                "image/png": "image/png";
+                "image/jpeg": "image/jpeg";
+                "image/webp": "image/webp";
+            }>;
+            observedByteLength: z.ZodNumber;
+            observedDigest: z.ZodString;
+            mediaRef: z.ZodString;
+            declaredContentType: z.ZodEnum<{
+                "image/png": "image/png";
+                "image/jpeg": "image/jpeg";
+                "image/webp": "image/webp";
+            }>;
+            declaredByteLength: z.ZodNumber;
+        }, z.core.$strict>, z.ZodObject<{
+            state: z.ZodEnum<{
+                cleanup_pending: "cleanup_pending";
+                deleted: "deleted";
+            }>;
+            observedContentType: z.ZodNullable<z.ZodEnum<{
+                "image/png": "image/png";
+                "image/jpeg": "image/jpeg";
+                "image/webp": "image/webp";
+            }>>;
+            observedByteLength: z.ZodNullable<z.ZodNumber>;
+            observedDigest: z.ZodNullable<z.ZodString>;
+            mediaRef: z.ZodString;
+            declaredContentType: z.ZodEnum<{
+                "image/png": "image/png";
+                "image/jpeg": "image/jpeg";
+                "image/webp": "image/webp";
+            }>;
+            declaredByteLength: z.ZodNumber;
+        }, z.core.$strict>], "state">;
+        uploadExpiresAt: z.ZodString;
+        replayed: z.ZodBoolean;
+    }, z.core.$strict>;
+}, z.core.$strict>, z.ZodObject<{
+    kind: z.ZodLiteral<"media">;
+    media: z.ZodDiscriminatedUnion<[z.ZodObject<{
+        state: z.ZodLiteral<"pending">;
+        observedContentType: z.ZodNull;
+        observedByteLength: z.ZodNull;
+        observedDigest: z.ZodNull;
+        mediaRef: z.ZodString;
+        declaredContentType: z.ZodEnum<{
+            "image/png": "image/png";
+            "image/jpeg": "image/jpeg";
+            "image/webp": "image/webp";
+        }>;
+        declaredByteLength: z.ZodNumber;
+    }, z.core.$strict>, z.ZodObject<{
+        state: z.ZodEnum<{
+            stored: "stored";
+            confirmed: "confirmed";
+        }>;
+        observedContentType: z.ZodEnum<{
+            "image/png": "image/png";
+            "image/jpeg": "image/jpeg";
+            "image/webp": "image/webp";
+        }>;
+        observedByteLength: z.ZodNumber;
+        observedDigest: z.ZodString;
+        mediaRef: z.ZodString;
+        declaredContentType: z.ZodEnum<{
+            "image/png": "image/png";
+            "image/jpeg": "image/jpeg";
+            "image/webp": "image/webp";
+        }>;
+        declaredByteLength: z.ZodNumber;
+    }, z.core.$strict>, z.ZodObject<{
+        state: z.ZodEnum<{
+            cleanup_pending: "cleanup_pending";
+            deleted: "deleted";
+        }>;
+        observedContentType: z.ZodNullable<z.ZodEnum<{
+            "image/png": "image/png";
+            "image/jpeg": "image/jpeg";
+            "image/webp": "image/webp";
+        }>>;
+        observedByteLength: z.ZodNullable<z.ZodNumber>;
+        observedDigest: z.ZodNullable<z.ZodString>;
+        mediaRef: z.ZodString;
+        declaredContentType: z.ZodEnum<{
+            "image/png": "image/png";
+            "image/jpeg": "image/jpeg";
+            "image/webp": "image/webp";
+        }>;
+        declaredByteLength: z.ZodNumber;
+    }, z.core.$strict>], "state">;
+    replayed: z.ZodBoolean;
+}, z.core.$strict>], "kind">;
+export type OrderReview = z.infer<typeof orderReviewSchema>;
+export type OrderReviewReadResult = z.infer<typeof orderReviewReadResultSchema>;
+export type OrderReviewAdminDetail = z.infer<typeof orderReviewAdminDetailSchema>;
+export type OrderReviewMedia = z.infer<typeof orderReviewMediaSchema>;
+export type OrderReviewSubmit = z.infer<typeof orderReviewSubmitSchema>;
+export type OrderReviewMediaIntent = z.infer<typeof orderReviewMediaIntentSchema>;
+export type OrderReviewMediaIntentResult = z.infer<typeof orderReviewMediaIntentResultSchema>;
+export type OrderReviewMediaConfirm = z.infer<typeof orderReviewMediaConfirmSchema>;
+export type OrderReviewModeration = z.infer<typeof orderReviewModerationSchema>;
+export declare const orderReviewAdminRevokeSchema: z.ZodObject<{
+    reviewRef: z.ZodString;
+    idempotencyKey: z.ZodString;
+}, z.core.$strict>;
+export type OrderReviewUnavailable = {
+    kind: "unavailable";
+};
+export type OrderReviewConflict = {
+    kind: "conflict";
+};
+export type OrderReviewInvalid = {
+    kind: "invalid";
+};
+export type OrderReviewFailure = OrderReviewUnavailable | OrderReviewConflict | OrderReviewInvalid;
+export declare function orderReviewFailure(code: string | undefined): OrderReviewFailure;
+```
+## dist/commerce/orderReviewPorts.d.ts
+
+```ts
+import type { OrderReview, OrderReviewAdminDetail, OrderReviewMedia, OrderReviewMediaConfirm, OrderReviewMediaIntent, OrderReviewMediaIntentResult, OrderReviewModeration, OrderReviewReadResult, OrderReviewSubmit } from "./orderReviewContracts.js";
+export type Replay<T> = {
+    value: T;
+    replayed: boolean;
+};
+/** Server-only storage locator. It is not a public schema or BFF DTO. */
+export type OrderReviewMediaObject = {
+    media: OrderReviewMedia;
+    objectKey: string;
+};
+/** A live raw-upload lease; the clear capability itself is deliberately absent. */
+export type OrderReviewUploadReservation = OrderReviewMediaObject & {
+    leaseVersion: number;
+    leaseExpiresAt: string;
+    declaredContentType: "image/jpeg" | "image/png" | "image/webp";
+    declaredByteLength: number;
+};
+/** Physical deletion is fenced by a durable, non-public cleanup receipt. */
+export type OrderReviewMediaCleanup = OrderReviewMediaObject & {
+    tempKey?: string;
+    cleanupReceipt: string;
+    replayed: boolean;
+};
+export type OrderReviewUploadAdmission = {
+    kind: "unavailable";
+} | {
+    kind: "conflict";
+} | {
+    kind: "lease";
+    reservation: OrderReviewUploadReservation;
+} | {
+    kind: "complete";
+    media: OrderReviewMedia;
+};
+/** Claimed by one worker; no worker may scan a volume or infer an object key. */
+export type OrderReviewMediaReconcileTask = {
+    receipt: string;
+    kind: "finalize" | "delete";
+    objectKey: string;
+    tempKey?: string;
+    expectedDeclaredContentType: "image/jpeg" | "image/png" | "image/webp";
+    expectedDeclaredByteLength: number;
+};
+export type OrderReviewMediaReconcileOutcome = {
+    kind: "stored";
+    observedContentType: "image/jpeg" | "image/png" | "image/webp";
+    observedByteLength: number;
+    observedDigest: string;
+} | {
+    kind: "deleted";
+} | {
+    kind: "retry";
+    reason: string;
+};
+export interface OrderReviewLifecyclePort {
+    /** null means an invalid/revoked grant; { review: null } is an eligible first submission. */
+    read(grant: string): Promise<OrderReviewReadResult | null>;
+    submit(input: OrderReviewSubmit): Promise<Replay<OrderReview>>;
+    createMediaIntent(input: OrderReviewMediaIntent): Promise<OrderReviewMediaIntentResult>;
+    confirmMedia(input: OrderReviewMediaConfirm): Promise<Replay<OrderReviewMedia>>;
+    moderate(input: OrderReviewModeration & {
+        actorRef: string;
+    }): Promise<Replay<OrderReview>>;
+    revoke(input: {
+        reviewRef: string;
+        actorRef: string;
+        idempotencyKey: string;
+    }): Promise<{
+        replayed: boolean;
+    }>;
+}
+/** Metadata-only seam. Lane B owns bytes and can never resolve a grant directly. */
+export interface OrderReviewMediaPort {
+    /** The route may expose only .media; .objectKey is for the object-store adapter. */
+    readAuthorized(grant: string, mediaRef: string): Promise<OrderReviewMediaObject | null>;
+    /**
+     * Raw ingress supplies only SHA-256(clear capability), never grant/order/media
+     * identifiers. The implementation must lock and re-check grant -> review ->
+     * media while admitting this live lease.
+     */
+    admitUpload(input: {
+        capabilityDigest: string;
+        declaredContentType: "image/jpeg" | "image/png" | "image/webp";
+        declaredByteLength: number;
+        writerRef: string;
+    }): Promise<OrderReviewUploadAdmission>;
+    /** The transaction remains open across promote; a stale grant/lease cannot rename. */
+    finalizeUpload(input: {
+        capabilityDigest: string;
+        writerRef: string;
+        leaseVersion: number;
+        digest: string;
+        byteLength: number;
+        promote: () => Promise<void>;
+    }): Promise<OrderReviewMedia | null>;
+    abortUpload(input: {
+        capabilityDigest: string;
+        writerRef: string;
+        leaseVersion: number;
+        reason: string;
+    }): Promise<void>;
+    readAdmin(input: {
+        actorRef: string;
+        mediaRef: string;
+    }): Promise<OrderReviewMediaObject | null>;
+    /** Marks cleanup_pending and returns the exact object key plus durable receipt. */
+    prepareAdminDelete(input: {
+        actorRef: string;
+        mediaRef: string;
+        idempotencyKey: string;
+    }): Promise<OrderReviewMediaCleanup | null>;
+    /** May mark deleted only after object storage confirms physical removal. */
+    completeAdminDelete(input: {
+        actorRef: string;
+        cleanupReceipt: string;
+    }): Promise<{
+        replayed: boolean;
+    }>;
+    /** Claims bounded exact keys under SKIP LOCKED; B owns physical inspection/deletion. */
+    claimReconcile(limit: number): Promise<OrderReviewMediaReconcileTask[]>;
+    /** Fenced completion cannot overwrite a later lease or a different object outcome. */
+    completeReconcile(input: {
+        receipt: string;
+        outcome: OrderReviewMediaReconcileOutcome;
+    }): Promise<void>;
+}
+export interface OrderReviewAdminReadPort {
+    list(input: {
+        actorRef: string;
+        cursor?: string;
+        limit: number;
+    }): Promise<{
+        items: OrderReview[];
+        nextCursor?: string;
+    }>;
+    read(input: {
+        actorRef: string;
+        reviewRef: string;
+    }): Promise<OrderReviewAdminDetail | null>;
+}
 ```
 ## dist/commerce/outboxEventSchemas.d.ts
 
