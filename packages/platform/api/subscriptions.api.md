@@ -54,6 +54,31 @@ export declare function runOneAutomaticSubscriptionRenewal(deps: AutomaticRenewa
 /** No implicit +1: ambiguous history must be resolved by the host before opening a repair case. */
 export declare function correlatedLogicalCycle(snapshot: RenewalFrozenSnapshot): number;
 ```
+## dist/subscriptions/automaticRenewalExecution.d.ts
+
+```ts
+import type { RenewalDue, RenewalPaymentRail, RenewalReadback, RenewalSettlementPort, RenewalStorePort } from "./contracts/renewal.js";
+import type { AutomaticRenewalPolicy, AutomaticRenewalRunDeps, AutomaticRenewalRunResult, AutomaticRenewalRunStatus } from "./automaticRenewal.js";
+export declare function automaticRenewalResult(operation: RenewalReadback, status: AutomaticRenewalRunStatus, reason: string | null): AutomaticRenewalRunResult;
+export declare function recoverPreparedExternalAttempt(input: {
+    operation: RenewalReadback;
+    rail: RenewalPaymentRail;
+    settlement: RenewalSettlementPort;
+    occurredAt: string;
+}): Promise<string | null>;
+export declare function runRenewalBatchRows(due: RenewalDue[], run: (row: RenewalDue) => Promise<AutomaticRenewalRunResult>, policy: Pick<AutomaticRenewalPolicy, "identityKey">): Promise<AutomaticRenewalRunResult[]>;
+export declare function refuseRenewalBeforePayment(input: {
+    store: RenewalStorePort;
+    operation: RenewalReadback;
+    reason: string;
+    occurredAt: string;
+}): Promise<AutomaticRenewalRunResult>;
+export declare function handoffRefusal(deps: AutomaticRenewalRunDeps, operation: RenewalReadback, prepared: {
+    cycleId: string;
+    orderId: string;
+    settlementIntentId: string;
+}, externalAttemptRef: string | null, reason: string, failureClass: string, occurredAt: string): Promise<AutomaticRenewalRunResult>;
+```
 ## dist/subscriptions/commandExamples.d.ts
 
 ```ts
@@ -1054,6 +1079,8 @@ export declare const MANAGED_SUBSCRIPTION_STOCK_CAPABILITIES: Readonly<{
     readonly stockAvailabilitySurface: "sql";
     readonly defaultEnabled: false;
 }>;
+export { runRenewalBatchRows } from "./automaticRenewalExecution.js";
+export type { SubscriptionLifecycleFact } from "./contracts/messages.js";
 export { subscriptionLifecycleTemplate, createSubscriptionLifecycleMessages } from "./lifecycleMessages.js";
 export { createSubscriptionCommandExamples } from "./commandExamples.js";
 export { createSubscriptionServices } from "./services.js";
@@ -1062,7 +1089,7 @@ export { createSubscriptionServices } from "./services.js";
 
 ```ts
 import type { SubscriptionLifecycleMessageDescriptor, SubscriptionLifecycleMessagePort } from "./contracts/messages.js";
-export declare function subscriptionLifecycleTemplate(eventType: string): string | null;
+export declare function subscriptionLifecycleTemplate(eventType: string, retryAttempt?: number | null): string | null;
 /** M04 owns delivery, consent, rendering and durable replay. M10 never synthesizes a pause. */
 export declare function createSubscriptionLifecycleMessages(delivery: SubscriptionLifecycleMessagePort): {
     deliver(input: Omit<SubscriptionLifecycleMessageDescriptor, "templateSlug">): Promise<{

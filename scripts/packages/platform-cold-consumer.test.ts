@@ -497,6 +497,23 @@ it("proves the opt-in fulfillment/omnipack entry default-off without SDK, peers 
 it("M10 installed facades and composition prove positive selection, readiness refusal and lifecycle identity", () => {
   const consumer = pristinePackedA1Fixture();
   assertConsumerIsolation(consumer, root);
+  for (const name of ["@types/node", "undici-types"]) cpSync(join(root, "node_modules", name), join(consumer, "node_modules", name), { recursive: true });
+  const typed = join(consumer, "m10-consumer.ts");
+  writeFileSync(typed, 'import type { SubscriptionLifecycleFact } from "@openlup/platform/subscriptions";\nexport type PaymentFailure = Extract<SubscriptionLifecycleFact, { kind: "payment_failed" | "payment_expired" }>;\n');
+  const configuration = join(consumer, "tsconfig-m10.json");
+  writeFileSync(configuration, JSON.stringify({ compilerOptions: { strict: true, noEmit: true, module: "NodeNext", target: "ES2022", types: ["node"], typeRoots: [join(consumer, "node_modules/@types")] }, files: [typed] }));
+  const compile = () => execFileSync(process.execPath, [join(root, "node_modules/typescript/lib/tsc.js"), "-p", configuration], { cwd: consumer, encoding: "utf8", stdio: "pipe" });
+  compile();
+  const entry = join(consumer, "node_modules/@openlup/platform/dist/subscriptions/index.d.ts");
+  const original = readFileSync(entry, "utf8");
+  const mutant = original.replace('export type { SubscriptionLifecycleFact } from "./contracts/messages.js";', "");
+  expect(mutant).not.toBe(original);
+  try {
+    writeFileSync(entry, mutant);
+    try { compile(); expect.unreachable("missing public fact export must fail compilation"); }
+    catch (error) { expect(String((error as { stdout?: string }).stdout)).toMatch(/TS2724|TS2305/); }
+  } finally { writeFileSync(entry, original); }
+  compile();
   expect(consumerNode(consumer, `
 import assert from "node:assert/strict";
 import { createSubscriptionServices, createSubscriptionCommandExamples, createSubscriptionLifecycleMessages, subscriptionLifecycleTemplate, NATIVE_SUBSCRIPTION_CAPABILITIES } from "@openlup/platform/subscriptions";
@@ -529,4 +546,4 @@ assert.equal(subscriptionLifecycleTemplate("subscription_stock_wait.resumed"),"s
 assert.equal(NATIVE_SUBSCRIPTION_CAPABILITIES.multiCyclePrepaid.supported,false);
 console.log("M10 installed positive/refusal passed");
 `)).toContain("M10 installed positive/refusal passed");
-});
+}, 30_000);

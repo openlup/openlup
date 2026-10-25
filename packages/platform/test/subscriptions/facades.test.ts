@@ -11,10 +11,32 @@ it.each([
   ["subscription.address_changed", "subscription-address-changed"], ["subscription.package_changed", "subscription-package-changed"],
   ["subscription.renewal_upcoming", "subscription-renewal-upcoming"],
   ["subscription_stock_wait.started", "subscription-stock-wait-started"], ["subscription_stock_wait.resumed", "subscription-stock-wait-resumed"],
-  ["payment_failed", "subscription-payment-failed"], ["payment_expired", "subscription-payment-expired"],
+  ["stock_wait_started", "subscription-stock-wait-started"], ["stock_wait_resumed", "subscription-stock-wait-resumed"],
+  ["payment_expired", "subscription-payment-expired"],
   ["payment_recovered", "subscription-payment-recovered"], ["winback_eligible", "subscription-winback"],
   ["unknown", null], ["toString", null],
 ])("maps %s to the existing M04 template", (event, template) => { expect(subscriptionLifecycleTemplate(event)).toBe(template); });
+
+it.each([1, 2, 3, 4, 99, 0, -1, null, undefined])("maps payment attempt %s exactly like installed dunning SQL", (attempt) => {
+  expect(subscriptionLifecycleTemplate("payment_failed", attempt)).toBe(`subscription-payment-failed-${attempt === 1 ? 1 : attempt === 2 ? 2 : 3}`);
+});
+
+const factBase = { factId: "fact", idempotencyKey: "fact-key", subscriptionId: "sub", clientId: "client",
+  cycleId: null, caseId: "case", orderId: null, occurredAt: "at", firstRecordedAt: "at" };
+const payment = { nextRetryAt: null, failureClass: "temporary", amountMinor: 200, currency: "XXX" };
+it.each([
+  ...[1, 2, 3, 4, 0, -1].map(retryAttempt => ({ fact: { ...factBase, ...payment, kind: "payment_failed" as const, retryAttempt }, template: `subscription-payment-failed-${retryAttempt === 1 ? 1 : retryAttempt === 2 ? 2 : 3}` })),
+  { fact: { ...factBase, ...payment, kind: "payment_expired" as const, retryAttempt: 3 }, template: "subscription-payment-expired" },
+  { fact: { ...factBase, kind: "payment_recovered" as const, paymentEvidenceRef: "paid" }, template: "subscription-payment-recovered" },
+  { fact: { ...factBase, kind: "winback_eligible" as const, cancelledAt: "then", paymentMethodRef: "method" }, template: "subscription-winback" },
+  { fact: { ...factBase, kind: "stock_wait_started" as const, frozenFingerprint: "frozen" }, template: "subscription-stock-wait-started" },
+  { fact: { ...factBase, kind: "stock_wait_resumed" as const, frozenFingerprint: "frozen" }, template: "subscription-stock-wait-resumed" },
+])("delivers $fact.kind using $template", async ({ fact, template }) => {
+  const enqueue = vi.fn(async () => ({ notificationId: "m04", replayed: false }));
+  const input = { fact, messageKey: fact.idempotencyKey, recipientRef: "recipient", locale: "en", recoveryUrlPath: null };
+  await createSubscriptionLifecycleMessages({ enqueue }).deliver(input);
+  expect(enqueue).toHaveBeenCalledExactlyOnceWith({ ...input, templateSlug: template });
+});
 
 it("passes truthful stock facts and their exact replay identity to M04, refusing a different key", async () => {
   const enqueue = vi.fn(async () => ({ notificationId: "m04:notice", replayed: true }));

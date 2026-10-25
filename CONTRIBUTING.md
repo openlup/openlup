@@ -164,7 +164,11 @@ than treating an M10 forward as the migration tail. The M10 case in
 `scripts/packages/platform-cold-consumer.test.ts` loads the actual packed public
 facades and contribution to test enabled execution, readiness/actor refusal and
 message identity without workspace imports or live providers. Package facade
-and reference M04 delivery tests cover template routing and receipt replay.
+and reference M04 delivery tests cover every lifecycle mapping, numbered payment
+rungs and receipt replay. The installed M10 consumer compiles the public fact type
+and rejects its missing-export mutant. The composed PostgreSQL isolation table
+keeps an ambiguous normal or stock row ahead of healthy obligations in two runs;
+its no-isolation mutants fail the same witness.
 
 The native subscription renewal selection is
 `npm test -- tests/postgres/subscriptionRenewalLifecycle.test.ts --maxWorkers=1`.

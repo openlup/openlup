@@ -1,5 +1,5 @@
 import { createPostgresRenewalStore, createPostgresRetryLifecycleBinding, createPostgresStockWaitStore,
-  createSubscriptionServices, correlatedLogicalCycle, NATIVE_SUBSCRIPTION_CAPABILITIES, runOneAutomaticSubscriptionRenewal } from "@openlup/platform/subscriptions";
+  createSubscriptionServices, correlatedLogicalCycle, NATIVE_SUBSCRIPTION_CAPABILITIES, runOneAutomaticSubscriptionRenewal, runRenewalBatchRows } from "@openlup/platform/subscriptions";
 import type { AutomaticRenewalRunDeps, AutomaticRenewalRunResult, NativeRenewalCodec, SubscriptionQueryExecutor } from "@openlup/platform/subscriptions";
 import type { RenewalDue, RenewalFrozenSnapshot, RenewalSettlementPort, SubscriptionCapabilities } from "@openlup/platform/subscriptions/contracts";
 import { createSubscriptionContribution } from "@openlup/platform/composition";
@@ -82,29 +82,30 @@ export function createM10SubscriptionReferenceBinding(input: {
         for (const candidate of await stock.listCandidates({ limit, asOf: now })) {
           seen.add(candidate.subscriptionId);
           const snapshot = candidate.frozenSnapshot;
-          correlatedLogicalCycle(snapshot);
-          const operation = await store.readRenewal(input.codec.identity(snapshot));
-          if (!operation) throw new Error("stock_wait_operation_missing");
-          // Static admission and G23 precede stock reacquisition too.
-          const admission = await store.admitDeliveryAlignment({ ...snapshot, occurredAt: now });
-          if (!admission.allowed) {
-            renewals.push({ subscriptionId: snapshot.subscriptionId, operationId: operation.operationId, identityKey: operation.identityKey, replayed: false, status: "deferred", reason: admission.reason }); continue;
-          }
-          const admissionResult = await stock.admit({ operationId: operation.operationId, claimToken: operation.claimToken,
-            snapshot, recovery: candidate.binding, now });
-          if (admissionResult.waiting) {
-            renewals.push({ subscriptionId: snapshot.subscriptionId, operationId: operation.operationId, identityKey: operation.identityKey, replayed: false, status: "deferred", reason: "inventory_unavailable" }); continue;
-          }
-          const claimed = input.codec.readback(admissionResult.response);
-          if (!claimed.acquired) continue;
-          // N3 already acquired this exact generation. Do not acquire a second lease.
-          renewals.push(await runOneAutomaticSubscriptionRenewal({ ...deps, store: { ...store,
-            claimDue: async () => claimed,
-          } }, due(snapshot), now));
+          renewals.push(...await runRenewalBatchRows([due(snapshot)], async () => {
+            correlatedLogicalCycle(snapshot);
+            const operation = await store.readRenewal(input.codec.identity(snapshot));
+            if (!operation) throw new Error("stock_wait_operation_missing");
+            // Static admission and G23 precede stock reacquisition too.
+            const admission = await store.admitDeliveryAlignment({ ...snapshot, occurredAt: now });
+            if (!admission.allowed) {
+              return { subscriptionId: snapshot.subscriptionId, operationId: operation.operationId, identityKey: operation.identityKey, replayed: false, status: "deferred", reason: admission.reason };
+            }
+            const admissionResult = await stock.admit({ operationId: operation.operationId, claimToken: operation.claimToken,
+              snapshot, recovery: candidate.binding, now });
+            if (admissionResult.waiting) {
+              return { subscriptionId: snapshot.subscriptionId, operationId: operation.operationId, identityKey: operation.identityKey, replayed: false, status: "deferred", reason: "inventory_unavailable" };
+            }
+            const claimed = input.codec.readback(admissionResult.response);
+            if (!claimed.acquired) return { subscriptionId: snapshot.subscriptionId, operationId: claimed.operationId, identityKey: claimed.identityKey, replayed: claimed.replayed, status: "lease_active", reason: claimed.reason };
+            // N3 already acquired this exact generation. Do not acquire a second lease.
+            return runOneAutomaticSubscriptionRenewal({ ...deps, store: { ...store,
+              claimDue: async () => claimed,
+            } }, due(snapshot), now);
+          }, deps.policy));
         }
-        for (const row of await stock.listNormalDue({ limit, asOf: now })) {
-          if (!seen.has(row.subscriptionId)) renewals.push(await runOneAutomaticSubscriptionRenewal(deps, row, now));
-        }
+        const normalDue = (await stock.listNormalDue({ limit, asOf: now })).filter(row => !seen.has(row.subscriptionId));
+        renewals.push(...await runRenewalBatchRows(normalDue, row => runOneAutomaticSubscriptionRenewal(deps, row, now), deps.policy));
         return { retries, renewals };
       });
     },

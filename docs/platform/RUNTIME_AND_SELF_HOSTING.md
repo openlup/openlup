@@ -245,7 +245,9 @@ returns schema, readiness, one job descriptor and its guarded executor; it mount
 nothing. Supply a complete catalogue identity and Core readiness observation,
 the existing population's durable job lease, native transaction lane, codec and
 explicit M07 payment/correlation policy. Renewals, stock recovery and dunning
-run under that one lease. Disable the incumbent executor before selecting a
+run under that one lease. A normal-due or stock-recovery row failure returns the
+existing error result and leaves later rows runnable in that population run.
+Disable the incumbent executor before selecting a
 replacement. The default is off, and no current serving route changes. G23
 captured cases survive a global alignment-mode rollback to off; disabling this
 binding itself still requires the host's reconciliation/handoff procedure.

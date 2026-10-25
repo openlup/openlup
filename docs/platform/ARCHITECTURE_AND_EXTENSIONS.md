@@ -1540,7 +1540,10 @@ its run port and complete catalogue schema observation.
 
 The [native reference binding](../../server/runtime/public-reference/m10SubscriptionBinding.ts)
 composes the existing renewal runner, mandatory G23, N1 dunning and N3 stock wait
-inside one host-owned durable population lease. Static admission precedes G23;
+inside one host-owned durable population lease. Both normal-due and stock-recovery
+rows use the existing `runRenewalBatchRows` isolation: a thrown row yields an
+`error` result with `renewal_processing_failed` and later rows still execute.
+Static admission precedes G23;
 existing cycles, prepared attempts and retries bypass new-cycle G23. Off without
 a captured case performs no G23 call; captured protected cases retain authority
 after rollback. Denial defers without terminal refusal. Protect-mode arrival
@@ -1569,7 +1572,11 @@ continue to declare SQL surfaces and unavailable TypeScript recovery; the served
 managed runner and account aggregation are unchanged.
 
 `subscriptionLifecycleTemplate` maps existing lifecycle events plus M5 stock-wait
-started/resumed events to M04 templates. `createSubscriptionLifecycleMessages`
+started/resumed events to M04 templates. Payment failures use the installed
+numbered templates: attempt 1 selects `-1`, attempt 2 selects `-2`, and all other
+values (including absent or zero attempts) select `-3`. The public
+`SubscriptionLifecycleFact` type is also exported from `./subscriptions`.
+`createSubscriptionLifecycleMessages`
 forwards truthful typed facts and their original idempotency key to M04, without
 inventing pause or parcel-delivery facts. The [reference facade](../../server/runtime/public-reference/subscriptionFacades.ts)
 binds opaque recipient/template references to M04 transactional delivery, whose

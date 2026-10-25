@@ -2,7 +2,8 @@ import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, beforeEach, expect, it, vi } from "vitest";
 import { createPostgresRenewalReservationPort } from "@openlup/platform/inventory";
 import { createPostgresRetryStore } from "@openlup/platform/subscriptions";
-import type { NativeRenewalCodec, SubscriptionQueryExecutor } from "@openlup/platform/subscriptions";
+import * as subscriptions from "@openlup/platform/subscriptions";
+import type { AutomaticRenewalRunResult, NativeRenewalCodec, SubscriptionQueryExecutor } from "@openlup/platform/subscriptions";
 import type { RenewalDue, RenewalExecutionRequest, RenewalFrozenSnapshot, RenewalReadback, RenewalSettlementPort } from "@openlup/platform/subscriptions/contracts";
 import { createM10SubscriptionReferenceBinding } from "../../server/runtime/public-reference/m10SubscriptionBinding.js";
 import { createM10RetryDriver } from "../../server/runtime/public-reference/m10RetryDriver.js";
@@ -24,7 +25,7 @@ const transaction = async <T>(work: (db: SubscriptionQueryExecutor) => Promise<T
   try { await db.query("BEGIN"); const result = await work(db); await db.query("COMMIT"); return result; }
   catch (error) { await db.query("ROLLBACK"); throw error; } finally { db.release(); }
 };
-function bind(f: Renewal, enabled = true) {
+function bind(f: Renewal, enabled = true, ambiguous?: Renewal) {
   let now = later(1), method = "frozen-method", declined = false, ready = true;
   const snapshot: RenewalFrozenSnapshot = {
     contractVersion: "platform.subscription.renewal.v1", subscriptionId: f.subscription, clientId: f.client,
@@ -40,7 +41,11 @@ function bind(f: Renewal, enabled = true) {
   const codec: NativeRenewalCodec = {
     due: raw => ({ ...due, scheduledAt: String(raw.scheduled_at), scheduledInstant: Date.parse(String(raw.scheduled_at)), subscriptionId: String(raw.subscription_id) }),
     freeze: () => { throw new Error("must_resume_original_snapshot"); }, encode: () => f.snapshot,
-    decode: wire => { expect(wire).toEqual(f.snapshot); return snapshot; },
+    decode: wire => {
+      if (ambiguous && wire.subscriptionId === ambiguous.subscription) return { ...snapshot, subscriptionId: ambiguous.subscription,
+        cycle: { status: "ambiguous", logicalCycleNumber: null, nativeRenewalCounter: 2, activationCycleId: null, reason: "unknown_activation" } };
+      expect(wire).toEqual(f.snapshot); return snapshot;
+    },
     identity: () => f.identity, fingerprint: () => f.fingerprint,
     readback: raw => ({ ...raw, scheduledInstant: Date.parse(String(raw.scheduledAt)), cycle: snapshot.cycle, cycleSnapshot: snapshot }) as unknown as RenewalReadback,
   };
@@ -80,7 +85,7 @@ function bind(f: Renewal, enabled = true) {
     settlement: db => createPostgresRenewalSettlementPort(db) as unknown as RenewalSettlementPort,
     inventory: createPostgresRenewalReservationPort(h.pool),
     paymentRails: { resolve: () => ({ execute, findExternalAttempt: async () => "original-ack", readOutcome: async () => evidence("original-ack", `${f.identity}:original-evidence`) }) },
-    policy: { executionInput: (_due, _operation, prepared) => execution(prepared.settlementIntentId, prepared.orderId, `${f.identity}:original`), validateInput: () => {}, classifyFailure: () => "temporary", identityKey: () => f.identity },
+    policy: { executionInput: (_due, _operation, prepared) => execution(prepared.settlementIntentId, prepared.orderId, `${f.identity}:original`), validateInput: () => {}, classifyFailure: () => "temporary", identityKey: row => row.subscriptionId === ambiguous?.subscription ? ambiguous.identity : f.identity },
     retry: retryOptions, failureTemplate: "failed", recoveryPath: "/repair", workerId: "composed", now: () => now,
     version: "0.24.0", catalogue: { version: "complete-test-catalogue", migration: "native-test-catalogue" }, readiness, cadenceSeconds: 60,
   });
@@ -260,6 +265,38 @@ it("ambiguous logical-cycle history refuses before the original claim, prepare o
   const f = await renewal(h.pool), b = bind(f);
   b.snapshot.cycle = { status: "ambiguous", logicalCycleNumber: null, nativeRenewalCounter: 2, activationCycleId: null, reason: "unknown_activation" };
   const before = await allPublicRows(h.pool);
-  await expect(b.binding.services.run()).rejects.toThrow("cycle_correlation_required");
+  expect(await b.binding.services.run()).toMatchObject({ renewals: [{ subscriptionId: f.subscription, status: "error", reason: "renewal_processing_failed" }] });
   expect(b.execute).not.toHaveBeenCalled(); expect(await allPublicRows(h.pool)).toEqual(before);
+});
+
+
+async function provePopulationIsolation(population: "normal" | "stock") {
+  const bad = await renewal(h.pool, population === "stock" ? 0 : 10, 1, `00000000-${randomUUID().slice(9)}` as ReturnType<typeof randomUUID>);
+  if (population === "stock") {
+    expect(await bind(bad).binding.services.run()).toMatchObject({ renewals: [{ status: "refused" }] });
+  }
+  const before = (await h.pool.query("SELECT * FROM public.subscription_renewal_operations WHERE id=$1", [bad.operation])).rows;
+  for (let run = 0; run < 2; run++) {
+    // Each run has a later healthy obligation; the unchanged bad row remains first.
+    const healthy = await renewal(h.pool, 10, 1, `ffffffff-${randomUUID().slice(9)}` as ReturnType<typeof randomUUID>), b = bind(healthy, true, bad);
+    b.time(later(2 + run)); // Stock candidates become eligible after their existing claim lease expires.
+    const result = await b.binding.services.run();
+    expect(result).toMatchObject({ renewals: [
+      { subscriptionId: bad.subscription, identityKey: bad.identity, status: "error", reason: "renewal_processing_failed" },
+      { subscriptionId: healthy.subscription, status: "succeeded" },
+    ] });
+    expect(b.execute).toHaveBeenCalledTimes(1);
+    expect((await h.pool.query("SELECT * FROM public.subscription_renewal_operations WHERE id=$1", [bad.operation])).rows).toEqual(before);
+    await unchangedIdentity(h.pool, healthy);
+  }
+}
+it.each(["normal", "stock"] as const)("isolates an earlier ambiguous %s row across consecutive population runs", provePopulationIsolation);
+it.each(["normal", "stock"] as const)("the %s population witness rejects the no-isolation mutant", async population => {
+  const mutant = vi.spyOn(subscriptions, "runRenewalBatchRows").mockImplementation(async (rows, run) => {
+    const results: AutomaticRenewalRunResult[] = [];
+    for (const row of rows) results.push(await run(row));
+    return results;
+  });
+  try { await expect(provePopulationIsolation(population)).rejects.toThrow("cycle_correlation_required"); }
+  finally { mutant.mockRestore(); }
 });
