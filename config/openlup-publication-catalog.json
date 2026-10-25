@@ -2502,10 +2502,6 @@
       "class": "public-output"
     },
     {
-      "path": "packages/platform/changes/m11-k5k6.md",
-      "class": "public-output"
-    },
-    {
       "path": "packages/platform/package.json",
       "class": "public-output"
     },

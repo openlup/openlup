@@ -1,7 +1,9 @@
 import { expect, it, vi } from "vitest";
 import type { ReadinessReport } from "@openlup/core/readiness";
+import type { OutboxHandler } from "@openlup/core/outbox";
 import { createOrderReviewHandlers, createCheckoutCompensationRpcAdapter } from "@openlup/platform/commerce/server";
 import { createM11CommerceReferenceBinding } from "./m11CommerceBinding.js";
+import { m11CommerceSchema } from "./m11CommerceSchema.js";
 
 function report(state: ReadinessReport["state"]): ReadinessReport {
   return { state, candidate: { artifact: "fixture", configuration: "fixture", environment: "disposable", database: "fixture", schema: "complete" }, loadedPackages: [], issues: [] };
@@ -12,6 +14,32 @@ function options(state: ReadinessReport["state"] = "ready") {
     version: "test", catalogue: { version: "complete", migration: "host" }, readiness: vi.fn(async () => report(state)),
   };
 }
+
+it.each(["ready", "unknown", "unsatisfied"] as const)("keeps executable handler inputs inert when schema is %s", async state => {
+  const input = options(state), handle = vi.fn(async () => ({ kind: "processed" as const }));
+  const handler: OutboxHandler = { eventType: "commerce.order.paid", timeoutMs: 1000, handle };
+  const binding = createM11CommerceReferenceBinding({ ...input, enabled: true, handlers: [handler] });
+  expect(await binding.services.start("request")).toEqual(state === "ready" ? { key: "request" } : { kind: "refused", code: `schema_${state}` });
+  expect(binding.contributions[0].handlers).toEqual([{ eventType: handler.eventType, timeoutMs: handler.timeoutMs }]);
+  expect(binding.contributions[0].handlers[0]).not.toHaveProperty("handle");
+  expect(handle).not.toHaveBeenCalled(); expect(input.executor.query).not.toHaveBeenCalled();
+});
+
+it("unions host and native schema identities in first-seen order without merging overloads or changing host requirements", () => {
+  const order = { kind: "table" as const, name: "public.commerce_orders" };
+  const native = { kind: "function" as const, name: "public.commerce_enqueue_checkout_recovery_reminders", signature: "integer" };
+  const text = { kind: "function" as const, name: "public.host_operation", signature: "text" };
+  const uuid = { ...text, signature: "uuid" };
+  const required = [order, native, { ...order }, text, uuid, { ...text }];
+  const schema = m11CommerceSchema({ version: "complete", migration: "host" }, required);
+  expect(schema.objects.slice(0, 4)).toEqual([order, native, text, uuid]);
+  expect(schema.objects.filter(object => object.name === order.name)).toEqual([order]);
+  expect(schema.objects.filter(object => object.name === native.name)).toEqual([native]);
+  expect(schema.objects.filter(object => object.name === text.name)).toEqual([text, uuid]);
+  expect(schema.objects).toContainEqual({ kind: "table", name: "public.commerce_checkout_recovery_tokens" });
+  expect(schema).toEqual(m11CommerceSchema({ version: "complete", migration: "host" }, required));
+  expect(required).toEqual([order, native, order, text, uuid, text]);
+});
 
 it.each([undefined, false])("keeps construction and every default-off entrance cold (%s)", async enabled => {
   const input = options(), run = input.commerce.start;

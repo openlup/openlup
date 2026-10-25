@@ -24,7 +24,7 @@ export function createCommerceContribution(input: {
       schedules: input.schedules.map(({ id, cadenceSeconds }) => ({ id, cadenceSeconds })), env: [],
       requiredPorts: Object.keys(input.commerce), routes: input.routes.map(route => route.id), requiredSchema: input.requiredSchema,
     },
-    handlers: input.handlers, schedules: input.schedules, routes: input.routes,
+    handlers: input.handlers.map(({ eventType, timeoutMs }) => Object.freeze({ eventType, timeoutMs })), schedules: input.schedules, routes: input.routes,
   };
   return {
     contributions: [contribution],

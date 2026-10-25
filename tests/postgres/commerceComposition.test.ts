@@ -1,7 +1,8 @@
 import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { afterAll, beforeAll, expect, it } from "vitest";
+import { afterAll, beforeAll, expect, it, vi } from "vitest";
 import { checkReadiness, createSchemaProbe } from "@openlup/core/readiness";
+import type { RequiredSchema } from "@openlup/core/readiness";
 import { createM11CommerceReferenceBinding } from "../../server/runtime/public-reference/m11CommerceBinding.js";
 import { fixture, nativeHarness, openCase, replacement, units } from "../helpers/fulfillmentNative.js";
 import { postgresSetupTimeoutMs, postgresTeardownTimeoutMs } from "../helpers/postgresContainer.js";
@@ -11,23 +12,47 @@ const h = nativeHarness("commerce-composition");
 beforeAll(() => h.start(), postgresSetupTimeoutMs);
 afterAll(() => h.stop(), postgresTeardownTimeoutMs);
 
-async function bind() {
+async function bind(requiredObjects: RequiredSchema["objects"] = [], absent?: string) {
   const installed = await h.runner().status(); expect(installed.pending).toEqual([]);
   expect(installed.applied).toEqual(units.map(unit => unit.file));
   const catalogue = { version: createHash("sha256").update(JSON.stringify(units)).digest("hex"), migration: installed.applied[installed.applied.length - 1] };
   const version = JSON.parse(readFileSync("packages/platform/package.json", "utf8")).version as string;
   const probe = createSchemaProbe({ query: (text, values) => h.pool.query(text, values ? [...values] : undefined) },
     async () => ({ database: "owned-disposable", version: catalogue.version }));
-  const binding = createM11CommerceReferenceBinding({ enabled: true, executor: h.pool, commerce: {}, requiredObjects: [], version, catalogue,
+  const executor = { query: vi.fn((text: string, values?: unknown[]) => h.pool.query(text, values)) };
+  const binding = createM11CommerceReferenceBinding({ enabled: true, executor, commerce: {}, requiredObjects, version, catalogue,
     readiness: async () => checkReadiness({
       candidate: { artifact: "fixture", configuration: "selected-commerce", environment: "disposable", database: "owned-disposable", schema: catalogue.version },
       inventoryComplete: true, loadedPackages: [{ name: "@openlup/core", version, kind: "kernel" }, { name: "@openlup/platform", version, kind: "rail", modules: ["commerce"] }],
       contributions: binding.contributions, vocabulary: [], exemptions: [],
-      bindings: { ports: binding.ports, routes: binding.routes, triggers: binding.triggers, env: {} }, schemaProbe: probe,
+      bindings: { ports: binding.ports, routes: binding.routes, triggers: binding.triggers, env: {} },
+      schemaProbe: { observe: async requirement => {
+        const observation = await probe.observe(requirement);
+        return { ...observation, objects: observation.objects.map(item => item.object.name === absent ? { ...item, present: false } : item) };
+      } },
     }),
   });
-  return binding;
+  return { ...binding, executor };
 }
+
+it("admits overlapping host/native requirements through the actual Core PostgreSQL probe", async () => {
+  const table = { kind: "table" as const, name: "public.commerce_orders" };
+  const routine = { kind: "function" as const, name: "public.commerce_enqueue_checkout_recovery_reminders", signature: "integer" };
+  const binding = await bind([table, routine, { ...table }, { ...routine }]);
+  expect(await binding.readiness()).toEqual({ kind: "ready" });
+  expect(binding.executor.query).not.toHaveBeenCalled();
+});
+
+it("refuses every native entrance before executor work when observation lacks the operator token table", async () => {
+  const binding = await bind([], "public.commerce_checkout_recovery_tokens");
+  const refusal = { kind: "refused", code: "schema_unsatisfied" };
+  expect(await binding.readiness()).toEqual(refusal);
+  expect(await binding.services.abandonedReminders(1, "")).toEqual(refusal);
+  expect(await binding.services.recoveryReminders(1)).toEqual(refusal);
+  expect(await binding.services.authorizeReminder({ eventId: randomUUID(), claimToken: "owned-claim" })).toEqual(refusal);
+  expect(await binding.services.pruneOutbox(1)).toEqual(refusal);
+  expect(binding.executor.query).not.toHaveBeenCalled();
+});
 
 it("selects native checkout recovery, persists one reminder, replays it and preserves subscription reservations and alignment", async () => {
   const subscription = await renewal(h.pool), prepared = await prepareOriginal(h.pool, subscription);

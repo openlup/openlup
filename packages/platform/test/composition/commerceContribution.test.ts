@@ -1,7 +1,18 @@
 import { expect, it, vi } from "vitest";
+import type { OutboxHandler } from "@openlup/core/outbox";
 import { createCommerceContribution } from "../../src/composition/index.js";
 
 const schema = { version: "complete", migration: "host", objects: [] };
+it("projects real outbox handlers to inert registration descriptors", () => {
+  const handle = vi.fn(async () => ({ kind: "processed" as const }));
+  const handler: OutboxHandler = { eventType: "commerce.order.paid", timeoutMs: 1000, handle };
+  const binding = createCommerceContribution({ version: "test", requiredSchema: schema, commerce: {}, handlers: [handler], schedules: [], routes: [] });
+  expect(binding.contributions[0].handlers).toEqual([{ eventType: "commerce.order.paid", timeoutMs: 1000 }]);
+  expect(binding.contributions[0].handlers[0]).not.toHaveProperty("handle");
+  expect(binding.contributions[0].handlers[0]).not.toBe(handler);
+  expect(handle).not.toHaveBeenCalled();
+});
+
 it("declares the installed commerce entries and shares existing port, route and trigger callables", () => {
   const execute = vi.fn();
   const binding = createCommerceContribution({ version: "test", requiredSchema: schema, commerce: { execute, missing: null },
