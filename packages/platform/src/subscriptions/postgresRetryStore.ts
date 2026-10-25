@@ -56,6 +56,17 @@ export function createPostgresRetryStore(executor: SubscriptionQueryExecutor) {
     async applyFailure(operationId: string, key: string, input: NativeRetryFailure) {
       return row(await invoke("subscription_retry_apply_failure", [operationId, key, input]));
     },
+    /** Read the immutable rung receipt against the current case. An interrupted
+     * apply still needs propagation; an already advanced case must not be rewritten. */
+    async failureProgress(operationId: string, key: string): Promise<{ replayed: boolean; caseAdvanced: boolean }> {
+      const result = await executor.query(`SELECT true AS replayed,
+        (c.retry_attempt >= (r.result->>'retry_attempt')::integer OR o.state='recovered') AS case_advanced
+        FROM public.subscription_retry_obligations o
+        JOIN public.subscription_retry_receipts r ON r.obligation_id=o.id AND r.kind='failure' AND r.receipt_key=$2::text
+        LEFT JOIN public.subscription_dunning_cases c ON c.id=o.case_id
+        WHERE o.renewal_operation_id=$1::uuid`, [operationId, key]);
+      return { replayed: result.rows.length === 1, caseAdvanced: result.rows[0]?.case_advanced === true };
+    },
     async openCase(operationId: string, template: string, recoveryPath: string | null) {
       return subscriptionRecord(await invoke("subscription_retry_open_case", [operationId, template, recoveryPath]));
     },

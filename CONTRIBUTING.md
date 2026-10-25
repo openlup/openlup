@@ -154,6 +154,22 @@ its users or operators can observe.
 
 ## Development-preview checks
 
+The [M10 composition witness](tests/postgres/subscriptionComposition.test.ts)
+uses its own disposable native database for the complete off/protect/arrival/
+rollback/dunning/stock table, shared population lease, schema-object probes and
+frozen-mandate refusal. Subsequent-rung committed propagation replay compares
+every public row with tuple versions; interrupted propagation is a separate
+boundary in the same witness. Its probes name their own installed units rather
+than treating an M10 forward as the migration tail. The M10 case in
+`scripts/packages/platform-cold-consumer.test.ts` loads the actual packed public
+facades and contribution to test enabled execution, readiness/actor refusal and
+message identity without workspace imports or live providers. Package facade
+and reference M04 delivery tests cover every lifecycle mapping, numbered payment
+rungs and receipt replay. The installed M10 consumer compiles the public fact type
+and rejects its missing-export mutant. The composed PostgreSQL isolation table
+keeps an ambiguous normal or stock row ahead of healthy obligations in two runs;
+its no-isolation mutants fail the same witness.
+
 The native subscription renewal selection is
 `npm test -- tests/postgres/subscriptionRenewalLifecycle.test.ts --maxWorkers=1`.
 It uses one disposable PostgreSQL container for N1 exact-prefix restart,

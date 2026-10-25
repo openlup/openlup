@@ -53,7 +53,11 @@ only native admission denials as deferred. The runner and batch return
 the operation stays claimed and the same schedule is offered only after lease
 expiry. Static gate refusals remain terminal. Direct hook callers that omit
 `occurredAt` use the decorator’s clock. This changes neither the PostgreSQL
-renewal adapters nor cycle-insert receipt enforcement.
+renewal adapters nor cycle-insert receipt enforcement. The decorator also accepts
+the package renewal-store contract: that overload preserves its typed schedule
+and admission state, while existing root callers keep their original result
+shape and optional clock behavior. The M10 reference binding selects this same
+G23 seam rather than implementing a separate admission policy.
 
 The reference application's renewal execution, readback registry, recovery
 guidance, setup routes, channel list and activation bind through the experimental
@@ -1518,11 +1522,70 @@ returns immediately, and a matching stored preview supplies its already-bound
 translation to apply. Later host address/catalogue changes cannot preempt replay;
 changed requests still refuse as idempotency conflicts. The adapter refuses pause without writing. Existing native lifecycle
 callers remain unchanged. Native multi-cycle prepaid and the M07 prepared-attempt
-store retain named unsupported declarations. Stock recovery remains unavailable;
-N1 retry recovery is selected after its store proofs. The
+store retain named unsupported declarations. The unbound native descriptor keeps stock recovery unavailable;
+the explicitly selected M10 reference binding declares it selected, with the
+composed PostgreSQL witness. N1 retry recovery is selected after its store proofs. The
 [Subscription port witnesses](../../packages/platform/test/subscriptions/portFit.test.ts) test
 each port amendment, and the [native baseline](../../tests/postgres/subscriptionContinuityBaseline.test.ts)
 exercises the complete current prefix without subscription SQL additions.
+
+### Composed subscription module
+
+`createSubscriptionServices` exposes one explicitly enabled host executor and
+checks readiness before invoking it. `createSubscriptionContribution` in
+`@openlup/platform/composition` describes one `subscriptions-renewal` schedule
+bound to that same callable. Neither factory installs a timer or selects a
+population. Disabled composition supplies no job; a selected module still needs
+its run port and complete catalogue schema observation.
+
+The [native reference binding](../../server/runtime/public-reference/m10SubscriptionBinding.ts)
+composes the existing renewal runner, mandatory G23, N1 dunning and N3 stock wait
+inside one host-owned durable population lease. Both normal-due and stock-recovery
+rows use the existing `runRenewalBatchRows` isolation: a thrown row yields an
+`error` result with `renewal_processing_failed` and later rows still execute.
+Static admission precedes G23;
+existing cycles, prepared attempts and retries bypass new-cycle G23. Off without
+a captured case performs no G23 call; captured protected cases retain authority
+after rollback. Denial defers without terminal refusal. Protect-mode arrival
+releases the original schedule, whose expired lease resumes its stored snapshot.
+The [composed real-PostgreSQL table](../../tests/postgres/subscriptionComposition.test.ts)
+exercises off, protect, arrival, rollback, dunning, stock, prepared and static
+admission, shared execution, frozen mandate refusal and committed replay.
+
+Retry selection filters already paid/settled obligations before limiting the
+batch. Ordinary retries require the frozen mandate and evidence-bound logical
+cycle. Replacement-method authorization and consumption remain installed N1
+store duties. A committed
+prepare never authorizes another execution: the host must read that exact retry
+attempt through M07, rather than reuse the aggregate's original payment handle.
+`failureProgress` compares an immutable failure receipt with the durable case;
+propagation completes an interrupted rung, while committed case progression
+ends replay without rewriting cases, notices or events. These are invoker reads
+under the existing host privilege model, with no new database object. Prepared
+attempts remain reconciliation duties even when provider execution throws.
+
+Stock-only recovery keeps the original frozen identity and claim generation.
+`realizationAdmitted` delegates to N3 only after actual paid realization; stock
+arrival alone cannot emit a resumed notice. No automatic renewal operation
+pauses, suspends or interrupts an active subscription. Managed stock descriptors
+continue to declare SQL surfaces and unavailable TypeScript recovery; the served
+managed runner and account aggregation are unchanged.
+
+`subscriptionLifecycleTemplate` maps existing lifecycle events plus M5 stock-wait
+started/resumed events to M04 templates. Payment failures use the installed
+numbered templates: attempt 1 selects `-1`, attempt 2 selects `-2`, and all other
+values (including absent or zero attempts) select `-3`. The public
+`SubscriptionLifecycleFact` type is also exported from `./subscriptions`.
+`createSubscriptionLifecycleMessages`
+forwards truthful typed facts and their original idempotency key to M04, without
+inventing pause or parcel-delivery facts. The [reference facade](../../server/runtime/public-reference/subscriptionFacades.ts)
+binds opaque recipient/template references to M04 transactional delivery, whose
+receipt owns sending and replay. Rendering, consent and recovery-link authority
+remain M04/host responsibilities. `createSubscriptionCommandExamples` supplies
+neutral customer skip and operator slide examples through the existing command
+port, preserving actor, time and key. Authentication and client authorization
+precede this facade. M12 retains account aggregation. The installed consumer
+covers enabled execution and readiness, actor and lifecycle-identity refusals.
 
 ## Invoicing contracts
 

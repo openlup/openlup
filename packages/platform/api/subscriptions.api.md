@@ -54,6 +54,41 @@ export declare function runOneAutomaticSubscriptionRenewal(deps: AutomaticRenewa
 /** No implicit +1: ambiguous history must be resolved by the host before opening a repair case. */
 export declare function correlatedLogicalCycle(snapshot: RenewalFrozenSnapshot): number;
 ```
+## dist/subscriptions/automaticRenewalExecution.d.ts
+
+```ts
+import type { RenewalDue, RenewalPaymentRail, RenewalReadback, RenewalSettlementPort, RenewalStorePort } from "./contracts/renewal.js";
+import type { AutomaticRenewalPolicy, AutomaticRenewalRunDeps, AutomaticRenewalRunResult, AutomaticRenewalRunStatus } from "./automaticRenewal.js";
+export declare function automaticRenewalResult(operation: RenewalReadback, status: AutomaticRenewalRunStatus, reason: string | null): AutomaticRenewalRunResult;
+export declare function recoverPreparedExternalAttempt(input: {
+    operation: RenewalReadback;
+    rail: RenewalPaymentRail;
+    settlement: RenewalSettlementPort;
+    occurredAt: string;
+}): Promise<string | null>;
+export declare function runRenewalBatchRows(due: RenewalDue[], run: (row: RenewalDue) => Promise<AutomaticRenewalRunResult>, policy: Pick<AutomaticRenewalPolicy, "identityKey">): Promise<AutomaticRenewalRunResult[]>;
+export declare function refuseRenewalBeforePayment(input: {
+    store: RenewalStorePort;
+    operation: RenewalReadback;
+    reason: string;
+    occurredAt: string;
+}): Promise<AutomaticRenewalRunResult>;
+export declare function handoffRefusal(deps: AutomaticRenewalRunDeps, operation: RenewalReadback, prepared: {
+    cycleId: string;
+    orderId: string;
+    settlementIntentId: string;
+}, externalAttemptRef: string | null, reason: string, failureClass: string, occurredAt: string): Promise<AutomaticRenewalRunResult>;
+```
+## dist/subscriptions/commandExamples.d.ts
+
+```ts
+import type { SubscriptionCommandContext, SubscriptionCommandPort } from "./contracts/commands.js";
+/** Neutral examples. The host authenticates and authorizes actor/client ownership first. */
+export declare function createSubscriptionCommandExamples(commands: SubscriptionCommandPort): {
+    customerSkip(context: SubscriptionCommandContext): Promise<import("./contracts/commands.js").SubscriptionCommandReceipt | import("./contracts/commands.js").SubscriptionCommandRefusal | import("./contracts/commands.js").SubscriptionUnsupported>;
+    operatorSlide(context: SubscriptionCommandContext, newNextCycleAt: string): Promise<import("./contracts/commands.js").SubscriptionCommandReceipt | import("./contracts/commands.js").SubscriptionCommandRefusal | import("./contracts/commands.js").SubscriptionUnsupported>;
+};
+```
 ## dist/subscriptions/contracts/commands.d.ts
 
 ```ts
@@ -313,6 +348,53 @@ export interface RenewalFailureHandoffPort {
         currency: string | null;
     }): Promise<{
         caseId: string | null;
+        replayed: boolean;
+    }>;
+}
+```
+## dist/subscriptions/contracts/messages.d.ts
+
+```ts
+export type SubscriptionLifecycleFact = {
+    factId: string;
+    idempotencyKey: string;
+    subscriptionId: string;
+    clientId: string;
+    cycleId: string | null;
+    caseId: string | null;
+    orderId: string | null;
+    occurredAt: string;
+    firstRecordedAt: string;
+} & ({
+    kind: "payment_failed" | "payment_expired";
+    retryAttempt: number;
+    nextRetryAt: string | null;
+    failureClass: string | null;
+    amountMinor: number | null;
+    currency: string | null;
+} | {
+    kind: "payment_recovered";
+    paymentEvidenceRef: string;
+} | {
+    kind: "stock_wait_started" | "stock_wait_resumed";
+    frozenFingerprint: string;
+} | {
+    kind: "winback_eligible";
+    cancelledAt: string;
+    paymentMethodRef: string;
+});
+/** M04 receives a descriptor; host owns copy, recipient, consent and transport. */
+export interface SubscriptionLifecycleMessageDescriptor {
+    fact: SubscriptionLifecycleFact;
+    messageKey: string;
+    templateSlug: string;
+    recipientRef: string;
+    locale: string;
+    recoveryUrlPath: string | null;
+}
+export interface SubscriptionLifecycleMessagePort {
+    enqueue(descriptor: SubscriptionLifecycleMessageDescriptor): Promise<{
+        notificationId: string;
         replayed: boolean;
     }>;
 }
@@ -997,6 +1079,24 @@ export declare const MANAGED_SUBSCRIPTION_STOCK_CAPABILITIES: Readonly<{
     readonly stockAvailabilitySurface: "sql";
     readonly defaultEnabled: false;
 }>;
+export { runRenewalBatchRows } from "./automaticRenewalExecution.js";
+export type { SubscriptionLifecycleFact } from "./contracts/messages.js";
+export { subscriptionLifecycleTemplate, createSubscriptionLifecycleMessages } from "./lifecycleMessages.js";
+export { createSubscriptionCommandExamples } from "./commandExamples.js";
+export { createSubscriptionServices } from "./services.js";
+```
+## dist/subscriptions/lifecycleMessages.d.ts
+
+```ts
+import type { SubscriptionLifecycleMessageDescriptor, SubscriptionLifecycleMessagePort } from "./contracts/messages.js";
+export declare function subscriptionLifecycleTemplate(eventType: string, retryAttempt?: number | null): string | null;
+/** M04 owns delivery, consent, rendering and durable replay. M10 never synthesizes a pause. */
+export declare function createSubscriptionLifecycleMessages(delivery: SubscriptionLifecycleMessagePort): {
+    deliver(input: Omit<SubscriptionLifecycleMessageDescriptor, "templateSlug">): Promise<{
+        notificationId: string;
+        replayed: boolean;
+    }>;
+};
 ```
 ## dist/subscriptions/postgresCommandStore.d.ts
 
@@ -1128,6 +1228,12 @@ export declare function createPostgresRetryStore(executor: SubscriptionQueryExec
     read(operationId: string): Promise<NativeRetryRow | null>;
     candidates(limit: number, now: string): Promise<NativeRetryRow[]>;
     applyFailure(operationId: string, key: string, input: NativeRetryFailure): Promise<NativeRetryRow>;
+    /** Read the immutable rung receipt against the current case. An interrupted
+     * apply still needs propagation; an already advanced case must not be rewritten. */
+    failureProgress(operationId: string, key: string): Promise<{
+        replayed: boolean;
+        caseAdvanced: boolean;
+    }>;
     openCase(operationId: string, template: string, recoveryPath: string | null): Promise<Record<string, unknown>>;
     authorizeRecovery(operationId: string, tokenId: string, methodRef: string, methodEvidenceRef: string, now: string): Promise<Record<string, unknown>>;
     scheduleRecovery(operationId: string, key: string, authorizationId: string, now: string): Promise<Record<string, unknown>>;
@@ -1357,4 +1463,39 @@ export declare function replayRenewalAttempt<D extends HostedRenewalDue>(deps: R
 import type { RenewalIdentity, RenewalSchedule } from "./contracts/renewal.js";
 /** The host's existing dialect owns every byte; no normalization or new prefix. */
 export declare function renewalIdentity(schedule: RenewalSchedule, keys: (schedule: RenewalSchedule) => RenewalIdentity): RenewalIdentity;
+```
+## dist/subscriptions/services.d.ts
+
+```ts
+import type { SubscriptionCapabilities } from "./contracts/commands.js";
+/** One host executor for a selected population. Construction never starts work. */
+export declare function createSubscriptionServices<Result>(input: {
+    enabled?: boolean;
+    capabilities: SubscriptionCapabilities;
+    readiness(): Promise<{
+        kind: "ready";
+    } | {
+        kind: "refused";
+        code: string;
+    }>;
+    run(): Promise<Result>;
+}): {
+    capabilities: SubscriptionCapabilities;
+    readiness: () => Promise<{
+        kind: "ready";
+    } | {
+        kind: "refused";
+        code: string;
+    } | {
+        readonly kind: "refused";
+        readonly code: "disabled";
+    }>;
+    run(): Promise<Result | {
+        kind: "refused";
+        code: string;
+    } | {
+        readonly kind: "refused";
+        readonly code: "disabled";
+    }>;
+};
 ```

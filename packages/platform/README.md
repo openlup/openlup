@@ -738,8 +738,15 @@ wire codec. Candidate discovery preserves uncaptured frozen operations; shortage
 creates a durable wait, and elapsed stock-only refusals may reacquire on the same
 identity with a new claim generation. Resumed means paid realization admitted.
 The fixed 14-day soft priority is distinct from durable advance reservations.
-Stock recovery stays unavailable until real-PG proof passes for the selected
-native graph; managed stock wait and serving composition remain separate work.
+The unbound descriptor keeps stock recovery unavailable. The opt-in native M10
+reference composition selects it after composed PostgreSQL proof; managed
+TypeScript recovery remains unavailable.
+
+`createSubscriptionServices`, lifecycle-message and neutral command facades are
+in `./subscriptions`; `createSubscriptionContribution` is in `./composition`.
+They are default-off and describe one host executor/job. The
+[composed module recipe](../../docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#composed-subscription-module)
+owns explicit selection, frozen mandate/replay, M04 delivery and M12 boundaries.
 
 ## Invoicing contracts
 

@@ -240,6 +240,20 @@ substituting a different business behaviour.
 
 ## Opt-in disposable subscription reference
 
+The opt-in [M10 native subscription binding](../../server/runtime/public-reference/m10SubscriptionBinding.ts)
+returns schema, readiness, one job descriptor and its guarded executor; it mounts
+nothing. Supply a complete catalogue identity and Core readiness observation,
+the existing population's durable job lease, native transaction lane, codec and
+explicit M07 payment/correlation policy. Renewals, stock recovery and dunning
+run under that one lease. A normal-due or stock-recovery row failure returns the
+existing error result and leaves later rows runnable in that population run.
+Disable the incumbent executor before selecting a
+replacement. The default is off, and no current serving route changes. G23
+captured cases survive a global alignment-mode rollback to off; disabling this
+binding itself still requires the host's reconciliation/handoff procedure.
+The [subscription recipe](ARCHITECTURE_AND_EXTENSIONS.md#composed-subscription-module)
+owns replay, frozen-mandate and lifecycle-message semantics.
+
 The inert M09 reference binding admits invoicing only when explicitly enabled,
 selected and ready. Server startup checks an explicitly supplied invoicing
 binding before opening its listener and mounts no invoice routes or schedules.

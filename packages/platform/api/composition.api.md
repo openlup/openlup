@@ -293,6 +293,7 @@ export { createCatalogContribution, type CatalogContributionInput } from "./cata
 export { createInventoryContribution } from "./inventoryContribution.js";
 export { createShippingContribution } from "./shippingContribution.js";
 export { createFulfillmentContribution } from "./fulfillmentContribution.js";
+export { createSubscriptionContribution } from "./subscriptionContribution.js";
 ```
 ## dist/composition/inventoryContribution.d.ts
 
@@ -438,6 +439,28 @@ export declare function createShippingContribution(input: {
     };
     routes: {
         [k: string]: (...args: never[]) => unknown;
+    };
+};
+```
+## dist/composition/subscriptionContribution.d.ts
+
+```ts
+import type { Contribution, RequiredSchema } from "@openlup/core/readiness";
+/** One selected subscription job; no second scheduler or automatic registration. */
+export declare function createSubscriptionContribution(input: {
+    version: string;
+    requiredSchema: RequiredSchema;
+    run: (() => Promise<unknown>) | null;
+    cadenceSeconds: number;
+}): {
+    contributions: Contribution[];
+    ports: {
+        "@openlup/platform/subscriptions:run": () => Promise<unknown>;
+    } | {
+        "@openlup/platform/subscriptions:run"?: undefined;
+    };
+    triggers: {
+        [k: string]: () => Promise<unknown>;
     };
 };
 ```
