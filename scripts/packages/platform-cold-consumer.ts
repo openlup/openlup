@@ -349,6 +349,15 @@ export function proveCommerceServerConsumer(consumer: string): void {
 import assert from "node:assert/strict";
 import * as server from "@openlup/platform/commerce/server";
 for (const name of ["tryCompensate", "createCommerceRuntimeService", "createPaidOrderOrchestration", "createCommerceCheckoutHandler", "createCheckoutQuoteGuard", "createStarterOfferGuard", "resolveCheckoutOffer"]) assert.equal(typeof server[name], "function");
+for (const name of ["createOrderDraftRpcPayload", "createSupabaseCommerceOrderDraftPort", "createManagedCommerceRuntimeOrderPort", "createSupabaseConfiguratorIntentPersistencePort", "createSupabaseCommerceCheckoutResumePort", "createManagedReservationSweepPort", "createSupabaseCheckoutCompensationAdapter", "createExpiredCheckoutRecoveryPolicy", "quotesMatchForRecovery", "hashCheckoutRecoveryToken", "generateCheckoutRecoveryToken"]) assert.equal(typeof server[name], "function");
+assert.equal(server.classifyCheckoutRecoveryTokenState("expired"), "expired_policy");
+assert.equal(server.classifyCheckoutRecoveryTokenState("active"), "continuation");
+assert.equal(server.classifyCheckoutRecoveryTokenState("unknown"), "refused");
+assert.equal(server.hashCheckoutRecoveryToken("token"), "3c469e9d6c5875d37a43f353d4f88e61fcf812c66eee3457465a40b0da4153e0");
+const sweepCalls = [];
+const sweep = server.createManagedReservationSweepPort({ async rpc(name, args) { sweepCalls.push([name, args]); return { data: { sweep: { skippedSubscription: 1 } }, error: null }; } });
+assert.equal((await sweep.sweep({ now: "synthetic-instant", limit: 3 })).skippedSubscription, 1);
+assert.deepEqual(sweepCalls, [["commerce_sweep_expired_reservation_holds", { p_idempotency_prefix: "commerce-reservation-sweep-run", p_now: "synthetic-instant", p_limit: 3 }]]);
 const codec = server.createCheckoutPaymentContinuationCodec("synthetic-root-at-least-thirty-two-bytes", { cookieName: "__Host-example_continuation", executionRails: ["embedded", "redirect"] });
 assert(codec);
 const claims = { journeyId: "checkout:11111111-1111-4111-8111-111111111111", orderId: "22222222-2222-4222-8222-222222222222", clientId: "33333333-3333-4333-8333-333333333333", paymentIntentId: "44444444-4444-4444-8444-444444444444", paymentAttemptId: "55555555-5555-4555-8555-555555555555", executionRail: "embedded" };

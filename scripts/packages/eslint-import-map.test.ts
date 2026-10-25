@@ -672,9 +672,13 @@ describe("eslint platform module boundaries", { timeout: 60_000 }, () => {
       }
     }
     for (const file of ["pricing/browser/usesModule.ts", "pricing/usesModule.ts"]) {
-      const target = file.includes("browser/") ? "../../shipping/thresholdPolicy.js" : "../shipping/thresholdPolicy.js";
-      for (const source of loadSources(target, "ts")) {
-        expect(await moduleMessages(config, source, `packages/platform/src/${file}`)).toContainEqual(expect.stringContaining('packages/platform module "pricing"'));
+      const prefix = file.includes("browser/") ? "../../" : "../";
+      for (const target of [`${prefix}shipping/thresholdPolicy.js`, `${prefix}shipping/index.js`]) {
+        for (const source of loadSources(target, "ts")) {
+          const messages = await moduleMessages(config, source, `packages/platform/src/${file}`);
+          if (target.endsWith("shipping/index.js") && typeOnlyForm.test(source)) expect(messages).toEqual([]);
+          else expect(messages).toContainEqual(expect.stringContaining('packages/platform module "pricing"'));
+        }
       }
     }
   });
@@ -697,6 +701,9 @@ describe("eslint platform module boundaries", { timeout: 60_000 }, () => {
       const source = ts.createSourceFile(path, readFileSync(path, "utf8"), ts.ScriptTarget.Latest, true);
       const edge = (specifier: string, typeOnly: boolean) => {
         if (!specifier.startsWith(".")) return;
+        // The single pure-validator re-export is an exact file exception,
+        // not a module-wide pricing-to-shipping permission.
+        if (relative(platformSource, path).split(sep).join("/") === "pricing/browser/index.ts" && specifier === "../../shipping/thresholdPolicy.js") return;
         const resolved = resolve(dirname(path), specifier);
         const targetOwner = owner(resolved);
         const targetPath = relative(platformSource, resolved).split(sep).join("/");

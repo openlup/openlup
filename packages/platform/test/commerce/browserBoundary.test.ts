@@ -7,16 +7,26 @@ import { expect, it } from "vitest";
 import * as server from "../../src/commerce/server/index.js";
 import * as commerce from "@openlup/platform/commerce";
 
-it.each(["commerce", "commerce/contracts", "pricing/browser"])("bundles the complete %s entry for browsers without Node imports", async (entry) => {
+it.each(["commerce", "commerce/contracts", "pricing/browser"].flatMap(entry =>
+  ["src", "dist"].map(tree => ({ entry, tree })),
+))("bundles the complete $tree/$entry entry for browsers without Node imports", async ({ entry, tree }) => {
   const result = await build({
-    entryPoints: [fileURLToPath(new URL(`../../src/${entry}/index.ts`, import.meta.url))],
+    entryPoints: [fileURLToPath(new URL(`../../${tree}/${entry}/index.${tree === "src" ? "ts" : "js"}`, import.meta.url))],
     bundle: true, platform: "browser", format: "esm", write: false, metafile: true, treeShaking: false,
   });
   const imports = Object.values(result.metafile.inputs).flatMap(input => input.imports);
   expect(imports.filter(input => input.external || input.path.startsWith("node:") || builtinModules.includes(input.path))).toEqual([]);
   expect(Object.keys(result.metafile.inputs).some(path => /commerce\/server\//.test(path))).toBe(false);
-  expect(Object.keys(result.metafile.inputs).some(path => /pricing\/index\.ts$/.test(path))).toBe(false);
+  expect(Object.keys(result.metafile.inputs).some(path => /pricing\/index\.(?:ts|js)$/.test(path))).toBe(false);
   expect(result.outputFiles).toHaveLength(1);
+  const root = fileURLToPath(new URL("../../../../", import.meta.url));
+  const closure = Object.keys(result.metafile.inputs).map(path => relative(root, resolve(path)).replaceAll("\\", "/"))
+    .filter(path => path.startsWith("packages/platform/"))
+    .map(path => path.replace("/src/", "/dist/").replace(/\.ts$/, ".js"));
+  for (const profile of ["identity", "subscription"]) {
+    const { files } = JSON.parse(readFileSync(new URL(`../../../../config/public-reference-${profile}-imports.json`, import.meta.url), "utf8")) as { files: string[] };
+    expect(files).toEqual(expect.arrayContaining(closure));
+  }
 });
 
 it("exposes OMS handlers only through the server entry", () => {

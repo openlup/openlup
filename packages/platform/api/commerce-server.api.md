@@ -7239,6 +7239,31 @@ export interface OrderBuyerCommsPolicy {
 }
 export declare function platformOwnsBuyerEmail(policy: OrderBuyerCommsPolicy | null): boolean;
 ```
+## dist/commerce/server/checkoutCompensation.d.ts
+
+```ts
+import type { CheckoutCompensationPort } from "./commerceCheckoutCompensation.js";
+export interface CompensationRpcClient {
+    rpc(functionName: string, args: Record<string, unknown>): PromiseLike<{
+        data: unknown;
+        error: {
+            code?: string;
+        } | null;
+    }>;
+}
+/**
+ * Binds both cancellations to one service-role client. Compositions inject the
+ * result into the inventory reservation port, so the staying domain module
+ * never imports this adapter.
+ */
+export declare function createSupabaseCheckoutCompensationAdapter(client: CompensationRpcClient): Pick<CheckoutCompensationPort, "cancelAbandonedOrder" | "cancelUnstartedPromotionOrder">;
+export declare function cancelAbandonedCheckout(client: CompensationRpcClient, input: Parameters<CheckoutCompensationPort["cancelAbandonedOrder"]>[0]): Promise<{
+    cancelled: boolean;
+}>;
+export declare function cancelUnstartedPromotionCheckout(client: CompensationRpcClient, input: Parameters<CheckoutCompensationPort["cancelUnstartedPromotionOrder"]>[0]): Promise<{
+    cancelled: boolean;
+}>;
+```
 ## dist/commerce/server/checkoutConflictClassifiers.d.ts
 
 ```ts
@@ -7259,6 +7284,48 @@ export declare const START_RUNTIME_SIMPLE_CONFLICTS: ReadonlyArray<{
 }>;
 /** Scoped semantic details only; raw SQLSTATE does not authorize this classification. */
 export declare function isInventoryAdmissionBusy(error: unknown): boolean;
+```
+## dist/commerce/server/checkoutExpiredRecoveryPolicy.d.ts
+
+```ts
+import type { CreateQuoteResponse } from "../../pricing/index.js";
+import type { CheckoutRecoveryOrderSnapshot } from "./checkoutRecoveryOrderPort.js";
+import type { CheckoutRecoveryTokenInspection } from "./checkoutRecoveryToken.js";
+type RecoveryQuoteSnapshot = CreateQuoteResponse & {
+    quote: {
+        context?: {
+            sizeConstraint?: unknown;
+            shippingTerms?: {
+                version: unknown;
+                currency: string;
+                flatMinor: number;
+                freeThresholdMinor: number | null;
+            };
+        };
+    };
+};
+export declare const EXPIRED_CHECKOUT_RECOVERY_WINDOW_MS: number;
+export type ExpiredRecoveryEligibility = {
+    kind: "eligible";
+} | {
+    kind: "paid";
+} | {
+    kind: "cancelled";
+} | {
+    kind: "unavailable";
+};
+export declare function createExpiredCheckoutRecoveryPolicy<Order extends CheckoutRecoveryOrderSnapshot<unknown, unknown>>(bindings: {
+    admitsSubscriptionSubject(order: Order): boolean;
+}): {
+    classifyExpiredRecovery: (input: {
+        inspection: CheckoutRecoveryTokenInspection | null;
+        order: Order | null;
+        now: Date;
+    }) => ExpiredRecoveryEligibility;
+    classifyOrderRecoveryEligibility: (order: Order | null, now: Date) => ExpiredRecoveryEligibility;
+};
+export declare function quotesMatchForRecovery(frozen: RecoveryQuoteSnapshot, fresh: RecoveryQuoteSnapshot): boolean;
+export {};
 ```
 ## dist/commerce/server/checkoutInvoiceBuyerSnapshot.d.ts
 
@@ -7407,6 +7474,96 @@ export interface ExpectedCheckoutQuote {
     pricingPolicy?: PricingPolicySnapshot;
     acquisitionTerms?: AcquisitionTermsExpectation;
 }
+```
+## dist/commerce/server/checkoutRecoveryOrderPort.d.ts
+
+```ts
+export interface CheckoutRecoveryPriorPaymentEvidence {
+    paymentIntentId: string;
+    paymentAttemptId: string;
+    provider: string;
+    providerPaymentId: string | null;
+    idempotencyKey: string;
+    retryRequestId: string | null;
+}
+export type CheckoutRecoveryOrderSnapshot<Quote, PaymentStatus, Host extends object = object> = Host & {
+    orderId: string;
+    orderRef: string;
+    orderNumber: string;
+    clientId: string;
+    status: string;
+    mode: "subscription_cycle" | "one_time_order";
+    totalMinor: number;
+    currency: string;
+    cadenceDays: number | null;
+    createdAt: string;
+    customerEmail: string | null;
+    customerName: string | null;
+    paymentIntentId: string | null;
+    paymentIntentStatus: PaymentStatus | null;
+    subscriptionId: string | null;
+    subscriptionCycleId: string | null;
+    shippingAddressId?: string | null;
+    quoteSnapshot?: Quote | null;
+    runtimeMetadata?: Record<string, unknown>;
+    invoiceBuyerSnapshot?: Record<string, unknown>;
+    recoveryRootOrderId?: string;
+    recreatedFromOrderId?: string | null;
+    technicallyExpired?: boolean;
+    priorPaymentEvidence?: CheckoutRecoveryPriorPaymentEvidence | null;
+};
+export interface CheckoutRecoveryOrderReadPort<Order> {
+    getRecoveryOrder(input: {
+        orderId: string;
+    }): Promise<Order | null>;
+    getLatestRecoveryOrder?(input: {
+        orderId: string;
+    }): Promise<Order | null>;
+}
+```
+## dist/commerce/server/checkoutRecoveryToken.d.ts
+
+```ts
+export interface CheckoutRecoveryTokenContext {
+    tokenId: string;
+    orderId: string;
+    clientId: string;
+    /** "subscription_cycle" | "one_time_order" — drives copy + post-pay activation. */
+    mode: string;
+    status: string;
+}
+export interface CheckoutRecoveryTokenInspection {
+    tokenId: string;
+    orderId: string;
+    clientId: string;
+    /** Null when the token exists but the order row is already gone. */
+    mode: string | null;
+    status: string | null;
+    subscriptionId: string | null;
+    tokenState: string;
+}
+/** Inspection RPC states; only the named continuation states may resume pending orders. */
+export declare function classifyCheckoutRecoveryTokenState(tokenState: string): "continuation" | "expired_policy" | "refused";
+export interface CheckoutRecoveryTokenPort {
+    /** Issue a token for an unpaid order. Returns the new token row id. */
+    issue(input: {
+        orderId: string;
+        rawToken: string;
+        expiresAt: string;
+    }): Promise<string>;
+    /** Validate a raw token; returns the order context, or null if invalid/expired/not recoverable. */
+    validate(rawToken: string, now?: Date): Promise<CheckoutRecoveryTokenContext | null>;
+    /**
+     * Inspect without granting continuation; callers must check state before reconstructing authority.
+     */
+    inspect(rawToken: string, now?: Date): Promise<CheckoutRecoveryTokenInspection | null>;
+}
+/** Canonical hash: SHA-256 hex of the raw token (matches the SQL `encode(sha256(...))`). */
+export declare function hashCheckoutRecoveryToken(token: string): string;
+/** A non-hex prefix keeps quoted-printable mail transports from consuming the URL separator. */
+export declare const CHECKOUT_RECOVERY_TOKEN_PREFIX = "rcv_";
+/** A 256-bit URL-safe random token for the deep-link, with the QP-safe prefix. */
+export declare function generateCheckoutRecoveryToken(): string;
 ```
 ## dist/commerce/server/checkoutRefusalContinuation.d.ts
 
@@ -8264,6 +8421,39 @@ export declare function createCheckoutQuoteGuard<Intent extends NeutralIntent, P
     }) => Response;
 };
 ```
+## dist/commerce/server/commerceCheckoutResume.d.ts
+
+```ts
+import type { z } from "zod";
+import type { CommerceCheckoutResumeDraftPort } from "../contracts/ports.js";
+interface ResumeResult {
+    data: unknown;
+    error: {
+        code?: string;
+        message?: string;
+        details?: string;
+    } | null;
+}
+interface ResumeQuery {
+    select(columns: string): ResumeQuery;
+    eq(column: string, value: unknown): ResumeQuery;
+    is(column: string, value: null): ResumeQuery;
+    gt(column: string, value: string): ResumeQuery;
+    single(): PromiseLike<ResumeResult>;
+    maybeSingle(): PromiseLike<ResumeResult>;
+}
+export interface CommerceCheckoutResumeClient {
+    from(table: "commerce_checkout_resume_drafts"): {
+        select(columns: string): ResumeQuery;
+        update(payload: Record<string, unknown>): ResumeQuery;
+        insert(payload: Record<string, unknown>): ResumeQuery;
+    };
+}
+export declare function createSupabaseCommerceCheckoutResumePort<Section, State extends {
+    redactedFields: unknown;
+}, Draft>(client: CommerceCheckoutResumeClient, draftSchema: z.ZodType<Draft>): CommerceCheckoutResumeDraftPort<Section, State, Draft>;
+export {};
+```
 ## dist/commerce/server/commerceCheckoutResumeGuard.d.ts
 
 ```ts
@@ -8492,6 +8682,34 @@ export declare function createAdminCommerceOrderMarkRefundedHandler<Response>({ 
     omsPort: Pick<CommerceOmsHoldPort, "markRefunded">;
     mutationsEnabled: () => boolean;
 }): (req: OmsHandlerRequest, res: Response) => Promise<void>;
+```
+## dist/commerce/server/commerceOrderDraft.d.ts
+
+```ts
+import type { z } from "zod";
+import type { CommerceOrderDraftWritePort } from "../contracts/ports.js";
+import type { RpcError as SupabaseRpcError } from "../contracts/omsTypes.js";
+import { ORDER_DRAFT_RPC_NAME } from "./orderDraftRpcPayload.js";
+/** Companion RPC that supersedes a stale pre-payment draft for a stable journey key. */
+export declare const ORDER_DRAFT_SUPERSEDE_RPC_NAME: "commerce_supersede_pre_payment_order_draft";
+export interface CommerceOrderDraftRpcClient<Args extends Record<string, unknown>> {
+    rpc(functionName: typeof ORDER_DRAFT_RPC_NAME, args: Args): PromiseLike<{
+        data: unknown;
+        error: SupabaseRpcError | null;
+    }>;
+    rpc(functionName: typeof ORDER_DRAFT_SUPERSEDE_RPC_NAME, args: {
+        p_idempotency_key: string;
+    }): PromiseLike<{
+        data: unknown;
+        error: SupabaseRpcError | null;
+    }>;
+}
+export declare function createSupabaseCommerceOrderDraftPort<Request extends {
+    idempotencyKey: string;
+}, Response, Args extends Record<string, unknown>>(client: CommerceOrderDraftRpcClient<Args>, bindings: {
+    createOrderDraftRpcArgs(request: Request, clientId: string | null): Args;
+    responseSchema: z.ZodType<Response>;
+}): CommerceOrderDraftWritePort<Request, Response>;
 ```
 ## dist/commerce/server/commercePaidOrderOrchestration.d.ts
 
@@ -8810,6 +9028,26 @@ export declare function createAdminReturnRejectHandler(deps: {
 }): (req: HttpRequest, res: HttpResponse) => Promise<void>;
 export {};
 ```
+## dist/commerce/server/commerceRuntimePort.d.ts
+
+```ts
+import type { z } from "zod";
+import type { CommerceCheckoutRuntimeOrderPort } from "../contracts/runtimePorts.js";
+import type { RpcError } from "../contracts/omsTypes.js";
+export interface ManagedCommerceRuntimeClient {
+    rpc(functionName: string, args: Record<string, unknown>): PromiseLike<{
+        data: unknown;
+        error: RpcError | null;
+    }>;
+}
+export declare function createManagedCommerceRuntimeOrderPort<Request, Order extends {
+    items: unknown[];
+}>(client: ManagedCommerceRuntimeClient, bindings: {
+    finalizeArgs(request: Request): Record<string, unknown>;
+    responseEnvelopeSchema: z.ZodType;
+}): CommerceCheckoutRuntimeOrderPort<Request, Order>;
+export declare function mapRpcError(error: RpcError): Error;
+```
 ## dist/commerce/server/commerceRuntimeService.d.ts
 
 ```ts
@@ -9011,6 +9249,57 @@ export declare function createStarterOfferGuard<Intent extends ConfiguratorInten
         offerVersion?: string;
     }) => Promise<StarterOfferGuardResult<Plan>>;
 };
+```
+## dist/commerce/server/configuratorIntentPersistence.d.ts
+
+```ts
+import type { z } from "zod";
+import type { ConfiguratorIntentPersistencePort } from "../contracts/ports.js";
+import type { CheckoutCommandPersistencePort } from "../contracts/runtimePorts.js";
+import type { RpcError } from "../contracts/omsTypes.js";
+interface ConfiguratorIntentIdentityQueryResult {
+    data: Array<{
+        response_payload?: unknown;
+    }> | null;
+    error: RpcError | null;
+}
+interface ConfiguratorIntentIdentityQuery {
+    eq(column: string, value: unknown): ConfiguratorIntentIdentityQuery;
+    limit(count: number): PromiseLike<ConfiguratorIntentIdentityQueryResult>;
+}
+interface ConfiguratorIntentIdentityTable {
+    select(columns: string): ConfiguratorIntentIdentityQuery;
+}
+/**
+ * The identity the ROUTE proved for this request, and the only identity the RPC
+ * is allowed to believe.
+ *
+ * ⛔ It is not read from the request body and never can be: `withVerifiedSubject`
+ * writes it last and unconditionally, so a payload that carries the key has it
+ * overwritten rather than honoured. A guest is `null`, which is a positive claim
+ * that nobody proved anything - not an absence the RPC may fill in.
+ */
+export interface ConfiguratorIntentPersistenceIdentity {
+    authenticatedUserId: string | null;
+}
+type PersistIntentPayload<Request, Command> = (Request | Command) & {
+    authenticatedUserId: string | null;
+};
+export interface ConfiguratorIntentSupabaseClient<Request, Command> {
+    rpc(functionName: "commerce_configurator_persist_intent", args: {
+        p_intent: PersistIntentPayload<Request, Command>;
+    }): PromiseLike<{
+        data: unknown;
+        error: RpcError | null;
+    }>;
+    from(tableName: "commerce_idempotency_keys"): ConfiguratorIntentIdentityTable;
+}
+export declare function createSupabaseConfiguratorIntentPersistencePort<Request extends object, Response, Command extends object, Persistence>(client: ConfiguratorIntentSupabaseClient<Request, Command>, bindings: {
+    responseSchema: z.ZodType<Response>;
+    decodeCommandResponse(data: unknown): Persistence;
+    normalizePhoneToE164(phone: string, country: unknown): string | null;
+}, identity?: ConfiguratorIntentPersistenceIdentity): ConfiguratorIntentPersistencePort<Request, Response> & CheckoutCommandPersistencePort<Command, Persistence>;
+export {};
 ```
 ## dist/commerce/server/configuratorIntentPersistenceHandler.d.ts
 
@@ -9218,7 +9507,7 @@ export * from "./outboxShipmentDispatchedEmailHandler.js";
 export * from "./outboxShipmentExceptionEmailHandler.js";
 /** @consumer server/domains/commerce/commerceCheckoutCompensation.ts */
 export { tryCompensate } from "./commerceCheckoutCompensation.js";
-/** @consumer Reference compensation facade; server/adapters/supabase/commerce/checkoutCompensation.ts and server/adapters/managed/commerce/inventoryReservationPort.ts implement this port. */
+/** @consumer server/domains/commerce/commerceCheckoutCompensation.ts */
 export type { CheckoutCompensationPort } from "./commerceCheckoutCompensation.js";
 /** @consumer server/domains/commerce/commerceCheckoutOrchestrationError.ts */
 export { CheckoutOrchestrationError } from "./commerceCheckoutOrchestrationError.js";
@@ -9253,7 +9542,7 @@ export type { ResolveSavedMethodResult } from "./commerceCheckoutSavedPaymentMet
 /** @consumer server/domains/commerce/commerceStarterOfferGuard.ts */
 export { createStarterOfferGuard, withStarterPackContext } from "./commerceStarterOfferGuard.js";
 /** @consumer server/domains/commerce/commerceStarterOfferGuard.ts */
-export type { StarterOfferGuardResult, StarterDeclaration } from "./commerceStarterOfferGuard.js";
+export type { StarterOfferGuardResult } from "./commerceStarterOfferGuard.js";
 /** @consumer src/domains/commerce/starterTermsPort.ts */
 export type { StarterTermsPort, StarterTermsDecision, StarterTermsResolution, StarterTermsRefusal } from "./starterTermsPort.js";
 /** @consumer server/domains/commerce/commerceCheckoutQuoteGuard.ts */
@@ -9294,6 +9583,66 @@ export { createPromotionPriceChange } from "./commerceCheckoutPromotionPriceChan
 export { createCheckoutFailureHandler } from "./commerceCheckoutFailureHandler.js";
 /** @consumer server/domains/commerce/commerceCheckoutHandler.ts */
 export { createCommerceCheckoutHandler } from "./commerceCheckoutHandler.js";
+/** @consumer server/domains/commerce/orderDraftRpcPayload.ts */
+export { ORDER_DRAFT_RPC_NAME, createOrderDraftRpcPayload } from "./orderDraftRpcPayload.js";
+/** @consumer Reference order-draft store binding. */
+export { createSupabaseCommerceOrderDraftPort, ORDER_DRAFT_SUPERSEDE_RPC_NAME } from "./commerceOrderDraft.js";
+/** @consumer Reference order-draft store binding. */
+export type { CommerceOrderDraftRpcClient } from "./commerceOrderDraft.js";
+/** @consumer server/adapters/managed/commerce/commerceRuntimePort.ts */
+export { createManagedCommerceRuntimeOrderPort, mapRpcError as mapCommerceFinalizeRpcError } from "./commerceRuntimePort.js";
+/** @consumer server/adapters/managed/commerce/commerceRuntimePort.ts */
+export type { ManagedCommerceRuntimeClient } from "./commerceRuntimePort.js";
+/** @consumer server/adapters/managed/commerce/reservationSweepPort.ts */
+export { createManagedReservationSweepPort } from "./reservationSweepPort.js";
+/** @consumer server/adapters/managed/commerce/reservationSweepPort.ts */
+export type { ReservationSweepCounts, ReservationSweepRpcClient, RetryHoldSweepCounts } from "./reservationSweepPort.js";
+/** @consumer Reference checkout compensation binding. */
+export { createSupabaseCheckoutCompensationAdapter, cancelAbandonedCheckout, cancelUnstartedPromotionCheckout } from "./checkoutCompensation.js";
+/** @consumer Reference checkout compensation binding. */
+export type { CompensationRpcClient } from "./checkoutCompensation.js";
+/** @consumer server/domains/commerce/checkoutRecoveryToken.ts */
+export { hashCheckoutRecoveryToken, generateCheckoutRecoveryToken, CHECKOUT_RECOVERY_TOKEN_PREFIX, classifyCheckoutRecoveryTokenState } from "./checkoutRecoveryToken.js";
+/** @consumer server/domains/commerce/checkoutRecoveryToken.ts */
+export type { CheckoutRecoveryTokenContext, CheckoutRecoveryTokenInspection, CheckoutRecoveryTokenPort } from "./checkoutRecoveryToken.js";
+/** @consumer server/domains/commerce/checkoutRecoveryOrderPort.ts */
+export type { CheckoutRecoveryOrderSnapshot, CheckoutRecoveryOrderReadPort, CheckoutRecoveryPriorPaymentEvidence } from "./checkoutRecoveryOrderPort.js";
+/** @consumer server/domains/commerce/checkoutExpiredRecoveryPolicy.ts */
+export { createExpiredCheckoutRecoveryPolicy, EXPIRED_CHECKOUT_RECOVERY_WINDOW_MS, quotesMatchForRecovery } from "./checkoutExpiredRecoveryPolicy.js";
+/** @consumer server/domains/commerce/checkoutExpiredRecoveryPolicy.ts */
+export type { ExpiredRecoveryEligibility } from "./checkoutExpiredRecoveryPolicy.js";
+/** @consumer Reference checkout resume store binding. */
+export { createSupabaseCommerceCheckoutResumePort } from "./commerceCheckoutResume.js";
+/** @consumer Reference checkout resume store binding. */
+export type { CommerceCheckoutResumeClient } from "./commerceCheckoutResume.js";
+/** @consumer Reference configurator intent persistence binding. */
+export { createSupabaseConfiguratorIntentPersistencePort } from "./configuratorIntentPersistence.js";
+/** @consumer Reference configurator intent persistence binding. */
+export type { ConfiguratorIntentSupabaseClient, ConfiguratorIntentPersistenceIdentity } from "./configuratorIntentPersistence.js";
+```
+## dist/commerce/server/orderDraftRpcPayload.d.ts
+
+```ts
+import { z } from "zod";
+export declare const ORDER_DRAFT_RPC_NAME = "commerce_create_order_draft_with_outbox";
+type OrderDraftRpcSchema<Quote extends z.ZodType, Draft extends z.ZodType> = z.ZodObject<{
+    p_idempotency_key: z.ZodString;
+    p_quote_snapshot: Quote;
+    p_order_draft_snapshot: Draft;
+    p_client_id: z.ZodOptional<z.ZodGUID>;
+}, z.core.$strict>;
+export declare function createOrderDraftRpcPayload<Quote extends z.ZodType, Draft extends z.ZodType>(input: {
+    quoteSchema: Quote;
+    draftSchema: Draft;
+    createSnapshot(quote: z.output<Quote>): z.input<Draft>;
+}): {
+    orderDraftRpcArgsSchema: OrderDraftRpcSchema<Quote, Draft>;
+    createOrderDraftRpcArgs: (request: {
+        idempotencyKey: string;
+        quoteSnapshot: z.output<Quote>;
+    }, clientId?: string | null) => z.output<OrderDraftRpcSchema<Quote, Draft>>;
+};
+export {};
 ```
 ## dist/commerce/server/orderFeedbackSubmit.d.ts
 
@@ -9905,6 +10254,41 @@ export declare function createReferenceCheckoutHandler<Command, Runtime extends 
     responseSchema: z.ZodType<Response>;
 }): (req: HttpRequest, res: HttpResponse) => Promise<void>;
 export {};
+```
+## dist/commerce/server/reservationSweepPort.d.ts
+
+```ts
+export interface ReservationSweepCounts {
+    ordersChecked: number;
+    ordersExpired: number;
+    reservationsReleased: number;
+    skippedPaid: number;
+    skippedTerminal: number;
+    skippedSubscription: number;
+}
+export type ReservationSweepRpcClient = {
+    rpc(name: string, args: Record<string, unknown>): PromiseLike<{
+        data: unknown;
+        error: {
+            message?: string;
+        } | null;
+    }>;
+};
+export interface RetryHoldSweepCounts {
+    holdsChecked: number;
+    holdsReleased: number;
+    skippedPaid: number;
+}
+export declare function createManagedReservationSweepPort(client: ReservationSweepRpcClient): {
+    sweep(input: {
+        now: string;
+        limit: number;
+    }): Promise<ReservationSweepCounts>;
+    sweepRetryHolds(input: {
+        now: string;
+        limit: number;
+    }): Promise<RetryHoldSweepCounts>;
+};
 ```
 ## dist/commerce/server/starterTermsPort.d.ts
 

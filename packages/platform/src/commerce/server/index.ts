@@ -62,7 +62,7 @@ export * from "./outboxShipmentExceptionEmailHandler.js";
 
 /** @consumer server/domains/commerce/commerceCheckoutCompensation.ts */
 export { tryCompensate } from "./commerceCheckoutCompensation.js";
-/** @consumer Reference compensation facade; server/adapters/supabase/commerce/checkoutCompensation.ts and server/adapters/managed/commerce/inventoryReservationPort.ts implement this port. */
+/** @consumer server/domains/commerce/commerceCheckoutCompensation.ts */
 export type { CheckoutCompensationPort } from "./commerceCheckoutCompensation.js";
 /** @consumer server/domains/commerce/commerceCheckoutOrchestrationError.ts */
 export { CheckoutOrchestrationError } from "./commerceCheckoutOrchestrationError.js";
@@ -97,7 +97,7 @@ export type { ResolveSavedMethodResult } from "./commerceCheckoutSavedPaymentMet
 /** @consumer server/domains/commerce/commerceStarterOfferGuard.ts */
 export { createStarterOfferGuard, withStarterPackContext } from "./commerceStarterOfferGuard.js";
 /** @consumer server/domains/commerce/commerceStarterOfferGuard.ts */
-export type { StarterOfferGuardResult, StarterDeclaration } from "./commerceStarterOfferGuard.js";
+export type { StarterOfferGuardResult } from "./commerceStarterOfferGuard.js";
 /** @consumer src/domains/commerce/starterTermsPort.ts */
 export type { StarterTermsPort, StarterTermsDecision, StarterTermsResolution, StarterTermsRefusal } from "./starterTermsPort.js";
 /** @consumer server/domains/commerce/commerceCheckoutQuoteGuard.ts */
@@ -138,3 +138,39 @@ export { createPromotionPriceChange } from "./commerceCheckoutPromotionPriceChan
 export { createCheckoutFailureHandler } from "./commerceCheckoutFailureHandler.js";
 /** @consumer server/domains/commerce/commerceCheckoutHandler.ts */
 export { createCommerceCheckoutHandler } from "./commerceCheckoutHandler.js";
+/** @consumer server/domains/commerce/orderDraftRpcPayload.ts */
+export { ORDER_DRAFT_RPC_NAME, createOrderDraftRpcPayload } from "./orderDraftRpcPayload.js";
+/** @consumer Reference order-draft store binding. */
+export { createSupabaseCommerceOrderDraftPort, ORDER_DRAFT_SUPERSEDE_RPC_NAME } from "./commerceOrderDraft.js";
+/** @consumer Reference order-draft store binding. */
+export type { CommerceOrderDraftRpcClient } from "./commerceOrderDraft.js";
+/** @consumer server/adapters/managed/commerce/commerceRuntimePort.ts */
+export { createManagedCommerceRuntimeOrderPort, mapRpcError as mapCommerceFinalizeRpcError } from "./commerceRuntimePort.js";
+/** @consumer server/adapters/managed/commerce/commerceRuntimePort.ts */
+export type { ManagedCommerceRuntimeClient } from "./commerceRuntimePort.js";
+/** @consumer server/adapters/managed/commerce/reservationSweepPort.ts */
+export { createManagedReservationSweepPort } from "./reservationSweepPort.js";
+/** @consumer server/adapters/managed/commerce/reservationSweepPort.ts */
+export type { ReservationSweepCounts, ReservationSweepRpcClient, RetryHoldSweepCounts } from "./reservationSweepPort.js";
+/** @consumer Reference checkout compensation binding. */
+export { createSupabaseCheckoutCompensationAdapter, cancelAbandonedCheckout, cancelUnstartedPromotionCheckout } from "./checkoutCompensation.js";
+/** @consumer Reference checkout compensation binding. */
+export type { CompensationRpcClient } from "./checkoutCompensation.js";
+/** @consumer server/domains/commerce/checkoutRecoveryToken.ts */
+export { hashCheckoutRecoveryToken, generateCheckoutRecoveryToken, CHECKOUT_RECOVERY_TOKEN_PREFIX, classifyCheckoutRecoveryTokenState } from "./checkoutRecoveryToken.js";
+/** @consumer server/domains/commerce/checkoutRecoveryToken.ts */
+export type { CheckoutRecoveryTokenContext, CheckoutRecoveryTokenInspection, CheckoutRecoveryTokenPort } from "./checkoutRecoveryToken.js";
+/** @consumer server/domains/commerce/checkoutRecoveryOrderPort.ts */
+export type { CheckoutRecoveryOrderSnapshot, CheckoutRecoveryOrderReadPort, CheckoutRecoveryPriorPaymentEvidence } from "./checkoutRecoveryOrderPort.js";
+/** @consumer server/domains/commerce/checkoutExpiredRecoveryPolicy.ts */
+export { createExpiredCheckoutRecoveryPolicy, EXPIRED_CHECKOUT_RECOVERY_WINDOW_MS, quotesMatchForRecovery } from "./checkoutExpiredRecoveryPolicy.js";
+/** @consumer server/domains/commerce/checkoutExpiredRecoveryPolicy.ts */
+export type { ExpiredRecoveryEligibility } from "./checkoutExpiredRecoveryPolicy.js";
+/** @consumer Reference checkout resume store binding. */
+export { createSupabaseCommerceCheckoutResumePort } from "./commerceCheckoutResume.js";
+/** @consumer Reference checkout resume store binding. */
+export type { CommerceCheckoutResumeClient } from "./commerceCheckoutResume.js";
+/** @consumer Reference configurator intent persistence binding. */
+export { createSupabaseConfiguratorIntentPersistencePort } from "./configuratorIntentPersistence.js";
+/** @consumer Reference configurator intent persistence binding. */
+export type { ConfiguratorIntentSupabaseClient, ConfiguratorIntentPersistenceIdentity } from "./configuratorIntentPersistence.js";

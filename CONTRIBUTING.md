@@ -189,6 +189,16 @@ Node/database imports and sibling access. The reference quote-binding suite
 checks optional terms, unchanged absent-term output and strict unknown-key
 refusal; existing starter checkout tests cover acquisition refusals.
 
+M11 K2b keeps the pricing-to-shipping value exception confined to the exact
+`pricing/browser/index.ts` validator re-export; other pricing code has only the
+shipping type edge. The import-map witness retains the nested module/contract
+resolver and tests sibling refusal. The installed commerce-server consumer also
+exercises draft/runtime/intent/resume store exports, recovery token classification
+and hashing, and ordered sweep arguments without a live database.
+Both exact server-export inventories retain OMS/returns/effects names and add
+K2b stores/recovery helpers. Source and built browser witnesses check the full
+commerce closure against identity/subscription exact-file inventories.
+
 M11 K3a adds neutral OMS command, replay and subscription continuity witnesses
 and host projection bindings. The managed queue proof at
 `tests/postgres/omsQueueLadder.test.ts` replays every current managed forward with

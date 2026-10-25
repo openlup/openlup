@@ -254,6 +254,15 @@ describe("package source boundary", () => {
     expect(source).not.toMatch(ENVIRONMENT_READ);
   });
 
+  it("keeps K2b stores, adapters and recovery helpers exclusively at the server entry", async () => {
+    const browser = await import("../src/commerce/index.js");
+    const server = await import("../src/commerce/server/index.js");
+    for (const name of ["createSupabaseCommerceOrderDraftPort", "createManagedCommerceRuntimeOrderPort", "createSupabaseConfiguratorIntentPersistencePort", "createSupabaseCommerceCheckoutResumePort", "createExpiredCheckoutRecoveryPolicy", "generateCheckoutRecoveryToken"] as const) {
+      expect(typeof server[name]).toBe("function");
+      expect(name in browser).toBe(false);
+    }
+  });
+
   it.each(files)("$path imports only relative modules, node built-ins, core, zod and the allowed pg adapters", ({ path, source }) => {
     const contracts = path.split("/")[1] === "contracts";
     if (contracts) {

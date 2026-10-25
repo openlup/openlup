@@ -27,6 +27,8 @@ behavior remain unchanged. Host schema, subject, fiscal, starter policy, payment
 retain their reference owners. Lint refuses browser commerce imports of the
 server subtree, and package tests bundle the browser entry and exercise the
 installed server helper.
+Starter bindings infer their declaration shape from `createStarterOfferGuard`;
+the package entry exposes no separate starter declaration type.
 
 Neutral commerce schemas and ports come from `@openlup/platform/commerce`
 and its type-only `/contracts` entry. Their runtime graph is browser-safe;
@@ -79,7 +81,17 @@ reference-owned type arguments; the package forwards their values unchanged. Shi
 saved-epoch continuation, scoped busy refusal and injected starter terms follow
 the change fragment. Neutral conformance covers paid, changed-price, stock-loss,
 decline and busy outcomes; reference suites retain host schema/policy proof.
-Concrete stores and recovery remain reference-owned in this phase.
+Order-draft/runtime-finalize, configurator persistence, resume storage,
+cancellation and sweep facades now bind the generic stores at the server entry.
+The reference owns frozen schemas, ordered persisted-key projections and phone
+normalization; the package stamps verified identity last. Bounded recovery
+classifiers/fingerprints and token helpers delegate to that entry. Only the host
+subject-admission predicate admits the persisted neutral-command exception;
+public runtime validation retains its required subject. Recovery quote projection,
+services/routes and link destinations remain here. Shipping-term drift refuses
+same-money recreation; token inspection alone grants no continuation. SQL expiry
+and provisional-only cleanup remain real PostgreSQL obligations. The C2 handoff
+release check is **to be released**.
 
 The OMS handlers, operational ladder, read builders and managed RPC translations
 now delegate to the same commerce package. Browser-safe schemas and pure models

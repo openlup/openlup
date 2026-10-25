@@ -304,3 +304,27 @@ function order(input: {
     replayed: false,
   };
 }
+
+// W3 keeps exact release RPC order at the reference reservation binding.
+// The query double models observed readback; PostgreSQL owns atomic release/replay.
+it("W3 preserves once-only observed release followed by cancellation on repeated cleanup", async () => {
+  const { tryCompensate, createSupabaseCheckoutCompensationAdapter } = await import("@openlup/platform/commerce/server");
+  const calls: Array<[string, Record<string, unknown>]> = [];
+  let reserved = true;
+  const rpc = async (name: string, args: Record<string, unknown>) => {
+    calls.push([name, args]);
+    if (name === "inventory_release_reservation") { reserved = false; return { data: {}, error: null }; }
+    return { data: name === "commerce_cancel_abandoned_checkout" ? { cancelled: true } : false, error: null };
+  };
+  const from = (table: string) => {
+    expect(table).toBe("inventory_reservations");
+    const builder = { select: () => builder, eq: () => builder,
+      then: (resolve: (value: unknown) => unknown) => Promise.resolve({ data: reserved ? [{ id: "hold-example" }] : [], error: null }).then(resolve) };
+    return builder;
+  };
+  const port = createManagedInventoryReservationPort({ rpc, from } as never, { compensation: createSupabaseCheckoutCompensationAdapter({ rpc }) });
+  for (let replay = 0; replay < 2; replay++) await tryCompensate(port, "journey-example", "order-example");
+  expect(calls.map(([name]) => name)).toEqual(["inventory_release_reservation", "commerce_cancel_unstarted_promotion_order", "commerce_cancel_abandoned_checkout", "commerce_cancel_unstarted_promotion_order", "commerce_cancel_abandoned_checkout"]);
+  expect(calls[0][1]).toMatchObject({ p_reason: "checkout_orchestration_failed" });
+  expect(calls.at(-1)?.[1].p_reason).toBe("checkout_orchestration_failed_before_provider_dispatch");
+});

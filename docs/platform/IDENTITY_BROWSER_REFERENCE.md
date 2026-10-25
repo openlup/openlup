@@ -33,6 +33,10 @@ checkout execution remains outside this profile in `commerce/server`.
 The subscription profile also lists the pure commerce checkout-command, offer-
 evidence and payment-continuation helpers by exact built file. Its starter
 expectation validator binds the existing `pricing/browser` export by identity.
+Source and built browser bundles verify complete closure coverage in both inventories.
+The identity inventory also enumerates the existing browser-safe OMS model,
+contract, pricing-contract and effect-helper closure reachable through commerce;
+all paths are exact built files, with no server module or directory wildcard.
 
 ## Routes and readiness
 

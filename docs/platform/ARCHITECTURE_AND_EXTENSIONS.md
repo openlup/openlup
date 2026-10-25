@@ -610,13 +610,22 @@ exercises installed compensation.
 The server entry also owns checkout handlers, runtime and the shared paid-order
 saga. Its additional value edges are pricing, shipping and promotions; HTTP and
 BFF edges remain type-only. Host schema/response, subject, metadata, starter-policy
-and existing payment callables are explicit bindings; concrete stores and
+and existing payment callables are explicit bindings; host configuration and
 application routes retain their owners. Saved-method alias and recurring metadata
 use host-defined string type arguments, preserving reference wire values without
 publishing provider unions. Offer binding precedes quoting, accepted
 shipping/acquisition terms require acceptance, and scoped contention or uncertain
 dispatch cannot authorize compensation. Neutral conformance and reference binding
 suites cover those seams. The cold consumer also exercises installed continuation.
+
+Generic draft/finalize/intent/resume stores, cancellation and sweep adapters also
+live at the server entry; structural clients and host schemas/projections preserve
+RPC arguments and table filters. Phone normalization is injected and verified
+identity is stamped last. Bounded recovery classifiers inject subject admission
+and compare shipping terms, while token state classification grants no route
+authority. Recovery services, projection and application routes retain their
+owners. The C2 release handoff is to be released; unit recorders do not prove SQL
+atomicity or active-subscription preservation.
 
 Effective bundle selection reuses pricing's half-open authority through its
 public server entry, adding the catalog → pricing value edge. The dependency is

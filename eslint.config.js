@@ -155,7 +155,7 @@ export const PLATFORM_MODULE_GRAPH = {
   payments: { contracts: true, values: [], types: ["http", "bff"] },
   shipping: { contracts: true, values: [], types: ["bff", "http"] },
   promotions: { contracts: true, values: ["pricing", "shipping"], types: ["data", "http", "bff"] },
-  pricing: { contracts: true, values: ["shipping"], types: ["bff", "http"] },
+  pricing: { contracts: true, values: [], types: ["bff", "http", "shipping"] },
   // Bundle factories bind host schemas/admin kit; the native read store uses only the data executor type.
   // The catalog-to-pricing value edge lets the effective bundle store reuse pricing's
   // effective-window authority via selectEffectiveBundleTargetPrice.

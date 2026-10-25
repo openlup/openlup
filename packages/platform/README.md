@@ -102,6 +102,8 @@ warning messages and swallowed cleanup failures are preserved. The reference
 facade delegates to the same function; composition still owns the cleanup ports.
 The package boundary test bundles the browser entry without Node built-ins or
 the server subtree, and the cold consumer exercises installed compensation.
+Starter declaration types are inferred from the `createStarterOfferGuard`
+binding signature; the declaration interface stays internal to the engine.
 
 The Node-only entry owns the checkout admission/quote/resume/failure sequence,
 neutral command adapter, runtime and one paid-order saga. Composition injects
@@ -118,6 +120,18 @@ proved pre-dispatch draft; scoped contention and uncertain dispatch carry no
 cleanup capability. A synchronous decline stays failed and is never auto-settled.
 Neutral finalize and one-time reservation conformance tests use recording ports;
 atomic acquisition/finalize SQL still requires integration with its migration chain.
+
+The server entry also owns generic order-draft, runtime-finalize, intent-persistence
+and resume stores, cancellation adapters and reservation sweeps. Structural clients
+retain the incumbent RPC/table calls; composition supplies frozen snapshot schemas,
+ordered finalize arguments, response decoders and fail-open phone normalization.
+Verified identity overwrites submitted identity after normalization. Draft retries
+supersede only once after an idempotency conflict; catalog refusals do not supersede.
+Recovery classifiers inject subject admission, compare shipping terms as well as
+money, and separate continuation, expiry policy and refused token states. Application
+recovery projection, routes and destinations stay in the host. SQL atomicity and
+active-subscription guards require real PostgreSQL integration; the C2 handoff
+release check is **to be released**.
 
 `./commerce/contracts` is a type-only, browser-safe entry for commerce-owned
 records and generic persistence, checkout/runtime, availability, recovery and
