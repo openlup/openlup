@@ -5,8 +5,8 @@ import * as events from "./outboxEventContracts.js";
 import { PLATFORM_DEFAULT_CURRENCY, PLATFORM_DEFAULT_REGION } from "../../lib/currency/platformCurrency.js";
 
 // Captured fiscal values are bound to the selected reference profile at test time.
-const cases = JSON.parse(JSON.stringify(capturedCases).replaceAll("__HOST_CURRENCY__", PLATFORM_DEFAULT_CURRENCY)
-  .replaceAll("__HOST_COUNTRY__", PLATFORM_DEFAULT_REGION)) as typeof capturedCases;
+const cases = JSON.parse(JSON.stringify(capturedCases).replace(/__HOST_CURRENCY__/g, PLATFORM_DEFAULT_CURRENCY)
+  .replace(/__HOST_COUNTRY__/g, PLATFORM_DEFAULT_REGION)) as typeof capturedCases;
 
 // Captured against BASE before extraction: exact host snapshot fields and nested issues.
 it.each(cases)("preserves the host-bound $schema output and refusal", ({ schema, input, expected }) => {
