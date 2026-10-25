@@ -1,6 +1,7 @@
 # CTL-M11 native disposition
 
-No native SQL pin is admitted. The native return command in
+No native M11 SQL pin is admitted; the native tail remains `20261024184600`.
+The native return command in
 `db/platform/migrations/20260813230000_post_order_control.sql` already binds the
 principal through `clients.principal_id`, checks the owned order, and fingerprints
 replay. It is an invoker with the native header and ACLs; it must not acquire the
@@ -19,8 +20,9 @@ SQL files under `managedCommerceForwards`, in order: `20261025100000`,
 precede the admission helper and finalize replacement. M11 feature PRs (the K1
 stack) introduce the bytes on the managed rail in order; each requires all earlier
 same-rail M10/M11 pins landed with exact bytes, including both M10-9 pins
-`20261025090000` and `20261025090100` before the first M11 file. This control adds no migration to
-either real rail. Proof applies the complete real managed chain (currently through
-`20261024185100`), filling only the absent reviewed suffix: all eleven M10
-managed pins once, then the seven unchanged M11 fixtures. This directory
+`20261025090000` and `20261025090100`, now committed on the managed rail.
+The M11 working versions remain fixture-only just above the landed M10 managed
+tail `20261025090100`; this control adds no migration to either real rail.
+Proof applies the complete real managed chain, containing all eleven landed M10
+managed pins once, then appends only the seven unchanged M11 fixtures. This directory
 records native disposition; it is not an install chain.

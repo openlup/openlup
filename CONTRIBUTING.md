@@ -220,12 +220,12 @@ The pins bind exact file/function/preimage/ordered statements, headers, ACLs and
 the audit CHECK preimage. M11 feature PRs (the K1 stack) introduce the SQL bytes
 on the managed rail in order; each requires every earlier same-rail M10/M11 pin
 landed with exact bytes. This control adds no migration to either real rail.
-Tests use the live registry and complete committed managed prefix, filling only
-the absent reviewed suffix: all eleven M10 managed pins once, then the seven M11
-fixtures. M11 versions `20261025100000` through `20261025108000` follow the
-reviewed managed tail `20261025090100`; its two M10 forwards remain inert
-fixtures until their feature landings (the real rail currently ends at
-`20261024185100`). They prove admission/refusals,
+Tests use the live registry and complete committed managed prefix, containing
+all eleven landed M10 managed pins once, then append the seven M11 fixtures.
+M11 working versions `20261025100000` through `20261025108000` remain fixture-only
+just above the landed M10 managed tail `20261025090100`. Both M10-9 migrations
+are committed on that rail; the native tail remains `20261024184600`.
+These tests prove admission/refusals,
 catalog/ACL/CHECK changes and rollback. Local acquisition proof covers both
 policy states; handler integration remains feature-owned. Native return
 semantics and M09/M10 approvals remain unchanged. Coordinator control review and

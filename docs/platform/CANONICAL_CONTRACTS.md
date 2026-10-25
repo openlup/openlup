@@ -837,9 +837,10 @@ The separate `managedCommerceForwards` list admits seven exact M11 managed pins;
 [its data contract](DATA_AND_MIGRATIONS.md#exact-reviewed-function-forwards)
 owns headers, ACLs, preimages and ordered statements. M11 feature PRs (the K1
 stack) introduce those bytes in order, requiring all earlier same-rail M10/M11
-pins landed first, including the two inert M10-9 pins through `20261025090100`.
-The seven M11 versions run from `20261025100000` through `20261025108000`;
-control admission adds no real-rail migration.
+pins landed first, including both M10-9 migrations now committed on the managed rail.
+The seven M11 working versions `20261025100000` through `20261025108000` remain
+fixture-only just above the landed M10 managed tail `20261025090100`;
+the native tail remains `20261024184600`. Control admission adds no real-rail migration.
 Existing control histories remain valid; later repins cannot authorize earlier SQL.
 This is a separately reviewed preview admission class, not expand-only or a live
 database compatibility proof; see

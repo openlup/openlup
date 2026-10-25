@@ -506,8 +506,9 @@ revocations; it never resurrects old recovery authority.
 The admitted `managedCommerceForwards` class binds exactly seven managed paths
 (`20261025100000`, `103000`, `104000`, `105000`, `106000`, `107000`, `108000`),
 one function per file, in the live [registry](../../config/reviewed-platform-forwards.json).
-These versions follow the reviewed managed tail `20261025090100`, including both
-inert M10-9 fixtures; the real managed rail still ends at `20261024185100`.
+These working versions remain fixture-only just above the landed M10 managed tail
+`20261025090100`. Both M10-9 migrations are committed on the managed rail;
+the native tail remains `20261024184600`.
 It includes three replacements, two public service-only creations and two private
 invoker creations. Exact file, CREATE and preimage hashes, header pins and ordered
 statement pins bind arguments/defaults, returns, language, security, search_path,
@@ -520,8 +521,8 @@ This control admits pins without adding SQL to either real rail. M11 feature PRs
 (the K1 stack) introduce the bytes in order; admission reads the complete preceding
 managed rail and requires every earlier same-rail M10/M11 pin landed with exact
 bytes, including M10-9 `20261025090000` and `20261025090100`. Tests read the live
-registry and real committed prefix, fill only the absent M10/M11 suffix and apply
-all eleven M10 managed pins once before the seven M11 fixtures for
+registry and real committed prefix, containing all eleven landed M10 managed pins
+once, then append only the absent M11 fixtures for
 admission/refusal and PostgreSQL catalog/ACL/CHECK proof with
 rollback. They do not establish handler behavior or authorize installation.
 
