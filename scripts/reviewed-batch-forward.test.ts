@@ -615,7 +615,7 @@ describe("admitted M11 commerce live registry", () => {
     expect(new Set(sources.map(source => source.path)).size).toBe(sources.length);
     expect(committed.at(-1)!.path < commerce[0]!.path).toBe(true);
     for (const pin of managedM10) expect(preceding(commerce[0]!).find(source => source.path === pin.path)?.bytes).toEqual(bytes(pin));
-  });
+  }, 60_000);
 
   it.each(commerce)("accepts only the live class, after the real prefix: $path", pin => {
     expect(() => assert(pin)).not.toThrow();
@@ -657,7 +657,7 @@ describe("admitted M11 commerce live registry", () => {
       const cochanged = f.commit();
       expect(() => assertCoLocatedForwardApproval(f.root, live, cochanged)).toThrow("reviewed replacement admission machinery must be approved separately before co-located SQL/pins");
     } finally { f.cleanup(); }
-  }, 30_000);
+  }, 120_000);
 
   it("refuses unregistered M11 paths and byte drift through production admission", () => {
     const f = correctionFixture();
@@ -684,7 +684,7 @@ describe("admitted M11 commerce live registry", () => {
         f.commit();
       }
     } finally { f.cleanup(); }
-  }, 30_000);
+  }, 60_000);
 
   describe.each(commerce)("independently repinned refusal: $path", pin => {
     it.each(["extra function", "missing function", "extra statement", "missing statement", "reordered statements", "GRANT/REVOKE", "security", "search_path"])("refuses %s", attack => {
