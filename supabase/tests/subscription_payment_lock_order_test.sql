@@ -317,11 +317,14 @@ SELECT extensions.dblink_send_query(
   'subscription_prepare_writer',
   format(
     'SELECT public.subscription_open_dunning_from_failed_payment_result('
-      || '%L, %L::uuid, NULL, %L, %L::timestamptz) AS result',
+      || '%L, %L::uuid, NULL, %L, %L::timestamptz, NULL, %L::uuid) AS result',
     'lock-order-webhook-dunning',
     (SELECT id::text FROM _lock_order_intent),
     'lock_order_failure',
-    '2026-07-21T10:01:01Z'
+    '2026-07-21T10:01:01Z',
+    (SELECT payment_attempt_id::text FROM public.commerce_payment_state_transitions
+      WHERE payment_intent_id=(SELECT id FROM _lock_order_intent)
+        AND idempotency_key='lock-order-apply-failed:payment_result' AND transition_kind='business_result')
   )
 );
 SELECT pg_sleep(0.05);

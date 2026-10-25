@@ -262,6 +262,21 @@ sealed helpers, fresh legacy NULL refusal (55000) without mutation and an exact
 excluded-seam REVOKE negative control (42704). This is subset proof, not a claim
 that the whole historical managed baseline installs without its reader role.
 The fixtures introduce no counted vocabulary and require no C94 allowance change.
+The two managed rail files now match their admitted fixtures and registry bytes.
+`tests/postgres/dunningAttemptReplay.test.ts` exercises canonical same/stale
+replay, no-write cache refusal, newer advancement with used-token fencing,
+both concurrency lock orders, historical attribution and reconciliation's five
+named refusal boundaries. The first-port cache-guard mutant must fail the newer
+advancement witness. The managed duplicate-observation pgTAP covers delivered
+link redemption, class/schedule preservation, independent account rotation and
+equal-rung identity conflict. Existing pgTAP fixtures now pass explicit failed
+attempt evidence; fresh legacy NULL remains a refusal, never fixture policy.
+The package renewal witness captures `durable-attempt-A` at the leaf and every
+public refusal parent despite distinct prepared identity and apply replay;
+adapter/event-lookup witnesses cover extraction, exact transmission and refusal.
+The installed cold-consumer witness invokes the packed public renewal parent and
+rejects removal of its applied-attribution handoff using that same assertion.
+
 
 The native gate also proves paid-line ATP protection, zero-delta late-payment
 replay, one-time offer refusal and stale-settlement filtering before LIMIT. N3's normal_due witness covers greater-than-limit and exactly-limit stock waits, interleaved due ordering and no-wait equality with the base reader; waiting/stock_secured cases are excluded before LIMIT.

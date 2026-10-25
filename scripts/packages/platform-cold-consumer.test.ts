@@ -547,3 +547,32 @@ assert.equal(NATIVE_SUBSCRIPTION_CAPABILITIES.multiCyclePrepaid.supported,false)
 console.log("M10 installed positive/refusal passed");
 `)).toContain("M10 installed positive/refusal passed");
 }, 30_000);
+
+it("M10 packed public renewal parent forwards applied attribution and rejects its omission mutant", () => {
+  const consumer = pristinePackedA1Fixture();
+  assertConsumerIsolation(consumer, root);
+  const proof = `
+import assert from "node:assert/strict";
+import { executeRenewalCycle } from "@openlup/platform/subscriptions";
+let captured;
+const failure={resolveClassification:()=>({failureClass:"soft_retryable",decidedBy:"host"}),recordKey:key=>key,applyKey:key=>key,dunningKey:key=>key,preparedSuffix:"/prepared",blockedSuffix:"/blocked",dunningFailureKey:"refused",logBelowRetry(){},logRejected(){},logUnavailable(){}};
+const preflight={isOperatorOnly:()=>false,readTotal:()=>2400,cycleKey:()=>"cycle-key",executionKey:()=>"execution-key",intentInput:()=>({}),identity:()=>({providerIdempotencyKey:"provider-key",providerRequestFingerprint:"fingerprint"}),normalizedProvider:value=>value,defaultNow:()=>"at",failure,failed:()=>({outcome:"failed"})};
+const deps={deliveryAlignmentAdmission:{allowed:true,state:"clear",reason:"clear"},
+ persistence:{buildCycleSnapshots:async()=>({cycleNumber:1,retryAttempt:0,providerAttemptSequence:0,templateSnapshot:{},pricingSnapshot:{},orderSnapshot:{}}),createCycleOrder:async()=>({cycleId:"cycle",orderUuid:"order"})},
+ paymentPort:{createIntent:async()=>({paymentIntentId:"intent",replayed:false})},
+ chargeFailurePropagation:{recordBlockedPreflightAttempt:async()=>{},readDurableAttemptInstant:async()=>"durable-at",applyFailedResult:async()=>({replayed:true,paymentAttemptId:"durable-attempt-A"}),readCycleRetryState:async()=>({retryAttempt:1,nextRetryAt:null,rowPresent:true}),openDunningCase:async input=>{captured=input;return {status:"opened",caseId:"case"};}}};
+await executeRenewalCycle(deps,{subscriptionId:"subscription",nextCycleAt:"at",providerKind:"example",providerMethodRef:"method"},{validateProvider:()=>"provider-blocked",preflight});
+assert.equal(captured.failedPaymentAttemptId,"durable-attempt-A");
+console.log("packed parent attribution passed");
+`;
+  expect(consumerNode(consumer, proof)).toContain("packed parent attribution passed");
+  const path = join(consumer, "node_modules/@openlup/platform/dist/subscriptions/renewalCycleFailureMechanism.js");
+  const original = readFileSync(path, "utf8");
+  const mutant = original.replace("        failedPaymentAttemptId,", "");
+  expect(mutant).not.toBe(original);
+  try {
+    writeFileSync(path, mutant);
+    expect(() => consumerNode(consumer, proof)).toThrow();
+  } finally { writeFileSync(path, original); }
+  expect(consumerNode(consumer, proof)).toContain("packed parent attribution passed");
+}, 30_000);

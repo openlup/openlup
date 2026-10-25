@@ -41,6 +41,33 @@
 -- Run via: supabase test db
 
 BEGIN;
+
+-- This isolated fixture states its failed-attempt evidence explicitly. Real applied
+-- events take precedence; ambiguous fixture evidence fails instead of guessing.
+CREATE FUNCTION pg_temp.fixture_failed_attempt(intent uuid, cycle uuid, rung integer)
+RETURNS uuid LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_catalog AS $$
+DECLARE attempt uuid; matches integer;
+BEGIN
+  IF cycle IS NULL THEN RETURN NULL; END IF;
+  SELECT min(payload->>'paymentAttemptId')::uuid, count(DISTINCT payload->>'paymentAttemptId')
+    INTO attempt, matches FROM public.subscription_events
+    WHERE cycle_id=cycle AND payload->>'paymentIntentId'=intent::text
+      AND payload->>'retryAttempt'=rung::text AND payload->>'source'='payment.control.v0'
+      AND event_type IN ('subscription.retry_scheduled','subscription.payment_failed');
+  IF matches=1 THEN RETURN attempt; END IF;
+  IF matches>1 THEN RAISE EXCEPTION 'conflicting fixture failure evidence'; END IF;
+  INSERT INTO public.commerce_payment_attempts(payment_intent_id,payment_id,provider,idempotency_key,status,amount_cents,currency)
+    SELECT id,payment_id,'example','fixture-failure:'||cycle||':'||rung,'failed',amount_cents,currency
+      FROM public.commerce_payment_intents WHERE id=intent RETURNING id INTO attempt;
+  INSERT INTO public.subscription_events(subscription_id,cycle_id,event_type,payload)
+    SELECT subscription_id,id,CASE WHEN next_retry_at IS NULL THEN 'subscription.payment_failed' ELSE 'subscription.retry_scheduled' END,
+      jsonb_build_object('paymentIntentId',intent,'paymentAttemptId',attempt,'retryAttempt',rung,'source','payment.control.v0')
+      FROM public.subscription_cycles WHERE id=cycle;
+  RETURN attempt;
+END;
+$$;
+GRANT EXECUTE ON FUNCTION pg_temp.fixture_failed_attempt(uuid,uuid,integer) TO service_role;
+
 SELECT plan(23);
 
 -- ---- Surface: the seal the replacement restated -----------------------------
@@ -139,7 +166,7 @@ SELECT public.subscription_handle_payment_failure_dunning(
   '9b000000-0000-4000-8000-00000000a001', '9d000000-0000-4000-8000-00000000a001',
   (SELECT intent_id FROM _ai), 1, NULL, 'provider_declined',
   '2026-06-01T12:00:00Z'::timestamptz, 'hard_do_not_retry'
-) -> 'subscriptionDunning' AS payload;
+, pg_temp.fixture_failed_attempt((SELECT intent_id FROM _ai), '9c000000-0000-4000-8000-00000000a001', 1)) -> 'subscriptionDunning' AS payload;
 
 SELECT is(
   (SELECT status || '|' || coalesce(expired_at::text, 'no-expiry')
@@ -314,7 +341,7 @@ SELECT public.subscription_handle_payment_failure_dunning(
   'w9-d-dunning-key-01', '9c000000-0000-4000-8000-00000000d001',
   '9b000000-0000-4000-8000-00000000d001', '9d000000-0000-4000-8000-00000000d001',
   (SELECT intent_id FROM _di), 4, NULL, 'provider_declined',
-  '2026-06-01T12:00:00Z'::timestamptz);
+  '2026-06-01T12:00:00Z'::timestamptz, NULL, pg_temp.fixture_failed_attempt((SELECT intent_id FROM _di), '9c000000-0000-4000-8000-00000000d001', 4));
 
 SELECT is(
   (SELECT status FROM public.subscription_dunning_cases

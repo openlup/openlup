@@ -93,16 +93,16 @@ export type SimulatorSettlementOutcome =
 export const IDEMPOTENCY_CONFLICT =
   /payment_control_result_idempotency_conflict|payment_method_ref_idempotency_conflict|commerce_idempotency_conflict|\b23505\b/;
 
-async function readCanonicalAppliedResultOccurredAt(
+async function readCanonicalAppliedFailure(
   gateway: DataGatewayPort,
   paymentIntentId: string,
   applyIdempotencyKey: string,
-): Promise<string> {
+): Promise<{ occurredAt: string; paymentAttemptId: string }> {
   return gateway.asService(async (client) => {
     const db = client as SweepSupabaseClient;
     const { data, error } = await db
       .from("commerce_payment_state_transitions")
-      .select("occurred_at")
+      .select("occurred_at,payment_attempt_id")
       .eq("payment_intent_id", paymentIntentId)
       .eq("idempotency_key", `${applyIdempotencyKey}:payment_result`)
       .eq("transition_kind", "business_result")
@@ -115,7 +115,11 @@ async function readCanonicalAppliedResultOccurredAt(
     if (typeof occurredAt !== "string" || Number.isNaN(Date.parse(occurredAt))) {
       throw new Error("canonical_payment_result_transition_invalid_occurred_at");
     }
-    return occurredAt;
+    const paymentAttemptId = rows[0]?.payment_attempt_id;
+    if (typeof paymentAttemptId !== "string" || paymentAttemptId.length === 0) {
+      throw new Error("canonical_payment_result_transition_attempt_unattributed");
+    }
+    return { occurredAt, paymentAttemptId };
   });
 }
 
@@ -152,15 +156,11 @@ export async function settleSimulatorTransaction(
     if (!IDEMPOTENCY_CONFLICT.test(error instanceof Error ? error.message : String(error))) throw error;
     applied = { replayed: true };
   }
-  const dunningEvent = resultStatus === "failed"
-    ? {
-        ...providerWebhookEvent,
-        occurredAt: await readCanonicalAppliedResultOccurredAt(
-          gateway,
-          ingested.paymentIntentId,
-          applyIdempotencyKey,
-        ),
-      }
+  const appliedFailure = resultStatus === "failed"
+    ? await readCanonicalAppliedFailure(gateway, ingested.paymentIntentId, applyIdempotencyKey)
+    : null;
+  const dunningEvent = appliedFailure
+    ? { ...providerWebhookEvent, occurredAt: appliedFailure.occurredAt }
     : null;
 
   // First-cycle success may derive a PAYID alias; an existing renewal alias is a no-op.
@@ -198,7 +198,7 @@ export async function settleSimulatorTransaction(
   if (dunningEvent) {
     await createSubscriptionWebhookDunningAfterProcessedViaGateway(gateway)({
       event: dunningEvent,
-      ingested,
+      ingested: { ...ingested, paymentAttemptId: appliedFailure!.paymentAttemptId },
       resultStatus,
     });
   }

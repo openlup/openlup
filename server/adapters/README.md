@@ -231,3 +231,14 @@ The operator invoice summary maps persisted failures to the closed invoice
 allowlist and omits free-text provider messages, including URLs and credentials.
 Unknown historical codes become `unknown`; attempts, retryability and recovery
 guidance remain visible.
+
+
+Managed subscription failure adapters preserve applied-transition attribution.
+The cycle adapter extracts the apply result's attempt and sends it unchanged;
+the runtime request carries a required nullable field and selects the attributed
+RPC arity explicitly. Webhooks read failed/expired business transitions by stored
+event and intent, refusing unavailable or conflicting attribution before the
+opener. Simulator settlement retains the canonical transition time and attempt.
+Current/prepared attempt hints cannot supply this authority. The
+[managed replay contract](../../docs/platform/DATA_AND_MIGRATIONS.md#m10-9-attempt-replay-control-fixtures)
+owns fresh NULL refusal and the existing-donor host mapping.

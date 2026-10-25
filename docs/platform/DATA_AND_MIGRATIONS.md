@@ -448,7 +448,19 @@ nine definitions in the first fixture and two replacements in the second.
 The final nine raw CREATE hashes equal the donor's current statements, including
 comments within CREATE. Recovery redeem, retry scheduling, provider prepare and
 the M4 due reader are untouched; native attempt-replay parity remains REGISTERED.
-This control preparation installs neither SQL nor caller behavior on either rail.
+The managed rail now installs both files byte-identically to these inert fixtures
+and registry pins. The package renewal helper carries the applied transition's
+attempt through preflight, decline, action-required and replayed action-required
+handoffs. `applyFailedResult.paymentAttemptId` is optional/nullable; the opener's
+`failedPaymentAttemptId` is required/nullable. Absence becomes explicit NULL and
+fresh eligible SQL refuses 55000. Applying a replay does not skip dunning: an
+interrupted propagation still needs its canonical observation.
+
+The managed cycle/runtime adapters send the exact field and explicit failure
+class. Webhook attribution reads business-result transitions for the ingested
+event and intent, refusing absent, conflicting or unreadable evidence before the
+RPC. Simulator settlement preserves both canonical transition time and attempt;
+none substitutes a current/prepared attempt or an event hint.
 
 The first fixture adds nullable `failed_payment_attempt_id uuid` and
 `failure_observation_result jsonb` to `subscription_dunning_cases` and the
@@ -475,9 +487,20 @@ explicitly to its existing immutable donor migrations and proves its own current
 preimages. It never re-runs this backfill or forges an upstream migration identity:
 raw replay has duplicate-column preimages and can overwrite newer observations.
 A separately authorized host forward may restate the required functions and
-restore its exact private due reader last in one transaction. This control
-change supplies no host application, release, private-stock conversion or native
-parity claim. Rollback uses a compensating forward preserving attribution and
+restore its exact private due reader last in one transaction. This managed port supplies no host application, release or private-stock conversion.
+
+**Native attempt-replay parity — REGISTERED, owner M10.** The native runner uses
+`RenewalFailureHandoffPort`/`RenewalStorePort`, separately from this hosted
+`CycleChargeFailurePropagationPort`. The native stores receive neither
+`failedPaymentAttemptId` nor `paymentAttemptId`: the
+[native retry handoff](../../packages/platform/src/subscriptions/postgresRetryStore.ts)
+accepts the separate `RenewalFailureHandoffPort` input, not `openDunningCase` input.
+Native stores do not yet implement duplicate failure-observation replay with
+attempt attribution; parity remains a registered follow-up.
+Closing this registration requires native same/stale canonical replay,
+cache-missing refusal before writes, newer attributed advancement revoking used
+and unused authority, equal-rung/missing-attribution refusal, reconciliation and
+concurrency evidence. Existing native atomic receipts prove only their own graph. Rollback uses a compensating forward preserving attribution and
 revocations; it never resurrects old recovery authority.
 
 The admitted `managedCommerceForwards` class binds exactly seven managed paths
@@ -767,6 +790,17 @@ installation-path parity, a complete installed late-delivery journey or a
 stable upgrade guarantee.
 
 ## Compatibility lifecycle
+
+The managed M10-9 forwards add attempt attribution and canonical failure-observation
+state through their exact admitted DDL, deterministic backfill and service-only
+overloads. Hosts must carry the applied transition's attempt into each failure
+observation, including apply replay; fresh missing attribution refuses 55000.
+Existing-donor schema/backfill maps to its immutable history and must never run
+again. The [attempt replay contract](#m10-9-attempt-replay-control-fixtures)
+owns upgrade/refusal/compensating-forward details and REGISTERED native parity.
+The duplicate-observation pgTAP and real PostgreSQL attempt-replay witness cover
+same/stale no-change behavior, cache refusal, advancement, historical attribution,
+concurrency and reconciliation boundaries.
 
 Migration: native `20261022195000_invoicing_seller_revision.sql` and managed
 `20261022195100_invoicing_seller_revision.sql` introduce the approved CTL-M09-4

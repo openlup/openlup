@@ -12,6 +12,33 @@
 --
 -- Run via: supabase test db
 BEGIN;
+
+-- This isolated fixture states its failed-attempt evidence explicitly. Real applied
+-- events take precedence; ambiguous fixture evidence fails instead of guessing.
+CREATE FUNCTION pg_temp.fixture_failed_attempt(intent uuid, cycle uuid, rung integer)
+RETURNS uuid LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_catalog AS $$
+DECLARE attempt uuid; matches integer;
+BEGIN
+  IF cycle IS NULL THEN RETURN NULL; END IF;
+  SELECT min(payload->>'paymentAttemptId')::uuid, count(DISTINCT payload->>'paymentAttemptId')
+    INTO attempt, matches FROM public.subscription_events
+    WHERE cycle_id=cycle AND payload->>'paymentIntentId'=intent::text
+      AND payload->>'retryAttempt'=rung::text AND payload->>'source'='payment.control.v0'
+      AND event_type IN ('subscription.retry_scheduled','subscription.payment_failed');
+  IF matches=1 THEN RETURN attempt; END IF;
+  IF matches>1 THEN RAISE EXCEPTION 'conflicting fixture failure evidence'; END IF;
+  INSERT INTO public.commerce_payment_attempts(payment_intent_id,payment_id,provider,idempotency_key,status,amount_cents,currency)
+    SELECT id,payment_id,'example','fixture-failure:'||cycle||':'||rung,'failed',amount_cents,currency
+      FROM public.commerce_payment_intents WHERE id=intent RETURNING id INTO attempt;
+  INSERT INTO public.subscription_events(subscription_id,cycle_id,event_type,payload)
+    SELECT subscription_id,id,CASE WHEN next_retry_at IS NULL THEN 'subscription.payment_failed' ELSE 'subscription.retry_scheduled' END,
+      jsonb_build_object('paymentIntentId',intent,'paymentAttemptId',attempt,'retryAttempt',rung,'source','payment.control.v0')
+      FROM public.subscription_cycles WHERE id=cycle;
+  RETURN attempt;
+END;
+$$;
+GRANT EXECUTE ON FUNCTION pg_temp.fixture_failed_attempt(uuid,uuid,integer) TO service_role;
+
 -- Explicit synthetic provider/oracle location; no live provider is contacted.
 WITH fixture_provider AS (
 INSERT INTO public.providers (kind, capability, display_name, status, enabled_for_region)
@@ -73,7 +100,7 @@ SELECT public.subscription_handle_payment_failure_dunning(
   'd10d0000-0000-0000-0000-000000000001',
   (SELECT intent_id FROM _open_intent),
   1, '2026-06-20T00:00:00Z'::timestamptz, 'card_declined', '2026-06-12T12:00:00Z'::timestamptz
-) AS r;
+, NULL, pg_temp.fixture_failed_attempt((SELECT intent_id FROM _open_intent), 'd1c00000-0000-0000-0000-000000000001', 1)) AS r;
 
 -- Raw token is recoverable from the recovery URL the RPC returns.
 CREATE TEMP TABLE _open_token AS
@@ -246,7 +273,7 @@ SELECT (public.subscription_handle_payment_failure_dunning(
   'd20d0000-0000-0000-0000-000000000001',
   (SELECT intent_id FROM _exp_intent),
   4, NULL, 'payment_expired', '2026-06-12T12:00:00Z'::timestamptz
-) -> 'subscriptionDunning' ->> 'caseId')::uuid AS case_id;
+, NULL, pg_temp.fixture_failed_attempt((SELECT intent_id FROM _exp_intent), 'd2c00000-0000-0000-0000-000000000001', 4)) -> 'subscriptionDunning' ->> 'caseId')::uuid AS case_id;
 
 -- Model the stored pre-M2 episode; the migration never rewrites history.
 UPDATE public.subscription_dunning_cases SET status='expired',expired_at='2026-06-12T12:00:00Z'
@@ -464,7 +491,7 @@ SELECT (public.subscription_handle_payment_failure_dunning(
   'd40d0000-0000-0000-0000-000000000002',
   (SELECT intent_id FROM _direct_latest_intent),
   4, NULL, 'payment_expired', '2026-06-12T12:00:00Z'::timestamptz
-) -> 'subscriptionDunning' ->> 'caseId')::uuid AS case_id;
+, NULL, pg_temp.fixture_failed_attempt((SELECT intent_id FROM _direct_latest_intent), 'd4c00000-0000-0000-0000-000000000002', 4)) -> 'subscriptionDunning' ->> 'caseId')::uuid AS case_id;
 
 -- Model the stored pre-M2 episode; the migration never rewrites history.
 UPDATE public.subscription_dunning_cases SET status='expired',expired_at='2026-06-12T12:00:00Z'
@@ -611,7 +638,7 @@ SELECT (public.subscription_handle_payment_failure_dunning(
   'd30d0000-0000-0000-0000-000000000001',
   (SELECT intent_id FROM _upd_intent),
   1, '2026-06-20T00:00:00Z'::timestamptz, 'card_declined', '2026-06-12T12:00:00Z'::timestamptz
-) -> 'subscriptionDunning' ->> 'caseId')::uuid AS case_id;
+, NULL, pg_temp.fixture_failed_attempt((SELECT intent_id FROM _upd_intent), 'd3c00000-0000-0000-0000-000000000001', 1)) -> 'subscriptionDunning' ->> 'caseId')::uuid AS case_id;
 
 UPDATE public.subscription_cycles
    SET status = 'retry_scheduled',

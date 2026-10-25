@@ -3,6 +3,8 @@ import {
   createManagedSubscriptionRuntimePort,
 } from "./subscriptionRuntimePort.js";
 
+import { handleSubscriptionPaymentFailureRequestSchema } from "../../../../src/domains/subscription/runtimeContracts.js";
+
 const recoveryToken = ["01234567", "89abcdef"].join("").repeat(4);
 
 describe("managed subscription runtime port", () => {
@@ -77,6 +79,7 @@ describe("managed subscription runtime port", () => {
     await expect(
       port.handleSubscriptionPaymentFailure({
         idempotencyKey: "dunning-final-1",
+        failedPaymentAttemptId: "46666666-6666-4666-8666-666666666666",
         cycleId: "43333333-3333-4333-8333-333333333333",
         subscriptionId: "42222222-2222-4222-8222-222222222222",
         orderId: "44444444-4444-4444-8444-444444444444",
@@ -95,6 +98,8 @@ describe("managed subscription runtime port", () => {
 
     expect(rpc).toHaveBeenCalledWith("subscription_handle_payment_failure_dunning", {
       p_idempotency_key: "dunning-final-1",
+      p_failed_payment_attempt_id: "46666666-6666-4666-8666-666666666666",
+      p_failure_class: null,
       p_cycle_id: "43333333-3333-4333-8333-333333333333",
       p_subscription_id: "42222222-2222-4222-8222-222222222222",
       p_order_id: "44444444-4444-4444-8444-444444444444",
@@ -196,4 +201,14 @@ describe("managed subscription runtime port", () => {
       }),
     ).rejects.toMatchObject({ name: "SubscriptionRuntimeConflictError" });
   });
+});
+
+it("managed runtime forwards NULL attribution and surfaces refusal", async () => {
+  const rpc = vi.fn().mockResolvedValue({ data: null, error: { code: "55000", message: "subscription_dunning_failed_attempt_unattributed" } });
+  const request = { failedPaymentAttemptId: null, idempotencyKey: "missing-attribution", cycleId: "43333333-3333-4333-8333-333333333333", subscriptionId: "42222222-2222-4222-8222-222222222222", orderId: "44444444-4444-4444-8444-444444444444", paymentIntentId: "45555555-5555-4555-8555-555555555555", retryAttempt: 1, nextRetryAt: null, failureReason: "declined", occurredAt: "2026-10-25T09:00:00Z" };
+  expect(handleSubscriptionPaymentFailureRequestSchema.safeParse(request).success).toBe(true);
+  const { failedPaymentAttemptId: _omitted, ...legacy } = request;
+  expect(handleSubscriptionPaymentFailureRequestSchema.safeParse(legacy).success).toBe(false);
+  await expect(createManagedSubscriptionRuntimePort({ rpc }).handleSubscriptionPaymentFailure(request)).rejects.toMatchObject({ name: "SubscriptionRuntimePersistenceError", details: { code: "55000" } });
+  expect(rpc).toHaveBeenCalledWith("subscription_handle_payment_failure_dunning", expect.objectContaining({ p_failed_payment_attempt_id: null, p_failure_class: null }));
 });

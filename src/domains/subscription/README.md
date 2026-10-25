@@ -189,3 +189,10 @@ tokens, retry promises, optional method facts, starter detail, dates and CTA
 omission retain their exact public behavior. Whole-output template parity and
 retained subscription email tests witness that boundary; no sender activation,
 subscription state or cycle timing changes are introduced.
+
+
+Hosted renewal failure propagation carries the exact applied attempt to dunning,
+including on apply replay. Its opener requires nullable `failedPaymentAttemptId`;
+missing attribution becomes explicit NULL and fresh eligible managed SQL refuses
+55000. Never infer the attempt from the prepared/current payment state. See the
+[managed replay and host mapping contract](../../../docs/platform/DATA_AND_MIGRATIONS.md#m10-9-attempt-replay-control-fixtures).

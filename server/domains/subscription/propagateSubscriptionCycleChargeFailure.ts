@@ -77,11 +77,12 @@ export interface CycleChargeFailurePropagationPort {
     occurredAt: string;
     failureReason: string;
     failureClassification: { failureClass: string; decidedBy: string };
-  }): Promise<{ replayed: boolean }>;
+  }): Promise<{ replayed: boolean; paymentAttemptId?: string | null }>;
   /** The cycle's retry state after the result was applied. Throws when unreadable. */
   readCycleRetryState(cycleId: string): Promise<CycleRetryState>;
   /** Opens the case, token and queued notice. Never throws — see the outcome type. */
   openDunningCase(input: {
+    failedPaymentAttemptId: string | null;
     idempotencyKey: string;
     cycleId: string;
     subscriptionId: string;

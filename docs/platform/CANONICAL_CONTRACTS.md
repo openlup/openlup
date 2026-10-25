@@ -553,9 +553,13 @@ privileges and complete catalogue installation are described in
 
 M10-9 extends the reviewed forward registry to 18 approval pins, retaining
 exact 14/16-pin release-history reads and every existing binding and position.
-The two new managed fixtures admit donor-exact attempt replay and attributed
-advancement bytes through the bounded control checker; they install no migration,
-caller or runner. [Data and migrations](DATA_AND_MIGRATIONS.md#m10-9-attempt-replay-control-fixtures)
+The two managed attempt-replay forwards install the admitted donor-exact
+statements and carry exact applied-transition attribution through the hosted
+package and managed callers. Same/stale observations reuse the canonical result;
+newer attributed failures revoke earlier authority, including used links.
+Missing attribution or unavailable replay cache refuses 55000. Native parity is
+REGISTERED with owner M10 and the acceptance listed by the migration owner;
+these managed semantics do not establish native parity or activate a runner. [Data and migrations](DATA_AND_MIGRATIONS.md#m10-9-attempt-replay-control-fixtures)
 owns their schema/backfill prerequisites and explicit mapping for adopters that
 already carry the donor history. The new fixtures add no C94 vocabulary counts.
 

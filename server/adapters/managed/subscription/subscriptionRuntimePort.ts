@@ -44,6 +44,8 @@ export function createManagedSubscriptionRuntimePort(
 
     async handleSubscriptionPaymentFailure(request) {
       const { data, error } = await client.rpc("subscription_handle_payment_failure_dunning", {
+        p_failed_payment_attempt_id: request.failedPaymentAttemptId,
+        p_failure_class: null,
         p_idempotency_key: request.idempotencyKey,
         p_cycle_id: request.cycleId,
         p_subscription_id: request.subscriptionId,

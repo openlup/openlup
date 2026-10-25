@@ -58,6 +58,7 @@ export const activateSubscriptionFromPaidCheckoutOrderResponseSchema = z
 
 export const handleSubscriptionPaymentFailureRequestSchema = z
   .object({
+    failedPaymentAttemptId: uuidSchema.nullable(),
     idempotencyKey: idempotencyKeySchema,
     cycleId: uuidSchema,
     subscriptionId: uuidSchema,

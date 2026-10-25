@@ -1,6 +1,33 @@
 -- pgTAP: customer cancellation atomically terminates an open dunning journey.
 
 BEGIN;
+
+-- This isolated fixture states its failed-attempt evidence explicitly. Real applied
+-- events take precedence; ambiguous fixture evidence fails instead of guessing.
+CREATE FUNCTION pg_temp.fixture_failed_attempt(intent uuid, cycle uuid, rung integer)
+RETURNS uuid LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_catalog AS $$
+DECLARE attempt uuid; matches integer;
+BEGIN
+  IF cycle IS NULL THEN RETURN NULL; END IF;
+  SELECT min(payload->>'paymentAttemptId')::uuid, count(DISTINCT payload->>'paymentAttemptId')
+    INTO attempt, matches FROM public.subscription_events
+    WHERE cycle_id=cycle AND payload->>'paymentIntentId'=intent::text
+      AND payload->>'retryAttempt'=rung::text AND payload->>'source'='payment.control.v0'
+      AND event_type IN ('subscription.retry_scheduled','subscription.payment_failed');
+  IF matches=1 THEN RETURN attempt; END IF;
+  IF matches>1 THEN RAISE EXCEPTION 'conflicting fixture failure evidence'; END IF;
+  INSERT INTO public.commerce_payment_attempts(payment_intent_id,payment_id,provider,idempotency_key,status,amount_cents,currency)
+    SELECT id,payment_id,'example','fixture-failure:'||cycle||':'||rung,'failed',amount_cents,currency
+      FROM public.commerce_payment_intents WHERE id=intent RETURNING id INTO attempt;
+  INSERT INTO public.subscription_events(subscription_id,cycle_id,event_type,payload)
+    SELECT subscription_id,id,CASE WHEN next_retry_at IS NULL THEN 'subscription.payment_failed' ELSE 'subscription.retry_scheduled' END,
+      jsonb_build_object('paymentIntentId',intent,'paymentAttemptId',attempt,'retryAttempt',rung,'source','payment.control.v0')
+      FROM public.subscription_cycles WHERE id=cycle;
+  RETURN attempt;
+END;
+$$;
+GRANT EXECUTE ON FUNCTION pg_temp.fixture_failed_attempt(uuid,uuid,integer) TO service_role;
+
 SELECT plan(24);
 
 INSERT INTO auth.users (id)
@@ -82,7 +109,7 @@ SELECT public.subscription_handle_payment_failure_dunning(
   '2026-08-01T00:00:00Z'::timestamptz,
   'card_declined',
   '2026-07-20T12:00:00Z'::timestamptz
-);
+, NULL, pg_temp.fixture_failed_attempt((SELECT intent_id FROM _cancel_dunning_intent), 'ca300000-0000-4000-8000-000000000001', 1));
 
 CREATE TEMP TABLE _cancel_dunning_case AS
 SELECT id
@@ -281,7 +308,7 @@ SELECT throws_ok(
       '2026-08-04T00:00:00Z'::timestamptz,
       'late_provider_decline',
       '2026-07-21T09:02:00Z'::timestamptz
-    )
+    , NULL, pg_temp.fixture_failed_attempt((SELECT intent_id FROM _cancel_dunning_intent), 'ca300000-0000-4000-8000-000000000001', 2))
   $q$,
   'subscription_dunning_subscription_cancelled',
   'late decline cannot reopen dunning after cancellation wins the lock'
