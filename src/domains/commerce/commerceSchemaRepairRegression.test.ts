@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import type { z } from "zod";
 import { expect, expectTypeOf, it } from "vitest";
+import { PLATFORM_ACCEPTED_CURRENCIES } from "../../lib/currency/platformCurrency.js";
 import { PAYMENT_EXECUTION_PROVIDERS } from "../payment/types.js";
 import * as contracts from "./contracts.js";
 import * as intent from "./configuratorIntentContracts.js";
@@ -1541,4 +1542,291 @@ it("preserves the existing pricing option and quote-port types at the reference 
   expectTypeOf<NonNullable<Options["pricingPolicy"]>>().toEqualTypeOf<import("@openlup/platform/pricing/contracts").PricingPolicySnapshot>();
   expectTypeOf<Parameters<Port["createQuote"]>[0]>().toEqualTypeOf<contracts.CreateQuoteRequest>();
   expectTypeOf<Awaited<ReturnType<Port["createQuote"]>>>().toEqualTypeOf<contracts.CreateQuoteResponse>();
+});
+
+
+// Captured from scratch imports of BASE dbcfe646, including transitive sources.
+// Refinement audit inputs: valid surrounding fields let nonfatal field errors
+// and object checks run together; invalid types also exercise their abort boundary.
+const refinementInputs: Array<[string, unknown[]]> = [];
+const refinementIntentInputs: unknown[] = [];
+for (const mode of ["one_time", "subscription", "unknown"]) {
+  for (const cadencePolicyVersion of [undefined, intent.CONFIGURATOR_FIXED_CADENCE_POLICY_VERSION, "unknown"]) {
+    for (const cadenceDays of [undefined, null, 0, -1, 1.5, 20, 21, "invalid"]) {
+      for (const fields of [
+        {},
+        { selectedVariants: [{ ...baseIntent.selectedVariants[0], qty: 1, flavorSlug: "item-b" }] },
+        { idempotencyKey: "!", promoCodes: [""], sizeConstraint: { kind: "feeding_days", value: 0, dailyKcalOverride: 0 } },
+        { locale: "xx", promoCodes: [0] },
+        { contact: { ...baseIntent.contact, email: "invalid", phone: "" }, selectedVariants: [{ ...baseIntent.selectedVariants[0], qty: 0 }] },
+        { sizeConstraint: { kind: "unit_count", value: -1 }, promoCodes: Array.from({ length: 21 }, () => "") },
+      ]) {
+        refinementIntentInputs.push({ ...baseIntent, mode, cadencePolicyVersion, cadenceDays, ...fields });
+      }
+    }
+  }
+}
+refinementInputs.push(["intent.configuratorIntentSchema", refinementIntentInputs]);
+refinementInputs.push(["persistence.configuratorIntentPersistenceRequestSchema", refinementIntentInputs]);
+refinementInputs.push(["checkout.checkoutRequestSchema", refinementIntentInputs.flatMap((input) => [
+  { intent: input },
+  { intent: input, paymentProvider: embeddedProvider, paymentExecution: { provider: interactiveProvider, flow: "redirect" } },
+  { intent: input, paymentAttemptSequence: -1, declaredBankId: "!", expectedQuote: { totalGross: { amountMinor: -1, currency: PLATFORM_ACCEPTED_CURRENCIES[0] } } },
+  { intent: input, invoicePreference: { kind: "b2b_vat", companyName: "", taxId: "invalid", email: "invalid", address: { line1: "", city: "", postalCode: "", country: hostCountry } } },
+])]);
+
+const refinementId = "11111111-1111-4111-8111-111111111111";
+const refinementOtherId = "22222222-2222-4222-8222-222222222222";
+const refinementTime = new Date(0).toISOString();
+const refinementResponseInputs: unknown[] = [];
+for (const checkoutKind of ["one_time", "subscription_initial"]) {
+  for (const cadenceDays of [null, 0, -1, 21, "invalid"]) {
+    for (const requested of [false, true]) {
+      for (const requiresReusablePaymentMethod of [undefined, false, true]) {
+        for (const fields of [{}, { orderRef: "invalid", statusUrl: "", providerPaymentId: "" }]) {
+          refinementResponseInputs.push({ contractVersion: checkout.CHECKOUT_CONTRACT_VERSION, checkoutKind,
+            orderRef: `order_${refinementId}`, orderId: refinementId, status: "paid",
+            subscription: { requested, cadenceDays, activationStatus: "pending_payment_success" },
+            ...(requiresReusablePaymentMethod === undefined ? {} : { payment: { requiresReusablePaymentMethod } }), ...fields });
+        }
+      }
+    }
+  }
+}
+refinementResponseInputs.push({ contractVersion: checkout.CHECKOUT_CONTRACT_VERSION, checkoutKind: "subscription_initial",
+  orderRef: `order_${refinementId}`, orderId: refinementId, status: "paid" });
+refinementInputs.push(["checkout.checkoutResponseSchema", refinementResponseInputs]);
+refinementInputs.push(["checkout.checkoutInvoicePreferenceSchema", [
+  { kind: "b2b_vat", companyName: "", taxId: "", email: "invalid", contactName: "", address: { line1: "", city: "", postalCode: "", country: hostCountry } },
+  { kind: "b2b_vat", companyName: "Example", taxId: "invalid", address: {} },
+  { kind: "b2b_vat", companyName: "Example", taxId: "123", address: { line1: "Example 1", city: "Example", postalCode: "00000", country: hostCountry } },
+]]);
+
+const refinementResumeInputs: unknown[] = [];
+for (const mode of [null, "one_time", "subscription", "unknown"]) {
+  for (const cadenceDays of [undefined, null, 0, -1, 1.5, 21, "invalid"]) {
+    for (const fields of [
+      {},
+      { cart: { items: [{ sku: "", quantity: 0, variantId: "" }] } },
+      { completion: { cadence: "invalid" }, redactedFields: Array.from({ length: 21 }, () => "contact") },
+      { cart: { items: [{ sku: "ITEM-A", quantity: 0, providerPayload: {} }] }, email: "buyer@example.test" },
+    ]) refinementResumeInputs.push({ version: resume.CHECKOUT_RESUME_CONTRACT_VERSION, mode, cadenceDays, completion: {}, ...fields });
+  }
+}
+refinementInputs.push(["resume.checkoutResumeDraftStateSchema", refinementResumeInputs]);
+refinementInputs.push(["resume.checkoutResumeUpsertRequestSchema", refinementResumeInputs.flatMap((draftState) => [
+  { draftState, lastSectionId: "cadence" },
+  { draftState, lastSectionId: "cadence", resumeToken: "!", idempotencyKey: "!", ttlMinutes: 0 },
+])]);
+const refinementDefaults = { version: defaults.CUSTOMER_DEFAULTS_SNAPSHOT_VERSION, clientId: refinementId,
+  payment: { available: false, scope: null, methodKind: null, source: "customer_payment_preferences", applied: false },
+  addresses: { hasDefaultShippingAddress: false, defaultShippingAddressId: null, hasDefaultBillingAddress: false,
+    defaultBillingAddressId: null, hasDefaultOrdererProfile: false, defaultOrdererProfileId: null,
+    hasDeliveryNotes: false, hasCourierInstructions: false, source: "customer_address_profiles", applied: false } };
+refinementInputs.push(["defaults.commerceCustomerDefaultsSnapshotSchema", [
+  refinementDefaults,
+  { ...refinementDefaults, clientId: "invalid", payment: { ...refinementDefaults.payment, scope: "unknown", methodKind: "unknown" } },
+  { ...refinementDefaults, email: "buyer@example.test", payment: { ...refinementDefaults.payment, providerPayload: {}, card: "opaque" }, addresses: { ...refinementDefaults.addresses, street: "Example" } },
+  { ...refinementDefaults, payment: { ...refinementDefaults.payment, available: "invalid", applied: true }, addresses: { ...refinementDefaults.addresses, defaultShippingAddressId: "invalid" }, redactedFields: ["unknown"] },
+]]);
+refinementInputs.push(["contracts.createCheckoutResponseSchema", ["created", "not_configured"].flatMap((status) => [
+  { contractVersion: "commerce.v0", checkout: { id: "checkout_a", cartId: "cart_a", status, redirectUrl: null, paymentProviderSessionId: "session-a" } },
+  { contractVersion: "commerce.v0", checkout: { id: "!", cartId: "!", status, redirectUrl: null, paymentProviderSessionId: "" } },
+])]);
+refinementInputs.push(["persistence.configuratorIntentPersistenceResponseSchema", [
+  { contractVersion: persistence.CONFIGURATOR_INTENT_PERSISTENCE_CONTRACT_VERSION, intentVersion: intent.CONFIGURATOR_INTENT_VERSION, idempotencyKey: "!", clientId: "invalid", petId: "invalid", addressId: "invalid", replayed: true },
+]]);
+refinementInputs.push(["availability.commerceOfferAvailabilityRequestItemSchema", [
+  { sku: "", productSlug: "!", variantId: "", requestedQuantity: 0, checkoutMode: "subscription" },
+  { sku: 0, productSlug: 0, variantId: 0, requestedQuantity: "invalid", checkoutMode: "unknown" },
+]]);
+
+const refinementQuote = { contractVersion: "commerce.v0", quote: { currency: PLATFORM_ACCEPTED_CURRENCIES[0], taxIncluded: true,
+  lines: [{ sku: "ITEM-A", productSlug: "item-a", quantity: 1, unitPriceGross: { amountMinor: 100, currency: PLATFORM_ACCEPTED_CURRENCIES[0] },
+    lineSubtotalGross: { amountMinor: 100, currency: PLATFORM_ACCEPTED_CURRENCIES[0] },
+    tax: { included: true, country: hostCountry, category: "generic", vatRateBps: 0,
+      legalBasis: "example", netAmount: { amountMinor: 100, currency: PLATFORM_ACCEPTED_CURRENCIES[0] },
+      vatAmount: { amountMinor: 0, currency: PLATFORM_ACCEPTED_CURRENCIES[0] }, grossAmount: { amountMinor: 100, currency: PLATFORM_ACCEPTED_CURRENCIES[0] } } }],
+  discounts: [], subtotalGross: { amountMinor: 100, currency: PLATFORM_ACCEPTED_CURRENCIES[0] }, discountTotalGross: { amountMinor: 0, currency: PLATFORM_ACCEPTED_CURRENCIES[0] },
+  totalGross: { amountMinor: 100, currency: PLATFORM_ACCEPTED_CURRENCIES[0] }, netTotal: { amountMinor: 100, currency: PLATFORM_ACCEPTED_CURRENCIES[0] }, taxTotal: { amountMinor: 0, currency: PLATFORM_ACCEPTED_CURRENCIES[0] } } };
+const refinementDraft = { contractVersion: "commerce.v0", source: "commerce.order_draft.bff.v0", status: "draft", paymentStatus: "not_started",
+  currency: refinementQuote.quote.currency, taxIncluded: true, lines: refinementQuote.quote.lines, discounts: [],
+  totals: { subtotalGross: refinementQuote.quote.subtotalGross, discountTotalGross: refinementQuote.quote.discountTotalGross,
+    totalGross: refinementQuote.quote.totalGross, netTotal: refinementQuote.quote.netTotal, taxTotal: refinementQuote.quote.taxTotal } };
+const refinementPayload = { orderId: `order_${refinementId}`, orderUuid: refinementId, quoteSnapshot: refinementQuote, orderDraftSnapshot: refinementDraft };
+const refinementPayloadInputs = [refinementPayload,
+  { ...refinementPayload, orderId: `order_${refinementOtherId}`, orderDraftSnapshot: { ...refinementDraft, totals: { ...refinementDraft.totals, totalGross: { ...refinementDraft.totals.totalGross, amountMinor: 1 } } } },
+  { ...refinementPayload, orderId: "invalid", quoteSnapshot: { ...refinementQuote, quote: { ...refinementQuote.quote, totalGross: { ...refinementQuote.quote.totalGross, amountMinor: -1 } } } },
+];
+refinementInputs.push(["outbox.commerceOrderDraftCreatedPayloadSchema", refinementPayloadInputs]);
+const refinementRecord = { id: refinementId, created_at: refinementTime, available_at: refinementTime, processed_at: null,
+  aggregate_type: "commerce_order", aggregate_id: refinementOtherId, event_type: outbox.COMMERCE_ORDER_DRAFT_CREATED_EVENT_TYPE,
+  idempotency_key: "!", status: "pending", attempts: -1, error: null, metadata: {} };
+refinementInputs.push(["outbox.commerceOrderDraftCreatedOutboxRecordSchema", refinementPayloadInputs.map((payload) => ({ ...refinementRecord, payload }))]);
+refinementInputs.push(["outbox.commerceOrderDraftCreatedEventSchema", refinementPayloadInputs.map((payload) => ({
+  contractVersion: outbox.COMMERCE_ORDER_DRAFT_CREATED_EVENT_CONTRACT_VERSION, id: refinementId, createdAt: refinementTime,
+  availableAt: refinementTime, processedAt: null, aggregateType: "commerce_order", aggregateId: refinementOtherId,
+  eventType: outbox.COMMERCE_ORDER_DRAFT_CREATED_EVENT_TYPE, idempotencyKey: "!", status: "pending", attempts: -1,
+  payload, error: null, metadata: {} }))]);
+const refinementPaidPayloads = [
+  { orderId: `order_${refinementOtherId}`, orderUuid: refinementId, mode: "", occurredAt: "invalid" },
+  { orderId: "invalid", orderUuid: refinementId, mode: "one_time", occurredAt: refinementTime },
+];
+refinementInputs.push(["outbox.commerceOrderPaidPayloadSchema", refinementPaidPayloads]);
+refinementInputs.push(["outbox.commerceOrderPaidOutboxRecordSchema", refinementPaidPayloads.map((payload) => ({ ...refinementRecord,
+  event_type: outbox.COMMERCE_ORDER_PAID_EVENT_TYPE, payload }))]);
+// End refinement audit inputs.
+
+const refinementGoldens: Record<string, [number, string]> = {
+  "intent.configuratorIntentSchema": [
+    432,
+    "4b7ad5ef5bdbbea502c179658d34d99e1dc2178b16dd96f1de1e12907707c0a0"
+  ],
+  "persistence.configuratorIntentPersistenceRequestSchema": [
+    432,
+    "4b7ad5ef5bdbbea502c179658d34d99e1dc2178b16dd96f1de1e12907707c0a0"
+  ],
+  "checkout.checkoutRequestSchema": [
+    1728,
+    "5aa89f56356df4e38c83cf76d1e1362f2d92b520be053ded6a8abf3991a61e7f"
+  ],
+  "checkout.checkoutResponseSchema": [
+    121,
+    "8571fe83d3352d2324592e0394fd069a30f77c7a95599bf71f7f62b3c2dc11b9"
+  ],
+  "checkout.checkoutInvoicePreferenceSchema": [
+    3,
+    "e79820c9e82c52e706144e2c04b41d377c484f964339e02e5aca7cd12933cf18"
+  ],
+  "resume.checkoutResumeDraftStateSchema": [
+    112,
+    "b24c8342c546bb5a95517405edfc066f9d4cd743bc7e1b9ad92ffe96dd211b9f"
+  ],
+  "resume.checkoutResumeUpsertRequestSchema": [
+    224,
+    "f0bb60d8617ff32adeec0bdfee59f2c1b0ddc4f5af99f403fad8cb768e68a00a"
+  ],
+  "defaults.commerceCustomerDefaultsSnapshotSchema": [
+    4,
+    "481be3bd3f7d243159ffc47750ddc1acc165ecdaf9f8562bfc7b46b6af1bb476"
+  ],
+  "contracts.createCheckoutResponseSchema": [
+    4,
+    "d6b50b707c36794631e9f5b9f604e605b30f2187f6ff8179aae093d48ff76970"
+  ],
+  "persistence.configuratorIntentPersistenceResponseSchema": [
+    1,
+    "75ed5b9c7c7753adc717a134c61569e757bf5a8256f1ccd186a4ec8eda27ec33"
+  ],
+  "availability.commerceOfferAvailabilityRequestItemSchema": [
+    2,
+    "3cb600b1400080628e995889dbebc82ba26c51a2d08db26b3d02ddfec2ad7709"
+  ],
+  "outbox.commerceOrderDraftCreatedPayloadSchema": [
+    3,
+    "0f485857946ff1cc2b8a192a6302eec8929c53155652437211e7bad1c4e442d4"
+  ],
+  "outbox.commerceOrderDraftCreatedOutboxRecordSchema": [
+    3,
+    "5e2748d0ac61e2d11a96fc0e7c73562915de40fa45e37497af8d7e8a8c99fbd1"
+  ],
+  "outbox.commerceOrderDraftCreatedEventSchema": [
+    3,
+    "f42a0016da807074977757c67bd4d52c89ebe96dd5975d1bba5078198d99120d"
+  ],
+  "outbox.commerceOrderPaidPayloadSchema": [
+    2,
+    "1c16b6bf8b75cf9860312d8786b822642ab886a267e05531a959d80dba3b4001"
+  ],
+  "outbox.commerceOrderPaidOutboxRecordSchema": [
+    2,
+    "95203fd77c1b0108a9521abea533dcf6bf2d8aa9989c4bda68eee75a060a2271"
+  ]
+};
+
+it.each(refinementInputs)("preserves BASE simultaneous field/refinement issue order: %s", (name, inputs) => {
+  const [moduleName, schemaName] = name.split(".");
+  const schema = (auditModules[moduleName as keyof typeof auditModules] as Record<string, z.ZodType>)[schemaName];
+  const digest = createHash("sha256");
+  for (const input of inputs) {
+    const result = schema.safeParse(input);
+    digest.update(JSON.stringify(result.success ? { success: true, data: result.data } : { success: false, issues: result.error.issues }) + "\n");
+  }
+  expect([inputs.length, digest.digest("hex")]).toEqual(refinementGoldens[name]);
+});
+
+it.each(refinementInputs.slice(0, 3))("preserves BASE issue order with approved offer asks: %s", (name, inputs) => {
+  const [moduleName, schemaName] = name.split(".");
+  const schema = (auditModules[moduleName as keyof typeof auditModules] as Record<string, z.ZodType>)[schemaName];
+  const digest = createHash("sha256");
+  for (const input of inputs) {
+    const request = input as Record<string, unknown>;
+    const addOffer = (value: unknown) => ({ ...value as object, minimumUnits: 14, offerVersion: "offer-a.v2" });
+    const result = schema.safeParse(moduleName === "checkout" ? { ...request, intent: addOffer(request.intent) } : addOffer(request));
+    // Only the approved additive output fields differ. Full failures, including
+    // refinement order, must still equal the unmodified BASE transcript.
+    const removeOffer = (value: Record<string, unknown>) => {
+      const { minimumUnits: _minimumUnits, offerVersion: _offerVersion, ...legacy } = value;
+      return legacy;
+    };
+    const data = result.success ? result.data as Record<string, unknown> : undefined;
+    const legacyData = data && (moduleName === "checkout"
+      ? { ...data, intent: removeOffer(data.intent as Record<string, unknown>) } : removeOffer(data));
+    digest.update(JSON.stringify(result.success ? { success: true, data: legacyData } : { success: false, issues: result.error.issues }) + "\n");
+  }
+  expect([inputs.length, digest.digest("hex")]).toEqual(refinementGoldens[name]);
+});
+
+it("keeps approved offer-field bounds alongside simultaneous cadence refinements", () => {
+  for (const minimumUnits of [undefined, 0, 1, 14, 99, 100, "invalid"]) {
+    for (const offerVersion of [undefined, "offer-a.v2", "INVALID", "a".repeat(41)]) {
+      const fields = { ...baseIntent, minimumUnits, offerVersion,
+        selectedVariants: [{ ...baseIntent.selectedVariants[0], qty: 1 }] };
+      const validAsk = minimumUnits === 1 && (offerVersion === undefined || offerVersion === "offer-a.v2");
+      expect(intent.configuratorIntentSchema.safeParse(fields).success).toBe(validAsk);
+      const result = intent.configuratorIntentSchema.safeParse({ ...fields, mode: "subscription",
+        cadencePolicyVersion: intent.CONFIGURATOR_FIXED_CADENCE_POLICY_VERSION, cadenceDays: 0 });
+      expect(result.success).toBe(false);
+      if (!result.success && minimumUnits !== "invalid") {
+        expect(result.error.issues.filter((issue) => issue.path[0] === "cadenceDays").map((issue) => issue.message))
+          .toEqual(["Too small: expected number to be >0", "subscription intent requires cadenceDays",
+            "fixed-cadence configurator intents require a 14, 21 or 28 day cadence"]);
+      }
+    }
+  }
+});
+
+it("reports numeric, subscription, then fixed-cadence errors in BASE order", () => {
+  const result = intent.configuratorIntentSchema.safeParse({ ...baseIntent, mode: "subscription",
+    cadencePolicyVersion: intent.CONFIGURATOR_FIXED_CADENCE_POLICY_VERSION, cadenceDays: 0 });
+  expect(result.success ? { success: true, data: result.data } : { success: false, issues: result.error.issues })
+    .toEqual({
+  "success": false,
+  "issues": [
+    {
+      "origin": "number",
+      "code": "too_small",
+      "minimum": 0,
+      "inclusive": false,
+      "path": [
+        "cadenceDays"
+      ],
+      "message": "Too small: expected number to be >0"
+    },
+    {
+      "code": "custom",
+      "message": "subscription intent requires cadenceDays",
+      "path": [
+        "cadenceDays"
+      ]
+    },
+    {
+      "code": "custom",
+      "message": "fixed-cadence configurator intents require a 14, 21 or 28 day cadence",
+      "path": [
+        "cadenceDays"
+      ]
+    }
+  ]
+});
 });

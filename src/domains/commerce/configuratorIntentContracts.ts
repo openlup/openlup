@@ -14,7 +14,7 @@ import {
   pickupPointSchema,
 } from "../shipping/contracts.js";
 import { acquisitionCapabilitySchema } from "@openlup/platform/pricing/browser";
-import { createConfiguratorIntentSchemas, configuratorContactSchema, configuratorAddressCoreSchema, validateConfiguratorIntentCore } from "@openlup/platform/commerce";
+import { createConfiguratorIntentSchemas, configuratorContactSchema, configuratorAddressCoreSchema, commerceMinimumUnits } from "@openlup/platform/commerce";
 import { COMMERCE_MIN_ORDER_UNITS } from "./recommendationPolicyDeps.js";
 import { starterOfferIntentSchema } from "./starterOfferContracts.js";
 
@@ -143,6 +143,15 @@ export const configuratorIntentSchema = configuratorIntentCoreSchema
   })
   .strict()
   .superRefine((intent, ctx) => {
+    // Host cadence policy belongs between the two neutral checks in issue order.
+    if (intent.mode === "subscription" && !intent.cadenceDays) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "subscription intent requires cadenceDays",
+        path: ["cadenceDays"],
+      });
+    }
+
     if (
       intent.cadencePolicyVersion === CONFIGURATOR_FIXED_CADENCE_POLICY_VERSION &&
       intent.cadenceDays != null &&
@@ -155,7 +164,15 @@ export const configuratorIntentSchema = configuratorIntentCoreSchema
       });
     }
 
-    validateConfiguratorIntentCore(intent, ctx, COMMERCE_MIN_ORDER_UNITS);
+    const selectedUnitCount = intent.selectedVariants.reduce((total, variant) => total + variant.qty, 0);
+    const minimumUnits = commerceMinimumUnits(intent, COMMERCE_MIN_ORDER_UNITS);
+    if (selectedUnitCount < minimumUnits) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `selected variants require at least ${minimumUnits} total units`,
+        path: ["selectedVariants"],
+      });
+    }
 
     const flavorSlugs = new Set(intent.selectedFlavorSlugs);
     for (const [index, variant] of intent.selectedVariants.entries()) {
