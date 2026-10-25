@@ -8,11 +8,12 @@ application" section, which `docs:check` requires, tells an application's agent
 not to edit or patch the installed package and to upgrade every `@openlup/*`
 package together.
 
-The prepared `0.25.0` set keeps active subscriptions unchanged when the retry
-ladder is exhausted; existing paused-row recovery remains separate.
-Upgrade all packages together and read [the migration notes](CHANGELOG.md#0250).
-The size baseline is the published `0.24.0` artifact; older releases remain in
-the source-only `CHANGELOG-HISTORY.md`. Preparation establishes no npm publication.
+The prepared `0.26.0` set republishes this kernel with the platform's managed
+dunning attempt-replay changes. Upgrade all packages together and read
+[the migration notes](CHANGELOG.md#0260), including the platform's required
+nullable failure-attempt field. The size baseline is the published `0.25.0`
+artifact; older releases remain in the source-only `CHANGELOG-HISTORY.md`.
+Preparation establishes no npm publication.
 
 The prepared set requires Zod `^4.6.6` for GHSA-mrhx-c7xc-m3w5.
 Oversized constrained collections fail before per-element errors accumulate;
