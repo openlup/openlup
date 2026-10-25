@@ -512,7 +512,12 @@ The class fixes nine entries containing five function replacements, three public
 service-only creations and two private invoker creations. The seven checkout, return and
 acquisition entries retain their pinned slots; the eighth is the single
 new-purchase stock reader (`public.inventory_new_purchase_stock_read(jsonb,timestamptz)`).
-It additionally revokes `openlup_mcp_reader`, fixes ATP renewal exemption to false,
+It runs with owner privileges through `SECURITY DEFINER` and pinned
+`search_path = pg_catalog, public`; only `service_role` may execute it, with
+`PUBLIC`, `anon`, `authenticated` and `openlup_mcp_reader` revoked.
+Its real-PostgreSQL behaviour proof calls as `service_role` and checks function
+permission refusals as the denied roles; owner access serves setup and state
+inspection. It fixes ATP renewal exemption to false,
 bounds requests to 200 array items and refuses a NULL as-of timestamp as
 `inventory_stock_as_of_invalid` (SQLSTATE `22023`). Its conservative stale flag
 covers any stale provider row for the SKU; the allocator retains its own stale
@@ -543,8 +548,11 @@ integration, native return semantics or installation authority.
 The starter cadence witness proves 21-day refusal without the ninth fixture,
 14/21/28 admission with it in creation and both graduation modes, invalid-input
 refusal, replay and the subscription timezone default. Approval-history
-comparisons retain the exact seven- and eight-entry prefixes for release
-carry-over; candidate admission requires all nine entries.
+comparisons retain the exact seven- and eight-entry prefixes and the invoker
+stock-reader identity in the eight- and nine-entry inventories for release
+carry-over. Candidate admission requires the complete inventory and the
+owner-privilege stock-reader header; a historical invoker approval cannot admit
+that reader.
 
 Migration: the managed starter routines admit a graduation cadence of 14, 21 or
 28 days (previously 14 or 28); nothing else about them changes except provisional

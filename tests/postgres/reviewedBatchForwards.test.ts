@@ -15,6 +15,105 @@ import { AT, later, call, renewal, prepareOriginal, failure, positive, unchanged
 import { createNewPurchaseStockAvailabilityPort } from "@openlup/platform/inventory";
 import { deriveOfferAvailability } from "../../src/domains/commerce/offerAvailability.js";
 
+// Setup and catalog inspection use the owner; every reader call uses its caller role.
+async function assertManagedStockReader(db: Pool) {
+  const signature = "public.inventory_new_purchase_stock_read(jsonb,timestamptz)";
+  const at = "2032-01-01T12:00:00.000Z";
+  const id = "f3f30000-0000-4000-8000-000000000001";
+  const catalog = (await db.query(`SELECT p.prosecdef,p.proconfig,
+    ARRAY(SELECT COALESCE(r.rolname::text,'PUBLIC') FROM aclexplode(p.proacl) a
+      LEFT JOIN pg_roles r ON r.oid=a.grantee
+      WHERE a.privilege_type='EXECUTE' AND a.grantee<>p.proowner ORDER BY 1) AS callers
+    FROM pg_proc p WHERE p.oid=$1::regprocedure`, [signature])).rows[0];
+  expect(catalog).toEqual({ prosecdef: true, proconfig: ["search_path=pg_catalog, public"], callers: ["service_role"] });
+  expect((await db.query("SELECT has_column_privilege('service_role','public.subscriptions','is_test_fixture','SELECT') AS allowed")).rows[0].allowed).toBe(false);
+  const provider = (await db.query(`SELECT (regexp_match(pg_get_functiondef(
+    'public.inventory_available_to_promise(uuid,timestamptz,boolean)'::regprocedure),
+    $binding$stock.provider_kind='([^']+)'$binding$))[1] AS provider`)).rows[0].provider;
+  expect(provider).toEqual(expect.any(String));
+  await db.query(`INSERT INTO public.providers(kind,capability,display_name,status,enabled_for_region)
+    VALUES($1,'fulfillment','Stock fixture','active',ARRAY['ZZ']) ON CONFLICT(kind) DO NOTHING`, [provider]);
+  await db.query(`INSERT INTO public.inventory_locations(id,code,display_name,kind,status,region,fulfillable,provider_kind)
+    VALUES($1,'m11-stock-location','Stock fixture','third_party_logistics','active','ZZ',true,$2)`, [id, provider]);
+  await db.query("INSERT INTO public.clients(id,email) VALUES($1,'stock-reader@example.invalid')", [id]);
+  await db.query("INSERT INTO public.catalog_products(id,slug,name,status) VALUES($1,'m11-stock-reader','Stock fixture','active')", [id]);
+  await db.query(`INSERT INTO public.catalog_skus(id,product_id,sku,title,pet_type,status,net_weight_g,kcal_per_unit)
+    VALUES($1,$1,'M11-STOCK','Stock fixture','other','active',1,1)`, [id]);
+  await db.query(`INSERT INTO public.subscriptions(id,client_id,cadence_days,currency,status,next_cycle_at,is_test_fixture)
+    VALUES($1,$1,28,'XXX','active',$2::timestamptz+interval '7 days',false)`, [id, at]);
+  await db.query(`INSERT INTO public.subscription_lines(subscription_id,variant_id,qty,sort_order,is_addon,template_version)
+    VALUES($1,$1,3,0,false,1)`, [id]);
+  await db.query(`INSERT INTO public.commerce_orders(id,client_id,status,mode,currency,region_code,total_cents,subtotal_cents)
+    VALUES($1,$1,'draft','one_time','XXX','ZZ',100,100)`, [id]);
+  await db.query(`INSERT INTO public.fulfillment_provider_stock_current(provider_kind,sku,catalog_sku_id,
+    provider_total_quantity,provider_for_sale_quantity,provider_reserved_unavailable_quantity,last_synced_at,stale_after,sync_run_id)
+    VALUES($1,'M11-STOCK',$2,20,20,0,$3,$3::timestamptz+interval '1 hour','stock-reader')`, [provider, id, at]);
+  await db.query("INSERT INTO public.inventory_balances(sku_id,location_id,safety_stock) VALUES($1,$1,1)", [id]);
+  await db.query(`INSERT INTO public.inventory_reservations(idempotency_key,order_id,sku_id,location_id,quantity,kind,expires_at,metadata)
+    VALUES('m11-stock-hold',$1,$1,$1,2,'checkout_payment_window',$2::timestamptz+interval '1 hour',jsonb_build_object('providerKind',$3::text))`, [id, at, provider]);
+  type Role = "service_role" | "anon" | "authenticated" | "openlup_mcp_reader";
+  const read = async (role: Role, skus: unknown = ["M11-STOCK"], asOf: string | null = at) => {
+    await db.query("SAVEPOINT stock_reader_role");
+    try {
+      await db.query(`SET LOCAL ROLE ${role}`);
+      expect((await db.query("SELECT current_user AS caller")).rows[0].caller).toBe(role);
+      return (await db.query("SELECT public.inventory_new_purchase_stock_read($1::jsonb,$2::timestamptz) AS result",
+        [JSON.stringify(skus), asOf])).rows[0].result;
+    } finally { await db.query("ROLLBACK TO SAVEPOINT stock_reader_role; RELEASE SAVEPOINT stock_reader_role"); }
+  };
+  const expected = [{ sku: "M11-STOCK", catalogSkuId: id, source: "provider", providerForSale: 20,
+    activeHolds: 2, safetyStock: 1, available: 14, stale: false, renewalDemand: 3,
+    availableForNewPurchases: 14, excludedOrderHolds: 0, channelExposure: 0 }];
+  const success = async () => expect(await read("service_role")).toEqual(expected);
+  const denied = async (role: Role) => expect(read(role)).rejects.toMatchObject({
+    code: "42501", message: "permission denied for function inventory_new_purchase_stock_read",
+  });
+  await success();
+  for (const role of ["anon", "authenticated", "openlup_mcp_reader"] as const) await denied(role);
+  expect(await read("service_role", ["M11-STOCK", "M11-MISSING", "M11-STOCK"])).toEqual([
+    { sku: "M11-MISSING", catalogSkuId: null, source: "missing", providerForSale: null,
+      activeHolds: 0, safetyStock: 0, available: 0, stale: false, renewalDemand: 0,
+      availableForNewPurchases: 0, excludedOrderHolds: 0, channelExposure: 0 }, ...expected,
+  ]);
+  expect(await read("service_role", [])).toEqual([]);
+  for (const skus of [null, {}, Array.from({ length: 201 }, () => "M11-STOCK")]) {
+    await expect(read("service_role", skus)).rejects.toMatchObject({ code: "22023" });
+  }
+  await expect(read("service_role", ["M11-STOCK"], null)).rejects.toMatchObject({ code: "22023", message: "inventory_stock_as_of_invalid" });
+  await db.query("SAVEPOINT stock_reader_variants");
+  try {
+    await db.query("UPDATE public.fulfillment_provider_stock_current SET stale_after=$1 WHERE catalog_sku_id=$2", [at, id]);
+    expect(await read("service_role")).toEqual([{ ...expected[0], stale: true }]);
+    // Exercise the exposure extension hook without replacing ATP or its data reads.
+    await db.query(`CREATE OR REPLACE FUNCTION public.inventory_channel_exposure_quantity(p_sku_id uuid)
+      RETURNS bigint LANGUAGE sql STABLE SET search_path=pg_catalog AS $$ SELECT 4::bigint; $$`);
+    expect(await read("service_role")).toEqual([{ ...expected[0], stale: true, channelExposure: 4,
+      available: 10, availableForNewPurchases: 10 }]);
+  } finally { await db.query("ROLLBACK TO SAVEPOINT stock_reader_variants; RELEASE SAVEPOINT stock_reader_variants"); }
+  const scratch = mkdtempSync(join(tmpdir(), "openlup-stock-reader-mutants-"));
+  try {
+    const sql = readFileSync("scripts/fixtures/reviewed-m11/supabase/migrations/20261025109000_inventory_new_purchase_stock_read.sql", "utf8")
+      .replace("CREATE FUNCTION", "CREATE OR REPLACE FUNCTION");
+    const mutants = [
+      ["invoker", sql.replace("SECURITY DEFINER", "SECURITY INVOKER")],
+      ["execute", `${sql}\nGRANT EXECUTE ON FUNCTION ${signature} TO authenticated;`],
+    ] as const;
+    for (const [name, mutant] of mutants) {
+      const path = join(scratch, `${name}.sql`);
+      writeFileSync(path, mutant);
+      await db.query("SAVEPOINT stock_reader_mutant");
+      try {
+        await db.query(readFileSync(path, "utf8"));
+        if (name === "invoker") await expect(success()).rejects.toMatchObject({ code: "42501", message: "permission denied for table subscriptions" });
+        else await expect(denied("authenticated")).rejects.toThrow(/promise resolved/u);
+        process.stdout.write(`Stock reader ${name} mutant killed by behavioural assertion\n`);
+      } finally { await db.query("ROLLBACK TO SAVEPOINT stock_reader_mutant; RELEASE SAVEPOINT stock_reader_mutant"); }
+    }
+  } finally { rmSync(scratch, { recursive: true, force: true }); }
+  await success();
+  await denied("authenticated");
+}
+
 const registry = readReviewedForwardRegistry(readFileSync("config/reviewed-platform-forwards.json"));
 const fixture = (pin: BatchedForwardBinding) => reviewedBatchBytes(process.cwd(), process.cwd(), pin);
 const managedImage = readCiImage("managed-batch-postgres"), nativeImage = readCiImage("test-postgres");
@@ -1212,6 +1311,8 @@ it('replays a stored refusal and an apply-created receipt directly, without publ
         }
         prior.push({ path: pin.path, bytes });
       }
+
+      await assertManagedStockReader(db);
 
       // Exercise the real finalize/admission/creation closure with retained
       // snapshots and synthetic rows; no reader or creation function is stubbed.

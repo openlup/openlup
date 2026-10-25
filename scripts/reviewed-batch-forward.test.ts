@@ -838,6 +838,54 @@ describe("admitted M11 commerce live registry", () => {
     });
   });
 
+  const stockReader = commerce[7]!;
+  const oldStockRegistry = () => {
+    const prior = structuredClone(registry);
+    const pin = prior.managedCommerceForwards![7]!;
+    pin.sha256 = "d865ca086c379e24b37a0d541112925176f332600b4d61c47777a26930630bb5";
+    pin.functions[0]!.afterSha256 = "ef52b366a3a0641910020244aa9c49b06308fb5f0aca2867d49be092064efa61";
+    pin.statements[0]!.sha256 = pin.functions[0]!.afterSha256;
+    return prior;
+  };
+
+  it("accepts the owner-privilege stock header and refuses the invoker approval as a candidate", () => {
+    expect(() => readReviewedForwardRegistry(registryBytes)).not.toThrow();
+    expect(() => assert(stockReader)).not.toThrow();
+    expect(() => readReviewedForwardRegistry(Buffer.from(JSON.stringify(oldStockRegistry())))).toThrow("requires exact approval history");
+    const oldSql = commerceBytes(stockReader).toString().replace(" SECURITY DEFINER", "").replace("pg_catalog, public AS", "pg_catalog AS");
+    expect(() => assert(stockReader, Buffer.from(oldSql), repinned(stockReader, oldSql))).toThrow("requires exact approval history");
+  });
+
+  it.each([8, 9])("reads the exact %i-entry invoker registry only in approval history", count => {
+    const f = correctionFixture();
+    try {
+      const prior = oldStockRegistry();
+      prior.managedCommerceForwards!.splice(count);
+      f.put("config/reviewed-platform-forwards.json", JSON.stringify(prior));
+      const old = f.commit();
+      f.put("history-marker.txt", "approval history");
+      const same = f.commit();
+      expect(() => assertUnchangedForwardApproval(f.root, old, same, stockReader.path)).not.toThrow();
+      f.put("config/reviewed-platform-forwards.json", registryBytes);
+      const amended = f.commit();
+      expect(() => assertUnchangedForwardApproval(f.root, same, amended, commerce[0]!.path)).not.toThrow();
+      expect(() => assertUnchangedForwardApproval(f.root, same, amended, stockReader.path)).toThrow("approved separately");
+      const drift = structuredClone(prior);
+      drift.managedCommerceForwards![7]!.sha256 = "0".repeat(64);
+      f.put("config/reviewed-platform-forwards.json", JSON.stringify(drift));
+      const invalid = f.commit();
+      expect(() => assertUnchangedForwardApproval(f.root, invalid, same, commerce[0]!.path)).toThrow("approved separately");
+    } finally { f.cleanup(); }
+  });
+
+  it.each(["SECURITY INVOKER", "search_path"])("refuses a fully repinned stock-reader %s header drift", attack => {
+    const sql = commerceBytes(stockReader).toString();
+    const drift = attack === "SECURITY INVOKER" ? sql.replace("SECURITY DEFINER", "SECURITY INVOKER")
+      : sql.replace("search_path = pg_catalog, public", "search_path = public");
+    expect(drift).not.toBe(sql);
+    expect(() => assert(stockReader, Buffer.from(drift), repinned(stockReader, drift))).toThrow("function header or order drifted");
+  });
+
   it("refuses a fully repinned omission of the stock reader revocation", () => {
     const pin = commerce.find(pin => pin.functions[0]!.signature === "public.inventory_new_purchase_stock_read(jsonb,timestamptz)")!;
     const sql = commerceBytes(pin).toString().replace(", openlup_mcp_reader", "");

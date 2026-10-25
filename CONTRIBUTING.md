@@ -243,9 +243,13 @@ retain their pinned slots, and the eighth is a single new-purchase stock reader
 (`public.inventory_new_purchase_stock_read(jsonb,timestamptz)`). It composes ATP
 with renewal exemption fixed false, caps requests at 200 array items and refuses
 a NULL as-of timestamp as `inventory_stock_as_of_invalid` (SQLSTATE `22023`).
-Its service-only ACL additionally revokes `openlup_mcp_reader`; its conservative
-stale flag covers any stale provider row for the SKU, while the allocator retains
-its own stale refusal. The ninth slot replaces
+The reader runs with owner privileges through `SECURITY DEFINER` and pinned
+`search_path = pg_catalog, public`; only `service_role` may execute it.
+Its ACL additionally revokes `openlup_mcp_reader`. Behaviour proofs call as
+`service_role`, with owner access reserved for setup and state inspection; they
+also prove function permission refusals for `anon`, `authenticated` and
+`openlup_mcp_reader`. Its conservative stale flag covers any stale provider row
+for the SKU, while the allocator retains its own stale refusal. The ninth slot replaces
 `subscription_create_provisional_for_checkout(uuid,uuid,uuid,uuid,jsonb)` and
 `subscription_apply_starter_graduation(uuid,text,text)` with independent preimages
 and ordered ACL pairs.
@@ -2257,6 +2261,10 @@ own: a lessons change is an ordinary delivery under existing authority, and a
 promotion stays within its approved scope. The rethink record and the task's
 terminal self-retro carry the lesson until it lands. No other tracker is kept.
 
+- 2026-10-25, M11 stock reader: a behaviour proof run as the table owner hid
+  that the granted role could not execute the reader → run SQL behaviour proofs
+  as the granted role (`service_role`), never as `postgres`, and keep owner-level
+  assertions only for state inspection.
 - 2026-10-25, M11 CTL notes: two review cycles in a row found stale statements in
   owner notes and pinned fixture comments (landed state, rail tails, admitted/draft
   wording) after each main landing → state only invariants in pinned or frozen

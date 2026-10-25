@@ -1496,17 +1496,17 @@
     },
     {
       "path": "supabase/migrations/20261025109000_inventory_new_purchase_stock_read.sql",
-      "sha256": "d865ca086c379e24b37a0d541112925176f332600b4d61c47777a26930630bb5",
+      "sha256": "2c62886c56adbf8e894e19988b44aed58e8dfb9dd7c6150432f94a6b8971ffce",
       "functions": [
         {
           "signature": "public.inventory_new_purchase_stock_read(jsonb,timestamptz)",
           "beforeSha256": null,
-          "afterSha256": "ef52b366a3a0641910020244aa9c49b06308fb5f0aca2867d49be092064efa61"
+          "afterSha256": "8bbaed382928ba1681e66ccf4f0ed899e98ee3a9a448104ca79160ad91421d82"
         }
       ],
       "statements": [
         {
-          "sha256": "ef52b366a3a0641910020244aa9c49b06308fb5f0aca2867d49be092064efa61"
+          "sha256": "8bbaed382928ba1681e66ccf4f0ed899e98ee3a9a448104ca79160ad91421d82"
         },
         {
           "sha256": "0d4990824bb604ef6a3e775ae2d5513b36fd9546a80c713d026d1b98c48664e2",

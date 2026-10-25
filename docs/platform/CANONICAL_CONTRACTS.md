@@ -855,7 +855,10 @@ The separate `managedCommerceForwards` list in
 `config/reviewed-platform-forwards.json` pins nine M11 managed SQL fixtures: slots 1–8 each retain
 one function exactly as pinned, and slot 9 is the starter pair;
 [its data contract](DATA_AND_MIGRATIONS.md#exact-reviewed-function-forwards)
-owns headers, ACLs, preimages and ordered statements. The registry and real
+owns headers, ACLs, preimages and ordered statements. The stock reader uses
+`SECURITY DEFINER` with pinned `search_path = pg_catalog, public` and permits
+execution only by `service_role`. Behaviour proofs run as that granted role;
+owner access serves setup and state inspection. The registry and real
 migration rails are authoritative. M11 versions follow every earlier same-rail
 pin; each pin requires all earlier same-rail pins present with exact bytes.
 Later feature changes may introduce those bytes on the managed rail.
