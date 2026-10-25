@@ -93,6 +93,12 @@ timestamp used in the webhook's idempotency key.
 
 ## Commerce contracts
 
+`./composition` exports the inert `createCommerceContribution` for the installed
+commerce entries and selected callables. Duplicate descriptor identities refuse;
+the [composition recipe](../../docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#contributions-seams-and-readiness)
+and [reference binding](../../docs/platform/RUNTIME_AND_SELF_HOSTING.md#opt-in-disposable-subscription-reference)
+describe host readiness, one executor per operation and native recovery limits.
+
 `./commerce` stays browser-safe. `./commerce/server` is the separate Node-only
 entry for checkout engines, handlers, stores and adapters. It exports
 `tryCompensate` and `CheckoutCompensationPort`: release the selected order's

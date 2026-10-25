@@ -165,6 +165,15 @@ refusals; the managed witness also checks allocator budget agreement and service
 ACLs. The [native inventory witness](tests/postgres/inventoryNative.test.ts)
 separately covers store projections and fenced reservation replay/concurrency.
 
+M11 K5/K6 keeps all imported commerce witnesses unchanged. Its additive
+`packages/platform/test/composition/commerceContribution.test.ts` and
+`server/runtime/public-reference/m11CommerceBinding.test.ts` check explicit
+selection, schema refusal, duplicate registration and shared callable identity.
+`tests/postgres/commerceComposition.test.ts` uses the installed native harness
+to observe a recovery reminder, replay and unchanged active subscriptions,
+reservations and undelivered-parcel alignment; Docker absence leaves that proof
+unexecuted. The binding installs no route or schedule.
+
 The [M10 composition witness](tests/postgres/subscriptionComposition.test.ts)
 uses its own disposable native database for the complete off/protect/arrival/
 rollback/dunning/stock table, shared population lease, schema-object probes and

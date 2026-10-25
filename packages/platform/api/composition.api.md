@@ -182,6 +182,31 @@ export declare function createCatalogContribution(input: CatalogContributionInpu
     };
 };
 ```
+## dist/composition/commerceContribution.d.ts
+
+```ts
+import type { Contribution, RequiredSchema } from "@openlup/core/readiness";
+/** Describe existing selected commerce callables; never install another executor. */
+export declare function createCommerceContribution(input: {
+    version: string;
+    requiredSchema: RequiredSchema;
+    commerce: Readonly<Record<string, ((...args: never[]) => unknown) | null>>;
+    handlers: Contribution["handlers"];
+    schedules: Contribution["schedules"];
+    routes: Contribution["routes"];
+}): {
+    contributions: Contribution[];
+    ports: {
+        [k: string]: ((...args: never[]) => unknown) | null;
+    };
+    routes: {
+        [k: string]: (...args: never[]) => unknown;
+    };
+    triggers: {
+        [k: string]: (...args: never[]) => unknown;
+    };
+};
+```
 ## dist/composition/composeBundle.d.ts
 
 ```ts
@@ -294,6 +319,7 @@ export { createInventoryContribution } from "./inventoryContribution.js";
 export { createShippingContribution } from "./shippingContribution.js";
 export { createFulfillmentContribution } from "./fulfillmentContribution.js";
 export { createSubscriptionContribution } from "./subscriptionContribution.js";
+export { createCommerceContribution } from "./commerceContribution.js";
 ```
 ## dist/composition/inventoryContribution.d.ts
 

@@ -2502,6 +2502,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/changes/m11-k5k6.md",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/package.json",
       "class": "public-output"
     },
@@ -3975,6 +3979,10 @@
     },
     {
       "path": "packages/platform/src/composition/catalogContribution.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/composition/commerceContribution.ts",
       "class": "public-output"
     },
     {
@@ -6455,6 +6463,10 @@
     },
     {
       "path": "packages/platform/test/communications/webhookDialects.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/composition/commerceContribution.test.ts",
       "class": "public-output"
     },
     {
@@ -16906,6 +16918,18 @@
       "class": "public-output"
     },
     {
+      "path": "server/runtime/public-reference/m11CommerceBinding.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/runtime/public-reference/m11CommerceBinding.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/runtime/public-reference/m11CommerceSchema.ts",
+      "class": "public-output"
+    },
+    {
       "path": "server/runtime/public-reference/readiness.ts",
       "class": "public-output"
     },
@@ -24739,6 +24763,10 @@
     },
     {
       "path": "tests/postgres/bundleNative.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/commerceComposition.test.ts",
       "class": "public-output"
     },
     {

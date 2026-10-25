@@ -723,6 +723,17 @@ For a separate integration artifact, follow the canonical
 Generic supported orchestration remains the platform's responsibility.
 
 ### Contributions, seams and readiness
+`createCommerceContribution` in `@openlup/platform/composition` declares the
+installed `./commerce`, `./commerce/contracts` and `./commerce/server` entries
+under the `commerce` capability. Its namespaced ports describe the selected
+existing callables; routes and triggers share those same executors. Duplicate
+handler, route or schedule identities refuse before map construction. The
+[reference binding](../../server/runtime/public-reference/m11CommerceBinding.ts)
+adds native recovery through the existing adapter and accepts already-bound
+package operations with their host schema requirements. It creates no checkout,
+payment, inventory or fulfillment engine. Schema admission and host installation
+remain separate from this inert declaration.
+
 The M05 contribution is a structural declaration over supplied bound callables,
 not another domain or activation registry. Its three contributions retain the
 `catalog`, `pricing` and `promotions` identities. Ports and bundle routes retain
