@@ -274,8 +274,25 @@ it.each([
     for (const page of ["/src/pages/account/LoginPage.tsx", "/src/pages/admin/LoginPage.tsx", "/src/pages/admin/IdentityPrivacyPanel.tsx"]) expect([...modules].some(id => id.endsWith(page))).toBe(true);
     const guard = (config.plugins as Plugin[]).find(plugin => plugin.name === "public-reference-import-closure")!;
     expect(() => (guard.load as (id: string) => void)(resolve("src/public-reference/SubscriptionAccount.tsx"))).toThrow("closed inventory");
+    expect(() => (guard.load as (id: string) => void)(resolve("packages/platform/dist/commerce/server/index.js"))).toThrow("closed inventory");
   }
 }, 60000);
+
+it.each([
+  ["identity", "commerce/server"], ["subscription", "commerce/server"],
+  ["identity", "pricing"], ["subscription", "pricing"],
+])("refuses %s profile browser build entry %s", async (profile, entry) => {
+  vi.resetModules();
+  vi.stubEnv("OPENLUP_REFERENCE_PROFILE", profile);
+  vi.stubEnv("OPENLUP_BUILD_TARGET", "public-reference");
+  const { publicReferenceViteConfig } = await import("../../../vite.public-reference.config.ts");
+  const config = publicReferenceViteConfig();
+  await expect(build({ ...config, configFile: false, logLevel: "silent",
+    build: { ...config.build, write: false, rollupOptions: {
+      input: resolve(`packages/platform/dist/${entry}/index.js`),
+    } },
+  })).rejects.toThrow(/closed inventory|outside declared profile/);
+});
 
 it("reference landing pages require the linked profile and live recognized operator role", async () => {
   const { profile } = setup();

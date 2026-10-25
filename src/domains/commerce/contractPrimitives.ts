@@ -1,55 +1,20 @@
-// Browser validation binding; the pricing server entry owns the portable counterpart.
-import { platformCurrencySchema } from "../../lib/currency/platformCurrency.js";
+// Browser binding: pricing owns money; the host owns profile sizing.
 import { z } from "../../lib/validation/zod.js";
+import { platformCurrencySchema } from "../../lib/currency/platformCurrency.js";
 import { catalogProductSlugSchema } from "../catalog/contracts.js";
-import {
-  CART_STATUSES,
-  CHECKOUT_STATUSES,
-  ORDER_DRAFT_STATUSES,
-  ORDER_STATUSES,
-  PAYMENT_STATUSES,
-} from "./types.js";
-
-// Alias, not a second definition: one schema object validates currency on every
-// commerce contract (src/lib/currency/platformCurrency.ts).
+import { createCommerceQuotePrimitives } from "@openlup/platform/pricing/browser";
+import { commerceSizeConstraintCoreSchema } from "@openlup/platform/commerce";
+export { cartStatusSchema, checkoutStatusSchema, orderDraftStatusSchema, orderStatusSchema, paymentStatusSchema, commerceIdempotencyKeySchema } from "@openlup/platform/commerce";
+const primitives = createCommerceQuotePrimitives(platformCurrencySchema);
+export const { commerceTaxCountrySchema, commerceTaxCategorySchema, commerceTaxLegalBasisSchema, commerceSkuSchema } = primitives;
+// Keep the exact host schema type: the existing pricing factory widens input.
 export const commerceCurrencySchema = platformCurrencySchema;
-export const commerceTaxCountrySchema = z.string().trim().regex(/^[A-Z]{2}$/);
-export const commerceTaxCategorySchema = z.string().trim().regex(/^[a-z][a-z0-9_]*$/);
-export const commerceTaxLegalBasisSchema = z.string().trim().min(1).max(200);
-export const cartStatusSchema = z.enum(CART_STATUSES);
-export const checkoutStatusSchema = z.enum(CHECKOUT_STATUSES);
-export const orderDraftStatusSchema = z.enum(ORDER_DRAFT_STATUSES);
-export const orderStatusSchema = z.enum(ORDER_STATUSES);
-export const paymentStatusSchema = z.enum(PAYMENT_STATUSES);
-// Open value space — format-validated slugs, not a closed enum (see slugFormat.ts).
+export const commerceMoneySchema = primitives.commerceMoneySchema.extend({ currency: commerceCurrencySchema });
 export const commerceProductSlugSchema = catalogProductSlugSchema;
 
-export const commerceIdempotencyKeySchema = z
-  .string()
-  .trim()
-  .min(8)
-  .max(120)
-  .regex(/^[a-zA-Z0-9._:-]+$/);
-
-export const commerceSkuSchema = z
-  .string()
-  .trim()
-  .min(1)
-  .max(128)
-  .regex(/^[a-zA-Z0-9._:-]+$/);
-
-export const commerceMoneySchema = z.object({
-  amountMinor: z.number().int().nonnegative(),
-  currency: commerceCurrencySchema,
-});
-
-// Single source of truth for the size constraint carried by both the configurator
-// intent and the quote request — the two surfaces validate the identical shape and
-// refine rule, so they share one schema instead of maintaining byte-identical copies.
-export const commerceSizeConstraintSchema = z
-  .object({
+export const commerceSizeConstraintSchema = commerceSizeConstraintCoreSchema
+  .extend({
     kind: z.enum(["unit_count", "total_weight_g", "feeding_days"]),
-    value: z.number().int().positive(),
     petId: z.string().trim().min(1).max(120).nullable().optional(),
     dailyKcalOverride: z.number().int().positive().nullable().optional(),
   })

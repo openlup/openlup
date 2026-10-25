@@ -30,6 +30,17 @@ state writer is not an extension seam.
 
 ## Runtime boundaries
 
+The commerce browser entry contains schemas, pure helpers and port declarations;
+its `/contracts` entry remains type-only. The reserved `/commerce/server` entry
+is the separate Node-only home for handlers, use cases, stores, adapters and
+engine composition. Browser bundle proof checks the complete commerce runtime
+graph. The additive `pricing/browser` entry directly exposes the existing quote
+primitive factory and acquisition capability/expectation validators from their
+pure defining files; it never imports the Node-only pricing root. Its nested
+same-module imports follow the existing module graph rules. The customer-default consumption guard reads the package implementation
+so its unapplied-evidence and forbidden-payload assertions retain their meaning.
+
+
 Invoicing service composition stays in the platform `/invoicing` entry. The
 reference host selects its existing accounting executor and job lease explicitly;
 module readiness runs before claim. Contributions describe existing registrations

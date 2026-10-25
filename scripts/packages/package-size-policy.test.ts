@@ -1,6 +1,8 @@
+import { buildSync } from "esbuild";
 import { execFileSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { builtinModules } from "node:module";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
@@ -15,6 +17,16 @@ const measurement = { packedBytes: 1000, unpackedBytes: 2000, files: 10, code: {
 const roots: string[] = [];
 const root = process.cwd();
 const publishedPackages = parsePackagesConfig(readFileSync(join(root, "config/openlup-packages.json"), "utf8")).packages.filter(({ publish }) => publish);
+// Contracts rules forbid Zod; the reference browser needs the three pricing runtime schemas.
+const platformBrowserRuntimeAllowlist = ["./pricing/browser"];
+function browserEntryKeysMatch(packageName: string, browserEntries: PackBudget["browserEntries"]): boolean {
+  const declared = packageName === "@openlup/platform" ? [
+    ...Object.entries(PLATFORM_MODULE_GRAPH).filter(([, module]) => "contracts" in module && module.contracts).map(([name]) => `./${name}/contracts`),
+    ...platformBrowserRuntimeAllowlist,
+  ].sort() : [];
+  const actual = Object.keys(browserEntries).sort();
+  return actual.length === declared.length && actual.every((subpath, index) => subpath === declared[index]);
+}
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
 const check = (measured = measurement) => checkPackBudget(entry, budget, measured);
 const checkSet = (measured = measurement, notes = "") => checkPackBudget(entry, budget, measured, "0.17.0", notes);
@@ -62,6 +74,29 @@ describe("package artifact limits", () => {
     const grown = browserEntryBytes(root, "entry.js");
     expect(checkBrowserEntry(entry, "./contracts", grown, small * 2)).toEqual([{ subject: `${entry.name}:./contracts`, rule: "browser-entry-size", detail: `minified+gzip bytes ${grown} exceeds cap ${small * 2}; raise the cap in a reviewed PR` }]);
   }, 25_000);
+  it.each(["./commerce", "./pricing"])("refuses an unlisted non-contracts browser entry %s", (subpath) => {
+    const platform = publishedPackages.find(({ name }) => name === "@openlup/platform")!;
+    const budget = readPackBudget(root, platform);
+    expect(browserEntryKeysMatch(platform.name, budget.browserEntries)).toBe(true);
+    expect(browserEntryKeysMatch(platform.name, { ...budget.browserEntries, [subpath]: 1000 })).toBe(false);
+  });
+  it.each(platformBrowserRuntimeAllowlist)("requires a byte budget and bundles allowlisted %s without Node imports", (subpath) => {
+    const platform = publishedPackages.find(({ name }) => name === "@openlup/platform")!;
+    const budget = readPackBudget(root, platform);
+    expect(budget.browserEntries[subpath]).toBeGreaterThan(0);
+    const withoutBudget = { ...budget.browserEntries };
+    delete withoutBudget[subpath];
+    expect(browserEntryKeysMatch(platform.name, withoutBudget)).toBe(false);
+    const directory = join(root, platform.directory);
+    const manifest = JSON.parse(readFileSync(join(directory, "package.json"), "utf8"));
+    const result = buildSync({
+      entryPoints: [join(directory, manifest.exports[subpath].import)],
+      bundle: true, platform: "browser", format: "esm", write: false, metafile: true,
+    });
+    const imports = [...Object.values(result.metafile.inputs), ...Object.values(result.metafile.outputs)].flatMap(input => input.imports);
+    expect(imports.filter(input => input.external || input.path.startsWith("node:") || builtinModules.includes(input.path))).toEqual([]);
+    expect(result.outputFiles).toHaveLength(1);
+  });
   // Keep each package's real artifact witness independent of the package count.
   it.each(publishedPackages)("passes $name real working-tree pack contents, budgets and browser-safe declarations", (entry) => {
     const tracked = new Set(execFileSync("git", ["ls-files", "-z"], { cwd: root, encoding: "utf8", timeout: 5_000 }).split("\0"));
@@ -71,12 +106,12 @@ describe("package artifact limits", () => {
     const budget = readPackBudget(root, entry);
     expect(checkTarballEntries(entry, entries, (path) => tracked.has(path) ? readFileSync(resolve(root, path)) : undefined), entry.name).toEqual([]);
     expect(checkPackBudget(entry, budget, measurePack(entries, report.size)), entry.name).toEqual([]);
-    const declared = entry.name === "@openlup/platform" ? Object.entries(PLATFORM_MODULE_GRAPH).filter(([, module]) => "contracts" in module && module.contracts).map(([name]) => `./${name}/contracts`) : [];
-    expect(Object.keys(budget.browserEntries).sort(), entry.name).toEqual(declared.sort());
+    expect(browserEntryKeysMatch(entry.name, budget.browserEntries), `${entry.name}: ${Object.keys(budget.browserEntries).sort().join(", ")}`).toBe(true);
   }, 30_000);
   it.each(publishedPackages.flatMap((entry) => Object.entries(readPackBudget(root, entry).browserEntries).map(([subpath, cap]) => ({ entry, subpath, cap }))))("caps $entry.name:$subpath real browser bundle", ({ entry, subpath, cap }) => {
     const directory = join(root, entry.directory);
     const manifest = JSON.parse(readFileSync(join(directory, "package.json"), "utf8"));
+    expect(manifest.exports).toHaveProperty([subpath, "import"], expect.any(String));
     expect(checkBrowserEntry(entry, subpath, browserEntryBytes(directory, manifest.exports[subpath].import), cap)).toEqual([]);
   }, 15_000);
 });

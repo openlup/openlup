@@ -106,6 +106,21 @@
       "import": "./dist/identity/contracts/index.js",
       "default": "./dist/identity/contracts/index.js"
     },
+    "./commerce": {
+      "types": "./dist/commerce/index.d.ts",
+      "import": "./dist/commerce/index.js",
+      "default": "./dist/commerce/index.js"
+    },
+    "./commerce/contracts": {
+      "types": "./dist/commerce/contracts/index.d.ts",
+      "import": "./dist/commerce/contracts/index.js",
+      "default": "./dist/commerce/contracts/index.js"
+    },
+    "./commerce/server": {
+      "types": "./dist/commerce/server/index.d.ts",
+      "import": "./dist/commerce/server/index.js",
+      "default": "./dist/commerce/server/index.js"
+    },
     "./communications": {
       "types": "./dist/communications/index.d.ts",
       "import": "./dist/communications/index.js",
@@ -130,6 +145,11 @@
       "types": "./dist/pricing/index.d.ts",
       "import": "./dist/pricing/index.js",
       "default": "./dist/pricing/index.js"
+    },
+    "./pricing/browser": {
+      "types": "./dist/pricing/browser/index.d.ts",
+      "import": "./dist/pricing/browser/index.js",
+      "default": "./dist/pricing/browser/index.js"
     },
     "./pricing/contracts": {
       "types": "./dist/pricing/contracts/index.d.ts",

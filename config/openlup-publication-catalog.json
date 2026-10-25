@@ -2358,6 +2358,18 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/api/commerce-contracts.api.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/api/commerce-server.api.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/api/commerce.api.md",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/api/communications-contracts.api.md",
       "class": "public-output"
     },
@@ -2447,6 +2459,10 @@
     },
     {
       "path": "packages/platform/api/payments.api.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/api/pricing-browser.api.md",
       "class": "public-output"
     },
     {
@@ -2927,6 +2943,118 @@
     },
     {
       "path": "packages/platform/src/catalog/validation.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/checkoutHelpers.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/checkoutResumeSchemas.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/checkoutSchemas.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/configuratorIntentPersistenceSchemas.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/configuratorIntentSchemas.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/contractPrimitives.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/contracts/availability.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/contracts/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/contracts/intent.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/contracts/order.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/contracts/orderMoney.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/contracts/ports.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/contracts/recovery.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/contracts/runtimePorts.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/contracts/state.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/customerDefaultsSnapshotSchemas.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/errors.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/fulfillmentEligibility.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/offerAvailabilitySchemas.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/orderDraftErrors.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/orderMoney.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/outboxEventSchemas.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/ports.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/recoveryDestination.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/runtimeErrors.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/schemas.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/index.ts",
       "class": "public-output"
     },
     {
@@ -4598,6 +4726,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/pricing/browser/index.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/pricing/catalogFactsProvenance.ts",
       "class": "public-output"
     },
@@ -5199,6 +5331,42 @@
     },
     {
       "path": "packages/platform/test/catalog/sellableBundleHandler.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/browserBoundary.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/commerceQuoteCompositionCharacterization.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/fulfillmentEligibility.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/orderMoney.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/outboxEventContracts.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/portFit.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/ports.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/recoveryDestinationPolicy.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/schemas.test.ts",
       "class": "public-output"
     },
     {
@@ -12210,6 +12378,10 @@
       "class": "public-output"
     },
     {
+      "path": "server/domains/commerce/checkoutOfferPolicyPort.ts",
+      "class": "public-output"
+    },
+    {
       "path": "server/domains/commerce/checkoutPaymentContinuationCredential.test.ts",
       "class": "public-output"
     },
@@ -17726,6 +17898,10 @@
       "class": "public-output"
     },
     {
+      "path": "src/domains/commerce/__snapshots__/commerceSchemaEquivalence.test.ts.snap",
+      "class": "public-output"
+    },
+    {
       "path": "src/domains/commerce/adminCatalogClient.test.ts",
       "class": "public-output"
     },
@@ -17887,6 +18063,14 @@
     },
     {
       "path": "src/domains/commerce/commerceRecommendationClient.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "src/domains/commerce/commerceSchemaEquivalence.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "src/domains/commerce/commerceSchemaRepairRegression.test.ts",
       "class": "public-output"
     },
     {

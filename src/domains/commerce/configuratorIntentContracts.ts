@@ -1,7 +1,6 @@
 import { z } from "../../lib/validation/zod.js";
 import { catalogAllergenSlugSchema } from "../catalog/contracts.js";
 import {
-  commerceIdempotencyKeySchema,
   commerceProductSlugSchema,
   commerceSkuSchema,
 } from "./contracts.js";
@@ -14,23 +13,24 @@ import {
   deliveryServiceSchema,
   pickupPointSchema,
 } from "../shipping/contracts.js";
+import { acquisitionCapabilitySchema } from "@openlup/platform/pricing/browser";
+import { createConfiguratorIntentSchemas, configuratorContactSchema, configuratorAddressCoreSchema, validateConfiguratorIntentCore } from "@openlup/platform/commerce";
 import { COMMERCE_MIN_ORDER_UNITS } from "./recommendationPolicyDeps.js";
 import { starterOfferIntentSchema } from "./starterOfferContracts.js";
 
-export const CONFIGURATOR_INTENT_VERSION = "commerce.configurator_intent.v1";
+export { CONFIGURATOR_INTENT_VERSION, configuratorModeSchema } from "@openlup/platform/commerce";
 export const CONFIGURATOR_FIXED_CADENCE_POLICY_VERSION =
   "commerce.configurator_fixed_cadence_14_21_28.v1";
 
 export const configuratorPetAgeBandSchema = z.enum(["puppy", "young", "adult", "senior"]);
 export const configuratorActivityLevelSchema = z.enum(["low", "normal", "high"]);
 export const configuratorBcsSchema = z.enum(["thin", "ideal", "overweight"]);
-export const configuratorModeSchema = z.enum(["one_time", "subscription"]);
+
 export const configuratorCadenceDaysSchema = z.union([
   z.literal(14),
   z.literal(21),
   z.literal(28),
 ]);
-const legacyConfiguratorCadenceDaysSchema = z.number().int().positive().max(120);
 export const configuratorDeliveryKindSchema = z.enum(["parcel-locker", "courier"]);
 export const configuratorPaymentMethodSchema = z.enum(["blik", "card", "transfer"]);
 // Open value space — format-validated slugs, not a closed enum (see slugFormat.ts).
@@ -38,22 +38,22 @@ export const configuratorAllergenSlugSchema = catalogAllergenSlugSchema;
 
 export const configuratorSizeConstraintSchema = commerceSizeConstraintSchema;
 
-export const configuratorIntentSchema = z
-  .object({
-    version: z.literal(CONFIGURATOR_INTENT_VERSION),
+const { configuratorIntentCoreSchema, configuratorVariantCoreSchema } = createConfiguratorIntentSchemas(commerceSkuSchema);
+// Interleave host and core fields in legacy order, including validation issues.
+export const configuratorIntentSchema = configuratorIntentCoreSchema
+  .pick({ version: true })
+  .extend({
     // Additive rollout discriminator. The deployed persistence RPC accepts
     // extra JSON fields but hard-requires intent v1, so this marker lets new
     // writers opt into the fixed rhythms without invalidating in-flight v1
     // payloads that used the former coverage-derived cadence.
     cadencePolicyVersion: z.literal(CONFIGURATOR_FIXED_CADENCE_POLICY_VERSION).optional(),
-    idempotencyKey: commerceIdempotencyKeySchema,
+    idempotencyKey: configuratorIntentCoreSchema.shape.idempotencyKey,
     locale: z.enum(["pl", "en"]).default("pl"),
-    mode: configuratorModeSchema,
-    cadenceDays: legacyConfiguratorCadenceDaysSchema.nullable().default(null),
-    promoCodes: z.array(z.string().trim().min(1).max(80)).max(20).default([]),
-    // Persistent first-party visitor id; carried into the order metadata so a paid
-    // first-order can be device-keyed for the first-order guard.
-    visitorId: z.string().trim().min(1).max(120).optional(),
+    mode: configuratorIntentCoreSchema.shape.mode,
+    cadenceDays: configuratorIntentCoreSchema.shape.cadenceDays,
+    promoCodes: configuratorIntentCoreSchema.shape.promoCodes,
+    visitorId: configuratorIntentCoreSchema.shape.visitorId,
     sizeConstraint: configuratorSizeConstraintSchema,
     petProfile: z
       .object({
@@ -71,22 +71,8 @@ export const configuratorIntentSchema = z
         dailyKcalOverride: z.number().int().positive().nullable().default(null),
       })
       .strict(),
-    contact: z
-      .object({
-        firstName: z.string().trim().min(1).max(80),
-        lastName: z.string().trim().min(1).max(80),
-        email: z.string().trim().email().max(160),
-        phone: z.string().trim().min(6).max(32),
-      })
-      .strict(),
-    address: z
-      .object({
-        street: z.string().trim().min(3).max(160),
-        postalCode: z.string().trim().min(3).max(16),
-        city: z.string().trim().min(2).max(120),
-        country: z.literal("PL"),
-      })
-      .strict(),
+    contact: configuratorContactSchema,
+    address: configuratorAddressCoreSchema.extend({ country: z.literal("PL") }),
     selectedDelivery: z
       .object({
         kind: configuratorDeliveryKindSchema,
@@ -127,14 +113,8 @@ export const configuratorIntentSchema = z
     selectedFlavorSlugs: z.array(commerceProductSlugSchema).min(1).max(12),
     selectedVariants: z
       .array(
-        z
-          .object({
-            variantId: z.string().trim().min(1).max(120),
-            sku: commerceSkuSchema,
-            flavorSlug: commerceProductSlugSchema,
-            qty: z.number().int().positive().max(99),
-          })
-          .strict(),
+        configuratorVariantCoreSchema.omit({ qty: true })
+          .extend({ flavorSlug: commerceProductSlugSchema, qty: configuratorVariantCoreSchema.shape.qty }),
       )
       .min(1)
       .max(50),
@@ -143,6 +123,7 @@ export const configuratorIntentSchema = z
     // recomputes every term from the real basket and rejects a mismatch the same
     // way a moved total is rejected. Absent means the ordinary acquisition path.
     starterOffer: starterOfferIntentSchema.optional(),
+    acquisitionCapability: acquisitionCapabilitySchema.optional(),
     consents: z
       .object({
         gdpr: z.literal(true),
@@ -157,17 +138,11 @@ export const configuratorIntentSchema = z
       })
       .strict(),
     consciousAllergenOverride: z.boolean().default(false),
+    offerVersion: configuratorIntentCoreSchema.shape.offerVersion,
+    minimumUnits: configuratorIntentCoreSchema.shape.minimumUnits,
   })
   .strict()
   .superRefine((intent, ctx) => {
-    if (intent.mode === "subscription" && !intent.cadenceDays) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "subscription intent requires cadenceDays",
-        path: ["cadenceDays"],
-      });
-    }
-
     if (
       intent.cadencePolicyVersion === CONFIGURATOR_FIXED_CADENCE_POLICY_VERSION &&
       intent.cadenceDays != null &&
@@ -180,17 +155,7 @@ export const configuratorIntentSchema = z
       });
     }
 
-    const selectedUnitCount = intent.selectedVariants.reduce(
-      (total, variant) => total + variant.qty,
-      0,
-    );
-    if (selectedUnitCount < COMMERCE_MIN_ORDER_UNITS) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: `selected variants require at least ${COMMERCE_MIN_ORDER_UNITS} total units`,
-        path: ["selectedVariants"],
-      });
-    }
+    validateConfiguratorIntentCore(intent, ctx, COMMERCE_MIN_ORDER_UNITS);
 
     const flavorSlugs = new Set(intent.selectedFlavorSlugs);
     for (const [index, variant] of intent.selectedVariants.entries()) {

@@ -728,8 +728,8 @@ export declare function createInventorySubscriptionForecastResponseSchema(provid
         providerStockLastSyncedAt: z.ZodNullable<z.ZodString>;
         providerStockStaleAfter: z.ZodNullable<z.ZodString>;
         stockStatus: z.ZodEnum<{
-            stale: "stale";
             missing: "missing";
+            stale: "stale";
             fresh: "fresh";
         }>;
         openHardReservations: z.ZodNumber;

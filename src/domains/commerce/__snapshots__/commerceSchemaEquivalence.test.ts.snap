@@ -1,0 +1,1019 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`preserves pre-extraction parse results: action none 1`] = `
+{
+  "data": {
+    "kind": "none",
+  },
+  "success": true,
+}
+`;
+
+exports[`preserves pre-extraction parse results: action redirect refusal 1`] = `
+{
+  "issues": [
+    {
+      "code": "invalid_format",
+      "format": "url",
+      "message": "Invalid URL",
+      "path": [
+        "url",
+      ],
+    },
+  ],
+  "success": false,
+}
+`;
+
+exports[`preserves pre-extraction parse results: action secret refusal 1`] = `
+{
+  "issues": [
+    {
+      "code": "custom",
+      "message": "<embedded-provider> embedded checkout requires a clientSecret",
+      "path": [
+        "clientSecret",
+      ],
+    },
+  ],
+  "success": false,
+}
+`;
+
+exports[`preserves pre-extraction parse results: cart 1`] = `
+{
+  "data": {
+    "lines": [
+      {
+        "quantity": 1,
+        "sku": "ITEM-A",
+      },
+    ],
+    "locale": "en",
+  },
+  "success": true,
+}
+`;
+
+exports[`preserves pre-extraction parse results: cart bounds 1`] = `
+{
+  "issues": [
+    {
+      "code": "too_small",
+      "inclusive": true,
+      "message": "Too small: expected string to have >=1 characters",
+      "minimum": 1,
+      "origin": "string",
+      "path": [
+        "lines",
+        0,
+        "sku",
+      ],
+    },
+    {
+      "code": "invalid_format",
+      "format": "regex",
+      "message": "Invalid string: must match pattern /^[a-zA-Z0-9._:-]+$/",
+      "origin": "string",
+      "path": [
+        "lines",
+        0,
+        "sku",
+      ],
+      "pattern": "/^[a-zA-Z0-9._:-]+$/",
+    },
+    {
+      "code": "too_small",
+      "inclusive": true,
+      "message": "Too small: expected number to be >=1",
+      "minimum": 1,
+      "origin": "number",
+      "path": [
+        "lines",
+        0,
+        "quantity",
+      ],
+    },
+  ],
+  "success": false,
+}
+`;
+
+exports[`preserves pre-extraction parse results: cart locale refusal 1`] = `
+{
+  "issues": [
+    {
+      "code": "invalid_value",
+      "message": "Invalid option: expected one of "pl"|"en"",
+      "path": [
+        "locale",
+      ],
+      "values": [
+        "pl",
+        "en",
+      ],
+    },
+  ],
+  "success": false,
+}
+`;
+
+exports[`preserves pre-extraction parse results: checkout defaults 1`] = `
+{
+  "data": {
+    "intent": {
+      "address": {
+        "city": "Example",
+        "country": "<host-country>",
+        "postalCode": "00000",
+        "street": "Example 1",
+      },
+      "cadenceDays": null,
+      "consciousAllergenOverride": false,
+      "consents": {
+        "gdpr": true,
+        "marketing": false,
+        "terms": true,
+      },
+      "contact": {
+        "email": "buyer@example.test",
+        "firstName": "Buyer",
+        "lastName": "Example",
+        "phone": "123456789",
+      },
+      "idempotencyKey": "example-intent-1",
+      "locale": "pl",
+      "mode": "one_time",
+      "paymentMethodIntent": {
+        "method": "card",
+        "saveForSubscription": false,
+      },
+      "petProfile": {
+        "activityLevel": "normal",
+        "ageBand": "adult",
+        "allergenSlugs": [],
+        "bcs": "ideal",
+        "breed": "mixed",
+        "dailyKcalOverride": null,
+        "name": "Example",
+        "weightKg": 10,
+      },
+      "promoCodes": [],
+      "selectedDelivery": {
+        "deliveryKind": "courier",
+        "kind": "courier",
+        "providerRef": null,
+      },
+      "selectedFlavorSlugs": [
+        "item-a",
+      ],
+      "selectedVariants": [
+        {
+          "flavorSlug": "item-a",
+          "qty": 14,
+          "sku": "ITEM-A",
+          "variantId": "variant-a",
+        },
+      ],
+      "sizeConstraint": {
+        "kind": "unit_count",
+        "value": 14,
+      },
+      "version": "commerce.configurator_intent.v1",
+    },
+    "invoicePreference": {
+      "kind": "b2c_named",
+    },
+    "paymentProvider": "hidden_rehearsal",
+    "returnContext": "public",
+  },
+  "success": true,
+}
+`;
+
+exports[`preserves pre-extraction parse results: checkout placeholder 1`] = `
+{
+  "data": {
+    "checkout": {
+      "cartId": "cart_a",
+      "id": "checkout_a",
+      "paymentProviderSessionId": null,
+      "redirectUrl": null,
+      "status": "not_configured",
+    },
+    "contractVersion": "commerce.v0",
+  },
+  "success": true,
+}
+`;
+
+exports[`preserves pre-extraction parse results: checkout provider refusal 1`] = `
+{
+  "issues": [
+    {
+      "code": "custom",
+      "message": "<interactive-provider> checkout requires <interactive-provider> paymentExecution",
+      "path": [
+        "paymentExecution",
+      ],
+    },
+  ],
+  "success": false,
+}
+`;
+
+exports[`preserves pre-extraction parse results: checkout redirect mismatch 1`] = `
+{
+  "issues": [
+    {
+      "code": "custom",
+      "message": "checkout status must match redirect/provider fields",
+      "path": [
+        "checkout",
+      ],
+    },
+  ],
+  "success": false,
+}
+`;
+
+exports[`preserves pre-extraction parse results: checkout strict refusal 1`] = `
+{
+  "issues": [
+    {
+      "code": "unrecognized_keys",
+      "keys": [
+        "extra",
+      ],
+      "message": "Unrecognized key: "extra"",
+      "path": [],
+    },
+  ],
+  "success": false,
+}
+`;
+
+exports[`preserves pre-extraction parse results: checkout subscription refusal 1`] = `
+{
+  "issues": [
+    {
+      "code": "custom",
+      "message": "subscription checkout requires saveForSubscription",
+      "path": [
+        "intent",
+        "paymentMethodIntent",
+        "saveForSubscription",
+      ],
+    },
+  ],
+  "success": false,
+}
+`;
+
+exports[`preserves pre-extraction parse results: defaults 1`] = `
+{
+  "data": {
+    "addresses": {
+      "applied": false,
+      "defaultBillingAddressId": null,
+      "defaultOrdererProfileId": null,
+      "defaultShippingAddressId": null,
+      "hasCourierInstructions": false,
+      "hasDefaultBillingAddress": false,
+      "hasDefaultOrdererProfile": false,
+      "hasDefaultShippingAddress": false,
+      "hasDeliveryNotes": false,
+      "source": "customer_address_profiles",
+    },
+    "clientId": "11111111-1111-4111-8111-111111111111",
+    "payment": {
+      "applied": false,
+      "available": false,
+      "methodKind": null,
+      "scope": null,
+      "source": "customer_payment_preferences",
+    },
+    "redactedFields": [],
+    "version": "commerce.customer_defaults_snapshot.v1",
+  },
+  "success": true,
+}
+`;
+
+exports[`preserves pre-extraction parse results: defaults nested refusal 1`] = `
+{
+  "issues": [
+    {
+      "code": "unrecognized_keys",
+      "keys": [
+        "providerPayload",
+      ],
+      "message": "Unrecognized key: "providerPayload"",
+      "path": [
+        "payment",
+      ],
+    },
+  ],
+  "success": false,
+}
+`;
+
+exports[`preserves pre-extraction parse results: defaults raw refusal 1`] = `
+{
+  "issues": [
+    {
+      "code": "unrecognized_keys",
+      "keys": [
+        "email",
+      ],
+      "message": "Unrecognized key: "email"",
+      "path": [],
+    },
+  ],
+  "success": false,
+}
+`;
+
+exports[`preserves pre-extraction parse results: fixed cadence refusal 1`] = `
+{
+  "issues": [
+    {
+      "code": "custom",
+      "message": "fixed-cadence configurator intents require a 14, 21 or 28 day cadence",
+      "path": [
+        "cadenceDays",
+      ],
+    },
+  ],
+  "success": false,
+}
+`;
+
+exports[`preserves pre-extraction parse results: intent address refusal 1`] = `
+{
+  "issues": [
+    {
+      "code": "invalid_value",
+      "message": "Invalid input: expected "<host-country>"",
+      "path": [
+        "address",
+        "country",
+      ],
+      "values": [
+        "<host-country>",
+      ],
+    },
+  ],
+  "success": false,
+}
+`;
+
+exports[`preserves pre-extraction parse results: intent cadenceDays refusal 1`] = `
+{
+  "issues": [
+    {
+      "code": "too_small",
+      "inclusive": false,
+      "message": "Too small: expected number to be >0",
+      "minimum": 0,
+      "origin": "number",
+      "path": [
+        "cadenceDays",
+      ],
+    },
+  ],
+  "success": false,
+}
+`;
+
+exports[`preserves pre-extraction parse results: intent defaults 1`] = `
+{
+  "data": {
+    "address": {
+      "city": "Example",
+      "country": "<host-country>",
+      "postalCode": "00000",
+      "street": "Example 1",
+    },
+    "cadenceDays": null,
+    "consciousAllergenOverride": false,
+    "consents": {
+      "gdpr": true,
+      "marketing": false,
+      "terms": true,
+    },
+    "contact": {
+      "email": "buyer@example.test",
+      "firstName": "Buyer",
+      "lastName": "Example",
+      "phone": "123456789",
+    },
+    "idempotencyKey": "example-intent-1",
+    "locale": "pl",
+    "mode": "one_time",
+    "paymentMethodIntent": {
+      "method": "card",
+      "saveForSubscription": false,
+    },
+    "petProfile": {
+      "activityLevel": "normal",
+      "ageBand": "adult",
+      "allergenSlugs": [],
+      "bcs": "ideal",
+      "breed": "mixed",
+      "dailyKcalOverride": null,
+      "name": "Example",
+      "weightKg": 10,
+    },
+    "promoCodes": [],
+    "selectedDelivery": {
+      "deliveryKind": "courier",
+      "kind": "courier",
+      "providerRef": null,
+    },
+    "selectedFlavorSlugs": [
+      "item-a",
+    ],
+    "selectedVariants": [
+      {
+        "flavorSlug": "item-a",
+        "qty": 14,
+        "sku": "ITEM-A",
+        "variantId": "variant-a",
+      },
+    ],
+    "sizeConstraint": {
+      "kind": "unit_count",
+      "value": 14,
+    },
+    "version": "commerce.configurator_intent.v1",
+  },
+  "success": true,
+}
+`;
+
+exports[`preserves pre-extraction parse results: intent extra refusal 1`] = `
+{
+  "issues": [
+    {
+      "code": "unrecognized_keys",
+      "keys": [
+        "extra",
+      ],
+      "message": "Unrecognized key: "extra"",
+      "path": [],
+    },
+  ],
+  "success": false,
+}
+`;
+
+exports[`preserves pre-extraction parse results: intent locale refusal 1`] = `
+{
+  "issues": [
+    {
+      "code": "invalid_value",
+      "message": "Invalid option: expected one of "pl"|"en"",
+      "path": [
+        "locale",
+      ],
+      "values": [
+        "pl",
+        "en",
+      ],
+    },
+  ],
+  "success": false,
+}
+`;
+
+exports[`preserves pre-extraction parse results: intent mode refusal 1`] = `
+{
+  "issues": [
+    {
+      "code": "invalid_value",
+      "message": "Invalid option: expected one of "one_time"|"subscription"",
+      "path": [
+        "mode",
+      ],
+      "values": [
+        "one_time",
+        "subscription",
+      ],
+    },
+  ],
+  "success": false,
+}
+`;
+
+exports[`preserves pre-extraction parse results: intent petProfile refusal 1`] = `
+{
+  "issues": [
+    {
+      "code": "too_small",
+      "inclusive": false,
+      "message": "Too small: expected number to be >0",
+      "minimum": 0,
+      "origin": "number",
+      "path": [
+        "petProfile",
+        "weightKg",
+      ],
+    },
+  ],
+  "success": false,
+}
+`;
+
+exports[`preserves pre-extraction parse results: intent selectedDelivery refusal 1`] = `
+{
+  "issues": [
+    {
+      "code": "invalid_type",
+      "expected": "string",
+      "message": "Invalid input: expected string, received undefined",
+      "path": [
+        "selectedDelivery",
+        "pickupPoint",
+        "provider",
+      ],
+    },
+    {
+      "code": "invalid_type",
+      "expected": "string",
+      "message": "Invalid input: expected string, received undefined",
+      "path": [
+        "selectedDelivery",
+        "pickupPoint",
+        "name",
+      ],
+    },
+    {
+      "code": "invalid_type",
+      "expected": "object",
+      "message": "Invalid input: expected object, received undefined",
+      "path": [
+        "selectedDelivery",
+        "pickupPoint",
+        "address",
+      ],
+    },
+  ],
+  "success": false,
+}
+`;
+
+exports[`preserves pre-extraction parse results: intent selectedFlavorSlugs refusal 1`] = `
+{
+  "issues": [
+    {
+      "code": "custom",
+      "message": "selected variant flavor must be present in selectedFlavorSlugs",
+      "path": [
+        "selectedVariants",
+        0,
+        "flavorSlug",
+      ],
+    },
+    {
+      "code": "custom",
+      "message": "selected flavor must resolve to at least one selected variant",
+      "path": [
+        "selectedFlavorSlugs",
+        0,
+      ],
+    },
+  ],
+  "success": false,
+}
+`;
+
+exports[`preserves pre-extraction parse results: intent selectedVariants refusal 1`] = `
+{
+  "issues": [
+    {
+      "code": "custom",
+      "message": "selected variants require at least 14 total units",
+      "path": [
+        "selectedVariants",
+      ],
+    },
+  ],
+  "success": false,
+}
+`;
+
+exports[`preserves pre-extraction parse results: intent sizeConstraint refusal 1`] = `
+{
+  "issues": [
+    {
+      "code": "custom",
+      "message": "feeding_days size constraint requires dailyKcalOverride",
+      "path": [
+        "sizeConstraint",
+        "dailyKcalOverride",
+      ],
+    },
+  ],
+  "success": false,
+}
+`;
+
+exports[`preserves pre-extraction parse results: invoice address defaults 1`] = `
+{
+  "data": {
+    "city": "Example",
+    "country": "<host-country>",
+    "line1": "Example 1",
+    "line2": null,
+    "postalCode": "00000",
+    "source": "example",
+  },
+  "success": true,
+}
+`;
+
+exports[`preserves pre-extraction parse results: invoice country refusal 1`] = `
+{
+  "issues": [
+    {
+      "code": "invalid_value",
+      "message": "Invalid input: expected "<host-country>"",
+      "path": [
+        "country",
+      ],
+      "values": [
+        "<host-country>",
+      ],
+    },
+  ],
+  "success": false,
+}
+`;
+
+exports[`preserves pre-extraction parse results: invoice tax refusal 1`] = `
+{
+  "issues": [
+    {
+      "code": "custom",
+      "message": "forms:fields.taxId.invalid",
+      "path": [
+        "taxId",
+      ],
+    },
+  ],
+  "success": false,
+}
+`;
+
+exports[`preserves pre-extraction parse results: key normalized 1`] = `
+{
+  "data": "example-key:1",
+  "success": true,
+}
+`;
+
+exports[`preserves pre-extraction parse results: key refusal 1`] = `
+{
+  "issues": [
+    {
+      "code": "too_small",
+      "inclusive": true,
+      "message": "Too small: expected string to have >=8 characters",
+      "minimum": 8,
+      "origin": "string",
+      "path": [],
+    },
+    {
+      "code": "invalid_format",
+      "format": "regex",
+      "message": "Invalid string: must match pattern /^[a-zA-Z0-9._:-]+$/",
+      "origin": "string",
+      "path": [],
+      "pattern": "/^[a-zA-Z0-9._:-]+$/",
+    },
+  ],
+  "success": false,
+}
+`;
+
+exports[`preserves pre-extraction parse results: legacy cadence 1`] = `
+{
+  "data": {
+    "address": {
+      "city": "Example",
+      "country": "<host-country>",
+      "postalCode": "00000",
+      "street": "Example 1",
+    },
+    "cadenceDays": 20,
+    "consciousAllergenOverride": false,
+    "consents": {
+      "gdpr": true,
+      "marketing": false,
+      "terms": true,
+    },
+    "contact": {
+      "email": "buyer@example.test",
+      "firstName": "Buyer",
+      "lastName": "Example",
+      "phone": "123456789",
+    },
+    "idempotencyKey": "example-intent-1",
+    "locale": "pl",
+    "mode": "one_time",
+    "paymentMethodIntent": {
+      "method": "card",
+      "saveForSubscription": false,
+    },
+    "petProfile": {
+      "activityLevel": "normal",
+      "ageBand": "adult",
+      "allergenSlugs": [],
+      "bcs": "ideal",
+      "breed": "mixed",
+      "dailyKcalOverride": null,
+      "name": "Example",
+      "weightKg": 10,
+    },
+    "promoCodes": [],
+    "selectedDelivery": {
+      "deliveryKind": "courier",
+      "kind": "courier",
+      "providerRef": null,
+    },
+    "selectedFlavorSlugs": [
+      "item-a",
+    ],
+    "selectedVariants": [
+      {
+        "flavorSlug": "item-a",
+        "qty": 14,
+        "sku": "ITEM-A",
+        "variantId": "variant-a",
+      },
+    ],
+    "sizeConstraint": {
+      "kind": "unit_count",
+      "value": 14,
+    },
+    "version": "commerce.configurator_intent.v1",
+  },
+  "success": true,
+}
+`;
+
+exports[`preserves pre-extraction parse results: persistence 1`] = `
+{
+  "data": {
+    "addressId": "11111111-1111-4111-8111-111111111111",
+    "clientId": "11111111-1111-4111-8111-111111111111",
+    "contractVersion": "commerce.configurator_intent_persistence.v1",
+    "idempotencyKey": "example-intent-1",
+    "intentVersion": "commerce.configurator_intent.v1",
+    "petId": "11111111-1111-4111-8111-111111111111",
+    "replayed": true,
+  },
+  "success": true,
+}
+`;
+
+exports[`preserves pre-extraction parse results: persistence missing 1`] = `
+{
+  "issues": [
+    {
+      "code": "invalid_value",
+      "message": "Invalid input: expected "commerce.configurator_intent_persistence.v1"",
+      "path": [
+        "contractVersion",
+      ],
+      "values": [
+        "commerce.configurator_intent_persistence.v1",
+      ],
+    },
+    {
+      "code": "invalid_value",
+      "message": "Invalid input: expected "commerce.configurator_intent.v1"",
+      "path": [
+        "intentVersion",
+      ],
+      "values": [
+        "commerce.configurator_intent.v1",
+      ],
+    },
+    {
+      "code": "invalid_type",
+      "expected": "string",
+      "message": "Invalid input: expected string, received undefined",
+      "path": [
+        "idempotencyKey",
+      ],
+    },
+    {
+      "code": "invalid_type",
+      "expected": "string",
+      "message": "Invalid input: expected string, received undefined",
+      "path": [
+        "clientId",
+      ],
+    },
+    {
+      "code": "invalid_type",
+      "expected": "string",
+      "message": "Invalid input: expected string, received undefined",
+      "path": [
+        "petId",
+      ],
+    },
+    {
+      "code": "invalid_type",
+      "expected": "string",
+      "message": "Invalid input: expected string, received undefined",
+      "path": [
+        "addressId",
+      ],
+    },
+    {
+      "code": "invalid_type",
+      "expected": "boolean",
+      "message": "Invalid input: expected boolean, received undefined",
+      "path": [
+        "replayed",
+      ],
+    },
+  ],
+  "success": false,
+}
+`;
+
+exports[`preserves pre-extraction parse results: resume cadence refusal 1`] = `
+{
+  "issues": [
+    {
+      "code": "custom",
+      "message": "cadenceDays can only be set for subscription resume state",
+      "path": [
+        "cadenceDays",
+      ],
+    },
+  ],
+  "success": false,
+}
+`;
+
+exports[`preserves pre-extraction parse results: resume defaults 1`] = `
+{
+  "data": {
+    "cadenceDays": null,
+    "cart": {
+      "items": [],
+    },
+    "completion": {
+      "account": false,
+      "billing": false,
+      "cadence": false,
+      "payment": false,
+      "petProfile": false,
+      "productSelection": false,
+      "review": false,
+      "shipping": false,
+    },
+    "mode": null,
+    "redactedFields": [],
+    "version": "commerce.checkout_resume.v1",
+  },
+  "success": true,
+}
+`;
+
+exports[`preserves pre-extraction parse results: resume nested refusal 1`] = `
+{
+  "issues": [
+    {
+      "code": "unrecognized_keys",
+      "keys": [
+        "providerPayload",
+      ],
+      "message": "Unrecognized key: "providerPayload"",
+      "path": [
+        "cart",
+        "items",
+        0,
+      ],
+    },
+  ],
+  "success": false,
+}
+`;
+
+exports[`preserves pre-extraction parse results: resume raw refusal 1`] = `
+{
+  "issues": [
+    {
+      "code": "unrecognized_keys",
+      "keys": [
+        "email",
+      ],
+      "message": "Unrecognized key: "email"",
+      "path": [],
+    },
+  ],
+  "success": false,
+}
+`;
+
+exports[`preserves pre-extraction parse results: resume request defaults 1`] = `
+{
+  "data": {
+    "draftState": {
+      "cadenceDays": null,
+      "cart": {
+        "items": [],
+      },
+      "completion": {
+        "account": false,
+        "billing": false,
+        "cadence": false,
+        "payment": false,
+        "petProfile": false,
+        "productSelection": false,
+        "review": false,
+        "shipping": false,
+      },
+      "mode": null,
+      "redactedFields": [],
+      "version": "commerce.checkout_resume.v1",
+    },
+    "lastSectionId": "pet_profile",
+    "ttlMinutes": 120,
+  },
+  "success": true,
+}
+`;
+
+exports[`preserves pre-extraction parse results: resume section refusal 1`] = `
+{
+  "issues": [
+    {
+      "code": "invalid_value",
+      "message": "Invalid option: expected one of "start"|"pet_profile"|"product_selection"|"cadence"|"account"|"shipping"|"billing"|"payment"|"review"",
+      "path": [
+        "lastSectionId",
+      ],
+      "values": [
+        "start",
+        "pet_profile",
+        "product_selection",
+        "cadence",
+        "account",
+        "shipping",
+        "billing",
+        "payment",
+        "review",
+      ],
+    },
+  ],
+  "success": false,
+}
+`;
+
+exports[`preserves pre-extraction parse results: size defaults 1`] = `
+{
+  "data": {
+    "kind": "unit_count",
+    "value": 1,
+  },
+  "success": true,
+}
+`;
+
+exports[`preserves pre-extraction parse results: size strict refusal 1`] = `
+{
+  "issues": [
+    {
+      "code": "unrecognized_keys",
+      "keys": [
+        "extra",
+      ],
+      "message": "Unrecognized key: "extra"",
+      "path": [],
+    },
+  ],
+  "success": false,
+}
+`;
+
+exports[`preserves pre-extraction parse results: subscription missing cadence 1`] = `
+{
+  "issues": [
+    {
+      "code": "custom",
+      "message": "subscription intent requires cadenceDays",
+      "path": [
+        "cadenceDays",
+      ],
+    },
+  ],
+  "success": false,
+}
+`;

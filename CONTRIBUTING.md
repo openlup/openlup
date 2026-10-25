@@ -170,6 +170,18 @@ and rejects its missing-export mutant. The composed PostgreSQL isolation table
 keeps an ambiguous normal or stock row ahead of healthy obligations in two runs;
 its no-isolation mutants fail the same witness.
 
+M11 K1 commerce contract witnesses live under `packages/platform/test/commerce`
+and join required root Vitest discovery. They cover neutral schema bindings,
+strict refusal and replay, generic runtime/offer port fit, fulfillment decisions,
+recovery routing, nominal errors, delivery-contact projection and W4 quote
+composition. Unchanged reference suites plus a captured pre-extraction parse
+transcript protect host extensions. The installed consumer exercises both
+entries, one-unit projection/refusal, opaque offer validation and injected
+minimum defaults. The commerce runtime has no cross-module graph edges; its
+quote ports take host-owned types as parameters. Commerce contracts retain the
+prohibition on cross-module imports. No gate budget, provider requirement or
+activation is added.
+
 The native subscription renewal selection is
 `npm test -- tests/postgres/subscriptionRenewalLifecycle.test.ts --maxWorkers=1`.
 It uses one disposable PostgreSQL container for N1 exact-prefix restart,

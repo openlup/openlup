@@ -1382,9 +1382,9 @@ export declare const COMMERCE_FULFILLMENT_OPERATION_TYPES: readonly ["created", 
 export declare const COMMERCE_FULFILLMENT_PROVIDER_ATTEMPT_STATUSES: readonly ["recorded", "succeeded", "failed"];
 export declare const commerceFulfillmentStatusSchema: z.ZodEnum<{
     created: "created";
+    cancelled: "cancelled";
     exception: "exception";
     delivered: "delivered";
-    cancelled: "cancelled";
     packed: "packed";
     in_transit: "in_transit";
     label_pending: "label_pending";
@@ -1402,27 +1402,27 @@ export declare const commerceFulfillmentOperationTypeSchema: z.ZodEnum<{
 }>;
 export declare const commerceFulfillmentProviderAttemptStatusSchema: z.ZodEnum<{
     failed: "failed";
-    recorded: "recorded";
     succeeded: "succeeded";
+    recorded: "recorded";
 }>;
 export declare const commerceFulfillmentPaymentStatusSchema: z.ZodEnum<{
     expired: "expired";
     created: "created";
     failed: "failed";
     cancelled: "cancelled";
-    succeeded: "succeeded";
     refunded: "refunded";
+    not_started: "not_started";
     requires_action: "requires_action";
     processing: "processing";
     partially_refunded: "partially_refunded";
     disputed: "disputed";
-    not_started: "not_started";
+    succeeded: "succeeded";
 }>;
 export declare const commerceFulfillmentInventoryStatusSchema: z.ZodEnum<{
     expired: "expired";
-    missing: "missing";
-    reserved: "reserved";
     not_checked: "not_checked";
+    reserved: "reserved";
+    missing: "missing";
     released: "released";
     consumed: "consumed";
     review_required: "review_required";
@@ -1463,22 +1463,22 @@ export declare const commerceFulfillmentPaymentSummarySchema: z.ZodObject<{
         created: "created";
         failed: "failed";
         cancelled: "cancelled";
-        succeeded: "succeeded";
         refunded: "refunded";
+        not_started: "not_started";
         requires_action: "requires_action";
         processing: "processing";
         partially_refunded: "partially_refunded";
         disputed: "disputed";
-        not_started: "not_started";
+        succeeded: "succeeded";
     }>;
     providerPaymentId: z.ZodNullable<z.ZodString>;
 }, z.core.$strict>;
 export declare const commerceFulfillmentInventorySummarySchema: z.ZodObject<{
     status: z.ZodEnum<{
         expired: "expired";
-        missing: "missing";
-        reserved: "reserved";
         not_checked: "not_checked";
+        reserved: "reserved";
+        missing: "missing";
         released: "released";
         consumed: "consumed";
         review_required: "review_required";
@@ -1527,9 +1527,9 @@ export declare const commerceFulfillmentOrderSchema: z.ZodObject<{
     clientId: z.ZodNullable<z.ZodGUID>;
     status: z.ZodEnum<{
         created: "created";
+        cancelled: "cancelled";
         exception: "exception";
         delivered: "delivered";
-        cancelled: "cancelled";
         packed: "packed";
         in_transit: "in_transit";
         label_pending: "label_pending";
@@ -1565,22 +1565,22 @@ export declare const commerceFulfillmentOrderSchema: z.ZodObject<{
             created: "created";
             failed: "failed";
             cancelled: "cancelled";
-            succeeded: "succeeded";
             refunded: "refunded";
+            not_started: "not_started";
             requires_action: "requires_action";
             processing: "processing";
             partially_refunded: "partially_refunded";
             disputed: "disputed";
-            not_started: "not_started";
+            succeeded: "succeeded";
         }>;
         providerPaymentId: z.ZodNullable<z.ZodString>;
     }, z.core.$strict>;
     inventory: z.ZodObject<{
         status: z.ZodEnum<{
             expired: "expired";
-            missing: "missing";
-            reserved: "reserved";
             not_checked: "not_checked";
+            reserved: "reserved";
+            missing: "missing";
             released: "released";
             consumed: "consumed";
             review_required: "review_required";
@@ -1631,9 +1631,9 @@ export declare const adminCommerceFulfillmentOrdersListRequestSchema: z.ZodObjec
     pageSize: z.ZodDefault<z.ZodCoercedNumber<unknown>>;
     status: z.ZodOptional<z.ZodEnum<{
         created: "created";
+        cancelled: "cancelled";
         exception: "exception";
         delivered: "delivered";
-        cancelled: "cancelled";
         packed: "packed";
         in_transit: "in_transit";
         label_pending: "label_pending";
@@ -1656,8 +1656,8 @@ export declare const adminCommerceFulfillmentRecordProviderAttemptRequestSchema:
     providerKind: z.ZodString;
     status: z.ZodEnum<{
         failed: "failed";
-        recorded: "recorded";
         succeeded: "succeeded";
+        recorded: "recorded";
     }>;
     requestPayload: z.ZodDefault<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
     responsePayload: z.ZodDefault<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
@@ -1705,9 +1705,9 @@ export declare const adminCommerceFulfillmentOrdersListResponseSchema: z.ZodObje
         clientId: z.ZodNullable<z.ZodGUID>;
         status: z.ZodEnum<{
             created: "created";
+            cancelled: "cancelled";
             exception: "exception";
             delivered: "delivered";
-            cancelled: "cancelled";
             packed: "packed";
             in_transit: "in_transit";
             label_pending: "label_pending";
@@ -1743,22 +1743,22 @@ export declare const adminCommerceFulfillmentOrdersListResponseSchema: z.ZodObje
                 created: "created";
                 failed: "failed";
                 cancelled: "cancelled";
-                succeeded: "succeeded";
                 refunded: "refunded";
+                not_started: "not_started";
                 requires_action: "requires_action";
                 processing: "processing";
                 partially_refunded: "partially_refunded";
                 disputed: "disputed";
-                not_started: "not_started";
+                succeeded: "succeeded";
             }>;
             providerPaymentId: z.ZodNullable<z.ZodString>;
         }, z.core.$strict>;
         inventory: z.ZodObject<{
             status: z.ZodEnum<{
                 expired: "expired";
-                missing: "missing";
-                reserved: "reserved";
                 not_checked: "not_checked";
+                reserved: "reserved";
+                missing: "missing";
                 released: "released";
                 consumed: "consumed";
                 review_required: "review_required";
@@ -1816,9 +1816,9 @@ export declare const adminCommerceFulfillmentOrderDetailResponseSchema: z.ZodObj
         clientId: z.ZodNullable<z.ZodGUID>;
         status: z.ZodEnum<{
             created: "created";
+            cancelled: "cancelled";
             exception: "exception";
             delivered: "delivered";
-            cancelled: "cancelled";
             packed: "packed";
             in_transit: "in_transit";
             label_pending: "label_pending";
@@ -1854,22 +1854,22 @@ export declare const adminCommerceFulfillmentOrderDetailResponseSchema: z.ZodObj
                 created: "created";
                 failed: "failed";
                 cancelled: "cancelled";
-                succeeded: "succeeded";
                 refunded: "refunded";
+                not_started: "not_started";
                 requires_action: "requires_action";
                 processing: "processing";
                 partially_refunded: "partially_refunded";
                 disputed: "disputed";
-                not_started: "not_started";
+                succeeded: "succeeded";
             }>;
             providerPaymentId: z.ZodNullable<z.ZodString>;
         }, z.core.$strict>;
         inventory: z.ZodObject<{
             status: z.ZodEnum<{
                 expired: "expired";
-                missing: "missing";
-                reserved: "reserved";
                 not_checked: "not_checked";
+                reserved: "reserved";
+                missing: "missing";
                 released: "released";
                 consumed: "consumed";
                 review_required: "review_required";
@@ -1922,9 +1922,9 @@ export declare const adminCommerceFulfillmentMutationResponseSchema: z.ZodObject
     orderId: z.ZodGUID;
     status: z.ZodEnum<{
         created: "created";
+        cancelled: "cancelled";
         exception: "exception";
         delivered: "delivered";
-        cancelled: "cancelled";
         packed: "packed";
         in_transit: "in_transit";
         label_pending: "label_pending";

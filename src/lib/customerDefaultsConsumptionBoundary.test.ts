@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 const adapter = read("server/adapters/supabase/customerDefaultsSnapshot.ts");
-const contracts = read("src/domains/commerce/customerDefaultsSnapshotContracts.ts");
+const contracts = read("packages/platform/src/commerce/customerDefaultsSnapshotSchemas.ts");
 
 describe("hidden customer defaults consumption boundary", () => {
   it("reads only non-identifying customer hint columns from existing tables", () => {

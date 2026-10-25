@@ -25,167 +25,22 @@ import type {
 } from "./productCompatibilityContracts.js";
 export type { RecoveryDestinationIntent, RecoveryDestinationPolicyInput, RecoveryDestinationSource, RecoveryDestinationState } from "./recoveryDestinationPorts.js";
 export { hasSubscriptionRecoveryContext, resolveRecoveryDestination } from "./recoveryDestinationPorts.js";
-export type { CreateQuoteOptions } from "@openlup/platform/pricing";
-export type CommerceQuotePort = import("@openlup/platform/pricing").CommerceQuotePort<CreateQuoteRequest, CreateQuoteResponse>;
+import type { CreateQuoteOptions as PricingQuoteOptions } from "@openlup/platform/pricing";
+export type CreateQuoteOptions = import("@openlup/platform/commerce").CreateQuoteOptions<PricingQuoteOptions>;
+export type CommerceQuotePort = import("@openlup/platform/commerce").CommerceQuotePort<CreateQuoteRequest, CreateQuoteResponse, PricingQuoteOptions>;
 
-export interface ConfiguratorIntentPersistencePort {
-  persistIntent(
-    request: ConfiguratorIntentPersistenceRequest,
-  ): Promise<ConfiguratorIntentPersistenceResponse>;
-  /**
-   * Resolve the identity already provisioned under a COMPLETED idempotency key,
-   * or null when none exists. Lets checkout recover the `clientId` when
-   * `persistIntent` raises an idempotency conflict (same key, mutated payload) so
-   * the client's in-flight order can be resumed instead of surfacing a
-   * transient-looking error. Optional: adapters that cannot read back the
-   * completed row simply omit it and the caller falls back to a 409.
-   */
-  findCompletedIdentity?(
-    idempotencyKey: string,
-  ): Promise<ConfiguratorIntentPersistenceResponse | null>;
-}
-
-export interface CommerceRecommendationPort {
-  recommend(request: CommerceRecommendationRequest): Promise<CommerceRecommendationResponse>;
-}
-
-export interface CommerceProductCompatibilityPort {
-  getCompatibility(
-    request: CommerceProductCompatibilityRequest,
-  ): Promise<CommerceProductCompatibilityResponse>;
-}
-
+export type ConfiguratorIntentPersistencePort = import("@openlup/platform/commerce/contracts").ConfiguratorIntentPersistencePort<ConfiguratorIntentPersistenceRequest, ConfiguratorIntentPersistenceResponse>;
+export type CommerceRecommendationPort = import("@openlup/platform/commerce/contracts").CommerceRecommendationPort<CommerceRecommendationRequest, CommerceRecommendationResponse>;
+export type CommerceProductCompatibilityPort = import("@openlup/platform/commerce/contracts").CommerceProductCompatibilityPort<CommerceProductCompatibilityRequest, CommerceProductCompatibilityResponse>;
 export type CommerceQuoteSnapshotVerifierPort = import("@openlup/platform/pricing").CommerceQuoteSnapshotVerifierPort<CreateQuoteResponse>;
+export type CommerceCustomerDefaultsReadPort = import("@openlup/platform/commerce/contracts").CommerceCustomerDefaultsReadPort<CommerceCustomerDefaultsSnapshot>;
+export type CommerceCheckoutResumeDraftUpsertInput = import("@openlup/platform/commerce/contracts").CommerceCheckoutResumeDraftUpsertInput<CheckoutResumeSectionId, CheckoutResumeDraftState>;
+export type { CommerceCheckoutResumeDraftReadInput, CreateOrderDraftOptions, ResumableOrderSnapshot, CommerceResumableOrderReadPort } from "@openlup/platform/commerce/contracts";
+export type CommerceCheckoutResumeDraftPort = import("@openlup/platform/commerce/contracts").CommerceCheckoutResumeDraftPort<CheckoutResumeSectionId, CheckoutResumeDraftState, CheckoutResumeDraft>;
+export type CommerceOrderDraftWritePort = import("@openlup/platform/commerce/contracts").CommerceOrderDraftWritePort<CreateOrderDraftRequest, CreateOrderDraftResponse>;
 
-export interface CommerceCustomerDefaultsReadPort {
-  getCustomerDefaultsSnapshot(input: {
-    clientId: string;
-    checkoutKind: CheckoutKind;
-  }): Promise<CommerceCustomerDefaultsSnapshot | null>;
-}
-
-export interface CommerceCheckoutResumeDraftUpsertInput {
-  tokenHash: string;
-  idempotencyKeyHash: string | null;
-  lastSectionId: CheckoutResumeSectionId;
-  draftState: CheckoutResumeDraftState;
-  expiresAt: string;
-  now: string;
-}
-
-export interface CommerceCheckoutResumeDraftReadInput {
-  tokenHash: string;
-  now: string;
-}
-
-export interface CommerceCheckoutResumeDraftPort {
-  upsertDraft(input: CommerceCheckoutResumeDraftUpsertInput): Promise<CheckoutResumeDraft>;
-  readDraftByTokenHash(input: CommerceCheckoutResumeDraftReadInput): Promise<CheckoutResumeDraft | null>;
-}
-
-/**
- * Server-resolved options for the order draft. Passed OUT-OF-BAND by the caller
- * (orchestration -> provisioned.clientId; standalone route -> none/null) — NEVER
- * sourced from the client request body — so the persisted client_id (which the
- * outbox dispatcher resolves into an email recipient) cannot be forged.
- */
-export interface CreateOrderDraftOptions {
-  clientId?: string | null;
-}
-
-export interface CommerceOrderDraftWritePort {
-  createOrderDraft(
-    request: CreateOrderDraftRequest,
-    options?: CreateOrderDraftOptions,
-  ): Promise<CreateOrderDraftResponse>;
-}
-
-/**
- * A still-in-flight order found for a client, for the checkout handler's
- * duplicate-charge guard. `status` is always an in-flight `AsyncCheckoutStatus`.
- */
-export interface ResumableOrderSnapshot {
-  orderId: string;
-  paymentIntentId: string;
-  status: AsyncCheckoutStatus;
-  metadata?: Record<string, unknown> | null;
-  /**
-   * True when the submitting journey PRODUCED this order — a cart edit, not a
-   * cross-device return. Never resume one: superseding re-prices the cart.
-   */
-  sameJourney: boolean;
-}
-
-export interface CommerceResumableOrderReadPort {
-  /**
-   * Newest still-resumable order for `clientId` within `withinMinutes`, or null.
-   * Resumable = payment neither settled nor terminally failed, so a charge may
-   * be in flight and re-submitting would double-charge; a paid/dead order is NOT
-   * returned. `journeyKey` is resolved here to set `sameJourney`.
-   */
-  findResumableOrderForClient(input: {
-    clientId: string;
-    withinMinutes: number;
-    now: Date;
-    journeyKey: string;
-  }): Promise<ResumableOrderSnapshot | null>;
-}
-
-export class CommerceNotEnabledError extends Error {
-  constructor(feature: "cart" | "checkout" | "order draft" | "order" | "payment") {
-    super(`Commerce ${feature} is not enabled yet`);
-    this.name = "CommerceNotEnabledError";
-  }
-}
-
-export class CommerceOrderDraftConflictError extends Error {
-  readonly details: Record<string, unknown>;
-
-  constructor(
-    message = "Commerce order draft idempotency conflict",
-    details: Record<string, unknown> = {},
-  ) {
-    super(message);
-    this.name = "CommerceOrderDraftConflictError";
-    this.details = details;
-  }
-}
-
-export { CommerceOrderDraftPriceChangedError, CommerceOrderDraftUnsupportedMoneyError } from "./orderDraftErrors.js";
-export type { CommerceOrderDraftUnsupportedMoneyReason } from "./orderDraftErrors.js";
-
-export class CommerceOrderDraftInvalidResponseError extends Error {
-  constructor() {
-    super("Commerce order draft returned invalid response");
-    this.name = "CommerceOrderDraftInvalidResponseError";
-  }
-}
-
-export class CommerceOrderDraftPersistenceError extends Error {
-  readonly details: Record<string, unknown>;
-
-  constructor(
-    message = "Commerce order draft persistence failed",
-    details: Record<string, unknown> = {},
-  ) {
-    super(message);
-    this.name = "CommerceOrderDraftPersistenceError";
-    this.details = details;
-  }
-}
-
-export class CommerceCheckoutResumePersistenceError extends Error {
-  readonly details: Record<string, unknown>;
-
-  constructor(
-    message = "Commerce checkout resume persistence failed",
-    details: Record<string, unknown> = {},
-  ) {
-    super(message);
-    this.name = "CommerceCheckoutResumePersistenceError";
-    this.details = details;
-  }
-}
+export { CommerceNotEnabledError, CommerceOrderDraftConflictError, CommerceOrderDraftInvalidResponseError, CommerceOrderDraftPersistenceError, CommerceCheckoutResumePersistenceError, CommerceOrderDraftPriceChangedError, CommerceOrderDraftUnsupportedMoneyError } from "@openlup/platform/commerce";
+export type { CommerceOrderDraftUnsupportedMoneyReason } from "@openlup/platform/commerce";
 
 export { CommerceQuoteError, CommerceQuoteSnapshotError } from "@openlup/platform/pricing";
 export type { CommerceQuoteErrorCode, CommerceQuoteSnapshotErrorCode } from "@openlup/platform/pricing";
@@ -237,15 +92,14 @@ export interface CommercePackageSizingResult {
  * (demand × days -> units, re-split across the same recipes) without importing
  * the commerce-internal package-quantity policy.
  */
+type PackageSizingInput = {
+  recipeVariantIds: readonly string[];
+  currentRecipes?: readonly { variantId: string; qty: number }[];
+  dailyKcal: number;
+  planDays: number;
+};
+type PackageSizing = import("@openlup/platform/commerce/contracts").CommercePackageSizingPort<PackageSizingInput, CommercePackageSizingResult>;
 export interface CommercePackageSizingPort {
-  recomputeRecipeQuantities(input: {
-    recipeVariantIds: readonly string[];
-    /** Current mix; cadence resize preserves its proportions within kcal/line limits. */
-    currentRecipes?: readonly { variantId: string; qty: number }[];
-    dailyKcal: number;
-    planDays: number;
-  }): Promise<CommercePackageSizingResult>;
-  /** Published, recipe-eligible (non-addon) catalog variant ids — used to reject
-   *  an addon SKU smuggled into a recipe-mix edit. */
-  recipeVariantIds(): Promise<Set<string>>;
+  recomputeRecipeQuantities: PackageSizing["recomputeQuantities"];
+  recipeVariantIds: PackageSizing["eligibleVariantIds"];
 }

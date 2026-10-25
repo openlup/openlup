@@ -11,6 +11,9 @@ import { assertInstalledPackages, isolatedConsumerEnv, readCurrentPackManifest }
 import { POSTGRES_PROOF_IMAGE } from "./outbox-disposable-postgres.ts";
 
 export const NON_ADAPTER_ENTRIES = [
+  "commerce",
+  "commerce/contracts",
+  "commerce/server",
   "invoicing",
   "invoicing/contracts",
   "subscriptions",
@@ -29,6 +32,7 @@ export const NON_ADAPTER_ENTRIES = [
   "inventory/contracts",
   "kernel",
   "pricing",
+  "pricing/browser",
   "pricing/contracts",
   "promotions/contracts",
   "scheduler",
@@ -292,9 +296,56 @@ assert.deepEqual(trace,[]);
 `);
 }
 
+/** M11 K1: installed neutral contracts, a successful projection and a strict refusal. */
+export function proveCommerceConsumer(consumer: string): void {
+  consumerNode(consumer, `
+import assert from "node:assert/strict";
+import { z } from "zod";
+import * as commerce from "@openlup/platform/commerce";
+import { createCommerceQuotePrimitives, acquisitionCapabilitySchema, acquisitionTermsExpectationSchema } from "@openlup/platform/pricing/browser";
+const primitives = createCommerceQuotePrimitives(z.literal("XXX"));
+assert.deepEqual(primitives.commerceMoneySchema.parse({ amountMinor: 1, currency: "XXX" }), { amountMinor: 1, currency: "XXX" });
+assert(!primitives.commerceMoneySchema.safeParse({ amountMinor: 1, currency: "invalid" }).success);
+assert(acquisitionCapabilitySchema.safeParse("subscription-acquisition.v1").success);
+assert(!acquisitionCapabilitySchema.safeParse("unsupported").success);
+assert(acquisitionTermsExpectationSchema.safeParse({ revision: "example", delivery2DiscountBps: 10000 }).success);
+assert(!acquisitionTermsExpectationSchema.safeParse({ revision: "example", delivery2DiscountBps: 10001 }).success);
+await assert.rejects(import("@openlup/platform/pricing/browser/internal"), { code: "ERR_PACKAGE_PATH_NOT_EXPORTED" });
+import * as contracts from "@openlup/platform/commerce/contracts";
+import * as server from "@openlup/platform/commerce/server";
+assert.deepEqual(Object.keys(server), []);
+await assert.rejects(import("@openlup/platform/commerce/server/internal"), { code: "ERR_PACKAGE_PATH_NOT_EXPORTED" });
+assert.deepEqual(Object.keys(contracts), []);
+const items = commerce.offerAvailabilityRequestItems([{sku:"ITEM-A",slug:"item-a",variantId:"variant-a"}],"subscription");
+assert.deepEqual(items,[{sku:"ITEM-A",productSlug:"item-a",variantId:"variant-a",requestedQuantity:1,checkoutMode:"subscription"}]);
+const schemas = commerce.createOfferAvailabilitySchemas(z.string().min(1), z.string().min(1));
+assert(schemas.commerceOfferAvailabilityRequestItemSchema.safeParse(items[0]).success);
+assert(!schemas.commerceOfferAvailabilityRequestItemSchema.safeParse({...items[0],requestedQuantity:0}).success);
+assert.equal(commerce.commerceOfferVersionSchema.parse("offer-a.v2"),"offer-a.v2");
+assert(!commerce.commerceOfferVersionSchema.safeParse("INVALID OFFER").success);
+assert.equal(commerce.commerceMinimumUnits({minimumUnits:2},14),2);
+assert.equal(commerce.commerceMinimumUnits({},14),14);
+const scopeSchema=z.literal("all_orders"), methodSchema=z.literal("saved");
+const defaults=commerce.createCustomerDefaultsSnapshotSchemas({paymentPreferenceScopeSchema:scopeSchema,paymentMethodKindSchema:methodSchema});
+assert(!defaults.commerceCustomerDefaultsSnapshotSchema.safeParse({version:commerce.CUSTOMER_DEFAULTS_SNAPSHOT_VERSION,clientId:"invalid"}).success);
+assert.equal(commerce.resolveRecoveryDestination({state:"terminal_expired",source:"checkout_expired"}),"fresh_checkout");
+assert.throws(()=>{throw new commerce.CommerceOrderDraftUnsupportedMoneyError("zero_payable_unsupported");},
+ error=>error instanceof commerce.CommerceOrderDraftUnsupportedMoneyError && error.reason==="zero_payable_unsupported");
+`);
+}
+
 export function compileConsumer(consumer: string, entries: readonly string[], compiler: string): void {
   const file = join(consumer, "consumer.ts");
   const surfaces = entries.map((name, index) => `import type * as Entry${index} from "@openlup/platform/${name}";\nexport type Surface${index} = typeof Entry${index};`);
+  if (entries.includes("commerce") && entries.includes("commerce/contracts")) surfaces.push([
+    'import { offerAvailabilityRequestItems } from "@openlup/platform/commerce";',
+    'import type { CommerceOfferAvailabilityPort } from "@openlup/platform/commerce/contracts";',
+    'export const commerceItems = offerAvailabilityRequestItems([], "one_time");',
+    'declare const commercePort: CommerceOfferAvailabilityPort;',
+    'export const commerceResult = commercePort.getAvailability({ items: commerceItems });',
+    '// @ts-expect-error checkout mode is a closed contract',
+    'offerAvailabilityRequestItems([], "unsupported");',
+  ].join("\n"));
   // The composer's structural payments slot must accept the payments factory result for typed hosts.
   if (entries.includes("composition") && entries.includes("payments")) surfaces.push([
     'import { createBundleComposer } from "@openlup/platform/composition";',
@@ -1174,6 +1225,7 @@ assert.throws(() => promotions.resolvePromotionBenefitDefinition({ discount_type
     const compiler = join(checkout, "node_modules/typescript/bin/tsc");
     compileConsumer(consumer, NON_ADAPTER_ENTRIES, compiler);
     assertConsumerIsolation(consumer, checkout); // Compilation must not have supplied a peer.
+    proveCommerceConsumer(consumer);
     proveCatalogCompositionConsumer(consumer);
     proveAdapterRefusals(consumer);
     proveOidcRefusals(consumer);
