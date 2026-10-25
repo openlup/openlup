@@ -1,3 +1,4 @@
+import { resolveDunningEventAttempt } from "./dunningEventAttempt.js";
 // This module is the composition seam for the webhook ports: it already binds
 // the concrete Supabase implementations, so it is also where the published
 // provider capabilities are bound. The port that BRANCHES on them receives them
@@ -186,8 +187,11 @@ export function createSubscriptionWebhookDunningAfterProcessedViaGateway(
     }, {
       openFromExplicitRefusal: (input) => gateway.asService(async (client) => {
         const rpc = (client as { rpc?: unknown }).rpc;
-        if (typeof rpc !== "function") return;
+        if (typeof rpc !== "function") throw new Error("subscription_webhook_dunning_rpc_unavailable");
+        const failedPaymentAttemptId = await resolveDunningEventAttempt(client, ingested.paymentEventId, input.paymentIntentId);
         const result = await rpc.call(client, "subscription_open_dunning_from_failed_payment_result", {
+          p_failed_payment_attempt_id: failedPaymentAttemptId,
+          p_failure_class: null,
           p_idempotency_key: input.idempotencyKey,
           p_payment_intent_id: input.paymentIntentId,
           p_provider_event_id: input.sourceEventId,

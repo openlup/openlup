@@ -6,7 +6,7 @@ import type {
   SubscriptionCycleSnapshotResult, SubscriptionRenewalChargeResult,
   CycleChargeFailurePropagationPort, FailurePropagationContext, CycleRetryState,
 } from "../../src/subscriptions/contracts/index.js";
-import { executeRenewalCycle, checkRenewalDeliveryAdmission, type RenewalCyclePolicy } from "../../src/subscriptions/renewalCycleMechanism.js";
+import { executeRenewalCycle, checkRenewalDeliveryAdmission, type RenewalCyclePolicy } from "../../src/subscriptions/index.js";
 import { recordRenewalPreflightBlock } from "../../src/subscriptions/renewalCycleRefusalMechanism.js";
 import { propagateRenewalFailure, type RenewalFailurePolicy } from "../../src/subscriptions/renewalCycleFailureMechanism.js";
 
@@ -35,7 +35,7 @@ function fixture() {
     provider: "other-result-rail", providerAttemptId: "remote", providerSessionId: null,
     attemptStatus: "processing", nextActionKind: null, receipt: {}, requestPayload: {}, responsePayload: {},
   };
-  const captured: { execution?: Input; finalize?: unknown; state?: Context } = {};
+  const captured: { execution?: Input; finalize?: unknown; state?: Context; dunning?: Parameters<CycleChargeFailurePropagationPort["openDunningCase"]>[0] } = {};
   const failure: RenewalFailurePolicy = {
     resolveClassification: (supplied, reason) => supplied ?? { failureClass: reason, decidedBy: "custom" },
     recordKey: key => `${key}/record`, applyKey: key => `${key}/apply`, dunningKey: (key, n) => `${key}/dunning/${n}`,
@@ -45,9 +45,9 @@ function fixture() {
   const failurePort: RenewalCycleDeps<IntentInput, Intent, "custom-rail", "custom-action", Input, Result, undefined>["chargeFailurePropagation"] = {
     async recordBlockedPreflightAttempt() { expect(this).toBe(failurePort); trace.push("blocked"); },
     async readDurableAttemptInstant() { expect(this).toBe(failurePort); trace.push("durable"); return "durable"; },
-    async applyFailedResult() { expect(this).toBe(failurePort); trace.push("apply"); return { replayed: false }; },
+    async applyFailedResult() { expect(this).toBe(failurePort); trace.push("apply"); return { replayed: false, paymentAttemptId: "durable-attempt-A" }; },
     async readCycleRetryState() { expect(this).toBe(failurePort); trace.push("retry"); return { retryAttempt: 1, nextRetryAt: null, rowPresent: true }; },
-    async openDunningCase() { expect(this).toBe(failurePort); trace.push("dunning"); return { status: "opened", caseId: "case" }; },
+    async openDunningCase(input) { expect(this).toBe(failurePort); captured.dunning = input; trace.push("dunning"); return { status: "opened", caseId: "case" }; },
   };
   const persistence: RenewalCycleDeps<IntentInput, Intent, "custom-rail", "custom-action", Input, Result, undefined>["persistence"] = {
     async buildCycleSnapshots() { expect(this).toBe(persistence); trace.push("snapshots"); return snapshots; },
@@ -168,6 +168,23 @@ describe("neutral hosted cycle ordering", () => {
     expect(f.captured.state?.attemptIdentity).toEqual({ providerIdempotencyKey: "custom-key", providerRequestFingerprint: "custom-fingerprint" });
   });
 
+  it.each(["provider-preflight", "mandate-preflight", "decline", "sca", "replayed-sca"] as const)(
+    "carries the applied transition identity through the public %s parent", async path => {
+      const f = fixture();
+      // Prepared/current identity is intentionally different from the applied result.
+      f.attempt.paymentAttemptId = "prepared-attempt-B";
+      if (path === "provider-preflight") f.policy.validateProvider = () => "provider-blocked";
+      if (path === "mandate-preflight") f.deps.capability.assessMandate = () => ({ chargeable: false });
+      if (path === "decline") f.result.providerDecline = { code: "declined", mandateUnsupported: false };
+      if (path === "sca") f.result.attemptStatus = "requires_action";
+      if (path === "replayed-sca") { f.attempt.replayed = true; f.attempt.status = "requires_action"; }
+      f.deps.chargeFailurePropagation.applyFailedResult = async () => ({ replayed: true, paymentAttemptId: "durable-attempt-A" });
+      await executeRenewalCycle(f.deps, f.due, f.policy);
+      expect(f.captured.dunning?.failedPaymentAttemptId).toBe("durable-attempt-A");
+      expect(f.trace.filter(step => step === "dunning")).toHaveLength(1);
+    },
+  );
+
   it("accepts an alternate selector, distinct result provider and exact extension/reference receivers", async () => {
     const f = fixture();
     expect(await executeRenewalCycle(f.deps, f.due, f.policy)).toMatchObject({ outcome: "charged", attemptStatus: "processing" });
@@ -267,7 +284,7 @@ function fixture() {
   const port: CycleChargeFailurePropagationPort = {
     async recordBlockedPreflightAttempt(input) { expect(this).toBe(port); expect(input.providerKind).toBe("custom-rail"); trace.push("record"); },
     async readDurableAttemptInstant() { expect(this).toBe(port); trace.push("durable"); return "2026-10-05T11:00:00.000Z"; },
-    async applyFailedResult(input) { expect(this).toBe(port); captured.apply = input; trace.push("apply"); return { replayed: true }; },
+    async applyFailedResult(input) { expect(this).toBe(port); captured.apply = input; trace.push("apply"); return { replayed: true, paymentAttemptId: "durable-attempt-A" }; },
     async readCycleRetryState() { expect(this).toBe(port); trace.push("retry"); return cycle; },
     async openDunningCase(input) { expect(this).toBe(port); captured.dunning = input; trace.push("dunning"); return { status: "opened", caseId: "case" }; },
   };
@@ -285,9 +302,20 @@ describe("neutral durable renewal refusal ladder", () => {
     expect(await propagateRenewalFailure(f.port, f.ctx, f.policy)).toEqual({ dunningCaseId: "case", retryAttempt: 2, dunningPropagationFailed: false, applyReplayed: true });
     expect(f.trace).toEqual(["record", "durable", "evidence", "classify", "apply", "retry", "evidence", "classify", "dunning"]);
     expect(f.captured.apply?.failureClassification).toBe(first);
+    expect(f.captured.dunning?.failedPaymentAttemptId).toBe("durable-attempt-A");
     expect(f.captured.dunning?.failureClass).toBe(second.failureClass);
     expect(f.captured.apply?.occurredAt).toBe(f.captured.dunning?.occurredAt);
     expect(f.captured.dunning?.idempotencyKey).toBe("custom-execution/dunning/2");
+  });
+
+  it.each([undefined, null])("passes absent apply attribution %s as explicit NULL", async paymentAttemptId => {
+    const f = fixture();
+    f.port.applyFailedResult = async () => ({ replayed: true, paymentAttemptId });
+    f.port.openDunningCase = async input => {
+      expect(input).toHaveProperty("failedPaymentAttemptId", null);
+      return { status: "rejected", code: "55000", reason: "subscription_dunning_failed_attempt_unattributed" };
+    };
+    expect(await propagateRenewalFailure(f.port, f.ctx, f.policy)).toMatchObject({ applyReplayed: true, dunningPropagationFailed: true });
   });
 
   it("observes key and prepared-flag changes after blocked record without snapshotting context", async () => {

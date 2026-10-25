@@ -2,6 +2,33 @@
 -- assertions exercise actual due selection and provider admission, including a
 -- newer competing method and the old webhook after an authorized attempt fails.
 BEGIN;
+
+-- This isolated fixture states its failed-attempt evidence explicitly. Real applied
+-- events take precedence; ambiguous fixture evidence fails instead of guessing.
+CREATE FUNCTION pg_temp.fixture_failed_attempt(intent uuid, cycle uuid, rung integer)
+RETURNS uuid LANGUAGE plpgsql SECURITY DEFINER SET search_path=public,pg_catalog AS $$
+DECLARE attempt uuid; matches integer;
+BEGIN
+  IF cycle IS NULL THEN RETURN NULL; END IF;
+  SELECT min(payload->>'paymentAttemptId')::uuid, count(DISTINCT payload->>'paymentAttemptId')
+    INTO attempt, matches FROM public.subscription_events
+    WHERE cycle_id=cycle AND payload->>'paymentIntentId'=intent::text
+      AND payload->>'retryAttempt'=rung::text AND payload->>'source'='payment.control.v0'
+      AND event_type IN ('subscription.retry_scheduled','subscription.payment_failed');
+  IF matches=1 THEN RETURN attempt; END IF;
+  IF matches>1 THEN RAISE EXCEPTION 'conflicting fixture failure evidence'; END IF;
+  INSERT INTO public.commerce_payment_attempts(payment_intent_id,payment_id,provider,idempotency_key,status,amount_cents,currency)
+    SELECT id,payment_id,'example','fixture-failure:'||cycle||':'||rung,'failed',amount_cents,currency
+      FROM public.commerce_payment_intents WHERE id=intent RETURNING id INTO attempt;
+  INSERT INTO public.subscription_events(subscription_id,cycle_id,event_type,payload)
+    SELECT subscription_id,id,CASE WHEN next_retry_at IS NULL THEN 'subscription.payment_failed' ELSE 'subscription.retry_scheduled' END,
+      jsonb_build_object('paymentIntentId',intent,'paymentAttemptId',attempt,'retryAttempt',rung,'source','payment.control.v0')
+      FROM public.subscription_cycles WHERE id=cycle;
+  RETURN attempt;
+END;
+$$;
+GRANT EXECUTE ON FUNCTION pg_temp.fixture_failed_attempt(uuid,uuid,integer) TO service_role;
+
 SELECT no_plan();
 INSERT INTO public.clients(id,email) VALUES
  ('e1100000-0000-4000-8000-000000000001','active-repair@example.invalid'),
@@ -21,7 +48,7 @@ UPDATE public.commerce_orders SET status='pending_payment' WHERE id='e1400000-00
 SET LOCAL ROLE service_role;
 CREATE TEMP TABLE _ard AS SELECT public.subscription_handle_payment_failure_dunning(
  'active-repair-exhaustion','e1300000-0000-4000-8000-000000000001','e1200000-0000-4000-8000-000000000001',
- 'e1400000-0000-4000-8000-000000000001',(SELECT id FROM _ari),4,NULL,'card_declined',now()) r;
+ 'e1400000-0000-4000-8000-000000000001',(SELECT id FROM _ari),4,NULL,'card_declined',now(), NULL, pg_temp.fixture_failed_attempt((SELECT id FROM _ari), 'e1300000-0000-4000-8000-000000000001', 4)) r;
 RESET ROLE;
 CREATE TEMP TABLE _art AS SELECT (r#>>'{subscriptionDunning,caseId}')::uuid case_id,
  split_part(r#>>'{subscriptionDunning,recoveryUrlPath}','token=',2) raw FROM _ard;
@@ -103,7 +130,7 @@ RESET ROLE;
 SELECT is((SELECT retry_attempt FROM public.subscription_cycles WHERE id='e1300000-0000-4000-8000-000000000001'),5,'failed authorized attempt advances existing counter');
 SELECT is((SELECT next_retry_at FROM public.subscription_cycles WHERE id='e1300000-0000-4000-8000-000000000001'),NULL::timestamptz,'failure creates no new automatic attempt');
 SET LOCAL ROLE service_role;
-SELECT public.subscription_handle_payment_failure_dunning('active-repair-failed-dunning','e1300000-0000-4000-8000-000000000001','e1200000-0000-4000-8000-000000000001','e1400000-0000-4000-8000-000000000001',(SELECT id FROM _ari),5,NULL,'card_declined',now());
+SELECT public.subscription_handle_payment_failure_dunning('active-repair-failed-dunning','e1300000-0000-4000-8000-000000000001','e1200000-0000-4000-8000-000000000001','e1400000-0000-4000-8000-000000000001',(SELECT id FROM _ari),5,NULL,'card_declined',now(), NULL, pg_temp.fixture_failed_attempt((SELECT id FROM _ari), 'e1300000-0000-4000-8000-000000000001', 5));
 RESET ROLE;
 SET LOCAL ROLE service_role;
 SELECT is((public.subscription_try_schedule_recovery_retry((SELECT case_id FROM _art),'pm_repair',now(),'method_ref_webhook')->>'scheduled')::boolean,false,'old webhook cannot rearm failed repair');

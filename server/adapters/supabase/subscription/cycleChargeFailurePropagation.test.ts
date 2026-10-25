@@ -11,7 +11,7 @@ describe("cycle charge failure propagation terminal decline signal", () => {
     try {
       const client = {
         rpc: vi.fn(async () => ({
-          data: { paymentResult: { replayed } },
+          data: { paymentResult: { replayed, paymentAttemptId: "durable-attempt-A" } },
           error: null,
         })),
         from: vi.fn(),
@@ -37,7 +37,7 @@ describe("cycle charge failure propagation terminal decline signal", () => {
   it("reports the refusal that ended an off-session renewal charge", async () => {
     const { applied, signals } = await applyAndCaptureSignals(false);
 
-    expect(applied).toEqual({ replayed: false });
+    expect(applied).toEqual({ replayed: false, paymentAttemptId: "durable-attempt-A" });
     expect(signals).toHaveLength(1);
     expect(JSON.parse(signals[0])).toMatchObject({
       name: "payment_decline_terminal",
@@ -59,7 +59,27 @@ describe("cycle charge failure propagation terminal decline signal", () => {
   it("stays silent when the cron replayed a refusal it already propagated", async () => {
     const { applied, signals } = await applyAndCaptureSignals(true);
 
-    expect(applied).toEqual({ replayed: true });
+    expect(applied).toEqual({ replayed: true, paymentAttemptId: "durable-attempt-A" });
     expect(signals).toHaveLength(0);
+  });
+});
+
+
+describe("cycle failure applied-attempt binding", () => {
+  const input = { failedPaymentAttemptId: "durable-attempt-A", idempotencyKey: "observe-A", cycleId: "cycle", subscriptionId: "subscription",
+    orderUuid: "order", paymentIntentId: "intent", retryAttempt: 1, nextRetryAt: null, failureReason: "declined", occurredAt: "2026-10-25T09:00:00Z", failureClass: "soft_retryable" };
+  it("sends the exact applied attempt to the attributed overload", async () => {
+    const rpc = vi.fn(async () => ({ data: { subscriptionDunning: { caseId: "case" } }, error: null }));
+    expect(await createPort({ rpc, from: vi.fn() }).openDunningCase(input)).toEqual({ status: "opened", caseId: "case" });
+    expect(rpc).toHaveBeenCalledWith("subscription_handle_payment_failure_dunning", expect.objectContaining({ p_failed_payment_attempt_id: "durable-attempt-A", p_failure_class: "soft_retryable" }));
+  });
+  it("preserves explicit NULL and the database's 55000 refusal", async () => {
+    const rpc = vi.fn(async () => ({ data: null, error: { code: "55000", message: "subscription_dunning_failed_attempt_unattributed" } }));
+    expect(await createPort({ rpc, from: vi.fn() }).openDunningCase({ ...input, failedPaymentAttemptId: null })).toEqual({ status: "rejected", code: "55000", reason: "subscription_dunning_failed_attempt_unattributed" });
+    expect(rpc).toHaveBeenCalledWith("subscription_handle_payment_failure_dunning", expect.objectContaining({ p_failed_payment_attempt_id: null }));
+  });
+  it.each([undefined, null, 42])("returns missing or malformed apply attribution %s as NULL", async paymentAttemptId => {
+    const rpc = vi.fn(async () => ({ data: { paymentResult: { replayed: true, paymentAttemptId } }, error: null }));
+    expect(await createPort({ rpc, from: vi.fn() }).applyFailedResult({ idempotencyKey: "apply", paymentIntentId: "intent", occurredAt: input.occurredAt, failureReason: "declined", failureClassification: { failureClass: "soft_retryable", decidedBy: "test" } })).toEqual({ replayed: true, paymentAttemptId: null });
   });
 });

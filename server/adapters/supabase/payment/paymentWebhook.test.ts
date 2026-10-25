@@ -215,14 +215,22 @@ describe("supabase payment webhook port", () => {
 
     // No adapter audit bag: the reason reader supplies no invented diagnosis.
     const missingBagRpc = vi.fn(async () => ({ data: {}, error: null }));
+    const transitionQuery = {
+      eq: vi.fn(() => transitionQuery),
+      then: (resolve: (value: unknown) => unknown) => Promise.resolve({
+        data: [{ payment_attempt_id: PAYMENT_ATTEMPT_ID, to_status: "failed" }], error: null,
+      }).then(resolve),
+    };
     const hook = createSubscriptionWebhookDunningAfterProcessedViaGateway({
-      asService: async (work: (client: unknown) => unknown) => work({ rpc: missingBagRpc }),
+      asService: async (work: (client: unknown) => unknown) => work({
+        rpc: missingBagRpc, from: () => ({ select: () => transitionQuery }),
+      }),
     } as never);
     await hook({ event: { ...firstInput, eventType: "payment.failed", rawPayload: { openlupEvidence: {} } },
       ingested: { paymentEventId: PAYMENT_EVENT_ID, paymentIntentId: PAYMENT_INTENT_ID, paymentAttemptId: null, replayed: false },
       resultStatus: "failed" });
     expect(missingBagRpc, "Missing audit supplies no invented gateway failure reason").toHaveBeenCalledWith("subscription_open_dunning_from_failed_payment_result",
-      expect.objectContaining({ p_failure_reason: null }));
+      expect.objectContaining({ p_failure_reason: null, p_failure_class: null, p_failed_payment_attempt_id: PAYMENT_ATTEMPT_ID }));
     expect(isActiveTpayBlikAliasEvent({ ...firstInput, eventType: "setup.succeeded",
       rawPayload: { openlupEvidence: {} } }), "Missing audit does not activate an alias").toBe(false);
 
