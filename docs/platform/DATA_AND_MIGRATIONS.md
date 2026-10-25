@@ -503,6 +503,30 @@ and unused authority, equal-rung/missing-attribution refusal, reconciliation and
 concurrency evidence. Existing native atomic receipts prove only their own graph. Rollback uses a compensating forward preserving attribution and
 revocations; it never resurrects old recovery authority.
 
+The `managedCommerceForwards` class in the
+[registry](../../config/reviewed-platform-forwards.json) pins the managed SQL fixtures
+under `scripts/fixtures/reviewed-m11/`, one function per file. It covers replacements,
+public service-only creations and private invoker creations.
+Exact file, CREATE and preimage hashes, header pins and ordered
+statement pins bind arguments/defaults, returns, language, security, search_path,
+same-file revocations and public service-only grants. The receipt file alone
+replaces the audit action CHECK after its exact preimage and pinned lock timeout,
+with exact DROP and NOT VALID ADD statements, retaining every preimage action
+and adding only `checkout_payment_link_mint`. Any intervening audit-table
+ALTER/DROP refuses this fixed CHECK preimage class. M09/M10 inventories stay closed.
+The registry and real migration rails are authoritative. M11 versions follow every
+earlier same-rail pin; each pin requires all earlier same-rail pins present with
+exact bytes. Later feature changes may introduce those bytes on the managed rail.
+Tests read the registry and complete real managed prefix, include each earlier
+same-rail pin once, and append only absent M11 fixtures for admission/refusal and
+PostgreSQL catalog/ACL/CHECK proof with rollback. The acquisition witness executes
+finalize through no-policy compatibility and configured-policy admission, checks
+exact retained terms, and proves missing/stale/engine-mismatched terms refuse
+without durable row changes. Changed policy refuses fresh acquisition while
+completed finalize replay preserves rows. One-time checkout and the shared/exclusive
+policy-lock protocol are also checked. These fixtures do not establish handler
+integration, native return semantics or installation authority.
+
 **Named bounded debt C94 — M10 reviewed packet vocabulary.** The frozen managed
 SQL retains provider nouns inherited from that rail. The neutrality baseline
 records the scanner's exact counts for the six existing managed fixtures and the

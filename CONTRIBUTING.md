@@ -231,6 +231,27 @@ The suite needs local Docker and uses the shared container helper's pinned
 PostgreSQL 16 image. Run build-producing package checks serially because they
 share generated package directories.
 
+M11 managed-commerce fixtures under `scripts/fixtures/reviewed-m11/` are pinned by
+`managedCommerceForwards` in `config/reviewed-platform-forwards.json`. They cover checkout
+preference scope, return ownership, checkout audit receipts and the minimal
+acquisition-reader/admission/finalize closure, without policy seeds or setup
+writers. Legacy omitted-country fallback uses the configured platform region
+and refuses missing configuration; adopters set their own default.
+The pins bind exact file/function/preimage/ordered statements, headers, ACLs and
+the audit CHECK preimage. The registry and real migration rails are authoritative.
+M11 versions follow every earlier same-rail pin; each pin requires all earlier
+same-rail pins present with exact bytes. Later feature changes may introduce those
+bytes on the managed rail. Tests use the registry and complete real managed prefix,
+include each earlier same-rail pin once, and append only absent M11 fixtures.
+They prove admission/refusals and catalog/ACL/CHECK changes with rollback. The real
+PostgreSQL acquisition witness executes finalize with no policy and with configured
+policy: exact retained terms admit, missing/stale/engine-mismatched terms refuse
+without durable row changes, and a policy change refuses fresh acquisition while
+preserving completed replay. It also checks zero-write exact replay, one-time
+checkout and the shared/exclusive policy-lock protocol through rollback. Fixture
+proof does not establish handler integration, native return semantics or
+installation authority.
+
 The M10/F17 exact-forward controls use
 `scripts/reviewed-batch-forward.test.ts` for per-file refusal plants and separate
 and co-located CI/release approval, and `tests/postgres/reviewedBatchForwards.test.ts` for the
@@ -2220,6 +2241,11 @@ own: a lessons change is an ordinary delivery under existing authority, and a
 promotion stays within its approved scope. The rethink record and the task's
 terminal self-retro carry the lesson until it lands. No other tracker is kept.
 
+- 2026-10-25, M11 CTL notes: two review cycles in a row found stale statements in
+  owner notes and pinned fixture comments (landed state, rail tails, admitted/draft
+  wording) after each main landing → state only invariants in pinned or frozen
+  text and point to the registry and real rails as the source of truth; verify
+  with a volatile-pattern grep over everything the change owns.
 - 2026-10-24, local verification rethink: replaying hosted shards and choosing
   resources from task names duplicated tests and silently selected one worker →
   use the [single local command set](#required-and-raw-checks), fixed phase
