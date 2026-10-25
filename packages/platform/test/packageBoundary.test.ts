@@ -156,6 +156,10 @@ function relativeImportAllowed(path: string, specifier: string): boolean {
   // Nested callers may use their own module's implementation, while imports
   // into a nested public entry require that exact manifest declaration.
   const callerEntry = path.split("/").slice(0, 2).join("/");
+  const targetEntry = target.split("/").slice(0, 2).join("/");
+  // Internal directories are not new public entries. Keep declared nested
+  // entry implementations isolated while allowing ordinary same-module files.
+  if (ownModule === targetModule && !target.endsWith("/index.js") && (!declared(targetEntry) || targetEntry === callerEntry)) return true;
   if (ownModule === targetModule && declared(callerEntry) && posix.dirname(target) === ownModule) return true;
   return target.endsWith("/index.js") && declared(target.slice(0, -"/index.js".length));
 }
@@ -279,7 +283,12 @@ describe("package source boundary", () => {
     const exports = { "./example": entry("example"), "./example/contracts": entry("example/contracts") };
     const hasFile = (path: string) => ["example/index.ts", "example/contracts/index.ts"].includes(path);
     expect(() => assertModuleExports(["example"], moduleGraph, exports, hasFile)).not.toThrow();
-    expect(relativeImportAllowed("communications/index.ts", "./resend/index.js")).toBe(true);
+    expect(relativeImportAllowed("commerce/server/handlerSupport.ts", "../oms/omsContracts.js")).toBe(true);
+    expect(relativeImportAllowed("commerce/index.ts", "./model/omsReadModel.js")).toBe(true);
+    expect(relativeImportAllowed("commerce/model/omsReadModel.ts", "../../../private.js")).toBe(false);
+    const nestedSpecifier = "./resend/index.js";
+    expect(relativeImportAllowed("communications/index.ts", nestedSpecifier)).toBe(true);
+    expect(relativeImportAllowed("communications/index.ts", nestedSpecifier.replace("index.js", "private.js"))).toBe(false);
     expect(relativeImportAllowed("communications/index.ts", "./undeclared/index.js")).toBe(false);
     expect(relativeImportAllowed("communications/resend/index.ts", "../undeclared/index.js")).toBe(false);
     expect(relativeImportAllowed("communications/index.ts", "../absent/vendor/index.js")).toBe(false);

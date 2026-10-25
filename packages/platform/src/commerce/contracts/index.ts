@@ -9,3 +9,9 @@ export type * from "./runtimePorts.js";
 export type { ConfiguratorIntent, ConfiguratorIntentPersistenceResponse, CheckoutResumeDraftState, CheckoutResumeDraft, CommerceCustomerDefaultsSnapshot } from "./intent.js";
 export type * from "./orderMoney.js";
 export type { OmsPaymentStatus } from "./state.js";
+
+// Shared fulfillment recovery DTOs.
+export type * from "./fulfillmentRecovery.js";
+
+// M11 K3a OMS browser-safe DTOs and ports; no imports from runtime schema modules.
+export type * from "./omsTypes.js";

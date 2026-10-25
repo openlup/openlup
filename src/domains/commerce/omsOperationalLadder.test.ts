@@ -139,6 +139,42 @@ describe("fixture-path summarizers versus the SQL counters", () => {
   // ---------------------------------------------------------------------
 
 
+  it("records that the TS subscription counter omits the SQL subscription_id filter", () => {
+    const paid = parsePaidSummary(migration);
+    expect(paid.subscriptionFilter).toBe(
+      "orders.mode = 'subscription_cycle' AND orders.subscription_id IS NOT NULL",
+    );
+
+    // A subscription_cycle order with no subscription_id: SQL excludes it, TS
+    // counts it. The assertion pins the CURRENT disagreement, on purpose.
+    const orphanCycle = totalsOrder({
+      paymentStatus: "succeeded",
+      amountMinor: 5_000,
+      mode: "subscription_cycle",
+    });
+    expect(summarizeOmsListTotals([orphanCycle]).paidSubscriptionCycleCount).toBe(1);
+    // The list-order contract carries no subscription id at all, so the TS
+    // summariser cannot apply the SQL filter even if it wanted to.
+    expect("subscriptionId" in (orphanCycle as unknown as Record<string, unknown>)).toBe(false);
+  });
+
+  it("records that the TS totals aggregate the page while SQL aggregates the candidate set", () => {
+    // SQL sums `candidate_orders` (the search/status-scoped set, then narrowed by
+    // the paid_at window), NOT the page. summarizeOmsListTotals is handed only
+    // the current page's orders, so on any multi-page queue the two figures
+    // differ by construction.
+    const paid = parsePaidSummary(migration);
+    expect(paid.fromRelation).toBe("candidate_orders orders");
+    expect(paid.windowPredicates).toEqual([
+      "v_from IS NULL OR payment.paid_at >= v_from",
+      "v_to IS NULL OR payment.paid_at <= v_to",
+    ]);
+
+    const page = [totalsOrder({ paymentStatus: "succeeded", amountMinor: 1_000 })];
+    expect(summarizeOmsListTotals(page).orderCount).toBe(page.length);
+  });
+
+
   // ---------------------------------------------------------------------
   // KNOWN LATENT DIVERGENCE (b) - `not_checked` inventory.
   // SQL `fulfillment_allowed` blocks anything not in ('reserved','consumed');

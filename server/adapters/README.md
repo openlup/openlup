@@ -72,6 +72,13 @@ to the opt-in ingress. Direct missing-audit tests cover failure diagnosis, alias
 activation, saved-method consent and profile alias presentation; the profile's
 existing presentation fallback grants no recurring execution authority.
 
+The OMS managed binding delegates RPC translation and neutral query hydration
+to `@openlup/platform/commerce/server`. It supplies the existing structural query
+capability, column names, identity and provider projections; client construction
+and provider evidence remain reference-owned. The mutation client itself is
+RPC-only, so order operations need no table capability. Existing control-plane
+projection and exact replay/refusal results keep their prior behavior.
+
 ## Does Not Own
 
 - Provider HTTP clients, env parsing, signatures, and low-level payload

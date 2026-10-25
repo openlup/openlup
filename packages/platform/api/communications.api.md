@@ -1708,6 +1708,7 @@ export declare const newsletterSyncEventTypeSchema: z.ZodEnum<{
 }>;
 export declare const newsletterWebhookEventTypeSchema: z.ZodEnum<{
     update: "update";
+    ignored: "ignored";
     email_change: "email_change";
     subscribe: "subscribe";
     unsubscribe: "unsubscribe";
@@ -1715,7 +1716,6 @@ export declare const newsletterWebhookEventTypeSchema: z.ZodEnum<{
     complaint: "complaint";
     bounce: "bounce";
     profile_update: "profile_update";
-    ignored: "ignored";
 }>;
 export declare const newsletterProviderCapabilitiesSchema: z.ZodObject<{
     subscribe: z.ZodBoolean;
@@ -1733,6 +1733,7 @@ export declare const canonicalNewsletterWebhookEventSchema: z.ZodObject<{
     providerEventId: z.ZodString;
     eventType: z.ZodEnum<{
         update: "update";
+        ignored: "ignored";
         email_change: "email_change";
         subscribe: "subscribe";
         unsubscribe: "unsubscribe";
@@ -1740,7 +1741,6 @@ export declare const canonicalNewsletterWebhookEventSchema: z.ZodObject<{
         complaint: "complaint";
         bounce: "bounce";
         profile_update: "profile_update";
-        ignored: "ignored";
     }>;
     email: z.ZodOptional<z.ZodNullable<z.ZodString>>;
     remoteProfileId: z.ZodOptional<z.ZodNullable<z.ZodString>>;
@@ -1772,6 +1772,7 @@ export declare function createNewsletterIntegrationSchemas<Purpose extends strin
         providerEventId: z.ZodString;
         eventType: z.ZodEnum<{
             update: "update";
+            ignored: "ignored";
             email_change: "email_change";
             subscribe: "subscribe";
             unsubscribe: "unsubscribe";
@@ -1779,7 +1780,6 @@ export declare function createNewsletterIntegrationSchemas<Purpose extends strin
             complaint: "complaint";
             bounce: "bounce";
             profile_update: "profile_update";
-            ignored: "ignored";
         }>;
         email: z.ZodOptional<z.ZodNullable<z.ZodString>>;
         remoteProfileId: z.ZodOptional<z.ZodNullable<z.ZodString>>;
