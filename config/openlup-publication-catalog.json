@@ -6770,6 +6770,42 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/fixtures/reviewed-m11/db/platform/migrations/README.md",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/fixtures/reviewed-m11/registry.draft.json",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/fixtures/reviewed-m11/supabase/migrations/20261025000000_checkout_preference_write_scope.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/fixtures/reviewed-m11/supabase/migrations/20261025003000_return_request_owner_binding.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/fixtures/reviewed-m11/supabase/migrations/20261025004000_checkout_operator_receipt.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/fixtures/reviewed-m11/supabase/migrations/20261025005000_acquisition_metadata.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/fixtures/reviewed-m11/supabase/migrations/20261025006000_subscription_acquisition_terms.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/fixtures/reviewed-m11/supabase/migrations/20261025007000_checkout_acquisition_admission.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/fixtures/reviewed-m11/supabase/migrations/20261025008000_checkout_finalize_acquisition_admission.sql",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/fulfillment-stock-evidence-proof.ts",
       "class": "public-output"
     },

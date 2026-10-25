@@ -209,6 +209,18 @@ The suite needs local Docker and uses the shared container helper's pinned
 PostgreSQL 16 image. Run build-producing package checks serially because they
 share generated package directories.
 
+M11 working drafts under `scripts/fixtures/reviewed-m11/` contain seven managed
+function definitions in seven SQL files.
+They cover checkout preference scope, return ownership, checkout audit receipts
+and the minimal M05 acquisition-reader/admission/finalize closure, with no policy
+seed or setup writer. Legacy omitted-country fallback now uses the configured
+platform region and refuses missing configuration; adopters set their own default.
+`registry.draft.json` proposes exact file/function/preimage/statement pins and the
+audit CHECK preimage. Production admission ignores this proposal; a separate
+managed-commerce class/control change is required before introduction. Native
+return semantics and M10 approvals remain unchanged. Local PostgreSQL acquisition
+proof does not replace full class/catalog/refusal and handler integration proof.
+
 The M10/F17 exact-forward controls use
 `scripts/reviewed-batch-forward.test.ts` for per-file refusal plants and separate
 and co-located CI/release approval, and `tests/postgres/reviewedBatchForwards.test.ts` for the
