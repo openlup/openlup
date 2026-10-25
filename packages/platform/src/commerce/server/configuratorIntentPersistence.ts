@@ -34,7 +34,7 @@ export interface ConfiguratorIntentPersistenceIdentity {
 type PersistIntentPayload<Request, Command> =
   (Request | Command) & { authenticatedUserId: string | null };
 
-export interface ConfiguratorIntentSupabaseClient<Request, Command> {
+export interface ConfiguratorIntentRpcQueryClient<Request, Command> {
   rpc(
     functionName: "commerce_configurator_persist_intent",
     args: { p_intent: PersistIntentPayload<Request, Command> },
@@ -45,8 +45,8 @@ export interface ConfiguratorIntentSupabaseClient<Request, Command> {
 /** Scope used by the persist-intent RPC for its idempotency-key rows. */
 const CONFIGURATOR_INTENT_SCOPE = "commerce_configurator_intent";
 
-export function createSupabaseConfiguratorIntentPersistencePort<Request extends object, Response, Command extends object, Persistence>(
-  client: ConfiguratorIntentSupabaseClient<Request, Command>,
+export function createConfiguratorIntentPersistenceRpcPort<Request extends object, Response, Command extends object, Persistence>(
+  client: ConfiguratorIntentRpcQueryClient<Request, Command>,
   bindings: {
     responseSchema: z.ZodType<Response>;
     decodeCommandResponse(data: unknown): Persistence;

@@ -2,7 +2,7 @@ import type { z } from "zod";
 import { CommerceOrderDraftConflictError, CommerceOrderDraftInvalidResponseError, CommerceOrderDraftPersistenceError } from "../errors.js";
 import { CommerceOrderDraftPriceChangedError } from "../orderDraftErrors.js";
 import type { CommerceOrderDraftWritePort, CreateOrderDraftOptions } from "../contracts/ports.js";
-import type { RpcError as SupabaseRpcError } from "../contracts/omsTypes.js";
+import type { RpcError as CommerceOrderDraftRpcError } from "../contracts/omsTypes.js";
 import { ORDER_DRAFT_RPC_NAME } from "./orderDraftRpcPayload.js";
 
 /** Companion RPC that supersedes a stale pre-payment draft for a stable journey key. */
@@ -13,14 +13,14 @@ export interface CommerceOrderDraftRpcClient<Args extends Record<string, unknown
   rpc(
     functionName: typeof ORDER_DRAFT_RPC_NAME,
     args: Args,
-  ): PromiseLike<{ data: unknown; error: SupabaseRpcError | null }>;
+  ): PromiseLike<{ data: unknown; error: CommerceOrderDraftRpcError | null }>;
   rpc(
     functionName: typeof ORDER_DRAFT_SUPERSEDE_RPC_NAME,
     args: { p_idempotency_key: string },
-  ): PromiseLike<{ data: unknown; error: SupabaseRpcError | null }>;
+  ): PromiseLike<{ data: unknown; error: CommerceOrderDraftRpcError | null }>;
 }
 
-export function createSupabaseCommerceOrderDraftPort<Request extends { idempotencyKey: string }, Response, Args extends Record<string, unknown>>(
+export function createCommerceOrderDraftRpcPort<Request extends { idempotencyKey: string }, Response, Args extends Record<string, unknown>>(
   client: CommerceOrderDraftRpcClient<Args>,
   bindings: { createOrderDraftRpcArgs(request: Request, clientId: string | null): Args; responseSchema: z.ZodType<Response> },
 ): CommerceOrderDraftWritePort<Request, Response> {
@@ -81,7 +81,7 @@ async function supersedeStalePrePaymentDraft<Args extends Record<string, unknown
   }
 }
 
-function mapRpcError(error: SupabaseRpcError): Error {
+function mapRpcError(error: CommerceOrderDraftRpcError): Error {
   const catalogReason = ["commerce_order_draft_catalog_head_moved", "commerce_order_draft_catalog_anchor_missing", "commerce_order_draft_offer_membership_refused"]
     .find((reason) => [error.message, error.details, error.hint].some((value) => value?.includes(reason)));
   if (catalogReason) return new CommerceOrderDraftConflictError("Commerce catalog admission changed", {
@@ -110,7 +110,7 @@ function mapRpcError(error: SupabaseRpcError): Error {
   });
 }
 
-function isPromotionPriceChanged(error: SupabaseRpcError): boolean {
+function isPromotionPriceChanged(error: CommerceOrderDraftRpcError): boolean {
   const searchable = [error.message, error.details, error.hint].filter(Boolean).join(" ");
   return [
     "promotion_code_global_limit_reached",
@@ -122,7 +122,7 @@ function isPromotionPriceChanged(error: SupabaseRpcError): boolean {
   ].some((reason) => searchable.includes(reason));
 }
 
-function isIdempotencyConflict(error: SupabaseRpcError): boolean {
+function isIdempotencyConflict(error: CommerceOrderDraftRpcError): boolean {
   const searchable = [error.message, error.details, error.hint].filter(Boolean).join(" ");
   return (
     error.code === "23505" ||

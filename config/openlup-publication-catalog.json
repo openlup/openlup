@@ -3166,6 +3166,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/commerce/offerAvailability.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/commerce/offerAvailabilitySchemas.ts",
       "class": "public-output"
     },
@@ -3467,6 +3471,10 @@
     },
     {
       "path": "packages/platform/src/commerce/server/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/offerAvailability.ts",
       "class": "public-output"
     },
     {
@@ -6151,6 +6159,14 @@
     },
     {
       "path": "packages/platform/test/commerce/managedTypes.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/offerAvailability.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/offerAvailabilityPort.test.ts",
       "class": "public-output"
     },
     {
@@ -9079,6 +9095,14 @@
     },
     {
       "path": "server/adapters/managed/commerce/inventoryReservationPort.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/managed/commerce/inventoryReservationResponse.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/managed/commerce/inventoryReservationResponse.ts",
       "class": "public-output"
     },
     {

@@ -13,7 +13,7 @@ export interface CompensationRpcClient {
  * result into the inventory reservation port, so the staying domain module
  * never imports this adapter.
  */
-export function createSupabaseCheckoutCompensationAdapter(
+export function createCheckoutCompensationRpcAdapter(
   client: CompensationRpcClient,
 ): Pick<CheckoutCompensationPort, "cancelAbandonedOrder" | "cancelUnstartedPromotionOrder"> {
   return {

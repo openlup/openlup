@@ -125,6 +125,10 @@ The server entry also owns generic order-draft, runtime-finalize, intent-persist
 and resume stores, cancellation adapters and reservation sweeps. Structural clients
 retain the incumbent RPC/table calls; composition supplies frozen snapshot schemas,
 ordered finalize arguments, response decoders and fail-open phone normalization.
+Use `createCommerceOrderDraftRpcPort`, `createCheckoutCompensationRpcAdapter`,
+`createCommerceCheckoutResumeQueryPort` and `createConfiguratorIntentPersistenceRpcPort`
+with structural clients, including `ConfiguratorIntentRpcQueryClient` for intent
+persistence. Reference bindings retain their incumbent exported factory names.
 Verified identity overwrites submitted identity after normalization. Draft retries
 supersede only once after an idempotency conflict; catalog refusals do not supersede.
 Recovery classifiers inject subject admission, compare shipping terms as well as
@@ -147,6 +151,18 @@ order-detail composition.
 It also owns canonical order-money validation and commerce event payload schemas.
 The latter reuse the core outbox envelope and inject host quote/draft validators,
 without importing an outbox worker or storage implementation.
+The same entry owns `deriveOfferAvailability`, `defaultOfferAvailability`,
+`availabilityBySku`, `statusForSellableNow`, `reasonCodeFor` and the low-stock
+threshold. Their reference facades preserve function identity. The server entry's
+`createOfferAvailabilityPort` runs the existing physical-table projection over
+an `OfferAvailabilityQueryClient` and an injected `isStockProvider` predicate.
+It preserves active-hold subtraction, lot/location eligibility and provider
+missing/stale refusals. SDK narrowing and provider selection stay host-owned.
+M06 owns normalized new-purchase reads and reservation TTL policy; the reference
+composition passes its selected read port through unchanged. Native new-purchase
+composition still refuses; the separate SQL seam does not activate that binding.
+W2 conformance distinguishes reads, fallback and one-time allocation; real SQL
+atomicity and consumption remain integration obligations.
 
 `./commerce` provides neutral cart/order/read, checkout, intent, persistence,
 resume and customer-default schema cores and factories. Bind existing pricing

@@ -7256,7 +7256,7 @@ export interface CompensationRpcClient {
  * result into the inventory reservation port, so the staying domain module
  * never imports this adapter.
  */
-export declare function createSupabaseCheckoutCompensationAdapter(client: CompensationRpcClient): Pick<CheckoutCompensationPort, "cancelAbandonedOrder" | "cancelUnstartedPromotionOrder">;
+export declare function createCheckoutCompensationRpcAdapter(client: CompensationRpcClient): Pick<CheckoutCompensationPort, "cancelAbandonedOrder" | "cancelUnstartedPromotionOrder">;
 export declare function cancelAbandonedCheckout(client: CompensationRpcClient, input: Parameters<CheckoutCompensationPort["cancelAbandonedOrder"]>[0]): Promise<{
     cancelled: boolean;
 }>;
@@ -8449,7 +8449,7 @@ export interface CommerceCheckoutResumeClient {
         insert(payload: Record<string, unknown>): ResumeQuery;
     };
 }
-export declare function createSupabaseCommerceCheckoutResumePort<Section, State extends {
+export declare function createCommerceCheckoutResumeQueryPort<Section, State extends {
     redactedFields: unknown;
 }, Draft>(client: CommerceCheckoutResumeClient, draftSchema: z.ZodType<Draft>): CommerceCheckoutResumeDraftPort<Section, State, Draft>;
 export {};
@@ -8688,23 +8688,23 @@ export declare function createAdminCommerceOrderMarkRefundedHandler<Response>({ 
 ```ts
 import type { z } from "zod";
 import type { CommerceOrderDraftWritePort } from "../contracts/ports.js";
-import type { RpcError as SupabaseRpcError } from "../contracts/omsTypes.js";
+import type { RpcError as CommerceOrderDraftRpcError } from "../contracts/omsTypes.js";
 import { ORDER_DRAFT_RPC_NAME } from "./orderDraftRpcPayload.js";
 /** Companion RPC that supersedes a stale pre-payment draft for a stable journey key. */
 export declare const ORDER_DRAFT_SUPERSEDE_RPC_NAME: "commerce_supersede_pre_payment_order_draft";
 export interface CommerceOrderDraftRpcClient<Args extends Record<string, unknown>> {
     rpc(functionName: typeof ORDER_DRAFT_RPC_NAME, args: Args): PromiseLike<{
         data: unknown;
-        error: SupabaseRpcError | null;
+        error: CommerceOrderDraftRpcError | null;
     }>;
     rpc(functionName: typeof ORDER_DRAFT_SUPERSEDE_RPC_NAME, args: {
         p_idempotency_key: string;
     }): PromiseLike<{
         data: unknown;
-        error: SupabaseRpcError | null;
+        error: CommerceOrderDraftRpcError | null;
     }>;
 }
-export declare function createSupabaseCommerceOrderDraftPort<Request extends {
+export declare function createCommerceOrderDraftRpcPort<Request extends {
     idempotencyKey: string;
 }, Response, Args extends Record<string, unknown>>(client: CommerceOrderDraftRpcClient<Args>, bindings: {
     createOrderDraftRpcArgs(request: Request, clientId: string | null): Args;
@@ -9285,7 +9285,7 @@ export interface ConfiguratorIntentPersistenceIdentity {
 type PersistIntentPayload<Request, Command> = (Request | Command) & {
     authenticatedUserId: string | null;
 };
-export interface ConfiguratorIntentSupabaseClient<Request, Command> {
+export interface ConfiguratorIntentRpcQueryClient<Request, Command> {
     rpc(functionName: "commerce_configurator_persist_intent", args: {
         p_intent: PersistIntentPayload<Request, Command>;
     }): PromiseLike<{
@@ -9294,7 +9294,7 @@ export interface ConfiguratorIntentSupabaseClient<Request, Command> {
     }>;
     from(tableName: "commerce_idempotency_keys"): ConfiguratorIntentIdentityTable;
 }
-export declare function createSupabaseConfiguratorIntentPersistencePort<Request extends object, Response, Command extends object, Persistence>(client: ConfiguratorIntentSupabaseClient<Request, Command>, bindings: {
+export declare function createConfiguratorIntentPersistenceRpcPort<Request extends object, Response, Command extends object, Persistence>(client: ConfiguratorIntentRpcQueryClient<Request, Command>, bindings: {
     responseSchema: z.ZodType<Response>;
     decodeCommandResponse(data: unknown): Persistence;
     normalizePhoneToE164(phone: string, country: unknown): string | null;
@@ -9586,7 +9586,7 @@ export { createCommerceCheckoutHandler } from "./commerceCheckoutHandler.js";
 /** @consumer server/domains/commerce/orderDraftRpcPayload.ts */
 export { ORDER_DRAFT_RPC_NAME, createOrderDraftRpcPayload } from "./orderDraftRpcPayload.js";
 /** @consumer Reference order-draft store binding. */
-export { createSupabaseCommerceOrderDraftPort, ORDER_DRAFT_SUPERSEDE_RPC_NAME } from "./commerceOrderDraft.js";
+export { createCommerceOrderDraftRpcPort, ORDER_DRAFT_SUPERSEDE_RPC_NAME } from "./commerceOrderDraft.js";
 /** @consumer Reference order-draft store binding. */
 export type { CommerceOrderDraftRpcClient } from "./commerceOrderDraft.js";
 /** @consumer server/adapters/managed/commerce/commerceRuntimePort.ts */
@@ -9598,7 +9598,7 @@ export { createManagedReservationSweepPort } from "./reservationSweepPort.js";
 /** @consumer server/adapters/managed/commerce/reservationSweepPort.ts */
 export type { ReservationSweepCounts, ReservationSweepRpcClient, RetryHoldSweepCounts } from "./reservationSweepPort.js";
 /** @consumer Reference checkout compensation binding. */
-export { createSupabaseCheckoutCompensationAdapter, cancelAbandonedCheckout, cancelUnstartedPromotionCheckout } from "./checkoutCompensation.js";
+export { createCheckoutCompensationRpcAdapter, cancelAbandonedCheckout, cancelUnstartedPromotionCheckout } from "./checkoutCompensation.js";
 /** @consumer Reference checkout compensation binding. */
 export type { CompensationRpcClient } from "./checkoutCompensation.js";
 /** @consumer server/domains/commerce/checkoutRecoveryToken.ts */
@@ -9612,13 +9612,42 @@ export { createExpiredCheckoutRecoveryPolicy, EXPIRED_CHECKOUT_RECOVERY_WINDOW_M
 /** @consumer server/domains/commerce/checkoutExpiredRecoveryPolicy.ts */
 export type { ExpiredRecoveryEligibility } from "./checkoutExpiredRecoveryPolicy.js";
 /** @consumer Reference checkout resume store binding. */
-export { createSupabaseCommerceCheckoutResumePort } from "./commerceCheckoutResume.js";
+export { createCommerceCheckoutResumeQueryPort } from "./commerceCheckoutResume.js";
 /** @consumer Reference checkout resume store binding. */
 export type { CommerceCheckoutResumeClient } from "./commerceCheckoutResume.js";
 /** @consumer Reference configurator intent persistence binding. */
-export { createSupabaseConfiguratorIntentPersistencePort } from "./configuratorIntentPersistence.js";
+export { createConfiguratorIntentPersistenceRpcPort } from "./configuratorIntentPersistence.js";
 /** @consumer Reference configurator intent persistence binding. */
-export type { ConfiguratorIntentSupabaseClient, ConfiguratorIntentPersistenceIdentity } from "./configuratorIntentPersistence.js";
+export type { ConfiguratorIntentRpcQueryClient, ConfiguratorIntentPersistenceIdentity } from "./configuratorIntentPersistence.js";
+/** @consumer Reference physical-stock availability binding. */
+export { createOfferAvailabilityPort } from "./offerAvailability.js";
+/** @consumer Reference physical-stock availability binding. */
+export type { OfferAvailabilityQueryClient } from "./offerAvailability.js";
+```
+## dist/commerce/server/offerAvailability.d.ts
+
+```ts
+import type { CommerceOfferAvailabilityPort } from "../contracts/availability.js";
+export interface OfferAvailabilityQueryClient {
+    from(table: string): OfferAvailabilityQueryBuilder;
+}
+interface OfferAvailabilityQueryBuilder extends PromiseLike<OfferAvailabilityQueryResult> {
+    select(columns: string, options?: Record<string, unknown>): OfferAvailabilityQueryBuilder;
+    in(column: string, values: unknown[]): PromiseLike<OfferAvailabilityQueryResult>;
+}
+interface OfferAvailabilityQueryResult {
+    data: unknown;
+    error: {
+        code?: string;
+        message?: string;
+    } | null;
+}
+export declare function createOfferAvailabilityPort(client: OfferAvailabilityQueryClient, options: {
+    isStockProvider: (providerKind: string) => boolean;
+    lowStockThreshold?: number;
+    now?: () => Date;
+}): CommerceOfferAvailabilityPort;
+export {};
 ```
 ## dist/commerce/server/orderDraftRpcPayload.d.ts
 

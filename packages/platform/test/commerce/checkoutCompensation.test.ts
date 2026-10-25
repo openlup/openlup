@@ -9,7 +9,7 @@ function client(data: unknown, error: { code?: string } | null = null) {
   return { rpc: vi.fn().mockResolvedValue({ data, error }) };
 }
 
-describe("Supabase checkout compensation adapter", () => {
+describe("checkout compensation RPC adapter", () => {
   it("maps canonical abandoned-checkout cancellation arguments", async () => {
     const rpcClient = client({ cancelled: true });
     await expect(cancelAbandonedCheckout(rpcClient, {

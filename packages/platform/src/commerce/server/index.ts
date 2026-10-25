@@ -141,7 +141,7 @@ export { createCommerceCheckoutHandler } from "./commerceCheckoutHandler.js";
 /** @consumer server/domains/commerce/orderDraftRpcPayload.ts */
 export { ORDER_DRAFT_RPC_NAME, createOrderDraftRpcPayload } from "./orderDraftRpcPayload.js";
 /** @consumer Reference order-draft store binding. */
-export { createSupabaseCommerceOrderDraftPort, ORDER_DRAFT_SUPERSEDE_RPC_NAME } from "./commerceOrderDraft.js";
+export { createCommerceOrderDraftRpcPort, ORDER_DRAFT_SUPERSEDE_RPC_NAME } from "./commerceOrderDraft.js";
 /** @consumer Reference order-draft store binding. */
 export type { CommerceOrderDraftRpcClient } from "./commerceOrderDraft.js";
 /** @consumer server/adapters/managed/commerce/commerceRuntimePort.ts */
@@ -153,7 +153,7 @@ export { createManagedReservationSweepPort } from "./reservationSweepPort.js";
 /** @consumer server/adapters/managed/commerce/reservationSweepPort.ts */
 export type { ReservationSweepCounts, ReservationSweepRpcClient, RetryHoldSweepCounts } from "./reservationSweepPort.js";
 /** @consumer Reference checkout compensation binding. */
-export { createSupabaseCheckoutCompensationAdapter, cancelAbandonedCheckout, cancelUnstartedPromotionCheckout } from "./checkoutCompensation.js";
+export { createCheckoutCompensationRpcAdapter, cancelAbandonedCheckout, cancelUnstartedPromotionCheckout } from "./checkoutCompensation.js";
 /** @consumer Reference checkout compensation binding. */
 export type { CompensationRpcClient } from "./checkoutCompensation.js";
 /** @consumer server/domains/commerce/checkoutRecoveryToken.ts */
@@ -167,10 +167,15 @@ export { createExpiredCheckoutRecoveryPolicy, EXPIRED_CHECKOUT_RECOVERY_WINDOW_M
 /** @consumer server/domains/commerce/checkoutExpiredRecoveryPolicy.ts */
 export type { ExpiredRecoveryEligibility } from "./checkoutExpiredRecoveryPolicy.js";
 /** @consumer Reference checkout resume store binding. */
-export { createSupabaseCommerceCheckoutResumePort } from "./commerceCheckoutResume.js";
+export { createCommerceCheckoutResumeQueryPort } from "./commerceCheckoutResume.js";
 /** @consumer Reference checkout resume store binding. */
 export type { CommerceCheckoutResumeClient } from "./commerceCheckoutResume.js";
 /** @consumer Reference configurator intent persistence binding. */
-export { createSupabaseConfiguratorIntentPersistencePort } from "./configuratorIntentPersistence.js";
+export { createConfiguratorIntentPersistenceRpcPort } from "./configuratorIntentPersistence.js";
 /** @consumer Reference configurator intent persistence binding. */
-export type { ConfiguratorIntentSupabaseClient, ConfiguratorIntentPersistenceIdentity } from "./configuratorIntentPersistence.js";
+export type { ConfiguratorIntentRpcQueryClient, ConfiguratorIntentPersistenceIdentity } from "./configuratorIntentPersistence.js";
+
+/** @consumer Reference physical-stock availability binding. */
+export { createOfferAvailabilityPort } from "./offerAvailability.js";
+/** @consumer Reference physical-stock availability binding. */
+export type { OfferAvailabilityQueryClient } from "./offerAvailability.js";

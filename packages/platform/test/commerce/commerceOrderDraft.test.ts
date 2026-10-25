@@ -1,16 +1,16 @@
 import { describe, expect, it, vi } from "vitest";
 import { CommerceOrderDraftConflictError, CommerceOrderDraftInvalidResponseError, CommerceOrderDraftPriceChangedError, CommerceOrderDraftPersistenceError } from "../../src/commerce/index.js";
 import { ORDER_DRAFT_RPC_NAME, ORDER_DRAFT_SUPERSEDE_RPC_NAME } from "../../src/commerce/server/index.js";
-import { createSupabaseCommerceOrderDraftPort, createOrderDraftRpcArgs, type CommerceOrderDraftRpcClient, type CreateOrderDraftRequest, type CreateOrderDraftResponse, type CreateQuoteResponse } from "./storeTestFixtures.js";
+import { createCommerceOrderDraftRpcPort, createOrderDraftRpcArgs, type CommerceOrderDraftRpcClient, type CreateOrderDraftRequest, type CreateOrderDraftResponse, type CreateQuoteResponse } from "./storeTestFixtures.js";
 
-describe("supabase commerce order draft port", () => {
+describe("commerce order draft RPC port", () => {
   it("calls only the atomic order draft RPC with mapped args", async () => {
     const request = orderDraftRequest();
     const response = orderDraftResponse(false);
     const client = createRpcClient({ data: response, error: null });
 
     await expect(
-      createSupabaseCommerceOrderDraftPort(client).createOrderDraft(request),
+      createCommerceOrderDraftRpcPort(client).createOrderDraft(request),
     ).resolves.toEqual(response);
 
     expect(client.rpc).toHaveBeenCalledWith(
@@ -24,7 +24,7 @@ describe("supabase commerce order draft port", () => {
     const client = createRpcClient({ data: response, error: null });
 
     await expect(
-      createSupabaseCommerceOrderDraftPort(client).createOrderDraft(orderDraftRequest()),
+      createCommerceOrderDraftRpcPort(client).createOrderDraft(orderDraftRequest()),
     ).resolves.toMatchObject({
       orderDraft: {
         orderId: "order_11111111-1111-4111-8111-111111111111",
@@ -43,7 +43,7 @@ describe("supabase commerce order draft port", () => {
     });
 
     await expect(
-      createSupabaseCommerceOrderDraftPort(client).createOrderDraft(orderDraftRequest()),
+      createCommerceOrderDraftRpcPort(client).createOrderDraft(orderDraftRequest()),
     ).rejects.toBeInstanceOf(CommerceOrderDraftConflictError);
   });
 
@@ -65,7 +65,7 @@ describe("supabase commerce order draft port", () => {
     const client = { rpc } as unknown as CommerceOrderDraftRpcClient;
 
     await expect(
-      createSupabaseCommerceOrderDraftPort(client).createOrderDraft(request),
+      createCommerceOrderDraftRpcPort(client).createOrderDraft(request),
     ).resolves.toEqual(response);
 
     expect(rpc).toHaveBeenCalledWith(ORDER_DRAFT_SUPERSEDE_RPC_NAME, {
@@ -90,7 +90,7 @@ describe("supabase commerce order draft port", () => {
     const client = { rpc } as unknown as CommerceOrderDraftRpcClient;
 
     await expect(
-      createSupabaseCommerceOrderDraftPort(client).createOrderDraft(request),
+      createCommerceOrderDraftRpcPort(client).createOrderDraft(request),
     ).rejects.toBeInstanceOf(CommerceOrderDraftConflictError);
 
     // create attempted only ONCE (no retry when nothing was superseded).
@@ -101,7 +101,7 @@ describe("supabase commerce order draft port", () => {
   it.each(["commerce_order_draft_catalog_head_moved", "commerce_order_draft_catalog_anchor_missing", "commerce_order_draft_offer_membership_refused"])(
     "maps atomic catalog refusal %s to conflict without superseding a draft", async (message) => {
       const client = createRpcClient({ data: null, error: { code: "40001", message } });
-      await expect(createSupabaseCommerceOrderDraftPort(client).createOrderDraft(orderDraftRequest()))
+      await expect(createCommerceOrderDraftRpcPort(client).createOrderDraft(orderDraftRequest()))
         .rejects.toMatchObject({ name: CommerceOrderDraftConflictError.name, details: { reason: message } });
       expect(client.rpc).toHaveBeenCalledTimes(1);
       expect(client.rpc).not.toHaveBeenCalledWith(ORDER_DRAFT_SUPERSEDE_RPC_NAME, expect.anything());
@@ -117,7 +117,7 @@ describe("supabase commerce order draft port", () => {
     });
 
     await expect(
-      createSupabaseCommerceOrderDraftPort(client).createOrderDraft(orderDraftRequest()),
+      createCommerceOrderDraftRpcPort(client).createOrderDraft(orderDraftRequest()),
     ).rejects.toBeInstanceOf(CommerceOrderDraftPersistenceError);
   });
 
@@ -130,7 +130,7 @@ describe("supabase commerce order draft port", () => {
     const client = createRpcClient({ data: null, error: { code: "40001", message } });
 
     await expect(
-      createSupabaseCommerceOrderDraftPort(client).createOrderDraft(orderDraftRequest()),
+      createCommerceOrderDraftRpcPort(client).createOrderDraft(orderDraftRequest()),
     ).rejects.toMatchObject({
       name: CommerceOrderDraftPriceChangedError.name,
       details: { reason: "promotion_code_unavailable" },
@@ -148,7 +148,7 @@ describe("supabase commerce order draft port", () => {
     const client = createRpcClient({ data: null, error: { code: "40001", message } });
 
     await expect(
-      createSupabaseCommerceOrderDraftPort(client).createOrderDraft(orderDraftRequest()),
+      createCommerceOrderDraftRpcPort(client).createOrderDraft(orderDraftRequest()),
     ).rejects.toBeInstanceOf(CommerceOrderDraftPersistenceError);
   });
 
@@ -160,7 +160,7 @@ describe("supabase commerce order draft port", () => {
   ])("keeps invariant failure %s out of the price-changed class", async (message) => {
     const client = createRpcClient({ data: null, error: { code: "22023", message } });
     await expect(
-      createSupabaseCommerceOrderDraftPort(client).createOrderDraft(orderDraftRequest()),
+      createCommerceOrderDraftRpcPort(client).createOrderDraft(orderDraftRequest()),
     ).rejects.toBeInstanceOf(CommerceOrderDraftPersistenceError);
   });
 
@@ -171,7 +171,7 @@ describe("supabase commerce order draft port", () => {
     });
 
     await expect(
-      createSupabaseCommerceOrderDraftPort(client).createOrderDraft(orderDraftRequest()),
+      createCommerceOrderDraftRpcPort(client).createOrderDraft(orderDraftRequest()),
     ).rejects.toBeInstanceOf(CommerceOrderDraftInvalidResponseError);
   });
 });
@@ -248,13 +248,13 @@ it.each(["false", "error", "throw"])("preserves the original conflict when super
     }
     return { data: null, error: { code: "23505", message: "commerce_order_draft_idempotency_conflict" } };
   });
-  await expect(createSupabaseCommerceOrderDraftPort({ rpc }).createOrderDraft(orderDraftRequest())).rejects.toBeInstanceOf(CommerceOrderDraftConflictError);
+  await expect(createCommerceOrderDraftRpcPort({ rpc }).createOrderDraft(orderDraftRequest())).rejects.toBeInstanceOf(CommerceOrderDraftConflictError);
   expect(rpc.mock.calls.map(([name]) => name)).toEqual([ORDER_DRAFT_RPC_NAME, ORDER_DRAFT_SUPERSEDE_RPC_NAME]);
 });
 it("does not supersede again when the single retry conflicts", async () => {
   const rpc = vi.fn(async (name: string) => name === ORDER_DRAFT_SUPERSEDE_RPC_NAME
     ? { data: true, error: null }
     : { data: null, error: { code: "23505", message: "commerce_order_draft_idempotency_conflict" } });
-  await expect(createSupabaseCommerceOrderDraftPort({ rpc }).createOrderDraft(orderDraftRequest())).rejects.toBeInstanceOf(CommerceOrderDraftConflictError);
+  await expect(createCommerceOrderDraftRpcPort({ rpc }).createOrderDraft(orderDraftRequest())).rejects.toBeInstanceOf(CommerceOrderDraftConflictError);
   expect(rpc.mock.calls.map(([name]) => name)).toEqual([ORDER_DRAFT_RPC_NAME, ORDER_DRAFT_SUPERSEDE_RPC_NAME, ORDER_DRAFT_RPC_NAME]);
 });

@@ -2696,6 +2696,10 @@ export { checkoutContinuationJourneyIdSchema, CHECKOUT_PAYMENT_CONTINUATION_TTL_
 /** @consumer server/domains/commerce/checkoutOfferPolicyPort.ts */
 export { commerceOfferEvidenceSchema } from "./offerEvidenceSchemas.js";
 export type { CommerceOfferEvidence } from "./offerEvidenceSchemas.js";
+/** @consumer src/domains/commerce/offerAvailability.ts */
+export { DEFAULT_LOW_STOCK_THRESHOLD, deriveOfferAvailability, defaultOfferAvailability, availabilityBySku, statusForSellableNow, reasonCodeFor } from "./offerAvailability.js";
+/** @consumer src/domains/commerce/offerAvailability.ts */
+export type { DeriveOfferAvailabilityInput } from "./offerAvailability.js";
 ```
 ## dist/commerce/model/customerFulfillmentRecovery.d.ts
 
@@ -3196,6 +3200,28 @@ export {};
 
 ```ts
 export type { OmsAccountingInvoiceRow, OmsAccountingOutboxRow, OmsAddressRow, OmsCommunicationDeliveryRow, OmsCustomerRow, OmsHoldRow, OmsInventoryReservationRow, OmsOperationRow, OmsOrderItemRow, OmsOrderRow, OmsOrderRowCore, OmsOrderRowCoreInput, OmsPaymentAttemptRow, OmsPaymentIntentRow, OmsPaymentTransitionRow } from "../contracts/omsTypes.js";
+```
+## dist/commerce/offerAvailability.d.ts
+
+```ts
+import type { CommerceOfferAvailability, CommerceOfferAvailabilityRequestItem, CommerceOfferAvailabilityStatus } from "./contracts/availability.js";
+export declare const DEFAULT_LOW_STOCK_THRESHOLD = 20;
+export interface DeriveOfferAvailabilityInput extends CommerceOfferAvailabilityRequestItem {
+    sellableNow: number | null;
+    lowStockThreshold?: number;
+    source: string;
+}
+export declare function deriveOfferAvailability(input: DeriveOfferAvailabilityInput): CommerceOfferAvailability;
+export declare function defaultOfferAvailability(item: CommerceOfferAvailabilityRequestItem, source?: string): CommerceOfferAvailability;
+export declare function availabilityBySku(items: readonly CommerceOfferAvailability[]): Map<string, CommerceOfferAvailability>;
+/**
+ * The status ladder itself, exported so a composed offer (a bundle derives one
+ * status from many components) reads the SAME four rungs rather than mirroring
+ * them. A second copy would drift the first time a rung moves.
+ */
+export declare function statusForSellableNow(sellableNow: number | null, lowStockThreshold?: number): CommerceOfferAvailabilityStatus;
+/** The reason-code vocabulary for a stock-derived status; exported for the same reason. */
+export declare function reasonCodeFor(status: CommerceOfferAvailabilityStatus): string;
 ```
 ## dist/commerce/offerAvailabilitySchemas.d.ts
 

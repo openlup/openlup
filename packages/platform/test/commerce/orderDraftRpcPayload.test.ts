@@ -85,7 +85,7 @@ describe("order draft RPC payload mapper", () => {
     const absent = createOrderDraftRpcArgs(request);
     const explicitNull = createOrderDraftRpcArgs(request, null);
 
-    // OMITTED (undefined), not null: keeps the PostgREST call 3-arg, which
+    // OMITTED (undefined), not null: keeps the RPC call at three arguments, which
     // resolves both before and after the client_id migration applies.
     expect(absent.p_client_id).toBeUndefined();
     expect("p_client_id" in absent).toBe(false);

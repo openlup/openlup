@@ -75,3 +75,8 @@ export { checkoutContinuationJourneyIdSchema, CHECKOUT_PAYMENT_CONTINUATION_TTL_
 /** @consumer server/domains/commerce/checkoutOfferPolicyPort.ts */
 export { commerceOfferEvidenceSchema } from "./offerEvidenceSchemas.js";
 export type { CommerceOfferEvidence } from "./offerEvidenceSchemas.js";
+
+/** @consumer src/domains/commerce/offerAvailability.ts */
+export { DEFAULT_LOW_STOCK_THRESHOLD, deriveOfferAvailability, defaultOfferAvailability, availabilityBySku, statusForSellableNow, reasonCodeFor } from "./offerAvailability.js";
+/** @consumer src/domains/commerce/offerAvailability.ts */
+export type { DeriveOfferAvailabilityInput } from "./offerAvailability.js";

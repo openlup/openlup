@@ -308,7 +308,7 @@ function order(input: {
 // W3 keeps exact release RPC order at the reference reservation binding.
 // The query double models observed readback; PostgreSQL owns atomic release/replay.
 it("W3 preserves once-only observed release followed by cancellation on repeated cleanup", async () => {
-  const { tryCompensate, createSupabaseCheckoutCompensationAdapter } = await import("@openlup/platform/commerce/server");
+  const { tryCompensate, createCheckoutCompensationRpcAdapter } = await import("@openlup/platform/commerce/server");
   const calls: Array<[string, Record<string, unknown>]> = [];
   let reserved = true;
   const rpc = async (name: string, args: Record<string, unknown>) => {
@@ -322,9 +322,68 @@ it("W3 preserves once-only observed release followed by cancellation on repeated
       then: (resolve: (value: unknown) => unknown) => Promise.resolve({ data: reserved ? [{ id: "hold-example" }] : [], error: null }).then(resolve) };
     return builder;
   };
-  const port = createManagedInventoryReservationPort({ rpc, from } as never, { compensation: createSupabaseCheckoutCompensationAdapter({ rpc }) });
+  const port = createManagedInventoryReservationPort({ rpc, from } as never, { compensation: createCheckoutCompensationRpcAdapter({ rpc }) });
   for (let replay = 0; replay < 2; replay++) await tryCompensate(port, "journey-example", "order-example");
   expect(calls.map(([name]) => name)).toEqual(["inventory_release_reservation", "commerce_cancel_unstarted_promotion_order", "commerce_cancel_abandoned_checkout", "commerce_cancel_unstarted_promotion_order", "commerce_cancel_abandoned_checkout"]);
   expect(calls[0][1]).toMatchObject({ p_reason: "checkout_orchestration_failed" });
   expect(calls.at(-1)?.[1].p_reason).toBe("checkout_orchestration_failed_before_provider_dispatch");
+});
+
+it("W2 preserves the sole one-time batch RPC, null cycle, ordered arguments and 24-hour minimum lease", async () => {
+  const calls: Array<[string, Record<string, unknown>]> = [];
+  const oneTime = order({ mode: "one_time", subscriptionCycleId: null });
+  const client = {
+    from(table: string): never { throw new Error(`unexpected table:${table}`); },
+    async rpc(name: string, args: Record<string, unknown>) {
+      calls.push([name, args]);
+      return { data: batchReservationData(oneTime), error: null };
+    },
+  };
+  await createManagedInventoryReservationPort(client, { now: () => new Date(0), checkoutReservationTtlMinutes: 30 })
+    .reserveOrderItems({ idempotencyKey: "one-time-example:inventory", order: oneTime, paymentStatus: "created" });
+  const expected = { p_idempotency_key: "one-time-example:inventory", p_order_id: oneTime.orderId,
+    p_subscription_cycle_id: null, p_items: [{ orderItemId: oneTime.items[0].orderItemId, skuId: oneTime.items[0].skuId, quantity: 1 }],
+    p_kind: "checkout_payment_window", p_payment_status: "created", p_expires_at: new Date(86_400_000).toISOString(),
+    p_metadata: { source: "commerce.runtime.hidden.v0" }, p_provider_kind: null };
+  expect(calls).toEqual([["inventory_reserve_order_items", expected]]);
+  expect(Object.keys(calls[0][1])).toEqual(Object.keys(expected));
+});
+
+it.each(["inventory_admission_busy", "lock unavailable; schema cache"])("N4 never falls back on batch contention (%s) and retries with the original key", async message => {
+  const oneTime = order({ mode: "one_time", subscriptionCycleId: null });
+  const rpc = vi.fn().mockResolvedValueOnce({ data: null, error: { code: "55P03", message } })
+    .mockResolvedValueOnce({ data: batchReservationData(oneTime), error: null });
+  const port = createManagedInventoryReservationPort({ rpc, from: vi.fn() as never }, {
+    now: () => new Date(0), legacySchemaFallback: { enabled: true, environmentLabel: "preview" },
+  });
+  const input = { idempotencyKey: "stable-key", order: oneTime, paymentStatus: "created" as const };
+  await expect(port.reserveOrderItems(input)).rejects.toMatchObject({ name: "CommerceRuntimePersistenceError", details: {
+    code: "55P03", reason: message === "inventory_admission_busy" ? "inventory_admission_busy" : "inventory_lock_unavailable",
+  } });
+  expect(rpc).toHaveBeenCalledOnce();
+  await expect(port.reserveOrderItems(input)).resolves.toHaveLength(1);
+  expect(rpc.mock.calls).toEqual([
+    ["inventory_reserve_order_items", expect.objectContaining({ p_idempotency_key: "stable-key" })],
+    ["inventory_reserve_order_items", rpc.mock.calls[0][1]],
+  ]);
+});
+
+it("N4 never drops provider metadata on per-item contention after the allowed schema fallback", async () => {
+  const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+  try {
+    const rpc = vi.fn().mockResolvedValueOnce({ data: null, error: { code: "PGRST202", message: "schema cache" } })
+      .mockResolvedValueOnce({ data: null, error: { code: "55P03", message: "schema cache" } });
+    const oneTime = order({ mode: "one_time", subscriptionCycleId: null });
+    const port = createManagedInventoryReservationPort({ rpc, from: vi.fn() as never }, {
+      now: () => new Date(0), legacySchemaFallback: { enabled: true, environmentLabel: "preview" },
+    });
+    await expect(port.reserveOrderItems({ idempotencyKey: "stable-key", order: oneTime, paymentStatus: "created",
+      metadata: { selectedDelivery: { providerKind: "stock-source" } },
+    })).rejects.toMatchObject({ details: { code: "55P03", reason: "inventory_lock_unavailable" } });
+    expect(rpc.mock.calls).toEqual([
+      ["inventory_reserve_order_items", expect.objectContaining({ p_idempotency_key: "stable-key", p_provider_kind: "stock-source" })],
+      ["inventory_reserve_order", expect.objectContaining({ p_idempotency_key: `stable-key:${oneTime.items[0].orderItemId}`, p_provider_kind: "stock-source" })],
+    ]);
+    expect(warn).toHaveBeenCalledOnce();
+  } finally { warn.mockRestore(); }
 });

@@ -28,7 +28,9 @@ hosted-feedback adapters, remain outside the closure, exposed only by
 `@openlup/platform/commerce/server`.
 The checkout-engine contribution adds exactly `commerce/checkoutCommandSchemas.js`,
 `commerce/offerEvidenceSchemas.js` and `commerce/paymentContinuation.js` to the
-identity inventory. They supply browser-safe validation and lifetime constants;
+identity inventory. The stock-composition contribution adds exactly
+`commerce/offerAvailability.js` to both identity and subscription inventories.
+These helpers supply browser-safe validation and lifetime constants;
 checkout execution remains outside this profile in `commerce/server`.
 The subscription profile also lists the pure commerce checkout-command, offer-
 evidence and payment-continuation helpers by exact built file. Its starter

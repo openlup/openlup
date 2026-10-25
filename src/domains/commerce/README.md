@@ -84,8 +84,10 @@ decline and busy outcomes; reference suites retain host schema/policy proof.
 Order-draft/runtime-finalize, configurator persistence, resume storage,
 cancellation and sweep facades now bind the generic stores at the server entry.
 The reference owns frozen schemas, ordered persisted-key projections and phone
-normalization; the package stamps verified identity last. Bounded recovery
-classifiers/fingerprints and token helpers delegate to that entry. Only the host
+normalization; the package stamps verified identity last. Package stores expose
+neutral RPC/query factory and client names; the thin reference
+bindings retain their incumbent exported names and compensation function identity.
+Bounded recovery classifiers/fingerprints and token helpers delegate to that entry. Only the host
 subject-admission predicate admits the persisted neutral-command exception;
 public runtime validation retains its required subject. Recovery quote projection,
 services/routes and link destinations remain here. Shipping-term drift refuses
@@ -354,3 +356,18 @@ brand composition remain here. Legacy optional `petName` maps to `contextName`
 only at the facade; subjects, preheaders, ordered blocks and full rendered output
 remain unchanged. The public template parity suite covers both locales and
 optional receipt, tracking, return, CTA and marketing branches.
+
+The offer-availability status/reason ladder now delegates with identity to the
+browser-safe commerce package. The physical-table reader delegates to
+`commerce/server`, retaining provider selection and SDK narrowing in its reference
+adapter. The existing M06 reference composition uses the selected normalized
+stock read port; this does not switch private previews onto the ATP SQL seam.
+Reservation allocation stays in its managed binding, importing M06's TTL policy.
+Protected inventory lock contention now carries scoped retryable details, never
+falls through schema fallback, and retains the original allocation key. Raw
+SQLSTATE mapping stays inside the reservation response adapter. Its reference
+suite owns exact RPC argument order and one-time null-cycle/24-hour lease proof;
+neutral package W2 uses recording ports. The environment fallback selector is
+unchanged. Replacement allocation remains ID-scoped to the replacement's own
+holds; one-time checkout has no subscription-reservation consumption authority.
+No second stock/ATP engine or replacement alignment operation is added.

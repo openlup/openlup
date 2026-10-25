@@ -1,4 +1,4 @@
-import { createSupabaseConfiguratorIntentPersistencePort as createPort, type ConfiguratorIntentSupabaseClient as RpcClient, type ConfiguratorIntentPersistenceIdentity } from "@openlup/platform/commerce/server";
+import { createConfiguratorIntentPersistenceRpcPort as createPort, type ConfiguratorIntentRpcQueryClient as RpcClient, type ConfiguratorIntentPersistenceIdentity } from "@openlup/platform/commerce/server";
 import { configuratorIntentPersistenceResponseSchema, type ConfiguratorIntentPersistenceRequest, type ConfiguratorIntentPersistenceResponse } from "../../../src/domains/commerce/configuratorIntentPersistenceContracts.js";
 import type { CheckoutCommandV1 } from "../../../src/domains/commerce/checkoutCommandContracts.js";
 import type { ConfiguratorIntentPersistencePort } from "../../../src/domains/commerce/ports.js";

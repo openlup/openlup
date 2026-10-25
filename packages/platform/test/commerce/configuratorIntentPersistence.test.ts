@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { CONFIGURATOR_INTENT_VERSION, CHECKOUT_COMMAND_V1 } from "../../src/commerce/index.js";
-import { createSupabaseConfiguratorIntentPersistencePort, type ConfiguratorIntentSupabaseClient, type CheckoutCommandV1 } from "./storeTestFixtures.js";
+import { createConfiguratorIntentPersistenceRpcPort, type ConfiguratorIntentRpcQueryClient, type CheckoutCommandV1 } from "./storeTestFixtures.js";
 import { ConfiguratorIntentPersistenceConflictError } from "../../src/commerce/server/index.js";
 const COMMERCE_CURRENCIES = ["XTS"];
 
@@ -9,13 +9,13 @@ const SUBJECT_ID = "22222222-2222-4222-8222-222222222222";
 const ADDRESS_ID = "33333333-3333-4333-8333-333333333333";
 
 /** Narrow a hand-rolled stub to the client shape the port expects. */
-function asClient(stub: unknown): ConfiguratorIntentSupabaseClient {
-  return stub as ConfiguratorIntentSupabaseClient;
+function asClient(stub: unknown): ConfiguratorIntentRpcQueryClient {
+  return stub as ConfiguratorIntentRpcQueryClient;
 }
 
 /** The port under test. One named construction site for the whole suite. */
-function portFor(client: ConfiguratorIntentSupabaseClient) {
-  return createSupabaseConfiguratorIntentPersistencePort(client);
+function portFor(client: ConfiguratorIntentRpcQueryClient) {
+  return createConfiguratorIntentPersistenceRpcPort(client);
 }
 
 function completedPayload() {
@@ -40,7 +40,7 @@ function selectClient(result: { data: unknown; error: unknown }) {
   return { client: asClient({ from }), from, select, builder, limit };
 }
 
-describe("supabaseConfiguratorIntentPersistencePort — findCompletedIdentity", () => {
+describe("configurator intent persistence RPC/query port — findCompletedIdentity", () => {
   it("returns the parsed identity stored on the completed key", async () => {
     const { client, from, builder, limit } = selectClient({
       data: [{ response_payload: completedPayload() }],
@@ -119,7 +119,7 @@ function sentPhone(rpc: ReturnType<typeof vi.fn>, holder: "contact" | "customer"
   return (sentIntent(rpc)[holder] as { phone?: string }).phone;
 }
 
-describe("supabaseConfiguratorIntentPersistencePort — phone canonicalization at the write", () => {
+describe("configurator intent persistence RPC/query port — phone canonicalization at the write", () => {
   it("canonicalizes a bare national number on the configurator intent", async () => {
     const { client, rpc } = rpcClient();
     await portFor(client)
@@ -209,7 +209,7 @@ describe("supabaseConfiguratorIntentPersistencePort — phone canonicalization a
   });
 });
 
-describe("supabaseConfiguratorIntentPersistencePort — the verified subject", () => {
+describe("configurator intent persistence RPC/query port — the verified subject", () => {
   it("sends null when the route proved nobody, and that is a positive claim", async () => {
     const { client, rpc } = rpcClient();
     await portFor(client).persistIntent(intentWithPhone("+99123456789"));
@@ -219,7 +219,7 @@ describe("supabaseConfiguratorIntentPersistencePort — the verified subject", (
 
   it("sends the subject the route verified", async () => {
     const { client, rpc } = rpcClient();
-    await createSupabaseConfiguratorIntentPersistencePort(client, {
+    await createConfiguratorIntentPersistenceRpcPort(client, {
       authenticatedUserId: "7a000000-0000-4000-8000-0000000000a1",
     }).persistIntent(intentWithPhone("+99123456789"));
 
@@ -245,7 +245,7 @@ describe("supabaseConfiguratorIntentPersistencePort — the verified subject", (
   });
 });
 
-describe("supabaseConfiguratorIntentPersistencePort — persistIntent error mapping", () => {
+describe("configurator intent persistence RPC/query port — persistIntent error mapping", () => {
   it("maps a nullable legacy subject response into the neutral persistence result", async () => {
     const client = asClient({
       rpc: vi.fn(async () => ({
@@ -303,13 +303,13 @@ describe("supabaseConfiguratorIntentPersistencePort — persistIntent error mapp
 it("stamps verified identity last for commands as well as intents", async () => {
   const { client, rpc } = rpcClient();
   const forged = { ...commandWithPhone("123456789", "AA"), authenticatedUserId: "forged" };
-  await createSupabaseConfiguratorIntentPersistencePort(client, { authenticatedUserId: CLIENT_ID }).persistCheckoutCommand(forged);
+  await createConfiguratorIntentPersistenceRpcPort(client, { authenticatedUserId: CLIENT_ID }).persistCheckoutCommand(forged);
   expect(sentIntent(rpc).authenticatedUserId).toBe(CLIENT_ID);
   expect(Object.keys(sentIntent(rpc)).at(-1)).toBe("authenticatedUserId");
   expect(sentPhone(rpc, "customer")).toBe("+99123456789");
 });
 
-import { createSupabaseConfiguratorIntentPersistencePort as createGenericPersistence } from "../../src/commerce/server/index.js";
+import { createConfiguratorIntentPersistenceRpcPort as createGenericPersistence } from "../../src/commerce/server/index.js";
 import { persistenceBindings } from "./storeTestFixtures.js";
 it("injects the host phone/country normalizer before stamping route identity", async () => {
   const { client, rpc } = rpcClient();

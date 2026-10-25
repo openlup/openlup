@@ -58,6 +58,7 @@
     "packages/platform/dist/commerce/model/omsReadModelProjections.js",
     "packages/platform/dist/commerce/model/omsReadModelRowCore.js",
     "packages/platform/dist/commerce/model/omsReadModelRows.js",
+    "packages/platform/dist/commerce/offerAvailability.js",
     "packages/platform/dist/commerce/offerAvailabilitySchemas.js",
     "packages/platform/dist/commerce/offerEvidenceSchemas.js",
     "packages/platform/dist/commerce/oms/omsContractBase.js",

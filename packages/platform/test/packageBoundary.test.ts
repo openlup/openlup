@@ -257,7 +257,7 @@ describe("package source boundary", () => {
   it("keeps K2b stores, adapters and recovery helpers exclusively at the server entry", async () => {
     const browser = await import("../src/commerce/index.js");
     const server = await import("../src/commerce/server/index.js");
-    for (const name of ["createSupabaseCommerceOrderDraftPort", "createManagedCommerceRuntimeOrderPort", "createSupabaseConfiguratorIntentPersistencePort", "createSupabaseCommerceCheckoutResumePort", "createExpiredCheckoutRecoveryPolicy", "generateCheckoutRecoveryToken"] as const) {
+    for (const name of ["createCommerceOrderDraftRpcPort", "createManagedCommerceRuntimeOrderPort", "createConfiguratorIntentPersistenceRpcPort", "createCommerceCheckoutResumeQueryPort", "createExpiredCheckoutRecoveryPolicy", "generateCheckoutRecoveryToken"] as const) {
       expect(typeof server[name]).toBe("function");
       expect(name in browser).toBe(false);
     }
@@ -289,6 +289,7 @@ describe("package source boundary", () => {
     });
     const inputs = Object.keys(result.metafile!.inputs).map(path => path.replaceAll("\\", "/"));
     expect(inputs.some(path => path.endsWith("commerce/offerAvailabilitySchemas.ts"))).toBe(true);
+    expect(inputs.some(path => path.endsWith("commerce/offerAvailability.ts"))).toBe(true);
     expect(inputs.some(path => path.endsWith("commerce/checkoutCommandSchemas.ts"))).toBe(true);
     expect(inputs.some(path => path.endsWith("commerce/offerEvidenceSchemas.ts"))).toBe(true);
     expect(inputs.some(path => path.endsWith("commerce/paymentContinuation.ts"))).toBe(true);

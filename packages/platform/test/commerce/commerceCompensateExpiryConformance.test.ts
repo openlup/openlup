@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createPorts, createResponse, intent, request, createCommerceCheckoutHandler } from "./checkoutTestFixtures.js";
-import { createSupabaseCheckoutCompensationAdapter } from "../../src/commerce/server/index.js";
+import { createCheckoutCompensationRpcAdapter } from "../../src/commerce/server/index.js";
 
 afterEach(() => vi.restoreAllMocks());
 function fixture(error: Error) {
@@ -10,7 +10,7 @@ function fixture(error: Error) {
   // Models the reservation port's observed readback only. SQL owns atomicity.
   let reserved = true;
   const ports = createPorts();
-  const cancellations = createSupabaseCheckoutCompensationAdapter({
+  const cancellations = createCheckoutCompensationRpcAdapter({
     async rpc(name, args) {
       calls.push([name, args]);
       return { data: name === "commerce_cancel_abandoned_checkout" ? { cancelled: true } : false, error: null };

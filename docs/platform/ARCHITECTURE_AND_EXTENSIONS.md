@@ -627,6 +627,14 @@ authority. Recovery services, projection and application routes retain their
 owners. The C2 release handoff is to be released; unit recorders do not prove SQL
 atomicity or active-subscription preservation.
 
+The physical-table availability projection also lives at commerce/server over a
+structural query client and a required host provider predicate. Its pure ladder
+is browser-safe commerce; SDK narrowing stays in the reference adapter. The
+reference reservation allocator imports M06's policy, retaining scoped lock-error
+translation and original retry keys locally. The existing M06 normalized read
+composition remains the only selected stock-read seam; this move does not bind
+the separate native reader or switch private preview transport.
+
 Effective bundle selection reuses pricing's half-open authority through its
 public server entry, adding the catalog → pricing value edge. The dependency is
 acyclic; pricing owns no runtime catalog edge. The opt-in adapter keeps effective
@@ -639,6 +647,14 @@ Reservation policy has an unchanged server counterpart; the reference keeps brow
 Catalog now also owns fixed-bundle application/admin factories at its existing
 entry. Its data/http/bff inputs remain type-only: the native read
 store takes the data entry's executor without constructing a driver or pool.
+The physical-table availability projection also lives at commerce/server over a
+structural query client and a required host provider predicate. Its pure ladder
+is browser-safe commerce; SDK narrowing stays in the reference adapter. The
+reference reservation allocator imports M06's policy, retaining scoped lock-error
+translation and original retry keys locally. The existing M06 normalized read
+composition remains the only selected stock-read seam; this move does not bind
+the separate native reader or switch private preview transport.
+
 Effective bundle selection alone adds the pricing value edge described above;
 there is no promotions edge. Reference wrappers bind
 existing schemas, operation spec and shared admin kit, stock/lifecycle helpers,

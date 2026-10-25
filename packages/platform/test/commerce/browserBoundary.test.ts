@@ -40,7 +40,7 @@ it("exposes checkout compensation only through the server entry", () => {
 });
 
 it("exposes the checkout engine only through the server entry", () => {
-  for (const name of ["createCommerceCheckoutHandler", "createCommerceRuntimeService", "createPaidOrderOrchestration"]) {
+  for (const name of ["createCommerceCheckoutHandler", "createCommerceRuntimeService", "createPaidOrderOrchestration", "createOfferAvailabilityPort"]) {
     expect(server).toHaveProperty(name, expect.any(Function));
     expect(commerce).not.toHaveProperty(name);
   }

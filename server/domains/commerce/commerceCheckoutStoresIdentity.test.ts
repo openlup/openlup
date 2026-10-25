@@ -19,7 +19,7 @@ import { classifyOrderRecoveryEligibility } from "./checkoutExpiredRecoveryPolic
 describe("checkout store facades", () => {
   it("keeps leaf export identity", () => {
     expect(sweep.createManagedReservationSweepPort).toBe(core.createManagedReservationSweepPort);
-    expect(compensation.createSupabaseCheckoutCompensationAdapter).toBe(core.createSupabaseCheckoutCompensationAdapter);
+    expect(compensation.createSupabaseCheckoutCompensationAdapter).toBe(core.createCheckoutCompensationRpcAdapter);
     expect(compensation.cancelAbandonedCheckout).toBe(core.cancelAbandonedCheckout);
     expect(compensation.cancelUnstartedPromotionCheckout).toBe(core.cancelUnstartedPromotionCheckout);
     expect(token.hashCheckoutRecoveryToken).toBe(core.hashCheckoutRecoveryToken);

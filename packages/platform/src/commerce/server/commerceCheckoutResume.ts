@@ -31,7 +31,7 @@ interface CheckoutResumeRow<Section, State> {
 const SELECT_COLUMNS =
   "id, last_section_id, draft_state, expires_at, created_at, updated_at";
 
-export function createSupabaseCommerceCheckoutResumePort<Section, State extends { redactedFields: unknown }, Draft>(
+export function createCommerceCheckoutResumeQueryPort<Section, State extends { redactedFields: unknown }, Draft>(
   client: CommerceCheckoutResumeClient,
   draftSchema: z.ZodType<Draft>,
 ): CommerceCheckoutResumeDraftPort<Section, State, Draft> {

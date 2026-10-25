@@ -1,12 +1,13 @@
 import {
-  CommerceRuntimeConflictError,
   CommerceRuntimePersistenceError,
   type FinalizedCheckoutOrder,
   type InventoryCheckoutReservationPort,
 } from "../../../../src/domains/commerce/runtimePorts.js";
 import type { HiddenCheckoutRuntimeReservation } from "../../../../src/domains/commerce/runtimeContracts.js";
-import { normalizedTtlMinutes, reservationPolicyFor } from "../../../../src/domains/commerce/reservationPolicy.js";
+import { normalizedTtlMinutes, reservationPolicyFor } from "@openlup/platform/inventory";
 import type { CheckoutCompensationPort } from "../../../domains/commerce/commerceCheckoutCompensation.js";
+import { mapReservation, mapBatchReservations, mapRpcError, type RpcError } from "./inventoryReservationResponse.js";
+
 export interface ManagedInventoryReservationClient {
   from(table: string): ManagedQueryBuilder;
   rpc(functionName: string, args: Record<string, unknown>): PromiseLike<{ data: unknown; error: RpcError | null }>;
@@ -20,12 +21,6 @@ interface ManagedQueryBuilder extends PromiseLike<ManagedQueryResult> {
 interface ManagedQueryResult {
   data: unknown;
   error: RpcError | null;
-}
-interface RpcError {
-  code?: string;
-  message?: string;
-  details?: string;
-  hint?: string;
 }
 // The order-cancelling half of the compensation contract is durable persistence,
 // not reservation policy, so composition injects it (server/adapters/supabase/commerce/checkoutCompensation.ts).
@@ -232,6 +227,7 @@ function readCheckoutReservationTtlMinutes(): number {
 }
 
 function canRetryLegacyReservationRpc(error: RpcError): boolean {
+  if (error.code === "55P03") return false;
   const combined = `${error.code ?? ""} ${error.message ?? ""} ${error.details ?? ""} ${error.hint ?? ""}`;
   return /\bPGRST202\b|\b42883\b|could not find.*function|function .* does not exist|schema cache/i.test(combined);
 }
@@ -241,60 +237,4 @@ function fallbackWarningPayload(context: ReservationSchemaFallbackContext): stri
     providerKind: context.providerKind ?? "local_atp",
     environment: context.legacySchemaFallback.environmentLabel,
   });
-}
-
-function mapReservation(
-  data: unknown,
-  _order: FinalizedCheckoutOrder,
-  item: FinalizedCheckoutOrder["items"][number],
-): HiddenCheckoutRuntimeReservation {
-  if (!data || typeof data !== "object") {
-    throw new CommerceRuntimePersistenceError("Inventory reservation response invalid");
-  }
-  const record = data as Record<string, unknown>;
-  const reservationId = readString(record, "reservationId");
-  const reservationIds = Array.isArray(record.reservationIds)
-    ? record.reservationIds.filter((id): id is string => typeof id === "string")
-    : [reservationId];
-  return {
-    reservationId,
-    reservationIds,
-    orderItemId: item.orderItemId,
-    skuId: item.skuId,
-    sku: item.sku,
-    status: "reserved",
-    replayed: record.replayed === true,
-  };
-}
-
-function mapBatchReservations(
-  data: unknown,
-  order: FinalizedCheckoutOrder,
-): HiddenCheckoutRuntimeReservation[] {
-  if (!data || typeof data !== "object") throw new CommerceRuntimePersistenceError("Inventory reservation response invalid");
-  const reservations = (data as Record<string, unknown>).reservations;
-  if (!Array.isArray(reservations)) throw new CommerceRuntimePersistenceError("Inventory reservation response invalid");
-  return order.items.map((item) => {
-    const row = reservations.find((candidate): candidate is Record<string, unknown> =>
-      typeof candidate === "object" && candidate !== null && (candidate as Record<string, unknown>).orderItemId === item.orderItemId,
-    );
-    if (!row) throw new CommerceRuntimePersistenceError("Inventory reservation response invalid");
-    return mapReservation(row, order, item);
-  });
-}
-
-function readString(value: Record<string, unknown>, key: string): string {
-  const raw = value[key];
-  if (typeof raw !== "string" || raw.length === 0) {
-    throw new CommerceRuntimePersistenceError("Inventory reservation response invalid");
-  }
-  return raw;
-}
-
-function mapRpcError(error: RpcError): Error {
-  const text = [error.message, error.details, error.hint].filter(Boolean).join(" ");
-  if (error.code === "23505" || /inventory_.*(?:conflict|insufficient|invalid|negative|reserved|not_found|not_releasable)/.test(text)) {
-    return new CommerceRuntimeConflictError("Inventory reservation conflict", { code: error.code });
-  }
-  return new CommerceRuntimePersistenceError("Inventory reservation RPC failed", { code: error.code });
 }
