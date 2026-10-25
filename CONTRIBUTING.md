@@ -1336,6 +1336,18 @@ package selection, boundary tests, API reports,
 AST rules and required verification routes remain binding; this contract step
 adds no separate runner or provider-access requirement.
 
+The experimental account/support module appends an isolated module-graph row
+with type-only browser contracts and no cross-module edges. Its R1 package tests
+cover unchanged account-read diagnostics, exact injected read delegation,
+null/thrown refusals and browser bundling. The port-fit witness executes TypeScript
+semantic checking of local owner-type equality and real-driver assignability;
+Vitest's erased type assertions alone would not detect drift. The installed cold
+consumer invokes the packed read facade on success, null and original thrown
+refusal paths and rejects an invalid typed request. The reference binding test
+uses the existing customer owner ports. These checks do not claim account
+aggregate, command execution, managed/native parity or release acceptance; later
+work is tracked in the [M12 design](docs/platform/plans/oss-m12-account-support.md).
+
 ### Commands and lint rules
 
 The complete projected root command inventory is `build`,

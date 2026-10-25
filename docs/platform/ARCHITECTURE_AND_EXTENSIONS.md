@@ -1899,3 +1899,27 @@ exercises the package adapter/job against pinned 191000, checking returned resul
 and delivery, receipt and attempt rows for claim, send, uncertainty, retry/default
 delays, terminal parking and stale fences. The host must still supply authorized
 envelope facts and conforming M04 transport; no default activation is installed.
+
+## Account and support contracts
+
+The experimental account/support module occupies the existing platform package's
+`account-support` and type-only `account-support/contracts` entries. Its isolated
+module-graph row has no value or type edges: the R1 implementation uses only its
+own structural injected ports. No provider SDK, environment reader, host source
+or owner implementation enters the module. This subpath placement needs no new
+package, dependency or release lifecycle.
+
+`createAccountReadFacade` delegates account and order reads without changing
+arguments, callback receivers, result identity, nulls or thrown failures. The
+account-read diagnostic slice retains its original wrapping, failure details and
+bounded logging. Authorization, owner DTO projection and private enrichment stay
+in the host; the reference binding selects no driver by default.
+
+The five browser-safe envelopes transcribe owner vocabulary locally, as required
+by contracts isolation. Executed TypeScript equality and real-driver assignability
+checks detect drift; they do not create a second command or invoice engine.
+Invoice access retains M09's order-scoped history/download authorization shape.
+Self-service, Customer 360 and operator envelopes declare future composition,
+not landed executors. See the [R1 plan](plans/oss-m12-account-support.md) and
+[consumer reference](PLATFORM_PACKAGE_REFERENCE.md#account-and-support-contracts)
+for available behavior and exclusions.

@@ -5,7 +5,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { isolatedConsumerEnv } from "./pack-manifest-input.ts";
 import { afterAll, afterEach, beforeAll, expect, it } from "vitest";
-import { proveCommerceServerConsumer, proveCommerceConsumer, proveInvoicingConsumer, proveSubscriptionsConsumer, proveWarehouseAdapterConsumer, proveFulfillmentConsumer, provePaymentAdapterConsumer, provePaymentsConsumer, installA1HostBinding, proveA1ReferenceBindingConsumer, ADAPTER_ENTRIES, assertConsumerIsolation, assertExportInventory, compileConsumer, consumerNode, NON_ADAPTER_ENTRIES, OPTIONAL_PEERS, proveAdapterRefusals, proveOidcRefusals, provePostgresOperations, proveNativeCommunicationsOperations, proveResendConsumer, proveMarketingSyncConsumer, runPlatformColdConsumer } from "./platform-cold-consumer.ts";
+import { proveCommerceServerConsumer, proveAccountSupportConsumer, proveCommerceConsumer, proveInvoicingConsumer, proveSubscriptionsConsumer, proveWarehouseAdapterConsumer, proveFulfillmentConsumer, provePaymentAdapterConsumer, provePaymentsConsumer, installA1HostBinding, proveA1ReferenceBindingConsumer, ADAPTER_ENTRIES, assertConsumerIsolation, assertExportInventory, compileConsumer, consumerNode, NON_ADAPTER_ENTRIES, OPTIONAL_PEERS, proveAdapterRefusals, proveOidcRefusals, provePostgresOperations, proveNativeCommunicationsOperations, proveResendConsumer, proveMarketingSyncConsumer, runPlatformColdConsumer } from "./platform-cold-consumer.ts";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const temporary: string[] = [];
@@ -27,6 +27,10 @@ function fixture() {
   writeFileSync(join(consumer, "node_modules/@openlup/platform/index.d.ts"), [
     "export interface Synthetic { value: string }",
     'export { tryCompensate, type CheckoutCompensationPort } from "./commerceCheckoutCompensation.js";',
+    "export interface AccountReadPort<A,L,D> { getAccount(userId: string): Promise<A|null>; listOrders(userId: string, input: {limit:number}): Promise<L|null>; getOrderDetail(userId: string, orderId: string): Promise<D|null> }",
+    "export declare function createAccountReadFacade<A,L,D>(ports: { account: Pick<AccountReadPort<A,L,D>, 'getAccount'>; orders: Pick<AccountReadPort<A,L,D>, 'listOrders'|'getOrderDetail'> }): AccountReadPort<A,L,D>;",
+    "export interface InvoiceAccessPort { resolveDownload(input: {accountRef:string;orderId:string;documentRef:string}): Promise<unknown> }",
+
     "export interface CommerceOfferAvailabilityRequestItem { sku: string; productSlug: string; variantId: string; requestedQuantity: number; checkoutMode: \"one_time\" | \"subscription\" }",
     "export interface CommerceOfferAvailabilityPort { getAvailability(input: { items: readonly CommerceOfferAvailabilityRequestItem[] }): Promise<unknown[]> }",
     "export declare function offerAvailabilityRequestItems(variants: readonly { sku: string; slug: string; variantId: string }[], checkoutMode: \"one_time\" | \"subscription\"): CommerceOfferAvailabilityRequestItem[];",
@@ -755,3 +759,20 @@ console.log("packed parent attribution passed");
   } finally { writeFileSync(path, original); }
   expect(consumerNode(consumer, proof)).toContain("packed parent attribution passed");
 }, 30_000);
+
+it("executes the account-support consumer and detects a swallowed owner refusal", () => {
+  const consumer = fixture();
+  const packageRoot = join(consumer, "node_modules/@openlup/platform");
+  const manifest = JSON.parse(readFileSync(join(packageRoot, "package.json"), "utf8"));
+  manifest.exports["./account-support/contracts"].default = "./account-support-contracts.js";
+  writeFileSync(join(packageRoot, "package.json"), JSON.stringify(manifest));
+  writeFileSync(join(packageRoot, "account-support-contracts.js"), "export {};\n");
+  const implementation = readFileSync(join(root, "packages/platform/dist/account-support/accountReadFacade.js"), "utf8");
+  const diagnostics = readFileSync(join(root, "packages/platform/dist/account-support/customerAccountReadDiagnostics.js"), "utf8");
+  writeFileSync(join(packageRoot, "index.js"), implementation + "\n" + diagnostics);
+  proveAccountSupportConsumer(consumer);
+  writeFileSync(join(packageRoot, "index.js"), implementation.replace(
+    "return ports.account.getAccount(userId);", "return ports.account.getAccount(userId).catch(() => null);",
+  ) + "\n" + diagnostics);
+  expect(() => proveAccountSupportConsumer(consumer)).toThrow();
+});

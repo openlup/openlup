@@ -1346,6 +1346,10 @@
       "class": "public-output"
     },
     {
+      "path": "docs/platform/plans/oss-m12-account-support.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/public-ci-completeness.md",
       "class": "platform-documentation"
     },
@@ -2342,6 +2346,14 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/api/account-support-contracts.api.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/api/account-support.api.md",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/api/bff.api.md",
       "class": "public-output"
     },
@@ -2703,6 +2715,46 @@
     },
     {
       "path": "packages/platform/sql/20261024184600_subscription_retry_candidate_payment_filter.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/account-support/accountReadFacade.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/account-support/contracts/account.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/account-support/contracts/capabilities.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/account-support/contracts/commands.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/account-support/contracts/customer360.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/account-support/contracts/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/account-support/contracts/invoice.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/account-support/contracts/operator.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/account-support/customerAccountReadDiagnostics.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/account-support/index.ts",
       "class": "public-output"
     },
     {
@@ -5743,6 +5795,22 @@
     },
     {
       "path": "packages/platform/src/subscriptions/services.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/account-support/accountReadFacade.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/account-support/browserSafety.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/account-support/contracts.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/account-support/portFit.test.ts",
       "class": "public-output"
     },
     {
@@ -16923,6 +16991,14 @@
     },
     {
       "path": "server/runtime/public-reference/m11CommerceSchema.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/runtime/public-reference/m12AccountReadBinding.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/runtime/public-reference/m12AccountReadBinding.ts",
       "class": "public-output"
     },
     {

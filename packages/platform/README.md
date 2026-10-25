@@ -1041,3 +1041,17 @@ legacy fallback and forward-only migration limits are owned by the
 [M09 migration section](../../docs/platform/DATA_AND_MIGRATIONS.md#m09-invoicing-forward-design-and-control-approval).
 
 OMS read projections are optional. Omitting the host health classifier preserves the original unprojected empty health snapshot (`ok`, no reasons or evidence IDs); it does not evaluate provider health. The reference composition injects its existing classifier and evidence readers.
+
+## Account and support contracts
+
+Experimental `@openlup/platform/account-support` supplies `createAccountReadFacade`
+and the unchanged account-read diagnostic helpers. Inject account and order owner
+ports; delegation preserves their arguments, receivers, results, nulls and thrown
+failures. Authentication, authorization and private profile/market projection stay
+with the host. Importing this entry selects no driver or capability.
+
+`account-support/contracts` is type-only and browser-safe. It declares account,
+Customer 360, self-service command, operator recovery and invoice-access envelopes
+with explicit capability flags. These declarations do not install their services.
+The [account/support reference](../../docs/platform/PLATFORM_PACKAGE_REFERENCE.md#account-and-support-contracts)
+owns the available R1 boundary and later-phase limits.

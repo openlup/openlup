@@ -737,3 +737,20 @@ describe("eslint platform module boundaries", { timeout: 60_000 }, () => {
     }
   });
 });
+
+describe("account-support module graph addition", () => {
+  it("admits own contracts while refusing owner imports and ambient loaders in contracts", async () => {
+    const config = await loadConfig();
+    const { PLATFORM_MODULE_GRAPH: graph } = await import("../../eslint.config.js");
+    expect(graph["account-support"]).toEqual({ contracts: true, values: [], types: [] });
+    const file = "packages/platform/src/account-support/contracts/fit.ts";
+    expect(await boundaryMessages(config, 'import type { CustomerContext } from "./account.js"; export type Context = CustomerContext;', file)).toEqual([]);
+    for (const source of [
+      'import type { InvoiceHostPorts } from "../../invoicing/contracts/index.js"; export type Host = InvoiceHostPorts;',
+      'import type { SubscriptionCommand } from "../../subscriptions/contracts/index.js"; export type Command = SubscriptionCommand;',
+      'export const loader = process;',
+    ]) expect(await boundaryMessages(config, source, file)).toContainEqual(expect.stringContaining('module "account-support" contracts'));
+    expect(await boundaryMessages(config, 'import type { InvoiceHostPorts } from "../invoicing/contracts/index.js"; export type Host = InvoiceHostPorts;',
+      "packages/platform/src/account-support/fit.ts")).toContainEqual(expect.stringContaining('module "account-support"'));
+  });
+});

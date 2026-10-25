@@ -2196,8 +2196,8 @@ export declare const catalogDraftRefusalSchema: z.ZodObject<{
 }, z.core.$strict>;
 export declare const catalogDraftApplyResultSchema: z.ZodUnion<readonly [z.ZodObject<{
     outcome: z.ZodEnum<{
-        committed: "committed";
         replayed: "replayed";
+        committed: "committed";
     }>;
     record: z.ZodObject<{
         draftId: z.ZodGUID;
