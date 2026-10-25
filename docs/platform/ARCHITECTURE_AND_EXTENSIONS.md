@@ -602,6 +602,17 @@ abandoned-order cancellation retain their ordering, keys, reasons and best-effor
 warnings. Persistence and payment execution stay host-bound. The cold consumer
 exercises installed compensation.
 
+The server entry also owns checkout handlers, runtime and the shared paid-order
+saga. Its additional value edges are pricing, shipping and promotions; HTTP and
+BFF edges remain type-only. Host schema/response, subject, metadata, starter-policy
+and existing payment callables are explicit bindings; concrete stores and
+application routes retain their owners. Saved-method alias and recurring metadata
+use host-defined string type arguments, preserving reference wire values without
+publishing provider unions. Offer binding precedes quoting, accepted
+shipping/acquisition terms require acceptance, and scoped contention or uncertain
+dispatch cannot authorize compensation. Neutral conformance and reference binding
+suites cover those seams. The cold consumer also exercises installed continuation.
+
 Effective bundle selection reuses pricing's half-open authority through its
 public server entry, adding the catalog → pricing value edge. The dependency is
 acyclic; pricing owns no runtime catalog edge. The opt-in adapter keeps effective

@@ -545,6 +545,50 @@ process.stdout.write(JSON.stringify(Object.fromEntries(Object.entries(entry).map
     readShipmentRefsByOrderId: "function",
     readShipmentRefsByOrderIds: "function",
     sendOmsMutationResponse: "function",
+    CHECKOUT_OFFER_VERSION_UNSUPPORTED: "string",
+    CheckoutOfferRefusedError: "function",
+    CheckoutOrchestrationError: "function",
+    ConfiguratorIntentPersistenceConflictError: "function",
+    START_RUNTIME_SIMPLE_CONFLICTS: "object",
+    buildCheckoutInvoiceBuyerSnapshot: "function",
+    checkoutCommandJourney: "function",
+    checkoutOrchestrationFailureDetails: "function",
+    createCheckoutAdmission: "function",
+    createCheckoutClientAction: "function",
+    createCheckoutCommandExecutor: "function",
+    createCheckoutFailureHandler: "function",
+    createCheckoutHandlerHelpers: "function",
+    createCheckoutPaymentContinuationCodec: "function",
+    createCheckoutProviderAttemptFailure: "function",
+    createCheckoutQuoteGuard: "function",
+    createCheckoutResumeGuard: "function",
+    createCheckoutSavedPaymentMethodResolver: "function",
+    createCheckoutStartRuntimeFailure: "function",
+    createCheckoutTimingLogger: "function",
+    createCommerceCheckoutHandler: "function",
+    createCommerceRuntimeService: "function",
+    createConfiguratorIntentPersistenceHandler: "function",
+    createPaidOrderOrchestration: "function",
+    createPromotionPriceChange: "function",
+    createReferenceCheckoutHandler: "function",
+    createRuntimeStartResponse: "function",
+    createSavedAcquisitionContinuation: "function",
+    createStarterOfferGuard: "function",
+    isJourneyConsumedCheckoutConflict: "function",
+    isProviderAttemptInFlightCheckoutConflict: "function",
+    isStockUnavailableCheckoutConflict: "function",
+    mintCheckoutRefusalContinuation: "function",
+    mintPaymentContinuationOnFreshAction: "function",
+    providerPayerFromRequest: "function",
+    readCheckoutCustomerDefaults: "function",
+    readCheckoutCustomerDefaultsOrRespond: "function",
+    resolveCheckoutOffer: "function",
+    runBestEffortAccountLink: "function",
+    safeCommerceDiagnosticValue: "function",
+    selectedDeliveryMatches: "function",
+    subscriptionResponse: "function",
+    withCheckoutOfferContext: "function",
+    withStarterPackContext: "function",
     tryCompensate: "function",
     unprojectedOmsReadGate: "object",
     updateCommerceOmsShippingAddress: "function",
@@ -555,7 +599,9 @@ it("M11 K2 exercises installed commerce compensation without optional peers", ()
   const consumer = pristinePackedA1Fixture();
   assertConsumerIsolation(consumer, root);
   proveCommerceServerConsumer(consumer);
-});
+  for (const name of ["@types/node", "undici-types"]) cpSync(join(root, "node_modules", name), join(consumer, "node_modules", name), { recursive: true });
+  compileConsumer(consumer, ["commerce", "commerce/contracts", "commerce/server", "pricing/browser"], join(root, "node_modules/typescript/lib/tsc.js"));
+}, 30_000);
 
 it("payments and fulfillment: installed packed consumer proves injected execution, truth scope, fulfillment services, default-off and contribution", () => {
   const consumer = pristinePackedA1Fixture();

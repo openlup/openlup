@@ -221,6 +221,15 @@ consumer's no-optional-peer inventory. These checks add no execution profile,
 verification command, budget or provider requirement.
 
 
+M11 K2 puts checkout engines, handlers and runtime composition in the separate
+Node-only `@openlup/platform/commerce/server` entry. Its declared value edges are pricing, shipping, promotions and
+inventory; HTTP/BFF edges admit types only. Browser commerce files cannot import
+the server subtree or Node built-ins. The import-boundary matrix checks those
+permissions and refusals; `packageBoundary.test.ts` bundles the browser entry
+with esbuild's browser platform and includes the exact nested export. The cold
+consumer exercises installed checkout exports without optional peers and
+includes its declarations in the existing NodeNext/Bundler compile proof.
+
 The commerce server compensation witness preserves release, promotion-cancel
 and conditional abandoned-order-cancel ordering. Its installed consumer checks
 the exact keys and reasons and compiles the cleanup port in both declaration

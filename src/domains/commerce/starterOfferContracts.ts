@@ -1,3 +1,4 @@
+import { acquisitionTermsExpectationSchema } from "@openlup/platform/pricing/browser";
 import { z } from "../../lib/validation/zod.js";
 import {
   STARTER_DELIVERY2_DISCOUNT_BPS,
@@ -52,6 +53,7 @@ export type StarterOfferResponse = z.infer<typeof starterOfferResponseSchema>;
 export const starterOfferIntentSchema = z
   .object({
     capability: z.literal(STARTER_OFFER_CAPABILITY),
+    acquisitionTerms: acquisitionTermsExpectationSchema.optional(),
     intervalDays: z
       .number()
       .int()
@@ -60,7 +62,7 @@ export const starterOfferIntentSchema = z
     delivery2DiscountBps: z.number().int().min(0).max(10_000),
     steady: z
       .object({
-        cadenceDays: z.union([z.literal(14), z.literal(28)]),
+        cadenceDays: z.union([z.literal(14), z.literal(21), z.literal(28)]),
         cans: z.number().int().min(1),
       })
       .strict(),
@@ -89,7 +91,7 @@ export const starterPackPlanSchema = z.object({
     basisSubtotalMinor: z.number().int().min(0),
   }),
   graduation: z.object({
-    cadenceDays: z.union([z.literal(14), z.literal(28)]),
+    cadenceDays: z.union([z.literal(14), z.literal(21), z.literal(28)]),
     sizeConstraint: z.record(z.string(), z.unknown()).optional(),
     lines: z
       .array(

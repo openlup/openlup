@@ -17,6 +17,7 @@ describe("start-runtime failure mapping", () => {
     [new CommerceRuntimeConflictError("prepare conflict", { code: "23505", reason: PREPARE_PROVIDER_ATTEMPT_IDEMPOTENCY_CONFLICT }), null, "provider_attempt_in_flight"],
     [new CommerceRuntimeConflictError("unrelated unique conflict", { code: "23505" }), "draft-id", null],
     [new CommerceRuntimeConflictError("consumed", { reason: "journey_consumed" }), "draft-id", "journey_consumed"],
+    [new CommerceRuntimeConflictError("epoch moved", { reason: "acquisition_terms_changed" }), "draft-id", "acquisition_terms_changed"],
     [new Error("before-dispatch"), "draft-id", null],
   ])("preserves the compensation capability for %s", (error, orderIdForCompensation, reason) => {
     expect(mapStartRuntimeFailure(error, "draft-id")).toMatchObject({ orderIdForCompensation, reason });

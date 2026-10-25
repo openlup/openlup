@@ -82,7 +82,7 @@ timestamp used in the webhook's idempotency key.
 | `./catalog` | Experimental neutral catalog schemas, drafts, reads, media source packs and publication ports |
 | `./catalog/contracts` | Dependency-free catalog DTOs, media resolver, authority and canonicalization helpers |
 | `./commerce`, `./commerce/contracts` | Browser-safe neutral commerce schema cores, generic ports and pure contract helpers |
-| `./commerce/server` | Node-only OMS, returns, native reviews/media and hosted-feedback handlers/adapters and order-detail composition, email consumers, dispatch registry, paid-fulfillment binding and checkout compensation |
+| `./commerce/server` | Node-only OMS, returns, native reviews/media and hosted-feedback handlers/adapters and order-detail composition, email consumers, dispatch registry, paid-fulfillment binding and checkout compensation, checkout handlers, runtime and shared paid-order saga |
 | `./pricing` | Experimental price authority, quote computation/handlers, offer projection/cache, readiness and policy tokens |
 | `./pricing/browser` | Existing quote primitive factory and acquisition capability/expectation schemas, browser-safe |
 | `./pricing/contracts` | Dependency-free authority, money, quote and offer DTOs and version constants |
@@ -102,6 +102,22 @@ warning messages and swallowed cleanup failures are preserved. The reference
 facade delegates to the same function; composition still owns the cleanup ports.
 The package boundary test bundles the browser entry without Node built-ins or
 the server subtree, and the cold consumer exercises installed compensation.
+
+The Node-only entry owns the checkout admission/quote/resume/failure sequence,
+neutral command adapter, runtime and one paid-order saga. Composition injects
+HTTP schemas/responder, quote and persistence ports, subject/metadata projections
+and the existing prepared-payment execution callables. Provider roles, flow
+selection and trusted provider-evidence classification are reference inputs.
+Saved-method alias and recurring-mode strings are host-defined generics passed
+unchanged through resolver, saga and runtime; the evidence schema owns its internal JSON-length bound. The reference retains
+locale, fiscal, profile, starter-policy, request observation and status-link
+bindings. Acquisition expectations and accepted shipping terms require quote
+acceptance; offer asks require a bound policy. A matching owned saved epoch can
+resume; edited or incomplete state re-quotes. Stock refusal compensates only a
+proved pre-dispatch draft; scoped contention and uncertain dispatch carry no
+cleanup capability. A synchronous decline stays failed and is never auto-settled.
+Neutral finalize and one-time reservation conformance tests use recording ports;
+atomic acquisition/finalize SQL still requires integration with its migration chain.
 
 `./commerce/contracts` is a type-only, browser-safe entry for commerce-owned
 records and generic persistence, checkout/runtime, availability, recovery and
@@ -129,8 +145,9 @@ also preserve string SKU and product-slug inputs. When composing host fields,
 retain their legacy positions: object key order also determines validation issue
 order, including nested variants and checkout requests.
 Offer tokens are opaque; `minimumUnits` is an untrusted ask with an injected default, never an
-admission grant. The offer policy is a port type only. Starter execution remains
-reference-owned and deferred to K2a. These entries install no store, route,
+admission grant. The server entry executes the offer binding and bounds its server-minted evidence.
+The starter guard receives terms, basket/discount functions and its plan schema
+from the host. These entries install no store, route,
 migration or provider.
 
 Required root discovery includes `test/commerce/`: schema refusal/replay and

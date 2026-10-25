@@ -23,6 +23,10 @@ under `packages/platform/dist/commerce/`. Returns and review
 handlers, the raw-upload handler and PostgreSQL/Supabase adapters, including
 hosted-feedback adapters, remain outside the closure, exposed only by
 `@openlup/platform/commerce/server`.
+The checkout-engine contribution adds exactly `commerce/checkoutCommandSchemas.js`,
+`commerce/offerEvidenceSchemas.js` and `commerce/paymentContinuation.js` to the
+identity inventory. They supply browser-safe validation and lifetime constants;
+checkout execution remains outside this profile in `commerce/server`.
 
 ## Routes and readiness
 

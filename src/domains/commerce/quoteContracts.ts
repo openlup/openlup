@@ -1,4 +1,5 @@
 import { acquisitionCapabilitySchema } from "@openlup/platform/pricing/browser";
+import { commerceOfferVersionSchema, commerceOfferEvidenceSchema } from "@openlup/platform/commerce";
 // Browser validation binding; the pricing server entry owns the portable counterpart.
 import { z } from "../../lib/validation/zod.js";
 import { catalogAllergenSlugSchema } from "../catalog/contracts.js";
@@ -70,6 +71,8 @@ export const quoteContextSchema = z
     petId: z.string().trim().min(1).max(120).nullable().optional(),
     petProfileContext: quotePetProfileContextSchema.optional(),
     pricingPolicy: pricingPolicySnapshotSchema.optional(),
+    offerVersion: commerceOfferVersionSchema.optional(),
+    offerEvidence: commerceOfferEvidenceSchema.optional(),
     // SERVER-MINTED ONLY: injected by the checkout quote guard after pricing, never
     // accepted from a client, read by the provisional-creation RPC to seed the marker.
     starterPack: starterPackPlanSchema.optional(),

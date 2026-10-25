@@ -65,3 +65,13 @@ export * from "./orderEmailEligibility.js";
 export * from "./orderEmailLines.js";
 export * from "./outboxDispatchContracts.js";
 export * from "./outboxOrderDraftEmailPorts.js";
+
+/** @consumer src/domains/commerce/checkoutCommandContracts.ts */
+export { createCheckoutCommandSchemas, CHECKOUT_COMMAND_V1, REFERENCE_CHECKOUT_V1 } from "./checkoutCommandSchemas.js";
+export type { CheckoutCommandPersistenceResult } from "./checkoutCommandSchemas.js";
+/** @consumer src/domains/commerce/paymentContinuationContracts.ts */
+export { checkoutContinuationJourneyIdSchema, CHECKOUT_PAYMENT_CONTINUATION_TTL_SECONDS } from "./paymentContinuation.js";
+
+/** @consumer server/domains/commerce/checkoutOfferPolicyPort.ts */
+export { commerceOfferEvidenceSchema } from "./offerEvidenceSchemas.js";
+export type { CommerceOfferEvidence } from "./offerEvidenceSchemas.js";

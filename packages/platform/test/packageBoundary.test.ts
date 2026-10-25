@@ -1,3 +1,4 @@
+import { build } from "esbuild";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join, posix, relative } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -267,6 +268,21 @@ describe("package source boundary", () => {
       exports: Record<string, unknown>;
     };
     assertModuleExports(modules, graph, manifest.exports, (path) => existsSync(join(SOURCE_ROOT, path)), ["commerce/server", "pricing/browser", "communications/resend", "communications/klaviyo", "payments/stripe", "payments/tpay", "fulfillment/omnipack"]);
+  });
+
+  it("bundles the commerce browser entry without Node built-ins or the server entry", async () => {
+    const result = await build({
+      entryPoints: [join(SOURCE_ROOT, "commerce/index.ts")],
+      bundle: true, platform: "browser", format: "esm", write: false,
+      treeShaking: false, metafile: true, logLevel: "silent",
+    });
+    const inputs = Object.keys(result.metafile!.inputs).map(path => path.replaceAll("\\", "/"));
+    expect(inputs.some(path => path.endsWith("commerce/offerAvailabilitySchemas.ts"))).toBe(true);
+    expect(inputs.some(path => path.endsWith("commerce/checkoutCommandSchemas.ts"))).toBe(true);
+    expect(inputs.some(path => path.endsWith("commerce/offerEvidenceSchemas.ts"))).toBe(true);
+    expect(inputs.some(path => path.endsWith("commerce/paymentContinuation.ts"))).toBe(true);
+    expect(inputs.filter(path => path.includes("commerce/server/") || path.startsWith("node:"))).toEqual([]);
+    expect(result.outputFiles[0]!.text).toContain("offerAvailabilityRequestItems");
   });
 
   it.each(files)("$path reaches another module only through that module's public entry", ({ path, source }) => {

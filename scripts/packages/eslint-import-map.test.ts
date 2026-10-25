@@ -590,7 +590,7 @@ describe("eslint platform module boundaries", { timeout: 60_000 }, () => {
   it("admits only declared Node-entry edges and refuses reverse commerce imports", async () => {
     const config = await loadConfig();
     const { PLATFORM_MODULE_GRAPH: graph } = await import("../../eslint.config.js");
-    expect(graph["commerce/server"]).toEqual({ values: ["commerce", "fulfillment"], types: ["http", "bff"] });
+    expect(graph["commerce/server"]).toEqual({ values: ["commerce", "fulfillment", "pricing", "shipping", "promotions"], types: ["http", "bff", "commerce/contracts"] });
     expect(graph.commerce.values).not.toContain("commerce/server");
     expect(graph.commerce.values).toEqual(["pricing/contracts", "shipping"]);
     for (const depth of [0, 1]) {
@@ -636,6 +636,26 @@ describe("eslint platform module boundaries", { timeout: 60_000 }, () => {
         for (const source of loadSources(specifier, extension)) {
           expect(await moduleMessages(config, source, server)).toContainEqual(expect.stringContaining('module "commerce/server"'));
         }
+      }
+    }
+  });
+
+  it.each(sourceExtensions)("keeps checkout server edges separate from browser and contracts in %s", async extension => {
+    const config = await loadConfig();
+    for (const [file, target, permission, module] of [
+      ["commerce/usesModule", "../pricing/index.js", "refused", "commerce"],
+      ["commerce/contracts/usesModule", "../../pricing/index.js", "refused", "commerce"],
+      ["commerce/server/usesModule", "../../pricing/index.js", "value", "commerce/server"],
+      ["commerce/server/usesModule", "../../promotions/index.js", "value", "commerce/server"],
+      ["commerce/server/usesModule", "../../http/index.js", "type", "commerce/server"],
+      ["commerce/server/usesModule", "../../pricing/quotePorts.js", "refused", "commerce/server"],
+      ["commerce/server/nested/usesModule", "../../../shipping/index.js", "value", "commerce/server"],
+      ["commerce/server/nested/usesModule", "../../../data/index.js", "refused", "commerce/server"],
+    ]) {
+      for (const source of loadSources(target!, extension)) {
+        const messages = await moduleMessages(config, source, `packages/platform/src/${file}.${extension}`);
+        if (permission === "value" || permission === "type" && typeOnlyForm.test(source)) expect(messages).toEqual([]);
+        else expect(messages).toContainEqual(expect.stringContaining(`packages/platform module "${module}"`));
       }
     }
   });

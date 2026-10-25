@@ -1,0 +1,13 @@
+import type { ResolvedSavedPaymentMethod, SavedPaymentMethodRecurringModel } from "./savedPaymentMethodResolverPort.js";
+import { createPaidOrderOrchestration } from "@openlup/platform/commerce/server";
+import type { ConfiguratorIntentPersistenceResponse } from "../../../src/domains/commerce/configuratorIntentPersistenceContracts.js";
+import type { CreateQuoteRequest, CreateQuoteResponse, CreateOrderDraftResponse } from "../../../src/domains/commerce/contracts.js";
+import type { StartHiddenCheckoutRuntimeResponse, ApplyHiddenCheckoutPaymentResultResponse } from "../../../src/domains/commerce/runtimeContracts.js";
+import type { CheckoutPaymentExecution } from "../../../src/domains/commerce/paymentExecutionContracts.js";
+import type { PaymentExecutionProvider, PaymentProviderFlow } from "../../../src/domains/payment/types.js";
+import { providerFlowFor, checkoutConfirmationProvider } from "./commerceCheckoutProviderPayment.js";
+import { mapStartRuntimeFailure } from "./commerceCheckoutStartRuntimeFailure.js";
+export const { orchestrateCheckoutJourney } = createPaidOrderOrchestration<{ clientId: string; addressId: string; petId: string | null }, CreateQuoteRequest, CreateQuoteResponse, CreateOrderDraftResponse, { petId: string | null }, StartHiddenCheckoutRuntimeResponse, ApplyHiddenCheckoutPaymentResultResponse, CheckoutPaymentExecution, PaymentExecutionProvider, PaymentProviderFlow, ResolvedSavedPaymentMethod["providerAliasType"], SavedPaymentMethodRecurringModel>({ defaultPaymentProvider: "hidden_rehearsal", rehearsalPaymentProvider: "hidden_rehearsal", confirmationProvider: checkoutConfirmationProvider, missingConfirmationMessage: "stripe_processing_without_client_secret", providerFlowFor, runtimeRequestExtension: (provisioned) => ({ petId: provisioned.petId }), mapStartRuntimeFailure });
+export type OrchestrateBaseDeps = Parameters<typeof orchestrateCheckoutJourney>[0];
+export type OrchestratedCheckoutResult = Awaited<ReturnType<typeof orchestrateCheckoutJourney>>;
+export type { CheckoutPaymentStartedEvent, CheckoutStage, CheckoutStageRecorder } from "@openlup/platform/commerce/server";

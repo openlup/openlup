@@ -23,7 +23,7 @@ helper and its cleanup port. The reference compensation path re-exports the same
 function, so existing orchestration and adapter imports keep their identity.
 Cleanup releases the order's reservations before promotion cancellation and,
 when needed, abandoned-order cancellation; keys, reasons and warning/failure
-behavior remain unchanged. Runtime, payment execution and persistence bindings
+behavior remain unchanged. Host schema, subject, fiscal, starter policy, payment execution and concrete persistence bindings
 retain their reference owners. Lint refuses browser commerce imports of the
 server subtree, and package tests bundle the browser entry and exercise the
 installed server helper.
@@ -59,11 +59,23 @@ orchestration retains the local profile and invoice mappings and forwards an
 optional acquisition capability. Checkout expectations admit acquisition terms
 independently of totals. Configurator offer versions/minimums are untrusted asks;
 a supplied minimum replaces only the local intent-validation default. Checkout
-admission refuses every offer/minimum ask until an actual server offer resolver
-is wired; requests without asks still use the host minimum. K1 exposes the
-offer-policy port type only. The new
-offer-policy seam is a type-only port; binding execution and the starter guard
-are deferred to K2a. None of these changes activates an issuer or provider.
+admission retains the host minimum and refuses offer/minimum asks when no server
+offer resolver is composed. With a resolver, the offer-policy port binds or
+refuses explicit asks before quoting and stores bounded evidence after acceptance;
+starter admission injects the reference terms and arithmetic. None of these
+changes activates an issuer or provider.
+
+The server entry also owns checkout admission, quote/resume/failure handling,
+the runtime and the single paid-order saga shared by configurator and neutral
+command mappings. Thin reference factories supply the incumbent schemas, BFF
+responder, observed request identity, subject projections, M07 callables and
+application destinations. Provider roles, flow policy and trusted provider-evidence
+classification stay in those bindings. Saved-method alias/recurring unions remain
+reference-owned type arguments; the package forwards their values unchanged. Shipping/acquisition quote acceptance, bound offers,
+saved-epoch continuation, scoped busy refusal and injected starter terms follow
+the change fragment. Neutral conformance covers paid, changed-price, stock-loss,
+decline and busy outcomes; reference suites retain host schema/policy proof.
+Concrete stores and recovery remain reference-owned in this phase.
 
 The OMS handlers, operational ladder, read builders and managed RPC translations
 now delegate to the same commerce package. Browser-safe schemas and pure models

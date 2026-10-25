@@ -328,6 +328,12 @@ assert.equal(commerce.commerceOfferVersionSchema.parse("offer-a.v2"),"offer-a.v2
 assert(!commerce.commerceOfferVersionSchema.safeParse("INVALID OFFER").success);
 assert.equal(commerce.commerceMinimumUnits({minimumUnits:2},14),2);
 assert.equal(commerce.commerceMinimumUnits({},14),14);
+assert.deepEqual(commerce.commerceOfferEvidenceSchema.parse({tier:"a",units:2}),{tier:"a",units:2});
+assert(!commerce.commerceOfferEvidenceSchema.safeParse({invalid_key:"a"}).success);
+assert.equal(commerce.CHECKOUT_PAYMENT_CONTINUATION_TTL_SECONDS,2700);
+const commandSchemas=commerce.createCheckoutCommandSchemas({sku:z.string(),paymentIntentStatus:z.literal("created"),paymentAttemptStatus:z.literal("created")});
+assert(commandSchemas.checkoutCommandV1Schema.safeParse({version:commerce.CHECKOUT_COMMAND_V1,idempotencyKey:"command-a",mode:"one_time",lines:[{sku:"ITEM-A",quantity:1}],customer:{firstName:"Buyer",lastName:"Example",email:"buyer@example.test",phone:"123456789"},shippingAddress:{street:"Example 12",postalCode:"00000",city:"Example",country:"AA"},currency:"XTS"}).success);
+
 const scopeSchema=z.literal("all_orders"), methodSchema=z.literal("saved");
 const defaults=commerce.createCustomerDefaultsSnapshotSchemas({paymentPreferenceScopeSchema:scopeSchema,paymentMethodKindSchema:methodSchema});
 assert(!defaults.commerceCustomerDefaultsSnapshotSchema.safeParse({version:commerce.CUSTOMER_DEFAULTS_SNAPSHOT_VERSION,clientId:"invalid"}).success);
@@ -337,12 +343,18 @@ assert.throws(()=>{throw new commerce.CommerceOrderDraftUnsupportedMoneyError("z
 `);
 }
 
-/** M11 K2: exercise the installed Node-only compensation helper without optional peers. */
+/** M11 K2: exercise installed Node-only checkout exports without optional peers. */
 export function proveCommerceServerConsumer(consumer: string): void {
   consumerNode(consumer, `
 import assert from "node:assert/strict";
 import * as server from "@openlup/platform/commerce/server";
-assert.equal(typeof server.tryCompensate, "function");
+for (const name of ["tryCompensate", "createCommerceRuntimeService", "createPaidOrderOrchestration", "createCommerceCheckoutHandler", "createCheckoutQuoteGuard", "createStarterOfferGuard", "resolveCheckoutOffer"]) assert.equal(typeof server[name], "function");
+const codec = server.createCheckoutPaymentContinuationCodec("synthetic-root-at-least-thirty-two-bytes", { cookieName: "__Host-example_continuation", executionRails: ["embedded", "redirect"] });
+assert(codec);
+const claims = { journeyId: "checkout:11111111-1111-4111-8111-111111111111", orderId: "22222222-2222-4222-8222-222222222222", clientId: "33333333-3333-4333-8333-333333333333", paymentIntentId: "44444444-4444-4444-8444-444444444444", paymentAttemptId: "55555555-5555-4555-8555-555555555555", executionRail: "embedded" };
+const cookie = codec.issue(claims);
+assert.deepEqual(codec.verifyCookieHeader(cookie.setCookie.split(";")[0]), cookie.claims);
+await assert.rejects(server.resolveCheckoutOffer(undefined, { offerVersion: "offer-a" }, "one_time"), error => error instanceof server.CheckoutOfferRefusedError && error.reason === "offer_version_unsupported");
 const calls = [];
 await server.tryCompensate({
   async releaseOrderReservations(input) { calls.push(["release", input]); return { releasedCount: 1 }; },

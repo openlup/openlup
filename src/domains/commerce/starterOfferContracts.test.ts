@@ -91,6 +91,13 @@ describe("starterOfferIntentSchema", () => {
     expect(starterOfferIntentSchema.parse(VALID)).toEqual(VALID);
   });
 
+  it("accepts every steady cadence of the graduation set: 14, 21 and 28", () => {
+    for (const cadenceDays of [14, 21, 28]) {
+      const intent = { ...VALID, steady: { cadenceDays, cans: 14 } };
+      expect(starterOfferIntentSchema.parse(intent)).toEqual(intent);
+    }
+  });
+
   it.each([
     ["wrong capability", { ...VALID, capability: "commerce.starter_offer.v0" }],
     ["interval below 7", { ...VALID, intervalDays: 6 }],
@@ -98,7 +105,7 @@ describe("starterOfferIntentSchema", () => {
     ["non-integer interval", { ...VALID, intervalDays: 14.5 }],
     ["bps above 10000", { ...VALID, delivery2DiscountBps: 10_001 }],
     ["negative bps", { ...VALID, delivery2DiscountBps: -1 }],
-    ["cadence 21", { ...VALID, steady: { cadenceDays: 21, cans: 14 } }],
+    ["cadence 30", { ...VALID, steady: { cadenceDays: 30, cans: 14 } }],
     ["zero cans", { ...VALID, steady: { cadenceDays: 14, cans: 0 } }],
     ["unknown top-level key", { ...VALID, sneaky: true }],
     ["unknown steady key", { ...VALID, steady: { cadenceDays: 14, cans: 14, sneaky: true } }],
@@ -130,13 +137,18 @@ describe("starterPackPlanSchema", () => {
     expect(parsed).toEqual(PLAN);
   });
 
+  it("accepts a three-week graduation cadence", () => {
+    const plan = { ...PLAN, graduation: { ...PLAN.graduation, cadenceDays: 21 } };
+    expect(starterPackPlanSchema.parse(plan)).toEqual(plan);
+  });
+
   it.each([
     ["schemaVersion 1 as a number", { ...PLAN, schemaVersion: 1 }],
     ["interval out of range", { ...PLAN, starterIntervalDays: 29 }],
     ["basisTemplateVersion 0", { ...PLAN, basisTemplateVersion: 0 }],
     ["bps above 10000", { ...PLAN, delivery2: { ...PLAN.delivery2, discountBps: 10_001 } }],
     ["negative discountMinor", { ...PLAN, delivery2: { ...PLAN.delivery2, discountMinor: -1 } }],
-    ["cadence 21", { ...PLAN, graduation: { ...PLAN.graduation, cadenceDays: 21 } }],
+    ["cadence 30", { ...PLAN, graduation: { ...PLAN.graduation, cadenceDays: 30 } }],
     ["no lines", { ...PLAN, graduation: { ...PLAN.graduation, lines: [] } }],
   ])("rejects %s", (_label, payload) => {
     expect(starterPackPlanSchema.safeParse(payload).success).toBe(false);
