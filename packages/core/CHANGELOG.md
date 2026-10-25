@@ -10,6 +10,11 @@ in the source repository.
 
 ## [Unreleased]
 
+## [0.26.0]
+
+- Publishable on the npm `latest` dist-tag as `0.26.0`, from tag
+  `openlup-core-v0.26.0`.
+
 ## [0.25.0]
 
 - Publishable on the npm `latest` dist-tag as `0.25.0`, from tag
@@ -31,19 +36,6 @@ Migration notes: Exhaustion no longer changes an active subscription to paused. 
 - Republish the remaining APIs, runtime behavior and shipped SQL unchanged from `0.23.0`.
 
 Migration: upgrade the complete set together for exact internal peers; core introduces no API or schema migration. The Zod floor above changes validation of oversized constrained collections.
-
-### Known limitations
-
-The fulfillment status map retains localized adopter labels; hosts still need injected labels or internationalization keys.
-
-## [0.23.0]
-
-- Publishable on the npm `latest` dist-tag as `0.23.0`, from tag
-  `openlup-core-v0.23.0`.
-
-- Republish unchanged APIs, runtime behavior and shipped SQL from `0.22.0` as part of the complete `0.23.0` package set.
-
-Migration: upgrade the complete set together for exact internal peers; core introduces no API or schema migration.
 
 ### Known limitations
 
