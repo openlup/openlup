@@ -52,6 +52,15 @@ models and reuses the existing pricing/contracts version export. Node-only
 that reuses the shipping runtime. The built browser graph is bundled without
 Node externals in its package boundary test; commerce/contracts stays type-only.
 
+Commerce returns and native review handlers/adapters are implemented in the
+Node-only platform commerce/server entry. Reference review runtime composition retains
+its database resources, authorization, private filesystem store, lease fencing
+and reconciliation; only imports are rebound. The raw upload binding and the
+transactional promotion callback remain the storage seams. M02 blob storage has
+no private read/inspection/temp/promotion operations, so it cannot replace that
+store unchanged. Hosted token feedback is separate and requires adopter-provided
+managed RPCs; native `db/platform` has no hosted-feedback binding or added route.
+
 Invoicing service composition stays in the platform `/invoicing` entry. The
 reference host selects its existing accounting executor and job lease explicitly;
 module readiness runs before claim. Contributions describe existing registrations

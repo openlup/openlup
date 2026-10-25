@@ -569,7 +569,15 @@ profile includes the 31 OMS schema/pure-model files reached when its commerce
 barrel is parsed; the Node-only detail builder and managed adapters stay outside
 that exact inventory. The identity profile also lists the complete reached OMS,
 core fulfillment/payment/subscription and pricing-contracts closure as exact built
-paths. The list grants
+paths. Both inventories also list `commerceReturnsPort.js`,
+`orderReviewContracts.js` and `orderFeedbackContracts.js` under
+`packages/platform/dist/commerce/`, reached through
+`@openlup/platform/commerce`: returns request/approve/reject schemas and port
+types, with a factory for host-bound request reason codes, native order-review
+contracts and hosted-feedback contracts. Returns and review handlers, the
+raw-upload handler and PostgreSQL/Supabase adapters, including hosted-feedback
+adapters, are exposed only by the Node-only `@openlup/platform/commerce/server`
+entry; the profile build refuses that entry. The list grants
 no directory-wide admission: `commerce/server` and the Node-only pricing root
 remain outside it. `pricing/browser` admits only its four-file runtime closure
 for the existing primitive factory and acquisition capability/expectation schemas. A new reference import must have both browser-safe dependency

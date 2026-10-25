@@ -483,7 +483,7 @@ describe("eslint platform module boundaries", { timeout: 60_000 }, () => {
     };
     const entries = readdirSync(platformSource, { withFileTypes: true });
     expect(entries.filter((entry) => !entry.isDirectory()).map(({ name }) => name)).toEqual([]);
-    expect(Object.keys(graph).sort()).toEqual(entries.map(({ name }) => name).sort());
+    expect(Object.keys(graph).sort()).toEqual([...entries.map(({ name }) => name), "commerce/server"].sort());
     for (const [module, { values, types }] of Object.entries(graph)) {
       for (const target of [...values, ...types]) {
         const [owner, ...entry] = target.split("/");
@@ -587,22 +587,60 @@ describe("eslint platform module boundaries", { timeout: 60_000 }, () => {
     }
   });
 
-  it("declares exactly the inventoried edges between modules; only the composer may declare more", async () => {
+  it("admits only declared Node-entry edges and refuses reverse commerce imports", async () => {
+    const config = await loadConfig();
+    const { PLATFORM_MODULE_GRAPH: graph } = await import("../../eslint.config.js");
+    expect(graph["commerce/server"]).toEqual({ values: ["commerce"], types: ["http", "bff"] });
+    expect(graph.commerce.values).not.toContain("commerce/server");
+    for (const depth of [0, 1]) {
+      const up = "../".repeat(depth);
+      const file = `packages/platform/src/commerce/server/${"nested/".repeat(depth)}probe.ts`;
+      const source = (specifier: string) => `import * as value from ${JSON.stringify(specifier)}; export { value };`;
+      for (const specifier of ["./own.js", `${up}../index.js`, "node:crypto",
+        ...["commerceReturnsPort", "orderReviewContracts", "orderReviewPorts", "orderFeedbackContracts"].map((file) => `${up}../${file}.js`),
+        `${up}../../commerce/index.js`]) {
+        expect(await moduleMessages(config, source(specifier), file), specifier).toEqual([]);
+      }
+      for (const entry of ["http", "bff"]) {
+        for (const source of loadSources(`${up}../../${entry}/index.js`, "ts", true)) {
+          const messages = await moduleMessages(config, source, file);
+          if (typeOnlyForm.test(source)) expect(messages).toEqual([]);
+          else expect(messages).toContainEqual(expect.stringContaining('packages/platform module "commerce/server"'));
+        }
+      }
+      for (const specifier of [`${up}../../data/index.js`, `${up}../../blob/index.js`, `${up}../../data/private.js`, `${up}../../identity/index.js`]) {
+        expect(await moduleMessages(config, source(specifier), file), specifier).toContainEqual(expect.stringContaining('packages/platform module "commerce/server"'));
+      }
+      const browserFile = `packages/platform/src/commerce/${"nested/".repeat(depth)}probe.ts`;
+      for (const specifier of [depth ? "../server/index.js" : "./server/index.js", `${up}../commerce/server/index.js`]) {
+        expect(await moduleMessages(config, source(specifier), browserFile), specifier).toContainEqual(expect.stringContaining('packages/platform module "commerce"'));
+      }
+    }
+  });
+
+  it("declares exactly the inventoried edges; only the composer may declare more", async () => {
     const { PLATFORM_MODULE_GRAPH: graph } = await import("../../eslint.config.js") as unknown as {
       PLATFORM_MODULE_GRAPH: Record<string, { values: string[]; types: string[] }>;
     };
     const ts = (await import("typescript")).default;
     const actual = new Map(Object.keys(graph).map((module) => [module, { values: new Set<string>(), types: new Set<string>() }]));
+    const moduleNames = Object.keys(graph).sort((a, b) => b.length - a.length);
+    const owner = (file: string) => {
+      const path = relative(platformSource, file).split(sep).join("/");
+      return moduleNames.find((module) => path.startsWith(`${module}/`))!;
+    };
     const files = (directory: string): string[] => readdirSync(directory, { withFileTypes: true })
       .flatMap((entry) => entry.isDirectory() ? files(join(directory, entry.name)) : /\.(?:ts|tsx|js|mjs|cjs)$/.test(entry.name) ? [join(directory, entry.name)] : []);
     for (const path of files(platformSource)) {
-      const module = relative(platformSource, path).split(sep)[0]!;
+      const module = owner(path);
       const source = ts.createSourceFile(path, readFileSync(path, "utf8"), ts.ScriptTarget.Latest, true);
       const edge = (specifier: string, typeOnly: boolean) => {
         if (!specifier.startsWith(".")) return;
-        const parts = relative(platformSource, resolve(dirname(path), specifier)).split(sep);
-        const target = parts.slice(0, -1).join("/");
-        if (parts[0] !== module) actual.get(module)![typeOnly ? "types" : "values"].add(target);
+        const resolved = resolve(dirname(path), specifier);
+        const targetOwner = owner(resolved);
+        const targetPath = relative(platformSource, resolved).split(sep).join("/");
+        const target = targetPath === `${targetOwner}/contracts/index.js` ? `${targetOwner}/contracts` : targetOwner;
+        if (targetOwner !== module) actual.get(module)![typeOnly ? "types" : "values"].add(target);
       };
       const visit = (node: import("typescript").Node): void => {
         if ((ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) && node.moduleSpecifier && ts.isStringLiteral(node.moduleSpecifier)) {

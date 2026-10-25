@@ -65,6 +65,37 @@ marking records an operator fact only. Replacement creation delegates to the
 existing fulfillment package handler; its order RPC creates a parcel obligation
 without changing subscription lifecycle or confirming delivery alignment.
 
+Returns, native review/media and hosted-feedback handlers and adapters come
+from `@openlup/platform/commerce/server`. Browser-safe schemas and pure helpers
+remain at `@openlup/platform/commerce`, alongside type-only port declarations.
+Existing server and browser paths are thin facades; returns handlers inject the
+observed BFF responder. Returns stop at
+request/approve/reject: restock and refund fields record intent, with no receive,
+restock or refund execution. The request adapter forwards `requestedBy` unchanged;
+database ownership and replay checks retain their authority.
+The package returns schema now defaults to neutral reasons; the reference facade
+binds its complete legacy reason set and passes that schema to the customer
+handler. BASE-captured observations pin every accepted reason, normalized input,
+unknown-code error details and handler response.
+
+Native review customer/admin handlers retain their result envelopes and error
+mapping, including exact replay-field presence. The PostgreSQL adapters validate
+native receipts, and raw uploads use the existing capability/lease seam. Runtime
+composition and the private filesystem object store stay host-owned; M02 blob
+storage lacks the private read/inspect/temp/promote operations needed to replace
+that store unchanged. Hosted token feedback remains a separate lifecycle, for
+adopters providing its two managed RPCs; native `db/platform` has no hosted-feedback
+RPC and the reference app adds no feedback route. Review delay remains SQL-owned
+(14 days native, 21 in the contributed managed profile), without a TS seam.
+Package conformance covers exact returns RPC arguments, replay/error carriage,
+strict feedback schemas and the four review/media visibility receipt cases.
+Browser review and feedback facades import the jitless Zod wrapper before the
+package entry. Fresh-process tests pin zero Function probes for both, with
+wrapper-bypass controls, independently of the parent test registry's configuration.
+Browser bundles resolve the complete commerce entry and both facades without
+externals or Node/database imports. The server entry bundles for Node; raw
+uploads deliberately fail the browser negative control.
+
 ## Pricing policy package boundary
 
 The existing pricing-policy token and neutral error/safe-reason block are owned

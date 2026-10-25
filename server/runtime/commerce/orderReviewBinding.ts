@@ -4,19 +4,19 @@ import { OrderReviewMediaObjectStore } from "../../adapters/filesystem/orderRevi
 import {
   createPostgresOrderReviewAdminReadPort,
   createPostgresOrderReviewLifecyclePort,
-} from "../../adapters/postgres/commerce/orderReviewLifecycle.js";
-import { createPostgresOrderReviewMediaPort } from "../../adapters/postgres/commerce/orderReviewMedia.js";
+} from "@openlup/platform/commerce/server";
+import { createPostgresOrderReviewMediaPort } from "@openlup/platform/commerce/server";
 import type { PgQueryExecutor } from "../../adapters/postgres/queryBuilder.js";
-import { createOrderReviewAdminHandlers } from "../../domains/commerce/orderReviewAdminHandlers.js";
-import { createOrderReviewHandlers } from "../../domains/commerce/orderReviewHandlers.js";
-import type { OrderReviewMediaPort } from "../../domains/commerce/orderReviewPorts.js";
+import { createOrderReviewAdminHandlers } from "@openlup/platform/commerce/server";
+import { createOrderReviewHandlers } from "@openlup/platform/commerce/server";
+import type { OrderReviewMediaPort } from "@openlup/platform/commerce";
 import {
   createOrderReviewRawUploadHandler,
   type OrderReviewRawUploadBinding,
   type OrderReviewRawUploadBindingState,
-} from "../../domains/commerce/orderReviewRawUploadHandler.js";
+} from "@openlup/platform/commerce/server";
 import { getBundleDescriptor, resolveBundleId } from "../../domains/platform-runtime/platformKernel.js";
-import type { OrderReviewMedia } from "../../../src/domains/commerce/orderReviewContracts.js";
+import type { OrderReviewMedia } from "@openlup/platform/commerce";
 
 type Env = Record<string, string | undefined>;
 type CustomerHandlers = ReturnType<typeof createOrderReviewHandlers>;

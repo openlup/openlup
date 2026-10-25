@@ -1,74 +1,49 @@
-import { describe, expect, it } from "vitest";
-import {
-  orderReviewMediaSchema,
-  orderReviewAdminDetailSchema,
-  orderReviewReadResultSchema,
-  orderReviewMediaIntentResultSchema,
-  orderReviewMediaIntentSchema,
-  orderReviewSubmitSchema,
-} from "./orderReviewContracts.js";
+import { execFileSync } from "node:child_process";
+import { expect, it } from "vitest";
+import * as facade from "./orderReviewContracts.js";
+import * as commerce from "@openlup/platform/commerce";
+it("preserves package export identity", () => {
+  expect(Object.keys(facade).sort()).toEqual(["ORDER_REVIEW_CONTRACT_VERSION", "orderReviewAdminDetailSchema", "orderReviewAdminRevokeSchema", "orderReviewCommandKeySchema", "orderReviewContentTypeSchema", "orderReviewCustomerCommandSchema", "orderReviewCustomerResultSchema", "orderReviewFailure", "orderReviewGrantReferenceSchema", "orderReviewMediaConfirmSchema", "orderReviewMediaIntentResultSchema", "orderReviewMediaIntentSchema", "orderReviewMediaReferenceSchema", "orderReviewMediaSchema", "orderReviewModerationSchema", "orderReviewReadResultSchema", "orderReviewReferenceSchema", "orderReviewSchema", "orderReviewSubmitSchema", "orderReviewUploadCapabilitySchema"]);
+  for (const [name, value] of Object.entries(facade)) {
+    expect(value).toBe(commerce[name as keyof typeof commerce]);
+  }
+});
 
-const GRANT = "review-grant:11111111-1111-4111-8111-111111111111";
-const DIGEST = "a".repeat(64);
+// BASE review contracts and donor hosted-feedback contracts use the browser
+// wrapper and produce zero Function probes in a fresh process under strict CSP.
+// Each child starts without the parent test registry's global Zod configuration.
+function functionProbes(moduleUrl: string): number {
+  const source = `
+    import { registerHooks } from "node:module";
+    import { existsSync } from "node:fs";
+    import { fileURLToPath } from "node:url";
+    registerHooks({ resolve(specifier, context, next) {
+      try { return next(specifier, context); }
+      catch (error) {
+        if (specifier.endsWith(".js") && context.parentURL?.startsWith("file:")) {
+          const url = new URL(specifier.slice(0, -3) + ".ts", context.parentURL);
+          if (existsSync(fileURLToPath(url))) return next(url.href, context);
+        }
+        throw error;
+      }
+    } });
+    let probes = 0;
+    const blocked = () => { probes++; throw new EvalError("strict CSP"); };
+    globalThis.Function = new Proxy(globalThis.Function, { construct: blocked, apply: blocked });
+    const contracts = await import(${JSON.stringify(moduleUrl)});
+    contracts.orderReviewReadResultSchema?.parse({ review: null, media: [] });
+    contracts.orderFeedbackTokenCheckRequestSchema?.parse({ token: "opaque-token" });
+    process.stdout.write(JSON.stringify(probes));
+  `;
+  return JSON.parse(execFileSync(process.execPath, ["--experimental-strip-types", "--input-type=module", "-e", source], {
+    encoding: "utf8", timeout: 10_000,
+  }));
+}
 
-describe("order review contracts", () => {
-  it("accepts bounded neutral review and media commands", () => {
-    expect(orderReviewSubmitSchema.parse({ grant: GRANT, rating: 5, fingerprint: DIGEST }).rating).toBe(5);
-    expect(orderReviewMediaIntentSchema.parse({
-      grant: GRANT, contentType: "image/png", byteLength: 20 * 1024 * 1024,
-      capabilityDigest: DIGEST, commandKey: "review.media.1",
-    }).contentType).toBe("image/png");
-  });
+it.each(["orderReviewContracts", "orderFeedbackContracts"])("initializes %s without a Function probe in a fresh process", (name) => {
+  expect(functionProbes(new URL(`./${name}.ts`, import.meta.url).href)).toBe(0);
+});
 
-  it("distinguishes an eligible first submission from an existing review", () => {
-    expect(orderReviewReadResultSchema.parse({ review: null, media: [] })).toEqual({ review: null, media: [] });
-  });
-
-  it("bounds discoverable media and rejects server-only locators", () => {
-    const review = { contractVersion: "commerce.order-review.v1", reviewRef: "order-review:22222222-2222-4222-8222-222222222222",
-      rating: 5, comment: null, moderation: "pending", createdAt: "2026-08-16T00:00:00.000Z" };
-    expect(orderReviewAdminDetailSchema.parse({ review, media: [] })).toEqual({ review, media: [] });
-    expect(() => orderReviewAdminDetailSchema.parse({ review, media: [], objectKey: "review/private" })).toThrow();
-    expect(() => orderReviewAdminDetailSchema.parse({ review, media: Array.from({ length: 11 }, () => ({
-      mediaRef: "order-review-media:22222222-2222-4222-8222-222222222222", declaredContentType: "image/png",
-      declaredByteLength: 24, observedContentType: null, observedByteLength: null, observedDigest: null, state: "pending",
-    })) })).toThrow();
-  });
-
-  it("rejects an oversized media declaration and non-opaque grant", () => {
-    expect(() => orderReviewMediaIntentSchema.parse({
-      grant: "order:1", contentType: "image/png", byteLength: 20 * 1024 * 1024 + 1,
-      capabilityDigest: DIGEST, commandKey: "review.media.1",
-    })).toThrow();
-  });
-
-  it("never permits clear upload capability in the BFF result", () => {
-    const media = {
-      mediaRef: "order-review-media:22222222-2222-4222-8222-222222222222",
-      declaredContentType: "image/png",
-      declaredByteLength: 24,
-      observedContentType: null,
-      observedByteLength: null,
-      observedDigest: null,
-      state: "pending",
-    };
-    expect(orderReviewMediaIntentResultSchema.parse({
-      media, uploadExpiresAt: "2026-08-16T00:00:00.000Z", replayed: false,
-    })).toMatchObject({ media });
-    expect(() => orderReviewMediaIntentResultSchema.parse({
-      media, uploadCapability: "order-review-upload:22222222-2222-4222-8222-222222222222",
-      uploadExpiresAt: "2026-08-16T00:00:00.000Z", replayed: false,
-    })).toThrow();
-  });
-
-  it("requires an observed hash only after bytes were stored", () => {
-    const base = {
-      mediaRef: "order-review-media:22222222-2222-4222-8222-222222222222",
-      declaredContentType: "image/png" as const,
-      declaredByteLength: 24,
-    };
-    expect(orderReviewMediaSchema.parse({ ...base, state: "pending", observedContentType: null, observedByteLength: null, observedDigest: null }).state).toBe("pending");
-    expect(() => orderReviewMediaSchema.parse({ ...base, state: "stored", observedContentType: null, observedByteLength: null, observedDigest: null })).toThrow();
-    expect(orderReviewMediaSchema.parse({ ...base, state: "stored", observedContentType: "image/png", observedByteLength: 24, observedDigest: DIGEST }).state).toBe("stored");
-  });
+it.each(["orderReviewContracts", "orderFeedbackContracts"])("detects the CSP probe if %s bypasses the browser wrapper", (name) => {
+  expect(functionProbes(new URL(`../../../packages/platform/src/commerce/${name}.ts`, import.meta.url).href)).toBe(1);
 });

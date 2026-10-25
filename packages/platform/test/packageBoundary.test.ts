@@ -119,7 +119,9 @@ function sourceImportAllowed(file: string, specifier: string, graph: ModuleGraph
 }
 
 function assertModuleExports(modules: string[], graph: ModuleGraph, exports: Record<string, unknown>, hasFile: (path: string) => boolean, nestedEntries: string[] = []): void {
-  expect(Object.keys(graph).sort()).toEqual([...modules].sort());
+  expect(Object.keys(graph).sort()).toEqual([
+    ...modules, ...nestedEntries.filter((entry) => Object.hasOwn(graph, entry)),
+  ].sort());
   const entries = modules.flatMap((module) => {
     expect(graph[module]!.contracts === undefined || graph[module]!.contracts === true, `${module} contracts declaration`).toBe(true);
     return [module, ...(graph[module]!.contracts === true ? [`${module}/contracts`] : [])];

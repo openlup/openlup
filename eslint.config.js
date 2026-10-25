@@ -148,6 +148,7 @@ const sourceFiles = (prefix = "") => [`${prefix}**/*.${SOURCE_EXTENSIONS}`];
 // <module>/contracts/index.ts; it has no module edges, including to its server entry.
 export const PLATFORM_MODULE_GRAPH = {
   commerce: { contracts: true, values: ["pricing/contracts", "shipping"], types: [] },
+  "commerce/server": { values: ["commerce"], types: ["http", "bff"] },
   invoicing: { contracts: true, values: [], types: [] },
   fulfillment: { contracts: true, values: [], types: [] },
   subscriptions: { contracts: true, values: [], types: [] },
@@ -198,22 +199,37 @@ const platformModuleEscapes = (message) => ({ message, regexes: [
 // `depth` is the number of directories between the module root and the file.
 function platformModuleBoundaries(module, depth, graph) {
   const { values, types } = graph[module];
+  const nestedDepth = module.split("/").length - 1;
   const entry = (name) => `${escapeRegex(name)}/index\\.js`;
-  const toSource = `^(?:\\./)?(?:\\.\\./){${depth}}\\.\\./`;
+  const toSource = `^(?:\\./)?(?:\\.\\./){${depth + nestedDepth}}\\.\\./`;
+  const parent = module.slice(0, module.lastIndexOf("/"));
+  const toParent = `^(?:\\./)?(?:\\.\\./){${depth}}\\.\\./`;
+  const toOwn = depth === 0 ? "^\\./" : `^(?:\\./)?(?:\\.\\./){${depth}}`;
+  const nestedEntries = Object.keys(graph).filter((entry) => entry.startsWith(`${module}/`));
   const message = `packages/platform module "${module}" imports its own files and other modules only through their entry <module>/index.js: `
     + `${values.length > 0 ? values.join(", ") : "none"}${types.length > 0 ? `; types only from ${types.join(", ")}` : ""}.`;
   return {
     graph: { message, regexes: [
+      ...nestedEntries.flatMap((target) => {
+        const admitted = [...values, ...types].includes(target) ? "(?!index\\.js$)" : "";
+        return [`${toOwn}${escapeRegex(target.slice(module.length + 1))}/${admitted}`, `${toSource}${escapeRegex(target)}/${admitted}`];
+      }),
       `${toSource}(?!${escapeRegex(module)}/|(?:${[...values, ...types].map(entry).join("|") || "(?!)"})$)`,
+      ...(nestedDepth > 0 && !values.includes(parent) ? [`${toParent}(?!(?:\\.\\./|${[...values, ...types].includes(parent) ? "index\\.js$" : "(?!)"}))`] : []),
       ...platformModuleEscapes(message).regexes,
     ] },
-    typeOnly: { message, regexes: types.length > 0 ? [`${toSource}(?:${types.map(entry).join("|")})$`] : [] },
+    typeOnly: { message, regexes: types.length > 0 ? [
+      `${toSource}(?:${types.map(entry).join("|")})$`,
+      ...(nestedDepth > 0 && types.includes(parent) ? [`${toParent}index\\.js$`] : []),
+      ...nestedEntries.filter((entry) => types.includes(entry)).map((entry) => `${toOwn}${escapeRegex(entry.slice(module.length + 1))}/index\\.js$`),
+    ] : [] },
   };
 }
 
 // Export the same rule factory used below so synthetic graphs exercise the real wiring.
 export function platformModuleRules(pkg, module, graph = PLATFORM_MODULE_GRAPH) {
   const { contracts } = graph[module];
+  const nestedDepth = module.split("/").length - 1;
   if (contracts !== undefined && contracts !== true) throw new Error(`${module}: contracts must be true or omitted`);
   const ignores = testFiles(`${PLATFORM_SOURCE}/`);
   const message = `packages/platform module "${module}" imports other modules only through their entry <module>/index.js.`;
@@ -248,7 +264,7 @@ export function platformModuleRules(pkg, module, graph = PLATFORM_MODULE_GRAPH) 
       rules: boundaryRules([packageIsolation(pkg, null), packageExports, platformModuleEscapes(message)]) },
     ...Array.from({ length: MAX_PACKAGE_DEPTH - 1 }, (_, depth) => {
       const files = (extensions) => [`${PLATFORM_SOURCE}/${module}/${"*/".repeat(depth)}*.${extensions}`];
-      const base = [packageIsolation(pkg, depth + 2), packageExports];
+      const base = [packageIsolation(pkg, depth + 2 + nestedDepth), packageExports];
       const { graph: boundary, typeOnly } = platformModuleBoundaries(module, depth, graph);
       return [
         // No type imports in plain JavaScript: a types edge admits nothing there.
