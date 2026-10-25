@@ -20,7 +20,7 @@ it.each([
   const apply = vi.fn(async () => ({ outcome: "refused" as const, reason: "subscription_command_payment_blocked" as const }));
   const facades = createReferenceSubscriptionFacades({ commands: { capabilities: NATIVE_SUBSCRIPTION_CAPABILITIES, apply },
     delivery: { ...delivery, readReceipt, bind: async descriptor => ({ recipientReference: descriptor.recipientRef, templateReference: descriptor.templateSlug }) } });
-  const fact: SubscriptionLifecycleFact = { kind, factId: "fact", idempotencyKey: "wait:resumed", subscriptionId: "sub", clientId: "client",
+  const fact: SubscriptionLifecycleFact = { factId: "fact", idempotencyKey: "wait:resumed", subscriptionId: "sub", clientId: "client",
     cycleId: null, caseId: "case", orderId: "order", occurredAt: "at", firstRecordedAt: "at", ...(kind === "stock_wait_resumed" ? { kind, frozenFingerprint: "frozen" } : { kind, retryAttempt: 2, nextRetryAt: "later", failureClass: "temporary", amountMinor: 200, currency: "XXX" }) };
   const input = { fact, messageKey: fact.idempotencyKey, recipientRef: "customer:1", locale: "en", recoveryUrlPath: null };
   expect(await facades.messages.deliver(input)).toEqual({ notificationId: "captured:notice", replayed: false });
