@@ -1,5 +1,6 @@
 import type { SubscriptionCapabilities } from "./commands.js";
 export type AccountSupportCapability<Code extends string> = { supported: true } | { supported: false; refusalCode: Code };
+export type AccountSupportLaneUnavailable<Code extends string> = Extract<AccountSupportCapability<Code>, { supported: false }>;
 /** Explicit driver selections; importing the module installs no capability. */
 export interface AccountSupportCapabilities {
   graph: "managed" | "native";

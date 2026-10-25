@@ -2032,6 +2032,18 @@ CI activation and verification order remain unchanged.
 
 <!-- openlup-doc-impact {"unit":"tests","digest":"sha256-9bc9d077d462c3b6b310bc4a61a79297acbcacc587ac490b1e067256431d8ed6","reason":"The component journey, optional captured-mail browser proof and direct disposable PostgreSQL proof reuse the existing runners. The PostgreSQL proof uses Node for server cryptography and explicitly binds the shared storage mocks and an empty URL query to window for the browser adapter; it needs no DOM. Test commands, execution ownership and full required verification duties remain unchanged; installation proofs continue to require their owned local services."} -->
 
+For M12 self-service proof, discover the package composition tests, the default-off
+reference binding test and the three PostgreSQL accountSupportSelfService cases
+through the existing root Vitest projects after `npm run pretest`. Package owner-fit
+checks import packaged subscriptions/payments types only and execute the TypeScript
+checker. Reference-source action, preview, snapshot, explicit-pause and bundle-control
+fit is compiled in m12SelfServiceBinding.test.ts, alongside its native routing
+transcript. R1 portFit and m12AccountReadBinding proofs stay unchanged. The installed consumer
+adds the facade result/refusal proof to its existing pack, while its root callable
+removal falsifier does not repeat the positive installed operation. A missing
+Docker daemon leaves real PostgreSQL proof outstanding; authored/typechecked cases
+and synthetic owners do not establish database execution evidence.
+
 ## Pull requests
 
 Dependency update bots remain signals for maintainer-owned signed contributions.

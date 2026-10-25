@@ -1369,3 +1369,38 @@ store refuses absent host facts before writes; the duty stays owed. Native
 child-document corrections and managed base-row corrections have separate
 migration descriptors. An unknown claim always recovers by exact readback;
 only authoritative scoped absence can authorize a fresh create.
+
+## Account self-service owner results
+
+The experimental account-support composition selects each owner lane explicitly.
+Managed results, nulls and errors pass through; native typed and raw lanes keep
+owner receipts and verbatim refusals, including unsupported verbs. No lane is a
+fallback for another. The native donor route keeps pause on the explicit pause
+port, checks ownership before validating an update_bundle quote, and sends other
+verbs to control. Verified-principal mismatch refuses before any owner call.
+
+The raw codec supplies verified identity and time, preserving the host's resolved
+payload and idempotency key. Preview copies that payload without acceptedQuoteHash;
+apply never previews. Only a checked previewed record reaches an injected host
+projection; other owner records retain identity. The projection must supply any
+legacy telemetry from trusted host facts. Native browser key retention remains
+unselected until the host retains one key across preview/apply. Native profile,
+recovery start and managed-shaped redeem have no selected native implementation.
+The facade returns every R1 output lane plus native legacy/control, with required
+host-supplied AccountSupportCapabilities. Input lanes are optional. Every output
+lane guards the verified principal;
+raw/typed lanes require the supplied clientId to equal context.clientId, including
+refusal of omitted, undefined and null values before any owner call. Supported paymentMethodSetup requires a
+paymentMethod lane; supported commerceRecovery/configuredPurchase require commerce.
+Supported subscriptions.genericBundleCommands/commandBoundReceipts require at least
+one selected managed/native legacy/raw/typed subscription command lane. Missing
+required lanes and incomplete selected lanes refuse configuration. Unselected
+methods resolve to `{ supported: false, refusalCode }`: paymentMethod returns the
+host paymentMethodSetup refusal by identity, commerce returns commerceRecovery by
+identity, and every other lane returns the frozen host_binding_required constant.
+The guard runs before every unselected-lane refusal. M07 method setup adapts setupMethod to the
+guarded paymentMethod.execute lane and collects a transient handoff only.
+A45/A46 token routes remain reference handlers. Native repair authorization and
+scheduling are a registered follow-up, because the donor native graph does not
+serve them.
+See the [self-service reference](PLATFORM_PACKAGE_REFERENCE.md#account-and-support-contracts).

@@ -54,3 +54,6 @@ export type {
   InvoiceAccessOptions,
   CustomerInvoiceDocumentStatusInput
 } from "./invoiceAccess.js";
+export { createSelfServiceCommandFacade } from "./selfService.js";
+export { encodeNativeSubscriptionCommand, decodeNativeSubscriptionPreview, createNativeSubscriptionDriver } from "./subscriptionCommandCodec.js";
+export { createPaymentMethodComposition } from "./paymentMethodComposition.js";

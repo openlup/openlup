@@ -1,4 +1,5 @@
 /** Cold installed-artifact proof. Never repack or use workspace resolution. */
+import ts from "typescript";
 import { stripTypeScriptTypes } from "node:module";
 import assert from "node:assert/strict";
 import { env as processEnvironment } from "node:process";
@@ -161,6 +162,50 @@ for(const fail of [false,true]) {
 await assert.rejects(()=>withCustomerAccountReadStage("account_aggregate",async()=>{throw cause;}),error=>error instanceof CustomerAccountReadModelError && error.cause===cause);
 assert.deepEqual(customerAccountReadFailureDetails(cause),{reason:"read_model_failed",stage:"unknown"});
 `);
+}
+
+/** C10: installed self-service selection, exact owner receipt/refusal and no fallback. */
+export function proveSelfServiceConsumer(consumer: string): void {
+  consumerNode(consumer, `
+import assert from "node:assert/strict";
+import { createSelfServiceCommandFacade } from "@openlup/platform/account-support";
+assert.equal(typeof createSelfServiceCommandFacade,"function","self-service factory must be callable");
+const receipt={status:"applied",commandFingerprint:"original",eventId:"owner-event",extra:{host:true}};
+const refusal={status:"refused",reason:"subscription_command_unsupported_action",owner:true};
+let result=receipt,calls=0;
+const raw={async apply(command){assert.equal(this,raw);assert.equal(command,request);calls++;return result;},async preview(){throw Error("unexpected-preview");}};
+const facade=createSelfServiceCommandFacade({context:{principalId:"actor",clientId:"client",graph:"native"},capabilities:{graph:"native",accountRead:{supported:false,refusalCode:"host_binding_required"},customer360Read:{supported:false,refusalCode:"host_binding_required"},invoiceAccess:{supported:false,refusalCode:"host_binding_required"},operatorSubscription:{supported:false,refusalCode:"operator_subscription_authority_unavailable"},operatorContact:{supported:false,refusalCode:"operator_subscription_authority_unavailable"},communicationGifts:{supported:false,refusalCode:"unsupported_preference"},subscriptions:{graph:"native",multiCyclePrepaid:{supported:false,refusalCode:"multi_cycle_prepaid_unsupported"},genericBundleCommands:{supported:true},commandBoundReceipts:{supported:true},preparedAttemptStore:{supported:false,refusalCode:"native_prepared_attempt_store_unsupported"},retryRecovery:"selected",stockRecovery:"unavailable",deliveryAdmission:"required",executorCount:1,defaultEnabled:false},paymentMethodSetup:{supported:false,refusalCode:"unsupported"},commerceRecovery:{supported:false,refusalCode:"host_binding_required"},configuredPurchase:{supported:false,refusalCode:"host_binding_required"}},nativeRawSubscription:raw});
+const request={actorId:"actor",clientId:"client",idempotencyKey:"retained-key",subscriptionId:"subscription",action:"update_bundle",payload:{expectedTemplateVersion:3},now:"original-time"};
+assert.equal(await facade.nativeRawSubscription.apply(request),receipt);
+result=refusal;assert.equal(await facade.nativeRawSubscription.apply(request),refusal);
+await assert.rejects(()=>facade.nativeRawSubscription.apply({...request,actorId:"foreign"}),/customer_principal_mismatch/);
+await assert.rejects(()=>facade.nativeRawSubscription.preview({...request,clientId:"foreign"}),/customer_principal_mismatch/);
+assert.equal(calls,2);
+assert.deepEqual(await facade.nativeLegacySubscription.applyAction("actor",{subscriptionId:"s",action:"pause"}),{supported:false,refusalCode:"host_binding_required"});
+assert.deepEqual(await facade.nativeSubscription.apply({actor:{actorId:"actor",clientId:"client"}}),{supported:false,refusalCode:"host_binding_required"});
+assert.equal(await facade.paymentMethod.execute("actor",{}),facade.capabilities.paymentMethodSetup);assert.deepEqual(facade.capabilities.paymentMethodSetup,{supported:false,refusalCode:"unsupported"});
+assert.equal("host" in facade,false);
+`);
+  // Inspect installed JavaScript and declarations, including transitive type imports.
+  const packageRoot = join(consumer, "node_modules/@openlup/platform");
+  const boundary = realpathSync(join(packageRoot, "dist/account-support"));
+  const metadata = JSON.parse(readFileSync(join(packageRoot, "package.json"), "utf8"));
+  const pending: string[] = ["./account-support", "./account-support/contracts"].flatMap(entry => Object.values(metadata.exports[entry]) as string[]);
+  const visited = new Set<string>();
+  while (pending.length) {
+    const target = pending.pop()!;
+    const path = realpathSync(resolve(packageRoot, target));
+    if (!path.startsWith(boundary + sep) || !/\.(?:js|d\.ts)$/.test(path)) throw new Error("Account-support installed import escapes dist/account-support: " + target);
+    if (visited.has(path)) continue;
+    visited.add(path);
+    const imports = ts.preProcessFile(readFileSync(path, "utf8"), true, true);
+    for (const item of [...imports.importedFiles, ...imports.referencedFiles, ...imports.typeReferenceDirectives]) {
+      if (!item.fileName.startsWith(".")) throw new Error("Account-support installed import escapes dist/account-support: " + item.fileName);
+      const dependency = resolve(dirname(path), item.fileName);
+      // A .d.ts import ending in .js resolves to the adjacent declaration.
+      pending.push(path.endsWith(".d.ts") ? dependency.replace(/\.js$/, ".d.ts") : dependency);
+    }
+  }
 }
 
 /** Actual installed P1 descriptor and browser import; no live provider or worker. */
@@ -1345,6 +1390,7 @@ assert.throws(() => promotions.resolvePromotionBenefitDefinition({ discount_type
     proveSubscriptionsConsumer(consumer);
     proveAccountSupportConsumer(consumer);
     proveAccountSupportReadsConsumer(consumer);
+    proveSelfServiceConsumer(consumer);
     provePaymentsConsumer(consumer);
     proveFulfillmentConsumer(consumer);
     installA1HostBinding(consumer, checkout);

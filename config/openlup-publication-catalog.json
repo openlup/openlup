@@ -2774,6 +2774,18 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/account-support/paymentMethodComposition.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/account-support/selfService.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/account-support/subscriptionCommandCodec.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/bff/dispatch.ts",
       "class": "public-output"
     },
@@ -5842,7 +5854,23 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/account-support/ownerRefusals.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/account-support/paymentMethodComposition.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/account-support/portFit.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/account-support/selfService.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/account-support/subscriptionCommandCodec.test.ts",
       "class": "public-output"
     },
     {
@@ -17034,6 +17062,14 @@
       "class": "public-output"
     },
     {
+      "path": "server/runtime/public-reference/m12SelfServiceBinding.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/runtime/public-reference/m12SelfServiceBinding.ts",
+      "class": "public-output"
+    },
+    {
       "path": "server/runtime/public-reference/m12SupportReadBinding.test.ts",
       "class": "public-output"
     },
@@ -24923,6 +24959,10 @@
     },
     {
       "path": "tests/postgres/accountSupportReads.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/accountSupportSelfService.test.ts",
       "class": "public-output"
     },
     {

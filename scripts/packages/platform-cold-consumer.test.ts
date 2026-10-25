@@ -35,6 +35,7 @@ import {
   proveMarketingSyncConsumer,
   runPlatformColdConsumer
 } from "./platform-cold-consumer.ts";
+import { proveSelfServiceConsumer } from "./platform-cold-consumer.ts";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const temporary: string[] = [];
@@ -52,6 +53,11 @@ function fixture() {
   writeFileSync(join(consumer, "package.json"), '{"type":"module"}');
   packageFixture(consumer, "@openlup/core", { ".": "./index.js" });
   packageFixture(consumer, "@openlup/platform", Object.fromEntries([...NON_ADAPTER_ENTRIES, ...ADAPTER_ENTRIES].map(name => [`./${name}`, { types: "./index.d.ts", default: "./index.js" }])));
+  const platformManifest = join(consumer, "node_modules/@openlup/platform/package.json");
+  const platformMetadata = JSON.parse(readFileSync(platformManifest, "utf8"));
+  platformMetadata.exports["./account-support/contracts"].default = "./contracts.js";
+  writeFileSync(platformManifest, JSON.stringify(platformMetadata));
+  writeFileSync(join(consumer, "node_modules/@openlup/platform/contracts.js"), "export {};\n");
   // The typed consumer registers the payments factory with the composer.
   writeFileSync(join(consumer, "node_modules/@openlup/platform/index.d.ts"), [
     "export interface Synthetic { value: string }",
@@ -900,3 +906,11 @@ it.each(["missing export", "foreign order"] as const)(
   },
   60_000
 );
+it("C11 rejects removal of the envelope-returning self-service callable", () => {
+  const consumer = fixture();
+  const implementation = readFileSync(join(root, "packages/platform/dist/account-support/selfService.js"), "utf8");
+  const mutant = implementation.replace("export function createSelfServiceCommandFacade", "export const createSelfServiceCommandFacade = undefined;\nfunction removedSelfServiceCommandFacade");
+  expect(mutant).not.toBe(implementation);
+  writeFileSync(join(consumer, "node_modules/@openlup/platform/index.js"), mutant);
+  expect(() => proveSelfServiceConsumer(consumer)).toThrow(/self-service factory must be callable/);
+});
