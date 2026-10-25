@@ -243,9 +243,14 @@ M11 versions follow every earlier same-rail pin; each pin requires all earlier
 same-rail pins present with exact bytes. Later feature changes may introduce those
 bytes on the managed rail. Tests use the registry and complete real managed prefix,
 include each earlier same-rail pin once, and append only absent M11 fixtures.
-They prove admission/refusals, catalog/ACL/CHECK changes and rollback; acquisition
-witnesses cover both policy states. Fixture proof does not establish handler
-integration, native return semantics or installation authority.
+They prove admission/refusals and catalog/ACL/CHECK changes with rollback. The real
+PostgreSQL acquisition witness executes finalize with no policy and with configured
+policy: exact retained terms admit, missing/stale/engine-mismatched terms refuse
+without durable row changes, and a policy change refuses fresh acquisition while
+preserving completed replay. It also checks zero-write exact replay, one-time
+checkout and the shared/exclusive policy-lock protocol through rollback. Fixture
+proof does not establish handler integration, native return semantics or
+installation authority.
 
 The M10/F17 exact-forward controls use
 `scripts/reviewed-batch-forward.test.ts` for per-file refusal plants and separate

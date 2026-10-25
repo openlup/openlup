@@ -519,8 +519,13 @@ earlier same-rail pin; each pin requires all earlier same-rail pins present with
 exact bytes. Later feature changes may introduce those bytes on the managed rail.
 Tests read the registry and complete real managed prefix, include each earlier
 same-rail pin once, and append only absent M11 fixtures for admission/refusal and
-PostgreSQL catalog/ACL/CHECK proof with rollback. They do not establish handler
-behavior or authorize installation.
+PostgreSQL catalog/ACL/CHECK proof with rollback. The acquisition witness executes
+finalize through no-policy compatibility and configured-policy admission, checks
+exact retained terms, and proves missing/stale/engine-mismatched terms refuse
+without durable row changes. Changed policy refuses fresh acquisition while
+completed finalize replay preserves rows. One-time checkout and the shared/exclusive
+policy-lock protocol are also checked. These fixtures do not establish handler
+integration, native return semantics or installation authority.
 
 **Named bounded debt C94 — M10 reviewed packet vocabulary.** The frozen managed
 SQL retains provider nouns inherited from that rail. The neutrality baseline
