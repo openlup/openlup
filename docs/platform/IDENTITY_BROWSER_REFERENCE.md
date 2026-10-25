@@ -4,6 +4,15 @@ Status: development-preview reference-application behaviour. This composition
 adds no package API, database object, identity transfer or release authority.
 The package [identity guide](IDENTITY.md) owns server identity contracts.
 
+The browser import inventory lists the exact built files reached through
+`@openlup/platform/commerce` and its type-only contracts entry. The complete
+commerce runtime is checked with a browser bundle. The reserved
+`@openlup/platform/commerce/server` entry remains outside the closed inventory;
+the profile build test explicitly proves that it is refused, alongside the
+Node-only pricing root. The additive `pricing/browser` entry contributes exactly
+its built entry, quote primitives, acquisition validators and acquisition
+contract constant. No directory wildcard or other pricing implementation is admitted.
+
 ## Routes and readiness
 
 The opt-in subscription profile mounts `/sign-in`, `/account/auth/callback` and

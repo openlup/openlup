@@ -1,39 +1,12 @@
 import { z } from "../../lib/validation/zod.js";
-import {
-  configuratorIntentSchema,
-  CONFIGURATOR_INTENT_VERSION,
-} from "./configuratorIntentContracts.js";
-
-export const CONFIGURATOR_INTENT_PERSISTENCE_CONTRACT_VERSION =
-  "commerce.configurator_intent_persistence.v1";
-
-const uuidSchema = z.guid();
-
+import { configuratorIntentSchema } from "./configuratorIntentContracts.js";
+import { configuratorIntentPersistenceResponseCoreSchema } from "@openlup/platform/commerce";
+export { CONFIGURATOR_INTENT_PERSISTENCE_CONTRACT_VERSION, configuratorIntentClientMatchReasonSchema } from "@openlup/platform/commerce";
 export const configuratorIntentPersistenceRequestSchema = configuratorIntentSchema;
-
-export const configuratorIntentClientMatchReasonSchema = z.enum([
-  "client_created",
-  "client_match_exact_email",
-  // Deprecated (CJ01-AC): the plus-normalized fallback was removed in migration
-  // 20260712130000 so a guest `base+tag@` no longer folds onto an unrelated
-  // `base@` client. Retained in the enum only so historical/replayed idempotency
-  // responses still parse; the RPC no longer emits it.
-  "client_match_plus_normalized_fallback",
-]);
-
-export const configuratorIntentPersistenceResponseSchema = z
-  .object({
-    contractVersion: z.literal(CONFIGURATOR_INTENT_PERSISTENCE_CONTRACT_VERSION),
-    intentVersion: z.literal(CONFIGURATOR_INTENT_VERSION),
-    idempotencyKey: z.string().trim().min(8).max(120),
-    clientId: uuidSchema,
-    petId: uuidSchema,
-    addressId: uuidSchema,
-    clientMatchReason: configuratorIntentClientMatchReasonSchema.optional(),
-    replayed: z.boolean(),
-  })
-  .strict();
-
+const { addressId, clientMatchReason, replayed } = configuratorIntentPersistenceResponseCoreSchema.shape;
+export const configuratorIntentPersistenceResponseSchema = configuratorIntentPersistenceResponseCoreSchema
+  .omit({ addressId: true, clientMatchReason: true, replayed: true })
+  .extend({ petId: z.guid(), addressId, clientMatchReason, replayed });
 export type ConfiguratorIntentPersistenceRequest = z.input<
   typeof configuratorIntentPersistenceRequestSchema
 >;

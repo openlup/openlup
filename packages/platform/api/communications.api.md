@@ -386,7 +386,7 @@ export declare function consentStateFromBoolean(value: boolean | null | undefine
 import type { CommunicationPurpose } from "./contracts/types.js";
 import type { CommunicationPurposeDefinition, CommunicationPurposeRegistry } from "./contracts/consent.js";
 export declare function createCommunicationPurposeRegistry<const Purpose extends string = never>(additions?: readonly CommunicationPurposeDefinition<Purpose>[]): CommunicationPurposeRegistry<CommunicationPurpose | Purpose>;
-export declare const defaultCommunicationPurposeRegistry: CommunicationPurposeRegistry<"transactional" | "marketing_launch_offer" | "marketing_newsletter" | "tester_program" | "subscription_dunning" | "admin_notification">;
+export declare const defaultCommunicationPurposeRegistry: CommunicationPurposeRegistry<"transactional" | "subscription_dunning" | "marketing_launch_offer" | "marketing_newsletter" | "tester_program" | "admin_notification">;
 ```
 ## dist/communications/contracts/authEmail.d.ts
 
@@ -1752,8 +1752,8 @@ export declare const canonicalNewsletterWebhookEventSchema: z.ZodObject<{
     explicitOptInEvidence: z.ZodOptional<z.ZodBoolean>;
     doubleOptInStatus: z.ZodOptional<z.ZodEnum<{
         unknown: "unknown";
-        confirmed: "confirmed";
         pending: "pending";
+        confirmed: "confirmed";
     }>>;
     occurredAt: z.ZodOptional<z.ZodNullable<z.ZodString>>;
     payload: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
@@ -1787,8 +1787,8 @@ export declare function createNewsletterIntegrationSchemas<Purpose extends strin
         explicitOptInEvidence: z.ZodOptional<z.ZodBoolean>;
         doubleOptInStatus: z.ZodOptional<z.ZodEnum<{
             unknown: "unknown";
-            confirmed: "confirmed";
             pending: "pending";
+            confirmed: "confirmed";
         }>>;
         occurredAt: z.ZodOptional<z.ZodNullable<z.ZodString>>;
         payload: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;

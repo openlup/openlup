@@ -200,6 +200,7 @@ describe("package source boundary", () => {
 
   it("scans the whole package source", () => {
     expect(files.map(({ path }) => path)).toEqual(expect.arrayContaining([
+      "commerce/index.ts", "commerce/contracts/index.ts", "commerce/server/index.ts",
       "invoicing/index.ts", "invoicing/contracts/index.ts",
       "subscriptions/index.ts", "subscriptions/contracts/index.ts",
       "fulfillment/index.ts", "fulfillment/contracts/index.ts", "fulfillment/omnipack/index.ts", "fulfillment/bindings.ts", "fulfillment/contracts/bindings.ts", "composition/fulfillmentContribution.ts",
@@ -212,7 +213,7 @@ describe("package source boundary", () => {
       "catalog/bundleCatalogStore.ts", "catalog/bundleCatalogQueries.ts", "catalog/sql.ts",
       "catalog/adminBundleWritePort.ts", "catalog/adminBundleHandler.ts", "catalog/adminBundleReadHandler.ts", "catalog/sellableBundleHandler.ts",
       "catalog/contracts/bundleAdmin.ts", "catalog/contracts/bundleRead.ts", "catalog/contracts/bundleAvailability.ts",
-      "pricing/index.ts", "pricing/contracts/index.ts",
+      "pricing/index.ts", "pricing/browser/index.ts", "pricing/contracts/index.ts",
       "promotions/index.ts", "promotions/contracts/index.ts",
       "promotions/adminBindings.ts", "promotions/adminPromotionsHandler.ts", "promotions/adminPromotionCodesHandler.ts",
       "promotions/adminPromotionsContracts.ts", "promotions/adminPromotionCodesContracts.ts",
@@ -259,7 +260,7 @@ describe("package source boundary", () => {
     const manifest = JSON.parse(readFileSync(fileURLToPath(new URL("../package.json", import.meta.url)), "utf8")) as {
       exports: Record<string, unknown>;
     };
-    assertModuleExports(modules, graph, manifest.exports, (path) => existsSync(join(SOURCE_ROOT, path)), ["communications/resend", "communications/klaviyo", "payments/stripe", "payments/tpay", "fulfillment/omnipack"]);
+    assertModuleExports(modules, graph, manifest.exports, (path) => existsSync(join(SOURCE_ROOT, path)), ["commerce/server", "pricing/browser", "communications/resend", "communications/klaviyo", "payments/stripe", "payments/tpay", "fulfillment/omnipack"]);
   });
 
   it.each(files)("$path reaches another module only through that module's public entry", ({ path, source }) => {

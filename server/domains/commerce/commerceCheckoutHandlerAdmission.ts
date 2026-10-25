@@ -2,6 +2,7 @@ import {
   checkoutRequestSchema,
   type CheckoutKind,
 } from "../../../src/domains/commerce/checkoutContracts.js";
+import { COMMERCE_MIN_ORDER_UNITS } from "../../../src/domains/commerce/recommendationPolicyDeps.js";
 import type { ConfiguratorIntent } from "../../../src/domains/commerce/configuratorIntentContracts.js";
 import { sendBffError, sendMethodNotAllowed } from "../../_lib/bff/response.js";
 import { isDhlCourierDelivery } from "./commerceCheckoutHandlerHelpers.js";
@@ -71,6 +72,23 @@ export async function admitCheckoutRequest(input: {
   }
 
   const intent = parsed.data.intent;
+  const selectedUnits = intent.selectedVariants.reduce((total, variant) => total + variant.qty, 0);
+  if (selectedUnits < COMMERCE_MIN_ORDER_UNITS) {
+    sendBffError(res, "BAD_REQUEST", "Invalid checkout request", {
+      details: { formErrors: [], fieldErrors: {
+        intent: [`selected variants require at least ${COMMERCE_MIN_ORDER_UNITS} total units`],
+      } },
+    });
+    return { kind: "responded", outcome: "rejected" };
+  }
+  // K1 exposes the offer-policy port type but wires no server offer resolver.
+  // Every offer ask requires an actual binding.
+  if (intent.minimumUnits !== undefined || intent.offerVersion !== undefined) {
+    sendBffError(res, "BAD_REQUEST", "Invalid checkout request", {
+      details: { formErrors: [], fieldErrors: { intent: ["offer_version_unsupported"] } },
+    });
+    return { kind: "responded", outcome: "rejected" };
+  }
   const checkoutKind = checkoutKindForIntent(intent);
   if (rejectMissingPromotionExpectedQuote({
     res,
