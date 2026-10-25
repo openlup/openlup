@@ -353,6 +353,61 @@ acquisition terms under the policy lock; the terms reader refuses absent policy.
 The checkout receipt action, stock seam and starter compatibility actions are
 specified in [Data and migrations](docs/platform/DATA_AND_MIGRATIONS.md#exact-reviewed-function-forwards).
 
+M12 support authority uses the separate `supportAuthorityForwards` class and
+[inert fixtures](scripts/fixtures/reviewed-m12/db/platform/migrations/README.md).
+Run `npx vitest run scripts/reviewed-batch-forward.test.ts` for trusted preparation,
+co-located own-file pins, PR/merge-group admission, release-introduction binding
+and semantic refusal plants. Run
+`npm test -- tests/postgres/reviewedBatchForwards.test.ts --maxWorkers=1` with
+Docker available for the native and managed finite catalog deltas, complete
+prefix replay, observer plants and installation rollback. The managed lane
+applies each required M11 fixture exactly once when its canonical suffix is
+absent. Canonical bytes and the native packed twin must match fixtures when
+present. Missing PostgreSQL/pgTAP fails the prerequisite; lexical checks cannot
+replace it. The [migration guide](docs/platform/DATA_AND_MIGRATIONS.md#m12-supportauthorityforwards)
+owns the fixed two-path inventory and R4 introduction boundary. These controls
+add no installer, package release, activation or general SQL exception.
+The M12 dispatcher checks each preceding SQL object's regular-file mode and reads
+its exact committed bytes in one batch through the existing documentation object
+reader; the complete ordered prefix and all admission checks still apply.
+
+M11 managed-commerce fixtures under `scripts/fixtures/reviewed-m11/` are pinned by
+`managedCommerceForwards` in `config/reviewed-platform-forwards.json`. They cover checkout
+preference scope, return ownership, checkout audit receipts and the minimal
+acquisition-reader/admission/finalize closure, without policy seeds or setup
+writers. Legacy omitted-country fallback uses the configured platform region
+and refuses missing configuration; adopters set their own default.
+The class fixes nine slots: slots 1–8 each retain one function exactly as pinned;
+slot 9 is the starter pair. The seven checkout, return and acquisition entries
+retain their pinned slots, and the eighth is a single new-purchase stock reader
+(`public.inventory_new_purchase_stock_read(jsonb,timestamptz)`). It composes ATP
+with renewal exemption fixed false, caps requests at 200 array items and refuses
+a NULL as-of timestamp as `inventory_stock_as_of_invalid` (SQLSTATE `22023`).
+Its service-only ACL additionally revokes `openlup_mcp_reader`; its conservative
+stale flag covers any stale provider row for the SKU, while the allocator retains
+its own stale refusal. The ninth slot replaces
+`subscription_create_provisional_for_checkout(uuid,uuid,uuid,uuid,jsonb)` and
+`subscription_apply_starter_graduation(uuid,text,text)` with independent preimages
+and ordered ACL pairs.
+The pins bind exact file/function/preimage/ordered statements, headers, ACLs and
+the audit CHECK preimage. The registry and real migration rails are authoritative.
+M11 versions follow every earlier same-rail pin; each pin requires all earlier
+same-rail pins present with exact bytes. Later feature changes may introduce those
+bytes on the managed rail. Tests use the registry and complete real managed prefix,
+include each earlier same-rail pin once, and append only absent M11 fixtures.
+They prove admission/refusals and catalog/ACL/CHECK changes with rollback. The
+`tests/postgres/starterGraduationCadence.test.ts` witness proves 21-day refusal
+without the ninth fixture, 14/21/28 admission with it in creation and both
+graduation modes, invalid-input refusal, replay and the subscription timezone
+default. The real
+PostgreSQL acquisition witness executes finalize with no policy and with configured
+policy: exact retained terms admit, missing/stale/engine-mismatched terms refuse
+without durable row changes, and a policy change refuses fresh acquisition while
+preserving completed replay. It also checks zero-write exact replay, one-time
+checkout and the shared/exclusive policy-lock protocol through rollback. Fixture
+proof does not establish handler integration, native return semantics or
+installation authority.
+
 The M10/F17 exact-forward controls use
 `scripts/reviewed-batch-forward.test.ts` for per-file refusal plants and separate
 and co-located CI/release approval, and `tests/postgres/reviewedBatchForwards.test.ts` for the

@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import { PLATFORM_BASELINE_FILE } from "./platform-migration-manifest.ts";
-import { documentationGit } from "./documentation-git.ts";
+import { documentationGit, readDocumentationObjects } from "./documentation-git.ts";
 
 export const REVIEWED_FORWARD_PATH = "config/reviewed-platform-forwards.json";
 export const MANAGED_BASELINE = "supabase/migrations/00000000000000_platform_schema_baseline.sql";
@@ -48,7 +48,8 @@ type RuntimeForwardBinding = ForwardBinding & { privileges: string[]; retiredPol
 type ForwardBinding = { path: string; sha256: string; functions: FunctionBinding[] };
 export type BatchedForwardBinding = ForwardBinding & { statements: { sha256: string; sql?: string }[] };
 export type ManagedCommerceForwardBinding = BatchedForwardBinding & { constraints?: { table: string; name: string; beforeSha256: string; beforeSql: string }[] };
-export type ReviewedForwardRegistry = { managedCommerceForwards?: ManagedCommerceForwardBinding[]; batchedForwards?: BatchedForwardBinding[]; schemaVersion: 1; baselineSha256: string; replacementForwards: ForwardBinding[]; creationForwards: ForwardBinding[]; runtimeForwards?: RuntimeForwardBinding[]; portableReplacementForwards?: ForwardBinding[]; portableCreationForwards?: PortableCreationBinding[]; managedInvoicingForwards?: ForwardBinding[] };
+export type SupportAuthorityForwardBinding = ManagedCommerceForwardBinding;
+export type ReviewedForwardRegistry = { supportAuthorityForwards?: SupportAuthorityForwardBinding[]; managedCommerceForwards?: ManagedCommerceForwardBinding[]; batchedForwards?: BatchedForwardBinding[]; schemaVersion: 1; baselineSha256: string; replacementForwards: ForwardBinding[]; creationForwards: ForwardBinding[]; runtimeForwards?: RuntimeForwardBinding[]; portableReplacementForwards?: ForwardBinding[]; portableCreationForwards?: PortableCreationBinding[]; managedInvoicingForwards?: ForwardBinding[] };
 export const sqlSha256 = (bytes: Buffer | string): string => createHash("sha256").update(bytes).digest("hex");
 const runtimeReplacements = new Set([
   "public.admin_clients_search_v3(text,integer,integer,text)",
@@ -223,6 +224,7 @@ function readForwardRegistry(bytes: Buffer, historical: boolean): ReviewedForwar
     if (!raw.batchedForwards) throw new Error("reviewed M11 commerce requires the complete M10 controls");
     validateManagedCommerceForwards(raw.managedCommerceForwards, paths, historical);
   }
+  if (raw.supportAuthorityForwards !== undefined) validateSupportAuthorityForwards(raw.supportAuthorityForwards, paths);
   return raw;
 }
 
@@ -711,7 +713,7 @@ function blob(root: string, revision: string, path: string): Buffer | undefined 
   return git(root, ["cat-file", "blob", match[1]!]);
 }
 
-const FORWARD_LISTS = ["replacementForwards", "creationForwards", "runtimeForwards", "portableReplacementForwards", "portableCreationForwards", "managedInvoicingForwards", "batchedForwards", "managedCommerceForwards"] as const;
+const FORWARD_LISTS = ["replacementForwards", "creationForwards", "runtimeForwards", "portableReplacementForwards", "portableCreationForwards", "managedInvoicingForwards", "batchedForwards", "managedCommerceForwards", "supportAuthorityForwards"] as const;
 const canonical = (value: unknown): string => JSON.stringify(value, (_key, item: unknown) => item && typeof item === "object" && !Array.isArray(item) ? Object.fromEntries(Object.entries(item).sort(([left], [right]) => left.localeCompare(right))) : item);
 const sharedApproval = (registry: ReviewedForwardRegistry) => Object.fromEntries(Object.entries(registry).filter(([key]) => !FORWARD_LISTS.includes(key as typeof FORWARD_LISTS[number])));
 const approvalBinding = (registry: ReviewedForwardRegistry, path: string) => {
@@ -742,7 +744,9 @@ export function assertForwardApproval(root: string, base: string, head: string):
   const before = blob(root, base, REVIEWED_FORWARD_PATH), after = blob(root, head, REVIEWED_FORWARD_PATH);
   if (!before || !after) throw new Error("reviewed replacement registry must be approved separately before introducing SQL");
   if (before.equals(after)) return;
+  const previous = readReviewedForwardRegistry(before);
   for (const path of changedForwardApprovals(before, after)) {
+    if (!previous.supportAuthorityForwards && supportAuthorityShapes.some(shape => shape.path === path)) throw new Error("reviewed M12 support class must be approved separately before its SQL");
     if (blob(root, base, path) || !blob(root, head, path)) throw new Error(`reviewed replacement pin must be approved separately unless its SQL is introduced in this PR: ${path}`);
   }
 }
@@ -813,7 +817,7 @@ export function assertReviewedPlatformForward(root: string, base: string, head: 
   const registry = readReviewedForwardRegistry(targetRegistry);
   const portable = path.startsWith("db/platform/migrations/");
   const candidates = portable ? [...registry.portableReplacementForwards ?? [], ...registry.portableCreationForwards ?? []] : [...registry.replacementForwards, ...registry.creationForwards, ...(registry.runtimeForwards ?? []), ...(registry.managedInvoicingForwards ?? [])];
-  const forward = [...candidates, ...(registry.batchedForwards ?? []), ...(registry.managedCommerceForwards ?? [])].find((entry) => entry.path === path);
+  const forward = [...candidates, ...(registry.batchedForwards ?? []), ...(registry.managedCommerceForwards ?? []), ...(registry.supportAuthorityForwards ?? [])].find((entry) => entry.path === path);
   if (!forward) throw new Error(`non-expand-only forward differs from reviewed replacement path or bytes: ${path}`);
   let approval = base;
   if (release) {
@@ -832,6 +836,19 @@ export function assertReviewedPlatformForward(root: string, base: string, head: 
   const baselinePath = portable ? PLATFORM_BASELINE_FILE : MANAGED_BASELINE;
   const baseline = blob(root, approval, baselinePath);
   if (!baseline || (!portable && sqlSha256(baseline) !== registry.baselineSha256)) throw new Error("reviewed replacement immutable baseline drifted");
+  if (registry.supportAuthorityForwards?.includes(forward as SupportAuthorityForwardBinding)) {
+    const entries = git(root, ["ls-tree", "-rz", "--full-tree", head, "--", portable ? "db/platform/migrations/" : "supabase/migrations/"]).toString("utf8").split("\0").filter(Boolean);
+    const preceding = entries.flatMap(entry => {
+      const priorPath = entry.slice(entry.indexOf("\t") + 1);
+      if (!priorPath.endsWith(".sql") || priorPath >= path) return [];
+      const regular = /^100644 blob ([a-f0-9]{40})\t/u.exec(entry);
+      if (!regular) throw new Error(`reviewed replacement requires a regular file: ${priorPath}`);
+      return [{ path: priorPath, oid: regular[1]! }];
+    }).sort((left, right) => left.path < right.path ? -1 : left.path > right.path ? 1 : 0);
+    const sources = readDocumentationObjects(root, preceding.map(source => source.oid));
+    assertSupportAuthorityForward(registry, path, bytes, preceding.map((source, index) => ({ path: source.path, bytes: sources[index]! })));
+    return;
+  }
   if (registry.managedCommerceForwards?.includes(forward as ManagedCommerceForwardBinding)) {
     const paths = git(root, ["ls-tree", "-r", "--name-only", head, "--", "supabase/migrations/"]).toString("utf8").trim().split("\n").filter(item => item.endsWith(".sql") && item < path).sort();
     assertManagedCommerceForward(registry, path, bytes, paths.map(path => ({ path, bytes: blob(root, head, path)! })));
@@ -1228,4 +1245,160 @@ export function assertManagedCommerceForward(registry: ReviewedForwardRegistry, 
     const binding = forward.constraints![0]!;
     if (beforeSql !== binding.beforeSql || sqlSha256(beforeSql ?? "") !== binding.beforeSha256) throw new Error("reviewed M11 commerce audit CHECK preimage drifted");
   }
+}
+
+// M12 is a separate fixed inventory. Registry pins bind bodies, never enlarge
+// paths, headers, companions, ACLs or the retired combined entry point.
+const supportAuthorityShapes = [
+  {
+    path: "db/platform/migrations/20261026120000_account_support_operator_authority.sql",
+    functions: [
+      {"signature": "public.customer_support_apply_subscription_action_v1(uuid,uuid,text,jsonb,integer,text,timestamptz)", "position": 0, "creation": true, "before": null, "header": "5f1a0bc213ef78334f8d12744ca4b462fc9fcd1ae0b1394fed49cf688d7c1c31"},
+      {"signature": "public.customer_support_issue_recovery(uuid,uuid,uuid,text,text,text,timestamptz,text)", "position": 2, "creation": false, "before": "7d122383fed301abad32682e46af6f3c99bcbffada388df7eae60b2ee3f412ca", "header": "8a577b349e310980f5498c56ebc706803aedcf2da46102fd95e7ceb6cc985a80"},
+      {"signature": "public.customer_support_absorb_lead_v1(uuid,uuid,uuid,text,text,timestamptz)", "position": 4, "creation": false, "before": "d445077001d914a5e6b827ccf71ff4028369e0033e2c1a8e7b16286364355bd2", "header": "e3933000432578de96569f4944b79b73a0d169df5cf9dd6c9a272577bcf5ad5d"},
+    ],
+    statements: [
+      null, // 1
+      "5dc5b9caa35ebb254096c05c09dd3413b0d43589afefe0a3898f36ed9b7aece2", // 2
+      null, // 3
+      "139591109daab786c335f48f75c95ff76cad66a403a1141ec40011352379ab52", // 4
+      null, // 5
+      "918f2562147f9b445752a5e2caa9b9e37976a0514b62486fe089380fdc395e97", // 6
+    ],
+    constraints: [
+    ],
+  },
+  {
+    path: "supabase/migrations/20261026120100_account_support_current_authority.sql",
+    functions: [
+      {"signature": "public.customer_support_admit_subject_email_v1(uuid,uuid,text,text,text,timestamptz)", "position": 5, "creation": true, "before": null, "header": "a984fea5557ea92ce31b0b4ba07f059985489b975eeb74621c53c4221abcb21e"},
+      {"signature": "public.customer_support_claim_subject_email_v1(text)", "position": 6, "creation": true, "before": null, "header": "f9971aa137bffba06a2efe3f70d848dbecfbc4da10646211689feb9f01e97d99"},
+      {"signature": "public.customer_support_guard_identity_email_v1()", "position": 7, "creation": true, "before": null, "header": "32f0409041f185f2409bd253823b3243815e766e355b15b7000f8b7f377774fa"},
+      {"signature": "public.customer_support_settle_subject_email_v1(text,uuid,text)", "position": 9, "creation": true, "before": null, "header": "4767b2baf5769cb5a98535d1d9713093cad42a6e8054a749793446a388757391"},
+      {"signature": "public.customer_support_correct_subject_email_v1(uuid,uuid,text,text,text,timestamptz)", "position": 10, "creation": false, "before": "bcbdf0a0ed2b8bdd69ab6b37d6955eab8b98570b8bc43b0e647654587647ed57", "header": "db1686760a5f27d5874bbcac0e904318b3d1a201c6ca79964caad9eea9dfcd7f", "retired": "751cf9e8e4f9173698b47397b3db60a5bae3d6e19222d9090f2176ce9af205c6"},
+      {"signature": "public.customer_support_link_subject_account_v1(uuid,uuid,text,uuid,text,timestamptz)", "position": 25, "creation": true, "before": null, "header": "d642f66312a78a75c905fe26a83c46da227c0efb77f69b1c52b2851a14fcc724"},
+      {"signature": "public.customer_support_issue_recovery(uuid,uuid,uuid,text,text,text,timestamptz,text)", "position": 29, "creation": false, "before": "766d3c653584772cf4596bd7eb21beedbc758297b8f09f7163fddfa4da69d801", "header": "85888e6f1dcb72ff98d075426a6708f9497a024e5285caf422ecf668092a383f"},
+    ],
+    statements: [
+      "2e263b5d96d79d32a68c23f85798123f86936061e042f62f2a63bb52bd266f90", // 1
+      "89b862d55af58fcbbebc309fc74943939d2a58d673f3251683c887c232e587f8", // 2
+      "bfb8033c3aa42d501067555ada2ccf9699749987ca25a273d9f15fc92a662acc", // 3
+      "d4b86c4dce46a16c3b9ff36062cdf0509aab790c2549ff31b478825581a2f30a", // 4
+      "5f2c32c76e753d4cbe29cbd769f75f0a497208b34a25f06d40a29821d64dde6e", // 5
+      null, // 6
+      null, // 7
+      null, // 8
+      "4a1e6fc40dc3caa2f7978cd1efd7582c08733a908f9a8bf8f340508e04e11012", // 9
+      null, // 10
+      null, // 11
+      "f099fee07da72ce5be4ca1e8f1a1bff0fb551f293bf671768e971913fd24bb25", // 12
+      "e5824315f9f7231582c60cc22e5d0729db03d1d775f33b27e866e71f883761d3", // 13
+      "9331c67b1aec91d11c5f46427939cedbe616ec820658c3808ad0425a1183d544", // 14
+      "c584446905b78993637baf9492c8d2f222ad4c96c852d3914a745b280554ae7e", // 15
+      "2ce086a107810fc40db02714588a8ea795b99759e50d1f6640e1dc721d0257e5", // 16
+      "2f1c4e4c03acda4a296df0cf39cb28025e605471240700455fa03e635581c96e", // 17
+      "287e98e0423e05b11676b21bdde8356e02e969476b19a842fe98cf42620b2367", // 18
+      "e4c44d21eeaa8f0fbaa90d96b6a631828f2e974c6294d6fa7e6687fc2ac27edf", // 19
+      "74f27120a7e8367bd653bb8717973d0c4f7a576e3acea6fa512285bd59fc9cb4", // 20
+      "0696bfaa24e17fb3ebe0a17dcba0182886920e21a8879fc197e7927e837b328b", // 21
+      "c4c1cbac78ce3585790e679f4bcfb70ad15c2fbd8dc1c9d0f05f25ee9e97f625", // 22
+      "6a41306125d4a93047ba64f594f24b9fecadf9c02acde4a4c03978cb523e01e5", // 23
+      "45755b1786c7d1b63794daa8193a12c1dcbce15de27c76ca6cb6f6f1fea0bd91", // 24
+      "e23b7cfc3e97497234695e030752b99c5940eb87d9c89f7cb59b7387cfd016d0", // 25
+      null, // 26
+      "0db302624111fd83b62812d87970acb8f6bed3e3707dccd252675fd0b4f098ec", // 27
+      "feac234e282365c9a08c51924d716287f4fe5c7b9237099ff7b833f54fd75d57", // 28
+      "dd4ea44b0dc61f211af97a85e1404e8990e9430fa862335508e0d52c191d00a1", // 29
+      null, // 30
+      "6860509f5f7a23b394161299b5766b6cac8f844b853ec70649805a7bd9c5bba2", // 31
+      "5a9b660c411c1f621e4339c99ef87dd89b595e1ca2cc954950f1a29eefba4ac3", // 32
+    ],
+    constraints: [
+      {"table": "public.admin_audit_events", "name": "admin_audit_events_action_check", "beforeSha256": "9c3f2af2de818ea355fc76d3eccef1640eac0f29924f5b731d5768d22d93c41d"},
+      {"table": "public.customer_support_subscription_commands", "name": "customer_support_subscription_commands_kind_check", "beforeSha256": "caf59a5bf9928875fb4f1cf28e0dfda39f9f6dc8e493550c65774008d490ea16"},
+      {"table": "public.customer_support_subscription_audit_events", "name": "customer_support_subscription_audit_events_kind_check", "beforeSha256": "2a385a7fbb861517ffe8effe4f1ef953bf20210e937a1dcde2a627d6d3c6c312"},
+    ],
+  },
+] as const;
+
+function validateSupportAuthorityForwards(forwards: SupportAuthorityForwardBinding[], paths: Set<string>): void {
+  if (!Array.isArray(forwards) || forwards.length !== supportAuthorityShapes.length) throw new Error("reviewed M12 support requires exactly two forwards");
+  for (const [index, forward] of forwards.entries()) {
+    const shape = supportAuthorityShapes[index]!;
+    if (!forward || Object.keys(forward).sort().join(",") !== (index === 0 ? "functions,path,sha256,statements" : "constraints,functions,path,sha256,statements") || forward.path !== shape.path || paths.has(forward.path) || !hash(forward.sha256) || !Array.isArray(forward.functions) || forward.functions.length !== shape.functions.length) throw new Error("reviewed M12 support path, order or function inventory drifted");
+    paths.add(forward.path);
+    for (const [position, fn] of forward.functions.entries()) {
+      const expected = shape.functions[position]!;
+      if (!fn || Object.keys(fn).sort().join(",") !== "afterSha256,beforeSha256,signature" || fn.signature !== expected.signature || !hash(fn.afterSha256) || fn.beforeSha256 !== expected.before) throw new Error("reviewed M12 support signature, creation class or preimage binding drifted");
+    }
+    if (!Array.isArray(forward.statements) || forward.statements.length !== shape.statements.length) throw new Error("reviewed M12 support statement inventory drifted");
+    for (const [position, pin] of forward.statements.entries()) {
+      const fixed = shape.statements[position];
+      if (!pin || Object.keys(pin).sort().join(",") !== (fixed === null ? "sha256" : "sha256,sql") || !hash(pin.sha256) || (fixed !== null && (pin.sha256 !== fixed || typeof pin.sql !== "string" || sqlSha256(pin.sql) !== fixed))) throw new Error("reviewed M12 support companion statement drifted");
+    }
+    if (index === 1) {
+      if (!Array.isArray(forward.constraints) || forward.constraints.length !== shape.constraints.length) throw new Error("reviewed M12 support requires three CHECK preimages");
+      for (const [position, binding] of forward.constraints.entries()) {
+        const fixed = shape.constraints[position]!;
+        if (!binding || Object.keys(binding).sort().join(",") !== "beforeSha256,beforeSql,name,table" || binding.table !== fixed.table || binding.name !== fixed.name || binding.beforeSha256 !== fixed.beforeSha256 || typeof binding.beforeSql !== "string" || sqlSha256(binding.beforeSql) !== fixed.beforeSha256) throw new Error("reviewed M12 support CHECK preimage binding drifted");
+      }
+    }
+  }
+}
+
+/** Bounded lexical admission only; PostgreSQL owns semantic/catalog proof.
+ * Read each complete rail in filename order. An absent class remains valid in
+ * historical registries; new introductions require every earlier same-rail pin.
+ */
+export function assertSupportAuthorityForward(registry: ReviewedForwardRegistry, path: string, bytes: Buffer, preceding: { path: string; bytes: Buffer }[]): void {
+  if (!registry.supportAuthorityForwards) throw new Error("reviewed M12 support has no registry approval");
+  validateSupportAuthorityForwards(registry.supportAuthorityForwards, new Set());
+  const index = registry.supportAuthorityForwards.findIndex(pin => pin.path === path);
+  const forward = registry.supportAuthorityForwards[index], shape = supportAuthorityShapes[index];
+  if (!forward || !shape || sqlSha256(bytes) !== forward.sha256) throw new Error("reviewed M12 support path or bytes drifted");
+  if (bytes.some(byte => (byte < 0x20 && byte !== 9 && byte !== 10) || byte === 0x7f)) throw new Error("reviewed M12 support refuses control characters");
+  const portable = index === 0;
+  const baseline = portable ? PLATFORM_BASELINE_FILE : MANAGED_BASELINE;
+  const directory = portable ? "db/platform/migrations/" : "supabase/migrations/";
+  if (preceding[0]?.path !== baseline || (!portable && sqlSha256(preceding[0].bytes) !== registry.baselineSha256) || preceding.some((source, position) => !source.path.startsWith(directory) || !/^\d{14}_[A-Za-z0-9_-]+\.sql$/u.test(source.path.slice(directory.length)) || source.path >= path || (position > 0 && source.path <= preceding[position - 1]!.path))) throw new Error("reviewed M12 support requires the ordered complete same-rail prefix and baseline");
+  // Validate prerequisite class shapes without changing their historical readers.
+  if (!registry.batchedForwards || (!portable && !registry.managedCommerceForwards)) throw new Error("reviewed M12 support requires M10 and managed M11 controls");
+  validateBatchedForwards(registry.batchedForwards, new Set(), false);
+  if (!portable) validateManagedCommerceForwards(registry.managedCommerceForwards!, new Set());
+  for (const pin of [...registry.batchedForwards, ...registry.managedCommerceForwards ?? [], ...registry.supportAuthorityForwards].filter(pin => pin.path.startsWith(directory) && pin.path < path)) {
+    const source = preceding.find(source => source.path === pin.path);
+    if (!source || sqlSha256(source.bytes) !== pin.sha256) throw new Error("reviewed M12 support requires every earlier same-rail pin landed first");
+  }
+  const statements = sqlStatements(bytes.toString("utf8"));
+  if (statements.length !== shape.statements.length) throw new Error("reviewed M12 support missing or extra statements");
+  const definitions = batchedFunctionDefinitions(bytes);
+  if (definitions.size !== forward.functions.length) throw new Error("reviewed M12 support definition inventory drifted");
+  for (const [position, statement] of statements.entries()) {
+    const pin = forward.statements[position]!;
+    if (sqlSha256(statement) !== pin.sha256 || (pin.sql !== undefined && pin.sql !== statement)) throw new Error("reviewed M12 support ordered statement pin drifted");
+  }
+  for (const [position, fn] of forward.functions.entries()) {
+    const fixed = shape.functions[position]!;
+    const statement = statements[fixed.position]!;
+    if (sqlSha256(headerAttributes(statement).replace(/\s+/gu, " ").trim()) !== fixed.header || statement.startsWith("CREATE OR REPLACE FUNCTION ") !== !fixed.creation || definitions.get(fn.signature) !== fn.afterSha256 || batchedFunctionDefinitions(Buffer.from(statement)).get(fn.signature) !== fn.afterSha256) throw new Error("reviewed M12 support function header, definition or order drifted");
+    if ("retired" in fixed && fn.afterSha256 !== fixed.retired) throw new Error("reviewed M12 support combined email entry must stay retired");
+  }
+  const names = new Set(forward.functions.map(fn => fn.signature.split("(")[0]!));
+  const prior = new Map<string, string>();
+  const checks = new Map<string, string>();
+  for (const source of preceding) for (const statement of sqlStatements(source.bytes.toString("utf8"), true)) {
+    if (source.path !== baseline && [...names].some(name => statement.includes(name.split(".")[1]!)) && /^(?:CREATE|ALTER|DROP)\b/iu.test(statement) && /\bFUNCTION\b/iu.test(statement) && !/^CREATE(?: CONSTRAINT)? TRIGGER /iu.test(statement) && !/^CREATE(?: OR REPLACE)? FUNCTION (?:public|private)\.[a-z_][a-z0-9_]*\s*\(/iu.test(statement)) throw new Error("reviewed M12 support refuses unsupported preceding function DDL");
+    for (const [signature, digest] of batchedFunctionDefinitions(Buffer.from(statement), names)) prior.set(signature, digest);
+    if (!portable) for (const binding of forward.constraints!) {
+      if (statement === binding.beforeSql) checks.set(binding.name, statement);
+      // The baseline is immutable. Outside it, only M11's exact audit pair
+      // may mutate these tables before M12. Comments/quoted syntax refuse too.
+      if (source.path !== baseline && /^(?:ALTER|DROP)\b/iu.test(statement) && statement.includes(binding.table.split(".")[1]!)) {
+        const m11 = registry.managedCommerceForwards![2]!;
+        if (source.path !== m11.path || !m11.statements.slice(1, 3).some(pin => pin.sql === statement)) throw new Error("reviewed M12 support CHECK preimage changed in the preceding rail");
+      }
+    }
+  }
+  for (const fn of forward.functions) if ((prior.get(fn.signature) ?? null) !== fn.beforeSha256) throw new Error("reviewed M12 support actual function preimage drifted");
+  for (const binding of forward.constraints ?? []) if (checks.get(binding.name) !== binding.beforeSql) throw new Error("reviewed M12 support actual CHECK preimage drifted");
 }
