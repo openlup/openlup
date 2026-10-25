@@ -927,6 +927,8 @@ const batchedShapes = new Map<string, readonly string[]>([
   ["supabase/migrations/20261024184000_inventory_reserve_order_uses_seam.sql", ["public.inventory_reserve_order(text,uuid,uuid,uuid,uuid,integer,text,text,timestamptz,jsonb,text)"]],
   ["supabase/migrations/20261024185000_provider_refund_evidence.sql", ["public.commerce_order_provider_refund_evidence(uuid)"]],
   ["supabase/migrations/20261024185100_m07_refund_parity.sql", ["public.commerce_emit_order_refunded_outbox()","public.commerce_payment_control_apply_before_sub_lock(text,uuid,uuid,text,timestamptz,text,text)"]],
+  ["supabase/migrations/20261025090000_subscription_dunning_attempt_replay.sql", ["public.subscription_handle_payment_failure_dunning_before_cancel_fence(text,uuid,uuid,uuid,uuid,integer,timestamptz,text,timestamptz)","public.subscription_handle_payment_failure_dunning(text,uuid,uuid,uuid,uuid,integer,timestamptz,text,timestamptz,text)","public.subscription_open_dunning_before_sub_lock(text,uuid,text,text,timestamptz,text)","public.subscription_open_dunning_from_failed_payment_result(text,uuid,text,text,timestamptz,text)","public.subscription_handle_payment_failure_dunning_before_cancel_fence(text,uuid,uuid,uuid,uuid,integer,timestamptz,text,timestamptz,uuid)","public.subscription_handle_payment_failure_dunning(text,uuid,uuid,uuid,uuid,integer,timestamptz,text,timestamptz,text,uuid)","public.subscription_open_dunning_before_sub_lock(text,uuid,text,text,timestamptz,text,uuid)","public.subscription_open_dunning_from_failed_payment_result(text,uuid,text,text,timestamptz,text,uuid)","public.commerce_payment_control_apply_reconciliation_result(text,uuid,uuid,uuid,uuid,text,text,text,text,text,timestamptz,text,timestamptz,jsonb,text,text)"]],
+  ["supabase/migrations/20261025090100_subscription_dunning_attributed_advance.sql", ["public.subscription_handle_payment_failure_dunning_before_cancel_fence(text,uuid,uuid,uuid,uuid,integer,timestamptz,text,timestamptz,uuid)","public.commerce_payment_control_apply_reconciliation_result(text,uuid,uuid,uuid,uuid,text,text,text,text,text,timestamptz,text,timestamptz,jsonb,text,text)"]],
 ]);
 const batchIdentity = (name: string, args: string): string => {
   const types = args.trim() ? args.split(",").map(argument => {
@@ -957,11 +959,11 @@ export function batchedFunctionDefinitions(bytes: Buffer, names?: Set<string>): 
 
 function validateBatchedForwards(forwards: BatchedForwardBinding[], paths: Set<string>, historical: boolean): void {
   // Only the exact old identities and ordering used at N1's introduction are
-  // accepted for history. Current candidates always require the new 16-pin set.
+  // accepted for history. Current candidates always require the new 18-pin set.
   const shapes = historical && forwards?.length === 14
-    ? [...batchedShapes].filter(([path]) => !/20261024184[56]00_/u.test(path))
+    ? [...batchedShapes].slice(0, 16).filter(([path]) => !/20261024184[56]00_/u.test(path))
       .map(([path, signatures]) => [path.includes("20261022160000_subscription_retry_lifecycle") ? path : path.replace("20261024", "20261022"), signatures] as const)
-    : [...batchedShapes];
+    : historical && forwards?.length === 16 ? [...batchedShapes].slice(0, 16) : [...batchedShapes];
   if (!Array.isArray(forwards) || forwards.length !== shapes.length) throw new Error("reviewed batch requires exactly the approved forwards");
   const last = new Map<string, string>();
   for (const [index, forward] of forwards.entries()) {
@@ -979,6 +981,24 @@ function validateBatchedForwards(forwards: BatchedForwardBinding[], paths: Set<s
     }
   }
 }
+
+// M10-9 admits only these four donor-exact prerequisite statements, on this
+// one forward. Repinning data cannot authorize another backfill or DDL shape.
+const attemptReplayPath = "supabase/migrations/20261025090000_subscription_dunning_attempt_replay.sql";
+const attemptReplayPrerequisites = new Set([
+  "a9c64efde021272fde97a37c765e9092a248e768ed46ca5761cb298455102ca7",
+  "f9101fc9cdbbdac49442466a880a866169a3fce02c71bc40f8cc404d5837aa22",
+  "d2adfee2b00eb83f3d85f93ea99e3dc3b5acb78ba85445acfdd1629157e34126",
+  "11370721c06fe0d4a6bf9604f3365b768758d1157746769bdbd449c536475d2b",
+]);
+const attemptReplayPrivileges = new Set([
+  "REVOKE ALL ON FUNCTION public.subscription_handle_payment_failure_dunning_before_cancel_fence(text,uuid,uuid,uuid,uuid,integer,timestamptz,text,timestamptz,uuid) FROM PUBLIC, anon, authenticated, service_role;",
+  "REVOKE ALL ON FUNCTION public.subscription_open_dunning_before_sub_lock(text,uuid,text,text,timestamptz,text,uuid) FROM PUBLIC, anon, authenticated, service_role;",
+  "REVOKE ALL ON FUNCTION public.subscription_handle_payment_failure_dunning(text,uuid,uuid,uuid,uuid,integer,timestamptz,text,timestamptz,text,uuid) FROM PUBLIC, anon, authenticated;",
+  "GRANT EXECUTE ON FUNCTION public.subscription_handle_payment_failure_dunning(text,uuid,uuid,uuid,uuid,integer,timestamptz,text,timestamptz,text,uuid) TO service_role;",
+  "REVOKE ALL ON FUNCTION public.subscription_open_dunning_from_failed_payment_result(text,uuid,text,text,timestamptz,text,uuid) FROM PUBLIC, anon, authenticated;",
+  "GRANT EXECUTE ON FUNCTION public.subscription_open_dunning_from_failed_payment_result(text,uuid,text,text,timestamptz,text,uuid) TO service_role;",
+]);
 
 /** Lexer is a pre-filter. Required real-PG/pgTAP tests prove the catalog delta. */
 export function assertBatchedForward(forward: BatchedForwardBinding, bytes: Buffer, preceding: Buffer[]): void {
@@ -1002,6 +1022,11 @@ export function assertBatchedForward(forward: BatchedForwardBinding, bytes: Buff
   ].includes(forward.path);
   if (forward.path.startsWith("db/") && !nativeReplacement) assertPortableCreationStatements(bytes, preceding);
   if (statements.length !== forward.statements.length) throw new Error("reviewed batch missing or extra statements");
+  if (forward.path === attemptReplayPath || forward.path === "supabase/migrations/20261025090100_subscription_dunning_attributed_advance.sql") {
+    const actual = statements.filter(sql => !/^CREATE(?: OR REPLACE)? FUNCTION /iu.test(sql)).map(sqlSha256);
+    const expected = forward.path === attemptReplayPath ? [...attemptReplayPrerequisites, ...[...attemptReplayPrivileges].map(sqlSha256)] : [];
+    if (JSON.stringify(actual) !== JSON.stringify(expected)) throw new Error("reviewed batch M10-9 ordered prerequisite/ACL inventory drifted");
+  }
   for (const [index, statement] of statements.entries()) {
     const pin = forward.statements[index]!;
     if (sqlSha256(statement) !== pin.sha256 || (pin.sql !== undefined && statement !== pin.sql)) throw new Error("reviewed batch ordered statement pin drifted");
@@ -1012,7 +1037,9 @@ export function assertBatchedForward(forward: BatchedForwardBinding, bytes: Buff
     }
     // Every non-function statement carries its exact SQL as well as its hash.
     if (pin.sql !== statement) throw new Error("reviewed batch requires exact non-function statements");
+    if (forward.path === attemptReplayPath && (attemptReplayPrerequisites.has(sqlSha256(statement)) || attemptReplayPrivileges.has(statement))) continue;
     if (/^(?:GRANT EXECUTE ON FUNCTION|REVOKE ALL ON FUNCTION) /iu.test(statement)) {
+      if (forward.path === attemptReplayPath) throw new Error("reviewed batch M10-9 privilege drifted");
       const target = /^(GRANT EXECUTE|REVOKE ALL) ON FUNCTION ((?:public|private)\.[a-z_][a-z0-9_]*)\(([^)]*)\) (TO|FROM) ([a-z_, ]+);$/iu.exec(statement);
       if (target && definitions.has(batchIdentity(target[2]!, target[3]!)) && (target[1]!.toUpperCase() !== "GRANT EXECUTE" || (forward.path.startsWith("supabase/") && forward.functions.some(fn => fn.signature === batchIdentity(target[2]!, target[3]!) && fn.beforeSha256 === null))) && (target[1]!.toUpperCase() === "GRANT EXECUTE" ? target[4]!.toUpperCase() === "TO" && target[5] === "service_role" : target[4]!.toUpperCase() === "FROM" && target[5]!.split(",").every(role => ["public", "anon", "authenticated", "openlup_mcp_reader"].includes(role.trim().toLowerCase())))) continue;
       throw new Error("reviewed batch function privilege target or grantee drifted");

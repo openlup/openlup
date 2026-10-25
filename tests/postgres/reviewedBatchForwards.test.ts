@@ -5,7 +5,7 @@ import { dirname, join } from "node:path";
 import { reviewedBatchBytes, reviewedBatchPaths } from "../../scripts/reviewed-batch-rail.js";
 import { Pool, type PoolClient } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { assertBatchedForward, readReviewedForwardRegistry, sqlSha256, sqlStatements, type BatchedForwardBinding } from "../../scripts/reviewed-platform-forward.js";
+import { assertBatchedForward, batchedFunctionDefinitions, readReviewedForwardRegistry, sqlSha256, sqlStatements, type BatchedForwardBinding } from "../../scripts/reviewed-platform-forward.js";
 import { closePostgres, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, dockerAvailable, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
 import { imageIo, imageReference, pullWithRetry, readCiImage } from "../../scripts/ci-image-pull.mjs";
 import { readManagedMigrationChain } from "../../scripts/public-ci-pgtap.mjs";
@@ -252,11 +252,127 @@ async function proveFreshCommandDifferential() {
  expect(await commandDefinition(applySignature)).toBe(n2Apply);
 }
 
+  async function managedFailureFixture() {
+    const client = randomUUID(), subscription = randomUUID(), cycle = randomUUID(), order = randomUUID();
+    await db.query("INSERT INTO public.clients(id,email) VALUES($1,$2)", [client, `m10-control-${client}@example.invalid`]);
+    await db.query("INSERT INTO public.subscriptions(id,client_id,cadence_days,currency,status,started_at,next_cycle_at) VALUES($1,$2,28,'XTS','active','2026-01-01','2026-10-01')", [subscription, client]);
+    await db.query("INSERT INTO public.subscription_cycles(id,subscription_id,cycle_number,scheduled_at,status,engine_idempotency_key,retry_attempt) VALUES($1,$2,2,'2026-10-01','payment_failed',$3,1)", [cycle, subscription, randomUUID()]);
+    await db.query("INSERT INTO public.commerce_orders(id,client_id,currency,region_code,status,total_cents,subtotal_cents,mode,subscription_id,subscription_cycle_id) VALUES($1,$2,'XTS','ZZ','draft',2680,2680,'subscription_cycle',$3,$4)", [order,client,subscription,cycle]);
+    await db.query("SET LOCAL ROLE service_role");
+    const intent = (await db.query("SELECT public.commerce_payment_control_create_intent($1,'subscription_cycle',$2,$3,$4,2680,'XTS','{}') AS r",[randomUUID(),order,subscription,cycle])).rows[0].r.paymentIntent.id;
+    await db.query("SET LOCAL ROLE postgres");
+    await db.query("UPDATE public.commerce_orders SET status='pending_payment' WHERE id=$1", [order]);
+    const payment = (await db.query("SELECT payment_id FROM public.commerce_payment_intents WHERE id=$1",[intent])).rows[0].payment_id;
+    const attempt = randomUUID();
+    await db.query("INSERT INTO public.commerce_payment_attempts(id,payment_intent_id,payment_id,provider,idempotency_key,status,amount_cents,currency) VALUES($1,$2,$3,'example',$4,'failed',2680,'XTS')",[attempt,intent,payment,randomUUID()]);
+    return { client, subscription, cycle, order, intent, payment, attempt };
+  }
+  type ManagedFailure = Awaited<ReturnType<typeof managedFailureFixture>>;
+  const legacyFailure = async (f: ManagedFailure, key = randomUUID(), rung = 1) => {
+    await db.query("SET LOCAL ROLE service_role");
+    try {
+      return (await db.query("SELECT public.subscription_handle_payment_failure_dunning($1,$2,$3,$4,$5,$6,NULL,'declined','2026-10-25'::timestamptz,'soft_retryable') AS r",[key,f.cycle,f.subscription,f.order,f.intent,rung])).rows[0].r;
+    } finally { await db.query("SET LOCAL ROLE postgres"); }
+  };
+  const appliedEvent = async (f: ManagedFailure, attempt = f.attempt, rung = 1) => {
+    await db.query("INSERT INTO public.subscription_events(subscription_id,cycle_id,event_type,idempotency_key,payload) VALUES($1,$2,'subscription.payment_failed',$3,$4)",[f.subscription,f.cycle,randomUUID(),{source:'payment.control.v0',paymentIntentId:f.intent,paymentAttemptId:attempt,retryAttempt:rung}]);
+  };
+  async function seedLegacyBackfills() {
+    for (const mode of ["unique", "ambiguous", "missing event", "revoked token", "closed", "historical receipt"] as const) {
+      const f = await managedFailureFixture();
+      const result = await legacyFailure(f);
+      if (mode !== "missing event") await appliedEvent(f);
+      if (mode === "ambiguous") {
+        const other = randomUUID();
+        await db.query("INSERT INTO public.commerce_payment_attempts(id,payment_intent_id,payment_id,provider,idempotency_key,status,amount_cents,currency) VALUES($1,$2,$3,'example',$4,'failed',2680,'XTS')",[other,f.intent,f.payment,randomUUID()]);
+        await appliedEvent(f,other);
+      }
+      if (mode === "historical receipt") {
+        const newer = randomUUID();
+        await db.query("INSERT INTO public.commerce_payment_attempts(id,payment_intent_id,payment_id,provider,idempotency_key,status,amount_cents,currency) VALUES($1,$2,$3,'example',$4,'failed',2680,'XTS')",[newer,f.intent,f.payment,randomUUID()]);
+        await appliedEvent(f,newer,2);
+        await db.query("UPDATE public.subscription_cycles SET retry_attempt=2 WHERE id=$1",[f.cycle]);
+        await legacyFailure(f,randomUUID(),2);
+      }
+      if (mode === "revoked token") await db.query("UPDATE public.subscription_payment_recovery_tokens SET revoked_at='2026-10-26' WHERE case_id=$1",[result.subscriptionDunning.caseId]);
+      if (mode === "closed") await db.query("UPDATE public.subscription_dunning_cases SET status='recovered',recovered_at='2026-10-26' WHERE id=$1",[result.subscriptionDunning.caseId]);
+    }
+  }
+
+  if (!portable) it("installs the selected subset without the excluded reader role; seals helpers and refuses fresh legacy NULL", async () => {
+    await db.query("BEGIN");
+    try {
+      // The historical baseline requires this role. Remove its baseline-only
+      // grants/policies in this disposable transaction before testing the subset.
+      await db.query("RESET ROLE; DROP OWNED BY openlup_mcp_reader; DROP ROLE openlup_mcp_reader; CREATE ROLE m10_control_host_reader NOLOGIN; SET ROLE postgres");
+      expect((await db.query("SELECT 1 FROM pg_roles WHERE rolname='openlup_mcp_reader'")).rows).toEqual([]);
+      const selected = ["20261024155000", "20261024185000", "20261024185100", "20261024160000", "20261025090000", "20261025090100", "20261024182000"];
+      for (const version of selected) await db.query(fixture(pins.find(p => p.path.includes(version))!).toString());
+      const port = pins.find(p => p.path.includes("20261025090000"))!;
+      for (const fn of port.functions.filter(f => f.beforeSha256 === null)) {
+        const inner = fn.signature.includes("before_cancel_fence") || fn.signature.includes("before_sub_lock");
+        for (const role of ["anon", "authenticated", "m10_control_host_reader", "service_role"]) {
+          expect((await db.query("SELECT has_function_privilege($1,$2,'EXECUTE') allowed",[role,fn.signature])).rows[0].allowed).toBe(role === "service_role" && !inner);
+        }
+      }
+      const f = await managedFailureFixture();
+      await appliedEvent(f); // Identity exists durably, but NULL must never infer it.
+      const before = await batchSnapshot(db);
+      await db.query("SAVEPOINT legacy_null; SET LOCAL ROLE service_role");
+      await expect(db.query("SELECT public.subscription_handle_payment_failure_dunning($1,$2,$3,$4,$5,1,NULL,'declined','2026-10-25'::timestamptz,'soft_retryable')",[randomUUID(),f.cycle,f.subscription,f.order,f.intent])).rejects.toMatchObject({code:"55000",message:"subscription_dunning_failed_attempt_unattributed"});
+      await db.query("ROLLBACK TO legacy_null; SET LOCAL ROLE postgres");
+      assertSameSnapshot(before, await batchSnapshot(db));
+      await db.query("SET LOCAL ROLE service_role");
+      const response = (await db.query("SELECT public.subscription_handle_payment_failure_dunning($1,$2,$3,$4,$5,1,NULL,'declined','2026-10-25'::timestamptz,'soft_retryable',$6) r",[randomUUID(),f.cycle,f.subscription,f.order,f.intent,f.attempt])).rows[0].r;
+      expect(response.subscriptionDunning).toMatchObject({status:"open",replayed:false});
+      const opened = (await db.query("SELECT public.subscription_open_dunning_from_failed_payment_result($1,$2,NULL,'declined','2026-10-25'::timestamptz,'soft_retryable',$3) r",[randomUUID(),f.intent,f.attempt])).rows[0].r;
+      expect(opened.subscriptionWebhookDunning).toMatchObject({opened:true,replayed:true});
+      await db.query("SET LOCAL ROLE postgres");
+      for (const role of ["anon", "authenticated", "m10_control_host_reader", "service_role"]) {
+        await db.query("SAVEPOINT denied; SET LOCAL ROLE " + role);
+        await expect(db.query("SELECT public.subscription_open_dunning_before_sub_lock('control-denied',$1,NULL,NULL,now(),NULL,$2)",[f.intent,f.attempt])).rejects.toMatchObject({code:"42501"});
+        await db.query("ROLLBACK TO denied; SET LOCAL ROLE postgres");
+        if (role !== "service_role") {
+          await db.query("SAVEPOINT public_denied; SET LOCAL ROLE " + role);
+          await expect(db.query("SELECT public.subscription_open_dunning_from_failed_payment_result('control-denied',$1,NULL,NULL,now(),NULL,$2)",[f.intent,f.attempt])).rejects.toMatchObject({code:"42501"});
+          await db.query("ROLLBACK TO public_denied; SET LOCAL ROLE postgres");
+        }
+      }
+      await db.query("SAVEPOINT absent_role");
+      const seam = pins.find(p => p.path.includes("20261024175000"))!;
+      const statements = sqlStatements(fixture(seam).toString());
+      await db.query(statements[0]!);
+      await expect(db.query(statements[1]!)).rejects.toMatchObject({code:"42704"});
+      await db.query("ROLLBACK TO absent_role");
+    } finally { await db.query("ROLLBACK"); }
+  }, 120_000);
+
   it.each(pins)("proves exact objects, ACLs and rows after the integrated prefix: $path", async pin => {
     await applyCommittedBefore(pin.path);
     if (pin.path > interleaved) expect((await db.query("SELECT current_setting('openlup.batch_interleaved') AS value")).rows).toEqual([{ value: "applied" }]);
     const bytes = fixture(pin);
     assertBatchedForward(pin, bytes, preceding);
+    if (!portable && pin.path.includes("20261025090000")) {
+      await db.query("BEGIN");
+      try {
+        await seedLegacyBackfills();
+        const old = await batchSnapshot(db);
+        await db.query(bytes.toString());
+        await assertBatchCatalog(db, pin, bytes, old, await batchSnapshot(db));
+        await db.query("SAVEPOINT catalog_attack");
+        for (const attack of [
+          "UPDATE public.subscription_dunning_cases SET failed_payment_attempt_id=NULL WHERE failed_payment_attempt_id IS NOT NULL;",
+          "UPDATE public.commerce_idempotency_keys SET metadata='{}' WHERE scope='subscription.dunning.failure';",
+          "GRANT EXECUTE ON FUNCTION public.subscription_open_dunning_before_sub_lock(text,uuid,text,text,timestamptz,text,uuid) TO service_role;",
+          "ALTER TABLE public.subscription_dunning_cases VALIDATE CONSTRAINT subscription_dunning_cases_failed_attempt_fkey;",
+          "ALTER TABLE public.subscription_dunning_cases ALTER COLUMN failure_observation_result SET DEFAULT '{}'::jsonb;",
+        ]) {
+          await db.query(attack);
+          await expect(assertBatchCatalog(db,pin,bytes,old,await batchSnapshot(db)),attack).rejects.toThrow();
+          await db.query("ROLLBACK TO catalog_attack");
+        }
+      } finally { await db.query("ROLLBACK"); }
+    }
     const before = await batchSnapshot(db);
     await db.query("BEGIN");
     try {
@@ -296,6 +412,18 @@ async function proveFreshCommandDifferential() {
     expect(tap).toMatch(/^ok [0-9]+ - /u);
     }
   }, 120_000);
+  if (!portable) it("retains all nine donor-current CREATE hashes after both inert ports", async () => {
+    const current = new Map<string,string>();
+    for (const pin of pins) for (const [signature,digest] of batchedFunctionDefinitions(fixture(pin))) current.set(signature,digest);
+    const port = pins.find(p => p.path.includes("20261025090000"))!;
+    const advance = pins.find(p => p.path.includes("20261025090100"))!;
+    for (const fn of port.functions) {
+      const final = advance.functions.find(f => f.signature === fn.signature) ?? fn;
+      expect(current.get(fn.signature)).toBe(final.afterSha256);
+      const body = sqlStatements(fixture(advance.functions.includes(final) ? advance : port).toString()).find(sql => batchedFunctionDefinitions(Buffer.from(sql)).has(fn.signature))!;
+      expect((await db.query("SELECT prosrc FROM pg_proc WHERE oid=$1::regprocedure",[fn.signature])).rows[0].prosrc).toBe(/AS (\$[a-z_0-9]*\$)([\s\S]*)\1;$/iu.exec(body)![2]);
+    }
+  });
 
   if (portable) {
 const scoped = async (fn:()=>Promise<void>) => { await db.query('BEGIN'); try { await fn(); } finally { await db.query('ROLLBACK'); } };
@@ -1041,7 +1169,7 @@ it('replays a stored refusal and an apply-created receipt directly, without publ
     }
   }, 120_000);
   it("ignores vacuum freeze bookkeeping in catalog snapshots", async () => {
-    await db.query("RESET ROLE");
+    await db.query("SET LOCAL ROLE postgres");
     try {
       const before = await batchSnapshot(db);
       await db.query("VACUUM (FREEZE) pg_catalog.pg_class, pg_catalog.pg_proc");

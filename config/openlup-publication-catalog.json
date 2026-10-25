@@ -6770,6 +6770,14 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/fixtures/reviewed-m10/supabase/migrations/20261025090000_subscription_dunning_attempt_replay.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/fixtures/reviewed-m10/supabase/migrations/20261025090100_subscription_dunning_attributed_advance.sql",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/fulfillment-stock-evidence-proof.ts",
       "class": "public-output"
     },
