@@ -52,3 +52,9 @@ export * from "./model/omsCurrency.js";
 import { COMMERCE_CONTRACT_VERSION as contractVersion } from "../pricing/contracts/index.js";
 export const COMMERCE_CONTRACT_VERSION = contractVersion;
 export * from "./model/customerFulfillmentRecovery.js";
+
+
+export * from "./commerceReturnsPort.js";
+export * from "./orderReviewContracts.js";
+export type * from "./orderReviewPorts.js";
+export * from "./orderFeedbackContracts.js";

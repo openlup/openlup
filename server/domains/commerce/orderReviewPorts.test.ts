@@ -1,9 +1,9 @@
-import { describe, expect, it } from "vitest";
-import type { OrderReviewLifecyclePort } from "./orderReviewPorts.js";
-
-describe("order review ports", () => {
-  it("keeps the byte seam unable to resolve a grant", () => {
-    const port: Pick<OrderReviewLifecyclePort, "read"> = { read: async () => null };
-    expect(typeof port.read).toBe("function");
-  });
+import { expect, it } from "vitest";
+import * as facade from "./orderReviewPorts.js";
+import * as commerce from "@openlup/platform/commerce";
+it("preserves package export identity", () => {
+  expect(Object.keys(facade).sort()).toEqual([]);
+  for (const [name, value] of Object.entries(facade)) {
+    expect(value).toBe(commerce[name as keyof typeof commerce]);
+  }
 });

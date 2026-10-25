@@ -3006,6 +3006,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/commerce/commerceReturnsPort.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/commerce/configuratorIntentPersistenceSchemas.ts",
       "class": "public-output"
     },
@@ -3214,7 +3218,19 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/commerce/orderFeedbackContracts.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/commerce/orderMoney.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/orderReviewContracts.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/orderReviewPorts.ts",
       "class": "public-output"
     },
     {
@@ -3254,11 +3270,47 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/commerce/server/commerceReturnsHandlers.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/commerce/server/handlerSupport.ts",
       "class": "public-output"
     },
     {
       "path": "packages/platform/src/commerce/server/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/orderFeedbackSubmit.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/orderFeedbackTokenCheck.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/orderReviewAdminHandlers.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/orderReviewHandlers.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/orderReviewLifecycle.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/orderReviewMedia.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/orderReviewRawUploadHandler.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/supabaseCommerceReturnsPort.ts",
       "class": "public-output"
     },
     {
@@ -5542,6 +5594,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/commerce/browserSafety.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/commerce/commerceOmsCancelOrderHandler.test.ts",
       "class": "public-output"
     },
@@ -5579,6 +5635,22 @@
     },
     {
       "path": "packages/platform/test/commerce/commerceQuoteCompositionCharacterization.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/commerceReturnsConformance.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/commerceReturnsHandlers.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/commerceReturnsPort.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/commerceReviewMediaVisibility.test.ts",
       "class": "public-output"
     },
     {
@@ -5726,7 +5798,51 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/commerce/orderFeedbackContracts.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/orderFeedbackSubmit.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/orderFeedbackTokenCheck.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/commerce/orderMoney.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/orderReviewAdminHandlers.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/orderReviewCommandResultPins.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/orderReviewContracts.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/orderReviewHandlers.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/orderReviewLifecycle.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/orderReviewMedia.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/orderReviewPorts.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/orderReviewRawUploadHandler.test.ts",
       "class": "public-output"
     },
     {
@@ -5747,6 +5863,10 @@
     },
     {
       "path": "packages/platform/test/commerce/schemas.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/supabaseCommerceReturnsPort.test.ts",
       "class": "public-output"
     },
     {
@@ -9738,6 +9858,22 @@
       "class": "public-output"
     },
     {
+      "path": "server/adapters/supabase/commerce/orderFeedbackSubmit.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/supabase/commerce/orderFeedbackSubmit.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/supabase/commerce/orderFeedbackTokenCheck.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/supabase/commerce/orderFeedbackTokenCheck.ts",
+      "class": "public-output"
+    },
+    {
       "path": "server/adapters/supabase/commerce/orderPaidEmailLines.test.ts",
       "class": "public-output"
     },
@@ -13291,6 +13427,10 @@
     },
     {
       "path": "server/domains/commerce/commerceReturnsHandlers.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/domains/commerce/commerceReturnsHostBindingRegression.test.ts",
       "class": "public-output"
     },
     {
@@ -18923,6 +19063,14 @@
     },
     {
       "path": "src/domains/commerce/orderDraftSnapshotContracts.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "src/domains/commerce/orderFeedbackContracts.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "src/domains/commerce/orderFeedbackContracts.ts",
       "class": "public-output"
     },
     {

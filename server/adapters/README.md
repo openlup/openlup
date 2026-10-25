@@ -21,6 +21,17 @@ current adapter only as an implementation detail. The neutral surface map lives
 in [Architecture and extension boundaries](../../docs/platform/ARCHITECTURE_AND_EXTENSIONS.md).
 
 ## Owns
+
+Commerce returns and native review lifecycle/media adapters delegate to
+`@openlup/platform/commerce/server`; the former paths retain factory identity. Returns
+forward the principal, owner-bound replay key and unchanged request arguments;
+request/approve/reject record intent without receive/restock/refund execution.
+Review adapters retain native receipt validation and transactional promotion.
+Hosted feedback submit/token-check facades use a separate managed RPC lifecycle:
+adopters must supply those RPCs, which native `db/platform` does not provide.
+The private filesystem review-media store stays here; M02 blob storage lacks its
+private read, inspection, temporary write and promotion operations. Package tests
+own the moved adapter assertions; colocated facade tests pin export identity.
 The unused root payment webhook normalizer and its 26-case witness have
 retired after production-importer checks. The opt-in package implementation and
 witness remain. Root payment execution, reconciliation and failure algorithms

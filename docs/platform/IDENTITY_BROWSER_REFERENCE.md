@@ -13,10 +13,16 @@ Node-only pricing root. The additive `pricing/browser` entry contributes exactly
 its built entry, quote primitives, acquisition validators and acquisition
 contract constant. No directory wildcard or other pricing implementation is admitted.
 The commerce barrel also reaches pure OMS schemas and read-model helpers, plus
-their core fulfillment, payment and subscription runtime dependencies. Both
-identity and subscription inventories list each emitted module in that complete
-browser-safe closure as an exact built path. Commerce handlers and managed
-adapters remain outside the closure.
+their core fulfillment, payment and subscription runtime dependencies. It also
+exports returns request/approve/reject schemas and port types, with a factory for
+host-bound request reason codes, native order-review contracts and hosted-feedback
+contracts. Both identity and subscription inventories list each emitted module
+in that complete browser-safe closure as an exact built path, including
+`commerceReturnsPort.js`, `orderReviewContracts.js` and `orderFeedbackContracts.js`
+under `packages/platform/dist/commerce/`. Returns and review
+handlers, the raw-upload handler and PostgreSQL/Supabase adapters, including
+hosted-feedback adapters, remain outside the closure, exposed only by
+`@openlup/platform/commerce/server`.
 
 ## Routes and readiness
 

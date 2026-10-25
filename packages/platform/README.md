@@ -82,7 +82,7 @@ timestamp used in the webhook's idempotency key.
 | `./catalog` | Experimental neutral catalog schemas, drafts, reads, media source packs and publication ports |
 | `./catalog/contracts` | Dependency-free catalog DTOs, media resolver, authority and canonicalization helpers |
 | `./commerce`, `./commerce/contracts` | Browser-safe neutral commerce schema cores, generic ports and pure contract helpers |
-| `./commerce/server` | Node-only OMS handlers, managed stores/adapters and order-detail composition |
+| `./commerce/server` | Node-only OMS, returns, native reviews/media and hosted-feedback handlers/adapters and order-detail composition |
 | `./pricing` | Experimental price authority, quote computation/handlers, offer projection/cache, readiness and policy tokens |
 | `./pricing/browser` | Existing quote primitive factory and acquisition capability/expectation schemas, browser-safe |
 | `./pricing/contracts` | Dependency-free authority, money, quote and offer DTOs and version constants |
@@ -145,6 +145,43 @@ Unprojected timeline labels use canonical step keys; hosts supply localized copy
 through `timelineLabel`. Refund marking remains an operator mark. Replacement creation
 uses the existing fulfillment handler and never confirms arrival or interrupts
 an active subscription. W5/W6 tests pin replay tuples and forbidden effects.
+
+Returns expose request, approve and reject only: `CommerceReturnsPort` and
+its schemas are at `./commerce`; the three handler factories and
+`createSupabaseCommerceReturnsPort` are at `./commerce/server`. `restockDisposition`, `refundMode` and
+`refundAmountCents` record intent. Receive, restock and refund execution do not
+exist. The host supplies authorization and a `BffResponder`; the request adapter
+forwards the authenticated principal as `p_requested_by` to the database's owner,
+idempotency-key and fingerprint checks.
+The package request schema defaults to neutral reason codes. Bind a host set with
+`createCommerceReturnsSchemas(reasonCodes)` and supply its request schema to the
+customer handler's `requestSchema` dependency; the reference binding retains its
+legacy set and unchanged request/refusal envelopes.
+
+Native order-review contracts and the type-only `OrderReviewLifecyclePort` stay
+at `./commerce`. Customer/admin handler factories, PostgreSQL lifecycle/media
+adapters and raw uploads are exported from `./commerce/server`. Strict schemas keep
+pending declarations distinct from stored/confirmed observed media and keep
+storage locators out of public results. The raw upload handler accepts an
+`OrderReviewRawUploadBinding`; metadata finalization holds its transaction across
+the host's promotion callback. The reference host retains its private filesystem
+object store, lease composition and reconciliation. M02 `BlobStoragePort` is not a
+drop-in binding: it has no private read, inspection, temporary write or promotion
+operations. K3b preserves that host seam and adds no M02 storage bridge.
+
+Hosted feedback has its own contracts at `./commerce` and injected Supabase
+submit/token-check ports at `./commerce/server`. This tokenized public post-delivery lifecycle is distinct from native order
+reviews. It requires the adopter's database to provide `submit_order_feedback`
+and `check_order_feedback_token`; native `db/platform` supplies neither RPC.
+These ports add no route or native binding. Review-delay policy remains host-owned
+SQL (class (b) retention): native uses 14 days and the contributed managed profile
+uses 21 days. There is no TypeScript delay parameter or SQL change.
+The reference browser contract facades initialize their shared Zod instance in
+jitless mode before loading package schemas, preserving CSP-safe construction.
+The package contracts add no global Zod configuration side effect. Browser
+conformance bundles the complete commerce entry and both reference facades
+without externals; the raw-upload source is a failing browser control, while
+the complete server entry bundles for Node.
 
 ## Shipping
 
