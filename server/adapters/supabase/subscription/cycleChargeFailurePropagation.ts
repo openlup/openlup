@@ -87,7 +87,7 @@ export function createSupabaseCycleChargeFailurePropagationPort(
       }
     },
 
-    async applyFailedResult(input): Promise<{ replayed: boolean }> {
+    async applyFailedResult(input): Promise<{ replayed: boolean; paymentAttemptId: string | null }> {
       const { data, error } = await applyPaymentResultRpc(client, {
         idempotencyKey: input.idempotencyKey,
         paymentIntentId: input.paymentIntentId,
@@ -114,7 +114,8 @@ export function createSupabaseCycleChargeFailurePropagationPort(
         failureClassification: input.failureClassification,
         provider: null,
       });
-      return { replayed };
+      const attemptId = (data as { paymentResult?: { paymentAttemptId?: unknown } } | null)?.paymentResult?.paymentAttemptId;
+      return { replayed, paymentAttemptId: typeof attemptId === "string" ? attemptId : null };
     },
 
     async readCycleRetryState(cycleId): Promise<CycleRetryState> {
@@ -142,6 +143,7 @@ export function createSupabaseCycleChargeFailurePropagationPort(
       try {
         const { data, error } = await client.rpc("subscription_handle_payment_failure_dunning", {
           p_idempotency_key: input.idempotencyKey,
+          p_failed_payment_attempt_id: input.failedPaymentAttemptId,
           p_cycle_id: input.cycleId,
           p_subscription_id: input.subscriptionId,
           p_order_id: input.orderUuid,

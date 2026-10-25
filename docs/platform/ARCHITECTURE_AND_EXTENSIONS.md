@@ -1357,6 +1357,22 @@ reference composition and activation remain host choices.
 
 ## Subscription contracts
 
+The hosted failure port now carries applied-transition attribution end to end:
+`applyFailedResult` returns optional nullable `paymentAttemptId` and
+`openDunningCase` requires nullable `failedPaymentAttemptId`. The shared leaf
+passes `applied.paymentAttemptId ?? null` even when application replayed; it
+never infers a current/prepared attempt. Preflight, decline, action-required and
+replayed action-required parent paths use this leaf. Managed fresh eligible NULL
+attribution refuses SQLSTATE 55000. See the package changelog's Migration notes for this release
+and [managed replay/host mapping](DATA_AND_MIGRATIONS.md#m10-9-attempt-replay-control-fixtures).
+Native `RenewalFailureHandoffPort`/`RenewalStorePort` serve a distinct graph.
+The [native retry store](../../packages/platform/src/subscriptions/postgresRetryStore.ts)
+receives neither `openDunningCase` input nor `failedPaymentAttemptId`/`paymentAttemptId`;
+there is no native attribution receiver to ignore the field. Native stores do not
+yet implement duplicate failure-observation replay with attempt attribution.
+Parity remains a REGISTERED follow-up with owner M10 and the migration owner's
+explicit future acceptance.
+
 Place server orchestration in the existing platform package's exact
 `subscriptions` entry and browser-shareable declarations in its type-only
 `subscriptions/contracts` entry. No new package, dependency, testing subpath or

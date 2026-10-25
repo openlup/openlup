@@ -17,6 +17,7 @@ const probes = [
   ["20261024185100", "stripe_refund_cumulative_snapshot_test.sql"],
   ["20261024185100", "order_refunded_outbox_event_test.sql"],
   ["20261024185100", "refunds_preserve_subscription_lifecycle_test.sql"],
+  ["20261025090100", "subscription_dunning_duplicate_observation_test.sql"],
   ["20261024180000", "subscription_continuity_delivery_alignment_test.sql"],
   ["20261024184000", "subscription_cycle_reservation_preflight_test.sql"],
 ] as const;

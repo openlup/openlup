@@ -460,9 +460,11 @@ export interface CycleChargeFailurePropagationPort {
         };
     }): Promise<{
         replayed: boolean;
+        paymentAttemptId?: string | null;
     }>;
     readCycleRetryState(cycleId: string): Promise<CycleRetryState>;
     openDunningCase(input: {
+        failedPaymentAttemptId: string | null;
         idempotencyKey: string;
         cycleId: string;
         subscriptionId: string;

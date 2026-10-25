@@ -47,7 +47,7 @@ export async function propagateRenewalFailure(
   });
   const cycleSnapshot = await port.readCycleRetryState(ctx.cycleId);
   return {
-    ...await openDunningCase(port, ctx, cycleSnapshot, occurredAt, policy),
+    ...await openDunningCase(port, ctx, cycleSnapshot, occurredAt, policy, applied.paymentAttemptId ?? null),
     applyReplayed: applied.replayed,
   };
 }
@@ -69,6 +69,7 @@ async function openDunningCase(
   cycle: CycleRetryState,
   occurredAt: string,
   policy: RenewalFailurePolicy,
+  failedPaymentAttemptId: string | null,
 ): Promise<Omit<FailurePropagationResult, "applyReplayed">> {
   const retryAttempt = cycle.retryAttempt ?? 1;
   // Resolve again after the retry read: original context evidence remains dynamic.
@@ -92,6 +93,7 @@ async function openDunningCase(
       failureClass,
     );
   const outcome = await port.openDunningCase({
+    failedPaymentAttemptId,
     idempotencyKey: policy.dunningKey(ctx.executionIdempotencyKey, retryAttempt),
     cycleId: ctx.cycleId,
     subscriptionId: ctx.subscriptionId,

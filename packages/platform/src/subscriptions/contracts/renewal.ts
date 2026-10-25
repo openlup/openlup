@@ -87,9 +87,10 @@ export interface CycleChargeFailurePropagationPort {
     occurredAt: string;
     failureReason: string;
     failureClassification: { failureClass: string; decidedBy: string };
-  }): Promise<{ replayed: boolean }>;
+  }): Promise<{ replayed: boolean; paymentAttemptId?: string | null }>;
   readCycleRetryState(cycleId: string): Promise<CycleRetryState>;
   openDunningCase(input: {
+    failedPaymentAttemptId: string | null;
     idempotencyKey: string;
     cycleId: string;
     subscriptionId: string;

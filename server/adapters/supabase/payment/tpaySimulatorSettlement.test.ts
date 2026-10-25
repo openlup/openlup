@@ -72,7 +72,7 @@ describe("settleSimulatorTransaction", () => {
     const canonicalOccurredAt = "2026-07-23T06:00:00.000Z";
     const sink = { calls: [] as Array<[string, unknown]>, selects: [] as string[] };
     const failedGateway = gatewayFor(tableClient({
-      commerce_payment_state_transitions: { data: [{ occurred_at: canonicalOccurredAt }], error: null },
+      commerce_payment_state_transitions: { data: [{ occurred_at: canonicalOccurredAt, payment_attempt_id: "applied-A" }], error: null },
     }, sink));
     const request = {
       providerPaymentId: "tpay_sim_declined",
@@ -105,6 +105,8 @@ describe("settleSimulatorTransaction", () => {
       "2026-07-23T06:00:01.000Z",
       "2026-07-23T06:00:05.000Z",
     ]);
+    expect(firstDunning?.ingested.paymentAttemptId).toBe("applied-A");
+    expect(replayDunning?.ingested.paymentAttemptId).toBe("applied-A");
     expect(firstDunning?.event.occurredAt).toBe(canonicalOccurredAt);
     expect(replayDunning?.event.occurredAt).toBe(canonicalOccurredAt);
     expect(ingestEvent.mock.calls[0]?.[0].event.provider_event_id).toBe(firstDunning?.event.providerEventId);
@@ -131,7 +133,7 @@ describe("settleSimulatorTransaction", () => {
     const canonicalOccurredAt = "2026-07-23T06:00:00.000Z";
     ingestEvent.mockResolvedValue({ paymentIntentId: "intent-expired", paymentEventId: "event-expired", replayed: false });
     const expiredGateway = gatewayFor(tableClient({
-      commerce_payment_state_transitions: { data: [{ occurred_at: canonicalOccurredAt }], error: null },
+      commerce_payment_state_transitions: { data: [{ occurred_at: canonicalOccurredAt, payment_attempt_id: "applied-A" }], error: null },
     }));
 
     await expect(settleSimulatorTransaction(expiredGateway, terminalFailure("expired")))
@@ -180,6 +182,11 @@ describe("settleSimulatorTransaction", () => {
       expected: "canonical_payment_result_transition_read_failed: db unavailable",
     },
     {
+      name: "missing attempt attribution",
+      transition: { data: [{ occurred_at: "2026-07-23T06:00:00.000Z" }], error: null },
+      expected: "canonical_payment_result_transition_attempt_unattributed",
+    },
+    {
       name: "invalid occurred_at",
       transition: { data: [{ occurred_at: "not-a-timestamp" }], error: null },
       expected: "canonical_payment_result_transition_invalid_occurred_at",
@@ -220,7 +227,7 @@ describe("settleSimulatorTransaction", () => {
       .mockRejectedValueOnce(new Error("subscription_webhook_dunning_failed: unavailable"))
       .mockResolvedValueOnce(undefined);
     const failedGateway = gatewayFor(tableClient({
-      commerce_payment_state_transitions: { data: [{ occurred_at: canonicalOccurredAt }], error: null },
+      commerce_payment_state_transitions: { data: [{ occurred_at: canonicalOccurredAt, payment_attempt_id: "applied-A" }], error: null },
     }));
     const request = {
       providerPaymentId: "tpay_sim_dunning_error",
