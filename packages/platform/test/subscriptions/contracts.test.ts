@@ -1,6 +1,6 @@
 import { expect, expectTypeOf, it } from "vitest";
 import * as contracts from "../../src/subscriptions/contracts/index.js";
-import { NATIVE_SUBSCRIPTION_CAPABILITIES } from "../../src/subscriptions/index.js";
+import { MANAGED_SUBSCRIPTION_STOCK_CAPABILITIES, NATIVE_SUBSCRIPTION_CAPABILITIES } from "../../src/subscriptions/index.js";
 import type { PreparedAttemptPrepareInput, PreparedAttemptPersistenceResult, PreparedAttemptFinalizeInput,
   PreparedAttemptPersistencePort } from "../../src/payments/contracts/index.js";
 import type { RenewalPreparedAttemptPrepareInput, RenewalPreparedAttemptPersistenceResult,
@@ -28,4 +28,10 @@ it("keeps Renewal projections mutually assignable with M07, including narrowed g
   expectTypeOf<RenewalPreparedAttemptPersistenceResult<"action">>().toEqualTypeOf<PreparedAttemptPersistenceResult<"action">>();
   expectTypeOf<RenewalPreparedAttemptFinalizeInput<"action">>().toEqualTypeOf<PreparedAttemptFinalizeInput<"action">>();
   expectTypeOf<RenewalPreparedAttemptPersistencePort<"rail", "action">>().toEqualTypeOf<PreparedAttemptPersistencePort<"rail", "action">>();
+});
+
+it("describes managed stock SQL without claiming a composed TypeScript recovery port", () => {
+  expect(Object.isFrozen(MANAGED_SUBSCRIPTION_STOCK_CAPABILITIES)).toBe(true);
+  expect(MANAGED_SUBSCRIPTION_STOCK_CAPABILITIES).toEqual({ graph: "managed", stockRecovery: "unavailable",
+    stockWaitSurface: "sql", stockAvailabilitySurface: "sql", defaultEnabled: false });
 });

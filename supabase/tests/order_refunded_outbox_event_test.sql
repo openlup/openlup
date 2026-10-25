@@ -1,4 +1,5 @@
--- pgTAP: commerce.order.refunded outbox emission.
+-- pgTAP: additive non-Stripe commerce.order.refunded outbox emission.
+-- Accepted cumulative Stripe evidence is covered by stripe_refund_cumulative_snapshot_test.sql.
 --   * a provider-confirmed refund transition emits exactly one row with the
 --     same-currency refund amount sum from inbound_provider_events, not
 --     commerce_orders.total_cents;
@@ -17,7 +18,7 @@ VALUES ('64000000-0000-0000-0000-0000000000a1', '10000000-0000-0000-0000-0000000
         'OR-ORDER-1', 'paid', 'one_time', 'PLN', 12999, 12999);
 INSERT INTO public.commerce_payments (id, order_id, provider, provider_payment_id, status, amount_cents, currency)
 VALUES ('64000000-0000-0000-0000-0000000000b1', '64000000-0000-0000-0000-0000000000a1',
-        'stripe', 'pi_refunded_a1', 'succeeded', 12999, 'PLN');
+        'example', 'pi_refunded_a1', 'succeeded', 12999, 'PLN');
 INSERT INTO public.commerce_payment_intents (id, target_kind, order_id, payment_id, status, amount_cents, currency, provider_payment_id)
 VALUES ('64000000-0000-0000-0000-0000000000c1', 'one_time_order', '64000000-0000-0000-0000-0000000000a1',
         '64000000-0000-0000-0000-0000000000b1', 'succeeded', 12999, 'PLN', 'pi_refunded_a1');
@@ -25,10 +26,10 @@ INSERT INTO public.inbound_provider_events (
   id, provider, provider_event_id, event_type, provider_payment_id, payment_intent_id, amount_cents, currency, payload
 )
 VALUES (
-  '64000000-0000-0000-0000-0000000000d1', 'stripe', 'evt_refund_a1', 'payment.refunded',
+  '64000000-0000-0000-0000-0000000000d1', 'example', 'evt_refund_a1', 'payment.refunded',
   'pi_refunded_a1', '64000000-0000-0000-0000-0000000000c1', 7000, 'PLN', '{"refund":"provider"}'::jsonb
 ), (
-  '64000000-0000-0000-0000-0000000000d2', 'stripe', 'evt_refund_a1b', 'payment.refunded',
+  '64000000-0000-0000-0000-0000000000d2', 'example', 'evt_refund_a1b', 'payment.refunded',
   'pi_refunded_a1', '64000000-0000-0000-0000-0000000000c1', 777, 'PLN', '{"refund":"provider"}'::jsonb
 );
 
@@ -88,7 +89,7 @@ VALUES ('64000000-0000-0000-0000-0000000000a3', '10000000-0000-0000-0000-0000000
         'OR-ORDER-3', 'paid', 'one_time', 'PLN', 12999, 12999);
 INSERT INTO public.commerce_payments (id, order_id, provider, provider_payment_id, status, amount_cents, currency)
 VALUES ('64000000-0000-0000-0000-0000000000b3', '64000000-0000-0000-0000-0000000000a3',
-        'stripe', 'pi_refunded_a3', 'succeeded', 12999, 'PLN');
+        'example', 'pi_refunded_a3', 'succeeded', 12999, 'PLN');
 INSERT INTO public.commerce_payment_intents (id, target_kind, order_id, payment_id, status, amount_cents, currency, provider_payment_id)
 VALUES ('64000000-0000-0000-0000-0000000000c3', 'one_time_order', '64000000-0000-0000-0000-0000000000a3',
         '64000000-0000-0000-0000-0000000000b3', 'succeeded', 12999, 'PLN', 'pi_refunded_a3');
@@ -96,10 +97,10 @@ INSERT INTO public.inbound_provider_events (
   id, provider, provider_event_id, event_type, provider_payment_id, payment_intent_id, amount_cents, currency, payload
 )
 VALUES (
-  '64000000-0000-0000-0000-0000000000d3', 'stripe', 'evt_refund_a3', 'payment.refunded',
+  '64000000-0000-0000-0000-0000000000d3', 'example', 'evt_refund_a3', 'payment.refunded',
   'pi_refunded_a3', '64000000-0000-0000-0000-0000000000c3', 7000, 'PLN', '{"refund":"provider"}'::jsonb
 ), (
-  '64000000-0000-0000-0000-0000000000d4', 'stripe', 'evt_refund_a3b', 'payment.refunded',
+  '64000000-0000-0000-0000-0000000000d4', 'example', 'evt_refund_a3b', 'payment.refunded',
   'pi_refunded_a3', '64000000-0000-0000-0000-0000000000c3', 777, 'EUR', '{"refund":"provider"}'::jsonb
 );
 

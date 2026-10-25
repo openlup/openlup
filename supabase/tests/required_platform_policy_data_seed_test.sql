@@ -1,8 +1,9 @@
 -- Reads shipped data before any test setup; replays the actual shipped forward.
 BEGIN;
 SELECT plan(13);
-SELECT is((SELECT count(*)::integer FROM public.client_absorption_policy), 27,
-  'the shipped forward installs the exact current FK policy inventory');
+-- M3 adds the blocking policy for the stock-wait case's clients FK.
+SELECT is((SELECT count(*)::integer FROM public.client_absorption_policy), 28,
+  'the shipped forwards install the exact current FK policy inventory');
 SELECT is((SELECT count(*)::integer FROM pg_constraint fk
   JOIN pg_class referencing ON referencing.oid = fk.conrelid
   JOIN pg_namespace ns ON ns.oid = referencing.relnamespace
