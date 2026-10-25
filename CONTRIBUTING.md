@@ -216,8 +216,14 @@ and the minimal M05 acquisition-reader/admission/finalize closure, with no polic
 seed or setup writer. Legacy omitted-country fallback now uses the configured
 platform region and refuses missing configuration; adopters set their own default.
 `registry.draft.json` proposes exact file/function/preimage/statement pins and the
-audit CHECK preimage. Production admission ignores this proposal; a separate
-managed-commerce class/control change is required before introduction. Native
+audit CHECK preimage. The optional managed-commerce validator draft is tested
+with that registry supplied explicitly in `scripts/reviewed-batch-forward.test.ts`;
+production admission still refuses M11 with the unchanged live registry. The
+managed PostgreSQL batch suite checks all seven catalog/ACL changes, the exact
+audit CHECK vocabulary and rollback after the complete committed managed chain,
+including all nine landed M10 pins exactly once. Retained M10 fixtures are frozen
+comparison evidence; the M11 proof reads the real migration files. This
+machinery control must land separately after M10 controls and before M11 SQL/pins. Native
 return semantics and M10 approvals remain unchanged. Local PostgreSQL acquisition
 proof does not replace full class/catalog/refusal and handler integration proof.
 

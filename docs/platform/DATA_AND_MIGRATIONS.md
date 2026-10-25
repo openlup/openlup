@@ -433,6 +433,28 @@ cannot replace this gate. The managed setup budget includes its first image pull
 These batch rules do not broaden the earlier #267, #295 or #300 classes.
 Coordinator control review and two fresh reviews remain separate delivery gates.
 
+The optional `managedCommerceForwards` class is the separate M11 commerce
+control draft: exactly seven managed paths (`20261025000000`, `003000`, `004000`,
+`005000`, `006000`, `007000`, `008000`) and one function per file, as proposed in
+[scripts/fixtures/reviewed-m11/registry.draft.json](../../scripts/fixtures/reviewed-m11/registry.draft.json).
+It binds three replacements, two public service-only creations and two private
+invoker creations. Header pins retain arguments/defaults, returns, language,
+security and search_path; ordered statement pins require same-file revocations
+and public service-only grants. The receipt file alone replaces the audit action
+CHECK with its exact preimage, DROP and NOT VALID ADD, after its pinned lock timeout.
+Admission reads the complete preceding managed rail and requires all nine landed
+M10 pins, then earlier M11 pins, with exact bytes. The draft tests read the real
+committed chain; retained M10 fixtures do not supply a pending suffix. Re-pinning
+against main `2b33ca13` preserves all seven file/function/statement pins: no M11
+target preimage or audit action changed in M10. The audit CHECK retains all 25
+incumbent actions and adds only `checkout_payment_link_mint`. Any intervening audit-table
+ALTER/DROP refuses that fixed CHECK preimage class. M09/M10 inventories stay closed.
+The live registry has no M11 approvals; the proposal remains inert. Machinery
+must land separately after M10 controls, before introducing M11 SQL/pins. The
+existing batch tests exercise opt-in admission/refusals and real PostgreSQL
+catalog/ACL/CHECK changes with rollback; they do not establish handler behavior
+or authorize installation.
+
 **Named bounded debt C94 — M10 reviewed packet vocabulary.** The frozen managed
 SQL retains provider nouns inherited from that rail. The neutrality baseline
 records the scanner's exact counts for the six existing managed fixtures and the

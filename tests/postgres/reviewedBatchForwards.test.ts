@@ -1,11 +1,11 @@
 import { randomUUID } from "node:crypto";
-import { cpSync, existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { reviewedBatchBytes, reviewedBatchPaths } from "../../scripts/reviewed-batch-rail.js";
 import { Pool, type PoolClient } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { assertBatchedForward, readReviewedForwardRegistry, sqlSha256, sqlStatements, type BatchedForwardBinding } from "../../scripts/reviewed-platform-forward.js";
+import { assertBatchedForward, assertManagedCommerceForward, readReviewedForwardRegistry, sqlSha256, sqlStatements, type BatchedForwardBinding } from "../../scripts/reviewed-platform-forward.js";
 import { closePostgres, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, dockerAvailable, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
 import { imageIo, imageReference, pullWithRetry, readCiImage } from "../../scripts/ci-image-pull.mjs";
 import { readManagedMigrationChain } from "../../scripts/public-ci-pgtap.mjs";
@@ -1012,6 +1012,61 @@ it('replays a stored refusal and an apply-created receipt directly, without publ
       expect(result).toMatch(/^ok [0-9]+ - /u);
     } finally { await db.query("ROLLBACK"); }
   },120_000);
+
+  if (!portable) it("proves the opt-in M11 draft catalog and CHECK delta after the full real managed chain", async () => {
+    const proposal = JSON.parse(readFileSync("scripts/fixtures/reviewed-m11/registry.draft.json", "utf8"));
+    const draft = readReviewedForwardRegistry(Buffer.from(JSON.stringify({ ...registry, ...proposal })));
+    const commerce = draft.managedCommerceForwards!;
+    await applyCommittedBefore(commerce[0]!.path);
+    const prior = readdirSync(join(replayRoot, directory)).filter(name => name.endsWith(".sql")).sort()
+      .map(name => ({ path: `${directory}/${name}`, bytes: readFileSync(join(replayRoot, directory, name)) }));
+    expect(pins).toHaveLength(9);
+    for (const pin of pins) {
+      expect(prior.filter(source => source.path === pin.path)).toHaveLength(1);
+      expect(sqlSha256(readFileSync(pin.path))).toBe(pin.sha256);
+    }
+    expect(preceding).toEqual(prior.map(source => source.bytes));
+    const baseline = await batchSnapshot(db);
+    const audit = async () => (await db.query(`SELECT c.oid, c.convalidated, pg_get_constraintdef(c.oid) AS definition
+      FROM pg_constraint c WHERE c.conrelid='public.admin_audit_events'::regclass
+      AND c.conname='admin_audit_events_action_check'`)).rows[0];
+    const originalAudit = await audit();
+    await db.query("BEGIN");
+    try {
+      for (const pin of commerce) {
+        const bytes = readFileSync(`scripts/fixtures/reviewed-m11/${pin.path}`);
+        assertManagedCommerceForward(draft, pin.path, bytes, prior);
+        const before = await batchSnapshot(db);
+        await db.query(bytes.toString());
+        const after = await batchSnapshot(db);
+        if (pin.constraints) {
+          const changed = await audit();
+          expect(changed.convalidated).toBe(false);
+          const actions = (definition: string) => [...definition.matchAll(/'([^']+)'::text/gu)].map(match => match[1]);
+          expect(actions(changed.definition)).toEqual([...actions(originalAudit.definition), "checkout_payment_link_mint"]);
+          // Account for exactly this replacement, then use the existing full
+          // observer for every other catalog, ACL, function, relation and row.
+          const withoutAudit = (rows: unknown[], id: number) => rows.filter(row => Number((row as { oid: number }).oid) !== id);
+          const oldRows = before.catalogs.pg_constraint!.filter(row => Number((row as { oid: number }).oid) === originalAudit.oid);
+          const newRows = after.catalogs.pg_constraint!.filter(row => Number((row as { oid: number }).oid) === changed.oid);
+          expect(oldRows).toHaveLength(1);
+          expect(newRows).toHaveLength(1);
+          const retained = (row: unknown) => Object.fromEntries(Object.entries(row as Record<string, unknown>)
+            .filter(([key]) => !["oid", "conbin", "convalidated"].includes(key)));
+          expect(retained(newRows[0])).toEqual(retained(oldRows[0]));
+          before.catalogs.pg_constraint = withoutAudit(before.catalogs.pg_constraint!, originalAudit.oid);
+          after.catalogs.pg_constraint = withoutAudit(after.catalogs.pg_constraint!, changed.oid);
+        }
+        // The observer's ACL recognizer expects a single-line grant; retain
+        // raw function bodies while joining whitespace only in ACL statements.
+        const observedSql = sqlStatements(bytes.toString()).map(statement => /^(?:GRANT|REVOKE) /u.test(statement) ? statement.replace(/\s+/gu, " ") : statement).join("\n");
+        await assertBatchCatalog(db, pin, Buffer.from(observedSql), before, after);
+        prior.push({ path: pin.path, bytes });
+      }
+    } finally { await db.query("ROLLBACK"); }
+    expect(await audit()).toEqual(originalAudit);
+    assertSameSnapshot(baseline, await batchSnapshot(db));
+  }, 120_000);
 
   it("proves the catalog observer rejects planted effects and pgTAP finishes cleanly", async () => {
     const pin = pins.at(-1)!;
