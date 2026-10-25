@@ -18,3 +18,11 @@ prefix, include each earlier same-rail pin once, and append only absent M11
 fixtures. This proves admission/refusals and catalog/ACL/CHECK changes with
 rollback; it does not establish native parity, handler behavior or installation
 authority.
+
+The class fixes eight entries: the seven checkout, return and acquisition entries
+retain their pinned slots, and the eighth is a single new-purchase stock reader.
+It composes ATP with renewal exemption fixed false, caps requests at 200 array
+items and refuses a NULL as-of timestamp as `inventory_stock_as_of_invalid`
+(SQLSTATE `22023`). Its service-only ACL additionally revokes `openlup_mcp_reader`;
+its conservative stale flag covers any stale provider row for the SKU, while the
+allocator retains its own stale refusal.

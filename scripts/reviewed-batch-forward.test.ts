@@ -604,7 +604,7 @@ describe("admitted M11 commerce live registry", () => {
     assertManagedCommerceForward(candidate, pin.path, sql, prior);
 
   it("retains all 18 M10 pins and uses the real prefix plus the absent fixture suffix exactly once", () => {
-    expect(commerce).toHaveLength(7);
+    expect(commerce).toHaveLength(8);
     expect(pins).toHaveLength(18);
     expect(managedM10).toHaveLength(11);
     for (const pin of pins) {
@@ -630,6 +630,39 @@ describe("admitted M11 commerce live registry", () => {
     expect(() => assert(pin, Buffer.concat([commerceBytes(pin), Buffer.from(" ")]))).toThrow("reviewed M11 commerce path or bytes drifted");
   });
 
+  it("preserves seven-pin approval history across the eighth control without admitting it as a current candidate", () => {
+    const seven = structuredClone(registry);
+    seven.managedCommerceForwards!.pop();
+    expect(() => readReviewedForwardRegistry(Buffer.from(JSON.stringify(seven)))).toThrow("reviewed M11 commerce requires exactly eight forwards");
+    const f = correctionFixture();
+    try {
+      for (const source of preceding(commerce[0]!)) f.put(source.path, source.bytes);
+      f.put("config/reviewed-platform-forwards.json", JSON.stringify(seven));
+      const approval7 = f.commit();
+      f.put(commerce[0]!.path, commerceBytes(commerce[0]!));
+      const feature7 = f.commit();
+      f.put("config/reviewed-platform-forwards.json", registryBytes);
+      const approval8 = f.commit();
+      for (const path of [pins[0]!.path, commerce[0]!.path]) {
+        expect(() => assertUnchangedForwardApproval(f.root, approval7, feature7, path)).not.toThrow();
+        expect(() => assertUnchangedForwardApproval(f.root, feature7, approval8, path)).not.toThrow();
+      }
+      expect(() => assertReviewedPlatformForward(f.root, approval7, approval8, commerce[0]!.path, commerceBytes(commerce[0]!), true)).not.toThrow();
+      expect(() => assertUnchangedForwardApproval(f.root, approval7, approval8, commerce.at(-1)!.path)).toThrow("approved separately");
+      for (const attack of ["missing", "order", "signature", "digest"]) {
+        const changed = structuredClone(seven);
+        const forwards = changed.managedCommerceForwards!;
+        if (attack === "missing") forwards.pop();
+        if (attack === "order") [forwards[0], forwards[1]] = [forwards[1]!, forwards[0]!];
+        if (attack === "signature") forwards[0]!.functions[0]!.signature += "extra";
+        if (attack === "digest") forwards[0]!.sha256 = "0".repeat(64);
+        f.put("config/reviewed-platform-forwards.json", JSON.stringify(changed));
+        const invalid = f.commit();
+        expect(() => assertUnchangedForwardApproval(f.root, invalid, approval8, commerce[0]!.path), attack).toThrow("approved separately");
+      }
+    } finally { f.cleanup(); }
+  });
+
   it("uses the live approval through the production CI and release entrypoint", () => {
     const f = correctionFixture();
     try {
@@ -640,7 +673,7 @@ describe("admitted M11 commerce live registry", () => {
       const live = f.commit();
       f.put("config/reviewed-platform-forwards.json", registryBytes);
       const approval = f.commit();
-      // Control-only admission precedes all seven SQL files, as for M10.
+      // Control-only admission precedes all eight SQL files, as for M10.
       expect(() => assertAppendOnlyMigrationHistory(f.root, live, approval)).not.toThrow();
       for (const pin of commerce) {
         expect(existsSync(join(f.root, pin.path))).toBe(false);
@@ -738,6 +771,12 @@ describe("admitted M11 commerce live registry", () => {
       const prior = [...preceding(pin), { path: "supabase/migrations/20261024235959_preimage_probe.sql", bytes: Buffer.from(plant) }].sort((a,b) => a.path.localeCompare(b.path));
       expect(() => assert(pin, commerceBytes(pin), registry, prior)).toThrow("reviewed M11 commerce function preimage or definition drifted");
     });
+  });
+
+  it("refuses a fully repinned omission of the stock reader revocation", () => {
+    const pin = commerce.at(-1)!;
+    const sql = commerceBytes(pin).toString().replace(", openlup_mcp_reader", "");
+    expect(() => assert(pin, Buffer.from(sql), repinned(pin, sql))).toThrow("reviewed M11 commerce function ACL drifted");
   });
 
   it.each(["path", "version", "order", "signature", "creation", "missing", "extra", "constraint", "M10 missing"])("refuses registry %s drift", attack => {

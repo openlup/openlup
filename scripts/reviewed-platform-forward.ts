@@ -150,7 +150,7 @@ export function readReviewedForwardRegistry(bytes: Buffer): ReviewedForwardRegis
   return readForwardRegistry(bytes, false);
 }
 
-// Only approval-history comparison may read the exact pre-CTL-2 inventory.
+// Only approval-history comparison may read the exact prior inventories.
 // Candidate admission always uses the strict public reader above.
 function readForwardRegistry(bytes: Buffer, historical: boolean): ReviewedForwardRegistry {
   const raw = JSON.parse(bytes.toString("utf8")) as ReviewedForwardRegistry;
@@ -221,7 +221,7 @@ function readForwardRegistry(bytes: Buffer, historical: boolean): ReviewedForwar
   if (raw.batchedForwards !== undefined) validateBatchedForwards(raw.batchedForwards, paths, historical);
   if (raw.managedCommerceForwards !== undefined) {
     if (!raw.batchedForwards) throw new Error("reviewed M11 commerce requires the complete M10 controls");
-    validateManagedCommerceForwards(raw.managedCommerceForwards, paths);
+    validateManagedCommerceForwards(raw.managedCommerceForwards, paths, historical);
   }
   return raw;
 }
@@ -1094,6 +1094,7 @@ const managedCommerceShapes = [
   ["20261025106000_subscription_acquisition_terms.sql", "public.commerce_subscription_acquisition_terms(timestamptz)", true, "563fbd0f8546b8927078c16de55493c243b655d80b1ff1b71329f0b16bcfc48e"],
   ["20261025107000_checkout_acquisition_admission.sql", "private.commerce_assert_acquisition_admission(jsonb,uuid)", true, "165cc113d3c1ec21199d5ab588e74db33208c7a34433a7e601031fb0dd0e064c"],
   ["20261025108000_checkout_finalize_acquisition_admission.sql", "public.commerce_finalize_order_for_checkout(text,uuid,text,uuid,uuid,uuid,jsonb,jsonb,jsonb)", false, "ba2caf9f34d1a81fb364ef5a8802569b389e09cec0df882ead91acc4a5759a85"],
+  ["20261025109000_inventory_new_purchase_stock_read.sql", "public.inventory_new_purchase_stock_read(jsonb,timestamptz)", true, "5e4747468d7d38dd9e35544bf793650175431fd44e3532d2de3dd30fde6fc5ed"],
 ] as const;
 const commerceAuditTable = "public.admin_audit_events";
 const commerceAuditConstraint = "admin_audit_events_action_check";
@@ -1103,10 +1104,12 @@ const commerceAuditStatements = [
   "cd595b2bfc8826d0a097cb5a34e08be6990819c1c843f2528b80582f9b9a9ac7", // exact DROP
   "9c3f2af2de818ea355fc76d3eccef1640eac0f29924f5b731d5768d22d93c41d", // exact ADD, NOT VALID
 ];
-function validateManagedCommerceForwards(forwards: ManagedCommerceForwardBinding[], paths: Set<string>): void {
-  if (!Array.isArray(forwards) || forwards.length !== managedCommerceShapes.length) throw new Error("reviewed M11 commerce requires exactly seven forwards");
+function validateManagedCommerceForwards(forwards: ManagedCommerceForwardBinding[], paths: Set<string>, historical = false): void {
+  // The promoted seven-pin class remains readable only for approval history.
+  const shapes = historical && forwards?.length === 7 ? managedCommerceShapes.slice(0, -1) : managedCommerceShapes;
+  if (!Array.isArray(forwards) || forwards.length !== shapes.length) throw new Error("reviewed M11 commerce requires exactly eight forwards");
   for (const [index, forward] of forwards.entries()) {
-    const [file, signature, creation] = managedCommerceShapes[index]!;
+    const [file, signature, creation] = shapes[index]!;
     const audit = index === 2;
     if (!forward || Object.keys(forward).sort().join(",") !== (audit ? "constraints,functions,path,sha256,statements" : "functions,path,sha256,statements") || forward.path !== `supabase/migrations/${file}` || paths.has(forward.path) || !hash(forward.sha256) || !Array.isArray(forward.functions) || forward.functions.length !== 1) throw new Error("reviewed M11 commerce path, order or function inventory drifted");
     paths.add(forward.path);
@@ -1174,8 +1177,9 @@ export function assertManagedCommerceForward(registry: ReviewedForwardRegistry, 
     }
     const compact = statement.replace(/\s+/gu, " ").replace(/, /gu, ",");
     const privateFunction = fn.signature.startsWith("private.");
+    const stockReader = fn.signature === "public.inventory_new_purchase_stock_read(jsonb,timestamptz)";
     const expected = position === routineIndex + 1
-      ? `REVOKE ALL ON FUNCTION ${fn.signature} FROM PUBLIC,anon,authenticated${privateFunction ? ",service_role" : ""};`
+      ? `REVOKE ALL ON FUNCTION ${fn.signature} FROM PUBLIC,anon,authenticated${privateFunction ? ",service_role" : stockReader ? ",openlup_mcp_reader" : ""};`
       : `GRANT EXECUTE ON FUNCTION ${fn.signature} TO service_role;`;
     if (compact !== expected) throw new Error("reviewed M11 commerce function ACL drifted");
   }

@@ -507,6 +507,15 @@ The `managedCommerceForwards` class in the
 [registry](../../config/reviewed-platform-forwards.json) pins the managed SQL fixtures
 under `scripts/fixtures/reviewed-m11/`, one function per file. It covers replacements,
 public service-only creations and private invoker creations.
+The class fixes eight entries: three replacements, three public service-only
+creations and two private invoker creations. The seven checkout, return and
+acquisition entries retain their pinned slots; the eighth is the single
+new-purchase stock reader (`public.inventory_new_purchase_stock_read(jsonb,timestamptz)`).
+It additionally revokes `openlup_mcp_reader`, fixes ATP renewal exemption to false,
+bounds requests to 200 array items and refuses a NULL as-of timestamp as
+`inventory_stock_as_of_invalid` (SQLSTATE `22023`). Its conservative stale flag
+covers any stale provider row for the SKU; the allocator retains its own stale
+refusal.
 Exact file, CREATE and preimage hashes, header pins and ordered
 statement pins bind arguments/defaults, returns, language, security, search_path,
 same-file revocations and public service-only grants. The receipt file alone
@@ -526,6 +535,8 @@ without durable row changes. Changed policy refuses fresh acquisition while
 completed finalize replay preserves rows. One-time checkout and the shared/exclusive
 policy-lock protocol are also checked. These fixtures do not establish handler
 integration, native return semantics or installation authority.
+Approval-history comparisons retain the exact seven-entry prefix for release
+carry-over; candidate admission requires all eight entries.
 
 **Named bounded debt C94 — M10 reviewed packet vocabulary.** The frozen managed
 SQL retains provider nouns inherited from that rail. The neutrality baseline
