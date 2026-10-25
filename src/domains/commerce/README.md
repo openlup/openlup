@@ -192,7 +192,10 @@ handlers, offer projection/handler/cache and readiness. Reference server wrapper
 bind settlement defaults, flat shipping through `getShippingFlatMinor`, promotion
 application, rich context/reconstruction, roster/request/unit/floor/scope policy and
 the observed BFF responder. Browser validators retain the existing request/context
-admission and industry wire scopes. Existing ordering, VAT equations, v1/v2 offer
+admission and industry wire scopes. The strict quote context additionally admits
+optional shipping and resolved acquisition terms through the identical existing
+validators re-exported by `@openlup/platform/pricing/browser`; absent terms retain
+the existing parsed output. Existing ordering, VAT equations, v1/v2 offer
 responses, errors and TTL rules are preserved. Promotion application and acceptance
 now live in `@openlup/platform/promotions`; named server wrappers retain local policy.
 The module also owns promotion admin handlers, ports, dependency-free DTOs, server

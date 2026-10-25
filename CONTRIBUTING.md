@@ -180,6 +180,15 @@ entries, one-unit projection/refusal, opaque offer validation and injected
 minimum defaults. Quote ports take host-owned types as parameters. Commerce
 contracts retain the prohibition on cross-module imports.
 
+M11 D3 extends `pricing/browser` with the existing resolved-acquisition and
+shipping-terms validators. `browserBoundary.test.ts` checks their symbol identity
+and the exact five-file built browser closure; identity/subscription inventories
+add only `shipping/thresholdPolicy.js`. The import-map test permits that pure
+leaf only at `pricing/browser/index.ts` and refuses shipping handlers, HTTP,
+Node/database imports and sibling access. The reference quote-binding suite
+checks optional terms, unchanged absent-term output and strict unknown-key
+refusal; existing starter checkout tests cover acquisition refusals.
+
 M11 K3a adds neutral OMS command, replay and subscription continuity witnesses
 and host projection bindings. The managed queue proof at
 `tests/postgres/omsQueueLadder.test.ts` replays every current managed forward with

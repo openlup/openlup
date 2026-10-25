@@ -35,9 +35,14 @@ its `/contracts` entry remains type-only. The `/commerce/server` entry
 is the separate Node-only home for handlers, use cases, stores, adapters and
 engine composition. Browser bundle proof checks the complete commerce runtime
 graph. The additive `pricing/browser` entry directly exposes the existing quote
-primitive factory and acquisition capability/expectation validators from their
-pure defining files; it never imports the Node-only pricing root. Its nested
-same-module imports follow the existing module graph rules. The customer-default consumption guard reads the package implementation
+primitive factory, acquisition capability/expectation/resolved-terms validators
+and shipping-terms validator. Acquisition reuses its pure defining file; shipping
+uses an exact linted edge from `pricing/browser/index.ts` to the existing pure
+`shipping/thresholdPolicy.ts` owner, preserving validator identity without the
+shipping handler/Node HTTP declaration closure. Other internal shipping paths
+remain refused. The complete browser graph imports neither Node
+built-ins nor the Node-only pricing root. Reference quote context binds optional
+shipping/acquisition terms without changing its other fields or strictness. The customer-default consumption guard reads the package implementation
 so its unapplied-evidence and forbidden-payload assertions retain their meaning.
 
 

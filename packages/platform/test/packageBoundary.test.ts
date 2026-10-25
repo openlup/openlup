@@ -145,6 +145,8 @@ const platformExports = JSON.parse(readFileSync(fileURLToPath(new URL("../packag
 const moduleDirectories = readdirSync(SOURCE_ROOT, { withFileTypes: true }).filter((entry) => entry.isDirectory()).map((entry) => entry.name);
 
 function relativeImportAllowed(path: string, specifier: string): boolean {
+  // Exact browser re-export of the pure validator owner, with no shipping handlers.
+  if (path === "pricing/browser/index.ts" && specifier === "../../shipping/thresholdPolicy.js") return true;
   const ownModule = path.split("/")[0]!;
   if (path.split("/")[1] === "contracts") return contractsImportAllowed(path, specifier, graph);
   const sameModule = /^\.\/[^/]+$/.test(specifier);

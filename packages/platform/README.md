@@ -84,7 +84,7 @@ timestamp used in the webhook's idempotency key.
 | `./commerce`, `./commerce/contracts` | Browser-safe neutral commerce schema cores, generic ports and pure contract helpers |
 | `./commerce/server` | Node-only OMS, returns, native reviews/media and hosted-feedback handlers/adapters and order-detail composition, email consumers, dispatch registry, paid-fulfillment binding and checkout compensation, checkout handlers, runtime and shared paid-order saga |
 | `./pricing` | Experimental price authority, quote computation/handlers, offer projection/cache, readiness and policy tokens |
-| `./pricing/browser` | Existing quote primitive factory and acquisition capability/expectation schemas, browser-safe |
+| `./pricing/browser` | Existing quote primitives, acquisition validators and shipping-terms validator, browser-safe |
 | `./pricing/contracts` | Dependency-free authority, money, quote and offer DTOs and version constants |
 | `./promotions` | Experimental promotion application, admin handlers, native read/sweep, SQL projections and acceptance |
 | `./promotions/contracts` | Dependency-free preview and admin DTOs |
@@ -347,9 +347,13 @@ base reads using the selected list ID, with base-refusal precedence.
 DTOs and version constants; its only external type comes from the exact
 `@openlup/core/pricing` entry. `./pricing/browser` directly re-exports exactly
 `createCommerceQuotePrimitives`, `acquisitionCapabilitySchema` and
-`acquisitionTermsExpectationSchema` from their defining files. They retain the
-same identity and behavior as the pricing root. Its complete browser bundle
-contains no Node imports. Other schemas, Web Crypto hashing and Node HMAC token
+`acquisitionTermsExpectationSchema`, `resolvedAcquisitionTermsSchema` and
+`shippingTermsSchema`. Acquisition schemas come from their defining file; shipping
+re-exports its pure validator owner through an exact linted edge, preserving identity
+without handlers or Node HTTP declarations. The reference
+quote context admits both terms as optional fields and retains its existing strict
+fields and refusals. The complete browser bundle contains no Node imports or
+pricing server root. Other schemas, Web Crypto hashing and Node HMAC token
 operations stay in the server entry. Tokens retain assignment binding, the
 72-hour default compatibility window and rollback behavior. Secret selection,
 feature flags and readiness remain reference composition responsibilities.

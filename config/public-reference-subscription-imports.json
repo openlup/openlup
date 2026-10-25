@@ -107,6 +107,7 @@
     "packages/platform/dist/pricing/contracts/provenance.js",
     "packages/platform/dist/pricing/contracts/quote.js",
     "packages/platform/dist/pricing/quotePrimitives.js",
+    "packages/platform/dist/shipping/thresholdPolicy.js",
     "src/components/ui/dialog.tsx",
     "src/domains/auth/contracts.ts",
     "src/domains/auth/providerList.ts",

@@ -11,7 +11,10 @@ commerce runtime is checked with a browser bundle. The Node-only
 the profile build test explicitly proves that it is refused, alongside the
 Node-only pricing root. The additive `pricing/browser` entry contributes exactly
 its built entry, quote primitives, acquisition validators and acquisition
-contract constant. No directory wildcard or other pricing implementation is admitted.
+contract constant, plus the existing pure shipping-terms owner. The latter lets
+the strict reference quote context carry optional shipping/acquisition promises;
+shipping handlers and Node HTTP declarations remain outside this closure. No
+directory wildcard or other pricing implementation is admitted.
 The commerce barrel also reaches pure OMS schemas and read-model helpers, plus
 their core fulfillment, payment and subscription runtime dependencies. It also
 exports returns request/approve/reject schemas and port types, with a factory for

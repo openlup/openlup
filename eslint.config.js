@@ -155,7 +155,7 @@ export const PLATFORM_MODULE_GRAPH = {
   payments: { contracts: true, values: [], types: ["http", "bff"] },
   shipping: { contracts: true, values: [], types: ["bff", "http"] },
   promotions: { contracts: true, values: ["pricing", "shipping"], types: ["data", "http", "bff"] },
-  pricing: { contracts: true, values: [], types: ["bff", "http", "shipping"] },
+  pricing: { contracts: true, values: ["shipping"], types: ["bff", "http"] },
   // Bundle factories bind host schemas/admin kit; the native read store uses only the data executor type.
   // The catalog-to-pricing value edge lets the effective bundle store reuse pricing's
   // effective-window authority via selectEffectiveBundleTargetPrice.
@@ -277,6 +277,15 @@ export function platformModuleRules(pkg, module, graph = PLATFORM_MODULE_GRAPH) 
         } },
       ];
     }).flat(),
+    // The browser entry reuses the existing pure shipping validator without
+    // importing shipping handlers or their Node HTTP declaration closure.
+    ...(module === "pricing" ? [{
+      files: [`${PLATFORM_SOURCE}/pricing/browser/index.ts`],
+      rules: boundaryRules([packageIsolation(pkg, 3), packageExports, {
+        message: "packages/platform pricing browser entry imports only its existing quote/acquisition definitions and the pure shipping terms owner.",
+        regexes: ["^(?!(?:\\.\\./quotePrimitives\\.js|\\.\\./acquisitionTermsSchemas\\.js|\\.\\./\\.\\./shipping/thresholdPolicy\\.js)$)"],
+      }]),
+    }] : []),
     // These complete allowlists replace the server rules, including type-only
     // edges. Beyond the bounded depths, only local ./ paths and core remain.
     { files: sourceFiles(`${PLATFORM_SOURCE}/${module}/contracts/`), ignores, rules: contractsRules(0) },

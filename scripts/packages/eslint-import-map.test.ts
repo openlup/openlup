@@ -660,6 +660,25 @@ describe("eslint platform module boundaries", { timeout: 60_000 }, () => {
     }
   });
 
+  it("admits only the existing pure validator owners at the pricing browser entry", async () => {
+    const config = await loadConfig();
+    const filename = "packages/platform/src/pricing/browser/index.ts";
+    for (const target of ["../quotePrimitives.js", "../acquisitionTermsSchemas.js", "../../shipping/thresholdPolicy.js"]) {
+      for (const source of loadSources(target, "ts")) expect(await moduleMessages(config, source, filename)).toEqual([]);
+    }
+    for (const target of ["../../shipping/index.js", "../../shipping/deliverySelectionHandler.js", "../../http/index.js", "../index.js", "node:crypto", "pg"]) {
+      for (const source of loadSources(target, "ts")) {
+        expect(await moduleMessages(config, source, filename)).toContainEqual(expect.stringContaining("pricing browser entry imports only"));
+      }
+    }
+    for (const file of ["pricing/browser/usesModule.ts", "pricing/usesModule.ts"]) {
+      const target = file.includes("browser/") ? "../../shipping/thresholdPolicy.js" : "../shipping/thresholdPolicy.js";
+      for (const source of loadSources(target, "ts")) {
+        expect(await moduleMessages(config, source, `packages/platform/src/${file}`)).toContainEqual(expect.stringContaining('packages/platform module "pricing"'));
+      }
+    }
+  });
+
   it("declares exactly the inventoried edges; only the composer may declare more", async () => {
     const { PLATFORM_MODULE_GRAPH: graph } = await import("../../eslint.config.js") as unknown as {
       PLATFORM_MODULE_GRAPH: Record<string, { values: string[]; types: string[] }>;

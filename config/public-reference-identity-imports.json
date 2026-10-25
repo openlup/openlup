@@ -100,6 +100,7 @@
     "packages/platform/dist/pricing/contracts/provenance.js",
     "packages/platform/dist/pricing/contracts/quote.js",
     "packages/platform/dist/pricing/quotePrimitives.js",
+    "packages/platform/dist/shipping/thresholdPolicy.js",
     "src/components/forms/fields/BaseTextField.tsx",
     "src/components/forms/fields/ConfirmPasswordField.tsx",
     "src/components/forms/fields/EmailField.tsx",
