@@ -551,6 +551,14 @@ privileges and complete catalogue installation are described in
 
 ## Compatibility posture
 
+M10-9 extends the reviewed forward registry to 18 approval pins, retaining
+exact 14/16-pin release-history reads and every existing binding and position.
+The two new managed fixtures admit donor-exact attempt replay and attributed
+advancement bytes through the bounded control checker; they install no migration,
+caller or runner. [Data and migrations](DATA_AND_MIGRATIONS.md#m10-9-attempt-replay-control-fixtures)
+owns their schema/backfill prerequisites and explicit mapping for adopters that
+already carry the donor history. The new fixtures add no C94 vocabulary counts.
+
 The invoicing reference capability is default-off and installs no routes or
 scheduler. Its seller migration entries are forward-only introductions of the
 approved fixtures; they preserve the preceding native manifest rows and hashes.

@@ -1,4 +1,5 @@
-import type { Pool } from "pg";
+import { createHash } from "node:crypto";
+import type { Pool, QueryResultRow } from "pg";
 import { expect } from "vitest";
 import { batchedFunctionDefinitions, sqlStatements, type BatchedForwardBinding } from "../../scripts/reviewed-platform-forward.js";
 
@@ -33,10 +34,52 @@ const additions = (before: unknown[], after: unknown[]) => {
 };
 const removed = (before: unknown[], after: unknown[]) => additions(after, before);
 
+// Expected backfill is computed from the pre-forward rows, never the candidate
+// UPDATEs. Ambiguous/missing evidence cannot acquire an attempt or cached result.
+function replayBackfill(before: BatchSnapshot) {
+  const data = structuredClone(before.data) as Record<string, QueryResultRow[]>;
+  const cases = data["public.subscription_dunning_cases"]!;
+  const receipts = data["public.commerce_idempotency_keys"]!;
+  const attempts = data["public.commerce_payment_attempts"]!;
+  const events = data["public.subscription_events"]!;
+  const tokens = data["public.subscription_payment_recovery_tokens"]!;
+  const attribution = (d: QueryResultRow, intent: string, rung: string) => [...new Set(events.filter(e =>
+    e.subscription_id === d.subscription_id && e.cycle_id === d.cycle_id &&
+    ["subscription.retry_scheduled", "subscription.payment_failed"].includes(e.event_type) &&
+    e.payload.source === "payment.control.v0" && e.payload.paymentIntentId === intent &&
+    String(e.payload.retryAttempt) === rung && attempts.some(a => a.id === e.payload.paymentAttemptId && a.payment_intent_id === intent)
+  ).map(e => e.payload.paymentAttemptId))];
+  for (const d of cases) {
+    d.failed_payment_attempt_id = null; d.failure_observation_result = null;
+    if (d.status !== "open") continue;
+    const ids = attribution(d, d.payment_intent_id, String(d.retry_attempt));
+    if (ids.length !== 1) continue;
+    d.failed_payment_attempt_id = ids[0];
+    const matching = receipts.filter(k => {
+      const r = k.response_payload?.subscriptionDunning;
+      return k.scope === "subscription.dunning.failure" && k.status === "completed" && r?.caseId === d.id &&
+        String(r.retryAttempt) === String(d.retry_attempt) && r.paymentIntentId === d.payment_intent_id &&
+        tokens.some(t => t.case_id === d.id && t.revoked_at === null && typeof r.recoveryUrlPath === "string" &&
+          t.token_hash === createHash("sha256").update(r.recoveryUrlPath.split("token=")[1] ?? "").digest("hex"));
+    }).sort((a,b) => a.created_at.localeCompare(b.created_at) || a.idempotency_key.localeCompare(b.idempotency_key));
+    d.failure_observation_result = matching[0]?.response_payload ?? null;
+  }
+  for (const k of receipts) {
+    if (k.scope !== "subscription.dunning.failure" || k.status !== "completed") continue;
+    const r = k.response_payload?.subscriptionDunning;
+    const d = cases.find(d => d.id === r?.caseId && d.status === "open");
+    if (!d) continue;
+    const ids = attribution(d, r.paymentIntentId, String(r.retryAttempt));
+    if (ids.length === 1) k.metadata = { ...k.metadata, failedPaymentAttemptId: ids[0] };
+  }
+  return data;
+}
+
 /** Independent catalog observer: expected identities come from reviewed pins,
  * actual statement effects come exclusively from PostgreSQL catalogs and rows. */
 export async function assertBatchCatalog(db: Pool, pin: BatchedForwardBinding, source: Buffer, before: BatchSnapshot, after: BatchSnapshot) {
   const statements = sqlStatements(source.toString());
+  const replay = pin.path === "supabase/migrations/20261025090000_subscription_dunning_attempt_replay.sql";
   const creates = pin.functions.filter(fn => fn.beforeSha256 === null);
   const replaces = pin.functions.filter(fn => fn.beforeSha256 !== null);
   const ids = new Map<string, number>();
@@ -85,6 +128,14 @@ export async function assertBatchCatalog(db: Pool, pin: BatchedForwardBinding, s
   const currentRelations = new Map(after.relations.map(row => [row.oid, row]));
   for (const row of before.relations) {
     const current = structuredClone(currentRelations.get(row.oid));
+    if (replay && row.name === "public.subscription_dunning_cases") {
+      const added = current.columns.filter((c: { attname: string }) => ["failed_payment_attempt_id", "failure_observation_result"].includes(c.attname));
+      expect(added.map((c: { attname: string; atttypid: number }) => [c.attname, Number(c.atttypid)])).toEqual([["failed_payment_attempt_id", 2950], ["failure_observation_result", 3802]]);
+      for (const column of added) expect(column).toMatchObject({ attnotnull: false, atthasdef: false, attgenerated: "", attidentity: "", attacl: null, attisdropped: false });
+      expect(current.attributes.relnatts).toBe(row.attributes.relnatts + 2);
+      current.columns = current.columns.filter((c: { attname: string }) => !added.some((a: { attname: string }) => a.attname === c.attname));
+      current.attributes.relnatts = row.attributes.relnatts;
+    }
     if (pin.path.endsWith("20261024160000_subscription_dunning_continuity.sql") && row.name === "public.subscription_cycles") {
       for (const column of current.columns) {
         const old = row.columns.find((item: { attnum: number }) => item.attnum === column.attnum);
@@ -119,9 +170,15 @@ export async function assertBatchCatalog(db: Pool, pin: BatchedForwardBinding, s
     expect(row.attributes.relrowsecurity).toBe(managed);
     expect(row.columns.filter((column: { attacl: unknown }) => column.attacl !== null)).toEqual([]);
   }
+  if (replay) {
+    const expected = replayBackfill(before);
+    // Row ordering may change when JSON gains columns/metadata; compare by value.
+    for (const [name, rows] of Object.entries(expected)) expect(after.data[name], name).toEqual(expect.arrayContaining(rows));
+    for (const [name, rows] of Object.entries(expected)) expect(after.data[name]?.length, name).toBe(rows.length);
+  }
   const changedTables = Object.keys(before.data).filter(name => !same(before.data[name], after.data[name]));
   const expectedChanged = pin.path.endsWith("20261024180000_subscription_stock_wait.sql") && pin.path.startsWith("supabase/") ? ["public.client_absorption_policy"] : pin.path.endsWith("20261024182000_subscription_lifecycle_message_scan.sql") ? ["public.comms_notification_controls"] : [];
-  expect(changedTables.sort()).toEqual(expectedChanged.sort());
+  if (!replay) expect(changedTables.sort()).toEqual(expectedChanged.sort());
   for (const name of expectedChanged) {
     expect(removed(before.data[name]!, after.data[name]!)).toEqual([]);
     const added = additions(before.data[name]!, after.data[name]!) as Record<string, unknown>[];
@@ -131,6 +188,22 @@ export async function assertBatchCatalog(db: Pool, pin: BatchedForwardBinding, s
   for (const table of newTables) expect(after.data[table]).toEqual([]);
   // Catalogs outside approved new-table dependencies and the one pinned function
   // comment must stay exact. No schema, policy, role, default grant or event hook.
+  const replayConstraints = replay ? additions(before.catalogs.pg_constraint!, after.catalogs.pg_constraint!) as Record<string, unknown>[] : [];
+  if (replay) {
+    expect(replayConstraints).toHaveLength(1);
+    const cases = after.relations.find(r => r.name === "public.subscription_dunning_cases")!;
+    const attempts = after.relations.find(r => r.name === "public.commerce_payment_attempts")!;
+    expect(replayConstraints[0]).toMatchObject({ conname: "subscription_dunning_cases_failed_attempt_fkey", contype: "f", convalidated: false,
+      conrelid: String(cases.oid), confrelid: String(attempts.oid), condeferrable: false, condeferred: false, confupdtype: "a", confdeltype: "a", confmatchtype: "s",
+      conkey: [cases.columns.find((c: { attname: string }) => c.attname === "failed_payment_attempt_id").attnum],
+      confkey: [attempts.columns.find((c: { attname: string }) => c.attname === "id").attnum] });
+    const triggers = additions(before.catalogs.pg_trigger!, after.catalogs.pg_trigger!) as Record<string, unknown>[];
+    expect(triggers).toHaveLength(4);
+    for (const trigger of triggers) {
+      expect(trigger).toMatchObject({ tgconstraint: replayConstraints[0]!.oid, tgisinternal: true, tgenabled: "O", tgdeferrable: false, tginitdeferred: false, tgnargs: 0, tgqual: null });
+      expect([cases.oid, attempts.oid]).toContain(Number(trigger.tgrelid));
+    }
+  }
   for (const [name, beforeRows] of Object.entries(before.catalogs)) {
     const afterRows = after.catalogs[name]!;
     if (name === "pg_description") {
@@ -148,9 +221,9 @@ export async function assertBatchCatalog(db: Pool, pin: BatchedForwardBinding, s
       expect(newTables.some(table => row.typname === table.split(".")[1] || row.typname === `_${table.split(".")[1]}`), `unexpected type ${JSON.stringify(row)}`).toBe(true);
       expect(row.typacl).toBeNull();
     }
-    else if (name === "pg_constraint") for (const row of added) expect(tableIds.has(Number(row.conrelid)), `unexpected constraint ${JSON.stringify(row)}`).toBe(true);
+    else if (name === "pg_constraint") for (const row of added) expect(replayConstraints.some(c => c.oid === row.oid) || tableIds.has(Number(row.conrelid)), `unexpected constraint ${JSON.stringify(row)}`).toBe(true);
     else if (name === "pg_index") for (const row of added) expect(tableIds.has(Number(row.indrelid)) || toastIds.has(Number(row.indrelid))).toBe(true);
-    else if (name === "pg_trigger") for (const row of added) expect(row.tgisinternal && (after.catalogs.pg_constraint! as Record<string, unknown>[]).some(item => item.oid === row.tgconstraint && tableIds.has(Number(item.conrelid))), `unexpected trigger ${JSON.stringify(row)}`).toBe(true);
+    else if (name === "pg_trigger") for (const row of added) expect(row.tgisinternal && (after.catalogs.pg_constraint! as Record<string, unknown>[]).some(item => item.oid === row.tgconstraint && (replayConstraints.some(c => c.oid === item.oid) || tableIds.has(Number(item.conrelid)))), `unexpected trigger ${JSON.stringify(row)}`).toBe(true);
     else expect(added, `${pin.path}: unexpected ${name}`).toEqual([]);
   }
 }

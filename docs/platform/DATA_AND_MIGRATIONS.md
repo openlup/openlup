@@ -327,14 +327,15 @@ new forward. Stopping new co-located PRs must retain release support for histori
 already admitted this way; reverting to parent-only approval would reject them.
 
 The separate `batchedForwards` list approves the frozen M10/F17 packet: seven
-native files and nine managed files (16 pins). It adds no installation-chain SQL. Exact
+native files and eleven managed files (18 pins). It adds no installation-chain SQL. Exact
 future bytes live only in [inert fixtures](../../scripts/fixtures/reviewed-m10/).
 The [registry](../../config/reviewed-platform-forwards.json) records each full
 path, SHA-256, ordered statement hash and exact function identity with raw
 before/after CREATE hashes. Non-function statements additionally carry their
 exact SQL, including every grant target, recipient, absorption row and seed.
 The checker fixes the ordered path/signature inventory separately from that data.
-Current candidates require all 16 pins. Release-history comparison also reads
+Current candidates require all 18 pins. Release-history comparison also reads
+the exact prior 16-pin set and
 the exact earlier 14-pin set (five native, then nine managed), preserving each
 unchanged approval's content and fixed shape position while pending pins move and native X/Y are added.
 Reordered, extra or unknown historical inventories refuse, and an approval added
@@ -362,7 +363,8 @@ order: native N1 (`20261022160000`) → N2 (`20261024170000`) → N3
 → X (`20261024184500`) → Y (`20261024184600`); managed M1
 (`20261024155000`) → M2 (`20261024160000`) → seam (`20261024175000`) → M3
 (`20261024180000`) → M4 (`20261024181000`) → M5 (`20261024182000`) → M6
-(`20261024184000`) → F17 helper (`20261024185000`) → F17 parity (`20261024185100`).
+(`20261024184000`) → F17 helper (`20261024185000`) → F17 parity (`20261024185100`)
+→ attempt replay (`20261025090000`) → attributed advancement (`20261025090100`).
 The pending pins follow the landed native `20261022195000` and managed
 `20261022195100` tails. N1 and the interleaved M08/M09 units keep their bytes,
 versions and ledger positions. X requires the allocator prefix.
@@ -432,6 +434,51 @@ Docker, PostgreSQL or pgTAP fails the required `test` aggregate; a lexical PASS
 cannot replace this gate. The managed setup budget includes its first image pull.
 These batch rules do not broaden the earlier #267, #295 or #300 classes.
 Coordinator control review and two fresh reviews remain separate delivery gates.
+
+### M10-9 attempt replay control fixtures
+
+The inert managed fixtures
+[attempt replay](../../scripts/fixtures/reviewed-m10/supabase/migrations/20261025090000_subscription_dunning_attempt_replay.sql)
+and [attributed advancement](../../scripts/fixtures/reviewed-m10/supabase/migrations/20261025090100_subscription_dunning_attributed_advance.sql)
+follow the exact managed tail `20261024185100`. Their donor provenance is
+`20261024195559_subscription_dunning_attempt_replay.sql` and
+`20261024221547_subscription_dunning_attributed_advance.sql` from the donor
+adopter at `3f525051e`. The registry binds all eleven before/after edges:
+nine definitions in the first fixture and two replacements in the second.
+The final nine raw CREATE hashes equal the donor's current statements, including
+comments within CREATE. Recovery redeem, retry scheduling, provider prepare and
+the M4 due reader are untouched; native attempt-replay parity remains REGISTERED.
+This control preparation installs neither SQL nor caller behavior on either rail.
+
+The first fixture adds nullable `failed_payment_attempt_id uuid` and
+`failure_observation_result jsonb` to `subscription_dunning_cases` and the
+NOT VALID FK to `commerce_payment_attempts(id)`. Two exact backfills attribute
+open cases and completed historical receipts only from unique applied events;
+a cached case result additionally needs its matching live token-linked receipt.
+Missing/conflicting attribution remains NULL. The checker fixes those four
+statement digests on this path and the six exact ACL statements: new public
+entrypoints are service-only and new inner helpers also revoke service access.
+No general UPDATE or DDL class is added. The second fixture replaces only the
+attributed inner failure and reconciliation bodies, retaining their ACLs.
+
+Legacy arities delegate with NULL attribution. Fresh eligible observations
+refuse 55000 without writes; an exact completed legacy receipt can replay.
+Attributed same/stale observations return the canonical response without case,
+token, notice, schedule or class changes; absent cache refuses
+`subscription_dunning_replay_unavailable`. A newer attributed rung may advance
+without a previous cache, revokes older used and unused authorizations and
+stores one new canonical response. Reconciliation catches only its five named
+attribution/cache refusals, preserving applied payment truth and sticky evidence.
+
+An adopter already carrying the donor history maps the schema, FK and backfill
+explicitly to its existing immutable donor migrations and proves its own current
+preimages. It never re-runs this backfill or forges an upstream migration identity:
+raw replay has duplicate-column preimages and can overwrite newer observations.
+A separately authorized host forward may restate the required functions and
+restore its exact private due reader last in one transaction. This control
+change supplies no host application, release, private-stock conversion or native
+parity claim. Rollback uses a compensating forward preserving attribution and
+revocations; it never resurrects old recovery authority.
 
 **Named bounded debt C94 — M10 reviewed packet vocabulary.** The frozen managed
 SQL retains provider nouns inherited from that rail. The neutrality baseline

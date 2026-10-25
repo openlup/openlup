@@ -1167,6 +1167,150 @@
           "sha256": "860d03694b1b0df024e30ae54b8109c59e74c76573676fd41bc77ad7862a1cf0"
         }
       ]
+    },
+    {
+      "path": "supabase/migrations/20261025090000_subscription_dunning_attempt_replay.sql",
+      "sha256": "915098c1a3f929b2d9ba26fa174275d1b00568a27bb701afd5e359edcc37a0fd",
+      "functions": [
+        {
+          "signature": "public.subscription_handle_payment_failure_dunning_before_cancel_fence(text,uuid,uuid,uuid,uuid,integer,timestamptz,text,timestamptz)",
+          "beforeSha256": "17b27d270ddbf5882d140bbb50d75853a1ab13be8d8eff73f0e68e9089f46d4b",
+          "afterSha256": "3e1554d2f919bbcc37615788fb977198ae25c60891326612a538c441239937df"
+        },
+        {
+          "signature": "public.subscription_handle_payment_failure_dunning(text,uuid,uuid,uuid,uuid,integer,timestamptz,text,timestamptz,text)",
+          "beforeSha256": "de08981f537daf905aae3323dd73bcba5bf521c66f4c230f3cae723bf80d6ebb",
+          "afterSha256": "d19558b3052a563cad6629ea0b0fea46ddeecfe839c6d6f82e3d9f1ea7d5e51c"
+        },
+        {
+          "signature": "public.subscription_open_dunning_before_sub_lock(text,uuid,text,text,timestamptz,text)",
+          "beforeSha256": "61eb1156905f4e088cbf8b1d73a516393fdf062ce88fd695ff6696d456eec456",
+          "afterSha256": "14fbbfbd2813f7d996367b59df05db370ecf369ef9e47155b349c4901a79394d"
+        },
+        {
+          "signature": "public.subscription_open_dunning_from_failed_payment_result(text,uuid,text,text,timestamptz,text)",
+          "beforeSha256": "11d43bcc4b7fba29bf440770311c234c9a7707453566fc6214df4365f87ed3a8",
+          "afterSha256": "1be6a8cde33d9dde09fb24b81051b70286f3c45881b2c476883a868010ac1c99"
+        },
+        {
+          "signature": "public.subscription_handle_payment_failure_dunning_before_cancel_fence(text,uuid,uuid,uuid,uuid,integer,timestamptz,text,timestamptz,uuid)",
+          "beforeSha256": null,
+          "afterSha256": "10e6bf056ccaa0783765935879e49fd66ef60af6e91d49e72be227a2fd28e59f"
+        },
+        {
+          "signature": "public.subscription_handle_payment_failure_dunning(text,uuid,uuid,uuid,uuid,integer,timestamptz,text,timestamptz,text,uuid)",
+          "beforeSha256": null,
+          "afterSha256": "f38c4b29309e4b8adb19bbad3f6cb98923085c5d36155198617192a854763d3a"
+        },
+        {
+          "signature": "public.subscription_open_dunning_before_sub_lock(text,uuid,text,text,timestamptz,text,uuid)",
+          "beforeSha256": null,
+          "afterSha256": "a41e7807a0af8745f058b43f92d168579b6d43aba35bbffb15b77c66d0213958"
+        },
+        {
+          "signature": "public.subscription_open_dunning_from_failed_payment_result(text,uuid,text,text,timestamptz,text,uuid)",
+          "beforeSha256": null,
+          "afterSha256": "b996729ced6dfaa970fdb1a3a2d915d9d09344bb6fa8288621187e06f3769de9"
+        },
+        {
+          "signature": "public.commerce_payment_control_apply_reconciliation_result(text,uuid,uuid,uuid,uuid,text,text,text,text,text,timestamptz,text,timestamptz,jsonb,text,text)",
+          "beforeSha256": "7432be59e1ce0b80cab71faf2f988517753cc86e39a8b95d0bba094d1939f93c",
+          "afterSha256": "f824c45644bd24230a8afedb79ea76b2c22bb47709169ad0bc2abc6753149199"
+        }
+      ],
+      "statements": [
+        {
+          "sha256": "a9c64efde021272fde97a37c765e9092a248e768ed46ca5761cb298455102ca7",
+          "sql": "ALTER TABLE public.subscription_dunning_cases\n  ADD COLUMN failed_payment_attempt_id uuid,\n  ADD COLUMN failure_observation_result jsonb;"
+        },
+        {
+          "sha256": "f9101fc9cdbbdac49442466a880a866169a3fce02c71bc40f8cc404d5837aa22",
+          "sql": "ALTER TABLE public.subscription_dunning_cases\n  ADD CONSTRAINT subscription_dunning_cases_failed_attempt_fkey\n  FOREIGN KEY (failed_payment_attempt_id) REFERENCES public.commerce_payment_attempts(id) NOT VALID;"
+        },
+        {
+          "sha256": "d2adfee2b00eb83f3d85f93ea99e3dc3b5acb78ba85445acfdd1629157e34126",
+          "sql": "WITH candidates AS (\n  SELECT d.id, min(event.payload ->> 'paymentAttemptId')::uuid AS attempt_id\n    FROM public.subscription_dunning_cases d\n    JOIN public.subscription_events event\n      ON event.subscription_id = d.subscription_id AND event.cycle_id = d.cycle_id\n    JOIN public.commerce_payment_attempts attempt\n      ON attempt.id::text = event.payload ->> 'paymentAttemptId'\n     AND attempt.payment_intent_id = d.payment_intent_id\n   WHERE d.status = 'open'\n     AND event.event_type IN ('subscription.retry_scheduled', 'subscription.payment_failed')\n     AND event.payload ->> 'source' = 'payment.control.v0'\n     AND event.payload ->> 'paymentIntentId' = d.payment_intent_id::text\n     AND event.payload ->> 'retryAttempt' = d.retry_attempt::text\n   GROUP BY d.id HAVING count(DISTINCT attempt.id) = 1\n), attributed AS (\n  SELECT c.*, receipt.response_payload\n    FROM candidates c\n    JOIN public.subscription_dunning_cases d ON d.id = c.id\n    LEFT JOIN LATERAL (\n      SELECT k.response_payload FROM public.commerce_idempotency_keys k\n       WHERE k.scope = 'subscription.dunning.failure' AND k.status = 'completed'\n         AND k.response_payload #>> '{subscriptionDunning,caseId}' = c.id::text\n         AND k.response_payload #>> '{subscriptionDunning,retryAttempt}' = d.retry_attempt::text\n         AND k.response_payload #>> '{subscriptionDunning,paymentIntentId}' = d.payment_intent_id::text\n         AND EXISTS (SELECT 1 FROM public.subscription_payment_recovery_tokens token\n           WHERE token.case_id = d.id AND token.revoked_at IS NULL\n             AND token.token_hash = encode(sha256(convert_to(split_part(\n               k.response_payload #>> '{subscriptionDunning,recoveryUrlPath}', 'token=', 2), 'UTF8')), 'hex'))\n       ORDER BY k.created_at, k.idempotency_key LIMIT 1\n    ) receipt ON true\n)\nUPDATE public.subscription_dunning_cases d\n   SET failed_payment_attempt_id = a.attempt_id,\n       failure_observation_result = a.response_payload\n  FROM attributed a WHERE d.id = a.id;"
+        },
+        {
+          "sha256": "11370721c06fe0d4a6bf9604f3365b768758d1157746769bdbd449c536475d2b",
+          "sql": "WITH receipt_attempts AS (\n  SELECT receipt.idempotency_key, min(attempt.id::text)::uuid AS attempt_id\n    FROM public.commerce_idempotency_keys receipt\n    JOIN public.subscription_dunning_cases d\n      ON d.id::text = receipt.response_payload #>> '{subscriptionDunning,caseId}'\n    JOIN public.subscription_events event\n      ON event.subscription_id = d.subscription_id AND event.cycle_id = d.cycle_id\n    JOIN public.commerce_payment_attempts attempt\n      ON attempt.id::text = event.payload ->> 'paymentAttemptId'\n     AND attempt.payment_intent_id::text = receipt.response_payload #>> '{subscriptionDunning,paymentIntentId}'\n   WHERE d.status = 'open' AND receipt.scope = 'subscription.dunning.failure' AND receipt.status = 'completed'\n     AND event.event_type IN ('subscription.retry_scheduled', 'subscription.payment_failed')\n     AND event.payload ->> 'source' = 'payment.control.v0'\n     AND event.payload ->> 'paymentIntentId' = receipt.response_payload #>> '{subscriptionDunning,paymentIntentId}'\n     AND event.payload ->> 'retryAttempt' = receipt.response_payload #>> '{subscriptionDunning,retryAttempt}'\n   GROUP BY receipt.idempotency_key HAVING count(DISTINCT attempt.id) = 1\n)\nUPDATE public.commerce_idempotency_keys receipt\n   SET metadata = receipt.metadata || jsonb_build_object('failedPaymentAttemptId', a.attempt_id)\n  FROM receipt_attempts a\n WHERE receipt.scope = 'subscription.dunning.failure' AND receipt.idempotency_key = a.idempotency_key;"
+        },
+        {
+          "sha256": "3e1554d2f919bbcc37615788fb977198ae25c60891326612a538c441239937df"
+        },
+        {
+          "sha256": "d19558b3052a563cad6629ea0b0fea46ddeecfe839c6d6f82e3d9f1ea7d5e51c"
+        },
+        {
+          "sha256": "14fbbfbd2813f7d996367b59df05db370ecf369ef9e47155b349c4901a79394d"
+        },
+        {
+          "sha256": "1be6a8cde33d9dde09fb24b81051b70286f3c45881b2c476883a868010ac1c99"
+        },
+        {
+          "sha256": "10e6bf056ccaa0783765935879e49fd66ef60af6e91d49e72be227a2fd28e59f"
+        },
+        {
+          "sha256": "f38c4b29309e4b8adb19bbad3f6cb98923085c5d36155198617192a854763d3a"
+        },
+        {
+          "sha256": "a41e7807a0af8745f058b43f92d168579b6d43aba35bbffb15b77c66d0213958"
+        },
+        {
+          "sha256": "b996729ced6dfaa970fdb1a3a2d915d9d09344bb6fa8288621187e06f3769de9"
+        },
+        {
+          "sha256": "f824c45644bd24230a8afedb79ea76b2c22bb47709169ad0bc2abc6753149199"
+        },
+        {
+          "sha256": "66805c2e5d750f3299bc5617b38cf1ebaf8d8683c809386eb4393e863a723e8f",
+          "sql": "REVOKE ALL ON FUNCTION public.subscription_handle_payment_failure_dunning_before_cancel_fence(text,uuid,uuid,uuid,uuid,integer,timestamptz,text,timestamptz,uuid) FROM PUBLIC, anon, authenticated, service_role;"
+        },
+        {
+          "sha256": "0acd3b73b52da6dfe42d8bb661a588cafc150fe3b5c88d1f9e55ba9dc92bb6da",
+          "sql": "REVOKE ALL ON FUNCTION public.subscription_open_dunning_before_sub_lock(text,uuid,text,text,timestamptz,text,uuid) FROM PUBLIC, anon, authenticated, service_role;"
+        },
+        {
+          "sha256": "f0cb9240d3d3e9f7455e49569bbe7d8f48a703cb62f6633c967eeefddd27c77b",
+          "sql": "REVOKE ALL ON FUNCTION public.subscription_handle_payment_failure_dunning(text,uuid,uuid,uuid,uuid,integer,timestamptz,text,timestamptz,text,uuid) FROM PUBLIC, anon, authenticated;"
+        },
+        {
+          "sha256": "77fe80c996871487b95dd2c6116fafa6f6a7a05d4699f1a4c9665abecb6f5fd6",
+          "sql": "GRANT EXECUTE ON FUNCTION public.subscription_handle_payment_failure_dunning(text,uuid,uuid,uuid,uuid,integer,timestamptz,text,timestamptz,text,uuid) TO service_role;"
+        },
+        {
+          "sha256": "3dfa92849c9baf1a93c5512a3916115ab27c8c4e9f9a28dcf440c5a09b321c31",
+          "sql": "REVOKE ALL ON FUNCTION public.subscription_open_dunning_from_failed_payment_result(text,uuid,text,text,timestamptz,text,uuid) FROM PUBLIC, anon, authenticated;"
+        },
+        {
+          "sha256": "152cd500f990dc0e30f5eea32f0e930b8228f447462524301f42321df85f10dd",
+          "sql": "GRANT EXECUTE ON FUNCTION public.subscription_open_dunning_from_failed_payment_result(text,uuid,text,text,timestamptz,text,uuid) TO service_role;"
+        }
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261025090100_subscription_dunning_attributed_advance.sql",
+      "sha256": "949eccbca296535e25d6ddcb1044dba4b133651562db7466ac8c6a2b6c20e2a7",
+      "functions": [
+        {
+          "signature": "public.subscription_handle_payment_failure_dunning_before_cancel_fence(text,uuid,uuid,uuid,uuid,integer,timestamptz,text,timestamptz,uuid)",
+          "beforeSha256": "10e6bf056ccaa0783765935879e49fd66ef60af6e91d49e72be227a2fd28e59f",
+          "afterSha256": "6c697857538d9cbb50b5d8ab71cc8f2664f03c3368c512c1e438ceb979fa05f9"
+        },
+        {
+          "signature": "public.commerce_payment_control_apply_reconciliation_result(text,uuid,uuid,uuid,uuid,text,text,text,text,text,timestamptz,text,timestamptz,jsonb,text,text)",
+          "beforeSha256": "f824c45644bd24230a8afedb79ea76b2c22bb47709169ad0bc2abc6753149199",
+          "afterSha256": "fb7e49316d843ee483dafae2b2dd2bb6b23f600ccd772d8a064c0a3ac24dceb1"
+        }
+      ],
+      "statements": [
+        {
+          "sha256": "6c697857538d9cbb50b5d8ab71cc8f2664f03c3368c512c1e438ceb979fa05f9"
+        },
+        {
+          "sha256": "fb7e49316d843ee483dafae2b2dd2bb6b23f600ccd772d8a064c0a3ac24dceb1"
+        }
+      ]
     }
   ]
 }

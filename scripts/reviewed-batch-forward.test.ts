@@ -89,7 +89,7 @@ describe.each(pins)("refusal plants: $path", pin => {
     const changed = structuredClone(pin);
     let sql = bytes(pin).toString("utf8");
     if (attack === "changed byte") sql += " ";
-    if (attack === "another path") changed.path = changed.path.replace("20261024", "20261023").replace("20261022", "20261023");
+    if (attack === "another path") changed.path = changed.path.replace(/202610(?:22|24|25)/u, "20261023");
     if (attack === "missing signature") changed.functions.pop();
     if (attack === "duplicate signature") changed.functions.push(changed.functions[0]!);
     if (attack === "extra signature") changed.functions.push({ ...changed.functions[0]!, signature: "public.unpinned()" });
@@ -149,7 +149,7 @@ it("preserves N1 historical 14-pin approval through the re-pin and separately ap
   const put = (path: string, value: Buffer | string) => { mkdirSync(dirname(join(folder, path)), { recursive: true }); writeFileSync(join(folder, path), value); };
   const commit = (message: string) => { git("add", "."); git("-c", "user.name=Control Test", "-c", "user.email=control@example.invalid", "-c", "commit.gpgsign=false", "commit", "-qm", message); return git("rev-parse", "HEAD"); };
   const historical = structuredClone(registry);
-  historical.batchedForwards = pins.filter(pin => !/20261024184[56]00/u.test(pin.path))
+  historical.batchedForwards = pins.slice(0, 16).filter(pin => !/20261024184[56]00/u.test(pin.path))
     .map(pin => ({ ...structuredClone(pin), path: pin.path.replace("20261024", "20261022") }));
   const historicalN2 = historical.batchedForwards[1]!;
   const oldN2 = bytes(pins[1]!).toString().replace("(r.command->'payload')-'acceptedQuoteHash'", "r.command->'payload'-'acceptedQuoteHash'")
@@ -568,4 +568,85 @@ it.each([
     const head = f.commit();
     expect(() => assertAppendOnlyMigrationHistory(f.root, base, head)).toThrow("non-increasing version");
   } finally { f.cleanup(); }
+});
+
+const replayPin = pins.find(pin => pin.path.includes("20261025090000"))!;
+it.each([
+  ["nullable column", "failed_payment_attempt_id uuid,", "failed_payment_attempt_id uuid NOT NULL,"],
+  ["validated FK", " NOT VALID;", ";"],
+  ["FK target", "REFERENCES public.commerce_payment_attempts(id)", "REFERENCES public.commerce_orders(id)"],
+  ["backfill attribution", "HAVING count(DISTINCT attempt.id) = 1", "HAVING count(DISTINCT attempt.id) >= 1"],
+  ["backfill scope", "WHERE d.status = 'open'", "WHERE d.status <> 'open'"],
+  ["private grant", "FROM PUBLIC, anon, authenticated, service_role;", "FROM PUBLIC, anon, authenticated;\nGRANT EXECUTE ON FUNCTION public.subscription_open_dunning_before_sub_lock(text,uuid,text,text,timestamptz,text,uuid) TO service_role;"],
+])("refuses fully repinned M10-9 %s drift", (_name, old, replacement) => {
+  const sql = bytes(replayPin).toString().replace(old, replacement);
+  expect(sql).not.toBe(bytes(replayPin).toString());
+  expect(() => assertBatchedForward(repin(replayPin, sql), Buffer.from(sql), prefix(replayPin))).toThrow(/reviewed batch/u);
+});
+it.each([
+  "UPDATE public.subscriptions SET next_cycle_at=now();",
+  "ALTER TABLE public.subscription_dunning_cases ADD COLUMN unadmitted uuid;",
+  "ALTER TABLE public.subscription_dunning_cases VALIDATE CONSTRAINT subscription_dunning_cases_failed_attempt_fkey;",
+  "REVOKE ALL ON FUNCTION public.subscription_open_dunning_before_sub_lock(text,uuid,text,text,timestamptz,text) FROM service_role;",
+])("refuses a repinned unadmitted M10-9 statement: %s", statement => {
+  const sql = bytes(replayPin).toString() + "\n" + statement;
+  expect(() => assertBatchedForward(repin(replayPin, sql), Buffer.from(sql), prefix(replayPin))).toThrow(/reviewed batch/u);
+});
+
+it("preserves exact 16-pin release history before the separate 18-pin control", () => {
+  const folder = mkdtempSync(join(tmpdir(), "openlup-m10-9-history-"));
+  const git = (...args: string[]) => execFileSync("git", ["-C", folder, ...args], { encoding: "utf8" }).trim();
+  const put = (path: string, value: Buffer | string) => { mkdirSync(dirname(join(folder, path)), { recursive: true }); writeFileSync(join(folder, path), value); };
+  const commit = () => { git("add", "."); git("-c", "user.name=Control Test", "-c", "user.email=control@example.invalid", "-c", "commit.gpgsign=false", "commit", "-qm", "Synthetic control"); return git("rev-parse", "HEAD"); };
+  try {
+    git("init", "--quiet");
+    const old = { ...registry, batchedForwards: pins.slice(0, 16) };
+    expect(() => readReviewedForwardRegistry(Buffer.from(JSON.stringify(old)))).toThrow(/exactly the approved forwards/u);
+    put("config/reviewed-platform-forwards.json", JSON.stringify(old));
+    const approval16 = commit();
+    put("config/reviewed-platform-forwards.json", registryBytes);
+    const approval18 = commit();
+    for (const pin of old.batchedForwards) expect(() => assertUnchangedForwardApproval(folder, approval16, approval18, pin.path)).not.toThrow();
+    // Removing/reordering old approvals or injecting an 18-pin prefix cannot
+    // reinterpret historical approval as a current or recognized old shape.
+    for (const attack of ["reorder", "truncate", "changed pin"] as const) {
+      git("reset", "--hard", approval16);
+      const mutated = structuredClone(old);
+      if (attack === "reorder") mutated.batchedForwards.reverse();
+      if (attack === "truncate") mutated.batchedForwards.pop();
+      if (attack === "changed pin") mutated.batchedForwards[0]!.sha256 = "0".repeat(64);
+      put("config/reviewed-platform-forwards.json", JSON.stringify(mutated));
+      const invalid = commit();
+      expect(() => assertUnchangedForwardApproval(folder, invalid, approval18, pins[0]!.path)).toThrow(/approved separately/u);
+    }
+  } finally { rmSync(folder, { recursive: true, force: true }); }
+});
+
+it("refuses co-location of the new M10-9 class with its admitting checker", () => {
+  const folder = mkdtempSync(join(tmpdir(), "openlup-m10-9-colocation-"));
+  const git = (...args: string[]) => execFileSync("git", ["-C", folder, ...args], { encoding: "utf8" }).trim();
+  const put = (path: string, value: Buffer | string) => { mkdirSync(dirname(join(folder, path)), { recursive: true }); writeFileSync(join(folder, path), value); };
+  const commit = () => { git("add", "."); git("-c", "user.name=Control Test", "-c", "user.email=control@example.invalid", "-c", "commit.gpgsign=false", "commit", "-qm", "Synthetic control"); return git("rev-parse", "HEAD"); };
+  try {
+    git("init", "--quiet");
+    put("config/reviewed-platform-forwards.json", JSON.stringify({ ...registry, batchedForwards: pins.slice(0,16) }));
+    put("scripts/reviewed-platform-forward.ts", "Prior trusted checker");
+    const base = commit();
+    put("config/reviewed-platform-forwards.json", registryBytes);
+    put("scripts/reviewed-platform-forward.ts", readFileSync("scripts/reviewed-platform-forward.ts"));
+    const control = commit();
+    expect(() => assertCoLocatedForwardApproval(folder,base,control)).not.toThrow();
+    for (const pin of pins.slice(16)) put(pin.path,bytes(pin));
+    const coLocated = commit();
+    expect(() => assertCoLocatedForwardApproval(folder,base,coLocated)).toThrow("reviewed replacement admission machinery must be approved separately before co-located SQL/pins");
+  } finally { rmSync(folder, { recursive: true, force: true }); }
+});
+
+it.each(["missing", "duplicate", "reordered"])("refuses a repinned %s M10-9 prerequisite inventory", attack => {
+  const statements = sqlStatements(bytes(replayPin).toString());
+  if (attack === "missing") statements.splice(2,1);
+  if (attack === "duplicate") statements.splice(2,0,statements[2]!);
+  if (attack === "reordered") [statements[2],statements[3]] = [statements[3]!,statements[2]!];
+  const sql = statements.join("\n");
+  expect(() => assertBatchedForward(repin(replayPin,sql),Buffer.from(sql),prefix(replayPin))).toThrow(/ordered prerequisite\/ACL inventory drifted/u);
 });

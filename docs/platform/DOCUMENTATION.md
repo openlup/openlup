@@ -77,7 +77,7 @@ untracked test alone cannot establish complete publication evidence.
 
 The M10 control re-pin moves pending inert fixtures to `20261024`, adds native
 X/Y, and folds preview replay into N2 under `scripts/fixtures/reviewed-m10/`.
-The migration guide owns the exact 16-pin inventory and payment/stock/preview purpose; contributor checks own their
+The migration guide owns the exact 18-pin inventory (with historical 14/16-pin reads) and payment/stock/preview purpose; contributor checks own their
 same-rail landing order and real PostgreSQL witnesses. Generated navigation
 lists these control inputs without admitting them to an installation manifest
 or establishing activation, package publication or managed parity.
