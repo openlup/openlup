@@ -630,10 +630,14 @@ atomicity or active-subscription preservation.
 The physical-table availability projection also lives at commerce/server over a
 structural query client and a required host provider predicate. Its pure ladder
 is browser-safe commerce; SDK narrowing stays in the reference adapter. The
-reference reservation allocator imports M06's policy, retaining scoped lock-error
+physical port and any host `functionMissingFallback` are separate capabilities
+without the ATP guarantee: they do not subtract due subscription demand or
+channel exposure.
+The reference reservation allocator imports M06's policy, retaining scoped lock-error
 translation and original retry keys locally. The existing M06 normalized read
-composition remains the only selected stock-read seam; this move does not bind
-the separate native reader or switch private preview transport.
+composition passes its selected port through unchanged; PostgreSQL binds the
+native ATP reader when the host supplies `stockSourceKey`. Private preview
+transport remains host-owned.
 
 Effective bundle selection reuses pricing's half-open authority through its
 public server entry, adding the catalog → pricing value edge. The dependency is
@@ -652,8 +656,9 @@ structural query client and a required host provider predicate. Its pure ladder
 is browser-safe commerce; SDK narrowing stays in the reference adapter. The
 reference reservation allocator imports M06's policy, retaining scoped lock-error
 translation and original retry keys locally. The existing M06 normalized read
-composition remains the only selected stock-read seam; this move does not bind
-the separate native reader or switch private preview transport.
+composition passes its selected port through unchanged; PostgreSQL binds the
+native ATP reader when the host supplies `stockSourceKey`. Private preview
+transport remains host-owned.
 
 Effective bundle selection alone adds the pricing value edge described above;
 there is no promotions edge. Reference wrappers bind

@@ -31,15 +31,15 @@ it("selects one executor/store and validates the exact injected provider on read
   expect(createInventoryBindings({ dataKind: "postgres", provider: { ...provider, stockMasterProvider: "other" }, executor }).readiness.reason).toBe("inventory_provider_mismatch");
 });
 
-it("refuses missing/incompatible stores and required native new-purchase reads through readiness", async () => {
+it("refuses missing/incompatible stores and a required native reader without a source key", async () => {
   expect(createInventoryBindings({ dataKind: "postgres", provider }).readiness.reason).toBe("inventory_executor_required");
   expect(createInventoryBindings({ dataKind: "supabase", provider }).readiness.reason).toBe("inventory_managed_store_required");
   expect(createInventoryBindings({ dataKind: "unknown", provider }).readiness.reason).toBe("inventory_store_incompatible");
   expect(createInventoryBindings({ dataKind: "supabase", provider, createManagedStore: () => ({ readPort: {}, mutationPort: {} }) as never }).readiness.reason).toBe("inventory_store_incompatible");
   const binding = createM06InventoryReferenceBinding({ store: { dataKind: "postgres", executor }, version: "0.17.0", requiredSchema: { version: "complete", migration: "complete", objects: [] }, bundleCatalogReadPort: {} as never,
     stock: { functionMissingFallback: null, functionMissingError: "missing", defaultLowStockThreshold: 20, defaultHorizonDays: 60, observe: { warn: vi.fn() } }, options: { mode: "new_purchase" }, requireNewPurchaseStockRead: true });
-  expect(binding.unsupported.newPurchaseStockRead).toBe("inventory_native_new_purchase_stock_read_unsupported");
-  expect(binding.readiness).toEqual({ ready: false, reason: "inventory_native_new_purchase_stock_read_unsupported" });
+  expect(binding.unsupported.newPurchaseStockRead).toBe("inventory_stock_source_key_required");
+  expect(binding.readiness).toEqual({ ready: false, reason: "inventory_stock_source_key_required" });
   expect(binding.stock).toBeNull();
   expect(binding.availability).toBeNull();
   const input: ReadinessInput = {
@@ -66,10 +66,46 @@ it("K2c composes the selected M06 reader into the existing reference stock port 
   expect(read.mock.calls).toEqual([[{ skus: ["ITEM-A"], horizonDays: 14, excludeOrderId: null }]]);
 });
 
-it("keeps the native binding refusal despite the separate SQL stock-read seam", () => {
+it("keeps the native binding refusal without a source key despite the separate SQL stock-read seam", () => {
   const read = vi.fn<NewPurchaseStockReadPort["read"]>();
   const binding = createInventoryBindings({ dataKind: "postgres", provider: { stockMasterProvider: "stock-source", providerSchema: z.literal("stock-source") }, executor: { query: async () => ({ rows: [] }) }, newPurchaseStockReadPort: { read } });
   expect(binding.newPurchaseStockReadPort).toBeNull();
-  expect(binding.unsupported.newPurchaseStockRead).toBe("inventory_native_new_purchase_stock_read_unsupported");
+  expect(binding.unsupported.newPurchaseStockRead).toBe("inventory_stock_source_key_required");
   expect(read).not.toHaveBeenCalled();
+});
+
+it.each([undefined, "", "   "])("keeps admin reads ready but names the missing stock source: %s", stockSourceKey => {
+  const injected = { read: vi.fn() };
+  const binding = createInventoryBindings({ dataKind: "postgres", provider, executor, stockSourceKey, newPurchaseStockReadPort: injected });
+  expect(binding.readiness).toEqual({ ready: true, reason: null });
+  expect(binding.newPurchaseStockReadPort).toBeNull();
+  expect(binding.unsupported.newPurchaseStockRead).toBe("inventory_stock_source_key_required");
+  expect(injected.read).not.toHaveBeenCalled();
+});
+
+it("passes the native source and clock through the single reference binding", async () => {
+  const query = vi.fn(async () => ({ rows: [{ response: [] }] }));
+  const injected = { read: vi.fn() };
+  const now = () => new Date(0).toISOString();
+  const binding = createM06InventoryReferenceBinding({ store: { dataKind: "postgres", executor: { query }, stockSourceKey: "EXAMPLE-source", now, newPurchaseStockReadPort: injected },
+    version: "0.25.0", requiredSchema: { version: "complete", migration: "complete", objects: [] }, bundleCatalogReadPort: {} as never,
+    stock: { functionMissingFallback: null, functionMissingError: "missing", defaultLowStockThreshold: 20, defaultHorizonDays: 14, observe: { warn: vi.fn() } },
+    options: { mode: "new_purchase" }, requireNewPurchaseStockRead: true });
+  expect(binding.readiness).toEqual({ ready: true, reason: null });
+  expect(binding.unsupported.newPurchaseStockRead).toBeNull();
+  expect(binding.stock).not.toBeNull();
+  expect(binding.availability).not.toBeNull();
+  expect(binding.ports["@openlup/platform/inventory:newPurchaseStockRead"]).toBe(binding.newPurchaseStockReadPort!.read);
+  await binding.stock!.getAvailability({ items: [{ sku: "SKU-EXAMPLE", productSlug: "example", variantId: "example", requestedQuantity: 1, checkoutMode: "one_time" }] });
+  expect(query).toHaveBeenCalledExactlyOnceWith(expect.stringContaining("public.inventory_new_purchase_stock_read("), ["EXAMPLE-source", '["SKU-EXAMPLE"]', now()]);
+  expect(injected.read).not.toHaveBeenCalled();
+});
+
+it("leaves managed reader selection and its named refusal unchanged", () => {
+  const store = native();
+  const deps = { dataKind: "supabase", provider, stockSourceKey: "EXAMPLE-unused", createManagedStore: () => ({ readPort: store.readPort!, mutationPort: store.mutationPort! }) };
+  const supplied = { read: vi.fn() };
+  expect(createInventoryBindings({ ...deps, newPurchaseStockReadPort: supplied }).newPurchaseStockReadPort).toBe(supplied);
+  expect(createInventoryBindings({ ...deps, newPurchaseStockReadPort: supplied }).unsupported.newPurchaseStockRead).toBeNull();
+  expect(createInventoryBindings(deps).unsupported.newPurchaseStockRead).toBe("inventory_new_purchase_stock_reader_required");
 });

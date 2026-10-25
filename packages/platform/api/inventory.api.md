@@ -45,6 +45,7 @@ export interface InventoryBindingDependencies {
         mutationPort: InventoryMutationPort;
     } | null;
     newPurchaseStockReadPort?: NewPurchaseStockReadPort | null;
+    stockSourceKey?: string;
     now?: () => string;
 }
 export interface InventoryBindings {

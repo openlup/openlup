@@ -6822,6 +6822,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/inventory/newPurchaseStockConformance.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/inventory/postgresStockAvailability.test.ts",
       "class": "public-output"
     },
@@ -24819,6 +24823,10 @@
     },
     {
       "path": "tests/postgres/m05CatalogComposition.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/newPurchaseStockNative.test.ts",
       "class": "public-output"
     },
     {

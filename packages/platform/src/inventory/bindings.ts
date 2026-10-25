@@ -2,6 +2,7 @@ import type { z } from "zod";
 import { createPostgresAdminInventoryPort } from "./adminInventory.js";
 import type { InventoryMutationPort, InventoryReadPort } from "./ports.js";
 import type { NewPurchaseStockReadPort } from "./newPurchaseStockAvailability.js";
+import { createPostgresStockAvailability } from "./postgresStockAvailability.js";
 import { createInventorySubscriptionForecastResponseSchema } from "./schemas.js";
 
 export interface InventoryBindingDependencies {
@@ -12,6 +13,7 @@ export interface InventoryBindingDependencies {
     readPort: InventoryReadPort; mutationPort: InventoryMutationPort;
   } | null;
   newPurchaseStockReadPort?: NewPurchaseStockReadPort | null;
+  stockSourceKey?: string;
   now?: () => string;
 }
 
@@ -31,18 +33,21 @@ export function createInventoryBindings(deps: InventoryBindingDependencies): Inv
   });
   if (!deps.provider?.providerSchema?.safeParse(deps.provider.stockMasterProvider).success) return refused("inventory_provider_mismatch");
   let readPort: InventoryReadPort, mutationPort: InventoryMutationPort;
+  let stockRead: NewPurchaseStockReadPort | null | undefined;
   if (deps.dataKind === "postgres") {
     if (!deps.executor || typeof deps.executor.query !== "function") return refused("inventory_executor_required");
     readPort = mutationPort = createPostgresAdminInventoryPort(deps.executor, deps.provider, deps.now);
+    stockRead = deps.stockSourceKey?.trim()
+      ? createPostgresStockAvailability(deps.executor, { sourceKey: deps.stockSourceKey, now: deps.now ?? (() => new Date().toISOString()) }).readPort
+      : null;
   } else if (deps.dataKind === "supabase") {
     const store = deps.createManagedStore?.(deps.provider);
     if (!store) return refused("inventory_managed_store_required");
     ({ readPort, mutationPort } = store);
+    stockRead = deps.newPurchaseStockReadPort;
   } else return refused("inventory_store_incompatible");
   if (![readPort?.listStock, readPort?.listReservations, readPort?.checkAtp, readPort?.forecastSubscriptions, mutationPort?.adjustStock].every(fn => typeof fn === "function")) return refused("inventory_store_incompatible");
   const responseSchema = createInventorySubscriptionForecastResponseSchema(deps.provider.providerSchema);
-  const native = deps.dataKind === "postgres";
-  const stockRead = native ? null : deps.newPurchaseStockReadPort;
   const newPurchaseStockReadPort = typeof stockRead?.read === "function" ? stockRead : null;
   return {
     readPort: {
@@ -54,8 +59,8 @@ export function createInventoryBindings(deps: InventoryBindingDependencies): Inv
     mutationPort, newPurchaseStockReadPort,
     readiness: { ready: true, reason: null },
     unsupported: {
-      newPurchaseStockRead: native ? "inventory_native_new_purchase_stock_read_unsupported"
-        : newPurchaseStockReadPort ? null : "inventory_new_purchase_stock_reader_required",
+      newPurchaseStockRead: newPurchaseStockReadPort ? null : deps.dataKind === "postgres"
+        ? "inventory_stock_source_key_required" : "inventory_new_purchase_stock_reader_required",
     },
   };
 }
