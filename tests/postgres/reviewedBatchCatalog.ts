@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import type { Pool, QueryResultRow } from "pg";
+import { Client, type Pool, type QueryResultRow } from "pg";
 import { expect } from "vitest";
 import { batchedFunctionDefinitions, sqlStatements, type BatchedForwardBinding } from "../../scripts/reviewed-platform-forward.js";
 
@@ -102,9 +102,9 @@ export async function assertBatchCatalog(db: Pool, pin: BatchedForwardBinding, s
     const body = /\bAS (\$[a-z_0-9]*\$)([\s\S]*)\1;$/iu.exec(statement);
     expect(body, `${fn.signature} raw body`).not.toBeNull();
     expect(row.prosrc).toBe(body![2]);
-    if (fn.beforeSha256 === null) {
+    {
       expect(row.attributes.prosecdef).toBe(/\bSECURITY DEFINER\b/u.test(statement.slice(0, body!.index)));
-      const config = /SET search_path\s*=\s*([a-z_, ]+)\s+AS/u.exec(statement)?.[1]?.split(",").map(value => value.trim()).join(", ");
+      const config = /SET search_path\s*(?:=|TO)\s*([a-z_, '\n]+)\s+AS/u.exec(statement)?.[1]?.split(",").map(value => value.trim().replaceAll("'", "")).join(", ");
       expect(row.attributes.proconfig).toEqual([`search_path=${config}`]);
     }
   }
@@ -241,4 +241,173 @@ export function assertSameSnapshot(before: BatchSnapshot, after: BatchSnapshot):
     if (!same(before[kind][key],after[kind][key])) deltas[`${kind}:${key}`] = { removed:removed(before[kind][key]??[],after[kind][key]??[]),added:additions(before[kind][key]??[],after[kind][key]??[]) };
   }
   expect(deltas).toEqual({});
+}
+
+/** Shared real finalize matrix for catalog and workspace behavior proofs. Caller owns rollback. */
+export async function assertManagedAcquisition(db: Pick<Pool, "query">, connectionString: string) {
+  // Exercise the real finalize/admission/creation closure with retained
+  // snapshots and synthetic rows; no reader or creation function is stubbed.
+  await db.query(`INSERT INTO public.commerce_settings(key,value_text)
+    VALUES ('settlement_region','ZZ'),('settlement_currency','XXX')
+    ON CONFLICT (key) DO UPDATE SET value_text=excluded.value_text`);
+  const clientId = (await db.query("INSERT INTO public.clients(email) VALUES ('m11-check@example.invalid') RETURNING id")).rows[0].id;
+  const addressId = (await db.query(`INSERT INTO public.addresses(client_id,kind,line1,city,postal_code,country)
+    VALUES ($1,'shipping','Synthetic 1','Synthetic','00000','ZZ') RETURNING id`, [clientId])).rows[0].id;
+  const productId = (await db.query(`INSERT INTO public.catalog_products(slug,name,status)
+    VALUES ('m11-synthetic','Synthetic','active') RETURNING id`)).rows[0].id;
+  await db.query(`INSERT INTO public.catalog_skus(product_id,sku,title,pet_type,net_weight_g,kcal_per_unit,status)
+    VALUES ($1,'M11-SYNTHETIC','Synthetic','other',1,1,'active')`, [productId]);
+  const draft = { items: [{ sku: "M11-SYNTHETIC", quantity: 1 }] };
+  const quote = (terms?: Record<string, unknown>) => ({ quote: {
+    context: { mode: "subscription", cadenceDays: 14, ...(terms ? {
+      acquisitionTerms: terms,
+      pricingPolicy: { offerPolicyVersion: "commerce.offer-policy.v2", promotionEngineVersion: "promotion-engine.v2" },
+    } : {}) }, discounts: [], lines: [],
+  } });
+  const newOrder = async (snapshot: unknown) => {
+    const id = (await db.query(`INSERT INTO public.commerce_orders(client_id,currency,region_code,status,subtotal_cents,total_cents,metadata)
+      VALUES ($1,'XXX','ZZ','draft',1000,1000,jsonb_build_object('quoteSnapshot',$2::jsonb,'orderDraftSnapshot',$3::jsonb))
+      RETURNING id`, [clientId, snapshot, draft])).rows[0].id;
+    await db.query(`INSERT INTO public.commerce_order_items(order_id,quantity,unit_price_cents,total_cents,
+      discount_allocated_cents,effective_total_cents,effective_net_cents,vat_rate_bps,allocation_ordinal,product_snapshot)
+      VALUES ($1,1,1000,1000,0,1000,1000,0,1,'{"sku":"M11-SYNTHETIC"}')`, [id]);
+    return id as string;
+  };
+  const finalize = async (id: string, key: string, snapshot: unknown, mode = "subscription_cycle") =>
+    (await db.query(`SELECT public.commerce_finalize_order_for_checkout($1,$2,$3,$4,$5,NULL,$6,$7,
+      '{"checkoutCommandVersion":"commerce.checkout_command.v1"}') AS result`,
+    [key, id, mode, clientId, addressId, snapshot, draft])).rows[0].result.finalizedOrder;
+  const counts = async () => (await db.query(`SELECT
+    (SELECT count(*) FROM public.subscriptions)::int AS subscriptions,
+    (SELECT count(*) FROM public.subscription_cycles)::int AS cycles,
+    (SELECT count(*) FROM public.commerce_idempotency_keys WHERE scope='commerce.checkout_order_finalize')::int AS keys`)).rows[0];
+  const acquisitionEffects = async () => {
+    const state: Record<string, unknown> = {};
+    const tables = (await db.query("SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY tablename")).rows;
+    for (const { tablename } of tables) {
+      const name = String(tablename).replaceAll('"', '""');
+      // xmin alone cannot see a same-value update inside this transaction;
+      // ctid changes even when both columns and the transaction ID stay equal.
+      state[tablename] = (await db.query(`SELECT COALESCE(jsonb_agg(jsonb_build_object(
+        'columns',to_jsonb(t),'xmin',t.xmin::text,'ctid',t.ctid::text)
+        ORDER BY to_jsonb(t)::text,t.ctid),'[]'::jsonb) rows FROM public."${name}" t`)).rows[0];
+    }
+    return state;
+  };
+  const refuse = async (work: () => Promise<unknown>, code: string, message: string) => {
+    // Snapshots are saved before this boundary. Only the finalize statement
+    // is inside the savepoint needed to recover from a PostgreSQL exception.
+    const before = await acquisitionEffects();
+    await db.query("SAVEPOINT acquisition_refusal");
+    await expect(work()).rejects.toMatchObject({ code, message: expect.stringContaining(message) });
+    await db.query("ROLLBACK TO acquisition_refusal; RELEASE SAVEPOINT acquisition_refusal");
+    // Compare every public row, including order/items, subscriptions, cycles
+    // and idempotency rows; counts alone would miss an order mutation.
+    expect(await acquisitionEffects()).toEqual(before);
+  };
+  const created = async (result: { subscriptionId: string; subscriptionCycleId: string; replayed: boolean }, before: Awaited<ReturnType<typeof counts>>) => {
+    expect(result).toMatchObject({ subscriptionId: expect.any(String), subscriptionCycleId: expect.any(String), replayed: false });
+    expect(await counts()).toEqual({ subscriptions: before.subscriptions + 1, cycles: before.cycles + 1, keys: before.keys + 1 });
+    expect((await db.query(`SELECT s.status,c.status AS cycle_status FROM public.subscriptions s
+      JOIN public.subscription_cycles c ON c.subscription_id=s.id WHERE s.id=$1 AND c.id=$2`,
+    [result.subscriptionId, result.subscriptionCycleId])).rows).toEqual([{ status: "pending_activation", cycle_status: "payment_pending" }]);
+  };
+
+  // No configured policy: the reader refuses, while compatibility admission
+  // permits exactly one subscription/cycle and retains exact finalize replay.
+  expect((await db.query("SELECT count(*)::int AS n FROM public.promotions")).rows[0].n).toBe(0);
+  await refuse(() => db.query("SELECT public.commerce_subscription_acquisition_terms(clock_timestamp())"), "55000", "acquisition_terms_not_effective");
+  const noPolicyQuote = quote(), noPolicyOrder = await newOrder(noPolicyQuote);
+  const observerBefore = await acquisitionEffects();
+  await db.query("SAVEPOINT acquisition_observer");
+  await db.query("UPDATE public.commerce_orders SET status=status WHERE id=$1", [noPolicyOrder]);
+  const firstWrite = await acquisitionEffects();
+  expect(firstWrite).not.toEqual(observerBefore);
+  await db.query("UPDATE public.commerce_orders SET status=status WHERE id=$1", [noPolicyOrder]);
+  expect(await acquisitionEffects()).not.toEqual(firstWrite);
+  await db.query("ROLLBACK TO acquisition_observer; RELEASE SAVEPOINT acquisition_observer");
+  expect(await acquisitionEffects()).toEqual(observerBefore);
+  const writer = new Client({ connectionString: connectionString, connectionTimeoutMillis: 5_000, query_timeout: 5_000 });
+  await writer.connect();
+  try {
+    // The independent writer holds the real policy key. lock_timeout bounds
+    // the refusal without relying on sleeps or a concurrent query winning a race.
+    await writer.query("BEGIN; SELECT pg_advisory_xact_lock(hashtextextended('commerce.subscription_acquisition',0))");
+    await db.query("SET LOCAL lock_timeout='500ms'");
+    await refuse(() => finalize(noPolicyOrder, "m11-no-policy", noPolicyQuote), "55P03", "lock timeout");
+    await writer.query("ROLLBACK");
+    await db.query("SET LOCAL lock_timeout='0'");
+    const before = await counts();
+    const original = await finalize(noPolicyOrder, "m11-no-policy", noPolicyQuote);
+    await created(original, before);
+    const replayBefore = await acquisitionEffects();
+    expect(await finalize(noPolicyOrder, "m11-no-policy", noPolicyQuote)).toEqual({ ...original, replayed: true });
+    expect(await acquisitionEffects()).toEqual(replayBefore);
+    await writer.query("BEGIN");
+    expect((await writer.query("SELECT pg_try_advisory_xact_lock_shared(hashtextextended('commerce.subscription_acquisition',0)) AS acquired")).rows[0].acquired).toBe(true);
+    expect((await writer.query("SELECT pg_try_advisory_xact_lock(hashtextextended('commerce.subscription_acquisition',0)) AS acquired")).rows[0].acquired).toBe(false);
+  } finally {
+    await writer.query("ROLLBACK");
+    await writer.end();
+  }
+
+  // Configure policy under the same exclusive writer protocol. The saved
+  // terms come from the actual reader, not a hand-built expected payload.
+  await db.query("SELECT pg_advisory_xact_lock(hashtextextended('commerce.subscription_acquisition',0))");
+  await db.query(`INSERT INTO public.promotions(name,trigger_type,discount_type,discount_value,applies_to_kind,
+    applies_to_payload,stacking_rule,eligibility,valid_from,redemption_limit_per_customer,region_availability,
+    status,promotion_engine_version,benefit_lane,benefit_kind,benefit_value_bps)
+    VALUES ('Synthetic acquisition','automatic','percentage',37,'order_total',
+      '{"cart_mode":"subscription","acquisitionTerms":{"schemaVersion":"subscription-acquisition.v1","revision":"m11-synthetic","delivery2DiscountBps":1700}}',
+      'exclusive','{"first_subscription_purchase":true}','2000-01-01T00:00:00Z',1,ARRAY['ZZ'],
+      'active','promotion-engine.v2','product','target_percentage',3700)`);
+  const readTerms = async () => {
+    const selection = (await db.query("SELECT public.commerce_subscription_acquisition_terms(clock_timestamp()) AS terms")).rows[0].terms;
+    expect(selection).toMatchObject({ kind: "v2_standalone", initialDiscountBps: 3700 });
+    return Object.fromEntries(Object.entries(selection).filter(([key]) => !["kind", "legacyPairCount", "standaloneCount", "nextBoundaryAt"].includes(key)));
+  };
+  const terms = await readTerms();
+  const wrongEngine = quote(terms);
+  // Use a coherent v1 pair so offer-policy validation does not mask the
+  // admission-specific engine mismatch.
+  wrongEngine.quote.context.pricingPolicy = { offerPolicyVersion: "commerce.offer-policy.v1", promotionEngineVersion: "promotion-engine.v1" };
+  for (const [name, snapshot] of [
+    ["missing", quote()], ["stale", quote({ ...terms, revision: "stale" })], ["engine", wrongEngine],
+  ] as const) {
+    const id = await newOrder(snapshot);
+    await refuse(() => finalize(id, `m11-policy-${name}`, snapshot), "55000", "acquisition_terms_changed");
+  }
+  // Removing admission must make the same atomic-refusal witness fail.
+  const unguardedQuote = quote(), unguardedOrder = await newOrder(unguardedQuote);
+  await db.query("SAVEPOINT acquisition_mutant");
+  try {
+    const definition = (await db.query("SELECT pg_get_functiondef('private.commerce_assert_acquisition_admission(jsonb,uuid)'::regprocedure) definition")).rows[0].definition;
+    const mutant = definition.replace(/AS (\$[a-z_0-9]*\$)[\s\S]*\1/u, () => "AS $$ BEGIN RETURN; END; $$");
+    expect(mutant).not.toBe(definition);
+    await db.query(mutant);
+    await expect(refuse(() => finalize(unguardedOrder, "m11-admission-mutant", unguardedQuote), "55000", "acquisition_terms_changed"))
+      .rejects.toMatchObject({ name: "AssertionError" });
+  } finally { await db.query("ROLLBACK TO acquisition_mutant; RELEASE SAVEPOINT acquisition_mutant"); }
+  const retainedQuote = quote(terms), policyOrder = await newOrder(retainedQuote);
+  const beforePolicy = await counts();
+  const configured = await finalize(policyOrder, "m11-policy-exact", retainedQuote);
+  await created(configured, beforePolicy);
+  await db.query(`UPDATE public.promotions SET applies_to_payload=jsonb_set(applies_to_payload,'{acquisitionTerms,revision}','"m11-revised"')
+    WHERE applies_to_payload #>> '{acquisitionTerms,revision}'='m11-synthetic'`);
+  const replayBefore = await acquisitionEffects();
+  expect(await finalize(policyOrder, "m11-policy-exact", retainedQuote)).toEqual({ ...configured, replayed: true });
+  expect(await acquisitionEffects()).toEqual(replayBefore);
+  const changedOrder = await newOrder(retainedQuote);
+  await refuse(() => finalize(changedOrder, "m11-policy-changed", retainedQuote), "55000", "acquisition_terms_changed");
+  const currentQuote = quote(await readTerms()), currentOrder = await newOrder(currentQuote);
+  const beforeCurrent = await counts();
+  await created(await finalize(currentOrder, "m11-policy-current", currentQuote), beforeCurrent);
+
+  const oneTimeQuote = { quote: { context: { mode: "one_time" }, lines: [], discounts: [] } };
+  const oneTimeOrder = await newOrder(oneTimeQuote), beforeOneTime = await counts();
+  expect(await finalize(oneTimeOrder, "m11-one-time", oneTimeQuote, "one_time"))
+    .toMatchObject({ orderId: oneTimeOrder, mode: "one_time", subscriptionId: null, subscriptionCycleId: null, replayed: false });
+  expect(await counts()).toEqual({ ...beforeOneTime, keys: beforeOneTime.keys + 1 });
+  expect((await db.query("SELECT mode,subscription_id,subscription_cycle_id FROM public.commerce_orders WHERE id=$1", [oneTimeOrder])).rows)
+    .toEqual([{ mode: "one_time", subscription_id: null, subscription_cycle_id: null }]);
 }

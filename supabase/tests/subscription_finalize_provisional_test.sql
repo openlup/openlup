@@ -11,6 +11,9 @@
 -- Run via: supabase test db
 
 BEGIN;
+-- Acquisition admission reads the installation's settlement-region policy.
+INSERT INTO public.commerce_settings(key,value_text) VALUES ('settlement_region','ZZ'),('settlement_currency','XXX')
+ON CONFLICT(key) DO UPDATE SET value_text=excluded.value_text;
 SELECT plan(27);
 
 -- ---- Fixture (all-hex uuids) ----------------------------------------------

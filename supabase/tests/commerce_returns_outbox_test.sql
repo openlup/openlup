@@ -9,17 +9,21 @@
 BEGIN;
 SELECT plan(6);
 
-INSERT INTO public.commerce_orders (id, status, metadata)
-VALUES ('22220000-0000-0000-0000-0000000000a1', 'paid', '{}'::jsonb);
+-- Return commands require the server-proved principal's owned order.
+INSERT INTO auth.users(id) VALUES ('22220000-0000-0000-0000-0000000000d1');
+INSERT INTO public.clients(id,email,auth_user_id)
+VALUES ('22220000-0000-0000-0000-0000000000e1','return-2222@example.invalid','22220000-0000-0000-0000-0000000000d1');
+INSERT INTO public.commerce_orders (id, client_id, status, metadata)
+VALUES ('22220000-0000-0000-0000-0000000000a1', '22220000-0000-0000-0000-0000000000e1', 'paid', '{}'::jsonb);
 INSERT INTO public.commerce_order_items (id, order_id, quantity, unit_price_cents, total_cents, discount_allocated_cents, effective_total_cents, effective_net_cents, product_snapshot, variant_snapshot)
 VALUES ('22220000-0000-0000-0000-0000000000b1', '22220000-0000-0000-0000-0000000000a1', 2, 1490, 2980, 0, 2980, round((2980)::numeric * 10000 / (10000 + (800)::integer))::integer,
-        '{"sku":"OPENLUP-DOG-BEEF-CAN-400G"}'::jsonb, '{}'::jsonb);
+        '{"sku":"SYNTHETIC-RETURN"}'::jsonb, '{}'::jsonb);
 
 -- create does NOT emit in R1: 'requested' has no runtime handler yet, so the narrowed
 -- trigger produces no outbox event for it (avoids an unclaimable blocking event).
 SELECT public.commerce_return_request_create(
   'ret-emit-0000001', '22220000-0000-0000-0000-0000000000a1',
-  '[{"orderItemId":"22220000-0000-0000-0000-0000000000b1","quantity":1}]'::jsonb, 'damaged', NULL, NULL);
+  '[{"orderItemId":"22220000-0000-0000-0000-0000000000b1","quantity":1}]'::jsonb, 'damaged', NULL, '22220000-0000-0000-0000-0000000000d1');
 SELECT is(
   (SELECT count(*)::int FROM public.outbox_events
     WHERE event_type LIKE 'commerce.return.%'
@@ -54,7 +58,7 @@ SELECT is(
 -- reject emits commerce.return.rejected on a fresh request.
 SELECT public.commerce_return_request_create(
   'ret-emit-0000010', '22220000-0000-0000-0000-0000000000a1',
-  '[{"orderItemId":"22220000-0000-0000-0000-0000000000b1","quantity":1}]'::jsonb, 'changed_mind', NULL, NULL);
+  '[{"orderItemId":"22220000-0000-0000-0000-0000000000b1","quantity":1}]'::jsonb, 'changed_mind', NULL, '22220000-0000-0000-0000-0000000000d1');
 SELECT public.commerce_return_reject(
   'rej-emit-0000010',
   (SELECT id FROM public.commerce_return_requests WHERE idempotency_key = 'ret-emit-0000010'),

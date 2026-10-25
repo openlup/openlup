@@ -9,7 +9,7 @@ import { assertBatchedForward, assertManagedCommerceForward, batchedFunctionDefi
 import { closePostgres, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, dockerAvailable, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
 import { imageIo, imageReference, pullWithRetry, readCiImage } from "../../scripts/ci-image-pull.mjs";
 import { readManagedMigrationChain } from "../../scripts/public-ci-pgtap.mjs";
-import { assertBatchCatalog, assertSameSnapshot, batchSnapshot } from "./reviewedBatchCatalog.js";
+import { assertBatchCatalog, assertManagedAcquisition, assertSameSnapshot, batchSnapshot } from "./reviewedBatchCatalog.js";
 
 import { AT, later, call, renewal, prepareOriginal, failure, positive, unchangedIdentity, type Renewal } from "./subscriptionNativeFixture.js";
 import { createNewPurchaseStockAvailabilityPort } from "@openlup/platform/inventory";
@@ -135,7 +135,7 @@ async function assertManagedStockReader(db: Pool) {
   }
   const scratch = mkdtempSync(join(tmpdir(), "openlup-stock-reader-mutants-"));
   try {
-    const sql = readFileSync("scripts/fixtures/reviewed-m11/supabase/migrations/20261025109000_inventory_new_purchase_stock_read.sql", "utf8")
+    const sql = readFileSync("supabase/migrations/20261025109000_inventory_new_purchase_stock_read.sql", "utf8")
       .replace("CREATE FUNCTION", "CREATE OR REPLACE FUNCTION");
     const mutants = [
       ["invoker", sql.replace("SECURITY DEFINER", "SECURITY INVOKER")],
@@ -1318,9 +1318,10 @@ it('replays a stored refusal and an apply-created receipt directly, without publ
           await db.query(bytes.toString());
           prior.push({ path, bytes });
         }
-        const bytes = readFileSync(`scripts/fixtures/reviewed-m11/${pin.path}`);
-        const landed = join(replayRoot, pin.path);
-        if (existsSync(landed)) expect(readFileSync(landed), pin.path).toEqual(bytes);
+        const bytes = readFileSync(join(replayRoot, pin.path));
+        expect(bytes, pin.path).toEqual(readFileSync(`scripts/fixtures/reviewed-m11/${pin.path}`));
+        expect(prior.map(source => source.path)).toEqual(rail.filter(path => path < pin.path));
+        expect(prior.some(source => source.path === pin.path)).toBe(false);
         assertManagedCommerceForward(registry, pin.path, bytes, prior);
         const before = await batchSnapshot(db);
         await db.query(bytes.toString());
@@ -1347,170 +1348,19 @@ it('replays a stored refusal and an apply-created receipt directly, without publ
         // raw function bodies while joining whitespace only in ACL statements.
         const observedSql = sqlStatements(bytes.toString()).map(statement => /^(?:GRANT|REVOKE) /u.test(statement) ? statement.replace(/\s+/gu, " ") : statement).join("\n");
         await assertBatchCatalog(db, pin, Buffer.from(observedSql), before, after);
-        for (const fn of pin.functions.filter(fn => pin === commerce.at(-1) || fn.signature === "public.inventory_new_purchase_stock_read(jsonb,timestamptz)")) {
+        for (const fn of pin.functions) {
           for (const role of ["anon", "authenticated", "openlup_mcp_reader", "service_role"]) {
-            expect((await db.query("SELECT has_function_privilege($1,$2,'EXECUTE') AS allowed", [role, fn.signature])).rows[0].allowed).toBe(role === "service_role");
+            expect((await db.query("SELECT has_function_privilege($1,$2,'EXECUTE') AS allowed", [role, fn.signature])).rows[0].allowed).toBe(role === "service_role" && !fn.signature.startsWith("private."));
           }
+          expect((await db.query(`SELECT count(*)::int n FROM pg_proc p,
+            LATERAL aclexplode(COALESCE(p.proacl,acldefault('f',p.proowner))) a
+            WHERE p.oid=$1::regprocedure AND a.grantee=0 AND a.privilege_type='EXECUTE'`, [fn.signature])).rows[0].n).toBe(0);
         }
         prior.push({ path: pin.path, bytes });
       }
 
       await assertManagedStockReader(db);
-
-      // Exercise the real finalize/admission/creation closure with retained
-      // snapshots and synthetic rows; no reader or creation function is stubbed.
-      await db.query(`INSERT INTO public.commerce_settings(key,value_text)
-        VALUES ('settlement_region','ZZ'),('settlement_currency','XXX')
-        ON CONFLICT (key) DO UPDATE SET value_text=excluded.value_text`);
-      const clientId = (await db.query("INSERT INTO public.clients(email) VALUES ('m11-check@example.invalid') RETURNING id")).rows[0].id;
-      const addressId = (await db.query(`INSERT INTO public.addresses(client_id,kind,line1,city,postal_code,country)
-        VALUES ($1,'shipping','Synthetic 1','Synthetic','00000','ZZ') RETURNING id`, [clientId])).rows[0].id;
-      const productId = (await db.query(`INSERT INTO public.catalog_products(slug,name,status)
-        VALUES ('m11-synthetic','Synthetic','active') RETURNING id`)).rows[0].id;
-      await db.query(`INSERT INTO public.catalog_skus(product_id,sku,title,pet_type,net_weight_g,kcal_per_unit,status)
-        VALUES ($1,'M11-SYNTHETIC','Synthetic','other',1,1,'active')`, [productId]);
-      const draft = { items: [{ sku: "M11-SYNTHETIC", quantity: 1 }] };
-      const quote = (terms?: Record<string, unknown>) => ({ quote: {
-        context: { mode: "subscription", cadenceDays: 14, ...(terms ? {
-          acquisitionTerms: terms,
-          pricingPolicy: { offerPolicyVersion: "commerce.offer-policy.v2", promotionEngineVersion: "promotion-engine.v2" },
-        } : {}) }, discounts: [], lines: [],
-      } });
-      const newOrder = async (snapshot: unknown) => {
-        const id = (await db.query(`INSERT INTO public.commerce_orders(client_id,currency,region_code,status,subtotal_cents,total_cents,metadata)
-          VALUES ($1,'XXX','ZZ','draft',1000,1000,jsonb_build_object('quoteSnapshot',$2::jsonb,'orderDraftSnapshot',$3::jsonb))
-          RETURNING id`, [clientId, snapshot, draft])).rows[0].id;
-        await db.query(`INSERT INTO public.commerce_order_items(order_id,quantity,unit_price_cents,total_cents,
-          discount_allocated_cents,effective_total_cents,effective_net_cents,vat_rate_bps,allocation_ordinal,product_snapshot)
-          VALUES ($1,1,1000,1000,0,1000,1000,0,1,'{"sku":"M11-SYNTHETIC"}')`, [id]);
-        return id as string;
-      };
-      const finalize = async (id: string, key: string, snapshot: unknown, mode = "subscription_cycle") =>
-        (await db.query(`SELECT public.commerce_finalize_order_for_checkout($1,$2,$3,$4,$5,NULL,$6,$7,
-          '{"checkoutCommandVersion":"commerce.checkout_command.v1"}') AS result`,
-        [key, id, mode, clientId, addressId, snapshot, draft])).rows[0].result.finalizedOrder;
-      const counts = async () => (await db.query(`SELECT
-        (SELECT count(*) FROM public.subscriptions)::int AS subscriptions,
-        (SELECT count(*) FROM public.subscription_cycles)::int AS cycles,
-        (SELECT count(*) FROM public.commerce_idempotency_keys WHERE scope='commerce.checkout_order_finalize')::int AS keys`)).rows[0];
-      const acquisitionEffects = async () => {
-        const state: Record<string, unknown> = {};
-        const tables = (await db.query("SELECT tablename FROM pg_tables WHERE schemaname='public' ORDER BY tablename")).rows;
-        for (const { tablename } of tables) {
-          const name = String(tablename).replaceAll('"', '""');
-          // xmin alone cannot see a same-value update inside this transaction;
-          // ctid changes even when both columns and the transaction ID stay equal.
-          state[tablename] = (await db.query(`SELECT COALESCE(jsonb_agg(jsonb_build_object(
-            'columns',to_jsonb(t),'xmin',t.xmin::text,'ctid',t.ctid::text)
-            ORDER BY to_jsonb(t)::text,t.ctid),'[]'::jsonb) rows FROM public."${name}" t`)).rows[0];
-        }
-        return state;
-      };
-      const refuse = async (work: () => Promise<unknown>, code: string, message: string) => {
-        // Snapshots are saved before this boundary. Only the finalize statement
-        // is inside the savepoint needed to recover from a PostgreSQL exception.
-        const before = await acquisitionEffects();
-        await db.query("SAVEPOINT acquisition_refusal");
-        await expect(work()).rejects.toMatchObject({ code, message: expect.stringContaining(message) });
-        await db.query("ROLLBACK TO acquisition_refusal; RELEASE SAVEPOINT acquisition_refusal");
-        // Compare every public row, including order/items, subscriptions, cycles
-        // and idempotency rows; counts alone would miss an order mutation.
-        expect(await acquisitionEffects()).toEqual(before);
-      };
-      const created = async (result: { subscriptionId: string; subscriptionCycleId: string; replayed: boolean }, before: Awaited<ReturnType<typeof counts>>) => {
-        expect(result).toMatchObject({ subscriptionId: expect.any(String), subscriptionCycleId: expect.any(String), replayed: false });
-        expect(await counts()).toEqual({ subscriptions: before.subscriptions + 1, cycles: before.cycles + 1, keys: before.keys + 1 });
-        expect((await db.query(`SELECT s.status,c.status AS cycle_status FROM public.subscriptions s
-          JOIN public.subscription_cycles c ON c.subscription_id=s.id WHERE s.id=$1 AND c.id=$2`,
-        [result.subscriptionId, result.subscriptionCycleId])).rows).toEqual([{ status: "pending_activation", cycle_status: "payment_pending" }]);
-      };
-
-      // No configured policy: the reader refuses, while compatibility admission
-      // permits exactly one subscription/cycle and retains exact finalize replay.
-      expect((await db.query("SELECT count(*)::int AS n FROM public.promotions")).rows[0].n).toBe(0);
-      await refuse(() => db.query("SELECT public.commerce_subscription_acquisition_terms(clock_timestamp())"), "55000", "acquisition_terms_not_effective");
-      const noPolicyQuote = quote(), noPolicyOrder = await newOrder(noPolicyQuote);
-      const observerBefore = await acquisitionEffects();
-      await db.query("SAVEPOINT acquisition_observer");
-      await db.query("UPDATE public.commerce_orders SET status=status WHERE id=$1", [noPolicyOrder]);
-      const firstWrite = await acquisitionEffects();
-      expect(firstWrite).not.toEqual(observerBefore);
-      await db.query("UPDATE public.commerce_orders SET status=status WHERE id=$1", [noPolicyOrder]);
-      expect(await acquisitionEffects()).not.toEqual(firstWrite);
-      await db.query("ROLLBACK TO acquisition_observer; RELEASE SAVEPOINT acquisition_observer");
-      expect(await acquisitionEffects()).toEqual(observerBefore);
-      const writer = new Client({ connectionString: container!.connectionString, connectionTimeoutMillis: 5_000, query_timeout: 5_000 });
-      await writer.connect();
-      try {
-        // The independent writer holds the real policy key. lock_timeout bounds
-        // the refusal without relying on sleeps or a concurrent query winning a race.
-        await writer.query("BEGIN; SELECT pg_advisory_xact_lock(hashtextextended('commerce.subscription_acquisition',0))");
-        await db.query("SET LOCAL lock_timeout='500ms'");
-        await refuse(() => finalize(noPolicyOrder, "m11-no-policy", noPolicyQuote), "55P03", "lock timeout");
-        await writer.query("ROLLBACK");
-        await db.query("SET LOCAL lock_timeout='0'");
-        const before = await counts();
-        const original = await finalize(noPolicyOrder, "m11-no-policy", noPolicyQuote);
-        await created(original, before);
-        const replayBefore = await acquisitionEffects();
-        expect(await finalize(noPolicyOrder, "m11-no-policy", noPolicyQuote)).toEqual({ ...original, replayed: true });
-        expect(await acquisitionEffects()).toEqual(replayBefore);
-        await writer.query("BEGIN");
-        expect((await writer.query("SELECT pg_try_advisory_xact_lock_shared(hashtextextended('commerce.subscription_acquisition',0)) AS acquired")).rows[0].acquired).toBe(true);
-        expect((await writer.query("SELECT pg_try_advisory_xact_lock(hashtextextended('commerce.subscription_acquisition',0)) AS acquired")).rows[0].acquired).toBe(false);
-      } finally {
-        await writer.query("ROLLBACK");
-        await writer.end();
-      }
-
-      // Configure policy under the same exclusive writer protocol. The saved
-      // terms come from the actual reader, not a hand-built expected payload.
-      await db.query("SELECT pg_advisory_xact_lock(hashtextextended('commerce.subscription_acquisition',0))");
-      await db.query(`INSERT INTO public.promotions(name,trigger_type,discount_type,discount_value,applies_to_kind,
-        applies_to_payload,stacking_rule,eligibility,valid_from,redemption_limit_per_customer,region_availability,
-        status,promotion_engine_version,benefit_lane,benefit_kind,benefit_value_bps)
-        VALUES ('Synthetic acquisition','automatic','percentage',37,'order_total',
-          '{"cart_mode":"subscription","acquisitionTerms":{"schemaVersion":"subscription-acquisition.v1","revision":"m11-synthetic","delivery2DiscountBps":1700}}',
-          'exclusive','{"first_subscription_purchase":true}','2000-01-01T00:00:00Z',1,ARRAY['ZZ'],
-          'active','promotion-engine.v2','product','target_percentage',3700)`);
-      const readTerms = async () => {
-        const selection = (await db.query("SELECT public.commerce_subscription_acquisition_terms(clock_timestamp()) AS terms")).rows[0].terms;
-        expect(selection).toMatchObject({ kind: "v2_standalone", initialDiscountBps: 3700 });
-        return Object.fromEntries(Object.entries(selection).filter(([key]) => !["kind", "legacyPairCount", "standaloneCount", "nextBoundaryAt"].includes(key)));
-      };
-      const terms = await readTerms();
-      const wrongEngine = quote(terms);
-      // Use a coherent v1 pair so offer-policy validation does not mask the
-      // admission-specific engine mismatch.
-      wrongEngine.quote.context.pricingPolicy = { offerPolicyVersion: "commerce.offer-policy.v1", promotionEngineVersion: "promotion-engine.v1" };
-      for (const [name, snapshot] of [
-        ["missing", quote()], ["stale", quote({ ...terms, revision: "stale" })], ["engine", wrongEngine],
-      ] as const) {
-        const id = await newOrder(snapshot);
-        await refuse(() => finalize(id, `m11-policy-${name}`, snapshot), "55000", "acquisition_terms_changed");
-      }
-      const retainedQuote = quote(terms), policyOrder = await newOrder(retainedQuote);
-      const beforePolicy = await counts();
-      const configured = await finalize(policyOrder, "m11-policy-exact", retainedQuote);
-      await created(configured, beforePolicy);
-      await db.query(`UPDATE public.promotions SET applies_to_payload=jsonb_set(applies_to_payload,'{acquisitionTerms,revision}','"m11-revised"')
-        WHERE applies_to_payload #>> '{acquisitionTerms,revision}'='m11-synthetic'`);
-      const replayBefore = await acquisitionEffects();
-      expect(await finalize(policyOrder, "m11-policy-exact", retainedQuote)).toEqual({ ...configured, replayed: true });
-      expect(await acquisitionEffects()).toEqual(replayBefore);
-      const changedOrder = await newOrder(retainedQuote);
-      await refuse(() => finalize(changedOrder, "m11-policy-changed", retainedQuote), "55000", "acquisition_terms_changed");
-      const currentQuote = quote(await readTerms()), currentOrder = await newOrder(currentQuote);
-      const beforeCurrent = await counts();
-      await created(await finalize(currentOrder, "m11-policy-current", currentQuote), beforeCurrent);
-
-      const oneTimeQuote = { quote: { context: { mode: "one_time" }, lines: [], discounts: [] } };
-      const oneTimeOrder = await newOrder(oneTimeQuote), beforeOneTime = await counts();
-      expect(await finalize(oneTimeOrder, "m11-one-time", oneTimeQuote, "one_time"))
-        .toMatchObject({ orderId: oneTimeOrder, mode: "one_time", subscriptionId: null, subscriptionCycleId: null, replayed: false });
-      expect(await counts()).toEqual({ ...beforeOneTime, keys: beforeOneTime.keys + 1 });
-      expect((await db.query("SELECT mode,subscription_id,subscription_cycle_id FROM public.commerce_orders WHERE id=$1", [oneTimeOrder])).rows)
-        .toEqual([{ mode: "one_time", subscription_id: null, subscription_cycle_id: null }]);
+      await assertManagedAcquisition(db, container!.connectionString);
     } finally { await db.query("ROLLBACK"); }
     expect(await audit()).toEqual(originalAudit);
     assertSameSnapshot(baseline, await batchSnapshot(db));

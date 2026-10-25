@@ -255,7 +255,7 @@ SELECT throws_ok(
       '{"quote":{"context":{"mode":"subscription","cadenceDays":28,"starterPack":{
         "schemaVersion":"1","starterIntervalDays":17,
         "delivery2":{"discountBps":3500,"discountMinor":6566,"basisSubtotalMinor":18760},
-        "graduation":{"cadenceDays":21,"lines":[{"sku":"STARTER-SKU-1","qty":8,"sortOrder":0,"isAddon":false,
+        "graduation":{"cadenceDays":30,"lines":[{"sku":"STARTER-SKU-1","qty":8,"sortOrder":0,"isAddon":false,
           "quoteLine":{"unitPriceGross":{"amountMinor":1340},"lineSubtotalGross":{"amountMinor":10720}}}]}}}}}'::jsonb)$$,
   '22023',
   'subscription_starter_pack_invalid_graduation_cadence',
