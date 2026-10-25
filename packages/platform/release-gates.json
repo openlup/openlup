@@ -100,6 +100,7 @@
       "compatibilityPolicy": "internal-candidate",
       "packageSmokeEvidence": [
         "test/packageBoundary.test.ts",
+        "test/commerce/browserBoundary.test.ts",
         "test/commerce/browserSafety.test.ts"
       ],
       "entrypoint": "dist/commerce/server/index.d.ts",
