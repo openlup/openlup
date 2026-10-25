@@ -209,23 +209,23 @@ The suite needs local Docker and uses the shared container helper's pinned
 PostgreSQL 16 image. Run build-producing package checks serially because they
 share generated package directories.
 
-M11 working drafts under `scripts/fixtures/reviewed-m11/` contain seven managed
-function definitions in seven SQL files.
-They cover checkout preference scope, return ownership, checkout audit receipts
-and the minimal M05 acquisition-reader/admission/finalize closure, with no policy
-seed or setup writer. Legacy omitted-country fallback now uses the configured
-platform region and refuses missing configuration; adopters set their own default.
-`registry.draft.json` proposes exact file/function/preimage/statement pins and the
-audit CHECK preimage. The optional managed-commerce validator draft is tested
-with that registry supplied explicitly in `scripts/reviewed-batch-forward.test.ts`;
-production admission still refuses M11 with the unchanged live registry. The
-managed PostgreSQL batch suite checks all seven catalog/ACL changes, the exact
-audit CHECK vocabulary and rollback after the complete committed managed chain,
-including all nine landed M10 pins exactly once. Retained M10 fixtures are frozen
-comparison evidence; the M11 proof reads the real migration files. This
-machinery control must land separately after M10 controls and before M11 SQL/pins. Native
-return semantics and M10 approvals remain unchanged. Local PostgreSQL acquisition
-proof does not replace full class/catalog/refusal and handler integration proof.
+M11 has seven admitted managed-commerce pins in the live
+`config/reviewed-platform-forwards.json` under `managedCommerceForwards`, with
+unchanged SQL fixtures under `scripts/fixtures/reviewed-m11/`. They cover checkout
+preference scope, return ownership, checkout audit receipts and the minimal
+acquisition-reader/admission/finalize closure, without policy seeds or setup
+writers. Legacy omitted-country fallback uses the configured platform region
+and refuses missing configuration; adopters set their own default.
+The pins bind exact file/function/preimage/ordered statements, headers, ACLs and
+the audit CHECK preimage. M11 feature PRs (the K1 stack) introduce the SQL bytes
+on the managed rail in order; each requires every earlier same-rail M10/M11 pin
+landed with exact bytes. This control adds no migration to either real rail.
+Tests use the live registry and complete committed managed prefix, including all
+nine M10 pins once, then the seven M11 fixtures. They prove admission/refusals,
+catalog/ACL/CHECK changes and rollback. Local acquisition proof covers both
+policy states; handler integration remains feature-owned. Native return
+semantics and M09/M10 approvals remain unchanged. Coordinator control review and
+two fresh reviews remain separate delivery gates.
 
 The M10/F17 exact-forward controls use
 `scripts/reviewed-batch-forward.test.ts` for per-file refusal plants and separate

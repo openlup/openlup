@@ -821,6 +821,11 @@ and the invoicing payment-terminal accounting block.
 Managed correction recovery, lock coupling, trigger admission, seller eligibility and migration ordering are owned by [M09 forward design](DATA_AND_MIGRATIONS.md#m09-invoicing-forward-design-and-control-approval).
 Self-check and release share the admission checker and the canonical
 [co-located SQL/pin rule](DATA_AND_MIGRATIONS.md#co-located-sql-and-approval-pins).
+The separate `managedCommerceForwards` list admits seven exact M11 managed pins;
+[its data contract](DATA_AND_MIGRATIONS.md#exact-reviewed-function-forwards)
+owns headers, ACLs, preimages and ordered statements. M11 feature PRs (the K1
+stack) introduce those bytes in order, requiring all earlier same-rail M10/M11
+pins landed first; control admission adds no real-rail migration.
 Existing control histories remain valid; later repins cannot authorize earlier SQL.
 This is a separately reviewed preview admission class, not expand-only or a live
 database compatibility proof; see

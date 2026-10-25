@@ -1013,13 +1013,13 @@ it('replays a stored refusal and an apply-created receipt directly, without publ
     } finally { await db.query("ROLLBACK"); }
   },120_000);
 
-  if (!portable) it("proves the opt-in M11 draft catalog and CHECK delta after the full real managed chain", async () => {
-    const proposal = JSON.parse(readFileSync("scripts/fixtures/reviewed-m11/registry.draft.json", "utf8"));
-    const draft = readReviewedForwardRegistry(Buffer.from(JSON.stringify({ ...registry, ...proposal })));
-    const commerce = draft.managedCommerceForwards!;
+  if (!portable) it("proves the admitted M11 catalog and CHECK delta after the full real managed chain", async () => {
+    const commerce = registry.managedCommerceForwards!;
     await applyCommittedBefore(commerce[0]!.path);
+    reviewedBatchPaths(replayRoot, directory, commerce); // Refuse a hole in the landed M11 suffix.
     const prior = readdirSync(join(replayRoot, directory)).filter(name => name.endsWith(".sql")).sort()
-      .map(name => ({ path: `${directory}/${name}`, bytes: readFileSync(join(replayRoot, directory, name)) }));
+      .map(name => ({ path: `${directory}/${name}`, bytes: readFileSync(join(replayRoot, directory, name)) }))
+      .filter(source => source.path < commerce[0]!.path);
     expect(pins).toHaveLength(9);
     for (const pin of pins) {
       expect(prior.filter(source => source.path === pin.path)).toHaveLength(1);
@@ -1035,7 +1035,9 @@ it('replays a stored refusal and an apply-created receipt directly, without publ
     try {
       for (const pin of commerce) {
         const bytes = readFileSync(`scripts/fixtures/reviewed-m11/${pin.path}`);
-        assertManagedCommerceForward(draft, pin.path, bytes, prior);
+        const landed = join(replayRoot, pin.path);
+        if (existsSync(landed)) expect(readFileSync(landed), pin.path).toEqual(bytes);
+        assertManagedCommerceForward(registry, pin.path, bytes, prior);
         const before = await batchSnapshot(db);
         await db.query(bytes.toString());
         const after = await batchSnapshot(db);

@@ -6774,10 +6774,6 @@
       "class": "public-output"
     },
     {
-      "path": "scripts/fixtures/reviewed-m11/registry.draft.json",
-      "class": "public-output"
-    },
-    {
       "path": "scripts/fixtures/reviewed-m11/supabase/migrations/20261025000000_checkout_preference_write_scope.sql",
       "class": "public-output"
     },

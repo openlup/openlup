@@ -1055,7 +1055,7 @@ export function assertBatchedForward(forward: BatchedForwardBinding, bytes: Buff
   }
 }
 
-// D-CTL-1: a separate, opt-in M11 inventory. Never extend the M09/M10 shapes.
+// D-CTL-1: the separately admitted M11 inventory. Never extend the M09/M10 shapes.
 // Header pins include argument names/defaults, return, language, security and path;
 // only whitespace is normalized. Raw CREATE and whole-file pins still bind bytes.
 const managedCommerceShapes = [
@@ -1096,7 +1096,7 @@ function validateManagedCommerceForwards(forwards: ManagedCommerceForwardBinding
 }
 
 /** The caller supplies the complete preceding managed rail, in filename order.
- * Production obtains it from Git; fixtures may supply the proposed registry. */
+ * Production reads the live registry and rail from Git; tests supply live pins. */
 export function assertManagedCommerceForward(registry: ReviewedForwardRegistry, path: string, bytes: Buffer, preceding: { path: string; bytes: Buffer }[]): void {
   if (!registry.managedCommerceForwards) throw new Error("reviewed M11 commerce has no registry approval");
   validateManagedCommerceForwards(registry.managedCommerceForwards, new Set());

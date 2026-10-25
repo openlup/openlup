@@ -1168,5 +1168,187 @@
         }
       ]
     }
+  ],
+  "managedCommerceForwards": [
+    {
+      "path": "supabase/migrations/20261025000000_checkout_preference_write_scope.sql",
+      "sha256": "2656e0c89060e59b69c2a8eb5f176b3c2948620827e687aed5be60b6cb7d2a60",
+      "functions": [
+        {
+          "signature": "public.commerce_configurator_persist_intent(jsonb)",
+          "beforeSha256": "df86c585ee9841074736c75a0b5644f3c8f1c578ca626724e906095486dad433",
+          "afterSha256": "01118affc1e325d6eea0d67c85953917941b961f7c5e601450676e1080ce5478"
+        }
+      ],
+      "statements": [
+        {
+          "sha256": "01118affc1e325d6eea0d67c85953917941b961f7c5e601450676e1080ce5478"
+        },
+        {
+          "sha256": "4d19a9f9b0291ebb3aef0bdad067b443d4b79e0a32b4d1d80a0789baa81b6306",
+          "sql": "REVOKE ALL ON FUNCTION public.commerce_configurator_persist_intent(jsonb) FROM PUBLIC, anon, authenticated;"
+        },
+        {
+          "sha256": "71e5c2622d74639f7603e21a5d4693d91047838af3d3896a414ddedd9cc73258",
+          "sql": "GRANT EXECUTE ON FUNCTION public.commerce_configurator_persist_intent(jsonb) TO service_role;"
+        }
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261025003000_return_request_owner_binding.sql",
+      "sha256": "fd3a87b24b395555abb51856741e70e67d3cdd72a8837a3cfb84a05a3518d1a0",
+      "functions": [
+        {
+          "signature": "public.commerce_return_request_create(text,uuid,jsonb,text,text,uuid)",
+          "beforeSha256": "c72c3e077f65e5563c0d8515daed5cd34ef1f1807a53bfee3003434bf6ad6f2d",
+          "afterSha256": "33a49bc9bcb809703eba83834b30bec6ef66791b3dde4c5943e4a7346ac2af71"
+        }
+      ],
+      "statements": [
+        {
+          "sha256": "33a49bc9bcb809703eba83834b30bec6ef66791b3dde4c5943e4a7346ac2af71"
+        },
+        {
+          "sha256": "45c58af247cb2cd8b5738f2a339b4e97db7b757db2e5de0f407a772a736d4d49",
+          "sql": "REVOKE ALL ON FUNCTION public.commerce_return_request_create(text,uuid,jsonb,text,text,uuid) FROM PUBLIC, anon, authenticated;"
+        },
+        {
+          "sha256": "7340eac1144b36c837f0742350d54e6a1c920a2c4bbb280dd1dc8678b8d4f3be",
+          "sql": "GRANT EXECUTE ON FUNCTION public.commerce_return_request_create(text,uuid,jsonb,text,text,uuid) TO service_role;"
+        }
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261025004000_checkout_operator_receipt.sql",
+      "sha256": "4f47ee83602560b6254303e12c3a8c2a0f3c9679bbe3532315e826196377328f",
+      "functions": [
+        {
+          "signature": "public.admin_checkout_payment_link_record_receipt(uuid,uuid,uuid,text,text,boolean,uuid)",
+          "beforeSha256": null,
+          "afterSha256": "59b37a416c13aae66e9a356b0cbffd5a50ba5f9ce9a4456489b20f0c58d19b49"
+        }
+      ],
+      "statements": [
+        {
+          "sha256": "f90aea28aa7b613181a40931bb083f91d436b169d7903cbd969e97a0c71f86c2",
+          "sql": "SET LOCAL lock_timeout = '2s';"
+        },
+        {
+          "sha256": "cd595b2bfc8826d0a097cb5a34e08be6990819c1c843f2528b80582f9b9a9ac7",
+          "sql": "ALTER TABLE public.admin_audit_events\n  DROP CONSTRAINT admin_audit_events_action_check;"
+        },
+        {
+          "sha256": "9c3f2af2de818ea355fc76d3eccef1640eac0f29924f5b731d5768d22d93c41d",
+          "sql": "ALTER TABLE public.admin_audit_events\n  ADD CONSTRAINT admin_audit_events_action_check CHECK (action IN (\n    'role_change', 'invite', 'remove',\n    'promo_update', 'promo_status_change', 'subscription_band_update',\n    'catalog_draft_upsert', 'catalog_price_set', 'catalog_sku_archive', 'catalog_activate',\n    'catalog_product_archive', 'catalog_product_restore', 'catalog_deactivate',\n    'customer_read', 'promotion_code_create', 'promotion_code_update',\n    'promotion_code_status_change',\n    'bundle_draft_upsert', 'bundle_composition_set', 'bundle_target_price_set',\n    'bundle_archive', 'bundle_restore', 'bundle_activate', 'bundle_deactivate',\n    'revoke', 'checkout_payment_link_mint'\n  )) NOT VALID;"
+        },
+        {
+          "sha256": "59b37a416c13aae66e9a356b0cbffd5a50ba5f9ce9a4456489b20f0c58d19b49"
+        },
+        {
+          "sha256": "5ecba51422ec85e762463174bb1f3b4c268ce72497f521240b3fd26b20b94b3b",
+          "sql": "REVOKE ALL ON FUNCTION public.admin_checkout_payment_link_record_receipt(uuid,uuid,uuid,text,text,boolean,uuid)\n  FROM PUBLIC, anon, authenticated;"
+        },
+        {
+          "sha256": "a61c783ec0f4701ea1ec7ccf11b20a9cfec7d627bf273ab7624fe660e3048405",
+          "sql": "GRANT EXECUTE ON FUNCTION public.admin_checkout_payment_link_record_receipt(uuid,uuid,uuid,text,text,boolean,uuid)\n  TO service_role;"
+        }
+      ],
+      "constraints": [
+        {
+          "table": "public.admin_audit_events",
+          "name": "admin_audit_events_action_check",
+          "beforeSha256": "455c350e221aead32209302842a733e3bd39fd171c20fefb5b03d2224b4167b5",
+          "beforeSql": "CONSTRAINT admin_audit_events_action_check CHECK ((action = ANY (ARRAY['role_change'::text, 'invite'::text, 'remove'::text, 'promo_update'::text, 'promo_status_change'::text, 'subscription_band_update'::text, 'catalog_draft_upsert'::text, 'catalog_price_set'::text, 'catalog_sku_archive'::text, 'catalog_activate'::text, 'catalog_product_archive'::text, 'catalog_product_restore'::text, 'catalog_deactivate'::text, 'customer_read'::text, 'promotion_code_create'::text, 'promotion_code_update'::text, 'promotion_code_status_change'::text, 'bundle_draft_upsert'::text, 'bundle_composition_set'::text, 'bundle_target_price_set'::text, 'bundle_archive'::text, 'bundle_restore'::text, 'bundle_activate'::text, 'bundle_deactivate'::text, 'revoke'::text])))"
+        }
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261025005000_acquisition_metadata.sql",
+      "sha256": "2fc19560f3b614218e9cf92fbd42dbf1fd4b2242feb5e922d666c05a6419e8b0",
+      "functions": [
+        {
+          "signature": "private.commerce_acquisition_metadata(jsonb)",
+          "beforeSha256": null,
+          "afterSha256": "a50630c7306535ec1a1d858c5d45f5637cdffd2c4e46a0bc1ab71772e259fe4d"
+        }
+      ],
+      "statements": [
+        {
+          "sha256": "a50630c7306535ec1a1d858c5d45f5637cdffd2c4e46a0bc1ab71772e259fe4d"
+        },
+        {
+          "sha256": "eb3e78fe70d96a3344591eaf64a85bc5e43605a94fdfdac55816739f6ad79315",
+          "sql": "REVOKE ALL ON FUNCTION private.commerce_acquisition_metadata(jsonb) FROM PUBLIC, anon, authenticated, service_role;"
+        }
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261025006000_subscription_acquisition_terms.sql",
+      "sha256": "701ba8a8da64b77a2eaecc1593f3d7c05df734edbef491df3da194cb17142daf",
+      "functions": [
+        {
+          "signature": "public.commerce_subscription_acquisition_terms(timestamptz)",
+          "beforeSha256": null,
+          "afterSha256": "83e626834cdb07f75de9a081c2c7d9c3aaceab8c403e3df4e54901c237b0624d"
+        }
+      ],
+      "statements": [
+        {
+          "sha256": "83e626834cdb07f75de9a081c2c7d9c3aaceab8c403e3df4e54901c237b0624d"
+        },
+        {
+          "sha256": "6760f760087de146bb2034f3f45d108da869e7fec102269a0b5b42b1d0f7a622",
+          "sql": "REVOKE ALL ON FUNCTION public.commerce_subscription_acquisition_terms(timestamptz) FROM PUBLIC, anon, authenticated;"
+        },
+        {
+          "sha256": "8824126bff8a61ef7530de8d487d0880fac066b7b9e7fe1b97792b1232b2c85e",
+          "sql": "GRANT EXECUTE ON FUNCTION public.commerce_subscription_acquisition_terms(timestamptz) TO service_role;"
+        }
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261025007000_checkout_acquisition_admission.sql",
+      "sha256": "426b1ec1cef5cd1cdaf9293952e0d327251c558f35b064de74ecc3ad451ba6f5",
+      "functions": [
+        {
+          "signature": "private.commerce_assert_acquisition_admission(jsonb,uuid)",
+          "beforeSha256": null,
+          "afterSha256": "2097f14c2d2864836be7061c3a8831f076d4871725684a562fad6c3a1783be70"
+        }
+      ],
+      "statements": [
+        {
+          "sha256": "2097f14c2d2864836be7061c3a8831f076d4871725684a562fad6c3a1783be70"
+        },
+        {
+          "sha256": "aac6c4952375371d3caf845d237d7e9dfc3abcbe6fe4ad4dd1e0c1baeddcbc37",
+          "sql": "REVOKE ALL ON FUNCTION private.commerce_assert_acquisition_admission(jsonb, uuid) FROM PUBLIC, anon, authenticated, service_role;"
+        }
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261025008000_checkout_finalize_acquisition_admission.sql",
+      "sha256": "c6bf6ccfbb51aae89fd4b2672690ba73c8fe1ee1b1a689103788bd4721c2958d",
+      "functions": [
+        {
+          "signature": "public.commerce_finalize_order_for_checkout(text,uuid,text,uuid,uuid,uuid,jsonb,jsonb,jsonb)",
+          "beforeSha256": "b66aa75ac8b78d2efc9a665e9bf8b9dfb0a4fb358a36f0e8e3768fde263ffcac",
+          "afterSha256": "994231bf73bd9cc0fde75e5e09ca10f030e40d7277e263a1651c4d747e968ae0"
+        }
+      ],
+      "statements": [
+        {
+          "sha256": "994231bf73bd9cc0fde75e5e09ca10f030e40d7277e263a1651c4d747e968ae0"
+        },
+        {
+          "sha256": "5776d096f4b4f4d9dcb58062d55b37adcc8515b19f7b144c92f680b2f440ebb6",
+          "sql": "REVOKE ALL ON FUNCTION public.commerce_finalize_order_for_checkout(text,uuid,text,uuid,uuid,uuid,jsonb,jsonb,jsonb) FROM PUBLIC, anon, authenticated;"
+        },
+        {
+          "sha256": "7b7e8fc64e30500605033df93de1a1d320619612af783c590fe8f8588fb602f8",
+          "sql": "GRANT EXECUTE ON FUNCTION public.commerce_finalize_order_for_checkout(text,uuid,text,uuid,uuid,uuid,jsonb,jsonb,jsonb) TO service_role;"
+        }
+      ]
+    }
   ]
 }
