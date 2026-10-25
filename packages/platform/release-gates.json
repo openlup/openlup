@@ -66,6 +66,45 @@
       "entrypoint": "dist/catalog/contracts/index.d.ts",
       "snapshot": "api/catalog-contracts.api.md"
     },
+    "./commerce": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/packageBoundary.test.ts",
+        "test/commerce/portFit.test.ts",
+        "test/commerce/ports.test.ts",
+        "test/commerce/recoveryDestinationPolicy.test.ts",
+        "test/commerce/commerceQuoteCompositionCharacterization.test.ts"
+      ],
+      "entrypoint": "dist/commerce/index.d.ts",
+      "snapshot": "api/commerce.api.md"
+    },
+    "./commerce/contracts": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/packageBoundary.test.ts",
+        "test/commerce/portFit.test.ts",
+        "test/commerce/ports.test.ts",
+        "test/commerce/recoveryDestinationPolicy.test.ts",
+        "test/commerce/commerceQuoteCompositionCharacterization.test.ts"
+      ],
+      "entrypoint": "dist/commerce/contracts/index.d.ts",
+      "snapshot": "api/commerce-contracts.api.md"
+    },
+    "./commerce/server": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/packageBoundary.test.ts",
+        "test/commerce/browserBoundary.test.ts"
+      ],
+      "entrypoint": "dist/commerce/server/index.d.ts",
+      "snapshot": "api/commerce-server.api.md"
+    },
     "./communications": {
       "role": "capability",
       "maturity": "experimental",
@@ -265,6 +304,19 @@
       ],
       "entrypoint": "dist/pricing/index.d.ts",
       "snapshot": "api/pricing.api.md"
+    },
+    "./pricing/browser": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/packageBoundary.test.ts",
+        "test/commerce/browserBoundary.test.ts",
+        "test/pricing/quoteContracts.test.ts",
+        "test/pricing/acquisition.test.ts"
+      ],
+      "entrypoint": "dist/pricing/browser/index.d.ts",
+      "snapshot": "api/pricing-browser.api.md"
     },
     "./pricing/contracts": {
       "role": "capability",
@@ -524,16 +576,16 @@
   },
   "pack": {
     "code": {
-      "maxPackedBytes": 1228800,
-      "maxFiles": 2000
+      "maxPackedBytes": 1648000,
+      "maxFiles": 2520
     },
     "docs": {
       "maxPackedBytes": 57344,
       "maxFiles": 10
     },
-    "maxPackedBytes": 1474560,
-    "maxUnpackedBytes": 6553600,
-    "maxFiles": 2100,
+    "maxPackedBytes": 1925000,
+    "maxUnpackedBytes": 8970000,
+    "maxFiles": 2580,
     "baseline": {
       "version": "0.25.0",
       "packedBytes": 1392132
@@ -549,7 +601,9 @@
       "./payments/contracts": 32,
       "./fulfillment/contracts": 32,
       "./subscriptions/contracts": 32,
-      "./invoicing/contracts": 32
+      "./invoicing/contracts": 32,
+      "./commerce/contracts": 32,
+      "./pricing/browser": 25600
     }
   }
 }

@@ -5,6 +5,14 @@ published or activated as an adopter contract.
 Audience: contributors reviewing the identity boundary and applications composing
 its factories. The owner is the identity module within `@openlup/platform`.
 
+The identity browser profile retains an exact file inventory. Commerce contracts
+and browser-safe runtime files may be admitted individually when reached by the
+profile; the Node-only `@openlup/platform/commerce/server` entry remains refused.
+The inventory also admits the four-file `pricing/browser` runtime closure:
+`browser/index.js`, `quotePrimitives.js`, `acquisitionTermsSchemas.js` and
+`contracts/acquisitionTerms.js` under the emitted pricing directory. Both browser
+profile builds explicitly refuse the pricing root and commerce server entry.
+
 ## Responsibility and composition
 
 Reference hosts can pass a candidate from

@@ -15,6 +15,56 @@ one-time/subscription-initial checkout lives here.
   (`fulfillment`/`server/infra`), Supabase/provider adapters, or invoice issuing
   policy/provider execution (`accounting`).
 
+## Commerce contracts package boundary
+
+Neutral commerce schemas and ports come from `@openlup/platform/commerce`
+and its type-only `/contracts` entry. Their runtime graph is browser-safe;
+`@openlup/platform/commerce/server` supplies Node-only OMS handlers, managed
+adapters and order-detail composition. Canonical order-money validation and commerce outbox payload validators
+also delegate to the browser-safe package. Payload validators reuse the core
+outbox envelope and inject the reference quote/draft schemas; snapshot matching
+and aggregate identity refusals remain unchanged. Cart/order/read, checkout, configurator,
+persistence, resume and customer-default bindings compose package cores with
+reference locale, profile and sizing, fiscal and provider schemas. Pricing
+DTOs come directly from `@openlup/platform/pricing/contracts`; commerce contracts
+have no pricing edge. Generic quote ports bind the existing pricing request,
+response and options types in the reference, retaining its named exports
+without introducing a pricing edge into commerce/contracts. The commerce
+runtime reuses the version constant from pricing/contracts.
+Existing reference exports retain their names and host
+validation; unchanged suites and the pre-extraction equivalence transcript check
+parsed output and complete error paths. Core and host fields retain their legacy
+positions, preserving issue order for missing or simultaneously invalid fields
+in intents, nested variants and checkout requests. The BASE-captured repair
+transcript checks those refusals and the other composed schemas; type assertions
+keep SKU, currency and product-slug inputs as strings across the exported
+reference schemas. The repair regression also compares generated multi-error
+transcripts against BASE goldens for every exported schema in these bindings.
+
+Availability projection requests one unit per variant in order. Recovery,
+nominal errors, delivery-contact projection, reference stripping, diagnostic
+messages and fulfillment eligibility delegate to package definitions. Checkout
+orchestration retains the local profile and invoice mappings and forwards an
+optional acquisition capability. Checkout expectations admit acquisition terms
+independently of totals. Configurator offer versions/minimums are untrusted asks;
+a supplied minimum replaces only the local intent-validation default. Checkout
+admission refuses every offer/minimum ask until an actual server offer resolver
+is wired; requests without asks still use the host minimum. K1 exposes the
+offer-policy port type only. The new
+offer-policy seam is a type-only port; binding execution and the starter guard
+are deferred to K2a. None of these changes activates an issuer or provider.
+
+The OMS handlers, operational ladder, read builders and managed RPC translations
+now delegate to the same commerce package. Browser-safe schemas and pure models
+use commerce; handlers, managed stores and detail composition use commerce/server.
+Reference schema extensions retain
+identity and fiscal fields; read composition supplies provider projections,
+settlement policy and presentation through injected seams. Administrative read
+governance still gates before hydration and audits before masking. Manual refund
+marking records an operator fact only. Replacement creation delegates to the
+existing fulfillment package handler; its order RPC creates a parcel obligation
+without changing subscription lifecycle or confirming delivery alignment.
+
 ## Pricing policy package boundary
 
 The existing pricing-policy token and neutral error/safe-reason block are owned

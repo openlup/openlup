@@ -170,6 +170,28 @@ and rejects its missing-export mutant. The composed PostgreSQL isolation table
 keeps an ambiguous normal or stock row ahead of healthy obligations in two runs;
 its no-isolation mutants fail the same witness.
 
+M11 K1 commerce contract witnesses live under `packages/platform/test/commerce`
+and join required root Vitest discovery. They cover neutral schema bindings,
+strict refusal and replay, generic runtime/offer port fit, fulfillment decisions,
+recovery routing, nominal errors, delivery-contact projection and W4 quote
+composition. Unchanged reference suites plus a captured pre-extraction parse
+transcript protect host extensions. The installed consumer exercises both
+entries, one-unit projection/refusal, opaque offer validation and injected
+minimum defaults. Quote ports take host-owned types as parameters. Commerce
+contracts retain the prohibition on cross-module imports.
+
+M11 K3a adds neutral OMS command, replay and subscription continuity witnesses
+and host projection bindings. The managed queue proof at
+`tests/postgres/omsQueueLadder.test.ts` replays every current managed forward with
+test-only platform prerequisites and compares 18 synthetic orders across every
+ladder rung, next action and attention-priority order; Docker absence fails with
+a named prerequisite error. OMS reads bind K1's canonical order-money and outbox
+exports directly. The installed consumer checks the populated server factory
+and its absence from the browser entry, while retaining private-subpath refusal.
+The runtime reuses the existing pricing/contracts version and,
+only through commerce/server, the shipping runtime entry through explicit module
+graph edges. No gate budget, provider requirement or activation is added.
+
 The native subscription renewal selection is
 `npm test -- tests/postgres/subscriptionRenewalLifecycle.test.ts --maxWorkers=1`.
 It uses one disposable PostgreSQL container for N1 exact-prefix restart,

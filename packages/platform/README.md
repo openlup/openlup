@@ -81,12 +81,70 @@ timestamp used in the webhook's idempotency key.
 | `./inventory` | Experimental schemas/ports, handlers, native stores, projection, injected forecast and SQL descriptor; `./inventory/contracts` DTOs. |
 | `./catalog` | Experimental neutral catalog schemas, drafts, reads, media source packs and publication ports |
 | `./catalog/contracts` | Dependency-free catalog DTOs, media resolver, authority and canonicalization helpers |
+| `./commerce`, `./commerce/contracts` | Browser-safe neutral commerce schema cores, generic ports and pure contract helpers |
+| `./commerce/server` | Node-only OMS handlers, managed stores/adapters and order-detail composition |
 | `./pricing` | Experimental price authority, quote computation/handlers, offer projection/cache, readiness and policy tokens |
+| `./pricing/browser` | Existing quote primitive factory and acquisition capability/expectation schemas, browser-safe |
 | `./pricing/contracts` | Dependency-free authority, money, quote and offer DTOs and version constants |
 | `./promotions` | Experimental promotion application, admin handlers, native read/sweep, SQL projections and acceptance |
 | `./promotions/contracts` | Dependency-free preview and admin DTOs |
 | `./shipping` | Experimental delivery ports, injected-schema handlers, summary/evidence; native flat-rate port + Core schema readiness |
 | `./shipping/contracts` | Type-only delivery, pickup-point, summary and evidence DTOs |
+
+## Commerce contracts
+
+`./commerce/contracts` is a type-only, browser-safe entry for commerce-owned
+records and generic persistence, checkout/runtime, availability, recovery and
+offer-policy ports. It imports no pricing module. Consume pricing DTOs from
+`./pricing/contracts` directly. Commerce does not re-export pricing DTOs; its runtime
+reuses the version constant through `./pricing/contracts`. Quote ports take the
+host request, response and existing options as type parameters; the reference
+binds the existing pricing definitions, adding only the server-bound offer.
+
+`./commerce/server` supplies the Node-only OMS handlers, managed adapters and
+order-detail composition.
+`./commerce` remains browser-safe, including its full runtime import closure.
+It also owns canonical order-money validation and commerce event payload schemas.
+The latter reuse the core outbox envelope and inject host quote/draft validators,
+without importing an outbox worker or storage implementation.
+
+`./commerce` provides neutral cart/order/read, checkout, intent, persistence,
+resume and customer-default schema cores and factories. Bind existing pricing
+schemas and explicit host vocabulary, then extend the object cores with local
+locale, profile, sizing, fiscal and provider policy. The reference retains those
+extensions; it does not publish that policy into the package.
+The intent factory accepts a SKU schema with string input and output, preserving
+string SKU inputs when hosts infer request types. Resume and availability bindings
+also preserve string SKU and product-slug inputs. When composing host fields,
+retain their legacy positions: object key order also determines validation issue
+order, including nested variants and checkout requests.
+Offer tokens are opaque; `minimumUnits` is an untrusted ask with an injected default, never an
+admission grant. The offer policy is a port type only. Starter execution remains
+reference-owned and deferred to K2a. These entries install no store, route,
+migration or provider.
+
+Required root discovery includes `test/commerce/`: schema refusal/replay and
+port-fit tests join recovery/error/helper witnesses and neutral W4 composition.
+The unchanged reference suites and a pre-extraction parse transcript protect
+host bindings. The cold consumer imports both installed entries and checks
+availability projection/refusal, opaque offers, injected minimums and snapshot
+refusal without optional peers. This establishes contract proof only.
+
+OMS schemas and pure operational builders export from browser-safe `./commerce`.
+Order-money derivation and paid-event constants reuse the existing commerce
+owners. `OmsOrderPaymentStatus` binds the existing generic
+`OmsPaymentStatus<PaymentIntentStatus>` to the core payment states; the generic
+K1 contract remains available unchanged.
+Node-only `./commerce/server` owns the generic handlers, managed RPC/query store
+and detail composition that uses the shipping runtime. DTOs and structural ports
+remain in the type-only contracts entry. Inject settlement,
+identity/presentation and provider read projections at composition. The managed
+client requires only `rpc`; table reads and note persistence receive a separate
+query capability, including the `is(column, value)` filter required by hydration.
+Unprojected timeline labels use canonical step keys; hosts supply localized copy
+through `timelineLabel`. Refund marking remains an operator mark. Replacement creation
+uses the existing fulfillment handler and never confirms arrival or interrupts
+an active subscription. W5/W6 tests pin replay tuples and forbidden effects.
 
 ## Shipping
 
@@ -188,7 +246,11 @@ base reads using the selected list ID, with base-refusal precedence.
 
 `./pricing/contracts` contains dependency-free authority observations, policy
 DTOs and version constants; its only external type comes from the exact
-`@openlup/core/pricing` entry. Zod schemas, Web Crypto hashing and Node HMAC token
+`@openlup/core/pricing` entry. `./pricing/browser` directly re-exports exactly
+`createCommerceQuotePrimitives`, `acquisitionCapabilitySchema` and
+`acquisitionTermsExpectationSchema` from their defining files. They retain the
+same identity and behavior as the pricing root. Its complete browser bundle
+contains no Node imports. Other schemas, Web Crypto hashing and Node HMAC token
 operations stay in the server entry. Tokens retain assignment binding, the
 72-hour default compatibility window and rollback behavior. Secret selection,
 feature flags and readiness remain reference composition responsibilities.
@@ -828,3 +890,5 @@ transport or query projection is host-owned. No executor is installed.
 store seller binding and managed wrappers persist its first-ever claim revision;
 legacy fallback and forward-only migration limits are owned by the
 [M09 migration section](../../docs/platform/DATA_AND_MIGRATIONS.md#m09-invoicing-forward-design-and-control-approval).
+
+OMS read projections are optional. Omitting the host health classifier preserves the original unprojected empty health snapshot (`ok`, no reasons or evidence IDs); it does not evaluate provider health. The reference composition injects its existing classifier and evidence readers.

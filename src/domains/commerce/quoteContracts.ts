@@ -1,3 +1,4 @@
+import { acquisitionCapabilitySchema } from "@openlup/platform/pricing/browser";
 // Browser validation binding; the pricing server entry owns the portable counterpart.
 import { z } from "../../lib/validation/zod.js";
 import { catalogAllergenSlugSchema } from "../catalog/contracts.js";
@@ -266,11 +267,12 @@ function validateQuoteRequest(
     }
 }
 
-export const createQuoteRequestSchema = z.object(createQuoteRequestShape)
+export const createQuoteRequestSchema = z.object({ ...createQuoteRequestShape, acquisitionCapability: acquisitionCapabilitySchema.optional() })
   .superRefine(validateQuoteRequest);
 
 export const publicCreateQuoteRequestSchema = z.object({
   ...createQuoteRequestShape,
+  acquisitionCapability: acquisitionCapabilitySchema.optional(),
   promotionAcceptanceToken: z.string().min(1).max(8_300).optional(),
 }).superRefine(validateQuoteRequest);
 

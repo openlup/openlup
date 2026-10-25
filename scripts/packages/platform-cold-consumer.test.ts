@@ -5,7 +5,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { isolatedConsumerEnv } from "./pack-manifest-input.ts";
 import { afterAll, afterEach, beforeAll, expect, it } from "vitest";
-import { proveInvoicingConsumer, proveSubscriptionsConsumer, proveWarehouseAdapterConsumer, proveFulfillmentConsumer, provePaymentAdapterConsumer, provePaymentsConsumer, installA1HostBinding, proveA1ReferenceBindingConsumer, ADAPTER_ENTRIES, assertConsumerIsolation, assertExportInventory, compileConsumer, consumerNode, NON_ADAPTER_ENTRIES, OPTIONAL_PEERS, proveAdapterRefusals, proveOidcRefusals, provePostgresOperations, proveNativeCommunicationsOperations, proveResendConsumer, proveMarketingSyncConsumer, runPlatformColdConsumer } from "./platform-cold-consumer.ts";
+import { proveCommerceConsumer, proveInvoicingConsumer, proveSubscriptionsConsumer, proveWarehouseAdapterConsumer, proveFulfillmentConsumer, provePaymentAdapterConsumer, provePaymentsConsumer, installA1HostBinding, proveA1ReferenceBindingConsumer, ADAPTER_ENTRIES, assertConsumerIsolation, assertExportInventory, compileConsumer, consumerNode, NON_ADAPTER_ENTRIES, OPTIONAL_PEERS, proveAdapterRefusals, proveOidcRefusals, provePostgresOperations, proveNativeCommunicationsOperations, proveResendConsumer, proveMarketingSyncConsumer, runPlatformColdConsumer } from "./platform-cold-consumer.ts";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const temporary: string[] = [];
@@ -26,6 +26,9 @@ function fixture() {
   // The typed consumer registers the payments factory with the composer.
   writeFileSync(join(consumer, "node_modules/@openlup/platform/index.d.ts"), [
     "export interface Synthetic { value: string }",
+    "export interface CommerceOfferAvailabilityRequestItem { sku: string; productSlug: string; variantId: string; requestedQuantity: number; checkoutMode: \"one_time\" | \"subscription\" }",
+    "export interface CommerceOfferAvailabilityPort { getAvailability(input: { items: readonly CommerceOfferAvailabilityRequestItem[] }): Promise<unknown[]> }",
+    "export declare function offerAvailabilityRequestItems(variants: readonly { sku: string; slug: string; variantId: string }[], checkoutMode: \"one_time\" | \"subscription\"): CommerceOfferAvailabilityRequestItem[];",
     "export type InvoiceSellerRevision = { seller: object; revisionRef: string }; export type InvoiceDocumentIdentity = Synthetic; export type InvoiceProviderPort = Synthetic; export type InvoiceSettlementPort = Synthetic; export type InvoiceSettlementItem = Synthetic; export type InvoiceDutyReadback = Synthetic; export type InvoiceUnsupported = Synthetic; export type InvoiceDiagnosticCode = Synthetic; export type InvoiceProof = Synthetic; export type InvoiceClearanceObservation = Synthetic; export type InvoiceFacts = Synthetic; export type InvoiceLine = Synthetic; export type InvoiceSeller = Synthetic; export type InvoiceBuyer = Synthetic; export type InvoiceIdentity = Synthetic; export type InvoiceWriteResult = Synthetic; export type InvoiceArtifactResult = Synthetic; export type InvoiceSettlementResult = Synthetic; export type InvoiceCompanyLookupPort = Synthetic; export type { InvoiceStorePort } from \"./invoicing-contracts/index.js\"; export type InvoiceHostPorts = Synthetic; export type InvoiceServicesOptions = Synthetic;",
     "export interface InvoiceCapabilities { providerRef: string }",
     "export interface InvoiceReadbackResult { kind: 'absent'; identity: InvoiceIdentity; evidence: { exact: true; complete: true; scope: InvoiceIdentity; evidenceRef: string; fingerprint: string; observedAt: string } }",
@@ -443,6 +446,12 @@ const inventoryForecastFixture = {
     expect(JSON.stringify(createInventorySubscriptionForecastResponseSchema(z.literal(provider)).parse(response))).toBe(bytes);
     expect(reference.inventorySubscriptionForecastResponseSchema.safeParse(inventoryForecastFixture).success).toBe(false);
   });
+
+it("M11 K1 proves installed commerce success and refusal without optional peers", () => {
+  const consumer = pristinePackedA1Fixture();
+  assertConsumerIsolation(consumer, root);
+  proveCommerceConsumer(consumer);
+});
 
 it("payments and fulfillment: installed packed consumer proves injected execution, truth scope, fulfillment services, default-off and contribution", () => {
   const consumer = pristinePackedA1Fixture();

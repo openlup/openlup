@@ -25,42 +25,14 @@ import {
  * activation, OMS, fulfillment, and payment-control all see the same target kind.
  */
 
-export const CHECKOUT_CONTRACT_VERSION = "commerce.checkout.v2";
-const uuidSchema = z.guid();
-const datetimeSchema = z.string().datetime({ offset: true });
-
-export const checkoutKindSchema = z.enum(["one_time", "subscription_initial"]);
-export const checkoutActivationStatusSchema = z.enum([
-  "not_applicable",
-  "pending_payment_success",
-  "activated",
-  "blocked_missing_payment_method",
-]);
-
-export const ASYNC_CHECKOUT_STATUSES = [
-  "pending_provider_action",
-  "requires_action",
-  "processing",
-  "paid",
-  "failed",
-  "expired",
-] as const;
-export type AsyncCheckoutStatus = (typeof ASYNC_CHECKOUT_STATUSES)[number];
-
-export const asyncCheckoutStatusSchema = z.enum(ASYNC_CHECKOUT_STATUSES);
-export const subscriptionActivationStatusSchema = z.enum(["not_applicable", "waiting_for_mandate", "active", "action_required"]);
+export { CHECKOUT_CONTRACT_VERSION, ASYNC_CHECKOUT_STATUSES, checkoutKindSchema, checkoutActivationStatusSchema, asyncCheckoutStatusSchema, subscriptionActivationStatusSchema } from "@openlup/platform/commerce";
+export type { AsyncCheckoutStatus } from "@openlup/platform/commerce/contracts";
+import { checkoutKindSchema, invoiceBuyerSnapshotAddressCoreSchema, checkoutRequestCoreSchema, createCheckoutResponseSchemas, createCheckoutQuoteSchemas } from "@openlup/platform/commerce";
+import { acquisitionTermsExpectationSchema } from "@openlup/platform/pricing/browser";
+const { checkoutQuoteExpectationSchema, checkoutQuoteAcceptanceSchema } = createCheckoutQuoteSchemas({ moneySchema: commerceMoneySchema, pricingPolicySchema: pricingPolicySnapshotSchema, acquisitionTermsExpectationSchema });
 const INVOICE_COMPANY_NAME_MAX_LENGTH = 240;
 
-export const invoiceBuyerSnapshotAddressSchema = z
-  .object({
-    line1: z.string().trim().min(3).max(160),
-    line2: z.string().trim().min(1).max(160).nullable().default(null),
-    city: z.string().trim().min(2).max(120),
-    postalCode: z.string().trim().min(3).max(16),
-    country: z.literal("PL"),
-    source: z.string().trim().min(1).max(120),
-  })
-  .strict();
+export const invoiceBuyerSnapshotAddressSchema = invoiceBuyerSnapshotAddressCoreSchema.extend({ country: z.literal("PL") });
 
 const checkoutInvoiceAddressInputSchema = invoiceBuyerSnapshotAddressSchema
   .omit({ source: true })
@@ -144,6 +116,7 @@ export const checkoutClientActionSchema = z
     }
   });
 
+// Preserve legacy field and issue order while reusing the neutral validators.
 export const checkoutRequestSchema = z
   .object({
     intent: configuratorIntentSchema,
@@ -154,34 +127,12 @@ export const checkoutRequestSchema = z
      * injection (W11.7) and activation flags.
      */
     paymentProvider: z.enum(PAYMENT_EXECUTION_PROVIDERS).default("hidden_rehearsal"),
-    /**
-     * Which payment attempt this is for the same journey. Bumped by the client
-     * after a terminal decline so a retry — especially one that switches provider
-     * — gets a fresh provider-attempt identity on the SAME order, instead of
-     * colliding with the dead attempt's prepare key. */
-    paymentAttemptSequence: z.number().int().min(0).max(50).optional(),
+    paymentAttemptSequence: checkoutRequestCoreSchema.shape.paymentAttemptSequence,
     paymentExecution: checkoutPaymentExecutionSchema.optional(),
     declaredBankId: z.string().trim().min(1).max(40).regex(/^[A-Za-z0-9_-]+$/).optional(),
-    /**
-     * Where a redirect-based provider (Tpay BLIK / PBL) returns the buyer after
-     * payment. `"public"` (default) keeps the anonymous configurator flow byte-
-     * identical: the server returns the public `/skomponuj-pakiet/platnosc`
-     * terminal. `"account"` is set by the in-account order flow so the server
-     * builds the in-shell `/konto/zamowienie/status` return URL and the buyer
-     * lands on the cream account terminal (sidebar persists). The server owns the
-     * path mapping — the client only declares its context (an enum, never a raw
-     * URL, so a forged request can't redirect off-origin).
-     */
-    returnContext: z.enum(["public", "account"]).default("public"),
+    returnContext: checkoutRequestCoreSchema.shape.returnContext,
     invoicePreference: checkoutInvoicePreferenceSchema.default({ kind: "b2c_named" }),
-    expectedQuote: z
-      .object({
-        totalGross: commerceMoneySchema,
-        pricingPolicy: pricingPolicySnapshotSchema.optional(),
-        promotionAcceptanceToken: z.string().min(1).max(8_300).optional(),
-      })
-      .strict()
-      .optional(),
+    expectedQuote: checkoutQuoteAcceptanceSchema.optional(),
   })
   .strict()
   .superRefine((request, ctx) => {
@@ -249,127 +200,11 @@ export const checkoutRequestSchema = z
     }
   });
 
-const checkoutSuccessResponseSchema = z
-  .object({
-    contractVersion: z.literal(CHECKOUT_CONTRACT_VERSION),
-    checkoutKind: checkoutKindSchema,
-    orderRef: z.string().regex(/^order_[a-z0-9-]+$/),
-    orderId: uuidSchema,
-    status: asyncCheckoutStatusSchema,
-    paymentIntentId: uuidSchema.optional(),
-    paymentAttemptId: uuidSchema.nullable().optional(),
-    providerPaymentId: z.string().trim().min(1).nullable().optional(),
-    /**
-     * Customer (clients table) UUID for this checkout. The FE uses it as the
-     * server-side ownership guard for `/api/bff/commerce/payment-status` and
-     * post-payment order recap reads. Present on paid/processing checkout
-     * responses so receipt money can be fetched from `commerce_orders`.
-     */
-    clientId: uuidSchema.optional(),
-    clientAction: checkoutClientActionSchema.optional(),
-    returnUrl: z.string().url().optional(),
-    statusUrl: z.string().min(1).optional(),
-    subscription: z
-      .object({
-        requested: z.boolean(),
-        cadenceDays: z.number().int().positive().max(120).nullable(),
-        activationStatus: checkoutActivationStatusSchema,
-      })
-      .strict()
-      .optional(),
-    payment: z
-      .object({
-        requiresReusablePaymentMethod: z.boolean(),
-      })
-      .strict()
-      .optional(),
-    authoritativeQuote: createQuoteResponseSchema.optional(),
-  })
-  .strict()
-  .superRefine((response, ctx) => {
-    const subscription = response.subscription;
-    if (response.checkoutKind === "one_time") {
-      if (subscription && (subscription.requested || subscription.cadenceDays !== null || subscription.activationStatus !== "not_applicable")) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          message: "one-time checkout cannot report requested subscription activation",
-          path: ["subscription"],
-        });
-      }
-      return;
-    }
-
-    if (!subscription?.requested || !subscription.cadenceDays) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "subscription checkout requires subscription response details",
-        path: ["subscription"],
-      });
-    }
-    if (response.payment?.requiresReusablePaymentMethod !== true) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: "subscription checkout requires reusable payment method",
-        path: ["payment", "requiresReusablePaymentMethod"],
-      });
-    }
-  });
-
-const checkoutPriceChangedResponseSchema = z
-  .object({
-    contractVersion: z.literal(CHECKOUT_CONTRACT_VERSION),
-    checkoutKind: checkoutKindSchema,
-    status: z.literal("price_changed"),
-    priceChanged: z.literal(true),
-    expectedQuote: z.object({
-      totalGross: commerceMoneySchema,
-      pricingPolicy: pricingPolicySnapshotSchema.optional(),
-    }).strict(),
-    authoritativeQuote: createQuoteResponseSchema,
-  })
-  .strict();
-
-export const checkoutResponseSchema = z.discriminatedUnion("status", [
-  checkoutSuccessResponseSchema,
-  checkoutPriceChangedResponseSchema,
-]);
-
-export const paymentStatusRequestSchema = z
-  .object({
-    orderId: uuidSchema,
-    paymentIntentId: uuidSchema,
-    clientId: uuidSchema,
-  })
-  .strict();
-
-export const paymentStatusResponseSchema = z
-  .object({
-    contractVersion: z.literal(CHECKOUT_CONTRACT_VERSION),
-    orderId: uuidSchema,
-    paymentIntentId: uuidSchema,
-    status: asyncCheckoutStatusSchema,
-    orderStatus: z.string().trim().min(1),
-    payment: z
-      .object({
-        intentStatus: z.enum(PAYMENT_INTENT_STATUSES),
-        attemptStatus: z.enum(PAYMENT_ATTEMPT_STATUSES).nullable(),
-        paymentAttemptId: uuidSchema.nullable(),
-        provider: z.string().trim().min(1).nullable(),
-        providerPaymentId: z.string().trim().min(1).nullable(),
-        updatedAt: datetimeSchema,
-      })
-      .strict(),
-    /**
-     * Why the payment failed, as a stable code. Travels BESIDE `status`, never
-     * inside it: collapsing a reason into the status enum is what left every
-     * decline indistinguishable from every other in the first place.
-     */
-    failureReason: z.string().trim().min(1).max(240).nullable().default(null),
-    failureDisplay: paymentFailureDisplayReasonSchema.nullable().optional(),
-    subscriptionActivation: z.object({ status: subscriptionActivationStatusSchema, subscriptionId: uuidSchema.nullable() }).strict(),
-    nextAction: checkoutClientActionSchema.nullable(),
-  })
-  .strict();
+export const { checkoutResponseSchema, paymentStatusRequestSchema, paymentStatusResponseSchema } = createCheckoutResponseSchemas({
+  quoteSchema: createQuoteResponseSchema, quoteExpectationSchema: checkoutQuoteExpectationSchema,
+  clientActionSchema: checkoutClientActionSchema, paymentIntentStatusSchema: z.enum(PAYMENT_INTENT_STATUSES),
+  paymentAttemptStatusSchema: z.enum(PAYMENT_ATTEMPT_STATUSES), failureDisplaySchema: paymentFailureDisplayReasonSchema,
+});
 
 export type CheckoutRequest = z.input<typeof checkoutRequestSchema>;
 export type CheckoutResponse = z.infer<typeof checkoutResponseSchema>;

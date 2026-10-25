@@ -563,6 +563,18 @@ these managed semantics do not establish native parity or activate a runner. [Da
 owns their schema/backfill prerequisites and explicit mapping for adopters that
 already carry the donor history. The new fixtures add no C94 vocabulary counts.
 
+The selected reference browser profiles admit exact built commerce files,
+including the browser-safe schemas and pure helper closure. The subscription
+profile includes the 31 OMS schema/pure-model files reached when its commerce
+barrel is parsed; the Node-only detail builder and managed adapters stay outside
+that exact inventory. The identity profile also lists the complete reached OMS,
+core fulfillment/payment/subscription and pricing-contracts closure as exact built
+paths. The list grants
+no directory-wide admission: `commerce/server` and the Node-only pricing root
+remain outside it. `pricing/browser` admits only its four-file runtime closure
+for the existing primitive factory and acquisition capability/expectation schemas. A new reference import must have both browser-safe dependency
+closure and an exact inventory entry before that selected profile can build.
+
 The invoicing reference capability is default-off and installs no routes or
 scheduler. Its seller migration entries are forward-only introductions of the
 approved fixtures; they preserve the preceding native manifest rows and hashes.
@@ -733,8 +745,14 @@ unchanged. The quote and provenance modules retain their wire-version constants;
 module also exposes the additive v3 constant. Money/evidence DTOs erase at build time. The inventory admits no pricing server entry, token crypto, readiness
 or secret configuration. [The pricing package](../../packages/platform/README.md#pricing)
 owns the extracted authority and DTOs. Acquisition DTOs and protocol identities
-are additive; their schemas, required host financial policy, selector and
-readiness live only in the server entry. The reference supplies no acquisition
+are additive. `pricing/browser` directly re-exports the existing
+`createCommerceQuotePrimitives`, `acquisitionCapabilitySchema` and
+`acquisitionTermsExpectationSchema`; the inventories additionally admit only
+`pricing/browser/index.js`, `pricing/quotePrimitives.js` and
+`pricing/acquisitionTermsSchemas.js` plus the already declared acquisition
+constant where needed. Required host financial policy, selector and readiness
+remain in the server entry. The reference's four schema imports bind the same
+symbols through this browser entry without changing validation. The reference supplies no acquisition
 configuration and its request admission and token envelopes are unchanged.
 
 The communications import inventory grants first-party browser imports only to

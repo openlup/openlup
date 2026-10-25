@@ -386,7 +386,7 @@ export declare function consentStateFromBoolean(value: boolean | null | undefine
 import type { CommunicationPurpose } from "./contracts/types.js";
 import type { CommunicationPurposeDefinition, CommunicationPurposeRegistry } from "./contracts/consent.js";
 export declare function createCommunicationPurposeRegistry<const Purpose extends string = never>(additions?: readonly CommunicationPurposeDefinition<Purpose>[]): CommunicationPurposeRegistry<CommunicationPurpose | Purpose>;
-export declare const defaultCommunicationPurposeRegistry: CommunicationPurposeRegistry<"transactional" | "marketing_launch_offer" | "marketing_newsletter" | "tester_program" | "subscription_dunning" | "admin_notification">;
+export declare const defaultCommunicationPurposeRegistry: CommunicationPurposeRegistry<"transactional" | "subscription_dunning" | "marketing_launch_offer" | "marketing_newsletter" | "tester_program" | "admin_notification">;
 ```
 ## dist/communications/contracts/authEmail.d.ts
 
@@ -1708,6 +1708,7 @@ export declare const newsletterSyncEventTypeSchema: z.ZodEnum<{
 }>;
 export declare const newsletterWebhookEventTypeSchema: z.ZodEnum<{
     update: "update";
+    ignored: "ignored";
     email_change: "email_change";
     subscribe: "subscribe";
     unsubscribe: "unsubscribe";
@@ -1715,7 +1716,6 @@ export declare const newsletterWebhookEventTypeSchema: z.ZodEnum<{
     complaint: "complaint";
     bounce: "bounce";
     profile_update: "profile_update";
-    ignored: "ignored";
 }>;
 export declare const newsletterProviderCapabilitiesSchema: z.ZodObject<{
     subscribe: z.ZodBoolean;
@@ -1733,6 +1733,7 @@ export declare const canonicalNewsletterWebhookEventSchema: z.ZodObject<{
     providerEventId: z.ZodString;
     eventType: z.ZodEnum<{
         update: "update";
+        ignored: "ignored";
         email_change: "email_change";
         subscribe: "subscribe";
         unsubscribe: "unsubscribe";
@@ -1740,7 +1741,6 @@ export declare const canonicalNewsletterWebhookEventSchema: z.ZodObject<{
         complaint: "complaint";
         bounce: "bounce";
         profile_update: "profile_update";
-        ignored: "ignored";
     }>;
     email: z.ZodOptional<z.ZodNullable<z.ZodString>>;
     remoteProfileId: z.ZodOptional<z.ZodNullable<z.ZodString>>;
@@ -1752,8 +1752,8 @@ export declare const canonicalNewsletterWebhookEventSchema: z.ZodObject<{
     explicitOptInEvidence: z.ZodOptional<z.ZodBoolean>;
     doubleOptInStatus: z.ZodOptional<z.ZodEnum<{
         unknown: "unknown";
-        confirmed: "confirmed";
         pending: "pending";
+        confirmed: "confirmed";
     }>>;
     occurredAt: z.ZodOptional<z.ZodNullable<z.ZodString>>;
     payload: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
@@ -1772,6 +1772,7 @@ export declare function createNewsletterIntegrationSchemas<Purpose extends strin
         providerEventId: z.ZodString;
         eventType: z.ZodEnum<{
             update: "update";
+            ignored: "ignored";
             email_change: "email_change";
             subscribe: "subscribe";
             unsubscribe: "unsubscribe";
@@ -1779,7 +1780,6 @@ export declare function createNewsletterIntegrationSchemas<Purpose extends strin
             complaint: "complaint";
             bounce: "bounce";
             profile_update: "profile_update";
-            ignored: "ignored";
         }>;
         email: z.ZodOptional<z.ZodNullable<z.ZodString>>;
         remoteProfileId: z.ZodOptional<z.ZodNullable<z.ZodString>>;
@@ -1787,8 +1787,8 @@ export declare function createNewsletterIntegrationSchemas<Purpose extends strin
         explicitOptInEvidence: z.ZodOptional<z.ZodBoolean>;
         doubleOptInStatus: z.ZodOptional<z.ZodEnum<{
             unknown: "unknown";
-            confirmed: "confirmed";
             pending: "pending";
+            confirmed: "confirmed";
         }>>;
         occurredAt: z.ZodOptional<z.ZodNullable<z.ZodString>>;
         payload: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;

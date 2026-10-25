@@ -2358,6 +2358,18 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/api/commerce-contracts.api.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/api/commerce-server.api.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/api/commerce.api.md",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/api/communications-contracts.api.md",
       "class": "public-output"
     },
@@ -2447,6 +2459,10 @@
     },
     {
       "path": "packages/platform/api/payments.api.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/api/pricing-browser.api.md",
       "class": "public-output"
     },
     {
@@ -2927,6 +2943,322 @@
     },
     {
       "path": "packages/platform/src/catalog/validation.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/adapters/managed/commerceOmsControlPlane.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/adapters/managed/commerceOmsMutations.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/adapters/managed/commerceOmsPort.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/adapters/managed/oms/accounting.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/adapters/managed/oms/fulfillmentReads.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/adapters/managed/oms/inboundEvents.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/adapters/managed/oms/outboxEvents.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/adapters/managed/oms/paymentAttempts.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/adapters/managed/oms/queueSelection.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/adapters/managed/oms/readProjections.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/adapters/managed/oms/readQueries.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/adapters/managed/oms/types.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/checkoutHelpers.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/checkoutResumeSchemas.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/checkoutSchemas.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/configuratorIntentPersistenceSchemas.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/configuratorIntentSchemas.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/contractPrimitives.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/contracts/availability.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/contracts/fulfillmentRecovery.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/contracts/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/contracts/intent.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/contracts/omsTypes.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/contracts/order.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/contracts/orderMoney.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/contracts/ports.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/contracts/recovery.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/contracts/runtimePorts.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/contracts/state.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/customerDefaultsSnapshotSchemas.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/errors.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/fulfillmentEligibility.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/model/customerFulfillmentRecovery.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/model/fulfillmentCancellationEligibility.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/model/omsAccountingVisibility.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/model/omsBillingInvoiceBuyer.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/model/omsCurrency.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/model/omsFulfillmentDebug.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/model/omsFulfillmentSummary.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/model/omsListTotals.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/model/omsOperationalLadder.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/model/omsOrderLineMoney.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/model/omsPaymentMethodSummary.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/model/omsReadModel.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/model/omsReadModelCommunication.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/model/omsReadModelHelpers.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/model/omsReadModelList.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/model/omsReadModelListSummary.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/model/omsReadModelPricing.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/model/omsReadModelProjections.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/model/omsReadModelRowCore.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/model/omsReadModelRows.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/offerAvailabilitySchemas.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/oms/omsContractBase.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/oms/omsContractReadAuxSchemas.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/oms/omsContractReadSchemas.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/oms/omsContractRequests.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/oms/omsContracts.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/oms/omsControlPlane.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/oms/omsFulfillmentContractSchemas.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/oms/omsFulfillmentDebugSchemas.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/oms/omsFulfillmentHealthSchemas.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/oms/omsPorts.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/oms/omsPrimitives.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/oms/omsProviderEvidenceSchemas.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/orderDraftErrors.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/orderMoney.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/outboxEventSchemas.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/ports.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/recoveryDestination.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/runtimeErrors.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/schemas.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/commerceOmsCancelOrderHandler.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/commerceOmsControlPlaneHandlers.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/commerceOmsHandlers.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/commerceOmsMarkRefundedHandler.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/handlerSupport.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/index.ts",
       "class": "public-output"
     },
     {
@@ -4598,6 +4930,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/pricing/browser/index.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/pricing/catalogFactsProvenance.ts",
       "class": "public-output"
     },
@@ -5199,6 +5535,218 @@
     },
     {
       "path": "packages/platform/test/catalog/sellableBundleHandler.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/browserBoundary.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/commerceOmsCancelOrderHandler.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/commerceOmsControlPlaneHandlers.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/commerceOmsHandlers.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/commerceOmsHandlersTestKit.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/commerceOmsHandlersTestKit.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/commerceOmsMarkRefundedHandler.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/commerceOmsMutationEnvelopes.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/commerceOmsMutationHandlers.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/commerceOmsOrderActionEnvelopes.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/commerceQuoteCompositionCharacterization.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/fulfillmentEligibility.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/managedAccounting.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/managedCommerceOmsControlPlane.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/managedCommerceOmsMutations.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/managedCommerceOmsPort.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/managedFunctionEvidence.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/managedInboundEvents.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/managedOutboxEvents.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/managedPaymentAttempts.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/managedQueueSelection.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/managedReadQueries.fixtures.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/managedReadQueries.fixtures.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/managedReadQueriesFulfillmentDebug.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/managedReadQueriesTestKit.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/managedReadQueriesTestKit.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/managedTypes.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/omsAccountingSummary.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/omsCommandsCharacterization.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/omsConformanceTestKit.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/omsContracts.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/omsControlPlane.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/omsEnvelopeTestBinding.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/omsFulfillmentActionEligibility.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/omsFulfillmentDebug.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/omsFulfillmentEligibility.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/omsFulfillmentSummary.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/omsListTotals.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/omsNeutralFixtures.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/omsOperationalLadder.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/omsOrderSubscriptionContinuityCharacterization.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/omsReadModel.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/omsReadModelCharacterization.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/omsReadModelHelpers.enrichBilling.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/omsReadModelQueue.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/omsReadModelRowCore.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/omsSchemaTypes.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/orderMoney.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/outboxEventContracts.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/portFit.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/ports.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/recoveryDestinationPolicy.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/schemas.test.ts",
       "class": "public-output"
     },
     {
@@ -9162,6 +9710,10 @@
       "class": "public-output"
     },
     {
+      "path": "server/adapters/supabase/commerce/oms/referenceProjections.ts",
+      "class": "public-output"
+    },
+    {
       "path": "server/adapters/supabase/commerce/oms/types.test.ts",
       "class": "public-output"
     },
@@ -12242,6 +12794,10 @@
       "class": "public-output"
     },
     {
+      "path": "server/domains/commerce/checkoutOfferPolicyPort.ts",
+      "class": "public-output"
+    },
+    {
       "path": "server/domains/commerce/checkoutPaymentContinuationCredential.test.ts",
       "class": "public-output"
     },
@@ -12606,7 +13162,19 @@
       "class": "public-output"
     },
     {
+      "path": "server/domains/commerce/commerceOmsMutationEnvelopes.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "server/domains/commerce/commerceOmsMutationHandlers.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/domains/commerce/commerceOmsOrderActionEnvelopes.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/domains/commerce/commerceOmsReplacementComposition.test.ts",
       "class": "public-output"
     },
     {
@@ -15782,6 +16350,10 @@
       "class": "public-output"
     },
     {
+      "path": "server/shared/fulfillment/managedOperatorBinding.ts",
+      "class": "public-output"
+    },
+    {
       "path": "server/shared/mapResendOutcome.test.ts",
       "class": "public-output"
     },
@@ -17758,6 +18330,10 @@
       "class": "public-output"
     },
     {
+      "path": "src/domains/commerce/__snapshots__/commerceSchemaEquivalence.test.ts.snap",
+      "class": "public-output"
+    },
+    {
       "path": "src/domains/commerce/adminCatalogClient.test.ts",
       "class": "public-output"
     },
@@ -17919,6 +18495,14 @@
     },
     {
       "path": "src/domains/commerce/commerceRecommendationClient.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "src/domains/commerce/commerceSchemaEquivalence.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "src/domains/commerce/commerceSchemaRepairRegression.test.ts",
       "class": "public-output"
     },
     {
@@ -18311,6 +18895,14 @@
     },
     {
       "path": "src/domains/commerce/omsReadModelRows.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "src/domains/commerce/omsReferenceBinding.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "src/domains/commerce/omsReferenceBinding.ts",
       "class": "public-output"
     },
     {
@@ -23547,6 +24139,10 @@
     },
     {
       "path": "tests/postgres/oidcReferenceRp.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/omsQueueLadder.test.ts",
       "class": "public-output"
     },
     {
