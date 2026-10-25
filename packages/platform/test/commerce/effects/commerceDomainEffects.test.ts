@@ -1,3 +1,17 @@
+/*
+ * Adopter-private assertions not carried over:
+ * - Paid-purchase analytics descriptor (`commerce.order.paid.analytics`) and its
+ *   exclusion from the core registry: private M13 analytics.
+ * - Paid-purchase measurement trigger mechanism: private M13 analytics.
+ * - Draft-created catalog runner/business-trigger match: deployment-specific inventory.
+ * - Accounting invoice-producer catalog runner match: deployment-specific inventory.
+ * - Fulfillment-handoff invoice-duty business-trigger match: deployment-specific inventory.
+ * - Order-canceled emission catalog runner/business-trigger match: deployment-specific inventory.
+ * - Return-emission catalog runner/business-trigger match: deployment-specific inventory.
+ *   Consumer/flag checks retain neutral duty independence; M09 owns invoice execution.
+ * - Eleven sealed migration SHA rows, witnessed function/trigger/table catalogs and
+ *   `assertMigrationWitness`: adopter append-only lineage; pgTAP owns runtime emission proof.
+ */
 import { describe, expect, it, vi } from "vitest";
 import type { OutboxEventRow } from "@openlup/core/outbox";
 import {

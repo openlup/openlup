@@ -124,6 +124,38 @@ W8/W9 conformance lives in `packages/platform/test/commerce/effects`; rebound
 reference suites and the captured event-schema transcript check host behavior.
 Admin order UI and marketing/review handlers remain reference-owned.
 
+### W8/W9 conformance: dropped adopter-private assertions
+
+The package suites retain neutral consumer behavior and source identity while
+the donor's deployment inventory and migration lineage stay with their owners.
+
+W8 (`commerceDomainEffects.test.ts`) omits these assertions:
+
+- Paid-purchase analytics descriptor event type (`commerce.order.paid.analytics`)
+  and its exclusion from the core registry: private M13 analytics.
+- Paid-purchase measurement trigger mechanism: private M13 analytics.
+- Draft-created catalog runner/business-trigger match: deployment-specific trigger inventory.
+- Accounting invoice-producer catalog runner match: deployment-specific trigger inventory.
+- Fulfillment-handoff invoice-duty business-trigger match: deployment-specific trigger inventory.
+- Order-canceled emission catalog runner/business-trigger match: deployment-specific trigger inventory.
+- Return-emission catalog runner/business-trigger match: deployment-specific trigger inventory.
+- Eleven sealed migration SHA rows, witnessed function/trigger/table catalogs and
+  `assertMigrationWitness`: adopter append-only migration lineage; pgTAP suites own runtime emission proof.
+
+Consumer and flag assertions retain neutral duty independence. M09 owns invoice
+execution; the package registry remains a consumer map.
+
+W9 (`commerceSalesChannelSeam.test.ts`) omits these assertions:
+
+- Two exposure/new-purchase migration SHA seals, witnessed-object catalog and `assertMigrationWitness`:
+  adopter append-only migration lineage, owned by M10/M06.
+- Regex for `inventory_listing_exposure(p_sku_id uuid)`: M10/M06 exposure SQL ownership.
+- Issued-minus-converted-minus-withdrawn listing-unit SQL text: M10/M06 exposure SQL ownership.
+- Raw-sellable-minus-listing-exposure regex: M10/M06 ATP/exposure SQL ownership.
+- Pending-symbol migration-lineage absence witness: M10/M06 migration ownership;
+  replaced by package-source absence of `inventory_channel_exposure_quantity`
+  and the type-only injected `CommerceChannelExposureReadPort`.
+
 ## Pricing policy package boundary
 
 The existing pricing-policy token and neutral error/safe-reason block are owned

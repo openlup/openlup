@@ -36,7 +36,7 @@
                 "tax": {
                   "included": true,
                   "country": "__HOST_COUNTRY__",
-                  "category": "pet_food",
+                  "category": "category_a",
                   "vatRateBps": 800,
                   "legalBasis": "__HOST_COUNTRY__ VAT Annex 3 item 10c",
                   "netAmount": {
@@ -103,7 +103,7 @@
               "tax": {
                 "included": true,
                 "country": "__HOST_COUNTRY__",
-                "category": "pet_food",
+                "category": "category_a",
                 "vatRateBps": 800,
                 "legalBasis": "__HOST_COUNTRY__ VAT Annex 3 item 10c",
                 "netAmount": {
@@ -215,7 +215,7 @@
               "tax": {
                 "included": true,
                 "country": "__HOST_COUNTRY__",
-                "category": "pet_food",
+                "category": "category_a",
                 "vatRateBps": 800,
                 "legalBasis": "__HOST_COUNTRY__ VAT Annex 3 item 10c",
                 "netAmount": {
@@ -282,7 +282,7 @@
             "tax": {
               "included": true,
               "country": "__HOST_COUNTRY__",
-              "category": "pet_food",
+              "category": "category_a",
               "vatRateBps": 800,
               "legalBasis": "__HOST_COUNTRY__ VAT Annex 3 item 10c",
               "netAmount": {
@@ -387,7 +387,7 @@
               "tax": {
                 "included": true,
                 "country": "__HOST_COUNTRY__",
-                "category": "pet_food",
+                "category": "category_a",
                 "vatRateBps": 800,
                 "legalBasis": "__HOST_COUNTRY__ VAT Annex 3 item 10c",
                 "netAmount": {
@@ -454,7 +454,7 @@
             "tax": {
               "included": true,
               "country": "__HOST_COUNTRY__",
-              "category": "pet_food",
+              "category": "category_a",
               "vatRateBps": 800,
               "legalBasis": "__HOST_COUNTRY__ VAT Annex 3 item 10c",
               "netAmount": {
@@ -568,7 +568,7 @@
               "tax": {
                 "included": true,
                 "country": "__HOST_COUNTRY__",
-                "category": "pet_food",
+                "category": "category_a",
                 "vatRateBps": 800,
                 "legalBasis": "__HOST_COUNTRY__ VAT Annex 3 item 10c",
                 "netAmount": {
@@ -635,7 +635,7 @@
             "tax": {
               "included": true,
               "country": "__HOST_COUNTRY__",
-              "category": "pet_food",
+              "category": "category_a",
               "vatRateBps": 800,
               "legalBasis": "__HOST_COUNTRY__ VAT Annex 3 item 10c",
               "netAmount": {
@@ -740,7 +740,7 @@
               "tax": {
                 "included": true,
                 "country": "__HOST_COUNTRY__",
-                "category": "pet_food",
+                "category": "category_a",
                 "vatRateBps": 800,
                 "legalBasis": "__HOST_COUNTRY__ VAT Annex 3 item 10c",
                 "netAmount": {
@@ -808,7 +808,7 @@
             "tax": {
               "included": true,
               "country": "__HOST_COUNTRY__",
-              "category": "pet_food",
+              "category": "category_a",
               "vatRateBps": 800,
               "legalBasis": "__HOST_COUNTRY__ VAT Annex 3 item 10c",
               "netAmount": {
@@ -934,7 +934,7 @@
                 "tax": {
                   "included": true,
                   "country": "__HOST_COUNTRY__",
-                  "category": "pet_food",
+                  "category": "category_a",
                   "vatRateBps": 800,
                   "legalBasis": "__HOST_COUNTRY__ VAT Annex 3 item 10c",
                   "netAmount": {
@@ -1001,7 +1001,7 @@
               "tax": {
                 "included": true,
                 "country": "__HOST_COUNTRY__",
-                "category": "pet_food",
+                "category": "category_a",
                 "vatRateBps": 800,
                 "legalBasis": "__HOST_COUNTRY__ VAT Annex 3 item 10c",
                 "netAmount": {
@@ -1203,7 +1203,7 @@
               "tax": {
                 "included": true,
                 "country": "__HOST_COUNTRY__",
-                "category": "pet_food",
+                "category": "category_a",
                 "vatRateBps": 800,
                 "legalBasis": "__HOST_COUNTRY__ VAT Annex 3 item 10c",
                 "netAmount": {
@@ -1270,7 +1270,7 @@
             "tax": {
               "included": true,
               "country": "__HOST_COUNTRY__",
-              "category": "pet_food",
+              "category": "category_a",
               "vatRateBps": 800,
               "legalBasis": "__HOST_COUNTRY__ VAT Annex 3 item 10c",
               "netAmount": {
