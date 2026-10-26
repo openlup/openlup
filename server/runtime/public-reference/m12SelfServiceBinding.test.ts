@@ -20,18 +20,19 @@ const capabilities: AccountSupportCapabilities = {
 
 const context = { principalId: "actor", clientId: "client", graph: "native" as const };
 const request = { subscriptionId: "SUBSCRIPTION", action: "update_bundle", payload: { acceptedQuoteHash: "invalid" } };
-const pauseRequest = { ...request, action: "pause" }, unsupportedRequest = { ...request, action: "unknown" };
+const pauseRequest = { ...request, action: "pause" }, skipRequest = { ...request, action: "skip" }, unsupportedRequest = { ...request, action: "unknown" };
+const pauseReceipt = { port: "explicitPause" }, controlReceipt = { port: "control" };
 const unsupported = new Error("node_postgres_subscription_edit_action_unsupported");
 const missing = new Error("customer_subscription_owner_refused"), quoteError = new Error("quote-invalid");
 function fixture(owned = false) {
   const transcript: string[] = [];
   const control = {
     async hasSubscription(principalId: string, id: string) { expect(principalId).toBe("actor"); expect(id).toBe("subscription"); transcript.push("ownership"); return owned; },
-    async applyAction(principalId: string, input: typeof request) { expect(principalId).toBe("actor"); if (input.action === "unknown") expect(input).toBe(unsupportedRequest); transcript.push(input.action); if (input.action !== "pause" && input.action !== "update_bundle") throw unsupported; if (input.action === "update_bundle") { expect(input.subscriptionId).toBe("subscription"); throw quoteError; } return null; },
+    async applyAction(principalId: string, input: typeof request) { expect(principalId).toBe("actor"); if (input.action === "unknown") expect(input).toBe(unsupportedRequest); transcript.push(`control:${input.action}`); if (input.action !== "skip" && input.action !== "update_bundle") throw unsupported; if (input.action === "update_bundle") { expect(input.subscriptionId).toBe("subscription"); throw quoteError; } expect(input).toBe(skipRequest); return controlReceipt; },
     async previewAction(principalId: string, input: typeof request) { expect(principalId).toBe("actor"); expect(input).toBe(request); transcript.push("preview"); return null; },
     async getSnapshot(principalId: string) { expect(principalId).toBe("actor"); transcript.push("snapshot"); return null; },
   };
-  const select = async () => { transcript.push("select"); return { context, capabilities, nativeLegacySubscription: { control, explicitPause: { async applyAction(principalId: string, input: typeof request) { expect(principalId).toBe("actor"); expect(input).toBe(pauseRequest); transcript.push("pause"); return null; } }, ownershipRefusal: () => missing } }; };
+  const select = async () => { transcript.push("select"); return { context, capabilities, nativeLegacySubscription: { control, explicitPause: { async applyAction(principalId: string, input: typeof request) { expect(principalId).toBe("actor"); expect(input).toBe(pauseRequest); transcript.push("explicitPause"); return pauseReceipt; } }, ownershipRefusal: () => missing } }; };
   return { transcript, select, control };
 }
 it.each([undefined, false])("C5 enabled=%s selects no work", enabled => {
@@ -60,9 +61,10 @@ it.each(["apply", "preview", "snapshot"] as const)("C5 guards native %s before o
 });
 it.each([
   { name: "unowned bundle", owned: false, method: "apply", input: request, error: missing, transcript: ["ownership"] },
-  { name: "owned bundle before quote", owned: true, method: "apply", input: request, error: quoteError, transcript: ["ownership", "update_bundle"] },
-  { name: "explicit pause", owned: false, method: "apply", input: pauseRequest, error: null, transcript: ["pause"] },
-  { name: "other action refusal", owned: false, method: "apply", input: unsupportedRequest, error: unsupported, transcript: ["unknown"] },
+  { name: "owned bundle before quote", owned: true, method: "apply", input: request, error: quoteError, transcript: ["ownership", "control:update_bundle"] },
+  { name: "explicit pause", owned: false, method: "apply", input: pauseRequest, error: null, result: pauseReceipt, transcript: ["explicitPause"] },
+  { name: "non-pause skip uses control", owned: false, method: "apply", input: skipRequest, error: null, result: controlReceipt, transcript: ["control:skip"] },
+  { name: "other action refusal", owned: false, method: "apply", input: unsupportedRequest, error: unsupported, transcript: ["control:unknown"] },
   { name: "preview", owned: false, method: "preview", input: request, error: null, transcript: ["preview"] },
   { name: "snapshot", owned: false, method: "snapshot", input: request, error: null, transcript: ["snapshot"] },
 ])("C5 native routing: $name", async row => {
@@ -72,7 +74,7 @@ it.each([
   const facade = await binding.select(context); transcript.length = 0;
   const result = row.method === "apply" ? facade.nativeLegacySubscription.applyAction("actor", row.input)
     : row.method === "preview" ? facade.nativeLegacySubscription.previewAction("actor", row.input) : facade.subscriptionControl.getSnapshot("actor");
-  if (row.error) await expect(result).rejects.toBe(row.error); else expect(await result).toBeNull();
+  if (row.error) await expect(result).rejects.toBe(row.error); else expect(await result).toBe(row.result ?? null);
   expect(transcript).toEqual(row.transcript);
 });
 it("C5 compiles reference owner transcriptions and driver fit", () => {
