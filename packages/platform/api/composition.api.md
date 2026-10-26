@@ -160,6 +160,28 @@ export declare function createRequestContextStore(options: RequestContextOptions
 import type { HttpRequest } from "../http/index.js";
 export declare function rewriteBffRouterRequestUrl(req: HttpRequest): void;
 ```
+## dist/composition/accountSupportContribution.d.ts
+
+```ts
+import type { Contribution, RequiredSchema } from "@openlup/core/readiness";
+/** Descriptors only: owner messages, workers and schedules stay with their owners. */
+export declare function createAccountSupportContribution(input: {
+    version: string;
+    requiredSchema: RequiredSchema;
+    accountSupport: Readonly<Record<string, ((...args: never[]) => unknown) | null>>;
+    dependsOn: NonNullable<Contribution["manifest"]["module"]>["dependsOn"];
+    routes?: Contribution["routes"];
+}): {
+    contributions: Contribution[];
+    ports: {
+        [k: string]: ((...args: never[]) => unknown) | null;
+    };
+    routes: {
+        [k: string]: (...args: never[]) => unknown;
+    };
+    triggers: {};
+};
+```
 ## dist/composition/catalogContribution.d.ts
 
 ```ts
@@ -320,6 +342,7 @@ export { createShippingContribution } from "./shippingContribution.js";
 export { createFulfillmentContribution } from "./fulfillmentContribution.js";
 export { createSubscriptionContribution } from "./subscriptionContribution.js";
 export { createCommerceContribution } from "./commerceContribution.js";
+export { createAccountSupportContribution } from "./accountSupportContribution.js";
 ```
 ## dist/composition/inventoryContribution.d.ts
 

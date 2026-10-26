@@ -2734,6 +2734,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/account-support/bindings.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/account-support/contracts/account.ts",
       "class": "public-output"
     },
@@ -2759,6 +2763,10 @@
     },
     {
       "path": "packages/platform/src/account-support/contracts/operator.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/account-support/contribution.ts",
       "class": "public-output"
     },
     {
@@ -4075,6 +4083,10 @@
     },
     {
       "path": "packages/platform/src/communications/validation.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/composition/accountSupportContribution.ts",
       "class": "public-output"
     },
     {
@@ -5858,6 +5870,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/account-support/bindings.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/account-support/browserSafety.test.ts",
       "class": "public-output"
     },
@@ -6623,6 +6639,10 @@
     },
     {
       "path": "packages/platform/test/communications/webhookDialects.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/composition/accountSupportContribution.test.ts",
       "class": "public-output"
     },
     {
@@ -17110,6 +17130,18 @@
       "class": "public-output"
     },
     {
+      "path": "server/runtime/public-reference/m12AccountSupportBinding.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/runtime/public-reference/m12AccountSupportBinding.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/runtime/public-reference/m12AccountSupportSchema.ts",
+      "class": "public-output"
+    },
+    {
       "path": "server/runtime/public-reference/m12OperatorRecoveryBinding.test.ts",
       "class": "public-output"
     },
@@ -23694,6 +23726,14 @@
       "class": "public-output"
     },
     {
+      "path": "src/public-reference/accountSupportRoutes.test.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/public-reference/accountSupportRoutes.tsx",
+      "class": "public-output"
+    },
+    {
       "path": "src/public-reference/browserIdentity.test.tsx",
       "class": "public-output"
     },
@@ -25031,6 +25071,10 @@
     },
     {
       "path": "tests/platform/watchdogWorkload.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/accountSupportComposition.test.ts",
       "class": "public-output"
     },
     {

@@ -498,10 +498,100 @@ exceeded existing timeout.
 
 ## R5: reference composition
 
-TODO: selected browser/API/owner/store paths, readiness, one executor, M04 notices
-and optional enrichment fallback after applicable M11 dependencies land.
+R5a supplies the inert browser/API/owner/store composition, readiness guards,
+one selected executor and M04 notice delegation described below. Selected M11
+commerce composition and managed integration proofs belong to R5b.
 
 ## S1: coherent final package set
 
 TODO: cumulative artifacts/tests, unchanged witnesses, migration/cut register and
 owner review. Release and adoption require their own authorization and evidence.
+
+## R5a: inert reference composition
+
+R5a contributes `createAccountSupportBindings`, `createAccountSupportServices` and
+`createAccountSupportContribution` without mounting the static or subscription
+reference. It captures one host-selected graph and operation inventory, guards
+each distinct callable once, and shares that wrapper across service, port and
+route aliases. A route whose callable is absent from the operation inventory is
+invalid configuration. Each enabled entrance observes readiness again; disabled
+entrances call neither observer nor owner. Null selected operations remain null
+and stay in the contribution's required ports, allowing Core to refuse them.
+
+The schema helper unions selected owner requirements and additional objects under
+the host's complete catalogue identity, preserving overloads. A command-only M10
+selection requires preview and apply without constructing a renewal runner. The
+native composition uses R4's
+`customer_support_apply_subscription_action_v1(uuid,uuid,text,jsonb,integer,text,timestamp with time zone)`
+and the existing support/owner ledgers. Readiness proves catalogue facts; owner
+authorization, transactions and receipt replay remain separate obligations.
+
+The operator subscription route wraps one R4 executor with the donor BFF metadata:
+`contractVersion`, `action: "apply_subscription_action"`, `subscriptionAction` and
+`subscriptionId`. ID-11 preserves the strict donor wire DTO: only donor outcome
+fields are serialized, including decoded ISO timestamps and explicit nulls.
+Optional `ownerReceipt` stays on R4's server-side result. The native in-band
+`operator_subscription_authority_unavailable` refusal throws the donor's
+`OperatorSubscriptionAuthorityUnavailableError`; other R4 errors propagate.
+Applied, replayed, noop, refused and conflict responses pass through the real
+browser response parser without field removal. SQL's internal action and
+timestamp text are distinct from the BFF DTO; R4 result types remain unchanged.
+
+The browser recipe accepts four already authenticated elements and explicit host
+paths. Existing customer clients and HTTP handlers cross the guarded route,
+preserving owner money and command keys, results and refusals. Hosts own
+credentials, authentication and transport mapping of admission refusals; the
+recipe installs no HTTP dispatcher. R2 and R3 are predecessors; R5a consumes
+their account-read and self-service seams without changing their contracts.
+
+Commerce is an injected nullable callable record: a null record/member returns
+`unsupported/host_binding_required`, with no M11 import. R5a selects neither
+A47–A51 nor A94/A95 nor the checkout continuation of A130/A131.
+`commerceRecovery` and `configuredPurchase` remain unsupported; existing purchase
+resume/discard behavior is unchanged. M10 lifecycle descriptors delegate to M04
+with the original message key. R4 queues its own payment recovery notice; M12
+adds no second effect consumer, worker or scheduler. Selected M11 commerce and
+managed composition proofs are excluded from R5a and belong to R5b.
+
+The envelope comprises thirty eligible paths; R5a changes 26 and leaves these
+four unchanged: `config/public-reference-capability-manifest.json`,
+`eslint.config.js`, `packages/platform/api/account-support-contracts.api.md` and
+`scripts/packages/eslint-import-map.test.ts`. Implementation/API/plan paths
+introduced by R1 are modifications; the changes fragment is `m12-r5a.md`.
+The source-release snapshot, owner contracts, module graph, SQL and versions
+are unchanged. Existing exports and companion content are preserved; API report
+changes are confined to account-support and composition, with no generated
+sibling declaration changes. R5a preserves CD-13a's predecessor definer posture:
+the four email definers retain `search_path = public, pg_catalog`; the link
+definer retains `pg_catalog, pg_temp` and qualified application references.
+All five deny EXECUTE to PUBLIC, anon, authenticated and openlup_mcp_reader;
+callable entries admit only service_role, and the trigger-only guard also denies
+service_role. No table grant is widened.
+
+CD-7 counts each independent input/state row separately. The executed R5a
+inventory expands the eighteen-case forecast to thirty-eight runner cases:
+
+| File | Cases | Proof class and executed cases |
+| --- | ---: | --- |
+| packages/platform/test/account-support/bindings.test.ts | 5 | Injected owners: B1 success/error, B2 null record/member, B3 unchanged owner unsupported result |
+| packages/platform/test/composition/accountSupportContribution.test.ts | 4 | Contribution/Core readiness: C1 metadata, missing port, missing owner, duplicate route |
+| server/runtime/public-reference/m12AccountSupportBinding.test.ts | 15 | Injected reference composition: R1–R6, unselected-route refusal, commerce type correlation and seven operator wire/error cases |
+| src/public-reference/accountSupportRoutes.test.tsx | 3 | Browser/client/HTTP composition: U1 read, U2 command success/refusal |
+| tests/postgres/accountSupportComposition.test.ts | 1 | Real native PostgreSQL: P1 installed catalogue probe, guarded R4 API/store delegation, strict browser DTO, transaction, durable receipt and write-free replay |
+| scripts/packages/platform-cold-consumer.test.ts | 10 | Packed consumer: K1 NodeNext/Bundler compilation and six runtime states; K2 missing export/no-op delegate rejection |
+
+C2's empty/inert registration assertion is covered by C1 and R6. L1/L2 reuse
+`packages/platform/test/account-support/contracts.test.ts` and the generic module
+type/value/deep-import matrix in `scripts/packages/eslint-import-map.test.ts`;
+these add no R5a runner cases. No behavior rows are merged to meet the forecast,
+and no new test file requests a timeout above existing integration setup bounds.
+
+P1 is real PostgreSQL proof, not an injected executor test. R5a adds no pgTAP
+file. The reused R4 proofs in
+`tests/postgres/accountSupportOperatorAuthority.test.ts` and
+`tests/postgres/accountSupportUpgrade.test.ts` exercise real PostgreSQL;
+`supabase/tests/account_support_contact_workflow_test.sql` and
+`supabase/tests/account_support_operator_authority_test.sql` exercise managed
+PostgreSQL/pgTAP, including CD-13a ACL and hostile-session checks. Those
+predecessor proofs are separate from the thirty-eight R5a cases; injected,
+browser and packed-consumer cases do not establish database proof.

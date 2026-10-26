@@ -137,6 +137,83 @@ export function assertExportInventory(consumer: string): void {
 }
 
 
+export const ACCOUNT_SUPPORT_COMPOSITION_PROOFS = ["NodeNext", "Bundler", "disabled", "unknown", "ready", "null-record", "null-member", "owner-unsupported"] as const;
+/** R5a: concrete installed declarations and the same executable refusal transcript. */
+export function proveAccountSupportCompositionConsumer(consumer: string, compiler: string, proof: typeof ACCOUNT_SUPPORT_COMPOSITION_PROOFS[number]): void {
+  if (proof === "NodeNext" || proof === "Bundler") {
+    const file = join(consumer, "account-support-composition.ts");
+    writeFileSync(file, `
+import { createAccountSupportBindings, createAccountSupportServices, type AccountSupportCapabilities, type AccountSupportBindingRefusal } from "@openlup/platform/account-support";
+import { createAccountSupportContribution } from "@openlup/platform/composition";
+declare const capabilities: AccountSupportCapabilities;
+const binding = createAccountSupportBindings({ graph: "native", capabilities,
+  operations: { apply: async (request: { actorId: string; idempotencyKey: string }) => ({ revision: 7, key: request.idempotencyKey }) }, commerce: { checkoutStart: null } });
+const services = createAccountSupportServices({ enabled: true, ...binding, readiness: async () => ({ kind: "ready" }) });
+export const contribution = createAccountSupportContribution({ version: "0.26.0", requiredSchema: { version: "full", migration: "host", objects: [] },
+  accountSupport: services.operations, dependsOn: [], routes: [{ id: "apply", handle: services.operations.apply }] });
+const result: { revision: number; key: string } | AccountSupportBindingRefusal = await services.operations.apply({ actorId: "actor-a", idempotencyKey: "key-b" });
+if ("kind" in result) { const code: "disabled" | "schema_unknown" | "schema_unsatisfied" = result.code; void code; }
+else { const revision: number = result.revision; void revision; }
+export const absent = await binding.commerce("checkoutStart", { orderId: "order-c" });
+// @ts-expect-error the selected owner request is preserved
+services.operations.apply({ actorId: "actor-a", idempotencyKey: 99 });
+// @ts-expect-error a graph is an explicit two-value selection
+createAccountSupportBindings({ graph: "automatic", capabilities, operations: {} });
+`);
+    const mode = proof;
+    const configuration = join(consumer, "account-support-composition.json");
+    writeFileSync(configuration, JSON.stringify({ compilerOptions: { target: "ES2022", module: mode === "NodeNext" ? "NodeNext" : "ESNext",
+      moduleResolution: mode, strict: true, skipLibCheck: false, noEmit: true, types: ["node"], typeRoots: [join(consumer, "node_modules/@types")] }, files: [file] }));
+    try { process.stdout.write(command(process.execPath, [compiler, "-p", configuration], consumer)); }
+    catch (error) {
+      const output = (error as { stdout?: string; stderr?: string });
+      throw new Error(`R5 installed ${mode} declarations failed: ${output.stdout ?? ""}${output.stderr ?? ""}`, { cause: error });
+    }
+    return;
+  }
+  try { consumerNode(consumer, `
+import assert from "node:assert/strict";
+import { createAccountSupportBindings, createAccountSupportServices } from "@openlup/platform/account-support";
+import { createAccountSupportContribution } from "@openlup/platform/composition";
+import { NATIVE_SUBSCRIPTION_CAPABILITIES } from "@openlup/platform/subscriptions";
+const unavailable={supported:false,refusalCode:"host_binding_required"};
+const proof=${JSON.stringify(proof)};
+const capabilities={graph:"native",accountRead:{supported:true},customer360Read:unavailable,invoiceAccess:unavailable,commerceRecovery:unavailable,configuredPurchase:unavailable,
+paymentMethodSetup:{supported:false,refusalCode:"unsupported"},operatorContact:{supported:false,refusalCode:"operator_subscription_authority_unavailable"},operatorSubscription:{supported:false,refusalCode:"operator_subscription_authority_unavailable"},
+subscriptions:NATIVE_SUBSCRIPTION_CAPABILITIES,communicationGifts:{supported:false,refusalCode:"unsupported_preference"}};
+let calls=0,observations=0;
+const receipt={revision:7,key:"key-b"}; const ownerUnsupported={kind:"unsupported",ownerReason:"original"};
+const apply=async request=>{calls++;assert.equal(request,requestBody);return receipt;};
+const requestBody={actorId:"actor-a",idempotencyKey:"key-b"};
+const binding=createAccountSupportBindings({graph:"native",capabilities,operations:{apply,alias:apply,unbound:null},commerce:proof==="null-record"?null:{checkoutStart:null}});
+const options={...binding,readiness:async()=>{observations++;return {kind:"ready"};}};
+if(proof==="disabled") {
+const off=createAccountSupportServices(options);
+assert.deepEqual(await off.operations.apply(requestBody),{kind:"refused",code:"disabled"});assert.equal(calls,0);assert.equal(observations,0);
+} else if(proof==="unknown") {
+const unknown=createAccountSupportServices({...options,enabled:true,readiness:async()=>({kind:"refused",code:"schema_unknown"})});
+assert.deepEqual(await unknown.operations.apply(requestBody),{kind:"refused",code:"schema_unknown"});assert.equal(calls,0);
+} else if(proof==="ready") {
+const services=createAccountSupportServices({...options,enabled:true});
+assert.equal(services.operations.apply,services.operations.alias);assert.equal(services.operations.unbound,null);
+const composed=createAccountSupportContribution({version:"0.26.0",requiredSchema:{version:"full",migration:"host",objects:[]},accountSupport:services.operations,dependsOn:[],routes:[{id:"apply",handle:services.operations.apply}]});
+assert.equal(composed.ports["@openlup/platform/account-support:apply"],services.operations.apply);
+assert.equal(composed.routes["@openlup/platform/account-support:apply"],services.operations.apply);
+assert.equal(await composed.routes["@openlup/platform/account-support:apply"](requestBody),receipt,"R5 selected delegate must execute");assert.equal(calls,1);assert.equal(observations,1);
+assert.deepEqual(composed.contributions[0].manifest.requiredPorts,["apply","alias","unbound"]);assert.deepEqual(composed.triggers,{});assert.deepEqual(composed.contributions[0].handlers,[]);
+} else if(proof==="null-record"||proof==="null-member") {
+assert.deepEqual(await binding.commerce("checkoutStart",{}),{kind:"unsupported",code:"host_binding_required"});
+assert.equal(calls,0);assert.equal(observations,0);
+} else {
+const selected=createAccountSupportBindings({graph:"native",capabilities,operations:{},commerce:{checkoutStart:async()=>ownerUnsupported}});
+assert.equal(await selected.commerce("checkoutStart",{}),ownerUnsupported);
+}
+`); } catch (error) {
+    const output = error as { stdout?: string; stderr?: string };
+    throw new Error(`R5 installed runtime failed: ${output.stdout ?? ""}${output.stderr ?? ""}`, { cause: error });
+  }
+}
+
 /** R1 exercises the installed delegation boundary, including nulls and owner errors. */
 export function proveAccountSupportConsumer(consumer: string): void {
   consumerNode(consumer, `
@@ -1431,6 +1508,7 @@ assert.throws(() => promotions.resolvePromotionBenefitDefinition({ discount_type
     proveSubscriptionsConsumer(consumer);
     proveAccountSupportConsumer(consumer);
     proveAccountSupportReadsConsumer(consumer);
+    for (const proof of ACCOUNT_SUPPORT_COMPOSITION_PROOFS) proveAccountSupportCompositionConsumer(consumer, compiler, proof);
     proveSelfServiceConsumer(consumer);
     provePaymentsConsumer(consumer);
     proveFulfillmentConsumer(consumer);

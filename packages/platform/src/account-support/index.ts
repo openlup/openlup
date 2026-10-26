@@ -66,3 +66,7 @@ export type { OperatorRpcExecutor, OperatorAuthorityOptions } from "./operatorAu
 export { createPostgresOperatorAuthority } from "./postgresOperatorAuthority.js";
 export type { OperatorQueryExecutor, OperatorTransactionExecutor } from "./postgresOperatorAuthority.js";
 export { ACCOUNT_SUPPORT_MIGRATIONS } from "./migrations.js";
+export { createAccountSupportBindings } from "./bindings.js";
+export type { AccountSupportCallable, AccountSupportOperations, AccountSupportHostBindingRequired } from "./bindings.js";
+export { createAccountSupportServices } from "./contribution.js";
+export type { AccountSupportBindingRefusal, AccountSupportReadiness, GuardedAccountSupportOperation, GuardedAccountSupportOperations } from "./contribution.js";

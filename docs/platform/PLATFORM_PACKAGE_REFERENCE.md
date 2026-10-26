@@ -818,6 +818,31 @@ creation delegates to fulfillment and leaves alignment pending actual arrival.
 
 ## Account and support contracts
 
+For inert composition, `createAccountSupportBindings({ graph, capabilities,
+operations, commerce })` captures prebound owner callables for one graph.
+`createAccountSupportServices({ enabled, capabilities, operations, readiness })`
+exposes the guarded `operations` map and `readiness()`. Each distinct callable
+has one shared wrapper; null operations stay null. The observer returns `ready`
+or the exact schema refusal, and is never called while disabled. Known request
+and result types propagate through the guard; the binding refusal joins their
+result union without replacing owner refusals or thrown errors.
+
+`createAccountSupportContribution` from `/composition` accepts `version`,
+`requiredSchema`, an `accountSupport` operation map, explicit `dependsOn` and
+optional routes. It returns inert contributions and namespaced ports/routes,
+with empty triggers, handlers, emissions and schedules. A null map member stays
+in `requiredPorts` but gets no port binding. Duplicate route IDs throw
+`account_support_duplicate_route`; the reference recipe rejects a route whose
+callable is not selected with `account_support_entry_operation_required`.
+The reference returns the same guarded function through service, port and route
+aliases. The host maps admission refusals before serving its HTTP entries.
+
+The binding's separate `commerce(key, ...args)` accepts a nullable injected
+record. Null record/member returns `unsupported/host_binding_required`, while
+selected owner results retain identity. R5a keeps commerceRecovery and
+configuredPurchase unsupported; A47–A51, A94/A95 and A130/A131 checkout continuation
+are unselected. No draft-M11 imports or ATP/effect installers are introduced.
+
 Use `@openlup/platform/account-support` for `createAccountReadFacade` and the
 account-read stage/error/diagnostic helpers. The facade accepts separate `account`
 and `orders` ports and forwards `getAccount(userId)`,

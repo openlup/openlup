@@ -255,6 +255,47 @@ reminder intents, delivery authorization and terminal outbox compaction;
 expired-checkout recreation remains managed-only. This binding installs no
 route, timer or worker and changes no served default.
 
+The [M12 account/support recipe](../../server/runtime/public-reference/m12AccountSupportBinding.ts)
+returns guarded services, readiness, schema, contributions and namespaced port,
+route and trigger maps. Construction mounts nothing; omitted or false enablement
+returns `disabled` before observing schema and leaves executable registrations
+empty. Enabled entrances re-observe before every call and return
+`schema_unknown` or `schema_unsatisfied` without invoking an owner. The host must
+map these admission objects to its HTTP response before mounting the descriptors;
+this recipe does not install a refusal transport or alter `serve.ts`.
+
+Supply prebound authenticated R1–R4/owner facades or handlers, one dispatcher per
+logical command, a complete installed catalogue identity, selected owner schemas
+and exact additional objects. The schema helper deduplicates kind/name/signature
+without dropping overloads. Native subscription commands need both preview and
+apply; selecting them does not select M10's renewal runner. Supply R4's actual
+authority routine and support ledger requirements only on the selected graph.
+Identity, M04, payment-truth and invoice-duty requirements come from their selected
+owners; table presence alone cannot establish authorization or PDF capability.
+
+For operator subscription actions, wrap R4's `execute` with
+`createM12OperatorSubscriptionActionRoute` and register that one callable in both
+operations and route descriptors. It adds the donor BFF's `contractVersion`,
+`action: "apply_subscription_action"`, `subscriptionAction` and `subscriptionId`
+to settled and refused results, serializing exactly the donor's strict outcome
+DTO. Preserve R4's decoded ISO timestamp spelling (`.000Z` for whole seconds) and
+explicit nulls. Optional native `ownerReceipt` evidence stays on R4's server-side
+result and is absent from this wire. Translate the native in-band
+`operator_subscription_authority_unavailable` refusal by throwing the donor's
+`OperatorSubscriptionAuthorityUnavailableError`, preserving its existing BFF path.
+The SQL command record's internal action and timestamp spelling are not the BFF
+response. R4 still owns authorization, the transaction and replay.
+
+`AccountSupportRoutes` composes host-supplied account, Customer 360, command and
+recovery elements at explicit host paths. It supplies neither credentials nor
+new authentication contexts. The capability manifest advertises account-support
+as default-off with no routes. A47–A51, A94/A95 and the checkout continuation of
+A130/A131 remain unselected: commerce is only a nullable injected callable record,
+with `unsupported/host_binding_required` for absent bindings. Local draft
+resume/discard behavior is unchanged. M04 receives subscription lifecycle
+descriptors with `messageKey === idempotencyKey`; R4's issue-recovery notice is
+already queued by its owner. M12 adds no renewal, reminder or delivery worker.
+
 The opt-in [M10 native subscription binding](../../server/runtime/public-reference/m10SubscriptionBinding.ts)
 returns schema, readiness, one job descriptor and its guarded executor; it mounts
 nothing. Supply a complete catalogue identity and Core readiness observation,

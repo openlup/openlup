@@ -36,6 +36,7 @@ import {
   runPlatformColdConsumer
 } from "./platform-cold-consumer.ts";
 import { proveSelfServiceConsumer } from "./platform-cold-consumer.ts";
+import { ACCOUNT_SUPPORT_COMPOSITION_PROOFS, proveAccountSupportCompositionConsumer } from "./platform-cold-consumer.ts";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const temporary: string[] = [];
@@ -962,3 +963,29 @@ it("C11 refuses an unexported subpath of a declared installed dependency", () =>
     writeFileSync(entry, source);
   }
 });
+
+function packedR5CompositionFixture() {
+  const consumer = pristinePackedA1Fixture();
+  for (const name of ["@types/node", "undici-types"]) cpSync(join(root, "node_modules", name), join(consumer, "node_modules", name), { recursive: true });
+  return consumer;
+}
+
+it.each(ACCOUNT_SUPPORT_COMPOSITION_PROOFS)("K1 proves packed account-support composition: %s", proof => {
+  const consumer = packedR5CompositionFixture();
+  assertConsumerIsolation(consumer, root);
+  proveAccountSupportCompositionConsumer(consumer, join(root, "node_modules/typescript/lib/tsc.js"), proof);
+}, 30_000);
+
+it.each(["export", "delegate"] as const)("K2 rejects the packed R5 %s corruption", corruption => {
+  const consumer = packedR5CompositionFixture(), packageRoot = join(consumer, "node_modules/@openlup/platform");
+  const path = join(packageRoot, corruption === "export" ? "dist/account-support/index.d.ts" : "dist/account-support/contribution.js");
+  const original = readFileSync(path, "utf8");
+  const mutant = corruption === "export" ? original.replace('export { createAccountSupportBindings } from "./bindings.js";', "")
+    : original.replace("operation(...args)", "undefined");
+  expect(mutant).not.toBe(original);
+  try {
+    writeFileSync(path, mutant);
+    expect(() => proveAccountSupportCompositionConsumer(consumer, join(root, "node_modules/typescript/lib/tsc.js"), corruption === "export" ? "NodeNext" : "ready"))
+      .toThrow(corruption === "export" ? /TS(?:2305|2724)/ : /R5 selected delegate must execute/);
+  } finally { writeFileSync(path, original); }
+}, 30_000);
