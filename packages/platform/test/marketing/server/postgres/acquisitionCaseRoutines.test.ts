@@ -1,7 +1,7 @@
 import type { Pool } from "pg";
 import { describe, expect, it, vi } from "vitest";
 
-import { createPostgresAcquisitionCasePort } from "./acquisitionCaseRoutines.js";
+import { createPostgresAcquisitionCasePort } from "../../../../src/marketing/server/postgres/acquisitionCaseRoutines.js";
 
 const ACTOR = "9f576216-011a-4f67-8404-3f28f7f624d5";
 const AT = "2026-08-16T14:00:00.000Z";
@@ -63,7 +63,7 @@ describe("createPostgresAcquisitionCasePort", () => {
       acceptedAt: AT,
       sourcePath: "/tester-application" as const,
       request: {
-        contact: { email: "Tester@Example.COM" },
+        contact: { email: "Person@Example.INVALID" },
         consent: { accepted: true as const, consentVersion: "consent.v1", policyVersion: "privacy.v1", locale: "en" as const },
         addressReference: ADDRESS,
       },
@@ -75,7 +75,7 @@ describe("createPostgresAcquisitionCasePort", () => {
     expect(stub.queries.filter(({ text }) => text === "SET LOCAL ROLE platform_acquisition_runtime")).toHaveLength(2);
     expect(stub.queries.filter(({ text }) => text === "COMMIT")).toHaveLength(2);
     expect(stub.queries.find(({ text }) => text.includes("acquisition_case_submit_v1"))?.values?.[2])
-      .toBe("tester@example.com");
+      .toBe("person@example.invalid");
     expect(stub.releases()).toBe(2);
     await port.close();
     expect(stub.end).toHaveBeenCalledOnce();
@@ -119,7 +119,7 @@ describe("createPostgresAcquisitionCasePort", () => {
       acceptedAt: AT,
       sourcePath: "/tester-application",
       request: {
-        contact: { email: "tester@example.com" },
+        contact: { email: "person@example.invalid" },
         consent: { accepted: true, consentVersion: "consent.v1", policyVersion: "privacy.v1", locale: "en" },
         addressReference: ADDRESS,
       },

@@ -10,6 +10,25 @@ type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends (<T>() => T extends B 
   ? ((<T>() => T extends B ? 1 : 2) extends (<T>() => T extends A ? 1 : 2) ? true : false) : false;
 type Assert<T extends true> = T;
 export type MarketingContractEquality = [
+  Assert<Equal<Contracts.AnalyticsCheckoutItem, Runtime.AnalyticsCheckoutItem>>,
+  Assert<Equal<Contracts.AnalyticsPurchaseItem, Runtime.AnalyticsPurchaseItem>>,
+  Assert<Equal<Contracts.AnalyticsCheckoutMode, Runtime.AnalyticsCheckoutMode>>,
+  Assert<Equal<Contracts.AnalyticsPaymentWaitOutcome, Runtime.AnalyticsPaymentWaitOutcome>>,
+  Assert<Equal<Contracts.AnalyticsEventMap, Runtime.AnalyticsEventMap>>,
+  Assert<Equal<Contracts.AnalyticsEventName, Runtime.AnalyticsEventName>>,
+  Assert<Equal<Contracts.AnalyticsSinkAttemptMask, Runtime.AnalyticsSinkAttemptMask>>,
+  Assert<Equal<Contracts.AnalyticsSinkAdmission, Runtime.AnalyticsSinkAdmission>>,
+  Assert<Equal<Contracts.AnalyticsCookieConsent, Runtime.AnalyticsCookieConsent>>,
+  Assert<Equal<Contracts.AnalyticsBrowserWindow, Runtime.AnalyticsBrowserWindow>>,
+  Assert<Equal<Contracts.AnalyticsDataLayerOptions, Runtime.AnalyticsDataLayerOptions>>,
+  Assert<Equal<Contracts.AnalyticsRoutePolicyInput, Runtime.AnalyticsRoutePolicyInput>>,
+  Assert<Equal<Contracts.PurchaseOrder, Runtime.PurchaseOrder>>,
+  Assert<Equal<Contracts.PurchaseSuppressionReason, Runtime.PurchaseSuppressionReason>>,
+  Assert<Equal<Contracts.MarketingHistoricalConsentCommand, Runtime.MarketingHistoricalConsentCommand>>,
+  Assert<Equal<Contracts.MarketingHistoricalConsentState, Runtime.MarketingHistoricalConsentState>>,
+  Assert<Equal<Contracts.MarketingHistoricalConsentResult, Runtime.MarketingHistoricalConsentResult>>,
+  Assert<Equal<Contracts.AnalyticsStepName<"choose" | "confirm">, "choose" | "confirm">>,
+  Assert<Equal<Runtime.AnalyticsEventMap<"choose" | "confirm">["configurator_step_view"]["step_name"], "choose" | "confirm">>,
   Assert<Equal<Contracts.PrelaunchAcquisitionListRequest, z.infer<typeof Runtime.prelaunchAcquisitionListRequestSchema>>>,
   Assert<Equal<Contracts.PrelaunchAcquisitionDetailRequest, z.infer<typeof Runtime.prelaunchAcquisitionDetailRequestSchema>>>,
   Assert<Equal<Contracts.PrelaunchAcquisitionLead, z.infer<typeof Runtime.prelaunchAcquisitionLeadSchema>>>,
@@ -77,3 +96,11 @@ interface ExpectedEvidencePort {
   applyNewsletterConsent(input: Contracts.AcquisitionNewsletterConsentEvent): Promise<Contracts.AcquisitionEvidenceResult<Contracts.AcquisitionNewsletterConsentResponse>>;
   close(): Promise<void>;
 }
+
+// New seam 7: literal host vocabulary survives both contracts and the emitter.
+function hostStepWitness(analytics: ReturnType<typeof import("../../src/marketing/index.js").createAnalyticsDataLayer<"choose" | "confirm">>) {
+  analytics.pushAnalyticsEvent("configurator_step_view", { step_number: 1, step_name: "choose" });
+  // @ts-expect-error host steps stay closed to the supplied literal union
+  analytics.pushAnalyticsEvent("configurator_step_view", { step_number: 1, step_name: "other" });
+}
+export type HostStepWitness = typeof hostStepWitness;

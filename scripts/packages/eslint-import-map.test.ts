@@ -483,7 +483,7 @@ describe("eslint platform module boundaries", { timeout: 60_000 }, () => {
     };
     const entries = readdirSync(platformSource, { withFileTypes: true });
     expect(entries.filter((entry) => !entry.isDirectory()).map(({ name }) => name)).toEqual([]);
-    expect(Object.keys(graph).sort()).toEqual([...entries.map(({ name }) => name), "commerce/server"].sort());
+    expect(Object.keys(graph).sort()).toEqual([...entries.map(({ name }) => name), "commerce/server", "marketing/server"].sort());
     for (const [module, { values, types }] of Object.entries(graph)) {
       for (const target of [...values, ...types]) {
         const [owner, ...entry] = target.split("/");
@@ -616,6 +616,18 @@ describe("eslint platform module boundaries", { timeout: 60_000 }, () => {
       for (const specifier of [depth ? "../server/index.js" : "./server/index.js", `${up}../commerce/server/index.js`]) {
         expect(await moduleMessages(config, source(specifier), browserFile), specifier).toContainEqual(expect.stringContaining('packages/platform module "commerce"'));
       }
+    }
+  });
+
+  it("admits the marketing Node-entry edge and refuses reverse marketing imports", async () => {
+    const config = await loadConfig();
+    const { PLATFORM_MODULE_GRAPH: graph } = await import("../../eslint.config.js");
+    expect(graph["marketing/server"]).toEqual({ values: ["marketing"], types: ["http", "bff", "marketing/contracts", "communications/contracts"] });
+    expect(graph.marketing.values).not.toContain("marketing/server");
+    const source = (specifier: string) => `import * as value from ${JSON.stringify(specifier)}; export { value };`;
+    expect(await moduleMessages(config, source("../index.js"), "packages/platform/src/marketing/server/probe.ts")).toEqual([]);
+    for (const specifier of ["./server/index.js", "../marketing/server/index.js"]) {
+      expect(await moduleMessages(config, source(specifier), "packages/platform/src/marketing/probe.ts"), specifier).toContainEqual(expect.stringContaining('packages/platform module "marketing"'));
     }
   });
 

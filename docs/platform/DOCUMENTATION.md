@@ -75,6 +75,20 @@ entrypoint, like the existing process witnesses. Register new tracked test paths
 policy/inventory checks; those checks compare Git's tracked paths, so an
 untracked test alone cannot establish complete publication evidence.
 
+Marketing analytics source and its neutral witnesses belong to the platform
+runtime-boundary owner. Reference analytics and purchase bindings retain their
+host policy; runtime guidance explains local admission, consent ordering and the
+reference checkout-kind restriction. Publication inventory includes the package
+facts and the frozen reference purchase transcript; generated navigation carries
+no delivery or activation claim.
+
+The server-only analytics context handler and its package witness share that
+runtime-boundary owner. Package and architecture guidance explain its required
+host ports and absence of default persistence or a reference route; runtime
+guidance owns refusal ordering, verified-subject enrollment and the local meaning
+of `active`. Publication inventory includes these sources without claiming
+portable context SQL, activation or delivery.
+
 The M10 control re-pin moves pending inert fixtures to `20261024`, adds native
 X/Y, and folds preview replay into N2 under `scripts/fixtures/reviewed-m10/`.
 The migration guide owns the exact 18-pin inventory (with historical 14/16-pin reads) and payment/stock/preview purpose; contributor checks own their
@@ -105,6 +119,12 @@ recipes live verbatim in the [platform package reference](PLATFORM_PACKAGE_REFER
 which the publication catalogue includes in the public source tree rather than
 the npm artifact. Detailed recipe links point there directly; existing identity,
 runtime and package ownership routes remain unchanged.
+
+Marketing's PostgreSQL export barrel and generated server API reports are public
+source outputs in the publication catalogue. The package README and
+[server composition recipe](PLATFORM_PACKAGE_REFERENCE.md#marketing-server-composition)
+own the separate handler and optional-peer adapter entries; the contributor
+guide owns their existing boundary, cold-consumer and PostgreSQL proof checks.
 
 Subscription source, contract witnesses and generated subscription API reports
 route to the [subscription architecture owner](ARCHITECTURE_AND_EXTENSIONS.md#subscription-contracts).

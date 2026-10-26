@@ -608,7 +608,12 @@
         "test/packageBoundary.test.ts",
         "test/marketing/schemas.test.ts",
         "test/marketing/contracts.test.ts",
-        "test/marketing/browserBoundary.test.ts"
+        "test/marketing/browserBoundary.test.ts",
+        "test/marketing/noop.test.ts",
+        "test/marketing/dataLayer.test.ts",
+        "test/marketing/routePolicy.test.ts",
+        "test/marketing/purchaseFacts.test.ts",
+        "test/marketing/consentEvidence.test.ts"
       ],
       "entrypoint": "dist/marketing/index.d.ts",
       "snapshot": "api/marketing.api.md"
@@ -621,10 +626,46 @@
         "test/packageBoundary.test.ts",
         "test/marketing/schemas.test.ts",
         "test/marketing/contracts.test.ts",
-        "test/marketing/browserBoundary.test.ts"
+        "test/marketing/browserBoundary.test.ts",
+        "test/marketing/noop.test.ts",
+        "test/marketing/dataLayer.test.ts",
+        "test/marketing/routePolicy.test.ts",
+        "test/marketing/purchaseFacts.test.ts",
+        "test/marketing/consentEvidence.test.ts"
       ],
       "entrypoint": "dist/marketing/contracts/index.d.ts",
       "snapshot": "api/marketing-contracts.api.md"
+    },
+    "./marketing/server": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/packageBoundary.test.ts",
+        "test/marketing/browserBoundary.test.ts",
+        "test/marketing/server/acquisitionCaseHandlers.test.ts",
+        "test/marketing/server/acquisitionCaseDirect.test.ts",
+        "test/marketing/server/prelaunchAcquisitionDirect.test.ts",
+        "test/marketing/server/acquisitionEvidenceDirect.test.ts",
+        "test/marketing/server/research/surveyResponseSubmitHandler.test.ts",
+        "test/marketing/server/research/adminSurveyResponsesHandler.test.ts",
+        "test/marketing/server/research/managedSurveyResponseSubmit.test.ts",
+        "test/marketing/analyticsContext.test.ts"
+      ],
+      "entrypoint": "dist/marketing/server/index.d.ts",
+      "snapshot": "api/marketing-server.api.md"
+    },
+    "./marketing/server/postgres": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/packageBoundary.test.ts",
+        "test/marketing/server/postgres/acquisitionCaseRoutines.test.ts",
+        "test/marketing/server/postgres/acquisitionEvidenceRoutines.test.ts"
+      ],
+      "entrypoint": "dist/marketing/server/postgres/index.d.ts",
+      "snapshot": "api/marketing-server-postgres.api.md"
     }
   },
   "pack": {
@@ -640,8 +681,8 @@
     "maxUnpackedBytes": 8970000,
     "maxFiles": 2580,
     "baseline": {
-      "version": "0.26.0",
-      "packedBytes": 1388257
+      "version": "0.27.0",
+      "packedBytes": 1734781
     },
     "browserEntries": {
       "./catalog/contracts": 4096,

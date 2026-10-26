@@ -2,7 +2,7 @@ import type { AcquisitionCasePort } from "../../domains/clients/acquisitionCaseP
 import {
   createAcquisitionCaseHandlers,
   type AcquisitionCaseHandlers,
-} from "../../domains/clients/acquisitionCaseHandlers.js";
+} from "@openlup/platform/marketing/server";
 import { getBundleDescriptor, resolveBundleId } from "../../domains/platform-runtime/platformKernel.js";
 
 type Env = Record<string, string | undefined>;
@@ -18,7 +18,7 @@ export interface AcquisitionCaseRuntimeBinding {
 const bindings = new Map<string, Promise<AcquisitionCaseRuntimeBinding>>();
 
 async function createDefaultPort(env: { connectionString: string }): Promise<AcquisitionCasePort> {
-  const adapter = await import("../../adapters/postgres/clients/acquisitionCaseRoutines.js");
+  const adapter = await import("@openlup/platform/marketing/server/postgres");
   return adapter.createPostgresAcquisitionCasePort(env);
 }
 

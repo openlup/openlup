@@ -30,12 +30,52 @@ state writer is not an extension seam.
 
 ## Runtime boundaries
 
-Marketing runtime composition remains application-owned. Evidence bindings use
-the type-only package port; case bindings retain the reference port extending
-the package read/count/close surface with retired application methods. Portable
-prelaunch validators are browser-safe package contracts, while rich prelaunch
-joins and their orchestration remain in the reference application. This type
-rebinding adds no server implementation, executor or activation seam.
+Marketing host composition remains application-owned. The Node-only
+`@openlup/platform/marketing/server` entry owns acquisition case handlers,
+direct history/prelaunch/evidence factories, research submit/admin handlers,
+managed survey orchestration without loading `pg`. PostgreSQL routines are
+published separately at `@openlup/platform/marketing/server/postgres` and loaded
+by the reference bindings only after their bundle and connection guards. Hosts inject the BFF
+responder, authorization, persistence binding and notification HTML/subject.
+Case direct reads evaluate the injected bundle predicate at their existing
+position; prelaunch and evidence dispatch predicates stay with host callers.
+Retired route factories, observed wrappers, admin authentication and raw signed
+newsletter ingress stay in the reference. Browser marketing entries reach no
+server code or database driver. Server-only structural compatibility commands
+retain retired adapter signatures without publishing admission schemas.
+Research contracts/ports retain their core compatibility owner; notification
+delivery uses communications/contracts. The server graph admits marketing value
+imports and only HTTP, BFF, marketing-contract and communications-contract type
+edges. The existing optional pg peer is imported only by the two PostgreSQL
+files. SQL text, transaction role selection and pool ownership are unchanged.
+Portable prelaunch validators remain browser-safe package contracts; rich
+prelaunch joins and orchestration remain in the reference application. No route,
+executor, scheduler or profile is activated by importing the package.
+
+The marketing browser entry also owns neutral analytics vocabulary, inert defaults,
+instance-scoped data-layer and route-policy factories, structural paid-purchase
+projection and historical consent chronology. Hosts supply step vocabulary,
+browser/storage access, consent and event wire names (including ordered consent
+signals through `consentSignalNames`), container selection, sink
+callbacks, route manifests and sensitive sets. No platform module edge, server
+entry or provider transport is introduced. Types are exposed type-only through
+`marketing/contracts`; the analytics port is reused from core. Allocation and
+chronology preserve source behavior; authorization, money truth and activation
+remain with their existing owners. Missing consent signal bindings disable consent
+commands and optional event admission while deployment attempts stay independent.
+Local sink admission never attests delivery.
+
+The separate server entry also exposes `createAnalyticsContextHandler` and its
+server-only persistence and capability ports. Required host bindings supply the
+responder, enable reader, store, bearer parsing, verified subject, token mint/hash
+and historical cookie and client-id request field names (`clientIdField`). Browser
+entries expose none of these server ports.
+The handler preserves strict request admission, withdrawal without identity and
+explicit replacement of a revoked context; enrollment uses only a server-verified
+subject. Hosts retain their route/observability, flag/RPC names and persistence
+authority. No default persistence or portable context SQL is provided, so the
+reference mounts no context route. Telemetry context failure never gates commerce;
+an `active` result establishes only a local context fact, never delivery.
 
 The browser-safe `@openlup/platform/marketing` entry also owns JSON-LD
 serialization and graph construction, URL/hreflang derivation, ordered head data
@@ -1957,5 +1997,12 @@ each guarded entrance, using the same callable for service/port/route aliases.
 M04 owns notice delivery and deduplication, and R4 owns issue-recovery notices;
 M12 installs no second handler or scheduler. Browser route elements and paths
 are injected, preserving the host's distinct customer/operator authentication.
-The static and subscription serving entries remain unchanged. Commerce recovery,
-configured purchase and checkout continuation are unselected in R5a.
+The static and subscription serving entries remain unchanged. The optional
+`commerceOwner` selection accepts the host-built `createM11CommerceReferenceBinding`
+result through a local structural type and forwards its contribution, ports,
+routes and triggers. R5b does not construct M11 or import its adapters. Its already guarded
+services never enter a second M11 binding or M12 callable guard. Host-bound
+checkout/recovery and ATP callables stay behind their owner boundaries; the
+existing outbox registry supplies inert effect descriptors during host construction
+and is supplied separately as `commerceRegistry`, retaining handler
+identity. No second dispatcher, installer or stock policy is introduced.

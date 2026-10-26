@@ -1,19 +1,19 @@
 import { describe, expect, it, vi } from "vitest";
 
-import type { AcquisitionCasePort } from "./acquisitionCasePorts.js";
-import { createAcquisitionCaseHandlers } from "./acquisitionCaseHandlers.js";
+import type { AcquisitionCasePort } from "../../../src/marketing/server/acquisitionCasePorts.js";
+import { createAcquisitionCaseHandlers } from "../../../src/marketing/server/acquisitionCaseHandlers.js";
 
 const request = {
-  contact: { email: "person@example.test" },
+  contact: { email: "person@example.invalid" },
   consent: {
     accepted: true as const,
-    consentVersion: "tester-consent.v1",
+    consentVersion: "consent.v1",
     policyVersion: "privacy.v1",
     locale: "en" as const,
   },
   addressReference: {
     source: "local_registry",
-    reference: "address:krakow-1",
+    reference: "address:fixture-1",
     revision: "2026-08-16",
     provenance: "operator_fixture",
   },

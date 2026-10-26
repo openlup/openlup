@@ -13,4 +13,5 @@ export type {
 } from "@openlup/core/marketing/research";
 export type * from "./acquisitionPorts.js";
 export type * from "./prelaunch.js";
+export type * from "./analytics.js";
 export type * from "./contactLegal.js";

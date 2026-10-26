@@ -2462,6 +2462,14 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/api/marketing-server-postgres.api.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/api/marketing-server.api.md",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/api/marketing.api.md",
       "class": "public-output"
     },
@@ -5090,6 +5098,26 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/marketing/analytics/dataLayer.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/marketing/analytics/noop.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/marketing/analytics/purchaseFacts.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/marketing/analytics/routePolicy.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/marketing/consentEvidence.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/marketing/contactLegal.ts",
       "class": "public-output"
     },
@@ -5099,6 +5127,10 @@
     },
     {
       "path": "packages/platform/src/marketing/contracts/acquisitionPorts.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/marketing/contracts/analytics.ts",
       "class": "public-output"
     },
     {
@@ -5135,6 +5167,66 @@
     },
     {
       "path": "packages/platform/src/marketing/seo/urls.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/marketing/server/acquisitionCaseDirect.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/marketing/server/acquisitionCaseHandlers.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/marketing/server/acquisitionCasePorts.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/marketing/server/acquisitionEvidenceDirect.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/marketing/server/analyticsContext.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/marketing/server/analyticsContextPorts.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/marketing/server/directPorts.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/marketing/server/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/marketing/server/postgres/acquisitionCaseRoutines.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/marketing/server/postgres/acquisitionEvidenceRoutines.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/marketing/server/postgres/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/marketing/server/prelaunchAcquisitionDirect.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/marketing/server/research/adminSurveyResponsesHandler.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/marketing/server/research/managedSurveyResponseSubmit.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/marketing/server/research/surveyResponseSubmitHandler.ts",
       "class": "public-output"
     },
     {
@@ -7198,11 +7290,35 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/marketing/analyticsContext.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/marketing/browserBoundary.test.ts",
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/marketing/consentEvidence.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/marketing/contracts.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/marketing/dataLayer.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/marketing/noop.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/marketing/purchaseFacts.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/marketing/routePolicy.test.ts",
       "class": "public-output"
     },
     {
@@ -7215,6 +7331,42 @@
     },
     {
       "path": "packages/platform/test/marketing/seo/conformance.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/marketing/server/acquisitionCaseDirect.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/marketing/server/acquisitionCaseHandlers.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/marketing/server/acquisitionEvidenceDirect.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/marketing/server/postgres/acquisitionCaseRoutines.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/marketing/server/postgres/acquisitionEvidenceRoutines.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/marketing/server/prelaunchAcquisitionDirect.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/marketing/server/research/adminSurveyResponsesHandler.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/marketing/server/research/managedSurveyResponseSubmit.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/marketing/server/research/surveyResponseSubmitHandler.test.ts",
       "class": "public-output"
     },
     {
@@ -9722,10 +9874,6 @@
       "class": "public-output"
     },
     {
-      "path": "server/adapters/postgres/clients/acquisitionCaseRoutines.test.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/adapters/postgres/clients/acquisitionCaseRoutines.ts",
       "class": "public-output"
     },
@@ -9859,10 +10007,6 @@
     },
     {
       "path": "server/adapters/postgres/inventory/renewalReservation.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/adapters/postgres/marketing/acquisitionEvidenceRoutines.test.ts",
       "class": "public-output"
     },
     {
@@ -13038,10 +13182,6 @@
       "class": "public-output"
     },
     {
-      "path": "server/bff/marketing/prelaunchAcquisitionDirect.test.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/bff/marketing/prelaunchAcquisitionDirect.ts",
       "class": "public-output"
     },
@@ -13511,10 +13651,6 @@
     },
     {
       "path": "server/domains/channels/quarantineClassifier.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/domains/clients/acquisitionCaseHandlers.test.ts",
       "class": "public-output"
     },
     {
@@ -15554,10 +15690,6 @@
       "class": "public-output"
     },
     {
-      "path": "server/domains/marketing/research/adminSurveyResponsesHandler.test.ts",
-      "class": "public-output"
-    },
-    {
       "path": "server/domains/marketing/research/adminSurveyResponsesHandler.ts",
       "class": "public-output"
     },
@@ -15567,10 +15699,6 @@
     },
     {
       "path": "server/domains/marketing/research/managedSurveyResponseSubmit.ts",
-      "class": "public-output"
-    },
-    {
-      "path": "server/domains/marketing/research/surveyResponseSubmitHandler.test.ts",
       "class": "public-output"
     },
     {
@@ -17798,6 +17926,10 @@
       "class": "public-output"
     },
     {
+      "path": "src/checkout/machine/__snapshots__/purchasePayloadEquivalence.test.ts.snap",
+      "class": "public-output"
+    },
+    {
       "path": "src/checkout/machine/buildCheckoutIntent.starter.test.ts",
       "class": "public-output"
     },
@@ -17923,6 +18055,10 @@
     },
     {
       "path": "src/checkout/machine/purchaseAnalytics.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "src/checkout/machine/purchasePayloadEquivalence.test.ts",
       "class": "public-output"
     },
     {
@@ -25203,6 +25339,10 @@
     },
     {
       "path": "tests/postgres/accountSupportUpgrade.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/acquisitionEvidenceParity.test.ts",
       "class": "public-output"
     },
     {

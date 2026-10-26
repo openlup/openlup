@@ -4,9 +4,10 @@ import { checkReadiness, createSchemaProbe, type RequiredSchema, type ReadinessR
 import { createOperatorRecovery, createPostgresOperatorAuthority, type AccountSupportCapabilities } from "@openlup/platform/account-support";
 import { NATIVE_SUBSCRIPTION_CAPABILITIES } from "@openlup/platform/subscriptions";
 import { createM12AccountSupportReferenceBinding, createM12OperatorSubscriptionActionRoute } from "../../server/runtime/public-reference/m12AccountSupportBinding.js";
-import { nativeHarness, units } from "../helpers/fulfillmentNative.js";
+import { createM11CommerceReferenceBinding } from "../../server/runtime/public-reference/m11CommerceBinding.js";
+import { fixture, nativeHarness, openCase, replacement, units } from "../helpers/fulfillmentNative.js";
 import { postgresSetupTimeoutMs, postgresTeardownTimeoutMs } from "../helpers/postgresContainer.js";
-import { AT, later, renewal } from "./subscriptionNativeFixture.js";
+import { AT, call, later, prepareOriginal, renewal } from "./subscriptionNativeFixture.js";
 import { applyOperatorSubscriptionAction } from "../../src/domains/support/customer360Client.js";
 
 const h = nativeHarness("m12-composition");
@@ -92,4 +93,60 @@ it("P1 probes the full installed catalogue and delegates the R5 API route to R4'
     fetcher: async () => Response.json({ ok: true, data: replayed }),
   })).toEqual(replayed);
   expect((await h.pool.query("SELECT response,xmin::text FROM public.customer_support_subscription_commands WHERE idempotency_key=$1", [key])).rows).toEqual(stored);
+});
+
+
+it("P2 selected commerce recovery reaches native persistence once through R5 and preserves row/xmin state", async () => {
+  const subscription = await renewal(h.pool), prepared = await prepareOriginal(h.pool, subscription);
+  const held = await renewal(h.pool);
+  await call(h.pool, "fulfillment_reserve_subscription_renewal", [held.operation, held.token, 900, AT]);
+  const delivery = await fixture(h.pool);
+  await openCase(h.pool, delivery, "protect"); await replacement(h.pool, delivery);
+  await h.pool.query("UPDATE public.commerce_settlement_intents SET status='failed' WHERE id=$1", [prepared.settlementIntentId]);
+  await h.pool.query("UPDATE public.commerce_orders SET created_at=now()-interval '2 hours' WHERE id=$1", [prepared.orderId]);
+  const order = randomUUID();
+  await h.pool.query("INSERT INTO public.commerce_orders(id,client_id,status,created_at) VALUES($1,$2,'pending_payment',now()-interval '2 hours')", [order, subscription.client]);
+  await h.pool.query(`INSERT INTO public.commerce_settlement_intents(order_id,channel_key,status,amount_minor,currency_code,open_idempotency_key)
+    VALUES($1,'fixture','failed',200,$2,$3)`, [order, subscription.snapshot.currency, `settlement:${order}`]);
+  const snapshot = async () => ({
+    subscriptions: (await h.pool.query("SELECT *,xmin::text AS row_version FROM public.subscriptions ORDER BY id")).rows,
+    reservations: (await h.pool.query("SELECT *,xmin::text AS row_version FROM public.fulfillment_inventory_reservations ORDER BY id")).rows,
+    alignment: (await h.pool.query("SELECT *,xmin::text AS row_version FROM public.subscription_delivery_alignment_cases ORDER BY id")).rows,
+    shipments: (await h.pool.query("SELECT *,xmin::text AS row_version FROM public.fulfillment_shipments ORDER BY id")).rows,
+    orders: (await h.pool.query("SELECT *,xmin::text AS row_version FROM public.commerce_orders ORDER BY id")).rows,
+  });
+  const before = await snapshot();
+  expect(before.reservations.map(row => row.status)).toEqual(expect.arrayContaining(["committed", "held"]));
+  expect(before.alignment.length).toBeGreaterThan(0);
+  const version = createHash("sha256").update(JSON.stringify(units)).digest("hex");
+  const catalogue = { version, migration: units.at(-1)!.file };
+  const probe = createSchemaProbe({ query: (text, values) => h.pool.query(text, values ? [...values] : undefined) }, async () => {
+    const status = await h.runner().status();
+    return { database: "m12-disposable", version: status.pending.length === 0 && status.applied.length === units.length ? version : null };
+  });
+  const executor = { query: vi.fn((text: string, values?: unknown[]) => h.pool.query(text, values)) };
+  const readiness = async (schema: RequiredSchema): Promise<ReadinessReport> => checkReadiness({
+      candidate: { artifact: "r5b", configuration: "native", environment: "local", database: "m12-disposable", schema: version }, inventoryComplete: true,
+      loadedPackages: [{ name: "@openlup/core", version: "0.27.0", kind: "kernel" }, { name: "@openlup/platform", version: "0.27.0", kind: "rail", modules: ["account-support", "commerce"] }],
+      contributions: binding.contributions.map(contribution => ({ ...contribution, manifest: { ...contribution.manifest, requiredSchema: schema } })),
+      vocabulary: [], exemptions: [], bindings: { ports: binding.ports, routes: binding.routes, triggers: binding.triggers, env: {} }, schemaProbe: probe,
+    });
+  const commerceOwner = createM11CommerceReferenceBinding({ enabled: true, executor, commerce: {}, version: "0.27.0", catalogue,
+    requiredObjects: [{ kind: "function", name: "public.inventory_new_purchase_stock_read", signature: "text,jsonb,timestamp with time zone" }],
+    readiness });
+  const binding = createM12AccountSupportReferenceBinding({ enabled: true, graph: "native", capabilities: { ...capabilities, commerceRecovery: { supported: true } },
+    operations: {}, commerce: {}, commerceOwner, commerceRegistry: new Map(), ownerSchemas: [], requiredObjects: [], dependsOn: [],
+    version: "0.27.0", catalogue, readiness });
+  expect(executor.query).not.toHaveBeenCalled(); expect(await binding.readiness()).toEqual({ kind: "ready" });
+  const enqueue = binding.commerceOwner!.services.recoveryReminders;
+  expect(binding.ports["@openlup/platform/commerce:recoveryReminders"]).toBe(enqueue);
+  expect(await enqueue(10)).toEqual({ enqueued1h: 1, enqueued20h: 0 });
+  const reminders = async () => (await h.pool.query(`SELECT id,aggregate_id,idempotency_key,payload,xmin::text AS row_version
+    FROM public.outbox_events WHERE event_type='commerce.checkout_recovery' ORDER BY id`)).rows;
+  const first = await reminders();
+  expect(first).toEqual([{ id: expect.any(String), aggregate_id: order, idempotency_key: `checkout_recovery:1h:${order}`,
+    payload: { orderId: order, mode: "one_time", reminderHours: 1, expiresAt: expect.any(String) }, row_version: expect.any(String) }]);
+  expect(await enqueue(10)).toEqual({ enqueued1h: 0, enqueued20h: 0 });
+  expect(await reminders()).toEqual(first); expect(await snapshot()).toEqual(before);
+  expect(executor.query).toHaveBeenCalledTimes(2);
 });

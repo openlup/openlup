@@ -10,6 +10,173 @@ in the source repository.
 
 ## [Unreleased]
 
+## [0.28.0]
+
+- Publishable on the npm `latest` dist-tag as `0.28.0`, from tag
+  `openlup-platform-v0.28.0`.
+
+Add experimental account-support and type-only account-support/contracts exports
+with five owner-derived envelopes, explicit capability types, unchanged account-read
+diagnostics and an injected read facade. Hosts retain authorization, projections,
+private extensions and driver selection; command envelopes install no executor.
+Add owner-equality, browser, delegation, reference and packed-consumer witnesses.
+
+Migration: none for existing callers. The new subpaths are additive and the
+reference diagnostic path retains its exports and behavior. The catalog,
+commerce-server, commerce, fulfillment, identity, pricing and promotions API
+reports (`api/catalog.api.md`, `api/commerce-server.api.md`, `api/commerce.api.md`,
+`api/fulfillment.api.md`, `api/identity.api.md`, `api/pricing.api.md`,
+`api/promotions.api.md`) reorder existing enum/union members because declaration
+emit order changed after adding the module: member order only, no declaration
+change; no member is added, removed or changed. No SQL migration or activation.
+
+Add bounded account/support read composition through the existing experimental
+account-support and type-only account-support/contracts entries. New runtime
+exports: CUSTOMER_ACCOUNT_V2_CONTRACT_VERSION, readAccountSnapshot,
+isCustomerVisibleSubscription, recurringPrice, computeEditState, editCutoff,
+buildActionRequired, CUSTOMER_ORDERS_CONTRACT_VERSION, readCustomerOrderSummaries,
+readCustomerOrderDetail, customerOrderMoney, toOrderMoneyHeader, toOrderMoneyItem,
+mapCustomerOrderLines, lineListTotalMinor, SUPPORT_CUSTOMER_360_CONTRACT_VERSION,
+projectCustomer360Snapshot, deriveContactHealth, boundedCustomerJourneyAudit,
+createCustomer360ReadFacade, createInvoiceAccess, downloadOwnedInvoicePdf and
+deriveCustomerDocumentDeliveryStatus. Add neutral account/order/support DTOs and
+typed source, projection and invoice-owner ports; preserve R1 exports.
+
+Reference factories and host-fed views are default-off/unmounted. Native support
+reads use the existing authorized PostgreSQL scope; unselected capabilities
+refuse explicitly. Pricing, captured presentation and private extensions stay
+host injected. Invoice access binds the document to a found owned-order history
+before ticket resolution or artifact IO, adding one history read; foreign/unknown
+documents return denied. Download requires a bound owned-order history; an unbound
+history reports unsupported (host_binding_required). Denied, unknown and unsupported
+history results retain their distinct M09 outcomes before ticket/artifact IO;
+thrown history stays unknown. M09 PDF validation remains unchanged.
+Customer 360 facade authorization now runs before every source read and returns
+denied with zero source IO on refusal. The reference binding uses that callback
+once per call before opening a governed journey or independent diagnostic scope.
+Customer 360 subscription pointer enrichment includes optional nullable
+paymentMethodKind, preserving selected-empty null and unread omission. Reference
+diagnostic search, segment history and v2 overview select their own authorized
+scope; reference line presentation picks only its declared display fields.
+
+Migration: the unreleased Customer360Subscription gains optional nullable
+paymentMethodKind. Selected Customer360ProjectionInput.subscriptionPointers values
+now supply paymentMethodKind alongside shippingAddressId; use null for known-empty
+evidence and omit the pointer source when unread. Callers of the unreleased
+createCustomer360ReadFacade now supply authorize(): Promise<boolean> alongside
+journey, summary and diagnostics, and handle the added { kind: "denied" } result
+on every method. No SQL migration is required.
+
+The unchanged generator also regenerates these sibling API reports:
+- `packages/platform/api/catalog.api.md`
+- `packages/platform/api/commerce-server.api.md`
+- `packages/platform/api/commerce.api.md`
+- `packages/platform/api/communications.api.md`
+- `packages/platform/api/fulfillment.api.md`
+- `packages/platform/api/identity.api.md`
+- `packages/platform/api/invoicing.api.md`
+- `packages/platform/api/pricing.api.md`
+- `packages/platform/api/promotions.api.md`
+
+These generated companions are member order only, no declaration change. No
+snapshot is hand-edited; no member is added, removed or changed in those reports.
+
+Add experimental self-service composition returning SelfServiceCommandFacade,
+with required host capabilities and every guarded output lane. ENV-R3-1 keeps
+input lanes optional and adds nativeLegacySubscription plus subscriptionControl.
+Unselected methods return AccountSupportLaneUnavailable: paymentMethod uses the
+host paymentMethodSetup refusal by identity, commerce uses commerceRecovery,
+and every other lane uses a frozen host_binding_required refusal after its guard.
+Native routing retains ownership-before-quote behavior and explicit pause; typed,
+raw, profile, method, commerce and recovery delegates keep owner results/refusals.
+Raw/typed admission requires the supplied clientId before every owner call. The
+trailing `ControlSnapshot = unknown` generic preserves snapshot DTOs and existing
+twelve-argument consumers.
+The generic M07 adapter maps setupMethod to paymentMethod.execute. No owner type
+imports or new module-graph edges. Native repair is a registered follow-up, not a
+cut; token handlers stay in reference source. The reference binding remains off.
+
+The unchanged API generator leaves two sibling snapshots changed from final R1:
+`commerce-server.api.md` and `commerce.api.md` under `packages/platform/api/`.
+These are disclosed generated companions: member order only, no
+declaration change, proven by AST comparison normalizing union/enum member order.
+
+Migration: development-preview envelope delta ENV-R3-1. Supply verified context,
+AccountSupportCapabilities and complete selected owner lanes. Handle the named
+unavailable arm in method results. Supported paymentMethodSetup requires paymentMethod; supported
+commerceRecovery/configuredPurchase require commerce; supported subscription
+genericBundleCommands/commandBoundReceipts require a subscription command lane. No schema, dependency, release cap, activation or browser cutover change.
+
+Add explicit operator recovery composition, current managed email claim/settlement,
+managed account link and human recovery fence, and native support delegation to
+M10 through injected executors. Preserve donor callback and failure ordering;
+expose actual optional owner receipts and truthful link-then-action partial results.
+The reference binding remains default-off and unmounted.
+
+Migration:
+- Introduce the frozen native support-authority SQL and packed twin plus the
+  managed current-authority forward, after complete same-rail predecessors.
+- Retire `customer_support_correct_subject_email_v1`: human calls raise 55000
+  `customer_support_email_correction_requires_admission`; drain old callers and
+  use admission → claim → claim-fenced identity commit → settlement.
+- operator_subscription_actions: 3 combined email calls now execute admission → claim → claimed auth move (linked only, deferred fence forced before settlement) → settlement; existing success/replay/collision/stale/audit expectations retained; human roster fixture added.
+- operator_contact_correction: 4 combined email calls now execute admission → claim → claimed auth move (linked only, deferred fence forced before settlement) → settlement; existing success/replay/collision/stale/audit expectations retained; human roster fixture added.
+- runtime_capability_boundary: missing-subject/null-clock correction uses admission (same subject_not_found result); human admission fixture added; machine retired-entry 42501 unchanged.
+- marketing_lead_email_namespace: 1 combined email calls now execute admission → claim → claimed auth move (linked only, deferred fence forced before settlement) → settlement; existing success/replay/collision/stale/audit expectations retained; human roster fixture added.
+- absorb_lead: 1 combined email calls now execute admission → claim → claimed auth move (linked only, deferred fence forced before settlement) → settlement; existing success/replay/collision/stale/audit expectations retained; human roster fixture added.
+- CD-8: use `status = 'payment_pending'` for native residual-unpaid detection,
+  matching the native cycle CHECK; native outcomes and the managed predicate stay
+  unchanged. The native witness covers resume with and without that cycle.
+- CD-9 standing donor-adopter adoption mapping: link keeps the same body; the donor adopter uses
+  INVOKER with table-wide `service_role` access, while OpenLup uses DEFINER under
+  column-level capability closure. Preserve the migration owner, fixed search
+  path and service-only EXECUTE; widen no table grant. Retired email correction
+  and recovery remain INVOKER.
+- RD-R4-4 link refusal proof: machine/non-human, missing and inactive operators
+  leave clients, support commands and audit rows unchanged. Subject refusals
+  leave clients and auth identities unchanged and write exactly one refusal
+  receipt plus one matching audit row for the key, with no other row/xmin changes.
+  Unknown subjects return `refused` / `subject_not_found`; email expectation,
+  foreign-identity and already-linked conflicts return `conflict` with
+  `email_expectation_conflict`, `identity_linked_elsewhere` and
+  `subject_account_linked`, respectively. Same-key replay returns the stored
+  refusal unchanged with zero further writes.
+- Native M03 contact/link and unsupported M10 subcases remain named refusals;
+  no historical migration, pin, module graph or source-release contract changes.
+
+API generator companions and measured verification are recorded in the module plan.
+
+Add inert account/support graph bindings, guarded owner services and composition
+descriptors over the R1–R4 envelopes. The reference recipe is default-off, mounts
+nothing and starts no workers. Service/port/route aliases share one callable
+guard; readiness is observed before every entrance. Owner authorization, keys,
+receipts, refusals and M04 delivery/replay remain with their existing owners.
+The reference operator subscription adapter restores donor BFF command metadata
+around one R4 dispatch and serializes only the strict donor outcome fields,
+including decoded ISO timestamps and explicit nulls. Optional native `ownerReceipt`
+evidence stays server-side and is absent from the response. The composition witness
+distinguishes that response from SQL storage.
+
+Migration: additive `createAccountSupportBindings`, `createAccountSupportServices`
+and `createAccountSupportContribution` exports. Hosts supply one graph, prebound
+operations, exact selected schema and complete catalogue identity, map admission
+refusals before serving routes, and explicitly compose declared owner contributions.
+Null selected operations remain required/unbound. Commerce is a nullable injected
+record returning `unsupported/host_binding_required` when unbound. The reference
+`commerceOwner` option accepts the host-built M11 selection over bound checkout,
+recovery and ATP callables, with the complete account/M11/ATP schema union and
+matching enablement/readiness. R5b does not construct M11 or import its adapters;
+it uses a local structural selection type. Supply the existing effect registry
+as `commerceRegistry` and forward guarded services and contributions once;
+unknown stock, unsupported options and commerce outcomes remain unchanged.
+While account-support is disabled, a supplied M11 selection stays cold: the
+keyed commerce entrance returns the disabled refusal before the selected owner
+or the injected record runs, and no M11 contribution, port, route, trigger,
+reference handle or schema requirement is forwarded.
+Configured recovery/purchase elements use explicit host paths and clients. No SQL, version, serving
+activation or source-release snapshot changes. Regenerated account-support and
+composition API reports describe these additions; no sibling API report changed.
+
 ## [0.27.0]
 
 - Publishable on the npm `latest` dist-tag as `0.27.0`, from tag
@@ -165,112 +332,3 @@ Migration: managed hosts must pass exact applied-transition attribution to the n
 
 Native attempt-replay parity remains REGISTERED with M10; these managed forwards
 do not implement native parity or authorize host activation.
-
-## [0.25.0]
-
-- Publishable on the npm `latest` dist-tag as `0.25.0`, from tag
-  `openlup-platform-v0.25.0`.
-
-- Re-pin the pending M10/F17 control fixtures after landed M08/M09 without
-changing either installation rail, the migration manifest or landed N1. The
-16-entry packet has seven native and nine managed pins. Native X restores
-ATP-counted late-positive stock recovery; Y filters paid retry candidates
-before LIMIT. Fold command-preview receipt replay into uninstalled N2, keeping
-apply unchanged. Preserve the historical 14-pin approval reader and exact
-prefix, definition, statement, ACL and catalog controls. Real PostgreSQL
-witnesses cover ATP, starvation, all 43 fresh command scenarios and raw preview
-replay with no counts/columns/xmin delta.
-
-No package SQL asset, export, runtime activation or external CI dependency is
-introduced. The development-preview boundary remains.
-
-- Fix uninstalled N3 normal_due pagination to exclude waiting/stock_secured cases before LIMIT, preventing normal-renewal starvation.
-
-- Repair uninstalled N2 donor no-op truth for native bundle/resize, plan, package, add-on and same-UTC-day slide commands before repricing: preserve locked prices after catalogue changes, writing only the command receipt, with no quote, event or version increment. Native resize compares lines/cadence; portion mode/factor remain host-owned without native storage. Predicate-removal mutants cover every mapped donor action; apply stays unchanged.
-
-- Audit pending M10 donor change and no-op semantics together. N2 plan edits
-apply requested core lines; new add-ons normalize quantity, preserve cadence
-and compare UUIDs by value. N3 preserves paused waits, filters eligible recovery
-before LIMIT, binds frozen reads to the current active schedule, reports free
-stock separately from own holds, and ignores closed/unpaid realization notices.
-Real PostgreSQL tables cover applied state, no-op/refusal/replay and rolled-back
-assignment mutants. Installed rails and N2 apply remain unchanged; channel
-exposure/admission parity stays outside the frozen stock-seam claim.
-
-- Close the 0.24.0 known limitation that managed dunning exhaustion still pauses active subscriptions.
-- Land the reviewed managed M1/M2 prefix: refunds preserve subscription lifecycle and paid history; exhausted dunning stays open with NULL retry and active service until authorized same-cycle repair.
-- Folded scope E-gate-replay-loop-landed-untested: retain the existing interleaving-aware catalog replay and add the Docker-free landed N1/M1/M2 witness.
-- Folded scope D-earlier-pin-digest-unplanted: prove CI and release refuse changed earlier M1 bytes beneath landed M2.
-
-Migration notes: Apply M1 then M2. Existing paused, expired and refund-cancelled history is not rewritten or reactivated. The existing first-cycle refund stock-release guard remains; later refund-evidence parity and stock-wait/winback changes are separate. No runner is activated.
-
-- Add native N2 command preview/apply stores and a P1 command adapter with atomic future terms, actor/key/actual-command receipts and applied/replayed/noop/refused outcomes; preserve frozen current obligations and existing native callers.
-- Type-level flip for dev-preview consumers: `NATIVE_SUBSCRIPTION_CAPABILITIES.genericBundleCommands.supported` and `.commandBoundReceipts.supported` change from `false` to `true`; command results now include `SubscriptionCommandRefusal`.
-
-Migration: install N1 then N2 through the complete native manifest; preserve receipts on rollback. Accepted future prices use lock_until_edit, proration none. Address mutation and private introductory/graduation policy stay host-owned; native activation continues to require captured payment evidence.
-
-Migration (C73, temporary limitation): managed `subscription_create_provisional_for_checkout` stamps an explicit timezone literal equal to today's `subscriptions.timezone` column DEFAULT. Adopters changing that DEFAULT must also replace the function until the scheduled follow-up forward follows the DEFAULT; no managed SQL changes here.
-
-Migration: `SubscriptionCommandPort.apply()` may now return `SubscriptionCommandRefusal` (`outcome: "refused"`), so callers must handle it.
-
-- Type-level change visible to dev-preview consumers: `RenewalPaymentRail.execute` adds an optional `failure` field for explicit failure evidence.
-- A host or driver skips `openCase` after a replayed `applyFailure` receipt only when that rung's case propagation already committed; otherwise recovery must complete propagation. The P8 retry driver must add a replay/case-advanced signal and a zero-delta witness for replay after committed propagation.
-- N2 preview follows the supplied core lines for plan-length changes (omitted lines retain stored expansion); new add-ons normalize missing/nonpositive quantity to one, add-on actions preserve cadence, and quantity updates/removals compare variant UUIDs case-insensitively.
-
-Land the seven reviewed managed stock-wait/ATP and F17 refund-parity forwards.
-Managed hosts can use the service-role SQL functions and pgTAP witnesses; the
-package declares the SQL surface and keeps TypeScript stock recovery unavailable
-because no managed adapter implements the stock-wait/availability ports.
-
-Migration: apply the complete managed prefix through `20261024185100` before
-calling stock-wait or refund-evidence functions. M4 extends M2's active/open
-continuity with wait exclusion before LIMIT. M5 makes positive customer
-cancellations immediately winback-eligible within 120 days, retaining episode
-dedupe, and maps started/resumed notices. F17 accepts cumulative provider snapshots,
-emits one refunded event on transition, and preserves M1 refund/lifecycle
-independence. Keep captured obligations and receipts on rollback and disable the
-host stock-wait driver first. SQL installs no scheduler or payment executor.
-
-ATP protects active upcoming demand within 14 days plus live provider hard holds.
-The exposure hook remains zero; current donor channel admission is deferred.
-This is a development-preview SQL surface, not a composed managed TypeScript port
-or a claim of advance future-cycle reservations or stable installation support.
-
-Native stock-wait persistence, frozen discovery and stock-only refusal recovery
-now have transaction-bound adapters. The native ATP/new-purchase read protects
-hard holds and fixed 14-day soft subscription demand; the renewal allocator uses
-the same seam. X restores late-paid released stock once, and Y filters paid and
-settled retry obligations before LIMIT. Managed stock wait and runner composition
-remain separate; native selection still requires passing real-PostgreSQL proof.
-
-Migration: install the native N3, ATP seam, allocator, X and Y prefix in filename
-order, with their package twins and regenerated selected-catalog-v2 inventory.
-Migration: upgrading hosts must grant their native inventory-reserving runtime
-role EXECUTE on public.inventory_available_to_promise(text,text,timestamptz,boolean)
-and public.inventory_channel_exposure_quantity(text,text), plus SELECT on the
-seam's underlying relations as listed in Data and migrations, before using the
-updated allocator or N3 stock-wait paths.
-`StockWaitStorePort.listCandidates` now returns `StockWaitFrozenCase[]`: discovery
-may have no durable case yet. Hosts must retain its frozen snapshot and binding.
-Frozen discovery requires the active current schedule; paused current waits remain open.
-Deficits separate own reserved units from free ATP and subtract both for missing
-units. Closed or pending-payment resume callbacks return null without writes; paid
-fulfillment-pending orders can complete realization admission.
-No advance reservation, physical coverage guarantee or one-time checkout writer
-is introduced. No pause, payment execution or parcel-arrival fact is added.
-Uncaptured stock refusals rotate on the operation selection timestamp even when
-missing or stale stock prevents case creation, allowing replenished work through
-a bounded candidate page.
-
-M10 P6 + P8: composed subscriptions (development preview)
-
-Migration: Additive `./subscriptions` facades are `createSubscriptionServices`, `createSubscriptionCommandExamples`, `createSubscriptionLifecycleMessages` and `subscriptionLifecycleTemplate`; hosts explicitly supply readiness, execution, commands and M04 delivery. No factory activates serving work. `SubscriptionLifecycleFact` is exported from this entry; `subscriptionLifecycleTemplate(kind, retryAttempt?)` preserves the installed payment-failure rungs (1, 2, otherwise 3). `runRenewalBatchRows` exposes the existing per-row error-result isolation for composed hosts.
-Migration: Additive `./composition` entry `createSubscriptionContribution` describes exactly one selected subscription schedule; off supplies none. Hosts bind its callable to their existing population lease and observe the complete installed schema.
-Migration: `createPostgresRetryStore` adds `failureProgress(operationId,key)`, returning receipt replay and committed case progression. The native retry driver completes interrupted propagation and skips already advanced cases; existing applyFailure/openCase signatures remain unchanged.
-
-The inert native reference binding composes mandatory G23, dunning and stock wait.
-Captured alignment cases retain authority under off. Prepared attempts reconcile
-without re-execution; ordinary retries bind the frozen mandate and logical cycle.
-M04 owns delivery; M12 owns aggregation. No SQL asset, serving swap, release or
-managed TypeScript recovery is introduced. Native multi-cycle prepaid and M07
-prepared-attempt-store capabilities retain their named unsupported boundaries.

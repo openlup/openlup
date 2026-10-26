@@ -18,6 +18,7 @@ export const NON_ADAPTER_ENTRIES = [
   "account-support/contracts",
   "marketing",
   "marketing/contracts",
+  "marketing/server",
   "commerce",
   "commerce/contracts",
   "commerce/server",
@@ -49,6 +50,7 @@ export const NON_ADAPTER_ENTRIES = [
 // identity, communications, promotions and catalog are adapter entries: their declarations reach data/pg types.
 // Its cold runtime import/refusal is below; declarations compile after selecting peers.
 export const ADAPTER_ENTRIES = [
+  "marketing/server/postgres",
   "blob",
   "catalog",
   "communications",
@@ -223,6 +225,7 @@ import assert from "node:assert/strict";
 import { createAccountReadFacade, CustomerAccountReadModelError, withCustomerAccountReadStage, customerAccountReadFailureDetails, createOperatorRecovery, createPostgresOperatorAuthority, operatorAuthorityCapabilities, linkThenApply } from "@openlup/platform/account-support";
 import * as contracts from "@openlup/platform/account-support/contracts";
 assert.deepEqual(Object.keys(contracts), []);
+
 const account={revision:"owner-revision", getAccount(userId){assert.equal(this,account);assert.equal(userId,"principal-a");return Promise.resolve(snapshot);}};
 const snapshot={profile:{privateExtension:"host-owned"},frozenTotal:2301};
 const input={limit:17}, list={orders:[{orderId:"order-b",frozenTotal:2301}]}, detail={orderId:"order-c",revision:"original"};
@@ -504,6 +507,12 @@ assert.deepEqual(marketing.prelaunchAcquisitionListRequestSchema.parse({ view: m
 assert.equal(marketing.prelaunchAcquisitionDetailRequestSchema.safeParse({ sourceRef: "case:one" }).success, false);
 assert.equal("MARKETING_PRELAUNCH_CONTRACT_VERSION" in marketing, false);
 assert.deepEqual(Object.keys(contracts), []);
+assert.equal(marketing.createNoopAnalytics().trackPageView("/"), undefined);
+assert.deepEqual(marketing.createAnalyticsDataLayer().emitAnalyticsEvent("page_view", { page_path: "/" }), { deployment: false, optional: false });
+const routes = marketing.createAnalyticsRoutePolicy({ publicPaths: ["/entry"], redirectSources: [], privatePathPrefixes: [], privateAuthPaths: [], capabilityPathPrefixes: [] });
+assert.equal(routes.sanitizeDeploymentAnalyticsUrl("/entry?secret=one", "https://host.example"), "https://host.example/entry");
+assert.equal(marketing.projectPaidPurchase({ status: "pending" }), null);
+assert.equal(marketing.selectMarketingHistoricalConsentTime({ command: { consentedAt: null, listId: null }, state: { consent: "unknown", suppressions: [] }, now: new Date(NaN) }).reason, "consent_time_invalid");
 const origin="https://shop.example";
 const facts={name:"Example Store",legalName:"Example Company",url:origin,logo:{url:origin+"/logo.png",contentUrl:origin+"/logo.png",width:160,height:60},email:"contact@example.invalid",vatID:"VAT-1",taxID:"TAX-1",areaServed:"Region-A",sameAs:[],contactPoint:{email:"contact@example.invalid",contactType:"support",availableLanguage:["alpha"]},address:{streetAddress:"Example Lane 1",addressLocality:"Example Town",postalCode:"00000",addressRegion:"Region-A",addressCountry:"Territory-A"}};
 const node=marketing.organizationLd(origin,"Organization",facts);
@@ -520,6 +529,63 @@ for (const [name, value] of Object.entries(core)) assert.equal(marketing[name], 
 for (const name of ["acquisitionCaseSubmitRequestSchema", "acquisitionCaseSubmitResponseSchema", "acquisitionCaseTransitionRequestSchema", "acquisitionCaseTransitionResponseSchema"]) assert.equal(name in marketing, false);
 await assert.rejects(import("@openlup/platform/dist/marketing/acquisitionCaseSchemas.js"), { code: "ERR_PACKAGE_PATH_NOT_EXPORTED" });
 `);
+}
+
+/** Installed server factories preserve historical reads and bounded port refusals without pg. */
+export function proveMarketingServerConsumer(consumer: string): void {
+  consumerNode(consumer, `
+import assert from "node:assert/strict";
+import { createAcquisitionCaseHandlers, createAcquisitionCaseActiveCountDirectHandler, createAcquisitionSurveySubmitDirectHandler, createAnalyticsContextHandler } from "@openlup/platform/marketing/server";
+import { createBffResponder } from "@openlup/platform/bff";
+const calls = [];
+const port = { activeCount: async scope => { calls.push(scope); return { ok: true, value: 4 }; } };
+const handlers = createAcquisitionCaseHandlers(port);
+const respond = createBffResponder();
+let status, body;
+const res = { setHeader() {}, status(value) { status = value; return this; }, json(value) { body = value; return this; } };
+await createAcquisitionCaseActiveCountDirectHandler({ respond, isDirect: () => true, authorize: async () => { throw Error("public count must not authorize"); }, resolveBinding: async () => ({ handlers }) })({ method: "GET" }, res);
+assert.equal(status, 200);
+assert.deepEqual(body, { ok: true, data: { activeTesterCount: 4 } });
+assert.deepEqual(calls, ["public_tester_application"]);
+await createAcquisitionSurveySubmitDirectHandler({ respond, authorize: async () => null, resolveBinding: async () => ({ submitSurvey: async () => ({ ok: false, error: { kind: "conflict" } }) }) })({ method: "POST", headers: { "idempotency-key": "survey-key-0001" }, body: { view: "acquisition_survey_v1", caseReference: "acquisition-case:11111111-1111-4111-8111-111111111111", surveyType: "consumer", responseData: { answer: "synthetic" } } }, res);
+assert.equal(status, 409);
+assert.deepEqual(body, { ok: false, error: { code: "CONFLICT", message: "Acquisition evidence request conflicts with prior state" } });
+await createAnalyticsContextHandler({ respond, isEnabled: () => true,
+  resolveStore: () => { throw Error("invalid context must not read persistence"); },
+  readAccessToken: () => null, resolveTrustedSubject: async () => null,
+  capabilityCrypto: { mintToken: () => { throw Error("invalid context must not mint"); }, hashToken: token => token },
+  cookieName: "__Host-context", clientIdField: "browserRef",
+})({ method: "POST", headers: { host: "shop.example", origin: "https://shop.example" }, body: { granted: true } }, res);
+assert.equal(status, 400);
+assert.deepEqual(body, { ok: false, error: { code: "BAD_REQUEST", message: "Invalid analytics context" } });
+await assert.rejects(import("@openlup/platform/marketing/server/internal"), { code: "ERR_PACKAGE_PATH_NOT_EXPORTED" });
+`);
+}
+
+/** Installed type witness for neutral analytics facts and host step literals. */
+export function compileMarketingAnalyticsConsumer(consumer: string, compiler: string): void {
+  const file = join(consumer, "marketing-analytics.ts");
+  writeFileSync(file, [
+    'import { createAnalyticsDataLayer, projectPaidPurchase, selectMarketingHistoricalConsentTime } from "@openlup/platform/marketing";',
+    'import type { AnalyticsEventMap, PurchaseOrder, MarketingHistoricalConsentCommand } from "@openlup/platform/marketing/contracts";',
+    'const analytics = createAnalyticsDataLayer<"choose" | "confirm">();',
+    'analytics.pushAnalyticsEvent("configurator_step_view", { step_number: 1, step_name: "choose" });',
+    '// @ts-expect-error the host literal union stays closed',
+    'analytics.pushAnalyticsEvent("configurator_step_view", { step_number: 1, step_name: "other" });',
+    'declare const order: PurchaseOrder;',
+    'export const purchase: AnalyticsEventMap["purchase"] | null = projectPaidPurchase(order);',
+    'declare const command: MarketingHistoricalConsentCommand;',
+    'export const consent = selectMarketingHistoricalConsentTime({ command, state: { consent: "unknown", suppressions: [] }, now: new Date() });',
+  ].join("\n"));
+  for (const mode of ["NodeNext", "Bundler"]) {
+    const configuration = join(consumer, "marketing-analytics-tsconfig.json");
+    writeFileSync(configuration, JSON.stringify({ compilerOptions: {
+      target: "ES2020", module: mode === "NodeNext" ? "NodeNext" : "ESNext", moduleResolution: mode,
+      strict: true, skipLibCheck: false, noEmit: true, types: ["node"],
+      typeRoots: [join(consumer, "node_modules/@types")],
+    }, files: [file] }));
+    process.stdout.write(command(process.execPath, [compiler, "-p", configuration], consumer));
+  }
 }
 
 /** M11 K1: installed neutral contracts, a successful projection and a strict refusal. */
@@ -652,6 +718,14 @@ export function compileConsumer(consumer: string, entries: readonly string[], co
     '// @ts-expect-error processor data categories are required',
     'const missingCategories: PrivacyProcessorDisclosure = { processorName: "Example", purpose: "Example purpose" };',
     'void missingContact; void missingSections; void missingCategories;',
+  ].join("\n"));
+  if (entries.includes("marketing/server")) surfaces.push([
+    'import { createAcquisitionCaseHandlers, createAcquisitionCaseActiveCountDirectHandler } from "@openlup/platform/marketing/server";',
+    'import type { AcquisitionCasePort as ServerAcquisitionCasePort, AcquisitionCaseDirectDeps } from "@openlup/platform/marketing/server";',
+    'declare const acquisitionPort: ServerAcquisitionCasePort;',
+    'declare const acquisitionDirect: AcquisitionCaseDirectDeps;',
+    'export const acquisitionHandlers = createAcquisitionCaseHandlers(acquisitionPort);',
+    'export const acquisitionCount = createAcquisitionCaseActiveCountDirectHandler(acquisitionDirect);',
   ].join("\n"));
   if (entries.includes("commerce/server")) surfaces.push([
     'import { tryCompensate } from "@openlup/platform/commerce/server";',
@@ -819,6 +893,9 @@ assert.equal(await createManagedLinkStore(structuralClient).findAccountByPrincip
 
 export function proveAdapterRefusals(consumer: string): void {
   consumerNode(consumer, adapterOperations + `
+// This selected entry retains its original static driver import.
+await assert.rejects(import("@openlup/platform/marketing/server/postgres"),
+  error => error.code === "ERR_MODULE_NOT_FOUND" && /Cannot find package 'pg'/.test(error.message));
 const blob = bindBlobPort("s3", { BLOB_S3_BUCKET: "consumer", BLOB_S3_BASE_URL: "https://example.invalid" });
 const checks = [["@aws-sdk/client-s3", () => blob.upload("probe", Buffer.from("probe"))],
   ...Object.values(postgresOperations("postgresql://unused.invalid/consumer")).map(operation => ["pg", operation])];
@@ -833,6 +910,11 @@ export function proveInstalledAdapters(consumer: string): void {
 import * as sdk from "@aws-sdk/client-s3";
 import { Readable } from "node:stream";
 import { createS3ClientFromEnv } from "@openlup/platform/blob";
+import { createPostgresAcquisitionCasePort, createPostgresAcquisitionEvidencePort } from "@openlup/platform/marketing/server/postgres";
+assert.equal(typeof createPostgresAcquisitionCasePort, "function");
+assert.equal(typeof createPostgresAcquisitionEvidencePort, "function");
+assert.throws(() => createPostgresAcquisitionCasePort({ connectionString: " " }), /acquisition_case_database_url_required/);
+assert.throws(() => createPostgresAcquisitionEvidencePort({ connectionString: " " }), /acquisition_evidence_database_url_required/);
 // The default loaders must reach real SDK configuration, without opening a socket.
 // Invalid URLs deterministically fail before a transport can contact any provider.
 const invalidBlob = bindBlobPort("s3", { BLOB_S3_BUCKET: "consumer", BLOB_S3_BASE_URL: "https://example.invalid",
@@ -1560,6 +1642,8 @@ assert.throws(() => promotions.resolvePromotionBenefitDefinition({ discount_type
     compileConsumer(consumer, NON_ADAPTER_ENTRIES, compiler);
     assertConsumerIsolation(consumer, checkout); // Compilation must not have supplied a peer.
     proveMarketingConsumer(consumer);
+    proveMarketingServerConsumer(consumer);
+    compileMarketingAnalyticsConsumer(consumer, compiler);
     proveCommerceConsumer(consumer);
     proveCommerceServerConsumer(consumer);
     proveCatalogCompositionConsumer(consumer);

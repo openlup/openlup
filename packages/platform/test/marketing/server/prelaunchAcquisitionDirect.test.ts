@@ -1,9 +1,11 @@
+import { createBffResponder } from "../../../src/bff/index.js";
+const respond = createBffResponder();
 import { describe, expect, it, vi } from "vitest";
-import type { AcquisitionCaseRuntimeBinding } from "../../runtime/clients/acquisitionCaseBinding.js";
+import type { AcquisitionCaseReadBinding } from "../../../src/marketing/server/directPorts.js";
 import {
   createPrelaunchAcquisitionDetailHandler,
   createPrelaunchAcquisitionListHandler,
-} from "./prelaunchAcquisitionDirect.js";
+} from "../../../src/marketing/server/prelaunchAcquisitionDirect.js";
 
 const AT = "2026-08-17T10:00:00.000Z";
 const CASE = {
@@ -12,7 +14,7 @@ const CASE = {
   contactRef: "acquisition-contact:22222222-2222-4222-8222-222222222222",
   sourceKind: "tester_application" as const,
   consent: {
-    consentVersion: "tester-consent.v1",
+    consentVersion: "consent.v1",
     policyVersion: "privacy.v1",
     recordedAt: AT,
     locale: "en" as const,
@@ -34,20 +36,16 @@ type ListHandler = ReturnType<typeof createPrelaunchAcquisitionListHandler>;
 type Request = Parameters<ListHandler>[0];
 type Response = Parameters<ListHandler>[1];
 
-function binding(): AcquisitionCaseRuntimeBinding {
+function binding(): AcquisitionCaseReadBinding {
   return {
     handlers: {
-      submit: vi.fn(),
       list: vi.fn(async () => ({
         ok: true as const,
         value: { contractVersion: "tester_application_v1" as const, cases: [CASE], nextCursor: null },
       })),
       get: vi.fn(async () => ({ ok: true as const, value: CASE })),
-      transition: vi.fn(),
       activeCount: vi.fn(),
-      contractVersion: "tester_application_v1",
     },
-    close: vi.fn(async () => undefined),
   };
 }
 
@@ -67,6 +65,7 @@ describe("prelaunch acquisition direct BFF", () => {
     const resolveBinding = vi.fn(async () => binding());
     const res = response();
     await createPrelaunchAcquisitionListHandler({
+      respond,
       authorize: async () => null,
       resolveBinding,
     })(request({ view: "prelaunch_acquisition_v1" }), res);
@@ -77,6 +76,7 @@ describe("prelaunch acquisition direct BFF", () => {
     const runtime = binding();
     const res = response();
     await createPrelaunchAcquisitionListHandler({
+      respond,
       authorize: async () => "9f576216-011a-4f67-8404-3f28f7f624d5",
       resolveBinding: async () => runtime,
     })(request({ view: "prelaunch_acquisition_v1", limit: "10" }), res);
@@ -97,6 +97,7 @@ describe("prelaunch acquisition direct BFF", () => {
   it("opens the canonical case and maps a durable not-found refusal", async () => {
     const runtime = binding();
     const options = {
+      respond,
       authorize: async () => "9f576216-011a-4f67-8404-3f28f7f624d5",
       resolveBinding: async () => runtime,
     };

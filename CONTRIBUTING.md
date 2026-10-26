@@ -181,6 +181,18 @@ through the existing authenticated HTTP handlers. The native
 [`accountSupportComposition` witness](tests/postgres/accountSupportComposition.test.ts)
 installs the complete catalogue, uses Core's actual schema probe and delegates
 the selected R4 command to its native store, checking durable receipt replay.
+R7 injects the real host-built M11 result, asserts its assignability to the local
+selection type and composes actual registry descriptors without sending.
+U3/U4 use package-only selections to keep the app project outside the server
+adapter graph. U3 follows a refused
+continuation and its retry through the selected reference checkout handler with
+distinct root/order/client identities and the original key. U4 corrects refused
+managed stock options and retries the same purchase without inventing stock.
+P2 reaches the native M11 reminder through R5, checks persistence/replay and
+compares subscription/reservation/alignment rows including xmin. Reuse M11's
+consent/compaction and missing-token-table cases and the inventory unsupported
+options/ATP witnesses instead of duplicating their policy matrices. The five
+new cases each describe one behavior sequence; independent rows stay separate.
 Docker is required; a sandbox socket refusal is missing proof, not a pass.
 The installed R5 consumer compiles concrete selections and invalid requests in
 NodeNext and Bundler, executes positive/refusal paths, and detects removal of its
@@ -1415,6 +1427,36 @@ The source routes remain unchanged pending P7.
 
 ### Commands and lint rules
 
+The platform module graph declares browser marketing with an isolated contracts
+entry and no cross-module platform edges. Its runtime entry may forward the
+existing public core research export; contracts forward only core types and
+local DTO shapes, including reachable acquisition ports and portable prelaunch
+types. Retired admission schemas are excluded from both browser entries. The
+separate `marketing/server` entry admits marketing values and only HTTP, BFF,
+marketing-contract and communications-contract type edges. Its two PostgreSQL
+files alone admit the existing pg peer and are exported through
+`marketing/server/postgres`. Package boundary checks validate that graph with the
+other modules and prevent the handler entry from reaching PostgreSQL adapters or
+`pg`. The installed consumer imports and compiles `marketing/server` without
+optional peers, exercising a historical count and a conflict refusal through
+injected bindings. It proves the `/postgres` missing-peer import refusal before
+selecting pg, then checks the adapter factories and their connection refusal.
+
+Marketing analytics facts use the same isolated runtime/contracts graph. The
+reference keeps host policy and wire literals in thin bindings; its purchase
+projection has a frozen base transcript. Neutral package witnesses cover inert
+analytics, route refusal/sanitization, paid allocation, consent chronology and
+independent sink admission. Local acceptance booleans do not prove delivery.
+
+The analytics context witness in `packages/platform/test/marketing/` exercises
+the server factory with synthetic persistence, capability and identity bindings.
+It preserves consent capability issuance/replacement, strict admission and
+verified-subject enrollment, with a missing-store refusal at the injected seam.
+The `./marketing/server` release surface selects it, and root discovery includes
+it with the package tests. It needs no reference route or live persistence;
+telemetry context failure never gates commerce and `active` proves only a local
+context fact.
+
 The platform module graph declares marketing with an isolated contracts entry
 and no cross-module platform edges. Its runtime entry may forward the existing
 public core research export; contracts forward only core types and local DTO
@@ -1587,6 +1629,17 @@ Hosted `test-full-shard` jobs run `npm test -- --shard=N/4` in four independent 
 
 #### Choose a location and proof
 
+Acquisition server characterization belongs under
+`packages/platform/test/marketing/server/`. The cross-boundary
+`tests/postgres/acquisitionEvidenceParity.test.ts` witness uses the existing
+container helper, applies the hash-checked migration-manifest prefix and calls
+package ports through a login granted only the acquisition runtime role. Docker
+absence throws as missing proof. The fixture owner is used only for setup, state
+inspection and the donor's append-only trigger proof. Port operations and
+separate SQL privilege-denial assertions use the runtime role, retaining all 11
+cases. The reference retains retirement, admin-auth binding and notification-copy
+checks.
+
 | Test | Placement and execution |
 |---|---|
 | Domain, server, API, MCP or tooling logic/contract | Adjacent descriptive `.test.ts`; root Node project discovers `api`, `mcp`, `scripts`, `server` and `src`. |
@@ -1757,6 +1810,13 @@ retained application contract suites remain part of the focused proof. Portable
 prelaunch goldens preserve their own reference regexes, strictness, ordered issues
 and coercing defaults. Compiler proof covers acquisition port signatures and
 bidirectional fit of the extended reference case port to its base-equivalent shape.
+
+Marketing smoke selection includes analytics defaults, route policy, purchase
+facts, consent evidence and sink failure isolation. The installed consumer exercises
+inert runtime imports and compiles structural recap/consent inputs plus a literal
+host step union. Both complete browser graphs remain free of server imports,
+and the contracts runtime stays empty. Reference purchase characterization pins
+ordered refusals and both item-cap boundaries before and after rebinding.
 
 `npm run packages:check -- --manifest-only` checks every `packages/*/package.json` against
 [`config/openlup-packages.json`](config/openlup-packages.json), which lists each

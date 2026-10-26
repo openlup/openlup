@@ -8,10 +8,10 @@ application" section, which `docs:check` requires, tells an application's agent
 not to edit or patch the installed package and to upgrade every `@openlup/*`
 package together.
 
-The prepared `0.27.0` set republishes this kernel with the platform's
-experimental commerce stack. Upgrade all packages together and read
-[the migration notes](CHANGELOG.md#0270); core introduces no API or schema
-migration. Size comparison uses the published `0.26.0` tarball; older releases
+The prepared `0.28.0` set republishes this kernel with the platform's
+experimental account-support surface. Upgrade all packages together and read
+[the migration notes](CHANGELOG.md#0280); core introduces no API or schema
+migration. Size comparison uses the published `0.27.0` tarball; older releases
 remain in the source-only `CHANGELOG-HISTORY.md`. Preparation establishes no
 npm publication.
 
