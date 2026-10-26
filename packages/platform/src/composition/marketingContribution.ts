@@ -19,9 +19,9 @@ export function createMarketingContribution(input: {
   const contribution: Contribution = {
     manifest: {
       name: "@openlup/platform", version: input.version, kind: "rail",
-      module: { id: "marketing", kind: "capability", provides: ["./marketing", "./marketing/contracts"],
-        // These entries have no runtime module edges in eslint.config.js.
-        dependsOn: [] },
+      module: { id: "marketing", kind: "capability", provides: ["./marketing", "./marketing/contracts", "./marketing/server"],
+        // The server entry validates obligations with identity's runtime contract schema.
+        dependsOn: [{ module: "identity", entries: ["./identity/contracts"] }] },
       emits: [], handles: input.handlers.map(handler => handler.eventType),
       schedules: input.schedules.map(({ id, cadenceSeconds }) => ({ id, cadenceSeconds })), env: [],
       requiredPorts: Object.keys(input.marketing), routes: input.routes.map(route => route.id), requiredSchema: input.requiredSchema,

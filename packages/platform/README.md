@@ -148,7 +148,9 @@ server-only compatibility command types do not expose retired admission schemas.
 ## Marketing composition
 
 `./composition` exports `createMarketingContribution`, an inert descriptor for
-the `marketing` capability's `./marketing` and `./marketing/contracts` entries.
+the `marketing` capability's `./marketing`, `./marketing/contracts` and
+`./marketing/server` entries, with a runtime dependency on `identity/contracts`
+for obligation validation.
 Supply already-bound operations and host schema requirements. Ports, routes and
 triggers share the supplied functions; null ports remain required for Core
 readiness, and handlers retain only registration descriptors. Duplicate handler,
@@ -156,6 +158,22 @@ schedule or route identities refuse. Construction invokes no callable and
 installs no worker, route or schedule. See the
 [composition contract](../../docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#contributions-seams-and-readiness)
 for the host admission boundary.
+
+`./marketing/server` also exports `createMarketingPrivacyContributor` and
+`createMarketingPrivacyBindings`. Explicit enablement and both complete owner
+ports select one contributor; its `exportPersonalData`, `assessErasure` and
+`eraseOrRetain` callables can be passed directly to `createMarketingContribution`.
+Missing ownership makes coverage unavailable and erasure unresolved. Identity
+owns assessment ordering, subscription vetoes, receipt replay and transaction
+rollback; the marketing fence runs only during `eraseOrRetain`. Provider request
+acceptance never proves deletion. The reference leaves marketing unselected,
+so its marketing privacy coverage remains an open gap. See the
+[privacy composition recipe](../../docs/platform/PLATFORM_PACKAGE_REFERENCE.md#marketing-server-composition).
+
+The contributor and binding declarations use identity contract types and local
+structural interfaces compatible with identity's `PersonalDataContributor`.
+They do not reference identity's main entry; `./marketing/server` compiles without
+`pg` or `@types/pg`. Select `./marketing/server/postgres` explicitly for those ports.
 
 ## Commerce contracts
 

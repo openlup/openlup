@@ -12,7 +12,7 @@ it("describes the installed entries and shares existing callables without invoki
     handlers: [handler], routes: [{ id: "selected", handle: run }], schedules: [{ id: "selected", cadenceSeconds: 60, run }],
   });
   expect(result.contributions[0].manifest).toEqual({ name: "@openlup/platform", version: "0.1.0", kind: "rail",
-    module: { id: "marketing", kind: "capability", provides: ["./marketing", "./marketing/contracts"], dependsOn: [] },
+    module: { id: "marketing", kind: "capability", provides: ["./marketing", "./marketing/contracts", "./marketing/server"], dependsOn: [{ module: "identity", entries: ["./identity/contracts"] }] },
     emits: [], handles: ["marketing.fact.recorded"], schedules: [{ id: "selected", cadenceSeconds: 60 }], env: [],
     requiredPorts: ["execute", "missing"], routes: ["selected"], requiredSchema: schema,
   });
@@ -32,8 +32,10 @@ it("keeps a null port required and lets Core report the missing binding", async 
   });
   const input: ReadinessInput = {
     candidate: { artifact: "artifact", configuration: "config", environment: "local", database: "db", schema: "complete" }, inventoryComplete: true,
-    loadedPackages: [{ name: "@openlup/core", kind: "kernel", version: "0.1.0" }, { name: "@openlup/platform", kind: "rail", version: "0.1.0", modules: ["marketing"] }],
-    contributions: result.contributions, vocabulary: [], exemptions: [],
+    loadedPackages: [{ name: "@openlup/core", kind: "kernel", version: "0.1.0" }, { name: "@openlup/platform", kind: "rail", version: "0.1.0", modules: ["marketing", "identity"] }],
+    contributions: [...result.contributions, { ...result.contributions[0], manifest: { ...result.contributions[0].manifest,
+      module: { id: "identity", kind: "capability", provides: ["./identity/contracts"], dependsOn: [] }, requiredPorts: [] } }],
+    vocabulary: [], exemptions: [],
     bindings: { ports: result.ports, routes: result.routes, triggers: result.triggers, env: {} },
     schemaProbe: { observe: async () => ({ database: "db", version: schema.version, objects: [] }) },
   };

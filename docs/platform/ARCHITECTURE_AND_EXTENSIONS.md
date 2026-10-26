@@ -45,12 +45,34 @@ server code or database driver. Server-only structural compatibility commands
 retain retired adapter signatures without publishing admission schemas.
 Research contracts/ports retain their core compatibility owner; notification
 delivery uses communications/contracts. The server graph admits marketing value
-imports and only HTTP, BFF, marketing-contract and communications-contract type
-edges. The existing optional pg peer is imported only by the two PostgreSQL
+imports, identity-contract values, and HTTP, BFF, marketing-contract,
+communications-contract type edges. The existing optional pg peer is imported only by the two PostgreSQL
 files. SQL text, transaction role selection and pool ownership are unchanged.
 Portable prelaunch validators remain browser-safe package contracts; rich
 prelaunch joins and orchestration remain in the reference application. No route,
 executor, scheduler or profile is activated by importing the package.
+
+The marketing server entry additionally admits the runtime `identity/contracts`
+entry for obligation validation. Its contributor ports and return types are local
+structural interfaces built from identity contract types; no declaration references
+the identity main entry. `createMarketingPrivacyContributor` composes acquisition records/evidence
+and remote case/fence owners through the existing identity registry. Missing
+either owner leaves every marketing resource unavailable and unresolved without
+calling either owner. Preparation and assessment make no writes; identity runs
+all assessments, including the subscriptions veto, before `eraseOrRetain` can
+fence. A failed fence throws so the identity unit of work rolls back. Remote
+request acceptance remains retention with an explicit accepted-not-observed
+reason; remote profile export coverage is always unavailable. Worker, operator,
+store, provider execution and late-import orphan handling remain app-owned.
+`createMarketingPrivacyBindings` defaults off, selects only with both complete
+owner ports, and shares one contributor's named methods with composition.
+The reference privacy graph leaves marketing unselected; its marketing privacy
+coverage remains an open gap. This addition introduces no PostgreSQL import.
+
+Both privacy factories preserve structural compatibility with identity's
+`PersonalDataContributor`, checked by the existing marketing compiler witness.
+Strict installed-consumer compilation keeps this server entry independent of
+`pg` and `@types/pg`; only its `/postgres` entry selects that optional peer.
 
 The commerce browser entry contains schemas, pure helpers and port declarations;
 its `/contracts` entry remains type-only. The `/commerce/server` entry
@@ -746,9 +768,10 @@ Generic supported orchestration remains the platform's responsibility.
 
 ### Contributions, seams and readiness
 `createMarketingContribution` in `@openlup/platform/composition` describes selected
-callables under the `marketing` capability, providing `./marketing` and
-`./marketing/contracts`. These entries have no runtime module dependencies, so
-the descriptor declares none. Handler registrations become frozen descriptors
+callables under the `marketing` capability, providing `./marketing`,
+`./marketing/contracts` and `./marketing/server`. Its runtime dependency is
+`identity` through `./identity/contracts` for obligation validation. Handler
+registrations become frozen descriptors
 without `handle`; namespaced ports, routes and triggers retain supplied callable
 identity. Null ports stay required without a binding, and duplicate handler,
 schedule or route identities refuse. Construction invokes no callable and

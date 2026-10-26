@@ -622,10 +622,15 @@ describe("eslint platform module boundaries", { timeout: 60_000 }, () => {
   it("admits the marketing Node-entry edge and refuses reverse marketing imports", async () => {
     const config = await loadConfig();
     const { PLATFORM_MODULE_GRAPH: graph } = await import("../../eslint.config.js");
-    expect(graph["marketing/server"]).toEqual({ values: ["marketing"], types: ["http", "bff", "marketing/contracts", "communications/contracts"] });
+    expect(graph["marketing/server"]).toEqual({ values: ["marketing", "identity/contracts"], types: ["http", "bff", "marketing/contracts", "communications/contracts"] });
     expect(graph.marketing.values).not.toContain("marketing/server");
     const source = (specifier: string) => `import * as value from ${JSON.stringify(specifier)}; export { value };`;
     expect(await moduleMessages(config, source("../index.js"), "packages/platform/src/marketing/server/probe.ts")).toEqual([]);
+    expect(await moduleMessages(config, source("../../identity/contracts/index.js"), "packages/platform/src/marketing/server/probe.ts")).toEqual([]);
+    expect(await moduleMessages(config, 'import type { PersonalDataContributor } from "../../identity/index.js";', "packages/platform/src/marketing/server/probe.ts")).toContainEqual(expect.stringContaining('packages/platform module "marketing/server"'));
+    for (const specifier of ["../../identity/index.js", "../../identity/privacyPorts.js", "../../identity/contracts/privacy.js"]) {
+      expect(await moduleMessages(config, source(specifier), "packages/platform/src/marketing/server/probe.ts")).toContainEqual(expect.stringContaining('packages/platform module "marketing/server"'));
+    }
     for (const specifier of ["./server/index.js", "../marketing/server/index.js"]) {
       expect(await moduleMessages(config, source(specifier), "packages/platform/src/marketing/probe.ts"), specifier).toContainEqual(expect.stringContaining('packages/platform module "marketing"'));
     }

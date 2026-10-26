@@ -5142,6 +5142,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/marketing/server/bindings.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/marketing/server/directPorts.ts",
       "class": "public-output"
     },
@@ -5163,6 +5167,10 @@
     },
     {
       "path": "packages/platform/src/marketing/server/prelaunchAcquisitionDirect.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/marketing/server/privacyContributor.ts",
       "class": "public-output"
     },
     {
@@ -7242,11 +7250,19 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/marketing/bindings.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/marketing/browserBoundary.test.ts",
       "class": "public-output"
     },
     {
       "path": "packages/platform/test/marketing/contracts.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/marketing/privacyContributor.test.ts",
       "class": "public-output"
     },
     {
