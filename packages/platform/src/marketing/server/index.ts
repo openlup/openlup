@@ -8,5 +8,3 @@ export * from "./acquisitionEvidenceDirect.js";
 export * from "./research/surveyResponseSubmitHandler.js";
 export * from "./research/adminSurveyResponsesHandler.js";
 export * from "./research/managedSurveyResponseSubmit.js";
-export { createPostgresAcquisitionCasePort } from "./postgres/acquisitionCaseRoutines.js";
-export { createPostgresAcquisitionEvidencePort } from "./postgres/acquisitionEvidenceRoutines.js";

@@ -3,7 +3,7 @@ import { readFile } from "node:fs/promises";
 import { Pool } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-import { createPostgresAcquisitionCasePort, createPostgresAcquisitionEvidencePort } from "@openlup/platform/marketing/server";
+import { createPostgresAcquisitionCasePort, createPostgresAcquisitionEvidencePort } from "@openlup/platform/marketing/server/postgres";
 import type { AcquisitionCasePort } from "@openlup/platform/marketing/server";
 import type { AcquisitionEvidencePort } from "@openlup/platform/marketing/contracts";
 import type { AcquisitionNewsletterConsentEvent } from "@openlup/platform/marketing/contracts";
@@ -301,14 +301,18 @@ describe("acquisition/evidence preservation on real PostgreSQL", () => {
     });
   }
 
-  it("refuses append-only survey and consent mutation through the runtime role", async () => {
+  it("refuses append-only survey and consent mutation even through the fixture owner connection", async () => {
     expect(await evidence.submitSurvey(surveyInput(appendOnlyCase, "append-only-survey"))).toMatchObject({ ok: true });
     expect(await evidence.applyNewsletterConsent(consentInput(appendOnlyCase, "append-only-consent"))).toMatchObject({ ok: true });
     for (const sql of [
       "UPDATE acquisition_private.survey_evidence SET answer_count=answer_count",
       "DELETE FROM acquisition_private.newsletter_consent_events",
       "TRUNCATE acquisition_private.survey_evidence",
-    ]) await expect(asRuntime(sql)).rejects.toMatchObject({ code: "42501" });
+    ]) {
+      // The fixture owner is used only for setup, state inspection and trigger proof; ports use the restricted login.
+      await expect(admin.query(sql)).rejects.toMatchObject({ code: "42501" });
+      await expect(asRuntime(sql)).rejects.toMatchObject({ code: "42501" });
+    }
   });
 });
 

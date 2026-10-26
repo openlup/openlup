@@ -18,7 +18,7 @@ export interface AcquisitionCaseRuntimeBinding {
 const bindings = new Map<string, Promise<AcquisitionCaseRuntimeBinding>>();
 
 async function createDefaultPort(env: { connectionString: string }): Promise<AcquisitionCasePort> {
-  const adapter = await import("@openlup/platform/marketing/server");
+  const adapter = await import("@openlup/platform/marketing/server/postgres");
   return adapter.createPostgresAcquisitionCasePort(env);
 }
 

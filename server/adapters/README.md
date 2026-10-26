@@ -23,8 +23,10 @@ in [Architecture and extension boundaries](../../docs/platform/ARCHITECTURE_AND_
 ## Owns
 
 Acquisition case and research evidence PostgreSQL adapters delegate through
-thin re-exports to `@openlup/platform/marketing/server`. Runtime bindings retain
-lazy adapter imports, host environment selection and pool-close ownership.
+thin re-exports to `@openlup/platform/marketing/server/postgres`. Runtime bindings retain
+lazy adapter imports after bundle and connection guards, host environment
+selection and pool-close ownership. Handler imports from the separate
+`@openlup/platform/marketing/server` entry do not load the optional `pg` peer.
 Schemas/DTOs use the browser marketing entries; server-only structural command
 types preserve the historical adapter's submit/transition signatures. Retired
 admission schemas and terminal route factories stay application-owned. SQL text,

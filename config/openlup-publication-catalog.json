@@ -2462,6 +2462,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/api/marketing-server-postgres.api.md",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/api/marketing-server.api.md",
       "class": "public-output"
     },
@@ -5147,6 +5151,10 @@
     },
     {
       "path": "packages/platform/src/marketing/server/postgres/acquisitionEvidenceRoutines.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/marketing/server/postgres/index.ts",
       "class": "public-output"
     },
     {

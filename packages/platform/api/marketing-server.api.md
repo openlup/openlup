@@ -3210,36 +3210,6 @@ export * from "./acquisitionEvidenceDirect.js";
 export * from "./research/surveyResponseSubmitHandler.js";
 export * from "./research/adminSurveyResponsesHandler.js";
 export * from "./research/managedSurveyResponseSubmit.js";
-export { createPostgresAcquisitionCasePort } from "./postgres/acquisitionCaseRoutines.js";
-export { createPostgresAcquisitionEvidencePort } from "./postgres/acquisitionEvidenceRoutines.js";
-```
-## dist/marketing/server/postgres/acquisitionCaseRoutines.d.ts
-
-```ts
-import { Pool } from "pg";
-import type { AcquisitionCasePort } from "../acquisitionCasePorts.js";
-type Env = {
-    connectionString: string;
-};
-type Options = {
-    poolFactory?: (env: Env) => Pool | Promise<Pool>;
-};
-export declare function createPostgresAcquisitionCasePort(env: Env, options?: Options): AcquisitionCasePort;
-export {};
-```
-## dist/marketing/server/postgres/acquisitionEvidenceRoutines.d.ts
-
-```ts
-import { Pool } from "pg";
-import type { AcquisitionEvidencePort } from "../../contracts/index.js";
-type Env = {
-    connectionString: string;
-};
-type Options = {
-    poolFactory?: (env: Env) => Pool | Promise<Pool>;
-};
-export declare function createPostgresAcquisitionEvidencePort(env: Env, options?: Options): AcquisitionEvidencePort;
-export {};
 ```
 ## dist/marketing/server/prelaunchAcquisitionDirect.d.ts
 

@@ -131,7 +131,7 @@ function assertModuleExports(modules: string[], graph: ModuleGraph, exports: Rec
   });
   for (const entry of nestedEntries) {
     expect(modules.includes(entry.split("/")[0]!), `${entry} belongs to an existing module`).toBe(true);
-    expect(/^[A-Za-z0-9_-]+\/[A-Za-z0-9_-]+$/.test(entry), `${entry} is an exact nested entry`).toBe(true);
+    expect(/^[A-Za-z0-9_-]+(?:\/[A-Za-z0-9_-]+)+$/.test(entry), `${entry} is an exact nested entry`).toBe(true);
     entries.push(entry);
   }
   expect(Object.keys(exports).sort()).toEqual(entries.map((entry) => `./${entry}`).sort());
@@ -281,7 +281,20 @@ describe("package source boundary", () => {
     const manifest = JSON.parse(readFileSync(fileURLToPath(new URL("../package.json", import.meta.url)), "utf8")) as {
       exports: Record<string, unknown>;
     };
-    assertModuleExports(modules, graph, manifest.exports, (path) => existsSync(join(SOURCE_ROOT, path)), ["marketing/server", "commerce/server", "pricing/browser", "communications/resend", "communications/klaviyo", "payments/stripe", "payments/tpay", "fulfillment/omnipack"]);
+    assertModuleExports(modules, graph, manifest.exports, (path) => existsSync(join(SOURCE_ROOT, path)), ["marketing/server", "marketing/server/postgres", "commerce/server", "pricing/browser", "communications/resend", "communications/klaviyo", "payments/stripe", "payments/tpay", "fulfillment/omnipack"]);
+  });
+
+  it("bundles the marketing server entry without PostgreSQL adapters or the optional pg peer", async () => {
+    const result = await build({
+      entryPoints: [join(SOURCE_ROOT, "marketing/server/index.ts")],
+      bundle: true, platform: "node", packages: "external", format: "esm", write: false,
+      treeShaking: false, metafile: true, logLevel: "silent",
+    });
+    const inputs = Object.keys(result.metafile!.inputs).map(path => path.split("\\").join("/"));
+    expect(inputs.some(path => path.endsWith("marketing/server/acquisitionCaseHandlers.ts"))).toBe(true);
+    expect(inputs.filter(path => path.includes("marketing/server/postgres/"))).toEqual([]);
+    const imports = Object.values(result.metafile!.outputs).flatMap(output => output.imports.map(entry => entry.path));
+    expect(imports.filter(path => /^(?:pg|pg-pool|pg-protocol)(?:\/|$)/.test(path))).toEqual([]);
   });
 
   it("bundles the commerce browser entry without Node built-ins or the server entry", async () => {

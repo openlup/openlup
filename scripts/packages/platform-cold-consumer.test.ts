@@ -69,6 +69,9 @@ function fixture() {
     'export type PrelaunchAcquisitionListRequest = { view: "prelaunch_acquisition_v1"; limit: number; cursor?: string };',
     'export declare const prelaunchAcquisitionListRequestSchema: { parse(value: unknown): PrelaunchAcquisitionListRequest };',
     'export interface AcquisitionCasePort { list(query: { actorRef: string; scope: "public_tester_application"; limit: number }): Promise<unknown> }',
+    'export interface AcquisitionCaseDirectDeps { resolveBinding(): Promise<unknown> }',
+    'export declare function createAcquisitionCaseHandlers(port: AcquisitionCasePort): unknown;',
+    'export declare function createAcquisitionCaseActiveCountDirectHandler(deps: AcquisitionCaseDirectDeps): unknown;',
     'export interface AcquisitionEvidencePort { listSurveys(query: { actorReference: string; view: "acquisition_survey_v1"; limit: number }): Promise<unknown> }',
     'export type AcquisitionNewsletterConsentEvent = { explicitOptInEvidence: boolean };',
     'export interface MarketingResearchSurveySubmitPort { submitSurveyResponse(request: { surveyType: "producer" | "consumer"; responseData: Record<string, unknown> }): Promise<unknown> }',
@@ -185,6 +188,11 @@ export const createPostgresAccountLinkStore = () => ({
 });
 function refusalFixture(mode: "correct" | "raw" | "wrong-peer" | "no-cause" | "success") {
   const consumer = fixture();
+  const manifestPath = join(consumer, "node_modules/@openlup/platform/package.json");
+  const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+  manifest.exports["./marketing/server/postgres"].default = "./postgres.js";
+  writeFileSync(manifestPath, JSON.stringify(manifest));
+  writeFileSync(join(consumer, "node_modules/@openlup/platform/postgres.js"), 'import "pg";\n');
   writeFileSync(join(consumer, "node_modules/@openlup/platform/index.js"), `
 async function fail(peer) {
   if (${JSON.stringify(mode)} === "success") return;
@@ -274,6 +282,10 @@ it("classifies the browser identity entry separately from the mixed server adapt
   expect(NON_ADAPTER_ENTRIES).toContain("identity/contracts");
   expect(NON_ADAPTER_ENTRIES).toContain("pricing");
   expect(NON_ADAPTER_ENTRIES).toContain("pricing/contracts");
+  expect(NON_ADAPTER_ENTRIES).toContain("marketing/server");
+  expect(ADAPTER_ENTRIES).not.toContain("marketing/server");
+  expect(ADAPTER_ENTRIES).toContain("marketing/server/postgres");
+  expect(NON_ADAPTER_ENTRIES).not.toContain("marketing/server/postgres");
 });
 
 it.each(["createPostgresCustomerChallengeStore", "createDirectOperatorInvitationStore", "createDirectOperatorIdentityDirectory"])("requires a refusal from identity adapter %s", name => {
@@ -1008,11 +1020,10 @@ it("proves installed marketing subpaths, prelaunch schemas, reachable ports and 
   compileConsumer(consumer, ["marketing", "marketing/contracts"], join(root, "node_modules/typescript/lib/tsc.js"));
 });
 
-it("proves installed marketing server reads, port refusal and exact exports with the existing pg peer", () => {
+it("proves installed marketing server reads, port refusal and exact exports without optional peers", () => {
   const consumer = pristinePackedA1Fixture();
-  for (const name of ["pg", "pg-pool", "pg-protocol", "pg-types", "pgpass", "pg-connection-string", "pg-cloudflare", "postgres-array", "postgres-bytea", "postgres-date", "postgres-interval", "pg-int8", "split2", "xtend", "@types/pg", "@types/node", "undici-types"]) {
-    cpSync(join(root, "node_modules", name), join(consumer, "node_modules", name), { recursive: true });
-  }
+  assertConsumerIsolation(consumer, root);
   proveMarketingServerConsumer(consumer);
+  for (const name of ["@types/node", "undici-types"]) cpSync(join(root, "node_modules", name), join(consumer, "node_modules", name), { recursive: true });
   compileConsumer(consumer, ["marketing/server"], join(root, "node_modules/typescript/lib/tsc.js"));
 }, 30_000);

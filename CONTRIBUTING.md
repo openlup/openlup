@@ -1422,10 +1422,13 @@ local DTO shapes, including reachable acquisition ports and portable prelaunch
 types. Retired admission schemas are excluded from both browser entries. The
 separate `marketing/server` entry admits marketing values and only HTTP, BFF,
 marketing-contract and communications-contract type edges. Its two PostgreSQL
-files alone admit the existing pg peer. Package boundary checks validate that
-graph with the other modules. The installed consumer selects the existing pg
-peer before importing and compiling this server entry, then exercises a
-historical count and a conflict refusal through injected bindings.
+files alone admit the existing pg peer and are exported through
+`marketing/server/postgres`. Package boundary checks validate that graph with the
+other modules and prevent the handler entry from reaching PostgreSQL adapters or
+`pg`. The installed consumer imports and compiles `marketing/server` without
+optional peers, exercising a historical count and a conflict refusal through
+injected bindings. It proves the `/postgres` missing-peer import refusal before
+selecting pg, then checks the adapter factories and their connection refusal.
 
 The complete projected root command inventory is `build`,
 `build:public-reference`, `build:public-reference:client`,
@@ -1597,9 +1600,11 @@ Acquisition server characterization belongs under
 `tests/postgres/acquisitionEvidenceParity.test.ts` witness uses the existing
 container helper, applies the hash-checked migration-manifest prefix and calls
 package ports through a login granted only the acquisition runtime role. Docker
-absence throws as missing proof; setup/state inspection uses the fixture owner,
-while port operations and SQL refusal assertions use the runtime role. The
-reference retains retirement, admin-auth binding and notification-copy checks.
+absence throws as missing proof. The fixture owner is used only for setup, state
+inspection and the donor's append-only trigger proof. Port operations and
+separate SQL privilege-denial assertions use the runtime role, retaining all 11
+cases. The reference retains retirement, admin-auth binding and notification-copy
+checks.
 
 | Test | Placement and execution |
 |---|---|

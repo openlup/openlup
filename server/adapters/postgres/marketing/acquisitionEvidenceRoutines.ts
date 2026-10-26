@@ -1,1 +1,1 @@
-export { createPostgresAcquisitionEvidencePort } from "@openlup/platform/marketing/server";
+export { createPostgresAcquisitionEvidencePort } from "@openlup/platform/marketing/server/postgres";

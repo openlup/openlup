@@ -88,7 +88,8 @@ timestamp used in the webhook's idempotency key.
 | `./inventory` | Experimental schemas/ports, handlers, native stores, projection, injected forecast and SQL descriptor; `./inventory/contracts` DTOs. |
 | `./catalog` | Experimental neutral catalog schemas, drafts, reads, media source packs and publication ports |
 | `./catalog/contracts` | Dependency-free catalog DTOs, media resolver, authority and canonicalization helpers |
-| `./marketing/server` | Node-only acquisition handlers, direct read/evidence factories, research orchestration and PostgreSQL ports; host responder, authorization, binding and notification copy |
+| `./marketing/server` | Node-only acquisition handlers, direct read/evidence factories and research orchestration without `pg`; host responder, authorization, binding and notification copy |
+| `./marketing/server/postgres` | Acquisition case and research evidence PostgreSQL port factories; requires the existing optional `pg` peer |
 | `./marketing`, `./marketing/contracts` | Browser-safe acquisition history, portable prelaunch, survey evidence and newsletter consent schemas; type-only DTOs and acquisition/research ports |
 | `./commerce`, `./commerce/contracts` | Browser-safe neutral commerce schema cores, generic ports and pure contract helpers |
 | `./commerce/server` | Node-only OMS, returns, native reviews/media and hosted-feedback handlers/adapters and order-detail composition, email consumers, dispatch registry, paid-fulfillment binding and checkout compensation, checkout handlers, runtime and shared paid-order saga |
@@ -133,9 +134,9 @@ response client and host composition.
 
 `./marketing/server` owns acquisition case handlers, list/count and prelaunch
 list/detail factories, survey evidence submit/list and consent application,
-research submit/admin handlers, managed survey orchestration and the two
-PostgreSQL port factories. It imports the existing optional `pg` peer; install
-that peer when selecting this server entry. Hosts inject the BFF responder,
+research submit/admin handlers and managed survey orchestration without loading
+`pg`. Select `./marketing/server/postgres` for the two PostgreSQL port factories
+after installing the existing optional `pg` peer. Hosts inject the BFF responder,
 authorization and binding resolvers. Direct case reads receive the host bundle
 predicate at their original guard; prelaunch and evidence dispatch stays in the
 host. Notification HTML and subject are injected separately, preserving

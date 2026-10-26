@@ -18,6 +18,7 @@ export const NON_ADAPTER_ENTRIES = [
   "account-support/contracts",
   "marketing",
   "marketing/contracts",
+  "marketing/server",
   "commerce",
   "commerce/contracts",
   "commerce/server",
@@ -49,7 +50,7 @@ export const NON_ADAPTER_ENTRIES = [
 // identity, communications, promotions and catalog are adapter entries: their declarations reach data/pg types.
 // Its cold runtime import/refusal is below; declarations compile after selecting peers.
 export const ADAPTER_ENTRIES = [
-  "marketing/server",
+  "marketing/server/postgres",
   "blob",
   "catalog",
   "communications",
@@ -511,7 +512,7 @@ await assert.rejects(import("@openlup/platform/dist/marketing/acquisitionCaseSch
 `);
 }
 
-/** Installed server factories preserve historical reads and bounded port refusals. Requires the pg peer. */
+/** Installed server factories preserve historical reads and bounded port refusals without pg. */
 export function proveMarketingServerConsumer(consumer: string): void {
   consumerNode(consumer, `
 import assert from "node:assert/strict";
@@ -825,6 +826,9 @@ assert.equal(await createManagedLinkStore(structuralClient).findAccountByPrincip
 
 export function proveAdapterRefusals(consumer: string): void {
   consumerNode(consumer, adapterOperations + `
+// This selected entry retains its original static driver import.
+await assert.rejects(import("@openlup/platform/marketing/server/postgres"),
+  error => error.code === "ERR_MODULE_NOT_FOUND" && /Cannot find package 'pg'/.test(error.message));
 const blob = bindBlobPort("s3", { BLOB_S3_BUCKET: "consumer", BLOB_S3_BASE_URL: "https://example.invalid" });
 const checks = [["@aws-sdk/client-s3", () => blob.upload("probe", Buffer.from("probe"))],
   ...Object.values(postgresOperations("postgresql://unused.invalid/consumer")).map(operation => ["pg", operation])];
@@ -839,6 +843,11 @@ export function proveInstalledAdapters(consumer: string): void {
 import * as sdk from "@aws-sdk/client-s3";
 import { Readable } from "node:stream";
 import { createS3ClientFromEnv } from "@openlup/platform/blob";
+import { createPostgresAcquisitionCasePort, createPostgresAcquisitionEvidencePort } from "@openlup/platform/marketing/server/postgres";
+assert.equal(typeof createPostgresAcquisitionCasePort, "function");
+assert.equal(typeof createPostgresAcquisitionEvidencePort, "function");
+assert.throws(() => createPostgresAcquisitionCasePort({ connectionString: " " }), /acquisition_case_database_url_required/);
+assert.throws(() => createPostgresAcquisitionEvidencePort({ connectionString: " " }), /acquisition_evidence_database_url_required/);
 // The default loaders must reach real SDK configuration, without opening a socket.
 // Invalid URLs deterministically fail before a transport can contact any provider.
 const invalidBlob = bindBlobPort("s3", { BLOB_S3_BUCKET: "consumer", BLOB_S3_BASE_URL: "https://example.invalid",
@@ -1566,6 +1575,7 @@ assert.throws(() => promotions.resolvePromotionBenefitDefinition({ discount_type
     compileConsumer(consumer, NON_ADAPTER_ENTRIES, compiler);
     assertConsumerIsolation(consumer, checkout); // Compilation must not have supplied a peer.
     proveMarketingConsumer(consumer);
+    proveMarketingServerConsumer(consumer);
     proveCommerceConsumer(consumer);
     proveCommerceServerConsumer(consumer);
     proveCatalogCompositionConsumer(consumer);
@@ -1593,7 +1603,6 @@ assert.throws(() => promotions.resolvePromotionBenefitDefinition({ discount_type
     assertInstalledPackages(consumer, OPTIONAL_PEERS);
     assertConsumerIsolation(consumer, checkout, false);
     compileConsumer(consumer, [...NON_ADAPTER_ENTRIES, ...ADAPTER_ENTRIES], compiler);
-    proveMarketingServerConsumer(consumer);
     proveInstalledAdapters(consumer);
     proveDockerPostgres(consumer, environment);
     console.log("Platform cold consumer PASS; verified tarballs, isolated optional peers, no live provider");

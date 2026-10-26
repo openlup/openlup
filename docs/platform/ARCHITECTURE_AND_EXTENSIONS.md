@@ -33,7 +33,9 @@ state writer is not an extension seam.
 Marketing host composition remains application-owned. The Node-only
 `@openlup/platform/marketing/server` entry owns acquisition case handlers,
 direct history/prelaunch/evidence factories, research submit/admin handlers,
-managed survey orchestration and PostgreSQL routines. Hosts inject the BFF
+managed survey orchestration without loading `pg`. PostgreSQL routines are
+published separately at `@openlup/platform/marketing/server/postgres` and loaded
+by the reference bindings only after their bundle and connection guards. Hosts inject the BFF
 responder, authorization, persistence binding and notification HTML/subject.
 Case direct reads evaluate the injected bundle predicate at their existing
 position; prelaunch and evidence dispatch predicates stay with host callers.
