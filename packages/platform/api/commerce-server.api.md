@@ -5662,6 +5662,22 @@ export declare class CommerceOmsConflictError extends Error {
     constructor(message?: string, details?: Record<string, unknown>);
 }
 ```
+## dist/commerce/orderEmailLines.d.ts
+
+```ts
+import type { OrderEmailLineItem } from "./outboxOrderDraftEmailPorts.js";
+export interface RawLine {
+    label: string | null;
+    quantity: number;
+    lineSubtotalMinor: number | null;
+    currency: string | null;
+}
+export interface OrderEmailLinePresentation<Locale extends string = string> {
+    formatMoney(amountMinor: number, currency: string): string;
+    genericItemLabel(locale: Locale): string;
+}
+export declare function buildItems<Locale extends string>(lines: RawLine[], locale: Locale, presentation: OrderEmailLinePresentation<Locale>): OrderEmailLineItem[];
+```
 ## dist/commerce/orderFeedbackContracts.d.ts
 
 ```ts
@@ -6340,6 +6356,275 @@ export interface OrderReviewAdminReadPort {
     }): Promise<OrderReviewAdminDetail | null>;
 }
 ```
+## dist/commerce/outboxDispatchContracts.d.ts
+
+```ts
+import type { OutboxHandler as KernelHandler } from "@openlup/core/outbox";
+export type { OutboxEventRow, OutboxHandlerOutcome, OutboxHandlerExecutionContext, OutboxHandlerDescriptor } from "@openlup/core/outbox";
+export type OutboxHandler = KernelHandler<AbortSignal>;
+export type OutboxHandlerRegistry = ReadonlyMap<string, OutboxHandler>;
+export interface CheckoutEmailOutboxReconcileResult {
+    checked: {
+        paid: number;
+        failed: number;
+        expired: number;
+    };
+    inserted: {
+        commerceOrderPaid: number;
+        commerceOrderPaidEmail: number;
+        commercePaymentFailed: number;
+        commerceCheckoutExpired: number;
+    };
+}
+export interface CheckoutEmailOutboxReconcilePort {
+    reconcile(limit: number): Promise<CheckoutEmailOutboxReconcileResult>;
+}
+export interface ReorderReminderEnqueueResult {
+    enqueued: number;
+}
+export interface ReorderReminderEnqueuePort {
+    enqueue(limit: number): Promise<ReorderReminderEnqueueResult>;
+}
+export interface ReviewRequestEnqueuePort {
+    enqueueRequests(limit: number): Promise<number>;
+    enqueueEffects(limit: number): Promise<number>;
+}
+```
+## dist/commerce/outboxOrderDraftEmailPorts.d.ts
+
+```ts
+export declare const OUTBOX_ORDER_CONFIRMATION_TEMPLATE_SLUG = "commerce-order-confirmation";
+export interface OrderRecipient {
+    email: string;
+    firstName: string | null;
+    country?: string | null;
+    contextName?: string | null;
+}
+export interface OrderRecipientPort {
+    resolve(orderUuid: string, signal: AbortSignal): Promise<OrderRecipient | null>;
+}
+export interface OrderPaymentLifecycleState {
+    orderStatus: string | null;
+    paymentStatus: string | null;
+    paymentUpdatedAt?: string | null;
+    hasPayment: boolean;
+    /** The activation sweep abandoned this order's provisional subscription: it writes
+     * `cancelled`, not `expired`, so the expired-checkout gate needs this to tell a swept
+     * first subscription from any other cancellation. Absent for every one-time order. */
+    subscriptionActivationAbandoned?: boolean;
+}
+export interface OrderPaymentLifecyclePort {
+    read(orderUuid: string, signal: AbortSignal): Promise<OrderPaymentLifecycleState | null>;
+}
+export interface OrderEmailLineItem {
+    name: string;
+    quantity: number;
+    lineTotalLabel: string;
+}
+export interface OrderEmailTotals {
+    subtotalLabel: string | null;
+    discountLabel: string | null;
+    totalLabel: string;
+    firstSubscription?: {
+        discountPercent?: number;
+        catalogLabel: string;
+        productPayableLabel: string;
+        shippingLabel: string | null;
+        shippingFree: boolean;
+    };
+}
+export interface OrderConfirmationEmailInput<Locale extends string = string> {
+    to: string;
+    firstName: string | null;
+    contextName?: string | null;
+    orderId: string;
+    outboxEventId: string;
+    items: OrderEmailLineItem[];
+    totals: OrderEmailTotals | null;
+    locale?: Locale;
+    signal: AbortSignal;
+}
+export interface TransactionalEmailSendOutcome {
+    ok: boolean;
+    messageId: string | null;
+    httpStatus: number;
+    providerError: string | null;
+    aborted: boolean;
+    providerErrorCode?: string | null;
+    /** Terminal intentional non-send; callers must not count it as sent. */
+    skipReason?: "admin_disabled" | "egress_suppressed" | null;
+}
+export declare const OUTBOX_ORDER_PAID_TEMPLATE_SLUG = "commerce-order-paid";
+export declare const OUTBOX_CHECKOUT_RECOVERY_TEMPLATE_SLUG = "commerce-checkout-recovery";
+export interface CheckoutRecoveryEmailInput<Locale extends string = string> {
+    to: string;
+    firstName: string | null;
+    contextName?: string | null;
+    orderId: string;
+    recoveryToken: string;
+    mode: string;
+    reminderHours: number;
+    linkSource?: "buyer_hatch";
+    outboxEventId: string;
+    locale?: Locale;
+    signal: AbortSignal;
+}
+export interface OrderPaidRawLine {
+    /** Frozen historical display label, or null for sparse legacy snapshots. */
+    label: string | null;
+    quantity: number;
+    lineTotalMinor: number;
+}
+export interface OrderPaidRawData {
+    currency: string;
+    subtotalMinor: number;
+    discountMinor: number;
+    totalMinor: number;
+    presentation?: unknown;
+    lines: OrderPaidRawLine[];
+}
+export interface OrderPaidLinesPort {
+    read(orderUuid: string, signal: AbortSignal): Promise<OrderPaidRawData | null>;
+}
+export interface OrderPaidConfirmationEmailInput<Locale extends string = string> {
+    to: string;
+    firstName: string | null;
+    contextName?: string | null;
+    orderId: string;
+    mode: string;
+    outboxEventId: string;
+    items: OrderEmailLineItem[];
+    totals: OrderEmailTotals | null;
+    parcelNote?: string | null;
+    locale?: Locale;
+    signal: AbortSignal;
+}
+export declare const OUTBOX_PAYMENT_FAILED_TEMPLATE_SLUG = "commerce-payment-failed";
+export interface PaymentFailedEmailInput<Locale extends string = string> {
+    to: string;
+    firstName: string | null;
+    orderId: string;
+    amountLabel: string | null;
+    recoveryToken: string;
+    mode: string;
+    outboxEventId: string;
+    locale?: Locale;
+    signal: AbortSignal;
+}
+export declare const OUTBOX_CHECKOUT_EXPIRED_TEMPLATE_SLUG = "commerce-checkout-expired";
+export interface CheckoutExpiredEmailInput<Locale extends string = string> {
+    to: string;
+    firstName: string | null;
+    orderId: string;
+    amountLabel: string | null;
+    /** Raw checkout-recovery token, emitted only in the outbox payload: the database
+     * stores only its hash, and the host renderer builds the recovery link. */
+    recoveryToken?: string | null;
+    outboxEventId: string;
+    locale?: Locale;
+    signal: AbortSignal;
+}
+export declare const OUTBOX_ORDER_CANCELED_TEMPLATE_SLUG = "commerce-order-canceled";
+export interface OrderCanceledEmailInput<Locale extends string = string> {
+    to: string;
+    firstName: string | null;
+    orderId: string;
+    amountLabel: string | null;
+    outboxEventId: string;
+    locale?: Locale;
+    signal: AbortSignal;
+}
+export declare const OUTBOX_ORDER_REFUNDED_TEMPLATE_SLUG = "commerce-order-refunded";
+export interface OrderRefundedEmailInput<Locale extends string = string> {
+    to: string;
+    firstName: string | null;
+    orderId: string;
+    amountLabel: string | null;
+    outboxEventId: string;
+    locale?: Locale;
+    signal: AbortSignal;
+}
+export declare const OUTBOX_SHIPMENT_DISPATCHED_TEMPLATE_SLUG = "commerce-shipment-dispatched";
+export interface ShipmentDispatchedEmailInput<Locale extends string = string> {
+    to: string;
+    firstName: string | null;
+    contextName?: string | null;
+    orderId: string;
+    trackingNumber: string | null;
+    trackingUrl: string | null;
+    outboxEventId: string;
+    locale?: Locale;
+    signal: AbortSignal;
+}
+export declare const OUTBOX_SHIPMENT_DELIVERED_TEMPLATE_SLUG = "commerce-shipment-delivered";
+export interface ShipmentDeliveredEmailInput<Locale extends string = string> {
+    to: string;
+    firstName: string | null;
+    contextName?: string | null;
+    orderId: string;
+    outboxEventId: string;
+    locale?: Locale;
+    signal: AbortSignal;
+}
+export declare const OUTBOX_SHIPMENT_EXCEPTION_TEMPLATE_SLUG = "commerce-shipment-exception";
+export interface ShipmentExceptionEmailInput<Locale extends string = string> {
+    to: string;
+    firstName: string | null;
+    orderId: string;
+    outboxEventId: string;
+    locale?: Locale;
+    signal: AbortSignal;
+}
+export declare const OUTBOX_RETURN_APPROVED_TEMPLATE_SLUG = "commerce-return-approved";
+export declare const OUTBOX_RETURN_REJECTED_TEMPLATE_SLUG = "commerce-return-rejected";
+export interface ReturnDecisionEmailInput<Locale extends string = string> {
+    to: string;
+    firstName: string | null;
+    orderId: string;
+    outboxEventId: string;
+    locale?: Locale;
+    signal: AbortSignal;
+}
+export interface TransactionalEmailPort<Locale extends string = string> {
+    findExistingSend(templateSlug: string, outboxEventId: string): Promise<boolean>;
+    sendReturnApprovedNotice(input: ReturnDecisionEmailInput<Locale>): Promise<TransactionalEmailSendOutcome>;
+    sendReturnRejectedNotice(input: ReturnDecisionEmailInput<Locale>): Promise<TransactionalEmailSendOutcome>;
+    sendOrderConfirmation(input: OrderConfirmationEmailInput<Locale>): Promise<TransactionalEmailSendOutcome>;
+    sendCheckoutRecovery(input: CheckoutRecoveryEmailInput<Locale>): Promise<TransactionalEmailSendOutcome>;
+    sendOrderPaidConfirmation(input: OrderPaidConfirmationEmailInput<Locale>): Promise<TransactionalEmailSendOutcome>;
+    sendPaymentFailedNotice(input: PaymentFailedEmailInput<Locale>): Promise<TransactionalEmailSendOutcome>;
+    sendCheckoutExpiredNotice(input: CheckoutExpiredEmailInput<Locale>): Promise<TransactionalEmailSendOutcome>;
+    sendOrderCanceledNotice(input: OrderCanceledEmailInput<Locale>): Promise<TransactionalEmailSendOutcome>;
+    sendOrderRefundedNotice(input: OrderRefundedEmailInput<Locale>): Promise<TransactionalEmailSendOutcome>;
+    sendShipmentDispatchedNotice(input: ShipmentDispatchedEmailInput<Locale>): Promise<TransactionalEmailSendOutcome>;
+    sendShipmentDeliveredNotice(input: ShipmentDeliveredEmailInput<Locale>): Promise<TransactionalEmailSendOutcome>;
+    sendShipmentExceptionNotice(input: ShipmentExceptionEmailInput<Locale>): Promise<TransactionalEmailSendOutcome>;
+}
+```
+## dist/commerce/salesChannelEnvelope.d.ts
+
+```ts
+export interface CommerceSalesChannelEnvelope {
+    sourceKind: string | null;
+    sourceChannelSlug: string | null;
+    sourceOrderRef: string | null;
+}
+export interface CommerceSalesChannelRow {
+    source_kind?: string | null;
+    source_order_ref?: string | null;
+    sales_channels?: {
+        slug: string | null;
+    } | null;
+}
+export declare function projectCommerceSalesChannelEnvelope(row: CommerceSalesChannelRow): CommerceSalesChannelEnvelope;
+/** Host-bound read only; the inventory owner supplies exposure semantics. */
+export type CommerceChannelExposureReadPort = (skuId: string, signal: AbortSignal) => Promise<number>;
+export interface OrderBuyerCommsPolicy {
+    sourceKind: string;
+    buyerCommsOwner: string;
+}
+export declare function platformOwnsBuyerEmail(policy: OrderBuyerCommsPolicy | null): boolean;
+```
 ## dist/commerce/server/commerceOmsCancelOrderHandler.d.ts
 
 ```ts
@@ -6480,6 +6765,57 @@ export declare function createAdminReturnRejectHandler(deps: {
 }): (req: HttpRequest, res: HttpResponse) => Promise<void>;
 export {};
 ```
+## dist/commerce/server/emailRuntime.d.ts
+
+```ts
+import type { ZodType } from "zod";
+import type { OutboxEventRow, OutboxHandler, OutboxHandlerOutcome } from "../outboxDispatchContracts.js";
+import type { OrderEmailTotals, OrderPaidRawData, TransactionalEmailSendOutcome } from "../outboxOrderDraftEmailPorts.js";
+import type { OrderEmailLinePresentation } from "../orderEmailLines.js";
+export interface TransactionalEmailHandlerSpec<Payload, Recipient> {
+    eventType: string;
+    timeoutMs: number;
+    templateSlug: string;
+    schema: ZodType<Payload>;
+    resolveKey(payload: Payload): string;
+    recipientPort: {
+        resolve(key: string, signal: AbortSignal): Promise<Recipient | null>;
+    };
+    findExistingSend(templateSlug: string, outboxEventId: string): Promise<boolean>;
+    send(ctx: {
+        row: OutboxEventRow;
+        payload: Payload;
+        recipient: Recipient;
+        signal: AbortSignal;
+    }): Promise<TransactionalEmailSendOutcome>;
+}
+/** Host bindings to the communications owner and presentation/provider policy. */
+export interface CommerceEmailRuntime<Locale extends string = string> extends OrderEmailLinePresentation<Locale> {
+    parseOutboxPayload<Payload>(schema: ZodType<Payload>, payload: unknown): {
+        ok: true;
+        data: Payload;
+    } | {
+        ok: false;
+        outcome: OutboxHandlerOutcome;
+    };
+    mapSendOutcome(outcome: TransactionalEmailSendOutcome): OutboxHandlerOutcome;
+    createTransactionalEmailHandler<Payload, Recipient>(spec: TransactionalEmailHandlerSpec<Payload, Recipient>): OutboxHandler;
+    resolveLocale(country: string | null | undefined): Locale;
+    /** null preserves ordinary totals and item prices; a presentation suppresses item prices. */
+    presentPaidOrder(data: OrderPaidRawData): OrderEmailTotals | null;
+    providerOwnsDeliveredNotification(providerKind: string): boolean;
+    normalizeCarrierKind(input: {
+        carrierKind: string | null;
+        service: string | null;
+    }): string | null;
+    carrierTrackingUrl(carrierKind: string | null, trackingNumber: string): string | null;
+    legacyTrackingUrl(ref: {
+        providerKind: string | null;
+        carrierKind: string | null;
+        trackingNumber: string;
+    }, hasExplicitReferences: boolean): string | null;
+}
+```
 ## dist/commerce/server/handlerSupport.d.ts
 
 ```ts
@@ -6599,6 +6935,22 @@ export { createSupabaseOrderFeedbackSubmitPort } from "./orderFeedbackSubmit.js"
 export type { OrderFeedbackSubmitRpcClient, OrderFeedbackSubmitPort } from "./orderFeedbackSubmit.js";
 export { createSupabaseOrderFeedbackTokenCheckPort } from "./orderFeedbackTokenCheck.js";
 export type { OrderFeedbackTokenCheckRpcClient } from "./orderFeedbackTokenCheck.js";
+/** Node-only commerce effect consumers. Hosts bind runtime and presentation ports. */
+export * from "./emailRuntime.js";
+export * from "./outboxDispatchRegistry.js";
+export * from "./outboxDispatchRegistryComposition.js";
+export * from "./outboxCheckoutExpiredEmailHandler.js";
+export * from "./outboxCheckoutRecoveryEmailHandler.js";
+export * from "./outboxOrderDraftEmailHandler.js";
+export * from "./outboxOrderPaidEmailHandler.js";
+export * from "./outboxOrderPaidFulfillmentHandler.js";
+export * from "./outboxOrderPaidFulfillmentPorts.js";
+export * from "./outboxOrderRefundedEmailHandler.js";
+export * from "./outboxPaymentFailedEmailHandler.js";
+export * from "./outboxReturnEmailHandlers.js";
+export * from "./outboxShipmentDeliveredEmailHandler.js";
+export * from "./outboxShipmentDispatchedEmailHandler.js";
+export * from "./outboxShipmentExceptionEmailHandler.js";
 ```
 ## dist/commerce/server/orderFeedbackSubmit.d.ts
 
@@ -6887,6 +7239,278 @@ export declare function inspectImageHeader(mime: OrderReviewMediaMime, bytes: Ui
     height: number;
 } | null;
 ```
+## dist/commerce/server/outboxCheckoutExpiredEmailHandler.d.ts
+
+```ts
+import type { CommerceEmailRuntime } from "./emailRuntime.js";
+import type { OutboxHandler } from "../outboxDispatchContracts.js";
+import { OUTBOX_CHECKOUT_EXPIRED_TEMPLATE_SLUG, type OrderPaymentLifecyclePort, type OrderRecipientPort, type TransactionalEmailPort } from "../outboxOrderDraftEmailPorts.js";
+export { OUTBOX_CHECKOUT_EXPIRED_TEMPLATE_SLUG };
+export declare const outboxCheckoutExpiredEmailDescriptor: Readonly<{
+    eventType: "commerce.checkout.expired";
+    timeoutMs: 10000;
+}>;
+export declare function createOutboxCheckoutExpiredEmailHandler<Locale extends string>(deps: {
+    runtime: Pick<CommerceEmailRuntime<Locale>, "formatMoney" | "mapSendOutcome" | "parseOutboxPayload" | "resolveLocale">;
+    emailPort: TransactionalEmailPort<Locale>;
+    recipientPort: OrderRecipientPort;
+    lifecyclePort: OrderPaymentLifecyclePort;
+}): OutboxHandler;
+```
+## dist/commerce/server/outboxCheckoutRecoveryEmailHandler.d.ts
+
+```ts
+import type { CommerceEmailRuntime } from "./emailRuntime.js";
+import { type OrderPaymentLifecyclePort, type TransactionalEmailPort, type OrderRecipientPort } from "../outboxOrderDraftEmailPorts.js";
+import type { OutboxHandler } from "../outboxDispatchContracts.js";
+export declare const outboxCheckoutRecoveryEmailDescriptor: Readonly<{
+    eventType: "commerce.checkout_recovery";
+    timeoutMs: 10000;
+}>;
+export declare function createOutboxCheckoutRecoveryEmailHandler<Locale extends string>(deps: {
+    runtime: Pick<CommerceEmailRuntime<Locale>, "mapSendOutcome" | "parseOutboxPayload" | "resolveLocale">;
+    emailPort: TransactionalEmailPort<Locale>;
+    recipientPort: OrderRecipientPort;
+    lifecyclePort: OrderPaymentLifecyclePort;
+}): OutboxHandler;
+```
+## dist/commerce/server/outboxDispatchRegistry.d.ts
+
+```ts
+import type { CommerceEmailRuntime } from "./emailRuntime.js";
+import type { OutboxHandlerDescriptor } from "@openlup/core/outbox";
+import type { OutboxHandler, OutboxHandlerRegistry } from "../outboxDispatchContracts.js";
+import type { OrderPaymentLifecyclePort, OrderPaidLinesPort, OrderRecipientPort, TransactionalEmailPort } from "../outboxOrderDraftEmailPorts.js";
+import { type OrderPaidParcelNoteReader } from "./outboxOrderPaidEmailHandler.js";
+import { type DeliveredEmailProviderKindReader } from "./outboxShipmentDeliveredEmailHandler.js";
+import type { OrderPaidFulfillmentPort } from "./outboxOrderPaidFulfillmentPorts.js";
+import { type OrderPaidRiskAssessmentPort } from "./outboxOrderPaidFulfillmentHandler.js";
+import { type OrderBuyerCommsPolicy } from "../salesChannelEnvelope.js";
+/**
+ * Reads the sales-source buyer-comms policy for one order. `null` is
+ * the answer for an order that names no channel — a storefront order, or one
+ * that predates the source axis.
+ *
+ * Read on every event so changes to `sales_channels.buyer_comms_owner` take
+ * effect on the next dispatch. A cached policy could keep sending after
+ * ownership has changed.
+ */
+export interface OrderBuyerCommsPolicyReader {
+    readOrderBuyerCommsPolicy(orderUuid: string): Promise<OrderBuyerCommsPolicy | null>;
+}
+export type TransactionalEmailRegistryDeps<Locale extends string = string> = {
+    runtime: CommerceEmailRuntime<Locale>;
+    emailPort: TransactionalEmailPort<Locale>;
+    recipientPort: OrderRecipientPort;
+    lifecyclePort: OrderPaymentLifecyclePort;
+    orderPaidLinesPort: OrderPaidLinesPort;
+    orderPaidParcelNote?: OrderPaidParcelNoteReader<Locale>;
+    deliveredProviderKindReader?: DeliveredEmailProviderKindReader;
+    buyerCommsPolicyReader?: OrderBuyerCommsPolicyReader;
+};
+export declare function describeCoreOutboxHandlers(selection: {
+    transactionalEmail: boolean;
+    fulfillmentEnabled: boolean;
+}): OutboxHandlerDescriptor[];
+export declare function createOutboxDispatchRegistry<Locale extends string>(deps: {
+    /** Bind the existing outbox rail's composition; commerce owns no second rail. */
+    uniqueRegistry(handlers: readonly OutboxHandler[]): OutboxHandlerRegistry;
+    transactionalEmail?: TransactionalEmailRegistryDeps<Locale>;
+    fulfillmentPort?: OrderPaidFulfillmentPort;
+    riskPort?: OrderPaidRiskAssessmentPort;
+    riskEnabled?: boolean;
+    fulfillmentEnabled: boolean;
+    extraHandlers?: readonly OutboxHandler[];
+    expectedDescriptors?: () => readonly OutboxHandlerDescriptor[];
+}): OutboxHandlerRegistry;
+```
+## dist/commerce/server/outboxDispatchRegistryComposition.d.ts
+
+```ts
+import type { OutboxHandlerDescriptor } from "@openlup/core/outbox";
+import type { OutboxHandlerRegistry } from "../outboxDispatchContracts.js";
+/** Preserve native registration order and the timeout sum of same-event handlers. */
+export declare function composeOutboxHandlerDescriptors(handlers: readonly OutboxHandlerDescriptor[]): OutboxHandlerDescriptor[];
+/** Refuse a different claim surface before a worker can call claimBatch. */
+export declare function assertOutboxRegistryDescriptors(registry: OutboxHandlerRegistry, expected: readonly OutboxHandlerDescriptor[]): void;
+```
+## dist/commerce/server/outboxOrderDraftEmailHandler.d.ts
+
+```ts
+import type { CommerceEmailRuntime } from "./emailRuntime.js";
+import type { OutboxHandler } from "../outboxDispatchContracts.js";
+import { OUTBOX_ORDER_CONFIRMATION_TEMPLATE_SLUG, type OrderPaymentLifecyclePort, type OrderRecipientPort, type TransactionalEmailPort } from "../outboxOrderDraftEmailPorts.js";
+export { OUTBOX_ORDER_CONFIRMATION_TEMPLATE_SLUG };
+export declare const outboxOrderDraftEmailDescriptor: Readonly<{
+    eventType: "commerce.order_draft.created";
+    timeoutMs: 10000;
+}>;
+export declare function createOutboxOrderDraftEmailHandler<Locale extends string>(deps: {
+    runtime: Pick<CommerceEmailRuntime<Locale>, "formatMoney" | "genericItemLabel" | "mapSendOutcome" | "parseOutboxPayload" | "resolveLocale">;
+    emailPort: TransactionalEmailPort<Locale>;
+    recipientPort: OrderRecipientPort;
+    lifecyclePort: OrderPaymentLifecyclePort;
+}): OutboxHandler;
+```
+## dist/commerce/server/outboxOrderPaidEmailHandler.d.ts
+
+```ts
+import type { CommerceEmailRuntime } from "./emailRuntime.js";
+import type { OutboxHandler } from "../outboxDispatchContracts.js";
+import { OUTBOX_ORDER_PAID_TEMPLATE_SLUG, type OrderPaidLinesPort, type OrderRecipientPort, type TransactionalEmailPort } from "../outboxOrderDraftEmailPorts.js";
+export { OUTBOX_ORDER_PAID_TEMPLATE_SLUG };
+export declare const outboxOrderPaidEmailDescriptor: Readonly<{
+    eventType: "commerce.order.paid.email";
+    timeoutMs: 10000;
+}>;
+/**
+ * An adopter's note about the paid order's parcel, already localized, or null
+ * for none. Best-effort and inside this handler's timeout: a failure is logged
+ * and the receipt is sent without the note.
+ */
+export type OrderPaidParcelNoteReader<Locale extends string = string> = (orderUuid: string, locale: Locale, signal: AbortSignal) => Promise<string | null>;
+export declare function createOutboxOrderPaidEmailHandler<Locale extends string>(deps: {
+    runtime: Pick<CommerceEmailRuntime<Locale>, "formatMoney" | "genericItemLabel" | "mapSendOutcome" | "parseOutboxPayload" | "presentPaidOrder" | "resolveLocale">;
+    emailPort: TransactionalEmailPort<Locale>;
+    recipientPort: OrderRecipientPort;
+    linesPort: OrderPaidLinesPort;
+    describeParcel?: OrderPaidParcelNoteReader<Locale>;
+}): OutboxHandler;
+```
+## dist/commerce/server/outboxOrderPaidFulfillmentHandler.d.ts
+
+```ts
+import { createOutboxOrderPaidFulfillmentHandler } from "../../fulfillment/index.js";
+export { createOutboxOrderPaidFulfillmentHandler, outboxOrderPaidFulfillmentDescriptor } from "../../fulfillment/index.js";
+export type OrderPaidRiskAssessmentPort = NonNullable<Parameters<typeof createOutboxOrderPaidFulfillmentHandler>[0]["riskPort"]>;
+```
+## dist/commerce/server/outboxOrderPaidFulfillmentPorts.d.ts
+
+```ts
+import type { createOutboxOrderPaidFulfillmentHandler } from "../../fulfillment/index.js";
+export type OrderPaidFulfillmentPort = Parameters<typeof createOutboxOrderPaidFulfillmentHandler>[0]["fulfillmentPort"];
+export type OrderPaidFulfillmentResult = Awaited<ReturnType<OrderPaidFulfillmentPort["ensureFulfilledFromPaidOrder"]>>;
+```
+## dist/commerce/server/outboxOrderRefundedEmailHandler.d.ts
+
+```ts
+import type { CommerceEmailRuntime } from "./emailRuntime.js";
+import type { OutboxHandler } from "../outboxDispatchContracts.js";
+import { OUTBOX_ORDER_REFUNDED_TEMPLATE_SLUG, type OrderRecipientPort, type TransactionalEmailPort } from "../outboxOrderDraftEmailPorts.js";
+export { OUTBOX_ORDER_REFUNDED_TEMPLATE_SLUG };
+export declare const outboxOrderRefundedEmailDescriptor: Readonly<{
+    eventType: "commerce.order.refunded";
+    timeoutMs: 10000;
+}>;
+export declare function createOutboxOrderRefundedEmailHandler<Locale extends string>(deps: {
+    runtime: Pick<CommerceEmailRuntime<Locale>, "createTransactionalEmailHandler" | "formatMoney" | "resolveLocale">;
+    emailPort: TransactionalEmailPort<Locale>;
+    recipientPort: OrderRecipientPort;
+}): OutboxHandler;
+```
+## dist/commerce/server/outboxPaymentFailedEmailHandler.d.ts
+
+```ts
+import type { CommerceEmailRuntime } from "./emailRuntime.js";
+import type { OutboxHandler } from "../outboxDispatchContracts.js";
+import { OUTBOX_PAYMENT_FAILED_TEMPLATE_SLUG, type OrderPaymentLifecyclePort, type OrderRecipientPort, type TransactionalEmailPort } from "../outboxOrderDraftEmailPorts.js";
+export { OUTBOX_PAYMENT_FAILED_TEMPLATE_SLUG };
+export declare const outboxPaymentFailedEmailDescriptor: Readonly<{
+    eventType: "commerce.payment.failed";
+    timeoutMs: 10000;
+}>;
+export declare function createOutboxPaymentFailedEmailHandler<Locale extends string>(deps: {
+    runtime: Pick<CommerceEmailRuntime<Locale>, "formatMoney" | "mapSendOutcome" | "parseOutboxPayload" | "resolveLocale">;
+    emailPort: TransactionalEmailPort<Locale>;
+    recipientPort: OrderRecipientPort;
+    lifecyclePort: OrderPaymentLifecyclePort;
+}): OutboxHandler;
+```
+## dist/commerce/server/outboxReturnEmailHandlers.d.ts
+
+```ts
+import type { CommerceEmailRuntime } from "./emailRuntime.js";
+import type { OutboxHandler } from "../outboxDispatchContracts.js";
+import { OUTBOX_RETURN_APPROVED_TEMPLATE_SLUG, OUTBOX_RETURN_REJECTED_TEMPLATE_SLUG, type OrderRecipientPort, type TransactionalEmailPort } from "../outboxOrderDraftEmailPorts.js";
+export { OUTBOX_RETURN_APPROVED_TEMPLATE_SLUG, OUTBOX_RETURN_REJECTED_TEMPLATE_SLUG };
+export declare function describeOutboxReturnEmail(eventType: string): {
+    eventType: string;
+    timeoutMs: number;
+};
+export declare const outboxReturnApprovedEmailDescriptor: Readonly<{
+    eventType: string;
+    timeoutMs: number;
+}>;
+export declare const outboxReturnRejectedEmailDescriptor: Readonly<{
+    eventType: string;
+    timeoutMs: number;
+}>;
+export declare function createOutboxReturnApprovedEmailHandler<Locale extends string>(deps: {
+    runtime: Pick<CommerceEmailRuntime<Locale>, "createTransactionalEmailHandler" | "resolveLocale">;
+    emailPort: TransactionalEmailPort<Locale>;
+    recipientPort: OrderRecipientPort;
+}): OutboxHandler;
+export declare function createOutboxReturnRejectedEmailHandler<Locale extends string>(deps: {
+    runtime: Pick<CommerceEmailRuntime<Locale>, "createTransactionalEmailHandler" | "resolveLocale">;
+    emailPort: TransactionalEmailPort<Locale>;
+    recipientPort: OrderRecipientPort;
+}): OutboxHandler;
+```
+## dist/commerce/server/outboxShipmentDeliveredEmailHandler.d.ts
+
+```ts
+import type { CommerceEmailRuntime } from "./emailRuntime.js";
+import type { OutboxHandler } from "../outboxDispatchContracts.js";
+import { OUTBOX_SHIPMENT_DELIVERED_TEMPLATE_SLUG, type OrderRecipientPort, type TransactionalEmailPort } from "../outboxOrderDraftEmailPorts.js";
+export { OUTBOX_SHIPMENT_DELIVERED_TEMPLATE_SLUG };
+export declare const outboxShipmentDeliveredEmailDescriptor: Readonly<{
+    eventType: "commerce.shipment.delivered";
+    timeoutMs: 10000;
+}>;
+export interface DeliveredEmailProviderKindReader {
+    readSelectedProviderKind(orderUuid: string): Promise<string | null>;
+}
+export declare function createOutboxShipmentDeliveredEmailHandler<Locale extends string>(deps: {
+    runtime: Pick<CommerceEmailRuntime<Locale>, "mapSendOutcome" | "parseOutboxPayload" | "providerOwnsDeliveredNotification" | "resolveLocale">;
+    emailPort: TransactionalEmailPort<Locale>;
+    recipientPort: OrderRecipientPort;
+    providerKindReader?: DeliveredEmailProviderKindReader;
+}): OutboxHandler;
+```
+## dist/commerce/server/outboxShipmentDispatchedEmailHandler.d.ts
+
+```ts
+import type { CommerceEmailRuntime } from "./emailRuntime.js";
+import type { OutboxHandler } from "../outboxDispatchContracts.js";
+import { OUTBOX_SHIPMENT_DISPATCHED_TEMPLATE_SLUG, type OrderRecipientPort, type TransactionalEmailPort } from "../outboxOrderDraftEmailPorts.js";
+export { OUTBOX_SHIPMENT_DISPATCHED_TEMPLATE_SLUG };
+export declare const outboxShipmentDispatchedEmailDescriptor: Readonly<{
+    eventType: "commerce.shipment.dispatched";
+    timeoutMs: 10000;
+}>;
+export declare function createOutboxShipmentDispatchedEmailHandler<Locale extends string>(deps: {
+    runtime: Pick<CommerceEmailRuntime<Locale>, "carrierTrackingUrl" | "createTransactionalEmailHandler" | "legacyTrackingUrl" | "normalizeCarrierKind" | "resolveLocale">;
+    emailPort: TransactionalEmailPort<Locale>;
+    recipientPort: OrderRecipientPort;
+}): OutboxHandler;
+```
+## dist/commerce/server/outboxShipmentExceptionEmailHandler.d.ts
+
+```ts
+import type { CommerceEmailRuntime } from "./emailRuntime.js";
+import type { OutboxHandler } from "../outboxDispatchContracts.js";
+import { OUTBOX_SHIPMENT_EXCEPTION_TEMPLATE_SLUG, type OrderRecipientPort, type TransactionalEmailPort } from "../outboxOrderDraftEmailPorts.js";
+export { OUTBOX_SHIPMENT_EXCEPTION_TEMPLATE_SLUG };
+export declare const outboxShipmentExceptionEmailDescriptor: Readonly<{
+    eventType: "commerce.shipment.exception";
+    timeoutMs: 10000;
+}>;
+export declare function createOutboxShipmentExceptionEmailHandler<Locale extends string>(deps: {
+    runtime: Pick<CommerceEmailRuntime<Locale>, "mapSendOutcome" | "parseOutboxPayload" | "resolveLocale">;
+    emailPort: TransactionalEmailPort<Locale>;
+    recipientPort: OrderRecipientPort;
+}): OutboxHandler;
+```
 ## dist/commerce/server/supabaseCommerceReturnsPort.d.ts
 
 ```ts
@@ -6903,6 +7527,3173 @@ export interface CommerceReturnsRpcClient {
 }
 /** Returns request/approve/reject only. Restock and refund fields record intent; no receive, restock or refund execution. */
 export declare function createSupabaseCommerceReturnsPort<Reason extends string = ReturnRequestCreateInput["reasonCode"]>(client: CommerceReturnsRpcClient): CommerceReturnsPort<Reason>;
+```
+## dist/fulfillment/adapterConformance.d.ts
+
+```ts
+import type { FulfillmentAdapterConformanceEvidence, FulfillmentAdapterConformanceSubject } from "./contracts/index.js";
+/** Runner-independent offline proof using only adapter-owned fixtures. Throws on a violated contract. */
+export declare function runFulfillmentAdapterConformance(subjects: readonly FulfillmentAdapterConformanceSubject[]): Promise<FulfillmentAdapterConformanceEvidence>;
+```
+## dist/fulfillment/bindings.d.ts
+
+```ts
+import type { FulfillmentServices, FulfillmentServicesOptions } from './contracts/index.js';
+/** Explicit selection; no environment readers, implicit provider or automatic dispatch. */
+export declare function createFulfillmentServices(options: FulfillmentServicesOptions): FulfillmentServices;
+```
+## dist/fulfillment/commerceFulfillmentHandlers.d.ts
+
+```ts
+import type { FulfillmentOperatorMutationPort as CommerceFulfillmentMutationPort } from './contracts/operator.js';
+import type { FulfillmentCommerceReadPort as CommerceFulfillmentReadPort } from './contracts/read.js';
+import { type BaseDeps, type FulfillmentHandlerRequest } from './handlerSupport.js';
+type PortRef<T> = T | (() => T);
+export declare function createAdminCommerceFulfillmentOrdersListHandler<Response>({ authorizeAdmin, respond, fulfillmentPort, }: BaseDeps<Response> & {
+    fulfillmentPort: PortRef<Pick<CommerceFulfillmentReadPort, "listCommerceFulfillmentOrders">>;
+}): (req: FulfillmentHandlerRequest, res: Response) => Promise<void>;
+export declare function createAdminCommerceFulfillmentOrderDetailHandler<Response>({ authorizeAdmin, respond, fulfillmentPort, }: BaseDeps<Response> & {
+    fulfillmentPort: PortRef<Pick<CommerceFulfillmentReadPort, "getCommerceFulfillmentOrderDetail">>;
+}): (req: FulfillmentHandlerRequest, res: Response) => Promise<void>;
+export declare function createAdminCommerceFulfillmentCreateOrderHandler<Response>({ authorizeAdmin, respond, fulfillmentPort, }: BaseDeps<Response> & {
+    fulfillmentPort: PortRef<Pick<CommerceFulfillmentMutationPort, "createCommerceFulfillmentOrder">>;
+}): (req: FulfillmentHandlerRequest, res: Response) => Promise<void>;
+export declare function createAdminCommerceFulfillmentRecordProviderAttemptHandler<Response>({ authorizeAdmin, respond, fulfillmentPort, }: BaseDeps<Response> & {
+    fulfillmentPort: PortRef<Pick<CommerceFulfillmentMutationPort, "recordCommerceFulfillmentProviderAttempt">>;
+}): (req: FulfillmentHandlerRequest, res: Response) => Promise<void>;
+export declare function createAdminCommerceFulfillmentRecordLabelHandler<Response>({ authorizeAdmin, respond, fulfillmentPort, }: BaseDeps<Response> & {
+    fulfillmentPort: PortRef<Pick<CommerceFulfillmentMutationPort, "recordCommerceFulfillmentLabel">>;
+}): (req: FulfillmentHandlerRequest, res: Response) => Promise<void>;
+export declare function createAdminCommerceFulfillmentHandOffHandler<Response>({ authorizeAdmin, respond, fulfillmentPort, }: BaseDeps<Response> & {
+    fulfillmentPort: PortRef<Pick<CommerceFulfillmentMutationPort, "handOffCommerceFulfillmentOrder">>;
+}): (req: FulfillmentHandlerRequest, res: Response) => Promise<void>;
+export declare function createAdminCommerceFulfillmentTrackingEventHandler<Response>({ authorizeAdmin, respond, fulfillmentPort, }: BaseDeps<Response> & {
+    fulfillmentPort: PortRef<Pick<CommerceFulfillmentMutationPort, "recordCommerceFulfillmentTrackingEvent">>;
+}): (req: FulfillmentHandlerRequest, res: Response) => Promise<void>;
+export declare function createAdminCommerceFulfillmentCancelOrderHandler<Response>({ authorizeAdmin, respond, fulfillmentPort, }: BaseDeps<Response> & {
+    fulfillmentPort: PortRef<Pick<CommerceFulfillmentMutationPort, "cancelCommerceFulfillmentOrder">>;
+}): (req: FulfillmentHandlerRequest, res: Response) => Promise<void>;
+export {};
+```
+## dist/fulfillment/commerceFulfillmentReadModel.d.ts
+
+```ts
+import type { FulfillmentCommerceReadPolicy, FulfillmentPaymentStatus, FulfillmentOrderStatus as OrderStatus } from './contracts/read.js';
+import type { SubscriptionCycleStatus } from '@openlup/core/subscription';
+import { type AdminCommerceFulfillmentOrderDetailResponse, type AdminCommerceFulfillmentOrdersListResponse, type CommerceFulfillmentOrder, type CommerceFulfillmentOperationType, type CommerceFulfillmentStatus } from "./handlerSchemas.js";
+export interface CommerceFulfillmentOrderRow {
+    id: string;
+    order_id: string;
+    client_id: string | null;
+    status: CommerceFulfillmentStatus;
+    provider_kind: string | null;
+    shipping_address_snapshot: CommerceFulfillmentOrder["shippingAddress"];
+    created_at: string;
+    updated_at: string;
+}
+export interface CommerceFulfillmentLineRow {
+    id: string;
+    fulfillment_order_id: string;
+    order_item_id: string;
+    sku_id: string;
+    sku: string;
+    title: string | null;
+    quantity: number;
+    inventory_reservation_ids: string[];
+    product_snapshot: Record<string, unknown>;
+}
+export interface CommerceFulfillmentOperationRow {
+    id: string;
+    fulfillment_order_id: string;
+    operation_type: CommerceFulfillmentOperationType;
+    actor_user_id: string | null;
+    occurred_at: string;
+    payload: Record<string, unknown>;
+}
+export interface CommerceFulfillmentOrderContextRow {
+    id: string;
+    status: OrderStatus;
+    mode: "one_time" | "subscription_cycle";
+    shipping_address_id: string | null;
+    subscription_cycle_id: string | null;
+}
+export interface CommerceFulfillmentPaymentIntentRow {
+    id: string;
+    order_id: string;
+    status: FulfillmentPaymentStatus;
+    provider_payment_id: string | null;
+}
+export interface CommerceFulfillmentInventoryReservationRow {
+    id: string;
+    order_id: string;
+    status: "reserved" | "released" | "consumed" | "expired";
+    expires_at: string | null;
+    location_id: string | null;
+    inventory_locations?: {
+        code?: string | null;
+    } | null;
+}
+export interface CommerceFulfillmentShipmentRefRow {
+    order_id: string;
+    provider_tracking_id: string;
+    active: boolean;
+    created_at?: string | null;
+}
+export declare function buildCommerceFulfillmentOrdersListResponse(input: {
+    fulfillmentOrders: CommerceFulfillmentOrderRow[];
+    lines: CommerceFulfillmentLineRow[];
+    latestOperations: CommerceFulfillmentOperationRow[];
+    orderContexts: CommerceFulfillmentOrderContextRow[];
+    paymentIntents: CommerceFulfillmentPaymentIntentRow[];
+    inventoryReservations: CommerceFulfillmentInventoryReservationRow[];
+    shipmentRefs: CommerceFulfillmentShipmentRefRow[];
+    activeHoldCounts: Record<string, number>;
+    subscriptionCycleStatuses: Record<string, SubscriptionCycleStatus | null>;
+    totalCount: number;
+    page: number;
+    pageSize: number;
+}, policy: FulfillmentCommerceReadPolicy): AdminCommerceFulfillmentOrdersListResponse;
+export declare function buildCommerceFulfillmentOrderDetailResponse(input: {
+    fulfillmentOrder: CommerceFulfillmentOrderRow;
+    lines: CommerceFulfillmentLineRow[];
+    latestOperation: CommerceFulfillmentOperationRow | null;
+    orderContext: CommerceFulfillmentOrderContextRow;
+    paymentIntent: CommerceFulfillmentPaymentIntentRow;
+    inventoryReservations: CommerceFulfillmentInventoryReservationRow[];
+    shipmentRef: CommerceFulfillmentShipmentRefRow | null;
+    activeHoldCount: number;
+    subscriptionCycleStatus: SubscriptionCycleStatus | null;
+}, policy: FulfillmentCommerceReadPolicy): AdminCommerceFulfillmentOrderDetailResponse;
+```
+## dist/fulfillment/contracts/alignment.d.ts
+
+```ts
+/**
+ * Late delivery extends the next cycle, never stacks deliveries or moves it earlier.
+ * A replacement may settle alignment as aligned only after reaching the customer.
+ * Its superseded predecessor is no longer outstanding; an in-flight or undelivered
+ * replacement still is. Never call subscription_delivery_alignment_confirm_replacement
+ * for a replacement that did not arrive: it records "Parcel delivered" and shifts
+ * the cycle later. That note-only operator attestation remains outside this port;
+ * no automatic caller or new guard is introduced.
+ */
+export interface DeliveryAlignmentPort {
+    recordArrival(input: {
+        requestKey: string;
+        parcelRef: string;
+        deliveredAt: string;
+        evidenceRef: `evidence:${string}`;
+    }): Promise<{
+        disposition: "aligned" | "outstanding" | "manual_review";
+        nextCycleAt: string | null;
+        replayed: boolean;
+    }>;
+    read(fulfillmentRef: string): Promise<{
+        disposition: "aligned" | "outstanding" | "manual_review";
+        nextCycleAt: string | null;
+    }>;
+}
+```
+## dist/fulfillment/contracts/bindings.d.ts
+
+```ts
+import type { FulfillmentCapabilityDescriptor } from './capabilities.js';
+import type { FulfillmentDispatchPort, FulfillmentDispatchRequest, FulfillmentRefusal, FulfillmentSelection } from './dispatch.js';
+import type { FulfillmentNativeUnsupported } from './nativeUnsupported.js';
+import type { DispatchRecord, FulfillmentStorePort } from './store.js';
+/** In-memory ports and host closures only; never serialize options or recipient inputs. */
+export interface FulfillmentServicesOptions {
+    enabled?: boolean;
+    selection: FulfillmentSelection | null;
+    capability: FulfillmentCapabilityDescriptor | null;
+    store: FulfillmentStorePort | null;
+    provider: FulfillmentDispatchPort | null;
+    readiness(): Promise<{
+        ready: true;
+    } | {
+        ready: false;
+        refusal: FulfillmentRefusal | FulfillmentNativeUnsupported;
+    }>;
+    listCandidates(limit: number): Promise<readonly FulfillmentDispatchRequest[]>;
+    keys: {
+        request(candidate: FulfillmentDispatchRequest): string;
+        mappedAttempt(requestKey: string, mappedAttemptIndex: number): string;
+        acceptance(fulfillmentRef: string): {
+            providerAttemptKey: string;
+            labelKey: string;
+        };
+    };
+    config: {
+        mode: DispatchRecord['mode'];
+        batchLimit: number;
+    };
+    now?: () => Date;
+}
+/** Import and construction are inert. Every invocation checks activation before any worker. */
+export interface FulfillmentServices {
+    readiness(): ReturnType<FulfillmentServicesOptions['readiness']>;
+    runDispatch(): Promise<FulfillmentNativeUnsupported | {
+        kind: 'refused';
+        refusal: FulfillmentRefusal;
+    } | {
+        ok: boolean;
+        skipped: boolean;
+        checked: number;
+        updated: number;
+        failures: number;
+        mode: DispatchRecord['mode'];
+        replayed: number;
+        providerCalls: number;
+        readBacks: number;
+        reason: string | undefined;
+    }>;
+}
+```
+## dist/fulfillment/contracts/capabilities.d.ts
+
+```ts
+import type { FulfillmentRefusal } from "./dispatch.js";
+export interface FulfillmentCapabilityDescriptor {
+    providerRef: string;
+    role: "warehouse" | "direct_carrier" | "manual" | "simulator";
+    operations: Readonly<Record<"dispatch" | "readback" | "exactAbsence" | "verifyObservation" | "syncStock" | "syncProducts" | "labelCreate" | "labelRead" | "labelVoid" | "cancel" | "pickupPoint" | "courierPickup", {
+        supported: true;
+    } | {
+        supported: false;
+        reason: "not_exposed" | "host_only" | "not_implemented";
+    }>>;
+    authentication: "token" | "authenticated_timestamp" | "none";
+    freshness: "authenticated_timestamp" | "not_available";
+    defaultOff: true;
+    selected: boolean;
+    readiness: {
+        ready: true;
+    } | {
+        ready: false;
+        refusal: FulfillmentRefusal;
+    };
+    ownsDeliveredNotification: boolean;
+    stockAuthority: "local_atp" | "external_stock_master_with_local_reservations";
+    labelReadOwner: "host_storage" | "adapter" | "none";
+    actionPolicy: {
+        providerSpecificAdminActions: boolean;
+        genericAdminActions: boolean;
+        mutationSurface: "none" | "local_only" | "provider_adapter";
+    };
+}
+```
+## dist/fulfillment/contracts/conformance.d.ts
+
+```ts
+import type { FulfillmentCapabilityDescriptor } from "./capabilities.js";
+import type { FulfillmentDispatchPort, FulfillmentDispatchRequest } from "./dispatch.js";
+import type { FulfillmentLabelPort } from "./label.js";
+import type { FulfillmentObservationPort, FulfillmentObservationCodecs } from "./observation.js";
+import type { FulfillmentReadbackPort } from "./readback.js";
+import type { FulfillmentStockSyncProvider, FulfillmentProductSyncProvider } from "./sync.js";
+import type { FulfillmentStorePort } from "./store.js";
+type Fixture<Method extends (...args: never[]) => unknown> = {
+    input: Parameters<Method>;
+    expected: Awaited<ReturnType<Method>>;
+};
+type SyncFixture<Port> = {
+    [K in keyof Port]: Port[K] extends (...args: never[]) => unknown ? {
+        operation: K;
+        input: Parameters<Port[K]>;
+        expected: Awaited<ReturnType<Port[K]>> | {
+            kind: "refused";
+            refusal: {
+                reason: "unsupported";
+                phase: "sync";
+                retryable: false;
+            };
+        };
+    } : never;
+}[keyof Port];
+/** Offline adapter-owned inputs and exact expected outputs; never real customer data. */
+export interface FulfillmentAdapterConformanceSubject {
+    approveTrackingUrl?(url: string): boolean;
+    observationCodecs?: FulfillmentObservationCodecs;
+    subjectId: string;
+    adapter: {
+        capabilities: FulfillmentCapabilityDescriptor;
+        dispatch: FulfillmentDispatchPort;
+        label?: FulfillmentLabelPort;
+        observation?: FulfillmentObservationPort;
+        readback?: FulfillmentReadbackPort;
+        stockSync?: FulfillmentStockSyncProvider;
+        productSync?: FulfillmentProductSyncProvider;
+    };
+    /** Count external submission I/O, including attempted calls. Preparation/refusals must not increase it. */
+    readIoCount(): number;
+    sensitiveValues: readonly string[];
+    fixtures: {
+        dispatch: readonly {
+            input: FulfillmentDispatchRequest;
+            expectedPrepare: Awaited<ReturnType<FulfillmentDispatchPort["prepare"]>>;
+            expectedDispatch?: Awaited<ReturnType<FulfillmentDispatchPort["dispatch"]>>;
+            /** Repeating this operation must not increase external submission I/O. */
+            replay?: boolean;
+        }[];
+        label?: {
+            create?: readonly Fixture<FulfillmentLabelPort["create"]>[];
+            read?: readonly Fixture<FulfillmentLabelPort["read"]>[];
+            void?: readonly Fixture<FulfillmentLabelPort["void"]>[];
+        };
+        observation?: readonly Fixture<FulfillmentObservationPort["verifyAndNormalize"]>[];
+        readback?: readonly (Fixture<FulfillmentReadbackPort["read"]> & {
+            localMissing?: boolean;
+        })[];
+        stockSync?: readonly SyncFixture<FulfillmentStockSyncProvider>[];
+        productSync?: readonly SyncFixture<FulfillmentProductSyncProvider>[];
+    };
+    /** A fresh isolated host store per call; no database implementation is supplied by the runner. */
+    store?: {
+        create(): Promise<FulfillmentStorePort & {
+            /** Offline fixture inspection, not a new production store operation. */
+            readMappedAttempts(): Promise<readonly {
+                attemptKey: string;
+                fulfillmentRef: string;
+                preparedEvidence: Parameters<FulfillmentStorePort["recordProviderAttempt"]>[2];
+                mode: Parameters<FulfillmentStorePort["recordProviderAttempt"]>[3];
+                status: "recorded";
+            }[]>;
+        }>;
+        claim: Parameters<FulfillmentStorePort["claim"]>[0];
+        remappedClaim: Parameters<FulfillmentStorePort["claim"]>[0];
+        mappedAttemptKey: string;
+        remappedAttemptKey: string;
+        request: FulfillmentDispatchRequest;
+        remappedRequest: FulfillmentDispatchRequest;
+    };
+}
+/** Sanitized proof only: no fixture inputs, raw responses, transient URLs or credentials. */
+export interface FulfillmentAdapterConformanceEvidence {
+    subjects: readonly {
+        subjectId: string;
+        providerRef: string;
+    }[];
+    cases: readonly {
+        subjectId: string;
+        operation: string;
+        passed: true;
+    }[];
+}
+export {};
+```
+## dist/fulfillment/contracts/customerAlignment.d.ts
+
+```ts
+import type { FulfillmentNativeUnsupported } from './nativeUnsupported.js';
+export interface CustomerDeliveryAlignment {
+    state: 'protected' | 'aligned';
+}
+/** Absence from the map means no current customer case, distinct from protected. */
+export type FulfillmentCustomerAlignmentRowsReader = (subscriptionIds: string[]) => Promise<Record<string, unknown>[] | FulfillmentNativeUnsupported>;
+```
+## dist/fulfillment/contracts/dispatch.d.ts
+
+```ts
+type DeliveryKind = "parcel-locker" | "courier";
+type PickupPoint = {
+    id: string;
+    provider: string;
+    name: string;
+    address: {
+        line1: string;
+        postalCode: string;
+        city: string;
+        country: string;
+    };
+};
+export interface FulfillmentSelection {
+    providerRef: string | null;
+    carrierRef: string | null;
+    serviceRef: string | null;
+    deliveryKind: DeliveryKind;
+    pickupPoint: PickupPoint | null;
+}
+export interface FulfillmentRefusal {
+    reason: "not_dispatchable" | "selection_required" | "provider_mismatch" | "carrier_service_required" | "disabled" | "not_ready" | "unsupported" | "withheld" | "claim_conflict" | "contact_stale" | "stock_contention" | "local_missing" | "io_failure" | "malformed" | "untrusted" | "unsupported_event" | "stale" | "missing_correlation";
+    phase: "selection" | "prepare" | "claim" | "begin" | "dispatch" | "acknowledge" | "verify" | "normalize" | "apply" | "readback" | "sync";
+    retryable: boolean;
+}
+/** Frozen domain input. Contact PII stays transient; only allowlisted mapped items enter evidence. Credentials stay in adapter closures. */
+export interface FulfillmentDispatchRequest {
+    requestKey: string;
+    fulfillmentRef: string;
+    orderRef: string;
+    orderNumber: string | null;
+    parcelRef: string | null;
+    contactRevision: {
+        schemaVersion: number;
+        source: string;
+        revision: number;
+    };
+    recipient: {
+        name: string | null;
+        email: string | null;
+        phone: string | null;
+        line1: string;
+        line2: string | null;
+        city: string;
+        postalCode: string;
+        country: string;
+        deliveryInstructions: string | null;
+        courierInstructions: string | null;
+    };
+    lines: readonly {
+        skuRef: string;
+        title: string | null;
+        quantity: number;
+        productRef: string | null;
+        packRef: string | null;
+        lotRef?: string | null;
+        expirationDate?: string | null;
+    }[];
+    selection: FulfillmentSelection;
+}
+/** Allowlisted durable evidence; fingerprint commits to actual adapter command bytes. */
+export interface DispatchEvidence {
+    redactedFieldCount?: number;
+    commandFingerprint: string;
+    contactRevision: FulfillmentDispatchRequest["contactRevision"];
+    providerRef: string;
+    carrierRef: string | null;
+    serviceRef: string | null;
+    transcript?: {
+        itemCount: number;
+        items: readonly {
+            skuRef: string;
+            quantity: number;
+            lotRef: string | null;
+            expirationDate: string | null;
+        }[];
+        deliveryKind: DeliveryKind;
+        pickupPointRef: string | null;
+        /** Count of populated reference/date fields redacted by the durable projection. */
+        redactedFieldCount?: number;
+    };
+    mapping?: {
+        source: "dispatch_worker";
+        mode: "shadow" | "stage" | "live";
+        shadowMode: boolean;
+    };
+}
+export interface FulfillmentOperationError {
+    redactedFieldCount?: number;
+    code: string;
+    status: number | null;
+    retryable: boolean;
+    mayHaveSucceeded: boolean;
+    /** Whether provider submission was attempted; absent means unknown, never proven false. */
+    submissionAttempted?: boolean;
+    /** Whether the HTTP response body was read, including empty or malformed JSON; absent means no body-read evidence. */
+    responseBodyRead?: boolean;
+    /** Machine cause only; never an arbitrary exception message. */
+    cause?: string;
+}
+export type FulfillmentDispatchResult = ({
+    error?: FulfillmentOperationError;
+    redactedFieldCount?: number;
+} & ({
+    kind: "accepted";
+    externalRef: string;
+    evidence: DispatchEvidence;
+    providerAttemptKey: string;
+    labelKey: string;
+    recovery?: {
+        source: "persisted_acceptance";
+        proof: "persisted_external_ref";
+        noProviderPost: true;
+    };
+} | {
+    kind: "not_dispatched";
+    effectMayHaveSucceeded: false;
+    refusal: FulfillmentRefusal;
+} | {
+    kind: "unknown";
+    effectMayHaveSucceeded: true;
+    refusal: FulfillmentRefusal;
+}));
+export type FulfillmentDispatchPrepareResult = {
+    kind: "prepared";
+    evidence: DispatchEvidence;
+} | {
+    kind: "refused";
+    refusal: FulfillmentRefusal;
+};
+export interface FulfillmentDispatchPort {
+    /**
+     * Without external submission, build the actual command and fingerprint its bytes
+     * before store claim/begin. Return only sanitized evidence; keep the raw command
+     * transient inside the adapter. Refuse not_dispatchable or the exact selection
+     * refusal when preparation cannot proceed. A contact_stale remap requires a new
+     * prepare of the rebuilt request/command before another claim/begin.
+     */
+    prepare(request: FulfillmentDispatchRequest): Promise<FulfillmentDispatchPrepareResult>;
+    /**
+     * Send exactly the prepared command identified by this evidence. Never silently
+     * rebuild a different command; absent/mismatched preparation refuses before I/O.
+     * Absent/mismatched preparation: not_dispatchable, phase dispatch, retryable false.
+     * Unknown submission outcomes require readback, never blind re-submission.
+     */
+    dispatch(request: FulfillmentDispatchRequest, evidence: DispatchEvidence): Promise<FulfillmentDispatchResult>;
+}
+export {};
+```
+## dist/fulfillment/contracts/index.d.ts
+
+```ts
+export type { FulfillmentOperationError, DispatchEvidence, FulfillmentDispatchPrepareResult, FulfillmentSelection, FulfillmentDispatchRequest, FulfillmentDispatchResult, FulfillmentDispatchPort, FulfillmentRefusal } from "./dispatch.js";
+export type { LabelDocument, FulfillmentLabelPort } from "./label.js";
+/** G17 local reads/ingress persistence are inline runtime worker inputs; this provider envelope is unchanged. */
+export type { FulfillmentObservation, FulfillmentObservationCodecs, FulfillmentObservationPort, FulfillmentTrackingReference } from "./observation.js";
+export type { FulfillmentReadbackResult, FulfillmentReadbackPort, FulfillmentReconciliationObservation, FulfillmentObservationPagePort } from "./readback.js";
+export type { SyncCursor, StockSnapshot, StockMovement, LocalStock, FulfillmentStockSyncProvider, FulfillmentStockSyncPort, FulfillmentProductSyncProvider, FulfillmentProductSyncPort } from "./sync.js";
+export type { FulfillmentCapabilityDescriptor } from "./capabilities.js";
+export type { DispatchRecord, FulfillmentStorePort, FulfillmentPaidHandoffPort } from "./store.js";
+export type { DeliveryAlignmentPort } from "./alignment.js";
+export type { FulfillmentAdapterConformanceSubject, FulfillmentAdapterConformanceEvidence } from "./conformance.js";
+export type { FulfillmentNativeUnsupported } from './nativeUnsupported.js';
+export type { FulfillmentReplacementPort, FulfillmentReplacementRequest, FulfillmentReplacementResult } from './replacement.js';
+export type { FulfillmentOperatorMutationPort, FulfillmentOperatorMutationResult } from './operator.js';
+export type { CustomerDeliveryAlignment, FulfillmentCustomerAlignmentRowsReader } from './customerAlignment.js';
+export type { FulfillmentCommerceReadPort, FulfillmentCommerceReadPolicy, FulfillmentOrderStatus, FulfillmentPaymentStatus, FulfillmentCommerceOrder, FulfillmentOrdersListRequest, FulfillmentOrdersListResponse, FulfillmentOrderDetailRequest, FulfillmentOrderDetailResponse, FulfillmentShipmentsOverviewPort, FulfillmentShipmentsOverviewRequest, FulfillmentShipmentsOverviewResponse } from './read.js';
+export type { FulfillmentProgressInput, FulfillmentProgressPresentation } from './read.js';
+export type { FulfillmentServicesOptions, FulfillmentServices } from './bindings.js';
+export type { CanonicalLocalFulfillmentStatus, CustomerFulfillmentStep } from "@openlup/core/fulfillment";
+```
+## dist/fulfillment/contracts/label.d.ts
+
+```ts
+import type { FulfillmentDispatchRequest, FulfillmentRefusal } from "./dispatch.js";
+/** Durable storage pointer. No signed URL or credential belongs here. */
+export interface LabelDocument {
+    objectRef: string;
+    mediaType: "application/pdf";
+    externalRef: string | null;
+}
+export interface FulfillmentLabelPort {
+    create(input: FulfillmentDispatchRequest): Promise<{
+        kind: "created";
+        parcelRef: string;
+        document: LabelDocument | null;
+    } | {
+        kind: "refused";
+        refusal: FulfillmentRefusal;
+    }>;
+    /** Transient host response only; never part of a store record. */
+    read(document: LabelDocument): Promise<{
+        kind: "available";
+        url: string;
+        expiresAt: string | null;
+    } | {
+        kind: "refused";
+        refusal: FulfillmentRefusal;
+    }>;
+    void(input: {
+        parcelRef: string;
+        document: LabelDocument | null;
+    }): Promise<{
+        providerDeletion: "confirmed" | "unconfirmed";
+        labelDeleted: boolean;
+        canProceed: boolean;
+        refusal?: FulfillmentRefusal;
+    }>;
+}
+```
+## dist/fulfillment/contracts/nativeUnsupported.d.ts
+
+```ts
+/** Shared refusal for host-owned operations without native parity. No partial write is permitted. */
+export interface FulfillmentNativeUnsupported {
+    readonly kind: 'native_unsupported';
+    readonly reason: 'host_binding_required';
+    readonly retryable: false;
+}
+```
+## dist/fulfillment/contracts/observation.d.ts
+
+```ts
+import type { NormalizedFulfillmentFact } from "@openlup/core/fulfillment";
+import type { CanonicalLocalFulfillmentStatus } from "./index.js";
+import type { FulfillmentRefusal } from "./dispatch.js";
+/** Explicit adopter policy, forwarded through each durable observation projection. */
+export interface FulfillmentObservationCodecs {
+    approveReference?(value: string): boolean;
+    /** Overrides the query/fragment default; HTTPS, no credentials and URL approval still apply. */
+    trackingUrl?(url: string): string | null;
+}
+export interface FulfillmentTrackingReference {
+    trackingNumber: string; /** Normalized carrier kind, never a raw provider code. */
+    carrierRef: string | null;
+    serviceRef: string | null;
+    publicUrl: string | null;
+}
+/** Durable normalized envelope. eventKey, not the receivedAt-bearing fact fingerprint, deduplicates retries. */
+export interface FulfillmentObservation {
+    fact: NormalizedFulfillmentFact<CanonicalLocalFulfillmentStatus>;
+    eventKind: "shipment.accepted" | "order.processing_started" | "order.picked" | "order.shipped" | "order.delivered" | "parcel.exception" | "parcel.cancelled";
+    eventKey: string;
+    firstReceivedAt: string;
+    correlation: {
+        orderRef: string | null;
+        fulfillmentRef: string | null;
+        externalRef: string | null;
+        orderNumber: string | null;
+        providerFulfillmentRef: string | null;
+        parcelRef: string | null;
+    };
+    trackingRefs: readonly FulfillmentTrackingReference[];
+    /** Original provider status tokens; canonical status does not identify an occurrence. */
+    providerStatus?: {
+        primary: string | null;
+        subStatus: string | null;
+    };
+    diagnostics?: {
+        redactedFieldCount?: number;
+        admission?: {
+            rejectedTrackingRefs: number;
+            rejectedTrackingUrls: number;
+        };
+        refusal?: FulfillmentRefusal;
+        stockContention?: {
+            sqlState: "55P03";
+            phase: "provider_stock_consumed";
+            retryable: true;
+        };
+        annotation?: "recorded" | "failed";
+        recoveredPickedReceipt?: {
+            receiptRef: string;
+            closed: boolean;
+        };
+    };
+}
+export interface FulfillmentObservationPort {
+    /** Authenticate untouched bytes before parsing. Inputs live only during verification. */
+    verifyAndNormalize(input: {
+        rawBody: Uint8Array;
+        headers: Readonly<Record<string, string>>;
+        receivedAt: string;
+    }): Promise<{
+        kind: "verified";
+        observation: FulfillmentObservation;
+    } | {
+        kind: "refused";
+        refusal: FulfillmentRefusal;
+        diagnostics?: {
+            invalidTimestamp?: true;
+            rejectedCorrelationRefs?: number;
+        };
+    }>;
+}
+```
+## dist/fulfillment/contracts/operator.d.ts
+
+```ts
+import type { FulfillmentNativeUnsupported } from './nativeUnsupported.js';
+/** Host transaction inputs. actorUserId and idempotencyKey are required for attribution and replay receipts. */
+interface MutationInput {
+    idempotencyKey: string;
+    actorUserId: string;
+    metadata?: Record<string, unknown>;
+}
+interface ParcelMutationInput extends MutationInput {
+    fulfillmentOrderId: string;
+}
+type AdminCommerceFulfillmentCreateRequest = MutationInput & {
+    orderId: string;
+};
+type AdminCommerceFulfillmentRecordProviderAttemptRequest = ParcelMutationInput & {
+    providerKind: string;
+    status: 'recorded' | 'succeeded' | 'failed';
+    requestPayload?: Record<string, unknown>;
+    responsePayload?: Record<string, unknown>;
+    error?: string | null;
+};
+type AdminCommerceFulfillmentRecordLabelRequest = ParcelMutationInput & {
+    providerKind: string;
+    providerTrackingId: string;
+    labelUrl?: string | null;
+    deliveryEstimateDays?: number | null;
+    rawProviderPayload?: Record<string, unknown>;
+};
+type AdminCommerceFulfillmentHandOffRequest = ParcelMutationInput;
+type AdminCommerceFulfillmentTrackingEventRequest = ParcelMutationInput & {
+    status: 'in_transit' | 'delivered' | 'exception';
+    providerTrackingId?: string;
+    rawEvent?: Record<string, unknown>;
+};
+type AdminCommerceFulfillmentCancelRequest = ParcelMutationInput & {
+    reason: string;
+};
+export interface FulfillmentOperatorMutationResult {
+    contractVersion: 'commerce.fulfillment.v0';
+    fulfillmentOrderId: string;
+    orderId: string;
+    status: 'created' | 'packed' | 'label_pending' | 'label_created' | 'handed_over' | 'in_transit' | 'delivered' | 'exception' | 'cancelled';
+    replayed: boolean;
+}
+export interface FulfillmentOperatorMutationPort {
+    createCommerceFulfillmentOrder(request: AdminCommerceFulfillmentCreateRequest & {
+        actorUserId: string;
+    }): Promise<FulfillmentOperatorMutationResult | FulfillmentNativeUnsupported>;
+    recordCommerceFulfillmentProviderAttempt(request: AdminCommerceFulfillmentRecordProviderAttemptRequest & {
+        actorUserId: string;
+    }): Promise<FulfillmentOperatorMutationResult | FulfillmentNativeUnsupported>;
+    recordCommerceFulfillmentLabel(request: AdminCommerceFulfillmentRecordLabelRequest & {
+        actorUserId: string;
+    }): Promise<FulfillmentOperatorMutationResult | FulfillmentNativeUnsupported>;
+    handOffCommerceFulfillmentOrder(request: AdminCommerceFulfillmentHandOffRequest & {
+        actorUserId: string;
+    }): Promise<FulfillmentOperatorMutationResult | FulfillmentNativeUnsupported>;
+    recordCommerceFulfillmentTrackingEvent(request: AdminCommerceFulfillmentTrackingEventRequest & {
+        actorUserId: string;
+    }): Promise<FulfillmentOperatorMutationResult | FulfillmentNativeUnsupported>;
+    cancelCommerceFulfillmentOrder(request: AdminCommerceFulfillmentCancelRequest & {
+        actorUserId: string;
+    }): Promise<FulfillmentOperatorMutationResult | FulfillmentNativeUnsupported>;
+}
+export {};
+```
+## dist/fulfillment/contracts/read.d.ts
+
+```ts
+import type { SubscriptionCycleStatus } from '@openlup/core/subscription';
+import type { PaymentIntentStatus } from '@openlup/core/payment';
+import type { FulfillmentNativeUnsupported } from './nativeUnsupported.js';
+export type FulfillmentOrderStatus = 'draft' | 'pending_payment' | 'paid' | 'failed' | 'expired' | 'fulfillment_pending' | 'cancelled' | 'fulfilled' | 'refunded';
+export type FulfillmentPaymentStatus = 'not_started' | PaymentIntentStatus;
+export interface FulfillmentCommerceOrder {
+    id: string;
+    orderId: string;
+    clientId: string | null;
+    status: 'created' | 'packed' | 'label_pending' | 'label_created' | 'handed_over' | 'in_transit' | 'delivered' | 'exception' | 'cancelled';
+    providerKind: string | null;
+    providerTrackingId: string | null;
+    shippingAddress: {
+        addressId: string;
+        clientId: string;
+        label: string | null;
+        line1: string;
+        line2: string | null;
+        city: string;
+        postalCode: string;
+        country: string;
+    };
+    lines: {
+        id: string | null;
+        orderItemId: string;
+        skuId: string;
+        sku: string;
+        title: string | null;
+        quantity: number;
+        inventoryReservationIds: string[];
+        productSnapshot: Record<string, unknown>;
+    }[];
+    payment: {
+        paymentIntentId: string;
+        paymentStatus: FulfillmentPaymentStatus;
+        providerPaymentId: string | null;
+    };
+    inventory: {
+        status: 'not_checked' | 'reserved' | 'missing' | 'released' | 'expired' | 'consumed' | 'review_required';
+        reservationId: string | null;
+        reservationStatus: 'reserved' | 'consumed' | 'released' | 'expired' | null;
+        expiresAt: string | null;
+        locationId: string | null;
+        locationCode: string | null;
+    };
+    omsEligibility: {
+        allowed: boolean;
+        reason: 'order_not_paid' | 'payment_not_succeeded' | 'subscription_cycle_not_paid' | 'active_hold' | 'missing_shipping_address' | 'inventory_review' | 'risk_review' | null;
+    };
+    latestOperation: {
+        id: string;
+        type: 'created' | 'packed' | 'provider_attempt_recorded' | 'label_created' | 'handed_over' | 'tracking_event_recorded' | 'cancelled';
+        occurredAt: string;
+        actorUserId: string | null;
+        payload: Record<string, unknown>;
+    } | null;
+    createdAt: string;
+    updatedAt: string;
+}
+export interface FulfillmentOrdersListRequest {
+    page: number;
+    pageSize: number;
+    status?: FulfillmentCommerceOrder['status'];
+}
+export interface FulfillmentOrderDetailRequest {
+    fulfillmentOrderId?: string;
+    orderId?: string;
+}
+export interface FulfillmentOrdersListResponse {
+    contractVersion: 'commerce.fulfillment.v0';
+    orders: FulfillmentCommerceOrder[];
+    totalCount: number;
+    page: number;
+    pageSize: number;
+}
+export interface FulfillmentOrderDetailResponse {
+    contractVersion: 'commerce.fulfillment.v0';
+    order: FulfillmentCommerceOrder;
+}
+/** Host-owned persisted projections. Payment statuses already come from the payments projection. */
+export interface FulfillmentCommerceReadPort {
+    listCommerceFulfillmentOrders(request: FulfillmentOrdersListRequest): Promise<FulfillmentOrdersListResponse | FulfillmentNativeUnsupported>;
+    getCommerceFulfillmentOrderDetail(request: FulfillmentOrderDetailRequest): Promise<FulfillmentOrderDetailResponse | null | FulfillmentNativeUnsupported>;
+}
+export interface FulfillmentShipmentsOverviewRequest {
+    shippedFilter: 'today' | '7d' | '30d' | 'all';
+}
+/** Bucket rows are opaque host data; native shipment counts cannot replace these buckets. */
+export interface FulfillmentShipmentsOverviewResponse {
+    approved: Record<string, unknown>[];
+    packing: Record<string, unknown>[];
+    shippedToday: number;
+    shipped: Record<string, unknown>[];
+}
+export interface FulfillmentShipmentsOverviewPort {
+    getShipmentsOverview(request: FulfillmentShipmentsOverviewRequest): Promise<FulfillmentShipmentsOverviewResponse | FulfillmentNativeUnsupported>;
+}
+/** Existing commerce eligibility remains host-owned; the read model only supplies its facts. */
+export interface FulfillmentCommerceReadPolicy {
+    evaluateCommerceFulfillmentEligibility(input: {
+        orderMode: 'one_time' | 'subscription_cycle';
+        orderStatus: FulfillmentOrderStatus;
+        paymentStatus: FulfillmentPaymentStatus;
+        subscriptionCycleStatus: SubscriptionCycleStatus | null;
+        activeHoldCount: number;
+        hasShippingAddress: boolean;
+        inventoryStatus: FulfillmentCommerceOrder['inventory']['status'];
+    }): FulfillmentCommerceOrder['omsEligibility'];
+}
+export type { FulfillmentProgressInput, FulfillmentProgressPresentation } from "@openlup/core/fulfillment";
+```
+## dist/fulfillment/contracts/readback.d.ts
+
+```ts
+import type { FulfillmentObservation } from "./observation.js";
+import type { FulfillmentRefusal } from "./dispatch.js";
+export type FulfillmentReadbackResult = {
+    kind: "found";
+    externalRef: string;
+    createdAt: string | null;
+    updatedAt: string | null;
+    observation: FulfillmentObservation;
+} | {
+    kind: "absent";
+    scope: {
+        providerRef: string;
+        requestKey: string;
+        fulfillmentRef: string;
+        externalRef: string | null;
+    };
+    proof: {
+        kind: "authoritative_exact_lookup";
+        evidenceRef: `evidence:${string}`;
+        checkedAt: string;
+    };
+} | {
+    kind: "unknown";
+    refusal: FulfillmentRefusal;
+} | {
+    kind: "unsupported";
+    refusal: FulfillmentRefusal;
+};
+export interface FulfillmentReadbackPort {
+    /** Empty pages and missing local rows cannot certify external absence. */
+    read(input: {
+        providerRef: string;
+        requestKey: string;
+        fulfillmentRef: string;
+        externalRef: string | null;
+        mode: "command" | "parcel";
+    }): Promise<FulfillmentReadbackResult>;
+}
+/** Collection observation is separate from authoritative exact lookup. */
+export type FulfillmentReconciliationObservation = FulfillmentReadbackResult | {
+    kind: "unmapped";
+    externalRef: string | null;
+    evidence: Pick<FulfillmentObservation, "correlation" | "eventKey" | "providerStatus" | "diagnostics">;
+};
+export interface FulfillmentObservationPagePort {
+    readPage(input: {
+        page: number;
+        size: number;
+    }): Promise<{
+        kind: "page";
+        rows: readonly FulfillmentReconciliationObservation[];
+    } | {
+        kind: "page_exhausted";
+    } | {
+        kind: "failed";
+        refusal: FulfillmentRefusal;
+        error?: import("./dispatch.js").FulfillmentOperationError;
+    }>;
+}
+```
+## dist/fulfillment/contracts/replacement.d.ts
+
+```ts
+import type { FulfillmentNativeUnsupported } from './nativeUnsupported.js';
+export interface FulfillmentReplacementRequest {
+    idempotencyKey: string;
+    actorUserId: string;
+    orderId: string;
+    reason: 'damaged' | 'lost' | 'returned_undelivered' | 'other';
+    metadata?: Record<string, unknown>;
+}
+export interface FulfillmentReplacementResult {
+    contractVersion: 'commerce.v0';
+    operation: {
+        id: string;
+        orderId: string;
+        type: 'hold_created' | 'hold_released' | 'fulfillment_reviewed' | 'support_note' | 'shipping_address_updated' | 'order_marked_refunded' | 'order_cancelled_manual' | 'replacement_shipment_requested';
+        holdId: string | null;
+        actorUserId: string | null;
+        occurredAt: string;
+        payload: Record<string, unknown>;
+    };
+    replacement: {
+        fulfillmentOrderId: string;
+        orderId: string;
+        sequenceNo: number;
+        replacesFulfillmentOrderId: string;
+        reason: FulfillmentReplacementRequest['reason'];
+        status: string;
+    };
+    releasedHoldIds: string[];
+    replayed: boolean;
+}
+/** Host owns atomic paid/contact/current-parcel/hold/reservation checks and actor-bound fingerprint/replay receipts. No confirmation or dispatch operation exists here. */
+export interface FulfillmentReplacementPort {
+    requestReplacementShipment(request: FulfillmentReplacementRequest): Promise<FulfillmentReplacementResult | FulfillmentNativeUnsupported>;
+}
+```
+## dist/fulfillment/contracts/store.d.ts
+
+```ts
+import type { DispatchEvidence, FulfillmentDispatchRequest, FulfillmentDispatchResult, FulfillmentRefusal } from "./dispatch.js";
+export interface DispatchRecord {
+    dispatchRef: string;
+    requestKey: string;
+    fulfillmentRef: string;
+    orderRef: string;
+    parcelRef: string | null;
+    externalRef: string | null;
+    mode: "shadow" | "stage" | "live";
+    status: "draft" | "submitting" | "created" | "uncertain" | "failed" | "cancel_requested" | "cancelled";
+    evidence: DispatchEvidence;
+    replayed: boolean;
+    acceptance?: Extract<FulfillmentDispatchResult, {
+        kind: "accepted";
+    }> | null;
+}
+export interface FulfillmentStorePort {
+    read(requestKey: string): Promise<DispatchRecord | null>;
+    readCandidate(fulfillmentRef: string): Promise<FulfillmentDispatchRequest | null>;
+    prepare(fulfillmentRef: string): Promise<{
+        disposition: "ready" | "withheld";
+        contactRevision: number | null;
+    }>;
+    /** Evidence comes from adapter prepare, before any external submission. */
+    claim(input: {
+        requestKey: string;
+        fulfillmentRef: string;
+        orderRef: string;
+        parcelRef: string | null;
+        mode: DispatchRecord["mode"];
+        evidence: DispatchEvidence;
+    }): Promise<{
+        kind: "claimed";
+        record: DispatchRecord;
+    } | {
+        kind: "refused";
+        refusal: FulfillmentRefusal;
+    }>;
+    /** G14: idempotent mapped attempt; persist only prepared, sanitized evidence. */
+    recordProviderAttempt(attemptKey: string, fulfillmentRef: string, preparedEvidence: DispatchEvidence, mode: DispatchRecord["mode"], status: "recorded"): Promise<{
+        replayed: boolean;
+    }>;
+    /** Bind submission to the same prepared command fingerprint recorded by claim. */
+    begin(input: {
+        dispatchRef: string;
+        commandFingerprint: string;
+    }): Promise<{
+        kind: "begun";
+        record: DispatchRecord;
+        begun: boolean;
+        replayed: boolean;
+    } | {
+        kind: "refused";
+        refusal: FulfillmentRefusal;
+    }>;
+    /** Accepted rescue retains externalRef as uncertain; only acknowledge closes the local acceptance atomically. */
+    finalize(input: {
+        dispatchRef: string;
+        result: FulfillmentDispatchResult;
+    }): Promise<DispatchRecord>;
+    acknowledge(input: {
+        dispatchRef: string;
+        acceptance: Extract<FulfillmentDispatchResult, {
+            kind: "accepted";
+        }>;
+    }): Promise<{
+        acknowledged: boolean;
+        replayed: boolean;
+        record: DispatchRecord;
+    }>;
+    markStaleSubmissionsUncertain(staleBefore: string): Promise<number>;
+}
+export interface FulfillmentPaidHandoffPort {
+    ensureObligation(input: {
+        requestKey: string;
+        orderRef: string;
+        paidFactRef: string;
+    }): Promise<{
+        fulfillmentRef: string;
+        replayed: boolean;
+    }>;
+    acknowledge(input: {
+        requestKey: string;
+        fulfillmentRef: string;
+    }): Promise<{
+        acknowledged: boolean;
+        replayed: boolean;
+    }>;
+}
+```
+## dist/fulfillment/contracts/sync.d.ts
+
+```ts
+import type { FulfillmentRefusal } from "./dispatch.js";
+/** Collection identity never masquerades as a monotonic provider revision. */
+interface SyncIdentity {
+    providerRef: string;
+    syncRunId: string;
+    collectedAt: string;
+    sourceRevision: string | null;
+    revisionSource: "provider" | "collection" | "unknown";
+}
+export interface StockSnapshot extends SyncIdentity {
+    skuRef: string;
+    quantityKind: "snapshot";
+    totalQuantity: number;
+    forSaleQuantity: number;
+    reservedOrUnavailableQuantity: number;
+}
+export interface StockMovement extends SyncIdentity {
+    skuRef: string;
+    quantityKind: "movement";
+    quantity: number;
+    occurredAt: string | null;
+    operationType: string | null;
+    documentRef: string | null;
+    lotRef: string | null;
+    expirationDate: string | null;
+}
+export interface SyncCursor {
+    status: "idle" | "running" | "succeeded" | "failed";
+    lastStockSyncedAt: string | null;
+    lastMovementOccurredAt: string | null;
+    /** Sanitized continuation only; no credentials, URLs or arbitrary provider payload. */
+    continuation: {
+        nextRef: string | null;
+        startLocalDate: string | null;
+        endLocalDate: string | null;
+    };
+    /** G15: successful sellable coverage gaps; legacy absent values read as []. */
+    coverageGapSkus?: readonly string[];
+    refusal: FulfillmentRefusal | null;
+    /** Per-entry bounded diagnostics and run evidence in the existing cursor JSON, never raw errors. */
+    syncRunId?: string;
+    counts?: {
+        checked: number;
+        updated: number;
+        movements: number;
+        rejected: number;
+        failures: number;
+        providerCalls: number;
+        readBacks: number;
+    };
+    items?: readonly {
+        kind?: "stock" | "movement";
+        itemIndex: number;
+        skuRef: string | null;
+        status: "recorded" | "failed" | "rejected";
+        reason?: string;
+        activeReserved?: number;
+        sellableNow?: number | null;
+        coverageGapQuantity?: number;
+    }[];
+    alerts?: readonly {
+        skuRef: string;
+        thresholdKind: Exclude<Threshold, "forecast">;
+        severity: "info" | "warning" | "critical";
+        providerForSaleQuantity: number;
+        localAvailableQuantity: number;
+        detectedAt: string;
+        activeReserved?: number;
+        coverageGapQuantity?: number;
+        gapHours?: number;
+        thresholdHours?: number;
+    }[];
+    staleSync?: {
+        gapHours: number;
+        thresholdHours: number;
+        detectedAt: string;
+    };
+    error?: {
+        reason: string;
+        providerError?: {
+            operation: "get_stock" | "get_stock_movements";
+            status: number | null;
+            code: string;
+            retryable: boolean;
+        };
+    } | null;
+}
+export interface LocalStock {
+    skuRef: string;
+    onHand: number;
+    reserved: number;
+    unavailable: number;
+    safetyStock: number;
+}
+type Threshold = "safety_stock" | "reservation_coverage" | "forecast" | "stale_sync";
+type Conflict = "unknown_sku" | "ean_conflict" | "kind_quantity_conflict";
+export interface FulfillmentStockSyncProvider {
+    /** Rejected rows carry only their input index and a closed reason, never an unsafe reference. */
+    getStock(): Promise<(StockSnapshot | {
+        kind: "rejected";
+        itemIndex: number;
+        reason: "invalid_sku_ref";
+    })[]>;
+    getStockMovements(input?: {
+        startLocalDate?: string;
+        endLocalDate?: string;
+        size?: number;
+    }): Promise<(StockMovement | {
+        kind: "rejected";
+        itemIndex: number;
+        reason: "invalid_sku_ref";
+    })[]>;
+}
+export interface FulfillmentStockSyncPort {
+    readCursor(): Promise<SyncCursor | null>;
+    /** G16: unaggregated lines at the worker clock; quantity retains the four local balances. */
+    readLocalInventoryStock(requestedAt: string): Promise<readonly {
+        skuRef: string;
+        quantity: Pick<LocalStock, "onHand" | "reserved" | "unavailable" | "safetyStock">;
+        fulfillable: boolean;
+        locationStatus: "active" | "inactive";
+        lotStatus: "available" | "quarantined" | "expired" | "recalled" | null;
+        expiresAt: string | null;
+    }[]>;
+    readSkuInventoryClasses(skus: string[]): Promise<Map<string, "sellable" | "packaging" | null>>;
+    readActiveReservations(skus: string[], requestedAt: string): Promise<Map<string, number>>;
+    recordCursor(input: SyncCursor): Promise<void>;
+    recordStockSnapshot(input: {
+        requestKey: string;
+        snapshot: StockSnapshot;
+        local: LocalStock;
+        mismatchKind: "none";
+        inventoryClass: "sellable" | "packaging" | null;
+    }): Promise<{
+        replayed: boolean;
+        readBack: boolean;
+    }>;
+    recordProviderStockCurrent(input: {
+        requestKey: string;
+        snapshot: StockSnapshot;
+        inventoryClass: "sellable" | "packaging" | null;
+        lastSyncedAt: string;
+        staleAfter: string;
+    }): Promise<{
+        replayed: boolean;
+        readBack: boolean;
+    }>;
+    recordMovement(input: {
+        requestKey: string;
+        movement: StockMovement;
+    }): Promise<{
+        replayed: boolean;
+        readBack: boolean;
+    }>;
+    recordLowStockEvidence(input: {
+        requestKey: string;
+        skuRef: string;
+        thresholdKind: Exclude<Threshold, "forecast">;
+        severity: "info" | "warning" | "critical";
+        providerForSaleQuantity: number;
+        localAvailableQuantity: number;
+        syncRunId: string;
+    }): Promise<{
+        replayed: boolean;
+    }>;
+    resolveLowStockEvidence(input: {
+        skuRef: string;
+        activeThresholdKinds: Threshold[];
+        syncRunId: string;
+    }): Promise<{
+        resolved: number;
+    }>;
+}
+interface ProductPack {
+    ean: string;
+    quantity: number;
+}
+export interface FulfillmentProductSyncProvider {
+    /** null means skipped (no private push metadata), never a newly created local SKU. */
+    ensureProduct(sku: string): Promise<{
+        replayed: boolean;
+    } | null>;
+    getProductPacks(sku: string): Promise<ProductPack[]>;
+    addProductPack(sku: string, pack: ProductPack): Promise<void>;
+    listStockedSkus(): Promise<string[]>;
+}
+export interface FulfillmentProductSyncPort {
+    listLocalProductPacks(): Promise<{
+        sku: string;
+        packs: (ProductPack & {
+            kind: "unit" | "collective";
+        })[];
+    }[]>;
+    markPackSynced(input: {
+        sku: string;
+        ean: string;
+    }): Promise<void>;
+    upsertPulledPack(input: {
+        sku: string;
+        ean: string;
+        quantity: number;
+        kind: "unit" | "collective";
+    }): Promise<{
+        conflict: "none" | "local_locked_mismatch" | "ean_owned_by_other_sku" | "sku_not_found";
+        replayed: boolean;
+    }>;
+    recordReconciliationEvidence(input: {
+        requestKey: string;
+        sku: string;
+        ean: string | null;
+        conflictKind: Conflict;
+        providerQuantity: number;
+        identity: SyncIdentity;
+        refusal: FulfillmentRefusal | null;
+    }): Promise<{
+        replayed: boolean;
+    }>;
+    resolveReconciliationEvidence(input: {
+        sku: string;
+        activeConflictKinds: Conflict[];
+        syncRunId: string;
+    }): Promise<{
+        resolved: number;
+    }>;
+}
+export {};
+```
+## dist/fulfillment/currentFulfillmentParcel.d.ts
+
+```ts
+export { parcelSequenceNo, compareParcelPrecedence, currentParcel, currentParcelFor, currentParcelPerOrder, currentParcelFirst, belongsToParcel, rowsForParcel } from "@openlup/core/fulfillment";
+export type { FulfillmentParcelRow, ParcelAttributedRow } from "@openlup/core/fulfillment";
+```
+## dist/fulfillment/delayReadModel.d.ts
+
+```ts
+import type { CustomerDeliveryAlignment, FulfillmentCustomerAlignmentRowsReader } from './contracts/customerAlignment.js';
+import type { FulfillmentNativeUnsupported } from './contracts/nativeUnsupported.js';
+export type DeliveryAlignmentRow = Record<string, unknown>;
+export type DeliveryAlignmentRowsReader = FulfillmentCustomerAlignmentRowsReader;
+/**
+ * Reads only customer-safe current cases. An aligned case remains current while
+ * its aligned schedule is still the subscription's next schedule; once a paid
+ * cycle advances `next_cycle_at`, the historical ledger row disappears from UI.
+ */
+export declare function readFulfillmentDelay(readRows: DeliveryAlignmentRowsReader | undefined, nextCycleAtBySubscription: ReadonlyMap<string, string | null>): Promise<Map<string, CustomerDeliveryAlignment> | FulfillmentNativeUnsupported>;
+export declare function mapCurrentDeliveryAlignments(rows: DeliveryAlignmentRow[], nextCycleAtBySubscription: ReadonlyMap<string, string | null>): Map<string, CustomerDeliveryAlignment>;
+```
+## dist/fulfillment/deliveryAlignmentReadModel.d.ts
+
+```ts
+import type { DeliveryAlignmentPort } from './contracts/index.js';
+import type { PgExecutor } from './postgresDispatchStore.js';
+/** Server-authorized projection; database browser roles have no direct access. */
+export declare function readDeliveryAlignment(db: PgExecutor, fulfillmentRef: string): ReturnType<DeliveryAlignmentPort['read']>;
+```
+## dist/fulfillment/fulfillmentObservationEffects.d.ts
+
+```ts
+import type { FulfillmentObservation } from "./contracts/index.js";
+/** Ledger effects for an already accepted observation; acceptance and retry belong to the caller. */
+interface FulfillmentObservationPort<TrackingStatus> {
+    markProviderStockConsumed(input: {
+        idempotencyKey: string;
+        fulfillmentOrderId: string;
+    }): Promise<{
+        replayed: boolean;
+    }>;
+    markHandedOver(input: {
+        idempotencyKey: string;
+        fulfillmentOrderId: string;
+        suppressDispatched: boolean;
+    }): Promise<{
+        replayed: boolean;
+    }>;
+    recordTrackingReference(input: {
+        idempotencyKey: string;
+        orderId: string;
+        fulfillmentOrderId: string;
+        trackingNumber: string;
+        trackingUrl: string | null;
+        carrierKind: string | null;
+        service: string | null;
+        status: TrackingStatus;
+        observation: FulfillmentObservation;
+    }): Promise<{
+        replayed: boolean;
+        readBack: boolean;
+    }>;
+}
+interface FulfillmentObservationTrackingReference {
+    trackingNumber: string;
+    trackingUrl?: string | null;
+    carrierKind?: string | null;
+    service?: string | null;
+}
+interface FulfillmentObservationInput<LocalStatus, TrackingStatus> {
+    port: FulfillmentObservationPort<TrackingStatus>;
+    localStatus: LocalStatus;
+    ids: {
+        orderId: string;
+        fulfillmentOrderId: string;
+    };
+    observation: FulfillmentObservation;
+    trackingRefs: readonly FulfillmentObservationTrackingReference[];
+    stockIdempotencyKey: string;
+    handoffIdempotencyKey: string;
+    trackingIdempotencyKey: (trackingNumber: string) => string;
+    issueAccountingInvoice?: () => Promise<void>;
+    onReplayed?: () => void;
+    onTrackingRecorded?: (result: {
+        replayed: boolean;
+        readBack: boolean;
+    }) => void;
+}
+/** Pure status decisions/projection; the mechanism owns every effect and await. */
+interface FulfillmentObservationStatusPolicy<LocalStatus, TrackingStatus> {
+    consumesStock(status: LocalStatus): boolean;
+    handsOver(status: LocalStatus): boolean;
+    suppressDispatched(status: LocalStatus): boolean;
+    trackingStatus(status: LocalStatus): TrackingStatus;
+}
+/** Stock → durable handover → every tracking reference → optional invoice. No catches or retries. */
+export declare function applyFulfillmentObservationEffects<LocalStatus, TrackingStatus>(input: FulfillmentObservationInput<LocalStatus, TrackingStatus>, policy: FulfillmentObservationStatusPolicy<LocalStatus, TrackingStatus>): Promise<void>;
+export {};
+```
+## dist/fulfillment/handlerSchemas.d.ts
+
+```ts
+import { z } from 'zod';
+export declare const COMMERCE_FULFILLMENT_CONTRACT_VERSION = "commerce.fulfillment.v0";
+export declare const COMMERCE_FULFILLMENT_STATUSES: readonly ["created", "packed", "label_pending", "label_created", "handed_over", "in_transit", "delivered", "exception", "cancelled"];
+export declare const COMMERCE_FULFILLMENT_OPERATION_TYPES: readonly ["created", "packed", "provider_attempt_recorded", "label_created", "handed_over", "tracking_event_recorded", "cancelled"];
+export declare const COMMERCE_FULFILLMENT_PROVIDER_ATTEMPT_STATUSES: readonly ["recorded", "succeeded", "failed"];
+export declare const commerceFulfillmentStatusSchema: z.ZodEnum<{
+    created: "created";
+    cancelled: "cancelled";
+    delivered: "delivered";
+    packed: "packed";
+    label_pending: "label_pending";
+    label_created: "label_created";
+    handed_over: "handed_over";
+    in_transit: "in_transit";
+    exception: "exception";
+}>;
+export declare const commerceFulfillmentOperationTypeSchema: z.ZodEnum<{
+    created: "created";
+    cancelled: "cancelled";
+    packed: "packed";
+    label_created: "label_created";
+    handed_over: "handed_over";
+    provider_attempt_recorded: "provider_attempt_recorded";
+    tracking_event_recorded: "tracking_event_recorded";
+}>;
+export declare const commerceFulfillmentProviderAttemptStatusSchema: z.ZodEnum<{
+    failed: "failed";
+    succeeded: "succeeded";
+    recorded: "recorded";
+}>;
+export declare const commerceFulfillmentPaymentStatusSchema: z.ZodEnum<{
+    expired: "expired";
+    created: "created";
+    failed: "failed";
+    cancelled: "cancelled";
+    refunded: "refunded";
+    not_started: "not_started";
+    requires_action: "requires_action";
+    processing: "processing";
+    partially_refunded: "partially_refunded";
+    disputed: "disputed";
+    succeeded: "succeeded";
+}>;
+export declare const commerceFulfillmentInventoryStatusSchema: z.ZodEnum<{
+    expired: "expired";
+    not_checked: "not_checked";
+    reserved: "reserved";
+    missing: "missing";
+    released: "released";
+    consumed: "consumed";
+    review_required: "review_required";
+}>;
+export declare const commerceFulfillmentBlockReasonSchema: z.ZodEnum<{
+    order_not_paid: "order_not_paid";
+    payment_not_succeeded: "payment_not_succeeded";
+    subscription_cycle_not_paid: "subscription_cycle_not_paid";
+    active_hold: "active_hold";
+    missing_shipping_address: "missing_shipping_address";
+    inventory_review: "inventory_review";
+    risk_review: "risk_review";
+}>;
+export declare const commerceFulfillmentShippingAddressSnapshotSchema: z.ZodObject<{
+    addressId: z.ZodGUID;
+    clientId: z.ZodGUID;
+    label: z.ZodNullable<z.ZodString>;
+    line1: z.ZodString;
+    line2: z.ZodNullable<z.ZodString>;
+    city: z.ZodString;
+    postalCode: z.ZodString;
+    country: z.ZodString;
+}, z.core.$strict>;
+export declare const commerceFulfillmentLineSchema: z.ZodObject<{
+    id: z.ZodNullable<z.ZodGUID>;
+    orderItemId: z.ZodGUID;
+    skuId: z.ZodGUID;
+    sku: z.ZodString;
+    title: z.ZodNullable<z.ZodString>;
+    quantity: z.ZodNumber;
+    inventoryReservationIds: z.ZodArray<z.ZodGUID>;
+    productSnapshot: z.ZodRecord<z.ZodString, z.ZodUnknown>;
+}, z.core.$strict>;
+export declare const commerceFulfillmentPaymentSummarySchema: z.ZodObject<{
+    paymentIntentId: z.ZodGUID;
+    paymentStatus: z.ZodEnum<{
+        expired: "expired";
+        created: "created";
+        failed: "failed";
+        cancelled: "cancelled";
+        refunded: "refunded";
+        not_started: "not_started";
+        requires_action: "requires_action";
+        processing: "processing";
+        partially_refunded: "partially_refunded";
+        disputed: "disputed";
+        succeeded: "succeeded";
+    }>;
+    providerPaymentId: z.ZodNullable<z.ZodString>;
+}, z.core.$strict>;
+export declare const commerceFulfillmentInventorySummarySchema: z.ZodObject<{
+    status: z.ZodEnum<{
+        expired: "expired";
+        not_checked: "not_checked";
+        reserved: "reserved";
+        missing: "missing";
+        released: "released";
+        consumed: "consumed";
+        review_required: "review_required";
+    }>;
+    reservationId: z.ZodNullable<z.ZodGUID>;
+    reservationStatus: z.ZodNullable<z.ZodEnum<{
+        expired: "expired";
+        reserved: "reserved";
+        released: "released";
+        consumed: "consumed";
+    }>>;
+    expiresAt: z.ZodNullable<z.ZodString>;
+    locationId: z.ZodNullable<z.ZodGUID>;
+    locationCode: z.ZodNullable<z.ZodString>;
+}, z.core.$strict>;
+export declare const commerceFulfillmentOmsEligibilitySchema: z.ZodObject<{
+    allowed: z.ZodBoolean;
+    reason: z.ZodNullable<z.ZodEnum<{
+        order_not_paid: "order_not_paid";
+        payment_not_succeeded: "payment_not_succeeded";
+        subscription_cycle_not_paid: "subscription_cycle_not_paid";
+        active_hold: "active_hold";
+        missing_shipping_address: "missing_shipping_address";
+        inventory_review: "inventory_review";
+        risk_review: "risk_review";
+    }>>;
+}, z.core.$strict>;
+export declare const commerceFulfillmentOperationSchema: z.ZodObject<{
+    id: z.ZodGUID;
+    type: z.ZodEnum<{
+        created: "created";
+        cancelled: "cancelled";
+        packed: "packed";
+        label_created: "label_created";
+        handed_over: "handed_over";
+        provider_attempt_recorded: "provider_attempt_recorded";
+        tracking_event_recorded: "tracking_event_recorded";
+    }>;
+    occurredAt: z.ZodString;
+    actorUserId: z.ZodNullable<z.ZodGUID>;
+    payload: z.ZodRecord<z.ZodString, z.ZodUnknown>;
+}, z.core.$strict>;
+export declare const commerceFulfillmentOrderSchema: z.ZodObject<{
+    id: z.ZodGUID;
+    orderId: z.ZodGUID;
+    clientId: z.ZodNullable<z.ZodGUID>;
+    status: z.ZodEnum<{
+        created: "created";
+        cancelled: "cancelled";
+        delivered: "delivered";
+        packed: "packed";
+        label_pending: "label_pending";
+        label_created: "label_created";
+        handed_over: "handed_over";
+        in_transit: "in_transit";
+        exception: "exception";
+    }>;
+    providerKind: z.ZodNullable<z.ZodString>;
+    providerTrackingId: z.ZodNullable<z.ZodString>;
+    shippingAddress: z.ZodObject<{
+        addressId: z.ZodGUID;
+        clientId: z.ZodGUID;
+        label: z.ZodNullable<z.ZodString>;
+        line1: z.ZodString;
+        line2: z.ZodNullable<z.ZodString>;
+        city: z.ZodString;
+        postalCode: z.ZodString;
+        country: z.ZodString;
+    }, z.core.$strict>;
+    lines: z.ZodArray<z.ZodObject<{
+        id: z.ZodNullable<z.ZodGUID>;
+        orderItemId: z.ZodGUID;
+        skuId: z.ZodGUID;
+        sku: z.ZodString;
+        title: z.ZodNullable<z.ZodString>;
+        quantity: z.ZodNumber;
+        inventoryReservationIds: z.ZodArray<z.ZodGUID>;
+        productSnapshot: z.ZodRecord<z.ZodString, z.ZodUnknown>;
+    }, z.core.$strict>>;
+    payment: z.ZodObject<{
+        paymentIntentId: z.ZodGUID;
+        paymentStatus: z.ZodEnum<{
+            expired: "expired";
+            created: "created";
+            failed: "failed";
+            cancelled: "cancelled";
+            refunded: "refunded";
+            not_started: "not_started";
+            requires_action: "requires_action";
+            processing: "processing";
+            partially_refunded: "partially_refunded";
+            disputed: "disputed";
+            succeeded: "succeeded";
+        }>;
+        providerPaymentId: z.ZodNullable<z.ZodString>;
+    }, z.core.$strict>;
+    inventory: z.ZodObject<{
+        status: z.ZodEnum<{
+            expired: "expired";
+            not_checked: "not_checked";
+            reserved: "reserved";
+            missing: "missing";
+            released: "released";
+            consumed: "consumed";
+            review_required: "review_required";
+        }>;
+        reservationId: z.ZodNullable<z.ZodGUID>;
+        reservationStatus: z.ZodNullable<z.ZodEnum<{
+            expired: "expired";
+            reserved: "reserved";
+            released: "released";
+            consumed: "consumed";
+        }>>;
+        expiresAt: z.ZodNullable<z.ZodString>;
+        locationId: z.ZodNullable<z.ZodGUID>;
+        locationCode: z.ZodNullable<z.ZodString>;
+    }, z.core.$strict>;
+    omsEligibility: z.ZodObject<{
+        allowed: z.ZodBoolean;
+        reason: z.ZodNullable<z.ZodEnum<{
+            order_not_paid: "order_not_paid";
+            payment_not_succeeded: "payment_not_succeeded";
+            subscription_cycle_not_paid: "subscription_cycle_not_paid";
+            active_hold: "active_hold";
+            missing_shipping_address: "missing_shipping_address";
+            inventory_review: "inventory_review";
+            risk_review: "risk_review";
+        }>>;
+    }, z.core.$strict>;
+    latestOperation: z.ZodNullable<z.ZodObject<{
+        id: z.ZodGUID;
+        type: z.ZodEnum<{
+            created: "created";
+            cancelled: "cancelled";
+            packed: "packed";
+            label_created: "label_created";
+            handed_over: "handed_over";
+            provider_attempt_recorded: "provider_attempt_recorded";
+            tracking_event_recorded: "tracking_event_recorded";
+        }>;
+        occurredAt: z.ZodString;
+        actorUserId: z.ZodNullable<z.ZodGUID>;
+        payload: z.ZodRecord<z.ZodString, z.ZodUnknown>;
+    }, z.core.$strict>>;
+    createdAt: z.ZodString;
+    updatedAt: z.ZodString;
+}, z.core.$strict>;
+export declare const adminCommerceFulfillmentOrdersListRequestSchema: z.ZodObject<{
+    page: z.ZodDefault<z.ZodCoercedNumber<unknown>>;
+    pageSize: z.ZodDefault<z.ZodCoercedNumber<unknown>>;
+    status: z.ZodOptional<z.ZodEnum<{
+        created: "created";
+        cancelled: "cancelled";
+        delivered: "delivered";
+        packed: "packed";
+        label_pending: "label_pending";
+        label_created: "label_created";
+        handed_over: "handed_over";
+        in_transit: "in_transit";
+        exception: "exception";
+    }>>;
+}, z.core.$strict>;
+export declare const adminCommerceFulfillmentOrderDetailRequestSchema: z.ZodObject<{
+    fulfillmentOrderId: z.ZodOptional<z.ZodGUID>;
+    orderId: z.ZodOptional<z.ZodGUID>;
+}, z.core.$strict>;
+export declare const adminCommerceFulfillmentCreateRequestSchema: z.ZodObject<{
+    idempotencyKey: z.ZodString;
+    orderId: z.ZodGUID;
+    metadata: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+}, z.core.$strict>;
+export declare const adminCommerceFulfillmentRecordProviderAttemptRequestSchema: z.ZodObject<{
+    idempotencyKey: z.ZodString;
+    fulfillmentOrderId: z.ZodGUID;
+    providerKind: z.ZodString;
+    status: z.ZodEnum<{
+        failed: "failed";
+        succeeded: "succeeded";
+        recorded: "recorded";
+    }>;
+    requestPayload: z.ZodDefault<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+    responsePayload: z.ZodDefault<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+    error: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    metadata: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+}, z.core.$strict>;
+export declare const adminCommerceFulfillmentRecordLabelRequestSchema: z.ZodObject<{
+    idempotencyKey: z.ZodString;
+    fulfillmentOrderId: z.ZodGUID;
+    providerKind: z.ZodString;
+    providerTrackingId: z.ZodString;
+    labelUrl: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    deliveryEstimateDays: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
+    rawProviderPayload: z.ZodDefault<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+    metadata: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+}, z.core.$strict>;
+export declare const adminCommerceFulfillmentHandOffRequestSchema: z.ZodObject<{
+    idempotencyKey: z.ZodString;
+    fulfillmentOrderId: z.ZodGUID;
+    metadata: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+}, z.core.$strict>;
+export declare const adminCommerceFulfillmentTrackingEventRequestSchema: z.ZodObject<{
+    idempotencyKey: z.ZodString;
+    fulfillmentOrderId: z.ZodGUID;
+    status: z.ZodEnum<{
+        delivered: "delivered";
+        in_transit: "in_transit";
+        exception: "exception";
+    }>;
+    providerTrackingId: z.ZodOptional<z.ZodString>;
+    rawEvent: z.ZodDefault<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+    metadata: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+}, z.core.$strict>;
+export declare const adminCommerceFulfillmentCancelRequestSchema: z.ZodObject<{
+    idempotencyKey: z.ZodString;
+    fulfillmentOrderId: z.ZodGUID;
+    reason: z.ZodString;
+    metadata: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+}, z.core.$strict>;
+export declare const adminCommerceFulfillmentOrdersListResponseSchema: z.ZodObject<{
+    contractVersion: z.ZodLiteral<"commerce.fulfillment.v0">;
+    orders: z.ZodArray<z.ZodObject<{
+        id: z.ZodGUID;
+        orderId: z.ZodGUID;
+        clientId: z.ZodNullable<z.ZodGUID>;
+        status: z.ZodEnum<{
+            created: "created";
+            cancelled: "cancelled";
+            delivered: "delivered";
+            packed: "packed";
+            label_pending: "label_pending";
+            label_created: "label_created";
+            handed_over: "handed_over";
+            in_transit: "in_transit";
+            exception: "exception";
+        }>;
+        providerKind: z.ZodNullable<z.ZodString>;
+        providerTrackingId: z.ZodNullable<z.ZodString>;
+        shippingAddress: z.ZodObject<{
+            addressId: z.ZodGUID;
+            clientId: z.ZodGUID;
+            label: z.ZodNullable<z.ZodString>;
+            line1: z.ZodString;
+            line2: z.ZodNullable<z.ZodString>;
+            city: z.ZodString;
+            postalCode: z.ZodString;
+            country: z.ZodString;
+        }, z.core.$strict>;
+        lines: z.ZodArray<z.ZodObject<{
+            id: z.ZodNullable<z.ZodGUID>;
+            orderItemId: z.ZodGUID;
+            skuId: z.ZodGUID;
+            sku: z.ZodString;
+            title: z.ZodNullable<z.ZodString>;
+            quantity: z.ZodNumber;
+            inventoryReservationIds: z.ZodArray<z.ZodGUID>;
+            productSnapshot: z.ZodRecord<z.ZodString, z.ZodUnknown>;
+        }, z.core.$strict>>;
+        payment: z.ZodObject<{
+            paymentIntentId: z.ZodGUID;
+            paymentStatus: z.ZodEnum<{
+                expired: "expired";
+                created: "created";
+                failed: "failed";
+                cancelled: "cancelled";
+                refunded: "refunded";
+                not_started: "not_started";
+                requires_action: "requires_action";
+                processing: "processing";
+                partially_refunded: "partially_refunded";
+                disputed: "disputed";
+                succeeded: "succeeded";
+            }>;
+            providerPaymentId: z.ZodNullable<z.ZodString>;
+        }, z.core.$strict>;
+        inventory: z.ZodObject<{
+            status: z.ZodEnum<{
+                expired: "expired";
+                not_checked: "not_checked";
+                reserved: "reserved";
+                missing: "missing";
+                released: "released";
+                consumed: "consumed";
+                review_required: "review_required";
+            }>;
+            reservationId: z.ZodNullable<z.ZodGUID>;
+            reservationStatus: z.ZodNullable<z.ZodEnum<{
+                expired: "expired";
+                reserved: "reserved";
+                released: "released";
+                consumed: "consumed";
+            }>>;
+            expiresAt: z.ZodNullable<z.ZodString>;
+            locationId: z.ZodNullable<z.ZodGUID>;
+            locationCode: z.ZodNullable<z.ZodString>;
+        }, z.core.$strict>;
+        omsEligibility: z.ZodObject<{
+            allowed: z.ZodBoolean;
+            reason: z.ZodNullable<z.ZodEnum<{
+                order_not_paid: "order_not_paid";
+                payment_not_succeeded: "payment_not_succeeded";
+                subscription_cycle_not_paid: "subscription_cycle_not_paid";
+                active_hold: "active_hold";
+                missing_shipping_address: "missing_shipping_address";
+                inventory_review: "inventory_review";
+                risk_review: "risk_review";
+            }>>;
+        }, z.core.$strict>;
+        latestOperation: z.ZodNullable<z.ZodObject<{
+            id: z.ZodGUID;
+            type: z.ZodEnum<{
+                created: "created";
+                cancelled: "cancelled";
+                packed: "packed";
+                label_created: "label_created";
+                handed_over: "handed_over";
+                provider_attempt_recorded: "provider_attempt_recorded";
+                tracking_event_recorded: "tracking_event_recorded";
+            }>;
+            occurredAt: z.ZodString;
+            actorUserId: z.ZodNullable<z.ZodGUID>;
+            payload: z.ZodRecord<z.ZodString, z.ZodUnknown>;
+        }, z.core.$strict>>;
+        createdAt: z.ZodString;
+        updatedAt: z.ZodString;
+    }, z.core.$strict>>;
+    totalCount: z.ZodNumber;
+    page: z.ZodNumber;
+    pageSize: z.ZodNumber;
+}, z.core.$strict>;
+export declare const adminCommerceFulfillmentOrderDetailResponseSchema: z.ZodObject<{
+    contractVersion: z.ZodLiteral<"commerce.fulfillment.v0">;
+    order: z.ZodObject<{
+        id: z.ZodGUID;
+        orderId: z.ZodGUID;
+        clientId: z.ZodNullable<z.ZodGUID>;
+        status: z.ZodEnum<{
+            created: "created";
+            cancelled: "cancelled";
+            delivered: "delivered";
+            packed: "packed";
+            label_pending: "label_pending";
+            label_created: "label_created";
+            handed_over: "handed_over";
+            in_transit: "in_transit";
+            exception: "exception";
+        }>;
+        providerKind: z.ZodNullable<z.ZodString>;
+        providerTrackingId: z.ZodNullable<z.ZodString>;
+        shippingAddress: z.ZodObject<{
+            addressId: z.ZodGUID;
+            clientId: z.ZodGUID;
+            label: z.ZodNullable<z.ZodString>;
+            line1: z.ZodString;
+            line2: z.ZodNullable<z.ZodString>;
+            city: z.ZodString;
+            postalCode: z.ZodString;
+            country: z.ZodString;
+        }, z.core.$strict>;
+        lines: z.ZodArray<z.ZodObject<{
+            id: z.ZodNullable<z.ZodGUID>;
+            orderItemId: z.ZodGUID;
+            skuId: z.ZodGUID;
+            sku: z.ZodString;
+            title: z.ZodNullable<z.ZodString>;
+            quantity: z.ZodNumber;
+            inventoryReservationIds: z.ZodArray<z.ZodGUID>;
+            productSnapshot: z.ZodRecord<z.ZodString, z.ZodUnknown>;
+        }, z.core.$strict>>;
+        payment: z.ZodObject<{
+            paymentIntentId: z.ZodGUID;
+            paymentStatus: z.ZodEnum<{
+                expired: "expired";
+                created: "created";
+                failed: "failed";
+                cancelled: "cancelled";
+                refunded: "refunded";
+                not_started: "not_started";
+                requires_action: "requires_action";
+                processing: "processing";
+                partially_refunded: "partially_refunded";
+                disputed: "disputed";
+                succeeded: "succeeded";
+            }>;
+            providerPaymentId: z.ZodNullable<z.ZodString>;
+        }, z.core.$strict>;
+        inventory: z.ZodObject<{
+            status: z.ZodEnum<{
+                expired: "expired";
+                not_checked: "not_checked";
+                reserved: "reserved";
+                missing: "missing";
+                released: "released";
+                consumed: "consumed";
+                review_required: "review_required";
+            }>;
+            reservationId: z.ZodNullable<z.ZodGUID>;
+            reservationStatus: z.ZodNullable<z.ZodEnum<{
+                expired: "expired";
+                reserved: "reserved";
+                released: "released";
+                consumed: "consumed";
+            }>>;
+            expiresAt: z.ZodNullable<z.ZodString>;
+            locationId: z.ZodNullable<z.ZodGUID>;
+            locationCode: z.ZodNullable<z.ZodString>;
+        }, z.core.$strict>;
+        omsEligibility: z.ZodObject<{
+            allowed: z.ZodBoolean;
+            reason: z.ZodNullable<z.ZodEnum<{
+                order_not_paid: "order_not_paid";
+                payment_not_succeeded: "payment_not_succeeded";
+                subscription_cycle_not_paid: "subscription_cycle_not_paid";
+                active_hold: "active_hold";
+                missing_shipping_address: "missing_shipping_address";
+                inventory_review: "inventory_review";
+                risk_review: "risk_review";
+            }>>;
+        }, z.core.$strict>;
+        latestOperation: z.ZodNullable<z.ZodObject<{
+            id: z.ZodGUID;
+            type: z.ZodEnum<{
+                created: "created";
+                cancelled: "cancelled";
+                packed: "packed";
+                label_created: "label_created";
+                handed_over: "handed_over";
+                provider_attempt_recorded: "provider_attempt_recorded";
+                tracking_event_recorded: "tracking_event_recorded";
+            }>;
+            occurredAt: z.ZodString;
+            actorUserId: z.ZodNullable<z.ZodGUID>;
+            payload: z.ZodRecord<z.ZodString, z.ZodUnknown>;
+        }, z.core.$strict>>;
+        createdAt: z.ZodString;
+        updatedAt: z.ZodString;
+    }, z.core.$strict>;
+}, z.core.$strict>;
+export declare const adminCommerceFulfillmentMutationResponseSchema: z.ZodObject<{
+    contractVersion: z.ZodLiteral<"commerce.fulfillment.v0">;
+    fulfillmentOrderId: z.ZodGUID;
+    orderId: z.ZodGUID;
+    status: z.ZodEnum<{
+        created: "created";
+        cancelled: "cancelled";
+        delivered: "delivered";
+        packed: "packed";
+        label_pending: "label_pending";
+        label_created: "label_created";
+        handed_over: "handed_over";
+        in_transit: "in_transit";
+        exception: "exception";
+    }>;
+    replayed: z.ZodBoolean;
+}, z.core.$strict>;
+export type AdminCommerceFulfillmentOrdersListRequest = z.infer<typeof adminCommerceFulfillmentOrdersListRequestSchema>;
+export type AdminCommerceFulfillmentOrderDetailRequest = z.infer<typeof adminCommerceFulfillmentOrderDetailRequestSchema>;
+export type AdminCommerceFulfillmentCreateRequest = z.infer<typeof adminCommerceFulfillmentCreateRequestSchema>;
+export type AdminCommerceFulfillmentRecordProviderAttemptRequest = z.input<typeof adminCommerceFulfillmentRecordProviderAttemptRequestSchema>;
+export type AdminCommerceFulfillmentRecordLabelRequest = z.input<typeof adminCommerceFulfillmentRecordLabelRequestSchema>;
+export type AdminCommerceFulfillmentHandOffRequest = z.infer<typeof adminCommerceFulfillmentHandOffRequestSchema>;
+export type AdminCommerceFulfillmentTrackingEventRequest = z.input<typeof adminCommerceFulfillmentTrackingEventRequestSchema>;
+export type AdminCommerceFulfillmentCancelRequest = z.infer<typeof adminCommerceFulfillmentCancelRequestSchema>;
+export type AdminCommerceFulfillmentOrdersListResponse = z.infer<typeof adminCommerceFulfillmentOrdersListResponseSchema>;
+export type AdminCommerceFulfillmentOrderDetailResponse = z.infer<typeof adminCommerceFulfillmentOrderDetailResponseSchema>;
+export type AdminCommerceFulfillmentMutationResponse = z.infer<typeof adminCommerceFulfillmentMutationResponseSchema>;
+export type CommerceFulfillmentOrder = z.infer<typeof commerceFulfillmentOrderSchema>;
+export type CommerceFulfillmentStatus = z.infer<typeof commerceFulfillmentStatusSchema>;
+export type CommerceFulfillmentOperationType = z.infer<typeof commerceFulfillmentOperationTypeSchema>;
+export declare const adminCommerceOrderRequestReplacementShipmentRequestSchema: z.ZodObject<{
+    idempotencyKey: z.ZodString;
+    orderId: z.ZodGUID;
+    reason: z.ZodEnum<{
+        other: "other";
+        damaged: "damaged";
+        lost: "lost";
+        returned_undelivered: "returned_undelivered";
+    }>;
+    metadata: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+}, z.core.$strict>;
+export declare const omsOperationTypeSchema: z.ZodEnum<{
+    hold_created: "hold_created";
+    hold_released: "hold_released";
+    fulfillment_reviewed: "fulfillment_reviewed";
+    support_note: "support_note";
+    shipping_address_updated: "shipping_address_updated";
+    order_marked_refunded: "order_marked_refunded";
+    order_cancelled_manual: "order_cancelled_manual";
+    replacement_shipment_requested: "replacement_shipment_requested";
+}>;
+export declare const omsOrderOperationSchema: z.ZodObject<{
+    id: z.ZodGUID;
+    orderId: z.ZodGUID;
+    type: z.ZodEnum<{
+        hold_created: "hold_created";
+        hold_released: "hold_released";
+        fulfillment_reviewed: "fulfillment_reviewed";
+        support_note: "support_note";
+        shipping_address_updated: "shipping_address_updated";
+        order_marked_refunded: "order_marked_refunded";
+        order_cancelled_manual: "order_cancelled_manual";
+        replacement_shipment_requested: "replacement_shipment_requested";
+    }>;
+    holdId: z.ZodNullable<z.ZodGUID>;
+    actorUserId: z.ZodNullable<z.ZodGUID>;
+    occurredAt: z.ZodString;
+    payload: z.ZodRecord<z.ZodString, z.ZodUnknown>;
+}, z.core.$strip>;
+export declare const adminCommerceOrderRequestReplacementShipmentResponseSchema: z.ZodObject<{
+    contractVersion: z.ZodLiteral<"commerce.v0">;
+    operation: z.ZodObject<{
+        id: z.ZodGUID;
+        orderId: z.ZodGUID;
+        type: z.ZodEnum<{
+            hold_created: "hold_created";
+            hold_released: "hold_released";
+            fulfillment_reviewed: "fulfillment_reviewed";
+            support_note: "support_note";
+            shipping_address_updated: "shipping_address_updated";
+            order_marked_refunded: "order_marked_refunded";
+            order_cancelled_manual: "order_cancelled_manual";
+            replacement_shipment_requested: "replacement_shipment_requested";
+        }>;
+        holdId: z.ZodNullable<z.ZodGUID>;
+        actorUserId: z.ZodNullable<z.ZodGUID>;
+        occurredAt: z.ZodString;
+        payload: z.ZodRecord<z.ZodString, z.ZodUnknown>;
+    }, z.core.$strip>;
+    replacement: z.ZodObject<{
+        fulfillmentOrderId: z.ZodString;
+        orderId: z.ZodString;
+        sequenceNo: z.ZodNumber;
+        replacesFulfillmentOrderId: z.ZodString;
+        reason: z.ZodEnum<{
+            other: "other";
+            damaged: "damaged";
+            lost: "lost";
+            returned_undelivered: "returned_undelivered";
+        }>;
+        status: z.ZodString;
+    }, z.core.$strip>;
+    releasedHoldIds: z.ZodDefault<z.ZodArray<z.ZodString>>;
+    replayed: z.ZodBoolean;
+}, z.core.$strip>;
+```
+## dist/fulfillment/handlerSupport.d.ts
+
+```ts
+import type { FulfillmentNativeUnsupported } from './contracts/nativeUnsupported.js';
+export interface FulfillmentHandlerRequest {
+    method?: string;
+    query: Record<string, string | string[] | undefined>;
+    body?: unknown;
+}
+export interface FulfillmentHandlerResponder<Response> {
+    sendMethodNotAllowed(res: Response, methods: readonly string[]): void;
+    sendBffSuccess(res: Response, data: unknown): void;
+    sendBffError(res: Response, code: 'UNAUTHORIZED' | 'FORBIDDEN' | 'BAD_REQUEST' | 'INVALID_RESPONSE' | 'NOT_FOUND' | 'CONFLICT' | 'UPSTREAM_UNAVAILABLE', message: string, options?: {
+        details: unknown;
+    }): void;
+}
+export type AdminAuthResult = {
+    ok: false;
+    code: 'UNAUTHORIZED' | 'FORBIDDEN';
+    message: string;
+} | {
+    ok: true;
+    userId: string;
+};
+export interface BaseDeps<Response> {
+    authorizeAdmin(req: FulfillmentHandlerRequest): Promise<AdminAuthResult>;
+    respond: FulfillmentHandlerResponder<Response>;
+}
+export declare function isNativeUnsupported(value: unknown): value is FulfillmentNativeUnsupported;
+export declare class CommerceFulfillmentConflictError extends Error {
+    readonly details: Record<string, unknown>;
+    constructor(message?: string, details?: Record<string, unknown>);
+}
+export declare function authorize<Response>(req: FulfillmentHandlerRequest, res: Response, authorizeAdmin: BaseDeps<Response>['authorizeAdmin'], respond: FulfillmentHandlerResponder<Response>): Promise<{
+    userId: string;
+} | null>;
+```
+## dist/fulfillment/index.d.ts
+
+```ts
+export { FULFILLMENT_STATUS_MAP, CANONICAL_LOCAL_FULFILLMENT_STATUSES, CUSTOMER_STEP_SEQUENCE, canonicalStatusToken, stepForToken, customerStepFromSignals, phaseIndexForStep, stepLabelKey, timelineLabelForStep, trackingPhaseKeyForStep, stepUsesTruckIcon } from "./statusMap.js";
+export { parseFulfillmentFact, parseFulfillmentTransitionConflict } from "./normalizedFulfillmentFacts.js";
+export { readFulfillmentCapabilities } from "./providerCapabilities.js";
+export { createOutboxOrderPaidFulfillmentHandler, outboxOrderPaidFulfillmentDescriptor, parseOutboxPayload } from "./paidHandoff.js";
+export { collectPaidFulfillmentRecoveryCandidates } from "./paidFulfillmentRecovery.js";
+export { runFulfillmentDispatchWorker } from "./providerDispatchWorker.js";
+export { createFulfillmentCommandLedger } from "./providerCommandLedger.js";
+export type { FulfillmentIngressCounts, FulfillmentIngressResult } from "./verifiedIngress.js";
+export { verifyAndNormalizeFulfillmentObservation, fulfillmentIngressHttpResult } from "./verifiedIngress.js";
+export { applyFulfillmentObservationEffects } from "./fulfillmentObservationEffects.js";
+export { reconcileFulfillmentObservations, runFulfillmentReconciliationPage } from "./providerReconciliationWorker.js";
+export { runFulfillmentStockSyncWorker } from "./providerStockSyncWorker.js";
+export { runFulfillmentProductSyncWorker } from "./providerProductSyncWorker.js";
+export { createFulfillmentLowStockEvidenceHandler } from "./lowStockEvidenceHandler.js";
+export { createProductReconciliationEvidenceHandler } from "./productReconciliationEvidenceHandler.js";
+export { runFulfillmentAdapterConformance } from "./adapterConformance.js";
+export { createPostgresFulfillmentShipmentSpinePort } from './postgresShipmentSpine.js';
+export { createPostgresFulfillmentLowStockEvidencePort } from './postgresEvidenceReadPort.js';
+export { createPostgresFulfillmentStockSyncPort } from './postgresStockSyncPort.js';
+export { createPostgresPaidFulfillmentRecoveryOpsPort } from './postgresPaidFulfillmentRecovery.js';
+export { createPostgresFulfillmentDispatchStore } from './postgresDispatchStore.js';
+export { createPostgresPaidFulfillmentHandoffStore } from './postgresPaidHandoffStore.js';
+export { createPostgresDeliveryAlignmentPort } from './postgresDeliveryAlignment.js';
+export { readDeliveryAlignment } from './deliveryAlignmentReadModel.js';
+export { FULFILLMENT_NATIVE_CAPABILITIES } from './schemaCapabilities.js';
+export { FULFILLMENT_MIGRATIONS } from './migrations.js';
+export { createAdminCommerceFulfillmentOrdersListHandler, createAdminCommerceFulfillmentOrderDetailHandler, createAdminCommerceFulfillmentCreateOrderHandler, createAdminCommerceFulfillmentRecordProviderAttemptHandler, createAdminCommerceFulfillmentRecordLabelHandler, createAdminCommerceFulfillmentHandOffHandler, createAdminCommerceFulfillmentTrackingEventHandler, createAdminCommerceFulfillmentCancelOrderHandler } from './commerceFulfillmentHandlers.js';
+export { createAdminCommerceOrderRequestReplacementShipmentHandler } from './replacementShipmentHandler.js';
+export { CommerceFulfillmentConflictError } from './handlerSupport.js';
+export { readFulfillmentDelay } from './delayReadModel.js';
+export { readFulfillmentLabel, cleanupFulfillmentLabel } from './labelLifecycle.js';
+export { currentParcel, currentParcelFor, currentParcelPerOrder, currentParcelFirst, belongsToParcel, rowsForParcel, parcelSequenceNo, compareParcelPrecedence } from './currentFulfillmentParcel.js';
+export { FULFILLMENT_NATIVE_UNSUPPORTED, createNativeUnsupportedFulfillmentPorts } from './nativeUnsupported.js';
+export { FULFILLMENT_REPLACEMENT_REFUSALS } from './replacementRefusals.js';
+export { buildCommerceFulfillmentOrdersListResponse, buildCommerceFulfillmentOrderDetailResponse } from './commerceFulfillmentReadModel.js';
+export { createFulfillmentShipmentsOverviewHandler } from './shipmentsOverviewHandler.js';
+export { fulfillmentProgressPresentation } from './trackingProgress.js';
+export { createFulfillmentServices } from './bindings.js';
+```
+## dist/fulfillment/labelLifecycle.d.ts
+
+```ts
+import type { FulfillmentLabelPort, LabelDocument } from './contracts/label.js';
+/** Storage-only read: a missing cached label never proves the parcel absent. Signed URLs are transient. */
+export declare function readFulfillmentLabel(port: Pick<FulfillmentLabelPort, 'read'>, document: LabelDocument | null): Promise<{
+    kind: "available";
+    url: string;
+    expiresAt: string | null;
+} | {
+    kind: "refused";
+    refusal: import("./contracts/dispatch.js").FulfillmentRefusal;
+}>;
+/** Provider and storage deletion remain host-owned; canProceed never asserts either deletion. */
+type LabelCleanupInput = Parameters<FulfillmentLabelPort['void']>[0] & {
+    actorUserId: string;
+    idempotencyKey: string;
+};
+export declare function cleanupFulfillmentLabel(port: {
+    void(input: LabelCleanupInput): ReturnType<FulfillmentLabelPort['void']>;
+}, input: LabelCleanupInput): Promise<{
+    providerDeletion: "confirmed" | "unconfirmed";
+    labelDeleted: boolean;
+    canProceed: boolean;
+    refusal?: import("./contracts/dispatch.js").FulfillmentRefusal;
+}>;
+export {};
+```
+## dist/fulfillment/lowStockEvidenceHandler.d.ts
+
+```ts
+/** Read-only evidence boundary; parsing remains with the owning host schema. */
+export declare function createFulfillmentLowStockEvidenceHandler<Request extends {
+    method?: string;
+    query: Record<string, string | string[] | undefined>;
+}, Response, Query, Result>({ evidencePort, authorizeAdmin, requestSchema, responseSchema, respond }: {
+    evidencePort: {
+        getLowStockEvidence(query: Query): Promise<unknown>;
+    };
+    authorizeAdmin(request: Request): Promise<boolean>;
+    requestSchema: {
+        safeParse(input: unknown): {
+            success: true;
+            data: Query;
+        } | {
+            success: false;
+            error: {
+                flatten(): unknown;
+            };
+        };
+    };
+    responseSchema: {
+        safeParse(input: unknown): {
+            success: true;
+            data: Result;
+        } | {
+            success: false;
+        };
+    };
+    respond: {
+        sendBffError(res: Response, code: "UPSTREAM_UNAVAILABLE" | "UNAUTHORIZED" | "BAD_REQUEST" | "INVALID_RESPONSE", message: string, options?: {
+            details: unknown;
+        }): void;
+        sendBffSuccess(res: Response, data: Result): void;
+        sendMethodNotAllowed(res: Response, methods: readonly string[]): void;
+    };
+}): (req: Request, res: Response) => Promise<void>;
+```
+## dist/fulfillment/migrations.d.ts
+
+```ts
+/** Byte-identical sparse projections; install the complete canonical catalogue. */
+export declare const FULFILLMENT_MIGRATIONS: readonly [{
+    readonly position: 5;
+    readonly catalogPath: "db/platform/migrations/20260808210000_fulfillment_shipment_rail.sql";
+    readonly sha256: "eb5824551903717f3868690909fcc2cb6a7f845abe5cb19bd4cff13103b1383d";
+    readonly url: URL;
+}, {
+    readonly position: 27;
+    readonly catalogPath: "db/platform/migrations/20260814000000_fulfillment_stock_evidence.sql";
+    readonly sha256: "df20c2491cb0196b4e28d19e7578c95bfa5c87b8f89fb0b6284c0e0695a3cc1d";
+    readonly url: URL;
+}, {
+    readonly position: 51;
+    readonly catalogPath: "db/platform/migrations/20260819150000_fulfillment_shipment_sequence.sql";
+    readonly sha256: "906706cf66a6a555aa1219b12eb674d937eaa099abde6da18766310af43aaa9f";
+    readonly url: URL;
+}, {
+    readonly position: 73;
+    readonly catalogPath: "db/platform/migrations/20261022080000_fulfillment_command_ledger.sql";
+    readonly sha256: "c6806906cdb0b6931b29f7a5c7c800016e98d04e6ea956f3c1e219a6cdb7e9d1";
+    readonly url: URL;
+}, {
+    readonly position: 74;
+    readonly catalogPath: "db/platform/migrations/20261022090000_fulfillment_delivery_alignment.sql";
+    readonly sha256: "d9966ae79fe77a0feae8317dc5b46ef2d8196dd0790b1cd0ee1b06ab58061499";
+    readonly url: URL;
+}, {
+    readonly position: 76;
+    readonly catalogPath: "db/platform/migrations/20261022165000_fulfillment_stock_evidence_replay_reopen.sql";
+    readonly sha256: "6d132dec2820047f4e337bcf752b3d884600ccc12de03887fe6d6aa5575bc1db";
+    readonly url: URL;
+}];
+```
+## dist/fulfillment/nativeUnsupported.d.ts
+
+```ts
+import type { FulfillmentCommerceReadPort, FulfillmentShipmentsOverviewPort } from './contracts/read.js';
+import type { FulfillmentNativeUnsupported } from './contracts/nativeUnsupported.js';
+import type { FulfillmentReplacementPort } from './contracts/replacement.js';
+import type { FulfillmentOperatorMutationPort } from './contracts/operator.js';
+import type { FulfillmentCustomerAlignmentRowsReader } from './contracts/customerAlignment.js';
+export declare const FULFILLMENT_NATIVE_UNSUPPORTED: FulfillmentNativeUnsupported;
+/** Deliberately has no executor: unsupported native parity can never make a partial write. */
+export declare function createNativeUnsupportedFulfillmentPorts(): FulfillmentReplacementPort & FulfillmentOperatorMutationPort & FulfillmentCommerceReadPort & FulfillmentShipmentsOverviewPort & {
+    readCustomerAlignmentRows: FulfillmentCustomerAlignmentRowsReader;
+};
+```
+## dist/fulfillment/normalizedFulfillmentFacts.d.ts
+
+```ts
+export { isCanonicalLocalFulfillmentStatus, parseFulfillmentFact, parseFulfillmentTransitionConflict } from "@openlup/core/fulfillment";
+export type { CanonicalNormalizedFulfillmentFact as NormalizedFulfillmentFact, CanonicalNormalizedFulfillmentFactV1 as NormalizedFulfillmentFactV1, CanonicalNormalizedFulfillmentFactV0 as NormalizedFulfillmentFactV0, CanonicalCompatibleNormalizedFulfillmentFact as CompatibleNormalizedFulfillmentFact, CanonicalFulfillmentTransitionSnapshot as FulfillmentTransitionSnapshot, CanonicalTransitionConflict as TransitionConflict } from "@openlup/core/fulfillment";
+```
+## dist/fulfillment/paidFulfillmentRecovery.d.ts
+
+```ts
+type PaidFulfillmentRecoveryAction = "wait_for_outbox" | "requeue_discarded_order_paid_outbox" | "inspect_processed_without_effect" | "inspect_missing_order_paid_outbox" | "monitor_dispatch" | "inspect_missing_dispatch_ref" | "inspect_stale_dispatch_submission" | "inspect_uncertain_dispatch" | "inspect_failed_dispatch" | "inspect_created_dispatch_without_provider_order_id" | "inspect_terminal_dispatch" | "inspect_unknown_dispatch_status";
+type PaidFulfillmentRecoveryReason = "paid_order_without_fulfillment_order" | "order_paid_outbox_missing" | "order_paid_outbox_discarded" | "order_paid_outbox_processed_without_fulfillment" | "provider_dispatch_in_progress" | "provider_fulfillment_without_dispatch_ref" | "provider_dispatch_submission_stale" | "provider_dispatch_outcome_uncertain" | "provider_dispatch_failed" | "provider_dispatch_created_without_provider_order_id" | "provider_dispatch_terminal_without_progress" | "provider_dispatch_status_unknown";
+type PaidFulfillmentRecoveryPosture = "automatic_local_requeue_safe" | "wait_for_existing_automation" | "operator_review_required";
+type PaidFulfillmentOrderRow = Record<string, unknown> & {
+    id: string;
+    status?: string | null;
+    mode?: string | null;
+    created_at?: string | null;
+    updated_at?: string | null;
+};
+type PaidFulfillmentOrderEvidenceRow = Record<string, unknown> & {
+    id: string;
+    order_id: string;
+    provider_kind?: string | null;
+    status?: string | null;
+    created_at?: string | null;
+    updated_at?: string | null;
+};
+type PaidFulfillmentDispatchRefRow = Record<string, unknown> & {
+    id?: string | null;
+    fulfillment_order_id: string;
+    provider_order_id?: string | null;
+    status?: string | null;
+    created_at?: string | null;
+    updated_at?: string | null;
+};
+type PaidFulfillmentOutboxEventRow = Record<string, unknown> & {
+    id: string;
+    event_type: string;
+    status: string;
+    aggregate_id?: string | null;
+    created_at?: string | null;
+    updated_at?: string | null;
+    available_at?: string | null;
+    attempts?: number | null;
+};
+type PaidFulfillmentRecoveryCandidate = {
+    orderId: string;
+    orderStatus: string;
+    orderMode: string | null;
+    fulfillmentOrderId: string | null;
+    providerKind: string | null;
+    dispatchRefId: string | null;
+    dispatchStatus: string | null;
+    outboxEventId: string | null;
+    outboxStatus: string | null;
+    outboxAttempts: number | null;
+    reason: PaidFulfillmentRecoveryReason;
+    recommendedAction: PaidFulfillmentRecoveryAction;
+    recoveryPosture: PaidFulfillmentRecoveryPosture;
+    ageSeconds: number;
+};
+type PaidFulfillmentRecoveryPlan = {
+    checkedOrders: number;
+    candidates: PaidFulfillmentRecoveryCandidate[];
+};
+export declare function collectPaidFulfillmentRecoveryCandidates(input: {
+    providerRef: string;
+    orders: PaidFulfillmentOrderRow[];
+    fulfillmentOrders: PaidFulfillmentOrderEvidenceRow[];
+    dispatchRefs?: PaidFulfillmentDispatchRefRow[];
+    orderPaidOutboxEvents: PaidFulfillmentOutboxEventRow[];
+    now: Date;
+    minimumAgeSeconds?: number;
+    dispatchSubmissionStaleSeconds?: number;
+}): PaidFulfillmentRecoveryPlan;
+export {};
+```
+## dist/fulfillment/paidHandoff.d.ts
+
+```ts
+import type { OutboxHandler, OutboxHandlerOutcome } from "@openlup/core/outbox";
+import type { OrderPaidFulfillmentPort } from "./paidHandoffPorts.js";
+export declare const outboxOrderPaidFulfillmentDescriptor: Readonly<{
+    eventType: "commerce.order.paid";
+    timeoutMs: 15000;
+}>;
+interface OrderPaidRiskAssessmentPort {
+    assessPaidOrder(input: {
+        orderUuid: string;
+        outboxEventId: string;
+        signal: AbortSignal;
+    }): Promise<{
+        kind: "allow";
+        detail?: Record<string, unknown>;
+    } | {
+        kind: "review" | "block";
+        detail?: Record<string, unknown>;
+    } | {
+        kind: "retryable";
+        reason: string;
+    } | {
+        kind: "fatal";
+        reason: string;
+    }>;
+}
+export declare function createOutboxOrderPaidFulfillmentHandler(deps: {
+    fulfillmentPort: OrderPaidFulfillmentPort;
+    riskPort?: OrderPaidRiskAssessmentPort;
+    isRiskEnabled?: () => boolean;
+}): OutboxHandler<AbortSignal>;
+export declare function parseOutboxPayload<T>(schema: import("zod").ZodType<T>, payload: unknown): {
+    ok: true;
+    data: T;
+} | {
+    ok: false;
+    outcome: OutboxHandlerOutcome;
+};
+export {};
+```
+## dist/fulfillment/paidHandoffPorts.d.ts
+
+```ts
+export type OrderPaidFulfillmentResult = {
+    kind: "completed" | "skipped";
+    detail?: Record<string, unknown>;
+} | {
+    kind: "retryable";
+    reason: string;
+} | {
+    kind: "snooze";
+    reason: string;
+} | {
+    kind: "fatal";
+    reason: string;
+} | {
+    kind: "manual_review";
+    reason: string;
+    detail?: Record<string, unknown>;
+};
+export interface OrderPaidFulfillmentPort {
+    ensureFulfilledFromPaidOrder(input: {
+        orderUuid: string;
+        outboxEventId: string;
+        signal: AbortSignal;
+    }): Promise<OrderPaidFulfillmentResult>;
+}
+```
+## dist/fulfillment/postgresDeliveryAlignment.d.ts
+
+```ts
+import type { DeliveryAlignmentPort } from './contracts/index.js';
+import { type PgExecutor } from './postgresDispatchStore.js';
+/** Trusted arrival ingestion only. Operator replacement attestation has no caller here. */
+export declare function createPostgresDeliveryAlignmentPort(db: PgExecutor): DeliveryAlignmentPort;
+```
+## dist/fulfillment/postgresDispatchStore.d.ts
+
+```ts
+import type { FulfillmentDispatchRequest, FulfillmentStorePort } from './contracts/index.js';
+import type { createFulfillmentCommandLedger } from './providerCommandLedger.js';
+/** Caller supplies a driver and its selected host preparation/data boundary. */
+export interface PgExecutor {
+    query(text: string, values?: unknown[]): Promise<{
+        rows: Record<string, unknown>[];
+    }>;
+}
+export declare function nativeCall<T>(db: PgExecutor, name: string, values: unknown[]): Promise<T>;
+export declare function createPostgresFulfillmentDispatchStore(db: PgExecutor, host: {
+    /** Synchronize authoritative withholding/contact revision on prepare and every source edit. */
+    prepare(fulfillmentRef: string): ReturnType<FulfillmentStorePort['prepare']>;
+    readCandidate(fulfillmentRef: string): Promise<FulfillmentDispatchRequest | null>;
+}): FulfillmentStorePort & {
+    commandLedger: ReturnType<typeof createFulfillmentCommandLedger>;
+};
+```
+## dist/fulfillment/postgresEvidenceReadPort.d.ts
+
+```ts
+import type { PgExecutor as PgQueryExecutor } from './postgresDispatchStore.js';
+interface AdminLowStockEvidenceItem {
+    id: string;
+    sku: string;
+    thresholdKind: string;
+    severity: string;
+    status: string;
+    providerForSaleQuantity: number | null;
+    localAvailableQuantity: number | null;
+    forecastDays: null;
+    firstSeenAt: string | null;
+    lastSeenAt: string | null;
+    resolvedAt: string | null;
+}
+interface FulfillmentLowStockEvidencePort {
+    getLowStockEvidence(input: {
+        statusFilter: 'all' | 'open' | 'resolved';
+    }): Promise<{
+        statusFilter: string;
+        openCount: number;
+        items: AdminLowStockEvidenceItem[];
+    }>;
+}
+export declare function createPostgresFulfillmentLowStockEvidencePort(executor: PgQueryExecutor, sourceKey: string): FulfillmentLowStockEvidencePort;
+export {};
+```
+## dist/fulfillment/postgresPaidFulfillmentRecovery.d.ts
+
+```ts
+import type { collectPaidFulfillmentRecoveryCandidates } from './paidFulfillmentRecovery.js';
+import type { PgExecutor } from './postgresDispatchStore.js';
+type RecoveryInput = Parameters<typeof collectPaidFulfillmentRecoveryCandidates>[0];
+/** Read the selected native port's local obligations; never infer external absence. */
+export declare function createPostgresPaidFulfillmentRecoveryOpsPort(db: PgExecutor, selection: {
+    portKey: string;
+    providerRef: string;
+}): {
+    readRecoveryInputs(input: {
+        minimumAgeSeconds: number;
+        limit: number;
+        now: Date;
+        orderIds?: string[];
+    }): Promise<Pick<RecoveryInput, "orders" | "fulfillmentOrders" | "dispatchRefs" | "orderPaidOutboxEvents">>;
+    requeueDiscardedOrderPaidOutboxEvents(input: {
+        eventIds: string[];
+        limit?: number;
+        requeuedBy: string;
+        reason: string;
+    }): Promise<{
+        requeuedCount: number;
+        eventIds: string[];
+    }>;
+};
+export {};
+```
+## dist/fulfillment/postgresPaidHandoffStore.d.ts
+
+```ts
+import type { FulfillmentPaidHandoffPort } from './contracts/index.js';
+import { type PgExecutor } from './postgresDispatchStore.js';
+/** Select an existing native port explicitly; never route by a private provider default. */
+export declare function createPostgresPaidFulfillmentHandoffStore(db: PgExecutor, portKey: string): FulfillmentPaidHandoffPort;
+```
+## dist/fulfillment/postgresShipmentSpine.d.ts
+
+```ts
+import type { FulfillmentObservationCodecs } from "./contracts/index.js";
+import type { PgExecutor as PgQueryExecutor } from './postgresDispatchStore.js';
+interface ShipmentSpineResult {
+    shipmentId: string;
+    orderId: string;
+    status: string;
+    replayed: boolean;
+}
+interface ShipmentRequest {
+    idempotencyKey: string;
+    shipmentId: string;
+    metadata?: Record<string, unknown>;
+    requestedAt?: string;
+    externalRef?: string;
+}
+interface ShipmentSpineMutationPort {
+    createShipment(input: {
+        idempotencyKey: string;
+        orderId: string;
+        metadata?: Record<string, unknown>;
+        requestedAt?: string;
+    }): Promise<ShipmentSpineResult>;
+    recordLabel(input: ShipmentRequest): Promise<ShipmentSpineResult>;
+    handOff(input: ShipmentRequest): Promise<ShipmentSpineResult>;
+    recordTracking(input: ShipmentRequest & {
+        status: 'in_transit' | 'delivered';
+    }): Promise<ShipmentSpineResult>;
+    cancel(input: ShipmentRequest & {
+        reason: string;
+    }): Promise<ShipmentSpineResult>;
+    raiseException(input: ShipmentRequest & {
+        reason: string;
+    }): Promise<ShipmentSpineResult>;
+}
+export interface PostgresFulfillmentShipmentSpineOptions {
+    portKey: string;
+    approveTrackingUrl?(url: string): boolean;
+    observationCodecs?: FulfillmentObservationCodecs;
+    evidenceChannel?: "poll" | "push";
+    requiredProviderType?: "simulator";
+}
+/** Direct node-postgres adapter for the provider-neutral public shipment rail. */
+export declare function createPostgresFulfillmentShipmentSpinePort(executor: PgQueryExecutor, options: PostgresFulfillmentShipmentSpineOptions): ShipmentSpineMutationPort & {
+    localPersistence: ReturnType<typeof localPersistence>;
+};
+/** G17 native local persistence, composed on the same injected executor. */
+declare function localPersistence(executor: PgQueryExecutor, approveTrackingUrl?: (url: string) => boolean, observationCodecs?: FulfillmentObservationCodecs): {
+    readLocalFulfillmentState(ref: string): Promise<{
+        status: string | null;
+        latestStatusOccurredAt: string | null;
+        handedOverAt: string | null;
+    }>;
+    readLocalFulfillmentStatus(ref: string): Promise<string | null>;
+    latestStatusOccurredAt(ref: string): Promise<string | null>;
+    readHandedOverAt(ref: string): Promise<string | null>;
+    recordObservation(observation: import("./contracts/index.js").FulfillmentObservation): Promise<{
+        replayed: boolean;
+    }>;
+    recordStatusEvidence(ref: {
+        fulfillmentRef: string;
+    }, observation: import("./contracts/index.js").FulfillmentObservation): Promise<{
+        replayed: boolean;
+    }>;
+    markProcessed(eventKey: string, outcome: {
+        status: "processed" | "ignored";
+        refusal?: import("./contracts/index.js").FulfillmentRefusal;
+        supersededCause?: string;
+    }): Promise<void>;
+};
+export {};
+```
+## dist/fulfillment/postgresStockSyncPort.d.ts
+
+```ts
+import type { FulfillmentStockSyncPort } from './contracts/index.js';
+import { type PgExecutor } from './postgresDispatchStore.js';
+/** The native catalogue has observed stock, not adopter inventory balances. */
+export declare function createPostgresFulfillmentStockSyncPort(db: PgExecutor, options: {
+    sourceKey: string;
+    inventoryClasses?: ReadonlyMap<string, 'sellable' | 'packaging' | null>;
+    readLocalInventoryStock: FulfillmentStockSyncPort['readLocalInventoryStock'];
+}): FulfillmentStockSyncPort;
+```
+## dist/fulfillment/productReconciliationEvidenceHandler.d.ts
+
+```ts
+/** Read-only evidence boundary; parsing remains with the owning host schema. */
+export declare function createProductReconciliationEvidenceHandler<Request extends {
+    method?: string;
+    query: Record<string, string | string[] | undefined>;
+}, Response, Query, Result>({ evidencePort, authorizeAdmin, requestSchema, responseSchema, respond }: {
+    evidencePort: {
+        getProductReconciliationEvidence(query: Query): Promise<unknown>;
+    };
+    authorizeAdmin(request: Request): Promise<boolean>;
+    requestSchema: {
+        safeParse(input: unknown): {
+            success: true;
+            data: Query;
+        } | {
+            success: false;
+            error: {
+                flatten(): unknown;
+            };
+        };
+    };
+    responseSchema: {
+        safeParse(input: unknown): {
+            success: true;
+            data: Result;
+        } | {
+            success: false;
+        };
+    };
+    respond: {
+        sendBffError(res: Response, code: "UPSTREAM_UNAVAILABLE" | "UNAUTHORIZED" | "BAD_REQUEST" | "INVALID_RESPONSE", message: string, options?: {
+            details: unknown;
+        }): void;
+        sendBffSuccess(res: Response, data: Result): void;
+        sendMethodNotAllowed(res: Response, methods: readonly string[]): void;
+    };
+}): (req: Request, res: Response) => Promise<void>;
+```
+## dist/fulfillment/providerCapabilities.d.ts
+
+```ts
+import type { FulfillmentCapabilityDescriptor, FulfillmentRefusal, FulfillmentSelection } from "./contracts/index.js";
+/** Injected profiles replace the private registry. Support never activates a provider. */
+export declare function readFulfillmentCapabilities(profiles: readonly FulfillmentCapabilityDescriptor[], selection: FulfillmentSelection | null | undefined): {
+    kind: "selected";
+    descriptor: FulfillmentCapabilityDescriptor;
+} | {
+    kind: "refused";
+    refusal: FulfillmentRefusal;
+};
+```
+## dist/fulfillment/providerCommandLedger.d.ts
+
+```ts
+/** Structural protocol for the contributed durable ledger. Each operation must
+ * be one atomic store transaction, including its transition evidence. P4 owns SQL.
+ * This factory holds no leases, retry counters, commands or persistence in memory.
+ */
+type CommandStatus = "queued" | "claimed" | "submitting" | "accepted" | "confirmed" | "retry_wait" | "uncertain" | "manual_review" | "terminal_rejected" | "cancelled";
+type CommandResult = {
+    commandId: string;
+    status: CommandStatus;
+    version: number;
+    applied: boolean;
+};
+type Fence = {
+    commandId: string;
+    claimToken: string;
+    claimGeneration: number;
+    expectedVersion: number;
+};
+type Proof = {
+    kind: "provider_reference" | "correlation_key" | "provider_idempotency_key";
+    fingerprint: string;
+    observedAt: string;
+    source: "provider_lookup" | "provider_webhook" | "operator_verified";
+};
+type ClaimedCommand = {
+    commandId: string;
+    fulfillmentRef: string;
+    orderRef: string;
+    providerRef: string;
+    commandKind: "dispatch_create";
+    contractVersion: "1";
+    status: "claimed";
+    version: number;
+    commandKeyFingerprint: string;
+    commandPayloadFingerprint: string;
+    providerIdempotencyKeyFingerprint: string | null;
+    routingFingerprint: string;
+    configurationFingerprint: string;
+    correlationKeyFingerprint: string;
+    retryBudget: number;
+    retryCount: number;
+    claimToken: string;
+    claimGeneration: number;
+    leaseExpiresAt: string;
+};
+type LedgerStore = {
+    enqueue(input: {
+        fulfillmentRef: string;
+        providerRef: string;
+        commandKind: "dispatch_create";
+        contractVersion: "1";
+        idempotencyKey: string;
+        commandKeyFingerprint: string;
+        commandPayloadFingerprint: string;
+        providerIdempotencyKeyFingerprint: string | null;
+        routingFingerprint: string;
+        configurationFingerprint: string;
+        correlationKeyFingerprint: string;
+        retryBudget: number;
+    }): Promise<CommandResult>;
+    claim(input: {
+        providerRef: string;
+        commandKind: "dispatch_create";
+        limit: number;
+        claimOwnerFingerprint: string;
+        leaseSeconds: number;
+    }): Promise<readonly ClaimedCommand[]>;
+    markSubmitting(input: Fence & {
+        providerAttemptRef: string | null;
+    }): Promise<CommandResult>;
+    applyWriteOutcome(input: Fence & {
+        identityFingerprint: string;
+        providerAttemptRef: string | null;
+    } & ({
+        kind: "accepted";
+        reason: "provider_accepted";
+        providerReferenceFingerprint: string;
+    } | {
+        kind: "uncertain";
+        reason: "write_uncertain";
+    } | {
+        kind: "rejected";
+        reason: "safe_rejection" | "terminal_rejection";
+        retryNotBefore: string | null;
+        proof: {
+            kind: "definitive_provider_rejection";
+            fingerprint: string;
+            observedAt: string;
+            source: "provider_response";
+        };
+    })): Promise<CommandResult>;
+    confirm(input: Fence & {
+        identityFingerprint: string;
+        providerAttemptRef: string | null;
+        proof: Proof;
+    }): Promise<CommandResult>;
+    reconcile(input: {
+        commandId: string;
+        expectedVersion: number;
+        identityFingerprint: string;
+        proof: Proof;
+    }): Promise<CommandResult & {
+        proofRecorded: boolean;
+    }>;
+    resolve(input: {
+        commandId: string;
+        expectedVersion: number;
+        identityFingerprint: string;
+    } & ({
+        decision: "manual_review";
+        reason: "effect_unknown" | "identity_mismatch" | "invalid_contract" | "unsafe_retry";
+        proof: Proof;
+    } | {
+        decision: "retry_wait";
+        reason: "authoritative_absence";
+        retryNotBefore: string;
+        proof: {
+            kind: "authoritative_absence";
+            fingerprint: string;
+            observedAt: string;
+            source: "provider_lookup";
+        };
+    })): Promise<CommandResult & {
+        proofRecorded: boolean;
+    }>;
+    release(input: Fence & ({
+        action: "release";
+        reason: "command_enqueued";
+    } | {
+        action: "cancel";
+        reason: "operator_cancelled";
+    })): Promise<CommandResult>;
+    recoverExpired(input: {
+        limit: number;
+    }): Promise<readonly CommandResult[]>;
+};
+/** Bind the durable protocol without substituting a local state machine.
+ * Store fences compare token, generation, version and unexpired lease together.
+ * Expired claimed work becomes queued; expired submitting/accepted work becomes
+ * uncertain. Only authoritative scoped absence may admit uncertain work to retry.
+ * Claim respects availability/retry budget; finalization cannot invent absence.
+ */
+export declare function createFulfillmentCommandLedger(store: LedgerStore): LedgerStore;
+export {};
+```
+## dist/fulfillment/providerDispatchWorker.d.ts
+
+```ts
+import type { DispatchRecord, FulfillmentDispatchPort, FulfillmentDispatchRequest, FulfillmentStorePort } from "./contracts/index.js";
+export declare function runFulfillmentDispatchWorker(input: {
+    store: FulfillmentStorePort;
+    provider: FulfillmentDispatchPort | null;
+    listCandidates(limit: number): Promise<readonly FulfillmentDispatchRequest[]>;
+    /** Return the original host key bytes, without a new package prefix. */
+    keys: {
+        request(candidate: FulfillmentDispatchRequest): string;
+        mappedAttempt(requestKey: string, mappedAttemptIndex: number): string;
+        acceptance(fulfillmentRef: string): {
+            providerAttemptKey: string;
+            labelKey: string;
+        };
+    };
+    config: {
+        mode: DispatchRecord["mode"];
+        batchLimit: number;
+    };
+    /** Pure local shadow fingerprint: a lowercase 64-hex SHA-256 digest of the adopter's canonical command bytes. Invalid output or a throw refuses before evidence writes. Never return raw command/PII. Used across shadow claim/readback/attempt; shadow never begins, and live preparation must produce the same identity. */
+    shadowCommandFingerprint?: (request: FulfillmentDispatchRequest) => string;
+    now?: () => Date;
+}): Promise<{
+    redactedFieldCount: number;
+    ok: boolean;
+    failures: number;
+    reason: "adopter_fingerprint_invalid" | "adopter_fingerprint_failed";
+    refusal: {
+        reason: "malformed";
+        phase: "prepare";
+        retryable: false;
+        cause: "adopter_fingerprint_invalid" | "adopter_fingerprint_failed";
+    };
+    skipped: boolean;
+    checked: number;
+    updated: number;
+    mode: "shadow" | "stage" | "live";
+    replayed: number;
+    providerCalls: number;
+    readBacks: number;
+} | {
+    redactedFieldCount?: undefined;
+    ok: boolean;
+    failures: number;
+    reason: "adopter_fingerprint_invalid" | "adopter_fingerprint_failed";
+    refusal: {
+        reason: "malformed";
+        phase: "prepare";
+        retryable: false;
+        cause: "adopter_fingerprint_invalid" | "adopter_fingerprint_failed";
+    };
+    skipped: boolean;
+    checked: number;
+    updated: number;
+    mode: "shadow" | "stage" | "live";
+    replayed: number;
+    providerCalls: number;
+    readBacks: number;
+} | {
+    redactedFieldCount: number;
+    ok: boolean;
+    skipped: boolean;
+    checked: number;
+    updated: number;
+    failures: number;
+    mode: "shadow" | "stage" | "live";
+    replayed: number;
+    providerCalls: number;
+    readBacks: number;
+    reason: string | undefined;
+} | {
+    redactedFieldCount?: undefined;
+    ok: boolean;
+    skipped: boolean;
+    checked: number;
+    updated: number;
+    failures: number;
+    mode: "shadow" | "stage" | "live";
+    replayed: number;
+    providerCalls: number;
+    readBacks: number;
+    reason: string | undefined;
+}>;
+```
+## dist/fulfillment/providerProductSyncWorker.d.ts
+
+```ts
+import type { FulfillmentProductSyncPort, FulfillmentProductSyncProvider } from "./contracts/index.js";
+type ReconciliationConflict = Parameters<FulfillmentProductSyncPort["recordReconciliationEvidence"]>[0]["conflictKind"];
+type SyncIdentity = Parameters<FulfillmentProductSyncPort["recordReconciliationEvidence"]>[0]["identity"];
+interface ProductSyncResult {
+    ok: boolean;
+    pushedProducts: number;
+    pushedPacks: number;
+    skippedProducts: number;
+    pulledSkus: number;
+    ingestedPacks: number;
+    reconciliations: number;
+    replayed: number;
+    failures: number;
+    providerCalls: number;
+    syncRunId: string;
+    reason?: string;
+}
+export declare function runFulfillmentProductSyncWorker(input: {
+    port: FulfillmentProductSyncPort;
+    provider: FulfillmentProductSyncProvider;
+    mode?: "push" | "pull" | "both";
+    now?: () => Date;
+    compatibility: {
+        identity(now: Date): SyncIdentity;
+        evidenceKey(sku: string, ean: string, kind: ReconciliationConflict): string;
+    };
+}): Promise<ProductSyncResult>;
+export {};
+```
+## dist/fulfillment/providerReconciliationWorker.d.ts
+
+```ts
+import type { FulfillmentObservation, FulfillmentObservationPagePort, FulfillmentReconciliationObservation, FulfillmentOperationError } from "./contracts/index.js";
+import { enrichTrackingReference } from "./providerTrackingReferences.js";
+type Ingress = Parameters<typeof import("./verifiedIngress.js").verifyAndNormalizeFulfillmentObservation>[0];
+type DispatchRef = NonNullable<Awaited<ReturnType<Ingress["lifecycle"]["findDispatchRef"]>>>;
+type PollEvidence = Pick<FulfillmentObservation, "correlation" | "eventKey" | "providerStatus" | "diagnostics"> | FulfillmentObservation;
+export interface ReconciliationResult {
+    ok: boolean;
+    checked: number;
+    updated: number;
+    trackingRefs: number;
+    quarantined: number;
+    stateConflicts: number;
+    exceptions: number;
+    stale: number;
+    offTrackSkips: number;
+    replayed: number;
+    redactedFieldCount?: number;
+    failures: number;
+    invoiceIssueFailures: number;
+    invoiceIssueRefused: number;
+    invoiceIssueRefusals: {
+        fulfillmentRef: string;
+        identifier: string | null;
+        sqlstate: string;
+        benign: boolean;
+    }[];
+    providerCalls: number;
+    readBacks: number;
+    skipped: boolean;
+    reason?: string;
+    providerError?: FulfillmentOperationError;
+}
+export declare function reconcileFulfillmentObservations(input: {
+    /** Adapter/host maps the private page into typed readback, preserving unknowns. */
+    readPage(input: {
+        page: number;
+        size: number;
+    }): Promise<readonly FulfillmentReconciliationObservation[]>;
+    batchSize: number;
+    page?: number;
+    localPersistence: {
+        /** G17: local persisted chronology, never inferred from dispatch or provider state. */
+        readLocalFulfillmentStatus(ref: string): Promise<string | null>;
+        latestStatusOccurredAt(ref: string): Promise<string | null>;
+        readHandedOverAt(ref: string): Promise<string | null>;
+    };
+    lifecycle: Pick<Ingress["lifecycle"], "recordStatusEvidence" | "effects" | "keys"> & {
+        findDispatchRef(evidence: PollEvidence): Promise<DispatchRef | null>;
+        acknowledgeDispatchAcceptance(ref: DispatchRef, evidence: PollEvidence): Promise<void>;
+        recordQuarantine(observation: PollEvidence | null, reason: "missing_correlation" | "missing_external_ref" | "unknown_status" | "state_conflict", detail?: "fulfillment_not_found" | "stock_consumed_requires_label"): Promise<{
+            replayed: boolean;
+        }>;
+        recordProviderException(ref: DispatchRef, observation: FulfillmentObservation): Promise<{
+            replayed: boolean;
+        }>;
+        readDeliveryCarrier(ref: string): Promise<{
+            carrierRef: string | null;
+            serviceRef: string | null;
+        } | null>;
+        trackingCodecs: Parameters<typeof enrichTrackingReference>[2];
+        issueAccountingInvoice?(ref: string): Promise<void>;
+        /** Private RPC decoding retains permanent/benign distinction and safe refusal identity. */
+        invoiceFailure(error: unknown): {
+            permanent: boolean;
+            identifier: string | null;
+            sqlstate: string | null;
+            benign: boolean;
+        };
+        classifyStateConflict(error: unknown): "fulfillment_not_found" | "stock_consumed_requires_label" | null;
+    };
+}): Promise<ReconciliationResult>;
+/** Host owns scheduling, HTTP and durable job-ledger writes. This operation only projects them. */
+export declare function runFulfillmentReconciliationPage(input: Omit<Parameters<typeof reconcileFulfillmentObservations>[0], "readPage" | "batchSize" | "page"> & {
+    provider: FulfillmentObservationPagePort;
+    pageSize: number;
+    checkpoint: unknown;
+}): Promise<{
+    status: 200 | 502;
+    ledgerStatus: "failed" | "succeeded";
+    result: ReconciliationResult;
+    metadata: {
+        reconciliationPagination: {
+            version: number;
+            page: number;
+            pageSize: number;
+            nextPage: number;
+        };
+    };
+}>;
+export {};
+```
+## dist/fulfillment/providerStockSyncWorker.d.ts
+
+```ts
+import type { FulfillmentStockSyncPort, FulfillmentStockSyncProvider, SyncCursor } from "./contracts/index.js";
+type Threshold = Parameters<FulfillmentStockSyncPort["resolveLowStockEvidence"]>[0]["activeThresholdKinds"][number];
+interface StockSyncResult {
+    ok: boolean;
+    checked: number;
+    updated: number;
+    mismatches: number;
+    reservationCoverage: number;
+    unclassified: number;
+    lowStock: number;
+    movements: number;
+    replayed: number;
+    failures: number;
+    providerCalls: number;
+    readBacks: number;
+    skipped: boolean;
+    syncRunId: string;
+    lastMovementOccurredAt: string | null;
+    reason?: string;
+    rejected: number;
+    items: NonNullable<SyncCursor["items"]>[number][];
+    providerError?: NonNullable<SyncCursor["error"]>["providerError"];
+    refusal?: NonNullable<SyncCursor["refusal"]>;
+}
+export declare function runFulfillmentStockSyncWorker(input: {
+    port: FulfillmentStockSyncPort;
+    provider: FulfillmentStockSyncProvider;
+    movementBatchSize: number;
+    staleSyncThresholdHours?: number;
+    now?: () => Date;
+    compatibility: {
+        syncRunId(now: Date): string;
+        staleEvidenceSku: string;
+        timeZone: string;
+        currentKey(run: string, sku: string): string;
+        snapshotKey(run: string, sku: string): string;
+        lowStockKey(sku: string, threshold: Threshold): string;
+        staleKey(lastSyncedAt: string): string;
+    };
+}): Promise<StockSyncResult>;
+export {};
+```
+## dist/fulfillment/providerTrackingReferences.d.ts
+
+```ts
+import type { FulfillmentTrackingReference, FulfillmentObservationCodecs } from "./contracts/index.js";
+export declare function trackingReferenceComplete(ref: FulfillmentTrackingReference): boolean;
+/** Provider evidence wins as a unit; private carrier/URL codecs stay injected. */
+export declare function enrichTrackingReference(ref: FulfillmentTrackingReference, deliveryCarrier: {
+    carrierRef: string | null;
+    serviceRef: string | null;
+} | null, codecs: FulfillmentObservationCodecs & {
+    approveTrackingUrl?(url: string): boolean;
+    normalizeCarrier(input: {
+        carrierRef: string | null;
+        serviceRef: string | null;
+    }): string | null;
+    publicUrl(carrierRef: string | null, trackingNumber: string): string | null;
+}): FulfillmentTrackingReference;
+/** First occurrence wins, including its selection, after trimming the number. */
+export declare function uniqueTrackingReferences(refs: readonly FulfillmentTrackingReference[]): FulfillmentTrackingReference[];
+```
+## dist/fulfillment/replacementRefusals.d.ts
+
+```ts
+export declare const FULFILLMENT_REPLACEMENT_COMMAND_REFUSALS: readonly ["invalid_input", "idempotency_conflict", "order_not_found", "order_not_replaceable", "missing_client", "missing_shipping_address", "shipping_address_not_found", "payment_not_succeeded", "subscription_cycle_not_paid", "no_parcel_to_replace", "undispatched_replacement_exists", "missing_order_items", "missing_catalog_sku", "missing_inventory_reservation", "blocked_by_payment_not_succeeded_hold", "blocked_by_inventory_review_hold", "blocked_by_risk_review_hold", "blocked_by_address_review_hold", "blocked_by_manual_support_hold"];
+export declare const FULFILLMENT_REPLACEMENT_RESERVATION_REFUSALS: readonly ["inventory_external_provider_insufficient_available_stock", "inventory_external_provider_stock_stale", "inventory_external_provider_stock_missing", "inventory_external_provider_sku_not_found", "inventory_external_provider_location_missing", "inventory_reservation_insufficient_available_stock", "inventory_reservation_allocation_incomplete", "inventory_reservation_payment_status_not_reservable", "inventory_reservation_invalid_quantity"];
+export declare const UNSPECIFIED_FULFILLMENT_REPLACEMENT_REFUSAL = "unspecified_refusal";
+export declare const FULFILLMENT_REPLACEMENT_REFUSALS: readonly ["invalid_input", "idempotency_conflict", "order_not_found", "order_not_replaceable", "missing_client", "missing_shipping_address", "shipping_address_not_found", "payment_not_succeeded", "subscription_cycle_not_paid", "no_parcel_to_replace", "undispatched_replacement_exists", "missing_order_items", "missing_catalog_sku", "missing_inventory_reservation", "blocked_by_payment_not_succeeded_hold", "blocked_by_inventory_review_hold", "blocked_by_risk_review_hold", "blocked_by_address_review_hold", "blocked_by_manual_support_hold", "inventory_external_provider_insufficient_available_stock", "inventory_external_provider_stock_stale", "inventory_external_provider_stock_missing", "inventory_external_provider_sku_not_found", "inventory_external_provider_location_missing", "inventory_reservation_insufficient_available_stock", "inventory_reservation_allocation_incomplete", "inventory_reservation_payment_status_not_reservable", "inventory_reservation_invalid_quantity", "unspecified_refusal"];
+export type FulfillmentReplacementRefusal = (typeof FULFILLMENT_REPLACEMENT_REFUSALS)[number];
+```
+## dist/fulfillment/replacementShipmentHandler.d.ts
+
+```ts
+import { type BaseDeps, type FulfillmentHandlerRequest } from './handlerSupport.js';
+import type { FulfillmentReplacementPort } from './contracts/replacement.js';
+export declare function createAdminCommerceOrderRequestReplacementShipmentHandler<Response>({ authorizeAdmin, respond, omsPort, }: BaseDeps<Response> & {
+    omsPort: FulfillmentReplacementPort;
+}): (req: FulfillmentHandlerRequest, res: Response) => Promise<void>;
+```
+## dist/fulfillment/schemaCapabilities.d.ts
+
+```ts
+/** Sparse projections require the full canonical graph and a trusted native binding. */
+export declare const FULFILLMENT_NATIVE_CAPABILITIES: {
+    readonly shipment: "supported";
+    readonly commandFence: "supported";
+    readonly deliveryAlignment: "supported";
+    readonly stockEvidence: "supported";
+    readonly observationPersistence: "supported";
+    readonly localInventoryBalances: "host_required";
+    readonly dispatchContactPreparation: "host_required";
+    readonly productPacks: "unsupported";
+    readonly providerAccess: "unsupported";
+    readonly automaticReplacementConfirmation: "unsupported";
+};
+```
+## dist/fulfillment/shipmentsOverviewHandler.d.ts
+
+```ts
+import { type FulfillmentHandlerRequest, type FulfillmentHandlerResponder } from './handlerSupport.js';
+import type { FulfillmentShipmentsOverviewPort, FulfillmentShipmentsOverviewResponse } from './contracts/read.js';
+export interface FulfillmentShipmentsOverviewHandlerDeps<Response> {
+    respond: FulfillmentHandlerResponder<Response>;
+    overviewPort: FulfillmentShipmentsOverviewPort;
+    responseSchema: {
+        safeParse(input: unknown): {
+            success: true;
+            data: FulfillmentShipmentsOverviewResponse;
+        } | {
+            success: false;
+        };
+    };
+    authorizeAdmin: (req: FulfillmentHandlerRequest) => Promise<boolean>;
+}
+export declare function createFulfillmentShipmentsOverviewHandler<Response>({ respond, overviewPort, responseSchema: adminShipmentsOverviewResponseSchema, authorizeAdmin, }: FulfillmentShipmentsOverviewHandlerDeps<Response>): (req: FulfillmentHandlerRequest, res: Response) => Promise<void>;
+```
+## dist/fulfillment/statusMap.d.ts
+
+```ts
+export { FULFILLMENT_STATUS_MAP, CANONICAL_LOCAL_FULFILLMENT_STATUSES, CUSTOMER_STEP_SEQUENCE, canonicalStatusToken, stepForToken, customerStepFromSignals, phaseIndexForStep, stepLabelKey, timelineLabelForStep, trackingPhaseKeyForStep, stepUsesTruckIcon } from "@openlup/core/fulfillment";
+export type { FulfillmentStatusStage, FulfillmentStatusMap } from "@openlup/core/fulfillment";
+```
+## dist/fulfillment/trackingProgress.d.ts
+
+```ts
+export { fulfillmentProgressPresentation } from "@openlup/core/fulfillment";
+```
+## dist/fulfillment/verifiedIngress.d.ts
+
+```ts
+import type { FulfillmentObservation, FulfillmentObservationCodecs, FulfillmentObservationPort, FulfillmentRefusal } from "./contracts/index.js";
+import { applyFulfillmentObservationEffects } from "./fulfillmentObservationEffects.js";
+type EffectInput = Parameters<typeof applyFulfillmentObservationEffects<FulfillmentObservation["fact"]["canonicalStatus"], "in_transit" | "delivered">>[0];
+type DispatchRef = {
+    orderRef: string;
+    fulfillmentRef: string;
+    dispatchRef: string;
+    externalRef: string | null;
+};
+export interface FulfillmentIngressCounts {
+    invalidTimestamps: number;
+    rejectedCorrelationRefs: number;
+    rejectedTrackingRefs: number;
+    rejectedTrackingUrls: number;
+}
+export type FulfillmentIngressResult = {
+    counts: FulfillmentIngressCounts;
+} & ({
+    kind: "refused";
+    receiptId: null;
+    refusal: FulfillmentRefusal;
+    diagnostics?: {
+        invalidTimestamp?: true;
+        rejectedCorrelationRefs?: number;
+    };
+} | {
+    kind: "processed" | "ignored" | "superseded";
+    receiptId: string;
+    observation: FulfillmentObservation;
+    replayed: boolean;
+    trackingRefs: number;
+    trackingReadBacks: number;
+    supersededCause?: string;
+});
+/** Safe response classes only; the host owns HTTP and localized message text. */
+export declare function fulfillmentIngressHttpResult(result: FulfillmentIngressResult): {
+    status: 200 | 400 | 403 | 503;
+    messageClass: "accepted" | "bad_request" | "forbidden" | "upstream_unavailable";
+};
+/** Adapter verification owns auth-before-parse; the host owns durable replay. */
+export declare function verifyAndNormalizeFulfillmentObservation(input: {
+    enabled: boolean;
+    approveTrackingUrl?(url: string): boolean;
+    observationCodecs?: FulfillmentObservationCodecs;
+    provider: FulfillmentObservationPort;
+    verification: Parameters<FulfillmentObservationPort["verifyAndNormalize"]>[0];
+    localPersistence: {
+        /** G17: atomic insert by eventKey; retries keep the first stored firstReceivedAt. */
+        recordObservation(observation: FulfillmentObservation): Promise<{
+            replayed: boolean;
+            receiptId?: string;
+        }>;
+        /** Idempotent; only called after completion or a classified superseding conflict. */
+        markProcessed(eventKey: string, outcome: {
+            status: "processed" | "ignored";
+            refusal?: FulfillmentRefusal;
+            supersededCause?: string;
+        }): Promise<void>;
+    };
+    lifecycle: {
+        findDispatchRef(observation: FulfillmentObservation): Promise<DispatchRef | null>;
+        acknowledgeDispatchAcceptance(ref: DispatchRef, observation: FulfillmentObservation): Promise<void>;
+        recordStatusEvidence(ref: DispatchRef, observation: FulfillmentObservation): Promise<{
+            replayed: boolean;
+        }>;
+        effects: EffectInput["port"];
+        keys: {
+            stock(ref: string): string;
+            handoff(ref: string): string;
+            tracking(eventKey: string, number: string): string;
+        };
+        issueAccountingInvoice?(ref: string): Promise<void>;
+        /** Return a machine identity, never exception prose. */
+        supersededCause?(error: unknown): string | null;
+        classifyFailure(error: unknown): "stock_contention" | "state_conflict" | "other";
+        annotateStockContention?(eventKey: string, fulfillmentRef: string): Promise<void>;
+    };
+}): Promise<FulfillmentIngressResult>;
+export {};
 ```
 ## dist/http/deadline.d.ts
 

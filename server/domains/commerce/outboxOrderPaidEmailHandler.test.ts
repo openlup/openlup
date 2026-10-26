@@ -1,3 +1,4 @@
+import { formatMoney } from "./orderEmailLines.js";
 import { describe, expect, it, vi } from "vitest";
 import { COMMERCE_ORDER_PAID_EMAIL_EVENT_TYPE } from "../../../src/domains/commerce/outboxEventContracts.js";
 import { orderPaidEmailContent } from "../../../src/domains/commerce/emails/orderPaid.js";
@@ -48,7 +49,7 @@ const sampleData: OrderPaidRawData = {
   discountMinor: 1655,
   totalMinor: 12345,
   lines: [
-    { label: "Karma Jagnięcina", quantity: 2, lineTotalMinor: 10000 },
+    { label: "Item A", quantity: 2, lineTotalMinor: 10000 },
     { label: null, quantity: 1, lineTotalMinor: 2000 },
   ],
 };
@@ -115,7 +116,7 @@ function makeDeps(options?: {
   const recipientPort: OrderRecipientPort = {
     resolve: async () =>
       options?.recipient === undefined
-        ? { email: "k@example.com", firstName: "Ola", petName: "Fistaszek" }
+        ? { email: "k@example.com", firstName: "Buyer", petName: "Context A" }
         : options.recipient,
   };
   const linesPort: OrderPaidLinesPort = {
@@ -192,13 +193,13 @@ describe("outboxOrderPaidEmailHandler", () => {
     expect(outcome).toEqual({ kind: "processed", detail: { resendId: "re_paid_1" } });
     expect(sendCalls).toEqual([{
       to: "k@example.com",
-      firstName: "Ola",
-      petName: "Fistaszek",
+      firstName: "Buyer",
+      petName: "Context A",
       orderId: `order_${ORDER_UUID}`,
       mode: "one_time",
       outboxEventId: EVENT_ID,
       items: [
-        { name: "Karma Jagnięcina", quantity: 2, lineTotalLabel: "100,00\u00a0zł" },
+        { name: "Item A", quantity: 2, lineTotalLabel: formatMoney(10000, sampleData.currency) },
         // Sparse legacy snapshot → neutral label, never a current catalog name.
         { name: "Produkt", quantity: 1, lineTotalLabel: "20,00\u00a0zł" },
       ],
@@ -232,7 +233,7 @@ describe("outboxOrderPaidEmailHandler", () => {
 
     expect(sendCalls[0]).toMatchObject({
       items: [
-        { name: "Karma Jagnięcina", quantity: 2, lineTotalLabel: "" },
+        { name: "Item A", quantity: 2, lineTotalLabel: "" },
         { name: "Produkt", quantity: 1, lineTotalLabel: "" },
       ],
       totals: {
@@ -247,6 +248,16 @@ describe("outboxOrderPaidEmailHandler", () => {
         },
       },
     });
+  });
+
+  it("carries the proved offer percent percent and paid shipping to the existing receipt formatter", async () => {
+    const { handler, sendCalls } = makeDeps({ data: { ...sampleData, subtotalMinor: 123, discountMinor: 27,
+      totalMinor: 1096, firstSubscriptionPricePresentation: { catalogProductsMinor: 137, productDiscountMinor: 41,
+        productPayableMinor: 96, shippingGrossMinor: 1000, shippingDiscountMinor: 0, shippingEffectiveMinor: 1000,
+        totalMinor: 1096, discountPercent: 30 } } });
+    await handler.handle(makeRow(paidPayload), signal());
+    expect(sendCalls[0]).toMatchObject({ totals: { totalLabel: formatMoney(1096, sampleData.currency),
+      firstSubscription: { discountPercent: 30, productPayableLabel: formatMoney(96, sampleData.currency), shippingLabel: formatMoney(1000, sampleData.currency), shippingFree: false } } });
   });
 
   it("retries (does NOT send a contentless receipt) when the order data is not yet readable", async () => {
@@ -338,7 +349,7 @@ describe("outboxOrderPaidEmailHandler adopter parcel note", () => {
 
   it.each(LOCALES)("renders the note as one paragraph right after the item list, and no note as today (%s)", (locale) => {
     const vars = {
-      firstName: "Ola",
+      firstName: "Buyer",
       orderId: `order_${ORDER_UUID}`,
       mode: "one_time",
       items: [{ name: "Item A", quantity: 1, lineTotalLabel: "10.00 EUR" }],

@@ -42,3 +42,20 @@ export { createSupabaseOrderFeedbackSubmitPort } from "./orderFeedbackSubmit.js"
 export type { OrderFeedbackSubmitRpcClient, OrderFeedbackSubmitPort } from "./orderFeedbackSubmit.js";
 export { createSupabaseOrderFeedbackTokenCheckPort } from "./orderFeedbackTokenCheck.js";
 export type { OrderFeedbackTokenCheckRpcClient } from "./orderFeedbackTokenCheck.js";
+
+/** Node-only commerce effect consumers. Hosts bind runtime and presentation ports. */
+export * from "./emailRuntime.js";
+export * from "./outboxDispatchRegistry.js";
+export * from "./outboxDispatchRegistryComposition.js";
+export * from "./outboxCheckoutExpiredEmailHandler.js";
+export * from "./outboxCheckoutRecoveryEmailHandler.js";
+export * from "./outboxOrderDraftEmailHandler.js";
+export * from "./outboxOrderPaidEmailHandler.js";
+export * from "./outboxOrderPaidFulfillmentHandler.js";
+export * from "./outboxOrderPaidFulfillmentPorts.js";
+export * from "./outboxOrderRefundedEmailHandler.js";
+export * from "./outboxPaymentFailedEmailHandler.js";
+export * from "./outboxReturnEmailHandlers.js";
+export * from "./outboxShipmentDeliveredEmailHandler.js";
+export * from "./outboxShipmentDispatchedEmailHandler.js";
+export * from "./outboxShipmentExceptionEmailHandler.js";

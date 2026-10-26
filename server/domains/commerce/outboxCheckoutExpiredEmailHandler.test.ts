@@ -40,7 +40,7 @@ describe("outboxCheckoutExpiredEmailHandler", () => {
       },
     } as unknown as TransactionalEmailPort;
     const recipientPort: OrderRecipientPort = {
-      resolve: async () => ({ email: "k@example.com", firstName: "Ola" }),
+      resolve: async () => ({ email: "k@example.com", firstName: "Buyer" }),
     };
     const lifecyclePort: OrderPaymentLifecyclePort = {
       read: async () => ({
@@ -74,7 +74,7 @@ describe("outboxCheckoutExpiredEmailHandler", () => {
       },
     } as unknown as TransactionalEmailPort;
     const recipientPort: OrderRecipientPort = {
-      resolve: async () => ({ email: "k@example.com", firstName: "Ola", country: "PL" }),
+      resolve: async () => ({ email: "k@example.com", firstName: "Buyer", country: "PL" }),
     };
     const lifecyclePort: OrderPaymentLifecyclePort = {
       read: async () => ({
@@ -111,7 +111,7 @@ describe("outboxCheckoutExpiredEmailHandler", () => {
       },
     } as unknown as TransactionalEmailPort;
     const recipientPort: OrderRecipientPort = {
-      resolve: async () => ({ email: "k@example.com", firstName: "Ola" }),
+      resolve: async () => ({ email: "k@example.com", firstName: "Buyer" }),
     };
     const lifecyclePort: OrderPaymentLifecyclePort = {
       read: async () => ({

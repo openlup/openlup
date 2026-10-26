@@ -61,6 +61,15 @@ no private read/inspection/temp/promotion operations, so it cannot replace that
 store unchanged. Hosted token feedback is separate and requires adopter-provided
 managed RPCs; native `db/platform` has no hosted-feedback binding or added route.
 
+The Node-only `@openlup/platform/commerce/server` effect consumers accept the communications owner's existing payload
+parser, transactional-email scaffold and outcome mapper through typed host
+bindings. The reference binds the existing fulfillment payload parser, transactional scaffold
+and outcome mapper; commerce defines no second implementation. The fulfillment
+parser is exported unchanged and also serves the frozen subset handlers. Reference-only test fixtures exercise recipient, dedupe and
+provider-refusal outcomes. Neither these helpers nor the commerce registry
+construct a new worker, emitter or runtime schedule. Locale, presentation and
+provider policy remain in the reference composition.
+
 Invoicing service composition stays in the platform `/invoicing` entry. The
 reference host selects its existing accounting executor and job lease explicitly;
 module readiness runs before claim. Contributions describe existing registrations
@@ -574,6 +583,18 @@ its own reviewed compatibility change before a second capability is admitted.
 
 ### Internal boundaries and adapter isolation
 
+The browser-safe `@openlup/platform/commerce` entry exports only schemas, pure
+helpers and ports. Its graph never imports `commerce/server`; a browser bundle
+and source-boundary witness enforce the split. The Node-only server entry
+reuses the existing paid-fulfillment factory through `fulfillment/index.js`.
+Only files under `commerce/server/` admit that value edge in the module graph.
+Locale remains a host-supplied type parameter, with no communications server
+dependency or optional PostgreSQL types.
+Commerce/contracts retains its isolated type-only surface. Outbox rail
+composition is an injected `uniqueRegistry` function, bound by the reference
+host to `@openlup/outbox`; the platform adds no rail dependency or copied
+composition algorithm.
+
 Effective bundle selection reuses pricing's half-open authority through its
 public server entry, adding the catalog → pricing value edge. The dependency is
 acyclic; pricing owns no runtime catalog edge. The opt-in adapter keeps effective
@@ -760,6 +781,13 @@ executor. Browser preview values remain reference-owned. See the
 [M04 scope](plans/oss-m04-communications-triggers.md).
 
 ## Fulfillment contracts
+
+The fulfillment entry also exports its existing `parseOutboxPayload` helper.
+K4 reference email bindings reuse that same parser through the host runtime;
+paid handoff retains the identical schema parsing, issue paths and 300-character
+reason truncation. Its paid-handoff descriptor is also exported and rebound by
+commerce, retaining one event-type/timeout definition. These exports add no
+dispatch behavior or worker registration.
 
 Pure fulfillment presentation lives at the existing `@openlup/core/fulfillment`
 subpath: the status canon, actual-evidence tracking progress, current-parcel

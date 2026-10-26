@@ -31,7 +31,7 @@ function makeDeps(overrides?: {
   const recipientPort: OrderRecipientPort = {
     resolve: async () =>
       overrides?.recipient === undefined
-        ? { email: "a@b.test", firstName: "Ala", country: "PL", petName: "Fistaszek" }
+        ? { email: "a@b.test", firstName: "Buyer", country: "PL", petName: "Context A" }
         : overrides.recipient,
   };
   const lifecycleCalls: string[] = [];
@@ -303,7 +303,7 @@ describe("outboxCheckoutRecoveryEmailHandler", () => {
     expect(out.kind).toBe("processed");
     expect(calls[0]).toMatchObject({
       to: "a@b.test",
-      petName: "Fistaszek",
+      petName: "Context A",
       orderId: VALID.orderId,
       recoveryToken: "raw-token-abc",
       mode: "subscription_cycle",

@@ -1,3 +1,4 @@
+import { registerEmailProviderOutcomeCases, registerEmailRecipientCases } from "../../shared/__tests__/outboxEmailHandler.testFixtures.js";
 import { describe, expect, it } from "vitest";
 import { COMMERCE_SHIPMENT_DISPATCHED_EVENT_TYPE } from "../../../src/domains/commerce/outboxEventContracts.js";
 import type { OutboxEventRow } from "./outboxDispatchContracts.js";
@@ -66,7 +67,7 @@ function makeDeps(options?: {
   const recipientPort: OrderRecipientPort = {
     resolve: async () =>
       options?.recipient === undefined
-        ? { email: "k@example.com", firstName: "Ola", petName: "Fistaszek" }
+        ? { email: "k@example.com", firstName: "Buyer", petName: "Context A" }
         : options.recipient,
   };
   const handler = createOutboxShipmentDispatchedEmailHandler({ emailPort, recipientPort });
@@ -88,27 +89,14 @@ describe("outboxShipmentDispatchedEmailHandler", () => {
     expect((await handler.handle(makeRow({ orderUuid: "nope" }), signal())).kind).toBe("discard");
   });
 
-  it("skips an unresolved recipient and dedupes an already-sent notice", async () => {
-    const skip = makeDeps({ recipient: null });
-    expect(await skip.handler.handle(makeRow(payload), signal())).toEqual({
-      kind: "processed",
-      detail: { skipped: "recipient_unresolved" },
-    });
-
-    const dup = makeDeps({ existing: true });
-    expect(await dup.handler.handle(makeRow(payload), signal())).toEqual({
-      kind: "processed",
-      detail: { dedupe: "email_already_sent" },
-    });
-    expect(dup.sendCalls).toHaveLength(0);
-  });
+  registerEmailRecipientCases(makeDeps, () => makeRow(payload));
 
   it("keeps the legacy direct-DHL tracking URL fallback from a bare tracking number", async () => {
     const sent = makeDeps();
     const outcome = await sent.handler.handle(makeRow(payload), signal());
     expect(outcome).toEqual({ kind: "processed", detail: { resendId: "re_sd_1" } });
     expect(sent.sendCalls[0].trackingNumber).toBe("JD0123456789");
-    expect(sent.sendCalls[0].petName).toBe("Fistaszek");
+    expect(sent.sendCalls[0].petName).toBe("Context A");
     expect(sent.sendCalls[0].trackingUrl).toContain("tracking-id=JD0123456789");
   });
 
@@ -316,18 +304,5 @@ describe("outboxShipmentDispatchedEmailHandler", () => {
     expect(noTracking.sendCalls[0].trackingUrl).toBeNull();
   });
 
-  it("snoozes on a 503 and discards on a 422", async () => {
-    const snooze = makeDeps({
-      outcome: { ok: false, resendId: null, httpStatus: 503, providerError: "down", aborted: false },
-    });
-    expect(await snooze.handler.handle(makeRow(payload), signal())).toEqual({ kind: "snooze", reason: "down" });
-
-    const discard = makeDeps({
-      outcome: { ok: false, resendId: null, httpStatus: 422, providerError: null, aborted: false },
-    });
-    expect(await discard.handler.handle(makeRow(payload), signal())).toEqual({
-      kind: "discard",
-      reason: "resend_rejected",
-    });
-  });
+  registerEmailProviderOutcomeCases(makeDeps, () => makeRow(payload));
 });

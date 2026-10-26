@@ -96,6 +96,66 @@ Browser bundles resolve the complete commerce entry and both facades without
 externals or Node/database imports. The server entry bundles for Node; raw
 uploads deliberately fail the browser negative control.
 
+## Commerce domain effects package boundary
+
+The reference transactional email handlers and dispatch registry bind the single
+implementation at `@openlup/platform/commerce/server`. Pure projections and ports
+remain at the browser-safe `@openlup/platform/commerce` entry. The package consumes durable
+outbox facts; existing database triggers, the outbox worker and the independent
+accounting invoice duty retain their owners. Paid email and paid fulfillment
+register independently. Fulfillment delegates to M08, including its optional
+risk gate. Cancellation email remains unregistered; accounting may claim its
+fact through `extraHandlers`. Return approval and rejection notify only their
+own facts, without performing goods receipt, refunds or subscription changes.
+
+`commerceEmailBinding.ts` retains locale, money/line labels, first-subscription
+presentation, legacy tracking and provider notification policy. It binds the
+existing fulfillment payload parser, communications transactional scaffold and outcome mapper
+without moving those algorithms into commerce. Reference field names and send
+ordering are preserved; neutral ports use `contextName` and `messageId`.
+Refund emails show an amount only for `provider-refund.v2` evidence. Paid receipt
+presentation forwards its proved discount percentage. Registry descriptors are
+checked against actual registration before claim.
+
+The neutral sales-channel projection retains source kind, channel slug and
+external order reference byte-exact. OMS keeps its existing richer projection, where an unread source axis stays undefined. Inventory
+exposure is a type-only injected read port, with no SQL or default binding.
+W8/W9 conformance lives in `packages/platform/test/commerce/effects`; rebound
+reference suites and the captured event-schema transcript check host behavior.
+Admin order UI and marketing/review handlers remain reference-owned.
+
+### W8/W9 conformance: dropped adopter-private assertions
+
+The package suites retain neutral consumer behavior and source identity while
+the donor's deployment inventory and migration lineage stay with their owners.
+
+W8 (`commerceDomainEffects.test.ts`) omits these assertions:
+
+- Paid-purchase analytics descriptor event type (`commerce.order.paid.analytics`)
+  and its exclusion from the core registry: private M13 analytics.
+- Paid-purchase measurement trigger mechanism: private M13 analytics.
+- Draft-created catalog runner/business-trigger match: deployment-specific trigger inventory.
+- Accounting invoice-producer catalog runner match: deployment-specific trigger inventory.
+- Fulfillment-handoff invoice-duty business-trigger match: deployment-specific trigger inventory.
+- Order-canceled emission catalog runner/business-trigger match: deployment-specific trigger inventory.
+- Return-emission catalog runner/business-trigger match: deployment-specific trigger inventory.
+- Eleven sealed migration SHA rows, witnessed function/trigger/table catalogs and
+  `assertMigrationWitness`: adopter append-only migration lineage; pgTAP suites own runtime emission proof.
+
+Consumer and flag assertions retain neutral duty independence. M09 owns invoice
+execution; the package registry remains a consumer map.
+
+W9 (`commerceSalesChannelSeam.test.ts`) omits these assertions:
+
+- Two exposure/new-purchase migration SHA seals, witnessed-object catalog and `assertMigrationWitness`:
+  adopter append-only migration lineage, owned by M10/M06.
+- Regex for `inventory_listing_exposure(p_sku_id uuid)`: M10/M06 exposure SQL ownership.
+- Issued-minus-converted-minus-withdrawn listing-unit SQL text: M10/M06 exposure SQL ownership.
+- Raw-sellable-minus-listing-exposure regex: M10/M06 ATP/exposure SQL ownership.
+- Pending-symbol migration-lineage absence witness: M10/M06 migration ownership;
+  replaced by package-source absence of `inventory_channel_exposure_quantity`
+  and the type-only injected `CommerceChannelExposureReadPort`.
+
 ## Pricing policy package boundary
 
 The existing pricing-policy token and neutral error/safe-reason block are owned
@@ -182,8 +242,8 @@ needing an owner decision in the
   columns and `deriveOrderMoney()`. It validates persisted catalog, allocated,
   effective, VAT, delivery, and total equations but never allocates a discount
   or reads quote metadata as completed-order truth.
-- Public acquisition prices use the versioned, published-dog-product-only
-  offer-pricing projection. When the v2 capability flag is enabled, the hook
+- Public acquisition prices use the versioned offer-pricing projection for
+  eligible published products. When the v2 capability flag is enabled, the hook
   binds the request to the app-level first-party visitor id; without that id it
   stays amount-free and fail-closed. Transactional totals still come only from
   the quote contract, and historical receipt totals only from canonical order recap.
@@ -191,13 +251,12 @@ needing an owner decision in the
 - Pure policy helpers: pricing breakdown, recommendation engine/variant
   selection, recommendation policy contracts, offer availability derivation, and OMS fulfillment
   eligibility/summary (`pricingBreakdown.ts`, `omsFulfillment*`).
-- Petfood policy implementations live downstream in a deployment-owned module,
+- Adopter-specific product policies live downstream in a deployment-owned module,
   which is withheld by the deployment overlay and is not part of the published
   tree. `energyPolicy.ts` keeps only compatibility type exports and
   `packageQuantityPolicy.ts` keeps the package policy contract/version exports;
   a published tree binds its own implementation of those contracts at the
-  composition root, which is where this deployment injects the openlup petfood
-  policies.
+  composition root.
 - Transactional email *content* (commerce owns the copy; chrome/transport live
   in `communications` + `server/infra/resend`): `emails/*` — e.g.
   `emails/orderDraft.ts` builds the localized order-draft resume nudge as

@@ -3218,6 +3218,14 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/commerce/orderEmailEligibility.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/orderEmailLines.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/commerce/orderFeedbackContracts.ts",
       "class": "public-output"
     },
@@ -3234,7 +3242,15 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/commerce/outboxDispatchContracts.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/commerce/outboxEventSchemas.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/outboxOrderDraftEmailPorts.ts",
       "class": "public-output"
     },
     {
@@ -3247,6 +3263,10 @@
     },
     {
       "path": "packages/platform/src/commerce/runtimeErrors.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/salesChannelEnvelope.ts",
       "class": "public-output"
     },
     {
@@ -3271,6 +3291,10 @@
     },
     {
       "path": "packages/platform/src/commerce/server/commerceReturnsHandlers.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/emailRuntime.ts",
       "class": "public-output"
     },
     {
@@ -3307,6 +3331,62 @@
     },
     {
       "path": "packages/platform/src/commerce/server/orderReviewRawUploadHandler.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/outboxCheckoutExpiredEmailHandler.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/outboxCheckoutRecoveryEmailHandler.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/outboxDispatchRegistry.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/outboxDispatchRegistryComposition.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/outboxOrderDraftEmailHandler.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/outboxOrderPaidEmailHandler.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/outboxOrderPaidFulfillmentHandler.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/outboxOrderPaidFulfillmentPorts.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/outboxOrderRefundedEmailHandler.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/outboxPaymentFailedEmailHandler.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/outboxReturnEmailHandlers.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/outboxShipmentDeliveredEmailHandler.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/outboxShipmentDispatchedEmailHandler.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/outboxShipmentExceptionEmailHandler.ts",
       "class": "public-output"
     },
     {
@@ -5651,6 +5731,14 @@
     },
     {
       "path": "packages/platform/test/commerce/commerceReviewMediaVisibility.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/effects/commerceDomainEffects.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/effects/commerceSalesChannelSeam.test.ts",
       "class": "public-output"
     },
     {
@@ -13246,6 +13334,10 @@
       "class": "public-output"
     },
     {
+      "path": "server/domains/commerce/commerceEmailBinding.ts",
+      "class": "public-output"
+    },
+    {
       "path": "server/domains/commerce/commerceOfferLayoutHandler.test.ts",
       "class": "public-output"
     },
@@ -13614,6 +13706,10 @@
       "class": "public-output"
     },
     {
+      "path": "server/domains/commerce/orderPaidEmailPresentation.ts",
+      "class": "public-output"
+    },
+    {
       "path": "server/domains/commerce/orderRecapMapping.test.ts",
       "class": "public-output"
     },
@@ -13695,6 +13791,10 @@
     },
     {
       "path": "server/domains/commerce/outboxDispatchRegistry.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/domains/commerce/outboxDispatchRegistryComposition.ts",
       "class": "public-output"
     },
     {
@@ -16466,6 +16566,10 @@
       "class": "public-output"
     },
     {
+      "path": "server/shared/__tests__/outboxEmailHandler.testFixtures.ts",
+      "class": "public-output"
+    },
+    {
       "path": "server/shared/applyPaymentResultRpc.test.ts",
       "class": "public-output"
     },
@@ -16507,6 +16611,10 @@
     },
     {
       "path": "server/shared/mapResendOutcome.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/shared/parseOutboxPayload.ts",
       "class": "public-output"
     },
     {
@@ -19107,6 +19215,14 @@
     },
     {
       "path": "src/domains/commerce/outboxEventContracts.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "src/domains/commerce/outboxEventEquivalence.fixture.json",
+      "class": "public-output"
+    },
+    {
+      "path": "src/domains/commerce/outboxEventEquivalence.test.ts",
       "class": "public-output"
     },
     {
