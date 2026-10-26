@@ -2994,6 +2994,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/commerce/checkoutCommandSchemas.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/commerce/checkoutHelpers.ts",
       "class": "public-output"
     },
@@ -3162,7 +3166,15 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/commerce/offerAvailability.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/commerce/offerAvailabilitySchemas.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/offerEvidenceSchemas.ts",
       "class": "public-output"
     },
     {
@@ -3254,6 +3266,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/commerce/paymentContinuation.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/commerce/ports.ts",
       "class": "public-output"
     },
@@ -3274,6 +3290,122 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/commerce/server/checkoutCompensation.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/checkoutConflictClassifiers.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/checkoutExpiredRecoveryPolicy.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/checkoutInvoiceBuyerSnapshot.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/checkoutOfferPolicyPort.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/checkoutPaymentContinuationCredential.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/checkoutQuoteTypes.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/checkoutRecoveryOrderPort.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/checkoutRecoveryToken.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/checkoutRefusalContinuation.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/checkoutRuntimeTypes.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/commerceCheckoutCommandExecution.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/commerceCheckoutCompensation.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/commerceCheckoutContinuationTerms.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/commerceCheckoutCustomerDefaults.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/commerceCheckoutFailureHandler.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/commerceCheckoutHandler.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/commerceCheckoutHandlerAdmission.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/commerceCheckoutHandlerHelpers.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/commerceCheckoutOrchestrationError.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/commerceCheckoutPromotionPriceChange.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/commerceCheckoutProviderPayment.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/commerceCheckoutQuoteGuard.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/commerceCheckoutResume.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/commerceCheckoutResumeGuard.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/commerceCheckoutSavedPaymentMethod.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/commerceCheckoutStartRuntimeFailure.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/commerceCheckoutTiming.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/commerceDiagnostics.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/commerce/server/commerceOmsCancelOrderHandler.ts",
       "class": "public-output"
     },
@@ -3290,7 +3422,43 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/commerce/server/commerceOrderDraft.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/commercePaidOrderOrchestration.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/commerceProviderAttemptFailure.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/commerce/server/commerceReturnsHandlers.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/commerceRuntimePort.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/commerceRuntimeService.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/commerceRuntimeStartResponse.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/commerceStarterOfferGuard.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/configuratorIntentPersistence.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/configuratorIntentPersistenceHandler.ts",
       "class": "public-output"
     },
     {
@@ -3303,6 +3471,14 @@
     },
     {
       "path": "packages/platform/src/commerce/server/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/offerAvailability.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/orderDraftRpcPayload.ts",
       "class": "public-output"
     },
     {
@@ -3387,6 +3563,18 @@
     },
     {
       "path": "packages/platform/src/commerce/server/outboxShipmentExceptionEmailHandler.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/referenceCheckoutHandler.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/reservationSweepPort.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/commerce/server/starterTermsPort.ts",
       "class": "public-output"
     },
     {
@@ -5678,6 +5866,134 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/commerce/checkoutCompensation.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/checkoutConflictClassifiers.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/checkoutExpiredRecoveryPolicy.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/checkoutOfferPolicyPort.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/checkoutPaymentContinuationCredential.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/checkoutRecoveryToken.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/checkoutRefusalContinuation.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/checkoutTestFixtures.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/commerceAtpConsumptionConformance.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/commerceCheckoutCommandExecution.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/commerceCheckoutCompensation.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/commerceCheckoutContinuationTerms.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/commerceCheckoutCustomerDefaults.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/commerceCheckoutFailureHandler.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/commerceCheckoutHandler.offerPolicy.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/commerceCheckoutHandler.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/commerceCheckoutHandlerAdmission.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/commerceCheckoutHandlerHelpers.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/commerceCheckoutOrchestration.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/commerceCheckoutOrchestrationError.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/commerceCheckoutPromotionPriceChange.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/commerceCheckoutProviderPayment.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/commerceCheckoutQuoteAcceptance.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/commerceCheckoutQuoteGuard.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/commerceCheckoutResume.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/commerceCheckoutResumeGuard.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/commerceCheckoutSavedPaymentMethod.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/commerceCheckoutStartRuntimeFailure.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/commerceCheckoutTiming.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/commerceCompensateExpiryConformance.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/commerceDiagnostics.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/commerceFinalizeOutcomeConformance.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/commerce/commerceOmsCancelOrderHandler.test.ts",
       "class": "public-output"
     },
@@ -5714,6 +6030,14 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/commerce/commerceOrderDraft.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/commerceProviderAttemptFailure.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/commerce/commerceQuoteCompositionCharacterization.test.ts",
       "class": "public-output"
     },
@@ -5731,6 +6055,38 @@
     },
     {
       "path": "packages/platform/test/commerce/commerceReviewMediaVisibility.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/commerceRuntimePort.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/commerceRuntimeService.decline.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/commerceRuntimeService.providerInjection.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/commerceRuntimeService.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/commerceRuntimeStartResponse.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/commerceStarterOfferGuard.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/configuratorIntentPersistence.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/configuratorIntentPersistenceHandler.test.ts",
       "class": "public-output"
     },
     {
@@ -5803,6 +6159,14 @@
     },
     {
       "path": "packages/platform/test/commerce/managedTypes.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/offerAvailability.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/offerAvailabilityPort.test.ts",
       "class": "public-output"
     },
     {
@@ -5886,6 +6250,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/commerce/orderDraftRpcPayload.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/commerce/orderFeedbackContracts.test.ts",
       "class": "public-output"
     },
@@ -5950,7 +6318,19 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/commerce/referenceCheckoutHandler.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/reservationSweepPort.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/commerce/schemas.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/commerce/storeTestFixtures.ts",
       "class": "public-output"
     },
     {
@@ -8715,6 +9095,14 @@
     },
     {
       "path": "server/adapters/managed/commerce/inventoryReservationPort.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/managed/commerce/inventoryReservationResponse.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/adapters/managed/commerce/inventoryReservationResponse.ts",
       "class": "public-output"
     },
     {
@@ -13158,6 +13546,10 @@
       "class": "public-output"
     },
     {
+      "path": "server/domains/commerce/commerceCheckoutContinuationTerms.ts",
+      "class": "public-output"
+    },
+    {
       "path": "server/domains/commerce/commerceCheckoutCustomerDefaults.test.ts",
       "class": "public-output"
     },
@@ -13167,6 +13559,10 @@
     },
     {
       "path": "server/domains/commerce/commerceCheckoutCustomerDefaultsHandler.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/domains/commerce/commerceCheckoutEngineIdentity.test.ts",
       "class": "public-output"
     },
     {
@@ -13183,6 +13579,10 @@
     },
     {
       "path": "server/domains/commerce/commerceCheckoutHandler.diagnostics.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/domains/commerce/commerceCheckoutHandler.offerPolicy.test.ts",
       "class": "public-output"
     },
     {
@@ -13226,6 +13626,10 @@
       "class": "public-output"
     },
     {
+      "path": "server/domains/commerce/commerceCheckoutJourney.ts",
+      "class": "public-output"
+    },
+    {
       "path": "server/domains/commerce/commerceCheckoutOrchestration.test.ts",
       "class": "public-output"
     },
@@ -13266,6 +13670,10 @@
       "class": "public-output"
     },
     {
+      "path": "server/domains/commerce/commerceCheckoutQuoteBinding.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "server/domains/commerce/commerceCheckoutQuoteGuard.test.ts",
       "class": "public-output"
     },
@@ -13303,6 +13711,10 @@
     },
     {
       "path": "server/domains/commerce/commerceCheckoutStartRuntimeFailure.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/domains/commerce/commerceCheckoutStoresIdentity.test.ts",
       "class": "public-output"
     },
     {
@@ -13435,6 +13847,10 @@
     },
     {
       "path": "server/domains/commerce/commerceOrderRecapHandler.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/domains/commerce/commercePaidOrderOrchestration.ts",
       "class": "public-output"
     },
     {
@@ -19439,6 +19855,10 @@
     },
     {
       "path": "src/domains/commerce/starterOfferPolicy.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "src/domains/commerce/starterTermsPort.ts",
       "class": "public-output"
     },
     {

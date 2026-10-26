@@ -35,9 +35,14 @@ its `/contracts` entry remains type-only. The `/commerce/server` entry
 is the separate Node-only home for handlers, use cases, stores, adapters and
 engine composition. Browser bundle proof checks the complete commerce runtime
 graph. The additive `pricing/browser` entry directly exposes the existing quote
-primitive factory and acquisition capability/expectation validators from their
-pure defining files; it never imports the Node-only pricing root. Its nested
-same-module imports follow the existing module graph rules. The customer-default consumption guard reads the package implementation
+primitive factory, acquisition capability/expectation/resolved-terms validators
+and shipping-terms validator. Acquisition reuses its pure defining file; shipping
+uses an exact linted edge from `pricing/browser/index.ts` to the existing pure
+`shipping/thresholdPolicy.ts` owner, preserving validator identity without the
+shipping handler/Node HTTP declaration closure. Other internal shipping paths
+remain refused. The complete browser graph imports neither Node
+built-ins nor the Node-only pricing root. Reference quote context binds optional
+shipping/acquisition terms without changing its other fields or strictness. The customer-default consumption guard reads the package implementation
 so its unapplied-evidence and forbidden-payload assertions retain their meaning.
 
 
@@ -595,6 +600,41 @@ composition is an injected `uniqueRegistry` function, bound by the reference
 host to `@openlup/outbox`; the platform adds no rail dependency or copied
 composition algorithm.
 
+The Node-only commerce server entry also exports `tryCompensate` with an injected
+`CheckoutCompensationPort`; the reference compensation file re-exports the same
+function. Reservation release, promotion cancellation and conditional
+abandoned-order cancellation retain their ordering, keys, reasons and best-effort
+warnings. Persistence and payment execution stay host-bound. The cold consumer
+exercises installed compensation.
+
+The server entry also owns checkout handlers, runtime and the shared paid-order
+saga. Its additional value edges are pricing, shipping and promotions; HTTP and
+BFF edges remain type-only. Host schema/response, subject, metadata, starter-policy
+and existing payment callables are explicit bindings; host configuration and
+application routes retain their owners. Saved-method alias and recurring metadata
+use host-defined string type arguments, preserving reference wire values without
+publishing provider unions. Offer binding precedes quoting, accepted
+shipping/acquisition terms require acceptance, and scoped contention or uncertain
+dispatch cannot authorize compensation. Neutral conformance and reference binding
+suites cover those seams. The cold consumer also exercises installed continuation.
+
+Generic draft/finalize/intent/resume stores, cancellation and sweep adapters also
+live at the server entry; structural clients and host schemas/projections preserve
+RPC arguments and table filters. Phone normalization is injected and verified
+identity is stamped last. Bounded recovery classifiers inject subject admission
+and compare shipping terms, while token state classification grants no route
+authority. Recovery services, projection and application routes retain their
+owners. The C2 release handoff is to be released; unit recorders do not prove SQL
+atomicity or active-subscription preservation.
+
+The physical-table availability projection also lives at commerce/server over a
+structural query client and a required host provider predicate. Its pure ladder
+is browser-safe commerce; SDK narrowing stays in the reference adapter. The
+reference reservation allocator imports M06's policy, retaining scoped lock-error
+translation and original retry keys locally. The existing M06 normalized read
+composition remains the only selected stock-read seam; this move does not bind
+the separate native reader or switch private preview transport.
+
 Effective bundle selection reuses pricing's half-open authority through its
 public server entry, adding the catalog → pricing value edge. The dependency is
 acyclic; pricing owns no runtime catalog edge. The opt-in adapter keeps effective
@@ -607,6 +647,14 @@ Reservation policy has an unchanged server counterpart; the reference keeps brow
 Catalog now also owns fixed-bundle application/admin factories at its existing
 entry. Its data/http/bff inputs remain type-only: the native read
 store takes the data entry's executor without constructing a driver or pool.
+The physical-table availability projection also lives at commerce/server over a
+structural query client and a required host provider predicate. Its pure ladder
+is browser-safe commerce; SDK narrowing stays in the reference adapter. The
+reference reservation allocator imports M06's policy, retaining scoped lock-error
+translation and original retry keys locally. The existing M06 normalized read
+composition remains the only selected stock-read seam; this move does not bind
+the separate native reader or switch private preview transport.
+
 Effective bundle selection alone adds the pricing value edge described above;
 there is no promotions edge. Reference wrappers bind
 existing schemas, operation spec and shared admin kit, stock/lifecycle helpers,

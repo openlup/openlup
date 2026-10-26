@@ -3,7 +3,7 @@ import { createInventoryContribution } from "@openlup/platform/composition";
 import { createBundleAvailability, createBundleAvailabilityServices, type BundleStockPort, type BundleCatalogReadPort } from "@openlup/platform/catalog";
 import type { RequiredSchema } from "@openlup/core/readiness";
 import { inventorySubscriptionForecastResponseSchema } from "../../../src/domains/inventory/contracts.js";
-import { deriveOfferAvailability, reasonCodeFor, statusForSellableNow } from "../../../src/domains/commerce/offerAvailability.js";
+import { deriveOfferAvailability, reasonCodeFor, statusForSellableNow } from "@openlup/platform/commerce";
 
 /** Opt-in reference composition. Importing this file registers no routes or stock reader. */
 export function createM06InventoryReferenceBinding(input: {

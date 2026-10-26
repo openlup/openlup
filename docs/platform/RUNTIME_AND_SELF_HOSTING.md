@@ -331,6 +331,12 @@ stock reader feeds catalog bundle availability; native new-purchase reads remain
 unsupported and are deferred to the native-backend parity round (owner 2026-10-21). Importing
 the binding mounts no route, schedule or provider. Admin composition retains its
 authorization and mutation flag; native adjustment remains refused.
+The stock binding passes `createInventoryBindings(...).newPurchaseStockReadPort`
+to M06's availability projection and binds the pure status ladder from browser
+commerce. Physical-table fallback is still an explicit host choice, using the
+single commerce/server projection; it cannot allocate or consume reservations.
+The separate native SQL stock reader is not selected by this composition, and
+private preview transport remains outside this move.
 
 The separate M05 reference factories
 [`m05CatalogBinding.ts`](../../server/runtime/public-reference/m05CatalogBinding.ts)

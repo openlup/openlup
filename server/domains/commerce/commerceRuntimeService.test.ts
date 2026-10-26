@@ -1,3 +1,4 @@
+import { InventoryPersistenceError } from "../../../src/domains/inventory/ports.js";
 import { describe, expect, it, vi } from "vitest";
 import { createCommerceRuntimeService } from "./commerceRuntimeService.js";
 import {
@@ -36,6 +37,28 @@ function tpaySubmit(idempotencyKey: string) {
 }
 
 describe("commerce runtime service", () => {
+  it("reuses finalized order and inventory request identity after transient busy without dispatch", async () => {
+    const orderPort = makeOrderPort();
+    const inventoryPort = makeInventoryPort();
+    const paymentPort = makePaymentPort();
+    const execute = vi.fn().mockResolvedValue({ provider: tpaySubmit("synthetic").paymentProvider, providerAttemptId: "remote",
+      providerSessionId: null, attemptStatus: "processing", nextActionKind: null, requestPayload: {}, responsePayload: {} });
+    const busy = new InventoryPersistenceError("busy", { code: "55P03", reason: "inventory_admission_busy" });
+    inventoryPort.reserveOrderItems.mockRejectedValueOnce(busy);
+    const service = createCommerceRuntimeService({ orderPort, inventoryPort, paymentPort,
+      readinessPort: makeReadinessPort(), resolveExecutionPort: () => ({ execute }) });
+    const input = tpaySubmit("original-journey-key");
+    await expect(service.startRuntime(input)).rejects.toBe(busy);
+    expect(paymentPort.createIntent).not.toHaveBeenCalled();
+    expect(execute).not.toHaveBeenCalled();
+    expect(inventoryPort.releaseOrderReservations).not.toHaveBeenCalled();
+    await service.startRuntime(input);
+    expect(orderPort.finalizeOrderForCheckout.mock.calls[1]).toEqual(orderPort.finalizeOrderForCheckout.mock.calls[0]);
+    expect(inventoryPort.reserveOrderItems.mock.calls[1]).toEqual(inventoryPort.reserveOrderItems.mock.calls[0]);
+    expect(execute).toHaveBeenCalledTimes(1);
+    expect(paymentPort.prepareProviderAttempt).toHaveBeenCalledTimes(1);
+  });
+
   it("resolves explicit provider execution before finalizing an order or creating a payment intent", async () => {
     const orderPort = { finalizeOrderForCheckout: vi.fn() };
     const inventoryPort = {

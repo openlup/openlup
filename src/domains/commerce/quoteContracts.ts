@@ -1,4 +1,6 @@
-import { acquisitionCapabilitySchema } from "@openlup/platform/pricing/browser";
+import { acquisitionCapabilitySchema, resolvedAcquisitionTermsSchema, shippingTermsSchema } from "@openlup/platform/pricing/browser";
+import type { ResolvedAcquisitionTerms } from "@openlup/platform/pricing/contracts";
+import { commerceOfferVersionSchema, commerceOfferEvidenceSchema } from "@openlup/platform/commerce";
 // Browser validation binding; the pricing server entry owns the portable counterpart.
 import { z } from "../../lib/validation/zod.js";
 import { catalogAllergenSlugSchema } from "../catalog/contracts.js";
@@ -70,6 +72,11 @@ export const quoteContextSchema = z
     petId: z.string().trim().min(1).max(120).nullable().optional(),
     petProfileContext: quotePetProfileContextSchema.optional(),
     pricingPolicy: pricingPolicySnapshotSchema.optional(),
+    shippingTerms: shippingTermsSchema.optional(),
+    // Preserve the required nullable effectiveTo field in the non-strict app project.
+    acquisitionTerms: (resolvedAcquisitionTermsSchema as z.ZodType<ResolvedAcquisitionTerms, z.input<typeof resolvedAcquisitionTermsSchema>>).optional(),
+    offerVersion: commerceOfferVersionSchema.optional(),
+    offerEvidence: commerceOfferEvidenceSchema.optional(),
     // SERVER-MINTED ONLY: injected by the checkout quote guard after pricing, never
     // accepted from a client, read by the provisional-creation RPC to seed the marker.
     starterPack: starterPackPlanSchema.optional(),

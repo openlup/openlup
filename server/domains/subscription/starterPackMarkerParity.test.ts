@@ -59,6 +59,7 @@ const ACCEPTED: Array<[label: string, value: unknown]> = [
   ["a zero delivery-2 discount", { ...VALID_PLAN, delivery2: { ...VALID_PLAN.delivery2, discountMinor: 0, discountBps: 0 } }],
   ["the 10000 bps ceiling", { ...VALID_PLAN, delivery2: { ...VALID_PLAN.delivery2, discountBps: 10_000 } }],
   ["a fortnightly graduation", { ...VALID_PLAN, graduation: { ...VALID_PLAN.graduation, cadenceDays: 14 } }],
+  ["a three-week graduation", { ...VALID_PLAN, graduation: { ...VALID_PLAN.graduation, cadenceDays: 21 } }],
   ["an addon line", {
     ...VALID_PLAN,
     graduation: {
@@ -79,7 +80,7 @@ const REJECTED: Array<[label: string, value: unknown]> = [
   ["a negative discountMinor", { ...VALID_PLAN, delivery2: { ...VALID_PLAN.delivery2, discountMinor: -1 } }],
   ["a negative basisSubtotalMinor", { ...VALID_PLAN, delivery2: { ...VALID_PLAN.delivery2, basisSubtotalMinor: -1 } }],
   ["a missing delivery2", { ...VALID_PLAN, delivery2: undefined }],
-  ["a 21-day graduation cadence", { ...VALID_PLAN, graduation: { ...VALID_PLAN.graduation, cadenceDays: 21 } }],
+  ["a 30-day graduation cadence", { ...VALID_PLAN, graduation: { ...VALID_PLAN.graduation, cadenceDays: 30 } }],
   ["an empty line list", { ...VALID_PLAN, graduation: { ...VALID_PLAN.graduation, lines: [] } }],
   ["a blank sku", {
     ...VALID_PLAN,

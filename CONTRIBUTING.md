@@ -180,6 +180,25 @@ entries, one-unit projection/refusal, opaque offer validation and injected
 minimum defaults. Quote ports take host-owned types as parameters. Commerce
 contracts retain the prohibition on cross-module imports.
 
+M11 D3 extends `pricing/browser` with the existing resolved-acquisition and
+shipping-terms validators. `browserBoundary.test.ts` checks their symbol identity
+and the exact five-file built browser closure; identity/subscription inventories
+add only `shipping/thresholdPolicy.js`. The import-map test permits that pure
+leaf only at `pricing/browser/index.ts` and refuses shipping handlers, HTTP,
+Node/database imports and sibling access. The reference quote-binding suite
+checks optional terms, unchanged absent-term output and strict unknown-key
+refusal; existing starter checkout tests cover acquisition refusals.
+
+M11 K2b keeps the pricing-to-shipping value exception confined to the exact
+`pricing/browser/index.ts` validator re-export; other pricing code has only the
+shipping type edge. The import-map witness retains the nested module/contract
+resolver and tests sibling refusal. The installed commerce-server consumer also
+exercises draft/runtime/intent/resume store exports, recovery token classification
+and hashing, and ordered sweep arguments without a live database.
+Both exact server-export inventories retain OMS/returns/effects names and add
+K2b stores/recovery helpers. Source and built browser witnesses check the full
+commerce closure against identity/subscription exact-file inventories.
+
 M11 K3a adds neutral OMS command, replay and subscription continuity witnesses
 and host projection bindings. The managed queue proof at
 `tests/postgres/omsQueueLadder.test.ts` replays every current managed forward with
@@ -220,6 +239,20 @@ allowed and refused directions. The new server entry joins the existing cold
 consumer's no-optional-peer inventory. These checks add no execution profile,
 verification command, budget or provider requirement.
 
+
+M11 K2 puts checkout engines, handlers and runtime composition in the separate
+Node-only `@openlup/platform/commerce/server` entry. Its declared value edges are pricing, shipping, promotions and
+inventory; HTTP/BFF edges admit types only. Browser commerce files cannot import
+the server subtree or Node built-ins. The import-boundary matrix checks those
+permissions and refusals; `packageBoundary.test.ts` bundles the browser entry
+with esbuild's browser platform and includes the exact nested export. The cold
+consumer exercises installed checkout exports without optional peers and
+includes its declarations in the existing NodeNext/Bundler compile proof.
+
+The commerce server compensation witness preserves release, promotion-cancel
+and conditional abandoned-order-cancel ordering. Its installed consumer checks
+the exact keys and reasons and compiles the cleanup port in both declaration
+resolution modes; the reference facade proves function and type identity.
 
 The native subscription renewal selection is
 `npm test -- tests/postgres/subscriptionRenewalLifecycle.test.ts --maxWorkers=1`.

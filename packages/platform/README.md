@@ -82,9 +82,9 @@ timestamp used in the webhook's idempotency key.
 | `./catalog` | Experimental neutral catalog schemas, drafts, reads, media source packs and publication ports |
 | `./catalog/contracts` | Dependency-free catalog DTOs, media resolver, authority and canonicalization helpers |
 | `./commerce`, `./commerce/contracts` | Browser-safe neutral commerce schema cores, generic ports and pure contract helpers |
-| `./commerce/server` | Node-only OMS, returns, native reviews/media and hosted-feedback handlers/adapters and order-detail composition, email consumers, dispatch registry and paid-fulfillment binding |
+| `./commerce/server` | Node-only OMS, returns, native reviews/media and hosted-feedback handlers/adapters and order-detail composition, email consumers, dispatch registry, paid-fulfillment binding and checkout compensation, checkout handlers, runtime and shared paid-order saga |
 | `./pricing` | Experimental price authority, quote computation/handlers, offer projection/cache, readiness and policy tokens |
-| `./pricing/browser` | Existing quote primitive factory and acquisition capability/expectation schemas, browser-safe |
+| `./pricing/browser` | Existing quote primitives, acquisition validators and shipping-terms validator, browser-safe |
 | `./pricing/contracts` | Dependency-free authority, money, quote and offer DTOs and version constants |
 | `./promotions` | Experimental promotion application, admin handlers, native read/sweep, SQL projections and acceptance |
 | `./promotions/contracts` | Dependency-free preview and admin DTOs |
@@ -92,6 +92,50 @@ timestamp used in the webhook's idempotency key.
 | `./shipping/contracts` | Type-only delivery, pickup-point, summary and evidence DTOs |
 
 ## Commerce contracts
+
+`./commerce` stays browser-safe. `./commerce/server` is the separate Node-only
+entry for checkout engines, handlers, stores and adapters. It exports
+`tryCompensate` and `CheckoutCompensationPort`: release the selected order's
+reservations, attempt unstarted-promotion cancellation, then cancel the abandoned
+order only when promotion cleanup did not succeed. Existing keys, reasons,
+warning messages and swallowed cleanup failures are preserved. The reference
+facade delegates to the same function; composition still owns the cleanup ports.
+The package boundary test bundles the browser entry without Node built-ins or
+the server subtree, and the cold consumer exercises installed compensation.
+Starter declaration types are inferred from the `createStarterOfferGuard`
+binding signature; the declaration interface stays internal to the engine.
+
+The Node-only entry owns the checkout admission/quote/resume/failure sequence,
+neutral command adapter, runtime and one paid-order saga. Composition injects
+HTTP schemas/responder, quote and persistence ports, subject/metadata projections
+and the existing prepared-payment execution callables. Provider roles, flow
+selection and trusted provider-evidence classification are reference inputs.
+Saved-method alias and recurring-mode strings are host-defined generics passed
+unchanged through resolver, saga and runtime; the evidence schema owns its internal JSON-length bound. The reference retains
+locale, fiscal, profile, starter-policy, request observation and status-link
+bindings. Acquisition expectations and accepted shipping terms require quote
+acceptance; offer asks require a bound policy. A matching owned saved epoch can
+resume; edited or incomplete state re-quotes. Stock refusal compensates only a
+proved pre-dispatch draft; scoped contention and uncertain dispatch carry no
+cleanup capability. A synchronous decline stays failed and is never auto-settled.
+Neutral finalize and one-time reservation conformance tests use recording ports;
+atomic acquisition/finalize SQL still requires integration with its migration chain.
+
+The server entry also owns generic order-draft, runtime-finalize, intent-persistence
+and resume stores, cancellation adapters and reservation sweeps. Structural clients
+retain the incumbent RPC/table calls; composition supplies frozen snapshot schemas,
+ordered finalize arguments, response decoders and fail-open phone normalization.
+Use `createCommerceOrderDraftRpcPort`, `createCheckoutCompensationRpcAdapter`,
+`createCommerceCheckoutResumeQueryPort` and `createConfiguratorIntentPersistenceRpcPort`
+with structural clients, including `ConfiguratorIntentRpcQueryClient` for intent
+persistence. Reference bindings retain their incumbent exported factory names.
+Verified identity overwrites submitted identity after normalization. Draft retries
+supersede only once after an idempotency conflict; catalog refusals do not supersede.
+Recovery classifiers inject subject admission, compare shipping terms as well as
+money, and separate continuation, expiry policy and refused token states. Application
+recovery projection, routes and destinations stay in the host. SQL atomicity and
+active-subscription guards require real PostgreSQL integration; the C2 handoff
+release check is **to be released**.
 
 `./commerce/contracts` is a type-only, browser-safe entry for commerce-owned
 records and generic persistence, checkout/runtime, availability, recovery and
@@ -107,6 +151,18 @@ order-detail composition.
 It also owns canonical order-money validation and commerce event payload schemas.
 The latter reuse the core outbox envelope and inject host quote/draft validators,
 without importing an outbox worker or storage implementation.
+The same entry owns `deriveOfferAvailability`, `defaultOfferAvailability`,
+`availabilityBySku`, `statusForSellableNow`, `reasonCodeFor` and the low-stock
+threshold. Their reference facades preserve function identity. The server entry's
+`createOfferAvailabilityPort` runs the existing physical-table projection over
+an `OfferAvailabilityQueryClient` and an injected `isStockProvider` predicate.
+It preserves active-hold subtraction, lot/location eligibility and provider
+missing/stale refusals. SDK narrowing and provider selection stay host-owned.
+M06 owns normalized new-purchase reads and reservation TTL policy; the reference
+composition passes its selected read port through unchanged. Native new-purchase
+composition still refuses; the separate SQL seam does not activate that binding.
+W2 conformance distinguishes reads, fallback and one-time allocation; real SQL
+atomicity and consumption remain integration obligations.
 
 `./commerce` provides neutral cart/order/read, checkout, intent, persistence,
 resume and customer-default schema cores and factories. Bind existing pricing
@@ -119,12 +175,13 @@ also preserve string SKU and product-slug inputs. When composing host fields,
 retain their legacy positions: object key order also determines validation issue
 order, including nested variants and checkout requests.
 Offer tokens are opaque; `minimumUnits` is an untrusted ask with an injected default, never an
-admission grant. The offer policy is a port type only. Starter execution remains
-reference-owned and deferred to K2a. These entries install no store, route,
+admission grant. The server entry executes the offer binding and bounds its server-minted evidence.
+The starter guard receives terms, basket/discount functions and its plan schema
+from the host. These entries install no store, route,
 migration or provider.
 
 Required root discovery includes `test/commerce/`: schema refusal/replay and
-port-fit tests join recovery/error/helper witnesses and neutral W4 composition.
+port-fit tests join recovery/error/helper witnesses, compensation and neutral W4 composition.
 The unchanged reference suites and a pre-extraction parse transcript protect
 host bindings. The cold consumer imports both installed entries and checks
 availability projection/refusal, opaque offers, injected minimums and snapshot
@@ -320,9 +377,13 @@ base reads using the selected list ID, with base-refusal precedence.
 DTOs and version constants; its only external type comes from the exact
 `@openlup/core/pricing` entry. `./pricing/browser` directly re-exports exactly
 `createCommerceQuotePrimitives`, `acquisitionCapabilitySchema` and
-`acquisitionTermsExpectationSchema` from their defining files. They retain the
-same identity and behavior as the pricing root. Its complete browser bundle
-contains no Node imports. Other schemas, Web Crypto hashing and Node HMAC token
+`acquisitionTermsExpectationSchema`, `resolvedAcquisitionTermsSchema` and
+`shippingTermsSchema`. Acquisition schemas come from their defining file; shipping
+re-exports its pure validator owner through an exact linted edge, preserving identity
+without handlers or Node HTTP declarations. The reference
+quote context admits both terms as optional fields and retains its existing strict
+fields and refusals. The complete browser bundle contains no Node imports or
+pricing server root. Other schemas, Web Crypto hashing and Node HMAC token
 operations stay in the server entry. Tokens retain assignment binding, the
 72-hour default compatibility window and rollback behavior. Secret selection,
 feature flags and readiness remain reference composition responsibilities.

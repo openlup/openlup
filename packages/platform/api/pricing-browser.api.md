@@ -74,6 +74,10 @@ export declare function createAcquisitionQuoteSchemas<Request extends z.ZodObjec
 ```ts
 export { createCommerceQuotePrimitives } from "../quotePrimitives.js";
 export { acquisitionCapabilitySchema, acquisitionTermsExpectationSchema } from "../acquisitionTermsSchemas.js";
+/** @consumer src/domains/commerce/quoteContracts.ts */
+export { resolvedAcquisitionTermsSchema } from "../acquisitionTermsSchemas.js";
+/** @consumer src/domains/commerce/quoteContracts.ts */
+export { shippingTermsSchema } from "../../shipping/thresholdPolicy.js";
 ```
 ## dist/pricing/contracts/acquisitionTerms.d.ts
 
@@ -320,5 +324,77 @@ export declare function createCommerceQuotePrimitives(commerceCurrencySchema: z.
         amountMinor: z.ZodNumber;
         currency: z.ZodType<string, unknown, z.core.$ZodTypeInternals<string, unknown>>;
     }, z.core.$strip>;
+};
+```
+## dist/shipping/contracts/threshold.d.ts
+
+```ts
+/** Shipping promises selected by an opt-in host policy. Runtime validation is server-only. */
+export interface ShippingTerms {
+    version: "shipping-threshold.v1";
+    currency: string;
+    flatMinor: number;
+    freeThresholdMinor: number;
+}
+export interface ShippingPolicyEntry {
+    enabled: boolean;
+    flatMinor: number;
+    freeThresholdMinor: number;
+    effectiveFrom: string;
+}
+export interface ShippingPolicy {
+    version: "shipping-policy.v1";
+    current: ShippingPolicyEntry | null;
+    scheduled?: ShippingPolicyEntry | null;
+}
+export interface ShippingSettings {
+    legacyFlatMinor: number;
+    policy: ShippingPolicy | null;
+}
+```
+## dist/shipping/thresholdPolicy.d.ts
+
+```ts
+import { z } from "zod";
+import type { ShippingPolicy, ShippingSettings, ShippingTerms } from "./contracts/threshold.js";
+export declare const shippingTermsSchema: z.ZodObject<{
+    version: z.ZodLiteral<"shipping-threshold.v1">;
+    currency: z.ZodString;
+    flatMinor: z.ZodNumber;
+    freeThresholdMinor: z.ZodNumber;
+}, z.core.$strict>;
+export declare const shippingPolicySchema: z.ZodObject<{
+    version: z.ZodLiteral<"shipping-policy.v1">;
+    current: z.ZodNullable<z.ZodObject<{
+        enabled: z.ZodBoolean;
+        flatMinor: z.ZodNumber;
+        freeThresholdMinor: z.ZodNumber;
+        effectiveFrom: z.ZodString;
+    }, z.core.$strict>>;
+    scheduled: z.ZodOptional<z.ZodNullable<z.ZodObject<{
+        enabled: z.ZodBoolean;
+        flatMinor: z.ZodNumber;
+        freeThresholdMinor: z.ZodNumber;
+        effectiveFrom: z.ZodString;
+    }, z.core.$strict>>>;
+}, z.core.$strict>;
+/** Absence selects legacy behavior; malformed retained promises refuse. */
+export declare function parseShippingTerms(value: unknown): ShippingTerms | undefined;
+export declare function hasShippingTerms(quote: {
+    context?: {
+        shippingTerms?: unknown;
+    };
+}): boolean;
+/** Resolve effective entries on read, without a scheduled write. */
+export declare function normalizeShippingPolicy(policy: ShippingPolicy, asOf: Date | string): ShippingPolicy;
+export declare function resolveShippingPolicy(settings: ShippingSettings, asOf: Date | string, currency: string): {
+    configured: boolean;
+    flatMinor: number;
+    terms?: ShippingTerms;
+};
+/** Only product payable after discounts counts; equality receives free delivery. */
+export declare function resolveThresholdShipping(terms: ShippingTerms, productPayableMinor: number): {
+    grossMinor: number;
+    remainingMinor: number;
 };
 ```

@@ -195,11 +195,13 @@ function multiplyDivideCeil(value: number, multiplier: number): number {
  * subscription band subtotal — "-35% off list" is the promise made to the
  * customer, and the band already carries its own smaller discount.
  */
-export function starterDelivery2TargetMinor(listAnchorTotalMinor: number): number {
+export function starterDelivery2TargetMinor(
+  listAnchorTotalMinor: number, discountBps = STARTER_DELIVERY2_DISCOUNT_BPS,
+): number {
   if (!Number.isFinite(listAnchorTotalMinor) || listAnchorTotalMinor <= 0) return 0;
   return multiplyDivideCeil(
     Math.trunc(listAnchorTotalMinor),
-    10_000 - STARTER_DELIVERY2_DISCOUNT_BPS,
+    10_000 - discountBps,
   );
 }
 
@@ -215,10 +217,11 @@ export function starterDelivery2TargetMinor(listAnchorTotalMinor: number): numbe
 export function starterDelivery2DiscountMinor(input: {
   bandSubtotalMinor: number;
   listAnchorTotalMinor: number;
+  discountBps?: number;
 }): number | null {
   const { bandSubtotalMinor, listAnchorTotalMinor } = input;
   if (!Number.isFinite(bandSubtotalMinor) || bandSubtotalMinor < 0) return null;
-  const target = starterDelivery2TargetMinor(listAnchorTotalMinor);
+  const target = starterDelivery2TargetMinor(listAnchorTotalMinor, input.discountBps);
   const discount = Math.max(0, Math.trunc(bandSubtotalMinor) - target);
   const payable = Math.trunc(bandSubtotalMinor) - discount;
   if (payable < STARTER_MIN_PAYABLE_MINOR) return null;

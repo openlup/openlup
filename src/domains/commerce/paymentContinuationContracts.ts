@@ -1,9 +1,8 @@
 import { z } from "../../lib/validation/zod.js";
 import { paymentStatusRequestSchema } from "./checkoutContracts.js";
 
-export const checkoutContinuationJourneyIdSchema = z
-  .string()
-  .regex(/^checkout:[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i);
+import { checkoutContinuationJourneyIdSchema } from "@openlup/platform/commerce";
+export { checkoutContinuationJourneyIdSchema, CHECKOUT_PAYMENT_CONTINUATION_TTL_SECONDS } from "@openlup/platform/commerce";
 
 export const paymentStatusContinuationRequestSchema = paymentStatusRequestSchema
   .extend({ journeyId: checkoutContinuationJourneyIdSchema.optional() })
@@ -36,4 +35,3 @@ export type PaymentStatusContinuationRequest = z.infer<
  * `checkoutPaymentContinuationCredential.test.ts` and
  * `paymentProviderReconciliationWorker.test.ts` records the relationship in code.
  */
-export const CHECKOUT_PAYMENT_CONTINUATION_TTL_SECONDS = 45 * 60;

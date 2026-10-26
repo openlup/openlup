@@ -148,7 +148,7 @@ const sourceFiles = (prefix = "") => [`${prefix}**/*.${SOURCE_EXTENSIONS}`];
 // <module>/contracts/index.ts; it has no module edges, including to its server entry.
 export const PLATFORM_MODULE_GRAPH = {
   commerce: { contracts: true, values: ["pricing/contracts", "shipping"], types: [] },
-  "commerce/server": { values: ["commerce", "fulfillment"], types: ["http", "bff"] },
+  "commerce/server": { values: ["commerce", "fulfillment", "pricing", "shipping", "promotions"], types: ["http", "bff", "commerce/contracts"] },
   invoicing: { contracts: true, values: [], types: [] },
   fulfillment: { contracts: true, values: [], types: [] },
   subscriptions: { contracts: true, values: [], types: [] },
@@ -277,6 +277,15 @@ export function platformModuleRules(pkg, module, graph = PLATFORM_MODULE_GRAPH) 
         } },
       ];
     }).flat(),
+    // The browser entry reuses the existing pure shipping validator without
+    // importing shipping handlers or their Node HTTP declaration closure.
+    ...(module === "pricing" ? [{
+      files: [`${PLATFORM_SOURCE}/pricing/browser/index.ts`],
+      rules: boundaryRules([packageIsolation(pkg, 3), packageExports, {
+        message: "packages/platform pricing browser entry imports only its existing quote/acquisition definitions and the pure shipping terms owner.",
+        regexes: ["^(?!(?:\\.\\./quotePrimitives\\.js|\\.\\./acquisitionTermsSchemas\\.js|\\.\\./\\.\\./shipping/thresholdPolicy\\.js)$)"],
+      }]),
+    }] : []),
     // These complete allowlists replace the server rules, including type-only
     // edges. Beyond the bounded depths, only local ./ paths and core remain.
     { files: sourceFiles(`${PLATFORM_SOURCE}/${module}/contracts/`), ignores, rules: contractsRules(0) },

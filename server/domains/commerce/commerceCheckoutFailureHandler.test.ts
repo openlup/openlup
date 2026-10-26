@@ -1,3 +1,4 @@
+import { InventoryPersistenceError } from "../../../src/domains/inventory/ports.js";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { CommerceRuntimeConflictError } from "../../../src/domains/commerce/runtimePorts.js";
 import type { VercelResponse } from "../../_lib/types/vercel.js";
@@ -6,12 +7,59 @@ import { respondToCheckoutFailure } from "./commerceCheckoutFailureHandler.js";
 import { mapStartRuntimeFailure } from "./commerceCheckoutStartRuntimeFailure.js";
 import { intent, ORDER_ID, quoteSnapshot } from "./commerceCheckoutHandler.testFixtures.js";
 import { ProviderAttemptInFlightError } from "../../shared/preparedProviderAttempt.js";
+import { CheckoutOfferRefusedError } from "./checkoutOfferPolicyPort.js";
 
 afterEach(() => {
   vi.restoreAllMocks();
 });
 
 describe("checkout failure handler", () => {
+  it("returns a fresh price_changed after stale epoch admission and compensates only its draft", async () => {
+    const events: string[] = [];
+    const res = response(events);
+    const compensationPort = {
+      releaseOrderReservations: vi.fn(async () => ({ releasedCount: 0 })),
+      cancelUnstartedPromotionOrder: vi.fn(async () => ({ cancelled: true })),
+      cancelAbandonedOrder: vi.fn(),
+    };
+    const quote = quoteSnapshot();
+    const createQuote = vi.fn(async () => quote);
+    const outcome = await respondToCheckoutFailure({
+      error: mapStartRuntimeFailure(new CommerceRuntimeConflictError("changed", { reason: "acquisition_terms_changed" }), ORDER_ID),
+      compensationPort, intent: intent(), res, quotePort: { createQuote },
+      provisioned: provisioned(), checkoutKind: "one_time", acceptedQuoteSnapshot: quote,
+      expectedQuote: { totalGross: quote.quote.totalGross }, recordQuote: async operation => operation(),
+    });
+    expect(outcome).toBe("rejected");
+    expect(compensationPort.cancelUnstartedPromotionOrder).toHaveBeenCalledOnce();
+    expect(compensationPort.cancelAbandonedOrder).not.toHaveBeenCalled();
+    expect(createQuote).toHaveBeenCalledOnce();
+    expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ ok: true, data: expect.objectContaining({ status: "price_changed" }) }));
+  });
+
+  it.each(["inventory_admission_busy", "inventory_lock_unavailable"])(
+    "returns sanitized503 and retains all compensation capabilities on %s", async reason => {
+      const res = response([]);
+      const json = vi.fn().mockReturnValue(res);
+      res.json = json;
+      const compensationPort = { releaseOrderReservations: vi.fn(), cancelUnstartedPromotionOrder: vi.fn(), cancelAbandonedOrder: vi.fn() };
+      const originalIntent = intent();
+      const error = mapStartRuntimeFailure(new InventoryPersistenceError("private SQL detail", { code: "55P03", reason }), ORDER_ID);
+      expect(error).toMatchObject({ orderIdForCompensation: null, reason: "inventory_admission_busy" });
+      for (let retry = 0; retry < 2; retry++) {
+        await expect(respondToCheckoutFailure({ error, compensationPort, intent: originalIntent, res,
+          quotePort: { createQuote: vi.fn() }, provisioned: provisioned(), checkoutKind: "one_time",
+          acceptedQuoteSnapshot: null, recordQuote: async <T>(operation: () => Promise<T>) => operation() })).resolves.toBe("error");
+      }
+      for (const capability of Object.values(compensationPort)) expect(capability).not.toHaveBeenCalled();
+      expect(originalIntent).toEqual(intent());
+      expect(res.status).toHaveBeenCalledWith(503);
+      expect(res.json).toHaveBeenCalledWith({ ok: false, error: { code: "UPSTREAM_UNAVAILABLE",
+        message: "Inventory admission temporarily unavailable", details: { feature: "checkout", stage: "start_runtime", reason: "inventory_admission_busy" } } });
+      expect(JSON.stringify(json.mock.calls)).not.toContain("private SQL detail");
+    },
+  );
+
   it("compensates before emitting a sanitized generic failure envelope", async () => {
     const events: string[] = [];
     const res = response(events);
@@ -374,6 +422,43 @@ describe("checkout failure handler", () => {
         details: { feature: "checkout", stage: "start_runtime", reason: "journey_consumed" },
       }),
     }));
+  });
+
+  it("maps an offer refusal to a conflict with its reason and compensates nothing", async () => {
+    const res = response([]);
+    const compensationPort = {
+      releaseOrderReservations: vi.fn(),
+      cancelUnstartedPromotionOrder: vi.fn(),
+      cancelAbandonedOrder: vi.fn(),
+    };
+    const createQuote = vi.fn();
+
+    const outcome = await respondToCheckoutFailure({
+      error: new CheckoutOfferRefusedError("offer_version_unsupported"),
+      compensationPort,
+      intent: intent(),
+      res,
+      quotePort: { createQuote },
+      provisioned: provisioned(),
+      checkoutKind: "one_time",
+      acceptedQuoteSnapshot: null,
+      recordQuote: async <T>(operation: () => Promise<T>) => operation(),
+    });
+
+    expect(outcome).toBe("rejected");
+    expect(res.status).toHaveBeenCalledWith(409);
+    expect(res.json).toHaveBeenCalledWith({
+      ok: false,
+      error: {
+        code: "CONFLICT",
+        message: "Checkout offer refused",
+        details: { feature: "checkout", stage: "quote", reason: "offer_version_unsupported" },
+      },
+    });
+    expect(compensationPort.releaseOrderReservations).not.toHaveBeenCalled();
+    expect(compensationPort.cancelUnstartedPromotionOrder).not.toHaveBeenCalled();
+    expect(compensationPort.cancelAbandonedOrder).not.toHaveBeenCalled();
+    expect(createQuote).not.toHaveBeenCalled();
   });
 });
 

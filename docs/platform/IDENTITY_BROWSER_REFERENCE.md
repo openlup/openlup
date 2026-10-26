@@ -11,7 +11,10 @@ commerce runtime is checked with a browser bundle. The Node-only
 the profile build test explicitly proves that it is refused, alongside the
 Node-only pricing root. The additive `pricing/browser` entry contributes exactly
 its built entry, quote primitives, acquisition validators and acquisition
-contract constant. No directory wildcard or other pricing implementation is admitted.
+contract constant, plus the existing pure shipping-terms owner. The latter lets
+the strict reference quote context carry optional shipping/acquisition promises;
+shipping handlers and Node HTTP declarations remain outside this closure. No
+directory wildcard or other pricing implementation is admitted.
 The commerce barrel also reaches pure OMS schemas and read-model helpers, plus
 their core fulfillment, payment and subscription runtime dependencies. It also
 exports returns request/approve/reject schemas and port types, with a factory for
@@ -23,6 +26,19 @@ under `packages/platform/dist/commerce/`. Returns and review
 handlers, the raw-upload handler and PostgreSQL/Supabase adapters, including
 hosted-feedback adapters, remain outside the closure, exposed only by
 `@openlup/platform/commerce/server`.
+The checkout-engine contribution adds exactly `commerce/checkoutCommandSchemas.js`,
+`commerce/offerEvidenceSchemas.js` and `commerce/paymentContinuation.js` to the
+identity inventory. The stock-composition contribution adds exactly
+`commerce/offerAvailability.js` to both identity and subscription inventories.
+These helpers supply browser-safe validation and lifetime constants;
+checkout execution remains outside this profile in `commerce/server`.
+The subscription profile also lists the pure commerce checkout-command, offer-
+evidence and payment-continuation helpers by exact built file. Its starter
+expectation validator binds the existing `pricing/browser` export by identity.
+Source and built browser bundles verify complete closure coverage in both inventories.
+The identity inventory also enumerates the existing browser-safe OMS model,
+contract, pricing-contract and effect-helper closure reachable through commerce;
+all paths are exact built files, with no server module or directory wildcard.
 
 ## Routes and readiness
 

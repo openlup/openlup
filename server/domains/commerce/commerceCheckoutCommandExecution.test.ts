@@ -19,13 +19,13 @@ import { makeInventoryPort, makeOrderPort, makePaymentPort, makeReadinessPort, o
 // implementation still runs for every case below; the spy only records who
 // entered it, which is what proves there is no second saga.
 const orchestration = vi.hoisted(() => ({ entries: vi.fn() }));
-vi.mock("./commerceCheckoutOrchestration.js", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("./commerceCheckoutOrchestration.js")>();
+vi.mock("./commercePaidOrderOrchestration.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./commercePaidOrderOrchestration.js")>();
   return {
     ...actual,
-    orchestratePaidOrder: (deps: Parameters<typeof actual.orchestratePaidOrder>[0]) => {
-      orchestration.entries(deps);
-      return actual.orchestratePaidOrder(deps);
+    orchestrateCheckoutJourney: (...args: Parameters<typeof actual.orchestrateCheckoutJourney>) => {
+      orchestration.entries(...args);
+      return actual.orchestrateCheckoutJourney(...args);
     },
   };
 });
@@ -189,6 +189,8 @@ describe("checkout command execution", () => {
     expect(neutral?.intent).toBeUndefined();
     expect(legacy?.intent?.idempotencyKey).toBe("intent-2026-06-05-rex");
     expect(legacy?.journey).toBeUndefined();
+    expect(orchestration.entries.mock.calls[0]?.[1]).toBe(neutral.journey);
+    expect(orchestration.entries.mock.calls[1]?.[1]?.idempotencyKey).toBe(legacy.intent.idempotencyKey);
   });
 
   it("keeps neutral command sources independent from the campaign-step script", () => {
