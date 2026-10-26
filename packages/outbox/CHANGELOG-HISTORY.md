@@ -2,6 +2,10 @@
 
 Releases moved verbatim out of the packed `CHANGELOG.md`, which keeps the current release and the two previous ones.
 
+## [0.25.0]
+
+- Publishable on the npm `latest` dist-tag as `0.25.0`, from tag
+  `openlup-outbox-v0.25.0`.
 ## [0.24.0]
 
 - Publishable on the npm `latest` dist-tag as `0.24.0`, from tag
