@@ -5102,11 +5102,43 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/marketing/analytics/dataLayer.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/marketing/analytics/noop.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/marketing/analytics/purchaseFacts.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/marketing/analytics/routePolicy.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/marketing/consentEvidence.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/marketing/contactLegal.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/marketing/contracts/acquisition.ts",
       "class": "public-output"
     },
     {
       "path": "packages/platform/src/marketing/contracts/acquisitionPorts.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/marketing/contracts/analytics.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/marketing/contracts/contactLegal.ts",
       "class": "public-output"
     },
     {
@@ -5126,6 +5158,22 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/marketing/seo/jsonLd.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/marketing/seo/metadata.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/marketing/seo/serializeJsonLd.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/marketing/seo/urls.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/marketing/server/acquisitionCaseDirect.ts",
       "class": "public-output"
     },
@@ -5139,6 +5187,14 @@
     },
     {
       "path": "packages/platform/src/marketing/server/acquisitionEvidenceDirect.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/marketing/server/analyticsContext.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/marketing/server/analyticsContextPorts.ts",
       "class": "public-output"
     },
     {
@@ -7250,6 +7306,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/marketing/analyticsContext.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/marketing/bindings.test.ts",
       "class": "public-output"
     },
@@ -7258,7 +7318,19 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/marketing/consentEvidence.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/marketing/contracts.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/marketing/dataLayer.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/marketing/noop.test.ts",
       "class": "public-output"
     },
     {
@@ -7266,7 +7338,23 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/marketing/purchaseFacts.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/marketing/routePolicy.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/marketing/schemas.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/marketing/seo/browserSafety.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/marketing/seo/conformance.test.ts",
       "class": "public-output"
     },
     {
@@ -17862,6 +17950,10 @@
       "class": "public-output"
     },
     {
+      "path": "src/checkout/machine/__snapshots__/purchasePayloadEquivalence.test.ts.snap",
+      "class": "public-output"
+    },
+    {
       "path": "src/checkout/machine/buildCheckoutIntent.starter.test.ts",
       "class": "public-output"
     },
@@ -17987,6 +18079,10 @@
     },
     {
       "path": "src/checkout/machine/purchaseAnalytics.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "src/checkout/machine/purchasePayloadEquivalence.test.ts",
       "class": "public-output"
     },
     {
@@ -23947,6 +24043,14 @@
     },
     {
       "path": "src/public-reference/main.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/public-reference/seoHead.test.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/public-reference/seoHead.tsx",
       "class": "public-output"
     },
     {

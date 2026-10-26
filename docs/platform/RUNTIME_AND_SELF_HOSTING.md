@@ -24,6 +24,36 @@ prelaunch validation uses the marketing package; rich prelaunch joins retain
 application contracts. The case runtime uses the server-only compatibility port
 for historical adapter signatures, while retired admission schemas stay local.
 
+Reference analytics bindings compose one marketing data-layer instance per module
+and retain their consent storage/event and signal names, event prefix, container
+reader and deployment sink. The route binding supplies public/redirect and sensitive paths.
+Purchase projection retains reference suppression diagnostics and rejects unsupported
+checkout kinds at the original check position, while the portable projector also
+accepts renewal facts. Loader readiness and sink admission are local signals,
+never network delivery. Default package composition is inert and stores no
+pre-consent replay queue; consent commands retain default/update ordering and
+push-time advertising consent. Hosts supply `consentSignalNames` with an `analytics`
+name followed by ordered `advertising` names. Omission pushes no consent commands
+and refuses optional event admission even with stored consent and a container;
+deployment sink attempts remain independent. Historical consent-time selection
+changes neither authorization nor the local grant and installs no command worker.
+
+The server-only `createAnalyticsContextHandler` requires host enablement,
+persistence, bearer/subject verification, capability cryptography, cookie name,
+the client-id wire field name through `clientIdField` and BFF responder.
+Method, flag, same-origin and strict schema checks precede
+persistence lookup. A missing store refuses as unavailable; throwing sync or
+enrollment operations map to the same bounded error. Only a token hash is
+persisted, an invalid bearer grant refuses before writes, and only a verified
+subject can enroll subscriptions. A repeated active save keeps its capability;
+only explicit regrant can replace an existing revoked context. The host supplies
+its historical flag and RPC names, gateway, route and observability wrapper.
+There is no default persistence, portable context SQL or reference context route.
+Telemetry context failure never gates commerce, and the response's `active`
+boolean is a local context fact rather than proof of delivery. The
+[package witness](../../packages/platform/test/marketing/analyticsContext.test.ts)
+uses in-memory persistence without a live provider.
+
 The accounting HTTP scheduler accepts an explicitly composed invoicing service
 and passes it to the existing accounting runtime after HTTP method and bearer
 authorization checks. It adds no cron or executor. Runtime enablement and service
@@ -260,6 +290,16 @@ substituting a different business behaviour.
 
 ## Opt-in disposable subscription reference
 
+The unmounted [SEO head adapter](../../src/public-reference/seoHead.tsx) renders
+`@openlup/platform/marketing` head descriptors through the host's
+`HelmetProvider`. Its synchronous Helmet commit works in hidden documents;
+after client commit it removes unmanaged shell canonical/alternate links only
+when the host supplies `renderMode="csr"` and passes the
+serialized JSON-LD into the script element unchanged. The host
+selects placement; this adapter installs no serving route. Its
+[synthetic browser witnesses](../../src/public-reference/seoHead.test.tsx) cover
+hidden commits, hostile script data and duplicate or contradicting canonicals.
+
 The inert [M11 commerce binding](../../server/runtime/public-reference/m11CommerceBinding.ts)
 selects existing package callables and the native checkout-recovery adapter only
 with `enabled: true`. Every callable checks the supplied Core readiness report:
@@ -309,10 +349,31 @@ response. R4 still owns authorization, the transaction and replay.
 `AccountSupportRoutes` composes host-supplied account, Customer 360, command and
 recovery elements at explicit host paths. It supplies neither credentials nor
 new authentication contexts. The capability manifest advertises account-support
-as default-off with no routes. A47–A51, A94/A95 and the checkout continuation of
-A130/A131 remain unselected: commerce is only a nullable injected callable record,
-with `unsupported/host_binding_required` for absent bindings. Local draft
-resume/discard behavior is unchanged. M04 receives subscription lifecycle
+as default-off with no routes. To select commerce, the host constructs one
+`createM11CommerceReferenceBinding` with raw, already bound owner callables, its
+native query executor, the complete account-owner and exact ATP schema requirements,
+existing registry handlers and optional route/schedule descriptors. Supply that
+result as `commerceOwner`, the matching callable record as `commerce` and the
+existing registry as `commerceRegistry`. Use matching enablement and a readiness
+observer covering the complete selected schema for both bindings. R5b consumes
+a local structural selection type and does not construct M11 or import its adapters.
+Use `createReferenceCheckoutHandler` for
+reference checkout and the existing recovery handlers with
+`CheckoutRecoveryOrderReadPort`/`CheckoutRecoveryTokenPort`; expiry and token
+classification remain owner policy. Bind the selected M06/M11 stock read or
+`createNewPurchaseStockAvailabilityPort` without replacing unknown or unsupported
+answers. The schema unions the supplied M11 schema, which includes the host's
+ATP requirements, and selected account-owner objects by kind/name/signature.
+M12 forwards the host-built M11 result once and
+returns the same registry as `commerceRegistry`; it never dispatches effects.
+Do not supply an M11-guarded service as a new raw owner or register the same
+logical command in both inventories. `commerceOwner.services` and its forwarded
+commerce ports/routes share the owner's guarded executor; the keyed entrance
+delegates to it without another readiness guard. With no commerce selection,
+nullable record/member behavior stays `unsupported/host_binding_required`.
+`AccountSupportRoutes` accepts a configured-purchase element/path in addition
+to its recovery element; the host binds their clients and admission transport.
+Local draft resume/discard behavior is unchanged. M04 receives subscription lifecycle
 descriptors with `messageKey === idempotencyKey`; R4's issue-recovery notice is
 already queued by its owner. M12 adds no renewal, reminder or delivery worker.
 

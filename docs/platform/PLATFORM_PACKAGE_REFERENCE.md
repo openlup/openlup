@@ -910,9 +910,17 @@ aliases. The host maps admission refusals before serving its HTTP entries.
 
 The binding's separate `commerce(key, ...args)` accepts a nullable injected
 record. Null record/member returns `unsupported/host_binding_required`, while
-selected owner results retain identity. R5a keeps commerceRecovery and
-configuredPurchase unsupported; A47–A51, A94/A95 and A130/A131 checkout continuation
-are unselected. No draft-M11 imports or ATP/effect installers are introduced.
+selected owner results retain identity. The reference-only `commerceOwner`
+option accepts the host-built M11 result over bound checkout/recovery and ATP
+callables through a local structural type. R5b does not construct M11 or import
+its adapters. The host includes all account/ATP requirements in the M11 schema,
+uses matching enablement/readiness and supplies the existing registry separately
+as `commerceRegistry`.
+Forward `commerceOwner.services` directly: wrapping them in another M11 binding
+would duplicate native operations. The keyed entrance preserves its concrete
+request/result relation and delegates to the same selected executor. Owner
+refusals and unknown ATP pass through. No package export, contract, ATP allocator
+or effect installer changes; see the [runtime recipe](RUNTIME_AND_SELF_HOSTING.md#opt-in-disposable-subscription-reference).
 
 Use `@openlup/platform/account-support` for `createAccountReadFacade` and the
 account-read stage/error/diagnostic helpers. The facade accepts separate `account`
@@ -1077,3 +1085,38 @@ exports only with `enabled: true` and complete ports. The reference
 neither file mounts a route. Install the complete rail, including M11 managed
 predecessors, before selecting this boundary. The sparse migration catalog is
 not an installer. See [migration compatibility](DATA_AND_MIGRATIONS.md#compatibility-lifecycle).
+
+## Marketing SEO and content slots
+
+Import browser-safe helpers from `@openlup/platform/marketing` and content
+types from `@openlup/platform/marketing/contracts`.
+`serializeJsonLd` escapes script-breaking characters without changing the
+parsed value. `jsonLdGraph` removes node contexts and retains the first node
+for each repeated identifier. Organization, brand, website, contact-page,
+product, FAQ and breadcrumb builders accept application facts; entity identifiers
+derive from the supplied site origin. `schemaWeight` converts unscaled net
+content to a quantitative value and maps gram units to the schema unit code.
+
+Route helpers normalize paths, produce canonical URLs and derive a sorted
+hreflang pair plus a caller-selected default. `buildHeadDescriptor` returns
+language, title, ordered meta/link tags and an escaped graph payload for a
+host head manager to render. Missing alternates yield no hreflang links; absent
+nodes yield a null payload. The host supplies site and social-image values and
+owns route lookup, translation and document updates.
+Image width, image height and Twitter handle are required application inputs;
+the descriptor always emits `og:image:width`, `og:image:height` and
+`twitter:site` in the ordered tag sequence. `og:locale:alternate` is emitted only when an
+alternate locale is supplied.
+
+`ContactContent`, `LegalDocumentContent` and `PrivacyProcessorDisclosure` are
+application-supplied content contracts exported as types by both entries.
+The contact contract reuses `OrganizationFacts`.
+`contactContent` produces the support email and company lines in legal-name,
+address, registration-identifier and optional registration-authority order.
+Identifier label/value pairs retain their supplied order and use ` · ` between
+entries; supplied blank lines are retained. `legalDocumentContent` preserves
+the document title, introduction, ordered title/body sections and optional
+last-updated text. Processor disclosures are types only. The package supplies
+no document wording or processor inventory and does not validate content or
+imply any legal outcome. The cold installed consumer exercises the runtime
+entry and compiles its content types.

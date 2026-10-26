@@ -8,5 +8,7 @@ export * from "./acquisitionEvidenceDirect.js";
 export * from "./research/surveyResponseSubmitHandler.js";
 export * from "./research/adminSurveyResponsesHandler.js";
 export * from "./research/managedSurveyResponseSubmit.js";
+export { createAnalyticsContextHandler } from "./analyticsContext.js";
+export type * from "./analyticsContextPorts.js";
 export * from "./privacyContributor.js";
 export * from "./bindings.js";

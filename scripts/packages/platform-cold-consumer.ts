@@ -225,6 +225,7 @@ import assert from "node:assert/strict";
 import { createAccountReadFacade, CustomerAccountReadModelError, withCustomerAccountReadStage, customerAccountReadFailureDetails, createOperatorRecovery, createPostgresOperatorAuthority, operatorAuthorityCapabilities, linkThenApply } from "@openlup/platform/account-support";
 import * as contracts from "@openlup/platform/account-support/contracts";
 assert.deepEqual(Object.keys(contracts), []);
+
 const account={revision:"owner-revision", getAccount(userId){assert.equal(this,account);assert.equal(userId,"principal-a");return Promise.resolve(snapshot);}};
 const snapshot={profile:{privateExtension:"host-owned"},frozenTotal:2301};
 const input={limit:17}, list={orders:[{orderId:"order-b",frozenTotal:2301}]}, detail={orderId:"order-c",revision:"original"};
@@ -506,6 +507,24 @@ assert.deepEqual(marketing.prelaunchAcquisitionListRequestSchema.parse({ view: m
 assert.equal(marketing.prelaunchAcquisitionDetailRequestSchema.safeParse({ sourceRef: "case:one" }).success, false);
 assert.equal("MARKETING_PRELAUNCH_CONTRACT_VERSION" in marketing, false);
 assert.deepEqual(Object.keys(contracts), []);
+assert.equal(marketing.createNoopAnalytics().trackPageView("/"), undefined);
+assert.deepEqual(marketing.createAnalyticsDataLayer().emitAnalyticsEvent("page_view", { page_path: "/" }), { deployment: false, optional: false });
+const routes = marketing.createAnalyticsRoutePolicy({ publicPaths: ["/entry"], redirectSources: [], privatePathPrefixes: [], privateAuthPaths: [], capabilityPathPrefixes: [] });
+assert.equal(routes.sanitizeDeploymentAnalyticsUrl("/entry?secret=one", "https://host.example"), "https://host.example/entry");
+assert.equal(marketing.projectPaidPurchase({ status: "pending" }), null);
+assert.equal(marketing.selectMarketingHistoricalConsentTime({ command: { consentedAt: null, listId: null }, state: { consent: "unknown", suppressions: [] }, now: new Date(NaN) }).reason, "consent_time_invalid");
+const origin="https://shop.example";
+const facts={name:"Example Store",legalName:"Example Company",url:origin,logo:{url:origin+"/logo.png",contentUrl:origin+"/logo.png",width:160,height:60},email:"contact@example.invalid",vatID:"VAT-1",taxID:"TAX-1",areaServed:"Region-A",sameAs:[],contactPoint:{email:"contact@example.invalid",contactType:"support",availableLanguage:["alpha"]},address:{streetAddress:"Example Lane 1",addressLocality:"Example Town",postalCode:"00000",addressRegion:"Region-A",addressCountry:"Territory-A"}};
+const node=marketing.organizationLd(origin,"Organization",facts);
+assert.equal(node["@id"],origin+"/#organization");
+assert.equal(marketing.jsonLdGraph(node,node)["@graph"].length,1);
+const hostile={name:"</script><script>probe</script>\\u2028\\u2029"};
+const serialized=marketing.serializeJsonLd(hostile);
+assert(!serialized.includes("<"));
+assert.deepEqual(JSON.parse(serialized),hostile);
+const head=marketing.buildHeadDescriptor({origin,route:{id:"home",locale:"alpha",canonicalPath:"/"},routes:[],xDefaultLocale:"alpha",htmlLang:"alpha",title:"Example",description:"Example content",siteName:facts.name,ogImage:origin+"/image.png",ogImageWidth:1200,ogImageHeight:630,twitterHandle:"@example",ogLocale:"alpha",twitterImage:origin+"/card.png",jsonLd:hostile});
+assert.deepEqual(head.tags[1],{kind:"link",rel:"canonical",href:origin+"/"});
+assert.deepEqual(JSON.parse(head.jsonLd)["@graph"],[hostile]);
 for (const [name, value] of Object.entries(core)) assert.equal(marketing[name], value);
 for (const name of ["acquisitionCaseSubmitRequestSchema", "acquisitionCaseSubmitResponseSchema", "acquisitionCaseTransitionRequestSchema", "acquisitionCaseTransitionResponseSchema"]) assert.equal(name in marketing, false);
 await assert.rejects(import("@openlup/platform/dist/marketing/acquisitionCaseSchemas.js"), { code: "ERR_PACKAGE_PATH_NOT_EXPORTED" });
@@ -516,7 +535,7 @@ await assert.rejects(import("@openlup/platform/dist/marketing/acquisitionCaseSch
 export function proveMarketingServerConsumer(consumer: string): void {
   consumerNode(consumer, `
 import assert from "node:assert/strict";
-import { createAcquisitionCaseHandlers, createAcquisitionCaseActiveCountDirectHandler, createAcquisitionSurveySubmitDirectHandler } from "@openlup/platform/marketing/server";
+import { createAcquisitionCaseHandlers, createAcquisitionCaseActiveCountDirectHandler, createAcquisitionSurveySubmitDirectHandler, createAnalyticsContextHandler } from "@openlup/platform/marketing/server";
 import { createBffResponder } from "@openlup/platform/bff";
 const calls = [];
 const port = { activeCount: async scope => { calls.push(scope); return { ok: true, value: 4 }; } };
@@ -531,6 +550,14 @@ assert.deepEqual(calls, ["public_tester_application"]);
 await createAcquisitionSurveySubmitDirectHandler({ respond, authorize: async () => null, resolveBinding: async () => ({ submitSurvey: async () => ({ ok: false, error: { kind: "conflict" } }) }) })({ method: "POST", headers: { "idempotency-key": "survey-key-0001" }, body: { view: "acquisition_survey_v1", caseReference: "acquisition-case:11111111-1111-4111-8111-111111111111", surveyType: "consumer", responseData: { answer: "synthetic" } } }, res);
 assert.equal(status, 409);
 assert.deepEqual(body, { ok: false, error: { code: "CONFLICT", message: "Acquisition evidence request conflicts with prior state" } });
+await createAnalyticsContextHandler({ respond, isEnabled: () => true,
+  resolveStore: () => { throw Error("invalid context must not read persistence"); },
+  readAccessToken: () => null, resolveTrustedSubject: async () => null,
+  capabilityCrypto: { mintToken: () => { throw Error("invalid context must not mint"); }, hashToken: token => token },
+  cookieName: "__Host-context", clientIdField: "browserRef",
+})({ method: "POST", headers: { host: "shop.example", origin: "https://shop.example" }, body: { granted: true } }, res);
+assert.equal(status, 400);
+assert.deepEqual(body, { ok: false, error: { code: "BAD_REQUEST", message: "Invalid analytics context" } });
 await assert.rejects(import("@openlup/platform/marketing/server/internal"), { code: "ERR_PACKAGE_PATH_NOT_EXPORTED" });
 const { createMarketingPrivacyContributor, createMarketingPrivacyBindings } = await import("@openlup/platform/marketing/server");
 assert.equal(typeof createMarketingPrivacyContributor, "function");
@@ -541,6 +568,32 @@ assert.equal(disabledPrivacy.contributor, null);
 assert.deepEqual(disabledPrivacy.callables, { exportPersonalData: null, assessErasure: null, eraseOrRetain: null });
 assert.equal(disabledPrivacy.issues.length, 2);
 `);
+}
+
+/** Installed type witness for neutral analytics facts and host step literals. */
+export function compileMarketingAnalyticsConsumer(consumer: string, compiler: string): void {
+  const file = join(consumer, "marketing-analytics.ts");
+  writeFileSync(file, [
+    'import { createAnalyticsDataLayer, projectPaidPurchase, selectMarketingHistoricalConsentTime } from "@openlup/platform/marketing";',
+    'import type { AnalyticsEventMap, PurchaseOrder, MarketingHistoricalConsentCommand } from "@openlup/platform/marketing/contracts";',
+    'const analytics = createAnalyticsDataLayer<"choose" | "confirm">();',
+    'analytics.pushAnalyticsEvent("configurator_step_view", { step_number: 1, step_name: "choose" });',
+    '// @ts-expect-error the host literal union stays closed',
+    'analytics.pushAnalyticsEvent("configurator_step_view", { step_number: 1, step_name: "other" });',
+    'declare const order: PurchaseOrder;',
+    'export const purchase: AnalyticsEventMap["purchase"] | null = projectPaidPurchase(order);',
+    'declare const command: MarketingHistoricalConsentCommand;',
+    'export const consent = selectMarketingHistoricalConsentTime({ command, state: { consent: "unknown", suppressions: [] }, now: new Date() });',
+  ].join("\n"));
+  for (const mode of ["NodeNext", "Bundler"]) {
+    const configuration = join(consumer, "marketing-analytics-tsconfig.json");
+    writeFileSync(configuration, JSON.stringify({ compilerOptions: {
+      target: "ES2020", module: mode === "NodeNext" ? "NodeNext" : "ESNext", moduleResolution: mode,
+      strict: true, skipLibCheck: false, noEmit: true, types: ["node"],
+      typeRoots: [join(consumer, "node_modules/@types")],
+    }, files: [file] }));
+    process.stdout.write(command(process.execPath, [compiler, "-p", configuration], consumer));
+  }
 }
 
 /** M11 K1: installed neutral contracts, a successful projection and a strict refusal. */
@@ -643,8 +696,8 @@ export function compileConsumer(consumer: string, entries: readonly string[], co
   const file = join(consumer, "consumer.ts");
   const surfaces = entries.map((name, index) => `import type * as Entry${index} from "@openlup/platform/${name}";\nexport type Surface${index} = typeof Entry${index};`);
   if (entries.includes("marketing") && entries.includes("marketing/contracts")) surfaces.push([
-    'import { acquisitionCaseListRequestSchema, prelaunchAcquisitionListRequestSchema } from "@openlup/platform/marketing";',
-    'import type { AcquisitionCaseListRequest, AcquisitionNewsletterConsentEvent, MarketingResearchSurveySubmitPort, AcquisitionCasePort, AcquisitionEvidencePort, PrelaunchAcquisitionListRequest } from "@openlup/platform/marketing/contracts";',
+    'import { acquisitionCaseListRequestSchema, prelaunchAcquisitionListRequestSchema, buildHeadDescriptor, organizationLd } from "@openlup/platform/marketing";',
+    'import type { AcquisitionCaseListRequest, AcquisitionNewsletterConsentEvent, MarketingResearchSurveySubmitPort, AcquisitionCasePort, AcquisitionEvidencePort, PrelaunchAcquisitionListRequest, ContactContent, LegalDocumentContent, PrivacyProcessorDisclosure } from "@openlup/platform/marketing/contracts";',
     'export const marketingRequest: AcquisitionCaseListRequest = acquisitionCaseListRequestSchema.parse({ view: "acquisition_case_v1" });',
     '// @ts-expect-error parsed default is required in the output type',
     'export const missingMarketingLimit: AcquisitionCaseListRequest = { view: "acquisition_case_v1" };',
@@ -659,6 +712,20 @@ export function compileConsumer(consumer: string, entries: readonly string[], co
     'export const explicitConsent: boolean = marketingEvent.explicitOptInEvidence;',
     'declare const surveyPort: MarketingResearchSurveySubmitPort;',
     'export const surveyResult = surveyPort.submitSurveyResponse({ surveyType: "consumer", responseData: { answer: true } });',
+    'declare const contact: ContactContent;',
+    'export const processor: PrivacyProcessorDisclosure = { processorName: "Example Processor", purpose: "Example purpose", dataCategories: ["Example data"] };',
+    'export const legal: LegalDocumentContent = { title: "Example document", intro: "Example introduction", sections: [{ title: "Example section", body: "Example body" }] };',
+    'export const contactInput: ContactContent = { organization: contact.organization, supportEmail: "support@example.invalid", addressLine: "Example address", registrationIdentifiers: [] };',
+    'export const siteIdentity = contact.organization.name;',
+    'export const processorName = processor.processorName;',
+    'export const head = buildHeadDescriptor({ origin: "https://shop.example", route: { id: "home", locale: "alpha", canonicalPath: "/" }, routes: [], xDefaultLocale: "alpha", htmlLang: "alpha", title: "Example", description: "Example content", siteName: "Example Store", ogImage: "https://shop.example/image.png", ogImageWidth: 1200, ogImageHeight: 630, twitterHandle: "@example", ogLocale: "alpha", twitterImage: "https://shop.example/card.png", jsonLd: organizationLd("https://shop.example", "Organization", contact.organization) });',
+    '// @ts-expect-error organization facts are required for contact content',
+    'const missingContact: ContactContent = { supportEmail: "support@example.invalid", addressLine: "Example address", registrationIdentifiers: [] };',
+    '// @ts-expect-error legal document sections are required',
+    'const missingSections: LegalDocumentContent = { title: "Example", intro: "Example introduction" };',
+    '// @ts-expect-error processor data categories are required',
+    'const missingCategories: PrivacyProcessorDisclosure = { processorName: "Example", purpose: "Example purpose" };',
+    'void missingContact; void missingSections; void missingCategories;',
   ].join("\n"));
   if (entries.includes("marketing/server")) surfaces.push([
     'import { createAcquisitionCaseHandlers, createAcquisitionCaseActiveCountDirectHandler } from "@openlup/platform/marketing/server";',
@@ -1584,6 +1651,7 @@ assert.throws(() => promotions.resolvePromotionBenefitDefinition({ discount_type
     assertConsumerIsolation(consumer, checkout); // Compilation must not have supplied a peer.
     proveMarketingConsumer(consumer);
     proveMarketingServerConsumer(consumer);
+    compileMarketingAnalyticsConsumer(consumer, compiler);
     proveCommerceConsumer(consumer);
     proveCommerceServerConsumer(consumer);
     proveCatalogCompositionConsumer(consumer);

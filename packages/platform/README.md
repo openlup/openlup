@@ -10,18 +10,23 @@ Development preview. This package is part of the publishable set with core and o
 
 It holds the runnable server substrate an OpenLup application composes: the Node HTTP runtime, BFF dispatch, scheduling and job leases, blob storage, data gateways, the node-postgres migration runner and bundle composition. Ports and their contracts stay in `@openlup/core/platform-runtime`.
 
-For the prepared `0.27.0` set, read the [adjacent-release migration and known
-limitations](CHANGELOG.md#0270) before selecting optional services. Experimental
+For the prepared `0.28.0` set, read the [adjacent-release migration and known
+limitations](CHANGELOG.md#0280) before selecting optional services. Experimental
+account/support APIs use `./account-support` and the type-only
+`./account-support/contracts`; reference bindings remain inert and default-off.
+Apply the M12 support-authority forwards after complete same-rail predecessors
+and follow the email-correction admission, claim, identity-commit and settlement
+migration notes before replacing retired callers. Experimental
 commerce schemas and ports use `./commerce` and `./commerce/contracts`;
 handlers, adapters and checkout engines use the Node-only `./commerce/server`.
 The commerce contribution and reference binding remain inert and default-off.
-Install the complete native chain through position 86
-(`20261024184600_subscription_retry_candidate_payment_filter.sql`); M11 adds no
-native SQL. Sparse SQL projections are not an install chain. Native runtime
+Install the complete native chain through the M12 support-authority forward
+(`20261026120000_account_support_operator_authority.sql`). Sparse SQL projections
+are not an install chain. Native runtime
 roles need the ATP/exposure EXECUTE and underlying SELECT grants described in
 the release notes.
-Managed hosts apply the complete prefix through `20261025110000`, including
-M11's nine forwards for preference/return ownership, operator receipts,
+Managed hosts apply the complete prefix through `20261026120100`, including
+the current support-authority forward and M11's nine forwards for preference/return ownership, operator receipts,
 acquisition/finalize admission, ATP preview and starter graduation. Legacy
 omitted-country input uses the configured settlement region; neutral commands
 require explicit country. Starter graduation admits 14, 21 or 28 days; rollback
@@ -45,7 +50,7 @@ Adopters must not activate unselected or unready invoicing; installation and
 inert contributions register no runner, worker, route or schedule.
 M06 managed-host proof classes remain pending in the
 [M06 parity ledger](../../docs/platform/plans/oss-m06-stock-reservations-delivery.md#parity-pending-rows).
-Size comparison uses the published `0.26.0` tarball. Preparation and offline
+Size comparison uses the published `0.27.0` tarball. Preparation and offline
 adapter evidence grant no publication or provider-account certification.
 
 Longer module recipes live in the [platform package reference](../../docs/platform/PLATFORM_PACKAGE_REFERENCE.md).
@@ -90,7 +95,10 @@ timestamp used in the webhook's idempotency key.
 | `./catalog/contracts` | Dependency-free catalog DTOs, media resolver, authority and canonicalization helpers |
 | `./marketing/server` | Node-only acquisition handlers, direct read/evidence factories and research orchestration without `pg`; host responder, authorization, binding and notification copy |
 | `./marketing/server/postgres` | Acquisition case and research evidence PostgreSQL port factories; requires the existing optional `pg` peer |
+| `./marketing/server` (analytics context) | Injected analytics context handler with host persistence, capability and identity bindings |
 | `./marketing`, `./marketing/contracts` | Browser-safe acquisition history, portable prelaunch, survey evidence and newsletter consent schemas; type-only DTOs and acquisition/research ports |
+| `./marketing`, `./marketing/contracts` (analytics) | Browser-safe acquisition and research schemas, injected analytics, paid purchase and consent-time facts; type-only DTOs and ports |
+| `./marketing`, `./marketing/contracts` (SEO and content slots) | Browser-safe JSON-LD serialization and graph builders, URL/hreflang helpers, ordered head data and contact/legal projections; type-only organization, contact, legal-document and privacy-processor content slots |
 | `./commerce`, `./commerce/contracts` | Browser-safe neutral commerce schema cores, generic ports and pure contract helpers |
 | `./commerce/server` | Node-only OMS, returns, native reviews/media and hosted-feedback handlers/adapters and order-detail composition, email consumers, dispatch registry, paid-fulfillment binding and checkout compensation, checkout handlers, runtime and shared paid-order saga |
 | `./pricing` | Experimental price authority, quote computation/handlers, offer projection/cache, readiness and policy tokens |
@@ -144,6 +152,61 @@ HTML rendering before the subject clock read. The reference owns retired
 route refusals, raw signed consent ingress and notification copy. PostgreSQL
 SQL, role selection and transaction/pool handling remain unchanged. The
 server-only compatibility command types do not expose retired admission schemas.
+
+Analytics facts share these browser-safe entries. `createNoopAnalytics` implements
+Core's existing analytics port; deployment and advertising defaults remain inert.
+`AnalyticsEventMap<StepName>` retains the host's literal step vocabulary, with
+`string` as the neutral default. Private transport ownership fields and envelopes
+remain host extensions. Types are forwarded type-only by `./marketing/contracts`.
+
+`createAnalyticsDataLayer` owns loader readiness per instance and accepts the host's
+browser/storage access, consent key and change event, `consentSignalNames`, event
+prefix, container reader and deployment callback. `consentSignalNames` supplies
+one `analytics` wire name and the ordered `advertising` wire names. Without it,
+no consent command is pushed and optional event admission returns false, even
+with browser access, a container and stored consent; deployment attempts remain
+independent. Consent commands seed default before update and
+use array-like arguments; advertising grants read marketing consent at push time.
+Revocation denies every signal. Sinks are attempted independently with failure
+isolation and no replay of observations made before consent. Admission booleans
+mean synchronous local acceptance only, never delivery or business acknowledgement.
+
+`createAnalyticsRoutePolicy` requires public paths, redirect sources and all
+sensitive-path sets. Its optional-route predicate preserves broad eligibility;
+deployment URL sanitization admits exact public paths and safe campaign values.
+`projectPaidPurchase` consumes only structural paid-recap facts, preserving
+allocation/grouping, the item cap and ordered suppression reasons without an
+ambient currency policy. `selectMarketingHistoricalConsentTime` selects exact
+native chronology only after host authorization, without changing the local
+grant. The reference retains its narrower checkout-kind admission and all wire
+names. [Purchase equivalence](../../src/checkout/machine/purchasePayloadEquivalence.test.ts)
+and the package analytics witnesses pin these boundaries.
+
+`createAnalyticsContextHandler` in `./marketing/server` accepts a required BFF
+responder, enable reader, persistence resolver, access-token reader, trusted-subject
+resolver, capability mint/hash functions, historical cookie name and `clientIdField`.
+The host supplies the client-id wire field name through `clientIdField`; the strict
+request also keeps `granted` and `explicitGrant`. Grants require a client
+id and existing revoked contexts require an explicit new grant for replacement.
+Only token hashes reach persistence. Enrollment uses only the server-verified
+subject, and invalid bearer grants refuse before writes. Cookie attributes and
+method/flag/origin/schema refusal order are preserved. The host owns flag and
+RPC names, gateway authority, route mounting and observability. Persistence
+operations must reject on failure; null persistence refuses as unavailable.
+There is no default persistence, portable SQL or reference route for this handler.
+An `active` result is a local context fact, never delivery, and telemetry context
+failure never gates commerce. The [context witness](test/marketing/analyticsContext.test.ts)
+exercises the factory through synthetic host bindings.
+
+`./marketing` also provides browser-safe JSON-LD serialization and graph builders,
+route URL/hreflang helpers, an ordered head descriptor and plain contact/legal
+projections. Applications supply identity, origin, routes, locales, images and
+content; the descriptor is plain data for a host head manager. The type-only
+`./marketing/contracts` entry exports shared organization facts and contact,
+legal-document and privacy-processor shapes, also forwarded as types by the
+runtime entry. The package supplies no document wording, processor inventory or
+content policy. The [marketing recipe](../../docs/platform/PLATFORM_PACKAGE_REFERENCE.md#marketing-seo-and-content-slots)
+owns the mechanics and installed-artifact proof.
 
 ## Marketing composition
 
@@ -1204,8 +1267,15 @@ construction calls no observer. Refusals are `disabled`, `schema_unknown` and
 A null selected operation remains a required port without an executable binding.
 The separate injected commerce record uses `commerce(key, ...args)` and returns
 `{ kind: "unsupported", code: "host_binding_required" }` for a null record/member.
-It imports no draft-M11 code. R5a selects no commerce recovery, configured purchase
-or checkout continuation; keep their capability flags unsupported. Contribution
-descriptors install no routes, handlers, schedules or workers. See the
+The reference host may select real M11 checkout/recovery, ATP and existing effect
+descriptors by supplying its already-built selection through `commerceOwner`
+and its existing registry through `commerceRegistry`. R5b does not construct M11
+or import its adapters; the host supplies the complete account/M11/ATP schema
+and matching enablement/readiness. Keep capability flags unsupported until
+their owner callables are bound. This adds no package export or owner import to
+account-support contracts. One M11 result is forwarded without rewrapping its
+guarded services; unknown stock, unsupported options and handler outcomes retain
+their owner meaning. Contribution descriptors install no routes, handlers,
+schedules or workers. See the
 [reference recipe](../../docs/platform/RUNTIME_AND_SELF_HOSTING.md#opt-in-disposable-subscription-reference)
 for the host's schema and transport obligations.
