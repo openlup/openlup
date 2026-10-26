@@ -249,9 +249,13 @@ describe("release gate controls", () => {
   beforeAll(() => { fixture = createFixture(); });
   afterAll(() => { rmSync(fixture.scratch, { recursive: true, force: true }); });
 
-  it("hold on the committed module", async () => {
-    for (const [name, holds] of Object.entries(BEHAVIOUR)) await expect(holds(committed), name).resolves.toBeUndefined();
-    for (const [name, holds] of Object.entries(STRUCTURE)) expect(holds(SOURCE), name).toBe(true);
+  // Give each control its own timeout budget while preserving every real Git check.
+  it.each(Object.entries(BEHAVIOUR))("hold on the committed module: %s", async (name, holds) => {
+    await expect(holds(committed), name).resolves.toBeUndefined();
+  });
+
+  it.each(Object.entries(STRUCTURE))("hold on the committed module: %s", (name, holds) => {
+    expect(holds(SOURCE), name).toBe(true);
   });
 
   it("each control has a planted defect", () => {
