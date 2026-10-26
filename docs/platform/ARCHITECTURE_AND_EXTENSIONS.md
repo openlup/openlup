@@ -1962,5 +1962,12 @@ each guarded entrance, using the same callable for service/port/route aliases.
 M04 owns notice delivery and deduplication, and R4 owns issue-recovery notices;
 M12 installs no second handler or scheduler. Browser route elements and paths
 are injected, preserving the host's distinct customer/operator authentication.
-The static and subscription serving entries remain unchanged. Commerce recovery,
-configured purchase and checkout continuation are unselected in R5a.
+The static and subscription serving entries remain unchanged. The optional
+`commerceOwner` selection accepts the host-built `createM11CommerceReferenceBinding`
+result through a local structural type and forwards its contribution, ports,
+routes and triggers. R5b does not construct M11 or import its adapters. Its already guarded
+services never enter a second M11 binding or M12 callable guard. Host-bound
+checkout/recovery and ATP callables stay behind their owner boundaries; the
+existing outbox registry supplies inert effect descriptors during host construction
+and is supplied separately as `commerceRegistry`, retaining handler
+identity. No second dispatcher, installer or stock policy is introduced.

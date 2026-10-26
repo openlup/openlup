@@ -321,7 +321,7 @@ it.each([0, 1, "P3b", "all"] as const)("replays each rail once with %s landed pi
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
 
-// Historical M09 correction pair and its managed prefix, with only the pair's pins changed.
+// Historical M09 correction pair and its complete managed prefix, with only the pair's pins changed.
 const correctionPaths = registry.managedInvoicingForwards!.slice(0, 2).map(({ path }) => path);
 function correctionFixture() {
   const root = mkdtempSync(join(tmpdir(), "openlup-co-located-"));
@@ -329,11 +329,15 @@ function correctionFixture() {
   const put = (path: string, value: Buffer | string) => { mkdirSync(dirname(join(root, path)), { recursive: true }); writeFileSync(join(root, path), value); };
   const commit = () => { git("add", "."); git("commit", "-qm", "SQL approval fixture"); return git("rev-parse", "HEAD"); };
   git("init", "-q", "-b", "main");
-  for (const directory of ["db/platform/migrations", "supabase/migrations"]) for (const file of readdirSync(directory)) {
-    const path = `${directory}/${file}`;
-    if (directory !== "supabase/migrations" || path < correctionPaths[0]!) put(path, readFileSync(path));
+  for (const file of readdirSync("supabase/migrations")) {
+    const path = `supabase/migrations/${file}`;
+    if (path < correctionPaths[0]!) put(path, readFileSync(path));
   }
-  put("config/platform-migration-manifest.json", readFileSync("config/platform-migration-manifest.json"));
+  // M09 changes only the managed rail. Keep a valid portable baseline/manifest
+  // without copying and revalidating every unrelated portable forward.
+  const manifest = JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8"));
+  put(manifest.baseline.file, readFileSync(manifest.baseline.file));
+  put("config/platform-migration-manifest.json", JSON.stringify({ ...manifest, forward: [] }));
   const previous = structuredClone(registry);
   for (const entry of previous.managedInvoicingForwards!.slice(0, 2)) entry.sha256 = "0".repeat(64);
   put("config/reviewed-platform-forwards.json", JSON.stringify(previous));
@@ -362,13 +366,13 @@ describe("co-located SQL and pins under an existing policy", () => {
     } finally { f.cleanup(); }
   });
 
-  it("accepts the historical M09 correction pair in admission, migration and release checks", () => {
+  it.each(["admission", "migration", "release"] as const)("accepts the historical M09 correction pair in %s checks", check => {
     const f = correctionFixture();
     try {
       f.install(); const head = f.commit();
-      expect(() => assertCoLocatedForwardApproval(f.root, f.base, head)).not.toThrow();
-      expect(() => assertAppendOnlyMigrationHistory(f.root, f.base, head)).not.toThrow();
-      for (const path of correctionPaths) expect(() => assertReviewedPlatformForward(f.root, f.base, head, path, readFileSync(path), true)).not.toThrow();
+      if (check === "admission") expect(() => assertCoLocatedForwardApproval(f.root, f.base, head)).not.toThrow();
+      if (check === "migration") expect(() => assertAppendOnlyMigrationHistory(f.root, f.base, head)).not.toThrow();
+      if (check === "release") for (const path of correctionPaths) expect(() => assertReviewedPlatformForward(f.root, f.base, head, path, readFileSync(path), true)).not.toThrow();
     } finally { f.cleanup(); }
   });
 
