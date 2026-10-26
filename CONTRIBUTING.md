@@ -154,6 +154,14 @@ its users or operators can observe.
 
 ## Development-preview checks
 
+The operations slice uses the existing platform build, API, package and installed
+consumer commands. Its owner-local witnesses cover browser closure and preserved
+watchdog/handler behavior; the full-catalogue installed PostgreSQL phase also
+executes the operations adapter as an explicitly granted invoker role, with a
+forbidden neighboring write, durable replay/conflict and a second-process restart.
+This extends the existing proof rather than adding a runner or required job.
+
+
 The inventory [binding](tests/platform/inventory/inventoryBindings.test.ts) and
 [installed-consumer](tests/platform/inventory/inventoryConsumer.test.ts) witnesses
 cover native ATP source-key selection/refusal, managed injected-reader precedence

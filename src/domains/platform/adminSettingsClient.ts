@@ -1,7 +1,6 @@
+import { createOperationsClients } from "@openlup/platform/operations";
 import { requestBff, type BffRequestOptions } from "@/lib/bff/client";
 import {
-  adminSettingsReadResponseSchema,
-  adminSettingsUpdateResponseSchema,
   adminUserInviteResponseSchema,
   adminUserRemoveResponseSchema,
   adminUserRoleUpdateResponseSchema,
@@ -9,42 +8,17 @@ import {
   type AdminUserInviteResponse,
   type AdminUserRemoveRequest,
   type AdminUserRemoveResponse,
-  type AdminSettingsReadResponse,
-  type AdminSettingsUpdateRequest,
-  type AdminSettingsUpdateResponse,
   type AdminUserRoleUpdateRequest,
   type AdminUserRoleUpdateResponse,
 } from "./contracts";
 
-const READ_PATH = "/api/bff/admin/platform/settings";
-const UPDATE_PATH = "/api/bff/admin/platform/settings/update";
 const ROLE_UPDATE_PATH = "/api/bff/admin/platform/admin-users/role";
 const INVITE_PATH = "/api/bff/admin/platform/admin-users/invite";
 const REMOVE_PATH = "/api/bff/admin/platform/admin-users/remove";
 
-export function getAdminSettings(
-  accessToken: string,
-  options: BffRequestOptions = {},
-): Promise<AdminSettingsReadResponse> {
-  return requestBff(READ_PATH, adminSettingsReadResponseSchema, {
-    ...options,
-    method: "GET",
-    headers: authHeaders(accessToken, options),
-  });
-}
-
-export function updateAdminSetting(
-  accessToken: string,
-  request: AdminSettingsUpdateRequest,
-  options: BffRequestOptions = {},
-): Promise<AdminSettingsUpdateResponse> {
-  return requestBff(UPDATE_PATH, adminSettingsUpdateResponseSchema, {
-    ...options,
-    method: "POST",
-    headers: authHeaders(accessToken, options),
-    body: request,
-  });
-}
+const operations = createOperationsClients(requestBff);
+export const getAdminSettings = operations.getAdminSettings;
+export const updateAdminSetting = operations.updateAdminSetting;
 
 export function updateAdminUserRole(
   accessToken: string,

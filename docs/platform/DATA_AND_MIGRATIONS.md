@@ -1760,3 +1760,13 @@ forwards; neither descriptor claims storage or fiscal parity.
 The seller-revision forwards are introduced by this change as described in the
 [compatibility lifecycle](#compatibility-lifecycle). Default service activation
 remains later work.
+
+The operations package carries an unchanged projection of native forward
+`20260814010000_platform_control_plane.sql` at manifest position 28. Its sparse
+`OPERATIONS_MIGRATIONS` descriptor is not an install chain: install the complete
+canonical native prefix, including prior job-ledger objects. Existing invoker
+routines require explicit EXECUTE and underlying relation privileges, and a
+current row in `platform_control_operators`. That allowlist does not grant identity
+membership or domain write authority. The installed consumer proves the selected
+runtime role can write controls/heartbeats while a neighboring subscription write
+refuses; managed verification remains unclaimed.

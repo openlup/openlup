@@ -1144,3 +1144,21 @@ their owner meaning. Contribution descriptors install no routes, handlers,
 schedules or workers. See the
 [reference recipe](../../docs/platform/RUNTIME_AND_SELF_HOSTING.md#opt-in-disposable-subscription-reference)
 for the host's schema and transport obligations.
+
+## Operations and diagnostics
+
+The experimental `./operations` entry contains browser-safe operational schemas,
+alert projections and `createOperationsClients`, which binds an existing BFF
+requester. `./operations/contracts` contains DTOs and narrow ports only.
+`./operations/server` contains settings read/update, pipeline read, alert overview,
+control-plane handlers and the existing watchdog delivery mechanism. Authorization,
+SQL execution, evidence evaluation and alert transport are supplied by the host;
+importing these entries registers no route, schedule or provider.
+
+`runControlPlaneWatchdogTick` evaluates persisted neutral job failures and records
+an idempotent heartbeat unless `checkOnly` is true. The richer watchdog accepts a
+typed evaluator; the public reference binds its maintained domain evaluator.
+Settings preserve scalar values, and pipeline reads preserve the existing tester
+and email projection. Identity membership and tracking effects keep their owners.
+See the [operations architecture](../../docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#operations-and-diagnostics)
+for refusal behavior, SQL prerequisites and the bounded preview scope.

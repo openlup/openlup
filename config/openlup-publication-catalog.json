@@ -1354,6 +1354,14 @@
       "class": "public-output"
     },
     {
+      "path": "docs/platform/plans/oss-m14-operations-portability.md",
+      "class": "public-output"
+    },
+    {
+      "path": "docs/platform/plans/oss-m14-operations.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/public-ci-completeness.md",
       "class": "platform-documentation"
     },
@@ -2462,6 +2470,18 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/api/operations-contracts.api.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/api/operations-server.api.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/api/operations.api.md",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/api/payments-contracts.api.md",
       "class": "public-output"
     },
@@ -2599,6 +2619,10 @@
     },
     {
       "path": "packages/platform/sql/20260814000000_fulfillment_stock_evidence.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20260814010000_platform_control_plane.sql",
       "class": "public-output"
     },
     {
@@ -5082,6 +5106,118 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/operations/adminAlertsSchemas.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/operations/adminAlertsView.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/operations/alertPagingPolicy.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/operations/alertThrottlePolicy.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/operations/clients.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/operations/contracts/admin.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/operations/contracts/adminAlertsContracts.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/operations/contracts/alertHumanContext.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/operations/contracts/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/operations/contracts/observabilityContracts.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/operations/contracts/observabilityPorts.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/operations/contracts/ports.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/operations/errors.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/operations/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/operations/schemas.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/operations/server/adminAlertsHandlers.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/operations/server/adminPipelineHandlers.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/operations/server/adminSettingsHandlers.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/operations/server/controlPlaneHandler.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/operations/server/controlPlaneStore.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/operations/server/controlPlaneWatchdog.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/operations/server/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/operations/server/migrations.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/operations/server/platformWatchdogDecision.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/operations/server/platformWatchdogDeliveryPolicy.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/operations/server/platformWatchdogQueue.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/operations/server/platformWatchdogService.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/operations/validation.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/payments/adapterConformance.ts",
       "class": "public-output"
     },
@@ -7131,6 +7267,62 @@
     },
     {
       "path": "packages/platform/test/migrations/postgresRunner.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/operations/adminAlertsHandlers.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/operations/adminAlertsView.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/operations/adminPipelineHandlers.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/operations/adminSettingsHandlers.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/operations/alertPagingPolicy.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/operations/alertThrottlePolicy.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/operations/browserSafety.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/operations/clients.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/operations/controlPlaneHandler.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/operations/controlPlaneStore.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/operations/controlPlaneWatchdog.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/operations/platformWatchdogDeliveryPolicy.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/operations/platformWatchdogService.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/operations/watchdogQueue.test.ts",
       "class": "public-output"
     },
     {

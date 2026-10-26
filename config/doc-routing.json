@@ -644,6 +644,18 @@
       ],
       "doc": "docs/platform/ARCHITECTURE_AND_EXTENSIONS.md",
       "anchor": "#invoicing-contracts"
+    },
+    {
+      "id": "operations-capability",
+      "when": "Operational settings, alert projections, watchdog delivery and control-plane contracts",
+      "paths": [
+        "packages/platform/src/operations/**",
+        "packages/platform/test/operations/**",
+        "packages/platform/api/operations*.api.md",
+        "packages/platform/sql/20260814010000_platform_control_plane.sql"
+      ],
+      "doc": "docs/platform/ARCHITECTURE_AND_EXTENSIONS.md",
+      "anchor": "#operations-and-diagnostics"
     }
   ]
 }

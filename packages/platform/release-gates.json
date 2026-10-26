@@ -599,6 +599,45 @@
       ],
       "entrypoint": "dist/account-support/contracts/index.d.ts",
       "snapshot": "api/account-support-contracts.api.md"
+    },
+    "./operations": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/packageBoundary.test.ts",
+        "test/operations/controlPlaneHandler.test.ts",
+        "test/operations/platformWatchdogService.test.ts",
+        "test/operations/adminAlertsView.test.ts"
+      ],
+      "entrypoint": "dist/operations/index.d.ts",
+      "snapshot": "api/operations.api.md"
+    },
+    "./operations/contracts": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/packageBoundary.test.ts",
+        "test/operations/controlPlaneHandler.test.ts",
+        "test/operations/platformWatchdogService.test.ts",
+        "test/operations/adminAlertsView.test.ts"
+      ],
+      "entrypoint": "dist/operations/contracts/index.d.ts",
+      "snapshot": "api/operations-contracts.api.md"
+    },
+    "./operations/server": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/packageBoundary.test.ts",
+        "test/operations/controlPlaneHandler.test.ts",
+        "test/operations/platformWatchdogService.test.ts",
+        "test/operations/adminAlertsView.test.ts"
+      ],
+      "entrypoint": "dist/operations/server/index.d.ts",
+      "snapshot": "api/operations-server.api.md"
     }
   },
   "pack": {
@@ -631,7 +670,9 @@
       "./invoicing/contracts": 32,
       "./commerce/contracts": 32,
       "./pricing/browser": 25600,
-      "./account-support/contracts": 32
+      "./account-support/contracts": 32,
+      "./operations/contracts": 32,
+      "./operations": 30720
     }
   }
 }

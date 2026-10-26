@@ -260,6 +260,21 @@
       "types": "./dist/account-support/contracts/index.d.ts",
       "import": "./dist/account-support/contracts/index.js",
       "default": "./dist/account-support/contracts/index.js"
+    },
+    "./operations": {
+      "types": "./dist/operations/index.d.ts",
+      "import": "./dist/operations/index.js",
+      "default": "./dist/operations/index.js"
+    },
+    "./operations/contracts": {
+      "types": "./dist/operations/contracts/index.d.ts",
+      "import": "./dist/operations/contracts/index.js",
+      "default": "./dist/operations/contracts/index.js"
+    },
+    "./operations/server": {
+      "types": "./dist/operations/server/index.d.ts",
+      "import": "./dist/operations/server/index.js",
+      "default": "./dist/operations/server/index.js"
     }
   },
   "repository": {

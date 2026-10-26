@@ -4,6 +4,15 @@ Status: development-preview contract. No recipe in this document is a supported 
 
 ## Runtime model
 
+The reference control-plane route composes existing admin authorization with the
+package operations handler. Its host binding still selects the bundle, obtains
+and closes its client, and supplies the capability-local operator ID. The direct
+watchdog invokes the package persisted-job tick; missing configuration and
+transport failures keep their existing safe error responses. Package imports
+install no routes or schedules. See the
+[operations boundary](ARCHITECTURE_AND_EXTENSIONS.md#operations-and-diagnostics).
+
+
 The accounting HTTP scheduler accepts an explicitly composed invoicing service
 and passes it to the existing accounting runtime after HTTP method and bearer
 authorization checks. It adds no cron or executor. Runtime enablement and service
