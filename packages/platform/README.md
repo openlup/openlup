@@ -104,7 +104,12 @@ timestamp used in the webhook's idempotency key.
 `./marketing` provides acquisition address references, historical case projections,
 list/count reads, portable prelaunch list/detail schemas, idempotency keys, survey submission/evidence/list schemas and
 newsletter consent events/responses. Reference compatibility shims forward the
-same schema objects. The rich prelaunch DTO, case submit and transition contracts remain application-owned
+same schema objects and load the reference validation wrapper before package
+schemas. The marketing runtime entry configures the shared Zod instance in
+jitless mode before constructing schemas, preserving CSP-safe initialization
+for direct imports as well as reference facades, like the pricing, catalog and
+communications entries. The type-only `./marketing/contracts` entry has no
+runtime initialization. The rich prelaunch DTO, case submit and transition contracts remain application-owned
 and are intentionally excluded from this package. The shared
 `acquisitionOpaqueReferenceSchema` lets those retained contracts reuse the exact
 reference syntax. There is no marketing server entry or automatic route binding.
@@ -278,7 +283,7 @@ SQL (class (b) retention): native uses 14 days and the contributed managed profi
 uses 21 days. There is no TypeScript delay parameter or SQL change.
 The reference browser contract facades initialize their shared Zod instance in
 jitless mode before loading package schemas, preserving CSP-safe construction.
-The package contracts add no global Zod configuration side effect. Browser
+The commerce package contracts add no global Zod configuration side effect. Browser
 conformance bundles the complete commerce entry and both reference facades
 without externals; the raw-upload source is a failing browser control, while
 the complete server entry bundles for Node.

@@ -1,3 +1,4 @@
+// Evaluate the browser configuration before the package constructs any schemas.
 import "../../../lib/validation/zod.js";
 
 export {

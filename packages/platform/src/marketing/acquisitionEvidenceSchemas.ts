@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { z } from "./validation.js";
 
 export const ACQUISITION_SURVEY_VERSION = "acquisition_survey_v1" as const;
 export const ACQUISITION_NEWSLETTER_VERSION = "acquisition_newsletter_consent_v1" as const;

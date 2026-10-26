@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { z } from "./validation.js";
 
 export const PRELAUNCH_ACQUISITION_VIEW = "prelaunch_acquisition_v1" as const;
 export const PRELAUNCH_ACQUISITION_CONTRACT_VERSION = "prelaunch_acquisition_v1" as const;

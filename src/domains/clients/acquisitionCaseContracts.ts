@@ -1,3 +1,4 @@
+// Evaluate the browser configuration before the package constructs any schemas.
 import { z } from "../../lib/validation/zod.js";
 import { CLIENTS_CONTRACT_VERSION } from "./searchContracts.js";
 import { ACQUISITION_CASE_CONTRACT_VERSION, ACQUISITION_CASE_VIEW, acquisitionAddressReferenceSchema, acquisitionCaseProjectionSchema, acquisitionOpaqueReferenceSchema } from "@openlup/platform/marketing";

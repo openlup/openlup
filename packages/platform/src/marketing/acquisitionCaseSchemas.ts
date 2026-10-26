@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { z } from "./validation.js";
 
 export const ACQUISITION_CASE_CONTRACT_VERSION = "tester_application_v1" as const;
 export const ACQUISITION_CASE_VIEW = "acquisition_case_v1" as const;

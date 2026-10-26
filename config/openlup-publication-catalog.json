@@ -5114,6 +5114,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/marketing/validation.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/migrations/index.ts",
       "class": "public-output"
     },
@@ -7179,6 +7183,10 @@
     },
     {
       "path": "packages/platform/test/marketing/schemas.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/marketing/validation.test.ts",
       "class": "public-output"
     },
     {
@@ -25095,6 +25103,10 @@
     },
     {
       "path": "tests/platform/mailEgressCallers.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/platform/marketingValidation.test.ts",
       "class": "public-output"
     },
     {
