@@ -5094,11 +5094,23 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/marketing/contracts/acquisitionPorts.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/marketing/contracts/index.ts",
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/marketing/contracts/prelaunch.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/marketing/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/marketing/prelaunchAcquisitionSchemas.ts",
       "class": "public-output"
     },
     {

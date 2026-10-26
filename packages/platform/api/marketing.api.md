@@ -222,10 +222,277 @@ export type AcquisitionSurveyListResponse = z.infer<typeof acquisitionSurveyList
 export type AcquisitionNewsletterConsentEvent = z.infer<typeof acquisitionNewsletterConsentEventSchema>;
 export type AcquisitionNewsletterConsentResponse = z.infer<typeof acquisitionNewsletterConsentResponseSchema>;
 ```
+## dist/marketing/contracts/acquisition.d.ts
+
+```ts
+export type AcquisitionOpaqueReference = string;
+export type AcquisitionAddressReference = {
+    source: string;
+    reference: string;
+    revision: string;
+    provenance: string;
+};
+export type AcquisitionCaseState = "submitted" | "approved" | "active" | "rejected" | "withdrawn";
+export type AcquisitionCaseProjection = {
+    contractVersion: "tester_application_v1";
+    caseRef: string;
+    contactRef: string;
+    sourceKind: "tester_application";
+    consent: {
+        consentVersion: string;
+        policyVersion: string;
+        recordedAt: string;
+        locale: "en" | "pl";
+        sourcePath: "/tester-application";
+    };
+    addressReference: AcquisitionAddressReference | null;
+    state: AcquisitionCaseState;
+    version: number;
+    createdAt: string;
+    updatedAt: string;
+};
+export type AcquisitionCaseListRequest = {
+    view: "acquisition_case_v1";
+    cursor?: string | undefined;
+    limit: number;
+};
+export type AcquisitionCaseListResponse = {
+    contractVersion: "tester_application_v1";
+    cases: AcquisitionCaseProjection[];
+    nextCursor: string | null;
+};
+export type AcquisitionCaseActiveCountResponse = {
+    activeTesterCount: number;
+};
+export type AcquisitionIdempotencyKey = string;
+export type AcquisitionSurveySubmit = {
+    view: "acquisition_survey_v1";
+    caseReference: string;
+    surveyType: "producer" | "consumer";
+    responseData: Record<string, unknown>;
+};
+export type AcquisitionSurveyEvidence = {
+    evidenceReference: string;
+    caseReference: string;
+    contactReference: string;
+    surveyType: "producer" | "consumer";
+    responseDigest: string;
+    answerCount: number;
+    recordedAt: string;
+};
+export type AcquisitionSurveySubmitResponse = {
+    contractVersion: "acquisition_survey_v1";
+    evidence: AcquisitionSurveyEvidence;
+    replayed: boolean;
+};
+export type AcquisitionSurveyListQuery = {
+    view: "acquisition_survey_v1";
+    surveyType?: "producer" | "consumer" | undefined;
+    limit: number;
+};
+export type AcquisitionSurveyListResponse = {
+    contractVersion: "acquisition_survey_v1";
+    rows: AcquisitionSurveyEvidence[];
+    totalCount: number;
+};
+export type AcquisitionNewsletterConsentEvent = {
+    contractVersion: "acquisition_newsletter_consent_v1";
+    caseReference: string;
+    contactReference: string;
+    eventReference: string;
+    eventType: "subscribe" | "unsubscribe" | "suppress" | "complaint" | "update";
+    purpose: "marketing_launch_offer" | "marketing_newsletter";
+    explicitOptInEvidence: boolean;
+    occurredAt: string;
+};
+export type AcquisitionNewsletterConsentResponse = {
+    contractVersion: "acquisition_newsletter_consent_v1";
+    eventReference: string;
+    outcome: "applied" | "ignored" | "stale";
+    consentState: "granted" | "suppressed" | null;
+    auditReference: string;
+    replayed: boolean;
+};
+```
+## dist/marketing/contracts/acquisitionPorts.d.ts
+
+```ts
+import type { AcquisitionCaseListResponse, AcquisitionCaseProjection, AcquisitionNewsletterConsentEvent, AcquisitionNewsletterConsentResponse, AcquisitionSurveyListQuery, AcquisitionSurveyListResponse, AcquisitionSurveySubmit, AcquisitionSurveySubmitResponse } from "./acquisition.js";
+export type AcquisitionCaseFailureKind = "conflict" | "invalid" | "not_found" | "rate_limited" | "unavailable";
+export type AcquisitionCaseResult<T> = {
+    ok: true;
+    value: T;
+    replayed?: boolean;
+} | {
+    ok: false;
+    error: {
+        kind: AcquisitionCaseFailureKind;
+    };
+};
+export interface AcquisitionCaseListQuery {
+    actorRef: string;
+    scope: "public_tester_application";
+    cursor?: string;
+    limit: number;
+}
+export interface AcquisitionCaseGetQuery {
+    actorRef: string;
+    scope: "public_tester_application";
+    caseRef: string;
+}
+export interface AcquisitionCasePort {
+    list(query: AcquisitionCaseListQuery): Promise<AcquisitionCaseResult<AcquisitionCaseListResponse>>;
+    get(query: AcquisitionCaseGetQuery): Promise<AcquisitionCaseResult<AcquisitionCaseProjection>>;
+    activeCount(scope: "public_tester_application"): Promise<AcquisitionCaseResult<number>>;
+    close(): Promise<void>;
+}
+export type AcquisitionEvidenceFailure = "invalid" | "not_found" | "conflict" | "unavailable";
+export type AcquisitionEvidenceResult<T> = {
+    ok: true;
+    value: T;
+} | {
+    ok: false;
+    error: {
+        kind: AcquisitionEvidenceFailure;
+    };
+};
+export interface AcquisitionEvidencePort {
+    submitSurvey(input: AcquisitionSurveySubmit & {
+        idempotencyKey: string;
+    }): Promise<AcquisitionEvidenceResult<AcquisitionSurveySubmitResponse>>;
+    listSurveys(input: AcquisitionSurveyListQuery & {
+        actorReference: string;
+    }): Promise<AcquisitionEvidenceResult<AcquisitionSurveyListResponse>>;
+    applyNewsletterConsent(input: AcquisitionNewsletterConsentEvent): Promise<AcquisitionEvidenceResult<AcquisitionNewsletterConsentResponse>>;
+    close(): Promise<void>;
+}
+```
 ## dist/marketing/index.d.ts
 
 ```ts
 export * from "./acquisitionCaseSchemas.js";
 export * from "./acquisitionEvidenceSchemas.js";
 export * from "@openlup/core/marketing/research";
+export * from "./prelaunchAcquisitionSchemas.js";
+export type * from "./contracts/acquisitionPorts.js";
+```
+## dist/marketing/prelaunchAcquisitionSchemas.d.ts
+
+```ts
+import { z } from "zod";
+export declare const PRELAUNCH_ACQUISITION_VIEW: "prelaunch_acquisition_v1";
+export declare const PRELAUNCH_ACQUISITION_CONTRACT_VERSION: "prelaunch_acquisition_v1";
+export declare const prelaunchAcquisitionListRequestSchema: z.ZodObject<{
+    view: z.ZodLiteral<"prelaunch_acquisition_v1">;
+    cursor: z.ZodOptional<z.ZodString>;
+    limit: z.ZodDefault<z.ZodCoercedNumber<unknown>>;
+}, z.core.$strict>;
+export declare const prelaunchAcquisitionDetailRequestSchema: z.ZodObject<{
+    sourceRef: z.ZodString;
+}, z.core.$strict>;
+export declare const prelaunchAcquisitionLeadSchema: z.ZodObject<{
+    sourceRef: z.ZodString;
+    contactRef: z.ZodString;
+    sourceKind: z.ZodLiteral<"tester_application">;
+    consent: z.ZodObject<{
+        consentVersion: z.ZodString;
+        policyVersion: z.ZodString;
+        recordedAt: z.ZodString;
+        locale: z.ZodEnum<{
+            en: "en";
+            pl: "pl";
+        }>;
+        sourcePath: z.ZodLiteral<"/tester-application">;
+    }, z.core.$strict>;
+    addressReference: z.ZodNullable<z.ZodObject<{
+        source: z.ZodString;
+        reference: z.ZodString;
+        revision: z.ZodString;
+        provenance: z.ZodString;
+    }, z.core.$strict>>;
+    state: z.ZodEnum<{
+        rejected: "rejected";
+        active: "active";
+        submitted: "submitted";
+        withdrawn: "withdrawn";
+        approved: "approved";
+    }>;
+    version: z.ZodNumber;
+    createdAt: z.ZodString;
+    updatedAt: z.ZodString;
+}, z.core.$strict>;
+export declare const prelaunchAcquisitionListResponseSchema: z.ZodObject<{
+    contractVersion: z.ZodLiteral<"prelaunch_acquisition_v1">;
+    leads: z.ZodArray<z.ZodObject<{
+        sourceRef: z.ZodString;
+        contactRef: z.ZodString;
+        sourceKind: z.ZodLiteral<"tester_application">;
+        consent: z.ZodObject<{
+            consentVersion: z.ZodString;
+            policyVersion: z.ZodString;
+            recordedAt: z.ZodString;
+            locale: z.ZodEnum<{
+                en: "en";
+                pl: "pl";
+            }>;
+            sourcePath: z.ZodLiteral<"/tester-application">;
+        }, z.core.$strict>;
+        addressReference: z.ZodNullable<z.ZodObject<{
+            source: z.ZodString;
+            reference: z.ZodString;
+            revision: z.ZodString;
+            provenance: z.ZodString;
+        }, z.core.$strict>>;
+        state: z.ZodEnum<{
+            rejected: "rejected";
+            active: "active";
+            submitted: "submitted";
+            withdrawn: "withdrawn";
+            approved: "approved";
+        }>;
+        version: z.ZodNumber;
+        createdAt: z.ZodString;
+        updatedAt: z.ZodString;
+    }, z.core.$strict>>;
+    nextCursor: z.ZodNullable<z.ZodString>;
+}, z.core.$strict>;
+export declare const prelaunchAcquisitionDetailResponseSchema: z.ZodObject<{
+    contractVersion: z.ZodLiteral<"prelaunch_acquisition_v1">;
+    lead: z.ZodObject<{
+        sourceRef: z.ZodString;
+        contactRef: z.ZodString;
+        sourceKind: z.ZodLiteral<"tester_application">;
+        consent: z.ZodObject<{
+            consentVersion: z.ZodString;
+            policyVersion: z.ZodString;
+            recordedAt: z.ZodString;
+            locale: z.ZodEnum<{
+                en: "en";
+                pl: "pl";
+            }>;
+            sourcePath: z.ZodLiteral<"/tester-application">;
+        }, z.core.$strict>;
+        addressReference: z.ZodNullable<z.ZodObject<{
+            source: z.ZodString;
+            reference: z.ZodString;
+            revision: z.ZodString;
+            provenance: z.ZodString;
+        }, z.core.$strict>>;
+        state: z.ZodEnum<{
+            rejected: "rejected";
+            active: "active";
+            submitted: "submitted";
+            withdrawn: "withdrawn";
+            approved: "approved";
+        }>;
+        version: z.ZodNumber;
+        createdAt: z.ZodString;
+        updatedAt: z.ZodString;
+    }, z.core.$strict>;
+}, z.core.$strict>;
+export type PrelaunchAcquisitionListRequest = z.infer<typeof prelaunchAcquisitionListRequestSchema>;
+export type PrelaunchAcquisitionDetailRequest = z.infer<typeof prelaunchAcquisitionDetailRequestSchema>;
+export type PrelaunchAcquisitionLead = z.infer<typeof prelaunchAcquisitionLeadSchema>;
+export type PrelaunchAcquisitionListResponse = z.infer<typeof prelaunchAcquisitionListResponseSchema>;
+export type PrelaunchAcquisitionDetailResponse = z.infer<typeof prelaunchAcquisitionDetailResponseSchema>;
 ```

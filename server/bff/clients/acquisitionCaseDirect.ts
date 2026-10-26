@@ -2,7 +2,7 @@ import { withObservedRoute } from "../../_lib/observability/route.js";
 import { sendBffError, sendBffSuccess, sendMethodNotAllowed } from "../../_lib/bff/response.js";
 import { readBearerToken } from "../../_lib/admin-domain/auth.js";
 import { ACQUISITION_CASE_VIEW, acquisitionCaseActiveCountResponseSchema, acquisitionCaseListRequestSchema, acquisitionCaseListResponseSchema } from "@openlup/platform/marketing";
-import type { AcquisitionCaseFailureKind } from "../../domains/clients/acquisitionCasePorts.js";
+import type { AcquisitionCaseFailureKind } from "@openlup/platform/marketing/contracts";
 import { getBundleDescriptor, resolveBundleId } from "../../domains/platform-runtime/platformKernel.js";
 import {
   resolveAdminAuthBinding,

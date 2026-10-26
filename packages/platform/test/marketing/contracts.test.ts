@@ -10,6 +10,12 @@ type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends (<T>() => T extends B 
   ? ((<T>() => T extends B ? 1 : 2) extends (<T>() => T extends A ? 1 : 2) ? true : false) : false;
 type Assert<T extends true> = T;
 export type MarketingContractEquality = [
+  Assert<Equal<Contracts.PrelaunchAcquisitionListRequest, z.infer<typeof Runtime.prelaunchAcquisitionListRequestSchema>>>,
+  Assert<Equal<Contracts.PrelaunchAcquisitionDetailRequest, z.infer<typeof Runtime.prelaunchAcquisitionDetailRequestSchema>>>,
+  Assert<Equal<Contracts.PrelaunchAcquisitionLead, z.infer<typeof Runtime.prelaunchAcquisitionLeadSchema>>>,
+  Assert<Equal<Contracts.PrelaunchAcquisitionListResponse, z.infer<typeof Runtime.prelaunchAcquisitionListResponseSchema>>>,
+  Assert<Equal<Contracts.PrelaunchAcquisitionDetailResponse, z.infer<typeof Runtime.prelaunchAcquisitionDetailResponseSchema>>>,
+
   Assert<Equal<Contracts.AcquisitionOpaqueReference, z.infer<typeof Runtime.acquisitionOpaqueReferenceSchema>>>,
   Assert<Equal<Contracts.AcquisitionAddressReference, z.infer<typeof Runtime.acquisitionAddressReferenceSchema>>>,
   Assert<Equal<Contracts.AcquisitionCaseState, z.infer<typeof Runtime.acquisitionCaseStateSchema>>>,
@@ -25,6 +31,17 @@ export type MarketingContractEquality = [
   Assert<Equal<Contracts.AcquisitionSurveyListResponse, z.infer<typeof Runtime.acquisitionSurveyListResponseSchema>>>,
   Assert<Equal<Contracts.AcquisitionNewsletterConsentEvent, z.infer<typeof Runtime.acquisitionNewsletterConsentEventSchema>>>,
   Assert<Equal<Contracts.AcquisitionNewsletterConsentResponse, z.infer<typeof Runtime.acquisitionNewsletterConsentResponseSchema>>>,
+  Assert<Equal<Contracts.AcquisitionCaseFailureKind, "conflict" | "invalid" | "not_found" | "rate_limited" | "unavailable">>,
+  Assert<Equal<Contracts.AcquisitionCaseResult<number>, { ok: true; value: number; replayed?: boolean } | { ok: false; error: { kind: Contracts.AcquisitionCaseFailureKind } }>>,
+  Assert<Equal<Contracts.AcquisitionCaseListQuery, { actorRef: string; scope: "public_tester_application"; cursor?: string; limit: number }>>,
+  Assert<Equal<Contracts.AcquisitionCaseGetQuery, { actorRef: string; scope: "public_tester_application"; caseRef: string }>>,
+  Assert<Equal<Contracts.AcquisitionCasePort, ExpectedCasePort>>,
+  Assert<Equal<Contracts.AcquisitionEvidenceFailure, "invalid" | "not_found" | "conflict" | "unavailable">>,
+  Assert<Equal<Contracts.AcquisitionEvidenceResult<number>, { ok: true; value: number } | { ok: false; error: { kind: Contracts.AcquisitionEvidenceFailure } }>>,
+  Assert<Equal<Contracts.AcquisitionEvidencePort, ExpectedEvidencePort>>,
+  Assert<Equal<keyof Contracts.AcquisitionCasePort, "list" | "get" | "activeCount" | "close">>,
+  Assert<Equal<Runtime.AcquisitionCasePort, Contracts.AcquisitionCasePort>>,
+  Assert<Equal<Runtime.AcquisitionEvidencePort, Contracts.AcquisitionEvidencePort>>,
   Assert<Equal<Contracts.MarketingResearchJson, Core.MarketingResearchJson>>,
   Assert<Equal<Contracts.ResearchSurveyType, Core.ResearchSurveyType>>,
   Assert<Equal<Contracts.AdminSurveyResponsesRequest, Core.AdminSurveyResponsesRequest>>,
@@ -47,3 +64,16 @@ it("executes exact type equality with the TypeScript checker and exposes no runt
     getCanonicalFileName: path => path, getCurrentDirectory: () => process.cwd(), getNewLine: () => "\n",
   })).toBe("");
 }, 30_000);
+
+interface ExpectedCasePort {
+  list(query: Contracts.AcquisitionCaseListQuery): Promise<Contracts.AcquisitionCaseResult<Contracts.AcquisitionCaseListResponse>>;
+  get(query: Contracts.AcquisitionCaseGetQuery): Promise<Contracts.AcquisitionCaseResult<Contracts.AcquisitionCaseProjection>>;
+  activeCount(scope: "public_tester_application"): Promise<Contracts.AcquisitionCaseResult<number>>;
+  close(): Promise<void>;
+}
+interface ExpectedEvidencePort {
+  submitSurvey(input: Contracts.AcquisitionSurveySubmit & { idempotencyKey: string }): Promise<Contracts.AcquisitionEvidenceResult<Contracts.AcquisitionSurveySubmitResponse>>;
+  listSurveys(input: Contracts.AcquisitionSurveyListQuery & { actorReference: string }): Promise<Contracts.AcquisitionEvidenceResult<Contracts.AcquisitionSurveyListResponse>>;
+  applyNewsletterConsent(input: Contracts.AcquisitionNewsletterConsentEvent): Promise<Contracts.AcquisitionEvidenceResult<Contracts.AcquisitionNewsletterConsentResponse>>;
+  close(): Promise<void>;
+}

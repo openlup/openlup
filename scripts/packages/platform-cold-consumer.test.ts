@@ -65,6 +65,10 @@ function fixture() {
     "export interface Synthetic { value: string }",
     'export type AcquisitionCaseListRequest = { view: "acquisition_case_v1"; limit: number; cursor?: string };',
     'export declare const acquisitionCaseListRequestSchema: { parse(value: unknown): AcquisitionCaseListRequest };',
+    'export type PrelaunchAcquisitionListRequest = { view: "prelaunch_acquisition_v1"; limit: number; cursor?: string };',
+    'export declare const prelaunchAcquisitionListRequestSchema: { parse(value: unknown): PrelaunchAcquisitionListRequest };',
+    'export interface AcquisitionCasePort { list(query: { actorRef: string; scope: "public_tester_application"; limit: number }): Promise<unknown> }',
+    'export interface AcquisitionEvidencePort { listSurveys(query: { actorReference: string; view: "acquisition_survey_v1"; limit: number }): Promise<unknown> }',
     'export type AcquisitionNewsletterConsentEvent = { explicitOptInEvidence: boolean };',
     'export interface MarketingResearchSurveySubmitPort { submitSurveyResponse(request: { surveyType: "producer" | "consumer"; responseData: Record<string, unknown> }): Promise<unknown> }',
 
@@ -996,7 +1000,7 @@ it.each(["export", "delegate"] as const)("K2 rejects the packed R5 %s corruption
   } finally { writeFileSync(path, original); }
 }, 30_000);
 
-it("proves installed marketing subpaths, their types and deep-import refusal without optional peers", () => {
+it("proves installed marketing subpaths, prelaunch schemas, reachable ports and deep-import refusal without optional peers", () => {
   const consumer = pristinePackedA1Fixture();
   assertConsumerIsolation(consumer, root);
   proveMarketingConsumer(consumer);

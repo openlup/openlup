@@ -3084,3 +3084,2026 @@ exports[`preserves base parse transcript: withdrawn without address 1`] = `
   "success": true,
 }
 `;
+
+exports[`preserves base prelaunch transcript: address extra 0 1`] = `
+{
+  "issues": [
+    {
+      "code": "unrecognized_keys",
+      "keys": [
+        "extra",
+      ],
+      "message": "Unrecognized key: "extra"",
+      "path": [
+        "addressReference",
+      ],
+    },
+  ],
+  "success": false,
+}
+`;
+
+exports[`preserves base prelaunch transcript: address provenance 0 1`] = `
+{
+  "issues": [
+    {
+      "code": "too_small",
+      "inclusive": true,
+      "message": "Too small: expected string to have >=1 characters",
+      "minimum": 1,
+      "origin": "string",
+      "path": [
+        "addressReference",
+        "provenance",
+      ],
+    },
+    {
+      "code": "invalid_format",
+      "format": "regex",
+      "message": "Invalid string: must match pattern /^[a-z][a-z0-9_-]*$/",
+      "origin": "string",
+      "path": [
+        "addressReference",
+        "provenance",
+      ],
+      "pattern": "/^[a-z][a-z0-9_-]*$/",
+    },
+  ],
+  "success": false,
+}
+`;
+
+exports[`preserves base prelaunch transcript: address provenance 1 1`] = `
+{
+  "issues": [
+    {
+      "code": "invalid_format",
+      "format": "regex",
+      "message": "Invalid string: must match pattern /^[a-z][a-z0-9_-]*$/",
+      "origin": "string",
+      "path": [
+        "addressReference",
+        "provenance",
+      ],
+      "pattern": "/^[a-z][a-z0-9_-]*$/",
+    },
+  ],
+  "success": false,
+}
+`;
+
+exports[`preserves base prelaunch transcript: address provenance 2 1`] = `
+{
+  "data": {
+    "addressReference": {
+      "provenance": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "reference": "address:one",
+      "revision": "revision:1",
+      "source": "source_a",
+    },
+    "consent": {
+      "consentVersion": "v1",
+      "locale": "en",
+      "policyVersion": "v1",
+      "recordedAt": "0001-01-01T00:00:00Z",
+      "sourcePath": "/tester-application",
+    },
+    "contactRef": "acquisition-contact:11111111-1111-4111-8111-111111111111",
+    "createdAt": "0001-01-01T00:00:00Z",
+    "sourceKind": "tester_application",
+    "sourceRef": "acquisition-case:11111111-1111-4111-8111-111111111111",
+    "state": "submitted",
+    "updatedAt": "0001-01-01T00:00:00Z",
+    "version": 1,
+  },
+  "success": true,
+}
+`;
+
+exports[`preserves base prelaunch transcript: address provenance 3 1`] = `
+{
+  "issues": [
+    {
+      "code": "too_big",
+      "inclusive": true,
+      "maximum": 64,
+      "message": "Too big: expected string to have <=64 characters",
+      "origin": "string",
+      "path": [
+        "addressReference",
+        "provenance",
+      ],
+    },
+  ],
+  "success": false,
+}
+`;
+
+exports[`preserves base prelaunch transcript: address provenance 4 1`] = `
+{
+  "data": {
+    "addressReference": {
+      "provenance": "source_a",
+      "reference": "address:one",
+      "revision": "revision:1",
+      "source": "source_a",
+    },
+    "consent": {
+      "consentVersion": "v1",
+      "locale": "en",
+      "policyVersion": "v1",
+      "recordedAt": "0001-01-01T00:00:00Z",
+      "sourcePath": "/tester-application",
+    },
+    "contactRef": "acquisition-contact:11111111-1111-4111-8111-111111111111",
+    "createdAt": "0001-01-01T00:00:00Z",
+    "sourceKind": "tester_application",
+    "sourceRef": "acquisition-case:11111111-1111-4111-8111-111111111111",
+    "state": "submitted",
+    "updatedAt": "0001-01-01T00:00:00Z",
+    "version": 1,
+  },
+  "success": true,
+}
+`;
+
+exports[`preserves base prelaunch transcript: address reference 0 1`] = `
+{
+  "issues": [
+    {
+      "code": "too_small",
+      "inclusive": true,
+      "message": "Too small: expected string to have >=8 characters",
+      "minimum": 8,
+      "origin": "string",
+      "path": [
+        "addressReference",
+        "reference",
+      ],
+    },
+  ],
+  "success": false,
+}
+`;
+
+exports[`preserves base prelaunch transcript: address reference 1 1`] = `
+{
+  "data": {
+    "addressReference": {
+      "provenance": "source_a",
+      "reference": "aaaaaaaa",
+      "revision": "revision:1",
+      "source": "source_a",
+    },
+    "consent": {
+      "consentVersion": "v1",
+      "locale": "en",
+      "policyVersion": "v1",
+      "recordedAt": "0001-01-01T00:00:00Z",
+      "sourcePath": "/tester-application",
+    },
+    "contactRef": "acquisition-contact:11111111-1111-4111-8111-111111111111",
+    "createdAt": "0001-01-01T00:00:00Z",
+    "sourceKind": "tester_application",
+    "sourceRef": "acquisition-case:11111111-1111-4111-8111-111111111111",
+    "state": "submitted",
+    "updatedAt": "0001-01-01T00:00:00Z",
+    "version": 1,
+  },
+  "success": true,
+}
+`;
+
+exports[`preserves base prelaunch transcript: address reference 2 1`] = `
+{
+  "data": {
+    "addressReference": {
+      "provenance": "source_a",
+      "reference": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "revision": "revision:1",
+      "source": "source_a",
+    },
+    "consent": {
+      "consentVersion": "v1",
+      "locale": "en",
+      "policyVersion": "v1",
+      "recordedAt": "0001-01-01T00:00:00Z",
+      "sourcePath": "/tester-application",
+    },
+    "contactRef": "acquisition-contact:11111111-1111-4111-8111-111111111111",
+    "createdAt": "0001-01-01T00:00:00Z",
+    "sourceKind": "tester_application",
+    "sourceRef": "acquisition-case:11111111-1111-4111-8111-111111111111",
+    "state": "submitted",
+    "updatedAt": "0001-01-01T00:00:00Z",
+    "version": 1,
+  },
+  "success": true,
+}
+`;
+
+exports[`preserves base prelaunch transcript: address reference 3 1`] = `
+{
+  "issues": [
+    {
+      "code": "too_big",
+      "inclusive": true,
+      "maximum": 160,
+      "message": "Too big: expected string to have <=160 characters",
+      "origin": "string",
+      "path": [
+        "addressReference",
+        "reference",
+      ],
+    },
+  ],
+  "success": false,
+}
+`;
+
+exports[`preserves base prelaunch transcript: address reference 4 1`] = `
+{
+  "issues": [
+    {
+      "code": "too_small",
+      "inclusive": true,
+      "message": "Too small: expected string to have >=8 characters",
+      "minimum": 8,
+      "origin": "string",
+      "path": [
+        "addressReference",
+        "reference",
+      ],
+    },
+    {
+      "code": "invalid_format",
+      "format": "regex",
+      "message": "Invalid string: must match pattern /^[A-Za-z0-9][A-Za-z0-9._:-]*$/",
+      "origin": "string",
+      "path": [
+        "addressReference",
+        "reference",
+      ],
+      "pattern": "/^[A-Za-z0-9][A-Za-z0-9._:-]*$/",
+    },
+  ],
+  "success": false,
+}
+`;
+
+exports[`preserves base prelaunch transcript: address reference 5 1`] = `
+{
+  "data": {
+    "addressReference": {
+      "provenance": "source_a",
+      "reference": "address:one",
+      "revision": "revision:1",
+      "source": "source_a",
+    },
+    "consent": {
+      "consentVersion": "v1",
+      "locale": "en",
+      "policyVersion": "v1",
+      "recordedAt": "0001-01-01T00:00:00Z",
+      "sourcePath": "/tester-application",
+    },
+    "contactRef": "acquisition-contact:11111111-1111-4111-8111-111111111111",
+    "createdAt": "0001-01-01T00:00:00Z",
+    "sourceKind": "tester_application",
+    "sourceRef": "acquisition-case:11111111-1111-4111-8111-111111111111",
+    "state": "submitted",
+    "updatedAt": "0001-01-01T00:00:00Z",
+    "version": 1,
+  },
+  "success": true,
+}
+`;
+
+exports[`preserves base prelaunch transcript: address revision 0 1`] = `
+{
+  "issues": [
+    {
+      "code": "too_small",
+      "inclusive": true,
+      "message": "Too small: expected string to have >=1 characters",
+      "minimum": 1,
+      "origin": "string",
+      "path": [
+        "addressReference",
+        "revision",
+      ],
+    },
+    {
+      "code": "invalid_format",
+      "format": "regex",
+      "message": "Invalid string: must match pattern /^[A-Za-z0-9][A-Za-z0-9._:-]*$/",
+      "origin": "string",
+      "path": [
+        "addressReference",
+        "revision",
+      ],
+      "pattern": "/^[A-Za-z0-9][A-Za-z0-9._:-]*$/",
+    },
+  ],
+  "success": false,
+}
+`;
+
+exports[`preserves base prelaunch transcript: address revision 1 1`] = `
+{
+  "data": {
+    "addressReference": {
+      "provenance": "source_a",
+      "reference": "address:one",
+      "revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "source": "source_a",
+    },
+    "consent": {
+      "consentVersion": "v1",
+      "locale": "en",
+      "policyVersion": "v1",
+      "recordedAt": "0001-01-01T00:00:00Z",
+      "sourcePath": "/tester-application",
+    },
+    "contactRef": "acquisition-contact:11111111-1111-4111-8111-111111111111",
+    "createdAt": "0001-01-01T00:00:00Z",
+    "sourceKind": "tester_application",
+    "sourceRef": "acquisition-case:11111111-1111-4111-8111-111111111111",
+    "state": "submitted",
+    "updatedAt": "0001-01-01T00:00:00Z",
+    "version": 1,
+  },
+  "success": true,
+}
+`;
+
+exports[`preserves base prelaunch transcript: address revision 2 1`] = `
+{
+  "issues": [
+    {
+      "code": "too_big",
+      "inclusive": true,
+      "maximum": 64,
+      "message": "Too big: expected string to have <=64 characters",
+      "origin": "string",
+      "path": [
+        "addressReference",
+        "revision",
+      ],
+    },
+  ],
+  "success": false,
+}
+`;
+
+exports[`preserves base prelaunch transcript: address revision 3 1`] = `
+{
+  "issues": [
+    {
+      "code": "invalid_format",
+      "format": "regex",
+      "message": "Invalid string: must match pattern /^[A-Za-z0-9][A-Za-z0-9._:-]*$/",
+      "origin": "string",
+      "path": [
+        "addressReference",
+        "revision",
+      ],
+      "pattern": "/^[A-Za-z0-9][A-Za-z0-9._:-]*$/",
+    },
+  ],
+  "success": false,
+}
+`;
+
+exports[`preserves base prelaunch transcript: address revision 4 1`] = `
+{
+  "data": {
+    "addressReference": {
+      "provenance": "source_a",
+      "reference": "address:one",
+      "revision": "v1",
+      "source": "source_a",
+    },
+    "consent": {
+      "consentVersion": "v1",
+      "locale": "en",
+      "policyVersion": "v1",
+      "recordedAt": "0001-01-01T00:00:00Z",
+      "sourcePath": "/tester-application",
+    },
+    "contactRef": "acquisition-contact:11111111-1111-4111-8111-111111111111",
+    "createdAt": "0001-01-01T00:00:00Z",
+    "sourceKind": "tester_application",
+    "sourceRef": "acquisition-case:11111111-1111-4111-8111-111111111111",
+    "state": "submitted",
+    "updatedAt": "0001-01-01T00:00:00Z",
+    "version": 1,
+  },
+  "success": true,
+}
+`;
+
+exports[`preserves base prelaunch transcript: address source 0 1`] = `
+{
+  "issues": [
+    {
+      "code": "too_small",
+      "inclusive": true,
+      "message": "Too small: expected string to have >=1 characters",
+      "minimum": 1,
+      "origin": "string",
+      "path": [
+        "addressReference",
+        "source",
+      ],
+    },
+    {
+      "code": "invalid_format",
+      "format": "regex",
+      "message": "Invalid string: must match pattern /^[a-z][a-z0-9_-]*$/",
+      "origin": "string",
+      "path": [
+        "addressReference",
+        "source",
+      ],
+      "pattern": "/^[a-z][a-z0-9_-]*$/",
+    },
+  ],
+  "success": false,
+}
+`;
+
+exports[`preserves base prelaunch transcript: address source 1 1`] = `
+{
+  "issues": [
+    {
+      "code": "invalid_format",
+      "format": "regex",
+      "message": "Invalid string: must match pattern /^[a-z][a-z0-9_-]*$/",
+      "origin": "string",
+      "path": [
+        "addressReference",
+        "source",
+      ],
+      "pattern": "/^[a-z][a-z0-9_-]*$/",
+    },
+  ],
+  "success": false,
+}
+`;
+
+exports[`preserves base prelaunch transcript: address source 2 1`] = `
+{
+  "data": {
+    "addressReference": {
+      "provenance": "source_a",
+      "reference": "address:one",
+      "revision": "revision:1",
+      "source": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    },
+    "consent": {
+      "consentVersion": "v1",
+      "locale": "en",
+      "policyVersion": "v1",
+      "recordedAt": "0001-01-01T00:00:00Z",
+      "sourcePath": "/tester-application",
+    },
+    "contactRef": "acquisition-contact:11111111-1111-4111-8111-111111111111",
+    "createdAt": "0001-01-01T00:00:00Z",
+    "sourceKind": "tester_application",
+    "sourceRef": "acquisition-case:11111111-1111-4111-8111-111111111111",
+    "state": "submitted",
+    "updatedAt": "0001-01-01T00:00:00Z",
+    "version": 1,
+  },
+  "success": true,
+}
+`;
+
+exports[`preserves base prelaunch transcript: address source 3 1`] = `
+{
+  "issues": [
+    {
+      "code": "too_big",
+      "inclusive": true,
+      "maximum": 48,
+      "message": "Too big: expected string to have <=48 characters",
+      "origin": "string",
+      "path": [
+        "addressReference",
+        "source",
+      ],
+    },
+  ],
+  "success": false,
+}
+`;
+
+exports[`preserves base prelaunch transcript: address source 4 1`] = `
+{
+  "data": {
+    "addressReference": {
+      "provenance": "source_a",
+      "reference": "address:one",
+      "revision": "revision:1",
+      "source": "source_a",
+    },
+    "consent": {
+      "consentVersion": "v1",
+      "locale": "en",
+      "policyVersion": "v1",
+      "recordedAt": "0001-01-01T00:00:00Z",
+      "sourcePath": "/tester-application",
+    },
+    "contactRef": "acquisition-contact:11111111-1111-4111-8111-111111111111",
+    "createdAt": "0001-01-01T00:00:00Z",
+    "sourceKind": "tester_application",
+    "sourceRef": "acquisition-case:11111111-1111-4111-8111-111111111111",
+    "state": "submitted",
+    "updatedAt": "0001-01-01T00:00:00Z",
+    "version": 1,
+  },
+  "success": true,
+}
+`;
+
+exports[`preserves base prelaunch transcript: detail request 1`] = `
+{
+  "data": {
+    "sourceRef": "acquisition-case:11111111-1111-4111-8111-111111111111",
+  },
+  "success": true,
+}
+`;
+
+exports[`preserves base prelaunch transcript: detail request missing 1`] = `
+{
+  "issues": [
+    {
+      "code": "invalid_type",
+      "expected": "string",
+      "message": "Invalid input: expected string, received undefined",
+      "path": [
+        "sourceRef",
+      ],
+    },
+  ],
+  "success": false,
+}
+`;
+
+exports[`preserves base prelaunch transcript: detail request unknown 1`] = `
+{
+  "issues": [
+    {
+      "code": "unrecognized_keys",
+      "keys": [
+        "extra",
+      ],
+      "message": "Unrecognized key: "extra"",
+      "path": [],
+    },
+  ],
+  "success": false,
+}
+`;
+
+exports[`preserves base prelaunch transcript: detail response 1`] = `
+{
+  "data": {
+    "contractVersion": "prelaunch_acquisition_v1",
+    "lead": {
+      "addressReference": {
+        "provenance": "source_a",
+        "reference": "address:one",
+        "revision": "revision:1",
+        "source": "source_a",
+      },
+      "consent": {
+        "consentVersion": "v1",
+        "locale": "en",
+        "policyVersion": "v1",
+        "recordedAt": "0001-01-01T00:00:00Z",
+        "sourcePath": "/tester-application",
+      },
+      "contactRef": "acquisition-contact:11111111-1111-4111-8111-111111111111",
+      "createdAt": "0001-01-01T00:00:00Z",
+      "sourceKind": "tester_application",
+      "sourceRef": "acquisition-case:11111111-1111-4111-8111-111111111111",
+      "state": "submitted",
+      "updatedAt": "0001-01-01T00:00:00Z",
+      "version": 1,
+    },
+  },
+  "success": true,
+}
+`;
+
+exports[`preserves base prelaunch transcript: detail response contractVersion 0 1`] = `
+{
+  "issues": [
+    {
+      "code": "invalid_value",
+      "message": "Invalid input: expected "prelaunch_acquisition_v1"",
+      "path": [
+        "contractVersion",
+      ],
+      "values": [
+        "prelaunch_acquisition_v1",
+      ],
+    },
+  ],
+  "success": false,
+}
+`;
+
+exports[`preserves base prelaunch transcript: detail response lead 0 1`] = `
+{
+  "issues": [
+    {
+      "code": "invalid_type",
+      "expected": "object",
+      "message": "Invalid input: expected object, received null",
+      "path": [
+        "lead",
+      ],
+    },
+  ],
+  "success": false,
+}
+`;
+
+exports[`preserves base prelaunch transcript: detail response lead 1 1`] = `
+{
+  "issues": [
+    {
+      "code": "invalid_type",
+      "expected": "string",
+      "message": "Invalid input: expected string, received undefined",
+      "path": [
+        "lead",
+        "sourceRef",
+      ],
+    },
+    {
+      "code": "invalid_type",
+      "expected": "string",
+      "message": "Invalid input: expected string, received undefined",
+      "path": [
+        "lead",
+        "contactRef",
+      ],
+    },
+    {
+      "code": "invalid_value",
+      "message": "Invalid input: expected "tester_application"",
+      "path": [
+        "lead",
+        "sourceKind",
+      ],
+      "values": [
+        "tester_application",
+      ],
+    },
+    {
+      "code": "invalid_type",
+      "expected": "object",
+      "message": "Invalid input: expected object, received undefined",
+      "path": [
+        "lead",
+        "consent",
+      ],
+    },
+    {
+      "code": "invalid_type",
+      "expected": "object",
+      "message": "Invalid input: expected object, received undefined",
+      "path": [
+        "lead",
+        "addressReference",
+      ],
+    },
+    {
+      "code": "invalid_value",
+      "message": "Invalid option: expected one of "submitted"|"approved"|"active"|"rejected"|"withdrawn"",
+      "path": [
+        "lead",
+        "state",
+      ],
+      "values": [
+        "submitted",
+        "approved",
+        "active",
+        "rejected",
+        "withdrawn",
+      ],
+    },
+    {
+      "code": "invalid_type",
+      "expected": "number",
+      "message": "Invalid input: expected number, received undefined",
+      "path": [
+        "lead",
+        "version",
+      ],
+    },
+    {
+      "code": "invalid_type",
+      "expected": "string",
+      "message": "Invalid input: expected string, received undefined",
+      "path": [
+        "lead",
+        "createdAt",
+      ],
+    },
+    {
+      "code": "invalid_type",
+      "expected": "string",
+      "message": "Invalid input: expected string, received undefined",
+      "path": [
+        "lead",
+        "updatedAt",
+      ],
+    },
+  ],
+  "success": false,
+}
+`;
+
+exports[`preserves base prelaunch transcript: detail response missing 1`] = `
+{
+  "issues": [
+    {
+      "code": "invalid_value",
+      "message": "Invalid input: expected "prelaunch_acquisition_v1"",
+      "path": [
+        "contractVersion",
+      ],
+      "values": [
+        "prelaunch_acquisition_v1",
+      ],
+    },
+    {
+      "code": "invalid_type",
+      "expected": "object",
+      "message": "Invalid input: expected object, received undefined",
+      "path": [
+        "lead",
+      ],
+    },
+  ],
+  "success": false,
+}
+`;
+
+exports[`preserves base prelaunch transcript: detail response unknown 1`] = `
+{
+  "issues": [
+    {
+      "code": "unrecognized_keys",
+      "keys": [
+        "extra",
+      ],
+      "message": "Unrecognized key: "extra"",
+      "path": [],
+    },
+  ],
+  "success": false,
+}
+`;
+
+exports[`preserves base prelaunch transcript: detail sourceRef 0 1`] = `
+{
+  "issues": [
+    {
+      "code": "invalid_format",
+      "format": "regex",
+      "message": "Invalid string: must match pattern /^acquisition-case:[0-9a-f-]{36}$/",
+      "origin": "string",
+      "path": [
+        "sourceRef",
+      ],
+      "pattern": "/^acquisition-case:[0-9a-f-]{36}$/",
+    },
+  ],
+  "success": false,
+}
+`;
+
+exports[`preserves base prelaunch transcript: detail sourceRef 1 1`] = `
+{
+  "data": {
+    "sourceRef": "acquisition-case:------------------------------------",
+  },
+  "success": true,
+}
+`;
+
+exports[`preserves base prelaunch transcript: detail sourceRef 2 1`] = `
+{
+  "issues": [
+    {
+      "code": "invalid_format",
+      "format": "regex",
+      "message": "Invalid string: must match pattern /^acquisition-case:[0-9a-f-]{36}$/",
+      "origin": "string",
+      "path": [
+        "sourceRef",
+      ],
+      "pattern": "/^acquisition-case:[0-9a-f-]{36}$/",
+    },
+  ],
+  "success": false,
+}
+`;
+
+exports[`preserves base prelaunch transcript: detail sourceRef 3 1`] = `
+{
+  "issues": [
+    {
+      "code": "invalid_format",
+      "format": "regex",
+      "message": "Invalid string: must match pattern /^acquisition-case:[0-9a-f-]{36}$/",
+      "origin": "string",
+      "path": [
+        "sourceRef",
+      ],
+      "pattern": "/^acquisition-case:[0-9a-f-]{36}$/",
+    },
+  ],
+  "success": false,
+}
+`;
+
+exports[`preserves base prelaunch transcript: detail sourceRef 4 1`] = `
+{
+  "issues": [
+    {
+      "code": "invalid_format",
+      "format": "regex",
+      "message": "Invalid string: must match pattern /^acquisition-case:[0-9a-f-]{36}$/",
+      "origin": "string",
+      "path": [
+        "sourceRef",
+      ],
+      "pattern": "/^acquisition-case:[0-9a-f-]{36}$/",
+    },
+  ],
+  "success": false,
+}
+`;
+
+exports[`preserves base prelaunch transcript: detail sourceRef 5 1`] = `
+{
+  "issues": [
+    {
+      "code": "invalid_format",
+      "format": "regex",
+      "message": "Invalid string: must match pattern /^acquisition-case:[0-9a-f-]{36}$/",
+      "origin": "string",
+      "path": [
+        "sourceRef",
+      ],
+      "pattern": "/^acquisition-case:[0-9a-f-]{36}$/",
+    },
+  ],
+  "success": false,
+}
+`;
+
+exports[`preserves base prelaunch transcript: lead 1`] = `
+{
+  "data": {
+    "addressReference": {
+      "provenance": "source_a",
+      "reference": "address:one",
+      "revision": "revision:1",
+      "source": "source_a",
+    },
+    "consent": {
+      "consentVersion": "v1",
+      "locale": "en",
+      "policyVersion": "v1",
+      "recordedAt": "0001-01-01T00:00:00Z",
+      "sourcePath": "/tester-application",
+    },
+    "contactRef": "acquisition-contact:11111111-1111-4111-8111-111111111111",
+    "createdAt": "0001-01-01T00:00:00Z",
+    "sourceKind": "tester_application",
+    "sourceRef": "acquisition-case:11111111-1111-4111-8111-111111111111",
+    "state": "submitted",
+    "updatedAt": "0001-01-01T00:00:00Z",
+    "version": 1,
+  },
+  "success": true,
+}
+`;
+
+exports[`preserves base prelaunch transcript: lead addressReference 0 1`] = `
+{
+  "issues": [
+    {
+      "code": "custom",
+      "message": "active case requires address reference",
+      "path": [
+        "addressReference",
+      ],
+    },
+  ],
+  "success": false,
+}
+`;
+
+exports[`preserves base prelaunch transcript: lead consent 0 1`] = `
+{
+  "issues": [
+    {
+      "code": "unrecognized_keys",
+      "keys": [
+        "extra",
+      ],
+      "message": "Unrecognized key: "extra"",
+      "path": [
+        "consent",
+      ],
+    },
+  ],
+  "success": false,
+}
+`;
+
+exports[`preserves base prelaunch transcript: lead consent 1 1`] = `
+{
+  "data": {
+    "addressReference": {
+      "provenance": "source_a",
+      "reference": "address:one",
+      "revision": "revision:1",
+      "source": "source_a",
+    },
+    "consent": {
+      "consentVersion": "v1",
+      "locale": "pl",
+      "policyVersion": "v1",
+      "recordedAt": "0001-01-01T00:00:00Z",
+      "sourcePath": "/tester-application",
+    },
+    "contactRef": "acquisition-contact:11111111-1111-4111-8111-111111111111",
+    "createdAt": "0001-01-01T00:00:00Z",
+    "sourceKind": "tester_application",
+    "sourceRef": "acquisition-case:11111111-1111-4111-8111-111111111111",
+    "state": "submitted",
+    "updatedAt": "0001-01-01T00:00:00Z",
+    "version": 1,
+  },
+  "success": true,
+}
+`;
+
+exports[`preserves base prelaunch transcript: lead consent 2 1`] = `
+{
+  "issues": [
+    {
+      "code": "invalid_value",
+      "message": "Invalid option: expected one of "en"|"pl"",
+      "path": [
+        "consent",
+        "locale",
+      ],
+      "values": [
+        "en",
+        "pl",
+      ],
+    },
+  ],
+  "success": false,
+}
+`;
+
+exports[`preserves base prelaunch transcript: lead consent 3 1`] = `
+{
+  "issues": [
+    {
+      "code": "too_small",
+      "inclusive": true,
+      "message": "Too small: expected string to have >=1 characters",
+      "minimum": 1,
+      "origin": "string",
+      "path": [
+        "consent",
+        "consentVersion",
+      ],
+    },
+    {
+      "code": "too_big",
+      "inclusive": true,
+      "maximum": 64,
+      "message": "Too big: expected string to have <=64 characters",
+      "origin": "string",
+      "path": [
+        "consent",
+        "policyVersion",
+      ],
+    },
+    {
+      "code": "invalid_format",
+      "format": "datetime",
+      "message": "Invalid ISO datetime",
+      "origin": "string",
+      "path": [
+        "consent",
+        "recordedAt",
+      ],
+      "pattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$/",
+    },
+    {
+      "code": "invalid_value",
+      "message": "Invalid input: expected "/tester-application"",
+      "path": [
+        "consent",
+        "sourcePath",
+      ],
+      "values": [
+        "/tester-application",
+      ],
+    },
+  ],
+  "success": false,
+}
+`;
+
+exports[`preserves base prelaunch transcript: lead consent 4 1`] = `
+{
+  "data": {
+    "addressReference": {
+      "provenance": "source_a",
+      "reference": "address:one",
+      "revision": "revision:1",
+      "source": "source_a",
+    },
+    "consent": {
+      "consentVersion": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "locale": "en",
+      "policyVersion": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "recordedAt": "0001-01-01T00:00:00Z",
+      "sourcePath": "/tester-application",
+    },
+    "contactRef": "acquisition-contact:11111111-1111-4111-8111-111111111111",
+    "createdAt": "0001-01-01T00:00:00Z",
+    "sourceKind": "tester_application",
+    "sourceRef": "acquisition-case:11111111-1111-4111-8111-111111111111",
+    "state": "submitted",
+    "updatedAt": "0001-01-01T00:00:00Z",
+    "version": 1,
+  },
+  "success": true,
+}
+`;
+
+exports[`preserves base prelaunch transcript: lead contactRef 0 1`] = `
+{
+  "issues": [
+    {
+      "code": "invalid_format",
+      "format": "regex",
+      "message": "Invalid string: must match pattern /^acquisition-contact:[0-9a-f-]{36}$/",
+      "origin": "string",
+      "path": [
+        "contactRef",
+      ],
+      "pattern": "/^acquisition-contact:[0-9a-f-]{36}$/",
+    },
+  ],
+  "success": false,
+}
+`;
+
+exports[`preserves base prelaunch transcript: lead contactRef 1 1`] = `
+{
+  "data": {
+    "addressReference": {
+      "provenance": "source_a",
+      "reference": "address:one",
+      "revision": "revision:1",
+      "source": "source_a",
+    },
+    "consent": {
+      "consentVersion": "v1",
+      "locale": "en",
+      "policyVersion": "v1",
+      "recordedAt": "0001-01-01T00:00:00Z",
+      "sourcePath": "/tester-application",
+    },
+    "contactRef": "acquisition-contact:------------------------------------",
+    "createdAt": "0001-01-01T00:00:00Z",
+    "sourceKind": "tester_application",
+    "sourceRef": "acquisition-case:11111111-1111-4111-8111-111111111111",
+    "state": "submitted",
+    "updatedAt": "0001-01-01T00:00:00Z",
+    "version": 1,
+  },
+  "success": true,
+}
+`;
+
+exports[`preserves base prelaunch transcript: lead createdAt 0 1`] = `
+{
+  "issues": [
+    {
+      "code": "invalid_format",
+      "format": "datetime",
+      "message": "Invalid ISO datetime",
+      "origin": "string",
+      "path": [
+        "createdAt",
+      ],
+      "pattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$/",
+    },
+  ],
+  "success": false,
+}
+`;
+
+exports[`preserves base prelaunch transcript: lead createdAt 1 1`] = `
+{
+  "data": {
+    "addressReference": {
+      "provenance": "source_a",
+      "reference": "address:one",
+      "revision": "revision:1",
+      "source": "source_a",
+    },
+    "consent": {
+      "consentVersion": "v1",
+      "locale": "en",
+      "policyVersion": "v1",
+      "recordedAt": "0001-01-01T00:00:00Z",
+      "sourcePath": "/tester-application",
+    },
+    "contactRef": "acquisition-contact:11111111-1111-4111-8111-111111111111",
+    "createdAt": "0001-01-01T00:00:00+01:00",
+    "sourceKind": "tester_application",
+    "sourceRef": "acquisition-case:11111111-1111-4111-8111-111111111111",
+    "state": "submitted",
+    "updatedAt": "0001-01-01T00:00:00Z",
+    "version": 1,
+  },
+  "success": true,
+}
+`;
+
+exports[`preserves base prelaunch transcript: lead missing 1`] = `
+{
+  "issues": [
+    {
+      "code": "invalid_type",
+      "expected": "string",
+      "message": "Invalid input: expected string, received undefined",
+      "path": [
+        "sourceRef",
+      ],
+    },
+    {
+      "code": "invalid_type",
+      "expected": "string",
+      "message": "Invalid input: expected string, received undefined",
+      "path": [
+        "contactRef",
+      ],
+    },
+    {
+      "code": "invalid_value",
+      "message": "Invalid input: expected "tester_application"",
+      "path": [
+        "sourceKind",
+      ],
+      "values": [
+        "tester_application",
+      ],
+    },
+    {
+      "code": "invalid_type",
+      "expected": "object",
+      "message": "Invalid input: expected object, received undefined",
+      "path": [
+        "consent",
+      ],
+    },
+    {
+      "code": "invalid_type",
+      "expected": "object",
+      "message": "Invalid input: expected object, received undefined",
+      "path": [
+        "addressReference",
+      ],
+    },
+    {
+      "code": "invalid_value",
+      "message": "Invalid option: expected one of "submitted"|"approved"|"active"|"rejected"|"withdrawn"",
+      "path": [
+        "state",
+      ],
+      "values": [
+        "submitted",
+        "approved",
+        "active",
+        "rejected",
+        "withdrawn",
+      ],
+    },
+    {
+      "code": "invalid_type",
+      "expected": "number",
+      "message": "Invalid input: expected number, received undefined",
+      "path": [
+        "version",
+      ],
+    },
+    {
+      "code": "invalid_type",
+      "expected": "string",
+      "message": "Invalid input: expected string, received undefined",
+      "path": [
+        "createdAt",
+      ],
+    },
+    {
+      "code": "invalid_type",
+      "expected": "string",
+      "message": "Invalid input: expected string, received undefined",
+      "path": [
+        "updatedAt",
+      ],
+    },
+  ],
+  "success": false,
+}
+`;
+
+exports[`preserves base prelaunch transcript: lead sourceKind 0 1`] = `
+{
+  "issues": [
+    {
+      "code": "invalid_value",
+      "message": "Invalid input: expected "tester_application"",
+      "path": [
+        "sourceKind",
+      ],
+      "values": [
+        "tester_application",
+      ],
+    },
+  ],
+  "success": false,
+}
+`;
+
+exports[`preserves base prelaunch transcript: lead sourceRef 0 1`] = `
+{
+  "issues": [
+    {
+      "code": "invalid_format",
+      "format": "regex",
+      "message": "Invalid string: must match pattern /^acquisition-case:[0-9a-f-]{36}$/",
+      "origin": "string",
+      "path": [
+        "sourceRef",
+      ],
+      "pattern": "/^acquisition-case:[0-9a-f-]{36}$/",
+    },
+  ],
+  "success": false,
+}
+`;
+
+exports[`preserves base prelaunch transcript: lead state 0 1`] = `
+{
+  "data": {
+    "addressReference": {
+      "provenance": "source_a",
+      "reference": "address:one",
+      "revision": "revision:1",
+      "source": "source_a",
+    },
+    "consent": {
+      "consentVersion": "v1",
+      "locale": "en",
+      "policyVersion": "v1",
+      "recordedAt": "0001-01-01T00:00:00Z",
+      "sourcePath": "/tester-application",
+    },
+    "contactRef": "acquisition-contact:11111111-1111-4111-8111-111111111111",
+    "createdAt": "0001-01-01T00:00:00Z",
+    "sourceKind": "tester_application",
+    "sourceRef": "acquisition-case:11111111-1111-4111-8111-111111111111",
+    "state": "approved",
+    "updatedAt": "0001-01-01T00:00:00Z",
+    "version": 1,
+  },
+  "success": true,
+}
+`;
+
+exports[`preserves base prelaunch transcript: lead state 1 1`] = `
+{
+  "data": {
+    "addressReference": {
+      "provenance": "source_a",
+      "reference": "address:one",
+      "revision": "revision:1",
+      "source": "source_a",
+    },
+    "consent": {
+      "consentVersion": "v1",
+      "locale": "en",
+      "policyVersion": "v1",
+      "recordedAt": "0001-01-01T00:00:00Z",
+      "sourcePath": "/tester-application",
+    },
+    "contactRef": "acquisition-contact:11111111-1111-4111-8111-111111111111",
+    "createdAt": "0001-01-01T00:00:00Z",
+    "sourceKind": "tester_application",
+    "sourceRef": "acquisition-case:11111111-1111-4111-8111-111111111111",
+    "state": "active",
+    "updatedAt": "0001-01-01T00:00:00Z",
+    "version": 1,
+  },
+  "success": true,
+}
+`;
+
+exports[`preserves base prelaunch transcript: lead state 2 1`] = `
+{
+  "data": {
+    "addressReference": {
+      "provenance": "source_a",
+      "reference": "address:one",
+      "revision": "revision:1",
+      "source": "source_a",
+    },
+    "consent": {
+      "consentVersion": "v1",
+      "locale": "en",
+      "policyVersion": "v1",
+      "recordedAt": "0001-01-01T00:00:00Z",
+      "sourcePath": "/tester-application",
+    },
+    "contactRef": "acquisition-contact:11111111-1111-4111-8111-111111111111",
+    "createdAt": "0001-01-01T00:00:00Z",
+    "sourceKind": "tester_application",
+    "sourceRef": "acquisition-case:11111111-1111-4111-8111-111111111111",
+    "state": "rejected",
+    "updatedAt": "0001-01-01T00:00:00Z",
+    "version": 1,
+  },
+  "success": true,
+}
+`;
+
+exports[`preserves base prelaunch transcript: lead state 3 1`] = `
+{
+  "data": {
+    "addressReference": {
+      "provenance": "source_a",
+      "reference": "address:one",
+      "revision": "revision:1",
+      "source": "source_a",
+    },
+    "consent": {
+      "consentVersion": "v1",
+      "locale": "en",
+      "policyVersion": "v1",
+      "recordedAt": "0001-01-01T00:00:00Z",
+      "sourcePath": "/tester-application",
+    },
+    "contactRef": "acquisition-contact:11111111-1111-4111-8111-111111111111",
+    "createdAt": "0001-01-01T00:00:00Z",
+    "sourceKind": "tester_application",
+    "sourceRef": "acquisition-case:11111111-1111-4111-8111-111111111111",
+    "state": "withdrawn",
+    "updatedAt": "0001-01-01T00:00:00Z",
+    "version": 1,
+  },
+  "success": true,
+}
+`;
+
+exports[`preserves base prelaunch transcript: lead state 4 1`] = `
+{
+  "issues": [
+    {
+      "code": "invalid_value",
+      "message": "Invalid option: expected one of "submitted"|"approved"|"active"|"rejected"|"withdrawn"",
+      "path": [
+        "state",
+      ],
+      "values": [
+        "submitted",
+        "approved",
+        "active",
+        "rejected",
+        "withdrawn",
+      ],
+    },
+  ],
+  "success": false,
+}
+`;
+
+exports[`preserves base prelaunch transcript: lead unknown 1`] = `
+{
+  "issues": [
+    {
+      "code": "unrecognized_keys",
+      "keys": [
+        "extra",
+      ],
+      "message": "Unrecognized key: "extra"",
+      "path": [],
+    },
+  ],
+  "success": false,
+}
+`;
+
+exports[`preserves base prelaunch transcript: lead updatedAt 0 1`] = `
+{
+  "issues": [
+    {
+      "code": "invalid_format",
+      "format": "datetime",
+      "message": "Invalid ISO datetime",
+      "origin": "string",
+      "path": [
+        "updatedAt",
+      ],
+      "pattern": "/^(?:(?:\\d\\d[2468][048]|\\d\\d[13579][26]|\\d\\d0[48]|[02468][048]00|[13579][26]00)-02-29|\\d{4}-(?:(?:0[13578]|1[02])-(?:0[1-9]|[12]\\d|3[01])|(?:0[469]|11)-(?:0[1-9]|[12]\\d|30)|(?:02)-(?:0[1-9]|1\\d|2[0-8])))T(?:(?:[01]\\d|2[0-3]):[0-5]\\d:[0-5]\\d(?:\\.\\d+)?(?:Z|([+-](?:[01]\\d|2[0-3]):[0-5]\\d)))$/",
+    },
+  ],
+  "success": false,
+}
+`;
+
+exports[`preserves base prelaunch transcript: lead version 0 1`] = `
+{
+  "issues": [
+    {
+      "code": "too_small",
+      "inclusive": false,
+      "message": "Too small: expected number to be >0",
+      "minimum": 0,
+      "origin": "number",
+      "path": [
+        "version",
+      ],
+    },
+  ],
+  "success": false,
+}
+`;
+
+exports[`preserves base prelaunch transcript: lead version 1 1`] = `
+{
+  "issues": [
+    {
+      "code": "invalid_type",
+      "expected": "int",
+      "format": "safeint",
+      "message": "Invalid input: expected int, received number",
+      "path": [
+        "version",
+      ],
+    },
+  ],
+  "success": false,
+}
+`;
+
+exports[`preserves base prelaunch transcript: list cursor 0 1`] = `
+{
+  "issues": [
+    {
+      "code": "too_small",
+      "inclusive": true,
+      "message": "Too small: expected string to have >=8 characters",
+      "minimum": 8,
+      "origin": "string",
+      "path": [
+        "cursor",
+      ],
+    },
+  ],
+  "success": false,
+}
+`;
+
+exports[`preserves base prelaunch transcript: list cursor 1 1`] = `
+{
+  "data": {
+    "cursor": "aaaaaaaa",
+    "limit": 25,
+    "view": "prelaunch_acquisition_v1",
+  },
+  "success": true,
+}
+`;
+
+exports[`preserves base prelaunch transcript: list cursor 2 1`] = `
+{
+  "data": {
+    "cursor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+    "limit": 25,
+    "view": "prelaunch_acquisition_v1",
+  },
+  "success": true,
+}
+`;
+
+exports[`preserves base prelaunch transcript: list cursor 3 1`] = `
+{
+  "issues": [
+    {
+      "code": "too_big",
+      "inclusive": true,
+      "maximum": 160,
+      "message": "Too big: expected string to have <=160 characters",
+      "origin": "string",
+      "path": [
+        "cursor",
+      ],
+    },
+  ],
+  "success": false,
+}
+`;
+
+exports[`preserves base prelaunch transcript: list cursor 4 1`] = `
+{
+  "issues": [
+    {
+      "code": "too_small",
+      "inclusive": true,
+      "message": "Too small: expected string to have >=8 characters",
+      "minimum": 8,
+      "origin": "string",
+      "path": [
+        "cursor",
+      ],
+    },
+    {
+      "code": "invalid_format",
+      "format": "regex",
+      "message": "Invalid string: must match pattern /^[A-Za-z0-9][A-Za-z0-9._:-]*$/",
+      "origin": "string",
+      "path": [
+        "cursor",
+      ],
+      "pattern": "/^[A-Za-z0-9][A-Za-z0-9._:-]*$/",
+    },
+  ],
+  "success": false,
+}
+`;
+
+exports[`preserves base prelaunch transcript: list cursor 5 1`] = `
+{
+  "data": {
+    "cursor": "cursor:one",
+    "limit": 25,
+    "view": "prelaunch_acquisition_v1",
+  },
+  "success": true,
+}
+`;
+
+exports[`preserves base prelaunch transcript: list defaults 1`] = `
+{
+  "data": {
+    "limit": 25,
+    "view": "prelaunch_acquisition_v1",
+  },
+  "success": true,
+}
+`;
+
+exports[`preserves base prelaunch transcript: list defaults missing 1`] = `
+{
+  "issues": [
+    {
+      "code": "invalid_value",
+      "message": "Invalid input: expected "prelaunch_acquisition_v1"",
+      "path": [
+        "view",
+      ],
+      "values": [
+        "prelaunch_acquisition_v1",
+      ],
+    },
+  ],
+  "success": false,
+}
+`;
+
+exports[`preserves base prelaunch transcript: list defaults unknown 1`] = `
+{
+  "issues": [
+    {
+      "code": "unrecognized_keys",
+      "keys": [
+        "extra",
+      ],
+      "message": "Unrecognized key: "extra"",
+      "path": [],
+    },
+  ],
+  "success": false,
+}
+`;
+
+exports[`preserves base prelaunch transcript: list limit 0 1`] = `
+{
+  "data": {
+    "limit": 2,
+    "view": "prelaunch_acquisition_v1",
+  },
+  "success": true,
+}
+`;
+
+exports[`preserves base prelaunch transcript: list limit 1 1`] = `
+{
+  "issues": [
+    {
+      "code": "too_small",
+      "inclusive": true,
+      "message": "Too small: expected number to be >=1",
+      "minimum": 1,
+      "origin": "number",
+      "path": [
+        "limit",
+      ],
+    },
+  ],
+  "success": false,
+}
+`;
+
+exports[`preserves base prelaunch transcript: list limit 2 1`] = `
+{
+  "data": {
+    "limit": 1,
+    "view": "prelaunch_acquisition_v1",
+  },
+  "success": true,
+}
+`;
+
+exports[`preserves base prelaunch transcript: list limit 3 1`] = `
+{
+  "data": {
+    "limit": 100,
+    "view": "prelaunch_acquisition_v1",
+  },
+  "success": true,
+}
+`;
+
+exports[`preserves base prelaunch transcript: list limit 4 1`] = `
+{
+  "issues": [
+    {
+      "code": "too_big",
+      "inclusive": true,
+      "maximum": 100,
+      "message": "Too big: expected number to be <=100",
+      "origin": "number",
+      "path": [
+        "limit",
+      ],
+    },
+  ],
+  "success": false,
+}
+`;
+
+exports[`preserves base prelaunch transcript: list limit 5 1`] = `
+{
+  "issues": [
+    {
+      "code": "invalid_type",
+      "expected": "int",
+      "format": "safeint",
+      "message": "Invalid input: expected int, received number",
+      "path": [
+        "limit",
+      ],
+    },
+  ],
+  "success": false,
+}
+`;
+
+exports[`preserves base prelaunch transcript: list limit 6 1`] = `
+{
+  "issues": [
+    {
+      "code": "invalid_type",
+      "expected": "number",
+      "message": "Invalid input: expected number, received NaN",
+      "path": [
+        "limit",
+      ],
+      "received": "NaN",
+    },
+  ],
+  "success": false,
+}
+`;
+
+exports[`preserves base prelaunch transcript: list limit 7 1`] = `
+{
+  "issues": [
+    {
+      "code": "too_small",
+      "inclusive": true,
+      "message": "Too small: expected number to be >=1",
+      "minimum": 1,
+      "origin": "number",
+      "path": [
+        "limit",
+      ],
+    },
+  ],
+  "success": false,
+}
+`;
+
+exports[`preserves base prelaunch transcript: list response 1`] = `
+{
+  "data": {
+    "contractVersion": "prelaunch_acquisition_v1",
+    "leads": [
+      {
+        "addressReference": {
+          "provenance": "source_a",
+          "reference": "address:one",
+          "revision": "revision:1",
+          "source": "source_a",
+        },
+        "consent": {
+          "consentVersion": "v1",
+          "locale": "en",
+          "policyVersion": "v1",
+          "recordedAt": "0001-01-01T00:00:00Z",
+          "sourcePath": "/tester-application",
+        },
+        "contactRef": "acquisition-contact:11111111-1111-4111-8111-111111111111",
+        "createdAt": "0001-01-01T00:00:00Z",
+        "sourceKind": "tester_application",
+        "sourceRef": "acquisition-case:11111111-1111-4111-8111-111111111111",
+        "state": "submitted",
+        "updatedAt": "0001-01-01T00:00:00Z",
+        "version": 1,
+      },
+    ],
+    "nextCursor": null,
+  },
+  "success": true,
+}
+`;
+
+exports[`preserves base prelaunch transcript: list response contractVersion 0 1`] = `
+{
+  "issues": [
+    {
+      "code": "invalid_value",
+      "message": "Invalid input: expected "prelaunch_acquisition_v1"",
+      "path": [
+        "contractVersion",
+      ],
+      "values": [
+        "prelaunch_acquisition_v1",
+      ],
+    },
+  ],
+  "success": false,
+}
+`;
+
+exports[`preserves base prelaunch transcript: list response leads 0 1`] = `
+{
+  "data": {
+    "contractVersion": "prelaunch_acquisition_v1",
+    "leads": [],
+    "nextCursor": null,
+  },
+  "success": true,
+}
+`;
+
+exports[`preserves base prelaunch transcript: list response leads 1 1`] = `
+{
+  "issues": [
+    {
+      "code": "too_big",
+      "inclusive": true,
+      "maximum": 100,
+      "message": "Too big: expected array to have <=100 items",
+      "origin": "array",
+      "path": [
+        "leads",
+      ],
+    },
+  ],
+  "success": false,
+}
+`;
+
+exports[`preserves base prelaunch transcript: list response missing 1`] = `
+{
+  "issues": [
+    {
+      "code": "invalid_value",
+      "message": "Invalid input: expected "prelaunch_acquisition_v1"",
+      "path": [
+        "contractVersion",
+      ],
+      "values": [
+        "prelaunch_acquisition_v1",
+      ],
+    },
+    {
+      "code": "invalid_type",
+      "expected": "array",
+      "message": "Invalid input: expected array, received undefined",
+      "path": [
+        "leads",
+      ],
+    },
+    {
+      "code": "invalid_type",
+      "expected": "string",
+      "message": "Invalid input: expected string, received undefined",
+      "path": [
+        "nextCursor",
+      ],
+    },
+  ],
+  "success": false,
+}
+`;
+
+exports[`preserves base prelaunch transcript: list response nextCursor 0 1`] = `
+{
+  "issues": [
+    {
+      "code": "too_small",
+      "inclusive": true,
+      "message": "Too small: expected string to have >=8 characters",
+      "minimum": 8,
+      "origin": "string",
+      "path": [
+        "nextCursor",
+      ],
+    },
+  ],
+  "success": false,
+}
+`;
+
+exports[`preserves base prelaunch transcript: list response nextCursor 1 1`] = `
+{
+  "data": {
+    "contractVersion": "prelaunch_acquisition_v1",
+    "leads": [
+      {
+        "addressReference": {
+          "provenance": "source_a",
+          "reference": "address:one",
+          "revision": "revision:1",
+          "source": "source_a",
+        },
+        "consent": {
+          "consentVersion": "v1",
+          "locale": "en",
+          "policyVersion": "v1",
+          "recordedAt": "0001-01-01T00:00:00Z",
+          "sourcePath": "/tester-application",
+        },
+        "contactRef": "acquisition-contact:11111111-1111-4111-8111-111111111111",
+        "createdAt": "0001-01-01T00:00:00Z",
+        "sourceKind": "tester_application",
+        "sourceRef": "acquisition-case:11111111-1111-4111-8111-111111111111",
+        "state": "submitted",
+        "updatedAt": "0001-01-01T00:00:00Z",
+        "version": 1,
+      },
+    ],
+    "nextCursor": "cursor:one",
+  },
+  "success": true,
+}
+`;
+
+exports[`preserves base prelaunch transcript: list response nextCursor 2 1`] = `
+{
+  "issues": [
+    {
+      "code": "too_small",
+      "inclusive": true,
+      "message": "Too small: expected string to have >=8 characters",
+      "minimum": 8,
+      "origin": "string",
+      "path": [
+        "nextCursor",
+      ],
+    },
+    {
+      "code": "invalid_format",
+      "format": "regex",
+      "message": "Invalid string: must match pattern /^[A-Za-z0-9][A-Za-z0-9._:-]*$/",
+      "origin": "string",
+      "path": [
+        "nextCursor",
+      ],
+      "pattern": "/^[A-Za-z0-9][A-Za-z0-9._:-]*$/",
+    },
+  ],
+  "success": false,
+}
+`;
+
+exports[`preserves base prelaunch transcript: list response nextCursor 3 1`] = `
+{
+  "issues": [
+    {
+      "code": "too_big",
+      "inclusive": true,
+      "maximum": 160,
+      "message": "Too big: expected string to have <=160 characters",
+      "origin": "string",
+      "path": [
+        "nextCursor",
+      ],
+    },
+  ],
+  "success": false,
+}
+`;
+
+exports[`preserves base prelaunch transcript: list response unknown 1`] = `
+{
+  "issues": [
+    {
+      "code": "unrecognized_keys",
+      "keys": [
+        "extra",
+      ],
+      "message": "Unrecognized key: "extra"",
+      "path": [],
+    },
+  ],
+  "success": false,
+}
+`;
+
+exports[`preserves base prelaunch transcript: list view 0 1`] = `
+{
+  "issues": [
+    {
+      "code": "invalid_value",
+      "message": "Invalid input: expected "prelaunch_acquisition_v1"",
+      "path": [
+        "view",
+      ],
+      "values": [
+        "prelaunch_acquisition_v1",
+      ],
+    },
+  ],
+  "success": false,
+}
+`;
+
+exports[`preserves base prelaunch transcript: withdrawn without address 1`] = `
+{
+  "data": {
+    "addressReference": null,
+    "consent": {
+      "consentVersion": "v1",
+      "locale": "en",
+      "policyVersion": "v1",
+      "recordedAt": "0001-01-01T00:00:00Z",
+      "sourcePath": "/tester-application",
+    },
+    "contactRef": "acquisition-contact:11111111-1111-4111-8111-111111111111",
+    "createdAt": "0001-01-01T00:00:00Z",
+    "sourceKind": "tester_application",
+    "sourceRef": "acquisition-case:11111111-1111-4111-8111-111111111111",
+    "state": "withdrawn",
+    "updatedAt": "0001-01-01T00:00:00Z",
+    "version": 1,
+  },
+  "success": true,
+}
+`;

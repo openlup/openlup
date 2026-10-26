@@ -15,6 +15,6 @@ it.each(["marketing", "marketing/contracts"].flatMap(entry =>
   expect(Object.keys(result.metafile.inputs).filter(path => /(?:^|\/)server\//.test(path))).toEqual([]);
   expect(result.outputFiles).toHaveLength(1);
   if (entry === "marketing/contracts") {
-    expect(Object.keys(result.metafile.inputs).filter(path => /(?:zod|acquisitionCaseSchemas|acquisitionEvidenceSchemas)/.test(path))).toEqual([]);
+    expect(Object.keys(result.metafile.inputs).filter(path => /(?:zod|acquisitionCaseSchemas|acquisitionEvidenceSchemas|prelaunchAcquisitionSchemas)/.test(path))).toEqual([]);
   }
 });

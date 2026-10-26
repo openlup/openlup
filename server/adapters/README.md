@@ -24,7 +24,9 @@ in [Architecture and extension boundaries](../../docs/platform/ARCHITECTURE_AND_
 
 Acquisition case and research evidence adapters remain application-owned.
 Their schemas and DTO types come directly from `@openlup/platform/marketing`
-and its type-only contracts entry. Retired case admission types stay in the
+and its type-only contracts entry, including reachable case and evidence
+ports. The full reference case port extends the package port; its retired
+commands and methods remain application-owned. Retired case admission types stay in the
 application shim. This binding preserves SQL routine names, argument order,
 result parsing, replay behavior and executor ownership; it moves no adapter
 or database operation into the package.

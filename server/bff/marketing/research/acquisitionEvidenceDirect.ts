@@ -2,7 +2,7 @@ import { acquisitionNewsletterConsentEventSchema, acquisitionSurveyListQuerySche
 import { sendBffError, sendBffSuccess, sendMethodNotAllowed } from "../../../_lib/bff/response.js";
 import type { HttpRequest, HttpResponse } from "../../../_lib/types/http.js";
 import { authorizeAcquisitionCaseAdmin } from "../../clients/acquisitionCaseDirect.js";
-import type { AcquisitionEvidenceFailure } from "../../../domains/marketing/research/acquisitionEvidencePorts.js";
+import type { AcquisitionEvidenceFailure } from "@openlup/platform/marketing/contracts";
 import { getBundleDescriptor, resolveBundleId } from "../../../domains/platform-runtime/platformKernel.js";
 import { resolveAcquisitionEvidenceBinding } from "../../../runtime/marketing/acquisitionEvidenceBinding.js";
 

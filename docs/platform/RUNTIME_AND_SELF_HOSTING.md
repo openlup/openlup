@@ -10,7 +10,10 @@ responses with `@openlup/platform/marketing`; DTO-only imports use
 retired-admission refusals and response envelopes stay application-owned.
 The package exposes no marketing server entry, route registry or automatic
 activation. Reference research contracts, ports and kiosk submission continue
-to use the core research compatibility export.
+to use the core research compatibility export. Portable prelaunch list/detail
+validation uses the marketing package; rich prelaunch joins retain application
+contracts. BFF failure kinds and evidence runtime port types use the type-only
+entry, while the case runtime retains its extended application port.
 
 The accounting HTTP scheduler accepts an explicitly composed invoicing service
 and passes it to the existing accounting runtime after HTTP method and bearer

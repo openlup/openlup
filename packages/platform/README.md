@@ -88,7 +88,7 @@ timestamp used in the webhook's idempotency key.
 | `./inventory` | Experimental schemas/ports, handlers, native stores, projection, injected forecast and SQL descriptor; `./inventory/contracts` DTOs. |
 | `./catalog` | Experimental neutral catalog schemas, drafts, reads, media source packs and publication ports |
 | `./catalog/contracts` | Dependency-free catalog DTOs, media resolver, authority and canonicalization helpers |
-| `./marketing`, `./marketing/contracts` | Browser-safe acquisition history, survey evidence and newsletter consent schemas; type-only DTOs and core research ports |
+| `./marketing`, `./marketing/contracts` | Browser-safe acquisition history, portable prelaunch, survey evidence and newsletter consent schemas; type-only DTOs and acquisition/research ports |
 | `./commerce`, `./commerce/contracts` | Browser-safe neutral commerce schema cores, generic ports and pure contract helpers |
 | `./commerce/server` | Node-only OMS, returns, native reviews/media and hosted-feedback handlers/adapters and order-detail composition, email consumers, dispatch registry, paid-fulfillment binding and checkout compensation, checkout handlers, runtime and shared paid-order saga |
 | `./pricing` | Experimental price authority, quote computation/handlers, offer projection/cache, readiness and policy tokens |
@@ -102,16 +102,19 @@ timestamp used in the webhook's idempotency key.
 ## Marketing contracts
 
 `./marketing` provides acquisition address references, historical case projections,
-list/count reads, idempotency keys, survey submission/evidence/list schemas and
+list/count reads, portable prelaunch list/detail schemas, idempotency keys, survey submission/evidence/list schemas and
 newsletter consent events/responses. Reference compatibility shims forward the
-same schema objects. Case submit and transition contracts remain application-owned
+same schema objects. The rich prelaunch DTO, case submit and transition contracts remain application-owned
 and are intentionally excluded from this package. The shared
 `acquisitionOpaqueReferenceSchema` lets those retained contracts reuse the exact
 reference syntax. There is no marketing server entry or automatic route binding.
 
 `./marketing/contracts` exports only types. Explicit acquisition DTO shapes are
 checked against the runtime schema inference by an executed TypeScript equality
-witness. Both entries forward research schemas or types from the compatibility
+witness. Reachable case ports expose list, get, active count and close; the app
+extends that port with its retired methods. Evidence ports retain survey submission,
+survey listing and consent application. Port types are also forwarded through
+the runtime entry, following the commerce boundary. Both entries forward research schemas or types from the compatibility
 owner, `@openlup/core/marketing/research`; runtime schemas retain object identity.
 Case locale remains `en|pl`, matching the persisted constraint. Widening it requires
 a separate migration. Historical wire values remain unchanged.

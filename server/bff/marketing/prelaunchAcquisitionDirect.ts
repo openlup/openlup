@@ -6,11 +6,11 @@ import {
   prelaunchAcquisitionListRequestSchema,
   prelaunchAcquisitionListResponseSchema,
   type PrelaunchAcquisitionLead,
-} from "../../../src/domains/marketing/prelaunch/contracts.js";
+} from "@openlup/platform/marketing";
 import type { AcquisitionCaseProjection } from "@openlup/platform/marketing/contracts";
 import { sendBffError, sendBffSuccess, sendMethodNotAllowed } from "../../_lib/bff/response.js";
 import type * as HttpTypes from "../../_lib/types/vercel.js";
-import type { AcquisitionCaseFailureKind } from "../../domains/clients/acquisitionCasePorts.js";
+import type { AcquisitionCaseFailureKind } from "@openlup/platform/marketing/contracts";
 import { getBundleDescriptor, resolveBundleId } from "../../domains/platform-runtime/platformKernel.js";
 import { authorizeAcquisitionCaseAdmin } from "../clients/acquisitionCaseDirect.js";
 import {

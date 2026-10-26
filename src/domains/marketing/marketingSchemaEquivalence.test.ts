@@ -2,6 +2,7 @@ import { expect, it } from "vitest";
 import * as cases from "../clients/acquisitionCaseContracts.js";
 import { CLIENTS_CONTRACT_VERSION } from "../clients/searchContracts.js";
 import * as evidence from "./research/acquisitionEvidenceContracts.js";
+import * as prelaunch from "./prelaunch/contracts.js";
 
 // Captured against the untouched task base before moving the schema bodies.
 // Preserve parsed data and every issue field, including issue ordering.
@@ -105,4 +106,69 @@ it("keeps reference re-exports identical to the public package objects", async (
     if (!retired.has(name)) expect(marketing[name as keyof typeof marketing]).toBe(value);
   }
   for (const [name, value] of Object.entries(evidence)) expect(marketing[name as keyof typeof marketing]).toBe(value);
+  for (const [name, value] of Object.entries(prelaunch)) {
+    if (name.startsWith("PRELAUNCH_ACQUISITION_") || name.startsWith("prelaunchAcquisition")) {
+      expect(marketing[name as keyof typeof marketing]).toBe(value);
+    }
+  }
+});
+
+// Addendum goldens are captured from git-show base content before extraction.
+const prelaunchLead = {
+  sourceRef: `acquisition-case:${id}`, contactRef: `acquisition-contact:${id}`,
+  sourceKind: projection.sourceKind, consent: projection.consent, addressReference: address,
+  state: "submitted", version: 1, createdAt: instant, updatedAt: instant,
+};
+const prelaunchList = { contractVersion: prelaunch.PRELAUNCH_ACQUISITION_CONTRACT_VERSION, leads: [prelaunchLead], nextCursor: null };
+const prelaunchDetail = { contractVersion: prelaunch.PRELAUNCH_ACQUISITION_CONTRACT_VERSION, lead: prelaunchLead };
+const prelaunchValid: Array<[string, { safeParse(value: unknown): unknown }, object]> = [
+  ["list defaults", prelaunch.prelaunchAcquisitionListRequestSchema, { view: prelaunch.PRELAUNCH_ACQUISITION_VIEW }],
+  ["detail request", prelaunch.prelaunchAcquisitionDetailRequestSchema, { sourceRef: prelaunchLead.sourceRef }],
+  ["lead", prelaunch.prelaunchAcquisitionLeadSchema, prelaunchLead],
+  ["list response", prelaunch.prelaunchAcquisitionListResponseSchema, prelaunchList],
+  ["detail response", prelaunch.prelaunchAcquisitionDetailResponseSchema, prelaunchDetail],
+];
+const prelaunchChecks = [...prelaunchValid];
+for (const [name, schema, input] of prelaunchValid) {
+  prelaunchChecks.push([`${name} missing`, schema, {}], [`${name} unknown`, schema, { ...input, extra: true }]);
+}
+function prelaunchVariants(name: string, schema: { safeParse(value: unknown): unknown }, input: object, mutations: Record<string, unknown[]>) {
+  for (const [key, values] of Object.entries(mutations)) values.forEach((value, index) => {
+    prelaunchChecks.push([`${name} ${key} ${index}`, schema, { ...input, [key]: value }]);
+  });
+}
+prelaunchVariants("list", prelaunch.prelaunchAcquisitionListRequestSchema, { view: prelaunch.PRELAUNCH_ACQUISITION_VIEW }, {
+  view: ["invalid"], cursor: ["a".repeat(7), "a".repeat(8), "a".repeat(160), "a".repeat(161), "bad/ref", " cursor:one "],
+  limit: ["2", 0, 1, 100, 101, 1.5, "invalid", null],
+});
+prelaunchVariants("detail", prelaunch.prelaunchAcquisitionDetailRequestSchema, { sourceRef: prelaunchLead.sourceRef }, {
+  sourceRef: ["case:one", "acquisition-case:" + "-".repeat(36), "acquisition-case:" + "A".repeat(36), "acquisition-case:" + "a".repeat(35), "acquisition-case:" + "a".repeat(37), " " + prelaunchLead.sourceRef],
+});
+prelaunchVariants("lead", prelaunch.prelaunchAcquisitionLeadSchema, prelaunchLead, {
+  sourceRef: ["invalid"], contactRef: ["invalid", "acquisition-contact:" + "-".repeat(36)],
+  sourceKind: ["invalid"], state: ["approved", "active", "rejected", "withdrawn", "invalid"],
+  addressReference: [null], version: [0, 1.5], createdAt: ["invalid", "0001-01-01T00:00:00+01:00"], updatedAt: ["invalid"],
+  consent: [{ ...projection.consent, extra: true }, { ...projection.consent, locale: "pl" }, { ...projection.consent, locale: "xx" },
+    { ...projection.consent, consentVersion: "", policyVersion: "a".repeat(65), recordedAt: "invalid", sourcePath: "invalid" },
+    { ...projection.consent, consentVersion: "a".repeat(64), policyVersion: "a".repeat(64) }],
+});
+prelaunchChecks.push(["withdrawn without address", prelaunch.prelaunchAcquisitionLeadSchema, { ...prelaunchLead, state: "withdrawn", addressReference: null }]);
+for (const [key, values] of Object.entries({
+  source: ["", "A", "a".repeat(48), "a".repeat(49), " source_a "],
+  reference: ["a".repeat(7), "a".repeat(8), "a".repeat(160), "a".repeat(161), "bad/ref", " address:one "],
+  revision: ["", "a".repeat(64), "a".repeat(65), "bad/ref", " v1 "],
+  provenance: ["", "A", "a".repeat(64), "a".repeat(65), " source_a "],
+  extra: [true],
+})) values.forEach((value, index) => prelaunchChecks.push([
+  `address ${key} ${index}`, prelaunch.prelaunchAcquisitionLeadSchema, { ...prelaunchLead, addressReference: { ...address, [key]: value } },
+]));
+prelaunchVariants("list response", prelaunch.prelaunchAcquisitionListResponseSchema, prelaunchList, {
+  contractVersion: ["invalid"], leads: [[], Array(101).fill(prelaunchLead)], nextCursor: ["short", " cursor:one ", "bad/ref", "a".repeat(161)],
+});
+prelaunchVariants("detail response", prelaunch.prelaunchAcquisitionDetailResponseSchema, prelaunchDetail, {
+  contractVersion: ["invalid"], lead: [null, {}],
+});
+it.each(prelaunchChecks)("preserves base prelaunch transcript: %s", (_name, schema, input) => {
+  const result = schema.safeParse(input) as { success: boolean; data?: unknown; error?: { issues: unknown[] } };
+  expect(result.success ? { success: true, data: result.data } : { success: false, issues: result.error?.issues }).toMatchSnapshot();
 });

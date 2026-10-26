@@ -5,7 +5,7 @@ import type {
   AcquisitionEvidenceFailure,
   AcquisitionEvidencePort,
   AcquisitionEvidenceResult,
-} from "../../../domains/marketing/research/acquisitionEvidencePorts.js";
+} from "@openlup/platform/marketing/contracts";
 
 const ROLE = "SET LOCAL ROLE platform_acquisition_runtime";
 const SUBMIT = "SELECT public.acquisition_survey_submit_v1($1::text,$2::text,$3::text,$4::jsonb,$5::timestamptz) AS response";

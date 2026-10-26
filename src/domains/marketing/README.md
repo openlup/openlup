@@ -42,12 +42,18 @@ creates or links a customer.
 - Acquisition evidence schemas: `@openlup/platform/marketing` owns survey
   submit/evidence/list and newsletter consent event/response validation. The
   `research/acquisitionEvidenceContracts.ts` shim forwards the same objects and
-  type names; server evidence ports, BFF and adapters import the package directly.
+  type names; the evidence port is type-only in the package contracts entry, and
+  the BFF, adapters and runtime binding import it directly.
   The core research compatibility owner remains independent of these schemas.
   Its reference contracts/ports and the kiosk submit client keep their core
   imports; the admin response client remains application-owned. The base-captured
   `marketingSchemaEquivalence.test.ts` transcript preserves parsed outputs,
   defaults, unknown-key handling and complete ordered issues across extraction.
+- Portable prelaunch acquisition: the package owns the strict list/detail
+  schemas and types, including their private reference validators. The reference
+  prelaunch contracts file forwards identical objects while retaining its rich
+  lead DTO and admin joins. The direct acquisition BFF uses package contracts;
+  rich read-model consumers keep the application file.
 - Shared/frontend: `src/domains/marketing/prelaunch/` and
   `src/domains/marketing/research/`.
 - Server: `server/domains/marketing/prelaunch/` (lead read model and admin

@@ -39,6 +39,10 @@ plus the admin identity reads.
   readers import the package directly, with retained admission types imported
   from the application shim. The pre-extraction parse transcript and unchanged
   contract suite pin outputs, defaults and complete ordered validation issues.
+  The package case port exposes only list/get/activeCount/close; the reference
+  port extends it with retired submit/transition commands and methods. A compiler
+  witness checks assignability both ways against the original complete shape.
+  The client-search engine and its version remain application-owned.
 - Admin identity reads: `adminSummary.ts` + `adminSummaryClient.ts`,
   `adminClientSearchClient.ts` with the `adminClientsSearch*` contracts in
   `searchContracts.ts`, and the `adminClientsDetail*` contracts in

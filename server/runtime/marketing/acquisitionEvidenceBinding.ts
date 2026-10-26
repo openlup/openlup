@@ -1,4 +1,4 @@
-import type { AcquisitionEvidencePort } from "../../domains/marketing/research/acquisitionEvidencePorts.js";
+import type { AcquisitionEvidencePort } from "@openlup/platform/marketing/contracts";
 import { getBundleDescriptor, resolveBundleId } from "../../domains/platform-runtime/platformKernel.js";
 
 type Env = Record<string, string | undefined>;
