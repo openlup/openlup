@@ -486,8 +486,8 @@ export declare const returnApproveSchema: z.ZodObject<{
     idempotencyKey: z.ZodString;
     returnRequestId: z.ZodGUID;
     refundMode: z.ZodDefault<z.ZodEnum<{
-        full: "full";
         none: "none";
+        full: "full";
         partial: "partial";
     }>>;
     refundAmountCents: z.ZodOptional<z.ZodNumber>;
@@ -2875,10 +2875,10 @@ export declare const omsFulfillmentStatusSchema: z.ZodEnum<{
 export declare const omsAccountingStatusSchema: z.ZodString;
 export declare const omsAttentionReasonSchema: z.ZodEnum<{
     fulfillment_blocked: "fulfillment_blocked";
+    none: "none";
     fulfillment_pending: "fulfillment_pending";
     active_hold: "active_hold";
     missing_shipping_address: "missing_shipping_address";
-    none: "none";
     fulfillment_exception: "fulfillment_exception";
     payment_required: "payment_required";
     inventory_missing: "inventory_missing";
@@ -3217,8 +3217,8 @@ export declare const omsAccountingSummarySchema: z.ZodObject<{
         retryable: z.ZodNullable<z.ZodBoolean>;
     }, z.core.$strict>>;
     recoveryGuidance: z.ZodEnum<{
-        not_requested: "not_requested";
         none: "none";
+        not_requested: "not_requested";
         wait_for_retry: "wait_for_retry";
         review_and_retry: "review_and_retry";
     }>;
@@ -3357,10 +3357,10 @@ export declare const omsOrderListItemSchema: z.ZodObject<{
     providerOrderId: z.ZodDefault<z.ZodNullable<z.ZodString>>;
     attentionReason: z.ZodEnum<{
         fulfillment_blocked: "fulfillment_blocked";
+        none: "none";
         fulfillment_pending: "fulfillment_pending";
         active_hold: "active_hold";
         missing_shipping_address: "missing_shipping_address";
-        none: "none";
         fulfillment_exception: "fulfillment_exception";
         payment_required: "payment_required";
         inventory_missing: "inventory_missing";
@@ -3657,10 +3657,10 @@ export declare const omsOrderDetailSchema: z.ZodObject<{
     providerOrderId: z.ZodDefault<z.ZodNullable<z.ZodString>>;
     attentionReason: z.ZodEnum<{
         fulfillment_blocked: "fulfillment_blocked";
+        none: "none";
         fulfillment_pending: "fulfillment_pending";
         active_hold: "active_hold";
         missing_shipping_address: "missing_shipping_address";
-        none: "none";
         fulfillment_exception: "fulfillment_exception";
         payment_required: "payment_required";
         inventory_missing: "inventory_missing";
@@ -4127,8 +4127,8 @@ export declare const omsOrderDetailSchema: z.ZodObject<{
             retryable: z.ZodNullable<z.ZodBoolean>;
         }, z.core.$strict>>;
         recoveryGuidance: z.ZodEnum<{
-            not_requested: "not_requested";
             none: "none";
+            not_requested: "not_requested";
             wait_for_retry: "wait_for_retry";
             review_and_retry: "review_and_retry";
         }>;
@@ -4389,10 +4389,10 @@ export declare const adminCommerceOrdersListResponseSchema: z.ZodObject<{
         providerOrderId: z.ZodDefault<z.ZodNullable<z.ZodString>>;
         attentionReason: z.ZodEnum<{
             fulfillment_blocked: "fulfillment_blocked";
+            none: "none";
             fulfillment_pending: "fulfillment_pending";
             active_hold: "active_hold";
             missing_shipping_address: "missing_shipping_address";
-            none: "none";
             fulfillment_exception: "fulfillment_exception";
             payment_required: "payment_required";
             inventory_missing: "inventory_missing";
@@ -4600,10 +4600,10 @@ export declare const adminCommerceOrderDetailResponseSchema: z.ZodObject<{
         providerOrderId: z.ZodDefault<z.ZodNullable<z.ZodString>>;
         attentionReason: z.ZodEnum<{
             fulfillment_blocked: "fulfillment_blocked";
+            none: "none";
             fulfillment_pending: "fulfillment_pending";
             active_hold: "active_hold";
             missing_shipping_address: "missing_shipping_address";
-            none: "none";
             fulfillment_exception: "fulfillment_exception";
             payment_required: "payment_required";
             inventory_missing: "inventory_missing";
@@ -5070,8 +5070,8 @@ export declare const adminCommerceOrderDetailResponseSchema: z.ZodObject<{
                 retryable: z.ZodNullable<z.ZodBoolean>;
             }, z.core.$strict>>;
             recoveryGuidance: z.ZodEnum<{
-                not_requested: "not_requested";
                 none: "none";
+                not_requested: "not_requested";
                 wait_for_retry: "wait_for_retry";
                 review_and_retry: "review_and_retry";
             }>;
@@ -5471,10 +5471,10 @@ export declare const adminCommerceOrdersListRequestSchema: z.ZodObject<{
     providerOpsStatus: z.ZodOptional<z.ZodString>;
     attentionReason: z.ZodOptional<z.ZodEnum<{
         fulfillment_blocked: "fulfillment_blocked";
+        none: "none";
         fulfillment_pending: "fulfillment_pending";
         active_hold: "active_hold";
         missing_shipping_address: "missing_shipping_address";
-        none: "none";
         fulfillment_exception: "fulfillment_exception";
         payment_required: "payment_required";
         inventory_missing: "inventory_missing";

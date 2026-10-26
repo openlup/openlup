@@ -269,6 +269,33 @@ binding itself still requires the host's reconciliation/handoff procedure.
 The [subscription recipe](ARCHITECTURE_AND_EXTENSIONS.md#composed-subscription-module)
 owns replay, frozen-mandate and lifecycle-message semantics.
 
+The inert [M12 self-service binding](../../server/runtime/public-reference/m12SelfServiceBinding.ts)
+returns `{ enabled: false }` when `enabled !== true`, before invoking the host
+selector. For an explicitly enabled recipe, provide `select(verifiedContext)`
+returning complete selected owner lanes, required host capabilities and the same
+verified context. The facade
+rejects missing port methods and mismatched principals before execution. A raw or
+typed M10 lane may be selected independently; it never supplies a fallback for the
+nativeLegacySubscription lane. That lane requires explicit pause, control, ownership
+read and the host's ownership-refusal constructor. Managed routing uses the
+host's existing managedSubscription port. Supply profile, paymentMethod, commerce
+and recovery as explicit lanes; every returned lane has a principal guard. Raw
+and typed commands require the supplied clientId to equal context.clientId,
+refusing omitted, undefined, null or foreign values before calling the owner.
+Every output lane stays callable when unselected and returns a named
+`{ supported: false, refusalCode }` after the principal guard. PaymentMethod returns
+the host paymentMethodSetup refusal by identity, commerce returns commerceRecovery,
+and other lanes return a frozen host_binding_required refusal. Supported
+paymentMethodSetup requires paymentMethod; supported commerceRecovery/configuredPurchase
+require commerce. Supported subscriptions.genericBundleCommands/commandBoundReceipts
+require at least one selected managed/native legacy/raw/typed command lane. The factory
+returns the SelfServiceCommandFacade envelope. Its trailing defaulted
+`ControlSnapshot = unknown` generic retains the selected control snapshot type
+through the reference selector and facade. This recipe opens
+no route, provider, store or executor and grants no activation. R5 must settle
+native browser key retention before connecting preview/apply UI; native profile,
+start and managed-shaped redeem remain unselected.
+
 The inert M09 reference binding admits invoicing only when explicitly enabled,
 selected and ready. Server startup checks an explicitly supplied invoicing
 binding before opening its listener and mounts no invoice routes or schedules.

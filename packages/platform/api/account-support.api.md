@@ -386,6 +386,9 @@ export type AccountSupportCapability<Code extends string> = {
     supported: false;
     refusalCode: Code;
 };
+export type AccountSupportLaneUnavailable<Code extends string> = Extract<AccountSupportCapability<Code>, {
+    supported: false;
+}>;
 /** Explicit driver selections; importing the module installs no capability. */
 export interface AccountSupportCapabilities {
     graph: "managed" | "native";
@@ -404,7 +407,8 @@ export interface AccountSupportCapabilities {
 ## dist/account-support/contracts/commands.d.ts
 
 ```ts
-import type { AccountSupportCapabilities } from "./capabilities.js";
+import type { CustomerContext } from "./account.js";
+import type { AccountSupportCapabilities, AccountSupportLaneUnavailable } from "./capabilities.js";
 /** Local transcriptions of owner contracts; portFit checks equality against the owners. */
 export interface SubscriptionCommandContext {
     actor: {
@@ -511,33 +515,40 @@ export interface NativeSubscriptionCommand {
     now: string;
 }
 /** Driver DTOs are explicit type arguments, never a claim that all graphs implement them. */
-export interface SelfServiceCommandFacade<ManagedRequest, ManagedPreviewRequest, ManagedPreview, ManagedReceipt, ProfileRequest, ProfileResult, MethodRequest, MethodResult, CommerceRequest, CommerceResult, RecoveryRequest, RecoveryResult> {
+export interface SelfServiceCommandFacade<ManagedRequest, ManagedPreviewRequest, ManagedPreview, ManagedReceipt, ProfileRequest, ProfileResult, MethodRequest, MethodResult, CommerceRequest, CommerceResult, RecoveryRequest, RecoveryResult, ControlSnapshot = unknown> {
     capabilities: AccountSupportCapabilities;
     managedSubscription: {
-        previewAction(userId: string, request: ManagedPreviewRequest): Promise<ManagedPreview | null>;
-        applyAction(userId: string, request: ManagedRequest): Promise<ManagedReceipt | null>;
+        previewAction(userId: string, request: ManagedPreviewRequest): Promise<ManagedPreview | null | AccountSupportLaneUnavailable<"host_binding_required">>;
+        applyAction(userId: string, request: ManagedRequest): Promise<ManagedReceipt | null | AccountSupportLaneUnavailable<"host_binding_required">>;
+    };
+    nativeLegacySubscription: {
+        previewAction(userId: string, request: ManagedPreviewRequest): Promise<ManagedPreview | null | AccountSupportLaneUnavailable<"host_binding_required">>;
+        applyAction(userId: string, request: ManagedRequest): Promise<ManagedReceipt | null | AccountSupportLaneUnavailable<"host_binding_required">>;
+    };
+    subscriptionControl: {
+        getSnapshot(userId: string): Promise<ControlSnapshot | AccountSupportLaneUnavailable<"host_binding_required">>;
     };
     nativeRawSubscription: {
-        preview(command: NativeSubscriptionCommand): Promise<Record<string, unknown>>;
-        apply(command: NativeSubscriptionCommand): Promise<Record<string, unknown>>;
+        preview(command: NativeSubscriptionCommand): Promise<Record<string, unknown> | AccountSupportLaneUnavailable<"host_binding_required">>;
+        apply(command: NativeSubscriptionCommand): Promise<Record<string, unknown> | AccountSupportLaneUnavailable<"host_binding_required">>;
     };
     nativeSubscription: {
-        apply(command: SubscriptionCommand): Promise<SubscriptionCommandReceipt | SubscriptionCommandRefusal | SubscriptionUnsupported>;
+        apply(command: SubscriptionCommand): Promise<SubscriptionCommandReceipt | SubscriptionCommandRefusal | SubscriptionUnsupported | AccountSupportLaneUnavailable<"host_binding_required">>;
         preview(command: Extract<SubscriptionCommand, {
             action: "edit_future_terms";
-        }>): Promise<Record<string, unknown> | SubscriptionCommandRefusal>;
+        }>): Promise<Record<string, unknown> | SubscriptionCommandRefusal | AccountSupportLaneUnavailable<"host_binding_required">>;
     };
     profile: {
-        updateProfile(userId: string, request: ProfileRequest): Promise<ProfileResult | null>;
+        updateProfile(userId: string, request: ProfileRequest): Promise<ProfileResult | null | AccountSupportLaneUnavailable<"host_binding_required">>;
     };
     paymentMethod: {
-        execute(userId: string, request: MethodRequest): Promise<MethodResult>;
+        execute(userId: string, request: MethodRequest): Promise<MethodResult | AccountSupportLaneUnavailable<"unsupported">>;
     };
     commerce: {
-        execute(userId: string, request: CommerceRequest): Promise<CommerceResult>;
+        execute(userId: string, request: CommerceRequest): Promise<CommerceResult | AccountSupportLaneUnavailable<"host_binding_required">>;
     };
     recovery: {
-        startPaymentRecovery(userId: string, request: RecoveryRequest): Promise<RecoveryResult | null>;
+        startPaymentRecovery(userId: string, request: RecoveryRequest): Promise<RecoveryResult | null | AccountSupportLaneUnavailable<"host_binding_required">>;
     };
 }
 export interface AccountSupportMoney {
@@ -600,6 +611,109 @@ export interface LegacySubscriptionPreviewResponse {
         };
     };
 }
+/** Already resolved host request. The codec never supplies policy or catalogue fields. */
+export interface LegacySubscriptionRequest<Action extends string = string, Payload extends Record<string, unknown> = Record<string, unknown>> {
+    subscriptionId: string;
+    idempotencyKey: string;
+    action: Action;
+    payload: Payload;
+}
+export interface RawSubscriptionCommands {
+    preview(command: NativeSubscriptionCommand): Promise<Record<string, unknown>>;
+    apply(command: NativeSubscriptionCommand): Promise<Record<string, unknown>>;
+}
+/** Only checked native quote records reach a host projection. */
+export interface NativeSubscriptionPreview extends Record<string, unknown> {
+    status: "previewed";
+    canApply: true;
+    templateVersion: number;
+    quoteHash: string;
+    quoteExpiresAt: string;
+    currentTotalMinor: number;
+    newTotalMinor: number;
+    lines: {
+        variantId: string;
+        quantity: number;
+        isAddon: boolean;
+        sortOrder: number;
+        unitPriceMinor: number;
+        currency: string;
+    }[];
+    priceAgreementPolicy: {
+        kind: "lock_until_edit";
+        proration: "none";
+        cycleEffect: "future_unlocked_cycles_only";
+    };
+}
+export type NativePreviewProjection<Preview> = {
+    kind: "projected";
+    preview: Preview;
+} | {
+    kind: "owner";
+    result: Record<string, unknown>;
+};
+export interface SubscriptionDriver<Request, Preview, Receipt> {
+    preview(context: CustomerContext, request: Request): Promise<Preview>;
+    apply(context: CustomerContext, request: Request): Promise<Receipt>;
+}
+/** Browser-safe transcription of M07 collection; instantiate with its branded handoff. */
+export interface MethodSetupInput {
+    customer: string;
+    metadata: Record<string, string>;
+    idempotencyKey: string;
+}
+export type MethodSetupResult<Handoff> = {
+    kind: "ready";
+    setupRef: string;
+    handoff: Handoff;
+    replayed: boolean;
+} | {
+    kind: "unsupported";
+};
+export interface MethodSetupPort<Handoff> {
+    setupMethod(input: MethodSetupInput): Promise<MethodSetupResult<Handoff>>;
+}
+/** Host parts retain repricing, quote validation, authorization and error construction. */
+export interface NativeLegacySubscriptionParts<Request, PreviewRequest, Preview, Receipt, ControlSnapshot = unknown> {
+    explicitPause: {
+        applyAction(userId: string, request: Request): Promise<Receipt | null>;
+    };
+    control: LegacySubscriptionPort<Request, PreviewRequest, Preview, Receipt> & {
+        hasSubscription(userId: string, subscriptionId: string): Promise<boolean>;
+        getSnapshot(userId: string): Promise<ControlSnapshot>;
+    };
+    ownershipRefusal(): unknown;
+}
+export interface LegacySubscriptionPort<Request, PreviewRequest, Preview, Receipt> {
+    previewAction(userId: string, request: PreviewRequest): Promise<Preview | null>;
+    applyAction(userId: string, request: Request): Promise<Receipt | null>;
+}
+/** The host supplies capabilities and explicitly selects each owner lane. */
+export type SelfServiceCommandFacadeInput<Request, PreviewRequest, Preview, Receipt, ProfileRequest, ProfileResult, MethodRequest, MethodResult, CommerceRequest, CommerceResult, RecoveryRequest, RecoveryResult, ControlSnapshot = unknown> = {
+    context: CustomerContext;
+    capabilities: AccountSupportCapabilities;
+    managedSubscription?: LegacySubscriptionPort<Request, PreviewRequest, Preview, Receipt>;
+    nativeLegacySubscription?: NativeLegacySubscriptionParts<Request, PreviewRequest, Preview, Receipt, ControlSnapshot>;
+    nativeRawSubscription?: RawSubscriptionCommands;
+    nativeSubscription?: {
+        apply(command: SubscriptionCommand): Promise<SubscriptionCommandReceipt | SubscriptionCommandRefusal | SubscriptionUnsupported>;
+        preview(command: Extract<SubscriptionCommand, {
+            action: "edit_future_terms";
+        }>): Promise<Record<string, unknown> | SubscriptionCommandRefusal>;
+    };
+    profile?: {
+        updateProfile(userId: string, request: ProfileRequest): Promise<ProfileResult | null>;
+    };
+    paymentMethod?: {
+        execute(userId: string, request: MethodRequest): Promise<MethodResult>;
+    };
+    commerce?: {
+        execute(userId: string, request: CommerceRequest): Promise<CommerceResult>;
+    };
+    recovery?: {
+        startPaymentRecovery(userId: string, request: RecoveryRequest): Promise<RecoveryResult | null>;
+    };
+};
 ```
 ## dist/account-support/contracts/customer360.d.ts
 
@@ -768,6 +882,8 @@ export type { SubscriptionCommandContext, SubscriptionCommand, SubscriptionBundl
 export type { OperatorSubscriptionAction, OperatorNewShippingAddress, OperatorShippingAddressPayload, OperatorSubscriptionPayload, OperatorSubscriptionRefusal, RecoveryRefusal, EmailCorrectionRefusal, PhoneCorrectionRefusal, LeadRefusal, OperatorContactCommand, OperatorLeadCommand, OperatorRecoveryCommand, OperatorRecoveryCommandEnvelope, OperatorSubscriptionResult } from "./operator.js";
 export type { InvoiceDocumentIdentity, InvoiceUnsupported, InvoiceClearanceState, InvoiceAccessPort, CustomerDocumentDeliveryStatus, CustomerInvoiceDocumentRole, CustomerInvoiceDownloadArtifact, CustomerInvoiceDownloadRequest, AccountInvoiceHistoryResult, AccountInvoiceHistoryDocument } from "./invoice.js";
 export type { AccountSupportCapability, AccountSupportCapabilities } from "./capabilities.js";
+export type { LegacySubscriptionRequest, RawSubscriptionCommands, NativeSubscriptionPreview, NativePreviewProjection, SubscriptionDriver, MethodSetupInput, MethodSetupResult, MethodSetupPort, NativeLegacySubscriptionParts, LegacySubscriptionPort, SelfServiceCommandFacadeInput } from "./commands.js";
+export type { AccountSupportLaneUnavailable } from "./capabilities.js";
 ```
 ## dist/account-support/contracts/invoice.d.ts
 
@@ -1091,6 +1207,9 @@ export { SUPPORT_CUSTOMER_360_CONTRACT_VERSION, projectCustomer360Snapshot, deri
 export type { Customer360ProjectionInput, Customer360ProjectionPolicy, ContactHealthDelivery, CustomerJourneyAuditEvent } from "./customer360.js";
 export { createInvoiceAccess, downloadOwnedInvoicePdf, deriveCustomerDocumentDeliveryStatus } from "./invoiceAccess.js";
 export type { InvoiceOwnerAccessPort, InvoiceArtifactDownloadPort, InvoiceAccessOptions, CustomerInvoiceDocumentStatusInput } from "./invoiceAccess.js";
+export { createSelfServiceCommandFacade } from "./selfService.js";
+export { encodeNativeSubscriptionCommand, decodeNativeSubscriptionPreview, createNativeSubscriptionDriver } from "./subscriptionCommandCodec.js";
+export { createPaymentMethodComposition } from "./paymentMethodComposition.js";
 ```
 ## dist/account-support/invoiceAccess.d.ts
 
@@ -1206,6 +1325,39 @@ export declare function customerOrderMoney(value: unknown, currency: string): {
 export declare function toOrderMoneyHeader(row: Row): OrderMoneyHeaderRow;
 export declare function toOrderMoneyItem(row: Row): OrderMoneyItemRow;
 export {};
+```
+## dist/account-support/paymentMethodComposition.d.ts
+
+```ts
+import type { MethodSetupInput, MethodSetupPort, MethodSetupResult } from "./contracts/index.js";
+/** M07 collection only; ready, replayed and unsupported remain the owner's result. */
+export declare function createPaymentMethodComposition<Handoff>(port: MethodSetupPort<Handoff>): {
+    execute(userId: string, request: MethodSetupInput): Promise<MethodSetupResult<Handoff>>;
+};
+```
+## dist/account-support/selfService.d.ts
+
+```ts
+import type { SelfServiceCommandFacade, SelfServiceCommandFacadeInput } from "./contracts/index.js";
+/** Neutral per-request graph selection. The host supplies all owner implementations. */
+export declare function createSelfServiceCommandFacade<Request extends {
+    subscriptionId: string;
+    action: string;
+}, PreviewRequest, Preview, Receipt, ProfileRequest, ProfileResult, MethodRequest, MethodResult, CommerceRequest, CommerceResult, RecoveryRequest, RecoveryResult, ControlSnapshot = unknown>(input: SelfServiceCommandFacadeInput<Request, PreviewRequest, Preview, Receipt, ProfileRequest, ProfileResult, MethodRequest, MethodResult, CommerceRequest, CommerceResult, RecoveryRequest, RecoveryResult, ControlSnapshot>): SelfServiceCommandFacade<Request, PreviewRequest, Preview, Receipt, ProfileRequest, ProfileResult, MethodRequest, MethodResult, CommerceRequest, CommerceResult, RecoveryRequest, RecoveryResult, ControlSnapshot>;
+```
+## dist/account-support/subscriptionCommandCodec.d.ts
+
+```ts
+import type { CustomerContext, LegacySubscriptionRequest, NativePreviewProjection, NativeSubscriptionCommand, NativeSubscriptionPreview, RawSubscriptionCommands, SubscriptionDriver } from "./contracts/index.js";
+/** Encode only verified identity and the host's resolved request; no verb aliases. */
+export declare function encodeNativeSubscriptionCommand<Action extends string, Payload extends Record<string, unknown>>(context: CustomerContext, request: LegacySubscriptionRequest<Action, Payload>, now: string): NativeSubscriptionCommand;
+export declare function decodeNativeSubscriptionPreview<Preview>(result: Record<string, unknown>, project: (record: NativeSubscriptionPreview) => Preview): NativePreviewProjection<Preview>;
+/** Preview and apply are separate transactions. Apply never creates a quote. */
+export declare function createNativeSubscriptionDriver<Action extends string, Payload extends Record<string, unknown>, Preview>(input: {
+    owner: RawSubscriptionCommands;
+    now(): string;
+    previewProjection(record: NativeSubscriptionPreview): Preview;
+}): SubscriptionDriver<LegacySubscriptionRequest<Action, Payload>, NativePreviewProjection<Preview>, Record<string, unknown>>;
 ```
 ## dist/commerce/contracts/availability.d.ts
 

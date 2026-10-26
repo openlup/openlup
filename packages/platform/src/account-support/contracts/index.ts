@@ -92,3 +92,17 @@ export type {
   AccountInvoiceHistoryDocument
 } from "./invoice.js";
 export type { AccountSupportCapability, AccountSupportCapabilities } from "./capabilities.js";
+export type {
+  LegacySubscriptionRequest,
+  RawSubscriptionCommands,
+  NativeSubscriptionPreview,
+  NativePreviewProjection,
+  SubscriptionDriver,
+  MethodSetupInput,
+  MethodSetupResult,
+  MethodSetupPort,
+  NativeLegacySubscriptionParts,
+  LegacySubscriptionPort,
+  SelfServiceCommandFacadeInput
+} from "./commands.js";
+export type { AccountSupportLaneUnavailable } from "./capabilities.js";

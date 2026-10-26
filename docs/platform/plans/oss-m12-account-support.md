@@ -277,8 +277,97 @@ are ID-3 generated companions, making the bounded total 35 + 9 = 44 paths.
 
 ## R3: self-service composition
 
-TODO: owner preview/apply, accepted quotes and receipts, separate native pause,
-payment-method/repair/profile delegates. Preview must never authorize execution.
+R3 composes the existing donor routing behind `createSelfServiceCommandFacade`.
+It returns the instantiated R1 `SelfServiceCommandFacade` exactly. Every returned
+lane guards the host-verified principal; typed/raw commands require the supplied
+clientId to match context.clientId (missing, undefined, null or foreign refuses
+before any owner call).
+Owner results, nulls and errors pass through by identity. Preview never authorizes
+execution; apply never previews or supplies payload fields or keys.
+
+ENV-R3-1 (integrator ID-9) is the approved envelope delta against R1:
+
+- Before: required `capabilities`, `managedSubscription`, `nativeRawSubscription`,
+  `nativeSubscription`, `profile`, `paymentMethod`, `commerce`, `recovery`.
+- After: required `capabilities: AccountSupportCapabilities` and every output
+  lane: `managedSubscription`, `nativeLegacySubscription`, `subscriptionControl`,
+  `nativeRawSubscription`, `nativeSubscription`, `profile`, `paymentMethod`,
+  `commerce`, `recovery`. R1's generic order, member names and parameter lists
+  remain. Each method's prior result union adds `AccountSupportLaneUnavailable`:
+  `"unsupported"` for paymentMethod, `"host_binding_required"` for every other
+  lane. This is the unsupported arm of `AccountSupportCapability`, with exactly
+  `{ supported: false, refusalCode }`. Input lanes remain optional; absent means
+  not selected. nativeLegacySubscription uses managed previewAction/applyAction
+  DTOs; subscriptionControl exposes getSnapshot(userId). The trailing defaulted
+  generic `ControlSnapshot = unknown` retains the host snapshot type, including
+  nullability; getSnapshot now returns `Promise<ControlSnapshot |
+  AccountSupportLaneUnavailable<"host_binding_required">>`. Existing twelve-argument
+  consumers retain their parameter lists and trailing default.
+
+Every method guards the principal before returning an unselected-lane refusal.
+PaymentMethod returns the host paymentMethodSetup refusal by identity; commerce
+returns commerceRecovery by identity. Other lanes use one frozen
+host_binding_required constant. Supported paymentMethodSetup requires paymentMethod;
+supported commerceRecovery/configuredPurchase require commerce. Supported
+subscriptions.genericBundleCommands or commandBoundReceipts requires at least one
+selected managed, native legacy, native raw or native typed command lane.
+Support claims without a selected lane and incomplete selected
+lanes refuse customer_self_service_lane_configuration_required. Graph mismatch
+refuses configuration.
+
+Scope: package-only composition in donor order, with repricing, quote policy,
+authorization and error construction injected by the host. No browser extraction
+or activation. The raw M10 preview projection is checked before a host sees it.
+Account-support source imports no owner types, so the module-graph entry stays
+unchanged; installed command proof follows both entry points' JavaScript and
+declaration imports. Imports stay inside account-support or reach only the exact
+entry files of its declared module edges and the package's declared dependencies.
+
+Native routing preserves the donor transcript: principal mismatch calls nothing;
+pause calls explicit pause only; update_bundle canonicalizes the ID and reads
+hasSubscription before quote validation, throwing the host refusal when absent;
+owned bundle edits call control; other actions keep control's refusal. Preview
+and snapshot call their control methods. Neutral fixtures correspond to the donor's
+customerSubscriptionPauseBinding ownership/pause/control cases. The default-off
+reference binding mounts nothing. A45/A46 remain byte-identical reference handlers.
+
+The smallest adequate composition delegates directly to existing owners and
+uses local contract transcriptions; no owner type graph or module-graph edge is
+needed. Packaged owner equality/fit runs in ownerRefusals; reference-source action,
+preview, control, explicit-pause and bundle-control fit is executed with R1's tsc
+pattern in m12SelfServiceBinding.test.ts. R1 portFit and account-read binding tests
+remain unchanged and must pass.
+
+Budget: CD-7 replaces the earlier case caps; the M12 ceiling is the measured
+executed total, reported at S1. C1–C5 use separate cases for independent input/state rows;
+only one behavior sequence shares a case. C7–C9 are three real-PG cases through
+the facade, codec and native M10 store. C10 extends the existing installed consumer:
+JavaScript/declaration imports stay inside account-support or reach only the exact
+entry files of its declared module edges and the package's declared dependencies.
+C11 still removes its callable. Measured counts
+and per-file seconds are recorded with the module's stack record.
+
+The unchanged API generator leaves two sibling snapshots changed from final R1:
+`commerce-server.api.md` and `commerce.api.md` under `packages/platform/api/`.
+These are disclosed generated companions: member order only, no
+declaration change, proven by AST comparison normalizing union/enum member order.
+
+R5 still owns native browser key retention and selecting existing host delegates.
+Native profile/recovery start have no selected implementation; method setup only
+collects a transient handoff. Results and refusals remain owner-owned.
+
+### Follow-up register
+
+- D1 — `server/adapters/postgres/customerSubscriptionControl.ts:99`: omitted native legacy addonLines become []; donor-identical; not fixed in R3.
+- D2 — `server/adapters/supabase/customerSelfServiceIdempotency.ts:32`, `db/platform/migrations/20260808120000_subscription_lifecycle_rail.sql:254`: legacy replay lacks full-command conflict/immutable response; donor-identical; not fixed in R3.
+- D3 — `server/adapters/supabase/customerSubscriptionFacade.ts:142`: recovery start ignores the idempotency key and rotates before separate requeue; donor-identical; not fixed in R3.
+- D4 — `server/adapters/supabase/customerSelfService.ts:102`: profile update precedes the separate event write; donor-identical; not fixed in R3.
+
+- M12-R3-F1 — native repair authorizeRecovery/scheduleRecovery composition:
+  registered follow-up, not a cut. The donor native account graph does not serve
+  repair; adding this lane would introduce behavior. It requires separate scope,
+  authority and owner proof. R1 recovery.startPaymentRecovery remains a guarded host pass-through when
+  selected and otherwise returns host_binding_required. A45/A46 token routes stay in reference source.
 
 ## R4: operator recovery
 

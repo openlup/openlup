@@ -1075,3 +1075,30 @@ requires `authorize(): Promise<boolean>` before every method's source read.
 Refused callers receive `{ kind: "denied" }`; authorized delegates preserve
 arguments, results, nulls and thrown failures. The reference binding supplies
 that authorization once per call, before opening either support scope.
+
+The [account/support reference](../../docs/platform/PLATFORM_PACKAGE_REFERENCE.md#account-and-support-contracts)
+owns the available R1 boundary and later-phase limits.
+
+
+R3 adds `createSelfServiceCommandFacade({ context, capabilities, ...lanes })`,
+returning `SelfServiceCommandFacade` with required host capabilities and every
+managedSubscription, nativeLegacySubscription, subscriptionControl, typed/raw,
+profile, paymentMethod, commerce and recovery output lane. Input lanes are optional.
+Unselected methods return `{ supported: false, refusalCode }`; paymentMethod uses
+the host paymentMethodSetup refusal by identity, commerce uses commerceRecovery,
+and other lanes use a frozen host_binding_required refusal. Every lane guards
+the principal; typed/raw lanes require a supplied clientId equal to context.clientId.
+The trailing `ControlSnapshot = unknown` generic retains the control snapshot type.
+Native legacy routing preserves
+explicit pause and ownership before bundle quote validation. Owner results,
+refusals and nulls retain identity. Supported paymentMethodSetup requires a
+paymentMethod lane; supported commerceRecovery/configuredPurchase require commerce.
+Supported genericBundleCommands/commandBoundReceipts require a selected subscription
+command lane. Missing required lanes refuse customer_self_service_lane_configuration_required.
+`encodeNativeSubscriptionCommand`, `decodeNativeSubscriptionPreview` and
+`createNativeSubscriptionDriver` retain the raw owner protocol and apply key;
+apply never previews. `createPaymentMethodComposition` adapts generic M07
+setupMethod to paymentMethod.execute without owner imports. Native repair is a
+[registered follow-up](../../docs/platform/plans/oss-m12-account-support.md#follow-up-register).
+The default-off reference binding mounts nothing; browser key retention and
+native profile/start remain unselected.

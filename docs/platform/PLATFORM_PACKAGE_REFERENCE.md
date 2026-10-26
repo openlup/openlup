@@ -894,3 +894,50 @@ The support binding's independent diagnostic selection exposes `searchDiagnostic
 `history` (segment read) and `overview` with the existing typed versions, filters
 and cursors. Authorization and machine-read governance precede diagnostic scope
 entry; the trusted actor supplies `operatorId`. No journey scope is required.
+
+For self-service, call `createSelfServiceCommandFacade({ context, capabilities, ...lanes })`.
+It returns `SelfServiceCommandFacade` with host-supplied `AccountSupportCapabilities`.
+Input lanes are optional; absent means not selected. Every output lane is callable. `paymentMethodSetup` requires
+`paymentMethod` when supported; `commerceRecovery` and `configuredPurchase` require
+`commerce`. Supported subscriptions.genericBundleCommands/commandBoundReceipts
+require at least one selected managed/native legacy/raw/typed command lane.
+Missing required lanes and incomplete selected lanes refuse with
+`customer_self_service_lane_configuration_required`. Unselected methods return
+`AccountSupportLaneUnavailable<Code>`, the `{ supported: false, refusalCode }` arm
+of `AccountSupportCapability`. PaymentMethod uses paymentMethodSetup by identity;
+commerce uses commerceRecovery by identity. Every other lane uses the same frozen
+host_binding_required refusal. The principal guard runs before these refusals.
+Each returned lane verifies the principal before calling its owner; raw/typed
+commands require the supplied clientId to equal context.clientId, refusing
+omitted, undefined, null or foreign values before any owner call. A mismatched
+graph refuses configuration.
+
+`managedSubscription` delegates to the managed owner. `nativeLegacySubscription`
+accepts `explicitPause`, `control` (including hasSubscription/getSnapshot) and
+`ownershipRefusal`. Its update_bundle path canonicalizes the subscription ID before
+ownership lookup, then delegates to control; absent ownership throws the host's
+refusal before quote validation. Pause uses only explicitPause; other actions
+retain control's own refusal. Preview delegates to control preview, while
+`subscriptionControl.getSnapshot` delegates to control snapshot. The trailing
+`ControlSnapshot = unknown` generic preserves the host snapshot type, including
+its nullability, through the facade, input/parts and reference binding. Explicit
+`nativeSubscription` and `nativeRawSubscription` lanes retain M10's typed and raw
+results. `profile.updateProfile`, `paymentMethod.execute`, `commerce.execute` and
+`recovery.startPaymentRecovery` preserve owner results, nulls and errors.
+
+`encodeNativeSubscriptionCommand(context, request, now)` accepts an already
+resolved `LegacySubscriptionRequest`. `createNativeSubscriptionDriver` copies the
+preview payload to remove acceptedQuoteHash while preserving the original apply
+payload and key. `decodeNativeSubscriptionPreview` validates native quote fields
+before `previewProjection`; non-preview owner records pass through in the owner
+arm by identity. No legacy currency, cutoff, address or method facts are invented.
+
+`createPaymentMethodComposition(port)` adapts the generic `MethodSetupPort<Handoff>`
+from M07 setupMethod to paymentMethod.execute(userId, request); its principal guard
+is supplied by the facade. Ready/unsupported/replayed values remain unchanged.
+Collection never redeems or charges. A45/A46 token handlers remain in reference
+source. Native repair authorization/scheduling is a
+[registered follow-up](plans/oss-m12-account-support.md#follow-up-register).
+The [default-off recipe](RUNTIME_AND_SELF_HOSTING.md#opt-in-disposable-subscription-reference)
+selects no browser route; native profile/start and browser key retention remain
+R5 limits.
