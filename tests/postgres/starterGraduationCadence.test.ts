@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { Pool, type PoolClient } from "pg";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { assertManagedCommerceForward, batchedFunctionDefinitions, readReviewedForwardRegistry, sqlSha256, sqlStatements } from "../../scripts/reviewed-platform-forward.js";
@@ -11,7 +11,8 @@ import { closePostgres, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, runPo
 const registry = readReviewedForwardRegistry(readFileSync("config/reviewed-platform-forwards.json"));
 const commerce = registry.managedCommerceForwards!;
 const ninth = commerce.at(-1)!;
-const forward = readFileSync(`scripts/fixtures/reviewed-m11/${ninth.path}`, "utf8");
+const forward = readFileSync(ninth.path, "utf8");
+expect(forward).toBe(readFileSync(`scripts/fixtures/reviewed-m11/${ninth.path}`, "utf8"));
 const original = new Map<string, string>();
 let container: PostgresContainer | undefined;
 let pool: Pool;
@@ -33,8 +34,8 @@ beforeAll(async () => {
   const sources = reviewedBatchPaths(process.cwd(), "supabase/migrations", [...managedM10, ...commerce])
     .filter(path => path < ninth.path).map(path => {
       const pin = commerce.find(pin => pin.path === path);
-      const bytes = readFileSync(pin ? `scripts/fixtures/reviewed-m11/${path}` : path);
-      if (pin && existsSync(path)) expect(readFileSync(path), path).toEqual(bytes);
+      const bytes = readFileSync(path);
+      if (pin) expect(bytes, path).toEqual(readFileSync(`scripts/fixtures/reviewed-m11/${path}`));
       return { path, bytes };
     });
   expect(sqlSha256(sources[0]!.bytes)).toBe(registry.baselineSha256);
@@ -55,13 +56,14 @@ beforeAll(async () => {
     prior.push(source);
   }
   assertManagedCommerceForward(registry, ninth.path, Buffer.from(forward), prior);
+  await db.query(forward);
 }, postgresSetupTimeoutMs);
 afterAll(async () => { db?.release(); await closePostgres(container, pool); }, postgresTeardownTimeoutMs);
 
 async function scoped(action: () => Promise<void>, install = true) {
   await db.query("BEGIN");
   try {
-    if (install) await db.query(forward);
+    if (!install) for (const definition of original.values()) await db.query(definition.replace(/^CREATE FUNCTION /u, "CREATE OR REPLACE FUNCTION "));
     await action();
   } finally { await db.query("ROLLBACK"); }
 }

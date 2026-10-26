@@ -9,12 +9,8 @@ const migration = [effectiveFunctionBody("commerce_finalize_order_for_checkout")
 
 describe("hidden checkout runtime boundary", () => {
   it("adds pet-aware order finalize as additive hidden infrastructure only", () => {
-    for (const required of [
-      "pet_id uuid",
-      "CREATE FUNCTION public.commerce_finalize_order_for_checkout",
-    ]) {
-      expect(migration).toContain(required);
-    }
+    expect(migration).toContain("pet_id uuid");
+    expect(migration).toMatch(/CREATE (?:OR REPLACE )?FUNCTION public\.commerce_finalize_order_for_checkout\b/);
     for (const roles of explicitFunctionExecuteRoles("commerce_finalize_order_for_checkout").values()) {
       expect(roles.has("service_role")).toBe(true);
       for (const role of ["PUBLIC", "anon", "authenticated"]) expect(roles.has(role)).toBe(false);

@@ -872,22 +872,24 @@ and the invoicing payment-terminal accounting block.
 Managed correction recovery, lock coupling, trigger admission, seller eligibility and migration ordering are owned by [M09 forward design](DATA_AND_MIGRATIONS.md#m09-invoicing-forward-design-and-control-approval).
 Self-check and release share the admission checker and the canonical
 [co-located SQL/pin rule](DATA_AND_MIGRATIONS.md#co-located-sql-and-approval-pins).
-The separate `managedCommerceForwards` list in
-`config/reviewed-platform-forwards.json` pins nine M11 managed SQL fixtures: slots 1–8 each retain
-one function exactly as pinned, and slot 9 is the starter pair;
-[its data contract](DATA_AND_MIGRATIONS.md#exact-reviewed-function-forwards)
-owns headers, ACLs, preimages and ordered statements. The stock reader uses
-`SECURITY DEFINER` with pinned `search_path = pg_catalog, pg_temp` and permits
-execution only by `service_role`. Behaviour proofs run as that granted role;
-owner access serves setup and state inspection. The registry and real
-migration rails are authoritative. M11 versions follow every earlier same-rail
-pin; each pin requires all earlier same-rail pins present with exact bytes.
-Later feature changes may introduce those bytes on the managed rail.
-Fixture proof does not establish handler behavior or authorize installation.
+The `managedCommerceForwards` registry binds the managed commerce SQL to the
+matching files under `scripts/fixtures/reviewed-m11/` and `supabase/migrations/`.
+The registry and real migration rails are authoritative. Each pin requires all
+earlier same-rail pins with exact bytes. Tests select each real file once,
+compare it with its fixture and replay its complete real prefix. Hole, byte-drift,
+header, ACL and catalog refusals preserve that boundary.
+The stock reader uses `SECURITY DEFINER` with pinned
+`search_path = pg_catalog, pg_temp` and permits execution only by `service_role`.
+Behaviour proofs run as that granted role; owner access serves setup and state
+inspection. The [data contract](DATA_AND_MIGRATIONS.md#exact-reviewed-function-forwards)
+owns exact headers, ACLs, preimages, ordered statements and migration actions.
 Existing control histories remain valid; later repins cannot authorize earlier SQL.
-This is a separately reviewed preview admission class, not expand-only or a live
-database compatibility proof; see
-[Data and migrations](DATA_AND_MIGRATIONS.md#exact-reviewed-function-forwards).
+Database proof does not establish handler behavior or authorize installation.
+
+Migration: managed checkout preference scope, return ownership and normalized
+replay, payment-link audit receipts, acquisition finalize admission and terms
+reading, new-purchase ATP and starter graduation follow the compatibility actions
+in [Data and migrations](DATA_AND_MIGRATIONS.md#exact-reviewed-function-forwards).
 
 While `@openlup/core` is below 1.0, every `@openlup/*` package is released in
 one set version `0.N.P` from one commit, each package with its own tag

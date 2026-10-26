@@ -6,18 +6,22 @@ BEGIN;
 SELECT plan(11);
 
 -- Seed a returnable paid order with one line (qty 3). Only metadata lacks a default.
-INSERT INTO public.commerce_orders (id, status, metadata)
-VALUES ('11110000-0000-0000-0000-0000000000a1', 'paid', '{}'::jsonb);
+-- Return commands require the server-proved principal's owned order.
+INSERT INTO auth.users(id) VALUES ('11110000-0000-0000-0000-0000000000d1');
+INSERT INTO public.clients(id,email,auth_user_id)
+VALUES ('11110000-0000-0000-0000-0000000000e1','return-1111@example.invalid','11110000-0000-0000-0000-0000000000d1');
+INSERT INTO public.commerce_orders (id, client_id, status, metadata)
+VALUES ('11110000-0000-0000-0000-0000000000a1', '11110000-0000-0000-0000-0000000000e1', 'paid', '{}'::jsonb);
 INSERT INTO public.commerce_order_items (id, order_id, quantity, unit_price_cents, total_cents, discount_allocated_cents, effective_total_cents, effective_net_cents, product_snapshot, variant_snapshot)
 VALUES ('11110000-0000-0000-0000-0000000000b1', '11110000-0000-0000-0000-0000000000a1', 3, 1490, 4470, 0, 4470, round((4470)::numeric * 10000 / (10000 + (800)::integer))::integer,
-        '{"sku":"OPENLUP-DOG-LAMB-CAN-400G"}'::jsonb, '{}'::jsonb);
+        '{"sku":"SYNTHETIC-RETURN"}'::jsonb, '{}'::jsonb);
 
 -- 1. Create opens a 'requested' return (replayed=false).
 SELECT is(
   public.commerce_return_request_create(
     'ret-idem-0000001', '11110000-0000-0000-0000-0000000000a1',
-    '[{"orderItemId":"11110000-0000-0000-0000-0000000000b1","sku":"OPENLUP-DOG-LAMB-CAN-400G","quantity":2}]'::jsonb,
-    'damaged', 'box crushed', NULL) ->> 'status',
+    '[{"orderItemId":"11110000-0000-0000-0000-0000000000b1","sku":"SYNTHETIC-RETURN","quantity":2}]'::jsonb,
+    'damaged', 'box crushed', '11110000-0000-0000-0000-0000000000d1') ->> 'status',
   'requested', 'create opens a requested return');
 
 -- 2. Exactly one return line persisted.
@@ -31,8 +35,8 @@ SELECT is(
 SELECT is(
   public.commerce_return_request_create(
     'ret-idem-0000001', '11110000-0000-0000-0000-0000000000a1',
-    '[{"orderItemId":"11110000-0000-0000-0000-0000000000b1","sku":"OPENLUP-DOG-LAMB-CAN-400G","quantity":2}]'::jsonb,
-    'damaged', 'box crushed', NULL) ->> 'replayed',
+    '[{"orderItemId":"11110000-0000-0000-0000-0000000000b1","sku":"SYNTHETIC-RETURN","quantity":2}]'::jsonb,
+    'damaged', 'box crushed', '11110000-0000-0000-0000-0000000000d1') ->> 'replayed',
   'true', 'create is idempotent on replay');
 SELECT is(
   (SELECT count(*)::int FROM public.commerce_return_requests WHERE order_id = '11110000-0000-0000-0000-0000000000a1'),
@@ -41,13 +45,13 @@ SELECT is(
 -- 4. Unknown order is rejected.
 SELECT throws_ok(
   $$ SELECT public.commerce_return_request_create('ret-idem-0000002', '99990000-0000-0000-0000-000000009999',
-       '[{"orderItemId":"11110000-0000-0000-0000-0000000000b1","quantity":1}]'::jsonb, 'damaged', NULL, NULL) $$,
+       '[{"orderItemId":"11110000-0000-0000-0000-0000000000b1","quantity":1}]'::jsonb, 'damaged', NULL, '11110000-0000-0000-0000-0000000000d1') $$,
   '22023', 'commerce_return_request_order_not_found', 'unknown order is rejected');
 
 -- 5. Quantity exceeding the ordered quantity is rejected.
 SELECT throws_ok(
   $$ SELECT public.commerce_return_request_create('ret-idem-0000003', '11110000-0000-0000-0000-0000000000a1',
-       '[{"orderItemId":"11110000-0000-0000-0000-0000000000b1","quantity":5}]'::jsonb, 'damaged', NULL, NULL) $$,
+       '[{"orderItemId":"11110000-0000-0000-0000-0000000000b1","quantity":5}]'::jsonb, 'damaged', NULL, '11110000-0000-0000-0000-0000000000d1') $$,
   '22023', 'commerce_return_request_quantity_exceeds_ordered', 'quantity over ordered is rejected');
 
 -- 6. Approve transitions requested -> approved.
@@ -79,7 +83,7 @@ SELECT throws_ok(
 -- 9. A fresh requested return can be rejected.
 SELECT public.commerce_return_request_create(
   'ret-idem-0000010', '11110000-0000-0000-0000-0000000000a1',
-  '[{"orderItemId":"11110000-0000-0000-0000-0000000000b1","quantity":1}]'::jsonb, 'changed_mind', NULL, NULL);
+  '[{"orderItemId":"11110000-0000-0000-0000-0000000000b1","quantity":1}]'::jsonb, 'changed_mind', NULL, '11110000-0000-0000-0000-0000000000d1');
 SELECT is(
   public.commerce_return_reject(
     'rej-key-00000010',

@@ -313,46 +313,45 @@ The suite needs local Docker and uses the shared container helper's pinned
 PostgreSQL 16 image. Run build-producing package checks serially because they
 share generated package directories.
 
-M11 managed-commerce fixtures under `scripts/fixtures/reviewed-m11/` are pinned by
-`managedCommerceForwards` in `config/reviewed-platform-forwards.json`. They cover checkout
-preference scope, return ownership, checkout audit receipts and the minimal
-acquisition-reader/admission/finalize closure, without policy seeds or setup
-writers. Legacy omitted-country fallback uses the configured platform region
-and refuses missing configuration; adopters set their own default.
-The class fixes nine slots: slots 1–8 each retain one function exactly as pinned;
-slot 9 is the starter pair. The seven checkout, return and acquisition entries
-retain their pinned slots, and the eighth is a single new-purchase stock reader
-(`public.inventory_new_purchase_stock_read(jsonb,timestamptz)`). It composes ATP
-with renewal exemption fixed false, caps requests at 200 array items and refuses
-a NULL as-of timestamp as `inventory_stock_as_of_invalid` (SQLSTATE `22023`).
-The reader runs with owner privileges through `SECURITY DEFINER` and pinned
+The `managedCommerceForwards` registry binds the managed commerce SQL to the
+matching files under `scripts/fixtures/reviewed-m11/` and `supabase/migrations/`.
+The registry and real migration rails are authoritative. Each pin requires all
+earlier same-rail pins with exact bytes. Tests select each real file once,
+compare it with its fixture and replay its complete real prefix. Hole, byte-drift,
+header, ACL and catalog refusals preserve that boundary.
+The new-purchase stock reader
+(`public.inventory_new_purchase_stock_read(jsonb,timestamptz)`) runs with owner
+privileges through `SECURITY DEFINER` and pinned
 `search_path = pg_catalog, pg_temp`; only `service_role` may execute it.
-Its ACL additionally revokes `openlup_mcp_reader`. Behaviour proofs call as
-`service_role`, with owner access reserved for setup and state inspection; they
-also prove function permission refusals for `anon`, `authenticated` and
-`openlup_mcp_reader`. Its conservative stale flag covers any stale provider row
-for the SKU, while the allocator retains its own stale refusal. The ninth slot replaces
-`subscription_create_provisional_for_checkout(uuid,uuid,uuid,uuid,jsonb)` and
-`subscription_apply_starter_graduation(uuid,text,text)` with independent preimages
-and ordered ACL pairs.
-The pins bind exact file/function/preimage/ordered statements, headers, ACLs and
-the audit CHECK preimage. The registry and real migration rails are authoritative.
-M11 versions follow every earlier same-rail pin; each pin requires all earlier
-same-rail pins present with exact bytes. Later feature changes may introduce those
-bytes on the managed rail. Tests use the registry and complete real managed prefix,
-include each earlier same-rail pin once, and append only absent M11 fixtures.
-They prove admission/refusals and catalog/ACL/CHECK changes with rollback. The
-`tests/postgres/starterGraduationCadence.test.ts` witness proves 21-day refusal
-without the ninth fixture, 14/21/28 admission with it in creation and both
-graduation modes, invalid-input refusal, replay and the subscription timezone
-default. The real
-PostgreSQL acquisition witness executes finalize with no policy and with configured
-policy: exact retained terms admit, missing/stale/engine-mismatched terms refuse
-without durable row changes, and a policy change refuses fresh acquisition while
-preserving completed replay. It also checks zero-write exact replay, one-time
-checkout and the shared/exclusive policy-lock protocol through rollback. Fixture
-proof does not establish handler integration, native return semantics or
-installation authority.
+Its ACL revokes `PUBLIC`, `anon`, `authenticated` and `openlup_mcp_reader`.
+Behaviour proofs call as `service_role`, with owner access reserved for setup
+and state inspection. They also prove function permission refusals for the
+denied roles. ATP renewal exemption is fixed false, requests are bounded to
+200 array items and a NULL as-of timestamp refuses as
+`inventory_stock_as_of_invalid` (SQLSTATE `22023`). Its conservative stale flag
+covers any stale provider row for the SKU; the allocator retains its stale refusal.
+
+The managed commerce witnesses in `tests/postgres/commerceManagedRail.test.ts`
+execute return ownership/replay and concurrent duplicate calls as `service_role`,
+compare complete public rows on refusal, and run the managed stock and starter
+pgTAP tests. Stock reads include hard holds, safety stock and protected renewal
+demand, with renewal exemption fixed false, bounded input and conservative stale
+reporting. The starter witness connects provisional creation to graduation and
+replay; `tests/postgres/starterGraduationCadence.test.ts` also checks the permitted
+cadences, invalid markers, timezone defaults and the predecessor's refusal.
+The catalog gate retains the acquisition finalize matrix under both policy states,
+atomic refusals, exact replay, one-time checkout and shared/exclusive locking.
+These database proofs do not establish handler integration or native parity.
+
+Migration: configurator guests may supply a destination without rewriting saved
+preferences; legacy omitted-country input uses `platform_region_code()` and
+requires the adopter's settlement-region configuration.
+
+Migration: return commands require the server-proved principal's owned order and
+an identical normalized command for replay. Subscription finalize retains effective
+acquisition terms under the policy lock; the terms reader refuses absent policy.
+The checkout receipt action, stock seam and starter compatibility actions are
+specified in [Data and migrations](docs/platform/DATA_AND_MIGRATIONS.md#exact-reviewed-function-forwards).
 
 The M10/F17 exact-forward controls use
 `scripts/reviewed-batch-forward.test.ts` for per-file refusal plants and separate

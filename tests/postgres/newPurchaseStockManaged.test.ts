@@ -7,7 +7,7 @@ import { imageReference, readCiImage } from "../../scripts/ci-image-pull.mjs";
 import { closePostgres, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, runPostgresContainer,
   waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
 
-const forward = "scripts/fixtures/reviewed-m11/supabase/migrations/20261025109000_inventory_new_purchase_stock_read.sql";
+const forward = "supabase/migrations/20261025109000_inventory_new_purchase_stock_read.sql";
 let container: PostgresContainer | undefined;
 let pool: Pool, db: PoolClient;
 let provider: string, location: string, asOf: string;
@@ -15,14 +15,16 @@ const calls: { name: string; args: Record<string, unknown> }[] = [];
 const reader = createManagedStockAvailability({ async rpc(name, args) {
   calls.push({ name, args });
   expect(name).toBe("inventory_new_purchase_stock_read");
-  return { data: await readStock(args.p_skus, args.p_as_of as string), error: null };
+  try { return { data: await readStock(args.p_skus, args.p_as_of as string), error: null }; }
+  catch (error) { return { data: null, error: error as { code: string; message: string } }; }
 } }, { now: () => asOf });
 
 beforeAll(async () => {
   const pin = readCiImage("managed-batch-postgres");
   container = await runPostgresContainer({ name: `f3-managed-${process.pid}`, password: "synthetic-conformance", image: imageReference(pin, pin.sources.at(-1)) });
   expect(await waitForPostgresTcpReady(container.connectionString)).toBe(true);
-  pool = new Pool({ connectionString: container.connectionString.replace("postgres://postgres:", "postgres://supabase_admin:"), max: 1 });
+  pool = new Pool({ connectionString: container.connectionString.replace("postgres://postgres:", "postgres://supabase_admin:"), max: 1,
+    connectionTimeoutMillis: 5_000, query_timeout: 30_000 });
   db = await pool.connect();
   await db.query(readFileSync("scripts/public-reference/subscription-prereqs.sql", "utf8"));
   for (const role of ["postgres", "supabase_admin"]) for (const scope of ["", " IN SCHEMA public"]) for (const kind of ["TABLES", "SEQUENCES", "FUNCTIONS"]) {
@@ -32,7 +34,7 @@ beforeAll(async () => {
   for (const name of readdirSync("supabase/migrations").filter(name => name.endsWith(".sql")).sort()) {
     await db.query(readFileSync(`supabase/migrations/${name}`, "utf8").replace(/^\\(?:un)?restrict [A-Za-z0-9]+\r?$/gmu, ""));
   }
-  await db.query(readFileSync(forward, "utf8"));
+  expect(readFileSync(forward)).toEqual(readFileSync(`scripts/fixtures/reviewed-m11/${forward}`));
   const definition = async (signature: string) => (await db.query("SELECT pg_get_functiondef($1::regprocedure) AS body", [signature])).rows[0].body as string;
   provider = /stock\.provider_kind='([^']+)'/u.exec(await definition("public.inventory_available_to_promise(uuid,timestamptz,boolean)"))![1];
   location = /WHERE code = '([^']+)'/u.exec(await definition("public.inventory_reserve_order(text,uuid,uuid,uuid,uuid,integer,text,text,timestamptz,jsonb,text)"))![1];
@@ -277,3 +279,25 @@ it("bounds raw JSON array items before deduplication and preserves read-only ser
   expect(await readStock([])).toEqual([]);
   expect((await readStock(["UNKNOWN"]))[0].source).toBe("missing");
 });
+
+
+it("propagates real managed SQL refusals through the stock port", async () => {
+  await expect(reader.read({ skus: Array(201).fill("SKU"), horizonDays: 14, excludeOrderId: null }))
+    .rejects.toMatchObject({ code: "22023", message: "inventory_stock_skus_limit_exceeded" });
+  expect(calls).toHaveLength(1);
+}, 30_000);
+
+it("the port witness rejects removal of protected renewal demand", async () => {
+  const f = await fixture();
+  await subscription(f, 6);
+  const witness = async () => expect(await preview(f)).toMatchObject({ available: 14, renewalDemand: 6 });
+  await witness();
+  const original = (await db.query("SELECT pg_get_functiondef('public.inventory_new_purchase_stock_read(jsonb,timestamptz)'::regprocedure) body")).rows[0].body as string;
+  expect(original).toContain("(sku.id,p_as_of,false)");
+  await db.query("SAVEPOINT stock_port_mutant");
+  try {
+    await db.query(original.replace("(sku.id,p_as_of,false)", "(sku.id,p_as_of,true)"));
+    await expect(witness()).rejects.toMatchObject({ name: "AssertionError" });
+  } finally { await db.query("ROLLBACK TO stock_port_mutant; RELEASE SAVEPOINT stock_port_mutant"); }
+  await witness();
+}, 30_000);

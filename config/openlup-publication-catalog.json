@@ -23670,6 +23670,42 @@
       "class": "public-output"
     },
     {
+      "path": "supabase/migrations/20261025100000_checkout_preference_write_scope.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "supabase/migrations/20261025103000_return_request_owner_binding.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "supabase/migrations/20261025104000_checkout_operator_receipt.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "supabase/migrations/20261025105000_acquisition_metadata.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "supabase/migrations/20261025106000_subscription_acquisition_terms.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "supabase/migrations/20261025107000_checkout_acquisition_admission.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "supabase/migrations/20261025108000_checkout_finalize_acquisition_admission.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "supabase/migrations/20261025109000_inventory_new_purchase_stock_read.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "supabase/migrations/20261025110000_starter_graduation_cadence.sql",
+      "class": "public-output"
+    },
+    {
       "path": "supabase/tests/abandoned_cart_tier_bounds_test.sql",
       "class": "public-output"
     },
@@ -23830,6 +23866,10 @@
       "class": "public-output"
     },
     {
+      "path": "supabase/tests/commerce_new_purchase_stock_test.sql",
+      "class": "public-output"
+    },
+    {
       "path": "supabase/tests/commerce_oms_cancel_unpaid_order_test.sql",
       "class": "public-output"
     },
@@ -23855,6 +23895,10 @@
     },
     {
       "path": "supabase/tests/commerce_settings_settlement_profile_test.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "supabase/tests/commerce_starter_cadence_test.sql",
       "class": "public-output"
     },
     {
@@ -24763,6 +24807,10 @@
     },
     {
       "path": "tests/postgres/commerceComposition.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/commerceManagedRail.test.ts",
       "class": "public-output"
     },
     {

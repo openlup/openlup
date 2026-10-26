@@ -503,64 +503,94 @@ and unused authority, equal-rung/missing-attribution refusal, reconciliation and
 concurrency evidence. Existing native atomic receipts prove only their own graph. Rollback uses a compensating forward preserving attribution and
 revocations; it never resurrects old recovery authority.
 
-The `managedCommerceForwards` class in the
-[registry](../../config/reviewed-platform-forwards.json) pins the managed SQL fixtures
-under `scripts/fixtures/reviewed-m11/`. Slots 1–8 each retain one function exactly
-as pinned; slot 9 is the starter pair. It covers replacements,
-public service-only creations and private invoker creations.
-The class fixes nine entries containing five function replacements, three public
-service-only creations and two private invoker creations. The seven checkout, return and
-acquisition entries retain their pinned slots; the eighth is the single
-new-purchase stock reader (`public.inventory_new_purchase_stock_read(jsonb,timestamptz)`).
-It runs with owner privileges through `SECURITY DEFINER` and pinned
-`search_path = pg_catalog, pg_temp`; only `service_role` may execute it, with
-`PUBLIC`, `anon`, `authenticated` and `openlup_mcp_reader` revoked.
-`SECURITY DEFINER` search paths list `pg_temp` last explicitly; application
-relations and routines are schema-qualified. Its real-PostgreSQL behaviour proof
-calls as `service_role` and checks function
-permission refusals as the denied roles; owner access serves setup and state
-inspection. It fixes ATP renewal exemption to false,
-bounds requests to 200 array items and refuses a NULL as-of timestamp as
+The `managedCommerceForwards` registry binds the managed commerce SQL to the
+matching files under `scripts/fixtures/reviewed-m11/` and `supabase/migrations/`.
+The registry and real migration rails are authoritative. Each pin requires all
+earlier same-rail pins with exact bytes. Tests select each real file once,
+compare it with its fixture and replay its complete real prefix. Hole, byte-drift,
+header, ACL and catalog refusals preserve that boundary.
+The new-purchase stock reader
+(`public.inventory_new_purchase_stock_read(jsonb,timestamptz)`) runs with owner
+privileges through `SECURITY DEFINER` and pinned
+`search_path = pg_catalog, pg_temp`; only `service_role` may execute it.
+Its ACL revokes `PUBLIC`, `anon`, `authenticated` and `openlup_mcp_reader`.
+Behaviour proofs call as `service_role`, with owner access reserved for setup
+and state inspection. They also prove function permission refusals for the
+denied roles. ATP renewal exemption is fixed false, requests are bounded to
+200 array items and a NULL as-of timestamp refuses as
 `inventory_stock_as_of_invalid` (SQLSTATE `22023`). Its conservative stale flag
-covers any stale provider row for the SKU; the allocator retains its own stale
-refusal.
-The ninth slot replaces
-`subscription_create_provisional_for_checkout(uuid,uuid,uuid,uuid,jsonb)` and
-`subscription_apply_starter_graduation(uuid,text,text)` with independent preimages,
+covers any stale provider row for the SKU; the allocator retains its stale refusal.
+The stock reader's `SECURITY DEFINER` search path lists `pg_temp` last explicitly;
+its application relations and routines are schema-qualified.
+The other contributed definers retain their reviewed headers and search paths under the platform-wide definer posture; the stock reader's `pg_temp`-last header is stricter.
+The starter creation and graduation replacements retain independent preimages,
 header digests and ordered ACL pairs.
-Exact file, CREATE and preimage hashes, header pins and ordered
-statement pins bind arguments/defaults, returns, language, security, search_path,
-same-file revocations and public service-only grants. The receipt file alone
-replaces the audit action CHECK after its exact preimage and pinned lock timeout,
-with exact DROP and NOT VALID ADD statements, retaining every preimage action
-and adding only `checkout_payment_link_mint`. Any intervening audit-table
-ALTER/DROP refuses this fixed CHECK preimage class. M09/M10 inventories stay closed.
-The registry and real migration rails are authoritative. M11 versions follow every
-earlier same-rail pin; each pin requires all earlier same-rail pins present with
-exact bytes. Later feature changes may introduce those bytes on the managed rail.
-Tests read the registry and complete real managed prefix, include each earlier
-same-rail pin once, and append only absent M11 fixtures for admission/refusal and
-PostgreSQL catalog/ACL/CHECK proof with rollback. The acquisition witness executes
-finalize through no-policy compatibility and configured-policy admission, checks
-exact retained terms, and proves missing/stale/engine-mismatched terms refuse
-without durable row changes. Changed policy refuses fresh acquisition while
-completed finalize replay preserves rows. One-time checkout and the shared/exclusive
-policy-lock protocol are also checked. These fixtures do not establish handler
-integration, native return semantics or installation authority.
-The starter cadence witness proves 21-day refusal without the ninth fixture,
-14/21/28 admission with it in creation and both graduation modes, invalid-input
-refusal, replay and the subscription timezone default. Approval-history
-comparisons retain the exact seven- and eight-entry prefixes and the invoker
-stock-reader identity in the eight- and nine-entry inventories for release
-carry-over. Candidate admission requires the complete inventory and the
-owner-privilege stock-reader header; a historical invoker approval cannot admit
-that reader.
+Approval-history comparisons retain the exact seven- and eight-entry prefixes
+and the invoker stock-reader identity in the eight- and nine-entry inventories
+for release carry-over. Candidate admission requires the complete inventory and
+the owner-privilege stock-reader header; a historical invoker approval cannot
+admit that reader.
 
-Migration: the managed starter routines admit a graduation cadence of 14, 21 or
-28 days (previously 14 or 28); nothing else about them changes except provisional
-creation takes the subscription column default for the timezone. Native has no
-twin. Rolling back below this forward once a 21-day marker exists is unsupported;
-roll forward.
+The pinned function headers preserve arguments/defaults, returns, language,
+security and search paths, with ordered same-file ACLs. Public entry points grant
+execution only to `service_role`; private acquisition helpers grant no service
+execution. Exact file, CREATE and preimage hashes bind each replacement.
+The checkout receipt forward replaces only the audit action
+CHECK under its pinned lock timeout, preserving its preimage actions and adding
+`checkout_payment_link_mint` through the exact NOT VALID constraint replacement.
+Any intervening audit-table ALTER/DROP refuses this fixed CHECK preimage class.
+M09/M10 inventories remain closed.
+
+The [managed commerce proof](../../tests/postgres/commerceManagedRail.test.ts)
+checks return identity, normalized replay, concurrent duplicate requests and
+complete public-row snapshots on refusal. The stock pgTAP witness requires the
+stock seam, ATP subtraction, missing stock, stale reporting and input refusals
+to execute as `service_role`. The starter pgTAP witness consumes the actual
+provisional result through graduation, with initial cycle, line and replay checks.
+The TypeScript witnesses use the managed and PostgreSQL returns adapters and the
+managed finalize port, including typed acquisition conflicts, unchanged refusal
+rows and 21-day provisional creation. The managed stock port exercises ATP and
+propagates SQL refusals in
+[`newPurchaseStockManaged.test.ts`](../../tests/postgres/newPurchaseStockManaged.test.ts).
+The [catalog gate](../../tests/postgres/reviewedBatchForwards.test.ts) executes
+acquisition finalize under both policy states: exact retained terms admit;
+missing, stale or engine-mismatched terms refuse atomically; completed replay
+preserves rows after policy changes. It retains one-time checkout and the
+shared/exclusive lock protocol. Database proof grants no installation authority,
+handler integration or native return parity.
+
+Migration: configurator guests may supply an order destination without rewriting
+saved preferences; preference updates require a server-proved matching account.
+
+Migration: legacy omitted or empty country uses `platform_region_code()` for
+address identity and insertion; configure the adopter's settlement region or the
+fallback refuses with SQLSTATE `55000`. Neutral commands require explicit country.
+
+Migration: return request creation requires the server-supplied principal to own
+the order. Replay requires the same principal, order and normalized command;
+foreign or changed commands refuse without a durable row change.
+
+Migration: checkout payment-link receipts use the `checkout_payment_link_mint`
+audit action; its service-only entry point records the operator receipt.
+
+Migration: subscription checkout finalize validates retained acquisition terms
+against effective policy while holding the shared transaction advisory lock.
+Policy writers must hold the exclusive lock; changed terms refuse fresh checkout
+while completed finalize replay retains its response. One-time checkout is exempt.
+
+Migration: `commerce_subscription_acquisition_terms` reads effective acquisition
+terms and refuses absent terms with `acquisition_terms_not_effective`; the
+no-policy finalize compatibility branch remains available.
+
+Migration: `inventory_new_purchase_stock_read(jsonb,timestamptz)` reads ATP with
+renewal exemption fixed false, subtracting active holds, safety stock, protected
+renewal demand and channel exposure. It bounds the requested array before
+deduplication, refuses a NULL as-of, and reports stale provider observations.
+
+Migration: the managed starter routines admit graduation cadences of 14, 21 or
+28 days; provisional creation uses `starterIntervalDays` and the subscription
+column's timezone default. Native has no twin. Rolling back below this forward
+with a 21-day marker is unsupported; roll forward.
 
 PARITY GAP — the adopter-owned opt-in `full_unedited` graduation mode, which
 graduates only unedited starter terms, is not contributed. It belongs to the
@@ -832,6 +862,16 @@ installation-path parity, a complete installed late-delivery journey or a
 stable upgrade guarantee.
 
 ## Compatibility lifecycle
+
+Managed commerce forwards scope saved-preference writes to a server-proved
+matching account and bind return creation/replay to the principal, owned order
+and normalized command. Checkout payment-link receipts retain operator audit
+evidence; subscription finalize checks retained acquisition terms under the
+policy lock. The new-purchase stock seam protects renewal demand, and starter
+creation/graduation preserve the selected cadence and timezone default. Follow
+the per-behavior `Migration:` actions in
+[Exact reviewed function forwards](#exact-reviewed-function-forwards); these
+managed contracts do not imply native parity or handler integration.
 
 The managed M10-9 forwards add attempt attribution and canonical failure-observation
 state through their exact admitted DDL, deterministic backfill and service-only

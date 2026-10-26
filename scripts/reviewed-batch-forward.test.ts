@@ -578,11 +578,11 @@ describe("admitted M11 commerce live registry", () => {
   const commerceBytes = (pin: ManagedCommerceForwardBinding) => {
     const fixture = readFileSync(`scripts/fixtures/reviewed-m11/${pin.path}`);
     if (existsSync(pin.path)) expect(readFileSync(pin.path), pin.path).toEqual(fixture);
-    return fixture;
+    return readFileSync(pin.path);
   };
   const managedM10 = pins.filter(pin => pin.path.startsWith("supabase/"));
   const allPins = [...managedM10, ...commerce];
-  // Include every earlier same-rail pin once; append only absent M11 fixtures.
+  // Select each real migration once and bind commerce bytes to their fixtures.
   const committed = readdirSync("supabase/migrations").filter(name => name.endsWith(".sql")).sort()
     .map(name => ({ path: `supabase/migrations/${name}`, bytes: readFileSync(`supabase/migrations/${name}`) }))
     .filter(source => source.path < commerce[0]!.path);
@@ -628,7 +628,7 @@ describe("admitted M11 commerce live registry", () => {
     return { sql, candidate };
   };
 
-  it("retains all 18 M10 pins and uses the real prefix plus the absent fixture suffix exactly once", () => {
+  it("retains M10 admission and verifies every commerce file against its complete real prefix exactly once", () => {
     expect(commerce).toHaveLength(9);
     expect(pins).toHaveLength(18);
     expect(managedM10).toHaveLength(11);
@@ -643,6 +643,13 @@ describe("admitted M11 commerce live registry", () => {
     expect(new Set(sources.map(source => source.path)).size).toBe(sources.length);
     expect(committed.at(-1)!.path < commerce[0]!.path).toBe(true);
     for (const pin of managedM10) expect(preceding(commerce[0]!).find(source => source.path === pin.path)?.bytes).toEqual(bytes(pin));
+    for (const pin of commerce) {
+      const realPrefix = readdirSync("supabase/migrations").filter(name => name.endsWith(".sql"))
+        .map(name => `supabase/migrations/${name}`).filter(path => path < pin.path).sort();
+      expect(preceding(pin).map(source => source.path)).toEqual(realPrefix);
+      expect(sources.filter(source => source.path === pin.path)).toEqual([{ path: pin.path, bytes: readFileSync(pin.path) }]);
+      expect(readFileSync(pin.path)).toEqual(readFileSync(`scripts/fixtures/reviewed-m11/${pin.path}`));
+    }
   }, 60_000);
 
   it.each(commerce)("accepts only the live class, after the real prefix: $path", pin => {
