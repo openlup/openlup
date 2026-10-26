@@ -261,8 +261,14 @@ it("bounds raw JSON array items before deduplication and preserves read-only ser
     await refuses(() => db.query("SELECT public.inventory_new_purchase_stock_read('[]',now())"), "permission denied for function inventory_new_purchase_stock_read", "42501");
     await db.query("RESET ROLE; SET LOCAL ROLE postgres");
   }
-  // This catalog harness strips default table privileges. The invoker ATP has
-  // the same host prerequisite; supply its read grants only in this rollback.
+  // These base-table grants are test scaffolding for the fixed-priority reader
+  // fixture as pinned: an invoker function composed over an invoker ATP that
+  // service_role cannot read without them.
+  // This test proves body semantics (arithmetic, stale/missing/NULL/options
+  // behaviour, allocator agreement) and the deny-by-default refusal of
+  // non-granted roles. It does NOT prove privilege correctness of the granted role.
+  // Privilege proof as the granted role with real ATP data belongs to the control
+  // change that owns the reader fixture and to the managed rail landing.
   await db.query("GRANT SELECT ON public.subscriptions, public.subscription_lines, public.subscription_cycles, public.inventory_reservations, public.inventory_balances, public.inventory_locations, public.catalog_skus, public.fulfillment_provider_stock_current TO service_role");
   await db.query("SET LOCAL ROLE service_role");
   expect((await db.query("SELECT public.inventory_new_purchase_stock_read('[]',now()) AS response")).rows[0].response).toEqual([]);
