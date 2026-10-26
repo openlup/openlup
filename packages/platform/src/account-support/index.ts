@@ -57,3 +57,12 @@ export type {
 export { createSelfServiceCommandFacade } from "./selfService.js";
 export { encodeNativeSubscriptionCommand, decodeNativeSubscriptionPreview, createNativeSubscriptionDriver } from "./subscriptionCommandCodec.js";
 export { createPaymentMethodComposition } from "./paymentMethodComposition.js";
+export { createOperatorRecovery, moveIdentityForEmailCorrection, OperatorIdentityMoveRefusedError, executeOperatorAccountLink, linkThenApply } from "./operatorRecovery.js";
+export type { OperatorRecoverySelection } from "./operatorRecovery.js";
+export { createManagedOperatorAuthority, operatorAuthorityCapabilities, CustomerSupportCommandInvalidError,
+  CustomerSupportCommandIdempotencyConflictError, OperatorSubscriptionAuthorityUnavailableError,
+  CustomerSupportCommandRequiresHumanError, CustomerSupportOperatorInactiveError, CustomerSupportOperatorNotProvisionedError } from "./operatorAuthority.js";
+export type { OperatorRpcExecutor, OperatorAuthorityOptions } from "./operatorAuthority.js";
+export { createPostgresOperatorAuthority } from "./postgresOperatorAuthority.js";
+export type { OperatorQueryExecutor, OperatorTransactionExecutor } from "./postgresOperatorAuthority.js";
+export { ACCOUNT_SUPPORT_MIGRATIONS } from "./migrations.js";

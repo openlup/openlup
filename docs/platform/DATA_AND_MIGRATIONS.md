@@ -924,6 +924,41 @@ the per-behavior `Migration:` actions in
 [Exact reviewed function forwards](#exact-reviewed-function-forwards); these
 managed contracts do not imply native parity or handler integration.
 
+R4 introduces the frozen native `20261026120000_account_support_operator_authority.sql`
+and managed `20261026120100_account_support_current_authority.sql` from
+`supportAuthorityForwards`. The native SQL and packed twin are byte-identical;
+the platform manifest appends one row and its inventory digest must be derived
+from the real selected catalog. The account-support catalog is sparse, not an
+installation chain. Complete M11 managed predecessors must precede the managed
+introduction; no existing pin, historical SQL or source-release binding changes.
+
+Native support delegates effects to M10 in one transaction with operator actor
+attribution and actual owner receipts. Email/phone/link and the missing M10
+subcases retain named capability refusals. Managed email retires the combined
+`customer_support_correct_subject_email_v1` entry: active human callers now get
+55000 `customer_support_email_correction_requires_admission`. Call admission,
+claim, commit the claim-fenced identity update, then settle. A stale/expired claim
+cannot commit; release leaves pending, failure stays durably failed, and original
+operator attribution survives resumption. Managed linking adds audited
+`account_link`; recovery gains a human fence. The four preserved donor email
+definers (admit, claim, guard and settle) retain `search_path = public, pg_catalog`;
+the newly DEFINER link uses `search_path = pg_catalog, pg_temp` with fully qualified
+application references. All five revoke EXECUTE from PUBLIC, anon, authenticated
+and `openlup_mcp_reader`. Callable entries grant EXECUTE only to service_role;
+the guard also revokes service_role and remains trigger-only. The operator-authority
+PostgreSQL proof calls link as service_role and compares clean and hostile
+caller-session results. See the
+[class inventory](#m12-supportauthorityforwards) and
+[operator receipt contract](CANONICAL_CONTRACTS.md#operator-support-receipts-and-partial-links).
+
+Migration: five existing pgTAP callers move from combined correction to the ordered
+workflow without dropping their subscription/phone/namespace/absorption witnesses:
+`operator_subscription_actions`, `operator_contact_correction`,
+`marketing_lead_email_namespace`, `absorb_lead`; the missing-subject/null-clock
+case in `runtime_capability_boundary` now calls admission. Machine and inactive
+operator refusal assertions retain their prior meaning. The complete enumeration
+is in the [M12 plan's R4 section](plans/oss-m12-account-support.md#r4-operator-recovery) and R4's change fragment.
+
 The managed M10-9 forwards add attempt attribution and canonical failure-observation
 state through their exact admitted DDL, deterministic backfill and service-only
 overloads. Hosts must carry the applied transition's attempt into each failure

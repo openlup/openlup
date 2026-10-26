@@ -371,6 +371,25 @@ The M12 dispatcher checks each preceding SQL object's regular-file mode and read
 its exact committed bytes in one batch through the existing documentation object
 reader; the complete ordered prefix and all admission checks still apply.
 
+M12 R4 introduces those two files and proves the operator boundary with the
+existing runners after serial package builds:
+`npm --workspace @openlup/platform test -- test/account-support` for the
+operator envelope equality, orchestration and adapter mapping;
+`npm test -- --run server/runtime/public-reference/m12OperatorRecoveryBinding.test.ts src/public-reference/accountSupportRecovery.test.tsx`
+for the default-off reference binding and surface;
+`npm test -- --run tests/postgres/accountSupportOperatorAuthority.test.ts tests/postgres/accountSupportUpgrade.test.ts`
+with Docker for native delegation, the eight independently executed native
+refusal rows, atomic rollback, fences, races and the upgrade replay; and
+`node scripts/public-ci-pgtap.mjs` (Supabase CLI 2.98.2) for the managed link,
+email claim workflow and recovery fence. The native upgrade witness prints the
+real selected-catalog digest for the manifest; a stale manifest is corrected
+before the full gate. The packed cold consumer asserts the operator exports'
+native link refusal, owner-result identity and linkThenApply ordering; its
+swallow-mutation falsifier targets accountReadFacade. The existing M10
+`subscriptionCommandLifecycleCases`, M03 `postgresAccountLinkStore` and M08
+`fulfillmentDeliveryAlignment` witnesses remain required owner proofs. Missing
+Docker or pgTAP is missing proof, never a skip or lexical PASS.
+
 The M10/F17 exact-forward controls use
 `scripts/reviewed-batch-forward.test.ts` for per-file refusal plants and separate
 and co-located CI/release approval, and `tests/postgres/reviewedBatchForwards.test.ts` for the

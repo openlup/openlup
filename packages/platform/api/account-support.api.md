@@ -403,6 +403,26 @@ export interface AccountSupportCapabilities {
     subscriptions: SubscriptionCapabilities;
     communicationGifts: AccountSupportCapability<"unsupported_preference">;
 }
+/** Per-action/subcase truth, independent of the host's unrelated read selections. */
+export interface OperatorAuthorityCapabilities {
+    graph: "managed" | "native";
+    email: AccountSupportCapability<"operator_subscription_authority_unavailable">;
+    phone: AccountSupportCapability<"operator_subscription_authority_unavailable">;
+    link: AccountSupportCapability<"operator_subscription_authority_unavailable">;
+    address: AccountSupportCapability<"operator_subscription_authority_unavailable">;
+    shortBand: AccountSupportCapability<"operator_subscription_authority_unavailable">;
+    unpaidResume: AccountSupportCapability<"operator_subscription_authority_unavailable">;
+    preparedAttemptPause: AccountSupportCapability<"operator_subscription_authority_unavailable">;
+    pause: {
+        supported: true;
+    };
+    resume: {
+        supported: true;
+    };
+    slide: {
+        supported: true;
+    };
+}
 ```
 ## dist/account-support/contracts/commands.d.ts
 
@@ -884,6 +904,8 @@ export type { InvoiceDocumentIdentity, InvoiceUnsupported, InvoiceClearanceState
 export type { AccountSupportCapability, AccountSupportCapabilities } from "./capabilities.js";
 export type { LegacySubscriptionRequest, RawSubscriptionCommands, NativeSubscriptionPreview, NativePreviewProjection, SubscriptionDriver, MethodSetupInput, MethodSetupResult, MethodSetupPort, NativeLegacySubscriptionParts, LegacySubscriptionPort, SelfServiceCommandFacadeInput } from "./commands.js";
 export type { AccountSupportLaneUnavailable } from "./capabilities.js";
+export type { OperatorOwnerReceipt, NativeOperatorSubscriptionResult, OperatorAuthorityUnavailable, OperatorEmailCorrectionResult, OperatorPhoneCorrectionResult, CustomerRecoveryAuthorityResult, LeadAbsorptionCarried, OperatorLeadAbsorptionResult, OperatorEmailCorrectionClaim, OperatorIdentityMovePort, OperatorEmailCorrectionAdmission, OperatorEmailCorrectionPhase, OperatorEmailCorrectionSettlement, OperatorEmailCorrectionExecution, OperatorAccountLinkRefusal, OperatorAccountLinkResult, OperatorAccountLinkRequest, OperatorAccountLinkIdentityPort, OperatorSubscriptionInput, OperatorEmailInput, OperatorPhoneInput, OperatorLinkInput, OperatorRecoveryInput, OperatorAbsorptionInput, ManagedOperatorAuthorityPort, NativeOperatorAuthorityPort, LinkThenSubscriptionResult } from "./operator.js";
+export type { OperatorAuthorityCapabilities } from "./capabilities.js";
 ```
 ## dist/account-support/contracts/invoice.d.ts
 
@@ -1066,6 +1088,200 @@ export type OperatorSubscriptionResult = {
     outcome: "refused" | "conflict";
     refusalCode: OperatorSubscriptionRefusal;
 };
+/** Actual M10 receipt evidence; support never manufactures an audit identifier. */
+export interface OperatorOwnerReceipt {
+    id: string;
+    actorId: string;
+    idempotencyKey: string;
+    commandFingerprint: string;
+    result: Record<string, unknown>;
+}
+/** Additive native superset. The managed transcription above remains unchanged. */
+export type NativeOperatorSubscriptionResult = (OperatorSubscriptionResult & {
+    ownerReceipt?: OperatorOwnerReceipt;
+}) | {
+    outcome: "refused";
+    refusalCode: "operator_subscription_authority_unavailable";
+    ownerReceipt?: OperatorOwnerReceipt;
+};
+export type OperatorAuthorityUnavailable = {
+    outcome: "refused";
+    refusalCode: "operator_subscription_authority_unavailable";
+};
+export type OperatorEmailCorrectionResult = {
+    outcome: "applied" | "noop" | "replayed";
+    authUserLinked: boolean;
+} | {
+    outcome: "refused" | "conflict";
+    refusalCode: EmailCorrectionRefusal;
+};
+export type OperatorPhoneCorrectionResult = {
+    outcome: "applied" | "noop" | "replayed";
+} | {
+    outcome: "refused" | "conflict";
+    refusalCode: PhoneCorrectionRefusal;
+};
+export type CustomerRecoveryAuthorityResult = {
+    outcome: "issued";
+    deliveryStatus: string;
+    auditEventId: string;
+} | {
+    outcome: "replayed";
+    deliveryStatus: string;
+    auditEventId: string;
+} | {
+    outcome: "refused";
+    refusalCode: RecoveryRefusal;
+} | {
+    outcome: "conflict";
+    conflictCode: "idempotency_conflict";
+};
+export interface LeadAbsorptionCarried {
+    personalization: number;
+    consents: number;
+    sourceLinks: number;
+    deliveries: number;
+}
+export type OperatorLeadAbsorptionResult = {
+    outcome: "applied" | "noop" | "replayed";
+    leadId: string;
+    customerId: string;
+    carried: LeadAbsorptionCarried;
+} | {
+    outcome: "refused" | "conflict";
+    leadId: string;
+    refusalCode: LeadRefusal;
+    blockingTables: string[];
+};
+export interface OperatorEmailCorrectionClaim {
+    idempotencyKey: string;
+    claimToken: string;
+    sequence: string;
+}
+export interface OperatorIdentityMovePort {
+    findClientHoldingEmail(email: string): Promise<{
+        clientId: string;
+    } | null>;
+    readIdentityEmail(authUserId: string): Promise<string>;
+    moveIdentityEmail(authUserId: string, email: string, claim: OperatorEmailCorrectionClaim): Promise<void>;
+}
+export type OperatorEmailCorrectionAdmission = OperatorEmailCorrectionResult | {
+    outcome: "admitted";
+    authUserId: string | null;
+    originalEmail: string;
+    newEmail: string;
+};
+export type OperatorEmailCorrectionPhase = "complete" | "release" | "fail";
+export type OperatorEmailCorrectionSettlement = OperatorEmailCorrectionResult | {
+    outcome: "pending";
+} | {
+    outcome: "failed";
+};
+export type OperatorEmailCorrectionExecution = OperatorEmailCorrectionSettlement | (OperatorEmailCorrectionClaim & {
+    outcome: "claimed";
+    authUserId: string | null;
+    originalEmail: string;
+    newEmail: string;
+});
+export type OperatorAccountLinkRefusal = "subject_not_found" | "subject_not_customer" | "subject_email_missing" | "email_expectation_conflict" | "subject_account_linked" | "identity_not_linkable" | "identity_linked_elsewhere";
+export type OperatorAccountLinkResult = {
+    outcome: "applied" | "noop" | "replayed";
+} | {
+    outcome: "refused" | "conflict";
+    refusalCode: OperatorAccountLinkRefusal;
+};
+export interface OperatorAccountLinkRequest {
+    action: "link_account";
+    subjectId: string;
+    expectedEmail: string;
+    idempotencyKey: string;
+}
+export interface OperatorAccountLinkIdentityPort {
+    findSubject(clientId: string): Promise<{
+        identityKind: string | null;
+        email: string | null;
+        authUserId: string | null;
+    } | null>;
+    resolveIdentityForEmail(email: string): Promise<string>;
+}
+export interface OperatorSubscriptionInput {
+    subscriptionId: string;
+    subscriptionAction: OperatorSubscriptionAction;
+    expectedVersion: number;
+    payload: OperatorSubscriptionPayload;
+    idempotencyKey: string;
+    operatorId: string;
+}
+export interface OperatorEmailInput {
+    subjectId: string;
+    expectedEmail: string;
+    newEmail: string;
+    idempotencyKey: string;
+    operatorId: string;
+}
+export interface OperatorPhoneInput {
+    subjectId: string;
+    expectedPhone: string;
+    newPhone: string;
+    idempotencyKey: string;
+    operatorId: string;
+}
+export interface OperatorLinkInput {
+    subjectId: string;
+    expectedEmail: string;
+    authUserId: string | null;
+    idempotencyKey: string;
+    operatorId: string;
+}
+export interface OperatorRecoveryInput {
+    subjectId: string;
+    caseId: string;
+    idempotencyKey: string;
+    operatorId: string;
+}
+export interface OperatorAbsorptionInput {
+    customerId: string;
+    leadId: string;
+    expectedLeadEmail: string;
+    idempotencyKey: string;
+    operatorId: string;
+}
+export interface ManagedOperatorAuthorityPort {
+    applySubscriptionAction(input: OperatorSubscriptionInput): Promise<OperatorSubscriptionResult>;
+    correctSubjectEmail(input: OperatorEmailInput): Promise<OperatorEmailCorrectionAdmission>;
+    claimSubjectEmail(input: {
+        idempotencyKey: string;
+    }): Promise<OperatorEmailCorrectionExecution>;
+    settleSubjectEmail(input: {
+        idempotencyKey: string;
+        claimToken: string;
+        phase: OperatorEmailCorrectionPhase;
+    }): Promise<OperatorEmailCorrectionSettlement>;
+    correctSubjectPhone(input: OperatorPhoneInput): Promise<OperatorPhoneCorrectionResult>;
+    linkSubjectAccount(input: OperatorLinkInput): Promise<OperatorAccountLinkResult>;
+    issueRecovery(input: OperatorRecoveryInput): Promise<CustomerRecoveryAuthorityResult>;
+    absorbLead(input: OperatorAbsorptionInput): Promise<OperatorLeadAbsorptionResult>;
+}
+export interface NativeOperatorAuthorityPort {
+    applySubscriptionAction(input: OperatorSubscriptionInput): Promise<NativeOperatorSubscriptionResult>;
+    correctSubjectEmail(input: OperatorEmailInput): Promise<OperatorAuthorityUnavailable>;
+    correctSubjectPhone(input: OperatorPhoneInput): Promise<OperatorAuthorityUnavailable>;
+    linkSubjectAccount(input: OperatorLinkInput): Promise<OperatorAuthorityUnavailable>;
+    issueRecovery(input: OperatorRecoveryInput): Promise<CustomerRecoveryAuthorityResult>;
+    absorbLead(input: OperatorAbsorptionInput): Promise<OperatorLeadAbsorptionResult>;
+}
+export type LinkThenSubscriptionResult = {
+    outcome: "link_refused";
+    link: OperatorAccountLinkResult | OperatorAuthorityUnavailable;
+} | {
+    outcome: "completed";
+    link: OperatorAccountLinkResult;
+    subscription: NativeOperatorSubscriptionResult;
+} | {
+    outcome: "partial";
+    link: OperatorAccountLinkResult;
+    subscription: NativeOperatorSubscriptionResult | null;
+};
 ```
 ## dist/account-support/customer360.d.ts
 
@@ -1210,6 +1426,13 @@ export type { InvoiceOwnerAccessPort, InvoiceArtifactDownloadPort, InvoiceAccess
 export { createSelfServiceCommandFacade } from "./selfService.js";
 export { encodeNativeSubscriptionCommand, decodeNativeSubscriptionPreview, createNativeSubscriptionDriver } from "./subscriptionCommandCodec.js";
 export { createPaymentMethodComposition } from "./paymentMethodComposition.js";
+export { createOperatorRecovery, moveIdentityForEmailCorrection, OperatorIdentityMoveRefusedError, executeOperatorAccountLink, linkThenApply } from "./operatorRecovery.js";
+export type { OperatorRecoverySelection } from "./operatorRecovery.js";
+export { createManagedOperatorAuthority, operatorAuthorityCapabilities, CustomerSupportCommandInvalidError, CustomerSupportCommandIdempotencyConflictError, OperatorSubscriptionAuthorityUnavailableError, CustomerSupportCommandRequiresHumanError, CustomerSupportOperatorInactiveError, CustomerSupportOperatorNotProvisionedError } from "./operatorAuthority.js";
+export type { OperatorRpcExecutor, OperatorAuthorityOptions } from "./operatorAuthority.js";
+export { createPostgresOperatorAuthority } from "./postgresOperatorAuthority.js";
+export type { OperatorQueryExecutor, OperatorTransactionExecutor } from "./postgresOperatorAuthority.js";
+export { ACCOUNT_SUPPORT_MIGRATIONS } from "./migrations.js";
 ```
 ## dist/account-support/invoiceAccess.d.ts
 
@@ -1271,6 +1494,165 @@ export interface CustomerInvoiceDocumentStatusInput {
     downloadAvailable: boolean;
 }
 export declare function deriveCustomerDocumentDeliveryStatus(input: CustomerInvoiceDocumentStatusInput): CustomerDocumentDeliveryStatus;
+```
+## dist/account-support/migrations.d.ts
+
+```ts
+/** Sparse projections only. Install the complete native/managed prefix, never this list alone. */
+export declare const ACCOUNT_SUPPORT_MIGRATIONS: {
+    readonly native: {
+        readonly units: readonly [{
+            readonly position: 87;
+            readonly catalogPath: "db/platform/migrations/20261026120000_account_support_operator_authority.sql";
+            readonly sha256: "ac1e31679179e712d7558e7b1d82e8113f264abf9aaa44c2562ab988acdc7508";
+            readonly url: URL;
+        }];
+    };
+    readonly managed: {
+        readonly units: readonly ["supabase/migrations/20261026120100_account_support_current_authority.sql"];
+    };
+};
+```
+## dist/account-support/operatorAuthority.d.ts
+
+```ts
+import type { OperatorSubscriptionRefusal as OperatorSubscriptionRefusalCode, OperatorSubscriptionResult as OperatorSubscriptionCommandResult, OperatorEmailCorrectionResult, OperatorPhoneCorrectionResult, OperatorEmailCorrectionAdmission, OperatorEmailCorrectionExecution, OperatorEmailCorrectionSettlement, NativeOperatorSubscriptionResult, ManagedOperatorAuthorityPort, OperatorAuthorityCapabilities, OperatorAccountLinkResult, OperatorLeadAbsorptionResult, CustomerRecoveryAuthorityResult } from "./contracts/index.js";
+export declare class CustomerSupportCommandInvalidError extends Error {
+    constructor();
+}
+export declare class CustomerSupportCommandIdempotencyConflictError extends Error {
+    constructor();
+}
+export declare class OperatorSubscriptionAuthorityUnavailableError extends Error {
+    constructor();
+}
+export declare class CustomerSupportCommandRequiresHumanError extends Error {
+    constructor();
+}
+export declare class CustomerSupportOperatorInactiveError extends Error {
+    constructor();
+}
+export declare class CustomerSupportOperatorNotProvisionedError extends Error {
+    constructor();
+}
+export declare const SUBSCRIPTION_REFUSALS: Set<OperatorSubscriptionRefusalCode>;
+export declare function emailCorrection(value: unknown): OperatorEmailCorrectionResult;
+/** Admission authorizes a command; only a service claim authorizes its execution. */
+export declare function emailCorrectionAdmission(value: unknown): OperatorEmailCorrectionAdmission;
+export declare function emailCorrectionExecution(value: unknown): OperatorEmailCorrectionExecution;
+export declare function emailCorrectionSettlement(value: unknown): OperatorEmailCorrectionSettlement;
+export declare function phoneCorrection(value: unknown): OperatorPhoneCorrectionResult;
+export declare function subscriptionCommand(value: unknown): OperatorSubscriptionCommandResult;
+/**
+ * Translate the routine's raised SQLSTATEs into failures the route can price as
+ * HTTP without reading a driver error. Anything unrecognized stays an opaque
+ * upstream failure rather than being guessed into a client fault.
+ */
+export declare function operatorCommandFailure(error: unknown, fallback: string): Error;
+/** Translate the routine's JSON into the one result shape both lanes report. */
+export declare function leadAbsorption(value: unknown): OperatorLeadAbsorptionResult;
+/** Translate the routine's JSON into the one result shape the route reports. */
+export declare function accountLink(value: unknown): OperatorAccountLinkResult;
+export declare function recoveryResult(value: unknown): CustomerRecoveryAuthorityResult;
+/** Native-only additions never enter the managed subscription decoder. */
+export declare function nativeSubscriptionCommand(value: unknown): NativeOperatorSubscriptionResult;
+export declare function operatorAuthorityCapabilities(graph: "managed" | "native"): OperatorAuthorityCapabilities;
+export interface OperatorRpcExecutor {
+    rpc(name: string, args: Record<string, unknown>): PromiseLike<{
+        data: unknown;
+        error: unknown;
+    }>;
+}
+/** Injected recovery material is private to the adapter; paths belong to the host. */
+export interface OperatorRecoveryMaterial {
+    tokenHash: string;
+    payloadFingerprint: string;
+    expiresAt: string;
+    recoveryPath: string;
+}
+export interface OperatorAuthorityOptions {
+    operatorId: string;
+    now: () => number;
+    recoveryPath: (rawToken: string) => string;
+    /** Defaults to 32 random bytes from Web Crypto, encoded as base64url. */
+    createOpaqueToken?: () => string;
+}
+export declare function operatorRecoveryMaterial(input: {
+    subjectId: string;
+    caseId: string;
+}, options: OperatorAuthorityOptions): Promise<OperatorRecoveryMaterial>;
+/** Current managed calls over an injected executor; no provider, credentials or defaults. */
+export declare function createManagedOperatorAuthority(executor: OperatorRpcExecutor, options: OperatorAuthorityOptions): ManagedOperatorAuthorityPort;
+```
+## dist/account-support/operatorRecovery.d.ts
+
+```ts
+import type { OperatorEmailCorrectionResult, OperatorEmailCorrectionAdmission, OperatorEmailCorrectionExecution, OperatorEmailCorrectionPhase, OperatorEmailCorrectionClaim, OperatorEmailCorrectionSettlement, OperatorIdentityMovePort, OperatorAccountLinkIdentityPort, OperatorAccountLinkRequest, OperatorAccountLinkResult, ManagedOperatorAuthorityPort, NativeOperatorAuthorityPort, OperatorRecoveryCommandEnvelope, OperatorRecoveryCommand, LinkThenSubscriptionResult } from "./contracts/index.js";
+export declare class OperatorIdentityMoveRefusedError extends Error {
+    constructor();
+}
+/** Recovery is service authority over the recorded command, independent of admission's actor. */
+export declare function moveIdentityForEmailCorrection(input: {
+    admission: OperatorEmailCorrectionAdmission;
+    claim: () => Promise<OperatorEmailCorrectionExecution>;
+    identity: () => OperatorIdentityMovePort;
+    settle: (phase: OperatorEmailCorrectionPhase, claim: OperatorEmailCorrectionClaim) => Promise<OperatorEmailCorrectionSettlement>;
+}): Promise<OperatorEmailCorrectionResult>;
+/** Donor link resolution uses only the subject's confirmed stored email. */
+export declare function executeOperatorAccountLink(input: {
+    command: OperatorAccountLinkRequest;
+    operatorId: string;
+    identity: OperatorAccountLinkIdentityPort;
+    authority: Pick<ManagedOperatorAuthorityPort, "linkSubjectAccount">;
+}): Promise<OperatorAccountLinkResult>;
+/** Two commands, two commits. Callback invocation keeps the donor's non-await order. */
+export declare function linkThenApply(input: {
+    link: () => Promise<OperatorAccountLinkResult>;
+    apply: () => ReturnType<NativeOperatorAuthorityPort["applySubscriptionAction"]>;
+    onLinked: () => unknown;
+}): Promise<LinkThenSubscriptionResult>;
+export type OperatorRecoverySelection = {
+    graph: "managed";
+    authority: ManagedOperatorAuthorityPort;
+    identity: () => OperatorIdentityMovePort;
+    accountLink: OperatorAccountLinkIdentityPort;
+} | {
+    graph: "native";
+    authority: NativeOperatorAuthorityPort;
+};
+/** Host verifies the operator seat before construction; every dispatch keeps its actor binding. */
+export declare function createOperatorRecovery(selection: OperatorRecoverySelection): {
+    execute(envelope: OperatorRecoveryCommandEnvelope<OperatorRecoveryCommand | OperatorAccountLinkRequest>): Promise<{
+        outcome: "refused" | "conflict";
+        refusalCode: import("./contracts/operator.js").OperatorSubscriptionRefusal;
+    } | import("./contracts/operator.js").OperatorAuthorityUnavailable | {
+        outcome: "refused" | "conflict";
+        refusalCode: import("./contracts/operator.js").EmailCorrectionRefusal;
+    } | {
+        outcome: "applied" | "noop" | "replayed";
+    } | {
+        outcome: "refused" | "conflict";
+        refusalCode: import("./contracts/operator.js").PhoneCorrectionRefusal;
+    } | {
+        outcome: "issued";
+        deliveryStatus: string;
+        auditEventId: string;
+    } | {
+        outcome: "refused";
+        refusalCode: import("./contracts/operator.js").RecoveryRefusal;
+    } | {
+        outcome: "conflict";
+        conflictCode: "idempotency_conflict";
+    } | {
+        outcome: "refused" | "conflict";
+        leadId: string;
+        refusalCode: import("./contracts/operator.js").LeadRefusal;
+        blockingTables: string[];
+    } | {
+        outcome: "refused" | "conflict";
+        refusalCode: import("./contracts/operator.js").OperatorAccountLinkRefusal;
+    }>;
+};
 ```
 ## dist/account-support/orderHistory.d.ts
 
@@ -1334,6 +1716,26 @@ import type { MethodSetupInput, MethodSetupPort, MethodSetupResult } from "./con
 export declare function createPaymentMethodComposition<Handoff>(port: MethodSetupPort<Handoff>): {
     execute(userId: string, request: MethodSetupInput): Promise<MethodSetupResult<Handoff>>;
 };
+```
+## dist/account-support/postgresOperatorAuthority.d.ts
+
+```ts
+import type { NativeOperatorAuthorityPort } from "./contracts/index.js";
+import { type OperatorAuthorityOptions } from "./operatorAuthority.js";
+/** Narrow structural subset of a query executor; the host owns connection and transaction. */
+export interface OperatorQueryExecutor {
+    query(sql: string, values?: unknown[]): Promise<{
+        rows: Record<string, unknown>[];
+    }>;
+}
+export interface OperatorTransactionExecutor {
+    run<T>(work: (executor: OperatorQueryExecutor) => Promise<T>): Promise<T>;
+}
+export declare const OPERATOR_AUTHORITY_UNAVAILABLE: {
+    readonly outcome: "refused";
+    readonly refusalCode: "operator_subscription_authority_unavailable";
+};
+export declare function createPostgresOperatorAuthority(lane: OperatorTransactionExecutor, options: OperatorAuthorityOptions): NativeOperatorAuthorityPort;
 ```
 ## dist/account-support/selfService.d.ts
 

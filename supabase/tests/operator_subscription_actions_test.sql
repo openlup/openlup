@@ -24,14 +24,17 @@
 BEGIN;
 SELECT plan(71);
 
+INSERT INTO public.admin_users(id,email,role,is_machine_actor) VALUES ('05a00000-0000-4000-8000-000000000001','r4-operator_subscription_actions@example.invalid','admin',false);
+
 -- Two operators: one on the durable allowlist, one deactivated.
 INSERT INTO public.platform_communication_operators (principal_id, active)
 VALUES
   ('05a00000-0000-4000-8000-000000000001', true),
   ('05a00000-0000-4000-8000-000000000002', false);
 
-INSERT INTO auth.users (id)
-VALUES ('05000000-0000-4000-8000-000000000001');
+-- Seed the original email on INSERT so no unclaimed UPDATE is queued for the deferred guard.
+INSERT INTO auth.users (id, email)
+VALUES ('05000000-0000-4000-8000-000000000001', 'operator-actions-linked@example.invalid');
 
 -- The subscriber whose subscription the operator acts on: linked, so the RPC can resolve
 -- a principal to delegate as.
@@ -654,31 +657,52 @@ SELECT is(
   NULL,
   'the subscriber event keeps its own attribution, so the ledger still answers who acted'
 );
+-- Current ordered workflow for operator-email-linked-1; no combined-entry shim.
+RESET ROLE;
+CREATE TEMP TABLE _r4_operator_subscription_actions_1(response jsonb);
+GRANT SELECT,INSERT,UPDATE ON _r4_operator_subscription_actions_1 TO service_role;
+SET LOCAL ROLE service_role;
+INSERT INTO _r4_operator_subscription_actions_1 SELECT public.customer_support_admit_subject_email_v1(
+  '05a00000-0000-4000-8000-000000000001'::uuid,
+  '05100000-0000-4000-8000-000000000001'::uuid,
+  'operator-actions-linked@example.invalid',
+  'operator-actions-repaired@example.invalid',
+  'operator-email-linked-1', '2026-08-17T12:00:00Z'::timestamptz
+);
+UPDATE _r4_operator_subscription_actions_1 SET response=public.customer_support_claim_subject_email_v1('operator-email-linked-1') WHERE response->>'outcome' IN ('admitted','pending');
+RESET ROLE;
+WITH provider_claim AS (
+  SELECT response, response->>'idempotencyKey' AS command_key FROM _r4_operator_subscription_actions_1
+)
+UPDATE auth.users u SET email=t.response->>'newEmail',
+  raw_app_meta_data=COALESCE(u.raw_app_meta_data,'{}'::jsonb)||jsonb_build_object('operator_email_correction',
+    jsonb_build_object('idempotencyKey',t.command_key,'claimToken',t.response->>'claimToken','sequence',t.response->>'sequence'))
+FROM provider_claim t WHERE t.response->>'outcome'='claimed' AND u.id=(t.response->>'authUserId')::uuid;
+SET CONSTRAINTS ALL IMMEDIATE;
+SET CONSTRAINTS ALL DEFERRED;
+SET LOCAL ROLE service_role;
+UPDATE _r4_operator_subscription_actions_1 SET response=public.customer_support_settle_subject_email_v1('operator-email-linked-1',(response->>'claimToken')::uuid,'complete') WHERE response->>'outcome'='claimed';
+RESET ROLE;
+
 
 -- ---------------------------------------------------------------------------
 -- The emergency email correction, and the rule that makes it safe.
 -- ---------------------------------------------------------------------------
 
 CREATE TEMP TABLE _email_linked AS
-SELECT public.customer_support_correct_subject_email_v1(
-  '05a00000-0000-4000-8000-000000000001'::uuid,
-  '05100000-0000-4000-8000-000000000001'::uuid,
-  'operator-actions-linked@example.invalid',
-  'operator-actions-repaired@example.invalid',
-  'operator-email-linked-1', '2026-08-17T12:00:00Z'::timestamptz
-) AS response;
+SELECT (SELECT response FROM _r4_operator_subscription_actions_1) AS response;
 
 -- Re-pinned by the contact-correction wave. The linked-account refusal was removed
 -- deliberately: the invariant it claimed to guard spans Postgres and the auth
 -- service, and this function can see only the Postgres half, so refusing every
 -- linked subject protected nothing while locking the operator out of every paying
--- customer. The caller now moves the authorization copy first. The refusal arms
+-- customer. Admission and claim now precede the authorization move and settlement. The refusal arms
 -- this correction still owes, and the audit of each, are pinned in
 -- `operator_contact_correction_test.sql`.
 SELECT is(
   (SELECT response->>'outcome' FROM _email_linked),
   'applied',
-  'correcting a linked account is admitted; the caller moves the authorization copy'
+  'correcting a linked account is admitted; the claimed caller moves the authorization copy before settlement'
 );
 
 SELECT is(
@@ -686,15 +710,36 @@ SELECT is(
   'operator-actions-repaired@example.invalid',
   'the linked address moves, so the corrected value is what the subscriber receives'
 );
-
-CREATE TEMP TABLE _email_unlinked AS
-SELECT public.customer_support_correct_subject_email_v1(
+-- Current ordered workflow for operator-email-unlinked-1; no combined-entry shim.
+RESET ROLE;
+CREATE TEMP TABLE _r4_operator_subscription_actions_2(response jsonb);
+GRANT SELECT,INSERT,UPDATE ON _r4_operator_subscription_actions_2 TO service_role;
+SET LOCAL ROLE service_role;
+INSERT INTO _r4_operator_subscription_actions_2 SELECT public.customer_support_admit_subject_email_v1(
   '05a00000-0000-4000-8000-000000000001'::uuid,
   '05100000-0000-4000-8000-000000000002'::uuid,
   'operator-actions-unlinked@example.invalid',
   'operator-actions-fixed@example.invalid',
   'operator-email-unlinked-1', '2026-08-17T12:00:00Z'::timestamptz
-) AS response;
+);
+UPDATE _r4_operator_subscription_actions_2 SET response=public.customer_support_claim_subject_email_v1('operator-email-unlinked-1') WHERE response->>'outcome' IN ('admitted','pending');
+RESET ROLE;
+WITH provider_claim AS (
+  SELECT response, response->>'idempotencyKey' AS command_key FROM _r4_operator_subscription_actions_2
+)
+UPDATE auth.users u SET email=t.response->>'newEmail',
+  raw_app_meta_data=COALESCE(u.raw_app_meta_data,'{}'::jsonb)||jsonb_build_object('operator_email_correction',
+    jsonb_build_object('idempotencyKey',t.command_key,'claimToken',t.response->>'claimToken','sequence',t.response->>'sequence'))
+FROM provider_claim t WHERE t.response->>'outcome'='claimed' AND u.id=(t.response->>'authUserId')::uuid;
+SET CONSTRAINTS ALL IMMEDIATE;
+SET CONSTRAINTS ALL DEFERRED;
+SET LOCAL ROLE service_role;
+UPDATE _r4_operator_subscription_actions_2 SET response=public.customer_support_settle_subject_email_v1('operator-email-unlinked-1',(response->>'claimToken')::uuid,'complete') WHERE response->>'outcome'='claimed';
+RESET ROLE;
+
+
+CREATE TEMP TABLE _email_unlinked AS
+SELECT (SELECT response FROM _r4_operator_subscription_actions_2) AS response;
 
 SELECT is(
   (SELECT response->>'outcome' FROM _email_unlinked),
@@ -715,15 +760,36 @@ SELECT is(
   'operator-actions-unlinked@example.invalid -> operator-actions-fixed@example.invalid',
   'the audit row carries the address before and after the repair'
 );
-
-CREATE TEMP TABLE _email_taken AS
-SELECT public.customer_support_correct_subject_email_v1(
+-- Current ordered workflow for operator-email-taken-1; no combined-entry shim.
+RESET ROLE;
+CREATE TEMP TABLE _r4_operator_subscription_actions_3(response jsonb);
+GRANT SELECT,INSERT,UPDATE ON _r4_operator_subscription_actions_3 TO service_role;
+SET LOCAL ROLE service_role;
+INSERT INTO _r4_operator_subscription_actions_3 SELECT public.customer_support_admit_subject_email_v1(
   '05a00000-0000-4000-8000-000000000001'::uuid,
   '05100000-0000-4000-8000-000000000002'::uuid,
   'operator-actions-fixed@example.invalid',
   'operator-actions-taken@example.invalid',
   'operator-email-taken-1', '2026-08-17T12:00:00Z'::timestamptz
-) AS response;
+);
+UPDATE _r4_operator_subscription_actions_3 SET response=public.customer_support_claim_subject_email_v1('operator-email-taken-1') WHERE response->>'outcome' IN ('admitted','pending');
+RESET ROLE;
+WITH provider_claim AS (
+  SELECT response, response->>'idempotencyKey' AS command_key FROM _r4_operator_subscription_actions_3
+)
+UPDATE auth.users u SET email=t.response->>'newEmail',
+  raw_app_meta_data=COALESCE(u.raw_app_meta_data,'{}'::jsonb)||jsonb_build_object('operator_email_correction',
+    jsonb_build_object('idempotencyKey',t.command_key,'claimToken',t.response->>'claimToken','sequence',t.response->>'sequence'))
+FROM provider_claim t WHERE t.response->>'outcome'='claimed' AND u.id=(t.response->>'authUserId')::uuid;
+SET CONSTRAINTS ALL IMMEDIATE;
+SET CONSTRAINTS ALL DEFERRED;
+SET LOCAL ROLE service_role;
+UPDATE _r4_operator_subscription_actions_3 SET response=public.customer_support_settle_subject_email_v1('operator-email-taken-1',(response->>'claimToken')::uuid,'complete') WHERE response->>'outcome'='claimed';
+RESET ROLE;
+
+
+CREATE TEMP TABLE _email_taken AS
+SELECT (SELECT response FROM _r4_operator_subscription_actions_3) AS response;
 
 SELECT is(
   (SELECT response->>'refusalCode' FROM _email_taken),

@@ -511,8 +511,8 @@ export declare const returnApproveSchema: z.ZodObject<{
     returnRequestId: z.ZodGUID;
     refundMode: z.ZodDefault<z.ZodEnum<{
         none: "none";
-        full: "full";
         partial: "partial";
+        full: "full";
     }>>;
     refundAmountCents: z.ZodOptional<z.ZodNumber>;
     adminNote: z.ZodOptional<z.ZodString>;

@@ -12,6 +12,8 @@ INSERT INTO auth.users(id) VALUES ('b8900000-0000-4000-8000-000000000001');
 UPDATE public.clients SET auth_user_id='b8900000-0000-4000-8000-000000000001'
  WHERE id='b8800000-0000-4000-8000-000000000001';
 
+INSERT INTO public.admin_users(id,email,role,is_machine_actor) VALUES ('b8700000-0000-4000-8000-000000000002','runtime-human@example.invalid','admin',false);
+
 -- Fixtures are owner-created; every admission/refusal below executes as authenticated.
 INSERT INTO auth.users(id) VALUES
  ('b8900000-0000-4000-8000-000000000002'),
@@ -75,7 +77,7 @@ SET LOCAL ROLE service_role;
 SELECT throws_ok($q$SELECT public.customer_support_absorb_lead_v1('b8700000-0000-4000-8000-000000000001','b8800000-0000-4000-8000-000000000001','b8800000-0000-4000-8000-000000000002','runtime-lead@example.invalid','runtime-machine-absorb',NULL)$q$,'42501','customer_support_command_requires_human','machine admin cannot absorb under service role');
 SELECT throws_ok($q$SELECT public.customer_support_correct_subject_email_v1('b8700000-0000-4000-8000-000000000001','b8800000-0000-4000-8000-000000000001','runtime-subject@example.invalid','runtime-new@example.invalid','runtime-machine-correction',NULL)$q$,'42501','customer_support_command_requires_human','machine admin cannot correct email under service role');
 SELECT is(public.marketing_rehome_client_lead_v1('b8800000-0000-4000-8000-000000000099')->>'refusalCode','client_not_found','projected rehome preserves missing-row and default timestamp behavior');
-SELECT is(public.customer_support_correct_subject_email_v1('b8700000-0000-4000-8000-000000000002','b8800000-0000-4000-8000-000000000099','missing@example.invalid','new@example.invalid','runtime-missing-subject',NULL)->>'refusalCode','subject_not_found','projected correction preserves missing-row and null timestamp behavior');
+SELECT is(public.customer_support_admit_subject_email_v1('b8700000-0000-4000-8000-000000000002','b8800000-0000-4000-8000-000000000099','missing@example.invalid','new@example.invalid','runtime-missing-subject',NULL)->>'refusalCode','subject_not_found','projected correction preserves missing-row and null timestamp behavior');
 RESET ROLE;
 SELECT is((SELECT count(*)::integer FROM public.customer_support_subscription_commands WHERE idempotency_key IN ('runtime-machine-absorb','runtime-machine-correction')),0,'machine refusals create no command receipt');
 SELECT is((SELECT count(*)::integer FROM public.customer_support_subscription_audit_events WHERE idempotency_key IN ('runtime-machine-absorb','runtime-machine-correction')),0,'machine refusals create no audit mutation');

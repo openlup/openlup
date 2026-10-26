@@ -1,4 +1,4 @@
--- pgTAP: the operator contact correction, and the linked-account fence it removes.
+-- pgTAP: contact correction through admission, claim, identity commit and settlement.
 --
 -- The delta this suite proves is a *removal*: the e-mail correction used to refuse
 -- every subject with an `auth_user_id`, which is every customer who checked out.
@@ -15,14 +15,17 @@
 BEGIN;
 SELECT plan(26);
 
+INSERT INTO public.admin_users(id,email,role,is_machine_actor) VALUES ('06a00000-0000-4000-8000-000000000001','r4-operator_contact_correction@example.invalid','admin',false);
+
 -- One active operator and one deactivated, so every gate assertion has its pair.
 INSERT INTO public.platform_communication_operators (principal_id, active)
 VALUES
   ('06a00000-0000-4000-8000-000000000001', true),
   ('06a00000-0000-4000-8000-000000000002', false);
 
-INSERT INTO auth.users (id)
-VALUES ('06000000-0000-4000-8000-000000000001');
+-- Seed the original email on INSERT so no unclaimed UPDATE is queued for the deferred guard.
+INSERT INTO auth.users (id, email)
+VALUES ('06000000-0000-4000-8000-000000000001', 'contact-correction-linked@example.invalid');
 
 -- Linked. Under the old fence this subject could never be corrected; it is the
 -- whole point of the wave that it can be now.
@@ -56,15 +59,36 @@ VALUES (
 -- ---------------------------------------------------------------------------
 
 SET LOCAL ROLE service_role;
-SELECT is(
-  public.customer_support_correct_subject_email_v1(
+-- Current ordered workflow for contact-correction-email-linked-1; no combined-entry shim.
+RESET ROLE;
+CREATE TEMP TABLE _r4_operator_contact_correction_1(response jsonb);
+GRANT SELECT,INSERT,UPDATE ON _r4_operator_contact_correction_1 TO service_role;
+SET LOCAL ROLE service_role;
+INSERT INTO _r4_operator_contact_correction_1 SELECT public.customer_support_admit_subject_email_v1(
     '06a00000-0000-4000-8000-000000000001',
     '06100000-0000-4000-8000-000000000001',
     'contact-correction-linked@example.invalid',
     'contact-correction-moved@example.invalid',
     'contact-correction-email-linked-1',
     now()
-  )->>'outcome',
+  );
+UPDATE _r4_operator_contact_correction_1 SET response=public.customer_support_claim_subject_email_v1('contact-correction-email-linked-1') WHERE response->>'outcome' IN ('admitted','pending');
+RESET ROLE;
+WITH provider_claim AS (
+  SELECT response, response->>'idempotencyKey' AS command_key FROM _r4_operator_contact_correction_1
+)
+UPDATE auth.users u SET email=t.response->>'newEmail',
+  raw_app_meta_data=COALESCE(u.raw_app_meta_data,'{}'::jsonb)||jsonb_build_object('operator_email_correction',
+    jsonb_build_object('idempotencyKey',t.command_key,'claimToken',t.response->>'claimToken','sequence',t.response->>'sequence'))
+FROM provider_claim t WHERE t.response->>'outcome'='claimed' AND u.id=(t.response->>'authUserId')::uuid;
+SET CONSTRAINTS ALL IMMEDIATE;
+SET CONSTRAINTS ALL DEFERRED;
+SET LOCAL ROLE service_role;
+UPDATE _r4_operator_contact_correction_1 SET response=public.customer_support_settle_subject_email_v1('contact-correction-email-linked-1',(response->>'claimToken')::uuid,'complete') WHERE response->>'outcome'='claimed';
+SET LOCAL ROLE service_role;
+
+SELECT is(
+  (SELECT response FROM _r4_operator_contact_correction_1)->>'outcome',
   'applied',
   'a linked subject is corrected instead of refused as subject_account_linked'
 );
@@ -103,15 +127,36 @@ SELECT is(
 
 -- Replay of the settled key returns `replayed`, not a second mutation.
 SET LOCAL ROLE service_role;
-SELECT is(
-  public.customer_support_correct_subject_email_v1(
+-- Current ordered workflow for contact-correction-email-linked-1; no combined-entry shim.
+RESET ROLE;
+CREATE TEMP TABLE _r4_operator_contact_correction_2(response jsonb);
+GRANT SELECT,INSERT,UPDATE ON _r4_operator_contact_correction_2 TO service_role;
+SET LOCAL ROLE service_role;
+INSERT INTO _r4_operator_contact_correction_2 SELECT public.customer_support_admit_subject_email_v1(
     '06a00000-0000-4000-8000-000000000001',
     '06100000-0000-4000-8000-000000000001',
     'contact-correction-linked@example.invalid',
     'contact-correction-moved@example.invalid',
     'contact-correction-email-linked-1',
     now()
-  )->>'outcome',
+  );
+UPDATE _r4_operator_contact_correction_2 SET response=public.customer_support_claim_subject_email_v1('contact-correction-email-linked-1') WHERE response->>'outcome' IN ('admitted','pending');
+RESET ROLE;
+WITH provider_claim AS (
+  SELECT response, response->>'idempotencyKey' AS command_key FROM _r4_operator_contact_correction_2
+)
+UPDATE auth.users u SET email=t.response->>'newEmail',
+  raw_app_meta_data=COALESCE(u.raw_app_meta_data,'{}'::jsonb)||jsonb_build_object('operator_email_correction',
+    jsonb_build_object('idempotencyKey',t.command_key,'claimToken',t.response->>'claimToken','sequence',t.response->>'sequence'))
+FROM provider_claim t WHERE t.response->>'outcome'='claimed' AND u.id=(t.response->>'authUserId')::uuid;
+SET CONSTRAINTS ALL IMMEDIATE;
+SET CONSTRAINTS ALL DEFERRED;
+SET LOCAL ROLE service_role;
+UPDATE _r4_operator_contact_correction_2 SET response=public.customer_support_settle_subject_email_v1('contact-correction-email-linked-1',(response->>'claimToken')::uuid,'complete') WHERE response->>'outcome'='claimed';
+SET LOCAL ROLE service_role;
+
+SELECT is(
+  (SELECT response FROM _r4_operator_contact_correction_2)->>'outcome',
   'replayed',
   'the settled idempotency key replays rather than correcting twice'
 );
@@ -130,15 +175,36 @@ SELECT is(
 -- ---------------------------------------------------------------------------
 
 SET LOCAL ROLE service_role;
-SELECT is(
-  public.customer_support_correct_subject_email_v1(
+-- Current ordered workflow for contact-correction-email-collision-1; no combined-entry shim.
+RESET ROLE;
+CREATE TEMP TABLE _r4_operator_contact_correction_3(response jsonb);
+GRANT SELECT,INSERT,UPDATE ON _r4_operator_contact_correction_3 TO service_role;
+SET LOCAL ROLE service_role;
+INSERT INTO _r4_operator_contact_correction_3 SELECT public.customer_support_admit_subject_email_v1(
     '06a00000-0000-4000-8000-000000000001',
     '06100000-0000-4000-8000-000000000002',
     'contact-correction-unlinked@example.invalid',
     'contact-correction-taken@example.invalid',
     'contact-correction-email-collision-1',
     now()
-  )->>'refusalCode',
+  );
+UPDATE _r4_operator_contact_correction_3 SET response=public.customer_support_claim_subject_email_v1('contact-correction-email-collision-1') WHERE response->>'outcome' IN ('admitted','pending');
+RESET ROLE;
+WITH provider_claim AS (
+  SELECT response, response->>'idempotencyKey' AS command_key FROM _r4_operator_contact_correction_3
+)
+UPDATE auth.users u SET email=t.response->>'newEmail',
+  raw_app_meta_data=COALESCE(u.raw_app_meta_data,'{}'::jsonb)||jsonb_build_object('operator_email_correction',
+    jsonb_build_object('idempotencyKey',t.command_key,'claimToken',t.response->>'claimToken','sequence',t.response->>'sequence'))
+FROM provider_claim t WHERE t.response->>'outcome'='claimed' AND u.id=(t.response->>'authUserId')::uuid;
+SET CONSTRAINTS ALL IMMEDIATE;
+SET CONSTRAINTS ALL DEFERRED;
+SET LOCAL ROLE service_role;
+UPDATE _r4_operator_contact_correction_3 SET response=public.customer_support_settle_subject_email_v1('contact-correction-email-collision-1',(response->>'claimToken')::uuid,'complete') WHERE response->>'outcome'='claimed';
+SET LOCAL ROLE service_role;
+
+SELECT is(
+  (SELECT response FROM _r4_operator_contact_correction_3)->>'refusalCode',
   'email_already_in_use',
   'a lower(email) collision is refused by name, not raised as 23505'
 );
@@ -159,15 +225,36 @@ SELECT is(
 );
 
 SET LOCAL ROLE service_role;
-SELECT is(
-  public.customer_support_correct_subject_email_v1(
+-- Current ordered workflow for contact-correction-email-stale-1; no combined-entry shim.
+RESET ROLE;
+CREATE TEMP TABLE _r4_operator_contact_correction_4(response jsonb);
+GRANT SELECT,INSERT,UPDATE ON _r4_operator_contact_correction_4 TO service_role;
+SET LOCAL ROLE service_role;
+INSERT INTO _r4_operator_contact_correction_4 SELECT public.customer_support_admit_subject_email_v1(
     '06a00000-0000-4000-8000-000000000001',
     '06100000-0000-4000-8000-000000000002',
     'not-the-current-address@example.invalid',
     'contact-correction-fresh@example.invalid',
     'contact-correction-email-stale-1',
     now()
-  )->>'refusalCode',
+  );
+UPDATE _r4_operator_contact_correction_4 SET response=public.customer_support_claim_subject_email_v1('contact-correction-email-stale-1') WHERE response->>'outcome' IN ('admitted','pending');
+RESET ROLE;
+WITH provider_claim AS (
+  SELECT response, response->>'idempotencyKey' AS command_key FROM _r4_operator_contact_correction_4
+)
+UPDATE auth.users u SET email=t.response->>'newEmail',
+  raw_app_meta_data=COALESCE(u.raw_app_meta_data,'{}'::jsonb)||jsonb_build_object('operator_email_correction',
+    jsonb_build_object('idempotencyKey',t.command_key,'claimToken',t.response->>'claimToken','sequence',t.response->>'sequence'))
+FROM provider_claim t WHERE t.response->>'outcome'='claimed' AND u.id=(t.response->>'authUserId')::uuid;
+SET CONSTRAINTS ALL IMMEDIATE;
+SET CONSTRAINTS ALL DEFERRED;
+SET LOCAL ROLE service_role;
+UPDATE _r4_operator_contact_correction_4 SET response=public.customer_support_settle_subject_email_v1('contact-correction-email-stale-1',(response->>'claimToken')::uuid,'complete') WHERE response->>'outcome'='claimed';
+SET LOCAL ROLE service_role;
+
+SELECT is(
+  (SELECT response FROM _r4_operator_contact_correction_4)->>'refusalCode',
   'email_expectation_conflict',
   'a stale expectation is refused so a blind replay cannot overwrite a newer value'
 );

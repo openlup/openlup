@@ -1415,3 +1415,31 @@ A45/A46 token routes remain reference handlers. Native repair authorization and
 scheduling are a registered follow-up, because the donor native graph does not
 serve them.
 See the [self-service reference](PLATFORM_PACKAGE_REFERENCE.md#account-and-support-contracts).
+
+
+### Operator support receipts and partial links
+
+R4's managed operator subscription result remains the reference transcription.
+The additive native result carries `operator_subscription_authority_unavailable`
+for explicitly missing owner capabilities, plus optional actual M10 evidence
+`{ id, actorId, idempotencyKey, commandFingerprint, result }`. Delegated
+`appliedBy` is null; a lifecycle event is never relabelled as a support audit id.
+The support key remains unchanged; the M10 key is `m12-support:` plus SHA-256 of
+the complete UTF-8 support key. Exact replay changes only the top success outcome,
+retaining the original nested owner receipt. Conflicting reuse writes nothing.
+An M10 exception or missing owner receipt aborts the whole support transaction;
+an owner in-band refusal is durably paired with its support receipt/audit.
+
+Native SQL refusals write exactly one support receipt and one audit, with zero
+owner/lifecycle/event/outbox/address/identity changes. Native email/phone/link
+port refusals and typed address refusal open no transaction. Same-UTC-day slide
+is a support-only noop after window/version checks. Required real database proofs
+are [operator authority](../../tests/postgres/accountSupportOperatorAuthority.test.ts)
+and [upgrade/recovery replay](../../tests/postgres/accountSupportUpgrade.test.ts).
+
+Only link-then-subscription composition has a partial result: the completed link
+and the second command's refusal or unknown transport completion remain separate.
+Its callback is invoked before the second call without awaiting refresh. Email
+correction instead follows admission, exclusive execution claim, identity commit
+and settlement. A queued recovery notice is not proof of delivery, and an email
+claim is not a universal reservation against independent identity writers.

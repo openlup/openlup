@@ -141,7 +141,7 @@ export function assertExportInventory(consumer: string): void {
 export function proveAccountSupportConsumer(consumer: string): void {
   consumerNode(consumer, `
 import assert from "node:assert/strict";
-import { createAccountReadFacade, CustomerAccountReadModelError, withCustomerAccountReadStage, customerAccountReadFailureDetails } from "@openlup/platform/account-support";
+import { createAccountReadFacade, CustomerAccountReadModelError, withCustomerAccountReadStage, customerAccountReadFailureDetails, createOperatorRecovery, createPostgresOperatorAuthority, operatorAuthorityCapabilities, linkThenApply } from "@openlup/platform/account-support";
 import * as contracts from "@openlup/platform/account-support/contracts";
 assert.deepEqual(Object.keys(contracts), []);
 const account={revision:"owner-revision", getAccount(userId){assert.equal(this,account);assert.equal(userId,"principal-a");return Promise.resolve(snapshot);}};
@@ -162,6 +162,17 @@ for(const fail of [false,true]) {
 }
 await assert.rejects(()=>withCustomerAccountReadStage("account_aggregate",async()=>{throw cause;}),error=>error instanceof CustomerAccountReadModelError && error.cause===cause);
 assert.deepEqual(customerAccountReadFailureDetails(cause),{reason:"read_model_failed",stage:"unknown"});
+let nativeQueries=0;
+const native=createPostgresOperatorAuthority({run:async()=>{nativeQueries++;throw Error("unexpected native SQL");}}, {operatorId:"operator",now:()=>0,recoveryPath:token=>"/repair?token="+token});
+assert.deepEqual(await native.linkSubjectAccount({operatorId:"operator",subjectId:"subject",expectedEmail:"a@example.invalid",authUserId:null,idempotencyKey:"link-key"}),{outcome:"refused",refusalCode:"operator_subscription_authority_unavailable"});
+assert.equal(nativeQueries,0);assert.equal(operatorAuthorityCapabilities("native").email.supported,false);
+const owner={outcome:"refused",refusalCode:"payment_blocked"};
+const recovery=createOperatorRecovery({graph:"native",authority:{...native,applySubscriptionAction:async()=>owner}});
+assert.equal(await recovery.execute({actor:{operatorId:"operator",graph:"native",role:"admin",isMachineActor:false},subject:{subjectId:"subject",subscriptionId:"subscription"},command:{action:"apply_subscription_action",subscriptionId:"subscription",subscriptionAction:"pause",expectedVersion:4,idempotencyKey:"action-key"},idempotencyKey:"action-key",expectedVersion:4,reason:null,evidence:[]}),owner);
+const timeline=[];
+assert.deepEqual(await linkThenApply({link:async()=>{timeline.push("link-key");return {outcome:"applied"};},onLinked:()=>{timeline.push("callback");return new Promise(()=>{});},apply:async()=>{timeline.push("action-key");return owner;}}),{outcome:"partial",link:{outcome:"applied"},subscription:owner});
+assert.deepEqual(timeline,["link-key","callback","action-key"]);
+
 `);
 }
 
@@ -517,7 +528,8 @@ export function compileConsumer(consumer: string, entries: readonly string[], co
   ].join("\n"));
   if (entries.includes("account-support") && entries.includes("account-support/contracts")) surfaces.push([
     'import { createAccountReadFacade } from "@openlup/platform/account-support";',
-    'import type { AccountReadPort, InvoiceAccessPort } from "@openlup/platform/account-support/contracts";',
+    'import type { AccountReadPort, InvoiceAccessPort, NativeOperatorSubscriptionResult } from "@openlup/platform/account-support/contracts";',
+    'export const nativeRefusal: NativeOperatorSubscriptionResult = { outcome: "refused", refusalCode: "operator_subscription_authority_unavailable" };',
     'const accountRead: AccountReadPort<{ revision: string }, { orders: string[] }, { orderId: string }> = createAccountReadFacade({ account: { getAccount: async () => ({ revision: "original" }) }, orders: { listOrders: async () => ({ orders: [] }), getOrderDetail: async (_userId, orderId) => ({ orderId }) } });',
     'export const accountResult = accountRead.listOrders("principal-a", { limit: 17 });',
     '// @ts-expect-error cursor pagination is not an owner capability',

@@ -62,6 +62,7 @@ function fixture() {
   writeFileSync(join(consumer, "node_modules/@openlup/platform/index.d.ts"), [
     "export interface Synthetic { value: string }",
     'export { tryCompensate, type CheckoutCompensationPort } from "./commerceCheckoutCompensation.js";',
+    "export type NativeOperatorSubscriptionResult = { outcome: 'refused'; refusalCode: 'operator_subscription_authority_unavailable' };",
     "export interface AccountReadPort<A,L,D> { getAccount(userId: string): Promise<A|null>; listOrders(userId: string, input: {limit:number}): Promise<L|null>; getOrderDetail(userId: string, orderId: string): Promise<D|null> }",
     "export declare function createAccountReadFacade<A,L,D>(ports: { account: Pick<AccountReadPort<A,L,D>, 'getAccount'>; orders: Pick<AccountReadPort<A,L,D>, 'listOrders'|'getOrderDetail'> }): AccountReadPort<A,L,D>;",
     "export interface InvoiceAccessPort { resolveDownload(input: {accountRef:string;orderId:string;documentRef:string}): Promise<unknown> }",
@@ -796,19 +797,12 @@ console.log("packed parent attribution passed");
 }, 30_000);
 
 it("executes the account-support consumer and detects a swallowed owner refusal", () => {
-  const consumer = fixture();
-  const packageRoot = join(consumer, "node_modules/@openlup/platform");
-  const manifest = JSON.parse(readFileSync(join(packageRoot, "package.json"), "utf8"));
-  manifest.exports["./account-support/contracts"].default = "./account-support-contracts.js";
-  writeFileSync(join(packageRoot, "package.json"), JSON.stringify(manifest));
-  writeFileSync(join(packageRoot, "account-support-contracts.js"), "export {};\n");
-  const implementation = readFileSync(join(root, "packages/platform/dist/account-support/accountReadFacade.js"), "utf8");
-  const diagnostics = readFileSync(join(root, "packages/platform/dist/account-support/customerAccountReadDiagnostics.js"), "utf8");
-  writeFileSync(join(packageRoot, "index.js"), implementation + "\n" + diagnostics);
+  const consumer = packedA1Fixture(scratch());
   proveAccountSupportConsumer(consumer);
-  writeFileSync(join(packageRoot, "index.js"), implementation.replace(
+  const facade = join(consumer, "node_modules/@openlup/platform/dist/account-support/accountReadFacade.js");
+  writeFileSync(facade, readFileSync(facade, "utf8").replace(
     "return ports.account.getAccount(userId);", "return ports.account.getAccount(userId).catch(() => null);",
-  ) + "\n" + diagnostics);
+  ));
   expect(() => proveAccountSupportConsumer(consumer)).toThrow();
 });
 

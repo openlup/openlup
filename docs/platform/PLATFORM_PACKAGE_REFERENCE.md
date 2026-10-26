@@ -836,7 +836,7 @@ read and download-authorization seam. It adds no invoice archive, PDF transport
 or storage. Owner refusal unions, optional fields, readonly fields and nullability
 are preserved by local structural declarations with executed owner-equality tests.
 Command declarations and capability flags are proposed composition boundaries;
-R1 implements only account-read delegation and diagnostics. Hosts supply trusted
+R1 implements account-read delegation and diagnostics; R4 adds the explicit operator selection below. Hosts supply trusted
 context and selected owner implementations. A capability declaration never grants
 authority or establishes managed/native parity.
 
@@ -941,3 +941,43 @@ source. Native repair authorization/scheduling is a
 The [default-off recipe](RUNTIME_AND_SELF_HOSTING.md#opt-in-disposable-subscription-reference)
 selects no browser route; native profile/start and browser key retention remain
 R5 limits.
+
+
+### Operator recovery selection
+
+`createOperatorRecovery` accepts a managed authority with lazy identity-move and
+account-link ports, or a native authority. Send an
+`OperatorRecoveryCommandEnvelope` carrying the verified human administrator,
+selected graph, confirmed subject, original key, expected version, reason and
+owner evidence. The host must verify active membership and provision the operator
+seat before calling; the package rejects machine/admin/graph/key/subject mismatches.
+Phone, recovery, absorption and subscription results remain their owners' objects.
+
+`createManagedOperatorAuthority` takes an `OperatorRpcExecutor` and
+`OperatorAuthorityOptions` (operator id, clock, recovery-path policy and optional
+opaque-token source). Email calls the current admission/claim/settlement RPCs;
+identity commits must enforce the issued claim. A pending claim reports
+`customer_support_email_correction_in_progress`; failed execution reports
+`customer_support_email_correction_failed`; uncertain completion releases or
+reports `customer_support_email_correction_repair_required`. Original attribution
+is durable even when another authorized human resumes execution.
+
+`createPostgresOperatorAuthority` takes an injected transaction executor. Pause,
+ordinary paid-up resume and 3–60-day slide delegate to M10 in the support SQL
+transaction. `NativeOperatorSubscriptionResult` adds the optional actual
+`OperatorOwnerReceipt` and the single capability refusal
+`operator_subscription_authority_unavailable`; the managed result stays unchanged.
+Native email, phone, account link and address refuse before opening SQL. SQL also
+refuses the unsupported short band, expired/residual-unpaid resume and prepared
+attempt pause. Inspect `operatorAuthorityCapabilities` for each action/subcase;
+a supported ordinary action does not promise all state-dependent subcases.
+
+`linkThenApply` preserves two keys and two commits. After a successful link it
+invokes `void onLinked()` before the subscription call. A refusal or transport
+failure then returns a partial result with the completed link; it never claims
+the link rolled back. `createM12OperatorRecoveryBinding` selects these package
+exports only with `enabled: true` and complete ports. The reference
+`AccountSupportRecoveryStatus` displays the partial result/capability refusal;
+neither file mounts a route. Install the complete rail, including M11 managed
+predecessors, before selecting this boundary. The sparse migration catalog is
+not an installer. See [migration compatibility](DATA_AND_MIGRATIONS.md#compatibility-lifecycle).

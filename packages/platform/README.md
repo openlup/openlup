@@ -1102,3 +1102,17 @@ setupMethod to paymentMethod.execute without owner imports. Native repair is a
 [registered follow-up](../../docs/platform/plans/oss-m12-account-support.md#follow-up-register).
 The default-off reference binding mounts nothing; browser key retention and
 native profile/start remain unselected.
+
+
+R4 adds `createOperatorRecovery`, `createManagedOperatorAuthority`,
+`createPostgresOperatorAuthority`, `operatorAuthorityCapabilities`,
+`moveIdentityForEmailCorrection`, `executeOperatorAccountLink`, `linkThenApply`
+and `ACCOUNT_SUPPORT_MIGRATIONS`. The host injects its transaction/RPC and identity
+ports, verified human operator and recovery-path policy. Recovery token generation
+and SHA-256 hashing use the runtime Web Crypto API without a Node import; the
+host may still inject its opaque-token generator. Managed email admission
+and claim precede identity mutation and settlement. Native lifecycle commands
+delegate to M10, with actual optional owner receipts and named unavailable
+subcases. Link-then-action reports a completed link separately when the second
+command refuses or fails. The reference binding is default-off and unmounted;
+no import provisions authority or activates a route.

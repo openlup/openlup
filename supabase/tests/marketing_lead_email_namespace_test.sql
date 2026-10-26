@@ -10,6 +10,8 @@
 BEGIN;
 SELECT plan(32);
 
+INSERT INTO public.admin_users(id,email,role,is_machine_actor) VALUES ('08a00000-0000-4000-8000-000000000001','r4-marketing_lead_email_namespace@example.invalid','admin',false);
+
 SELECT has_column('public', 'clients', 'identity_kind',
   'clients names the customer versus marketing compatibility namespace');
 SELECT has_column('public', 'clients', 'marketing_contact_id',
@@ -183,15 +185,34 @@ SELECT is(
   'namespace-identity@example.invalid',
   'an Auth-linked row keeps its real address');
 SET LOCAL ROLE service_role;
-SELECT is(
-  public.customer_support_correct_subject_email_v1(
+-- Current ordered workflow for namespace-customer-correction-1; no combined-entry shim.
+RESET ROLE;
+UPDATE auth.users SET email='namespace-customer-old@example.invalid' WHERE id=(SELECT auth_user_id FROM public.clients WHERE id='08100000-0000-4000-8000-000000000001') AND email IS NULL;
+CREATE TEMP TABLE _r4_marketing_lead_email_namespace_1(response jsonb);
+GRANT SELECT,INSERT,UPDATE ON _r4_marketing_lead_email_namespace_1 TO service_role;
+SET LOCAL ROLE service_role;
+INSERT INTO _r4_marketing_lead_email_namespace_1 SELECT public.customer_support_admit_subject_email_v1(
     '08a00000-0000-4000-8000-000000000001',
     '08100000-0000-4000-8000-000000000001',
     'namespace-customer-old@example.invalid',
     'namespace-lead-target@example.invalid',
     'namespace-customer-correction-1',
     now()
-  )->>'outcome',
+  );
+UPDATE _r4_marketing_lead_email_namespace_1 SET response=public.customer_support_claim_subject_email_v1('namespace-customer-correction-1') WHERE response->>'outcome' IN ('admitted','pending');
+RESET ROLE;
+UPDATE auth.users u SET email=t.response->>'newEmail',
+  raw_app_meta_data=COALESCE(u.raw_app_meta_data,'{}'::jsonb)||jsonb_build_object('operator_email_correction',
+    jsonb_build_object('idempotencyKey','namespace-customer-correction-1','claimToken',t.response->>'claimToken','sequence',t.response->>'sequence'))
+FROM _r4_marketing_lead_email_namespace_1 t WHERE t.response->>'outcome'='claimed' AND u.id=(t.response->>'authUserId')::uuid;
+SET CONSTRAINTS ALL IMMEDIATE;
+SET CONSTRAINTS ALL DEFERRED;
+SET LOCAL ROLE service_role;
+UPDATE _r4_marketing_lead_email_namespace_1 SET response=public.customer_support_settle_subject_email_v1('namespace-customer-correction-1',(response->>'claimToken')::uuid,'complete') WHERE response->>'outcome'='claimed';
+SET LOCAL ROLE service_role;
+
+SELECT is(
+  (SELECT response FROM _r4_marketing_lead_email_namespace_1)->>'outcome',
   'applied',
   'the customer can immediately claim the address released by a marketing shell');
 RESET ROLE;

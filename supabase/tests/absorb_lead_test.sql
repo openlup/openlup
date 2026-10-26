@@ -22,6 +22,8 @@
 BEGIN;
 SELECT plan(41);
 
+INSERT INTO public.admin_users(id,email,role,is_machine_actor) VALUES ('07a00000-0000-4000-8000-000000000001','r4-absorb_lead@example.invalid','admin',false);
+
 -- One active operator and one deactivated, so the gate has its pair.
 INSERT INTO public.platform_communication_operators (principal_id, active)
 VALUES
@@ -216,15 +218,34 @@ SELECT is(
   'applied|absorb-lead@example.invalid|absorbed+07100000000040008000000000000002@absorbed.invalid',
   'the audit names the address before and the tombstone after');
 SET LOCAL ROLE service_role;
-SELECT is(
-  public.customer_support_correct_subject_email_v1(
+-- Current ordered workflow for absorb-lead-then-correct-1; no combined-entry shim.
+RESET ROLE;
+UPDATE auth.users SET email='absorb-customer@example.invalid' WHERE id=(SELECT auth_user_id FROM public.clients WHERE id='07100000-0000-4000-8000-000000000001') AND email IS NULL;
+CREATE TEMP TABLE _r4_absorb_lead_1(response jsonb);
+GRANT SELECT,INSERT,UPDATE ON _r4_absorb_lead_1 TO service_role;
+SET LOCAL ROLE service_role;
+INSERT INTO _r4_absorb_lead_1 SELECT public.customer_support_admit_subject_email_v1(
     '07a00000-0000-4000-8000-000000000001',
     '07100000-0000-4000-8000-000000000001',
     'absorb-customer@example.invalid',
     'absorb-lead@example.invalid',
     'absorb-lead-then-correct-1',
     now()
-  )->>'outcome',
+  );
+UPDATE _r4_absorb_lead_1 SET response=public.customer_support_claim_subject_email_v1('absorb-lead-then-correct-1') WHERE response->>'outcome' IN ('admitted','pending');
+RESET ROLE;
+UPDATE auth.users u SET email=t.response->>'newEmail',
+  raw_app_meta_data=COALESCE(u.raw_app_meta_data,'{}'::jsonb)||jsonb_build_object('operator_email_correction',
+    jsonb_build_object('idempotencyKey',k.command_key,'claimToken',t.response->>'claimToken','sequence',t.response->>'sequence'))
+FROM _r4_absorb_lead_1 t, (VALUES ('absorb-lead-then-correct-1')) AS k(command_key) WHERE t.response->>'outcome'='claimed' AND u.id=(t.response->>'authUserId')::uuid;
+SET CONSTRAINTS ALL IMMEDIATE;
+SET CONSTRAINTS ALL DEFERRED;
+SET LOCAL ROLE service_role;
+UPDATE _r4_absorb_lead_1 SET response=public.customer_support_settle_subject_email_v1('absorb-lead-then-correct-1',(response->>'claimToken')::uuid,'complete') WHERE response->>'outcome'='claimed';
+SET LOCAL ROLE service_role;
+
+SELECT is(
+  (SELECT response FROM _r4_absorb_lead_1)->>'outcome',
   'applied',
   'the released address is then takeable by the correction that was refused before');
 RESET ROLE;

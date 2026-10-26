@@ -409,8 +409,92 @@ No local uncommitted implementation result establishes admission or publication.
 
 ## R4: operator recovery
 
-TODO: audited operator command composition after applicable owner handoffs and
-separately admitted control/forward evidence. Preserve partial results and refusals.
+R4 provides managed operator recovery/contact/link composition and conditional
+native audited support authority on the CTL predecessor's admitted SQL class.
+It excludes serve mounts, provider factories, lint/module-graph changes, M11
+edits, owner-engine rewrites, release and adopter cutover. RPC, transaction,
+identity-move and link resolution use injected ports; reference selection is
+default-off and recovery-path policy belongs to the host. Native lifecycle writes
+use the existing M10 owner within one support transaction, without a second
+lifecycle engine. SQL fixtures and installed/packed twins agree; the native
+manifest's object-inventory digest must equal the selected-catalog measurement
+printed by the native accountSupportUpgrade witness, which refuses a stale
+manifest. Complete managed M11 introductions precede the R4 managed forward.
+
+The unchanged generator rewrites only member order in the `returnApproveSchema`
+`refundMode` enum in `packages/platform/api/commerce.api.md` and
+`packages/platform/api/commerce-server.api.md`, with no declaration change.
+These two paths are ID-3 generated companions, making the bounded total
+42 + 2 = 44 changed paths.
+
+ID-6 and RD-R4-1 preserve R1's managed OperatorSubscriptionRefusal/Result unchanged
+and append NativeOperatorSubscriptionResult with the unavailable literal.
+Optional OperatorOwnerReceipt carries actual owner evidence; delegated appliedBy
+may be null, with no synthetic audit identifiers. Native linkSubjectAccount has
+an explicit capability refusal. Only the two-key, two-commit link-then-subscription
+sequence permits partial completion. Packaged-owner equality is checked in
+operatorAuthority.test.ts and reference-owner equality in
+m12OperatorRecoveryBinding.test.ts; claim/link additions have no older reference
+owner equality claim. Under ID-11, native owner evidence stays server-side: the
+reference wire retains the strict donor DTO and excludes ownerReceipt.
+
+Managed email preserves admission → claim → lazy identity read/move/read →
+settlement, including recovery after an already-completed identity move. Link
+calls `void onLinked()` without a receiver before the separate subscription
+command. Phone, recovery, absorption and subscription preserve owner results.
+Native SQL capability refusals write only a support receipt and audit;
+email/phone/link and typed address refuse before SQL. M03 native contact/link
+receipt seams and M10 short band, operator address, unpaid/expired resume and
+prepared-attempt pause parity remain CD-6 exclusions; R4 makes no I16/F32 parity
+claim. CD-8 uses the native CHECK-admitted `payment_pending` status for residual
+unpaid cycles, preserving the native outcome and managed predicate.
+
+CD-9 keeps the link body identical across hosts: the donor uses INVOKER with
+table-wide service_role access; OpenLup uses DEFINER with column-level capability
+closure and the sibling migration function owner. CD-13a preserves the four email
+definers (admit, claim, guard, settle) with `search_path = public, pg_catalog`.
+The link definer uses `search_path = pg_catalog, pg_temp` and qualified application
+references. All five revoke EXECUTE from PUBLIC, anon, authenticated and
+openlup_mcp_reader. Callable entries allow only service_role; the trigger-only
+guard also revokes service_role. No table grant is widened. Retired email
+correction and recovery retain INVOKER authority.
+
+Under RD-R4-4, machine/non-human, missing and inactive operator refusals leave
+clients, support commands and audit unchanged. Unknown subjects, email expectation
+conflicts, identities linked elsewhere and already-linked subjects preserve clients
+and auth identities, write exactly one refusal receipt and matching audit for the
+key, and change no other row/xmin. Outcomes are `refused` for `subject_not_found`
+and `conflict` for `email_expectation_conflict`, `identity_linked_elsewhere` and
+`subject_account_linked`. Same-key replay returns the stored refusal without writes.
+The combined email entry refuses with requires_admission/55000; five existing
+pgTAP companions use ordered admission/claim/identity/settlement, including phone
+and subscription coverage. The runtime missing-subject/null-clock case uses
+admission; machine and inactive operator assertions remain.
+
+CD-7 counts each independent input/state row separately, superseding RD-R4-2's
+CTL/R4 allocation. The R4 runner-case inventory is:
+
+| File | Cases | Proof class |
+| --- | ---: | --- |
+| packages/platform/test/account-support/operatorAuthority.test.ts | 5 | Compiler owner equality, capabilities, decoding and recovery hashing |
+| packages/platform/test/account-support/operatorRecovery.test.ts | 14 | Injected orchestration, failure/replay ordering and link sequencing |
+| packages/platform/test/account-support/postgresOperatorAuthority.test.ts | 13 | Injected SQL executor, capability refusals, exact error mapping and hashing |
+| server/runtime/public-reference/m12OperatorRecoveryBinding.test.ts | 6 | Compiler reference equality, default-off selection and injected bindings |
+| src/public-reference/accountSupportRecovery.test.tsx | 2 | Partial completion and native refusal presentation |
+| tests/postgres/accountSupportOperatorAuthority.test.ts | 23 | Real native PostgreSQL: owner delegation, eight independent refusals, rollback, replay, races and row/xmin deltas |
+| tests/postgres/accountSupportUpgrade.test.ts | 2 | Real native/managed PostgreSQL: prefix upgrade, catalog/ACL delta and recovery replay |
+| supabase/tests/account_support_contact_workflow_test.sql | 1 | Managed PostgreSQL/pgTAP: email execution ownership and settlement |
+| supabase/tests/account_support_operator_authority_test.sql | 1 | Managed PostgreSQL/pgTAP: link/refusal authority, definer ACLs and clean/hostile service_role sessions |
+
+The inventory totals 67 runner cases; pgTAP files count once each, rather than
+once per assertion. The first five files have executed passing cases; the real
+PostgreSQL and pgTAP entries identify database proof obligations, not a database
+PASS inferred from injected tests. The existing cold-consumer case verifies packed
+consumption and refusal propagation without adding a runner case. Existing M10
+subscriptionCommandLifecycleCases, M03 postgresAccountLinkStore and M08
+fulfillmentDeliveryAlignment proofs are reused. The cumulative M12 ceiling is
+125 cases; timing serves module cleanup, with extra speed work only for an
+exceeded existing timeout.
 
 ## R5: reference composition
 
