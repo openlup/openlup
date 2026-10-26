@@ -22,3 +22,4 @@ export { createShippingContribution } from "./shippingContribution.js";
 export { createFulfillmentContribution } from "./fulfillmentContribution.js";
 export { createSubscriptionContribution } from "./subscriptionContribution.js";
 export { createCommerceContribution } from "./commerceContribution.js";
+export { createAccountSupportContribution } from "./accountSupportContribution.js";

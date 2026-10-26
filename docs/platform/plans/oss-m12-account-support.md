@@ -505,3 +505,86 @@ and optional enrichment fallback after applicable M11 dependencies land.
 
 TODO: cumulative artifacts/tests, unchanged witnesses, migration/cut register and
 owner review. Release and adoption require their own authorization and evidence.
+
+## R5a: inert reference composition
+
+R5a contributes `createAccountSupportBindings`, `createAccountSupportServices` and
+`createAccountSupportContribution` without mounting the static or subscription
+reference. It captures one host-selected graph and operation inventory, guards
+each distinct callable once, and shares that wrapper across service, port and
+route aliases. A route whose callable is absent from the operation inventory is
+invalid configuration. Each enabled entrance observes readiness again; disabled
+entrances call neither observer nor owner. Null selected operations remain null
+and stay in the contribution's required ports, allowing Core to refuse them.
+
+The reference schema helper unions the host's selected owner requirements and
+additional objects under its complete catalogue identity, preserving overloads.
+A command-only M10 selection requires preview and apply, without constructing a
+renewal runner. The native composition witness names R4's actual
+`customer_support_apply_subscription_action_v1(uuid,uuid,text,jsonb,integer,text,timestamp with time zone)`
+and existing support/owner ledgers, and defines a Core probe and guarded R4 API
+call to its installed store. P1 passed its real-PostgreSQL rerun on `621e51fd`
+with `npm test -- tests/postgres/accountSupportComposition.test.ts`: one test,
+8.44 seconds of test execution and 8.77 seconds total. Readiness proves catalogue facts;
+owner authorization, transactions and receipt replay remain separate obligations.
+
+The R5 operator subscription route wraps one R4 executor with the donor BFF
+metadata: `contractVersion`, `action: "apply_subscription_action"`,
+`subscriptionAction` and `subscriptionId`. Under ID-11, it serializes only the
+donor outcome fields, preserving decoded ISO timestamps and explicit nulls.
+Optional native `ownerReceipt` remains on R4's server-side result and is absent
+from the wire. The native in-band `operator_subscription_authority_unavailable`
+refusal throws the donor's `OperatorSubscriptionAuthorityUnavailableError`,
+preserving the existing BFF error path. Complete applied, replayed, noop, refused
+and conflict responses pass through the real donor browser response parser without field
+removal. The route does not equate the BFF response with the SQL record's internal
+action or timestamp text; R4's result types stay unchanged.
+
+The browser recipe accepts four already authenticated elements and explicit host
+paths. The browser witnesses use existing customer clients and HTTP handlers
+through the guarded reference route, preserving frozen owner money and command
+keys/results/refusals. No serving entry, credential or authentication provider is
+changed. Host transports must map the binding's admission refusal objects before
+mounting those descriptors; the recipe installs no HTTP dispatcher.
+
+Commerce remains only an injected nullable callable record, with
+`unsupported/host_binding_required` for a null record/member and no draft-M11
+import. R5a selects neither A47–A51 nor A94/A95 nor the checkout continuation of
+A130/A131. Keep commerceRecovery/configuredPurchase unsupported; existing local
+draft resume/discard behavior is unchanged. M10's lifecycle descriptors delegate
+to M04 delivery with their original message key. R4 queues its own payment
+recovery notice; M12 adds no second effect consumer, worker or scheduler.
+
+The corrected R5 closure has thirty eligible paths: implementation/API/plan paths
+already introduced by R1 are modifications, the source-release snapshot stays
+unchanged, and the changes fragment is `m12-r5a.md`. No owner contract, module
+graph edge, SQL or version changes are needed. Existing exports and companion
+content are preserved. The unchanged API generator changes only account-support
+and composition reports; no generated sibling declaration changed.
+
+CD-7 expands the eighteen forecast cases to thirty-eight defined cases:
+bindings 5 (B1 success/error and B2 null record/member separately), contribution 4 (C1 metadata,
+missing port, missing owner and duplicate route), reference 15 (R1–R6 plus the
+unselected-route configuration, commerce generic-correlation proof and seven
+operator subscription wire mapping cases), browser 3 (U2 success/refusal separately),
+PostgreSQL 1 and packed consumer 10 (K1 NodeNext/Bundler and six independent
+runtime states; K2 missing export/no-op separately).
+C2's empty/inert registration assertion is already in C1 and R6; L1/L2 reuse the
+unchanged account-support contracts test and generic module type/value/deep-import
+matrix in `scripts/packages/eslint-import-map.test.ts`. No different behavior
+rows are merged to meet a forecast. Measurements and blocked local evidence stay
+in the lead's draft handoff. This inventory describes defined cases, not a claim
+that all passed: the lead's real-PostgreSQL P1 run on `5b8f4177` failed on the
+wire/SQL comparison; the corrected route and expectation passed the rerun on
+`621e51fd` described above. After ID-11's strict wire mapping and complete
+browser-client assertions, the updated P1 passed against real PostgreSQL on
+`9de0eb7d` (824 ms). Non-PostgreSQL execution results are recorded separately
+in the fix handoff.
+No new test file has a requested timeout above the
+existing integration setup bounds.
+
+The assigned R4 tree contains R1, R3 and R4; R2 remains a sibling draft awaiting
+the coordinator's bottom-up restack. R5a consumes the retained account-read
+facade/HTTP owner seams and changes no R2 file. Cumulative R2 composition and
+all selected-M11/managed proofs still require that approved restack and later
+R5b. This local draft creates no new acceptance or delivery grant.

@@ -91,6 +91,33 @@ export declare function computeEditState(input: CustomerSubscriptionEligibilityI
 export declare function buildActionRequired(subscriptions: AccountSubscription[], orders: AccountOrderSummary[], states: Map<string, SubscriptionActionState> | undefined, canUse: AccountReadProjectionPolicy["canUsePaymentMethodForRenewal"]): AccountActionRequired[];
 export {};
 ```
+## dist/account-support/bindings.d.ts
+
+```ts
+import type { AccountSupportCapabilities } from "./contracts/index.js";
+/** Already bound owner methods; the host retains authentication and dispatch. */
+export type AccountSupportCallable = (...args: never[]) => unknown;
+export type AccountSupportOperations = Readonly<Record<string, AccountSupportCallable | null>>;
+export type AccountSupportHostBindingRequired = {
+    readonly kind: "unsupported";
+    readonly code: "host_binding_required";
+};
+type CommerceArguments<F> = F extends AccountSupportCallable ? Parameters<F> : unknown[];
+/** Capture one graph and one executor per logical operation, without calling either. */
+export declare function createAccountSupportBindings<O extends AccountSupportOperations, C extends AccountSupportOperations = AccountSupportOperations>(input: {
+    graph: "managed" | "native";
+    capabilities: AccountSupportCapabilities;
+    operations: O;
+    commerce?: C | null;
+}): Readonly<{
+    graph: "managed" | "native";
+    capabilities: Readonly<AccountSupportCapabilities>;
+    operations: Readonly<O>;
+    /** No draft commerce import or fallback executor. An absent record/member is explicit. */
+    commerce<K extends keyof C & string>(key: K, ...args: CommerceArguments<C[K]>): Promise<Awaited<ReturnType<Extract<C[K], AccountSupportCallable>>> | AccountSupportHostBindingRequired>;
+}>;
+export {};
+```
 ## dist/account-support/contracts/account.d.ts
 
 ```ts
@@ -1283,6 +1310,34 @@ export type LinkThenSubscriptionResult = {
     subscription: NativeOperatorSubscriptionResult | null;
 };
 ```
+## dist/account-support/contribution.d.ts
+
+```ts
+import type { AccountSupportCapabilities } from "./contracts/index.js";
+import type { AccountSupportCallable, AccountSupportOperations } from "./bindings.js";
+export type AccountSupportBindingRefusal = {
+    readonly kind: "refused";
+    readonly code: "disabled" | "schema_unknown" | "schema_unsatisfied";
+};
+export type AccountSupportReadiness = {
+    readonly kind: "ready";
+} | AccountSupportBindingRefusal;
+export type GuardedAccountSupportOperation<F> = F extends AccountSupportCallable ? (...args: Parameters<F>) => Promise<Awaited<ReturnType<F>> | AccountSupportBindingRefusal> : null;
+export type GuardedAccountSupportOperations<O extends AccountSupportOperations> = {
+    readonly [K in keyof O]: GuardedAccountSupportOperation<O[K]>;
+};
+/** One guard per callable identity, shared by service, port and route aliases. */
+export declare function createAccountSupportServices<O extends AccountSupportOperations>(input: {
+    enabled?: boolean;
+    capabilities: AccountSupportCapabilities;
+    operations: O;
+    readiness(): Promise<AccountSupportReadiness>;
+}): Readonly<{
+    capabilities: AccountSupportCapabilities;
+    readiness: () => Promise<AccountSupportReadiness>;
+    operations: Readonly<GuardedAccountSupportOperations<O>>;
+}>;
+```
 ## dist/account-support/customer360.d.ts
 
 ```ts
@@ -1433,6 +1488,10 @@ export type { OperatorRpcExecutor, OperatorAuthorityOptions } from "./operatorAu
 export { createPostgresOperatorAuthority } from "./postgresOperatorAuthority.js";
 export type { OperatorQueryExecutor, OperatorTransactionExecutor } from "./postgresOperatorAuthority.js";
 export { ACCOUNT_SUPPORT_MIGRATIONS } from "./migrations.js";
+export { createAccountSupportBindings } from "./bindings.js";
+export type { AccountSupportCallable, AccountSupportOperations, AccountSupportHostBindingRequired } from "./bindings.js";
+export { createAccountSupportServices } from "./contribution.js";
+export type { AccountSupportBindingRefusal, AccountSupportReadiness, GuardedAccountSupportOperation, GuardedAccountSupportOperations } from "./contribution.js";
 ```
 ## dist/account-support/invoiceAccess.d.ts
 

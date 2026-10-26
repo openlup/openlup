@@ -174,6 +174,20 @@ to observe a recovery reminder, replay and unchanged active subscriptions,
 reservations and undelivered-parcel alignment; Docker absence leaves that proof
 unexecuted. The binding installs no route or schedule.
 
+The inert M12 composition tests exercise one guarded owner callable across service,
+port and route aliases, disabled/unknown/unsatisfied admission, and M04 receipt
+replay. `src/public-reference/accountSupportRoutes.test.tsx` sends browser clients
+through the existing authenticated HTTP handlers. The native
+[`accountSupportComposition` witness](tests/postgres/accountSupportComposition.test.ts)
+installs the complete catalogue, uses Core's actual schema probe and delegates
+the selected R4 command to its native store, checking durable receipt replay.
+Docker is required; a sandbox socket refusal is missing proof, not a pass.
+The installed R5 consumer compiles concrete selections and invalid requests in
+NodeNext and Bundler, executes positive/refusal paths, and detects removal of its
+packed declaration export or a no-op executor. Its compiler and runtime failures
+include the child diagnostics. These local witnesses mount no serving route and
+do not replace committed-candidate verification or counted native review.
+
 The [M10 composition witness](tests/postgres/subscriptionComposition.test.ts)
 uses its own disposable native database for the complete off/protect/arrival/
 rollback/dunning/stock table, shared population lease, schema-object probes and
@@ -2421,6 +2435,11 @@ terminal self-retro carry the lesson until it lands. No other tracker is kept.
   failures → pin SECURITY DEFINER paths to `pg_catalog, pg_temp`, qualify
   application references, and prove behaviour as the granted role with hostile
   caller-session objects; reserve owner access for setup and state inspection.
+
+- 2026-10-26, M12 inert composition: wrapping a generic keyed callable through
+  `Parameters`/`ReturnType` erased the key/request/result relation → retain its
+  type parameter at the entrance and execute a compiler witness with disjoint
+  owner requests/results and an invalid request, alongside runtime delegation.
 - 2026-10-25, M11 CTL notes: two review cycles in a row found stale statements in
   owner notes and pinned fixture comments (landed state, rail tails, admitted/draft
   wording) after each main landing → state only invariants in pinned or frozen

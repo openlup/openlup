@@ -551,6 +551,13 @@ privileges and complete catalogue installation are described in
 
 ## Compatibility posture
 
+The account-support reference capability manifest declares default-off,
+explicit-host registration and an empty route list. It is descriptive metadata,
+not permission to mount an account API or advertise checkout continuation.
+Selecting the inert R5a recipe requires the host's verified contexts, complete
+catalogue/schema observation and admission-refusal transport mapping; it changes
+neither the static profile's refusal list nor the subscription serving entry.
+
 M10-9 extends the reviewed forward registry to 18 approval pins, retaining
 exact 14/16-pin release-history reads and every existing binding and position.
 The two managed attempt-replay forwards install the admitted donor-exact
@@ -1382,6 +1389,19 @@ migration descriptors. An unknown claim always recovers by exact readback;
 only authoritative scoped absence can authorize a fresh create.
 
 ## Account self-service owner results
+
+R5a composition admission adds only `disabled`, `schema_unknown` and
+`schema_unsatisfied`, before entering an injected owner. Every entrance checks
+again; a prior ready observation does not authorize a later command. Callable
+aliases share one guard, preserving the selected owner's arguments, result,
+exception and original idempotency key. This is admission, not authorization or
+mutual exclusion: trusted customer/operator context and durable owner replay
+remain mandatory. A null selected operation remains an unsatisfied required port.
+The separate absent commerce record/member returns
+`{ kind: "unsupported", code: "host_binding_required" }`; a selected owner's own
+unsupported answer remains unchanged. R5a imports no draft commerce code and
+selects no checkout continuation. M04 retains notice replay and M12 creates no
+additional effect consumer.
 
 The experimental account-support composition selects each owner lane explicitly.
 Managed results, nulls and errors pass through; native typed and raw lanes keep

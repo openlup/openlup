@@ -1116,3 +1116,19 @@ delegate to M10, with actual optional owner receipts and named unavailable
 subcases. Link-then-action reports a completed link separately when the second
 command refuses or fails. The reference binding is default-off and unmounted;
 no import provisions authority or activates a route.
+
+R5a adds `createAccountSupportBindings` and `createAccountSupportServices` here,
+and `createAccountSupportContribution` in `/composition`. Supply already bound
+R1–R4/owner operations for one explicit managed/native graph, host capabilities
+and a readiness observer. Each distinct callable receives one guard shared by
+its service, port and route aliases; each entrance re-observes readiness. Disabled
+construction calls no observer. Refusals are `disabled`, `schema_unknown` and
+`schema_unsatisfied`; owner results and thrown failures pass through unchanged.
+A null selected operation remains a required port without an executable binding.
+The separate injected commerce record uses `commerce(key, ...args)` and returns
+`{ kind: "unsupported", code: "host_binding_required" }` for a null record/member.
+It imports no draft-M11 code. R5a selects no commerce recovery, configured purchase
+or checkout continuation; keep their capability flags unsupported. Contribution
+descriptors install no routes, handlers, schedules or workers. See the
+[reference recipe](../../docs/platform/RUNTIME_AND_SELF_HOSTING.md#opt-in-disposable-subscription-reference)
+for the host's schema and transport obligations.

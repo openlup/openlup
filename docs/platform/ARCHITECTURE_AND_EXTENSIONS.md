@@ -1923,3 +1923,22 @@ Self-service, Customer 360 and operator envelopes declare future composition,
 not landed executors. See the [R1 plan](plans/oss-m12-account-support.md) and
 [consumer reference](PLATFORM_PACKAGE_REFERENCE.md#account-and-support-contracts)
 for available behavior and exclusions.
+
+R5a's `createAccountSupportBindings` captures the host's one graph and injected
+operation inventory. `createAccountSupportServices` wraps each distinct callable
+once and preserves its concrete parameters/results. The contribution factory in
+`/composition` publishes the two existing account-support entries and selected
+owner dependencies, namespaced ports and route descriptors. Null selected slots
+remain required but unbound. Dependencies must name entries actually provided by
+the selected identity, communications, fulfillment, invoicing, subscriptions or
+inventory contribution; payments stays injected because it has no such module
+contribution. No owner engine or fallback dispatch is introduced.
+
+The reference composition is inert and default-off, like the M10 recipe. It
+re-observes the host's complete catalogue and selected schema requirements before
+each guarded entrance, using the same callable for service/port/route aliases.
+M04 owns notice delivery and deduplication, and R4 owns issue-recovery notices;
+M12 installs no second handler or scheduler. Browser route elements and paths
+are injected, preserving the host's distinct customer/operator authentication.
+The static and subscription serving entries remain unchanged. Commerce recovery,
+configured purchase and checkout continuation are unselected in R5a.
