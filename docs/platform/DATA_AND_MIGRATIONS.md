@@ -940,7 +940,14 @@ subcases retain named capability refusals. Managed email retires the combined
 claim, commit the claim-fenced identity update, then settle. A stale/expired claim
 cannot commit; release leaves pending, failure stays durably failed, and original
 operator attribution survives resumption. Managed linking adds audited
-`account_link`; recovery gains a human fence. See the
+`account_link`; recovery gains a human fence. The four preserved donor email
+definers (admit, claim, guard and settle) retain `search_path = public, pg_catalog`;
+the newly DEFINER link uses `search_path = pg_catalog, pg_temp` with fully qualified
+application references. All five revoke EXECUTE from PUBLIC, anon, authenticated
+and `openlup_mcp_reader`. Callable entries grant EXECUTE only to service_role;
+the guard also revokes service_role and remains trigger-only. The operator-authority
+PostgreSQL proof calls link as service_role and compares clean and hostile
+caller-session results. See the
 [class inventory](#m12-supportauthorityforwards) and
 [operator receipt contract](CANONICAL_CONTRACTS.md#operator-support-receipts-and-partial-links).
 

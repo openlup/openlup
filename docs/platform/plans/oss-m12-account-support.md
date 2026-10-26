@@ -456,8 +456,15 @@ resume with that cycle and proceeds without it.
 CD-9 is a standing donor-adopter adoption mapping: the link function has the same body
 in both hosts. The donor adopter uses INVOKER with table-wide `service_role` access;
 OpenLup uses DEFINER under its column-level capability closure, with the sibling
-migration function owner, fixed `search_path = public, pg_catalog` and service-only
-EXECUTE. No table grant is widened. Retired email correction and recovery retain
+migration function owner. CD-13a preserves the four donor email definers
+(admit, claim, guard and settle) with donor `search_path = public, pg_catalog`.
+The newly DEFINER link uses `search_path = pg_catalog, pg_temp` and fully qualified
+application references. All five revoke EXECUTE from PUBLIC, anon, authenticated
+and `openlup_mcp_reader`; only service_role can execute the callable entries,
+while the guard remains trigger-only and also revokes service_role. The managed
+operator-authority PostgreSQL witness compares clean and hostile caller-session
+link results as service_role, with temporary relations/functions and caller-schema
+lower/btrim shadows, and checks each definer's effective ACL. No table grant is widened. Retired email correction and recovery retain
 INVOKER authority. The managed pgTAP witness covers ACLs and body authority while
 calling through `service_role`. Under RD-R4-4, machine/non-human, missing and
 inactive operator refusals leave clients, support commands and support audit

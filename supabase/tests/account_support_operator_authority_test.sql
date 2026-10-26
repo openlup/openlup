@@ -40,6 +40,41 @@ SELECT is((SELECT prosecdef FROM pg_catalog.pg_proc WHERE oid =
  'public.customer_support_issue_recovery(uuid,uuid,uuid,text,text,text,timestamptz,text)'::regprocedure),
  false,'recovery retains invoker authority');
 
+-- CD-13a: effective privileges cover every definer, including inherited grants.
+SELECT ok(NOT has_function_privilege('openlup_mcp_reader', signature, 'EXECUTE'),
+ 'MCP reader cannot execute ' || signature)
+FROM (VALUES
+ ('public.customer_support_admit_subject_email_v1(uuid,uuid,text,text,text,timestamptz)'),
+ ('public.customer_support_claim_subject_email_v1(text)'),
+ ('public.customer_support_guard_identity_email_v1()'),
+ ('public.customer_support_settle_subject_email_v1(text,uuid,text)'),
+ ('public.customer_support_link_subject_account_v1(uuid,uuid,text,uuid,text,timestamptz)')
+) AS definers(signature);
+SELECT results_eq(
+ $$SELECT p.oid::regprocedure::text, p.prosecdef, p.proconfig,
+   COALESCE((SELECT array_agg(r.rolname::text ORDER BY r.rolname)
+     FROM pg_catalog.aclexplode(COALESCE(p.proacl,
+       pg_catalog.acldefault('f',p.proowner))) a
+     JOIN pg_catalog.pg_roles r ON r.oid=a.grantee
+     WHERE a.grantee <> p.proowner AND a.privilege_type='EXECUTE'), ARRAY[]::text[]),
+   EXISTS (SELECT 1 FROM pg_catalog.aclexplode(COALESCE(p.proacl,
+     pg_catalog.acldefault('f',p.proowner))) a
+     WHERE a.grantee=0 AND a.privilege_type='EXECUTE')
+ FROM pg_catalog.pg_proc p WHERE p.oid IN (
+  'public.customer_support_admit_subject_email_v1(uuid,uuid,text,text,text,timestamptz)'::regprocedure,
+  'public.customer_support_claim_subject_email_v1(text)'::regprocedure,
+  'public.customer_support_guard_identity_email_v1()'::regprocedure,
+  'public.customer_support_settle_subject_email_v1(text,uuid,text)'::regprocedure,
+  'public.customer_support_link_subject_account_v1(uuid,uuid,text,uuid,text,timestamptz)'::regprocedure)
+ ORDER BY 1$$,
+ $$VALUES
+ ('customer_support_admit_subject_email_v1(uuid,uuid,text,text,text,timestamp with time zone)',true,ARRAY['search_path=public, pg_catalog'],ARRAY['service_role'],false),
+ ('customer_support_claim_subject_email_v1(text)',true,ARRAY['search_path=public, pg_catalog'],ARRAY['service_role'],false),
+ ('customer_support_guard_identity_email_v1()',true,ARRAY['search_path=public, pg_catalog'],ARRAY[]::text[],false),
+ ('customer_support_link_subject_account_v1(uuid,uuid,text,uuid,text,timestamp with time zone)',true,ARRAY['search_path=pg_catalog, pg_temp'],ARRAY['service_role'],false),
+ ('customer_support_settle_subject_email_v1(text,uuid,text)',true,ARRAY['search_path=public, pg_catalog'],ARRAY['service_role'],false)$$,
+ 'four donor paths and hardened link preserve service-only EXECUTE; guard is trigger-only');
+
 -- Compare complete rows and tuple versions, including unrelated identities/receipts.
 CREATE TEMP VIEW _r4_link_authority_rows AS
  SELECT 'clients'::text AS relation, xmin::text AS version, to_jsonb(c) AS row
@@ -331,5 +366,62 @@ SELECT is((SELECT count(*)::int FROM public.customer_support_recovery_commands W
 SELECT is((SELECT count(*)::int FROM public.customer_support_recovery_audit_events WHERE idempotency_key='r4-machine-recovery'),0,'machine leaves no recovery audit');
 SELECT is((SELECT count(*)::int FROM public.customer_support_subscription_commands WHERE idempotency_key='r4-retired-email'),0,'retired entry leaves no receipt');
 SELECT is((SELECT email FROM public.clients WHERE id='a1220000-0000-4000-8000-000000000001'),'r4-customer@example.invalid','retired entry preserves contact email');
+-- CD-13a: fresh-key noop still reads operator, subject and identity state,
+-- normalizes the supplied email and persists its own receipt/audit as service_role.
+CREATE TEMP TABLE _r4_clean_link_result(response jsonb);
+GRANT SELECT, INSERT ON _r4_clean_link_result TO service_role;
+SET LOCAL ROLE service_role;
+INSERT INTO _r4_clean_link_result
+ SELECT public.customer_support_link_subject_account_v1(
+ 'a1200000-0000-4000-8000-000000000001','a1220000-0000-4000-8000-000000000001',
+ '  R4-CUSTOMER@EXAMPLE.INVALID  ','a1210000-0000-4000-8000-000000000001',
+ 'r4-link-clean-session',NULL);
+SELECT is((SELECT response FROM _r4_clean_link_result),
+ jsonb_build_object('outcome','noop','action','link_account',
+ 'subjectId','a1220000-0000-4000-8000-000000000001'::uuid),
+ 'clean granted-role link returns the complete expected result');
+RESET ROLE;
+CREATE SCHEMA r4_hostile_session AUTHORIZATION service_role;
+SET LOCAL ROLE service_role;
+CREATE TEMP TABLE clients(id uuid);
+CREATE FUNCTION pg_temp.lower(text) RETURNS text LANGUAGE plpgsql AS $$
+ BEGIN RAISE EXCEPTION 'hostile temporary lower called'; END $$;
+CREATE FUNCTION pg_temp.btrim(text) RETURNS text LANGUAGE plpgsql AS $$
+ BEGIN RAISE EXCEPTION 'hostile temporary btrim called'; END $$;
+CREATE FUNCTION r4_hostile_session.lower(text) RETURNS text LANGUAGE plpgsql AS $$
+ BEGIN RAISE EXCEPTION 'hostile caller lower called'; END $$;
+CREATE FUNCTION r4_hostile_session.btrim(text) RETURNS text LANGUAGE plpgsql AS $$
+ BEGIN RAISE EXCEPTION 'hostile caller btrim called'; END $$;
+SET LOCAL search_path = r4_hostile_session, pg_catalog, pg_temp, public, extensions;
+SELECT throws_ok($$SELECT lower('fixture')$$,'P0001','hostile caller lower called',
+ 'caller search_path really resolves the hostile lower');
+SELECT throws_ok($$SELECT btrim('fixture')$$,'P0001','hostile caller btrim called',
+ 'caller search_path really resolves the hostile btrim');
+SELECT is(to_regclass('clients'), 'pg_temp.clients'::regclass,
+ 'caller relation lookup really resolves the temporary clients shadow');
+SELECT is(public.customer_support_link_subject_account_v1(
+ 'a1200000-0000-4000-8000-000000000001','a1220000-0000-4000-8000-000000000001',
+ '  R4-CUSTOMER@EXAMPLE.INVALID  ','a1210000-0000-4000-8000-000000000001',
+ 'r4-link-hostile-session',NULL), (SELECT response FROM pg_temp._r4_clean_link_result),
+ 'hostile caller-session objects leave the granted-role link result identical to clean');
+RESET ROLE;
+SET LOCAL search_path = public, extensions;
+SELECT results_eq(
+ $$SELECT response FROM public.customer_support_subscription_commands
+ WHERE idempotency_key IN ('r4-link-clean-session','r4-link-hostile-session')
+ ORDER BY idempotency_key$$,
+ $$SELECT response FROM _r4_clean_link_result UNION ALL SELECT response FROM _r4_clean_link_result$$,
+ 'both calls persist the identical complete response under separate fresh keys');
+SELECT results_eq(
+ $$SELECT outcome,value_before,value_after FROM public.customer_support_subscription_audit_events
+ WHERE idempotency_key IN ('r4-link-clean-session','r4-link-hostile-session')
+ ORDER BY idempotency_key$$,
+ $$VALUES ('noop'::text,'a1210000-0000-4000-8000-000000000001'::text,'a1210000-0000-4000-8000-000000000001'::text),
+ ('noop'::text,'a1210000-0000-4000-8000-000000000001'::text,'a1210000-0000-4000-8000-000000000001'::text)$$,
+ 'both granted-role calls audit the same linked identity without a shadow effect');
+DROP SCHEMA r4_hostile_session CASCADE;
+DROP TABLE pg_temp.clients;
+DROP FUNCTION pg_temp.lower(text), pg_temp.btrim(text);
+
 SELECT * FROM finish();
 ROLLBACK;

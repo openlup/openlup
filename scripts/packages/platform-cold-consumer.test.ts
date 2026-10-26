@@ -797,16 +797,9 @@ console.log("packed parent attribution passed");
 }, 30_000);
 
 it("executes the account-support consumer and detects a swallowed owner refusal", () => {
-  const consumer = fixture();
-  const packageRoot = join(consumer, "node_modules/@openlup/platform");
-  const manifest = JSON.parse(readFileSync(join(packageRoot, "package.json"), "utf8"));
-  manifest.exports["./account-support/contracts"].default = "./account-support-contracts.js";
-  writeFileSync(join(packageRoot, "package.json"), JSON.stringify(manifest));
-  writeFileSync(join(packageRoot, "account-support-contracts.js"), "export {};\n");
-  cpSync(join(root, "packages/platform/dist/account-support"), join(packageRoot, "account-support"), { recursive: true });
-  writeFileSync(join(packageRoot, "index.js"), 'export * from "./account-support/index.js";\n');
+  const consumer = packedA1Fixture(scratch());
   proveAccountSupportConsumer(consumer);
-  const facade = join(packageRoot, "account-support/accountReadFacade.js");
+  const facade = join(consumer, "node_modules/@openlup/platform/dist/account-support/accountReadFacade.js");
   writeFileSync(facade, readFileSync(facade, "utf8").replace(
     "return ports.account.getAccount(userId);", "return ports.account.getAccount(userId).catch(() => null);",
   ));
