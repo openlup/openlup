@@ -417,8 +417,15 @@ identity-move and link resolution use injected ports; reference selection is
 default-off and recovery-path policy belongs to the host. Native lifecycle writes
 use the existing M10 owner within one support transaction, without a second
 lifecycle engine. SQL fixtures and installed/packed twins agree; the native
-manifest's object-inventory digest is checked against the selected PostgreSQL
-catalog. Complete managed M11 introductions precede the R4 managed forward.
+manifest's object-inventory digest must equal the selected-catalog measurement
+printed by the native accountSupportUpgrade witness, which refuses a stale
+manifest. Complete managed M11 introductions precede the R4 managed forward.
+
+The unchanged generator rewrites only member order in the `returnApproveSchema`
+`refundMode` enum in `packages/platform/api/commerce.api.md` and
+`packages/platform/api/commerce-server.api.md`, with no declaration change.
+These two paths are ID-3 generated companions, making the bounded total
+42 + 2 = 44 changed paths.
 
 ID-6 and RD-R4-1 preserve R1's managed OperatorSubscriptionRefusal/Result unchanged
 and append NativeOperatorSubscriptionResult with the unavailable literal.
@@ -498,58 +505,3 @@ and optional enrichment fallback after applicable M11 dependencies land.
 
 TODO: cumulative artifacts/tests, unchanged witnesses, migration/cut register and
 owner review. Release and adoption require their own authorization and evidence.
-
-
-### R4 local handoff evidence
-
-Exactly 41 of the 43 approved paths change; only the registry and source-release
-contract stay unchanged. There are no extra paths and no ID-3 generated sibling
-API companions: the unchanged API generator changes only account-support and
-account-support-contracts. SQL fixture/twin equality and the unchanged R1 operator
-type prefix are byte-verified. The local donor ref has advanced to e3e2a021, but
-all nine consumed support sources are byte-identical to the approved a972e9dc pin.
-
-R4 authors 63 net-new required runner cases under CD-7: operatorAuthority 4,
-operatorRecovery 14, postgresOperatorAuthority 12, reference binding 5, reference
-status surface 2, real PostgreSQL operator authority 22, upgrade 2, and two new
-pgTAP files counted as one each. The first 37 have executed and passed; the
-remaining 26 require the supervisor's Docker/PG/pgTAP lane. The eight native
-refusals are independent runner rows. Existing cold-consumer coverage changes
-without adding a runner case. Cumulative module accounting remains the lead's
-measured shared ledger; no cap is changed here. Local new-file test time sums to
-about 1.19 s; hosted medians and PostgreSQL timing remain unmeasured.
-
-Final lint passes with zero errors and the existing 33 warnings; API update/check,
-39 focused account-support tests, 58 root reference/cold-consumer tests, all five
-public typecheck projects, structural scans and both neutrality checks pass.
-The broad package attempt reports 325 passing files / 5,684 passing tests, with
-one optional payment HTTP loopback setup failing listen EPERM and two skipped tests, as recorded
-in R1; it is not a full-suite PASS. Committed package/cold gates refuse this
-uncommitted draft. Policy and docs-update stop at the untracked change-fragment
-link; the generated source map remains unchanged. Direct documentation impact
-has eight obligations and one unanswered reference obligation, for a no-impact
-trailer in the supervisor's own commit; no existing serving recipe is changed.
-
-The final supplementary local tarball is 1,591,642 / 1,925,000 packed bytes,
-7,390,216 / 8,970,000 unpacked bytes and 2,126 / 2,580 files. Code gzip is
-1,352,854 / 1,648,000 bytes; docs gzip is 44,529 / 57,344 bytes. All fourteen
-browser entries fit; account-support/contracts is 20 / 32 bytes. These are dirty
-candidate measurements with packed build-byte and SQL-twin equality, not
-committed artifact admission or installed-consumer acceptance.
-
-The manifest object-inventory digest must equal the real selected-catalog
-measurement printed by the native accountSupportUpgrade witness, which refuses
-a stale manifest. Complete M11 managed introductions, all real database
-proof, committed artifact admission, whole required verification, maintainer reads,
-counted native reviews and delivery remain with the supervisor. No Git write,
-network call, activation, publication or counted native-review budget was used.
-
-Self-retro: comparing the native adapter directly with its owner caught accidental
-reuse of managed SQLSTATE/fallback behavior. The direct native mapper now preserves
-the existing opaque messages, and its tests assert exact messages. The reference
-proof also compares all six error-message constructors with their real owners;
-transcribe those values rather than guessing them. The link callback is called
-without a receiver, preserving the donor's `void onLinked()` invocation. Use the npm
-runner for root proof so its binary PATH is present; the failed direct launch is
-retained as failed evidence, not a test result. No separate process or follow-up
-work was added.

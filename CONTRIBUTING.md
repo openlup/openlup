@@ -383,8 +383,9 @@ refusal rows, atomic rollback, fences, races and the upgrade replay; and
 `node scripts/public-ci-pgtap.mjs` (Supabase CLI 2.98.2) for the managed link,
 email claim workflow and recovery fence. The native upgrade witness prints the
 real selected-catalog digest for the manifest; a stale manifest is corrected
-before the full gate. The packed cold consumer extends its existing positive and
-refusal proof to the operator exports. The existing M10
+before the full gate. The packed cold consumer asserts the operator exports'
+native link refusal, owner-result identity and linkThenApply ordering; its
+swallow-mutation falsifier targets accountReadFacade. The existing M10
 `subscriptionCommandLifecycleCases`, M03 `postgresAccountLinkStore` and M08
 `fulfillmentDeliveryAlignment` witnesses remain required owner proofs. Missing
 Docker or pgTAP is missing proof, never a skip or lexical PASS.
