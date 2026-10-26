@@ -320,7 +320,8 @@ authorization and error construction injected by the host. No browser extraction
 or activation. The raw M10 preview projection is checked before a host sees it.
 Account-support source imports no owner types, so the module-graph entry stays
 unchanged; installed command proof follows both entry points' JavaScript and
-declaration imports and requires them to stay inside the module.
+declaration imports. Imports stay inside account-support or reach only the exact
+entry files of its declared module edges and the package's declared dependencies.
 
 Native routing preserves the donor transcript: principal mismatch calls nothing;
 pause calls explicit pause only; update_bundle canonicalizes the ID and reads
@@ -340,8 +341,10 @@ remain unchanged and must pass.
 Budget: CD-7 replaces the earlier case caps; the M12 ceiling is the measured
 executed total, reported at S1. C1–C5 use separate cases for independent input/state rows;
 only one behavior sequence shares a case. C7–C9 are three real-PG cases through
-the facade, codec and native M10 store. C10 extends the existing installed consumer with confined
-JavaScript/declaration imports; C11 still removes its callable. Measured counts
+the facade, codec and native M10 store. C10 extends the existing installed consumer:
+JavaScript/declaration imports stay inside account-support or reach only the exact
+entry files of its declared module edges and the package's declared dependencies.
+C11 still removes its callable. Measured counts
 and per-file seconds are recorded with the module's stack record.
 
 The unchanged API generator leaves two sibling snapshots changed from final R1:

@@ -1,6 +1,6 @@
 /** Cold installed-artifact proof. Never repack or use workspace resolution. */
 import ts from "typescript";
-import { stripTypeScriptTypes } from "node:module";
+import { createRequire, stripTypeScriptTypes } from "node:module";
 import assert from "node:assert/strict";
 import { env as processEnvironment } from "node:process";
 import { execFileSync } from "node:child_process";
@@ -191,10 +191,8 @@ assert.equal("host" in facade,false);
   const packageRoot = join(consumer, "node_modules/@openlup/platform");
   const boundary = realpathSync(join(packageRoot, "dist/account-support"));
   const graph = PLATFORM_MODULE_GRAPH["account-support"];
-  const valueBoundaries = graph.values
-    .map(module => realpathSync(join(packageRoot, "dist", module)));
-  const typeBoundaries = graph.types
-    .map(module => realpathSync(join(packageRoot, "dist", module)));
+  const allowedEntries = new Set([...graph.values, ...graph.types].flatMap(module =>
+    ["index.js", "index.d.ts"].map(entry => realpathSync(join(packageRoot, "dist", module, entry)))));
   const metadata = JSON.parse(readFileSync(join(packageRoot, "package.json"), "utf8"));
   const packages = new Set([...Object.keys(metadata.dependencies ?? {}), ...Object.keys(metadata.peerDependencies ?? {})]);
   const pending: string[] = ["./account-support", "./account-support/contracts"].flatMap(entry => Object.values(metadata.exports[entry]) as string[]);
@@ -210,6 +208,15 @@ assert.equal("host" in facade,false);
       if (!item.fileName.startsWith(".")) {
         const name = item.fileName.split("/").slice(0, item.fileName.startsWith("@") ? 2 : 1).join("/");
         if (!packages.has(name)) throw new Error("Account-support installed import escapes declared module boundaries: " + item.fileName);
+        if (item.fileName !== name) {
+          try {
+            const dependencyMetadata = JSON.parse(readFileSync(join(consumer, "node_modules", name, "package.json"), "utf8"));
+            if (dependencyMetadata.exports === undefined) throw new Error("Dependency has no declared subpath exports");
+            createRequire(path).resolve(item.fileName);
+          } catch (cause) {
+            throw new Error("Account-support installed import escapes declared module boundaries: " + item.fileName, { cause });
+          }
+        }
         continue;
       }
       const dependency = resolve(dirname(path), item.fileName);
@@ -225,8 +232,7 @@ assert.equal("host" in facade,false);
         pending.push(installed);
         continue;
       }
-      const allowed = path.endsWith(".d.ts") ? [...valueBoundaries, ...typeBoundaries] : valueBoundaries;
-      if (!allowed.some(directory => installed.startsWith(directory + sep))) throw new Error("Account-support installed import escapes declared module boundaries: " + item.fileName);
+      if (!allowedEntries.has(installed)) throw new Error("Account-support installed import escapes declared module boundaries: " + item.fileName);
     }
   }
 }

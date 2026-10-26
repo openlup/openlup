@@ -942,3 +942,29 @@ it.each(["js", "d.ts"])("C11 refuses an undeclared module import in installed %s
     writeFileSync(entry, source);
   }
 });
+
+it.each(["js", "d.ts"])("C11 refuses nested modules and non-entry files of declared modules in installed %s", extension => {
+  const consumer = pristinePackedA1Fixture();
+  const entry = join(consumer, "node_modules/@openlup/platform/dist/account-support/contracts/index." + extension);
+  const source = readFileSync(entry, "utf8");
+  try {
+    for (const specifier of ["../../commerce/server/index.js", "../../invoicing/contracts/store.js"]) {
+      writeFileSync(entry, source + `\nimport "${specifier}";\n`);
+      expect(() => proveSelfServiceConsumer(consumer)).toThrow("installed import escapes declared module boundaries: " + specifier);
+    }
+  } finally {
+    writeFileSync(entry, source);
+  }
+});
+
+it("C11 refuses an unexported subpath of a declared installed dependency", () => {
+  const consumer = pristinePackedA1Fixture();
+  const entry = join(consumer, "node_modules/@openlup/platform/dist/account-support/contracts/index.d.ts");
+  const source = readFileSync(entry, "utf8");
+  try {
+    writeFileSync(entry, source + '\nimport "@openlup/core/dist/index.js";\n');
+    expect(() => proveSelfServiceConsumer(consumer)).toThrow("installed import escapes declared module boundaries: @openlup/core/dist/index.js");
+  } finally {
+    writeFileSync(entry, source);
+  }
+});
