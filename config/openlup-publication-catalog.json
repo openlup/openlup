@@ -5118,6 +5118,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/marketing/contactLegal.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/marketing/contracts/acquisition.ts",
       "class": "public-output"
     },
@@ -5127,6 +5131,10 @@
     },
     {
       "path": "packages/platform/src/marketing/contracts/analytics.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/marketing/contracts/contactLegal.ts",
       "class": "public-output"
     },
     {
@@ -5143,6 +5151,22 @@
     },
     {
       "path": "packages/platform/src/marketing/prelaunchAcquisitionSchemas.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/marketing/seo/jsonLd.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/marketing/seo/metadata.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/marketing/seo/serializeJsonLd.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/marketing/seo/urls.ts",
       "class": "public-output"
     },
     {
@@ -7299,6 +7323,14 @@
     },
     {
       "path": "packages/platform/test/marketing/schemas.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/marketing/seo/browserSafety.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/marketing/seo/conformance.test.ts",
       "class": "public-output"
     },
     {
@@ -23987,6 +24019,14 @@
     },
     {
       "path": "src/public-reference/main.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/public-reference/seoHead.test.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/public-reference/seoHead.tsx",
       "class": "public-output"
     },
     {

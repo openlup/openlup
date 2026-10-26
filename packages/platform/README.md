@@ -98,6 +98,7 @@ timestamp used in the webhook's idempotency key.
 | `./marketing/server` (analytics context) | Injected analytics context handler with host persistence, capability and identity bindings |
 | `./marketing`, `./marketing/contracts` | Browser-safe acquisition history, portable prelaunch, survey evidence and newsletter consent schemas; type-only DTOs and acquisition/research ports |
 | `./marketing`, `./marketing/contracts` (analytics) | Browser-safe acquisition and research schemas, injected analytics, paid purchase and consent-time facts; type-only DTOs and ports |
+| `./marketing`, `./marketing/contracts` (SEO and content slots) | Browser-safe JSON-LD serialization and graph builders, URL/hreflang helpers, ordered head data and contact/legal projections; type-only organization, contact, legal-document and privacy-processor content slots |
 | `./commerce`, `./commerce/contracts` | Browser-safe neutral commerce schema cores, generic ports and pure contract helpers |
 | `./commerce/server` | Node-only OMS, returns, native reviews/media and hosted-feedback handlers/adapters and order-detail composition, email consumers, dispatch registry, paid-fulfillment binding and checkout compensation, checkout handlers, runtime and shared paid-order saga |
 | `./pricing` | Experimental price authority, quote computation/handlers, offer projection/cache, readiness and policy tokens |
@@ -196,6 +197,16 @@ There is no default persistence, portable SQL or reference route for this handle
 An `active` result is a local context fact, never delivery, and telemetry context
 failure never gates commerce. The [context witness](test/marketing/analyticsContext.test.ts)
 exercises the factory through synthetic host bindings.
+
+`./marketing` also provides browser-safe JSON-LD serialization and graph builders,
+route URL/hreflang helpers, an ordered head descriptor and plain contact/legal
+projections. Applications supply identity, origin, routes, locales, images and
+content; the descriptor is plain data for a host head manager. The type-only
+`./marketing/contracts` entry exports shared organization facts and contact,
+legal-document and privacy-processor shapes, also forwarded as types by the
+runtime entry. The package supplies no document wording, processor inventory or
+content policy. The [marketing recipe](../../docs/platform/PLATFORM_PACKAGE_REFERENCE.md#marketing-seo-and-content-slots)
+owns the mechanics and installed-artifact proof.
 
 ## Commerce contracts
 
