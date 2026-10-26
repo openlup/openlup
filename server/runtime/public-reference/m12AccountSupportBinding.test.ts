@@ -108,9 +108,17 @@ it("disabled M12 refuses keyed commerce before the enabled M11 owner or injected
   const injected = vi.fn(async (key: string) => ({ key }));
   const commerceOwner = createM11CommerceReferenceBinding({ enabled: true,
     executor: { query: vi.fn((): never => { throw new Error("unexpected_query"); }) }, commerce: { start },
-    version: f.options.version, catalogue: f.options.catalogue, requiredObjects: [], readiness: f.readiness });
+    version: f.options.version, catalogue: f.options.catalogue, requiredObjects: [], readiness: f.readiness,
+    routes: [{ id: "start", handle: start }], schedules: [{ id: "start", cadenceSeconds: 60, run: start }] });
   const ownerService = vi.spyOn(commerceOwner.services, "start");
-  const binding = createM12AccountSupportReferenceBinding({ ...f.options, commerce: { start: injected }, commerceOwner });
+  const binding = createM12AccountSupportReferenceBinding({ ...f.options, commerce: { start: injected }, commerceOwner, commerceRegistry: new Map() });
+  const disabled = createM12AccountSupportReferenceBinding(f.options);
+  expect(binding.contributions).toEqual(disabled.contributions);
+  expect(binding.contributions).toHaveLength(1); expect(binding.contributions[0]!.routes).toEqual([]);
+  expect(binding.ports).toEqual({}); expect(binding.ports).toEqual(disabled.ports);
+  expect(binding.routes).toEqual({}); expect(binding.routes).toEqual(disabled.routes);
+  expect(binding.triggers).toEqual({}); expect(binding.triggers).toEqual(disabled.triggers);
+  expect(binding.commerceOwner).toBeNull(); expect(binding.commerceRegistry).toBeNull();
   expect(await binding.services.commerce("start", "original-key")).toEqual({ kind: "refused", code: "disabled" });
   expect(ownerService).not.toHaveBeenCalled(); expect(injected).not.toHaveBeenCalled();
   expect(start).not.toHaveBeenCalled(); expect(f.readiness).not.toHaveBeenCalled();

@@ -608,7 +608,7 @@ are never fed back into another M11 binding. Native reminder names remain
 reserved by that owner (`commerce_duplicate_operation`). The host supplies the
 reference checkout handler, recovery handlers/ports, selected stock read and
 existing outbox registry through `commerceRegistry`. No second executor, dispatcher, installer, worker,
-scheduler or stock allocator is introduced. Omitted/false enablement stays cold;
+scheduler or stock allocator is introduced. Omitted/false enablement stays cold, with no forwarded commerce entries and null commerce reference handles;
 unselected commerce retains `unsupported/host_binding_required`.
 
 The host includes all account-owner and exact ATP requirements when constructing

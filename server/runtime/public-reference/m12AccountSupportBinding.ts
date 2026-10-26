@@ -66,14 +66,15 @@ export function createM12AccountSupportReferenceBinding<O extends AccountSupport
   readiness(schema: RequiredSchema): Promise<ReadinessReport>;
 }) {
   const binding = createAccountSupportBindings(input);
-  const schema = m12AccountSupportSchema({ catalogue: input.catalogue, owners: input.ownerSchemas, requiredObjects: input.requiredObjects, commerce: input.commerceOwner });
+  const selected = input.enabled === true;
+  const commerceOwner = selected ? input.commerceOwner ?? null : null;
+  const schema = m12AccountSupportSchema({ catalogue: input.catalogue, owners: input.ownerSchemas, requiredObjects: input.requiredObjects, commerce: commerceOwner ?? undefined });
   async function readiness() {
     const report = await input.readiness(schema);
     return report.state === "ready" ? { kind: "ready" as const } : { kind: "refused" as const, code: `schema_${report.state}` as const };
   }
   const options = { enabled: input.enabled, capabilities: binding.capabilities, readiness };
   const guarded = createAccountSupportServices({ ...options, operations: binding.operations });
-  const commerceOwner = input.commerceOwner ?? null;
   async function commerce<K extends keyof C & string>(...args: Parameters<typeof binding.commerce<K>>):
     Promise<Awaited<ReturnType<Extract<C[K], AccountSupportCallable>>> | AccountSupportHostBindingRequired | AccountSupportBindingRefusal> {
     if (options.enabled !== true) {
@@ -94,7 +95,6 @@ export function createM12AccountSupportReferenceBinding<O extends AccountSupport
     if (!entry || entry[1] === null) throw new Error("account_support_entry_operation_required");
     return { ...route, handle: services.operations[entry[0]] as Contribution["routes"][number]["handle"] };
   });
-  const selected = input.enabled === true;
   const contribution = createAccountSupportContribution({ ...input, requiredSchema: schema,
     accountSupport: selected ? services.operations : {},
     routes: selected ? routes : [],
