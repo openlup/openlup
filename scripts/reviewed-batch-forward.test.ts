@@ -1274,6 +1274,10 @@ it("proves M12 trusted preparation, own-file introduction, queue/release binding
       ["browser execution", 1, s => s.replaceAll("TO service_role;", "TO authenticated;")],
       ["service guard execution", 1, s => s.replace("REVOKE ALL ON FUNCTION public.customer_support_guard_identity_email_v1() FROM PUBLIC, anon, authenticated, service_role;", "GRANT EXECUTE ON FUNCTION public.customer_support_guard_identity_email_v1() TO service_role;")],
       ["managed link reverted to invoker", 1, s => s.replace("p_auth_user_id uuid,\n  p_idempotency_key text,\n  p_now timestamptz\n)\nRETURNS jsonb\nLANGUAGE plpgsql\nSECURITY DEFINER\n", "p_auth_user_id uuid,\n  p_idempotency_key text,\n  p_now timestamptz\n)\nRETURNS jsonb\nLANGUAGE plpgsql\n")],
+      ["managed link donor search path", 1, s => s.replace("SET search_path = pg_catalog, pg_temp", "SET search_path = public, pg_catalog")],
+      ...["admit_subject_email", "claim_subject_email", "guard_identity_email", "settle_subject_email", "link_subject_account"].map(name => [
+        `missing ${name} reader revoke`, 1, (s: string) => s.replace(new RegExp(`REVOKE ALL ON FUNCTION public\\.customer_support_${name}_v1\\([^;]*?\\) FROM openlup_mcp_reader;\\n`, "u"), ""),
+      ] as [string, number, (sql: string) => string]),
       ["active retired entry", 1, s => s.replace("RAISE EXCEPTION 'customer_support_email_correction_requires_admission' USING ERRCODE = '55000';", "RETURN jsonb_build_object('outcome', 'applied');")],
       ["missing statement", 1, s => sqlStatements(s).slice(1).join("\n")],
       ["reordered statements", 1, s => { const rows = sqlStatements(s); [rows[0], rows[1]] = [rows[1]!, rows[0]!]; return rows.join("\n"); }],

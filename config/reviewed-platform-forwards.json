@@ -1606,7 +1606,7 @@
     },
     {
       "path": "supabase/migrations/20261026120100_account_support_current_authority.sql",
-      "sha256": "42f184eba0471c295c34c0c2612d7db01a70a208e8def3b92c661600ca3bae43",
+      "sha256": "7d501ef3eb6a0752cc32abb32cddae29fc2cc7afdecd990537956835cc88c3fb",
       "functions": [
         {
           "signature": "public.customer_support_admit_subject_email_v1(uuid,uuid,text,text,text,timestamptz)",
@@ -1636,7 +1636,7 @@
         {
           "signature": "public.customer_support_link_subject_account_v1(uuid,uuid,text,uuid,text,timestamptz)",
           "beforeSha256": null,
-          "afterSha256": "47cb2821117226456a9dd356aa5414325f428216f9864f5f4f019462e3e00010"
+          "afterSha256": "f016744a159fc69204eb0d843147f2844fca9a94f2de297fcc573f5423031559"
         },
         {
           "signature": "public.customer_support_issue_recovery(uuid,uuid,uuid,text,text,text,timestamptz,text)",
@@ -1697,6 +1697,10 @@
           "sql": "REVOKE ALL ON FUNCTION public.customer_support_settle_subject_email_v1(text, uuid, text) FROM PUBLIC, anon, authenticated;"
         },
         {
+          "sha256": "aa2784e694946d80255043891b6488d440b619187c1c5aa4f33f693580cc3f9c",
+          "sql": "REVOKE ALL ON FUNCTION public.customer_support_settle_subject_email_v1(text, uuid, text) FROM openlup_mcp_reader;"
+        },
+        {
           "sha256": "c584446905b78993637baf9492c8d2f222ad4c96c852d3914a745b280554ae7e",
           "sql": "GRANT EXECUTE ON FUNCTION public.customer_support_settle_subject_email_v1(text, uuid, text) TO service_role;"
         },
@@ -1709,6 +1713,10 @@
           "sql": "REVOKE ALL ON FUNCTION public.customer_support_admit_subject_email_v1(uuid, uuid, text, text, text, timestamptz) FROM PUBLIC, anon, authenticated;"
         },
         {
+          "sha256": "091153e8291f84e0ee852d0dae6af3ae29433ad409f3ff36566d18d5bc01a425",
+          "sql": "REVOKE ALL ON FUNCTION public.customer_support_admit_subject_email_v1(uuid, uuid, text, text, text, timestamptz) FROM openlup_mcp_reader;"
+        },
+        {
           "sha256": "287e98e0423e05b11676b21bdde8356e02e969476b19a842fe98cf42620b2367",
           "sql": "GRANT EXECUTE ON FUNCTION public.customer_support_admit_subject_email_v1(uuid, uuid, text, text, text, timestamptz) TO service_role;"
         },
@@ -1717,12 +1725,20 @@
           "sql": "REVOKE ALL ON FUNCTION public.customer_support_claim_subject_email_v1(text) FROM PUBLIC, anon, authenticated;"
         },
         {
+          "sha256": "e6b9644ceec52c9587cbcaa393dde034042d0150090bd49e4dc4beae3b695a21",
+          "sql": "REVOKE ALL ON FUNCTION public.customer_support_claim_subject_email_v1(text) FROM openlup_mcp_reader;"
+        },
+        {
           "sha256": "74f27120a7e8367bd653bb8717973d0c4f7a576e3acea6fa512285bd59fc9cb4",
           "sql": "GRANT EXECUTE ON FUNCTION public.customer_support_claim_subject_email_v1(text) TO service_role;"
         },
         {
           "sha256": "0696bfaa24e17fb3ebe0a17dcba0182886920e21a8879fc197e7927e837b328b",
           "sql": "REVOKE ALL ON FUNCTION public.customer_support_guard_identity_email_v1() FROM PUBLIC, anon, authenticated, service_role;"
+        },
+        {
+          "sha256": "013da6cd7c4cfc54bb489e342d67fae6d6289de54c8acac895244e4e9bebfb10",
+          "sql": "REVOKE ALL ON FUNCTION public.customer_support_guard_identity_email_v1() FROM openlup_mcp_reader;"
         },
         {
           "sha256": "c4c1cbac78ce3585790e679f4bcfb70ad15c2fbd8dc1c9d0f05f25ee9e97f625",
@@ -1741,11 +1757,15 @@
           "sql": "ALTER TABLE public.customer_support_subscription_audit_events\n  ADD CONSTRAINT customer_support_subscription_audit_events_kind_check\n  CHECK (command_kind IN ('subscription_action', 'email_correction', 'phone_correction', 'lead_absorption', 'account_link'))\n  NOT VALID;"
         },
         {
-          "sha256": "47cb2821117226456a9dd356aa5414325f428216f9864f5f4f019462e3e00010"
+          "sha256": "f016744a159fc69204eb0d843147f2844fca9a94f2de297fcc573f5423031559"
         },
         {
           "sha256": "0db302624111fd83b62812d87970acb8f6bed3e3707dccd252675fd0b4f098ec",
           "sql": "REVOKE ALL ON FUNCTION public.customer_support_link_subject_account_v1(\n  uuid, uuid, text, uuid, text, timestamptz\n) FROM PUBLIC, anon, authenticated;"
+        },
+        {
+          "sha256": "43240838565c1d67dddc5c812e253e88cc0c2e556140bb26ec9c74557bfbba31",
+          "sql": "REVOKE ALL ON FUNCTION public.customer_support_link_subject_account_v1(uuid, uuid, text, uuid, text, timestamptz) FROM openlup_mcp_reader;"
         },
         {
           "sha256": "feac234e282365c9a08c51924d716287f4fe5c7b9237099ff7b833f54fd75d57",

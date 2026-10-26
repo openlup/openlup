@@ -1558,7 +1558,8 @@ async function assertSupportCatalog(db: Pool, pin: BatchedForwardBinding, source
     const argText = /^CREATE(?: OR REPLACE)? FUNCTION [^(]+\(([\s\S]*?)\)\s+RETURNS/u.exec(header)![1]!.trim();
     const args = argText ? argText.split(",").map(arg => arg.trim().replace(/\s+/gu, " ")) : [];
     const types = fn.signature.slice(fn.signature.indexOf("(") + 1, -1).split(",").filter(Boolean);
-    const path = header.includes("public, pg_catalog") ? ["public", "pg_catalog"] : ["pg_catalog"];
+    const path = header.includes("public, pg_catalog") ? ["public", "pg_catalog"]
+      : header.includes("pg_catalog, pg_temp") ? ["pg_catalog", "pg_temp"] : ["pg_catalog"];
     const guard = fn.signature === "public.customer_support_guard_identity_email_v1()";
     // CD freeze correction #2: the managed link runs as DEFINER under the column-privilege closure.
     const definer = managed && /customer_support_(?:admit|claim|guard|settle|link)_/u.test(fn.signature);

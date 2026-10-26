@@ -1,4 +1,9 @@
 -- Current support email, link and recovery authority.
+-- Email admission, claim, identity guard and settlement preserve the donor
+-- SECURITY DEFINER statements and search_path = public, pg_catalog.
+-- The newly DEFINER account link uses pg_catalog, pg_temp with public-qualified
+-- application references. All five revoke openlup_mcp_reader; only service_role
+-- receives EXECUTE, except the trigger-only guard, which has no direct grant.
 ALTER TABLE public.admin_audit_events DROP CONSTRAINT admin_audit_events_action_check;
 
 ALTER TABLE public.admin_audit_events ADD CONSTRAINT admin_audit_events_action_check
@@ -300,6 +305,7 @@ REVOKE ALL ON FUNCTION public.customer_support_correct_subject_email_v1(uuid, uu
 GRANT EXECUTE ON FUNCTION public.customer_support_correct_subject_email_v1(uuid, uuid, text, text, text, timestamptz) TO service_role;
 
 REVOKE ALL ON FUNCTION public.customer_support_settle_subject_email_v1(text, uuid, text) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.customer_support_settle_subject_email_v1(text, uuid, text) FROM openlup_mcp_reader;
 
 GRANT EXECUTE ON FUNCTION public.customer_support_settle_subject_email_v1(text, uuid, text) TO service_role;
 
@@ -307,14 +313,17 @@ COMMENT ON FUNCTION public.customer_support_correct_subject_email_v1(uuid, uuid,
   'Retired combined correction entry point. Use customer_support_admit_subject_email_v1 before auth and customer_support_settle_subject_email_v1 afterward.';
 
 REVOKE ALL ON FUNCTION public.customer_support_admit_subject_email_v1(uuid, uuid, text, text, text, timestamptz) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.customer_support_admit_subject_email_v1(uuid, uuid, text, text, text, timestamptz) FROM openlup_mcp_reader;
 
 GRANT EXECUTE ON FUNCTION public.customer_support_admit_subject_email_v1(uuid, uuid, text, text, text, timestamptz) TO service_role;
 
 REVOKE ALL ON FUNCTION public.customer_support_claim_subject_email_v1(text) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.customer_support_claim_subject_email_v1(text) FROM openlup_mcp_reader;
 
 GRANT EXECUTE ON FUNCTION public.customer_support_claim_subject_email_v1(text) TO service_role;
 
 REVOKE ALL ON FUNCTION public.customer_support_guard_identity_email_v1() FROM PUBLIC, anon, authenticated, service_role;
+REVOKE ALL ON FUNCTION public.customer_support_guard_identity_email_v1() FROM openlup_mcp_reader;
 
 ALTER TABLE public.customer_support_subscription_commands
   DROP CONSTRAINT customer_support_subscription_commands_kind_check;
@@ -343,7 +352,7 @@ CREATE FUNCTION public.customer_support_link_subject_account_v1(
 RETURNS jsonb
 LANGUAGE plpgsql
 SECURITY DEFINER
-SET search_path = public, pg_catalog
+SET search_path = pg_catalog, pg_temp
 AS $$
 DECLARE
   v_existing public.customer_support_subscription_commands%ROWTYPE;
@@ -494,6 +503,7 @@ $$;
 REVOKE ALL ON FUNCTION public.customer_support_link_subject_account_v1(
   uuid, uuid, text, uuid, text, timestamptz
 ) FROM PUBLIC, anon, authenticated;
+REVOKE ALL ON FUNCTION public.customer_support_link_subject_account_v1(uuid, uuid, text, uuid, text, timestamptz) FROM openlup_mcp_reader;
 
 GRANT EXECUTE ON FUNCTION public.customer_support_link_subject_account_v1(
   uuid, uuid, text, uuid, text, timestamptz

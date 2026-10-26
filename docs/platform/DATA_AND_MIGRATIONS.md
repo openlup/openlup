@@ -822,12 +822,15 @@ revoked. Managed admission fixes seven ordered functions: email admission, claim
 identity guard and settlement creations, the retired combined email replacement,
 account-link creation and recovery replacement. Exact headers include parameter
 names/order/defaults, return/language, security mode and search path. The managed
-32-statement inventory fixes three CHECK preimages/replacements, two nullable
+37-statement inventory fixes three CHECK preimages/replacements, two nullable
 no-default claim columns, one sequence with no non-owner privileges, the deferred
 `AFTER UPDATE` constraint trigger on `auth.users`, two function comments and
-service-only function execution. The guard has no service grant. Email admission,
-claim, guard, settlement and account link run as `SECURITY DEFINER` with
-`search_path = public, pg_catalog` and service-only execution: the managed runtime
+service-only function execution. Email admission, claim, identity guard and
+settlement preserve the donor `SECURITY DEFINER` statements with
+`search_path = public, pg_catalog`. The newly DEFINER account link uses
+`search_path = pg_catalog, pg_temp` and public-qualified application references.
+All five explicitly revoke `openlup_mcp_reader`; only `service_role` receives
+EXECUTE, except the trigger-only guard, which has no direct grant. The managed runtime
 capability closure grants `service_role` column-level `clients` privileges only, so
 the link body, not a wider table grant, holds the authority. The admin CHECK
 retains `checkout_payment_link_mint` and adds only `operator_email_correction`;

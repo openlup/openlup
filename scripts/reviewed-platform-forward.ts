@@ -1276,8 +1276,8 @@ const supportAuthorityShapes = [
       {"signature": "public.customer_support_guard_identity_email_v1()", "position": 7, "creation": true, "before": null, "header": "32f0409041f185f2409bd253823b3243815e766e355b15b7000f8b7f377774fa"},
       {"signature": "public.customer_support_settle_subject_email_v1(text,uuid,text)", "position": 9, "creation": true, "before": null, "header": "4767b2baf5769cb5a98535d1d9713093cad42a6e8054a749793446a388757391"},
       {"signature": "public.customer_support_correct_subject_email_v1(uuid,uuid,text,text,text,timestamptz)", "position": 10, "creation": false, "before": "bcbdf0a0ed2b8bdd69ab6b37d6955eab8b98570b8bc43b0e647654587647ed57", "header": "db1686760a5f27d5874bbcac0e904318b3d1a201c6ca79964caad9eea9dfcd7f", "retired": "751cf9e8e4f9173698b47397b3db60a5bae3d6e19222d9090f2176ce9af205c6"},
-      {"signature": "public.customer_support_link_subject_account_v1(uuid,uuid,text,uuid,text,timestamptz)", "position": 25, "creation": true, "before": null, "header": "d642f66312a78a75c905fe26a83c46da227c0efb77f69b1c52b2851a14fcc724"},
-      {"signature": "public.customer_support_issue_recovery(uuid,uuid,uuid,text,text,text,timestamptz,text)", "position": 29, "creation": false, "before": "766d3c653584772cf4596bd7eb21beedbc758297b8f09f7163fddfa4da69d801", "header": "85888e6f1dcb72ff98d075426a6708f9497a024e5285caf422ecf668092a383f"},
+      {"signature": "public.customer_support_link_subject_account_v1(uuid,uuid,text,uuid,text,timestamptz)", "position": 29, "creation": true, "before": null, "header": "248aaf7b1a9131d9ca3c31c49259050cbe27d4f7e46cfbe73af81dde954ea746"},
+      {"signature": "public.customer_support_issue_recovery(uuid,uuid,uuid,text,text,text,timestamptz,text)", "position": 34, "creation": false, "before": "766d3c653584772cf4596bd7eb21beedbc758297b8f09f7163fddfa4da69d801", "header": "85888e6f1dcb72ff98d075426a6708f9497a024e5285caf422ecf668092a383f"},
     ],
     statements: [
       "2e263b5d96d79d32a68c23f85798123f86936061e042f62f2a63bb52bd266f90", // 1
@@ -1294,24 +1294,29 @@ const supportAuthorityShapes = [
       "f099fee07da72ce5be4ca1e8f1a1bff0fb551f293bf671768e971913fd24bb25", // 12
       "e5824315f9f7231582c60cc22e5d0729db03d1d775f33b27e866e71f883761d3", // 13
       "9331c67b1aec91d11c5f46427939cedbe616ec820658c3808ad0425a1183d544", // 14
-      "c584446905b78993637baf9492c8d2f222ad4c96c852d3914a745b280554ae7e", // 15
-      "2ce086a107810fc40db02714588a8ea795b99759e50d1f6640e1dc721d0257e5", // 16
-      "2f1c4e4c03acda4a296df0cf39cb28025e605471240700455fa03e635581c96e", // 17
-      "287e98e0423e05b11676b21bdde8356e02e969476b19a842fe98cf42620b2367", // 18
-      "e4c44d21eeaa8f0fbaa90d96b6a631828f2e974c6294d6fa7e6687fc2ac27edf", // 19
-      "74f27120a7e8367bd653bb8717973d0c4f7a576e3acea6fa512285bd59fc9cb4", // 20
-      "0696bfaa24e17fb3ebe0a17dcba0182886920e21a8879fc197e7927e837b328b", // 21
-      "c4c1cbac78ce3585790e679f4bcfb70ad15c2fbd8dc1c9d0f05f25ee9e97f625", // 22
-      "6a41306125d4a93047ba64f594f24b9fecadf9c02acde4a4c03978cb523e01e5", // 23
-      "45755b1786c7d1b63794daa8193a12c1dcbce15de27c76ca6cb6f6f1fea0bd91", // 24
-      "e23b7cfc3e97497234695e030752b99c5940eb87d9c89f7cb59b7387cfd016d0", // 25
-      null, // 26
-      "0db302624111fd83b62812d87970acb8f6bed3e3707dccd252675fd0b4f098ec", // 27
-      "feac234e282365c9a08c51924d716287f4fe5c7b9237099ff7b833f54fd75d57", // 28
-      "dd4ea44b0dc61f211af97a85e1404e8990e9430fa862335508e0d52c191d00a1", // 29
+      "aa2784e694946d80255043891b6488d440b619187c1c5aa4f33f693580cc3f9c", // 15
+      "c584446905b78993637baf9492c8d2f222ad4c96c852d3914a745b280554ae7e", // 16
+      "2ce086a107810fc40db02714588a8ea795b99759e50d1f6640e1dc721d0257e5", // 17
+      "2f1c4e4c03acda4a296df0cf39cb28025e605471240700455fa03e635581c96e", // 18
+      "091153e8291f84e0ee852d0dae6af3ae29433ad409f3ff36566d18d5bc01a425", // 19
+      "287e98e0423e05b11676b21bdde8356e02e969476b19a842fe98cf42620b2367", // 20
+      "e4c44d21eeaa8f0fbaa90d96b6a631828f2e974c6294d6fa7e6687fc2ac27edf", // 21
+      "e6b9644ceec52c9587cbcaa393dde034042d0150090bd49e4dc4beae3b695a21", // 22
+      "74f27120a7e8367bd653bb8717973d0c4f7a576e3acea6fa512285bd59fc9cb4", // 23
+      "0696bfaa24e17fb3ebe0a17dcba0182886920e21a8879fc197e7927e837b328b", // 24
+      "013da6cd7c4cfc54bb489e342d67fae6d6289de54c8acac895244e4e9bebfb10", // 25
+      "c4c1cbac78ce3585790e679f4bcfb70ad15c2fbd8dc1c9d0f05f25ee9e97f625", // 26
+      "6a41306125d4a93047ba64f594f24b9fecadf9c02acde4a4c03978cb523e01e5", // 27
+      "45755b1786c7d1b63794daa8193a12c1dcbce15de27c76ca6cb6f6f1fea0bd91", // 28
+      "e23b7cfc3e97497234695e030752b99c5940eb87d9c89f7cb59b7387cfd016d0", // 29
       null, // 30
-      "6860509f5f7a23b394161299b5766b6cac8f844b853ec70649805a7bd9c5bba2", // 31
-      "5a9b660c411c1f621e4339c99ef87dd89b595e1ca2cc954950f1a29eefba4ac3", // 32
+      "0db302624111fd83b62812d87970acb8f6bed3e3707dccd252675fd0b4f098ec", // 31
+      "43240838565c1d67dddc5c812e253e88cc0c2e556140bb26ec9c74557bfbba31", // 32
+      "feac234e282365c9a08c51924d716287f4fe5c7b9237099ff7b833f54fd75d57", // 33
+      "dd4ea44b0dc61f211af97a85e1404e8990e9430fa862335508e0d52c191d00a1", // 34
+      null, // 35
+      "6860509f5f7a23b394161299b5766b6cac8f844b853ec70649805a7bd9c5bba2", // 36
+      "5a9b660c411c1f621e4339c99ef87dd89b595e1ca2cc954950f1a29eefba4ac3", // 37
     ],
     constraints: [
       {"table": "public.admin_audit_events", "name": "admin_audit_events_action_check", "beforeSha256": "9c3f2af2de818ea355fc76d3eccef1640eac0f29924f5b731d5768d22d93c41d"},

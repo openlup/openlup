@@ -14,6 +14,12 @@ The [registry](../../../../../../config/reviewed-platform-forwards.json) and the
 Do not edit or re-version M11 fixtures or sibling pins. Never install these fixtures in
 production. The account-support migration export is a sparse catalog, not an installer.
 
+The managed email admission, claim, identity guard and settlement SECURITY DEFINER
+statements preserve the donor's `search_path = public, pg_catalog`. The newly DEFINER
+account link uses `search_path = pg_catalog, pg_temp` and public-qualified application
+references. All five explicitly revoke `openlup_mcp_reader`; only `service_role` receives
+EXECUTE, except the trigger-only guard, which has no direct grant.
+
 Real PostgreSQL/pgTAP must prove exact function headers/bodies/ACLs, CHECK preimages,
 claim columns, sequence state/ACL, deferred auth.users trigger, unaffected catalog/rows,
 transaction rollback and no-op/replay tuple stability. Missing infrastructure fails the
