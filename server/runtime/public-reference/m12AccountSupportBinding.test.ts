@@ -103,6 +103,19 @@ it.each([undefined, false])("R1/R2 enablement %s leaves every entrance cold", as
   expect(f.readiness).not.toHaveBeenCalled(); expect(f.owner).not.toHaveBeenCalled();
 });
 
+it("disabled M12 refuses keyed commerce before the enabled M11 owner or injected record", async () => {
+  const f = fixture(false), start = vi.fn(async (key: string) => ({ key }));
+  const injected = vi.fn(async (key: string) => ({ key }));
+  const commerceOwner = createM11CommerceReferenceBinding({ enabled: true,
+    executor: { query: vi.fn((): never => { throw new Error("unexpected_query"); }) }, commerce: { start },
+    version: f.options.version, catalogue: f.options.catalogue, requiredObjects: [], readiness: f.readiness });
+  const ownerService = vi.spyOn(commerceOwner.services, "start");
+  const binding = createM12AccountSupportReferenceBinding({ ...f.options, commerce: { start: injected }, commerceOwner });
+  expect(await binding.services.commerce("start", "original-key")).toEqual({ kind: "refused", code: "disabled" });
+  expect(ownerService).not.toHaveBeenCalled(); expect(injected).not.toHaveBeenCalled();
+  expect(start).not.toHaveBeenCalled(); expect(f.readiness).not.toHaveBeenCalled();
+});
+
 it("R3 unknown schema refuses services and route aliases before owner work", async () => {
   const f = fixture(true); f.readiness.mockResolvedValue({ state: "unknown", candidate, loadedPackages: [], issues: [] });
   const binding = createM12AccountSupportReferenceBinding(f.options);

@@ -76,6 +76,10 @@ export function createM12AccountSupportReferenceBinding<O extends AccountSupport
   const commerceOwner = input.commerceOwner ?? null;
   async function commerce<K extends keyof C & string>(...args: Parameters<typeof binding.commerce<K>>):
     Promise<Awaited<ReturnType<Extract<C[K], AccountSupportCallable>>> | AccountSupportHostBindingRequired | AccountSupportBindingRefusal> {
+    if (options.enabled !== true) {
+      const state = await guarded.readiness();
+      if (state.kind === "refused") return state;
+    }
     if (commerceOwner && Object.prototype.hasOwnProperty.call(commerceOwner.services, args[0])) {
       const execute = commerceOwner.services[args[0]] as (...values: Parameters<C[K] & AccountSupportCallable>) => Promise<Awaited<ReturnType<Extract<C[K], AccountSupportCallable>>> | AccountSupportBindingRefusal>;
       return execute(...args.slice(1) as Parameters<C[K] & AccountSupportCallable>);

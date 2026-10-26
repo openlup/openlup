@@ -603,7 +603,7 @@ bound commerce record and supplies the result through the reference-only
 `commerceOwner` option. R5b does not construct M11 or import its adapter graph;
 a local structural type describes only the consumed selection members. It forwards that binding's services,
 contributions, ports, routes and triggers once. The keyed entrance retains its
-key/request/result relation and delegates directly to the M11 guard; services
+key/request/result relation and checks M12 enablement before delegating directly to the M11 guard; services
 are never fed back into another M11 binding. Native reminder names remain
 reserved by that owner (`commerce_duplicate_operation`). The host supplies the
 reference checkout handler, recovery handlers/ports, selected stock read and
