@@ -159,8 +159,11 @@ an `OfferAvailabilityQueryClient` and an injected `isStockProvider` predicate.
 It preserves active-hold subtraction, lot/location eligibility and provider
 missing/stale refusals. SDK narrowing and provider selection stay host-owned.
 M06 owns normalized new-purchase reads and reservation TTL policy; the reference
-composition passes its selected read port through unchanged. Native new-purchase
-composition still refuses; the separate SQL seam does not activate that binding.
+composition passes its selected read port through unchanged. With `dataKind: "postgres"`,
+the host supplies `stockSourceKey` to bind the native ATP reader; omission reports
+`inventory_stock_source_key_required`. Managed composition prefers an injected
+reader, then binds `stockRpc` over `inventory_new_purchase_stock_read`; without
+either it reports `inventory_new_purchase_stock_reader_required`.
 W2 conformance distinguishes reads, fallback and one-time allocation; real SQL
 atomicity and consumption remain integration obligations.
 
@@ -288,7 +291,7 @@ caller-declared schema requirements. Missing proof keeps the named refusal.
 
 ## Inventory
 
-`createInventoryBindings` selects one store with exact host provider validation. Native new-purchase reads refuse as `inventory_native_new_purchase_stock_read_unsupported`; `createInventoryContribution` declares selected callables without activation.
+`createInventoryBindings` selects one store with exact host provider validation. With `dataKind: "postgres"`, supply `stockSourceKey` to bind the existing native ATP new-purchase reader; without it, `unsupported.newPurchaseStockRead` reports `inventory_stock_source_key_required`. Admin reads remain ready. Preview availability subtracts all live holds, remaining subscription demand inside 14 days and channel exposure, clamped at zero. The native reader refuses a different horizon or an own-order exclusion as `native_stock_read_options_unsupported`. For managed reads, an injected reader wins; otherwise supply `stockRpc` to bind `createManagedStockAvailability` with the managed forward `20261025109000_inventory_new_purchase_stock_read.sql`. Without either dependency, the reason remains `inventory_new_purchase_stock_reader_required`. Managed previews retain provider-tagged ATP accounting and refuse other horizons or exclusions as `managed_stock_read_options_unsupported`. The managed SQL reader refuses a NULL as-of timestamp as `inventory_stock_as_of_invalid` (SQLSTATE `22023`). Their conservative stale flag is true if any provider row for the SKU is stale; ATP quantities and allocator freshness checks are unchanged. `createInventoryContribution` declares selected callables without activation.
 
 `INVENTORY_MIGRATIONS` projects canonical units 27/33 byte-for-byte; install the full catalogue. Store support and pending proof: [M06 parity](../../docs/platform/plans/oss-m06-stock-reservations-delivery.md#parity-pending-rows).
 

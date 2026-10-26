@@ -4738,6 +4738,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/inventory/managedStockAvailability.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/inventory/newPurchaseStockAvailability.ts",
       "class": "public-output"
     },
@@ -4763,6 +4767,10 @@
     },
     {
       "path": "packages/platform/src/inventory/sql.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/inventory/stockReadResponse.ts",
       "class": "public-output"
     },
     {
@@ -6818,7 +6826,15 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/inventory/managedStockAvailability.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/inventory/newPurchaseStockBoundary.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/inventory/newPurchaseStockConformance.test.ts",
       "class": "public-output"
     },
     {
@@ -24819,6 +24835,14 @@
     },
     {
       "path": "tests/postgres/m05CatalogComposition.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/newPurchaseStockManaged.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/newPurchaseStockNative.test.ts",
       "class": "public-output"
     },
     {

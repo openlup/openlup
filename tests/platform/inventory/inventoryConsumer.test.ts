@@ -61,10 +61,17 @@ it("reads the actual native store from an isolated tarball with exact SQL projec
   expect(Object.keys(createInventoryContribution({ version: "0.17.0", requiredSchema: { version: "complete", migration: "complete", objects: [] }, inventory: { absent: null }, routes: [] }).ports)).toEqual([]);
 });
 
-it("composes installed normalized stock into catalog bundles and refuses the unsupported native reader", async () => {
+it("composes installed normalized stock into catalog bundles and binds native ATP only with a source", async () => {
   const native = inventory.createInventoryBindings({ dataKind: "postgres", executor: pool, provider: { stockMasterProvider: "fixture", providerSchema: z.literal("fixture") }, newPurchaseStockReadPort: { read: async () => { throw new Error("must_not_run"); } } });
   expect(native.newPurchaseStockReadPort).toBeNull();
-  expect(native.unsupported.newPurchaseStockRead).toBe("inventory_native_new_purchase_stock_read_unsupported");
+  expect(native.unsupported.newPurchaseStockRead).toBe("inventory_stock_source_key_required");
+  const bound = inventory.createInventoryBindings({ dataKind: "postgres", executor: pool, stockSourceKey: "fixture", provider: { stockMasterProvider: "fixture", providerSchema: z.literal("fixture") } });
+  expect(bound.readiness).toEqual({ ready: true, reason: null });
+  expect(bound.unsupported.newPurchaseStockRead).toBeNull();
+  expect(await bound.newPurchaseStockReadPort!.read({ skus: ["INSTALLED"], horizonDays: 14, excludeOrderId: null })).toEqual(new Map([["INSTALLED", {
+    sku: "INSTALLED", catalogSkuId: "f5000000-0000-4000-8000-000000000002", source: "provider", providerForSale: 8,
+    activeHolds: 0, safetyStock: 0, available: 8, stale: false, renewalDemand: 0, availableForNewPurchases: 8, excludedOrderHolds: 0,
+  }]]));
   await expect(native.mutationPort!.adjustStock({} as never)).rejects.toThrow("Direct stock is externally observed");
   const projected = inventory.createNewPurchaseStockAvailabilityPort({ readPort: { read: async () => new Map([["UNIT", { sku: "UNIT", catalogSkuId: null, source: "local", providerForSale: null, activeHolds: 0, safetyStock: 0, available: 12, stale: false, renewalDemand: 2, availableForNewPurchases: 10, excludedOrderHolds: 0 }]]) }, functionMissingFallback: null, functionMissingError: "missing", defaultLowStockThreshold: 1, defaultHorizonDays: 60, observe: { warn() {} }, deriveOfferAvailability: input => ({ ...input, status: "available", visibleInConfigurator: true, reasonCode: "stock_available" }) }, { mode: "new_purchase" });
   const reference = createM06InventoryReferenceBinding({ store: { dataKind: "supabase", createManagedStore: () => ({ readPort: native.readPort!, mutationPort: native.mutationPort! }), newPurchaseStockReadPort: { read: async () => new Map() } }, version: "0.17.0", requiredSchema: { version: "complete", migration: "complete", objects: [] }, bundleCatalogReadPort: {} as never,

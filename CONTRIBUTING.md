@@ -154,6 +154,17 @@ its users or operators can observe.
 
 ## Development-preview checks
 
+The inventory [binding](tests/platform/inventory/inventoryBindings.test.ts) and
+[installed-consumer](tests/platform/inventory/inventoryConsumer.test.ts) witnesses
+cover native ATP source-key selection/refusal, managed injected-reader precedence
+over `stockRpc`, and reference catalog-stock composition. The real PostgreSQL
+[native](tests/postgres/newPurchaseStockNative.test.ts) and
+[managed](tests/postgres/newPurchaseStockManaged.test.ts) preview witnesses cover
+protected holds, due demand, channel exposure, stale/missing stock and read-option
+refusals; the managed witness also checks allocator budget agreement and service
+ACLs. The [native inventory witness](tests/postgres/inventoryNative.test.ts)
+separately covers store projections and fenced reservation replay/concurrency.
+
 The [M10 composition witness](tests/postgres/subscriptionComposition.test.ts)
 uses its own disposable native database for the complete off/protect/arrival/
 rollback/dunning/stock table, shared population lease, schema-object probes and
