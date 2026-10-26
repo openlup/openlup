@@ -409,14 +409,10 @@ No local uncommitted implementation result establishes admission or publication.
 
 ## R4: operator recovery
 
-Status: local development-preview implementation; not committed, reviewed, installed,
-or activated. The finite outcome is current managed operator recovery/contact/link
-composition and conditional native audited support authority. The assigned stack
-is CTL 8f9955c4 over R1 8a187556. R2/R3 are independent later integrations. No serve
-mount, provider factory, lint/module-graph change, M11 edit, owner-engine rewrite,
-Git write, external mutation, release or adopter cutover is authorized here.
-The supervisor retains commit/DCO, required owner reads, counted native reviews,
-PostgreSQL execution and delivery. Offline remote instruction freshness is unverified.
+The finite outcome is current managed operator recovery/contact/link composition
+and conditional native audited support authority, stacked on the CTL control that
+admits its SQL class. No serve mount, provider factory, lint/module-graph change,
+M11 edit, owner-engine rewrite, release or adopter cutover is part of R4.
 
 The approved closure is 43 paths, with registry and source-release contract held
 byte-unchanged (41 potential edits); unchanged-generator sibling API snapshots are
