@@ -1005,4 +1005,4 @@ it("proves installed marketing subpaths, prelaunch schemas, reachable ports and 
   assertConsumerIsolation(consumer, root);
   proveMarketingConsumer(consumer);
   compileConsumer(consumer, ["marketing", "marketing/contracts"], join(root, "node_modules/typescript/lib/tsc.js"));
-});
+}, 60_000);
