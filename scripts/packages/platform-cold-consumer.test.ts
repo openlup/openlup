@@ -59,8 +59,17 @@ function fixture() {
   const platformManifest = join(consumer, "node_modules/@openlup/platform/package.json");
   const platformMetadata = JSON.parse(readFileSync(platformManifest, "utf8"));
   platformMetadata.exports["./account-support/contracts"].default = "./contracts.js";
+  platformMetadata.exports["./marketing/server"].types = "./marketing-server.d.ts";
   writeFileSync(platformManifest, JSON.stringify(platformMetadata));
   writeFileSync(join(consumer, "node_modules/@openlup/platform/contracts.js"), "export {};\n");
+  // The server port extends the browser contract with historical commands.
+  writeFileSync(join(consumer, "node_modules/@openlup/platform/marketing-server.d.ts"), [
+    'import type { AcquisitionCasePort as PortableAcquisitionCasePort } from "./index.js";',
+    'export interface AcquisitionCasePort extends PortableAcquisitionCasePort { submit(command: unknown): Promise<unknown>; transition(command: unknown): Promise<unknown> }',
+    'export interface AcquisitionCaseDirectDeps { resolveBinding(): Promise<unknown> }',
+    'export declare function createAcquisitionCaseHandlers(port: AcquisitionCasePort): unknown;',
+    'export declare function createAcquisitionCaseActiveCountDirectHandler(deps: AcquisitionCaseDirectDeps): unknown;',
+  ].join("\n") + "\n");
   // The typed consumer registers the payments factory with the composer.
   writeFileSync(join(consumer, "node_modules/@openlup/platform/index.d.ts"), [
     "export interface Synthetic { value: string }",
@@ -69,9 +78,6 @@ function fixture() {
     'export type PrelaunchAcquisitionListRequest = { view: "prelaunch_acquisition_v1"; limit: number; cursor?: string };',
     'export declare const prelaunchAcquisitionListRequestSchema: { parse(value: unknown): PrelaunchAcquisitionListRequest };',
     'export interface AcquisitionCasePort { list(query: { actorRef: string; scope: "public_tester_application"; limit: number }): Promise<unknown> }',
-    'export interface AcquisitionCaseDirectDeps { resolveBinding(): Promise<unknown> }',
-    'export declare function createAcquisitionCaseHandlers(port: AcquisitionCasePort): unknown;',
-    'export declare function createAcquisitionCaseActiveCountDirectHandler(deps: AcquisitionCaseDirectDeps): unknown;',
     'export interface AcquisitionEvidencePort { listSurveys(query: { actorReference: string; view: "acquisition_survey_v1"; limit: number }): Promise<unknown> }',
     'export type AcquisitionNewsletterConsentEvent = { explicitOptInEvidence: boolean };',
     'export interface MarketingResearchSurveySubmitPort { submitSurveyResponse(request: { surveyType: "producer" | "consumer"; responseData: Record<string, unknown> }): Promise<unknown> }',

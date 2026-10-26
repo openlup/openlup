@@ -654,8 +654,8 @@ export function compileConsumer(consumer: string, entries: readonly string[], co
   ].join("\n"));
   if (entries.includes("marketing/server")) surfaces.push([
     'import { createAcquisitionCaseHandlers, createAcquisitionCaseActiveCountDirectHandler } from "@openlup/platform/marketing/server";',
-    'import type { AcquisitionCasePort, AcquisitionCaseDirectDeps } from "@openlup/platform/marketing/server";',
-    'declare const acquisitionPort: AcquisitionCasePort;',
+    'import type { AcquisitionCasePort as ServerAcquisitionCasePort, AcquisitionCaseDirectDeps } from "@openlup/platform/marketing/server";',
+    'declare const acquisitionPort: ServerAcquisitionCasePort;',
     'declare const acquisitionDirect: AcquisitionCaseDirectDeps;',
     'export const acquisitionHandlers = createAcquisitionCaseHandlers(acquisitionPort);',
     'export const acquisitionCount = createAcquisitionCaseActiveCountDirectHandler(acquisitionDirect);',
