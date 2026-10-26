@@ -9,6 +9,7 @@ import { lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, 
 import { tmpdir } from "node:os";
 import { dirname, join, resolve, sep } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { PLATFORM_MODULE_GRAPH } from "../../eslint.config.js";
 import { assertInstalledPackages, isolatedConsumerEnv, readCurrentPackManifest } from "./pack-manifest-input.ts";
 import { POSTGRES_PROOF_IMAGE } from "./outbox-disposable-postgres.ts";
 
@@ -186,24 +187,46 @@ assert.deepEqual(await facade.nativeSubscription.apply({actor:{actorId:"actor",c
 assert.equal(await facade.paymentMethod.execute("actor",{}),facade.capabilities.paymentMethodSetup);assert.deepEqual(facade.capabilities.paymentMethodSetup,{supported:false,refusalCode:"unsupported"});
 assert.equal("host" in facade,false);
 `);
-  // Inspect installed JavaScript and declarations, including transitive type imports.
+  // Inspect account-support's installed closure; declared module edges own their imports.
   const packageRoot = join(consumer, "node_modules/@openlup/platform");
   const boundary = realpathSync(join(packageRoot, "dist/account-support"));
+  const graph = PLATFORM_MODULE_GRAPH["account-support"];
+  const valueBoundaries = graph.values
+    .map(module => realpathSync(join(packageRoot, "dist", module)));
+  const typeBoundaries = graph.types
+    .map(module => realpathSync(join(packageRoot, "dist", module)));
   const metadata = JSON.parse(readFileSync(join(packageRoot, "package.json"), "utf8"));
+  const packages = new Set([...Object.keys(metadata.dependencies ?? {}), ...Object.keys(metadata.peerDependencies ?? {})]);
   const pending: string[] = ["./account-support", "./account-support/contracts"].flatMap(entry => Object.values(metadata.exports[entry]) as string[]);
   const visited = new Set<string>();
   while (pending.length) {
     const target = pending.pop()!;
     const path = realpathSync(resolve(packageRoot, target));
-    if (!path.startsWith(boundary + sep) || !/\.(?:js|d\.ts)$/.test(path)) throw new Error("Account-support installed import escapes dist/account-support: " + target);
+    if (!path.startsWith(boundary + sep) || !/\.(?:js|d\.ts)$/.test(path)) throw new Error("Account-support installed import escapes declared module boundaries: " + target);
     if (visited.has(path)) continue;
     visited.add(path);
     const imports = ts.preProcessFile(readFileSync(path, "utf8"), true, true);
     for (const item of [...imports.importedFiles, ...imports.referencedFiles, ...imports.typeReferenceDirectives]) {
-      if (!item.fileName.startsWith(".")) throw new Error("Account-support installed import escapes dist/account-support: " + item.fileName);
+      if (!item.fileName.startsWith(".")) {
+        const name = item.fileName.split("/").slice(0, item.fileName.startsWith("@") ? 2 : 1).join("/");
+        if (!packages.has(name)) throw new Error("Account-support installed import escapes declared module boundaries: " + item.fileName);
+        continue;
+      }
       const dependency = resolve(dirname(path), item.fileName);
       // A .d.ts import ending in .js resolves to the adjacent declaration.
-      pending.push(path.endsWith(".d.ts") ? dependency.replace(/\.js$/, ".d.ts") : dependency);
+      let installed: string;
+      try {
+        installed = realpathSync(path.endsWith(".d.ts") ? dependency.replace(/\.js$/, ".d.ts") : dependency);
+      } catch (cause) {
+        throw new Error("Account-support installed import escapes declared module boundaries: " + item.fileName, { cause });
+      }
+      if (!/\.(?:js|d\.ts)$/.test(installed)) throw new Error("Account-support installed import escapes declared module boundaries: " + item.fileName);
+      if (installed.startsWith(boundary + sep)) {
+        pending.push(installed);
+        continue;
+      }
+      const allowed = path.endsWith(".d.ts") ? [...valueBoundaries, ...typeBoundaries] : valueBoundaries;
+      if (!allowed.some(directory => installed.startsWith(directory + sep))) throw new Error("Account-support installed import escapes declared module boundaries: " + item.fileName);
     }
   }
 }

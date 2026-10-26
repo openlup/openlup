@@ -914,3 +914,31 @@ it("C11 rejects removal of the envelope-returning self-service callable", () => 
   writeFileSync(join(consumer, "node_modules/@openlup/platform/index.js"), mutant);
   expect(() => proveSelfServiceConsumer(consumer)).toThrow(/self-service factory must be callable/);
 });
+
+it("C11 accepts the installed account-support closure with declared module and package edges", () => {
+  proveSelfServiceConsumer(pristinePackedA1Fixture());
+});
+
+it("C11 refuses an undeclared bare package in installed account-support", () => {
+  const consumer = pristinePackedA1Fixture();
+  const entry = join(consumer, "node_modules/@openlup/platform/dist/account-support/contracts/index.d.ts");
+  const source = readFileSync(entry, "utf8");
+  try {
+    writeFileSync(entry, source + '\nimport "undeclared-package/subpath";\n');
+    expect(() => proveSelfServiceConsumer(consumer)).toThrow(/installed import escapes declared module boundaries: undeclared-package\/subpath/);
+  } finally {
+    writeFileSync(entry, source);
+  }
+});
+
+it.each(["js", "d.ts"])("C11 refuses an undeclared module import in installed %s", extension => {
+  const consumer = pristinePackedA1Fixture();
+  const entry = join(consumer, "node_modules/@openlup/platform/dist/account-support/contracts/index." + extension);
+  const source = readFileSync(entry, "utf8");
+  try {
+    writeFileSync(entry, source + '\nimport "../../subscriptions/index.js";\n');
+    expect(() => proveSelfServiceConsumer(consumer)).toThrow(/installed import escapes declared module boundaries: .*subscriptions/);
+  } finally {
+    writeFileSync(entry, source);
+  }
+});
