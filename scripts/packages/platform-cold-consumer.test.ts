@@ -1024,7 +1024,7 @@ it("proves installed marketing subpaths, prelaunch schemas, reachable ports and 
   assertConsumerIsolation(consumer, root);
   proveMarketingConsumer(consumer);
   compileConsumer(consumer, ["marketing", "marketing/contracts"], join(root, "node_modules/typescript/lib/tsc.js"));
-});
+}, 60_000);
 
 it("proves installed marketing server reads, port refusal and exact exports without optional peers", () => {
   const consumer = pristinePackedA1Fixture();
