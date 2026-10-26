@@ -86,7 +86,7 @@ it("isolates loader readiness and its listener lifecycle", () => {
 });
 // New seam 4: injection preserves parser, command shape, seeding order and push-time advertising consent.
 it("preserves reference-compatible stored booleans and ordered array-like consent commands", () => {
-  const f = fixture({ analytics: "analytics_storage", advertising: ["ad_storage", "ad_user_data", "ad_personalization"] });
+  const f = fixture({ analytics: "measurement", advertising: ["advertising_storage", "advertising_user_data", "advertising_personalization"] });
   for (const raw of ["bad", "null", "[]", "{}", '{"necessary":true,"functional":false,"analytics":true,"marketing":1}']) {
     f.store(raw); expect(f.analytics.readCookieConsent()).toBeNull();
   }
@@ -95,15 +95,15 @@ it("preserves reference-compatible stored booleans and ordered array-like consen
   const commands = f.browser.dataLayer!;
   expect(Object.prototype.toString.call(commands[0])).toBe("[object Arguments]");
   expect(Array.from(commands[0] as IArguments)).toEqual(["consent", "default", {
-    analytics_storage: "denied", ad_storage: "denied", ad_user_data: "denied", ad_personalization: "denied" }]);
+    measurement: "denied", advertising_storage: "denied", advertising_user_data: "denied", advertising_personalization: "denied" }]);
   expect(Array.from(commands[1] as IArguments)).toEqual(["consent", "update", {
-    analytics_storage: "granted", ad_storage: "granted", ad_user_data: "granted", ad_personalization: "granted" }]);
-  expect(JSON.stringify((commands[0] as IArguments)[2])).toBe('{"analytics_storage":"denied","ad_storage":"denied","ad_user_data":"denied","ad_personalization":"denied"}');
-  expect(JSON.stringify((commands[1] as IArguments)[2])).toBe('{"analytics_storage":"granted","ad_storage":"granted","ad_user_data":"granted","ad_personalization":"granted"}');
+    measurement: "granted", advertising_storage: "granted", advertising_user_data: "granted", advertising_personalization: "granted" }]);
+  expect(JSON.stringify((commands[0] as IArguments)[2])).toBe('{"measurement":"denied","advertising_storage":"denied","advertising_user_data":"denied","advertising_personalization":"denied"}');
+  expect(JSON.stringify((commands[1] as IArguments)[2])).toBe('{"measurement":"granted","advertising_storage":"granted","advertising_user_data":"granted","advertising_personalization":"granted"}');
   f.store(JSON.stringify({ necessary: true, functional: false, analytics: true, marketing: false }));
   f.analytics.pushAnalyticsConsentUpdate(true);
-  expect((commands[3] as IArguments)[2]).toEqual({ analytics_storage: "granted", ad_storage: "denied", ad_user_data: "denied", ad_personalization: "denied" });
+  expect((commands[3] as IArguments)[2]).toEqual({ measurement: "granted", advertising_storage: "denied", advertising_user_data: "denied", advertising_personalization: "denied" });
   f.store(JSON.stringify({ necessary: true, functional: false, analytics: true, marketing: true }));
   f.analytics.pushAnalyticsConsentUpdate(false);
-  expect((commands[4] as IArguments)[2]).toEqual({ analytics_storage: "denied", ad_storage: "denied", ad_user_data: "denied", ad_personalization: "denied" });
+  expect((commands[4] as IArguments)[2]).toEqual({ measurement: "denied", advertising_storage: "denied", advertising_user_data: "denied", advertising_personalization: "denied" });
 });
