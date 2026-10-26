@@ -339,10 +339,31 @@ response. R4 still owns authorization, the transaction and replay.
 `AccountSupportRoutes` composes host-supplied account, Customer 360, command and
 recovery elements at explicit host paths. It supplies neither credentials nor
 new authentication contexts. The capability manifest advertises account-support
-as default-off with no routes. A47–A51, A94/A95 and the checkout continuation of
-A130/A131 remain unselected: commerce is only a nullable injected callable record,
-with `unsupported/host_binding_required` for absent bindings. Local draft
-resume/discard behavior is unchanged. M04 receives subscription lifecycle
+as default-off with no routes. To select commerce, the host constructs one
+`createM11CommerceReferenceBinding` with raw, already bound owner callables, its
+native query executor, the complete account-owner and exact ATP schema requirements,
+existing registry handlers and optional route/schedule descriptors. Supply that
+result as `commerceOwner`, the matching callable record as `commerce` and the
+existing registry as `commerceRegistry`. Use matching enablement and a readiness
+observer covering the complete selected schema for both bindings. R5b consumes
+a local structural selection type and does not construct M11 or import its adapters.
+Use `createReferenceCheckoutHandler` for
+reference checkout and the existing recovery handlers with
+`CheckoutRecoveryOrderReadPort`/`CheckoutRecoveryTokenPort`; expiry and token
+classification remain owner policy. Bind the selected M06/M11 stock read or
+`createNewPurchaseStockAvailabilityPort` without replacing unknown or unsupported
+answers. The schema unions the supplied M11 schema, which includes the host's
+ATP requirements, and selected account-owner objects by kind/name/signature.
+M12 forwards the host-built M11 result once and
+returns the same registry as `commerceRegistry`; it never dispatches effects.
+Do not supply an M11-guarded service as a new raw owner or register the same
+logical command in both inventories. `commerceOwner.services` and its forwarded
+commerce ports/routes share the owner's guarded executor; the keyed entrance
+delegates to it without another readiness guard. With no commerce selection,
+nullable record/member behavior stays `unsupported/host_binding_required`.
+`AccountSupportRoutes` accepts a configured-purchase element/path in addition
+to its recovery element; the host binds their clients and admission transport.
+Local draft resume/discard behavior is unchanged. M04 receives subscription lifecycle
 descriptors with `messageKey === idempotencyKey`; R4's issue-recovery notice is
 already queued by its owner. M12 adds no renewal, reminder or delivery worker.
 
