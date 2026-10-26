@@ -4134,6 +4134,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/composition/marketingContribution.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/composition/nodeHost.ts",
       "class": "public-output"
     },
@@ -6759,6 +6763,10 @@
     },
     {
       "path": "packages/platform/test/composition/httpBinding.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/composition/marketingContribution.test.ts",
       "class": "public-output"
     },
     {
