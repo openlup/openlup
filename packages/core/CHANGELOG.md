@@ -10,6 +10,11 @@ in the source repository.
 
 ## [Unreleased]
 
+## [0.28.0]
+
+- Publishable on the npm `latest` dist-tag as `0.28.0`, from tag
+  `openlup-core-v0.28.0`.
+
 ## [0.27.0]
 
 - Publishable on the npm `latest` dist-tag as `0.27.0`, from tag
@@ -19,12 +24,3 @@ in the source repository.
 
 - Publishable on the npm `latest` dist-tag as `0.26.0`, from tag
   `openlup-core-v0.26.0`.
-
-## [0.25.0]
-
-- Publishable on the npm `latest` dist-tag as `0.25.0`, from tag
-  `openlup-core-v0.25.0`.
-
-- Keep active subscriptions unchanged when the retry ladder is exhausted; the compatibility function emits no pause event and retains historical paused-row recovery.
-
-Migration notes: Exhaustion no longer changes an active subscription to paused. Existing paused records are not rewritten; explicit customer lifecycle commands and historical recovery remain separate.
