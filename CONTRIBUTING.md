@@ -1437,6 +1437,12 @@ The source routes remain unchanged pending P7.
 
 ### Commands and lint rules
 
+The platform module graph declares marketing with an isolated contracts entry
+and no cross-module platform edges. Its runtime entry may forward the existing
+public core research export; contracts forward only core types and local DTO
+shapes, including reachable acquisition ports and portable prelaunch types. Retired application admission contracts are excluded from both public
+entries. Package boundary checks validate that graph with the other modules.
+
 The complete projected root command inventory is `build`,
 `build:public-reference`, `build:public-reference:client`,
 `build:public-reference:prerender`, `build:public-reference:ssr`,
@@ -1759,6 +1765,16 @@ uses root percentage thresholds; it does not establish full-suite coverage.
 Keep documentation falsifiers independently discoverable for routing, impact, bare-runtime CLI and bundle corruption; never import one test file from another. Disposable fixtures prove those refusals, not arbitrary prose meaning. Follow [lint rules](#commands-and-lint-rules), including valid/invalid cases for new ast-grep rules, and [documentation impact](docs/platform/DOCUMENTATION.md#impact). Fixtures still obey neutrality and secret-handling policy.
 
 ### Package, policy and release checks
+
+The marketing cold-consumer witness imports both exact public subpaths without
+optional peers, compiles their DTO, acquisition-port and research-port usage, checks core schema
+identity and refuses a deep import. Root discovery includes the package's
+marketing schema, type-equality and source/built browser graph tests. The
+reference equivalence transcript pins pre-extraction outputs and ordered issues;
+retained application contract suites remain part of the focused proof. Portable
+prelaunch goldens preserve their own reference regexes, strictness, ordered issues
+and coercing defaults. Compiler proof covers acquisition port signatures and
+bidirectional fit of the extended reference case port to its base-equivalent shape.
 
 `npm run packages:check -- --manifest-only` checks every `packages/*/package.json` against
 [`config/openlup-packages.json`](config/openlup-packages.json), which lists each

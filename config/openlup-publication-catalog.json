@@ -2466,6 +2466,14 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/api/marketing-contracts.api.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/api/marketing.api.md",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/api/migrations.api.md",
       "class": "public-output"
     },
@@ -5098,6 +5106,42 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/marketing/acquisitionCaseSchemas.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/marketing/acquisitionEvidenceSchemas.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/marketing/contracts/acquisition.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/marketing/contracts/acquisitionPorts.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/marketing/contracts/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/marketing/contracts/prelaunch.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/marketing/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/marketing/prelaunchAcquisitionSchemas.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/marketing/validation.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/migrations/index.ts",
       "class": "public-output"
     },
@@ -7263,6 +7307,22 @@
     },
     {
       "path": "packages/platform/test/kernel/platformKernel.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/marketing/browserBoundary.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/marketing/contracts.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/marketing/schemas.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/marketing/validation.test.ts",
       "class": "public-output"
     },
     {
@@ -20954,6 +21014,14 @@
       "class": "public-output"
     },
     {
+      "path": "src/domains/marketing/__snapshots__/marketingSchemaEquivalence.test.ts.snap",
+      "class": "public-output"
+    },
+    {
+      "path": "src/domains/marketing/marketingSchemaEquivalence.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "src/domains/marketing/prelaunch/README.md",
       "class": "public-output"
     },
@@ -25227,6 +25295,10 @@
     },
     {
       "path": "tests/platform/mailEgressCallers.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/platform/marketingValidation.test.ts",
       "class": "public-output"
     },
     {

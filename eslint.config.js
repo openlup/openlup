@@ -149,6 +149,7 @@ const sourceFiles = (prefix = "") => [`${prefix}**/*.${SOURCE_EXTENSIONS}`];
 export const PLATFORM_MODULE_GRAPH = {
   operations: { contracts: true, values: [], types: [] },
   "operations/server": { values: ["operations", "bff"], types: ["http", "data", "operations/contracts"] },
+  marketing: { contracts: true, values: [], types: [] },
   commerce: { contracts: true, values: ["pricing/contracts", "shipping"], types: [] },
   "commerce/server": { values: ["commerce", "fulfillment", "pricing", "shipping", "promotions"], types: ["http", "bff", "commerce/contracts"] },
   invoicing: { contracts: true, values: [], types: [] },

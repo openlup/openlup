@@ -12,6 +12,16 @@ transport failures keep their existing safe error responses. Package imports
 install no routes or schedules. See the
 [operations boundary](ARCHITECTURE_AND_EXTENSIONS.md#operations-and-diagnostics).
 
+Acquisition history and research evidence BFF handlers validate requests and
+responses with `@openlup/platform/marketing`; DTO-only imports use
+`@openlup/platform/marketing/contracts`. Their authorization, runtime bindings,
+retired-admission refusals and response envelopes stay application-owned.
+The package exposes no marketing server entry, route registry or automatic
+activation. Reference research contracts, ports and kiosk submission continue
+to use the core research compatibility export. Portable prelaunch list/detail
+validation uses the marketing package; rich prelaunch joins retain application
+contracts. BFF failure kinds and evidence runtime port types use the type-only
+entry, while the case runtime retains its extended application port.
 
 The accounting HTTP scheduler accepts an explicitly composed invoicing service
 and passes it to the existing accounting runtime after HTTP method and bearer

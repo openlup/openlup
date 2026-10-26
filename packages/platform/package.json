@@ -275,6 +275,16 @@
       "types": "./dist/operations/server/index.d.ts",
       "import": "./dist/operations/server/index.js",
       "default": "./dist/operations/server/index.js"
+    },
+    "./marketing": {
+      "types": "./dist/marketing/index.d.ts",
+      "import": "./dist/marketing/index.js",
+      "default": "./dist/marketing/index.js"
+    },
+    "./marketing/contracts": {
+      "types": "./dist/marketing/contracts/index.d.ts",
+      "import": "./dist/marketing/contracts/index.js",
+      "default": "./dist/marketing/contracts/index.js"
     }
   },
   "repository": {
