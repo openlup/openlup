@@ -240,6 +240,21 @@ substituting a different business behaviour.
 
 ## Opt-in disposable subscription reference
 
+The inert [M11 commerce binding](../../server/runtime/public-reference/m11CommerceBinding.ts)
+selects existing package callables and the native checkout-recovery adapter only
+with `enabled: true`. Every callable checks the supplied Core readiness report:
+only `ready` admits work; `unknown` and `unsatisfied` return `schema_<state>`
+before executor work. Hosts check readiness before replacing a serving selection
+and supply the complete catalogue identity and additional selected-operation
+schema objects. Ports, routes and triggers share one guarded callable per
+operation; duplicate native-recovery names and descriptor identities refuse.
+The [native recovery witness](../../tests/postgres/commerceComposition.test.ts)
+observes a persisted reminder and replay while preserving active subscriptions,
+their reservations and undelivered-parcel alignment. Native recovery supports
+reminder intents, delivery authorization and terminal outbox compaction;
+expired-checkout recreation remains managed-only. This binding installs no
+route, timer or worker and changes no served default.
+
 The opt-in [M10 native subscription binding](../../server/runtime/public-reference/m10SubscriptionBinding.ts)
 returns schema, readiness, one job descriptor and its guarded executor; it mounts
 nothing. Supply a complete catalogue identity and Core readiness observation,
