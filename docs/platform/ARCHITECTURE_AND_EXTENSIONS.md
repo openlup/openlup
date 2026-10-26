@@ -58,6 +58,31 @@ Portable prelaunch validators remain browser-safe package contracts; rich
 prelaunch joins and orchestration remain in the reference application. No route,
 executor, scheduler or profile is activated by importing the package.
 
+The marketing browser entry also owns neutral analytics vocabulary, inert defaults,
+instance-scoped data-layer and route-policy factories, structural paid-purchase
+projection and historical consent chronology. Hosts supply step vocabulary,
+browser/storage access, consent and event wire names (including ordered consent
+signals through `consentSignalNames`), container selection, sink
+callbacks, route manifests and sensitive sets. No platform module edge, server
+entry or provider transport is introduced. Types are exposed type-only through
+`marketing/contracts`; the analytics port is reused from core. Allocation and
+chronology preserve source behavior; authorization, money truth and activation
+remain with their existing owners. Missing consent signal bindings disable consent
+commands and optional event admission while deployment attempts stay independent.
+Local sink admission never attests delivery.
+
+The separate server entry also exposes `createAnalyticsContextHandler` and its
+server-only persistence and capability ports. Required host bindings supply the
+responder, enable reader, store, bearer parsing, verified subject, token mint/hash
+and historical cookie and client-id request field names (`clientIdField`). Browser
+entries expose none of these server ports.
+The handler preserves strict request admission, withdrawal without identity and
+explicit replacement of a revoked context; enrollment uses only a server-verified
+subject. Hosts retain their route/observability, flag/RPC names and persistence
+authority. No default persistence or portable context SQL is provided, so the
+reference mounts no context route. Telemetry context failure never gates commerce;
+an `active` result establishes only a local context fact, never delivery.
+
 The commerce browser entry contains schemas, pure helpers and port declarations;
 its `/contracts` entry remains type-only. The `/commerce/server` entry
 is the separate Node-only home for handlers, use cases, stores, adapters and

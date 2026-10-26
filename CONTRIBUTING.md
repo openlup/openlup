@@ -1452,6 +1452,21 @@ optional peers, exercising a historical count and a conflict refusal through
 injected bindings. It proves the `/postgres` missing-peer import refusal before
 selecting pg, then checks the adapter factories and their connection refusal.
 
+Marketing analytics facts use the same isolated runtime/contracts graph. The
+reference keeps host policy and wire literals in thin bindings; its purchase
+projection has a frozen base transcript. Neutral package witnesses cover inert
+analytics, route refusal/sanitization, paid allocation, consent chronology and
+independent sink admission. Local acceptance booleans do not prove delivery.
+
+The analytics context witness in `packages/platform/test/marketing/` exercises
+the server factory with synthetic persistence, capability and identity bindings.
+It preserves consent capability issuance/replacement, strict admission and
+verified-subject enrollment, with a missing-store refusal at the injected seam.
+The `./marketing/server` release surface selects it, and root discovery includes
+it with the package tests. It needs no reference route or live persistence;
+telemetry context failure never gates commerce and `active` proves only a local
+context fact.
+
 The complete projected root command inventory is `build`,
 `build:public-reference`, `build:public-reference:client`,
 `build:public-reference:prerender`, `build:public-reference:ssr`,
@@ -1795,6 +1810,13 @@ retained application contract suites remain part of the focused proof. Portable
 prelaunch goldens preserve their own reference regexes, strictness, ordered issues
 and coercing defaults. Compiler proof covers acquisition port signatures and
 bidirectional fit of the extended reference case port to its base-equivalent shape.
+
+Marketing smoke selection includes analytics defaults, route policy, purchase
+facts, consent evidence and sink failure isolation. The installed consumer exercises
+inert runtime imports and compiles structural recap/consent inputs plus a literal
+host step union. Both complete browser graphs remain free of server imports,
+and the contracts runtime stays empty. Reference purchase characterization pins
+ordered refusals and both item-cap boundaries before and after rebinding.
 
 `npm run packages:check -- --manifest-only` checks every `packages/*/package.json` against
 [`config/openlup-packages.json`](config/openlup-packages.json), which lists each

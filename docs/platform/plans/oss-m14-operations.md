@@ -100,3 +100,32 @@ rich reference evaluator. Keeping the unchanged root characterization and
 injecting neutral typed evidence removes that duplication while preserving
 behavior. Environmental pressure/cache failures required bounded recovery;
 no new runner, broker bypass or extra verification obligation was added.
+
+## Current integration and finite file allocation
+
+The actual human owner authorized three additional native repair cycles solely
+for necessary M13 integration, repairs, fresh review and full A verification.
+The existing session preserves cycle 3 and its evidence, with the allowed count
+extended from 3 to 6. The endpoint remains stacked draft pull requests; readiness,
+queue, merge, release and provider activation remain outside this grant. The
+coordinator permits the A branch push and draft submission after complete required
+proof and a fresh exact preflight; no additional publication permission is needed.
+
+Before this budget-note change, the M13-integrated A pack preview contained 2,526 code files and
+2,580 total files: 84 operations files (28 TypeScript sources, JavaScript outputs
+and declarations) plus 2,442 other code files. Its bytes measure 1,886,223 packed,
+8,809,281 unpacked, 1,623,329 code gzip and 56,740 documentation gzip. These are
+working-tree measurements, not committed full verification or a release result.
+
+The module coordinator granted code/total file limits of 2,547/2,601. The 21 files
+above the measured A closure are allocated only to the seven already-authored
+B/C/D production TypeScript files (4/2/1) using the same three-file packaging
+pattern. This source-derived forecast does not claim actual B–D pack proof and
+allocates nothing for further E/F assets or later modules. Each stacked
+candidate's actual pack and full native gate remain required; additional files
+or byte-limit crossings need another bounded read. Code, documentation and total
+byte caps, documentation-file caps and browser caps remain unchanged. Removing
+or merging contracts solely for six fewer files would add unnecessary API,
+ownership and proof churn; this finite allocation preserves the existing source
+and witnesses. The read is delegated technical budget review, not a claim that
+the human personally read the diff. Full verification remains owed.
