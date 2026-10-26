@@ -10,19 +10,26 @@ Development preview. This package is part of the publishable set with core and o
 
 It holds the runnable server substrate an OpenLup application composes: the Node HTTP runtime, BFF dispatch, scheduling and job leases, blob storage, data gateways, the node-postgres migration runner and bundle composition. Ports and their contracts stay in `@openlup/core/platform-runtime`.
 
-For the prepared `0.26.0` set, read the [adjacent-release migration and known
-limitations](CHANGELOG.md#0260) before selecting optional services.
-Install the complete native chain through position 86, including N2 commands,
-N3 stock wait, the ATP seam/allocator and late-payment/retry-selection forwards;
-sparse SQL projections are not an install chain. Native runtime roles need the
-ATP/exposure EXECUTE and underlying SELECT grants described in the release notes.
-Managed hosts apply the complete prefix through `20261025090100` for attributed
-dunning attempt replay. `openDunningCase` requires nullable
-`failedPaymentAttemptId`; pass the durable applied attempt through renewal failure
-propagation, including replay. Fresh missing attribution refuses; never substitute
-a current or prepared attempt. Read the migration notes for the new overloads
-and existing donor schema/backfill mapping. Native attempt-replay parity remains
-registered and these managed forwards authorize no host activation.
+For the prepared `0.27.0` set, read the [adjacent-release migration and known
+limitations](CHANGELOG.md#0270) before selecting optional services. Experimental
+commerce schemas and ports use `./commerce` and `./commerce/contracts`;
+handlers, adapters and checkout engines use the Node-only `./commerce/server`.
+The commerce contribution and reference binding remain inert and default-off.
+Install the complete native chain through position 86
+(`20261024184600_subscription_retry_candidate_payment_filter.sql`); M11 adds no
+native SQL. Sparse SQL projections are not an install chain. Native runtime
+roles need the ATP/exposure EXECUTE and underlying SELECT grants described in
+the release notes.
+Managed hosts apply the complete prefix through `20261025110000`, including
+M11's nine forwards for preference/return ownership, operator receipts,
+acquisition/finalize admission, ATP preview and starter graduation. Legacy
+omitted-country input uses the configured settlement region; neutral commands
+require explicit country. Starter graduation admits 14, 21 or 28 days; rollback
+below that forward with a 21-day marker is unsupported, so roll forward.
+The service-only ATP preview uses owner privileges and a fixed search path.
+Retain exact applied failure-attempt attribution for the existing managed
+dunning overloads; native attempt-replay parity remains registered. These
+managed forwards authorize no host activation.
 Preserve captured obligations and receipts on rollback.
 M10 subscription services and contributions remain **EXPERIMENTAL and DEFAULT-OFF**.
 Hosts explicitly supply readiness, execution, commands, mandatory G23 admission,
@@ -38,7 +45,7 @@ Adopters must not activate unselected or unready invoicing; installation and
 inert contributions register no runner, worker, route or schedule.
 M06 managed-host proof classes remain pending in the
 [M06 parity ledger](../../docs/platform/plans/oss-m06-stock-reservations-delivery.md#parity-pending-rows).
-Size comparison uses the published `0.25.0` tarball. Preparation and offline
+Size comparison uses the published `0.26.0` tarball. Preparation and offline
 adapter evidence grant no publication or provider-account certification.
 
 Longer module recipes live in the [platform package reference](../../docs/platform/PLATFORM_PACKAGE_REFERENCE.md).

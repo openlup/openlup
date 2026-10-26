@@ -2,6 +2,22 @@
 
 Releases moved verbatim out of the packed `CHANGELOG.md`, which keeps the current release and the two previous ones.
 
+## [0.24.0]
+
+- Publishable on the npm `latest` dist-tag as `0.24.0`, from tag
+  `openlup-core-v0.24.0`.
+
+- Require Zod `^4.6.6` to fix GHSA-mrhx-c7xc-m3w5; oversized constrained
+  collections fail before element validation accumulates errors. Public exports
+  and accepted bounded inputs are unchanged.
+
+- Republish the remaining APIs, runtime behavior and shipped SQL unchanged from `0.23.0`.
+
+Migration: upgrade the complete set together for exact internal peers; core introduces no API or schema migration. The Zod floor above changes validation of oversized constrained collections.
+
+### Known limitations
+
+The fulfillment status map retains localized adopter labels; hosts still need injected labels or internationalization keys.
 ## [0.23.0]
 
 - Publishable on the npm `latest` dist-tag as `0.23.0`, from tag
