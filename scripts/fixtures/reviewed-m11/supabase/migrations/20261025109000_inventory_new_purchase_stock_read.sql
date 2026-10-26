@@ -1,7 +1,7 @@
--- One-time preview composes managed ATP; callers cannot waive renewal priority.
+-- One-time preview runs with the owner's privileges; only service_role may execute.
 -- Bound work to 200 requested array items before deduplication.
 CREATE FUNCTION public.inventory_new_purchase_stock_read(p_skus jsonb, p_as_of timestamptz)
-RETURNS jsonb LANGUAGE plpgsql STABLE SET search_path = pg_catalog AS $$
+RETURNS jsonb LANGUAGE plpgsql STABLE SECURITY DEFINER SET search_path = pg_catalog, pg_temp AS $$
 BEGIN
  IF jsonb_typeof(p_skus) IS DISTINCT FROM 'array' THEN
   RAISE EXCEPTION 'inventory_stock_skus_invalid' USING ERRCODE = '22023';

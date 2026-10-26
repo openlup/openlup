@@ -1094,7 +1094,7 @@ const managedCommerceSingleShapes = [
   ["20261025106000_subscription_acquisition_terms.sql", "public.commerce_subscription_acquisition_terms(timestamptz)", true, "563fbd0f8546b8927078c16de55493c243b655d80b1ff1b71329f0b16bcfc48e"],
   ["20261025107000_checkout_acquisition_admission.sql", "private.commerce_assert_acquisition_admission(jsonb,uuid)", true, "165cc113d3c1ec21199d5ab588e74db33208c7a34433a7e601031fb0dd0e064c"],
   ["20261025108000_checkout_finalize_acquisition_admission.sql", "public.commerce_finalize_order_for_checkout(text,uuid,text,uuid,uuid,uuid,jsonb,jsonb,jsonb)", false, "ba2caf9f34d1a81fb364ef5a8802569b389e09cec0df882ead91acc4a5759a85"],
-  ["20261025109000_inventory_new_purchase_stock_read.sql", "public.inventory_new_purchase_stock_read(jsonb,timestamptz)", true, "5e4747468d7d38dd9e35544bf793650175431fd44e3532d2de3dd30fde6fc5ed"],
+  ["20261025109000_inventory_new_purchase_stock_read.sql", "public.inventory_new_purchase_stock_read(jsonb,timestamptz)", true, "6c37031e5226cecfe4c19149012a816e96c60783cc9e523fdd725a9aa8c569cb"],
 ] as const;
 const managedCommerceShapes = [
   ...managedCommerceSingleShapes.map(([file, signature, creation, header]) => ({ file, functions: [{ signature, creation, header }] })),
@@ -1106,6 +1106,13 @@ const managedCommerceShapes = [
     ],
   },
 ];
+// The invoker header is readable only with its exact prior approval identity.
+// SQL candidate admission uses managedCommerceShapes and the owner-privilege header.
+const managedCommerceStockReaderHistory = {
+  header: "5e4747468d7d38dd9e35544bf793650175431fd44e3532d2de3dd30fde6fc5ed",
+  sha256: "d865ca086c379e24b37a0d541112925176f332600b4d61c47777a26930630bb5",
+  afterSha256: "ef52b366a3a0641910020244aa9c49b06308fb5f0aca2867d49be092064efa61",
+};
 const commerceAuditTable = "public.admin_audit_events";
 const commerceAuditConstraint = "admin_audit_events_action_check";
 const commerceAuditBefore = "455c350e221aead32209302842a733e3bd39fd171c20fefb5b03d2224b4167b5";
@@ -1131,6 +1138,17 @@ function validateManagedCommerceForwards(forwards: ManagedCommerceForwardBinding
     if (!Array.isArray(forward.statements) || forward.statements.length !== statementCount) throw new Error("reviewed M11 commerce statement inventory drifted");
     for (const pin of forward.statements) {
       if (!pin || !hash(pin.sha256) || !["sha256", "sha256,sql"].includes(Object.keys(pin).sort().join(",")) || (pin.sql !== undefined && (typeof pin.sql !== "string" || sqlSha256(pin.sql) !== pin.sha256))) throw new Error("reviewed M11 commerce invalid statement pin");
+    }
+    if (index === 7) {
+      const legacy = managedCommerceStockReaderHistory;
+      const legacyPin = (pin: string) => pin === legacy.sha256 || pin === legacy.afterSha256;
+      // Every legacy identifier belongs to the complete history-only tuple.
+      if ([forward.sha256, forward.functions[0]!.afterSha256, ...forward.statements.map(pin => pin.sha256)].some(legacyPin)
+        && (!historical || ![8, 9].includes(forwards.length) || forward.sha256 !== legacy.sha256
+          || forward.functions[0]!.afterSha256 !== legacy.afterSha256 || forward.statements[0]!.sha256 !== legacy.afterSha256
+          || forward.statements.slice(1).some(pin => legacyPin(pin.sha256)))) {
+        throw new Error(`reviewed M11 commerce header ${legacy.header} requires exact approval history`);
+      }
     }
     if (audit) {
       const constraint = forward.constraints?.[0];

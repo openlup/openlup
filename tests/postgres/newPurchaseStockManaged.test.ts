@@ -15,7 +15,7 @@ const calls: { name: string; args: Record<string, unknown> }[] = [];
 const reader = createManagedStockAvailability({ async rpc(name, args) {
   calls.push({ name, args });
   expect(name).toBe("inventory_new_purchase_stock_read");
-  return { data: (await db.query("SELECT public.inventory_new_purchase_stock_read($1::jsonb,$2::timestamptz) AS response", [JSON.stringify(args.p_skus), args.p_as_of])).rows[0].response, error: null };
+  return { data: await readStock(args.p_skus, args.p_as_of as string), error: null };
 } }, { now: () => asOf });
 
 beforeAll(async () => {
@@ -81,6 +81,15 @@ async function reserve(f: Fixture, orderId: string, cycle: string | null, quanti
 async function atp(f: Fixture, renewal = false) {
   return (await db.query("SELECT * FROM public.inventory_available_to_promise($1,$2,$3)", [f.id, asOf, renewal])).rows[0];
 }
+// Reader proofs run as the granted role; owner access serves setup and inspection.
+async function readStock(skus: unknown, at: string | null = asOf) {
+  await db.query("SAVEPOINT stock_reader_role");
+  try {
+    await db.query("SET LOCAL ROLE service_role");
+    expect((await db.query("SELECT current_user AS caller")).rows[0].caller).toBe("service_role");
+    return (await db.query("SELECT public.inventory_new_purchase_stock_read($1::jsonb,$2::timestamptz) AS response", [JSON.stringify(skus), at])).rows[0].response;
+  } finally { await db.query("ROLLBACK TO SAVEPOINT stock_reader_role; RELEASE SAVEPOINT stock_reader_role"); }
+}
 async function preview(f: Fixture) {
   const row = (await reader.read({ skus: [f.sku], horizonDays: 14, excludeOrderId: null })).get(f.sku)!;
   const promise = await atp(f);
@@ -129,8 +138,7 @@ it("refuses a NULL as-of timestamp and preserves the protected budget for a non-
   await reserve(f, checkout, null, 3);
   const before = await preview(f);
   expect(before).toMatchObject({ providerForSale: 20, activeHolds: 5, renewalDemand: 7, available: 8, availableForNewPurchases: 8, stale: false });
-  await refuses(() => db.query("SELECT public.inventory_new_purchase_stock_read($1::jsonb,NULL::timestamptz) AS response", [JSON.stringify([f.sku])])
-    .then(result => result.rows[0].response), "inventory_stock_as_of_invalid", "22023");
+  await refuses(() => readStock([f.sku], null), "inventory_stock_as_of_invalid", "22023");
   expect(await preview(f)).toEqual(before);
   await refuses(() => reserve(f, checkout, null, 9));
   await reserve(f, checkout, null, 8);
@@ -247,12 +255,17 @@ it("reports conservative stale for either provider while preserving ATP quantiti
 });
 
 it("bounds raw JSON array items before deduplication and preserves read-only service ACL/shape", async () => {
-  for (const input of [null, {}, "SKU"]) await refuses(() => db.query("SELECT public.inventory_new_purchase_stock_read($1::jsonb,now())", [JSON.stringify(input)]), "inventory_stock_skus_invalid", "22023");
-  await refuses(() => db.query("SELECT public.inventory_new_purchase_stock_read($1::jsonb,now())", [JSON.stringify(Array(201).fill("SKU"))]), "inventory_stock_skus_limit_exceeded", "22023");
-  expect((await db.query("SELECT public.inventory_new_purchase_stock_read($1::jsonb,now()) AS response", [JSON.stringify(Array(200).fill("SKU"))])).rows[0].response).toHaveLength(1);
+  for (const input of [null, {}, "SKU"]) await refuses(() => readStock(input), "inventory_stock_skus_invalid", "22023");
+  await refuses(() => readStock(Array(201).fill("SKU")), "inventory_stock_skus_limit_exceeded", "22023");
+  expect(await readStock(Array(200).fill("SKU"))).toHaveLength(1);
   const signature = "public.inventory_new_purchase_stock_read(jsonb,timestamptz)";
-  const fn = (await db.query("SELECT p.provolatile,p.prosecdef,p.proconfig,pg_get_functiondef(p.oid) AS body FROM pg_proc p WHERE p.oid=$1::regprocedure", [signature])).rows[0];
-  expect(fn).toMatchObject({ provolatile: "s", prosecdef: false, proconfig: ["search_path=pg_catalog"] });
+  const fn = (await db.query(`SELECT p.provolatile,p.prosecdef,p.proconfig,pg_get_functiondef(p.oid) AS body,
+    ARRAY(SELECT COALESCE(r.rolname::text,'PUBLIC') FROM aclexplode(p.proacl) a
+      LEFT JOIN pg_roles r ON r.oid=a.grantee
+      WHERE a.privilege_type='EXECUTE' AND a.grantee<>p.proowner ORDER BY 1) AS callers
+    FROM pg_proc p WHERE p.oid=$1::regprocedure`, [signature])).rows[0];
+  expect(fn).toMatchObject({ provolatile: "s", prosecdef: true, proconfig: ["search_path=pg_catalog, pg_temp"], callers: ["service_role"] });
+  expect((await db.query("SELECT has_column_privilege('service_role','public.subscriptions','is_test_fixture','SELECT') AS allowed")).rows[0].allowed).toBe(false);
   expect(fn.body).toContain("inventory_available_to_promise(sku.id,p_as_of,false)");
   expect(fn.body).not.toMatch(/p_for_subscription_renewal|\b(?:INSERT|UPDATE|DELETE)\b/iu);
   expect(fn.body).not.toContain(provider);
@@ -261,17 +274,6 @@ it("bounds raw JSON array items before deduplication and preserves read-only ser
     await refuses(() => db.query("SELECT public.inventory_new_purchase_stock_read('[]',now())"), "permission denied for function inventory_new_purchase_stock_read", "42501");
     await db.query("RESET ROLE; SET LOCAL ROLE postgres");
   }
-  // These base-table grants are test scaffolding for the fixed-priority reader
-  // fixture as pinned: an invoker function composed over an invoker ATP that
-  // service_role cannot read without them.
-  // This test proves body semantics (arithmetic, stale/missing/NULL/options
-  // behaviour, allocator agreement) and the deny-by-default refusal of
-  // non-granted roles. It does NOT prove privilege correctness of the granted role.
-  // Privilege proof as the granted role with real ATP data belongs to the control
-  // change that owns the reader fixture and to the managed rail landing.
-  await db.query("GRANT SELECT ON public.subscriptions, public.subscription_lines, public.subscription_cycles, public.inventory_reservations, public.inventory_balances, public.inventory_locations, public.catalog_skus, public.fulfillment_provider_stock_current TO service_role");
-  await db.query("SET LOCAL ROLE service_role");
-  expect((await db.query("SELECT public.inventory_new_purchase_stock_read('[]',now()) AS response")).rows[0].response).toEqual([]);
-  const f = await db.query("SELECT public.inventory_new_purchase_stock_read('[\"UNKNOWN\"]',now()) AS response");
-  expect(f.rows[0].response[0].source).toBe("missing");
+  expect(await readStock([])).toEqual([]);
+  expect((await readStock(["UNKNOWN"]))[0].source).toBe("missing");
 });
