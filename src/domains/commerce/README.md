@@ -17,6 +17,19 @@ one-time/subscription-initial checkout lives here.
 
 ## Commerce contracts package boundary
 
+`@openlup/platform/commerce` remains browser-safe. The separate experimental
+`@openlup/platform/commerce/server` entry owns the unchanged checkout compensation
+helper and its cleanup port. The reference compensation path re-exports the same
+function, so existing orchestration and adapter imports keep their identity.
+Cleanup releases the order's reservations before promotion cancellation and,
+when needed, abandoned-order cancellation; keys, reasons and warning/failure
+behavior remain unchanged. Host schema, subject, fiscal, starter policy, payment execution and concrete persistence bindings
+retain their reference owners. Lint refuses browser commerce imports of the
+server subtree, and package tests bundle the browser entry and exercise the
+installed server helper.
+Starter bindings infer their declaration shape from `createStarterOfferGuard`;
+the package entry exposes no separate starter declaration type.
+
 Neutral commerce schemas and ports come from `@openlup/platform/commerce`
 and its type-only `/contracts` entry. Their runtime graph is browser-safe;
 `@openlup/platform/commerce/server` supplies Node-only OMS handlers, managed
@@ -40,6 +53,10 @@ transcript checks those refusals and the other composed schemas; type assertions
 keep SKU, currency and product-slug inputs as strings across the exported
 reference schemas. The repair regression also compares generated multi-error
 transcripts against BASE goldens for every exported schema in these bindings.
+For the approved 21-day starter graduation cadence, 17 enumerated transcript
+goldens include the literal-21 issue alternative. Fixture seeds, case counts
+and all other issue ordering remain unchanged; the change fragment lists each
+affected schema and its cadence path.
 
 Availability projection requests one unit per variant in order. Recovery,
 nominal errors, delivery-contact projection, reference stripping, diagnostic
@@ -48,11 +65,35 @@ orchestration retains the local profile and invoice mappings and forwards an
 optional acquisition capability. Checkout expectations admit acquisition terms
 independently of totals. Configurator offer versions/minimums are untrusted asks;
 a supplied minimum replaces only the local intent-validation default. Checkout
-admission refuses every offer/minimum ask until an actual server offer resolver
-is wired; requests without asks still use the host minimum. K1 exposes the
-offer-policy port type only. The new
-offer-policy seam is a type-only port; binding execution and the starter guard
-are deferred to K2a. None of these changes activates an issuer or provider.
+admission retains the host minimum and refuses offer/minimum asks when no server
+offer resolver is composed. With a resolver, the offer-policy port binds or
+refuses explicit asks before quoting and stores bounded evidence after acceptance;
+starter admission injects the reference terms and arithmetic. None of these
+changes activates an issuer or provider.
+
+The server entry also owns checkout admission, quote/resume/failure handling,
+the runtime and the single paid-order saga shared by configurator and neutral
+command mappings. Thin reference factories supply the incumbent schemas, BFF
+responder, observed request identity, subject projections, M07 callables and
+application destinations. Provider roles, flow policy and trusted provider-evidence
+classification stay in those bindings. Saved-method alias/recurring unions remain
+reference-owned type arguments; the package forwards their values unchanged. Shipping/acquisition quote acceptance, bound offers,
+saved-epoch continuation, scoped busy refusal and injected starter terms follow
+the change fragment. Neutral conformance covers paid, changed-price, stock-loss,
+decline and busy outcomes; reference suites retain host schema/policy proof.
+Order-draft/runtime-finalize, configurator persistence, resume storage,
+cancellation and sweep facades now bind the generic stores at the server entry.
+The reference owns frozen schemas, ordered persisted-key projections and phone
+normalization; the package stamps verified identity last. Package stores expose
+neutral RPC/query factory and client names; the thin reference
+bindings retain their incumbent exported names and compensation function identity.
+Bounded recovery classifiers/fingerprints and token helpers delegate to that entry. Only the host
+subject-admission predicate admits the persisted neutral-command exception;
+public runtime validation retains its required subject. Recovery quote projection,
+services/routes and link destinations remain here. Shipping-term drift refuses
+same-money recreation; token inspection alone grants no continuation. SQL expiry
+and provisional-only cleanup remain real PostgreSQL obligations. The C2 handoff
+release check is **to be released**.
 
 The OMS handlers, operational ladder, read builders and managed RPC translations
 now delegate to the same commerce package. Browser-safe schemas and pure models
@@ -96,6 +137,66 @@ Browser bundles resolve the complete commerce entry and both facades without
 externals or Node/database imports. The server entry bundles for Node; raw
 uploads deliberately fail the browser negative control.
 
+## Commerce domain effects package boundary
+
+The reference transactional email handlers and dispatch registry bind the single
+implementation at `@openlup/platform/commerce/server`. Pure projections and ports
+remain at the browser-safe `@openlup/platform/commerce` entry. The package consumes durable
+outbox facts; existing database triggers, the outbox worker and the independent
+accounting invoice duty retain their owners. Paid email and paid fulfillment
+register independently. Fulfillment delegates to M08, including its optional
+risk gate. Cancellation email remains unregistered; accounting may claim its
+fact through `extraHandlers`. Return approval and rejection notify only their
+own facts, without performing goods receipt, refunds or subscription changes.
+
+`commerceEmailBinding.ts` retains locale, money/line labels, first-subscription
+presentation, legacy tracking and provider notification policy. It binds the
+existing fulfillment payload parser, communications transactional scaffold and outcome mapper
+without moving those algorithms into commerce. Reference field names and send
+ordering are preserved; neutral ports use `contextName` and `messageId`.
+Refund emails show an amount only for `provider-refund.v2` evidence. Paid receipt
+presentation forwards its proved discount percentage. Registry descriptors are
+checked against actual registration before claim.
+
+The neutral sales-channel projection retains source kind, channel slug and
+external order reference byte-exact. OMS keeps its existing richer projection, where an unread source axis stays undefined. Inventory
+exposure is a type-only injected read port, with no SQL or default binding.
+W8/W9 conformance lives in `packages/platform/test/commerce/effects`; rebound
+reference suites and the captured event-schema transcript check host behavior.
+Admin order UI and marketing/review handlers remain reference-owned.
+
+### W8/W9 conformance: dropped adopter-private assertions
+
+The package suites retain neutral consumer behavior and source identity while
+the donor's deployment inventory and migration lineage stay with their owners.
+
+W8 (`commerceDomainEffects.test.ts`) omits these assertions:
+
+- Paid-purchase analytics descriptor event type (`commerce.order.paid.analytics`)
+  and its exclusion from the core registry: private M13 analytics.
+- Paid-purchase measurement trigger mechanism: private M13 analytics.
+- Draft-created catalog runner/business-trigger match: deployment-specific trigger inventory.
+- Accounting invoice-producer catalog runner match: deployment-specific trigger inventory.
+- Fulfillment-handoff invoice-duty business-trigger match: deployment-specific trigger inventory.
+- Order-canceled emission catalog runner/business-trigger match: deployment-specific trigger inventory.
+- Return-emission catalog runner/business-trigger match: deployment-specific trigger inventory.
+- Eleven sealed migration SHA rows, witnessed function/trigger/table catalogs and
+  `assertMigrationWitness`: adopter append-only migration lineage; pgTAP suites own runtime emission proof.
+
+Consumer and flag assertions retain neutral duty independence. M09 owns invoice
+execution; the package registry remains a consumer map.
+
+W9 (`commerceSalesChannelSeam.test.ts`) omits these assertions:
+
+- Two exposure/new-purchase migration SHA seals, witnessed-object catalog and `assertMigrationWitness`:
+  adopter append-only migration lineage, owned by M10/M06.
+- Regex for `inventory_listing_exposure(p_sku_id uuid)`: M10/M06 exposure SQL ownership.
+- Issued-minus-converted-minus-withdrawn listing-unit SQL text: M10/M06 exposure SQL ownership.
+- Raw-sellable-minus-listing-exposure regex: M10/M06 ATP/exposure SQL ownership.
+- Pending-symbol migration-lineage absence witness: M10/M06 migration ownership;
+  replaced by package-source absence of `inventory_channel_exposure_quantity`
+  and the type-only injected `CommerceChannelExposureReadPort`.
+
 ## Pricing policy package boundary
 
 The existing pricing-policy token and neutral error/safe-reason block are owned
@@ -109,7 +210,10 @@ handlers, offer projection/handler/cache and readiness. Reference server wrapper
 bind settlement defaults, flat shipping through `getShippingFlatMinor`, promotion
 application, rich context/reconstruction, roster/request/unit/floor/scope policy and
 the observed BFF responder. Browser validators retain the existing request/context
-admission and industry wire scopes. Existing ordering, VAT equations, v1/v2 offer
+admission and industry wire scopes. The strict quote context additionally admits
+optional shipping and resolved acquisition terms through the identical existing
+validators re-exported by `@openlup/platform/pricing/browser`; absent terms retain
+the existing parsed output. Existing ordering, VAT equations, v1/v2 offer
 responses, errors and TTL rules are preserved. Promotion application and acceptance
 now live in `@openlup/platform/promotions`; named server wrappers retain local policy.
 The module also owns promotion admin handlers, ports, dependency-free DTOs, server
@@ -182,8 +286,8 @@ needing an owner decision in the
   columns and `deriveOrderMoney()`. It validates persisted catalog, allocated,
   effective, VAT, delivery, and total equations but never allocates a discount
   or reads quote metadata as completed-order truth.
-- Public acquisition prices use the versioned, published-dog-product-only
-  offer-pricing projection. When the v2 capability flag is enabled, the hook
+- Public acquisition prices use the versioned offer-pricing projection for
+  eligible published products. When the v2 capability flag is enabled, the hook
   binds the request to the app-level first-party visitor id; without that id it
   stays amount-free and fail-closed. Transactional totals still come only from
   the quote contract, and historical receipt totals only from canonical order recap.
@@ -191,13 +295,12 @@ needing an owner decision in the
 - Pure policy helpers: pricing breakdown, recommendation engine/variant
   selection, recommendation policy contracts, offer availability derivation, and OMS fulfillment
   eligibility/summary (`pricingBreakdown.ts`, `omsFulfillment*`).
-- Petfood policy implementations live downstream in a deployment-owned module,
+- Adopter-specific product policies live downstream in a deployment-owned module,
   which is withheld by the deployment overlay and is not part of the published
   tree. `energyPolicy.ts` keeps only compatibility type exports and
   `packageQuantityPolicy.ts` keeps the package policy contract/version exports;
   a published tree binds its own implementation of those contracts at the
-  composition root, which is where this deployment injects the openlup petfood
-  policies.
+  composition root.
 - Transactional email *content* (commerce owns the copy; chrome/transport live
   in `communications` + `server/infra/resend`): `emails/*` — e.g.
   `emails/orderDraft.ts` builds the localized order-draft resume nudge as
@@ -253,3 +356,18 @@ brand composition remain here. Legacy optional `petName` maps to `contextName`
 only at the facade; subjects, preheaders, ordered blocks and full rendered output
 remain unchanged. The public template parity suite covers both locales and
 optional receipt, tracking, return, CTA and marketing branches.
+
+The offer-availability status/reason ladder now delegates with identity to the
+browser-safe commerce package. The physical-table reader delegates to
+`commerce/server`, retaining provider selection and SDK narrowing in its reference
+adapter. The existing M06 reference composition uses the selected normalized
+stock read port; this does not switch private previews onto the ATP SQL seam.
+Reservation allocation stays in its managed binding, importing M06's TTL policy.
+Protected inventory lock contention now carries scoped retryable details, never
+falls through schema fallback, and retains the original allocation key. Raw
+SQLSTATE mapping stays inside the reservation response adapter. Its reference
+suite owns exact RPC argument order and one-time null-cycle/24-hour lease proof;
+neutral package W2 uses recording ports. The environment fallback selector is
+unchanged. Replacement allocation remains ID-scoped to the replacement's own
+holds; one-time checkout has no subscription-reservation consumption authority.
+No second stock/ATP engine or replacement alignment operation is added.

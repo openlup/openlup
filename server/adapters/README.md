@@ -90,6 +90,25 @@ and provider evidence remain reference-owned. The mutation client itself is
 RPC-only, so order operations need no table capability. Existing control-plane
 projection and exact replay/refusal results keep their prior behavior.
 
+Commerce order-draft, runtime-finalize, intent-persistence, resume, cancellation
+and reservation-sweep implementations now come from
+`@openlup/platform/commerce/server`. These reference paths bind structural clients
+to the incumbent frozen schemas, ordered finalize arguments, command response
+projection and phone normalizer. Verified subject stamping remains last in the
+package store. Table filters, RPC names, argument order, retry bounds and nominal
+error identity are preserved. Catalog-admission refusals now remain conflicts
+without superseding; stale acquisition terms reach the existing safe compensation
+and reprice path. Reservation allocation, provider execution and runtime composition
+retain their owners; no second executor is installed.
+
+The physical commerce availability calculation is now supplied once by
+`commerce/server`; this adapter retains only the SDK boundary and the provider
+predicate. Table read order, local/provider branches and terminal-hold exclusions
+are unchanged. Managed reservation allocation remains here, using M06's exported
+reservation policy. Its response binding scopes inventory lock failures to
+retryable details; lock contention never enters schema fallback or changes the
+retry key. Cancellation still delegates to the injected K2b adapter.
+
 ## Does Not Own
 
 - Provider HTTP clients, env parsing, signatures, and low-level payload

@@ -1,3 +1,4 @@
+import { build } from "esbuild";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join, posix, relative } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -144,6 +145,8 @@ const platformExports = JSON.parse(readFileSync(fileURLToPath(new URL("../packag
 const moduleDirectories = readdirSync(SOURCE_ROOT, { withFileTypes: true }).filter((entry) => entry.isDirectory()).map((entry) => entry.name);
 
 function relativeImportAllowed(path: string, specifier: string): boolean {
+  // Exact browser re-export of the pure validator owner, with no shipping handlers.
+  if (path === "pricing/browser/index.ts" && specifier === "../../shipping/thresholdPolicy.js") return true;
   const ownModule = path.split("/")[0]!;
   if (path.split("/")[1] === "contracts") return contractsImportAllowed(path, specifier, graph);
   const sameModule = /^\.\/[^/]+$/.test(specifier);
@@ -187,7 +190,7 @@ describe("package source boundary", () => {
     expect(ts.getPreEmitDiagnostics(program).map((diagnostic) => ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n"))).toEqual([]);
   }, 30_000);
 
-  it("typechecks the composition declarations without pg and references no data-module declarations", () => {
+  it.each(["composition", "commerce"])("typechecks the %s declarations without pg and references no data-module declarations", (entry) => {
     const options: ts.CompilerOptions = {
       module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext,
       strict: true, noEmit: true, types: ["node"], target: ts.ScriptTarget.ES2022,
@@ -198,7 +201,7 @@ describe("package source boundary", () => {
     const blocked = (path: string) => /\/node_modules\/(?:pg|@types\/pg)\//.test(path.replaceAll("\\", "/"));
     host.fileExists = (path) => !blocked(path) && fileExists(path);
     host.readFile = (path) => blocked(path) ? undefined : readFile(path);
-    const program = ts.createProgram([join(SOURCE_ROOT, "../dist/composition/index.d.ts")], options, host);
+    const program = ts.createProgram([join(SOURCE_ROOT, `../dist/${entry}/index.d.ts`)], options, host);
     expect(ts.getPreEmitDiagnostics(program).map((diagnostic) => ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n"))).toEqual([]);
     const declarations = program.getSourceFiles().map((file) => file.fileName.replaceAll("\\", "/"));
     expect(declarations.filter((name) => name.includes("/dist/data/"))).toEqual([]);
@@ -251,6 +254,15 @@ describe("package source boundary", () => {
     expect(source).not.toMatch(ENVIRONMENT_READ);
   });
 
+  it("keeps K2b stores, adapters and recovery helpers exclusively at the server entry", async () => {
+    const browser = await import("../src/commerce/index.js");
+    const server = await import("../src/commerce/server/index.js");
+    for (const name of ["createCommerceOrderDraftRpcPort", "createManagedCommerceRuntimeOrderPort", "createConfiguratorIntentPersistenceRpcPort", "createCommerceCheckoutResumeQueryPort", "createExpiredCheckoutRecoveryPolicy", "generateCheckoutRecoveryToken"] as const) {
+      expect(typeof server[name]).toBe("function");
+      expect(name in browser).toBe(false);
+    }
+  });
+
   it.each(files)("$path imports only relative modules, node built-ins, core, zod and the allowed pg adapters", ({ path, source }) => {
     const contracts = path.split("/")[1] === "contracts";
     if (contracts) {
@@ -267,6 +279,22 @@ describe("package source boundary", () => {
       exports: Record<string, unknown>;
     };
     assertModuleExports(modules, graph, manifest.exports, (path) => existsSync(join(SOURCE_ROOT, path)), ["commerce/server", "pricing/browser", "communications/resend", "communications/klaviyo", "payments/stripe", "payments/tpay", "fulfillment/omnipack"]);
+  });
+
+  it("bundles the commerce browser entry without Node built-ins or the server entry", async () => {
+    const result = await build({
+      entryPoints: [join(SOURCE_ROOT, "commerce/index.ts")],
+      bundle: true, platform: "browser", format: "esm", write: false,
+      treeShaking: false, metafile: true, logLevel: "silent",
+    });
+    const inputs = Object.keys(result.metafile!.inputs).map(path => path.replaceAll("\\", "/"));
+    expect(inputs.some(path => path.endsWith("commerce/offerAvailabilitySchemas.ts"))).toBe(true);
+    expect(inputs.some(path => path.endsWith("commerce/offerAvailability.ts"))).toBe(true);
+    expect(inputs.some(path => path.endsWith("commerce/checkoutCommandSchemas.ts"))).toBe(true);
+    expect(inputs.some(path => path.endsWith("commerce/offerEvidenceSchemas.ts"))).toBe(true);
+    expect(inputs.some(path => path.endsWith("commerce/paymentContinuation.ts"))).toBe(true);
+    expect(inputs.filter(path => path.includes("commerce/server/") || path.startsWith("node:"))).toEqual([]);
+    expect(result.outputFiles[0]!.text).toContain("offerAvailabilityRequestItems");
   });
 
   it.each(files)("$path reaches another module only through that module's public entry", ({ path, source }) => {

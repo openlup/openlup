@@ -590,8 +590,9 @@ describe("eslint platform module boundaries", { timeout: 60_000 }, () => {
   it("admits only declared Node-entry edges and refuses reverse commerce imports", async () => {
     const config = await loadConfig();
     const { PLATFORM_MODULE_GRAPH: graph } = await import("../../eslint.config.js");
-    expect(graph["commerce/server"]).toEqual({ values: ["commerce"], types: ["http", "bff"] });
+    expect(graph["commerce/server"]).toEqual({ values: ["commerce", "fulfillment", "pricing", "shipping", "promotions"], types: ["http", "bff", "commerce/contracts"] });
     expect(graph.commerce.values).not.toContain("commerce/server");
+    expect(graph.commerce.values).toEqual(["pricing/contracts", "shipping"]);
     for (const depth of [0, 1]) {
       const up = "../".repeat(depth);
       const file = `packages/platform/src/commerce/server/${"nested/".repeat(depth)}probe.ts`;
@@ -618,6 +619,70 @@ describe("eslint platform module boundaries", { timeout: 60_000 }, () => {
     }
   });
 
+  it.each(sourceExtensions)("limits the commerce fulfillment edge to its server entry in %s", async (extension) => {
+    const config = await loadConfig();
+    for (const depth of [0, 2]) {
+      const directory = "nested/".repeat(depth);
+      const up = "../".repeat(depth + 1);
+      const browser = `packages/platform/src/commerce/${directory}usesModule.${extension}`;
+      const server = `packages/platform/src/commerce/server/${directory}usesModule.${extension}`;
+      for (const source of loadSources(`${up}fulfillment/index.js`, extension)) {
+        expect(await moduleMessages(config, source, browser)).toContainEqual(expect.stringContaining('module "commerce"'));
+      }
+      for (const source of loadSources(`../${up}fulfillment/index.js`, extension)) {
+        expect(await moduleMessages(config, source, server)).toEqual([]);
+      }
+      for (const specifier of [`../${up}fulfillment/paidHandoff.js`, `../${up}data/index.js`]) {
+        for (const source of loadSources(specifier, extension)) {
+          expect(await moduleMessages(config, source, server)).toContainEqual(expect.stringContaining('module "commerce/server"'));
+        }
+      }
+    }
+  });
+
+  it.each(sourceExtensions)("keeps checkout server edges separate from browser and contracts in %s", async extension => {
+    const config = await loadConfig();
+    for (const [file, target, permission, module] of [
+      ["commerce/usesModule", "../pricing/index.js", "refused", "commerce"],
+      ["commerce/contracts/usesModule", "../../pricing/index.js", "refused", "commerce"],
+      ["commerce/server/usesModule", "../../pricing/index.js", "value", "commerce/server"],
+      ["commerce/server/usesModule", "../../promotions/index.js", "value", "commerce/server"],
+      ["commerce/server/usesModule", "../../http/index.js", "type", "commerce/server"],
+      ["commerce/server/usesModule", "../../pricing/quotePorts.js", "refused", "commerce/server"],
+      ["commerce/server/nested/usesModule", "../../../shipping/index.js", "value", "commerce/server"],
+      ["commerce/server/nested/usesModule", "../../../data/index.js", "refused", "commerce/server"],
+    ]) {
+      for (const source of loadSources(target!, extension)) {
+        const messages = await moduleMessages(config, source, `packages/platform/src/${file}.${extension}`);
+        if (permission === "value" || permission === "type" && typeOnlyForm.test(source)) expect(messages).toEqual([]);
+        else expect(messages).toContainEqual(expect.stringContaining(`packages/platform module "${module}"`));
+      }
+    }
+  });
+
+  it("admits only the existing pure validator owners at the pricing browser entry", async () => {
+    const config = await loadConfig();
+    const filename = "packages/platform/src/pricing/browser/index.ts";
+    for (const target of ["../quotePrimitives.js", "../acquisitionTermsSchemas.js", "../../shipping/thresholdPolicy.js"]) {
+      for (const source of loadSources(target, "ts")) expect(await moduleMessages(config, source, filename)).toEqual([]);
+    }
+    for (const target of ["../../shipping/index.js", "../../shipping/deliverySelectionHandler.js", "../../http/index.js", "../index.js", "node:crypto", "pg"]) {
+      for (const source of loadSources(target, "ts")) {
+        expect(await moduleMessages(config, source, filename)).toContainEqual(expect.stringContaining("pricing browser entry imports only"));
+      }
+    }
+    for (const file of ["pricing/browser/usesModule.ts", "pricing/usesModule.ts"]) {
+      const prefix = file.includes("browser/") ? "../../" : "../";
+      for (const target of [`${prefix}shipping/thresholdPolicy.js`, `${prefix}shipping/index.js`]) {
+        for (const source of loadSources(target, "ts")) {
+          const messages = await moduleMessages(config, source, `packages/platform/src/${file}`);
+          if (target.endsWith("shipping/index.js") && typeOnlyForm.test(source)) expect(messages).toEqual([]);
+          else expect(messages).toContainEqual(expect.stringContaining('packages/platform module "pricing"'));
+        }
+      }
+    }
+  });
+
   it("declares exactly the inventoried edges; only the composer may declare more", async () => {
     const { PLATFORM_MODULE_GRAPH: graph } = await import("../../eslint.config.js") as unknown as {
       PLATFORM_MODULE_GRAPH: Record<string, { values: string[]; types: string[] }>;
@@ -636,6 +701,9 @@ describe("eslint platform module boundaries", { timeout: 60_000 }, () => {
       const source = ts.createSourceFile(path, readFileSync(path, "utf8"), ts.ScriptTarget.Latest, true);
       const edge = (specifier: string, typeOnly: boolean) => {
         if (!specifier.startsWith(".")) return;
+        // The single pure-validator re-export is an exact file exception,
+        // not a module-wide pricing-to-shipping permission.
+        if (relative(platformSource, path).split(sep).join("/") === "pricing/browser/index.ts" && specifier === "../../shipping/thresholdPolicy.js") return;
         const resolved = resolve(dirname(path), specifier);
         const targetOwner = owner(resolved);
         const targetPath = relative(platformSource, resolved).split(sep).join("/");

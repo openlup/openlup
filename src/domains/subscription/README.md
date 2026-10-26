@@ -97,6 +97,10 @@ and browser-shareable lifecycle remain unchanged.
 
 A starter-pack subscription (marker `subscriptions.starter_pack`) prices its
 first cycles from the offer frozen at checkout.
+The reference marker reader accepts 14-, 21- and 28-day graduation cadences,
+matching the checkout plan. Other cadences remain invalid. The parity suite
+covers all three accepted cadences and retains the deliberate stricter
+checkout check that a declared unit count equals its graduation line total.
 [`starterPackCharge.ts`](../../../server/domains/subscription/starterPackCharge.ts)
 is the one computation for every amount a customer is charged or shown for an
 upcoming starter cycle: the renewal engine charges with it, the account read

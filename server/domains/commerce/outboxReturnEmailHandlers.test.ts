@@ -48,7 +48,7 @@ describe("outbox return email handlers", () => {
     const { port, approved } = emailPort({});
     const handler = createOutboxReturnApprovedEmailHandler({
       emailPort: port,
-      recipientPort: recipientPort({ email: "c@x.test", firstName: "Ala", country: "PL" }),
+      recipientPort: recipientPort({ email: "c@x.test", firstName: "Buyer", country: "PL" }),
     });
     const out = await handler.handle(row(), new AbortController().signal);
     expect(out.kind).toBe("processed");
@@ -71,7 +71,7 @@ describe("outbox return email handlers", () => {
     const { port, approved } = emailPort({ existing: true });
     const handler = createOutboxReturnApprovedEmailHandler({
       emailPort: port,
-      recipientPort: recipientPort({ email: "c@x.test", firstName: "Ala" }),
+      recipientPort: recipientPort({ email: "c@x.test", firstName: "Buyer" }),
     });
     const out = await handler.handle(row(), new AbortController().signal);
     expect(out).toMatchObject({ kind: "processed", detail: { dedupe: "email_already_sent" } });

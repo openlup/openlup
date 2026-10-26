@@ -54,14 +54,9 @@ describe("order email eligibility", () => {
     })).toBe("payment_session_active");
   });
 
-  // The decline notice deliberately does NOT share the nudge's session gate.
-  // Production 2026-08-20: a refusal was swallowed as
-  // `payment_session_active` because the buyer had opened a second attempt 17 s
-  // earlier; that attempt declined too, and the once-per-order emit key
-  // meant no second event could ever exist. She was told nothing.
-  // The operator gate answers a different question from the cron gate: a human
-  // already decided to send this link, and the orders they send it for have
-  // usually LEFT pending_payment. Only "gone" and "already paid" may silence it.
+  // An operator-issued link remains eligible after pending payment because
+  // eligibility was checked when it was minted. Only a missing or paid order
+  // makes the link obsolete at send time.
   it("keeps an operator-issued link alive for an order that has left pending_payment", () => {
     expect(shouldSkipOperatorCheckoutRecovery({
       orderStatus: "expired",

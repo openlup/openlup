@@ -240,6 +240,21 @@ substituting a different business behaviour.
 
 ## Opt-in disposable subscription reference
 
+The inert [M11 commerce binding](../../server/runtime/public-reference/m11CommerceBinding.ts)
+selects existing package callables and the native checkout-recovery adapter only
+with `enabled: true`. Every callable checks the supplied Core readiness report:
+only `ready` admits work; `unknown` and `unsatisfied` return `schema_<state>`
+before executor work. Hosts check readiness before replacing a serving selection
+and supply the complete catalogue identity and additional selected-operation
+schema objects. Ports, routes and triggers share one guarded callable per
+operation; duplicate native-recovery names and descriptor identities refuse.
+The [native recovery witness](../../tests/postgres/commerceComposition.test.ts)
+observes a persisted reminder and replay while preserving active subscriptions,
+their reservations and undelivered-parcel alignment. Native recovery supports
+reminder intents, delivery authorization and terminal outbox compaction;
+expired-checkout recreation remains managed-only. This binding installs no
+route, timer or worker and changes no served default.
+
 The opt-in [M10 native subscription binding](../../server/runtime/public-reference/m10SubscriptionBinding.ts)
 returns schema, readiness, one job descriptor and its guarded executor; it mounts
 nothing. Supply a complete catalogue identity and Core readiness observation,
@@ -326,11 +341,24 @@ once. A candidate label or unrelated report alone cannot enable saves.
 Selection, validation and flat-rate fixtures do not certify a managed host.
 
 The inert [M06 inventory binding](../../server/runtime/public-reference/m06InventoryBinding.ts)
-selects one store and the reference provider validator. A host-injected normalized
-stock reader feeds catalog bundle availability; native new-purchase reads remain
-unsupported and are deferred to the native-backend parity round (owner 2026-10-21). Importing
+selects one store and the reference provider validator. For PostgreSQL, the host
+supplies `store.stockSourceKey` to bind the existing ATP reader into catalog bundle
+availability. Missing keys leave the preview unbound with
+`inventory_stock_source_key_required`; `requireNewPurchaseStockRead` makes that
+a readiness refusal. The native preview protects all live holds, remaining due
+subscription demand inside 14 days and channel exposure, clamped at zero. It
+refuses own-order exclusions and other horizons. Managed composition uses an injected normalized reader first, then
+`store.stockRpc` for the service-role managed reader with the managed forward
+`20261025109000_inventory_new_purchase_stock_read.sql`; without either it reports `inventory_new_purchase_stock_reader_required`.
+Managed quantities retain ATP provider-tagged accounting and the same fixed priority. Native one-time and replacement allocation remain
+unavailable; this read supplies no allocation authority. Importing
 the binding mounts no route, schedule or provider. Admin composition retains its
 authorization and mutation flag; native adjustment remains refused.
+The stock binding passes `createInventoryBindings(...).newPurchaseStockReadPort`
+to M06's availability projection and binds the pure status ladder from browser
+commerce. Physical-table fallback is still an explicit host choice, using the
+single commerce/server projection; it cannot allocate or consume reservations.
+Private preview transport remains host-owned.
 
 The separate M05 reference factories
 [`m05CatalogBinding.ts`](../../server/runtime/public-reference/m05CatalogBinding.ts)
@@ -352,9 +380,9 @@ publish, lifecycle writes and native acquisition acceptance remain unsupported.
 The consumer proof uses the existing quote/offer and authorized draft readback
 surfaces. The mounted admin/feed readback proof feeds the merged availability
 builder (`createNewPurchaseStockAvailabilityPort`) from an injected port-boundary
-stock reader double, so it proves the mounted readback, not native stock; the
-native stock read is deferred to the native-backend parity round
-(owner 2026-10-21), second after M05 bundle-1. No acceptance token, publication receipt
+stock reader double, so it proves mounted readback with that double. Native ATP
+behavior has separate [stock-read witnesses](../../tests/postgres/newPurchaseStockNative.test.ts).
+No acceptance token, publication receipt
 or real stock claim is made.
 
 

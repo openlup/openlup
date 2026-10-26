@@ -35,9 +35,14 @@ its `/contracts` entry remains type-only. The `/commerce/server` entry
 is the separate Node-only home for handlers, use cases, stores, adapters and
 engine composition. Browser bundle proof checks the complete commerce runtime
 graph. The additive `pricing/browser` entry directly exposes the existing quote
-primitive factory and acquisition capability/expectation validators from their
-pure defining files; it never imports the Node-only pricing root. Its nested
-same-module imports follow the existing module graph rules. The customer-default consumption guard reads the package implementation
+primitive factory, acquisition capability/expectation/resolved-terms validators
+and shipping-terms validator. Acquisition reuses its pure defining file; shipping
+uses an exact linted edge from `pricing/browser/index.ts` to the existing pure
+`shipping/thresholdPolicy.ts` owner, preserving validator identity without the
+shipping handler/Node HTTP declaration closure. Other internal shipping paths
+remain refused. The complete browser graph imports neither Node
+built-ins nor the Node-only pricing root. Reference quote context binds optional
+shipping/acquisition terms without changing its other fields or strictness. The customer-default consumption guard reads the package implementation
 so its unapplied-evidence and forbidden-payload assertions retain their meaning.
 
 
@@ -60,6 +65,15 @@ transactional promotion callback remain the storage seams. M02 blob storage has
 no private read/inspection/temp/promotion operations, so it cannot replace that
 store unchanged. Hosted token feedback is separate and requires adopter-provided
 managed RPCs; native `db/platform` has no hosted-feedback binding or added route.
+
+The Node-only `@openlup/platform/commerce/server` effect consumers accept the communications owner's existing payload
+parser, transactional-email scaffold and outcome mapper through typed host
+bindings. The reference binds the existing fulfillment payload parser, transactional scaffold
+and outcome mapper; commerce defines no second implementation. The fulfillment
+parser is exported unchanged and also serves the frozen subset handlers. Reference-only test fixtures exercise recipient, dedupe and
+provider-refusal outcomes. Neither these helpers nor the commerce registry
+construct a new worker, emitter or runtime schedule. Locale, presentation and
+provider policy remain in the reference composition.
 
 Invoicing service composition stays in the platform `/invoicing` entry. The
 reference host selects its existing accounting executor and job lease explicitly;
@@ -574,6 +588,57 @@ its own reviewed compatibility change before a second capability is admitted.
 
 ### Internal boundaries and adapter isolation
 
+The browser-safe `@openlup/platform/commerce` entry exports only schemas, pure
+helpers and ports. Its graph never imports `commerce/server`; a browser bundle
+and source-boundary witness enforce the split. The Node-only server entry
+reuses the existing paid-fulfillment factory through `fulfillment/index.js`.
+Only files under `commerce/server/` admit that value edge in the module graph.
+Locale remains a host-supplied type parameter, with no communications server
+dependency or optional PostgreSQL types.
+Commerce/contracts retains its isolated type-only surface. Outbox rail
+composition is an injected `uniqueRegistry` function, bound by the reference
+host to `@openlup/outbox`; the platform adds no rail dependency or copied
+composition algorithm.
+
+The Node-only commerce server entry also exports `tryCompensate` with an injected
+`CheckoutCompensationPort`; the reference compensation file re-exports the same
+function. Reservation release, promotion cancellation and conditional
+abandoned-order cancellation retain their ordering, keys, reasons and best-effort
+warnings. Persistence and payment execution stay host-bound. The cold consumer
+exercises installed compensation.
+
+The server entry also owns checkout handlers, runtime and the shared paid-order
+saga. Its additional value edges are pricing, shipping and promotions; HTTP and
+BFF edges remain type-only. Host schema/response, subject, metadata, starter-policy
+and existing payment callables are explicit bindings; host configuration and
+application routes retain their owners. Saved-method alias and recurring metadata
+use host-defined string type arguments, preserving reference wire values without
+publishing provider unions. Offer binding precedes quoting, accepted
+shipping/acquisition terms require acceptance, and scoped contention or uncertain
+dispatch cannot authorize compensation. Neutral conformance and reference binding
+suites cover those seams. The cold consumer also exercises installed continuation.
+
+Generic draft/finalize/intent/resume stores, cancellation and sweep adapters also
+live at the server entry; structural clients and host schemas/projections preserve
+RPC arguments and table filters. Phone normalization is injected and verified
+identity is stamped last. Bounded recovery classifiers inject subject admission
+and compare shipping terms, while token state classification grants no route
+authority. Recovery services, projection and application routes retain their
+owners. The C2 release handoff is to be released; unit recorders do not prove SQL
+atomicity or active-subscription preservation.
+
+The physical-table availability projection also lives at commerce/server over a
+structural query client and a required host provider predicate. Its pure ladder
+is browser-safe commerce; SDK narrowing stays in the reference adapter. The
+physical port and any host `functionMissingFallback` are separate capabilities
+without the ATP guarantee: they do not subtract due subscription demand or
+channel exposure.
+The reference reservation allocator imports M06's policy, retaining scoped lock-error
+translation and original retry keys locally. The existing M06 normalized read
+composition passes its selected port through unchanged; PostgreSQL binds the
+native ATP reader when the host supplies `stockSourceKey`. Private preview
+transport remains host-owned.
+
 Effective bundle selection reuses pricing's half-open authority through its
 public server entry, adding the catalog → pricing value edge. The dependency is
 acyclic; pricing owns no runtime catalog edge. The opt-in adapter keeps effective
@@ -586,6 +651,15 @@ Reservation policy has an unchanged server counterpart; the reference keeps brow
 Catalog now also owns fixed-bundle application/admin factories at its existing
 entry. Its data/http/bff inputs remain type-only: the native read
 store takes the data entry's executor without constructing a driver or pool.
+The physical-table availability projection also lives at commerce/server over a
+structural query client and a required host provider predicate. Its pure ladder
+is browser-safe commerce; SDK narrowing stays in the reference adapter. The
+reference reservation allocator imports M06's policy, retaining scoped lock-error
+translation and original retry keys locally. The existing M06 normalized read
+composition passes its selected port through unchanged; PostgreSQL binds the
+native ATP reader when the host supplies `stockSourceKey`. Private preview
+transport remains host-owned.
+
 Effective bundle selection alone adds the pricing value edge described above;
 there is no promotions edge. Reference wrappers bind
 existing schemas, operation spec and shared admin kit, stock/lifecycle helpers,
@@ -649,6 +723,17 @@ For a separate integration artifact, follow the canonical
 Generic supported orchestration remains the platform's responsibility.
 
 ### Contributions, seams and readiness
+`createCommerceContribution` in `@openlup/platform/composition` declares the
+installed `./commerce`, `./commerce/contracts` and `./commerce/server` entries
+under the `commerce` capability. Its namespaced ports describe the selected
+existing callables; routes and triggers share those same executors. Duplicate
+handler, route or schedule identities refuse before map construction. The
+[reference binding](../../server/runtime/public-reference/m11CommerceBinding.ts)
+adds native recovery through the existing adapter and accepts already-bound
+package operations with their host schema requirements. It creates no checkout,
+payment, inventory or fulfillment engine. Schema admission and host installation
+remain separate from this inert declaration.
+
 The M05 contribution is a structural declaration over supplied bound callables,
 not another domain or activation registry. Its three contributions retain the
 `catalog`, `pricing` and `promotions` identities. Ports and bundle routes retain
@@ -760,6 +845,13 @@ executor. Browser preview values remain reference-owned. See the
 [M04 scope](plans/oss-m04-communications-triggers.md).
 
 ## Fulfillment contracts
+
+The fulfillment entry also exports its existing `parseOutboxPayload` helper.
+K4 reference email bindings reuse that same parser through the host runtime;
+paid handoff retains the identical schema parsing, issue paths and 300-character
+reason truncation. Its paid-handoff descriptor is also exported and rebound by
+commerce, retaining one event-type/timeout definition. These exports add no
+dispatch behavior or worker registration.
 
 Pure fulfillment presentation lives at the existing `@openlup/core/fulfillment`
 subpath: the status canon, actual-evidence tracking progress, current-parcel
@@ -1483,10 +1575,12 @@ P8 owns serving composition and G23. No executor or schedule is installed here.
 ### Managed stock wait and ATP
 
 The managed rail installs the service-role stock-wait SQL functions and shared
-provider ATP seam. The host currently has no TypeScript stock-wait or stock
-availability adapter implementing the P5n ports. The exported
-`MANAGED_SUBSCRIPTION_STOCK_CAPABILITIES` therefore describes SQL surfaces and
-keeps `stockRecovery` unavailable for package composition. SQL behavior is covered
+provider ATP seam. A managed `NewPurchaseStockReadPort` adapter is available
+from the inventory entry through `stockRpc` over the managed forward
+`20261025109000_inventory_new_purchase_stock_read.sql` (controlled
+by the M11 control group). The TypeScript stock-wait port and `stockRecovery`
+remain unavailable for package composition. The exported
+`MANAGED_SUBSCRIPTION_STOCK_CAPABILITIES` values are unchanged. SQL behavior is covered
 by [managed pgTAP/real-PG probes](../../tests/postgres/subscriptionManagedStock.test.ts);
 these do not select a serving executor or prove a hosted installation.
 

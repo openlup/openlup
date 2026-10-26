@@ -5,7 +5,7 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { isolatedConsumerEnv } from "./pack-manifest-input.ts";
 import { afterAll, afterEach, beforeAll, expect, it } from "vitest";
-import { proveCommerceConsumer, proveInvoicingConsumer, proveSubscriptionsConsumer, proveWarehouseAdapterConsumer, proveFulfillmentConsumer, provePaymentAdapterConsumer, provePaymentsConsumer, installA1HostBinding, proveA1ReferenceBindingConsumer, ADAPTER_ENTRIES, assertConsumerIsolation, assertExportInventory, compileConsumer, consumerNode, NON_ADAPTER_ENTRIES, OPTIONAL_PEERS, proveAdapterRefusals, proveOidcRefusals, provePostgresOperations, proveNativeCommunicationsOperations, proveResendConsumer, proveMarketingSyncConsumer, runPlatformColdConsumer } from "./platform-cold-consumer.ts";
+import { proveCommerceServerConsumer, proveCommerceConsumer, proveInvoicingConsumer, proveSubscriptionsConsumer, proveWarehouseAdapterConsumer, proveFulfillmentConsumer, provePaymentAdapterConsumer, provePaymentsConsumer, installA1HostBinding, proveA1ReferenceBindingConsumer, ADAPTER_ENTRIES, assertConsumerIsolation, assertExportInventory, compileConsumer, consumerNode, NON_ADAPTER_ENTRIES, OPTIONAL_PEERS, proveAdapterRefusals, proveOidcRefusals, provePostgresOperations, proveNativeCommunicationsOperations, proveResendConsumer, proveMarketingSyncConsumer, runPlatformColdConsumer } from "./platform-cold-consumer.ts";
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const temporary: string[] = [];
@@ -26,6 +26,7 @@ function fixture() {
   // The typed consumer registers the payments factory with the composer.
   writeFileSync(join(consumer, "node_modules/@openlup/platform/index.d.ts"), [
     "export interface Synthetic { value: string }",
+    'export { tryCompensate, type CheckoutCompensationPort } from "./commerceCheckoutCompensation.js";',
     "export interface CommerceOfferAvailabilityRequestItem { sku: string; productSlug: string; variantId: string; requestedQuantity: number; checkoutMode: \"one_time\" | \"subscription\" }",
     "export interface CommerceOfferAvailabilityPort { getAvailability(input: { items: readonly CommerceOfferAvailabilityRequestItem[] }): Promise<unknown[]> }",
     "export declare function offerAvailabilityRequestItems(variants: readonly { sku: string; slug: string; variantId: string }[], checkoutMode: \"one_time\" | \"subscription\"): CommerceOfferAvailabilityRequestItem[];",
@@ -43,6 +44,7 @@ function fixture() {
     "export declare function createPaymentServices(): { run<T>(work: (port: { kind: \"truth\" }) => Promise<T>): Promise<T> } | null;",
     "export declare function createBundleComposer(binders: { blob: () => null; fulfillment?: () => FulfillmentServices | null; payments?: () => { run<T>(work: (port: unknown) => Promise<T>): Promise<T> } | null }): unknown;",
   ].join("\n") + "\n");
+  copyFileSync(join(root, "packages/platform/dist/commerce/server/commerceCheckoutCompensation.d.ts"), join(consumer, "node_modules/@openlup/platform/commerceCheckoutCompensation.d.ts"));
   cpSync(join(root, "packages/platform/src/invoicing/contracts"), join(consumer, "node_modules/@openlup/platform/invoicing-contracts"), { recursive: true });
   packageFixture(consumer, "zod", { ".": "./index.js" });
   return consumer;
@@ -451,7 +453,175 @@ it("M11 K1 proves installed commerce success and refusal without optional peers"
   const consumer = pristinePackedA1Fixture();
   assertConsumerIsolation(consumer, root);
   proveCommerceConsumer(consumer);
+  const serverExports = JSON.parse(consumerNode(consumer, `
+const entry = await import("@openlup/platform/commerce/server");
+process.stdout.write(JSON.stringify(Object.fromEntries(Object.entries(entry).map(([name, value]) => [name, typeof value]))));
+`));
+  expect(serverExports).toEqual({
+    CHECKOUT_RECOVERY_TOKEN_PREFIX: "string",
+    EXPIRED_CHECKOUT_RECOVERY_WINDOW_MS: "number",
+    ORDER_DRAFT_RPC_NAME: "string",
+    ORDER_DRAFT_SUPERSEDE_RPC_NAME: "string",
+    cancelAbandonedCheckout: "function",
+    cancelUnstartedPromotionCheckout: "function",
+    classifyCheckoutRecoveryTokenState: "function",
+    createExpiredCheckoutRecoveryPolicy: "function",
+    createManagedCommerceRuntimeOrderPort: "function",
+    createManagedReservationSweepPort: "function",
+    createOrderDraftRpcPayload: "function",
+    createOfferAvailabilityPort: "function",
+    createCheckoutCompensationRpcAdapter: "function",
+    createCommerceCheckoutResumeQueryPort: "function",
+    createCommerceOrderDraftRpcPort: "function",
+    createConfiguratorIntentPersistenceRpcPort: "function",
+    generateCheckoutRecoveryToken: "function",
+    hashCheckoutRecoveryToken: "function",
+    mapCommerceFinalizeRpcError: "function",
+    quotesMatchForRecovery: "function",
+    OUTBOX_CHECKOUT_EXPIRED_TEMPLATE_SLUG: "string",
+    OUTBOX_ORDER_CONFIRMATION_TEMPLATE_SLUG: "string",
+    OUTBOX_ORDER_PAID_TEMPLATE_SLUG: "string",
+    OUTBOX_ORDER_REFUNDED_TEMPLATE_SLUG: "string",
+    OUTBOX_PAYMENT_FAILED_TEMPLATE_SLUG: "string",
+    OUTBOX_RETURN_APPROVED_TEMPLATE_SLUG: "string",
+    OUTBOX_RETURN_REJECTED_TEMPLATE_SLUG: "string",
+    OUTBOX_SHIPMENT_DELIVERED_TEMPLATE_SLUG: "string",
+    OUTBOX_SHIPMENT_DISPATCHED_TEMPLATE_SLUG: "string",
+    OUTBOX_SHIPMENT_EXCEPTION_TEMPLATE_SLUG: "string",
+    assertOutboxRegistryDescriptors: "function",
+    composeOutboxHandlerDescriptors: "function",
+    createAdminReturnApproveHandler: "function",
+    createAdminReturnRejectHandler: "function",
+    createCustomerReturnRequestHandler: "function",
+    createOrderReviewAdminHandlers: "function",
+    createOrderReviewHandlers: "function",
+    createOrderReviewRawUploadHandler: "function",
+    createOutboxCheckoutExpiredEmailHandler: "function",
+    createOutboxCheckoutRecoveryEmailHandler: "function",
+    createOutboxDispatchRegistry: "function",
+    createOutboxOrderDraftEmailHandler: "function",
+    createOutboxOrderPaidEmailHandler: "function",
+    createOutboxOrderPaidFulfillmentHandler: "function",
+    createOutboxOrderRefundedEmailHandler: "function",
+    createOutboxPaymentFailedEmailHandler: "function",
+    createOutboxReturnApprovedEmailHandler: "function",
+    createOutboxReturnRejectedEmailHandler: "function",
+    createOutboxShipmentDeliveredEmailHandler: "function",
+    createOutboxShipmentDispatchedEmailHandler: "function",
+    createOutboxShipmentExceptionEmailHandler: "function",
+    createPostgresOrderReviewAdminReadPort: "function",
+    createPostgresOrderReviewLifecyclePort: "function",
+    createPostgresOrderReviewMediaPort: "function",
+    createSupabaseCommerceReturnsPort: "function",
+    createSupabaseOrderFeedbackSubmitPort: "function",
+    createSupabaseOrderFeedbackTokenCheckPort: "function",
+    describeCoreOutboxHandlers: "function",
+    describeOutboxReturnEmail: "function",
+    inspectImageHeader: "function",
+    outboxCheckoutExpiredEmailDescriptor: "object",
+    outboxCheckoutRecoveryEmailDescriptor: "object",
+    outboxOrderDraftEmailDescriptor: "object",
+    outboxOrderPaidEmailDescriptor: "object",
+    outboxOrderPaidFulfillmentDescriptor: "object",
+    outboxOrderRefundedEmailDescriptor: "object",
+    outboxPaymentFailedEmailDescriptor: "object",
+    outboxReturnApprovedEmailDescriptor: "object",
+    outboxReturnRejectedEmailDescriptor: "object",
+    outboxShipmentDeliveredEmailDescriptor: "object",
+    outboxShipmentDispatchedEmailDescriptor: "object",
+    outboxShipmentExceptionEmailDescriptor: "object",
+    addCommerceOmsNote: "function",
+    authorize: "function",
+    buildOmsOrderDetailResponse: "function",
+    callOmsRpc: "function",
+    createAdminCommerceOrderCancelHandler: "function",
+    createAdminCommerceOrderDetailHandler: "function",
+    createAdminCommerceOrderHoldHandler: "function",
+    createAdminCommerceOrderMarkRefundedHandler: "function",
+    createAdminCommerceOrderNoteHandler: "function",
+    createAdminCommerceOrderReleaseHoldHandler: "function",
+    createAdminCommerceOrderUpdateShippingAddressHandler: "function",
+    createAdminCommerceOrdersListHandler: "function",
+    createCommerceOmsControlPlaneDetailHandler: "function",
+    createCommerceOmsControlPlaneListHandler: "function",
+    createManagedCommerceOmsControlPlanePort: "function",
+    createManagedCommerceOmsPort: "function",
+    distinctIds: "function",
+    emptyOmsManagedReadProjections: "object",
+    getCommerceOmsOrderDetail: "function",
+    getCommerceOmsOrderDetails: "function",
+    isOptionalProviderEvidenceColumnError: "function",
+    listCommerceOmsOrders: "function",
+    mapReplacementRefusal: "function",
+    mapRpcError: "function",
+    parseOmsRequest: "function",
+    readAccountingOutbox: "function",
+    readActivePaymentAttempts: "function",
+    readFulfillmentOrdersByOrderIds: "function",
+    readFulfillmentParcelsByOrderId: "function",
+    readOmsInboundEvents: "function",
+    readOrderPaidOutboxEvents: "function",
+    readQueueSelection: "function",
+    readShipmentRefsByOrderId: "function",
+    readShipmentRefsByOrderIds: "function",
+    sendOmsMutationResponse: "function",
+    CHECKOUT_OFFER_VERSION_UNSUPPORTED: "string",
+    CheckoutOfferRefusedError: "function",
+    CheckoutOrchestrationError: "function",
+    ConfiguratorIntentPersistenceConflictError: "function",
+    START_RUNTIME_SIMPLE_CONFLICTS: "object",
+    buildCheckoutInvoiceBuyerSnapshot: "function",
+    checkoutCommandJourney: "function",
+    checkoutOrchestrationFailureDetails: "function",
+    createCheckoutAdmission: "function",
+    createCheckoutClientAction: "function",
+    createCheckoutCommandExecutor: "function",
+    createCheckoutFailureHandler: "function",
+    createCheckoutHandlerHelpers: "function",
+    createCheckoutPaymentContinuationCodec: "function",
+    createCheckoutProviderAttemptFailure: "function",
+    createCheckoutQuoteGuard: "function",
+    createCheckoutResumeGuard: "function",
+    createCheckoutSavedPaymentMethodResolver: "function",
+    createCheckoutStartRuntimeFailure: "function",
+    createCheckoutTimingLogger: "function",
+    createCommerceCheckoutHandler: "function",
+    createCommerceRuntimeService: "function",
+    createConfiguratorIntentPersistenceHandler: "function",
+    createPaidOrderOrchestration: "function",
+    createPromotionPriceChange: "function",
+    createReferenceCheckoutHandler: "function",
+    createRuntimeStartResponse: "function",
+    createSavedAcquisitionContinuation: "function",
+    createStarterOfferGuard: "function",
+    isJourneyConsumedCheckoutConflict: "function",
+    isProviderAttemptInFlightCheckoutConflict: "function",
+    isStockUnavailableCheckoutConflict: "function",
+    mintCheckoutRefusalContinuation: "function",
+    mintPaymentContinuationOnFreshAction: "function",
+    providerPayerFromRequest: "function",
+    readCheckoutCustomerDefaults: "function",
+    readCheckoutCustomerDefaultsOrRespond: "function",
+    resolveCheckoutOffer: "function",
+    runBestEffortAccountLink: "function",
+    safeCommerceDiagnosticValue: "function",
+    selectedDeliveryMatches: "function",
+    subscriptionResponse: "function",
+    withCheckoutOfferContext: "function",
+    withStarterPackContext: "function",
+    tryCompensate: "function",
+    unprojectedOmsReadGate: "object",
+    updateCommerceOmsShippingAddress: "function",
+  });
 });
+
+it("M11 K2 exercises installed commerce compensation without optional peers", () => {
+  const consumer = pristinePackedA1Fixture();
+  assertConsumerIsolation(consumer, root);
+  proveCommerceServerConsumer(consumer);
+  for (const name of ["@types/node", "undici-types"]) cpSync(join(root, "node_modules", name), join(consumer, "node_modules", name), { recursive: true });
+  compileConsumer(consumer, ["commerce", "commerce/contracts", "commerce/server", "pricing/browser"], join(root, "node_modules/typescript/lib/tsc.js"));
+}, 30_000);
 
 it("payments and fulfillment: installed packed consumer proves injected execution, truth scope, fulfillment services, default-off and contribution", () => {
   const consumer = pristinePackedA1Fixture();

@@ -31,7 +31,7 @@ export const starterPackMarkerSchema = z.object({
     basisSubtotalMinor: z.number().int().min(0),
   }),
   graduation: z.object({
-    cadenceDays: z.union([z.literal(14), z.literal(28)]),
+    cadenceDays: z.union([z.literal(14), z.literal(21), z.literal(28)]),
     sizeConstraint: z.record(z.string(), z.unknown()).optional(),
     lines: z
       .array(

@@ -1,3 +1,4 @@
+import { registerEmailProviderOutcomeCases, registerEmailRecipientCases } from "../../shared/__tests__/outboxEmailHandler.testFixtures.js";
 import { describe, expect, it } from "vitest";
 import { COMMERCE_PAYMENT_FAILED_EVENT_TYPE } from "../../../src/domains/commerce/outboxEventContracts.js";
 import type { OutboxEventRow } from "./outboxDispatchContracts.js";
@@ -72,7 +73,7 @@ function makeDeps(options?: {
   } as unknown as TransactionalEmailPort;
   const recipientPort: OrderRecipientPort = {
     resolve: async () =>
-      options?.recipient === undefined ? { email: "k@example.com", firstName: "Ola" } : options.recipient,
+      options?.recipient === undefined ? { email: "k@example.com", firstName: "Buyer" } : options.recipient,
   };
   const lifecyclePort: OrderPaymentLifecyclePort = {
     read: async () => ({
@@ -101,20 +102,7 @@ describe("outboxPaymentFailedEmailHandler", () => {
     expect((await handler.handle(makeRow({ orderUuid: "nope" }), signal())).kind).toBe("discard");
   });
 
-  it("skips an unresolved recipient and dedupes an already-sent notice", async () => {
-    const skip = makeDeps({ recipient: null });
-    expect(await skip.handler.handle(makeRow(payload), signal())).toEqual({
-      kind: "processed",
-      detail: { skipped: "recipient_unresolved" },
-    });
-
-    const dup = makeDeps({ existing: true });
-    expect(await dup.handler.handle(makeRow(payload), signal())).toEqual({
-      kind: "processed",
-      detail: { dedupe: "email_already_sent" },
-    });
-    expect(dup.sendCalls).toHaveLength(0);
-  });
+  registerEmailRecipientCases(makeDeps, () => makeRow(payload));
 
   it("sends with a formatted amount label", async () => {
     const { handler, sendCalls } = makeDeps();
@@ -140,12 +128,8 @@ describe("outboxPaymentFailedEmailHandler", () => {
     expect(paid.sendCalls).toHaveLength(0);
   });
 
-  // Regression for the 2026-08-20 production silence. The buyer's first attempt
-  // refused, she immediately opened a second, and the dispatcher — reusing the
-  // NUDGE's gate — settled her decline notice as `payment_session_active`
-  // without sending. The card attempt then declined too, and the emit key
-  // `payment_failed:<order_id>` is once per order, so no second event could
-  // exist. She learned nothing about either failure.
+  // A live retry must not consume the earlier decline notice without sending:
+  // the once-per-order producer key cannot emit a replacement notice.
   it("sends the decline notice while a second attempt is in flight", async () => {
     const { handler, sendCalls } = makeDeps({
       paymentStatus: "pending",
@@ -167,18 +151,5 @@ describe("outboxPaymentFailedEmailHandler", () => {
     expect(sendCalls[0].amountLabel).toBeNull();
   });
 
-  it("snoozes on a 503 and discards on a 422", async () => {
-    const snooze = makeDeps({
-      outcome: { ok: false, resendId: null, httpStatus: 503, providerError: "down", aborted: false },
-    });
-    expect(await snooze.handler.handle(makeRow(payload), signal())).toEqual({ kind: "snooze", reason: "down" });
-
-    const discard = makeDeps({
-      outcome: { ok: false, resendId: null, httpStatus: 422, providerError: null, aborted: false },
-    });
-    expect(await discard.handler.handle(makeRow(payload), signal())).toEqual({
-      kind: "discard",
-      reason: "resend_rejected",
-    });
-  });
+  registerEmailProviderOutcomeCases(makeDeps, () => makeRow(payload));
 });

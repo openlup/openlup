@@ -331,6 +331,99 @@ export declare function getCommerceOmsOrderDetails(client: CommerceOmsStore, ord
 export type { CommerceOmsRpcClient, CommerceOmsStore, ManagedQueryBuilder, ManagedQueryResult, RpcError } from "../../../contracts/omsTypes.js";
 export declare function distinctIds(values: Array<string | null | undefined>): string[];
 ```
+## dist/commerce/checkoutCommandSchemas.d.ts
+
+```ts
+import { z } from "zod";
+export declare const CHECKOUT_COMMAND_V1 = "commerce.checkout_command.v1";
+export declare const REFERENCE_CHECKOUT_V1 = "commerce.reference_checkout.v1";
+export declare function createCheckoutCommandSchemas<IntentStatus extends z.ZodType<string>, AttemptStatus extends z.ZodType<string>>(schemas: {
+    sku: z.ZodType<string, string>;
+    paymentIntentStatus: IntentStatus;
+    paymentAttemptStatus: AttemptStatus;
+}): {
+    checkoutCommandV1Schema: z.ZodObject<{
+        version: z.ZodLiteral<"commerce.checkout_command.v1">;
+        idempotencyKey: z.ZodString;
+        mode: z.ZodEnum<{
+            subscription: "subscription";
+            one_time: "one_time";
+        }>;
+        lines: z.ZodArray<z.ZodObject<{
+            sku: z.ZodType<string, string, z.core.$ZodTypeInternals<string, string>>;
+            quantity: z.ZodNumber;
+        }, z.core.$strict>>;
+        customer: z.ZodObject<{
+            firstName: z.ZodString;
+            lastName: z.ZodString;
+            email: z.ZodString;
+            phone: z.ZodString;
+        }, z.core.$strict>;
+        shippingAddress: z.ZodObject<{
+            street: z.ZodString;
+            postalCode: z.ZodString;
+            city: z.ZodString;
+            country: z.ZodString;
+        }, z.core.$strict>;
+        currency: z.ZodString;
+        cadenceDays: z.ZodOptional<z.ZodNumber>;
+    }, z.core.$strict>;
+    referenceCheckoutRequestSchema: z.ZodObject<{
+        command: z.ZodObject<{
+            version: z.ZodLiteral<"commerce.checkout_command.v1">;
+            idempotencyKey: z.ZodString;
+            mode: z.ZodEnum<{
+                subscription: "subscription";
+                one_time: "one_time";
+            }>;
+            lines: z.ZodArray<z.ZodObject<{
+                sku: z.ZodType<string, string, z.core.$ZodTypeInternals<string, string>>;
+                quantity: z.ZodNumber;
+            }, z.core.$strict>>;
+            customer: z.ZodObject<{
+                firstName: z.ZodString;
+                lastName: z.ZodString;
+                email: z.ZodString;
+                phone: z.ZodString;
+            }, z.core.$strict>;
+            shippingAddress: z.ZodObject<{
+                street: z.ZodString;
+                postalCode: z.ZodString;
+                city: z.ZodString;
+                country: z.ZodString;
+            }, z.core.$strict>;
+            currency: z.ZodString;
+            cadenceDays: z.ZodOptional<z.ZodNumber>;
+        }, z.core.$strict>;
+    }, z.core.$strict>;
+    referenceCheckoutResponseSchema: z.ZodObject<{
+        version: z.ZodLiteral<"commerce.reference_checkout.v1">;
+        orderId: z.ZodGUID;
+        clientId: z.ZodGUID;
+        paymentIntentId: z.ZodGUID;
+        paymentAttemptId: z.ZodNullable<z.ZodGUID>;
+        paymentStatus: IntentStatus;
+        paymentAttemptStatus: z.ZodNullable<AttemptStatus>;
+        replayed: z.ZodBoolean;
+        total: z.ZodObject<{
+            amountMinor: z.ZodNumber;
+            currency: z.ZodString;
+        }, z.core.$strict>;
+    }, z.core.$strict>;
+};
+/**
+ * The persistence result deliberately carries only IDs already owned by the
+ * composed persistence adapter. A subject is optional for a generic checkout.
+ */
+export interface CheckoutCommandPersistenceResult {
+    idempotencyKey: string;
+    clientId: string;
+    subjectId: string | null;
+    shippingAddressId: string;
+    replayed: boolean;
+}
+export type CheckoutCommandV1 = z.output<ReturnType<typeof createCheckoutCommandSchemas>["checkoutCommandV1Schema"]>;
+```
 ## dist/commerce/commerceReturnsPort.d.ts
 
 ```ts
@@ -432,6 +525,33 @@ export interface CommerceReturnsPort<Reason extends string = ReturnRequestCreate
     reject(input: ReturnRejectInput): Promise<ReturnLifecycleResult>;
 }
 ```
+## dist/commerce/contracts/availability.d.ts
+
+```ts
+export type CommerceOfferAvailabilityStatus = "available" | "low_stock" | "out_of_stock" | "unknown";
+export interface CommerceOfferAvailabilityRequestItem {
+    sku: string;
+    productSlug: string;
+    variantId: string;
+    requestedQuantity: number;
+    checkoutMode: "one_time" | "subscription";
+}
+export interface CommerceOfferAvailability {
+    sku: string;
+    productSlug: string;
+    variantId: string;
+    status: CommerceOfferAvailabilityStatus;
+    visibleInConfigurator: boolean;
+    sellableNow: number | null;
+    reasonCode: string;
+    source: string;
+}
+export interface CommerceOfferAvailabilityPort {
+    getAvailability(input: {
+        items: readonly CommerceOfferAvailabilityRequestItem[];
+    }): Promise<CommerceOfferAvailability[]>;
+}
+```
 ## dist/commerce/contracts/fulfillmentRecovery.d.ts
 
 ```ts
@@ -460,6 +580,113 @@ export type ResolvedProviderExceptionRecovery = {
     clearedExceptionEvidenceIds: ReadonlySet<string>;
     recoveryEvidenceIds: ReadonlySet<string>;
 };
+```
+## dist/commerce/contracts/index.d.ts
+
+```ts
+export type { CommerceOfferAvailabilityStatus, CommerceOfferAvailabilityRequestItem, CommerceOfferAvailability, CommerceOfferAvailabilityPort } from "./availability.js";
+export type { RecoveryDestinationIntent, RecoveryDestinationPolicyInput, RecoveryDestinationSource, RecoveryDestinationState } from "./recovery.js";
+export type { CommerceFulfillmentEligibilityInput, CartStatus, CheckoutStatus, OrderDraftStatus, OrderStatus, PaymentStatus, OmsFulfillmentBlockReason, OmsInventoryStatus } from "./state.js";
+export type { CartDraft, CheckoutSessionPlaceholder, OrderDraftSummary, OrderSummary, PaymentSummary } from "./order.js";
+export type AsyncCheckoutStatus = "pending_provider_action" | "requires_action" | "processing" | "paid" | "failed" | "expired";
+export type CheckoutKind = "one_time" | "subscription_initial";
+export type * from "./ports.js";
+export type * from "./runtimePorts.js";
+export type { ConfiguratorIntent, ConfiguratorIntentPersistenceResponse, CheckoutResumeDraftState, CheckoutResumeDraft, CommerceCustomerDefaultsSnapshot } from "./intent.js";
+export type * from "./orderMoney.js";
+export type { OmsPaymentStatus } from "./state.js";
+export type * from "./fulfillmentRecovery.js";
+export type * from "./omsTypes.js";
+```
+## dist/commerce/contracts/intent.d.ts
+
+```ts
+/** Neutral configurator state. Profiles, sizing policy and provider evidence are host extensions. */
+export interface ConfiguratorIntent {
+    version: "commerce.configurator_intent.v1";
+    idempotencyKey: string;
+    mode: "one_time" | "subscription";
+    cadenceDays: number | null;
+    promoCodes: string[];
+    visitorId?: string;
+    contact: {
+        firstName: string;
+        lastName: string;
+        email: string;
+        phone: string;
+    };
+    address: {
+        street: string;
+        postalCode: string;
+        city: string;
+        country: string;
+    };
+    selectedVariants: Array<{
+        variantId: string;
+        sku: string;
+        qty: number;
+    }>;
+    offerVersion?: string;
+    minimumUnits?: number;
+}
+export interface ConfiguratorIntentPersistenceResponse {
+    contractVersion: "commerce.configurator_intent_persistence.v1";
+    intentVersion: "commerce.configurator_intent.v1";
+    idempotencyKey: string;
+    clientId: string;
+    addressId: string;
+    clientMatchReason?: "client_created" | "client_match_exact_email" | "client_match_plus_normalized_fallback";
+    replayed: boolean;
+}
+export interface CheckoutResumeDraftState<Completion, RedactedField extends string> {
+    version: "commerce.checkout_resume.v1";
+    mode: "one_time" | "subscription" | null;
+    cadenceDays: number | null;
+    cart: {
+        items: Array<{
+            sku: string;
+            productSlug: string | null;
+            variantId: string | null;
+            quantity: number;
+        }>;
+    };
+    completion: Completion;
+    redactedFields: RedactedField[];
+}
+export interface CheckoutResumeDraft<Section extends string, State> {
+    id: string;
+    contractVersion: "commerce.checkout_resume.v1";
+    lastSectionId: Section;
+    draftState: State;
+    expiresAt: string;
+    createdAt: string;
+    updatedAt: string;
+    replayed: boolean;
+}
+export interface CommerceCustomerDefaultsSnapshot<Scope, Method> {
+    version: "commerce.customer_defaults_snapshot.v1";
+    clientId: string;
+    payment: {
+        available: boolean;
+        scope: Scope | null;
+        methodKind: Method | null;
+        source: "customer_payment_preferences";
+        applied: false;
+    };
+    addresses: {
+        hasDefaultShippingAddress: boolean;
+        defaultShippingAddressId: string | null;
+        hasDefaultBillingAddress: boolean;
+        defaultBillingAddressId: string | null;
+        hasDefaultOrdererProfile: boolean;
+        defaultOrdererProfileId: string | null;
+        hasDeliveryNotes: boolean;
+        hasCourierInstructions: boolean;
+        source: "customer_address_profiles";
+        applied: false;
+    };
+    redactedFields: Array<"contact" | "orderer_profile" | "shipping_address" | "billing_address" | "delivery_notes" | "courier_instructions" | "payment_provider" | "payment_secret">;
+}
 ```
 ## dist/commerce/contracts/omsTypes.d.ts
 
@@ -1681,6 +1908,49 @@ export type CommerceOmsHoldPort = {
 };
 export type OmsReplacementRefusal = "missing_shipping_address" | "payment_not_succeeded" | "subscription_cycle_not_paid" | "order_not_found" | "invalid_input" | "idempotency_conflict" | "order_not_replaceable" | "missing_client" | "shipping_address_not_found" | "no_parcel_to_replace" | "undispatched_replacement_exists" | "missing_order_items" | "missing_catalog_sku" | "missing_inventory_reservation" | "blocked_by_payment_not_succeeded_hold" | "blocked_by_inventory_review_hold" | "blocked_by_risk_review_hold" | "blocked_by_address_review_hold" | "blocked_by_manual_support_hold" | "inventory_external_provider_insufficient_available_stock" | "inventory_external_provider_stock_stale" | "inventory_external_provider_stock_missing" | "inventory_external_provider_sku_not_found" | "inventory_external_provider_location_missing" | "inventory_reservation_insufficient_available_stock" | "inventory_reservation_allocation_incomplete" | "inventory_reservation_payment_status_not_reservable" | "inventory_reservation_invalid_quantity" | "unspecified_refusal";
 ```
+## dist/commerce/contracts/order.d.ts
+
+```ts
+import type { CartStatus, CheckoutStatus, OrderDraftStatus, OrderStatus, PaymentStatus } from "./state.js";
+export interface CartDraft<Line, Currency> {
+    id: string;
+    status: CartStatus;
+    lines: Line[];
+    currency: Currency;
+}
+export interface CheckoutSessionPlaceholder {
+    id: string;
+    cartId: string;
+    status: CheckoutStatus;
+    redirectUrl: string | null;
+    paymentProviderSessionId: string | null;
+}
+export interface OrderDraftSummary<Quote, Version extends string> {
+    orderId: string;
+    status: OrderDraftStatus;
+    paymentStatus: "not_started";
+    idempotencyKey: string;
+    quoteSnapshot: {
+        contractVersion: Version;
+        quote: Quote;
+    };
+    replayed: boolean;
+}
+export interface OrderSummary<Line, Money> {
+    id: string;
+    status: OrderStatus;
+    paymentStatus: PaymentStatus;
+    total: Money | null;
+    lines: Line[];
+}
+export interface PaymentSummary<Money> {
+    id: string;
+    orderId: string;
+    status: PaymentStatus;
+    amount: Money | null;
+    providerReference: string | null;
+}
+```
 ## dist/commerce/contracts/orderMoney.d.ts
 
 ```ts
@@ -1735,6 +2005,338 @@ export interface OrderMoneyDiagnostic {
     orderId: string | null;
     validationScope: CanonicalOrderMoney["validationScope"];
     issueCodes: OrderMoneyIssueCode[];
+}
+```
+## dist/commerce/contracts/ports.d.ts
+
+```ts
+import type { AsyncCheckoutStatus, CheckoutKind } from "./index.js";
+export interface ConfiguratorIntentPersistencePort<Request, Response> {
+    persistIntent(request: Request): Promise<Response>;
+    /**
+     * Resolve the identity already provisioned under a COMPLETED idempotency key,
+     * or null when none exists. Lets checkout recover the `clientId` when
+     * `persistIntent` raises an idempotency conflict (same key, mutated payload) so
+     * the client's in-flight order can be resumed instead of surfacing a
+     * transient-looking error. Optional: adapters that cannot read back the
+     * completed row simply omit it and the caller falls back to a 409.
+     */
+    findCompletedIdentity?(idempotencyKey: string): Promise<Response | null>;
+}
+export interface CommerceRecommendationPort<Request, Response> {
+    recommend(request: Request): Promise<Response>;
+}
+export interface CommerceProductCompatibilityPort<Request, Response> {
+    getCompatibility(request: Request): Promise<Response>;
+}
+export interface CommerceCustomerDefaultsReadPort<Snapshot> {
+    getCustomerDefaultsSnapshot(input: {
+        clientId: string;
+        checkoutKind: CheckoutKind;
+    }): Promise<Snapshot | null>;
+}
+export interface CommerceCheckoutResumeDraftUpsertInput<Section, State> {
+    tokenHash: string;
+    idempotencyKeyHash: string | null;
+    lastSectionId: Section;
+    draftState: State;
+    expiresAt: string;
+    now: string;
+}
+export interface CommerceCheckoutResumeDraftReadInput {
+    tokenHash: string;
+    now: string;
+}
+export interface CommerceCheckoutResumeDraftPort<Section, State, Draft> {
+    upsertDraft(input: CommerceCheckoutResumeDraftUpsertInput<Section, State>): Promise<Draft>;
+    readDraftByTokenHash(input: CommerceCheckoutResumeDraftReadInput): Promise<Draft | null>;
+}
+/**
+ * Server-resolved options for the order draft. Passed OUT-OF-BAND by the caller
+ * (orchestration -> provisioned.clientId; standalone route -> none/null) — NEVER
+ * sourced from the client request body — so the persisted client_id (which the
+ * outbox dispatcher resolves into an email recipient) cannot be forged.
+ */
+export interface CreateOrderDraftOptions {
+    clientId?: string | null;
+}
+export interface CommerceOrderDraftWritePort<Request, Response> {
+    createOrderDraft(request: Request, options?: CreateOrderDraftOptions): Promise<Response>;
+}
+/**
+ * A still-in-flight order found for a client, for the checkout handler's
+ * duplicate-charge guard. `status` is always an in-flight `AsyncCheckoutStatus`.
+ */
+export interface ResumableOrderSnapshot {
+    orderId: string;
+    paymentIntentId: string;
+    status: AsyncCheckoutStatus;
+    metadata?: Record<string, unknown> | null;
+    /**
+     * True when the submitting journey PRODUCED this order — a cart edit, not a
+     * cross-device return. Never resume one: superseding re-prices the cart.
+     */
+    sameJourney: boolean;
+}
+export interface CommerceResumableOrderReadPort {
+    /**
+     * Newest still-resumable order for `clientId` within `withinMinutes`, or null.
+     * Resumable = payment neither settled nor terminally failed, so a charge may
+     * be in flight and re-submitting would double-charge; a paid/dead order is NOT
+     * returned. `journeyKey` is resolved here to set `sameJourney`.
+     */
+    findResumableOrderForClient(input: {
+        clientId: string;
+        withinMinutes: number;
+        now: Date;
+        journeyKey: string;
+    }): Promise<ResumableOrderSnapshot | null>;
+}
+/** Neutral sizing seam; the host defines demand units and line names. */
+export interface CommercePackageSizingPort<Input, Result> {
+    recomputeQuantities(input: Input): Promise<Result>;
+    eligibleVariantIds(): Promise<Set<string>>;
+}
+export type CheckoutOfferResolution = {
+    kind: "bound";
+    offerVersion: string;
+} | {
+    kind: "refused";
+    reason: string;
+};
+/** Offer policy binds or refuses an opaque client ask; evidence is server minted. No executor is included. */
+export interface CheckoutOfferPolicyPort<Intent, Quote> {
+    resolve(input: {
+        intent: Intent;
+        checkoutKind: CheckoutKind;
+    }): Promise<CheckoutOfferResolution>;
+    evidence(input: {
+        intent: Intent;
+        offerVersion: string;
+        quote: Quote;
+    }): Promise<Record<string, unknown>>;
+}
+/** Shared journey projection; pricing and host metadata types are supplied by composition. */
+export interface CheckoutJourney<Request, Policy> {
+    idempotencyKey: string;
+    contactEmail: string;
+    createQuoteRequest: () => Request;
+    createRuntimeMetadata: (pricingPolicy?: Policy) => Record<string, unknown>;
+}
+```
+## dist/commerce/contracts/recovery.d.ts
+
+```ts
+export type RecoveryDestinationIntent = "checkout_recovery" | "account_payment_recovery" | "customer_dashboard" | "fresh_checkout";
+export type RecoveryDestinationState = "recoverable" | "unrecoverable" | "terminal_expired";
+export type RecoveryDestinationSource = "checkout_recovery" | "subscription_dunning" | "checkout_expired";
+export interface RecoveryDestinationPolicyInput {
+    state: RecoveryDestinationState;
+    source: RecoveryDestinationSource;
+    orderMode?: "one_time_order" | "subscription_cycle" | null;
+    hasOrderSubscription?: boolean;
+    requestedSubscriptionContext?: boolean;
+    clientHasLiveOrPendingSubscription?: boolean;
+}
+```
+## dist/commerce/contracts/runtimePorts.d.ts
+
+```ts
+export interface CommercePaymentRuntimeVocabulary {
+    currency: string;
+    intentStatus: string;
+    executionProvider: string;
+    executionAttemptStatus: string;
+    nextActionKind: string;
+    attemptStatus: string;
+    targetKind: string;
+}
+export interface FinalizedCheckoutOrderItem {
+    orderItemId: string;
+    skuId: string;
+    sku: string;
+    quantity: number;
+}
+export interface FinalizedCheckoutOrder<Currency> {
+    orderId: string;
+    orderRef: string;
+    mode: "one_time" | "subscription_cycle";
+    clientId: string;
+    shippingAddressId: string;
+    subscriptionId: string | null;
+    subscriptionCycleId: string | null;
+    total: {
+        amountMinor: number;
+        currency: Currency;
+    };
+    items: FinalizedCheckoutOrderItem[];
+    replayed: boolean;
+}
+export interface CommerceCheckoutRuntimeOrderPort<Request, Order> {
+    finalizeOrderForCheckout(request: Request): Promise<Order>;
+}
+export interface InventoryCheckoutReservationPort<Order, PaymentStatus, Reservation> {
+    reserveOrderItems(input: {
+        idempotencyKey: string;
+        order: Order;
+        paymentStatus: PaymentStatus;
+        metadata?: Record<string, unknown>;
+    }): Promise<Reservation[]>;
+    releaseOrderReservations(input: {
+        idempotencyKey: string;
+        orderId: string;
+        reason: string;
+    }): Promise<{
+        releasedCount: number;
+    }>;
+}
+export interface PaymentControlRuntimePort<V extends CommercePaymentRuntimeVocabulary, Result extends {
+    resultStatus: string;
+}, Evidence = never> {
+    createIntent(input: {
+        idempotencyKey: string;
+        targetKind: V["targetKind"];
+        orderId: string;
+        subscriptionId: string | null;
+        subscriptionCycleId: string | null;
+        amountMinor: number;
+        currency: V["currency"];
+        metadata: Record<string, unknown>;
+    }): Promise<{
+        paymentIntentId: string;
+        paymentId: string;
+        status: V["intentStatus"];
+        replayed: boolean;
+    }>;
+    recordAttempt(input: {
+        idempotencyKey: string;
+        paymentIntentId: string;
+        provider: V["executionProvider"];
+        providerAttemptId: string | null;
+        providerSessionId: string | null;
+        attemptStatus: V["executionAttemptStatus"];
+        nextActionKind: V["nextActionKind"] | null;
+        requestPayload: Record<string, unknown>;
+        responsePayload: Record<string, unknown>;
+    }): Promise<{
+        paymentAttemptId: string;
+        status: V["attemptStatus"];
+        replayed: boolean;
+    }>;
+    applyResult(input: Result): Promise<{
+        paymentIntentId: string;
+        paymentAttemptId: string;
+        paymentId: string;
+        orderId: string;
+        status: Result["resultStatus"];
+        kind: string;
+        replayed: boolean;
+    }>;
+    reopenInteractivePreparedAttempt?(input: {
+        idempotencyKey: string;
+        paymentIntentId: string;
+        paymentAttemptId: string;
+        expectedOrderId: string;
+        expectedSubscriptionId: string | null;
+        expectedSubscriptionCycleId: string | null;
+        evidence: Evidence;
+    }): Promise<{
+        paymentAttemptId: string;
+        paymentIntentId: string;
+        paymentAttemptStatus: "failed";
+        paymentIntentStatus: "failed";
+        replayed: boolean;
+    }>;
+}
+export interface InteractivePreparedAttemptRuntimePort<V extends CommercePaymentRuntimeVocabulary, Result extends {
+    resultStatus: string;
+}, Evidence> extends PaymentControlRuntimePort<V, Result, Evidence> {
+    reopenInteractivePreparedAttempt(input: {
+        idempotencyKey: string;
+        paymentIntentId: string;
+        paymentAttemptId: string;
+        expectedOrderId: string;
+        expectedSubscriptionId: string | null;
+        expectedSubscriptionCycleId: string | null;
+        evidence: Evidence;
+    }): Promise<{
+        paymentAttemptId: string;
+        paymentIntentId: string;
+        paymentAttemptStatus: "failed";
+        paymentIntentStatus: "failed";
+        replayed: boolean;
+    }>;
+}
+export interface PreparedProviderAttemptRuntimePort<V extends CommercePaymentRuntimeVocabulary, Result extends {
+    resultStatus: string;
+}, Evidence = never> extends PaymentControlRuntimePort<V, Result, Evidence> {
+    prepareProviderAttempt(input: {
+        idempotencyKey: string;
+        paymentIntentId: string;
+        provider: V["executionProvider"];
+        providerIdempotencyKey: string;
+        providerRequestFingerprint: string;
+        providerFlow: string;
+        paymentMethodRef?: string | null;
+        requestPayload: Record<string, unknown>;
+    }): Promise<{
+        paymentAttemptId: string;
+        status: V["attemptStatus"];
+        replayed: boolean;
+        providerAttemptId: string | null;
+        providerSessionId: string | null;
+        nextActionKind: V["nextActionKind"] | null;
+    }>;
+    finalizeProviderAttempt(input: {
+        idempotencyKey: string;
+        paymentIntentId: string;
+        paymentAttemptId: string;
+        providerIdempotencyKey: string;
+        providerRequestFingerprint: string;
+        providerAttemptId: string | null;
+        providerSessionId: string | null;
+        attemptStatus: V["executionAttemptStatus"];
+        nextActionKind: V["nextActionKind"] | null;
+        requestPayload: Record<string, unknown>;
+        responsePayload: Record<string, unknown>;
+    }): Promise<{
+        paymentAttemptId: string;
+        status: V["attemptStatus"];
+        replayed: boolean;
+        providerAttemptId: string | null;
+        providerSessionId: string | null;
+        nextActionKind: V["nextActionKind"] | null;
+    }>;
+}
+export interface CommerceRuntimeReadinessPort<Readiness> {
+    evaluateOrderReadiness(input: {
+        orderId: string;
+        fallbackOrderItemCount: number | null;
+        allOrderItemsHaveSku: boolean;
+    }): Promise<Readiness>;
+}
+export interface CommerceCheckoutRuntimePort<StartRequest, StartResponse, ResultRequest, ResultResponse> {
+    startRuntime(request: StartRequest): Promise<StartResponse>;
+    applyPaymentResult(request: ResultRequest): Promise<ResultResponse>;
+}
+export interface CheckoutCommandPersistencePort<Command, Persistence> {
+    persistCheckoutCommand(command: Command): Promise<Persistence>;
+}
+export interface CheckoutCommandRuntimeRequest<Command, Provider> {
+    command: Command;
+    paymentProvider: Provider;
+    paymentAttemptSequence?: number;
+    metadata?: Record<string, unknown>;
+}
+export interface CheckoutCommandRuntimeResult<Quote, Persistence, OrderDraft, Runtime, Settlement> {
+    quoteSnapshot: Quote;
+    persistence: Persistence;
+    orderDraft: OrderDraft;
+    runtime: Runtime;
+    settlement: Settlement | null;
+}
+export interface CheckoutCommandRuntimePort<Request, Response> {
+    startCheckoutCommand(request: Request): Promise<Response>;
 }
 ```
 ## dist/commerce/contracts/state.d.ts
@@ -5662,6 +6264,22 @@ export declare class CommerceOmsConflictError extends Error {
     constructor(message?: string, details?: Record<string, unknown>);
 }
 ```
+## dist/commerce/orderEmailLines.d.ts
+
+```ts
+import type { OrderEmailLineItem } from "./outboxOrderDraftEmailPorts.js";
+export interface RawLine {
+    label: string | null;
+    quantity: number;
+    lineSubtotalMinor: number | null;
+    currency: string | null;
+}
+export interface OrderEmailLinePresentation<Locale extends string = string> {
+    formatMoney(amountMinor: number, currency: string): string;
+    genericItemLabel(locale: Locale): string;
+}
+export declare function buildItems<Locale extends string>(lines: RawLine[], locale: Locale, presentation: OrderEmailLinePresentation<Locale>): OrderEmailLineItem[];
+```
 ## dist/commerce/orderFeedbackContracts.d.ts
 
 ```ts
@@ -6340,6 +6958,1636 @@ export interface OrderReviewAdminReadPort {
     }): Promise<OrderReviewAdminDetail | null>;
 }
 ```
+## dist/commerce/outboxDispatchContracts.d.ts
+
+```ts
+import type { OutboxHandler as KernelHandler } from "@openlup/core/outbox";
+export type { OutboxEventRow, OutboxHandlerOutcome, OutboxHandlerExecutionContext, OutboxHandlerDescriptor } from "@openlup/core/outbox";
+export type OutboxHandler = KernelHandler<AbortSignal>;
+export type OutboxHandlerRegistry = ReadonlyMap<string, OutboxHandler>;
+export interface CheckoutEmailOutboxReconcileResult {
+    checked: {
+        paid: number;
+        failed: number;
+        expired: number;
+    };
+    inserted: {
+        commerceOrderPaid: number;
+        commerceOrderPaidEmail: number;
+        commercePaymentFailed: number;
+        commerceCheckoutExpired: number;
+    };
+}
+export interface CheckoutEmailOutboxReconcilePort {
+    reconcile(limit: number): Promise<CheckoutEmailOutboxReconcileResult>;
+}
+export interface ReorderReminderEnqueueResult {
+    enqueued: number;
+}
+export interface ReorderReminderEnqueuePort {
+    enqueue(limit: number): Promise<ReorderReminderEnqueueResult>;
+}
+export interface ReviewRequestEnqueuePort {
+    enqueueRequests(limit: number): Promise<number>;
+    enqueueEffects(limit: number): Promise<number>;
+}
+```
+## dist/commerce/outboxOrderDraftEmailPorts.d.ts
+
+```ts
+export declare const OUTBOX_ORDER_CONFIRMATION_TEMPLATE_SLUG = "commerce-order-confirmation";
+export interface OrderRecipient {
+    email: string;
+    firstName: string | null;
+    country?: string | null;
+    contextName?: string | null;
+}
+export interface OrderRecipientPort {
+    resolve(orderUuid: string, signal: AbortSignal): Promise<OrderRecipient | null>;
+}
+export interface OrderPaymentLifecycleState {
+    orderStatus: string | null;
+    paymentStatus: string | null;
+    paymentUpdatedAt?: string | null;
+    hasPayment: boolean;
+    /** The activation sweep abandoned this order's provisional subscription: it writes
+     * `cancelled`, not `expired`, so the expired-checkout gate needs this to tell a swept
+     * first subscription from any other cancellation. Absent for every one-time order. */
+    subscriptionActivationAbandoned?: boolean;
+}
+export interface OrderPaymentLifecyclePort {
+    read(orderUuid: string, signal: AbortSignal): Promise<OrderPaymentLifecycleState | null>;
+}
+export interface OrderEmailLineItem {
+    name: string;
+    quantity: number;
+    lineTotalLabel: string;
+}
+export interface OrderEmailTotals {
+    subtotalLabel: string | null;
+    discountLabel: string | null;
+    totalLabel: string;
+    firstSubscription?: {
+        discountPercent?: number;
+        catalogLabel: string;
+        productPayableLabel: string;
+        shippingLabel: string | null;
+        shippingFree: boolean;
+    };
+}
+export interface OrderConfirmationEmailInput<Locale extends string = string> {
+    to: string;
+    firstName: string | null;
+    contextName?: string | null;
+    orderId: string;
+    outboxEventId: string;
+    items: OrderEmailLineItem[];
+    totals: OrderEmailTotals | null;
+    locale?: Locale;
+    signal: AbortSignal;
+}
+export interface TransactionalEmailSendOutcome {
+    ok: boolean;
+    messageId: string | null;
+    httpStatus: number;
+    providerError: string | null;
+    aborted: boolean;
+    providerErrorCode?: string | null;
+    /** Terminal intentional non-send; callers must not count it as sent. */
+    skipReason?: "admin_disabled" | "egress_suppressed" | null;
+}
+export declare const OUTBOX_ORDER_PAID_TEMPLATE_SLUG = "commerce-order-paid";
+export declare const OUTBOX_CHECKOUT_RECOVERY_TEMPLATE_SLUG = "commerce-checkout-recovery";
+export interface CheckoutRecoveryEmailInput<Locale extends string = string> {
+    to: string;
+    firstName: string | null;
+    contextName?: string | null;
+    orderId: string;
+    recoveryToken: string;
+    mode: string;
+    reminderHours: number;
+    linkSource?: "buyer_hatch";
+    outboxEventId: string;
+    locale?: Locale;
+    signal: AbortSignal;
+}
+export interface OrderPaidRawLine {
+    /** Frozen historical display label, or null for sparse legacy snapshots. */
+    label: string | null;
+    quantity: number;
+    lineTotalMinor: number;
+}
+export interface OrderPaidRawData {
+    currency: string;
+    subtotalMinor: number;
+    discountMinor: number;
+    totalMinor: number;
+    presentation?: unknown;
+    lines: OrderPaidRawLine[];
+}
+export interface OrderPaidLinesPort {
+    read(orderUuid: string, signal: AbortSignal): Promise<OrderPaidRawData | null>;
+}
+export interface OrderPaidConfirmationEmailInput<Locale extends string = string> {
+    to: string;
+    firstName: string | null;
+    contextName?: string | null;
+    orderId: string;
+    mode: string;
+    outboxEventId: string;
+    items: OrderEmailLineItem[];
+    totals: OrderEmailTotals | null;
+    parcelNote?: string | null;
+    locale?: Locale;
+    signal: AbortSignal;
+}
+export declare const OUTBOX_PAYMENT_FAILED_TEMPLATE_SLUG = "commerce-payment-failed";
+export interface PaymentFailedEmailInput<Locale extends string = string> {
+    to: string;
+    firstName: string | null;
+    orderId: string;
+    amountLabel: string | null;
+    recoveryToken: string;
+    mode: string;
+    outboxEventId: string;
+    locale?: Locale;
+    signal: AbortSignal;
+}
+export declare const OUTBOX_CHECKOUT_EXPIRED_TEMPLATE_SLUG = "commerce-checkout-expired";
+export interface CheckoutExpiredEmailInput<Locale extends string = string> {
+    to: string;
+    firstName: string | null;
+    orderId: string;
+    amountLabel: string | null;
+    /** Raw checkout-recovery token, emitted only in the outbox payload: the database
+     * stores only its hash, and the host renderer builds the recovery link. */
+    recoveryToken?: string | null;
+    outboxEventId: string;
+    locale?: Locale;
+    signal: AbortSignal;
+}
+export declare const OUTBOX_ORDER_CANCELED_TEMPLATE_SLUG = "commerce-order-canceled";
+export interface OrderCanceledEmailInput<Locale extends string = string> {
+    to: string;
+    firstName: string | null;
+    orderId: string;
+    amountLabel: string | null;
+    outboxEventId: string;
+    locale?: Locale;
+    signal: AbortSignal;
+}
+export declare const OUTBOX_ORDER_REFUNDED_TEMPLATE_SLUG = "commerce-order-refunded";
+export interface OrderRefundedEmailInput<Locale extends string = string> {
+    to: string;
+    firstName: string | null;
+    orderId: string;
+    amountLabel: string | null;
+    outboxEventId: string;
+    locale?: Locale;
+    signal: AbortSignal;
+}
+export declare const OUTBOX_SHIPMENT_DISPATCHED_TEMPLATE_SLUG = "commerce-shipment-dispatched";
+export interface ShipmentDispatchedEmailInput<Locale extends string = string> {
+    to: string;
+    firstName: string | null;
+    contextName?: string | null;
+    orderId: string;
+    trackingNumber: string | null;
+    trackingUrl: string | null;
+    outboxEventId: string;
+    locale?: Locale;
+    signal: AbortSignal;
+}
+export declare const OUTBOX_SHIPMENT_DELIVERED_TEMPLATE_SLUG = "commerce-shipment-delivered";
+export interface ShipmentDeliveredEmailInput<Locale extends string = string> {
+    to: string;
+    firstName: string | null;
+    contextName?: string | null;
+    orderId: string;
+    outboxEventId: string;
+    locale?: Locale;
+    signal: AbortSignal;
+}
+export declare const OUTBOX_SHIPMENT_EXCEPTION_TEMPLATE_SLUG = "commerce-shipment-exception";
+export interface ShipmentExceptionEmailInput<Locale extends string = string> {
+    to: string;
+    firstName: string | null;
+    orderId: string;
+    outboxEventId: string;
+    locale?: Locale;
+    signal: AbortSignal;
+}
+export declare const OUTBOX_RETURN_APPROVED_TEMPLATE_SLUG = "commerce-return-approved";
+export declare const OUTBOX_RETURN_REJECTED_TEMPLATE_SLUG = "commerce-return-rejected";
+export interface ReturnDecisionEmailInput<Locale extends string = string> {
+    to: string;
+    firstName: string | null;
+    orderId: string;
+    outboxEventId: string;
+    locale?: Locale;
+    signal: AbortSignal;
+}
+export interface TransactionalEmailPort<Locale extends string = string> {
+    findExistingSend(templateSlug: string, outboxEventId: string): Promise<boolean>;
+    sendReturnApprovedNotice(input: ReturnDecisionEmailInput<Locale>): Promise<TransactionalEmailSendOutcome>;
+    sendReturnRejectedNotice(input: ReturnDecisionEmailInput<Locale>): Promise<TransactionalEmailSendOutcome>;
+    sendOrderConfirmation(input: OrderConfirmationEmailInput<Locale>): Promise<TransactionalEmailSendOutcome>;
+    sendCheckoutRecovery(input: CheckoutRecoveryEmailInput<Locale>): Promise<TransactionalEmailSendOutcome>;
+    sendOrderPaidConfirmation(input: OrderPaidConfirmationEmailInput<Locale>): Promise<TransactionalEmailSendOutcome>;
+    sendPaymentFailedNotice(input: PaymentFailedEmailInput<Locale>): Promise<TransactionalEmailSendOutcome>;
+    sendCheckoutExpiredNotice(input: CheckoutExpiredEmailInput<Locale>): Promise<TransactionalEmailSendOutcome>;
+    sendOrderCanceledNotice(input: OrderCanceledEmailInput<Locale>): Promise<TransactionalEmailSendOutcome>;
+    sendOrderRefundedNotice(input: OrderRefundedEmailInput<Locale>): Promise<TransactionalEmailSendOutcome>;
+    sendShipmentDispatchedNotice(input: ShipmentDispatchedEmailInput<Locale>): Promise<TransactionalEmailSendOutcome>;
+    sendShipmentDeliveredNotice(input: ShipmentDeliveredEmailInput<Locale>): Promise<TransactionalEmailSendOutcome>;
+    sendShipmentExceptionNotice(input: ShipmentExceptionEmailInput<Locale>): Promise<TransactionalEmailSendOutcome>;
+}
+```
+## dist/commerce/ports.d.ts
+
+```ts
+/** Host-owned quote options are extended only with a server-bound offer. */
+export type CreateQuoteOptions<Options extends object> = Options & {
+    offerVersion?: string;
+};
+export interface CommerceQuotePort<Request, Response, Options extends object> {
+    createQuote(request: Request, options?: CreateQuoteOptions<Options>): Promise<Response>;
+    createServerAuthoritativeQuote?(request: Request, options?: CreateQuoteOptions<Options>): Promise<Response>;
+}
+```
+## dist/commerce/salesChannelEnvelope.d.ts
+
+```ts
+export interface CommerceSalesChannelEnvelope {
+    sourceKind: string | null;
+    sourceChannelSlug: string | null;
+    sourceOrderRef: string | null;
+}
+export interface CommerceSalesChannelRow {
+    source_kind?: string | null;
+    source_order_ref?: string | null;
+    sales_channels?: {
+        slug: string | null;
+    } | null;
+}
+export declare function projectCommerceSalesChannelEnvelope(row: CommerceSalesChannelRow): CommerceSalesChannelEnvelope;
+/** Host-bound read only; the inventory owner supplies exposure semantics. */
+export type CommerceChannelExposureReadPort = (skuId: string, signal: AbortSignal) => Promise<number>;
+export interface OrderBuyerCommsPolicy {
+    sourceKind: string;
+    buyerCommsOwner: string;
+}
+export declare function platformOwnsBuyerEmail(policy: OrderBuyerCommsPolicy | null): boolean;
+```
+## dist/commerce/server/checkoutCompensation.d.ts
+
+```ts
+import type { CheckoutCompensationPort } from "./commerceCheckoutCompensation.js";
+export interface CompensationRpcClient {
+    rpc(functionName: string, args: Record<string, unknown>): PromiseLike<{
+        data: unknown;
+        error: {
+            code?: string;
+        } | null;
+    }>;
+}
+/**
+ * Binds both cancellations to one service-role client. Compositions inject the
+ * result into the inventory reservation port, so the staying domain module
+ * never imports this adapter.
+ */
+export declare function createCheckoutCompensationRpcAdapter(client: CompensationRpcClient): Pick<CheckoutCompensationPort, "cancelAbandonedOrder" | "cancelUnstartedPromotionOrder">;
+export declare function cancelAbandonedCheckout(client: CompensationRpcClient, input: Parameters<CheckoutCompensationPort["cancelAbandonedOrder"]>[0]): Promise<{
+    cancelled: boolean;
+}>;
+export declare function cancelUnstartedPromotionCheckout(client: CompensationRpcClient, input: Parameters<CheckoutCompensationPort["cancelUnstartedPromotionOrder"]>[0]): Promise<{
+    cancelled: boolean;
+}>;
+```
+## dist/commerce/server/checkoutConflictClassifiers.d.ts
+
+```ts
+export declare function isStockUnavailableCheckoutConflict(error: unknown): boolean;
+export declare function isProviderAttemptInFlightCheckoutConflict(error: unknown): boolean;
+export declare function isJourneyConsumedCheckoutConflict(error: unknown): boolean;
+/**
+ * `start_runtime` conflicts that map to an identical `CONFLICT + reason` response with
+ * no compensation side effect — the FE resumes/handles each by its `reason`. Order is
+ * significant and preserved from the original inline branches. Stock-unavailable is
+ * intentionally NOT here: it additionally cancels the abandoned order, so the handler
+ * keeps that branch inline.
+ */
+export declare const START_RUNTIME_SIMPLE_CONFLICTS: ReadonlyArray<{
+    match: (error: unknown) => boolean;
+    message: string;
+    reason: string;
+}>;
+/** Scoped semantic details only; raw SQLSTATE does not authorize this classification. */
+export declare function isInventoryAdmissionBusy(error: unknown): boolean;
+```
+## dist/commerce/server/checkoutExpiredRecoveryPolicy.d.ts
+
+```ts
+import type { CreateQuoteResponse } from "../../pricing/index.js";
+import type { CheckoutRecoveryOrderSnapshot } from "./checkoutRecoveryOrderPort.js";
+import type { CheckoutRecoveryTokenInspection } from "./checkoutRecoveryToken.js";
+type RecoveryQuoteSnapshot = CreateQuoteResponse & {
+    quote: {
+        context?: {
+            sizeConstraint?: unknown;
+            shippingTerms?: {
+                version: unknown;
+                currency: string;
+                flatMinor: number;
+                freeThresholdMinor: number | null;
+            };
+        };
+    };
+};
+export declare const EXPIRED_CHECKOUT_RECOVERY_WINDOW_MS: number;
+export type ExpiredRecoveryEligibility = {
+    kind: "eligible";
+} | {
+    kind: "paid";
+} | {
+    kind: "cancelled";
+} | {
+    kind: "unavailable";
+};
+export declare function createExpiredCheckoutRecoveryPolicy<Order extends CheckoutRecoveryOrderSnapshot<unknown, unknown>>(bindings: {
+    admitsSubscriptionSubject(order: Order): boolean;
+}): {
+    classifyExpiredRecovery: (input: {
+        inspection: CheckoutRecoveryTokenInspection | null;
+        order: Order | null;
+        now: Date;
+    }) => ExpiredRecoveryEligibility;
+    classifyOrderRecoveryEligibility: (order: Order | null, now: Date) => ExpiredRecoveryEligibility;
+};
+export declare function quotesMatchForRecovery(frozen: RecoveryQuoteSnapshot, fresh: RecoveryQuoteSnapshot): boolean;
+export {};
+```
+## dist/commerce/server/checkoutInvoiceBuyerSnapshot.d.ts
+
+```ts
+import type { z } from "zod";
+export declare function buildCheckoutInvoiceBuyerSnapshot<Buyer>(intent: {
+    contact: {
+        firstName: string;
+        lastName: string;
+        email: string;
+    };
+    address: {
+        street: string;
+        city: string;
+        postalCode: string;
+        country: string;
+    };
+}, invoicePreference: {
+    kind: "b2c_named";
+} | {
+    kind: "b2b_vat";
+    companyName: string;
+    email?: string;
+    taxId?: string;
+    address: object;
+}, schema: z.ZodType<Buyer>): Buyer;
+```
+## dist/commerce/server/checkoutOfferPolicyPort.d.ts
+
+```ts
+import type { CheckoutKind, CheckoutOfferPolicyPort } from "../contracts/index.js";
+export type { CheckoutOfferPolicyPort } from "../contracts/index.js";
+/** The refusal of an intent that carries an offer field when no adopter port is wired. */
+export declare const CHECKOUT_OFFER_VERSION_UNSUPPORTED = "offer_version_unsupported";
+export declare class CheckoutOfferRefusedError extends Error {
+    readonly reason: string;
+    constructor(reason: string);
+}
+export type CheckoutOfferBinding<Intent, Quote> = {
+    port: CheckoutOfferPolicyPort<Intent, Quote>;
+    offerVersion: string;
+};
+/**
+ * Null, without a port call, for an intent that carries neither `offerVersion`
+ * nor `minimumUnits`. Otherwise the adopter's port must bind the offer: without
+ * a port the intent is refused with `offer_version_unsupported`, and a port
+ * refusal keeps its own reason. Both throw `CheckoutOfferRefusedError`.
+ */
+export declare function resolveCheckoutOffer<Intent extends {
+    offerVersion?: string;
+    minimumUnits?: number;
+}, Quote>(port: CheckoutOfferPolicyPort<Intent, Quote> | undefined, intent: Intent, checkoutKind: CheckoutKind): Promise<CheckoutOfferBinding<Intent, Quote> | null>;
+/**
+ * Writes a bound offer version and the adopter's evidence, checked against
+ * `commerceOfferEvidenceSchema`, into an accepted snapshot's context. Without a
+ * binding the same snapshot is returned; a bound snapshot without a context
+ * fails closed.
+ */
+export declare function withCheckoutOfferContext<Intent, Quote extends {
+    context?: object;
+}, Response extends {
+    quote: Quote;
+}>(binding: CheckoutOfferBinding<Intent, Quote> | null, intent: Intent, snapshot: Response): Promise<Response>;
+```
+## dist/commerce/server/checkoutPaymentContinuationCredential.d.ts
+
+```ts
+export type CheckoutContinuationAction = {
+    kind: string;
+    provider?: string;
+    clientSecret?: string;
+    url?: string;
+};
+declare const PURPOSE: "commerce.checkout-payment-continuation.v1";
+export interface CheckoutPaymentContinuationInput<Rail extends string = string> {
+    journeyId: string;
+    orderId: string;
+    clientId: string;
+    paymentIntentId: string;
+    paymentAttemptId: string;
+    executionRail: Rail;
+}
+export interface CheckoutPaymentContinuationClaims<Rail extends string = string> extends CheckoutPaymentContinuationInput<Rail> {
+    version: 1;
+    purpose: typeof PURPOSE;
+    expiresAt: number;
+}
+export interface CheckoutPaymentContinuationCodec<Rail extends string = string> {
+    issue(input: CheckoutPaymentContinuationInput<Rail>): {
+        claims: CheckoutPaymentContinuationClaims<Rail>;
+        setCookie: string;
+    };
+    verifyCookieHeader(cookieHeader: unknown): CheckoutPaymentContinuationClaims<Rail> | null;
+}
+export type CheckoutPaymentContinuationMinter<Rail extends string = string> = (res: CheckoutCookieResponse, input: CheckoutPaymentContinuationInput<Rail>) => void;
+export interface CheckoutCookieResponse {
+    getHeader?(name: string): string | number | string[] | undefined;
+    setHeader(name: string, value: number | string | readonly string[]): unknown;
+}
+export declare function mintPaymentContinuationOnFreshAction<Rail extends string>(input: {
+    mint?: CheckoutPaymentContinuationMinter<Rail>;
+    res: CheckoutCookieResponse;
+    journeyId: string;
+    clientId: string;
+    requestRail: string;
+    response: {
+        status: string;
+        clientAction?: CheckoutContinuationAction;
+    };
+    result: {
+        continuationActionOrigin: "fresh_execution" | null;
+        executionRail: string;
+        paymentAttemptId: string | null;
+        paymentIntentId: string;
+        orderId: string;
+    };
+}, executionRails: readonly [Rail, Rail]): void;
+export declare function createCheckoutPaymentContinuationCodec<Rail extends string>(rootSecret: string | undefined, options: {
+    cookieName: string;
+    executionRails: readonly [Rail, Rail];
+    now?: () => Date;
+    ttlSeconds?: number;
+}): CheckoutPaymentContinuationCodec<Rail> | null;
+export declare function isCheckoutContinuationRail<Rail extends string>(value: unknown, executionRails: readonly Rail[]): value is Rail;
+export {};
+```
+## dist/commerce/server/checkoutQuoteTypes.d.ts
+
+```ts
+import type { AcquisitionTermsExpectation, ResolvedAcquisitionTerms, CreateQuoteResponse, CommerceQuoteContext, PricingPolicySnapshot } from "../../pricing/index.js";
+export interface CheckoutQuoteSnapshot extends CreateQuoteResponse {
+    quote: CreateQuoteResponse["quote"] & {
+        context?: CommerceQuoteContext & {
+            pricingPolicy?: PricingPolicySnapshot;
+            acquisitionTerms?: ResolvedAcquisitionTerms;
+            shippingTerms?: unknown;
+            offerVersion?: string;
+        };
+    };
+}
+export interface ExpectedCheckoutQuote {
+    totalGross: {
+        amountMinor: number;
+        currency: string;
+    };
+    pricingPolicy?: PricingPolicySnapshot;
+    acquisitionTerms?: AcquisitionTermsExpectation;
+}
+```
+## dist/commerce/server/checkoutRecoveryOrderPort.d.ts
+
+```ts
+export interface CheckoutRecoveryPriorPaymentEvidence {
+    paymentIntentId: string;
+    paymentAttemptId: string;
+    provider: string;
+    providerPaymentId: string | null;
+    idempotencyKey: string;
+    retryRequestId: string | null;
+}
+export type CheckoutRecoveryOrderSnapshot<Quote, PaymentStatus, Host extends object = object> = Host & {
+    orderId: string;
+    orderRef: string;
+    orderNumber: string;
+    clientId: string;
+    status: string;
+    mode: "subscription_cycle" | "one_time_order";
+    totalMinor: number;
+    currency: string;
+    cadenceDays: number | null;
+    createdAt: string;
+    customerEmail: string | null;
+    customerName: string | null;
+    paymentIntentId: string | null;
+    paymentIntentStatus: PaymentStatus | null;
+    subscriptionId: string | null;
+    subscriptionCycleId: string | null;
+    shippingAddressId?: string | null;
+    quoteSnapshot?: Quote | null;
+    runtimeMetadata?: Record<string, unknown>;
+    invoiceBuyerSnapshot?: Record<string, unknown>;
+    recoveryRootOrderId?: string;
+    recreatedFromOrderId?: string | null;
+    technicallyExpired?: boolean;
+    priorPaymentEvidence?: CheckoutRecoveryPriorPaymentEvidence | null;
+};
+export interface CheckoutRecoveryOrderReadPort<Order> {
+    getRecoveryOrder(input: {
+        orderId: string;
+    }): Promise<Order | null>;
+    getLatestRecoveryOrder?(input: {
+        orderId: string;
+    }): Promise<Order | null>;
+}
+```
+## dist/commerce/server/checkoutRecoveryToken.d.ts
+
+```ts
+export interface CheckoutRecoveryTokenContext {
+    tokenId: string;
+    orderId: string;
+    clientId: string;
+    /** "subscription_cycle" | "one_time_order" — drives copy + post-pay activation. */
+    mode: string;
+    status: string;
+}
+export interface CheckoutRecoveryTokenInspection {
+    tokenId: string;
+    orderId: string;
+    clientId: string;
+    /** Null when the token exists but the order row is already gone. */
+    mode: string | null;
+    status: string | null;
+    subscriptionId: string | null;
+    tokenState: string;
+}
+/** Inspection RPC states; only the named continuation states may resume pending orders. */
+export declare function classifyCheckoutRecoveryTokenState(tokenState: string): "continuation" | "expired_policy" | "refused";
+export interface CheckoutRecoveryTokenPort {
+    /** Issue a token for an unpaid order. Returns the new token row id. */
+    issue(input: {
+        orderId: string;
+        rawToken: string;
+        expiresAt: string;
+    }): Promise<string>;
+    /** Validate a raw token; returns the order context, or null if invalid/expired/not recoverable. */
+    validate(rawToken: string, now?: Date): Promise<CheckoutRecoveryTokenContext | null>;
+    /**
+     * Inspect without granting continuation; callers must check state before reconstructing authority.
+     */
+    inspect(rawToken: string, now?: Date): Promise<CheckoutRecoveryTokenInspection | null>;
+}
+/** Canonical hash: SHA-256 hex of the raw token (matches the SQL `encode(sha256(...))`). */
+export declare function hashCheckoutRecoveryToken(token: string): string;
+/** A non-hex prefix keeps quoted-printable mail transports from consuming the URL separator. */
+export declare const CHECKOUT_RECOVERY_TOKEN_PREFIX = "rcv_";
+/** A 256-bit URL-safe random token for the deep-link, with the QP-safe prefix. */
+export declare function generateCheckoutRecoveryToken(): string;
+```
+## dist/commerce/server/checkoutRefusalContinuation.d.ts
+
+```ts
+import type { CheckoutContinuationAction } from "./checkoutPaymentContinuationCredential.js";
+import type { CheckoutCookieResponse, CheckoutPaymentContinuationMinter } from "./checkoutPaymentContinuationCredential.js";
+/** A separate guard: refusal diagnostics must not widen existing action authority. */
+export declare function mintCheckoutRefusalContinuation<Rail extends string>(input: {
+    mint?: CheckoutPaymentContinuationMinter<Rail>;
+    res: CheckoutCookieResponse;
+    journeyId: string;
+    clientId: string;
+    requestRail: string;
+    response: {
+        status: string;
+        clientAction?: CheckoutContinuationAction;
+    };
+    result: {
+        orderId: string;
+        paymentIntentId: string;
+        paymentAttemptId: string | null;
+        executionRail: string;
+        continuationActionOrigin: "fresh_execution" | null;
+        status: string;
+        runtimePaymentStatus?: string;
+        paymentAttemptStatus?: string | null;
+    };
+}, executionRails: readonly [Rail, Rail]): void;
+```
+## dist/commerce/server/checkoutRuntimeTypes.d.ts
+
+```ts
+import type { PaymentExecutionBaseInput, PaymentExecutionBaseResult } from "@openlup/core/payment";
+export type CheckoutExecutionProvider = string;
+export type CheckoutProviderFlow = string;
+export interface CheckoutRuntimeRequest<MethodKind extends string = string, RecurringModel extends string = string> {
+    idempotencyKey: string;
+    paymentProvider: CheckoutExecutionProvider;
+    providerFlow: CheckoutProviderFlow;
+    paymentAttemptSequence?: number;
+    paymentMethodRef?: string;
+    paymentMethodAliasType?: MethodKind;
+    paymentMethodRecurringModel?: RecurringModel;
+    providerPayer?: {
+        email: string;
+        name: string;
+        ip?: string | null;
+        userAgent?: string | null;
+    };
+    saveForFutureUse?: boolean;
+    returnContext?: "public" | "account";
+    paymentExecution?: unknown;
+    declaredBankId?: string;
+    metadata: Record<string, unknown>;
+}
+export interface CheckoutRuntimeExecutionInput<Transient, Flow extends string = string, MethodKind extends string = string, RecurringModel extends string = string> extends PaymentExecutionBaseInput {
+    orderRef: string;
+    providerFlow?: Flow;
+    clientId?: string;
+    orderId?: string;
+    paymentMethodRef?: string;
+    paymentMethodAliasType?: MethodKind;
+    paymentMethodRecurringModel?: RecurringModel;
+    payer?: {
+        email: string;
+        name: string;
+        ip?: string | null;
+        userAgent?: string | null;
+    };
+    saveForFutureUse?: boolean;
+    returnContext?: "public" | "account";
+    transientProviderInput?: Transient | null;
+}
+export interface CheckoutRuntimeExecutionResult extends PaymentExecutionBaseResult {
+    provider: CheckoutExecutionProvider;
+    clientSecret?: string | null;
+    redirectUrl?: string | null;
+}
+export interface CheckoutRuntimeExecutionPort<Execution, Transient, Flow extends string = string, MethodKind extends string = string, RecurringModel extends string = string> {
+    execute(input: CheckoutRuntimeExecutionInput<Transient, Flow, MethodKind, RecurringModel>): Promise<Execution>;
+}
+export interface CheckoutRuntimeResultRequest {
+    idempotencyKey: string;
+    orderId: string;
+    paymentIntentId: string;
+    resultStatus: string;
+}
+export interface CheckoutRuntimePaymentPort {
+    createIntent(input: {
+        idempotencyKey: string;
+        targetKind: "one_time_order" | "subscription_cycle";
+        orderId: string;
+        subscriptionId: string | null;
+        subscriptionCycleId: string | null;
+        amountMinor: number;
+        currency: string;
+        metadata: Record<string, unknown>;
+    }): Promise<{
+        paymentIntentId: string;
+        paymentId: string;
+        status: string;
+        replayed: boolean;
+    }>;
+    applyResult(input: CheckoutRuntimeResultRequest): Promise<{
+        orderId: string;
+        kind: string;
+    }>;
+}
+export interface CheckoutRuntimeResponse {
+    runtime: {
+        orderId: string;
+    };
+}
+```
+## dist/commerce/server/commerceCheckoutCommandExecution.d.ts
+
+```ts
+import type { z } from "zod";
+import type { CreateQuoteRequest, PricingPolicySnapshot } from "../../pricing/index.js";
+import type { CheckoutJourney, CommerceOrderDraftWritePort, CheckoutCommandRuntimeResult } from "../contracts/index.js";
+import type { CommerceQuotePort } from "../ports.js";
+import type { CheckoutCommandV1, CheckoutCommandPersistenceResult } from "../checkoutCommandSchemas.js";
+import { type CheckoutCompensationPort } from "./commerceCheckoutCompensation.js";
+import type { PaidOrderOrchestrationDeps, CheckoutJourneyRuntimeRequest, CheckoutJourneyRuntimeResponse, CheckoutJourneyResultRequest, OrchestratedCheckoutResult } from "./commercePaidOrderOrchestration.js";
+import type { CheckoutPaymentExecution } from "./commerceCheckoutProviderPayment.js";
+import type { CheckoutQuoteSnapshot } from "./checkoutQuoteTypes.js";
+export interface CheckoutCommandQuoteRequest extends CreateQuoteRequest {
+    customerEligibilityContext: {
+        email: string;
+    };
+}
+export interface CheckoutCommandExecutionRequest<Provider extends string = string, MethodKind extends string = string, RecurringModel extends string = string> {
+    command: CheckoutCommandV1;
+    paymentProvider: Provider;
+    paymentAttemptSequence?: number;
+    paymentMethodRef?: string;
+    paymentMethodAliasType?: MethodKind;
+    paymentMethodRecurringModel?: RecurringModel;
+    saveForFutureUse?: boolean;
+    returnContext?: "public" | "account";
+    providerPayer?: {
+        email: string;
+        name: string;
+        ip?: string | null;
+        userAgent?: string | null;
+    };
+    metadata?: Record<string, unknown>;
+}
+export declare function checkoutCommandJourney(command: CheckoutCommandV1, metadata: Record<string, unknown> | undefined): CheckoutJourney<CheckoutCommandQuoteRequest, PricingPolicySnapshot>;
+export declare function createCheckoutCommandExecutor<Provisioned extends {
+    clientId: string;
+    addressId: string;
+}, Snapshot extends CheckoutQuoteSnapshot, Draft extends {
+    orderDraft: {
+        orderId: string;
+    };
+}, Extension extends object, Runtime extends CheckoutJourneyRuntimeResponse<Provider>, Settlement, ExecutionPort extends object, PaymentExecution extends CheckoutPaymentExecution, Provider extends string, Flow extends string, MethodKind extends string = string, RecurringModel extends string = string>(bindings: {
+    commandSchema: z.ZodType<CheckoutCommandV1>;
+    commandProvisioned(persistence: CheckoutCommandPersistenceResult): Provisioned;
+    orchestrateCheckoutJourney(deps: PaidOrderOrchestrationDeps<Provisioned, CheckoutCommandQuoteRequest, Snapshot, Draft, Extension, Runtime, Settlement, PaymentExecution, Provider, Flow, MethodKind, RecurringModel>, journey: CheckoutJourney<CheckoutCommandQuoteRequest, PricingPolicySnapshot>): Promise<OrchestratedCheckoutResult<Snapshot, Provider>>;
+}): {
+    executeCheckoutCommand: (request: CheckoutCommandExecutionRequest<Provider, MethodKind, RecurringModel>, deps: {
+        quotePort?: CommerceQuotePort<CheckoutCommandQuoteRequest, Snapshot, import("../../pricing/index.js").CreateQuoteOptions>;
+        persistencePort?: {
+            persistCheckoutCommand(command: CheckoutCommandV1): Promise<CheckoutCommandPersistenceResult>;
+        };
+        orderDraftPort?: CommerceOrderDraftWritePort<{
+            idempotencyKey: string;
+            quoteSnapshot: Snapshot;
+        }, Draft>;
+        resolveExecutionPort?: (provider: string) => ExecutionPort;
+        compensationPort?: CheckoutCompensationPort;
+        now?: () => Date;
+        startRuntime(request: CheckoutJourneyRuntimeRequest<Snapshot, PaymentExecution, Provider, Flow, MethodKind, RecurringModel> & Extension, executionPort: ExecutionPort): Promise<Runtime>;
+        applyPaymentResult(request: CheckoutJourneyResultRequest): Promise<Settlement>;
+    }) => Promise<CheckoutCommandRuntimeResult<Snapshot, CheckoutCommandPersistenceResult, Draft, Runtime, Settlement>>;
+};
+```
+## dist/commerce/server/commerceCheckoutCompensation.d.ts
+
+```ts
+export interface CheckoutCompensationPort {
+    releaseOrderReservations(input: {
+        idempotencyKey: string;
+        orderId: string;
+        reason: string;
+    }): Promise<{
+        releasedCount: number;
+    }>;
+    cancelUnstartedPromotionOrder(input: {
+        idempotencyKey: string;
+        orderId: string;
+        reason: string;
+    }): Promise<{
+        cancelled: boolean;
+    }>;
+    cancelAbandonedOrder(input: {
+        idempotencyKey: string;
+        orderId: string;
+        reason: string;
+    }): Promise<{
+        cancelled: boolean;
+    }>;
+}
+export declare function tryCompensate(port: CheckoutCompensationPort, idempotencyKey: string, orderId: string, options?: {
+    cancellationReason?: string;
+}): Promise<void>;
+```
+## dist/commerce/server/commerceCheckoutContinuationTerms.d.ts
+
+```ts
+import type { z } from "zod";
+import { type AcquisitionTermsExpectation, type CreateQuoteRequest } from "../../pricing/index.js";
+import type { CheckoutKind, ConfiguratorIntent } from "../contracts/index.js";
+import type { CheckoutQuoteSnapshot } from "./checkoutQuoteTypes.js";
+import type { StarterDeclaration } from "./commerceStarterOfferGuard.js";
+import { type CheckoutResumeGuardDeps } from "./commerceCheckoutResumeGuard.js";
+export declare function createSavedAcquisitionContinuation<Intent extends ConfiguratorIntent & {
+    selectedDelivery?: unknown;
+}, Provisioned, Request extends CreateQuoteRequest, Snapshot extends CheckoutQuoteSnapshot, InvoicePreference, Response>(bindings: {
+    quoteSchema: z.ZodType<Snapshot>;
+    buildQuoteRequest(intent: Intent, provisioned: Provisioned): Request;
+    sameSubjectContext(context: NonNullable<Snapshot["quote"]["context"]>, fresh: Request, provisioned: Provisioned): boolean;
+    runtimeMetadata(intent: Intent, kind: CheckoutKind, preference?: InvoicePreference): Record<string, unknown>;
+    starterDeclaration(intent: Intent): StarterDeclaration | undefined;
+    starterPlan(snapshot: Snapshot): {
+        starterIntervalDays: number;
+        delivery2: {
+            discountBps: number;
+        };
+        graduation: {
+            cadenceDays: number;
+            lines: Array<{
+                qty: number;
+            }>;
+        };
+    } | undefined;
+    buildSavedOrderResumeResponse(input: {
+        resumable: Awaited<ReturnType<NonNullable<CheckoutResumeGuardDeps["resumableOrderPort"]>["findResumableOrderForClient"]>> & {};
+        clientId: string;
+        checkoutKind: CheckoutKind;
+        intent: Intent;
+    }): Response;
+}): {
+    resolveSavedAcquisitionContinuation: (input: {
+        deps: CheckoutResumeGuardDeps;
+        clientId: string;
+        provisioned: Provisioned;
+        checkoutKind: CheckoutKind;
+        intent: Intent;
+        invoicePreference?: InvoicePreference;
+        expectedQuote?: {
+            totalGross: {
+                amountMinor: number;
+                currency: string;
+            };
+            acquisitionTerms?: AcquisitionTermsExpectation;
+        };
+        now: () => Date;
+    }) => Promise<Response | null>;
+};
+```
+## dist/commerce/server/commerceCheckoutCustomerDefaults.d.ts
+
+```ts
+import type { HttpResponse } from "../../http/index.js";
+import type { BffResponder } from "../../bff/index.js";
+import type { z } from "zod";
+import type { CheckoutKind, CommerceCustomerDefaultsReadPort } from "../contracts/index.js";
+export declare function readCheckoutCustomerDefaults<Snapshot>(input: {
+    port: CommerceCustomerDefaultsReadPort<Snapshot> | undefined;
+    clientId: string;
+    checkoutKind: CheckoutKind;
+    recordStage: <T>(operation: () => Promise<T>) => Promise<T>;
+}, schema: z.ZodType<Snapshot>): Promise<Snapshot | null>;
+export declare function readCheckoutCustomerDefaultsOrRespond<Snapshot>(input: Parameters<typeof readCheckoutCustomerDefaults<Snapshot>>[0] & {
+    res: HttpResponse;
+}, schema: z.ZodType<Snapshot>, responder: BffResponder): Promise<{
+    kind: "read";
+    snapshot: Snapshot | null;
+} | {
+    kind: "responded";
+}>;
+```
+## dist/commerce/server/commerceCheckoutFailureHandler.d.ts
+
+```ts
+import type { HttpResponse } from "../../http/index.js";
+import type { BffResponder } from "../../bff/index.js";
+import type { CheckoutKind, ConfiguratorIntent as NeutralIntent } from "../contracts/index.js";
+import type { CommerceQuotePort } from "../ports.js";
+import type { PricingPolicySnapshot } from "../../pricing/index.js";
+import type { CheckoutQuoteSnapshot } from "./checkoutQuoteTypes.js";
+import { type CheckoutCompensationPort } from "./commerceCheckoutCompensation.js";
+import type { CheckoutTimingOutcome } from "./commerceCheckoutTiming.js";
+export declare function createCheckoutFailureHandler<Intent extends NeutralIntent, Provisioned, Request, Snapshot extends CheckoutQuoteSnapshot>(bindings: {
+    responder: BffResponder;
+    logProviderFailure(error: unknown): void;
+    respondQuoteFailure(res: HttpResponse, error: unknown): boolean;
+    previewDiagnosticsEnabled(): boolean;
+    respondToPromotionCodePriceChange(input: {
+        res: HttpResponse;
+        quotePort: CommerceQuotePort<Request, Snapshot, import("../../pricing/index.js").CreateQuoteOptions>;
+        intent: Intent;
+        provisioned: Provisioned;
+        checkoutKind: CheckoutKind;
+        acceptedQuoteSnapshot: Snapshot | null;
+        expectedQuote?: {
+            totalGross: {
+                amountMinor: number;
+                currency: string;
+            };
+            pricingPolicy?: PricingPolicySnapshot;
+        };
+        resolvePricingPolicy?: (request: Request) => PricingPolicySnapshot | undefined | Promise<PricingPolicySnapshot | undefined>;
+        recordQuote: <T>(operation: () => Promise<T>) => Promise<T>;
+    }): Promise<boolean>;
+}): {
+    respondToCheckoutFailure: (input: {
+        error: unknown;
+        compensationPort: CheckoutCompensationPort;
+        intent: Intent;
+        res: HttpResponse;
+        quotePort: CommerceQuotePort<Request, Snapshot, import("../../pricing/index.js").CreateQuoteOptions>;
+        provisioned: Provisioned;
+        checkoutKind: CheckoutKind;
+        acceptedQuoteSnapshot: Snapshot | null;
+        expectedQuote?: {
+            totalGross: {
+                amountMinor: number;
+                currency: string;
+            };
+            pricingPolicy?: PricingPolicySnapshot;
+        };
+        resolvePricingPolicy?: (request: Request) => PricingPolicySnapshot | undefined | Promise<PricingPolicySnapshot | undefined>;
+        recordQuote: <T>(operation: () => Promise<T>) => Promise<T>;
+    }) => Promise<CheckoutTimingOutcome>;
+};
+```
+## dist/commerce/server/commerceCheckoutHandler.d.ts
+
+```ts
+import type { HttpRequest, HttpResponse } from "../../http/index.js";
+import type { BffResponder } from "../../bff/index.js";
+import type { ConfiguratorIntent, CheckoutKind, CommerceResumableOrderReadPort } from "../contracts/index.js";
+import type { CheckoutContinuationAction } from "./checkoutPaymentContinuationCredential.js";
+import { providerPayerFromRequest } from "./commerceCheckoutProviderPayment.js";
+import type { ResolveSavedMethodResult } from "./commerceCheckoutSavedPaymentMethod.js";
+import type { CheckoutTimingOutcome, CheckoutTimingStage } from "./commerceCheckoutTiming.js";
+import type { CheckoutQuoteSnapshot, ExpectedCheckoutQuote } from "./checkoutQuoteTypes.js";
+import type { OrchestratedCheckoutResult, CheckoutStageRecorder } from "./commercePaidOrderOrchestration.js";
+import type { CheckoutExecutionProvider } from "./checkoutRuntimeTypes.js";
+import type { CheckoutResumeGuardDeps } from "./commerceCheckoutResumeGuard.js";
+interface CheckoutHandlerDependencies {
+    persistencePort: unknown;
+    quotePort: unknown;
+    orderDraftPort: unknown;
+    runtimePort: unknown;
+    compensationPort: unknown;
+    savedPaymentMethodResolverPort?: unknown;
+    customerDefaultsPort?: unknown;
+    resumableOrderPort?: CommerceResumableOrderReadPort;
+    resumeWindowMinutes?: number;
+    linkCustomerAccount?: (email: string) => Promise<void>;
+    verifyPromotionAcceptance?: unknown;
+    promotionAcceptanceEnforced?: boolean;
+    now?: () => Date;
+    resolvePricingPolicy?: unknown;
+    resolvePricingEligibilityClientId?: (email: string) => Promise<string | null>;
+    starterPackEnabled?: () => boolean;
+    isFirstOrderEligible?: (clientId: string | null) => Promise<boolean>;
+    offerPolicy?: unknown;
+    starterTermsPort?: unknown;
+    mintPaymentContinuationCookie?: unknown;
+}
+type RecordOperation = <T>(operation: () => Promise<T>) => Promise<T>;
+interface CheckoutHandlerData<Intent> {
+    intent: Intent;
+    paymentProvider: CheckoutExecutionProvider;
+    paymentAttemptSequence?: number;
+    returnContext: "public" | "account";
+    paymentExecution?: unknown;
+    declaredBankId?: string;
+    invoicePreference: unknown;
+    expectedQuote?: ExpectedCheckoutQuote & {
+        promotionAcceptanceToken?: string;
+    };
+}
+export declare function createCommerceCheckoutHandler<Deps extends CheckoutHandlerDependencies, Intent extends ConfiguratorIntent, Provisioned extends {
+    clientId: string;
+}, Data extends CheckoutHandlerData<Intent>, Snapshot extends CheckoutQuoteSnapshot, Defaults, Result extends OrchestratedCheckoutResult<Snapshot>, Response extends {
+    status: string;
+    clientAction?: CheckoutContinuationAction;
+}, MethodKind extends string = string, RecurringModel extends string = string>(bindings: {
+    responder: BffResponder;
+    mintPaymentContinuationOnFreshAction(input: {
+        mint?: Deps["mintPaymentContinuationCookie"];
+        res: HttpResponse;
+        journeyId: string;
+        clientId: string;
+        requestRail: string;
+        response: Response;
+        result: Result;
+    }): void;
+    mintCheckoutRefusalContinuation(input: {
+        mint?: Deps["mintPaymentContinuationCookie"];
+        res: HttpResponse;
+        journeyId: string;
+        clientId: string;
+        requestRail: string;
+        response: Response;
+        result: Result;
+    }): void;
+    createCheckoutTimingLogger(req: HttpRequest): {
+        record: <T>(stage: CheckoutTimingStage, operation: () => Promise<T>) => Promise<T>;
+        log(stage: CheckoutTimingStage, outcome: CheckoutTimingOutcome): void;
+    };
+    previewCheckoutDiagnosticsEnabled(): boolean;
+    admitCheckoutRequest(input: {
+        req: HttpRequest;
+        res: HttpResponse;
+        deps: Deps;
+        record: <T>(stage: "rate_limit" | "risk_blocklist", operation: () => Promise<T>) => Promise<T>;
+    }): Promise<{
+        kind: "accepted";
+        data: Data;
+        intent: Intent;
+        checkoutKind: CheckoutKind;
+    } | {
+        kind: "responded";
+        outcome: "rejected" | "error";
+    }>;
+    persistCheckoutIdentityOrRespond(input: {
+        res: HttpResponse;
+        persistencePort: Deps["persistencePort"];
+        resumeGuardDeps: CheckoutResumeGuardDeps;
+        intent: Intent;
+        checkoutKind: CheckoutKind;
+        now: () => Date;
+        previewDiagnosticsEnabled: boolean;
+        recordPersistStage: RecordOperation;
+    }): Promise<{
+        kind: "provisioned";
+        provisioned: Provisioned;
+    } | {
+        kind: "responded";
+        outcome: "error" | "rejected";
+    }>;
+    resolveSavedPaymentMethodForCheckout(input: {
+        req: HttpRequest;
+        paymentExecution: Data["paymentExecution"];
+        clientId: string;
+        savedPaymentMethodResolverPort: Deps["savedPaymentMethodResolverPort"];
+        now: () => Date;
+        recordStage: <T>(stage: "payment_method_ref", operation: () => Promise<T>) => Promise<T>;
+    }): Promise<ResolveSavedMethodResult<MethodKind, RecurringModel>>;
+    respondToSavedPaymentMethodRejection(res: HttpResponse, reason: Extract<ResolveSavedMethodResult, {
+        kind: "rejected";
+    }>["reason"]): void;
+    readCheckoutCustomerDefaultsOrRespond(input: {
+        res: HttpResponse;
+        port: Deps["customerDefaultsPort"];
+        clientId: string;
+        checkoutKind: CheckoutKind;
+        recordStage: RecordOperation;
+    }): Promise<{
+        kind: "read";
+        snapshot: Defaults | null;
+    } | {
+        kind: "responded";
+    }>;
+    resolveCheckoutQuoteOrContinuation(input: {
+        quotePort: Deps["quotePort"];
+        intent: Intent;
+        provisioned: Provisioned;
+        deps: CheckoutResumeGuardDeps;
+        invoicePreference: Data["invoicePreference"];
+        now: () => Date;
+        offerPolicy: Deps["offerPolicy"];
+        starterTermsPort: Deps["starterTermsPort"];
+        checkoutKind: CheckoutKind;
+        expectedQuote: Data["expectedQuote"];
+        promotionAcceptanceToken?: string;
+        verifyPromotionAcceptance: Deps["verifyPromotionAcceptance"];
+        recordQuoteStage: RecordOperation;
+        resolvePricingPolicy: Deps["resolvePricingPolicy"];
+        pricingEligibilityClientId?: string | null;
+        starterPackEnabled?: () => boolean;
+        isFirstOrderEligible?: () => Promise<boolean>;
+    }): Promise<{
+        kind: "accepted";
+        quoteSnapshot: Snapshot;
+    } | {
+        kind: "price_changed";
+        response: Response;
+        starterOfferRejection?: string;
+    } | {
+        kind: "resumed";
+        response: Response;
+    }>;
+    resolveResumeOpenOrderResponse(input: {
+        deps: CheckoutResumeGuardDeps;
+        clientId: string;
+        checkoutKind: CheckoutKind;
+        intent: Intent;
+        acceptedQuote: Snapshot["quote"];
+        now: () => Date;
+    }): Promise<Response | null>;
+    orchestratePaidOrder(input: {
+        intent: Intent;
+        provisioned: Provisioned;
+        checkoutKind: CheckoutKind;
+        quotePort: Deps["quotePort"];
+        orderDraftPort: Deps["orderDraftPort"];
+        runtimePort: Deps["runtimePort"];
+        customerDefaultsSnapshot: Defaults | null;
+        paymentProvider: Data["paymentProvider"];
+        paymentAttemptSequence: Data["paymentAttemptSequence"];
+        returnContext: Data["returnContext"];
+        paymentExecution: Data["paymentExecution"];
+        declaredBankId: Data["declaredBankId"];
+        paymentMethodRef?: string;
+        paymentMethodAliasType?: MethodKind;
+        paymentMethodRecurringModel?: RecurringModel;
+        invoicePreference: Data["invoicePreference"];
+        quoteSnapshot: Snapshot;
+        providerPayer: ReturnType<typeof providerPayerFromRequest>;
+        onPaymentStarted?: (event: {
+            email: string;
+        }) => Promise<void>;
+        recordStage: CheckoutStageRecorder;
+        now: () => Date;
+    }): Promise<Result>;
+    buildCheckoutSuccessResponse(input: {
+        orchestrated: Result;
+        paymentProvider: Data["paymentProvider"];
+        checkoutKind: CheckoutKind;
+        intent: Intent;
+        clientId: string;
+    }): Response;
+    respondToCheckoutFailure(input: {
+        error: unknown;
+        compensationPort: Deps["compensationPort"];
+        intent: Intent;
+        res: HttpResponse;
+        quotePort: Deps["quotePort"];
+        provisioned: Provisioned;
+        checkoutKind: CheckoutKind;
+        acceptedQuoteSnapshot: Snapshot | null;
+        expectedQuote: Data["expectedQuote"];
+        resolvePricingPolicy: Deps["resolvePricingPolicy"];
+        recordQuote: RecordOperation;
+    }): Promise<CheckoutTimingOutcome>;
+}): (deps: Deps) => (req: HttpRequest, res: HttpResponse) => Promise<void>;
+export {};
+```
+## dist/commerce/server/commerceCheckoutHandlerAdmission.d.ts
+
+```ts
+import type { z } from "zod";
+import type { HttpResponse } from "../../http/index.js";
+import type { BffResponder } from "../../bff/index.js";
+import type { CheckoutKind, ConfiguratorIntent } from "../contracts/index.js";
+export interface CheckoutRateLimitDecision {
+    allowed: boolean;
+    reason?: "ip_quota" | "email_quota";
+}
+export interface CheckoutAdmissionRequest {
+    method?: string;
+    body?: unknown;
+    headers: Record<string, string | string[] | undefined>;
+}
+type CheckoutAdmissionResponse = HttpResponse;
+export interface CheckoutAdmissionDeps<Intent> {
+    checkRateLimit: (req: CheckoutAdmissionRequest, intent: Intent, paymentAttemptSequence: number | undefined) => Promise<CheckoutRateLimitDecision>;
+    rateLimitMessage: (reason: "ip_quota" | "email_quota" | undefined) => string;
+    checkRiskBlocklist?: (req: CheckoutAdmissionRequest, intent: Intent) => Promise<{
+        blocked: boolean;
+    }>;
+    subscriptionCheckoutContractEnabled?: () => boolean;
+    deliveryRequired?: () => boolean;
+    promotionAcceptanceEnforced?: boolean;
+    offerPolicy?: unknown;
+}
+export declare function createCheckoutAdmission<Intent extends ConfiguratorIntent, Data extends {
+    intent: Intent;
+    expectedQuote?: unknown;
+    paymentAttemptSequence?: number;
+}>(bindings: {
+    requestSchema: z.ZodType<Data>;
+    responder: BffResponder;
+    minimumOrderUnits?: number;
+    deliveryAllowed(intent: Intent): boolean;
+    respondDeliveryRequired(res: HttpResponse): void;
+    rejectMissingPromotionExpectedQuote(input: {
+        res: HttpResponse;
+        enforced: boolean;
+        intent: Intent;
+        expectedQuote?: unknown;
+    }): boolean;
+}): {
+    admitCheckoutRequest: (input: {
+        req: CheckoutAdmissionRequest;
+        res: CheckoutAdmissionResponse;
+        deps: CheckoutAdmissionDeps<Intent>;
+        record: <T>(stage: "rate_limit" | "risk_blocklist", operation: () => Promise<T>) => Promise<T>;
+    }) => Promise<{
+        kind: "accepted";
+        data: Data;
+        intent: Intent;
+        checkoutKind: CheckoutKind;
+    } | {
+        kind: "responded";
+        outcome: "error" | "rejected";
+    }>;
+};
+export {};
+```
+## dist/commerce/server/commerceCheckoutHandlerHelpers.d.ts
+
+```ts
+import type { z } from "zod";
+import type { HttpResponse } from "../../http/index.js";
+import type { BffResponder } from "../../bff/index.js";
+import type { CheckoutKind, ConfiguratorIntentPersistencePort, ConfiguratorIntent as NeutralIntent } from "../contracts/index.js";
+import type { OrchestratedCheckoutResult } from "./commercePaidOrderOrchestration.js";
+import type { CheckoutQuoteSnapshot } from "./checkoutQuoteTypes.js";
+import type { CheckoutExecutionProvider } from "./checkoutRuntimeTypes.js";
+import { type CheckoutResumeGuardDeps } from "./commerceCheckoutResumeGuard.js";
+import type { ResolveSavedMethodResult } from "./commerceCheckoutSavedPaymentMethod.js";
+export declare function runBestEffortAccountLink(linkCustomerAccount: (email: string) => Promise<void>, email: string, context?: {
+    trigger: string;
+}): Promise<void>;
+export declare function createCheckoutHandlerHelpers<Intent extends NeutralIntent, Provisioned extends {
+    clientId: string;
+}, Snapshot extends CheckoutQuoteSnapshot, Response>(bindings: {
+    checkoutClientAction(input: {
+        provider: string;
+        status: "paid" | "processing" | "failed";
+        providerClientSecret: string | null;
+        providerRedirectUrl: string | null;
+    }): unknown;
+    responder: BffResponder;
+    responseSchema: z.ZodType<Response>;
+    statusUrl(orderId: string, paymentIntentId: string, clientId: string): string;
+    resolveResumeOpenOrderResponse(input: {
+        deps: CheckoutResumeGuardDeps;
+        clientId: string;
+        checkoutKind: CheckoutKind;
+        intent: Intent;
+        now: () => Date;
+    }): Promise<Response | null>;
+}): {
+    persistCheckoutIdentityOrRespond: (input: {
+        res: HttpResponse;
+        persistencePort: ConfiguratorIntentPersistencePort<Intent, Provisioned>;
+        resumeGuardDeps: CheckoutResumeGuardDeps;
+        intent: Intent;
+        checkoutKind: CheckoutKind;
+        now: () => Date;
+        previewDiagnosticsEnabled: boolean;
+        recordPersistStage: <T>(operation: () => Promise<T>) => Promise<T>;
+    }) => Promise<{
+        kind: "provisioned";
+        provisioned: Provisioned;
+    } | {
+        kind: "responded";
+        outcome: "error" | "rejected";
+    }>;
+    respondToSavedPaymentMethodRejection: (res: HttpResponse, reason: Extract<ResolveSavedMethodResult, {
+        kind: "rejected";
+    }>["reason"]) => void;
+    buildCheckoutSuccessResponse: (input: {
+        orchestrated: OrchestratedCheckoutResult<Snapshot>;
+        paymentProvider: CheckoutExecutionProvider;
+        checkoutKind: CheckoutKind;
+        intent: Intent;
+        clientId: string;
+    }) => Response;
+    respondToProvisionIdentityConflict: (input: {
+        res: HttpResponse;
+        persistencePort: ConfiguratorIntentPersistencePort<Intent, Provisioned>;
+        resumeGuardDeps: CheckoutResumeGuardDeps;
+        intent: Intent;
+        checkoutKind: CheckoutKind;
+        now: () => Date;
+    }) => Promise<void>;
+};
+```
+## dist/commerce/server/commerceCheckoutOrchestrationError.d.ts
+
+```ts
+/**
+ * Carries the order id only after inventory may need compensation. A nullable
+ * reason lets the handler distinguish safe conflicts from generic failures.
+ */
+export declare class CheckoutOrchestrationError extends Error {
+    readonly orderIdForCompensation: string | null;
+    readonly reason: string | null;
+    constructor(message: string, orderIdForCompensation: string | null, reason?: string | null);
+}
+```
+## dist/commerce/server/commerceCheckoutPromotionPriceChange.d.ts
+
+```ts
+import type { HttpResponse } from "../../http/index.js";
+import type { BffResponder } from "../../bff/index.js";
+import type { CheckoutKind, ConfiguratorIntent as NeutralIntent } from "../contracts/index.js";
+import type { CommerceQuotePort } from "../ports.js";
+import type { PricingPolicySnapshot } from "../../pricing/index.js";
+import type { CheckoutQuoteSnapshot } from "./checkoutQuoteTypes.js";
+export declare function createPromotionPriceChange<Intent extends NeutralIntent, Provisioned extends {
+    clientId: string;
+}, Request, Snapshot extends CheckoutQuoteSnapshot, Response>(bindings: {
+    responder: BffResponder;
+    buildQuoteRequest(intent: Intent, provisioned: Provisioned, policy?: PricingPolicySnapshot): Request;
+    buildCheckoutPriceChangedResponse(input: {
+        checkoutKind: CheckoutKind;
+        expectedQuote: {
+            totalGross: {
+                amountMinor: number;
+                currency: string;
+            };
+        };
+        authoritativeQuote: Snapshot;
+    }): Response;
+    respondQuoteFailure(res: HttpResponse, error: unknown): boolean;
+}): {
+    rejectMissingPromotionExpectedQuote: (input: {
+        res: HttpResponse;
+        enforced: boolean;
+        intent: Intent;
+        expectedQuote?: unknown;
+    }) => boolean;
+    respondToPromotionCodePriceChange: (input: {
+        res: HttpResponse;
+        quotePort: CommerceQuotePort<Request, Snapshot, import("../../pricing/index.js").CreateQuoteOptions>;
+        intent: Intent;
+        provisioned: Provisioned;
+        checkoutKind: CheckoutKind;
+        expectedQuote?: {
+            totalGross: {
+                amountMinor: number;
+                currency: string;
+            };
+            pricingPolicy?: PricingPolicySnapshot;
+        };
+        resolvePricingPolicy?: (request: Request) => PricingPolicySnapshot | undefined | Promise<PricingPolicySnapshot | undefined>;
+        acceptedQuoteSnapshot: Snapshot | null;
+        recordQuote: <T>(operation: () => Promise<T>) => Promise<T>;
+    }) => Promise<boolean>;
+};
+```
+## dist/commerce/server/commerceCheckoutProviderPayment.d.ts
+
+```ts
+import type { HttpRequest } from "../../http/index.js";
+export interface CheckoutPaymentExecution {
+    provider: string;
+    flow?: string;
+}
+export declare function createCheckoutClientAction<Embedded extends string>(embeddedProvider: Embedded, redirectProvider: string): (input: {
+    provider: string;
+    status: "paid" | "processing" | "failed";
+    providerClientSecret: string | null;
+    providerRedirectUrl: string | null;
+}) => {
+    kind: "none";
+    url?: undefined;
+} | {
+    clientSecret?: string | undefined;
+    kind: "provider_embedded";
+    provider: Embedded;
+    url?: undefined;
+} | {
+    kind: "redirect";
+    url: string;
+};
+export declare function providerPayerFromRequest(req: HttpRequest, intent: {
+    contact: {
+        email: string;
+        firstName: string;
+        lastName: string;
+    };
+}): {
+    email: string;
+    name: string;
+    ip: string | null;
+    userAgent: string | null;
+};
+```
+## dist/commerce/server/commerceCheckoutQuoteGuard.d.ts
+
+```ts
+import type { z } from "zod";
+import { type PricingPolicySnapshot } from "../../pricing/index.js";
+import type { CheckoutKind, ConfiguratorIntent as NeutralIntent } from "../contracts/index.js";
+import type { CommerceQuotePort } from "../ports.js";
+import { type CheckoutOfferPolicyPort } from "./checkoutOfferPolicyPort.js";
+import type { CheckoutQuoteSnapshot, ExpectedCheckoutQuote } from "./checkoutQuoteTypes.js";
+import type { StarterOfferGuardResult } from "./commerceStarterOfferGuard.js";
+export type CheckoutQuoteGuardResult<Snapshot, Response> = {
+    kind: "accepted";
+    quoteSnapshot: Snapshot;
+} | {
+    kind: "price_changed";
+    response: Response;
+    starterOfferRejection?: string;
+};
+export declare function createCheckoutQuoteGuard<Intent extends NeutralIntent, Provisioned extends {
+    clientId: string;
+}, Request, Snapshot extends CheckoutQuoteSnapshot, Response, Terms, Plan>(bindings: {
+    buildQuoteRequest(intent: Intent, provisioned: Provisioned, policy?: PricingPolicySnapshot): Request;
+    responseSchema: z.ZodType<Response>;
+    resolveStarterOfferGuard(input: {
+        flagEnabled: boolean;
+        intent: Intent;
+        provisioned: Provisioned;
+        authoritativeQuote: Snapshot;
+        quotePort: CommerceQuotePort<Request, Snapshot, import("../../pricing/index.js").CreateQuoteOptions>;
+        isFirstOrderEligible?: () => Promise<boolean>;
+        termsPort?: Terms;
+        offerVersion?: string;
+    }): Promise<StarterOfferGuardResult<Plan>>;
+    withStarterPackContext(snapshot: Snapshot, plan: Plan | null): Snapshot;
+}): {
+    resolveCheckoutQuoteGuard: (input: {
+        quotePort: CommerceQuotePort<Request, Snapshot, import("../../pricing/index.js").CreateQuoteOptions>;
+        intent: Intent;
+        provisioned: Provisioned;
+        checkoutKind: CheckoutKind;
+        expectedQuote?: ExpectedCheckoutQuote;
+        recordQuoteStage: <T>(operation: () => Promise<T>) => Promise<T>;
+        resolvePricingPolicy?: (request: Request) => PricingPolicySnapshot | undefined | Promise<PricingPolicySnapshot | undefined>;
+        pricingEligibilityClientId?: string | null;
+        verifyPromotionAcceptance?: (input: {
+            token: string;
+            request: Request;
+            quote: Snapshot["quote"];
+            expectedTotal: {
+                amountMinor: number;
+                currency: string;
+            };
+        }) => boolean;
+        promotionAcceptanceToken?: string;
+        offerPolicy?: CheckoutOfferPolicyPort<Intent, Snapshot["quote"]>;
+        starterPackEnabled?: () => boolean;
+        isFirstOrderEligible?: () => Promise<boolean>;
+        starterTermsPort?: Terms;
+    }) => Promise<CheckoutQuoteGuardResult<Snapshot, Response>>;
+    buildCheckoutPriceChangedResponse: (input: {
+        checkoutKind: CheckoutKind;
+        expectedQuote: ExpectedCheckoutQuote;
+        authoritativeQuote: Snapshot;
+    }) => Response;
+};
+```
+## dist/commerce/server/commerceCheckoutResume.d.ts
+
+```ts
+import type { z } from "zod";
+import type { CommerceCheckoutResumeDraftPort } from "../contracts/ports.js";
+interface ResumeResult {
+    data: unknown;
+    error: {
+        code?: string;
+        message?: string;
+        details?: string;
+    } | null;
+}
+interface ResumeQuery {
+    select(columns: string): ResumeQuery;
+    eq(column: string, value: unknown): ResumeQuery;
+    is(column: string, value: null): ResumeQuery;
+    gt(column: string, value: string): ResumeQuery;
+    single(): PromiseLike<ResumeResult>;
+    maybeSingle(): PromiseLike<ResumeResult>;
+}
+export interface CommerceCheckoutResumeClient {
+    from(table: "commerce_checkout_resume_drafts"): {
+        select(columns: string): ResumeQuery;
+        update(payload: Record<string, unknown>): ResumeQuery;
+        insert(payload: Record<string, unknown>): ResumeQuery;
+    };
+}
+export declare function createCommerceCheckoutResumeQueryPort<Section, State extends {
+    redactedFields: unknown;
+}, Draft>(client: CommerceCheckoutResumeClient, draftSchema: z.ZodType<Draft>): CommerceCheckoutResumeDraftPort<Section, State, Draft>;
+export {};
+```
+## dist/commerce/server/commerceCheckoutResumeGuard.d.ts
+
+```ts
+import type { z } from "zod";
+import type { CheckoutKind, CommerceResumableOrderReadPort, ResumableOrderSnapshot } from "../contracts/index.js";
+export declare function subscriptionResponse(intent: {
+    cadenceDays: number | null;
+}, checkoutKind: CheckoutKind): {
+    requested: boolean;
+    cadenceDays: null;
+    activationStatus: "not_applicable";
+} | {
+    requested: boolean;
+    cadenceDays: number | null;
+    activationStatus: "pending_payment_success";
+};
+export interface CheckoutResumeGuardDeps {
+    resumableOrderPort?: CommerceResumableOrderReadPort;
+    resumeWindowMinutes?: number;
+}
+export declare function selectedDeliveryMatches(orderMetadata: Record<string, unknown> | null | undefined, intent: {
+    selectedDelivery?: unknown;
+}): boolean;
+export interface QuoteLikeSnapshot {
+    currency: string;
+    totalGross: {
+        amountMinor: number;
+        currency: string;
+    };
+    lines: ReadonlyArray<{
+        sku: string;
+        quantity: number;
+    }>;
+}
+export declare function createCheckoutResumeGuard<Intent extends {
+    idempotencyKey: string;
+    cadenceDays: number | null;
+    selectedDelivery?: unknown;
+}, Response>(bindings: {
+    responseSchema: z.ZodType<Response>;
+    statusUrl(orderId: string, paymentIntentId: string, clientId: string): string;
+}): {
+    resolveResumeOpenOrderResponse: (input: {
+        deps: CheckoutResumeGuardDeps;
+        clientId: string;
+        checkoutKind: CheckoutKind;
+        intent: Intent;
+        acceptedQuote?: QuoteLikeSnapshot;
+        now: () => Date;
+    }) => Promise<Response | null>;
+    buildSavedOrderResumeResponse: (input: {
+        resumable: ResumableOrderSnapshot;
+        clientId: string;
+        checkoutKind: CheckoutKind;
+        intent: Intent;
+    }) => Response;
+};
+```
+## dist/commerce/server/commerceCheckoutSavedPaymentMethod.d.ts
+
+```ts
+import type { HttpRequest } from "../../http/index.js";
+interface CheckoutSavedPaymentMethodResolverPort<Flow extends string, MethodKind extends string = string, RecurringModel extends string = string> {
+    resolveSavedPaymentMethod(input: {
+        accessToken: string;
+        clientId: string;
+        savedMethodId: string;
+        requestedFlow: Flow;
+        now: Date;
+    }): Promise<{
+        providerMethodRef: string;
+        providerAliasType: MethodKind;
+        recurringModel?: RecurringModel;
+    } | null>;
+}
+export type ResolveSavedMethodResult<MethodKind extends string = string, RecurringModel extends string = string> = {
+    kind: "none";
+} | {
+    kind: "resolved";
+    paymentMethodRef: string;
+    paymentMethodAliasType: MethodKind;
+    paymentMethodRecurringModel?: RecurringModel;
+} | {
+    kind: "rejected";
+    reason: "saved_payment_method_resolver_unavailable" | "saved_payment_method_session_required" | "saved_payment_method_unavailable" | "saved_payment_method_read_failed";
+};
+export declare function createCheckoutSavedPaymentMethodResolver<Execution, Flow extends string, MethodKind extends string = string, RecurringModel extends string = string>(requestForExecution: (execution: Execution | undefined) => {
+    flow: Flow;
+    savedMethodId: string;
+} | null): {
+    resolveSavedPaymentMethodForCheckout: ({ req, paymentExecution, clientId, savedPaymentMethodResolverPort, now, recordStage, }: {
+        req: HttpRequest;
+        paymentExecution: Execution | undefined;
+        clientId: string;
+        savedPaymentMethodResolverPort?: CheckoutSavedPaymentMethodResolverPort<Flow, MethodKind, RecurringModel>;
+        now: () => Date;
+        recordStage: <T>(stage: "payment_method_ref", operation: () => Promise<T>) => Promise<T>;
+    }) => Promise<ResolveSavedMethodResult<MethodKind, RecurringModel>>;
+};
+export {};
+```
+## dist/commerce/server/commerceCheckoutStartRuntimeFailure.d.ts
+
+```ts
+import { CheckoutOrchestrationError } from "./commerceCheckoutOrchestrationError.js";
+export declare function createCheckoutStartRuntimeFailure(bindings: {
+    checkoutProviderAttemptFailure(error: unknown): CheckoutOrchestrationError | null;
+    prepareConflictReason: string;
+}): {
+    mapStartRuntimeFailure: (error: unknown, draftOrderId: string) => CheckoutOrchestrationError;
+};
+```
+## dist/commerce/server/commerceCheckoutTiming.d.ts
+
+```ts
+export type CheckoutStage = "quote" | "order_draft" | "start_runtime" | "account_link" | "apply_payment_result";
+export type CheckoutStageRecorder = <T>(stage: CheckoutStage, operation: () => Promise<T>) => Promise<T>;
+export type CheckoutTimingStage = CheckoutStage | "rate_limit" | "risk_blocklist" | "persist_intent" | "payment_method_ref" | "customer_defaults" | "total";
+export type CheckoutTimingOutcome = "success" | "error" | "rejected";
+export declare function createCheckoutTimingLogger(requestId: string, route: string): {
+    record: CheckoutStageRecorder & (<T>(stage: CheckoutTimingStage, operation: () => Promise<T>) => Promise<T>);
+    log: (stage: CheckoutTimingStage, outcome: CheckoutTimingOutcome) => void;
+};
+```
+## dist/commerce/server/commerceDiagnostics.d.ts
+
+```ts
+export declare function safeCommerceDiagnosticValue(value: unknown): string | null;
+export declare function checkoutOrchestrationFailureDetails(reason: string | null, previewDiagnosticsEnabled?: boolean): {
+    feature: "checkout";
+    stage: "orchestrate_order";
+    diagnosticReason?: string;
+};
+```
 ## dist/commerce/server/commerceOmsCancelOrderHandler.d.ts
 
 ```ts
@@ -6435,6 +8683,306 @@ export declare function createAdminCommerceOrderMarkRefundedHandler<Response>({ 
     mutationsEnabled: () => boolean;
 }): (req: OmsHandlerRequest, res: Response) => Promise<void>;
 ```
+## dist/commerce/server/commerceOrderDraft.d.ts
+
+```ts
+import type { z } from "zod";
+import type { CommerceOrderDraftWritePort } from "../contracts/ports.js";
+import type { RpcError as CommerceOrderDraftRpcError } from "../contracts/omsTypes.js";
+import { ORDER_DRAFT_RPC_NAME } from "./orderDraftRpcPayload.js";
+/** Companion RPC that supersedes a stale pre-payment draft for a stable journey key. */
+export declare const ORDER_DRAFT_SUPERSEDE_RPC_NAME: "commerce_supersede_pre_payment_order_draft";
+export interface CommerceOrderDraftRpcClient<Args extends Record<string, unknown>> {
+    rpc(functionName: typeof ORDER_DRAFT_RPC_NAME, args: Args): PromiseLike<{
+        data: unknown;
+        error: CommerceOrderDraftRpcError | null;
+    }>;
+    rpc(functionName: typeof ORDER_DRAFT_SUPERSEDE_RPC_NAME, args: {
+        p_idempotency_key: string;
+    }): PromiseLike<{
+        data: unknown;
+        error: CommerceOrderDraftRpcError | null;
+    }>;
+}
+export declare function createCommerceOrderDraftRpcPort<Request extends {
+    idempotencyKey: string;
+}, Response, Args extends Record<string, unknown>>(client: CommerceOrderDraftRpcClient<Args>, bindings: {
+    createOrderDraftRpcArgs(request: Request, clientId: string | null): Args;
+    responseSchema: z.ZodType<Response>;
+}): CommerceOrderDraftWritePort<Request, Response>;
+```
+## dist/commerce/server/commercePaidOrderOrchestration.d.ts
+
+```ts
+import type { PricingPolicySnapshot } from "../../pricing/index.js";
+import type { CheckoutJourney, CheckoutKind, CommerceOrderDraftWritePort, CommerceCheckoutRuntimePort } from "../contracts/index.js";
+import type { CommerceQuotePort } from "../ports.js";
+import { CheckoutOrchestrationError } from "./commerceCheckoutOrchestrationError.js";
+import type { CheckoutPaymentExecution } from "./commerceCheckoutProviderPayment.js";
+import type { CheckoutQuoteSnapshot } from "./checkoutQuoteTypes.js";
+export interface CheckoutJourneyRuntimeRequest<Snapshot, PaymentExecution extends CheckoutPaymentExecution, Provider extends string = string, Flow extends string = string, MethodKind extends string = string, RecurringModel extends string = string> {
+    idempotencyKey: string;
+    paymentAttemptSequence?: number;
+    orderDraft: {
+        orderId: string;
+        status: "draft";
+        paymentStatus: "not_started";
+        idempotencyKey: string;
+        quoteSnapshot: Snapshot;
+        replayed: boolean;
+    };
+    mode: "one_time" | "subscription_cycle";
+    saveForFutureUse: boolean;
+    clientId: string;
+    shippingAddressId: string;
+    paymentProvider: Provider;
+    returnContext: "public" | "account";
+    providerFlow: Flow;
+    paymentMethodRef?: string;
+    paymentMethodAliasType?: MethodKind;
+    paymentMethodRecurringModel?: RecurringModel;
+    paymentExecution?: PaymentExecution;
+    declaredBankId?: string;
+    providerPayer?: {
+        email: string;
+        name: string;
+        ip?: string | null;
+        userAgent?: string | null;
+    };
+    metadata: Record<string, unknown>;
+}
+export interface CheckoutJourneyRuntimeResponse<Provider extends string = string> {
+    runtime: {
+        orderId: string;
+        payment: {
+            paymentIntentId: string;
+            paymentAttemptId: string | null;
+            status: string;
+            attemptStatus: string | null;
+            provider: Provider;
+            continuationActionOrigin?: "fresh_execution" | null;
+            providerClientSecret?: string | null;
+            providerAttemptId?: string | null;
+            providerRedirectUrl?: string | null;
+            providerNextActionKind?: string | null;
+        };
+    };
+}
+export interface CheckoutJourneyResultRequest {
+    idempotencyKey: string;
+    orderId: string;
+    paymentIntentId: string;
+    resultStatus: "succeeded";
+    occurredAt: string;
+}
+export interface CheckoutPaymentStartedEvent {
+    email: string;
+    clientId: string;
+    orderId: string;
+    paymentIntentId: string;
+}
+export type CheckoutStage = "quote" | "order_draft" | "start_runtime" | "account_link" | "apply_payment_result";
+export type CheckoutStageRecorder = <T>(stage: CheckoutStage, operation: () => Promise<T>) => Promise<T>;
+export interface OrchestratedCheckoutResult<Snapshot, Provider extends string = string> {
+    orderId: string;
+    paymentIntentId: string;
+    paymentAttemptId: string | null;
+    paymentAttemptStatus?: string | null;
+    runtimePaymentStatus?: string;
+    executionRail: Provider;
+    continuationActionOrigin: "fresh_execution" | null;
+    providerClientSecret: string | null;
+    providerPaymentId: string | null;
+    providerRedirectUrl: string | null;
+    providerNextActionKind: string | null;
+    quoteSnapshot: Snapshot;
+    status: "paid" | "processing" | "failed";
+}
+export type PaidOrderOrchestrationDeps<Provisioned, Request, Snapshot, Draft, Extension, Runtime, Settlement, PaymentExecution extends CheckoutPaymentExecution, Provider extends string = string, Flow extends string = string, MethodKind extends string = string, RecurringModel extends string = string> = {
+    provisioned: Provisioned;
+    checkoutKind: CheckoutKind;
+    quotePort: CommerceQuotePort<Request, Snapshot, import("../../pricing/index.js").CreateQuoteOptions>;
+    orderDraftPort: CommerceOrderDraftWritePort<{
+        idempotencyKey: string;
+        quoteSnapshot: Snapshot;
+    }, Draft>;
+    runtimePort: CommerceCheckoutRuntimePort<CheckoutJourneyRuntimeRequest<Snapshot, PaymentExecution, Provider, Flow, MethodKind, RecurringModel> & Extension, Runtime, CheckoutJourneyResultRequest, Settlement>;
+    paymentProvider?: Provider;
+    saveForFutureUse?: boolean;
+    paymentAttemptSequence?: number;
+    returnContext?: "public" | "account";
+    paymentExecution?: PaymentExecution;
+    declaredBankId?: string;
+    paymentMethodRef?: string;
+    paymentMethodAliasType?: MethodKind;
+    paymentMethodRecurringModel?: RecurringModel;
+    quoteSnapshot?: Snapshot;
+    providerPayer?: {
+        email: string;
+        name: string;
+        ip?: string | null;
+        userAgent?: string | null;
+    };
+    onPaymentStarted?: (event: CheckoutPaymentStartedEvent) => Promise<void>;
+    recordStage?: CheckoutStageRecorder;
+    now: () => Date;
+};
+export declare function createPaidOrderOrchestration<Provisioned extends {
+    clientId: string;
+    addressId: string;
+}, Request, Snapshot extends CheckoutQuoteSnapshot, Draft extends {
+    orderDraft: {
+        orderId: string;
+    };
+}, Extension extends object, Runtime extends CheckoutJourneyRuntimeResponse<Provider>, Settlement, PaymentExecution extends CheckoutPaymentExecution, Provider extends string, Flow extends string, MethodKind extends string = string, RecurringModel extends string = string>(bindings: {
+    defaultPaymentProvider: Provider;
+    rehearsalPaymentProvider: Provider;
+    confirmationProvider: Provider;
+    missingConfirmationMessage: string;
+    providerFlowFor(provider: Provider, execution: PaymentExecution | undefined): Flow;
+    runtimeRequestExtension(provisioned: Provisioned): Extension;
+    mapStartRuntimeFailure(error: unknown, draftOrderId: string): CheckoutOrchestrationError;
+}): {
+    orchestrateCheckoutJourney: (deps: PaidOrderOrchestrationDeps<Provisioned, Request, Snapshot, Draft, Extension, Runtime, Settlement, PaymentExecution, Provider, Flow, MethodKind, RecurringModel>, journey: CheckoutJourney<Request, PricingPolicySnapshot>) => Promise<OrchestratedCheckoutResult<Snapshot, Provider>>;
+};
+```
+## dist/commerce/server/commerceProviderAttemptFailure.d.ts
+
+```ts
+import type { z } from "zod";
+import type { FinalizedCheckoutOrder } from "../contracts/index.js";
+type ProviderAttemptDispatchState = "not_dispatched" | "refused" | "unknown";
+export interface CheckoutAttemptFailureFacts extends Error {
+    paymentAttemptId: string | null;
+    phase: string;
+    dispatchState: ProviderAttemptDispatchState;
+}
+export interface CheckoutPreDispatchFailure extends CheckoutAttemptFailureFacts {
+    code: string;
+    retryCount: number;
+}
+export interface CheckoutInFlightFailure extends CheckoutAttemptFailureFacts {
+    code: string;
+}
+export interface CheckoutUncertainFailure<Diagnostic> extends CheckoutAttemptFailureFacts {
+    errorCode: string;
+    failureDiagnostic: Diagnostic | null;
+}
+interface ReopenPaymentPort<Evidence> {
+    reopenInteractivePreparedAttempt?(input: {
+        idempotencyKey: string;
+        paymentIntentId: string;
+        paymentAttemptId: string;
+        expectedOrderId: string;
+        expectedSubscriptionId: string | null;
+        expectedSubscriptionCycleId: string | null;
+        evidence: Evidence;
+    }): Promise<{
+        paymentAttemptId: string;
+        paymentIntentId: string;
+    }>;
+}
+export declare function createCheckoutProviderAttemptFailure<Order extends FinalizedCheckoutOrder<string>, Reservation, Response, Diagnostic, PreDispatch extends CheckoutPreDispatchFailure, InFlight extends CheckoutInFlightFailure, Uncertain extends CheckoutUncertainFailure<Diagnostic>, Evidence>(bindings: {
+    trustedPreDispatchEvidence(error: PreDispatch): Evidence | null;
+    isPreDispatch(error: unknown): error is PreDispatch;
+    isInFlight(error: unknown): error is InFlight;
+    isUncertain(error: unknown): error is Uncertain;
+    providerAttemptFailureLogFields(error: {
+        paymentAttemptId: string | null;
+        phase: string;
+        code: string;
+        dispatchState: ProviderAttemptDispatchState;
+        retryCount: number;
+        failureDiagnostic: Diagnostic | null;
+    }): unknown;
+    responseSchema: z.ZodType<Response>;
+    runtimeResponseExtension(order: Order): object;
+    contractVersion: string;
+}): {
+    CheckoutProviderAttemptFailure: {
+        new (error: PreDispatch | InFlight | Uncertain): {
+            readonly paymentAttemptId: string | null;
+            readonly phase: string;
+            readonly code: string;
+            readonly dispatchState: ProviderAttemptDispatchState;
+            readonly retryCount: number;
+            readonly failureDiagnostic: Diagnostic | null;
+            readonly orderIdForCompensation: string | null;
+            readonly reason: string | null;
+            name: string;
+            message: string;
+            stack?: string;
+            cause?: unknown;
+        };
+        captureStackTrace(targetObject: object, constructorOpt?: Function): void;
+        prepareStackTrace(err: Error, stackTraces: NodeJS.CallSite[]): any;
+        stackTraceLimit: number;
+    };
+    checkoutProviderAttemptFailure: (error: unknown) => {
+        readonly paymentAttemptId: string | null;
+        readonly phase: string;
+        readonly code: string;
+        readonly dispatchState: ProviderAttemptDispatchState;
+        readonly retryCount: number;
+        readonly failureDiagnostic: Diagnostic | null;
+        readonly orderIdForCompensation: string | null;
+        readonly reason: string | null;
+        name: string;
+        message: string;
+        stack?: string;
+        cause?: unknown;
+    } | null;
+    logCheckoutProviderAttemptFailure: (error: {
+        readonly paymentAttemptId: string | null;
+        readonly phase: string;
+        readonly code: string;
+        readonly dispatchState: ProviderAttemptDispatchState;
+        readonly retryCount: number;
+        readonly failureDiagnostic: Diagnostic | null;
+        readonly orderIdForCompensation: string | null;
+        readonly reason: string | null;
+        name: string;
+        message: string;
+        stack?: string;
+        cause?: unknown;
+    }) => void;
+    trustedPreDispatchEvidence: (error: PreDispatch) => Evidence | null;
+    buildReopenedPreparedAttemptResponse: (input: {
+        order: Order;
+        reservations: Reservation[];
+        intent: {
+            paymentIntentId: string;
+            paymentId: string;
+        };
+        paymentAttemptId: string;
+        provider: string;
+    }) => Response;
+    reopenExhaustedPreDispatchAttempt: (input: {
+        error: PreDispatch;
+        paymentPort: ReopenPaymentPort<Evidence>;
+        paymentExecutionIdempotencyKey: string;
+        order: Order;
+        reservations: Reservation[];
+        intent: {
+            paymentIntentId: string;
+            paymentId: string;
+        };
+        provider: string;
+    }) => Promise<Response>;
+    reopenExhaustedPreDispatchRecoveryAttempt: (input: {
+        error: PreDispatch;
+        paymentPort: ReopenPaymentPort<Evidence>;
+        paymentExecutionIdempotencyKey: string;
+        paymentIntentId: string;
+        order: {
+            orderId: string;
+            subscriptionId: string | null;
+            subscriptionCycleId: string | null;
+        };
+    }) => Promise<boolean>;
+};
+export {};
+```
 ## dist/commerce/server/commerceReturnsHandlers.d.ts
 
 ```ts
@@ -6479,6 +9027,348 @@ export declare function createAdminReturnRejectHandler(deps: {
     port: Pick<CommerceReturnsPort, "reject">;
 }): (req: HttpRequest, res: HttpResponse) => Promise<void>;
 export {};
+```
+## dist/commerce/server/commerceRuntimePort.d.ts
+
+```ts
+import type { z } from "zod";
+import type { CommerceCheckoutRuntimeOrderPort } from "../contracts/runtimePorts.js";
+import type { RpcError } from "../contracts/omsTypes.js";
+export interface ManagedCommerceRuntimeClient {
+    rpc(functionName: string, args: Record<string, unknown>): PromiseLike<{
+        data: unknown;
+        error: RpcError | null;
+    }>;
+}
+export declare function createManagedCommerceRuntimeOrderPort<Request, Order extends {
+    items: unknown[];
+}>(client: ManagedCommerceRuntimeClient, bindings: {
+    finalizeArgs(request: Request): Record<string, unknown>;
+    responseEnvelopeSchema: z.ZodType;
+}): CommerceCheckoutRuntimeOrderPort<Request, Order>;
+export declare function mapRpcError(error: RpcError): Error;
+```
+## dist/commerce/server/commerceRuntimeService.d.ts
+
+```ts
+import type { z } from "zod";
+import type { FinalizedCheckoutOrder, CommerceCheckoutRuntimeOrderPort, InventoryCheckoutReservationPort, CommerceRuntimeReadinessPort } from "../contracts/index.js";
+import type { CheckoutRuntimeRequest, CheckoutRuntimeExecutionInput, CheckoutRuntimeExecutionResult, CheckoutRuntimeExecutionPort, CheckoutRuntimePaymentPort, CheckoutRuntimeResultRequest, CheckoutRuntimeResponse } from "./checkoutRuntimeTypes.js";
+export declare function createCommerceRuntimeService<Request extends CheckoutRuntimeRequest, Order extends FinalizedCheckoutOrder<string>, Reservation, PaymentPort extends CheckoutRuntimePaymentPort, Execution extends CheckoutRuntimeExecutionResult, Transient, ExecutionPort extends CheckoutRuntimeExecutionPort<Execution, Transient, Request["providerFlow"], NonNullable<Request["paymentMethodAliasType"]>, NonNullable<Request["paymentMethodRecurringModel"]>>, PreparedPort, PreDispatch, Readiness, Response extends CheckoutRuntimeResponse, ResultRequest extends CheckoutRuntimeResultRequest, ResultResponse, PreparedProvider extends Request["paymentProvider"]>(bindings: {
+    defaultPaymentProvider: Request["paymentProvider"];
+    defaultProviderFlow: Request["providerFlow"];
+    preparedRecurringModel(request: Request): string | undefined;
+    contractVersion: string;
+    resultResponseSchema: z.ZodType<ResultResponse>;
+    defaultExecutionPort: ExecutionPort;
+    executionSubject(order: Order): object;
+    paymentMetadataExtension(order: Order): object;
+    buildProviderAttemptIdentity(input: {
+        provider: Request["paymentProvider"];
+        localExecutionIdempotencyKey: string;
+        paymentIntentId: string;
+        amountMinor: number;
+        currency: string;
+        mode: "one_time" | "subscription_cycle";
+        orderRef: string;
+    }): {
+        providerIdempotencyKey: string;
+        providerRequestFingerprint: string;
+    };
+    transientProviderInput(execution: Request["paymentExecution"]): Transient | null;
+    requiresPreparedProviderAttempt(provider: Request["paymentProvider"]): provider is PreparedProvider;
+    preparedProviderAttemptPort(port: PaymentPort, provider: Request["paymentProvider"]): PreparedPort;
+    executePreparedProviderAttempt(input: {
+        paymentPort: PreparedPort;
+        executionPort: ExecutionPort;
+        provider: PreparedProvider;
+        paymentIntentId: string;
+        executionInput: CheckoutRuntimeExecutionInput<Transient, Request["providerFlow"], NonNullable<Request["paymentMethodAliasType"]>, NonNullable<Request["paymentMethodRecurringModel"]>>;
+        prepareIdempotencyKey: string;
+        finalizeIdempotencyKey: string;
+        providerIdempotencyKey: string;
+        providerRequestFingerprint: string;
+        providerFlow: string;
+        paymentMethodRef?: string | null;
+        prepareRequestPayload: Record<string, unknown>;
+    }): Promise<{
+        execution: Execution;
+        attempt: {
+            paymentAttemptId: string;
+            status: string;
+        };
+    }>;
+    isPreDispatch(error: unknown): error is PreDispatch;
+    reopenExhaustedPreDispatchAttempt(input: {
+        error: PreDispatch;
+        paymentPort: PaymentPort;
+        paymentExecutionIdempotencyKey: string;
+        order: Order;
+        reservations: Reservation[];
+        intent: {
+            paymentIntentId: string;
+            paymentId: string;
+        };
+        provider: Request["paymentProvider"];
+    }): Promise<Response>;
+    preserveProviderDispatchUncertainty<T>(operation: () => Promise<T>, paymentAttemptId: string): Promise<T>;
+    recordPaymentAttempt(port: PaymentPort, input: {
+        idempotencyKey: string;
+        paymentIntentId: string;
+        execution: Execution;
+    }): Promise<{
+        paymentAttemptId: string;
+        status: string;
+    }>;
+    buildStartedRuntimeResponse(input: {
+        paymentExecutionIdempotencyKey: string;
+        order: Order;
+        reservations: Reservation[];
+        intent: {
+            paymentIntentId: string;
+            paymentId: string;
+            status: string;
+        };
+        execution: Execution;
+        attempt: {
+            paymentAttemptId: string;
+            status: string;
+        };
+        continuationActionOrigin: "fresh_execution" | null;
+        paymentPort: PaymentPort;
+        readinessPort: CommerceRuntimeReadinessPort<Readiness>;
+    }): Promise<Response>;
+}): ({ orderPort, inventoryPort, paymentPort, readinessPort, executionPort, resolveExecutionPort, }: {
+    orderPort: CommerceCheckoutRuntimeOrderPort<Request, Order>;
+    inventoryPort: InventoryCheckoutReservationPort<Order, "created", Reservation>;
+    paymentPort: PaymentPort;
+    readinessPort: CommerceRuntimeReadinessPort<Readiness>;
+    executionPort?: ExecutionPort;
+    resolveExecutionPort?: (provider: string) => ExecutionPort;
+}) => {
+    startRuntime: (request: Request, resolvedExecutionPort?: ExecutionPort) => Promise<Response>;
+    applyPaymentResult: (request: ResultRequest) => Promise<ResultResponse>;
+};
+```
+## dist/commerce/server/commerceRuntimeStartResponse.d.ts
+
+```ts
+import type { z } from "zod";
+import type { FinalizedCheckoutOrder, CommerceRuntimeReadinessPort } from "../contracts/index.js";
+import type { CheckoutRuntimeExecutionResult } from "./checkoutRuntimeTypes.js";
+export declare function createRuntimeStartResponse<Order extends FinalizedCheckoutOrder<string>, Reservation, PaymentPort, Execution extends CheckoutRuntimeExecutionResult, Readiness, Response>(bindings: {
+    contractVersion: string;
+    responseSchema: z.ZodType<Response>;
+    runtimeResponseExtension(order: Order): object;
+    finalizeDeclinedAttempt(port: PaymentPort, input: {
+        idempotencyKey: string;
+        orderId: string;
+        paymentIntentId: string;
+        fallbackAttemptId: string;
+        decline: NonNullable<Execution["providerDecline"]>;
+    }): Promise<{
+        paymentAttemptId: string;
+        status: string;
+    }>;
+}): {
+    buildStartedRuntimeResponse: (input: {
+        paymentExecutionIdempotencyKey: string;
+        order: Order;
+        reservations: Reservation[];
+        intent: {
+            paymentIntentId: string;
+            paymentId: string;
+            status: string;
+        };
+        execution: Execution;
+        attempt: {
+            paymentAttemptId: string;
+            status: string;
+        };
+        continuationActionOrigin: "fresh_execution" | null;
+        paymentPort: PaymentPort;
+        readinessPort: CommerceRuntimeReadinessPort<Readiness>;
+    }) => Promise<Response>;
+};
+```
+## dist/commerce/server/commerceStarterOfferGuard.d.ts
+
+```ts
+import type { z } from "zod";
+import type { ConfiguratorIntent } from "../contracts/index.js";
+import type { CommerceQuotePort } from "../ports.js";
+import type { StarterTermsPort } from "./starterTermsPort.js";
+import type { CheckoutQuoteSnapshot } from "./checkoutQuoteTypes.js";
+export interface StarterDeclaration {
+    intervalDays: number;
+    delivery2DiscountBps: number;
+    acquisitionTerms?: {
+        revision: string;
+        delivery2DiscountBps: number;
+    };
+    steady: {
+        cadenceDays: number;
+        units: number;
+    };
+}
+export type StarterOfferGuardResult<Plan> = {
+    kind: "absent";
+} | {
+    kind: "rejected";
+    reason: string;
+} | {
+    kind: "minted";
+    plan: Plan;
+};
+export declare function withStarterPackContext<Snapshot extends CheckoutQuoteSnapshot, Plan>(snapshot: Snapshot, plan: Plan | null): Snapshot;
+export declare function createStarterOfferGuard<Intent extends ConfiguratorIntent, Provisioned extends {
+    clientId: string | null;
+}, Request, Snapshot extends CheckoutQuoteSnapshot, Plan>(bindings: {
+    declaration(intent: Intent): StarterDeclaration | undefined;
+    defaultTermsPort: StarterTermsPort<Intent, Snapshot>;
+    defaultDiscountBps: number;
+    discountMinor(input: {
+        bandSubtotalMinor: number;
+        listAnchorTotalMinor: number;
+        discountBps: number;
+    }): number | null;
+    planSchema: z.ZodType<Plan>;
+    aggregateBySku(entries: Intent["selectedVariants"]): Intent["selectedVariants"];
+    rescaleBasket(entries: Intent["selectedVariants"], units: number): Intent["selectedVariants"];
+    steadyIntent(intent: Intent, cadenceDays: number, units: number, variants: Intent["selectedVariants"]): Intent;
+    buildQuoteRequest(intent: Intent, provisioned: Provisioned): Request;
+}): {
+    resolveStarterOfferGuard: (input: {
+        flagEnabled: boolean;
+        intent: Intent;
+        provisioned: Provisioned;
+        authoritativeQuote: Snapshot;
+        quotePort: CommerceQuotePort<Request, Snapshot, import("../../pricing/index.js").CreateQuoteOptions>;
+        isFirstOrderEligible?: () => Promise<boolean>;
+        termsPort?: StarterTermsPort<Intent, Snapshot>;
+        offerVersion?: string;
+    }) => Promise<StarterOfferGuardResult<Plan>>;
+};
+```
+## dist/commerce/server/configuratorIntentPersistence.d.ts
+
+```ts
+import type { z } from "zod";
+import type { ConfiguratorIntentPersistencePort } from "../contracts/ports.js";
+import type { CheckoutCommandPersistencePort } from "../contracts/runtimePorts.js";
+import type { RpcError } from "../contracts/omsTypes.js";
+interface ConfiguratorIntentIdentityQueryResult {
+    data: Array<{
+        response_payload?: unknown;
+    }> | null;
+    error: RpcError | null;
+}
+interface ConfiguratorIntentIdentityQuery {
+    eq(column: string, value: unknown): ConfiguratorIntentIdentityQuery;
+    limit(count: number): PromiseLike<ConfiguratorIntentIdentityQueryResult>;
+}
+interface ConfiguratorIntentIdentityTable {
+    select(columns: string): ConfiguratorIntentIdentityQuery;
+}
+/**
+ * The identity the ROUTE proved for this request, and the only identity the RPC
+ * is allowed to believe.
+ *
+ * ⛔ It is not read from the request body and never can be: `withVerifiedSubject`
+ * writes it last and unconditionally, so a payload that carries the key has it
+ * overwritten rather than honoured. A guest is `null`, which is a positive claim
+ * that nobody proved anything - not an absence the RPC may fill in.
+ */
+export interface ConfiguratorIntentPersistenceIdentity {
+    authenticatedUserId: string | null;
+}
+type PersistIntentPayload<Request, Command> = (Request | Command) & {
+    authenticatedUserId: string | null;
+};
+export interface ConfiguratorIntentRpcQueryClient<Request, Command> {
+    rpc(functionName: "commerce_configurator_persist_intent", args: {
+        p_intent: PersistIntentPayload<Request, Command>;
+    }): PromiseLike<{
+        data: unknown;
+        error: RpcError | null;
+    }>;
+    from(tableName: "commerce_idempotency_keys"): ConfiguratorIntentIdentityTable;
+}
+export declare function createConfiguratorIntentPersistenceRpcPort<Request extends object, Response, Command extends object, Persistence>(client: ConfiguratorIntentRpcQueryClient<Request, Command>, bindings: {
+    responseSchema: z.ZodType<Response>;
+    decodeCommandResponse(data: unknown): Persistence;
+    normalizePhoneToE164(phone: string, country: unknown): string | null;
+}, identity?: ConfiguratorIntentPersistenceIdentity): ConfiguratorIntentPersistencePort<Request, Response> & CheckoutCommandPersistencePort<Command, Persistence>;
+export {};
+```
+## dist/commerce/server/configuratorIntentPersistenceHandler.d.ts
+
+```ts
+import type { z } from "zod";
+import type { HttpRequest, HttpResponse } from "../../http/index.js";
+import type { BffResponder } from "../../bff/index.js";
+import type { ConfiguratorIntentPersistencePort } from "../contracts/index.js";
+export declare class ConfiguratorIntentPersistenceConflictError extends Error {
+    readonly details: Record<string, unknown>;
+    constructor(message?: string, details?: Record<string, unknown>);
+}
+export declare function createConfiguratorIntentPersistenceHandler<Request, Response>({ persistencePort, responder, requestSchema, responseSchema, }: {
+    persistencePort: ConfiguratorIntentPersistencePort<Request, Response>;
+    responder: BffResponder;
+    requestSchema: z.ZodType<Request>;
+    responseSchema: z.ZodType<Response>;
+}): (req: HttpRequest, res: HttpResponse) => Promise<void>;
+```
+## dist/commerce/server/emailRuntime.d.ts
+
+```ts
+import type { ZodType } from "zod";
+import type { OutboxEventRow, OutboxHandler, OutboxHandlerOutcome } from "../outboxDispatchContracts.js";
+import type { OrderEmailTotals, OrderPaidRawData, TransactionalEmailSendOutcome } from "../outboxOrderDraftEmailPorts.js";
+import type { OrderEmailLinePresentation } from "../orderEmailLines.js";
+export interface TransactionalEmailHandlerSpec<Payload, Recipient> {
+    eventType: string;
+    timeoutMs: number;
+    templateSlug: string;
+    schema: ZodType<Payload>;
+    resolveKey(payload: Payload): string;
+    recipientPort: {
+        resolve(key: string, signal: AbortSignal): Promise<Recipient | null>;
+    };
+    findExistingSend(templateSlug: string, outboxEventId: string): Promise<boolean>;
+    send(ctx: {
+        row: OutboxEventRow;
+        payload: Payload;
+        recipient: Recipient;
+        signal: AbortSignal;
+    }): Promise<TransactionalEmailSendOutcome>;
+}
+/** Host bindings to the communications owner and presentation/provider policy. */
+export interface CommerceEmailRuntime<Locale extends string = string> extends OrderEmailLinePresentation<Locale> {
+    parseOutboxPayload<Payload>(schema: ZodType<Payload>, payload: unknown): {
+        ok: true;
+        data: Payload;
+    } | {
+        ok: false;
+        outcome: OutboxHandlerOutcome;
+    };
+    mapSendOutcome(outcome: TransactionalEmailSendOutcome): OutboxHandlerOutcome;
+    createTransactionalEmailHandler<Payload, Recipient>(spec: TransactionalEmailHandlerSpec<Payload, Recipient>): OutboxHandler;
+    resolveLocale(country: string | null | undefined): Locale;
+    /** null preserves ordinary totals and item prices; a presentation suppresses item prices. */
+    presentPaidOrder(data: OrderPaidRawData): OrderEmailTotals | null;
+    providerOwnsDeliveredNotification(providerKind: string): boolean;
+    normalizeCarrierKind(input: {
+        carrierKind: string | null;
+        service: string | null;
+    }): string | null;
+    carrierTrackingUrl(carrierKind: string | null, trackingNumber: string): string | null;
+    legacyTrackingUrl(ref: {
+        providerKind: string | null;
+        carrierKind: string | null;
+        trackingNumber: string;
+    }, hasExplicitReferences: boolean): string | null;
+}
 ```
 ## dist/commerce/server/handlerSupport.d.ts
 
@@ -6599,6 +9489,189 @@ export { createSupabaseOrderFeedbackSubmitPort } from "./orderFeedbackSubmit.js"
 export type { OrderFeedbackSubmitRpcClient, OrderFeedbackSubmitPort } from "./orderFeedbackSubmit.js";
 export { createSupabaseOrderFeedbackTokenCheckPort } from "./orderFeedbackTokenCheck.js";
 export type { OrderFeedbackTokenCheckRpcClient } from "./orderFeedbackTokenCheck.js";
+/** Node-only commerce effect consumers. Hosts bind runtime and presentation ports. */
+export * from "./emailRuntime.js";
+export * from "./outboxDispatchRegistry.js";
+export * from "./outboxDispatchRegistryComposition.js";
+export * from "./outboxCheckoutExpiredEmailHandler.js";
+export * from "./outboxCheckoutRecoveryEmailHandler.js";
+export * from "./outboxOrderDraftEmailHandler.js";
+export * from "./outboxOrderPaidEmailHandler.js";
+export * from "./outboxOrderPaidFulfillmentHandler.js";
+export * from "./outboxOrderPaidFulfillmentPorts.js";
+export * from "./outboxOrderRefundedEmailHandler.js";
+export * from "./outboxPaymentFailedEmailHandler.js";
+export * from "./outboxReturnEmailHandlers.js";
+export * from "./outboxShipmentDeliveredEmailHandler.js";
+export * from "./outboxShipmentDispatchedEmailHandler.js";
+export * from "./outboxShipmentExceptionEmailHandler.js";
+/** @consumer server/domains/commerce/commerceCheckoutCompensation.ts */
+export { tryCompensate } from "./commerceCheckoutCompensation.js";
+/** @consumer server/domains/commerce/commerceCheckoutCompensation.ts */
+export type { CheckoutCompensationPort } from "./commerceCheckoutCompensation.js";
+/** @consumer server/domains/commerce/commerceCheckoutOrchestrationError.ts */
+export { CheckoutOrchestrationError } from "./commerceCheckoutOrchestrationError.js";
+/** @consumer server/domains/commerce/checkoutConflictClassifiers.ts */
+export { isStockUnavailableCheckoutConflict, isProviderAttemptInFlightCheckoutConflict, isJourneyConsumedCheckoutConflict, START_RUNTIME_SIMPLE_CONFLICTS } from "./checkoutConflictClassifiers.js";
+/** @consumer server/domains/commerce/commerceDiagnostics.ts */
+export { safeCommerceDiagnosticValue, checkoutOrchestrationFailureDetails } from "./commerceDiagnostics.js";
+/** @consumer server/domains/commerce/checkoutPaymentContinuationCredential.ts */
+export { mintPaymentContinuationOnFreshAction, createCheckoutPaymentContinuationCodec } from "./checkoutPaymentContinuationCredential.js";
+/** @consumer server/domains/commerce/checkoutPaymentContinuationCredential.ts */
+export type { CheckoutPaymentContinuationInput, CheckoutPaymentContinuationClaims, CheckoutPaymentContinuationCodec, CheckoutPaymentContinuationMinter, CheckoutCookieResponse } from "./checkoutPaymentContinuationCredential.js";
+/** @consumer server/domains/commerce/checkoutRefusalContinuation.ts */
+export { mintCheckoutRefusalContinuation } from "./checkoutRefusalContinuation.js";
+/** @consumer server/domains/commerce/commerceCheckoutProviderPayment.ts */
+export { createCheckoutClientAction, providerPayerFromRequest } from "./commerceCheckoutProviderPayment.js";
+/** @consumer server/domains/commerce/checkoutOfferPolicyPort.ts */
+export { CHECKOUT_OFFER_VERSION_UNSUPPORTED, CheckoutOfferRefusedError, resolveCheckoutOffer, withCheckoutOfferContext } from "./checkoutOfferPolicyPort.js";
+/** @consumer server/domains/commerce/checkoutOfferPolicyPort.ts */
+export type { CheckoutOfferPolicyPort, CheckoutOfferBinding } from "./checkoutOfferPolicyPort.js";
+/** @consumer server/domains/commerce/commerceCheckoutCustomerDefaults.ts */
+export { readCheckoutCustomerDefaults, readCheckoutCustomerDefaultsOrRespond } from "./commerceCheckoutCustomerDefaults.js";
+/** @consumer server/domains/commerce/commerceCheckoutTiming.ts */
+export { createCheckoutTimingLogger } from "./commerceCheckoutTiming.js";
+/** @consumer server/domains/commerce/commerceCheckoutTiming.ts */
+export type { CheckoutTimingStage, CheckoutTimingOutcome, CheckoutStage, CheckoutStageRecorder } from "./commerceCheckoutTiming.js";
+/** @consumer server/domains/commerce/checkoutInvoiceBuyerSnapshot.ts */
+export { buildCheckoutInvoiceBuyerSnapshot } from "./checkoutInvoiceBuyerSnapshot.js";
+/** @consumer server/domains/commerce/commerceCheckoutSavedPaymentMethod.ts */
+export { createCheckoutSavedPaymentMethodResolver } from "./commerceCheckoutSavedPaymentMethod.js";
+/** @consumer server/domains/commerce/commerceCheckoutSavedPaymentMethod.ts */
+export type { ResolveSavedMethodResult } from "./commerceCheckoutSavedPaymentMethod.js";
+/** @consumer server/domains/commerce/commerceStarterOfferGuard.ts */
+export { createStarterOfferGuard, withStarterPackContext } from "./commerceStarterOfferGuard.js";
+/** @consumer server/domains/commerce/commerceStarterOfferGuard.ts */
+export type { StarterOfferGuardResult } from "./commerceStarterOfferGuard.js";
+/** @consumer src/domains/commerce/starterTermsPort.ts */
+export type { StarterTermsPort, StarterTermsDecision, StarterTermsResolution, StarterTermsRefusal } from "./starterTermsPort.js";
+/** @consumer server/domains/commerce/commerceCheckoutQuoteGuard.ts */
+export { createCheckoutQuoteGuard } from "./commerceCheckoutQuoteGuard.js";
+/** @consumer server/domains/commerce/commerceCheckoutQuoteGuard.ts */
+export type { CheckoutQuoteGuardResult } from "./commerceCheckoutQuoteGuard.js";
+/** @consumer server/domains/commerce/commerceCheckoutResumeGuard.ts */
+export { createCheckoutResumeGuard, selectedDeliveryMatches, subscriptionResponse } from "./commerceCheckoutResumeGuard.js";
+/** @consumer server/domains/commerce/commerceCheckoutResumeGuard.ts */
+export type { CheckoutResumeGuardDeps, QuoteLikeSnapshot } from "./commerceCheckoutResumeGuard.js";
+/** @consumer server/domains/commerce/commerceCheckoutContinuationTerms.ts */
+export { createSavedAcquisitionContinuation } from "./commerceCheckoutContinuationTerms.js";
+/** @consumer server/domains/commerce/commerceProviderAttemptFailure.ts */
+export { createCheckoutProviderAttemptFailure } from "./commerceProviderAttemptFailure.js";
+/** @consumer server/domains/commerce/commerceCheckoutStartRuntimeFailure.ts */
+export { createCheckoutStartRuntimeFailure } from "./commerceCheckoutStartRuntimeFailure.js";
+/** @consumer server/domains/commerce/commerceRuntimeStartResponse.ts */
+export { createRuntimeStartResponse } from "./commerceRuntimeStartResponse.js";
+/** @consumer server/domains/commerce/commerceRuntimeService.ts */
+export { createCommerceRuntimeService } from "./commerceRuntimeService.js";
+/** @consumer server/domains/commerce/commercePaidOrderOrchestration.ts */
+export { createPaidOrderOrchestration } from "./commercePaidOrderOrchestration.js";
+/** @consumer server/domains/commerce/commercePaidOrderOrchestration.ts */
+export type { OrchestratedCheckoutResult, CheckoutPaymentStartedEvent } from "./commercePaidOrderOrchestration.js";
+/** @consumer server/domains/commerce/commerceCheckoutCommandExecution.ts */
+export { createCheckoutCommandExecutor, checkoutCommandJourney } from "./commerceCheckoutCommandExecution.js";
+/** @consumer server/domains/commerce/configuratorIntentPersistenceHandler.ts */
+export { createConfiguratorIntentPersistenceHandler, ConfiguratorIntentPersistenceConflictError } from "./configuratorIntentPersistenceHandler.js";
+/** @consumer server/domains/commerce/referenceCheckoutHandler.ts */
+export { createReferenceCheckoutHandler } from "./referenceCheckoutHandler.js";
+/** @consumer server/domains/commerce/commerceCheckoutHandlerHelpers.ts */
+export { createCheckoutHandlerHelpers, runBestEffortAccountLink } from "./commerceCheckoutHandlerHelpers.js";
+/** @consumer server/domains/commerce/commerceCheckoutHandlerAdmission.ts */
+export { createCheckoutAdmission } from "./commerceCheckoutHandlerAdmission.js";
+/** @consumer server/domains/commerce/commerceCheckoutPromotionPriceChange.ts */
+export { createPromotionPriceChange } from "./commerceCheckoutPromotionPriceChange.js";
+/** @consumer server/domains/commerce/commerceCheckoutFailureHandler.ts */
+export { createCheckoutFailureHandler } from "./commerceCheckoutFailureHandler.js";
+/** @consumer server/domains/commerce/commerceCheckoutHandler.ts */
+export { createCommerceCheckoutHandler } from "./commerceCheckoutHandler.js";
+/** @consumer server/domains/commerce/orderDraftRpcPayload.ts */
+export { ORDER_DRAFT_RPC_NAME, createOrderDraftRpcPayload } from "./orderDraftRpcPayload.js";
+/** @consumer Reference order-draft store binding. */
+export { createCommerceOrderDraftRpcPort, ORDER_DRAFT_SUPERSEDE_RPC_NAME } from "./commerceOrderDraft.js";
+/** @consumer Reference order-draft store binding. */
+export type { CommerceOrderDraftRpcClient } from "./commerceOrderDraft.js";
+/** @consumer server/adapters/managed/commerce/commerceRuntimePort.ts */
+export { createManagedCommerceRuntimeOrderPort, mapRpcError as mapCommerceFinalizeRpcError } from "./commerceRuntimePort.js";
+/** @consumer server/adapters/managed/commerce/commerceRuntimePort.ts */
+export type { ManagedCommerceRuntimeClient } from "./commerceRuntimePort.js";
+/** @consumer server/adapters/managed/commerce/reservationSweepPort.ts */
+export { createManagedReservationSweepPort } from "./reservationSweepPort.js";
+/** @consumer server/adapters/managed/commerce/reservationSweepPort.ts */
+export type { ReservationSweepCounts, ReservationSweepRpcClient, RetryHoldSweepCounts } from "./reservationSweepPort.js";
+/** @consumer Reference checkout compensation binding. */
+export { createCheckoutCompensationRpcAdapter, cancelAbandonedCheckout, cancelUnstartedPromotionCheckout } from "./checkoutCompensation.js";
+/** @consumer Reference checkout compensation binding. */
+export type { CompensationRpcClient } from "./checkoutCompensation.js";
+/** @consumer server/domains/commerce/checkoutRecoveryToken.ts */
+export { hashCheckoutRecoveryToken, generateCheckoutRecoveryToken, CHECKOUT_RECOVERY_TOKEN_PREFIX, classifyCheckoutRecoveryTokenState } from "./checkoutRecoveryToken.js";
+/** @consumer server/domains/commerce/checkoutRecoveryToken.ts */
+export type { CheckoutRecoveryTokenContext, CheckoutRecoveryTokenInspection, CheckoutRecoveryTokenPort } from "./checkoutRecoveryToken.js";
+/** @consumer server/domains/commerce/checkoutRecoveryOrderPort.ts */
+export type { CheckoutRecoveryOrderSnapshot, CheckoutRecoveryOrderReadPort, CheckoutRecoveryPriorPaymentEvidence } from "./checkoutRecoveryOrderPort.js";
+/** @consumer server/domains/commerce/checkoutExpiredRecoveryPolicy.ts */
+export { createExpiredCheckoutRecoveryPolicy, EXPIRED_CHECKOUT_RECOVERY_WINDOW_MS, quotesMatchForRecovery } from "./checkoutExpiredRecoveryPolicy.js";
+/** @consumer server/domains/commerce/checkoutExpiredRecoveryPolicy.ts */
+export type { ExpiredRecoveryEligibility } from "./checkoutExpiredRecoveryPolicy.js";
+/** @consumer Reference checkout resume store binding. */
+export { createCommerceCheckoutResumeQueryPort } from "./commerceCheckoutResume.js";
+/** @consumer Reference checkout resume store binding. */
+export type { CommerceCheckoutResumeClient } from "./commerceCheckoutResume.js";
+/** @consumer Reference configurator intent persistence binding. */
+export { createConfiguratorIntentPersistenceRpcPort } from "./configuratorIntentPersistence.js";
+/** @consumer Reference configurator intent persistence binding. */
+export type { ConfiguratorIntentRpcQueryClient, ConfiguratorIntentPersistenceIdentity } from "./configuratorIntentPersistence.js";
+/** @consumer Reference physical-stock availability binding. */
+export { createOfferAvailabilityPort } from "./offerAvailability.js";
+/** @consumer Reference physical-stock availability binding. */
+export type { OfferAvailabilityQueryClient } from "./offerAvailability.js";
+```
+## dist/commerce/server/offerAvailability.d.ts
+
+```ts
+import type { CommerceOfferAvailabilityPort } from "../contracts/availability.js";
+export interface OfferAvailabilityQueryClient {
+    from(table: string): OfferAvailabilityQueryBuilder;
+}
+interface OfferAvailabilityQueryBuilder extends PromiseLike<OfferAvailabilityQueryResult> {
+    select(columns: string, options?: Record<string, unknown>): OfferAvailabilityQueryBuilder;
+    in(column: string, values: unknown[]): PromiseLike<OfferAvailabilityQueryResult>;
+}
+interface OfferAvailabilityQueryResult {
+    data: unknown;
+    error: {
+        code?: string;
+        message?: string;
+    } | null;
+}
+export declare function createOfferAvailabilityPort(client: OfferAvailabilityQueryClient, options: {
+    isStockProvider: (providerKind: string) => boolean;
+    lowStockThreshold?: number;
+    now?: () => Date;
+}): CommerceOfferAvailabilityPort;
+export {};
+```
+## dist/commerce/server/orderDraftRpcPayload.d.ts
+
+```ts
+import { z } from "zod";
+export declare const ORDER_DRAFT_RPC_NAME = "commerce_create_order_draft_with_outbox";
+type OrderDraftRpcSchema<Quote extends z.ZodType, Draft extends z.ZodType> = z.ZodObject<{
+    p_idempotency_key: z.ZodString;
+    p_quote_snapshot: Quote;
+    p_order_draft_snapshot: Draft;
+    p_client_id: z.ZodOptional<z.ZodGUID>;
+}, z.core.$strict>;
+export declare function createOrderDraftRpcPayload<Quote extends z.ZodType, Draft extends z.ZodType>(input: {
+    quoteSchema: Quote;
+    draftSchema: Draft;
+    createSnapshot(quote: z.output<Quote>): z.input<Draft>;
+}): {
+    orderDraftRpcArgsSchema: OrderDraftRpcSchema<Quote, Draft>;
+    createOrderDraftRpcArgs: (request: {
+        idempotencyKey: string;
+        quoteSnapshot: z.output<Quote>;
+    }, clientId?: string | null) => z.output<OrderDraftRpcSchema<Quote, Draft>>;
+};
+export {};
 ```
 ## dist/commerce/server/orderFeedbackSubmit.d.ts
 
@@ -6887,6 +9960,391 @@ export declare function inspectImageHeader(mime: OrderReviewMediaMime, bytes: Ui
     height: number;
 } | null;
 ```
+## dist/commerce/server/outboxCheckoutExpiredEmailHandler.d.ts
+
+```ts
+import type { CommerceEmailRuntime } from "./emailRuntime.js";
+import type { OutboxHandler } from "../outboxDispatchContracts.js";
+import { OUTBOX_CHECKOUT_EXPIRED_TEMPLATE_SLUG, type OrderPaymentLifecyclePort, type OrderRecipientPort, type TransactionalEmailPort } from "../outboxOrderDraftEmailPorts.js";
+export { OUTBOX_CHECKOUT_EXPIRED_TEMPLATE_SLUG };
+export declare const outboxCheckoutExpiredEmailDescriptor: Readonly<{
+    eventType: "commerce.checkout.expired";
+    timeoutMs: 10000;
+}>;
+export declare function createOutboxCheckoutExpiredEmailHandler<Locale extends string>(deps: {
+    runtime: Pick<CommerceEmailRuntime<Locale>, "formatMoney" | "mapSendOutcome" | "parseOutboxPayload" | "resolveLocale">;
+    emailPort: TransactionalEmailPort<Locale>;
+    recipientPort: OrderRecipientPort;
+    lifecyclePort: OrderPaymentLifecyclePort;
+}): OutboxHandler;
+```
+## dist/commerce/server/outboxCheckoutRecoveryEmailHandler.d.ts
+
+```ts
+import type { CommerceEmailRuntime } from "./emailRuntime.js";
+import { type OrderPaymentLifecyclePort, type TransactionalEmailPort, type OrderRecipientPort } from "../outboxOrderDraftEmailPorts.js";
+import type { OutboxHandler } from "../outboxDispatchContracts.js";
+export declare const outboxCheckoutRecoveryEmailDescriptor: Readonly<{
+    eventType: "commerce.checkout_recovery";
+    timeoutMs: 10000;
+}>;
+export declare function createOutboxCheckoutRecoveryEmailHandler<Locale extends string>(deps: {
+    runtime: Pick<CommerceEmailRuntime<Locale>, "mapSendOutcome" | "parseOutboxPayload" | "resolveLocale">;
+    emailPort: TransactionalEmailPort<Locale>;
+    recipientPort: OrderRecipientPort;
+    lifecyclePort: OrderPaymentLifecyclePort;
+}): OutboxHandler;
+```
+## dist/commerce/server/outboxDispatchRegistry.d.ts
+
+```ts
+import type { CommerceEmailRuntime } from "./emailRuntime.js";
+import type { OutboxHandlerDescriptor } from "@openlup/core/outbox";
+import type { OutboxHandler, OutboxHandlerRegistry } from "../outboxDispatchContracts.js";
+import type { OrderPaymentLifecyclePort, OrderPaidLinesPort, OrderRecipientPort, TransactionalEmailPort } from "../outboxOrderDraftEmailPorts.js";
+import { type OrderPaidParcelNoteReader } from "./outboxOrderPaidEmailHandler.js";
+import { type DeliveredEmailProviderKindReader } from "./outboxShipmentDeliveredEmailHandler.js";
+import type { OrderPaidFulfillmentPort } from "./outboxOrderPaidFulfillmentPorts.js";
+import { type OrderPaidRiskAssessmentPort } from "./outboxOrderPaidFulfillmentHandler.js";
+import { type OrderBuyerCommsPolicy } from "../salesChannelEnvelope.js";
+/**
+ * Reads the sales-source buyer-comms policy for one order. `null` is
+ * the answer for an order that names no channel — a storefront order, or one
+ * that predates the source axis.
+ *
+ * Read on every event so changes to `sales_channels.buyer_comms_owner` take
+ * effect on the next dispatch. A cached policy could keep sending after
+ * ownership has changed.
+ */
+export interface OrderBuyerCommsPolicyReader {
+    readOrderBuyerCommsPolicy(orderUuid: string): Promise<OrderBuyerCommsPolicy | null>;
+}
+export type TransactionalEmailRegistryDeps<Locale extends string = string> = {
+    runtime: CommerceEmailRuntime<Locale>;
+    emailPort: TransactionalEmailPort<Locale>;
+    recipientPort: OrderRecipientPort;
+    lifecyclePort: OrderPaymentLifecyclePort;
+    orderPaidLinesPort: OrderPaidLinesPort;
+    orderPaidParcelNote?: OrderPaidParcelNoteReader<Locale>;
+    deliveredProviderKindReader?: DeliveredEmailProviderKindReader;
+    buyerCommsPolicyReader?: OrderBuyerCommsPolicyReader;
+};
+export declare function describeCoreOutboxHandlers(selection: {
+    transactionalEmail: boolean;
+    fulfillmentEnabled: boolean;
+}): OutboxHandlerDescriptor[];
+export declare function createOutboxDispatchRegistry<Locale extends string>(deps: {
+    /** Bind the existing outbox rail's composition; commerce owns no second rail. */
+    uniqueRegistry(handlers: readonly OutboxHandler[]): OutboxHandlerRegistry;
+    transactionalEmail?: TransactionalEmailRegistryDeps<Locale>;
+    fulfillmentPort?: OrderPaidFulfillmentPort;
+    riskPort?: OrderPaidRiskAssessmentPort;
+    riskEnabled?: boolean;
+    fulfillmentEnabled: boolean;
+    extraHandlers?: readonly OutboxHandler[];
+    expectedDescriptors?: () => readonly OutboxHandlerDescriptor[];
+}): OutboxHandlerRegistry;
+```
+## dist/commerce/server/outboxDispatchRegistryComposition.d.ts
+
+```ts
+import type { OutboxHandlerDescriptor } from "@openlup/core/outbox";
+import type { OutboxHandlerRegistry } from "../outboxDispatchContracts.js";
+/** Preserve native registration order and the timeout sum of same-event handlers. */
+export declare function composeOutboxHandlerDescriptors(handlers: readonly OutboxHandlerDescriptor[]): OutboxHandlerDescriptor[];
+/** Refuse a different claim surface before a worker can call claimBatch. */
+export declare function assertOutboxRegistryDescriptors(registry: OutboxHandlerRegistry, expected: readonly OutboxHandlerDescriptor[]): void;
+```
+## dist/commerce/server/outboxOrderDraftEmailHandler.d.ts
+
+```ts
+import type { CommerceEmailRuntime } from "./emailRuntime.js";
+import type { OutboxHandler } from "../outboxDispatchContracts.js";
+import { OUTBOX_ORDER_CONFIRMATION_TEMPLATE_SLUG, type OrderPaymentLifecyclePort, type OrderRecipientPort, type TransactionalEmailPort } from "../outboxOrderDraftEmailPorts.js";
+export { OUTBOX_ORDER_CONFIRMATION_TEMPLATE_SLUG };
+export declare const outboxOrderDraftEmailDescriptor: Readonly<{
+    eventType: "commerce.order_draft.created";
+    timeoutMs: 10000;
+}>;
+export declare function createOutboxOrderDraftEmailHandler<Locale extends string>(deps: {
+    runtime: Pick<CommerceEmailRuntime<Locale>, "formatMoney" | "genericItemLabel" | "mapSendOutcome" | "parseOutboxPayload" | "resolveLocale">;
+    emailPort: TransactionalEmailPort<Locale>;
+    recipientPort: OrderRecipientPort;
+    lifecyclePort: OrderPaymentLifecyclePort;
+}): OutboxHandler;
+```
+## dist/commerce/server/outboxOrderPaidEmailHandler.d.ts
+
+```ts
+import type { CommerceEmailRuntime } from "./emailRuntime.js";
+import type { OutboxHandler } from "../outboxDispatchContracts.js";
+import { OUTBOX_ORDER_PAID_TEMPLATE_SLUG, type OrderPaidLinesPort, type OrderRecipientPort, type TransactionalEmailPort } from "../outboxOrderDraftEmailPorts.js";
+export { OUTBOX_ORDER_PAID_TEMPLATE_SLUG };
+export declare const outboxOrderPaidEmailDescriptor: Readonly<{
+    eventType: "commerce.order.paid.email";
+    timeoutMs: 10000;
+}>;
+/**
+ * An adopter's note about the paid order's parcel, already localized, or null
+ * for none. Best-effort and inside this handler's timeout: a failure is logged
+ * and the receipt is sent without the note.
+ */
+export type OrderPaidParcelNoteReader<Locale extends string = string> = (orderUuid: string, locale: Locale, signal: AbortSignal) => Promise<string | null>;
+export declare function createOutboxOrderPaidEmailHandler<Locale extends string>(deps: {
+    runtime: Pick<CommerceEmailRuntime<Locale>, "formatMoney" | "genericItemLabel" | "mapSendOutcome" | "parseOutboxPayload" | "presentPaidOrder" | "resolveLocale">;
+    emailPort: TransactionalEmailPort<Locale>;
+    recipientPort: OrderRecipientPort;
+    linesPort: OrderPaidLinesPort;
+    describeParcel?: OrderPaidParcelNoteReader<Locale>;
+}): OutboxHandler;
+```
+## dist/commerce/server/outboxOrderPaidFulfillmentHandler.d.ts
+
+```ts
+import { createOutboxOrderPaidFulfillmentHandler } from "../../fulfillment/index.js";
+export { createOutboxOrderPaidFulfillmentHandler, outboxOrderPaidFulfillmentDescriptor } from "../../fulfillment/index.js";
+export type OrderPaidRiskAssessmentPort = NonNullable<Parameters<typeof createOutboxOrderPaidFulfillmentHandler>[0]["riskPort"]>;
+```
+## dist/commerce/server/outboxOrderPaidFulfillmentPorts.d.ts
+
+```ts
+import type { createOutboxOrderPaidFulfillmentHandler } from "../../fulfillment/index.js";
+export type OrderPaidFulfillmentPort = Parameters<typeof createOutboxOrderPaidFulfillmentHandler>[0]["fulfillmentPort"];
+export type OrderPaidFulfillmentResult = Awaited<ReturnType<OrderPaidFulfillmentPort["ensureFulfilledFromPaidOrder"]>>;
+```
+## dist/commerce/server/outboxOrderRefundedEmailHandler.d.ts
+
+```ts
+import type { CommerceEmailRuntime } from "./emailRuntime.js";
+import type { OutboxHandler } from "../outboxDispatchContracts.js";
+import { OUTBOX_ORDER_REFUNDED_TEMPLATE_SLUG, type OrderRecipientPort, type TransactionalEmailPort } from "../outboxOrderDraftEmailPorts.js";
+export { OUTBOX_ORDER_REFUNDED_TEMPLATE_SLUG };
+export declare const outboxOrderRefundedEmailDescriptor: Readonly<{
+    eventType: "commerce.order.refunded";
+    timeoutMs: 10000;
+}>;
+export declare function createOutboxOrderRefundedEmailHandler<Locale extends string>(deps: {
+    runtime: Pick<CommerceEmailRuntime<Locale>, "createTransactionalEmailHandler" | "formatMoney" | "resolveLocale">;
+    emailPort: TransactionalEmailPort<Locale>;
+    recipientPort: OrderRecipientPort;
+}): OutboxHandler;
+```
+## dist/commerce/server/outboxPaymentFailedEmailHandler.d.ts
+
+```ts
+import type { CommerceEmailRuntime } from "./emailRuntime.js";
+import type { OutboxHandler } from "../outboxDispatchContracts.js";
+import { OUTBOX_PAYMENT_FAILED_TEMPLATE_SLUG, type OrderPaymentLifecyclePort, type OrderRecipientPort, type TransactionalEmailPort } from "../outboxOrderDraftEmailPorts.js";
+export { OUTBOX_PAYMENT_FAILED_TEMPLATE_SLUG };
+export declare const outboxPaymentFailedEmailDescriptor: Readonly<{
+    eventType: "commerce.payment.failed";
+    timeoutMs: 10000;
+}>;
+export declare function createOutboxPaymentFailedEmailHandler<Locale extends string>(deps: {
+    runtime: Pick<CommerceEmailRuntime<Locale>, "formatMoney" | "mapSendOutcome" | "parseOutboxPayload" | "resolveLocale">;
+    emailPort: TransactionalEmailPort<Locale>;
+    recipientPort: OrderRecipientPort;
+    lifecyclePort: OrderPaymentLifecyclePort;
+}): OutboxHandler;
+```
+## dist/commerce/server/outboxReturnEmailHandlers.d.ts
+
+```ts
+import type { CommerceEmailRuntime } from "./emailRuntime.js";
+import type { OutboxHandler } from "../outboxDispatchContracts.js";
+import { OUTBOX_RETURN_APPROVED_TEMPLATE_SLUG, OUTBOX_RETURN_REJECTED_TEMPLATE_SLUG, type OrderRecipientPort, type TransactionalEmailPort } from "../outboxOrderDraftEmailPorts.js";
+export { OUTBOX_RETURN_APPROVED_TEMPLATE_SLUG, OUTBOX_RETURN_REJECTED_TEMPLATE_SLUG };
+export declare function describeOutboxReturnEmail(eventType: string): {
+    eventType: string;
+    timeoutMs: number;
+};
+export declare const outboxReturnApprovedEmailDescriptor: Readonly<{
+    eventType: string;
+    timeoutMs: number;
+}>;
+export declare const outboxReturnRejectedEmailDescriptor: Readonly<{
+    eventType: string;
+    timeoutMs: number;
+}>;
+export declare function createOutboxReturnApprovedEmailHandler<Locale extends string>(deps: {
+    runtime: Pick<CommerceEmailRuntime<Locale>, "createTransactionalEmailHandler" | "resolveLocale">;
+    emailPort: TransactionalEmailPort<Locale>;
+    recipientPort: OrderRecipientPort;
+}): OutboxHandler;
+export declare function createOutboxReturnRejectedEmailHandler<Locale extends string>(deps: {
+    runtime: Pick<CommerceEmailRuntime<Locale>, "createTransactionalEmailHandler" | "resolveLocale">;
+    emailPort: TransactionalEmailPort<Locale>;
+    recipientPort: OrderRecipientPort;
+}): OutboxHandler;
+```
+## dist/commerce/server/outboxShipmentDeliveredEmailHandler.d.ts
+
+```ts
+import type { CommerceEmailRuntime } from "./emailRuntime.js";
+import type { OutboxHandler } from "../outboxDispatchContracts.js";
+import { OUTBOX_SHIPMENT_DELIVERED_TEMPLATE_SLUG, type OrderRecipientPort, type TransactionalEmailPort } from "../outboxOrderDraftEmailPorts.js";
+export { OUTBOX_SHIPMENT_DELIVERED_TEMPLATE_SLUG };
+export declare const outboxShipmentDeliveredEmailDescriptor: Readonly<{
+    eventType: "commerce.shipment.delivered";
+    timeoutMs: 10000;
+}>;
+export interface DeliveredEmailProviderKindReader {
+    readSelectedProviderKind(orderUuid: string): Promise<string | null>;
+}
+export declare function createOutboxShipmentDeliveredEmailHandler<Locale extends string>(deps: {
+    runtime: Pick<CommerceEmailRuntime<Locale>, "mapSendOutcome" | "parseOutboxPayload" | "providerOwnsDeliveredNotification" | "resolveLocale">;
+    emailPort: TransactionalEmailPort<Locale>;
+    recipientPort: OrderRecipientPort;
+    providerKindReader?: DeliveredEmailProviderKindReader;
+}): OutboxHandler;
+```
+## dist/commerce/server/outboxShipmentDispatchedEmailHandler.d.ts
+
+```ts
+import type { CommerceEmailRuntime } from "./emailRuntime.js";
+import type { OutboxHandler } from "../outboxDispatchContracts.js";
+import { OUTBOX_SHIPMENT_DISPATCHED_TEMPLATE_SLUG, type OrderRecipientPort, type TransactionalEmailPort } from "../outboxOrderDraftEmailPorts.js";
+export { OUTBOX_SHIPMENT_DISPATCHED_TEMPLATE_SLUG };
+export declare const outboxShipmentDispatchedEmailDescriptor: Readonly<{
+    eventType: "commerce.shipment.dispatched";
+    timeoutMs: 10000;
+}>;
+export declare function createOutboxShipmentDispatchedEmailHandler<Locale extends string>(deps: {
+    runtime: Pick<CommerceEmailRuntime<Locale>, "carrierTrackingUrl" | "createTransactionalEmailHandler" | "legacyTrackingUrl" | "normalizeCarrierKind" | "resolveLocale">;
+    emailPort: TransactionalEmailPort<Locale>;
+    recipientPort: OrderRecipientPort;
+}): OutboxHandler;
+```
+## dist/commerce/server/outboxShipmentExceptionEmailHandler.d.ts
+
+```ts
+import type { CommerceEmailRuntime } from "./emailRuntime.js";
+import type { OutboxHandler } from "../outboxDispatchContracts.js";
+import { OUTBOX_SHIPMENT_EXCEPTION_TEMPLATE_SLUG, type OrderRecipientPort, type TransactionalEmailPort } from "../outboxOrderDraftEmailPorts.js";
+export { OUTBOX_SHIPMENT_EXCEPTION_TEMPLATE_SLUG };
+export declare const outboxShipmentExceptionEmailDescriptor: Readonly<{
+    eventType: "commerce.shipment.exception";
+    timeoutMs: 10000;
+}>;
+export declare function createOutboxShipmentExceptionEmailHandler<Locale extends string>(deps: {
+    runtime: Pick<CommerceEmailRuntime<Locale>, "mapSendOutcome" | "parseOutboxPayload" | "resolveLocale">;
+    emailPort: TransactionalEmailPort<Locale>;
+    recipientPort: OrderRecipientPort;
+}): OutboxHandler;
+```
+## dist/commerce/server/referenceCheckoutHandler.d.ts
+
+```ts
+import type { z } from "zod";
+import type { HttpRequest, HttpResponse } from "../../http/index.js";
+import type { BffResponder } from "../../bff/index.js";
+interface ReferenceRuntime {
+    runtime: {
+        orderId: string;
+        clientId: string;
+        finalizedReplayed: boolean;
+        total: {
+            amountMinor: number;
+            currency: string;
+        };
+        payment: {
+            paymentIntentId: string;
+            paymentAttemptId: string | null;
+            status: string;
+            attemptStatus: string | null;
+        };
+    };
+}
+interface ReferenceSettlement {
+    paymentResult: {
+        status: string;
+        replayed: boolean;
+    };
+}
+export declare function createReferenceCheckoutHandler<Command, Runtime extends ReferenceRuntime, Settlement extends ReferenceSettlement, Response>({ startCheckout, checkRateLimit, checkRiskBlocklist, admitProfile, responder, requestSchema, responseSchema, }: {
+    startCheckout(command: Command): Promise<{
+        runtime: Runtime;
+        settlement: Settlement | null;
+        persistence: {
+            replayed: boolean;
+        };
+    }>;
+    checkRateLimit(req: HttpRequest, command: Command): Promise<{
+        allowed: boolean;
+    }>;
+    checkRiskBlocklist?(req: HttpRequest, command: Command): Promise<{
+        blocked: boolean;
+    }>;
+    admitProfile(command: Command): boolean;
+    responder: BffResponder;
+    requestSchema: z.ZodType<{
+        command: Command;
+    }>;
+    responseSchema: z.ZodType<Response>;
+}): (req: HttpRequest, res: HttpResponse) => Promise<void>;
+export {};
+```
+## dist/commerce/server/reservationSweepPort.d.ts
+
+```ts
+export interface ReservationSweepCounts {
+    ordersChecked: number;
+    ordersExpired: number;
+    reservationsReleased: number;
+    skippedPaid: number;
+    skippedTerminal: number;
+    skippedSubscription: number;
+}
+export type ReservationSweepRpcClient = {
+    rpc(name: string, args: Record<string, unknown>): PromiseLike<{
+        data: unknown;
+        error: {
+            message?: string;
+        } | null;
+    }>;
+};
+export interface RetryHoldSweepCounts {
+    holdsChecked: number;
+    holdsReleased: number;
+    skippedPaid: number;
+}
+export declare function createManagedReservationSweepPort(client: ReservationSweepRpcClient): {
+    sweep(input: {
+        now: string;
+        limit: number;
+    }): Promise<ReservationSweepCounts>;
+    sweepRetryHolds(input: {
+        now: string;
+        limit: number;
+    }): Promise<RetryHoldSweepCounts>;
+};
+```
+## dist/commerce/server/starterTermsPort.d.ts
+
+```ts
+export interface StarterTermsDecision {
+    intervalDays: number;
+    steadyCadenceDays: number;
+    steadyUnits: number;
+    graduationSizeConstraint?: Record<string, unknown>;
+}
+export type StarterTermsRefusal = "basket_too_small" | "basket_not_admitted" | "demand_unknown";
+export type StarterTermsResolution = {
+    kind: "terms";
+    terms: StarterTermsDecision;
+} | {
+    kind: "refused";
+    reason: StarterTermsRefusal;
+};
+export interface StarterTermsInput<Intent, Snapshot> {
+    intent: Intent;
+    authoritativeQuote: Snapshot;
+    offerVersion?: string;
+}
+export interface StarterTermsPort<Intent, Snapshot> {
+    resolve(input: StarterTermsInput<Intent, Snapshot>): Promise<StarterTermsResolution>;
+}
+```
 ## dist/commerce/server/supabaseCommerceReturnsPort.d.ts
 
 ```ts
@@ -6903,6 +10361,3173 @@ export interface CommerceReturnsRpcClient {
 }
 /** Returns request/approve/reject only. Restock and refund fields record intent; no receive, restock or refund execution. */
 export declare function createSupabaseCommerceReturnsPort<Reason extends string = ReturnRequestCreateInput["reasonCode"]>(client: CommerceReturnsRpcClient): CommerceReturnsPort<Reason>;
+```
+## dist/fulfillment/adapterConformance.d.ts
+
+```ts
+import type { FulfillmentAdapterConformanceEvidence, FulfillmentAdapterConformanceSubject } from "./contracts/index.js";
+/** Runner-independent offline proof using only adapter-owned fixtures. Throws on a violated contract. */
+export declare function runFulfillmentAdapterConformance(subjects: readonly FulfillmentAdapterConformanceSubject[]): Promise<FulfillmentAdapterConformanceEvidence>;
+```
+## dist/fulfillment/bindings.d.ts
+
+```ts
+import type { FulfillmentServices, FulfillmentServicesOptions } from './contracts/index.js';
+/** Explicit selection; no environment readers, implicit provider or automatic dispatch. */
+export declare function createFulfillmentServices(options: FulfillmentServicesOptions): FulfillmentServices;
+```
+## dist/fulfillment/commerceFulfillmentHandlers.d.ts
+
+```ts
+import type { FulfillmentOperatorMutationPort as CommerceFulfillmentMutationPort } from './contracts/operator.js';
+import type { FulfillmentCommerceReadPort as CommerceFulfillmentReadPort } from './contracts/read.js';
+import { type BaseDeps, type FulfillmentHandlerRequest } from './handlerSupport.js';
+type PortRef<T> = T | (() => T);
+export declare function createAdminCommerceFulfillmentOrdersListHandler<Response>({ authorizeAdmin, respond, fulfillmentPort, }: BaseDeps<Response> & {
+    fulfillmentPort: PortRef<Pick<CommerceFulfillmentReadPort, "listCommerceFulfillmentOrders">>;
+}): (req: FulfillmentHandlerRequest, res: Response) => Promise<void>;
+export declare function createAdminCommerceFulfillmentOrderDetailHandler<Response>({ authorizeAdmin, respond, fulfillmentPort, }: BaseDeps<Response> & {
+    fulfillmentPort: PortRef<Pick<CommerceFulfillmentReadPort, "getCommerceFulfillmentOrderDetail">>;
+}): (req: FulfillmentHandlerRequest, res: Response) => Promise<void>;
+export declare function createAdminCommerceFulfillmentCreateOrderHandler<Response>({ authorizeAdmin, respond, fulfillmentPort, }: BaseDeps<Response> & {
+    fulfillmentPort: PortRef<Pick<CommerceFulfillmentMutationPort, "createCommerceFulfillmentOrder">>;
+}): (req: FulfillmentHandlerRequest, res: Response) => Promise<void>;
+export declare function createAdminCommerceFulfillmentRecordProviderAttemptHandler<Response>({ authorizeAdmin, respond, fulfillmentPort, }: BaseDeps<Response> & {
+    fulfillmentPort: PortRef<Pick<CommerceFulfillmentMutationPort, "recordCommerceFulfillmentProviderAttempt">>;
+}): (req: FulfillmentHandlerRequest, res: Response) => Promise<void>;
+export declare function createAdminCommerceFulfillmentRecordLabelHandler<Response>({ authorizeAdmin, respond, fulfillmentPort, }: BaseDeps<Response> & {
+    fulfillmentPort: PortRef<Pick<CommerceFulfillmentMutationPort, "recordCommerceFulfillmentLabel">>;
+}): (req: FulfillmentHandlerRequest, res: Response) => Promise<void>;
+export declare function createAdminCommerceFulfillmentHandOffHandler<Response>({ authorizeAdmin, respond, fulfillmentPort, }: BaseDeps<Response> & {
+    fulfillmentPort: PortRef<Pick<CommerceFulfillmentMutationPort, "handOffCommerceFulfillmentOrder">>;
+}): (req: FulfillmentHandlerRequest, res: Response) => Promise<void>;
+export declare function createAdminCommerceFulfillmentTrackingEventHandler<Response>({ authorizeAdmin, respond, fulfillmentPort, }: BaseDeps<Response> & {
+    fulfillmentPort: PortRef<Pick<CommerceFulfillmentMutationPort, "recordCommerceFulfillmentTrackingEvent">>;
+}): (req: FulfillmentHandlerRequest, res: Response) => Promise<void>;
+export declare function createAdminCommerceFulfillmentCancelOrderHandler<Response>({ authorizeAdmin, respond, fulfillmentPort, }: BaseDeps<Response> & {
+    fulfillmentPort: PortRef<Pick<CommerceFulfillmentMutationPort, "cancelCommerceFulfillmentOrder">>;
+}): (req: FulfillmentHandlerRequest, res: Response) => Promise<void>;
+export {};
+```
+## dist/fulfillment/commerceFulfillmentReadModel.d.ts
+
+```ts
+import type { FulfillmentCommerceReadPolicy, FulfillmentPaymentStatus, FulfillmentOrderStatus as OrderStatus } from './contracts/read.js';
+import type { SubscriptionCycleStatus } from '@openlup/core/subscription';
+import { type AdminCommerceFulfillmentOrderDetailResponse, type AdminCommerceFulfillmentOrdersListResponse, type CommerceFulfillmentOrder, type CommerceFulfillmentOperationType, type CommerceFulfillmentStatus } from "./handlerSchemas.js";
+export interface CommerceFulfillmentOrderRow {
+    id: string;
+    order_id: string;
+    client_id: string | null;
+    status: CommerceFulfillmentStatus;
+    provider_kind: string | null;
+    shipping_address_snapshot: CommerceFulfillmentOrder["shippingAddress"];
+    created_at: string;
+    updated_at: string;
+}
+export interface CommerceFulfillmentLineRow {
+    id: string;
+    fulfillment_order_id: string;
+    order_item_id: string;
+    sku_id: string;
+    sku: string;
+    title: string | null;
+    quantity: number;
+    inventory_reservation_ids: string[];
+    product_snapshot: Record<string, unknown>;
+}
+export interface CommerceFulfillmentOperationRow {
+    id: string;
+    fulfillment_order_id: string;
+    operation_type: CommerceFulfillmentOperationType;
+    actor_user_id: string | null;
+    occurred_at: string;
+    payload: Record<string, unknown>;
+}
+export interface CommerceFulfillmentOrderContextRow {
+    id: string;
+    status: OrderStatus;
+    mode: "one_time" | "subscription_cycle";
+    shipping_address_id: string | null;
+    subscription_cycle_id: string | null;
+}
+export interface CommerceFulfillmentPaymentIntentRow {
+    id: string;
+    order_id: string;
+    status: FulfillmentPaymentStatus;
+    provider_payment_id: string | null;
+}
+export interface CommerceFulfillmentInventoryReservationRow {
+    id: string;
+    order_id: string;
+    status: "reserved" | "released" | "consumed" | "expired";
+    expires_at: string | null;
+    location_id: string | null;
+    inventory_locations?: {
+        code?: string | null;
+    } | null;
+}
+export interface CommerceFulfillmentShipmentRefRow {
+    order_id: string;
+    provider_tracking_id: string;
+    active: boolean;
+    created_at?: string | null;
+}
+export declare function buildCommerceFulfillmentOrdersListResponse(input: {
+    fulfillmentOrders: CommerceFulfillmentOrderRow[];
+    lines: CommerceFulfillmentLineRow[];
+    latestOperations: CommerceFulfillmentOperationRow[];
+    orderContexts: CommerceFulfillmentOrderContextRow[];
+    paymentIntents: CommerceFulfillmentPaymentIntentRow[];
+    inventoryReservations: CommerceFulfillmentInventoryReservationRow[];
+    shipmentRefs: CommerceFulfillmentShipmentRefRow[];
+    activeHoldCounts: Record<string, number>;
+    subscriptionCycleStatuses: Record<string, SubscriptionCycleStatus | null>;
+    totalCount: number;
+    page: number;
+    pageSize: number;
+}, policy: FulfillmentCommerceReadPolicy): AdminCommerceFulfillmentOrdersListResponse;
+export declare function buildCommerceFulfillmentOrderDetailResponse(input: {
+    fulfillmentOrder: CommerceFulfillmentOrderRow;
+    lines: CommerceFulfillmentLineRow[];
+    latestOperation: CommerceFulfillmentOperationRow | null;
+    orderContext: CommerceFulfillmentOrderContextRow;
+    paymentIntent: CommerceFulfillmentPaymentIntentRow;
+    inventoryReservations: CommerceFulfillmentInventoryReservationRow[];
+    shipmentRef: CommerceFulfillmentShipmentRefRow | null;
+    activeHoldCount: number;
+    subscriptionCycleStatus: SubscriptionCycleStatus | null;
+}, policy: FulfillmentCommerceReadPolicy): AdminCommerceFulfillmentOrderDetailResponse;
+```
+## dist/fulfillment/contracts/alignment.d.ts
+
+```ts
+/**
+ * Late delivery extends the next cycle, never stacks deliveries or moves it earlier.
+ * A replacement may settle alignment as aligned only after reaching the customer.
+ * Its superseded predecessor is no longer outstanding; an in-flight or undelivered
+ * replacement still is. Never call subscription_delivery_alignment_confirm_replacement
+ * for a replacement that did not arrive: it records "Parcel delivered" and shifts
+ * the cycle later. That note-only operator attestation remains outside this port;
+ * no automatic caller or new guard is introduced.
+ */
+export interface DeliveryAlignmentPort {
+    recordArrival(input: {
+        requestKey: string;
+        parcelRef: string;
+        deliveredAt: string;
+        evidenceRef: `evidence:${string}`;
+    }): Promise<{
+        disposition: "aligned" | "outstanding" | "manual_review";
+        nextCycleAt: string | null;
+        replayed: boolean;
+    }>;
+    read(fulfillmentRef: string): Promise<{
+        disposition: "aligned" | "outstanding" | "manual_review";
+        nextCycleAt: string | null;
+    }>;
+}
+```
+## dist/fulfillment/contracts/bindings.d.ts
+
+```ts
+import type { FulfillmentCapabilityDescriptor } from './capabilities.js';
+import type { FulfillmentDispatchPort, FulfillmentDispatchRequest, FulfillmentRefusal, FulfillmentSelection } from './dispatch.js';
+import type { FulfillmentNativeUnsupported } from './nativeUnsupported.js';
+import type { DispatchRecord, FulfillmentStorePort } from './store.js';
+/** In-memory ports and host closures only; never serialize options or recipient inputs. */
+export interface FulfillmentServicesOptions {
+    enabled?: boolean;
+    selection: FulfillmentSelection | null;
+    capability: FulfillmentCapabilityDescriptor | null;
+    store: FulfillmentStorePort | null;
+    provider: FulfillmentDispatchPort | null;
+    readiness(): Promise<{
+        ready: true;
+    } | {
+        ready: false;
+        refusal: FulfillmentRefusal | FulfillmentNativeUnsupported;
+    }>;
+    listCandidates(limit: number): Promise<readonly FulfillmentDispatchRequest[]>;
+    keys: {
+        request(candidate: FulfillmentDispatchRequest): string;
+        mappedAttempt(requestKey: string, mappedAttemptIndex: number): string;
+        acceptance(fulfillmentRef: string): {
+            providerAttemptKey: string;
+            labelKey: string;
+        };
+    };
+    config: {
+        mode: DispatchRecord['mode'];
+        batchLimit: number;
+    };
+    now?: () => Date;
+}
+/** Import and construction are inert. Every invocation checks activation before any worker. */
+export interface FulfillmentServices {
+    readiness(): ReturnType<FulfillmentServicesOptions['readiness']>;
+    runDispatch(): Promise<FulfillmentNativeUnsupported | {
+        kind: 'refused';
+        refusal: FulfillmentRefusal;
+    } | {
+        ok: boolean;
+        skipped: boolean;
+        checked: number;
+        updated: number;
+        failures: number;
+        mode: DispatchRecord['mode'];
+        replayed: number;
+        providerCalls: number;
+        readBacks: number;
+        reason: string | undefined;
+    }>;
+}
+```
+## dist/fulfillment/contracts/capabilities.d.ts
+
+```ts
+import type { FulfillmentRefusal } from "./dispatch.js";
+export interface FulfillmentCapabilityDescriptor {
+    providerRef: string;
+    role: "warehouse" | "direct_carrier" | "manual" | "simulator";
+    operations: Readonly<Record<"dispatch" | "readback" | "exactAbsence" | "verifyObservation" | "syncStock" | "syncProducts" | "labelCreate" | "labelRead" | "labelVoid" | "cancel" | "pickupPoint" | "courierPickup", {
+        supported: true;
+    } | {
+        supported: false;
+        reason: "not_exposed" | "host_only" | "not_implemented";
+    }>>;
+    authentication: "token" | "authenticated_timestamp" | "none";
+    freshness: "authenticated_timestamp" | "not_available";
+    defaultOff: true;
+    selected: boolean;
+    readiness: {
+        ready: true;
+    } | {
+        ready: false;
+        refusal: FulfillmentRefusal;
+    };
+    ownsDeliveredNotification: boolean;
+    stockAuthority: "local_atp" | "external_stock_master_with_local_reservations";
+    labelReadOwner: "host_storage" | "adapter" | "none";
+    actionPolicy: {
+        providerSpecificAdminActions: boolean;
+        genericAdminActions: boolean;
+        mutationSurface: "none" | "local_only" | "provider_adapter";
+    };
+}
+```
+## dist/fulfillment/contracts/conformance.d.ts
+
+```ts
+import type { FulfillmentCapabilityDescriptor } from "./capabilities.js";
+import type { FulfillmentDispatchPort, FulfillmentDispatchRequest } from "./dispatch.js";
+import type { FulfillmentLabelPort } from "./label.js";
+import type { FulfillmentObservationPort, FulfillmentObservationCodecs } from "./observation.js";
+import type { FulfillmentReadbackPort } from "./readback.js";
+import type { FulfillmentStockSyncProvider, FulfillmentProductSyncProvider } from "./sync.js";
+import type { FulfillmentStorePort } from "./store.js";
+type Fixture<Method extends (...args: never[]) => unknown> = {
+    input: Parameters<Method>;
+    expected: Awaited<ReturnType<Method>>;
+};
+type SyncFixture<Port> = {
+    [K in keyof Port]: Port[K] extends (...args: never[]) => unknown ? {
+        operation: K;
+        input: Parameters<Port[K]>;
+        expected: Awaited<ReturnType<Port[K]>> | {
+            kind: "refused";
+            refusal: {
+                reason: "unsupported";
+                phase: "sync";
+                retryable: false;
+            };
+        };
+    } : never;
+}[keyof Port];
+/** Offline adapter-owned inputs and exact expected outputs; never real customer data. */
+export interface FulfillmentAdapterConformanceSubject {
+    approveTrackingUrl?(url: string): boolean;
+    observationCodecs?: FulfillmentObservationCodecs;
+    subjectId: string;
+    adapter: {
+        capabilities: FulfillmentCapabilityDescriptor;
+        dispatch: FulfillmentDispatchPort;
+        label?: FulfillmentLabelPort;
+        observation?: FulfillmentObservationPort;
+        readback?: FulfillmentReadbackPort;
+        stockSync?: FulfillmentStockSyncProvider;
+        productSync?: FulfillmentProductSyncProvider;
+    };
+    /** Count external submission I/O, including attempted calls. Preparation/refusals must not increase it. */
+    readIoCount(): number;
+    sensitiveValues: readonly string[];
+    fixtures: {
+        dispatch: readonly {
+            input: FulfillmentDispatchRequest;
+            expectedPrepare: Awaited<ReturnType<FulfillmentDispatchPort["prepare"]>>;
+            expectedDispatch?: Awaited<ReturnType<FulfillmentDispatchPort["dispatch"]>>;
+            /** Repeating this operation must not increase external submission I/O. */
+            replay?: boolean;
+        }[];
+        label?: {
+            create?: readonly Fixture<FulfillmentLabelPort["create"]>[];
+            read?: readonly Fixture<FulfillmentLabelPort["read"]>[];
+            void?: readonly Fixture<FulfillmentLabelPort["void"]>[];
+        };
+        observation?: readonly Fixture<FulfillmentObservationPort["verifyAndNormalize"]>[];
+        readback?: readonly (Fixture<FulfillmentReadbackPort["read"]> & {
+            localMissing?: boolean;
+        })[];
+        stockSync?: readonly SyncFixture<FulfillmentStockSyncProvider>[];
+        productSync?: readonly SyncFixture<FulfillmentProductSyncProvider>[];
+    };
+    /** A fresh isolated host store per call; no database implementation is supplied by the runner. */
+    store?: {
+        create(): Promise<FulfillmentStorePort & {
+            /** Offline fixture inspection, not a new production store operation. */
+            readMappedAttempts(): Promise<readonly {
+                attemptKey: string;
+                fulfillmentRef: string;
+                preparedEvidence: Parameters<FulfillmentStorePort["recordProviderAttempt"]>[2];
+                mode: Parameters<FulfillmentStorePort["recordProviderAttempt"]>[3];
+                status: "recorded";
+            }[]>;
+        }>;
+        claim: Parameters<FulfillmentStorePort["claim"]>[0];
+        remappedClaim: Parameters<FulfillmentStorePort["claim"]>[0];
+        mappedAttemptKey: string;
+        remappedAttemptKey: string;
+        request: FulfillmentDispatchRequest;
+        remappedRequest: FulfillmentDispatchRequest;
+    };
+}
+/** Sanitized proof only: no fixture inputs, raw responses, transient URLs or credentials. */
+export interface FulfillmentAdapterConformanceEvidence {
+    subjects: readonly {
+        subjectId: string;
+        providerRef: string;
+    }[];
+    cases: readonly {
+        subjectId: string;
+        operation: string;
+        passed: true;
+    }[];
+}
+export {};
+```
+## dist/fulfillment/contracts/customerAlignment.d.ts
+
+```ts
+import type { FulfillmentNativeUnsupported } from './nativeUnsupported.js';
+export interface CustomerDeliveryAlignment {
+    state: 'protected' | 'aligned';
+}
+/** Absence from the map means no current customer case, distinct from protected. */
+export type FulfillmentCustomerAlignmentRowsReader = (subscriptionIds: string[]) => Promise<Record<string, unknown>[] | FulfillmentNativeUnsupported>;
+```
+## dist/fulfillment/contracts/dispatch.d.ts
+
+```ts
+type DeliveryKind = "parcel-locker" | "courier";
+type PickupPoint = {
+    id: string;
+    provider: string;
+    name: string;
+    address: {
+        line1: string;
+        postalCode: string;
+        city: string;
+        country: string;
+    };
+};
+export interface FulfillmentSelection {
+    providerRef: string | null;
+    carrierRef: string | null;
+    serviceRef: string | null;
+    deliveryKind: DeliveryKind;
+    pickupPoint: PickupPoint | null;
+}
+export interface FulfillmentRefusal {
+    reason: "not_dispatchable" | "selection_required" | "provider_mismatch" | "carrier_service_required" | "disabled" | "not_ready" | "unsupported" | "withheld" | "claim_conflict" | "contact_stale" | "stock_contention" | "local_missing" | "io_failure" | "malformed" | "untrusted" | "unsupported_event" | "stale" | "missing_correlation";
+    phase: "selection" | "prepare" | "claim" | "begin" | "dispatch" | "acknowledge" | "verify" | "normalize" | "apply" | "readback" | "sync";
+    retryable: boolean;
+}
+/** Frozen domain input. Contact PII stays transient; only allowlisted mapped items enter evidence. Credentials stay in adapter closures. */
+export interface FulfillmentDispatchRequest {
+    requestKey: string;
+    fulfillmentRef: string;
+    orderRef: string;
+    orderNumber: string | null;
+    parcelRef: string | null;
+    contactRevision: {
+        schemaVersion: number;
+        source: string;
+        revision: number;
+    };
+    recipient: {
+        name: string | null;
+        email: string | null;
+        phone: string | null;
+        line1: string;
+        line2: string | null;
+        city: string;
+        postalCode: string;
+        country: string;
+        deliveryInstructions: string | null;
+        courierInstructions: string | null;
+    };
+    lines: readonly {
+        skuRef: string;
+        title: string | null;
+        quantity: number;
+        productRef: string | null;
+        packRef: string | null;
+        lotRef?: string | null;
+        expirationDate?: string | null;
+    }[];
+    selection: FulfillmentSelection;
+}
+/** Allowlisted durable evidence; fingerprint commits to actual adapter command bytes. */
+export interface DispatchEvidence {
+    redactedFieldCount?: number;
+    commandFingerprint: string;
+    contactRevision: FulfillmentDispatchRequest["contactRevision"];
+    providerRef: string;
+    carrierRef: string | null;
+    serviceRef: string | null;
+    transcript?: {
+        itemCount: number;
+        items: readonly {
+            skuRef: string;
+            quantity: number;
+            lotRef: string | null;
+            expirationDate: string | null;
+        }[];
+        deliveryKind: DeliveryKind;
+        pickupPointRef: string | null;
+        /** Count of populated reference/date fields redacted by the durable projection. */
+        redactedFieldCount?: number;
+    };
+    mapping?: {
+        source: "dispatch_worker";
+        mode: "shadow" | "stage" | "live";
+        shadowMode: boolean;
+    };
+}
+export interface FulfillmentOperationError {
+    redactedFieldCount?: number;
+    code: string;
+    status: number | null;
+    retryable: boolean;
+    mayHaveSucceeded: boolean;
+    /** Whether provider submission was attempted; absent means unknown, never proven false. */
+    submissionAttempted?: boolean;
+    /** Whether the HTTP response body was read, including empty or malformed JSON; absent means no body-read evidence. */
+    responseBodyRead?: boolean;
+    /** Machine cause only; never an arbitrary exception message. */
+    cause?: string;
+}
+export type FulfillmentDispatchResult = ({
+    error?: FulfillmentOperationError;
+    redactedFieldCount?: number;
+} & ({
+    kind: "accepted";
+    externalRef: string;
+    evidence: DispatchEvidence;
+    providerAttemptKey: string;
+    labelKey: string;
+    recovery?: {
+        source: "persisted_acceptance";
+        proof: "persisted_external_ref";
+        noProviderPost: true;
+    };
+} | {
+    kind: "not_dispatched";
+    effectMayHaveSucceeded: false;
+    refusal: FulfillmentRefusal;
+} | {
+    kind: "unknown";
+    effectMayHaveSucceeded: true;
+    refusal: FulfillmentRefusal;
+}));
+export type FulfillmentDispatchPrepareResult = {
+    kind: "prepared";
+    evidence: DispatchEvidence;
+} | {
+    kind: "refused";
+    refusal: FulfillmentRefusal;
+};
+export interface FulfillmentDispatchPort {
+    /**
+     * Without external submission, build the actual command and fingerprint its bytes
+     * before store claim/begin. Return only sanitized evidence; keep the raw command
+     * transient inside the adapter. Refuse not_dispatchable or the exact selection
+     * refusal when preparation cannot proceed. A contact_stale remap requires a new
+     * prepare of the rebuilt request/command before another claim/begin.
+     */
+    prepare(request: FulfillmentDispatchRequest): Promise<FulfillmentDispatchPrepareResult>;
+    /**
+     * Send exactly the prepared command identified by this evidence. Never silently
+     * rebuild a different command; absent/mismatched preparation refuses before I/O.
+     * Absent/mismatched preparation: not_dispatchable, phase dispatch, retryable false.
+     * Unknown submission outcomes require readback, never blind re-submission.
+     */
+    dispatch(request: FulfillmentDispatchRequest, evidence: DispatchEvidence): Promise<FulfillmentDispatchResult>;
+}
+export {};
+```
+## dist/fulfillment/contracts/index.d.ts
+
+```ts
+export type { FulfillmentOperationError, DispatchEvidence, FulfillmentDispatchPrepareResult, FulfillmentSelection, FulfillmentDispatchRequest, FulfillmentDispatchResult, FulfillmentDispatchPort, FulfillmentRefusal } from "./dispatch.js";
+export type { LabelDocument, FulfillmentLabelPort } from "./label.js";
+/** G17 local reads/ingress persistence are inline runtime worker inputs; this provider envelope is unchanged. */
+export type { FulfillmentObservation, FulfillmentObservationCodecs, FulfillmentObservationPort, FulfillmentTrackingReference } from "./observation.js";
+export type { FulfillmentReadbackResult, FulfillmentReadbackPort, FulfillmentReconciliationObservation, FulfillmentObservationPagePort } from "./readback.js";
+export type { SyncCursor, StockSnapshot, StockMovement, LocalStock, FulfillmentStockSyncProvider, FulfillmentStockSyncPort, FulfillmentProductSyncProvider, FulfillmentProductSyncPort } from "./sync.js";
+export type { FulfillmentCapabilityDescriptor } from "./capabilities.js";
+export type { DispatchRecord, FulfillmentStorePort, FulfillmentPaidHandoffPort } from "./store.js";
+export type { DeliveryAlignmentPort } from "./alignment.js";
+export type { FulfillmentAdapterConformanceSubject, FulfillmentAdapterConformanceEvidence } from "./conformance.js";
+export type { FulfillmentNativeUnsupported } from './nativeUnsupported.js';
+export type { FulfillmentReplacementPort, FulfillmentReplacementRequest, FulfillmentReplacementResult } from './replacement.js';
+export type { FulfillmentOperatorMutationPort, FulfillmentOperatorMutationResult } from './operator.js';
+export type { CustomerDeliveryAlignment, FulfillmentCustomerAlignmentRowsReader } from './customerAlignment.js';
+export type { FulfillmentCommerceReadPort, FulfillmentCommerceReadPolicy, FulfillmentOrderStatus, FulfillmentPaymentStatus, FulfillmentCommerceOrder, FulfillmentOrdersListRequest, FulfillmentOrdersListResponse, FulfillmentOrderDetailRequest, FulfillmentOrderDetailResponse, FulfillmentShipmentsOverviewPort, FulfillmentShipmentsOverviewRequest, FulfillmentShipmentsOverviewResponse } from './read.js';
+export type { FulfillmentProgressInput, FulfillmentProgressPresentation } from './read.js';
+export type { FulfillmentServicesOptions, FulfillmentServices } from './bindings.js';
+export type { CanonicalLocalFulfillmentStatus, CustomerFulfillmentStep } from "@openlup/core/fulfillment";
+```
+## dist/fulfillment/contracts/label.d.ts
+
+```ts
+import type { FulfillmentDispatchRequest, FulfillmentRefusal } from "./dispatch.js";
+/** Durable storage pointer. No signed URL or credential belongs here. */
+export interface LabelDocument {
+    objectRef: string;
+    mediaType: "application/pdf";
+    externalRef: string | null;
+}
+export interface FulfillmentLabelPort {
+    create(input: FulfillmentDispatchRequest): Promise<{
+        kind: "created";
+        parcelRef: string;
+        document: LabelDocument | null;
+    } | {
+        kind: "refused";
+        refusal: FulfillmentRefusal;
+    }>;
+    /** Transient host response only; never part of a store record. */
+    read(document: LabelDocument): Promise<{
+        kind: "available";
+        url: string;
+        expiresAt: string | null;
+    } | {
+        kind: "refused";
+        refusal: FulfillmentRefusal;
+    }>;
+    void(input: {
+        parcelRef: string;
+        document: LabelDocument | null;
+    }): Promise<{
+        providerDeletion: "confirmed" | "unconfirmed";
+        labelDeleted: boolean;
+        canProceed: boolean;
+        refusal?: FulfillmentRefusal;
+    }>;
+}
+```
+## dist/fulfillment/contracts/nativeUnsupported.d.ts
+
+```ts
+/** Shared refusal for host-owned operations without native parity. No partial write is permitted. */
+export interface FulfillmentNativeUnsupported {
+    readonly kind: 'native_unsupported';
+    readonly reason: 'host_binding_required';
+    readonly retryable: false;
+}
+```
+## dist/fulfillment/contracts/observation.d.ts
+
+```ts
+import type { NormalizedFulfillmentFact } from "@openlup/core/fulfillment";
+import type { CanonicalLocalFulfillmentStatus } from "./index.js";
+import type { FulfillmentRefusal } from "./dispatch.js";
+/** Explicit adopter policy, forwarded through each durable observation projection. */
+export interface FulfillmentObservationCodecs {
+    approveReference?(value: string): boolean;
+    /** Overrides the query/fragment default; HTTPS, no credentials and URL approval still apply. */
+    trackingUrl?(url: string): string | null;
+}
+export interface FulfillmentTrackingReference {
+    trackingNumber: string; /** Normalized carrier kind, never a raw provider code. */
+    carrierRef: string | null;
+    serviceRef: string | null;
+    publicUrl: string | null;
+}
+/** Durable normalized envelope. eventKey, not the receivedAt-bearing fact fingerprint, deduplicates retries. */
+export interface FulfillmentObservation {
+    fact: NormalizedFulfillmentFact<CanonicalLocalFulfillmentStatus>;
+    eventKind: "shipment.accepted" | "order.processing_started" | "order.picked" | "order.shipped" | "order.delivered" | "parcel.exception" | "parcel.cancelled";
+    eventKey: string;
+    firstReceivedAt: string;
+    correlation: {
+        orderRef: string | null;
+        fulfillmentRef: string | null;
+        externalRef: string | null;
+        orderNumber: string | null;
+        providerFulfillmentRef: string | null;
+        parcelRef: string | null;
+    };
+    trackingRefs: readonly FulfillmentTrackingReference[];
+    /** Original provider status tokens; canonical status does not identify an occurrence. */
+    providerStatus?: {
+        primary: string | null;
+        subStatus: string | null;
+    };
+    diagnostics?: {
+        redactedFieldCount?: number;
+        admission?: {
+            rejectedTrackingRefs: number;
+            rejectedTrackingUrls: number;
+        };
+        refusal?: FulfillmentRefusal;
+        stockContention?: {
+            sqlState: "55P03";
+            phase: "provider_stock_consumed";
+            retryable: true;
+        };
+        annotation?: "recorded" | "failed";
+        recoveredPickedReceipt?: {
+            receiptRef: string;
+            closed: boolean;
+        };
+    };
+}
+export interface FulfillmentObservationPort {
+    /** Authenticate untouched bytes before parsing. Inputs live only during verification. */
+    verifyAndNormalize(input: {
+        rawBody: Uint8Array;
+        headers: Readonly<Record<string, string>>;
+        receivedAt: string;
+    }): Promise<{
+        kind: "verified";
+        observation: FulfillmentObservation;
+    } | {
+        kind: "refused";
+        refusal: FulfillmentRefusal;
+        diagnostics?: {
+            invalidTimestamp?: true;
+            rejectedCorrelationRefs?: number;
+        };
+    }>;
+}
+```
+## dist/fulfillment/contracts/operator.d.ts
+
+```ts
+import type { FulfillmentNativeUnsupported } from './nativeUnsupported.js';
+/** Host transaction inputs. actorUserId and idempotencyKey are required for attribution and replay receipts. */
+interface MutationInput {
+    idempotencyKey: string;
+    actorUserId: string;
+    metadata?: Record<string, unknown>;
+}
+interface ParcelMutationInput extends MutationInput {
+    fulfillmentOrderId: string;
+}
+type AdminCommerceFulfillmentCreateRequest = MutationInput & {
+    orderId: string;
+};
+type AdminCommerceFulfillmentRecordProviderAttemptRequest = ParcelMutationInput & {
+    providerKind: string;
+    status: 'recorded' | 'succeeded' | 'failed';
+    requestPayload?: Record<string, unknown>;
+    responsePayload?: Record<string, unknown>;
+    error?: string | null;
+};
+type AdminCommerceFulfillmentRecordLabelRequest = ParcelMutationInput & {
+    providerKind: string;
+    providerTrackingId: string;
+    labelUrl?: string | null;
+    deliveryEstimateDays?: number | null;
+    rawProviderPayload?: Record<string, unknown>;
+};
+type AdminCommerceFulfillmentHandOffRequest = ParcelMutationInput;
+type AdminCommerceFulfillmentTrackingEventRequest = ParcelMutationInput & {
+    status: 'in_transit' | 'delivered' | 'exception';
+    providerTrackingId?: string;
+    rawEvent?: Record<string, unknown>;
+};
+type AdminCommerceFulfillmentCancelRequest = ParcelMutationInput & {
+    reason: string;
+};
+export interface FulfillmentOperatorMutationResult {
+    contractVersion: 'commerce.fulfillment.v0';
+    fulfillmentOrderId: string;
+    orderId: string;
+    status: 'created' | 'packed' | 'label_pending' | 'label_created' | 'handed_over' | 'in_transit' | 'delivered' | 'exception' | 'cancelled';
+    replayed: boolean;
+}
+export interface FulfillmentOperatorMutationPort {
+    createCommerceFulfillmentOrder(request: AdminCommerceFulfillmentCreateRequest & {
+        actorUserId: string;
+    }): Promise<FulfillmentOperatorMutationResult | FulfillmentNativeUnsupported>;
+    recordCommerceFulfillmentProviderAttempt(request: AdminCommerceFulfillmentRecordProviderAttemptRequest & {
+        actorUserId: string;
+    }): Promise<FulfillmentOperatorMutationResult | FulfillmentNativeUnsupported>;
+    recordCommerceFulfillmentLabel(request: AdminCommerceFulfillmentRecordLabelRequest & {
+        actorUserId: string;
+    }): Promise<FulfillmentOperatorMutationResult | FulfillmentNativeUnsupported>;
+    handOffCommerceFulfillmentOrder(request: AdminCommerceFulfillmentHandOffRequest & {
+        actorUserId: string;
+    }): Promise<FulfillmentOperatorMutationResult | FulfillmentNativeUnsupported>;
+    recordCommerceFulfillmentTrackingEvent(request: AdminCommerceFulfillmentTrackingEventRequest & {
+        actorUserId: string;
+    }): Promise<FulfillmentOperatorMutationResult | FulfillmentNativeUnsupported>;
+    cancelCommerceFulfillmentOrder(request: AdminCommerceFulfillmentCancelRequest & {
+        actorUserId: string;
+    }): Promise<FulfillmentOperatorMutationResult | FulfillmentNativeUnsupported>;
+}
+export {};
+```
+## dist/fulfillment/contracts/read.d.ts
+
+```ts
+import type { SubscriptionCycleStatus } from '@openlup/core/subscription';
+import type { PaymentIntentStatus } from '@openlup/core/payment';
+import type { FulfillmentNativeUnsupported } from './nativeUnsupported.js';
+export type FulfillmentOrderStatus = 'draft' | 'pending_payment' | 'paid' | 'failed' | 'expired' | 'fulfillment_pending' | 'cancelled' | 'fulfilled' | 'refunded';
+export type FulfillmentPaymentStatus = 'not_started' | PaymentIntentStatus;
+export interface FulfillmentCommerceOrder {
+    id: string;
+    orderId: string;
+    clientId: string | null;
+    status: 'created' | 'packed' | 'label_pending' | 'label_created' | 'handed_over' | 'in_transit' | 'delivered' | 'exception' | 'cancelled';
+    providerKind: string | null;
+    providerTrackingId: string | null;
+    shippingAddress: {
+        addressId: string;
+        clientId: string;
+        label: string | null;
+        line1: string;
+        line2: string | null;
+        city: string;
+        postalCode: string;
+        country: string;
+    };
+    lines: {
+        id: string | null;
+        orderItemId: string;
+        skuId: string;
+        sku: string;
+        title: string | null;
+        quantity: number;
+        inventoryReservationIds: string[];
+        productSnapshot: Record<string, unknown>;
+    }[];
+    payment: {
+        paymentIntentId: string;
+        paymentStatus: FulfillmentPaymentStatus;
+        providerPaymentId: string | null;
+    };
+    inventory: {
+        status: 'not_checked' | 'reserved' | 'missing' | 'released' | 'expired' | 'consumed' | 'review_required';
+        reservationId: string | null;
+        reservationStatus: 'reserved' | 'consumed' | 'released' | 'expired' | null;
+        expiresAt: string | null;
+        locationId: string | null;
+        locationCode: string | null;
+    };
+    omsEligibility: {
+        allowed: boolean;
+        reason: 'order_not_paid' | 'payment_not_succeeded' | 'subscription_cycle_not_paid' | 'active_hold' | 'missing_shipping_address' | 'inventory_review' | 'risk_review' | null;
+    };
+    latestOperation: {
+        id: string;
+        type: 'created' | 'packed' | 'provider_attempt_recorded' | 'label_created' | 'handed_over' | 'tracking_event_recorded' | 'cancelled';
+        occurredAt: string;
+        actorUserId: string | null;
+        payload: Record<string, unknown>;
+    } | null;
+    createdAt: string;
+    updatedAt: string;
+}
+export interface FulfillmentOrdersListRequest {
+    page: number;
+    pageSize: number;
+    status?: FulfillmentCommerceOrder['status'];
+}
+export interface FulfillmentOrderDetailRequest {
+    fulfillmentOrderId?: string;
+    orderId?: string;
+}
+export interface FulfillmentOrdersListResponse {
+    contractVersion: 'commerce.fulfillment.v0';
+    orders: FulfillmentCommerceOrder[];
+    totalCount: number;
+    page: number;
+    pageSize: number;
+}
+export interface FulfillmentOrderDetailResponse {
+    contractVersion: 'commerce.fulfillment.v0';
+    order: FulfillmentCommerceOrder;
+}
+/** Host-owned persisted projections. Payment statuses already come from the payments projection. */
+export interface FulfillmentCommerceReadPort {
+    listCommerceFulfillmentOrders(request: FulfillmentOrdersListRequest): Promise<FulfillmentOrdersListResponse | FulfillmentNativeUnsupported>;
+    getCommerceFulfillmentOrderDetail(request: FulfillmentOrderDetailRequest): Promise<FulfillmentOrderDetailResponse | null | FulfillmentNativeUnsupported>;
+}
+export interface FulfillmentShipmentsOverviewRequest {
+    shippedFilter: 'today' | '7d' | '30d' | 'all';
+}
+/** Bucket rows are opaque host data; native shipment counts cannot replace these buckets. */
+export interface FulfillmentShipmentsOverviewResponse {
+    approved: Record<string, unknown>[];
+    packing: Record<string, unknown>[];
+    shippedToday: number;
+    shipped: Record<string, unknown>[];
+}
+export interface FulfillmentShipmentsOverviewPort {
+    getShipmentsOverview(request: FulfillmentShipmentsOverviewRequest): Promise<FulfillmentShipmentsOverviewResponse | FulfillmentNativeUnsupported>;
+}
+/** Existing commerce eligibility remains host-owned; the read model only supplies its facts. */
+export interface FulfillmentCommerceReadPolicy {
+    evaluateCommerceFulfillmentEligibility(input: {
+        orderMode: 'one_time' | 'subscription_cycle';
+        orderStatus: FulfillmentOrderStatus;
+        paymentStatus: FulfillmentPaymentStatus;
+        subscriptionCycleStatus: SubscriptionCycleStatus | null;
+        activeHoldCount: number;
+        hasShippingAddress: boolean;
+        inventoryStatus: FulfillmentCommerceOrder['inventory']['status'];
+    }): FulfillmentCommerceOrder['omsEligibility'];
+}
+export type { FulfillmentProgressInput, FulfillmentProgressPresentation } from "@openlup/core/fulfillment";
+```
+## dist/fulfillment/contracts/readback.d.ts
+
+```ts
+import type { FulfillmentObservation } from "./observation.js";
+import type { FulfillmentRefusal } from "./dispatch.js";
+export type FulfillmentReadbackResult = {
+    kind: "found";
+    externalRef: string;
+    createdAt: string | null;
+    updatedAt: string | null;
+    observation: FulfillmentObservation;
+} | {
+    kind: "absent";
+    scope: {
+        providerRef: string;
+        requestKey: string;
+        fulfillmentRef: string;
+        externalRef: string | null;
+    };
+    proof: {
+        kind: "authoritative_exact_lookup";
+        evidenceRef: `evidence:${string}`;
+        checkedAt: string;
+    };
+} | {
+    kind: "unknown";
+    refusal: FulfillmentRefusal;
+} | {
+    kind: "unsupported";
+    refusal: FulfillmentRefusal;
+};
+export interface FulfillmentReadbackPort {
+    /** Empty pages and missing local rows cannot certify external absence. */
+    read(input: {
+        providerRef: string;
+        requestKey: string;
+        fulfillmentRef: string;
+        externalRef: string | null;
+        mode: "command" | "parcel";
+    }): Promise<FulfillmentReadbackResult>;
+}
+/** Collection observation is separate from authoritative exact lookup. */
+export type FulfillmentReconciliationObservation = FulfillmentReadbackResult | {
+    kind: "unmapped";
+    externalRef: string | null;
+    evidence: Pick<FulfillmentObservation, "correlation" | "eventKey" | "providerStatus" | "diagnostics">;
+};
+export interface FulfillmentObservationPagePort {
+    readPage(input: {
+        page: number;
+        size: number;
+    }): Promise<{
+        kind: "page";
+        rows: readonly FulfillmentReconciliationObservation[];
+    } | {
+        kind: "page_exhausted";
+    } | {
+        kind: "failed";
+        refusal: FulfillmentRefusal;
+        error?: import("./dispatch.js").FulfillmentOperationError;
+    }>;
+}
+```
+## dist/fulfillment/contracts/replacement.d.ts
+
+```ts
+import type { FulfillmentNativeUnsupported } from './nativeUnsupported.js';
+export interface FulfillmentReplacementRequest {
+    idempotencyKey: string;
+    actorUserId: string;
+    orderId: string;
+    reason: 'damaged' | 'lost' | 'returned_undelivered' | 'other';
+    metadata?: Record<string, unknown>;
+}
+export interface FulfillmentReplacementResult {
+    contractVersion: 'commerce.v0';
+    operation: {
+        id: string;
+        orderId: string;
+        type: 'hold_created' | 'hold_released' | 'fulfillment_reviewed' | 'support_note' | 'shipping_address_updated' | 'order_marked_refunded' | 'order_cancelled_manual' | 'replacement_shipment_requested';
+        holdId: string | null;
+        actorUserId: string | null;
+        occurredAt: string;
+        payload: Record<string, unknown>;
+    };
+    replacement: {
+        fulfillmentOrderId: string;
+        orderId: string;
+        sequenceNo: number;
+        replacesFulfillmentOrderId: string;
+        reason: FulfillmentReplacementRequest['reason'];
+        status: string;
+    };
+    releasedHoldIds: string[];
+    replayed: boolean;
+}
+/** Host owns atomic paid/contact/current-parcel/hold/reservation checks and actor-bound fingerprint/replay receipts. No confirmation or dispatch operation exists here. */
+export interface FulfillmentReplacementPort {
+    requestReplacementShipment(request: FulfillmentReplacementRequest): Promise<FulfillmentReplacementResult | FulfillmentNativeUnsupported>;
+}
+```
+## dist/fulfillment/contracts/store.d.ts
+
+```ts
+import type { DispatchEvidence, FulfillmentDispatchRequest, FulfillmentDispatchResult, FulfillmentRefusal } from "./dispatch.js";
+export interface DispatchRecord {
+    dispatchRef: string;
+    requestKey: string;
+    fulfillmentRef: string;
+    orderRef: string;
+    parcelRef: string | null;
+    externalRef: string | null;
+    mode: "shadow" | "stage" | "live";
+    status: "draft" | "submitting" | "created" | "uncertain" | "failed" | "cancel_requested" | "cancelled";
+    evidence: DispatchEvidence;
+    replayed: boolean;
+    acceptance?: Extract<FulfillmentDispatchResult, {
+        kind: "accepted";
+    }> | null;
+}
+export interface FulfillmentStorePort {
+    read(requestKey: string): Promise<DispatchRecord | null>;
+    readCandidate(fulfillmentRef: string): Promise<FulfillmentDispatchRequest | null>;
+    prepare(fulfillmentRef: string): Promise<{
+        disposition: "ready" | "withheld";
+        contactRevision: number | null;
+    }>;
+    /** Evidence comes from adapter prepare, before any external submission. */
+    claim(input: {
+        requestKey: string;
+        fulfillmentRef: string;
+        orderRef: string;
+        parcelRef: string | null;
+        mode: DispatchRecord["mode"];
+        evidence: DispatchEvidence;
+    }): Promise<{
+        kind: "claimed";
+        record: DispatchRecord;
+    } | {
+        kind: "refused";
+        refusal: FulfillmentRefusal;
+    }>;
+    /** G14: idempotent mapped attempt; persist only prepared, sanitized evidence. */
+    recordProviderAttempt(attemptKey: string, fulfillmentRef: string, preparedEvidence: DispatchEvidence, mode: DispatchRecord["mode"], status: "recorded"): Promise<{
+        replayed: boolean;
+    }>;
+    /** Bind submission to the same prepared command fingerprint recorded by claim. */
+    begin(input: {
+        dispatchRef: string;
+        commandFingerprint: string;
+    }): Promise<{
+        kind: "begun";
+        record: DispatchRecord;
+        begun: boolean;
+        replayed: boolean;
+    } | {
+        kind: "refused";
+        refusal: FulfillmentRefusal;
+    }>;
+    /** Accepted rescue retains externalRef as uncertain; only acknowledge closes the local acceptance atomically. */
+    finalize(input: {
+        dispatchRef: string;
+        result: FulfillmentDispatchResult;
+    }): Promise<DispatchRecord>;
+    acknowledge(input: {
+        dispatchRef: string;
+        acceptance: Extract<FulfillmentDispatchResult, {
+            kind: "accepted";
+        }>;
+    }): Promise<{
+        acknowledged: boolean;
+        replayed: boolean;
+        record: DispatchRecord;
+    }>;
+    markStaleSubmissionsUncertain(staleBefore: string): Promise<number>;
+}
+export interface FulfillmentPaidHandoffPort {
+    ensureObligation(input: {
+        requestKey: string;
+        orderRef: string;
+        paidFactRef: string;
+    }): Promise<{
+        fulfillmentRef: string;
+        replayed: boolean;
+    }>;
+    acknowledge(input: {
+        requestKey: string;
+        fulfillmentRef: string;
+    }): Promise<{
+        acknowledged: boolean;
+        replayed: boolean;
+    }>;
+}
+```
+## dist/fulfillment/contracts/sync.d.ts
+
+```ts
+import type { FulfillmentRefusal } from "./dispatch.js";
+/** Collection identity never masquerades as a monotonic provider revision. */
+interface SyncIdentity {
+    providerRef: string;
+    syncRunId: string;
+    collectedAt: string;
+    sourceRevision: string | null;
+    revisionSource: "provider" | "collection" | "unknown";
+}
+export interface StockSnapshot extends SyncIdentity {
+    skuRef: string;
+    quantityKind: "snapshot";
+    totalQuantity: number;
+    forSaleQuantity: number;
+    reservedOrUnavailableQuantity: number;
+}
+export interface StockMovement extends SyncIdentity {
+    skuRef: string;
+    quantityKind: "movement";
+    quantity: number;
+    occurredAt: string | null;
+    operationType: string | null;
+    documentRef: string | null;
+    lotRef: string | null;
+    expirationDate: string | null;
+}
+export interface SyncCursor {
+    status: "idle" | "running" | "succeeded" | "failed";
+    lastStockSyncedAt: string | null;
+    lastMovementOccurredAt: string | null;
+    /** Sanitized continuation only; no credentials, URLs or arbitrary provider payload. */
+    continuation: {
+        nextRef: string | null;
+        startLocalDate: string | null;
+        endLocalDate: string | null;
+    };
+    /** G15: successful sellable coverage gaps; legacy absent values read as []. */
+    coverageGapSkus?: readonly string[];
+    refusal: FulfillmentRefusal | null;
+    /** Per-entry bounded diagnostics and run evidence in the existing cursor JSON, never raw errors. */
+    syncRunId?: string;
+    counts?: {
+        checked: number;
+        updated: number;
+        movements: number;
+        rejected: number;
+        failures: number;
+        providerCalls: number;
+        readBacks: number;
+    };
+    items?: readonly {
+        kind?: "stock" | "movement";
+        itemIndex: number;
+        skuRef: string | null;
+        status: "recorded" | "failed" | "rejected";
+        reason?: string;
+        activeReserved?: number;
+        sellableNow?: number | null;
+        coverageGapQuantity?: number;
+    }[];
+    alerts?: readonly {
+        skuRef: string;
+        thresholdKind: Exclude<Threshold, "forecast">;
+        severity: "info" | "warning" | "critical";
+        providerForSaleQuantity: number;
+        localAvailableQuantity: number;
+        detectedAt: string;
+        activeReserved?: number;
+        coverageGapQuantity?: number;
+        gapHours?: number;
+        thresholdHours?: number;
+    }[];
+    staleSync?: {
+        gapHours: number;
+        thresholdHours: number;
+        detectedAt: string;
+    };
+    error?: {
+        reason: string;
+        providerError?: {
+            operation: "get_stock" | "get_stock_movements";
+            status: number | null;
+            code: string;
+            retryable: boolean;
+        };
+    } | null;
+}
+export interface LocalStock {
+    skuRef: string;
+    onHand: number;
+    reserved: number;
+    unavailable: number;
+    safetyStock: number;
+}
+type Threshold = "safety_stock" | "reservation_coverage" | "forecast" | "stale_sync";
+type Conflict = "unknown_sku" | "ean_conflict" | "kind_quantity_conflict";
+export interface FulfillmentStockSyncProvider {
+    /** Rejected rows carry only their input index and a closed reason, never an unsafe reference. */
+    getStock(): Promise<(StockSnapshot | {
+        kind: "rejected";
+        itemIndex: number;
+        reason: "invalid_sku_ref";
+    })[]>;
+    getStockMovements(input?: {
+        startLocalDate?: string;
+        endLocalDate?: string;
+        size?: number;
+    }): Promise<(StockMovement | {
+        kind: "rejected";
+        itemIndex: number;
+        reason: "invalid_sku_ref";
+    })[]>;
+}
+export interface FulfillmentStockSyncPort {
+    readCursor(): Promise<SyncCursor | null>;
+    /** G16: unaggregated lines at the worker clock; quantity retains the four local balances. */
+    readLocalInventoryStock(requestedAt: string): Promise<readonly {
+        skuRef: string;
+        quantity: Pick<LocalStock, "onHand" | "reserved" | "unavailable" | "safetyStock">;
+        fulfillable: boolean;
+        locationStatus: "active" | "inactive";
+        lotStatus: "available" | "quarantined" | "expired" | "recalled" | null;
+        expiresAt: string | null;
+    }[]>;
+    readSkuInventoryClasses(skus: string[]): Promise<Map<string, "sellable" | "packaging" | null>>;
+    readActiveReservations(skus: string[], requestedAt: string): Promise<Map<string, number>>;
+    recordCursor(input: SyncCursor): Promise<void>;
+    recordStockSnapshot(input: {
+        requestKey: string;
+        snapshot: StockSnapshot;
+        local: LocalStock;
+        mismatchKind: "none";
+        inventoryClass: "sellable" | "packaging" | null;
+    }): Promise<{
+        replayed: boolean;
+        readBack: boolean;
+    }>;
+    recordProviderStockCurrent(input: {
+        requestKey: string;
+        snapshot: StockSnapshot;
+        inventoryClass: "sellable" | "packaging" | null;
+        lastSyncedAt: string;
+        staleAfter: string;
+    }): Promise<{
+        replayed: boolean;
+        readBack: boolean;
+    }>;
+    recordMovement(input: {
+        requestKey: string;
+        movement: StockMovement;
+    }): Promise<{
+        replayed: boolean;
+        readBack: boolean;
+    }>;
+    recordLowStockEvidence(input: {
+        requestKey: string;
+        skuRef: string;
+        thresholdKind: Exclude<Threshold, "forecast">;
+        severity: "info" | "warning" | "critical";
+        providerForSaleQuantity: number;
+        localAvailableQuantity: number;
+        syncRunId: string;
+    }): Promise<{
+        replayed: boolean;
+    }>;
+    resolveLowStockEvidence(input: {
+        skuRef: string;
+        activeThresholdKinds: Threshold[];
+        syncRunId: string;
+    }): Promise<{
+        resolved: number;
+    }>;
+}
+interface ProductPack {
+    ean: string;
+    quantity: number;
+}
+export interface FulfillmentProductSyncProvider {
+    /** null means skipped (no private push metadata), never a newly created local SKU. */
+    ensureProduct(sku: string): Promise<{
+        replayed: boolean;
+    } | null>;
+    getProductPacks(sku: string): Promise<ProductPack[]>;
+    addProductPack(sku: string, pack: ProductPack): Promise<void>;
+    listStockedSkus(): Promise<string[]>;
+}
+export interface FulfillmentProductSyncPort {
+    listLocalProductPacks(): Promise<{
+        sku: string;
+        packs: (ProductPack & {
+            kind: "unit" | "collective";
+        })[];
+    }[]>;
+    markPackSynced(input: {
+        sku: string;
+        ean: string;
+    }): Promise<void>;
+    upsertPulledPack(input: {
+        sku: string;
+        ean: string;
+        quantity: number;
+        kind: "unit" | "collective";
+    }): Promise<{
+        conflict: "none" | "local_locked_mismatch" | "ean_owned_by_other_sku" | "sku_not_found";
+        replayed: boolean;
+    }>;
+    recordReconciliationEvidence(input: {
+        requestKey: string;
+        sku: string;
+        ean: string | null;
+        conflictKind: Conflict;
+        providerQuantity: number;
+        identity: SyncIdentity;
+        refusal: FulfillmentRefusal | null;
+    }): Promise<{
+        replayed: boolean;
+    }>;
+    resolveReconciliationEvidence(input: {
+        sku: string;
+        activeConflictKinds: Conflict[];
+        syncRunId: string;
+    }): Promise<{
+        resolved: number;
+    }>;
+}
+export {};
+```
+## dist/fulfillment/currentFulfillmentParcel.d.ts
+
+```ts
+export { parcelSequenceNo, compareParcelPrecedence, currentParcel, currentParcelFor, currentParcelPerOrder, currentParcelFirst, belongsToParcel, rowsForParcel } from "@openlup/core/fulfillment";
+export type { FulfillmentParcelRow, ParcelAttributedRow } from "@openlup/core/fulfillment";
+```
+## dist/fulfillment/delayReadModel.d.ts
+
+```ts
+import type { CustomerDeliveryAlignment, FulfillmentCustomerAlignmentRowsReader } from './contracts/customerAlignment.js';
+import type { FulfillmentNativeUnsupported } from './contracts/nativeUnsupported.js';
+export type DeliveryAlignmentRow = Record<string, unknown>;
+export type DeliveryAlignmentRowsReader = FulfillmentCustomerAlignmentRowsReader;
+/**
+ * Reads only customer-safe current cases. An aligned case remains current while
+ * its aligned schedule is still the subscription's next schedule; once a paid
+ * cycle advances `next_cycle_at`, the historical ledger row disappears from UI.
+ */
+export declare function readFulfillmentDelay(readRows: DeliveryAlignmentRowsReader | undefined, nextCycleAtBySubscription: ReadonlyMap<string, string | null>): Promise<Map<string, CustomerDeliveryAlignment> | FulfillmentNativeUnsupported>;
+export declare function mapCurrentDeliveryAlignments(rows: DeliveryAlignmentRow[], nextCycleAtBySubscription: ReadonlyMap<string, string | null>): Map<string, CustomerDeliveryAlignment>;
+```
+## dist/fulfillment/deliveryAlignmentReadModel.d.ts
+
+```ts
+import type { DeliveryAlignmentPort } from './contracts/index.js';
+import type { PgExecutor } from './postgresDispatchStore.js';
+/** Server-authorized projection; database browser roles have no direct access. */
+export declare function readDeliveryAlignment(db: PgExecutor, fulfillmentRef: string): ReturnType<DeliveryAlignmentPort['read']>;
+```
+## dist/fulfillment/fulfillmentObservationEffects.d.ts
+
+```ts
+import type { FulfillmentObservation } from "./contracts/index.js";
+/** Ledger effects for an already accepted observation; acceptance and retry belong to the caller. */
+interface FulfillmentObservationPort<TrackingStatus> {
+    markProviderStockConsumed(input: {
+        idempotencyKey: string;
+        fulfillmentOrderId: string;
+    }): Promise<{
+        replayed: boolean;
+    }>;
+    markHandedOver(input: {
+        idempotencyKey: string;
+        fulfillmentOrderId: string;
+        suppressDispatched: boolean;
+    }): Promise<{
+        replayed: boolean;
+    }>;
+    recordTrackingReference(input: {
+        idempotencyKey: string;
+        orderId: string;
+        fulfillmentOrderId: string;
+        trackingNumber: string;
+        trackingUrl: string | null;
+        carrierKind: string | null;
+        service: string | null;
+        status: TrackingStatus;
+        observation: FulfillmentObservation;
+    }): Promise<{
+        replayed: boolean;
+        readBack: boolean;
+    }>;
+}
+interface FulfillmentObservationTrackingReference {
+    trackingNumber: string;
+    trackingUrl?: string | null;
+    carrierKind?: string | null;
+    service?: string | null;
+}
+interface FulfillmentObservationInput<LocalStatus, TrackingStatus> {
+    port: FulfillmentObservationPort<TrackingStatus>;
+    localStatus: LocalStatus;
+    ids: {
+        orderId: string;
+        fulfillmentOrderId: string;
+    };
+    observation: FulfillmentObservation;
+    trackingRefs: readonly FulfillmentObservationTrackingReference[];
+    stockIdempotencyKey: string;
+    handoffIdempotencyKey: string;
+    trackingIdempotencyKey: (trackingNumber: string) => string;
+    issueAccountingInvoice?: () => Promise<void>;
+    onReplayed?: () => void;
+    onTrackingRecorded?: (result: {
+        replayed: boolean;
+        readBack: boolean;
+    }) => void;
+}
+/** Pure status decisions/projection; the mechanism owns every effect and await. */
+interface FulfillmentObservationStatusPolicy<LocalStatus, TrackingStatus> {
+    consumesStock(status: LocalStatus): boolean;
+    handsOver(status: LocalStatus): boolean;
+    suppressDispatched(status: LocalStatus): boolean;
+    trackingStatus(status: LocalStatus): TrackingStatus;
+}
+/** Stock → durable handover → every tracking reference → optional invoice. No catches or retries. */
+export declare function applyFulfillmentObservationEffects<LocalStatus, TrackingStatus>(input: FulfillmentObservationInput<LocalStatus, TrackingStatus>, policy: FulfillmentObservationStatusPolicy<LocalStatus, TrackingStatus>): Promise<void>;
+export {};
+```
+## dist/fulfillment/handlerSchemas.d.ts
+
+```ts
+import { z } from 'zod';
+export declare const COMMERCE_FULFILLMENT_CONTRACT_VERSION = "commerce.fulfillment.v0";
+export declare const COMMERCE_FULFILLMENT_STATUSES: readonly ["created", "packed", "label_pending", "label_created", "handed_over", "in_transit", "delivered", "exception", "cancelled"];
+export declare const COMMERCE_FULFILLMENT_OPERATION_TYPES: readonly ["created", "packed", "provider_attempt_recorded", "label_created", "handed_over", "tracking_event_recorded", "cancelled"];
+export declare const COMMERCE_FULFILLMENT_PROVIDER_ATTEMPT_STATUSES: readonly ["recorded", "succeeded", "failed"];
+export declare const commerceFulfillmentStatusSchema: z.ZodEnum<{
+    created: "created";
+    cancelled: "cancelled";
+    delivered: "delivered";
+    packed: "packed";
+    label_pending: "label_pending";
+    label_created: "label_created";
+    handed_over: "handed_over";
+    in_transit: "in_transit";
+    exception: "exception";
+}>;
+export declare const commerceFulfillmentOperationTypeSchema: z.ZodEnum<{
+    created: "created";
+    cancelled: "cancelled";
+    packed: "packed";
+    label_created: "label_created";
+    handed_over: "handed_over";
+    provider_attempt_recorded: "provider_attempt_recorded";
+    tracking_event_recorded: "tracking_event_recorded";
+}>;
+export declare const commerceFulfillmentProviderAttemptStatusSchema: z.ZodEnum<{
+    failed: "failed";
+    succeeded: "succeeded";
+    recorded: "recorded";
+}>;
+export declare const commerceFulfillmentPaymentStatusSchema: z.ZodEnum<{
+    expired: "expired";
+    created: "created";
+    failed: "failed";
+    cancelled: "cancelled";
+    refunded: "refunded";
+    not_started: "not_started";
+    requires_action: "requires_action";
+    processing: "processing";
+    partially_refunded: "partially_refunded";
+    disputed: "disputed";
+    succeeded: "succeeded";
+}>;
+export declare const commerceFulfillmentInventoryStatusSchema: z.ZodEnum<{
+    expired: "expired";
+    not_checked: "not_checked";
+    reserved: "reserved";
+    missing: "missing";
+    released: "released";
+    consumed: "consumed";
+    review_required: "review_required";
+}>;
+export declare const commerceFulfillmentBlockReasonSchema: z.ZodEnum<{
+    order_not_paid: "order_not_paid";
+    payment_not_succeeded: "payment_not_succeeded";
+    subscription_cycle_not_paid: "subscription_cycle_not_paid";
+    active_hold: "active_hold";
+    missing_shipping_address: "missing_shipping_address";
+    inventory_review: "inventory_review";
+    risk_review: "risk_review";
+}>;
+export declare const commerceFulfillmentShippingAddressSnapshotSchema: z.ZodObject<{
+    addressId: z.ZodGUID;
+    clientId: z.ZodGUID;
+    label: z.ZodNullable<z.ZodString>;
+    line1: z.ZodString;
+    line2: z.ZodNullable<z.ZodString>;
+    city: z.ZodString;
+    postalCode: z.ZodString;
+    country: z.ZodString;
+}, z.core.$strict>;
+export declare const commerceFulfillmentLineSchema: z.ZodObject<{
+    id: z.ZodNullable<z.ZodGUID>;
+    orderItemId: z.ZodGUID;
+    skuId: z.ZodGUID;
+    sku: z.ZodString;
+    title: z.ZodNullable<z.ZodString>;
+    quantity: z.ZodNumber;
+    inventoryReservationIds: z.ZodArray<z.ZodGUID>;
+    productSnapshot: z.ZodRecord<z.ZodString, z.ZodUnknown>;
+}, z.core.$strict>;
+export declare const commerceFulfillmentPaymentSummarySchema: z.ZodObject<{
+    paymentIntentId: z.ZodGUID;
+    paymentStatus: z.ZodEnum<{
+        expired: "expired";
+        created: "created";
+        failed: "failed";
+        cancelled: "cancelled";
+        refunded: "refunded";
+        not_started: "not_started";
+        requires_action: "requires_action";
+        processing: "processing";
+        partially_refunded: "partially_refunded";
+        disputed: "disputed";
+        succeeded: "succeeded";
+    }>;
+    providerPaymentId: z.ZodNullable<z.ZodString>;
+}, z.core.$strict>;
+export declare const commerceFulfillmentInventorySummarySchema: z.ZodObject<{
+    status: z.ZodEnum<{
+        expired: "expired";
+        not_checked: "not_checked";
+        reserved: "reserved";
+        missing: "missing";
+        released: "released";
+        consumed: "consumed";
+        review_required: "review_required";
+    }>;
+    reservationId: z.ZodNullable<z.ZodGUID>;
+    reservationStatus: z.ZodNullable<z.ZodEnum<{
+        expired: "expired";
+        reserved: "reserved";
+        released: "released";
+        consumed: "consumed";
+    }>>;
+    expiresAt: z.ZodNullable<z.ZodString>;
+    locationId: z.ZodNullable<z.ZodGUID>;
+    locationCode: z.ZodNullable<z.ZodString>;
+}, z.core.$strict>;
+export declare const commerceFulfillmentOmsEligibilitySchema: z.ZodObject<{
+    allowed: z.ZodBoolean;
+    reason: z.ZodNullable<z.ZodEnum<{
+        order_not_paid: "order_not_paid";
+        payment_not_succeeded: "payment_not_succeeded";
+        subscription_cycle_not_paid: "subscription_cycle_not_paid";
+        active_hold: "active_hold";
+        missing_shipping_address: "missing_shipping_address";
+        inventory_review: "inventory_review";
+        risk_review: "risk_review";
+    }>>;
+}, z.core.$strict>;
+export declare const commerceFulfillmentOperationSchema: z.ZodObject<{
+    id: z.ZodGUID;
+    type: z.ZodEnum<{
+        created: "created";
+        cancelled: "cancelled";
+        packed: "packed";
+        label_created: "label_created";
+        handed_over: "handed_over";
+        provider_attempt_recorded: "provider_attempt_recorded";
+        tracking_event_recorded: "tracking_event_recorded";
+    }>;
+    occurredAt: z.ZodString;
+    actorUserId: z.ZodNullable<z.ZodGUID>;
+    payload: z.ZodRecord<z.ZodString, z.ZodUnknown>;
+}, z.core.$strict>;
+export declare const commerceFulfillmentOrderSchema: z.ZodObject<{
+    id: z.ZodGUID;
+    orderId: z.ZodGUID;
+    clientId: z.ZodNullable<z.ZodGUID>;
+    status: z.ZodEnum<{
+        created: "created";
+        cancelled: "cancelled";
+        delivered: "delivered";
+        packed: "packed";
+        label_pending: "label_pending";
+        label_created: "label_created";
+        handed_over: "handed_over";
+        in_transit: "in_transit";
+        exception: "exception";
+    }>;
+    providerKind: z.ZodNullable<z.ZodString>;
+    providerTrackingId: z.ZodNullable<z.ZodString>;
+    shippingAddress: z.ZodObject<{
+        addressId: z.ZodGUID;
+        clientId: z.ZodGUID;
+        label: z.ZodNullable<z.ZodString>;
+        line1: z.ZodString;
+        line2: z.ZodNullable<z.ZodString>;
+        city: z.ZodString;
+        postalCode: z.ZodString;
+        country: z.ZodString;
+    }, z.core.$strict>;
+    lines: z.ZodArray<z.ZodObject<{
+        id: z.ZodNullable<z.ZodGUID>;
+        orderItemId: z.ZodGUID;
+        skuId: z.ZodGUID;
+        sku: z.ZodString;
+        title: z.ZodNullable<z.ZodString>;
+        quantity: z.ZodNumber;
+        inventoryReservationIds: z.ZodArray<z.ZodGUID>;
+        productSnapshot: z.ZodRecord<z.ZodString, z.ZodUnknown>;
+    }, z.core.$strict>>;
+    payment: z.ZodObject<{
+        paymentIntentId: z.ZodGUID;
+        paymentStatus: z.ZodEnum<{
+            expired: "expired";
+            created: "created";
+            failed: "failed";
+            cancelled: "cancelled";
+            refunded: "refunded";
+            not_started: "not_started";
+            requires_action: "requires_action";
+            processing: "processing";
+            partially_refunded: "partially_refunded";
+            disputed: "disputed";
+            succeeded: "succeeded";
+        }>;
+        providerPaymentId: z.ZodNullable<z.ZodString>;
+    }, z.core.$strict>;
+    inventory: z.ZodObject<{
+        status: z.ZodEnum<{
+            expired: "expired";
+            not_checked: "not_checked";
+            reserved: "reserved";
+            missing: "missing";
+            released: "released";
+            consumed: "consumed";
+            review_required: "review_required";
+        }>;
+        reservationId: z.ZodNullable<z.ZodGUID>;
+        reservationStatus: z.ZodNullable<z.ZodEnum<{
+            expired: "expired";
+            reserved: "reserved";
+            released: "released";
+            consumed: "consumed";
+        }>>;
+        expiresAt: z.ZodNullable<z.ZodString>;
+        locationId: z.ZodNullable<z.ZodGUID>;
+        locationCode: z.ZodNullable<z.ZodString>;
+    }, z.core.$strict>;
+    omsEligibility: z.ZodObject<{
+        allowed: z.ZodBoolean;
+        reason: z.ZodNullable<z.ZodEnum<{
+            order_not_paid: "order_not_paid";
+            payment_not_succeeded: "payment_not_succeeded";
+            subscription_cycle_not_paid: "subscription_cycle_not_paid";
+            active_hold: "active_hold";
+            missing_shipping_address: "missing_shipping_address";
+            inventory_review: "inventory_review";
+            risk_review: "risk_review";
+        }>>;
+    }, z.core.$strict>;
+    latestOperation: z.ZodNullable<z.ZodObject<{
+        id: z.ZodGUID;
+        type: z.ZodEnum<{
+            created: "created";
+            cancelled: "cancelled";
+            packed: "packed";
+            label_created: "label_created";
+            handed_over: "handed_over";
+            provider_attempt_recorded: "provider_attempt_recorded";
+            tracking_event_recorded: "tracking_event_recorded";
+        }>;
+        occurredAt: z.ZodString;
+        actorUserId: z.ZodNullable<z.ZodGUID>;
+        payload: z.ZodRecord<z.ZodString, z.ZodUnknown>;
+    }, z.core.$strict>>;
+    createdAt: z.ZodString;
+    updatedAt: z.ZodString;
+}, z.core.$strict>;
+export declare const adminCommerceFulfillmentOrdersListRequestSchema: z.ZodObject<{
+    page: z.ZodDefault<z.ZodCoercedNumber<unknown>>;
+    pageSize: z.ZodDefault<z.ZodCoercedNumber<unknown>>;
+    status: z.ZodOptional<z.ZodEnum<{
+        created: "created";
+        cancelled: "cancelled";
+        delivered: "delivered";
+        packed: "packed";
+        label_pending: "label_pending";
+        label_created: "label_created";
+        handed_over: "handed_over";
+        in_transit: "in_transit";
+        exception: "exception";
+    }>>;
+}, z.core.$strict>;
+export declare const adminCommerceFulfillmentOrderDetailRequestSchema: z.ZodObject<{
+    fulfillmentOrderId: z.ZodOptional<z.ZodGUID>;
+    orderId: z.ZodOptional<z.ZodGUID>;
+}, z.core.$strict>;
+export declare const adminCommerceFulfillmentCreateRequestSchema: z.ZodObject<{
+    idempotencyKey: z.ZodString;
+    orderId: z.ZodGUID;
+    metadata: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+}, z.core.$strict>;
+export declare const adminCommerceFulfillmentRecordProviderAttemptRequestSchema: z.ZodObject<{
+    idempotencyKey: z.ZodString;
+    fulfillmentOrderId: z.ZodGUID;
+    providerKind: z.ZodString;
+    status: z.ZodEnum<{
+        failed: "failed";
+        succeeded: "succeeded";
+        recorded: "recorded";
+    }>;
+    requestPayload: z.ZodDefault<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+    responsePayload: z.ZodDefault<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+    error: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    metadata: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+}, z.core.$strict>;
+export declare const adminCommerceFulfillmentRecordLabelRequestSchema: z.ZodObject<{
+    idempotencyKey: z.ZodString;
+    fulfillmentOrderId: z.ZodGUID;
+    providerKind: z.ZodString;
+    providerTrackingId: z.ZodString;
+    labelUrl: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    deliveryEstimateDays: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
+    rawProviderPayload: z.ZodDefault<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+    metadata: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+}, z.core.$strict>;
+export declare const adminCommerceFulfillmentHandOffRequestSchema: z.ZodObject<{
+    idempotencyKey: z.ZodString;
+    fulfillmentOrderId: z.ZodGUID;
+    metadata: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+}, z.core.$strict>;
+export declare const adminCommerceFulfillmentTrackingEventRequestSchema: z.ZodObject<{
+    idempotencyKey: z.ZodString;
+    fulfillmentOrderId: z.ZodGUID;
+    status: z.ZodEnum<{
+        delivered: "delivered";
+        in_transit: "in_transit";
+        exception: "exception";
+    }>;
+    providerTrackingId: z.ZodOptional<z.ZodString>;
+    rawEvent: z.ZodDefault<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+    metadata: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+}, z.core.$strict>;
+export declare const adminCommerceFulfillmentCancelRequestSchema: z.ZodObject<{
+    idempotencyKey: z.ZodString;
+    fulfillmentOrderId: z.ZodGUID;
+    reason: z.ZodString;
+    metadata: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+}, z.core.$strict>;
+export declare const adminCommerceFulfillmentOrdersListResponseSchema: z.ZodObject<{
+    contractVersion: z.ZodLiteral<"commerce.fulfillment.v0">;
+    orders: z.ZodArray<z.ZodObject<{
+        id: z.ZodGUID;
+        orderId: z.ZodGUID;
+        clientId: z.ZodNullable<z.ZodGUID>;
+        status: z.ZodEnum<{
+            created: "created";
+            cancelled: "cancelled";
+            delivered: "delivered";
+            packed: "packed";
+            label_pending: "label_pending";
+            label_created: "label_created";
+            handed_over: "handed_over";
+            in_transit: "in_transit";
+            exception: "exception";
+        }>;
+        providerKind: z.ZodNullable<z.ZodString>;
+        providerTrackingId: z.ZodNullable<z.ZodString>;
+        shippingAddress: z.ZodObject<{
+            addressId: z.ZodGUID;
+            clientId: z.ZodGUID;
+            label: z.ZodNullable<z.ZodString>;
+            line1: z.ZodString;
+            line2: z.ZodNullable<z.ZodString>;
+            city: z.ZodString;
+            postalCode: z.ZodString;
+            country: z.ZodString;
+        }, z.core.$strict>;
+        lines: z.ZodArray<z.ZodObject<{
+            id: z.ZodNullable<z.ZodGUID>;
+            orderItemId: z.ZodGUID;
+            skuId: z.ZodGUID;
+            sku: z.ZodString;
+            title: z.ZodNullable<z.ZodString>;
+            quantity: z.ZodNumber;
+            inventoryReservationIds: z.ZodArray<z.ZodGUID>;
+            productSnapshot: z.ZodRecord<z.ZodString, z.ZodUnknown>;
+        }, z.core.$strict>>;
+        payment: z.ZodObject<{
+            paymentIntentId: z.ZodGUID;
+            paymentStatus: z.ZodEnum<{
+                expired: "expired";
+                created: "created";
+                failed: "failed";
+                cancelled: "cancelled";
+                refunded: "refunded";
+                not_started: "not_started";
+                requires_action: "requires_action";
+                processing: "processing";
+                partially_refunded: "partially_refunded";
+                disputed: "disputed";
+                succeeded: "succeeded";
+            }>;
+            providerPaymentId: z.ZodNullable<z.ZodString>;
+        }, z.core.$strict>;
+        inventory: z.ZodObject<{
+            status: z.ZodEnum<{
+                expired: "expired";
+                not_checked: "not_checked";
+                reserved: "reserved";
+                missing: "missing";
+                released: "released";
+                consumed: "consumed";
+                review_required: "review_required";
+            }>;
+            reservationId: z.ZodNullable<z.ZodGUID>;
+            reservationStatus: z.ZodNullable<z.ZodEnum<{
+                expired: "expired";
+                reserved: "reserved";
+                released: "released";
+                consumed: "consumed";
+            }>>;
+            expiresAt: z.ZodNullable<z.ZodString>;
+            locationId: z.ZodNullable<z.ZodGUID>;
+            locationCode: z.ZodNullable<z.ZodString>;
+        }, z.core.$strict>;
+        omsEligibility: z.ZodObject<{
+            allowed: z.ZodBoolean;
+            reason: z.ZodNullable<z.ZodEnum<{
+                order_not_paid: "order_not_paid";
+                payment_not_succeeded: "payment_not_succeeded";
+                subscription_cycle_not_paid: "subscription_cycle_not_paid";
+                active_hold: "active_hold";
+                missing_shipping_address: "missing_shipping_address";
+                inventory_review: "inventory_review";
+                risk_review: "risk_review";
+            }>>;
+        }, z.core.$strict>;
+        latestOperation: z.ZodNullable<z.ZodObject<{
+            id: z.ZodGUID;
+            type: z.ZodEnum<{
+                created: "created";
+                cancelled: "cancelled";
+                packed: "packed";
+                label_created: "label_created";
+                handed_over: "handed_over";
+                provider_attempt_recorded: "provider_attempt_recorded";
+                tracking_event_recorded: "tracking_event_recorded";
+            }>;
+            occurredAt: z.ZodString;
+            actorUserId: z.ZodNullable<z.ZodGUID>;
+            payload: z.ZodRecord<z.ZodString, z.ZodUnknown>;
+        }, z.core.$strict>>;
+        createdAt: z.ZodString;
+        updatedAt: z.ZodString;
+    }, z.core.$strict>>;
+    totalCount: z.ZodNumber;
+    page: z.ZodNumber;
+    pageSize: z.ZodNumber;
+}, z.core.$strict>;
+export declare const adminCommerceFulfillmentOrderDetailResponseSchema: z.ZodObject<{
+    contractVersion: z.ZodLiteral<"commerce.fulfillment.v0">;
+    order: z.ZodObject<{
+        id: z.ZodGUID;
+        orderId: z.ZodGUID;
+        clientId: z.ZodNullable<z.ZodGUID>;
+        status: z.ZodEnum<{
+            created: "created";
+            cancelled: "cancelled";
+            delivered: "delivered";
+            packed: "packed";
+            label_pending: "label_pending";
+            label_created: "label_created";
+            handed_over: "handed_over";
+            in_transit: "in_transit";
+            exception: "exception";
+        }>;
+        providerKind: z.ZodNullable<z.ZodString>;
+        providerTrackingId: z.ZodNullable<z.ZodString>;
+        shippingAddress: z.ZodObject<{
+            addressId: z.ZodGUID;
+            clientId: z.ZodGUID;
+            label: z.ZodNullable<z.ZodString>;
+            line1: z.ZodString;
+            line2: z.ZodNullable<z.ZodString>;
+            city: z.ZodString;
+            postalCode: z.ZodString;
+            country: z.ZodString;
+        }, z.core.$strict>;
+        lines: z.ZodArray<z.ZodObject<{
+            id: z.ZodNullable<z.ZodGUID>;
+            orderItemId: z.ZodGUID;
+            skuId: z.ZodGUID;
+            sku: z.ZodString;
+            title: z.ZodNullable<z.ZodString>;
+            quantity: z.ZodNumber;
+            inventoryReservationIds: z.ZodArray<z.ZodGUID>;
+            productSnapshot: z.ZodRecord<z.ZodString, z.ZodUnknown>;
+        }, z.core.$strict>>;
+        payment: z.ZodObject<{
+            paymentIntentId: z.ZodGUID;
+            paymentStatus: z.ZodEnum<{
+                expired: "expired";
+                created: "created";
+                failed: "failed";
+                cancelled: "cancelled";
+                refunded: "refunded";
+                not_started: "not_started";
+                requires_action: "requires_action";
+                processing: "processing";
+                partially_refunded: "partially_refunded";
+                disputed: "disputed";
+                succeeded: "succeeded";
+            }>;
+            providerPaymentId: z.ZodNullable<z.ZodString>;
+        }, z.core.$strict>;
+        inventory: z.ZodObject<{
+            status: z.ZodEnum<{
+                expired: "expired";
+                not_checked: "not_checked";
+                reserved: "reserved";
+                missing: "missing";
+                released: "released";
+                consumed: "consumed";
+                review_required: "review_required";
+            }>;
+            reservationId: z.ZodNullable<z.ZodGUID>;
+            reservationStatus: z.ZodNullable<z.ZodEnum<{
+                expired: "expired";
+                reserved: "reserved";
+                released: "released";
+                consumed: "consumed";
+            }>>;
+            expiresAt: z.ZodNullable<z.ZodString>;
+            locationId: z.ZodNullable<z.ZodGUID>;
+            locationCode: z.ZodNullable<z.ZodString>;
+        }, z.core.$strict>;
+        omsEligibility: z.ZodObject<{
+            allowed: z.ZodBoolean;
+            reason: z.ZodNullable<z.ZodEnum<{
+                order_not_paid: "order_not_paid";
+                payment_not_succeeded: "payment_not_succeeded";
+                subscription_cycle_not_paid: "subscription_cycle_not_paid";
+                active_hold: "active_hold";
+                missing_shipping_address: "missing_shipping_address";
+                inventory_review: "inventory_review";
+                risk_review: "risk_review";
+            }>>;
+        }, z.core.$strict>;
+        latestOperation: z.ZodNullable<z.ZodObject<{
+            id: z.ZodGUID;
+            type: z.ZodEnum<{
+                created: "created";
+                cancelled: "cancelled";
+                packed: "packed";
+                label_created: "label_created";
+                handed_over: "handed_over";
+                provider_attempt_recorded: "provider_attempt_recorded";
+                tracking_event_recorded: "tracking_event_recorded";
+            }>;
+            occurredAt: z.ZodString;
+            actorUserId: z.ZodNullable<z.ZodGUID>;
+            payload: z.ZodRecord<z.ZodString, z.ZodUnknown>;
+        }, z.core.$strict>>;
+        createdAt: z.ZodString;
+        updatedAt: z.ZodString;
+    }, z.core.$strict>;
+}, z.core.$strict>;
+export declare const adminCommerceFulfillmentMutationResponseSchema: z.ZodObject<{
+    contractVersion: z.ZodLiteral<"commerce.fulfillment.v0">;
+    fulfillmentOrderId: z.ZodGUID;
+    orderId: z.ZodGUID;
+    status: z.ZodEnum<{
+        created: "created";
+        cancelled: "cancelled";
+        delivered: "delivered";
+        packed: "packed";
+        label_pending: "label_pending";
+        label_created: "label_created";
+        handed_over: "handed_over";
+        in_transit: "in_transit";
+        exception: "exception";
+    }>;
+    replayed: z.ZodBoolean;
+}, z.core.$strict>;
+export type AdminCommerceFulfillmentOrdersListRequest = z.infer<typeof adminCommerceFulfillmentOrdersListRequestSchema>;
+export type AdminCommerceFulfillmentOrderDetailRequest = z.infer<typeof adminCommerceFulfillmentOrderDetailRequestSchema>;
+export type AdminCommerceFulfillmentCreateRequest = z.infer<typeof adminCommerceFulfillmentCreateRequestSchema>;
+export type AdminCommerceFulfillmentRecordProviderAttemptRequest = z.input<typeof adminCommerceFulfillmentRecordProviderAttemptRequestSchema>;
+export type AdminCommerceFulfillmentRecordLabelRequest = z.input<typeof adminCommerceFulfillmentRecordLabelRequestSchema>;
+export type AdminCommerceFulfillmentHandOffRequest = z.infer<typeof adminCommerceFulfillmentHandOffRequestSchema>;
+export type AdminCommerceFulfillmentTrackingEventRequest = z.input<typeof adminCommerceFulfillmentTrackingEventRequestSchema>;
+export type AdminCommerceFulfillmentCancelRequest = z.infer<typeof adminCommerceFulfillmentCancelRequestSchema>;
+export type AdminCommerceFulfillmentOrdersListResponse = z.infer<typeof adminCommerceFulfillmentOrdersListResponseSchema>;
+export type AdminCommerceFulfillmentOrderDetailResponse = z.infer<typeof adminCommerceFulfillmentOrderDetailResponseSchema>;
+export type AdminCommerceFulfillmentMutationResponse = z.infer<typeof adminCommerceFulfillmentMutationResponseSchema>;
+export type CommerceFulfillmentOrder = z.infer<typeof commerceFulfillmentOrderSchema>;
+export type CommerceFulfillmentStatus = z.infer<typeof commerceFulfillmentStatusSchema>;
+export type CommerceFulfillmentOperationType = z.infer<typeof commerceFulfillmentOperationTypeSchema>;
+export declare const adminCommerceOrderRequestReplacementShipmentRequestSchema: z.ZodObject<{
+    idempotencyKey: z.ZodString;
+    orderId: z.ZodGUID;
+    reason: z.ZodEnum<{
+        other: "other";
+        damaged: "damaged";
+        lost: "lost";
+        returned_undelivered: "returned_undelivered";
+    }>;
+    metadata: z.ZodOptional<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+}, z.core.$strict>;
+export declare const omsOperationTypeSchema: z.ZodEnum<{
+    hold_created: "hold_created";
+    hold_released: "hold_released";
+    fulfillment_reviewed: "fulfillment_reviewed";
+    support_note: "support_note";
+    shipping_address_updated: "shipping_address_updated";
+    order_marked_refunded: "order_marked_refunded";
+    order_cancelled_manual: "order_cancelled_manual";
+    replacement_shipment_requested: "replacement_shipment_requested";
+}>;
+export declare const omsOrderOperationSchema: z.ZodObject<{
+    id: z.ZodGUID;
+    orderId: z.ZodGUID;
+    type: z.ZodEnum<{
+        hold_created: "hold_created";
+        hold_released: "hold_released";
+        fulfillment_reviewed: "fulfillment_reviewed";
+        support_note: "support_note";
+        shipping_address_updated: "shipping_address_updated";
+        order_marked_refunded: "order_marked_refunded";
+        order_cancelled_manual: "order_cancelled_manual";
+        replacement_shipment_requested: "replacement_shipment_requested";
+    }>;
+    holdId: z.ZodNullable<z.ZodGUID>;
+    actorUserId: z.ZodNullable<z.ZodGUID>;
+    occurredAt: z.ZodString;
+    payload: z.ZodRecord<z.ZodString, z.ZodUnknown>;
+}, z.core.$strip>;
+export declare const adminCommerceOrderRequestReplacementShipmentResponseSchema: z.ZodObject<{
+    contractVersion: z.ZodLiteral<"commerce.v0">;
+    operation: z.ZodObject<{
+        id: z.ZodGUID;
+        orderId: z.ZodGUID;
+        type: z.ZodEnum<{
+            hold_created: "hold_created";
+            hold_released: "hold_released";
+            fulfillment_reviewed: "fulfillment_reviewed";
+            support_note: "support_note";
+            shipping_address_updated: "shipping_address_updated";
+            order_marked_refunded: "order_marked_refunded";
+            order_cancelled_manual: "order_cancelled_manual";
+            replacement_shipment_requested: "replacement_shipment_requested";
+        }>;
+        holdId: z.ZodNullable<z.ZodGUID>;
+        actorUserId: z.ZodNullable<z.ZodGUID>;
+        occurredAt: z.ZodString;
+        payload: z.ZodRecord<z.ZodString, z.ZodUnknown>;
+    }, z.core.$strip>;
+    replacement: z.ZodObject<{
+        fulfillmentOrderId: z.ZodString;
+        orderId: z.ZodString;
+        sequenceNo: z.ZodNumber;
+        replacesFulfillmentOrderId: z.ZodString;
+        reason: z.ZodEnum<{
+            other: "other";
+            damaged: "damaged";
+            lost: "lost";
+            returned_undelivered: "returned_undelivered";
+        }>;
+        status: z.ZodString;
+    }, z.core.$strip>;
+    releasedHoldIds: z.ZodDefault<z.ZodArray<z.ZodString>>;
+    replayed: z.ZodBoolean;
+}, z.core.$strip>;
+```
+## dist/fulfillment/handlerSupport.d.ts
+
+```ts
+import type { FulfillmentNativeUnsupported } from './contracts/nativeUnsupported.js';
+export interface FulfillmentHandlerRequest {
+    method?: string;
+    query: Record<string, string | string[] | undefined>;
+    body?: unknown;
+}
+export interface FulfillmentHandlerResponder<Response> {
+    sendMethodNotAllowed(res: Response, methods: readonly string[]): void;
+    sendBffSuccess(res: Response, data: unknown): void;
+    sendBffError(res: Response, code: 'UNAUTHORIZED' | 'FORBIDDEN' | 'BAD_REQUEST' | 'INVALID_RESPONSE' | 'NOT_FOUND' | 'CONFLICT' | 'UPSTREAM_UNAVAILABLE', message: string, options?: {
+        details: unknown;
+    }): void;
+}
+export type AdminAuthResult = {
+    ok: false;
+    code: 'UNAUTHORIZED' | 'FORBIDDEN';
+    message: string;
+} | {
+    ok: true;
+    userId: string;
+};
+export interface BaseDeps<Response> {
+    authorizeAdmin(req: FulfillmentHandlerRequest): Promise<AdminAuthResult>;
+    respond: FulfillmentHandlerResponder<Response>;
+}
+export declare function isNativeUnsupported(value: unknown): value is FulfillmentNativeUnsupported;
+export declare class CommerceFulfillmentConflictError extends Error {
+    readonly details: Record<string, unknown>;
+    constructor(message?: string, details?: Record<string, unknown>);
+}
+export declare function authorize<Response>(req: FulfillmentHandlerRequest, res: Response, authorizeAdmin: BaseDeps<Response>['authorizeAdmin'], respond: FulfillmentHandlerResponder<Response>): Promise<{
+    userId: string;
+} | null>;
+```
+## dist/fulfillment/index.d.ts
+
+```ts
+export { FULFILLMENT_STATUS_MAP, CANONICAL_LOCAL_FULFILLMENT_STATUSES, CUSTOMER_STEP_SEQUENCE, canonicalStatusToken, stepForToken, customerStepFromSignals, phaseIndexForStep, stepLabelKey, timelineLabelForStep, trackingPhaseKeyForStep, stepUsesTruckIcon } from "./statusMap.js";
+export { parseFulfillmentFact, parseFulfillmentTransitionConflict } from "./normalizedFulfillmentFacts.js";
+export { readFulfillmentCapabilities } from "./providerCapabilities.js";
+export { createOutboxOrderPaidFulfillmentHandler, outboxOrderPaidFulfillmentDescriptor, parseOutboxPayload } from "./paidHandoff.js";
+export { collectPaidFulfillmentRecoveryCandidates } from "./paidFulfillmentRecovery.js";
+export { runFulfillmentDispatchWorker } from "./providerDispatchWorker.js";
+export { createFulfillmentCommandLedger } from "./providerCommandLedger.js";
+export type { FulfillmentIngressCounts, FulfillmentIngressResult } from "./verifiedIngress.js";
+export { verifyAndNormalizeFulfillmentObservation, fulfillmentIngressHttpResult } from "./verifiedIngress.js";
+export { applyFulfillmentObservationEffects } from "./fulfillmentObservationEffects.js";
+export { reconcileFulfillmentObservations, runFulfillmentReconciliationPage } from "./providerReconciliationWorker.js";
+export { runFulfillmentStockSyncWorker } from "./providerStockSyncWorker.js";
+export { runFulfillmentProductSyncWorker } from "./providerProductSyncWorker.js";
+export { createFulfillmentLowStockEvidenceHandler } from "./lowStockEvidenceHandler.js";
+export { createProductReconciliationEvidenceHandler } from "./productReconciliationEvidenceHandler.js";
+export { runFulfillmentAdapterConformance } from "./adapterConformance.js";
+export { createPostgresFulfillmentShipmentSpinePort } from './postgresShipmentSpine.js';
+export { createPostgresFulfillmentLowStockEvidencePort } from './postgresEvidenceReadPort.js';
+export { createPostgresFulfillmentStockSyncPort } from './postgresStockSyncPort.js';
+export { createPostgresPaidFulfillmentRecoveryOpsPort } from './postgresPaidFulfillmentRecovery.js';
+export { createPostgresFulfillmentDispatchStore } from './postgresDispatchStore.js';
+export { createPostgresPaidFulfillmentHandoffStore } from './postgresPaidHandoffStore.js';
+export { createPostgresDeliveryAlignmentPort } from './postgresDeliveryAlignment.js';
+export { readDeliveryAlignment } from './deliveryAlignmentReadModel.js';
+export { FULFILLMENT_NATIVE_CAPABILITIES } from './schemaCapabilities.js';
+export { FULFILLMENT_MIGRATIONS } from './migrations.js';
+export { createAdminCommerceFulfillmentOrdersListHandler, createAdminCommerceFulfillmentOrderDetailHandler, createAdminCommerceFulfillmentCreateOrderHandler, createAdminCommerceFulfillmentRecordProviderAttemptHandler, createAdminCommerceFulfillmentRecordLabelHandler, createAdminCommerceFulfillmentHandOffHandler, createAdminCommerceFulfillmentTrackingEventHandler, createAdminCommerceFulfillmentCancelOrderHandler } from './commerceFulfillmentHandlers.js';
+export { createAdminCommerceOrderRequestReplacementShipmentHandler } from './replacementShipmentHandler.js';
+export { CommerceFulfillmentConflictError } from './handlerSupport.js';
+export { readFulfillmentDelay } from './delayReadModel.js';
+export { readFulfillmentLabel, cleanupFulfillmentLabel } from './labelLifecycle.js';
+export { currentParcel, currentParcelFor, currentParcelPerOrder, currentParcelFirst, belongsToParcel, rowsForParcel, parcelSequenceNo, compareParcelPrecedence } from './currentFulfillmentParcel.js';
+export { FULFILLMENT_NATIVE_UNSUPPORTED, createNativeUnsupportedFulfillmentPorts } from './nativeUnsupported.js';
+export { FULFILLMENT_REPLACEMENT_REFUSALS } from './replacementRefusals.js';
+export { buildCommerceFulfillmentOrdersListResponse, buildCommerceFulfillmentOrderDetailResponse } from './commerceFulfillmentReadModel.js';
+export { createFulfillmentShipmentsOverviewHandler } from './shipmentsOverviewHandler.js';
+export { fulfillmentProgressPresentation } from './trackingProgress.js';
+export { createFulfillmentServices } from './bindings.js';
+```
+## dist/fulfillment/labelLifecycle.d.ts
+
+```ts
+import type { FulfillmentLabelPort, LabelDocument } from './contracts/label.js';
+/** Storage-only read: a missing cached label never proves the parcel absent. Signed URLs are transient. */
+export declare function readFulfillmentLabel(port: Pick<FulfillmentLabelPort, 'read'>, document: LabelDocument | null): Promise<{
+    kind: "available";
+    url: string;
+    expiresAt: string | null;
+} | {
+    kind: "refused";
+    refusal: import("./contracts/dispatch.js").FulfillmentRefusal;
+}>;
+/** Provider and storage deletion remain host-owned; canProceed never asserts either deletion. */
+type LabelCleanupInput = Parameters<FulfillmentLabelPort['void']>[0] & {
+    actorUserId: string;
+    idempotencyKey: string;
+};
+export declare function cleanupFulfillmentLabel(port: {
+    void(input: LabelCleanupInput): ReturnType<FulfillmentLabelPort['void']>;
+}, input: LabelCleanupInput): Promise<{
+    providerDeletion: "confirmed" | "unconfirmed";
+    labelDeleted: boolean;
+    canProceed: boolean;
+    refusal?: import("./contracts/dispatch.js").FulfillmentRefusal;
+}>;
+export {};
+```
+## dist/fulfillment/lowStockEvidenceHandler.d.ts
+
+```ts
+/** Read-only evidence boundary; parsing remains with the owning host schema. */
+export declare function createFulfillmentLowStockEvidenceHandler<Request extends {
+    method?: string;
+    query: Record<string, string | string[] | undefined>;
+}, Response, Query, Result>({ evidencePort, authorizeAdmin, requestSchema, responseSchema, respond }: {
+    evidencePort: {
+        getLowStockEvidence(query: Query): Promise<unknown>;
+    };
+    authorizeAdmin(request: Request): Promise<boolean>;
+    requestSchema: {
+        safeParse(input: unknown): {
+            success: true;
+            data: Query;
+        } | {
+            success: false;
+            error: {
+                flatten(): unknown;
+            };
+        };
+    };
+    responseSchema: {
+        safeParse(input: unknown): {
+            success: true;
+            data: Result;
+        } | {
+            success: false;
+        };
+    };
+    respond: {
+        sendBffError(res: Response, code: "UPSTREAM_UNAVAILABLE" | "UNAUTHORIZED" | "BAD_REQUEST" | "INVALID_RESPONSE", message: string, options?: {
+            details: unknown;
+        }): void;
+        sendBffSuccess(res: Response, data: Result): void;
+        sendMethodNotAllowed(res: Response, methods: readonly string[]): void;
+    };
+}): (req: Request, res: Response) => Promise<void>;
+```
+## dist/fulfillment/migrations.d.ts
+
+```ts
+/** Byte-identical sparse projections; install the complete canonical catalogue. */
+export declare const FULFILLMENT_MIGRATIONS: readonly [{
+    readonly position: 5;
+    readonly catalogPath: "db/platform/migrations/20260808210000_fulfillment_shipment_rail.sql";
+    readonly sha256: "eb5824551903717f3868690909fcc2cb6a7f845abe5cb19bd4cff13103b1383d";
+    readonly url: URL;
+}, {
+    readonly position: 27;
+    readonly catalogPath: "db/platform/migrations/20260814000000_fulfillment_stock_evidence.sql";
+    readonly sha256: "df20c2491cb0196b4e28d19e7578c95bfa5c87b8f89fb0b6284c0e0695a3cc1d";
+    readonly url: URL;
+}, {
+    readonly position: 51;
+    readonly catalogPath: "db/platform/migrations/20260819150000_fulfillment_shipment_sequence.sql";
+    readonly sha256: "906706cf66a6a555aa1219b12eb674d937eaa099abde6da18766310af43aaa9f";
+    readonly url: URL;
+}, {
+    readonly position: 73;
+    readonly catalogPath: "db/platform/migrations/20261022080000_fulfillment_command_ledger.sql";
+    readonly sha256: "c6806906cdb0b6931b29f7a5c7c800016e98d04e6ea956f3c1e219a6cdb7e9d1";
+    readonly url: URL;
+}, {
+    readonly position: 74;
+    readonly catalogPath: "db/platform/migrations/20261022090000_fulfillment_delivery_alignment.sql";
+    readonly sha256: "d9966ae79fe77a0feae8317dc5b46ef2d8196dd0790b1cd0ee1b06ab58061499";
+    readonly url: URL;
+}, {
+    readonly position: 76;
+    readonly catalogPath: "db/platform/migrations/20261022165000_fulfillment_stock_evidence_replay_reopen.sql";
+    readonly sha256: "6d132dec2820047f4e337bcf752b3d884600ccc12de03887fe6d6aa5575bc1db";
+    readonly url: URL;
+}];
+```
+## dist/fulfillment/nativeUnsupported.d.ts
+
+```ts
+import type { FulfillmentCommerceReadPort, FulfillmentShipmentsOverviewPort } from './contracts/read.js';
+import type { FulfillmentNativeUnsupported } from './contracts/nativeUnsupported.js';
+import type { FulfillmentReplacementPort } from './contracts/replacement.js';
+import type { FulfillmentOperatorMutationPort } from './contracts/operator.js';
+import type { FulfillmentCustomerAlignmentRowsReader } from './contracts/customerAlignment.js';
+export declare const FULFILLMENT_NATIVE_UNSUPPORTED: FulfillmentNativeUnsupported;
+/** Deliberately has no executor: unsupported native parity can never make a partial write. */
+export declare function createNativeUnsupportedFulfillmentPorts(): FulfillmentReplacementPort & FulfillmentOperatorMutationPort & FulfillmentCommerceReadPort & FulfillmentShipmentsOverviewPort & {
+    readCustomerAlignmentRows: FulfillmentCustomerAlignmentRowsReader;
+};
+```
+## dist/fulfillment/normalizedFulfillmentFacts.d.ts
+
+```ts
+export { isCanonicalLocalFulfillmentStatus, parseFulfillmentFact, parseFulfillmentTransitionConflict } from "@openlup/core/fulfillment";
+export type { CanonicalNormalizedFulfillmentFact as NormalizedFulfillmentFact, CanonicalNormalizedFulfillmentFactV1 as NormalizedFulfillmentFactV1, CanonicalNormalizedFulfillmentFactV0 as NormalizedFulfillmentFactV0, CanonicalCompatibleNormalizedFulfillmentFact as CompatibleNormalizedFulfillmentFact, CanonicalFulfillmentTransitionSnapshot as FulfillmentTransitionSnapshot, CanonicalTransitionConflict as TransitionConflict } from "@openlup/core/fulfillment";
+```
+## dist/fulfillment/paidFulfillmentRecovery.d.ts
+
+```ts
+type PaidFulfillmentRecoveryAction = "wait_for_outbox" | "requeue_discarded_order_paid_outbox" | "inspect_processed_without_effect" | "inspect_missing_order_paid_outbox" | "monitor_dispatch" | "inspect_missing_dispatch_ref" | "inspect_stale_dispatch_submission" | "inspect_uncertain_dispatch" | "inspect_failed_dispatch" | "inspect_created_dispatch_without_provider_order_id" | "inspect_terminal_dispatch" | "inspect_unknown_dispatch_status";
+type PaidFulfillmentRecoveryReason = "paid_order_without_fulfillment_order" | "order_paid_outbox_missing" | "order_paid_outbox_discarded" | "order_paid_outbox_processed_without_fulfillment" | "provider_dispatch_in_progress" | "provider_fulfillment_without_dispatch_ref" | "provider_dispatch_submission_stale" | "provider_dispatch_outcome_uncertain" | "provider_dispatch_failed" | "provider_dispatch_created_without_provider_order_id" | "provider_dispatch_terminal_without_progress" | "provider_dispatch_status_unknown";
+type PaidFulfillmentRecoveryPosture = "automatic_local_requeue_safe" | "wait_for_existing_automation" | "operator_review_required";
+type PaidFulfillmentOrderRow = Record<string, unknown> & {
+    id: string;
+    status?: string | null;
+    mode?: string | null;
+    created_at?: string | null;
+    updated_at?: string | null;
+};
+type PaidFulfillmentOrderEvidenceRow = Record<string, unknown> & {
+    id: string;
+    order_id: string;
+    provider_kind?: string | null;
+    status?: string | null;
+    created_at?: string | null;
+    updated_at?: string | null;
+};
+type PaidFulfillmentDispatchRefRow = Record<string, unknown> & {
+    id?: string | null;
+    fulfillment_order_id: string;
+    provider_order_id?: string | null;
+    status?: string | null;
+    created_at?: string | null;
+    updated_at?: string | null;
+};
+type PaidFulfillmentOutboxEventRow = Record<string, unknown> & {
+    id: string;
+    event_type: string;
+    status: string;
+    aggregate_id?: string | null;
+    created_at?: string | null;
+    updated_at?: string | null;
+    available_at?: string | null;
+    attempts?: number | null;
+};
+type PaidFulfillmentRecoveryCandidate = {
+    orderId: string;
+    orderStatus: string;
+    orderMode: string | null;
+    fulfillmentOrderId: string | null;
+    providerKind: string | null;
+    dispatchRefId: string | null;
+    dispatchStatus: string | null;
+    outboxEventId: string | null;
+    outboxStatus: string | null;
+    outboxAttempts: number | null;
+    reason: PaidFulfillmentRecoveryReason;
+    recommendedAction: PaidFulfillmentRecoveryAction;
+    recoveryPosture: PaidFulfillmentRecoveryPosture;
+    ageSeconds: number;
+};
+type PaidFulfillmentRecoveryPlan = {
+    checkedOrders: number;
+    candidates: PaidFulfillmentRecoveryCandidate[];
+};
+export declare function collectPaidFulfillmentRecoveryCandidates(input: {
+    providerRef: string;
+    orders: PaidFulfillmentOrderRow[];
+    fulfillmentOrders: PaidFulfillmentOrderEvidenceRow[];
+    dispatchRefs?: PaidFulfillmentDispatchRefRow[];
+    orderPaidOutboxEvents: PaidFulfillmentOutboxEventRow[];
+    now: Date;
+    minimumAgeSeconds?: number;
+    dispatchSubmissionStaleSeconds?: number;
+}): PaidFulfillmentRecoveryPlan;
+export {};
+```
+## dist/fulfillment/paidHandoff.d.ts
+
+```ts
+import type { OutboxHandler, OutboxHandlerOutcome } from "@openlup/core/outbox";
+import type { OrderPaidFulfillmentPort } from "./paidHandoffPorts.js";
+export declare const outboxOrderPaidFulfillmentDescriptor: Readonly<{
+    eventType: "commerce.order.paid";
+    timeoutMs: 15000;
+}>;
+interface OrderPaidRiskAssessmentPort {
+    assessPaidOrder(input: {
+        orderUuid: string;
+        outboxEventId: string;
+        signal: AbortSignal;
+    }): Promise<{
+        kind: "allow";
+        detail?: Record<string, unknown>;
+    } | {
+        kind: "review" | "block";
+        detail?: Record<string, unknown>;
+    } | {
+        kind: "retryable";
+        reason: string;
+    } | {
+        kind: "fatal";
+        reason: string;
+    }>;
+}
+export declare function createOutboxOrderPaidFulfillmentHandler(deps: {
+    fulfillmentPort: OrderPaidFulfillmentPort;
+    riskPort?: OrderPaidRiskAssessmentPort;
+    isRiskEnabled?: () => boolean;
+}): OutboxHandler<AbortSignal>;
+export declare function parseOutboxPayload<T>(schema: import("zod").ZodType<T>, payload: unknown): {
+    ok: true;
+    data: T;
+} | {
+    ok: false;
+    outcome: OutboxHandlerOutcome;
+};
+export {};
+```
+## dist/fulfillment/paidHandoffPorts.d.ts
+
+```ts
+export type OrderPaidFulfillmentResult = {
+    kind: "completed" | "skipped";
+    detail?: Record<string, unknown>;
+} | {
+    kind: "retryable";
+    reason: string;
+} | {
+    kind: "snooze";
+    reason: string;
+} | {
+    kind: "fatal";
+    reason: string;
+} | {
+    kind: "manual_review";
+    reason: string;
+    detail?: Record<string, unknown>;
+};
+export interface OrderPaidFulfillmentPort {
+    ensureFulfilledFromPaidOrder(input: {
+        orderUuid: string;
+        outboxEventId: string;
+        signal: AbortSignal;
+    }): Promise<OrderPaidFulfillmentResult>;
+}
+```
+## dist/fulfillment/postgresDeliveryAlignment.d.ts
+
+```ts
+import type { DeliveryAlignmentPort } from './contracts/index.js';
+import { type PgExecutor } from './postgresDispatchStore.js';
+/** Trusted arrival ingestion only. Operator replacement attestation has no caller here. */
+export declare function createPostgresDeliveryAlignmentPort(db: PgExecutor): DeliveryAlignmentPort;
+```
+## dist/fulfillment/postgresDispatchStore.d.ts
+
+```ts
+import type { FulfillmentDispatchRequest, FulfillmentStorePort } from './contracts/index.js';
+import type { createFulfillmentCommandLedger } from './providerCommandLedger.js';
+/** Caller supplies a driver and its selected host preparation/data boundary. */
+export interface PgExecutor {
+    query(text: string, values?: unknown[]): Promise<{
+        rows: Record<string, unknown>[];
+    }>;
+}
+export declare function nativeCall<T>(db: PgExecutor, name: string, values: unknown[]): Promise<T>;
+export declare function createPostgresFulfillmentDispatchStore(db: PgExecutor, host: {
+    /** Synchronize authoritative withholding/contact revision on prepare and every source edit. */
+    prepare(fulfillmentRef: string): ReturnType<FulfillmentStorePort['prepare']>;
+    readCandidate(fulfillmentRef: string): Promise<FulfillmentDispatchRequest | null>;
+}): FulfillmentStorePort & {
+    commandLedger: ReturnType<typeof createFulfillmentCommandLedger>;
+};
+```
+## dist/fulfillment/postgresEvidenceReadPort.d.ts
+
+```ts
+import type { PgExecutor as PgQueryExecutor } from './postgresDispatchStore.js';
+interface AdminLowStockEvidenceItem {
+    id: string;
+    sku: string;
+    thresholdKind: string;
+    severity: string;
+    status: string;
+    providerForSaleQuantity: number | null;
+    localAvailableQuantity: number | null;
+    forecastDays: null;
+    firstSeenAt: string | null;
+    lastSeenAt: string | null;
+    resolvedAt: string | null;
+}
+interface FulfillmentLowStockEvidencePort {
+    getLowStockEvidence(input: {
+        statusFilter: 'all' | 'open' | 'resolved';
+    }): Promise<{
+        statusFilter: string;
+        openCount: number;
+        items: AdminLowStockEvidenceItem[];
+    }>;
+}
+export declare function createPostgresFulfillmentLowStockEvidencePort(executor: PgQueryExecutor, sourceKey: string): FulfillmentLowStockEvidencePort;
+export {};
+```
+## dist/fulfillment/postgresPaidFulfillmentRecovery.d.ts
+
+```ts
+import type { collectPaidFulfillmentRecoveryCandidates } from './paidFulfillmentRecovery.js';
+import type { PgExecutor } from './postgresDispatchStore.js';
+type RecoveryInput = Parameters<typeof collectPaidFulfillmentRecoveryCandidates>[0];
+/** Read the selected native port's local obligations; never infer external absence. */
+export declare function createPostgresPaidFulfillmentRecoveryOpsPort(db: PgExecutor, selection: {
+    portKey: string;
+    providerRef: string;
+}): {
+    readRecoveryInputs(input: {
+        minimumAgeSeconds: number;
+        limit: number;
+        now: Date;
+        orderIds?: string[];
+    }): Promise<Pick<RecoveryInput, "orders" | "fulfillmentOrders" | "dispatchRefs" | "orderPaidOutboxEvents">>;
+    requeueDiscardedOrderPaidOutboxEvents(input: {
+        eventIds: string[];
+        limit?: number;
+        requeuedBy: string;
+        reason: string;
+    }): Promise<{
+        requeuedCount: number;
+        eventIds: string[];
+    }>;
+};
+export {};
+```
+## dist/fulfillment/postgresPaidHandoffStore.d.ts
+
+```ts
+import type { FulfillmentPaidHandoffPort } from './contracts/index.js';
+import { type PgExecutor } from './postgresDispatchStore.js';
+/** Select an existing native port explicitly; never route by a private provider default. */
+export declare function createPostgresPaidFulfillmentHandoffStore(db: PgExecutor, portKey: string): FulfillmentPaidHandoffPort;
+```
+## dist/fulfillment/postgresShipmentSpine.d.ts
+
+```ts
+import type { FulfillmentObservationCodecs } from "./contracts/index.js";
+import type { PgExecutor as PgQueryExecutor } from './postgresDispatchStore.js';
+interface ShipmentSpineResult {
+    shipmentId: string;
+    orderId: string;
+    status: string;
+    replayed: boolean;
+}
+interface ShipmentRequest {
+    idempotencyKey: string;
+    shipmentId: string;
+    metadata?: Record<string, unknown>;
+    requestedAt?: string;
+    externalRef?: string;
+}
+interface ShipmentSpineMutationPort {
+    createShipment(input: {
+        idempotencyKey: string;
+        orderId: string;
+        metadata?: Record<string, unknown>;
+        requestedAt?: string;
+    }): Promise<ShipmentSpineResult>;
+    recordLabel(input: ShipmentRequest): Promise<ShipmentSpineResult>;
+    handOff(input: ShipmentRequest): Promise<ShipmentSpineResult>;
+    recordTracking(input: ShipmentRequest & {
+        status: 'in_transit' | 'delivered';
+    }): Promise<ShipmentSpineResult>;
+    cancel(input: ShipmentRequest & {
+        reason: string;
+    }): Promise<ShipmentSpineResult>;
+    raiseException(input: ShipmentRequest & {
+        reason: string;
+    }): Promise<ShipmentSpineResult>;
+}
+export interface PostgresFulfillmentShipmentSpineOptions {
+    portKey: string;
+    approveTrackingUrl?(url: string): boolean;
+    observationCodecs?: FulfillmentObservationCodecs;
+    evidenceChannel?: "poll" | "push";
+    requiredProviderType?: "simulator";
+}
+/** Direct node-postgres adapter for the provider-neutral public shipment rail. */
+export declare function createPostgresFulfillmentShipmentSpinePort(executor: PgQueryExecutor, options: PostgresFulfillmentShipmentSpineOptions): ShipmentSpineMutationPort & {
+    localPersistence: ReturnType<typeof localPersistence>;
+};
+/** G17 native local persistence, composed on the same injected executor. */
+declare function localPersistence(executor: PgQueryExecutor, approveTrackingUrl?: (url: string) => boolean, observationCodecs?: FulfillmentObservationCodecs): {
+    readLocalFulfillmentState(ref: string): Promise<{
+        status: string | null;
+        latestStatusOccurredAt: string | null;
+        handedOverAt: string | null;
+    }>;
+    readLocalFulfillmentStatus(ref: string): Promise<string | null>;
+    latestStatusOccurredAt(ref: string): Promise<string | null>;
+    readHandedOverAt(ref: string): Promise<string | null>;
+    recordObservation(observation: import("./contracts/index.js").FulfillmentObservation): Promise<{
+        replayed: boolean;
+    }>;
+    recordStatusEvidence(ref: {
+        fulfillmentRef: string;
+    }, observation: import("./contracts/index.js").FulfillmentObservation): Promise<{
+        replayed: boolean;
+    }>;
+    markProcessed(eventKey: string, outcome: {
+        status: "processed" | "ignored";
+        refusal?: import("./contracts/index.js").FulfillmentRefusal;
+        supersededCause?: string;
+    }): Promise<void>;
+};
+export {};
+```
+## dist/fulfillment/postgresStockSyncPort.d.ts
+
+```ts
+import type { FulfillmentStockSyncPort } from './contracts/index.js';
+import { type PgExecutor } from './postgresDispatchStore.js';
+/** The native catalogue has observed stock, not adopter inventory balances. */
+export declare function createPostgresFulfillmentStockSyncPort(db: PgExecutor, options: {
+    sourceKey: string;
+    inventoryClasses?: ReadonlyMap<string, 'sellable' | 'packaging' | null>;
+    readLocalInventoryStock: FulfillmentStockSyncPort['readLocalInventoryStock'];
+}): FulfillmentStockSyncPort;
+```
+## dist/fulfillment/productReconciliationEvidenceHandler.d.ts
+
+```ts
+/** Read-only evidence boundary; parsing remains with the owning host schema. */
+export declare function createProductReconciliationEvidenceHandler<Request extends {
+    method?: string;
+    query: Record<string, string | string[] | undefined>;
+}, Response, Query, Result>({ evidencePort, authorizeAdmin, requestSchema, responseSchema, respond }: {
+    evidencePort: {
+        getProductReconciliationEvidence(query: Query): Promise<unknown>;
+    };
+    authorizeAdmin(request: Request): Promise<boolean>;
+    requestSchema: {
+        safeParse(input: unknown): {
+            success: true;
+            data: Query;
+        } | {
+            success: false;
+            error: {
+                flatten(): unknown;
+            };
+        };
+    };
+    responseSchema: {
+        safeParse(input: unknown): {
+            success: true;
+            data: Result;
+        } | {
+            success: false;
+        };
+    };
+    respond: {
+        sendBffError(res: Response, code: "UPSTREAM_UNAVAILABLE" | "UNAUTHORIZED" | "BAD_REQUEST" | "INVALID_RESPONSE", message: string, options?: {
+            details: unknown;
+        }): void;
+        sendBffSuccess(res: Response, data: Result): void;
+        sendMethodNotAllowed(res: Response, methods: readonly string[]): void;
+    };
+}): (req: Request, res: Response) => Promise<void>;
+```
+## dist/fulfillment/providerCapabilities.d.ts
+
+```ts
+import type { FulfillmentCapabilityDescriptor, FulfillmentRefusal, FulfillmentSelection } from "./contracts/index.js";
+/** Injected profiles replace the private registry. Support never activates a provider. */
+export declare function readFulfillmentCapabilities(profiles: readonly FulfillmentCapabilityDescriptor[], selection: FulfillmentSelection | null | undefined): {
+    kind: "selected";
+    descriptor: FulfillmentCapabilityDescriptor;
+} | {
+    kind: "refused";
+    refusal: FulfillmentRefusal;
+};
+```
+## dist/fulfillment/providerCommandLedger.d.ts
+
+```ts
+/** Structural protocol for the contributed durable ledger. Each operation must
+ * be one atomic store transaction, including its transition evidence. P4 owns SQL.
+ * This factory holds no leases, retry counters, commands or persistence in memory.
+ */
+type CommandStatus = "queued" | "claimed" | "submitting" | "accepted" | "confirmed" | "retry_wait" | "uncertain" | "manual_review" | "terminal_rejected" | "cancelled";
+type CommandResult = {
+    commandId: string;
+    status: CommandStatus;
+    version: number;
+    applied: boolean;
+};
+type Fence = {
+    commandId: string;
+    claimToken: string;
+    claimGeneration: number;
+    expectedVersion: number;
+};
+type Proof = {
+    kind: "provider_reference" | "correlation_key" | "provider_idempotency_key";
+    fingerprint: string;
+    observedAt: string;
+    source: "provider_lookup" | "provider_webhook" | "operator_verified";
+};
+type ClaimedCommand = {
+    commandId: string;
+    fulfillmentRef: string;
+    orderRef: string;
+    providerRef: string;
+    commandKind: "dispatch_create";
+    contractVersion: "1";
+    status: "claimed";
+    version: number;
+    commandKeyFingerprint: string;
+    commandPayloadFingerprint: string;
+    providerIdempotencyKeyFingerprint: string | null;
+    routingFingerprint: string;
+    configurationFingerprint: string;
+    correlationKeyFingerprint: string;
+    retryBudget: number;
+    retryCount: number;
+    claimToken: string;
+    claimGeneration: number;
+    leaseExpiresAt: string;
+};
+type LedgerStore = {
+    enqueue(input: {
+        fulfillmentRef: string;
+        providerRef: string;
+        commandKind: "dispatch_create";
+        contractVersion: "1";
+        idempotencyKey: string;
+        commandKeyFingerprint: string;
+        commandPayloadFingerprint: string;
+        providerIdempotencyKeyFingerprint: string | null;
+        routingFingerprint: string;
+        configurationFingerprint: string;
+        correlationKeyFingerprint: string;
+        retryBudget: number;
+    }): Promise<CommandResult>;
+    claim(input: {
+        providerRef: string;
+        commandKind: "dispatch_create";
+        limit: number;
+        claimOwnerFingerprint: string;
+        leaseSeconds: number;
+    }): Promise<readonly ClaimedCommand[]>;
+    markSubmitting(input: Fence & {
+        providerAttemptRef: string | null;
+    }): Promise<CommandResult>;
+    applyWriteOutcome(input: Fence & {
+        identityFingerprint: string;
+        providerAttemptRef: string | null;
+    } & ({
+        kind: "accepted";
+        reason: "provider_accepted";
+        providerReferenceFingerprint: string;
+    } | {
+        kind: "uncertain";
+        reason: "write_uncertain";
+    } | {
+        kind: "rejected";
+        reason: "safe_rejection" | "terminal_rejection";
+        retryNotBefore: string | null;
+        proof: {
+            kind: "definitive_provider_rejection";
+            fingerprint: string;
+            observedAt: string;
+            source: "provider_response";
+        };
+    })): Promise<CommandResult>;
+    confirm(input: Fence & {
+        identityFingerprint: string;
+        providerAttemptRef: string | null;
+        proof: Proof;
+    }): Promise<CommandResult>;
+    reconcile(input: {
+        commandId: string;
+        expectedVersion: number;
+        identityFingerprint: string;
+        proof: Proof;
+    }): Promise<CommandResult & {
+        proofRecorded: boolean;
+    }>;
+    resolve(input: {
+        commandId: string;
+        expectedVersion: number;
+        identityFingerprint: string;
+    } & ({
+        decision: "manual_review";
+        reason: "effect_unknown" | "identity_mismatch" | "invalid_contract" | "unsafe_retry";
+        proof: Proof;
+    } | {
+        decision: "retry_wait";
+        reason: "authoritative_absence";
+        retryNotBefore: string;
+        proof: {
+            kind: "authoritative_absence";
+            fingerprint: string;
+            observedAt: string;
+            source: "provider_lookup";
+        };
+    })): Promise<CommandResult & {
+        proofRecorded: boolean;
+    }>;
+    release(input: Fence & ({
+        action: "release";
+        reason: "command_enqueued";
+    } | {
+        action: "cancel";
+        reason: "operator_cancelled";
+    })): Promise<CommandResult>;
+    recoverExpired(input: {
+        limit: number;
+    }): Promise<readonly CommandResult[]>;
+};
+/** Bind the durable protocol without substituting a local state machine.
+ * Store fences compare token, generation, version and unexpired lease together.
+ * Expired claimed work becomes queued; expired submitting/accepted work becomes
+ * uncertain. Only authoritative scoped absence may admit uncertain work to retry.
+ * Claim respects availability/retry budget; finalization cannot invent absence.
+ */
+export declare function createFulfillmentCommandLedger(store: LedgerStore): LedgerStore;
+export {};
+```
+## dist/fulfillment/providerDispatchWorker.d.ts
+
+```ts
+import type { DispatchRecord, FulfillmentDispatchPort, FulfillmentDispatchRequest, FulfillmentStorePort } from "./contracts/index.js";
+export declare function runFulfillmentDispatchWorker(input: {
+    store: FulfillmentStorePort;
+    provider: FulfillmentDispatchPort | null;
+    listCandidates(limit: number): Promise<readonly FulfillmentDispatchRequest[]>;
+    /** Return the original host key bytes, without a new package prefix. */
+    keys: {
+        request(candidate: FulfillmentDispatchRequest): string;
+        mappedAttempt(requestKey: string, mappedAttemptIndex: number): string;
+        acceptance(fulfillmentRef: string): {
+            providerAttemptKey: string;
+            labelKey: string;
+        };
+    };
+    config: {
+        mode: DispatchRecord["mode"];
+        batchLimit: number;
+    };
+    /** Pure local shadow fingerprint: a lowercase 64-hex SHA-256 digest of the adopter's canonical command bytes. Invalid output or a throw refuses before evidence writes. Never return raw command/PII. Used across shadow claim/readback/attempt; shadow never begins, and live preparation must produce the same identity. */
+    shadowCommandFingerprint?: (request: FulfillmentDispatchRequest) => string;
+    now?: () => Date;
+}): Promise<{
+    redactedFieldCount: number;
+    ok: boolean;
+    failures: number;
+    reason: "adopter_fingerprint_invalid" | "adopter_fingerprint_failed";
+    refusal: {
+        reason: "malformed";
+        phase: "prepare";
+        retryable: false;
+        cause: "adopter_fingerprint_invalid" | "adopter_fingerprint_failed";
+    };
+    skipped: boolean;
+    checked: number;
+    updated: number;
+    mode: "stage" | "shadow" | "live";
+    replayed: number;
+    providerCalls: number;
+    readBacks: number;
+} | {
+    redactedFieldCount?: undefined;
+    ok: boolean;
+    failures: number;
+    reason: "adopter_fingerprint_invalid" | "adopter_fingerprint_failed";
+    refusal: {
+        reason: "malformed";
+        phase: "prepare";
+        retryable: false;
+        cause: "adopter_fingerprint_invalid" | "adopter_fingerprint_failed";
+    };
+    skipped: boolean;
+    checked: number;
+    updated: number;
+    mode: "stage" | "shadow" | "live";
+    replayed: number;
+    providerCalls: number;
+    readBacks: number;
+} | {
+    redactedFieldCount: number;
+    ok: boolean;
+    skipped: boolean;
+    checked: number;
+    updated: number;
+    failures: number;
+    mode: "stage" | "shadow" | "live";
+    replayed: number;
+    providerCalls: number;
+    readBacks: number;
+    reason: string | undefined;
+} | {
+    redactedFieldCount?: undefined;
+    ok: boolean;
+    skipped: boolean;
+    checked: number;
+    updated: number;
+    failures: number;
+    mode: "stage" | "shadow" | "live";
+    replayed: number;
+    providerCalls: number;
+    readBacks: number;
+    reason: string | undefined;
+}>;
+```
+## dist/fulfillment/providerProductSyncWorker.d.ts
+
+```ts
+import type { FulfillmentProductSyncPort, FulfillmentProductSyncProvider } from "./contracts/index.js";
+type ReconciliationConflict = Parameters<FulfillmentProductSyncPort["recordReconciliationEvidence"]>[0]["conflictKind"];
+type SyncIdentity = Parameters<FulfillmentProductSyncPort["recordReconciliationEvidence"]>[0]["identity"];
+interface ProductSyncResult {
+    ok: boolean;
+    pushedProducts: number;
+    pushedPacks: number;
+    skippedProducts: number;
+    pulledSkus: number;
+    ingestedPacks: number;
+    reconciliations: number;
+    replayed: number;
+    failures: number;
+    providerCalls: number;
+    syncRunId: string;
+    reason?: string;
+}
+export declare function runFulfillmentProductSyncWorker(input: {
+    port: FulfillmentProductSyncPort;
+    provider: FulfillmentProductSyncProvider;
+    mode?: "push" | "pull" | "both";
+    now?: () => Date;
+    compatibility: {
+        identity(now: Date): SyncIdentity;
+        evidenceKey(sku: string, ean: string, kind: ReconciliationConflict): string;
+    };
+}): Promise<ProductSyncResult>;
+export {};
+```
+## dist/fulfillment/providerReconciliationWorker.d.ts
+
+```ts
+import type { FulfillmentObservation, FulfillmentObservationPagePort, FulfillmentReconciliationObservation, FulfillmentOperationError } from "./contracts/index.js";
+import { enrichTrackingReference } from "./providerTrackingReferences.js";
+type Ingress = Parameters<typeof import("./verifiedIngress.js").verifyAndNormalizeFulfillmentObservation>[0];
+type DispatchRef = NonNullable<Awaited<ReturnType<Ingress["lifecycle"]["findDispatchRef"]>>>;
+type PollEvidence = Pick<FulfillmentObservation, "correlation" | "eventKey" | "providerStatus" | "diagnostics"> | FulfillmentObservation;
+export interface ReconciliationResult {
+    ok: boolean;
+    checked: number;
+    updated: number;
+    trackingRefs: number;
+    quarantined: number;
+    stateConflicts: number;
+    exceptions: number;
+    stale: number;
+    offTrackSkips: number;
+    replayed: number;
+    redactedFieldCount?: number;
+    failures: number;
+    invoiceIssueFailures: number;
+    invoiceIssueRefused: number;
+    invoiceIssueRefusals: {
+        fulfillmentRef: string;
+        identifier: string | null;
+        sqlstate: string;
+        benign: boolean;
+    }[];
+    providerCalls: number;
+    readBacks: number;
+    skipped: boolean;
+    reason?: string;
+    providerError?: FulfillmentOperationError;
+}
+export declare function reconcileFulfillmentObservations(input: {
+    /** Adapter/host maps the private page into typed readback, preserving unknowns. */
+    readPage(input: {
+        page: number;
+        size: number;
+    }): Promise<readonly FulfillmentReconciliationObservation[]>;
+    batchSize: number;
+    page?: number;
+    localPersistence: {
+        /** G17: local persisted chronology, never inferred from dispatch or provider state. */
+        readLocalFulfillmentStatus(ref: string): Promise<string | null>;
+        latestStatusOccurredAt(ref: string): Promise<string | null>;
+        readHandedOverAt(ref: string): Promise<string | null>;
+    };
+    lifecycle: Pick<Ingress["lifecycle"], "recordStatusEvidence" | "effects" | "keys"> & {
+        findDispatchRef(evidence: PollEvidence): Promise<DispatchRef | null>;
+        acknowledgeDispatchAcceptance(ref: DispatchRef, evidence: PollEvidence): Promise<void>;
+        recordQuarantine(observation: PollEvidence | null, reason: "missing_correlation" | "missing_external_ref" | "unknown_status" | "state_conflict", detail?: "fulfillment_not_found" | "stock_consumed_requires_label"): Promise<{
+            replayed: boolean;
+        }>;
+        recordProviderException(ref: DispatchRef, observation: FulfillmentObservation): Promise<{
+            replayed: boolean;
+        }>;
+        readDeliveryCarrier(ref: string): Promise<{
+            carrierRef: string | null;
+            serviceRef: string | null;
+        } | null>;
+        trackingCodecs: Parameters<typeof enrichTrackingReference>[2];
+        issueAccountingInvoice?(ref: string): Promise<void>;
+        /** Private RPC decoding retains permanent/benign distinction and safe refusal identity. */
+        invoiceFailure(error: unknown): {
+            permanent: boolean;
+            identifier: string | null;
+            sqlstate: string | null;
+            benign: boolean;
+        };
+        classifyStateConflict(error: unknown): "fulfillment_not_found" | "stock_consumed_requires_label" | null;
+    };
+}): Promise<ReconciliationResult>;
+/** Host owns scheduling, HTTP and durable job-ledger writes. This operation only projects them. */
+export declare function runFulfillmentReconciliationPage(input: Omit<Parameters<typeof reconcileFulfillmentObservations>[0], "readPage" | "batchSize" | "page"> & {
+    provider: FulfillmentObservationPagePort;
+    pageSize: number;
+    checkpoint: unknown;
+}): Promise<{
+    status: 200 | 502;
+    ledgerStatus: "failed" | "succeeded";
+    result: ReconciliationResult;
+    metadata: {
+        reconciliationPagination: {
+            version: number;
+            page: number;
+            pageSize: number;
+            nextPage: number;
+        };
+    };
+}>;
+export {};
+```
+## dist/fulfillment/providerStockSyncWorker.d.ts
+
+```ts
+import type { FulfillmentStockSyncPort, FulfillmentStockSyncProvider, SyncCursor } from "./contracts/index.js";
+type Threshold = Parameters<FulfillmentStockSyncPort["resolveLowStockEvidence"]>[0]["activeThresholdKinds"][number];
+interface StockSyncResult {
+    ok: boolean;
+    checked: number;
+    updated: number;
+    mismatches: number;
+    reservationCoverage: number;
+    unclassified: number;
+    lowStock: number;
+    movements: number;
+    replayed: number;
+    failures: number;
+    providerCalls: number;
+    readBacks: number;
+    skipped: boolean;
+    syncRunId: string;
+    lastMovementOccurredAt: string | null;
+    reason?: string;
+    rejected: number;
+    items: NonNullable<SyncCursor["items"]>[number][];
+    providerError?: NonNullable<SyncCursor["error"]>["providerError"];
+    refusal?: NonNullable<SyncCursor["refusal"]>;
+}
+export declare function runFulfillmentStockSyncWorker(input: {
+    port: FulfillmentStockSyncPort;
+    provider: FulfillmentStockSyncProvider;
+    movementBatchSize: number;
+    staleSyncThresholdHours?: number;
+    now?: () => Date;
+    compatibility: {
+        syncRunId(now: Date): string;
+        staleEvidenceSku: string;
+        timeZone: string;
+        currentKey(run: string, sku: string): string;
+        snapshotKey(run: string, sku: string): string;
+        lowStockKey(sku: string, threshold: Threshold): string;
+        staleKey(lastSyncedAt: string): string;
+    };
+}): Promise<StockSyncResult>;
+export {};
+```
+## dist/fulfillment/providerTrackingReferences.d.ts
+
+```ts
+import type { FulfillmentTrackingReference, FulfillmentObservationCodecs } from "./contracts/index.js";
+export declare function trackingReferenceComplete(ref: FulfillmentTrackingReference): boolean;
+/** Provider evidence wins as a unit; private carrier/URL codecs stay injected. */
+export declare function enrichTrackingReference(ref: FulfillmentTrackingReference, deliveryCarrier: {
+    carrierRef: string | null;
+    serviceRef: string | null;
+} | null, codecs: FulfillmentObservationCodecs & {
+    approveTrackingUrl?(url: string): boolean;
+    normalizeCarrier(input: {
+        carrierRef: string | null;
+        serviceRef: string | null;
+    }): string | null;
+    publicUrl(carrierRef: string | null, trackingNumber: string): string | null;
+}): FulfillmentTrackingReference;
+/** First occurrence wins, including its selection, after trimming the number. */
+export declare function uniqueTrackingReferences(refs: readonly FulfillmentTrackingReference[]): FulfillmentTrackingReference[];
+```
+## dist/fulfillment/replacementRefusals.d.ts
+
+```ts
+export declare const FULFILLMENT_REPLACEMENT_COMMAND_REFUSALS: readonly ["invalid_input", "idempotency_conflict", "order_not_found", "order_not_replaceable", "missing_client", "missing_shipping_address", "shipping_address_not_found", "payment_not_succeeded", "subscription_cycle_not_paid", "no_parcel_to_replace", "undispatched_replacement_exists", "missing_order_items", "missing_catalog_sku", "missing_inventory_reservation", "blocked_by_payment_not_succeeded_hold", "blocked_by_inventory_review_hold", "blocked_by_risk_review_hold", "blocked_by_address_review_hold", "blocked_by_manual_support_hold"];
+export declare const FULFILLMENT_REPLACEMENT_RESERVATION_REFUSALS: readonly ["inventory_external_provider_insufficient_available_stock", "inventory_external_provider_stock_stale", "inventory_external_provider_stock_missing", "inventory_external_provider_sku_not_found", "inventory_external_provider_location_missing", "inventory_reservation_insufficient_available_stock", "inventory_reservation_allocation_incomplete", "inventory_reservation_payment_status_not_reservable", "inventory_reservation_invalid_quantity"];
+export declare const UNSPECIFIED_FULFILLMENT_REPLACEMENT_REFUSAL = "unspecified_refusal";
+export declare const FULFILLMENT_REPLACEMENT_REFUSALS: readonly ["invalid_input", "idempotency_conflict", "order_not_found", "order_not_replaceable", "missing_client", "missing_shipping_address", "shipping_address_not_found", "payment_not_succeeded", "subscription_cycle_not_paid", "no_parcel_to_replace", "undispatched_replacement_exists", "missing_order_items", "missing_catalog_sku", "missing_inventory_reservation", "blocked_by_payment_not_succeeded_hold", "blocked_by_inventory_review_hold", "blocked_by_risk_review_hold", "blocked_by_address_review_hold", "blocked_by_manual_support_hold", "inventory_external_provider_insufficient_available_stock", "inventory_external_provider_stock_stale", "inventory_external_provider_stock_missing", "inventory_external_provider_sku_not_found", "inventory_external_provider_location_missing", "inventory_reservation_insufficient_available_stock", "inventory_reservation_allocation_incomplete", "inventory_reservation_payment_status_not_reservable", "inventory_reservation_invalid_quantity", "unspecified_refusal"];
+export type FulfillmentReplacementRefusal = (typeof FULFILLMENT_REPLACEMENT_REFUSALS)[number];
+```
+## dist/fulfillment/replacementShipmentHandler.d.ts
+
+```ts
+import { type BaseDeps, type FulfillmentHandlerRequest } from './handlerSupport.js';
+import type { FulfillmentReplacementPort } from './contracts/replacement.js';
+export declare function createAdminCommerceOrderRequestReplacementShipmentHandler<Response>({ authorizeAdmin, respond, omsPort, }: BaseDeps<Response> & {
+    omsPort: FulfillmentReplacementPort;
+}): (req: FulfillmentHandlerRequest, res: Response) => Promise<void>;
+```
+## dist/fulfillment/schemaCapabilities.d.ts
+
+```ts
+/** Sparse projections require the full canonical graph and a trusted native binding. */
+export declare const FULFILLMENT_NATIVE_CAPABILITIES: {
+    readonly shipment: "supported";
+    readonly commandFence: "supported";
+    readonly deliveryAlignment: "supported";
+    readonly stockEvidence: "supported";
+    readonly observationPersistence: "supported";
+    readonly localInventoryBalances: "host_required";
+    readonly dispatchContactPreparation: "host_required";
+    readonly productPacks: "unsupported";
+    readonly providerAccess: "unsupported";
+    readonly automaticReplacementConfirmation: "unsupported";
+};
+```
+## dist/fulfillment/shipmentsOverviewHandler.d.ts
+
+```ts
+import { type FulfillmentHandlerRequest, type FulfillmentHandlerResponder } from './handlerSupport.js';
+import type { FulfillmentShipmentsOverviewPort, FulfillmentShipmentsOverviewResponse } from './contracts/read.js';
+export interface FulfillmentShipmentsOverviewHandlerDeps<Response> {
+    respond: FulfillmentHandlerResponder<Response>;
+    overviewPort: FulfillmentShipmentsOverviewPort;
+    responseSchema: {
+        safeParse(input: unknown): {
+            success: true;
+            data: FulfillmentShipmentsOverviewResponse;
+        } | {
+            success: false;
+        };
+    };
+    authorizeAdmin: (req: FulfillmentHandlerRequest) => Promise<boolean>;
+}
+export declare function createFulfillmentShipmentsOverviewHandler<Response>({ respond, overviewPort, responseSchema: adminShipmentsOverviewResponseSchema, authorizeAdmin, }: FulfillmentShipmentsOverviewHandlerDeps<Response>): (req: FulfillmentHandlerRequest, res: Response) => Promise<void>;
+```
+## dist/fulfillment/statusMap.d.ts
+
+```ts
+export { FULFILLMENT_STATUS_MAP, CANONICAL_LOCAL_FULFILLMENT_STATUSES, CUSTOMER_STEP_SEQUENCE, canonicalStatusToken, stepForToken, customerStepFromSignals, phaseIndexForStep, stepLabelKey, timelineLabelForStep, trackingPhaseKeyForStep, stepUsesTruckIcon } from "@openlup/core/fulfillment";
+export type { FulfillmentStatusStage, FulfillmentStatusMap } from "@openlup/core/fulfillment";
+```
+## dist/fulfillment/trackingProgress.d.ts
+
+```ts
+export { fulfillmentProgressPresentation } from "@openlup/core/fulfillment";
+```
+## dist/fulfillment/verifiedIngress.d.ts
+
+```ts
+import type { FulfillmentObservation, FulfillmentObservationCodecs, FulfillmentObservationPort, FulfillmentRefusal } from "./contracts/index.js";
+import { applyFulfillmentObservationEffects } from "./fulfillmentObservationEffects.js";
+type EffectInput = Parameters<typeof applyFulfillmentObservationEffects<FulfillmentObservation["fact"]["canonicalStatus"], "in_transit" | "delivered">>[0];
+type DispatchRef = {
+    orderRef: string;
+    fulfillmentRef: string;
+    dispatchRef: string;
+    externalRef: string | null;
+};
+export interface FulfillmentIngressCounts {
+    invalidTimestamps: number;
+    rejectedCorrelationRefs: number;
+    rejectedTrackingRefs: number;
+    rejectedTrackingUrls: number;
+}
+export type FulfillmentIngressResult = {
+    counts: FulfillmentIngressCounts;
+} & ({
+    kind: "refused";
+    receiptId: null;
+    refusal: FulfillmentRefusal;
+    diagnostics?: {
+        invalidTimestamp?: true;
+        rejectedCorrelationRefs?: number;
+    };
+} | {
+    kind: "processed" | "ignored" | "superseded";
+    receiptId: string;
+    observation: FulfillmentObservation;
+    replayed: boolean;
+    trackingRefs: number;
+    trackingReadBacks: number;
+    supersededCause?: string;
+});
+/** Safe response classes only; the host owns HTTP and localized message text. */
+export declare function fulfillmentIngressHttpResult(result: FulfillmentIngressResult): {
+    status: 200 | 400 | 403 | 503;
+    messageClass: "accepted" | "bad_request" | "forbidden" | "upstream_unavailable";
+};
+/** Adapter verification owns auth-before-parse; the host owns durable replay. */
+export declare function verifyAndNormalizeFulfillmentObservation(input: {
+    enabled: boolean;
+    approveTrackingUrl?(url: string): boolean;
+    observationCodecs?: FulfillmentObservationCodecs;
+    provider: FulfillmentObservationPort;
+    verification: Parameters<FulfillmentObservationPort["verifyAndNormalize"]>[0];
+    localPersistence: {
+        /** G17: atomic insert by eventKey; retries keep the first stored firstReceivedAt. */
+        recordObservation(observation: FulfillmentObservation): Promise<{
+            replayed: boolean;
+            receiptId?: string;
+        }>;
+        /** Idempotent; only called after completion or a classified superseding conflict. */
+        markProcessed(eventKey: string, outcome: {
+            status: "processed" | "ignored";
+            refusal?: FulfillmentRefusal;
+            supersededCause?: string;
+        }): Promise<void>;
+    };
+    lifecycle: {
+        findDispatchRef(observation: FulfillmentObservation): Promise<DispatchRef | null>;
+        acknowledgeDispatchAcceptance(ref: DispatchRef, observation: FulfillmentObservation): Promise<void>;
+        recordStatusEvidence(ref: DispatchRef, observation: FulfillmentObservation): Promise<{
+            replayed: boolean;
+        }>;
+        effects: EffectInput["port"];
+        keys: {
+            stock(ref: string): string;
+            handoff(ref: string): string;
+            tracking(eventKey: string, number: string): string;
+        };
+        issueAccountingInvoice?(ref: string): Promise<void>;
+        /** Return a machine identity, never exception prose. */
+        supersededCause?(error: unknown): string | null;
+        classifyFailure(error: unknown): "stock_contention" | "state_conflict" | "other";
+        annotateStockContention?(eventKey: string, fulfillmentRef: string): Promise<void>;
+    };
+}): Promise<FulfillmentIngressResult>;
+export {};
 ```
 ## dist/http/deadline.d.ts
 
@@ -7195,4 +13820,3782 @@ export declare function verifyHmacSignature(input: {
  * length mismatch rather than returning false, and the length of a shared token is not the secret.
  */
 export declare function timingSafeStringEqual(left: string, right: string): boolean;
+```
+## dist/pricing/acquisitionFinancialPolicy.d.ts
+
+```ts
+import type { AcquisitionTermsMetadata } from "./contracts/acquisitionTerms.js";
+export type AcquisitionRowFacts = Readonly<{
+    id: string;
+    active: boolean;
+    regionCodes: readonly string[];
+    validFrom: string;
+    validTo: string | null;
+    mirrorOf: unknown;
+    metadataPresent: boolean;
+    metadata: unknown;
+}>;
+export type AcquisitionClassification = Readonly<{
+    baselineLegacy: boolean;
+    target: boolean;
+    canonicalRow: boolean;
+    unconfiguredLegacyEligible: boolean;
+}>;
+/** Required host policy. No financial predicates or schedules are inferred. */
+export interface AcquisitionFinancialPolicy<Row> {
+    facts(row: Row): AcquisitionRowFacts;
+    classify(row: Row): AcquisitionClassification;
+    validateMetadata(row: Row, terms: AcquisitionTermsMetadata): void;
+    pairMatches(legacy: Row, mirror: Row): boolean;
+    initialDiscountBps(row: Row, purpose: "resolved_target" | "filter_validation"): unknown;
+    unconfiguredTerms(legacy: Row, mirror: Row): AcquisitionTermsMetadata;
+}
+```
+## dist/pricing/acquisitionOfferPricing.d.ts
+
+```ts
+import { type CommerceOfferPricingDeps } from "./commerceOfferPricing.js";
+import { type AcquisitionOfferPricingResponse } from "./contracts/offer.js";
+import { ACQUISITION_TERMS_CAPABILITY, type AcquisitionTerms } from "./contracts/acquisitionTerms.js";
+import type { CommerceQuoteCatalogItem } from "./commerceQuoteCatalogReadPort.js";
+import type { CreateQuoteRequest } from "./contracts/quote.js";
+export declare function acquisitionProjectionFreshness(acquisitionTerms: AcquisitionTerms, observedAt: string, nextBoundaryAt?: string | null): {
+    acquisitionTerms: {
+        initialDiscountBps: number;
+        effectiveFrom: string;
+        effectiveTo: string | null;
+        schemaVersion: "subscription-acquisition.v1";
+        revision: string;
+        delivery2DiscountBps: number;
+    };
+    observedAt: string;
+    validUntil: string;
+};
+/** Explicit opt-in projection; the incumbent projector receives no new defaults. */
+export declare function projectAcquisitionOfferPricing<Item extends CommerceQuoteCatalogItem, ScopeV1 extends string, ScopeV2 extends string>(input: Omit<CommerceOfferPricingDeps<Item, ScopeV1, ScopeV2>, "requestFor"> & {
+    acquisitionTerms: AcquisitionTerms;
+    observedAt: string;
+    nextBoundaryAt?: string | null;
+    requestFor(product: Item, mode: "one_time" | "subscription", acquisition: {
+        acquisitionCapability: typeof ACQUISITION_TERMS_CAPABILITY;
+        atTime: string;
+    }): CreateQuoteRequest;
+}): Promise<AcquisitionOfferPricingResponse<ScopeV2>>;
+```
+## dist/pricing/acquisitionOfferPricingHandler.d.ts
+
+```ts
+import type { HttpRequest, HttpResponse } from "../http/index.js";
+import type { BffResponder } from "../bff/index.js";
+import type { z } from "zod";
+import { type AcquisitionOfferPricingResponse, type CommerceOfferPricingResponse } from "./contracts/offer.js";
+import type { AcquisitionCapability } from "./contracts/acquisitionTerms.js";
+import type { PricingPolicyRequest, PricingPolicySnapshot } from "./contracts/offerPolicy.js";
+export declare const ACQUISITION_CAPABILITY_HEADER = "x-commerce-acquisition-capability";
+export interface AcquisitionOfferPricingHandlerDeps {
+    responder: BffResponder;
+    commerceOfferPricingResponseSchema: z.ZodType<AcquisitionOfferPricingResponse | CommerceOfferPricingResponse>;
+    incumbentHandler(req: HttpRequest, res: HttpResponse): Promise<void>;
+    readOfferPricing(pricingPolicy?: PricingPolicySnapshot, acquisitionCapability?: AcquisitionCapability): Promise<AcquisitionOfferPricingResponse | CommerceOfferPricingResponse>;
+    requirePricingPolicy?: boolean;
+    resolvePricingPolicy?(request: {
+        visitorId: string;
+        pricingPolicy: PricingPolicyRequest;
+    }): PricingPolicySnapshot | undefined | Promise<PricingPolicySnapshot | undefined>;
+}
+export declare function createAcquisitionOfferPricingHandler({ responder, commerceOfferPricingResponseSchema, incumbentHandler, readOfferPricing, resolvePricingPolicy, requirePricingPolicy, }: AcquisitionOfferPricingHandlerDeps): (req: HttpRequest, res: HttpResponse) => Promise<void>;
+export declare function readAcquisitionCapability(req: HttpRequest): AcquisitionCapability | undefined | null;
+```
+## dist/pricing/acquisitionOfferPricingSchemas.d.ts
+
+```ts
+import { z } from "zod";
+import { COMMERCE_OFFER_PRICING_V2_CONTRACT_VERSION, type AcquisitionOfferPricingResponse, type CommerceOfferPricingResponse } from "./contracts/offer.js";
+export declare const ACQUISITION_PROJECTION_MAX_AGE_MS = 60000;
+export declare const acquisitionProjectionFreshnessShape: {
+    acquisitionTerms: z.ZodObject<{
+        initialDiscountBps: z.ZodNumber;
+        effectiveFrom: z.ZodString;
+        effectiveTo: z.ZodNullable<z.ZodString>;
+        schemaVersion: z.ZodLiteral<"subscription-acquisition.v1">;
+        revision: z.ZodString;
+        delivery2DiscountBps: z.ZodNumber;
+    }, z.core.$strict>;
+    observedAt: z.ZodString;
+    validUntil: z.ZodString;
+};
+export declare const acquisitionProjectionFreshnessSchema: z.ZodObject<{
+    acquisitionTerms: z.ZodObject<{
+        initialDiscountBps: z.ZodNumber;
+        effectiveFrom: z.ZodString;
+        effectiveTo: z.ZodNullable<z.ZodString>;
+        schemaVersion: z.ZodLiteral<"subscription-acquisition.v1">;
+        revision: z.ZodString;
+        delivery2DiscountBps: z.ZodNumber;
+    }, z.core.$strict>;
+    observedAt: z.ZodString;
+    validUntil: z.ZodString;
+}, z.core.$strict>;
+/** Validate against the host's existing v2 scope, product and settlement schemas. */
+export declare function createAcquisitionOfferPricingSchema<ScopeV2 extends string>(v2Schema: z.ZodType<Extract<CommerceOfferPricingResponse<string, ScopeV2>, {
+    contractVersion: typeof COMMERCE_OFFER_PRICING_V2_CONTRACT_VERSION;
+}>>): z.ZodType<AcquisitionOfferPricingResponse<ScopeV2>>;
+```
+## dist/pricing/acquisitionQuoteBinding.d.ts
+
+```ts
+import type { ResolvedAcquisitionTerms } from "./contracts/acquisitionTerms.js";
+/** Server-selected terms only. Absence contributes no property or token bytes. */
+export declare function acquisitionQuoteBinding(acquisitionTerms?: ResolvedAcquisitionTerms): {
+    acquisitionTerms?: ResolvedAcquisitionTerms;
+};
+export declare function mapAcquisitionTermsFailure(error: unknown): {
+    code: "CONFLICT" | "UPSTREAM_UNAVAILABLE";
+    details: {
+        reason: import("./acquisitionTerms.js").AcquisitionTermsRefusal;
+        refreshRequired: boolean;
+    };
+} | null;
+```
+## dist/pricing/acquisitionReadiness.d.ts
+
+```ts
+import { type AcquisitionTerms } from "./contracts/acquisitionTerms.js";
+import type { AcquisitionFinancialPolicy } from "./acquisitionFinancialPolicy.js";
+import { OFFER_POLICY_V2_READINESS_CONTRACT } from "./offerPolicyReadiness.js";
+export declare const ACQUISITION_READINESS_CONTRACT = "commerce-acquisition-readiness.v1";
+export interface AcquisitionReadinessEvidence extends Omit<AcquisitionTerms, "schemaVersion"> {
+    contractVersion: typeof ACQUISITION_READINESS_CONTRACT;
+    kind: "legacy_pair" | "v2_standalone";
+    legacyPairCount: number;
+    standaloneCount: number;
+    nextBoundaryAt: string | null;
+}
+export interface AcquisitionOfferPolicyReadiness {
+    contractVersion: typeof OFFER_POLICY_V2_READINESS_CONTRACT;
+    ready: boolean;
+    checkedAt: string;
+    reasons: string[];
+    evidence?: {
+        acquisition: AcquisitionReadinessEvidence | null;
+    };
+}
+import type { OfferPolicyReadinessPort } from "./offerPolicyReadiness.js";
+export interface AcquisitionReadinessCache {
+    read(port: OfferPolicyReadinessPort): Promise<AcquisitionOfferPolicyReadiness>;
+    clear(): void;
+}
+export declare function createAcquisitionReadinessCache<Row>(input: {
+    policy: AcquisitionFinancialPolicy<Row>;
+    now?: () => number;
+    positiveTtlMs?: number;
+    negativeTtlMs?: number;
+}): AcquisitionReadinessCache;
+```
+## dist/pricing/acquisitionTerms.d.ts
+
+```ts
+import { type ResolvedAcquisitionTerms } from "./contracts/acquisitionTerms.js";
+import type { AcquisitionFinancialPolicy } from "./acquisitionFinancialPolicy.js";
+export type AcquisitionTermsRefusal = "acquisition_terms_policy_unconfigured" | "acquisition_terms_invalid" | "acquisition_terms_ambiguous" | "acquisition_terms_not_effective" | "acquisition_terms_capability_required" | "acquisition_terms_v2_required";
+export declare class AcquisitionTermsError extends Error {
+    readonly reason: AcquisitionTermsRefusal;
+    constructor(reason: AcquisitionTermsRefusal);
+}
+export interface AcquisitionTermsSelection {
+    kind: "legacy_pair" | "v2_standalone" | "legacy_unconfigured";
+    terms: ResolvedAcquisitionTerms;
+    sourcePromotionId: string;
+    legacyPromotionId?: string;
+    nextBoundaryAt: string | null;
+}
+/** Selection never falls back from a configured but malformed or incomplete schedule. */
+export declare function selectAcquisitionTerms<Row>(rows: readonly Row[], atTime: string, regionCode: string, policy: AcquisitionFinancialPolicy<Row>): AcquisitionTermsSelection | null;
+/** Ordinary coupon validity and inactive rows remain owned by their evaluator. */
+export declare function filterAcquisitionPromotions<Row>(rows: readonly Row[], atTime: string, regionCode: string, policy: AcquisitionFinancialPolicy<Row>): Row[];
+export declare function assertAcquisitionTermsCapability(selection: AcquisitionTermsSelection | null, capability: unknown, promotionEngineVersion: unknown): void;
+```
+## dist/pricing/acquisitionTermsSchemas.d.ts
+
+```ts
+import { z } from "zod";
+import { type AcquisitionTerms, type ResolvedAcquisitionTerms } from "./contracts/acquisitionTerms.js";
+export declare const acquisitionCapabilitySchema: z.ZodLiteral<"subscription-acquisition.v1">;
+/** Only these extra terms are stored; promotion benefit and validity remain authoritative. */
+export declare const acquisitionTermsMetadataSchema: z.ZodObject<{
+    schemaVersion: z.ZodLiteral<"subscription-acquisition.v1">;
+    revision: z.ZodString;
+    delivery2DiscountBps: z.ZodNumber;
+}, z.core.$strict>;
+export declare const acquisitionTermsSchema: z.ZodObject<{
+    initialDiscountBps: z.ZodNumber;
+    effectiveFrom: z.ZodString;
+    effectiveTo: z.ZodNullable<z.ZodString>;
+    schemaVersion: z.ZodLiteral<"subscription-acquisition.v1">;
+    revision: z.ZodString;
+    delivery2DiscountBps: z.ZodNumber;
+}, z.core.$strict>;
+export declare const resolvedAcquisitionTermsSchema: z.ZodObject<{
+    sourcePromotionId: z.ZodString;
+    initialDiscountBps: z.ZodNumber;
+    effectiveFrom: z.ZodString;
+    effectiveTo: z.ZodNullable<z.ZodString>;
+    schemaVersion: z.ZodLiteral<"subscription-acquisition.v1">;
+    revision: z.ZodString;
+    delivery2DiscountBps: z.ZodNumber;
+}, z.core.$strict>;
+export declare const acquisitionTermsExpectationSchema: z.ZodObject<{
+    revision: z.ZodString;
+    delivery2DiscountBps: z.ZodNumber;
+}, z.core.$strict>;
+export declare function projectAcquisitionTerms(terms: ResolvedAcquisitionTerms): AcquisitionTerms;
+/** Compose only at an opted-in host boundary; preserve its existing refinements. */
+export declare function createAcquisitionQuoteSchemas<Request extends z.ZodObject, Context extends z.ZodObject, Quote extends z.ZodObject>(input: {
+    request: Request;
+    context: Context;
+    quote: Quote;
+}): {
+    request: z.ZodObject<{
+        [x: string]: any;
+        acquisitionCapability: z.ZodOptional<z.ZodLiteral<"subscription-acquisition.v1">>;
+    }, z.core.$strip>;
+    context: z.ZodObject<{
+        [x: string]: any;
+        acquisitionCapability: z.ZodOptional<z.ZodLiteral<"subscription-acquisition.v1">>;
+        atTime: z.ZodOptional<z.ZodString>;
+    }, z.core.$strip>;
+    quote: z.ZodObject<{
+        [x: string]: any;
+        acquisitionTerms: z.ZodOptional<z.ZodObject<{
+            sourcePromotionId: z.ZodString;
+            initialDiscountBps: z.ZodNumber;
+            effectiveFrom: z.ZodString;
+            effectiveTo: z.ZodNullable<z.ZodString>;
+            schemaVersion: z.ZodLiteral<"subscription-acquisition.v1">;
+            revision: z.ZodString;
+            delivery2DiscountBps: z.ZodNumber;
+        }, z.core.$strict>>;
+    }, z.core.$strip>;
+};
+```
+## dist/pricing/catalogFactsProvenance.d.ts
+
+```ts
+import type { CatalogFactsProvenance } from "./contracts/provenance.js";
+import type { CreateQuoteResponse } from "./contracts/quote.js";
+import type { CommerceQuoteCatalogItem } from "./commerceQuoteCatalogReadPort.js";
+type ResolvedPriceObservation = {
+    priceEntryId: string;
+    unitPriceMinor: number;
+};
+type StrictCatalogFactsItem = CommerceQuoteCatalogItem & {
+    documentRevision: {
+        id: string;
+        digest: string;
+    };
+};
+type PolicyDerivedSubscriptionFacts = {
+    policyRevisionId: string;
+    policyDigest: string;
+};
+export declare function createCatalogFactsProvenance(input: {
+    item: StrictCatalogFactsItem;
+    resolved: ResolvedPriceObservation;
+    base: ResolvedPriceObservation;
+    mode: "one_time" | "subscription";
+    atTime: string;
+    currency: string;
+    resolvedUnitAmountMinor: number;
+    resolvedLineAmountMinor: number;
+    baseUnitAmountMinor: number;
+    policy?: PolicyDerivedSubscriptionFacts;
+}): CatalogFactsProvenance;
+export declare function catalogFactsForQuoteLine(enabled: boolean, item: CommerceQuoteCatalogItem, resolved: ResolvedPriceObservation, base: ResolvedPriceObservation, mode: "one_time" | "subscription", atTime: string, currency: string, resolvedUnitAmountMinor: number, resolvedLineAmountMinor: number, baseUnitAmountMinor: number, policy?: PolicyDerivedSubscriptionFacts): CatalogFactsProvenance | undefined;
+/** Public responses retain every money field but never server-only catalog identifiers. */
+export declare function projectPublicQuoteSnapshot<Snapshot extends CreateQuoteResponse>(snapshot: Snapshot): Snapshot;
+export {};
+```
+## dist/pricing/catalogFactsSchemas.d.ts
+
+```ts
+import { z } from "zod";
+/**
+ * Server-only evidence for a strict quote line. V1 remains readable for
+ * historical and explicitly pre-cutover legacy subscription observations; v2
+ * records the policy which derived a current subscription amount.
+ */
+export declare const catalogFactsProvenanceSchema: z.ZodUnion<readonly [z.ZodObject<{
+    skuId: z.ZodString;
+    documentRevisionId: z.ZodString;
+    documentDigest: z.ZodString;
+    basePriceEntryId: z.ZodString;
+    atTime: z.ZodString;
+    currency: z.ZodString;
+    resolvedUnitAmountMinor: z.ZodNumber;
+    resolvedLineAmountMinor: z.ZodNumber;
+    baseUnitAmountMinor: z.ZodNumber;
+    version: z.ZodLiteral<"catalog_facts_v1">;
+    resolvedPriceEntryId: z.ZodString;
+    mode: z.ZodEnum<{
+        subscription: "subscription";
+        one_time: "one_time";
+    }>;
+}, z.core.$strict>, z.ZodObject<{
+    skuId: z.ZodString;
+    documentRevisionId: z.ZodString;
+    documentDigest: z.ZodString;
+    basePriceEntryId: z.ZodString;
+    atTime: z.ZodString;
+    currency: z.ZodString;
+    resolvedUnitAmountMinor: z.ZodNumber;
+    resolvedLineAmountMinor: z.ZodNumber;
+    baseUnitAmountMinor: z.ZodNumber;
+    version: z.ZodLiteral<"catalog_facts_v2">;
+    policyRevisionId: z.ZodString;
+    policyDigest: z.ZodString;
+    mode: z.ZodLiteral<"subscription">;
+}, z.core.$strict>]>;
+/** Reject server-only provenance at every HTTP response schema boundary. */
+export declare function rejectCatalogFactsFromPublicQuote(response: {
+    quote: {
+        lines: readonly {
+            catalogFacts?: unknown;
+        }[];
+    };
+}, ctx: z.RefinementCtx, pathPrefix?: Array<string | number>): void;
+```
+## dist/pricing/commerceOfferPricing.d.ts
+
+```ts
+import { type CommerceOfferPricingResponse } from "./contracts/offer.js";
+import { type PricingPolicySnapshot } from "./contracts/offerPolicy.js";
+import type { CreateQuoteRequest } from "./contracts/quote.js";
+import { type CommerceQuotePort } from "./quotePorts.js";
+import type { CommerceQuoteCatalogItem } from "./commerceQuoteCatalogReadPort.js";
+export interface CommerceOfferPricingDeps<Item extends CommerceQuoteCatalogItem, ScopeV1 extends string, ScopeV2 extends string> {
+    quoteCatalogReadPort: {
+        listQuoteCatalogItems(): Promise<Item[]>;
+    };
+    quoteWithPromotions: CommerceQuotePort;
+    quoteWithoutPromotions: CommerceQuotePort;
+    pricingPolicy?: PricingPolicySnapshot;
+    isOfferProduct(product: Item): boolean;
+    requestFor(product: Item, mode: "one_time" | "subscription"): CreateQuoteRequest;
+    unitCount: number;
+    minimumProductPayableMinor: number;
+    scopeV1: ScopeV1;
+    scopeV2: ScopeV2;
+}
+/**
+ * Product-only acquisition projection over the same quote ports used by
+ * configurator checkout. It never prices delivery and is never accepted as a
+ * checkout expectation; its only consumer is non-transactional "from" copy.
+ */
+export declare function projectCommerceOfferPricing<Item extends CommerceQuoteCatalogItem, ScopeV1 extends string, ScopeV2 extends string>({ quoteCatalogReadPort, quoteWithPromotions, quoteWithoutPromotions, pricingPolicy, isOfferProduct, requestFor, unitCount: COMMERCE_MIN_AUTO_ORDER_UNITS, minimumProductPayableMinor: MINIMUM_PRODUCT_PAYABLE_MINOR, scopeV1, scopeV2, }: CommerceOfferPricingDeps<Item, ScopeV1, ScopeV2>): Promise<CommerceOfferPricingResponse<ScopeV1, ScopeV2>>;
+```
+## dist/pricing/commerceOfferPricingCache.d.ts
+
+```ts
+import type { CommerceOfferPricingResponse } from "./contracts/offer.js";
+/** One bounded value and one in-flight load per runtime instance. */
+export interface CommerceOfferPricingCache<Response extends CommerceOfferPricingResponse = CommerceOfferPricingResponse> {
+    read(key: string, load: () => Promise<Response>): Promise<Response>;
+}
+export declare function createCommerceOfferPricingCache<Response extends CommerceOfferPricingResponse = CommerceOfferPricingResponse>(input: {
+    ttlMs: number;
+    failureTtlMs?: number;
+    now?: () => number;
+}): CommerceOfferPricingCache<Response>;
+```
+## dist/pricing/commerceOfferPricingHandler.d.ts
+
+```ts
+import type { PricingPolicyRequest, PricingPolicySnapshot } from "./contracts/offerPolicy.js";
+import type { HttpRequest, HttpResponse } from "../http/index.js";
+import type { BffResponder } from "../bff/index.js";
+import type { z } from "zod";
+import { type CommerceOfferPricingResponse } from "./contracts/offer.js";
+export declare const COMMERCE_OFFER_PRICING_CACHE_CONTROL = "public, max-age=0, s-maxage=5, must-revalidate";
+export declare const COMMERCE_OFFER_PRICING_ASSIGNED_CACHE_CONTROL = "private, no-store";
+export declare const OFFER_POLICY_CAPABILITY_HEADER = "x-commerce-offer-policy-capability";
+export declare const OFFER_POLICY_TOKEN_HEADER = "x-commerce-pricing-policy-token";
+export declare const OFFER_POLICY_VISITOR_HEADER = "x-commerce-visitor-id";
+export interface CommerceOfferPricingHandlerDeps<Response extends CommerceOfferPricingResponse = CommerceOfferPricingResponse> {
+    responder: BffResponder;
+    commerceOfferPricingResponseSchema: z.ZodType<Response>;
+    readOfferPricing(pricingPolicy?: PricingPolicySnapshot): Promise<Response>;
+    requirePricingPolicy?: boolean;
+    resolvePricingPolicy?(request: {
+        visitorId: string;
+        pricingPolicy: PricingPolicyRequest;
+    }): PricingPolicySnapshot | undefined | Promise<PricingPolicySnapshot | undefined>;
+}
+export declare function createCommerceOfferPricingHandler<Response extends CommerceOfferPricingResponse>({ responder, commerceOfferPricingResponseSchema, readOfferPricing, resolvePricingPolicy, requirePricingPolicy, }: CommerceOfferPricingHandlerDeps<Response>): (req: HttpRequest, res: HttpResponse) => Promise<void>;
+```
+## dist/pricing/commercePriceAuthority.d.ts
+
+```ts
+import type { CommercePriceAuthorityQuery } from "./contracts/index.js";
+import { type CommercePriceAuthorityPort } from "./ports.js";
+import type { ResolvedPrice } from "@openlup/core/pricing";
+export interface TimedAuthorityValue<T> {
+    value: T;
+    validFrom: string;
+    validTo: string | null;
+}
+export interface CommercePriceAuthorityReadPort {
+    listPriceLists(context: Pick<CommercePriceAuthorityQuery, "regionCode" | "currency">): Promise<ReadonlyArray<TimedAuthorityValue<string>>>;
+    listExactBaseEntries(input: {
+        variantId: string;
+        priceListId: string;
+    }): Promise<ReadonlyArray<TimedAuthorityValue<ResolvedPrice>>>;
+    listExactLegacySubscriptionEntries(input: {
+        variantId: string;
+        priceListId: string;
+    }): Promise<ReadonlyArray<TimedAuthorityValue<ResolvedPrice>>>;
+    listSubscriptionPolicyHistory(context: Pick<CommercePriceAuthorityQuery, "regionCode" | "currency" | "channel"> & {
+        priceListId: string;
+    }): Promise<ReadonlyArray<TimedAuthorityValue<unknown>>>;
+}
+/** Provider-neutral strict money algorithm; adapters own only persistence reads and row mapping. */
+export declare function createCommercePriceAuthorityPort(reads: CommercePriceAuthorityReadPort): CommercePriceAuthorityPort;
+/** Opt-in scheduling using the selected list for concurrent history reads. */
+export declare function createConcurrentCommercePriceAuthorityPort(reads: CommercePriceAuthorityReadPort): CommercePriceAuthorityPort;
+/** The current money context requires one list; creation order cannot resolve overlap. */
+export declare function selectUniqueEffectivePriceList(priceLists: readonly TimedAuthorityValue<string>[], atTime: string): string;
+```
+## dist/pricing/commercePricingPolicyErrors.d.ts
+
+```ts
+/** The server cannot assign a policy right now. Caller-independent: retrying an
+ * identical request only succeeds once production configuration changes. */
+export declare class CommercePricingPolicyUnavailableError extends Error {
+    readonly reason: string;
+    constructor(reason: string);
+}
+/**
+ * Every reason a caller-side refusal can carry. ⛔ Each one answers `400`, which
+ * puts it outside every 5xx monitor, so each one owes a dedicated monitor of its
+ * own; a host's observability check can read this tuple and fail when a reason
+ * has none. Adding a member here without adding a monitor is the regression this
+ * tuple exists to prevent: reclassifying `v2_capability_required` from `503` to
+ * `400` once silently removed the only alert on a site-wide unpriceable-quote
+ * outage.
+ */
+export declare const PRICING_POLICY_REQUEST_REASONS: readonly ["v2_capability_required", "v2_visitor_id_required"];
+export type PricingPolicyRequestReason = (typeof PRICING_POLICY_REQUEST_REASONS)[number];
+/** The request itself lacks the context a v2 assignment needs. Caller-fixable,
+ * and never evidence that pricing is down. The reason is typed off
+ * PRICING_POLICY_REQUEST_REASONS so a new one cannot skip its monitor. */
+export declare class CommercePricingPolicyRequestError extends Error {
+    readonly reason: PricingPolicyRequestReason;
+    constructor(reason: PricingPolicyRequestReason);
+}
+export type SafePricingPolicyReason = "v2_capability_required" | "v2_visitor_id_required" | "signing_secret_unavailable" | "v1_assignment_rejected" | "v2_assignment_config_invalid" | "v2_readiness_not_ready" | "other";
+export interface PricingPolicyFailureMapping {
+    code: "BAD_REQUEST" | "UPSTREAM_UNAVAILABLE";
+    details: {
+        reason: "pricing_policy_request_invalid" | "pricing_policy_unavailable";
+        stage: "pricing_policy";
+        policyReason: SafePricingPolicyReason;
+    };
+}
+/**
+ * Single owner of the status a pricing-policy refusal earns, shared by every
+ * route that resolves one. A caller-attributable gap answers `400`; only a
+ * server that genuinely cannot price answers `503`, so a `503` on these routes
+ * stays a truthful outage signal.
+ */
+export declare function mapPricingPolicyFailure(error: unknown): PricingPolicyFailureMapping | null;
+```
+## dist/pricing/commerceQuoteBatchHandler.d.ts
+
+```ts
+import type { ResolvedAcquisitionTerms } from "./contracts/acquisitionTerms.js";
+import type { HttpRequest, HttpResponse } from "../http/index.js";
+import type { BffResponder } from "../bff/index.js";
+import type { z } from "zod";
+import { type CreateQuoteRequest, type CreateQuoteResponse } from "./contracts/quote.js";
+import { COMMERCE_CONTRACT_VERSION } from "./contracts/index.js";
+import { type CommerceQuotePort } from "./quotePorts.js";
+import type { PricingPolicySnapshot } from "./contracts/offerPolicy.js";
+export interface CommerceQuoteBatchHandlerDeps<Request extends CreateQuoteRequest = CreateQuoteRequest, Response extends CreateQuoteResponse = CreateQuoteResponse> {
+    responder: BffResponder;
+    acquisition?: {
+        terms(quote: Response["quote"]): ResolvedAcquisitionTerms | undefined;
+    };
+    createQuoteBatchRequestSchema: z.ZodType<{
+        quotes: Request[];
+    }>;
+    publicCreateQuoteBatchResponseSchema: z.ZodType<{
+        contractVersion: typeof COMMERCE_CONTRACT_VERSION;
+        quotes: Response["quote"][];
+    }>;
+    quotePort: CommerceQuotePort<Request, Response>;
+    resolveCustomerEligibility?: (request: Request) => Promise<{
+        clientId: string | null;
+        source: "anonymous" | "resolved_client";
+    }>;
+    resolvePricingPolicy?: (request: Request) => PricingPolicySnapshot | undefined | Promise<PricingPolicySnapshot | undefined>;
+}
+/**
+ * Batch quote BFF handler: prices N independent quotes in one request so the
+ * configurator stops fanning out one HTTP call per length tile. The injected
+ * `quotePort` is expected to share its catalog + active price-list reads across
+ * the batch (single `atTime` + memoized catalog), so this is one DB warm-up, not
+ * N. Output is identical to calling the single-quote endpoint N times, and order
+ * is preserved (`quotes[i]` ⇔ the i-th request). A failure in any quote fails
+ * the whole batch, mirroring the single-endpoint error mapping.
+ */
+export declare function createCommerceQuoteBatchHandler<Request extends CreateQuoteRequest, Response extends CreateQuoteResponse>({ responder, createQuoteBatchRequestSchema, publicCreateQuoteBatchResponseSchema, quotePort, acquisition, resolveCustomerEligibility, resolvePricingPolicy, }: CommerceQuoteBatchHandlerDeps<Request, Response>): (req: HttpRequest, res: HttpResponse) => Promise<void>;
+```
+## dist/pricing/commerceQuoteCatalogReadPort.d.ts
+
+```ts
+/** Quote-only facts: no copy, route, price, or inventory authority. */
+export interface CommerceQuoteCatalogItem {
+    skuId: string;
+    skuCode: string;
+    variantId: string;
+    productSlug: string;
+    netWeightG: number;
+    /** Identifies the product primary SKU for offer selection; secondary SKUs are excluded. */
+    isPrimarySku?: boolean;
+    isAddon: boolean;
+    sellability: {
+        oneTime: boolean;
+        subscription: boolean;
+    };
+    documentRevision: {
+        id: string | null;
+        digest: string | null;
+    };
+}
+export interface CommerceQuoteCatalogReadPort {
+    listQuoteCatalogItems(): Promise<CommerceQuoteCatalogItem[]>;
+}
+export type CommerceQuoteCatalogReadRefusalCode = "catalog_read_not_configured" | "catalog_authority_unavailable" | "catalog_authority_changed" | "catalog_revision_invalid" | "catalog_document_schema_invalid" | "catalog_document_digest_mismatch" | "catalog_primary_trade_item_invalid" | "catalog_cursor_invalid" | "catalog_cardinality_exceeded";
+export declare class CommerceQuoteCatalogReadError extends Error {
+    readonly code: CommerceQuoteCatalogReadRefusalCode;
+    constructor(code: CommerceQuoteCatalogReadRefusalCode);
+}
+```
+## dist/pricing/commerceQuoteHandler.d.ts
+
+```ts
+import type { ShippingTerms } from "../shipping/index.js";
+import type { ResolvedAcquisitionTerms } from "./contracts/acquisitionTerms.js";
+import type { HttpRequest, HttpResponse } from "../http/index.js";
+import type { BffResponder } from "../bff/index.js";
+import type { z } from "zod";
+import { type CreateQuoteRequest, type CreateQuoteResponse } from "./contracts/quote.js";
+import { type CommerceQuotePort } from "./quotePorts.js";
+import type { PricingPolicySnapshot } from "./contracts/offerPolicy.js";
+export interface CommerceQuoteHandlerDeps<Request extends CreateQuoteRequest = CreateQuoteRequest, Response extends CreateQuoteResponse = CreateQuoteResponse> {
+    responder: BffResponder;
+    shipping?: {
+        terms(quote: Response["quote"]): ShippingTerms | undefined;
+    };
+    acquisition?: {
+        terms(quote: Response["quote"]): ResolvedAcquisitionTerms | undefined;
+    };
+    createQuoteRequestSchema: z.ZodType<Request>;
+    createQuoteResponseSchema: z.ZodType<Response>;
+    publicCreateQuoteRequestSchema: z.ZodType<Request & {
+        promotionAcceptanceToken?: string;
+    }>;
+    publicCreateQuoteResponseSchema: z.ZodType<Response & {
+        promotionAcceptanceToken?: string;
+    }>;
+    quotePort: CommerceQuotePort<Request, Response>;
+    fallbackQuotePort?: CommerceQuotePort<Request, Response>;
+    resolveCustomerEligibility?: (request: Request) => Promise<{
+        clientId: string | null;
+        source: "anonymous" | "resolved_client";
+    }>;
+    resolvePricingPolicy?: (request: Request) => PricingPolicySnapshot | undefined | Promise<PricingPolicySnapshot | undefined>;
+    createPromotionAcceptance?: (request: Request, quote: Awaited<ReturnType<CommerceQuotePort<Request, Response>["createQuote"]>>["quote"], acquisitionTerms?: ResolvedAcquisitionTerms, shippingTerms?: ShippingTerms) => string | null;
+    honorPromotionAcceptance?: (token: string, request: Request, quote: Awaited<ReturnType<CommerceQuotePort<Request, Response>["createQuote"]>>["quote"], acquisitionTerms?: ResolvedAcquisitionTerms, shippingTerms?: ShippingTerms) => boolean;
+}
+export declare function createCommerceQuoteHandler<Request extends CreateQuoteRequest, Response extends CreateQuoteResponse>({ responder, createQuoteRequestSchema, createQuoteResponseSchema, publicCreateQuoteRequestSchema, publicCreateQuoteResponseSchema, quotePort, acquisition, shipping, fallbackQuotePort, resolveCustomerEligibility, resolvePricingPolicy, createPromotionAcceptance, honorPromotionAcceptance, }: CommerceQuoteHandlerDeps<Request, Response>): (req: HttpRequest, res: HttpResponse) => Promise<void>;
+```
+## dist/pricing/commerceQuoteSnapshotExpect.d.ts
+
+```ts
+import type { z } from "zod";
+import { type CommerceQuotePort } from "./quotePorts.js";
+export interface QuoteSnapshotExpectMessages {
+    /** Thrown when the re-quoted response fails schema validation. */
+    invalidResponseMessage: string;
+    /** Thrown when re-quoting raises a CommerceQuoteError (pricing changed). */
+    catalogMismatchMessage: string;
+}
+export declare function createExpectedQuote<Request, Response>(quotePort: CommerceQuotePort<Request, Response>, request: Request, messages: QuoteSnapshotExpectMessages, createQuoteResponseSchema: z.ZodType<Response>): Promise<Response>;
+```
+## dist/pricing/contracts/acquisitionTerms.d.ts
+
+```ts
+/** Opt-in protocol identity; financial schedules belong to the injected policy. */
+export declare const ACQUISITION_TERMS_CAPABILITY: "subscription-acquisition.v1";
+export type AcquisitionCapability = typeof ACQUISITION_TERMS_CAPABILITY;
+export interface AcquisitionTermsMetadata {
+    schemaVersion: AcquisitionCapability;
+    revision: string;
+    delivery2DiscountBps: number;
+}
+export interface AcquisitionTerms extends AcquisitionTermsMetadata {
+    initialDiscountBps: number;
+    effectiveFrom: string;
+    effectiveTo: string | null;
+}
+export interface ResolvedAcquisitionTerms extends AcquisitionTerms {
+    sourcePromotionId: string;
+}
+export interface AcquisitionTermsExpectation {
+    revision: string;
+    delivery2DiscountBps: number;
+}
+import type { CreateQuoteRequest, CommerceQuoteContext, CommerceQuote } from "./quote.js";
+/** Separate opt-in DTOs; incumbent request/response admission is unchanged. */
+export interface AcquisitionQuoteRequest extends CreateQuoteRequest {
+    acquisitionCapability?: AcquisitionCapability;
+}
+export interface AcquisitionQuoteContext extends CommerceQuoteContext {
+    acquisitionCapability?: AcquisitionCapability;
+    atTime?: string;
+}
+export interface AcquisitionQuote extends CommerceQuote {
+    acquisitionTerms?: ResolvedAcquisitionTerms;
+}
+```
+## dist/pricing/contracts/authority.d.ts
+
+```ts
+import type { ResolvedPrice } from "@openlup/core/pricing";
+import type { SubscriptionPricePolicyRevision } from "./policy.js";
+/** Exact settlement context for a current quote price; tiers and open-mode fallbacks are excluded. */
+export interface CommercePriceAuthorityQuery {
+    variantId: string;
+    mode: "one_time" | "subscription";
+    regionCode: string;
+    currency: string;
+    channel: string;
+    atTime?: string;
+}
+export interface CommerceBasePriceObservation {
+    /** The sole active/effective `one_time`, `min_qty=1` entry. */
+    base: ResolvedPrice;
+    unitPriceMinor: number;
+}
+export type CommercePriceAuthorityResult = (CommerceBasePriceObservation & {
+    kind: "one_time";
+}) | (CommerceBasePriceObservation & {
+    kind: "subscription_policy";
+    policy: SubscriptionPricePolicyRevision;
+}) | (CommerceBasePriceObservation & {
+    /** Explicit compatibility observation allowed only before this context has policy history. */
+    kind: "subscription_legacy";
+    legacyResolved: ResolvedPrice;
+});
+export type CommercePriceAuthorityRefusal = "active_price_list_not_found" | "active_price_list_ambiguous" | "base_price_not_found" | "base_price_ambiguous" | "base_price_amount_kind_invalid" | "legacy_subscription_price_not_found" | "legacy_subscription_price_ambiguous" | "subscription_price_policy_not_effective" | "subscription_price_policy_ambiguous" | "subscription_price_policy_invalid" | "subscription_price_policy_digest_mismatch";
+```
+## dist/pricing/contracts/evidence.d.ts
+
+```ts
+/** UI-safe, additive explanation for a frozen `codeRejections` item. */
+export type CommerceCodeRejectionDetail = {
+    code: string;
+    reason: "scope_not_applicable";
+    allowedScopes: Array<"one_time" | "subscription_initial">;
+} | {
+    code: string;
+    reason: "minimum_not_met";
+    minimumReferenceMinor: number;
+} | {
+    code: string;
+    reason: "not_yet_active";
+    validFrom: string;
+} | {
+    code: string;
+    reason: "global_limit_reached";
+};
+export interface QuotePromotionEvidence {
+    promotionId: string;
+    code?: string | null;
+    reasonCode: string;
+    promotionEngineVersion?: "promotion-engine.v2";
+    promotionCodeId?: string;
+    promotionCodeRevision?: number;
+    promotionDefinitionFingerprint?: string;
+    promotionCodeScopes?: Array<"one_time" | "subscription_initial">;
+    promotionMinimumReferenceMinor?: number;
+    promotionCodeValidTo?: string | null;
+    promotionBenefitKind?: "target_percentage" | "percentage" | "fixed_amount" | "free_shipping";
+    promotionBenefitValueBps?: number;
+    promotionBenefitValueMinor?: number;
+    floorApplied?: boolean;
+}
+```
+## dist/pricing/contracts/index.d.ts
+
+```ts
+export type { CommercePriceAuthorityQuery, CommerceBasePriceObservation, CommercePriceAuthorityResult, CommercePriceAuthorityRefusal } from "./authority.js";
+export { SUBSCRIPTION_PRICE_POLICY_SCHEMA_VERSION, SUBSCRIPTION_PRICE_POLICY_DEFAULT_DISCOUNT_BPS, SUBSCRIPTION_PRICE_POLICY_DEFAULT_QUANTUM_MINOR } from "./policy.js";
+export type { SubscriptionPricePolicySemantics, SubscriptionPricePolicyCanonicalInput, SubscriptionPricePolicyRevision, SubscriptionPricePolicyDigestRefusal } from "./policy.js";
+export { OFFER_POLICY_V1, OFFER_POLICY_V2, PROMOTION_ENGINE_V1, PROMOTION_ENGINE_V2, OFFER_POLICY_V2_CAPABILITY } from "./offerPolicy.js";
+export type { OfferPolicyVersion, PromotionEngineVersion, PricingPolicyRequest, PricingPolicySnapshot } from "./offerPolicy.js";
+export type { CommerceCurrency, CommerceTaxCountry, CommerceTaxCategory, CommerceTaxLegalBasis, CommerceMoney, CartLineInput, CommerceTaxProfile, CommerceTaxBreakdown } from "./money.js";
+export { COMMERCE_CONTRACT_VERSION } from "./quote.js";
+export type { CommerceQuotePricingComponent, CommerceQuoteContext, CommerceQuoteLine, CommercePromotionCustomerSemantic, CommerceQuoteDiscount, CommerceCodeRejectionReason, CommerceCodeRejection, CommerceQuote, CreateQuoteRequest, CreateQuoteResponse } from "./quote.js";
+export type { QuotePromotionEvidence, CommerceCodeRejectionDetail } from "./evidence.js";
+export { CATALOG_FACTS_PROVENANCE_VERSION, CATALOG_FACTS_POLICY_PROVENANCE_VERSION } from "./provenance.js";
+export type { CatalogFactsProvenance } from "./provenance.js";
+export { COMMERCE_OFFER_PRICING_CONTRACT_VERSION, COMMERCE_OFFER_PRICING_V2_CONTRACT_VERSION } from "./offer.js";
+export type { CommerceOfferPrice, CommerceProductOfferPricing, CommerceOfferPricingResponse } from "./offer.js";
+export { ACQUISITION_TERMS_CAPABILITY } from "./acquisitionTerms.js";
+export type { AcquisitionQuoteRequest, AcquisitionQuoteContext, AcquisitionQuote, AcquisitionCapability, AcquisitionTermsMetadata, AcquisitionTerms, ResolvedAcquisitionTerms, AcquisitionTermsExpectation } from "./acquisitionTerms.js";
+export { COMMERCE_OFFER_PRICING_V3_CONTRACT_VERSION } from "./offer.js";
+export type { AcquisitionOfferPricingResponse } from "./offer.js";
+```
+## dist/pricing/contracts/money.d.ts
+
+```ts
+export type CommerceCurrency = string;
+export type CommerceTaxCountry = string;
+export type CommerceTaxCategory = string;
+export type CommerceTaxLegalBasis = string;
+export interface CommerceMoney {
+    amountMinor: number;
+    currency: CommerceCurrency;
+}
+export interface CartLineInput {
+    sku: string;
+    quantity: number;
+    variantId?: string;
+    modeAtLine?: "one_time" | "subscription";
+    isAddon?: boolean;
+}
+export interface CommerceTaxProfile {
+    included: true;
+    country: CommerceTaxCountry;
+    category: CommerceTaxCategory;
+    vatRateBps: number;
+    legalBasis: CommerceTaxLegalBasis;
+}
+export interface CommerceTaxBreakdown extends CommerceTaxProfile {
+    netAmount: CommerceMoney;
+    vatAmount: CommerceMoney;
+    grossAmount: CommerceMoney;
+}
+```
+## dist/pricing/contracts/offer.d.ts
+
+```ts
+import type { CommerceMoney } from "./money.js";
+import type { PricingPolicySnapshot } from "./offerPolicy.js";
+export declare const COMMERCE_OFFER_PRICING_CONTRACT_VERSION: "commerce.offer-pricing.v1";
+export declare const COMMERCE_OFFER_PRICING_V2_CONTRACT_VERSION: "commerce.offer-pricing.v2";
+export interface CommerceOfferPrice {
+    packageGross: CommerceMoney;
+    unitGross: CommerceMoney;
+}
+export interface CommerceProductOfferPricing {
+    productSlug: string;
+    unitCount: number;
+    oneTime: CommerceOfferPrice;
+    subscriptionInitial: CommerceOfferPrice;
+    subscriptionRecurring: CommerceOfferPrice;
+    catalogAnchorUnitGross: CommerceMoney;
+    initialDiscountPercent: number;
+    recurringDiscountPercent: number;
+}
+export type CommerceOfferPricingResponse<ScopeV1 extends string = string, ScopeV2 extends string = string> = {
+    contractVersion: typeof COMMERCE_OFFER_PRICING_CONTRACT_VERSION;
+    scope: ScopeV1;
+    products: CommerceProductOfferPricing[];
+    minimum: {
+        oneTime: CommerceProductOfferPricing;
+        subscription: CommerceProductOfferPricing;
+    };
+} | {
+    contractVersion: typeof COMMERCE_OFFER_PRICING_V2_CONTRACT_VERSION;
+    scope: ScopeV2;
+    products: CommerceProductOfferPricing[];
+    minimum: {
+        oneTime: CommerceProductOfferPricing;
+        subscription: CommerceProductOfferPricing;
+    };
+    pricingPolicy: PricingPolicySnapshot;
+    shipping: {
+        gross: CommerceMoney;
+        discountGross: CommerceMoney;
+        payable: CommerceMoney;
+    };
+    minimumProductPayable: CommerceMoney;
+};
+/** Complete opt-in v3 response; the incumbent v1/v2 union stays unchanged. */
+export declare const COMMERCE_OFFER_PRICING_V3_CONTRACT_VERSION: "commerce.offer-pricing.v3";
+export type AcquisitionOfferPricingResponse<ScopeV2 extends string = string> = Omit<Extract<CommerceOfferPricingResponse<string, ScopeV2>, {
+    contractVersion: typeof COMMERCE_OFFER_PRICING_V2_CONTRACT_VERSION;
+}>, "contractVersion"> & {
+    contractVersion: typeof COMMERCE_OFFER_PRICING_V3_CONTRACT_VERSION;
+    acquisitionTerms: import("./acquisitionTerms.js").AcquisitionTerms;
+    observedAt: string;
+    validUntil: string;
+};
+```
+## dist/pricing/contracts/offerPolicy.d.ts
+
+```ts
+export declare const OFFER_POLICY_V1: "commerce.offer-policy.v1";
+export declare const OFFER_POLICY_V2: "commerce.offer-policy.v2";
+export declare const PROMOTION_ENGINE_V1: "promotion-engine.v1";
+export declare const PROMOTION_ENGINE_V2: "promotion-engine.v2";
+export declare const OFFER_POLICY_V2_CAPABILITY: "commerce.offer-policy.v2";
+export type OfferPolicyVersion = typeof OFFER_POLICY_V1 | typeof OFFER_POLICY_V2;
+export type PromotionEngineVersion = typeof PROMOTION_ENGINE_V1 | typeof PROMOTION_ENGINE_V2;
+export interface PricingPolicyRequest {
+    capability?: typeof OFFER_POLICY_V2_CAPABILITY;
+    token?: string;
+}
+export interface PricingPolicySnapshot {
+    offerPolicyVersion: OfferPolicyVersion;
+    promotionEngineVersion: PromotionEngineVersion;
+    pricingPolicyToken?: string;
+}
+```
+## dist/pricing/contracts/policy.d.ts
+
+```ts
+export declare const SUBSCRIPTION_PRICE_POLICY_SCHEMA_VERSION = "subscription-price-policy.v1";
+export declare const SUBSCRIPTION_PRICE_POLICY_DEFAULT_DISCOUNT_BPS = 1000;
+export declare const SUBSCRIPTION_PRICE_POLICY_DEFAULT_QUANTUM_MINOR = 10;
+export interface SubscriptionPricePolicySemantics {
+    discountBps: number;
+    roundingQuantumMinor: number;
+    roundingRule: "FLOOR_TO_QUANTUM";
+}
+export interface SubscriptionPricePolicyCanonicalInput extends SubscriptionPricePolicySemantics {
+    id: string;
+    revisionNo: number;
+    priceListId: string;
+    regionCode: string;
+    currency: string;
+    channel: string;
+    effectiveFrom: string;
+    effectiveTo: string | null;
+}
+export interface SubscriptionPricePolicyRevision extends SubscriptionPricePolicyCanonicalInput {
+    digest: string;
+}
+export type SubscriptionPricePolicyDigestRefusal = "subscription_price_policy_digest_mismatch";
+```
+## dist/pricing/contracts/provenance.d.ts
+
+```ts
+export declare const CATALOG_FACTS_PROVENANCE_VERSION: "catalog_facts_v1";
+export declare const CATALOG_FACTS_POLICY_PROVENANCE_VERSION: "catalog_facts_v2";
+interface CatalogFactsFields {
+    skuId: string;
+    documentRevisionId: string;
+    documentDigest: string;
+    basePriceEntryId: string;
+    atTime: string;
+    currency: string;
+    resolvedUnitAmountMinor: number;
+    resolvedLineAmountMinor: number;
+    baseUnitAmountMinor: number;
+}
+export type CatalogFactsProvenance = CatalogFactsFields & ({
+    version: typeof CATALOG_FACTS_PROVENANCE_VERSION;
+    resolvedPriceEntryId: string;
+    mode: "one_time" | "subscription";
+} | {
+    version: typeof CATALOG_FACTS_POLICY_PROVENANCE_VERSION;
+    policyRevisionId: string;
+    policyDigest: string;
+    mode: "subscription";
+});
+export {};
+```
+## dist/pricing/contracts/quote.d.ts
+
+```ts
+import type { CommerceCurrency, CommerceMoney, CommerceTaxBreakdown } from "./money.js";
+import type { CommerceCodeRejectionDetail } from "./evidence.js";
+export declare const COMMERCE_CONTRACT_VERSION = "commerce.v0";
+export interface CommerceQuotePricingComponent {
+    scope: "line" | "order";
+    componentType: "base_unit" | "mode_discount" | "qty_tier" | "promo" | "loyalty" | "shipping" | "bundle";
+    amountMinor: number;
+    reasonCode: string;
+    reasonPayload: Record<string, unknown>;
+}
+/** Hosts may extend this context with their own validated policy. */
+export interface CommerceQuoteContext {
+    mode: "one_time" | "subscription";
+    cadenceDays?: number | null;
+    promoCodes: string[];
+}
+export interface CommerceQuoteLine {
+    sku: string;
+    productSlug: string;
+    quantity: number;
+    unitPriceGross: CommerceMoney;
+    lineSubtotalGross: CommerceMoney;
+    tax: CommerceTaxBreakdown;
+    pricingComponents?: CommerceQuotePricingComponent[];
+}
+export type CommercePromotionCustomerSemantic = "first_purchase_10" | "first_subscription_50" | "bundle_5";
+export interface CommerceQuoteDiscount {
+    promotionId: string;
+    code?: string | null;
+    label?: string;
+    appliesTo: "order_total" | "line" | "shipping";
+    amountOffMinor: number;
+    reasonCode: string;
+    /** Stable presentation identity for canonical offers; never inferred from an editable name. */
+    customerSemantic?: CommercePromotionCustomerSemantic;
+    promotionEngineVersion?: "promotion-engine.v2";
+    promotionCodeId?: string;
+    promotionCodeRevision?: number;
+    promotionDefinitionFingerprint?: string;
+    promotionCodeScopes?: Array<"one_time" | "subscription_initial">;
+    promotionMinimumReferenceMinor?: number;
+    promotionCodeValidTo?: string | null;
+    promotionBenefitKind?: "target_percentage" | "percentage" | "fixed_amount" | "free_shipping";
+    promotionBenefitValueBps?: number;
+    promotionBenefitValueMinor?: number;
+    floorApplied?: boolean;
+}
+/**
+ * Why a customer-submitted promo code did not produce a discount, surfaced so the FE
+ * can show a specific message instead of a generic "invalid". `better_price_exists` is
+ * the one non-error reason (eligible but unused because an automatic offer is equally
+ * good or better; the FE renders it neutrally); `scope_not_applicable` means the code
+ * is real but does not apply to this order type. The last two are v2-engine-only reasons.
+ */
+export type CommerceCodeRejectionReason = "not_recognized" | "already_used" | "not_eligible" | "expired" | "better_price_exists" | "scope_not_applicable";
+export interface CommerceCodeRejection {
+    code: string;
+    reason: CommerceCodeRejectionReason;
+}
+export interface CommerceQuote {
+    currency: CommerceCurrency;
+    taxIncluded: true;
+    lines: CommerceQuoteLine[];
+    discounts: CommerceQuoteDiscount[];
+    pricingComponents?: CommerceQuotePricingComponent[];
+    context?: CommerceQuoteContext;
+    /** Submitted coupon codes that produced no discount, with the reason. Omitted when empty. */
+    codeRejections?: CommerceCodeRejection[];
+    /** UI-safe specifics for selected rejected codes. Omitted when no detail is available. */
+    codeRejectionDetails?: CommerceCodeRejectionDetail[];
+    subtotalGross: CommerceMoney;
+    discountTotalGross: CommerceMoney;
+    /** Gross shipping before any free-shipping promo. Optional; absent ⇒ shipping not priced (legacy/0). */
+    shippingGross?: CommerceMoney;
+    /** Gross shipping discount from a free-shipping promo (≤ shippingGross). Optional; absent ⇒ 0. */
+    shippingDiscountGross?: CommerceMoney;
+    totalGross: CommerceMoney;
+    netTotal: CommerceMoney;
+    taxTotal: CommerceMoney;
+}
+export interface CreateQuoteRequest {
+    mode: "one_time" | "subscription";
+    lines: import("./money.js").CartLineInput[];
+    cadenceDays?: number | null;
+    promoCodes: string[];
+}
+export interface CreateQuoteResponse {
+    contractVersion: typeof COMMERCE_CONTRACT_VERSION;
+    quote: Omit<CommerceQuote, "lines"> & {
+        lines: Array<CommerceQuoteLine & {
+            catalogFacts?: import("./provenance.js").CatalogFactsProvenance;
+        }>;
+    };
+}
+```
+## dist/pricing/dbBackedCommerceQuoteHelpers.d.ts
+
+```ts
+import type { CreateQuoteRequest } from "./contracts/quote.js";
+import type { CommerceMoney, CommerceQuotePricingComponent } from "./contracts/index.js";
+import type { PricingComponent } from "@openlup/core/pricing";
+import { type CommercePriceAuthorityPort } from "./ports.js";
+import type { PricingResolverPort, PricingMode, ResolvedPrice } from "@openlup/core/pricing";
+import type { CommerceQuoteCatalogItem } from "./commerceQuoteCatalogReadPort.js";
+/** Pure helpers for the DB-backed commerce quote port (extracted to keep the port under the LOC cap). */
+export interface SkuIndexEntry<Item = CommerceQuoteCatalogItem> {
+    item: Item;
+}
+export declare function buildSkuIndex<Item extends CommerceQuoteCatalogItem>(quoteCatalogReadPort: {
+    listQuoteCatalogItems(): Promise<Item[]>;
+}): Promise<Map<string, SkuIndexEntry<Item>>>;
+export declare function eligibleQtyForMode(request: CreateQuoteRequest, mode: Exclude<PricingMode, "any">): number;
+export declare function resolveOneTimeComparison(input: {
+    pricingResolverPort: PricingResolverPort;
+    variantId: string;
+    lineQty: number;
+    eligibleCartQty: number;
+    regionCode: string;
+    currency: string;
+    atTime: string;
+}): Promise<ResolvedPrice | null>;
+export interface StrictQuotePriceResolution {
+    base: ResolvedPrice;
+    resolved: ResolvedPrice;
+    policy?: {
+        policyRevisionId: string;
+        policyDigest: string;
+    };
+}
+/**
+ * Strict authority quotes require one exact one-time base anchor. Subscription money is either
+ * derived by a validated policy or taken from the authority's explicit legacy
+ * subscription observation; this layer never calls the generic resolver.
+ */
+export declare function resolveStrictQuotePrice(input: {
+    commercePriceAuthorityPort: CommercePriceAuthorityPort;
+    variantId: string;
+    mode: Exclude<PricingMode, "any">;
+    regionCode: string;
+    currency: string;
+    channel: string;
+    atTime: string;
+}): Promise<StrictQuotePriceResolution>;
+export declare function assertSubscriptionCheapest(input: {
+    requestSku: string;
+    modeAtLine: Exclude<PricingMode, "any">;
+    resolved: ResolvedPrice;
+    oneTime: ResolvedPrice | null;
+    vatRateBps: number;
+}): void;
+export declare function toGrossMinor(price: ResolvedPrice, vatRateBps: number): number;
+export declare function calculateIncludedVat(grossMinor: number, vatRateBps: number): {
+    netMinor: number;
+    vatMinor: number;
+};
+/**
+ * Map one kernel pricing component onto the quote transport shape.
+ *
+ * A component type outside the transport union stops the quote loudly. It is never
+ * cast through and never silently dropped: a dropped component breaks the breakdown
+ * invariant (components must sum to the line total), so a quote would go out priced
+ * from an incomplete explanation of its own total.
+ */
+export declare function mapPricingComponent(component: PricingComponent, scope: "line" | "order"): CommerceQuotePricingComponent;
+/**
+ * A money builder bound to one currency.
+ *
+ * This used to be a plain `money(amountMinor)` that stamped the settlement
+ * currency as a literal, which meant the quote's declared `currency` and the
+ * currency on every amount inside it came from two different places. They
+ * agreed only because the port's `currency` option was typed as that same
+ * literal. Binding the builder once per port makes the agreement structural:
+ * there is no second place left for the two to disagree.
+ */
+export declare function moneyIn(currency: string): (amountMinor: number) => CommerceMoney;
+export declare function sum(values: number[]): number;
+```
+## dist/pricing/dbBackedCommerceQuotePort.d.ts
+
+```ts
+import type { ShippingTerms } from "../shipping/index.js";
+import type { ResolvedAcquisitionTerms } from "./contracts/acquisitionTerms.js";
+import type { QuoteShippingPromotionInput, QuoteShippingPromotionResult } from "./quoteShippingPromotions.js";
+import type { PricingResolverPort } from "@openlup/core/pricing";
+import type { CreateQuoteResponse, PricingPolicySnapshot, CreateQuoteRequest, CommerceQuoteContext, CommerceQuoteLine, CommerceTaxProfile, CommerceQuoteDiscount, CommerceCodeRejection, CommerceCodeRejectionDetail, CartLineInput } from "./contracts/index.js";
+import { type CreateQuoteOptions } from "./quotePorts.js";
+import type { CommercePriceAuthorityPort } from "./ports.js";
+import type { CommerceQuoteCatalogItem } from "./commerceQuoteCatalogReadPort.js";
+export interface QuotePromotionResult {
+    discounts: CommerceQuoteDiscount[];
+    codeRejections: CommerceCodeRejection[];
+    codeRejectionDetails: CommerceCodeRejectionDetail[];
+}
+export interface DbBackedCommerceQuotePortDeps<Request extends CreateQuoteRequest, Item extends CommerceQuoteCatalogItem, LineContext extends object, Context extends CommerceQuoteContext> {
+    quoteCatalogReadPort: {
+        listQuoteCatalogItems(): Promise<Item[]>;
+    };
+    isStrictD1Quote: boolean;
+    commercePriceAuthorityPort?: CommercePriceAuthorityPort;
+    pricingResolverPort?: PricingResolverPort;
+    taxProfile: CommerceTaxProfile;
+    supportedTaxProfiles: readonly CommerceTaxProfile[];
+    regionCode: string;
+    currency: string;
+    now?: () => string;
+    shippingFlatMinor?: () => Promise<number>;
+    resolveQuoteShippingPromotions?: (input: QuoteShippingPromotionInput<Request>) => Promise<QuoteShippingPromotionResult>;
+    hasPromotionCodePort: boolean;
+    lineContext(line: CartLineInput, item: Item): LineContext;
+    quoteContext(request: Request, lines: Array<LineContext & {
+        line: CommerceQuoteLine;
+    }>): () => Context;
+    resolveAutomaticQuotePromotions(input: {
+        request: Request;
+        options?: CreateQuoteOptions;
+        regionCode: string;
+        referenceProductMinor: number;
+        subtotalGrossMinor: number;
+        shippingGrossMinor: number;
+        atTime: string;
+    }): Promise<Pick<QuotePromotionResult, "discounts" | "codeRejections">>;
+    applyPromotionCodesV2(input: {
+        preserveLegacyDiscountsWhenNoCandidates: boolean;
+        clientId: string | null;
+        mode: Request["mode"];
+        promoCodes: string[];
+        referenceProductMinor: number;
+        subtotalGrossMinor: number;
+        shippingGrossMinor: number;
+        discounts: CommerceQuoteDiscount[];
+        codeRejections: CommerceCodeRejection[];
+        atTime: string;
+    }): Promise<QuotePromotionResult>;
+}
+export declare function createDbBackedCommerceQuotePort<Request extends CreateQuoteRequest, Item extends CommerceQuoteCatalogItem, LineContext extends object, Context extends CommerceQuoteContext>(deps: DbBackedCommerceQuotePortDeps<Request, Item, LineContext, Context>): {
+    createQuote: (request: Request, options?: CreateQuoteOptions) => Promise<Omit<CreateQuoteResponse, "quote"> & {
+        quote: Omit<CreateQuoteResponse["quote"], "context"> & {
+            context: Context & {
+                pricingPolicy?: PricingPolicySnapshot;
+                shippingTerms?: ShippingTerms;
+                acquisitionTerms?: ResolvedAcquisitionTerms;
+            };
+        };
+    }>;
+    createServerAuthoritativeQuote: (request: Request, options?: CreateQuoteOptions) => Promise<Omit<CreateQuoteResponse, "quote"> & {
+        quote: Omit<CreateQuoteResponse["quote"], "context"> & {
+            context: Context & {
+                pricingPolicy?: PricingPolicySnapshot;
+                shippingTerms?: ShippingTerms;
+                acquisitionTerms?: ResolvedAcquisitionTerms;
+            };
+        };
+    }>;
+};
+```
+## dist/pricing/dbBackedCommerceQuoteSnapshotVerifier.d.ts
+
+```ts
+import type { z } from "zod";
+import { type CreateQuoteResponse } from "./contracts/quote.js";
+import { type CommerceQuotePort, type CommerceQuoteSnapshotVerifierPort } from "./quotePorts.js";
+export declare function createDbBackedCommerceQuoteSnapshotVerifier<Request, Response extends CreateQuoteResponse>(quotePort: CommerceQuotePort<Request, Response>, quoteRequestFromSnapshot: (snapshot: Response) => Request, createQuoteResponseSchema: z.ZodType<Response>): CommerceQuoteSnapshotVerifierPort<Response>;
+```
+## dist/pricing/index.d.ts
+
+```ts
+export * from "./contracts/index.js";
+export { CommercePriceAuthorityError } from "./ports.js";
+export type { CommercePriceAuthorityPort } from "./ports.js";
+export { createCommercePriceAuthorityPort, createConcurrentCommercePriceAuthorityPort, selectUniqueEffectivePriceList } from "./commercePriceAuthority.js";
+export type { CommercePriceAuthorityReadPort, TimedAuthorityValue } from "./commercePriceAuthority.js";
+export { subscriptionPricePolicySemanticsSchema, subscriptionPricePolicyCanonicalInputSchema, subscriptionPricePolicyRevisionSchema, SubscriptionPricePolicyDigestError, canonicalSubscriptionPricePolicyTuple, digestSubscriptionPricePolicy, assertSubscriptionPricePolicyDigest, deriveSubscriptionUnitPrice } from "./subscriptionPricePolicy.js";
+export { offerPolicyVersionSchema, promotionEngineVersionSchema, pricingPolicyRequestSchema, pricingPolicySnapshotSchema } from "./offerPolicySchemas.js";
+export { createPricingPolicyToken, verifyPricingPolicyToken, resolvePricingPolicy } from "./pricingPolicyToken.js";
+export type { PricingPolicyTokenPayload } from "./pricingPolicyToken.js";
+export { CommercePricingPolicyUnavailableError, PRICING_POLICY_REQUEST_REASONS, CommercePricingPolicyRequestError, mapPricingPolicyFailure } from "./commercePricingPolicyErrors.js";
+export type { PricingPolicyRequestReason, SafePricingPolicyReason, PricingPolicyFailureMapping } from "./commercePricingPolicyErrors.js";
+export { CommerceQuoteError, CommerceQuoteSnapshotError } from "./quotePorts.js";
+export type { CreateQuoteOptions, CommerceQuotePort, CommerceQuoteSnapshotVerifierPort, CommerceQuoteErrorCode, CommerceQuoteSnapshotErrorCode } from "./quotePorts.js";
+export { createCommerceQuotePrimitives } from "./quotePrimitives.js";
+export { createCommerceQuoteSchemas, splitIncludedVat, quoteMoneyCurrenciesMatch } from "./quoteSchemas.js";
+export { quoteDiscountSchema, hasValidV2PromotionEvidence } from "./quotePromotionEvidence.js";
+export { quoteCodeRejectionDetailSchema } from "./quoteCodeRejectionDetails.js";
+export { catalogFactsProvenanceSchema, rejectCatalogFactsFromPublicQuote } from "./catalogFactsSchemas.js";
+export { createCatalogFactsProvenance, catalogFactsForQuoteLine, projectPublicQuoteSnapshot } from "./catalogFactsProvenance.js";
+export { CommerceQuoteCatalogReadError } from "./commerceQuoteCatalogReadPort.js";
+export type { CommerceQuoteCatalogItem, CommerceQuoteCatalogReadPort, CommerceQuoteCatalogReadRefusalCode } from "./commerceQuoteCatalogReadPort.js";
+export { assertSupportedCommerceTaxProfile } from "./taxProfileGuard.js";
+export { buildSkuIndex, eligibleQtyForMode, resolveOneTimeComparison, resolveStrictQuotePrice, assertSubscriptionCheapest, toGrossMinor, calculateIncludedVat, mapPricingComponent, moneyIn, sum } from "./dbBackedCommerceQuoteHelpers.js";
+export type { SkuIndexEntry, StrictQuotePriceResolution } from "./dbBackedCommerceQuoteHelpers.js";
+export { createDbBackedCommerceQuotePort } from "./dbBackedCommerceQuotePort.js";
+export type { DbBackedCommerceQuotePortDeps, QuotePromotionResult } from "./dbBackedCommerceQuotePort.js";
+export { createExpectedQuote } from "./commerceQuoteSnapshotExpect.js";
+export type { QuoteSnapshotExpectMessages } from "./commerceQuoteSnapshotExpect.js";
+export { createDbBackedCommerceQuoteSnapshotVerifier } from "./dbBackedCommerceQuoteSnapshotVerifier.js";
+export { createCommerceQuoteHandler } from "./commerceQuoteHandler.js";
+export type { CommerceQuoteHandlerDeps } from "./commerceQuoteHandler.js";
+export { createCommerceQuoteBatchHandler } from "./commerceQuoteBatchHandler.js";
+export type { CommerceQuoteBatchHandlerDeps } from "./commerceQuoteBatchHandler.js";
+export { createCommerceOfferPricingSchemas } from "./offerPricingSchemas.js";
+export { projectCommerceOfferPricing } from "./commerceOfferPricing.js";
+export type { CommerceOfferPricingDeps } from "./commerceOfferPricing.js";
+export { createCommerceOfferPricingHandler, COMMERCE_OFFER_PRICING_CACHE_CONTROL, COMMERCE_OFFER_PRICING_ASSIGNED_CACHE_CONTROL, OFFER_POLICY_CAPABILITY_HEADER, OFFER_POLICY_TOKEN_HEADER, OFFER_POLICY_VISITOR_HEADER } from "./commerceOfferPricingHandler.js";
+export type { CommerceOfferPricingHandlerDeps } from "./commerceOfferPricingHandler.js";
+export { createCommerceOfferPricingCache } from "./commerceOfferPricingCache.js";
+export type { CommerceOfferPricingCache } from "./commerceOfferPricingCache.js";
+export { OFFER_POLICY_V2_READINESS_CONTRACT, createOfferPolicyReadinessCache, readOfferPolicyV2Readiness, resetOfferPolicyReadinessCacheForTests } from "./offerPolicyReadiness.js";
+export type { OfferPolicyV2Readiness, OfferPolicyReadinessPort, OfferPolicyReadinessCache } from "./offerPolicyReadiness.js";
+export * from "./acquisitionFinancialPolicy.js";
+export * from "./acquisitionTermsSchemas.js";
+export * from "./acquisitionTerms.js";
+export * from "./quoteAcquisitionTerms.js";
+export * from "./acquisitionQuoteBinding.js";
+export * from "./acquisitionOfferPricingSchemas.js";
+export * from "./acquisitionOfferPricing.js";
+export * from "./acquisitionOfferPricingHandler.js";
+export * from "./acquisitionReadiness.js";
+export type { QuoteShippingPromotionInput, QuoteShippingPromotionResult } from "./quoteShippingPromotions.js";
+```
+## dist/pricing/offerPolicyReadiness.d.ts
+
+```ts
+export declare const OFFER_POLICY_V2_READINESS_CONTRACT = "commerce-offer-policy-v2-readiness.v1";
+export interface OfferPolicyV2Readiness {
+    contractVersion: typeof OFFER_POLICY_V2_READINESS_CONTRACT;
+    ready: boolean;
+    checkedAt: string;
+    reasons: string[];
+}
+export interface OfferPolicyReadinessPort {
+    readOfferPolicyV2Readiness(): Promise<unknown>;
+}
+export interface OfferPolicyReadinessCache {
+    read(port: OfferPolicyReadinessPort): Promise<OfferPolicyV2Readiness>;
+    clear(): void;
+}
+export declare function createOfferPolicyReadinessCache(input?: {
+    now?: () => number;
+    positiveTtlMs?: number;
+    negativeTtlMs?: number;
+}): OfferPolicyReadinessCache;
+export declare function readOfferPolicyV2Readiness(port: OfferPolicyReadinessPort): Promise<OfferPolicyV2Readiness>;
+export declare function resetOfferPolicyReadinessCacheForTests(isTest: boolean): void;
+```
+## dist/pricing/offerPolicySchemas.d.ts
+
+```ts
+import { z } from "./validation.js";
+export declare const offerPolicyVersionSchema: z.ZodEnum<{
+    "commerce.offer-policy.v1": "commerce.offer-policy.v1";
+    "commerce.offer-policy.v2": "commerce.offer-policy.v2";
+}>;
+export declare const promotionEngineVersionSchema: z.ZodEnum<{
+    "promotion-engine.v1": "promotion-engine.v1";
+    "promotion-engine.v2": "promotion-engine.v2";
+}>;
+/** Client capability plus an opaque server-signed assignment. Never a version selector. */
+export declare const pricingPolicyRequestSchema: z.ZodObject<{
+    capability: z.ZodOptional<z.ZodLiteral<"commerce.offer-policy.v2">>;
+    token: z.ZodOptional<z.ZodString>;
+}, z.core.$strict>;
+export declare const pricingPolicySnapshotSchema: z.ZodObject<{
+    offerPolicyVersion: z.ZodEnum<{
+        "commerce.offer-policy.v1": "commerce.offer-policy.v1";
+        "commerce.offer-policy.v2": "commerce.offer-policy.v2";
+    }>;
+    promotionEngineVersion: z.ZodEnum<{
+        "promotion-engine.v1": "promotion-engine.v1";
+        "promotion-engine.v2": "promotion-engine.v2";
+    }>;
+    pricingPolicyToken: z.ZodOptional<z.ZodString>;
+}, z.core.$strict>;
+```
+## dist/pricing/offerPricingSchemas.d.ts
+
+```ts
+import { z } from "zod";
+import type { CommerceMoney } from "./contracts/money.js";
+export declare function createCommerceOfferPricingSchemas<ScopeV1 extends string, ScopeV2 extends string>({ commerceMoneySchema, catalogProductSlugSchema, scopeV1Schema, scopeV2Schema, minimumProductPayableMinor, minimumProductPayableMessage, }: {
+    commerceMoneySchema: z.ZodType<CommerceMoney>;
+    catalogProductSlugSchema: z.ZodType<string>;
+    scopeV1Schema: z.ZodType<ScopeV1>;
+    scopeV2Schema: z.ZodType<ScopeV2>;
+    minimumProductPayableMinor: number;
+    minimumProductPayableMessage: string;
+}): {
+    commerceProductOfferPricingSchema: z.ZodObject<{
+        productSlug: z.ZodType<string, unknown, z.core.$ZodTypeInternals<string, unknown>>;
+        unitCount: z.ZodNumber;
+        oneTime: z.ZodObject<{
+            packageGross: z.ZodType<CommerceMoney, unknown, z.core.$ZodTypeInternals<CommerceMoney, unknown>>;
+            unitGross: z.ZodType<CommerceMoney, unknown, z.core.$ZodTypeInternals<CommerceMoney, unknown>>;
+        }, z.core.$strict>;
+        subscriptionInitial: z.ZodObject<{
+            packageGross: z.ZodType<CommerceMoney, unknown, z.core.$ZodTypeInternals<CommerceMoney, unknown>>;
+            unitGross: z.ZodType<CommerceMoney, unknown, z.core.$ZodTypeInternals<CommerceMoney, unknown>>;
+        }, z.core.$strict>;
+        subscriptionRecurring: z.ZodObject<{
+            packageGross: z.ZodType<CommerceMoney, unknown, z.core.$ZodTypeInternals<CommerceMoney, unknown>>;
+            unitGross: z.ZodType<CommerceMoney, unknown, z.core.$ZodTypeInternals<CommerceMoney, unknown>>;
+        }, z.core.$strict>;
+        catalogAnchorUnitGross: z.ZodType<CommerceMoney, unknown, z.core.$ZodTypeInternals<CommerceMoney, unknown>>;
+        initialDiscountPercent: z.ZodNumber;
+        recurringDiscountPercent: z.ZodNumber;
+    }, z.core.$strict>;
+    commerceOfferPricingV1ResponseSchema: z.ZodObject<{
+        contractVersion: z.ZodLiteral<"commerce.offer-pricing.v1">;
+        scope: z.ZodType<ScopeV1, unknown, z.core.$ZodTypeInternals<ScopeV1, unknown>>;
+        products: z.ZodArray<z.ZodObject<{
+            productSlug: z.ZodType<string, unknown, z.core.$ZodTypeInternals<string, unknown>>;
+            unitCount: z.ZodNumber;
+            oneTime: z.ZodObject<{
+                packageGross: z.ZodType<CommerceMoney, unknown, z.core.$ZodTypeInternals<CommerceMoney, unknown>>;
+                unitGross: z.ZodType<CommerceMoney, unknown, z.core.$ZodTypeInternals<CommerceMoney, unknown>>;
+            }, z.core.$strict>;
+            subscriptionInitial: z.ZodObject<{
+                packageGross: z.ZodType<CommerceMoney, unknown, z.core.$ZodTypeInternals<CommerceMoney, unknown>>;
+                unitGross: z.ZodType<CommerceMoney, unknown, z.core.$ZodTypeInternals<CommerceMoney, unknown>>;
+            }, z.core.$strict>;
+            subscriptionRecurring: z.ZodObject<{
+                packageGross: z.ZodType<CommerceMoney, unknown, z.core.$ZodTypeInternals<CommerceMoney, unknown>>;
+                unitGross: z.ZodType<CommerceMoney, unknown, z.core.$ZodTypeInternals<CommerceMoney, unknown>>;
+            }, z.core.$strict>;
+            catalogAnchorUnitGross: z.ZodType<CommerceMoney, unknown, z.core.$ZodTypeInternals<CommerceMoney, unknown>>;
+            initialDiscountPercent: z.ZodNumber;
+            recurringDiscountPercent: z.ZodNumber;
+        }, z.core.$strict>>;
+        minimum: z.ZodObject<{
+            oneTime: z.ZodObject<{
+                productSlug: z.ZodType<string, unknown, z.core.$ZodTypeInternals<string, unknown>>;
+                unitCount: z.ZodNumber;
+                oneTime: z.ZodObject<{
+                    packageGross: z.ZodType<CommerceMoney, unknown, z.core.$ZodTypeInternals<CommerceMoney, unknown>>;
+                    unitGross: z.ZodType<CommerceMoney, unknown, z.core.$ZodTypeInternals<CommerceMoney, unknown>>;
+                }, z.core.$strict>;
+                subscriptionInitial: z.ZodObject<{
+                    packageGross: z.ZodType<CommerceMoney, unknown, z.core.$ZodTypeInternals<CommerceMoney, unknown>>;
+                    unitGross: z.ZodType<CommerceMoney, unknown, z.core.$ZodTypeInternals<CommerceMoney, unknown>>;
+                }, z.core.$strict>;
+                subscriptionRecurring: z.ZodObject<{
+                    packageGross: z.ZodType<CommerceMoney, unknown, z.core.$ZodTypeInternals<CommerceMoney, unknown>>;
+                    unitGross: z.ZodType<CommerceMoney, unknown, z.core.$ZodTypeInternals<CommerceMoney, unknown>>;
+                }, z.core.$strict>;
+                catalogAnchorUnitGross: z.ZodType<CommerceMoney, unknown, z.core.$ZodTypeInternals<CommerceMoney, unknown>>;
+                initialDiscountPercent: z.ZodNumber;
+                recurringDiscountPercent: z.ZodNumber;
+            }, z.core.$strict>;
+            subscription: z.ZodObject<{
+                productSlug: z.ZodType<string, unknown, z.core.$ZodTypeInternals<string, unknown>>;
+                unitCount: z.ZodNumber;
+                oneTime: z.ZodObject<{
+                    packageGross: z.ZodType<CommerceMoney, unknown, z.core.$ZodTypeInternals<CommerceMoney, unknown>>;
+                    unitGross: z.ZodType<CommerceMoney, unknown, z.core.$ZodTypeInternals<CommerceMoney, unknown>>;
+                }, z.core.$strict>;
+                subscriptionInitial: z.ZodObject<{
+                    packageGross: z.ZodType<CommerceMoney, unknown, z.core.$ZodTypeInternals<CommerceMoney, unknown>>;
+                    unitGross: z.ZodType<CommerceMoney, unknown, z.core.$ZodTypeInternals<CommerceMoney, unknown>>;
+                }, z.core.$strict>;
+                subscriptionRecurring: z.ZodObject<{
+                    packageGross: z.ZodType<CommerceMoney, unknown, z.core.$ZodTypeInternals<CommerceMoney, unknown>>;
+                    unitGross: z.ZodType<CommerceMoney, unknown, z.core.$ZodTypeInternals<CommerceMoney, unknown>>;
+                }, z.core.$strict>;
+                catalogAnchorUnitGross: z.ZodType<CommerceMoney, unknown, z.core.$ZodTypeInternals<CommerceMoney, unknown>>;
+                initialDiscountPercent: z.ZodNumber;
+                recurringDiscountPercent: z.ZodNumber;
+            }, z.core.$strict>;
+        }, z.core.$strict>;
+    }, z.core.$strict>;
+    commerceOfferPricingV2ResponseSchema: z.ZodObject<{
+        contractVersion: z.ZodLiteral<"commerce.offer-pricing.v2">;
+        scope: z.ZodType<ScopeV2, unknown, z.core.$ZodTypeInternals<ScopeV2, unknown>>;
+        pricingPolicy: z.ZodObject<{
+            offerPolicyVersion: z.ZodEnum<{
+                "commerce.offer-policy.v1": "commerce.offer-policy.v1";
+                "commerce.offer-policy.v2": "commerce.offer-policy.v2";
+            }>;
+            promotionEngineVersion: z.ZodEnum<{
+                "promotion-engine.v1": "promotion-engine.v1";
+                "promotion-engine.v2": "promotion-engine.v2";
+            }>;
+            pricingPolicyToken: z.ZodOptional<z.ZodString>;
+        }, z.core.$strict>;
+        products: z.ZodArray<z.ZodObject<{
+            productSlug: z.ZodType<string, unknown, z.core.$ZodTypeInternals<string, unknown>>;
+            unitCount: z.ZodNumber;
+            oneTime: z.ZodObject<{
+                packageGross: z.ZodType<CommerceMoney, unknown, z.core.$ZodTypeInternals<CommerceMoney, unknown>>;
+                unitGross: z.ZodType<CommerceMoney, unknown, z.core.$ZodTypeInternals<CommerceMoney, unknown>>;
+            }, z.core.$strict>;
+            subscriptionInitial: z.ZodObject<{
+                packageGross: z.ZodType<CommerceMoney, unknown, z.core.$ZodTypeInternals<CommerceMoney, unknown>>;
+                unitGross: z.ZodType<CommerceMoney, unknown, z.core.$ZodTypeInternals<CommerceMoney, unknown>>;
+            }, z.core.$strict>;
+            subscriptionRecurring: z.ZodObject<{
+                packageGross: z.ZodType<CommerceMoney, unknown, z.core.$ZodTypeInternals<CommerceMoney, unknown>>;
+                unitGross: z.ZodType<CommerceMoney, unknown, z.core.$ZodTypeInternals<CommerceMoney, unknown>>;
+            }, z.core.$strict>;
+            catalogAnchorUnitGross: z.ZodType<CommerceMoney, unknown, z.core.$ZodTypeInternals<CommerceMoney, unknown>>;
+            initialDiscountPercent: z.ZodNumber;
+            recurringDiscountPercent: z.ZodNumber;
+        }, z.core.$strict>>;
+        minimum: z.ZodObject<{
+            oneTime: z.ZodObject<{
+                productSlug: z.ZodType<string, unknown, z.core.$ZodTypeInternals<string, unknown>>;
+                unitCount: z.ZodNumber;
+                oneTime: z.ZodObject<{
+                    packageGross: z.ZodType<CommerceMoney, unknown, z.core.$ZodTypeInternals<CommerceMoney, unknown>>;
+                    unitGross: z.ZodType<CommerceMoney, unknown, z.core.$ZodTypeInternals<CommerceMoney, unknown>>;
+                }, z.core.$strict>;
+                subscriptionInitial: z.ZodObject<{
+                    packageGross: z.ZodType<CommerceMoney, unknown, z.core.$ZodTypeInternals<CommerceMoney, unknown>>;
+                    unitGross: z.ZodType<CommerceMoney, unknown, z.core.$ZodTypeInternals<CommerceMoney, unknown>>;
+                }, z.core.$strict>;
+                subscriptionRecurring: z.ZodObject<{
+                    packageGross: z.ZodType<CommerceMoney, unknown, z.core.$ZodTypeInternals<CommerceMoney, unknown>>;
+                    unitGross: z.ZodType<CommerceMoney, unknown, z.core.$ZodTypeInternals<CommerceMoney, unknown>>;
+                }, z.core.$strict>;
+                catalogAnchorUnitGross: z.ZodType<CommerceMoney, unknown, z.core.$ZodTypeInternals<CommerceMoney, unknown>>;
+                initialDiscountPercent: z.ZodNumber;
+                recurringDiscountPercent: z.ZodNumber;
+            }, z.core.$strict>;
+            subscription: z.ZodObject<{
+                productSlug: z.ZodType<string, unknown, z.core.$ZodTypeInternals<string, unknown>>;
+                unitCount: z.ZodNumber;
+                oneTime: z.ZodObject<{
+                    packageGross: z.ZodType<CommerceMoney, unknown, z.core.$ZodTypeInternals<CommerceMoney, unknown>>;
+                    unitGross: z.ZodType<CommerceMoney, unknown, z.core.$ZodTypeInternals<CommerceMoney, unknown>>;
+                }, z.core.$strict>;
+                subscriptionInitial: z.ZodObject<{
+                    packageGross: z.ZodType<CommerceMoney, unknown, z.core.$ZodTypeInternals<CommerceMoney, unknown>>;
+                    unitGross: z.ZodType<CommerceMoney, unknown, z.core.$ZodTypeInternals<CommerceMoney, unknown>>;
+                }, z.core.$strict>;
+                subscriptionRecurring: z.ZodObject<{
+                    packageGross: z.ZodType<CommerceMoney, unknown, z.core.$ZodTypeInternals<CommerceMoney, unknown>>;
+                    unitGross: z.ZodType<CommerceMoney, unknown, z.core.$ZodTypeInternals<CommerceMoney, unknown>>;
+                }, z.core.$strict>;
+                catalogAnchorUnitGross: z.ZodType<CommerceMoney, unknown, z.core.$ZodTypeInternals<CommerceMoney, unknown>>;
+                initialDiscountPercent: z.ZodNumber;
+                recurringDiscountPercent: z.ZodNumber;
+            }, z.core.$strict>;
+        }, z.core.$strict>;
+        shipping: z.ZodObject<{
+            gross: z.ZodType<CommerceMoney, unknown, z.core.$ZodTypeInternals<CommerceMoney, unknown>>;
+            discountGross: z.ZodType<CommerceMoney, unknown, z.core.$ZodTypeInternals<CommerceMoney, unknown>>;
+            payable: z.ZodType<CommerceMoney, unknown, z.core.$ZodTypeInternals<CommerceMoney, unknown>>;
+        }, z.core.$strict>;
+        minimumProductPayable: z.ZodType<CommerceMoney, unknown, z.core.$ZodTypeInternals<CommerceMoney, unknown>>;
+    }, z.core.$strict>;
+    commerceOfferPricingResponseSchema: z.ZodUnion<readonly [z.ZodObject<{
+        contractVersion: z.ZodLiteral<"commerce.offer-pricing.v1">;
+        scope: z.ZodType<ScopeV1, unknown, z.core.$ZodTypeInternals<ScopeV1, unknown>>;
+        products: z.ZodArray<z.ZodObject<{
+            productSlug: z.ZodType<string, unknown, z.core.$ZodTypeInternals<string, unknown>>;
+            unitCount: z.ZodNumber;
+            oneTime: z.ZodObject<{
+                packageGross: z.ZodType<CommerceMoney, unknown, z.core.$ZodTypeInternals<CommerceMoney, unknown>>;
+                unitGross: z.ZodType<CommerceMoney, unknown, z.core.$ZodTypeInternals<CommerceMoney, unknown>>;
+            }, z.core.$strict>;
+            subscriptionInitial: z.ZodObject<{
+                packageGross: z.ZodType<CommerceMoney, unknown, z.core.$ZodTypeInternals<CommerceMoney, unknown>>;
+                unitGross: z.ZodType<CommerceMoney, unknown, z.core.$ZodTypeInternals<CommerceMoney, unknown>>;
+            }, z.core.$strict>;
+            subscriptionRecurring: z.ZodObject<{
+                packageGross: z.ZodType<CommerceMoney, unknown, z.core.$ZodTypeInternals<CommerceMoney, unknown>>;
+                unitGross: z.ZodType<CommerceMoney, unknown, z.core.$ZodTypeInternals<CommerceMoney, unknown>>;
+            }, z.core.$strict>;
+            catalogAnchorUnitGross: z.ZodType<CommerceMoney, unknown, z.core.$ZodTypeInternals<CommerceMoney, unknown>>;
+            initialDiscountPercent: z.ZodNumber;
+            recurringDiscountPercent: z.ZodNumber;
+        }, z.core.$strict>>;
+        minimum: z.ZodObject<{
+            oneTime: z.ZodObject<{
+                productSlug: z.ZodType<string, unknown, z.core.$ZodTypeInternals<string, unknown>>;
+                unitCount: z.ZodNumber;
+                oneTime: z.ZodObject<{
+                    packageGross: z.ZodType<CommerceMoney, unknown, z.core.$ZodTypeInternals<CommerceMoney, unknown>>;
+                    unitGross: z.ZodType<CommerceMoney, unknown, z.core.$ZodTypeInternals<CommerceMoney, unknown>>;
+                }, z.core.$strict>;
+                subscriptionInitial: z.ZodObject<{
+                    packageGross: z.ZodType<CommerceMoney, unknown, z.core.$ZodTypeInternals<CommerceMoney, unknown>>;
+                    unitGross: z.ZodType<CommerceMoney, unknown, z.core.$ZodTypeInternals<CommerceMoney, unknown>>;
+                }, z.core.$strict>;
+                subscriptionRecurring: z.ZodObject<{
+                    packageGross: z.ZodType<CommerceMoney, unknown, z.core.$ZodTypeInternals<CommerceMoney, unknown>>;
+                    unitGross: z.ZodType<CommerceMoney, unknown, z.core.$ZodTypeInternals<CommerceMoney, unknown>>;
+                }, z.core.$strict>;
+                catalogAnchorUnitGross: z.ZodType<CommerceMoney, unknown, z.core.$ZodTypeInternals<CommerceMoney, unknown>>;
+                initialDiscountPercent: z.ZodNumber;
+                recurringDiscountPercent: z.ZodNumber;
+            }, z.core.$strict>;
+            subscription: z.ZodObject<{
+                productSlug: z.ZodType<string, unknown, z.core.$ZodTypeInternals<string, unknown>>;
+                unitCount: z.ZodNumber;
+                oneTime: z.ZodObject<{
+                    packageGross: z.ZodType<CommerceMoney, unknown, z.core.$ZodTypeInternals<CommerceMoney, unknown>>;
+                    unitGross: z.ZodType<CommerceMoney, unknown, z.core.$ZodTypeInternals<CommerceMoney, unknown>>;
+                }, z.core.$strict>;
+                subscriptionInitial: z.ZodObject<{
+                    packageGross: z.ZodType<CommerceMoney, unknown, z.core.$ZodTypeInternals<CommerceMoney, unknown>>;
+                    unitGross: z.ZodType<CommerceMoney, unknown, z.core.$ZodTypeInternals<CommerceMoney, unknown>>;
+                }, z.core.$strict>;
+                subscriptionRecurring: z.ZodObject<{
+                    packageGross: z.ZodType<CommerceMoney, unknown, z.core.$ZodTypeInternals<CommerceMoney, unknown>>;
+                    unitGross: z.ZodType<CommerceMoney, unknown, z.core.$ZodTypeInternals<CommerceMoney, unknown>>;
+                }, z.core.$strict>;
+                catalogAnchorUnitGross: z.ZodType<CommerceMoney, unknown, z.core.$ZodTypeInternals<CommerceMoney, unknown>>;
+                initialDiscountPercent: z.ZodNumber;
+                recurringDiscountPercent: z.ZodNumber;
+            }, z.core.$strict>;
+        }, z.core.$strict>;
+    }, z.core.$strict>, z.ZodObject<{
+        contractVersion: z.ZodLiteral<"commerce.offer-pricing.v2">;
+        scope: z.ZodType<ScopeV2, unknown, z.core.$ZodTypeInternals<ScopeV2, unknown>>;
+        pricingPolicy: z.ZodObject<{
+            offerPolicyVersion: z.ZodEnum<{
+                "commerce.offer-policy.v1": "commerce.offer-policy.v1";
+                "commerce.offer-policy.v2": "commerce.offer-policy.v2";
+            }>;
+            promotionEngineVersion: z.ZodEnum<{
+                "promotion-engine.v1": "promotion-engine.v1";
+                "promotion-engine.v2": "promotion-engine.v2";
+            }>;
+            pricingPolicyToken: z.ZodOptional<z.ZodString>;
+        }, z.core.$strict>;
+        products: z.ZodArray<z.ZodObject<{
+            productSlug: z.ZodType<string, unknown, z.core.$ZodTypeInternals<string, unknown>>;
+            unitCount: z.ZodNumber;
+            oneTime: z.ZodObject<{
+                packageGross: z.ZodType<CommerceMoney, unknown, z.core.$ZodTypeInternals<CommerceMoney, unknown>>;
+                unitGross: z.ZodType<CommerceMoney, unknown, z.core.$ZodTypeInternals<CommerceMoney, unknown>>;
+            }, z.core.$strict>;
+            subscriptionInitial: z.ZodObject<{
+                packageGross: z.ZodType<CommerceMoney, unknown, z.core.$ZodTypeInternals<CommerceMoney, unknown>>;
+                unitGross: z.ZodType<CommerceMoney, unknown, z.core.$ZodTypeInternals<CommerceMoney, unknown>>;
+            }, z.core.$strict>;
+            subscriptionRecurring: z.ZodObject<{
+                packageGross: z.ZodType<CommerceMoney, unknown, z.core.$ZodTypeInternals<CommerceMoney, unknown>>;
+                unitGross: z.ZodType<CommerceMoney, unknown, z.core.$ZodTypeInternals<CommerceMoney, unknown>>;
+            }, z.core.$strict>;
+            catalogAnchorUnitGross: z.ZodType<CommerceMoney, unknown, z.core.$ZodTypeInternals<CommerceMoney, unknown>>;
+            initialDiscountPercent: z.ZodNumber;
+            recurringDiscountPercent: z.ZodNumber;
+        }, z.core.$strict>>;
+        minimum: z.ZodObject<{
+            oneTime: z.ZodObject<{
+                productSlug: z.ZodType<string, unknown, z.core.$ZodTypeInternals<string, unknown>>;
+                unitCount: z.ZodNumber;
+                oneTime: z.ZodObject<{
+                    packageGross: z.ZodType<CommerceMoney, unknown, z.core.$ZodTypeInternals<CommerceMoney, unknown>>;
+                    unitGross: z.ZodType<CommerceMoney, unknown, z.core.$ZodTypeInternals<CommerceMoney, unknown>>;
+                }, z.core.$strict>;
+                subscriptionInitial: z.ZodObject<{
+                    packageGross: z.ZodType<CommerceMoney, unknown, z.core.$ZodTypeInternals<CommerceMoney, unknown>>;
+                    unitGross: z.ZodType<CommerceMoney, unknown, z.core.$ZodTypeInternals<CommerceMoney, unknown>>;
+                }, z.core.$strict>;
+                subscriptionRecurring: z.ZodObject<{
+                    packageGross: z.ZodType<CommerceMoney, unknown, z.core.$ZodTypeInternals<CommerceMoney, unknown>>;
+                    unitGross: z.ZodType<CommerceMoney, unknown, z.core.$ZodTypeInternals<CommerceMoney, unknown>>;
+                }, z.core.$strict>;
+                catalogAnchorUnitGross: z.ZodType<CommerceMoney, unknown, z.core.$ZodTypeInternals<CommerceMoney, unknown>>;
+                initialDiscountPercent: z.ZodNumber;
+                recurringDiscountPercent: z.ZodNumber;
+            }, z.core.$strict>;
+            subscription: z.ZodObject<{
+                productSlug: z.ZodType<string, unknown, z.core.$ZodTypeInternals<string, unknown>>;
+                unitCount: z.ZodNumber;
+                oneTime: z.ZodObject<{
+                    packageGross: z.ZodType<CommerceMoney, unknown, z.core.$ZodTypeInternals<CommerceMoney, unknown>>;
+                    unitGross: z.ZodType<CommerceMoney, unknown, z.core.$ZodTypeInternals<CommerceMoney, unknown>>;
+                }, z.core.$strict>;
+                subscriptionInitial: z.ZodObject<{
+                    packageGross: z.ZodType<CommerceMoney, unknown, z.core.$ZodTypeInternals<CommerceMoney, unknown>>;
+                    unitGross: z.ZodType<CommerceMoney, unknown, z.core.$ZodTypeInternals<CommerceMoney, unknown>>;
+                }, z.core.$strict>;
+                subscriptionRecurring: z.ZodObject<{
+                    packageGross: z.ZodType<CommerceMoney, unknown, z.core.$ZodTypeInternals<CommerceMoney, unknown>>;
+                    unitGross: z.ZodType<CommerceMoney, unknown, z.core.$ZodTypeInternals<CommerceMoney, unknown>>;
+                }, z.core.$strict>;
+                catalogAnchorUnitGross: z.ZodType<CommerceMoney, unknown, z.core.$ZodTypeInternals<CommerceMoney, unknown>>;
+                initialDiscountPercent: z.ZodNumber;
+                recurringDiscountPercent: z.ZodNumber;
+            }, z.core.$strict>;
+        }, z.core.$strict>;
+        shipping: z.ZodObject<{
+            gross: z.ZodType<CommerceMoney, unknown, z.core.$ZodTypeInternals<CommerceMoney, unknown>>;
+            discountGross: z.ZodType<CommerceMoney, unknown, z.core.$ZodTypeInternals<CommerceMoney, unknown>>;
+            payable: z.ZodType<CommerceMoney, unknown, z.core.$ZodTypeInternals<CommerceMoney, unknown>>;
+        }, z.core.$strict>;
+        minimumProductPayable: z.ZodType<CommerceMoney, unknown, z.core.$ZodTypeInternals<CommerceMoney, unknown>>;
+    }, z.core.$strict>]>;
+};
+```
+## dist/pricing/ports.d.ts
+
+```ts
+import type { CommercePriceAuthorityQuery, CommercePriceAuthorityResult, CommercePriceAuthorityRefusal } from "./contracts/index.js";
+/** Named refusal from the strict current-money authority. */
+export declare class CommercePriceAuthorityError extends Error {
+    readonly code: CommercePriceAuthorityRefusal;
+    constructor(code: CommercePriceAuthorityRefusal);
+}
+/**
+ * Resolves one current, exact base anchor and either a validated policy-derived
+ * subscription amount or the narrowly permitted pre-cutover legacy observation.
+ */
+export interface CommercePriceAuthorityPort {
+    resolvePrice(query: CommercePriceAuthorityQuery): Promise<CommercePriceAuthorityResult>;
+}
+```
+## dist/pricing/pricingPolicyToken.d.ts
+
+```ts
+import { type OfferPolicyVersion, type PromotionEngineVersion } from "./contracts/index.js";
+export interface PricingPolicyTokenPayload {
+    assignmentKeyHash: string;
+    issuedAtMs: number;
+    expiresAtMs: number;
+    offerPolicyVersion: OfferPolicyVersion;
+    promotionEngineVersion: PromotionEngineVersion;
+}
+interface CreateTokenInput extends Omit<PricingPolicyTokenPayload, "assignmentKeyHash"> {
+    assignmentKey: string;
+}
+export declare function createPricingPolicyToken(input: CreateTokenInput, secret: string): string;
+export declare function verifyPricingPolicyToken(token: string, secret: string, nowMs?: number): PricingPolicyTokenPayload | null;
+export declare function resolvePricingPolicy(input: {
+    assignmentKey?: string;
+    capability?: string;
+    token?: string;
+    secret: string;
+    v2Enabled: boolean;
+    rolloutBps: number;
+    nowMs?: number;
+    ttlMs?: number;
+}): {
+    pricingPolicyToken: string | undefined;
+    assignmentKeyHash: string;
+    issuedAtMs: number;
+    expiresAtMs: number;
+    offerPolicyVersion: OfferPolicyVersion;
+    promotionEngineVersion: PromotionEngineVersion;
+} | {
+    offerPolicyVersion: "commerce.offer-policy.v1" | "commerce.offer-policy.v2";
+    promotionEngineVersion: "promotion-engine.v1" | "promotion-engine.v2";
+    pricingPolicyToken?: undefined;
+} | {
+    offerPolicyVersion: "commerce.offer-policy.v1" | "commerce.offer-policy.v2";
+    promotionEngineVersion: "promotion-engine.v1" | "promotion-engine.v2";
+    pricingPolicyToken: string;
+};
+export {};
+```
+## dist/pricing/quoteAcquisitionTerms.d.ts
+
+```ts
+import type { AcquisitionTermsExpectation, ResolvedAcquisitionTerms } from "./contracts/acquisitionTerms.js";
+export declare function acquisitionExpectationChanged(expected: AcquisitionTermsExpectation | undefined, actual: ResolvedAcquisitionTerms | undefined): boolean;
+```
+## dist/pricing/quoteCodeRejectionDetails.d.ts
+
+```ts
+import { z } from "zod";
+export declare const quoteCodeRejectionDetailSchema: z.ZodDiscriminatedUnion<[z.ZodObject<{
+    code: z.ZodString;
+    reason: z.ZodLiteral<"scope_not_applicable">;
+    allowedScopes: z.ZodArray<z.ZodEnum<{
+        one_time: "one_time";
+        subscription_initial: "subscription_initial";
+    }>>;
+}, z.core.$strict>, z.ZodObject<{
+    code: z.ZodString;
+    reason: z.ZodLiteral<"minimum_not_met">;
+    minimumReferenceMinor: z.ZodNumber;
+}, z.core.$strict>, z.ZodObject<{
+    code: z.ZodString;
+    reason: z.ZodLiteral<"not_yet_active">;
+    validFrom: z.ZodString;
+}, z.core.$strict>, z.ZodObject<{
+    code: z.ZodString;
+    reason: z.ZodLiteral<"global_limit_reached">;
+}, z.core.$strict>], "reason">;
+```
+## dist/pricing/quotePorts.d.ts
+
+```ts
+import type { CreateQuoteRequest, CreateQuoteResponse } from "./contracts/quote.js";
+import type { PricingPolicySnapshot } from "./contracts/offerPolicy.js";
+/**
+ * Server-resolved options for promo evaluation. Passed OUT-OF-BAND by the caller
+ * (orchestration -> provisioned.clientId; preview -> session/null) — NEVER sourced
+ * from the client request body — so `first_purchase` eligibility cannot be forged.
+ */
+export interface CreateQuoteOptions {
+    clientId?: string | null;
+    pricingPolicy?: PricingPolicySnapshot;
+}
+export interface CommerceQuotePort<Request = CreateQuoteRequest, Response = CreateQuoteResponse> {
+    createQuote(request: Request, options?: CreateQuoteOptions): Promise<Response>;
+    createServerAuthoritativeQuote?(request: Request, options?: CreateQuoteOptions): Promise<Response>;
+}
+export interface CommerceQuoteSnapshotVerifierPort<Response = CreateQuoteResponse> {
+    verifyQuoteSnapshot(snapshot: Response): Promise<Response | void>;
+}
+export type CommerceQuoteSnapshotErrorCode = "QUOTE_SNAPSHOT_MISMATCH";
+export declare class CommerceQuoteSnapshotError extends Error {
+    readonly code: CommerceQuoteSnapshotErrorCode;
+    readonly details: Record<string, unknown>;
+    constructor(code: CommerceQuoteSnapshotErrorCode, message: string, details?: Record<string, unknown>);
+}
+export type CommerceQuoteErrorCode = "UNKNOWN_SKU" | "PRICE_NOT_CONFIGURED" | "UNSUPPORTED_TAX_PROFILE" | "PRICING_INVARIANT_VIOLATION";
+export declare class CommerceQuoteError extends Error {
+    readonly code: CommerceQuoteErrorCode;
+    readonly details: Record<string, unknown>;
+    constructor(code: CommerceQuoteErrorCode, message: string, details?: Record<string, unknown>);
+}
+```
+## dist/pricing/quotePrimitives.d.ts
+
+```ts
+import { z } from "zod";
+/** Currency acceptance belongs to the host's settlement profile. */
+export declare function createCommerceQuotePrimitives(commerceCurrencySchema: z.ZodType<string>): {
+    commerceCurrencySchema: z.ZodType<string, unknown, z.core.$ZodTypeInternals<string, unknown>>;
+    commerceTaxCountrySchema: z.ZodString;
+    commerceTaxCategorySchema: z.ZodString;
+    commerceTaxLegalBasisSchema: z.ZodString;
+    commerceSkuSchema: z.ZodString;
+    commerceMoneySchema: z.ZodObject<{
+        amountMinor: z.ZodNumber;
+        currency: z.ZodType<string, unknown, z.core.$ZodTypeInternals<string, unknown>>;
+    }, z.core.$strip>;
+};
+```
+## dist/pricing/quotePromotionEvidence.d.ts
+
+```ts
+import { z } from "zod";
+import type { QuotePromotionEvidence } from "./contracts/evidence.js";
+export declare const quoteDiscountSchema: z.ZodObject<{
+    promotionId: z.ZodString;
+    code: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    label: z.ZodOptional<z.ZodString>;
+    appliesTo: z.ZodEnum<{
+        line: "line";
+        shipping: "shipping";
+        order_total: "order_total";
+    }>;
+    amountOffMinor: z.ZodNumber;
+    reasonCode: z.ZodString;
+    customerSemantic: z.ZodOptional<z.ZodEnum<{
+        first_purchase_10: "first_purchase_10";
+        first_subscription_50: "first_subscription_50";
+        bundle_5: "bundle_5";
+    }>>;
+    promotionEngineVersion: z.ZodOptional<z.ZodLiteral<"promotion-engine.v2">>;
+    promotionCodeId: z.ZodOptional<z.ZodString>;
+    promotionCodeRevision: z.ZodOptional<z.ZodNumber>;
+    promotionDefinitionFingerprint: z.ZodOptional<z.ZodString>;
+    promotionCodeScopes: z.ZodOptional<z.ZodArray<z.ZodEnum<{
+        one_time: "one_time";
+        subscription_initial: "subscription_initial";
+    }>>>;
+    promotionMinimumReferenceMinor: z.ZodOptional<z.ZodNumber>;
+    promotionCodeValidTo: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    promotionBenefitKind: z.ZodOptional<z.ZodEnum<{
+        target_percentage: "target_percentage";
+        percentage: "percentage";
+        fixed_amount: "fixed_amount";
+        free_shipping: "free_shipping";
+    }>>;
+    promotionBenefitValueBps: z.ZodOptional<z.ZodNumber>;
+    promotionBenefitValueMinor: z.ZodOptional<z.ZodNumber>;
+    floorApplied: z.ZodOptional<z.ZodBoolean>;
+}, z.core.$strict>;
+export declare function hasValidV2PromotionEvidence(discount: QuotePromotionEvidence): boolean;
+```
+## dist/pricing/quoteSchemas.d.ts
+
+```ts
+import { z } from "zod";
+import type { CommerceQuote } from "./contracts/quote.js";
+/** Split gross tax-included money into net/VAT using an explicit tax rate. */
+export declare function splitIncludedVat(grossMinor: number, vatRateBps: number): {
+    netMinor: number;
+    vatMinor: number;
+};
+/** Backstop: every Money in a quote must use the quote's own currency. */
+export declare function quoteMoneyCurrenciesMatch(quote: CommerceQuote): boolean;
+/** Preserve quote validation while hosts bind currency, product identifiers and context. */
+export declare function createCommerceQuoteSchemas<Context extends z.ZodType>(input: {
+    currencySchema: z.ZodType<string>;
+    productSlugSchema: z.ZodType<string>;
+    contextSchema: Context;
+}): {
+    createQuoteRequestSchema: z.ZodObject<{
+        mode: z.ZodDefault<z.ZodEnum<{
+            subscription: "subscription";
+            one_time: "one_time";
+        }>>;
+        lines: z.ZodArray<z.ZodObject<{
+            sku: z.ZodString;
+            quantity: z.ZodNumber;
+            variantId: z.ZodOptional<z.ZodString>;
+            modeAtLine: z.ZodOptional<z.ZodEnum<{
+                subscription: "subscription";
+                one_time: "one_time";
+            }>>;
+            isAddon: z.ZodOptional<z.ZodBoolean>;
+        }, z.core.$strip>>;
+        cadenceDays: z.ZodOptional<z.ZodNullable<z.ZodNumber>>;
+        promoCodes: z.ZodDefault<z.ZodArray<z.ZodString>>;
+    }, z.core.$strip>;
+    quotePricingComponentSchema: z.ZodObject<{
+        scope: z.ZodEnum<{
+            line: "line";
+            order: "order";
+        }>;
+        componentType: z.ZodEnum<{
+            bundle: "bundle";
+            base_unit: "base_unit";
+            mode_discount: "mode_discount";
+            qty_tier: "qty_tier";
+            promo: "promo";
+            loyalty: "loyalty";
+            shipping: "shipping";
+        }>;
+        amountMinor: z.ZodNumber;
+        reasonCode: z.ZodString;
+        reasonPayload: z.ZodDefault<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+    }, z.core.$strict>;
+    cartLineInputSchema: z.ZodObject<{
+        sku: z.ZodString;
+        quantity: z.ZodNumber;
+        variantId: z.ZodOptional<z.ZodString>;
+        modeAtLine: z.ZodOptional<z.ZodEnum<{
+            subscription: "subscription";
+            one_time: "one_time";
+        }>>;
+        isAddon: z.ZodOptional<z.ZodBoolean>;
+    }, z.core.$strip>;
+    commerceTaxBreakdownSchema: z.ZodObject<{
+        included: z.ZodLiteral<true>;
+        country: z.ZodString;
+        category: z.ZodString;
+        vatRateBps: z.ZodNumber;
+        legalBasis: z.ZodString;
+        netAmount: z.ZodObject<{
+            amountMinor: z.ZodNumber;
+            currency: z.ZodType<string, unknown, z.core.$ZodTypeInternals<string, unknown>>;
+        }, z.core.$strip>;
+        vatAmount: z.ZodObject<{
+            amountMinor: z.ZodNumber;
+            currency: z.ZodType<string, unknown, z.core.$ZodTypeInternals<string, unknown>>;
+        }, z.core.$strip>;
+        grossAmount: z.ZodObject<{
+            amountMinor: z.ZodNumber;
+            currency: z.ZodType<string, unknown, z.core.$ZodTypeInternals<string, unknown>>;
+        }, z.core.$strip>;
+    }, z.core.$strip>;
+    quoteLineSchema: z.ZodObject<{
+        sku: z.ZodString;
+        productSlug: z.ZodType<string, unknown, z.core.$ZodTypeInternals<string, unknown>>;
+        quantity: z.ZodNumber;
+        unitPriceGross: z.ZodObject<{
+            amountMinor: z.ZodNumber;
+            currency: z.ZodType<string, unknown, z.core.$ZodTypeInternals<string, unknown>>;
+        }, z.core.$strip>;
+        lineSubtotalGross: z.ZodObject<{
+            amountMinor: z.ZodNumber;
+            currency: z.ZodType<string, unknown, z.core.$ZodTypeInternals<string, unknown>>;
+        }, z.core.$strip>;
+        tax: z.ZodObject<{
+            included: z.ZodLiteral<true>;
+            country: z.ZodString;
+            category: z.ZodString;
+            vatRateBps: z.ZodNumber;
+            legalBasis: z.ZodString;
+            netAmount: z.ZodObject<{
+                amountMinor: z.ZodNumber;
+                currency: z.ZodType<string, unknown, z.core.$ZodTypeInternals<string, unknown>>;
+            }, z.core.$strip>;
+            vatAmount: z.ZodObject<{
+                amountMinor: z.ZodNumber;
+                currency: z.ZodType<string, unknown, z.core.$ZodTypeInternals<string, unknown>>;
+            }, z.core.$strip>;
+            grossAmount: z.ZodObject<{
+                amountMinor: z.ZodNumber;
+                currency: z.ZodType<string, unknown, z.core.$ZodTypeInternals<string, unknown>>;
+            }, z.core.$strip>;
+        }, z.core.$strip>;
+        pricingComponents: z.ZodOptional<z.ZodArray<z.ZodObject<{
+            scope: z.ZodEnum<{
+                line: "line";
+                order: "order";
+            }>;
+            componentType: z.ZodEnum<{
+                bundle: "bundle";
+                base_unit: "base_unit";
+                mode_discount: "mode_discount";
+                qty_tier: "qty_tier";
+                promo: "promo";
+                loyalty: "loyalty";
+                shipping: "shipping";
+            }>;
+            amountMinor: z.ZodNumber;
+            reasonCode: z.ZodString;
+            reasonPayload: z.ZodDefault<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+        }, z.core.$strict>>>;
+        catalogFacts: z.ZodOptional<z.ZodUnion<readonly [z.ZodObject<{
+            skuId: z.ZodString;
+            documentRevisionId: z.ZodString;
+            documentDigest: z.ZodString;
+            basePriceEntryId: z.ZodString;
+            atTime: z.ZodString;
+            currency: z.ZodString;
+            resolvedUnitAmountMinor: z.ZodNumber;
+            resolvedLineAmountMinor: z.ZodNumber;
+            baseUnitAmountMinor: z.ZodNumber;
+            version: z.ZodLiteral<"catalog_facts_v1">;
+            resolvedPriceEntryId: z.ZodString;
+            mode: z.ZodEnum<{
+                subscription: "subscription";
+                one_time: "one_time";
+            }>;
+        }, z.core.$strict>, z.ZodObject<{
+            skuId: z.ZodString;
+            documentRevisionId: z.ZodString;
+            documentDigest: z.ZodString;
+            basePriceEntryId: z.ZodString;
+            atTime: z.ZodString;
+            currency: z.ZodString;
+            resolvedUnitAmountMinor: z.ZodNumber;
+            resolvedLineAmountMinor: z.ZodNumber;
+            baseUnitAmountMinor: z.ZodNumber;
+            version: z.ZodLiteral<"catalog_facts_v2">;
+            policyRevisionId: z.ZodString;
+            policyDigest: z.ZodString;
+            mode: z.ZodLiteral<"subscription">;
+        }, z.core.$strict>]>>;
+    }, z.core.$strip>;
+    quoteCodeRejectionSchema: z.ZodObject<{
+        code: z.ZodString;
+        reason: z.ZodEnum<{
+            scope_not_applicable: "scope_not_applicable";
+            not_recognized: "not_recognized";
+            already_used: "already_used";
+            not_eligible: "not_eligible";
+            expired: "expired";
+            better_price_exists: "better_price_exists";
+        }>;
+    }, z.core.$strict>;
+    commerceQuoteSchema: z.ZodObject<{
+        currency: z.ZodType<string, unknown, z.core.$ZodTypeInternals<string, unknown>>;
+        taxIncluded: z.ZodLiteral<true>;
+        lines: z.ZodArray<z.ZodObject<{
+            sku: z.ZodString;
+            productSlug: z.ZodType<string, unknown, z.core.$ZodTypeInternals<string, unknown>>;
+            quantity: z.ZodNumber;
+            unitPriceGross: z.ZodObject<{
+                amountMinor: z.ZodNumber;
+                currency: z.ZodType<string, unknown, z.core.$ZodTypeInternals<string, unknown>>;
+            }, z.core.$strip>;
+            lineSubtotalGross: z.ZodObject<{
+                amountMinor: z.ZodNumber;
+                currency: z.ZodType<string, unknown, z.core.$ZodTypeInternals<string, unknown>>;
+            }, z.core.$strip>;
+            tax: z.ZodObject<{
+                included: z.ZodLiteral<true>;
+                country: z.ZodString;
+                category: z.ZodString;
+                vatRateBps: z.ZodNumber;
+                legalBasis: z.ZodString;
+                netAmount: z.ZodObject<{
+                    amountMinor: z.ZodNumber;
+                    currency: z.ZodType<string, unknown, z.core.$ZodTypeInternals<string, unknown>>;
+                }, z.core.$strip>;
+                vatAmount: z.ZodObject<{
+                    amountMinor: z.ZodNumber;
+                    currency: z.ZodType<string, unknown, z.core.$ZodTypeInternals<string, unknown>>;
+                }, z.core.$strip>;
+                grossAmount: z.ZodObject<{
+                    amountMinor: z.ZodNumber;
+                    currency: z.ZodType<string, unknown, z.core.$ZodTypeInternals<string, unknown>>;
+                }, z.core.$strip>;
+            }, z.core.$strip>;
+            pricingComponents: z.ZodOptional<z.ZodArray<z.ZodObject<{
+                scope: z.ZodEnum<{
+                    line: "line";
+                    order: "order";
+                }>;
+                componentType: z.ZodEnum<{
+                    bundle: "bundle";
+                    base_unit: "base_unit";
+                    mode_discount: "mode_discount";
+                    qty_tier: "qty_tier";
+                    promo: "promo";
+                    loyalty: "loyalty";
+                    shipping: "shipping";
+                }>;
+                amountMinor: z.ZodNumber;
+                reasonCode: z.ZodString;
+                reasonPayload: z.ZodDefault<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+            }, z.core.$strict>>>;
+            catalogFacts: z.ZodOptional<z.ZodUnion<readonly [z.ZodObject<{
+                skuId: z.ZodString;
+                documentRevisionId: z.ZodString;
+                documentDigest: z.ZodString;
+                basePriceEntryId: z.ZodString;
+                atTime: z.ZodString;
+                currency: z.ZodString;
+                resolvedUnitAmountMinor: z.ZodNumber;
+                resolvedLineAmountMinor: z.ZodNumber;
+                baseUnitAmountMinor: z.ZodNumber;
+                version: z.ZodLiteral<"catalog_facts_v1">;
+                resolvedPriceEntryId: z.ZodString;
+                mode: z.ZodEnum<{
+                    subscription: "subscription";
+                    one_time: "one_time";
+                }>;
+            }, z.core.$strict>, z.ZodObject<{
+                skuId: z.ZodString;
+                documentRevisionId: z.ZodString;
+                documentDigest: z.ZodString;
+                basePriceEntryId: z.ZodString;
+                atTime: z.ZodString;
+                currency: z.ZodString;
+                resolvedUnitAmountMinor: z.ZodNumber;
+                resolvedLineAmountMinor: z.ZodNumber;
+                baseUnitAmountMinor: z.ZodNumber;
+                version: z.ZodLiteral<"catalog_facts_v2">;
+                policyRevisionId: z.ZodString;
+                policyDigest: z.ZodString;
+                mode: z.ZodLiteral<"subscription">;
+            }, z.core.$strict>]>>;
+        }, z.core.$strip>>;
+        discounts: z.ZodArray<z.ZodObject<{
+            promotionId: z.ZodString;
+            code: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+            label: z.ZodOptional<z.ZodString>;
+            appliesTo: z.ZodEnum<{
+                line: "line";
+                shipping: "shipping";
+                order_total: "order_total";
+            }>;
+            amountOffMinor: z.ZodNumber;
+            reasonCode: z.ZodString;
+            customerSemantic: z.ZodOptional<z.ZodEnum<{
+                first_purchase_10: "first_purchase_10";
+                first_subscription_50: "first_subscription_50";
+                bundle_5: "bundle_5";
+            }>>;
+            promotionEngineVersion: z.ZodOptional<z.ZodLiteral<"promotion-engine.v2">>;
+            promotionCodeId: z.ZodOptional<z.ZodString>;
+            promotionCodeRevision: z.ZodOptional<z.ZodNumber>;
+            promotionDefinitionFingerprint: z.ZodOptional<z.ZodString>;
+            promotionCodeScopes: z.ZodOptional<z.ZodArray<z.ZodEnum<{
+                one_time: "one_time";
+                subscription_initial: "subscription_initial";
+            }>>>;
+            promotionMinimumReferenceMinor: z.ZodOptional<z.ZodNumber>;
+            promotionCodeValidTo: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+            promotionBenefitKind: z.ZodOptional<z.ZodEnum<{
+                target_percentage: "target_percentage";
+                percentage: "percentage";
+                fixed_amount: "fixed_amount";
+                free_shipping: "free_shipping";
+            }>>;
+            promotionBenefitValueBps: z.ZodOptional<z.ZodNumber>;
+            promotionBenefitValueMinor: z.ZodOptional<z.ZodNumber>;
+            floorApplied: z.ZodOptional<z.ZodBoolean>;
+        }, z.core.$strict>>;
+        codeRejections: z.ZodOptional<z.ZodArray<z.ZodObject<{
+            code: z.ZodString;
+            reason: z.ZodEnum<{
+                scope_not_applicable: "scope_not_applicable";
+                not_recognized: "not_recognized";
+                already_used: "already_used";
+                not_eligible: "not_eligible";
+                expired: "expired";
+                better_price_exists: "better_price_exists";
+            }>;
+        }, z.core.$strict>>>;
+        codeRejectionDetails: z.ZodOptional<z.ZodArray<z.ZodDiscriminatedUnion<[z.ZodObject<{
+            code: z.ZodString;
+            reason: z.ZodLiteral<"scope_not_applicable">;
+            allowedScopes: z.ZodArray<z.ZodEnum<{
+                one_time: "one_time";
+                subscription_initial: "subscription_initial";
+            }>>;
+        }, z.core.$strict>, z.ZodObject<{
+            code: z.ZodString;
+            reason: z.ZodLiteral<"minimum_not_met">;
+            minimumReferenceMinor: z.ZodNumber;
+        }, z.core.$strict>, z.ZodObject<{
+            code: z.ZodString;
+            reason: z.ZodLiteral<"not_yet_active">;
+            validFrom: z.ZodString;
+        }, z.core.$strict>, z.ZodObject<{
+            code: z.ZodString;
+            reason: z.ZodLiteral<"global_limit_reached">;
+        }, z.core.$strict>], "reason">>>;
+        pricingComponents: z.ZodOptional<z.ZodArray<z.ZodObject<{
+            scope: z.ZodEnum<{
+                line: "line";
+                order: "order";
+            }>;
+            componentType: z.ZodEnum<{
+                bundle: "bundle";
+                base_unit: "base_unit";
+                mode_discount: "mode_discount";
+                qty_tier: "qty_tier";
+                promo: "promo";
+                loyalty: "loyalty";
+                shipping: "shipping";
+            }>;
+            amountMinor: z.ZodNumber;
+            reasonCode: z.ZodString;
+            reasonPayload: z.ZodDefault<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+        }, z.core.$strict>>>;
+        context: z.ZodOptional<Context>;
+        subtotalGross: z.ZodObject<{
+            amountMinor: z.ZodNumber;
+            currency: z.ZodType<string, unknown, z.core.$ZodTypeInternals<string, unknown>>;
+        }, z.core.$strip>;
+        discountTotalGross: z.ZodObject<{
+            amountMinor: z.ZodNumber;
+            currency: z.ZodType<string, unknown, z.core.$ZodTypeInternals<string, unknown>>;
+        }, z.core.$strip>;
+        shippingGross: z.ZodOptional<z.ZodObject<{
+            amountMinor: z.ZodNumber;
+            currency: z.ZodType<string, unknown, z.core.$ZodTypeInternals<string, unknown>>;
+        }, z.core.$strip>>;
+        shippingDiscountGross: z.ZodOptional<z.ZodObject<{
+            amountMinor: z.ZodNumber;
+            currency: z.ZodType<string, unknown, z.core.$ZodTypeInternals<string, unknown>>;
+        }, z.core.$strip>>;
+        totalGross: z.ZodObject<{
+            amountMinor: z.ZodNumber;
+            currency: z.ZodType<string, unknown, z.core.$ZodTypeInternals<string, unknown>>;
+        }, z.core.$strip>;
+        netTotal: z.ZodObject<{
+            amountMinor: z.ZodNumber;
+            currency: z.ZodType<string, unknown, z.core.$ZodTypeInternals<string, unknown>>;
+        }, z.core.$strip>;
+        taxTotal: z.ZodObject<{
+            amountMinor: z.ZodNumber;
+            currency: z.ZodType<string, unknown, z.core.$ZodTypeInternals<string, unknown>>;
+        }, z.core.$strip>;
+    }, z.core.$strip>;
+    createQuoteResponseSchema: z.ZodObject<{
+        contractVersion: z.ZodLiteral<"commerce.v0">;
+        quote: z.ZodObject<{
+            currency: z.ZodType<string, unknown, z.core.$ZodTypeInternals<string, unknown>>;
+            taxIncluded: z.ZodLiteral<true>;
+            lines: z.ZodArray<z.ZodObject<{
+                sku: z.ZodString;
+                productSlug: z.ZodType<string, unknown, z.core.$ZodTypeInternals<string, unknown>>;
+                quantity: z.ZodNumber;
+                unitPriceGross: z.ZodObject<{
+                    amountMinor: z.ZodNumber;
+                    currency: z.ZodType<string, unknown, z.core.$ZodTypeInternals<string, unknown>>;
+                }, z.core.$strip>;
+                lineSubtotalGross: z.ZodObject<{
+                    amountMinor: z.ZodNumber;
+                    currency: z.ZodType<string, unknown, z.core.$ZodTypeInternals<string, unknown>>;
+                }, z.core.$strip>;
+                tax: z.ZodObject<{
+                    included: z.ZodLiteral<true>;
+                    country: z.ZodString;
+                    category: z.ZodString;
+                    vatRateBps: z.ZodNumber;
+                    legalBasis: z.ZodString;
+                    netAmount: z.ZodObject<{
+                        amountMinor: z.ZodNumber;
+                        currency: z.ZodType<string, unknown, z.core.$ZodTypeInternals<string, unknown>>;
+                    }, z.core.$strip>;
+                    vatAmount: z.ZodObject<{
+                        amountMinor: z.ZodNumber;
+                        currency: z.ZodType<string, unknown, z.core.$ZodTypeInternals<string, unknown>>;
+                    }, z.core.$strip>;
+                    grossAmount: z.ZodObject<{
+                        amountMinor: z.ZodNumber;
+                        currency: z.ZodType<string, unknown, z.core.$ZodTypeInternals<string, unknown>>;
+                    }, z.core.$strip>;
+                }, z.core.$strip>;
+                pricingComponents: z.ZodOptional<z.ZodArray<z.ZodObject<{
+                    scope: z.ZodEnum<{
+                        line: "line";
+                        order: "order";
+                    }>;
+                    componentType: z.ZodEnum<{
+                        bundle: "bundle";
+                        base_unit: "base_unit";
+                        mode_discount: "mode_discount";
+                        qty_tier: "qty_tier";
+                        promo: "promo";
+                        loyalty: "loyalty";
+                        shipping: "shipping";
+                    }>;
+                    amountMinor: z.ZodNumber;
+                    reasonCode: z.ZodString;
+                    reasonPayload: z.ZodDefault<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+                }, z.core.$strict>>>;
+                catalogFacts: z.ZodOptional<z.ZodUnion<readonly [z.ZodObject<{
+                    skuId: z.ZodString;
+                    documentRevisionId: z.ZodString;
+                    documentDigest: z.ZodString;
+                    basePriceEntryId: z.ZodString;
+                    atTime: z.ZodString;
+                    currency: z.ZodString;
+                    resolvedUnitAmountMinor: z.ZodNumber;
+                    resolvedLineAmountMinor: z.ZodNumber;
+                    baseUnitAmountMinor: z.ZodNumber;
+                    version: z.ZodLiteral<"catalog_facts_v1">;
+                    resolvedPriceEntryId: z.ZodString;
+                    mode: z.ZodEnum<{
+                        subscription: "subscription";
+                        one_time: "one_time";
+                    }>;
+                }, z.core.$strict>, z.ZodObject<{
+                    skuId: z.ZodString;
+                    documentRevisionId: z.ZodString;
+                    documentDigest: z.ZodString;
+                    basePriceEntryId: z.ZodString;
+                    atTime: z.ZodString;
+                    currency: z.ZodString;
+                    resolvedUnitAmountMinor: z.ZodNumber;
+                    resolvedLineAmountMinor: z.ZodNumber;
+                    baseUnitAmountMinor: z.ZodNumber;
+                    version: z.ZodLiteral<"catalog_facts_v2">;
+                    policyRevisionId: z.ZodString;
+                    policyDigest: z.ZodString;
+                    mode: z.ZodLiteral<"subscription">;
+                }, z.core.$strict>]>>;
+            }, z.core.$strip>>;
+            discounts: z.ZodArray<z.ZodObject<{
+                promotionId: z.ZodString;
+                code: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+                label: z.ZodOptional<z.ZodString>;
+                appliesTo: z.ZodEnum<{
+                    line: "line";
+                    shipping: "shipping";
+                    order_total: "order_total";
+                }>;
+                amountOffMinor: z.ZodNumber;
+                reasonCode: z.ZodString;
+                customerSemantic: z.ZodOptional<z.ZodEnum<{
+                    first_purchase_10: "first_purchase_10";
+                    first_subscription_50: "first_subscription_50";
+                    bundle_5: "bundle_5";
+                }>>;
+                promotionEngineVersion: z.ZodOptional<z.ZodLiteral<"promotion-engine.v2">>;
+                promotionCodeId: z.ZodOptional<z.ZodString>;
+                promotionCodeRevision: z.ZodOptional<z.ZodNumber>;
+                promotionDefinitionFingerprint: z.ZodOptional<z.ZodString>;
+                promotionCodeScopes: z.ZodOptional<z.ZodArray<z.ZodEnum<{
+                    one_time: "one_time";
+                    subscription_initial: "subscription_initial";
+                }>>>;
+                promotionMinimumReferenceMinor: z.ZodOptional<z.ZodNumber>;
+                promotionCodeValidTo: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+                promotionBenefitKind: z.ZodOptional<z.ZodEnum<{
+                    target_percentage: "target_percentage";
+                    percentage: "percentage";
+                    fixed_amount: "fixed_amount";
+                    free_shipping: "free_shipping";
+                }>>;
+                promotionBenefitValueBps: z.ZodOptional<z.ZodNumber>;
+                promotionBenefitValueMinor: z.ZodOptional<z.ZodNumber>;
+                floorApplied: z.ZodOptional<z.ZodBoolean>;
+            }, z.core.$strict>>;
+            codeRejections: z.ZodOptional<z.ZodArray<z.ZodObject<{
+                code: z.ZodString;
+                reason: z.ZodEnum<{
+                    scope_not_applicable: "scope_not_applicable";
+                    not_recognized: "not_recognized";
+                    already_used: "already_used";
+                    not_eligible: "not_eligible";
+                    expired: "expired";
+                    better_price_exists: "better_price_exists";
+                }>;
+            }, z.core.$strict>>>;
+            codeRejectionDetails: z.ZodOptional<z.ZodArray<z.ZodDiscriminatedUnion<[z.ZodObject<{
+                code: z.ZodString;
+                reason: z.ZodLiteral<"scope_not_applicable">;
+                allowedScopes: z.ZodArray<z.ZodEnum<{
+                    one_time: "one_time";
+                    subscription_initial: "subscription_initial";
+                }>>;
+            }, z.core.$strict>, z.ZodObject<{
+                code: z.ZodString;
+                reason: z.ZodLiteral<"minimum_not_met">;
+                minimumReferenceMinor: z.ZodNumber;
+            }, z.core.$strict>, z.ZodObject<{
+                code: z.ZodString;
+                reason: z.ZodLiteral<"not_yet_active">;
+                validFrom: z.ZodString;
+            }, z.core.$strict>, z.ZodObject<{
+                code: z.ZodString;
+                reason: z.ZodLiteral<"global_limit_reached">;
+            }, z.core.$strict>], "reason">>>;
+            pricingComponents: z.ZodOptional<z.ZodArray<z.ZodObject<{
+                scope: z.ZodEnum<{
+                    line: "line";
+                    order: "order";
+                }>;
+                componentType: z.ZodEnum<{
+                    bundle: "bundle";
+                    base_unit: "base_unit";
+                    mode_discount: "mode_discount";
+                    qty_tier: "qty_tier";
+                    promo: "promo";
+                    loyalty: "loyalty";
+                    shipping: "shipping";
+                }>;
+                amountMinor: z.ZodNumber;
+                reasonCode: z.ZodString;
+                reasonPayload: z.ZodDefault<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+            }, z.core.$strict>>>;
+            context: z.ZodOptional<Context>;
+            subtotalGross: z.ZodObject<{
+                amountMinor: z.ZodNumber;
+                currency: z.ZodType<string, unknown, z.core.$ZodTypeInternals<string, unknown>>;
+            }, z.core.$strip>;
+            discountTotalGross: z.ZodObject<{
+                amountMinor: z.ZodNumber;
+                currency: z.ZodType<string, unknown, z.core.$ZodTypeInternals<string, unknown>>;
+            }, z.core.$strip>;
+            shippingGross: z.ZodOptional<z.ZodObject<{
+                amountMinor: z.ZodNumber;
+                currency: z.ZodType<string, unknown, z.core.$ZodTypeInternals<string, unknown>>;
+            }, z.core.$strip>>;
+            shippingDiscountGross: z.ZodOptional<z.ZodObject<{
+                amountMinor: z.ZodNumber;
+                currency: z.ZodType<string, unknown, z.core.$ZodTypeInternals<string, unknown>>;
+            }, z.core.$strip>>;
+            totalGross: z.ZodObject<{
+                amountMinor: z.ZodNumber;
+                currency: z.ZodType<string, unknown, z.core.$ZodTypeInternals<string, unknown>>;
+            }, z.core.$strip>;
+            netTotal: z.ZodObject<{
+                amountMinor: z.ZodNumber;
+                currency: z.ZodType<string, unknown, z.core.$ZodTypeInternals<string, unknown>>;
+            }, z.core.$strip>;
+            taxTotal: z.ZodObject<{
+                amountMinor: z.ZodNumber;
+                currency: z.ZodType<string, unknown, z.core.$ZodTypeInternals<string, unknown>>;
+            }, z.core.$strip>;
+        }, z.core.$strip>;
+    }, z.core.$strict>;
+    publicCreateQuoteResponseSchema: z.ZodObject<{
+        contractVersion: z.ZodLiteral<"commerce.v0">;
+        quote: z.ZodObject<{
+            currency: z.ZodType<string, unknown, z.core.$ZodTypeInternals<string, unknown>>;
+            taxIncluded: z.ZodLiteral<true>;
+            lines: z.ZodArray<z.ZodObject<{
+                sku: z.ZodString;
+                productSlug: z.ZodType<string, unknown, z.core.$ZodTypeInternals<string, unknown>>;
+                quantity: z.ZodNumber;
+                unitPriceGross: z.ZodObject<{
+                    amountMinor: z.ZodNumber;
+                    currency: z.ZodType<string, unknown, z.core.$ZodTypeInternals<string, unknown>>;
+                }, z.core.$strip>;
+                lineSubtotalGross: z.ZodObject<{
+                    amountMinor: z.ZodNumber;
+                    currency: z.ZodType<string, unknown, z.core.$ZodTypeInternals<string, unknown>>;
+                }, z.core.$strip>;
+                tax: z.ZodObject<{
+                    included: z.ZodLiteral<true>;
+                    country: z.ZodString;
+                    category: z.ZodString;
+                    vatRateBps: z.ZodNumber;
+                    legalBasis: z.ZodString;
+                    netAmount: z.ZodObject<{
+                        amountMinor: z.ZodNumber;
+                        currency: z.ZodType<string, unknown, z.core.$ZodTypeInternals<string, unknown>>;
+                    }, z.core.$strip>;
+                    vatAmount: z.ZodObject<{
+                        amountMinor: z.ZodNumber;
+                        currency: z.ZodType<string, unknown, z.core.$ZodTypeInternals<string, unknown>>;
+                    }, z.core.$strip>;
+                    grossAmount: z.ZodObject<{
+                        amountMinor: z.ZodNumber;
+                        currency: z.ZodType<string, unknown, z.core.$ZodTypeInternals<string, unknown>>;
+                    }, z.core.$strip>;
+                }, z.core.$strip>;
+                pricingComponents: z.ZodOptional<z.ZodArray<z.ZodObject<{
+                    scope: z.ZodEnum<{
+                        line: "line";
+                        order: "order";
+                    }>;
+                    componentType: z.ZodEnum<{
+                        bundle: "bundle";
+                        base_unit: "base_unit";
+                        mode_discount: "mode_discount";
+                        qty_tier: "qty_tier";
+                        promo: "promo";
+                        loyalty: "loyalty";
+                        shipping: "shipping";
+                    }>;
+                    amountMinor: z.ZodNumber;
+                    reasonCode: z.ZodString;
+                    reasonPayload: z.ZodDefault<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+                }, z.core.$strict>>>;
+                catalogFacts: z.ZodOptional<z.ZodUnion<readonly [z.ZodObject<{
+                    skuId: z.ZodString;
+                    documentRevisionId: z.ZodString;
+                    documentDigest: z.ZodString;
+                    basePriceEntryId: z.ZodString;
+                    atTime: z.ZodString;
+                    currency: z.ZodString;
+                    resolvedUnitAmountMinor: z.ZodNumber;
+                    resolvedLineAmountMinor: z.ZodNumber;
+                    baseUnitAmountMinor: z.ZodNumber;
+                    version: z.ZodLiteral<"catalog_facts_v1">;
+                    resolvedPriceEntryId: z.ZodString;
+                    mode: z.ZodEnum<{
+                        subscription: "subscription";
+                        one_time: "one_time";
+                    }>;
+                }, z.core.$strict>, z.ZodObject<{
+                    skuId: z.ZodString;
+                    documentRevisionId: z.ZodString;
+                    documentDigest: z.ZodString;
+                    basePriceEntryId: z.ZodString;
+                    atTime: z.ZodString;
+                    currency: z.ZodString;
+                    resolvedUnitAmountMinor: z.ZodNumber;
+                    resolvedLineAmountMinor: z.ZodNumber;
+                    baseUnitAmountMinor: z.ZodNumber;
+                    version: z.ZodLiteral<"catalog_facts_v2">;
+                    policyRevisionId: z.ZodString;
+                    policyDigest: z.ZodString;
+                    mode: z.ZodLiteral<"subscription">;
+                }, z.core.$strict>]>>;
+            }, z.core.$strip>>;
+            discounts: z.ZodArray<z.ZodObject<{
+                promotionId: z.ZodString;
+                code: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+                label: z.ZodOptional<z.ZodString>;
+                appliesTo: z.ZodEnum<{
+                    line: "line";
+                    shipping: "shipping";
+                    order_total: "order_total";
+                }>;
+                amountOffMinor: z.ZodNumber;
+                reasonCode: z.ZodString;
+                customerSemantic: z.ZodOptional<z.ZodEnum<{
+                    first_purchase_10: "first_purchase_10";
+                    first_subscription_50: "first_subscription_50";
+                    bundle_5: "bundle_5";
+                }>>;
+                promotionEngineVersion: z.ZodOptional<z.ZodLiteral<"promotion-engine.v2">>;
+                promotionCodeId: z.ZodOptional<z.ZodString>;
+                promotionCodeRevision: z.ZodOptional<z.ZodNumber>;
+                promotionDefinitionFingerprint: z.ZodOptional<z.ZodString>;
+                promotionCodeScopes: z.ZodOptional<z.ZodArray<z.ZodEnum<{
+                    one_time: "one_time";
+                    subscription_initial: "subscription_initial";
+                }>>>;
+                promotionMinimumReferenceMinor: z.ZodOptional<z.ZodNumber>;
+                promotionCodeValidTo: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+                promotionBenefitKind: z.ZodOptional<z.ZodEnum<{
+                    target_percentage: "target_percentage";
+                    percentage: "percentage";
+                    fixed_amount: "fixed_amount";
+                    free_shipping: "free_shipping";
+                }>>;
+                promotionBenefitValueBps: z.ZodOptional<z.ZodNumber>;
+                promotionBenefitValueMinor: z.ZodOptional<z.ZodNumber>;
+                floorApplied: z.ZodOptional<z.ZodBoolean>;
+            }, z.core.$strict>>;
+            codeRejections: z.ZodOptional<z.ZodArray<z.ZodObject<{
+                code: z.ZodString;
+                reason: z.ZodEnum<{
+                    scope_not_applicable: "scope_not_applicable";
+                    not_recognized: "not_recognized";
+                    already_used: "already_used";
+                    not_eligible: "not_eligible";
+                    expired: "expired";
+                    better_price_exists: "better_price_exists";
+                }>;
+            }, z.core.$strict>>>;
+            codeRejectionDetails: z.ZodOptional<z.ZodArray<z.ZodDiscriminatedUnion<[z.ZodObject<{
+                code: z.ZodString;
+                reason: z.ZodLiteral<"scope_not_applicable">;
+                allowedScopes: z.ZodArray<z.ZodEnum<{
+                    one_time: "one_time";
+                    subscription_initial: "subscription_initial";
+                }>>;
+            }, z.core.$strict>, z.ZodObject<{
+                code: z.ZodString;
+                reason: z.ZodLiteral<"minimum_not_met">;
+                minimumReferenceMinor: z.ZodNumber;
+            }, z.core.$strict>, z.ZodObject<{
+                code: z.ZodString;
+                reason: z.ZodLiteral<"not_yet_active">;
+                validFrom: z.ZodString;
+            }, z.core.$strict>, z.ZodObject<{
+                code: z.ZodString;
+                reason: z.ZodLiteral<"global_limit_reached">;
+            }, z.core.$strict>], "reason">>>;
+            pricingComponents: z.ZodOptional<z.ZodArray<z.ZodObject<{
+                scope: z.ZodEnum<{
+                    line: "line";
+                    order: "order";
+                }>;
+                componentType: z.ZodEnum<{
+                    bundle: "bundle";
+                    base_unit: "base_unit";
+                    mode_discount: "mode_discount";
+                    qty_tier: "qty_tier";
+                    promo: "promo";
+                    loyalty: "loyalty";
+                    shipping: "shipping";
+                }>;
+                amountMinor: z.ZodNumber;
+                reasonCode: z.ZodString;
+                reasonPayload: z.ZodDefault<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+            }, z.core.$strict>>>;
+            context: z.ZodOptional<Context>;
+            subtotalGross: z.ZodObject<{
+                amountMinor: z.ZodNumber;
+                currency: z.ZodType<string, unknown, z.core.$ZodTypeInternals<string, unknown>>;
+            }, z.core.$strip>;
+            discountTotalGross: z.ZodObject<{
+                amountMinor: z.ZodNumber;
+                currency: z.ZodType<string, unknown, z.core.$ZodTypeInternals<string, unknown>>;
+            }, z.core.$strip>;
+            shippingGross: z.ZodOptional<z.ZodObject<{
+                amountMinor: z.ZodNumber;
+                currency: z.ZodType<string, unknown, z.core.$ZodTypeInternals<string, unknown>>;
+            }, z.core.$strip>>;
+            shippingDiscountGross: z.ZodOptional<z.ZodObject<{
+                amountMinor: z.ZodNumber;
+                currency: z.ZodType<string, unknown, z.core.$ZodTypeInternals<string, unknown>>;
+            }, z.core.$strip>>;
+            totalGross: z.ZodObject<{
+                amountMinor: z.ZodNumber;
+                currency: z.ZodType<string, unknown, z.core.$ZodTypeInternals<string, unknown>>;
+            }, z.core.$strip>;
+            netTotal: z.ZodObject<{
+                amountMinor: z.ZodNumber;
+                currency: z.ZodType<string, unknown, z.core.$ZodTypeInternals<string, unknown>>;
+            }, z.core.$strip>;
+            taxTotal: z.ZodObject<{
+                amountMinor: z.ZodNumber;
+                currency: z.ZodType<string, unknown, z.core.$ZodTypeInternals<string, unknown>>;
+            }, z.core.$strip>;
+        }, z.core.$strip>;
+        promotionAcceptanceToken: z.ZodOptional<z.ZodString>;
+    }, z.core.$strict>;
+    createQuoteBatchResponseSchema: z.ZodObject<{
+        contractVersion: z.ZodLiteral<"commerce.v0">;
+        quotes: z.ZodArray<z.ZodObject<{
+            currency: z.ZodType<string, unknown, z.core.$ZodTypeInternals<string, unknown>>;
+            taxIncluded: z.ZodLiteral<true>;
+            lines: z.ZodArray<z.ZodObject<{
+                sku: z.ZodString;
+                productSlug: z.ZodType<string, unknown, z.core.$ZodTypeInternals<string, unknown>>;
+                quantity: z.ZodNumber;
+                unitPriceGross: z.ZodObject<{
+                    amountMinor: z.ZodNumber;
+                    currency: z.ZodType<string, unknown, z.core.$ZodTypeInternals<string, unknown>>;
+                }, z.core.$strip>;
+                lineSubtotalGross: z.ZodObject<{
+                    amountMinor: z.ZodNumber;
+                    currency: z.ZodType<string, unknown, z.core.$ZodTypeInternals<string, unknown>>;
+                }, z.core.$strip>;
+                tax: z.ZodObject<{
+                    included: z.ZodLiteral<true>;
+                    country: z.ZodString;
+                    category: z.ZodString;
+                    vatRateBps: z.ZodNumber;
+                    legalBasis: z.ZodString;
+                    netAmount: z.ZodObject<{
+                        amountMinor: z.ZodNumber;
+                        currency: z.ZodType<string, unknown, z.core.$ZodTypeInternals<string, unknown>>;
+                    }, z.core.$strip>;
+                    vatAmount: z.ZodObject<{
+                        amountMinor: z.ZodNumber;
+                        currency: z.ZodType<string, unknown, z.core.$ZodTypeInternals<string, unknown>>;
+                    }, z.core.$strip>;
+                    grossAmount: z.ZodObject<{
+                        amountMinor: z.ZodNumber;
+                        currency: z.ZodType<string, unknown, z.core.$ZodTypeInternals<string, unknown>>;
+                    }, z.core.$strip>;
+                }, z.core.$strip>;
+                pricingComponents: z.ZodOptional<z.ZodArray<z.ZodObject<{
+                    scope: z.ZodEnum<{
+                        line: "line";
+                        order: "order";
+                    }>;
+                    componentType: z.ZodEnum<{
+                        bundle: "bundle";
+                        base_unit: "base_unit";
+                        mode_discount: "mode_discount";
+                        qty_tier: "qty_tier";
+                        promo: "promo";
+                        loyalty: "loyalty";
+                        shipping: "shipping";
+                    }>;
+                    amountMinor: z.ZodNumber;
+                    reasonCode: z.ZodString;
+                    reasonPayload: z.ZodDefault<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+                }, z.core.$strict>>>;
+                catalogFacts: z.ZodOptional<z.ZodUnion<readonly [z.ZodObject<{
+                    skuId: z.ZodString;
+                    documentRevisionId: z.ZodString;
+                    documentDigest: z.ZodString;
+                    basePriceEntryId: z.ZodString;
+                    atTime: z.ZodString;
+                    currency: z.ZodString;
+                    resolvedUnitAmountMinor: z.ZodNumber;
+                    resolvedLineAmountMinor: z.ZodNumber;
+                    baseUnitAmountMinor: z.ZodNumber;
+                    version: z.ZodLiteral<"catalog_facts_v1">;
+                    resolvedPriceEntryId: z.ZodString;
+                    mode: z.ZodEnum<{
+                        subscription: "subscription";
+                        one_time: "one_time";
+                    }>;
+                }, z.core.$strict>, z.ZodObject<{
+                    skuId: z.ZodString;
+                    documentRevisionId: z.ZodString;
+                    documentDigest: z.ZodString;
+                    basePriceEntryId: z.ZodString;
+                    atTime: z.ZodString;
+                    currency: z.ZodString;
+                    resolvedUnitAmountMinor: z.ZodNumber;
+                    resolvedLineAmountMinor: z.ZodNumber;
+                    baseUnitAmountMinor: z.ZodNumber;
+                    version: z.ZodLiteral<"catalog_facts_v2">;
+                    policyRevisionId: z.ZodString;
+                    policyDigest: z.ZodString;
+                    mode: z.ZodLiteral<"subscription">;
+                }, z.core.$strict>]>>;
+            }, z.core.$strip>>;
+            discounts: z.ZodArray<z.ZodObject<{
+                promotionId: z.ZodString;
+                code: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+                label: z.ZodOptional<z.ZodString>;
+                appliesTo: z.ZodEnum<{
+                    line: "line";
+                    shipping: "shipping";
+                    order_total: "order_total";
+                }>;
+                amountOffMinor: z.ZodNumber;
+                reasonCode: z.ZodString;
+                customerSemantic: z.ZodOptional<z.ZodEnum<{
+                    first_purchase_10: "first_purchase_10";
+                    first_subscription_50: "first_subscription_50";
+                    bundle_5: "bundle_5";
+                }>>;
+                promotionEngineVersion: z.ZodOptional<z.ZodLiteral<"promotion-engine.v2">>;
+                promotionCodeId: z.ZodOptional<z.ZodString>;
+                promotionCodeRevision: z.ZodOptional<z.ZodNumber>;
+                promotionDefinitionFingerprint: z.ZodOptional<z.ZodString>;
+                promotionCodeScopes: z.ZodOptional<z.ZodArray<z.ZodEnum<{
+                    one_time: "one_time";
+                    subscription_initial: "subscription_initial";
+                }>>>;
+                promotionMinimumReferenceMinor: z.ZodOptional<z.ZodNumber>;
+                promotionCodeValidTo: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+                promotionBenefitKind: z.ZodOptional<z.ZodEnum<{
+                    target_percentage: "target_percentage";
+                    percentage: "percentage";
+                    fixed_amount: "fixed_amount";
+                    free_shipping: "free_shipping";
+                }>>;
+                promotionBenefitValueBps: z.ZodOptional<z.ZodNumber>;
+                promotionBenefitValueMinor: z.ZodOptional<z.ZodNumber>;
+                floorApplied: z.ZodOptional<z.ZodBoolean>;
+            }, z.core.$strict>>;
+            codeRejections: z.ZodOptional<z.ZodArray<z.ZodObject<{
+                code: z.ZodString;
+                reason: z.ZodEnum<{
+                    scope_not_applicable: "scope_not_applicable";
+                    not_recognized: "not_recognized";
+                    already_used: "already_used";
+                    not_eligible: "not_eligible";
+                    expired: "expired";
+                    better_price_exists: "better_price_exists";
+                }>;
+            }, z.core.$strict>>>;
+            codeRejectionDetails: z.ZodOptional<z.ZodArray<z.ZodDiscriminatedUnion<[z.ZodObject<{
+                code: z.ZodString;
+                reason: z.ZodLiteral<"scope_not_applicable">;
+                allowedScopes: z.ZodArray<z.ZodEnum<{
+                    one_time: "one_time";
+                    subscription_initial: "subscription_initial";
+                }>>;
+            }, z.core.$strict>, z.ZodObject<{
+                code: z.ZodString;
+                reason: z.ZodLiteral<"minimum_not_met">;
+                minimumReferenceMinor: z.ZodNumber;
+            }, z.core.$strict>, z.ZodObject<{
+                code: z.ZodString;
+                reason: z.ZodLiteral<"not_yet_active">;
+                validFrom: z.ZodString;
+            }, z.core.$strict>, z.ZodObject<{
+                code: z.ZodString;
+                reason: z.ZodLiteral<"global_limit_reached">;
+            }, z.core.$strict>], "reason">>>;
+            pricingComponents: z.ZodOptional<z.ZodArray<z.ZodObject<{
+                scope: z.ZodEnum<{
+                    line: "line";
+                    order: "order";
+                }>;
+                componentType: z.ZodEnum<{
+                    bundle: "bundle";
+                    base_unit: "base_unit";
+                    mode_discount: "mode_discount";
+                    qty_tier: "qty_tier";
+                    promo: "promo";
+                    loyalty: "loyalty";
+                    shipping: "shipping";
+                }>;
+                amountMinor: z.ZodNumber;
+                reasonCode: z.ZodString;
+                reasonPayload: z.ZodDefault<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+            }, z.core.$strict>>>;
+            context: z.ZodOptional<Context>;
+            subtotalGross: z.ZodObject<{
+                amountMinor: z.ZodNumber;
+                currency: z.ZodType<string, unknown, z.core.$ZodTypeInternals<string, unknown>>;
+            }, z.core.$strip>;
+            discountTotalGross: z.ZodObject<{
+                amountMinor: z.ZodNumber;
+                currency: z.ZodType<string, unknown, z.core.$ZodTypeInternals<string, unknown>>;
+            }, z.core.$strip>;
+            shippingGross: z.ZodOptional<z.ZodObject<{
+                amountMinor: z.ZodNumber;
+                currency: z.ZodType<string, unknown, z.core.$ZodTypeInternals<string, unknown>>;
+            }, z.core.$strip>>;
+            shippingDiscountGross: z.ZodOptional<z.ZodObject<{
+                amountMinor: z.ZodNumber;
+                currency: z.ZodType<string, unknown, z.core.$ZodTypeInternals<string, unknown>>;
+            }, z.core.$strip>>;
+            totalGross: z.ZodObject<{
+                amountMinor: z.ZodNumber;
+                currency: z.ZodType<string, unknown, z.core.$ZodTypeInternals<string, unknown>>;
+            }, z.core.$strip>;
+            netTotal: z.ZodObject<{
+                amountMinor: z.ZodNumber;
+                currency: z.ZodType<string, unknown, z.core.$ZodTypeInternals<string, unknown>>;
+            }, z.core.$strip>;
+            taxTotal: z.ZodObject<{
+                amountMinor: z.ZodNumber;
+                currency: z.ZodType<string, unknown, z.core.$ZodTypeInternals<string, unknown>>;
+            }, z.core.$strip>;
+        }, z.core.$strip>>;
+    }, z.core.$strip>;
+    publicCreateQuoteBatchResponseSchema: z.ZodObject<{
+        contractVersion: z.ZodLiteral<"commerce.v0">;
+        quotes: z.ZodArray<z.ZodObject<{
+            currency: z.ZodType<string, unknown, z.core.$ZodTypeInternals<string, unknown>>;
+            taxIncluded: z.ZodLiteral<true>;
+            lines: z.ZodArray<z.ZodObject<{
+                sku: z.ZodString;
+                productSlug: z.ZodType<string, unknown, z.core.$ZodTypeInternals<string, unknown>>;
+                quantity: z.ZodNumber;
+                unitPriceGross: z.ZodObject<{
+                    amountMinor: z.ZodNumber;
+                    currency: z.ZodType<string, unknown, z.core.$ZodTypeInternals<string, unknown>>;
+                }, z.core.$strip>;
+                lineSubtotalGross: z.ZodObject<{
+                    amountMinor: z.ZodNumber;
+                    currency: z.ZodType<string, unknown, z.core.$ZodTypeInternals<string, unknown>>;
+                }, z.core.$strip>;
+                tax: z.ZodObject<{
+                    included: z.ZodLiteral<true>;
+                    country: z.ZodString;
+                    category: z.ZodString;
+                    vatRateBps: z.ZodNumber;
+                    legalBasis: z.ZodString;
+                    netAmount: z.ZodObject<{
+                        amountMinor: z.ZodNumber;
+                        currency: z.ZodType<string, unknown, z.core.$ZodTypeInternals<string, unknown>>;
+                    }, z.core.$strip>;
+                    vatAmount: z.ZodObject<{
+                        amountMinor: z.ZodNumber;
+                        currency: z.ZodType<string, unknown, z.core.$ZodTypeInternals<string, unknown>>;
+                    }, z.core.$strip>;
+                    grossAmount: z.ZodObject<{
+                        amountMinor: z.ZodNumber;
+                        currency: z.ZodType<string, unknown, z.core.$ZodTypeInternals<string, unknown>>;
+                    }, z.core.$strip>;
+                }, z.core.$strip>;
+                pricingComponents: z.ZodOptional<z.ZodArray<z.ZodObject<{
+                    scope: z.ZodEnum<{
+                        line: "line";
+                        order: "order";
+                    }>;
+                    componentType: z.ZodEnum<{
+                        bundle: "bundle";
+                        base_unit: "base_unit";
+                        mode_discount: "mode_discount";
+                        qty_tier: "qty_tier";
+                        promo: "promo";
+                        loyalty: "loyalty";
+                        shipping: "shipping";
+                    }>;
+                    amountMinor: z.ZodNumber;
+                    reasonCode: z.ZodString;
+                    reasonPayload: z.ZodDefault<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+                }, z.core.$strict>>>;
+                catalogFacts: z.ZodOptional<z.ZodUnion<readonly [z.ZodObject<{
+                    skuId: z.ZodString;
+                    documentRevisionId: z.ZodString;
+                    documentDigest: z.ZodString;
+                    basePriceEntryId: z.ZodString;
+                    atTime: z.ZodString;
+                    currency: z.ZodString;
+                    resolvedUnitAmountMinor: z.ZodNumber;
+                    resolvedLineAmountMinor: z.ZodNumber;
+                    baseUnitAmountMinor: z.ZodNumber;
+                    version: z.ZodLiteral<"catalog_facts_v1">;
+                    resolvedPriceEntryId: z.ZodString;
+                    mode: z.ZodEnum<{
+                        subscription: "subscription";
+                        one_time: "one_time";
+                    }>;
+                }, z.core.$strict>, z.ZodObject<{
+                    skuId: z.ZodString;
+                    documentRevisionId: z.ZodString;
+                    documentDigest: z.ZodString;
+                    basePriceEntryId: z.ZodString;
+                    atTime: z.ZodString;
+                    currency: z.ZodString;
+                    resolvedUnitAmountMinor: z.ZodNumber;
+                    resolvedLineAmountMinor: z.ZodNumber;
+                    baseUnitAmountMinor: z.ZodNumber;
+                    version: z.ZodLiteral<"catalog_facts_v2">;
+                    policyRevisionId: z.ZodString;
+                    policyDigest: z.ZodString;
+                    mode: z.ZodLiteral<"subscription">;
+                }, z.core.$strict>]>>;
+            }, z.core.$strip>>;
+            discounts: z.ZodArray<z.ZodObject<{
+                promotionId: z.ZodString;
+                code: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+                label: z.ZodOptional<z.ZodString>;
+                appliesTo: z.ZodEnum<{
+                    line: "line";
+                    shipping: "shipping";
+                    order_total: "order_total";
+                }>;
+                amountOffMinor: z.ZodNumber;
+                reasonCode: z.ZodString;
+                customerSemantic: z.ZodOptional<z.ZodEnum<{
+                    first_purchase_10: "first_purchase_10";
+                    first_subscription_50: "first_subscription_50";
+                    bundle_5: "bundle_5";
+                }>>;
+                promotionEngineVersion: z.ZodOptional<z.ZodLiteral<"promotion-engine.v2">>;
+                promotionCodeId: z.ZodOptional<z.ZodString>;
+                promotionCodeRevision: z.ZodOptional<z.ZodNumber>;
+                promotionDefinitionFingerprint: z.ZodOptional<z.ZodString>;
+                promotionCodeScopes: z.ZodOptional<z.ZodArray<z.ZodEnum<{
+                    one_time: "one_time";
+                    subscription_initial: "subscription_initial";
+                }>>>;
+                promotionMinimumReferenceMinor: z.ZodOptional<z.ZodNumber>;
+                promotionCodeValidTo: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+                promotionBenefitKind: z.ZodOptional<z.ZodEnum<{
+                    target_percentage: "target_percentage";
+                    percentage: "percentage";
+                    fixed_amount: "fixed_amount";
+                    free_shipping: "free_shipping";
+                }>>;
+                promotionBenefitValueBps: z.ZodOptional<z.ZodNumber>;
+                promotionBenefitValueMinor: z.ZodOptional<z.ZodNumber>;
+                floorApplied: z.ZodOptional<z.ZodBoolean>;
+            }, z.core.$strict>>;
+            codeRejections: z.ZodOptional<z.ZodArray<z.ZodObject<{
+                code: z.ZodString;
+                reason: z.ZodEnum<{
+                    scope_not_applicable: "scope_not_applicable";
+                    not_recognized: "not_recognized";
+                    already_used: "already_used";
+                    not_eligible: "not_eligible";
+                    expired: "expired";
+                    better_price_exists: "better_price_exists";
+                }>;
+            }, z.core.$strict>>>;
+            codeRejectionDetails: z.ZodOptional<z.ZodArray<z.ZodDiscriminatedUnion<[z.ZodObject<{
+                code: z.ZodString;
+                reason: z.ZodLiteral<"scope_not_applicable">;
+                allowedScopes: z.ZodArray<z.ZodEnum<{
+                    one_time: "one_time";
+                    subscription_initial: "subscription_initial";
+                }>>;
+            }, z.core.$strict>, z.ZodObject<{
+                code: z.ZodString;
+                reason: z.ZodLiteral<"minimum_not_met">;
+                minimumReferenceMinor: z.ZodNumber;
+            }, z.core.$strict>, z.ZodObject<{
+                code: z.ZodString;
+                reason: z.ZodLiteral<"not_yet_active">;
+                validFrom: z.ZodString;
+            }, z.core.$strict>, z.ZodObject<{
+                code: z.ZodString;
+                reason: z.ZodLiteral<"global_limit_reached">;
+            }, z.core.$strict>], "reason">>>;
+            pricingComponents: z.ZodOptional<z.ZodArray<z.ZodObject<{
+                scope: z.ZodEnum<{
+                    line: "line";
+                    order: "order";
+                }>;
+                componentType: z.ZodEnum<{
+                    bundle: "bundle";
+                    base_unit: "base_unit";
+                    mode_discount: "mode_discount";
+                    qty_tier: "qty_tier";
+                    promo: "promo";
+                    loyalty: "loyalty";
+                    shipping: "shipping";
+                }>;
+                amountMinor: z.ZodNumber;
+                reasonCode: z.ZodString;
+                reasonPayload: z.ZodDefault<z.ZodRecord<z.ZodString, z.ZodUnknown>>;
+            }, z.core.$strict>>>;
+            context: z.ZodOptional<Context>;
+            subtotalGross: z.ZodObject<{
+                amountMinor: z.ZodNumber;
+                currency: z.ZodType<string, unknown, z.core.$ZodTypeInternals<string, unknown>>;
+            }, z.core.$strip>;
+            discountTotalGross: z.ZodObject<{
+                amountMinor: z.ZodNumber;
+                currency: z.ZodType<string, unknown, z.core.$ZodTypeInternals<string, unknown>>;
+            }, z.core.$strip>;
+            shippingGross: z.ZodOptional<z.ZodObject<{
+                amountMinor: z.ZodNumber;
+                currency: z.ZodType<string, unknown, z.core.$ZodTypeInternals<string, unknown>>;
+            }, z.core.$strip>>;
+            shippingDiscountGross: z.ZodOptional<z.ZodObject<{
+                amountMinor: z.ZodNumber;
+                currency: z.ZodType<string, unknown, z.core.$ZodTypeInternals<string, unknown>>;
+            }, z.core.$strip>>;
+            totalGross: z.ZodObject<{
+                amountMinor: z.ZodNumber;
+                currency: z.ZodType<string, unknown, z.core.$ZodTypeInternals<string, unknown>>;
+            }, z.core.$strip>;
+            netTotal: z.ZodObject<{
+                amountMinor: z.ZodNumber;
+                currency: z.ZodType<string, unknown, z.core.$ZodTypeInternals<string, unknown>>;
+            }, z.core.$strip>;
+            taxTotal: z.ZodObject<{
+                amountMinor: z.ZodNumber;
+                currency: z.ZodType<string, unknown, z.core.$ZodTypeInternals<string, unknown>>;
+            }, z.core.$strip>;
+        }, z.core.$strip>>;
+    }, z.core.$strip>;
+};
+```
+## dist/pricing/quoteShippingPromotions.d.ts
+
+```ts
+import type { ShippingTerms } from "../shipping/index.js";
+import type { ResolvedAcquisitionTerms } from "./contracts/acquisitionTerms.js";
+import type { CreateQuoteRequest } from "./contracts/quote.js";
+import type { CreateQuoteOptions } from "./quotePorts.js";
+import type { QuotePromotionResult } from "./dbBackedCommerceQuotePort.js";
+export interface QuoteShippingPromotionInput<Request extends CreateQuoteRequest> {
+    request: Request;
+    options?: CreateQuoteOptions;
+    regionCode: string;
+    currency: string;
+    referenceProductMinor: number;
+    subtotalGrossMinor: number;
+    atTime: string;
+}
+export interface QuoteShippingPromotionResult extends QuotePromotionResult {
+    shippingGrossMinor: number;
+    hasShipping: boolean;
+    shippingTerms?: ShippingTerms;
+    acquisitionTerms?: ResolvedAcquisitionTerms;
+}
+```
+## dist/pricing/subscriptionPricePolicy.d.ts
+
+```ts
+import { type SubscriptionPricePolicySemantics, type SubscriptionPricePolicyCanonicalInput, type SubscriptionPricePolicyRevision, type SubscriptionPricePolicyDigestRefusal } from "./contracts/index.js";
+import { z } from "./validation.js";
+export declare const subscriptionPricePolicySemanticsSchema: z.ZodObject<{
+    discountBps: z.ZodNumber;
+    roundingQuantumMinor: z.ZodNumber;
+    roundingRule: z.ZodEnum<{
+        FLOOR_TO_QUANTUM: "FLOOR_TO_QUANTUM";
+    }>;
+}, z.core.$strict>;
+export declare const subscriptionPricePolicyCanonicalInputSchema: z.ZodObject<{
+    discountBps: z.ZodNumber;
+    roundingQuantumMinor: z.ZodNumber;
+    roundingRule: z.ZodEnum<{
+        FLOOR_TO_QUANTUM: "FLOOR_TO_QUANTUM";
+    }>;
+    id: z.ZodGUID;
+    revisionNo: z.ZodNumber;
+    priceListId: z.ZodGUID;
+    regionCode: z.ZodString;
+    currency: z.ZodString;
+    channel: z.ZodString;
+    effectiveFrom: z.ZodString;
+    effectiveTo: z.ZodNullable<z.ZodString>;
+}, z.core.$strict>;
+export declare const subscriptionPricePolicyRevisionSchema: z.ZodObject<{
+    discountBps: z.ZodNumber;
+    roundingQuantumMinor: z.ZodNumber;
+    roundingRule: z.ZodEnum<{
+        FLOOR_TO_QUANTUM: "FLOOR_TO_QUANTUM";
+    }>;
+    id: z.ZodGUID;
+    revisionNo: z.ZodNumber;
+    priceListId: z.ZodGUID;
+    regionCode: z.ZodString;
+    currency: z.ZodString;
+    channel: z.ZodString;
+    effectiveFrom: z.ZodString;
+    effectiveTo: z.ZodNullable<z.ZodString>;
+    digest: z.ZodString;
+}, z.core.$strict>;
+export declare class SubscriptionPricePolicyDigestError extends Error {
+    readonly code: SubscriptionPricePolicyDigestRefusal;
+    constructor(code: SubscriptionPricePolicyDigestRefusal);
+}
+/** The exact tuple whose canonical digest is persisted with a policy revision. */
+export declare function canonicalSubscriptionPricePolicyTuple(policy: SubscriptionPricePolicyCanonicalInput | SubscriptionPricePolicyRevision): string;
+/** Hashes application-owned canonical UTF-8 bytes; never a database JSON rendering. */
+export declare function digestSubscriptionPricePolicy(policy: SubscriptionPricePolicyCanonicalInput | SubscriptionPricePolicyRevision): Promise<string>;
+/** Parses a persisted revision and refuses a digest outside its canonical UTF-8 tuple. */
+export declare function assertSubscriptionPricePolicyDigest(value: unknown): Promise<SubscriptionPricePolicyRevision>;
+/** Resolves a subscription unit price from a base unit price and a policy revision. */
+export declare function deriveSubscriptionUnitPrice(baseUnitAmountMinor: number, semantics: SubscriptionPricePolicySemantics | SubscriptionPricePolicyCanonicalInput | SubscriptionPricePolicyRevision): number;
+```
+## dist/pricing/taxProfileGuard.d.ts
+
+```ts
+import type { CommerceTaxProfile } from "./contracts/money.js";
+export declare function assertSupportedCommerceTaxProfile(taxProfile: CommerceTaxProfile, supportedTaxProfiles: readonly CommerceTaxProfile[]): void;
+```
+## dist/pricing/validation.d.ts
+
+```ts
+import { z } from "zod";
+export { z };
+```
+## dist/shipping/addressCanonical.d.ts
+
+```ts
+import type { CanonicalAddressInput } from "./contracts/address.js";
+export declare function canonicalAddressKey(input: CanonicalAddressInput, defaultCountry: string): string;
+```
+## dist/shipping/addressCanonLookupHandler.d.ts
+
+```ts
+import type { HttpRequest, HttpResponse } from "../http/index.js";
+import type { BffResponder } from "../bff/index.js";
+import type { AddressCanonLookupDeps } from "./addressPorts.js";
+import type { AddressLookupSchemas } from "./addressSchemas.js";
+export declare function createAddressCanonPostalCodeHandler({ lookupPort }: AddressCanonLookupDeps, schemas: AddressLookupSchemas, responder: BffResponder): (req: HttpRequest, res: HttpResponse) => Promise<void>;
+export declare function createAddressCanonLocalitiesHandler({ lookupPort }: AddressCanonLookupDeps, schemas: AddressLookupSchemas, responder: BffResponder): (req: HttpRequest, res: HttpResponse) => Promise<void>;
+export declare function createAddressCanonStreetsHandler({ lookupPort }: AddressCanonLookupDeps, schemas: AddressLookupSchemas, responder: BffResponder): (req: HttpRequest, res: HttpResponse) => Promise<void>;
+```
+## dist/shipping/addressPorts.d.ts
+
+```ts
+import type { AddressCanonLocalitiesLookupRequest, AddressCanonLocalitiesLookupResponse, AddressCanonPostalCodeLookupRequest, AddressCanonPostalCodeLookupResponse, AddressCanonStreetsLookupRequest, AddressCanonStreetsLookupResponse } from "./contracts/address.js";
+export interface AddressCanonLookupPort {
+    lookupPostalCode(request: AddressCanonPostalCodeLookupRequest): Promise<AddressCanonPostalCodeLookupResponse>;
+    searchLocalities(request: AddressCanonLocalitiesLookupRequest): Promise<AddressCanonLocalitiesLookupResponse>;
+    listStreets(request: AddressCanonStreetsLookupRequest): Promise<AddressCanonStreetsLookupResponse>;
+}
+import type { HttpRequest } from "../http/index.js";
+import type { CustomerAddressesResponse, CustomerAddressUpsertRequest, CustomerAddressDeleteRequest } from "./contracts/address.js";
+export interface AddressCanonLookupDeps {
+    lookupPort: AddressCanonLookupPort;
+}
+export interface CustomerAddressBookPort {
+    getAddressBook(userId: string): Promise<CustomerAddressesResponse | null>;
+}
+export interface CustomerAddressMutationPort {
+    upsertAddress(userId: string, input: CustomerAddressUpsertRequest): Promise<CustomerAddressesResponse | null>;
+    deleteAddress(userId: string, input: CustomerAddressDeleteRequest): Promise<CustomerAddressesResponse | null>;
+}
+export interface CustomerAddressesDeps {
+    addressBookPort: CustomerAddressBookPort;
+    addressMutationPort?: CustomerAddressMutationPort;
+    authenticateUser: (req: HttpRequest) => Promise<{
+        ok: true;
+        userId: string;
+    } | {
+        ok: false;
+        code: "UNAUTHORIZED";
+        message: string;
+    }>;
+}
+type Row = Record<string, unknown>;
+export interface CustomerAddressReadStore {
+    readAddresses(clientId: string): Promise<Row[]>;
+    readOrdererProfiles(clientId: string): Promise<Row[]>;
+    addressUsedByActiveSubscription(clientId: string, addressId: string): Promise<boolean>;
+    findCanonicalAddressId(clientId: string, canonicalKey: string): Promise<string | null>;
+    clearDefaultAddress(clientId: string, kind: string, updatedAt: string): Promise<void>;
+}
+export {};
+```
+## dist/shipping/addressSchemas.d.ts
+
+```ts
+import type { AddressCanonPostalCodeLookupRequest, AddressCanonPostalCodeLookupResponse, AddressCanonLocalitiesLookupRequest, AddressCanonLocalitiesLookupResponse, AddressCanonStreetsLookupRequest, AddressCanonStreetsLookupResponse, CustomerAddressesRequest, CustomerAddressesResponse, CustomerAddressUpsertRequest, CustomerAddressDeleteRequest } from "./contracts/address.js";
+type Schema<T> = {
+    safeParse(input: unknown): {
+        success: true;
+        data: T;
+    } | {
+        success: false;
+        error: {
+            flatten(): unknown;
+        };
+    };
+};
+/** Host-owned format, source and geographic validation. */
+export interface AddressLookupSchemas {
+    addressCanonPostalCodeLookupRequestSchema: Schema<AddressCanonPostalCodeLookupRequest>;
+    addressCanonPostalCodeLookupResponseSchema: Schema<AddressCanonPostalCodeLookupResponse>;
+    addressCanonLocalitiesLookupRequestSchema: Schema<AddressCanonLocalitiesLookupRequest>;
+    addressCanonLocalitiesLookupResponseSchema: Schema<AddressCanonLocalitiesLookupResponse>;
+    addressCanonStreetsLookupRequestSchema: Schema<AddressCanonStreetsLookupRequest>;
+    addressCanonStreetsLookupResponseSchema: Schema<AddressCanonStreetsLookupResponse>;
+}
+/** Host-owned validation and mutation-conflict identity. */
+export interface CustomerAddressSchemas {
+    customerAddressesRequestSchema: Schema<CustomerAddressesRequest>;
+    customerAddressesResponseSchema: Schema<CustomerAddressesResponse>;
+    customerAddressUpsertRequestSchema: Schema<CustomerAddressUpsertRequest>;
+    customerAddressDeleteRequestSchema: Schema<CustomerAddressDeleteRequest>;
+    isMutationConflict(error: unknown): error is Error;
+}
+export {};
+```
+## dist/shipping/adminShippingRateHandler.d.ts
+
+```ts
+import type { HttpRequest, HttpResponse } from "../http/index.js";
+import type { BffResponder } from "../bff/index.js";
+import type { AdminShippingRateHandlerDeps, ShippingRateHandlerSchemas } from "./shippingRatePorts.js";
+export declare function createAdminShippingRateHandler({ dataPort, authorizeAdmin, resolveAdmin, }: AdminShippingRateHandlerDeps, schemas: ShippingRateHandlerSchemas, responder: BffResponder): (req: HttpRequest, res: HttpResponse) => Promise<void>;
+```
+## dist/shipping/bindings.d.ts
+
+```ts
+import type { ReadinessReport, SchemaObservation } from "@openlup/core/readiness";
+import type { BffResponder } from "../bff/index.js";
+import type { CustomerAddressBookPort, CustomerAddressMutationPort, CustomerAddressesDeps } from "./addressPorts.js";
+import type { CustomerAddressSchemas } from "./addressSchemas.js";
+import type { DeliverySelectionPort } from "./deliverySelectionPort.js";
+import type { DeliverySelectionSchemas } from "./handlerSchemas.js";
+import type { PickupPointSearchPort } from "./pickupPointSearchPort.js";
+import type { AdminShippingRateHandlerDeps, ShippingRateDataPort, ShippingRateHandlerSchemas } from "./shippingRatePorts.js";
+import { createCustomerAddressesHandler } from "./customerAddressesHandler.js";
+import { createAdminShippingRateHandler } from "./adminShippingRateHandler.js";
+import { createDeliveryOptionsHandler, createPickupPointSearchHandler, createPickupPointValidationHandler } from "./deliverySelectionHandler.js";
+type Store = {
+    addressBookPort?: CustomerAddressBookPort;
+    addressMutationPort?: CustomerAddressMutationPort;
+    shippingRateDataPort?: ShippingRateDataPort;
+};
+export interface ShippingBindingDependencies {
+    dataKind: string;
+    createManagedStore?: () => Store | null;
+    /** Core report for the selected shipping contribution, observed by the host. */
+    nativeRateReadiness?: ReadinessReport;
+    /** Same-database Core observation of the applied shipping seed and required objects. */
+    nativeRateSchema?: SchemaObservation;
+    nativeStore?: Omit<Store, "addressMutationPort"> | null;
+    responder: BffResponder;
+    selection?: {
+        port: DeliverySelectionPort;
+        searchPort: PickupPointSearchPort;
+        schemas: DeliverySelectionSchemas;
+    };
+    addresses?: {
+        schemas: CustomerAddressSchemas;
+        authenticateUser: CustomerAddressesDeps["authenticateUser"];
+        requireWrites: boolean;
+    };
+    rate?: {
+        schemas: ShippingRateHandlerSchemas;
+        authorizeAdmin: AdminShippingRateHandlerDeps["authorizeAdmin"];
+        resolveAdmin: AdminShippingRateHandlerDeps["resolveAdmin"];
+    };
+}
+export interface ShippingBindings {
+    store: Store;
+    handlers: {
+        options: ReturnType<typeof createDeliveryOptionsHandler> | null;
+        search: ReturnType<typeof createPickupPointSearchHandler> | null;
+        validate: ReturnType<typeof createPickupPointValidationHandler> | null;
+        addresses: ReturnType<typeof createCustomerAddressesHandler> | null;
+        rate: ReturnType<typeof createAdminShippingRateHandler> | null;
+    };
+    readiness: {
+        ready: boolean;
+        reason: string | null;
+    };
+    unsupported: {
+        addressWrites: string | null;
+        flatRateSave: string | null;
+    };
+}
+/** Explicit selected stores and host validation; importing this module activates nothing. */
+export declare function createShippingBindings(deps: ShippingBindingDependencies): ShippingBindings;
+export {};
+```
+## dist/shipping/contracts/address.d.ts
+
+```ts
+export interface CanonicalAddressInput {
+    clientId?: string | null;
+    kind?: string | null;
+    line1: string;
+    line2?: string | null;
+    city: string;
+    postalCode: string;
+    country?: string | null;
+}
+export interface AddressCanonSource {
+    sourceKind: string;
+    status: "active" | "inactive" | "disabled_pending_license";
+    displayName: string;
+    officialUrl: string;
+    sourceRevision: string | null;
+    sourceUpdatedAt: string | null;
+}
+export interface AddressCanonLocalityCandidate {
+    localityId: string;
+    countryCode: string;
+    name: string;
+    tercCode: string;
+    simcCode: string;
+    municipalityName: string | null;
+    municipalityTercCode: string | null;
+    countyName: string | null;
+    voivodeshipName: string | null;
+    sources: AddressCanonSource[];
+    postalCode: string | null;
+    confidence: "exact" | "ambiguous" | "partial";
+    resolutionLevel: "postal_code" | "locality" | "street" | "address_point";
+}
+export interface AddressCanonStreet {
+    streetId: string;
+    localityId: string;
+    name: string;
+    ulicCode: string | null;
+    sources: AddressCanonSource[];
+}
+export interface AddressCanonPostalCodeLookupRequest {
+    postalCode: string;
+    limit: number;
+}
+export interface AddressCanonLocalitiesLookupRequest {
+    q: string;
+    limit: number;
+}
+export interface AddressCanonStreetsLookupRequest {
+    localityId: string;
+    q?: string;
+    limit: number;
+}
+export interface AddressCanonPostalCodeLookupResponse {
+    contractVersion: "address.canon.v1";
+    query: {
+        postalCode: string;
+    };
+    resolutionLevel: "postal_code";
+    candidates: AddressCanonLocalityCandidate[];
+    sources: AddressCanonSource[];
+}
+export interface AddressCanonLocalitiesLookupResponse {
+    contractVersion: "address.canon.v1";
+    query: {
+        q: string;
+    };
+    resolutionLevel: "locality";
+    candidates: AddressCanonLocalityCandidate[];
+    sources: AddressCanonSource[];
+}
+export interface AddressCanonStreetsLookupResponse {
+    contractVersion: "address.canon.v1";
+    query: {
+        localityId: string;
+        q: string | null;
+    };
+    resolutionLevel: "street";
+    streets: AddressCanonStreet[];
+    sources: AddressCanonSource[];
+}
+export type CustomerAddressKind = "shipping" | "billing" | "both";
+export interface CustomerAddress {
+    addressId: string;
+    kind: CustomerAddressKind;
+    label: string | null;
+    recipientName: string | null;
+    contactPhone: string | null;
+    companyName: string | null;
+    taxId: string | null;
+    line1: string;
+    line2: string | null;
+    city: string;
+    postalCode: string;
+    country: string;
+    isDefault: boolean;
+    deliveryNotes: string | null;
+    courierInstructions: string | null;
+    lastUsedAt: string | null;
+    createdAt: string;
+    updatedAt: string;
+}
+export interface CustomerOrdererProfile {
+    profileId: string;
+    label: string | null;
+    fullName: string;
+    email: string;
+    phone: string | null;
+    companyName: string | null;
+    taxId: string | null;
+    companyVerificationLevel?: "registry_verified" | "provider_verified" | "manual_unverified" | "invalid" | null;
+    companyIdentitySource?: string | null;
+    companyIdentityEvidenceHash?: string | null;
+    isDefault: boolean;
+    createdAt: string;
+    updatedAt: string;
+}
+export type CustomerAddressesRequest = Record<string, never>;
+export interface CustomerAddressesResponse {
+    contractVersion: "customer.addresses.v1";
+    ordererProfiles: CustomerOrdererProfile[];
+    addresses: CustomerAddress[];
+}
+export interface CustomerAddressUpsertRequest {
+    idempotencyKey: string;
+    addressId?: string;
+    kind: CustomerAddressKind;
+    label?: string | null;
+    recipientName?: string | null;
+    contactPhone?: string | null;
+    companyName?: string | null;
+    taxId?: string | null;
+    line1: string;
+    line2?: string | null;
+    city: string;
+    postalCode: string;
+    country?: string;
+    isDefault?: boolean;
+    deliveryNotes?: string | null;
+    courierInstructions?: string | null;
+}
+export interface CustomerAddressDeleteRequest {
+    idempotencyKey: string;
+    addressId: string;
+}
+```
+## dist/shipping/contracts/delivery.d.ts
+
+```ts
+export type DeliveryKind = "parcel-locker" | "courier";
+export type DeliveryProviderKind = string;
+export type DeliveryCarrierKind = string;
+export type DeliveryService = string;
+export interface PickupPoint {
+    id: string;
+    provider: DeliveryCarrierKind;
+    name: string;
+    address: {
+        line1: string;
+        postalCode: string;
+        city: string;
+        country: string;
+    };
+}
+export interface DeliveryOption {
+    id: string;
+    kind: DeliveryKind;
+    deliveryKind: DeliveryKind;
+    providerKind: DeliveryProviderKind;
+    carrierKind: DeliveryCarrierKind;
+    carrierCode: string;
+    service: DeliveryService;
+    serviceCode: string;
+    label: string;
+    description: string;
+    pickupPointRequired: boolean;
+    addressRequired: boolean;
+}
+export interface DeliveryOptionsResponse {
+    contractVersion: "shipping.delivery_selection.v1";
+    options: DeliveryOption[];
+}
+export interface PickupPointValidationRequest {
+    pointId: string;
+    carrierKind: DeliveryCarrierKind;
+}
+export interface PickupPointValidationResponse {
+    contractVersion: "shipping.delivery_selection.v1";
+    valid: boolean;
+    pickupPoint: PickupPoint | null;
+}
+export interface PickupPointSearchRequest {
+    carrierKind: DeliveryCarrierKind;
+    latitude?: number;
+    longitude?: number;
+    postalCode?: string;
+    city?: string;
+    query?: string;
+    limit?: number;
+}
+export interface PickupPointSearchResult {
+    id: string;
+    carrierKind: DeliveryCarrierKind;
+    name: string;
+    address: PickupPoint["address"];
+    location: {
+        latitude: number;
+        longitude: number;
+    } | null;
+    locationDescription: string | null;
+    openingHours: string | null;
+    distanceMeters: number | null;
+    pointKind: "locker" | "service_point" | null;
+    appAssisted: boolean;
+}
+export interface PickupPointSearchResponse {
+    contractVersion: "shipping.pickup_point_search.v1";
+    carrierKind: DeliveryCarrierKind;
+    points: PickupPointSearchResult[];
+}
+export type DeliverySelectionSummaryKind = "courier" | "parcel-locker";
+export interface DeliverySelectionSummary {
+    deliveryKind: DeliverySelectionSummaryKind;
+    providerKind: string | null;
+    carrierKind: string | null;
+    carrierCode: string | null;
+    serviceCode: string | null;
+    pickupPoint: {
+        id: string;
+        name: string;
+        address: {
+            line1: string;
+            postalCode: string;
+            city: string;
+            country: string;
+        } | null;
+    } | null;
+    source?: string | null;
+}
+export type DeliverySelectionSourceKey = "shippingDeliveryContact" | "orderDeliveryContactOverride" | "orderDeliveryContact" | "fulfillmentMetadata" | "orderMetadata" | "orderRuntimeFinalize" | "shippingAddressSnapshot" | "addressMetadata";
+export interface DeliverySelectionSources {
+    /** commerce_fulfillment_orders.metadata.selectedDelivery */
+    fulfillmentMetadata?: unknown;
+    /** commerce_orders.metadata.selectedDelivery (and .runtimeFinalize.selectedDelivery) */
+    orderMetadata?: unknown;
+    /** shipping_address_snapshot.selectedDelivery */
+    shippingAddressSnapshot?: unknown;
+    /** addresses.metadata.selectedDelivery */
+    addressMetadata?: unknown;
+}
+export interface DeliverySelectionEvidence {
+    /** The canonical selectedDelivery object, or null when no source carries one. */
+    selection: Record<string, unknown> | null;
+    /** Normalized (trimmed, lowercased) providerKind, or null when absent/blank. */
+    providerKind: string | null;
+    /** Which authoritative source was resolved (priority order), or null. A
+     * canonical contact can be the source even when its selection is invalid. */
+    source: DeliverySelectionSourceKey | null;
+}
+```
+## dist/shipping/contracts/index.d.ts
+
+```ts
+export type { DeliveryKind, DeliveryProviderKind, DeliveryCarrierKind, DeliveryService, PickupPoint, DeliveryOption, DeliveryOptionsResponse, PickupPointValidationRequest, PickupPointValidationResponse, PickupPointSearchRequest, PickupPointSearchResult, PickupPointSearchResponse, } from "./delivery.js";
+export type { CanonicalAddressInput, AddressCanonSource, AddressCanonLocalityCandidate, AddressCanonStreet, AddressCanonPostalCodeLookupRequest, AddressCanonLocalitiesLookupRequest, AddressCanonStreetsLookupRequest, AddressCanonPostalCodeLookupResponse, AddressCanonLocalitiesLookupResponse, AddressCanonStreetsLookupResponse, CustomerAddressKind, CustomerAddress, CustomerOrdererProfile, CustomerAddressesRequest, CustomerAddressesResponse, CustomerAddressUpsertRequest, CustomerAddressDeleteRequest } from "./address.js";
+export type { AdminShippingRateResponse, AdminSetShippingRateRequest, AdminSetShippingRateResponse } from "./shippingRate.js";
+export type { ShippingTerms, ShippingPolicyEntry, ShippingPolicy, ShippingSettings } from "./threshold.js";
+```
+## dist/shipping/contracts/shippingRate.d.ts
+
+```ts
+/** Browser DTOs for the incumbent flat-rate administration API. */
+export interface AdminShippingRateResponse {
+    contractVersion: "commerce.v0";
+    shippingFlatMinor: number;
+}
+export interface AdminSetShippingRateRequest {
+    shippingFlatMinor: number;
+}
+export interface AdminSetShippingRateResponse extends AdminShippingRateResponse {
+    updated: true;
+}
+```
+## dist/shipping/contracts/threshold.d.ts
+
+```ts
+/** Shipping promises selected by an opt-in host policy. Runtime validation is server-only. */
+export interface ShippingTerms {
+    version: "shipping-threshold.v1";
+    currency: string;
+    flatMinor: number;
+    freeThresholdMinor: number;
+}
+export interface ShippingPolicyEntry {
+    enabled: boolean;
+    flatMinor: number;
+    freeThresholdMinor: number;
+    effectiveFrom: string;
+}
+export interface ShippingPolicy {
+    version: "shipping-policy.v1";
+    current: ShippingPolicyEntry | null;
+    scheduled?: ShippingPolicyEntry | null;
+}
+export interface ShippingSettings {
+    legacyFlatMinor: number;
+    policy: ShippingPolicy | null;
+}
+```
+## dist/shipping/customerAddressesHandler.d.ts
+
+```ts
+import type { HttpRequest, HttpResponse } from "../http/index.js";
+import type { BffResponder } from "../bff/index.js";
+import type { CustomerAddressesDeps } from "./addressPorts.js";
+import type { CustomerAddressSchemas } from "./addressSchemas.js";
+export declare function createCustomerAddressesHandler({ addressBookPort, addressMutationPort, authenticateUser, }: CustomerAddressesDeps, schemas: CustomerAddressSchemas, responder: BffResponder): (req: HttpRequest, res: HttpResponse) => Promise<void>;
+```
+## dist/shipping/customerSelfServiceAddressModels.d.ts
+
+```ts
+import type { CanonicalAddressInput, CustomerAddressUpsertRequest, CustomerAddress, CustomerOrdererProfile } from "./contracts/address.js";
+import type { CustomerAddressReadStore } from "./addressPorts.js";
+export declare function readAddresses(store: CustomerAddressReadStore, clientId: string): Promise<CustomerAddress[]>;
+export declare function readOrdererProfiles(store: CustomerAddressReadStore, clientId: string): Promise<CustomerOrdererProfile[]>;
+export declare function addressUsedByActiveSubscription(store: CustomerAddressReadStore, clientId: string, addressId: string): Promise<boolean>;
+export declare function addressRow(clientId: string, input: CustomerAddressUpsertRequest, canonicalAddressKey: (input: CanonicalAddressInput) => string): {
+    client_id: string;
+    kind: import("./contracts/address.js").CustomerAddressKind;
+    label: string | null;
+    recipient_name: string | null;
+    contact_phone: string | null;
+    company_name: string | null;
+    tax_id: string | null;
+    line1: string;
+    line2: string | null;
+    city: string;
+    postal_code: string;
+    country: string | undefined;
+    is_default: boolean;
+    delivery_notes: string | null;
+    courier_instructions: string | null;
+    canonical_key: string;
+    source: string;
+    updated_at: string;
+};
+export declare function findCanonicalAddressId(store: CustomerAddressReadStore, clientId: string, input: CustomerAddressUpsertRequest, canonicalAddressKey: (input: CanonicalAddressInput) => string): Promise<string | null>;
+export declare function clearDefaultAddress(store: CustomerAddressReadStore, clientId: string, kind: string): Promise<void>;
+```
+## dist/shipping/deliverySelectionHandler.d.ts
+
+```ts
+import type { HttpRequest, HttpResponse } from "../http/index.js";
+import type { BffResponder } from "../bff/index.js";
+import type { DeliverySelectionSchemas } from "./handlerSchemas.js";
+import type { DeliverySelectionPort } from "./deliverySelectionPort.js";
+import type { PickupPointSearchPort } from "./pickupPointSearchPort.js";
+export declare const DELIVERY_SELECTION_CONTRACT_VERSION = "shipping.delivery_selection.v1";
+export declare const PICKUP_POINT_SEARCH_CONTRACT_VERSION = "shipping.pickup_point_search.v1";
+export declare function createDeliveryOptionsHandler(port: DeliverySelectionPort, schemas: DeliverySelectionSchemas, responder: BffResponder): (req: HttpRequest, res: HttpResponse) => Promise<void>;
+export declare function createPickupPointSearchHandler(port: PickupPointSearchPort, schemas: DeliverySelectionSchemas, responder: BffResponder): (req: HttpRequest, res: HttpResponse) => Promise<void>;
+export declare function createPickupPointValidationHandler(port: DeliverySelectionPort, schemas: DeliverySelectionSchemas, responder: BffResponder): (req: HttpRequest, res: HttpResponse) => Promise<void>;
+```
+## dist/shipping/deliverySelectionPort.d.ts
+
+```ts
+import type { DeliveryCarrierKind, DeliveryOption, PickupPoint } from "./contracts/index.js";
+export interface DeliverySelectionPort {
+    listOptions(): Promise<DeliveryOption[]>;
+    validatePickupPoint(input: {
+        pointId: string;
+        carrierKind: DeliveryCarrierKind;
+    }): Promise<PickupPoint | null>;
+}
+```
+## dist/shipping/deliverySelectionSummary.d.ts
+
+```ts
+import type { DeliverySelectionSummary } from "./contracts/delivery.js";
+export declare function summarizeDeliverySelection(selection: Record<string, unknown> | null | undefined, source?: string | null): DeliverySelectionSummary | null;
+```
+## dist/shipping/handlerSchemas.d.ts
+
+```ts
+import type { DeliveryOptionsResponse, PickupPointSearchRequest, PickupPointSearchResponse, PickupPointValidationRequest, PickupPointValidationResponse } from "./contracts/index.js";
+type Schema<T> = {
+    safeParse(input: unknown): {
+        success: true;
+        data: T;
+    } | {
+        success: false;
+        error: {
+            flatten(): unknown;
+        };
+    };
+};
+/** The host supplies its existing validators, including provider policy and errors. */
+export interface DeliverySelectionSchemas {
+    deliveryOptionsResponseSchema: Schema<DeliveryOptionsResponse>;
+    pickupPointValidationRequestSchema: Schema<PickupPointValidationRequest>;
+    pickupPointValidationResponseSchema: Schema<PickupPointValidationResponse>;
+    pickupPointSearchRequestSchema: Schema<PickupPointSearchRequest>;
+    pickupPointSearchResponseSchema: Schema<PickupPointSearchResponse>;
+}
+export {};
+```
+## dist/shipping/index.d.ts
+
+```ts
+export type { DeliverySelectionSummaryKind, DeliverySelectionSummary, DeliverySelectionSourceKey, DeliverySelectionSources, DeliverySelectionEvidence, } from "./contracts/delivery.js";
+export type { DeliverySelectionPort } from "./deliverySelectionPort.js";
+export type { PickupPointSearchPort } from "./pickupPointSearchPort.js";
+export type { DeliverySelectionSchemas } from "./handlerSchemas.js";
+export { createDeliveryOptionsHandler, createPickupPointSearchHandler, createPickupPointValidationHandler, DELIVERY_SELECTION_CONTRACT_VERSION, PICKUP_POINT_SEARCH_CONTRACT_VERSION, } from "./deliverySelectionHandler.js";
+export { summarizeDeliverySelection } from "./deliverySelectionSummary.js";
+export { resolveDeliverySelectionEvidence } from "./readDeliverySelectionEvidence.js";
+export type { CanonicalAddressInput } from "./contracts/address.js";
+export type { AddressCanonLookupPort, AddressCanonLookupDeps, CustomerAddressesDeps, CustomerAddressBookPort, CustomerAddressMutationPort, CustomerAddressReadStore } from "./addressPorts.js";
+export type { AddressLookupSchemas, CustomerAddressSchemas } from "./addressSchemas.js";
+export { createAddressCanonPostalCodeHandler, createAddressCanonLocalitiesHandler, createAddressCanonStreetsHandler } from "./addressCanonLookupHandler.js";
+export { createCustomerAddressesHandler } from "./customerAddressesHandler.js";
+export { canonicalAddressKey } from "./addressCanonical.js";
+export { readAddresses, readOrdererProfiles, addressUsedByActiveSubscription, addressRow, findCanonicalAddressId, clearDefaultAddress } from "./customerSelfServiceAddressModels.js";
+export type { AdminShippingRateResponse, AdminSetShippingRateRequest, AdminSetShippingRateResponse } from "./contracts/shippingRate.js";
+export { createAdminShippingRateHandler } from "./adminShippingRateHandler.js";
+export type { AdminShippingRateHandlerDeps, ShippingRateDataPort, ShippingRateHandlerSchemas } from "./shippingRatePorts.js";
+export { createShippingBindings, type ShippingBindingDependencies, type ShippingBindings } from "./bindings.js";
+export type { ShippingTerms, ShippingPolicyEntry, ShippingPolicy, ShippingSettings } from "./contracts/threshold.js";
+export { shippingTermsSchema, shippingPolicySchema, parseShippingTerms, hasShippingTerms, normalizeShippingPolicy, resolveShippingPolicy, resolveThresholdShipping } from "./thresholdPolicy.js";
+/** Sparse canonical projections, never an install chain. */
+export declare const SHIPPING_MIGRATIONS: readonly [{
+    readonly id: "20260807140000_read_parity_catalog";
+    readonly catalogPath: "db/platform/migrations/20260807140000_read_parity_catalog.sql";
+    readonly position: 1;
+    readonly sha256: "fcf3827028c1651ae42a7c7d7472153825a3121c936d58a3d105befc7dece9ea";
+    readonly url: URL;
+}, {
+    readonly id: "20261021200000_shipping_flat_rate_seed";
+    readonly catalogPath: "db/platform/migrations/20261021200000_shipping_flat_rate_seed.sql";
+    readonly position: 72;
+    readonly sha256: "34f8696f515a2cc072395db5a3de2d9b09643d13236ee3851d0d78123f907eae";
+    readonly url: URL;
+}];
+```
+## dist/shipping/pickupPointSearchPort.d.ts
+
+```ts
+import type { PickupPointSearchRequest, PickupPointSearchResult } from "./contracts/index.js";
+export interface PickupPointSearchPort {
+    searchPickupPoints(request: PickupPointSearchRequest): Promise<PickupPointSearchResult[]>;
+}
+```
+## dist/shipping/readDeliverySelectionEvidence.d.ts
+
+```ts
+import type { DeliverySelectionEvidence, DeliverySelectionSources } from "./contracts/delivery.js";
+export declare function resolveDeliverySelectionEvidence(sources: DeliverySelectionSources): DeliverySelectionEvidence;
+```
+## dist/shipping/shippingRatePorts.d.ts
+
+```ts
+import type { HttpResponse } from "../http/index.js";
+import type { AdminShippingRateResponse, AdminSetShippingRateRequest, AdminSetShippingRateResponse } from "./contracts/shippingRate.js";
+/** Only the incumbent flat-rate reads, writes and best-effort audit. */
+export interface ShippingRateDataPort {
+    getShippingFlatMinor(): Promise<number>;
+    setShippingFlatMinor(minor: number): Promise<void>;
+    recordPromotionAudit(entry: {
+        actorId: string;
+        actorEmail: string | null;
+        action: "shipping_rate_change";
+        promotionId: string;
+        newValue: Record<string, unknown>;
+    }): Promise<void>;
+}
+type Authorization = {
+    ok: true;
+    userId: string;
+    role: "admin" | "distributor";
+    isMachineActor: boolean;
+} | {
+    ok: false;
+    code: "UNAUTHORIZED" | "FORBIDDEN";
+    message: string;
+    identityCode?: string;
+};
+export interface AdminShippingRateHandlerDeps {
+    dataPort: ShippingRateDataPort;
+    authorizeAdmin: () => Promise<Authorization>;
+    /** The host retains its authorization/error response context. */
+    resolveAdmin: (authorizeAdmin: () => Promise<Authorization>, res: HttpResponse) => Promise<{
+        userId: string;
+    } | null>;
+}
+type Schema<T> = {
+    safeParse(input: unknown): {
+        success: true;
+        data: T;
+    } | {
+        success: false;
+        error: {
+            flatten(): unknown;
+        };
+    };
+};
+/** Required host validation; there is no default amount policy. */
+export interface ShippingRateHandlerSchemas {
+    contractVersion: AdminShippingRateResponse["contractVersion"];
+    adminShippingRateResponseSchema: Schema<AdminShippingRateResponse>;
+    adminSetShippingRateRequestSchema: Schema<AdminSetShippingRateRequest>;
+    adminSetShippingRateResponseSchema: Schema<AdminSetShippingRateResponse>;
+}
+export {};
+```
+## dist/shipping/thresholdPolicy.d.ts
+
+```ts
+import { z } from "zod";
+import type { ShippingPolicy, ShippingSettings, ShippingTerms } from "./contracts/threshold.js";
+export declare const shippingTermsSchema: z.ZodObject<{
+    version: z.ZodLiteral<"shipping-threshold.v1">;
+    currency: z.ZodString;
+    flatMinor: z.ZodNumber;
+    freeThresholdMinor: z.ZodNumber;
+}, z.core.$strict>;
+export declare const shippingPolicySchema: z.ZodObject<{
+    version: z.ZodLiteral<"shipping-policy.v1">;
+    current: z.ZodNullable<z.ZodObject<{
+        enabled: z.ZodBoolean;
+        flatMinor: z.ZodNumber;
+        freeThresholdMinor: z.ZodNumber;
+        effectiveFrom: z.ZodString;
+    }, z.core.$strict>>;
+    scheduled: z.ZodOptional<z.ZodNullable<z.ZodObject<{
+        enabled: z.ZodBoolean;
+        flatMinor: z.ZodNumber;
+        freeThresholdMinor: z.ZodNumber;
+        effectiveFrom: z.ZodString;
+    }, z.core.$strict>>>;
+}, z.core.$strict>;
+/** Absence selects legacy behavior; malformed retained promises refuse. */
+export declare function parseShippingTerms(value: unknown): ShippingTerms | undefined;
+export declare function hasShippingTerms(quote: {
+    context?: {
+        shippingTerms?: unknown;
+    };
+}): boolean;
+/** Resolve effective entries on read, without a scheduled write. */
+export declare function normalizeShippingPolicy(policy: ShippingPolicy, asOf: Date | string): ShippingPolicy;
+export declare function resolveShippingPolicy(settings: ShippingSettings, asOf: Date | string, currency: string): {
+    configured: boolean;
+    flatMinor: number;
+    terms?: ShippingTerms;
+};
+/** Only product payable after discounts counts; equality receives free delivery. */
+export declare function resolveThresholdShipping(terms: ShippingTerms, productPayableMinor: number): {
+    grossMinor: number;
+    remainingMinor: number;
+};
 ```

@@ -102,7 +102,7 @@ it("projects fresh/stale/missing stock, held/committed/expired rows and aggregat
   const selected = createInventoryBindings({ dataKind: "postgres", executor: executor(pool), provider: { stockMasterProvider: "fixture", providerSchema: z.literal("fixture") } });
   expect(selected.readiness.ready).toBe(true);
   expect(selected.newPurchaseStockReadPort).toBeNull();
-  expect(selected.unsupported.newPurchaseStockRead).toBe("inventory_native_new_purchase_stock_read_unsupported");
+  expect(selected.unsupported.newPurchaseStockRead).toBe("inventory_stock_source_key_required");
   const held = await reserve().reserve(f.input);
   expect((await selected.readPort!.listReservations({ status: "reserved", page: 1, pageSize: 100 })).reservations).toContainEqual(expect.objectContaining({ id: held.reservationId, status: "reserved", kind: "subscription_retry_window" }));
   const stock = await read().listStock({ skuId: f.skuId, includeZero: true, page: 1, pageSize: 10 });

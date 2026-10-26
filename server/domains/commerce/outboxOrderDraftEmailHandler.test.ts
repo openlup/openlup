@@ -1,3 +1,4 @@
+import { PLATFORM_DEFAULT_CURRENCY } from "../../../src/lib/currency/platformCurrency.js";
 import { describe, expect, it } from "vitest";
 import { COMMERCE_ORDER_DRAFT_CREATED_EVENT_TYPE } from "../../../src/domains/commerce/outboxEventContracts.js";
 import type { OutboxEventRow } from "./outboxDispatchContracts.js";
@@ -47,7 +48,7 @@ const fullPayload = {
   orderDraftSnapshot: {
     contractVersion: "ignored.by.handler",
     lines: [
-      { sku: "SKU-1", productSlug: "karma-dla-psa", quantity: 2, unitPriceGross: {}, lineSubtotalGross: { amountMinor: 10000, currency: "PLN" } },
+      { sku: "SKU-1", productSlug: "item-a", quantity: 2, unitPriceGross: {}, lineSubtotalGross: { amountMinor: 10000, currency: PLATFORM_DEFAULT_CURRENCY } },
       { sku: "SKU-2", quantity: 1, lineSubtotalGross: { amountMinor: 2345, currency: "PLN" } },
       { quantity: "broken" },
     ],
@@ -121,7 +122,7 @@ function makeHandler(options?: {
 }) {
   const recipient = makeRecipientPort(
     options?.recipient === undefined
-      ? { email: "klient@example.com", firstName: "Ola", petName: "Fistaszek" }
+      ? { email: "klient@example.com", firstName: "Buyer", petName: "Context A" }
       : options.recipient,
   );
   const email = makeEmailPort({ existing: options?.existing, outcome: options?.outcome });
@@ -241,8 +242,8 @@ describe("outboxOrderDraftEmailHandler", () => {
     expect(email.sendCalls).toHaveLength(1);
     const sent = email.sendCalls[0];
     expect(sent.to).toBe("klient@example.com");
-    expect(sent.firstName).toBe("Ola");
-    expect(sent.petName).toBe("Fistaszek");
+    expect(sent.firstName).toBe("Buyer");
+    expect(sent.petName).toBe("Context A");
     expect(sent.orderId).toBe(`order_${ORDER_UUID}`);
     expect(sent.outboxEventId).toBe(EVENT_ID);
     expect(sent.items).toEqual([
@@ -279,7 +280,7 @@ describe("outboxOrderDraftEmailHandler", () => {
     const { handler, email } = makeHandler();
     await handler.handle(makeRow(fullPayload), new AbortController().signal);
     expect(email.sendCalls[0].items[0].name).toBe("Produkt");
-    expect(email.sendCalls[0].items[0].name).not.toBe("Karma dla psa");
+    expect(email.sendCalls[0].items[0].name).not.toBe("Item a");
   });
 
   it("snoozes on 429 with the provider error as reason", async () => {

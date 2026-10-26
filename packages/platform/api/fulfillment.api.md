@@ -2066,7 +2066,7 @@ export declare function authorize<Response>(req: FulfillmentHandlerRequest, res:
 export { FULFILLMENT_STATUS_MAP, CANONICAL_LOCAL_FULFILLMENT_STATUSES, CUSTOMER_STEP_SEQUENCE, canonicalStatusToken, stepForToken, customerStepFromSignals, phaseIndexForStep, stepLabelKey, timelineLabelForStep, trackingPhaseKeyForStep, stepUsesTruckIcon } from "./statusMap.js";
 export { parseFulfillmentFact, parseFulfillmentTransitionConflict } from "./normalizedFulfillmentFacts.js";
 export { readFulfillmentCapabilities } from "./providerCapabilities.js";
-export { createOutboxOrderPaidFulfillmentHandler } from "./paidHandoff.js";
+export { createOutboxOrderPaidFulfillmentHandler, outboxOrderPaidFulfillmentDescriptor, parseOutboxPayload } from "./paidHandoff.js";
 export { collectPaidFulfillmentRecoveryCandidates } from "./paidFulfillmentRecovery.js";
 export { runFulfillmentDispatchWorker } from "./providerDispatchWorker.js";
 export { createFulfillmentCommandLedger } from "./providerCommandLedger.js";
@@ -2300,8 +2300,12 @@ export {};
 ## dist/fulfillment/paidHandoff.d.ts
 
 ```ts
-import type { OutboxHandler } from "@openlup/core/outbox";
+import type { OutboxHandler, OutboxHandlerOutcome } from "@openlup/core/outbox";
 import type { OrderPaidFulfillmentPort } from "./paidHandoffPorts.js";
+export declare const outboxOrderPaidFulfillmentDescriptor: Readonly<{
+    eventType: "commerce.order.paid";
+    timeoutMs: 15000;
+}>;
 interface OrderPaidRiskAssessmentPort {
     assessPaidOrder(input: {
         orderUuid: string;
@@ -2326,6 +2330,13 @@ export declare function createOutboxOrderPaidFulfillmentHandler(deps: {
     riskPort?: OrderPaidRiskAssessmentPort;
     isRiskEnabled?: () => boolean;
 }): OutboxHandler<AbortSignal>;
+export declare function parseOutboxPayload<T>(schema: import("zod").ZodType<T>, payload: unknown): {
+    ok: true;
+    data: T;
+} | {
+    ok: false;
+    outcome: OutboxHandlerOutcome;
+};
 export {};
 ```
 ## dist/fulfillment/paidHandoffPorts.d.ts
@@ -2774,7 +2785,7 @@ export declare function runFulfillmentDispatchWorker(input: {
     skipped: boolean;
     checked: number;
     updated: number;
-    mode: "shadow" | "stage" | "live";
+    mode: "stage" | "shadow" | "live";
     replayed: number;
     providerCalls: number;
     readBacks: number;
@@ -2792,7 +2803,7 @@ export declare function runFulfillmentDispatchWorker(input: {
     skipped: boolean;
     checked: number;
     updated: number;
-    mode: "shadow" | "stage" | "live";
+    mode: "stage" | "shadow" | "live";
     replayed: number;
     providerCalls: number;
     readBacks: number;
@@ -2803,7 +2814,7 @@ export declare function runFulfillmentDispatchWorker(input: {
     checked: number;
     updated: number;
     failures: number;
-    mode: "shadow" | "stage" | "live";
+    mode: "stage" | "shadow" | "live";
     replayed: number;
     providerCalls: number;
     readBacks: number;
@@ -2815,7 +2826,7 @@ export declare function runFulfillmentDispatchWorker(input: {
     checked: number;
     updated: number;
     failures: number;
-    mode: "shadow" | "stage" | "live";
+    mode: "stage" | "shadow" | "live";
     replayed: number;
     providerCalls: number;
     readBacks: number;

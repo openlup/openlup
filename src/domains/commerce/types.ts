@@ -28,6 +28,8 @@ export type OmsPaymentStatus = import("@openlup/platform/commerce/contracts").Om
 export interface CommerceQuoteContext extends NeutralCommerceQuoteContext {
   shippingTerms?: import("@openlup/platform/shipping/contracts").ShippingTerms;
   acquisitionTerms?: import("@openlup/platform/pricing/contracts").ResolvedAcquisitionTerms;
+  offerVersion?: string;
+  offerEvidence?: import("@openlup/platform/commerce").CommerceOfferEvidence;
   /** Trusted-catalog coverage of the final quoted recipe lines; informational only. */
   feedingCoverageDays?: number | null;
   sizeConstraint?: {

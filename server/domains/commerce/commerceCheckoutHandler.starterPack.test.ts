@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
 import type { CreateQuoteResponse } from "../../../src/domains/commerce/contracts.js";
 import { STARTER_OFFER_CAPABILITY } from "../../../src/domains/commerce/starterOfferPolicy.js";
+import type { StarterTermsPort } from "../../../src/domains/commerce/starterTermsPort.js";
+import { ACQUISITION_TERMS_CAPABILITY } from "@openlup/platform/pricing";
 import { createCommerceCheckoutHandler } from "./commerceCheckoutHandler.js";
 import {
   createPorts,
@@ -94,6 +96,67 @@ function finalizedSnapshot(ports: ReturnType<typeof createPorts>): CreateQuoteRe
 }
 
 describe("checkout finalize payload, starter-pack lane", () => {
+  const futureTerms = { schemaVersion: ACQUISITION_TERMS_CAPABILITY, revision: "terms-next",
+    initialDiscountBps: 3_000, delivery2DiscountBps: 2_000, sourcePromotionId: "11111111-1111-4111-8111-111111111111",
+    effectiveFrom: "1999-01-01T00:00:00.000Z", effectiveTo: null };
+  const futureExpectation = { revision: futureTerms.revision, delivery2DiscountBps: futureTerms.delivery2DiscountBps };
+
+  function capablePorts() {
+    const base = quoteSnapshot({ amountMinor: 18_200, currency: quoteSnapshot().quote.currency });
+    const quote: CreateQuoteResponse = { ...base, quote: { ...base.quote,
+      lines: [{ ...base.quote.lines[0]!, quantity: 14, unitPriceGross: { amountMinor: 1_300, currency: quoteSnapshot().quote.currency } }],
+      pricingComponents: subscriptionQuote().quote.pricingComponents,
+      discounts: [{ promotionId: futureTerms.sourcePromotionId, appliesTo: "order_total", amountOffMinor: 3_500,
+        reasonCode: "promotion_v2:target_percentage" }],
+      discountTotalGross: { amountMinor: 3_500, currency: quoteSnapshot().quote.currency }, totalGross: { amountMinor: 14_700, currency: quoteSnapshot().quote.currency },
+      netTotal: { amountMinor: 13_611, currency: quoteSnapshot().quote.currency }, taxTotal: { amountMinor: 1_089, currency: quoteSnapshot().quote.currency },
+      context: { ...subscriptionQuote().quote.context!, acquisitionTerms: futureTerms },
+    } };
+    const steady = quoteSnapshot({ amountMinor: 36_400, currency: quoteSnapshot().quote.currency });
+    steady.quote.lines = [{ ...steady.quote.lines[0]!, quantity: 28, unitPriceGross: { amountMinor: 1_300, currency: quoteSnapshot().quote.currency } }];
+    const createQuote = vi.fn().mockResolvedValueOnce(quote).mockResolvedValueOnce(steady);
+    return { ...createPorts(), quotePort: { createQuote },
+      subscriptionCheckoutContractEnabled: () => true, starterPackEnabled: () => true,
+      isFirstOrderEligible: async () => true, verifyPromotionAcceptance: vi.fn(() => true) };
+  }
+
+  function capableBody() {
+    return { intent: { ...intent("subscription"), acquisitionCapability: ACQUISITION_TERMS_CAPABILITY,
+      starterOffer: { ...STARTER_OFFER, delivery2DiscountBps: 2_000, acquisitionTerms: futureExpectation } },
+    expectedQuote: { totalGross: { amountMinor: 14_700, currency: quoteSnapshot().quote.currency }, acquisitionTerms: futureExpectation,
+      promotionAcceptanceToken: "signed-new-commercial-promise" } };
+  }
+
+  it("freezes the server-selected 30/20 acquisition and source with an exact 20 percent second-delivery marker", async () => {
+    const ports = capablePorts();
+    await createCommerceCheckoutHandler(ports)(request("POST", capableBody()), createResponse());
+    const snapshot = finalizedSnapshot(ports);
+    expect(snapshot.quote.context?.acquisitionTerms).toEqual(futureTerms);
+    expect(snapshot.quote.context?.starterPack?.delivery2).toEqual({
+      discountBps: 2_000, discountMinor: 1_400, basisSubtotalMinor: 18_200,
+    });
+    expect(ports.verifyPromotionAcceptance).toHaveBeenCalledWith(expect.objectContaining({
+      token: "signed-new-commercial-promise", request: expect.objectContaining({ acquisitionCapability: ACQUISITION_TERMS_CAPABILITY }),
+    }));
+  });
+
+  it.each(["missing signature", "rejected signature", "stale expected terms", "stale declaration"])(
+    "does not create runtime money for %s even when delivery-1 total is unchanged", async (scenario) => {
+      const ports = capablePorts();
+      const body = capableBody();
+      if (scenario === "missing signature") delete (body.expectedQuote as { promotionAcceptanceToken?: string }).promotionAcceptanceToken;
+      if (scenario === "rejected signature") ports.verifyPromotionAcceptance.mockReturnValue(false);
+      if (scenario === "stale expected terms") body.expectedQuote.acquisitionTerms = { ...futureExpectation, delivery2DiscountBps: 3_500 };
+      if (scenario === "stale declaration") body.intent.starterOffer.acquisitionTerms = { ...futureExpectation, revision: "older-revision" };
+      const res = createResponse();
+      await createCommerceCheckoutHandler(ports)(request("POST", body), res);
+      expect(ports.runtimePort.startRuntime).not.toHaveBeenCalled();
+      expect(ports.orderDraftPort.createOrderDraft).not.toHaveBeenCalled();
+      expect(ports.quotePort.createQuote).toHaveBeenCalledTimes(1);
+      expect(res.json).toHaveBeenCalledWith(expect.objectContaining({ ok: true,
+        data: expect.objectContaining({ status: "price_changed", priceChanged: true }) }));
+    },
+  );
   it("injects a valid quote.context.starterPack when the offer is asked for and granted", async () => {
     const res = createResponse();
     const ports = {
@@ -187,5 +250,32 @@ describe("checkout finalize payload, starter-pack lane", () => {
         data: expect.objectContaining({ status: "price_changed" }),
       }),
     );
+  });
+
+  it("a starterTermsPort passed to the handler reaches the guard; the finalized snapshot's graduation has cadence 21 and the port's constraint", async () => {
+    const constraint = { kind: "unit_count", value: 28, opaqueHint: 900 };
+    const resolve = vi.fn<StarterTermsPort["resolve"]>(async () => ({
+      kind: "terms",
+      terms: { intervalDays: 14, steadyCadenceDays: 21, steadyUnits: 28, graduationSizeConstraint: constraint },
+    }));
+    const ports = {
+      ...portsWithQuote(),
+      subscriptionCheckoutContractEnabled: () => true,
+      starterPackEnabled: () => true,
+      isFirstOrderEligible: () => Promise.resolve(true),
+      starterTermsPort: { resolve },
+    };
+
+    await createCommerceCheckoutHandler(ports)(
+      request("POST", {
+        intent: { ...intent("subscription"), starterOffer: { ...STARTER_OFFER, steady: { cadenceDays: 21, cans: 28 } } },
+      }),
+      createResponse(),
+    );
+
+    expect(resolve).toHaveBeenCalledTimes(1);
+    const graduation = finalizedSnapshot(ports).quote.context?.starterPack?.graduation;
+    expect(graduation?.cadenceDays).toBe(21);
+    expect(graduation?.sizeConstraint).toEqual(constraint);
   });
 });

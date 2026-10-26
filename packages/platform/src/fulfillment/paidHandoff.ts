@@ -9,7 +9,7 @@ import type { OrderPaidFulfillmentPort } from "./paidHandoffPorts.js";
 const COMMERCE_ORDER_PAID_EVENT_TYPE = "commerce.order.paid";
 const HANDLER_TIMEOUT_MS = 15_000;
 
-const outboxOrderPaidFulfillmentDescriptor = Object.freeze({
+export const outboxOrderPaidFulfillmentDescriptor = Object.freeze({
   eventType: COMMERCE_ORDER_PAID_EVENT_TYPE, timeoutMs: HANDLER_TIMEOUT_MS,
 });
 
@@ -113,7 +113,7 @@ export function createOutboxOrderPaidFulfillmentHandler(deps: {
 }
 
 function truncateReason(value: string): string { return value.length <= 300 ? value : `${value.slice(0, 300)}…`; }
-function parseOutboxPayload<T>(schema: import("zod").ZodType<T>, payload: unknown):
+export function parseOutboxPayload<T>(schema: import("zod").ZodType<T>, payload: unknown):
   { ok: true; data: T } | { ok: false; outcome: OutboxHandlerOutcome } {
   const parsed = schema.safeParse(payload);
   if (parsed.success) return { ok: true, data: parsed.data };

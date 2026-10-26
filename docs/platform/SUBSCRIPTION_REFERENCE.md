@@ -12,6 +12,11 @@ The selected profile uses the managed Supabase baseline and alignment seed
 forward shipped in this tree.
 It does not mix that schema with the separate portable PostgreSQL migration lane.
 The default public build remains the small static reference.
+Its closed browser import inventory includes the exact built commerce
+`offerAvailability.js` pure status/reason helper. Source and built browser proofs
+cover that closure; the physical-table reader remains in the excluded Node-only
+commerce/server entry. This adds no stock reader or reservation authority to the
+subscription browser.
 
 This profile sells one synthetic recurring item. Payment settlement is generated
 by the trusted local adapter, matched to an issued attempt, then persisted through

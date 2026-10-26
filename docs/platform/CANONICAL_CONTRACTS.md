@@ -574,13 +574,26 @@ paths. Both inventories also list `commerceReturnsPort.js`,
 `packages/platform/dist/commerce/`, reached through
 `@openlup/platform/commerce`: returns request/approve/reject schemas and port
 types, with a factory for host-bound request reason codes, native order-review
-contracts and hosted-feedback contracts. Returns and review handlers, the
-raw-upload handler and PostgreSQL/Supabase adapters, including hosted-feedback
-adapters, are exposed only by the Node-only `@openlup/platform/commerce/server`
-entry; the profile build refuses that entry. The list grants
+contracts and hosted-feedback contracts. The subscription inventory additionally
+lists `orderEmailEligibility.js`, `orderEmailLines.js`,
+`outboxDispatchContracts.js`, `outboxOrderDraftEmailPorts.js` and
+`salesChannelEnvelope.js` under the same built commerce directory for the
+browser-safe email helpers, outbox ports and sales-channel envelope modules
+reached through that barrel. The identity browser profile does not reach these
+five files and needs no additional inventory entries for them. Returns and review
+handlers, the raw-upload handler and PostgreSQL/Supabase adapters, including
+hosted-feedback adapters, are exposed only by the Node-only
+`@openlup/platform/commerce/server`
+entry; the profile build refuses that entry. The checkout-engine contribution adds the exact
+built `commerce/checkoutCommandSchemas.js`, `commerce/offerEvidenceSchemas.js` and
+`commerce/paymentContinuation.js` files to both subscription and identity profiles,
+for browser-safe validation and continuation lifetime constants. The list grants
 no directory-wide admission: `commerce/server` and the Node-only pricing root
-remain outside it. `pricing/browser` admits only its four-file runtime closure
-for the existing primitive factory and acquisition capability/expectation schemas. A new reference import must have both browser-safe dependency
+remain outside it. `pricing/browser` admits only its five-file runtime closure
+for the existing primitive factory, acquisition validators (including resolved
+terms) and the pure shipping-terms owner. Reference quote context accepts the
+optional shipping/acquisition promises without admitting shipping handlers or
+Node HTTP declarations. A new reference import must have both browser-safe dependency
 closure and an exact inventory entry before that selected profile can build.
 
 The invoicing reference capability is default-off and installs no routes or
