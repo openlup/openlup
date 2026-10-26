@@ -608,7 +608,12 @@
         "test/packageBoundary.test.ts",
         "test/marketing/schemas.test.ts",
         "test/marketing/contracts.test.ts",
-        "test/marketing/browserBoundary.test.ts"
+        "test/marketing/browserBoundary.test.ts",
+        "test/marketing/noop.test.ts",
+        "test/marketing/dataLayer.test.ts",
+        "test/marketing/routePolicy.test.ts",
+        "test/marketing/purchaseFacts.test.ts",
+        "test/marketing/consentEvidence.test.ts"
       ],
       "entrypoint": "dist/marketing/index.d.ts",
       "snapshot": "api/marketing.api.md"
@@ -621,7 +626,12 @@
         "test/packageBoundary.test.ts",
         "test/marketing/schemas.test.ts",
         "test/marketing/contracts.test.ts",
-        "test/marketing/browserBoundary.test.ts"
+        "test/marketing/browserBoundary.test.ts",
+        "test/marketing/noop.test.ts",
+        "test/marketing/dataLayer.test.ts",
+        "test/marketing/routePolicy.test.ts",
+        "test/marketing/purchaseFacts.test.ts",
+        "test/marketing/consentEvidence.test.ts"
       ],
       "entrypoint": "dist/marketing/contracts/index.d.ts",
       "snapshot": "api/marketing-contracts.api.md"
@@ -639,7 +649,8 @@
         "test/marketing/server/acquisitionEvidenceDirect.test.ts",
         "test/marketing/server/research/surveyResponseSubmitHandler.test.ts",
         "test/marketing/server/research/adminSurveyResponsesHandler.test.ts",
-        "test/marketing/server/research/managedSurveyResponseSubmit.test.ts"
+        "test/marketing/server/research/managedSurveyResponseSubmit.test.ts",
+        "test/marketing/analyticsContext.test.ts"
       ],
       "entrypoint": "dist/marketing/server/index.d.ts",
       "snapshot": "api/marketing-server.api.md"

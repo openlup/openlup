@@ -225,6 +225,7 @@ import assert from "node:assert/strict";
 import { createAccountReadFacade, CustomerAccountReadModelError, withCustomerAccountReadStage, customerAccountReadFailureDetails, createOperatorRecovery, createPostgresOperatorAuthority, operatorAuthorityCapabilities, linkThenApply } from "@openlup/platform/account-support";
 import * as contracts from "@openlup/platform/account-support/contracts";
 assert.deepEqual(Object.keys(contracts), []);
+
 const account={revision:"owner-revision", getAccount(userId){assert.equal(this,account);assert.equal(userId,"principal-a");return Promise.resolve(snapshot);}};
 const snapshot={profile:{privateExtension:"host-owned"},frozenTotal:2301};
 const input={limit:17}, list={orders:[{orderId:"order-b",frozenTotal:2301}]}, detail={orderId:"order-c",revision:"original"};
@@ -506,6 +507,12 @@ assert.deepEqual(marketing.prelaunchAcquisitionListRequestSchema.parse({ view: m
 assert.equal(marketing.prelaunchAcquisitionDetailRequestSchema.safeParse({ sourceRef: "case:one" }).success, false);
 assert.equal("MARKETING_PRELAUNCH_CONTRACT_VERSION" in marketing, false);
 assert.deepEqual(Object.keys(contracts), []);
+assert.equal(marketing.createNoopAnalytics().trackPageView("/"), undefined);
+assert.deepEqual(marketing.createAnalyticsDataLayer().emitAnalyticsEvent("page_view", { page_path: "/" }), { deployment: false, optional: false });
+const routes = marketing.createAnalyticsRoutePolicy({ publicPaths: ["/entry"], redirectSources: [], privatePathPrefixes: [], privateAuthPaths: [], capabilityPathPrefixes: [] });
+assert.equal(routes.sanitizeDeploymentAnalyticsUrl("/entry?secret=one", "https://host.example"), "https://host.example/entry");
+assert.equal(marketing.projectPaidPurchase({ status: "pending" }), null);
+assert.equal(marketing.selectMarketingHistoricalConsentTime({ command: { consentedAt: null, listId: null }, state: { consent: "unknown", suppressions: [] }, now: new Date(NaN) }).reason, "consent_time_invalid");
 for (const [name, value] of Object.entries(core)) assert.equal(marketing[name], value);
 for (const name of ["acquisitionCaseSubmitRequestSchema", "acquisitionCaseSubmitResponseSchema", "acquisitionCaseTransitionRequestSchema", "acquisitionCaseTransitionResponseSchema"]) assert.equal(name in marketing, false);
 await assert.rejects(import("@openlup/platform/dist/marketing/acquisitionCaseSchemas.js"), { code: "ERR_PACKAGE_PATH_NOT_EXPORTED" });
@@ -516,7 +523,7 @@ await assert.rejects(import("@openlup/platform/dist/marketing/acquisitionCaseSch
 export function proveMarketingServerConsumer(consumer: string): void {
   consumerNode(consumer, `
 import assert from "node:assert/strict";
-import { createAcquisitionCaseHandlers, createAcquisitionCaseActiveCountDirectHandler, createAcquisitionSurveySubmitDirectHandler } from "@openlup/platform/marketing/server";
+import { createAcquisitionCaseHandlers, createAcquisitionCaseActiveCountDirectHandler, createAcquisitionSurveySubmitDirectHandler, createAnalyticsContextHandler } from "@openlup/platform/marketing/server";
 import { createBffResponder } from "@openlup/platform/bff";
 const calls = [];
 const port = { activeCount: async scope => { calls.push(scope); return { ok: true, value: 4 }; } };
@@ -531,8 +538,42 @@ assert.deepEqual(calls, ["public_tester_application"]);
 await createAcquisitionSurveySubmitDirectHandler({ respond, authorize: async () => null, resolveBinding: async () => ({ submitSurvey: async () => ({ ok: false, error: { kind: "conflict" } }) }) })({ method: "POST", headers: { "idempotency-key": "survey-key-0001" }, body: { view: "acquisition_survey_v1", caseReference: "acquisition-case:11111111-1111-4111-8111-111111111111", surveyType: "consumer", responseData: { answer: "synthetic" } } }, res);
 assert.equal(status, 409);
 assert.deepEqual(body, { ok: false, error: { code: "CONFLICT", message: "Acquisition evidence request conflicts with prior state" } });
+await createAnalyticsContextHandler({ respond, isEnabled: () => true,
+  resolveStore: () => { throw Error("invalid context must not read persistence"); },
+  readAccessToken: () => null, resolveTrustedSubject: async () => null,
+  capabilityCrypto: { mintToken: () => { throw Error("invalid context must not mint"); }, hashToken: token => token },
+  cookieName: "__Host-context", clientIdField: "browserRef",
+})({ method: "POST", headers: { host: "shop.example", origin: "https://shop.example" }, body: { granted: true } }, res);
+assert.equal(status, 400);
+assert.deepEqual(body, { ok: false, error: { code: "BAD_REQUEST", message: "Invalid analytics context" } });
 await assert.rejects(import("@openlup/platform/marketing/server/internal"), { code: "ERR_PACKAGE_PATH_NOT_EXPORTED" });
 `);
+}
+
+/** Installed type witness for neutral analytics facts and host step literals. */
+export function compileMarketingAnalyticsConsumer(consumer: string, compiler: string): void {
+  const file = join(consumer, "marketing-analytics.ts");
+  writeFileSync(file, [
+    'import { createAnalyticsDataLayer, projectPaidPurchase, selectMarketingHistoricalConsentTime } from "@openlup/platform/marketing";',
+    'import type { AnalyticsEventMap, PurchaseOrder, MarketingHistoricalConsentCommand } from "@openlup/platform/marketing/contracts";',
+    'const analytics = createAnalyticsDataLayer<"choose" | "confirm">();',
+    'analytics.pushAnalyticsEvent("configurator_step_view", { step_number: 1, step_name: "choose" });',
+    '// @ts-expect-error the host literal union stays closed',
+    'analytics.pushAnalyticsEvent("configurator_step_view", { step_number: 1, step_name: "other" });',
+    'declare const order: PurchaseOrder;',
+    'export const purchase: AnalyticsEventMap["purchase"] | null = projectPaidPurchase(order);',
+    'declare const command: MarketingHistoricalConsentCommand;',
+    'export const consent = selectMarketingHistoricalConsentTime({ command, state: { consent: "unknown", suppressions: [] }, now: new Date() });',
+  ].join("\n"));
+  for (const mode of ["NodeNext", "Bundler"]) {
+    const configuration = join(consumer, "marketing-analytics-tsconfig.json");
+    writeFileSync(configuration, JSON.stringify({ compilerOptions: {
+      target: "ES2020", module: mode === "NodeNext" ? "NodeNext" : "ESNext", moduleResolution: mode,
+      strict: true, skipLibCheck: false, noEmit: true, types: ["node"],
+      typeRoots: [join(consumer, "node_modules/@types")],
+    }, files: [file] }));
+    process.stdout.write(command(process.execPath, [compiler, "-p", configuration], consumer));
+  }
 }
 
 /** M11 K1: installed neutral contracts, a successful projection and a strict refusal. */
@@ -1576,6 +1617,7 @@ assert.throws(() => promotions.resolvePromotionBenefitDefinition({ discount_type
     assertConsumerIsolation(consumer, checkout); // Compilation must not have supplied a peer.
     proveMarketingConsumer(consumer);
     proveMarketingServerConsumer(consumer);
+    compileMarketingAnalyticsConsumer(consumer, compiler);
     proveCommerceConsumer(consumer);
     proveCommerceServerConsumer(consumer);
     proveCatalogCompositionConsumer(consumer);
