@@ -6,7 +6,10 @@ import { createAccountReadFacade, createOperatorRecovery, type AccountSupportCap
   type NativeOperatorSubscriptionResult, type OperatorRecoveryCommand, type OperatorRecoveryCommandEnvelope } from "@openlup/platform/account-support";
 import { NATIVE_SUBSCRIPTION_CAPABILITIES } from "@openlup/platform/subscriptions";
 import type { ReadinessReport } from "@openlup/core/readiness";
-import { createM12AccountSupportReferenceBinding, createM12OperatorSubscriptionActionRoute } from "./m12AccountSupportBinding.js";
+import { createM12AccountSupportReferenceBinding, createM12OperatorSubscriptionActionRoute, type M12CommerceSelection } from "./m12AccountSupportBinding.js";
+import { createM11CommerceReferenceBinding } from "./m11CommerceBinding.js";
+import { createOutboxDispatchRegistry, describeCoreOutboxHandlers, outboxCheckoutRecoveryEmailDescriptor, type CommerceEmailRuntime } from "@openlup/platform/commerce/server";
+import { m11CommerceSchema } from "./m11CommerceSchema.js";
 import { createReferenceSubscriptionFacades } from "./subscriptionFacades.js";
 import { requestBff } from "../../../src/lib/bff/client.js";
 import { operatorSubscriptionActionResponseSchema } from "../../../src/domains/support/customerSupportCommandContracts.js";
@@ -183,4 +186,59 @@ it("R6 selected subscription notices retain M04's message identity and replay", 
   expect(await binding.services.operations.subscriptionMessage(notice)).toEqual({ notificationId: "captured:notice", replayed: true });
   expect(deliver).toHaveBeenCalledExactlyOnceWith({ idempotencyKey: "wait:resumed", recipientReference: "customer:1", templateReference: "subscription-stock-wait-resumed" });
   expect(binding.contributions[0]!.handlers).toEqual([]); expect(binding.contributions[0]!.schedules).toEqual([]);
+});
+
+
+it("R7 selected commerce effects join the existing registry without eager execution", async () => {
+  const unused = vi.fn((): never => { throw new Error("unexpected_effect"); });
+  const runtime: CommerceEmailRuntime = {
+    parseOutboxPayload: (schema, payload) => ({ ok: true, data: schema.parse(payload) }),
+    mapSendOutcome: () => ({ kind: "processed" }),
+    createTransactionalEmailHandler: ({ eventType, timeoutMs }) => ({ eventType, timeoutMs, handle: unused }),
+    resolveLocale: () => "fixture", formatMoney: (minor, currency) => `${currency}:${minor}`, genericItemLabel: () => "Item",
+    presentPaidOrder: () => null, providerOwnsDeliveredNotification: () => false,
+    normalizeCarrierKind: () => null, carrierTrackingUrl: () => null, legacyTrackingUrl: () => null,
+  };
+  const extra = { eventType: "fixture.account.notice", timeoutMs: 1000, handle: unused };
+  const uniqueRegistry = vi.fn((handlers: Parameters<Parameters<typeof createOutboxDispatchRegistry>[0]["uniqueRegistry"]>[0]) =>
+    new Map(handlers.map(handler => [handler.eventType, handler])));
+  const registry = createOutboxDispatchRegistry({ uniqueRegistry, fulfillmentEnabled: false, extraHandlers: [extra],
+    transactionalEmail: { runtime, recipientPort: { resolve: unused }, lifecyclePort: { read: unused }, orderPaidLinesPort: { read: unused },
+      emailPort: { findExistingSend: unused, sendReturnApprovedNotice: unused, sendReturnRejectedNotice: unused,
+        sendOrderConfirmation: unused, sendCheckoutRecovery: unused, sendOrderPaidConfirmation: unused,
+        sendPaymentFailedNotice: unused, sendCheckoutExpiredNotice: unused, sendOrderCanceledNotice: unused,
+        sendOrderRefundedNotice: unused, sendShipmentDispatchedNotice: unused, sendShipmentDeliveredNotice: unused, sendShipmentExceptionNotice: unused } } });
+  const f = fixture(true), start = vi.fn(async (key: string) => ({ key }));
+  const stockSchema = { version: "stock", migration: "stock", objects: [{ kind: "function" as const, name: "public.inventory_new_purchase_stock_read", signature: "text,jsonb,timestamp with time zone" }] };
+  // ID-5: the real reference-source result must satisfy M12's local injection contract.
+  const commerceOwner = createM11CommerceReferenceBinding({ enabled: true, executor: { query: unused }, commerce: { start },
+    version: f.options.version, catalogue: f.options.catalogue, requiredObjects: stockSchema.objects,
+    readiness: f.readiness, handlers: [...registry.values()], routes: [{ id: "start", handle: start }] }) satisfies M12CommerceSelection;
+  const binding = createM12AccountSupportReferenceBinding({ ...f.options, commerce: { start },
+    commerceOwner, commerceRegistry: registry });
+  expect(binding.commerceOwner).toBe(commerceOwner);
+  expect(uniqueRegistry).toHaveBeenCalledTimes(1); expect(binding.commerceRegistry).toBe(registry);
+  expect(registry.get(extra.eventType)).toBe(extra);
+  const descriptors = [...describeCoreOutboxHandlers({ transactionalEmail: true, fulfillmentEnabled: false }),
+    { eventType: extra.eventType, timeoutMs: extra.timeoutMs }];
+  expect(binding.commerceOwner!.contributions[0]!.handlers).toEqual(descriptors);
+  expect(descriptors).toContainEqual(outboxCheckoutRecoveryEmailDescriptor);
+  expect(binding.contributions[1]).toBe(binding.commerceOwner!.contributions[0]);
+  const selected = binding.commerceOwner!.services.start;
+  expect(binding.ports["@openlup/platform/commerce:start"]).toBe(selected);
+  expect(binding.routes["@openlup/platform/commerce:start"]).toBe(selected);
+  expect(binding.schema.objects).toEqual(m11CommerceSchema(f.options.catalogue, stockSchema.objects).objects);
+  expect(f.readiness).not.toHaveBeenCalled(); expect(unused).not.toHaveBeenCalled(); expect(start).not.toHaveBeenCalled();
+  const result = await binding.services.commerce("start", "original-key");
+  expectTypeOf(result).toEqualTypeOf<{ key: string } | AccountSupportHostBindingRequired | AccountSupportBindingRefusal>();
+  // @ts-expect-error the selected M11 start entrance still requires its own request
+  const invalid: Parameters<typeof binding.services.commerce<"start">>[1] = { token: "wrong-request" };
+  void invalid;
+  expect(result).toEqual({ key: "original-key" });
+  expect(start).toHaveBeenCalledExactlyOnceWith("original-key");
+  expect(f.readiness).toHaveBeenCalledExactlyOnceWith(binding.schema);
+  f.readiness.mockResolvedValue({ state: "unsatisfied", candidate, loadedPackages: [], issues: [] });
+  expect(await selected("original-key")).toEqual({ kind: "refused", code: "schema_unsatisfied" });
+  expect(start).toHaveBeenCalledTimes(1);
+  expect(f.readiness).toHaveBeenLastCalledWith(binding.schema);
 });

@@ -595,3 +595,104 @@ file. The reused R4 proofs in
 PostgreSQL/pgTAP, including CD-13a ACL and hostile-session checks. Those
 predecessor proofs are separate from the thirty-eight R5a cases; injected,
 browser and packed-consumer cases do not establish database proof.
+
+## R5b: select commerce, purchase stock and existing effects
+
+The host constructs one `createM11CommerceReferenceBinding` over its raw, already
+bound commerce record and supplies the result through the reference-only
+`commerceOwner` option. R5b does not construct M11 or import its adapter graph;
+a local structural type describes only the consumed selection members. It forwards that binding's services,
+contributions, ports, routes and triggers once. The keyed entrance retains its
+key/request/result relation and delegates directly to the M11 guard; services
+are never fed back into another M11 binding. Native reminder names remain
+reserved by that owner (`commerce_duplicate_operation`). The host supplies the
+reference checkout handler, recovery handlers/ports, selected stock read and
+existing outbox registry through `commerceRegistry`. No second executor, dispatcher, installer, worker,
+scheduler or stock allocator is introduced. Omitted/false enablement stays cold;
+unselected commerce retains `unsupported/host_binding_required`.
+
+The host includes all account-owner and exact ATP requirements when constructing
+M11, whose returned schema includes `m11CommerceSchema`. R5b unions that returned
+schema with selected account-owner requirements, deduplicated by kind/name/signature
+without hand-copying the M11 object list. The host supplies matching enablement
+and a readiness observer covering that complete union to M11 and M12. The M11
+guard observes the complete union before owner work. Descriptor projection in
+the host's M11 construction preserves the existing registry's event
+set/timeouts without running handlers. `commerceRegistry` is the same host
+registry; it is not a new consumer or an activation signal. Host-bound recovery
+and configured-purchase elements reach their selected clients at explicit paths.
+Commerce handler outcomes, unknown stock and unsupported options pass through.
+The capability manifest describes both entrances as selectable when the host
+binds them; its default remains off and its route list empty.
+
+The bounded closure is these eighteen eligible paths:
+
+- `server/runtime/public-reference/m12AccountSupportBinding.ts`, its adjacent
+  test and `m12AccountSupportSchema.ts`;
+- `src/public-reference/accountSupportRoutes.tsx` and its adjacent test;
+- `tests/postgres/accountSupportComposition.test.ts`;
+- `scripts/packages/platform-cold-consumer.ts` and its adjacent test;
+- `config/public-reference-capability-manifest.json`;
+- the platform package's existing M12 R5 change fragment, `m12-r5a.md`;
+- `docs/platform/ARCHITECTURE_AND_EXTENSIONS.md`, `RUNTIME_AND_SELF_HOSTING.md`,
+  `CANONICAL_CONTRACTS.md`, `PLATFORM_PACKAGE_REFERENCE.md` and this plan;
+- `packages/platform/README.md`, `config/openlup-publication-catalog.json` and
+  `CONTRIBUTING.md`.
+
+The package source/barrels, API reports, composition source, ESLint edges, SQL,
+migrations/registry and source-release contract stay outside this change.
+Installed exports and package declarations do not change, so the cold consumer's
+K1/K2 proof retains its meaning without extension. No tracked path is added or
+removed, so the publication catalogue retains its existing classifications.
+Nothing is mounted and this scope grants no external mutation or activation.
+
+The four new executed-case definitions are R7 (host-built real M11 selection,
+compile-time assignability to the local selection type, actual registry/descriptors
+and no eager effect), U3 (one continuation's owner admission refusal then retry with
+distinct root/latest order and client identities and original key), U4 (one
+purchase's refused managed options then corrected retry preserving unknown ATP),
+and P2 (real PostgreSQL reminder persistence/replay with unchanged row/xmin
+snapshots of subscriptions, reservations and alignment). R7 belongs to the
+reference-binding test, U3/U4 to the route test and P2 to the PostgreSQL test.
+U3/U4 inject package-only selections so the app project never loads the M11
+Postgres adapters; R7 and P2 construct the real M11 binding in server tests.
+The retry steps share a behavior sequence; independent state rows must remain
+separate cases. Real PostgreSQL execution remains required evidence.
+
+Reuse by name rather than duplicating owner policy matrices:
+
+- `selects abandoned reminder consent and terminal compaction with durable replay`
+  and `refuses every native entrance before executor work when observation lacks
+  the operator token table` in `tests/postgres/commerceComposition.test.ts`;
+- `allows only named continuation state %s`, `separates expired policy from
+  continuation`, and the existing expired-recovery/redeem/pay suites;
+- `refuses unsupported options before RPC: %j` in
+  `packages/platform/test/inventory/managedStockAvailability.test.ts`, and
+  `W2 protects uncredited due demand and a 72-hour hold without double subtraction
+  or a preview waiver` in `tests/postgres/newPurchaseStockNative.test.ts`;
+- R5a's K1/K2 installed declaration/runtime witnesses and M10's unchanged
+  subscription continuity, propagation replay and population-isolation witnesses.
+
+M11 symbol map (paths relative to repository root; names are the dependency
+contract, and line numbers locate their declarations in this selection's base):
+
+| Symbol | Owner source |
+| --- | --- |
+| `createM11CommerceReferenceBinding` | `server/runtime/public-reference/m11CommerceBinding.ts:16` |
+| `m11CommerceSchema` | `server/runtime/public-reference/m11CommerceSchema.ts:6` |
+| `createCommerceContribution` | `packages/platform/src/composition/commerceContribution.ts:4` |
+| `createReferenceCheckoutHandler` | `packages/platform/src/commerce/server/referenceCheckoutHandler.ts:9` |
+| `CheckoutRecoveryOrderReadPort` | `packages/platform/src/commerce/server/checkoutRecoveryOrderPort.ts:37` |
+| `CheckoutRecoveryTokenPort` | `packages/platform/src/commerce/server/checkoutRecoveryToken.ts:41` |
+| `classifyCheckoutRecoveryTokenState` | `packages/platform/src/commerce/server/checkoutRecoveryToken.ts:24` |
+| `createExpiredCheckoutRecoveryPolicy` | `packages/platform/src/commerce/server/checkoutExpiredRecoveryPolicy.ts:16` |
+| `createManagedCommerceRuntimeOrderPort` | `packages/platform/src/commerce/server/commerceRuntimePort.ts:12` |
+| `createManagedStockAvailability` | `packages/platform/src/inventory/managedStockAvailability.ts:13` |
+| `createNewPurchaseStockAvailabilityPort` | `packages/platform/src/inventory/newPurchaseStockAvailability.ts:39` |
+| `describeCoreOutboxHandlers` / `createOutboxDispatchRegistry` | `packages/platform/src/commerce/server/outboxDispatchRegistry.ts:121` / `:137` |
+| `outboxCheckoutRecoveryEmailDescriptor` | `packages/platform/src/commerce/server/outboxCheckoutRecoveryEmailHandler.ts:39` |
+
+Token classification, expired recovery and managed finalization remain with
+those owners; their presence supplies no substitute for bound host ports or
+managed installation proof. This selection changes no owner policy or public
+account-support contract.

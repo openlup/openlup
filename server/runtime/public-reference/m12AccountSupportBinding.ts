@@ -1,11 +1,22 @@
 import { createAccountSupportBindings, createAccountSupportServices, type AccountSupportCapabilities,
-  type AccountSupportOperations, type createOperatorRecovery, type OperatorRecoveryCommand,
+  type AccountSupportOperations, type AccountSupportCallable, type AccountSupportBindingRefusal, type AccountSupportHostBindingRequired, type createOperatorRecovery, type OperatorRecoveryCommand,
   type OperatorRecoveryCommandEnvelope, type NativeOperatorSubscriptionResult } from "@openlup/platform/account-support";
 import { createAccountSupportContribution } from "@openlup/platform/composition";
 import type { Contribution, ReadinessReport, RequiredSchema } from "@openlup/core/readiness";
+import type { OutboxHandlerRegistry } from "@openlup/platform/commerce";
 import { m12AccountSupportSchema } from "./m12AccountSupportSchema.js";
 import { SUPPORT_CUSTOMER_360_CONTRACT_VERSION } from "../../../src/domains/support/customer360Contracts.js";
 import { OperatorSubscriptionAuthorityUnavailableError } from "../../domains/support/customerRecoveryCommand.js";
+
+/** Host-built M11 selection. Keep the reference adapter graph outside this module. */
+export type M12CommerceSelection<S extends Readonly<Record<string, AccountSupportCallable>> = Readonly<Record<string, AccountSupportCallable>>> = {
+  services: S;
+  schema: RequiredSchema;
+  contributions: readonly Contribution[];
+  ports: Readonly<Record<string, unknown>>;
+  routes: Readonly<Record<string, unknown>>;
+  triggers: Readonly<Record<string, unknown>>;
+};
 
 /** Map R4's authority result to the donor BFF response before registering one
  * shared service/port/route callable. R4 already preserves the donor ISO timestamp;
@@ -33,12 +44,19 @@ export function createM12OperatorSubscriptionActionRoute(execute: ReturnType<typ
 /** Inert recipe. Supply already authenticated R1-R4 handlers/facades, never two
  * dispatchers for one command. This factory mounts nothing and starts no workers.
  */
-export function createM12AccountSupportReferenceBinding<O extends AccountSupportOperations, C extends AccountSupportOperations = AccountSupportOperations>(input: {
+export function createM12AccountSupportReferenceBinding<O extends AccountSupportOperations, C extends AccountSupportOperations = AccountSupportOperations,
+  S extends Readonly<Record<string, AccountSupportCallable>> = Readonly<Record<string, AccountSupportCallable>>>(input: {
   enabled?: boolean;
   graph: "managed" | "native";
   capabilities: AccountSupportCapabilities;
   operations: O;
   commerce?: C | null;
+  /** Supply the already-built M11 result with matching enablement and readiness
+   * over the complete account/M11/ATP schema. Its services are already guarded.
+   */
+  commerceOwner?: M12CommerceSelection<S>;
+  /** Existing host registry; construction never dispatches its handlers. */
+  commerceRegistry?: OutboxHandlerRegistry;
   ownerSchemas: readonly RequiredSchema[];
   requiredObjects: RequiredSchema["objects"];
   dependsOn: NonNullable<Contribution["manifest"]["module"]>["dependsOn"];
@@ -48,14 +66,20 @@ export function createM12AccountSupportReferenceBinding<O extends AccountSupport
   readiness(schema: RequiredSchema): Promise<ReadinessReport>;
 }) {
   const binding = createAccountSupportBindings(input);
-  const schema = m12AccountSupportSchema({ catalogue: input.catalogue, owners: input.ownerSchemas, requiredObjects: input.requiredObjects });
+  const schema = m12AccountSupportSchema({ catalogue: input.catalogue, owners: input.ownerSchemas, requiredObjects: input.requiredObjects, commerce: input.commerceOwner });
   async function readiness() {
     const report = await input.readiness(schema);
     return report.state === "ready" ? { kind: "ready" as const } : { kind: "refused" as const, code: `schema_${report.state}` as const };
   }
   const options = { enabled: input.enabled, capabilities: binding.capabilities, readiness };
   const guarded = createAccountSupportServices({ ...options, operations: binding.operations });
-  async function commerce<K extends keyof C & string>(...args: Parameters<typeof binding.commerce<K>>) {
+  const commerceOwner = input.commerceOwner ?? null;
+  async function commerce<K extends keyof C & string>(...args: Parameters<typeof binding.commerce<K>>):
+    Promise<Awaited<ReturnType<Extract<C[K], AccountSupportCallable>>> | AccountSupportHostBindingRequired | AccountSupportBindingRefusal> {
+    if (commerceOwner && Object.prototype.hasOwnProperty.call(commerceOwner.services, args[0])) {
+      const execute = commerceOwner.services[args[0]] as (...values: Parameters<C[K] & AccountSupportCallable>) => Promise<Awaited<ReturnType<Extract<C[K], AccountSupportCallable>>> | AccountSupportBindingRefusal>;
+      return execute(...args.slice(1) as Parameters<C[K] & AccountSupportCallable>);
+    }
     const state = await guarded.readiness();
     return state.kind === "ready" ? binding.commerce<K>(...args) : state;
   }
@@ -71,5 +95,10 @@ export function createM12AccountSupportReferenceBinding<O extends AccountSupport
     accountSupport: selected ? services.operations : {},
     routes: selected ? routes : [],
   });
-  return { services, readiness: services.readiness, schema, ...contribution };
+  return { services, readiness: services.readiness, schema, commerceOwner, commerceRegistry: commerceOwner ? input.commerceRegistry ?? null : null,
+    contributions: [...contribution.contributions, ...(commerceOwner?.contributions ?? [])],
+    ports: { ...contribution.ports, ...commerceOwner?.ports },
+    routes: { ...contribution.routes, ...commerceOwner?.routes },
+    triggers: { ...contribution.triggers, ...commerceOwner?.triggers },
+  };
 }
