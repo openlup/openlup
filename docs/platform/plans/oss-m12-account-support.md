@@ -504,8 +504,12 @@ commerce composition and managed integration proofs belong to R5b.
 
 ## S1: coherent final package set
 
-TODO: cumulative artifacts/tests, unchanged witnesses, migration/cut register and
-owner review. Release and adoption require their own authorization and evidence.
+The prepared set is `0.28.0`, a minor set for the new experimental
+`account-support` subpaths and the shipped CTL/R4 SQL. The R1, R2, R3, R4 and
+R5a fragments, the last also describing the R5b commerce selection, are consumed
+into the platform changelog; all packages move as one set. The bump runs on the
+final M12 stack, after R5b. Preparation authorizes no activation; release and
+adoption require their own authorization and evidence.
 
 ## R5a: inert reference composition
 

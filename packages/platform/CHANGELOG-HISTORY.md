@@ -2,6 +2,114 @@
 
 Releases moved verbatim out of the packed `CHANGELOG.md`, which keeps the current release and the two previous ones.
 
+## [0.25.0]
+
+- Publishable on the npm `latest` dist-tag as `0.25.0`, from tag
+  `openlup-platform-v0.25.0`.
+
+- Re-pin the pending M10/F17 control fixtures after landed M08/M09 without
+changing either installation rail, the migration manifest or landed N1. The
+16-entry packet has seven native and nine managed pins. Native X restores
+ATP-counted late-positive stock recovery; Y filters paid retry candidates
+before LIMIT. Fold command-preview receipt replay into uninstalled N2, keeping
+apply unchanged. Preserve the historical 14-pin approval reader and exact
+prefix, definition, statement, ACL and catalog controls. Real PostgreSQL
+witnesses cover ATP, starvation, all 43 fresh command scenarios and raw preview
+replay with no counts/columns/xmin delta.
+
+No package SQL asset, export, runtime activation or external CI dependency is
+introduced. The development-preview boundary remains.
+
+- Fix uninstalled N3 normal_due pagination to exclude waiting/stock_secured cases before LIMIT, preventing normal-renewal starvation.
+
+- Repair uninstalled N2 donor no-op truth for native bundle/resize, plan, package, add-on and same-UTC-day slide commands before repricing: preserve locked prices after catalogue changes, writing only the command receipt, with no quote, event or version increment. Native resize compares lines/cadence; portion mode/factor remain host-owned without native storage. Predicate-removal mutants cover every mapped donor action; apply stays unchanged.
+
+- Audit pending M10 donor change and no-op semantics together. N2 plan edits
+apply requested core lines; new add-ons normalize quantity, preserve cadence
+and compare UUIDs by value. N3 preserves paused waits, filters eligible recovery
+before LIMIT, binds frozen reads to the current active schedule, reports free
+stock separately from own holds, and ignores closed/unpaid realization notices.
+Real PostgreSQL tables cover applied state, no-op/refusal/replay and rolled-back
+assignment mutants. Installed rails and N2 apply remain unchanged; channel
+exposure/admission parity stays outside the frozen stock-seam claim.
+
+- Close the 0.24.0 known limitation that managed dunning exhaustion still pauses active subscriptions.
+- Land the reviewed managed M1/M2 prefix: refunds preserve subscription lifecycle and paid history; exhausted dunning stays open with NULL retry and active service until authorized same-cycle repair.
+- Folded scope E-gate-replay-loop-landed-untested: retain the existing interleaving-aware catalog replay and add the Docker-free landed N1/M1/M2 witness.
+- Folded scope D-earlier-pin-digest-unplanted: prove CI and release refuse changed earlier M1 bytes beneath landed M2.
+
+Migration notes: Apply M1 then M2. Existing paused, expired and refund-cancelled history is not rewritten or reactivated. The existing first-cycle refund stock-release guard remains; later refund-evidence parity and stock-wait/winback changes are separate. No runner is activated.
+
+- Add native N2 command preview/apply stores and a P1 command adapter with atomic future terms, actor/key/actual-command receipts and applied/replayed/noop/refused outcomes; preserve frozen current obligations and existing native callers.
+- Type-level flip for dev-preview consumers: `NATIVE_SUBSCRIPTION_CAPABILITIES.genericBundleCommands.supported` and `.commandBoundReceipts.supported` change from `false` to `true`; command results now include `SubscriptionCommandRefusal`.
+
+Migration: install N1 then N2 through the complete native manifest; preserve receipts on rollback. Accepted future prices use lock_until_edit, proration none. Address mutation and private introductory/graduation policy stay host-owned; native activation continues to require captured payment evidence.
+
+Migration (C73, temporary limitation): managed `subscription_create_provisional_for_checkout` stamps an explicit timezone literal equal to today's `subscriptions.timezone` column DEFAULT. Adopters changing that DEFAULT must also replace the function until the scheduled follow-up forward follows the DEFAULT; no managed SQL changes here.
+
+Migration: `SubscriptionCommandPort.apply()` may now return `SubscriptionCommandRefusal` (`outcome: "refused"`), so callers must handle it.
+
+- Type-level change visible to dev-preview consumers: `RenewalPaymentRail.execute` adds an optional `failure` field for explicit failure evidence.
+- A host or driver skips `openCase` after a replayed `applyFailure` receipt only when that rung's case propagation already committed; otherwise recovery must complete propagation. The P8 retry driver must add a replay/case-advanced signal and a zero-delta witness for replay after committed propagation.
+- N2 preview follows the supplied core lines for plan-length changes (omitted lines retain stored expansion); new add-ons normalize missing/nonpositive quantity to one, add-on actions preserve cadence, and quantity updates/removals compare variant UUIDs case-insensitively.
+
+Land the seven reviewed managed stock-wait/ATP and F17 refund-parity forwards.
+Managed hosts can use the service-role SQL functions and pgTAP witnesses; the
+package declares the SQL surface and keeps TypeScript stock recovery unavailable
+because no managed adapter implements the stock-wait/availability ports.
+
+Migration: apply the complete managed prefix through `20261024185100` before
+calling stock-wait or refund-evidence functions. M4 extends M2's active/open
+continuity with wait exclusion before LIMIT. M5 makes positive customer
+cancellations immediately winback-eligible within 120 days, retaining episode
+dedupe, and maps started/resumed notices. F17 accepts cumulative provider snapshots,
+emits one refunded event on transition, and preserves M1 refund/lifecycle
+independence. Keep captured obligations and receipts on rollback and disable the
+host stock-wait driver first. SQL installs no scheduler or payment executor.
+
+ATP protects active upcoming demand within 14 days plus live provider hard holds.
+The exposure hook remains zero; current donor channel admission is deferred.
+This is a development-preview SQL surface, not a composed managed TypeScript port
+or a claim of advance future-cycle reservations or stable installation support.
+
+Native stock-wait persistence, frozen discovery and stock-only refusal recovery
+now have transaction-bound adapters. The native ATP/new-purchase read protects
+hard holds and fixed 14-day soft subscription demand; the renewal allocator uses
+the same seam. X restores late-paid released stock once, and Y filters paid and
+settled retry obligations before LIMIT. Managed stock wait and runner composition
+remain separate; native selection still requires passing real-PostgreSQL proof.
+
+Migration: install the native N3, ATP seam, allocator, X and Y prefix in filename
+order, with their package twins and regenerated selected-catalog-v2 inventory.
+Migration: upgrading hosts must grant their native inventory-reserving runtime
+role EXECUTE on public.inventory_available_to_promise(text,text,timestamptz,boolean)
+and public.inventory_channel_exposure_quantity(text,text), plus SELECT on the
+seam's underlying relations as listed in Data and migrations, before using the
+updated allocator or N3 stock-wait paths.
+`StockWaitStorePort.listCandidates` now returns `StockWaitFrozenCase[]`: discovery
+may have no durable case yet. Hosts must retain its frozen snapshot and binding.
+Frozen discovery requires the active current schedule; paused current waits remain open.
+Deficits separate own reserved units from free ATP and subtract both for missing
+units. Closed or pending-payment resume callbacks return null without writes; paid
+fulfillment-pending orders can complete realization admission.
+No advance reservation, physical coverage guarantee or one-time checkout writer
+is introduced. No pause, payment execution or parcel-arrival fact is added.
+Uncaptured stock refusals rotate on the operation selection timestamp even when
+missing or stale stock prevents case creation, allowing replenished work through
+a bounded candidate page.
+
+M10 P6 + P8: composed subscriptions (development preview)
+
+Migration: Additive `./subscriptions` facades are `createSubscriptionServices`, `createSubscriptionCommandExamples`, `createSubscriptionLifecycleMessages` and `subscriptionLifecycleTemplate`; hosts explicitly supply readiness, execution, commands and M04 delivery. No factory activates serving work. `SubscriptionLifecycleFact` is exported from this entry; `subscriptionLifecycleTemplate(kind, retryAttempt?)` preserves the installed payment-failure rungs (1, 2, otherwise 3). `runRenewalBatchRows` exposes the existing per-row error-result isolation for composed hosts.
+Migration: Additive `./composition` entry `createSubscriptionContribution` describes exactly one selected subscription schedule; off supplies none. Hosts bind its callable to their existing population lease and observe the complete installed schema.
+Migration: `createPostgresRetryStore` adds `failureProgress(operationId,key)`, returning receipt replay and committed case progression. The native retry driver completes interrupted propagation and skips already advanced cases; existing applyFailure/openCase signatures remain unchanged.
+
+The inert native reference binding composes mandatory G23, dunning and stock wait.
+Captured alignment cases retain authority under off. Prepared attempts reconcile
+without re-execution; ordinary retries bind the frozen mandate and logical cycle.
+M04 owns delivery; M12 owns aggregation. No SQL asset, serving swap, release or
+managed TypeScript recovery is introduced. Native multi-cycle prepaid and M07
+prepared-attempt-store capabilities retain their named unsupported boundaries.
 ## [0.24.0]
 
 - Publishable on the npm `latest` dist-tag as `0.24.0`, from tag
