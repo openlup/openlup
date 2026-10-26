@@ -520,9 +520,11 @@ denied roles. ATP renewal exemption is fixed false, requests are bounded to
 200 array items and a NULL as-of timestamp refuses as
 `inventory_stock_as_of_invalid` (SQLSTATE `22023`). Its conservative stale flag
 covers any stale provider row for the SKU; the allocator retains its stale refusal.
-`SECURITY DEFINER` search paths list `pg_temp` last explicitly; application
-relations and routines are schema-qualified. The starter creation and graduation
-replacements retain independent preimages, header digests and ordered ACL pairs.
+The stock reader's `SECURITY DEFINER` search path lists `pg_temp` last explicitly;
+its application relations and routines are schema-qualified.
+The other contributed definers retain their reviewed headers and search paths under the platform-wide definer posture; the stock reader's `pg_temp`-last header is stricter.
+The starter creation and graduation replacements retain independent preimages,
+header digests and ordered ACL pairs.
 Approval-history comparisons retain the exact seven- and eight-entry prefixes
 and the invoker stock-reader identity in the eight- and nine-entry inventories
 for release carry-over. Candidate admission requires the complete inventory and

@@ -247,6 +247,23 @@ export function assertSameSnapshot(before: BatchSnapshot, after: BatchSnapshot):
 export async function assertManagedAcquisition(db: Pick<Pool, "query">, connectionString: string) {
   // Exercise the real finalize/admission/creation closure with retained
   // snapshots and synthetic rows; no reader or creation function is stubbed.
+  const owner = (await db.query("SELECT current_user AS caller")).rows[0].caller;
+  const asServiceRole = async <T>(work: () => Promise<T>): Promise<T> => {
+    await db.query("SAVEPOINT acquisition_service_role");
+    try {
+      await db.query("SET LOCAL ROLE service_role");
+      expect((await db.query("SELECT current_user AS caller")).rows[0].caller).toBe("service_role");
+      const result = await work();
+      // Preserve successful writes and transaction locks for replay/lock proofs.
+      await db.query(`SET LOCAL ROLE "${String(owner).replaceAll('"', '""')}"; RELEASE SAVEPOINT acquisition_service_role`);
+      return result;
+    } catch (error) {
+      await db.query("ROLLBACK TO acquisition_service_role; RELEASE SAVEPOINT acquisition_service_role");
+      throw error;
+    } finally {
+      expect((await db.query("SELECT current_user AS caller")).rows[0].caller).toBe(owner);
+    }
+  };
   await db.query(`INSERT INTO public.commerce_settings(key,value_text)
     VALUES ('settlement_region','ZZ'),('settlement_currency','XXX')
     ON CONFLICT (key) DO UPDATE SET value_text=excluded.value_text`);
@@ -274,9 +291,9 @@ export async function assertManagedAcquisition(db: Pick<Pool, "query">, connecti
     return id as string;
   };
   const finalize = async (id: string, key: string, snapshot: unknown, mode = "subscription_cycle") =>
-    (await db.query(`SELECT public.commerce_finalize_order_for_checkout($1,$2,$3,$4,$5,NULL,$6,$7,
+    asServiceRole(async () => (await db.query(`SELECT public.commerce_finalize_order_for_checkout($1,$2,$3,$4,$5,NULL,$6,$7,
       '{"checkoutCommandVersion":"commerce.checkout_command.v1"}') AS result`,
-    [key, id, mode, clientId, addressId, snapshot, draft])).rows[0].result.finalizedOrder;
+    [key, id, mode, clientId, addressId, snapshot, draft])).rows[0].result.finalizedOrder);
   const counts = async () => (await db.query(`SELECT
     (SELECT count(*) FROM public.subscriptions)::int AS subscriptions,
     (SELECT count(*) FROM public.subscription_cycles)::int AS cycles,
@@ -316,7 +333,7 @@ export async function assertManagedAcquisition(db: Pick<Pool, "query">, connecti
   // No configured policy: the reader refuses, while compatibility admission
   // permits exactly one subscription/cycle and retains exact finalize replay.
   expect((await db.query("SELECT count(*)::int AS n FROM public.promotions")).rows[0].n).toBe(0);
-  await refuse(() => db.query("SELECT public.commerce_subscription_acquisition_terms(clock_timestamp())"), "55000", "acquisition_terms_not_effective");
+  await refuse(() => asServiceRole(() => db.query("SELECT public.commerce_subscription_acquisition_terms(clock_timestamp())")), "55000", "acquisition_terms_not_effective");
   const noPolicyQuote = quote(), noPolicyOrder = await newOrder(noPolicyQuote);
   const observerBefore = await acquisitionEffects();
   await db.query("SAVEPOINT acquisition_observer");
@@ -362,7 +379,7 @@ export async function assertManagedAcquisition(db: Pick<Pool, "query">, connecti
       'exclusive','{"first_subscription_purchase":true}','2000-01-01T00:00:00Z',1,ARRAY['ZZ'],
       'active','promotion-engine.v2','product','target_percentage',3700)`);
   const readTerms = async () => {
-    const selection = (await db.query("SELECT public.commerce_subscription_acquisition_terms(clock_timestamp()) AS terms")).rows[0].terms;
+    const selection = await asServiceRole(async () => (await db.query("SELECT public.commerce_subscription_acquisition_terms(clock_timestamp()) AS terms")).rows[0].terms);
     expect(selection).toMatchObject({ kind: "v2_standalone", initialDiscountBps: 3700 });
     return Object.fromEntries(Object.entries(selection).filter(([key]) => !["kind", "legacyPairCount", "standaloneCount", "nextBoundaryAt"].includes(key)));
   };
