@@ -573,6 +573,32 @@
       ],
       "entrypoint": "dist/invoicing/contracts/index.d.ts",
       "snapshot": "api/invoicing-contracts.api.md"
+    },
+    "./account-support": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/account-support/contracts.test.ts",
+        "test/account-support/accountReadFacade.test.ts",
+        "test/account-support/browserSafety.test.ts",
+        "test/account-support/portFit.test.ts"
+      ],
+      "entrypoint": "dist/account-support/index.d.ts",
+      "snapshot": "api/account-support.api.md"
+    },
+    "./account-support/contracts": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/account-support/contracts.test.ts",
+        "test/account-support/accountReadFacade.test.ts",
+        "test/account-support/browserSafety.test.ts",
+        "test/account-support/portFit.test.ts"
+      ],
+      "entrypoint": "dist/account-support/contracts/index.d.ts",
+      "snapshot": "api/account-support-contracts.api.md"
     }
   },
   "pack": {
@@ -604,7 +630,8 @@
       "./subscriptions/contracts": 32,
       "./invoicing/contracts": 32,
       "./commerce/contracts": 32,
-      "./pricing/browser": 25600
+      "./pricing/browser": 25600,
+      "./account-support/contracts": 32
     }
   }
 }

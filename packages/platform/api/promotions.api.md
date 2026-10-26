@@ -876,7 +876,7 @@ export declare function acquisitionQuoteBinding(acquisitionTerms?: ResolvedAcqui
     acquisitionTerms?: ResolvedAcquisitionTerms;
 };
 export declare function mapAcquisitionTermsFailure(error: unknown): {
-    code: "CONFLICT" | "UPSTREAM_UNAVAILABLE";
+    code: "UPSTREAM_UNAVAILABLE" | "CONFLICT";
     details: {
         reason: import("./acquisitionTerms.js").AcquisitionTermsRefusal;
         refreshRequired: boolean;

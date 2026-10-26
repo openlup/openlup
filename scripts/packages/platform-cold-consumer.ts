@@ -11,6 +11,8 @@ import { assertInstalledPackages, isolatedConsumerEnv, readCurrentPackManifest }
 import { POSTGRES_PROOF_IMAGE } from "./outbox-disposable-postgres.ts";
 
 export const NON_ADAPTER_ENTRIES = [
+  "account-support",
+  "account-support/contracts",
   "commerce",
   "commerce/contracts",
   "commerce/server",
@@ -131,6 +133,34 @@ export function assertExportInventory(consumer: string): void {
   if (JSON.stringify(Object.keys(metadata.exports).sort()) !== JSON.stringify(expected)) throw new Error("Platform export inventory needs classification");
 }
 
+
+/** R1 exercises the installed delegation boundary, including nulls and owner errors. */
+export function proveAccountSupportConsumer(consumer: string): void {
+  consumerNode(consumer, `
+import assert from "node:assert/strict";
+import { createAccountReadFacade, CustomerAccountReadModelError, withCustomerAccountReadStage, customerAccountReadFailureDetails } from "@openlup/platform/account-support";
+import * as contracts from "@openlup/platform/account-support/contracts";
+assert.deepEqual(Object.keys(contracts), []);
+const account={revision:"owner-revision", getAccount(userId){assert.equal(this,account);assert.equal(userId,"principal-a");return Promise.resolve(snapshot);}};
+const snapshot={profile:{privateExtension:"host-owned"},frozenTotal:2301};
+const input={limit:17}, list={orders:[{orderId:"order-b",frozenTotal:2301}]}, detail={orderId:"order-c",revision:"original"};
+const orders={listOrders(userId,request){assert.equal(this,orders);assert.equal(userId,"principal-b");assert.equal(request,input);return Promise.resolve(list);},getOrderDetail(userId,orderId){assert.equal(this,orders);assert.equal(userId,"principal-c");assert.equal(orderId,"order-c");return Promise.resolve(detail);}};
+const read=createAccountReadFacade({account,orders});
+assert.equal(await read.getAccount("principal-a"),snapshot);
+assert.equal(await read.listOrders("principal-b",input),list);
+assert.equal(await read.getOrderDetail("principal-c","order-c"),detail);
+const cause=Error("UPSTREAM_UNAVAILABLE");
+for(const fail of [false,true]) {
+  const result=async()=>{if(fail)throw cause;return null;};
+  const missing=createAccountReadFacade({account:{getAccount:result},orders:{listOrders:result,getOrderDetail:result}});
+  for(const run of [()=>missing.getAccount("a"),()=>missing.listOrders("b",{limit:4}),()=>missing.getOrderDetail("c","o")]) {
+    if(fail)await assert.rejects(run,error=>error===cause);else assert.equal(await run(),null);
+  }
+}
+await assert.rejects(()=>withCustomerAccountReadStage("account_aggregate",async()=>{throw cause;}),error=>error instanceof CustomerAccountReadModelError && error.cause===cause);
+assert.deepEqual(customerAccountReadFailureDetails(cause),{reason:"read_model_failed",stage:"unknown"});
+`);
+}
 
 /** Actual installed P1 descriptor and browser import; no live provider or worker. */
 export function proveInvoicingConsumer(consumer: string): void {
@@ -409,6 +439,17 @@ export function compileConsumer(consumer: string, entries: readonly string[], co
     'export const commerceResult = commercePort.getAvailability({ items: commerceItems });',
     '// @ts-expect-error checkout mode is a closed contract',
     'offerAvailabilityRequestItems([], "unsupported");',
+  ].join("\n"));
+  if (entries.includes("account-support") && entries.includes("account-support/contracts")) surfaces.push([
+    'import { createAccountReadFacade } from "@openlup/platform/account-support";',
+    'import type { AccountReadPort, InvoiceAccessPort } from "@openlup/platform/account-support/contracts";',
+    'const accountRead: AccountReadPort<{ revision: string }, { orders: string[] }, { orderId: string }> = createAccountReadFacade({ account: { getAccount: async () => ({ revision: "original" }) }, orders: { listOrders: async () => ({ orders: [] }), getOrderDetail: async (_userId, orderId) => ({ orderId }) } });',
+    'export const accountResult = accountRead.listOrders("principal-a", { limit: 17 });',
+    '// @ts-expect-error cursor pagination is not an owner capability',
+    'accountRead.listOrders("principal-a", { limit: 17, cursor: "invented" });',
+    'declare const invoiceAccess: InvoiceAccessPort;',
+    '// @ts-expect-error account and order scope are required for download authorization',
+    'invoiceAccess.resolveDownload({ documentRef: "document-a" });',
   ].join("\n"));
   // The composer's structural payments slot must accept the payments factory result for typed hosts.
   if (entries.includes("composition") && entries.includes("payments")) surfaces.push([
@@ -1301,6 +1342,7 @@ assert.throws(() => promotions.resolvePromotionBenefitDefinition({ discount_type
     proveMarketingSyncConsumer(consumer);
     proveInvoicingConsumer(consumer);
     proveSubscriptionsConsumer(consumer);
+    proveAccountSupportConsumer(consumer);
     provePaymentsConsumer(consumer);
     proveFulfillmentConsumer(consumer);
     installA1HostBinding(consumer, checkout);

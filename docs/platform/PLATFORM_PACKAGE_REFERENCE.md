@@ -815,3 +815,31 @@ provider evidence, identity extensions and presentation in the host and bind the
 host schema through the final response validation. A structural RPC client and
 separate query capability preserve one executor per order operation. Replacement
 creation delegates to fulfillment and leaves alignment pending actual arrival.
+
+## Account and support contracts
+
+Use `@openlup/platform/account-support` for `createAccountReadFacade` and the
+account-read stage/error/diagnostic helpers. The facade accepts separate `account`
+and `orders` ports and forwards `getAccount(userId)`,
+`listOrders(userId, { limit })` and `getOrderDetail(userId, orderId)` exactly once.
+Owner DTOs remain generic, including frozen money and private extensions. A null
+or thrown refusal remains the owner's result for the host to map to HTTP.
+The facade adds no query, authorization, pagination, retry or diagnostic policy.
+The reference `createM12AccountReadBinding` specializes it to the existing customer
+ports; it registers no route or default selection.
+
+Import types from `@openlup/platform/account-support/contracts`. The five envelopes
+are `AccountReadPort`, `Customer360ReadPort`, `SelfServiceCommandFacade`,
+`OperatorRecoveryCommandEnvelope` and `InvoiceAccessPort`.
+`InvoiceAccessPort` matches M09's order-scoped `InvoiceHostPorts['accountHistory']`
+read and download-authorization seam. It adds no invoice archive, PDF transport
+or storage. Owner refusal unions, optional fields, readonly fields and nullability
+are preserved by local structural declarations with executed owner-equality tests.
+Command declarations and capability flags are proposed composition boundaries;
+R1 implements only account-read delegation and diagnostics. Hosts supply trusted
+context and selected owner implementations. A capability declaration never grants
+authority or establishes managed/native parity.
+
+The [module design](plans/oss-m12-account-support.md) records R1's unchanged slice,
+verification boundary and unimplemented later phases. It grants no activation,
+release or adopter cutover authority.

@@ -1258,8 +1258,8 @@ export declare function authenticateCustomerUser(rawClient: unknown, accessToken
 ```ts
 import { z } from "zod";
 export declare const customerLifecycleStageSchema: z.ZodEnum<{
-    inactive: "inactive";
     customer: "customer";
+    inactive: "inactive";
     lead: "lead";
     tester: "tester";
 }>;
@@ -1270,8 +1270,8 @@ export declare const customerMeResponseSchema: z.ZodObject<{
     firstName: z.ZodNullable<z.ZodString>;
     lastName: z.ZodNullable<z.ZodString>;
     lifecycleStage: z.ZodEnum<{
-        inactive: "inactive";
         customer: "customer";
+        inactive: "inactive";
         lead: "lead";
         tester: "tester";
     }>;
