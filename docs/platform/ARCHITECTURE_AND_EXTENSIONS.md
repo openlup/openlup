@@ -52,6 +52,16 @@ Portable prelaunch validators remain browser-safe package contracts; rich
 prelaunch joins and orchestration remain in the reference application. No route,
 executor, scheduler or profile is activated by importing the package.
 
+The marketing browser entry also owns neutral analytics vocabulary, inert defaults,
+instance-scoped data-layer and route-policy factories, structural paid-purchase
+projection and historical consent chronology. Hosts supply step vocabulary,
+browser/storage access, consent and event wire names, container selection, sink
+callbacks, route manifests and sensitive sets. No platform module edge, server
+entry or provider transport is introduced. Types are exposed type-only through
+`marketing/contracts`; the analytics port is reused from core. Allocation and
+chronology preserve source behavior; authorization, money truth and activation
+remain with their existing owners. Local sink admission never attests delivery.
+
 The commerce browser entry contains schemas, pure helpers and port declarations;
 its `/contracts` entry remains type-only. The `/commerce/server` entry
 is the separate Node-only home for handlers, use cases, stores, adapters and

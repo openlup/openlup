@@ -91,6 +91,7 @@ timestamp used in the webhook's idempotency key.
 | `./marketing/server` | Node-only acquisition handlers, direct read/evidence factories and research orchestration without `pg`; host responder, authorization, binding and notification copy |
 | `./marketing/server/postgres` | Acquisition case and research evidence PostgreSQL port factories; requires the existing optional `pg` peer |
 | `./marketing`, `./marketing/contracts` | Browser-safe acquisition history, portable prelaunch, survey evidence and newsletter consent schemas; type-only DTOs and acquisition/research ports |
+| `./marketing`, `./marketing/contracts` (analytics) | Browser-safe acquisition and research schemas, injected analytics, paid purchase and consent-time facts; type-only DTOs and ports |
 | `./commerce`, `./commerce/contracts` | Browser-safe neutral commerce schema cores, generic ports and pure contract helpers |
 | `./commerce/server` | Node-only OMS, returns, native reviews/media and hosted-feedback handlers/adapters and order-detail composition, email consumers, dispatch registry, paid-fulfillment binding and checkout compensation, checkout handlers, runtime and shared paid-order saga |
 | `./pricing` | Experimental price authority, quote computation/handlers, offer projection/cache, readiness and policy tokens |
@@ -144,6 +145,31 @@ HTML rendering before the subject clock read. The reference owns retired
 route refusals, raw signed consent ingress and notification copy. PostgreSQL
 SQL, role selection and transaction/pool handling remain unchanged. The
 server-only compatibility command types do not expose retired admission schemas.
+
+Analytics facts share these browser-safe entries. `createNoopAnalytics` implements
+Core's existing analytics port; deployment and advertising defaults remain inert.
+`AnalyticsEventMap<StepName>` retains the host's literal step vocabulary, with
+`string` as the neutral default. Private transport ownership fields and envelopes
+remain host extensions. Types are forwarded type-only by `./marketing/contracts`.
+
+`createAnalyticsDataLayer` owns loader readiness per instance and accepts the host's
+browser/storage access, consent key and change event, event prefix, container
+reader and deployment callback. Consent commands seed default before update and
+use array-like arguments; advertising grants read marketing consent at push time.
+Revocation denies every signal. Sinks are attempted independently with failure
+isolation and no replay of observations made before consent. Admission booleans
+mean synchronous local acceptance only, never delivery or business acknowledgement.
+
+`createAnalyticsRoutePolicy` requires public paths, redirect sources and all
+sensitive-path sets. Its optional-route predicate preserves broad eligibility;
+deployment URL sanitization admits exact public paths and safe campaign values.
+`projectPaidPurchase` consumes only structural paid-recap facts, preserving
+allocation/grouping, the item cap and ordered suppression reasons without an
+ambient currency policy. `selectMarketingHistoricalConsentTime` selects exact
+native chronology only after host authorization, without changing the local
+grant. The reference retains its narrower checkout-kind admission and all wire
+names. [Purchase equivalence](../../src/checkout/machine/purchasePayloadEquivalence.test.ts)
+and the package analytics witnesses pin these boundaries.
 
 ## Commerce contracts
 

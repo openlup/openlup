@@ -13,6 +13,7 @@ import {
   proveAccountSupportConsumer,
   proveMarketingConsumer,
   proveMarketingServerConsumer,
+  compileMarketingAnalyticsConsumer,
   proveCommerceConsumer,
   proveInvoicingConsumer,
   proveSubscriptionsConsumer,
@@ -1023,6 +1024,8 @@ it("proves installed marketing subpaths, prelaunch schemas, reachable ports and 
   const consumer = pristinePackedA1Fixture();
   assertConsumerIsolation(consumer, root);
   proveMarketingConsumer(consumer);
+  for (const name of ["@types/node", "undici-types"]) cpSync(join(root, "node_modules", name), join(consumer, "node_modules", name), { recursive: true });
+  compileMarketingAnalyticsConsumer(consumer, join(root, "node_modules/typescript/lib/tsc.js"));
   compileConsumer(consumer, ["marketing", "marketing/contracts"], join(root, "node_modules/typescript/lib/tsc.js"));
 });
 

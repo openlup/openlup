@@ -75,6 +75,13 @@ entrypoint, like the existing process witnesses. Register new tracked test paths
 policy/inventory checks; those checks compare Git's tracked paths, so an
 untracked test alone cannot establish complete publication evidence.
 
+Marketing analytics source and its neutral witnesses belong to the platform
+runtime-boundary owner. Reference analytics and purchase bindings retain their
+host policy; runtime guidance explains local admission, consent ordering and the
+reference checkout-kind restriction. Publication inventory includes the package
+facts and the frozen reference purchase transcript; generated navigation carries
+no delivery or activation claim.
+
 The M10 control re-pin moves pending inert fixtures to `20261024`, adds native
 X/Y, and folds preview replay into N2 under `scripts/fixtures/reviewed-m10/`.
 The migration guide owns the exact 18-pin inventory (with historical 14/16-pin reads) and payment/stock/preview purpose; contributor checks own their
