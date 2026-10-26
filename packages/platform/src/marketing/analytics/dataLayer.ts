@@ -7,7 +7,7 @@ type ConsentState = "granted" | "denied";
 
 /** Each instance owns loader state; the host supplies browser and deployment policy. */
 export function createAnalyticsDataLayer<StepName extends string = string>(options: AnalyticsDataLayerOptions<StepName> = {}) {
-  const { consentStorageKey = "", consentChangeEvent = "", eventPrefix = "",
+  const { consentStorageKey = "", consentChangeEvent = "", consentSignalNames, eventPrefix = "",
     readContainerId = () => null, getWindow = () => undefined } = options;
   const deploymentSink = options.trackDeploymentEvent ?? trackDeploymentEvent;
   let analyticsLoaderReady = false;
@@ -50,19 +50,17 @@ export function createAnalyticsDataLayer<StepName extends string = string>(optio
   }
   function resetAnalyticsLoaderReadiness(): void { analyticsLoaderReady = false; }
   function pushAnalyticsConsentDefault(): void {
-    pushConsentCommand("default", { analytics_storage: "denied", ad_storage: "denied",
-      ad_user_data: "denied", ad_personalization: "denied" });
+    pushConsentCommand("default", "denied", "denied");
   }
   function pushAnalyticsConsentUpdate(granted: boolean): void {
     const analyticsState: ConsentState = granted ? "granted" : "denied";
     // Read the separate advertising grant at push time; revocation denies all signals.
     const adState: ConsentState = granted && readCookieConsent()?.marketing === true ? "granted" : "denied";
-    pushConsentCommand("update", { analytics_storage: analyticsState, ad_storage: adState,
-      ad_user_data: adState, ad_personalization: adState });
+    pushConsentCommand("update", analyticsState, adState);
   }
   function pushAnalyticsEvent<K extends AnalyticsEventName>(event: K, properties: AnalyticsEventMap<StepName>[K]): boolean {
     const browser = getWindow();
-    if (!browser || !configuredContainerId() || !hasAnalyticsConsent()) return false;
+    if (!consentSignalNames || !browser || !configuredContainerId() || !hasAnalyticsConsent()) return false;
     if (!browser.dataLayer) {
       browser.dataLayer = [];
       pushAnalyticsConsentDefault();
@@ -83,9 +81,11 @@ export function createAnalyticsDataLayer<StepName extends string = string>(optio
     }
     return { deployment, optional };
   }
-  function pushConsentCommand(action: "default" | "update", settings: Record<string, ConsentState>): void {
+  function pushConsentCommand(action: "default" | "update", analyticsState: ConsentState, adState: ConsentState): void {
     const browser = getWindow();
-    if (!browser?.dataLayer) return;
+    if (!consentSignalNames || !browser?.dataLayer) return;
+    const settings: Record<string, ConsentState> = { [consentSignalNames.analytics]: analyticsState };
+    for (const name of consentSignalNames.advertising) settings[name] = adState;
     function consentCommand(..._args: unknown[]) {
       // Consent commands use the array-like arguments object, not an event object.
       // eslint-disable-next-line prefer-rest-params

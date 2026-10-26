@@ -16,6 +16,7 @@ export function configuredGtmId(): string | null {
 const analytics = createAnalyticsDataLayer<AnalyticsStepName>({
   consentStorageKey: ANALYTICS_CONSENT_STORAGE_KEY,
   consentChangeEvent: ANALYTICS_CONSENT_EVENT,
+  consentSignalNames: { analytics: "analytics_storage", advertising: ["ad_storage", "ad_user_data", "ad_personalization"] },
   eventPrefix: "openlup_ga4_v1_",
   readContainerId: configuredGtmId,
   trackDeploymentEvent,

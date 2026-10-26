@@ -523,7 +523,7 @@ await assert.rejects(import("@openlup/platform/dist/marketing/acquisitionCaseSch
 export function proveMarketingServerConsumer(consumer: string): void {
   consumerNode(consumer, `
 import assert from "node:assert/strict";
-import { createAcquisitionCaseHandlers, createAcquisitionCaseActiveCountDirectHandler, createAcquisitionSurveySubmitDirectHandler } from "@openlup/platform/marketing/server";
+import { createAcquisitionCaseHandlers, createAcquisitionCaseActiveCountDirectHandler, createAcquisitionSurveySubmitDirectHandler, createAnalyticsContextHandler } from "@openlup/platform/marketing/server";
 import { createBffResponder } from "@openlup/platform/bff";
 const calls = [];
 const port = { activeCount: async scope => { calls.push(scope); return { ok: true, value: 4 }; } };
@@ -538,6 +538,14 @@ assert.deepEqual(calls, ["public_tester_application"]);
 await createAcquisitionSurveySubmitDirectHandler({ respond, authorize: async () => null, resolveBinding: async () => ({ submitSurvey: async () => ({ ok: false, error: { kind: "conflict" } }) }) })({ method: "POST", headers: { "idempotency-key": "survey-key-0001" }, body: { view: "acquisition_survey_v1", caseReference: "acquisition-case:11111111-1111-4111-8111-111111111111", surveyType: "consumer", responseData: { answer: "synthetic" } } }, res);
 assert.equal(status, 409);
 assert.deepEqual(body, { ok: false, error: { code: "CONFLICT", message: "Acquisition evidence request conflicts with prior state" } });
+await createAnalyticsContextHandler({ respond, isEnabled: () => true,
+  resolveStore: () => { throw Error("invalid context must not read persistence"); },
+  readAccessToken: () => null, resolveTrustedSubject: async () => null,
+  capabilityCrypto: { mintToken: () => { throw Error("invalid context must not mint"); }, hashToken: token => token },
+  cookieName: "__Host-context", clientIdField: "browserRef",
+})({ method: "POST", headers: { host: "shop.example", origin: "https://shop.example" }, body: { granted: true } }, res);
+assert.equal(status, 400);
+assert.deepEqual(body, { ok: false, error: { code: "BAD_REQUEST", message: "Invalid analytics context" } });
 await assert.rejects(import("@openlup/platform/marketing/server/internal"), { code: "ERR_PACKAGE_PATH_NOT_EXPORTED" });
 `);
 }

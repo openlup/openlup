@@ -154,8 +154,12 @@ Core's existing analytics port; deployment and advertising defaults remain inert
 remain host extensions. Types are forwarded type-only by `./marketing/contracts`.
 
 `createAnalyticsDataLayer` owns loader readiness per instance and accepts the host's
-browser/storage access, consent key and change event, event prefix, container
-reader and deployment callback. Consent commands seed default before update and
+browser/storage access, consent key and change event, `consentSignalNames`, event
+prefix, container reader and deployment callback. `consentSignalNames` supplies
+one `analytics` wire name and the ordered `advertising` wire names. Without it,
+no consent command is pushed and optional event admission returns false, even
+with browser access, a container and stored consent; deployment attempts remain
+independent. Consent commands seed default before update and
 use array-like arguments; advertising grants read marketing consent at push time.
 Revocation denies every signal. Sinks are attempted independently with failure
 isolation and no replay of observations made before consent. Admission booleans
@@ -174,8 +178,9 @@ and the package analytics witnesses pin these boundaries.
 
 `createAnalyticsContextHandler` in `./marketing/server` accepts a required BFF
 responder, enable reader, persistence resolver, access-token reader, trusted-subject
-resolver, capability mint/hash functions and historical cookie name. The strict
-request keeps `granted`, `gaClientId` and `explicitGrant`; grants require a client
+resolver, capability mint/hash functions, historical cookie name and `clientIdField`.
+The host supplies the client-id wire field name through `clientIdField`; the strict
+request also keeps `granted` and `explicitGrant`. Grants require a client
 id and existing revoked contexts require an explicit new grant for replacement.
 Only token hashes reach persistence. Enrollment uses only the server-verified
 subject, and invalid bearer grants refuse before writes. Cookie attributes and

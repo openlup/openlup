@@ -1,12 +1,12 @@
 import { expect, it, vi } from "vitest";
 import { createAnalyticsDataLayer, type AnalyticsBrowserWindow } from "../../src/marketing/index.js";
-function fixture() {
+function fixture(consentSignalNames = { analytics: "measurement", advertising: ["campaign", "attribution", "personalization"] }) {
   let stored = JSON.stringify({ necessary: true, functional: false, analytics: true, marketing: false });
   const browser = { localStorage: { getItem: vi.fn(() => stored) },
     addEventListener: vi.fn(), removeEventListener: vi.fn() } as unknown as AnalyticsBrowserWindow;
   const sink = vi.fn(() => true);
   const options = { getWindow: () => browser, consentStorageKey: "choice", consentChangeEvent: "choice-changed",
-    eventPrefix: "host_", readContainerId: () => "container:one", trackDeploymentEvent: sink };
+    consentSignalNames, eventPrefix: "host_", readContainerId: () => "container:one", trackDeploymentEvent: sink };
   return { browser, sink, options, analytics: createAnalyticsDataLayer(options), store: (value: string) => { stored = value; } };
 }
 it("admits each sink independently of optional consent", () => {
@@ -39,6 +39,14 @@ it("has inert defaults without a browser", () => {
   expect(analytics.emitAnalyticsEvent("page_view", { page_path: "/" })).toEqual({ deployment: false, optional: false });
   expect(() => { analytics.pushAnalyticsConsentDefault(); analytics.pushAnalyticsConsentUpdate(true);
     analytics.subscribeToAnalyticsConsent(() => undefined)(); }).not.toThrow();
+  const f = fixture();
+  const withoutSignals = createAnalyticsDataLayer({ ...f.options, consentSignalNames: undefined });
+  expect(withoutSignals.pushAnalyticsEvent("page_view", { page_path: "/" })).toBe(false);
+  expect(f.browser.dataLayer).toBeUndefined();
+  f.browser.dataLayer = [];
+  withoutSignals.pushAnalyticsConsentDefault(); withoutSignals.pushAnalyticsConsentUpdate(true);
+  expect(withoutSignals.emitAnalyticsEvent("page_view", { page_path: "/" })).toEqual({ deployment: true, optional: false });
+  expect(f.browser.dataLayer).toEqual([]); expect(f.sink).toHaveBeenCalledTimes(1);
 });
 // New seam 2: injected names, storage, listeners and synchronous attempt mask.
 it("uses only injected storage, event, prefix, container reader and sink", () => {
@@ -53,6 +61,16 @@ it("uses only injected storage, event, prefix, container reader and sink", () =>
     .toEqual({ deployment: false, optional: true });
   expect(f.sink).not.toHaveBeenCalled(); expect(f.browser.localStorage.getItem).toHaveBeenCalledWith("choice");
   expect(f.browser.dataLayer?.[2]).toEqual({ event: "host_page_view", page_path: "/" });
+  const signalKeys = ["measurement", "campaign", "attribution", "personalization"];
+  const defaultSettings = (f.browser.dataLayer![0] as IArguments)[2];
+  const updateSettings = (f.browser.dataLayer![1] as IArguments)[2];
+  expect(Object.keys(defaultSettings)).toEqual(signalKeys);
+  expect(Object.keys(updateSettings)).toEqual(signalKeys);
+  expect(defaultSettings).toEqual({ measurement: "denied", campaign: "denied", attribution: "denied", personalization: "denied" });
+  expect(updateSettings).toEqual({ measurement: "granted", campaign: "denied", attribution: "denied", personalization: "denied" });
+  f.store(JSON.stringify({ necessary: true, functional: false, analytics: true, marketing: true }));
+  f.analytics.pushAnalyticsConsentUpdate(true);
+  expect((f.browser.dataLayer![3] as IArguments)[2]).toEqual({ measurement: "granted", campaign: "granted", attribution: "granted", personalization: "granted" });
   const unconfigured = createAnalyticsDataLayer({ ...f.options, readContainerId: () => null });
   expect(unconfigured.pushAnalyticsEvent("page_view", { page_path: "/" })).toBe(false);
 });
@@ -67,8 +85,8 @@ it("isolates loader readiness and its listener lifecycle", () => {
   expect(listener).toHaveBeenCalledTimes(1);
 });
 // New seam 4: injection preserves parser, command shape, seeding order and push-time advertising consent.
-it("preserves strict stored booleans and ordered array-like consent commands", () => {
-  const f = fixture();
+it("preserves reference-compatible stored booleans and ordered array-like consent commands", () => {
+  const f = fixture({ analytics: "analytics_storage", advertising: ["ad_storage", "ad_user_data", "ad_personalization"] });
   for (const raw of ["bad", "null", "[]", "{}", '{"necessary":true,"functional":false,"analytics":true,"marketing":1}']) {
     f.store(raw); expect(f.analytics.readCookieConsent()).toBeNull();
   }
@@ -80,6 +98,8 @@ it("preserves strict stored booleans and ordered array-like consent commands", (
     analytics_storage: "denied", ad_storage: "denied", ad_user_data: "denied", ad_personalization: "denied" }]);
   expect(Array.from(commands[1] as IArguments)).toEqual(["consent", "update", {
     analytics_storage: "granted", ad_storage: "granted", ad_user_data: "granted", ad_personalization: "granted" }]);
+  expect(JSON.stringify((commands[0] as IArguments)[2])).toBe('{"analytics_storage":"denied","ad_storage":"denied","ad_user_data":"denied","ad_personalization":"denied"}');
+  expect(JSON.stringify((commands[1] as IArguments)[2])).toBe('{"analytics_storage":"granted","ad_storage":"granted","ad_user_data":"granted","ad_personalization":"granted"}');
   f.store(JSON.stringify({ necessary: true, functional: false, analytics: true, marketing: false }));
   f.analytics.pushAnalyticsConsentUpdate(true);
   expect((commands[3] as IArguments)[2]).toEqual({ analytics_storage: "granted", ad_storage: "denied", ad_user_data: "denied", ad_personalization: "denied" });

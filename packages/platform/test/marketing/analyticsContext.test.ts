@@ -29,6 +29,7 @@ function fixture() {
     resolveTrustedSubject: vi.fn(async (token: string) => token === "authenticated-token" ? "verified-subject" : null),
     capabilityCrypto: { mintToken: vi.fn(() => randomBytes(32).toString("hex")), hashToken: vi.fn(digest) },
     cookieName,
+    clientIdField: "browserRef",
   };
   const handler = createAnalyticsContextHandler(deps);
   async function run(body: unknown, headers: Record<string, string> = {}) {
@@ -44,7 +45,7 @@ function fixture() {
 describe("first-party analytics consent capability", () => {
   it("refuses cross-origin mutation before reading the store", async () => {
     const { run, deps, store } = fixture();
-    const res = await run({ granted: true, gaClientId: "123.456" }, { origin: "https://other.example" });
+    const res = await run({ granted: true, browserRef: "123.456" }, { origin: "https://other.example" });
     expect(res.status).toHaveBeenCalledWith(403);
     expect(res.json).toHaveBeenCalledWith({ ok: false, error: { code: "FORBIDDEN", message: "Same-origin request required" } });
     expect(deps.resolveStore).not.toHaveBeenCalled();
@@ -54,7 +55,7 @@ describe("first-party analytics consent capability", () => {
 
   it("sets a secure opaque HttpOnly cookie, storing only its hash", async () => {
     const { run, deps, store, contexts } = fixture();
-    const res = await run({ granted: true, gaClientId: "123.456" });
+    const res = await run({ granted: true, browserRef: "123.456" });
     const token = deps.capabilityCrypto.mintToken.mock.results[0].value;
     expect(token).toMatch(/^[a-f0-9]{64}$/);
     expect(res.setHeader).toHaveBeenCalledWith("Set-Cookie",
@@ -94,7 +95,7 @@ describe("first-party analytics consent capability", () => {
     const { run, deps, store, contexts } = fixture();
     const token = "b".repeat(64);
     contexts.set(digest(token), true);
-    const res = await run({ granted: true, gaClientId: "123.456", explicitGrant: true }, { cookie: `${cookieName}=${token}` });
+    const res = await run({ granted: true, browserRef: "123.456", explicitGrant: true }, { cookie: `${cookieName}=${token}` });
     expect(store.syncContext).toHaveBeenCalledExactlyOnceWith({ tokenHash: digest(token), granted: true, clientId: "123.456" });
     expect(deps.capabilityCrypto.mintToken).not.toHaveBeenCalled();
     expect(res.setHeader.mock.calls.some(([key]) => key === "Set-Cookie")).toBe(false);
@@ -105,14 +106,14 @@ describe("first-party analytics consent capability", () => {
     const { run, deps, store, contexts } = fixture();
     const token = "b".repeat(64);
     contexts.set(digest(token), false);
-    const res = await run({ granted: true, gaClientId: "123.456" }, { cookie: `${cookieName}=${token}` });
+    const res = await run({ granted: true, browserRef: "123.456" }, { cookie: `${cookieName}=${token}` });
     expect(store.syncContext).toHaveBeenCalledTimes(1);
     expect(deps.capabilityCrypto.mintToken).not.toHaveBeenCalled();
     expect(res.setHeader.mock.calls.some(([key]) => key === "Set-Cookie")).toBe(false);
     expect(res.json).toHaveBeenCalledWith({ ok: true, data: { active: false } });
 
     store.syncContext.mockClear();
-    const next = await run({ granted: true, gaClientId: "123.456", explicitGrant: true }, { cookie: `${cookieName}=${token}` });
+    const next = await run({ granted: true, browserRef: "123.456", explicitGrant: true }, { cookie: `${cookieName}=${token}` });
     const replacement = deps.capabilityCrypto.mintToken.mock.results[0].value;
     expect(store.syncContext.mock.calls).toEqual([
       [{ tokenHash: digest(token), granted: true, clientId: "123.456" }],
@@ -126,7 +127,7 @@ describe("first-party analytics consent capability", () => {
 
   it("enrolls only the server-verified subject and refuses an invalid bearer before writes", async () => {
     const { run, deps, store } = fixture();
-    await run({ granted: true, gaClientId: "123.456" }, { authorization: "Bearer authenticated-token" });
+    await run({ granted: true, browserRef: "123.456" }, { authorization: "Bearer authenticated-token" });
     expect(deps.resolveTrustedSubject).toHaveBeenCalledExactlyOnceWith("authenticated-token");
     expect(store.enrollSubscriptions).toHaveBeenCalledExactlyOnceWith({
       subject: "verified-subject", contextHash: store.syncContext.mock.calls[0][0].tokenHash,
@@ -135,7 +136,7 @@ describe("first-party analytics consent capability", () => {
     expect(store.syncContext.mock.invocationCallOrder[0]).toBeLessThan(store.enrollSubscriptions.mock.invocationCallOrder[0]);
 
     store.syncContext.mockClear(); store.enrollSubscriptions.mockClear();
-    const res = await run({ granted: true, gaClientId: "123.456" }, { authorization: "Bearer invalid" });
+    const res = await run({ granted: true, browserRef: "123.456" }, { authorization: "Bearer invalid" });
     expect(res.status).toHaveBeenCalledWith(401);
     expect(res.json).toHaveBeenCalledWith({ ok: false, error: { code: "UNAUTHORIZED", message: "Customer session required" } });
     expect(store.syncContext).not.toHaveBeenCalled();
@@ -145,7 +146,7 @@ describe("first-party analytics consent capability", () => {
 
   it("is disabled before activation and accepts no contact or arbitrary tracking fields", async () => {
     const { run, deps, store } = fixture();
-    const bad = await run({ granted: true, gaClientId: "123.456", email: "not-accepted" });
+    const bad = await run({ granted: true, browserRef: "123.456", email: "not-accepted" });
     expect(bad.status).toHaveBeenCalledWith(400);
     expect(bad.json).toHaveBeenCalledWith({ ok: false, error: { code: "BAD_REQUEST", message: "Invalid analytics context" } });
     expect(deps.resolveStore).not.toHaveBeenCalled();
@@ -160,7 +161,7 @@ describe("first-party analytics consent capability", () => {
   it("fails closed before minting when the injected persistence store is absent", async () => {
     const { run, deps, store } = fixture();
     deps.resolveStore.mockReturnValue(null);
-    const res = await run({ granted: true, gaClientId: "123.456" });
+    const res = await run({ granted: true, browserRef: "123.456" });
     expect(res.status).toHaveBeenCalledWith(503);
     expect(res.json).toHaveBeenCalledWith({ ok: false, error: { code: "UPSTREAM_UNAVAILABLE", message: "Analytics context unavailable" } });
     expect(deps.capabilityCrypto.mintToken).not.toHaveBeenCalled();

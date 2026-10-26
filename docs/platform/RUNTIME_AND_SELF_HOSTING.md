@@ -25,19 +25,23 @@ application contracts. The case runtime uses the server-only compatibility port
 for historical adapter signatures, while retired admission schemas stay local.
 
 Reference analytics bindings compose one marketing data-layer instance per module
-and retain their consent storage/event names, event prefix, container reader and
-deployment sink. The route binding supplies public/redirect and sensitive paths.
+and retain their consent storage/event and signal names, event prefix, container
+reader and deployment sink. The route binding supplies public/redirect and sensitive paths.
 Purchase projection retains reference suppression diagnostics and rejects unsupported
 checkout kinds at the original check position, while the portable projector also
 accepts renewal facts. Loader readiness and sink admission are local signals,
 never network delivery. Default package composition is inert and stores no
 pre-consent replay queue; consent commands retain default/update ordering and
-push-time advertising consent. Historical consent-time selection changes neither
-authorization nor the local grant and installs no command worker.
+push-time advertising consent. Hosts supply `consentSignalNames` with an `analytics`
+name followed by ordered `advertising` names. Omission pushes no consent commands
+and refuses optional event admission even with stored consent and a container;
+deployment sink attempts remain independent. Historical consent-time selection
+changes neither authorization nor the local grant and installs no command worker.
 
 The server-only `createAnalyticsContextHandler` requires host enablement,
-persistence, bearer/subject verification, capability cryptography, cookie name
-and BFF responder. Method, flag, same-origin and strict schema checks precede
+persistence, bearer/subject verification, capability cryptography, cookie name,
+the client-id wire field name through `clientIdField` and BFF responder.
+Method, flag, same-origin and strict schema checks precede
 persistence lookup. A missing store refuses as unavailable; throwing sync or
 enrollment operations map to the same bounded error. Only a token hash is
 persisted, an invalid bearer grant refuses before writes, and only a verified

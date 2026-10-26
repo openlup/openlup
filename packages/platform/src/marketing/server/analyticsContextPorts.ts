@@ -23,4 +23,6 @@ export interface AnalyticsContextHandlerDeps {
   resolveTrustedSubject: (accessToken: string) => Promise<string | null>;
   capabilityCrypto: AnalyticsContextCapabilityCrypto;
   cookieName: string;
+  /** Historical request field name supplied by the host. */
+  clientIdField: string;
 }

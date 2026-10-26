@@ -44,6 +44,8 @@ export type AnalyticsBrowserWindow = Pick<Window, "localStorage" | "addEventList
 export interface AnalyticsDataLayerOptions<StepName extends string = string> {
   consentStorageKey?: string;
   consentChangeEvent?: string;
+  /** Host wire names, analytics first then advertising in supplied order. Omission disables consent commands and optional event admission. */
+  consentSignalNames?: { analytics: string; advertising: readonly string[] };
   eventPrefix?: string;
   readContainerId?: () => string | null;
   trackDeploymentEvent?: <K extends AnalyticsEventName>(event: K, properties: AnalyticsEventMap<StepName>[K]) => boolean;

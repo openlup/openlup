@@ -2,15 +2,14 @@ import { z } from "../validation.js";
 import type { HttpRequest, HttpResponse } from "../../http/index.js";
 import type { AnalyticsContextHandlerDeps } from "./analyticsContextPorts.js";
 
-const requestSchema = z.object({
-  granted: z.boolean(),
-  gaClientId: z.string().regex(/^\d+\.\d+$/).max(64).optional(),
-  explicitGrant: z.boolean().default(false),
-}).strict();
-
 export function createAnalyticsContextHandler(deps: AnalyticsContextHandlerDeps) {
-  const { respond, isEnabled, resolveStore, readAccessToken, resolveTrustedSubject, capabilityCrypto, cookieName } = deps;
+  const { respond, isEnabled, resolveStore, readAccessToken, resolveTrustedSubject, capabilityCrypto, cookieName, clientIdField } = deps;
   const { sendBffError, sendBffSuccess, sendMethodNotAllowed } = respond;
+  const requestSchema = z.object({
+    granted: z.boolean(),
+    [clientIdField]: z.string().regex(/^\d+\.\d+$/).max(64).optional(),
+    explicitGrant: z.boolean().default(false),
+  }).strict();
   return async (req: HttpRequest, res: HttpResponse): Promise<void> => {
     if (req.method !== "POST") return sendMethodNotAllowed(res, ["POST"]);
     if (!isEnabled()) return sendBffError(res, "NOT_FOUND", "Analytics context unavailable");
@@ -18,10 +17,12 @@ export function createAnalyticsContextHandler(deps: AnalyticsContextHandlerDeps)
     const origin = typeof req.headers.origin === "string" ? req.headers.origin : "";
     if (!origin || origin !== `https://${req.headers.host}`) return sendBffError(res, "FORBIDDEN", "Same-origin request required");
     const parsed = requestSchema.safeParse(req.body);
-    if (!parsed.success || (parsed.data.granted && !parsed.data.gaClientId)) return sendBffError(res, "BAD_REQUEST", "Invalid analytics context");
+    const clientId = parsed.success ? parsed.data[clientIdField] as string | undefined : undefined;
+    if (!parsed.success || (parsed.data.granted && !clientId)) return sendBffError(res, "BAD_REQUEST", "Invalid analytics context");
     const store = resolveStore();
     if (!store) return sendBffError(res, "UPSTREAM_UNAVAILABLE", "Analytics context unavailable");
-    const data = parsed.data;
+    // The computed shape key widens inference; the strict schema validates these fixed fields.
+    const data = parsed.data as { granted: boolean; explicitGrant: boolean };
     let hash = contextHash(typeof req.headers.cookie === "string" ? req.headers.cookie : undefined, cookieName, (value) => capabilityCrypto.hashToken(value));
     // Explicit user re-consent gets a new capability; withdrawn old bindings stay withdrawn.
     let token: string | null = null;
@@ -34,11 +35,11 @@ export function createAnalyticsContextHandler(deps: AnalyticsContextHandlerDeps)
       const accessToken = readAccessToken(req);
       const subject = data.granted && accessToken ? await resolveTrustedSubject(accessToken) : null;
       if (accessToken && data.granted && !subject) return sendBffError(res, "UNAUTHORIZED", "Customer session required");
-      let active = await store.syncContext({ tokenHash: hash, granted: data.granted, clientId: data.gaClientId ?? null });
+      let active = await store.syncContext({ tokenHash: hash, granted: data.granted, clientId: clientId ?? null });
       if (active !== true && data.granted && data.explicitGrant && !token) {
         token = capabilityCrypto.mintToken();
         hash = capabilityCrypto.hashToken(token);
-        active = await store.syncContext({ tokenHash: hash, granted: true, clientId: data.gaClientId! });
+        active = await store.syncContext({ tokenHash: hash, granted: true, clientId: clientId! });
       }
       if (active === true && subject) await store.enrollSubscriptions({ subject, contextHash: hash });
       if (token && active === true) res.setHeader("Set-Cookie", `${cookieName}=${token}; Path=/; Max-Age=31536000; HttpOnly; Secure; SameSite=Lax`);
