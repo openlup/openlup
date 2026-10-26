@@ -17,6 +17,8 @@ const CONTRACTS_LOADER_IDENTIFIERS = new Set([
 ]);
 const PG_ADAPTERS = new Set([
   "data/postgresGateway.ts",
+  "marketing/server/postgres/acquisitionCaseRoutines.ts",
+  "marketing/server/postgres/acquisitionEvidenceRoutines.ts",
   "data/queryBuilder.ts",
   "migrations/postgresRunner.ts",
   "scheduler/advisoryLock.ts",
@@ -209,7 +211,7 @@ describe("package source boundary", () => {
 
   it("scans the whole package source", () => {
     expect(files.map(({ path }) => path)).toEqual(expect.arrayContaining([
-      "marketing/index.ts", "marketing/contracts/index.ts",
+      "marketing/index.ts", "marketing/contracts/index.ts", "marketing/server/index.ts",
       "commerce/index.ts", "commerce/contracts/index.ts", "commerce/server/index.ts",
       "invoicing/index.ts", "invoicing/contracts/index.ts",
       "subscriptions/index.ts", "subscriptions/contracts/index.ts",
@@ -279,7 +281,7 @@ describe("package source boundary", () => {
     const manifest = JSON.parse(readFileSync(fileURLToPath(new URL("../package.json", import.meta.url)), "utf8")) as {
       exports: Record<string, unknown>;
     };
-    assertModuleExports(modules, graph, manifest.exports, (path) => existsSync(join(SOURCE_ROOT, path)), ["commerce/server", "pricing/browser", "communications/resend", "communications/klaviyo", "payments/stripe", "payments/tpay", "fulfillment/omnipack"]);
+    assertModuleExports(modules, graph, manifest.exports, (path) => existsSync(join(SOURCE_ROOT, path)), ["marketing/server", "commerce/server", "pricing/browser", "communications/resend", "communications/klaviyo", "payments/stripe", "payments/tpay", "fulfillment/omnipack"]);
   });
 
   it("bundles the commerce browser entry without Node built-ins or the server entry", async () => {

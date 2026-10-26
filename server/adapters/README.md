@@ -22,14 +22,15 @@ in [Architecture and extension boundaries](../../docs/platform/ARCHITECTURE_AND_
 
 ## Owns
 
-Acquisition case and research evidence adapters remain application-owned.
-Their schemas and DTO types come directly from `@openlup/platform/marketing`
-and its type-only contracts entry, including reachable case and evidence
-ports. The full reference case port extends the package port; its retired
-commands and methods remain application-owned. Retired case admission types stay in the
-application shim. This binding preserves SQL routine names, argument order,
-result parsing, replay behavior and executor ownership; it moves no adapter
-or database operation into the package.
+Acquisition case and research evidence PostgreSQL adapters delegate through
+thin re-exports to `@openlup/platform/marketing/server`. Runtime bindings retain
+lazy adapter imports, host environment selection and pool-close ownership.
+Schemas/DTOs use the browser marketing entries; server-only structural command
+types preserve the historical adapter's submit/transition signatures. Retired
+admission schemas and terminal route factories stay application-owned. SQL text,
+argument order, result parsing, role selection, replay and pool handling are
+unchanged. Package tests own the adapter assertions; the real PostgreSQL witness
+connects through a login granted only `platform_acquisition_runtime` membership.
 
 Commerce returns and native review lifecycle/media adapters delegate to
 `@openlup/platform/commerce/server`; the former paths retain factory identity. Returns

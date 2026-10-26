@@ -49,6 +49,7 @@ export const NON_ADAPTER_ENTRIES = [
 // identity, communications, promotions and catalog are adapter entries: their declarations reach data/pg types.
 // Its cold runtime import/refusal is below; declarations compile after selecting peers.
 export const ADAPTER_ENTRIES = [
+  "marketing/server",
   "blob",
   "catalog",
   "communications",
@@ -510,6 +511,29 @@ await assert.rejects(import("@openlup/platform/dist/marketing/acquisitionCaseSch
 `);
 }
 
+/** Installed server factories preserve historical reads and bounded port refusals. Requires the pg peer. */
+export function proveMarketingServerConsumer(consumer: string): void {
+  consumerNode(consumer, `
+import assert from "node:assert/strict";
+import { createAcquisitionCaseHandlers, createAcquisitionCaseActiveCountDirectHandler, createAcquisitionSurveySubmitDirectHandler } from "@openlup/platform/marketing/server";
+import { createBffResponder } from "@openlup/platform/bff";
+const calls = [];
+const port = { activeCount: async scope => { calls.push(scope); return { ok: true, value: 4 }; } };
+const handlers = createAcquisitionCaseHandlers(port);
+const respond = createBffResponder();
+let status, body;
+const res = { setHeader() {}, status(value) { status = value; return this; }, json(value) { body = value; return this; } };
+await createAcquisitionCaseActiveCountDirectHandler({ respond, isDirect: () => true, authorize: async () => { throw Error("public count must not authorize"); }, resolveBinding: async () => ({ handlers }) })({ method: "GET" }, res);
+assert.equal(status, 200);
+assert.deepEqual(body, { ok: true, data: { activeTesterCount: 4 } });
+assert.deepEqual(calls, ["public_tester_application"]);
+await createAcquisitionSurveySubmitDirectHandler({ respond, authorize: async () => null, resolveBinding: async () => ({ submitSurvey: async () => ({ ok: false, error: { kind: "conflict" } }) }) })({ method: "POST", headers: { "idempotency-key": "survey-key-0001" }, body: { view: "acquisition_survey_v1", caseReference: "acquisition-case:11111111-1111-4111-8111-111111111111", surveyType: "consumer", responseData: { answer: "synthetic" } } }, res);
+assert.equal(status, 409);
+assert.deepEqual(body, { ok: false, error: { code: "CONFLICT", message: "Acquisition evidence request conflicts with prior state" } });
+await assert.rejects(import("@openlup/platform/marketing/server/internal"), { code: "ERR_PACKAGE_PATH_NOT_EXPORTED" });
+`);
+}
+
 /** M11 K1: installed neutral contracts, a successful projection and a strict refusal. */
 export function proveCommerceConsumer(consumer: string): void {
   consumerNode(consumer, `
@@ -626,6 +650,14 @@ export function compileConsumer(consumer: string, entries: readonly string[], co
     'export const explicitConsent: boolean = marketingEvent.explicitOptInEvidence;',
     'declare const surveyPort: MarketingResearchSurveySubmitPort;',
     'export const surveyResult = surveyPort.submitSurveyResponse({ surveyType: "consumer", responseData: { answer: true } });',
+  ].join("\n"));
+  if (entries.includes("marketing/server")) surfaces.push([
+    'import { createAcquisitionCaseHandlers, createAcquisitionCaseActiveCountDirectHandler } from "@openlup/platform/marketing/server";',
+    'import type { AcquisitionCasePort, AcquisitionCaseDirectDeps } from "@openlup/platform/marketing/server";',
+    'declare const acquisitionPort: AcquisitionCasePort;',
+    'declare const acquisitionDirect: AcquisitionCaseDirectDeps;',
+    'export const acquisitionHandlers = createAcquisitionCaseHandlers(acquisitionPort);',
+    'export const acquisitionCount = createAcquisitionCaseActiveCountDirectHandler(acquisitionDirect);',
   ].join("\n"));
   if (entries.includes("commerce/server")) surfaces.push([
     'import { tryCompensate } from "@openlup/platform/commerce/server";',
@@ -1561,6 +1593,7 @@ assert.throws(() => promotions.resolvePromotionBenefitDefinition({ discount_type
     assertInstalledPackages(consumer, OPTIONAL_PEERS);
     assertConsumerIsolation(consumer, checkout, false);
     compileConsumer(consumer, [...NON_ADAPTER_ENTRIES, ...ADAPTER_ENTRIES], compiler);
+    proveMarketingServerConsumer(consumer);
     proveInstalledAdapters(consumer);
     proveDockerPostgres(consumer, environment);
     console.log("Platform cold consumer PASS; verified tarballs, isolated optional peers, no live provider");

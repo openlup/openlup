@@ -30,12 +30,25 @@ state writer is not an extension seam.
 
 ## Runtime boundaries
 
-Marketing runtime composition remains application-owned. Evidence bindings use
-the type-only package port; case bindings retain the reference port extending
-the package read/count/close surface with retired application methods. Portable
-prelaunch validators are browser-safe package contracts, while rich prelaunch
-joins and their orchestration remain in the reference application. This type
-rebinding adds no server implementation, executor or activation seam.
+Marketing host composition remains application-owned. The Node-only
+`@openlup/platform/marketing/server` entry owns acquisition case handlers,
+direct history/prelaunch/evidence factories, research submit/admin handlers,
+managed survey orchestration and PostgreSQL routines. Hosts inject the BFF
+responder, authorization, persistence binding and notification HTML/subject.
+Case direct reads evaluate the injected bundle predicate at their existing
+position; prelaunch and evidence dispatch predicates stay with host callers.
+Retired route factories, observed wrappers, admin authentication and raw signed
+newsletter ingress stay in the reference. Browser marketing entries reach no
+server code or database driver. Server-only structural compatibility commands
+retain retired adapter signatures without publishing admission schemas.
+Research contracts/ports retain their core compatibility owner; notification
+delivery uses communications/contracts. The server graph admits marketing value
+imports and only HTTP, BFF, marketing-contract and communications-contract type
+edges. The existing optional pg peer is imported only by the two PostgreSQL
+files. SQL text, transaction role selection and pool ownership are unchanged.
+Portable prelaunch validators remain browser-safe package contracts; rich
+prelaunch joins and orchestration remain in the reference application. No route,
+executor, scheduler or profile is activated by importing the package.
 
 The commerce browser entry contains schemas, pure helpers and port declarations;
 its `/contracts` entry remains type-only. The `/commerce/server` entry

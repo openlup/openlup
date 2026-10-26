@@ -270,6 +270,11 @@
       "types": "./dist/marketing/contracts/index.d.ts",
       "import": "./dist/marketing/contracts/index.js",
       "default": "./dist/marketing/contracts/index.js"
+    },
+    "./marketing/server": {
+      "types": "./dist/marketing/server/index.d.ts",
+      "import": "./dist/marketing/server/index.js",
+      "default": "./dist/marketing/server/index.js"
     }
   },
   "repository": {

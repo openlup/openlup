@@ -88,6 +88,7 @@ timestamp used in the webhook's idempotency key.
 | `./inventory` | Experimental schemas/ports, handlers, native stores, projection, injected forecast and SQL descriptor; `./inventory/contracts` DTOs. |
 | `./catalog` | Experimental neutral catalog schemas, drafts, reads, media source packs and publication ports |
 | `./catalog/contracts` | Dependency-free catalog DTOs, media resolver, authority and canonicalization helpers |
+| `./marketing/server` | Node-only acquisition handlers, direct read/evidence factories, research orchestration and PostgreSQL ports; host responder, authorization, binding and notification copy |
 | `./marketing`, `./marketing/contracts` | Browser-safe acquisition history, portable prelaunch, survey evidence and newsletter consent schemas; type-only DTOs and acquisition/research ports |
 | `./commerce`, `./commerce/contracts` | Browser-safe neutral commerce schema cores, generic ports and pure contract helpers |
 | `./commerce/server` | Node-only OMS, returns, native reviews/media and hosted-feedback handlers/adapters and order-detail composition, email consumers, dispatch registry, paid-fulfillment binding and checkout compensation, checkout handlers, runtime and shared paid-order saga |
@@ -109,15 +110,15 @@ schemas. The marketing runtime entry configures the shared Zod instance in
 jitless mode before constructing schemas, preserving CSP-safe initialization
 for direct imports as well as reference facades, like the pricing, catalog and
 communications entries. The type-only `./marketing/contracts` entry has no
-runtime initialization. The rich prelaunch DTO, case submit and transition contracts remain application-owned
-and are intentionally excluded from this package. The shared
+runtime initialization. The rich prelaunch DTO and case submit/transition schemas remain application-owned
+and are excluded from the browser entries. The shared
 `acquisitionOpaqueReferenceSchema` lets those retained contracts reuse the exact
-reference syntax. There is no marketing server entry or automatic route binding.
+reference syntax. No entry registers a route automatically.
 
 `./marketing/contracts` exports only types. Explicit acquisition DTO shapes are
 checked against the runtime schema inference by an executed TypeScript equality
 witness. Reachable case ports expose list, get, active count and close; the app
-extends that port with its retired methods. Evidence ports retain survey submission,
+uses the server-only compatibility port for its retired methods. Evidence ports retain survey submission,
 survey listing and consent application. Port types are also forwarded through
 the runtime entry, following the commerce boundary. Both entries forward research schemas or types from the compatibility
 owner, `@openlup/core/marketing/research`; runtime schemas retain object identity.
@@ -128,7 +129,20 @@ The source and built entries have browser graph proofs. The root test runner
 selects `test/marketing/`; the installed consumer checks both public entries,
 compiles typed usage and refuses deep imports. Kiosk and research reference
 contracts/ports continue to consume the core export. The app owns its admin
-response client and all server composition.
+response client and host composition.
+
+`./marketing/server` owns acquisition case handlers, list/count and prelaunch
+list/detail factories, survey evidence submit/list and consent application,
+research submit/admin handlers, managed survey orchestration and the two
+PostgreSQL port factories. It imports the existing optional `pg` peer; install
+that peer when selecting this server entry. Hosts inject the BFF responder,
+authorization and binding resolvers. Direct case reads receive the host bundle
+predicate at their original guard; prelaunch and evidence dispatch stays in the
+host. Notification HTML and subject are injected separately, preserving
+HTML rendering before the subject clock read. The reference owns retired
+route refusals, raw signed consent ingress and notification copy. PostgreSQL
+SQL, role selection and transaction/pool handling remain unchanged. The
+server-only compatibility command types do not expose retired admission schemas.
 
 ## Commerce contracts
 

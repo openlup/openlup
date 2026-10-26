@@ -12,6 +12,7 @@ import {
   type AccountSupportReadScenarioResult,
   proveAccountSupportConsumer,
   proveMarketingConsumer,
+  proveMarketingServerConsumer,
   proveCommerceConsumer,
   proveInvoicingConsumer,
   proveSubscriptionsConsumer,
@@ -1006,3 +1007,12 @@ it("proves installed marketing subpaths, prelaunch schemas, reachable ports and 
   proveMarketingConsumer(consumer);
   compileConsumer(consumer, ["marketing", "marketing/contracts"], join(root, "node_modules/typescript/lib/tsc.js"));
 });
+
+it("proves installed marketing server reads, port refusal and exact exports with the existing pg peer", () => {
+  const consumer = pristinePackedA1Fixture();
+  for (const name of ["pg", "pg-pool", "pg-protocol", "pg-types", "pgpass", "pg-connection-string", "pg-cloudflare", "postgres-array", "postgres-bytea", "postgres-date", "postgres-interval", "pg-int8", "split2", "xtend", "@types/pg", "@types/node", "undici-types"]) {
+    cpSync(join(root, "node_modules", name), join(consumer, "node_modules", name), { recursive: true });
+  }
+  proveMarketingServerConsumer(consumer);
+  compileConsumer(consumer, ["marketing/server"], join(root, "node_modules/typescript/lib/tsc.js"));
+}, 30_000);
