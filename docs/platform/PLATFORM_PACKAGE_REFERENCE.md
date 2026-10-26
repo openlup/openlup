@@ -45,6 +45,41 @@ and append-only trigger proof; separate runtime-role mutation assertions prove
 privilege denial. Missing Docker fails that proof. No migration or
 privilege change accompanies this package boundary.
 
+For privacy composition, inject `MarketingAcquisitionPrivacyPort` for acquisition
+records/content-free evidence and `MarketingRemoteErasurePort` for read-only case
+outcomes and transactional case opening/fencing. These ports receive identity's
+resolved subject and transaction context; the host owns their authorization,
+atomic persistence and rollback integration. Preparation and assessment are
+side-effect free. Identity completes every assessment, including the existing
+subscriptions veto, before invoking `eraseOrRetain`. A failed or throwing fence
+throws without echoing owner error text, so the unit of work rolls back without
+a receipt. Receipt replay uses identity's existing path.
+
+`createMarketingPrivacyBindings` defaults off. Only `enabled === true` with both
+complete owner ports selects a contributor. Pass its three callables,
+`exportPersonalData`, `assessErasure` and `eraseOrRetain`, directly as `marketing`
+to `createMarketingContribution`; they are the same selected contributor methods.
+Otherwise all three are null and remain Core readiness requirements. The manifest
+provides the browser, contracts and server entries and depends on identity's
+`./identity/contracts` runtime obligation schema. Unbound or partial contributor
+ownership reports unavailable coverage and unresolved obligations, which identity
+refuses as `PRIVACY_OWNERSHIP_UNDECLARED` before any owner effect.
+
+Remote profile export is unavailable even with bound owners. Pending, requested,
+accepted, failed and unbound-provider outcomes retain explicit reasons; acceptance
+never means observed deletion. Waiting imports and pending targets remain owner
+obligations. The donor worker, operator and store stay app-owned; this seam adds
+outcomes and fencing only, with no provider call, claim, retry, scheduler or SQL.
+Raw managed questionnaires and other processors remain outside its coverage.
+The reference privacy graph leaves marketing unselected, and its marketing
+privacy coverage remains an open gap.
+
+The exported privacy ports and `MarketingPrivacyContributor` use local structural
+types and identity's `./identity/contracts` types. Their compatibility with
+identity's contributor is checked in the marketing compiler witness, keeping the
+`./marketing/server` declaration closure free of identity's main entry and the
+optional `pg` peer. Identity's public surface is unchanged.
+
 ## Identity import candidate
 
 The OIDC API adds `createOidcIdentityVerifier`,

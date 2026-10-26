@@ -1432,8 +1432,9 @@ entry and no cross-module platform edges. Its runtime entry may forward the
 existing public core research export; contracts forward only core types and
 local DTO shapes, including reachable acquisition ports, portable prelaunch
 types and shared organization/contact/legal/privacy content slots. Retired admission schemas are excluded from both browser entries. The
-separate `marketing/server` entry admits marketing values and only HTTP, BFF,
-marketing-contract and communications-contract type edges. Its two PostgreSQL
+separate `marketing/server` entry admits marketing and identity-contract values,
+plus HTTP, BFF, marketing-contract and communications-contract type
+edges. Its two PostgreSQL
 files alone admit the existing pg peer and are exported through
 `marketing/server/postgres`. Package boundary checks validate that graph with the
 other modules and prevent the handler entry from reaching PostgreSQL adapters or
@@ -1456,6 +1457,25 @@ The `./marketing/server` release surface selects it, and root discovery includes
 it with the package tests. It needs no reference route or live persistence;
 telemetry context failure never gates commerce and `active` proves only a local
 context fact.
+
+The marketing privacy graph test admits the obligation schema only through
+`identity/contracts/index.js`; both value and type imports of `identity/index.js`
+and internal-file shortcuts refuse. Contributor ports and return types are local
+structural interfaces using identity contract types. The
+existing installed server witness also checks both privacy factories and
+default-off null callables without invoking an owner or creating a case. Its
+strict declaration compilation covers the privacy and acquisition ports without
+selecting identity's server type closure; a runtime import without `pg` alone cannot prove
+declaration independence. Keep these proofs distinct and retain the optional-peer
+absence assertions. K5 contributor, binding and composition witnesses exercise
+unavailable partial ownership, identity refusal/veto ordering, rollback and
+receipt replay rather than duplicating the provider erasure worker.
+
+The existing marketing contract checker also compiles exact structural equality
+checks between both privacy factory results and identity's `PersonalDataContributor`.
+It uses the platform's ES2022 library declarations to check imported production
+source while retaining an ES2020 target and adding no newer test APIs. This extends
+an existing case; K5 remains 16 cases across contributor, binding and composition.
 
 The complete projected root command inventory is `build`,
 `build:public-reference`, `build:public-reference:client`,

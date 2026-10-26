@@ -559,6 +559,14 @@ await createAnalyticsContextHandler({ respond, isEnabled: () => true,
 assert.equal(status, 400);
 assert.deepEqual(body, { ok: false, error: { code: "BAD_REQUEST", message: "Invalid analytics context" } });
 await assert.rejects(import("@openlup/platform/marketing/server/internal"), { code: "ERR_PACKAGE_PATH_NOT_EXPORTED" });
+const { createMarketingPrivacyContributor, createMarketingPrivacyBindings } = await import("@openlup/platform/marketing/server");
+assert.equal(typeof createMarketingPrivacyContributor, "function");
+assert.equal(typeof createMarketingPrivacyBindings, "function");
+const disabledPrivacy = createMarketingPrivacyBindings({ acquisition: null, remoteErasure: null,
+  randomId: () => { throw Error("disabled privacy must not create a case"); } });
+assert.equal(disabledPrivacy.contributor, null);
+assert.deepEqual(disabledPrivacy.callables, { exportPersonalData: null, assessErasure: null, eraseOrRetain: null });
+assert.equal(disabledPrivacy.issues.length, 2);
 `);
 }
 

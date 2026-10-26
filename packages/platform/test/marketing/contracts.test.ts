@@ -5,10 +5,16 @@ import type { z } from "zod";
 import type * as Runtime from "../../src/marketing/index.js";
 import * as Contracts from "../../src/marketing/contracts/index.js";
 import type * as Core from "@openlup/core/marketing/research";
+import type * as Server from "../../src/marketing/server/index.js";
+import type { PersonalDataContributor } from "../../src/identity/index.js";
 
 type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends (<T>() => T extends B ? 1 : 2)
   ? ((<T>() => T extends B ? 1 : 2) extends (<T>() => T extends A ? 1 : 2) ? true : false) : false;
 type Assert<T extends true> = T;
+export type MarketingPrivacyContributorCompatibility = [
+  Assert<Equal<ReturnType<typeof Server.createMarketingPrivacyContributor<null>>, PersonalDataContributor<null>>>,
+  Assert<Equal<NonNullable<ReturnType<typeof Server.createMarketingPrivacyBindings<null>>["contributor"]>, PersonalDataContributor<null>>>,
+];
 export type MarketingContractEquality = [
   Assert<Equal<Contracts.AnalyticsCheckoutItem, Runtime.AnalyticsCheckoutItem>>,
   Assert<Equal<Contracts.AnalyticsPurchaseItem, Runtime.AnalyticsPurchaseItem>>,
@@ -78,6 +84,7 @@ it("executes exact type equality with the TypeScript checker and exposes no runt
   const file = fileURLToPath(import.meta.url);
   const program = ts.createProgram([file], { target: ts.ScriptTarget.ES2020, module: ts.ModuleKind.NodeNext,
     moduleResolution: ts.ModuleResolutionKind.NodeNext, strict: true, skipLibCheck: true, noEmit: true,
+    lib: ["lib.es2022.d.ts", "lib.dom.d.ts"],
     esModuleInterop: true, allowImportingTsExtensions: true, types: ["node"] });
   expect(ts.formatDiagnosticsWithColorAndContext(ts.getPreEmitDiagnostics(program), {
     getCanonicalFileName: path => path, getCurrentDirectory: () => process.cwd(), getNewLine: () => "\n",
