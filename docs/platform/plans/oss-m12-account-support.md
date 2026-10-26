@@ -553,7 +553,10 @@ with the original message key. R4 queues its own payment recovery notice; M12
 adds no second effect consumer, worker or scheduler. Selected M11 commerce and
 managed composition proofs are excluded from R5a and belong to R5b.
 
-The envelope comprises thirty eligible paths. Implementation/API/plan paths
+The envelope comprises thirty eligible paths; R5a changes 26 and leaves these
+four unchanged: `config/public-reference-capability-manifest.json`,
+`eslint.config.js`, `packages/platform/api/account-support-contracts.api.md` and
+`scripts/packages/eslint-import-map.test.ts`. Implementation/API/plan paths
 introduced by R1 are modifications; the changes fragment is `m12-r5a.md`.
 The source-release snapshot, owner contracts, module graph, SQL and versions
 are unchanged. Existing exports and companion content are preserved; API report

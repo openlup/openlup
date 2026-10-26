@@ -137,13 +137,12 @@ export function assertExportInventory(consumer: string): void {
 }
 
 
-/** R1 exercises the installed delegation boundary, including nulls and owner errors. */
-/** R5a: concrete installed declarations and the same executable refusal transcript. */
 export const ACCOUNT_SUPPORT_COMPOSITION_PROOFS = ["NodeNext", "Bundler", "disabled", "unknown", "ready", "null-record", "null-member", "owner-unsupported"] as const;
+/** R5a: concrete installed declarations and the same executable refusal transcript. */
 export function proveAccountSupportCompositionConsumer(consumer: string, compiler: string, proof: typeof ACCOUNT_SUPPORT_COMPOSITION_PROOFS[number]): void {
   if (proof === "NodeNext" || proof === "Bundler") {
-  const file = join(consumer, "account-support-composition.ts");
-  writeFileSync(file, `
+    const file = join(consumer, "account-support-composition.ts");
+    writeFileSync(file, `
 import { createAccountSupportBindings, createAccountSupportServices, type AccountSupportCapabilities, type AccountSupportBindingRefusal } from "@openlup/platform/account-support";
 import { createAccountSupportContribution } from "@openlup/platform/composition";
 declare const capabilities: AccountSupportCapabilities;
@@ -161,7 +160,7 @@ services.operations.apply({ actorId: "actor-a", idempotencyKey: 99 });
 // @ts-expect-error a graph is an explicit two-value selection
 createAccountSupportBindings({ graph: "automatic", capabilities, operations: {} });
 `);
-  const mode = proof;
+    const mode = proof;
     const configuration = join(consumer, "account-support-composition.json");
     writeFileSync(configuration, JSON.stringify({ compilerOptions: { target: "ES2022", module: mode === "NodeNext" ? "NodeNext" : "ESNext",
       moduleResolution: mode, strict: true, skipLibCheck: false, noEmit: true, types: ["node"], typeRoots: [join(consumer, "node_modules/@types")] }, files: [file] }));
@@ -215,6 +214,7 @@ assert.equal(await selected.commerce("checkoutStart",{}),ownerUnsupported);
   }
 }
 
+/** R1 exercises the installed delegation boundary, including nulls and owner errors. */
 export function proveAccountSupportConsumer(consumer: string): void {
   consumerNode(consumer, `
 import assert from "node:assert/strict";
