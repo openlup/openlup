@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { reviewedBatchBytes, reviewedBatchPaths } from "./reviewed-batch-rail.ts";
 import { describe, expect, it } from "vitest";
-import { assertBatchedForward, assertManagedCommerceForward, assertCoLocatedForwardApproval, assertForwardApproval, assertReviewedPlatformForward, assertUnchangedForwardApproval, batchedFunctionDefinitions, changedForwardApprovals, readReviewedForwardRegistry, reviewedFunctionDefinitions, sqlSha256, sqlStatements, type BatchedForwardBinding, type ManagedCommerceForwardBinding } from "./reviewed-platform-forward.ts";
+import { assertBatchedForward, assertManagedCommerceForward, assertSupportAuthorityForward, assertCoLocatedForwardApproval, assertForwardApproval, assertReviewedPlatformForward, assertUnchangedForwardApproval, batchedFunctionDefinitions, changedForwardApprovals, readReviewedForwardRegistry, reviewedFunctionDefinitions, sqlSha256, sqlStatements, type BatchedForwardBinding, type ManagedCommerceForwardBinding } from "./reviewed-platform-forward.ts";
 import { assertAppendOnlyMigrationHistory } from "./oss-published-tree-check.ts";
 import { resolveDocumentationBase } from "./documentation-git.ts";
 import { waitNativeAdmission } from "./agent-review-queue.mjs";
@@ -1144,3 +1144,219 @@ it.each(["missing", "duplicate", "reordered"])("refuses a repinned %s M10-9 prer
   const sql = statements.join("\n");
   expect(() => assertBatchedForward(repin(replayPin,sql),Buffer.from(sql),prefix(replayPin))).toThrow(/ordered prerequisite\/ACL inventory drifted/u);
 });
+
+it("proves M12 trusted preparation, own-file introduction, queue/release binding and semantic refusals", async () => {
+  const support = registry.supportAuthorityForwards!;
+  const source = (pin: BatchedForwardBinding) => readFileSync(`scripts/fixtures/reviewed-m12/${pin.path}`);
+  const assertNativeTwin = (root: string) => {
+    const pin = support[0]!, twin = join(root, `packages/platform/sql/${pin.path.split("/").at(-1)}`);
+    if (existsSync(join(root, pin.path))) expect(existsSync(twin), "canonical native support requires its packed twin").toBe(true);
+    if (existsSync(twin)) expect(readFileSync(twin)).toEqual(source(pin));
+  };
+  const prefixes = support.map(pin => {
+    const directory = rail(pin);
+    const earlier = [...pins, ...registry.managedCommerceForwards!].filter(prior => rail(prior) === directory);
+    return reviewedBatchPaths(process.cwd(), directory, earlier).filter(path => path < pin.path).map(path => ({ path, bytes:
+      registry.managedCommerceForwards!.some(pin => pin.path === path)
+        ? readFileSync(existsSync(path) ? path : `scripts/fixtures/reviewed-m11/${path}`)
+        : earlier.some(pin => pin.path === path) ? bytes(earlier.find(pin => pin.path === path)!) : readFileSync(path) }));
+  });
+  const f = correctionFixture();
+  // Simulate the pre-introduction tree even after the canonical support files land:
+  // the fixture copies every committed migration and the live manifest.
+  const twinPath = `packages/platform/sql/${support[0]!.path.split("/").at(-1)}`;
+  for (const path of [...support.map(pin => pin.path), twinPath]) rmSync(join(f.root, path), { force: true });
+  const baseManifest = JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8"));
+  baseManifest.forward = baseManifest.forward.filter((row: { file: string }) => !support.some(pin => pin.path === row.file));
+  f.put("config/platform-migration-manifest.json", JSON.stringify(baseManifest));
+  const without = structuredClone(registry); delete without.supportAuthorityForwards;
+  const encode = (value: typeof registry) => Buffer.from(JSON.stringify(value));
+  const repinned = (index: number, sql: string) => {
+    const candidate = structuredClone(registry);
+    const changed = candidate.supportAuthorityForwards![index]!;
+    Object.assign(changed, repin(changed, sql));
+    const definitions = batchedFunctionDefinitions(Buffer.from(sql));
+    for (const fn of changed.functions) if (definitions.has(fn.signature)) fn.afterSha256 = definitions.get(fn.signature)!;
+    return candidate;
+  };
+  try {
+    for (const sources of prefixes) for (const prior of sources) f.put(prior.path, prior.bytes);
+    f.put(REVIEWED_PATH, encode(without));
+    const old = f.commit();
+    expect(() => readReviewedForwardRegistry(encode(without))).not.toThrow();
+    // Preparation has no canonical M12 SQL. Its own pins may be finalized at
+    // introduction after the independently trusted class is present.
+    const pending = structuredClone(registry);
+    for (const pin of pending.supportAuthorityForwards!) pin.sha256 = "0".repeat(64);
+    f.put(REVIEWED_PATH, encode(pending));
+    const control = f.commit();
+    expect(() => assertCoLocatedForwardApproval(f.root, old, control)).not.toThrow();
+    expect(changedForwardApprovals(encode(without), registryBytes)).toEqual(support.map(pin => pin.path));
+    const install = (candidate = registry, replacements = new Map<string, Buffer>()) => {
+      f.put(REVIEWED_PATH, encode(candidate));
+      for (const pin of support) f.put(pin.path, replacements.get(pin.path) ?? source(pin));
+      f.put(`packages/platform/sql/${support[0]!.path.split("/").at(-1)}`, source(support[0]!));
+      const manifest = structuredClone(baseManifest);
+      manifest.forward.push({ file: support[0]!.path, sha256: sqlSha256(replacements.get(support[0]!.path) ?? source(support[0]!)) });
+      f.put("config/platform-migration-manifest.json", JSON.stringify(manifest));
+    };
+    install(); const introduced = f.commit();
+    expect(() => assertCoLocatedForwardApproval(f.root, old, introduced)).toThrow(/class must be approved separately/u);
+    expect(() => assertCoLocatedForwardApproval(f.root, control, introduced)).not.toThrow();
+    expect(() => assertAppendOnlyMigrationHistory(f.root, control, introduced)).not.toThrow();
+    for (const pin of support) {
+      expect(() => assertReviewedPlatformForward(f.root, old, introduced, pin.path, source(pin), true)).not.toThrow();
+      if (pin === support[0]) assertNativeTwin(process.cwd());
+      if (existsSync(pin.path)) expect(readFileSync(pin.path)).toEqual(source(pin));
+    }
+    assertNativeTwin(f.root);
+    const syntheticTwin = `packages/platform/sql/${support[0]!.path.split("/").at(-1)}`;
+    f.put(syntheticTwin, Buffer.concat([source(support[0]!), Buffer.from(" ")]));
+    expect(() => assertNativeTwin(f.root)).toThrow();
+    rmSync(join(f.root, syntheticTwin));
+    expect(() => assertNativeTwin(f.root)).toThrow(/requires its packed twin/u);
+    f.put(syntheticTwin, source(support[0]!));
+    // The original separate control -> feature route is still valid.
+    f.git("reset", "--hard", control); f.put(REVIEWED_PATH, registryBytes); const exactControl = f.commit();
+    install(); const separate = f.commit();
+    expect(() => assertAppendOnlyMigrationHistory(f.root, exactControl, separate)).not.toThrow();
+    for (const pin of support) expect(() => assertReviewedPlatformForward(f.root, old, separate, pin.path, source(pin), true)).not.toThrow();
+
+    for (const eventName of ["pull_request", "merge_group"]) {
+      f.git("reset", "--hard", introduced);
+      f.git("update-ref", "refs/remotes/origin/main", control);
+      const candidate = await captureCommittedReviewCandidate(f.root, control, introduced);
+      let session = prepareCandidate(null, { ...candidate, intent: { risk: "behavior", criteria: "M12 exact two-file support authority introduction" }, authorSessionId: "m12-fixture-author" }, 1000);
+      for (const reviewer of ["m12-fixture-a", "m12-fixture-b"]) session = recordReport(session, { reviewer, cold: true, tree: candidate.tree, verdict: "PASS", findings: [], closes: [] }, 1000);
+      const receipt = receiptSummary(session, 12, 1000);
+      const merged = f.git("commit-tree", candidate.tree, "-p", control, "-p", introduced, "-m", "M12 event merge");
+      f.git("checkout", "--detach", merged);
+      const ref = `refs/heads/gh-readonly-queue/main/pr-12-${control}`;
+      const event = { number: 12, repository: { full_name: "openlup/openlup", private: false }, action: "checks_requested", pull_request: { base: { sha: control }, head: { sha: introduced } }, merge_group: { base_ref: "refs/heads/main", head_ref: ref, base_sha: control, head_sha: merged, head_commit: { id: merged, tree_id: candidate.tree } } };
+      const eventPath = join(f.root, "m12-event.json"); writeFileSync(eventPath, JSON.stringify(event));
+      const env = { GITHUB_ACTIONS: "true", GITHUB_REPOSITORY: "openlup/openlup", GITHUB_EVENT_NAME: eventName, GITHUB_EVENT_PATH: eventPath, GITHUB_SHA: merged, GITHUB_REF: ref };
+      const comparison = resolveDocumentationBase(f.root, { env });
+      expect(comparison.provenance).toBe(eventName === "pull_request" ? "pull-request" : "merge-group");
+      expect(() => assertAppendOnlyMigrationHistory(f.root, comparison.base, comparison.head)).not.toThrow();
+      const api = { get: async (path: string) => path.includes("/pulls/") ? { number: 12, state: "open", draft: false, base: { ref: "main" }, head: { sha: introduced } } : path.includes("/issues/") ? [{ id: 1, user: { login: "fixture-owner", type: "User" }, body: `${RECEIPT_MARKER}\n\`\`\`json\n${JSON.stringify(receipt)}\n\`\`\`` }] : path.includes("/collaborators/") ? { permission: "write" } : { object: { sha: control } } };
+      const runGit = (cwd: string, ...args: string[]) => args.includes("fetch") ? Promise.resolve("") : reviewGit(cwd, ...args);
+      await expect(waitNativeAdmission({ cwd: f.root, event, env, api, runGit, now: () => 1000, deadlineMs: 1 })).resolves.toEqual(receipt);
+    }
+
+    // One coherent refusal table: all layers are repinned, so hashes alone
+    // cannot pass an expanded companion inventory or changed function header.
+    const plants: [string, number, (sql: string) => string][] = [
+      ["native creation class", 0, s => s.replace("CREATE FUNCTION", "CREATE OR REPLACE FUNCTION")],
+      ["native header security", 0, s => s.replace("SECURITY INVOKER", "SECURITY DEFINER")],
+      ["native header path", 0, s => s.replace("SET search_path = pg_catalog", "SET search_path = public")],
+      ["native default", 0, s => s.replace("p_now timestamptz\n", "p_now timestamptz DEFAULT now()\n")],
+      ["return type", 0, s => s.replace("RETURNS jsonb", "RETURNS text")],
+      ["language", 0, s => s.replace("LANGUAGE plpgsql", "LANGUAGE sql")],
+      ["replacement class", 0, s => s.replace("CREATE OR REPLACE FUNCTION", "CREATE FUNCTION")],
+      ["extra function", 0, s => s + "\nCREATE FUNCTION public.m12_extra() RETURNS text LANGUAGE sql AS $$ SELECT ''; $$;"],
+      ["extra schema", 0, s => s + "\nCREATE SCHEMA m12_extra;"],
+      ["extra table", 0, s => s + "\nCREATE TABLE public.m12_extra(id integer);"],
+      ["extra row", 0, s => s + "\nINSERT INTO public.platform_settings(key,value) VALUES('m12-extra','{}');"],
+      ["extra column", 0, s => s + "\nALTER TABLE public.clients ADD COLUMN m12_extra text;"],
+      ["extra grant", 0, s => s + "\nGRANT SELECT ON public.clients TO service_role;"],
+      ["lost M11 action", 1, s => s.replace("'checkout_payment_link_mint', ", "")],
+      ["extra accounting action", 1, s => s.replace("'operator_email_correction'", "'operator_email_correction', 'accounting_invoice_issue'")],
+      ["extra tester action", 1, s => s.replace("'operator_email_correction'", "'operator_email_correction', 'tester_update'")],
+      ["validated kind", 1, s => s.replaceAll("  NOT VALID;", "  ;")],
+      ["claim type", 1, s => s.replace("email_claim_token uuid", "email_claim_token text")],
+      ["claim default", 1, s => s.replace("email_claim_token uuid", "email_claim_token uuid DEFAULT gen_random_uuid()")],
+      ["claim nullability", 1, s => s.replace("email_claim_token uuid", "email_claim_token uuid NOT NULL")],
+      ["trigger target", 1, s => s.replace("AFTER UPDATE ON auth.users", "AFTER UPDATE ON public.clients")],
+      ["trigger event", 1, s => s.replace("AFTER UPDATE ON auth.users", "AFTER INSERT ON auth.users")],
+      ["trigger function", 1, s => s.replace("EXECUTE FUNCTION public.customer_support_guard_identity_email_v1()", "EXECUTE FUNCTION public.customer_support_claim_subject_email_v1()")],
+      ["trigger deferral", 1, s => s.replace("DEFERRABLE INITIALLY DEFERRED", "NOT DEFERRABLE INITIALLY IMMEDIATE")],
+      ["sequence usage", 1, s => s.replace("REVOKE ALL ON SEQUENCE", "GRANT USAGE ON SEQUENCE").replace("FROM PUBLIC, anon, authenticated, service_role;", "TO service_role;")],
+      ["browser execution", 1, s => s.replaceAll("TO service_role;", "TO authenticated;")],
+      ["service guard execution", 1, s => s.replace("REVOKE ALL ON FUNCTION public.customer_support_guard_identity_email_v1() FROM PUBLIC, anon, authenticated, service_role;", "GRANT EXECUTE ON FUNCTION public.customer_support_guard_identity_email_v1() TO service_role;")],
+      ["managed link reverted to invoker", 1, s => s.replace("p_auth_user_id uuid,\n  p_idempotency_key text,\n  p_now timestamptz\n)\nRETURNS jsonb\nLANGUAGE plpgsql\nSECURITY DEFINER\n", "p_auth_user_id uuid,\n  p_idempotency_key text,\n  p_now timestamptz\n)\nRETURNS jsonb\nLANGUAGE plpgsql\n")],
+      ["managed link donor search path", 1, s => s.replace("SET search_path = pg_catalog, pg_temp", "SET search_path = public, pg_catalog")],
+      ...["admit_subject_email", "claim_subject_email", "guard_identity_email", "settle_subject_email", "link_subject_account"].map(name => [
+        `missing ${name} reader revoke`, 1, (s: string) => s.replace(new RegExp(`REVOKE ALL ON FUNCTION public\\.customer_support_${name}_v1\\([^;]*?\\) FROM openlup_mcp_reader;\\n`, "u"), ""),
+      ] as [string, number, (sql: string) => string]),
+      ["active retired entry", 1, s => s.replace("RAISE EXCEPTION 'customer_support_email_correction_requires_admission' USING ERRCODE = '55000';", "RETURN jsonb_build_object('outcome', 'applied');")],
+      ["missing statement", 1, s => sqlStatements(s).slice(1).join("\n")],
+      ["reordered statements", 1, s => { const rows = sqlStatements(s); [rows[0], rows[1]] = [rows[1]!, rows[0]!]; return rows.join("\n"); }],
+    ];
+    for (const [name, index, mutate] of plants) {
+      const sql = mutate(source(support[index]!).toString());
+      expect(sql, name).not.toBe(source(support[index]!).toString());
+      const candidate = repinned(index, sql);
+      expect(() => assertSupportAuthorityForward(candidate, support[index]!.path, Buffer.from(sql), prefixes[index]!), name).toThrow(/reviewed M12 support/u);
+    }
+    for (const attack of ["path", "order", "signature", "missing", "extra", "preimage", "constraint", "missing signature", "extra signature", "reordered signatures"]) {
+      const candidate = structuredClone(registry), entries = candidate.supportAuthorityForwards!;
+      if (attack === "path") entries[0]!.path += ".other";
+      if (attack === "order") entries.reverse();
+      if (attack === "signature") entries[0]!.functions[0]!.signature += "other";
+      if (attack === "missing") entries.pop();
+      if (attack === "extra") entries.push(entries[0]!);
+      if (attack === "preimage") entries[0]!.functions[1]!.beforeSha256 = "0".repeat(64);
+      if (attack === "constraint") entries[1]!.constraints![0]!.beforeSha256 = "0".repeat(64);
+      if (attack === "missing signature") entries[1]!.functions.pop();
+      if (attack === "extra signature") entries[1]!.functions.push(entries[1]!.functions[0]!);
+      if (attack === "reordered signatures") entries[1]!.functions.reverse();
+      expect(() => readReviewedForwardRegistry(encode(candidate)), attack).toThrow(/reviewed M12 support/u);
+    }
+    for (const [index, pin] of support.entries()) {
+      expect(() => assertSupportAuthorityForward(registry, pin.path, Buffer.concat([source(pin), Buffer.from(" ")]), prefixes[index]!)).toThrow(/path or bytes drifted/u);
+      const prior = prefixes[index]!;
+      expect(() => assertSupportAuthorityForward(registry, pin.path, source(pin), prior.slice(0, -1))).toThrow(/reviewed M12 support/u);
+      expect(() => assertSupportAuthorityForward(registry, pin.path, source(pin), [...prior].reverse())).toThrow(/ordered complete/u);
+      expect(() => assertSupportAuthorityForward(registry, pin.path, source(pin), [...prior, prior.at(-1)!])).toThrow(/ordered complete/u);
+      const previous = [...prior, { path: `${rail(pin)}/20261026115959_preimage_probe.sql`, bytes: Buffer.from("CREATE OR REPLACE FUNCTION " + sqlStatements(source(pin).toString()).find(s => s.startsWith("CREATE OR REPLACE FUNCTION "))!.slice("CREATE OR REPLACE FUNCTION ".length).replace("BEGIN", "BEGIN\nNULL;")) }];
+      expect(() => assertSupportAuthorityForward(registry, pin.path, source(pin), previous)).toThrow(/actual function preimage/u);
+    }
+    // A later CHECK preimage cannot be authorized by coherently repinning the baseline.
+    const changedBaseline = structuredClone(prefixes[1]!).map(source => ({ ...source, bytes: Buffer.from(source.bytes) }));
+    changedBaseline[0]!.bytes = Buffer.from(changedBaseline[0]!.bytes.toString().replace("'lead_absorption'::text]))) NOT VALID", "'other_kind'::text]))) NOT VALID"));
+    expect(changedBaseline[0]!.bytes).not.toEqual(prefixes[1]![0]!.bytes);
+    const baselineCandidate = structuredClone(registry); baselineCandidate.baselineSha256 = sqlSha256(changedBaseline[0]!.bytes);
+    expect(() => assertSupportAuthorityForward(baselineCandidate, support[1]!.path, source(support[1]!), changedBaseline)).toThrow(/actual CHECK preimage/u);
+    // Batched object reads must retain the per-file reader's mode refusal.
+    for (const [index, pin] of support.entries()) {
+      f.git("reset", "--hard", introduced);
+      f.git("update-index", "--chmod=+x", prefixes[index]![0]!.path);
+      f.git("commit", "-qm", "Non-regular M12 prefix fixture");
+      const head = f.git("rev-parse", "HEAD");
+      f.git("reset", "--hard", head);
+      expect(() => assertReviewedPlatformForward(f.root, control, head, pin.path, source(pin))).toThrow(`reviewed replacement requires a regular file: ${prefixes[index]![0]!.path}`);
+    }
+    f.git("checkout", "--detach", introduced); f.git("clean", "-fdq");
+    f.put(support[0]!.path, source(support[0]!).toString() + " "); const appliedEdit = f.commit();
+    expect(() => assertAppendOnlyMigrationHistory(f.root, introduced, appliedEdit)).toThrow(/edit, deletion/u);
+    f.git("reset", "--hard", introduced); f.git("rm", support[0]!.path); f.commit();
+    f.put(support[0]!.path, source(support[0]!)); const reintroduced = f.commit();
+    expect(() => assertReviewedPlatformForward(f.root, old, reintroduced, support[0]!.path, source(support[0]!), true)).toThrow(/one unambiguous forward introduction/u);
+    for (const attack of ["simultaneous machinery", "trusted machinery", "trigger", "unknown class", "sibling removal", "sibling reorder", "sibling repin", "late pin", "post-introduction repin"]) {
+      f.git("checkout", "--detach", control); f.git("clean", "-fdq");
+      const candidate = structuredClone(registry);
+      if (attack === "unknown class") Object.assign(candidate, { unknownSupportClass: [] });
+      if (attack === "sibling removal") candidate.managedCommerceForwards!.pop();
+      if (attack === "sibling reorder") candidate.managedCommerceForwards!.reverse();
+      if (attack === "sibling repin") candidate.managedCommerceForwards![0]!.sha256 = "0".repeat(64);
+      if (attack === "late pin") for (const pin of candidate.supportAuthorityForwards!) pin.sha256 = "0".repeat(64);
+      if (attack === "trigger") {
+        const sql = source(support[1]!).toString().replace("DEFERRABLE INITIALLY DEFERRED", "NOT DEFERRABLE INITIALLY IMMEDIATE");
+        install(repinned(1, sql), new Map([[support[1]!.path, Buffer.from(sql)]]));
+      } else install(candidate);
+      if (attack === "simultaneous machinery") f.put("scripts/reviewed-platform-forward.ts", "candidate machinery");
+      const head = f.commit();
+      if (attack === "late pin" || attack === "post-introduction repin") {
+        f.put(REVIEWED_PATH, attack === "late pin" ? registryBytes : encode(pending)); const later = f.commit();
+        expect(() => assertReviewedPlatformForward(f.root, old, later, support[0]!.path, source(support[0]!), true), attack).toThrow(/reviewed/u);
+      } else if (attack === "trusted machinery") {
+        f.git("checkout", "--detach", control); f.put("scripts/reviewed-platform-forward.ts", "trusted main moved"); const trusted = f.commit();
+        expect(() => assertCoLocatedForwardApproval(f.root, control, head, trusted)).toThrow(/machinery/u);
+      } else {
+        expect(() => assertCoLocatedForwardApproval(f.root, control, head), attack).toThrow(/reviewed/u);
+        if (attack === "trigger") expect(() => assertAppendOnlyMigrationHistory(f.root, control, head)).toThrow(/reviewed/u);
+      }
+    }
+  } finally { f.cleanup(); }
+}, 120_000);
+const REVIEWED_PATH = "config/reviewed-platform-forwards.json";

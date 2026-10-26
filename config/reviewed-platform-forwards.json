@@ -1558,5 +1558,255 @@
         }
       ]
     }
+  ],
+  "supportAuthorityForwards": [
+    {
+      "path": "db/platform/migrations/20261026120000_account_support_operator_authority.sql",
+      "sha256": "ac1e31679179e712d7558e7b1d82e8113f264abf9aaa44c2562ab988acdc7508",
+      "functions": [
+        {
+          "signature": "public.customer_support_apply_subscription_action_v1(uuid,uuid,text,jsonb,integer,text,timestamptz)",
+          "beforeSha256": null,
+          "afterSha256": "3feb7307083d21834e56463e9d5c18f319777b4bb990707565c7cbe2e7fee9f0"
+        },
+        {
+          "signature": "public.customer_support_issue_recovery(uuid,uuid,uuid,text,text,text,timestamptz,text)",
+          "beforeSha256": "7d122383fed301abad32682e46af6f3c99bcbffada388df7eae60b2ee3f412ca",
+          "afterSha256": "0b90fec4f9bf5046743d260f8ea948810df5566047e1291c2af2815a01a972c9"
+        },
+        {
+          "signature": "public.customer_support_absorb_lead_v1(uuid,uuid,uuid,text,text,timestamptz)",
+          "beforeSha256": "d445077001d914a5e6b827ccf71ff4028369e0033e2c1a8e7b16286364355bd2",
+          "afterSha256": "6fa10933dd10bb3274c8e56c14e968fef3f14c4962526fd6a6db74efed79dabd"
+        }
+      ],
+      "statements": [
+        {
+          "sha256": "3feb7307083d21834e56463e9d5c18f319777b4bb990707565c7cbe2e7fee9f0"
+        },
+        {
+          "sha256": "5dc5b9caa35ebb254096c05c09dd3413b0d43589afefe0a3898f36ed9b7aece2",
+          "sql": "REVOKE ALL ON FUNCTION public.customer_support_apply_subscription_action_v1(uuid,uuid,text,jsonb,integer,text,timestamptz) FROM PUBLIC, anon, authenticated;"
+        },
+        {
+          "sha256": "0b90fec4f9bf5046743d260f8ea948810df5566047e1291c2af2815a01a972c9"
+        },
+        {
+          "sha256": "139591109daab786c335f48f75c95ff76cad66a403a1141ec40011352379ab52",
+          "sql": "REVOKE ALL ON FUNCTION public.customer_support_issue_recovery(uuid,uuid,uuid,text,text,text,timestamptz,text) FROM PUBLIC, anon, authenticated;"
+        },
+        {
+          "sha256": "6fa10933dd10bb3274c8e56c14e968fef3f14c4962526fd6a6db74efed79dabd"
+        },
+        {
+          "sha256": "918f2562147f9b445752a5e2caa9b9e37976a0514b62486fe089380fdc395e97",
+          "sql": "REVOKE ALL ON FUNCTION public.customer_support_absorb_lead_v1(uuid,uuid,uuid,text,text,timestamptz) FROM PUBLIC, anon, authenticated;"
+        }
+      ]
+    },
+    {
+      "path": "supabase/migrations/20261026120100_account_support_current_authority.sql",
+      "sha256": "7d501ef3eb6a0752cc32abb32cddae29fc2cc7afdecd990537956835cc88c3fb",
+      "functions": [
+        {
+          "signature": "public.customer_support_admit_subject_email_v1(uuid,uuid,text,text,text,timestamptz)",
+          "beforeSha256": null,
+          "afterSha256": "2491289b79e38212a28ae608318c16199e4f9bd8511f2cb530fa24d14d8ebff1"
+        },
+        {
+          "signature": "public.customer_support_claim_subject_email_v1(text)",
+          "beforeSha256": null,
+          "afterSha256": "6bf1d13995525f9cdba6ac5f05eb43a6d0085d431748452694f158b6bd60212a"
+        },
+        {
+          "signature": "public.customer_support_guard_identity_email_v1()",
+          "beforeSha256": null,
+          "afterSha256": "eeab5612705366f9cc1ff6044a428c832f32fcbf168e84923a65be7e92cf4b83"
+        },
+        {
+          "signature": "public.customer_support_settle_subject_email_v1(text,uuid,text)",
+          "beforeSha256": null,
+          "afterSha256": "87b98e89f03fe814bf7babd7c4f0ddc37c96639d0fb3bf8e1e4c1488b4014183"
+        },
+        {
+          "signature": "public.customer_support_correct_subject_email_v1(uuid,uuid,text,text,text,timestamptz)",
+          "beforeSha256": "bcbdf0a0ed2b8bdd69ab6b37d6955eab8b98570b8bc43b0e647654587647ed57",
+          "afterSha256": "751cf9e8e4f9173698b47397b3db60a5bae3d6e19222d9090f2176ce9af205c6"
+        },
+        {
+          "signature": "public.customer_support_link_subject_account_v1(uuid,uuid,text,uuid,text,timestamptz)",
+          "beforeSha256": null,
+          "afterSha256": "f016744a159fc69204eb0d843147f2844fca9a94f2de297fcc573f5423031559"
+        },
+        {
+          "signature": "public.customer_support_issue_recovery(uuid,uuid,uuid,text,text,text,timestamptz,text)",
+          "beforeSha256": "766d3c653584772cf4596bd7eb21beedbc758297b8f09f7163fddfa4da69d801",
+          "afterSha256": "69a0c2fde91c71e761195f210fab701c115c657d54e1434e050ea32f5d09835f"
+        }
+      ],
+      "statements": [
+        {
+          "sha256": "2e263b5d96d79d32a68c23f85798123f86936061e042f62f2a63bb52bd266f90",
+          "sql": "ALTER TABLE public.admin_audit_events DROP CONSTRAINT admin_audit_events_action_check;"
+        },
+        {
+          "sha256": "89b862d55af58fcbbebc309fc74943939d2a58d673f3251683c887c232e587f8",
+          "sql": "ALTER TABLE public.admin_audit_events ADD CONSTRAINT admin_audit_events_action_check\n  CHECK (action IN (\n    'role_change', 'invite', 'remove', 'promo_update', 'promo_status_change',\n    'subscription_band_update', 'catalog_draft_upsert', 'catalog_price_set',\n    'catalog_sku_archive', 'catalog_activate', 'catalog_product_archive',\n    'catalog_product_restore', 'catalog_deactivate', 'customer_read',\n    'promotion_code_create', 'promotion_code_update', 'promotion_code_status_change',\n    'bundle_draft_upsert', 'bundle_composition_set', 'bundle_target_price_set',\n    'bundle_archive', 'bundle_restore', 'bundle_activate', 'bundle_deactivate',\n    'revoke', 'checkout_payment_link_mint', 'operator_email_correction'\n  )) NOT VALID;"
+        },
+        {
+          "sha256": "bfb8033c3aa42d501067555ada2ccf9699749987ca25a273d9f15fc92a662acc",
+          "sql": "ALTER TABLE public.customer_support_subscription_commands\n  ADD COLUMN email_claim_token uuid,\n  ADD COLUMN email_claim_until timestamptz;"
+        },
+        {
+          "sha256": "d4b86c4dce46a16c3b9ff36062cdf0509aab790c2549ff31b478825581a2f30a",
+          "sql": "CREATE SEQUENCE public.customer_support_email_correction_sequence;"
+        },
+        {
+          "sha256": "5f2c32c76e753d4cbe29cbd769f75f0a497208b34a25f06d40a29821d64dde6e",
+          "sql": "REVOKE ALL ON SEQUENCE public.customer_support_email_correction_sequence FROM PUBLIC, anon, authenticated, service_role;"
+        },
+        {
+          "sha256": "2491289b79e38212a28ae608318c16199e4f9bd8511f2cb530fa24d14d8ebff1"
+        },
+        {
+          "sha256": "6bf1d13995525f9cdba6ac5f05eb43a6d0085d431748452694f158b6bd60212a"
+        },
+        {
+          "sha256": "eeab5612705366f9cc1ff6044a428c832f32fcbf168e84923a65be7e92cf4b83"
+        },
+        {
+          "sha256": "4a1e6fc40dc3caa2f7978cd1efd7582c08733a908f9a8bf8f340508e04e11012",
+          "sql": "CREATE CONSTRAINT TRIGGER customer_support_identity_email_ownership\nAFTER UPDATE ON auth.users DEFERRABLE INITIALLY DEFERRED\nFOR EACH ROW EXECUTE FUNCTION public.customer_support_guard_identity_email_v1();"
+        },
+        {
+          "sha256": "87b98e89f03fe814bf7babd7c4f0ddc37c96639d0fb3bf8e1e4c1488b4014183"
+        },
+        {
+          "sha256": "751cf9e8e4f9173698b47397b3db60a5bae3d6e19222d9090f2176ce9af205c6"
+        },
+        {
+          "sha256": "f099fee07da72ce5be4ca1e8f1a1bff0fb551f293bf671768e971913fd24bb25",
+          "sql": "REVOKE ALL ON FUNCTION public.customer_support_correct_subject_email_v1(uuid, uuid, text, text, text, timestamptz) FROM PUBLIC, anon, authenticated;"
+        },
+        {
+          "sha256": "e5824315f9f7231582c60cc22e5d0729db03d1d775f33b27e866e71f883761d3",
+          "sql": "GRANT EXECUTE ON FUNCTION public.customer_support_correct_subject_email_v1(uuid, uuid, text, text, text, timestamptz) TO service_role;"
+        },
+        {
+          "sha256": "9331c67b1aec91d11c5f46427939cedbe616ec820658c3808ad0425a1183d544",
+          "sql": "REVOKE ALL ON FUNCTION public.customer_support_settle_subject_email_v1(text, uuid, text) FROM PUBLIC, anon, authenticated;"
+        },
+        {
+          "sha256": "aa2784e694946d80255043891b6488d440b619187c1c5aa4f33f693580cc3f9c",
+          "sql": "REVOKE ALL ON FUNCTION public.customer_support_settle_subject_email_v1(text, uuid, text) FROM openlup_mcp_reader;"
+        },
+        {
+          "sha256": "c584446905b78993637baf9492c8d2f222ad4c96c852d3914a745b280554ae7e",
+          "sql": "GRANT EXECUTE ON FUNCTION public.customer_support_settle_subject_email_v1(text, uuid, text) TO service_role;"
+        },
+        {
+          "sha256": "2ce086a107810fc40db02714588a8ea795b99759e50d1f6640e1dc721d0257e5",
+          "sql": "COMMENT ON FUNCTION public.customer_support_correct_subject_email_v1(uuid, uuid, text, text, text, timestamptz) IS\n  'Retired combined correction entry point. Use customer_support_admit_subject_email_v1 before auth and customer_support_settle_subject_email_v1 afterward.';"
+        },
+        {
+          "sha256": "2f1c4e4c03acda4a296df0cf39cb28025e605471240700455fa03e635581c96e",
+          "sql": "REVOKE ALL ON FUNCTION public.customer_support_admit_subject_email_v1(uuid, uuid, text, text, text, timestamptz) FROM PUBLIC, anon, authenticated;"
+        },
+        {
+          "sha256": "091153e8291f84e0ee852d0dae6af3ae29433ad409f3ff36566d18d5bc01a425",
+          "sql": "REVOKE ALL ON FUNCTION public.customer_support_admit_subject_email_v1(uuid, uuid, text, text, text, timestamptz) FROM openlup_mcp_reader;"
+        },
+        {
+          "sha256": "287e98e0423e05b11676b21bdde8356e02e969476b19a842fe98cf42620b2367",
+          "sql": "GRANT EXECUTE ON FUNCTION public.customer_support_admit_subject_email_v1(uuid, uuid, text, text, text, timestamptz) TO service_role;"
+        },
+        {
+          "sha256": "e4c44d21eeaa8f0fbaa90d96b6a631828f2e974c6294d6fa7e6687fc2ac27edf",
+          "sql": "REVOKE ALL ON FUNCTION public.customer_support_claim_subject_email_v1(text) FROM PUBLIC, anon, authenticated;"
+        },
+        {
+          "sha256": "e6b9644ceec52c9587cbcaa393dde034042d0150090bd49e4dc4beae3b695a21",
+          "sql": "REVOKE ALL ON FUNCTION public.customer_support_claim_subject_email_v1(text) FROM openlup_mcp_reader;"
+        },
+        {
+          "sha256": "74f27120a7e8367bd653bb8717973d0c4f7a576e3acea6fa512285bd59fc9cb4",
+          "sql": "GRANT EXECUTE ON FUNCTION public.customer_support_claim_subject_email_v1(text) TO service_role;"
+        },
+        {
+          "sha256": "0696bfaa24e17fb3ebe0a17dcba0182886920e21a8879fc197e7927e837b328b",
+          "sql": "REVOKE ALL ON FUNCTION public.customer_support_guard_identity_email_v1() FROM PUBLIC, anon, authenticated, service_role;"
+        },
+        {
+          "sha256": "013da6cd7c4cfc54bb489e342d67fae6d6289de54c8acac895244e4e9bebfb10",
+          "sql": "REVOKE ALL ON FUNCTION public.customer_support_guard_identity_email_v1() FROM openlup_mcp_reader;"
+        },
+        {
+          "sha256": "c4c1cbac78ce3585790e679f4bcfb70ad15c2fbd8dc1c9d0f05f25ee9e97f625",
+          "sql": "ALTER TABLE public.customer_support_subscription_commands\n  DROP CONSTRAINT customer_support_subscription_commands_kind_check;"
+        },
+        {
+          "sha256": "6a41306125d4a93047ba64f594f24b9fecadf9c02acde4a4c03978cb523e01e5",
+          "sql": "ALTER TABLE public.customer_support_subscription_commands\n  ADD CONSTRAINT customer_support_subscription_commands_kind_check\n  CHECK (command_kind IN ('subscription_action', 'email_correction', 'phone_correction', 'lead_absorption', 'account_link'))\n  NOT VALID;"
+        },
+        {
+          "sha256": "45755b1786c7d1b63794daa8193a12c1dcbce15de27c76ca6cb6f6f1fea0bd91",
+          "sql": "ALTER TABLE public.customer_support_subscription_audit_events\n  DROP CONSTRAINT customer_support_subscription_audit_events_kind_check;"
+        },
+        {
+          "sha256": "e23b7cfc3e97497234695e030752b99c5940eb87d9c89f7cb59b7387cfd016d0",
+          "sql": "ALTER TABLE public.customer_support_subscription_audit_events\n  ADD CONSTRAINT customer_support_subscription_audit_events_kind_check\n  CHECK (command_kind IN ('subscription_action', 'email_correction', 'phone_correction', 'lead_absorption', 'account_link'))\n  NOT VALID;"
+        },
+        {
+          "sha256": "f016744a159fc69204eb0d843147f2844fca9a94f2de297fcc573f5423031559"
+        },
+        {
+          "sha256": "0db302624111fd83b62812d87970acb8f6bed3e3707dccd252675fd0b4f098ec",
+          "sql": "REVOKE ALL ON FUNCTION public.customer_support_link_subject_account_v1(\n  uuid, uuid, text, uuid, text, timestamptz\n) FROM PUBLIC, anon, authenticated;"
+        },
+        {
+          "sha256": "43240838565c1d67dddc5c812e253e88cc0c2e556140bb26ec9c74557bfbba31",
+          "sql": "REVOKE ALL ON FUNCTION public.customer_support_link_subject_account_v1(uuid, uuid, text, uuid, text, timestamptz) FROM openlup_mcp_reader;"
+        },
+        {
+          "sha256": "feac234e282365c9a08c51924d716287f4fe5c7b9237099ff7b833f54fd75d57",
+          "sql": "GRANT EXECUTE ON FUNCTION public.customer_support_link_subject_account_v1(\n  uuid, uuid, text, uuid, text, timestamptz\n) TO service_role;"
+        },
+        {
+          "sha256": "dd4ea44b0dc61f211af97a85e1404e8990e9430fa862335508e0d52c191d00a1",
+          "sql": "COMMENT ON FUNCTION public.customer_support_link_subject_account_v1(\n  uuid, uuid, text, uuid, text, timestamptz\n) IS\n  'Operator link of a sign-in identity to an unlinked customer, so the subscription commands that delegate to the self-service chain can act for her. The caller resolves the identity for the subject''s own address; this routine refuses a marketing-lead shell, a stale expectation, a missing address, an overwrite of an existing link, a machine administrator identity and an identity bound elsewhere, and audits every outcome, refusals included.';"
+        },
+        {
+          "sha256": "69a0c2fde91c71e761195f210fab701c115c657d54e1434e050ea32f5d09835f"
+        },
+        {
+          "sha256": "6860509f5f7a23b394161299b5766b6cac8f844b853ec70649805a7bd9c5bba2",
+          "sql": "REVOKE ALL ON FUNCTION public.customer_support_issue_recovery(\n  uuid, uuid, uuid, text, text, text, timestamptz, text\n) FROM PUBLIC, anon, authenticated;"
+        },
+        {
+          "sha256": "5a9b660c411c1f621e4339c99ef87dd89b595e1ca2cc954950f1a29eefba4ac3",
+          "sql": "GRANT EXECUTE ON FUNCTION public.customer_support_issue_recovery(\n  uuid, uuid, uuid, text, text, text, timestamptz, text\n) TO service_role;"
+        }
+      ],
+      "constraints": [
+        {
+          "table": "public.admin_audit_events",
+          "name": "admin_audit_events_action_check",
+          "beforeSha256": "9c3f2af2de818ea355fc76d3eccef1640eac0f29924f5b731d5768d22d93c41d",
+          "beforeSql": "ALTER TABLE public.admin_audit_events\n  ADD CONSTRAINT admin_audit_events_action_check CHECK (action IN (\n    'role_change', 'invite', 'remove',\n    'promo_update', 'promo_status_change', 'subscription_band_update',\n    'catalog_draft_upsert', 'catalog_price_set', 'catalog_sku_archive', 'catalog_activate',\n    'catalog_product_archive', 'catalog_product_restore', 'catalog_deactivate',\n    'customer_read', 'promotion_code_create', 'promotion_code_update',\n    'promotion_code_status_change',\n    'bundle_draft_upsert', 'bundle_composition_set', 'bundle_target_price_set',\n    'bundle_archive', 'bundle_restore', 'bundle_activate', 'bundle_deactivate',\n    'revoke', 'checkout_payment_link_mint'\n  )) NOT VALID;"
+        },
+        {
+          "table": "public.customer_support_subscription_commands",
+          "name": "customer_support_subscription_commands_kind_check",
+          "beforeSha256": "caf59a5bf9928875fb4f1cf28e0dfda39f9f6dc8e493550c65774008d490ea16",
+          "beforeSql": "ALTER TABLE public.customer_support_subscription_commands\n    ADD CONSTRAINT customer_support_subscription_commands_kind_check CHECK ((command_kind = ANY (ARRAY['subscription_action'::text, 'email_correction'::text, 'phone_correction'::text, 'lead_absorption'::text]))) NOT VALID;"
+        },
+        {
+          "table": "public.customer_support_subscription_audit_events",
+          "name": "customer_support_subscription_audit_events_kind_check",
+          "beforeSha256": "2a385a7fbb861517ffe8effe4f1ef953bf20210e937a1dcde2a627d6d3c6c312",
+          "beforeSql": "ALTER TABLE public.customer_support_subscription_audit_events\n    ADD CONSTRAINT customer_support_subscription_audit_events_kind_check CHECK ((command_kind = ANY (ARRAY['subscription_action'::text, 'email_correction'::text, 'phone_correction'::text, 'lead_absorption'::text]))) NOT VALID;"
+        }
+      ]
+    }
   ]
 }

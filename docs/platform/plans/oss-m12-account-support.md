@@ -369,6 +369,44 @@ collects a transient handoff. Results and refusals remain owner-owned.
   authority and owner proof. R1 recovery.startPaymentRecovery remains a guarded host pass-through when
   selected and otherwise returns host_binding_required. A45/A46 token routes stay in reference source.
 
+## CTL — supportAuthorityForwards admission
+
+Status: development-preview control scope. This section covers only the M12 CTL
+outcome; it grants no feature, release or activation authority.
+
+The finite outcome is a separate fixed two-path support-authority admission class,
+its two inert SQL fixtures and README, production admission/history integration,
+and three proof cases. The approved closure is 13 paths, of which 12 change:
+registry/checker, the existing admission and PostgreSQL test files, three fixture
+files, migration/contract/contributor documentation, publication catalog and this
+section. The source release contract stays unchanged; its digests are refreshed at
+release preparation only. Canonical migrations, packaged SQL, the native manifest, shared rail and
+catalog observers, M11 fixtures/pins, dependencies, runners, workflows and lint
+rules remain outside CTL. R4 owns feature introduction after its required prefix.
+
+Binding decisions retain native operator pause delegation to the M10 lifecycle
+owner (`v_pause_enabled boolean := true`), with prepared-attempt pause and other
+unsupported native subcases refused. Customer pause remains unchanged. The managed
+class preserves the M11 checkout audit action and appends only the support email
+action; managed M11 introductions precede the managed support introduction. The
+native and managed recovery identities remain separate by rail, path and signature.
+Native contact/link and remaining owner gaps are follow-up owner work, not CTL.
+See the [class owner](../DATA_AND_MIGRATIONS.md#m12-supportauthorityforwards).
+
+Simplicity pre-check: extend the existing lexical reader and approval/history
+routes with a fixed inventory and a local finite catalog proof. Reusing an old
+class would widen its contract; a new SQL parser, runner or shared M10 observer
+exception is unnecessary. Hashes identify bytes; real PostgreSQL catalogs and
+rollback are the semantic oracle.
+
+Budget used: three new required cases, one admission/refusal table and one finite
+catalog/rollback lane per graph, from the shared CTL/R4 ceiling of 14 cases / 8.0 s
+(CTL three, R4 eleven). The admission lane also proves the actual queue and release
+routes. Measured runtime and unexecuted PostgreSQL obligations belong in the task
+handoff; this allocation is not a timing PASS. The supervisor owns commits,
+mandatory signed native review, PostgreSQL execution, integration and delivery.
+No local uncommitted implementation result establishes admission or publication.
+
 ## R4: operator recovery
 
 TODO: audited operator command composition after applicable owner handoffs and

@@ -632,6 +632,17 @@ reopen and refresh evidence; legacy whole-input fingerprints still conflict with
 PR1 identities and are not migrated. See [data compatibility](DATA_AND_MIGRATIONS.md#compatibility-lifecycle)
 for the exact upgrade and replay boundary.
 
+The M12 `supportAuthorityForwards` class binds exactly two inert support-authority
+fixtures under its own fixed trusted inventory. Native authority delegates lifecycle
+writes to M10 and retains named unavailable subcases; managed authority binds email
+claim/settlement, a deferred identity fence, account linking and human recovery.
+CTL introduces no installation SQL or runtime activation. R4 owns canonical and
+native packed-twin introductions after the required same-rail prefix. Exact pins
+and bounded lexical checks do not establish semantics: the
+[finite PostgreSQL catalog/rollback proof](../../tests/postgres/reviewedBatchForwards.test.ts)
+and required independent review remain necessary. See the
+[class boundary](DATA_AND_MIGRATIONS.md#m12-supportauthorityforwards).
+
 The M10/F17 `batchedForwards` registry adds exact approval data and inert
 snapshots only. The batch has 16 pins: seven native and nine managed. Pending pins use
 `20261024` identities after the landed M08/M09 rail tails; N1 keeps

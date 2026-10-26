@@ -805,6 +805,57 @@ reference setup read the managed alignment forward, they use the platform file
 when it exists, otherwise the SQL of the one companion that names it with every
 marker line removed, and they refuse when none or several do.
 
+### M12 supportAuthorityForwards
+
+The [registry](../../config/reviewed-platform-forwards.json) has a separate
+`supportAuthorityForwards` class for two fixed paths: native
+`20261026120000_account_support_operator_authority.sql` and managed
+`20261026120100_account_support_current_authority.sql`. The
+[fixtures](../../scripts/fixtures/reviewed-m12/db/platform/migrations/README.md)
+are inert approval inputs. CTL adds no canonical migration, packaged SQL or
+manifest row; R4 owns those introductions under the co-located rule above.
+The account-support migration export remains a sparse catalog, not an installer.
+
+The trusted checker fixes native apply creation and native recovery/absorption
+replacements in that order, with invoker headers and default/browser execution
+revoked. Managed admission fixes seven ordered functions: email admission, claim,
+identity guard and settlement creations, the retired combined email replacement,
+account-link creation and recovery replacement. Exact headers include parameter
+names/order/defaults, return/language, security mode and search path. The managed
+37-statement inventory fixes three CHECK preimages/replacements, two nullable
+no-default claim columns, one sequence with no non-owner privileges, the deferred
+`AFTER UPDATE` constraint trigger on `auth.users`, two function comments and
+service-only function execution. Email admission, claim, identity guard and
+settlement preserve the donor `SECURITY DEFINER` statements with
+`search_path = public, pg_catalog`. The newly DEFINER account link uses
+`search_path = pg_catalog, pg_temp` and public-qualified application references.
+All five explicitly revoke `openlup_mcp_reader`; only `service_role` receives
+EXECUTE, except the trigger-only guard, which has no direct grant. The managed runtime
+capability closure grants `service_role` column-level `clients` privileges only, so
+the link body, not a wider table grant, holds the authority. The admin CHECK
+retains `checkout_payment_link_mint` and adds only `operator_email_correction`;
+each support kind CHECK adds only `account_link`, retaining `NOT VALID`.
+
+Whole-file, function and ordered-statement hashes bind exact bytes; they cannot
+expand that inventory. Existing M10/M11 inventories and historical readers stay
+unchanged. A new support forward requires the complete same-rail prefix,
+including every earlier M10/M11 pin with exact bytes. Managed M11 introductions
+therefore precede the managed R4 introduction. Release admission binds each pin
+at its unique first-parent introduction and refuses later repair of that pin.
+Historical registries without the support class remain readable.
+
+The [admission witness](../../scripts/reviewed-batch-forward.test.ts) exercises
+trusted preparation, separate and co-located introductions, PR/merge-group
+admission, release history and coherently repinned refusals. The
+[PostgreSQL witness](../../tests/postgres/reviewedBatchForwards.test.ts) replays
+complete prefixes, fills only an absent fixture suffix, requires canonical/fixture
+and native packed-twin equality, proves the finite function/column/CHECK/sequence/
+trigger/comment/ACL delta, retains the full unaffected catalog/row observer and
+checks installation rollback. Its observer plants include claim, sequence,
+trigger, CHECK and identity-row changes. Sequence allocation during a later
+command may leave gaps; installation rollback removes a newly created sequence.
+Missing Docker/PostgreSQL is a failed prerequisite, never lexical proof.
+
 ## Disposable managed reference baseline
 
 The opt-in [subscription reference](SUBSCRIPTION_REFERENCE.md) selects the

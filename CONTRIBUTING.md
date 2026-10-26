@@ -353,6 +353,24 @@ acquisition terms under the policy lock; the terms reader refuses absent policy.
 The checkout receipt action, stock seam and starter compatibility actions are
 specified in [Data and migrations](docs/platform/DATA_AND_MIGRATIONS.md#exact-reviewed-function-forwards).
 
+M12 support authority uses the separate `supportAuthorityForwards` class and
+[inert fixtures](scripts/fixtures/reviewed-m12/db/platform/migrations/README.md).
+Run `npx vitest run scripts/reviewed-batch-forward.test.ts` for trusted preparation,
+co-located own-file pins, PR/merge-group admission, release-introduction binding
+and semantic refusal plants. Run
+`npm test -- tests/postgres/reviewedBatchForwards.test.ts --maxWorkers=1` with
+Docker available for the native and managed finite catalog deltas, complete
+prefix replay, observer plants and installation rollback. The managed lane
+applies each required M11 fixture exactly once when its canonical suffix is
+absent. Canonical bytes and the native packed twin must match fixtures when
+present. Missing PostgreSQL/pgTAP fails the prerequisite; lexical checks cannot
+replace it. The [migration guide](docs/platform/DATA_AND_MIGRATIONS.md#m12-supportauthorityforwards)
+owns the fixed two-path inventory and R4 introduction boundary. These controls
+add no installer, package release, activation or general SQL exception.
+The M12 dispatcher checks each preceding SQL object's regular-file mode and reads
+its exact committed bytes in one batch through the existing documentation object
+reader; the complete ordered prefix and all admission checks still apply.
+
 The M10/F17 exact-forward controls use
 `scripts/reviewed-batch-forward.test.ts` for per-file refusal plants and separate
 and co-located CI/release approval, and `tests/postgres/reviewedBatchForwards.test.ts` for the

@@ -8106,6 +8106,18 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/fixtures/reviewed-m12/db/platform/migrations/20261026120000_account_support_operator_authority.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/fixtures/reviewed-m12/db/platform/migrations/README.md",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/fixtures/reviewed-m12/supabase/migrations/20261026120100_account_support_current_authority.sql",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/fulfillment-stock-evidence-proof.ts",
       "class": "public-output"
     },

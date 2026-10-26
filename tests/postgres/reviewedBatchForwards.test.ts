@@ -5,7 +5,7 @@ import { dirname, join } from "node:path";
 import { reviewedBatchBytes, reviewedBatchPaths } from "../../scripts/reviewed-batch-rail.js";
 import { Client, Pool, type PoolClient } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { assertBatchedForward, assertManagedCommerceForward, batchedFunctionDefinitions, readReviewedForwardRegistry, sqlSha256, sqlStatements, type BatchedForwardBinding } from "../../scripts/reviewed-platform-forward.js";
+import { assertBatchedForward, assertManagedCommerceForward, assertSupportAuthorityForward, batchedFunctionDefinitions, readReviewedForwardRegistry, sqlSha256, sqlStatements, type BatchedForwardBinding } from "../../scripts/reviewed-platform-forward.js";
 import { closePostgres, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, dockerAvailable, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
 import { imageIo, imageReference, pullWithRetry, readCiImage } from "../../scripts/ci-image-pull.mjs";
 import { readManagedMigrationChain } from "../../scripts/public-ci-pgtap.mjs";
@@ -1375,6 +1375,79 @@ it('replays a stored refusal and an apply-created receipt directly, without publ
     }
   }, 120_000);
 
+
+  it("proves the M12 finite catalog delta, observer refusals and installation rollback", async () => {
+    const support = registry.supportAuthorityForwards![portable ? 0 : 1]!;
+    const commerce = portable ? [] : registry.managedCommerceForwards!;
+    const allPins = [...pins, ...commerce, support];
+    const paths = reviewedBatchPaths(replayRoot, directory, allPins);
+    const read = (path: string) => {
+      const pin = allPins.find(pin => pin.path === path);
+      if (!pin) return readFileSync(join(replayRoot, path));
+      if (pins.includes(pin)) return reviewedBatchBytes(replayRoot, process.cwd(), pin);
+      const frozen = readFileSync(`scripts/fixtures/${pin === support ? "reviewed-m12" : "reviewed-m11"}/${path}`);
+      const landed = join(replayRoot, path);
+      if (existsSync(landed)) expect(readFileSync(landed), `landed fixture equality: ${path}`).toEqual(frozen);
+      expect(sqlSha256(frozen)).toBe(pin.sha256);
+      return frozen;
+    };
+    const prior = paths.filter(path => path < support.path).map(path => ({ path, bytes: read(path) }));
+    expect(preceding).toEqual(prior.slice(0, preceding.length).map(source => source.bytes));
+    const bytes = read(support.path);
+    if (portable) {
+      const twin = `packages/platform/sql/${support.path.split("/").at(-1)}`;
+      if (existsSync(support.path)) expect(existsSync(twin), "canonical native support requires its packed twin").toBe(true);
+      if (existsSync(twin)) expect(readFileSync(twin)).toEqual(bytes);
+    }
+    const baseline = await supportSnapshot(db);
+    await db.query("BEGIN");
+    try {
+      const installed = prior.slice(0, preceding.length);
+      for (const source of prior.slice(preceding.length)) {
+        if (commerce.some(pin => pin.path === source.path)) assertManagedCommerceForward(registry, source.path, source.bytes, installed);
+        await db.query(source.bytes.toString());
+        installed.push(source);
+      }
+      expect(installed.map(source => source.path)).toEqual(prior.map(source => source.path));
+      for (const pin of commerce) expect(installed.filter(source => source.path === pin.path)).toHaveLength(1);
+      assertSupportAuthorityForward(registry, support.path, bytes, installed);
+      const before = await supportSnapshot(db);
+      await db.query(bytes.toString());
+      await assertSupportCatalog(db, support, bytes, before, await supportSnapshot(db));
+      await db.query("SAVEPOINT m12_observer_plant");
+      const plants = [
+        "CREATE FUNCTION public.m12_unexpected() RETURNS text LANGUAGE sql AS $$ SELECT 'plant'; $$",
+        "CREATE SCHEMA m12_unexpected",
+        "CREATE TABLE public.m12_unexpected(id integer)",
+        "ALTER TABLE public.clients ADD COLUMN m12_unexpected integer",
+        "GRANT SELECT ON public.clients TO anon",
+        "INSERT INTO public.clients(id,email) VALUES ('da000000-0000-4000-8000-000000000099','m12-plant@example.invalid')",
+        `GRANT EXECUTE ON FUNCTION ${support.functions[0]!.signature} TO authenticated`,
+        ...portable ? [] : [
+          "ALTER TABLE public.customer_support_subscription_commands ALTER COLUMN email_claim_token SET DEFAULT gen_random_uuid()",
+          "ALTER SEQUENCE public.customer_support_email_correction_sequence CACHE 2",
+          "GRANT USAGE ON SEQUENCE public.customer_support_email_correction_sequence TO service_role",
+          "ALTER TABLE public.customer_support_subscription_commands VALIDATE CONSTRAINT customer_support_subscription_commands_kind_check",
+          "ALTER TABLE public.admin_audit_events DROP CONSTRAINT admin_audit_events_action_check; ALTER TABLE public.admin_audit_events ADD CONSTRAINT admin_audit_events_action_check CHECK (action IN ('operator_email_correction')) NOT VALID",
+          "DROP TRIGGER customer_support_identity_email_ownership ON auth.users; " + sqlStatements(bytes.toString())[8]!.replace("DEFERRABLE INITIALLY DEFERRED", "NOT DEFERRABLE INITIALLY IMMEDIATE"),
+          "INSERT INTO auth.users(id,email) VALUES ('da000000-0000-4000-8000-000000000098','m12-auth-plant@example.invalid')",
+        ],
+      ];
+      for (const plant of plants) {
+        await db.query(plant);
+        await expect(assertSupportCatalog(db, support, bytes, before, await supportSnapshot(db)), plant).rejects.toThrow();
+        await db.query("ROLLBACK TO m12_observer_plant");
+      }
+      await assertSupportCatalog(db, support, bytes, before, await supportSnapshot(db));
+    } finally { await db.query("ROLLBACK"); }
+    const restored = await supportSnapshot(db);
+    assertSameSnapshot(baseline.catalog, restored.catalog);
+    expect(restored.sequences).toEqual(baseline.sequences);
+    expect(restored.sequenceState).toEqual(baseline.sequenceState);
+    expect(restored.rows).toEqual(baseline.rows);
+    expect(restored.checkDefinitions).toEqual(baseline.checkDefinitions);
+  }, 120_000);
+
   it("proves the catalog observer rejects planted effects and pgTAP finishes cleanly", async () => {
     const pin = pins.at(-1)!;
     const bytes = fixture(pin);
@@ -1430,3 +1503,183 @@ it.each([
     expect(() => reviewedBatchPaths(root, directory, pins)).toThrow("reviewed batch requires every earlier same-rail pin landed first");
   } finally { rmSync(root, { recursive: true, force: true }); }
 });
+
+// M12's finite delta stays local: the M10 observer and its exception vocabulary
+// are unchanged. Every masked catalog effect is proved before normalization.
+type SupportSnapshot = Awaited<ReturnType<typeof supportSnapshot>>;
+async function supportSnapshot(db: Pool) {
+  const catalog = await batchSnapshot(db);
+  const sequences = (await db.query(`SELECT s.*, n.nspname||'.'||c.relname AS name
+    FROM pg_sequence s JOIN pg_class c ON c.oid=s.seqrelid JOIN pg_namespace n ON n.oid=c.relnamespace
+    WHERE n.nspname IN ('public','private','auth') ORDER BY s.seqrelid`)).rows;
+  const sequenceState: Record<string, unknown> = {};
+  for (const row of sequences) {
+    const quoted = String(row.name).split(".").map(part => `"${part.replaceAll('"', '""')}"`).join(".");
+    sequenceState[row.name] = (await db.query(`SELECT * FROM ${quoted}`)).rows;
+  }
+  const rows: Record<string, unknown> = {};
+  const tables = (await db.query(`SELECT n.nspname,c.relname FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+    WHERE c.relkind='r' AND (n.nspname IN ('public','private') OR (n.nspname='auth' AND c.relname IN ('users','identities')))
+    ORDER BY n.nspname,c.relname`)).rows;
+  for (const { nspname, relname } of tables) {
+    const quoted = [nspname, relname].map(part => `"${String(part).replaceAll('"', '""')}"`).join(".");
+    rows[`${nspname}.${relname}`] = (await db.query(`SELECT to_jsonb(t) AS value,t.xmin::text AS xmin FROM ${quoted} t ORDER BY to_jsonb(t)::text,t.xmin::text`)).rows;
+  }
+  const checkDefinitions = (await db.query(`SELECT c.oid,pg_get_constraintdef(c.oid) AS definition FROM pg_constraint c
+    WHERE c.conname IN ('admin_audit_events_action_check','customer_support_subscription_commands_kind_check','customer_support_subscription_audit_events_kind_check')`)).rows;
+  return { catalog, sequences, sequenceState, rows, checkDefinitions };
+}
+const supportAuditActions = [
+  "role_change", "invite", "remove", "promo_update", "promo_status_change", "subscription_band_update",
+  "catalog_draft_upsert", "catalog_price_set", "catalog_sku_archive", "catalog_activate", "catalog_product_archive",
+  "catalog_product_restore", "catalog_deactivate", "customer_read", "promotion_code_create", "promotion_code_update",
+  "promotion_code_status_change", "bundle_draft_upsert", "bundle_composition_set", "bundle_target_price_set",
+  "bundle_archive", "bundle_restore", "bundle_activate", "bundle_deactivate", "revoke", "checkout_payment_link_mint",
+];
+const supportKinds = ["subscription_action", "email_correction", "phone_correction", "lead_absorption"];
+const supportSequence = "public.customer_support_email_correction_sequence";
+async function assertSupportCatalog(db: Pool, pin: BatchedForwardBinding, source: Buffer, before: SupportSnapshot, after: SupportSnapshot) {
+  const managed = pin.path.startsWith("supabase/");
+  const old = structuredClone(before.catalog), current = structuredClone(after.catalog);
+  const statements = sqlStatements(source.toString());
+  const ids = new Map<string, number>();
+  const role = (await db.query("SELECT current_user AS name,(SELECT oid FROM pg_roles WHERE rolname=current_user) AS oid")).rows[0];
+  const functionRows = (await db.query(`SELECT p.oid,pg_get_functiondef(p.oid) AS definition,
+    pg_get_function_arguments(p.oid) AS arguments,pg_get_function_result(p.oid) AS result,l.lanname
+    FROM pg_proc p JOIN pg_language l ON l.oid=p.prolang WHERE p.oid=ANY($1::regprocedure[])`, [pin.functions.map(fn => fn.signature)])).rows;
+  for (const fn of pin.functions) {
+    const id = (await db.query("SELECT $1::regprocedure::oid AS oid", [fn.signature])).rows[0].oid;
+    ids.set(fn.signature, id);
+    const actual = current.functions.find(row => row.oid === id)!;
+    const info = functionRows.find(row => row.oid === id)!;
+    const statement = statements.find(sql => batchedFunctionDefinitions(Buffer.from(sql)).has(fn.signature))!;
+    const body = /\bAS (\$[a-z_0-9]*\$)([\s\S]*)\1;$/iu.exec(statement)!;
+    const header = statement.slice(0, body.index);
+    const argText = /^CREATE(?: OR REPLACE)? FUNCTION [^(]+\(([\s\S]*?)\)\s+RETURNS/u.exec(header)![1]!.trim();
+    const args = argText ? argText.split(",").map(arg => arg.trim().replace(/\s+/gu, " ")) : [];
+    const types = fn.signature.slice(fn.signature.indexOf("(") + 1, -1).split(",").filter(Boolean);
+    const path = header.includes("public, pg_catalog") ? ["public", "pg_catalog"]
+      : header.includes("pg_catalog, pg_temp") ? ["pg_catalog", "pg_temp"] : ["pg_catalog"];
+    const guard = fn.signature === "public.customer_support_guard_identity_email_v1()";
+    // CD freeze correction #2: the managed link runs as DEFINER under the column-privilege closure.
+    const definer = managed && /customer_support_(?:admit|claim|guard|settle|link)_/u.test(fn.signature);
+    const expectedArgs = args.join(", ").replaceAll("timestamptz", "timestamp with time zone");
+    expect(info.arguments, fn.signature).toBe(expectedArgs);
+    expect(info.result).toBe(guard ? "trigger" : "jsonb");
+    expect(info.lanname).toBe("plpgsql");
+    expect(info.definition).toContain(`CREATE OR REPLACE FUNCTION ${fn.signature.split("(")[0]}(${expectedArgs})`);
+    expect(info.definition).toContain(`AS $function$${body[2]}$function$`);
+    expect(info.definition).toContain(`SET search_path TO ${path.map(value => `'${value}'`).join(", ")}`);
+    expect(info.definition.includes("SECURITY DEFINER")).toBe(definer);
+    expect(actual.prosrc).toBe(body[2]);
+    expect(actual.attributes).toMatchObject({ prokind: "f", proowner: String(role.oid), pronargs: args.length,
+      pronargdefaults: 0, proargdefaults: null, proallargtypes: null, proargmodes: null,
+      proargnames: args.length ? args.map(arg => arg.split(" ")[0]) : null, prosqlbody: null,
+      prosecdef: definer, proretset: false, proleakproof: false, proisstrict: false,
+      provolatile: "v", proparallel: "u", proconfig: [`search_path=${path.join(", ")}`],
+      prorettype: guard ? "2279" : "3802", procost: 100, prorows: 0, provariadic: "0", probin: null });
+    const argumentTypes = (await db.query("SELECT oidvectortypes(proargtypes) AS types FROM pg_proc WHERE oid=$1", [id])).rows[0].types;
+    expect(argumentTypes).toBe(types.join(", ").replaceAll("timestamptz", "timestamp with time zone"));
+    const acl = (await db.query(`SELECT CASE WHEN x.grantee=0 THEN 'PUBLIC' ELSE r.rolname END AS grantee,x.privilege_type,x.is_grantable
+      FROM pg_proc p CROSS JOIN LATERAL aclexplode(COALESCE(p.proacl,acldefault('f',p.proowner))) x
+      LEFT JOIN pg_roles r ON r.oid=x.grantee WHERE p.oid=$1 AND x.grantee<>p.proowner ORDER BY grantee,x.privilege_type`, [id])).rows;
+    expect(acl).toEqual(managed && !guard ? [{ grantee: "service_role", privilege_type: "EXECUTE", is_grantable: false }] : []);
+    if (managed) expect((await db.query("SELECT has_function_privilege('service_role',$1,'EXECUTE') AS allowed", [fn.signature])).rows[0].allowed).toBe(!guard);
+    for (const browser of ["anon", "authenticated"]) expect((await db.query("SELECT has_function_privilege($1,$2,'EXECUTE') AS allowed", [browser, fn.signature])).rows[0].allowed).toBe(false);
+    const prior = old.functions.find(row => row.oid === id);
+    if (fn.beforeSha256 !== null) {
+      expect(prior, fn.signature).toBeDefined();
+      expect({ ...actual.attributes, proacl: null }).toEqual({ ...prior!.attributes, proacl: null });
+      expect(actual.prosrc).not.toBe(prior!.prosrc);
+      current.functions[current.functions.indexOf(actual)] = prior!;
+    } else {
+      expect(prior).toBeUndefined();
+      current.functions.splice(current.functions.indexOf(actual), 1);
+    }
+  }
+  const constraintRows = (rows: unknown[]) => rows as Record<string, unknown>[];
+  const checks = managed ? [
+    ["public.admin_audit_events", "admin_audit_events_action_check", "action", supportAuditActions, "operator_email_correction"],
+    ["public.customer_support_subscription_commands", "customer_support_subscription_commands_kind_check", "command_kind", supportKinds, "account_link"],
+    ["public.customer_support_subscription_audit_events", "customer_support_subscription_audit_events_kind_check", "command_kind", supportKinds, "account_link"],
+  ] as const : [];
+  for (const [table, name, column, values, addition] of checks) {
+    const prior = constraintRows(old.catalogs.pg_constraint!).find(row => row.conname === name && Number(row.conrelid) === old.relations.find(row => row.name === table)!.oid)!;
+    const next = constraintRows(current.catalogs.pg_constraint!).find(row => row.conname === name && Number(row.conrelid) === current.relations.find(row => row.name === table)!.oid)!;
+    expect(prior).toBeDefined(); expect(next).toBeDefined();
+    const definition = (await db.query("SELECT pg_get_constraintdef($1) AS definition", [next.oid])).rows[0].definition;
+    const expected = (all: readonly string[]) => `CHECK ((${column} = ANY (ARRAY[${all.map(value => `'${value}'::text`).join(", ")}]))) NOT VALID`;
+    expect(before.checkDefinitions.find(row => Number(row.oid) === Number(prior.oid))!.definition).toBe(expected(values));
+    expect(definition).toBe(expected([...values, addition]));
+    expect(next.convalidated).toBe(false);
+    const retained = (row: Record<string, unknown>) => Object.fromEntries(Object.entries(row).filter(([key]) => !["oid", "conbin"].includes(key)));
+    expect(retained(next)).toEqual(retained(prior));
+    current.catalogs.pg_constraint = current.catalogs.pg_constraint!.filter(row => row !== next);
+    old.catalogs.pg_constraint = old.catalogs.pg_constraint!.filter(row => row !== prior);
+  }
+  if (managed) {
+    const relation = current.relations.find(row => row.name === "public.customer_support_subscription_commands")!;
+    const prior = old.relations.find(row => row.oid === relation.oid)!;
+    const added = relation.columns.filter((column: { attnum: number }) => column.attnum > prior.attributes.relnatts);
+    expect(added.map((column: { attname: string; atttypid: number }) => [column.attname, Number(column.atttypid)]))
+      .toEqual([["email_claim_token", 2950], ["email_claim_until", 1184]]);
+    for (const [index, column] of added.entries()) expect(column).toMatchObject({ attrelid: String(relation.oid), attnum: prior.attributes.relnatts + index + 1,
+      attnotnull: false, atthasdef: false, atthasmissing: false, attgenerated: "", attidentity: "", attacl: null,
+      attisdropped: false, attislocal: true, attinhcount: 0, attcollation: "0", attndims: 0, atttypmod: -1 });
+    relation.columns = relation.columns.filter((column: { attnum: number }) => column.attnum <= prior.attributes.relnatts);
+    expect(relation.attributes.relnatts).toBe(prior.attributes.relnatts + 2);
+    relation.attributes.relnatts = prior.attributes.relnatts;
+    // Existing rows acquire only these two NULL fields; tuple versions stay fixed.
+    const key = "public.customer_support_subscription_commands";
+    current.data[key] = current.data[key]!.map(value => {
+        const row = value as Record<string, unknown>; expect(row.email_claim_token).toBeNull(); expect(row.email_claim_until).toBeNull();
+        const { email_claim_token: _token, email_claim_until: _until, ...retained } = row; return retained;
+    });
+    const sequence = current.relations.find(row => row.name === supportSequence)!;
+    expect(sequence).toMatchObject({ relkind: "S", attributes: { relowner: String(role.oid), relnamespace: relation.attributes.relnamespace,
+      relnatts: 3, reltype: "0", relam: "0", reltablespace: "0", relpersistence: "p", relrowsecurity: false,
+      relforcerowsecurity: false, relispartition: false, reloptions: null, relpartbound: null } });
+    expect(sequence.columns.filter((column: { attnum: number }) => column.attnum > 0).map((column: { attname: string; attacl: unknown }) => [column.attname, column.attacl]))
+      .toEqual([["last_value", null], ["log_cnt", null], ["is_called", null]]);
+    const seq = after.sequences.find(row => row.name === supportSequence)!;
+    expect(seq).toEqual({ seqrelid: sequence.oid, seqtypid: 20, seqstart: "1", seqincrement: "1", seqmax: "9223372036854775807", seqmin: "1", seqcache: "1", seqcycle: false, name: supportSequence });
+    expect(after.sequenceState[supportSequence]).toEqual([{ last_value: "1", log_cnt: "0", is_called: false }]);
+    const acl = (await db.query(`SELECT x.* FROM pg_class c CROSS JOIN LATERAL aclexplode(COALESCE(c.relacl,acldefault('s',c.relowner))) x WHERE c.oid=$1 AND x.grantee<>c.relowner`, [sequence.oid])).rows;
+    expect(acl).toEqual([]);
+    current.relations.splice(current.relations.indexOf(sequence), 1);
+    const trigger = constraintRows(current.catalogs.pg_trigger!).find(row => row.tgname === "customer_support_identity_email_ownership")!;
+    const auth = current.relations.find(row => row.name === "auth.users")!;
+    const guard = ids.get("public.customer_support_guard_identity_email_v1()")!;
+    expect(trigger).toMatchObject({ tgrelid: String(auth.oid), tgfoid: String(guard), tgtype: 17, tgenabled: "O", tgisinternal: false,
+      tgdeferrable: true, tginitdeferred: true, tgnargs: 0, tgqual: null, tgattr: [], tgnewtable: null, tgoldtable: null });
+    const triggerDefinition = (await db.query("SELECT pg_get_triggerdef($1) AS definition", [trigger.oid])).rows[0].definition;
+    expect(triggerDefinition).toContain("AFTER UPDATE ON auth.users DEFERRABLE INITIALLY DEFERRED FOR EACH ROW EXECUTE FUNCTION");
+    const triggerConstraint = constraintRows(current.catalogs.pg_constraint!).find(row => row.oid === trigger.tgconstraint)!;
+    expect(triggerConstraint).toMatchObject({ contype: "t", conrelid: String(auth.oid), conname: "customer_support_identity_email_ownership",
+      condeferrable: true, condeferred: true, convalidated: true, confrelid: "0", conkey: null, conbin: null });
+    current.catalogs.pg_trigger = current.catalogs.pg_trigger!.filter(row => row !== trigger);
+    current.catalogs.pg_constraint = current.catalogs.pg_constraint!.filter(row => row !== triggerConstraint);
+    expect(auth.attributes.relhastriggers).toBe(true);
+    auth.attributes.relhastriggers = old.relations.find(row => row.oid === auth.oid)!.attributes.relhastriggers;
+    for (const statement of statements.filter(sql => sql.startsWith("COMMENT ON FUNCTION "))) {
+      const target = statement.startsWith("COMMENT ON FUNCTION public.customer_support_correct_") ? pin.functions[4]! : pin.functions[5]!;
+      const id = ids.get(target.signature)!;
+      const comment = / IS\s+'([\s\S]*)';$/u.exec(statement)![1]!.replaceAll("''", "'");
+      const next = constraintRows(current.catalogs.pg_description!).find(row => Number(row.objoid) === id && row.objsubid === 0)!;
+      expect(next).toMatchObject({ description: comment, objsubid: 0 });
+      current.catalogs.pg_description = current.catalogs.pg_description!.filter(row => row !== next);
+      old.catalogs.pg_description = old.catalogs.pg_description!.filter(row => Number((row as { objoid: string }).objoid) !== id);
+    }
+  }
+  // Finite proof above accounts for only the named M12 effects. The retained
+  // full observer must reject every other catalog/object/grant/row delta.
+  assertSameSnapshot(old, current);
+  expect(after.sequences.filter(row => row.name !== supportSequence)).toEqual(before.sequences);
+  expect(Object.fromEntries(Object.entries(after.sequenceState).filter(([name]) => name !== supportSequence))).toEqual(before.sequenceState);
+  const rowVersions = structuredClone(after.rows) as Record<string, { value: Record<string, unknown>; xmin: string }[]>;
+  if (managed) rowVersions["public.customer_support_subscription_commands"] = rowVersions["public.customer_support_subscription_commands"]!.map(row => {
+    expect(row.value.email_claim_token).toBeNull(); expect(row.value.email_claim_until).toBeNull();
+    const { email_claim_token: _token, email_claim_until: _until, ...value } = row.value; return { ...row, value };
+  });
+  expect(rowVersions).toEqual(before.rows);
+}
