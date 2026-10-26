@@ -1,12 +1,8 @@
 import { Buffer } from "node:buffer";
 import { Pool, type PoolClient } from "pg";
 
-import {
-  ACQUISITION_CASE_CONTRACT_VERSION,
-  acquisitionCaseListResponseSchema,
-  acquisitionCaseProjectionSchema,
-  type AcquisitionCaseProjection,
-} from "../../../../src/domains/clients/acquisitionCaseContracts.js";
+import { ACQUISITION_CASE_CONTRACT_VERSION, acquisitionCaseListResponseSchema, acquisitionCaseProjectionSchema } from "@openlup/platform/marketing";
+import type { AcquisitionCaseProjection } from "@openlup/platform/marketing/contracts";
 import type {
   AcquisitionCaseFailureKind,
   AcquisitionCaseListQuery,

@@ -16,6 +16,8 @@ import { POSTGRES_PROOF_IMAGE } from "./outbox-disposable-postgres.ts";
 export const NON_ADAPTER_ENTRIES = [
   "account-support",
   "account-support/contracts",
+  "marketing",
+  "marketing/contracts",
   "commerce",
   "commerce/contracts",
   "commerce/server",
@@ -489,6 +491,22 @@ assert.deepEqual(trace,[]);
 `);
 }
 
+/** Installed marketing runtime, type-only entry, identity and deep-import refusal. */
+export function proveMarketingConsumer(consumer: string): void {
+  consumerNode(consumer, `
+import assert from "node:assert/strict";
+import * as marketing from "@openlup/platform/marketing";
+import * as contracts from "@openlup/platform/marketing/contracts";
+import * as core from "@openlup/core/marketing/research";
+assert.deepEqual(marketing.acquisitionCaseListRequestSchema.parse({ view: marketing.ACQUISITION_CASE_VIEW }), { view: marketing.ACQUISITION_CASE_VIEW, limit: 25 });
+assert.equal(marketing.acquisitionCaseListRequestSchema.safeParse({ view: marketing.ACQUISITION_CASE_VIEW, extra: true }).success, false);
+assert.deepEqual(Object.keys(contracts), []);
+for (const [name, value] of Object.entries(core)) assert.equal(marketing[name], value);
+for (const name of ["acquisitionCaseSubmitRequestSchema", "acquisitionCaseSubmitResponseSchema", "acquisitionCaseTransitionRequestSchema", "acquisitionCaseTransitionResponseSchema"]) assert.equal(name in marketing, false);
+await assert.rejects(import("@openlup/platform/dist/marketing/acquisitionCaseSchemas.js"), { code: "ERR_PACKAGE_PATH_NOT_EXPORTED" });
+`);
+}
+
 /** M11 K1: installed neutral contracts, a successful projection and a strict refusal. */
 export function proveCommerceConsumer(consumer: string): void {
   consumerNode(consumer, `
@@ -588,6 +606,17 @@ assert.deepEqual(calls, [
 export function compileConsumer(consumer: string, entries: readonly string[], compiler: string): void {
   const file = join(consumer, "consumer.ts");
   const surfaces = entries.map((name, index) => `import type * as Entry${index} from "@openlup/platform/${name}";\nexport type Surface${index} = typeof Entry${index};`);
+  if (entries.includes("marketing") && entries.includes("marketing/contracts")) surfaces.push([
+    'import { acquisitionCaseListRequestSchema } from "@openlup/platform/marketing";',
+    'import type { AcquisitionCaseListRequest, AcquisitionNewsletterConsentEvent, MarketingResearchSurveySubmitPort } from "@openlup/platform/marketing/contracts";',
+    'export const marketingRequest: AcquisitionCaseListRequest = acquisitionCaseListRequestSchema.parse({ view: "acquisition_case_v1" });',
+    '// @ts-expect-error parsed default is required in the output type',
+    'export const missingMarketingLimit: AcquisitionCaseListRequest = { view: "acquisition_case_v1" };',
+    'declare const marketingEvent: AcquisitionNewsletterConsentEvent;',
+    'export const explicitConsent: boolean = marketingEvent.explicitOptInEvidence;',
+    'declare const surveyPort: MarketingResearchSurveySubmitPort;',
+    'export const surveyResult = surveyPort.submitSurveyResponse({ surveyType: "consumer", responseData: { answer: true } });',
+  ].join("\n"));
   if (entries.includes("commerce/server")) surfaces.push([
     'import { tryCompensate } from "@openlup/platform/commerce/server";',
     'import type { CheckoutCompensationPort } from "@openlup/platform/commerce/server";',
@@ -1494,6 +1523,7 @@ assert.throws(() => promotions.resolvePromotionBenefitDefinition({ discount_type
     const compiler = join(checkout, "node_modules/typescript/bin/tsc");
     compileConsumer(consumer, NON_ADAPTER_ENTRIES, compiler);
     assertConsumerIsolation(consumer, checkout); // Compilation must not have supplied a peer.
+    proveMarketingConsumer(consumer);
     proveCommerceConsumer(consumer);
     proveCommerceServerConsumer(consumer);
     proveCatalogCompositionConsumer(consumer);

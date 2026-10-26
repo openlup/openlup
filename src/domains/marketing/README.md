@@ -39,6 +39,15 @@ creates or links a customer.
   response, and public submit contracts plus the structural read/submit ports.
   The `marketing/research` modules in this tree are compatibility shims over
   that export, so a behaviour change belongs in the package, not in a shim.
+- Acquisition evidence schemas: `@openlup/platform/marketing` owns survey
+  submit/evidence/list and newsletter consent event/response validation. The
+  `research/acquisitionEvidenceContracts.ts` shim forwards the same objects and
+  type names; server evidence ports, BFF and adapters import the package directly.
+  The core research compatibility owner remains independent of these schemas.
+  Its reference contracts/ports and the kiosk submit client keep their core
+  imports; the admin response client remains application-owned. The base-captured
+  `marketingSchemaEquivalence.test.ts` transcript preserves parsed outputs,
+  defaults, unknown-key handling and complete ordered issues across extraction.
 - Shared/frontend: `src/domains/marketing/prelaunch/` and
   `src/domains/marketing/research/`.
 - Server: `server/domains/marketing/prelaunch/` (lead read model and admin

@@ -1,9 +1,5 @@
-import type {
-  AcquisitionCaseListResponse,
-  AcquisitionCaseProjection,
-  AcquisitionCaseSubmitRequest,
-  AcquisitionCaseTransitionRequest,
-} from "../../../src/domains/clients/acquisitionCaseContracts.js";
+import type { AcquisitionCaseListResponse, AcquisitionCaseProjection } from "@openlup/platform/marketing/contracts";
+import type { AcquisitionCaseSubmitRequest, AcquisitionCaseTransitionRequest } from "../../../src/domains/clients/acquisitionCaseContracts.js";
 
 export type AcquisitionCaseFailureKind =
   | "conflict"

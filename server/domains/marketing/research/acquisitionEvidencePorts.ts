@@ -1,11 +1,4 @@
-import type {
-  AcquisitionNewsletterConsentEvent,
-  AcquisitionNewsletterConsentResponse,
-  AcquisitionSurveyListQuery,
-  AcquisitionSurveyListResponse,
-  AcquisitionSurveySubmit,
-  AcquisitionSurveySubmitResponse,
-} from "../../../../src/domains/marketing/research/acquisitionEvidenceContracts.js";
+import type { AcquisitionNewsletterConsentEvent, AcquisitionNewsletterConsentResponse, AcquisitionSurveyListQuery, AcquisitionSurveyListResponse, AcquisitionSurveySubmit, AcquisitionSurveySubmitResponse } from "@openlup/platform/marketing/contracts";
 
 export type AcquisitionEvidenceFailure = "invalid" | "not_found" | "conflict" | "unavailable";
 export type AcquisitionEvidenceResult<T> =

@@ -7,7 +7,7 @@ import {
   prelaunchAcquisitionListResponseSchema,
   type PrelaunchAcquisitionLead,
 } from "../../../src/domains/marketing/prelaunch/contracts.js";
-import type { AcquisitionCaseProjection } from "../../../src/domains/clients/acquisitionCaseContracts.js";
+import type { AcquisitionCaseProjection } from "@openlup/platform/marketing/contracts";
 import { sendBffError, sendBffSuccess, sendMethodNotAllowed } from "../../_lib/bff/response.js";
 import type * as HttpTypes from "../../_lib/types/vercel.js";
 import type { AcquisitionCaseFailureKind } from "../../domains/clients/acquisitionCasePorts.js";

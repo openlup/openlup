@@ -22,6 +22,13 @@ in [Architecture and extension boundaries](../../docs/platform/ARCHITECTURE_AND_
 
 ## Owns
 
+Acquisition case and research evidence adapters remain application-owned.
+Their schemas and DTO types come directly from `@openlup/platform/marketing`
+and its type-only contracts entry. Retired case admission types stay in the
+application shim. This binding preserves SQL routine names, argument order,
+result parsing, replay behavior and executor ownership; it moves no adapter
+or database operation into the package.
+
 Commerce returns and native review lifecycle/media adapters delegate to
 `@openlup/platform/commerce/server`; the former paths retain factory identity. Returns
 forward the principal, owner-bound replay key and unchanged request arguments;

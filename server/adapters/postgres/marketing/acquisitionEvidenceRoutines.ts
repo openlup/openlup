@@ -1,12 +1,6 @@
 import { Pool, type PoolClient } from "pg";
 
-import {
-  ACQUISITION_NEWSLETTER_VERSION,
-  ACQUISITION_SURVEY_VERSION,
-  acquisitionNewsletterConsentResponseSchema,
-  acquisitionSurveyListResponseSchema,
-  acquisitionSurveySubmitResponseSchema,
-} from "../../../../src/domains/marketing/research/acquisitionEvidenceContracts.js";
+import { ACQUISITION_NEWSLETTER_VERSION, ACQUISITION_SURVEY_VERSION, acquisitionNewsletterConsentResponseSchema, acquisitionSurveyListResponseSchema, acquisitionSurveySubmitResponseSchema } from "@openlup/platform/marketing";
 import type {
   AcquisitionEvidenceFailure,
   AcquisitionEvidencePort,
