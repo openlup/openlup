@@ -554,7 +554,9 @@ privileges and complete catalogue installation are described in
 The account-support reference capability manifest declares default-off,
 explicit-host registration and an empty route list. It is descriptive metadata,
 not permission to mount an account API or advertise checkout continuation.
-Selecting the inert R5a recipe requires the host's verified contexts, complete
+Commerce recovery and configured purchase are selectable only when the host
+binds their owners; metadata keeps both default-off and mounts nothing.
+Selecting the inert account/support recipe requires the host's verified contexts, complete
 catalogue/schema observation and admission-refusal transport mapping; it changes
 neither the static profile's refusal list nor the subscription serving entry.
 
@@ -1399,9 +1401,16 @@ mutual exclusion: trusted customer/operator context and durable owner replay
 remain mandatory. A null selected operation remains an unsatisfied required port.
 The separate absent commerce record/member returns
 `{ kind: "unsupported", code: "host_binding_required" }`; a selected owner's own
-unsupported answer remains unchanged. R5a imports no draft commerce code and
-selects no checkout continuation. M04 retains notice replay and M12 creates no
-additional effect consumer.
+unsupported answer remains unchanged. Selecting `commerceOwner` forwards one
+host-built M11 binding's guarded services and descriptors through a local
+structural type; R5b does not construct M11 or import its adapters. The host
+supplies matching enablement/readiness with the complete selected account/M11/ATP
+schema observed before entry and the existing registry as `commerceRegistry`.
+It preserves commerce handler
+outcomes, unknown stock and `managed_stock_read_options_unsupported`; no success
+or optimistic availability is synthesized. Recovery root/latest-order identity,
+client identity and the original key remain owner inputs. M04 retains notice
+replay and M12 creates no additional effect consumer.
 
 The experimental account-support composition selects each owner lane explicitly.
 Managed results, nulls and errors pass through; native typed and raw lanes keep

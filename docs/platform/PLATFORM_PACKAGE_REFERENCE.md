@@ -839,9 +839,17 @@ aliases. The host maps admission refusals before serving its HTTP entries.
 
 The binding's separate `commerce(key, ...args)` accepts a nullable injected
 record. Null record/member returns `unsupported/host_binding_required`, while
-selected owner results retain identity. R5a keeps commerceRecovery and
-configuredPurchase unsupported; A47–A51, A94/A95 and A130/A131 checkout continuation
-are unselected. No draft-M11 imports or ATP/effect installers are introduced.
+selected owner results retain identity. The reference-only `commerceOwner`
+option accepts the host-built M11 result over bound checkout/recovery and ATP
+callables through a local structural type. R5b does not construct M11 or import
+its adapters. The host includes all account/ATP requirements in the M11 schema,
+uses matching enablement/readiness and supplies the existing registry separately
+as `commerceRegistry`.
+Forward `commerceOwner.services` directly: wrapping them in another M11 binding
+would duplicate native operations. The keyed entrance preserves its concrete
+request/result relation and delegates to the same selected executor. Owner
+refusals and unknown ATP pass through. No package export, contract, ATP allocator
+or effect installer changes; see the [runtime recipe](RUNTIME_AND_SELF_HOSTING.md#opt-in-disposable-subscription-reference).
 
 Use `@openlup/platform/account-support` for `createAccountReadFacade` and the
 account-read stage/error/diagnostic helpers. The facade accepts separate `account`

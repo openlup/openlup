@@ -181,6 +181,18 @@ through the existing authenticated HTTP handlers. The native
 [`accountSupportComposition` witness](tests/postgres/accountSupportComposition.test.ts)
 installs the complete catalogue, uses Core's actual schema probe and delegates
 the selected R4 command to its native store, checking durable receipt replay.
+R7 injects the real host-built M11 result, asserts its assignability to the local
+selection type and composes actual registry descriptors without sending.
+U3/U4 use package-only selections to keep the app project outside the server
+adapter graph. U3 follows a refused
+continuation and its retry through the selected reference checkout handler with
+distinct root/order/client identities and the original key. U4 corrects refused
+managed stock options and retries the same purchase without inventing stock.
+P2 reaches the native M11 reminder through R5, checks persistence/replay and
+compares subscription/reservation/alignment rows including xmin. Reuse M11's
+consent/compaction and missing-token-table cases and the inventory unsupported
+options/ATP witnesses instead of duplicating their policy matrices. The five
+new cases each describe one behavior sequence; independent rows stay separate.
 Docker is required; a sandbox socket refusal is missing proof, not a pass.
 The installed R5 consumer compiles concrete selections and invalid requests in
 NodeNext and Bundler, executes positive/refusal paths, and detects removal of its

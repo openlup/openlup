@@ -1127,8 +1127,15 @@ construction calls no observer. Refusals are `disabled`, `schema_unknown` and
 A null selected operation remains a required port without an executable binding.
 The separate injected commerce record uses `commerce(key, ...args)` and returns
 `{ kind: "unsupported", code: "host_binding_required" }` for a null record/member.
-It imports no draft-M11 code. R5a selects no commerce recovery, configured purchase
-or checkout continuation; keep their capability flags unsupported. Contribution
-descriptors install no routes, handlers, schedules or workers. See the
+The reference host may select real M11 checkout/recovery, ATP and existing effect
+descriptors by supplying its already-built selection through `commerceOwner`
+and its existing registry through `commerceRegistry`. R5b does not construct M11
+or import its adapters; the host supplies the complete account/M11/ATP schema
+and matching enablement/readiness. Keep capability flags unsupported until
+their owner callables are bound. This adds no package export or owner import to
+account-support contracts. One M11 result is forwarded without rewrapping its
+guarded services; unknown stock, unsupported options and handler outcomes retain
+their owner meaning. Contribution descriptors install no routes, handlers,
+schedules or workers. See the
 [reference recipe](../../docs/platform/RUNTIME_AND_SELF_HOSTING.md#opt-in-disposable-subscription-reference)
 for the host's schema and transport obligations.
