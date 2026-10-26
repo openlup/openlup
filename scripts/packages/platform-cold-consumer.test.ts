@@ -71,6 +71,9 @@ function fixture() {
     'export interface AcquisitionEvidencePort { listSurveys(query: { actorReference: string; view: "acquisition_survey_v1"; limit: number }): Promise<unknown> }',
     'export type AcquisitionNewsletterConsentEvent = { explicitOptInEvidence: boolean };',
     'export interface MarketingResearchSurveySubmitPort { submitSurveyResponse(request: { surveyType: "producer" | "consumer"; responseData: Record<string, unknown> }): Promise<unknown> }',
+    'export { buildHeadDescriptor } from "./seo/metadata.js";',
+    'export { organizationLd } from "./seo/jsonLd.js";',
+    'export type * from "./contracts/contactLegal.js";',
 
     'export { tryCompensate, type CheckoutCompensationPort } from "./commerceCheckoutCompensation.js";',
     "export type NativeOperatorSubscriptionResult = { outcome: 'refused'; refusalCode: 'operator_subscription_authority_unavailable' };",
@@ -97,6 +100,11 @@ function fixture() {
   ].join("\n") + "\n");
   copyFileSync(join(root, "packages/platform/dist/commerce/server/commerceCheckoutCompensation.d.ts"), join(consumer, "node_modules/@openlup/platform/commerceCheckoutCompensation.d.ts"));
   cpSync(join(root, "packages/platform/src/invoicing/contracts"), join(consumer, "node_modules/@openlup/platform/invoicing-contracts"), { recursive: true });
+  const platformRoot = join(consumer, "node_modules/@openlup/platform");
+  mkdirSync(join(platformRoot, "seo"), { recursive: true });
+  for (const file of ["metadata", "jsonLd", "urls"]) copyFileSync(join(root, `packages/platform/dist/marketing/seo/${file}.d.ts`), join(platformRoot, `seo/${file}.d.ts`));
+  mkdirSync(join(platformRoot, "contracts"), { recursive: true });
+  copyFileSync(join(root, "packages/platform/dist/marketing/contracts/contactLegal.d.ts"), join(platformRoot, "contracts/contactLegal.d.ts"));
   packageFixture(consumer, "zod", { ".": "./index.js" });
   return consumer;
 }

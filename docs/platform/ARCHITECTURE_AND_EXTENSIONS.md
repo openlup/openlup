@@ -37,6 +37,16 @@ prelaunch validators are browser-safe package contracts, while rich prelaunch
 joins and their orchestration remain in the reference application. This type
 rebinding adds no server implementation, executor or activation seam.
 
+The browser-safe `@openlup/platform/marketing` entry also owns JSON-LD
+serialization and graph construction, URL/hreflang derivation, ordered head data
+and plain contact/legal projections. Applications supply identity, origin,
+locale, images, routes, document wording and processor disclosures. The type-only
+`@openlup/platform/marketing/contracts` entry carries the shared organization and
+content-slot shapes without runtime initialization. Neither entry selects a head
+renderer, reads an environment or route manifest, or installs a provider client;
+the host owns document mutation and local content policy. Package browser proofs
+and the cold installed consumer exercise these boundaries.
+
 The commerce browser entry contains schemas, pure helpers and port declarations;
 its `/contracts` entry remains type-only. The `/commerce/server` entry
 is the separate Node-only home for handlers, use cases, stores, adapters and

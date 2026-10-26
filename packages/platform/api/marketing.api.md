@@ -222,6 +222,24 @@ export type AcquisitionSurveyListResponse = z.infer<typeof acquisitionSurveyList
 export type AcquisitionNewsletterConsentEvent = z.infer<typeof acquisitionNewsletterConsentEventSchema>;
 export type AcquisitionNewsletterConsentResponse = z.infer<typeof acquisitionNewsletterConsentResponseSchema>;
 ```
+## dist/marketing/contactLegal.d.ts
+
+```ts
+import type { ContactContent, LegalDocumentContent } from "./contracts/contactLegal.js";
+export declare function contactContent(facts: ContactContent): {
+    supportEmail: string;
+    companyLines: string[];
+};
+export declare function legalDocumentContent(content: LegalDocumentContent): {
+    lastUpdated?: string | undefined;
+    title: string;
+    intro: string;
+    sections: {
+        title: string;
+        body: string;
+    }[];
+};
+```
 ## dist/marketing/contracts/acquisition.d.ts
 
 ```ts
@@ -367,6 +385,63 @@ export interface AcquisitionEvidencePort {
     close(): Promise<void>;
 }
 ```
+## dist/marketing/contracts/contactLegal.d.ts
+
+```ts
+export interface OrganizationFacts {
+    name: string;
+    legalName: string;
+    url: string;
+    logo: {
+        url: string;
+        contentUrl: string;
+        width: number;
+        height: number;
+    };
+    email: string;
+    vatID: string;
+    taxID: string;
+    areaServed: string;
+    sameAs: string[];
+    contactPoint: {
+        email: string;
+        contactType: string;
+        availableLanguage: string[];
+    };
+    address: {
+        streetAddress: string;
+        addressLocality: string;
+        postalCode: string;
+        addressRegion: string;
+        addressCountry: string;
+    };
+}
+export interface ContactContent {
+    organization: OrganizationFacts;
+    supportEmail: string;
+    addressLine: string;
+    registrationIdentifiers: {
+        label: string;
+        value: string;
+    }[];
+    registrationAuthority?: string;
+}
+export interface LegalDocumentContent {
+    title: string;
+    intro: string;
+    sections: {
+        title: string;
+        body: string;
+    }[];
+    lastUpdated?: string;
+}
+export interface PrivacyProcessorDisclosure {
+    processorName: string;
+    purpose: string;
+    dataCategories: string[];
+    details?: string;
+}
+```
 ## dist/marketing/index.d.ts
 
 ```ts
@@ -375,6 +450,12 @@ export * from "./acquisitionEvidenceSchemas.js";
 export * from "@openlup/core/marketing/research";
 export * from "./prelaunchAcquisitionSchemas.js";
 export type * from "./contracts/acquisitionPorts.js";
+export * from "./seo/serializeJsonLd.js";
+export * from "./seo/urls.js";
+export * from "./seo/metadata.js";
+export * from "./seo/jsonLd.js";
+export type * from "./contracts/contactLegal.js";
+export * from "./contactLegal.js";
 ```
 ## dist/marketing/prelaunchAcquisitionSchemas.d.ts
 
@@ -495,6 +576,235 @@ export type PrelaunchAcquisitionDetailRequest = z.infer<typeof prelaunchAcquisit
 export type PrelaunchAcquisitionLead = z.infer<typeof prelaunchAcquisitionLeadSchema>;
 export type PrelaunchAcquisitionListResponse = z.infer<typeof prelaunchAcquisitionListResponseSchema>;
 export type PrelaunchAcquisitionDetailResponse = z.infer<typeof prelaunchAcquisitionDetailResponseSchema>;
+```
+## dist/marketing/seo/jsonLd.d.ts
+
+```ts
+import type { OrganizationFacts } from "../contracts/contactLegal.js";
+export type JsonLdNode = Record<string, unknown> & {
+    "@context"?: string;
+    "@id"?: string;
+};
+export declare function jsonLdGraph(...nodes: JsonLdNode[]): {
+    "@context": string;
+    "@graph": {
+        [x: string]: unknown;
+        "@id"?: string;
+    }[];
+};
+export declare function entityIds(origin: string): {
+    organization: string;
+    website: string;
+    brand: string;
+};
+export declare function organizationLd(origin: string, type: "Organization" | "OnlineStore", facts: OrganizationFacts): {
+    "@context": string;
+    "@id": string;
+    "@type": "Organization" | "OnlineStore";
+    name: string;
+    legalName: string;
+    url: string;
+    logo: {
+        "@type": string;
+        url: string;
+        contentUrl: string;
+        width: number;
+        height: number;
+    };
+    email: string;
+    vatID: string;
+    taxID: string;
+    areaServed: string;
+    sameAs: string[];
+    contactPoint: {
+        "@type": string;
+        email: string;
+        contactType: string;
+        availableLanguage: string[];
+    };
+    address: {
+        "@type": string;
+        streetAddress: string;
+        addressLocality: string;
+        postalCode: string;
+        addressRegion: string;
+        addressCountry: string;
+    };
+};
+export declare function brandLd(origin: string, name: string, url: string): {
+    "@context": string;
+    "@id": string;
+    "@type": string;
+    name: string;
+    url: string;
+};
+export declare function websiteLd(origin: string, name: string, url: string, inLanguage: string[]): {
+    "@context": string;
+    "@id": string;
+    "@type": string;
+    name: string;
+    url: string;
+    inLanguage: string[];
+    publisher: {
+        "@id": string;
+    };
+};
+export declare function contactPageLd(origin: string, pageUrl: string): {
+    "@context": string;
+    "@id": string;
+    "@type": string;
+    url: string;
+    publisher: {
+        "@id": string;
+    };
+    mainEntity: {
+        "@id": string;
+    };
+};
+export interface NetContent {
+    unscaled: number;
+    scale: number;
+    unit: string;
+}
+export declare function schemaWeight(netContent: NetContent): {
+    "@type": string;
+    value: number;
+    unitCode: string;
+};
+export interface ProductFacts {
+    url: string;
+    name: string;
+    inLanguage: string;
+    brandName: string;
+    category?: string;
+    images: string[];
+    sku?: string;
+    gtin13?: string;
+    netContent?: NetContent;
+}
+export declare function productLd(origin: string, product: ProductFacts): {
+    url: string;
+    weight?: {
+        "@type": string;
+        value: number;
+        unitCode: string;
+    } | undefined;
+    gtin13?: string | undefined;
+    sku?: string | undefined;
+    image: string[];
+    category?: string | undefined;
+    "@context": string;
+    "@id": string;
+    "@type": string;
+    name: string;
+    inLanguage: string;
+    brand: {
+        "@id": string;
+        "@type": string;
+        name: string;
+    };
+    manufacturer: {
+        "@id": string;
+    };
+};
+export declare function faqPageLd(faqs: {
+    question: string;
+    answer: string;
+}[], pageUrl: string): {
+    "@context": string;
+    "@id": string;
+    "@type": string;
+    mainEntity: {
+        "@type": string;
+        name: string;
+        acceptedAnswer: {
+            "@type": string;
+            text: string;
+        };
+    }[];
+};
+export declare function breadcrumbLd(items: {
+    name: string;
+    url?: string;
+}[], pageUrl: string): {
+    "@context": string;
+    "@id": string;
+    "@type": string;
+    itemListElement: {
+        item?: string | undefined;
+        "@type": string;
+        position: number;
+        name: string;
+    }[];
+};
+```
+## dist/marketing/seo/metadata.d.ts
+
+```ts
+import { type JsonLdNode } from "./jsonLd.js";
+import { type SiteRoute } from "./urls.js";
+export type HeadTag = {
+    kind: "meta";
+    name: string;
+    content: string;
+} | {
+    kind: "meta";
+    property: string;
+    content: string;
+} | {
+    kind: "link";
+    rel: "canonical" | "alternate";
+    href: string;
+    hrefLang?: string;
+};
+export interface HeadFacts {
+    origin: string;
+    route: SiteRoute;
+    routes: readonly SiteRoute[];
+    xDefaultLocale: string;
+    htmlLang: string;
+    title: string;
+    description: string;
+    siteName: string;
+    ogImage: string;
+    ogImageWidth: number;
+    ogImageHeight: number;
+    ogLocale: string;
+    alternateOgLocale?: string;
+    twitterImage: string;
+    twitterHandle: string;
+    noindex?: boolean;
+    jsonLd?: JsonLdNode | JsonLdNode[];
+}
+export declare function buildHeadDescriptor(facts: HeadFacts): {
+    htmlLang: string;
+    title: string;
+    tags: HeadTag[];
+    jsonLd: string | null;
+};
+```
+## dist/marketing/seo/serializeJsonLd.d.ts
+
+```ts
+export declare function serializeJsonLd(value: object): string;
+```
+## dist/marketing/seo/urls.d.ts
+
+```ts
+export interface SiteRoute {
+    id: string;
+    locale: string;
+    canonicalPath: string;
+    alternateRouteId?: string;
+}
+export interface HreflangLink {
+    hrefLang: string;
+    href: string;
+}
+export declare function normalizeSitePath(pathname: string): string;
+export declare function absoluteSiteUrl(origin: string, pathname: string): string;
+export declare function canonicalUrlForRoute(origin: string, route: SiteRoute): string;
+export declare function hreflangLinksForRoute(origin: string, route: SiteRoute, routes: readonly SiteRoute[], xDefaultLocale: string): HreflangLink[];
 ```
 ## dist/marketing/validation.d.ts
 

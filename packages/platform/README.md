@@ -88,7 +88,7 @@ timestamp used in the webhook's idempotency key.
 | `./inventory` | Experimental schemas/ports, handlers, native stores, projection, injected forecast and SQL descriptor; `./inventory/contracts` DTOs. |
 | `./catalog` | Experimental neutral catalog schemas, drafts, reads, media source packs and publication ports |
 | `./catalog/contracts` | Dependency-free catalog DTOs, media resolver, authority and canonicalization helpers |
-| `./marketing`, `./marketing/contracts` | Browser-safe acquisition history, portable prelaunch, survey evidence and newsletter consent schemas; type-only DTOs and acquisition/research ports |
+| `./marketing`, `./marketing/contracts` | Browser-safe acquisition, prelaunch, research/consent schemas, SEO and contact/legal projections; type-only DTOs, ports and content slots |
 | `./commerce`, `./commerce/contracts` | Browser-safe neutral commerce schema cores, generic ports and pure contract helpers |
 | `./commerce/server` | Node-only OMS, returns, native reviews/media and hosted-feedback handlers/adapters and order-detail composition, email consumers, dispatch registry, paid-fulfillment binding and checkout compensation, checkout handlers, runtime and shared paid-order saga |
 | `./pricing` | Experimental price authority, quote computation/handlers, offer projection/cache, readiness and policy tokens |
@@ -129,6 +129,16 @@ selects `test/marketing/`; the installed consumer checks both public entries,
 compiles typed usage and refuses deep imports. Kiosk and research reference
 contracts/ports continue to consume the core export. The app owns its admin
 response client and all server composition.
+
+`./marketing` also provides browser-safe JSON-LD serialization and graph builders,
+route URL/hreflang helpers, an ordered head descriptor and plain contact/legal
+projections. Applications supply identity, origin, routes, locales, images and
+content; the descriptor is plain data for a host head manager. The type-only
+`./marketing/contracts` entry exports shared organization facts and contact,
+legal-document and privacy-processor shapes, also forwarded as types by the
+runtime entry. The package supplies no document wording, processor inventory or
+content policy. The [marketing recipe](../../docs/platform/PLATFORM_PACKAGE_REFERENCE.md#marketing-seo-and-content-slots)
+owns the mechanics and installed-artifact proof.
 
 ## Commerce contracts
 
