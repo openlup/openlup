@@ -9,6 +9,42 @@ This page holds the longer module recipes kept out of the packed README so the
 package's documentation stays under its packed size cap. The
 [package README](../../packages/platform/README.md) remains the package entry point.
 
+## Marketing server composition
+
+Use `@openlup/platform/marketing` for browser-safe validators and
+`@openlup/platform/marketing/contracts` for types. Select the separate Node-only
+`@openlup/platform/marketing/server` entry without the optional `pg` peer
+for acquisition case handlers, direct list/count and prelaunch list/detail,
+survey evidence submit/list, newsletter consent application, research handlers,
+managed survey orchestration. Select `@openlup/platform/marketing/server/postgres`
+with the existing optional `pg` peer for PostgreSQL ports. Reference bindings
+load that entry lazily after bundle and connection guards. Browser entries never
+re-export either server entry.
+
+Direct factories receive a `BffResponder`, an authorization callback and a
+binding resolver. Case reads also receive the direct-bundle predicate. The host
+owns prelaunch/evidence route dispatch, observed-route wrappers, terminal retired
+routes, admin auth binding and raw-signature verification before consent
+application. Evidence handlers forward a successful port value unchanged;
+research and case/prelaunch handlers retain their existing response validation.
+
+`createManagedSurveyResponseSubmit` receives a gateway, the communications
+public-intake delivery port, notification configuration and separate HTML and
+subject functions. It renders HTML with survey type, opaque answer data and row
+ID before reading the clock for the subject. Policy filtering precedes rendering;
+notification transport receives the returned subject and HTML unchanged. Durable
+row and best-effort email-status behavior retain their existing ordering.
+
+`createPostgresAcquisitionCasePort` and `createPostgresAcquisitionEvidencePort`
+retain connection-string and optional pool-factory inputs. Each call uses the
+existing transaction and `SET LOCAL ROLE platform_acquisition_runtime` sequence.
+The real PostgreSQL witness applies the hash-checked manifest prefix through the
+survey/newsletter evidence migration and invokes ports through a login granted
+only runtime-role membership. The fixture owner serves setup, state inspection
+and append-only trigger proof; separate runtime-role mutation assertions prove
+privilege denial. Missing Docker fails that proof. No migration or
+privilege change accompanies this package boundary.
+
 ## Identity import candidate
 
 The OIDC API adds `createOidcIdentityVerifier`,

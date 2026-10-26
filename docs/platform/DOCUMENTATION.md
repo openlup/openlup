@@ -106,6 +106,12 @@ which the publication catalogue includes in the public source tree rather than
 the npm artifact. Detailed recipe links point there directly; existing identity,
 runtime and package ownership routes remain unchanged.
 
+Marketing's PostgreSQL export barrel and generated server API reports are public
+source outputs in the publication catalogue. The package README and
+[server composition recipe](PLATFORM_PACKAGE_REFERENCE.md#marketing-server-composition)
+own the separate handler and optional-peer adapter entries; the contributor
+guide owns their existing boundary, cold-consumer and PostgreSQL proof checks.
+
 Subscription source, contract witnesses and generated subscription API reports
 route to the [subscription architecture owner](ARCHITECTURE_AND_EXTENSIONS.md#subscription-contracts).
 The package README links the exact export and refusal surface in that owner;

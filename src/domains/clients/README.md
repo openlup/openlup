@@ -36,11 +36,12 @@ plus the admin identity reads.
   `@openlup/platform/marketing`, preserving schema identity. The application keeps
   retired submit/transition contracts and its client-version binding, built over
   the package primitives; those admission contracts are not published. Server
-  readers import the package directly, with retained admission types imported
-  from the application shim. The pre-extraction parse transcript and unchanged
+  readers use `@openlup/platform/marketing/server` without loading `pg`;
+  PostgreSQL factories use the separate `/marketing/server/postgres` entry.
+  The server entry's structural compatibility commands retain the retired adapter signatures. The pre-extraction parse transcript and unchanged
   contract suite pin outputs, defaults and complete ordered validation issues.
-  The package case port exposes only list/get/activeCount/close; the reference
-  port extends it with retired submit/transition commands and methods. A compiler
+  The package case port exposes only list/get/activeCount/close; the server-only
+  port extends it with historical submit/transition commands and methods. A compiler
   witness checks assignability both ways against the original complete shape.
   The client-search engine and its version remain application-owned.
 - Admin identity reads: `adminSummary.ts` + `adminSummaryClient.ts`,

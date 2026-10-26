@@ -12,6 +12,7 @@ import {
   type AccountSupportReadScenarioResult,
   proveAccountSupportConsumer,
   proveMarketingConsumer,
+  proveMarketingServerConsumer,
   proveCommerceConsumer,
   proveInvoicingConsumer,
   proveSubscriptionsConsumer,
@@ -58,8 +59,17 @@ function fixture() {
   const platformManifest = join(consumer, "node_modules/@openlup/platform/package.json");
   const platformMetadata = JSON.parse(readFileSync(platformManifest, "utf8"));
   platformMetadata.exports["./account-support/contracts"].default = "./contracts.js";
+  platformMetadata.exports["./marketing/server"].types = "./marketing-server.d.ts";
   writeFileSync(platformManifest, JSON.stringify(platformMetadata));
   writeFileSync(join(consumer, "node_modules/@openlup/platform/contracts.js"), "export {};\n");
+  // The server port extends the browser contract with historical commands.
+  writeFileSync(join(consumer, "node_modules/@openlup/platform/marketing-server.d.ts"), [
+    'import type { AcquisitionCasePort as PortableAcquisitionCasePort } from "./index.js";',
+    'export interface AcquisitionCasePort extends PortableAcquisitionCasePort { submit(command: unknown): Promise<unknown>; transition(command: unknown): Promise<unknown> }',
+    'export interface AcquisitionCaseDirectDeps { resolveBinding(): Promise<unknown> }',
+    'export declare function createAcquisitionCaseHandlers(port: AcquisitionCasePort): unknown;',
+    'export declare function createAcquisitionCaseActiveCountDirectHandler(deps: AcquisitionCaseDirectDeps): unknown;',
+  ].join("\n") + "\n");
   // The typed consumer registers the payments factory with the composer.
   writeFileSync(join(consumer, "node_modules/@openlup/platform/index.d.ts"), [
     "export interface Synthetic { value: string }",
@@ -184,6 +194,11 @@ export const createPostgresAccountLinkStore = () => ({
 });
 function refusalFixture(mode: "correct" | "raw" | "wrong-peer" | "no-cause" | "success") {
   const consumer = fixture();
+  const manifestPath = join(consumer, "node_modules/@openlup/platform/package.json");
+  const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+  manifest.exports["./marketing/server/postgres"].default = "./postgres.js";
+  writeFileSync(manifestPath, JSON.stringify(manifest));
+  writeFileSync(join(consumer, "node_modules/@openlup/platform/postgres.js"), 'import "pg";\n');
   writeFileSync(join(consumer, "node_modules/@openlup/platform/index.js"), `
 async function fail(peer) {
   if (${JSON.stringify(mode)} === "success") return;
@@ -273,6 +288,10 @@ it("classifies the browser identity entry separately from the mixed server adapt
   expect(NON_ADAPTER_ENTRIES).toContain("identity/contracts");
   expect(NON_ADAPTER_ENTRIES).toContain("pricing");
   expect(NON_ADAPTER_ENTRIES).toContain("pricing/contracts");
+  expect(NON_ADAPTER_ENTRIES).toContain("marketing/server");
+  expect(ADAPTER_ENTRIES).not.toContain("marketing/server");
+  expect(ADAPTER_ENTRIES).toContain("marketing/server/postgres");
+  expect(NON_ADAPTER_ENTRIES).not.toContain("marketing/server/postgres");
 });
 
 it.each(["createPostgresCustomerChallengeStore", "createDirectOperatorInvitationStore", "createDirectOperatorIdentityDirectory"])("requires a refusal from identity adapter %s", name => {
@@ -1006,3 +1025,11 @@ it("proves installed marketing subpaths, prelaunch schemas, reachable ports and 
   proveMarketingConsumer(consumer);
   compileConsumer(consumer, ["marketing", "marketing/contracts"], join(root, "node_modules/typescript/lib/tsc.js"));
 }, 60_000);
+
+it("proves installed marketing server reads, port refusal and exact exports without optional peers", () => {
+  const consumer = pristinePackedA1Fixture();
+  assertConsumerIsolation(consumer, root);
+  proveMarketingServerConsumer(consumer);
+  for (const name of ["@types/node", "undici-types"]) cpSync(join(root, "node_modules", name), join(consumer, "node_modules", name), { recursive: true });
+  compileConsumer(consumer, ["marketing/server"], join(root, "node_modules/typescript/lib/tsc.js"));
+}, 30_000);

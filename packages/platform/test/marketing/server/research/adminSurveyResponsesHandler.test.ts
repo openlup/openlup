@@ -1,7 +1,9 @@
+import { createBffResponder } from "../../../../src/bff/index.js";
+const respond = createBffResponder();
 import { describe, expect, it, vi } from "vitest";
-import type { VercelRequest, VercelResponse } from "../../../_lib/types/vercel.js";
-import type { MarketingResearchSurveyResponsesReadPort } from "../../../../src/domains/marketing/research/ports.js";
-import { createAdminSurveyResponsesHandler } from "./adminSurveyResponsesHandler.js";
+import type { HttpRequest, HttpResponse } from "../../../../src/http/index.js";
+import type { MarketingResearchSurveyResponsesReadPort } from "@openlup/core/marketing/research";
+import { createAdminSurveyResponsesHandler } from "../../../../src/marketing/server/research/adminSurveyResponsesHandler.js";
 
 describe("marketing research admin survey responses handler", () => {
   it("returns survey rows through the BFF envelope", async () => {
@@ -60,7 +62,7 @@ describe("marketing research admin survey responses handler", () => {
 
     const failed = createResponse();
     await createHandler({
-      readPort: createReadPort({ result: new Error("Supabase unavailable") }),
+      readPort: createReadPort({ result: new Error("store unavailable") }),
     })(request("GET", { surveyType: "consumer" }), failed);
 
     const authFailed = createResponse();
@@ -84,7 +86,7 @@ function createHandler({
   authorized?: boolean;
   authError?: Error;
 }) {
-  return createAdminSurveyResponsesHandler({
+  return createAdminSurveyResponsesHandler({ respond,
     readPort,
     authorizeAdmin: vi.fn().mockImplementation(async () => {
       if (authError) throw authError;
@@ -96,8 +98,8 @@ function createHandler({
 function request(
   method: string,
   query: Record<string, string | string[] | undefined> = {},
-): VercelRequest {
-  return { method, body: {}, query } as unknown as VercelRequest;
+): HttpRequest {
+  return { method, body: {}, query } as unknown as HttpRequest;
 }
 
 function createReadPort({ result }: { result?: unknown } = {}): MarketingResearchSurveyResponsesReadPort {
@@ -114,12 +116,12 @@ function createReadPort({ result }: { result?: unknown } = {}): MarketingResearc
   };
 }
 
-function createResponse(): VercelResponse {
+function createResponse(): HttpResponse {
   const res = {
     setHeader: vi.fn(),
     status: vi.fn(),
     json: vi.fn(),
-  } as unknown as VercelResponse;
+  } as unknown as HttpResponse;
 
   vi.mocked(res.status).mockReturnValue(res);
   vi.mocked(res.json).mockReturnValue(res);

@@ -4,16 +4,25 @@ Status: development-preview contract. No recipe in this document is a supported 
 
 ## Runtime model
 
-Acquisition history and research evidence BFF handlers validate requests and
-responses with `@openlup/platform/marketing`; DTO-only imports use
-`@openlup/platform/marketing/contracts`. Their authorization, runtime bindings,
-retired-admission refusals and response envelopes stay application-owned.
-The package exposes no marketing server entry, route registry or automatic
-activation. Reference research contracts, ports and kiosk submission continue
-to use the core research compatibility export. Portable prelaunch list/detail
-validation uses the marketing package; rich prelaunch joins retain application
-contracts. BFF failure kinds and evidence runtime port types use the type-only
-entry, while the case runtime retains its extended application port.
+Marketing reference routes compose `@openlup/platform/marketing/server` factories
+with the host BFF responder, authorization and persistence bindings. Case
+list/count retain their direct-bundle guard; prelaunch/evidence dispatch remains
+with the callers. The reference owns observed wrappers, terminal retired routes,
+raw signed newsletter ingress and notification subject/HTML. Importing
+`@openlup/platform/marketing/server` does not load `pg`; selecting
+`@openlup/platform/marketing/server/postgres` requires the existing optional
+`pg` peer. Neither entry registers a route or scheduler. Each handler retains
+its existing method, auth, schema, binding,
+operation and response order. Case, prelaunch and research handlers validate
+responses; successful acquisition evidence values are forwarded unchanged.
+
+Browser-safe acquisition and evidence validation uses
+`@openlup/platform/marketing`; DTO-only imports use
+`@openlup/platform/marketing/contracts`. Research contracts, ports and kiosk
+submission continue to use the core research compatibility export. Portable
+prelaunch validation uses the marketing package; rich prelaunch joins retain
+application contracts. The case runtime uses the server-only compatibility port
+for historical adapter signatures, while retired admission schemas stay local.
 
 The accounting HTTP scheduler accepts an explicitly composed invoicing service
 and passes it to the existing accounting runtime after HTTP method and bearer
