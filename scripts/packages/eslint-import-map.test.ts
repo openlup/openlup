@@ -483,7 +483,7 @@ describe("eslint platform module boundaries", { timeout: 60_000 }, () => {
     };
     const entries = readdirSync(platformSource, { withFileTypes: true });
     expect(entries.filter((entry) => !entry.isDirectory()).map(({ name }) => name)).toEqual([]);
-    expect(Object.keys(graph).sort()).toEqual([...entries.map(({ name }) => name), "commerce/server"].sort());
+    expect(Object.keys(graph).sort()).toEqual([...entries.map(({ name }) => name), "commerce/server", "operations/server"].sort());
     for (const [module, { values, types }] of Object.entries(graph)) {
       for (const target of [...values, ...types]) {
         const [owner, ...entry] = target.split("/");

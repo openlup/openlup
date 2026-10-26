@@ -160,6 +160,8 @@ watchdog/handler behavior; the full-catalogue installed PostgreSQL phase also
 executes the operations adapter as an explicitly granted invoker role, with a
 forbidden neighboring write, durable replay/conflict and a second-process restart.
 This extends the existing proof rather than adding a runner or required job.
+The existing size/import-map inventories also name the operations browser and
+server entries, and the identity profile keeps its exact browser-only closure.
 
 
 The inventory [binding](tests/platform/inventory/inventoryBindings.test.ts) and
@@ -2450,6 +2452,10 @@ authority rule. This route grants no submission, merge or scope authority of its
 own: a lessons change is an ordinary delivery under existing authority, and a
 promotion stays within its approved scope. The rethink record and the task's
 terminal self-retro carry the lesson until it lands. No other tracker is kept.
+
+- 2026-10-26, M14 operations: package-local green missed existing closed size,
+  nested-module and identity-profile inventories → trace exact consumer entries
+  and run their focused selectors before the broad gate; preserve refusal checks.
 
 - 2026-10-25, M11 stock reader: owner-only proofs hid caller and name-resolution
   failures → pin SECURITY DEFINER paths to `pg_catalog, pg_temp`, qualify
