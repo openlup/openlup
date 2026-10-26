@@ -1430,8 +1430,8 @@ The source routes remain unchanged pending P7.
 The platform module graph declares browser marketing with an isolated contracts
 entry and no cross-module platform edges. Its runtime entry may forward the
 existing public core research export; contracts forward only core types and
-local DTO shapes, including reachable acquisition ports and portable prelaunch
-types. Retired admission schemas are excluded from both browser entries. The
+local DTO shapes, including reachable acquisition ports, portable prelaunch
+types and shared organization/contact/legal/privacy content slots. Retired admission schemas are excluded from both browser entries. The
 separate `marketing/server` entry admits marketing values and only HTTP, BFF,
 marketing-contract and communications-contract type edges. Its two PostgreSQL
 files alone admit the existing pg peer and are exported through
@@ -1456,13 +1456,6 @@ The `./marketing/server` release surface selects it, and root discovery includes
 it with the package tests. It needs no reference route or live persistence;
 telemetry context failure never gates commerce and `active` proves only a local
 context fact.
-
-The platform module graph declares marketing with an isolated contracts entry
-and no cross-module platform edges. Its runtime entry may forward the existing
-public core research export; contracts forward only core types and local DTO
-shapes, including reachable acquisition ports, portable prelaunch types and shared
-organization/contact/legal/privacy content slots. Retired application admission contracts are excluded from both public
-entries. Package boundary checks validate that graph with the other modules.
 
 The complete projected root command inventory is `build`,
 `build:public-reference`, `build:public-reference:client`,

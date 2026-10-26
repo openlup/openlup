@@ -98,7 +98,7 @@ timestamp used in the webhook's idempotency key.
 | `./marketing/server` (analytics context) | Injected analytics context handler with host persistence, capability and identity bindings |
 | `./marketing`, `./marketing/contracts` | Browser-safe acquisition history, portable prelaunch, survey evidence and newsletter consent schemas; type-only DTOs and acquisition/research ports |
 | `./marketing`, `./marketing/contracts` (analytics) | Browser-safe acquisition and research schemas, injected analytics, paid purchase and consent-time facts; type-only DTOs and ports |
-| `./marketing`, `./marketing/contracts` | Browser-safe acquisition, prelaunch, research/consent schemas, SEO and contact/legal projections; type-only DTOs, ports and content slots |
+| `./marketing`, `./marketing/contracts` (SEO and content slots) | Browser-safe JSON-LD serialization and graph builders, URL/hreflang helpers, ordered head data and contact/legal projections; type-only organization, contact, legal-document and privacy-processor content slots |
 | `./commerce`, `./commerce/contracts` | Browser-safe neutral commerce schema cores, generic ports and pure contract helpers |
 | `./commerce/server` | Node-only OMS, returns, native reviews/media and hosted-feedback handlers/adapters and order-detail composition, email consumers, dispatch registry, paid-fulfillment binding and checkout compensation, checkout handlers, runtime and shared paid-order saga |
 | `./pricing` | Experimental price authority, quote computation/handlers, offer projection/cache, readiness and policy tokens |
