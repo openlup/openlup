@@ -8,9 +8,11 @@ Marketing reference routes compose `@openlup/platform/marketing/server` factorie
 with the host BFF responder, authorization and persistence bindings. Case
 list/count retain their direct-bundle guard; prelaunch/evidence dispatch remains
 with the callers. The reference owns observed wrappers, terminal retired routes,
-raw signed newsletter ingress and notification subject/HTML. Importing the
-server entry selects the existing optional pg peer but registers no route or
-scheduler. Each handler retains its existing method, auth, schema, binding,
+raw signed newsletter ingress and notification subject/HTML. Importing
+`@openlup/platform/marketing/server` does not load `pg`; selecting
+`@openlup/platform/marketing/server/postgres` requires the existing optional
+`pg` peer. Neither entry registers a route or scheduler. Each handler retains
+its existing method, auth, schema, binding,
 operation and response order. Case, prelaunch and research handlers validate
 responses; successful acquisition evidence values are forwarded unchanged.
 
