@@ -662,10 +662,15 @@ const hostRun=await runPlatformWatchdog({evidencePort:{collectSnapshot:async()=>
 const hostChannel: "operator-pager"=hostRun.decisions[0].channels[0];
 // @ts-expect-error the host sink preserves its own channel key
 hostSink.send({...hostDecision,channels:["other-channel"]},{id:"alert",dedupeKey:"example",status:"open",severity:"p0",lastNotifiedAt:null});
+const otherDecision: import("@openlup/platform/operations/contracts").AlertDecision<"other-channel">={...hostDecision,channels:["other-channel"]};
+// @ts-expect-error composition cannot widen a narrow host sink/ledger to another channel
+runPlatformWatchdog({evidencePort:{collectSnapshot:async()=>({checkedAt:"instant"})},ledgerPort:hostLedger,sinkPort:hostSink,catalog:[],checkOnly:false,evaluate:()=>[otherDecision]});
 void setting;void pipeline;void wrong;void hostChannel;
 `);
+  const configuration=join(consumer,"operations-types.json");
   for(const [module,moduleResolution] of [["NodeNext","NodeNext"],["ESNext","Bundler"]]) {
-    command(process.execPath,[compiler,"--module",module,"--moduleResolution",moduleResolution,"--target","ES2022","--strict","--noEmit","--skipLibCheck","false",file],consumer,isolatedConsumerEnv());
+    writeFileSync(configuration,JSON.stringify({compilerOptions:{module,moduleResolution,target:"ES2022",strict:true,noEmit:true,skipLibCheck:false,types:["node"],typeRoots:[join(consumer,"node_modules/@types")]},files:[file]}));
+    command(process.execPath,[compiler,"-p",configuration],consumer,isolatedConsumerEnv());
   }
 }
 

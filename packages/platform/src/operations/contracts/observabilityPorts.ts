@@ -11,9 +11,9 @@ export type ObservabilityEvidencePort<Snapshot extends WatchdogSnapshot = Watchd
 
 export type AlertLedgerPort<Channel extends string = string> = {
   listOpenAlerts(): Promise<OpenAlert[]>;
-  upsertOpenAlert(decision: AlertDecision<Channel>, now: Date): Promise<OpenAlert>;
+  upsertOpenAlert: (decision: AlertDecision<Channel>, now: Date) => Promise<OpenAlert>;
   resolveAlert(dedupeKey: string, now: Date): Promise<void>;
-  recordNotification(
+  recordNotification: (
     alertId: string,
     /** The kernel retains its existing webhook-keyed skipped-attempt audit rows. */
     outcome: AlertNotificationOutcome<Channel | "webhook">,
@@ -22,9 +22,9 @@ export type AlertLedgerPort<Channel extends string = string> = {
       nextAttemptAt: Date;
       failureCount: number;
     },
-  ): Promise<void>;
+  ) => Promise<void>;
 };
 
 export type AlertSinkPort<Channel extends string = string> = {
-  send(decision: AlertDecision<Channel>, alert: OpenAlert): Promise<AlertNotificationOutcome<Channel>>;
+  send: (decision: AlertDecision<Channel>, alert: OpenAlert) => Promise<AlertNotificationOutcome<Channel>>;
 };
