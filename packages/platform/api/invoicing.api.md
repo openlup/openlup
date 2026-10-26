@@ -2038,7 +2038,7 @@ export declare function mapInvoiceClaimToProviderSnapshot<Seller, Kind, Payment>
     documentKind: Kind;
     governmentClearanceRequired: boolean;
     payment: Payment;
-    lines: (Pick<import("./contracts/facts.js").InvoiceLine, "quantity" | "unitGrossMinor" | "unitNetMinor" | "totalGrossMinor" | "totalNetMinor"> & {
+    lines: (Pick<import("./contracts/facts.js").InvoiceLine, "quantity" | "totalNetMinor" | "totalGrossMinor" | "unitGrossMinor" | "unitNetMinor"> & {
         name: string;
         vatRate: string;
     })[];

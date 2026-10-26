@@ -23,3 +23,22 @@ export type InvoiceAccessPort = {
     >;
     resolveDownload(input: { readonly accountRef: string; readonly orderId: string; readonly documentRef: string }): Promise<{ readonly kind: "authorized"; readonly identity: InvoiceDocumentIdentity; readonly artifactRef: string; readonly fileName: string; readonly parentDocumentRef: string | null } | { readonly kind: "denied" } | { readonly kind: "unknown"; readonly code: "unknown" } | InvoiceUnsupported>;
   };
+
+export type CustomerDocumentDeliveryStatus = "not_ready"
+  | "pdf_ready"
+  | "ksef_pending"
+  | "email_pending"
+  | "email_provider_accepted"
+  | "email_sent"
+  | "requires_correction"
+  | "delivery_failed";
+export type CustomerInvoiceDocumentRole = "original" | "correction" | "replacement";
+export type CustomerInvoiceDownloadArtifact = "invoice" | "correction";
+
+export interface CustomerInvoiceDownloadRequest {
+  invoiceId: string;
+  artifact: CustomerInvoiceDownloadArtifact
+}
+
+export type AccountInvoiceHistoryResult = Awaited<ReturnType<InvoiceAccessPort["read"]>>;
+export type AccountInvoiceHistoryDocument = Extract<AccountInvoiceHistoryResult, { kind: "found" }>["documents"][number];

@@ -1054,4 +1054,24 @@ with the host. Importing this entry selects no driver or capability.
 Customer 360, self-service command, operator recovery and invoice-access envelopes
 with explicit capability flags. These declarations do not install their services.
 The [account/support reference](../../docs/platform/PLATFORM_PACKAGE_REFERENCE.md#account-and-support-contracts)
-owns the available R1 boundary and later-phase limits.
+owns the available boundary and later-phase limits.
+
+R2 adds `readAccountSnapshot` with the two-stage fan-out and a store-level recent
+20-order request, stored-money order history/detail, Customer 360 projections
+and M09 invoice history/PDF delegation. `createInvoiceAccess` checks the requested
+document against the owned account/order history before resolving its ticket or
+reading PDF bytes; foreign or unknown documents return `{ kind: "denied" }`. Select pricing, captured line
+presentation, private extensions and fulfillment evidence through typed host
+ports. Missing evidence stays unknown; owner refusals retain their distinctions.
+The default-off reference selections and host-fed read views are unmounted.
+Native Customer 360 uses the existing authorized PostgreSQL support reader;
+account/history/invoice drivers still require explicit host selection.
+Subscription pointer enrichment preserves optional nullable `paymentMethodKind`:
+selected-empty evidence is null, while unread evidence is omitted. Reference
+line presentation explicitly picks the declared display keys before projection.
+
+`createCustomer360ReadFacade({ authorize, journey, summary, diagnostics })`
+requires `authorize(): Promise<boolean>` before every method's source read.
+Refused callers receive `{ kind: "denied" }`; authorized delegates preserve
+arguments, results, nulls and thrown failures. The reference binding supplies
+that authorization once per call, before opening either support scope.

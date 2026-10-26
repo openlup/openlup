@@ -18,6 +18,79 @@ export declare function createAccountReadFacade<Account, OrderList, OrderDetail>
     orders: Pick<AccountReadPort<Account, OrderList, OrderDetail>, "listOrders" | "getOrderDetail">;
 }): AccountReadPort<Account, OrderList, OrderDetail>;
 ```
+## dist/account-support/accountReadModels.d.ts
+
+```ts
+import type { AccountActionRequired, AccountSnapshot, AccountSubscription, AccountSubscriptionLine, AccountOrderSummary } from "./contracts/account.js";
+import type { SubscriptionPaymentMethodStatus } from "./contracts/commands.js";
+export declare const CUSTOMER_ACCOUNT_V2_CONTRACT_VERSION: "customer.account.v3";
+type Row = Record<string, unknown>;
+export interface CustomerSubscriptionEligibilityInput {
+    subscriptionId: string;
+    status: AccountSubscription["status"];
+    nextCycleAt: string | null;
+    editCutoffAt: string | null;
+    paymentMethodKind: string | null;
+    paymentMethodRefPresent: boolean;
+    paymentMethodStatus?: SubscriptionPaymentMethodStatus;
+}
+export interface CustomerSubscriptionEligibility {
+    canEdit: boolean;
+    reason: AccountSubscription["editBlockedReason"];
+}
+export interface SubscriptionActionState {
+    subscriptionId: string;
+    orderId: string | null;
+    blockedReason: AccountActionRequired["blockedReason"];
+    failureCause: AccountActionRequired["failureCause"];
+    recoveryEligible: boolean;
+    dueAt: string | null;
+    nextRetryAt: string | null;
+}
+export interface AccountReadSources<Extension, ChargeEvidence = AccountSubscription["nextCharge"], PaymentEvidence = unknown> {
+    readExtension(clientId: string): Promise<Extension>;
+    /** The selected store applies the bound BEFORE visibility filtering. */
+    readSubscriptionRows(clientId: string, limit: number): Promise<Row[]>;
+    readAddresses(clientId: string): Promise<AccountSnapshot["addresses"]>;
+    readOrdererProfiles(clientId: string): Promise<AccountSnapshot["ordererProfiles"]>;
+    readPaymentPreferences(clientId: string): Promise<AccountSnapshot["paymentPreferences"]>;
+    readDeliveryPreferences(clientId: string): Promise<AccountSnapshot["deliveryPreferences"]>;
+    readOrders(clientId: string, limit: number): Promise<{
+        orders: AccountOrderSummary[];
+    }>;
+    readEvents(clientId: string): Promise<AccountSnapshot["events"]>;
+    readSubscriptionLines(ids: string[]): Promise<Map<string, AccountSubscriptionLine[]>>;
+    readSubscriptionBlockers(ids: string[], nextCycles: Map<string, string | null>): Promise<Map<string, NonNullable<AccountSubscription["editBlockedReason"]>>>;
+    readPauseWindows(ids: string[]): Promise<Map<string, Pick<AccountSubscription, "pausePreset" | "pauseStartedAt" | "pauseEndsAt">>>;
+    readPaymentEvidence(ids: string[]): Promise<Map<string, PaymentEvidence>>;
+    /** Owner interprets M08 refusal; unsupported MUST throw, never return an empty Map. */
+    readDeliveryAlignments(nextCycles: Map<string, string | null>): Promise<Map<string, {
+        state: "protected" | "aligned";
+    }>>;
+    readNextCharges(rows: Row[]): Promise<Map<string, ChargeEvidence>>;
+    readActionStates(ids: string[]): Promise<Map<string, SubscriptionActionState>>;
+}
+export interface AccountReadProjectionPolicy<ChargeEvidence = AccountSubscription["nextCharge"], PaymentEvidence = unknown> {
+    paymentMethodStatus(input: {
+        clientId: string;
+        clientEmail: string | null;
+        row: Row;
+        evidence: PaymentEvidence | undefined;
+    }): SubscriptionPaymentMethodStatus;
+    canUsePaymentMethodForRenewal(status: SubscriptionPaymentMethodStatus): boolean;
+    packageSummary(lines: AccountSubscriptionLine[], constraint: unknown): string | null;
+    /** Pricing authority selects payable-cycle/acquisition shipping precedence. */
+    withNextCharge(recurring: AccountSubscription["recurringPrice"], next: ChargeEvidence | undefined): Pick<AccountSubscription, "recurringPrice" | "nextCharge">;
+}
+/** Two observation stages, including the original nested subscription fan-out. Auth/ownership precedes this call. */
+export declare function readAccountSnapshot<Extension, ChargeEvidence, PaymentEvidence>(sources: AccountReadSources<Extension, ChargeEvidence, PaymentEvidence>, policy: AccountReadProjectionPolicy<ChargeEvidence, PaymentEvidence>, client: Row): Promise<AccountSnapshot<Extension>>;
+export declare function isCustomerVisibleSubscription(row: Row): boolean;
+export declare function recurringPrice(lines: AccountSubscriptionLine[]): AccountSubscription["recurringPrice"];
+export declare function editCutoff(nextCycleAt: string | null, editWindowHours: number | null): string | null;
+export declare function computeEditState(input: CustomerSubscriptionEligibilityInput, blockers: ReadonlyMap<string, NonNullable<AccountSubscription["editBlockedReason"]>>, canUse: AccountReadProjectionPolicy["canUsePaymentMethodForRenewal"]): CustomerSubscriptionEligibility;
+export declare function buildActionRequired(subscriptions: AccountSubscription[], orders: AccountOrderSummary[], states: Map<string, SubscriptionActionState> | undefined, canUse: AccountReadProjectionPolicy["canUsePaymentMethodForRenewal"]): AccountActionRequired[];
+export {};
+```
 ## dist/account-support/contracts/account.d.ts
 
 ```ts
@@ -37,6 +110,270 @@ export interface AccountReadPort<Account, OrderList, OrderDetail> {
         limit: number;
     }): Promise<OrderList | null>;
     getOrderDetail(userId: string, orderId: string): Promise<OrderDetail | null>;
+}
+import type { AccountSupportMoney, SubscriptionPaymentMethodStatus } from "./commands.js";
+import type { CustomerDocumentDeliveryStatus } from "./invoice.js";
+export interface AccountProfile {
+    clientId: string;
+    email: string;
+    firstName: string | null;
+    lastName: string | null;
+    phone: string | null;
+    lifecycleStage: "lead" | "tester" | "customer" | "inactive";
+}
+export interface AccountAddress {
+    addressId: string;
+    kind: "shipping" | "billing" | "both";
+    label: string | null;
+    recipientName: string | null;
+    contactPhone: string | null;
+    companyName: string | null;
+    taxId: string | null;
+    line1: string;
+    line2: string | null;
+    city: string;
+    postalCode: string;
+    country: string;
+    isDefault: boolean;
+    deliveryNotes: string | null;
+    courierInstructions: string | null;
+    lastUsedAt: string | null;
+    createdAt: string;
+    updatedAt: string;
+}
+export interface AccountBillingProfile {
+    profileId: string;
+    label: string | null;
+    fullName: string;
+    email: string;
+    phone: string | null;
+    companyName: string | null;
+    taxId: string | null;
+    companyVerificationLevel?: "registry_verified" | "provider_verified" | "manual_unverified" | "invalid" | null;
+    companyIdentitySource?: string | null;
+    companyIdentityEvidenceHash?: string | null;
+    isDefault: boolean;
+    createdAt: string;
+    updatedAt: string;
+}
+/** Method/provider vocabulary is supplied by the selected host, never a platform provider list. */
+export interface AccountPaymentPreference<Method extends string = string> {
+    scope: "one_time" | "subscription" | "any";
+    methodKind: Method;
+    lastSelectedAt: string;
+}
+export interface AccountPickupPoint {
+    id: string;
+    name: string;
+    address: {
+        line1: string;
+        postalCode: string;
+        city: string;
+        country: string;
+    } | null;
+}
+export interface AccountDeliverySelection {
+    deliveryKind: "courier" | "parcel-locker";
+    providerKind: string | null;
+    carrierKind: string | null;
+    carrierCode: string | null;
+    serviceCode: string | null;
+    pickupPoint: AccountPickupPoint | null;
+}
+export interface AccountDeliveryPreference<Provider extends string = string> extends AccountDeliverySelection {
+    scope: "one_time" | "subscription" | "any";
+    providerKind: Provider;
+    carrierKind: string;
+    carrierCode: string;
+    serviceCode: string;
+    lastSelectedAt: string;
+}
+export interface AccountEvent {
+    eventId: string;
+    eventType: string;
+    entityType: string;
+    entityId: string | null;
+    occurredAt: string;
+}
+export interface AccountSubscriptionLine {
+    lineId: string;
+    variantId: string;
+    qty: number;
+    sortOrder: number;
+    isAddon: boolean;
+    title: string | null;
+    sku: string | null;
+    productSlug?: string | null;
+    displayLabel?: string | null;
+    accentColor?: string | null;
+    unitPrice?: AccountSupportMoney | null;
+    lineSubtotal?: AccountSupportMoney | null;
+}
+export interface AccountSubscription {
+    subscriptionId: string;
+    shippingAddressId: string | null;
+    status: "pending_activation" | "active" | "paused" | "cancelled" | "activation_failed" | "completed";
+    pausePreset: "2_weeks" | "1_month" | "indefinite" | null;
+    pauseStartedAt: string | null;
+    pauseEndsAt: string | null;
+    cadenceDays: number;
+    nextCycleAt: string | null;
+    deliveryAlignment?: {
+        state: "protected" | "aligned";
+    };
+    editCutoffAt: string | null;
+    canEditUpcomingPackage: boolean;
+    editBlockedReason: "not_active" | "edit_window_closed" | "cycle_locked" | "payment_blocked" | "missing_payment_method" | null;
+    paymentMethodKind: string | null;
+    paymentMethodStatus?: SubscriptionPaymentMethodStatus;
+    templateVersion: number;
+    sizeConstraint: Record<string, unknown> | null;
+    packageSummary: string | null;
+    recurringPrice: {
+        subtotalGross: AccountSupportMoney;
+        totalGross: AccountSupportMoney;
+        currency: string;
+        source: "frozen_quote_line" | "missing";
+    } | null;
+    nextCharge?: {
+        totalGross: AccountSupportMoney;
+        starterStage: "delivery2" | "graduation" | null;
+    } | null;
+    lines: AccountSubscriptionLine[];
+}
+export interface AccountTrackingReference {
+    providerKind: string;
+    trackingNumber: string;
+    trackingUrl: string | null;
+    carrierKind: string | null;
+    service: string | null;
+    updatedAt: string | null;
+}
+export interface AccountTrackingEvent {
+    eventType: string;
+    label: string;
+    occurredAt: string | null;
+    source: "webhook" | "reconciliation" | "manual" | "simulator" | "fulfillment";
+}
+export interface AccountInvoiceSummary {
+    invoiceId: string;
+    orderId: string;
+    invoiceRef: string;
+    status: string;
+    providerInvoiceNumber: string | null;
+    ksefNumber: string | null;
+    ksefStatus: string;
+    documentDeliveryStatus: CustomerDocumentDeliveryStatus;
+    totalGross: AccountSupportMoney;
+    issuedAt: string | null;
+    downloadAvailable: boolean;
+    downloadUrl: string | null;
+    createdAt: string;
+}
+export interface AccountInvoiceDocument extends Omit<AccountInvoiceSummary, "totalGross"> {
+    documentKey: string;
+    role: "original" | "correction" | "replacement";
+    artifact: "invoice" | "correction";
+    isCurrent: boolean;
+    totalGross: AccountSupportMoney | null;
+}
+export interface AccountOrderSummary {
+    orderId: string;
+    orderRef: string;
+    orderNumber: string | null;
+    subscriptionId: string | null;
+    status: string;
+    paymentStatus: string | null;
+    fulfillmentStatus: string | null;
+    customerFulfillmentStep?: "paid" | "accepted" | "packing" | "transit" | "delivered" | "exception" | "cancelled";
+    total: AccountSupportMoney;
+    trackingNumber: string | null;
+    trackingNumbers: string[];
+    trackingUrl: string | null;
+    carrierKind: string | null;
+    service: string | null;
+    trackingReferences: AccountTrackingReference[];
+    trackingTimeline: AccountTrackingEvent[];
+    deliverySelection: AccountDeliverySelection | null;
+    invoice: AccountInvoiceSummary | null;
+    invoiceDocuments: AccountInvoiceDocument[];
+    invoiceRequestStatus: "not_requested" | "preparing" | "available";
+    createdAt: string;
+    updatedAt: string;
+}
+export interface AccountOrderLine {
+    lineId: string;
+    skuId: string | null;
+    title: string;
+    quantity: number;
+    unitPrice: AccountSupportMoney;
+    total: AccountSupportMoney;
+    variantName: string | null;
+    productSlug?: string | null;
+    displayLabel?: string | null;
+    accentColor?: string | null;
+    listTotal?: AccountSupportMoney | null;
+    discount?: AccountSupportMoney | null;
+}
+export interface AccountFulfillmentSummary {
+    fulfillmentOrderId: string | null;
+    status: string | null;
+    providerKind: string | null;
+    trackingNumber: string | null;
+    trackingNumbers: string[];
+    trackingReferences: AccountTrackingReference[];
+    lastEventType: string | null;
+    updatedAt: string | null;
+    trackingTimeline: AccountTrackingEvent[];
+}
+export interface AccountOrderDetail extends AccountOrderSummary {
+    subtotal: AccountSupportMoney;
+    discount: AccountSupportMoney;
+    shipping: AccountSupportMoney;
+    tax: AccountSupportMoney;
+    lines: AccountOrderLine[];
+    fulfillment: AccountFulfillmentSummary | null;
+}
+export interface AccountOrderList {
+    contractVersion: "customer.orders.v2";
+    orders: AccountOrderSummary[];
+}
+export interface AccountOrderDetailResponse {
+    contractVersion: "customer.orders.v2";
+    order: AccountOrderDetail;
+}
+export interface AccountActionRequired {
+    actionId: string;
+    kind: "payment_recovery" | "payment_method_missing" | "subscription_blocked" | "order_attention" | "invoice_attention";
+    severity: "info" | "warning" | "critical";
+    entityType: "subscription" | "order" | "invoice" | "account";
+    entityId: string | null;
+    subscriptionId: string | null;
+    orderId: string | null;
+    messageCode: AccountActionMessage;
+    blockedReason: AccountActionMessage | null;
+    title: string;
+    body: string | null;
+    cta: "repair_payment" | "view_subscription" | "view_order" | "contact_support" | null;
+    failureCause: "needs_confirmation" | "method_cannot_recur" | "method_dead" | "method_data_invalid" | "method_missing" | "unknown";
+    recoveryEligible: boolean;
+    dueAt: string | null;
+    nextRetryAt: string | null;
+}
+export type AccountActionMessage = "payment_blocked" | "payment_expired" | "missing_payment_method" | "payment_failed" | "payment_requires_action" | "subscription_edit_blocked" | "invoice_pdf_unavailable" | "subscription_activation_missing_mandate";
+export interface AccountSnapshot<Extension = unknown> {
+    contractVersion: "customer.account.v3";
+    profile: AccountProfile;
+    extension: Extension;
+    subscriptions: AccountSubscription[];
+    addresses: AccountAddress[];
+    ordererProfiles: AccountBillingProfile[];
+    billingProfiles: AccountBillingProfile[];
+    paymentPreferences: AccountPaymentPreference[];
+    deliveryPreferences: AccountDeliveryPreference[];
+    recentOrders: AccountOrderSummary[];
+    events: AccountEvent[];
+    actionRequired: AccountActionRequired[];
 }
 ```
 ## dist/account-support/contracts/capabilities.d.ts
@@ -289,16 +626,148 @@ export interface Customer360ReadPort<Search, Snapshot> {
     searchCustomerJourney(request: Customer360Lookup): Promise<Search>;
     getCustomerJourney(request: Customer360Lookup): Promise<Snapshot | null>;
 }
+export type Customer360LifecycleStage = "lead" | "waitlist" | "tester" | "customer" | "inactive";
+export interface Customer360Subject {
+    subjectId: string;
+    displayName: string | null;
+    email: string | null;
+    phone?: string | null;
+    lifecycleStage: Customer360LifecycleStage;
+    lifecycle: {
+        stage: Customer360LifecycleStage;
+        enteredAt: string | null;
+        exitedAt: string | null;
+    }[];
+    firstSeenAt: string | null;
+    lastActivityAt: string | null;
+    authUserLinked?: boolean;
+    hasSignedIn?: boolean;
+}
+export interface Customer360Order {
+    orderId: string;
+    orderNumber: string | null;
+    status: string;
+    subscriptionId: string | null;
+    totalMinor: number | null;
+    currency: string | null;
+    createdAt: string | null;
+}
+export interface Customer360Subscription {
+    subscriptionId: string;
+    status: string;
+    nextCycleAt: string | null;
+    latestOrderId: string | null;
+    templateVersion?: number;
+    shippingAddressId?: string | null;
+    paymentMethodKind?: string | null;
+    paymentMethodStatus?: string | null;
+}
+export interface Customer360PaymentTruth {
+    orderId: string;
+    status: string;
+    recoverable: boolean;
+    amountMinor: number | null;
+    currency: string | null;
+    lastAttemptAt: string | null;
+}
+export interface Customer360DunningCase {
+    caseId: string;
+    subscriptionId: string;
+    orderId: string | null;
+    status: string;
+    retryAttempt: number;
+    nextRetryAt: string | null;
+    notificationStatus: string | null;
+    recoveryAvailable: boolean;
+}
+export interface Customer360Recovery {
+    caseId: string;
+    status: "available" | "unavailable";
+    actionAvailable: boolean;
+    lastIssuedAt: string | null;
+    lastDeliveryStatus: string | null;
+}
+export interface Customer360ContactHealth {
+    lastTerminalStatus: "delivered" | "bounced" | "complained" | "failed" | null;
+    lastTerminalAt: string | null;
+    reachable: boolean;
+}
+export interface Customer360Address {
+    addressId: string;
+    label: string | null;
+    recipientName: string | null;
+    line1: string;
+    line2: string | null;
+    postalCode: string;
+    city: string;
+    country: string;
+    contactPhone: string | null;
+    isDefault: boolean;
+    kind: "shipping" | "both";
+}
+export interface Customer360AuditEvent {
+    eventId: string;
+    occurredAt: string;
+    action: string;
+    outcome: string;
+    entity: {
+        kind: "subject" | "order" | "subscription" | "dunning_case" | "recovery";
+        id: string;
+    };
+}
+export interface Customer360LookupResult {
+    query: string;
+    matchedBy: "subject_id" | "email" | "order_id" | "order_number" | "subscription_id" | "text";
+    confidence: "exact" | "high" | "medium";
+    warnings: string[];
+}
+export interface Customer360SearchResponse {
+    contractVersion: "support.customer_360.v2";
+    query: string;
+    candidates: {
+        subjectId: string;
+        displayName: string | null;
+        email: string | null;
+        lifecycleStage: Customer360LifecycleStage;
+        matchedBy: Customer360LookupResult["matchedBy"];
+        confidence: Customer360LookupResult["confidence"];
+        lastActivityAt: string | null;
+        snapshotLookup: {
+            subjectId: string;
+        };
+    }[];
+    warnings: string[];
+}
+export interface Customer360Snapshot<Extension = unknown> {
+    contractVersion: "support.customer_360.v2";
+    lookup: Customer360LookupResult;
+    subject: Customer360Subject;
+    orders: Customer360Order[];
+    subscriptions: Customer360Subscription[];
+    payment: Customer360PaymentTruth[];
+    dunningCases: Customer360DunningCase[];
+    recovery: Customer360Recovery[];
+    auditTrail: Customer360AuditEvent[];
+    contactHealth?: Customer360ContactHealth;
+    addresses?: Customer360Address[];
+    extension?: Extension;
+}
+export interface Customer360SummaryReadPort<Request, Result> {
+    getPortableSummary(request: Request): Promise<Result>;
+}
+export interface DiagnosticHistoryReadPort<Request, Result> {
+    history(request: Request): Promise<Result>;
+}
 ```
 ## dist/account-support/contracts/index.d.ts
 
 ```ts
-export type * from "./account.js";
-export type * from "./customer360.js";
-export type * from "./commands.js";
-export type * from "./operator.js";
-export type * from "./invoice.js";
-export type * from "./capabilities.js";
+export type { CustomerContext, AccountReadRefusal, AccountReadPort, AccountProfile, AccountAddress, AccountBillingProfile, AccountPaymentPreference, AccountPickupPoint, AccountDeliverySelection, AccountDeliveryPreference, AccountEvent, AccountSubscriptionLine, AccountSubscription, AccountTrackingReference, AccountTrackingEvent, AccountInvoiceSummary, AccountInvoiceDocument, AccountOrderSummary, AccountOrderLine, AccountFulfillmentSummary, AccountOrderDetail, AccountOrderList, AccountOrderDetailResponse, AccountActionRequired, AccountActionMessage, AccountSnapshot } from "./account.js";
+export type { OperatorContext, Customer360Lookup, Customer360ReadPort, Customer360LifecycleStage, Customer360Subject, Customer360Order, Customer360Subscription, Customer360PaymentTruth, Customer360DunningCase, Customer360Recovery, Customer360ContactHealth, Customer360Address, Customer360AuditEvent, Customer360LookupResult, Customer360SearchResponse, Customer360Snapshot, Customer360SummaryReadPort, DiagnosticHistoryReadPort } from "./customer360.js";
+export type { SubscriptionCommandContext, SubscriptionCommand, SubscriptionBundleLine, SubscriptionCommandReceipt, SubscriptionCommandRefusal, SubscriptionUnsupportedCode, SubscriptionUnsupported, SubscriptionCapabilities, NativeSubscriptionCommand, SelfServiceCommandFacade, AccountSupportMoney, SubscriptionPaymentMethodStatus, SubscriptionRenewalBlockStatus, EligibilityRefusal, LegacySubscriptionPreviewResponse } from "./commands.js";
+export type { OperatorSubscriptionAction, OperatorNewShippingAddress, OperatorShippingAddressPayload, OperatorSubscriptionPayload, OperatorSubscriptionRefusal, RecoveryRefusal, EmailCorrectionRefusal, PhoneCorrectionRefusal, LeadRefusal, OperatorContactCommand, OperatorLeadCommand, OperatorRecoveryCommand, OperatorRecoveryCommandEnvelope, OperatorSubscriptionResult } from "./operator.js";
+export type { InvoiceDocumentIdentity, InvoiceUnsupported, InvoiceClearanceState, InvoiceAccessPort, CustomerDocumentDeliveryStatus, CustomerInvoiceDocumentRole, CustomerInvoiceDownloadArtifact, CustomerInvoiceDownloadRequest, AccountInvoiceHistoryResult, AccountInvoiceHistoryDocument } from "./invoice.js";
+export type { AccountSupportCapability, AccountSupportCapabilities } from "./capabilities.js";
 ```
 ## dist/account-support/contracts/invoice.d.ts
 
@@ -371,6 +840,17 @@ export type InvoiceAccessPort = {
         readonly code: "unknown";
     } | InvoiceUnsupported>;
 };
+export type CustomerDocumentDeliveryStatus = "not_ready" | "pdf_ready" | "ksef_pending" | "email_pending" | "email_provider_accepted" | "email_sent" | "requires_correction" | "delivery_failed";
+export type CustomerInvoiceDocumentRole = "original" | "correction" | "replacement";
+export type CustomerInvoiceDownloadArtifact = "invoice" | "correction";
+export interface CustomerInvoiceDownloadRequest {
+    invoiceId: string;
+    artifact: CustomerInvoiceDownloadArtifact;
+}
+export type AccountInvoiceHistoryResult = Awaited<ReturnType<InvoiceAccessPort["read"]>>;
+export type AccountInvoiceHistoryDocument = Extract<AccountInvoiceHistoryResult, {
+    kind: "found";
+}>["documents"][number];
 ```
 ## dist/account-support/contracts/operator.d.ts
 
@@ -471,6 +951,116 @@ export type OperatorSubscriptionResult = {
     refusalCode: OperatorSubscriptionRefusal;
 };
 ```
+## dist/account-support/customer360.d.ts
+
+```ts
+import type { Customer360Snapshot, Customer360Subject, Customer360ContactHealth, Customer360ReadPort, Customer360Lookup, Customer360SummaryReadPort, DiagnosticHistoryReadPort } from "./contracts/customer360.js";
+export declare const SUPPORT_CUSTOMER_360_CONTRACT_VERSION: "support.customer_360.v2";
+type Row = Record<string, unknown>;
+export type CustomerJourneyAuditEvent = {
+    eventId: string;
+    occurredAt: string;
+    action: string;
+    outcome: string;
+    entity: {
+        kind: "subject" | "order" | "subscription" | "dunning_case";
+        id: string;
+    };
+};
+export interface ContactHealthDelivery {
+    readonly status: string;
+    readonly occurredAt: string | null;
+    readonly permanentBounce: boolean | null;
+}
+export interface Customer360ProjectionInput<Extension = unknown> {
+    subject: {
+        subjectId: string;
+        displayName: string | null;
+        email: string | null;
+        phone?: string | null;
+        lifecycleStage: Customer360Subject["lifecycleStage"];
+        createdAt: string | null;
+        lastActivityAt: string | null;
+    };
+    legacy: {
+        lookup: {
+            warnings: string[];
+        };
+        customer: {
+            authUserLinked: boolean;
+        };
+        orders: {
+            orderId: string;
+            orderNumber: string | null;
+            status: string | null;
+            omsProjection: Row;
+        }[];
+        subscriptions: {
+            subscriptionId: string;
+            status: string | null;
+            nextCycleAt: string | null;
+            templateVersion?: number | null;
+            paymentMethodStatus?: string | null;
+            renewalOrders: Row[];
+        }[];
+        payment: {
+            status: string | null;
+            intents: Row[];
+        };
+        timeline: Row[];
+    } | null;
+    cases: Row[];
+    notices: Row[];
+    tokens: Row[];
+    recoveryAudit: Row[];
+    orderTruth: Row[];
+    now: number;
+    contactHealth?: Customer360ContactHealth | null;
+    signedIn?: boolean;
+    addresses?: Customer360Snapshot["addresses"] | null;
+    subscriptionPointers?: Map<string, {
+        shippingAddressId: string | null;
+        paymentMethodKind: string | null;
+    }> | null;
+    /** false means failed/unavailable; null means no enrichment selected. */
+    profile?: {
+        extension: Extension;
+        partial: boolean;
+    } | false | null;
+}
+export interface Customer360ProjectionPolicy {
+    lifecycle(subject: Customer360ProjectionInput["subject"]): Customer360Subject["lifecycle"];
+    /** Stable audit identity hashing remains in the server host. */
+    timelineAudit(event: Row, subjectId: string): CustomerJourneyAuditEvent[];
+}
+export declare function projectCustomer360Snapshot<Extension>(input: Customer360ProjectionInput<Extension>, policy: Customer360ProjectionPolicy): Customer360Snapshot<Extension>;
+export declare function boundedCustomerJourneyAudit(events: CustomerJourneyAuditEvent[]): {
+    events: CustomerJourneyAuditEvent[];
+    windowed: boolean;
+};
+export declare function deriveContactHealth(deliveries: readonly ContactHealthDelivery[]): Customer360ContactHealth;
+/** Authorize before every source read; retain host defaults, ambiguity, null and failure semantics. */
+export declare function createCustomer360ReadFacade<Search, Snapshot, SummaryRequest, SummaryResult, DiagnosticRequest, DiagnosticResult>(ports: {
+    authorize(): Promise<boolean>;
+    journey: Customer360ReadPort<Search, Snapshot>;
+    summary: Customer360SummaryReadPort<SummaryRequest, SummaryResult>;
+    diagnostics: DiagnosticHistoryReadPort<DiagnosticRequest, DiagnosticResult>;
+}): {
+    searchCustomerJourney: (request: Customer360Lookup) => Promise<Search | {
+        kind: "denied";
+    }>;
+    getCustomerJourney: (request: Customer360Lookup) => Promise<Snapshot | {
+        kind: "denied";
+    } | null>;
+    getPortableSummary: (request: SummaryRequest) => Promise<SummaryResult | {
+        kind: "denied";
+    }>;
+    history: (request: DiagnosticRequest) => Promise<DiagnosticResult | {
+        kind: "denied";
+    }>;
+};
+export {};
+```
 ## dist/account-support/customerAccountReadDiagnostics.d.ts
 
 ```ts
@@ -493,4 +1083,3010 @@ export { createAccountReadFacade } from "./accountReadFacade.js";
 export { CustomerAccountReadModelError, withCustomerAccountReadStage, customerAccountReadFailureDetails, logCustomerAccountReadFailure } from "./customerAccountReadDiagnostics.js";
 export type { CustomerAccountReadStage } from "./customerAccountReadDiagnostics.js";
 export type * from "./contracts/index.js";
+export { CUSTOMER_ACCOUNT_V2_CONTRACT_VERSION, readAccountSnapshot, isCustomerVisibleSubscription, recurringPrice, computeEditState, editCutoff, buildActionRequired } from "./accountReadModels.js";
+export type { AccountReadSources, AccountReadProjectionPolicy, CustomerSubscriptionEligibilityInput, CustomerSubscriptionEligibility, SubscriptionActionState } from "./accountReadModels.js";
+export { CUSTOMER_ORDERS_CONTRACT_VERSION, readCustomerOrderSummaries, readCustomerOrderDetail, customerOrderMoney, toOrderMoneyHeader, toOrderMoneyItem, mapCustomerOrderLines, lineListTotalMinor } from "./orderHistory.js";
+export type { CustomerOrderHistoryRow, CustomerOrderHistoryReadStore, CustomerOrderLinePresentationPort, CustomerOrderHistoryProjectionPort } from "./orderHistory.js";
+export { SUPPORT_CUSTOMER_360_CONTRACT_VERSION, projectCustomer360Snapshot, deriveContactHealth, boundedCustomerJourneyAudit, createCustomer360ReadFacade } from "./customer360.js";
+export type { Customer360ProjectionInput, Customer360ProjectionPolicy, ContactHealthDelivery, CustomerJourneyAuditEvent } from "./customer360.js";
+export { createInvoiceAccess, downloadOwnedInvoicePdf, deriveCustomerDocumentDeliveryStatus } from "./invoiceAccess.js";
+export type { InvoiceOwnerAccessPort, InvoiceArtifactDownloadPort, InvoiceAccessOptions, CustomerInvoiceDocumentStatusInput } from "./invoiceAccess.js";
+```
+## dist/account-support/invoiceAccess.d.ts
+
+```ts
+import type { InvoiceHostPorts } from "../invoicing/contracts/index.js";
+import type { CustomerDocumentDeliveryStatus } from "./contracts/invoice.js";
+export type InvoiceOwnerAccessPort = InvoiceHostPorts["accountHistory"];
+export type InvoiceArtifactDownloadPort = Pick<InvoiceHostPorts["artifacts"], "download">;
+export interface InvoiceAccessOptions {
+    accountHistory?: InvoiceOwnerAccessPort;
+    artifacts?: InvoiceArtifactDownloadPort;
+}
+export declare function createInvoiceAccess(options?: InvoiceAccessOptions): {
+    history: (input: Parameters<InvoiceHostPorts["accountHistory"]["read"]>[0]) => ReturnType<InvoiceHostPorts["accountHistory"]["read"]>;
+    download: (input: Parameters<InvoiceHostPorts["accountHistory"]["resolveDownload"]>[0]) => Promise<{
+        readonly kind: "unsupported";
+        readonly code: "host_binding_required";
+        readonly retryable: false;
+        readonly effectMayHaveSucceeded: false;
+    } | {
+        readonly kind: "unknown";
+        readonly code: "unknown";
+    } | {
+        kind: "denied";
+        content?: undefined;
+        contentType?: undefined;
+        fileName?: undefined;
+        parentDocumentRef?: undefined;
+    } | {
+        kind: "downloaded";
+        content: Uint8Array<ArrayBufferLike>;
+        contentType: string;
+        fileName: string;
+        parentDocumentRef: string | null;
+    }>;
+};
+export declare function downloadOwnedInvoicePdf<Ticket, Pdf extends {
+    content: Uint8Array;
+    contentType: string;
+}>(input: {
+    resolve(): Promise<Ticket | null>;
+    download(ticket: Ticket): Promise<Pdf>;
+}): Promise<{
+    kind: "denied";
+    ticket?: undefined;
+    pdf?: undefined;
+} | {
+    kind: "downloaded";
+    ticket: NonNullable<Awaited<Ticket>>;
+    pdf: Pdf;
+}>;
+export interface CustomerInvoiceDocumentStatusInput {
+    blockedReason: string | null;
+    status: string | null;
+    documentKind: string | null;
+    ksefStatus: string | null;
+    emailStatus: string | null;
+    outboxStatus: string | null;
+    downloadAvailable: boolean;
+}
+export declare function deriveCustomerDocumentDeliveryStatus(input: CustomerInvoiceDocumentStatusInput): CustomerDocumentDeliveryStatus;
+```
+## dist/account-support/orderHistory.d.ts
+
+```ts
+import type { CanonicalOrderMoneyLine, OrderMoneyHeaderRow, OrderMoneyItemRow, ReleasedProviderExceptionHold, ResolvedProviderExceptionRecovery } from "../commerce/contracts/index.js";
+import type { AccountOrderSummary, AccountOrderDetailResponse, AccountOrderList, AccountOrderLine, AccountInvoiceSummary, AccountInvoiceDocument } from "./contracts/account.js";
+export declare const CUSTOMER_ORDERS_CONTRACT_VERSION: "customer.orders.v2";
+export type CustomerOrderHistoryRow = Record<string, unknown>;
+type Row = CustomerOrderHistoryRow;
+type Tracking = Pick<AccountOrderSummary, "trackingReferences" | "trackingNumbers" | "trackingNumber" | "trackingUrl" | "carrierKind" | "service" | "trackingTimeline">;
+export interface CustomerOrderHistoryReadStore {
+    readCustomerOrders(clientId: string, hiddenStatuses: readonly string[], limit: number): Promise<Row[]>;
+    readCustomerOrder(clientId: string, orderId: string): Promise<Row | null>;
+    readOrderLines(orderId: string): Promise<Row[]>;
+    readPaymentStatuses(orderIds: string[]): Promise<Map<string, string>>;
+    readFulfillments(clientId: string, orderIds: string[]): Promise<Row[]>;
+    readTracking(orderIds: string[]): Promise<Map<string, Row[]>>;
+    readFulfillmentOperations(orderIds: string[]): Promise<Map<string, Row[]>>;
+    readStatusEvidence(orderIds: string[]): Promise<Map<string, Row[]>>;
+    readReleasedProviderExceptionHolds(orderIds: string[]): Promise<Map<string, ReleasedProviderExceptionHold[]>>;
+    readReleasedProviderExceptionEvidence(holds: Map<string, ReleasedProviderExceptionHold[]>): Promise<Map<string, Row[]>>;
+    readActiveHoldOrderIds(orderIds: string[]): Promise<Set<string>>;
+    readInvoiceSummaries(orderIds: string[]): Promise<Map<string, {
+        invoice: AccountInvoiceSummary | null;
+        invoiceDocuments: AccountInvoiceDocument[];
+    }>>;
+}
+/** Catalogue/captured-label policy is injected in its entirety, including private extension keys. */
+export interface CustomerOrderLinePresentationPort {
+    display(row: Row): Pick<AccountOrderLine, "title" | "variantName" | "productSlug" | "displayLabel" | "accentColor">;
+}
+export interface CustomerOrderHistoryProjectionPort {
+    automaticHoldSource: string;
+    automaticReleaseSource: string;
+    orderReference(orderId: string): string;
+    fulfillmentEvidence(input: {
+        trackingRefs: Row[];
+        statusEvidenceRows: Row[];
+        operationRows: Row[];
+        recovery?: ResolvedProviderExceptionRecovery;
+    }): Tracking;
+    presentation: CustomerOrderLinePresentationPort;
+}
+export declare function readCustomerOrderSummaries(store: CustomerOrderHistoryReadStore, clientId: string, limit: number, projection: CustomerOrderHistoryProjectionPort): Promise<AccountOrderList>;
+export declare function readCustomerOrderDetail(store: CustomerOrderHistoryReadStore, clientId: string, orderId: string, projection: CustomerOrderHistoryProjectionPort): Promise<AccountOrderDetailResponse | null>;
+export declare function mapCustomerOrderLines(rows: readonly Row[], moneyLines: readonly CanonicalOrderMoneyLine[], currency: string, presentation: CustomerOrderLinePresentationPort): AccountOrderLine[];
+export declare function lineListTotalMinor(snapshot: Row): number | null;
+export declare function customerOrderMoney(value: unknown, currency: string): {
+    amountMinor: number;
+    currency: string;
+};
+export declare function toOrderMoneyHeader(row: Row): OrderMoneyHeaderRow;
+export declare function toOrderMoneyItem(row: Row): OrderMoneyItemRow;
+export {};
+```
+## dist/commerce/contracts/availability.d.ts
+
+```ts
+export type CommerceOfferAvailabilityStatus = "available" | "low_stock" | "out_of_stock" | "unknown";
+export interface CommerceOfferAvailabilityRequestItem {
+    sku: string;
+    productSlug: string;
+    variantId: string;
+    requestedQuantity: number;
+    checkoutMode: "one_time" | "subscription";
+}
+export interface CommerceOfferAvailability {
+    sku: string;
+    productSlug: string;
+    variantId: string;
+    status: CommerceOfferAvailabilityStatus;
+    visibleInConfigurator: boolean;
+    sellableNow: number | null;
+    reasonCode: string;
+    source: string;
+}
+export interface CommerceOfferAvailabilityPort {
+    getAvailability(input: {
+        items: readonly CommerceOfferAvailabilityRequestItem[];
+    }): Promise<CommerceOfferAvailability[]>;
+}
+```
+## dist/commerce/contracts/fulfillmentRecovery.d.ts
+
+```ts
+export type TimedFulfillmentSignal = {
+    id?: undefined | null | string;
+    token: undefined | null | string;
+    occurredAt: undefined | null | string;
+};
+export type ReleasedProviderExceptionHold = {
+    orderId: undefined | null | string;
+    status: undefined | null | string;
+    reason: undefined | null | string;
+    createdBy: undefined | null | string;
+    releasedBy: undefined | null | string;
+    metadata: unknown;
+};
+export type ProviderStatusEvidence = {
+    fulfillmentOrderId: undefined | null | string;
+    providerStatus: undefined | null | string;
+    localStatus: undefined | null | string;
+    id?: undefined | null | string;
+    token: undefined | null | string;
+    occurredAt: undefined | null | string;
+};
+export type ResolvedProviderExceptionRecovery = {
+    clearedExceptionEvidenceIds: ReadonlySet<string>;
+    recoveryEvidenceIds: ReadonlySet<string>;
+};
+```
+## dist/commerce/contracts/index.d.ts
+
+```ts
+export type { CommerceOfferAvailabilityStatus, CommerceOfferAvailabilityRequestItem, CommerceOfferAvailability, CommerceOfferAvailabilityPort } from "./availability.js";
+export type { RecoveryDestinationIntent, RecoveryDestinationPolicyInput, RecoveryDestinationSource, RecoveryDestinationState } from "./recovery.js";
+export type { CommerceFulfillmentEligibilityInput, CartStatus, CheckoutStatus, OrderDraftStatus, OrderStatus, PaymentStatus, OmsFulfillmentBlockReason, OmsInventoryStatus } from "./state.js";
+export type { CartDraft, CheckoutSessionPlaceholder, OrderDraftSummary, OrderSummary, PaymentSummary } from "./order.js";
+export type AsyncCheckoutStatus = "pending_provider_action" | "requires_action" | "processing" | "paid" | "failed" | "expired";
+export type CheckoutKind = "one_time" | "subscription_initial";
+export type * from "./ports.js";
+export type * from "./runtimePorts.js";
+export type { ConfiguratorIntent, ConfiguratorIntentPersistenceResponse, CheckoutResumeDraftState, CheckoutResumeDraft, CommerceCustomerDefaultsSnapshot } from "./intent.js";
+export type * from "./orderMoney.js";
+export type { OmsPaymentStatus } from "./state.js";
+export type * from "./fulfillmentRecovery.js";
+export type * from "./omsTypes.js";
+```
+## dist/commerce/contracts/intent.d.ts
+
+```ts
+/** Neutral configurator state. Profiles, sizing policy and provider evidence are host extensions. */
+export interface ConfiguratorIntent {
+    version: "commerce.configurator_intent.v1";
+    idempotencyKey: string;
+    mode: "one_time" | "subscription";
+    cadenceDays: number | null;
+    promoCodes: string[];
+    visitorId?: string;
+    contact: {
+        firstName: string;
+        lastName: string;
+        email: string;
+        phone: string;
+    };
+    address: {
+        street: string;
+        postalCode: string;
+        city: string;
+        country: string;
+    };
+    selectedVariants: Array<{
+        variantId: string;
+        sku: string;
+        qty: number;
+    }>;
+    offerVersion?: string;
+    minimumUnits?: number;
+}
+export interface ConfiguratorIntentPersistenceResponse {
+    contractVersion: "commerce.configurator_intent_persistence.v1";
+    intentVersion: "commerce.configurator_intent.v1";
+    idempotencyKey: string;
+    clientId: string;
+    addressId: string;
+    clientMatchReason?: "client_created" | "client_match_exact_email" | "client_match_plus_normalized_fallback";
+    replayed: boolean;
+}
+export interface CheckoutResumeDraftState<Completion, RedactedField extends string> {
+    version: "commerce.checkout_resume.v1";
+    mode: "one_time" | "subscription" | null;
+    cadenceDays: number | null;
+    cart: {
+        items: Array<{
+            sku: string;
+            productSlug: string | null;
+            variantId: string | null;
+            quantity: number;
+        }>;
+    };
+    completion: Completion;
+    redactedFields: RedactedField[];
+}
+export interface CheckoutResumeDraft<Section extends string, State> {
+    id: string;
+    contractVersion: "commerce.checkout_resume.v1";
+    lastSectionId: Section;
+    draftState: State;
+    expiresAt: string;
+    createdAt: string;
+    updatedAt: string;
+    replayed: boolean;
+}
+export interface CommerceCustomerDefaultsSnapshot<Scope, Method> {
+    version: "commerce.customer_defaults_snapshot.v1";
+    clientId: string;
+    payment: {
+        available: boolean;
+        scope: Scope | null;
+        methodKind: Method | null;
+        source: "customer_payment_preferences";
+        applied: false;
+    };
+    addresses: {
+        hasDefaultShippingAddress: boolean;
+        defaultShippingAddressId: string | null;
+        hasDefaultBillingAddress: boolean;
+        defaultBillingAddressId: string | null;
+        hasDefaultOrdererProfile: boolean;
+        defaultOrdererProfileId: string | null;
+        hasDeliveryNotes: boolean;
+        hasCourierInstructions: boolean;
+        source: "customer_address_profiles";
+        applied: false;
+    };
+    redactedFields: Array<"contact" | "orderer_profile" | "shipping_address" | "billing_address" | "delivery_notes" | "courier_instructions" | "payment_provider" | "payment_secret">;
+}
+```
+## dist/commerce/contracts/omsTypes.d.ts
+
+```ts
+import type { PaymentIntentStatus } from "@openlup/core/payment";
+import type { OmsPaymentStatus } from "./state.js";
+import type { CanonicalOrderMoney } from "./orderMoney.js";
+export type { OrderMoneyIssueCode, OrderMoneyHeaderRow, OrderMoneyItemRow, CanonicalOrderMoneyLine, CanonicalOrderMoney, OrderMoneyDiagnostic } from "./orderMoney.js";
+import type { OmsInventoryStatus } from "./state.js";
+export type { OmsFulfillmentBlockReason, OmsInventoryStatus } from "./state.js";
+export type { TimedFulfillmentSignal, ReleasedProviderExceptionHold, ProviderStatusEvidence, ResolvedProviderExceptionRecovery } from "./fulfillmentRecovery.js";
+type ActionEligibility = {
+    allowed: false | true;
+    reason: null | string;
+};
+type OmsPricingSummary = {
+    subtotal: CommerceMoney;
+    productDiscount: CommerceMoney;
+    shipping: CommerceMoney;
+    shippingDiscount: CommerceMoney;
+    discountTotal: CommerceMoney;
+    finalTotal: CommerceMoney;
+    source: "order_columns";
+};
+type OmsCommunicationDelivery = {
+    id: string;
+    purpose: string;
+    templateSlug: string;
+    triggerSource: string;
+    triggerEvent: string;
+    aggregateType: null | string;
+    aggregateId: null | string;
+    dedupeKey: string;
+    status: "failed" | "processing" | "delivered" | "planned" | "skipped" | "blocked" | "queued" | "sent" | "delivery_delayed" | "bounced" | "complained" | "missed" | "legacy_unlinked";
+    providerKind: null | string;
+    providerMessageId: null | string;
+    scheduledDueAt: null | string;
+    expectedSendAt: null | string;
+    queuedAt: null | string;
+    firstAttemptAt: null | string;
+    sentAt: null | string;
+    deliveredAt: null | string;
+    terminalAt: null | string;
+    lastErrorCode: null | string;
+    outboxEventId: null | string;
+    platformJobRunId: null | string;
+    emailSendId: null | string;
+    metadata: {
+        [key: string]: unknown;
+    };
+    createdAt: string;
+    updatedAt: string;
+};
+type OmsDeliverySelection = {
+    deliveryKind: "courier" | "parcel-locker";
+    providerKind: null | string;
+    carrierKind: null | string;
+    carrierCode: null | string;
+    serviceCode: null | string;
+    pickupPoint: null | {
+        id: string;
+        name: string;
+        address: null | {
+            line1: string;
+            postalCode: string;
+            city: string;
+            country: string;
+        };
+    };
+    source: null | string;
+};
+type OmsDeliveryContact = {
+    schemaVersion: 1;
+    source: string;
+    revision: number;
+    recipientName: null | string;
+    contactEmail: null | string;
+    contactPhone: null | string;
+    line1: null | string;
+    line2: null | string;
+    city: null | string;
+    postalCode: null | string;
+    country: null | string;
+    selectedDelivery: null | {
+        [key: string]: unknown;
+    };
+    deliveryInstructions: null | string;
+    courierInstructions: null | string;
+};
+type OmsDeliveryContactProjection = {
+    baseline: null | OmsDeliveryContact;
+    effective: null | OmsDeliveryContact;
+    scope: "missing" | "baseline" | "order_override" | "parcel" | "legacy_inferred";
+    source: null | string;
+    revision: null | number;
+    digest: null | string;
+    frozen: false | true;
+    providerSubmissionState: "draft" | "failed" | "cancelled" | "not_started" | "created" | "unknown" | "not_materialized" | "submitting" | "uncertain" | "cancel_requested";
+    correctionAllowed: false | true;
+};
+type OmsCustomerSummary = {
+    id: string;
+    email: string;
+    firstName: null | string;
+    lastName: null | string;
+    phone: null | string;
+    lifecycleStage: null | string;
+};
+type OmsAddressSummary = {
+    id: string;
+    label: null | string;
+    line1: null | string;
+    line2: null | string;
+    city: null | string;
+    postalCode: null | string;
+    country: null | string;
+    recipientName: null | string;
+    contactPhone: null | string;
+    companyName: null | string;
+    taxId: null | string;
+    deliveryNotes: null | string;
+    courierInstructions: null | string;
+};
+type OmsOrderLine = {
+    id: string;
+    skuId: null | string;
+    sku: null | string;
+    title: null | string;
+    quantity: number;
+    unitPrice: CommerceMoney;
+    total: CommerceMoney;
+    discountAllocated: CommerceMoney;
+    effectiveTotal: CommerceMoney;
+    effectiveNet: CommerceMoney;
+    vatRateBps: null | number;
+    productSnapshot: {
+        [key: string]: unknown;
+    };
+    variantSnapshot: null | {
+        [key: string]: unknown;
+    };
+};
+type OmsAccountingSummary = {
+    status: string;
+    invoiceId: null | string;
+    invoiceRef: null | string;
+    providerKind: null | string;
+    providerInvoiceNumber: null | string;
+    outboxStatus: null | string;
+    outboxAttemptCount: null | number;
+    outboxNextAttemptAt: null | string;
+    outboxLastError: null | {
+        code: null | string;
+        message: null | string;
+        retryable: null | false | true;
+    };
+    recoveryGuidance: "none" | "not_requested" | "wait_for_retry" | "review_and_retry";
+    updatedAt: null | string;
+    fiscalStatus?: undefined | null | string;
+};
+type OmsOrderActionEligibility = {
+    addNote: ActionEligibility;
+    createHold: ActionEligibility;
+    releaseHold: ActionEligibility;
+    createFulfillment: ActionEligibility;
+    updateShippingAddress: ActionEligibility;
+    recordLabel: ActionEligibility;
+    handOff: ActionEligibility;
+    recordTrackingEvent: ActionEligibility;
+    cancelFulfillment: ActionEligibility;
+    cancelOrder: ActionEligibility;
+    markRefunded: ActionEligibility;
+};
+type OmsOrderOperation = {
+    id: string;
+    orderId: string;
+    type: "hold_created" | "hold_released" | "fulfillment_reviewed" | "support_note" | "shipping_address_updated" | "order_marked_refunded" | "order_cancelled_manual" | "replacement_shipment_requested";
+    holdId: null | string;
+    actorUserId: null | string;
+    occurredAt: string;
+    payload: {
+        [key: string]: unknown;
+    };
+};
+type OmsPaymentSummary = {
+    intentId: null | string;
+    paymentId: null | string;
+    status: OmsOrderPaymentStatus;
+    activeAttemptId: null | string;
+    providerPaymentId: null | string;
+    updatedAt: null | string;
+};
+type OmsPaymentAttempt = {
+    id: string;
+    status: "failed" | "expired" | "cancelled" | "created" | "requires_action" | "processing" | "succeeded" | "blocked_preflight" | "sent_to_provider";
+    provider: string;
+    providerAttemptId: null | string;
+    nextActionKind: null | string;
+    updatedAt: string;
+};
+type OmsPaymentTransition = {
+    id: string;
+    transitionKind: string;
+    fromStatus: null | string;
+    toStatus: string;
+    reason: string;
+    occurredAt: string;
+};
+type OmsFulfillmentEligibility = {
+    allowed: false | true;
+    reason: null | "active_hold" | "missing_shipping_address" | "payment_not_succeeded" | "inventory_review" | "risk_review" | "order_not_paid" | "subscription_cycle_not_paid";
+};
+type AdminCommerceOrderShippingAddressInput = {
+    recipientName: string;
+    contactEmail: string;
+    line1: string;
+    city: string;
+    postalCode: string;
+    country: string;
+    contactPhone: string;
+    line2?: undefined | null | string;
+    deliveryInstructions?: undefined | null | string;
+    courierInstructions?: undefined | null | string;
+};
+type OmsControlPlaneHold = {
+    id: string;
+    status: "released" | "active";
+    reason: "fulfillment_exception" | "payment_not_succeeded" | "inventory_review" | "risk_review" | "address_review" | "manual_support";
+    note: null | string;
+    createdAt: string;
+    releasedAt: null | string;
+};
+type OmsControlPlaneOperation = {
+    id: string;
+    action: "hold_created" | "hold_released" | "order_cancelled" | "order_refunded";
+    holdId: null | string;
+    actorId: null | string;
+    occurredAt: string;
+};
+type OmsProviderOpsSla = {
+    status: "ok" | "watch" | "breached" | "paused_non_shipping_day";
+    dispatchedAt: null | string;
+    deadlineAt: null | string;
+    remainingOperationalMinutes: null | number;
+};
+type OmsFulfillmentTrackingReference = {
+    providerKind: string;
+    trackingNumber: string;
+    trackingUrl: null | string;
+    carrierKind: null | string;
+    service: null | string;
+    updatedAt: null | string;
+};
+type OmsFulfillmentTimelineEvent = {
+    eventType: string;
+    label: string;
+    occurredAt: null | string;
+    source: "webhook" | "reconciliation" | "manual" | "simulator" | "fulfillment" | "dispatch" | "provider";
+};
+type OmsSubscriptionContext = {
+    subscriptionId: null | string;
+    subscriptionCycleId: null | string;
+    subscriptionCycleStatus: null | "paid" | "cancelled" | "planned" | "payment_pending" | "payment_failed" | "retry_scheduled" | "skipped";
+    nextCycleAt: null | string;
+    cyclePaidAt: null | string;
+};
+type OmsInventorySummary = {
+    status: OmsInventoryStatus;
+    reservationId: null | string;
+    reservationStatus: null | "expired" | "reserved" | "released" | "consumed";
+    expiresAt: null | string;
+    locationId: null | string;
+    locationCode: null | string;
+};
+type OmsFulfillmentSummary = {
+    fulfillmentOrderId: null | string;
+    status: null | "cancelled" | "created" | "packed" | "label_pending" | "label_created" | "handed_over" | "in_transit" | "delivered" | "exception";
+    providerKind: null | string;
+    latestOperationType: null | string;
+    latestOperationAt: null | string;
+    providerTrackingId: null | string;
+    trackingUrl: null | string;
+    carrierKind: null | string;
+    service: null | string;
+    trackingReferences: Array<OmsFulfillmentTrackingReference>;
+    trackingTimeline: Array<OmsFulfillmentTimelineEvent>;
+    providerEvidence: Array<OmsProviderEvidence>;
+};
+type OmsSupersededParcel = {
+    fulfillmentOrderId: string;
+    sequenceNo: number;
+    status: null | "cancelled" | "created" | "packed" | "label_pending" | "label_created" | "handed_over" | "in_transit" | "delivered" | "exception";
+    replacementReason: null | string;
+    handedOverAt: null | string;
+    deliveredAt: null | string;
+    trackingReferences: Array<OmsFulfillmentTrackingReference>;
+};
+type OmsFulfillmentDebugStep = {
+    key: "fulfillment" | "dispatch" | "provider" | "payment" | "stock" | "provider_stock" | "tracking" | "communication";
+    status: "missing" | "ok" | "pending" | "warning" | "blocked";
+    label: string;
+    value: null | string;
+    evidenceAt: null | string;
+    details: Array<string>;
+};
+type OmsFulfillmentHealth = {
+    healthStatus: "ok" | "needs_attention" | "blocked_uncertain" | "local_ahead" | "provider_ahead" | "missing_local_commitment";
+    attentionReasons: Array<"paid_order_missing_fulfillment" | "paid_order_missing_dispatch_ref" | "dispatch_submission_stale" | "dispatch_outcome_uncertain" | "dispatch_failed" | "dispatch_created_without_provider_order_id" | "dispatch_terminal_without_progress" | "dispatch_status_unknown" | "provider_exception_after_delivery" | "provider_exception_after_handover" | "provider_exception_before_handover" | "local_status_ahead_of_provider" | "provider_accepted_local_label_ack_missing" | "order_paid_outbox_discarded" | "order_paid_outbox_processed_without_fulfillment" | "order_paid_outbox_missing">;
+    oldestAgeSeconds: null | number;
+    opaqueIds: {
+        orderId: string;
+        fulfillmentOrderId: null | string;
+        outboxEventId: null | string;
+        dispatchRefFulfillmentOrderId: null | string;
+        latestEvidenceFulfillmentOrderId: null | string;
+    };
+    dispatchRefId?: undefined | null | string;
+    dispatchStatus?: undefined | null | string;
+};
+type OmsFulfillmentHealthDigest = {
+    healthStatus: "ok" | "needs_attention" | "blocked_uncertain" | "local_ahead" | "provider_ahead" | "missing_local_commitment";
+    attentionReasons: Array<"paid_order_missing_fulfillment" | "paid_order_missing_dispatch_ref" | "dispatch_submission_stale" | "dispatch_outcome_uncertain" | "dispatch_failed" | "dispatch_created_without_provider_order_id" | "dispatch_terminal_without_progress" | "dispatch_status_unknown" | "provider_exception_after_delivery" | "provider_exception_after_handover" | "provider_exception_before_handover" | "local_status_ahead_of_provider" | "provider_accepted_local_label_ack_missing" | "order_paid_outbox_discarded" | "order_paid_outbox_processed_without_fulfillment" | "order_paid_outbox_missing">;
+};
+type CommerceMoney = {
+    amountMinor: number;
+    currency: string;
+};
+type OmsProviderEvidence = {
+    evidenceType: "dispatch_ref" | "provider_attempt" | "status_evidence";
+    status: null | string;
+    providerStatus: null | string;
+    providerOrderId: null | string;
+    evidenceKind: null | string;
+    occurredAt: null | string;
+    updatedAt: null | string;
+    summary: null | string;
+};
+export type QueueSelection = {
+    orderIds: Array<string>;
+    totalCount: number;
+    matches: {
+        [key: string]: AdminOmsOrderSearchMatch;
+    };
+    summaryCounts: AdminOmsOrderListSummaryCounts;
+    summaryTotals: AdminOmsOrderListSummaryTotals;
+};
+export type OmsManagedReadProjections = {
+    queueMatchSchema?: {
+        safeParse(input: unknown): {
+            success: true;
+            data: AdminOmsOrderSearchMatch;
+        } | {
+            success: false;
+        };
+    };
+    model?: undefined | OmsReadModelProjections;
+    orderColumns?: undefined | string;
+    invoiceColumns?: undefined | string;
+    mapInvoice?: undefined | ((value: unknown) => OmsAccountingInvoiceRow);
+    projectQueue?: undefined | ((data: unknown) => unknown);
+    readIdentity?: undefined | ((store: CommerceOmsStore, orders: Array<OmsOrderRow>, view: "list" | "detail") => Promise<{
+        [key: string]: {
+            [key: string]: unknown;
+        };
+    }>);
+    readFulfillmentOperations?: undefined | ((store: CommerceOmsStore, ids: Array<string>) => Promise<Array<OmsFulfillmentOperationRow>>);
+    readProviderDispatchRefs?: undefined | ((store: CommerceOmsStore, ids: Array<string>) => Promise<Array<OmsProviderDispatchRefRow>>);
+    readProviderStatusEvidence?: undefined | ((store: CommerceOmsStore, ids: Array<string>) => Promise<Array<OmsProviderStatusEvidenceRow>>);
+    readProviderAttempts?: undefined | ((store: CommerceOmsStore, ids: Array<string>) => Promise<Array<OmsProviderAttemptRow>>);
+    readReleasedProviderExceptionHolds?: undefined | ((store: CommerceOmsStore, ids: Array<string>) => Promise<Array<OmsReleasedProviderExceptionHoldRow>>);
+    readProviderStockCurrent?: undefined | ((store: CommerceOmsStore, items: Array<OmsOrderItemRow>) => Promise<Array<OmsFulfillmentProviderStockCurrentRow>>);
+    readInboundEvents?: undefined | ((store: CommerceOmsStore, input: {
+        order: OmsOrderRow;
+        dispatchRefs: Array<OmsProviderDispatchRefRow>;
+    }) => Promise<Array<OmsInboundProviderEventRow>>);
+    buildHealth?: undefined | ((input: {
+        order: OmsOrderRow;
+        paymentStatus: string;
+        fulfillmentOrders: Array<OmsFulfillmentOrderRow>;
+        dispatchRefs: Array<OmsProviderDispatchRefRow>;
+        statusEvidence: Array<OmsProviderStatusEvidenceRow>;
+        orderPaidOutboxEvents: Array<unknown>;
+    }) => OmsFulfillmentHealth);
+    buildHealthDigests?: undefined | ((input: {
+        orders: Array<OmsOrderRow>;
+        paymentIntents: Array<OmsPaymentIntentRow>;
+        fulfillmentOrders: Array<OmsFulfillmentOrderRow>;
+        dispatchRefs: Array<OmsProviderDispatchRefRow>;
+        statusEvidence: Array<OmsProviderStatusEvidenceRow>;
+    }) => {
+        [key: string]: OmsFulfillmentHealthDigest;
+    });
+};
+export type CommerceOmsRpcClient = {
+    rpc: (functionName: string, args: {
+        [key: string]: unknown;
+    }) => PromiseLike<{
+        data: unknown;
+        error: null | RpcError;
+    }>;
+};
+export type CommerceOmsStore = {
+    query: (table: string) => ManagedQueryBuilder;
+    rpc: (functionName: string, args: {
+        [key: string]: unknown;
+    }) => PromiseLike<{
+        data: unknown;
+        error: null | RpcError;
+    }>;
+};
+export interface ManagedQueryBuilder extends PromiseLike<ManagedQueryResult> {
+    select(columns: string, options?: Record<string, unknown>): ManagedQueryBuilder;
+    order(column: string, options?: Record<string, unknown>): ManagedQueryBuilder;
+    eq(column: string, value: unknown): ManagedQueryBuilder;
+    is(column: string, value: unknown): ManagedQueryBuilder;
+    in(column: string, values: unknown[]): ManagedQueryBuilder;
+    gte(column: string, value: unknown): ManagedQueryBuilder;
+    lte(column: string, value: unknown): ManagedQueryBuilder;
+    ilike(column: string, value: string): ManagedQueryBuilder;
+    insert(values: Record<string, unknown> | Array<Record<string, unknown>>): ManagedQueryBuilder;
+    update(values: Record<string, unknown>): ManagedQueryBuilder;
+    range(from: number, to: number): PromiseLike<ManagedQueryResult>;
+    maybeSingle(): PromiseLike<ManagedQueryResult>;
+}
+export type ManagedQueryResult = {
+    data: unknown;
+    error: null | RpcError;
+    count?: undefined | null | number;
+};
+export type RpcError = {
+    code?: undefined | string;
+    message?: undefined | string;
+    details?: undefined | string;
+    hint?: undefined | string;
+};
+export type OmsAccountingRecoveryGuidance = "none" | "not_requested" | "wait_for_retry" | "review_and_retry";
+export type OmsCurrencyPolicy = {
+    defaultCurrency: string;
+    accepts: (currency: string) => false | true;
+};
+export type OmsInboundProviderEventRow = {
+    id: string;
+    provider: string;
+    provider_event_id: string;
+    event_type: string;
+    processing_status: string;
+    payload?: unknown;
+    error?: unknown;
+    created_at: string;
+    processed_at?: undefined | null | string;
+};
+export type OmsFulfillmentProviderStockCurrentRow = {
+    provider_kind: string;
+    sku: string;
+    provider_for_sale_quantity: number;
+    provider_total_quantity: number;
+    last_synced_at: string;
+    stale_after: string;
+};
+export type OmsFulfillmentOrderRow = {
+    id: string;
+    order_id: string;
+    status: null | "cancelled" | "created" | "packed" | "label_pending" | "label_created" | "handed_over" | "in_transit" | "delivered" | "exception";
+    provider_kind?: undefined | null | string;
+    handed_over_at?: undefined | null | string;
+    delivered_at?: undefined | null | string;
+    created_at?: undefined | null | string;
+    updated_at?: undefined | null | string;
+    sequence_no?: undefined | null | number;
+    replaces_fulfillment_order_id?: undefined | null | string;
+    replacement_reason?: undefined | null | string;
+    shipping_address_snapshot?: undefined | null | {
+        [key: string]: unknown;
+    };
+};
+export type OmsFulfillmentOperationRow = {
+    fulfillment_order_id: string;
+    operation_type: string;
+    occurred_at: string;
+};
+export type OmsProviderAttemptRow = {
+    fulfillment_order_id: string;
+    provider_kind?: undefined | null | string;
+    status?: undefined | null | string;
+    provider_tracking_id?: undefined | null | string;
+    error?: unknown;
+    created_at?: undefined | null | string;
+};
+export type OmsProviderDispatchRefRow = {
+    id?: undefined | null | string;
+    fulfillment_order_id: string;
+    provider_order_id?: undefined | null | string;
+    dispatch_mode?: undefined | null | string;
+    status?: undefined | null | string;
+    error?: unknown;
+    created_at?: undefined | null | string;
+    updated_at?: undefined | null | string;
+};
+export type OmsProviderStatusEvidenceRow = {
+    id?: undefined | null | string;
+    fulfillment_order_id: string;
+    provider_status?: undefined | null | string;
+    provider_sub_status?: undefined | null | string;
+    local_status?: undefined | null | string;
+    customer_status?: undefined | null | string;
+    evidence_kind?: undefined | null | string;
+    occurred_at?: undefined | null | string;
+    created_at?: undefined | null | string;
+};
+export type OmsReleasedProviderExceptionHoldRow = {
+    order_id: string;
+    status?: undefined | null | string;
+    reason?: undefined | null | string;
+    created_by?: undefined | null | string;
+    released_by?: undefined | null | string;
+    metadata?: unknown;
+};
+export type OmsShipmentExternalRefRow = {
+    order_id: string;
+    fulfillment_order_id?: undefined | null | string;
+    provider_tracking_id: string;
+    active: false | true;
+    provider_kind?: undefined | null | string;
+    tracking_url?: undefined | null | string;
+    carrier_kind?: undefined | null | string;
+    service?: undefined | null | string;
+    updated_at?: undefined | null | string;
+    created_at?: undefined | null | string;
+};
+export type OmsOperationalLadderInput = {
+    orderStatus: "draft" | "pending_payment" | "paid" | "failed" | "expired" | "fulfillment_pending" | "cancelled" | "fulfilled" | "refunded";
+    activeHoldCount: number;
+    paymentStatus: OmsOrderPaymentStatus;
+    hasShippingAddress: false | true;
+    inventoryStatus: OmsInventoryStatus;
+    fulfillmentStatus: null | "cancelled" | "created" | "packed" | "label_pending" | "label_created" | "handed_over" | "in_transit" | "delivered" | "exception";
+    fulfillmentAllowed: false | true;
+    accountingStatus: string;
+};
+export type OmsOperationalRung = {
+    readonly id: string;
+    readonly sqlPredicate: string;
+    readonly attentionReason: AdminOmsAttentionReason;
+    readonly nextAction: AdminOmsNextAction;
+    readonly matches: (input: OmsOperationalLadderInput) => false | true;
+};
+export type OmsPaymentMethodSummary = {
+    provider: null | string;
+    label: null | string;
+};
+export type OmsOrderIdentity = ({
+    customer: null | OmsCustomerSummary;
+}) & ({
+    [key: string]: unknown;
+});
+export type OmsActionAvailabilityFlags = {
+    holdMutationsEnabled?: undefined | false | true;
+    supportMutationsEnabled?: undefined | false | true;
+    fulfillmentMutationsEnabled?: undefined | false | true;
+    refundMutationsEnabled?: undefined | false | true;
+    orderCancellationEnabled?: undefined | false | true;
+};
+export type OmsReadModelProjections = {
+    currency?: undefined | OmsCurrencyPolicy;
+    detailFields?: undefined | ((input: {
+        order: OmsOrderRow;
+        orderItems?: undefined | Array<OmsOrderItemRow>;
+        orderMoney: CanonicalOrderMoney;
+    }) => {
+        [key: string]: unknown;
+    });
+    providerOps?: undefined | ((input: {
+        fulfillmentOrders: Array<OmsFulfillmentOrderRow>;
+        dispatchRefs?: undefined | Array<OmsProviderDispatchRefRow>;
+        statusEvidence?: undefined | Array<OmsProviderStatusEvidenceRow>;
+    }) => {
+        status: string;
+        sla: null | OmsProviderOpsSla;
+        providerOrderId: null | string;
+    });
+    paymentMethodLabel?: undefined | ((attempt: OmsPaymentAttemptRow) => string);
+    usesExternalStock?: undefined | ((providerKind: null | string) => false | true);
+    timelineLabel?: undefined | ((step: null | "paid" | "cancelled" | "delivered" | "exception" | "accepted" | "packing" | "transit") => string);
+    dispatchLabel?: undefined | ((status: undefined | null | string) => string);
+    debugSummary?: undefined | ((action: "review_payment" | "create_fulfillment" | "wait" | "retry_dispatch" | "reconcile" | "review_stock" | "review_provider" | "contact_support") => string);
+    dispatchStepLabel?: undefined | string;
+    automaticExceptionHoldSource?: undefined | string;
+    automaticExceptionReleaseSource?: undefined | string;
+    additionalAccountingStatuses?: undefined | Array<string>;
+    dispatchedNotPickedStatus?: undefined | string;
+    parseList?: undefined | ((value: unknown) => AdminCommerceOrdersListResponse);
+    parseDetail?: undefined | ((value: unknown) => AdminCommerceOrderDetailResponse);
+};
+export type OmsOrderRow = {
+    id: string;
+    order_number: null | string;
+    client_id: null | string;
+    status: "draft" | "pending_payment" | "paid" | "failed" | "expired" | "fulfillment_pending" | "cancelled" | "fulfilled" | "refunded";
+    mode: "one_time" | "subscription_cycle";
+    currency: string;
+    subtotal_cents: null | number;
+    discount_cents: null | number;
+    shipping_cents: null | number;
+    shipping_discount_cents: null | number;
+    tax_cents: null | number;
+    total_cents: number;
+    metadata: null | {
+        [key: string]: unknown;
+    };
+    created_at: string;
+    updated_at: string;
+    subscription_id: null | string;
+    subscription_cycle_id: null | string;
+    shipping_address_id?: undefined | null | string;
+    source_kind?: undefined | null | string;
+    source_order_ref?: undefined | null | string;
+    sales_channels?: undefined | null | {
+        slug?: undefined | null | string;
+    };
+};
+export type OmsPaymentIntentRow = {
+    id: string;
+    order_id: string;
+    payment_id: string;
+    status: "failed" | "expired" | "cancelled" | "refunded" | "created" | "requires_action" | "processing" | "succeeded" | "partially_refunded" | "disputed";
+    active_attempt_id: null | string;
+    provider_payment_id: null | string;
+    updated_at: string;
+};
+export type OmsPaymentAttemptRow = {
+    id: string;
+    payment_intent_id?: undefined | null | string;
+    status: "failed" | "expired" | "cancelled" | "created" | "requires_action" | "processing" | "succeeded" | "blocked_preflight" | "sent_to_provider";
+    provider: string;
+    provider_attempt_id: null | string;
+    next_action_kind: null | string;
+    updated_at: string;
+};
+export type OmsHoldRow = {
+    id: string;
+    order_id: string;
+    status: "released" | "active";
+    reason: "fulfillment_exception" | "payment_not_succeeded" | "inventory_review" | "risk_review" | "address_review" | "manual_support";
+    note: null | string;
+    created_at: string;
+    released_at: null | string;
+};
+export type OmsOperationRow = {
+    id: string;
+    order_id: string;
+    operation_type: "hold_created" | "hold_released" | "fulfillment_reviewed" | "support_note" | "shipping_address_updated" | "order_marked_refunded" | "order_cancelled_manual" | "replacement_shipment_requested";
+    hold_id: null | string;
+    actor_user_id: null | string;
+    occurred_at: string;
+    payload: {
+        [key: string]: unknown;
+    };
+};
+export type OmsPaymentTransitionRow = {
+    id: string;
+    transition_kind: string;
+    from_status: null | string;
+    to_status: string;
+    reason: string;
+    occurred_at: string;
+};
+export type OmsInventoryReservationRow = {
+    id: string;
+    order_id: string;
+    order_item_id: null | string;
+    quantity: number;
+    status: "expired" | "reserved" | "released" | "consumed";
+    expires_at: null | string;
+    location_id: null | string;
+    inventory_locations?: undefined | null | {
+        code?: undefined | null | string;
+    };
+};
+export type OmsOrderItemRow = {
+    id: string;
+    order_id?: undefined | string;
+    sku_id?: undefined | null | string;
+    sku?: undefined | null | string;
+    title?: undefined | null | string;
+    quantity: number;
+    unit_price_cents?: undefined | null | number;
+    total_cents?: undefined | null | number;
+    discount_allocated_cents?: undefined | null | number;
+    effective_total_cents?: undefined | null | number;
+    effective_net_cents?: undefined | null | number;
+    vat_rate_bps?: undefined | null | number;
+    product_snapshot?: undefined | null | {
+        [key: string]: unknown;
+    };
+    variant_snapshot?: undefined | null | {
+        [key: string]: unknown;
+    };
+};
+export type OmsCustomerRow = {
+    id: string;
+    email: string;
+    first_name: null | string;
+    last_name: null | string;
+    phone: null | string;
+    lifecycle_stage: null | string;
+};
+export type OmsAddressRow = {
+    id: string;
+    label?: undefined | null | string;
+    line1?: undefined | null | string;
+    line2?: undefined | null | string;
+    city?: undefined | null | string;
+    postal_code?: undefined | null | string;
+    country?: undefined | null | string;
+    recipient_name?: undefined | null | string;
+    contact_phone?: undefined | null | string;
+    company_name?: undefined | null | string;
+    tax_id?: undefined | null | string;
+    delivery_notes?: undefined | null | string;
+    courier_instructions?: undefined | null | string;
+};
+export type OmsAccountingInvoiceRow = {
+    id: string;
+    order_id: string;
+    invoice_ref: string;
+    status: string;
+    provider_kind: null | string;
+    provider_invoice_number: null | string;
+    fiscal_status?: undefined | null | string;
+    total_gross_cents: number;
+    currency: string;
+    blocked_reason?: undefined | null | string;
+    updated_at: string;
+};
+export type OmsAccountingOutboxRow = {
+    invoice_id: string;
+    status: string;
+    attempt_count?: undefined | null | number;
+    next_attempt_at?: undefined | null | string;
+    last_error?: unknown;
+    created_at?: undefined | null | string;
+};
+export type OmsCommunicationDeliveryRow = {
+    id: string;
+    purpose: string;
+    template_slug: string;
+    trigger_source: string;
+    trigger_event: string;
+    aggregate_type: null | string;
+    aggregate_id: null | string;
+    dedupe_key: string;
+    status: "failed" | "processing" | "delivered" | "planned" | "skipped" | "blocked" | "queued" | "sent" | "delivery_delayed" | "bounced" | "complained" | "missed" | "legacy_unlinked";
+    provider_kind: null | string;
+    provider_message_id: null | string;
+    scheduled_due_at: null | string;
+    expected_send_at: null | string;
+    queued_at: null | string;
+    first_attempt_at: null | string;
+    sent_at: null | string;
+    delivered_at: null | string;
+    terminal_at: null | string;
+    last_error_code: null | string;
+    outbox_event_id: null | string;
+    platform_job_run_id: null | string;
+    email_send_id: null | string;
+    metadata: null | {
+        [key: string]: unknown;
+    };
+    created_at: string;
+    updated_at: string;
+};
+export type OmsOrderRowCoreInput = {
+    projections?: undefined | OmsReadModelProjections;
+    order: OmsOrderRow;
+    activeHoldCount: number;
+    paymentIntents: Array<OmsPaymentIntentRow>;
+    paymentAttempts: Array<OmsPaymentAttemptRow>;
+    identity: OmsOrderIdentity;
+    orderItems?: undefined | Array<OmsOrderItemRow>;
+    inventoryReservations: Array<OmsInventoryReservationRow>;
+    fulfillmentOrders: Array<OmsFulfillmentOrderRow>;
+    fulfillmentOperations: Array<OmsFulfillmentOperationRow>;
+    shipmentExternalRefs: Array<OmsShipmentExternalRefRow>;
+    providerAttempts?: undefined | Array<OmsProviderAttemptRow>;
+    dispatchRefs?: undefined | Array<OmsProviderDispatchRefRow>;
+    statusEvidence?: undefined | Array<OmsProviderStatusEvidenceRow>;
+    releasedProviderExceptionHolds?: undefined | Array<OmsReleasedProviderExceptionHoldRow>;
+    accountingInvoice: null | OmsAccountingInvoiceRow;
+    accountingOutbox: Array<OmsAccountingOutboxRow>;
+    subscriptionCycleStatus: null | "paid" | "cancelled" | "planned" | "payment_pending" | "payment_failed" | "retry_scheduled" | "skipped";
+    orderMoney?: undefined | CanonicalOrderMoney;
+};
+export type OmsOrderRowCore = {
+    row: {
+        status: "draft" | "pending_payment" | "paid" | "failed" | "expired" | "fulfillment_pending" | "cancelled" | "fulfilled" | "refunded";
+        mode: "one_time" | "subscription_cycle";
+        sourceKind: undefined | string;
+        sourceChannelSlug: undefined | string;
+        sourceOrderRef: undefined | string;
+        paymentMethodLabel: null | string;
+        paymentProvider: null | string;
+        paymentStatus: OmsOrderPaymentStatus;
+        fulfillmentStatus: null | "cancelled" | "created" | "packed" | "label_pending" | "label_created" | "handed_over" | "in_transit" | "delivered" | "exception";
+        customerFulfillmentStep: "paid" | "cancelled" | "delivered" | "exception" | "accepted" | "packing" | "transit";
+        inventoryStatus: OmsInventoryStatus;
+        accountingStatus: string;
+        providerOpsStatus: string;
+        providerOpsSla: null | OmsProviderOpsSla;
+        providerOrderId: null | string;
+        attentionReason: AdminOmsAttentionReason;
+        nextAction: AdminOmsNextAction;
+        activeHoldCount: number;
+        total: CommerceMoney;
+        pricingSummary: OmsPricingSummary;
+        createdAt: string;
+        updatedAt: string;
+        customer: null | OmsCustomerSummary;
+        orderId: string;
+        orderNumber: null | string;
+        clientId: null | string;
+    };
+    paymentStatus: OmsOrderPaymentStatus;
+    inventory: OmsInventorySummary;
+    fulfillment: OmsFulfillmentSummary;
+    accounting: OmsAccountingSummary;
+    fulfillmentEligibility: {
+        allowed: false | true;
+        reason: null | "active_hold" | "missing_shipping_address" | "payment_not_succeeded" | "inventory_review" | "risk_review" | "order_not_paid" | "subscription_cycle_not_paid";
+    };
+};
+export type AdminCommerceOrderPaymentLinkRefusal = "order_not_found" | "order_paid" | "order_cancelled" | "order_not_recoverable" | "order_changed";
+export type AdminCommerceOrdersListRequest = {
+    page: number;
+    pageSize: number;
+    sort: "created_desc" | "created_asc" | "updated_desc" | "updated_asc" | "attention_priority_desc";
+    search?: undefined | string;
+    status?: undefined | "draft" | "pending_payment" | "paid" | "failed" | "expired" | "fulfillment_pending" | "cancelled" | "fulfilled" | "refunded";
+    mode?: undefined | "one_time" | "subscription_cycle";
+    paymentStatus?: undefined | "failed" | "expired" | "cancelled" | "refunded" | "not_started" | "created" | "requires_action" | "processing" | "succeeded" | "partially_refunded" | "disputed";
+    fulfillmentStatus?: undefined | "cancelled" | "created" | "packed" | "label_pending" | "label_created" | "handed_over" | "in_transit" | "delivered" | "exception";
+    inventoryStatus?: undefined | "expired" | "not_checked" | "reserved" | "missing" | "released" | "consumed" | "review_required";
+    accountingStatus?: undefined | string;
+    providerOpsStatus?: undefined | string;
+    attentionReason?: undefined | "none" | "fulfillment_pending" | "payment_required" | "active_hold" | "missing_shipping_address" | "inventory_missing" | "fulfillment_blocked" | "fulfillment_exception" | "invoice_missing" | "invoice_issue_failed" | "invoice_buyer_data_invalid";
+    attentionOnly?: undefined | false | true;
+    nextAction?: undefined | "none" | "review_payment" | "release_hold" | "review_address" | "review_inventory" | "review_fulfillment" | "create_fulfillment" | "record_label" | "hand_off" | "review_tracking" | "review_invoice";
+    from?: undefined | string;
+    to?: undefined | string;
+    includeWithdrawn?: undefined | false | true;
+};
+export type AdminCommerceOrdersListRequestInput = {
+    page?: unknown;
+    pageSize?: unknown;
+    search?: undefined | string;
+    status?: undefined | "draft" | "pending_payment" | "paid" | "failed" | "expired" | "fulfillment_pending" | "cancelled" | "fulfilled" | "refunded";
+    mode?: undefined | "one_time" | "subscription_cycle";
+    paymentStatus?: undefined | "failed" | "expired" | "cancelled" | "refunded" | "not_started" | "created" | "requires_action" | "processing" | "succeeded" | "partially_refunded" | "disputed";
+    fulfillmentStatus?: undefined | "cancelled" | "created" | "packed" | "label_pending" | "label_created" | "handed_over" | "in_transit" | "delivered" | "exception";
+    inventoryStatus?: undefined | "expired" | "not_checked" | "reserved" | "missing" | "released" | "consumed" | "review_required";
+    accountingStatus?: undefined | string;
+    providerOpsStatus?: undefined | string;
+    attentionReason?: undefined | "none" | "fulfillment_pending" | "payment_required" | "active_hold" | "missing_shipping_address" | "inventory_missing" | "fulfillment_blocked" | "fulfillment_exception" | "invoice_missing" | "invoice_issue_failed" | "invoice_buyer_data_invalid";
+    attentionOnly?: undefined | false | true | "true" | "false";
+    nextAction?: undefined | "none" | "review_payment" | "release_hold" | "review_address" | "review_inventory" | "review_fulfillment" | "create_fulfillment" | "record_label" | "hand_off" | "review_tracking" | "review_invoice";
+    from?: undefined | string;
+    to?: undefined | string;
+    sort?: undefined | "created_desc" | "created_asc" | "updated_desc" | "updated_asc" | "attention_priority_desc";
+    includeWithdrawn?: undefined | false | true | "true" | "false";
+};
+export type AdminCommerceOrderDetailRequest = {
+    orderId: string;
+};
+export type AdminCommerceOrderHoldRequest = {
+    idempotencyKey: string;
+    orderId: string;
+    reason: "fulfillment_exception" | "payment_not_succeeded" | "inventory_review" | "risk_review" | "address_review" | "manual_support";
+    note?: undefined | string;
+    metadata?: undefined | {
+        [key: string]: unknown;
+    };
+};
+export type AdminCommerceOrderReleaseHoldRequest = {
+    idempotencyKey: string;
+    holdId: string;
+    note?: undefined | string;
+    metadata?: undefined | {
+        [key: string]: unknown;
+    };
+};
+export type AdminCommerceOrderNoteRequest = {
+    idempotencyKey: string;
+    orderId: string;
+    note: string;
+    metadata?: undefined | {
+        [key: string]: unknown;
+    };
+};
+export type AdminCommerceOrderMarkRefundedRequest = {
+    idempotencyKey: string;
+    orderId: string;
+    reason: string;
+    metadata?: undefined | {
+        [key: string]: unknown;
+    };
+};
+export type AdminCommerceOrderCancelRequest = {
+    idempotencyKey: string;
+    orderId: string;
+    reason: string;
+    metadata?: undefined | {
+        [key: string]: unknown;
+    };
+};
+export type AdminCommerceOrderPaymentLinkRequest = {
+    orderId: string;
+    delivery?: undefined | "email" | "copy";
+};
+export type AdminCommerceOrderRequestReplacementShipmentRequest = {
+    idempotencyKey: string;
+    orderId: string;
+    reason: "damaged" | "lost" | "returned_undelivered" | "other";
+    metadata?: undefined | {
+        [key: string]: unknown;
+    };
+};
+export type AdminCommerceOrderUpdateShippingAddressRequest = {
+    idempotencyKey: string;
+    orderId: string;
+    expectedRevision: number;
+    expectedContactDigest: string;
+    address: AdminCommerceOrderShippingAddressInput;
+    metadata?: undefined | {
+        [key: string]: unknown;
+    };
+};
+export type AdminCommerceOrdersListResponse = {
+    contractVersion: "commerce.v0";
+    orders: Array<AdminOmsOrderListItem>;
+    summaryCounts: AdminOmsOrderListSummaryCounts;
+    summaryTotals: AdminOmsOrderListSummaryTotals;
+    totalCount: number;
+    page: number;
+    pageSize: number;
+};
+export type AdminCommerceOrderDetailResponse = {
+    contractVersion: "commerce.v0";
+    order: OmsOrderDetail;
+};
+export type AdminCommerceOrderHoldResponse = {
+    contractVersion: "commerce.v0";
+    hold: OmsOrderHold;
+    operationId: string;
+    replayed: false | true;
+};
+export type AdminCommerceOrderNoteResponse = {
+    contractVersion: "commerce.v0";
+    operation: OmsOrderOperation;
+    replayed: false | true;
+};
+export type AdminCommerceOrderMarkRefundedResponse = {
+    contractVersion: "commerce.v0";
+    orderId: string;
+    status: "draft" | "pending_payment" | "paid" | "failed" | "expired" | "fulfillment_pending" | "cancelled" | "fulfilled" | "refunded";
+    replayed: false | true;
+};
+export type AdminCommerceOrderPaymentLinkResponse = {
+    token: string;
+    expiresAt: string;
+    orderRef: string;
+    emailQueued: false | true;
+};
+export type AdminCommerceOrderRequestReplacementShipmentResponse = {
+    contractVersion: "commerce.v0";
+    operation: OmsOrderOperation;
+    replacement: {
+        fulfillmentOrderId: string;
+        orderId: string;
+        sequenceNo: number;
+        replacesFulfillmentOrderId: string;
+        reason: "damaged" | "lost" | "returned_undelivered" | "other";
+        status: string;
+    };
+    releasedHoldIds: Array<string>;
+    replayed: false | true;
+};
+export type AdminCommerceOrderUpdateShippingAddressResponse = {
+    contractVersion: "commerce.v0";
+    result: "replayed" | "applied";
+    scope: "parcel" | "order";
+    deliveryContact: OmsDeliveryContact;
+    operation: OmsOrderOperation;
+    address: {
+        recipientName: null | string;
+        contactEmail: null | string;
+        contactPhone: null | string;
+        line1: null | string;
+        line2: null | string;
+        city: null | string;
+        postalCode: null | string;
+        country: null | string;
+    };
+    replayed: false | true;
+};
+export type AdminOmsOrderListItem = {
+    orderId: string;
+    orderNumber: null | string;
+    clientId: null | string;
+    customer: null | OmsCustomerSummary;
+    status: "draft" | "pending_payment" | "paid" | "failed" | "expired" | "fulfillment_pending" | "cancelled" | "fulfilled" | "refunded";
+    mode: "one_time" | "subscription_cycle";
+    paymentMethodLabel: null | string;
+    paymentProvider: null | string;
+    paymentStatus: OmsOrderPaymentStatus;
+    fulfillmentStatus: null | "cancelled" | "created" | "packed" | "label_pending" | "label_created" | "handed_over" | "in_transit" | "delivered" | "exception";
+    customerFulfillmentStep: "paid" | "cancelled" | "delivered" | "exception" | "accepted" | "packing" | "transit";
+    inventoryStatus: OmsInventoryStatus;
+    accountingStatus: string;
+    providerOpsStatus: string;
+    providerOpsSla: null | OmsProviderOpsSla;
+    providerOrderId: null | string;
+    attentionReason: AdminOmsAttentionReason;
+    nextAction: AdminOmsNextAction;
+    activeHoldCount: number;
+    activeHoldReasons: Array<"fulfillment_exception" | "payment_not_succeeded" | "inventory_review" | "risk_review" | "address_review" | "manual_support">;
+    fulfillmentHealthDigest: OmsFulfillmentHealthDigest;
+    total: CommerceMoney;
+    pricingSummary: OmsPricingSummary;
+    createdAt: string;
+    updatedAt: string;
+    sourceKind?: undefined | string;
+    sourceChannelSlug?: undefined | string;
+    sourceOrderRef?: undefined | string;
+    match?: undefined | AdminOmsOrderSearchMatch;
+};
+export type AdminOmsOrderSearchMatch = {
+    field: string;
+    label: string;
+    valuePreview: null | string;
+};
+export type AdminOmsOrderListSummaryCounts = {
+    needsAttention: number;
+    activeHold: number;
+    readyForFulfillment: number;
+    paymentIssues: number;
+    inventoryRisk: number;
+    fulfillmentBlocked: number;
+    fulfillmentExceptions: number;
+    invoiceIssues: number;
+    providerDispatchedNotPicked?: undefined | number;
+};
+export type AdminOmsOrderListSummaryTotals = {
+    gmv: CommerceMoney;
+    aov: CommerceMoney;
+    orderCount: number;
+    paidSubscriptionCycleCount: number;
+};
+export type AdminOmsAttentionReason = "none" | "fulfillment_pending" | "payment_required" | "active_hold" | "missing_shipping_address" | "inventory_missing" | "fulfillment_blocked" | "fulfillment_exception" | "invoice_missing" | "invoice_issue_failed" | "invoice_buyer_data_invalid";
+export type AdminOmsNextAction = "none" | "review_payment" | "release_hold" | "review_address" | "review_inventory" | "review_fulfillment" | "create_fulfillment" | "record_label" | "hand_off" | "review_tracking" | "review_invoice";
+export type OmsOrderDetail = {
+    orderId: string;
+    orderNumber: null | string;
+    clientId: null | string;
+    customer: null | OmsCustomerSummary;
+    status: "draft" | "pending_payment" | "paid" | "failed" | "expired" | "fulfillment_pending" | "cancelled" | "fulfilled" | "refunded";
+    mode: "one_time" | "subscription_cycle";
+    paymentMethodLabel: null | string;
+    paymentProvider: null | string;
+    paymentStatus: OmsOrderPaymentStatus;
+    fulfillmentStatus: null | "cancelled" | "created" | "packed" | "label_pending" | "label_created" | "handed_over" | "in_transit" | "delivered" | "exception";
+    customerFulfillmentStep: "paid" | "cancelled" | "delivered" | "exception" | "accepted" | "packing" | "transit";
+    inventoryStatus: OmsInventoryStatus;
+    accountingStatus: string;
+    providerOpsStatus: string;
+    providerOpsSla: null | OmsProviderOpsSla;
+    providerOrderId: null | string;
+    attentionReason: AdminOmsAttentionReason;
+    nextAction: AdminOmsNextAction;
+    activeHoldCount: number;
+    activeHoldReasons: Array<"fulfillment_exception" | "payment_not_succeeded" | "inventory_review" | "risk_review" | "address_review" | "manual_support">;
+    fulfillmentHealthDigest: OmsFulfillmentHealthDigest;
+    total: CommerceMoney;
+    pricingSummary: OmsPricingSummary;
+    createdAt: string;
+    updatedAt: string;
+    shippingAddress: null | OmsAddressSummary;
+    billingAddress: null | OmsAddressSummary;
+    deliverySelection: null | OmsDeliverySelection;
+    lines: Array<OmsOrderLine>;
+    subscription: OmsSubscriptionContext;
+    fulfillmentEligibility: OmsFulfillmentEligibility;
+    inventory: OmsInventorySummary;
+    fulfillment: OmsFulfillmentSummary;
+    replacementChain: OmsReplacementChain;
+    fulfillmentHealth: OmsFulfillmentHealth;
+    fulfillmentDebug: OmsFulfillmentDebug;
+    accounting: OmsAccountingSummary;
+    actionEligibility: OmsOrderActionEligibility;
+    holds: Array<OmsOrderHold>;
+    operations: Array<OmsOrderOperation>;
+    payment: OmsPaymentSummary;
+    paymentAttempts: Array<OmsPaymentAttempt>;
+    paymentTransitions: Array<OmsPaymentTransition>;
+    communicationDeliveries: Array<OmsCommunicationDelivery>;
+    sourceKind?: undefined | string;
+    sourceChannelSlug?: undefined | string;
+    sourceOrderRef?: undefined | string;
+    match?: undefined | AdminOmsOrderSearchMatch;
+    deliveryContact?: undefined | OmsDeliveryContactProjection;
+};
+export type OmsDeliveryContactResolution = {
+    resolutionVersion: 1;
+    scope: "missing" | "baseline" | "order_override" | "parcel" | "legacy_inferred";
+    baseline: null | OmsDeliveryContact;
+    contact: null | OmsDeliveryContact;
+    contactDigest: null | string;
+};
+export type OmsOrderHold = {
+    id: string;
+    orderId: string;
+    status: "released" | "active";
+    reason: "fulfillment_exception" | "payment_not_succeeded" | "inventory_review" | "risk_review" | "address_review" | "manual_support";
+    note: null | string;
+    createdAt: string;
+    releasedAt: null | string;
+};
+export type OmsOrderPaymentStatus = OmsPaymentStatus<PaymentIntentStatus>;
+export type OmsAccountingStatus = string;
+export type AdminOmsProviderOpsStatus = string;
+export type OmsControlPlaneListRequest = {
+    view: "control_plane_v1";
+    page: number;
+    pageSize: number;
+    status?: undefined | "draft" | "pending_payment" | "paid" | "failed" | "expired" | "fulfillment_pending" | "cancelled" | "fulfilled" | "refunded";
+};
+export type OmsControlPlaneDetailRequest = {
+    view: "control_plane_v1";
+    orderId: string;
+};
+export type OmsControlPlaneOrder = {
+    orderId: string;
+    status: "draft" | "pending_payment" | "paid" | "failed" | "expired" | "fulfillment_pending" | "cancelled" | "fulfilled" | "refunded";
+    sourceKind: string;
+    sourceOrderRef: null | string;
+    money: null | {
+        amountMinor: number;
+        currency: string;
+    };
+    shipmentStatus: null | "cancelled" | "created" | "packed" | "label_pending" | "label_created" | "handed_over" | "in_transit" | "delivered" | "exception";
+    activeHoldCount: number;
+    activeHoldReasons: Array<"fulfillment_exception" | "payment_not_succeeded" | "inventory_review" | "risk_review" | "address_review" | "manual_support">;
+    actions: {
+        createHold: ActionEligibility;
+        releaseHold: ActionEligibility;
+        cancelOrder: ActionEligibility;
+        markRefunded: ActionEligibility;
+    };
+    createdAt: string;
+    updatedAt: string;
+};
+export type OmsControlPlaneListResponse = {
+    contractVersion: "commerce.oms_control_plane.v1";
+    orders: Array<OmsControlPlaneOrder>;
+    totalCount: number;
+    page: number;
+    pageSize: number;
+};
+export type OmsControlPlaneDetailResponse = {
+    contractVersion: "commerce.oms_control_plane.v1";
+    order: OmsControlPlaneOrder;
+    holds: Array<OmsControlPlaneHold>;
+    operations: Array<OmsControlPlaneOperation>;
+};
+export type CommerceOmsControlPlanePort = {
+    listOrders: (request: OmsControlPlaneListRequest) => Promise<OmsControlPlaneListResponse>;
+    getOrderDetail: (request: OmsControlPlaneDetailRequest) => Promise<null | OmsControlPlaneDetailResponse>;
+};
+export type CommerceOmsOperatorResolver = {
+    resolveOperator: (principalId: string) => Promise<null | string>;
+};
+export type OmsReplacementChain = {
+    sequenceNo: number;
+    replacesFulfillmentOrderId: null | string;
+    replacementReason: null | string;
+    supersededParcels: Array<OmsSupersededParcel>;
+};
+export type OmsFulfillmentDebug = {
+    summary: string;
+    severity: "ok" | "watch" | "action_required";
+    nextAction: "review_payment" | "create_fulfillment" | "wait" | "retry_dispatch" | "reconcile" | "review_stock" | "review_provider" | "contact_support";
+    blockers: Array<string>;
+    steps: Array<OmsFulfillmentDebugStep>;
+};
+export type CommerceOmsReadPort = {
+    listOrders: (request: AdminCommerceOrdersListRequest) => Promise<AdminCommerceOrdersListResponse>;
+    getOrderDetail: (request: AdminCommerceOrderDetailRequest) => Promise<null | AdminCommerceOrderDetailResponse>;
+};
+export type CommerceOmsHoldPort = {
+    createHold: (request: (AdminCommerceOrderHoldRequest) & ({
+        actorUserId: string;
+    })) => Promise<AdminCommerceOrderHoldResponse>;
+    releaseHold: (request: (AdminCommerceOrderReleaseHoldRequest) & ({
+        actorUserId: string;
+    })) => Promise<AdminCommerceOrderHoldResponse>;
+    addNote: (request: (AdminCommerceOrderNoteRequest) & ({
+        actorUserId: string;
+    })) => Promise<AdminCommerceOrderNoteResponse>;
+    updateShippingAddress: (request: (AdminCommerceOrderUpdateShippingAddressRequest) & ({
+        actorUserId: string;
+    })) => Promise<AdminCommerceOrderUpdateShippingAddressResponse>;
+    markRefunded: (request: (AdminCommerceOrderMarkRefundedRequest) & ({
+        actorUserId: string;
+    })) => Promise<AdminCommerceOrderMarkRefundedResponse>;
+    cancelOrder: (request: (AdminCommerceOrderCancelRequest) & ({
+        actorUserId: string;
+    })) => Promise<AdminCommerceOrderMarkRefundedResponse>;
+    requestReplacementShipment: (request: (AdminCommerceOrderRequestReplacementShipmentRequest) & ({
+        actorUserId: string;
+    })) => Promise<AdminCommerceOrderRequestReplacementShipmentResponse>;
+};
+export type OmsReplacementRefusal = "missing_shipping_address" | "payment_not_succeeded" | "subscription_cycle_not_paid" | "order_not_found" | "invalid_input" | "idempotency_conflict" | "order_not_replaceable" | "missing_client" | "shipping_address_not_found" | "no_parcel_to_replace" | "undispatched_replacement_exists" | "missing_order_items" | "missing_catalog_sku" | "missing_inventory_reservation" | "blocked_by_payment_not_succeeded_hold" | "blocked_by_inventory_review_hold" | "blocked_by_risk_review_hold" | "blocked_by_address_review_hold" | "blocked_by_manual_support_hold" | "inventory_external_provider_insufficient_available_stock" | "inventory_external_provider_stock_stale" | "inventory_external_provider_stock_missing" | "inventory_external_provider_sku_not_found" | "inventory_external_provider_location_missing" | "inventory_reservation_insufficient_available_stock" | "inventory_reservation_allocation_incomplete" | "inventory_reservation_payment_status_not_reservable" | "inventory_reservation_invalid_quantity" | "unspecified_refusal";
+```
+## dist/commerce/contracts/order.d.ts
+
+```ts
+import type { CartStatus, CheckoutStatus, OrderDraftStatus, OrderStatus, PaymentStatus } from "./state.js";
+export interface CartDraft<Line, Currency> {
+    id: string;
+    status: CartStatus;
+    lines: Line[];
+    currency: Currency;
+}
+export interface CheckoutSessionPlaceholder {
+    id: string;
+    cartId: string;
+    status: CheckoutStatus;
+    redirectUrl: string | null;
+    paymentProviderSessionId: string | null;
+}
+export interface OrderDraftSummary<Quote, Version extends string> {
+    orderId: string;
+    status: OrderDraftStatus;
+    paymentStatus: "not_started";
+    idempotencyKey: string;
+    quoteSnapshot: {
+        contractVersion: Version;
+        quote: Quote;
+    };
+    replayed: boolean;
+}
+export interface OrderSummary<Line, Money> {
+    id: string;
+    status: OrderStatus;
+    paymentStatus: PaymentStatus;
+    total: Money | null;
+    lines: Line[];
+}
+export interface PaymentSummary<Money> {
+    id: string;
+    orderId: string;
+    status: PaymentStatus;
+    amount: Money | null;
+    providerReference: string | null;
+}
+```
+## dist/commerce/contracts/orderMoney.d.ts
+
+```ts
+export type OrderMoneyIssueCode = "allocated_discount_mismatch" | "catalog_subtotal_mismatch" | "effective_subtotal_mismatch" | "header_equation_mismatch" | "item_catalog_equation_mismatch" | "item_catalog_money_out_of_range" | "item_discount_out_of_range" | "item_effective_money_out_of_range" | "item_gross_equation_mismatch" | "item_net_vat_mismatch" | "item_quantity_out_of_range" | "item_vat_rate_out_of_range" | "missing_item_canonical_money" | "mixed_vat_rates" | "product_discount_out_of_range" | "shipping_discount_out_of_range" | "tax_total_mismatch" | "total_positions_mismatch";
+export interface OrderMoneyHeaderRow {
+    id?: string;
+    currency: string;
+    subtotal_cents: number;
+    discount_cents: number;
+    shipping_cents: number;
+    shipping_discount_cents: number;
+    tax_cents: number;
+    total_cents: number;
+}
+export interface OrderMoneyItemRow {
+    id?: string;
+    quantity: number;
+    unit_price_cents: number;
+    total_cents: number;
+    discount_allocated_cents: number | null | undefined;
+    effective_total_cents: number | null | undefined;
+    effective_net_cents: number | null | undefined;
+    vat_rate_bps: number;
+}
+export interface CanonicalOrderMoneyLine {
+    id: string | null;
+    quantity: number;
+    catalogUnit: number;
+    catalogTotal: number;
+    discountAllocated: number;
+    effectiveGross: number;
+    effectiveNet: number;
+    vatRateBps: number;
+}
+export interface CanonicalOrderMoney {
+    orderId: string | null;
+    currency: string;
+    subtotal: number;
+    productDiscount: number;
+    shippingGross: number;
+    shippingDiscount: number;
+    shippingEffective: number;
+    tax: number;
+    total: number;
+    lines: CanonicalOrderMoneyLine[];
+    validationScope: "full" | "header";
+    reconciled: boolean;
+    issueCodes: OrderMoneyIssueCode[];
+}
+export interface OrderMoneyDiagnostic {
+    event: "commerce_order_money_unreconciled";
+    orderId: string | null;
+    validationScope: CanonicalOrderMoney["validationScope"];
+    issueCodes: OrderMoneyIssueCode[];
+}
+```
+## dist/commerce/contracts/ports.d.ts
+
+```ts
+import type { AsyncCheckoutStatus, CheckoutKind } from "./index.js";
+export interface ConfiguratorIntentPersistencePort<Request, Response> {
+    persistIntent(request: Request): Promise<Response>;
+    /**
+     * Resolve the identity already provisioned under a COMPLETED idempotency key,
+     * or null when none exists. Lets checkout recover the `clientId` when
+     * `persistIntent` raises an idempotency conflict (same key, mutated payload) so
+     * the client's in-flight order can be resumed instead of surfacing a
+     * transient-looking error. Optional: adapters that cannot read back the
+     * completed row simply omit it and the caller falls back to a 409.
+     */
+    findCompletedIdentity?(idempotencyKey: string): Promise<Response | null>;
+}
+export interface CommerceRecommendationPort<Request, Response> {
+    recommend(request: Request): Promise<Response>;
+}
+export interface CommerceProductCompatibilityPort<Request, Response> {
+    getCompatibility(request: Request): Promise<Response>;
+}
+export interface CommerceCustomerDefaultsReadPort<Snapshot> {
+    getCustomerDefaultsSnapshot(input: {
+        clientId: string;
+        checkoutKind: CheckoutKind;
+    }): Promise<Snapshot | null>;
+}
+export interface CommerceCheckoutResumeDraftUpsertInput<Section, State> {
+    tokenHash: string;
+    idempotencyKeyHash: string | null;
+    lastSectionId: Section;
+    draftState: State;
+    expiresAt: string;
+    now: string;
+}
+export interface CommerceCheckoutResumeDraftReadInput {
+    tokenHash: string;
+    now: string;
+}
+export interface CommerceCheckoutResumeDraftPort<Section, State, Draft> {
+    upsertDraft(input: CommerceCheckoutResumeDraftUpsertInput<Section, State>): Promise<Draft>;
+    readDraftByTokenHash(input: CommerceCheckoutResumeDraftReadInput): Promise<Draft | null>;
+}
+/**
+ * Server-resolved options for the order draft. Passed OUT-OF-BAND by the caller
+ * (orchestration -> provisioned.clientId; standalone route -> none/null) — NEVER
+ * sourced from the client request body — so the persisted client_id (which the
+ * outbox dispatcher resolves into an email recipient) cannot be forged.
+ */
+export interface CreateOrderDraftOptions {
+    clientId?: string | null;
+}
+export interface CommerceOrderDraftWritePort<Request, Response> {
+    createOrderDraft(request: Request, options?: CreateOrderDraftOptions): Promise<Response>;
+}
+/**
+ * A still-in-flight order found for a client, for the checkout handler's
+ * duplicate-charge guard. `status` is always an in-flight `AsyncCheckoutStatus`.
+ */
+export interface ResumableOrderSnapshot {
+    orderId: string;
+    paymentIntentId: string;
+    status: AsyncCheckoutStatus;
+    metadata?: Record<string, unknown> | null;
+    /**
+     * True when the submitting journey PRODUCED this order — a cart edit, not a
+     * cross-device return. Never resume one: superseding re-prices the cart.
+     */
+    sameJourney: boolean;
+}
+export interface CommerceResumableOrderReadPort {
+    /**
+     * Newest still-resumable order for `clientId` within `withinMinutes`, or null.
+     * Resumable = payment neither settled nor terminally failed, so a charge may
+     * be in flight and re-submitting would double-charge; a paid/dead order is NOT
+     * returned. `journeyKey` is resolved here to set `sameJourney`.
+     */
+    findResumableOrderForClient(input: {
+        clientId: string;
+        withinMinutes: number;
+        now: Date;
+        journeyKey: string;
+    }): Promise<ResumableOrderSnapshot | null>;
+}
+/** Neutral sizing seam; the host defines demand units and line names. */
+export interface CommercePackageSizingPort<Input, Result> {
+    recomputeQuantities(input: Input): Promise<Result>;
+    eligibleVariantIds(): Promise<Set<string>>;
+}
+export type CheckoutOfferResolution = {
+    kind: "bound";
+    offerVersion: string;
+} | {
+    kind: "refused";
+    reason: string;
+};
+/** Offer policy binds or refuses an opaque client ask; evidence is server minted. No executor is included. */
+export interface CheckoutOfferPolicyPort<Intent, Quote> {
+    resolve(input: {
+        intent: Intent;
+        checkoutKind: CheckoutKind;
+    }): Promise<CheckoutOfferResolution>;
+    evidence(input: {
+        intent: Intent;
+        offerVersion: string;
+        quote: Quote;
+    }): Promise<Record<string, unknown>>;
+}
+/** Shared journey projection; pricing and host metadata types are supplied by composition. */
+export interface CheckoutJourney<Request, Policy> {
+    idempotencyKey: string;
+    contactEmail: string;
+    createQuoteRequest: () => Request;
+    createRuntimeMetadata: (pricingPolicy?: Policy) => Record<string, unknown>;
+}
+```
+## dist/commerce/contracts/recovery.d.ts
+
+```ts
+export type RecoveryDestinationIntent = "checkout_recovery" | "account_payment_recovery" | "customer_dashboard" | "fresh_checkout";
+export type RecoveryDestinationState = "recoverable" | "unrecoverable" | "terminal_expired";
+export type RecoveryDestinationSource = "checkout_recovery" | "subscription_dunning" | "checkout_expired";
+export interface RecoveryDestinationPolicyInput {
+    state: RecoveryDestinationState;
+    source: RecoveryDestinationSource;
+    orderMode?: "one_time_order" | "subscription_cycle" | null;
+    hasOrderSubscription?: boolean;
+    requestedSubscriptionContext?: boolean;
+    clientHasLiveOrPendingSubscription?: boolean;
+}
+```
+## dist/commerce/contracts/runtimePorts.d.ts
+
+```ts
+export interface CommercePaymentRuntimeVocabulary {
+    currency: string;
+    intentStatus: string;
+    executionProvider: string;
+    executionAttemptStatus: string;
+    nextActionKind: string;
+    attemptStatus: string;
+    targetKind: string;
+}
+export interface FinalizedCheckoutOrderItem {
+    orderItemId: string;
+    skuId: string;
+    sku: string;
+    quantity: number;
+}
+export interface FinalizedCheckoutOrder<Currency> {
+    orderId: string;
+    orderRef: string;
+    mode: "one_time" | "subscription_cycle";
+    clientId: string;
+    shippingAddressId: string;
+    subscriptionId: string | null;
+    subscriptionCycleId: string | null;
+    total: {
+        amountMinor: number;
+        currency: Currency;
+    };
+    items: FinalizedCheckoutOrderItem[];
+    replayed: boolean;
+}
+export interface CommerceCheckoutRuntimeOrderPort<Request, Order> {
+    finalizeOrderForCheckout(request: Request): Promise<Order>;
+}
+export interface InventoryCheckoutReservationPort<Order, PaymentStatus, Reservation> {
+    reserveOrderItems(input: {
+        idempotencyKey: string;
+        order: Order;
+        paymentStatus: PaymentStatus;
+        metadata?: Record<string, unknown>;
+    }): Promise<Reservation[]>;
+    releaseOrderReservations(input: {
+        idempotencyKey: string;
+        orderId: string;
+        reason: string;
+    }): Promise<{
+        releasedCount: number;
+    }>;
+}
+export interface PaymentControlRuntimePort<V extends CommercePaymentRuntimeVocabulary, Result extends {
+    resultStatus: string;
+}, Evidence = never> {
+    createIntent(input: {
+        idempotencyKey: string;
+        targetKind: V["targetKind"];
+        orderId: string;
+        subscriptionId: string | null;
+        subscriptionCycleId: string | null;
+        amountMinor: number;
+        currency: V["currency"];
+        metadata: Record<string, unknown>;
+    }): Promise<{
+        paymentIntentId: string;
+        paymentId: string;
+        status: V["intentStatus"];
+        replayed: boolean;
+    }>;
+    recordAttempt(input: {
+        idempotencyKey: string;
+        paymentIntentId: string;
+        provider: V["executionProvider"];
+        providerAttemptId: string | null;
+        providerSessionId: string | null;
+        attemptStatus: V["executionAttemptStatus"];
+        nextActionKind: V["nextActionKind"] | null;
+        requestPayload: Record<string, unknown>;
+        responsePayload: Record<string, unknown>;
+    }): Promise<{
+        paymentAttemptId: string;
+        status: V["attemptStatus"];
+        replayed: boolean;
+    }>;
+    applyResult(input: Result): Promise<{
+        paymentIntentId: string;
+        paymentAttemptId: string;
+        paymentId: string;
+        orderId: string;
+        status: Result["resultStatus"];
+        kind: string;
+        replayed: boolean;
+    }>;
+    reopenInteractivePreparedAttempt?(input: {
+        idempotencyKey: string;
+        paymentIntentId: string;
+        paymentAttemptId: string;
+        expectedOrderId: string;
+        expectedSubscriptionId: string | null;
+        expectedSubscriptionCycleId: string | null;
+        evidence: Evidence;
+    }): Promise<{
+        paymentAttemptId: string;
+        paymentIntentId: string;
+        paymentAttemptStatus: "failed";
+        paymentIntentStatus: "failed";
+        replayed: boolean;
+    }>;
+}
+export interface InteractivePreparedAttemptRuntimePort<V extends CommercePaymentRuntimeVocabulary, Result extends {
+    resultStatus: string;
+}, Evidence> extends PaymentControlRuntimePort<V, Result, Evidence> {
+    reopenInteractivePreparedAttempt(input: {
+        idempotencyKey: string;
+        paymentIntentId: string;
+        paymentAttemptId: string;
+        expectedOrderId: string;
+        expectedSubscriptionId: string | null;
+        expectedSubscriptionCycleId: string | null;
+        evidence: Evidence;
+    }): Promise<{
+        paymentAttemptId: string;
+        paymentIntentId: string;
+        paymentAttemptStatus: "failed";
+        paymentIntentStatus: "failed";
+        replayed: boolean;
+    }>;
+}
+export interface PreparedProviderAttemptRuntimePort<V extends CommercePaymentRuntimeVocabulary, Result extends {
+    resultStatus: string;
+}, Evidence = never> extends PaymentControlRuntimePort<V, Result, Evidence> {
+    prepareProviderAttempt(input: {
+        idempotencyKey: string;
+        paymentIntentId: string;
+        provider: V["executionProvider"];
+        providerIdempotencyKey: string;
+        providerRequestFingerprint: string;
+        providerFlow: string;
+        paymentMethodRef?: string | null;
+        requestPayload: Record<string, unknown>;
+    }): Promise<{
+        paymentAttemptId: string;
+        status: V["attemptStatus"];
+        replayed: boolean;
+        providerAttemptId: string | null;
+        providerSessionId: string | null;
+        nextActionKind: V["nextActionKind"] | null;
+    }>;
+    finalizeProviderAttempt(input: {
+        idempotencyKey: string;
+        paymentIntentId: string;
+        paymentAttemptId: string;
+        providerIdempotencyKey: string;
+        providerRequestFingerprint: string;
+        providerAttemptId: string | null;
+        providerSessionId: string | null;
+        attemptStatus: V["executionAttemptStatus"];
+        nextActionKind: V["nextActionKind"] | null;
+        requestPayload: Record<string, unknown>;
+        responsePayload: Record<string, unknown>;
+    }): Promise<{
+        paymentAttemptId: string;
+        status: V["attemptStatus"];
+        replayed: boolean;
+        providerAttemptId: string | null;
+        providerSessionId: string | null;
+        nextActionKind: V["nextActionKind"] | null;
+    }>;
+}
+export interface CommerceRuntimeReadinessPort<Readiness> {
+    evaluateOrderReadiness(input: {
+        orderId: string;
+        fallbackOrderItemCount: number | null;
+        allOrderItemsHaveSku: boolean;
+    }): Promise<Readiness>;
+}
+export interface CommerceCheckoutRuntimePort<StartRequest, StartResponse, ResultRequest, ResultResponse> {
+    startRuntime(request: StartRequest): Promise<StartResponse>;
+    applyPaymentResult(request: ResultRequest): Promise<ResultResponse>;
+}
+export interface CheckoutCommandPersistencePort<Command, Persistence> {
+    persistCheckoutCommand(command: Command): Promise<Persistence>;
+}
+export interface CheckoutCommandRuntimeRequest<Command, Provider> {
+    command: Command;
+    paymentProvider: Provider;
+    paymentAttemptSequence?: number;
+    metadata?: Record<string, unknown>;
+}
+export interface CheckoutCommandRuntimeResult<Quote, Persistence, OrderDraft, Runtime, Settlement> {
+    quoteSnapshot: Quote;
+    persistence: Persistence;
+    orderDraft: OrderDraft;
+    runtime: Runtime;
+    settlement: Settlement | null;
+}
+export interface CheckoutCommandRuntimePort<Request, Response> {
+    startCheckoutCommand(request: Request): Promise<Response>;
+}
+```
+## dist/commerce/contracts/state.d.ts
+
+```ts
+export declare const CART_STATUSES: readonly ["draft"];
+export declare const CHECKOUT_STATUSES: readonly ["not_configured", "created", "expired"];
+export declare const ORDER_DRAFT_STATUSES: readonly ["draft"];
+export declare const ORDER_STATUSES: readonly ["draft", "pending_payment", "paid", "failed", "expired", "fulfillment_pending", "cancelled", "fulfilled", "refunded"];
+export declare const PAYMENT_STATUSES: readonly ["not_started", "requires_action", "processing", "paid", "failed", "expired", "refunded", "partially_refunded", "disputed"];
+export declare const OMS_FULFILLMENT_BLOCK_REASONS: readonly ["order_not_paid", "payment_not_succeeded", "subscription_cycle_not_paid", "active_hold", "missing_shipping_address", "inventory_review", "risk_review"];
+export declare const OMS_INVENTORY_STATUSES: readonly ["not_checked", "reserved", "missing", "released", "expired", "consumed", "review_required"];
+export type CartStatus = (typeof CART_STATUSES)[number];
+export type CheckoutStatus = (typeof CHECKOUT_STATUSES)[number];
+export type OrderDraftStatus = (typeof ORDER_DRAFT_STATUSES)[number];
+export type OrderStatus = (typeof ORDER_STATUSES)[number];
+export type PaymentStatus = (typeof PAYMENT_STATUSES)[number];
+export type OmsFulfillmentBlockReason = (typeof OMS_FULFILLMENT_BLOCK_REASONS)[number];
+export type OmsInventoryStatus = (typeof OMS_INVENTORY_STATUSES)[number];
+export interface CommerceFulfillmentEligibilityInput<PaymentState extends string = string, SubscriptionState extends string = string> {
+    orderMode: "one_time" | "subscription_cycle";
+    orderStatus: OrderStatus;
+    paymentStatus: PaymentState;
+    subscriptionCycleStatus?: SubscriptionState | null;
+    activeHoldCount: number;
+    hasShippingAddress: boolean;
+    inventoryStatus?: OmsInventoryStatus;
+    inventoryReviewRequired?: boolean;
+    riskReviewRequired?: boolean;
+}
+export type OmsPaymentStatus<PaymentState extends string> = "not_started" | PaymentState;
+```
+## dist/invoicing/contracts/capabilities.d.ts
+
+```ts
+import type { InvoiceDiagnosticCode, InvoiceUnsupported } from "./provider.js";
+export interface InvoiceCapabilities {
+    readonly version: "invoicing.capabilities.v1";
+    readonly providerRef: string;
+    readonly fiscalScope: {
+        readonly scopeRef: string;
+        readonly version: string;
+    };
+    readonly policies: {
+        readonly identifierRef: string;
+        readonly taxRef: string;
+        readonly roundingRef: string;
+    };
+    readonly documentKinds: readonly string[];
+    readonly correctionKinds: readonly "full_reversal"[];
+    readonly numberingOwner: "provider";
+    readonly sellerTiming: "execution" | "first_claim";
+    readonly operations: Readonly<Record<"issue" | "correction" | "recovery" | "readback" | "exactAbsence" | "artifact" | "clearance" | "settlement" | "companyLookup", {
+        readonly supported: true;
+    } | {
+        readonly supported: false;
+        readonly reason: "host_required" | "not_implemented" | "not_exposed";
+    }>> & {
+        readonly remoteVoid: {
+            readonly supported: false;
+            readonly reason: "not_implemented";
+        };
+    };
+    readonly defaultOff: true;
+}
+/** Interpretation only: no environment discovery, activation, writes or provider calls. */
+export type InvoiceCapabilitySelection = InvoiceUnsupported | {
+    readonly kind: "ready";
+    readonly capability: InvoiceCapabilities;
+} | {
+    readonly kind: "refused";
+    readonly code: Extract<InvoiceDiagnosticCode, "disabled" | "selection_required">;
+    readonly retryable: false;
+    readonly effectMayHaveSucceeded: false;
+};
+```
+## dist/invoicing/contracts/companyLookup.d.ts
+
+```ts
+import type { InvoiceProof, InvoiceUnsupported } from "./provider.js";
+/** Injected registry seam. Host owns identifier validation, freshness and fallback;
+ * lookup evidence never overwrites checkout truth or becomes a renewal prerequisite.
+ * Carrier: accountingControlContracts lookup fields, generalized per A5 fit probe.
+ */
+export interface InvoiceCompanyLookupPort {
+    lookup(input: {
+        readonly identifier: {
+            readonly scheme: string;
+            readonly value: string;
+            readonly country?: string;
+        };
+        readonly asOf: string;
+        readonly sourceRef: string;
+    }): Promise<{
+        readonly kind: "found" | "partial";
+        readonly identifier: {
+            readonly scheme: string;
+            readonly value: string;
+            readonly country?: string;
+        };
+        readonly legalName: string | null;
+        readonly registrationIds: readonly {
+            readonly scheme: string;
+            readonly value: string;
+        }[];
+        readonly address: {
+            readonly line1: string;
+            readonly postalCode: string;
+            readonly city: string;
+            readonly country: string;
+        } | null;
+        readonly taxRegistrations: readonly {
+            readonly scheme: string;
+            readonly status: "active" | "not_registered" | "exempt" | "unknown";
+        }[];
+        readonly sourceRef: string;
+        readonly proof: InvoiceProof;
+    } | {
+        readonly kind: "not_found";
+        readonly identifier: Parameters<InvoiceCompanyLookupPort["lookup"]>[0]["identifier"];
+        readonly sourceRef: string;
+        readonly proof: InvoiceProof;
+    } | {
+        readonly kind: "unknown";
+        readonly sourceRef: string;
+        readonly code: "unknown";
+    } | InvoiceUnsupported>;
+}
+```
+## dist/invoicing/contracts/delivery.d.ts
+
+```ts
+import type { InvoiceDocumentIdentity, InvoiceProof, InvoiceUnsupported } from "./provider.js";
+/** Durable opaque references; signed URLs and downloaded bytes are transient. */
+export type InvoiceArtifactResult = {
+    readonly kind: "found";
+    readonly identity: InvoiceDocumentIdentity;
+    readonly artifact: {
+        readonly kind: "pdf" | "structured_document" | "clearance_receipt";
+        readonly ref: string;
+        readonly owner: "provider" | "host_storage";
+        readonly mediaType: string;
+        readonly proof: InvoiceProof;
+    };
+} | {
+    readonly kind: "absent";
+    readonly identity: InvoiceDocumentIdentity;
+    readonly evidence: InvoiceProof & {
+        readonly exact: true;
+        readonly complete: true;
+        readonly scope: {
+            readonly identity: InvoiceDocumentIdentity;
+            readonly kind: "pdf" | "structured_document" | "clearance_receipt";
+            readonly artifactRef: string | null;
+        };
+    };
+} | {
+    readonly kind: "unknown";
+    readonly identity: InvoiceDocumentIdentity;
+    readonly code: "unknown";
+} | InvoiceUnsupported;
+/** Observation only; unsupported is never not_required. No clearance submission. */
+export type InvoiceClearanceObservation = {
+    readonly proof: InvoiceProof;
+} & ({
+    readonly state: "accepted";
+    readonly reference: string;
+} | {
+    readonly state: "not_submitted" | "pending" | "rejected" | "not_required" | "unsupported";
+    readonly reference: string | null;
+});
+export interface InvoiceDeliveryPort {
+    /** Host M04 content/transport; provider acceptance is not inbox delivery.
+     * Preserve delivery/request keys, recipient, filename and bytes. Validate PDF
+     * type, size and signature before send; uncertain send must never repeat sending.
+     */
+    send(input: {
+        readonly deliveryRef: string;
+        readonly requestKey: string;
+        readonly attemptCount: number;
+        readonly documentRef: string;
+        readonly orderId: string;
+        readonly orderRef: string;
+        readonly invoiceRef: string;
+        readonly providerDocumentRef: string;
+        readonly clientRef: string | null;
+        readonly recipient: string;
+        readonly source: string | null;
+        readonly providerDocumentNumber: string | null;
+        readonly filename: string;
+        readonly content: Uint8Array;
+        readonly contentType: string;
+    }): Promise<{
+        readonly kind: "provider_accepted";
+        readonly receiptRef: string;
+        readonly proof: InvoiceProof;
+    } | {
+        readonly kind: "failed_before_send";
+        readonly retryable: boolean;
+        readonly code: "retryable" | "invalid_artifact";
+    } | {
+        readonly kind: "uncertain";
+        readonly code: "uncertain_delivery";
+        readonly receiptRef: string | null;
+    } | InvoiceUnsupported>;
+}
+```
+## dist/invoicing/contracts/facts.d.ts
+
+```ts
+/** Frozen host facts; no catalogue, registry or country-policy reread on retry.
+ * Carrier: donor providerPorts snapshot and invoiceContracts LocalInvoiceSnapshot;
+ * native invoicing_install_facts adds dates/refs/policyVersion and explicit totals.
+ */
+export interface InvoiceSeller {
+    readonly name: string;
+    readonly address: {
+        readonly line1: string;
+        readonly postalCode: string;
+        readonly city: string;
+    };
+    readonly taxIdentifier: {
+        readonly scheme: string;
+        readonly value: string;
+    };
+    readonly registrationIds?: readonly {
+        readonly scheme: string;
+        readonly value: string;
+    }[];
+    readonly bankAccount: string | null;
+    /** Opaque host routing reference, interpreted only by the selected adapter. */
+    readonly routingRef: string | null;
+}
+export interface InvoiceBuyer {
+    readonly name: string;
+    readonly email: string | null;
+    readonly taxIdentifier: {
+        readonly scheme: string;
+        readonly value: string;
+    } | null;
+    readonly companyName: string | null;
+    readonly address: {
+        readonly line1: string | null;
+        readonly postalCode: string | null;
+        readonly city: string | null;
+        readonly country: string | null;
+    } | null;
+}
+/** Safe integer minor amounts; taxRateBps is a rate, never a fiscal-support claim.
+ * Preserve array order and quantityUnit; no inferred shipping residual or FX.
+ */
+export interface InvoiceLine {
+    readonly description: string;
+    readonly quantity: number;
+    readonly quantityUnit?: string;
+    readonly unitNetMinor: number;
+    readonly unitGrossMinor: number;
+    readonly totalNetMinor: number;
+    readonly totalTaxMinor: number;
+    readonly totalGrossMinor: number;
+    readonly taxRateBps: number;
+    readonly taxRateLabel?: string;
+    readonly positionKind: "item" | "delivery" | null;
+    readonly catalogTotalGrossMinor: number | null;
+    readonly discountAllocatedMinor: number | null;
+    readonly shippingGrossMinor: number | null;
+    readonly shippingDiscountMinor: number | null;
+}
+export interface InvoiceFacts {
+    readonly factRevision: string;
+    readonly policyVersion: string;
+    readonly refs: {
+        readonly orderId: string;
+        readonly orderRef: string;
+        readonly invoiceRef: string;
+    };
+    readonly dates: {
+        readonly issueDate: string;
+        readonly sellDate: string;
+        readonly handedOverAt: string | null;
+        readonly paymentCompletedAt: string | null;
+    };
+    /** Host-defined kind selected through the identifier/tax seam, never guessed. */
+    readonly documentKind: string;
+    readonly clearanceRequired: boolean;
+    readonly currency: string;
+    readonly buyer: InvoiceBuyer;
+    /** Claim projection only: the first durable claim freezes the seller; legacy obligations retain execution-time fallback. */
+    readonly seller?: InvoiceSeller;
+    readonly payment: {
+        readonly intentRef: string;
+        readonly providerRef: string | null;
+        readonly providerPaymentRef: string | null;
+        readonly amountMinor: number;
+        readonly currency: string;
+        readonly localSettlementState: "matched" | "unavailable";
+    };
+    readonly orderMoney: {
+        readonly subtotalMinor: number;
+        readonly discountMinor: number;
+        readonly shippingMinor: number;
+        readonly shippingDiscountMinor: number;
+        readonly totalMinor: number;
+    } | null;
+    readonly lines: readonly InvoiceLine[];
+    readonly totalNetMinor: number;
+    readonly totalTaxMinor: number;
+    readonly totalGrossMinor: number;
+    readonly chargedTotalGrossMinor: number;
+}
+/** Host-selected immutable revision; it contains no provider or country defaults. */
+export interface InvoiceSellerRevision<Seller = InvoiceSeller> {
+    readonly seller: Seller;
+    readonly revisionRef: string;
+}
+/** Added only to returned claim facts, never to installed historical revisions. */
+export interface InvoiceClaimedFacts extends InvoiceFacts {
+    readonly sellerRevision?: string;
+    readonly sellerMode?: "frozen" | "legacy_fallback";
+}
+```
+## dist/invoicing/contracts/host.d.ts
+
+```ts
+import type { InvoiceFacts, InvoiceSeller } from "./facts.js";
+import type { InvoiceDocumentIdentity, InvoiceProof, InvoiceProviderPort, InvoiceUnsupported } from "./provider.js";
+import type { InvoiceArtifactResult, InvoiceClearanceObservation, InvoiceDeliveryPort } from "./delivery.js";
+import type { InvoiceCompanyLookupPort } from "./companyLookup.js";
+import type { InvoiceSettlementPort } from "./settlement.js";
+import type { InvoiceCapabilities } from "./capabilities.js";
+import type { InvoiceStorePort } from "./store.js";
+/** Host facts, fiscal routing, M07 reads, storage, registry, M04 delivery and M12
+ * history are required selections. Every missing native capability refuses before
+ * any write; an owed duty remains observable. This interface grants no authority.
+ */
+export interface InvoiceHostPorts {
+    facts: {
+        read(orderId: string): Promise<{
+            readonly kind: "found";
+            readonly facts: InvoiceFacts;
+        } | {
+            readonly kind: "unknown";
+            readonly code: "missing_facts";
+        } | InvoiceUnsupported>;
+    };
+    /** Read the current host seller for the next claim, never per duty. Null orderId
+     * means an unscoped claim (including corrections). The durable wrapper freezes this seller at
+     * the first-ever claim; revisionRef feeds the claim wrapper's revision argument.
+     */
+    seller: {
+        read(input: {
+            readonly orderId: string | null;
+        }): Promise<{
+            readonly kind: "found";
+            readonly seller: InvoiceSeller;
+            readonly revisionRef: string;
+        } | {
+            readonly kind: "unknown";
+            readonly code: "unknown";
+        } | InvoiceUnsupported>;
+    };
+    /** Read-only projection of the final claimed M07 identity, never a refund writer.
+     * Missing nullable money is unavailable, never fabricated zero or mismatch.
+     */
+    money: {
+        read(input: {
+            readonly intentRef: string;
+            readonly providerRef: string;
+            readonly providerPaymentRef: string | null;
+            readonly expectedMoney: {
+                readonly amountMinor: number;
+                readonly currency: string;
+            };
+        }): Promise<{
+            readonly kind: "observed";
+            readonly status: "succeeded" | "failed" | "pending";
+            readonly amountMinor: number | null;
+            readonly currency: string | null;
+            readonly proof: InvoiceProof;
+        } | {
+            readonly kind: "absent";
+            readonly evidence: InvoiceProof & {
+                readonly exact: true;
+                readonly complete: true;
+                readonly scope: Parameters<InvoiceHostPorts["money"]["read"]>[0];
+            };
+        } | {
+            readonly kind: "unknown" | "unavailable";
+            readonly code: "money_unavailable";
+        } | InvoiceUnsupported>;
+    };
+    artifacts: {
+        read(input: {
+            readonly identity: InvoiceDocumentIdentity;
+            readonly kind: "pdf" | "structured_document" | "clearance_receipt";
+        }): Promise<InvoiceArtifactResult>;
+        /** Ownership must already be authorized; response bytes are not a storage receipt. */
+        download(input: {
+            readonly identity: InvoiceDocumentIdentity;
+            readonly artifactRef: string;
+        }): Promise<{
+            readonly kind: "downloaded";
+            readonly content: Uint8Array;
+            readonly contentType: string;
+        } | {
+            readonly kind: "unknown";
+            readonly code: "unknown";
+        } | InvoiceUnsupported>;
+        persist(input: {
+            readonly identity: InvoiceDocumentIdentity;
+            readonly kind: "pdf" | "structured_document" | "clearance_receipt";
+            readonly content: Uint8Array;
+            readonly contentType: string;
+        }): Promise<Exclude<InvoiceArtifactResult, {
+            kind: "absent";
+        }>>;
+    };
+    /** Host identifier/tax/rounding policy; refs must match the selected descriptor.
+     * No jurisdictional default is supplied. Carrier: TaxIdRoutingPort and injected
+     * canonical tax safety in accountingProviderSnapshot.
+     */
+    fiscal: {
+        verify(input: {
+            readonly facts: InvoiceFacts;
+            readonly policies: InvoiceCapabilities["policies"];
+        }): Promise<{
+            readonly kind: "verified";
+            readonly documentKind: string;
+            readonly clearanceRequired: boolean;
+            readonly proof: InvoiceProof;
+        } | {
+            readonly kind: "refused";
+            readonly code: "blocked" | "money_mismatch";
+        } | {
+            readonly kind: "unknown";
+            readonly code: "unknown";
+        } | InvoiceUnsupported>;
+    };
+    registry: InvoiceCompanyLookupPort;
+    delivery: InvoiceDeliveryPort;
+    clearance: {
+        observe(input: {
+            readonly identity: InvoiceDocumentIdentity;
+            readonly providerDocumentRef: string;
+        }): Promise<{
+            readonly kind: "observed";
+            readonly observation: InvoiceClearanceObservation;
+        } | {
+            readonly kind: "unknown";
+            readonly code: "unknown";
+        } | InvoiceUnsupported>;
+    };
+    settlement: InvoiceSettlementPort;
+    policy: {
+        /** Carrier: channelInvoicePolicyGate and the approved explicit operator skip.
+         * Suppression receipts have no fabricated document ID. Host persists attribution.
+         * Executor decides before installFacts: suppressed orders get no local document.
+         * Readback consumers merge recorded receipts with duty readback.
+         * Transient read failures return unknown without recording a receipt.
+         */
+        decide(input: {
+            readonly requestKey: string;
+            readonly lookup: {
+                readonly by: "order";
+                readonly orderId: string;
+            } | {
+                readonly by: "fulfillmentOrder";
+                readonly fulfillmentOrderRef: string;
+            };
+        }): Promise<{
+            readonly kind: "issue";
+            readonly policyVersion: string;
+        } | {
+            readonly kind: "policy_suppressed";
+            readonly outcome: "channel_issues" | "no_document";
+            readonly policyVersion: string;
+            readonly requestKey: string;
+        } | {
+            readonly kind: "operator_skipped";
+            readonly outcome: "operator_skip";
+            readonly actorRef: string;
+            readonly reason: string;
+            readonly requestKey: string;
+        } | {
+            readonly kind: "unknown";
+            readonly code: "unknown";
+        } | InvoiceUnsupported>;
+        receipts(orderId: string): Promise<readonly (Extract<Awaited<ReturnType<InvoiceHostPorts["policy"]["decide"]>>, {
+            kind: "policy_suppressed" | "operator_skipped";
+        }> & {
+            readonly recordedAt: string;
+        })[] | {
+            readonly kind: "unknown";
+            readonly code: "unknown";
+        } | InvoiceUnsupported>;
+    };
+    /** Authenticate and authorize ownership before reading artifacts. Safe projection
+     * only: no buyer/seller payload, raw provider errors, signed URL or arbitrary meta.
+     * Found is a complete owned projection; incomplete reads return unknown.
+     * Carrier: donor document history + customer download ticket owner/lineage.
+     */
+    accountHistory: {
+        read(input: {
+            readonly accountRef: string;
+            readonly orderId: string;
+        }): Promise<{
+            readonly kind: "found";
+            readonly accountRef: string;
+            readonly orderId: string;
+            readonly documents: readonly {
+                readonly documentRef: string;
+                readonly invoiceRef: string;
+                readonly parentDocumentRef: string | null;
+                readonly role: "original" | "correction" | "replacement";
+                readonly status: string;
+                readonly issuedAt: string | null;
+                readonly clearance: {
+                    readonly state: InvoiceClearanceObservation["state"];
+                    readonly reference: string | null;
+                } | null;
+                readonly documentKind: string | null;
+                readonly artifact: "invoice" | "correction";
+                readonly providerDocumentNumber: string | null;
+                readonly totalGrossMinor: number | null;
+                readonly currency: string;
+                readonly emailState: "not_requested" | "pending" | "provider_accepted" | "failed";
+                readonly isCurrent: boolean;
+                readonly createdAt: string;
+                readonly downloadAvailable: boolean;
+            }[];
+        } | {
+            readonly kind: "denied";
+        } | {
+            readonly kind: "unknown";
+            readonly code: "unknown";
+        } | InvoiceUnsupported>;
+        resolveDownload(input: {
+            readonly accountRef: string;
+            readonly orderId: string;
+            readonly documentRef: string;
+        }): Promise<{
+            readonly kind: "authorized";
+            readonly identity: InvoiceDocumentIdentity;
+            readonly artifactRef: string;
+            readonly fileName: string;
+            readonly parentDocumentRef: string | null;
+        } | {
+            readonly kind: "denied";
+        } | {
+            readonly kind: "unknown";
+            readonly code: "unknown";
+        } | InvoiceUnsupported>;
+    };
+}
+/** Explicit service composition inputs; the host retains worker and route authority. Closures/credentials must never be serialized with options.
+ */
+export interface InvoiceServicesOptions {
+    readonly enabled?: boolean;
+    readonly selection: {
+        readonly providerRef: string;
+    } | null;
+    readonly capability: InvoiceCapabilities | null;
+    readonly provider: InvoiceProviderPort | null;
+    readonly store: InvoiceStorePort | null;
+    readonly host: InvoiceHostPorts;
+    readiness(): Promise<{
+        readonly kind: "ready";
+    } | InvoiceUnsupported>;
+}
+```
+## dist/invoicing/contracts/index.d.ts
+
+```ts
+/** @consumer Frozen fact provider and installed declaration consumer. */
+export type { InvoiceFacts, InvoiceLine, InvoiceSeller, InvoiceBuyer, InvoiceSellerRevision, InvoiceClaimedFacts } from "./facts.js";
+/** @consumer A4 issue/correction bridge, adapters and operator proof readback. */
+export type { InvoiceIdentity, InvoiceDocumentIdentity, InvoiceWriteResult, InvoiceReadbackResult, InvoiceProviderPort, InvoiceUnsupported, InvoiceDiagnosticCode, InvoiceProof } from "./provider.js";
+/** @consumer Host artifact storage/download binding. */
+export type { InvoiceArtifactResult, InvoiceClearanceObservation } from "./delivery.js";
+/** @consumer Host payout item recorder and resolver. */
+export type { InvoiceSettlementResult, InvoiceSettlementPort, InvoiceSettlementItem } from "./settlement.js";
+/** @consumer Explicit host selection and readInvoiceCapabilities. */
+export type { InvoiceCapabilities } from "./capabilities.js";
+/** @consumer Injected registry adapter (A5). */
+export type { InvoiceCompanyLookupPort } from "./companyLookup.js";
+/** @consumer Managed/native persistence adapter and operator duty readback; no implementation supplied. */
+export type { InvoiceStorePort, InvoiceDutyReadback } from "./store.js";
+/** @consumer Host composition and offline port-fit witnesses. */
+export type { InvoiceHostPorts, InvoiceServicesOptions } from "./host.js";
+```
+## dist/invoicing/contracts/provider.d.ts
+
+```ts
+import type { InvoiceFacts } from "./facts.js";
+/** Original host key bytes, immutable revision and exact lookup scope travel together.
+ * Carrier: providerPorts create options + approved exact-lookup envelope (fit probe).
+ */
+export interface InvoiceIdentity {
+    readonly providerRef: string;
+    readonly requestKey: string;
+    /** Persisted create identity from claim, distinct from original host request key. */
+    readonly providerCreateIdentity: string;
+    readonly factRevision: string;
+    readonly orderRef: string;
+    readonly invoiceRef: string;
+    readonly operation: "issue" | "full_reversal" | "remote_void";
+    readonly correctionRef: string | null;
+    readonly parentProviderDocumentRef: string | null;
+}
+/** Document rows and donor delivery/history carriers need no issue-duty metadata.
+ * @consumer Host artifacts, clearance, delivery and authorized download adapters.
+ */
+export interface InvoiceDocumentIdentity {
+    readonly providerRef: string;
+    readonly documentRef: string;
+    readonly providerDocumentRef: string | null;
+    readonly orderRef: string;
+    readonly invoiceRef: string;
+    readonly parentProviderDocumentRef: string | null;
+}
+/** A closed diagnostic allowlist in the neutral contract. Codes only.
+ * @consumer A4 bridge and provider/store adapters. */
+export type InvoiceDiagnosticCode = "faulted" | "missing_facts" | "legacy_facts_unproved" | "retryable" | "blocked" | "unsupported" | "unknown" | "absent" | "host_binding_required" | "selection_required" | "disabled" | "identity_mismatch" | "parent_mismatch" | "money_mismatch" | "money_unavailable" | "invalid_artifact" | "uncertain_delivery";
+/** Missing binding or capability: nothing written.
+ * @consumer Host and provider adapters. */
+export interface InvoiceUnsupported {
+    readonly kind: "unsupported";
+    readonly code: "host_binding_required" | "unsupported";
+    readonly retryable: false;
+    readonly effectMayHaveSucceeded: false;
+}
+/** Evidence references/fingerprints are adapter-filtered; never raw payloads or errors.
+ * @consumer Host recorder, operator readback and adapters. */
+export interface InvoiceProof {
+    readonly evidenceRef: string;
+    readonly fingerprint: string;
+    readonly observedAt: string;
+}
+/** Refused proves a definite provider refusal with no effect; post-request adapter
+ * or transport faults are unknown, even when no acknowledgement was received.
+ */
+export type InvoiceWriteResult = {
+    readonly kind: "issued";
+    readonly identity: InvoiceIdentity;
+    readonly providerDocumentRef: string;
+    readonly providerDocumentNumber: string | null;
+    readonly proof: InvoiceProof;
+    readonly replayed: boolean;
+} | {
+    readonly kind: "refused";
+    readonly identity: InvoiceIdentity;
+    readonly code: Extract<InvoiceDiagnosticCode, "blocked" | "retryable" | "missing_facts" | "identity_mismatch" | "parent_mismatch" | "money_mismatch">;
+    readonly retryable: boolean;
+    readonly effectMayHaveSucceeded: false;
+} | {
+    readonly kind: "unknown";
+    readonly identity: InvoiceIdentity;
+    readonly code: "unknown";
+    readonly effectMayHaveSucceeded: true;
+} | InvoiceUnsupported;
+/** Exact scope is the full identity, including operation, parent and revision.
+ * Incomplete/truncated/failed lookup is unknown. Only exact complete absence can
+ * authorize another create; found is proof, never a nullable lookup shortcut.
+ */
+export type InvoiceReadbackResult = {
+    readonly kind: "found";
+    readonly identity: InvoiceIdentity;
+    readonly providerDocumentRef: string;
+    readonly providerDocumentNumber: string | null;
+    readonly proof: InvoiceProof;
+} | {
+    readonly kind: "absent";
+    readonly identity: InvoiceIdentity;
+    readonly evidence: InvoiceProof & {
+        readonly exact: true;
+        readonly complete: true;
+        readonly scope: InvoiceIdentity;
+    };
+} | {
+    readonly kind: "unknown";
+    readonly identity: InvoiceIdentity;
+    readonly code: "unknown";
+} | InvoiceUnsupported;
+/** Correction bridge: positive immutable BEFORE facts, explicit zero AFTER,
+ * stable correctionRef and parent proof. Retry requires exact recovery before I/O.
+ * Carrier: donor createFullCorrection options and accountingProviderSnapshot.
+ * @consumer A4 conforming correction bridge and issue/readback adapters.
+ */
+export interface InvoiceProviderPort {
+    issue(input: {
+        readonly identity: InvoiceIdentity & {
+            readonly operation: "issue";
+            readonly correctionRef: null;
+            readonly parentProviderDocumentRef: null;
+        };
+        readonly facts: InvoiceFacts;
+        readonly recoveryLookupRequired: boolean;
+    }): Promise<InvoiceWriteResult>;
+    correct(input: {
+        readonly identity: InvoiceIdentity & {
+            readonly operation: "full_reversal";
+            readonly correctionRef: string;
+            readonly parentProviderDocumentRef: string;
+        };
+        readonly before: InvoiceFacts;
+        readonly after: {
+            readonly totalNetMinor: 0;
+            readonly totalTaxMinor: 0;
+            readonly totalGrossMinor: 0;
+        };
+        readonly reason: string;
+        readonly recoveryLookupRequired: boolean;
+    }): Promise<InvoiceWriteResult>;
+    read(input: InvoiceIdentity): Promise<InvoiceReadbackResult>;
+    /** Remote void stays cut; always refuse before I/O, never substitute local void. */
+    void(input: InvoiceIdentity & {
+        readonly operation: "remote_void";
+    }): Promise<InvoiceUnsupported>;
+}
+```
+## dist/invoicing/contracts/settlement.d.ts
+
+```ts
+import type { InvoiceProof, InvoiceUnsupported } from "./provider.js";
+/** One immutable balance item, never unique by batch+payment alone.
+ * Carrier: accountingControlContracts settlement + payout balance transaction ID.
+ * Null links and bankReceivedAt are facts; settlement is not an invoice gate.
+ * @consumer Host payout item recorder.
+ */
+export interface InvoiceSettlementItem {
+    readonly requestKey: string;
+    readonly providerRef: string;
+    readonly batchRef: string;
+    readonly itemRef: string;
+    readonly providerPaymentRef: string;
+    readonly paymentIntentRef: string | null;
+    readonly paymentRef: string | null;
+    readonly invoiceRef: string | null;
+    readonly grossMinor: number;
+    readonly feeMinor: number;
+    readonly netMinor: number;
+    readonly currency: string;
+    readonly status: "matched" | "unmatched" | "mismatch" | "bank_pending";
+    readonly bankReceivedAt: string | null;
+    readonly proof: InvoiceProof;
+}
+type ItemScope = Pick<InvoiceSettlementItem, "providerRef" | "batchRef" | "itemRef" | "providerPaymentRef">;
+export type InvoiceSettlementResult = {
+    readonly kind: "found";
+    readonly scope: ItemScope;
+    readonly paymentIntentRef: string | null;
+    readonly paymentRef: string | null;
+    readonly invoiceRef: string | null;
+    readonly proof: InvoiceProof;
+} | {
+    readonly kind: "absent";
+    readonly scope: ItemScope;
+    readonly evidence: InvoiceProof & {
+        readonly exact: true;
+        readonly complete: true;
+        readonly scope: ItemScope;
+    };
+} | {
+    readonly kind: "recorded";
+    readonly itemRef: string;
+    readonly settlementItemRef: string;
+    readonly replayed: boolean;
+} | {
+    readonly kind: "conflict";
+    readonly itemRef: string;
+    readonly code: "identity_mismatch" | "money_mismatch";
+} | {
+    readonly kind: "unknown";
+    readonly itemRef: string;
+    readonly code: "unknown";
+} | InvoiceUnsupported;
+/** Host recorder/resolver owns richer item identity. Unsupported before any write
+ * when a native batch/payment row cannot represent distinct items or nullable links.
+ * @consumer Host payout item recorder/resolver.
+ */
+export interface InvoiceSettlementPort {
+    record(item: InvoiceSettlementItem): Promise<Exclude<InvoiceSettlementResult, {
+        kind: "found" | "absent";
+    }>>;
+    resolve(input: ItemScope): Promise<Exclude<InvoiceSettlementResult, {
+        kind: "recorded" | "conflict";
+    }>>;
+}
+export {};
+```
+## dist/invoicing/contracts/store.d.ts
+
+```ts
+import type { InvoiceHostPorts } from "./host.js";
+import type { InvoiceFacts, InvoiceClaimedFacts } from "./facts.js";
+import type { InvoiceIdentity, InvoiceDocumentIdentity, InvoiceProof, InvoiceUnsupported, InvoiceWriteResult, InvoiceReadbackResult } from "./provider.js";
+import type { InvoiceClearanceObservation, InvoiceArtifactResult, InvoiceDeliveryPort } from "./delivery.js";
+type InvoiceDutyStatus = "owed" | "blocked" | "ready" | "processing" | "unknown" | "issued" | "voided" | "unsupported" | "faulted";
+/** Native duty/lease fields map to the pinned invoicing_* fixtures. Managed hosts
+ * translate their outboxId/attemptCount fences; never claim transaction equality.
+ */
+export interface InvoiceClaim {
+    readonly dutyId: string;
+    readonly documentId: string;
+    readonly requestId: string;
+    readonly token: string;
+    readonly generation: number;
+    readonly leaseUntil: string;
+    readonly identity: InvoiceIdentity;
+    readonly facts: InvoiceClaimedFacts;
+    readonly action: "create" | "readback";
+    readonly correction: {
+        readonly before: InvoiceFacts;
+        readonly reason: string;
+        readonly after: {
+            readonly totalNetMinor: 0;
+            readonly totalTaxMinor: 0;
+            readonly totalGrossMinor: 0;
+        };
+    } | null;
+}
+/** Exact camel-case shape returned by invoicing_duty_readback. This is not
+ * payment truth's accountingRequested; empty duties never assert invoice absence.
+ * @consumer Operator owed-duty readback.
+ */
+export interface InvoiceDutyReadback {
+    readonly orderId: string;
+    readonly captureFaults: readonly {
+        readonly sourceId: string;
+        readonly state: "retryable" | "faulted" | "resolved";
+        readonly attempts: number;
+        readonly availableAt: string;
+    }[];
+    readonly duties: readonly {
+        readonly dutyId: string;
+        readonly parentDutyId: string | null;
+        readonly documentId: string | null;
+        readonly state: "owed" | "blocked" | "claimed" | "unknown" | "issued" | "voided" | "unsupported" | "faulted";
+        readonly attempts: number;
+        readonly factAttempts: number;
+        readonly diagnosticCode: "faulted" | "missing_facts" | "legacy_facts_unproved" | "retryable" | "blocked" | "unsupported" | "unknown" | "absent" | null;
+        readonly createdAt: string;
+        readonly availableAt: string;
+        readonly leaseUntil: string | null;
+    }[];
+}
+/** Every operation is one local transaction; commit before external I/O. Native
+ * success atomically saves late identity and compensation; stale catch writes nothing.
+ * Compatibility stores bind provider selection at construction; the structural
+ * native store accepts it per claim and persists the first provider on the duty.
+ * No implementation, executor or migration is installed by these declarations.
+ */
+export interface InvoiceStorePort {
+    /** Never call inside a renewal money, dunning or dispatch transaction without
+     * isolation: capture failure must not propagate; the sweep recovers.
+     */
+    captureDuty(input: {
+        readonly requestKey: string;
+        readonly sourceKind: "paid" | "handoff";
+        readonly sourceId: string;
+        readonly orderId: string;
+        readonly occurredAt: string;
+        readonly evidence: {
+            readonly settlementIntentId: string;
+            readonly amountMinor: number;
+            readonly currency: string;
+        } | {
+            readonly shipmentId: string;
+            readonly handedOverAt: string;
+        };
+    }): Promise<{
+        readonly dutyId: string;
+        readonly status: InvoiceDutyStatus;
+    } | {
+        readonly kind: "conflict";
+        readonly code: "identity_mismatch";
+    } | InvoiceUnsupported>;
+    installFacts(input: {
+        readonly dutyId: string;
+        readonly facts: InvoiceFacts;
+    }): Promise<{
+        readonly dutyId: string;
+        readonly status: InvoiceDutyStatus;
+        readonly replayed?: boolean;
+    } | InvoiceUnsupported>;
+    /** Pinned split facts lease: sweep and prepare commit separately; finishing
+     * requires the same token and authoritative document/fact match. No host I/O
+     * under the duty lock, and unsupported never silently drops an owed duty.
+     */
+    sweep(limit: number): Promise<{
+        readonly collected: number;
+        readonly claims: readonly {
+            readonly dutyId: string;
+            readonly token: string;
+        }[];
+    } | InvoiceUnsupported>;
+    prepareFacts(input: {
+        readonly dutyId: string;
+        readonly token: string;
+    }): Promise<{
+        readonly status: "owed" | "ready" | "issued" | "voided" | "unsupported" | "stale";
+        readonly documentId?: string;
+        readonly requestId?: string;
+        readonly code?: "retryable" | "legacy_facts_unproved";
+    } | InvoiceUnsupported>;
+    finishFacts(input: {
+        readonly dutyId: string;
+        readonly token: string;
+        readonly result: Omit<Exclude<Awaited<ReturnType<InvoiceStorePort["prepareFacts"]>>, InvoiceUnsupported>, "status"> & {
+            readonly status: "owed" | "ready" | "issued" | "voided" | "unsupported";
+        };
+    }): Promise<{
+        readonly dutyId: string;
+        readonly status: "owed" | "ready" | "issued" | "voided" | "unsupported" | "faulted" | "stale";
+    } | InvoiceUnsupported>;
+    readDuties(orderId: string): Promise<InvoiceDutyReadback | InvoiceUnsupported>;
+    /** Filter order before locking/limit; never lease unrelated orders then filter.
+     * P7 host composition reads the injected seller before the separate first-claim SQL wrapper;
+     * its revisionRef supplies p_revision, without requiring a duty from the caller.
+     */
+    claim(input: {
+        readonly limit: number;
+        readonly visibilitySeconds: number;
+        readonly providerRef: string;
+        readonly orderId?: string | null;
+    }): Promise<readonly InvoiceClaim[] | InvoiceUnsupported>;
+    preflight(input: {
+        readonly claim: InvoiceClaim;
+        readonly amountMinor: number | null;
+        readonly currency: string | null;
+    } & ({
+        readonly status: "succeeded" | "failed" | "pending" | "unknown" | "unavailable";
+        readonly proof: InvoiceProof | null;
+    } | {
+        readonly status: "absent";
+        readonly evidence: Extract<Awaited<ReturnType<InvoiceHostPorts["money"]["read"]>>, {
+            kind: "absent";
+        }>["evidence"];
+    })): Promise<{
+        readonly kind: "ready" | "blocked" | "mismatch" | "unavailable" | "stale";
+    } | InvoiceUnsupported>;
+    finish(input: {
+        readonly claim: InvoiceClaim;
+        readonly result: Extract<InvoiceWriteResult, {
+            kind: "issued";
+        }> | Extract<InvoiceReadbackResult, {
+            kind: "found";
+        }>;
+    }): Promise<{
+        readonly kind: "issued";
+        readonly replayed: boolean;
+    } | {
+        readonly kind: "stale";
+    } | InvoiceUnsupported>;
+    /** Retryable requires a definite refusal (effectMayHaveSucceeded:false) or a
+     * pre-I/O failure and phase before_send. Every other failure maps to unknown.
+     * Native result kinds other than stale/voided map to recorded.
+     */
+    fail(input: {
+        readonly claim: InvoiceClaim;
+        readonly retrySeconds: number;
+    } & ({
+        readonly kind: "absent";
+        readonly evidence: Extract<InvoiceReadbackResult, {
+            kind: "absent";
+        }>;
+    } | {
+        readonly kind: "retryable";
+        readonly phase: "before_send";
+        readonly proof: InvoiceProof | null;
+    } | {
+        readonly kind: "blocked" | "unsupported" | "unknown";
+        readonly proof: InvoiceProof | null;
+    })): Promise<{
+        readonly kind: "recorded" | "voided" | "stale";
+    } | InvoiceUnsupported>;
+    /** Native post-write unsupported maps to unsupported_recorded, retaining duty/replay.
+     * Missing means no M09 duty, never invoice absence: retain/retry the reversal
+     * intent and route legacy documents to the incumbent path.
+     */
+    requestReversal(input: {
+        readonly requestKey: string;
+        readonly orderId: string;
+        readonly reason: "order_canceled" | "order_refunded";
+        readonly proof: InvoiceProof;
+    }): Promise<{
+        readonly kind: "missing" | "voided" | "pending_readback" | "correction_requested";
+        readonly dutyId?: string;
+        readonly replayed?: boolean;
+    } | {
+        readonly kind: "unsupported_recorded";
+        readonly dutyId?: string;
+        readonly replayed?: boolean;
+    } | {
+        readonly kind: "conflict";
+        readonly code: "identity_mismatch";
+    } | InvoiceUnsupported>;
+    /** Existing local-only request remains distinct from fiscal issuance. */
+    requestLocalDocument(input: {
+        readonly requestKey: string;
+        readonly orderId: string;
+        readonly providerRef: string;
+    }): Promise<{
+        readonly kind: "requested";
+        readonly documentId: string;
+        readonly invoiceRef: string;
+        readonly status: string;
+        readonly replayed: boolean;
+    } | InvoiceUnsupported>;
+    listClearanceTargets(limit: number): Promise<readonly {
+        readonly documentId: string;
+        readonly identity: InvoiceDocumentIdentity;
+        readonly providerDocumentRef: string;
+        readonly providerDocumentNumber: string | null;
+        readonly state: InvoiceClearanceObservation["state"];
+    }[] | InvoiceUnsupported>;
+    /** Native maps clearance state unsupported to observation kind unsupported;
+     * provider_mismatch returns InvoiceUnsupported before recording anything.
+     */
+    recordObservation(input: {
+        readonly requestKey: string;
+        readonly documentId: string;
+        readonly eventRef: string;
+        readonly eventKind: "clearance" | "artifacts" | "unsupported" | "provider_mismatch";
+        readonly identity: InvoiceDocumentIdentity;
+        readonly providerDocumentRef: string;
+        readonly providerDocumentNumber: string | null;
+        readonly clearance: InvoiceClearanceObservation | null;
+        readonly artifacts: readonly Extract<InvoiceArtifactResult, {
+            kind: "found";
+        }>["artifact"][];
+        readonly observedAt: string;
+        readonly payloadHash: string;
+        readonly source: "provider_api" | "provider_webhook" | "manual_reconciliation";
+    }): Promise<{
+        readonly replayed: boolean;
+    } | InvoiceUnsupported>;
+    /** Verify M04 binding before claiming; document rows need no M09 issue duty. */
+    claimDeliveries(input: {
+        readonly limit: number;
+        readonly visibilitySeconds: number;
+        readonly requireClearance: boolean;
+        readonly orderId?: string | null;
+    }): Promise<readonly {
+        readonly token: string;
+        readonly generation: number;
+        readonly identity: InvoiceDocumentIdentity;
+        readonly providerDocumentRef: string;
+        readonly delivery: Omit<Parameters<InvoiceDeliveryPort["send"]>[0], "filename" | "content" | "contentType">;
+    }[] | InvoiceUnsupported>;
+    /** Native uncertain settlement passes p_receipt NULL and retains a non-null
+     * receiptRef hint in p_evidence; managed uses it as the provider message id.
+     * Managed failed_before_send uses the retrySeconds RPC argument. Native
+     * failed_before_send carries { phase: 'before_send', retryable, retrySeconds }
+     * in p_evidence: whole seconds clamp to 60..86400, absent/invalid uses 900.
+     * retryable:false parks at infinity, with failed status and last_error visible.
+     */
+    settleDelivery(input: {
+        readonly deliveryRef: string;
+        readonly token: string;
+        readonly generation: number;
+        readonly providerDocumentRef: string;
+        readonly retrySeconds: number;
+        readonly result: Exclude<Awaited<ReturnType<InvoiceDeliveryPort["send"]>>, InvoiceUnsupported>;
+    }): Promise<{
+        readonly kind: "recorded" | "stale";
+        readonly replayed: boolean;
+    } | InvoiceUnsupported>;
+}
+export {};
 ```

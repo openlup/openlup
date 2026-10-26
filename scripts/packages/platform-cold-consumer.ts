@@ -1,5 +1,6 @@
 /** Cold installed-artifact proof. Never repack or use workspace resolution. */
 import { stripTypeScriptTypes } from "node:module";
+import assert from "node:assert/strict";
 import { env as processEnvironment } from "node:process";
 import { execFileSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
@@ -1343,6 +1344,7 @@ assert.throws(() => promotions.resolvePromotionBenefitDefinition({ discount_type
     proveInvoicingConsumer(consumer);
     proveSubscriptionsConsumer(consumer);
     proveAccountSupportConsumer(consumer);
+    proveAccountSupportReadsConsumer(consumer);
     provePaymentsConsumer(consumer);
     proveFulfillmentConsumer(consumer);
     installA1HostBinding(consumer, checkout);
@@ -1358,6 +1360,95 @@ assert.throws(() => promotions.resolvePromotionBenefitDefinition({ discount_type
     proveDockerPostgres(consumer, environment);
     console.log("Platform cold consumer PASS; verified tarballs, isolated optional peers, no live provider");
   } finally { rmSync(consumer, { recursive: true, force: true }); }
+}
+
+
+export const ACCOUNT_SUPPORT_READ_SCENARIOS = [
+  "account aggregate", "foreign detail", "owned detail", "unread profile", "partial profile",
+  "unbound invoice history", "signed invoice history", "authorized PDF", "denied PDF", "failed invoice history"
+] as const;
+export interface AccountSupportReadScenarioResult {
+  name: string;
+  pass: boolean;
+  comparisons: { observed: unknown; expected: unknown }[];
+  error?: string;
+}
+
+/** One installed process reports every independent R2 scenario, even after a failed assertion. */
+export function proveAccountSupportReadsConsumer(
+  consumer: string,
+  options: { throwOnFailure?: boolean } = {}
+): AccountSupportReadScenarioResult[] {
+  const output = consumerNode(consumer, `
+import assert from "node:assert/strict";
+import { readAccountSnapshot, readCustomerOrderDetail, projectCustomer360Snapshot, createInvoiceAccess } from "@openlup/platform/account-support";
+const results=[];
+let comparisons;
+const equal=(observed,expected)=>{comparisons.push({observed,expected});assert.deepEqual(observed,expected);};
+async function scenario(name,run){
+ comparisons=[];
+ try {await run();results.push({name,pass:true,comparisons});}
+ catch(error){comparisons.push({observed:{error:String(error)},expected:"scenario completes"});results.push({name,pass:false,comparisons,error:String(error.stack??error)});}
+}
+const empty = async () => new Map();
+const sources = { readExtension: async()=>({host:"captured"}), readSubscriptionRows: async(_id,limit)=>{equal(limit,50);return [];},
+ readAddresses:async()=>[],readOrdererProfiles:async()=>[],readPaymentPreferences:async()=>[],readDeliveryPreferences:async()=>[],
+ readOrders:async(id,limit)=>{equal(id,"owned");equal(limit,20);return {orders:[]};},readEvents:async()=>[],
+ readSubscriptionLines:empty,readSubscriptionBlockers:empty,readPauseWindows:empty,readPaymentEvidence:empty,readDeliveryAlignments:empty,readNextCharges:empty,readActionStates:empty};
+const policy={paymentMethodStatus:()=>"usable",canUsePaymentMethodForRenewal:()=>true,packageSummary:()=>null,withNextCharge:(recurringPrice,nextCharge)=>({recurringPrice,nextCharge})};
+await scenario("account aggregate",async()=>{
+ const account=await readAccountSnapshot(sources,policy,{id:"owned",email:"a@example.invalid"});equal(account.contractVersion,"customer.account.v3");equal(account.extension.host,"captured");
+});
+let companionReads=0;
+const store={readCustomerOrder:async(owner)=>owner==="owned"?{id:"o",currency:"EUR",status:"paid",subtotal_cents:200,discount_cents:20,shipping_cents:50,shipping_discount_cents:50,tax_cents:0,total_cents:180}:null,
+ readOrderLines:async()=>{companionReads++;return [{id:"l",quantity:2,unit_price_cents:100,total_cents:200,discount_allocated_cents:20,effective_total_cents:180,effective_net_cents:180,vat_rate_bps:0}];},
+ readPaymentStatuses:empty,readFulfillments:async()=>[],readTracking:empty,readFulfillmentOperations:empty,readStatusEvidence:empty,readReleasedProviderExceptionHolds:empty,readReleasedProviderExceptionEvidence:empty,readActiveHoldOrderIds:async()=>new Set(),readInvoiceSummaries:empty};
+const projection={automaticHoldSource:"host.hold",automaticReleaseSource:"host.release",orderReference:id=>id,fulfillmentEvidence:()=>({trackingReferences:[],trackingNumbers:[],trackingNumber:null,trackingUrl:null,carrierKind:null,service:null,trackingTimeline:[]}),presentation:{display:()=>({title:"Captured",variantName:null})}};
+await scenario("foreign detail",async()=>{
+ companionReads=0;equal(await readCustomerOrderDetail(store,"foreign","o",projection),null);equal(companionReads,0);
+});
+await scenario("owned detail",async()=>{
+ const detail=await readCustomerOrderDetail(store,"owned","o",projection);equal(detail.order.shipping,{amountMinor:0,currency:"EUR"});equal(detail.order.total,{amountMinor:180,currency:"EUR"});equal(detail.order.lines[0].title,"Captured");
+});
+const input={subject:{subjectId:"s",displayName:null,email:null,lifecycleStage:"customer",createdAt:null,lastActivityAt:null},legacy:null,cases:[],notices:[],tokens:[],recoveryAudit:[],orderTruth:[],now:0};
+const supportPolicy={lifecycle:()=>[],timelineAudit:()=>[]};
+await scenario("unread profile",()=>{
+ const core=projectCustomer360Snapshot(input,supportPolicy);equal("extension" in core,false);equal("contactHealth" in core,false);
+});
+await scenario("partial profile",()=>{
+ equal(projectCustomer360Snapshot({...input,profile:{extension:{host:"selected"},partial:true}},supportPolicy).extension,{host:"selected"});
+});
+await scenario("unbound invoice history",async()=>{
+ equal((await createInvoiceAccess().history({accountRef:"owned",orderId:"o"})).kind,"unsupported");
+});
+const identity={providerRef:"host",documentRef:"child",providerDocumentRef:"remote-child",orderRef:"order-o",invoiceRef:"parent",parentProviderDocumentRef:"remote-parent"};
+const content=new TextEncoder().encode("%PDF-1.7\\n1 0 obj\\n<<>>\\nendobj\\n%%EOF\\n");
+function invoice(){
+ let artifacts=0;
+ const history={read:async()=>({kind:"found",accountRef:"owned",orderId:"o",documents:[{documentRef:"child",invoiceRef:"parent",parentDocumentRef:"parent",role:"correction",status:"issued",issuedAt:null,clearance:null,documentKind:null,artifact:"correction",providerDocumentNumber:null,totalGrossMinor:-50,currency:"EUR",emailState:"not_requested",isCurrent:true,createdAt:"2030-01-01",downloadAvailable:true}]}),resolveDownload:async()=>({kind:"authorized",identity,artifactRef:"child-artifact",fileName:"child.pdf",parentDocumentRef:"parent"})};
+ const access=createInvoiceAccess({accountHistory:history,artifacts:{download:async()=>{artifacts++;return {kind:"downloaded",content,contentType:"application/pdf"};}}});
+ return {history,access,artifacts:()=>artifacts};
+}
+await scenario("signed invoice history",async()=>{
+ const {access}=invoice();const documents=await access.history({accountRef:"owned",orderId:"o"});equal(documents.documents[0].totalGrossMinor,-50);
+});
+await scenario("authorized PDF",async()=>{
+ const {access}=invoice();const pdf=await access.download({accountRef:"owned",orderId:"o",documentRef:"child"});equal(pdf.kind,"downloaded");equal(pdf.parentDocumentRef,"parent");equal(pdf.content,content);
+});
+await scenario("denied PDF",async()=>{
+ const {access,history,artifacts}=invoice();await access.download({accountRef:"owned",orderId:"o",documentRef:"child"});history.resolveDownload=async()=>({kind:"denied"});equal((await access.download({accountRef:"owned",orderId:"o",documentRef:"child"})).kind,"denied");equal(artifacts(),1);
+});
+await scenario("failed invoice history",async()=>{
+ const {access,history}=invoice();history.read=async()=>{throw Error("partial");};equal((await access.history({accountRef:"owned",orderId:"o"})).kind,"unknown");
+});
+console.log("R2_SCENARIOS="+JSON.stringify(results));
+`);
+  const record = output.split("\n").find(line => line.startsWith("R2_SCENARIOS="));
+  if (!record) throw new Error("R2 installed consumer did not report scenarios");
+  const results = JSON.parse(record.slice("R2_SCENARIOS=".length)) as AccountSupportReadScenarioResult[];
+  assert.deepEqual(results.map(result => result.name), ACCOUNT_SUPPORT_READ_SCENARIOS);
+  if (options.throwOnFailure !== false) assert.deepEqual(results.filter(result => !result.pass), []);
+  return results;
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href) runPlatformColdConsumer();

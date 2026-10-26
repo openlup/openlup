@@ -843,3 +843,54 @@ authority or establishes managed/native parity.
 The [module design](plans/oss-m12-account-support.md) records R1's unchanged slice,
 verification boundary and unimplemented later phases. It grants no activation,
 release or adopter cutover authority.
+
+
+### Bounded account and support reads
+
+`readAccountSnapshot(sources, policy, client)` runs the independent account reads
+in parallel, requesting 50 subscription rows before visibility filtering and
+exactly 20 recent orders at the store. Subscription assembly runs alongside
+subscription action evidence. Captured line money determines recurring prices;
+any unpriced or mixed-currency line leaves that amount unknown. The selected
+next-charge authority owns payable-cycle and shipping precedence. Private
+profile and catalogue fields belong in the injected extension/presentation seams.
+
+`readCustomerOrderSummaries` passes the selected limit and only the terminal
+`cancelled`/`expired` filter to the owned store. `readCustomerOrderDetail` first
+resolves ownership, then fans out lines and companions. Commerce derives money
+from stored headers/lines, including effective delivery discount and the order's
+currency. Fulfillment evidence interpretation and source attribution are injected;
+current-parcel and commerce recovery rules retain their existing owners.
+
+`projectCustomer360Snapshot` keeps same-client pending-order recovery eligibility,
+live-token evidence and the newest 80 audit events in chronological order.
+Optional enrichment is omitted when unselected; failed/partial enrichment carries
+its existing warning. Contact observation is independent of identity linkage and
+sign-in evidence. `createCustomer360ReadFacade({ authorize, journey, summary,
+diagnostics })` requires `authorize(): Promise<boolean>` before every search,
+snapshot, summary or diagnostic source read. A refusal returns `{ kind: "denied" }`
+without source IO; admitted reads retain exact arguments, results, nulls and
+thrown failures. It exposes no command authority.
+Subscription pointers retain generic `paymentMethodKind`: a selected value is
+preserved, a selected-empty source emits null, and an unread source omits it.
+
+`createInvoiceAccess` checks that the requested document appears in a found
+history with the same accountRef/orderId before resolving a download ticket.
+Foreign or unknown documents return `{ kind: "denied" }` without artifact/provider
+IO. This adds one history read; invoice order references are not raw order IDs.
+M09 still owns signed correction totals, document/parent lineage and PDF access. `downloadOwnedInvoicePdf` retains M09's existing PDF validation.
+
+`createM12AccountReadSelection` and `createM12SupportReadBinding` are separate,
+explicit-host, default-off reference factories. Missing account/history/invoice
+and managed support selections refuse with `host_binding_required`. Selected
+native support reads use the existing scoped PostgreSQL driver; authorization
+is the facade authorization, runs once before scope entry, retains real machine
+governance, and scopes close after
+success, null and failure. The read views accept typed strings and data from a
+host. Inline order expansion reads its summary only. No route is mounted; source
+route adoption remains pending P7, and no archive, detail/activity panel,
+subscription/recovery/contact/link controls or activation is supplied by R2.
+The support binding's independent diagnostic selection exposes `searchDiagnostics`,
+`history` (segment read) and `overview` with the existing typed versions, filters
+and cursors. Authorization and machine-read governance precede diagnostic scope
+entry; the trusted actor supplies `operatorId`. No journey scope is required.

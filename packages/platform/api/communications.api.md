@@ -386,7 +386,7 @@ export declare function consentStateFromBoolean(value: boolean | null | undefine
 import type { CommunicationPurpose } from "./contracts/types.js";
 import type { CommunicationPurposeDefinition, CommunicationPurposeRegistry } from "./contracts/consent.js";
 export declare function createCommunicationPurposeRegistry<const Purpose extends string = never>(additions?: readonly CommunicationPurposeDefinition<Purpose>[]): CommunicationPurposeRegistry<CommunicationPurpose | Purpose>;
-export declare const defaultCommunicationPurposeRegistry: CommunicationPurposeRegistry<"transactional" | "subscription_dunning" | "marketing_launch_offer" | "marketing_newsletter" | "tester_program" | "admin_notification">;
+export declare const defaultCommunicationPurposeRegistry: CommunicationPurposeRegistry<"subscription_dunning" | "transactional" | "marketing_launch_offer" | "marketing_newsletter" | "tester_program" | "admin_notification">;
 ```
 ## dist/communications/contracts/authEmail.d.ts
 
@@ -1701,18 +1701,18 @@ export declare const newsletterMarketingPurposeSchema: z.ZodEnum<{
     marketing_newsletter: "marketing_newsletter";
 }>;
 export declare const newsletterSyncEventTypeSchema: z.ZodEnum<{
+    suppress: "suppress";
     update: "update";
     subscribe: "subscribe";
     unsubscribe: "unsubscribe";
-    suppress: "suppress";
 }>;
 export declare const newsletterWebhookEventTypeSchema: z.ZodEnum<{
-    update: "update";
     ignored: "ignored";
+    suppress: "suppress";
+    update: "update";
     email_change: "email_change";
     subscribe: "subscribe";
     unsubscribe: "unsubscribe";
-    suppress: "suppress";
     complaint: "complaint";
     bounce: "bounce";
     profile_update: "profile_update";
@@ -1732,12 +1732,12 @@ export declare const canonicalNewsletterWebhookEventSchema: z.ZodObject<{
     providerKind: z.ZodString;
     providerEventId: z.ZodString;
     eventType: z.ZodEnum<{
-        update: "update";
         ignored: "ignored";
+        suppress: "suppress";
+        update: "update";
         email_change: "email_change";
         subscribe: "subscribe";
         unsubscribe: "unsubscribe";
-        suppress: "suppress";
         complaint: "complaint";
         bounce: "bounce";
         profile_update: "profile_update";
@@ -1771,12 +1771,12 @@ export declare function createNewsletterIntegrationSchemas<Purpose extends strin
         providerKind: z.ZodString;
         providerEventId: z.ZodString;
         eventType: z.ZodEnum<{
-            update: "update";
             ignored: "ignored";
+            suppress: "suppress";
+            update: "update";
             email_change: "email_change";
             subscribe: "subscribe";
             unsubscribe: "unsubscribe";
-            suppress: "suppress";
             complaint: "complaint";
             bounce: "bounce";
             profile_update: "profile_update";
@@ -1800,10 +1800,10 @@ export declare function createNewsletterIntegrationSchemas<Purpose extends strin
         contactId: z.ZodString;
         normalizedEmail: z.ZodString;
         eventType: z.ZodEnum<{
+            suppress: "suppress";
             update: "update";
             subscribe: "subscribe";
             unsubscribe: "unsubscribe";
-            suppress: "suppress";
         }>;
         purpose: z.ZodCustom<Purpose, Purpose>;
         payload: z.ZodRecord<z.ZodString, z.ZodUnknown>;
