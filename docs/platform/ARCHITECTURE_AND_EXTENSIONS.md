@@ -1992,7 +1992,7 @@ when the alert list is empty.
 
 Settings and pipeline handlers preserve the existing read/result projections;
 the host owns their stores. Membership invitation/role/removal remains identity
-work, and DHL refresh remains tracking work. The SQL projection has no tester,
+work, and shipment refresh remains tracking work. The SQL projection has no tester,
 email-template or provider tables. These entries add no managed provider parity
 or activation evidence. The [module record](plans/oss-m14-operations-portability.md)
 retains the remaining M14 evaluator/default portability, role, lifecycle and

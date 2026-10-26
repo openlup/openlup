@@ -66,7 +66,7 @@ describe("classifyLane", () => {
   it.each(GENERIC_JOB_DEDUPE_PREFIXES)(
     "routes %s alerts to platform even when the job is commerce-owned",
     (prefix) => {
-      expect(classifyLane("commerce/fulfillment", `${prefix}omnipack-dispatch`)).toBe("platform");
+      expect(classifyLane("commerce/fulfillment", `${prefix}fulfillment-dispatch`)).toBe("platform");
     },
   );
 });
@@ -124,7 +124,7 @@ describe("summarizeAlerts", () => {
         id: "c",
         owner: "commerce/fulfillment",
         severity: "p1",
-        dedupe_key: "job_failed:omnipack-dispatch",
+        dedupe_key: "job_failed:fulfillment-dispatch",
       }),
       // Live, operator-lane, and p1: visible in the popover, never a page.
       row({ id: "d", owner: "commerce/accounting", severity: "p1" }),
