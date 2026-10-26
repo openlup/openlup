@@ -28,8 +28,12 @@ Public surface:
   named above. A behaviour change belongs there, not in the local shims.
 - Shared/frontend: `src/domains/marketing/research/` (shims plus the admin
   client).
-- Server: `server/domains/marketing/research/` (public survey submit handler,
-  managed submit path, admin responses handler, acquisition evidence ports).
+- Server algorithms: `@openlup/platform/marketing/server` owns the public submit
+  and admin handlers, managed orchestration, direct evidence factories and
+  PostgreSQL ports. `server/domains/marketing/research/` binds the responder,
+  notification subject and HTML; raw signed consent ingress and survey-view
+  dispatch remain in the reference BFF. Delivery contracts use the communications
+  public-intake owner.
 - BFF handler files: `server/bff/marketing/research/…`, exposed through
   `/api/bff/marketing/research/…`.
 

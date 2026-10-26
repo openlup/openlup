@@ -1,6 +1,6 @@
 import type { Pool } from "pg";
 import { describe, expect, it, vi } from "vitest";
-import { createPostgresAcquisitionEvidencePort } from "./acquisitionEvidenceRoutines.js";
+import { createPostgresAcquisitionEvidencePort } from "../../../../src/marketing/server/postgres/acquisitionEvidenceRoutines.js";
 
 const AT = "2026-08-17T13:00:00.000Z";
 const evidence = {

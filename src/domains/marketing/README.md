@@ -56,9 +56,12 @@ creates or links a customer.
   rich read-model consumers keep the application file.
 - Shared/frontend: `src/domains/marketing/prelaunch/` and
   `src/domains/marketing/research/`.
-- Server: `server/domains/marketing/prelaunch/` (lead read model and admin
-  handler) and `server/domains/marketing/research/` (survey submit, admin
-  responses, acquisition evidence ports).
+- Server algorithms: `@openlup/platform/marketing/server` owns research submit,
+  admin responses, managed survey orchestration, direct acquisition/evidence
+  factories and PostgreSQL ports. Reference research files bind responder and
+  notification copy; runtime bindings retain environment/auth and lazy adapters.
+  `server/domains/marketing/prelaunch/` retains rich lead read models and admin
+  orchestration. Acquisition survey dispatch remains with reference callers.
 - BFF source: physical handler files live in `server/bff/marketing/…`; their
   logical coordinates in the full source dispatcher are
   `/api/bff/marketing/…`.

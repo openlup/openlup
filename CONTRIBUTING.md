@@ -1437,11 +1437,20 @@ The source routes remain unchanged pending P7.
 
 ### Commands and lint rules
 
-The platform module graph declares marketing with an isolated contracts entry
-and no cross-module platform edges. Its runtime entry may forward the existing
-public core research export; contracts forward only core types and local DTO
-shapes, including reachable acquisition ports and portable prelaunch types. Retired application admission contracts are excluded from both public
-entries. Package boundary checks validate that graph with the other modules.
+The platform module graph declares browser marketing with an isolated contracts
+entry and no cross-module platform edges. Its runtime entry may forward the
+existing public core research export; contracts forward only core types and
+local DTO shapes, including reachable acquisition ports and portable prelaunch
+types. Retired admission schemas are excluded from both browser entries. The
+separate `marketing/server` entry admits marketing values and only HTTP, BFF,
+marketing-contract and communications-contract type edges. Its two PostgreSQL
+files alone admit the existing pg peer and are exported through
+`marketing/server/postgres`. Package boundary checks validate that graph with the
+other modules and prevent the handler entry from reaching PostgreSQL adapters or
+`pg`. The installed consumer imports and compiles `marketing/server` without
+optional peers, exercising a historical count and a conflict refusal through
+injected bindings. It proves the `/postgres` missing-peer import refusal before
+selecting pg, then checks the adapter factories and their connection refusal.
 
 The complete projected root command inventory is `build`,
 `build:public-reference`, `build:public-reference:client`,
@@ -1607,6 +1616,17 @@ Unset `OPENLUP_VITEST_EXCLUDE_FILE` when requesting an unfiltered run. Outbox an
 Hosted `test-full-shard` jobs run `npm test -- --shard=N/4` in four independent installations. They apply the same event-based selection before sharding. Required `test` accepts only success from the whole matrix; failure, cancellation or a skipped shard job refuses. There is no `test:required` script or separate `test-full` job. A successful shard can still report individually skipped cases; record missing proof.
 
 #### Choose a location and proof
+
+Acquisition server characterization belongs under
+`packages/platform/test/marketing/server/`. The cross-boundary
+`tests/postgres/acquisitionEvidenceParity.test.ts` witness uses the existing
+container helper, applies the hash-checked migration-manifest prefix and calls
+package ports through a login granted only the acquisition runtime role. Docker
+absence throws as missing proof. The fixture owner is used only for setup, state
+inspection and the donor's append-only trigger proof. Port operations and
+separate SQL privilege-denial assertions use the runtime role, retaining all 11
+cases. The reference retains retirement, admin-auth binding and notification-copy
+checks.
 
 | Test | Placement and execution |
 |---|---|
