@@ -646,14 +646,17 @@ K1/K2 proof retains its meaning without extension. No tracked path is added or
 removed, so the publication catalogue retains its existing classifications.
 Nothing is mounted and this scope grants no external mutation or activation.
 
-The four new executed-case definitions are R7 (host-built real M11 selection,
+The five new executed-case definitions are R7 (host-built real M11 selection,
 compile-time assignability to the local selection type, actual registry/descriptors
 and no eager effect), U3 (one continuation's owner admission refusal then retry with
 distinct root/latest order and client identities and original key), U4 (one
 purchase's refused managed options then corrected retry preserving unknown ATP),
 and P2 (real PostgreSQL reminder persistence/replay with unchanged row/xmin
-snapshots of subscriptions, reservations and alignment). R7 belongs to the
-reference-binding test, U3/U4 to the route test and P2 to the PostgreSQL test.
+snapshots of subscriptions, reservations and alignment), plus the coordinator
+CD-18 regression (a disabled M12 with an enabled selected M11 owner refuses
+`disabled` and forwards no commerce surface or handle, with zero owner calls).
+R7 and the CD-18 regression belong to the reference-binding test, U3/U4 to the
+route test and P2 to the PostgreSQL test.
 U3/U4 inject package-only selections so the app project never loads the M11
 Postgres adapters; R7 and P2 construct the real M11 binding in server tests.
 The retry steps share a behavior sequence; independent state rows must remain

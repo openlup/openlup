@@ -191,7 +191,7 @@ managed stock options and retries the same purchase without inventing stock.
 P2 reaches the native M11 reminder through R5, checks persistence/replay and
 compares subscription/reservation/alignment rows including xmin. Reuse M11's
 consent/compaction and missing-token-table cases and the inventory unsupported
-options/ATP witnesses instead of duplicating their policy matrices. The four
+options/ATP witnesses instead of duplicating their policy matrices. The five
 new cases each describe one behavior sequence; independent rows stay separate.
 Docker is required; a sandbox socket refusal is missing proof, not a pass.
 The installed R5 consumer compiles concrete selections and invalid requests in
