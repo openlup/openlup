@@ -145,6 +145,18 @@ route refusals, raw signed consent ingress and notification copy. PostgreSQL
 SQL, role selection and transaction/pool handling remain unchanged. The
 server-only compatibility command types do not expose retired admission schemas.
 
+## Marketing composition
+
+`./composition` exports `createMarketingContribution`, an inert descriptor for
+the `marketing` capability's `./marketing` and `./marketing/contracts` entries.
+Supply already-bound operations and host schema requirements. Ports, routes and
+triggers share the supplied functions; null ports remain required for Core
+readiness, and handlers retain only registration descriptors. Duplicate handler,
+schedule or route identities refuse. Construction invokes no callable and
+installs no worker, route or schedule. See the
+[composition contract](../../docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#contributions-seams-and-readiness)
+for the host admission boundary.
+
 ## Commerce contracts
 
 `./composition` exports the inert `createCommerceContribution` for the installed

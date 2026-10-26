@@ -745,6 +745,16 @@ For a separate integration artifact, follow the canonical
 Generic supported orchestration remains the platform's responsibility.
 
 ### Contributions, seams and readiness
+`createMarketingContribution` in `@openlup/platform/composition` describes selected
+callables under the `marketing` capability, providing `./marketing` and
+`./marketing/contracts`. These entries have no runtime module dependencies, so
+the descriptor declares none. Handler registrations become frozen descriptors
+without `handle`; namespaced ports, routes and triggers retain supplied callable
+identity. Null ports stay required without a binding, and duplicate handler,
+schedule or route identities refuse. Construction invokes no callable and
+installs no worker, route or schedule; host admission and installation remain
+application-owned.
+
 `createCommerceContribution` in `@openlup/platform/composition` declares the
 installed `./commerce`, `./commerce/contracts` and `./commerce/server` entries
 under the `commerce` capability. Its namespaced ports describe the selected
