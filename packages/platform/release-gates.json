@@ -599,6 +599,32 @@
       ],
       "entrypoint": "dist/account-support/contracts/index.d.ts",
       "snapshot": "api/account-support-contracts.api.md"
+    },
+    "./marketing": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/packageBoundary.test.ts",
+        "test/marketing/schemas.test.ts",
+        "test/marketing/contracts.test.ts",
+        "test/marketing/browserBoundary.test.ts"
+      ],
+      "entrypoint": "dist/marketing/index.d.ts",
+      "snapshot": "api/marketing.api.md"
+    },
+    "./marketing/contracts": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/packageBoundary.test.ts",
+        "test/marketing/schemas.test.ts",
+        "test/marketing/contracts.test.ts",
+        "test/marketing/browserBoundary.test.ts"
+      ],
+      "entrypoint": "dist/marketing/contracts/index.d.ts",
+      "snapshot": "api/marketing-contracts.api.md"
     }
   },
   "pack": {
@@ -631,7 +657,8 @@
       "./invoicing/contracts": 32,
       "./commerce/contracts": 32,
       "./pricing/browser": 25600,
-      "./account-support/contracts": 32
+      "./account-support/contracts": 32,
+      "./marketing/contracts": 32
     }
   }
 }

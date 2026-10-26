@@ -30,6 +30,13 @@ state writer is not an extension seam.
 
 ## Runtime boundaries
 
+Marketing runtime composition remains application-owned. Evidence bindings use
+the type-only package port; case bindings retain the reference port extending
+the package read/count/close surface with retired application methods. Portable
+prelaunch validators are browser-safe package contracts, while rich prelaunch
+joins and their orchestration remain in the reference application. This type
+rebinding adds no server implementation, executor or activation seam.
+
 The commerce browser entry contains schemas, pure helpers and port declarations;
 its `/contracts` entry remains type-only. The `/commerce/server` entry
 is the separate Node-only home for handlers, use cases, stores, adapters and

@@ -11,6 +11,7 @@ import {
   ACCOUNT_SUPPORT_READ_SCENARIOS,
   type AccountSupportReadScenarioResult,
   proveAccountSupportConsumer,
+  proveMarketingConsumer,
   proveCommerceConsumer,
   proveInvoicingConsumer,
   proveSubscriptionsConsumer,
@@ -62,6 +63,15 @@ function fixture() {
   // The typed consumer registers the payments factory with the composer.
   writeFileSync(join(consumer, "node_modules/@openlup/platform/index.d.ts"), [
     "export interface Synthetic { value: string }",
+    'export type AcquisitionCaseListRequest = { view: "acquisition_case_v1"; limit: number; cursor?: string };',
+    'export declare const acquisitionCaseListRequestSchema: { parse(value: unknown): AcquisitionCaseListRequest };',
+    'export type PrelaunchAcquisitionListRequest = { view: "prelaunch_acquisition_v1"; limit: number; cursor?: string };',
+    'export declare const prelaunchAcquisitionListRequestSchema: { parse(value: unknown): PrelaunchAcquisitionListRequest };',
+    'export interface AcquisitionCasePort { list(query: { actorRef: string; scope: "public_tester_application"; limit: number }): Promise<unknown> }',
+    'export interface AcquisitionEvidencePort { listSurveys(query: { actorReference: string; view: "acquisition_survey_v1"; limit: number }): Promise<unknown> }',
+    'export type AcquisitionNewsletterConsentEvent = { explicitOptInEvidence: boolean };',
+    'export interface MarketingResearchSurveySubmitPort { submitSurveyResponse(request: { surveyType: "producer" | "consumer"; responseData: Record<string, unknown> }): Promise<unknown> }',
+
     'export { tryCompensate, type CheckoutCompensationPort } from "./commerceCheckoutCompensation.js";',
     "export type NativeOperatorSubscriptionResult = { outcome: 'refused'; refusalCode: 'operator_subscription_authority_unavailable' };",
     "export interface AccountReadPort<A,L,D> { getAccount(userId: string): Promise<A|null>; listOrders(userId: string, input: {limit:number}): Promise<L|null>; getOrderDetail(userId: string, orderId: string): Promise<D|null> }",
@@ -989,3 +999,10 @@ it.each(["export", "delegate"] as const)("K2 rejects the packed R5 %s corruption
       .toThrow(corruption === "export" ? /TS(?:2305|2724)/ : /R5 selected delegate must execute/);
   } finally { writeFileSync(path, original); }
 }, 30_000);
+
+it("proves installed marketing subpaths, prelaunch schemas, reachable ports and deep-import refusal without optional peers", () => {
+  const consumer = pristinePackedA1Fixture();
+  assertConsumerIsolation(consumer, root);
+  proveMarketingConsumer(consumer);
+  compileConsumer(consumer, ["marketing", "marketing/contracts"], join(root, "node_modules/typescript/lib/tsc.js"));
+}, 60_000);

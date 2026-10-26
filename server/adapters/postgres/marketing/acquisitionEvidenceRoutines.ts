@@ -1,17 +1,11 @@
 import { Pool, type PoolClient } from "pg";
 
-import {
-  ACQUISITION_NEWSLETTER_VERSION,
-  ACQUISITION_SURVEY_VERSION,
-  acquisitionNewsletterConsentResponseSchema,
-  acquisitionSurveyListResponseSchema,
-  acquisitionSurveySubmitResponseSchema,
-} from "../../../../src/domains/marketing/research/acquisitionEvidenceContracts.js";
+import { ACQUISITION_NEWSLETTER_VERSION, ACQUISITION_SURVEY_VERSION, acquisitionNewsletterConsentResponseSchema, acquisitionSurveyListResponseSchema, acquisitionSurveySubmitResponseSchema } from "@openlup/platform/marketing";
 import type {
   AcquisitionEvidenceFailure,
   AcquisitionEvidencePort,
   AcquisitionEvidenceResult,
-} from "../../../domains/marketing/research/acquisitionEvidencePorts.js";
+} from "@openlup/platform/marketing/contracts";
 
 const ROLE = "SET LOCAL ROLE platform_acquisition_runtime";
 const SUBMIT = "SELECT public.acquisition_survey_submit_v1($1::text,$2::text,$3::text,$4::jsonb,$5::timestamptz) AS response";

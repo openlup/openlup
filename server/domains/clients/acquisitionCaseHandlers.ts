@@ -1,10 +1,6 @@
-import {
-  ACQUISITION_CASE_CONTRACT_VERSION,
-  ACQUISITION_CASE_SOURCE,
-  type AcquisitionCaseListRequest,
-  type AcquisitionCaseSubmitRequest,
-  type AcquisitionCaseTransitionRequest,
-} from "../../../src/domains/clients/acquisitionCaseContracts.js";
+import { ACQUISITION_CASE_CONTRACT_VERSION, ACQUISITION_CASE_SOURCE } from "@openlup/platform/marketing";
+import type { AcquisitionCaseListRequest } from "@openlup/platform/marketing/contracts";
+import { type AcquisitionCaseSubmitRequest, type AcquisitionCaseTransitionRequest } from "../../../src/domains/clients/acquisitionCaseContracts.js";
 import type { AcquisitionCasePort } from "./acquisitionCasePorts.js";
 
 const SCOPE = "public_tester_application" as const;

@@ -31,11 +31,18 @@ What survives the retirement is history: the neutral acquisition case below,
 plus the admin identity reads.
 
 ## Public surface (import cross-domain ONLY these)
-- Portable acquisition surface: `acquisitionCaseContracts.ts` defines the
-  historical `tester_application_v1` request shape and neutral operator read
-  projection. Admission and lifecycle transitions are retired; list and active
-  count remain for support. Managed rich tester DTOs stay behind the deployment
-  overlay.
+- Acquisition history: `acquisitionCaseContracts.ts` forwards case projections,
+  address references, list/count reads and idempotency keys from
+  `@openlup/platform/marketing`, preserving schema identity. The application keeps
+  retired submit/transition contracts and its client-version binding, built over
+  the package primitives; those admission contracts are not published. Server
+  readers import the package directly, with retained admission types imported
+  from the application shim. The pre-extraction parse transcript and unchanged
+  contract suite pin outputs, defaults and complete ordered validation issues.
+  The package case port exposes only list/get/activeCount/close; the reference
+  port extends it with retired submit/transition commands and methods. A compiler
+  witness checks assignability both ways against the original complete shape.
+  The client-search engine and its version remain application-owned.
 - Admin identity reads: `adminSummary.ts` + `adminSummaryClient.ts`,
   `adminClientSearchClient.ts` with the `adminClientsSearch*` contracts in
   `searchContracts.ts`, and the `adminClientsDetail*` contracts in
