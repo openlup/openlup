@@ -51,12 +51,12 @@ FROM (VALUES
  ('public.customer_support_link_subject_account_v1(uuid,uuid,text,uuid,text,timestamptz)')
 ) AS definers(signature);
 SELECT results_eq(
- $$SELECT p.oid::regprocedure::text, p.prosecdef, p.proconfig,
+ $$SELECT p.oid::regprocedure::text, p.prosecdef, p.proconfig COLLATE "default",
    COALESCE((SELECT array_agg(r.rolname::text ORDER BY r.rolname)
      FROM pg_catalog.aclexplode(COALESCE(p.proacl,
        pg_catalog.acldefault('f',p.proowner))) a
      JOIN pg_catalog.pg_roles r ON r.oid=a.grantee
-     WHERE a.grantee <> p.proowner AND a.privilege_type='EXECUTE'), ARRAY[]::text[]),
+     WHERE a.grantee <> p.proowner AND a.privilege_type='EXECUTE'), ARRAY[]::text[]) COLLATE "default",
    EXISTS (SELECT 1 FROM pg_catalog.aclexplode(COALESCE(p.proacl,
      pg_catalog.acldefault('f',p.proowner))) a
      WHERE a.grantee=0 AND a.privilege_type='EXECUTE')
