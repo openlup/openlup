@@ -409,90 +409,85 @@ No local uncommitted implementation result establishes admission or publication.
 
 ## R4: operator recovery
 
-The finite outcome is current managed operator recovery/contact/link composition
-and conditional native audited support authority, stacked on the CTL control that
-admits its SQL class. No serve mount, provider factory, lint/module-graph change,
-M11 edit, owner-engine rewrite, release or adopter cutover is part of R4.
+R4 provides managed operator recovery/contact/link composition and conditional
+native audited support authority on the CTL predecessor's admitted SQL class.
+It excludes serve mounts, provider factories, lint/module-graph changes, M11
+edits, owner-engine rewrites, release and adopter cutover. RPC, transaction,
+identity-move and link resolution use injected ports; reference selection is
+default-off and recovery-path policy belongs to the host. Native lifecycle writes
+use the existing M10 owner within one support transaction, without a second
+lifecycle engine. SQL fixtures and installed/packed twins agree; the native
+manifest's object-inventory digest is checked against the selected PostgreSQL
+catalog. Complete managed M11 introductions precede the R4 managed forward.
 
-The approved closure is 43 paths, with registry and source-release contract held
-byte-unchanged (41 potential edits); unchanged-generator sibling API snapshots are
-admitted/disclosed generated companions. The current code uses injected RPC,
-transaction, identity-move and link resolver ports. Frozen SQL comes directly from
-CTL fixtures; the native packed twin matches. The native manifest appends one row,
-while its new objectInventorySha256 requires the real selected-catalog derivation
-in accountSupportUpgrade, unavailable in the sandbox. The old digest is explicitly
-pending supervisor measurement, not claimed as the new inventory. Complete managed
-M11 introductions must precede the R4 managed forward.
+ID-6 and RD-R4-1 preserve R1's managed OperatorSubscriptionRefusal/Result unchanged
+and append NativeOperatorSubscriptionResult with the unavailable literal.
+Optional OperatorOwnerReceipt carries actual owner evidence; delegated appliedBy
+may be null, with no synthetic audit identifiers. Native linkSubjectAccount has
+an explicit capability refusal. Only the two-key, two-commit link-then-subscription
+sequence permits partial completion. Packaged-owner equality is checked in
+operatorAuthority.test.ts and reference-owner equality in
+m12OperatorRecoveryBinding.test.ts; claim/link additions have no older reference
+owner equality claim. Under ID-11, native owner evidence stays server-side: the
+reference wire retains the strict donor DTO and excludes ownerReceipt.
 
-Envelope deltas against the original draft follow ID-6 and RD-R4-1: retain R1's
-managed OperatorSubscriptionRefusal/Result byte-identical; append
-NativeOperatorSubscriptionResult with the one unavailable literal; carry optional
-actual OperatorOwnerReceipt and null delegated appliedBy without synthetic audit
-ids; add a native linkSubjectAccount refusal; permit partial only for the two-key,
-two-commit link-then-subscription sequence. Packaged-owner equality lives in
-operatorAuthority.test.ts; reference-owner equality lives in
-m12OperatorRecoveryBinding.test.ts. Claim/link types that have no current reference
-owner are donor-current additions, not false equality assertions against the older
-reference identity-move port.
-
-Native lifecycle writes delegate to M10. SQL capability refusals write exactly a
-support receipt and audit, no owner effects; email/phone/link and typed address
-refuse before SQL. M03 native contact/link receipt seams and M10 short band,
-operator address, unpaid/expired resume and prepared-attempt pause parity remain
-registered CD-6 follow-ups outside this task. No false I16/F32 parity claim.
 Managed email preserves admission → claim → lazy identity read/move/read →
-settlement; link preserves `void onLinked()` before the separate second command.
-Phone/recovery/absorption/subscription pass through owner results.
+settlement, including recovery after an already-completed identity move. Link
+calls `void onLinked()` without a receiver before the separate subscription
+command. Phone, recovery, absorption and subscription preserve owner results.
+Native SQL capability refusals write only a support receipt and audit;
+email/phone/link and typed address refuse before SQL. M03 native contact/link
+receipt seams and M10 short band, operator address, unpaid/expired resume and
+prepared-attempt pause parity remain CD-6 exclusions; R4 makes no I16/F32 parity
+claim. CD-8 uses the native CHECK-admitted `payment_pending` status for residual
+unpaid cycles, preserving the native outcome and managed predicate.
 
-CD-8 corrects the native residual-unpaid predicate to `status = 'payment_pending'`,
-the native cycle status admitted by its CHECK; the native outcome is unchanged
-and the managed predicate is unchanged. The native PostgreSQL witness refuses
-resume with that cycle and proceeds without it.
+CD-9 keeps the link body identical across hosts: the donor uses INVOKER with
+table-wide service_role access; OpenLup uses DEFINER with column-level capability
+closure and the sibling migration function owner. CD-13a preserves the four email
+definers (admit, claim, guard, settle) with `search_path = public, pg_catalog`.
+The link definer uses `search_path = pg_catalog, pg_temp` and qualified application
+references. All five revoke EXECUTE from PUBLIC, anon, authenticated and
+openlup_mcp_reader. Callable entries allow only service_role; the trigger-only
+guard also revokes service_role. No table grant is widened. Retired email
+correction and recovery retain INVOKER authority.
 
-CD-9 is a standing donor-adopter adoption mapping: the link function has the same body
-in both hosts. The donor adopter uses INVOKER with table-wide `service_role` access;
-OpenLup uses DEFINER under its column-level capability closure, with the sibling
-migration function owner. CD-13a preserves the four donor email definers
-(admit, claim, guard and settle) with donor `search_path = public, pg_catalog`.
-The newly DEFINER link uses `search_path = pg_catalog, pg_temp` and fully qualified
-application references. All five revoke EXECUTE from PUBLIC, anon, authenticated
-and `openlup_mcp_reader`; only service_role can execute the callable entries,
-while the guard remains trigger-only and also revokes service_role. The managed
-operator-authority PostgreSQL witness compares clean and hostile caller-session
-link results as service_role, with temporary relations/functions and caller-schema
-lower/btrim shadows, and checks each definer's effective ACL. No table grant is widened. Retired email correction and recovery retain
-INVOKER authority. The managed pgTAP witness covers ACLs and body authority while
-calling through `service_role`. Under RD-R4-4, machine/non-human, missing and
-inactive operator refusals leave clients, support commands and support audit
-rows unchanged. Unknown subjects, email expectation conflicts, identities linked
-elsewhere and already-linked subjects leave clients and auth identities unchanged
-and persist exactly one refusal receipt and one matching audit row for that key,
-with no other row/xmin changes. The frozen outcome is `refused` for
-`subject_not_found` and `conflict` for `email_expectation_conflict`,
-`identity_linked_elsewhere` and `subject_account_linked`. Same-key replay returns
-the stored refusal unchanged and writes no further rows.
+Under RD-R4-4, machine/non-human, missing and inactive operator refusals leave
+clients, support commands and audit unchanged. Unknown subjects, email expectation
+conflicts, identities linked elsewhere and already-linked subjects preserve clients
+and auth identities, write exactly one refusal receipt and matching audit for the
+key, and change no other row/xmin. Outcomes are `refused` for `subject_not_found`
+and `conflict` for `email_expectation_conflict`, `identity_linked_elsewhere` and
+`subject_account_linked`. Same-key replay returns the stored refusal without writes.
+The combined email entry refuses with requires_admission/55000; five existing
+pgTAP companions use ordered admission/claim/identity/settlement, including phone
+and subscription coverage. The runtime missing-subject/null-clock case uses
+admission; machine and inactive operator assertions remain.
 
-Migration: the combined email entry is retired with requires_admission55000.
-The five existing pgTAP companions preserve current behavior through ordered
-admission/claim/identity/settlement, including subscription and phone proof.
-The runtime capability missing-subject/null-clock case uses admission. Machine
-and inactive operator assertions remain. R4's change fragment
-enumerates every modified caller/expectation.
+CD-7 counts each independent input/state row separately, superseding RD-R4-2's
+CTL/R4 allocation. The R4 runner-case inventory is:
 
-CD-7 supersedes the original CTL/R4 14-case allocation and RD-R4-2: independent
-input/state rows execute independently. In particular all eight named native
-refusals use it.each, with their own state and exact row/xmin delta assertions.
-The M12 ceiling is the measured total, maximum 125; timing is recorded for module
-clean-up, with no extra speed work unless an existing timeout is exceeded.
-Existing M10 subscriptionCommandLifecycleCases, M03 postgresAccountLinkStore and
-M08 fulfillmentDeliveryAlignment proofs remain required, not duplicated.
+| File | Cases | Proof class |
+| --- | ---: | --- |
+| packages/platform/test/account-support/operatorAuthority.test.ts | 5 | Compiler owner equality, capabilities, decoding and recovery hashing |
+| packages/platform/test/account-support/operatorRecovery.test.ts | 14 | Injected orchestration, failure/replay ordering and link sequencing |
+| packages/platform/test/account-support/postgresOperatorAuthority.test.ts | 13 | Injected SQL executor, capability refusals, exact error mapping and hashing |
+| server/runtime/public-reference/m12OperatorRecoveryBinding.test.ts | 6 | Compiler reference equality, default-off selection and injected bindings |
+| src/public-reference/accountSupportRecovery.test.tsx | 2 | Partial completion and native refusal presentation |
+| tests/postgres/accountSupportOperatorAuthority.test.ts | 23 | Real native PostgreSQL: owner delegation, eight independent refusals, rollback, replay, races and row/xmin deltas |
+| tests/postgres/accountSupportUpgrade.test.ts | 2 | Real native/managed PostgreSQL: prefix upgrade, catalog/ACL delta and recovery replay |
+| supabase/tests/account_support_contact_workflow_test.sql | 1 | Managed PostgreSQL/pgTAP: email execution ownership and settlement |
+| supabase/tests/account_support_operator_authority_test.sql | 1 | Managed PostgreSQL/pgTAP: link/refusal authority, definer ACLs and clean/hostile service_role sessions |
 
-Simplicity pre-check: use the current donor orchestrator and the existing M10 SQL
-owner in one support transaction. A second lifecycle engine, provider factory,
-module graph edge, parser or fallback process adds cost without meeting another
-current requirement. New execution remains local and injected; unavailable native
-owner capabilities remain explicit. Verification results, exact case counts,
-API companions and the terminal self-retro are appended below at handoff.
+The inventory totals 67 runner cases; pgTAP files count once each, rather than
+once per assertion. The first five files have executed passing cases; the real
+PostgreSQL and pgTAP entries identify database proof obligations, not a database
+PASS inferred from injected tests. The existing cold-consumer case verifies packed
+consumption and refusal propagation without adding a runner case. Existing M10
+subscriptionCommandLifecycleCases, M03 postgresAccountLinkStore and M08
+fulfillmentDeliveryAlignment proofs are reused. The cumulative M12 ceiling is
+125 cases; timing serves module cleanup, with extra speed work only for an
+exceeded existing timeout.
 
 ## R5: reference composition
 
