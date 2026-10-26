@@ -106,3 +106,36 @@ export type {
   SelfServiceCommandFacadeInput
 } from "./commands.js";
 export type { AccountSupportLaneUnavailable } from "./capabilities.js";
+// R4's additive native result and graph-specific authority ports.
+export type {
+  OperatorOwnerReceipt,
+  NativeOperatorSubscriptionResult,
+  OperatorAuthorityUnavailable,
+  OperatorEmailCorrectionResult,
+  OperatorPhoneCorrectionResult,
+  CustomerRecoveryAuthorityResult,
+  LeadAbsorptionCarried,
+  OperatorLeadAbsorptionResult,
+  OperatorEmailCorrectionClaim,
+  OperatorIdentityMovePort,
+  OperatorEmailCorrectionAdmission,
+  OperatorEmailCorrectionPhase,
+  OperatorEmailCorrectionSettlement,
+  OperatorEmailCorrectionExecution,
+  OperatorAccountLinkRefusal,
+  OperatorAccountLinkResult,
+  OperatorAccountLinkRequest,
+  OperatorAccountLinkIdentityPort,
+  OperatorSubscriptionInput,
+  OperatorEmailInput,
+  OperatorPhoneInput,
+  OperatorLinkInput,
+  OperatorRecoveryInput,
+  OperatorAbsorptionInput,
+  ManagedOperatorAuthorityPort,
+  NativeOperatorAuthorityPort,
+  LinkThenSubscriptionResult
+} from "./operator.js";
+export type {
+  OperatorAuthorityCapabilities
+} from "./capabilities.js";

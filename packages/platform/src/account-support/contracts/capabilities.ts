@@ -15,3 +15,16 @@ export interface AccountSupportCapabilities {
   subscriptions: SubscriptionCapabilities;
   communicationGifts: AccountSupportCapability<"unsupported_preference">;
 }
+
+/** Per-action/subcase truth, independent of the host's unrelated read selections. */
+export interface OperatorAuthorityCapabilities {
+  graph: "managed" | "native";
+  email: AccountSupportCapability<"operator_subscription_authority_unavailable">;
+  phone: AccountSupportCapability<"operator_subscription_authority_unavailable">;
+  link: AccountSupportCapability<"operator_subscription_authority_unavailable">;
+  address: AccountSupportCapability<"operator_subscription_authority_unavailable">;
+  shortBand: AccountSupportCapability<"operator_subscription_authority_unavailable">;
+  unpaidResume: AccountSupportCapability<"operator_subscription_authority_unavailable">;
+  preparedAttemptPause: AccountSupportCapability<"operator_subscription_authority_unavailable">;
+  pause: { supported: true }; resume: { supported: true }; slide: { supported: true };
+}

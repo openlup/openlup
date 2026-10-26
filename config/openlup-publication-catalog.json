@@ -1186,6 +1186,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/20261026120000_account_support_operator_authority.sql",
+      "class": "public-output"
+    },
+    {
       "path": "deploy/oci/public-reference-compose.yml",
       "class": "public-output"
     },
@@ -2718,6 +2722,10 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/sql/20261026120000_account_support_operator_authority.sql",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/account-support/accountReadFacade.ts",
       "class": "public-output"
     },
@@ -2770,11 +2778,27 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/account-support/migrations.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/account-support/operatorAuthority.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/account-support/operatorRecovery.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/account-support/orderHistory.ts",
       "class": "public-output"
     },
     {
       "path": "packages/platform/src/account-support/paymentMethodComposition.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/account-support/postgresOperatorAuthority.ts",
       "class": "public-output"
     },
     {
@@ -5850,6 +5874,14 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/test/account-support/operatorAuthority.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/account-support/operatorRecovery.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/test/account-support/orderHistory.test.ts",
       "class": "public-output"
     },
@@ -5863,6 +5895,10 @@
     },
     {
       "path": "packages/platform/test/account-support/portFit.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/account-support/postgresOperatorAuthority.test.ts",
       "class": "public-output"
     },
     {
@@ -17074,6 +17110,14 @@
       "class": "public-output"
     },
     {
+      "path": "server/runtime/public-reference/m12OperatorRecoveryBinding.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "server/runtime/public-reference/m12OperatorRecoveryBinding.ts",
+      "class": "public-output"
+    },
+    {
       "path": "server/runtime/public-reference/m12SelfServiceBinding.test.ts",
       "class": "public-output"
     },
@@ -23642,6 +23686,14 @@
       "class": "public-output"
     },
     {
+      "path": "src/public-reference/accountSupportRecovery.test.tsx",
+      "class": "public-output"
+    },
+    {
+      "path": "src/public-reference/accountSupportRecovery.tsx",
+      "class": "public-output"
+    },
+    {
       "path": "src/public-reference/browserIdentity.test.tsx",
       "class": "public-output"
     },
@@ -23882,11 +23934,23 @@
       "class": "public-output"
     },
     {
+      "path": "supabase/migrations/20261026120100_account_support_current_authority.sql",
+      "class": "public-output"
+    },
+    {
       "path": "supabase/tests/abandoned_cart_tier_bounds_test.sql",
       "class": "public-output"
     },
     {
       "path": "supabase/tests/absorb_lead_test.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "supabase/tests/account_support_contact_workflow_test.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "supabase/tests/account_support_operator_authority_test.sql",
       "class": "public-output"
     },
     {
@@ -24970,11 +25034,19 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/accountSupportOperatorAuthority.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/accountSupportReads.test.ts",
       "class": "public-output"
     },
     {
       "path": "tests/postgres/accountSupportSelfService.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/accountSupportUpgrade.test.ts",
       "class": "public-output"
     },
     {

@@ -15,5 +15,6 @@
   ],
   "invoicing": { "defaultEnabled": false, "registration": "explicit-host", "executor": "accountingRuntime", "routes": [] },
   "accountSupport": { "defaultEnabled": false, "registration": "explicit-host", "routes": [] },
+  "accountSupportRecovery": { "defaultEnabled": false, "registration": "explicit-host", "binding": "createM12OperatorRecoveryBinding", "routes": [], "graphs": ["managed", "native"], "nativeRefusal": "operator_subscription_authority_unavailable" },
   "refuses": ["admin", "api", "bff", "checkout", "cron", "mutation", "subscription"]
 }

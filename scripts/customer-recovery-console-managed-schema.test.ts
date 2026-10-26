@@ -16,7 +16,8 @@ describe("managed customer recovery console forward", () => {
   });
 
   it("matches the managed adapter's named eight-argument RPC", () => {
-    expect(statements).toMatch(/CREATE FUNCTION public\.customer_support_issue_recovery\(\s*p_operator_id uuid,\s*p_subject_id uuid,\s*p_case_id uuid,\s*p_idempotency_key text,\s*p_payload_fingerprint text,\s*p_token_hash text,\s*p_expires_at timestamp with time zone,\s*p_recovery_path text/);
+    // The M12 R4 forward restates the body in migration (not pg_dump) spelling.
+    expect(statements).toMatch(/CREATE (?:OR REPLACE )?FUNCTION public\.customer_support_issue_recovery\(\s*p_operator_id uuid,\s*p_subject_id uuid,\s*p_case_id uuid,\s*p_idempotency_key text,\s*p_payload_fingerprint text,\s*p_token_hash text,\s*p_expires_at (?:timestamp with time zone|timestamptz),\s*p_recovery_path text/);
     expect(statements).not.toContain("CREATE FUNCTION public.customer_support_journey");
   });
 
@@ -106,7 +107,7 @@ describe("managed customer recovery console forward", () => {
   it("grants only service_role and fixes both function search paths", () => {
     for (const name of ["customer_support_issue_recovery", "subscription_rotate_payment_recovery_token"]) {
       const body = routine(name);
-      expect(body).toContain("SET search_path TO 'pg_catalog'");
+      expect(body).toMatch(/SET search_path (?:TO 'pg_catalog'|= pg_catalog)$/m);
       expect(body).not.toContain("SECURITY DEFINER");
       for (const roles of explicitFunctionExecuteRoles(name).values()) {
         expect(roles.has("service_role")).toBe(true);

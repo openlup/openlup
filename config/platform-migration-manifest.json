@@ -348,7 +348,11 @@
     {
       "file": "db/platform/migrations/20261024184600_subscription_retry_candidate_payment_filter.sql",
       "sha256": "062171a74b688c31f638c3f211e53e91266b839af8d7b797ef3a4aa236a65c9c"
+    },
+    {
+      "file": "db/platform/migrations/20261026120000_account_support_operator_authority.sql",
+      "sha256": "ac1e31679179e712d7558e7b1d82e8113f264abf9aaa44c2562ab988acdc7508"
     }
   ],
-  "objectInventorySha256": "9dee58881dee9d5fe4267e09f1579a7c27197da6f4a40419b16901cbb9ded573"
+  "objectInventorySha256": "cfe3a8b4fa6216f61b1cdd5f004cb0f7a967bc01d9e18ddacb2efee74742d3b3"
 }

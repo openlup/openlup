@@ -409,8 +409,87 @@ No local uncommitted implementation result establishes admission or publication.
 
 ## R4: operator recovery
 
-TODO: audited operator command composition after applicable owner handoffs and
-separately admitted control/forward evidence. Preserve partial results and refusals.
+Status: local development-preview implementation; not committed, reviewed, installed,
+or activated. The finite outcome is current managed operator recovery/contact/link
+composition and conditional native audited support authority. The assigned stack
+is CTL 8f9955c4 over R1 8a187556. R2/R3 are independent later integrations. No serve
+mount, provider factory, lint/module-graph change, M11 edit, owner-engine rewrite,
+Git write, external mutation, release or adopter cutover is authorized here.
+The supervisor retains commit/DCO, required owner reads, counted native reviews,
+PostgreSQL execution and delivery. Offline remote instruction freshness is unverified.
+
+The approved closure is 43 paths, with registry and source-release contract held
+byte-unchanged (41 potential edits); unchanged-generator sibling API snapshots are
+admitted/disclosed generated companions. The current code uses injected RPC,
+transaction, identity-move and link resolver ports. Frozen SQL comes directly from
+CTL fixtures; the native packed twin matches. The native manifest appends one row,
+while its new objectInventorySha256 requires the real selected-catalog derivation
+in accountSupportUpgrade, unavailable in the sandbox. The old digest is explicitly
+pending supervisor measurement, not claimed as the new inventory. Complete managed
+M11 introductions must precede the R4 managed forward.
+
+Envelope deltas against the original draft follow ID-6 and RD-R4-1: retain R1's
+managed OperatorSubscriptionRefusal/Result byte-identical; append
+NativeOperatorSubscriptionResult with the one unavailable literal; carry optional
+actual OperatorOwnerReceipt and null delegated appliedBy without synthetic audit
+ids; add a native linkSubjectAccount refusal; permit partial only for the two-key,
+two-commit link-then-subscription sequence. Packaged-owner equality lives in
+operatorAuthority.test.ts; reference-owner equality lives in
+m12OperatorRecoveryBinding.test.ts. Claim/link types that have no current reference
+owner are donor-current additions, not false equality assertions against the older
+reference identity-move port.
+
+Native lifecycle writes delegate to M10. SQL capability refusals write exactly a
+support receipt and audit, no owner effects; email/phone/link and typed address
+refuse before SQL. M03 native contact/link receipt seams and M10 short band,
+operator address, unpaid/expired resume and prepared-attempt pause parity remain
+registered CD-6 follow-ups outside this task. No false I16/F32 parity claim.
+Managed email preserves admission → claim → lazy identity read/move/read →
+settlement; link preserves `void onLinked()` before the separate second command.
+Phone/recovery/absorption/subscription pass through owner results.
+
+CD-8 corrects the native residual-unpaid predicate to `status = 'payment_pending'`,
+the native cycle status admitted by its CHECK; the native outcome is unchanged
+and the managed predicate is unchanged. The native PostgreSQL witness refuses
+resume with that cycle and proceeds without it.
+
+CD-9 is a standing donor-adopter adoption mapping: the link function has the same body
+in both hosts. The donor adopter uses INVOKER with table-wide `service_role` access;
+OpenLup uses DEFINER under its column-level capability closure, with the sibling
+migration function owner, fixed `search_path = public, pg_catalog` and service-only
+EXECUTE. No table grant is widened. Retired email correction and recovery retain
+INVOKER authority. The managed pgTAP witness covers ACLs and body authority while
+calling through `service_role`. Under RD-R4-4, machine/non-human, missing and
+inactive operator refusals leave clients, support commands and support audit
+rows unchanged. Unknown subjects, email expectation conflicts, identities linked
+elsewhere and already-linked subjects leave clients and auth identities unchanged
+and persist exactly one refusal receipt and one matching audit row for that key,
+with no other row/xmin changes. The frozen outcome is `refused` for
+`subject_not_found` and `conflict` for `email_expectation_conflict`,
+`identity_linked_elsewhere` and `subject_account_linked`. Same-key replay returns
+the stored refusal unchanged and writes no further rows.
+
+Migration: the combined email entry is retired with requires_admission55000.
+The five existing pgTAP companions preserve current behavior through ordered
+admission/claim/identity/settlement, including subscription and phone proof.
+The runtime capability missing-subject/null-clock case uses admission. Machine
+and inactive operator assertions remain. R4's change fragment
+enumerates every modified caller/expectation.
+
+CD-7 supersedes the original CTL/R4 14-case allocation and RD-R4-2: independent
+input/state rows execute independently. In particular all eight named native
+refusals use it.each, with their own state and exact row/xmin delta assertions.
+The M12 ceiling is the measured total, maximum 125; timing is recorded for module
+clean-up, with no extra speed work unless an existing timeout is exceeded.
+Existing M10 subscriptionCommandLifecycleCases, M03 postgresAccountLinkStore and
+M08 fulfillmentDeliveryAlignment proofs remain required, not duplicated.
+
+Simplicity pre-check: use the current donor orchestrator and the existing M10 SQL
+owner in one support transaction. A second lifecycle engine, provider factory,
+module graph edge, parser or fallback process adds cost without meeting another
+current requirement. New execution remains local and injected; unavailable native
+owner capabilities remain explicit. Verification results, exact case counts,
+API companions and the terminal self-retro are appended below at handoff.
 
 ## R5: reference composition
 
@@ -421,3 +500,58 @@ and optional enrichment fallback after applicable M11 dependencies land.
 
 TODO: cumulative artifacts/tests, unchanged witnesses, migration/cut register and
 owner review. Release and adoption require their own authorization and evidence.
+
+
+### R4 local handoff evidence
+
+Exactly 41 of the 43 approved paths change; only the registry and source-release
+contract stay unchanged. There are no extra paths and no ID-3 generated sibling
+API companions: the unchanged API generator changes only account-support and
+account-support-contracts. SQL fixture/twin equality and the unchanged R1 operator
+type prefix are byte-verified. The local donor ref has advanced to e3e2a021, but
+all nine consumed support sources are byte-identical to the approved a972e9dc pin.
+
+R4 authors 63 net-new required runner cases under CD-7: operatorAuthority 4,
+operatorRecovery 14, postgresOperatorAuthority 12, reference binding 5, reference
+status surface 2, real PostgreSQL operator authority 22, upgrade 2, and two new
+pgTAP files counted as one each. The first 37 have executed and passed; the
+remaining 26 require the supervisor's Docker/PG/pgTAP lane. The eight native
+refusals are independent runner rows. Existing cold-consumer coverage changes
+without adding a runner case. Cumulative module accounting remains the lead's
+measured shared ledger; no cap is changed here. Local new-file test time sums to
+about 1.19 s; hosted medians and PostgreSQL timing remain unmeasured.
+
+Final lint passes with zero errors and the existing 33 warnings; API update/check,
+39 focused account-support tests, 58 root reference/cold-consumer tests, all five
+public typecheck projects, structural scans and both neutrality checks pass.
+The broad package attempt reports 325 passing files / 5,684 passing tests, with
+one optional payment HTTP loopback setup failing listen EPERM and two skipped tests, as recorded
+in R1; it is not a full-suite PASS. Committed package/cold gates refuse this
+uncommitted draft. Policy and docs-update stop at the untracked change-fragment
+link; the generated source map remains unchanged. Direct documentation impact
+has eight obligations and one unanswered reference obligation, for a no-impact
+trailer in the supervisor's own commit; no existing serving recipe is changed.
+
+The final supplementary local tarball is 1,591,642 / 1,925,000 packed bytes,
+7,390,216 / 8,970,000 unpacked bytes and 2,126 / 2,580 files. Code gzip is
+1,352,854 / 1,648,000 bytes; docs gzip is 44,529 / 57,344 bytes. All fourteen
+browser entries fit; account-support/contracts is 20 / 32 bytes. These are dirty
+candidate measurements with packed build-byte and SQL-twin equality, not
+committed artifact admission or installed-consumer acceptance.
+
+The manifest object-inventory digest must equal the real selected-catalog
+measurement printed by the native accountSupportUpgrade witness, which refuses
+a stale manifest. Complete M11 managed introductions, all real database
+proof, committed artifact admission, whole required verification, maintainer reads,
+counted native reviews and delivery remain with the supervisor. No Git write,
+network call, activation, publication or counted native-review budget was used.
+
+Self-retro: comparing the native adapter directly with its owner caught accidental
+reuse of managed SQLSTATE/fallback behavior. The direct native mapper now preserves
+the existing opaque messages, and its tests assert exact messages. The reference
+proof also compares all six error-message constructors with their real owners;
+transcribe those values rather than guessing them. The link callback is called
+without a receiver, preserving the donor's `void onLinked()` invocation. Use the npm
+runner for root proof so its binary PATH is present; the failed direct launch is
+retained as failed evidence, not a test result. No separate process or follow-up
+work was added.
