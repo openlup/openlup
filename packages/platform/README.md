@@ -90,6 +90,7 @@ timestamp used in the webhook's idempotency key.
 | `./catalog/contracts` | Dependency-free catalog DTOs, media resolver, authority and canonicalization helpers |
 | `./marketing/server` | Node-only acquisition handlers, direct read/evidence factories and research orchestration without `pg`; host responder, authorization, binding and notification copy |
 | `./marketing/server/postgres` | Acquisition case and research evidence PostgreSQL port factories; requires the existing optional `pg` peer |
+| `./marketing/server` (analytics context) | Injected analytics context handler with host persistence, capability and identity bindings |
 | `./marketing`, `./marketing/contracts` | Browser-safe acquisition history, portable prelaunch, survey evidence and newsletter consent schemas; type-only DTOs and acquisition/research ports |
 | `./marketing`, `./marketing/contracts` (analytics) | Browser-safe acquisition and research schemas, injected analytics, paid purchase and consent-time facts; type-only DTOs and ports |
 | `./commerce`, `./commerce/contracts` | Browser-safe neutral commerce schema cores, generic ports and pure contract helpers |
@@ -170,6 +171,21 @@ native chronology only after host authorization, without changing the local
 grant. The reference retains its narrower checkout-kind admission and all wire
 names. [Purchase equivalence](../../src/checkout/machine/purchasePayloadEquivalence.test.ts)
 and the package analytics witnesses pin these boundaries.
+
+`createAnalyticsContextHandler` in `./marketing/server` accepts a required BFF
+responder, enable reader, persistence resolver, access-token reader, trusted-subject
+resolver, capability mint/hash functions and historical cookie name. The strict
+request keeps `granted`, `gaClientId` and `explicitGrant`; grants require a client
+id and existing revoked contexts require an explicit new grant for replacement.
+Only token hashes reach persistence. Enrollment uses only the server-verified
+subject, and invalid bearer grants refuse before writes. Cookie attributes and
+method/flag/origin/schema refusal order are preserved. The host owns flag and
+RPC names, gateway authority, route mounting and observability. Persistence
+operations must reject on failure; null persistence refuses as unavailable.
+There is no default persistence, portable SQL or reference route for this handler.
+An `active` result is a local context fact, never delivery, and telemetry context
+failure never gates commerce. The [context witness](test/marketing/analyticsContext.test.ts)
+exercises the factory through synthetic host bindings.
 
 ## Commerce contracts
 

@@ -62,6 +62,17 @@ entry or provider transport is introduced. Types are exposed type-only through
 chronology preserve source behavior; authorization, money truth and activation
 remain with their existing owners. Local sink admission never attests delivery.
 
+The separate server entry also exposes `createAnalyticsContextHandler` and its
+server-only persistence and capability ports. Required host bindings supply the
+responder, enable reader, store, bearer parsing, verified subject, token mint/hash
+and historical cookie name. Browser entries expose none of these server ports.
+The handler preserves strict request admission, withdrawal without identity and
+explicit replacement of a revoked context; enrollment uses only a server-verified
+subject. Hosts retain their route/observability, flag/RPC names and persistence
+authority. No default persistence or portable context SQL is provided, so the
+reference mounts no context route. Telemetry context failure never gates commerce;
+an `active` result establishes only a local context fact, never delivery.
+
 The commerce browser entry contains schemas, pure helpers and port declarations;
 its `/contracts` entry remains type-only. The `/commerce/server` entry
 is the separate Node-only home for handlers, use cases, stores, adapters and

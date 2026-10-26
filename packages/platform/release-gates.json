@@ -649,7 +649,8 @@
         "test/marketing/server/acquisitionEvidenceDirect.test.ts",
         "test/marketing/server/research/surveyResponseSubmitHandler.test.ts",
         "test/marketing/server/research/adminSurveyResponsesHandler.test.ts",
-        "test/marketing/server/research/managedSurveyResponseSubmit.test.ts"
+        "test/marketing/server/research/managedSurveyResponseSubmit.test.ts",
+        "test/marketing/analyticsContext.test.ts"
       ],
       "entrypoint": "dist/marketing/server/index.d.ts",
       "snapshot": "api/marketing-server.api.md"

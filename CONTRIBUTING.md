@@ -1436,6 +1436,15 @@ projection has a frozen base transcript. Neutral package witnesses cover inert
 analytics, route refusal/sanitization, paid allocation, consent chronology and
 independent sink admission. Local acceptance booleans do not prove delivery.
 
+The analytics context witness in `packages/platform/test/marketing/` exercises
+the server factory with synthetic persistence, capability and identity bindings.
+It preserves consent capability issuance/replacement, strict admission and
+verified-subject enrollment, with a missing-store refusal at the injected seam.
+The `./marketing/server` release surface selects it, and root discovery includes
+it with the package tests. It needs no reference route or live persistence;
+telemetry context failure never gates commerce and `active` proves only a local
+context fact.
+
 The complete projected root command inventory is `build`,
 `build:public-reference`, `build:public-reference:client`,
 `build:public-reference:prerender`, `build:public-reference:ssr`,

@@ -5162,6 +5162,14 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/marketing/server/analyticsContext.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/marketing/server/analyticsContextPorts.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/marketing/server/directPorts.ts",
       "class": "public-output"
     },
@@ -7255,6 +7263,10 @@
     },
     {
       "path": "packages/platform/test/kernel/platformKernel.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/marketing/analyticsContext.test.ts",
       "class": "public-output"
     },
     {

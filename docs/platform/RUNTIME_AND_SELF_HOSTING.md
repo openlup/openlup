@@ -35,6 +35,21 @@ pre-consent replay queue; consent commands retain default/update ordering and
 push-time advertising consent. Historical consent-time selection changes neither
 authorization nor the local grant and installs no command worker.
 
+The server-only `createAnalyticsContextHandler` requires host enablement,
+persistence, bearer/subject verification, capability cryptography, cookie name
+and BFF responder. Method, flag, same-origin and strict schema checks precede
+persistence lookup. A missing store refuses as unavailable; throwing sync or
+enrollment operations map to the same bounded error. Only a token hash is
+persisted, an invalid bearer grant refuses before writes, and only a verified
+subject can enroll subscriptions. A repeated active save keeps its capability;
+only explicit regrant can replace an existing revoked context. The host supplies
+its historical flag and RPC names, gateway, route and observability wrapper.
+There is no default persistence, portable context SQL or reference context route.
+Telemetry context failure never gates commerce, and the response's `active`
+boolean is a local context fact rather than proof of delivery. The
+[package witness](../../packages/platform/test/marketing/analyticsContext.test.ts)
+uses in-memory persistence without a live provider.
+
 The accounting HTTP scheduler accepts an explicitly composed invoicing service
 and passes it to the existing accounting runtime after HTTP method and bearer
 authorization checks. It adds no cron or executor. Runtime enablement and service
