@@ -26,7 +26,7 @@ const GROUPS = [...ACTOR_GROUPS, ...ACQUISITION_GROUPS];
 // https://www.postgresql.org/docs/16/predefined-roles.html
 const PREDEFINED = ["pg_database_owner", "pg_read_all_data", "pg_write_all_data", "pg_read_all_settings", "pg_read_all_stats", "pg_stat_scan_tables", "pg_monitor", "pg_signal_backend", "pg_read_server_files", "pg_write_server_files", "pg_execute_server_program", "pg_checkpoint", "pg_use_reserved_connections", "pg_create_subscription"];
 const SAFE_NAME = /^[A-Za-z_][A-Za-z0-9_]{0,62}$/u;
-const fail = (code: string): never => { throw new Error(`qualified PostgreSQL installation refused: ${code}`); };
+function fail(code: string): never { throw new Error(`qualified PostgreSQL installation refused: ${code}`); }
 function attributes(row: CatalogRow): Attributes {
   const value: unknown = JSON.parse(row.attributes);
   if (!value || typeof value !== "object" || Array.isArray(value)) return fail("malformed_catalog_attributes");

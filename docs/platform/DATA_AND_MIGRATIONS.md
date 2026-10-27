@@ -1010,7 +1010,49 @@ cover admission and arrival alignment. These checks do not establish
 installation-path parity, a complete installed late-delivery journey or a
 stable upgrade guarantee.
 
+## Legacy fresh-bootstrap role observation
+
+The experimental `@openlup/platform/lifecycle` export
+`inspectLegacyPostgresInstallRoles(db, request)` makes one fixed parameterized
+SELECT through a caller-owned query handle. On PostgreSQL 16+, it observes
+database/session identities, selected role flags and incident membership edges
+in one statement snapshot. Memberships are inventory, not transitive ACL proof.
+Driver failures are redacted rather than exposing connection diagnostics.
+The statement binds catalog relations, functions, cast types and equality
+operators to `pg_catalog`; an application-first session `search_path` does not
+select application-defined observation functions, types or comparison operators.
+
+Its scope is `legacy-fresh-bootstrap-role-prerequisites`. A true
+`rolePrerequisitesMet` requires the declared migration login to match both
+`current_user` and `session_user`, the legacy superuser/shared runtime-login
+conditions, installer-managed mode, and absent bootstrap roles. SET ROLE is not
+an actual login. This result does not prove schema inventory, installation
+completion, object ACLs, pooling, import safety, provider support or freedom from
+later concurrent changes. It executes no DDL and changes no immutable SQL.
+
+The existing [PostgreSQL witness](../../tests/postgres/m14InstallQualification.test.ts)
+observes a positive result inside a read-only transaction, actual ordinary-login
+and SET ROLE refusals, and role flags/memberships. It executes the immutable
+acquisition bootstrap to prove restricted-login 42501 refusal before schema/role
+writes, and the immutable actor bootstrap to prove a pre-existing safe role
+collision (42710) before auth writes. This finite observation does not make a
+qualified installer or portable installation claim; those decisions remain
+separate from both this probe and application-file upgrades.
+
 ## Compatibility lifecycle
+
+The E2 qualified fresh catalogue replaces the baseline and two bootstrap units,
+then appends runtime sealing after the complete legacy ownership closure. Its
+89-unit plan requires an actual PostgreSQL 16 database-owner SUPERUSER migrator,
+distinct restricted runtime and optional restore logins, and one of four fixed
+inventories for the actual migration/bootstrap and restore binding shape. It
+does not change the issued 88-unit legacy plan or authorize a legacy database
+to relabel its ledger. Installer-managed provisioning and operator-provisioned
+roles must satisfy the same declared flags, membership and session refusals;
+the [catalogue owner](#module-catalogues-and-installed-histories) describes the
+production reference/renamed-target proof and its remaining execution boundary.
+These source changes do not qualify a restricted managed host or establish
+supported hosting.
 
 Managed commerce forwards scope saved-preference writes to a server-proved
 matching account and bind return creation/replay to the principal, owned order
@@ -1465,6 +1507,11 @@ observes refused mutations. A proposed SQL overlay in a disposable database is
 local behavior evidence; committed-chain replay and delivery checks remain
 separate requirements.
 
+
+The application-file lifecycle primitive checks caller-supplied schema ranges
+without reading or changing the database. Keep that file-ownership reconciliation
+separate from the actual expand/backfill/contract evidence below; its successful
+apply does not prove old/new SQL compatibility or authorize a migration.
 
 Every production-shaped schema change follows this order:
 
