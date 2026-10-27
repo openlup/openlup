@@ -1,3 +1,4 @@
+import { selectPlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
 import { createHash, randomUUID } from "node:crypto";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
@@ -12,7 +13,7 @@ import { readReviewedForwardRegistry } from "../../scripts/reviewed-platform-for
 import { batchSnapshot } from "./reviewedBatchCatalog.js";
 const sha = (bytes: string | Buffer) => createHash("sha256").update(bytes).digest("hex");
 const registry = readReviewedForwardRegistry(readFileSync("config/reviewed-platform-forwards.json"));
-const manifest = JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8"));
+const manifest = selectPlatformMigrationManifest(JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8")), "legacy");
 const nativePath = "db/platform/migrations/20261026120000_account_support_operator_authority.sql";
 const managedPath = "supabase/migrations/20261026120100_account_support_current_authority.sql";
 

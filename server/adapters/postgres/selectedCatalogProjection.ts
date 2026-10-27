@@ -261,3 +261,14 @@ export function selectedCatalogProjectionPayload(value: ValidatedProjection): st
     defaultPrivileges: value.defaultPrivileges, roleMemberships: value.roleMemberships,
     roles: value.roles, ownerships: value.ownerships });
 }
+
+/** Qualified installation retains these raw fields until declared principals are validated. */
+export async function readSelectedCatalogRowsForQualifiedInstall(client: ClientBase): Promise<readonly CatalogRow[]> {
+  const result = await client.query<CatalogRow>({ name: "openlup-qualified-catalog-rows-v1", text: CATALOG_SQL });
+  return result.rows;
+}
+
+/** Reuse the existing row consistency checks after the qualified field-only transformation. */
+export function selectedCatalogRowsPayloadForQualifiedInstall(rows: readonly CatalogRow[]): string {
+  return selectedCatalogProjectionPayload(projectionFromRows(rows));
+}
