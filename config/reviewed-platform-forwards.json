@@ -1808,5 +1808,27 @@
         }
       ]
     }
+  ],
+  "qualifiedInstallations": [
+    {
+      "path": "db/platform/migrations/q2_00000000000000_platform_baseline.sql",
+      "sha256": "679f46e8eee66b70ff7664b300174b4c105a4f43de9449c26391da01cc1f9863"
+    },
+    {
+      "path": "db/platform/migrations/q2_20260810180001_self_host_actor_auth.sql",
+      "sha256": "fc34acc762a8650d7b707aa7f81e4ceef97324991854fec6a795c9e222ee43a5"
+    },
+    {
+      "path": "db/platform/migrations/q2_20260816140000_acquisition_case_foundation.sql",
+      "sha256": "a70d598f6c5f1d5e82381a37949159726868db79701fa531cf76e40b0ace31cb"
+    },
+    {
+      "path": "db/platform/migrations/q2_20261026130000_runtime_capabilities.sql",
+      "sha256": "96879ff19e14771704dbad14a016bccdc8dbb50518717342c1ebdc4e8afcfbcb"
+    },
+    {
+      "path": "db/platform/migrations/q2_20261026140000_retained_client_subscription_import.sql",
+      "sha256": "56144f8e61b649c9d9f48458a1734abcc8bbd8d36fdc3919d90ceb1bc35d3b48"
+    }
   ]
 }

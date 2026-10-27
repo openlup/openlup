@@ -34,6 +34,13 @@ export interface PlatformMigrationSource {
     migrations: readonly PlatformMigrationFile[];
     objectInventoryPayload?: string;
   }): string[];
+  /**
+   * Optional trusted-source observation/refusal after exact-prefix validation, under the
+   * migration session lock. Runs once per operation before any pending SQL or dry-run result.
+   * The canonical source uses read-only observations; the callback shares the caller's existing
+   * database capability and is not a sandbox or a provisioning/per-unit execution hook.
+   */
+  assertSession?(client: PoolClient, applied: readonly (PlatformMigrationManifestEntry & { position: number })[]): Promise<void>;
 }
 
 export interface PostgresMigrationRunnerOptions {
@@ -60,6 +67,9 @@ type LedgerExistenceRow = { ledger_exists: unknown };
 type AdvisoryUnlockRow = { unlocked: unknown };
 const ACQUIRE_MIGRATION_LOCK = "SELECT pg_advisory_lock(hashtextextended($1, 0))";
 const RELEASE_MIGRATION_LOCK = "SELECT pg_advisory_unlock(hashtextextended($1, 0)) AS unlocked";
+const ACQUIRE_CATALOG_BOUND_MIGRATION_LOCK = "SELECT pg_catalog.pg_advisory_lock(pg_catalog.hashtextextended($1::pg_catalog.text, 0::pg_catalog.int8))";
+const RELEASE_CATALOG_BOUND_MIGRATION_LOCK = "SELECT pg_catalog.pg_advisory_unlock(pg_catalog.hashtextextended($1::pg_catalog.text, 0::pg_catalog.int8)) AS unlocked";
+const CATALOG_BOUND_LEDGER_EXISTENCE = "SELECT pg_catalog.to_regclass($1::pg_catalog.text) IS NOT NULL AS ledger_exists";
 
 export function createPostgresMigrationRunner(
   env: PostgresMigrationRunnerEnv,
@@ -79,8 +89,10 @@ export function createPostgresMigrationRunner(
     async status(): Promise<{ pending: string[]; applied: string[] }> {
       assertConnectionString(env);
       const plan = loadPlan(root, options.source);
-      return withMigrationSession(await getPool(), options.lockName, async (client) => {
-        const applied = await readAppliedPrefix(client, plan.units);
+      const catalogBoundSession = options.source.assertSession !== undefined;
+      return withMigrationSession(await getPool(), options.lockName, catalogBoundSession, async (client) => {
+        const applied = await readAppliedPrefix(client, plan.units, catalogBoundSession);
+        await options.source.assertSession?.(client, applied.map((unit) => ({ file: unit.catalogPath, sha256: unit.sha256, position: unit.position })));
         if (applied.length === plan.units.length) await assertObjectInventory(client, plan, options);
         return {
           pending: plan.units.slice(applied.length).map((unit) => unit.catalogPath),
@@ -92,8 +104,10 @@ export function createPostgresMigrationRunner(
     async apply(opts?: { dryRun?: boolean }): Promise<{ applied: string[] }> {
       assertConnectionString(env);
       const plan = loadPlan(root, options.source);
-      return withMigrationSession(await getPool(), options.lockName, async (client) => {
-        const already = await readAppliedPrefix(client, plan.units);
+      const catalogBoundSession = options.source.assertSession !== undefined;
+      return withMigrationSession(await getPool(), options.lockName, catalogBoundSession, async (client) => {
+        const already = await readAppliedPrefix(client, plan.units, catalogBoundSession);
+        await options.source.assertSession?.(client, already.map((unit) => ({ file: unit.catalogPath, sha256: unit.sha256, position: unit.position })));
         const pending = plan.units.slice(already.length);
         if (opts?.dryRun) {
           if (pending.length === 0) await assertObjectInventory(client, plan, options);
@@ -115,7 +129,7 @@ export function createPostgresMigrationRunner(
             throw new Error(`platform migration ${unit.catalogPath} failed: ${errorMessage(error)}`);
           }
         }
-        const complete = await readAppliedPrefix(client, plan.units);
+        const complete = await readAppliedPrefix(client, plan.units, catalogBoundSession);
         if (complete.length !== plan.units.length) throw new Error("platform migration ledger is incomplete after apply");
         await assertObjectInventory(client, plan, options);
         return { applied: appliedNow };
@@ -127,6 +141,7 @@ export function createPostgresMigrationRunner(
 async function withMigrationSession<T>(
   pool: Pool,
   lockName: string,
+  catalogBoundSession: boolean,
   operation: (client: PoolClient) => Promise<T>,
 ): Promise<T> {
   const client = await pool.connect();
@@ -135,7 +150,7 @@ async function withMigrationSession<T>(
   let operationFailure: unknown;
   let result!: T;
   try {
-    await client.query(ACQUIRE_MIGRATION_LOCK, [lockName]);
+    await client.query(catalogBoundSession ? ACQUIRE_CATALOG_BOUND_MIGRATION_LOCK : ACQUIRE_MIGRATION_LOCK, [lockName]);
     locked = true;
     result = await operation(client);
   } catch (error) {
@@ -146,7 +161,7 @@ async function withMigrationSession<T>(
   let unlockFailure: unknown;
   if (locked) {
     try {
-      const unlocked = await client.query<AdvisoryUnlockRow>(RELEASE_MIGRATION_LOCK, [lockName]);
+      const unlocked = await client.query<AdvisoryUnlockRow>(catalogBoundSession ? RELEASE_CATALOG_BOUND_MIGRATION_LOCK : RELEASE_MIGRATION_LOCK, [lockName]);
       if (unlocked.rows[0]?.unlocked !== true) throw new Error("PostgreSQL did not release the advisory lock");
     } catch (error) {
       unlockFailure = error;
@@ -194,9 +209,9 @@ function loadPlan(root: string, source: PlatformMigrationSource): LoadedPlan {
   return Object.freeze({ manifest, migrations: catalog.migrations, units: Object.freeze(units) });
 }
 
-async function readAppliedPrefix(client: PoolClient, units: readonly PlannedMigration[]): Promise<readonly PlannedMigration[]> {
+async function readAppliedPrefix(client: PoolClient, units: readonly PlannedMigration[], catalogBoundSession: boolean): Promise<readonly PlannedMigration[]> {
   const exists = await client.query<LedgerExistenceRow>(
-    "SELECT to_regclass($1) IS NOT NULL AS ledger_exists",
+    catalogBoundSession ? CATALOG_BOUND_LEDGER_EXISTENCE : "SELECT to_regclass($1) IS NOT NULL AS ledger_exists",
     [LEDGER],
   );
   if (exists.rows[0]?.ledger_exists !== true) return [];
