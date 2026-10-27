@@ -93,11 +93,17 @@ async function inspectUpgrade(input: AppUpgradeInput): Promise<{
     if (aliases.has(alias)) throw new Error(`Application upgrade path alias: ${path}`);
     aliases.add(alias);
   }
+  const directorySpellings = new Map<string, string>();
   for (const path of paths) {
     const components = path.split("/");
     while (components.length > 1) {
       components.pop();
-      if (aliases.has(components.join("/").normalize("NFC").toLowerCase())) throw new Error(`Application upgrade file-parent collision: ${path}`);
+      const directory = components.join("/"), alias = directory.normalize("NFC").toLowerCase();
+      if (aliases.has(alias)) throw new Error(`Application upgrade file-parent collision: ${path}`);
+      // Parents may not exist yet; both snapshots must still agree on their spelling.
+      const spelling = directorySpellings.get(alias);
+      if (spelling !== undefined && spelling !== directory) throw new Error(`Application upgrade path alias: ${path}`);
+      directorySpellings.set(alias, directory);
     }
   }
   if (!Number.isSafeInteger(input.schemaVersion) || input.schemaVersion < 0) throw new Error("Application schema version must be a nonnegative safe integer");

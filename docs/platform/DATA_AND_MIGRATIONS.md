@@ -946,6 +946,9 @@ SELECT through a caller-owned query handle. On PostgreSQL 16+, it observes
 database/session identities, selected role flags and incident membership edges
 in one statement snapshot. Memberships are inventory, not transitive ACL proof.
 Driver failures are redacted rather than exposing connection diagnostics.
+The statement binds catalog relations, functions, cast types and equality
+operators to `pg_catalog`; an application-first session `search_path` does not
+select application-defined observation functions, types or comparison operators.
 
 Its scope is `legacy-fresh-bootstrap-role-prerequisites`. A true
 `rolePrerequisitesMet` requires the declared migration login to match both

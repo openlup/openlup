@@ -1,9 +1,86 @@
 # M14 C: application lifecycle task
 
-Status: allocated combined C+D working-tree proof passed on exact B R2
-(2026-10-27), including actual PostgreSQL and packed-consumer falsifiers.
-Final stabilized technical read before DCO, fresh committed review and required
-native/full/delivery proof remain owed. Development preview only.
+Status: source-only local draft handoff (2026-10-27). Two native FULL FAIL
+reports and all three material cards remain open at cycle 0/3. Repairs are prepared for a corrected draft checkpoint and remain unverified;
+earlier working-tree proof is historical.
+Development preview only.
+
+## Receiving-session source-only repair, 2026-10-27
+
+The receiving supervisor relayed the owner's latest explicit limit: source
+corrections and static inspection only on this machine; no tests, verify,
+builds, installs, lint or other gates, commits, push or external writes.
+PR #401 remains the draft checkpoint. This limit supersedes the historical
+delivery endpoint below for this run; it waives no proof required before later
+submission. No independent reviewers were launched in this continuation.
+
+The supervisor freshly fetched main in this receiving run and confirmed policy
+pin `a03d920eec32bfb3d0de90b9a12535cc57f88d53`. The source checkpoint remains
+`da3a47d7f32f303ddaa6160d93dd6066239e6716`, separately from the native reviewed
+candidate `0334ee2592685c32d66947cd52922f0756f1236d`, tree
+`7247132331d0feaac08466faa8698e6283607bcf`, review base
+`f6f0b15c3422dd8e16aea7965b180fc584eb159c`. No rebase or main merge occurred.
+
+Restored the exact four UTF-8 files from the
+[historical FAIL handoff](https://github.com/openlup/openlup/pull/401#issuecomment-6449877511)
+under `.context/scratch/agent-review/`, comparing SHA-256 before writing and
+after reading the restored bytes:
+
+| File | SHA-256 |
+| --- | --- |
+| session.json | `50052319808a48f87d43155cd17434f0778d93d32ba4d871a302c4e514682f81` |
+| intent.json | `fadbf35f06bbc2bf7e782791b3769b487cbc922c4798e41e8d2f91280e360387` |
+| r0-a.report.json | `bfebe5b337b325a4a6bb0a4e973511bb457d83828de54585ed99c4b0473680ef` |
+| r0-b.report.json | `193efb2e36156498502386340b6c011f3b00e7bc7c4ea6e98406c66646b67832` |
+
+This was data-integrity recovery, not native preparation, verification, finding
+closure, a receipt or admission. Cycle 0/3, both FAIL reports, original authors
+and actor exclusions remain unchanged. Open cards remain `CDR0-A-1`,
+`CDR0-B-1` and `CDR0-B-2`. Actual new repair author is Codex subagent
+`/root/m14_cd`, context `01a17e98-726c-7263-871e-44c8cd68410a`, supervised by
+the receiving coordination context `01a17e97-d95d-7581-beb5-ab5ee9ad007c`.
+Both are author/coordination exclusions for subsequent independent review,
+alongside every historical exclusion. The resumed author must record changed
+authors through the supported same-history continuation before counted review;
+do not replace history or copy old verdicts to the repaired candidate.
+
+Static cause analysis groups the two C cards into one mechanism: full-filename
+aliases omit differently spelled absent parent directories with different leaf
+names. The smallest repair extends the existing whole-input preflight's parent
+loop with one normalized-prefix-to-exact-spelling map across both inventories.
+Exact shared parents remain allowed; full-file aliases and file-parent
+collisions retain their existing refusal. All of this precedes filesystem
+mutation. D's fixed SELECT now binds its functions, cast types and equality
+operators as well as relations to `pg_catalog`, covering ordinary calls, JSON
+aggregation, parameter/identity casts, ANY predicates and membership joins.
+`current_user`, `session_user` and COALESCE retain PostgreSQL keyword syntax.
+No session-setting query, abstraction, dependency or second SQL statement was
+added. The two canonical owner sections explain these precise boundaries.
+
+Inspected the checkpoint's two C regression drafts: absent case/normalization
+aliases with distinct leaf names must refuse before writes; one exact prefix
+must still resume and replay. Inspected its actual-PostgreSQL regression draft:
+a restricted genuine login with application-first search_path, shadow functions,
+cast-type domains and equality operators must observe actual flags with zero
+shadow calls. These cases remain unchanged and unexecuted; no extra case was
+needed for the identified mechanisms. Local static review traced all prefix
+checks across the union of both snapshots and all SQL symbol sites. This is
+author inspection, not independent PASS or runtime proof.
+
+Deferred to the authorized proving session: discriminating red/green regression
+execution, required focused and full local checks, actual PostgreSQL and packed
+consumer/falsifier proof, generated API/navigation and documentation-policy
+checks, approved-input package remeasurement and any necessary bounded budget
+read, DCO/commit, same-history candidate preparation with author exclusions,
+two fresh full reviews closing the cards, native verification and any separately
+authorized delivery. Existing exact caps are unchanged; changed source/docs
+bytes have not been remeasured. Historical PASS counts do not verify this tree.
+
+Self-retro: two C cards share one cause, so extending the existing prefix loop
+avoids duplicate controls. D's prepared regression exposes type/operator lookup
+as well as function lookup; binding every resolvable SQL symbol directly is
+smaller than altering caller session state. Hash-checked recovery preserves
+history without inventing a new candidate or consuming/resetting a cycle.
 
 ## Outcome and authority
 
@@ -816,3 +893,20 @@ after two partial discoveries, retaining 59 historical files' identities and all
 candidate controls. The existing lint owner now carries the recurring M14 A/C
 lesson. Once the allocated proof passed, no optional polish or extra review was
 started; only required final-read readiness is handed off.
+
+
+## Owner-authorized corrected draft checkpoint, 2026-10-27
+
+After the source-only handoff preparation, the owner directly instructed this
+receiving session to commit and push its corrections into the existing #401
+draft instead of ending with a separate prompt. This supersedes the earlier
+no-commit/no-push endpoint for this run. The actual grant covers DCO checkpoint
+commits, ordinary dependency-stack integration and updating the existing draft.
+The owner still forbids local tests and `verify` on this machine. No required
+proof is waived for readiness, admission or delivery: this checkpoint is
+unverified, with no PASS, receipt, ready transition, auto-merge or queue admission.
+The receiving supervisor remains `01a17e97-d95d-7581-beb5-ab5ee9ad007c`; all
+recorded authors, exclusions, findings and review budgets remain applicable.
+Use ordinary Git hooks and signing; no bypass or copied proof stamp is allowed.
+Generated metadata, regression execution, package measurements, independent
+review and final verification remain owed on the author's proving machine.

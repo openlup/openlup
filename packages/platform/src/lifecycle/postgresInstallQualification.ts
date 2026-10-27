@@ -53,20 +53,23 @@ export interface LegacyPostgresInstallRoleReport {
 const BOOTSTRAP_ROLES = ["anon", "authenticated", "platform_acquisition_owner", "platform_acquisition_runtime"];
 // One statement observes identities and the relevant role graph in the same statement snapshot.
 // No SQL, identifiers, credentials or catalog expectations come from the caller.
-const OBSERVE = `SELECT current_database() AS database, current_user::text AS "currentUser",
-  session_user::text AS "sessionUser",
-  (SELECT COALESCE(jsonb_agg(jsonb_build_object('name', rolname, 'login', rolcanlogin,
+// Bind functions, cast types and operators independently of the caller's search_path.
+const OBSERVE = `SELECT pg_catalog.current_database() AS database, current_user::pg_catalog.text AS "currentUser",
+  session_user::pg_catalog.text AS "sessionUser",
+  (SELECT COALESCE(pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object('name', rolname, 'login', rolcanlogin,
     'superuser', rolsuper, 'inherit', rolinherit, 'createRole', rolcreaterole,
     'createDatabase', rolcreatedb, 'replication', rolreplication, 'bypassRls', rolbypassrls)
-    ORDER BY rolname), '[]'::jsonb) FROM pg_catalog.pg_roles WHERE rolname = ANY($1::text[]) OR rolname = current_user) AS roles,
-  (SELECT COALESCE(jsonb_agg(jsonb_build_object('role', granted.rolname, 'member', member.rolname,
+    ORDER BY rolname), '[]'::pg_catalog.jsonb) FROM pg_catalog.pg_roles
+    WHERE rolname OPERATOR(pg_catalog.=) ANY($1::pg_catalog.text[]) OR rolname OPERATOR(pg_catalog.=) current_user) AS roles,
+  (SELECT COALESCE(pg_catalog.jsonb_agg(pg_catalog.jsonb_build_object('role', granted.rolname, 'member', member.rolname,
     'grantor', grantor.rolname, 'admin', m.admin_option, 'inherit', m.inherit_option, 'set', m.set_option)
-    ORDER BY granted.rolname, member.rolname, grantor.rolname), '[]'::jsonb)
+    ORDER BY granted.rolname, member.rolname, grantor.rolname), '[]'::pg_catalog.jsonb)
     FROM pg_catalog.pg_auth_members m
-    JOIN pg_catalog.pg_roles granted ON granted.oid = m.roleid
-    JOIN pg_catalog.pg_roles member ON member.oid = m.member
-    JOIN pg_catalog.pg_roles grantor ON grantor.oid = m.grantor
-    WHERE granted.rolname = ANY($1::text[]) OR member.rolname = ANY($1::text[])) AS memberships`;
+    JOIN pg_catalog.pg_roles granted ON granted.oid OPERATOR(pg_catalog.=) m.roleid
+    JOIN pg_catalog.pg_roles member ON member.oid OPERATOR(pg_catalog.=) m.member
+    JOIN pg_catalog.pg_roles grantor ON grantor.oid OPERATOR(pg_catalog.=) m.grantor
+    WHERE granted.rolname OPERATOR(pg_catalog.=) ANY($1::pg_catalog.text[])
+      OR member.rolname OPERATOR(pg_catalog.=) ANY($1::pg_catalog.text[])) AS memberships`;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);

@@ -2111,7 +2111,9 @@ value is a conflict requiring adopter reconciliation. Every existing managed
 path component must match its actual directory-entry spelling exactly; filesystem
 case or normalization aliases confer no ownership of an unlisted entry.
 Unsafe or aliasing paths, links, nonregular files and file-parent collisions
-refuse. Planning is not a
+refuse. Across both snapshots, each case- and normalization-folded directory
+prefix must have one exact spelling, even when that directory does not yet exist
+and the managed leaf names differ. Planning is not a
 write authority: `applyAppUpgrade` rechecks the whole input before any mutation.
 
 Apply requires an exclusive maintenance window over the tree. Each replacement
