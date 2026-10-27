@@ -1374,6 +1374,10 @@
       "class": "public-output"
     },
     {
+      "path": "docs/platform/plans/oss-m14-runtime-drain-task.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/oss-m15-generic-risk-controls.md",
       "class": "public-output"
     },
@@ -8806,6 +8810,30 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/fixtures/reviewed-m14-qualified/db/platform/migrations/README.md",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/fixtures/reviewed-m14-qualified/db/platform/migrations/q2_00000000000000_platform_baseline.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/fixtures/reviewed-m14-qualified/db/platform/migrations/q2_20260810180001_self_host_actor_auth.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/fixtures/reviewed-m14-qualified/db/platform/migrations/q2_20260816140000_acquisition_case_foundation.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/fixtures/reviewed-m14-qualified/db/platform/migrations/q2_20261026130000_runtime_capabilities.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/fixtures/reviewed-m14-qualified/db/platform/migrations/q2_20261026140000_retained_client_subscription_import.sql",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/fulfillment-stock-evidence-proof.ts",
       "class": "public-output"
     },
@@ -9106,6 +9134,10 @@
       "class": "public-output"
     },
     {
+      "path": "scripts/platform-migration-manifest.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "scripts/platform-migration-manifest.ts",
       "class": "public-output"
     },
@@ -9183,6 +9215,10 @@
     },
     {
       "path": "scripts/public-reference/verify-subscription.mjs",
+      "class": "public-output"
+    },
+    {
+      "path": "scripts/qualified-migration-admission.test.ts",
       "class": "public-output"
     },
     {
@@ -25870,11 +25906,19 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/m14MigrationSessionAdmission.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/newPurchaseStockManaged.test.ts",
       "class": "public-output"
     },
     {
       "path": "tests/postgres/newPurchaseStockNative.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/nodeHostRuntimeDrain.test.ts",
       "class": "public-output"
     },
     {

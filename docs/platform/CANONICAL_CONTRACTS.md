@@ -551,6 +551,14 @@ privileges and complete catalogue installation are described in
 
 ## Compatibility posture
 
+The exact qualified-installation source approvals in
+[`reviewed-platform-forwards.json`](../../config/reviewed-platform-forwards.json)
+are control inputs, not an installed catalogue. Their five inert fixtures and
+the legacy-preserving version-2 reader follow the
+[migration owner](DATA_AND_MIGRATIONS.md#module-catalogues-and-installed-histories).
+Introducing approved SQL still requires the separately landed control route;
+these pins grant no activation or managed-host compatibility.
+
 The account-support reference capability manifest declares default-off,
 explicit-host registration and an empty route list. It is descriptive metadata,
 not permission to mount an account API or advertise checkout continuation.

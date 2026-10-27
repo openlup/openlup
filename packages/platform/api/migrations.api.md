@@ -50,6 +50,15 @@ export interface PlatformMigrationSource {
         migrations: readonly PlatformMigrationFile[];
         objectInventoryPayload?: string;
     }): string[];
+    /**
+     * Optional trusted-source observation/refusal after exact-prefix validation, under the
+     * migration session lock. Runs once per operation before any pending SQL or dry-run result.
+     * The canonical source uses read-only observations; the callback shares the caller's existing
+     * database capability and is not a sandbox or a provisioning/per-unit execution hook.
+     */
+    assertSession?(client: PoolClient, applied: readonly (PlatformMigrationManifestEntry & {
+        position: number;
+    })[]): Promise<void>;
 }
 export interface PostgresMigrationRunnerOptions {
     /** Name of the PostgreSQL advisory lock that serializes migration sessions. */
