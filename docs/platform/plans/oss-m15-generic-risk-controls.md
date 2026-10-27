@@ -769,3 +769,61 @@ failed reading the unstaged deleted source; staging that deletion and catalogue
 delta restored normal evaluation. Both policy/generation commands must pass with
 the committed trailers; generated navigation has no byte delta. Official package
 measurement follows the committed package candidate and is recorded below.
+
+### R3 committed artifact evidence and local endpoint
+
+Execution candidate: `4a7a0b18568b81d08171afd0e6be58653f77b171`
+(`fix(risk): complete privacy integration proof (M15 R3)`). All package inputs
+are committed and clean. The following evidence-only commit changes this task
+record outside every package, so it does not change the measured package bytes.
+
+| Command | Result |
+| --- | --- |
+| `npm run oss:published-tree -- --policy` | PASS after the scoped impact trailers; three obligations, zero unanswered |
+| `npm run oss:published-tree -- --policy --docs-update` | PASS after the trailers; navigation regenerated with no byte delta |
+| `npm run packages:check -- --out .context/scratch/m15-r3/artifacts` | PASS, three packages, no findings; actual tarballs and producer manifest retained in ignored evidence, bound to the execution candidate |
+| `node --experimental-strip-types .context/scratch/m15-r3/measure.mjs .context/scratch/m15-r3/artifacts` | PASS; manifest SHA-256 checks, existing `measurePack`/`checkPackBudget` on extracted official tarballs, and all 16 built Platform browser-entry measurements; zero findings, JSON retained in ignored evidence |
+| `git diff --check c88f589435676743e5a603fce1eac68a6945141e HEAD` | PASS for the complete R3 range; working/index whitespace checks also pass |
+| `npm run check:dco-signoff -- c88f589435676743e5a603fce1eac68a6945141e 4a7a0b18568b81d08171afd0e6be58653f77b171` | PASS, all five R3 commits through the execution candidate signed off; the final evidence commit is checked with its full endpoint too |
+
+Actual artifact values below are measured/cap. No cap, timeout, skip, release
+gate, version, donor implementation, R2 reference binding or M14 file changed.
+
+| Metric | Core | Outbox | Platform |
+| --- | ---: | ---: | ---: |
+| Packed bytes | 167,341 / 327,680 | 39,165 / 81,920 | 1,901,652 / 1,925,000 |
+| Unpacked bytes | 712,626 / 1,392,640 | 133,216 / 266,240 | 8,907,429 / 8,970,000 |
+| Files | 224 / 420 | 41 / 90 | 2,574 / 2,580 |
+| Code gzip bytes | 143,737 / 276,480 | 20,930 / 43,008 | 1,627,904 / 1,648,000 |
+| Code files | 213 / 400 | 33 / 70 | 2,520 / 2,520 |
+| Docs gzip bytes | 17,213 / 49,152 | 13,216 / 26,624 | 64,157 / 73,728 |
+| Docs files | 10 / 20 | 6 / 12 | 5 / 10 |
+
+`risk/contracts` remains 20 / 32 minified gzip bytes. All other browser entries
+fit their existing limits; the detailed ignored measurement records each value.
+Relative to recorded R2, Platform adds 2,897 packed bytes, 16,586 unpacked bytes,
+three files, 4,058 code gzip bytes, three code files and 188 docs gzip bytes.
+Remaining Platform headroom is 23,348 packed bytes, 62,571 unpacked bytes, six
+total files, 20,096 code gzip bytes, **zero code files**, 9,571 docs gzip bytes
+and five docs files. This reserves no M14 headroom.
+
+Remaining issues and delivery boundary: focused R3 execution is green. The
+combined +141 discovery increase still needs the coordinator's finite budget
+decision (+41 above the unchanged allowance) and comparable hosted timing.
+Full root verification/coverage and counted independent sensitive review of the
+current committed tree remain open at the coordinator endpoint. Earlier
+preliminary source reviews are historical, not current native admission.
+Policy still reports the pre-existing committed binding snapshot stale and
+reserves its refresh for release preparation; computed bindings and policy pass.
+Deployment-specific subject mapping, grants, retention and future portability
+remain injected host responsibilities. No full managed erasure, retention period,
+release preparation, push, PR, merge, release or adopter operation is claimed.
+
+Self-retro: executable proof found a stale post-rebase expectation, a generic
+mock typing defect and a three-code-file budget excess that static reviews had
+missed. The smallest repair colocates the existing binding factory rather than
+raising a cap, and a typed-method spy avoids an unsafe assertion. Reading the
+focused compiler result before starting broad lint would have avoided one
+redundant lint pass. Lesson: generic orchestration fixtures need their strict
+compiler witness; packed file budgets should shape a small module's physical
+layout. No formal regroup condition was reached and no successor work is opened.
