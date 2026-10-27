@@ -69,6 +69,14 @@ immutable release; see the [install support policy](../../.github/INSTALL_SUPPOR
 
 ## Ownership
 
+The Node host and scheduler shutdown source, API reports and disposable
+PostgreSQL drain witness belong to the platform package's
+[scheduled jobs boundary](../../packages/platform/README.md#scheduled-jobs).
+Runtime guidance owns host dependency disposal and retains the separate
+external executor fencing and effect reconciliation duties. The publication
+catalogue includes the real-session witness; generated navigation establishes
+no current test result or complete store-transfer claim.
+
 Application lifecycle source, owner-local witnesses and its API report route
 to the [application-file ownership boundary](ARCHITECTURE_AND_EXTENSIONS.md#application-file-upgrades).
 The package README remains the short import entry, the package reference owns

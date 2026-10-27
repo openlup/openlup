@@ -25758,6 +25758,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/nodeHostRuntimeDrain.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/oidcIdentity.conformance.ts",
       "class": "public-output"
     },

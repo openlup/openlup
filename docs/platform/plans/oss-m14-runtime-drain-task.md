@@ -1,8 +1,8 @@
 # M14 Node runtime drain task
 
-Status: later, separate runtime-safety candidate; the authorized baseline
-falsifiers executed with five intended failures on unchanged production
-(2026-10-27). The later authorized light repair is written and awaits execution.
+Status: source-only local draft handoff (2026-10-27). The current stacked tree
+remains unverified; earlier baseline failures and positive probes below retain
+their historical inputs. Receiving-machine owner metadata remains unverified.
 This record grants no delivery or release authority.
 
 - Outcome: stopping a Node host fences its stopped registrations and retains
@@ -242,3 +242,56 @@ focused ESLint command in its own runtime worktree: exit 0. No unchanged unit
 suite, API producer or PostgreSQL witness was rerun. The 78 unit PASS and two
 actual API outputs retain their earlier exact source inputs; positive real-PG,
 full/API/cold/native proof and final runtime integration remain pending.
+
+## Receiving-machine source handoff, 2026-10-27
+
+The owner directly narrowed the receiving-machine endpoint to source corrections
+and a handoff to the originating author session. Keep #405 a draft. No tests,
+`verify`, dependency installation, build, package measurement, native admission,
+ready transition or merge is authorized in this receiving run. This later grant
+supersedes the historical writer's local scheduling restrictions for the bounded
+source/documentation work; it does not supply missing proof.
+
+Receiving coordinator: Codex chat `01a17e97-d95d-7581-beb5-ab5ee9ad007c`.
+Policy pin read: `a03d920eec32bfb3d0de90b9a12535cc57f88d53`; code checkpoint
+`5eac3ce64e51d6a901aee3938714aaa2c6b36699`; predecessor checkpoint
+`da3a47d7f32f303ddaa6160d93dd6066239e6716`. No freshness integration was
+performed. The five-red baseline and earlier positive witnesses keep their
+historical inputs; none qualifies this stack.
+
+Static inspection found the three existing production seams already contain the
+bounded drain repair. This receiving delta adds the missing package/runtime
+owner explanation, publication-catalogue entry and existing substrate routing
+for the PostgreSQL witness. It introduces no further production behavior.
+Generated navigation, owner-impact fingerprints, API compatibility, cumulative
+pack limits, installed/cold proof, current PostgreSQL proof, independent FULL
+review and full clean-tree `--pgtap` verification remain for the author machine.
+No review session, PASS, receipt, expiry or repair-cycle claim was created.
+
+The source remains uncommitted here: required pre-commit checks and sensitive
+packet stabilization have not run. Preserve the working-tree delta or its exact
+handoff patch; do not bypass the hooks to publish it. Reconcile the C+D repair
+into this dependent candidate only through the ordinary documented stack route.
+
+Self-retro: the access preflight initially confused a model-session failure with
+file permissions. A disposable write/read/cleanup probe and a successful retry
+of the existing Sol 6.1 session resolved that distinction before source editing.
+The useful simplification here is owner metadata for the existing repair;
+another shutdown mechanism would add no accepted behavior.
+
+
+## Owner-authorized corrected draft checkpoint, 2026-10-27
+
+After the source-only handoff preparation, the owner directly instructed this
+receiving session to commit and push its corrections into the existing #405
+draft instead of ending with a separate prompt. This supersedes the earlier
+no-commit/no-push endpoint for this run. The actual grant covers DCO checkpoint
+commits, ordinary dependency-stack integration and updating the existing draft.
+The owner still forbids local tests and `verify` on this machine. No required
+proof is waived for readiness, admission or delivery: this checkpoint is
+unverified, with no PASS, receipt, ready transition, auto-merge or queue admission.
+The receiving supervisor remains `01a17e97-d95d-7581-beb5-ab5ee9ad007c`; all
+recorded authors, exclusions, findings and review budgets remain applicable.
+Use ordinary Git hooks and signing; no bypass or copied proof stamp is allowed.
+Generated metadata, regression execution, package measurements, independent
+review and final verification remain owed on the author's proving machine.

@@ -13,6 +13,16 @@ drain/reconciliation of accepted effects. Unsafe or unavailable enforcement
 cannot activate the target and must not pause active subscription state. The
 local synthetic HTTP probe establishes its fixture semantics only.
 
+For a graceful Node shutdown, await the host's cached `stop()` promise before
+disposing callback dependencies. The scheduler fences its current registrations
+synchronously and drains admitted callbacks through lock release; the host
+closes the dedicated lock session after that drain settles. Direct scheduler
+users must await `stopAll(): Promise<void>`, including when supplying a custom
+implementation. The adapter permits later registrations, so the host remains
+responsible for preventing new work during its own shutdown. See
+[scheduled jobs](../../packages/platform/README.md#scheduled-jobs) for the
+same-session advisory-lock reservation and disposable PostgreSQL witness.
+
 The reference control-plane route composes existing admin authorization with the
 package operations handler. Its host binding still selects the bundle, obtains
 and closes its client, and supplies the capability-local operator ID. The direct
