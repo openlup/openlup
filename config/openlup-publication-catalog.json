@@ -1378,11 +1378,23 @@
       "class": "public-output"
     },
     {
+      "path": "docs/platform/plans/oss-m14-install-qualification.md",
+      "class": "public-output"
+    },
+    {
+      "path": "docs/platform/plans/oss-m14-lifecycle-task.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/oss-m14-operations-portability.md",
       "class": "public-output"
     },
     {
       "path": "docs/platform/plans/oss-m14-operations.md",
+      "class": "public-output"
+    },
+    {
+      "path": "docs/platform/plans/oss-m14-runtime-drain-task.md",
       "class": "public-output"
     },
     {
@@ -2487,6 +2499,10 @@
     },
     {
       "path": "packages/platform/api/kernel.api.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/api/lifecycle.api.md",
       "class": "public-output"
     },
     {
@@ -5146,6 +5162,18 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/lifecycle/appUpgrade.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/lifecycle/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/lifecycle/postgresInstallQualification.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/marketing/acquisitionCaseSchemas.ts",
       "class": "public-output"
     },
@@ -7483,6 +7511,14 @@
     },
     {
       "path": "packages/platform/test/kernel/platformKernel.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/lifecycle/appUpgrade.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/lifecycle/postgresInstallQualification.test.ts",
       "class": "public-output"
     },
     {
@@ -25774,6 +25810,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/m14InstallQualification.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/m14MigrationSessionAdmission.test.ts",
       "class": "public-output"
     },
@@ -25799,6 +25839,10 @@
     },
     {
       "path": "tests/postgres/newPurchaseStockNative.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/nodeHostRuntimeDrain.test.ts",
       "class": "public-output"
     },
     {

@@ -2,6 +2,8 @@
 export const PUBLIC_EXECUTION_ENTRYPOINTS = [
   "packages/outbox/scripts/api-contract.ts", "packages/outbox/scripts/consumer-proof.ts", "packages/outbox/vitest.config.ts",
   "packages/platform/scripts/api-contract.ts", "packages/platform/scripts/consumer-proof.ts", "packages/platform/vitest.config.ts",
+  "packages/platform/test/lifecycle/appUpgrade.test.ts",
+  "tests/postgres/nodeHostRuntimeDrain.test.ts",
   "server/adapters/s3/objectStorageConformance.test.ts",
   "scripts/packages/outbox-consumer-proof.ts", "scripts/packages/outbox-disposable-postgres.ts", "scripts/packages/pack-manifest-input.ts", "scripts/packages/required-package-gates.ts", "scripts/packages/required-package-gates.test.ts",
   "scripts/packages/platform-cold-consumer.ts",

@@ -13,6 +13,16 @@ drain/reconciliation of accepted effects. Unsafe or unavailable enforcement
 cannot activate the target and must not pause active subscription state. The
 local synthetic HTTP probe establishes its fixture semantics only.
 
+For a graceful Node shutdown, await the host's cached `stop()` promise before
+disposing callback dependencies. The scheduler fences its current registrations
+synchronously and drains admitted callbacks through lock release; the host
+closes the dedicated lock session after that drain settles. Direct scheduler
+users must await `stopAll(): Promise<void>`, including when supplying a custom
+implementation. The adapter permits later registrations, so the host remains
+responsible for preventing new work during its own shutdown. See
+[scheduled jobs](../../packages/platform/README.md#scheduled-jobs) for the
+same-session advisory-lock reservation and disposable PostgreSQL witness.
+
 The reference control-plane route composes existing admin authorization with the
 package operations handler. Its host binding still selects the bundle, obtains
 and closes its client, and supplies the capability-local operator ID. The direct
@@ -293,6 +303,19 @@ opt-in selector mounts no live route feeding them.
 
 
 ## Self-host boundary
+
+Application file changes can use the explicit Node
+[lifecycle snapshot primitive](ARCHITECTURE_AND_EXTENSIONS.md#application-file-upgrades)
+under an exclusive maintenance window. Its conflict preflight and exact-byte
+resume are separate from the canonical migration runner and actual runtime
+admission. A caller-supplied schema-range check does not certify database
+compatibility or a completed npm/deployment transition.
+
+The same entry's `inspectLegacyPostgresInstallRoles` observes only finite
+[legacy fresh-bootstrap role prerequisites](DATA_AND_MIGRATIONS.md#legacy-fresh-bootstrap-role-observation)
+through an injected PostgreSQL query handle. Even `rolePrerequisitesMet: true`
+does not establish install readiness, runtime grants, pooling or host support;
+the helper creates no role or schema and runs no installer.
 
 The platform target is portable PostgreSQL with a reproducible baseline and
 ordered forward migrations. A managed database service and a self-hosted

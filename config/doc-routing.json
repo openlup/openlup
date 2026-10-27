@@ -537,7 +537,8 @@
       "id": "platform-substrate",
       "when": "Runnable server substrate: Node HTTP runtime, BFF dispatch, scheduling, storage, data gateways and bundle composition",
       "paths": [
-        "packages/platform/**"
+        "packages/platform/**",
+        "tests/postgres/nodeHostRuntimeDrain.test.ts"
       ],
       "doc": "packages/platform/README.md",
       "anchor": ""
@@ -668,6 +669,29 @@
       ],
       "doc": "docs/platform/ARCHITECTURE_AND_EXTENSIONS.md",
       "anchor": "#existing-store-transfer-and-recovery"
+    },
+    {
+      "id": "application-lifecycle",
+      "when": "Conservative application-owned file upgrade planning, conflict refusal and interruption recovery",
+      "paths": [
+        "packages/platform/src/lifecycle/appUpgrade.ts",
+        "packages/platform/src/lifecycle/index.ts",
+        "packages/platform/test/lifecycle/appUpgrade.test.ts",
+        "packages/platform/api/lifecycle.api.md"
+      ],
+      "doc": "docs/platform/ARCHITECTURE_AND_EXTENSIONS.md",
+      "anchor": "#application-file-upgrades"
+    },
+    {
+      "id": "legacy-postgres-role-observation",
+      "when": "Finite read-only legacy fresh-bootstrap role prerequisite observation and actual PostgreSQL refusals",
+      "paths": [
+        "packages/platform/src/lifecycle/postgresInstallQualification.ts",
+        "packages/platform/test/lifecycle/postgresInstallQualification.test.ts",
+        "tests/postgres/m14InstallQualification.test.ts"
+      ],
+      "doc": "docs/platform/DATA_AND_MIGRATIONS.md",
+      "anchor": "#legacy-fresh-bootstrap-role-observation"
     }
   ]
 }

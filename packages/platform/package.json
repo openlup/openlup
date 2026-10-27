@@ -300,6 +300,11 @@
       "types": "./dist/portability/index.d.ts",
       "import": "./dist/portability/index.js",
       "default": "./dist/portability/index.js"
+    },
+    "./lifecycle": {
+      "types": "./dist/lifecycle/index.d.ts",
+      "import": "./dist/lifecycle/index.js",
+      "default": "./dist/lifecycle/index.js"
     }
   },
   "repository": {

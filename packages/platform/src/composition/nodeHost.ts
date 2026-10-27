@@ -120,7 +120,7 @@ export interface ServeNodeResult {
   bundleId: string;
   httpRuntime: HttpRuntimePort;
   registeredJobs: string[];
-  /** Stop timers and the local listener after a host signal; safe to call repeatedly. */
+  /** Fence timers, drain admitted jobs, then close their lock session; also close the local listener. Safe to call repeatedly. */
   stop(): Promise<void>;
 }
 
@@ -276,14 +276,15 @@ async function stopNodeHost(
   advisoryLock: AdvisoryLock | undefined,
   httpRuntime: HttpRuntimePort,
 ): Promise<void> {
-  const timers = Promise.resolve().then(() => scheduler?.stopAll());
+  const timers = scheduler?.stopAll() ?? Promise.resolve();
   const server = (httpRuntime as HttpRuntimePort & {
     server?: { close(callback: (error?: Error) => void): void } | null;
   }).server;
   const listener = server
     ? new Promise<void>((resolveClose, reject) => server.close((error) => error ? reject(error) : resolveClose()))
     : Promise.resolve();
-  const results = await Promise.allSettled([timers, advisoryLock?.close(), listener]);
+  const lock = timers.then(() => advisoryLock?.close(), () => advisoryLock?.close());
+  const results = await Promise.allSettled([timers, lock, listener]);
   const failures = results.flatMap((result) => result.status === "rejected" ? [result.reason] : []);
   if (failures.length > 0) throw new AggregateError(failures, "node_host_shutdown_failed");
 }

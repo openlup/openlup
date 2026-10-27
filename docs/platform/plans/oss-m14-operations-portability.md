@@ -24,7 +24,8 @@ every diff.
 
 ### E1 source-only continuation, 27 October 2026
 
-The active supervisor relayed the owner's current limit for this run: prepare
+For this historical source-only continuation, the active supervisor relayed the
+owner's then-current limit: prepare
 all source fixes and regression source here, with no execution of tests,
 verification, installs, builds, lint or gates, and no counted native reviews,
 commits, pushes or external writes. The stronger machine only runs measurements,
@@ -122,6 +123,132 @@ caller, and preserving socket errno removes a diagnostic ambiguity without a
 new selector or retry policy. Admission cannot protect lookup functions that run
 before it; binding those existing calls closes that source gap without changing
 legacy transcripts. Historical causality still needs an authorized run.
+
+### E1 authorized verification continuation, 27 October 2026
+
+The owner subsequently authorized the required tests and full clean verification
+on this machine, followed by DCO, push and updates to the five existing PRs,
+ready conversion, native receipt/admission, required source/group checks and
+merge queue through confirmed merge. This supersedes the temporary source-only
+and corrected-draft execution endpoints above and below; it changes no programme
+acceptance or proof requirement. Release/npm publication, deployment, live
+provisioning/cutover, credentials, account and settings changes remain excluded.
+The active root supervisor coordinates delivery and serializes heavy phases;
+the author lanes `/root/m14_e1_controls` and its continuing integration lane
+`/root/m14_e1_delivery` own this E1 worktree and are excluded from independent
+review. Policy was refreshed from `a03d920eec32bfb3d0de90b9a12535cc57f88d53` to
+`75d08b8207053fe9a5207e003b625133685ffdf4`, separate from the code review base;
+the changed contributor guidance describes the owned PostgreSQL tmpfs fixtures.
+
+This continuation started from the clean checkpoint
+`f8c88bb4009b7841478e87ce08a1815144c410ac` with its prior source corrections
+already committed. With Node 24.21.0/npm 11.19.0 and this worktree's own
+`node_modules/.bin` on PATH, the following focused checks ran:
+
+- `node scripts/run-vitest.mjs run scripts/qualified-migration-admission.test.ts scripts/platform-migration-manifest.test.ts packages/platform/test/migrations/postgresRunner.test.ts --project=node`:
+  64 tests passed in three files. These include actual source/group admission
+  success and machinery-change refusal with unchanged pins, manifest/history
+  refusals and the optional session hook's exact ordering/legacy transcripts.
+- `node scripts/run-vitest.mjs run scripts/oss-published-tree-check.test.ts --project=node -t 'owned pgTAP command lifecycle'`:
+  sandboxed execution reproduced 16 failures and seven passes, with 74 unrelated
+  cases excluded. The first failure explicitly reported loopback bind `EPERM`
+  before stack startup. The exact same command outside the sandbox passed all
+  23 selected cases in 36.30 seconds, including injected `EPERM`, `EACCES` and
+  bounded `EADDRINUSE` refusal. No timeout, retry budget, socket refusal or test
+  assertion changed. This identifies the current environment limitation; the
+  historical 739 PASS/16 FAIL run still lacks its original errno and is not
+  retrospectively reclassified.
+- `npm run oss:published-tree -- --policy` and `--inventory` passed. Policy
+  initially refused an inline-code link to the intentionally future E2 proof
+  file. Its owner explanation now links the existing execution inventory
+  instead; no placeholder file or checker exception was introduced. All four
+  documentation obligations are answered. The stale committed release snapshot
+  remains the checker-designated release-preparation item.
+- `npx --no -- ast-grep scan --error=no-suppress-all --error=unused-suppression`
+  passed after that documentation correction.
+
+The active manifest remains v1 with 88 legacy units and inventory
+`cfe3a8b4fa6216f61b1cdd5f004cb0f7a967bc01d9e18ddacb2efee74742d3b3`;
+the five inert fixtures and exact prior pins are unchanged. Existing fragment,
+PATH and regroup history is retained above. Native E1 has not been initialized:
+no PASS, expiry or receipt is claimed.
+
+The supervisor then assigned the serialized working-tree build/API/artifact
+phase. The existing broker admitted `openlup:build:wt12291020735647487593`
+after 149 seconds for the prerequisite build; all three packages built and their
+actual current API checks passed. Platform's API delta remains only the optional
+session callback described above, with its exact ordering and legacy behavior.
+Actual npm tarballs were measured using the existing artifact-content,
+class-size and browser-budget functions. Core measured 167,341 packed bytes and
+Outbox 39,165, without findings. Platform measured 1,923,429 packed bytes,
+8,963,693 unpacked bytes, 2,619 files, code gzip 1,651,418 bytes/2,565 files and
+docs gzip 64,693 bytes/five files. Its tarball SHA-256 is
+`69d455b314df4623490afea9834ff493ac4190229d11fa613913f2542662c49e`.
+Artifact-content checks and all 17 browser budgets passed, but the code class
+exceeded this branch's existing 1,650,631-byte cap by 787 bytes. The phase stopped
+there before lint/typecheck; no cap, baseline or reserve was changed. These are
+working-tree measurements, not clean committed package proof. Required final
+proof and the supervisor-owned integration of the separately authorized budget
+remain open. Public/UI neutrality and gitleaks 8.30.1 also passed in this run:
+zero neutrality increases and no leaks across 951 commits.
+
+The supervisor explicitly continued independent lint/typecheck despite the known
+budget finding, without waiving final delivery proof. With those fresh package
+declarations unchanged, `npm --ignore-scripts run lint` ran the complete lint
+body without rebuilding the same inputs: file-wide-ignore checks, structural
+scan, eight rule suites and ESLint passed with zero errors and 33 warnings.
+`npm run oss:published-tree -- --typecheck` passed all five projects with zero
+unresolved edges and zero consumer-side errors. Both used the existing numeric
+worktree typecheck broker profile; no pack was repeated and no source repair
+was needed. Normal lint prerequisites and the complete installed/cold/coverage,
+real PostgreSQL, independent review and full clean verification remain owed in
+the supervisor's serialized final proof.
+
+Self-retro: errno-preserving diagnostics and one identical unsandboxed fixture
+run resolved the current environment question without changing controls or
+adding a port-selection mechanism. The owner-documentation repair describes the
+already registered future entrypoint through its existing source of truth.
+
+The supervisor assigned the exact lifecycle predecessor
+`b040add7f9fbc5cdd461881f09421cb0a6700145` for E1 integration. That candidate
+contains the already approved global Platform reserve: 1,743,872 code-class
+bytes, 2,029,568 total packed bytes and 9,447,424 total unpacked bytes. This
+necessary dependency supplies the lifecycle export and existing reserve against
+which E1's complete artifact must be measured; E1 introduces no budget change.
+Its actual landing must precede dependent E1 delivery. This is dependency
+integration, not a main refresh for freshness. The three overlapping contributor,
+publication-catalogue and documentation-owner sections were resolved manually,
+retaining both lifecycle and E1 responsibilities, and the two pre-existing E1
+documentation edits were preserved and restored. Both exact execution entries
+remain registered, including the future E2 child proof; the classifier is
+unchanged. The five inert pins and active v1/88-unit inventory remain unchanged.
+No mechanical-integration exemption or inherited E1 full proof is claimed:
+working-tree build/artifact checks, the full clean gate and fresh independent
+review still apply to the resulting candidate. The light integration checks
+passed structural rules, the 6,506-path publication inventory and all nine
+documentation obligations; navigation was regenerated. These checks used the
+existing fork point while the merge was pending, so they do not establish final
+proof against the committed lifecycle predecessor.
+
+The assigned integrated working-tree phase then passed all three fresh package
+builds and API checks. Actual Core and Outbox tarballs remained 167,341 and
+39,165 bytes. Platform measured 1,933,640 packed bytes, 9,001,011 unpacked bytes,
+2,628 files, code gzip 1,661,068 bytes/2,574 files and docs gzip 65,180 bytes/five
+files. Artifact-content checks and all 17 browser budgets passed against the
+unchanged lifecycle predecessor's approved limits, leaving 82,804 code-class,
+95,928 packed and 446,413 unpacked bytes of headroom. Platform's working tarball
+SHA-256 is `bcf3d43e46701fbfc2042b3cabd228ba12bfb21f6c8fbc0a97086936886a7670`.
+The four-file control/manifest/runner/publication selection passed all 161 cases,
+including the materialized closed-entrypoint success and unregistered direct
+execution refusal. The actual PostgreSQL session-admission witness passed its
+one lock/interrupted-prefix case using the current disposable tmpfs helper.
+Canonical `npm run lint`, including its fresh build prerequisites, passed with
+zero errors and 33 warnings; published typecheck passed all five projects with
+zero unresolved edges and consumer errors. The normal numeric build, tooling,
+PostgreSQL and typecheck broker profiles admitted immediately and released after
+their commands. Tracked inputs stayed unchanged during these working checks.
+The full clean/cold/coverage gate and fresh independent native review remain owed;
+these results do not substitute for that final proof or authorize a release.
 
 The module preserves operational behavior while supplying public lifecycle
 capabilities for an existing synthetic store: compatible install/upgrade,
@@ -614,3 +741,457 @@ extraction first reproduced the old pin; this is source-data integrity, not
 SQL execution. PROJECTION_PAYLOAD, PROJECTION_DIGEST, query names and every
 legacy/E-only manifest inventory expectation remain unchanged. Actual canonical
 PostgreSQL byte equivalence still requires the proving-machine run.
+
+## Receiving E2 compile proof, 27 October 2026
+
+The active receiving supervisor reports the later direct owner instruction
+restoring required test/full verification and the existing ready, receipt,
+admission, queue and confirmed-merge endpoint for these M14 drafts. Earlier
+machine-specific source-only and draft-only limits remain historical; no
+release, npm publication, deployment, live provisioning, account, settings,
+credential or other-repository authority is added. Heavy execution remains
+serialized by the supervisor. The current E2/F integration coordinator
+`/root/m14_e2_f_integration` is a source author and excluded from independent
+review alongside all inherited authors and coordinators. E2 has no native
+session, counted PASS, expiry or used repair cycle. Actual E1 landing still
+precedes E2 delivery; local proof does not replace that boundary.
+
+This continuation uses the existing E2 worktree at
+`813b6967b40eca48880a34eabfbf4b3b529b97bd` and real stack predecessor
+`f8c88bb4009b7841478e87ce08a1815144c410ac`. Its current instruction pin is
+`a03d920eec32bfb3d0de90b9a12535cc57f88d53`, separate from the code comparison.
+The first fail-fast broker refusal occurred before execution. The supported
+normal waiting route then admitted after 195 seconds, with existing defaults;
+core, outbox and platform prerequisite builds passed. Canonical
+`npm run oss:published-tree -- --typecheck` failed with three consumer errors
+and zero unresolved imports. The actual canonical API project located the
+predicted `qualifiedInstall.ts` errors at lines 147 and 232.
+
+The authorized repair changes only the private throwing `fail` helper from an
+inferred arrow constant to a function declaration. Its body, error strings,
+unknown-value validation and runtime refusals remain identical. The full
+canonical rerun passed all five projects with zero unresolved imports and zero
+consumer errors. Both original failure logs and passing rerun are retained in
+the existing task evidence. SQL, role permissions, queries, manifests and fixed
+inventories were not changed. Source AST and diff checks passed.
+
+The heavy slot was released before any production PostgreSQL installation,
+following the supervisor's C+D full-verification priority. The eight 89-unit
+production checks, required legacy/partial-prefix/race and adapter regressions,
+installed/cold/API/artifact/coverage proof, lint and full/native verification
+remain pending. No test deadline, retry or gate budget is raised. Documentation
+impact is checked against the actual E1 predecessor; a helper-only digest cannot
+settle the complete new adapter, qualified SQL and fixture-selection delta.
+
+Self-retro: prerequisite builds removed stale declaration noise before the
+canonical failure was diagnosed. One helper declaration restored compiler flow
+analysis without casts or weaker validation. The 195-second broker wait was
+scheduling evidence, not a test failure.
+
+### Receiving E2 production PostgreSQL result
+
+After the supervisor's next explicit allocation, the existing eight production
+composition checks passed: four fixed-pin reference profiles and four fresh
+renamed-principal targets in the other role mode. The 89-unit source, manifest
+and built migration entry identities remained exact before and after execution;
+no alias, projector or expected-inventory override was used. The tests assert
+status/apply/replay and all exact ledger rows; the healthy final target also
+passed the prepared inventory, unsafe-session and shadow-symbol discriminators
+and recovery checks. Vitest reported 8/8 passing in 82.61 seconds.
+
+The selected baseline/session/actual-lock admission, reference adapter and
+package migration/legacy-prefix/projector regressions then passed 78/78 across
+seven files in 4.09 seconds. The whole admitted phase took 88 seconds and exited
+zero. Its first sandbox Docker-socket refusal happened before Vitest; that log
+was preserved, and normal tool permission review admitted the same authorized
+command. No source repair or expectation change followed that tool refusal.
+The test-owned container inventory was empty afterwards, and the broker slot
+was released before the supervisor's next C+D work. Full installed/cold/API,
+artifact/coverage, lint, full/native review and actual predecessor landing still
+remain separate obligations; this phase grants no delivery or hosting claim.
+
+Self-retro: the already-built production entry was reused with its recorded
+identity, avoiding a redundant pretest build. Tool-sandbox refusal, actual test
+execution and source qualification remain separately attributed in the evidence.
+
+### Receiving E2 dependency integration
+
+The active root supervisor continues the same finite E2 outcome under the later
+direct test, DCO, submission and merge grant. Its instruction revision is now
+`75d08b8207053fe9a5207e003b625133685ffdf4`, separate from the code base. The
+exact E1 dependency `3a8d4a7165f5ef3df13bdc8da9d6a3e3ca17a529` incorporates
+the reviewed lifecycle predecessor and its already approved Platform reserve.
+E2 changes no byte cap, file count, browser budget, baseline or lockfile. This
+is dependency integration, with actual E1 landing still required before E2
+delivery; it is not a freshness merge.
+
+Before integration the supervisor preserved the five existing E2 edits, their
+exact bytes and patch, and retained the explicitly named own stash. The ordinary
+merge was conflict-free; restoring those edits required one contributor-doc
+resolution retaining both the lifecycle and qualified-installation witnesses.
+All migration SQL, the selected manifest, the approval registry and the private
+throwing-helper repair remain byte-identical to their recorded pre-integration
+identities. Historical failures and earlier production PostgreSQL results are
+preserved; they are not claimed as full proof of this integrated tree.
+
+The pending merge has no mechanical exemption or native PASS. Its precommit
+checks use the actual current ancestor; the E1 stack pin applies only once a
+normal signed checkpoint makes it an ancestor of HEAD. Fresh cumulative build,
+API, artifact, owner, lint and type checks precede DCO; two fresh independent
+full reviews and the canonical clean full gate still follow. Root and all
+source authors remain excluded from independent review. The standing direct
+human authorization covers two-way M14 session communication without another
+permission question. Release and live operations remain outside this endpoint.
+
+Self-retro: preserving the owned patch before dependency integration made the
+single documentation overlap explicit while keeping the qualified SQL and
+fixed inventories intact. No source abstraction or extra installation matrix
+was needed for the integration.
+
+### Receiving E2 pending-merge working checks
+
+The author/coordinator `/root/m14_e2_delivery` recovered the same pending
+ordinary merge, with HEAD `813b6967b40eca48880a34eabfbf4b3b529b97bd`, E1
+parent `3a8d4a7165f5ef3df13bdc8da9d6a3e3ca17a529` and pre-evidence staged
+tree `ba2e2d4eaf5faf8a04aa150900b01f0c0777df95`. This actor is a source
+contributor and is excluded from independent review. Current instruction
+revision `35ee4227babaa2fe16f88110af52e61d242b3296` is separate from that
+code comparison. All 94 preserved SQL, manifest and approval-registry hashes
+matched; the private throwing-helper repair and owned stash remained exact.
+No patch was replayed, history replaced, cap raised or installation matrix added.
+
+Under the supervisor's bounded allocation, explicit Node 24.21.0/npm 11.19.0
+ran fresh Core, Outbox and Platform builds and API checks. Actual working-tree
+tarballs passed the existing artifact-content, class/total size and all 17 browser
+entry gates. Platform measured code-gzip 1,661,068 B, tarball 1,933,640 B and
+unpacked 9,001,011 B; code/total counts were 2574/2628 against the unchanged
+caps. This 11-second phase used the fixed build 4 CPU/4096 MB profile. These
+exported-gate measurements are preliminary working-tree feedback; the canonical
+clean cold/installed package route still follows the committed candidate.
+
+Canonical `npm run lint` and `npm run oss:published-tree -- --typecheck`
+passed sequentially in 61 seconds under typecheck 4 CPU/6144 MB. All five
+projects had zero unresolved imports and zero consumer errors. The same seven
+baseline/session/lock-admission/reference-adapter/package-runner regression files
+passed 78/78 in 2.15 seconds under PostgreSQL 2 CPU/6144 MB. Each lease admitted
+without waiting and was released. An initial broker argument-order refusal
+happened before execution and is preserved alongside the corrected invocation;
+it changed no test, deadline or review budget. Tracked inputs stayed frozen
+during these phases. The earlier eight production installations remain attributed
+to their original inputs; they were not repeated or claimed as integrated proof.
+
+The current checkpoint still needs the supervisor's stabilized API/notes/control,
+budget and recovery read before DCO. The exact final runtime predecessor must
+then be integrated normally before the first counted E2 review and full route.
+No E2 native session, counted PASS, expiry, repair cycle, signed checkpoint or
+external write was created by these working checks. Existing source/control
+acceptance, all mandatory clean/full checks and the root-owned delivery endpoint
+remain unchanged.
+
+Self-retro: selecting the recorded toolchain explicitly avoided shell-version
+drift. Reusing the existing artifact gate functions supplied concrete precommit
+measurements while preserving the canonical clean-tree gate for final proof.
+
+### E2 runtime dependency integration
+
+After the root supervisor read the stabilized packet and independently compared
+all 94 preserved SQL/manifest/registry inputs and the private helper, its direct
+GO authorized the ordinary DCO merge checkpoint
+`377fcd9af50f70d93534942c5afdcc439ad08d31`, exact tree
+`826b322cf05f60bf2ba55ba5a366cfc117682144`, with parents 813b6967 and
+3a8d4a71. Policy/navigation against the now-valid exact E1 ancestor reported six
+obligations and zero unanswered; all eight commits in that DCO range were signed
+off, including four merges, and the checkpoint was clean.
+
+The same bounded authorization then prepared a normal pending merge of exact
+runtime predecessor `4687b6c8d11a1fbc0094b26057d0983111560d16`, tree
+`ddc243119df5bb7578ec1a3c5ce9d9eae61cd25e`. Shared contributor and catalogue
+edits merged automatically; there were no conflicts or manual resolutions.
+Both owner descriptions, execution registrations and publication metadata remain.
+All three runtime production files and both API reports match that predecessor
+exactly; all 94 E2 immutable inputs and the helper repair remain unchanged.
+This dependency order is C, E1, runtime, E2, then F. It changes no contract,
+installation profile, SQL, expected inventory, package budget or proof obligation.
+
+Instruction revision 35ee4227 remains separate from the review base. Light
+pending-merge checks use actual E1 ancestor
+`3a8d4a7165f5ef3df13bdc8da9d6a3e3ca17a529`; the runtime stack pin becomes
+valid only after a separately authorized next DCO checkpoint. Earlier working
+measurements and production-installation results retain their original source
+attribution. This integrated tree still requires its cumulative working phase,
+root technical read, first two fresh independent E2 full reviews and canonical
+clean full verification. No mechanical exemption, native session, PASS, expiry
+or repair cycle was created. Root owns further DCO and external-delivery GO;
+release and live operations remain excluded. Existing author exclusions apply.
+
+Self-retro: checking exact predecessor bytes before integration made preservation
+directly observable. The normal merge retained the overlapping explanations
+without a source repair or additional installation matrix.
+
+### Cumulative E2 and runtime working proof
+
+The root supervisor's next exclusive allocation covered pending tree
+`896d4fc2c13ea58c083cc04f033bf94a8dac7559`, with signed E2 checkpoint
+377fcd9 and runtime 4687b6c8 still pending as the two normal merge parents.
+Explicit Node 24.21.0/npm 11.19.0 and this task's own dependencies ran the same
+bounded sequence with frozen tracked inputs. Fixed numeric-worktree resource
+profiles admitted without waiting: build 4 CPU/4096 MB, typecheck 4 CPU/6144 MB,
+then PostgreSQL 2 CPU/6144 MB. Every lease was released; no nested broker,
+new deadline, retry or source repair was introduced.
+
+Fresh Core, Outbox and Platform builds and all three API checks passed. Actual
+working tarballs passed the existing artifact-content, class/total budgets and
+all 17 browser-entry gates with zero findings. Platform measured code-gzip
+1,662,140 B, tarball 1,935,102 B, unpacked 9,006,345 B and docs-gzip 65,643 B;
+code/total counts remained 2574/2628. Core/Outbox tarballs were 167,341/39,165 B.
+All approved caps, baseline, manifest and lockfiles remained unchanged. This
+build/API/artifact phase took 10 seconds and remains preliminary working-tree
+feedback rather than canonical clean cold/installed proof.
+
+Canonical lint passed with zero errors and 33 existing warnings. The five-project
+published typecheck passed with zero unresolved imports and zero consumer errors;
+the sequential typecheck phase took 53 seconds. The same seven existing
+baseline/session/lock-admission/reference-adapter/package-runner files passed
+78/78 in 2.47 seconds. No eight-installation matrix was repeated; its prior
+production results keep their original attribution. Exact commands, elapsed
+times, tarball identities and measurements are retained in
+`/private/tmp/m14-e2-runtime-working-20261027`. The task-note update is the only
+post-execution tracked edit.
+
+The root's stabilized API/notes/control/budget/recovery read and explicit GO
+still precede the next DCO. First E2 counted review and the canonical clean full
+route remain unperformed; no native evidence or mechanical exemption is claimed.
+All protected SQL/manifest/registry/helper and runtime source/API bytes retain
+their checked identities. Existing authors, failures, exclusions, authority and
+review budgets continue unchanged.
+
+Self-retro: direct reuse of the same exported artifact gates and fixed resource
+profiles completed the cumulative phase without new code, retries or a larger
+installation matrix. Keeping the clean committed route separate preserves its
+proof obligation while supplying concrete current measurements before sign-off.
+
+## Receiving E2/F integration, 27 October 2026
+
+The active receiving supervisor reports the later direct owner instruction
+restoring required tests/full verification and the existing ready, receipt,
+admission, queue and confirmed-merge endpoint for these M14 drafts. This
+supersedes the preceding machine-specific source-only and draft-only limits;
+it adds no release, npm publication, deployment, live provisioning, account,
+settings, credential or other-repository authority. The supervisor still
+serializes heavy execution and external delivery. This source continuation
+changes only F in `/private/tmp/openlup-m14-retained-import`, starting at
+`ece054faf317ebfaf679cb5778a0cff41fd70203`; E2 remains
+`813b6967b40eca48880a34eabfbf4b3b529b97bd`. The current instruction pin remains
+`a03d920eec32bfb3d0de90b9a12535cc57f88d53`, separate from those review inputs.
+All earlier authors, findings, failed attempts and exclusions remain. The active
+E2/F integration coordinator is a source author and cannot independently review
+this candidate. E2/F still have no native session, counted PASS, expiry or used
+repair cycle. E1 must actually land before E2 delivery, and E2 before F.
+
+The fixed F measurement ran once from the exact frozen F head; its
+[complete reference-only report](https://github.com/openlup/openlup/pull/404#issuecomment-6451079203)
+records two exact 90-row ledgers and owned cleanup. F now appends only the
+unchanged SQL `56144f8e61b649c9d9f48458a1734abcc8bbd8d36fdc3919d90ceb1bc35d3b48`
+after runtime sealing. It selects `withRestore` only:
+`f10dd81aadf543e9b14b5fca30e377c6d0d8689dde379837ad0c145795c09d8f`
+for bootstrap/migrator aliasing and
+`d68dd042c487c30b9082cd70103c63de81e2f6ee1754ff52e5961144f172d4b1`
+for a separate migrator. The legacy 88 rows and `cfe3a8b4...` inventory, five
+prior control pins and inert fixtures remain byte-identical. No selector,
+projector, admission machinery, alias or expected-inventory override changes.
+
+The existing registered composition child now prepares two 90-unit production
+reference checks and two fresh operator-provisioned targets with changed actual
+M/R/S names. It proves healthy status/apply/replay and exact ledger before
+mutation/refusal discriminators. Actual R performs client writes and cycle
+admission/receipt consumption; actual S exercises the retained 13/8 scalar
+fields, microseconds and large integers, replay/conflict, history/frozen-term
+preservation and origin/privilege refusals. E2 keeps its separate eight 89-unit
+checks on its own branch. The frozen two-reference derivation is not repeated
+or reclassified as target qualification.
+
+The source manifest check, seven existing manifest-contract tests, structural
+suppression scan and Node syntax check passed locally. The exact F predecessor
+policy comparison has three obligations and zero unanswered owner impacts.
+Focused TypeScript compilation could not establish a pass:
+without prerequisite builds, the installed platform declarations lack the
+inherited `assertSession` field, and existing `qualifiedInstall.ts` checks also
+report type errors. No build, PostgreSQL execution, coverage, lint prebuild,
+full verification, counted review, commit or external write ran in this source
+continuation. Required production/domain, installed/cold/legacy proof, package
+API/artifact/coverage and cumulative budgets, exact owner readings and final
+native proof remain owed. No gate deadline, retry or artifact budget is raised;
+existing 240-second child deadlines cover four installations rather than eight.
+
+Self-retro: reusing the already registered child and existing manifest selector
+closes the integration gap without a new runner or control exception. Owner
+impact must update the exact mapped sections; prose in a neighboring section
+alone did not satisfy the scoped policy check.
+
+The preliminary F working proof on 27 October used its own locked install
+(25.119 seconds) and three-package build (7.123 seconds). All four production
+installations reached their exact 90-row ledger, status/apply/replay and frozen
+inventory comparisons, then failed with `42501` when the proof used restricted
+R to set the delivery-alignment mode. The setter is administrative: canonical
+SQL revokes public execution, and the qualified runtime grants omit it. All
+four owned containers and associated anonymous data volumes were destroyed.
+Original inputs, failure logs and cleanup evidence remain under ignored
+`working-pg-preflight`; no SQL, ACL, manifest or inventory expectation changed.
+
+The bounded repair asserts that real R is denied once, then uses the existing
+admin fixture pool for the four mode settings, as the standalone F witness
+already does. R normal writes/admission/receipt consumption and S retained
+imports/refusals continue through their actual restricted logins; every retained
+field, history and frozen-state assertion remains. Repair author context
+`01a17f3c-ccdd-7212-b5bb-985e4bdf3b3d` (`CODEX_THREAD_ID`) is excluded from later
+independent review with all inherited authors. A separate ignored repair-input
+freeze preserves the original failed candidate and permits exactly one rerun
+of the existing four cases, without repeating install/build or the frozen
+reference derivation. No new PASS, native session, expiry or cycle reset is
+claimed here; the remaining PostgreSQL assertions and full F proof remain owed.
+
+Self-retro: the preliminary run caught a fixture actor mismatch after exact
+SQL/pin installation succeeded. Existing administrative setup is the smallest
+repair and preserves the runtime capability boundary.
+
+### F pending E2/runtime dependency integration
+
+The root supervisor assigned the existing F author/integration coordinator
+`/root/m14_f_delivery`, context `01a17f5d-3299-74f2-aa76-70cbf0b669cf`,
+to the same finite #404 outcome. This actor is a source author and excluded from
+independent review alongside all inherited authors, including the retained-proof
+repair author `01a17f3c-ccdd-7212-b5bb-985e4bdf3b3d`. The standing direct human
+authorization in root context `01a17909-94d4-7cc0-b40f-9a8782a0986f` permits
+two-way M14 communication. The actual dependency order is C #401, E1 #402,
+runtime #405, E2 #403, then F #404. E2 must actually land before F delivery.
+Policy revision `35ee4227babaa2fe16f88110af52e61d242b3296` remains separate
+from code inputs. Release, live operations, settings, accounts, credentials and
+other repositories remain excluded; root retains external delivery coordination.
+
+Before any buffering or integration, exact external backups, SHA-256 identities
+and a binary patch preserved all seven owned WIP files. Only the explicitly
+named own stash `bea76499a1a6b125bb1e530158efddda7239c522` was applied and
+retained. A normal `--no-commit --no-ff` merge now joins F HEAD
+`ece054faf317ebfaf679cb5778a0cff41fd70203` to exact signed E2 predecessor
+`2da59893f439ff5ff23bdbd0adc8d4f091feb614`, tree
+`5bd7f14a1dc23ded73182f2124072609987990ec`. The dependency merge was
+conflict-free; restoring F's WIP required two documentation resolutions retaining
+both E2/runtime evidence and F's compatibility/retained-import explanation.
+All upstream E2/runtime source, API, registry, SQL, inert fixtures and publication
+registrations remain, including the body-preserving private throwing-helper fix.
+This is an ordinary manual integration with no mechanical exemption.
+
+The exact F manifest and both composition proof/test files match the preserved
+WIP: only the two restore-bound 90-unit inventories are selected, with the same
+13-client/eight-cycle proof, restricted-R setter refusal and admin fixture setup.
+The immutable F SQL hash remains
+`56144f8e61b649c9d9f48458a1734abcc8bbd8d36fdc3919d90ceb1bc35d3b48`;
+the issued legacy 88-unit plan, inventory and all five inert approval fixtures
+remain unchanged. The frozen derivation at `/tmp/openlup-f90-reference-run-1`
+is preserved and has not been repeated.
+
+The earlier bounded repair rerun actually passed all four preliminary production
+PostgreSQL cases in 54.467 seconds, retaining the exact ledger, replay, scalar
+precision, history/frozen-state, privilege/origin and shadow checks. Its report
+records aggregate input identity
+`e7f9c9c82a64ab7863235727a9b8b5bec1dca575e6452dc2f2d3a15e15fab477`.
+All four owned containers and four volumes were destroyed. Both the original
+four `42501` failures and this later pass remain attributed to their own inputs;
+neither is final qualification of the pending E2/runtime integration.
+
+This allocation is light only. Explicit Node 24.21.0/npm 11.19.0 ran the AST
+suppression scan and source inventory successfully. Navigation/policy against
+actual current ancestor `813b6967b40eca48880a34eabfbf4b3b529b97bd` reports
+11 obligations and one unanswered adapter-owner impact from the inherited private
+helper change. That comparison already contains E2's adapter-owner source
+introduction but still includes the later helper declaration repair. The
+failure is retained; no owner obligation is changed to manufacture a pass.
+The future E2 stack pin applies only after a separately authorized signed merge
+checkpoint. Cumulative working checks, the stabilized root read, DCO, two fresh
+independent full reviews and canonical clean full verification remain required.
+No heavy command, install, build, test, native session, counted PASS, expiry,
+repair-cycle reset, commit, push or external write ran in this light allocation.
+
+Self-retro: exact backups exposed two documentation-only restore conflicts while
+preserving the successful proof bytes. Checking policy against an actual ancestor
+made the inherited trailer limitation visible without weakening ownership rules.
+
+The root's bounded light follow-up verified
+`f8c88bb4009b7841478e87ce08a1815144c410ac` as an actual ancestor of the
+unchanged F HEAD. Policy/navigation against that full-source boundary passes
+11 obligations with zero unanswered: it includes the complete E2 adapter
+introduction together with the existing substantive `server/adapters/README.md`
+owner update, while E1 controls and pins already exist at that base. The earlier
+813b6967 comparison and its 11/1 diagnostic remain preserved; no no-impact
+trailer, owner exemption, SQL or fixture change was invented. The proper exact
+E2 stack pin still applies only after a separately authorized DCO checkpoint.
+
+Root reports a bounded E2 proof gap in the three already-approved runtime lock
+privilege exceptions, with no SQL defect, and is preparing minimal evidence in
+the existing 89-profile child. Therefore 2da59893 is the integrated checkpoint,
+not a claim that the predecessor is final. Its eventual signed E2 repair must
+be integrated normally before first F counted review and full verification.
+The F SQL, two 90-unit expectations and restricted-R/admin fixture repair remain
+protected; this follow-up ran no heavy command, commit or native review.
+
+Self-retro: comparing the whole inherited adapter introduction with its actual
+owner update settled the light ownership check without a synthetic trailer or
+an unrelated documentation edit.
+
+### F cumulative current working proof
+
+The root's exclusive bounded allocation executed pending tree
+`96bd7b68b7ac85261234a447898db249703ae070`, with HEAD ece054fa and exact
+E2 checkpoint 2da59893 still the two ordinary merge parents. Own locked
+dependencies and explicit Node 24.21.0/npm 11.19.0 ran canonical lint, including
+fresh Core/Outbox/Platform builds, then all five published typecheck projects.
+That phase passed in 51.800 seconds: zero lint errors, 33 existing warnings,
+zero unresolved imports and zero consumer errors. The 6,521 tracked inputs
+stayed frozen at aggregate
+`41671e7b5c0f1393a03906150350724d91f7406e13ba525f28713af15443b452`.
+
+All three API checks and real cumulative tarball artifact/content, class/total
+budgets and all 17 browser-entry gates passed in 5.538 seconds with zero
+findings. Platform measured code-gzip 1,662,140 B, tarball 1,935,102 B,
+unpacked 9,006,345 B and docs-gzip 65,643 B; code/total counts were 2574/2628.
+Core/Outbox tarballs were 167,341/39,165 B. The Platform artifact SHA-256 is
+`9662d1eb21bf47af47547a3cfb50023ce86a7f29a04bd82897521905fd9e2f08`.
+Approved caps, package/lock manifests, APIs and runtime source remain unchanged.
+These exported artifact-gate results are current working feedback, not the
+canonical clean cold/installed route or a release authorization.
+
+The existing four E2+F production composition checks then passed 4/4 in 39.72
+seconds (40.937-second broker phase). Both real 90-unit restore-bound reference
+profiles and the two renamed-principal operator-provisioned targets retain
+exact inventory, ledger, status/apply/replay and actual R/S behavior. Existing
+13/8-field, precision, history/frozen-state, conflict/origin/privilege, unsafe
+session and shadow discriminators all remain. No extra installation matrix,
+standalone substitute, alias/expectation override or frozen derivation repeated.
+All four created owned containers were destroyed; none remained afterwards.
+The inherited tmpfs helper prevents anonymous PostgreSQL data-volume allocation.
+Raw commands, logs, artifacts, input freeze and Docker events remain at
+`/private/tmp/m14-f-current-working-20261027`.
+
+All three normal numeric-worktree leases admitted without waiting and were
+released: typecheck 4 CPU/6144 MB, tooling 2 CPU/2048 MB, PostgreSQL 2 CPU/6144 MB.
+Frozen-input validation passed after every phase. The F SQL remains 56144f8e;
+manifest `b8073ba16df4b81a1514171ca00fc91c99edb45e6b6f341a253cc880d753e0ed`,
+composition proof
+`62cf857cd4e797ffa394a23ff2ebd2d7f8444aa64e79e592e5cf62fbe59d2eef`
+and test `009938a8b81240cfc3831e4e3195460c46d4a93f01e77aaa5643e0497def70a6`
+retain their protected bytes, two 90-unit expectations and R-refusal/admin-setup
+repair. Registry, five inert fixtures, immutable SQL, legacy 88/cfe3 inventory,
+upstream helper and runtime/API bytes remain exact to the preserved inputs.
+
+The task-note update is the only post-execution source edit. Root's stabilized
+API/notes/control/budget/recovery read and separate GO still precede DCO. The
+forthcoming signed E2 runtime-lock proof repair must then be integrated by a
+normal merge before first F counted review and full verification. This current
+2da checkpoint is not claimed final. Existing historical failures, author
+exclusions and authority boundaries remain; no native session, counted PASS,
+expiry, repair-cycle reset, commit, push or external write was created here.
+
+Self-retro: three existing bounded phases completed in 98.275 broker seconds
+with zero queue waits or retries. Reusing the registered production child and
+existing exported artifact gates preserved the required proof without adding a
+new installation matrix or production mechanism.
