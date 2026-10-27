@@ -811,6 +811,12 @@ Self-retro: the shared task record's append point causes evidence-only merge
 conflicts; retaining whole sections preserves the audit history with no runtime
 repair, helper or new tracking mechanism. No further improvement is justified.
 
+Final R2 policy against the exact new R1 stack base initially refused two stale
+delta digests: the M14 merge changed shared ESLint/cold-consumer bytes. Refresh
+only the existing scoped no-impact answers in this evidence commit; the risk
+architecture still owns the graph and the existing consumer command still owns
+these added witnesses. No checker, command, test selection or control changes.
+
 ## Approved R3 boundary — 2026-10-27
 
 Outcome: a bounded M03-compatible risk privacy contributor, explicit unavailable
@@ -1181,3 +1187,44 @@ run the requested focused checks with two workers, then commit before the
 package gate and measure the retained full-stack tarball against every cap.
 CD-M15-6a is conditional on actual exceeded caps. No package-lock delta or
 reinstall. Full verify, counted native review and delivery stay with coordinator.
+
+R3 focused results on merge candidate `aefb4bd0`: two-thread ast-grep, lint
+(zero errors, 33 warnings), all three workspace API checks and 58/58 risk tests
+in seven files with `--maxWorkers=2` pass. All-workspace API regeneration and
+both documentation commands pass without generated-byte changes. The official
+package check retains all three tarballs and reports no findings. Existing
+`measurePack` reads that exact platform artifact, with integrity
+`sha512-REDiP1ng4Co1SxDBD9O//zVdZRmFqKqsp9MWzwdKi3R1V6l9sCIqA8uf/CfPwmi2ZIIg+3MnHaPpSc8d91fsTw==`.
+
+| Full-stack platform metric | Measured | Cap | Headroom |
+| --- | ---: | ---: | ---: |
+| Packed bytes | 1,955,117 | 1,980,000 | 24,883 |
+| Unpacked bytes | 9,141,753 | 9,260,000 | 118,247 |
+| Files | 2,671 | 2,712 | 41 |
+| Code gzip bytes | 1,675,879 | 1,695,000 | 19,121 |
+| Code files | 2,616 | 2,656 | 40 |
+| Docs gzip bytes | 65,550 | 73,728 | 8,178 |
+| Docs files | 5 | 10 | 5 |
+
+Every metric is within its cap. CD-M15-6a is therefore not triggered: no cap
+changes or 102% rounding are applied, and CD-M15-6's recorded reason remains
+historical evidence. A final evidence-only merge imports R2's refreshed
+delta-bound documentation answers and preserves both task append sections;
+all package inputs equal `aefb4bd0`, so the measurements and focused checks
+remain applicable. Final documentation checks use each exact local predecessor
+as `OPENLUP_STACK_BASE`. No lockfile, dependency, version, runtime behavior,
+SQL, timeout or test selection changed. No push or external delivery occurred.
+
+Self-retro: checking the explicit new predecessor exposed stale documentation
+impact digests hidden by a main-relative comparison. Refreshing the existing
+scoped answers preserves their meaning without editing unrelated guidance.
+The retained official tarball supplies full-stack measurements directly; no
+cap raise or additional test mechanism was needed. Local integration review
+reports are retained with this run's ignored scratch evidence; counted native
+review, full verify and later delivery remain coordinator obligations.
+
+Explicit-stack documentation checks also required R3's two existing no-impact
+answers to be refreshed for the merged shared-file bytes. This merge carries
+the scoped graph/refusal explanations; no guidance contract changes. A probe
+against the incoming R2 head before committing correctly refused that head as
+not yet an ancestor; final validation uses the committed merge and exact R2.
