@@ -1491,3 +1491,70 @@ Self-retro: reuse of the actual owner bindings fixed the inherited confinement
 failure without changing SQL or a guard. The four existing production profiles
 cover both helpers after integration; no repeated frozen reference derivation,
 extra installation matrix or proof framework was needed.
+
+### F standalone legacy-prefix fixture repair
+
+Root reported canonical full failure on F
+`04cff4fe425c0b52246d46baa96acabd62684d51`, tree
+`adca1a81826918ce006fbc2ff76e09c0b22e65a0`: the standalone retained-import
+suite failed in beforeAll before its thirteen cases could execute. Its temporary
+root copied the 88 legacy SQL files but copied the union manifest, which also
+requires five qualified SQL files absent from that root. The runner correctly
+rejected the incoherent catalogue. The full log at
+`.context/scratch/verify-local-XeYAQQ/tests.log` and all earlier phase evidence
+remain unchanged: root reported 22,108 passing cases, thirteen skipped by this
+setup failure and two optional skips, with no ordinary assertion failure. The
+first ten phases including package/cold proof passed; neutrality and pgTAP were
+not reached. This is not a complete full PASS. Existing native cycle 1/3,
+reports, failed attempts and repair history are preserved without reset.
+
+The bounded fixture-only repair follows the existing fulfillment/invoicing
+precedents: select the canonical `legacy` plan explicitly, copy exactly its
+baseline and ordered forwards, create the temporary config directory, and write
+that selected flat manifest. The canonical union manifest, runner validation,
+SQL/roles/grants, byte checks and all thirteen domain/nine startup refusal
+assertions remain unchanged. The four actual 90-unit production composition
+cases and both complete retained/runtime-lock helpers remain untouched; no
+qualified SQL is copied to relabel the standalone domain fixture as qualification.
+
+This author allocation is static only. Root owns the working standalone,
+regression/confinement proof, fresh full reviews and new complete canonical run.
+No install, build, lint, test, PostgreSQL run, native prepare, commit or push ran
+here. The exact stack base remains 6f834982. Before/after fixture identities,
+patch and protected-input checks are preserved at
+`/private/tmp/m14-f-r2-legacy-fixture-20261027`. Policy instructions were compared
+with current origin/main `c1ca9994a8e833111e06fd7b280a6bd97c79e7ab`, separately
+from the code base; relevant contribution additions retain existing requirements.
+All authority, author exclusions and release/live/external-delivery limits remain.
+
+Self-retro: a selected fixture must write the same catalogue it copies. Reusing
+the canonical selector fixes the setup mismatch without weakening refusal logic,
+adding five unrelated files or rerunning the separate production matrix.
+
+The root ran the repaired standalone witness first: 13/13 passed in 2.44
+seconds, completing the unchanged nine startup refusals in its beforeAll.
+The existing eight-file regression/confinement selection then passed 83/83
+in 2.18 seconds. Canonical lint, including fresh builds of all three packages,
+passed with zero errors/33 existing warnings. All five published projects
+compiled with zero unresolved imports and zero consumer errors. AST, policy
+(three obligations, zero unanswered), inventory and diff checks passed. Tracked
+inputs stayed frozen throughout; the owned disposable was removed. Exact
+commands/exits/raw logs and source hashes remain under
+`/private/tmp/m14-f-r2-legacy-fixture-20261027/working`.
+
+Only this task outcome was appended after execution. The complete four-case
+90-unit production child/parent, SQL, selected manifest, actual restore hashes,
+API, package contents/budgets and all control inputs are byte-identical to
+04cff4fe. Its actual working four-production-case result and prior full run's
+passing package/cold/installed phase retain their original attribution; this
+fixture repair does not relabel that failed full run or claim current full
+proof. Root read the stabilized fixture/notes and unchanged API/control/budget/
+recovery boundary, authorizing signed DCO, two fresh full reviews in the same
+native history, and a new complete canonical run. The once-only reference
+derivation is not repeated and no extra production installation matrix is added.
+
+Self-retro: the affected standalone witness exposes this setup failure in
+2.44 seconds, whereas deferring it to the broad gate cost 478.68 seconds of
+root tests. Run the changed witness itself before the broad gate; a passing
+composition sibling does not replace its fixture. Existing selector reuse
+closes the cause without duplicating the whole qualified catalogue.

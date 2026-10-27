@@ -1,11 +1,12 @@
 import { randomUUID } from "node:crypto";
-import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { Client, Pool, type PoolClient } from "pg";
 import { afterAll, beforeAll, expect, it } from "vitest";
 import { fixture, openCase } from "../helpers/fulfillmentNative.js";
 import { createPostgresMigrationRunner } from "../../server/adapters/postgres/migrationRunner.js";
+import { selectPlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
 import { closePostgres, postgresSetupTimeoutMs, postgresTeardownTimeoutMs, runPostgresContainer,
   waitForPostgresTcpReady, type PostgresContainer } from "../helpers/postgresContainer.js";
 
@@ -23,13 +24,13 @@ const startup = "SELECT set_config('openlup.qualified.restore_login','m14_restor
 
 beforeAll(async () => {
   prefixRoot = mkdtempSync(join(tmpdir(), "m14-retained-prefix-"));
-  const manifest = JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8")) as {
-    baseline: { file: string }; forward: { file: string }[];
-  };
-  for (const file of ["config/platform-migration-manifest.json", ...[manifest.baseline, ...manifest.forward].map(row => row.file)]) {
+  const manifest = selectPlatformMigrationManifest(JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8")), "legacy");
+  for (const { file } of [manifest.baseline, ...manifest.forward]) {
     mkdirSync(dirname(join(prefixRoot, file)), { recursive: true });
     copyFileSync(file, join(prefixRoot, file));
   }
+  mkdirSync(join(prefixRoot, "config"), { recursive: true });
+  writeFileSync(join(prefixRoot, "config/platform-migration-manifest.json"), JSON.stringify(manifest));
   container = await runPostgresContainer({ name: `m14-retained-import-${process.pid}`, password: "synthetic-conformance" });
   if (!await waitForPostgresTcpReady(container.connectionString)) throw new Error("Retained import requires PostgreSQL");
   pool = new Pool({ connectionString: container.connectionString });
