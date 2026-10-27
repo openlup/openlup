@@ -861,3 +861,15 @@ and retain complete predecessor and R2 task histories. M14 source/test files
 and inherited caps come unchanged from R1; R2 risk/composition behavior is
 unchanged. No lockfile delta or reinstall. Regenerate and run requested focused
 checks with two workers; logs use `.context/scratch/m15-main406/`.
+
+R2 candidate `a2923b45`: API/navigation regeneration, both documentation
+commands, two-thread ast-grep, lint (zero errors, 33 warnings), all workspace
+API checks and 42/42 risk tests in five files with `--maxWorkers=2` pass.
+The explicit new R1-base policy correctly detects two expired fingerprints
+for the merged ESLint and cold-consumer delta. Refresh the existing scoped
+repository/tooling explanations in this normal signed evidence commit; their
+meaning is unchanged and the checker is unchanged. No package input changes.
+
+Self-retro: checking the exact predecessor catches stale scoped documentation
+evidence that a main-relative check can mask. Preserve complete task append
+sections and renew only the changed fingerprints; no new mechanism is needed.
