@@ -1348,3 +1348,52 @@ Self-retro: all runtime merges preserved parent bytes; shared append points
 needed only union, with no helper or abstraction. Exact predecessor policy
 exposed expired fingerprints, repaired in normal signed commits as required.
 The retained official artifact avoided a redundant pack to obtain measurements.
+
+### Lifecycle integration closure — 2026-10-27
+
+Final repair source refs: R1 `6f96278f`, R2 `d6f60a60`, R3 `60627e6`.
+R2's documentation-repair merge has only a task append conflict, preserving
+both histories; R3's repair merge is clean. All remain non-fast-forward and
+DCO-signed. Independent fresh-context local reviewers
+`integration_review_a` and `integration_review_b` both PASS these refs with
+no material findings remaining. Their inspection establishes source/registration
+preservation, parent maxima and closure of the current-cap prose mismatch;
+this is preliminary local integration review, not counted native admission.
+
+Repair ast-grep and lint pass in all trees (zero errors, 33 warnings per lint).
+Final exact-predecessor documentation checks pass with zero unanswered
+obligations. Earlier API and risk-test proof remains applicable: the repair
+changes only README, the pending fragment and this task record, with runtime,
+API, tests and gate values unchanged. The DCO checker initially refused short
+revision arguments; rerunning with full digests passes every commit, including
+all merges. No retry or native review budget was reset.
+
+Both refreshed official package checks pass for all three packages with no
+findings. Their artifacts and manifests are under
+`.context/scratch/m15-main406/packs-final/`; existing `measurePack` reports
+are in `measurement-final.json`. R1's final Platform metrics are packed
+1,958,976, unpacked 9,145,751, 2,668 files, code gzip 1,678,917, 2,613 code
+files, docs gzip 65,736 and five docs files, all within caps.
+
+The final R3 artifact binds `60627e6` and has integrity
+`sha512-5llzpBJdXIN3dcYBPV1i25r8o97zCfJ9q7PB7uPj5O4kfnRzs9l+0STv3SxGzgZoTpvHMrnRcftOmiMZ85G7rA==`.
+It supersedes the pre-documentation-repair measurement above:
+
+| Final full-stack Platform metric | Measured | Cap | Headroom |
+| --- | ---: | ---: | ---: |
+| Packed bytes | 1,965,532 | 2,029,568 | 64,036 |
+| Unpacked bytes | 9,179,233 | 9,447,424 | 268,191 |
+| Files | 2,680 | 2,712 | 32 |
+| Code gzip bytes | 1,685,465 | 1,743,872 | 58,407 |
+| Code files | 2,625 | 2,656 | 31 |
+| Docs gzip bytes | 66,126 | 73,728 | 7,602 |
+| Docs files | 5 | 10 | 5 |
+
+No CD-M15-6a adjustment is needed. This closing note is outside packed inputs;
+source proof and final artifacts remain unchanged. No push or external action.
+
+Self-retro: review found one stale published budget paragraph, also mirrored in
+the pending fragment. Correcting those two existing locations and cascading the
+repair closed it without changing controls or cap values. Lesson: compare
+current published budget prose with the resolved configuration after a MAX
+merge; historical allocation evidence must remain clearly historical.
