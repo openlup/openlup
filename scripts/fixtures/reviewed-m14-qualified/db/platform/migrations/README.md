@@ -1,6 +1,6 @@
 # Qualified installation approval fixtures
 
-These four inert files retain the exact whole bytes approved in
+These five inert files retain the exact whole bytes bound in
 [`qualifiedInstallations`](../../../../../../config/reviewed-platform-forwards.json).
 They are not an installation chain, a package SQL export or a migration source.
 This control change keeps the canonical legacy v1 manifest unchanged and installs

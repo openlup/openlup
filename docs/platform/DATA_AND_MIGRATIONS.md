@@ -392,8 +392,10 @@ The fixed `qualifiedInstallations` class requires prior exact whole-file approva
 for four bootstrap units and an optional retained-import unit. Even expand-only
 qualified SQL uses this separate control-before-feature route: new SQL with new
 pins, simultaneous machinery changes, later repins, unknown paths and edits to
-issued files refuse. The [inert fixtures](../../scripts/fixtures/reviewed-m14-qualified/db/platform/migrations/README.md)
-retain the four approved bytes without installing them. Their source approval is
+issued files refuse. Trusted queue admission applies this guard to qualified SQL
+changes even when their prior approval pins are unchanged. The
+[inert fixtures](../../scripts/fixtures/reviewed-m14-qualified/db/platform/migrations/README.md)
+retain the five bound units without installing them. Their source approval is
 not installation, managed-host, publication or activation evidence.
 
 A PR introducing SQL in a class already admitted by its trusted comparison-base

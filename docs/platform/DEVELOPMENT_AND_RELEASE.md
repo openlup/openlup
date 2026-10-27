@@ -205,7 +205,8 @@ carry-over's protected-path refusal does not prevent a modified job from skippin
 admission. For [co-located SQL and pins](DATA_AND_MIGRATIONS.md#co-located-sql-and-approval-pins),
 the invoked main admission also validates the data under its trusted checker and
 refuses simultaneous machinery changes or a machinery move since the reviewed
-base. This adds no workflow isolation. A separately authorized owner must configure a ruleset-required
+base. Qualified migration changes invoke that guard even when their separately
+approved pins are unchanged. This adds no workflow isolation. A separately authorized owner must configure a ruleset-required
 workflow pinned to a trusted definition outside candidate control to close this
 bypass. Requiring the status name alone does not pin its implementation. See
 [Merge queue](../../CONTRIBUTING.md#merge-queue) for the control and residual risk.
