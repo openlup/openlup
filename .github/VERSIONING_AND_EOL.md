@@ -687,6 +687,11 @@ The `@openlup/platform` unpacked cap was raised to 6,400 KiB (6,553,600 B) on
 2026-10-22 with the maintainer's read of the M09 and M10 wave budget. Its
 packed, code-gzip, docs-gzip and file caps stay unchanged.
 
+The `@openlup/platform` docs-gzip cap was raised to 72 KiB (73,728 B) on
+2026-10-26 with the owner's decision on the `0.29.0` preparation measurement
+(63,226 B against 57,344 B). Its code-gzip, tarball, unpacked, file and
+browser-entry caps stay unchanged.
+
 **Release growth tripwire.** Each `pack.baseline` records the last released
 version and its total compressed tarball bytes, initially `0.16.0` and the
 measurements above. On the release-set path only, a candidate more than 30%
