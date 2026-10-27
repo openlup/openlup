@@ -30,11 +30,12 @@ function fixture() {
   const saveReceipt = vi.fn(async (_tx: Context, _subject: ResolvedPrivacySubject, _actor: unknown, _key: string, value: ErasureReceipt) => { receipt = value; });
   const store: PrivacyStore<Context> = { erasureSupported: true, async prepareErasure() {}, authorizeErasure, resolve,
     async findReceipt() { return receipt; }, async eraseIdentity() {}, saveReceipt };
-  const run = vi.fn(async <T>(work: (tx: Context) => Promise<T>): Promise<T> => {
+  const unitOfWork = { async run<T>(work: (tx: Context) => Promise<T>): Promise<T> {
     const before = [...context.effects], previousReceipt = receipt;
     try { return await work(context); } catch (error) { context.effects = before; receipt = previousReceipt; throw error; }
-  });
-  const operations = createPrivacyOperations({ registry, store, unitOfWork: { run }, now: () => new Date(0), randomId: () => key });
+  } };
+  const run = vi.spyOn(unitOfWork, "run");
+  const operations = createPrivacyOperations({ registry, store, unitOfWork, now: () => new Date(0), randomId: () => key });
   return { context, binding, risk, registry, read, assess, store, resolve, authorizeErasure, saveReceipt, run, operations };
 }
 const erase = (f: ReturnType<typeof fixture>) => f.operations.erase(actor, { subject: subjectRef, idempotencyKey: key });

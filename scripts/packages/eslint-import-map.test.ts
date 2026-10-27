@@ -622,7 +622,7 @@ describe("eslint platform module boundaries", { timeout: 60_000 }, () => {
   it("admits only the risk privacy contracts edge into identity", async () => {
     const config = await loadConfig();
     const { PLATFORM_MODULE_GRAPH: graph } = await import("../../eslint.config.js");
-    expect(graph["risk/server"]).toEqual({ values: ["commerce", "identity/contracts"], types: ["risk/contracts", "data"] });
+    expect(graph["risk/server"]).toEqual({ values: ["commerce", "risk", "identity/contracts"], types: ["risk/contracts", "data", "http", "bff"] });
     const source = (specifier: string) => `import * as value from ${JSON.stringify(specifier)}; export { value };`;
     const file = "packages/platform/src/risk/server/probe.ts";
     expect(await moduleMessages(config, source("../../identity/contracts/index.js"), file)).toEqual([]);

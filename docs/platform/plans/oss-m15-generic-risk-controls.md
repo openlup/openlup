@@ -704,3 +704,68 @@ is retained; policy freshness was not refreshed during this local-only rebase.
 Self-retro: Git split the module-record conflict around a shared command suffix;
 appending the complete R3 section after the intact R2 record preserved both command
 ledgers without interleaving them. No behavioral edit or new mechanism was needed.
+
+### R3 serialized verification continuation — 2026-10-27
+
+The owner's direct continuation lifts the earlier machine-slot restriction for
+this worktree and authorizes the deferred generators, focused tests, compilers,
+lint, API and package checks, in-scope repairs and local DCO commits only. Run
+serially with Vitest `--maxWorkers=2`. R2 reference binding, donor behavior and
+all M14 files remain excluded; no push or external delivery is authorized.
+The R2 stack base is `c88f589435676743e5a603fce1eac68a6945141e`.
+Freshly fetched `origin/main` remains
+`ef861a76dad97c0b744f6f25c04b04f4ac44c5fe`; the applicable policy files have no
+delta from the retained instruction pin. Earlier preliminary reviews and their
+one repair iteration remain historical evidence, without a native admission or
+verification stamp. Full root verification/coverage, counted native review and
+the programme discovery-budget decision remain coordinator-owned.
+
+Execution repairs within R3:
+
+- The first platform `api:update` failed with missing `@openlup/core` built
+  declarations. `npm run pretest` built the installed workspace prerequisites;
+  generation then passed. No dependency or donor change was needed.
+- The first boundary/policy batch passed 2,745 cases and failed two: the R3
+  import-map assertion still expected the pre-R2 graph, and Platform had 2,523
+  code files against 2,520. The assertion now includes the intact R2 edges.
+  Moving the tiny privacy binding factory into `privacyContributor.ts` removes
+  three packed code files (source, JavaScript and declaration), with the same
+  public barrel exports and opaque/deferred portability behavior. No cap changed.
+- The focused strict compiler exposed Vitest's generic `vi.fn` return-type
+  loss in the new M03 unit-of-work fixture. A spy on the normally typed method
+  preserves its generic signature and the existing assertions; the compiler
+  and all risk cases then passed. Production behavior is unchanged.
+
+| Command | Result |
+| --- | --- |
+| `npm run pretest` | PASS, prerequisite Core/Outbox/Platform builds, serially |
+| `npm --workspace @openlup/platform run api:update` | Initial prerequisite failure above; PASS after builds and again after consolidation; only `risk-server.api.md` changes, +311 lines |
+| `npx --no -- vitest run packages/platform/test/risk --maxWorkers=2` | PASS, seven files / 58 cases; repeated after the binding move and fixture repair, 526 ms final wall time |
+| `npx --no -- vitest run packages/platform/test/identity/privacyContracts.test.ts packages/platform/test/identity/privacyHandlers.test.ts --maxWorkers=2` | PASS, two files / eight cases, 147 ms wall time |
+| `npx --no -- vitest run packages/platform/test/packageBoundary.test.ts scripts/packages/eslint-import-map.test.ts scripts/packages/package-manifest-policy.test.ts scripts/packages/package-size-policy.test.ts scripts/packages/package-tarball-gate.test.ts --maxWorkers=2` | Initial two failures above; PASS after repair, five files / 2,744 cases, 11.34 s wall time |
+| `npx --no -- tsc -p tsconfig.node.json` | PASS |
+| `npx --no -- tsc -p tsconfig.api.json` | PASS |
+| `npx --no -- tsc --ignoreConfig --noEmit --skipLibCheck --strict --module NodeNext --moduleResolution NodeNext --target ES2022 --esModuleInterop --resolveJsonModule --allowImportingTsExtensions packages/platform/test/risk/privacyContributor.test.ts packages/platform/test/risk/privacyPortFit.test.ts` | Initial fixture error above; PASS after the typed-method spy |
+| `npm run lint` | PASS before and after the fixture repair; zero errors / 33 existing warnings, eight structural-rule fixture suites pass |
+| `npx --no -- ast-grep scan --error=no-suppress-all --error=unused-suppression` | PASS after each repair |
+| `npm --workspace @openlup/platform run api:check` | PASS, all declared Platform surfaces |
+| `npx --no -- vitest list packages/platform/test/risk tests/postgres/riskControl.conformance.test.ts server/runtime/public-reference/m15RiskBinding.test.ts src/public-reference/riskReviewRoutes.test.tsx scripts/packages/platform-cold-consumer.test.ts packages/platform/test/packageBoundary.test.ts scripts/packages/eslint-import-map.test.ts --maxWorkers=2 --json` | PASS; 2,850 selected discovered cases, retained in ignored `.context/scratch/m15-r3/discovery.json`; discovery only does not claim execution of SQL/cold-consumer suites |
+
+Current discovery has 10 contributor and six M03 fit cases, one import-map case,
+and three existing per-source boundary instances for the single added production
+file: **R3 +20**. The boundary/import-map pair is now 2,675 cases versus R2's
+2,671. With recorded **R1 +77** and **R2 +44**, the combined increase is
+**+141**, exceeding the unchanged +100 programme allowance by **41**. The
+binding consolidation reduced R3 discovery by three generated boundary instances,
+without removing an explicit behavior or refusal case. This local timing is not
+comparable hosted evidence and approves no budget exception.
+
+Documentation policy initially refused the two missing repository/tooling impact
+answers. Scoped no-impact trailers accompany this repair commit: the approved
+identity-contracts edge and its R2-compatible witness change no check invocation,
+loader syntax/path coverage or refusal contract; the architecture risk owner
+already explains the new dependency. During consolidation one policy attempt
+failed reading the unstaged deleted source; staging that deletion and catalogue
+delta restored normal evaluation. Both policy/generation commands must pass with
+the committed trailers; generated navigation has no byte delta. Official package
+measurement follows the committed package candidate and is recorded below.

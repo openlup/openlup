@@ -5890,10 +5890,6 @@
       "class": "public-output"
     },
     {
-      "path": "packages/platform/src/risk/server/privacyBindings.ts",
-      "class": "public-output"
-    },
-    {
       "path": "packages/platform/src/risk/server/privacyContributor.ts",
       "class": "public-output"
     },
