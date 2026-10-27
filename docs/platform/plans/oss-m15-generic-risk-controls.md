@@ -257,6 +257,72 @@ kept integration free of new mechanisms. Measuring the combined artifact exposed
 five concrete budget overruns despite each lane's earlier local evidence; retain
 that combined-artifact check before delivery. No successor work was opened.
 
+### CD-M15-6 platform pack budget — 2026-10-27
+
+The direct maintainer continuation authorizes only the coordinator's CD-M15-6
+cap adjustment in this assigned R1 worktree, its required records and focused
+checks, and a local Bart Roszkowski DCO commit. This supersedes the prior
+continuation's cap-change exclusion for these five values only. The coordinator
+acts as owner delegate for the gate-cap read; this is delegated technical review,
+not a claim that the human personally read the diff. No push, PR creation, full
+verify-local, release or activation is authorized here. Full verification,
+counted native reviews and later delivery remain with the coordinator.
+
+Instruction freshness: freshly fetched main remains
+`80cb0e7063206a9fead36b4e6680c9a83fa3e108`; the applicable instruction paths
+are unchanged. This continuation starts at `7a1886aa`; the branch review base
+is `git merge-base HEAD origin/main`, separately from the policy freshness pin.
+
+Reason: M15 full stack measured after M14 #397: packed 1,939,078; unpacked 9,077,757; files 2,659; code gzip 1,660,986; code files 2,604; +~2% for S1 and repairs (coordinator delegate read CD-M15-6).
+
+The coordinator measured the full stack at R3 head `5aaa4a4a`; these figures
+are supplied decision evidence, not a fresh R3 measurement in this R1 run.
+Following M11's P-1 first-crossing precedent, R1 raises only these platform caps:
+
+| Metric | Previous cap | CD-M15-6 cap |
+| --- | ---: | ---: |
+| Packed bytes | 1,925,000 | 1,980,000 |
+| Unpacked bytes | 8,970,000 | 9,260,000 |
+| Files | 2,628 | 2,712 |
+| Code gzip bytes | 1,648,000 | 1,695,000 |
+| Code files | 2,574 | 2,656 |
+
+The smallest adequate change edits the five existing values and records the
+decision in the existing changes fragment and package budget documentation,
+as M14 recorded its finite allocation. Docs caps, browser caps, baseline,
+versions and every other package remain unchanged. No reason-field schema,
+new package, test harness or runtime change is needed. The existing
+`scripts/packages/package-size-policy.test.ts` reads the real caps and checks
+class/aggregate overflow refusals and actual packed contents.
+
+Acceptance is a passing official package check, the existing artifact-budget
+test, ast-grep scan, lint, documentation policy and a signed local commit with
+the requested title. Serialize package builds and tests because they share
+generated outputs. The official pack gate requires committed package inputs,
+so create the signed candidate after lint and documentation checks, then run
+the official pack and artifact test and record their results here.
+
+Focused results (logs under ignored `.context/scratch/m15-r1-cap-*.log`):
+
+| Check | Result |
+| --- | --- |
+| `npm run packages:check` | PASS, all three packages, no findings; platform has 2,647 packed files |
+| `npx --no -- vitest run scripts/packages/package-size-policy.test.ts --maxWorkers=2` | PASS, 47/47; 3.57 s total, 2.87 s test time |
+| `npx --no -- ast-grep scan --error=no-suppress-all --error=unused-suppression` | PASS |
+| `npm run lint` | PASS, zero errors and 33 existing warnings; all package builds and eight structural rule suites pass |
+| `npm run oss:published-tree -- --policy --docs-update` | PASS, five obligations and zero unanswered; navigation regeneration produces no changed bytes |
+
+The official package check and cap tests used the signed candidate's exact
+package inputs. The subsequent evidence addition changes only this unpacked
+task record. This closes the five-cap local blocker reported above; it does
+not complete the coordinator's full-stack verification or native admission.
+Only the four files for caps, fragment, package budget explanation and this
+task record change in this continuation. No push was performed.
+
+Self-retro: the existing pack gate's clean-package requirement dictated the
+commit/check order. A signed candidate followed by an evidence-only amendment
+kept that control intact without a bypass, new schema or duplicate test. No
+formal rethink or additional process change was needed.
 ## R2 — reference delegation, captured workflow and inert composition
 
 Approved outcome: one packaged implementation serves reference risk hashing,
