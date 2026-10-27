@@ -987,6 +987,10 @@ Supabase CLI 2.98.2; its owned migration replay includes the committed identity
 service-role capabilities forward.
 Missing prerequisites fail; neither command silently skips. Each run owns a
 random installation id, allocated ports, build directory and captured mail.
+The direct and OIDC conformance databases store disposable data on `tmpfs`, preventing the image's
+anonymous data-volume allocation even if startup is interrupted. Cleanup
+discovers partial direct containers by the current run's unique owner label,
+verifies their identity and removes them with their anonymous volumes.
 Only the disposable rendered configuration sets `[auth.rate_limit]`
 `email_sent = 20`, giving the customer, operator and invitee sign-ins an hourly
 email budget with margin. The shared reference configuration keeps its defaults.
