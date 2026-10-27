@@ -1,59 +1,14 @@
 import { withObservedRoute } from "../../../_lib/observability/route.js";
 import type { VercelRequest, VercelResponse } from "../../../_lib/types/vercel.js";
-import { sendBffError, sendBffSuccess, sendMethodNotAllowed } from "../../../_lib/bff/response.js";
+import { sendBffError } from "../../../_lib/bff/response.js";
 import { readBearerToken } from "../../../_lib/admin-domain/auth.js";
 import { resolveAdminAuthBinding } from "../../../runtime/auth/adminAuthBinding.js";
 import { resolvePlatformControlPlaneBinding } from "../../../runtime/platform/controlPlaneBinding.js";
-import {
-  platformControlPlaneMutationResponseSchema,
-  platformControlPlaneMutationSchema,
-  platformControlPlaneReadResponseSchema,
-} from "../../../../src/domains/platform/contracts.js";
-import {
-  PlatformControlPlaneConflictError,
-  type PlatformControlPlanePort,
-} from "../../../../src/domains/platform/ports.js";
+import { createPlatformControlPlaneHandler as createOperationsHandler } from "@openlup/platform/operations/server";
+import { readObservedResponseContext } from "../../../_lib/observability/requestContext.js";
 
-export function createPlatformControlPlaneHandler(deps: {
-  port: PlatformControlPlanePort;
-  authorizeAdmin: () => Promise<boolean>;
-}) {
-  return async (req: VercelRequest, res: VercelResponse): Promise<void> => {
-    if (!(await deps.authorizeAdmin())) {
-      sendBffError(res, "UNAUTHORIZED", "Admin session required");
-      return;
-    }
-    try {
-      if (req.method === "GET") {
-        const parsed = platformControlPlaneReadResponseSchema.safeParse(
-          await deps.port.readControlPlane({}),
-        );
-        if (!parsed.success) return invalidResponse(res);
-        sendBffSuccess(res, parsed.data);
-        return;
-      }
-      if (req.method === "POST") {
-        const parsed = platformControlPlaneMutationSchema.safeParse(body(req.body));
-        if (!parsed.success) {
-          sendBffError(res, "BAD_REQUEST", "Invalid platform control-plane request");
-          return;
-        }
-        const response = platformControlPlaneMutationResponseSchema.safeParse(
-          await deps.port.mutateControlPlane(parsed.data),
-        );
-        if (!response.success) return invalidResponse(res);
-        sendBffSuccess(res, response.data);
-        return;
-      }
-      sendMethodNotAllowed(res, ["GET", "POST"]);
-    } catch (error) {
-      if (error instanceof PlatformControlPlaneConflictError) {
-        sendBffError(res, "CONFLICT", error.message);
-        return;
-      }
-      sendBffError(res, "UPSTREAM_UNAVAILABLE", "Platform control plane unavailable");
-    }
-  };
+export function createPlatformControlPlaneHandler(deps: Parameters<typeof createOperationsHandler>[0]) {
+  return createOperationsHandler({ ...deps, responseRequestId: deps.responseRequestId ?? ((res) => readObservedResponseContext(res)?.requestId) });
 }
 
 async function handler(req: VercelRequest, res: VercelResponse): Promise<void> {
@@ -80,13 +35,6 @@ async function handler(req: VercelRequest, res: VercelResponse): Promise<void> {
   }
 }
 
-function body(value: unknown): unknown {
-  if (typeof value !== "string") return value;
-  try { return JSON.parse(value); } catch { return null; }
-}
-function invalidResponse(res: VercelResponse): void {
-  sendBffError(res, "INVALID_RESPONSE", "Platform control plane returned invalid response");
-}
 function unavailable(res: VercelResponse): void {
   sendBffError(res, "UPSTREAM_UNAVAILABLE", "Platform control plane unavailable");
 }

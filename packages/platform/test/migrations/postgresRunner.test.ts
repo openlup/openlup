@@ -87,11 +87,37 @@ function scenario(input: {
     });
   return {
     rows, query, release, client, connect, poolFactory, manifest, migrations,
-    readMigrations, readManifest, evaluate, catalogProjectionPayload, makeRunner,
+    readMigrations, readManifest, evaluate, catalogProjectionPayload, makeRunner, source,
   };
 }
 
 describe("PostgreSQL migration runner", () => {
+  it("admits one isolated exact prefix under the lock before executing any pending SQL", async () => {
+    const s = scenario({ rows: expectedRows().slice(0, 1) });
+    const admission = vi.fn(async (client: PoolClient, applied: readonly (typeof entries[number] & { position: number })[]) => {
+      expect(client).toBe(s.client);
+      expect(applied).toEqual([{ ...entries[0], position: 0 }]);
+      expect(s.query.mock.calls).toEqual([[acquireSql, [lockName]], [existenceSql, [ledgerName]], [ledgerSql]]);
+    });
+    await expect(s.makeRunner({ source: { ...s.source, assertSession: admission } }).apply()).resolves.toEqual({ applied: files.slice(1) });
+    expect(admission).toHaveBeenCalledOnce();
+    expect(admission.mock.invocationCallOrder[0]).toBeLessThan(s.query.mock.invocationCallOrder[3]!);
+    expect(s.rows).toEqual(expectedRows());
+  });
+
+  it.each(["status", "apply", "dry-run"] as const)("refuses session admission before %s results or pending writes and releases the lock", async method => {
+    const s = scenario({ rows: expectedRows().slice(0, 1) });
+    const admission = vi.fn(async () => { throw new Error("declared runtime binding differs"); });
+    const runner = s.makeRunner({ source: { ...s.source, assertSession: admission } });
+    const result = method === "status" ? runner.status() : runner.apply({ dryRun: method === "dry-run" });
+    await expect(result).rejects.toThrow("declared runtime binding differs");
+    expect(admission).toHaveBeenCalledOnce();
+    expect(s.query.mock.calls).toEqual([[acquireSql, [lockName]], [existenceSql, [ledgerName]], [ledgerSql], [releaseSql, [lockName]]]);
+    expect(s.release).toHaveBeenCalledExactlyOnceWith(false);
+    expect(s.rows).toEqual(expectedRows().slice(0, 1));
+    expect(s.catalogProjectionPayload).not.toHaveBeenCalled();
+  });
+
   it("validates the plan before creating a reusable pool and lists manifest order under the supplied lock", async () => {
     const s = scenario();
     const runner = s.makeRunner();

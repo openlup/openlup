@@ -22,3 +22,11 @@ Waitlist records remain leads, not customers. The read model may expose source
 attribution, locale, consent snapshots, pet snapshots, feedback summaries, and a
 conversion prefill candidate, but customer creation must happen in an explicit
 conversion flow outside this read-only boundary.
+
+The portable acquisition list/detail schemas and types are owned by
+`@openlup/platform/marketing` and its type-only contracts entry. The reference
+contracts file re-exports those same schema objects. Their private validators,
+coercion, strictness and address requirement are preserved independently of the
+case projection schemas. The direct acquisition BFF imports the package;
+the rich lead DTO, admin read model, handler, managed adapter, ports and client
+continue to use the reference contracts file.

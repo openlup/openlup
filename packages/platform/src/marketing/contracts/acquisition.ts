@@ -1,0 +1,50 @@
+export type AcquisitionOpaqueReference = string;
+export type AcquisitionAddressReference = { source: string; reference: string; revision: string; provenance: string };
+export type AcquisitionCaseState = "submitted" | "approved" | "active" | "rejected" | "withdrawn";
+export type AcquisitionCaseProjection = {
+  contractVersion: "tester_application_v1";
+  caseRef: string;
+  contactRef: string;
+  sourceKind: "tester_application";
+  consent: { consentVersion: string; policyVersion: string; recordedAt: string; locale: "en" | "pl"; sourcePath: "/tester-application" };
+  addressReference: AcquisitionAddressReference | null;
+  state: AcquisitionCaseState;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+};
+export type AcquisitionCaseListRequest = { view: "acquisition_case_v1"; cursor?: string | undefined; limit: number };
+export type AcquisitionCaseListResponse = { contractVersion: "tester_application_v1"; cases: AcquisitionCaseProjection[]; nextCursor: string | null };
+export type AcquisitionCaseActiveCountResponse = { activeTesterCount: number };
+export type AcquisitionIdempotencyKey = string;
+export type AcquisitionSurveySubmit = { view: "acquisition_survey_v1"; caseReference: string; surveyType: "producer" | "consumer"; responseData: Record<string, unknown> };
+export type AcquisitionSurveyEvidence = {
+  evidenceReference: string;
+  caseReference: string;
+  contactReference: string;
+  surveyType: "producer" | "consumer";
+  responseDigest: string;
+  answerCount: number;
+  recordedAt: string;
+};
+export type AcquisitionSurveySubmitResponse = { contractVersion: "acquisition_survey_v1"; evidence: AcquisitionSurveyEvidence; replayed: boolean };
+export type AcquisitionSurveyListQuery = { view: "acquisition_survey_v1"; surveyType?: "producer" | "consumer" | undefined; limit: number };
+export type AcquisitionSurveyListResponse = { contractVersion: "acquisition_survey_v1"; rows: AcquisitionSurveyEvidence[]; totalCount: number };
+export type AcquisitionNewsletterConsentEvent = {
+  contractVersion: "acquisition_newsletter_consent_v1";
+  caseReference: string;
+  contactReference: string;
+  eventReference: string;
+  eventType: "subscribe" | "unsubscribe" | "suppress" | "complaint" | "update";
+  purpose: "marketing_launch_offer" | "marketing_newsletter";
+  explicitOptInEvidence: boolean;
+  occurredAt: string;
+};
+export type AcquisitionNewsletterConsentResponse = {
+  contractVersion: "acquisition_newsletter_consent_v1";
+  eventReference: string;
+  outcome: "applied" | "ignored" | "stale";
+  consentState: "granted" | "suppressed" | null;
+  auditReference: string;
+  replayed: boolean;
+};

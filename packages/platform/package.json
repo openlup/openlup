@@ -1,6 +1,6 @@
 {
   "name": "@openlup/platform",
-  "version": "0.28.0",
+  "version": "0.29.0",
   "private": false,
   "description": "Runnable server substrate: Node HTTP runtime, BFF dispatch, scheduler, storage, data gateways and bundle composition; development preview.",
   "license": "Apache-2.0",
@@ -31,7 +31,7 @@
     "api:update": "npm run build && node --experimental-strip-types ./scripts/api-contract.ts --update"
   },
   "peerDependencies": {
-    "@openlup/core": "0.28.0",
+    "@openlup/core": "0.29.0",
     "pg": "^8.22.0",
     "@aws-sdk/client-s3": "^3.1144.0",
     "@types/pg": "^8.20.0"
@@ -260,6 +260,46 @@
       "types": "./dist/account-support/contracts/index.d.ts",
       "import": "./dist/account-support/contracts/index.js",
       "default": "./dist/account-support/contracts/index.js"
+    },
+    "./operations": {
+      "types": "./dist/operations/index.d.ts",
+      "import": "./dist/operations/index.js",
+      "default": "./dist/operations/index.js"
+    },
+    "./operations/contracts": {
+      "types": "./dist/operations/contracts/index.d.ts",
+      "import": "./dist/operations/contracts/index.js",
+      "default": "./dist/operations/contracts/index.js"
+    },
+    "./operations/server": {
+      "types": "./dist/operations/server/index.d.ts",
+      "import": "./dist/operations/server/index.js",
+      "default": "./dist/operations/server/index.js"
+    },
+    "./marketing": {
+      "types": "./dist/marketing/index.d.ts",
+      "import": "./dist/marketing/index.js",
+      "default": "./dist/marketing/index.js"
+    },
+    "./marketing/contracts": {
+      "types": "./dist/marketing/contracts/index.d.ts",
+      "import": "./dist/marketing/contracts/index.js",
+      "default": "./dist/marketing/contracts/index.js"
+    },
+    "./marketing/server": {
+      "types": "./dist/marketing/server/index.d.ts",
+      "import": "./dist/marketing/server/index.js",
+      "default": "./dist/marketing/server/index.js"
+    },
+    "./marketing/server/postgres": {
+      "types": "./dist/marketing/server/postgres/index.d.ts",
+      "import": "./dist/marketing/server/postgres/index.js",
+      "default": "./dist/marketing/server/postgres/index.js"
+    },
+    "./portability": {
+      "types": "./dist/portability/index.d.ts",
+      "import": "./dist/portability/index.js",
+      "default": "./dist/portability/index.js"
     }
   },
   "repository": {

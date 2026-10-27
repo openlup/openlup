@@ -599,23 +599,142 @@
       ],
       "entrypoint": "dist/account-support/contracts/index.d.ts",
       "snapshot": "api/account-support-contracts.api.md"
+    },
+    "./operations": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/packageBoundary.test.ts",
+        "test/operations/controlPlaneHandler.test.ts",
+        "test/operations/platformWatchdogService.test.ts",
+        "test/operations/adminAlertsView.test.ts"
+      ],
+      "entrypoint": "dist/operations/index.d.ts",
+      "snapshot": "api/operations.api.md"
+    },
+    "./operations/contracts": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/packageBoundary.test.ts",
+        "test/operations/controlPlaneHandler.test.ts",
+        "test/operations/platformWatchdogService.test.ts",
+        "test/operations/adminAlertsView.test.ts"
+      ],
+      "entrypoint": "dist/operations/contracts/index.d.ts",
+      "snapshot": "api/operations-contracts.api.md"
+    },
+    "./operations/server": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/packageBoundary.test.ts",
+        "test/operations/controlPlaneHandler.test.ts",
+        "test/operations/platformWatchdogService.test.ts",
+        "test/operations/adminAlertsView.test.ts"
+      ],
+      "entrypoint": "dist/operations/server/index.d.ts",
+      "snapshot": "api/operations-server.api.md"
+    },
+    "./marketing": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/packageBoundary.test.ts",
+        "test/marketing/schemas.test.ts",
+        "test/marketing/contracts.test.ts",
+        "test/marketing/browserBoundary.test.ts",
+        "test/marketing/noop.test.ts",
+        "test/marketing/dataLayer.test.ts",
+        "test/marketing/routePolicy.test.ts",
+        "test/marketing/purchaseFacts.test.ts",
+        "test/marketing/consentEvidence.test.ts"
+      ],
+      "entrypoint": "dist/marketing/index.d.ts",
+      "snapshot": "api/marketing.api.md"
+    },
+    "./marketing/contracts": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/packageBoundary.test.ts",
+        "test/marketing/schemas.test.ts",
+        "test/marketing/contracts.test.ts",
+        "test/marketing/browserBoundary.test.ts",
+        "test/marketing/noop.test.ts",
+        "test/marketing/dataLayer.test.ts",
+        "test/marketing/routePolicy.test.ts",
+        "test/marketing/purchaseFacts.test.ts",
+        "test/marketing/consentEvidence.test.ts"
+      ],
+      "entrypoint": "dist/marketing/contracts/index.d.ts",
+      "snapshot": "api/marketing-contracts.api.md"
+    },
+    "./marketing/server": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/packageBoundary.test.ts",
+        "test/marketing/browserBoundary.test.ts",
+        "test/marketing/server/acquisitionCaseHandlers.test.ts",
+        "test/marketing/server/acquisitionCaseDirect.test.ts",
+        "test/marketing/server/prelaunchAcquisitionDirect.test.ts",
+        "test/marketing/server/acquisitionEvidenceDirect.test.ts",
+        "test/marketing/server/research/surveyResponseSubmitHandler.test.ts",
+        "test/marketing/server/research/adminSurveyResponsesHandler.test.ts",
+        "test/marketing/server/research/managedSurveyResponseSubmit.test.ts",
+        "test/marketing/analyticsContext.test.ts"
+      ],
+      "entrypoint": "dist/marketing/server/index.d.ts",
+      "snapshot": "api/marketing-server.api.md"
+    },
+    "./marketing/server/postgres": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/packageBoundary.test.ts",
+        "test/marketing/server/postgres/acquisitionCaseRoutines.test.ts",
+        "test/marketing/server/postgres/acquisitionEvidenceRoutines.test.ts"
+      ],
+      "entrypoint": "dist/marketing/server/postgres/index.d.ts",
+      "snapshot": "api/marketing-server-postgres.api.md"
+    },
+    "./portability": {
+      "role": "rail",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/packageBoundary.test.ts",
+        "test/portability/objects.test.ts",
+        "test/portability/filesystemObjects.test.ts",
+        "test/payments/tpay/effectAuthority.test.ts"
+      ],
+      "entrypoint": "dist/portability/index.d.ts",
+      "snapshot": "api/portability.api.md"
     }
   },
   "pack": {
     "code": {
-      "maxPackedBytes": 1648000,
-      "maxFiles": 2520
+      "maxPackedBytes": 1650631,
+      "maxFiles": 2574
     },
     "docs": {
-      "maxPackedBytes": 57344,
+      "maxPackedBytes": 73728,
       "maxFiles": 10
     },
     "maxPackedBytes": 1925000,
     "maxUnpackedBytes": 8970000,
-    "maxFiles": 2580,
+    "maxFiles": 2628,
     "baseline": {
-      "version": "0.27.0",
-      "packedBytes": 1734781
+      "version": "0.28.0",
+      "packedBytes": 1807006
     },
     "browserEntries": {
       "./catalog/contracts": 4096,
@@ -631,7 +750,10 @@
       "./invoicing/contracts": 32,
       "./commerce/contracts": 32,
       "./pricing/browser": 25600,
-      "./account-support/contracts": 32
+      "./account-support/contracts": 32,
+      "./operations/contracts": 32,
+      "./operations": 30720,
+      "./marketing/contracts": 32
     }
   }
 }

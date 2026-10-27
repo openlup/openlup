@@ -69,11 +69,47 @@ immutable release; see the [install support policy](../../.github/INSTALL_SUPPOR
 
 ## Ownership
 
+The migration session hook, union/history controls, exact qualified approval
+inputs and four inert fixtures retain the
+[migration owner](DATA_AND_MIGRATIONS.md#module-catalogues-and-installed-histories).
+The package entry and contributor witness descriptions link to that boundary;
+publication inventory includes the four control witnesses/fragment and inert
+fixtures without admitting them to the canonical installation catalogue.
+
+Portability source, package witnesses, the compatible-row PostgreSQL witness and
+its API report route to the
+[transfer architecture owner](ARCHITECTURE_AND_EXTENSIONS.md#existing-store-transfer-and-recovery).
+Data guidance retains canonical import-trigger/identity limitations; runtime
+guidance retains effect-time fencing and host capability ownership. Navigation
+and selected-row/local-object evidence do not close the full M14 store outcome.
+
+Operations source, owner-local witnesses, the unchanged control-plane SQL
+projection and the three operations API reports route to the
+[operations architecture](ARCHITECTURE_AND_EXTENSIONS.md#operations-and-diagnostics).
+The package README is the short import entry point; the public M14 module record
+retains programme scope and lane records retain candidate evidence. Navigation
+adds no activation or hosted-provider claim.
+
+
 The plain Vitest worker-policy witness is a public tooling source in the
 publication catalogue; its embedded child CLI is also a declared execution
 entrypoint, like the existing process witnesses. Register new tracked test paths there before final
 policy/inventory checks; those checks compare Git's tracked paths, so an
 untracked test alone cannot establish complete publication evidence.
+
+Marketing analytics source and its neutral witnesses belong to the platform
+runtime-boundary owner. Reference analytics and purchase bindings retain their
+host policy; runtime guidance explains local admission, consent ordering and the
+reference checkout-kind restriction. Publication inventory includes the package
+facts and the frozen reference purchase transcript; generated navigation carries
+no delivery or activation claim.
+
+The server-only analytics context handler and its package witness share that
+runtime-boundary owner. Package and architecture guidance explain its required
+host ports and absence of default persistence or a reference route; runtime
+guidance owns refusal ordering, verified-subject enrollment and the local meaning
+of `active`. Publication inventory includes these sources without claiming
+portable context SQL, activation or delivery.
 
 The M10 control re-pin moves pending inert fixtures to `20261024`, adds native
 X/Y, and folds preview replay into N2 under `scripts/fixtures/reviewed-m10/`.
@@ -105,6 +141,12 @@ recipes live verbatim in the [platform package reference](PLATFORM_PACKAGE_REFER
 which the publication catalogue includes in the public source tree rather than
 the npm artifact. Detailed recipe links point there directly; existing identity,
 runtime and package ownership routes remain unchanged.
+
+Marketing's PostgreSQL export barrel and generated server API reports are public
+source outputs in the publication catalogue. The package README and
+[server composition recipe](PLATFORM_PACKAGE_REFERENCE.md#marketing-server-composition)
+own the separate handler and optional-peer adapter entries; the contributor
+guide owns their existing boundary, cold-consumer and PostgreSQL proof checks.
 
 Subscription source, contract witnesses and generated subscription API reports
 route to the [subscription architecture owner](ARCHITECTURE_AND_EXTENSIONS.md#subscription-contracts).

@@ -1,4 +1,4 @@
-import type { AcquisitionEvidencePort } from "../../domains/marketing/research/acquisitionEvidencePorts.js";
+import type { AcquisitionEvidencePort } from "@openlup/platform/marketing/contracts";
 import { getBundleDescriptor, resolveBundleId } from "../../domains/platform-runtime/platformKernel.js";
 
 type Env = Record<string, string | undefined>;
@@ -7,7 +7,7 @@ export type AcquisitionEvidencePortFactory = (env: { connectionString: string })
 const bindings = new Map<string, Promise<AcquisitionEvidencePort>>();
 
 async function createDefault(env: { connectionString: string }): Promise<AcquisitionEvidencePort> {
-  const adapter = await import("../../adapters/postgres/marketing/acquisitionEvidenceRoutines.js");
+  const adapter = await import("@openlup/platform/marketing/server/postgres");
   return adapter.createPostgresAcquisitionEvidencePort(env);
 }
 

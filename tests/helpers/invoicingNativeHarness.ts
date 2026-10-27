@@ -7,11 +7,11 @@ import { createPostgresPaymentTruthPort } from "@openlup/platform/payments";
 import type { PaymentTruthEvent } from "@openlup/platform/payments/contracts";
 import { createPostgresMigrationRunner } from "../../server/adapters/postgres/migrationRunner.js";
 import { readSelectedCatalogProjection, selectedCatalogProjectionPayload } from "../../server/adapters/postgres/selectedCatalogProjection.js";
-import type { PlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
+import { selectPlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
 import { closePostgres, dockerAvailable, runPostgresContainer, waitForPostgresTcpReady, type PostgresContainer } from "./postgresContainer.js";
 import { fixture } from "./fulfillmentNative.js";
 
-export const manifest: PlatformMigrationManifest = JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8"));
+export const manifest = selectPlatformMigrationManifest(JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8")), "legacy");
 export const units = [manifest.baseline, ...manifest.forward];
 // Preserve the complete installed prefix before the three M09 units.
 export const prefixLength = units.findIndex(unit => unit.file.endsWith("20261022190000_invoicing_durable_duties.sql"));
