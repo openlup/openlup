@@ -3,7 +3,7 @@ import { expect, it, vi } from "vitest";
 import { createBffResponder } from "@openlup/platform/bff";
 import type { HttpRequest, HttpResponse } from "@openlup/platform/http";
 import { createRiskBindings } from "@openlup/platform/risk/server";
-import type { AdminRiskCaseDetail } from "../domains/risk/contracts";
+import type { AdminRiskCaseDetail } from "@openlup/platform/risk/contracts";
 import { getAdminRiskCases, getAdminRiskCaseDetail, decideAdminRiskCase } from "../domains/risk/riskClient";
 import { RiskCaseDetailPanel } from "../pages/admin/RiskReviewPageParts";
 

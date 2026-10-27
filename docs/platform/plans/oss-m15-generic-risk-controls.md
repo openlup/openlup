@@ -225,6 +225,55 @@ navigation remain deferred under the machine rule; written tests are no PASS
 claim. Preliminary read-only review will inspect the signed candidate and its
 preserved donor statements; it creates no native admission or review expiry.
 
+### R2 execution continuation — 2026-10-27
+
+The direct continuation instruction lifts the earlier machine execution hold:
+dependencies are installed and this run owns serial generators, the listed
+focused/compiler/lint/API/package and real-PG checks, R2-only repairs, generated
+outputs and local DCO-signed commits. Vitest uses at most two workers. The
+endpoint remains local commits and measured evidence; no push, donor behavior
+correction, R3 or M14 change is authorized. Counted native review, full root
+verification, budget approval and delivery remain with the coordinator.
+
+Execution starts from `04907f22`; the full R1 stack pin above is unchanged.
+Refreshed `origin/main` still resolves to
+`ef861a76dad97c0b744f6f25c04b04f4ac44c5fe`, with no applicable instruction delta.
+The existing preliminary finding/review history remains intact. Command logs
+and measurements are retained under ignored `.context/scratch/m15-r2/` and the
+results below distinguish local observations from outstanding delivery gates.
+
+Initial execution found one R2-only defect: the browser route fixture annotated
+its result with schema-inferred types under the app's non-strict-null compiler
+profile. Its nullable event fields then became optional and failed assignment
+to the explicit package port. Using `AdminRiskCaseDetail` from the type-only
+package contracts fixes the fixture without changing values or donor semantics.
+The app compiler and all four affected cases pass after that change.
+
+API regeneration changes only `composition.api.md` and `risk-server.api.md`.
+The latter includes the existing HTTP/BFF declaration closure through type
+imports; it introduces no runtime edge to those modules. Initial policy and
+docs-update commands refuse three unanswered impact obligations; the next
+commit supplies delta-bound no-impact trailers for configuration, repository
+and tooling, preserving their existing compatibility/check contracts. Navigation
+generation and policy are rerun after those trailers become readable in Git.
+
+Local focused results at this checkpoint: 79/79 risk/reference/browser cases,
+5/5 selected M15 installed cases (86 unrelated cases filtered), 2,671/2,671
+boundary/import-map cases, 14/14 real-PG cases including the existing managed
+pgTAP assertions, and the four repaired browser cases pass. API/server, tooling,
+app and strict risk contract compiler checks pass. Lint passes with zero errors
+and 33 warnings; the structural scan and platform API check pass.
+
+Discovery confirms 19 admin, eight composition, four browser and four packed
+R2 cases, plus nine instances in the existing per-source boundary tables:
+**R2 +44; R1 +77; combined +121**, exceeding the unchanged +100 allowance by
+**21**. No finite budget exception or hosted timing approval is inferred.
+
+One API compiler attempt overlapped the tail of the boundary run; both passed,
+but the API compiler was rerun alone and that serial pass is the counted result.
+Subsequent execution is serial. Full command results and pack reconciliation
+follow below after the clean-commit artifact check.
+
 ### R2 authored cases and deferred commands
 
 The written witness has **35 explicit new cases**: `adminHandlers.test.ts` has
