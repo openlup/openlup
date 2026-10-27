@@ -396,3 +396,69 @@ Conflicts affected publication metadata and prose only. SQL, existing inventory
 pins and manifest bytes remain unchanged; F's unregistered-unit refusal and the
 two missing 90-unit withRestore expectations remain open. No current test,
 review, carry-over, receipt or qualified-installation proof was created.
+
+## F inventory derivation packet, 27 October 2026
+
+The owner selected the strong machine for the two real 90-unit measurements.
+All source work remains in this receiving session; the strong machine executes
+the fixed command and returns evidence, with no source edits or autonomous
+repair loop. This continuation starts from F checkpoint
+`37c136d224479dad149e741f8cfaa2f14abd668a`; the source author remains
+`01a17e98-931e-7fe3-99cb-841a3ac9ef0b`, with coordinating author
+`01a17e97-d95d-7581-beb5-ab5ee9ad007c`. Preserve these and inherited reviewer
+exclusions, findings and budgets. No local PostgreSQL, tests, builds, installs,
+lint, verification gates, commits or pushes are authorized in this continuation.
+
+The finite task-local derivation packet consists of ignored operative inputs
+`.context/scratch/m14-f-reference/derive.ts` and `reference.json`. These are not
+public executable entrypoints or archived predecessor source trees. They use
+the existing disposable-container helper and an explicit 90-entry fixture.
+It checks every source SQL hash, the unchanged E-only manifest bytes, all five
+prior-control source pins and exact inert-fixture equality before creating a
+database. It creates exactly two independent, sequential PostgreSQL 16 clusters
+in installer-managed mode, with restore present: bootstrap/migrator aliased,
+then a separate actual SUPERUSER migrator. Runtime and restore names differ
+between references. Each reference uses one raw fixture transaction and exact
+90-row ledger insertion; it provides no pending/replay/retry mechanism or
+expected-inventory bypass. Static inspection found no standalone BEGIN/COMMIT/
+ROLLBACK statements in the fixed SQL files. This reference construction is not
+the package runner's target-installation path.
+
+From the frozen F checkout on the strong machine, with its own locked
+dependencies and Docker available, run once through the supervisor's existing
+resource serialization:
+
+```sh
+node --import tsx .context/scratch/m14-f-reference/derive.ts /tmp/openlup-f90-reference-run-1
+```
+
+The supervisor fills the packet's fixed expected F head only after source
+integration, then freezes the two source SHA-256 values in the handoff envelope.
+The strong machine reconstructs those exact UTF-8 files without code edits.
+The script refuses a different executing head or a dirty tracked tree; the
+ignored operative packet is not a tracked-source change. The lockfile pins
+`pg` and `tsx`; use the checkout's own locked dependencies, Node 24 and the
+repository-pinned PostgreSQL 16 image through the existing container helper.
+The output directory must not already exist and must be outside the checkout.
+Return the process exit code, complete stdout/stderr, and the complete output
+directory, including `inputs.json`, `report.json`, both raw `*.payload.json`
+files and both 90-row `*.ledger.json` files. The report records executing Git
+head/tree/dirty paths, input file hashes, the configured pinned image, actual
+login/version/database-owner facts, raw production-projector payload hash and
+size, exact ledger/hash, lock release and owned pool/container/volume cleanup.
+There is no PASS or inventory expectation authored into this packet. On failure,
+return the evidence to this session; do not edit code, repin SQL, retry a new
+matrix or manufacture missing output on the strong machine.
+
+The production `qualifiedPostgresCatalogPayload` is imported directly, including
+its session/role/ACL checks. No alias, projector override or expected hash is
+accepted. Source identities must match the supervisor's frozen packet; derived
+values are usable only with complete ledger and successful cleanup evidence.
+The current manifest stays unregistered for F until those real values return.
+Even two successful reference derivations are not E2+F apply/status/replay,
+normal-runtime, installed-consumer, refusal or full verification qualification.
+The original two `withRestore` registration step and all target proof remain owed.
+
+Self-retro: one finite raw schema fixture avoids adding a second migrator or
+relaxing the production runner's required expected inventory. No measurement or
+qualification result is claimed from static source preparation.
