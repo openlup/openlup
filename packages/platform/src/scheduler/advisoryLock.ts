@@ -55,19 +55,34 @@ export function createPgAdvisoryLock(
   closeClient: () => Promise<void> = () => client.end?.() ?? Promise.resolve(),
 ): AdvisoryLock {
   let closePromise: Promise<void> | null = null;
+  // PostgreSQL grants reentrant session locks. Reserve the actual key locally
+  // before querying so pending/held acquisitions, including hash collisions, skip.
+  const reserved = new Set<number>();
   return {
     durability: "cluster",
     async tryAcquire(jobId) {
       const key = advisoryLockKey(jobId);
-      const { rows } = await client.query<{ locked: boolean }>(
-        "SELECT pg_try_advisory_lock($1) AS locked",
-        [key],
-      );
-      return rows[0]?.locked === true;
+      if (reserved.has(key)) return false;
+      reserved.add(key);
+      try {
+        const { rows } = await client.query<{ locked: boolean }>(
+          "SELECT pg_try_advisory_lock($1) AS locked",
+          [key],
+        );
+        const acquired = rows[0]?.locked === true;
+        if (!acquired) reserved.delete(key);
+        return acquired;
+      } catch (error) {
+        reserved.delete(key);
+        throw error;
+      }
     },
     async release(jobId) {
       const key = advisoryLockKey(jobId);
       await client.query("SELECT pg_advisory_unlock($1)", [key]);
+      // A failed unlock keeps the reservation: another query on this session
+      // could otherwise reenter the still-held PostgreSQL lock.
+      reserved.delete(key);
     },
     close() {
       closePromise ??= closeClient();

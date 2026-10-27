@@ -750,3 +750,81 @@ remain unchanged.
 Self-retro: selecting the recorded toolchain explicitly avoided shell-version
 drift. Reusing the existing artifact gate functions supplied concrete precommit
 measurements while preserving the canonical clean-tree gate for final proof.
+
+### E2 runtime dependency integration
+
+After the root supervisor read the stabilized packet and independently compared
+all 94 preserved SQL/manifest/registry inputs and the private helper, its direct
+GO authorized the ordinary DCO merge checkpoint
+`377fcd9af50f70d93534942c5afdcc439ad08d31`, exact tree
+`826b322cf05f60bf2ba55ba5a366cfc117682144`, with parents 813b6967 and
+3a8d4a71. Policy/navigation against the now-valid exact E1 ancestor reported six
+obligations and zero unanswered; all eight commits in that DCO range were signed
+off, including four merges, and the checkpoint was clean.
+
+The same bounded authorization then prepared a normal pending merge of exact
+runtime predecessor `4687b6c8d11a1fbc0094b26057d0983111560d16`, tree
+`ddc243119df5bb7578ec1a3c5ce9d9eae61cd25e`. Shared contributor and catalogue
+edits merged automatically; there were no conflicts or manual resolutions.
+Both owner descriptions, execution registrations and publication metadata remain.
+All three runtime production files and both API reports match that predecessor
+exactly; all 94 E2 immutable inputs and the helper repair remain unchanged.
+This dependency order is C, E1, runtime, E2, then F. It changes no contract,
+installation profile, SQL, expected inventory, package budget or proof obligation.
+
+Instruction revision 35ee4227 remains separate from the review base. Light
+pending-merge checks use actual E1 ancestor
+`3a8d4a7165f5ef3df13bdc8da9d6a3e3ca17a529`; the runtime stack pin becomes
+valid only after a separately authorized next DCO checkpoint. Earlier working
+measurements and production-installation results retain their original source
+attribution. This integrated tree still requires its cumulative working phase,
+root technical read, first two fresh independent E2 full reviews and canonical
+clean full verification. No mechanical exemption, native session, PASS, expiry
+or repair cycle was created. Root owns further DCO and external-delivery GO;
+release and live operations remain excluded. Existing author exclusions apply.
+
+Self-retro: checking exact predecessor bytes before integration made preservation
+directly observable. The normal merge retained the overlapping explanations
+without a source repair or additional installation matrix.
+
+### Cumulative E2 and runtime working proof
+
+The root supervisor's next exclusive allocation covered pending tree
+`896d4fc2c13ea58c083cc04f033bf94a8dac7559`, with signed E2 checkpoint
+377fcd9 and runtime 4687b6c8 still pending as the two normal merge parents.
+Explicit Node 24.21.0/npm 11.19.0 and this task's own dependencies ran the same
+bounded sequence with frozen tracked inputs. Fixed numeric-worktree resource
+profiles admitted without waiting: build 4 CPU/4096 MB, typecheck 4 CPU/6144 MB,
+then PostgreSQL 2 CPU/6144 MB. Every lease was released; no nested broker,
+new deadline, retry or source repair was introduced.
+
+Fresh Core, Outbox and Platform builds and all three API checks passed. Actual
+working tarballs passed the existing artifact-content, class/total budgets and
+all 17 browser-entry gates with zero findings. Platform measured code-gzip
+1,662,140 B, tarball 1,935,102 B, unpacked 9,006,345 B and docs-gzip 65,643 B;
+code/total counts remained 2574/2628. Core/Outbox tarballs were 167,341/39,165 B.
+All approved caps, baseline, manifest and lockfiles remained unchanged. This
+build/API/artifact phase took 10 seconds and remains preliminary working-tree
+feedback rather than canonical clean cold/installed proof.
+
+Canonical lint passed with zero errors and 33 existing warnings. The five-project
+published typecheck passed with zero unresolved imports and zero consumer errors;
+the sequential typecheck phase took 53 seconds. The same seven existing
+baseline/session/lock-admission/reference-adapter/package-runner files passed
+78/78 in 2.47 seconds. No eight-installation matrix was repeated; its prior
+production results keep their original attribution. Exact commands, elapsed
+times, tarball identities and measurements are retained in
+`/private/tmp/m14-e2-runtime-working-20261027`. The task-note update is the only
+post-execution tracked edit.
+
+The root's stabilized API/notes/control/budget/recovery read and explicit GO
+still precede the next DCO. First E2 counted review and the canonical clean full
+route remain unperformed; no native evidence or mechanical exemption is claimed.
+All protected SQL/manifest/registry/helper and runtime source/API bytes retain
+their checked identities. Existing authors, failures, exclusions, authority and
+review budgets continue unchanged.
+
+Self-retro: direct reuse of the same exported artifact gates and fixed resource
+profiles completed the cumulative phase without new code, retries or a larger
+installation matrix. Keeping the clean committed route separate preserves its
+proof obligation while supplying concrete current measurements before sign-off.
