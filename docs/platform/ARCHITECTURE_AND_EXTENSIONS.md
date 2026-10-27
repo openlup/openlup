@@ -671,6 +671,9 @@ Risk's browser module has no server edge. `risk/server` consumes risk contracts 
 and the public pure commerce money projection; its data executor dependency
 is type-only through the public data entry. The type-only `risk/contracts`
 entry contains no runtime imports, loaders, Zod or server dependencies.
+The Node entry also consumes M03's `identity/contracts` entry for privacy
+document/obligation validation and types. Identity server and internal modules
+remain forbidden, and the risk browser module receives no identity edge.
 
 
 The browser-safe `@openlup/platform/commerce` entry exports only schemas, pure

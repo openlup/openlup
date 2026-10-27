@@ -44,6 +44,8 @@ it.each(["foreign", "malformed", "incomplete"] as const)("refuses %s policy owne
 
 it("rejects incomplete read coverage and reports an explicitly unavailable resource", async () => {
   const f = fixture();
+  f.read.mockResolvedValue(null as unknown as RiskPrivacyReadResult[]);
+  await expect(f.contributor.export(f.context, subject)).rejects.toThrow("risk_privacy_coverage_invalid");
   f.read.mockResolvedValue([{ resource: "risk.assessments", status: "available", data: [] }]);
   await expect(f.contributor.export(f.context, subject)).rejects.toThrow("risk_privacy_coverage_invalid");
   f.read.mockResolvedValue(RISK_PRIVACY_RESOURCES.map(resource => ({ resource,

@@ -86,7 +86,7 @@ export function createRiskPrivacyContributor<Context>(input: RiskPrivacyDependen
     async export(context, subject) {
       const rows = data ? await ownerCall(() => data.read(context, subject)) : null;
       // Reject malformed/partial ownership rather than presenting an empty complete export.
-      if (rows !== null && (!Array.isArray(rows) || rows.length !== RISK_PRIVACY_RESOURCES.length
+      if (data && (!Array.isArray(rows) || rows.length !== RISK_PRIVACY_RESOURCES.length
         || RISK_PRIVACY_RESOURCES.some(resource => rows.filter(row => row?.resource === resource).length !== 1)
         || rows.some(row => !row || !["available", "unavailable"].includes(row.status)
           || (row.status === "unavailable" && row.data !== null)))) throw new Error("risk_privacy_coverage_invalid");
