@@ -185,3 +185,69 @@ operation or default. No real-store or production action follows from local
 evidence. Each delivered draft records actual checks, review findings, remaining
 dependencies and a short terminal self-retro. This plan grants no additional
 authority or automatic successor work.
+
+## F source-only continuation, 27 October 2026
+
+The receiving supervisor assigned the existing F worktree and draft #404 at
+`8fe11e5f7576d414860c0d759a5a3a801de9cb54`, stacked on E2
+`13a3c877cba43f63b1fb2f7b2108029d3393e789`. The supervisor freshly fetched and
+confirmed policy pin `a03d920eec32bfb3d0de90b9a12535cc57f88d53` in this receiving
+run, separately from those source checkpoints. The latest human limit permits local source
+corrections and handoff only: no tests, install/build/lint/verification gates,
+independent reviews, commits, pushes or external writes. The draft remains
+unfinished. Earlier failures, findings, native history and budgets are unchanged.
+
+Source-correction author context: `01a17e98-931e-7fe3-99cb-841a3ac9ef0b`
+(`/root/m14_e2f`), also the optional E1 fifth-pin/inert-fixture patch author;
+coordinating author context: `01a17e97-d95d-7581-beb5-ab5ee9ad007c`.
+Both are future reviewer exclusions for this candidate, alongside the inherited
+author exclusions. No independent review was performed in this continuation.
+
+Static pre-flight found that F's exact SQL is present but has no optional fifth
+prior approval and no selected-manifest registration. The preserved source hash
+remains `56144f8e61b649c9d9f48458a1734abcc8bbd8d36fdc3919d90ceb1bc35d3b48`.
+An isolated control-only patch and inert exact fixture were applied locally by
+the E1 owner for the separately landed prior-approval route; those uncommitted,
+unverified changes do not constitute prior approval. No candidate-local pin was used
+to authorize the existing draft SQL. The ten E2/F SQL/adapter/witness paths are
+now registered in the public-source catalogue, and owner pages explain the
+restricted import behavior and present refusal. SQL and existing manifest bytes
+remain unchanged. This is source preparation, not a passing policy check.
+
+F registration is deliberately deferred: after prior control approval and E2
+landing, append only this exact SQL after the runtime tail and derive the two
+real E+F 90-unit `withRestore` inventories. Remove E-only `runtimeOnly` selection
+for that plan. Do not copy the existing 89-unit `withRestore` digests into F or
+invent placeholder expectations. The current unmanifested-file refusal remains
+binding. Keep E2's 88-unit legacy identities/inventory unchanged and its E-only
+89-unit qualification separate.
+
+The original author still owes actual production E2+F installation, allowed
+normal-runtime operations and neighboring/refused import permissions, the
+13-client-field/eight-cycle-field retained-value and replay/conflict witnesses,
+origin refusal, trigger/history/frozen-term preservation, API/source-contract
+and owner-impact/navigation metadata, installed/cold proof, measured cumulative
+package budgets, coverage and full native proof. Historical 13 PostgreSQL cases
+and nine startup refusals remain standalone evidence; no new execution or PASS,
+native cycle, expiry, receipt or delivery completion was created here.
+
+Self-retro: preserving the validator's refusal is the smallest correct behavior
+while 90-unit expectations are unknown. Adding F's hash beside its SQL would
+not repair the required prior-control lineage.
+
+
+## Owner-authorized corrected draft checkpoint, 2026-10-27
+
+After the source-only handoff preparation, the owner directly instructed this
+receiving session to commit and push its corrections into the existing #404
+draft instead of ending with a separate prompt. This supersedes the earlier
+no-commit/no-push endpoint for this run. The actual grant covers DCO checkpoint
+commits, ordinary dependency-stack integration and updating the existing draft.
+The owner still forbids local tests and `verify` on this machine. No required
+proof is waived for readiness, admission or delivery: this checkpoint is
+unverified, with no PASS, receipt, ready transition, auto-merge or queue admission.
+The receiving supervisor remains `01a17e97-d95d-7581-beb5-ab5ee9ad007c`; all
+recorded authors, exclusions, findings and review budgets remain applicable.
+Use ordinary Git hooks and signing; no bypass or copied proof stamp is allowed.
+Generated metadata, regression execution, package measurements, independent
+review and final verification remain owed on the author's proving machine.
