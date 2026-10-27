@@ -484,7 +484,7 @@ export interface ServeNodeResult {
     bundleId: string;
     httpRuntime: HttpRuntimePort;
     registeredJobs: string[];
-    /** Stop timers and the local listener after a host signal; safe to call repeatedly. */
+    /** Fence timers, drain admitted jobs, then close their lock session; also close the local listener. Safe to call repeatedly. */
     stop(): Promise<void>;
 }
 export interface NodeHost {
@@ -1111,8 +1111,8 @@ export interface CronScheduler {
 }
 export interface NodeSchedulerAdapter extends SchedulerPort {
     readonly jobs: readonly ScheduledJobDeclaration[];
-    /** Stop all registered node-cron timers (graceful shutdown). */
-    stopAll(): void;
+    /** Fence/stop current timers synchronously, then await admitted callbacks and lock release. Later registration remains supported. */
+    stopAll(): Promise<void>;
 }
 export interface CreateNodeSchedulerOptions {
     /** node-cron instance (inject `import("node-cron")` at the host boot site). */

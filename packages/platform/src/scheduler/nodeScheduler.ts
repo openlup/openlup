@@ -30,12 +30,13 @@ export interface CronScheduler {
 interface RegisteredTimer {
   jobId: string;
   stop: () => void;
+  stopped: boolean;
 }
 
 export interface NodeSchedulerAdapter extends SchedulerPort {
   readonly jobs: readonly ScheduledJobDeclaration[];
-  /** Stop all registered node-cron timers (graceful shutdown). */
-  stopAll(): void;
+  /** Fence/stop current timers synchronously, then await admitted callbacks and lock release. Later registration remains supported. */
+  stopAll(): Promise<void>;
 }
 
 export interface CreateNodeSchedulerOptions {
@@ -92,6 +93,7 @@ export function createNodeScheduler(options: CreateNodeSchedulerOptions): NodeSc
     });
   const scheduleById = new Map(jobs.map((job) => [job.jobId, job.schedule]));
   const timers: RegisteredTimer[] = [];
+  const active = new Set<Promise<void>>();
 
   return {
     jobs,
@@ -106,18 +108,36 @@ export function createNodeScheduler(options: CreateNodeSchedulerOptions): NodeSc
         );
       }
       const guarded = withAdvisoryLock(input.jobId, lock, input.handler, onError);
-      const timer = options.cron.schedule(schedule, guarded, { timezone: options.timezone });
-      timers.push({ jobId: input.jobId, stop: timer.stop });
+      const registration: RegisteredTimer = { jobId: input.jobId, stop: () => {}, stopped: false };
+      const timer = options.cron.schedule(schedule, () => {
+        if (registration.stopped) return Promise.resolve();
+        // Own the callback before acquisition starts, including a pending acquisition.
+        const running = Promise.resolve().then(guarded);
+        active.add(running);
+        void running.then(() => active.delete(running), () => active.delete(running));
+        return running;
+      }, { timezone: options.timezone });
+      registration.stop = timer.stop;
+      timers.push(registration);
     },
     verifyInvocation(req: HttpRequest) {
       // Self-hosted invocations still present the shared CRON_SECRET; reuse the canonical check.
       return verifyCronAuth(req, env);
     },
-    stopAll() {
-      for (const timer of timers) {
-        timer.stop();
+    async stopAll() {
+      const stopped = timers.splice(0);
+      for (const timer of stopped) timer.stopped = true;
+      const admitted = [...active];
+      const failures: unknown[] = [];
+      for (const timer of stopped) {
+        try { timer.stop(); } catch (error) { failures.push(error); }
       }
-      timers.length = 0;
+      const results = await Promise.allSettled(admitted);
+      for (const result of results) {
+        if (result.status === "rejected") failures.push(result.reason);
+      }
+      if (failures.length === 1) throw failures[0];
+      if (failures.length > 1) throw new AggregateError(failures, "node_scheduler_shutdown_failed");
     },
   };
 }

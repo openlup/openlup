@@ -13,6 +13,9 @@ const lockName = "synthetic-schema-update";
 const acquireSql = "SELECT pg_advisory_lock(hashtextextended($1, 0))";
 const releaseSql = "SELECT pg_advisory_unlock(hashtextextended($1, 0)) AS unlocked";
 const existenceSql = "SELECT to_regclass($1) IS NOT NULL AS ledger_exists";
+const boundAcquireSql = "SELECT pg_catalog.pg_advisory_lock(pg_catalog.hashtextextended($1::pg_catalog.text, 0::pg_catalog.int8))";
+const boundReleaseSql = "SELECT pg_catalog.pg_advisory_unlock(pg_catalog.hashtextextended($1::pg_catalog.text, 0::pg_catalog.int8)) AS unlocked";
+const boundExistenceSql = "SELECT pg_catalog.to_regclass($1::pg_catalog.text) IS NOT NULL AS ledger_exists";
 const ledgerSql = "SELECT catalog_path, sha256, position FROM public.platform_schema_migrations ORDER BY position";
 const insertSql = "INSERT INTO public.platform_schema_migrations (catalog_path, sha256, position) VALUES ($1, $2, $3)";
 const ledgerName = "public.platform_schema_migrations";
@@ -48,9 +51,9 @@ function scenario(input: {
   const query = vi.fn(async (sql: string, values?: unknown[]): Promise<{ rows: Record<string, unknown>[] }> => {
     const failure = input.fail?.(sql);
     if (failure !== undefined) throw failure;
-    if (sql === acquireSql) return { rows: [{}] };
-    if (sql === releaseSql) return { rows: input.unlockRows ?? [{ unlocked: true }] };
-    if (sql === existenceSql) return { rows: [{ ledger_exists: present }] };
+    if (sql === acquireSql || sql === boundAcquireSql) return { rows: [{}] };
+    if (sql === releaseSql || sql === boundReleaseSql) return { rows: input.unlockRows ?? [{ unlocked: true }] };
+    if (sql === existenceSql || sql === boundExistenceSql) return { rows: [{ ledger_exists: present }] };
     if (sql === ledgerSql) return { rows: rows.map((row) => ({ ...row })) };
     if (sql === "BEGIN") snapshot = { present, rows: rows.map((row) => ({ ...row })) };
     else if (sql === "COMMIT") snapshot = undefined;
@@ -87,11 +90,66 @@ function scenario(input: {
     });
   return {
     rows, query, release, client, connect, poolFactory, manifest, migrations,
-    readMigrations, readManifest, evaluate, catalogProjectionPayload, makeRunner,
+    readMigrations, readManifest, evaluate, catalogProjectionPayload, makeRunner, source,
   };
 }
 
 describe("PostgreSQL migration runner", () => {
+  it("admits one isolated exact prefix under the lock before executing any pending SQL", async () => {
+    const s = scenario({ rows: expectedRows().slice(0, 1) });
+    const admission = vi.fn(async (client: PoolClient, applied: readonly (typeof entries[number] & { position: number })[]) => {
+      expect(client).toBe(s.client);
+      expect(applied).toEqual([{ ...entries[0], position: 0 }]);
+      expect(s.query.mock.calls).toEqual([[boundAcquireSql, [lockName]], [boundExistenceSql, [ledgerName]], [ledgerSql]]);
+    });
+    await expect(s.makeRunner({ source: { ...s.source, assertSession: admission } }).apply()).resolves.toEqual({ applied: files.slice(1) });
+    expect(admission).toHaveBeenCalledOnce();
+    expect(admission.mock.invocationCallOrder[0]).toBeLessThan(s.query.mock.invocationCallOrder[3]!);
+    expect(s.rows).toEqual(expectedRows());
+    expect(s.query.mock.calls.slice(-3)).toEqual([[boundExistenceSql, [ledgerName]], [ledgerSql], [boundReleaseSql, [lockName]]]);
+    expect(s.query.mock.calls.filter(([sql]) => [acquireSql, existenceSql, releaseSql].includes(sql))).toEqual([]);
+  });
+
+  it.each(["status", "apply", "dry-run"] as const)("refuses session admission before %s results or pending writes and releases the lock", async method => {
+    const s = scenario({ rows: expectedRows().slice(0, 1) });
+    const admission = vi.fn(async () => { throw new Error("declared runtime binding differs"); });
+    const runner = s.makeRunner({ source: { ...s.source, assertSession: admission } });
+    const result = method === "status" ? runner.status() : runner.apply({ dryRun: method === "dry-run" });
+    await expect(result).rejects.toThrow("declared runtime binding differs");
+    expect(admission).toHaveBeenCalledOnce();
+    expect(s.query.mock.calls).toEqual([[boundAcquireSql, [lockName]], [boundExistenceSql, [ledgerName]], [ledgerSql], [boundReleaseSql, [lockName]]]);
+    expect(s.release).toHaveBeenCalledExactlyOnceWith(false);
+    expect(s.rows).toEqual(expectedRows().slice(0, 1));
+    expect(s.catalogProjectionPayload).not.toHaveBeenCalled();
+  });
+
+  it.each(["status", "dry-run"] as const)("uses catalog-bound session queries around successful %s admission", async method => {
+    const s = scenario({ rows: expectedRows().slice(0, 1) });
+    const admission = vi.fn(async () => {});
+    const runner = s.makeRunner({ source: { ...s.source, assertSession: admission } });
+    if (method === "status") await expect(runner.status()).resolves.toEqual({ pending: files.slice(1), applied: files.slice(0, 1) });
+    else await expect(runner.apply({ dryRun: true })).resolves.toEqual({ applied: files.slice(1) });
+    expect(admission).toHaveBeenCalledOnce();
+    expect(s.query.mock.calls).toEqual([[boundAcquireSql, [lockName]], [boundExistenceSql, [ledgerName]], [ledgerSql], [boundReleaseSql, [lockName]]]);
+    expect(s.release).toHaveBeenCalledExactlyOnceWith(false);
+  });
+
+  it("preserves the legacy transcript when the session hook is explicitly undefined", async () => {
+    const s = scenario({ rows: expectedRows().slice(0, 1) });
+    await expect(s.makeRunner({ source: { ...s.source, assertSession: undefined } }).status())
+      .resolves.toEqual({ pending: files.slice(1), applied: files.slice(0, 1) });
+    expect(s.query.mock.calls).toEqual([[acquireSql, [lockName]], [existenceSql, [ledgerName]], [ledgerSql], [releaseSql, [lockName]]]);
+  });
+
+  it("rejects a mismatched prefix before calling admission and releases the catalog-bound lock", async () => {
+    const s = scenario({ rows: [{ ...expectedRows()[0]!, sha256: "changed" }] });
+    const admission = vi.fn(async () => {});
+    await expect(s.makeRunner({ source: { ...s.source, assertSession: admission } }).status())
+      .rejects.toThrow("platform migration ledger is not the exact manifest prefix at position 0");
+    expect(admission).not.toHaveBeenCalled();
+    expect(s.query.mock.calls).toEqual([[boundAcquireSql, [lockName]], [boundExistenceSql, [ledgerName]], [ledgerSql], [boundReleaseSql, [lockName]]]);
+  });
+
   it("validates the plan before creating a reusable pool and lists manifest order under the supplied lock", async () => {
     const s = scenario();
     const runner = s.makeRunner();

@@ -406,6 +406,28 @@ the pending R1 fragment while retaining the original CD-M15-6 measurement and
 reason as historical evidence. No gate values or runtime bytes change. Cascade
 the signed documentation repair and refresh official package artifacts.
 
+### M14 current-main stack maintenance — 2026-10-27
+
+Direct maintainer grant: merge main into R1, then R1 into R2 and R2 into R3
+using local non-fast-forward DCO commits; preserve both modules, regenerate,
+and execute the requested focused checks with two workers and package checks
+in R1/R3. No rebase, force-push, push or external mutation. Conditional
+CD-M15-6a permits only exceeded full-stack caps at 102%, bytes rounded up to
+5,000 and files to an integer, applied first in R1 and cascaded. Full verify,
+counted native admission, activation and release remain outside this run.
+
+Fetched main and instruction freshness pin:
+`c1ca9994a8e833111e06fd7b280a6bd97c79e7ab`; code review base remains separate.
+Current instructions add migration-session admission, scheduler-drain and
+qualified-installation witnesses. Existing task/review history remains intact.
+R1's sole conflict is publication catalogue registration: preserve both M14's
+runtime-drain task page and M15's risk task page. Main's M14 source and API
+changes remain authoritative; risk source is preserved. Every numeric cap
+is checked against the maximum of both parents; no value changes. Lockfile
+is unchanged, so no npm ci. The smallest adequate resolution is the existing
+registration union and generators, without a helper or runtime edit.
+Logs and retained artifacts use `.context/scratch/m15-main-current/` per tree.
+
 ## R2 — reference delegation, captured workflow and inert composition
 
 Approved outcome: one packaged implementation serves reference risk hashing,
@@ -879,6 +901,14 @@ meaning is unchanged and the checker is unchanged. No package input changes.
 Self-retro: checking the exact predecessor catches stale scoped documentation
 evidence that a main-relative check can mask. Preserve complete task append
 sections and renew only the changed fingerprints; no new mechanism is needed.
+
+### R2 current-main cascade — 2026-10-27
+
+Merge R1 `2319e024` into R2 under the current local grant above. The sole
+conflict is this task record's append point; preserve complete R1 and R2
+histories. Source, exports, APIs and caps merge without conflict. Lockfile
+unchanged; no install. Regenerate and run focused checks serially, with
+two Vitest workers and exact predecessor documentation comparison.
 
 ## Approved R3 boundary — 2026-10-27
 
@@ -1397,3 +1427,12 @@ the pending fragment. Correcting those two existing locations and cascading the
 repair closed it without changing controls or cap values. Lesson: compare
 current published budget prose with the resolved configuration after a MAX
 merge; historical allocation evidence must remain clearly historical.
+
+### R3 current-main cascade — 2026-10-27
+
+Merge R2 `727280a4` into R3 under the current local grant. Resolve only the
+task record append conflict by preserving complete histories. M14 runtime,
+migration and scheduler changes arrive from main; R3 risk/privacy behavior
+is unchanged. No cap or lockfile changes, no reinstall. Regenerate APIs and
+navigation, run the requested focused checks serially with two Vitest workers,
+then retain and measure the official full-stack package artifact.
