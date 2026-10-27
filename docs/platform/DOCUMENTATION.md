@@ -70,7 +70,7 @@ immutable release; see the [install support policy](../../.github/INSTALL_SUPPOR
 ## Ownership
 
 The migration session hook, union/history controls, exact qualified approval
-inputs and four inert fixtures retain the
+inputs and five inert fixtures retain the
 [migration owner](DATA_AND_MIGRATIONS.md#module-catalogues-and-installed-histories).
 The package entry and contributor witness descriptions link to that boundary;
 publication inventory includes the four control witnesses/fragment and inert
