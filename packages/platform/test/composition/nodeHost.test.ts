@@ -356,6 +356,72 @@ describe("host scheduled execution", () => {
 });
 
 describe("host shutdown", () => {
+  it("keeps its lock session until an admitted callback has released its job", async () => {
+    const { host } = hostFixture();
+    const { cron, callbacks, stops } = cronFixture();
+    const lock = lockFixture();
+    let enter!: () => void;
+    let finish!: () => void;
+    const entered = new Promise<void>((resolve) => { enter = resolve; });
+    const pending = new Promise<void>((resolve) => { finish = resolve; });
+    const result = await host.serveNode({
+      env, cron, listen: false, advisoryLock: lock, schedulerJobs: [jobs[0]],
+      scheduledJobHandlers: { "nightly-report": async () => { enter(); await pending; } },
+    });
+    const running = callbacks[0]();
+    await entered;
+    const stopping = result.stop();
+    try {
+      expect(result.stop()).toBe(stopping);
+      await Promise.resolve();
+      expect(stops[0]).toHaveBeenCalledTimes(1);
+      expect(lock.close).not.toHaveBeenCalled();
+      finish();
+      await Promise.all([running, stopping]);
+      expect(lock.release).toHaveBeenCalledExactlyOnceWith("nightly-report");
+      expect(lock.close).toHaveBeenCalledTimes(1);
+      expect(lock.release.mock.invocationCallOrder[0]).toBeLessThan(lock.close.mock.invocationCallOrder[0]);
+    } finally {
+      finish();
+      await Promise.allSettled([running, stopping]);
+    }
+  });
+
+  it("attempts listener and lock cleanup after an admitted callback's unlock fails", async () => {
+    const { host, runtime } = hostFixture();
+    const { cron, callbacks } = cronFixture();
+    const lock = lockFixture();
+    const failure = new Error("unlock failed");
+    lock.release.mockRejectedValue(failure);
+    let enter!: () => void;
+    let finish!: () => void;
+    const entered = new Promise<void>((resolve) => { enter = resolve; });
+    const pending = new Promise<void>((resolve) => { finish = resolve; });
+    const close = vi.fn((done: (error?: Error) => void) => { done(); });
+    Object.assign(runtime, { server: { close } });
+    const result = await host.serveNode({
+      env, cron, listen: false, advisoryLock: lock, schedulerJobs: [jobs[0]],
+      scheduledJobHandlers: { "nightly-report": async () => { enter(); await pending; } },
+    });
+    const running = callbacks[0]();
+    const joined = Promise.allSettled([running]);
+    await entered;
+    const stopping = result.stop();
+    const rejected = expect(stopping).rejects.toMatchObject({ message: "node_host_shutdown_failed", errors: [failure] });
+    try {
+      expect(close).toHaveBeenCalledTimes(1);
+      expect(lock.close).not.toHaveBeenCalled();
+      finish();
+      await expect(running).rejects.toBe(failure);
+      await rejected;
+      expect(lock.close).toHaveBeenCalledTimes(1);
+      expect(result.stop()).toBe(stopping);
+    } finally {
+      finish();
+      await Promise.all([joined, rejected]);
+    }
+  });
+
   it("caches shutdown and stops all timers, the lock and the listener once", async () => {
     const { host, runtime } = hostFixture();
     const { cron, stops } = cronFixture();
