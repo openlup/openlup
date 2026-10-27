@@ -399,3 +399,9 @@ Self-retro: the parent maxima preserve M14's byte allocation and M15's file
 allocation. Existing generators produced identical output; no additional
 mechanism or unrelated repair was needed. Package preparation is serialized
 with API/lint builds to avoid sharing mutable outputs.
+
+Local integration review found that the published README still described R1's
+old byte caps after parent-max reconciliation. Correct its current numbers and
+the pending R1 fragment while retaining the original CD-M15-6 measurement and
+reason as historical evidence. No gate values or runtime bytes change. Cascade
+the signed documentation repair and refresh official package artifacts.

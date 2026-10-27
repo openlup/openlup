@@ -845,11 +845,13 @@ committed `api/*.api.md` reports. After building, deliberately regenerate them
 with `node --experimental-strip-types ./scripts/api-contract.ts --update` from
 this package, and review the declaration changes.
 
-The `release-gates.json` pack caps are 1,980,000 tarball bytes, 9,260,000
-unpacked bytes, 2,712 total files, 1,695,000 code gzip bytes and 2,656 code files.
+The `release-gates.json` pack caps are 2,029,568 tarball bytes, 9,447,424
+unpacked bytes, 2,712 total files, 1,743,872 code gzip bytes and 2,656 code files.
 The [M15 budget decision](../../docs/platform/plans/oss-m15-generic-risk-controls.md#cd-m15-6-platform-pack-budget--2026-10-27)
-sizes this one R1 increase from the measured full M15 stack after M14 #397,
-with approximately 2% for S1 and repairs. Documentation caps remain 73,728 gzip
+sized R1's original allocation from the measured full M15 stack after M14 #397,
+with approximately 2% for S1 and repairs. The later lifecycle integration takes
+the higher parent value for each cap: M14 supplies the three current byte caps,
+while M15 retains its higher file caps. Documentation caps remain 73,728 gzip
 bytes and 10 files; browser caps and the release baseline are unchanged.
 Every candidate still needs its actual artifact check; later growth needs its
 own measured budget decision.
