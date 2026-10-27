@@ -810,3 +810,9 @@ runtime and tests are identical to the focused-check candidate. Logs remain in
 Self-retro: the shared task record's append point causes evidence-only merge
 conflicts; retaining whole sections preserves the audit history with no runtime
 repair, helper or new tracking mechanism. No further improvement is justified.
+
+Final R2 policy against the exact new R1 stack base initially refused two stale
+delta digests: the M14 merge changed shared ESLint/cold-consumer bytes. Refresh
+only the existing scoped no-impact answers in this evidence commit; the risk
+architecture still owns the graph and the existing consumer command still owns
+these added witnesses. No checker, command, test selection or control changes.
