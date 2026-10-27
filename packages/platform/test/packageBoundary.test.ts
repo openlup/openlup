@@ -192,7 +192,7 @@ describe("package source boundary", () => {
     expect(ts.getPreEmitDiagnostics(program).map((diagnostic) => ts.flattenDiagnosticMessageText(diagnostic.messageText, "\n"))).toEqual([]);
   }, 30_000);
 
-  it.each(["composition", "commerce", "portability"])("typechecks the %s declarations without pg and references no data-module declarations", (entry) => {
+  it.each(["composition", "commerce", "portability", "lifecycle"])("typechecks the %s declarations without pg and references no data-module declarations", (entry) => {
     const options: ts.CompilerOptions = {
       module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext,
       strict: true, noEmit: true, types: ["node"], target: ts.ScriptTarget.ES2022,
@@ -211,6 +211,7 @@ describe("package source boundary", () => {
 
   it("scans the whole package source", () => {
     expect(files.map(({ path }) => path)).toEqual(expect.arrayContaining([
+      "lifecycle/index.ts", "lifecycle/appUpgrade.ts", "lifecycle/postgresInstallQualification.ts",
       "marketing/index.ts", "marketing/contracts/index.ts", "marketing/server/index.ts",
       "marketing/analytics/noop.ts", "marketing/analytics/dataLayer.ts", "marketing/analytics/routePolicy.ts",
       "marketing/analytics/purchaseFacts.ts", "marketing/consentEvidence.ts",
@@ -297,6 +298,14 @@ describe("package source boundary", () => {
     expect(inputs.filter(path => path.includes("marketing/server/postgres/"))).toEqual([]);
     const imports = Object.values(result.metafile!.outputs).flatMap(output => output.imports.map(entry => entry.path));
     expect(imports.filter(path => /^(?:pg|pg-pool|pg-protocol)(?:\/|$)/.test(path))).toEqual([]);
+  });
+
+  it("refuses to bundle application lifecycle filesystem operations for a browser", async () => {
+    await expect(build({
+      entryPoints: [join(SOURCE_ROOT, "lifecycle/index.ts")],
+      bundle: true, platform: "browser", format: "esm", write: false,
+      treeShaking: false, logLevel: "silent",
+    })).rejects.toThrow(/node:fs|node:crypto|node:path/);
   });
 
   it("bundles the commerce browser entry without Node built-ins or the server entry", async () => {
