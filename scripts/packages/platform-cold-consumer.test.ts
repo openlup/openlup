@@ -6,6 +6,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { isolatedConsumerEnv } from "./pack-manifest-input.ts";
 import { afterAll, afterEach, beforeAll, expect, it } from "vitest";
 import {
+  proveRiskConsumer,
   proveCommerceServerConsumer,
   proveAccountSupportReadsConsumer,
   ACCOUNT_SUPPORT_READ_SCENARIOS,
@@ -1044,3 +1045,11 @@ it("proves installed marketing server reads, port refusal, default-off privacy a
   for (const name of ["@types/node", "undici-types"]) cpSync(join(root, "node_modules", name), join(consumer, "node_modules", name), { recursive: true });
   compileConsumer(consumer, ["marketing/server"], join(root, "node_modules/typescript/lib/tsc.js"));
 }, 30_000);
+
+it("M15 consumes packed risk assessment and payment refusal without optional peers", () => {
+  const consumer=pristinePackedA1Fixture();
+  assertConsumerIsolation(consumer,root);
+  proveRiskConsumer(consumer);
+  for (const name of ["@types/node", "undici-types"]) cpSync(join(root,"node_modules",name),join(consumer,"node_modules",name),{recursive:true});
+  compileConsumer(consumer,["risk","risk/contracts"],join(root,"node_modules/typescript/lib/tsc.js"));
+},30_000);
