@@ -3,6 +3,11 @@ import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { Pool } from "pg";
+import { createPostgresNotificationRecipientsPort } from "@openlup/platform/communications";
+import { createPostgresRoleFreeTransactionLane, type PgQueryExecutor } from "@openlup/platform/data";
+import { createPostgresAccountLinkStore, createPostgresPrivacyStore } from "@openlup/platform/identity";
+import type { ErasureReceipt } from "@openlup/platform/identity/contracts";
+import { createCustomerDiagnosticHistoryPort } from "../../server/adapters/customerDiagnosticHistory.js";
 import { createPostgresMigrationRunner } from "../../server/adapters/postgres/migrationRunner.js";
 import { qualifiedPostgresCatalogPayload, qualifiedPostgresStartupOptions, type QualifiedPostgresInstallation } from "../../server/adapters/postgres/qualifiedInstall.js";
 import { selectPlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
@@ -13,6 +18,7 @@ const { selection } = input;
 const lockName = "openlup:public-platform-migrations:v1";
 const password = "synthetic-proof-only";
 const pools: Pool[] = [];
+const ports: { close(): Promise<void> }[] = [];
 const pool = (url: string): Pool => { const value = new Pool({ connectionString: url }); pools.push(value); return value; };
 const loginUrl = (name: string, secret = password): string => {
   const url = new URL(input.connectionString); url.username = name; url.password = secret; return url.toString();
@@ -140,6 +146,94 @@ async function proveRetainedRuntime(admin: Pool) {
   assert.equal(await frozen(), frozenBefore);
 }
 
+async function proveRuntimeLockPrivileges(bootstrap: Pool): Promise<void> {
+  const operator = "e2000000-0000-4000-8000-000000000001";
+  const subject = "e2000000-0000-4000-8000-000000000002";
+  const eventKey = "e2000000-0000-4000-8000-000000000003";
+  const receiptId = "e2000000-0000-4000-8000-000000000004";
+  const key = "e2000000-0000-4000-8000-000000000005";
+  const differentEventId = "e2000000-0000-4000-8000-000000000006";
+  const env = { connectionString: loginUrl(selection.runtimeLogin) };
+  const runtime = pool(env.connectionString);
+  const tables = ["public.platform_communication_operators", "public.customer_diagnostic_events", "public.identity_privacy_erasures"];
+  const assertRuntime = async (db: PgQueryExecutor): Promise<void> => {
+    assert.deepEqual((await db.query(`SELECT current_user AS runtime, session_user AS session,
+      r.rolsuper AS superuser, r.rolbypassrls AS bypass_rls,
+      NOT EXISTS (SELECT 1 FROM pg_catalog.pg_class c WHERE c.oid = ANY($1::pg_catalog.regclass[])
+        AND (c.relowner = r.oid OR pg_catalog.pg_has_role(r.oid,c.relowner,'USAGE'))) AS nonowner
+      FROM pg_catalog.pg_roles r WHERE r.rolname = current_user`, [tables])).rows,
+    [{ runtime: selection.runtimeLogin, session: selection.runtimeLogin, superuser: false, bypass_rls: false, nonowner: true }]);
+  };
+  await assertRuntime(runtime);
+  await bootstrap.query("INSERT INTO public.platform_human_principals(principal_id,email) VALUES ($1,'lock-admin@example.invalid'),($2,'lock-subject@example.invalid')", [operator, subject]);
+  await bootstrap.query(`INSERT INTO public.platform_human_memberships
+    (principal_id,role,membership_state,membership_provenance,membership_accepted_at)
+    VALUES ($1,'admin','active','legacy',clock_timestamp())`, [operator]);
+  await bootstrap.query(`INSERT INTO public.platform_communication_operators(principal_id,created_at,updated_at)
+    VALUES ($1,'2026-01-01T00:00:00Z','2026-01-01T00:00:00Z')`, [operator]);
+
+  // The real admission query locks the seeded operator and membership FOR SHARE.
+  const notifications = createPostgresNotificationRecipientsPort(env, { operatorId: operator, poolFactory: () => runtime });
+  ports.push(notifications);
+  assert.deepEqual(await notifications.listNotificationRecipients({ notification_type: "new_signup" }), { recipients: [] });
+  assert.deepEqual((await runtime.query(`SELECT attname FROM pg_catalog.pg_attribute
+    WHERE attrelid = 'public.platform_communication_operators'::pg_catalog.regclass AND attnum > 0 AND NOT attisdropped
+      AND pg_catalog.has_column_privilege(current_user,attrelid,attnum,'UPDATE') ORDER BY attname`)).rows, [{ attname: "updated_at" }]);
+  const updated = await runtime.query(`UPDATE public.platform_communication_operators
+    SET updated_at = '2026-01-02T00:00:00Z' WHERE principal_id = $1 RETURNING updated_at`, [operator]);
+  assert.equal(updated.rowCount, 1);
+  assert.equal(updated.rows[0].updated_at.toISOString(), "2026-01-02T00:00:00.000Z");
+  const operatorBefore = (await runtime.query("SELECT * FROM public.platform_communication_operators WHERE principal_id=$1", [operator])).rows;
+  await assert.rejects(runtime.query("UPDATE public.platform_communication_operators SET active=false WHERE principal_id=$1 RETURNING principal_id", [operator]), { code: "42501" });
+  assert.deepEqual((await runtime.query("SELECT * FROM public.platform_communication_operators WHERE principal_id=$1", [operator])).rows, operatorBefore);
+
+  const lane = createPostgresRoleFreeTransactionLane(env);
+  ports.push(lane);
+  const observation = {
+    contractVersion: "customer-diagnostic-ingest.v1" as const, coverageVersion: "purchase-auth-account.v2" as const,
+    clientEventKey: eventKey, action: "entry_boot" as const, phase: "settled" as const, code: "failed" as const,
+    presentedCredentialHash: null, issuedCredentialHash: digest("q2-lock-credential"), principalId: null, subjectId: null,
+    ingestRequestId: "q2:lock-proof", abuseKeyHash: digest("q2-lock-abuse"), payloadFingerprint: digest("q2-lock-payload"),
+  };
+  const ingest = (presentedCredentialHash: string | null) => lane.run(async gateway => {
+    await assertRuntime(gateway as PgQueryExecutor);
+    return createCustomerDiagnosticHistoryPort(gateway, 7).ingest({ ...observation, presentedCredentialHash });
+  });
+  const first = await ingest(null);
+  assert.equal(first.outcome, "committed");
+  assert.equal(first.deduplicated, false);
+  assert.ok(first.segmentId);
+  const replay = await ingest(observation.issuedCredentialHash);
+  assert.deepEqual(replay, { ...first, credentialDisposition: "reused", deduplicated: true });
+  const eventBefore = (await runtime.query("SELECT * FROM public.customer_diagnostic_events WHERE segment_id=$1 AND client_event_key=$2", [first.segmentId, eventKey])).rows;
+  assert.equal(eventBefore.length, 1);
+  // Autocommit denials leave the next operation's transaction usable.
+  await assert.rejects(runtime.query("UPDATE public.customer_diagnostic_events SET id=$2 WHERE id=$1 RETURNING id", [eventBefore[0].id, differentEventId]), { code: "42501" });
+  assert.deepEqual((await runtime.query("SELECT * FROM public.customer_diagnostic_events WHERE segment_id=$1 AND client_event_key=$2", [first.segmentId, eventKey])).rows, eventBefore);
+
+  const privacy = createPostgresPrivacyStore();
+  const receipt: ErasureReceipt = { version: "identity.erasure.v1", erasureId: receiptId, completedAt: "2026-01-03T00:00:00.000Z", outcome: "ERASED", obligations: [] };
+  await lane.run(async gateway => {
+    const db = gateway as PgQueryExecutor;
+    await assertRuntime(db);
+    await privacy.prepareErasure(db);
+    assert.deepEqual((await db.query(`SELECT mode FROM pg_catalog.pg_locks WHERE pid=pg_catalog.pg_backend_pid()
+      AND relation='public.identity_privacy_erasures'::pg_catalog.regclass AND mode='ShareRowExclusiveLock' AND granted`)).rows, [{ mode: "ShareRowExclusiveLock" }]);
+    await privacy.saveReceipt(db, { principalId: subject, contactId: null, identity: {} }, { principalId: operator }, key, receipt, []);
+    assert.deepEqual(await privacy.findReceipt(db, { kind: "principal", principalId: subject }, key), receipt);
+  });
+  const receiptBefore = (await runtime.query("SELECT * FROM public.identity_privacy_erasures WHERE erasure_id=$1", [receiptId])).rows;
+  assert.equal(receiptBefore.length, 1);
+  const accounts = createPostgresAccountLinkStore(env);
+  ports.push(accounts);
+  // Reaching this semantic refusal proves the production SHARE lock and receipt read succeeded.
+  await assert.rejects(accounts.createAccount({ email: "lock-subject@example.invalid", principalId: subject, acquisitionSource: "direct", lifecycleStage: "lead" }), /account_erased_refused/u);
+  await assert.rejects(runtime.query(`UPDATE public.identity_privacy_erasures
+    SET completed_at='2026-01-04T00:00:00Z' WHERE erasure_id=$1 RETURNING erasure_id`, [receiptId]), { code: "42501" });
+  assert.deepEqual((await runtime.query("SELECT * FROM public.identity_privacy_erasures WHERE erasure_id=$1", [receiptId])).rows, receiptBefore);
+  await assertRuntime(runtime);
+}
+
 async function prove() {
   const started = performance.now();
   const fixtureUrl = new URL(input.connectionString);
@@ -224,6 +318,9 @@ async function prove() {
     client.release();
   }
   await proveRetainedRuntime(bootstrap);
+  await proveRuntimeLockPrivileges(bootstrap);
+  assert.deepEqual(await runner.status(), healthy);
+  assert.deepEqual(await ledger(), installed);
   if (input.discriminators) {
     const originalComment = (await bootstrap.query("SELECT pg_catalog.col_description('public.clients'::pg_catalog.regclass,attnum) AS comment FROM pg_catalog.pg_attribute WHERE attrelid='public.clients'::pg_catalog.regclass AND attname='email'")).rows[0].comment;
     await bootstrap.query("COMMENT ON COLUMN public.clients.email IS 'm14 qualification inventory mutant'");
@@ -299,7 +396,7 @@ async function prove() {
   assert.deepEqual(await runner.apply(), { applied: [] });
   assert.deepEqual(await ledger(), installed);
   return { inventorySha256, ledgerRows: installed.length, pendingBefore: before.pending.length, appliedNow: appliedNow.applied.length,
-    pendingAfter: after.pending.length, replayApplied: replay.applied.length, retainedRuntime: true,
+    pendingAfter: after.pending.length, replayApplied: replay.applied.length, retainedRuntime: true, runtimeLockPrivilegesProved: true,
     discriminators: input.discriminators, elapsedMs: Math.round(performance.now() - started) };
 }
 
@@ -311,6 +408,8 @@ try {
   exitCode = 1;
   console.error(error);
 } finally {
+  const closedPorts = await Promise.allSettled(ports.map(value => value.close()));
+  if (closedPorts.some(result => result.status === "rejected")) exitCode = 1;
   const closing = await Promise.allSettled(pools.filter(value => !value.ended).map(value => value.end()));
   if (closing.some(result => result.status === "rejected")) exitCode = 1;
 }

@@ -1195,3 +1195,176 @@ Self-retro: three existing bounded phases completed in 98.275 broker seconds
 with zero queue waits or retries. Reusing the registered production child and
 existing exported artifact gates preserved the required proof without adding a
 new installation matrix or production mechanism.
+
+### E2 restricted-runtime lock evidence repair
+
+The root supervisor recorded the first native E2 candidate 2da59893/tree5bd7f14a
+with one full PASS and one independent full FAIL. The sole material card
+`E2R0-R-1` identifies the approved three lock-exception proof gap, not a
+demonstrated unsafe grant. Native cycle 0/3 and the same history remain intact;
+no new candidate has been prepared or budget reset. The root authorized this
+bounded source repair after reading the concrete proposal and production ports.
+
+The existing production child now unconditionally connects as each installation's
+actual R login, checks current/session identity, no superuser/BYPASSRLS and no
+direct or inherited table ownership. It uses the production notification port's
+FOR SHARE admission, the diagnostic v2 ingest and replay FOR UPDATE branch, and
+the privacy receipt/account-link SHARE ROW EXCLUSIVE and SHARE paths. Existing
+rows discriminate permitted timestamp-only notification writes from denied
+authority changes, denied diagnostic id updates, and receipt SELECT/INSERT from
+denied populated-row updates; each refused write preserves the row. Autocommit
+denials leave later transactions usable. Every new adapter/pool is closed by
+the existing child cleanup, and the parent asserts the returned completed-proof
+flag alongside its unchanged 89-unit and frozen inventory expectations.
+
+This uses the same eight installations, no new runner or cross product. SQL,
+ACLs, manifest/registry, expected inventories, helper, runtime source/API, caps
+and deadlines remain unchanged. These are source changes pending execution;
+earlier production results retain their original attribution. The authorized
+working phase is canonical lint/typecheck, current API/actual artifact feedback,
+the existing eight production cases once and the same 78 selected regressions.
+An actual failure stops execution for diagnosis before any further repair/retry.
+Root/source-author exclusions continue; DCO, native preparation, full verification
+and external writes still require the supervisor's stabilized read and GO.
+
+Self-retro: the missing acceptance class required real restricted-role operations,
+not broader catalogue enumeration. Reusing existing ports inside the existing
+child distinguishes lock usability and forbidden writes without a permission
+framework, another installation matrix or a changed capability grant.
+
+The mandatory supervisor regroup records two completed evaluations: the initial
+candidate's material lock-proof gap `E2R0-R-1`, then the new witness's canonical
+typecheck failure `TS2305` from importing `ErasureReceipt` through the wrong
+barrel. Lint and its three package builds passed; PostgreSQL and later phases
+did not run. The remaining approved gap is actual R lock usability and forbidden
+write refusal. Its cause is test composition, not a requested capability change:
+the type already belongs to public `@openlup/platform/identity/contracts` and its
+API report. The simpler correction uses that existing entry, retaining the typed
+receipt without a new export, cast or alternate proof framework. The next
+discriminating step is zero consumer errors across all five canonical projects,
+then the same eight actual targets. Root accepts this bounded continuation;
+native history remains cycle 0/3 without a new prepare, budget or owner gate.
+The failed log and before/after source hashes remain in the existing evidence.
+Lesson: public contract type owner → correct existing entry, not a new export
+or cast.
+
+The authorized import-only continuation kept the receipt explicitly typed and
+used that existing contract entry. Fresh canonical lint, including its three
+package builds, passed with zero errors and 33 existing warnings. All five
+published projects then passed with zero unresolved imports and zero consumer
+errors; the typecheck phase took 54 seconds. All three API reports and actual
+working tarball/content/byte/file checks passed, including all 17 browser budgets,
+in six seconds without repeating the builds. Platform remained at code-gzip
+1,662,140 B, tarball 1,935,102 B, unpacked 9,006,345 B and 2574/2628 code/total
+files, against unchanged approved caps.
+
+The same eight production installations passed in 59.22 seconds, including the
+new unconditional actual-R identity/nonownership, successful production locks,
+timestamp-only write, diagnostic replay, receipt INSERT/SELECT and populated-row
+forbidden-update assertions. Each parent case required the child's completed
+runtime-proof flag alongside its unchanged 89 ledger rows and fixed inventory.
+The same seven-file selection then passed 78/78 in 2.10 seconds. Owned-container
+inventory was empty after teardown, and all sequential fixed-profile leases
+were released. Tracked inputs remained frozen throughout execution. Evidence,
+including the unmodified first TS2305 failure and actual before/after hashes,
+is retained under `/private/tmp/m14-e2-r1-runtime-lock-proof-20261027`; its
+`import-repair-1` directory holds this authorized continuation's results.
+
+All 94 protected SQL/manifest/registry inputs, the helper and runtime source/API
+retain their earlier identities; no ACL, expected hash, installation matrix,
+deadline or cap changed. This post-execution task summary is the only later
+tracked edit. These are working results; `E2R0-R-1` still needs explicit closure
+by fresh native reviewers of the eventual committed repair. Native history and
+its cycle 0/3 remain unchanged until the supervisor prepares that candidate;
+no DCO, prepare, full verification or external write occurred here.
+
+### F runtime-lock proof dependency integration
+
+After the root read the stabilized working packet and independently verified
+its exact tree, F made ordinary DCO sign-off merge checkpoint
+`7ed23e2ef730d7d2a452254e67700422fff11069`, tree
+`6bb1444950d48c77e40457b206ae1ecb21a68591`, with parents ece054fa and
+2da59893. The proper exact 2da stack pin then passed policy with three
+obligations and zero unanswered; all eight commits in the sign-off range,
+including five merges, passed DCO and the checkout was clean. An unnecessary
+explicit GPG attempt failed before creating a commit because gpg was absent;
+the actual ordinary sign-off route matches the predecessors. A short-SHA DCO
+invocation refused before checking and the full-SHA invocation passed. Both
+observations are retained; no source or review budget changed.
+
+Root then authorized the normal pending merge of exact E2 repair
+`9d26edb21b49ef04629d03a448c98135d92167e5`, tree
+`54c4d964ef6341769138dfed6e5b05786be042ba`. Three actual overlaps in the
+composition child, parent witness and shared task record were resolved by
+retaining both complete helper bodies and both evidence histories. The F
+retained helper is byte-identical to 7ed23e2; the runtime-lock helper is
+byte-identical to 9d26edb. Both calls are awaited once, and both retainedRuntime
+and runtimeLockPrivilegesProved flags are asserted by the parent. Port-close
+cleanup is inherited. The contributor owner now describes F's current two
+90-unit restore shapes and two renamed targets, retaining the E2 eight-case
+89-unit predecessor attribution and new runtime privilege proof description.
+
+All 6,511 other upstream paths remain exact. F's manifest, SQL, five inert pins,
+legacy 88/cfe3 inventory, two frozen 90-unit restore expectations, four-case
+matrix, R setter refusal/admin fixture setup and runtime/helper/API/budget bytes
+remain protected. This is normal manual dependency integration, with no
+mechanical exemption, patch replay, extra installation matrix or derivation.
+The next root-exclusive allocation covers cumulative working checks of this
+combined proof before the root's separate second-DCO read. No second commit,
+native review, full verification or external write is authorized by these light
+checks. Existing authors, findings, failures and expiry/cycle history remain.
+
+Self-retro: combining the complete existing helpers and their actual parent
+flags preserves both proof obligations without another runner or fixture matrix.
+
+### F combined retained/runtime-lock working result
+
+The root-exclusive final working allocation tested pending tree
+`26dfd8273e6f6e13eca172ab38b9ffe27bc2e53a`, with ordinary parents F
+7ed23e2 and exact E2 repair 9d26edb. All 6,521 tracked inputs remained frozen
+at `454393e05e20d540a67ce69b99fc47229ae79184be19ecdbdfd4395b4a00a940`
+after each phase. Explicit own Node 24.21.0/npm 11.19.0 and dependencies ran
+canonical lint with three fresh package builds and the five-project published
+typecheck: PASS in 49.896 seconds, zero errors/33 existing warnings and zero
+unresolved imports/consumer errors. Three API checks and actual cumulative
+artifact/content/class/total plus all 17 browser-entry gates passed in 4.985
+seconds with zero findings. Package measurements and exact artifact hashes are
+unchanged from the preceding working packet, including Platform code-gzip
+1,662,140 B, tarball 1,935,102 B, unpacked 9,006,345 B and code/total counts
+2574/2628; no cap, manifest, lockfile or API report changed.
+
+The same four 90-unit production composition cases passed 4/4 in 43.41 seconds
+(44.662-second broker phase), now awaiting both complete proof helpers before
+returning both parent-asserted success flags. The actual R notification,
+diagnostic replay and privacy lock/allowed-write/refusal boundaries execute
+alongside F's actual R/S retained 13/8-field, precision, history/frozen-state,
+replay/conflict/origin/refusal behavior and administrative mode setup. Both
+fixed reference shapes and renamed-principal targets retain exact selected
+inventories/ledger and status/apply/replay. No expectation, SQL, role, timeout,
+profile, extra matrix or frozen derivation changed. All four created owned
+containers were destroyed; zero remained and zero volume events occurred under
+the unchanged tmpfs helper.
+
+All normal numeric-worktree leases admitted immediately and were released:
+typecheck 4 CPU/6144 MB, tooling 2 CPU/2048 MB, PostgreSQL 2 CPU/6144 MB. Root
+was notified as soon as the last lease ended so E2 full verification could start.
+Evidence is preserved at `/private/tmp/m14-f-final-working-20261027`.
+The integrated proof SHA-256 remains
+`cf4fea79e4de1451bdd4028776f65044807b90c69dfef0daa95da18659ca2fd9`;
+the parent test is `8a0e949eef2d856b585c569c71239832bda25ce5863ecedf968d9f7041f24481`. The retained helper
+remains exact to F 7ed23e2 and the runtime-lock helper exact to E2 9d26edb.
+All other 6,511 upstream paths, F SQL/manifest/two hashes, five inert pins and
+legacy 88/cfe3 inventory remain protected. The final task outcome is the only
+post-execution tracked edit; no gate failure or retry occurred in these phases.
+
+The root's stabilized final API/notes/control/budget/recovery read and separate
+GO precede a second ordinary DCO checkpoint. First F independent full reviews,
+native session and canonical clean full/cold/installed verification remain
+required; E2 must actually land before F delivery. No second commit, native
+PASS/expiry/cycle reset, full verification, push or external write is claimed.
+Release/live/settings/account/credential/other-repository exclusions and all
+existing authors, findings and failed-attempt history remain unchanged.
+
+Self-retro: normal integration preserved both exact helper bodies, and one
+existing four-case matrix exercised their interaction in 99.543 broker seconds
+without queue waits, retries or a new production mechanism.
