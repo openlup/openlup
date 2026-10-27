@@ -1,10 +1,10 @@
 # M14 C: application lifecycle task
 
-Status: corrected draft under current verification (2026-10-27). Two native FULL
-FAIL reports and all three material cards remain open at cycle 0/3. Current
-focused proof is recorded below; full committed proof and fresh review remain
-owed. The owner-authorized fixed byte reserve and current working-tree checks
-pass; the local DCO checkpoint, fresh native review and full proof follow.
+Status: Unicode identity repair after the second candidate evaluation
+(2026-10-27). Native cycle 1/3 remains intact: the three CDR0 cards are closed,
+and CDR1-A-1/CDR1-S-1 remain open until fresh review. Current red/green, rebuilt
+artifact and allocated working-tree proof pass; the stabilized read/DCO, fresh
+review and full committed proof remain owed. The fixed byte reserve is unchanged.
 Development preview only.
 
 ## Owner-authorized fixed byte reserve, 2026-10-27
@@ -1073,3 +1073,115 @@ recorded authors, exclusions, findings and review budgets remain applicable.
 Use ordinary Git hooks and signing; no bypass or copied proof stamp is allowed.
 Generated metadata, regression execution, package measurements, independent
 review and final verification remain owed on the author's proving machine.
+
+
+## Supervisor regroup before the Unicode identity repair, 2026-10-27
+
+Two completed candidate evaluations left a material obstacle to the same approved
+C preflight/replay outcome: the initial prefix-omission evaluation and the full
+review of head c6ef9b85240940667f62a465b5286d5d4e332d5c. The latter closes the
+original prefix-omission and D catalog-binding cards, but establishes the new
+CDR1-A-1 and CDR1-S-1 identity defect. These are two observations of one mechanism,
+not two separate repair obligations or evaluations. Native history and the
+current cycle 1/3 remain intact; no continuation or budget reset is claimed.
+
+Actual disposable filesystem proof confirmed sigma and final sigma are aliases
+on this volume. The current candidate admits both absent directories, writes
+both files, then refuses identical replay. Singular NFC and NFD names separately
+create and replay successfully. The requirement is already-approved alias
+refusal before writes and successful same-snapshot replay, owned by appUpgrade;
+this is necessary recovery within that scope, not a new Unicode feature wave.
+
+Cause: NFC plus lowercase is narrower than native caseless equivalence. A
+smallest next step is to extend the existing identity calculation consistently
+for complete paths and directory prefixes, preserving existing lowercasing and
+normalization refusals. Compare a direct caseless normalization with a new
+filesystem probe/engine: the latter adds writes, operating-system coupling and
+failure modes to preflight without helping the accepted contract. Keep the
+existing seam, no dependency, table compiler, persistent state or second runner.
+Execute a prepared sigma-prefix regression against the current code to obtain
+red, then require pre-write refusal after the repair, preserve successful
+same-spelling resume/replay and all existing tests, and rerun the actual pack
+under the already-approved fixed reserve. Full verification is still owed.
+
+Lesson: lowercase-only identity missed a real native collision -> extend the
+existing equivalence calculation and prove one actual collision/replay boundary.
+The same lesson will be recorded under Review lessons in this delivery; it adds
+no checker, gate, acceptance obligation or automatic successor.
+
+## Unicode identity repair and light discriminator, 2026-10-27
+
+Read the supervisor regroup above before changing source. The smallest direct
+repair appends `toUpperCase()` to both existing NFC/lowercase identity sites:
+complete files and directory prefixes. Deterministic composition cannot split
+any previously equal identity class; retaining lowercase first preserves `ß/ẞ`
+refusal while uppercase merges `σ/ς`. No new helper, dependency, table, fallback,
+filesystem write/probe in production preflight or persistent mechanism is added.
+The existing canonical owner already requires case-alias refusal before writes
+and exact-spelling replay; this implementation correction enforces that same
+boundary without changing the API, exclusive-maintenance requirement or claims.
+
+Added only the demonstrated sigma/final-sigma row with distinct leaf names to
+the existing absent-directory-prefix refusal case. With the unchanged c6ef C
+source, the actual prepared selector failed because planning admitted both
+paths: one FAIL, one PASS and 36 skipped. After the two-expression source fix,
+the same selector passed both cases. The full source-focused C+D selector passed
+41/41, including existing file-parent, C-P1, exact-prefix interruption/resume and
+replay witnesses. Its child-process witness still used the previous own build;
+fresh-build attribution and the actual four PostgreSQL cases await the allocated
+next phase. This is not final built/installed proof.
+
+A direct owned filesystem probe confirmed `σ` and `ς` resolve to the same inode
+on this volume. Against the corrected source, both plan and apply now throw
+`Application upgrade path alias` with the application directory still empty.
+The owned probe root was removed. Its initial direct Node strip-only import
+stopped before running the probe because the existing error class uses a
+TypeScript parameter property (`ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX`). The same
+pinned Node's transform-types mode then executed the probe successfully; its
+experimental warning is retained. The failed first patch application also
+changed no files because its CONTRIBUTING context did not match; the corrected
+exact-context patch succeeded. Both setup attempts remain in existing scratch.
+
+Focused AST and policy pass (six documentation obligations, zero unanswered).
+CONTRIBUTING's existing Review lessons now records the regroup's one narrow
+lowercase-identity lesson; it changes no command, process, gate or authority.
+All native report/session bytes captured before this repair remain unchanged.
+The existing CDR0 closures and both CDR1 cards are preserved; only the parent may
+prepare the next committed candidate, which would be cycle 2/3, without reset or
+continuation. No DCO/commit, prepare/count, push, full run or cap change occurred
+in this light phase. The fixed 1,743,872 / 2,029,568 / 9,447,424 byte caps and all
+file/docs/browser/baseline/version/lock values remain unchanged.
+
+The allocated fresh-build phase passed under the normal four-CPU/4096-MiB
+broker after 107 seconds waiting. Prerequisite builds/API took 5.529/0.555
+seconds; lint passed in 43.859 seconds with zero errors and the same 33 warnings.
+The actual fresh-build combined selector passed 45/45 across three files,
+including all four PostgreSQL cases and the current built child-process witness.
+Docker's owned PostgreSQL prefix is empty after cleanup. Published-tree
+typecheck passed with zero unresolved edges or consumer errors; its normal
+four-CPU/6144-MiB broker admitted immediately. All 6496 tracked-input hashes
+stayed exact during the build/pack/lint/PG batch.
+
+Actual npm packing, native artifact and size checks pass with no findings:
+code gzip 1,660,263 B, tarball 1,932,817 B and unpacked 8,996,949 B, within the
+unchanged fixed caps 1,743,872 / 2,029,568 / 9,447,424 B. Code/total files remain
+2574/2628; docs remain 64,993 B/five files. Archive SHA-256 is
+`4d48ff81f7bdd3b30689d9b40a09912bf43dad661719ab69f8c31bb7a2f7250e`.
+The lifecycle API remains byte-identical at
+`786e4874f6fca5a2037bf5010d5dc332315eb1a7b6e3005f6d8a666e11b12e13`.
+There is no new budget request or baseline/file/docs/browser/version/lock change.
+
+Master completed the actual stabilized packet and four-path technical read:
+the two existing identity expressions preserve prior equivalence, one targeted
+sigma row discriminates the observed failure, and public API/privileges/contracts
+are not expanded. The existing owner-approved fixed reserve is unchanged and
+current working proof passes. This is the actual delegated master technical
+read, not a personal maintainer quotation. Master allocated the ordinary local
+DCO commit after one fresh diff/known-byte check; no reassurance reruns follow.
+No committed native review, full/cold/coverage result or finding closure is
+inferred from working-tree PASS.
+
+Self-retro: extending one existing test row discriminated the native collision
+without a matrix or new fixture. Composing the identity transformation preserves
+previous refusals while fixing the observed class; rebuilding remains necessary
+for honest attribution of the child and public-entry witnesses.

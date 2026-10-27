@@ -89,7 +89,7 @@ async function inspectUpgrade(input: AppUpgradeInput): Promise<{
   const paths = [...new Set([...before.keys(), ...target.keys()])].sort();
   const aliases = new Set<string>();
   for (const path of paths) {
-    const alias = path.normalize("NFC").toLowerCase();
+    const alias = path.normalize("NFC").toLowerCase().toUpperCase();
     if (aliases.has(alias)) throw new Error(`Application upgrade path alias: ${path}`);
     aliases.add(alias);
   }
@@ -98,7 +98,7 @@ async function inspectUpgrade(input: AppUpgradeInput): Promise<{
     const components = path.split("/");
     while (components.length > 1) {
       components.pop();
-      const directory = components.join("/"), alias = directory.normalize("NFC").toLowerCase();
+      const directory = components.join("/"), alias = directory.normalize("NFC").toLowerCase().toUpperCase();
       if (aliases.has(alias)) throw new Error(`Application upgrade file-parent collision: ${path}`);
       // Parents may not exist yet; both snapshots must still agree on their spelling.
       const spelling = directorySpellings.get(alias);

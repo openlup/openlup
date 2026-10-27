@@ -2571,6 +2571,11 @@ own: a lessons change is an ordinary delivery under existing authority, and a
 promotion stays within its approved scope. The rethink record and the task's
 terminal self-retro carry the lesson until it lands. No other tracker is kept.
 
+- 2026-10-27, M14 application lifecycle: lowercase-only identity missed the
+  native `σ`/`ς` filename alias → extend the existing preflight equivalence
+  while preserving prior refusals, and prove the observed collision before
+  writes alongside exact-spelling replay.
+
 - 2026-10-27, M14 A/C: ignored historical configs and source copies entered lint
   traversal → keep archival copies outside the checkout, following
   [commands and lint rules](#commands-and-lint-rules).
