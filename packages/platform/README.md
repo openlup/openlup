@@ -10,8 +10,12 @@ Development preview. This package is part of the publishable set with core and o
 
 It holds the runnable server substrate an OpenLup application composes: the Node HTTP runtime, BFF dispatch, scheduling and job leases, blob storage, data gateways, the node-postgres migration runner and bundle composition. Ports and their contracts stay in `@openlup/core/platform-runtime`.
 
-For the prepared `0.28.0` set, read the [adjacent-release migration and known
-limitations](CHANGELOG.md#0280) before selecting optional services. Experimental
+For the prepared `0.29.0` set, read the [adjacent-release migration and known
+limitations](CHANGELOG.md#0290) before selecting optional services. Experimental
+M13 marketing uses browser-safe `./marketing`, type-only browser-safe
+`./marketing/contracts`, and Node-only `./marketing/server` and
+`./marketing/server/postgres`. Marketing contributions and bindings remain
+inert and default-off. Experimental
 account/support APIs use `./account-support` and the type-only
 `./account-support/contracts`; reference bindings remain inert and default-off.
 Apply the M12 support-authority forwards after complete same-rail predecessors
@@ -50,7 +54,7 @@ Adopters must not activate unselected or unready invoicing; installation and
 inert contributions register no runner, worker, route or schedule.
 M06 managed-host proof classes remain pending in the
 [M06 parity ledger](../../docs/platform/plans/oss-m06-stock-reservations-delivery.md#parity-pending-rows).
-Size comparison uses the published `0.27.0` tarball. Preparation and offline
+Size comparison uses the published `0.28.0` tarball. Preparation and offline
 adapter evidence grant no publication or provider-account certification.
 
 Longer module recipes live in the [platform package reference](../../docs/platform/PLATFORM_PACKAGE_REFERENCE.md).
@@ -98,6 +102,7 @@ timestamp used in the webhook's idempotency key.
 | `./marketing/server` (analytics context) | Injected analytics context handler with host persistence, capability and identity bindings |
 | `./marketing`, `./marketing/contracts` | Browser-safe acquisition history, portable prelaunch, survey evidence and newsletter consent schemas; type-only DTOs and acquisition/research ports |
 | `./marketing`, `./marketing/contracts` (analytics) | Browser-safe acquisition and research schemas, injected analytics, paid purchase and consent-time facts; type-only DTOs and ports |
+| `./marketing`, `./marketing/contracts` (SEO and content slots) | Browser-safe JSON-LD serialization and graph builders, URL/hreflang helpers, ordered head data and contact/legal projections; type-only organization, contact, legal-document and privacy-processor content slots |
 | `./commerce`, `./commerce/contracts` | Browser-safe neutral commerce schema cores, generic ports and pure contract helpers |
 | `./commerce/server` | Node-only OMS, returns, native reviews/media and hosted-feedback handlers/adapters and order-detail composition, email consumers, dispatch registry, paid-fulfillment binding and checkout compensation, checkout handlers, runtime and shared paid-order saga |
 | `./pricing` | Experimental price authority, quote computation/handlers, offer projection/cache, readiness and policy tokens |
@@ -196,6 +201,46 @@ There is no default persistence, portable SQL or reference route for this handle
 An `active` result is a local context fact, never delivery, and telemetry context
 failure never gates commerce. The [context witness](test/marketing/analyticsContext.test.ts)
 exercises the factory through synthetic host bindings.
+
+`./marketing` also provides browser-safe JSON-LD serialization and graph builders,
+route URL/hreflang helpers, an ordered head descriptor and plain contact/legal
+projections. Applications supply identity, origin, routes, locales, images and
+content; the descriptor is plain data for a host head manager. The type-only
+`./marketing/contracts` entry exports shared organization facts and contact,
+legal-document and privacy-processor shapes, also forwarded as types by the
+runtime entry. The package supplies no document wording, processor inventory or
+content policy. The [marketing recipe](../../docs/platform/PLATFORM_PACKAGE_REFERENCE.md#marketing-seo-and-content-slots)
+owns the mechanics and installed-artifact proof.
+
+## Marketing composition
+
+`./composition` exports `createMarketingContribution`, an inert descriptor for
+the `marketing` capability's `./marketing`, `./marketing/contracts` and
+`./marketing/server` entries, with a runtime dependency on `identity/contracts`
+for obligation validation.
+Supply already-bound operations and host schema requirements. Ports, routes and
+triggers share the supplied functions; null ports remain required for Core
+readiness, and handlers retain only registration descriptors. Duplicate handler,
+schedule or route identities refuse. Construction invokes no callable and
+installs no worker, route or schedule. See the
+[composition contract](../../docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#contributions-seams-and-readiness)
+for the host admission boundary.
+
+`./marketing/server` also exports `createMarketingPrivacyContributor` and
+`createMarketingPrivacyBindings`. Explicit enablement and both complete owner
+ports select one contributor; its `exportPersonalData`, `assessErasure` and
+`eraseOrRetain` callables can be passed directly to `createMarketingContribution`.
+Missing ownership makes coverage unavailable and erasure unresolved. Identity
+owns assessment ordering, subscription vetoes, receipt replay and transaction
+rollback; the marketing fence runs only during `eraseOrRetain`. Provider request
+acceptance never proves deletion. The reference leaves marketing unselected,
+so its marketing privacy coverage remains an open gap. See the
+[privacy composition recipe](../../docs/platform/PLATFORM_PACKAGE_REFERENCE.md#marketing-server-composition).
+
+The contributor and binding declarations use identity contract types and local
+structural interfaces compatible with identity's `PersonalDataContributor`.
+They do not reference identity's main entry; `./marketing/server` compiles without
+`pg` or `@types/pg`. Select `./marketing/server/postgres` explicitly for those ports.
 
 ## Commerce contracts
 

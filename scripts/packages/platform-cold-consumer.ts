@@ -516,6 +516,18 @@ const routes = marketing.createAnalyticsRoutePolicy({ publicPaths: ["/entry"], r
 assert.equal(routes.sanitizeDeploymentAnalyticsUrl("/entry?secret=one", "https://host.example"), "https://host.example/entry");
 assert.equal(marketing.projectPaidPurchase({ status: "pending" }), null);
 assert.equal(marketing.selectMarketingHistoricalConsentTime({ command: { consentedAt: null, listId: null }, state: { consent: "unknown", suppressions: [] }, now: new Date(NaN) }).reason, "consent_time_invalid");
+const origin="https://shop.example";
+const facts={name:"Example Store",legalName:"Example Company",url:origin,logo:{url:origin+"/logo.png",contentUrl:origin+"/logo.png",width:160,height:60},email:"contact@example.invalid",vatID:"VAT-1",taxID:"TAX-1",areaServed:"Region-A",sameAs:[],contactPoint:{email:"contact@example.invalid",contactType:"support",availableLanguage:["alpha"]},address:{streetAddress:"Example Lane 1",addressLocality:"Example Town",postalCode:"00000",addressRegion:"Region-A",addressCountry:"Territory-A"}};
+const node=marketing.organizationLd(origin,"Organization",facts);
+assert.equal(node["@id"],origin+"/#organization");
+assert.equal(marketing.jsonLdGraph(node,node)["@graph"].length,1);
+const hostile={name:"</script><script>probe</script>\\u2028\\u2029"};
+const serialized=marketing.serializeJsonLd(hostile);
+assert(!serialized.includes("<"));
+assert.deepEqual(JSON.parse(serialized),hostile);
+const head=marketing.buildHeadDescriptor({origin,route:{id:"home",locale:"alpha",canonicalPath:"/"},routes:[],xDefaultLocale:"alpha",htmlLang:"alpha",title:"Example",description:"Example content",siteName:facts.name,ogImage:origin+"/image.png",ogImageWidth:1200,ogImageHeight:630,twitterHandle:"@example",ogLocale:"alpha",twitterImage:origin+"/card.png",jsonLd:hostile});
+assert.deepEqual(head.tags[1],{kind:"link",rel:"canonical",href:origin+"/"});
+assert.deepEqual(JSON.parse(head.jsonLd)["@graph"],[hostile]);
 for (const [name, value] of Object.entries(core)) assert.equal(marketing[name], value);
 for (const name of ["acquisitionCaseSubmitRequestSchema", "acquisitionCaseSubmitResponseSchema", "acquisitionCaseTransitionRequestSchema", "acquisitionCaseTransitionResponseSchema"]) assert.equal(name in marketing, false);
 await assert.rejects(import("@openlup/platform/dist/marketing/acquisitionCaseSchemas.js"), { code: "ERR_PACKAGE_PATH_NOT_EXPORTED" });
@@ -550,6 +562,14 @@ await createAnalyticsContextHandler({ respond, isEnabled: () => true,
 assert.equal(status, 400);
 assert.deepEqual(body, { ok: false, error: { code: "BAD_REQUEST", message: "Invalid analytics context" } });
 await assert.rejects(import("@openlup/platform/marketing/server/internal"), { code: "ERR_PACKAGE_PATH_NOT_EXPORTED" });
+const { createMarketingPrivacyContributor, createMarketingPrivacyBindings } = await import("@openlup/platform/marketing/server");
+assert.equal(typeof createMarketingPrivacyContributor, "function");
+assert.equal(typeof createMarketingPrivacyBindings, "function");
+const disabledPrivacy = createMarketingPrivacyBindings({ acquisition: null, remoteErasure: null,
+  randomId: () => { throw Error("disabled privacy must not create a case"); } });
+assert.equal(disabledPrivacy.contributor, null);
+assert.deepEqual(disabledPrivacy.callables, { exportPersonalData: null, assessErasure: null, eraseOrRetain: null });
+assert.equal(disabledPrivacy.issues.length, 2);
 `);
 }
 
@@ -765,8 +785,8 @@ export function compileConsumer(consumer: string, entries: readonly string[], co
   const file = join(consumer, "consumer.ts");
   const surfaces = entries.map((name, index) => `import type * as Entry${index} from "@openlup/platform/${name}";\nexport type Surface${index} = typeof Entry${index};`);
   if (entries.includes("marketing") && entries.includes("marketing/contracts")) surfaces.push([
-    'import { acquisitionCaseListRequestSchema, prelaunchAcquisitionListRequestSchema } from "@openlup/platform/marketing";',
-    'import type { AcquisitionCaseListRequest, AcquisitionNewsletterConsentEvent, MarketingResearchSurveySubmitPort, AcquisitionCasePort, AcquisitionEvidencePort, PrelaunchAcquisitionListRequest } from "@openlup/platform/marketing/contracts";',
+    'import { acquisitionCaseListRequestSchema, prelaunchAcquisitionListRequestSchema, buildHeadDescriptor, organizationLd } from "@openlup/platform/marketing";',
+    'import type { AcquisitionCaseListRequest, AcquisitionNewsletterConsentEvent, MarketingResearchSurveySubmitPort, AcquisitionCasePort, AcquisitionEvidencePort, PrelaunchAcquisitionListRequest, ContactContent, LegalDocumentContent, PrivacyProcessorDisclosure } from "@openlup/platform/marketing/contracts";',
     'export const marketingRequest: AcquisitionCaseListRequest = acquisitionCaseListRequestSchema.parse({ view: "acquisition_case_v1" });',
     '// @ts-expect-error parsed default is required in the output type',
     'export const missingMarketingLimit: AcquisitionCaseListRequest = { view: "acquisition_case_v1" };',
@@ -781,6 +801,20 @@ export function compileConsumer(consumer: string, entries: readonly string[], co
     'export const explicitConsent: boolean = marketingEvent.explicitOptInEvidence;',
     'declare const surveyPort: MarketingResearchSurveySubmitPort;',
     'export const surveyResult = surveyPort.submitSurveyResponse({ surveyType: "consumer", responseData: { answer: true } });',
+    'declare const contact: ContactContent;',
+    'export const processor: PrivacyProcessorDisclosure = { processorName: "Example Processor", purpose: "Example purpose", dataCategories: ["Example data"] };',
+    'export const legal: LegalDocumentContent = { title: "Example document", intro: "Example introduction", sections: [{ title: "Example section", body: "Example body" }] };',
+    'export const contactInput: ContactContent = { organization: contact.organization, supportEmail: "support@example.invalid", addressLine: "Example address", registrationIdentifiers: [] };',
+    'export const siteIdentity = contact.organization.name;',
+    'export const processorName = processor.processorName;',
+    'export const head = buildHeadDescriptor({ origin: "https://shop.example", route: { id: "home", locale: "alpha", canonicalPath: "/" }, routes: [], xDefaultLocale: "alpha", htmlLang: "alpha", title: "Example", description: "Example content", siteName: "Example Store", ogImage: "https://shop.example/image.png", ogImageWidth: 1200, ogImageHeight: 630, twitterHandle: "@example", ogLocale: "alpha", twitterImage: "https://shop.example/card.png", jsonLd: organizationLd("https://shop.example", "Organization", contact.organization) });',
+    '// @ts-expect-error organization facts are required for contact content',
+    'const missingContact: ContactContent = { supportEmail: "support@example.invalid", addressLine: "Example address", registrationIdentifiers: [] };',
+    '// @ts-expect-error legal document sections are required',
+    'const missingSections: LegalDocumentContent = { title: "Example", intro: "Example introduction" };',
+    '// @ts-expect-error processor data categories are required',
+    'const missingCategories: PrivacyProcessorDisclosure = { processorName: "Example", purpose: "Example purpose" };',
+    'void missingContact; void missingSections; void missingCategories;',
   ].join("\n"));
   if (entries.includes("marketing/server")) surfaces.push([
     'import { createAcquisitionCaseHandlers, createAcquisitionCaseActiveCountDirectHandler } from "@openlup/platform/marketing/server";',

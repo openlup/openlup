@@ -14,3 +14,4 @@ export type {
 export type * from "./acquisitionPorts.js";
 export type * from "./prelaunch.js";
 export type * from "./analytics.js";
+export type * from "./contactLegal.js";

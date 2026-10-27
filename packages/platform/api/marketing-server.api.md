@@ -2876,6 +2876,236 @@ export declare function verifyHmacSignature(input: {
  */
 export declare function timingSafeStringEqual(left: string, right: string): boolean;
 ```
+## dist/identity/contracts/contracts.d.ts
+
+```ts
+import type { EmailTrustFailureCode } from "./emailTrust.js";
+export declare const AUTH_RECONCILE_CONTRACT_VERSION: "auth.reconcile.v1";
+export interface AuthReconcileResponse {
+    accountId: string;
+    created: boolean;
+    linked: boolean;
+}
+export type AuthReconcileErrorCode = EmailTrustFailureCode | "NO_VERIFIED_EMAIL" | "RESERVED_PRINCIPAL_REFUSED" | "ACCOUNT_LINK_CONFLICT" | "EMAIL_OWNED_BY_OTHER_PRINCIPAL" | "PRINCIPAL_EMAIL_MISMATCH";
+```
+## dist/identity/contracts/emailTrust.d.ts
+
+```ts
+/** Browser-safe email-association refusal codes. */
+export declare const EMAIL_TRUST_FAILURE_CODES: readonly ["EMAIL_TRUST_ENVELOPE_REFUSED", "EMAIL_TRUST_SETTINGS_UNAVAILABLE"];
+export type EmailTrustFailureCode = typeof EMAIL_TRUST_FAILURE_CODES[number];
+```
+## dist/identity/contracts/index.d.ts
+
+```ts
+export * from "./types.js";
+export * from "./ports.js";
+export * from "./providerList.js";
+export * from "./contracts.js";
+export * from "./emailTrust.js";
+export * from "./operatorInvitations.js";
+export * from "./operatorAuth.js";
+export * from "./privacy.js";
+```
+## dist/identity/contracts/operatorAuth.d.ts
+
+```ts
+export interface OperatorSession {
+    accessToken: string;
+    expiresAt: string;
+    user: {
+        id: string;
+        email: string;
+    };
+}
+export interface OperatorChallengeRequest {
+    email: string;
+}
+export interface OperatorChallengeVerification {
+    token: string;
+}
+export interface OperatorBrowserAuthPort {
+    getSession(): Promise<OperatorSession | null>;
+    requestChallenge(email: string): Promise<void>;
+    verifyChallenge(token: string): Promise<OperatorSession>;
+    signOut(): Promise<void>;
+    onAuthStateChange(listener: (session: OperatorSession | null) => void): () => void;
+}
+/** Strict parsers keep the contracts entry independent of the server validator. */
+export interface OperatorSchema<T> {
+    parse(value: unknown): T;
+    safeParse(value: unknown): {
+        success: true;
+        data: T;
+    } | {
+        success: false;
+        error: Error;
+    };
+}
+export declare const operatorChallengeRequestSchema: OperatorSchema<OperatorChallengeRequest>;
+export declare const operatorChallengeVerificationSchema: OperatorSchema<OperatorChallengeVerification>;
+export declare const operatorSessionSchema: OperatorSchema<OperatorSession>;
+```
+## dist/identity/contracts/operatorInvitations.d.ts
+
+```ts
+/** Pending invitations confer no authority; only accepted native memberships do. */
+export type OperatorRole = "admin" | "distributor";
+export type OperatorMembershipState = "invited" | "active" | "expired" | "revoked";
+export type OperatorInvitationOutcome = "INVITATION_CREATED" | "ALREADY_INVITED" | "INVITATION_REISSUED";
+export type OperatorInvitationConflict = "MEMBERSHIP_ALREADY_ACTIVE" | "INVITATION_ROLE_CONFLICT" | "IDENTITY_CONFLICT" | "MANAGED_REINVITE_UNSUPPORTED";
+export interface OperatorInvitation {
+    principalId: string;
+    invitationId: string;
+    membershipState: "invited";
+    role: OperatorRole;
+    invitedAt: string;
+    expiresAt: string;
+}
+export interface OperatorInvitationResult extends OperatorInvitation {
+    code: OperatorInvitationOutcome;
+    message?: string;
+}
+export interface OperatorMembershipSnapshot {
+    principalId: string;
+    membershipState: OperatorMembershipState;
+    role: OperatorRole;
+}
+export type OperatorInvitationAcceptance = {
+    code: "ACTIVATED" | "ALREADY_ACTIVE";
+    role: OperatorRole;
+} | {
+    code: "INVITATION_EXPIRED" | "INVITATION_REVOKED" | "NO_INVITATION";
+};
+/** Managed invitations activate membership immediately; no pending attempt is stored. */
+export interface ManagedOperatorMembershipResult {
+    principalId: string;
+    membershipState: "active";
+    role: OperatorRole;
+    code: "MEMBERSHIP_CREATED" | "ALREADY_ACTIVE";
+    message?: string;
+}
+export type OperatorInviteResult = OperatorInvitationResult | ManagedOperatorMembershipResult;
+```
+## dist/identity/contracts/ports.d.ts
+
+```ts
+import type { AuthActionResult, AuthSession, AuthStateListener, OAuthProviderKind, Unsubscribe } from "./types.js";
+export interface CustomerAuthPort {
+    getSession(): Promise<AuthSession | null>;
+    onAuthStateChange(listener: AuthStateListener): Unsubscribe;
+    signInWithOtp(input: {
+        email: string;
+        locale: string;
+    }): Promise<AuthActionResult>;
+    verifyOtpCode(input: {
+        email: string;
+        token: string;
+    }): Promise<AuthActionResult>;
+    signInWithOAuth(input: {
+        provider: OAuthProviderKind;
+        redirectTo: string;
+    }): Promise<AuthActionResult>;
+    linkIdentity(input: {
+        provider: OAuthProviderKind;
+        redirectTo: string;
+    }): Promise<AuthActionResult>;
+    signOut(): Promise<void>;
+}
+```
+## dist/identity/contracts/privacy.d.ts
+
+```ts
+import type { OperatorSchema } from "./operatorAuth.js";
+export type PrivacySubjectRef = {
+    kind: "contact";
+    contactId: string;
+} | {
+    kind: "principal";
+    principalId: string;
+};
+export type PrivacyJson = null | boolean | number | string | PrivacyJson[] | {
+    [key: string]: PrivacyJson;
+};
+export interface PersonalDataObligation {
+    owner: string;
+    resource: string;
+    disposition: "erase" | "retain" | "unresolved";
+    reasonCode: string;
+    remote: boolean;
+}
+export interface PersonalDataDocument {
+    contributorId: string;
+    version: string;
+    data: PrivacyJson;
+    coverage: {
+        complete: boolean;
+        included: string[];
+        unavailable: string[];
+    };
+    obligations: PersonalDataObligation[];
+}
+export interface ErasureReceipt {
+    version: "identity.erasure.v1";
+    erasureId: string;
+    completedAt: string;
+    outcome: "ERASED" | "ALREADY_ERASED";
+    obligations: PersonalDataObligation[];
+}
+export interface PrivacyEraseRequest {
+    subject: PrivacySubjectRef;
+    idempotencyKey: string;
+}
+export interface PrivacyExport {
+    format: "personal-data.v1";
+    generatedAt: string;
+    subject: PrivacySubjectRef;
+    documents: PersonalDataDocument[];
+    missingContributors: string[];
+    erasure: ErasureReceipt | null;
+}
+export declare const privacySubjectSchema: OperatorSchema<PrivacySubjectRef>;
+export declare const personalDataObligationSchema: OperatorSchema<PersonalDataObligation>;
+export declare const personalDataDocumentSchema: OperatorSchema<PersonalDataDocument>;
+export declare const erasureReceiptSchema: OperatorSchema<ErasureReceipt>;
+export declare const privacyExportRequestSchema: OperatorSchema<{
+    subject: PrivacySubjectRef;
+}>;
+export declare const privacyEraseRequestSchema: OperatorSchema<PrivacyEraseRequest>;
+export declare const privacyExportResponseSchema: OperatorSchema<PrivacyExport>;
+export declare const privacyEraseResponseSchema: OperatorSchema<ErasureReceipt>;
+declare const refusalCodes: readonly ["PRIVACY_SUBJECT_NOT_FOUND", "PRIVACY_CONTRIBUTOR_DUPLICATE", "PRIVACY_CONTRIBUTOR_MISSING", "PRIVACY_ASSESSMENT_UNAVAILABLE", "PRIVACY_OWNERSHIP_UNDECLARED", "PRIVACY_ACTIVE_SUBSCRIPTION", "PRIVACY_RESUMABLE_SUBSCRIPTION", "PRIVACY_PROTECTED_OPERATOR", "PRIVACY_IDEMPOTENCY_CONFLICT", "PRIVACY_SUBJECT_ERASED", "PRIVACY_STORE_PRIVILEGES_UNSAFE", "MANAGED_PRIVACY_ERASURE_UNAVAILABLE"];
+export type PrivacyRefusalCode = typeof refusalCodes[number];
+export declare const privacyRefusalCodeSchema: OperatorSchema<PrivacyRefusalCode>;
+export {};
+```
+## dist/identity/contracts/providerList.d.ts
+
+```ts
+import { type OAuthProviderKind } from "./types.js";
+export declare const DEFAULT_SOCIAL_PROVIDERS: readonly OAuthProviderKind[];
+export declare function parseSocialProviders(raw: string | undefined): OAuthProviderKind[];
+```
+## dist/identity/contracts/types.d.ts
+
+```ts
+export declare const OAUTH_PROVIDER_KINDS: readonly ["google", "apple", "facebook"];
+export type OAuthProviderKind = (typeof OAUTH_PROVIDER_KINDS)[number];
+export declare function isOAuthProviderKind(value: string): value is OAuthProviderKind;
+export interface AuthUser {
+    id: string;
+    email: string | null;
+}
+export interface AuthSession {
+    accessToken: string;
+    user: AuthUser;
+}
+export type AuthStateListener = (session: AuthSession | null) => void;
+export type Unsubscribe = () => void;
+export interface AuthActionResult {
+    error: string | null;
+}
+```
 ## dist/marketing/contracts/acquisition.d.ts
 
 ```ts
@@ -3169,6 +3399,63 @@ export type MarketingHistoricalConsentResult = {
     reason: string;
 };
 ```
+## dist/marketing/contracts/contactLegal.d.ts
+
+```ts
+export interface OrganizationFacts {
+    name: string;
+    legalName: string;
+    url: string;
+    logo: {
+        url: string;
+        contentUrl: string;
+        width: number;
+        height: number;
+    };
+    email: string;
+    vatID: string;
+    taxID: string;
+    areaServed: string;
+    sameAs: string[];
+    contactPoint: {
+        email: string;
+        contactType: string;
+        availableLanguage: string[];
+    };
+    address: {
+        streetAddress: string;
+        addressLocality: string;
+        postalCode: string;
+        addressRegion: string;
+        addressCountry: string;
+    };
+}
+export interface ContactContent {
+    organization: OrganizationFacts;
+    supportEmail: string;
+    addressLine: string;
+    registrationIdentifiers: {
+        label: string;
+        value: string;
+    }[];
+    registrationAuthority?: string;
+}
+export interface LegalDocumentContent {
+    title: string;
+    intro: string;
+    sections: {
+        title: string;
+        body: string;
+    }[];
+    lastUpdated?: string;
+}
+export interface PrivacyProcessorDisclosure {
+    processorName: string;
+    purpose: string;
+    dataCategories: string[];
+    details?: string;
+}
+```
 ## dist/marketing/contracts/index.d.ts
 
 ```ts
@@ -3177,6 +3464,7 @@ export type { MarketingResearchJson, ResearchSurveyType, AdminSurveyResponsesReq
 export type * from "./acquisitionPorts.js";
 export type * from "./prelaunch.js";
 export type * from "./analytics.js";
+export type * from "./contactLegal.js";
 ```
 ## dist/marketing/contracts/prelaunch.d.ts
 
@@ -3358,6 +3646,24 @@ export interface AnalyticsContextHandlerDeps {
     clientIdField: string;
 }
 ```
+## dist/marketing/server/bindings.d.ts
+
+```ts
+import type { ReadinessIssue } from "@openlup/core/readiness";
+import { type MarketingPrivacyContributor, type MarketingPrivacyDependencies } from "./privacyContributor.js";
+/** Select one fully bound privacy contributor; absent activation leaves the host registry unchanged. */
+export declare function createMarketingPrivacyBindings<Context>(input: MarketingPrivacyDependencies<Context> & {
+    enabled?: boolean;
+}): {
+    contributor: MarketingPrivacyContributor<Context> | null;
+    issues: ReadinessIssue[];
+    callables: Readonly<{
+        exportPersonalData: MarketingPrivacyContributor<Context>["export"] | null;
+        assessErasure: MarketingPrivacyContributor<Context>["assessErasure"] | null;
+        eraseOrRetain: MarketingPrivacyContributor<Context>["eraseOrRetain"] | null;
+    }>;
+};
+```
 ## dist/marketing/server/directPorts.d.ts
 
 ```ts
@@ -3403,6 +3709,8 @@ export * from "./research/adminSurveyResponsesHandler.js";
 export * from "./research/managedSurveyResponseSubmit.js";
 export { createAnalyticsContextHandler } from "./analyticsContext.js";
 export type * from "./analyticsContextPorts.js";
+export * from "./privacyContributor.js";
+export * from "./bindings.js";
 ```
 ## dist/marketing/server/prelaunchAcquisitionDirect.d.ts
 
@@ -3411,6 +3719,76 @@ import type { HttpRequest, HttpResponse } from "../../http/index.js";
 import type { PrelaunchAcquisitionDirectDeps } from "./directPorts.js";
 export declare function createPrelaunchAcquisitionListHandler(options: PrelaunchAcquisitionDirectDeps): (req: HttpRequest, res: HttpResponse) => Promise<void>;
 export declare function createPrelaunchAcquisitionDetailHandler(options: PrelaunchAcquisitionDirectDeps): (req: HttpRequest, res: HttpResponse) => Promise<void>;
+```
+## dist/marketing/server/privacyContributor.d.ts
+
+```ts
+import type { PersonalDataDocument, PersonalDataObligation, PrivacyJson } from "../../identity/contracts/index.js";
+interface AuthorizedHumanAdministrator {
+    principalId: string;
+}
+interface ResolvedPrivacySubject {
+    contactId: string | null;
+    principalId: string | null;
+    identity: {
+        [key: string]: PrivacyJson;
+    };
+}
+interface ErasureAssessment {
+    obligations: PersonalDataObligation[];
+}
+/** Structural identity contributor contract without selecting identity's server adapters. */
+export interface MarketingPrivacyContributor<Context> {
+    readonly id: string;
+    readonly version: string;
+    readonly ownedResources: readonly string[];
+    prepareErasure(context: Context): Promise<void>;
+    export(context: Context, subject: ResolvedPrivacySubject): Promise<PersonalDataDocument>;
+    assessErasure(context: Context, subject: ResolvedPrivacySubject): Promise<ErasureAssessment>;
+    eraseOrRetain(context: Context, subject: ResolvedPrivacySubject, assessment: ErasureAssessment, actor: AuthorizedHumanAdministrator): Promise<{
+        contributorId: string;
+        version: string;
+        obligations: PersonalDataObligation[];
+    }>;
+}
+export interface MarketingAcquisitionPrivacyPort<Context> {
+    export(context: Context, subject: ResolvedPrivacySubject): Promise<{
+        records: PrivacyJson;
+        evidence: PrivacyJson;
+        obligations: PersonalDataObligation[];
+    }>;
+    /** Read-only; declare both local resources, including explicit retention policy. */
+    assessErasure(context: Context, subject: ResolvedPrivacySubject): Promise<ErasureAssessment>;
+    eraseOrRetain(context: Context, subject: ResolvedPrivacySubject, assessment: ErasureAssessment, actor: AuthorizedHumanAdministrator): Promise<ErasureAssessment>;
+}
+export interface MarketingRemoteErasureCase {
+    state: "pending" | "requested" | "accepted" | "failed" | "not_bound";
+    fenced: boolean;
+    pendingTargets: number;
+    waitingImports: number;
+}
+export interface MarketingRemoteErasurePort<Context> {
+    /** Read-only subject lookup; return no addresses or provider references. */
+    read(context: Context, subject: ResolvedPrivacySubject): Promise<MarketingRemoteErasureCase | null>;
+    /** Authorized transaction: atomically fence against recreation and record the case, replay-safe per caseId.
+     * In-flight imports and late-import orphan targets remain the case owner's obligations.
+     */
+    openAndFence(context: Context, input: {
+        caseId: string;
+        subject: ResolvedPrivacySubject;
+        actor: AuthorizedHumanAdministrator;
+        openedAt: string;
+    }): Promise<MarketingRemoteErasureCase>;
+}
+export interface MarketingPrivacyDependencies<Context> {
+    acquisition: MarketingAcquisitionPrivacyPort<Context> | null;
+    remoteErasure: MarketingRemoteErasurePort<Context> | null;
+    now?: () => Date;
+    randomId(): string;
+}
+/** Identity orchestrates authorization, assessment, transaction rollback and receipt replay. */
+export declare function createMarketingPrivacyContributor<Context>(input: MarketingPrivacyDependencies<Context>): MarketingPrivacyContributor<Context>;
+export {};
 ```
 ## dist/marketing/server/research/adminSurveyResponsesHandler.d.ts
 

@@ -298,6 +298,16 @@ substituting a different business behaviour.
 
 ## Opt-in disposable subscription reference
 
+The unmounted [SEO head adapter](../../src/public-reference/seoHead.tsx) renders
+`@openlup/platform/marketing` head descriptors through the host's
+`HelmetProvider`. Its synchronous Helmet commit works in hidden documents;
+after client commit it removes unmanaged shell canonical/alternate links only
+when the host supplies `renderMode="csr"` and passes the
+serialized JSON-LD into the script element unchanged. The host
+selects placement; this adapter installs no serving route. Its
+[synthetic browser witnesses](../../src/public-reference/seoHead.test.tsx) cover
+hidden commits, hostile script data and duplicate or contradicting canonicals.
+
 The inert [M11 commerce binding](../../server/runtime/public-reference/m11CommerceBinding.ts)
 selects existing package callables and the native checkout-recovery adapter only
 with `enabled: true`. Every callable checks the supplied Core readiness report:
