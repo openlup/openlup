@@ -2552,6 +2552,11 @@ own: a lessons change is an ordinary delivery under existing authority, and a
 promotion stays within its approved scope. The rethink record and the task's
 terminal self-retro carry the lesson until it lands. No other tracker is kept.
 
+- 2026-10-27, M14 filesystem transfer: character counts and default UTF-8 key
+  hashing lost admitted string identity → use explicit representation at byte
+  and key boundaries, with the [transfer owner](docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#existing-store-transfer-and-recovery)
+  and one real copy/resume witness covering both cases.
+
 - 2026-10-26, M14 operations neutrality: package/root green missed a cheap
   source-carrier gate → run unchanged neutrality before the broad gate and
   collect remaining diagnostic failures before changing the candidate.

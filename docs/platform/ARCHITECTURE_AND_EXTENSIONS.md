@@ -2118,6 +2118,8 @@ rename. Its configured access label means process-owner-only reads through
 Publication and readback share a 256 KiB encoded-descriptor ceiling covering
 admitted Unicode metadata and escaped identifiers; oversize encodings refuse
 before publication.
+Filesystem locations hash the JSON string encoding of each logical key, so
+distinct admitted UTF-16 strings retain distinct identities before hashing.
 Logical version/source lineage is retained separately from provider-native
 versioning. The owner account/root must be exclusively controlled. Symlinks,
 unsafe modes and hardlinks refuse rather than becoming absence. These checks

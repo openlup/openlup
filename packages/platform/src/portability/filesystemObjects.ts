@@ -31,7 +31,7 @@ export async function createFilesystemTransferObjects(options: {
     await mkdir(root, { mode: 0o700 }).catch(error => { if (errno(error) !== "EEXIST") throw error; });
     await privateDirectory(root, true);
   } catch (error) { throw filesystemFailure(error); }
-  const location = (key: string) => join(root, createHash("sha256").update(key).digest("hex"));
+  const location = (key: string) => join(root, createHash("sha256").update(JSON.stringify(key)).digest("hex"));
   return {
     async read(key, expectedVersion): Promise<TransferObjectRead> {
       let body: FileHandle | undefined;

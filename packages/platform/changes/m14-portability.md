@@ -9,10 +9,14 @@ conflicts refuse atomically; every enabled user INSERT trigger refuses.
 
 Filesystem publication and readback share one encoded-descriptor byte ceiling
 covering admitted Unicode metadata; oversize encodings refuse before publication.
+Filesystem locators hash JSON-encoded logical keys, preserving distinct admitted
+strings including lone UTF-16 surrogates. This first unpublished layout has no
+legacy-format migration or fallback.
 
 The bounded M14 B budget reads approved the initial code-gzip minimum of
-1,650,493 bytes and exactly 128 bytes for that necessary Unicode repair. The
-current measured minimum is 1,650,621 bytes, cumulatively 2,621 above 1,648,000.
+1,650,493 bytes, exactly 128 bytes for that necessary Unicode repair and 10 bytes
+for exact string-key identity. The current measured minimum is 1,650,631 bytes,
+cumulatively 2,631 above 1,648,000.
 This allocates no additional forecast headroom. Other byte, file, docs and
 browser limits and the released baseline are unchanged by this decision; later
 candidates still need their own actual package measurement.

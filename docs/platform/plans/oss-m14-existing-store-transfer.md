@@ -30,11 +30,10 @@ authorized. Only public source and neutral synthetic fixtures enter this work.
 Initial code/policy revision was `80d27906a6d4bc679c011871948e88d185bb1c63`.
 The current exact stack predecessor is
 `22ddaae6f824f113e101045986f207ec3477365f`, tree
-`fadf212905718fb9c244cbea77d4f5d0182bfdbd`. Its fork point and separately
-freshly fetched policy revision are
-`ef861a76dad97c0b744f6f25c04b04f4ac44c5fe` (2026-10-27). Current instruction
-deltas add marketing privacy/content proof guidance and the main documentation
-budget decision, without changing B’s scope or delivery authority.
+`fadf212905718fb9c244cbea77d4f5d0182bfdbd`. That predecessor is now on main and
+remains the code/review base. The separately freshly fetched policy revision is
+`80cb0e7063206a9fead36b4e6680c9a83fa3e108` (2026-10-27); its relevant
+instruction deltas were read without changing B’s scope or delivery authority.
 Worktree:
 `/private/tmp/openlup-m14-transfer`, branch `codex/oss-m14-transfer`.
 Canonical instructions: [contribution shape](../../../CONTRIBUTING.md#contribution-shape),
@@ -122,8 +121,8 @@ reviews and native reviewed result. B retained its recovery stash, fast-forwarde
 and restored its first slice without conflicts. Ordered export conditions,
 complete incoming consumer proofs, versions, lockfiles, existing API reports and
 baseline are preserved. At that initial integration B’s four production files, four test witnesses and
-API report were byte-identical to its saved source. The necessary Unicode repair
-below is the only subsequent runtime/witness delta. `OPENLUP_STACK_BASE` names this
+API report were byte-identical to its saved source. The necessary descriptor and
+key-identity repairs below are the subsequent runtime/witness deltas. `OPENLUP_STACK_BASE` names this
 exact A head; later material changes retain the same history and proof limits.
 
 The incoming `0.29.0` metadata carries code/aggregate file caps 2,574 / 2,628
@@ -170,17 +169,35 @@ repair, red/green proof and minimum proposal SHA-256
 `7f606c5d2e70fc55d72a1ccd6d7f63af840752c30274e51bb9fe8d2ce1791938`, and approved
 only 1,650,493 → 1,650,621. This cumulative +2,621 bytes from 1,648,000 provides
 zero additional forecast headroom. All other caps/baseline/exports/dependencies
-and the original finite scope remain exact. Remeasurement/current affected proof
-and the final applicable technical read still precede repair DCO; the ordinary
-next native cycle is one, and two new full reviews must assess `B0-S1` closure.
-The earlier PASS is not evidence for the new tree; counters/history carry
-forward and review expiry follows the actual native reports.
+and the original finite scope remain exact. Its final technical read, DCO
+`0fd2eb8f` and committed package/API/cold/real-PostgreSQL gates passed. Native
+cycle one retained both cycle-zero reports. Two new full reviews closed `B0-S1`
+and found `B1-I1`: default UTF-8 hashing aliases a lone UTF-16 surrogate with
+U+FFFD, so distinct admitted keys cannot both copy/resume. That material finding
+remains open; a PASS does not establish acceptance with an open finding.
+
+After the required bounded regroup, the direct repair hashes each key's JSON
+string encoding before SHA-256. It preserves admitted string identity without
+narrowing inputs or adding a codec framework. Every filesystem locator changes;
+this first slice is unpublished and claims no deployed legacy layout, migration
+or fallback. The existing real-store witness reproduced the wrong absent-key
+version conflict, then passed with both exact keys, distinct bodies, near-bound
+Unicode metadata and interrupted copy/resume (one copied, one replayed).
+The build passed; measurement stopped at code gzip 1,650,631, exactly 10 bytes
+above the last minimum. Master read exact repair tree
+`fffa29832d3bf7353500fdd555575572a7157dfa` and proposal SHA-256
+`ed362fac3cc809d498c3d3ed142a53d52678cd93323ebeca75e19f37915db345`, approving
+only 1,650,621 → 1,650,631 (cumulative +2,631, zero forecast headroom). All other
+caps/baseline remain exact. Approved-cap remeasurement and remaining affected
+checks, then the stabilized final technical read, still precede repair DCO and
+ordinary native cycle two of three. All reports, findings and authors carry on;
+two new full reviews must assess the new tree and `B1-I1` closure.
 
 Earlier `97c239ef` proof remains historical; the `a57e635c` waits were unexecuted
-or cancelled before admission. No current B committed artifact or full
-verification is claimed. Master reports A’s exact full fourteen-phase `--pgtap`
+or cancelled before admission. Earlier committed artifacts retain their exact
+source attribution; no full B verification is claimed. Master reports A’s exact full fourteen-phase `--pgtap`
 PASS on `22ddaae6`; B’s own full result remains owed. B queues no common-resource
-waiter behind an active holder. Source authors and B review cycle zero remain
+waiter behind an active holder. Source authors and native history remain
 unchanged. Delivery retains the actual human grant and its proof gates above;
 no executor activation or release is authorized.
 
