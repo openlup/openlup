@@ -69,6 +69,13 @@ immutable release; see the [install support policy](../../.github/INSTALL_SUPPOR
 
 ## Ownership
 
+The migration session hook, union/history controls, exact qualified approval
+inputs and four inert fixtures retain the
+[migration owner](DATA_AND_MIGRATIONS.md#module-catalogues-and-installed-histories).
+The package entry and contributor witness descriptions link to that boundary;
+publication inventory includes the four control witnesses/fragment and inert
+fixtures without admitting them to the canonical installation catalogue.
+
 Portability source, package witnesses, the compatible-row PostgreSQL witness and
 its API report route to the
 [transfer architecture owner](ARCHITECTURE_AND_EXTENSIONS.md#existing-store-transfer-and-recovery).

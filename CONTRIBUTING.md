@@ -154,6 +154,18 @@ its users or operators can observe.
 
 ## Development-preview checks
 
+The migration control witnesses cover legacy/qualified selection and immutable
+history in [`platform-migration-manifest`](scripts/platform-migration-manifest.test.ts),
+prior exact approval in [`qualified-migration-admission`](scripts/qualified-migration-admission.test.ts)
+and the existing source/release checks. The
+[native session witness](tests/postgres/m14MigrationSessionAdmission.test.ts)
+uses the existing runner and container helper: an interrupted canonical prefix
+is visible to a second actual migration login, which refuses under the held
+lock before pending SQL and preserves the ledger. This generic hook proof does
+not qualify a hosted role profile. The [migration owner](docs/platform/DATA_AND_MIGRATIONS.md#module-catalogues-and-installed-histories)
+and [inert fixtures](scripts/fixtures/reviewed-m14-qualified/db/platform/migrations/README.md)
+own the separate control-before-installation boundary.
+
 The portability package witnesses cover private bytes, access/version/integrity
 refusals and interrupted resume. The root
 [`portabilityRows` witness](tests/postgres/portabilityRows.test.ts) uses two owned

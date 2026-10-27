@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { evaluatePlatformMigrationManifest, type PlatformMigrationManifest } from "./platform-migration-manifest.ts";
+import { evaluatePlatformMigrationManifest, evaluatePlatformMigrationManifestHistory, isQualifiedPlatformMigrationPath, type PlatformMigrationManifest } from "./platform-migration-manifest.ts";
 import { PUBLICATION_CATALOG_PATH, PUBLIC_POLICY_REGISTRY_PATH, effectivePublicCatalogPaths, packageExecutionDigest, parsePublicPolicyRegistry, parsePublicPublicationCatalog } from "./oss-publication-policy.ts";
 import { PUBLIC_EXECUTION_ENTRYPOINTS, isDirectExecutionEntrypoint } from "./oss-publication-contract.ts";
 import { readPublicTypecheckCompatibility, type PublicTypecheckCompatibility } from "./oss-public-typecheck.ts";
@@ -180,7 +180,7 @@ const controlByte = (byte: number) => (byte < 0x20 && byte !== 0x09 && byte !== 
 /** Refuses control characters other than tab and line feed (PostgreSQL also ends a `--` comment at a carriage return, so no classifier models line ends differently). */
 export function assertAdmittedPlatformForward(root: string, base: string, head: string, path: string, bytes: Buffer, release = false): void {
   if (bytes.some(controlByte)) throw new Error(`migration SQL refuses control characters: ${path}`);
-  if (!isExpandOnlyPlatformForward(bytes.toString("utf8"))) assertReviewedPlatformForward(root, base, head, path, bytes, release);
+  if (isQualifiedPlatformMigrationPath(path) || !isExpandOnlyPlatformForward(bytes.toString("utf8"))) assertReviewedPlatformForward(root, base, head, path, bytes, release);
 }
 
 function assertPlatformSchemaForwards(root: string, previousCommit: string, targetCommit: string, old: GitInventoryEntry[], target: GitInventoryEntry[], readOld: SourceReleaseBlobReader, readTarget: SourceReleaseBlobReader): void {
@@ -191,7 +191,7 @@ function assertPlatformSchemaForwards(root: string, previousCommit: string, targ
     const before = oldByPath.get(path), after = targetByPath.get(path);
     if (before?.mode === after?.mode && before?.gitBlobSha === after?.gitBlobSha) continue;
     if (path === MIGRATION_MANIFEST_PATH && before && after && before.mode === after.mode) continue;
-    const rail = /^(db\/platform|supabase)\/migrations\/[0-9]{14}_[A-Za-z0-9_-]+\.sql$/u.test(path);
+    const rail = /^(db\/platform|supabase)\/migrations\/[0-9]{14}_[A-Za-z0-9_-]+\.sql$/u.test(path) || isQualifiedPlatformMigrationPath(path);
     if (before || !after || after.mode !== "100644" || !rail || path.endsWith("/00000000000000_platform_schema_baseline.sql") || path.endsWith("/00000000000000_platform_baseline.sql")) throw new Error(`descendant release refuses a schema-bearing edit, delete, mode change or unsupported addition: ${path}`);
     const contents = readTarget(path)!;
     const bytes = typeof contents === "string" ? Buffer.from(contents, "utf8") : contents;
@@ -201,7 +201,7 @@ function assertPlatformSchemaForwards(root: string, previousCommit: string, targ
   if (added.some((path) => path.startsWith("supabase/migrations/")) && !oldByPath.has("supabase/migrations/00000000000000_platform_schema_baseline.sql")) throw new Error("descendant managed forwards require the previous frozen managed baseline");
   for (const directory of ["db/platform/migrations/", "supabase/migrations/"]) {
     let version = old.filter(({ path }) => path.startsWith(directory)).map(({ path }) => /^([0-9]{14})_/u.exec(path.slice(directory.length))?.[1] ?? "").sort().at(-1) ?? "";
-    for (const path of added.filter((path) => path.startsWith(directory))) {
+    for (const path of added.filter((path) => path.startsWith(directory) && !isQualifiedPlatformMigrationPath(path))) {
       const next = path.slice(directory.length, directory.length + 14);
       if (next <= version) throw new Error(`descendant release refuses a non-increasing migration version: ${path}`);
       version = next;
@@ -211,10 +211,8 @@ function assertPlatformSchemaForwards(root: string, previousCommit: string, targ
   const errors = evaluatePlatformMigrationManifest({ manifest: after, migrations: target.filter(({ path }) => path.startsWith("db/platform/migrations/")).map(({ path }) => ({ file: path, content: readTarget(path)!.toString() })) });
   if (errors.length) throw new Error(`descendant platform migration manifest refuses: ${errors.join("; ")}`);
   const previous = before as unknown as PlatformMigrationManifest, current = after as unknown as PlatformMigrationManifest;
-  if (before.schemaVersion !== after.schemaVersion || JSON.stringify(before.baseline) !== JSON.stringify(after.baseline) || !Array.isArray(previous.forward) || JSON.stringify(current.forward.slice(0, previous.forward.length)) !== JSON.stringify(previous.forward) || current.forward.length < previous.forward.length) throw new Error("descendant platform migration manifest must extend the previous prefix");
-  const appended = current.forward.slice(previous.forward.length).map(({ file }) => file).sort();
-  if (JSON.stringify(appended) !== JSON.stringify(added.filter((path) => path.startsWith("db/platform/migrations/")))) throw new Error("descendant platform migration manifest must bind exactly the appended portable forwards");
-  if (appended.length === 0 && JSON.stringify(before) !== JSON.stringify(after)) throw new Error("descendant platform migration manifest cannot change without appended portable forwards");
+  const historyErrors = evaluatePlatformMigrationManifestHistory(previous, current, added.filter((path) => path.startsWith("db/platform/migrations/")));
+  if (historyErrors.length) throw new Error(`descendant platform migration manifest refuses: ${historyErrors.join("; ")}`);
 }
 
 /**

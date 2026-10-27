@@ -13,7 +13,7 @@ import { comparePublicTypecheck, readPublicTypecheckCompatibility, runPublicType
 import { assertDocumentationNavigation, readDocumentationState } from "./documentation-routing.ts";
 import { documentationGit, resolveDocumentationBase } from "./documentation-git.ts";
 import { checkDocumentationImpact, renderDocumentationImpact } from "./documentation-impact.ts";
-import { evaluatePlatformMigrationManifest, type PlatformMigrationManifest } from "./platform-migration-manifest.ts";
+import { evaluatePlatformMigrationManifest, evaluatePlatformMigrationManifestHistory, isQualifiedPlatformMigrationPath, type PlatformMigrationManifest } from "./platform-migration-manifest.ts";
 import { assertAdmittedPlatformForward, deriveSourceReleaseContract } from "./oss-source-release-contract.ts";
 import { renderDocumentationSourceMap, SOURCE_MAP_PATH } from "./documentation-navigation.ts";
 import { createDocumentationBundle } from "./documentation-bundle.ts";
@@ -55,7 +55,7 @@ export function assertAppendOnlyMigrationHistory(root: string, base: string, hea
     if (path === MIGRATION_MANIFEST) continue;
     const old = before.get(path), next = after.get(path);
     if (old?.oid === next?.oid && old?.mode === next?.mode) continue;
-    if (old || !next || next.mode !== "100644" || BASELINES.has(path) || !FORWARD.test(path))
+    if (old || !next || next.mode !== "100644" || BASELINES.has(path) || (!FORWARD.test(path) && !isQualifiedPlatformMigrationPath(path)))
       throw new Error(`migration history refuses an edit, deletion, mode change or unsupported addition: ${path}`);
     const bytes = documentationGit(root, ["cat-file", "blob", next.oid]);
     assertAdmittedPlatformForward(root, base, head, path, bytes);
@@ -63,7 +63,7 @@ export function assertAppendOnlyMigrationHistory(root: string, base: string, hea
   }
   for (const rail of RAILS) {
     let version = [...before.keys()].filter((path) => path.startsWith(rail)).map((path) => /^\d{14}/u.exec(path.slice(rail.length))?.[0] ?? "").sort().at(-1) ?? "";
-    for (const path of additions.filter((item) => item.startsWith(rail)).sort()) {
+    for (const path of additions.filter((item) => item.startsWith(rail) && !isQualifiedPlatformMigrationPath(item)).sort()) {
       const next = path.slice(rail.length, rail.length + 14);
       if (next <= version) throw new Error(`migration history refuses a non-increasing version: ${path}`);
       version = next;
@@ -78,11 +78,8 @@ export function assertAppendOnlyMigrationHistory(root: string, base: string, hea
   const migrations = [...after.values()].filter(({ path }) => path.startsWith(RAILS[0])).map((entry) => ({ file: entry.path, content: readMigrationBlob(root, entry) }));
   const errors = evaluatePlatformMigrationManifest({ manifest: current, migrations });
   if (errors.length) throw new Error(`migration history manifest refuses: ${errors.join("; ")}`);
-  if (prior.schemaVersion !== current.schemaVersion || JSON.stringify(prior.baseline) !== JSON.stringify(current.baseline) || !Array.isArray(prior.forward) || !Array.isArray(current.forward) || JSON.stringify(current.forward.slice(0, prior.forward.length)) !== JSON.stringify(prior.forward))
-    throw new Error("migration history manifest must preserve the previous prefix");
-  const appended = current.forward.slice(prior.forward.length).map(({ file }) => file).sort();
-  if (JSON.stringify(appended) !== JSON.stringify(additions.filter((path) => path.startsWith(RAILS[0])).sort())) throw new Error("migration history manifest must bind exactly the appended portable forwards");
-  if (appended.length === 0 && priorEntry.oid !== currentEntry.oid) throw new Error("migration history manifest cannot change without a portable forward");
+  const historyErrors = evaluatePlatformMigrationManifestHistory(prior, current, additions.filter((path) => path.startsWith(RAILS[0])));
+  if (historyErrors.length) throw new Error(`migration history manifest refuses: ${historyErrors.join("; ")}`);
 }
 
 const MANIFEST = "package.json";
