@@ -4,6 +4,73 @@ Status: development-preview contract. No recipe in this document is a supported 
 
 ## Runtime model
 
+The Node-only [transfer helpers](ARCHITECTURE_AND_EXTENSIONS.md#existing-store-transfer-and-recovery)
+consume qualified transaction and object capabilities; they create no connection,
+route, worker or provider authority. Restoring local claim tokens or checking a
+generation before dispatch cannot exclude an old runtime paused at actual
+provider I/O. Handover still requires independently enforced egress fencing and
+drain/reconciliation of accepted effects. Unsafe or unavailable enforcement
+cannot activate the target and must not pause active subscription state. The
+local synthetic HTTP probe establishes its fixture semantics only.
+
+The reference control-plane route composes existing admin authorization with the
+package operations handler. Its host binding still selects the bundle, obtains
+and closes its client, and supplies the capability-local operator ID. The direct
+watchdog invokes the package persisted-job tick; missing configuration and
+transport failures keep their existing safe error responses. Package imports
+install no routes or schedules. See the
+[operations boundary](ARCHITECTURE_AND_EXTENSIONS.md#operations-and-diagnostics).
+
+Marketing reference routes compose `@openlup/platform/marketing/server` factories
+with the host BFF responder, authorization and persistence bindings. Case
+list/count retain their direct-bundle guard; prelaunch/evidence dispatch remains
+with the callers. The reference owns observed wrappers, terminal retired routes,
+raw signed newsletter ingress and notification subject/HTML. Importing
+`@openlup/platform/marketing/server` does not load `pg`; selecting
+`@openlup/platform/marketing/server/postgres` requires the existing optional
+`pg` peer. Neither entry registers a route or scheduler. Each handler retains
+its existing method, auth, schema, binding,
+operation and response order. Case, prelaunch and research handlers validate
+responses; successful acquisition evidence values are forwarded unchanged.
+
+Browser-safe acquisition and evidence validation uses
+`@openlup/platform/marketing`; DTO-only imports use
+`@openlup/platform/marketing/contracts`. Research contracts, ports and kiosk
+submission continue to use the core research compatibility export. Portable
+prelaunch validation uses the marketing package; rich prelaunch joins retain
+application contracts. The case runtime uses the server-only compatibility port
+for historical adapter signatures, while retired admission schemas stay local.
+
+Reference analytics bindings compose one marketing data-layer instance per module
+and retain their consent storage/event and signal names, event prefix, container
+reader and deployment sink. The route binding supplies public/redirect and sensitive paths.
+Purchase projection retains reference suppression diagnostics and rejects unsupported
+checkout kinds at the original check position, while the portable projector also
+accepts renewal facts. Loader readiness and sink admission are local signals,
+never network delivery. Default package composition is inert and stores no
+pre-consent replay queue; consent commands retain default/update ordering and
+push-time advertising consent. Hosts supply `consentSignalNames` with an `analytics`
+name followed by ordered `advertising` names. Omission pushes no consent commands
+and refuses optional event admission even with stored consent and a container;
+deployment sink attempts remain independent. Historical consent-time selection
+changes neither authorization nor the local grant and installs no command worker.
+
+The server-only `createAnalyticsContextHandler` requires host enablement,
+persistence, bearer/subject verification, capability cryptography, cookie name,
+the client-id wire field name through `clientIdField` and BFF responder.
+Method, flag, same-origin and strict schema checks precede
+persistence lookup. A missing store refuses as unavailable; throwing sync or
+enrollment operations map to the same bounded error. Only a token hash is
+persisted, an invalid bearer grant refuses before writes, and only a verified
+subject can enroll subscriptions. A repeated active save keeps its capability;
+only explicit regrant can replace an existing revoked context. The host supplies
+its historical flag and RPC names, gateway, route and observability wrapper.
+There is no default persistence, portable context SQL or reference context route.
+Telemetry context failure never gates commerce, and the response's `active`
+boolean is a local context fact rather than proof of delivery. The
+[package witness](../../packages/platform/test/marketing/analyticsContext.test.ts)
+uses in-memory persistence without a live provider.
+
 The accounting HTTP scheduler accepts an explicitly composed invoicing service
 and passes it to the existing accounting runtime after HTTP method and bearer
 authorization checks. It adds no cron or executor. Runtime enablement and service
@@ -239,6 +306,16 @@ It must fail safely when a required dependency is absent rather than silently
 substituting a different business behaviour.
 
 ## Opt-in disposable subscription reference
+
+The unmounted [SEO head adapter](../../src/public-reference/seoHead.tsx) renders
+`@openlup/platform/marketing` head descriptors through the host's
+`HelmetProvider`. Its synchronous Helmet commit works in hidden documents;
+after client commit it removes unmanaged shell canonical/alternate links only
+when the host supplies `renderMode="csr"` and passes the
+serialized JSON-LD into the script element unchanged. The host
+selects placement; this adapter installs no serving route. Its
+[synthetic browser witnesses](../../src/public-reference/seoHead.test.tsx) cover
+hidden commits, hostile script data and duplicate or contradicting canonicals.
 
 The inert [M11 commerce binding](../../server/runtime/public-reference/m11CommerceBinding.ts)
 selects existing package callables and the native checkout-recovery adapter only

@@ -39,11 +39,29 @@ creates or links a customer.
   response, and public submit contracts plus the structural read/submit ports.
   The `marketing/research` modules in this tree are compatibility shims over
   that export, so a behaviour change belongs in the package, not in a shim.
+- Acquisition evidence schemas: `@openlup/platform/marketing` owns survey
+  submit/evidence/list and newsletter consent event/response validation. The
+  `research/acquisitionEvidenceContracts.ts` shim forwards the same objects and
+  type names; the evidence port is type-only in the package contracts entry, and
+  the BFF, adapters and runtime binding import it directly.
+  The core research compatibility owner remains independent of these schemas.
+  Its reference contracts/ports and the kiosk submit client keep their core
+  imports; the admin response client remains application-owned. The base-captured
+  `marketingSchemaEquivalence.test.ts` transcript preserves parsed outputs,
+  defaults, unknown-key handling and complete ordered issues across extraction.
+- Portable prelaunch acquisition: the package owns the strict list/detail
+  schemas and types, including their private reference validators. The reference
+  prelaunch contracts file forwards identical objects while retaining its rich
+  lead DTO and admin joins. The direct acquisition BFF uses package contracts;
+  rich read-model consumers keep the application file.
 - Shared/frontend: `src/domains/marketing/prelaunch/` and
   `src/domains/marketing/research/`.
-- Server: `server/domains/marketing/prelaunch/` (lead read model and admin
-  handler) and `server/domains/marketing/research/` (survey submit, admin
-  responses, acquisition evidence ports).
+- Server algorithms: `@openlup/platform/marketing/server` owns research submit,
+  admin responses, managed survey orchestration, direct acquisition/evidence
+  factories and PostgreSQL ports. Reference research files bind responder and
+  notification copy; runtime bindings retain environment/auth and lazy adapters.
+  `server/domains/marketing/prelaunch/` retains rich lead read models and admin
+  orchestration. Acquisition survey dispatch remains with reference callers.
 - BFF source: physical handler files live in `server/bff/marketing/…`; their
   logical coordinates in the full source dispatcher are
   `/api/bff/marketing/…`.

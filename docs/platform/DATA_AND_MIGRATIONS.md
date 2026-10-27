@@ -19,6 +19,32 @@ The preview source release deliberately ships an unbound database-type seam at
 `src/integrations/supabase/types.ts`; replace it with adopter-generated types
 before enabling database adapters. It is not evidence of schema compatibility.
 
+## Compatible data transfer
+
+The experimental [compatible-row utility](../../packages/platform/src/portability/postgresRows.ts)
+transports data into an already qualified canonical target. It does not restore
+managed internals, source roles/grants or `platform_schema_migrations`. Source
+and target transaction capabilities remain host-owned; an opaque catalogue label
+does not prove that an installation is compatible. Identical typed rows replay,
+and changed retained rows refuse rather than becoming business status updates.
+
+Historical insertion is not generally inert. `clients` insertion invokes
+`customer_subject_capture_lifecycle_trigger`, generating new history; cycle
+insertion invokes `subscription_delivery_alignment_guard_cycle_insert`, which
+can consume admission or settle alignment. Order/item totals also use user
+INSERT triggers. The first utility refuses all enabled user INSERT triggers,
+including named constraints; it does not disable them, alter replication role,
+forge admission or rewrite migration history. A full-store import therefore
+still needs domain-owned import-safe routes or an approved canonical pre-data /
+post-data installation design. Preprovisioned referenced parents and the exact
+supported selected rows are prerequisites, not complete-store parity.
+
+Managed `clients.auth_user_id` and native `clients.principal_id` need explicit
+identity mapping. OIDC derives the principal from exact issuer/subject; email
+equality cannot relink it. Dependent memberships, privacy receipts, history and
+credential/session disposition remain part of the full
+[M14 transfer outcome](plans/oss-m14-operations-portability.md).
+
 ## Additive forward release path
 
 A development preview may append expand-only platform forwards to either chain:
@@ -241,12 +267,28 @@ The identity SQL projection is not a standalone install chain.
 
 The canonical source manifest for `db/platform/migrations` is the existing
 [`config/platform-migration-manifest.json`](../../config/platform-migration-manifest.json).
-Its current format is v1: one baseline and ordered forward file/hash rows for
-that catalogue, plus `objectInventorySha256`. Keep its exact immutable prefix; do not create a competing
-canonical manifest or add package SQL paths to unchanged v1. The
-[source validator](../../scripts/platform-migration-manifest.ts) owns that
-format. A future combined catalogue needs an explicit reviewed format and
-compatibility change if v1 cannot represent it.
+Version 1 keeps one baseline, ordered forward file/hash rows and the issued
+selected-catalog-v2 `objectInventorySha256`. The
+[source validator](../../scripts/platform-migration-manifest.ts) also supports
+version 2: the complete legacy plan and digest plus an explicitly selected
+qualified fresh plan. It validates the union before normalizing either plan for
+the existing package runner. Keep the immutable legacy prefix; do not create a
+competing canonical manifest or add package SQL paths to unchanged v1. This
+control change keeps the on-disk v1 manifest and activates no qualified catalogue.
+
+A qualified plan has a new actual position-zero baseline, the two fixed
+actor/acquisition bootstrap replacements and the fixed runtime tail after the
+complete legacy ownership closure. Other legacy units retain their paths,
+hashes and relative order. Its inventory distinguishes actual migration/bootstrap
+aliasing and restore-binding presence. The optional retained-import tail requires
+a restore binding. No observed target digest supplies an expected inventory.
+
+The experimental trusted-source `PlatformMigrationSource.assertSession` callback
+runs once under the existing session advisory lock after exact-prefix validation
+and before status, dry-run or pending SQL. It can refuse changed host/login facts;
+it shares the source's existing database capability, not a sandbox or per-unit
+provisioning boundary. Sources omitting it retain their existing queries and
+execution. The later qualified source owns its finite read-only checks.
 
 Several modules in one distribution need a deterministic migration catalogue
 before they can be installed together. Declare their dependency order and
@@ -291,6 +333,14 @@ separately from historical grant spellings or inherited CLI defaults.
 ## Exact reviewed function forwards
 
 ### Co-located SQL and approval pins
+
+The fixed `qualifiedInstallations` class requires prior exact whole-file approval
+for four bootstrap units and an optional retained-import unit. Even expand-only
+qualified SQL uses this separate control-before-feature route: new SQL with new
+pins, simultaneous machinery changes, later repins, unknown paths and edits to
+issued files refuse. The [inert fixtures](../../scripts/fixtures/reviewed-m14-qualified/db/platform/migrations/README.md)
+retain the four approved bytes without installing them. Their source approval is
+not installation, managed-host, publication or activation evidence.
 
 A PR introducing SQL in a class already admitted by its trusted comparison-base
 policy may also carry that SQL's pins. Only bindings for files introduced by
@@ -1760,3 +1810,21 @@ forwards; neither descriptor claims storage or fiscal parity.
 The seller-revision forwards are introduced by this change as described in the
 [compatibility lifecycle](#compatibility-lifecycle). Default service activation
 remains later work.
+
+The operations package carries an unchanged projection of native forward
+`20260814010000_platform_control_plane.sql` at manifest position 28. Its sparse
+`OPERATIONS_MIGRATIONS` descriptor is not an install chain: install the complete
+canonical native prefix, including prior job-ledger objects. Existing invoker
+routines require explicit EXECUTE and underlying relation privileges, and a
+current row in `platform_control_operators`. That allowlist does not grant identity
+membership or domain write authority. The installed consumer proves the selected
+runtime role can write controls/heartbeats while a neighboring subscription write
+refuses; managed verification remains unclaimed.
+
+The projection's whole-file SHA-256 is
+`b0c8ef6424ebc6f1a84cb132c37908f4831fa40484a729c3713cfb35936559c9`.
+Its existing persisted channel enum accounts for exactly one `ui-12` count.
+The [neutrality owner](../../CONTRIBUTING.md#development-preview-checks) admits
+only this exact package path, digest and 0-to-1 tuple with its matching baseline
+key. This preserves canonical bytes without admitting other package SQL,
+changing scanner patterns or raising any existing count.

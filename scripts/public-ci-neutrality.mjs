@@ -191,11 +191,12 @@ export function neutralityIncreases(baseline, current) {
   }
   return increases;
 }
-// Bounded debt C94: a closed list of 13 paths, with exact category/before/after
-// tuples grouped per path (two categories on each dunning copy). Whole-file pins
+// Bounded debt C94 retains 13 paths/15 tuples; M14 adds one exact unchanged
+// package SQL carrier. Each entry has exact category/before/after tuples. Whole-file pins
 // apply on any base so separately landed rail copies need no new allowance.
 // Adding an entry requires the control review and coordinator read in CONTRIBUTING.md.
 export const reviewedPinnedIntroductions = [
+  ["packages/platform/sql/20260814010000_platform_control_plane.sql", "b0c8ef6424ebc6f1a84cb132c37908f4831fa40484a729c3713cfb35936559c9", [["ui-12", 0, 1]]],
   ["config/reviewed-platform-forwards.json", "f036750c10aae1e9600d98c737d573e5e4672ad817e83bd63aafe860e0685957", [["ui-13", 0, 1]]],
   ["scripts/fixtures/reviewed-m10/supabase/migrations/20261024160000_subscription_dunning_continuity.sql", "327ce8e60d69213b47777f993fab76d23e754a27df1159580a2d22d854eecc74", [["ui-13", 0, 2], ["ui-14", 0, 3]]],
   ["scripts/fixtures/reviewed-m10/supabase/migrations/20261024175000_inventory_available_to_promise.sql", "70706de1ea07c3ba8a17a7099da4931a51e01c5cfd60caa5266674e16428ccb0", [["ui-15", 0, 3]]],
@@ -210,13 +211,14 @@ export const reviewedPinnedIntroductions = [
   ["supabase/migrations/20261024185000_provider_refund_evidence.sql", "1c5960eb1aced19f91b4a20a8333503a7978f7d5ab60c95fe7515d4da866d215", [["ui-13", 0, 7]]],
   ["supabase/migrations/20261024185100_m07_refund_parity.sql", "a4e2fb59eed52f5f16313a465a7a1884fde44ab2f0f84271b11886998685f1ee", [["ui-13", 0, 7]]],
 ];
-// Defense against extending this allowance into native rails or executable code.
+// Defense against extending this allowance into other native/package SQL or executable code.
 // This path-class guard does not admit entries: the closed list above still owns
 // every exact path, digest and count tuple.
 export function validateReviewedPinnedIntroductions(entries) {
   for (const [path] of entries) {
     validPath(path);
     if (path !== "config/reviewed-platform-forwards.json"
+      && path !== "packages/platform/sql/20260814010000_platform_control_plane.sql"
       && !/^(?:scripts\/fixtures\/reviewed-m10\/supabase\/migrations\/|supabase\/migrations\/)[^/]+\.sql$/.test(path)) {
       throw new Error(`unsupported pinned introduction path: ${label(path)}`);
     }

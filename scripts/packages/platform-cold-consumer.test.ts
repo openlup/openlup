@@ -7,10 +7,14 @@ import { isolatedConsumerEnv } from "./pack-manifest-input.ts";
 import { afterAll, afterEach, beforeAll, expect, it } from "vitest";
 import {
   proveCommerceServerConsumer,
+  provePortabilityConsumer,
   proveAccountSupportReadsConsumer,
   ACCOUNT_SUPPORT_READ_SCENARIOS,
   type AccountSupportReadScenarioResult,
   proveAccountSupportConsumer,
+  proveMarketingConsumer,
+  proveMarketingServerConsumer,
+  compileMarketingAnalyticsConsumer,
   proveCommerceConsumer,
   proveInvoicingConsumer,
   proveSubscriptionsConsumer,
@@ -56,12 +60,35 @@ function fixture() {
   packageFixture(consumer, "@openlup/platform", Object.fromEntries([...NON_ADAPTER_ENTRIES, ...ADAPTER_ENTRIES].map(name => [`./${name}`, { types: "./index.d.ts", default: "./index.js" }])));
   const platformManifest = join(consumer, "node_modules/@openlup/platform/package.json");
   const platformMetadata = JSON.parse(readFileSync(platformManifest, "utf8"));
+  platformMetadata.exports["./portability"] = { types: "./portability/index.d.ts", default: "./portability/index.js" };
   platformMetadata.exports["./account-support/contracts"].default = "./contracts.js";
+  platformMetadata.exports["./marketing/server"].types = "./marketing-server.d.ts";
   writeFileSync(platformManifest, JSON.stringify(platformMetadata));
+  cpSync(join(root, "packages/platform/dist/portability"), join(consumer, "node_modules/@openlup/platform/portability"), { recursive: true });
   writeFileSync(join(consumer, "node_modules/@openlup/platform/contracts.js"), "export {};\n");
+  // The server port extends the browser contract with historical commands.
+  writeFileSync(join(consumer, "node_modules/@openlup/platform/marketing-server.d.ts"), [
+    'import type { AcquisitionCasePort as PortableAcquisitionCasePort } from "./index.js";',
+    'export interface AcquisitionCasePort extends PortableAcquisitionCasePort { submit(command: unknown): Promise<unknown>; transition(command: unknown): Promise<unknown> }',
+    'export interface AcquisitionCaseDirectDeps { resolveBinding(): Promise<unknown> }',
+    'export declare function createAcquisitionCaseHandlers(port: AcquisitionCasePort): unknown;',
+    'export declare function createAcquisitionCaseActiveCountDirectHandler(deps: AcquisitionCaseDirectDeps): unknown;',
+  ].join("\n") + "\n");
   // The typed consumer registers the payments factory with the composer.
   writeFileSync(join(consumer, "node_modules/@openlup/platform/index.d.ts"), [
     "export interface Synthetic { value: string }",
+    'export type AcquisitionCaseListRequest = { view: "acquisition_case_v1"; limit: number; cursor?: string };',
+    'export declare const acquisitionCaseListRequestSchema: { parse(value: unknown): AcquisitionCaseListRequest };',
+    'export type PrelaunchAcquisitionListRequest = { view: "prelaunch_acquisition_v1"; limit: number; cursor?: string };',
+    'export declare const prelaunchAcquisitionListRequestSchema: { parse(value: unknown): PrelaunchAcquisitionListRequest };',
+    'export interface AcquisitionCasePort { list(query: { actorRef: string; scope: "public_tester_application"; limit: number }): Promise<unknown> }',
+    'export interface AcquisitionEvidencePort { listSurveys(query: { actorReference: string; view: "acquisition_survey_v1"; limit: number }): Promise<unknown> }',
+    'export type AcquisitionNewsletterConsentEvent = { explicitOptInEvidence: boolean };',
+    'export interface MarketingResearchSurveySubmitPort { submitSurveyResponse(request: { surveyType: "producer" | "consumer"; responseData: Record<string, unknown> }): Promise<unknown> }',
+    'export { buildHeadDescriptor } from "./seo/metadata.js";',
+    'export { organizationLd } from "./seo/jsonLd.js";',
+    'export type * from "./contracts/contactLegal.js";',
+
     'export { tryCompensate, type CheckoutCompensationPort } from "./commerceCheckoutCompensation.js";',
     "export type NativeOperatorSubscriptionResult = { outcome: 'refused'; refusalCode: 'operator_subscription_authority_unavailable' };",
     "export interface AccountReadPort<A,L,D> { getAccount(userId: string): Promise<A|null>; listOrders(userId: string, input: {limit:number}): Promise<L|null>; getOrderDetail(userId: string, orderId: string): Promise<D|null> }",
@@ -87,6 +114,11 @@ function fixture() {
   ].join("\n") + "\n");
   copyFileSync(join(root, "packages/platform/dist/commerce/server/commerceCheckoutCompensation.d.ts"), join(consumer, "node_modules/@openlup/platform/commerceCheckoutCompensation.d.ts"));
   cpSync(join(root, "packages/platform/src/invoicing/contracts"), join(consumer, "node_modules/@openlup/platform/invoicing-contracts"), { recursive: true });
+  const platformRoot = join(consumer, "node_modules/@openlup/platform");
+  mkdirSync(join(platformRoot, "seo"), { recursive: true });
+  for (const file of ["metadata", "jsonLd", "urls"]) copyFileSync(join(root, `packages/platform/dist/marketing/seo/${file}.d.ts`), join(platformRoot, `seo/${file}.d.ts`));
+  mkdirSync(join(platformRoot, "contracts"), { recursive: true });
+  copyFileSync(join(root, "packages/platform/dist/marketing/contracts/contactLegal.d.ts"), join(platformRoot, "contracts/contactLegal.d.ts"));
   packageFixture(consumer, "zod", { ".": "./index.js" });
   return consumer;
 }
@@ -174,6 +206,11 @@ export const createPostgresAccountLinkStore = () => ({
 });
 function refusalFixture(mode: "correct" | "raw" | "wrong-peer" | "no-cause" | "success") {
   const consumer = fixture();
+  const manifestPath = join(consumer, "node_modules/@openlup/platform/package.json");
+  const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+  manifest.exports["./marketing/server/postgres"].default = "./postgres.js";
+  writeFileSync(manifestPath, JSON.stringify(manifest));
+  writeFileSync(join(consumer, "node_modules/@openlup/platform/postgres.js"), 'import "pg";\n');
   writeFileSync(join(consumer, "node_modules/@openlup/platform/index.js"), `
 async function fail(peer) {
   if (${JSON.stringify(mode)} === "success") return;
@@ -263,6 +300,10 @@ it("classifies the browser identity entry separately from the mixed server adapt
   expect(NON_ADAPTER_ENTRIES).toContain("identity/contracts");
   expect(NON_ADAPTER_ENTRIES).toContain("pricing");
   expect(NON_ADAPTER_ENTRIES).toContain("pricing/contracts");
+  expect(NON_ADAPTER_ENTRIES).toContain("marketing/server");
+  expect(ADAPTER_ENTRIES).not.toContain("marketing/server");
+  expect(ADAPTER_ENTRIES).toContain("marketing/server/postgres");
+  expect(NON_ADAPTER_ENTRIES).not.toContain("marketing/server/postgres");
 });
 
 it.each(["createPostgresCustomerChallengeStore", "createDirectOperatorInvitationStore", "createDirectOperatorIdentityDirectory"])("requires a refusal from identity adapter %s", name => {
@@ -399,6 +440,18 @@ function pristinePackedA1Fixture() {
   for (const [path, source] of packedA1Originals) writeFileSync(path, source);
   return packedA1Consumer;
 }
+it("proves installed portability copy/resume and rejects a copy that skips byte publication", () => {
+  const consumer = pristinePackedA1Fixture(); assertConsumerIsolation(consumer, root);
+  provePortabilityConsumer(consumer);
+  const path = join(consumer, "node_modules/@openlup/platform/dist/portability/objects.js");
+  const original = readFileSync(path, "utf8");
+  const mutant = original.replace("export async function copyTransferObjects(input) {", "export async function copyTransferObjects(input) { return {copied:0,replayed:0,verifiedKeys:[]};");
+  expect(mutant).not.toBe(original);
+  try {
+    writeFileSync(path, mutant);
+    expect(() => provePortabilityConsumer(consumer)).toThrow(/installed byte copy must reach verified checkpoint/);
+  } finally { writeFileSync(path, original); }
+});
 it("P3 case 7: actual host binding resolves packed subpaths with no SDK, peers or checkout fallback", () => {
   const consumer = pristinePackedA1Fixture(); assertConsumerIsolation(consumer, root);
   proveA1ReferenceBindingConsumer(consumer, "imports");
@@ -988,4 +1041,21 @@ it.each(["export", "delegate"] as const)("K2 rejects the packed R5 %s corruption
     expect(() => proveAccountSupportCompositionConsumer(consumer, join(root, "node_modules/typescript/lib/tsc.js"), corruption === "export" ? "NodeNext" : "ready"))
       .toThrow(corruption === "export" ? /TS(?:2305|2724)/ : /R5 selected delegate must execute/);
   } finally { writeFileSync(path, original); }
+}, 30_000);
+
+it("proves installed marketing subpaths, prelaunch schemas, reachable ports and deep-import refusal without optional peers", () => {
+  const consumer = pristinePackedA1Fixture();
+  assertConsumerIsolation(consumer, root);
+  proveMarketingConsumer(consumer);
+  for (const name of ["@types/node", "undici-types"]) cpSync(join(root, "node_modules", name), join(consumer, "node_modules", name), { recursive: true });
+  compileMarketingAnalyticsConsumer(consumer, join(root, "node_modules/typescript/lib/tsc.js"));
+  compileConsumer(consumer, ["marketing", "marketing/contracts"], join(root, "node_modules/typescript/lib/tsc.js"));
+}, 60_000);
+
+it("proves installed marketing server reads, port refusal, default-off privacy and exact exports without optional peers", () => {
+  const consumer = pristinePackedA1Fixture();
+  assertConsumerIsolation(consumer, root);
+  proveMarketingServerConsumer(consumer);
+  for (const name of ["@types/node", "undici-types"]) cpSync(join(root, "node_modules", name), join(consumer, "node_modules", name), { recursive: true });
+  compileConsumer(consumer, ["marketing/server"], join(root, "node_modules/typescript/lib/tsc.js"));
 }, 30_000);

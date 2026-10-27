@@ -2,6 +2,23 @@
 
 Releases moved verbatim out of the packed `CHANGELOG.md`, which keeps the current release and the two previous ones.
 
+## [0.26.0]
+
+- Publishable on the npm `latest` dist-tag as `0.26.0`, from tag
+  `openlup-platform-v0.26.0`.
+
+Managed dunning attempt replay.
+
+Carry the exact applied failure attempt through renewal propagation. Managed
+same/stale observations replay the canonical result; newer attributed failures
+advance and revoke prior recovery authority, including used tokens.
+
+Migration: `CycleChargeFailurePropagationPort.openDunningCase` now requires nullable `failedPaymentAttemptId`; update host implementations and callers to pass the applied transition's identity.
+Migration: `applyFailedResult` may return `paymentAttemptId?: string | null`; return the durable applied attempt so propagation can forward it, including on replay.
+Migration: managed hosts must pass exact applied-transition attribution to the new overloads. Fresh missing attribution refuses with SQLSTATE `55000`; do not substitute the current or prepared attempt. Already-applied donor schema/backfill requires the explicit host mapping in DATA_AND_MIGRATIONS.
+
+Native attempt-replay parity remains REGISTERED with M10; these managed forwards
+do not implement native parity or authorize host activation.
 ## [0.25.0]
 
 - Publishable on the npm `latest` dist-tag as `0.25.0`, from tag

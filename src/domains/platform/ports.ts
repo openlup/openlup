@@ -14,10 +14,6 @@ import type {
   AdminUserRemoveResponse,
   AdminUserRoleUpdateRequest,
   AdminUserRoleUpdateResponse,
-  PlatformControlPlaneMutation,
-  PlatformControlPlaneMutationResponse,
-  PlatformControlPlaneReadRequest,
-  PlatformControlPlaneReadResponse,
 } from "./contracts.js";
 
 export type AdminMagicLinkEligibility =
@@ -49,19 +45,5 @@ export interface AdminSettingsPort {
   removeAdminUser(request: AdminUserRemoveRequest): Promise<AdminUserRemoveResponse>;
 }
 
-export interface PlatformControlPlanePort {
-  readControlPlane(
-    request: PlatformControlPlaneReadRequest,
-  ): Promise<PlatformControlPlaneReadResponse>;
-  mutateControlPlane(
-    request: PlatformControlPlaneMutation,
-  ): Promise<PlatformControlPlaneMutationResponse>;
-}
-
-export class PlatformControlPlaneConflictError extends Error {
-  override readonly name = "PlatformControlPlaneConflictError";
-}
-
-export class PlatformControlPlaneUnavailableError extends Error {
-  override readonly name = "PlatformControlPlaneUnavailableError";
-}
+export type { PlatformControlPlanePort } from "@openlup/platform/operations/contracts";
+export { PlatformControlPlaneConflictError, PlatformControlPlaneUnavailableError } from "@openlup/platform/operations";

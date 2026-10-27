@@ -1,3 +1,5 @@
+import { projectPaidPurchase } from "@openlup/platform/marketing";
+import type { PurchaseOrder, PurchaseSuppressionReason } from "@openlup/platform/marketing/contracts";
 import type {
   OrderRecapV3Response,
   OrderRecapV4Response,
@@ -8,27 +10,11 @@ import {
   emitAnalyticsEvent,
   isAnalyticsLoaderReady,
   type AnalyticsEventMap,
-  type AnalyticsPurchaseItem,
 } from "@/lib/analytics/dataLayer";
 
 const PURCHASE_DEDUPE_PREFIX = "openlup-ga4-v1-purchase-tracked-";
 const DEPLOYMENT_PURCHASE_DEDUPE_PREFIX = "deployment-analytics-v1-purchase-tracked-";
 const admittedDeploymentPurchaseKeys = new Set<string>();
-const MAX_GA4_ITEMS = 200;
-
-type PurchaseSuppressionReason =
-  | "order_not_paid"
-  | "payment_not_succeeded"
-  | "checkout_kind_unsupported"
-  | "money_unreconciled"
-  | "items_empty"
-  | "sku_missing"
-  | "quantity_invalid"
-  | "line_money_invalid"
-  | "net_discount_invalid"
-  | "item_limit_exceeded"
-  | "shipping_net_invalid";
-
 /**
  * Admit purchase independently to the deployment projection and, once ready,
  * GTM. Neither admission is a transport or business acknowledgement.
@@ -85,106 +71,15 @@ function writeSessionDedupe(key: string): void {
 export function buildPurchasePayload(
   recap: AnalyticsOrderRecap,
 ): AnalyticsEventMap["purchase"] | null {
-  if (recap.status !== "paid") return suppressPurchase("order_not_paid");
-  if (recap.paymentStatus !== "succeeded") {
-    return suppressPurchase("payment_not_succeeded");
-  }
-  if (recap.checkoutKind !== "one_time" && recap.checkoutKind !== "subscription_initial") {
-    return suppressPurchase("checkout_kind_unsupported");
-  }
-  if (!recap.moneyReconciled) return suppressPurchase("money_unreconciled");
-  if (recap.items.length === 0) return suppressPurchase("items_empty");
-
-  let effectiveNet = 0;
-  const ga4Items: AnalyticsPurchaseItem[] = [];
-
-  for (const item of recap.items) {
-    if (!item.sku) return suppressPurchase("sku_missing");
-    if (
-      !Number.isSafeInteger(item.quantity) ||
-      item.quantity <= 0
-    ) {
-      return suppressPurchase("quantity_invalid");
-    }
-    if (item.quantity > MAX_GA4_ITEMS) return suppressPurchase("item_limit_exceeded");
-    if (
-      !isNonNegativeSafeInteger(item.catalogTotalGross) ||
-      !isNonNegativeSafeInteger(item.effectiveNet) ||
-      !isNonNegativeSafeInteger(item.vatRateBps) ||
-      item.vatRateBps > 10_000
-    ) {
-      return suppressPurchase("line_money_invalid");
-    }
-
-    const catalogNet = netFromGross(item.catalogTotalGross, item.vatRateBps);
-    const netDiscount = catalogNet - item.effectiveNet;
-    if (netDiscount < 0) return suppressPurchase("net_discount_invalid");
-
-    const projectedItems = allocateLineItems({
-      sku: item.sku,
-      variantCode: item.variantCode,
-      quantity: item.quantity,
-      effectiveNet: item.effectiveNet,
-      netDiscount,
-    });
-    if (ga4Items.length + projectedItems.length > MAX_GA4_ITEMS) {
-      return suppressPurchase("item_limit_exceeded");
-    }
-
-    ga4Items.push(...projectedItems);
-    effectiveNet += item.effectiveNet;
-  }
-
-  const tax = recap.totals.tax.amountMinor;
-  const total = recap.totals.total.amountMinor;
-  const effectiveShippingNet = total - tax - effectiveNet;
-  if (!isNonNegativeSafeInteger(effectiveShippingNet)) {
-    return suppressPurchase("shipping_net_invalid");
-  }
-
-  return {
-    transaction_id: recap.orderId,
-    currency: recap.totals.total.currency,
-    value: effectiveNet / 100,
-    shipping: effectiveShippingNet / 100,
-    tax: tax / 100,
-    checkout_mode: recap.checkoutKind === "subscription_initial" ? "subscription" : "one_time",
-    items: ga4Items,
-  };
-}
-
-function allocateLineItems(input: {
-  sku: string;
-  variantCode: string | null;
-  quantity: number;
-  effectiveNet: number;
-  netDiscount: number;
-}): AnalyticsPurchaseItem[] {
-  const priceBase = Math.floor(input.effectiveNet / input.quantity);
-  const priceRemainder = input.effectiveNet % input.quantity;
-  const discountBase = Math.floor(input.netDiscount / input.quantity);
-  const discountRemainder = input.netDiscount % input.quantity;
-  const grouped = new Map<string, { priceMinor: number; discountMinor: number; quantity: number }>();
-
-  for (let position = 0; position < input.quantity; position += 1) {
-    const priceMinor = priceBase + (position < priceRemainder ? 1 : 0);
-    const discountMinor = discountBase + (position < discountRemainder ? 1 : 0);
-    const key = `${priceMinor}:${discountMinor}`;
-    const current = grouped.get(key);
-    if (current) {
-      current.quantity += 1;
-    } else {
-      grouped.set(key, { priceMinor, discountMinor, quantity: 1 });
-    }
-  }
-
-  return [...grouped.values()].map((group) => ({
-    item_id: input.sku,
-    ...(input.variantCode ? { item_variant: input.variantCode } : {}),
-    price: group.priceMinor / 100,
-    discount: group.discountMinor / 100,
-    quantity: group.quantity,
-  }));
+  // The reference admits initial checkout only. Guard at the projection's kind
+  // check so order/payment refusals retain their existing precedence.
+  // The validated recap supplies these facts; non-strict Zod inference marks
+  // nullable fields optional, so retain the required structural view here.
+  return projectPaidPurchase({
+    ...recap,
+    checkoutKind: recap.checkoutKind === "one_time" || recap.checkoutKind === "subscription_initial"
+      ? recap.checkoutKind : null,
+  } as PurchaseOrder, suppressPurchase);
 }
 
 function suppressPurchase(reason: PurchaseSuppressionReason): null {
@@ -198,12 +93,4 @@ function isPurchaseSuppressionDiagnosticHost(): boolean {
   if (typeof window === "undefined") return false;
   const { hostname } = window.location;
   return hostname === "staging.openlup.com" || /^openlup-hidden-preview-[a-z0-9-]+\.vercel\.app$/.test(hostname);
-}
-
-function netFromGross(grossMinor: number, vatRateBps: number): number {
-  return Math.round(grossMinor * 10_000 / (10_000 + vatRateBps));
-}
-
-function isNonNegativeSafeInteger(value: number): boolean {
-  return Number.isSafeInteger(value) && value >= 0;
 }

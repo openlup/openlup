@@ -34,6 +34,13 @@ export interface PlatformMigrationSource {
     migrations: readonly PlatformMigrationFile[];
     objectInventoryPayload?: string;
   }): string[];
+  /**
+   * Optional trusted-source observation/refusal after exact-prefix validation, under the
+   * migration session lock. Runs once per operation before any pending SQL or dry-run result.
+   * The canonical source uses read-only observations; the callback shares the caller's existing
+   * database capability and is not a sandbox or a provisioning/per-unit execution hook.
+   */
+  assertSession?(client: PoolClient, applied: readonly (PlatformMigrationManifestEntry & { position: number })[]): Promise<void>;
 }
 
 export interface PostgresMigrationRunnerOptions {
@@ -81,6 +88,7 @@ export function createPostgresMigrationRunner(
       const plan = loadPlan(root, options.source);
       return withMigrationSession(await getPool(), options.lockName, async (client) => {
         const applied = await readAppliedPrefix(client, plan.units);
+        await options.source.assertSession?.(client, applied.map((unit) => ({ file: unit.catalogPath, sha256: unit.sha256, position: unit.position })));
         if (applied.length === plan.units.length) await assertObjectInventory(client, plan, options);
         return {
           pending: plan.units.slice(applied.length).map((unit) => unit.catalogPath),
@@ -94,6 +102,7 @@ export function createPostgresMigrationRunner(
       const plan = loadPlan(root, options.source);
       return withMigrationSession(await getPool(), options.lockName, async (client) => {
         const already = await readAppliedPrefix(client, plan.units);
+        await options.source.assertSession?.(client, already.map((unit) => ({ file: unit.catalogPath, sha256: unit.sha256, position: unit.position })));
         const pending = plan.units.slice(already.length);
         if (opts?.dryRun) {
           if (pending.length === 0) await assertObjectInventory(client, plan, options);
