@@ -1354,6 +1354,10 @@
       "class": "public-output"
     },
     {
+      "path": "docs/platform/plans/oss-m15-generic-risk-controls.md",
+      "class": "public-output"
+    },
+    {
       "path": "docs/platform/plans/public-ci-completeness.md",
       "class": "platform-documentation"
     },
@@ -2514,6 +2518,18 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/api/risk-contracts.api.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/api/risk-server.api.md",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/api/risk.api.md",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/api/scheduler.api.md",
       "class": "public-output"
     },
@@ -2611,6 +2627,10 @@
     },
     {
       "path": "packages/platform/sql/20260813120000_communications_control_plane.sql",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/sql/20260813230000_post_order_control.sql",
       "class": "public-output"
     },
     {
@@ -5822,6 +5842,58 @@
       "class": "public-output"
     },
     {
+      "path": "packages/platform/src/risk/contracts/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/risk/contracts/ports.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/risk/contracts/types.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/risk/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/risk/schemas.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/risk/server/index.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/risk/server/managedRiskAdminPort.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/risk/server/managedRiskOrderPaid.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/risk/server/orderPaidRiskPort.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/risk/server/postgresRiskControl.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/risk/server/riskFingerprint.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/risk/server/sql.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/src/risk/validation.ts",
+      "class": "public-output"
+    },
+    {
       "path": "packages/platform/src/scheduler/advisoryLock.ts",
       "class": "public-output"
     },
@@ -7819,6 +7891,22 @@
     },
     {
       "path": "packages/platform/test/promotions/thresholdShippingParity.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/risk/adapters.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/risk/browserBoundary.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/risk/contracts.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "packages/platform/test/risk/orderPaidRiskPort.test.ts",
       "class": "public-output"
     },
     {
@@ -25186,6 +25274,10 @@
       "class": "public-output"
     },
     {
+      "path": "tests/helpers/riskControlFixture.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/identity/acceptance.conformance.ts",
       "class": "public-output"
     },
@@ -25559,6 +25651,10 @@
     },
     {
       "path": "tests/postgres/reviewedPortableCreation.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/riskControl.conformance.test.ts",
       "class": "public-output"
     },
     {

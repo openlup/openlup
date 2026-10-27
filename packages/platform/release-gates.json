@@ -666,6 +666,45 @@
       ],
       "entrypoint": "dist/marketing/server/postgres/index.d.ts",
       "snapshot": "api/marketing-server-postgres.api.md"
+    },
+    "./risk": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/risk/contracts.test.ts",
+        "test/risk/orderPaidRiskPort.test.ts",
+        "test/risk/adapters.test.ts",
+        "test/risk/browserBoundary.test.ts"
+      ],
+      "entrypoint": "dist/risk/index.d.ts",
+      "snapshot": "api/risk.api.md"
+    },
+    "./risk/contracts": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/risk/contracts.test.ts",
+        "test/risk/orderPaidRiskPort.test.ts",
+        "test/risk/adapters.test.ts",
+        "test/risk/browserBoundary.test.ts"
+      ],
+      "entrypoint": "dist/risk/contracts/index.d.ts",
+      "snapshot": "api/risk-contracts.api.md"
+    },
+    "./risk/server": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/risk/contracts.test.ts",
+        "test/risk/orderPaidRiskPort.test.ts",
+        "test/risk/adapters.test.ts",
+        "test/risk/browserBoundary.test.ts"
+      ],
+      "entrypoint": "dist/risk/server/index.d.ts",
+      "snapshot": "api/risk-server.api.md"
     }
   },
   "pack": {
@@ -699,7 +738,8 @@
       "./commerce/contracts": 32,
       "./pricing/browser": 25600,
       "./account-support/contracts": 32,
-      "./marketing/contracts": 32
+      "./marketing/contracts": 32,
+      "./risk/contracts": 32
     }
   }
 }

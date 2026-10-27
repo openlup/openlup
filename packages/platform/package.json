@@ -280,6 +280,21 @@
       "types": "./dist/marketing/server/postgres/index.d.ts",
       "import": "./dist/marketing/server/postgres/index.js",
       "default": "./dist/marketing/server/postgres/index.js"
+    },
+    "./risk": {
+      "types": "./dist/risk/index.d.ts",
+      "import": "./dist/risk/index.js",
+      "default": "./dist/risk/index.js"
+    },
+    "./risk/contracts": {
+      "types": "./dist/risk/contracts/index.d.ts",
+      "import": "./dist/risk/contracts/index.js",
+      "default": "./dist/risk/contracts/index.js"
+    },
+    "./risk/server": {
+      "types": "./dist/risk/server/index.d.ts",
+      "import": "./dist/risk/server/index.js",
+      "default": "./dist/risk/server/index.js"
     }
   },
   "repository": {

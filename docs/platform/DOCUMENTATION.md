@@ -69,6 +69,14 @@ immutable release; see the [install support policy](../../.github/INSTALL_SUPPOR
 
 ## Ownership
 
+Risk package sources, API reports, sparse SQL projection and neutral witnesses
+route to the [risk contract](ARCHITECTURE_AND_EXTENSIONS.md#risk-contracts).
+The package README owns its three experimental entry summaries; migration
+guidance owns full-catalogue installation and unchanged SQL identities. The
+publication catalogue inventories these files; generated navigation establishes
+no activation, managed parity, privacy reconciliation or installation claim.
+
+
 The plain Vitest worker-policy witness is a public tooling source in the
 publication catalogue; its embedded child CLI is also a declared execution
 entrypoint, like the existing process witnesses. Register new tracked test paths there before final

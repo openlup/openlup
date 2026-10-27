@@ -1283,3 +1283,15 @@ their owner meaning. Contribution descriptors install no routes, handlers,
 schedules or workers. See the
 [reference recipe](../../docs/platform/RUNTIME_AND_SELF_HOSTING.md#opt-in-disposable-subscription-reference)
 for the host's schema and transport obligations.
+
+## Risk controls
+
+The experimental `@openlup/platform/risk` entry exports the existing strict
+schemas with CSP-safe Zod initialization. `risk/contracts` is type-only;
+`risk/server` exports paid-order assessment, subject hashing, structural managed
+clients and the native executor factory. Core risk remains at `@openlup/core/risk`.
+No provider SDK or pg runtime import is required by risk. Hosts supply trusted
+operator authorization and actor mapping, clients, mode and hash secret.
+The [risk contract](../../docs/platform/ARCHITECTURE_AND_EXTENSIONS.md#risk-contracts)
+explains the preserved rail differences and sparse SQL descriptor. These entries
+register no route, worker or schedule and do not activate risk.
