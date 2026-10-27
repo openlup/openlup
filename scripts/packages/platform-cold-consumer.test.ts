@@ -8,6 +8,7 @@ import { afterAll, afterEach, beforeAll, expect, it } from "vitest";
 import {
   proveCommerceServerConsumer,
   provePortabilityConsumer,
+  proveLifecycleConsumer,
   proveAccountSupportReadsConsumer,
   ACCOUNT_SUPPORT_READ_SCENARIOS,
   type AccountSupportReadScenarioResult,
@@ -61,10 +62,12 @@ function fixture() {
   const platformManifest = join(consumer, "node_modules/@openlup/platform/package.json");
   const platformMetadata = JSON.parse(readFileSync(platformManifest, "utf8"));
   platformMetadata.exports["./portability"] = { types: "./portability/index.d.ts", default: "./portability/index.js" };
+  platformMetadata.exports["./lifecycle"] = { types: "./lifecycle/index.d.ts", default: "./lifecycle/index.js" };
   platformMetadata.exports["./account-support/contracts"].default = "./contracts.js";
   platformMetadata.exports["./marketing/server"].types = "./marketing-server.d.ts";
   writeFileSync(platformManifest, JSON.stringify(platformMetadata));
   cpSync(join(root, "packages/platform/dist/portability"), join(consumer, "node_modules/@openlup/platform/portability"), { recursive: true });
+  cpSync(join(root, "packages/platform/dist/lifecycle"), join(consumer, "node_modules/@openlup/platform/lifecycle"), { recursive: true });
   writeFileSync(join(consumer, "node_modules/@openlup/platform/contracts.js"), "export {};\n");
   // The server port extends the browser contract with historical commands.
   writeFileSync(join(consumer, "node_modules/@openlup/platform/marketing-server.d.ts"), [
@@ -450,6 +453,29 @@ it("proves installed portability copy/resume and rejects a copy that skips byte 
   try {
     writeFileSync(path, mutant);
     expect(() => provePortabilityConsumer(consumer)).toThrow(/installed byte copy must reach verified checkpoint/);
+  } finally { writeFileSync(path, original); }
+});
+it("proves installed app-file upgrade and refuses a no-op apply implementation", () => {
+  const consumer = pristinePackedA1Fixture(); assertConsumerIsolation(consumer, root);
+  proveLifecycleConsumer(consumer);
+  const path = join(consumer, "node_modules/@openlup/platform/dist/lifecycle/appUpgrade.js");
+  const original = readFileSync(path, "utf8");
+  const mutant = original.replace("export async function applyAppUpgrade(input) {", "export async function applyAppUpgrade(input) { return {plan:await planAppUpgrade(input),applied:[]};");
+  expect(mutant).not.toBe(original);
+  try {
+    writeFileSync(path, mutant);
+    expect(() => proveLifecycleConsumer(consumer)).toThrow();
+  } finally { writeFileSync(path, original); }
+});
+it("refuses an installed legacy-role observer that admits a superuser blocker", () => {
+  const consumer = pristinePackedA1Fixture(); assertConsumerIsolation(consumer, root);
+  const path = join(consumer, "node_modules/@openlup/platform/dist/lifecycle/postgresInstallQualification.js");
+  const original = readFileSync(path, "utf8");
+  const mutant = original.replace("rolePrerequisitesMet: blockers.length === 0", "rolePrerequisitesMet: true");
+  expect(mutant).not.toBe(original);
+  try {
+    writeFileSync(path, mutant);
+    expect(() => proveLifecycleConsumer(consumer)).toThrow(/installed role observation must retain superuser refusal/);
   } finally { writeFileSync(path, original); }
 });
 it("P3 case 7: actual host binding resolves packed subpaths with no SDK, peers or checkout fallback", () => {

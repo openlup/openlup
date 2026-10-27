@@ -154,6 +154,20 @@ its users or operators can observe.
 
 ## Development-preview checks
 
+The lifecycle slice uses existing build/API/package/cold-consumer commands.
+Owner-local tests cover file conflicts, path boundaries and process interruption;
+the installed consumer adds the public export, custom app files, crash/resume
+and a no-op falsifier. Range admission remains caller evidence, separate from
+actual PostgreSQL compatibility. No new runner or required job is added.
+Its owned child Node witness is registered by exact path in the existing public
+execution inventory; the classifier and all other entries remain unchanged.
+
+The same lifecycle selection retains the read-only legacy PostgreSQL role
+observer's package and actual database witnesses. The installed consumer checks
+its public query/report types, finite prerequisite result, superuser refusal and
+redacted error, with a false-admission falsifier. These checks create no installer
+or role grants and do not turn a prerequisite report into installation readiness.
+
 The portability package witnesses cover private bytes, access/version/integrity
 refusals and interrupted resume. The root
 [`portabilityRows` witness](tests/postgres/portabilityRows.test.ts) uses two owned
@@ -1511,6 +1525,11 @@ build, sharded required root tests, DCO check, and publication checks from this 
 Adding or renaming any source package command requires reclassifying the whole
 source command-name inventory before a new preview can be materialized.
 
+Keep historical source/config backups outside the checkout's tool traversal.
+Git-ignore alone prevents neither executable `eslint.config.*` discovery nor
+linting an archived test import. Preserve archival byte/hash provenance in task
+evidence; retain the scope and semantics of real test fixtures.
+
 `npm run lint` runs ESLint over the tree, including the import boundaries in
 [eslint.config.js](eslint.config.js): a package under `packages/` imports
 nothing outside its own directory, other code reaches a package only through
@@ -2561,6 +2580,15 @@ authority rule. This route grants no submission, merge or scope authority of its
 own: a lessons change is an ordinary delivery under existing authority, and a
 promotion stays within its approved scope. The rethink record and the task's
 terminal self-retro carry the lesson until it lands. No other tracker is kept.
+
+- 2026-10-27, M14 application lifecycle: lowercase-only identity missed the
+  native `σ`/`ς` filename alias → extend the existing preflight equivalence
+  while preserving prior refusals, and prove the observed collision before
+  writes alongside exact-spelling replay.
+
+- 2026-10-27, M14 A/C: ignored historical configs and source copies entered lint
+  traversal → keep archival copies outside the checkout, following
+  [commands and lint rules](#commands-and-lint-rules).
 
 - 2026-10-27, M14 filesystem transfer: character counts and default UTF-8 key
   hashing lost admitted string identity → use explicit representation at byte
