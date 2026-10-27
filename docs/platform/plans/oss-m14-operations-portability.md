@@ -414,11 +414,52 @@ evidence. Each delivered draft records actual checks, review findings, remaining
 dependencies and a short terminal self-retro. This plan grants no additional
 authority or automatic successor work.
 
+## E2 source-only continuation, 27 October 2026
+
+The receiving supervisor assigned the existing E2 worktree and draft #403 at
+`13a3c877cba43f63b1fb2f7b2108029d3393e789`, stacked on E1
+`0b4517be8000352be4659e4be2320163b1db9650`. The supervisor freshly fetched and
+confirmed policy pin `a03d920eec32bfb3d0de90b9a12535cc57f88d53` in this receiving
+run, separately from those source checkpoints. The latest human limit permits local source
+corrections and handoff only: no tests, install/build/lint/verification gates,
+independent reviews, commits, pushes or external writes. The draft remains
+unfinished. Earlier findings, native history and budgets are unchanged.
+
+Source-correction author context: `01a17e98-931e-7fe3-99cb-841a3ac9ef0b`
+(`/root/m14_e2f`); coordinating author context:
+`01a17e97-d95d-7581-beb5-ab5ee9ad007c`. Both are future reviewer exclusions
+for this candidate, alongside the inherited author exclusions. No independent
+review was performed in this continuation.
+
+Static pre-flight recovered the four production SQL units, the unchanged E-only
+manifest and all four source-derived inventory pins. The concrete omission was
+the eight new E2 SQL/adapter/witness paths in the public-source catalogue. They
+are now registered as `public-output`; the migration, contract and adapter owner
+pages explain the actual source composition and distinguish it from readiness.
+The smallest adequate repair registers existing source instead of introducing a
+new runner, selector, expected digest or host provisioning layer. SQL bytes,
+the 88-unit legacy selection, its inventory and the E-only 89-unit pins were
+left unchanged. The known actor SQL EOF finding remains deliberately retained.
+
+Still owed after the original author resumes authorized execution: E1 actually
+on main; current API/source-contract/navigation metadata; fixed-pin checks of
+the four references through production built imports; four fresh targets in the
+other role mode with different actual principal names; apply/status/replay and
+89 ledger rows, healthy inventory-mutation and separate unsafe-session refusal;
+legacy, partial-prefix/race, installed/cold, coverage, measured cumulative
+package budgets and full native proof. No aliases, custom expectation or
+projector overrides may qualify these installations. No current PASS, review
+receipt, native cycle, expiry or delivery completion was created here.
+
+Self-retro: static source registration and owner explanation were sufficient for
+this bounded correction; the missing production proof cannot be replaced by
+another source-derived digest or by the earlier reference runs.
+
 
 ## Owner-authorized corrected draft checkpoint, 2026-10-27
 
 After the source-only handoff preparation, the owner directly instructed this
-receiving session to commit and push its corrections into the existing #402
+receiving session to commit and push its corrections into the existing #403
 draft instead of ending with a separate prompt. This supersedes the earlier
 no-commit/no-push endpoint for this run. The actual grant covers DCO checkpoint
 commits, ordinary dependency-stack integration and updating the existing draft.
@@ -432,6 +473,115 @@ Generated metadata, regression execution, package measurements, independent
 review and final verification remain owed on the author's proving machine.
 
 
+Draft integration note: the corrected E1 checkpoint is now merged into the E2
+draft branch. The manual resolution retained E1 control/author evidence, E2
+source/publication notes and both boundaries in the contract owner. Conflicts
+were documentation-only; no SQL, manifest or runtime behavior was rewritten.
+This integration has no current tests, review, carry-over or qualification proof.
+
+## E2 production-composition proof source, 27 October 2026
+
+The owner's receiving-session instruction now requests all necessary source
+corrections here, with measurements/tests/verification executed only on the
+stronger proving machine. This work starts from E2
+`1c52d71aaa76a59b751b526fa5b8c253df5d72a4`. No tests, builds, lint, installs,
+gates, commits, push or external writes ran in this source-only preparation.
+No native history, findings, cycles or prior expiry was changed. Additional
+test-source author `01a17e98-726c-7263-871e-44c8cd68410a` (`/root/m14_cd`)
+is excluded from later independent review alongside every existing author and
+coordinator. This is authored proof source, not counted independent review.
+
+The smallest complete witness is
+`tests/postgres/m14QualifiedComposition.test.ts` and its one-installation child
+`m14QualifiedComposition.proof.ts`. It defines exactly four installer-managed
+production references and four fresh operator-provisioned targets, covering
+migration/bootstrap aliased or separate and restore absent or present. Reference
+names use `q2_reference_*`; target names use `q2_target_*`. The temporary setup
+login renames actual bootstrap OID 10 and is dropped before admission. No name
+alias, target-derived expected digest or extra four-install matrix is introduced.
+
+Every child uses the actual production reference binding, default startup/pool
+transport and public `@openlup/platform/migrations` built export. There is no
+root, pool, source, projector or expectation override. A separate measured
+payload observation uses the same production startup-options helper under the
+actual migration login and held lock; its result must equal the unchanged prior
+pin. Each profile checks pending status, apply, complete status, empty replay
+and all 89 exact path/digest/position ledger rows. These are eight new production
+checks; the four historical source-reference derivations remain historical.
+
+Only the already-healthy separate-migrator/with-restore target adds the
+discriminators: a column-comment mutation must reach the precise object-inventory
+SHA refusal with unchanged ledger timestamps; after restoration healthy status
+must recover. A separate SET-reachable parameter capability grant must reach
+the unsafe-session refusal, retain the ledger and recover after revocation.
+The canonical-search-path discriminator adds exact public `left(name,int4)` and
+`hashtextextended(text,int4)` overloads: observations and pre-hook lock handling
+must invoke neither, then reach the precise inventory refusal for the added
+definitions. After cleanup, healthy status must recover. An application-first
+role-default search_path with writing shadow functions must separately refuse
+as `qualified_profile_requires_canonical_search_path` with zero shadow calls;
+resetting the default and removing that schema must recover healthy status and
+empty replay. These are prepared regressions for the supervisor's coordinated
+facts/catalog/qualified-executor symbol binding, not evidence those changes pass.
+
+The existing disposable PostgreSQL helper owns each container and removes it
+in a finally block, including child failure/timeout. Every runner operation is
+awaited. Explicit observer/setup pools close before child exit; child lifetime
+then releases the production runner's hidden default pools without adding a
+production close API. The two source paths are registered in the existing public
+catalogue. The supervisor places the child's exact execution-entrypoint
+registration in prior E1 controls, preserving the prohibition on co-changing
+admission machinery with E2's new qualified SQL; E2 changes no classifier or
+entrypoint machinery. Frozen SQL, fixture bytes, manifest and four pins remain
+unchanged. The known frozen actor-SQL EOF issue is retained.
+
+Proving-machine commands from the E2 checkout, after its normal pinned
+Node/npm/dependency setup (not executed here):
+
+```sh
+npm test -- --project=node tests/postgres/m14QualifiedComposition.test.ts
+npm test -- --project=node tests/postgres/m14QualifiedBaseline.test.ts tests/postgres/m14QualifiedSession.test.ts tests/postgres/m14MigrationSessionAdmission.test.ts server/adapters/postgres/qualifiedInstall.test.ts
+```
+
+The first command includes the existing prerequisite builds and eight sequential
+owned installations; logs distinguish each reference/target, actual measured
+inventory, exact ledger count and elapsed time. Missing Docker is a failure,
+not a skip. The second is the existing focused regression selection. These do
+not replace required policy/navigation, coverage, cold/installed/legacy/full
+checks, measurements, committed native review and authorized delivery. If
+execution exposes a source defect, return its exact failure to this authoring
+session rather than changing SQL, pins or expectations on the proving machine.
+
+Self-retro: a process-lifetime child exercises the real hidden-pool composition
+without a test seam or new production API. Sharing the four prior pins between
+two explicit modes yields the required eight checks, while applying destructive
+discriminators to one restored healthy target avoids redundant installations.
+
+
+### Receiving coordinator source-freeze addendum
+
+Root completed the qualified session-facts bindings and the effective-path
+refusal before deparser use. Author 01a17e98-8264-7033-a2d1-0d3c8479ca3b also
+bound lookup symbols in the shared static selected-catalog query and its three
+fragments; query identities, serializers, expected hashes and SQL assets remain
+unchanged. This author remains excluded from subsequent independent E2 review.
+The owner explanation links the prepared eight-case production witness.
+
+The concrete reachable cause was path resolution of unqualified catalog names,
+including exact public overloads despite an implicitly first pg_catalog. Merely
+checking canonical path would not close that mechanism. Reusing the fixed query
+with qualified symbols preserves the expected canonical payload without a new
+projector variant, parser, session SET or replacement inventory. Canonical
+legacy output and frozen E-only hashes still need actual proving-machine
+execution. The effective-path check is for stable catalog rendering; it does
+not claim isolation from PostgreSQL native deparser/type-output implementations.
+
+All source edits remain here under the owner's latest instruction. The
+stronger-machine session may only run the prepared measurement/test/verify
+commands and return results; it must not implement further repairs. No local
+execution, PASS, native cycle or budget change occurred in this source phase.
+
+
 ### Receiving coordinator source-freeze addendum
 
 The receiving coordinator also registered the exact future E2 child entrypoint
@@ -440,3 +590,366 @@ The entry registration is control-only here, before E2 source introduction; it
 changes no classifier or exception. All further source repairs remain on this
 Daybreak-capable machine. The stronger machine may only execute the supplied
 measurements/tests/verify and return evidence; defects return here for repair.
+
+
+Statement-pin accounting: the fixed SQL query text intentionally changed from
+`8c9494f87d3147ec25bf0d6461ed214061e410b2594186cb4b90baea60dca54c` to
+`e897c3028f5b097baea6e16f79e75ad33ffcf8174d751ed3a95486b803bc5e50` for catalog qualification. The existing prepared-statement
+unit pin is updated to those exact constructed statement bytes. Static fragment
+extraction first reproduced the old pin; this is source-data integrity, not
+SQL execution. PROJECTION_PAYLOAD, PROJECTION_DIGEST, query names and every
+legacy/E-only manifest inventory expectation remain unchanged. Actual canonical
+PostgreSQL byte equivalence still requires the proving-machine run.
+
+## Receiving E2 compile proof, 27 October 2026
+
+The active receiving supervisor reports the later direct owner instruction
+restoring required test/full verification and the existing ready, receipt,
+admission, queue and confirmed-merge endpoint for these M14 drafts. Earlier
+machine-specific source-only and draft-only limits remain historical; no
+release, npm publication, deployment, live provisioning, account, settings,
+credential or other-repository authority is added. Heavy execution remains
+serialized by the supervisor. The current E2/F integration coordinator
+`/root/m14_e2_f_integration` is a source author and excluded from independent
+review alongside all inherited authors and coordinators. E2 has no native
+session, counted PASS, expiry or used repair cycle. Actual E1 landing still
+precedes E2 delivery; local proof does not replace that boundary.
+
+This continuation uses the existing E2 worktree at
+`813b6967b40eca48880a34eabfbf4b3b529b97bd` and real stack predecessor
+`f8c88bb4009b7841478e87ce08a1815144c410ac`. Its current instruction pin is
+`a03d920eec32bfb3d0de90b9a12535cc57f88d53`, separate from the code comparison.
+The first fail-fast broker refusal occurred before execution. The supported
+normal waiting route then admitted after 195 seconds, with existing defaults;
+core, outbox and platform prerequisite builds passed. Canonical
+`npm run oss:published-tree -- --typecheck` failed with three consumer errors
+and zero unresolved imports. The actual canonical API project located the
+predicted `qualifiedInstall.ts` errors at lines 147 and 232.
+
+The authorized repair changes only the private throwing `fail` helper from an
+inferred arrow constant to a function declaration. Its body, error strings,
+unknown-value validation and runtime refusals remain identical. The full
+canonical rerun passed all five projects with zero unresolved imports and zero
+consumer errors. Both original failure logs and passing rerun are retained in
+the existing task evidence. SQL, role permissions, queries, manifests and fixed
+inventories were not changed. Source AST and diff checks passed.
+
+The heavy slot was released before any production PostgreSQL installation,
+following the supervisor's C+D full-verification priority. The eight 89-unit
+production checks, required legacy/partial-prefix/race and adapter regressions,
+installed/cold/API/artifact/coverage proof, lint and full/native verification
+remain pending. No test deadline, retry or gate budget is raised. Documentation
+impact is checked against the actual E1 predecessor; a helper-only digest cannot
+settle the complete new adapter, qualified SQL and fixture-selection delta.
+
+Self-retro: prerequisite builds removed stale declaration noise before the
+canonical failure was diagnosed. One helper declaration restored compiler flow
+analysis without casts or weaker validation. The 195-second broker wait was
+scheduling evidence, not a test failure.
+
+### Receiving E2 production PostgreSQL result
+
+After the supervisor's next explicit allocation, the existing eight production
+composition checks passed: four fixed-pin reference profiles and four fresh
+renamed-principal targets in the other role mode. The 89-unit source, manifest
+and built migration entry identities remained exact before and after execution;
+no alias, projector or expected-inventory override was used. The tests assert
+status/apply/replay and all exact ledger rows; the healthy final target also
+passed the prepared inventory, unsafe-session and shadow-symbol discriminators
+and recovery checks. Vitest reported 8/8 passing in 82.61 seconds.
+
+The selected baseline/session/actual-lock admission, reference adapter and
+package migration/legacy-prefix/projector regressions then passed 78/78 across
+seven files in 4.09 seconds. The whole admitted phase took 88 seconds and exited
+zero. Its first sandbox Docker-socket refusal happened before Vitest; that log
+was preserved, and normal tool permission review admitted the same authorized
+command. No source repair or expectation change followed that tool refusal.
+The test-owned container inventory was empty afterwards, and the broker slot
+was released before the supervisor's next C+D work. Full installed/cold/API,
+artifact/coverage, lint, full/native review and actual predecessor landing still
+remain separate obligations; this phase grants no delivery or hosting claim.
+
+Self-retro: the already-built production entry was reused with its recorded
+identity, avoiding a redundant pretest build. Tool-sandbox refusal, actual test
+execution and source qualification remain separately attributed in the evidence.
+
+### Receiving E2 dependency integration
+
+The active root supervisor continues the same finite E2 outcome under the later
+direct test, DCO, submission and merge grant. Its instruction revision is now
+`75d08b8207053fe9a5207e003b625133685ffdf4`, separate from the code base. The
+exact E1 dependency `3a8d4a7165f5ef3df13bdc8da9d6a3e3ca17a529` incorporates
+the reviewed lifecycle predecessor and its already approved Platform reserve.
+E2 changes no byte cap, file count, browser budget, baseline or lockfile. This
+is dependency integration, with actual E1 landing still required before E2
+delivery; it is not a freshness merge.
+
+Before integration the supervisor preserved the five existing E2 edits, their
+exact bytes and patch, and retained the explicitly named own stash. The ordinary
+merge was conflict-free; restoring those edits required one contributor-doc
+resolution retaining both the lifecycle and qualified-installation witnesses.
+All migration SQL, the selected manifest, the approval registry and the private
+throwing-helper repair remain byte-identical to their recorded pre-integration
+identities. Historical failures and earlier production PostgreSQL results are
+preserved; they are not claimed as full proof of this integrated tree.
+
+The pending merge has no mechanical exemption or native PASS. Its precommit
+checks use the actual current ancestor; the E1 stack pin applies only once a
+normal signed checkpoint makes it an ancestor of HEAD. Fresh cumulative build,
+API, artifact, owner, lint and type checks precede DCO; two fresh independent
+full reviews and the canonical clean full gate still follow. Root and all
+source authors remain excluded from independent review. The standing direct
+human authorization covers two-way M14 session communication without another
+permission question. Release and live operations remain outside this endpoint.
+
+Self-retro: preserving the owned patch before dependency integration made the
+single documentation overlap explicit while keeping the qualified SQL and
+fixed inventories intact. No source abstraction or extra installation matrix
+was needed for the integration.
+
+### Receiving E2 pending-merge working checks
+
+The author/coordinator `/root/m14_e2_delivery` recovered the same pending
+ordinary merge, with HEAD `813b6967b40eca48880a34eabfbf4b3b529b97bd`, E1
+parent `3a8d4a7165f5ef3df13bdc8da9d6a3e3ca17a529` and pre-evidence staged
+tree `ba2e2d4eaf5faf8a04aa150900b01f0c0777df95`. This actor is a source
+contributor and is excluded from independent review. Current instruction
+revision `35ee4227babaa2fe16f88110af52e61d242b3296` is separate from that
+code comparison. All 94 preserved SQL, manifest and approval-registry hashes
+matched; the private throwing-helper repair and owned stash remained exact.
+No patch was replayed, history replaced, cap raised or installation matrix added.
+
+Under the supervisor's bounded allocation, explicit Node 24.21.0/npm 11.19.0
+ran fresh Core, Outbox and Platform builds and API checks. Actual working-tree
+tarballs passed the existing artifact-content, class/total size and all 17 browser
+entry gates. Platform measured code-gzip 1,661,068 B, tarball 1,933,640 B and
+unpacked 9,001,011 B; code/total counts were 2574/2628 against the unchanged
+caps. This 11-second phase used the fixed build 4 CPU/4096 MB profile. These
+exported-gate measurements are preliminary working-tree feedback; the canonical
+clean cold/installed package route still follows the committed candidate.
+
+Canonical `npm run lint` and `npm run oss:published-tree -- --typecheck`
+passed sequentially in 61 seconds under typecheck 4 CPU/6144 MB. All five
+projects had zero unresolved imports and zero consumer errors. The same seven
+baseline/session/lock-admission/reference-adapter/package-runner regression files
+passed 78/78 in 2.15 seconds under PostgreSQL 2 CPU/6144 MB. Each lease admitted
+without waiting and was released. An initial broker argument-order refusal
+happened before execution and is preserved alongside the corrected invocation;
+it changed no test, deadline or review budget. Tracked inputs stayed frozen
+during these phases. The earlier eight production installations remain attributed
+to their original inputs; they were not repeated or claimed as integrated proof.
+
+The current checkpoint still needs the supervisor's stabilized API/notes/control,
+budget and recovery read before DCO. The exact final runtime predecessor must
+then be integrated normally before the first counted E2 review and full route.
+No E2 native session, counted PASS, expiry, repair cycle, signed checkpoint or
+external write was created by these working checks. Existing source/control
+acceptance, all mandatory clean/full checks and the root-owned delivery endpoint
+remain unchanged.
+
+Self-retro: selecting the recorded toolchain explicitly avoided shell-version
+drift. Reusing the existing artifact gate functions supplied concrete precommit
+measurements while preserving the canonical clean-tree gate for final proof.
+
+### E2 runtime dependency integration
+
+After the root supervisor read the stabilized packet and independently compared
+all 94 preserved SQL/manifest/registry inputs and the private helper, its direct
+GO authorized the ordinary DCO merge checkpoint
+`377fcd9af50f70d93534942c5afdcc439ad08d31`, exact tree
+`826b322cf05f60bf2ba55ba5a366cfc117682144`, with parents 813b6967 and
+3a8d4a71. Policy/navigation against the now-valid exact E1 ancestor reported six
+obligations and zero unanswered; all eight commits in that DCO range were signed
+off, including four merges, and the checkpoint was clean.
+
+The same bounded authorization then prepared a normal pending merge of exact
+runtime predecessor `4687b6c8d11a1fbc0094b26057d0983111560d16`, tree
+`ddc243119df5bb7578ec1a3c5ce9d9eae61cd25e`. Shared contributor and catalogue
+edits merged automatically; there were no conflicts or manual resolutions.
+Both owner descriptions, execution registrations and publication metadata remain.
+All three runtime production files and both API reports match that predecessor
+exactly; all 94 E2 immutable inputs and the helper repair remain unchanged.
+This dependency order is C, E1, runtime, E2, then F. It changes no contract,
+installation profile, SQL, expected inventory, package budget or proof obligation.
+
+Instruction revision 35ee4227 remains separate from the review base. Light
+pending-merge checks use actual E1 ancestor
+`3a8d4a7165f5ef3df13bdc8da9d6a3e3ca17a529`; the runtime stack pin becomes
+valid only after a separately authorized next DCO checkpoint. Earlier working
+measurements and production-installation results retain their original source
+attribution. This integrated tree still requires its cumulative working phase,
+root technical read, first two fresh independent E2 full reviews and canonical
+clean full verification. No mechanical exemption, native session, PASS, expiry
+or repair cycle was created. Root owns further DCO and external-delivery GO;
+release and live operations remain excluded. Existing author exclusions apply.
+
+Self-retro: checking exact predecessor bytes before integration made preservation
+directly observable. The normal merge retained the overlapping explanations
+without a source repair or additional installation matrix.
+
+### Cumulative E2 and runtime working proof
+
+The root supervisor's next exclusive allocation covered pending tree
+`896d4fc2c13ea58c083cc04f033bf94a8dac7559`, with signed E2 checkpoint
+377fcd9 and runtime 4687b6c8 still pending as the two normal merge parents.
+Explicit Node 24.21.0/npm 11.19.0 and this task's own dependencies ran the same
+bounded sequence with frozen tracked inputs. Fixed numeric-worktree resource
+profiles admitted without waiting: build 4 CPU/4096 MB, typecheck 4 CPU/6144 MB,
+then PostgreSQL 2 CPU/6144 MB. Every lease was released; no nested broker,
+new deadline, retry or source repair was introduced.
+
+Fresh Core, Outbox and Platform builds and all three API checks passed. Actual
+working tarballs passed the existing artifact-content, class/total budgets and
+all 17 browser-entry gates with zero findings. Platform measured code-gzip
+1,662,140 B, tarball 1,935,102 B, unpacked 9,006,345 B and docs-gzip 65,643 B;
+code/total counts remained 2574/2628. Core/Outbox tarballs were 167,341/39,165 B.
+All approved caps, baseline, manifest and lockfiles remained unchanged. This
+build/API/artifact phase took 10 seconds and remains preliminary working-tree
+feedback rather than canonical clean cold/installed proof.
+
+Canonical lint passed with zero errors and 33 existing warnings. The five-project
+published typecheck passed with zero unresolved imports and zero consumer errors;
+the sequential typecheck phase took 53 seconds. The same seven existing
+baseline/session/lock-admission/reference-adapter/package-runner files passed
+78/78 in 2.47 seconds. No eight-installation matrix was repeated; its prior
+production results keep their original attribution. Exact commands, elapsed
+times, tarball identities and measurements are retained in
+`/private/tmp/m14-e2-runtime-working-20261027`. The task-note update is the only
+post-execution tracked edit.
+
+The root's stabilized API/notes/control/budget/recovery read and explicit GO
+still precede the next DCO. First E2 counted review and the canonical clean full
+route remain unperformed; no native evidence or mechanical exemption is claimed.
+All protected SQL/manifest/registry/helper and runtime source/API bytes retain
+their checked identities. Existing authors, failures, exclusions, authority and
+review budgets continue unchanged.
+
+Self-retro: direct reuse of the same exported artifact gates and fixed resource
+profiles completed the cumulative phase without new code, retries or a larger
+installation matrix. Keeping the clean committed route separate preserves its
+proof obligation while supplying concrete current measurements before sign-off.
+
+### E2 restricted-runtime lock evidence repair
+
+The root supervisor recorded the first native E2 candidate 2da59893/tree5bd7f14a
+with one full PASS and one independent full FAIL. The sole material card
+`E2R0-R-1` identifies the approved three lock-exception proof gap, not a
+demonstrated unsafe grant. Native cycle 0/3 and the same history remain intact;
+no new candidate has been prepared or budget reset. The root authorized this
+bounded source repair after reading the concrete proposal and production ports.
+
+The existing production child now unconditionally connects as each installation's
+actual R login, checks current/session identity, no superuser/BYPASSRLS and no
+direct or inherited table ownership. It uses the production notification port's
+FOR SHARE admission, the diagnostic v2 ingest and replay FOR UPDATE branch, and
+the privacy receipt/account-link SHARE ROW EXCLUSIVE and SHARE paths. Existing
+rows discriminate permitted timestamp-only notification writes from denied
+authority changes, denied diagnostic id updates, and receipt SELECT/INSERT from
+denied populated-row updates; each refused write preserves the row. Autocommit
+denials leave later transactions usable. Every new adapter/pool is closed by
+the existing child cleanup, and the parent asserts the returned completed-proof
+flag alongside its unchanged 89-unit and frozen inventory expectations.
+
+This uses the same eight installations, no new runner or cross product. SQL,
+ACLs, manifest/registry, expected inventories, helper, runtime source/API, caps
+and deadlines remain unchanged. These are source changes pending execution;
+earlier production results retain their original attribution. The authorized
+working phase is canonical lint/typecheck, current API/actual artifact feedback,
+the existing eight production cases once and the same 78 selected regressions.
+An actual failure stops execution for diagnosis before any further repair/retry.
+Root/source-author exclusions continue; DCO, native preparation, full verification
+and external writes still require the supervisor's stabilized read and GO.
+
+Self-retro: the missing acceptance class required real restricted-role operations,
+not broader catalogue enumeration. Reusing existing ports inside the existing
+child distinguishes lock usability and forbidden writes without a permission
+framework, another installation matrix or a changed capability grant.
+
+The mandatory supervisor regroup records two completed evaluations: the initial
+candidate's material lock-proof gap `E2R0-R-1`, then the new witness's canonical
+typecheck failure `TS2305` from importing `ErasureReceipt` through the wrong
+barrel. Lint and its three package builds passed; PostgreSQL and later phases
+did not run. The remaining approved gap is actual R lock usability and forbidden
+write refusal. Its cause is test composition, not a requested capability change:
+the type already belongs to public `@openlup/platform/identity/contracts` and its
+API report. The simpler correction uses that existing entry, retaining the typed
+receipt without a new export, cast or alternate proof framework. The next
+discriminating step is zero consumer errors across all five canonical projects,
+then the same eight actual targets. Root accepts this bounded continuation;
+native history remains cycle 0/3 without a new prepare, budget or owner gate.
+The failed log and before/after source hashes remain in the existing evidence.
+Lesson: public contract type owner → correct existing entry, not a new export
+or cast.
+
+The authorized import-only continuation kept the receipt explicitly typed and
+used that existing contract entry. Fresh canonical lint, including its three
+package builds, passed with zero errors and 33 existing warnings. All five
+published projects then passed with zero unresolved imports and zero consumer
+errors; the typecheck phase took 54 seconds. All three API reports and actual
+working tarball/content/byte/file checks passed, including all 17 browser budgets,
+in six seconds without repeating the builds. Platform remained at code-gzip
+1,662,140 B, tarball 1,935,102 B, unpacked 9,006,345 B and 2574/2628 code/total
+files, against unchanged approved caps.
+
+The same eight production installations passed in 59.22 seconds, including the
+new unconditional actual-R identity/nonownership, successful production locks,
+timestamp-only write, diagnostic replay, receipt INSERT/SELECT and populated-row
+forbidden-update assertions. Each parent case required the child's completed
+runtime-proof flag alongside its unchanged 89 ledger rows and fixed inventory.
+The same seven-file selection then passed 78/78 in 2.10 seconds. Owned-container
+inventory was empty after teardown, and all sequential fixed-profile leases
+were released. Tracked inputs remained frozen throughout execution. Evidence,
+including the unmodified first TS2305 failure and actual before/after hashes,
+is retained under `/private/tmp/m14-e2-r1-runtime-lock-proof-20261027`; its
+`import-repair-1` directory holds this authorized continuation's results.
+
+All 94 protected SQL/manifest/registry inputs, the helper and runtime source/API
+retain their earlier identities; no ACL, expected hash, installation matrix,
+deadline or cap changed. This post-execution task summary is the only later
+tracked edit. These are working results; `E2R0-R-1` still needs explicit closure
+by fresh native reviewers of the eventual committed repair. Native history and
+its cycle 0/3 remain unchanged until the supervisor prepares that candidate;
+no DCO, prepare, full verification or external write occurred here.
+
+### E2 full-verification confinement repair
+
+The signed 9d26edb2 candidate's first canonical full run stopped at the root
+test phase: 22,111 tests passed, one failed and two existing optional tests
+skipped. The single failure was the existing generic role-free transaction-lane
+confinement test: the production PostgreSQL witness called that generic factory
+outside its canonical reference binding. Prior install, lint, typecheck, builds
+and package/cold/installed proof passed for that checkpoint; neutrality and
+pgTAP were not reached. Preserve the complete failed run at
+`.context/scratch/verify-local-EjvZNA`, with no partial/full PASS claim.
+
+The necessary repair changes only witness composition. Diagnostic ingest/replay
+uses the existing named customer-diagnostic lane, and privacy receipt operations
+use the existing public privacy unit of work, matching their actual reference
+bindings. Each still connects as the selected restricted R, is registered for
+existing cleanup, and retains every identity/nonownership, successful lock,
+allowed write, replay, denied-write and unchanged-row assertion. The confinement
+test, production code, SQL, ACLs, manifest, inventories, API, budgets and deadlines
+remain unchanged. The next discriminating checks include that actual confinement
+selector together with the previous regressions, then the same eight production
+targets. Native history remains cycle 1/3 until a committed repair is prepared;
+F retains its own source/history and must integrate this actual dependency.
+
+Self-retro: the earlier focused selection omitted an existing source-confinement
+consumer and let a witness composition mistake reach the broad gate. Use the
+actual owner bindings and include the existing confinement selector in focused
+feedback; do not add a factory exemption or a second proof framework.
+
+The bounded working checks passed: unchanged confinement selector 5/5 in
+0.259 seconds, the same eight production installations 8/8 in 59.73 seconds,
+and the prior seven-file selection 78/78 in 2.19 seconds. Canonical lint passed
+with zero errors/33 existing warnings; all five type projects had zero unresolved
+imports and consumer errors. Three API checks and current actual package/content/
+size checks passed, including all 17 browser budgets. Platform remained exactly
+1,662,140 code-gzip / 1,935,102 tarball / 9,006,345 unpacked bytes, with unchanged
+2574/2628 file counts. No tracked input changed during execution and no owned
+PostgreSQL remained after teardown. Exact commands, exits, source hashes and
+logs are preserved in `/private/tmp/m14-e2-r2-confinement-20261027`. Only this
+task outcome was appended afterwards. Root read the stabilized witness/notes
+and unchanged API/control/budget/recovery scope and authorized ordinary DCO,
+fresh full review in the same history, and a new complete canonical run; earlier
+partial evidence is not promoted to current full proof.

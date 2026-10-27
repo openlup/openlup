@@ -1,0 +1,294 @@
+// One disposable installation's production proof; invoked only by its adjacent test.
+import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { Pool } from "pg";
+import { createPostgresNotificationRecipientsPort } from "@openlup/platform/communications";
+import type { PgQueryExecutor } from "@openlup/platform/data";
+import { createPostgresAccountLinkStore, createPostgresPrivacyStore, createPostgresPrivacyUnitOfWork } from "@openlup/platform/identity";
+import type { ErasureReceipt } from "@openlup/platform/identity/contracts";
+import { createCustomerDiagnosticHistoryPort } from "../../server/adapters/customerDiagnosticHistory.js";
+import { createPostgresCustomerDiagnosticHistoryTransactionLane } from "../../server/adapters/postgres/dataGateway.js";
+import { createPostgresMigrationRunner } from "../../server/adapters/postgres/migrationRunner.js";
+import { qualifiedPostgresCatalogPayload, qualifiedPostgresStartupOptions, type QualifiedPostgresInstallation } from "../../server/adapters/postgres/qualifiedInstall.js";
+import { selectPlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
+
+const input: { connectionString: string; selection: QualifiedPostgresInstallation; expectedInventory: string; discriminators: boolean } = JSON.parse(process.argv[2]!);
+const { selection } = input;
+const lockName = "openlup:public-platform-migrations:v1";
+const password = "synthetic-proof-only";
+const pools: Pool[] = [];
+const ports: { close(): Promise<void> }[] = [];
+const pool = (url: string): Pool => { const value = new Pool({ connectionString: url }); pools.push(value); return value; };
+const loginUrl = (name: string, secret = password): string => {
+  const url = new URL(input.connectionString); url.username = name; url.password = secret; return url.toString();
+};
+// Every identifier below is from the fixed synthetic profiles, not database input.
+const identifier = (value: string): string => {
+  assert.match(value, /^[a-z_][a-z0-9_]*$/u); return `"${value}"`;
+};
+const digest = (value: string): string => createHash("sha256").update(value).digest("hex");
+
+async function proveRuntimeLockPrivileges(bootstrap: Pool): Promise<void> {
+  const operator = "e2000000-0000-4000-8000-000000000001";
+  const subject = "e2000000-0000-4000-8000-000000000002";
+  const eventKey = "e2000000-0000-4000-8000-000000000003";
+  const receiptId = "e2000000-0000-4000-8000-000000000004";
+  const key = "e2000000-0000-4000-8000-000000000005";
+  const differentEventId = "e2000000-0000-4000-8000-000000000006";
+  const env = { connectionString: loginUrl(selection.runtimeLogin) };
+  const runtime = pool(env.connectionString);
+  const tables = ["public.platform_communication_operators", "public.customer_diagnostic_events", "public.identity_privacy_erasures"];
+  const assertRuntime = async (db: PgQueryExecutor): Promise<void> => {
+    assert.deepEqual((await db.query(`SELECT current_user AS runtime, session_user AS session,
+      r.rolsuper AS superuser, r.rolbypassrls AS bypass_rls,
+      NOT EXISTS (SELECT 1 FROM pg_catalog.pg_class c WHERE c.oid = ANY($1::pg_catalog.regclass[])
+        AND (c.relowner = r.oid OR pg_catalog.pg_has_role(r.oid,c.relowner,'USAGE'))) AS nonowner
+      FROM pg_catalog.pg_roles r WHERE r.rolname = current_user`, [tables])).rows,
+    [{ runtime: selection.runtimeLogin, session: selection.runtimeLogin, superuser: false, bypass_rls: false, nonowner: true }]);
+  };
+  await assertRuntime(runtime);
+  await bootstrap.query("INSERT INTO public.platform_human_principals(principal_id,email) VALUES ($1,'lock-admin@example.invalid'),($2,'lock-subject@example.invalid')", [operator, subject]);
+  await bootstrap.query(`INSERT INTO public.platform_human_memberships
+    (principal_id,role,membership_state,membership_provenance,membership_accepted_at)
+    VALUES ($1,'admin','active','legacy',clock_timestamp())`, [operator]);
+  await bootstrap.query(`INSERT INTO public.platform_communication_operators(principal_id,created_at,updated_at)
+    VALUES ($1,'2026-01-01T00:00:00Z','2026-01-01T00:00:00Z')`, [operator]);
+
+  // The real admission query locks the seeded operator and membership FOR SHARE.
+  const notifications = createPostgresNotificationRecipientsPort(env, { operatorId: operator, poolFactory: () => runtime });
+  ports.push(notifications);
+  assert.deepEqual(await notifications.listNotificationRecipients({ notification_type: "new_signup" }), { recipients: [] });
+  assert.deepEqual((await runtime.query(`SELECT attname FROM pg_catalog.pg_attribute
+    WHERE attrelid = 'public.platform_communication_operators'::pg_catalog.regclass AND attnum > 0 AND NOT attisdropped
+      AND pg_catalog.has_column_privilege(current_user,attrelid,attnum,'UPDATE') ORDER BY attname`)).rows, [{ attname: "updated_at" }]);
+  const updated = await runtime.query(`UPDATE public.platform_communication_operators
+    SET updated_at = '2026-01-02T00:00:00Z' WHERE principal_id = $1 RETURNING updated_at`, [operator]);
+  assert.equal(updated.rowCount, 1);
+  assert.equal(updated.rows[0].updated_at.toISOString(), "2026-01-02T00:00:00.000Z");
+  const operatorBefore = (await runtime.query("SELECT * FROM public.platform_communication_operators WHERE principal_id=$1", [operator])).rows;
+  await assert.rejects(runtime.query("UPDATE public.platform_communication_operators SET active=false WHERE principal_id=$1 RETURNING principal_id", [operator]), { code: "42501" });
+  assert.deepEqual((await runtime.query("SELECT * FROM public.platform_communication_operators WHERE principal_id=$1", [operator])).rows, operatorBefore);
+
+  const lane = createPostgresCustomerDiagnosticHistoryTransactionLane(env);
+  ports.push(lane);
+  const observation = {
+    contractVersion: "customer-diagnostic-ingest.v1" as const, coverageVersion: "purchase-auth-account.v2" as const,
+    clientEventKey: eventKey, action: "entry_boot" as const, phase: "settled" as const, code: "failed" as const,
+    presentedCredentialHash: null, issuedCredentialHash: digest("q2-lock-credential"), principalId: null, subjectId: null,
+    ingestRequestId: "q2:lock-proof", abuseKeyHash: digest("q2-lock-abuse"), payloadFingerprint: digest("q2-lock-payload"),
+  };
+  const ingest = (presentedCredentialHash: string | null) => lane.run(async gateway => {
+    await assertRuntime(gateway as PgQueryExecutor);
+    return createCustomerDiagnosticHistoryPort(gateway, 7).ingest({ ...observation, presentedCredentialHash });
+  });
+  const first = await ingest(null);
+  assert.equal(first.outcome, "committed");
+  assert.equal(first.deduplicated, false);
+  assert.ok(first.segmentId);
+  const replay = await ingest(observation.issuedCredentialHash);
+  assert.deepEqual(replay, { ...first, credentialDisposition: "reused", deduplicated: true });
+  const eventBefore = (await runtime.query("SELECT * FROM public.customer_diagnostic_events WHERE segment_id=$1 AND client_event_key=$2", [first.segmentId, eventKey])).rows;
+  assert.equal(eventBefore.length, 1);
+  // Autocommit denials leave the next operation's transaction usable.
+  await assert.rejects(runtime.query("UPDATE public.customer_diagnostic_events SET id=$2 WHERE id=$1 RETURNING id", [eventBefore[0].id, differentEventId]), { code: "42501" });
+  assert.deepEqual((await runtime.query("SELECT * FROM public.customer_diagnostic_events WHERE segment_id=$1 AND client_event_key=$2", [first.segmentId, eventKey])).rows, eventBefore);
+
+  const privacy = createPostgresPrivacyStore();
+  const privacyUnitOfWork = createPostgresPrivacyUnitOfWork(env);
+  ports.push(privacyUnitOfWork);
+  const receipt: ErasureReceipt = { version: "identity.erasure.v1", erasureId: receiptId, completedAt: "2026-01-03T00:00:00.000Z", outcome: "ERASED", obligations: [] };
+  await privacyUnitOfWork.run(async db => {
+    await assertRuntime(db);
+    await privacy.prepareErasure(db);
+    assert.deepEqual((await db.query(`SELECT mode FROM pg_catalog.pg_locks WHERE pid=pg_catalog.pg_backend_pid()
+      AND relation='public.identity_privacy_erasures'::pg_catalog.regclass AND mode='ShareRowExclusiveLock' AND granted`)).rows, [{ mode: "ShareRowExclusiveLock" }]);
+    await privacy.saveReceipt(db, { principalId: subject, contactId: null, identity: {} }, { principalId: operator }, key, receipt, []);
+    assert.deepEqual(await privacy.findReceipt(db, { kind: "principal", principalId: subject }, key), receipt);
+  });
+  const receiptBefore = (await runtime.query("SELECT * FROM public.identity_privacy_erasures WHERE erasure_id=$1", [receiptId])).rows;
+  assert.equal(receiptBefore.length, 1);
+  const accounts = createPostgresAccountLinkStore(env);
+  ports.push(accounts);
+  // Reaching this semantic refusal proves the production SHARE lock and receipt read succeeded.
+  await assert.rejects(accounts.createAccount({ email: "lock-subject@example.invalid", principalId: subject, acquisitionSource: "direct", lifecycleStage: "lead" }), /account_erased_refused/u);
+  await assert.rejects(runtime.query(`UPDATE public.identity_privacy_erasures
+    SET completed_at='2026-01-04T00:00:00Z' WHERE erasure_id=$1 RETURNING erasure_id`, [receiptId]), { code: "42501" });
+  assert.deepEqual((await runtime.query("SELECT * FROM public.identity_privacy_erasures WHERE erasure_id=$1", [receiptId])).rows, receiptBefore);
+  await assertRuntime(runtime);
+}
+
+async function prove() {
+  const started = performance.now();
+  const fixtureUrl = new URL(input.connectionString);
+  assert.equal(fixtureUrl.hostname, "127.0.0.1");
+  assert.ok(fixtureUrl.port);
+  assert.equal(fixtureUrl.username, "postgres");
+  assert.equal(fixtureUrl.password, "synthetic-conformance");
+  assert.equal(fixtureUrl.pathname, "/postgres");
+  assert.equal(fixtureUrl.search, "");
+  assert.match(import.meta.resolve("@openlup/platform/migrations"), /\/dist\/migrations\/index\.js$/u);
+  const manifest = selectPlatformMigrationManifest(JSON.parse(readFileSync("config/platform-migration-manifest.json", "utf8")), "qualified-v2", {
+    migrationIsBootstrap: selection.migrationLogin === selection.bootstrapLogin, hasRestore: selection.restoreLogin !== undefined,
+  });
+  assert.equal(manifest.objectInventorySha256, input.expectedInventory);
+  const expected = [manifest.baseline, ...manifest.forward];
+  assert.equal(expected.length, 89);
+  for (const entry of expected) assert.equal(digest(readFileSync(entry.file, "utf8")), entry.sha256);
+
+  // Rename OID 10 through a temporary setup login: both reference and target
+  // then use their actual declared names, including the aliased M/bootstrap shape.
+  const original = pool(input.connectionString);
+  await original.query(`CREATE ROLE q2_fixture_setup LOGIN SUPERUSER PASSWORD '${password}'`);
+  const setup = pool(loginUrl("q2_fixture_setup"));
+  await setup.query(`ALTER ROLE postgres RENAME TO ${identifier(selection.bootstrapLogin)}`);
+  await original.end();
+  await setup.end();
+  const bootstrap = pool(loginUrl(selection.bootstrapLogin, "synthetic-conformance"));
+  await bootstrap.query("DROP ROLE q2_fixture_setup");
+  if (selection.migrationLogin !== selection.bootstrapLogin) {
+    await bootstrap.query(`CREATE ROLE ${identifier(selection.migrationLogin)} LOGIN INHERIT SUPERUSER
+      NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD '${password}'`);
+    await bootstrap.query(`ALTER DATABASE postgres OWNER TO ${identifier(selection.migrationLogin)}`);
+  }
+  for (const name of [selection.runtimeLogin, ...(selection.restoreLogin === undefined ? [] : [selection.restoreLogin])]) {
+    await bootstrap.query(`CREATE ROLE ${identifier(name)} LOGIN NOINHERIT NOSUPERUSER
+      NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS PASSWORD '${password}'`);
+  }
+  if (selection.roleMode === "operator-provisioned") {
+    for (const name of ["anon", "authenticated", "service_role", "platform_acquisition_owner", "platform_acquisition_runtime", "openlup_retained_import_owner"]) {
+      await bootstrap.query(`CREATE ROLE ${identifier(name)} NOLOGIN NOINHERIT NOSUPERUSER
+        NOCREATEDB NOCREATEROLE NOREPLICATION NOBYPASSRLS`);
+    }
+    for (const name of ["anon", "authenticated", "service_role", "platform_acquisition_runtime"]) {
+      await bootstrap.query(`GRANT ${identifier(name)} TO ${identifier(selection.runtimeLogin)}
+        WITH ADMIN FALSE, INHERIT ${name === "service_role" ? "TRUE" : "FALSE"}, SET TRUE`);
+    }
+  }
+  const connectionString = loginUrl(selection.migrationLogin,
+    selection.migrationLogin === selection.bootstrapLogin ? "synthetic-conformance" : password);
+  const runner = createPostgresMigrationRunner({ connectionString }, { installation: selection });
+  const before = await runner.status();
+  assert.deepEqual(before, { applied: [], pending: expected.map(entry => entry.file) });
+  const appliedNow = await runner.apply();
+  assert.deepEqual(appliedNow, { applied: expected.map(entry => entry.file) });
+  const ledger = async () => (await bootstrap.query("SELECT catalog_path,sha256,position,executed_at::pg_catalog.text FROM public.platform_schema_migrations ORDER BY position")).rows;
+  const installed = await ledger();
+  assert.deepEqual(installed.map(({ executed_at: _time, ...row }) => row), expected.map((entry, position) => ({ catalog_path: entry.file, sha256: entry.sha256, position })));
+  const healthy = { applied: expected.map(entry => entry.file), pending: [] };
+  const after = await runner.status();
+  assert.deepEqual(after, healthy);
+  const replay = await runner.apply();
+  assert.deepEqual(replay, { applied: [] });
+  assert.deepEqual(await ledger(), installed);
+  // Observe the actual production payload independently under its real session
+  // lock. This is a measured result compared to the prior pin, never an override.
+  const observerUrl = new URL(connectionString);
+  observerUrl.searchParams.set("options", qualifiedPostgresStartupOptions(selection));
+  const observer = pool(observerUrl.toString());
+  const client = await observer.connect();
+  let inventorySha256: string;
+  try {
+    assert.deepEqual((await client.query("SELECT current_user AS migration, session_user AS session")).rows,
+      [{ migration: selection.migrationLogin, session: selection.migrationLogin }]);
+    await client.query("SELECT pg_catalog.pg_advisory_lock(pg_catalog.hashtextextended($1,0))", [lockName]);
+    inventorySha256 = digest(await qualifiedPostgresCatalogPayload(client, selection, lockName));
+    assert.equal(inventorySha256, input.expectedInventory);
+  } finally {
+    await client.query("SELECT pg_catalog.pg_advisory_unlock(pg_catalog.hashtextextended($1,0))", [lockName]);
+    client.release();
+  }
+  await proveRuntimeLockPrivileges(bootstrap);
+  assert.deepEqual(await runner.status(), healthy);
+  assert.deepEqual(await ledger(), installed);
+  if (input.discriminators) {
+    const originalComment = (await bootstrap.query("SELECT pg_catalog.col_description('public.clients'::pg_catalog.regclass,attnum) AS comment FROM pg_catalog.pg_attribute WHERE attrelid='public.clients'::pg_catalog.regclass AND attname='email'")).rows[0].comment;
+    await bootstrap.query("COMMENT ON COLUMN public.clients.email IS 'm14 qualification inventory mutant'");
+    try {
+      for (const operation of [() => runner.status(), () => runner.apply({ dryRun: true }), () => runner.apply()]) {
+        await assert.rejects(operation, /platform migration inventory rejected: platform migration manifest: object inventory SHA-256 mismatch/u);
+      }
+      assert.deepEqual(await ledger(), installed);
+    } finally {
+      const restore = (await bootstrap.query("SELECT pg_catalog.format('COMMENT ON COLUMN public.clients.email IS %L',$1::pg_catalog.text) AS sql", [originalComment])).rows[0].sql;
+      await bootstrap.query(restore);
+    }
+    assert.deepEqual(await runner.status(), healthy);
+
+    // A separate session capability refusal, not the inventory mismatch above.
+    await bootstrap.query("GRANT SET ON PARAMETER session_replication_role TO anon");
+    try {
+      for (const operation of [() => runner.status(), () => runner.apply({ dryRun: true }), () => runner.apply()]) {
+        await assert.rejects(operation, /qualified PostgreSQL installation refused: runtime_ddl_or_replication_capability_unsafe/u);
+      }
+      assert.deepEqual(await ledger(), installed);
+    } finally { await bootstrap.query("REVOKE SET ON PARAMETER session_replication_role FROM anon"); }
+    assert.deepEqual(await runner.status(), healthy);
+
+    // Exact public overloads can beat implicitly first pg_catalog candidates.
+    // Their definitions intentionally change inventory; qualification must reach
+    // that precise refusal without invoking either function, including pre-hook
+    // lock acquisition/release and the catalog namespace filter.
+    await bootstrap.query(`CREATE TABLE public.q2_shadow_calls(kind pg_catalog.text NOT NULL);
+      CREATE FUNCTION public.left(value pg_catalog.name, size pg_catalog.int4)
+        RETURNS pg_catalog.text LANGUAGE plpgsql VOLATILE AS $$
+      BEGIN INSERT INTO public.q2_shadow_calls VALUES ('left'); RETURN pg_catalog.left(value::pg_catalog.text,size); END $$;
+      CREATE FUNCTION public.hashtextextended(value pg_catalog.text, seed pg_catalog.int4)
+        RETURNS pg_catalog.int8 LANGUAGE plpgsql VOLATILE AS $$
+      BEGIN INSERT INTO public.q2_shadow_calls VALUES ('hashtextextended'); RETURN pg_catalog.hashtextextended(value,seed::pg_catalog.int8); END $$;`);
+    try {
+      for (const operation of [() => runner.status(), () => runner.apply({ dryRun: true }), () => runner.apply()]) {
+        await assert.rejects(operation, /platform migration inventory rejected: platform migration manifest: object inventory SHA-256 mismatch/u);
+      }
+      assert.deepEqual((await bootstrap.query("SELECT kind FROM public.q2_shadow_calls")).rows, []);
+      assert.deepEqual(await ledger(), installed);
+    } finally {
+      await bootstrap.query(`DROP FUNCTION public.left(pg_catalog.name,pg_catalog.int4);
+        DROP FUNCTION public.hashtextextended(pg_catalog.text,pg_catalog.int4);
+        DROP TABLE public.q2_shadow_calls`);
+    }
+    assert.deepEqual(await runner.status(), healthy);
+
+    await bootstrap.query(`CREATE SCHEMA q2_shadow;
+      CREATE TABLE q2_shadow.calls(kind pg_catalog.text NOT NULL);
+      CREATE FUNCTION q2_shadow.current_database() RETURNS pg_catalog.name LANGUAGE plpgsql VOLATILE AS $$
+      BEGIN INSERT INTO q2_shadow.calls VALUES ('current_database'); RETURN pg_catalog.current_database(); END $$;
+      CREATE FUNCTION q2_shadow.pg_get_userbyid(value pg_catalog.oid) RETURNS pg_catalog.name LANGUAGE plpgsql VOLATILE AS $$
+      BEGIN INSERT INTO q2_shadow.calls VALUES ('pg_get_userbyid'); RETURN pg_catalog.pg_get_userbyid(value); END $$;`);
+    await bootstrap.query(`ALTER ROLE ${identifier(selection.migrationLogin)} IN DATABASE postgres SET search_path TO q2_shadow, pg_catalog, public`);
+    try {
+      const shadow = createPostgresMigrationRunner({ connectionString }, { installation: selection });
+      for (const operation of [() => shadow.status(), () => shadow.apply({ dryRun: true }), () => shadow.apply()]) {
+        await assert.rejects(operation, /qualified PostgreSQL installation refused: qualified_profile_requires_canonical_search_path/u);
+      }
+      assert.deepEqual((await bootstrap.query("SELECT kind FROM q2_shadow.calls")).rows, []);
+      assert.deepEqual(await ledger(), installed);
+    } finally {
+      await bootstrap.query(`ALTER ROLE ${identifier(selection.migrationLogin)} IN DATABASE postgres RESET search_path`);
+      await bootstrap.query("DROP SCHEMA q2_shadow CASCADE");
+    }
+    const recovered = createPostgresMigrationRunner({ connectionString }, { installation: selection });
+    assert.deepEqual(await recovered.status(), healthy);
+    assert.deepEqual(await recovered.apply(), { applied: [] });
+    assert.deepEqual(await ledger(), installed);
+  }
+  return { inventorySha256, ledgerRows: installed.length, pendingBefore: before.pending.length, appliedNow: appliedNow.applied.length,
+    pendingAfter: after.pending.length, replayApplied: replay.applied.length, runtimeLockPrivilegesProved: true,
+    discriminators: input.discriminators, elapsedMs: Math.round(performance.now() - started) };
+}
+
+let exitCode = 0;
+try {
+  const result = await prove();
+  await new Promise<void>((resolve, reject) => process.stdout.write(`${JSON.stringify(result)}\n`, error => error ? reject(error) : resolve()));
+} catch (error) {
+  exitCode = 1;
+  console.error(error);
+} finally {
+  const closedPorts = await Promise.allSettled(ports.map(value => value.close()));
+  if (closedPorts.some(result => result.status === "rejected")) exitCode = 1;
+  const closing = await Promise.allSettled(pools.filter(value => !value.ended).map(value => value.end()));
+  if (closing.some(result => result.status === "rejected")) exitCode = 1;
+}
+// Every runner call is awaited; exiting releases only this child's hidden pools.
+process.exit(exitCode);

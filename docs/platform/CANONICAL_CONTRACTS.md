@@ -553,11 +553,19 @@ privileges and complete catalogue installation are described in
 
 The exact qualified-installation source approvals in
 [`reviewed-platform-forwards.json`](../../config/reviewed-platform-forwards.json)
-are control inputs, not an installed catalogue. Their five inert fixtures and
-the legacy-preserving version-2 reader follow the
+are control inputs, not installation evidence. The five inert fixtures and the
+legacy-preserving version-2 source catalogue follow the
 [migration owner](DATA_AND_MIGRATIONS.md#module-catalogues-and-installed-histories).
 Introducing approved SQL still requires the separately landed control route;
 these pins grant no activation or managed-host compatibility.
+
+The reference qualified selection declares actual migration/bootstrap/runtime
+and optional restore principals; omitted selection remains legacy. Its E-only
+89-unit inventories distinguish the four binding shapes. Qualified projection
+normalizes declared principal fields only after session and role checks; the
+legacy 88-unit identities and inventory remain unchanged. These source bindings
+still require production and installed qualification, as described by the
+migration owner above.
 
 The account-support reference capability manifest declares default-off,
 explicit-host registration and an empty route list. It is descriptive metadata,
