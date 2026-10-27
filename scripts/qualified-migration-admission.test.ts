@@ -2,7 +2,10 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { afterEach, expect, it } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
+import { RECEIPT_MARKER } from "./agent-review-decide.mjs";
+import { waitNativeAdmission } from "./agent-review-queue.mjs";
+import { git as readGit } from "./agent-review-session.mjs";
 import { assertAdmittedPlatformForward } from "./oss-source-release-contract.js";
 import {
   QUALIFIED_ACQUISITION_FILE, QUALIFIED_ACTOR_FILE, QUALIFIED_BASELINE_FILE, QUALIFIED_RUNTIME_FILE,
@@ -11,6 +14,12 @@ import {
   assertCoLocatedForwardApproval, assertForwardApproval, assertReviewedPlatformForward,
   readReviewedForwardRegistry, REVIEWED_FORWARD_PATH, sqlSha256, type ReviewedForwardRegistry,
 } from "./reviewed-platform-forward.js";
+
+// Observe both trusted entry points without replacing their actual Git/SQL checks.
+vi.mock("./reviewed-platform-forward.js", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./reviewed-platform-forward.js")>();
+  return { ...actual, assertCoLocatedForwardApproval: vi.fn(actual.assertCoLocatedForwardApproval) };
+});
 
 const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
@@ -33,7 +42,7 @@ function fixture() {
   put("scripts/platform-migration-manifest.ts", "// existing control fixture\n");
   const base = commit("existing controls");
   const approved = { ...registry, qualifiedInstallations: paths.map((path, index) => ({ path, sha256: sqlSha256(bodies[index]!) })) };
-  return { root, put, commit, base, approved };
+  return { root, put, commit, git, base, approved };
 }
 
 it("reads only the fixed ordered qualified identities with exact digest fields", () => {
@@ -80,6 +89,52 @@ it("refuses machinery changes alongside new qualified SQL with unchanged pins", 
   f.put("scripts/platform-migration-manifest.ts", "// changed machinery\n");
   const feature = f.commit("change machinery with qualified SQL");
   expect(() => assertCoLocatedForwardApproval(f.root, control, feature)).toThrow("machinery must be approved separately");
+});
+
+it.each([
+  ["pull_request", false], ["pull_request", true],
+  ["merge_group", false], ["merge_group", true],
+] as const)("trusted %s admission checks unchanged qualified pins with machinery change=%s", async (eventName, changesMachinery) => {
+  const f = fixture();
+  f.put(REVIEWED_FORWARD_PATH, encode(f.approved));
+  const control = f.commit("approve exact qualified bytes before feature");
+  f.put(paths[0]!, bodies[0]!);
+  if (changesMachinery) f.put("scripts/platform-migration-manifest.ts", "// changed machinery\n");
+  const head = f.commit("introduce qualified SQL with unchanged prior pins");
+  expect(f.git("diff", "--name-only", control, head)).not.toContain(REVIEWED_FORWARD_PATH);
+  const tree = f.git("rev-parse", `${head}^{tree}`);
+  const groupHead = f.git("commit-tree", tree, "-p", control, "-p", head, "-m", "synthetic merge group");
+  // Synthetic API data tests the admission route; it is not task review evidence.
+  const now = 1_000;
+  const receipt = { pr: 12, base: control, head, tree, risk: "behavior", reviewers: ["synthetic-review-a", "synthetic-review-b"],
+    verdict: "PASS", expires: now + 86_400_000, sessionDigest: "a".repeat(64) };
+  const event = { number: 12, repository: { private: false }, pull_request: { head: { sha: head } }, action: "checks_requested",
+    merge_group: { base_ref: "refs/heads/main", head_ref: `refs/heads/gh-readonly-queue/main/pr-12-${groupHead}`, base_sha: control, head_sha: groupHead } };
+  const api = { get: vi.fn(async (path: string) => {
+    if (path.includes("/collaborators/")) return { permission: "write" };
+    if (path.includes("/issues/")) return [{ id: 1, body: `${RECEIPT_MARKER}\n\`\`\`json\n${JSON.stringify(receipt)}\n\`\`\``, user: { login: "synthetic-supervisor", type: "User" } }];
+    if (path.includes("/pulls/")) return { number: 12, state: "open", draft: false, merged: false, base: { ref: "main" }, head: { sha: head } };
+    if (path.endsWith("/git/ref/heads/main")) return { object: { sha: control } };
+    throw new Error(`unexpected synthetic API read: ${path}`);
+  }) };
+  const runGit = vi.fn(async (cwd: string, ...args: string[]) => {
+    // All objects already exist in this owned fixture. Only network transport is omitted.
+    if (args.includes("fetch")) return "";
+    return readGit(cwd, ...args);
+  });
+  const guard = vi.mocked(assertCoLocatedForwardApproval);
+  guard.mockClear();
+  const log = vi.spyOn(console, "log").mockImplementation(() => {});
+  try {
+    const admission = waitNativeAdmission({ event, env: { GITHUB_REPOSITORY: "openlup/openlup", GITHUB_EVENT_NAME: eventName },
+      api, cwd: f.root, runGit, now: () => now, sleep: async () => { throw new Error("unexpected admission poll"); } });
+    if (changesMachinery) await expect(admission).rejects.toThrow("machinery must be approved separately");
+    else await expect(admission).resolves.toEqual(receipt);
+    expect(guard.mock.calls).toEqual([
+      [f.root, control, head, control],
+      ...(!changesMachinery && eventName === "merge_group" ? [[f.root, control, groupHead, control]] : []),
+    ]);
+  } finally { log.mockRestore(); }
 });
 
 it("does not let a later exact pin repair an unapproved SQL introduction", () => {

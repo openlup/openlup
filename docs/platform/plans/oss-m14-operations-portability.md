@@ -24,15 +24,19 @@ every diff.
 
 ### E1 source-only continuation, 27 October 2026
 
-The active supervisor relayed the owner's current limit for this run: inspect
-and repair source only, with no tests, verification, installs, builds, lint,
-gates, independent reviewers, commits, pushes or external writes. Drafts stay
-drafts. This temporary execution boundary supersedes the broader delivery grant
-above for this run; it does not waive any proof or authorize later delivery.
+The active supervisor relayed the owner's current limit for this run: prepare
+all source fixes and regression source here, with no execution of tests,
+verification, installs, builds, lint or gates, and no counted native reviews,
+commits, pushes or external writes. The stronger machine only runs measurements,
+tests and verification and returns results; source repair remains here. Drafts
+stay drafts. This temporary execution boundary supersedes the broader delivery
+grant above for this run; it does not waive any proof or authorize later delivery.
 
 E1 remains in `/private/tmp/openlup-m14-qualified-install-controls`, branch
 `codex/oss-m14-qualified-install-controls`, checkpoint
-`0b4517be8000352be4659e4be2320163b1db9650`, draft
+`0b4517be8000352be4659e4be2320163b1db9650`, with the first receiving source
+corrections subsequently checkpointed by the supervisor at
+`d3996e385003dce41e7cf00b53eb254ddc70810b`, draft
 [PR #402](https://github.com/openlup/openlup/pull/402). Its
 [historical handoff](https://github.com/openlup/openlup/pull/402#issuecomment-6449955741)
 and [coordinator handoff](https://github.com/openlup/openlup/pull/402#issuecomment-6449957049)
@@ -59,6 +63,17 @@ It adds no validator, bypass, fallback or extra query. The optional
 validation under the existing lock and before pending SQL/status/dry-run;
 no hook change was justified by this inspection.
 
+Later E2 source tracing found a reachable pre-hook resolution gap in the same
+runner: unqualified lock/hash and ledger-existence calls execute before session
+admission. The source correction adds three private catalog-bound SQL constants
+selected only when `source.assertSession` is defined, passing one private boolean
+through the existing session/prefix helpers. No extra query, session mutation,
+public flag or new runner is introduced. Existing hook transcript assertions now
+expect bound acquire/lookup/release, with prepared successful status/dry-run,
+explicit-undefined legacy-transcript and prefix-mismatch-before-hook cases.
+Default/undefined-hook query strings remain exact. These cases remain unexecuted;
+the stronger machine must prove lock-key equivalence and hostile-name refusal.
+
 The E/F coordinator supplied the optional fifth prior-control binding and inert
 fixture for the existing retained-import SQL, SHA-256
 `56144f8e61b649c9d9f48458a1734abcc8bbd8d36fdc3919d90ceb1bc35d3b48`.
@@ -71,28 +86,42 @@ E1 must actually land as trusted controls before E2 or F delivery.
 
 The historical focused batch remains 739 PASS / 16 FAIL across five files.
 Read-only tracing shows that synthetic pgTAP lifecycle fixtures replace external
-commands on PATH but retain actual `node:net` loopback binds. `available()` maps
-every socket error to false, so denied binds as well as occupied ports can reach
+commands on PATH but retain actual `node:net` loopback binds. The checkpoint's
+`available()` mapped every socket error to false, so denied binds as well as occupied ports could reach
 the same final "no free port block" error before image/start/replay stages.
 The historical errno was not retained here. This does not establish an
 environmental cause or exclude a regression; all 16 failures remain unresolved.
-No generic port, fixture or refusal change was made. Earlier fragment-row and
-PATH failures and the required regroup remain part of the handoff history.
+The new diagnostic correction retries only `EADDRINUSE` and reports other bind
+errors with their errno and exact loopback port; it still refuses before stack
+startup. The 50-attempt budget and seven probes per block are unchanged. Three
+prepared lifecycle cases inject `EPERM`, `EACCES` and `EADDRINUSE` using the
+existing subprocess fixture and assert immediate named refusal or bounded
+occupancy exhaustion, with no stack commands. They have not run. Earlier
+fragment-row and PATH failures and the required regroup remain in the history.
+
+Four prepared cases extend the existing real-Git qualified-admission witness
+through actual `waitNativeAdmission`: pull-request and merge-group events each
+accept ordinary separately approved additions with unchanged pins and refuse a
+simultaneous machinery edit. The real co-location guard is observed through a
+call-through spy, including both source and group invocations on group success;
+the fixture replaces API responses and omits only fetching already-local Git
+objects. Synthetic receipt data is fixture input, never task review evidence.
 
 No executable check was run in this continuation. Required next proof includes
-a regression witness through actual queue admission for qualified additions with
-unchanged pins and changed machinery, acceptance without that machinery delta,
-source and merge-group coverage, optional fifth-binding/fixture integrity,
-current pgTAP diagnosis, package hook/native-session proof, API/build/pack and
+execution of these prepared queue and socket cases, optional fifth-binding/fixture
+integrity, current pgTAP diagnosis, package hook/native-session proof, API/build/pack and
 owner/budget checks, two fresh full native reviews and the canonical full gate.
 No native session is initialized: cycles remain 0/3, with no PASS or expiry.
 No candidate DCO, receipt, readiness, admission or merge claim follows from these
-local edits; no budget was raised. All changes remain uncommitted.
+local edits; no budget was raised. New edits since `d3996e38` remain uncommitted.
 
 Self-retro: the missing caller condition showed why a validator-only fixture
 cannot prove trusted admission is wired. Reusing the existing guard was the
-smallest adequate correction. The port failure's discarded errno limits static
-diagnosis, so preserve that uncertainty until an authorized executable run.
+smallest adequate correction. Extending the real Git witness reaches the actual
+caller, and preserving socket errno removes a diagnostic ambiguity without a
+new selector or retry policy. Admission cannot protect lookup functions that run
+before it; binding those existing calls closes that source gap without changing
+legacy transcripts. Historical causality still needs an authorized run.
 
 The module preserves operational behavior while supplying public lifecycle
 capabilities for an existing synthetic store: compatible install/upgrade,
@@ -462,3 +491,116 @@ The original two `withRestore` registration step and all target proof remain owe
 Self-retro: one finite raw schema fixture avoids adding a second migrator or
 relaxing the production runner's required expected inventory. No measurement or
 qualification result is claimed from static source preparation.
+
+
+## E2 production-composition proof source, 27 October 2026
+
+The owner's receiving-session instruction now requests all necessary source
+corrections here, with measurements/tests/verification executed only on the
+stronger proving machine. This work starts from E2
+`1c52d71aaa76a59b751b526fa5b8c253df5d72a4`. No tests, builds, lint, installs,
+gates, commits, push or external writes ran in this source-only preparation.
+No native history, findings, cycles or prior expiry was changed. Additional
+test-source author `01a17e98-726c-7263-871e-44c8cd68410a` (`/root/m14_cd`)
+is excluded from later independent review alongside every existing author and
+coordinator. This is authored proof source, not counted independent review.
+
+The smallest complete witness is
+`tests/postgres/m14QualifiedComposition.test.ts` and its one-installation child
+`m14QualifiedComposition.proof.ts`. It defines exactly four installer-managed
+production references and four fresh operator-provisioned targets, covering
+migration/bootstrap aliased or separate and restore absent or present. Reference
+names use `q2_reference_*`; target names use `q2_target_*`. The temporary setup
+login renames actual bootstrap OID 10 and is dropped before admission. No name
+alias, target-derived expected digest or extra four-install matrix is introduced.
+
+Every child uses the actual production reference binding, default startup/pool
+transport and public `@openlup/platform/migrations` built export. There is no
+root, pool, source, projector or expectation override. A separate measured
+payload observation uses the same production startup-options helper under the
+actual migration login and held lock; its result must equal the unchanged prior
+pin. Each profile checks pending status, apply, complete status, empty replay
+and all 89 exact path/digest/position ledger rows. These are eight new production
+checks; the four historical source-reference derivations remain historical.
+
+Only the already-healthy separate-migrator/with-restore target adds the
+discriminators: a column-comment mutation must reach the precise object-inventory
+SHA refusal with unchanged ledger timestamps; after restoration healthy status
+must recover. A separate SET-reachable parameter capability grant must reach
+the unsafe-session refusal, retain the ledger and recover after revocation.
+The canonical-search-path discriminator adds exact public `left(name,int4)` and
+`hashtextextended(text,int4)` overloads: observations and pre-hook lock handling
+must invoke neither, then reach the precise inventory refusal for the added
+definitions. After cleanup, healthy status must recover. An application-first
+role-default search_path with writing shadow functions must separately refuse
+as `qualified_profile_requires_canonical_search_path` with zero shadow calls;
+resetting the default and removing that schema must recover healthy status and
+empty replay. These are prepared regressions for the supervisor's coordinated
+facts/catalog/qualified-executor symbol binding, not evidence those changes pass.
+
+The existing disposable PostgreSQL helper owns each container and removes it
+in a finally block, including child failure/timeout. Every runner operation is
+awaited. Explicit observer/setup pools close before child exit; child lifetime
+then releases the production runner's hidden default pools without adding a
+production close API. The two source paths are registered in the existing public
+catalogue. The supervisor places the child's exact execution-entrypoint
+registration in prior E1 controls, preserving the prohibition on co-changing
+admission machinery with E2's new qualified SQL; E2 changes no classifier or
+entrypoint machinery. Frozen SQL, fixture bytes, manifest and four pins remain
+unchanged. The known frozen actor-SQL EOF issue is retained.
+
+Proving-machine commands from the E2 checkout, after its normal pinned
+Node/npm/dependency setup (not executed here):
+
+```sh
+npm test -- --project=node tests/postgres/m14QualifiedComposition.test.ts
+npm test -- --project=node tests/postgres/m14QualifiedBaseline.test.ts tests/postgres/m14QualifiedSession.test.ts tests/postgres/m14MigrationSessionAdmission.test.ts server/adapters/postgres/qualifiedInstall.test.ts
+```
+
+The first command includes the existing prerequisite builds and eight sequential
+owned installations; logs distinguish each reference/target, actual measured
+inventory, exact ledger count and elapsed time. Missing Docker is a failure,
+not a skip. The second is the existing focused regression selection. These do
+not replace required policy/navigation, coverage, cold/installed/legacy/full
+checks, measurements, committed native review and authorized delivery. If
+execution exposes a source defect, return its exact failure to this authoring
+session rather than changing SQL, pins or expectations on the proving machine.
+
+Self-retro: a process-lifetime child exercises the real hidden-pool composition
+without a test seam or new production API. Sharing the four prior pins between
+two explicit modes yields the required eight checks, while applying destructive
+discriminators to one restored healthy target avoids redundant installations.
+
+
+### Receiving coordinator source-freeze addendum
+
+Root completed the qualified session-facts bindings and the effective-path
+refusal before deparser use. Author 01a17e98-8264-7033-a2d1-0d3c8479ca3b also
+bound lookup symbols in the shared static selected-catalog query and its three
+fragments; query identities, serializers, expected hashes and SQL assets remain
+unchanged. This author remains excluded from subsequent independent E2 review.
+The owner explanation links the prepared eight-case production witness.
+
+The concrete reachable cause was path resolution of unqualified catalog names,
+including exact public overloads despite an implicitly first pg_catalog. Merely
+checking canonical path would not close that mechanism. Reusing the fixed query
+with qualified symbols preserves the expected canonical payload without a new
+projector variant, parser, session SET or replacement inventory. Canonical
+legacy output and frozen E-only hashes still need actual proving-machine
+execution. The effective-path check is for stable catalog rendering; it does
+not claim isolation from PostgreSQL native deparser/type-output implementations.
+
+All source edits remain here under the owner's latest instruction. The
+stronger-machine session may only run the prepared measurement/test/verify
+commands and return results; it must not implement further repairs. No local
+execution, PASS, native cycle or budget change occurred in this source phase.
+
+
+### Receiving coordinator source-freeze addendum
+
+The receiving coordinator also registered the exact future E2 child entrypoint
+in the existing closed execution inventory and documented it in CONTRIBUTING.
+The entry registration is control-only here, before E2 source introduction; it
+changes no classifier or exception. All further source repairs remain on this
+Daybreak-capable machine. The stronger machine may only execute the supplied
+measurements/tests/verify and return evidence; defects return here for repair.

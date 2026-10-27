@@ -337,12 +337,32 @@ production apply/status/replay qualification. Built and installed composition,
 the second role mode with changed actual names, healthy inventory mutation and
 separate unsafe-session refusal remain required before claiming readiness.
 
+The session facts and selected-catalog observation bind built-in relations,
+functions, cast types, operators and collation to `pg_catalog`. This also covers
+exact application overloads that can otherwise win function resolution even
+when the catalog is implicitly first. Before deparsing the selected catalogue,
+qualified admission requires effective schema visibility exactly
+`pg_catalog, public`; it refuses a different path without changing it. This
+retains the visibility under which the frozen inventories were derived. It
+does not sandbox PostgreSQL's own deparser or native type-output routines.
+The shared projector retains its legacy payload format and query identities;
+canonical legacy bytes and existing E-only pins still require execution proof.
+
+The prepared
+[production composition witness](../../tests/postgres/m14QualifiedComposition.test.ts)
+runs four fixed-pin references and four fresh targets through the real binding
+and built package executor. One healthy target supplies the inventory, unsafe
+session and shadow-symbol discriminators before recovering to the same ledger.
+This source has not been executed on the receiving machine.
+
 The experimental trusted-source `PlatformMigrationSource.assertSession` callback
 runs once under the existing session advisory lock after exact-prefix validation
 and before status, dry-run or pending SQL. It can refuse changed host/login facts;
 it shares the source's existing database capability, not a sandbox or per-unit
 provisioning boundary. Sources omitting it retain their existing queries and
-execution. The later qualified source owns its finite read-only checks.
+execution. With a hook present, the preceding lock/hash and ledger-existence
+functions bind to `pg_catalog` before admission; release uses the same bound
+lock identity. The later qualified source owns its finite read-only checks.
 
 Several modules in one distribution need a deterministic migration catalogue
 before they can be installed together. Declare their dependency order and

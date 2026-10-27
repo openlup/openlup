@@ -2155,6 +2155,15 @@ A new or renamed path needs its authored row in
 nested directories and other extensions refuse. The catalogue remains an
 explicit classification and execution inventory, not a generated list.
 
+The bounded qualified-installation witness declares its exact child path
+`tests/postgres/m14QualifiedComposition.proof.ts` in that existing execution
+inventory. The control-only registration precedes the E2 source: it permits no
+other child path and changes neither entrypoint detection nor fixture rules.
+The adjacent Vitest witness owns each disposable database and the child lifetime
+used to close the production runner's internal pool. This is preparation for
+four fixed-pin reference checks and four other-mode targets, not an observed
+qualification result.
+
 For a notable package change, add a uniquely named
 `packages/<core|outbox|platform>/changes/<programme>-<slice>.md` fragment instead
 of editing CHANGELOG. Use ordinary bullets, optional `###` subsections, useful

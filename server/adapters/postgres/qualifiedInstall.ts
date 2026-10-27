@@ -57,42 +57,45 @@ export function qualifiedPostgresStartupOptions(value: QualifiedPostgresInstalla
 }
 
 const SESSION_FACTS_SQL = String.raw`
-SELECT current_user::text AS current_user,session_user::text AS session_user,
-  (SELECT rolname::text FROM pg_catalog.pg_roles WHERE oid=10) AS bootstrap_login,
-  (SELECT pg_catalog.pg_get_userbyid(datdba) FROM pg_catalog.pg_database WHERE datname=current_database()) AS database_owner,
-  current_setting('server_version_num')::integer AS server_version_num,
-  current_setting('session_replication_role') AS replication_role,
-  current_setting('openlup.qualified.runtime_login',true) AS runtime_setting,
-  current_setting('openlup.qualified.restore_login',true) AS restore_setting,
-  current_setting('openlup.qualified.role_mode',true) AS mode_setting,
-  to_regclass('public.platform_schema_migrations') IS NOT NULL AS ledger_exists,
-  (SELECT pg_catalog.pg_get_userbyid(relowner) FROM pg_catalog.pg_class WHERE oid=to_regclass('public.platform_schema_migrations')) AS ledger_owner,
-  EXISTS (SELECT 1 FROM pg_catalog.pg_locks WHERE pid=pg_backend_pid() AND locktype='advisory' AND granted AND objsubid=1
-    AND classid=((hashtextextended($3,0)>>32)&4294967295)::oid
-    AND objid=(hashtextextended($3,0)&4294967295)::oid
-    AND database=(SELECT oid FROM pg_catalog.pg_database WHERE datname=current_database())) AS session_lock_held,
+SELECT current_user::pg_catalog.text AS current_user,session_user::pg_catalog.text AS session_user,
+  pg_catalog.current_schemas(true)::pg_catalog.text[] AS effective_search_path,
+  (SELECT rolname::pg_catalog.text FROM pg_catalog.pg_roles WHERE oid OPERATOR(pg_catalog.=) 10) AS bootstrap_login,
+  (SELECT pg_catalog.pg_get_userbyid(datdba) FROM pg_catalog.pg_database WHERE datname OPERATOR(pg_catalog.=) pg_catalog.current_database()) AS database_owner,
+  pg_catalog.current_setting('server_version_num')::pg_catalog.int4 AS server_version_num,
+  pg_catalog.current_setting('session_replication_role') AS replication_role,
+  pg_catalog.current_setting('openlup.qualified.runtime_login',true) AS runtime_setting,
+  pg_catalog.current_setting('openlup.qualified.restore_login',true) AS restore_setting,
+  pg_catalog.current_setting('openlup.qualified.role_mode',true) AS mode_setting,
+  pg_catalog.to_regclass('public.platform_schema_migrations') IS NOT NULL AS ledger_exists,
+  (SELECT pg_catalog.pg_get_userbyid(relowner) FROM pg_catalog.pg_class WHERE oid OPERATOR(pg_catalog.=) pg_catalog.to_regclass('public.platform_schema_migrations')) AS ledger_owner,
+  EXISTS (SELECT 1 FROM pg_catalog.pg_locks WHERE pid OPERATOR(pg_catalog.=) pg_catalog.pg_backend_pid()
+    AND locktype OPERATOR(pg_catalog.=) 'advisory' AND granted AND objsubid OPERATOR(pg_catalog.=) 1
+    AND classid OPERATOR(pg_catalog.=) ((pg_catalog.hashtextextended($3,0) OPERATOR(pg_catalog.>>) 32) OPERATOR(pg_catalog.&) 4294967295)::pg_catalog.oid
+    AND objid OPERATOR(pg_catalog.=) (pg_catalog.hashtextextended($3,0) OPERATOR(pg_catalog.&) 4294967295)::pg_catalog.oid
+    AND database OPERATOR(pg_catalog.=) (SELECT oid FROM pg_catalog.pg_database WHERE datname OPERATOR(pg_catalog.=) pg_catalog.current_database())) AS session_lock_held,
   EXISTS (SELECT 1 FROM pg_catalog.pg_default_acl) AS default_privileges_exist,
   -- The exact admitted membership graph permits these SET targets even when
   -- INHERIT is false. Their capabilities must be denied before normalization.
   EXISTS (SELECT 1 FROM pg_catalog.pg_roles r WHERE
-    (r.rolname=$1 OR r.rolname IN ('anon','authenticated','service_role','platform_acquisition_runtime')) AND
-    (pg_catalog.has_database_privilege(r.oid,current_database(),'CREATE')
-    OR EXISTS (SELECT 1 FROM pg_catalog.pg_namespace n WHERE left(n.nspname,3)<>'pg_' AND n.nspname<>'information_schema' AND pg_catalog.has_schema_privilege(r.oid,n.oid,'CREATE'))
+    (r.rolname OPERATOR(pg_catalog.=) $1 OR r.rolname OPERATOR(pg_catalog.=) ANY(ARRAY['anon','authenticated','service_role','platform_acquisition_runtime']::pg_catalog.name[])) AND
+    (pg_catalog.has_database_privilege(r.oid,pg_catalog.current_database(),'CREATE')
+    OR EXISTS (SELECT 1 FROM pg_catalog.pg_namespace n WHERE pg_catalog.left(n.nspname,3) OPERATOR(pg_catalog.<>) 'pg_' AND n.nspname OPERATOR(pg_catalog.<>) 'information_schema' AND pg_catalog.has_schema_privilege(r.oid,n.oid,'CREATE'))
     OR pg_catalog.has_parameter_privilege(r.oid,'session_replication_role','SET,ALTER SYSTEM'))) AS runtime_unsafe,
-  CASE WHEN $2::text IS NULL THEN false ELSE COALESCE((SELECT pg_catalog.has_database_privilege(r.oid,current_database(),'CREATE')
-    OR EXISTS (SELECT 1 FROM pg_catalog.pg_namespace n WHERE left(n.nspname,3)<>'pg_' AND n.nspname<>'information_schema' AND pg_catalog.has_schema_privilege(r.oid,n.oid,'CREATE'))
+  CASE WHEN $2::pg_catalog.text IS NULL THEN false ELSE COALESCE((SELECT pg_catalog.has_database_privilege(r.oid,pg_catalog.current_database(),'CREATE')
+    OR EXISTS (SELECT 1 FROM pg_catalog.pg_namespace n WHERE pg_catalog.left(n.nspname,3) OPERATOR(pg_catalog.<>) 'pg_' AND n.nspname OPERATOR(pg_catalog.<>) 'information_schema' AND pg_catalog.has_schema_privilege(r.oid,n.oid,'CREATE'))
     OR pg_catalog.has_parameter_privilege(r.oid,'session_replication_role','SET,ALTER SYSTEM')
-    FROM pg_catalog.pg_roles r WHERE r.rolname=$2),true) END AS restore_unsafe,
-  EXISTS (SELECT 1 FROM pg_catalog.pg_db_role_setting s CROSS JOIN LATERAL unnest(s.setconfig) setting
-    WHERE s.setdatabase IN (0,(SELECT oid FROM pg_catalog.pg_database WHERE datname=current_database()))
-      AND (s.setrole=0 OR s.setrole IN (SELECT oid FROM pg_catalog.pg_roles WHERE rolname=$1 OR rolname=$2))
-      AND setting LIKE 'session_replication_role=%' AND setting<>'session_replication_role=origin') AS unsafe_replication_default`;
+    FROM pg_catalog.pg_roles r WHERE r.rolname OPERATOR(pg_catalog.=) $2),true) END AS restore_unsafe,
+  EXISTS (SELECT 1 FROM pg_catalog.pg_db_role_setting s CROSS JOIN LATERAL pg_catalog.unnest(s.setconfig) setting
+    WHERE (s.setdatabase OPERATOR(pg_catalog.=) 0 OR s.setdatabase OPERATOR(pg_catalog.=) (SELECT oid FROM pg_catalog.pg_database WHERE datname OPERATOR(pg_catalog.=) pg_catalog.current_database()))
+      AND (s.setrole OPERATOR(pg_catalog.=) 0 OR s.setrole OPERATOR(pg_catalog.=) ANY(SELECT oid FROM pg_catalog.pg_roles WHERE rolname OPERATOR(pg_catalog.=) $1 OR rolname OPERATOR(pg_catalog.=) $2))
+      AND setting OPERATOR(pg_catalog.~~) 'session_replication_role=%' AND setting OPERATOR(pg_catalog.<>) 'session_replication_role=origin') AS unsafe_replication_default`;
 
 type SessionFacts = {
   current_user: unknown; session_user: unknown; bootstrap_login: unknown; database_owner: unknown;
   server_version_num: unknown; replication_role: unknown; runtime_setting: unknown; restore_setting: unknown;
   mode_setting: unknown; ledger_exists: unknown; ledger_owner: unknown; session_lock_held: unknown;
   runtime_unsafe: unknown; restore_unsafe: unknown; unsafe_replication_default: unknown; default_privileges_exist: unknown;
+  effective_search_path: unknown;
 };
 type CheckedCatalog = { rows: readonly CatalogRow[]; protectedNames: ReadonlySet<string> };
 
@@ -107,6 +110,11 @@ function assertFlags(row: CatalogRow | undefined, expected: { login: boolean; in
 async function checkedCatalog(client: PoolClient, selection: QualifiedPostgresInstallation, applied: readonly Applied[], lockName: string): Promise<CheckedCatalog> {
   assertQualifiedPostgresSelection(selection);
   const facts = (await client.query<SessionFacts>(SESSION_FACTS_SQL, [selection.runtimeLogin, selection.restoreLogin ?? null, lockName])).rows[0];
+  // The bound observation is safe before this check. Canonical visibility also
+  // keeps reg* casts and PostgreSQL deparser output aligned with the fixed pins.
+  if (!facts || !Array.isArray(facts.effective_search_path)
+    || facts.effective_search_path.length !== 2 || facts.effective_search_path[0] !== "pg_catalog"
+    || facts.effective_search_path[1] !== "public") fail("qualified_profile_requires_canonical_search_path");
   if (!facts || facts.current_user !== selection.migrationLogin || facts.session_user !== selection.migrationLogin
     || facts.bootstrap_login !== selection.bootstrapLogin || facts.database_owner !== selection.migrationLogin) fail("actual_login_or_database_owner_mismatch");
   if (typeof facts.server_version_num !== "number" || Math.trunc(facts.server_version_num / 10_000) !== 16) fail("requires_qualified_postgresql_16_profile");
