@@ -154,6 +154,18 @@ its users or operators can observe.
 
 ## Development-preview checks
 
+The migration control witnesses cover legacy/qualified selection and immutable
+history in [`platform-migration-manifest`](scripts/platform-migration-manifest.test.ts),
+prior exact approval in [`qualified-migration-admission`](scripts/qualified-migration-admission.test.ts)
+and the existing source/release checks. The
+[native session witness](tests/postgres/m14MigrationSessionAdmission.test.ts)
+uses the existing runner and container helper: an interrupted canonical prefix
+is visible to a second actual migration login, which refuses under the held
+lock before pending SQL and preserves the ledger. This generic hook proof does
+not qualify a hosted role profile. The [migration owner](docs/platform/DATA_AND_MIGRATIONS.md#module-catalogues-and-installed-histories)
+and [inert fixtures](scripts/fixtures/reviewed-m14-qualified/db/platform/migrations/README.md)
+own the separate control-before-installation boundary.
+
 The lifecycle slice uses existing build/API/package/cold-consumer commands.
 Owner-local tests cover file conflicts, path boundaries and process interruption;
 the installed consumer adds the public export, custom app files, crash/resume
@@ -2178,6 +2190,15 @@ A new or renamed path needs its authored row in
 `public-output` only after content and regular, non-executable mode validation;
 nested directories and other extensions refuse. The catalogue remains an
 explicit classification and execution inventory, not a generated list.
+
+The bounded qualified-installation witness declares its exact future child path
+in the [existing execution inventory](scripts/oss-publication-contract.ts).
+The control-only registration precedes the E2 source: it permits no
+other child path and changes neither entrypoint detection nor fixture rules.
+The adjacent Vitest witness owns each disposable database and the child lifetime
+used to close the production runner's internal pool. This is preparation for
+four fixed-pin reference checks and four other-mode targets, not an observed
+qualification result.
 
 For a notable package change, add a uniquely named
 `packages/<core|outbox|platform>/changes/<programme>-<slice>.md` fragment instead

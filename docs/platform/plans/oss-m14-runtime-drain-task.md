@@ -482,3 +482,104 @@ small refused/empty probe plus repeated lint/typecheck. Dispatch each existing
 phase profile directly and use the root project for root-relative test paths.
 Actual packs fit the already approved reserves, so another cap change or runtime
 mechanism would add no accepted benefit.
+
+## Necessary E1 dependency integration preparation, 2026-10-27
+
+Before runtime's first native review or full verification, the master found one
+real documentation-owner conflict and five shared owner/control paths between
+the qualified-install controls and runtime. The finite existing-PR dependency
+order is now C → E1 → runtime → E2 → F. This is necessary stack integration,
+with the approved runtime outcome, exclusions, authority and budgets unchanged;
+it creates no successor task or new contract. The master's actual preflight is
+retained in `/private/tmp/m14-verification-20261027/linear-stack-preflight.json`.
+
+The existing clean runtime checkpoint
+`d94753fe22ed8497abd9ddaa9309e23699a187d3` remains preserved. A normal
+`--no-commit --no-ff` merge now integrates exact E1 dependency
+`3a8d4a7165f5ef3df13bdc8da9d6a3e3ca17a529`. Its sole content conflict in
+DOCUMENTATION's Ownership section is resolved by retaining both complete owner
+descriptions: runtime scheduled-job drain and E1 migration admission. Automatic
+merges retain both execution-inventory registrations, publication entries and
+contributor/package explanations. No runtime production/API byte or E1 control,
+inert fixture, canonical v1/88-entry manifest or inventory pin is intentionally
+changed. The instruction revision remains
+`75d08b8207053fe9a5207e003b625133685ffdf4`.
+
+This preparation is light-only: AST, inventory, policy/navigation and diff
+checks, plus an exact staged-tree dependency/preservation packet for the master's
+new read. There is no install, build, pack, lint, PostgreSQL, heavy waiter, full
+verification, DCO, native preparation or push. Existing working-pack and test
+results retain their exact earlier tree attribution; they are not proof for
+this integrated tree. Manual conflict resolution receives no mechanical
+integration exemption, counted PASS or native budget reset.
+
+Pending-merge policy uses actual HEAD ancestor
+`b040add7f9fbc5cdd461881f09421cb0a6700145`. Only after an authorized ordinary
+signed integration commit may the new exact E1 predecessor be exported as
+`OPENLUP_STACK_BASE`; that future nonancestor is not used to check this pending
+merge. All prior policy diagnostics, input failures, evidence and remaining
+full/native proof obligations are preserved. The active E1 proving worktree and
+its exclusive full run remain untouched. Recovery retains d94753f and the prior
+owned backup/stash; no rollback or shared-reference cleanup was performed.
+
+Light checks passed: policy/navigation reported five obligations and zero
+unanswered against b040add7; inventory admitted 6,509 tracked public paths;
+ast-grep passed. Exact byte assertions confirmed all three runtime production
+files and both API reports still match d94753f, all 25 nonoverlapping inherited
+E1 paths match 3a8d4a7, and all five inert fixture bytes match both E1 and their
+unchanged SHA-256 pins. The active manifest remains identical to E1: schema v1,
+88 legacy units and inventory
+`cfe3a8b4fa6216f61b1cdd5f004cb0f7a967bc01d9e18ddacb2efee74742d3b3`.
+Canonical migrations and release caps also remain identical to E1. Evidence is
+in `/private/tmp/m14-runtime-e1-integration-20261027/preservation.json`.
+
+The runtime delta relative to E1 passes whitespace checking. The full inherited
+integration diff relative to runtime reports one existing E1 fixture blank line
+at EOF (`q2_20260810180001_self_host_actor_auth.sql:79`). Preserve its exact
+reviewed bytes and pin rather than silently normalizing that inherited input.
+This diagnostic is not reported as a passing whole-integration whitespace check.
+
+Self-retro: checking the shared dependency delta before full verification found
+the actual owner-paragraph conflict early. Keeping both existing explanations
+and the exact inherited controls avoids repeating full proof after a known
+manual integration, without adding a new runtime mechanism or weakening a gate.
+
+## Cumulative E1 + runtime working proof, 2026-10-27
+
+The master read the staged integration packet `40947552…` and source resolution,
+then granted one finite cumulative working-proof phase for staged tree
+`c5517013c8460ea839ed4adcc31df9eeb3ecb1da`, with d94753f + exact E1 3a8d4a7
+still pending. Node 24.21.0/npm 11.19.0, this worktree's dependencies and a new
+task-owned npm cache were used. Inputs stayed fixed during execution; phases
+were sequential normal `--wait` admissions on numeric suffix
+`wt521061927005047226`: build (4 CPU/4,096 MB), tooling (2 CPU/2,048 MB),
+PostgreSQL (2 CPU/6,144 MB) and typecheck (4 CPU/6,144 MB). The previously
+diagnosed Docker access used ordinary escalation, with no known-bad selector or
+cache retry, nested broker, new timeout or cap change.
+
+Fresh core/outbox/platform builds and all three API checks passed without any
+snapshot rewrite. Actual cumulative packs passed artifact/content, all byte
+and file budgets and every complete browser-entry cap with zero findings.
+Platform measured code gzip 1,662,140 / 1,743,872 bytes, tarball
+1,935,102 / 2,029,568, unpacked 9,006,345 / 9,447,424, docs gzip
+65,643 / 73,728, code files 2,574 / 2,574 and total files 2,628 / 2,628.
+Core/outbox tarballs measured 167,341 / 39,165 bytes, within their unchanged caps.
+The three runtime suites passed 78/78 and the actual PostgreSQL witness passed
+2/2 (1.88 seconds tests, 2.15 seconds total). Teardown succeeded and a bounded
+owned-container query returned no remaining `node-host-drain-` container.
+
+Canonical lint passed in 29.463 seconds (zero errors, 33 existing warnings).
+All five published typecheck projects passed in 27.519 seconds with zero
+unresolved edges and zero consumer-side errors. Full logs, exact command timing,
+tarball identities and browser measurements are in
+`/private/tmp/m14-runtime-cumulative-proof-20261027`. These are current cumulative
+working-tree results; previous packets retain their earlier attribution.
+The task-note update is the only post-execution tracked edit. Exact runtime
+source/API and E1 control/pin/manifest preservation is rechecked in the final
+packet, with light policy using the valid b040add7 ancestor while merging.
+No DCO, commit, native session, full verification or push has occurred.
+
+Self-retro: dispatching each existing resource profile directly and using the
+known root test project completed this phase without input failures or repeated
+commands. The combined artifacts fit approved reserves; no additional mechanism,
+cap adjustment or verification shortcut was justified.

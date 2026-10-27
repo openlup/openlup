@@ -35,6 +35,7 @@ export const PUBLIC_EXECUTION_ENTRYPOINTS = [
   "server/runtime/public-reference/serve.ts",
   "tests/postgres/runIdentityEnvelopeConformance.mjs",
   "tests/postgres/runOidcIdentityConformance.mjs",
+  "tests/postgres/m14QualifiedComposition.proof.ts",
   "tests/identity/runAcceptance.mjs", "tests/identity/acceptance.conformance.ts", "server/runtime/auth/capturedIdentityMailbox.test.ts",
   "src/lib/coreDomains.test.ts", "src/lib/orderRef.test.ts", "src/lib/paymentControlPlaneBoundary.test.ts",
   "src/pages/account/v2/sections/PaymentCardSetup.test.tsx",

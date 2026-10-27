@@ -7,6 +7,7 @@ import { promisify } from 'node:util';
 import { admit, demand, RECEIPT_MARKER } from './agent-review-decide.mjs';
 import { captureCommittedReviewCandidate, carryOverSourceReview, git } from './agent-review-session.mjs';
 import { assertCoLocatedForwardApproval, REVIEWED_FORWARD_PATH } from './reviewed-platform-forward.ts';
+import { isQualifiedPlatformMigrationPath } from './platform-migration-manifest.ts';
 import { REQUIRED_CONTEXTS } from './packages/release-gate.ts';
 
 export { carryOverSourceReview } from './agent-review-session.mjs';
@@ -70,12 +71,13 @@ export async function waitNativeAdmission({ event, env = process.env, api, cwd =
       } catch (error) { reason = `receipt objects could not be verified: ${error.message}; post a corrected receipt`; continue; }
       let decision = admit({ receipt, observed: { ...candidate, pr: prNumber, baseValid }, now: now() });
       if (!decision.ok) { reason = `${decision.code}: ${decision.reason}`; continue; }
-      if (candidate.changedPaths.includes(REVIEWED_FORWARD_PATH)) assertCoLocatedForwardApproval(cwd, candidate.base, candidate.head, main);
+      const needsForwardApproval = candidate.changedPaths.includes(REVIEWED_FORWARD_PATH) || candidate.changedPaths.some(isQualifiedPlatformMigrationPath);
+      if (needsForwardApproval) assertCoLocatedForwardApproval(cwd, candidate.base, candidate.head, main);
       if (group) {
         const tree = (await runGit(cwd, 'rev-parse', '--verify', `${group.head_sha}^{tree}`)).trim();
         decision = await carryOverSourceReview(cwd, candidate, { base: group.base_sha, tree }, runGit);
         demand(decision.ok, decision.reason, decision.code);
-        if (candidate.changedPaths.includes(REVIEWED_FORWARD_PATH)) assertCoLocatedForwardApproval(cwd, group.base_sha, group.head_sha, main);
+        if (needsForwardApproval) assertCoLocatedForwardApproval(cwd, group.base_sha, group.head_sha, main);
       }
       const live = await api.get(`${root}/pulls/${prNumber}`);
       demand(live.head?.sha === pr.head.sha && live.state === 'open' && live.draft === false && !live.merged && live.base?.ref === 'main', 'PR changed during admission; rerun CI', 'stale');
