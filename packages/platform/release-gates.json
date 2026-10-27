@@ -734,15 +734,15 @@
   },
   "pack": {
     "code": {
-      "maxPackedBytes": 1659891,
+      "maxPackedBytes": 1743872,
       "maxFiles": 2574
     },
     "docs": {
       "maxPackedBytes": 73728,
       "maxFiles": 10
     },
-    "maxPackedBytes": 1932480,
-    "maxUnpackedBytes": 8995279,
+    "maxPackedBytes": 2029568,
+    "maxUnpackedBytes": 9447424,
     "maxFiles": 2628,
     "baseline": {
       "version": "0.28.0",

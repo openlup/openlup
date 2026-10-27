@@ -12,14 +12,15 @@ read-only PostgreSQL role observation through an injected query handle. Its
 retains the immutable legacy bootstrap's superuser, shared-login, mode and
 pre-existing-role refusals. It adds no DDL, role support or install-readiness claim.
 
-The bounded combined C+D technical read approves only actual measured minima:
-code-gzip 1,659,891 B, tarball 1,932,480 B and unpacked 8,995,279 B. The role
-helper's three packed source/JavaScript/declaration files add 3,633 / 3,714 /
-14,026 B to the historical C-only caps. Code/total file caps remain exactly
+The owner-authorized byte reserve after the direct directory-prefix and catalog
+binding repair sets code-gzip 1,743,872 B, tarball 2,029,568 B and unpacked
+9,447,424 B caps. The supervisor computed each as 5% above the actual measured
+1,660,249 / 1,932,801 / 8,996,893 B, rounded up to KiB. These fixed limits
+supersede the historical exact-minimum C+D allocation and grant no automatic
+future increases or additional programme scope. Code/total file caps remain
 2574/2628; docs/browser caps, released baseline, versions and locks stay exact.
-No future runtime or qualified-installation allowance is included. Actual
-approved-input remeasurement remains required because metadata edits can change
-packed bytes; this technical read does not establish final review or proof.
+Actual approved-input remeasurement remains required because metadata edits can
+change packed bytes; this budget decision establishes no final review or proof.
 
 ### Migration
 
