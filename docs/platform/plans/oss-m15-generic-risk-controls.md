@@ -660,14 +660,47 @@ the undeclared identity-contracts graph edge (canonical card `R3-REV1`; the seco
 report named the same mechanism `R3-REVIEW-2-1`). One also found `R3-REV2`:
 a runtime null result from a bound reader bypassed malformed-inventory refusal.
 
-The repair declares only the public contracts edge with a new focused admission/
+Repair commit `f319d6f5f0a3d2877a53a20a18a364dadf37927b` declares only the public
+contracts edge with a new focused admission/
 refusal case, and validates inventories whenever a reader is bound. The existing
-coverage case now includes a runtime null regression. Fresh source review of the
-committed repaired tree is required to close both cards; execution is still
-deferred. One preliminary repair iteration is recorded, without creating or
+coverage case now includes a runtime null regression. Two new independent
+fresh-context read-only reviewers (`r3_repaired_one`, `r3_repaired_two`) inspected
+that complete committed candidate against the R1 base. Both returned preliminary
+source PASS, explicitly closing `R3-REV1` / `R3-REVIEW-2-1` and `R3-REV2`, with no
+remaining material finding. Both considered the direct ports and existing M03
+orchestration the smallest adequate solution. Neither ran any restricted command.
+Execution is still deferred. One preliminary repair iteration is recorded, without creating or
 resetting a native admission session or its counters/expiry.
+
+Final authoring evidence: `git diff --check` passes for the complete R3 range;
+the three implementation/test/repair commits carry the instructed human
+`Signed-off-by` trailer. The final evidence-only documentation commit adds these
+observations; it does not change the source candidate reviewed above. No API,
+compiler, test, lint, pack, documentation-policy or official verify PASS is claimed.
+No push or pull request was attempted. The authoring endpoint is locally committed
+source and tests, with exact deferred commands above, awaiting R2 integration.
 
 Review lesson: a newly reused public contract still needs its explicit module
 edge; read the existing graph alongside the import. A bound adapter's malformed
 null result must not share the fallback for an absent adapter. Both repairs use
 existing controls and add no new mechanism; no regroup condition was reached.
+
+### R3 local rebase handoff — 2026-10-27
+
+The owner's direct instruction authorized rebasing the four R3 commits from R1
+onto local R2 `c88f589435676743e5a603fce1eac68a6945141e`, with local conflict
+resolution only. That integration is complete. The six conflicted files were the
+architecture page, package README, risk server barrel, publication catalogue,
+module record and ESLint graph. Both rounds' additions are retained; the graph
+combines R2's schema/HTTP/BFF edges with R3's public identity-contracts edge.
+R2's reference binding, admin binding and composition implementation are unchanged.
+Original commit identities above remain historical review provenance.
+
+Git range comparison and whitespace checks are the only new evidence. All four
+commits retain DCO trailers; no restricted verification command ran. The existing
+deferred verification and review obligations remain open. The existing policy pin
+is retained; policy freshness was not refreshed during this local-only rebase.
+
+Self-retro: Git split the module-record conflict around a shared command suffix;
+appending the complete R3 section after the intact R2 record preserved both command
+ledgers without interleaving them. No behavioral edit or new mechanism was needed.
