@@ -24,3 +24,4 @@ export { createSubscriptionContribution } from "./subscriptionContribution.js";
 export { createCommerceContribution } from "./commerceContribution.js";
 export { createAccountSupportContribution } from "./accountSupportContribution.js";
 export { createMarketingContribution } from "./marketingContribution.js";
+export { createRiskContribution } from "./riskContribution.js";
