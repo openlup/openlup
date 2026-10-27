@@ -537,7 +537,8 @@
       "id": "platform-substrate",
       "when": "Runnable server substrate: Node HTTP runtime, BFF dispatch, scheduling, storage, data gateways and bundle composition",
       "paths": [
-        "packages/platform/**"
+        "packages/platform/**",
+        "tests/postgres/nodeHostRuntimeDrain.test.ts"
       ],
       "doc": "packages/platform/README.md",
       "anchor": ""

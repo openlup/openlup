@@ -22,6 +22,234 @@ excluded. Required API/security/control reads and native evidence still apply.
 Technical review is delegated and does not assert personal human reading of
 every diff.
 
+### E1 source-only continuation, 27 October 2026
+
+For this historical source-only continuation, the active supervisor relayed the
+owner's then-current limit: prepare
+all source fixes and regression source here, with no execution of tests,
+verification, installs, builds, lint or gates, and no counted native reviews,
+commits, pushes or external writes. The stronger machine only runs measurements,
+tests and verification and returns results; source repair remains here. Drafts
+stay drafts. This temporary execution boundary supersedes the broader delivery
+grant above for this run; it does not waive any proof or authorize later delivery.
+
+E1 remains in `/private/tmp/openlup-m14-qualified-install-controls`, branch
+`codex/oss-m14-qualified-install-controls`, checkpoint
+`0b4517be8000352be4659e4be2320163b1db9650`, with the first receiving source
+corrections subsequently checkpointed by the supervisor at
+`d3996e385003dce41e7cf00b53eb254ddc70810b`, draft
+[PR #402](https://github.com/openlup/openlup/pull/402). Its
+[historical handoff](https://github.com/openlup/openlup/pull/402#issuecomment-6449955741)
+and [coordinator handoff](https://github.com/openlup/openlup/pull/402#issuecomment-6449957049)
+retain prior authors, failures, exclusions and proof gaps. The supervisor
+confirmed a fresh fetch in this receiving run with unchanged policy pin
+`a03d920eec32bfb3d0de90b9a12535cc57f88d53` and read its current instructions.
+This lane read the local instructions and handoff. The code review base is
+separate from that policy pin.
+
+Receiving author context `01a17e98-8264-7033-a2d1-0d3c8479ca3b`
+(`/root/m14_e1`), receiving supervisor context
+`01a17e97-d95d-7581-beb5-ab5ee9ad007c` (`/root`) and E2/F source contributor
+context `01a17e98-931e-7fe3-99cb-841a3ac9ef0b` (`/root/m14_e2f`, author of
+the optional fifth-pin/inert-fixture packet) are excluded from future independent
+review of this candidate. No independent review occurred in this continuation.
+
+Static inspection found an unwired control: trusted queue admission selected
+`assertCoLocatedForwardApproval` only for a changed approval registry, although
+qualified SQL normally arrives with unchanged prior pins. That skipped the
+existing guard against simultaneous machinery changes. The local correction
+selects the same guard for qualified paths in source and merge-group admission.
+It adds no validator, bypass, fallback or extra query. The optional
+`PlatformMigrationSource.assertSession` already runs once after exact-prefix
+validation under the existing lock and before pending SQL/status/dry-run;
+no hook change was justified by this inspection.
+
+Later E2 source tracing found a reachable pre-hook resolution gap in the same
+runner: unqualified lock/hash and ledger-existence calls execute before session
+admission. The source correction adds three private catalog-bound SQL constants
+selected only when `source.assertSession` is defined, passing one private boolean
+through the existing session/prefix helpers. No extra query, session mutation,
+public flag or new runner is introduced. Existing hook transcript assertions now
+expect bound acquire/lookup/release, with prepared successful status/dry-run,
+explicit-undefined legacy-transcript and prefix-mismatch-before-hook cases.
+Default/undefined-hook query strings remain exact. These cases remain unexecuted;
+the stronger machine must prove lock-key equivalence and hostile-name refusal.
+
+The E/F coordinator supplied the optional fifth prior-control binding and inert
+fixture for the existing retained-import SQL, SHA-256
+`56144f8e61b649c9d9f48458a1734abcc8bbd8d36fdc3919d90ceb1bc35d3b48`.
+Its publication row and owner descriptions are updated locally. This is a
+proposed control candidate, not completed prior approval or installation proof.
+The four existing pins and fixture bytes, active v1 manifest, its 88 legacy units
+and inventory `cfe3a8b4fa6216f61b1cdd5f004cb0f7a967bc01d9e18ddacb2efee74742d3b3`
+are unchanged by these edits. No active qualified SQL is introduced by E1.
+E1 must actually land as trusted controls before E2 or F delivery.
+
+The historical focused batch remains 739 PASS / 16 FAIL across five files.
+Read-only tracing shows that synthetic pgTAP lifecycle fixtures replace external
+commands on PATH but retain actual `node:net` loopback binds. The checkpoint's
+`available()` mapped every socket error to false, so denied binds as well as occupied ports could reach
+the same final "no free port block" error before image/start/replay stages.
+The historical errno was not retained here. This does not establish an
+environmental cause or exclude a regression; all 16 failures remain unresolved.
+The new diagnostic correction retries only `EADDRINUSE` and reports other bind
+errors with their errno and exact loopback port; it still refuses before stack
+startup. The 50-attempt budget and seven probes per block are unchanged. Three
+prepared lifecycle cases inject `EPERM`, `EACCES` and `EADDRINUSE` using the
+existing subprocess fixture and assert immediate named refusal or bounded
+occupancy exhaustion, with no stack commands. They have not run. Earlier
+fragment-row and PATH failures and the required regroup remain in the history.
+
+Four prepared cases extend the existing real-Git qualified-admission witness
+through actual `waitNativeAdmission`: pull-request and merge-group events each
+accept ordinary separately approved additions with unchanged pins and refuse a
+simultaneous machinery edit. The real co-location guard is observed through a
+call-through spy, including both source and group invocations on group success;
+the fixture replaces API responses and omits only fetching already-local Git
+objects. Synthetic receipt data is fixture input, never task review evidence.
+
+No executable check was run in this continuation. Required next proof includes
+execution of these prepared queue and socket cases, optional fifth-binding/fixture
+integrity, current pgTAP diagnosis, package hook/native-session proof, API/build/pack and
+owner/budget checks, two fresh full native reviews and the canonical full gate.
+No native session is initialized: cycles remain 0/3, with no PASS or expiry.
+No candidate DCO, receipt, readiness, admission or merge claim follows from these
+local edits; no budget was raised. New edits since `d3996e38` remain uncommitted.
+
+Self-retro: the missing caller condition showed why a validator-only fixture
+cannot prove trusted admission is wired. Reusing the existing guard was the
+smallest adequate correction. Extending the real Git witness reaches the actual
+caller, and preserving socket errno removes a diagnostic ambiguity without a
+new selector or retry policy. Admission cannot protect lookup functions that run
+before it; binding those existing calls closes that source gap without changing
+legacy transcripts. Historical causality still needs an authorized run.
+
+### E1 authorized verification continuation, 27 October 2026
+
+The owner subsequently authorized the required tests and full clean verification
+on this machine, followed by DCO, push and updates to the five existing PRs,
+ready conversion, native receipt/admission, required source/group checks and
+merge queue through confirmed merge. This supersedes the temporary source-only
+and corrected-draft execution endpoints above and below; it changes no programme
+acceptance or proof requirement. Release/npm publication, deployment, live
+provisioning/cutover, credentials, account and settings changes remain excluded.
+The active root supervisor coordinates delivery and serializes heavy phases;
+the author lanes `/root/m14_e1_controls` and its continuing integration lane
+`/root/m14_e1_delivery` own this E1 worktree and are excluded from independent
+review. Policy was refreshed from `a03d920eec32bfb3d0de90b9a12535cc57f88d53` to
+`75d08b8207053fe9a5207e003b625133685ffdf4`, separate from the code review base;
+the changed contributor guidance describes the owned PostgreSQL tmpfs fixtures.
+
+This continuation started from the clean checkpoint
+`f8c88bb4009b7841478e87ce08a1815144c410ac` with its prior source corrections
+already committed. With Node 24.21.0/npm 11.19.0 and this worktree's own
+`node_modules/.bin` on PATH, the following focused checks ran:
+
+- `node scripts/run-vitest.mjs run scripts/qualified-migration-admission.test.ts scripts/platform-migration-manifest.test.ts packages/platform/test/migrations/postgresRunner.test.ts --project=node`:
+  64 tests passed in three files. These include actual source/group admission
+  success and machinery-change refusal with unchanged pins, manifest/history
+  refusals and the optional session hook's exact ordering/legacy transcripts.
+- `node scripts/run-vitest.mjs run scripts/oss-published-tree-check.test.ts --project=node -t 'owned pgTAP command lifecycle'`:
+  sandboxed execution reproduced 16 failures and seven passes, with 74 unrelated
+  cases excluded. The first failure explicitly reported loopback bind `EPERM`
+  before stack startup. The exact same command outside the sandbox passed all
+  23 selected cases in 36.30 seconds, including injected `EPERM`, `EACCES` and
+  bounded `EADDRINUSE` refusal. No timeout, retry budget, socket refusal or test
+  assertion changed. This identifies the current environment limitation; the
+  historical 739 PASS/16 FAIL run still lacks its original errno and is not
+  retrospectively reclassified.
+- `npm run oss:published-tree -- --policy` and `--inventory` passed. Policy
+  initially refused an inline-code link to the intentionally future E2 proof
+  file. Its owner explanation now links the existing execution inventory
+  instead; no placeholder file or checker exception was introduced. All four
+  documentation obligations are answered. The stale committed release snapshot
+  remains the checker-designated release-preparation item.
+- `npx --no -- ast-grep scan --error=no-suppress-all --error=unused-suppression`
+  passed after that documentation correction.
+
+The active manifest remains v1 with 88 legacy units and inventory
+`cfe3a8b4fa6216f61b1cdd5f004cb0f7a967bc01d9e18ddacb2efee74742d3b3`;
+the five inert fixtures and exact prior pins are unchanged. Existing fragment,
+PATH and regroup history is retained above. Native E1 has not been initialized:
+no PASS, expiry or receipt is claimed.
+
+The supervisor then assigned the serialized working-tree build/API/artifact
+phase. The existing broker admitted `openlup:build:wt12291020735647487593`
+after 149 seconds for the prerequisite build; all three packages built and their
+actual current API checks passed. Platform's API delta remains only the optional
+session callback described above, with its exact ordering and legacy behavior.
+Actual npm tarballs were measured using the existing artifact-content,
+class-size and browser-budget functions. Core measured 167,341 packed bytes and
+Outbox 39,165, without findings. Platform measured 1,923,429 packed bytes,
+8,963,693 unpacked bytes, 2,619 files, code gzip 1,651,418 bytes/2,565 files and
+docs gzip 64,693 bytes/five files. Its tarball SHA-256 is
+`69d455b314df4623490afea9834ff493ac4190229d11fa613913f2542662c49e`.
+Artifact-content checks and all 17 browser budgets passed, but the code class
+exceeded this branch's existing 1,650,631-byte cap by 787 bytes. The phase stopped
+there before lint/typecheck; no cap, baseline or reserve was changed. These are
+working-tree measurements, not clean committed package proof. Required final
+proof and the supervisor-owned integration of the separately authorized budget
+remain open. Public/UI neutrality and gitleaks 8.30.1 also passed in this run:
+zero neutrality increases and no leaks across 951 commits.
+
+The supervisor explicitly continued independent lint/typecheck despite the known
+budget finding, without waiving final delivery proof. With those fresh package
+declarations unchanged, `npm --ignore-scripts run lint` ran the complete lint
+body without rebuilding the same inputs: file-wide-ignore checks, structural
+scan, eight rule suites and ESLint passed with zero errors and 33 warnings.
+`npm run oss:published-tree -- --typecheck` passed all five projects with zero
+unresolved edges and zero consumer-side errors. Both used the existing numeric
+worktree typecheck broker profile; no pack was repeated and no source repair
+was needed. Normal lint prerequisites and the complete installed/cold/coverage,
+real PostgreSQL, independent review and full clean verification remain owed in
+the supervisor's serialized final proof.
+
+Self-retro: errno-preserving diagnostics and one identical unsandboxed fixture
+run resolved the current environment question without changing controls or
+adding a port-selection mechanism. The owner-documentation repair describes the
+already registered future entrypoint through its existing source of truth.
+
+The supervisor assigned the exact lifecycle predecessor
+`b040add7f9fbc5cdd461881f09421cb0a6700145` for E1 integration. That candidate
+contains the already approved global Platform reserve: 1,743,872 code-class
+bytes, 2,029,568 total packed bytes and 9,447,424 total unpacked bytes. This
+necessary dependency supplies the lifecycle export and existing reserve against
+which E1's complete artifact must be measured; E1 introduces no budget change.
+Its actual landing must precede dependent E1 delivery. This is dependency
+integration, not a main refresh for freshness. The three overlapping contributor,
+publication-catalogue and documentation-owner sections were resolved manually,
+retaining both lifecycle and E1 responsibilities, and the two pre-existing E1
+documentation edits were preserved and restored. Both exact execution entries
+remain registered, including the future E2 child proof; the classifier is
+unchanged. The five inert pins and active v1/88-unit inventory remain unchanged.
+No mechanical-integration exemption or inherited E1 full proof is claimed:
+working-tree build/artifact checks, the full clean gate and fresh independent
+review still apply to the resulting candidate. The light integration checks
+passed structural rules, the 6,506-path publication inventory and all nine
+documentation obligations; navigation was regenerated. These checks used the
+existing fork point while the merge was pending, so they do not establish final
+proof against the committed lifecycle predecessor.
+
+The assigned integrated working-tree phase then passed all three fresh package
+builds and API checks. Actual Core and Outbox tarballs remained 167,341 and
+39,165 bytes. Platform measured 1,933,640 packed bytes, 9,001,011 unpacked bytes,
+2,628 files, code gzip 1,661,068 bytes/2,574 files and docs gzip 65,180 bytes/five
+files. Artifact-content checks and all 17 browser budgets passed against the
+unchanged lifecycle predecessor's approved limits, leaving 82,804 code-class,
+95,928 packed and 446,413 unpacked bytes of headroom. Platform's working tarball
+SHA-256 is `bcf3d43e46701fbfc2042b3cabd228ba12bfb21f6c8fbc0a97086936886a7670`.
+The four-file control/manifest/runner/publication selection passed all 161 cases,
+including the materialized closed-entrypoint success and unregistered direct
+execution refusal. The actual PostgreSQL session-admission witness passed its
+one lock/interrupted-prefix case using the current disposable tmpfs helper.
+Canonical `npm run lint`, including its fresh build prerequisites, passed with
+zero errors and 33 warnings; published typecheck passed all five projects with
+zero unresolved edges and consumer errors. The normal numeric build, tooling,
+PostgreSQL and typecheck broker profiles admitted immediately and released after
+their commands. Tracked inputs stayed unchanged during these working checks.
+The full clean/cold/coverage gate and fresh independent native review remain owed;
+these results do not substitute for that final proof or authorize a release.
+
 The module preserves operational behavior while supplying public lifecycle
 capabilities for an existing synthetic store: compatible install/upgrade,
 managed-to-portable and portable-to-portable transfer, interrupted operation,
@@ -185,3 +413,30 @@ operation or default. No real-store or production action follows from local
 evidence. Each delivered draft records actual checks, review findings, remaining
 dependencies and a short terminal self-retro. This plan grants no additional
 authority or automatic successor work.
+
+
+## Owner-authorized corrected draft checkpoint, 2026-10-27
+
+After the source-only handoff preparation, the owner directly instructed this
+receiving session to commit and push its corrections into the existing #402
+draft instead of ending with a separate prompt. This supersedes the earlier
+no-commit/no-push endpoint for this run. The actual grant covers DCO checkpoint
+commits, ordinary dependency-stack integration and updating the existing draft.
+The owner still forbids local tests and `verify` on this machine. No required
+proof is waived for readiness, admission or delivery: this checkpoint is
+unverified, with no PASS, receipt, ready transition, auto-merge or queue admission.
+The receiving supervisor remains `01a17e97-d95d-7581-beb5-ab5ee9ad007c`; all
+recorded authors, exclusions, findings and review budgets remain applicable.
+Use ordinary Git hooks and signing; no bypass or copied proof stamp is allowed.
+Generated metadata, regression execution, package measurements, independent
+review and final verification remain owed on the author's proving machine.
+
+
+### Receiving coordinator source-freeze addendum
+
+The receiving coordinator also registered the exact future E2 child entrypoint
+in the existing closed execution inventory and documented it in CONTRIBUTING.
+The entry registration is control-only here, before E2 source introduction; it
+changes no classifier or exception. All further source repairs remain on this
+Daybreak-capable machine. The stronger machine may only execute the supplied
+measurements/tests/verify and return evidence; defects return here for repair.

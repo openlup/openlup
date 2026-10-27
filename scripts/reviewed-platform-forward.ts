@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { PLATFORM_BASELINE_FILE } from "./platform-migration-manifest.ts";
+import { PLATFORM_BASELINE_FILE, QUALIFIED_BASELINE_FILE, QUALIFIED_ACTOR_FILE, QUALIFIED_ACQUISITION_FILE, QUALIFIED_RUNTIME_FILE, QUALIFIED_IMPORT_FILE, isQualifiedPlatformMigrationPath } from "./platform-migration-manifest.ts";
 import { documentationGit, readDocumentationObjects } from "./documentation-git.ts";
 
 export const REVIEWED_FORWARD_PATH = "config/reviewed-platform-forwards.json";
@@ -42,6 +42,7 @@ const portableCreationPaths = [
   "db/platform/migrations/20261022195000_invoicing_seller_revision.sql",
 ];
 type PortableCreationBinding = { path: string; sha256: string };
+const qualifiedInstallationPaths = [QUALIFIED_BASELINE_FILE, QUALIFIED_ACTOR_FILE, QUALIFIED_ACQUISITION_FILE, QUALIFIED_RUNTIME_FILE, QUALIFIED_IMPORT_FILE];
 type FunctionBinding = { signature: string; beforeSha256: string | null; afterSha256: string };
 type PolicyBinding = { table: string; name: string; beforeSha256: string };
 type RuntimeForwardBinding = ForwardBinding & { privileges: string[]; retiredPolicies?: PolicyBinding[] };
@@ -49,7 +50,7 @@ type ForwardBinding = { path: string; sha256: string; functions: FunctionBinding
 export type BatchedForwardBinding = ForwardBinding & { statements: { sha256: string; sql?: string }[] };
 export type ManagedCommerceForwardBinding = BatchedForwardBinding & { constraints?: { table: string; name: string; beforeSha256: string; beforeSql: string }[] };
 export type SupportAuthorityForwardBinding = ManagedCommerceForwardBinding;
-export type ReviewedForwardRegistry = { supportAuthorityForwards?: SupportAuthorityForwardBinding[]; managedCommerceForwards?: ManagedCommerceForwardBinding[]; batchedForwards?: BatchedForwardBinding[]; schemaVersion: 1; baselineSha256: string; replacementForwards: ForwardBinding[]; creationForwards: ForwardBinding[]; runtimeForwards?: RuntimeForwardBinding[]; portableReplacementForwards?: ForwardBinding[]; portableCreationForwards?: PortableCreationBinding[]; managedInvoicingForwards?: ForwardBinding[] };
+export type ReviewedForwardRegistry = { qualifiedInstallations?: PortableCreationBinding[]; supportAuthorityForwards?: SupportAuthorityForwardBinding[]; managedCommerceForwards?: ManagedCommerceForwardBinding[]; batchedForwards?: BatchedForwardBinding[]; schemaVersion: 1; baselineSha256: string; replacementForwards: ForwardBinding[]; creationForwards: ForwardBinding[]; runtimeForwards?: RuntimeForwardBinding[]; portableReplacementForwards?: ForwardBinding[]; portableCreationForwards?: PortableCreationBinding[]; managedInvoicingForwards?: ForwardBinding[] };
 export const sqlSha256 = (bytes: Buffer | string): string => createHash("sha256").update(bytes).digest("hex");
 const runtimeReplacements = new Set([
   "public.admin_clients_search_v3(text,integer,integer,text)",
@@ -157,6 +158,13 @@ function readForwardRegistry(bytes: Buffer, historical: boolean): ReviewedForwar
   const raw = JSON.parse(bytes.toString("utf8")) as ReviewedForwardRegistry;
   if (raw.schemaVersion !== 1 || !hash(raw.baselineSha256) || !Array.isArray(raw.replacementForwards) || raw.replacementForwards.length !== 2 || !Array.isArray(raw.creationForwards) || raw.creationForwards.length !== 1) throw new Error("reviewed replacement registry requires one baseline, two replacement forwards and one creation forward");
   const paths = new Set<string>(), signatures = new Set<string>(), replaced = new Set<string>();
+  if (raw.qualifiedInstallations !== undefined) {
+    if (!Array.isArray(raw.qualifiedInstallations) || ![4, 5].includes(raw.qualifiedInstallations.length)) throw new Error("qualified installation approval requires the four exact bootstrap units and optional retained import");
+    for (const [index, entry] of raw.qualifiedInstallations.entries()) {
+      if (!entry || Object.keys(entry).sort().join(",") !== "path,sha256" || entry.path !== qualifiedInstallationPaths[index] || !hash(entry.sha256)) throw new Error("qualified installation approval has an invalid fixed identity or hash");
+      paths.add(entry.path);
+    }
+  }
   for (const forward of [...raw.replacementForwards, ...raw.creationForwards]) {
     if (!/^supabase\/migrations\/\d{14}_[A-Za-z0-9_-]+\.sql$/u.test(forward.path) || paths.has(forward.path) || !hash(forward.sha256) || !Array.isArray(forward.functions) || forward.functions.length === 0) throw new Error("reviewed replacement registry has an invalid or duplicate forward");
     paths.add(forward.path);
@@ -713,7 +721,7 @@ function blob(root: string, revision: string, path: string): Buffer | undefined 
   return git(root, ["cat-file", "blob", match[1]!]);
 }
 
-const FORWARD_LISTS = ["replacementForwards", "creationForwards", "runtimeForwards", "portableReplacementForwards", "portableCreationForwards", "managedInvoicingForwards", "batchedForwards", "managedCommerceForwards", "supportAuthorityForwards"] as const;
+const FORWARD_LISTS = ["replacementForwards", "creationForwards", "runtimeForwards", "portableReplacementForwards", "portableCreationForwards", "managedInvoicingForwards", "batchedForwards", "managedCommerceForwards", "supportAuthorityForwards", "qualifiedInstallations"] as const;
 const canonical = (value: unknown): string => JSON.stringify(value, (_key, item: unknown) => item && typeof item === "object" && !Array.isArray(item) ? Object.fromEntries(Object.entries(item).sort(([left], [right]) => left.localeCompare(right))) : item);
 const sharedApproval = (registry: ReviewedForwardRegistry) => Object.fromEntries(Object.entries(registry).filter(([key]) => !FORWARD_LISTS.includes(key as typeof FORWARD_LISTS[number])));
 const approvalBinding = (registry: ReviewedForwardRegistry, path: string) => {
@@ -746,6 +754,7 @@ export function assertForwardApproval(root: string, base: string, head: string):
   if (before.equals(after)) return;
   const previous = readReviewedForwardRegistry(before);
   for (const path of changedForwardApprovals(before, after)) {
+    if (isQualifiedPlatformMigrationPath(path)) throw new Error("qualified installation bytes require separate exact approval before SQL introduction");
     if (!previous.supportAuthorityForwards && supportAuthorityShapes.some(shape => shape.path === path)) throw new Error("reviewed M12 support class must be approved separately before its SQL");
     if (blob(root, base, path) || !blob(root, head, path)) throw new Error(`reviewed replacement pin must be approved separately unless its SQL is introduced in this PR: ${path}`);
   }
@@ -770,8 +779,20 @@ export function assertUnchangedForwardApproval(root: string, base: string, head:
 /** Run from trusted main. Candidate objects are data; their validator is never loaded. */
 export function assertCoLocatedForwardApproval(root: string, base: string, head: string, trustedBase = base): void {
   const before = blob(root, base, REVIEWED_FORWARD_PATH), after = blob(root, head, REVIEWED_FORWARD_PATH);
-  if (before && after && before.equals(after)) return;
+  if (before && after && !before.equals(after)) {
+    const previousData = JSON.parse(before.toString("utf8")) as { qualifiedInstallations?: unknown } | null;
+    const currentData = JSON.parse(after.toString("utf8")) as { qualifiedInstallations?: unknown } | null;
+    if (previousData?.qualifiedInstallations !== undefined || currentData?.qualifiedInstallations !== undefined) {
+      const previous = readForwardRegistry(before, true), current = readReviewedForwardRegistry(after);
+      for (const [index, entry] of (previous.qualifiedInstallations ?? []).entries()) {
+        if (blob(root, base, entry.path) && canonical(current.qualifiedInstallations?.[index]) !== canonical(entry)) {
+          throw new Error("issued qualified installation approvals are immutable");
+        }
+      }
+    }
+  }
   const added = git(root, ["diff", "--name-only", "--no-renames", "--diff-filter=A", "-z", base, head, "--", "db/platform/migrations/", "supabase/migrations/"]).toString("utf8").split("\0").filter((path) => path.endsWith(".sql"));
+  if (before && after && before.equals(after) && !added.some(isQualifiedPlatformMigrationPath)) return;
   if (added.length === 0) return; // Existing control-only preparation remains available.
   if (!before || !after) throw new Error("reviewed replacement registry must be approved separately before introducing SQL");
   const controls = ["scripts/reviewed-platform-forward.ts", "scripts/platform-migration-manifest.ts", "scripts/documentation-git.ts", "scripts/documentation-routing.ts", "package.json", "package-lock.json"];
@@ -817,8 +838,9 @@ export function assertReviewedPlatformForward(root: string, base: string, head: 
   const registry = readReviewedForwardRegistry(targetRegistry);
   const portable = path.startsWith("db/platform/migrations/");
   const candidates = portable ? [...registry.portableReplacementForwards ?? [], ...registry.portableCreationForwards ?? []] : [...registry.replacementForwards, ...registry.creationForwards, ...(registry.runtimeForwards ?? []), ...(registry.managedInvoicingForwards ?? [])];
-  const forward = [...candidates, ...(registry.batchedForwards ?? []), ...(registry.managedCommerceForwards ?? []), ...(registry.supportAuthorityForwards ?? [])].find((entry) => entry.path === path);
+  const forward = [...candidates, ...(registry.batchedForwards ?? []), ...(registry.managedCommerceForwards ?? []), ...(registry.supportAuthorityForwards ?? []), ...(registry.qualifiedInstallations ?? [])].find((entry) => entry.path === path);
   if (!forward) throw new Error(`non-expand-only forward differs from reviewed replacement path or bytes: ${path}`);
+  if (isQualifiedPlatformMigrationPath(path) && sqlSha256(bytes) !== forward.sha256) throw new Error(`qualified installation differs from its exact approved bytes: ${path}`);
   let approval = base;
   if (release) {
     // Bind at the unique mainline introduction, never at a later repair of the pins.
@@ -833,6 +855,10 @@ export function assertReviewedPlatformForward(root: string, base: string, head: 
     assertForwardApproval(root, base, head);
   }
   if (sqlSha256(bytes) !== forward.sha256) throw new Error(`non-expand-only forward differs from reviewed replacement path or bytes: ${path}`);
+  if (isQualifiedPlatformMigrationPath(path)) {
+    assertUnchangedForwardApproval(root, approval, head, path);
+    return;
+  }
   const baselinePath = portable ? PLATFORM_BASELINE_FILE : MANAGED_BASELINE;
   const baseline = blob(root, approval, baselinePath);
   if (!baseline || (!portable && sqlSha256(baseline) !== registry.baselineSha256)) throw new Error("reviewed replacement immutable baseline drifted");

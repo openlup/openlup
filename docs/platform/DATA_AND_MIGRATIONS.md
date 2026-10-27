@@ -280,12 +280,30 @@ The identity SQL projection is not a standalone install chain.
 
 The canonical source manifest for `db/platform/migrations` is the existing
 [`config/platform-migration-manifest.json`](../../config/platform-migration-manifest.json).
-Its current format is v1: one baseline and ordered forward file/hash rows for
-that catalogue, plus `objectInventorySha256`. Keep its exact immutable prefix; do not create a competing
-canonical manifest or add package SQL paths to unchanged v1. The
-[source validator](../../scripts/platform-migration-manifest.ts) owns that
-format. A future combined catalogue needs an explicit reviewed format and
-compatibility change if v1 cannot represent it.
+Version 1 keeps one baseline, ordered forward file/hash rows and the issued
+selected-catalog-v2 `objectInventorySha256`. The
+[source validator](../../scripts/platform-migration-manifest.ts) also supports
+version 2: the complete legacy plan and digest plus an explicitly selected
+qualified fresh plan. It validates the union before normalizing either plan for
+the existing package runner. Keep the immutable legacy prefix; do not create a
+competing canonical manifest or add package SQL paths to unchanged v1. This
+control change keeps the on-disk v1 manifest and activates no qualified catalogue.
+
+A qualified plan has a new actual position-zero baseline, the two fixed
+actor/acquisition bootstrap replacements and the fixed runtime tail after the
+complete legacy ownership closure. Other legacy units retain their paths,
+hashes and relative order. Its inventory distinguishes actual migration/bootstrap
+aliasing and restore-binding presence. The optional retained-import tail requires
+a restore binding. No observed target digest supplies an expected inventory.
+
+The experimental trusted-source `PlatformMigrationSource.assertSession` callback
+runs once under the existing session advisory lock after exact-prefix validation
+and before status, dry-run or pending SQL. It can refuse changed host/login facts;
+it shares the source's existing database capability, not a sandbox or per-unit
+provisioning boundary. Sources omitting it retain their existing queries and
+execution. With a hook present, the preceding lock/hash and ledger-existence
+functions bind to `pg_catalog` before admission; release uses the same bound
+lock identity. The later qualified source owns its finite read-only checks.
 
 Several modules in one distribution need a deterministic migration catalogue
 before they can be installed together. Declare their dependency order and
@@ -330,6 +348,16 @@ separately from historical grant spellings or inherited CLI defaults.
 ## Exact reviewed function forwards
 
 ### Co-located SQL and approval pins
+
+The fixed `qualifiedInstallations` class requires prior exact whole-file approval
+for four bootstrap units and an optional retained-import unit. Even expand-only
+qualified SQL uses this separate control-before-feature route: new SQL with new
+pins, simultaneous machinery changes, later repins, unknown paths and edits to
+issued files refuse. Trusted queue admission applies this guard to qualified SQL
+changes even when their prior approval pins are unchanged. The
+[inert fixtures](../../scripts/fixtures/reviewed-m14-qualified/db/platform/migrations/README.md)
+retain the five bound units without installing them. Their source approval is
+not installation, managed-host, publication or activation evidence.
 
 A PR introducing SQL in a class already admitted by its trusted comparison-base
 policy may also carry that SQL's pins. Only bindings for files introduced by

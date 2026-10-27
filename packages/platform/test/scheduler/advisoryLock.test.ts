@@ -43,6 +43,54 @@ describe("createPgAdvisoryLock", () => {
     await expect(lock.tryAcquire("cleanup")).resolves.toBe(false);
   });
 
+  it("reserves pending and held numeric keys, including colliding job IDs", async () => {
+    let grant!: (value: { rows: { locked: boolean }[] }) => void;
+    const pending = new Promise<{ rows: { locked: boolean }[] }>((resolve) => { grant = resolve; });
+    const query = vi.fn().mockReturnValueOnce(pending).mockResolvedValue({ rows: [{ locked: true }] });
+    const lock = createPgAdvisoryLock({ query });
+    // These different identifiers share the actual FNV-1a PostgreSQL key.
+    expect(advisoryLockKey("costarring")).toBe(advisoryLockKey("liquid"));
+    const acquiring = lock.tryAcquire("costarring");
+    await expect(lock.tryAcquire("costarring")).resolves.toBe(false);
+    await expect(lock.tryAcquire("liquid")).resolves.toBe(false);
+    expect(query).toHaveBeenCalledTimes(1);
+    grant({ rows: [{ locked: true }] });
+    await expect(acquiring).resolves.toBe(true);
+    await expect(lock.tryAcquire("liquid")).resolves.toBe(false);
+    await lock.release("costarring");
+    await expect(lock.tryAcquire("liquid")).resolves.toBe(true);
+    await lock.release("liquid");
+  });
+
+  it("clears a reservation after refused or failed acquisition", async () => {
+    const failure = new Error("query failed");
+    const query = vi.fn()
+      .mockResolvedValueOnce({ rows: [{ locked: false }] })
+      .mockRejectedValueOnce(failure)
+      .mockResolvedValue({ rows: [{ locked: true }] });
+    const lock = createPgAdvisoryLock({ query });
+    await expect(lock.tryAcquire("cleanup")).resolves.toBe(false);
+    await expect(lock.tryAcquire("cleanup")).rejects.toBe(failure);
+    await expect(lock.tryAcquire("cleanup")).resolves.toBe(true);
+    expect(query).toHaveBeenCalledTimes(3);
+    await lock.release("cleanup");
+  });
+
+  it("keeps a failed unlock reserved through session close", async () => {
+    const failure = new Error("unlock failed");
+    const query = vi.fn()
+      .mockResolvedValueOnce({ rows: [{ locked: true }] })
+      .mockRejectedValueOnce(failure);
+    const end = vi.fn().mockResolvedValue(undefined);
+    const lock = createPgAdvisoryLock({ query, end });
+    await lock.tryAcquire("cleanup");
+    await expect(lock.release("cleanup")).rejects.toBe(failure);
+    await expect(lock.tryAcquire("cleanup")).resolves.toBe(false);
+    expect(query).toHaveBeenCalledTimes(2);
+    await lock.close();
+    expect(end).toHaveBeenCalledTimes(1);
+  });
+
   it("releases via pg_advisory_unlock with the same key", async () => {
     const query = vi.fn().mockResolvedValue({ rows: [] });
     const lock = createPgAdvisoryLock({ query });

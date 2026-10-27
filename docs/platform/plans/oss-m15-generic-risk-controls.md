@@ -405,3 +405,25 @@ old byte caps after parent-max reconciliation. Correct its current numbers and
 the pending R1 fragment while retaining the original CD-M15-6 measurement and
 reason as historical evidence. No gate values or runtime bytes change. Cascade
 the signed documentation repair and refresh official package artifacts.
+
+### M14 current-main stack maintenance — 2026-10-27
+
+Direct maintainer grant: merge main into R1, then R1 into R2 and R2 into R3
+using local non-fast-forward DCO commits; preserve both modules, regenerate,
+and execute the requested focused checks with two workers and package checks
+in R1/R3. No rebase, force-push, push or external mutation. Conditional
+CD-M15-6a permits only exceeded full-stack caps at 102%, bytes rounded up to
+5,000 and files to an integer, applied first in R1 and cascaded. Full verify,
+counted native admission, activation and release remain outside this run.
+
+Fetched main and instruction freshness pin:
+`c1ca9994a8e833111e06fd7b280a6bd97c79e7ab`; code review base remains separate.
+Current instructions add migration-session admission, scheduler-drain and
+qualified-installation witnesses. Existing task/review history remains intact.
+R1's sole conflict is publication catalogue registration: preserve both M14's
+runtime-drain task page and M15's risk task page. Main's M14 source and API
+changes remain authoritative; risk source is preserved. Every numeric cap
+is checked against the maximum of both parents; no value changes. Lockfile
+is unchanged, so no npm ci. The smallest adequate resolution is the existing
+registration union and generators, without a helper or runtime edit.
+Logs and retained artifacts use `.context/scratch/m15-main-current/` per tree.
