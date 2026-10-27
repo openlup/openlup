@@ -14,6 +14,7 @@ import { assertInstalledPackages, isolatedConsumerEnv, readCurrentPackManifest }
 import { POSTGRES_PROOF_IMAGE } from "./outbox-disposable-postgres.ts";
 
 export const NON_ADAPTER_ENTRIES = [
+  "lifecycle",
   "portability",
   "operations",
   "operations/contracts",
@@ -791,6 +792,58 @@ try {
 `);
 }
 
+/** Installed lifecycle operations retain file ownership and finite legacy-role refusals. */
+export function proveLifecycleConsumer(consumer: string): void {
+  consumerNode(consumer, `
+import assert from "node:assert/strict";
+import {execFileSync} from "node:child_process";
+import {promises as fs} from "node:fs";
+import {join} from "node:path";
+import {pathToFileURL} from "node:url";
+import * as lifecycle from "@openlup/platform/lifecycle";
+assert.deepEqual(Object.keys(lifecycle).sort(),["AppUpgradeConflictError","applyAppUpgrade","inspectLegacyPostgresInstallRoles","planAppUpgrade"]);
+const roleRequest={migrationLogin:"migration",runtimeLogin:"migration",roleMode:"installer-managed"};
+const role={name:"migration",login:true,superuser:true,inherit:false,createRole:false,createDatabase:false,replication:false,bypassRls:false};
+const observed={database:"synthetic",currentUser:"migration",sessionUser:"migration",roles:[role],memberships:[]};
+let queries=0;
+const query=async(sql,values)=>{queries++;assert.ok(sql.startsWith("SELECT "));assert.deepEqual(values,[["anon","authenticated","platform_acquisition_owner","platform_acquisition_runtime","migration"]]);return {rows:[observed]};};
+const qualified=await lifecycle.inspectLegacyPostgresInstallRoles({query},roleRequest);
+assert.equal(queries,1);assert.equal(qualified.scope,"legacy-fresh-bootstrap-role-prerequisites");
+assert.equal(qualified.rolePrerequisitesMet,true);assert.deepEqual(qualified.blockers,[]);
+const refused=await lifecycle.inspectLegacyPostgresInstallRoles({query:async()=>({rows:[{...observed,roles:[{...role,superuser:false}]}]})},roleRequest);
+assert.equal(refused.rolePrerequisitesMet,false,"installed role observation must retain superuser refusal");
+assert.deepEqual(refused.blockers,[{code:"legacy_bootstrap_requires_superuser"}]);
+await assert.rejects(lifecycle.inspectLegacyPostgresInstallRoles({query:async()=>{throw new Error("synthetic private driver detail");}},roleRequest),{message:"postgres_install_observation_failed"});
+const root=await fs.mkdtemp(join(await fs.realpath(process.cwd()),"app-upgrade-"));
+try {
+ const from={version:"example-N-1",schema:{min:1,max:2},files:{"generated/entry.mjs":"export const revision = 1;\\n","generated/second.txt":"old\\n","theme.css":"original\\n"}};
+ const to={version:"example-N",schema:{min:1,max:2},files:{"generated/entry.mjs":"export const revision = 2;\\n","generated/second.txt":"new\\n","theme.css":"original\\n"}};
+ await fs.mkdir(join(root,"generated"));
+ for(const [path,bytes] of Object.entries(from.files))await fs.writeFile(join(root,path),bytes);
+ await fs.writeFile(join(root,"brand.txt"),"adopter brand");
+ await fs.writeFile(join(root,"theme.css"),"adopter theme");
+ const input={root,from,to,schemaVersion:2};
+ assert.deepEqual((await lifecycle.planAppUpgrade(input)).conflicts,[]);
+ assert.equal(await fs.readFile(join(root,"generated/entry.mjs"),"utf8"),from.files["generated/entry.mjs"],"planning must not write");
+ await fs.writeFile(join(root,"generated/entry.mjs"),"local managed edit");
+ await assert.rejects(lifecycle.applyAppUpgrade(input),lifecycle.AppUpgradeConflictError);
+ assert.equal(await fs.readFile(join(root,"generated/entry.mjs"),"utf8"),"local managed edit");
+ assert.equal(await fs.readFile(join(root,"generated/second.txt"),"utf8"),from.files["generated/second.txt"],"conflict must precede other writes");
+ await fs.writeFile(join(root,"generated/entry.mjs"),from.files["generated/entry.mjs"]);
+ const child=\`import {promises as fs} from "node:fs";import {applyAppUpgrade} from "@openlup/platform/lifecycle";const rename=fs.rename.bind(fs);fs.rename=async(...args)=>{await rename(...args);process.kill(process.pid,"SIGKILL");await new Promise(()=>{});};await applyAppUpgrade(JSON.parse(process.argv[1]));\`;
+ assert.throws(()=>execFileSync(process.execPath,["--input-type=module","-e",child,JSON.stringify(input)],{cwd:process.cwd(),timeout:5000,stdio:["ignore","pipe","pipe"]}),error=>error.signal==="SIGKILL","installed app upgrade must reach atomic replacement");
+ assert.equal(await fs.readFile(join(root,"generated/entry.mjs"),"utf8"),to.files["generated/entry.mjs"]);
+ assert.deepEqual((await lifecycle.applyAppUpgrade(input)).applied,["generated/second.txt"]);
+ assert.deepEqual((await lifecycle.applyAppUpgrade(input)).applied,[]);
+ assert.equal((await import(pathToFileURL(join(root,"generated/entry.mjs")).href)).revision,2);
+ assert.equal(await fs.readFile(join(root,"brand.txt"),"utf8"),"adopter brand");
+ assert.equal(await fs.readFile(join(root,"theme.css"),"utf8"),"adopter theme");
+ await assert.rejects(lifecycle.applyAppUpgrade({...input,schemaVersion:3}),lifecycle.AppUpgradeConflictError);
+ await assert.rejects(import("@openlup/platform/lifecycle/internal"),{code:"ERR_PACKAGE_PATH_NOT_EXPORTED"});
+} finally {await fs.rm(root,{recursive:true,force:true});}
+`);
+}
+
 /** Two separate methods keep their own request and result shapes in both module-resolution modes. */
 export function compileOperationsConsumer(consumer: string, compiler: string): void {
   const file=join(consumer,"operations-types.ts");
@@ -875,6 +928,21 @@ export function compileConsumer(consumer: string, entries: readonly string[], co
     'declare const acquisitionDirect: AcquisitionCaseDirectDeps;',
     'export const acquisitionHandlers = createAcquisitionCaseHandlers(acquisitionPort);',
     'export const acquisitionCount = createAcquisitionCaseActiveCountDirectHandler(acquisitionDirect);',
+  ].join("\n"));
+  if (entries.includes("lifecycle")) surfaces.push([
+    'import { planAppUpgrade, applyAppUpgrade, inspectLegacyPostgresInstallRoles } from "@openlup/platform/lifecycle";',
+    'import type { AppVersionSnapshot, AppUpgradeInput, AppUpgradePlan, PostgresInstallQuery, LegacyPostgresInstallRequest, LegacyPostgresInstallRoleReport } from "@openlup/platform/lifecycle";',
+    'declare const from: AppVersionSnapshot; declare const to: AppVersionSnapshot;',
+    'const upgrade: AppUpgradeInput = { root: "/example-app", from, to, schemaVersion: 2 };',
+    'export const plannedUpgrade: Promise<AppUpgradePlan> = planAppUpgrade(upgrade);',
+    'export const appliedUpgrade = applyAppUpgrade(upgrade);',
+    'declare const roleDb: PostgresInstallQuery;',
+    'const roleRequest: LegacyPostgresInstallRequest = { migrationLogin: "migration", runtimeLogin: "migration", roleMode: "installer-managed" };',
+    'export const legacyRoles: Promise<LegacyPostgresInstallRoleReport> = inspectLegacyPostgresInstallRoles(roleDb, roleRequest);',
+    '// @ts-expect-error qualification modes are explicit and do not imply install readiness',
+    'inspectLegacyPostgresInstallRoles(roleDb, { ...roleRequest, roleMode: "ready" });',
+    '// @ts-expect-error schema admission uses an explicit integer ordinal',
+    'planAppUpgrade({ ...upgrade, schemaVersion: "2" });',
   ].join("\n"));
   if (entries.includes("portability")) surfaces.push([
     'import { captureCompatiblePostgresRows, restoreCompatiblePostgresRows, copyTransferObjects } from "@openlup/platform/portability";',
@@ -1916,6 +1984,7 @@ assert.throws(() => promotions.resolvePromotionBenefitDefinition({ discount_type
     proveCommerceServerConsumer(consumer);
     proveOperationsConsumer(consumer);
     provePortabilityConsumer(consumer);
+    proveLifecycleConsumer(consumer);
     proveCatalogCompositionConsumer(consumer);
     proveAdapterRefusals(consumer);
     proveOidcRefusals(consumer);

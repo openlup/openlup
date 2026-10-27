@@ -294,6 +294,19 @@ opt-in selector mounts no live route feeding them.
 
 ## Self-host boundary
 
+Application file changes can use the explicit Node
+[lifecycle snapshot primitive](ARCHITECTURE_AND_EXTENSIONS.md#application-file-upgrades)
+under an exclusive maintenance window. Its conflict preflight and exact-byte
+resume are separate from the canonical migration runner and actual runtime
+admission. A caller-supplied schema-range check does not certify database
+compatibility or a completed npm/deployment transition.
+
+The same entry's `inspectLegacyPostgresInstallRoles` observes only finite
+[legacy fresh-bootstrap role prerequisites](DATA_AND_MIGRATIONS.md#legacy-fresh-bootstrap-role-observation)
+through an injected PostgreSQL query handle. Even `rolePrerequisitesMet: true`
+does not establish install readiness, runtime grants, pooling or host support;
+the helper creates no role or schema and runs no installer.
+
 The platform target is portable PostgreSQL with a reproducible baseline and
 ordered forward migrations. A managed database service and a self-hosted
 database are deployment choices for the same data contract, not two business

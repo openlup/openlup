@@ -702,6 +702,28 @@ files. This exact minimum allocates no additional forecast growth. Its tarball,
 unpacked, file, docs, browser-entry and released-baseline limits are unchanged by
 this decision; every later candidate still requires an actual package measurement.
 
+The bounded M14 C technical budget read on 2026-10-27 approves only the measured
+application-file lifecycle minima: code-gzip 1,650,631 → 1,656,258 B (+5,627 B),
+tarball 1,925,000 → 1,928,766 B (+3,766 B), and unpacked 8,970,000 →
+8,981,253 B (+11,253 B). The two production files produce six packed source,
+JavaScript and declaration files, including the exact directory-entry ownership
+repair. File, docs, browser-entry and released-baseline limits, package versions
+and locks are unchanged. This allocates no later runtime or qualification growth.
+These are working-tree observations; the approved gate bytes and final candidate
+still require actual remeasurement, since metadata edits can affect tarball size.
+That read covered the C-only artifact and is historical for the combined delivery.
+The bounded combined C+D technical read on 2026-10-27 approves actual measured
+minima of code-gzip 1,659,891 B (+3,633 B from the C-only cap), tarball 1,932,480 B
+(+3,714 B) and unpacked 8,995,279 B (+14,026 B). Cumulative increases from B's
+1,650,631 / 1,925,000 / 8,970,000 B limits are 9,260 / 7,480 / 25,279 B.
+D's unchanged finite read-only legacy role observer adds three packed source,
+JavaScript and declaration files through the same lifecycle entry. Actual code
+files 2574 and total files 2628 meet their unchanged caps exactly; docs gzip
+64,992 B and five files fit 73,728 B and ten files. No file/docs/browser cap,
+released 0.28.0 baseline, version or lock changes, future runtime/installation
+allowance, SDK, DDL or new runner follow. Exact metadata edits require actual
+approved-input remeasurement; this technical read is not final review or proof.
+
 **Release growth tripwire.** Each `pack.baseline` records the last released
 version and its total compressed tarball bytes, initially `0.16.0` and the
 measurements above. On the release-set path only, a candidate more than 30%

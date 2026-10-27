@@ -718,19 +718,31 @@
       ],
       "entrypoint": "dist/portability/index.d.ts",
       "snapshot": "api/portability.api.md"
+    },
+    "./lifecycle": {
+      "role": "rail",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/packageBoundary.test.ts",
+        "test/lifecycle/appUpgrade.test.ts",
+        "test/lifecycle/postgresInstallQualification.test.ts"
+      ],
+      "entrypoint": "dist/lifecycle/index.d.ts",
+      "snapshot": "api/lifecycle.api.md"
     }
   },
   "pack": {
     "code": {
-      "maxPackedBytes": 1650631,
+      "maxPackedBytes": 1659891,
       "maxFiles": 2574
     },
     "docs": {
       "maxPackedBytes": 73728,
       "maxFiles": 10
     },
-    "maxPackedBytes": 1925000,
-    "maxUnpackedBytes": 8970000,
+    "maxPackedBytes": 1932480,
+    "maxUnpackedBytes": 8995279,
     "maxFiles": 2628,
     "baseline": {
       "version": "0.28.0",
