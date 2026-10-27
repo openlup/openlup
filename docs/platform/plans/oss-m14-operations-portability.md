@@ -322,3 +322,105 @@ draft branch. The manual resolution retained E1 control/author evidence, E2
 source/publication notes and both boundaries in the contract owner. Conflicts
 were documentation-only; no SQL, manifest or runtime behavior was rewritten.
 This integration has no current tests, review, carry-over or qualification proof.
+
+## E2 production-composition proof source, 27 October 2026
+
+The owner's receiving-session instruction now requests all necessary source
+corrections here, with measurements/tests/verification executed only on the
+stronger proving machine. This work starts from E2
+`1c52d71aaa76a59b751b526fa5b8c253df5d72a4`. No tests, builds, lint, installs,
+gates, commits, push or external writes ran in this source-only preparation.
+No native history, findings, cycles or prior expiry was changed. Additional
+test-source author `01a17e98-726c-7263-871e-44c8cd68410a` (`/root/m14_cd`)
+is excluded from later independent review alongside every existing author and
+coordinator. This is authored proof source, not counted independent review.
+
+The smallest complete witness is
+`tests/postgres/m14QualifiedComposition.test.ts` and its one-installation child
+`m14QualifiedComposition.proof.ts`. It defines exactly four installer-managed
+production references and four fresh operator-provisioned targets, covering
+migration/bootstrap aliased or separate and restore absent or present. Reference
+names use `q2_reference_*`; target names use `q2_target_*`. The temporary setup
+login renames actual bootstrap OID 10 and is dropped before admission. No name
+alias, target-derived expected digest or extra four-install matrix is introduced.
+
+Every child uses the actual production reference binding, default startup/pool
+transport and public `@openlup/platform/migrations` built export. There is no
+root, pool, source, projector or expectation override. A separate measured
+payload observation uses the same production startup-options helper under the
+actual migration login and held lock; its result must equal the unchanged prior
+pin. Each profile checks pending status, apply, complete status, empty replay
+and all 89 exact path/digest/position ledger rows. These are eight new production
+checks; the four historical source-reference derivations remain historical.
+
+Only the already-healthy separate-migrator/with-restore target adds the
+discriminators: a column-comment mutation must reach the precise object-inventory
+SHA refusal with unchanged ledger timestamps; after restoration healthy status
+must recover. A separate SET-reachable parameter capability grant must reach
+the unsafe-session refusal, retain the ledger and recover after revocation.
+The canonical-search-path discriminator adds exact public `left(name,int4)` and
+`hashtextextended(text,int4)` overloads: observations and pre-hook lock handling
+must invoke neither, then reach the precise inventory refusal for the added
+definitions. After cleanup, healthy status must recover. An application-first
+role-default search_path with writing shadow functions must separately refuse
+as `qualified_profile_requires_canonical_search_path` with zero shadow calls;
+resetting the default and removing that schema must recover healthy status and
+empty replay. These are prepared regressions for the supervisor's coordinated
+facts/catalog/qualified-executor symbol binding, not evidence those changes pass.
+
+The existing disposable PostgreSQL helper owns each container and removes it
+in a finally block, including child failure/timeout. Every runner operation is
+awaited. Explicit observer/setup pools close before child exit; child lifetime
+then releases the production runner's hidden default pools without adding a
+production close API. The two source paths are registered in the existing public
+catalogue. The supervisor places the child's exact execution-entrypoint
+registration in prior E1 controls, preserving the prohibition on co-changing
+admission machinery with E2's new qualified SQL; E2 changes no classifier or
+entrypoint machinery. Frozen SQL, fixture bytes, manifest and four pins remain
+unchanged. The known frozen actor-SQL EOF issue is retained.
+
+Proving-machine commands from the E2 checkout, after its normal pinned
+Node/npm/dependency setup (not executed here):
+
+```sh
+npm test -- --project=node tests/postgres/m14QualifiedComposition.test.ts
+npm test -- --project=node tests/postgres/m14QualifiedBaseline.test.ts tests/postgres/m14QualifiedSession.test.ts tests/postgres/m14MigrationSessionAdmission.test.ts server/adapters/postgres/qualifiedInstall.test.ts
+```
+
+The first command includes the existing prerequisite builds and eight sequential
+owned installations; logs distinguish each reference/target, actual measured
+inventory, exact ledger count and elapsed time. Missing Docker is a failure,
+not a skip. The second is the existing focused regression selection. These do
+not replace required policy/navigation, coverage, cold/installed/legacy/full
+checks, measurements, committed native review and authorized delivery. If
+execution exposes a source defect, return its exact failure to this authoring
+session rather than changing SQL, pins or expectations on the proving machine.
+
+Self-retro: a process-lifetime child exercises the real hidden-pool composition
+without a test seam or new production API. Sharing the four prior pins between
+two explicit modes yields the required eight checks, while applying destructive
+discriminators to one restored healthy target avoids redundant installations.
+
+
+### Receiving coordinator source-freeze addendum
+
+Root completed the qualified session-facts bindings and the effective-path
+refusal before deparser use. Author 01a17e98-8264-7033-a2d1-0d3c8479ca3b also
+bound lookup symbols in the shared static selected-catalog query and its three
+fragments; query identities, serializers, expected hashes and SQL assets remain
+unchanged. This author remains excluded from subsequent independent E2 review.
+The owner explanation links the prepared eight-case production witness.
+
+The concrete reachable cause was path resolution of unqualified catalog names,
+including exact public overloads despite an implicitly first pg_catalog. Merely
+checking canonical path would not close that mechanism. Reusing the fixed query
+with qualified symbols preserves the expected canonical payload without a new
+projector variant, parser, session SET or replacement inventory. Canonical
+legacy output and frozen E-only hashes still need actual proving-machine
+execution. The effective-path check is for stable catalog rendering; it does
+not claim isolation from PostgreSQL native deparser/type-output implementations.
+
+All source edits remain here under the owner's latest instruction. The
+stronger-machine session may only run the prepared measurement/test/verify
+commands and return results; it must not implement further repairs. No local
+execution, PASS, native cycle or budget change occurred in this source phase.

@@ -25778,6 +25778,14 @@
       "class": "public-output"
     },
     {
+      "path": "tests/postgres/m14QualifiedComposition.proof.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/m14QualifiedComposition.test.ts",
+      "class": "public-output"
+    },
+    {
       "path": "tests/postgres/m14QualifiedSession.test.ts",
       "class": "public-output"
     },
