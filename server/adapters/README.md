@@ -291,3 +291,10 @@ opener. Simulator settlement retains the canonical transition time and attempt.
 Current/prepared attempt hints cannot supply this authority. The
 [managed replay contract](../../docs/platform/DATA_AND_MIGRATIONS.md#m10-9-attempt-replay-control-fixtures)
 owns fresh NULL refusal and the existing-donor host mapping.
+
+The platform control-plane compatibility adapter forwards to
+`@openlup/platform/operations/server`. It still accepts the existing structural
+SQL executor and operator ID, uses the same fixed routines and preserves
+command hashing, row decoding and conflict/error mapping. Native pool/transaction
+ownership and managed RPC translation stay with the reference bindings; the
+package creates neither a connection nor a provider client on import.

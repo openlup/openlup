@@ -15,10 +15,8 @@ export interface PlatformControlPlaneBinding {
   run<T>(work: (port: PlatformControlPlanePort) => Promise<T>): Promise<T>;
 }
 
-export type DirectPlatformWatchdogResult = {
-  status: number;
-  body: Record<string, unknown>;
-};
+export type { DirectPlatformWatchdogResult } from "@openlup/platform/operations/server";
+import { runControlPlaneWatchdogTick, type DirectPlatformWatchdogResult } from "@openlup/platform/operations/server";
 
 /** Execute the bounded public-bundle watchdog over persisted neutral job facts. */
 export async function runDirectPlatformWatchdogTick(
@@ -33,25 +31,7 @@ export async function runDirectPlatformWatchdogTick(
     ok: false, health: "configuration_failure", firingCount: 0, error: resolved.error,
   } };
   try {
-    return await resolved.binding.run(async (port) => {
-      const snapshot = await port.readControlPlane({});
-      const failedJobs = snapshot.jobs.filter((job) => job.enabled && job.lastStatus === "failed");
-      const health = failedJobs.length > 0 ? "degraded" as const : "healthy" as const;
-      const recorded = checkOnly ? null : await port.mutateControlPlane({
-        action: "record-heartbeat",
-        idempotencyKey: `platform-watchdog:${now.toISOString()}`,
-        health,
-        firingCount: failedJobs.length,
-        maxSeverity: failedJobs.length > 0 ? "p2" : null,
-        promotionReady: failedJobs.length === 0,
-      });
-      return { status: 200, body: {
-        ok: true, health, firingCount: failedJobs.length,
-        failedJobs: failedJobs.map((job) => job.jobName),
-        checkedAt: now.toISOString(), heartbeatRecorded: recorded != null,
-        replayed: recorded?.replayed ?? false,
-      } };
-    });
+    return await resolved.binding.run((port) => runControlPlaneWatchdogTick(port, now, checkOnly));
   } catch {
     return { status: 502, body: {
       ok: false, health: "transport_failure", firingCount: 0,

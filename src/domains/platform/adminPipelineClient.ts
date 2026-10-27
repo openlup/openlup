@@ -1,24 +1,13 @@
+import { createOperationsClients } from "@openlup/platform/operations";
 import { requestBff, type BffRequestOptions } from "@/lib/bff/client";
 import {
   adminPipelineDhlTrackingRefreshResponseSchema,
-  adminPipelineReadResponseSchema,
   type AdminPipelineDhlTrackingRefreshResponse,
-  type AdminPipelineReadResponse,
 } from "./contracts";
 
-const READ_PATH = "/api/bff/admin/platform/pipeline";
 const REFRESH_PATH = "/api/bff/admin/platform/pipeline/dhl-tracking-refresh";
 
-export function getAdminPipeline(
-  accessToken: string,
-  options: BffRequestOptions = {},
-): Promise<AdminPipelineReadResponse> {
-  return requestBff(READ_PATH, adminPipelineReadResponseSchema, {
-    ...options,
-    method: "GET",
-    headers: authHeaders(accessToken, options),
-  });
-}
+export const getAdminPipeline = createOperationsClients(requestBff).getAdminPipeline;
 
 export function refreshAdminPipelineDhlTracking(
   accessToken: string,

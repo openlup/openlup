@@ -184,3 +184,28 @@ spelling caused six lint errors. Reusing the existing accepted entry spelling
 resolved it without changing a guard. Inspecting the staged deletion also avoided
 mistaking an index mismatch for a documentation defect. No additional process or
 abstraction was justified; no formal rethink was required.
+
+### M14 main integration — 2026-10-27
+
+Direct maintainer continuation: merge freshly fetched `origin/main` into the
+assigned R1 branch with `git merge --no-ff origin/main`, preserve both modules,
+regenerate derived outputs, run the requested focused checks with two Vitest
+workers, and create local Bart Roszkowski DCO commits. No push, cap change,
+release or activation is authorized. This bounded integration does not complete
+the coordinator's full verification or native admission obligations above.
+
+Main and current instruction freshness pin:
+`80cb0e7063206a9fead36b4e6680c9a83fa3e108`.
+The relevant instruction delta adds M14 proof, exact SQL neutrality inventory
+and review lessons; earlier R1 scope and delivery restrictions remain applicable.
+The code review base remains separately recorded above.
+
+All 11 conflicts are shared additions: documentation routing/catalogue,
+architecture and documentation ownership, generated source map, ESLint graph,
+package README, browser budgets, package boundary and import-map inventories,
+and installed-consumer export classification. Retain operations content and
+append risk entries beside it. The generated source map starts from main for
+regeneration in the separate follow-up commit. No runtime algorithm is edited.
+The smallest adequate resolution is the union of these existing registrations;
+no helper, dependency or raised cap is needed. Dependency versions and lockfile
+are unchanged, so no reinstall is required.

@@ -600,6 +600,45 @@
       "entrypoint": "dist/account-support/contracts/index.d.ts",
       "snapshot": "api/account-support-contracts.api.md"
     },
+    "./operations": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/packageBoundary.test.ts",
+        "test/operations/controlPlaneHandler.test.ts",
+        "test/operations/platformWatchdogService.test.ts",
+        "test/operations/adminAlertsView.test.ts"
+      ],
+      "entrypoint": "dist/operations/index.d.ts",
+      "snapshot": "api/operations.api.md"
+    },
+    "./operations/contracts": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/packageBoundary.test.ts",
+        "test/operations/controlPlaneHandler.test.ts",
+        "test/operations/platformWatchdogService.test.ts",
+        "test/operations/adminAlertsView.test.ts"
+      ],
+      "entrypoint": "dist/operations/contracts/index.d.ts",
+      "snapshot": "api/operations-contracts.api.md"
+    },
+    "./operations/server": {
+      "role": "capability",
+      "maturity": "experimental",
+      "compatibilityPolicy": "internal-candidate",
+      "packageSmokeEvidence": [
+        "test/packageBoundary.test.ts",
+        "test/operations/controlPlaneHandler.test.ts",
+        "test/operations/platformWatchdogService.test.ts",
+        "test/operations/adminAlertsView.test.ts"
+      ],
+      "entrypoint": "dist/operations/server/index.d.ts",
+      "snapshot": "api/operations-server.api.md"
+    },
     "./marketing": {
       "role": "capability",
       "maturity": "experimental",
@@ -710,7 +749,7 @@
   "pack": {
     "code": {
       "maxPackedBytes": 1648000,
-      "maxFiles": 2520
+      "maxFiles": 2574
     },
     "docs": {
       "maxPackedBytes": 73728,
@@ -718,7 +757,7 @@
     },
     "maxPackedBytes": 1925000,
     "maxUnpackedBytes": 8970000,
-    "maxFiles": 2580,
+    "maxFiles": 2628,
     "baseline": {
       "version": "0.28.0",
       "packedBytes": 1807006
@@ -738,6 +777,8 @@
       "./commerce/contracts": 32,
       "./pricing/browser": 25600,
       "./account-support/contracts": 32,
+      "./operations/contracts": 32,
+      "./operations": 30720,
       "./marketing/contracts": 32,
       "./risk/contracts": 32
     }
