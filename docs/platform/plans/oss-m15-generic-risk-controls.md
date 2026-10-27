@@ -209,3 +209,50 @@ regeneration in the separate follow-up commit. No runtime algorithm is edited.
 The smallest adequate resolution is the union of these existing registrations;
 no helper, dependency or raised cap is needed. Dependency versions and lockfile
 are unchanged, so no reinstall is required.
+
+Integration commit: `1c7e5ae6f69bea8f06dd26d1e487913b55c7e278`, with the
+original R1 head and fetched main as its two parents and the instructed DCO
+trailer. Regeneration is a separate signed follow-up. Platform `api:update`
+completed without changing any API report bytes. `oss:published-tree -- --policy`
+first refused the stale source map; `--policy --docs-update` regenerated the
+combined operations/risk navigation and passed all five documentation obligations
+with zero unanswered. The committed release snapshot remains release-prep owned;
+the checker confirms live computed bindings. Neither module's source, tests or
+API reports differ from its corresponding parent.
+
+Focused integration results (logs under ignored
+`.context/scratch/m15-r1-main-merge/`):
+
+| Check | Result |
+| --- | --- |
+| `npx --no -- ast-grep scan --error=no-suppress-all --error=unused-suppression` | PASS |
+| `npm run lint` | PASS; zero errors, 33 existing warnings |
+| `npm run api:check --workspaces --if-present` | PASS for core, outbox and platform; root has no standalone API script |
+| `npm run packages:check` | FAIL solely on the five platform size caps below; all packages packed and no other findings |
+| `npx --no -- vitest run packages/platform/test/risk --maxWorkers=2` | PASS, 23/23 in four files |
+| `npx --no -- vitest run scripts/packages/platform-cold-consumer.test.ts -t M15 --maxWorkers=2` | PASS, 1 selected; 86 unrelated cases excluded by the name filter |
+| `npx --no -- vitest run packages/platform/test/packageBoundary.test.ts scripts/packages/eslint-import-map.test.ts --maxWorkers=2` | PASS, 2,746/2,746; verifies the merged module inventories |
+
+The actual platform tarball was independently measured with the existing
+`measurePack` implementation and matches every official gate finding. These are
+main's caps, with no adjustment in this integration:
+
+| Metric | Measured | Cap | Result |
+| --- | ---: | ---: | --- |
+| Packed bytes | 1,932,551 | 1,925,000 | Exceeds by 7,551 |
+| Unpacked bytes | 9,044,275 | 8,970,000 | Exceeds by 74,275 |
+| Files | 2,647 | 2,628 | Exceeds by 19 |
+| Code gzip bytes | 1,654,451 | 1,648,000 | Exceeds by 6,451 |
+| Code files | 2,592 | 2,574 | Exceeds by 18 |
+| Docs gzip bytes | 64,287 | 73,728 | Within by 9,441 |
+| Docs files | 5 | 10 | Within by 5 |
+
+The size gate remains a delivery blocker for the coordinator. The direct task
+explicitly requires reporting rather than changing caps; no capacity workaround
+or unrelated repair is added. Full verification, counted native admission and
+remote delivery remain outside this local continuation.
+
+Self-retro: using the union of existing registrations and the existing generators
+kept integration free of new mechanisms. Measuring the combined artifact exposed
+five concrete budget overruns despite each lane's earlier local evidence; retain
+that combined-artifact check before delivery. No successor work was opened.
