@@ -281,3 +281,26 @@ browser bundle and private paths, and proves that pg is absent.
 Required full verification, coverage, API and navigation generation, actual
 case/time/pack measurements and counted review remain with the coordinator. No
 execution, hosted PASS, installation proof or budget exception is claimed here.
+
+### R2 preliminary review history
+
+Two independent cold read-only reviewers inspected the full
+`2e7d70ad25aeea42736394aebbf0e87f0b9a4c79..583c3f49f2fc6a75ded17636384e7a0ff52bd367`
+comparison with the binding criteria and simplicity pre-check. Both used reads
+and Git only; no suite, compiler or generator ran. They identified two material
+cards, repaired in the next signed candidate:
+
+- **R2-P1 / reviewer A:** the fingerprint delegate omitted the existing public
+  `safeRiskString` helper. An existing source importer would fail, violating
+  unchanged delegation. Restore the named package export and extend the existing
+  fingerprint case with an identity assertion; no new behavior case is needed.
+- **R2-P2 / reviewers A and B (B1):** the selected-route witness called a
+  `Contribution` descriptor's erased `(...args: never[]) => unknown` signature
+  with HTTP arguments. The server compiler includes this test and would reject
+  it. Recover `typeof binding.services.list` at that witness boundary, as in the
+  existing M12 pattern; preserve the metadata API and actual callable.
+
+This is one preliminary repair iteration, not a native prepare/admission cycle.
+No existing native session, findings, counter or expiry was reset or inferred.
+Fresh reviewers must inspect the repaired committed candidate and explicitly
+close both cards. All deferred execution obligations remain open.

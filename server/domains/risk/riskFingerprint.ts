@@ -1,1 +1,1 @@
-export { riskSubjectHash } from "@openlup/platform/risk/server";
+export { riskSubjectHash, safeRiskString } from "@openlup/platform/risk/server";

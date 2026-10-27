@@ -99,7 +99,8 @@ it("selected admin callables share one contribution while the commerce executor 
   expect([...f.registry.keys()]).toEqual(["commerce.order.paid"]);
   await f.handle(); expect(f.write).toHaveBeenCalledTimes(1); expect(f.fulfill).toHaveBeenCalledTimes(1);
   const res = { setHeader() {}, status() { return res; }, json: vi.fn() } as unknown as HttpResponse;
-  await f.binding.routes["@openlup/platform/risk:/api/bff/admin/risk/cases"]({ method: "GET", query: {} } as HttpRequest, res);
+  const selectedRoute = f.binding.routes["@openlup/platform/risk:/api/bff/admin/risk/cases"] as typeof f.binding.services.list;
+  await selectedRoute({ method: "GET", query: {} } as HttpRequest, res);
   expect(f.authorizeAdmin).toHaveBeenCalledTimes(1); expect(f.listCases).toHaveBeenCalledExactlyOnceWith({ page: 1, pageSize: 25 });
   expect(res.json).toHaveBeenCalledWith({ ok: true, data: await f.listCases.mock.results[0].value });
 });
