@@ -22,6 +22,14 @@ in [Architecture and extension boundaries](../../docs/platform/ARCHITECTURE_AND_
 
 ## Owns
 
+Risk's native and managed adapters now re-export the existing structural factories
+from `@openlup/platform/risk/server`. SQL calls, evidence reads, fingerprints,
+error identities and readback stay unchanged. Managed admin decisions still
+re-read detail and return `replayed: false`; native decisions preserve the SQL
+replay field. Hosts still construct clients and executors, authorize operators
+and map their trusted identities to the selected rail. No adapter activates risk.
+
+
 Acquisition case and research evidence PostgreSQL adapters delegate through
 thin re-exports to `@openlup/platform/marketing/server/postgres`. Runtime bindings retain
 lazy adapter imports after bundle and connection guards, host environment

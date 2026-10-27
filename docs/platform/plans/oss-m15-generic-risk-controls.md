@@ -184,3 +184,43 @@ spelling caused six lint errors. Reusing the existing accepted entry spelling
 resolved it without changing a guard. Inspecting the staged deletion also avoided
 mistaking an index mismatch for a documentation defect. No additional process or
 abstraction was justified; no formal rethink was required.
+
+## R2 — reference delegation, captured workflow and inert composition
+
+Approved outcome: one packaged implementation serves reference risk hashing,
+paid-order assessment, persistence and admin handlers; a default-off recipe binds
+the existing commerce outbox risk slot once. Preserve captured checkout/client/UI,
+trusted actor injection and all donor differences, including managed admin
+`replayed: false`, shadow fulfillment suppression and timestamp fingerprints.
+No corrections, SQL, privacy implementation, M14 paths, activation, versions,
+pushes or PRs belong to this run. O3's approved bounded privacy contributor stays
+with R3; no retention period or managed erasure claim is introduced here.
+
+Authority: Bart Roszkowski is the accountable author. The direct R2 instruction
+allows reading, editing and small local DCO-signed commits in the assigned
+`claude/oss-m15-r2-risk-reference-delegation` worktree. It expressly prohibits tests,
+Vitest, pgTAP, builds, installs, lint and compiler execution while another machine
+verification runs. That instruction overrides pre-sign-off execution for this
+local authoring handoff; it grants no submission, merge or release authority.
+The coordinator retains the verify slot, counted reviews and subsequent delivery.
+
+Stack/code base: `2e7d70ad` (R1). Instruction freshness pin:
+`ef861a76dad97c0b744f6f25c04b04f4ac44c5fe` (freshly fetched `origin/main`,
+2026-10-27); relevant instruction paths are unchanged. No rebase or main merge.
+The complete fit report §4 and coordinator stack plan were read before editing.
+
+Smallest adequate solution: named compatibility exports, the unchanged handler
+with injected existing BFF responder, direct bound callables and an inert
+contribution with no handlers or schedules. The host passes the returned
+`outboxRisk` into its existing `createOutboxDispatchRegistry`; a second executor,
+worker, registry or default BFF route would add behavior and is excluded.
+
+Acceptance/proof plan: retain the existing five handler guards, reference client/UI,
+R1 adapter/SQL/timestamp witnesses; add 19 neutral admin cases, eight composition
+cases, four browser/client cases and four installed-artifact/compiler/isolation
+cases. Each independent table row counts. Refusals must precede the relevant
+port/effect, actor identity must come from authorization, and one paid event must
+assess once before at most one fulfillment. Execution, API generation and docs
+navigation remain deferred under the machine rule; written tests are no PASS
+claim. Preliminary read-only review will inspect the signed candidate and its
+preserved donor statements; it creates no native admission or review expiry.
