@@ -14,6 +14,8 @@ import { assertInstalledPackages, isolatedConsumerEnv, readCurrentPackManifest }
 import { POSTGRES_PROOF_IMAGE } from "./outbox-disposable-postgres.ts";
 
 export const NON_ADAPTER_ENTRIES = [
+  "operations",
+  "operations/contracts",
   "account-support",
   "account-support/contracts",
   "marketing",
@@ -50,6 +52,7 @@ export const NON_ADAPTER_ENTRIES = [
 // identity, communications, promotions and catalog are adapter entries: their declarations reach data/pg types.
 // Its cold runtime import/refusal is below; declarations compile after selecting peers.
 export const ADAPTER_ENTRIES = [
+  "operations/server",
   "marketing/server/postgres",
   "blob",
   "catalog",
@@ -692,6 +695,92 @@ assert.deepEqual(calls, [
 `);
 }
 
+/** Useful operations proof from the installed artifact; no provider or optional SDK is loaded. */
+export function proveOperationsConsumer(consumer: string): void {
+  consumerNode(consumer, `
+import assert from "node:assert/strict";
+import * as operations from "@openlup/platform/operations";
+import * as contracts from "@openlup/platform/operations/contracts";
+import * as server from "@openlup/platform/operations/server";
+assert.deepEqual(Object.keys(contracts), []);
+assert.equal(operations.buildAlertsOverview([], null, new Date("2026-10-26T12:00:00Z")).health, "unknown");
+const calls=[];
+const clients=operations.createOperationsClients(async (path,schema,options)=>{
+  calls.push({path,options});
+  return schema.parse(path.endsWith("/update")?{key:options.body.key,saved:true}:{settings:{"jobs.enabled":true},adminUsers:[]});
+});
+assert.deepEqual(await clients.getAdminSettings("synthetic-token"),{settings:{"jobs.enabled":true},adminUsers:[]});
+assert.deepEqual(await clients.updateAdminSetting("synthetic-token",{key:"jobs.enabled",value:false}),{key:"jobs.enabled",saved:true});
+assert.equal(calls[0].options.headers.get("authorization"),"Bearer synthetic-token");
+assert.equal(calls[1].options.method,"POST");
+const receipts=new Map();let writes=0;
+const executor={async query(sql,values){
+  if(!sql.includes("platform_control_set_control"))return {rows:[]};
+  const [operator,key,fingerprint]=values;
+  assert.equal(operator,"operator");assert.match(fingerprint,/^[a-f0-9]{64}$/);
+  const prior=receipts.get(key);
+  if(prior){if(prior.fingerprint!==fingerprint)throw Object.assign(Error("private database details"),{code:"23505"});return {rows:[{...prior.row,replayed:true}]};}
+  writes++;const row={action:"set-control",replayed:false,revision:writes,recorded_at:"2026-10-26T12:00:00Z"};receipts.set(key,{fingerprint,row});return {rows:[row]};
+}};
+function response(){return {statusCode:0,payload:null,headers:{},setHeader(name,value){this.headers[name]=value;},status(code){this.statusCode=code;return this;},json(value){this.payload=value;return this;},end(){return this;}};}
+const command={action:"set-control",idempotencyKey:"control-key",controlKey:"jobs.enabled",enabled:true};
+const handler=server.createPlatformControlPlaneHandler({port:server.createPlatformControlPlanePort(executor,"operator"),authorizeAdmin:async()=>true,responseRequestId:()=>"request-operations"});
+let res=response();await handler({method:"POST",body:command},res);assert.equal(res.statusCode,200);assert.equal(res.payload.data.replayed,false);assert.equal(res.headers["x-request-id"],"request-operations");
+res=response();await handler({method:"POST",body:command},res);assert.equal(res.payload.data.replayed,true);assert.equal(writes,1);
+res=response();await handler({method:"POST",body:{...command,enabled:false}},res);assert.equal(res.statusCode,409);assert(!JSON.stringify(res.payload).includes("private database details"));assert.equal(writes,1);
+res=response();await handler({method:"POST",body:{...command,enabled:"wrong"}},res);assert.equal(res.statusCode,400);assert.equal(writes,1);
+res=response();await server.createPlatformControlPlaneHandler({port:server.createPlatformControlPlanePort(executor,"operator"),authorizeAdmin:async()=>false})({method:"POST",body:command},res);assert.equal(res.statusCode,401);assert.equal(writes,1);
+res=response();await server.createPlatformControlPlaneHandler({port:{readControlPlane:async()=>({controls:"invalid"}),mutateControlPlane:async()=>null},authorizeAdmin:async()=>true})({method:"GET"},res);assert.equal(res.statusCode,502);
+let heartbeats=0;
+const port={readControlPlane:async()=>({controls:[],alerts:[],jobs:[{jobName:"refresh-example",enabled:true,lastStatus:"failed"}]}),mutateControlPlane:async()=>{heartbeats++;return {replayed:false};}};
+const dry=await server.runControlPlaneWatchdogTick(port,new Date("2026-10-26T12:00:00Z"),true);assert.equal(dry.body.health,"degraded");assert.equal(heartbeats,0);
+const tick=await server.runControlPlaneWatchdogTick(port,new Date("2026-10-26T12:00:00Z"),false);assert.equal(tick.body.heartbeatRecorded,true);assert.equal(heartbeats,1);
+await assert.rejects(import("@openlup/platform/operations/server/internal"),{code:"ERR_PACKAGE_PATH_NOT_EXPORTED"});
+`);
+}
+
+/** Two separate methods keep their own request and result shapes in both module-resolution modes. */
+export function compileOperationsConsumer(consumer: string, compiler: string): void {
+  const file=join(consumer,"operations-types.ts");
+  writeFileSync(file,`
+import { createOperationsClients } from "@openlup/platform/operations";
+import type { OperationsRequestBff } from "@openlup/platform/operations";
+import type { PlatformControlPlanePort } from "@openlup/platform/operations/contracts";
+import { runPlatformWatchdog } from "@openlup/platform/operations/server";
+declare const requestBff: OperationsRequestBff;
+const clients=createOperationsClients(requestBff);
+const setting: {key:string;saved:true}=await clients.updateAdminSetting("token",{key:"enabled",value:true});
+const pipeline: {emailSendCount:number}=await clients.getAdminPipeline("token");
+// @ts-expect-error a setting write does not return a pipeline result
+const wrong: {emailSendCount:number}=await clients.updateAdminSetting("token",{key:"enabled",value:true});
+// @ts-expect-error values remain the existing scalar setting contract
+clients.updateAdminSetting("token",{key:"enabled",value:{invented:true}});
+declare const control: PlatformControlPlanePort;
+control.mutateControlPlane({action:"set-control",idempotencyKey:"key",controlKey:"enabled",enabled:true});
+// @ts-expect-error heartbeat inputs cannot masquerade as control writes
+control.mutateControlPlane({action:"set-control",idempotencyKey:"key",health:"healthy"});
+declare const ledgerPort: import("@openlup/platform/operations/contracts").AlertLedgerPort;
+declare const sinkPort: import("@openlup/platform/operations/contracts").AlertSinkPort;
+runPlatformWatchdog({evidencePort:{collectSnapshot:async()=>({checkedAt:"instant",sample:7})},ledgerPort,sinkPort,catalog:[{name:"example"}],checkOnly:true,evaluate(snapshot,catalog){const sample:number=snapshot.sample;const name:string=catalog[0].name;void sample;void name;return [];}});
+declare const hostLedger: import("@openlup/platform/operations/contracts").AlertLedgerPort<"operator-pager">;
+declare const hostSink: import("@openlup/platform/operations/contracts").AlertSinkPort<"operator-pager">;
+const hostDecision: import("@openlup/platform/operations/contracts").AlertDecision<"operator-pager">={dedupeKey:"example",severity:"p0",owner:"ops",runbookUrl:"/runbook",title:"Example",message:"Synthetic",channels:["operator-pager"],payload:{}};
+const hostRun=await runPlatformWatchdog({evidencePort:{collectSnapshot:async()=>({checkedAt:"instant"})},ledgerPort:hostLedger,sinkPort:hostSink,catalog:[],checkOnly:false,evaluate:()=>[hostDecision]});
+const hostChannel: "operator-pager"=hostRun.decisions[0].channels[0];
+// @ts-expect-error the host sink preserves its own channel key
+hostSink.send({...hostDecision,channels:["other-channel"]},{id:"alert",dedupeKey:"example",status:"open",severity:"p0",lastNotifiedAt:null});
+const otherDecision: import("@openlup/platform/operations/contracts").AlertDecision<"other-channel">={...hostDecision,channels:["other-channel"]};
+// @ts-expect-error composition cannot widen a narrow host sink/ledger to another channel
+runPlatformWatchdog({evidencePort:{collectSnapshot:async()=>({checkedAt:"instant"})},ledgerPort:hostLedger,sinkPort:hostSink,catalog:[],checkOnly:false,evaluate:()=>[otherDecision]});
+void setting;void pipeline;void wrong;void hostChannel;
+`);
+  const configuration=join(consumer,"operations-types.json");
+  for(const [module,moduleResolution] of [["NodeNext","NodeNext"],["ESNext","Bundler"]]) {
+    writeFileSync(configuration,JSON.stringify({compilerOptions:{module,moduleResolution,target:"ES2022",strict:true,noEmit:true,skipLibCheck:false,types:["node"],typeRoots:[join(consumer,"node_modules/@types")]},files:[file]}));
+    command(process.execPath,[compiler,"-p",configuration],consumer,isolatedConsumerEnv());
+  }
+}
+
 export function compileConsumer(consumer: string, entries: readonly string[], compiler: string): void {
   const file = join(consumer, "consumer.ts");
   const surfaces = entries.map((name, index) => `import type * as Entry${index} from "@openlup/platform/${name}";\nexport type Surface${index} = typeof Entry${index};`);
@@ -1306,6 +1395,76 @@ try {
 `, [connectionString]);
 }
 
+/** Installed adapter with the complete native catalogue and an explicitly granted invoker role. */
+export function proveOperationsPostgres(consumer: string, connectionString: string): void {
+  const operator="b4000000-0000-4000-8000-000000000001";
+  const setup=consumerNode(consumer,`
+import assert from "node:assert/strict";
+import pg from "pg";
+import { createPostgresGatewayTypeOverrides } from "@openlup/platform/data";
+import { createPlatformControlPlanePort, runControlPlaneWatchdogTick, OPERATIONS_MIGRATIONS } from "@openlup/platform/operations/server";
+import { readFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+assert.equal(createHash("sha256").update(readFileSync(OPERATIONS_MIGRATIONS.native.units[0].url)).digest("hex"),OPERATIONS_MIGRATIONS.native.units[0].sha256);
+const client=new pg.Client({connectionString:process.argv[2],types:createPostgresGatewayTypeOverrides(pg.TypeOverrides)});await client.connect();
+const operator=process.argv[3],inactive="b4000000-0000-4000-8000-000000000002";
+async function snapshot(){return (await client.query("SELECT jsonb_build_object('controls',(SELECT jsonb_agg(to_jsonb(t)||jsonb_build_object('rowVersion',xmin::text) ORDER BY control_key) FROM public.platform_operational_controls t),'operations',(SELECT jsonb_agg(to_jsonb(t)||jsonb_build_object('rowVersion',xmin::text) ORDER BY idempotency_key) FROM public.platform_control_operations t),'heartbeat',(SELECT to_jsonb(t)||jsonb_build_object('rowVersion',xmin::text) FROM public.platform_job_controls t WHERE job_name='platform-watchdog')) AS state")).rows[0].state;}
+try {
+  await client.query("INSERT INTO public.platform_control_operators(principal_id,active) VALUES($1,true),($2,false)",[operator,inactive]);
+  await client.query("CREATE ROLE operations_runtime NOLOGIN; CREATE ROLE operations_denied NOLOGIN; GRANT USAGE ON SCHEMA public TO operations_runtime; GRANT SELECT ON public.platform_control_operators,public.platform_alerts TO operations_runtime; GRANT SELECT,INSERT,UPDATE ON public.platform_operational_controls,public.platform_control_operations,public.platform_job_controls TO operations_runtime; GRANT EXECUTE ON FUNCTION public.platform_control_operator_is_active(uuid),public.platform_control_require_operator(uuid),public.platform_control_set_control(uuid,text,text,text,boolean),public.platform_control_record_heartbeat(uuid,text,text,text,integer,text,boolean),public.platform_control_list_controls(uuid),public.platform_control_list_jobs(uuid),public.platform_control_list_alerts(uuid) TO operations_runtime");
+  const before=await snapshot();
+  await client.query("SET ROLE operations_denied");
+  assert.equal((await client.query("SELECT current_user AS role")).rows[0].role,"operations_denied");
+  const denied=createPlatformControlPlanePort(client,operator);
+  await assert.rejects(denied.mutateControlPlane({action:"set-control",idempotencyKey:"denied",controlKey:"jobs.enabled",enabled:true}),{name:"PlatformControlPlaneUnavailableError"});
+  await assert.rejects(client.query("UPDATE public.platform_operational_controls SET enabled=false"),{code:"42501"});
+  await client.query("RESET ROLE");assert.deepEqual(await snapshot(),before);
+  await client.query("SET ROLE operations_runtime");
+  assert.equal((await client.query("SELECT current_user AS role")).rows[0].role,"operations_runtime");
+  const port=createPlatformControlPlanePort(client,operator);
+  const command={action:"set-control",idempotencyKey:"m14-control",controlKey:"jobs.enabled",enabled:true};
+  const first=await port.mutateControlPlane(command);assert.equal(first.replayed,false);assert.equal(first.revision,1);
+  const settled=await snapshot();
+  assert.deepEqual(await port.mutateControlPlane(command),{...first,replayed:true});assert.deepEqual(await snapshot(),settled);
+  await assert.rejects(port.mutateControlPlane({...command,enabled:false}),{name:"PlatformControlPlaneConflictError"});assert.deepEqual(await snapshot(),settled);
+  await assert.rejects(createPlatformControlPlanePort(client,inactive).mutateControlPlane({...command,idempotencyKey:"inactive"}),{name:"PlatformControlPlaneUnavailableError"});assert.deepEqual(await snapshot(),settled);
+  // Grants are confined to operations. A neighboring domain write still refuses.
+  await assert.rejects(client.query("UPDATE public.subscriptions SET cadence_days=cadence_days"),{code:"42501"});
+  const revised=await port.mutateControlPlane({...command,idempotencyKey:"m14-control-2",enabled:false});assert.equal(revised.revision,2);
+  assert.deepEqual((await port.readControlPlane({})).controls,[{controlKey:"jobs.enabled",enabled:false,revision:2,updatedAt:revised.recordedAt}]);
+  const dryBefore=await snapshot();await runControlPlaneWatchdogTick(port,new Date("2026-10-26T12:00:00Z"),true);assert.deepEqual(await snapshot(),dryBefore);
+  const heartbeat={action:"record-heartbeat",idempotencyKey:"m14-heartbeat",health:"degraded",firingCount:1,maxSeverity:"p1",promotionReady:false};
+  const beat=await port.mutateControlPlane(heartbeat);assert.equal(beat.replayed,false);assert.equal(beat.revision,null);
+  const durable=await snapshot();
+  assert.equal(durable.heartbeat.last_status,"success");assert.equal(durable.heartbeat.active_driver,"operator");
+  assert.equal(durable.heartbeat.last_success_at,beat.recordedAt);assert.deepEqual(durable.heartbeat.metadata,{health:"degraded",firingCount:1,maxSeverity:"p1",promotionReady:false});
+  assert.deepEqual(await port.mutateControlPlane(heartbeat),{...beat,replayed:true});assert.deepEqual(await snapshot(),durable);
+  await assert.rejects(port.mutateControlPlane({...heartbeat,firingCount:2}),{name:"PlatformControlPlaneConflictError"});assert.deepEqual(await snapshot(),durable);
+  process.stdout.write(JSON.stringify({first,beat,durable}));
+} finally {await client.query("RESET ROLE");await client.end();}
+`,[connectionString,operator]);
+  const expected=JSON.parse(setup);
+  // A second independent consumer process reconstructs the adapter against the same durable state.
+  const restarted=consumerNode(consumer,`
+import assert from "node:assert/strict";
+import pg from "pg";
+import { createPostgresGatewayTypeOverrides } from "@openlup/platform/data";
+import { createPlatformControlPlanePort } from "@openlup/platform/operations/server";
+const client=new pg.Client({connectionString:process.argv[2],types:createPostgresGatewayTypeOverrides(pg.TypeOverrides)});await client.connect();
+try {
+  await client.query("SET ROLE operations_runtime");assert.equal((await client.query("SELECT current_user AS role")).rows[0].role,"operations_runtime");
+  const port=createPlatformControlPlanePort(client,process.argv[3]);
+  const first=await port.mutateControlPlane({action:"set-control",idempotencyKey:"m14-control",controlKey:"jobs.enabled",enabled:true});
+  const beat=await port.mutateControlPlane({action:"record-heartbeat",idempotencyKey:"m14-heartbeat",health:"degraded",firingCount:1,maxSeverity:"p1",promotionReady:false});
+  const durable=(await client.query("SELECT jsonb_build_object('controls',(SELECT jsonb_agg(to_jsonb(t)||jsonb_build_object('rowVersion',xmin::text) ORDER BY control_key) FROM public.platform_operational_controls t),'operations',(SELECT jsonb_agg(to_jsonb(t)||jsonb_build_object('rowVersion',xmin::text) ORDER BY idempotency_key) FROM public.platform_control_operations t),'heartbeat',(SELECT to_jsonb(t)||jsonb_build_object('rowVersion',xmin::text) FROM public.platform_job_controls t WHERE job_name='platform-watchdog')) AS state")).rows[0].state;
+  process.stdout.write(JSON.stringify({first,beat,durable}));
+} finally {await client.query("RESET ROLE");await client.end();}
+`,[connectionString,operator]);
+  const actual=JSON.parse(restarted);
+  assert.deepEqual(actual,{first:{...expected.first,replayed:true},beat:{...expected.beat,replayed:true},durable:expected.durable});
+  console.log("Operations installed native proof PASS (explicit invoker role, denied neighbor, durable replay/conflict/checkOnly/process restart)");
+}
+
 /** Setup uses the existing canonical runner; subjects resolve only from installed artifacts. */
 function proveNativeCommunicationsPostgres(consumer: string): void {
   const started = performance.now();
@@ -1333,6 +1492,7 @@ function proveNativeCommunicationsPostgres(consumer: string): void {
       process.exit(0);
     `,connectionString],root,isolatedConsumerEnv());
     proveNativeCommunicationsOperations(consumer,connectionString);
+    proveOperationsPostgres(consumer,connectionString);
   } finally {docker(["rm","--force",name]);}
   console.log(`Native communications installed proof PASS (PostgreSQL 16, complete canonical catalogue; ${Math.round(performance.now()-started)} ms including setup/cleanup)`);
 }
@@ -1654,6 +1814,7 @@ assert.throws(() => promotions.resolvePromotionBenefitDefinition({ discount_type
     compileMarketingAnalyticsConsumer(consumer, compiler);
     proveCommerceConsumer(consumer);
     proveCommerceServerConsumer(consumer);
+    proveOperationsConsumer(consumer);
     proveCatalogCompositionConsumer(consumer);
     proveAdapterRefusals(consumer);
     proveOidcRefusals(consumer);
@@ -1679,6 +1840,7 @@ assert.throws(() => promotions.resolvePromotionBenefitDefinition({ discount_type
     assertInstalledPackages(consumer, OPTIONAL_PEERS);
     assertConsumerIsolation(consumer, checkout, false);
     compileConsumer(consumer, [...NON_ADAPTER_ENTRIES, ...ADAPTER_ENTRIES], compiler);
+    compileOperationsConsumer(consumer, compiler);
     proveInstalledAdapters(consumer);
     proveDockerPostgres(consumer, environment);
     console.log("Platform cold consumer PASS; verified tarballs, isolated optional peers, no live provider");

@@ -154,6 +154,16 @@ its users or operators can observe.
 
 ## Development-preview checks
 
+The operations slice uses the existing platform build, API, package and installed
+consumer commands. Its owner-local witnesses cover browser closure and preserved
+watchdog/handler behavior; the full-catalogue installed PostgreSQL phase also
+executes the operations adapter as an explicitly granted invoker role, with a
+forbidden neighboring write, durable replay/conflict and a second-process restart.
+This extends the existing proof rather than adding a runner or required job.
+The existing size/import-map inventories also name the operations browser and
+server entries, and the identity profile keeps its exact browser-only closure.
+
+
 The inventory [binding](tests/platform/inventory/inventoryBindings.test.ts) and
 [installed-consumer](tests/platform/inventory/inventoryConsumer.test.ts) witnesses
 cover native ATP source-key selection/refusal, managed injected-reader precedence
@@ -1900,16 +1910,24 @@ and that registry carrier; existing counts stay unchanged. Each landing PR
 (P3b, P5, F17) adds only its own rail keys with the files and exact pinned counts.
 Every present baseline key for an allowance path must match all its pinned
 category counts exactly, including during regeneration; absent files cannot
-justify new keys. `reviewedPinnedIntroductions` in the wrapper is a closed
-list of exactly 13 paths: six inert managed SQL fixtures, their six future
+justify new keys. `reviewedPinnedIntroductions` in the wrapper retains those 13 C94 paths and
+15 tuples: six inert managed SQL fixtures, their six future
 `supabase/migrations/` copies, and `config/reviewed-platform-forwards.json`.
+M14 adds exactly one unchanged package SQL carrier,
+`packages/platform/sql/20260814010000_platform_control_plane.sql`, whole-file
+SHA-256 `b0c8ef6424ebc6f1a84cb132c37908f4831fa40484a729c3713cfb35936559c9`,
+with tuple `ui-12` 0 to 1, for a total of 14 paths and 16 tuples. Its one new
+baseline key records that exact count; all earlier counts and scanner pins stay
+unchanged. The asset preserves the canonical native forward's persisted channel
+enum. Renaming that wire value breaks compatibility; omitting the asset breaks
+the installed consumer. The existing exact pin is the smaller adequate route.
 Each SQL entry pins the whole-file SHA-256 and exact category/before/after counts;
 the registry entry pins its exact SQL COMMENT text, so unrelated registry edits
 do not invalidate the pin. The filter applies on any base to measured-base
 increases and parent-baseline raises, including `--write-baseline`. Candidate
 counts must still fit the baseline. No wildcard, prefix or ceiling is admitted;
 changed bytes, paths, categories or counts refuse, as do native, TypeScript,
-package and docs entries. An unrelated increase remains a failure in the same run.
+docs and every other package SQL entry. An unrelated increase remains a failure in the same run.
 Adding any further entry is a control change needing two independent fresh full reviews under the native review contract plus
 the coordinator's control read. Neutral replacements reduce the debt; rail-path
 entries can be retired after the F17 PR lands and the base carries their counts.
@@ -2523,6 +2541,14 @@ authority rule. This route grants no submission, merge or scope authority of its
 own: a lessons change is an ordinary delivery under existing authority, and a
 promotion stays within its approved scope. The rethink record and the task's
 terminal self-retro carry the lesson until it lands. No other tracker is kept.
+
+- 2026-10-26, M14 operations neutrality: package/root green missed a cheap
+  source-carrier gate → run unchanged neutrality before the broad gate and
+  collect remaining diagnostic failures before changing the candidate.
+
+- 2026-10-26, M14 operations: package-local green missed existing closed size,
+  nested-module and identity-profile inventories → trace exact consumer entries
+  and run their focused selectors before the broad gate; preserve refusal checks.
 
 - 2026-10-25, M11 stock reader: owner-only proofs hid caller and name-resolution
   failures → pin SECURITY DEFINER paths to `pg_catalog, pg_temp`, qualify

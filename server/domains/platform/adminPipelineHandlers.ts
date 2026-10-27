@@ -1,3 +1,5 @@
+import { createAdminPipelineReadHandler as createRead } from "@openlup/platform/operations/server";
+import { readObservedResponseContext } from "../../_lib/observability/requestContext.js";
 import type { VercelRequest, VercelResponse } from "../../_lib/types/vercel.js";
 import {
   sendBffError,
@@ -7,8 +9,6 @@ import {
 import {
   adminPipelineDhlTrackingRefreshRequestSchema,
   adminPipelineDhlTrackingRefreshResponseSchema,
-  adminPipelineReadRequestSchema,
-  adminPipelineReadResponseSchema,
 } from "../../../src/domains/platform/contracts.js";
 import type { AdminPipelinePort } from "../../../src/domains/platform/ports.js";
 import type { PlatformAdminAuthorizationResult } from "./adminAuth.js";
@@ -17,48 +17,12 @@ interface AdminPipelineBaseDeps {
   authorizeAdmin: (req: VercelRequest) => Promise<PlatformAdminAuthorizationResult>;
 }
 
-interface AdminPipelineReadDeps extends AdminPipelineBaseDeps {
-  pipelinePort: Pick<AdminPipelinePort, "readPipeline">;
-}
-
 interface AdminPipelineDhlTrackingDeps extends AdminPipelineBaseDeps {
   pipelinePort: Pick<AdminPipelinePort, "refreshDhlTracking">;
 }
 
-export function createAdminPipelineReadHandler({
-  pipelinePort,
-  authorizeAdmin,
-}: AdminPipelineReadDeps) {
-  return async function handler(req: VercelRequest, res: VercelResponse): Promise<void> {
-    if (req.method !== "GET") {
-      sendMethodNotAllowed(res, ["GET"]);
-      return;
-    }
-
-    const authorization = await readAuthorization(req, res, authorizeAdmin);
-    if (!authorization) return;
-
-    const request = adminPipelineReadRequestSchema.safeParse(req.query);
-    if (!request.success) {
-      sendBffError(res, "BAD_REQUEST", "Invalid admin pipeline read request", {
-        details: request.error.flatten(),
-      });
-      return;
-    }
-
-    try {
-      const result = await pipelinePort.readPipeline(request.data);
-      const response = adminPipelineReadResponseSchema.safeParse(result);
-      if (!response.success) {
-        sendBffError(res, "INVALID_RESPONSE", "Admin pipeline read returned invalid response");
-        return;
-      }
-
-      sendBffSuccess(res, response.data);
-    } catch {
-      sendBffError(res, "UPSTREAM_UNAVAILABLE", "Admin pipeline read failed");
-    }
-  };
+export function createAdminPipelineReadHandler(deps: Parameters<typeof createRead>[0]) {
+  return createRead({ ...deps, responseRequestId: deps.responseRequestId ?? ((res) => readObservedResponseContext(res)?.requestId) });
 }
 
 export function createAdminPipelineDhlTrackingRefreshHandler({

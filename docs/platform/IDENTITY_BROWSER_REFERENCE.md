@@ -40,6 +40,15 @@ The identity inventory also enumerates the existing browser-safe OMS model,
 contract, pricing-contract and effect-helper closure reachable through commerce;
 all paths are exact built files, with no server module or directory wildcard.
 
+The existing platform admin-contract compatibility path also reaches the
+browser-safe `@openlup/platform/operations` entry. The closed identity inventory
+lists its exact emitted schemas, validation, alert-view/policy, client and DTO
+barrel modules. The entry constructs no transport, route or scheduler on import.
+The identity builds exercise both PostgreSQL and Supabase browser selections;
+Node-only operations server code and provider infrastructure remain outside this
+exact closure. [Operations ownership](ARCHITECTURE_AND_EXTENSIONS.md#operations-and-diagnostics)
+explains the separate injected server capability.
+
 ## Routes and readiness
 
 The opt-in subscription profile mounts `/sign-in`, `/account/auth/callback` and

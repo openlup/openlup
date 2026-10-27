@@ -30,6 +30,12 @@ state writer is not an extension seam.
 
 ## Runtime boundaries
 
+Operational reference handlers and browser clients delegate through the isolated
+[operations package entries](#operations-and-diagnostics). Environment/bundle
+selection, connection ownership and the maintained domain evaluator remain in
+reference composition; the neutral persisted-job tick and watchdog delivery
+mechanisms have one package owner.
+
 Marketing host composition remains application-owned. The Node-only
 `@openlup/platform/marketing/server` entry owns acquisition case handlers,
 direct history/prelaunch/evidence factories, research submit/admin handlers,
@@ -2039,3 +2045,51 @@ checkout/recovery and ATP callables stay behind their owner boundaries; the
 existing outbox registry supplies inert effect descriptors during host construction
 and is supplied separately as `commerceRegistry`, retaining handler
 identity. No second dispatcher, installer or stock policy is introduced.
+
+## Operations and diagnostics
+
+The experimental `@openlup/platform/operations` module separates browser-safe
+validation, alert projections and injected BFF clients from the Node
+`operations/server` mechanisms. `operations/contracts` contains only DTOs and
+ports. Separate settings, pipeline, alerts and control-plane methods preserve
+request/result types; there is no operation-name dispatcher or second domain
+command engine. Existing callers keep compatibility imports.
+
+The [control-plane handler](../../packages/platform/src/operations/server/controlPlaneHandler.ts)
+checks injected admin authorization before a typed read or mutation, validates
+requests and results, maps replay conflicts to `CONFLICT`, and keeps raw SQL
+errors out of responses. The host binds the existing request-reference callback.
+The [SQL executor adapter](../../packages/platform/src/operations/server/controlPlaneStore.ts)
+uses the existing fixed invoker-rights routines, hashes the complete command and
+retains receipt identity on replay. Its capability-local operator allowlist is
+independent of identity membership; neither is substituted for the other.
+
+The [watchdog kernel](../../packages/platform/src/operations/server/platformWatchdogService.ts)
+accepts typed evidence and a typed evaluator. Host channel keys are opaque and
+remain correlated through decisions, sink receipts and ledger writes. The kernel
+retains the existing `webhook` key for skipped-attempt audit rows; the reference
+keeps its existing channel enum and persisted values. The maintained public
+[reference binding](../../server/domains/platform/platformWatchdogService.ts)
+supplies the existing domain evaluator. The package retains keyed queue ordering,
+bounded concurrency, draining on failure, serialized alert delivery, persistent
+backoff, escalation and snooze semantics. `checkOnly` evaluates without ledger or
+notification writes. The smaller
+[control-plane tick](../../packages/platform/src/operations/server/controlPlaneWatchdog.ts)
+evaluates enabled persisted job failures and records the existing heartbeat key.
+Alert overview uses a stale or absent heartbeat to report unknown health even
+when the alert list is empty.
+
+Settings and pipeline handlers preserve the existing read/result projections;
+the host owns their stores. Membership invitation/role/removal remains identity
+work, and shipment refresh remains tracking work. The SQL projection has no tester,
+email-template or provider tables. These entries add no managed provider parity
+or activation evidence. The [module record](plans/oss-m14-operations-portability.md)
+retains the remaining M14 evaluator/default portability, role, lifecycle and
+transfer obligations; this bounded slice does not complete that programme.
+
+The [operations witnesses](../../packages/platform/test/operations/) preserve the
+existing behavior assertions. The existing
+[installed consumer](../../scripts/packages/platform-cold-consumer.ts) exercises
+typed calls, authorization/input/output refusals and the real native invoker role,
+including durable replay/conflict, checkOnly and a second-process restart.
+Its executed result, rather than this source description, establishes proof.

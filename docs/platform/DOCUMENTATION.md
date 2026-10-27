@@ -69,6 +69,14 @@ immutable release; see the [install support policy](../../.github/INSTALL_SUPPOR
 
 ## Ownership
 
+Operations source, owner-local witnesses, the unchanged control-plane SQL
+projection and the three operations API reports route to the
+[operations architecture](ARCHITECTURE_AND_EXTENSIONS.md#operations-and-diagnostics).
+The package README is the short import entry point; the public M14 module record
+retains programme scope and lane records retain candidate evidence. Navigation
+adds no activation or hosted-provider claim.
+
+
 The plain Vitest worker-policy witness is a public tooling source in the
 publication catalogue; its embedded child CLI is also a declared execution
 entrypoint, like the existing process witnesses. Register new tracked test paths there before final
