@@ -910,3 +910,46 @@ tracked edit. These are working results; `E2R0-R-1` still needs explicit closure
 by fresh native reviewers of the eventual committed repair. Native history and
 its cycle 0/3 remain unchanged until the supervisor prepares that candidate;
 no DCO, prepare, full verification or external write occurred here.
+
+### E2 full-verification confinement repair
+
+The signed 9d26edb2 candidate's first canonical full run stopped at the root
+test phase: 22,111 tests passed, one failed and two existing optional tests
+skipped. The single failure was the existing generic role-free transaction-lane
+confinement test: the production PostgreSQL witness called that generic factory
+outside its canonical reference binding. Prior install, lint, typecheck, builds
+and package/cold/installed proof passed for that checkpoint; neutrality and
+pgTAP were not reached. Preserve the complete failed run at
+`.context/scratch/verify-local-EjvZNA`, with no partial/full PASS claim.
+
+The necessary repair changes only witness composition. Diagnostic ingest/replay
+uses the existing named customer-diagnostic lane, and privacy receipt operations
+use the existing public privacy unit of work, matching their actual reference
+bindings. Each still connects as the selected restricted R, is registered for
+existing cleanup, and retains every identity/nonownership, successful lock,
+allowed write, replay, denied-write and unchanged-row assertion. The confinement
+test, production code, SQL, ACLs, manifest, inventories, API, budgets and deadlines
+remain unchanged. The next discriminating checks include that actual confinement
+selector together with the previous regressions, then the same eight production
+targets. Native history remains cycle 1/3 until a committed repair is prepared;
+F retains its own source/history and must integrate this actual dependency.
+
+Self-retro: the earlier focused selection omitted an existing source-confinement
+consumer and let a witness composition mistake reach the broad gate. Use the
+actual owner bindings and include the existing confinement selector in focused
+feedback; do not add a factory exemption or a second proof framework.
+
+The bounded working checks passed: unchanged confinement selector 5/5 in
+0.259 seconds, the same eight production installations 8/8 in 59.73 seconds,
+and the prior seven-file selection 78/78 in 2.19 seconds. Canonical lint passed
+with zero errors/33 existing warnings; all five type projects had zero unresolved
+imports and consumer errors. Three API checks and current actual package/content/
+size checks passed, including all 17 browser budgets. Platform remained exactly
+1,662,140 code-gzip / 1,935,102 tarball / 9,006,345 unpacked bytes, with unchanged
+2574/2628 file counts. No tracked input changed during execution and no owned
+PostgreSQL remained after teardown. Exact commands, exits, source hashes and
+logs are preserved in `/private/tmp/m14-e2-r2-confinement-20261027`. Only this
+task outcome was appended afterwards. Root read the stabilized witness/notes
+and unchanged API/control/budget/recovery scope and authorized ordinary DCO,
+fresh full review in the same history, and a new complete canonical run; earlier
+partial evidence is not promoted to current full proof.

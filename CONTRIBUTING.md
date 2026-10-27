@@ -2623,6 +2623,10 @@ own: a lessons change is an ordinary delivery under existing authority, and a
 promotion stays within its approved scope. The rethink record and the task's
 terminal self-retro carry the lesson until it lands. No other tracker is kept.
 
+- 2026-10-27, M14 qualified-runtime witness: generic lane escaped its reference
+  binding → compose the existing named diagnostic lane and privacy unit of work,
+  retaining the unchanged confinement test in focused feedback.
+
 - 2026-10-27, M14 qualified-runtime proof: public contract type owner → use its
   correct existing entry, without adding an export or cast to fix a wrong import.
 

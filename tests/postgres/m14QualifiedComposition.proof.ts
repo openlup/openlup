@@ -4,10 +4,11 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { Pool } from "pg";
 import { createPostgresNotificationRecipientsPort } from "@openlup/platform/communications";
-import { createPostgresRoleFreeTransactionLane, type PgQueryExecutor } from "@openlup/platform/data";
-import { createPostgresAccountLinkStore, createPostgresPrivacyStore } from "@openlup/platform/identity";
+import type { PgQueryExecutor } from "@openlup/platform/data";
+import { createPostgresAccountLinkStore, createPostgresPrivacyStore, createPostgresPrivacyUnitOfWork } from "@openlup/platform/identity";
 import type { ErasureReceipt } from "@openlup/platform/identity/contracts";
 import { createCustomerDiagnosticHistoryPort } from "../../server/adapters/customerDiagnosticHistory.js";
+import { createPostgresCustomerDiagnosticHistoryTransactionLane } from "../../server/adapters/postgres/dataGateway.js";
 import { createPostgresMigrationRunner } from "../../server/adapters/postgres/migrationRunner.js";
 import { qualifiedPostgresCatalogPayload, qualifiedPostgresStartupOptions, type QualifiedPostgresInstallation } from "../../server/adapters/postgres/qualifiedInstall.js";
 import { selectPlatformMigrationManifest } from "../../scripts/platform-migration-manifest.js";
@@ -69,7 +70,7 @@ async function proveRuntimeLockPrivileges(bootstrap: Pool): Promise<void> {
   await assert.rejects(runtime.query("UPDATE public.platform_communication_operators SET active=false WHERE principal_id=$1 RETURNING principal_id", [operator]), { code: "42501" });
   assert.deepEqual((await runtime.query("SELECT * FROM public.platform_communication_operators WHERE principal_id=$1", [operator])).rows, operatorBefore);
 
-  const lane = createPostgresRoleFreeTransactionLane(env);
+  const lane = createPostgresCustomerDiagnosticHistoryTransactionLane(env);
   ports.push(lane);
   const observation = {
     contractVersion: "customer-diagnostic-ingest.v1" as const, coverageVersion: "purchase-auth-account.v2" as const,
@@ -94,9 +95,10 @@ async function proveRuntimeLockPrivileges(bootstrap: Pool): Promise<void> {
   assert.deepEqual((await runtime.query("SELECT * FROM public.customer_diagnostic_events WHERE segment_id=$1 AND client_event_key=$2", [first.segmentId, eventKey])).rows, eventBefore);
 
   const privacy = createPostgresPrivacyStore();
+  const privacyUnitOfWork = createPostgresPrivacyUnitOfWork(env);
+  ports.push(privacyUnitOfWork);
   const receipt: ErasureReceipt = { version: "identity.erasure.v1", erasureId: receiptId, completedAt: "2026-01-03T00:00:00.000Z", outcome: "ERASED", obligations: [] };
-  await lane.run(async gateway => {
-    const db = gateway as PgQueryExecutor;
+  await privacyUnitOfWork.run(async db => {
     await assertRuntime(db);
     await privacy.prepareErasure(db);
     assert.deepEqual((await db.query(`SELECT mode FROM pg_catalog.pg_locks WHERE pid=pg_catalog.pg_backend_pid()
