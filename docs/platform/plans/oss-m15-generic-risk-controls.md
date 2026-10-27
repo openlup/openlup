@@ -400,6 +400,12 @@ allocation. Existing generators produced identical output; no additional
 mechanism or unrelated repair was needed. Package preparation is serialized
 with API/lint builds to avoid sharing mutable outputs.
 
+Local integration review found that the published README still described R1's
+old byte caps after parent-max reconciliation. Correct its current numbers and
+the pending R1 fragment while retaining the original CD-M15-6 measurement and
+reason as historical evidence. No gate values or runtime bytes change. Cascade
+the signed documentation repair and refresh official package artifacts.
+
 ## R2 — reference delegation, captured workflow and inert composition
 
 Approved outcome: one packaged implementation serves reference risk hashing,
