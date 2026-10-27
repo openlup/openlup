@@ -17,8 +17,8 @@ const measurement = { packedBytes: 1000, unpackedBytes: 2000, files: 10, code: {
 const roots: string[] = [];
 const root = process.cwd();
 const publishedPackages = parsePackagesConfig(readFileSync(join(root, "config/openlup-packages.json"), "utf8")).packages.filter(({ publish }) => publish);
-// Contracts rules forbid Zod; the reference browser needs the three pricing runtime schemas.
-const platformBrowserRuntimeAllowlist = ["./pricing/browser"];
+// Contracts rules forbid Zod; exact browser entries own pricing schemas and operational validation/views.
+const platformBrowserRuntimeAllowlist = ["./pricing/browser", "./operations"];
 function browserEntryKeysMatch(packageName: string, browserEntries: PackBudget["browserEntries"]): boolean {
   const declared = packageName === "@openlup/platform" ? [
     ...Object.entries(PLATFORM_MODULE_GRAPH).filter(([, module]) => "contracts" in module && module.contracts).map(([name]) => `./${name}/contracts`),

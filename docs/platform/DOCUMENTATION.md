@@ -69,6 +69,13 @@ immutable release; see the [install support policy](../../.github/INSTALL_SUPPOR
 
 ## Ownership
 
+Operations source, owner-local witnesses, the unchanged control-plane SQL
+projection and the three operations API reports route to the
+[operations architecture](ARCHITECTURE_AND_EXTENSIONS.md#operations-and-diagnostics).
+The package README is the short import entry point; the public M14 module record
+retains programme scope and lane records retain candidate evidence. Navigation
+adds no activation or hosted-provider claim.
+
 Risk package sources, API reports, sparse SQL projection and neutral witnesses
 route to the [risk contract](ARCHITECTURE_AND_EXTENSIONS.md#risk-contracts).
 The package README owns its three experimental entry summaries; migration

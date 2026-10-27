@@ -4,6 +4,14 @@ Status: development-preview contract. No recipe in this document is a supported 
 
 ## Runtime model
 
+The reference control-plane route composes existing admin authorization with the
+package operations handler. Its host binding still selects the bundle, obtains
+and closes its client, and supplies the capability-local operator ID. The direct
+watchdog invokes the package persisted-job tick; missing configuration and
+transport failures keep their existing safe error responses. Package imports
+install no routes or schedules. See the
+[operations boundary](ARCHITECTURE_AND_EXTENSIONS.md#operations-and-diagnostics).
+
 Marketing reference routes compose `@openlup/platform/marketing/server` factories
 with the host BFF responder, authorization and persistence bindings. Case
 list/count retain their direct-bundle guard; prelaunch/evidence dispatch remains

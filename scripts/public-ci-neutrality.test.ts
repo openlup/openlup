@@ -22,7 +22,7 @@ const scannerPaths = [
 const sourcePaths = ["scripts/public-ci-neutrality.mjs", ...scannerPaths];
 const scratch = join(sourceRoot, ".context/scratch/neutrality-cli-tests");
 const fixtures: string[] = [];
-const hash = (value: string) => createHash("sha256").update(value).digest("hex");
+const hash = (value: string | Buffer) => createHash("sha256").update(value).digest("hex");
 // Runtime construction prevents the test source itself adding matcher debt.
 const debt = String.fromCharCode(118, 101, 108, 105, 112, 101, 116);
 const fixtureEnvironment = { ...Reflect.get(process, "env") } as NodeJS.ProcessEnv;
@@ -88,6 +88,7 @@ function validBaseline() {
   return { schemaVersion: 2, sourceCommit: "a".repeat(40), scannerPins: Object.fromEntries(scannerPaths.map((path) => [path, "c".repeat(40)])), counts: { ["b".repeat(64)]: { brand: 1 } } };
 }
 const registryPath = "config/reviewed-platform-forwards.json";
+const operationsSql = "packages/platform/sql/20260814010000_platform_control_plane.sql";
 const refundRail = "supabase/migrations/20261024185000_provider_refund_evidence.sql";
 const refundFixture = `scripts/fixtures/reviewed-m10/${refundRail}`;
 function managedPinnedSources() {
@@ -172,6 +173,56 @@ describe("tree-wide neutrality ratchet", () => {
   ])("refuses adding a C94 entry outside the managed SQL/registry path classes: %s", path => {
     expect(() => validateReviewedPinnedIntroductions([[path, "a".repeat(64), [["ui-13", 0, 7]]]])).toThrow(/unsupported .*path/);
   });
+
+  it("binds the operations compatibility carrier to unchanged canonical bytes, one exact count and its baseline key", () => {
+    const bytes = readFileSync(join(sourceRoot, operationsSql));
+    expect(bytes).toEqual(readFileSync(join(sourceRoot, "db/platform/migrations/20260814010000_platform_control_plane.sql")));
+    expect(hash(bytes)).toBe("b0c8ef6424ebc6f1a84cb132c37908f4831fa40484a729c3713cfb35936559c9");
+    const sources = new Map([[operationsSql, bytes]]);
+    const measured = scanSnapshots(sources);
+    expect(measured.rows).toEqual({ [hash(operationsSql)]: { "ui-12": 1 } });
+    expect(JSON.parse(readFileSync(join(sourceRoot, baselinePath), "utf8")).counts[hash(operationsSql)]).toEqual({ "ui-12": 1 });
+    expect(() => validateReviewedPinnedIntroductions(reviewedPinnedIntroductions)).not.toThrow();
+    const row = { path: hash(operationsSql), category: "ui-12", before: 0, after: 1 };
+    expect(unreviewedPinnedIntroductionIncreases([row], sources)).toEqual([]);
+    const otherPath = operationsSql.replace("010000", "010001");
+    const plants = [
+      { row, sources: new Map([[operationsSql, Buffer.concat([bytes, Buffer.from("\n")])]]) },
+      { row, sources: new Map<string, Buffer>() },
+      { row: { ...row, before: 1 }, sources },
+      { row: { ...row, after: 0 }, sources },
+      { row: { ...row, after: 2 }, sources },
+      { row: { ...row, category: "ui-13" }, sources },
+      { row: { ...row, path: hash(otherPath) }, sources: new Map([[otherPath, bytes]]) },
+    ];
+    for (const plant of plants) expect(unreviewedPinnedIntroductionIncreases([plant.row], plant.sources)).toEqual([plant.row]);
+    for (const counts of [{ "ui-12": 0 }, { "ui-12": 2 }, {}, { "ui-12": 1, brand: 1 }]) {
+      expect(() => validateBaseline({ ...validBaseline(), counts: { [hash(operationsSql)]: counts } })).toThrow(/pinned introduction baseline count mismatch/);
+    }
+  });
+
+  it("admits only the exact operations SQL introduction and retains missing-key, digest and unrelated-vocabulary refusals", () => {
+    const { root, base } = installed();
+    const bytes = readFileSync(join(sourceRoot, operationsSql));
+    const approved = baseline(root);
+    put(root, operationsSql, bytes);
+    let result = cli(root, base);
+    expect(result.status, result.output).toBe(1);
+    expect(result.output).toContain(`"${operationsSql}": ui-12 increased 0 -> 1`);
+    approved.counts[hash(operationsSql)] = { "ui-12": 1 };
+    put(root, baselinePath, JSON.stringify(approved));
+    result = cli(root, base);
+    expect(result.status, result.output).toBe(0);
+    put(root, operationsSql, Buffer.concat([bytes, Buffer.from("\n")]));
+    result = cli(root, base);
+    expect(result.status, result.output).toBe(1);
+    expect(result.output).toContain(`"${operationsSql}": ui-12 increased 0 -> 1`);
+    put(root, operationsSql, bytes);
+    put(root, "src/unrelated.ts", `export const label = "${debt}";\n`);
+    result = cli(root, base);
+    expect(result.status, result.output).toBe(1);
+    expect(result.output).toContain('"src/unrelated.ts": brand increased 0 -> 1');
+  }, 30_000);
 
   it("pins the exact registry COMMENT independently of unrelated registry edits", () => {
     const bytes = readFileSync(join(sourceRoot, registryPath));
@@ -718,10 +769,13 @@ describe("neutrality scan reuse", () => {
 
 });
 
-it("keeps the C94 allowance closed at exactly 13 paths and 15 tuples", () => {
-  expect(reviewedPinnedIntroductions).toHaveLength(13);
-  expect(new Set(reviewedPinnedIntroductions.map(([path]) => path)).size).toBe(13);
-  expect(reviewedPinnedIntroductions.flatMap(([, , counts]) => counts)).toHaveLength(15);
+it("keeps 13 C94 paths/15 tuples and one M14 path/tuple closed at exactly 14 paths and 16 tuples", () => {
+  expect(reviewedPinnedIntroductions).toHaveLength(14);
+  expect(new Set(reviewedPinnedIntroductions.map(([path]) => path)).size).toBe(14);
+  expect(reviewedPinnedIntroductions.flatMap(([, , counts]) => counts)).toHaveLength(16);
+  const c94 = reviewedPinnedIntroductions.filter(([path]) => path !== operationsSql);
+  expect(c94).toHaveLength(13);
+  expect(c94.flatMap(([, , counts]) => counts)).toHaveLength(15);
 });
 
 it("refuses regenerated C94 counts below their pin without writing the baseline", () => {

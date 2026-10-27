@@ -1773,3 +1773,21 @@ forwards; neither descriptor claims storage or fiscal parity.
 The seller-revision forwards are introduced by this change as described in the
 [compatibility lifecycle](#compatibility-lifecycle). Default service activation
 remains later work.
+
+The operations package carries an unchanged projection of native forward
+`20260814010000_platform_control_plane.sql` at manifest position 28. Its sparse
+`OPERATIONS_MIGRATIONS` descriptor is not an install chain: install the complete
+canonical native prefix, including prior job-ledger objects. Existing invoker
+routines require explicit EXECUTE and underlying relation privileges, and a
+current row in `platform_control_operators`. That allowlist does not grant identity
+membership or domain write authority. The installed consumer proves the selected
+runtime role can write controls/heartbeats while a neighboring subscription write
+refuses; managed verification remains unclaimed.
+
+The projection's whole-file SHA-256 is
+`b0c8ef6424ebc6f1a84cb132c37908f4831fa40484a729c3713cfb35936559c9`.
+Its existing persisted channel enum accounts for exactly one `ui-12` count.
+The [neutrality owner](../../CONTRIBUTING.md#development-preview-checks) admits
+only this exact package path, digest and 0-to-1 tuple with its matching baseline
+key. This preserves canonical bytes without admitting other package SQL,
+changing scanner patterns or raising any existing count.
