@@ -273,8 +273,10 @@ selected-catalog-v2 `objectInventorySha256`. The
 version 2: the complete legacy plan and digest plus an explicitly selected
 qualified fresh plan. It validates the union before normalizing either plan for
 the existing package runner. Keep the immutable legacy prefix; do not create a
-competing canonical manifest or add package SQL paths to unchanged v1. This
-control change keeps the on-disk v1 manifest and activates no qualified catalogue.
+competing canonical manifest or add package SQL paths to the legacy plan. The
+current source checkpoint carries v2: its legacy selection still has the exact
+88 issued units and inventory
+`cfe3a8b4fa6216f61b1cdd5f004cb0f7a967bc01d9e18ddacb2efee74742d3b3`.
 
 A qualified plan has a new actual position-zero baseline, the two fixed
 actor/acquisition bootstrap replacements and the fixed runtime tail after the
@@ -282,6 +284,30 @@ complete legacy ownership closure. Other legacy units retain their paths,
 hashes and relative order. Its inventory distinguishes actual migration/bootstrap
 aliasing and restore-binding presence. The optional retained-import tail requires
 a restore binding. No observed target digest supplies an expected inventory.
+
+The reference [PostgreSQL binding](../../server/adapters/postgres/migrationRunner.ts)
+selects legacy by default. Its explicit `installation` option selects
+`generation: "qualified-v2"`, one `roleMode` (`installer-managed` or
+`operator-provisioned`), and actual migration, bootstrap, runtime and optional
+restore login names. The binding passes identifier-only startup options through
+its production pool and delegates execution to `@openlup/platform/migrations`;
+it does not create a second executor. The first qualified profile requires
+PostgreSQL 16 and an actual database-owner SUPERUSER migration login. Runtime
+and restore are distinct, restricted, non-owner logins. Installer-managed mode
+creates the fixed group roles; operator-provisioned mode requires the exact
+existing flags and membership graph. Credentials and provisioning remain
+host-owned; this source profile does not qualify a restricted managed host.
+
+The [session admission and qualified projector](../../server/adapters/postgres/qualifiedInstall.ts)
+check the actual login, owner, held lock, protected role graph, default ACLs,
+runtime/restore DDL and replication capabilities before normalizing declared
+principal fields. The qualified payload has its own format and leaves the issued
+legacy payload unchanged. E-only selection contains 89 ledger units and four
+fixed inventories: migration/bootstrap aliased or separate, each with or without
+restore. The four source references are historical derivation evidence, not
+production apply/status/replay qualification. Built and installed composition,
+the second role mode with changed actual names, healthy inventory mutation and
+separate unsafe-session refusal remain required before claiming readiness.
 
 The experimental trusted-source `PlatformMigrationSource.assertSession` callback
 runs once under the existing session advisory lock after exact-prefix validation

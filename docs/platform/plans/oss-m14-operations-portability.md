@@ -185,3 +185,61 @@ operation or default. No real-store or production action follows from local
 evidence. Each delivered draft records actual checks, review findings, remaining
 dependencies and a short terminal self-retro. This plan grants no additional
 authority or automatic successor work.
+
+## E2 source-only continuation, 27 October 2026
+
+The receiving supervisor assigned the existing E2 worktree and draft #403 at
+`13a3c877cba43f63b1fb2f7b2108029d3393e789`, stacked on E1
+`0b4517be8000352be4659e4be2320163b1db9650`. The supervisor freshly fetched and
+confirmed policy pin `a03d920eec32bfb3d0de90b9a12535cc57f88d53` in this receiving
+run, separately from those source checkpoints. The latest human limit permits local source
+corrections and handoff only: no tests, install/build/lint/verification gates,
+independent reviews, commits, pushes or external writes. The draft remains
+unfinished. Earlier findings, native history and budgets are unchanged.
+
+Source-correction author context: `01a17e98-931e-7fe3-99cb-841a3ac9ef0b`
+(`/root/m14_e2f`); coordinating author context:
+`01a17e97-d95d-7581-beb5-ab5ee9ad007c`. Both are future reviewer exclusions
+for this candidate, alongside the inherited author exclusions. No independent
+review was performed in this continuation.
+
+Static pre-flight recovered the four production SQL units, the unchanged E-only
+manifest and all four source-derived inventory pins. The concrete omission was
+the eight new E2 SQL/adapter/witness paths in the public-source catalogue. They
+are now registered as `public-output`; the migration, contract and adapter owner
+pages explain the actual source composition and distinguish it from readiness.
+The smallest adequate repair registers existing source instead of introducing a
+new runner, selector, expected digest or host provisioning layer. SQL bytes,
+the 88-unit legacy selection, its inventory and the E-only 89-unit pins were
+left unchanged. The known actor SQL EOF finding remains deliberately retained.
+
+Still owed after the original author resumes authorized execution: E1 actually
+on main; current API/source-contract/navigation metadata; fixed-pin checks of
+the four references through production built imports; four fresh targets in the
+other role mode with different actual principal names; apply/status/replay and
+89 ledger rows, healthy inventory-mutation and separate unsafe-session refusal;
+legacy, partial-prefix/race, installed/cold, coverage, measured cumulative
+package budgets and full native proof. No aliases, custom expectation or
+projector overrides may qualify these installations. No current PASS, review
+receipt, native cycle, expiry or delivery completion was created here.
+
+Self-retro: static source registration and owner explanation were sufficient for
+this bounded correction; the missing production proof cannot be replaced by
+another source-derived digest or by the earlier reference runs.
+
+
+## Owner-authorized corrected draft checkpoint, 2026-10-27
+
+After the source-only handoff preparation, the owner directly instructed this
+receiving session to commit and push its corrections into the existing #403
+draft instead of ending with a separate prompt. This supersedes the earlier
+no-commit/no-push endpoint for this run. The actual grant covers DCO checkpoint
+commits, ordinary dependency-stack integration and updating the existing draft.
+The owner still forbids local tests and `verify` on this machine. No required
+proof is waived for readiness, admission or delivery: this checkpoint is
+unverified, with no PASS, receipt, ready transition, auto-merge or queue admission.
+The receiving supervisor remains `01a17e97-d95d-7581-beb5-ab5ee9ad007c`; all
+recorded authors, exclusions, findings and review budgets remain applicable.
+Use ordinary Git hooks and signing; no bypass or copied proof stamp is allowed.
+Generated metadata, regression execution, package measurements, independent
+review and final verification remain owed on the author's proving machine.
