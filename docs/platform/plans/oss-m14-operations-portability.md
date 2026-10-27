@@ -828,3 +828,85 @@ Self-retro: direct reuse of the same exported artifact gates and fixed resource
 profiles completed the cumulative phase without new code, retries or a larger
 installation matrix. Keeping the clean committed route separate preserves its
 proof obligation while supplying concrete current measurements before sign-off.
+
+### E2 restricted-runtime lock evidence repair
+
+The root supervisor recorded the first native E2 candidate 2da59893/tree5bd7f14a
+with one full PASS and one independent full FAIL. The sole material card
+`E2R0-R-1` identifies the approved three lock-exception proof gap, not a
+demonstrated unsafe grant. Native cycle 0/3 and the same history remain intact;
+no new candidate has been prepared or budget reset. The root authorized this
+bounded source repair after reading the concrete proposal and production ports.
+
+The existing production child now unconditionally connects as each installation's
+actual R login, checks current/session identity, no superuser/BYPASSRLS and no
+direct or inherited table ownership. It uses the production notification port's
+FOR SHARE admission, the diagnostic v2 ingest and replay FOR UPDATE branch, and
+the privacy receipt/account-link SHARE ROW EXCLUSIVE and SHARE paths. Existing
+rows discriminate permitted timestamp-only notification writes from denied
+authority changes, denied diagnostic id updates, and receipt SELECT/INSERT from
+denied populated-row updates; each refused write preserves the row. Autocommit
+denials leave later transactions usable. Every new adapter/pool is closed by
+the existing child cleanup, and the parent asserts the returned completed-proof
+flag alongside its unchanged 89-unit and frozen inventory expectations.
+
+This uses the same eight installations, no new runner or cross product. SQL,
+ACLs, manifest/registry, expected inventories, helper, runtime source/API, caps
+and deadlines remain unchanged. These are source changes pending execution;
+earlier production results retain their original attribution. The authorized
+working phase is canonical lint/typecheck, current API/actual artifact feedback,
+the existing eight production cases once and the same 78 selected regressions.
+An actual failure stops execution for diagnosis before any further repair/retry.
+Root/source-author exclusions continue; DCO, native preparation, full verification
+and external writes still require the supervisor's stabilized read and GO.
+
+Self-retro: the missing acceptance class required real restricted-role operations,
+not broader catalogue enumeration. Reusing existing ports inside the existing
+child distinguishes lock usability and forbidden writes without a permission
+framework, another installation matrix or a changed capability grant.
+
+The mandatory supervisor regroup records two completed evaluations: the initial
+candidate's material lock-proof gap `E2R0-R-1`, then the new witness's canonical
+typecheck failure `TS2305` from importing `ErasureReceipt` through the wrong
+barrel. Lint and its three package builds passed; PostgreSQL and later phases
+did not run. The remaining approved gap is actual R lock usability and forbidden
+write refusal. Its cause is test composition, not a requested capability change:
+the type already belongs to public `@openlup/platform/identity/contracts` and its
+API report. The simpler correction uses that existing entry, retaining the typed
+receipt without a new export, cast or alternate proof framework. The next
+discriminating step is zero consumer errors across all five canonical projects,
+then the same eight actual targets. Root accepts this bounded continuation;
+native history remains cycle 0/3 without a new prepare, budget or owner gate.
+The failed log and before/after source hashes remain in the existing evidence.
+Lesson: public contract type owner → correct existing entry, not a new export
+or cast.
+
+The authorized import-only continuation kept the receipt explicitly typed and
+used that existing contract entry. Fresh canonical lint, including its three
+package builds, passed with zero errors and 33 existing warnings. All five
+published projects then passed with zero unresolved imports and zero consumer
+errors; the typecheck phase took 54 seconds. All three API reports and actual
+working tarball/content/byte/file checks passed, including all 17 browser budgets,
+in six seconds without repeating the builds. Platform remained at code-gzip
+1,662,140 B, tarball 1,935,102 B, unpacked 9,006,345 B and 2574/2628 code/total
+files, against unchanged approved caps.
+
+The same eight production installations passed in 59.22 seconds, including the
+new unconditional actual-R identity/nonownership, successful production locks,
+timestamp-only write, diagnostic replay, receipt INSERT/SELECT and populated-row
+forbidden-update assertions. Each parent case required the child's completed
+runtime-proof flag alongside its unchanged 89 ledger rows and fixed inventory.
+The same seven-file selection then passed 78/78 in 2.10 seconds. Owned-container
+inventory was empty after teardown, and all sequential fixed-profile leases
+were released. Tracked inputs remained frozen throughout execution. Evidence,
+including the unmodified first TS2305 failure and actual before/after hashes,
+is retained under `/private/tmp/m14-e2-r1-runtime-lock-proof-20261027`; its
+`import-repair-1` directory holds this authorized continuation's results.
+
+All 94 protected SQL/manifest/registry inputs, the helper and runtime source/API
+retain their earlier identities; no ACL, expected hash, installation matrix,
+deadline or cap changed. This post-execution task summary is the only later
+tracked edit. These are working results; `E2R0-R-1` still needs explicit closure
+by fresh native reviewers of the eventual committed repair. Native history and
+its cycle 0/3 remain unchanged until the supervisor prepares that candidate;
+no DCO, prepare, full verification or external write occurred here.

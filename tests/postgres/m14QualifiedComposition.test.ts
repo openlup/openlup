@@ -53,6 +53,7 @@ for (const profile of profiles) for (const shape of shapes) {
       expect(result).toMatchObject({
         inventorySha256: shape.sha256, ledgerRows: 89, pendingBefore: 89,
         appliedNow: 89, pendingAfter: 0, replayApplied: 0,
+        runtimeLockPrivilegesProved: true,
         discriminators: profile.name === "target" && shape.name === "separate-restore",
       });
       console.info(`qualified-production ${profile.name}/${shape.name} ${stdout.trim()}`);

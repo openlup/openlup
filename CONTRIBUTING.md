@@ -184,8 +184,12 @@ The [qualified production witness](tests/postgres/m14QualifiedComposition.test.t
 checks four fixed 89-unit inventories through the built package entry and real
 reference binding, then four fresh targets in the other role mode with changed
 principal names. Its healthy target supplies inventory, unsafe-session and
-shadow-symbol refusals without replacing expected digests. Existing native
-domain, identity and reviewed-batch fixtures explicitly select the legacy plan
+shadow-symbol refusals without replacing expected digests.
+Each installation also connects as its actual restricted runtime login to prove
+notification row locking and timestamp-only writes, diagnostic replay locking
+with actual event-update refusal, and privacy receipt locks, reads/inserts and
+populated-row update refusal through the existing production ports. Existing
+native domain, identity and reviewed-batch fixtures explicitly select the legacy plan
 before slicing upgrade prefixes, so the v2 union does not change their issued
 SQL, positions or expected legacy inventory. These cases use the existing root
 Node discovery and container helper; no gate, retry or test deadline changes.
@@ -2618,6 +2622,9 @@ authority rule. This route grants no submission, merge or scope authority of its
 own: a lessons change is an ordinary delivery under existing authority, and a
 promotion stays within its approved scope. The rethink record and the task's
 terminal self-retro carry the lesson until it lands. No other tracker is kept.
+
+- 2026-10-27, M14 qualified-runtime proof: public contract type owner → use its
+  correct existing entry, without adding an export or cast to fix a wrong import.
 
 - 2026-10-27, M14 application lifecycle: lowercase-only identity missed the
   native `σ`/`ς` filename alias → extend the existing preflight equivalence
