@@ -1206,6 +1206,10 @@
       "class": "public-output"
     },
     {
+      "path": "db/platform/migrations/q2_20261026140000_retained_client_subscription_import.sql",
+      "class": "public-output"
+    },
+    {
       "path": "deploy/oci/public-reference-compose.yml",
       "class": "public-output"
     },
@@ -25899,6 +25903,10 @@
     },
     {
       "path": "tests/postgres/promotionsNative.test.ts",
+      "class": "public-output"
+    },
+    {
+      "path": "tests/postgres/retainedClientSubscriptionImport.test.ts",
       "class": "public-output"
     },
     {

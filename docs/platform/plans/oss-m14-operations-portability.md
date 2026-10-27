@@ -479,6 +479,147 @@ source/publication notes and both boundaries in the contract owner. Conflicts
 were documentation-only; no SQL, manifest or runtime behavior was rewritten.
 This integration has no current tests, review, carry-over or qualification proof.
 
+## F source-only continuation, 27 October 2026
+
+The receiving supervisor assigned the existing F worktree and draft #404 at
+`8fe11e5f7576d414860c0d759a5a3a801de9cb54`, stacked on E2
+`13a3c877cba43f63b1fb2f7b2108029d3393e789`. The supervisor freshly fetched and
+confirmed policy pin `a03d920eec32bfb3d0de90b9a12535cc57f88d53` in this receiving
+run, separately from those source checkpoints. The latest human limit permits local source
+corrections and handoff only: no tests, install/build/lint/verification gates,
+independent reviews, commits, pushes or external writes. The draft remains
+unfinished. Earlier failures, findings, native history and budgets are unchanged.
+
+Source-correction author context: `01a17e98-931e-7fe3-99cb-841a3ac9ef0b`
+(`/root/m14_e2f`), also the optional E1 fifth-pin/inert-fixture patch author;
+coordinating author context: `01a17e97-d95d-7581-beb5-ab5ee9ad007c`.
+Both are future reviewer exclusions for this candidate, alongside the inherited
+author exclusions. No independent review was performed in this continuation.
+
+Static pre-flight found that F's exact SQL is present but has no optional fifth
+prior approval and no selected-manifest registration. The preserved source hash
+remains `56144f8e61b649c9d9f48458a1734abcc8bbd8d36fdc3919d90ceb1bc35d3b48`.
+An isolated control-only patch and inert exact fixture were applied locally by
+the E1 owner for the separately landed prior-approval route; those uncommitted,
+unverified changes do not constitute prior approval. No candidate-local pin was used
+to authorize the existing draft SQL. The ten E2/F SQL/adapter/witness paths are
+now registered in the public-source catalogue, and owner pages explain the
+restricted import behavior and present refusal. SQL and existing manifest bytes
+remain unchanged. This is source preparation, not a passing policy check.
+
+F registration is deliberately deferred: after prior control approval and E2
+landing, append only this exact SQL after the runtime tail and derive the two
+real E+F 90-unit `withRestore` inventories. Remove E-only `runtimeOnly` selection
+for that plan. Do not copy the existing 89-unit `withRestore` digests into F or
+invent placeholder expectations. The current unmanifested-file refusal remains
+binding. Keep E2's 88-unit legacy identities/inventory unchanged and its E-only
+89-unit qualification separate.
+
+The original author still owes actual production E2+F installation, allowed
+normal-runtime operations and neighboring/refused import permissions, the
+13-client-field/eight-cycle-field retained-value and replay/conflict witnesses,
+origin refusal, trigger/history/frozen-term preservation, API/source-contract
+and owner-impact/navigation metadata, installed/cold proof, measured cumulative
+package budgets, coverage and full native proof. Historical 13 PostgreSQL cases
+and nine startup refusals remain standalone evidence; no new execution or PASS,
+native cycle, expiry, receipt or delivery completion was created here.
+
+Self-retro: preserving the validator's refusal is the smallest correct behavior
+while 90-unit expectations are unknown. Adding F's hash beside its SQL would
+not repair the required prior-control lineage.
+
+
+## Owner-authorized corrected draft checkpoint, 2026-10-27
+
+After the source-only handoff preparation, the owner directly instructed this
+receiving session to commit and push its corrections into the existing #404
+draft instead of ending with a separate prompt. This supersedes the earlier
+no-commit/no-push endpoint for this run. The actual grant covers DCO checkpoint
+commits, ordinary dependency-stack integration and updating the existing draft.
+The owner still forbids local tests and `verify` on this machine. No required
+proof is waived for readiness, admission or delivery: this checkpoint is
+unverified, with no PASS, receipt, ready transition, auto-merge or queue admission.
+The receiving supervisor remains `01a17e97-d95d-7581-beb5-ab5ee9ad007c`; all
+recorded authors, exclusions, findings and review budgets remain applicable.
+Use ordinary Git hooks and signing; no bypass or copied proof stamp is allowed.
+Generated metadata, regression execution, package measurements, independent
+review and final verification remain owed on the author's proving machine.
+
+Draft F integration note: the corrected E1/E2 checkpoints are now merged into
+the F draft. The resolution retained F's public source row, the five inert
+prior-control fixtures and all E1/E2/F author, authority and failure records.
+Conflicts affected publication metadata and prose only. SQL, existing inventory
+pins and manifest bytes remain unchanged; F's unregistered-unit refusal and the
+two missing 90-unit withRestore expectations remain open. No current test,
+review, carry-over, receipt or qualified-installation proof was created.
+
+## F inventory derivation packet, 27 October 2026
+
+The owner selected the strong machine for the two real 90-unit measurements.
+All source work remains in this receiving session; the strong machine executes
+the fixed command and returns evidence, with no source edits or autonomous
+repair loop. This continuation starts from F checkpoint
+`37c136d224479dad149e741f8cfaa2f14abd668a`; the source author remains
+`01a17e98-931e-7fe3-99cb-841a3ac9ef0b`, with coordinating author
+`01a17e97-d95d-7581-beb5-ab5ee9ad007c`. Preserve these and inherited reviewer
+exclusions, findings and budgets. No local PostgreSQL, tests, builds, installs,
+lint, verification gates, commits or pushes are authorized in this continuation.
+
+The finite task-local derivation packet consists of ignored operative inputs
+`.context/scratch/m14-f-reference/derive.ts` and `reference.json`. These are not
+public executable entrypoints or archived predecessor source trees. They use
+the existing disposable-container helper and an explicit 90-entry fixture.
+It checks every source SQL hash, the unchanged E-only manifest bytes, all five
+prior-control source pins and exact inert-fixture equality before creating a
+database. It creates exactly two independent, sequential PostgreSQL 16 clusters
+in installer-managed mode, with restore present: bootstrap/migrator aliased,
+then a separate actual SUPERUSER migrator. Runtime and restore names differ
+between references. Each reference uses one raw fixture transaction and exact
+90-row ledger insertion; it provides no pending/replay/retry mechanism or
+expected-inventory bypass. Static inspection found no standalone BEGIN/COMMIT/
+ROLLBACK statements in the fixed SQL files. This reference construction is not
+the package runner's target-installation path.
+
+From the frozen F checkout on the strong machine, with its own locked
+dependencies and Docker available, run once through the supervisor's existing
+resource serialization:
+
+```sh
+node --import tsx .context/scratch/m14-f-reference/derive.ts /tmp/openlup-f90-reference-run-1
+```
+
+The supervisor fills the packet's fixed expected F head only after source
+integration, then freezes the two source SHA-256 values in the handoff envelope.
+The strong machine reconstructs those exact UTF-8 files without code edits.
+The script refuses a different executing head or a dirty tracked tree; the
+ignored operative packet is not a tracked-source change. The lockfile pins
+`pg` and `tsx`; use the checkout's own locked dependencies, Node 24 and the
+repository-pinned PostgreSQL 16 image through the existing container helper.
+The output directory must not already exist and must be outside the checkout.
+Return the process exit code, complete stdout/stderr, and the complete output
+directory, including `inputs.json`, `report.json`, both raw `*.payload.json`
+files and both 90-row `*.ledger.json` files. The report records executing Git
+head/tree/dirty paths, input file hashes, the configured pinned image, actual
+login/version/database-owner facts, raw production-projector payload hash and
+size, exact ledger/hash, lock release and owned pool/container/volume cleanup.
+There is no PASS or inventory expectation authored into this packet. On failure,
+return the evidence to this session; do not edit code, repin SQL, retry a new
+matrix or manufacture missing output on the strong machine.
+
+The production `qualifiedPostgresCatalogPayload` is imported directly, including
+its session/role/ACL checks. No alias, projector override or expected hash is
+accepted. Source identities must match the supervisor's frozen packet; derived
+values are usable only with complete ledger and successful cleanup evidence.
+The current manifest stays unregistered for F until those real values return.
+Even two successful reference derivations are not E2+F apply/status/replay,
+normal-runtime, installed-consumer, refusal or full verification qualification.
+The original two `withRestore` registration step and all target proof remain owed.
+
+Self-retro: one finite raw schema fixture avoids adding a second migrator or
+relaxing the production runner's required expected inventory. No measurement or
+qualification result is claimed from static source preparation.
+
+
 ## E2 production-composition proof source, 27 October 2026
 
 The owner's receiving-session instruction now requests all necessary source
@@ -829,6 +970,232 @@ profiles completed the cumulative phase without new code, retries or a larger
 installation matrix. Keeping the clean committed route separate preserves its
 proof obligation while supplying concrete current measurements before sign-off.
 
+## Receiving E2/F integration, 27 October 2026
+
+The active receiving supervisor reports the later direct owner instruction
+restoring required tests/full verification and the existing ready, receipt,
+admission, queue and confirmed-merge endpoint for these M14 drafts. This
+supersedes the preceding machine-specific source-only and draft-only limits;
+it adds no release, npm publication, deployment, live provisioning, account,
+settings, credential or other-repository authority. The supervisor still
+serializes heavy execution and external delivery. This source continuation
+changes only F in `/private/tmp/openlup-m14-retained-import`, starting at
+`ece054faf317ebfaf679cb5778a0cff41fd70203`; E2 remains
+`813b6967b40eca48880a34eabfbf4b3b529b97bd`. The current instruction pin remains
+`a03d920eec32bfb3d0de90b9a12535cc57f88d53`, separate from those review inputs.
+All earlier authors, findings, failed attempts and exclusions remain. The active
+E2/F integration coordinator is a source author and cannot independently review
+this candidate. E2/F still have no native session, counted PASS, expiry or used
+repair cycle. E1 must actually land before E2 delivery, and E2 before F.
+
+The fixed F measurement ran once from the exact frozen F head; its
+[complete reference-only report](https://github.com/openlup/openlup/pull/404#issuecomment-6451079203)
+records two exact 90-row ledgers and owned cleanup. F now appends only the
+unchanged SQL `56144f8e61b649c9d9f48458a1734abcc8bbd8d36fdc3919d90ceb1bc35d3b48`
+after runtime sealing. It selects `withRestore` only:
+`f10dd81aadf543e9b14b5fca30e377c6d0d8689dde379837ad0c145795c09d8f`
+for bootstrap/migrator aliasing and
+`d68dd042c487c30b9082cd70103c63de81e2f6ee1754ff52e5961144f172d4b1`
+for a separate migrator. The legacy 88 rows and `cfe3a8b4...` inventory, five
+prior control pins and inert fixtures remain byte-identical. No selector,
+projector, admission machinery, alias or expected-inventory override changes.
+
+The existing registered composition child now prepares two 90-unit production
+reference checks and two fresh operator-provisioned targets with changed actual
+M/R/S names. It proves healthy status/apply/replay and exact ledger before
+mutation/refusal discriminators. Actual R performs client writes and cycle
+admission/receipt consumption; actual S exercises the retained 13/8 scalar
+fields, microseconds and large integers, replay/conflict, history/frozen-term
+preservation and origin/privilege refusals. E2 keeps its separate eight 89-unit
+checks on its own branch. The frozen two-reference derivation is not repeated
+or reclassified as target qualification.
+
+The source manifest check, seven existing manifest-contract tests, structural
+suppression scan and Node syntax check passed locally. The exact F predecessor
+policy comparison has three obligations and zero unanswered owner impacts.
+Focused TypeScript compilation could not establish a pass:
+without prerequisite builds, the installed platform declarations lack the
+inherited `assertSession` field, and existing `qualifiedInstall.ts` checks also
+report type errors. No build, PostgreSQL execution, coverage, lint prebuild,
+full verification, counted review, commit or external write ran in this source
+continuation. Required production/domain, installed/cold/legacy proof, package
+API/artifact/coverage and cumulative budgets, exact owner readings and final
+native proof remain owed. No gate deadline, retry or artifact budget is raised;
+existing 240-second child deadlines cover four installations rather than eight.
+
+Self-retro: reusing the already registered child and existing manifest selector
+closes the integration gap without a new runner or control exception. Owner
+impact must update the exact mapped sections; prose in a neighboring section
+alone did not satisfy the scoped policy check.
+
+The preliminary F working proof on 27 October used its own locked install
+(25.119 seconds) and three-package build (7.123 seconds). All four production
+installations reached their exact 90-row ledger, status/apply/replay and frozen
+inventory comparisons, then failed with `42501` when the proof used restricted
+R to set the delivery-alignment mode. The setter is administrative: canonical
+SQL revokes public execution, and the qualified runtime grants omit it. All
+four owned containers and associated anonymous data volumes were destroyed.
+Original inputs, failure logs and cleanup evidence remain under ignored
+`working-pg-preflight`; no SQL, ACL, manifest or inventory expectation changed.
+
+The bounded repair asserts that real R is denied once, then uses the existing
+admin fixture pool for the four mode settings, as the standalone F witness
+already does. R normal writes/admission/receipt consumption and S retained
+imports/refusals continue through their actual restricted logins; every retained
+field, history and frozen-state assertion remains. Repair author context
+`01a17f3c-ccdd-7212-b5bb-985e4bdf3b3d` (`CODEX_THREAD_ID`) is excluded from later
+independent review with all inherited authors. A separate ignored repair-input
+freeze preserves the original failed candidate and permits exactly one rerun
+of the existing four cases, without repeating install/build or the frozen
+reference derivation. No new PASS, native session, expiry or cycle reset is
+claimed here; the remaining PostgreSQL assertions and full F proof remain owed.
+
+Self-retro: the preliminary run caught a fixture actor mismatch after exact
+SQL/pin installation succeeded. Existing administrative setup is the smallest
+repair and preserves the runtime capability boundary.
+
+### F pending E2/runtime dependency integration
+
+The root supervisor assigned the existing F author/integration coordinator
+`/root/m14_f_delivery`, context `01a17f5d-3299-74f2-aa76-70cbf0b669cf`,
+to the same finite #404 outcome. This actor is a source author and excluded from
+independent review alongside all inherited authors, including the retained-proof
+repair author `01a17f3c-ccdd-7212-b5bb-985e4bdf3b3d`. The standing direct human
+authorization in root context `01a17909-94d4-7cc0-b40f-9a8782a0986f` permits
+two-way M14 communication. The actual dependency order is C #401, E1 #402,
+runtime #405, E2 #403, then F #404. E2 must actually land before F delivery.
+Policy revision `35ee4227babaa2fe16f88110af52e61d242b3296` remains separate
+from code inputs. Release, live operations, settings, accounts, credentials and
+other repositories remain excluded; root retains external delivery coordination.
+
+Before any buffering or integration, exact external backups, SHA-256 identities
+and a binary patch preserved all seven owned WIP files. Only the explicitly
+named own stash `bea76499a1a6b125bb1e530158efddda7239c522` was applied and
+retained. A normal `--no-commit --no-ff` merge now joins F HEAD
+`ece054faf317ebfaf679cb5778a0cff41fd70203` to exact signed E2 predecessor
+`2da59893f439ff5ff23bdbd0adc8d4f091feb614`, tree
+`5bd7f14a1dc23ded73182f2124072609987990ec`. The dependency merge was
+conflict-free; restoring F's WIP required two documentation resolutions retaining
+both E2/runtime evidence and F's compatibility/retained-import explanation.
+All upstream E2/runtime source, API, registry, SQL, inert fixtures and publication
+registrations remain, including the body-preserving private throwing-helper fix.
+This is an ordinary manual integration with no mechanical exemption.
+
+The exact F manifest and both composition proof/test files match the preserved
+WIP: only the two restore-bound 90-unit inventories are selected, with the same
+13-client/eight-cycle proof, restricted-R setter refusal and admin fixture setup.
+The immutable F SQL hash remains
+`56144f8e61b649c9d9f48458a1734abcc8bbd8d36fdc3919d90ceb1bc35d3b48`;
+the issued legacy 88-unit plan, inventory and all five inert approval fixtures
+remain unchanged. The frozen derivation at `/tmp/openlup-f90-reference-run-1`
+is preserved and has not been repeated.
+
+The earlier bounded repair rerun actually passed all four preliminary production
+PostgreSQL cases in 54.467 seconds, retaining the exact ledger, replay, scalar
+precision, history/frozen-state, privilege/origin and shadow checks. Its report
+records aggregate input identity
+`e7f9c9c82a64ab7863235727a9b8b5bec1dca575e6452dc2f2d3a15e15fab477`.
+All four owned containers and four volumes were destroyed. Both the original
+four `42501` failures and this later pass remain attributed to their own inputs;
+neither is final qualification of the pending E2/runtime integration.
+
+This allocation is light only. Explicit Node 24.21.0/npm 11.19.0 ran the AST
+suppression scan and source inventory successfully. Navigation/policy against
+actual current ancestor `813b6967b40eca48880a34eabfbf4b3b529b97bd` reports
+11 obligations and one unanswered adapter-owner impact from the inherited private
+helper change. That comparison already contains E2's adapter-owner source
+introduction but still includes the later helper declaration repair. The
+failure is retained; no owner obligation is changed to manufacture a pass.
+The future E2 stack pin applies only after a separately authorized signed merge
+checkpoint. Cumulative working checks, the stabilized root read, DCO, two fresh
+independent full reviews and canonical clean full verification remain required.
+No heavy command, install, build, test, native session, counted PASS, expiry,
+repair-cycle reset, commit, push or external write ran in this light allocation.
+
+Self-retro: exact backups exposed two documentation-only restore conflicts while
+preserving the successful proof bytes. Checking policy against an actual ancestor
+made the inherited trailer limitation visible without weakening ownership rules.
+
+The root's bounded light follow-up verified
+`f8c88bb4009b7841478e87ce08a1815144c410ac` as an actual ancestor of the
+unchanged F HEAD. Policy/navigation against that full-source boundary passes
+11 obligations with zero unanswered: it includes the complete E2 adapter
+introduction together with the existing substantive `server/adapters/README.md`
+owner update, while E1 controls and pins already exist at that base. The earlier
+813b6967 comparison and its 11/1 diagnostic remain preserved; no no-impact
+trailer, owner exemption, SQL or fixture change was invented. The proper exact
+E2 stack pin still applies only after a separately authorized DCO checkpoint.
+
+Root reports a bounded E2 proof gap in the three already-approved runtime lock
+privilege exceptions, with no SQL defect, and is preparing minimal evidence in
+the existing 89-profile child. Therefore 2da59893 is the integrated checkpoint,
+not a claim that the predecessor is final. Its eventual signed E2 repair must
+be integrated normally before first F counted review and full verification.
+The F SQL, two 90-unit expectations and restricted-R/admin fixture repair remain
+protected; this follow-up ran no heavy command, commit or native review.
+
+Self-retro: comparing the whole inherited adapter introduction with its actual
+owner update settled the light ownership check without a synthetic trailer or
+an unrelated documentation edit.
+
+### F cumulative current working proof
+
+The root's exclusive bounded allocation executed pending tree
+`96bd7b68b7ac85261234a447898db249703ae070`, with HEAD ece054fa and exact
+E2 checkpoint 2da59893 still the two ordinary merge parents. Own locked
+dependencies and explicit Node 24.21.0/npm 11.19.0 ran canonical lint, including
+fresh Core/Outbox/Platform builds, then all five published typecheck projects.
+That phase passed in 51.800 seconds: zero lint errors, 33 existing warnings,
+zero unresolved imports and zero consumer errors. The 6,521 tracked inputs
+stayed frozen at aggregate
+`41671e7b5c0f1393a03906150350724d91f7406e13ba525f28713af15443b452`.
+
+All three API checks and real cumulative tarball artifact/content, class/total
+budgets and all 17 browser-entry gates passed in 5.538 seconds with zero
+findings. Platform measured code-gzip 1,662,140 B, tarball 1,935,102 B,
+unpacked 9,006,345 B and docs-gzip 65,643 B; code/total counts were 2574/2628.
+Core/Outbox tarballs were 167,341/39,165 B. The Platform artifact SHA-256 is
+`9662d1eb21bf47af47547a3cfb50023ce86a7f29a04bd82897521905fd9e2f08`.
+Approved caps, package/lock manifests, APIs and runtime source remain unchanged.
+These exported artifact-gate results are current working feedback, not the
+canonical clean cold/installed route or a release authorization.
+
+The existing four E2+F production composition checks then passed 4/4 in 39.72
+seconds (40.937-second broker phase). Both real 90-unit restore-bound reference
+profiles and the two renamed-principal operator-provisioned targets retain
+exact inventory, ledger, status/apply/replay and actual R/S behavior. Existing
+13/8-field, precision, history/frozen-state, conflict/origin/privilege, unsafe
+session and shadow discriminators all remain. No extra installation matrix,
+standalone substitute, alias/expectation override or frozen derivation repeated.
+All four created owned containers were destroyed; none remained afterwards.
+The inherited tmpfs helper prevents anonymous PostgreSQL data-volume allocation.
+Raw commands, logs, artifacts, input freeze and Docker events remain at
+`/private/tmp/m14-f-current-working-20261027`.
+
+All three normal numeric-worktree leases admitted without waiting and were
+released: typecheck 4 CPU/6144 MB, tooling 2 CPU/2048 MB, PostgreSQL 2 CPU/6144 MB.
+Frozen-input validation passed after every phase. The F SQL remains 56144f8e;
+manifest `b8073ba16df4b81a1514171ca00fc91c99edb45e6b6f341a253cc880d753e0ed`,
+composition proof
+`62cf857cd4e797ffa394a23ff2ebd2d7f8444aa64e79e592e5cf62fbe59d2eef`
+and test `009938a8b81240cfc3831e4e3195460c46d4a93f01e77aaa5643e0497def70a6`
+retain their protected bytes, two 90-unit expectations and R-refusal/admin-setup
+repair. Registry, five inert fixtures, immutable SQL, legacy 88/cfe3 inventory,
+upstream helper and runtime/API bytes remain exact to the preserved inputs.
+
+The task-note update is the only post-execution source edit. Root's stabilized
+API/notes/control/budget/recovery read and separate GO still precede DCO. The
+forthcoming signed E2 runtime-lock proof repair must then be integrated by a
+normal merge before first F counted review and full verification. This current
+2da checkpoint is not claimed final. Existing historical failures, author
+exclusions and authority boundaries remain; no native session, counted PASS,
+expiry, repair-cycle reset, commit, push or external write was created here.
+
+Self-retro: three existing bounded phases completed in 98.275 broker seconds
+with zero queue waits or retries. Reusing the registered production child and
+existing exported artifact gates preserved the required proof without adding a
+new installation matrix or production mechanism.
+
 ### E2 restricted-runtime lock evidence repair
 
 The root supervisor recorded the first native E2 candidate 2da59893/tree5bd7f14a
@@ -911,6 +1278,97 @@ by fresh native reviewers of the eventual committed repair. Native history and
 its cycle 0/3 remain unchanged until the supervisor prepares that candidate;
 no DCO, prepare, full verification or external write occurred here.
 
+### F runtime-lock proof dependency integration
+
+After the root read the stabilized working packet and independently verified
+its exact tree, F made ordinary DCO sign-off merge checkpoint
+`7ed23e2ef730d7d2a452254e67700422fff11069`, tree
+`6bb1444950d48c77e40457b206ae1ecb21a68591`, with parents ece054fa and
+2da59893. The proper exact 2da stack pin then passed policy with three
+obligations and zero unanswered; all eight commits in the sign-off range,
+including five merges, passed DCO and the checkout was clean. An unnecessary
+explicit GPG attempt failed before creating a commit because gpg was absent;
+the actual ordinary sign-off route matches the predecessors. A short-SHA DCO
+invocation refused before checking and the full-SHA invocation passed. Both
+observations are retained; no source or review budget changed.
+
+Root then authorized the normal pending merge of exact E2 repair
+`9d26edb21b49ef04629d03a448c98135d92167e5`, tree
+`54c4d964ef6341769138dfed6e5b05786be042ba`. Three actual overlaps in the
+composition child, parent witness and shared task record were resolved by
+retaining both complete helper bodies and both evidence histories. The F
+retained helper is byte-identical to 7ed23e2; the runtime-lock helper is
+byte-identical to 9d26edb. Both calls are awaited once, and both retainedRuntime
+and runtimeLockPrivilegesProved flags are asserted by the parent. Port-close
+cleanup is inherited. The contributor owner now describes F's current two
+90-unit restore shapes and two renamed targets, retaining the E2 eight-case
+89-unit predecessor attribution and new runtime privilege proof description.
+
+All 6,511 other upstream paths remain exact. F's manifest, SQL, five inert pins,
+legacy 88/cfe3 inventory, two frozen 90-unit restore expectations, four-case
+matrix, R setter refusal/admin fixture setup and runtime/helper/API/budget bytes
+remain protected. This is normal manual dependency integration, with no
+mechanical exemption, patch replay, extra installation matrix or derivation.
+The next root-exclusive allocation covers cumulative working checks of this
+combined proof before the root's separate second-DCO read. No second commit,
+native review, full verification or external write is authorized by these light
+checks. Existing authors, findings, failures and expiry/cycle history remain.
+
+Self-retro: combining the complete existing helpers and their actual parent
+flags preserves both proof obligations without another runner or fixture matrix.
+
+### F combined retained/runtime-lock working result
+
+The root-exclusive final working allocation tested pending tree
+`26dfd8273e6f6e13eca172ab38b9ffe27bc2e53a`, with ordinary parents F
+7ed23e2 and exact E2 repair 9d26edb. All 6,521 tracked inputs remained frozen
+at `454393e05e20d540a67ce69b99fc47229ae79184be19ecdbdfd4395b4a00a940`
+after each phase. Explicit own Node 24.21.0/npm 11.19.0 and dependencies ran
+canonical lint with three fresh package builds and the five-project published
+typecheck: PASS in 49.896 seconds, zero errors/33 existing warnings and zero
+unresolved imports/consumer errors. Three API checks and actual cumulative
+artifact/content/class/total plus all 17 browser-entry gates passed in 4.985
+seconds with zero findings. Package measurements and exact artifact hashes are
+unchanged from the preceding working packet, including Platform code-gzip
+1,662,140 B, tarball 1,935,102 B, unpacked 9,006,345 B and code/total counts
+2574/2628; no cap, manifest, lockfile or API report changed.
+
+The same four 90-unit production composition cases passed 4/4 in 43.41 seconds
+(44.662-second broker phase), now awaiting both complete proof helpers before
+returning both parent-asserted success flags. The actual R notification,
+diagnostic replay and privacy lock/allowed-write/refusal boundaries execute
+alongside F's actual R/S retained 13/8-field, precision, history/frozen-state,
+replay/conflict/origin/refusal behavior and administrative mode setup. Both
+fixed reference shapes and renamed-principal targets retain exact selected
+inventories/ledger and status/apply/replay. No expectation, SQL, role, timeout,
+profile, extra matrix or frozen derivation changed. All four created owned
+containers were destroyed; zero remained and zero volume events occurred under
+the unchanged tmpfs helper.
+
+All normal numeric-worktree leases admitted immediately and were released:
+typecheck 4 CPU/6144 MB, tooling 2 CPU/2048 MB, PostgreSQL 2 CPU/6144 MB. Root
+was notified as soon as the last lease ended so E2 full verification could start.
+Evidence is preserved at `/private/tmp/m14-f-final-working-20261027`.
+The integrated proof SHA-256 remains
+`cf4fea79e4de1451bdd4028776f65044807b90c69dfef0daa95da18659ca2fd9`;
+the parent test is `8a0e949eef2d856b585c569c71239832bda25ce5863ecedf968d9f7041f24481`. The retained helper
+remains exact to F 7ed23e2 and the runtime-lock helper exact to E2 9d26edb.
+All other 6,511 upstream paths, F SQL/manifest/two hashes, five inert pins and
+legacy 88/cfe3 inventory remain protected. The final task outcome is the only
+post-execution tracked edit; no gate failure or retry occurred in these phases.
+
+The root's stabilized final API/notes/control/budget/recovery read and separate
+GO precede a second ordinary DCO checkpoint. First F independent full reviews,
+native session and canonical clean full/cold/installed verification remain
+required; E2 must actually land before F delivery. No second commit, native
+PASS/expiry/cycle reset, full verification, push or external write is claimed.
+Release/live/settings/account/credential/other-repository exclusions and all
+existing authors, findings and failed-attempt history remain unchanged.
+
+Self-retro: normal integration preserved both exact helper bodies, and one
+existing four-case matrix exercised their interaction in 99.543 broker seconds
+without queue waits, retries or a new production mechanism.
+
 ### E2 full-verification confinement repair
 
 The signed 9d26edb2 candidate's first canonical full run stopped at the root
@@ -953,3 +1411,150 @@ task outcome was appended afterwards. Root read the stabilized witness/notes
 and unchanged API/control/budget/recovery scope and authorized ordinary DCO,
 fresh full review in the same history, and a new complete canonical run; earlier
 partial evidence is not promoted to current full proof.
+
+### F E2 generic-lane confinement dependency repair
+
+Root reported that E2 full verification of 9d26edb failed only the existing
+`server/adapters/postgres/dataGateway.test.ts` confinement witness: the qualified
+proof called the generic transaction factory directly. The bounded E2 source
+repair composes the existing named diagnostic transaction lane and public privacy
+unit of work with separate cleanup; no guard exception, SQL, ACL, manifest,
+expected inventory, API or budget changed. Its signed-off dependency checkpoint
+is `6f8349826a13190c76fcab894aed7432e483d8ce`, tree
+`03d0818c1abcd2321de7754b0cbe3325731093a1`. The reported E2 working results
+remain attributed to E2 inputs and are not a full PASS or F proof claim.
+
+F preserved clean premerge checkpoint
+`06cecedc8bb5f3c240fc991db3f37602b3775be4`, tree
+`c4e5b5f88f216e80f1ad0b03d4af6a2072febf36`, then used an ordinary pending
+merge of that exact E2 repair. The proof and contributor lesson merged without
+conflict; only the shared task append conflicted, and both evidence histories
+were retained. The complete F retained helper remains byte-identical to 06ceced;
+the complete runtime-lock helper is byte-identical to 6f83498. Both calls remain
+awaited once, both result flags remain parent-asserted and the parent test remains
+byte-identical: exactly four 90-unit cases and only two measured restore maps.
+
+All other 6,511 upstream paths, F SQL/registry/five inert pins, legacy 88/cfe3
+inventory, manifest, runtime/private-helper/API and package budgets remain exact.
+This is necessary dependency repair, not a freshness merge or mechanical
+exemption. Premerge bytes, exact hashes and the one conflict are preserved at
+`/private/tmp/m14-f-r1-confinement-integration-20261027`. Existing native
+history, reports and cycle 0 are preserved without reading reviewer outcomes.
+No native evidence is renewed or claimed by this source integration.
+
+This allocation permits static working-source checks only. Root owns subsequent
+heavy serialization: canonical lint with three builds and five-project types
+under typecheck 4 CPU/6144 MB, three APIs and actual artifact/browser gates under
+tooling 2 CPU/2048 MB, and the existing four combined production cases under
+PostgreSQL 2 CPU/6144 MB still require root allocation. No install, build, lint,
+test, PostgreSQL run, full verification, native prepare, commit or push ran here.
+The new exact 6f83498 stack pin applies to the repaired candidate once it is an
+actual ancestor of HEAD; no future-base exception is created. Existing failed
+attempts, native history, author exclusions and all delivery boundaries persist.
+
+Self-retro: normal dependency integration retained the full domain proof and
+adopted existing owned lanes without changing the confinement guard or adding a
+new mechanism. Static preservation alone does not establish runtime proof.
+
+Static integration checks: AST and diff pass. Policy/navigation using requested
+new stack base 6f83498 refuses with `explicit base is not an ancestor of HEAD`
+while that commit remains only the pending merge parent; the refusal is retained.
+The honest current-ancestor 9d26edb comparison passes three owner obligations
+with zero unanswered. No future-base exception or no-impact trailer is added.
+Eight existing ignored native-support files have unchanged metadata-only hash
+identities; no review outcome was inspected and no native command or history
+mutation ran. Final 6f83498 policy still follows its authorized signed checkpoint.
+
+The root's bounded working phase on this integrated source passed canonical
+lint (zero errors/33 existing warnings), all five published type projects
+(zero unresolved imports/consumer errors), three API checks, actual package
+content/byte/file gates and all 17 browser budgets. The unchanged confinement
+selector passed 5/5; the existing four 90-unit composition profiles passed
+4/4 in 46.69 seconds with both actual-R lock and retained-import proofs; the
+prior seven-file regressions passed 78/78 in 2.59 seconds. Platform remained
+at 1,662,140 code-gzip / 1,935,102 tarball / 9,006,345 unpacked bytes and
+2574/2628 file counts under the same caps. No tracked input changed during
+execution; no owned PostgreSQL remained. Root independently compared complete
+TypeScript AST helper bodies: retained helper exact to 06cecedc, runtime-lock
+helper exact to 6f834982, each awaited once. Raw commands, frozen inputs,
+exits and logs remain at `/private/tmp/m14-f-r1-confinement-working-20261027`.
+
+Only this task outcome was appended afterwards. The root read the stabilized
+source/notes and unchanged SQL/hash/API/control/budget/recovery boundary and
+authorized ordinary signed merge DCO, continuation of the same native history
+with two fresh full reviewers, and complete canonical verification. The prior
+06ce source reviews remain historical; none is relabelled to this tree. The
+actual E2 predecessor must still land before F external admission. No full,
+ready, receipt, admission or merge completion is claimed by these working results.
+
+Self-retro: reuse of the actual owner bindings fixed the inherited confinement
+failure without changing SQL or a guard. The four existing production profiles
+cover both helpers after integration; no repeated frozen reference derivation,
+extra installation matrix or proof framework was needed.
+
+### F standalone legacy-prefix fixture repair
+
+Root reported canonical full failure on F
+`04cff4fe425c0b52246d46baa96acabd62684d51`, tree
+`adca1a81826918ce006fbc2ff76e09c0b22e65a0`: the standalone retained-import
+suite failed in beforeAll before its thirteen cases could execute. Its temporary
+root copied the 88 legacy SQL files but copied the union manifest, which also
+requires five qualified SQL files absent from that root. The runner correctly
+rejected the incoherent catalogue. The full log at
+`.context/scratch/verify-local-XeYAQQ/tests.log` and all earlier phase evidence
+remain unchanged: root reported 22,108 passing cases, thirteen skipped by this
+setup failure and two optional skips, with no ordinary assertion failure. The
+first ten phases including package/cold proof passed; neutrality and pgTAP were
+not reached. This is not a complete full PASS. Existing native cycle 1/3,
+reports, failed attempts and repair history are preserved without reset.
+
+The bounded fixture-only repair follows the existing fulfillment/invoicing
+precedents: select the canonical `legacy` plan explicitly, copy exactly its
+baseline and ordered forwards, create the temporary config directory, and write
+that selected flat manifest. The canonical union manifest, runner validation,
+SQL/roles/grants, byte checks and all thirteen domain/nine startup refusal
+assertions remain unchanged. The four actual 90-unit production composition
+cases and both complete retained/runtime-lock helpers remain untouched; no
+qualified SQL is copied to relabel the standalone domain fixture as qualification.
+
+This author allocation is static only. Root owns the working standalone,
+regression/confinement proof, fresh full reviews and new complete canonical run.
+No install, build, lint, test, PostgreSQL run, native prepare, commit or push ran
+here. The exact stack base remains 6f834982. Before/after fixture identities,
+patch and protected-input checks are preserved at
+`/private/tmp/m14-f-r2-legacy-fixture-20261027`. Policy instructions were compared
+with current origin/main `c1ca9994a8e833111e06fd7b280a6bd97c79e7ab`, separately
+from the code base; relevant contribution additions retain existing requirements.
+All authority, author exclusions and release/live/external-delivery limits remain.
+
+Self-retro: a selected fixture must write the same catalogue it copies. Reusing
+the canonical selector fixes the setup mismatch without weakening refusal logic,
+adding five unrelated files or rerunning the separate production matrix.
+
+The root ran the repaired standalone witness first: 13/13 passed in 2.44
+seconds, completing the unchanged nine startup refusals in its beforeAll.
+The existing eight-file regression/confinement selection then passed 83/83
+in 2.18 seconds. Canonical lint, including fresh builds of all three packages,
+passed with zero errors/33 existing warnings. All five published projects
+compiled with zero unresolved imports and zero consumer errors. AST, policy
+(three obligations, zero unanswered), inventory and diff checks passed. Tracked
+inputs stayed frozen throughout; the owned disposable was removed. Exact
+commands/exits/raw logs and source hashes remain under
+`/private/tmp/m14-f-r2-legacy-fixture-20261027/working`.
+
+Only this task outcome was appended after execution. The complete four-case
+90-unit production child/parent, SQL, selected manifest, actual restore hashes,
+API, package contents/budgets and all control inputs are byte-identical to
+04cff4fe. Its actual working four-production-case result and prior full run's
+passing package/cold/installed phase retain their original attribution; this
+fixture repair does not relabel that failed full run or claim current full
+proof. Root read the stabilized fixture/notes and unchanged API/control/budget/
+recovery boundary, authorizing signed DCO, two fresh full reviews in the same
+native history, and a new complete canonical run. The once-only reference
+derivation is not repeated and no extra production installation matrix is added.
+
+Self-retro: the affected standalone witness exposes this setup failure in
+2.44 seconds, whereas deferring it to the broad gate cost 478.68 seconds of
+root tests. Run the changed witness itself before the broad gate; a passing
+composition sibling does not replace its fixture. Existing selector reuse
+closes the cause without duplicating the whole qualified catalogue.

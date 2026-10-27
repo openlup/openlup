@@ -39,6 +39,42 @@ still needs domain-owned import-safe routes or an approved canonical pre-data /
 post-data installation design. Preprovisioned referenced parents and the exact
 supported selected rows are prerequisites, not complete-store parity.
 
+The qualified-only [retained-row draft](../../db/platform/migrations/q2_20261026140000_retained_client_subscription_import.sql)
+provides two narrow domain routes: `client_import_retained_row` accepts the 13
+persisted client fields, and `subscription_cycle_import_retained_row` accepts
+the eight persisted cycle fields. Each inserts an absent row, returns `false`
+for an identical retained row, and refuses a differing row with `23505`.
+Both refuse replication modes other than `origin` with `55000`; they do not
+disable constraints or triggers or change replication settings.
+
+The restore login receives only EXECUTE on these two SECURITY DEFINER routines.
+Their sealed NOLOGIN owner receives SELECT/INSERT on clients and cycles, with
+client SELECT/INSERT RLS policies. Only INSERT under that owner bypasses the
+client lifecycle-history capture and cycle alignment-admission triggers. Normal
+runtime INSERT and UPDATE paths retain their domain behavior; the draft grants
+no UPDATE/DELETE or runtime access to the import routines. Parents, history,
+frozen terms and identity mapping must still be restored through their existing
+owners. These two routines are not a generic full-store restore capability.
+
+This draft unit follows the qualified runtime tail in the selected manifest.
+Its exact source SHA-256 is
+`56144f8e61b649c9d9f48458a1734abcc8bbd8d36fdc3919d90ceb1bc35d3b48`.
+The fifth whole-file approval must land separately before its SQL introduction.
+The plan requires a restore login and selects only two 90-unit `withRestore`
+inventories, one for each migration/bootstrap alias shape. Their fixed values
+come from the [two frozen reference measurements](https://github.com/openlup/openlup/pull/404#issuecomment-6451079203);
+they do not establish target qualification. The E-only 89-unit hashes remain
+separate historical expectations, and the unchanged legacy plan still selects
+88 units. A request without the restore binding refuses before installation.
+The [production composition witness](../../tests/postgres/m14QualifiedComposition.test.ts)
+uses the actual built migration entry and default production transport for two
+reference checks and two renamed-principal targets in the other role mode. It
+checks 90 exact ledger rows, status/apply/replay, ordinary runtime writes and
+their admission effects, restricted restore imports, full-field precision,
+history/frozen-term preservation and refusal behavior. This is prepared proof
+source; the standalone domain witness and reference measurements do not
+establish a working E2+F installation.
+
 Managed `clients.auth_user_id` and native `clients.principal_id` need explicit
 identity mapping. OIDC derives the principal from exact issuer/subject; email
 equality cannot relink it. Dependent memberships, privacy receipts, history and
@@ -302,7 +338,7 @@ The [session admission and qualified projector](../../server/adapters/postgres/q
 check the actual login, owner, held lock, protected role graph, default ACLs,
 runtime/restore DDL and replication capabilities before normalizing declared
 principal fields. The qualified payload has its own format and leaves the issued
-legacy payload unchanged. E-only selection contains 89 ledger units and four
+legacy payload unchanged. The E2 predecessor's E-only selection contains 89 ledger units and four
 fixed inventories: migration/bootstrap aliased or separate, each with or without
 restore. The four source references are historical derivation evidence, not
 production apply/status/replay qualification. Built and installed composition,
@@ -1041,7 +1077,7 @@ separate from both this probe and application-file upgrades.
 
 ## Compatibility lifecycle
 
-The E2 qualified fresh catalogue replaces the baseline and two bootstrap units,
+The E2 predecessor's qualified fresh catalogue replaces the baseline and two bootstrap units,
 then appends runtime sealing after the complete legacy ownership closure. Its
 89-unit plan requires an actual PostgreSQL 16 database-owner SUPERUSER migrator,
 distinct restricted runtime and optional restore logins, and one of four fixed
@@ -1053,6 +1089,16 @@ the [catalogue owner](#module-catalogues-and-installed-histories) describes the
 production reference/renamed-target proof and its remaining execution boundary.
 These source changes do not qualify a restricted managed host or establish
 supported hosting.
+
+The qualified E2+F plan appends the exact retained-row unit after runtime sealing
+and requires the independently derived 90-unit restore-bound inventory for the
+actual migration/bootstrap shape. It preserves the complete legacy plan and
+issued SQL bytes. Restore access is limited to the two fixed domain entries;
+ordinary runtime writes still execute lifecycle and alignment admission, while
+retained insertion preserves history, frozen terms and outstanding obligations.
+An absent restore binding refuses instead of selecting an E-only inventory.
+The [compatible-transfer boundary](#compatible-data-transfer) and its production
+witness distinguish registration from a proved target installation.
 
 Managed commerce forwards scope saved-preference writes to a server-proved
 matching account and bind return creation/replay to the principal, owned order
