@@ -553,7 +553,7 @@ privileges and complete catalogue installation are described in
 
 The exact qualified-installation source approvals in
 [`reviewed-platform-forwards.json`](../../config/reviewed-platform-forwards.json)
-are control inputs, not an installed catalogue. Their four inert fixtures and
+are control inputs, not an installed catalogue. Their five inert fixtures and
 the legacy-preserving version-2 reader follow the
 [migration owner](DATA_AND_MIGRATIONS.md#module-catalogues-and-installed-histories).
 Introducing approved SQL still requires the separately landed control route;

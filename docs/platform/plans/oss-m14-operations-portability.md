@@ -22,6 +22,78 @@ excluded. Required API/security/control reads and native evidence still apply.
 Technical review is delegated and does not assert personal human reading of
 every diff.
 
+### E1 source-only continuation, 27 October 2026
+
+The active supervisor relayed the owner's current limit for this run: inspect
+and repair source only, with no tests, verification, installs, builds, lint,
+gates, independent reviewers, commits, pushes or external writes. Drafts stay
+drafts. This temporary execution boundary supersedes the broader delivery grant
+above for this run; it does not waive any proof or authorize later delivery.
+
+E1 remains in `/private/tmp/openlup-m14-qualified-install-controls`, branch
+`codex/oss-m14-qualified-install-controls`, checkpoint
+`0b4517be8000352be4659e4be2320163b1db9650`, draft
+[PR #402](https://github.com/openlup/openlup/pull/402). Its
+[historical handoff](https://github.com/openlup/openlup/pull/402#issuecomment-6449955741)
+and [coordinator handoff](https://github.com/openlup/openlup/pull/402#issuecomment-6449957049)
+retain prior authors, failures, exclusions and proof gaps. The supervisor
+confirmed a fresh fetch in this receiving run with unchanged policy pin
+`a03d920eec32bfb3d0de90b9a12535cc57f88d53` and read its current instructions.
+This lane read the local instructions and handoff. The code review base is
+separate from that policy pin.
+
+Receiving author context `01a17e98-8264-7033-a2d1-0d3c8479ca3b`
+(`/root/m14_e1`), receiving supervisor context
+`01a17e97-d95d-7581-beb5-ab5ee9ad007c` (`/root`) and E2/F source contributor
+context `01a17e98-931e-7fe3-99cb-841a3ac9ef0b` (`/root/m14_e2f`, author of
+the optional fifth-pin/inert-fixture packet) are excluded from future independent
+review of this candidate. No independent review occurred in this continuation.
+
+Static inspection found an unwired control: trusted queue admission selected
+`assertCoLocatedForwardApproval` only for a changed approval registry, although
+qualified SQL normally arrives with unchanged prior pins. That skipped the
+existing guard against simultaneous machinery changes. The local correction
+selects the same guard for qualified paths in source and merge-group admission.
+It adds no validator, bypass, fallback or extra query. The optional
+`PlatformMigrationSource.assertSession` already runs once after exact-prefix
+validation under the existing lock and before pending SQL/status/dry-run;
+no hook change was justified by this inspection.
+
+The E/F coordinator supplied the optional fifth prior-control binding and inert
+fixture for the existing retained-import SQL, SHA-256
+`56144f8e61b649c9d9f48458a1734abcc8bbd8d36fdc3919d90ceb1bc35d3b48`.
+Its publication row and owner descriptions are updated locally. This is a
+proposed control candidate, not completed prior approval or installation proof.
+The four existing pins and fixture bytes, active v1 manifest, its 88 legacy units
+and inventory `cfe3a8b4fa6216f61b1cdd5f004cb0f7a967bc01d9e18ddacb2efee74742d3b3`
+are unchanged by these edits. No active qualified SQL is introduced by E1.
+E1 must actually land as trusted controls before E2 or F delivery.
+
+The historical focused batch remains 739 PASS / 16 FAIL across five files.
+Read-only tracing shows that synthetic pgTAP lifecycle fixtures replace external
+commands on PATH but retain actual `node:net` loopback binds. `available()` maps
+every socket error to false, so denied binds as well as occupied ports can reach
+the same final "no free port block" error before image/start/replay stages.
+The historical errno was not retained here. This does not establish an
+environmental cause or exclude a regression; all 16 failures remain unresolved.
+No generic port, fixture or refusal change was made. Earlier fragment-row and
+PATH failures and the required regroup remain part of the handoff history.
+
+No executable check was run in this continuation. Required next proof includes
+a regression witness through actual queue admission for qualified additions with
+unchanged pins and changed machinery, acceptance without that machinery delta,
+source and merge-group coverage, optional fifth-binding/fixture integrity,
+current pgTAP diagnosis, package hook/native-session proof, API/build/pack and
+owner/budget checks, two fresh full native reviews and the canonical full gate.
+No native session is initialized: cycles remain 0/3, with no PASS or expiry.
+No candidate DCO, receipt, readiness, admission or merge claim follows from these
+local edits; no budget was raised. All changes remain uncommitted.
+
+Self-retro: the missing caller condition showed why a validator-only fixture
+cannot prove trusted admission is wired. Reusing the existing guard was the
+smallest adequate correction. The port failure's discarded errno limits static
+diagnosis, so preserve that uncertainty until an authorized executable run.
+
 The module preserves operational behavior while supplying public lifecycle
 capabilities for an existing synthetic store: compatible install/upgrade,
 managed-to-portable and portable-to-portable transfer, interrupted operation,
@@ -185,3 +257,20 @@ operation or default. No real-store or production action follows from local
 evidence. Each delivered draft records actual checks, review findings, remaining
 dependencies and a short terminal self-retro. This plan grants no additional
 authority or automatic successor work.
+
+
+## Owner-authorized corrected draft checkpoint, 2026-10-27
+
+After the source-only handoff preparation, the owner directly instructed this
+receiving session to commit and push its corrections into the existing #402
+draft instead of ending with a separate prompt. This supersedes the earlier
+no-commit/no-push endpoint for this run. The actual grant covers DCO checkpoint
+commits, ordinary dependency-stack integration and updating the existing draft.
+The owner still forbids local tests and `verify` on this machine. No required
+proof is waived for readiness, admission or delivery: this checkpoint is
+unverified, with no PASS, receipt, ready transition, auto-merge or queue admission.
+The receiving supervisor remains `01a17e97-d95d-7581-beb5-ab5ee9ad007c`; all
+recorded authors, exclusions, findings and review budgets remain applicable.
+Use ordinary Git hooks and signing; no bypass or copied proof stamp is allowed.
+Generated metadata, regression execution, package measurements, independent
+review and final verification remain owed on the author's proving machine.
