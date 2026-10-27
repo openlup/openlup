@@ -1368,3 +1368,126 @@ existing authors, findings and failed-attempt history remain unchanged.
 Self-retro: normal integration preserved both exact helper bodies, and one
 existing four-case matrix exercised their interaction in 99.543 broker seconds
 without queue waits, retries or a new production mechanism.
+
+### E2 full-verification confinement repair
+
+The signed 9d26edb2 candidate's first canonical full run stopped at the root
+test phase: 22,111 tests passed, one failed and two existing optional tests
+skipped. The single failure was the existing generic role-free transaction-lane
+confinement test: the production PostgreSQL witness called that generic factory
+outside its canonical reference binding. Prior install, lint, typecheck, builds
+and package/cold/installed proof passed for that checkpoint; neutrality and
+pgTAP were not reached. Preserve the complete failed run at
+`.context/scratch/verify-local-EjvZNA`, with no partial/full PASS claim.
+
+The necessary repair changes only witness composition. Diagnostic ingest/replay
+uses the existing named customer-diagnostic lane, and privacy receipt operations
+use the existing public privacy unit of work, matching their actual reference
+bindings. Each still connects as the selected restricted R, is registered for
+existing cleanup, and retains every identity/nonownership, successful lock,
+allowed write, replay, denied-write and unchanged-row assertion. The confinement
+test, production code, SQL, ACLs, manifest, inventories, API, budgets and deadlines
+remain unchanged. The next discriminating checks include that actual confinement
+selector together with the previous regressions, then the same eight production
+targets. Native history remains cycle 1/3 until a committed repair is prepared;
+F retains its own source/history and must integrate this actual dependency.
+
+Self-retro: the earlier focused selection omitted an existing source-confinement
+consumer and let a witness composition mistake reach the broad gate. Use the
+actual owner bindings and include the existing confinement selector in focused
+feedback; do not add a factory exemption or a second proof framework.
+
+The bounded working checks passed: unchanged confinement selector 5/5 in
+0.259 seconds, the same eight production installations 8/8 in 59.73 seconds,
+and the prior seven-file selection 78/78 in 2.19 seconds. Canonical lint passed
+with zero errors/33 existing warnings; all five type projects had zero unresolved
+imports and consumer errors. Three API checks and current actual package/content/
+size checks passed, including all 17 browser budgets. Platform remained exactly
+1,662,140 code-gzip / 1,935,102 tarball / 9,006,345 unpacked bytes, with unchanged
+2574/2628 file counts. No tracked input changed during execution and no owned
+PostgreSQL remained after teardown. Exact commands, exits, source hashes and
+logs are preserved in `/private/tmp/m14-e2-r2-confinement-20261027`. Only this
+task outcome was appended afterwards. Root read the stabilized witness/notes
+and unchanged API/control/budget/recovery scope and authorized ordinary DCO,
+fresh full review in the same history, and a new complete canonical run; earlier
+partial evidence is not promoted to current full proof.
+
+### F E2 generic-lane confinement dependency repair
+
+Root reported that E2 full verification of 9d26edb failed only the existing
+`server/adapters/postgres/dataGateway.test.ts` confinement witness: the qualified
+proof called the generic transaction factory directly. The bounded E2 source
+repair composes the existing named diagnostic transaction lane and public privacy
+unit of work with separate cleanup; no guard exception, SQL, ACL, manifest,
+expected inventory, API or budget changed. Its signed-off dependency checkpoint
+is `6f8349826a13190c76fcab894aed7432e483d8ce`, tree
+`03d0818c1abcd2321de7754b0cbe3325731093a1`. The reported E2 working results
+remain attributed to E2 inputs and are not a full PASS or F proof claim.
+
+F preserved clean premerge checkpoint
+`06cecedc8bb5f3c240fc991db3f37602b3775be4`, tree
+`c4e5b5f88f216e80f1ad0b03d4af6a2072febf36`, then used an ordinary pending
+merge of that exact E2 repair. The proof and contributor lesson merged without
+conflict; only the shared task append conflicted, and both evidence histories
+were retained. The complete F retained helper remains byte-identical to 06ceced;
+the complete runtime-lock helper is byte-identical to 6f83498. Both calls remain
+awaited once, both result flags remain parent-asserted and the parent test remains
+byte-identical: exactly four 90-unit cases and only two measured restore maps.
+
+All other 6,511 upstream paths, F SQL/registry/five inert pins, legacy 88/cfe3
+inventory, manifest, runtime/private-helper/API and package budgets remain exact.
+This is necessary dependency repair, not a freshness merge or mechanical
+exemption. Premerge bytes, exact hashes and the one conflict are preserved at
+`/private/tmp/m14-f-r1-confinement-integration-20261027`. Existing native
+history, reports and cycle 0 are preserved without reading reviewer outcomes.
+No native evidence is renewed or claimed by this source integration.
+
+This allocation permits static working-source checks only. Root owns subsequent
+heavy serialization: canonical lint with three builds and five-project types
+under typecheck 4 CPU/6144 MB, three APIs and actual artifact/browser gates under
+tooling 2 CPU/2048 MB, and the existing four combined production cases under
+PostgreSQL 2 CPU/6144 MB still require root allocation. No install, build, lint,
+test, PostgreSQL run, full verification, native prepare, commit or push ran here.
+The new exact 6f83498 stack pin applies to the repaired candidate once it is an
+actual ancestor of HEAD; no future-base exception is created. Existing failed
+attempts, native history, author exclusions and all delivery boundaries persist.
+
+Self-retro: normal dependency integration retained the full domain proof and
+adopted existing owned lanes without changing the confinement guard or adding a
+new mechanism. Static preservation alone does not establish runtime proof.
+
+Static integration checks: AST and diff pass. Policy/navigation using requested
+new stack base 6f83498 refuses with `explicit base is not an ancestor of HEAD`
+while that commit remains only the pending merge parent; the refusal is retained.
+The honest current-ancestor 9d26edb comparison passes three owner obligations
+with zero unanswered. No future-base exception or no-impact trailer is added.
+Eight existing ignored native-support files have unchanged metadata-only hash
+identities; no review outcome was inspected and no native command or history
+mutation ran. Final 6f83498 policy still follows its authorized signed checkpoint.
+
+The root's bounded working phase on this integrated source passed canonical
+lint (zero errors/33 existing warnings), all five published type projects
+(zero unresolved imports/consumer errors), three API checks, actual package
+content/byte/file gates and all 17 browser budgets. The unchanged confinement
+selector passed 5/5; the existing four 90-unit composition profiles passed
+4/4 in 46.69 seconds with both actual-R lock and retained-import proofs; the
+prior seven-file regressions passed 78/78 in 2.59 seconds. Platform remained
+at 1,662,140 code-gzip / 1,935,102 tarball / 9,006,345 unpacked bytes and
+2574/2628 file counts under the same caps. No tracked input changed during
+execution; no owned PostgreSQL remained. Root independently compared complete
+TypeScript AST helper bodies: retained helper exact to 06cecedc, runtime-lock
+helper exact to 6f834982, each awaited once. Raw commands, frozen inputs,
+exits and logs remain at `/private/tmp/m14-f-r1-confinement-working-20261027`.
+
+Only this task outcome was appended afterwards. The root read the stabilized
+source/notes and unchanged SQL/hash/API/control/budget/recovery boundary and
+authorized ordinary signed merge DCO, continuation of the same native history
+with two fresh full reviewers, and complete canonical verification. The prior
+06ce source reviews remain historical; none is relabelled to this tree. The
+actual E2 predecessor must still land before F external admission. No full,
+ready, receipt, admission or merge completion is claimed by these working results.
+
+Self-retro: reuse of the actual owner bindings fixed the inherited confinement
+failure without changing SQL or a guard. The four existing production profiles
+cover both helpers after integration; no repeated frozen reference derivation,
+extra installation matrix or proof framework was needed.
