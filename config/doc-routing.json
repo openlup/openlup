@@ -656,6 +656,18 @@
       ],
       "doc": "docs/platform/ARCHITECTURE_AND_EXTENSIONS.md",
       "anchor": "#operations-and-diagnostics"
+    },
+    {
+      "id": "portability-capability",
+      "when": "Bounded server object transfer, compatible PostgreSQL rows and refusal/recovery contracts",
+      "paths": [
+        "packages/platform/src/portability/**",
+        "packages/platform/test/portability/**",
+        "packages/platform/api/portability.api.md",
+        "tests/postgres/portabilityRows.test.ts"
+      ],
+      "doc": "docs/platform/ARCHITECTURE_AND_EXTENSIONS.md",
+      "anchor": "#existing-store-transfer-and-recovery"
     }
   ]
 }

@@ -14,6 +14,7 @@ import { assertInstalledPackages, isolatedConsumerEnv, readCurrentPackManifest }
 import { POSTGRES_PROOF_IMAGE } from "./outbox-disposable-postgres.ts";
 
 export const NON_ADAPTER_ENTRIES = [
+  "portability",
   "operations",
   "operations/contracts",
   "account-support",
@@ -739,6 +740,57 @@ await assert.rejects(import("@openlup/platform/operations/server/internal"),{cod
 `);
 }
 
+/** Installed server entry: actual private bytes, replay and injected-row refusals without peers. */
+export function provePortabilityConsumer(consumer: string): void {
+  consumerNode(consumer, `
+import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
+import { mkdtemp, realpath, rm } from "node:fs/promises";
+import { join } from "node:path";
+import * as portability from "@openlup/platform/portability";
+assert.deepEqual(Object.keys(portability).sort(),["ObjectTransferError","PostgresTransferError","captureCompatiblePostgresRows","copyTransferObjects","createFilesystemTransferObjects","restoreCompatiblePostgresRows"].sort());
+const {copyTransferObjects,createFilesystemTransferObjects,captureCompatiblePostgresRows,restoreCompatiblePostgresRows}=portability;
+const root=await mkdtemp(join(await realpath(process.cwd()),"portability-"));
+try {
+ const bytes=Buffer.from("private installed object"),object={key:"nested/private",version:"v1",bytes:bytes.length,sha256:createHash("sha256").update(bytes).digest("hex"),metadata:{contentType:"application/octet-stream"},access:"source-private"};
+ const source=await createFilesystemTransferObjects({root:join(root,"source"),maximumObjectBytes:1024,access:"source-private"});
+ const targetOptions={root:join(root,"target"),maximumObjectBytes:1024,access:"target-private"};
+ let destination=await createFilesystemTransferObjects(targetOptions);
+ await source.createIfAbsent(object,bytes);
+ const input={inventory:{sourceId:"installed-source",snapshot:{kind:"quiesced",id:"snapshot-1"},objects:[object]},source,destination,accessMapping:{"source-private":"target-private"},maximumObjectBytes:1024,maximumTotalBytes:1024};
+ await assert.rejects(copyTransferObjects({...input,checkpoint:async()=>{throw Error("checkpoint interrupted");}}),/checkpoint interrupted/,"installed byte copy must reach verified checkpoint");
+ destination=await createFilesystemTransferObjects(targetOptions);
+ assert.deepEqual(await copyTransferObjects({...input,destination}),{copied:0,replayed:1,verifiedKeys:[object.key]});
+ const read=await destination.read(object.key,"v1"),chunks=[];for await(const chunk of read.body)chunks.push(chunk);
+ assert.deepEqual(Buffer.concat(chunks),bytes);
+ assert.deepEqual(read.object,{...object,access:"target-private",lineage:{sourceId:"installed-source",snapshotId:"snapshot-1",sourceVersion:"v1"}});
+ await assert.rejects(destination.read("absent"),{code:"absent"});
+ await assert.rejects(destination.read(object.key,"v2"),{code:"version_conflict"});
+ await assert.rejects(destination.createIfAbsent({...object,key:"public",access:"public"},bytes),{code:"denied"});
+ const raw='{"id":"11111111-1111-4111-8111-111111111111","payload":{"large":9007199254740993}}';
+ const columns=[{name:"id",type:"uuid",key:true,generated:"",identity:""},{name:"payload",type:"jsonb",key:false,generated:"",identity:""}];
+ let stored=false,trigger=false,conflict=false;
+ const db={async query(sql,values){
+  if(sql.includes("transaction_read_only"))return {rows:[{readonly:"on",isolation:"repeatable read"}]};
+  if(sql.includes("session_replication_role"))return {rows:[{mode:"origin"}]};
+  if(sql.includes("pg_catalog.pg_attribute"))return {rows:columns};
+  if(sql.includes("pg_catalog.pg_trigger"))return {rows:trigger?[{}]:[]};
+  if(sql.startsWith("SELECT to_jsonb(t)::text"))return {rows:[{value:raw}]};
+  if(sql.startsWith("INSERT")){assert.equal(values[0],raw);const prior=stored;stored=true;return {rows:prior?[]:[{inserted:1}]};}
+  if(sql.startsWith("SELECT to_jsonb(t) ="))return {rows:[{identical:!conflict}]};
+  assert(sql.startsWith("SET LOCAL")||sql.startsWith("LOCK TABLE"));return {rows:[]};
+ }};
+ const packet=await captureCompatiblePostgresRows({source:{withSnapshot:work=>work(db)},sourceId:"injected-source",catalogueId:"injected-profile",tables:["outbox_events"],maximumRows:10,maximumBytes:1024});
+ assert.equal(packet.tables[0].rows[0],raw);
+ const restore={target:{withTransaction:work=>work(db)},catalogueId:"injected-profile",packet};
+ assert.equal((await restoreCompatiblePostgresRows(restore)).inserted,1);
+ assert.equal((await restoreCompatiblePostgresRows(restore)).replayed,1);
+ trigger=true;await assert.rejects(restoreCompatiblePostgresRows(restore),{code:"insert_trigger_requires_owner"});
+ trigger=false;conflict=true;await assert.rejects(restoreCompatiblePostgresRows(restore),{code:"target_conflict"});
+} finally {await rm(root,{recursive:true,force:true});}
+`);
+}
+
 /** Two separate methods keep their own request and result shapes in both module-resolution modes. */
 export function compileOperationsConsumer(consumer: string, compiler: string): void {
   const file=join(consumer,"operations-types.ts");
@@ -823,6 +875,17 @@ export function compileConsumer(consumer: string, entries: readonly string[], co
     'declare const acquisitionDirect: AcquisitionCaseDirectDeps;',
     'export const acquisitionHandlers = createAcquisitionCaseHandlers(acquisitionPort);',
     'export const acquisitionCount = createAcquisitionCaseActiveCountDirectHandler(acquisitionDirect);',
+  ].join("\n"));
+  if (entries.includes("portability")) surfaces.push([
+    'import { captureCompatiblePostgresRows, restoreCompatiblePostgresRows, copyTransferObjects } from "@openlup/platform/portability";',
+    'import type { CompatiblePostgresSnapshot, CompatiblePostgresTarget, CompatiblePostgresPacket, TransferObjectInventory, TransferObjectStore } from "@openlup/platform/portability";',
+    'declare const source: CompatiblePostgresSnapshot; declare const target: CompatiblePostgresTarget;',
+    'export const captured: Promise<CompatiblePostgresPacket> = captureCompatiblePostgresRows({source,sourceId:"source",catalogueId:"catalogue",tables:["outbox_events"],maximumRows:10,maximumBytes:1024});',
+    'export const restored = restoreCompatiblePostgresRows({target,catalogueId:"catalogue",packet:await captured});',
+    'declare const inventory: TransferObjectInventory; declare const objects: TransferObjectStore;',
+    'export const copied = copyTransferObjects({inventory,source:objects,destination:objects,accessMapping:{private:"private"},maximumObjectBytes:1024,maximumTotalBytes:1024});',
+    '// @ts-expect-error migration ledgers are not compatible data candidates',
+    'captureCompatiblePostgresRows({source,sourceId:"source",catalogueId:"catalogue",tables:["platform_schema_migrations"],maximumRows:10,maximumBytes:1024});',
   ].join("\n"));
   if (entries.includes("commerce/server")) surfaces.push([
     'import { tryCompensate } from "@openlup/platform/commerce/server";',
@@ -1465,6 +1528,42 @@ try {
   console.log("Operations installed native proof PASS (explicit invoker role, denied neighbor, durable replay/conflict/checkOnly/process restart)");
 }
 
+/** Selected-row recovery from installed bytes against the already-owned canonical database. */
+export function provePortabilityPostgres(consumer: string, connectionString: string): void {
+  consumerNode(consumer, `
+import assert from "node:assert/strict";
+import {randomUUID} from "node:crypto";
+import pg from "pg";
+import {captureCompatiblePostgresRows,restoreCompatiblePostgresRows} from "@openlup/platform/portability";
+const client=new pg.Client({connectionString:process.argv[2]});await client.connect();
+const id=randomUUID(),key="installed-transfer:"+id,catalogueId="owned-canonical-install";
+async function transaction(readOnly,work){await client.query(readOnly?"BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY":"BEGIN");try{const result=await work(client);await client.query("COMMIT");return result;}catch(error){await client.query("ROLLBACK");throw error;}}
+try{
+ const ledger=await client.query("SELECT to_jsonb(t)::text AS value FROM public.platform_schema_migrations t ORDER BY position");
+ const acl=await client.query("SELECT relname,relacl::text FROM pg_class WHERE relnamespace='public'::regnamespace ORDER BY relname");
+ const payload='{"large":9007199254740993}';
+ await client.query("INSERT INTO public.outbox_events(id,aggregate_type,aggregate_id,event_type,idempotency_key,payload,status,attempts) VALUES($1,'synthetic',$1,'synthetic.transfer',$2,$3::jsonb,'processing',3)",[id,key,payload]);
+ const before=(await client.query("SELECT to_jsonb(t)::text AS value FROM public.outbox_events t WHERE id=$1",[id])).rows;
+ const packet=await captureCompatiblePostgresRows({source:{withSnapshot:work=>transaction(true,work)},sourceId:"owned-installed-source",catalogueId,tables:["outbox_events"],maximumRows:1000,maximumBytes:4194304});
+ const input={target:{withTransaction:work=>transaction(false,work)},catalogueId,packet};
+ assert.equal((await restoreCompatiblePostgresRows(input)).inserted,0);
+ // Owned fixture loss: recover the exact retained row without resetting its
+ // in-flight status, attempts, original key or precision-bearing payload.
+ await client.query("DELETE FROM public.outbox_events WHERE id=$1",[id]);
+ assert.equal((await restoreCompatiblePostgresRows(input)).inserted,1);
+ assert.deepEqual((await client.query("SELECT to_jsonb(t)::text AS value FROM public.outbox_events t WHERE id=$1",[id])).rows,before);
+ const retained=(await client.query("SELECT xmin::text AS version FROM public.outbox_events WHERE id=$1",[id])).rows;
+ assert.equal((await restoreCompatiblePostgresRows(input)).inserted,0);
+ assert.deepEqual((await client.query("SELECT xmin::text AS version FROM public.outbox_events WHERE id=$1",[id])).rows,retained);
+ await client.query("UPDATE public.outbox_events SET attempts=4 WHERE id=$1",[id]);
+ await assert.rejects(restoreCompatiblePostgresRows(input),{code:"target_conflict"});
+ assert.deepEqual((await client.query("SELECT to_jsonb(t)::text AS value FROM public.platform_schema_migrations t ORDER BY position")).rows,ledger.rows);
+ assert.deepEqual((await client.query("SELECT relname,relacl::text FROM pg_class WHERE relnamespace='public'::regnamespace ORDER BY relname")).rows,acl.rows);
+ console.log("Portability installed canonical selected-row recovery PASS");
+}finally{await client.query("DELETE FROM public.outbox_events WHERE id=$1",[id]);await client.end();}
+`, [connectionString]);
+}
+
 /** Setup uses the existing canonical runner; subjects resolve only from installed artifacts. */
 function proveNativeCommunicationsPostgres(consumer: string): void {
   const started = performance.now();
@@ -1493,6 +1592,7 @@ function proveNativeCommunicationsPostgres(consumer: string): void {
     `,connectionString],root,isolatedConsumerEnv());
     proveNativeCommunicationsOperations(consumer,connectionString);
     proveOperationsPostgres(consumer,connectionString);
+    provePortabilityPostgres(consumer,connectionString);
   } finally {docker(["rm","--force",name]);}
   console.log(`Native communications installed proof PASS (PostgreSQL 16, complete canonical catalogue; ${Math.round(performance.now()-started)} ms including setup/cleanup)`);
 }
@@ -1815,6 +1915,7 @@ assert.throws(() => promotions.resolvePromotionBenefitDefinition({ discount_type
     proveCommerceConsumer(consumer);
     proveCommerceServerConsumer(consumer);
     proveOperationsConsumer(consumer);
+    provePortabilityConsumer(consumer);
     proveCatalogCompositionConsumer(consumer);
     proveAdapterRefusals(consumer);
     proveOidcRefusals(consumer);

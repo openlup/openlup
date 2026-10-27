@@ -4,6 +4,15 @@ Status: development-preview contract. No recipe in this document is a supported 
 
 ## Runtime model
 
+The Node-only [transfer helpers](ARCHITECTURE_AND_EXTENSIONS.md#existing-store-transfer-and-recovery)
+consume qualified transaction and object capabilities; they create no connection,
+route, worker or provider authority. Restoring local claim tokens or checking a
+generation before dispatch cannot exclude an old runtime paused at actual
+provider I/O. Handover still requires independently enforced egress fencing and
+drain/reconciliation of accepted effects. Unsafe or unavailable enforcement
+cannot activate the target and must not pause active subscription state. The
+local synthetic HTTP probe establishes its fixture semantics only.
+
 The reference control-plane route composes existing admin authorization with the
 package operations handler. Its host binding still selects the bundle, obtains
 and closes its client, and supplies the capability-local operator ID. The direct
